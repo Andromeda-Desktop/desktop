@@ -173,8 +173,9 @@ namespace andromeda {
     }
 
     // A client blur region made of rounded rectangles (a bar sends all its islands in one region) -> one shape each,
-    // so every blur gets the shader's anti-aliased edge instead of the staircase. Any other shape -> empty.
-    std::vector<RoundedShape> roundedShapesOf(const pixman_region32_t* region) {
+    // so every blur gets the shader's anti-aliased edge instead of the staircase. The rects of a group that is no
+    // rounded rectangle (overlapping cards) go to `rest`.
+    std::vector<RoundedShape> roundedShapesOf(const pixman_region32_t* region, pixman_region32_t* rest) {
       int count = 0;
       const pixman_box32_t* rects = pixman_region32_rectangles(region, &count);
       // Rects that touch across adjacent bands belong to one shape.
@@ -214,7 +215,10 @@ namespace andromeda {
           shape = sideJoinedShapeOf(group);
         }
         if (!shape) {
-          return {};
+          for (const pixman_box32_t& r : group) {
+            pixman_region32_union_rect(rest, rest, r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+          }
+          continue;
         }
         shapes.push_back(*shape);
       }
@@ -1003,6 +1007,10 @@ namespace andromeda {
     }
     std::vector<RoundedShape> shapes;
     std::vector<wlr_box> shapeClips;
+    // The first shape drawn by m_shapeBlurs: 1 when m_blur draws shapes[0], 0 when m_blur draws a region.
+    std::size_t firstShapeBlur = 1;
+    pixman_region32_t rest;
+    pixman_region32_init(&rest);
     // dsk_shape_v1 (v10): the client names its glass shapes, so its blur region is not used for glass.
     m_shapeMaterials.clear();
     if (state != nullptr && m_rule.blur.value_or(true)) {
@@ -1081,8 +1089,20 @@ namespace andromeda {
       clip = dskClip;
       options.enabled = true;
     } else if (region != nullptr && m_rule.blur.value_or(true)) {
-      shapes = roundedShapesOf(region);
-      if (!shapes.empty()) {
+      shapes = roundedShapesOf(region, &rest);
+      if (!shapes.empty() && pixman_region32_not_empty(&rest)) {
+        // Only the unreadable groups stay a region (its glass rim spans their extents, not the whole surface); every
+        // shape gets its own blur.
+        const auto scaled = [motionScale](int v) { return static_cast<int>(std::lround(v * motionScale)); };
+        for (const RoundedShape& shape : shapes) {
+          shapeClips.push_back(wlr_box{
+              nodeBox.x + scaled(shape.box.x), nodeBox.y + scaled(shape.box.y), scaled(shape.box.width),
+              scaled(shape.box.height)
+          });
+        }
+        region = &rest;
+        firstShapeBlur = 0;
+      } else if (!shapes.empty()) {
         const auto scaled = [motionScale](int v) { return static_cast<int>(std::lround(v * motionScale)); };
         for (const RoundedShape& shape : shapes) {
           shapeClips.push_back(wlr_box{
@@ -1144,23 +1164,25 @@ namespace andromeda {
     );
     m_glassMask.update(m_scene->tree, m_layerSurface->surface, state);
     pixman_region32_fini(&scaledRegion);
-    if (m_shapeBlurs.size() + 1 < shapes.size()) {
-      m_shapeBlurs.resize(shapes.size() - 1);
+    pixman_region32_fini(&rest);
+    if (m_shapeBlurs.size() + firstShapeBlur < shapes.size()) {
+      m_shapeBlurs.resize(shapes.size() - firstShapeBlur);
     }
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
       SurfaceBlur& blur = m_shapeBlurs[i];
-      if (i + 1 >= shapes.size()) {
+      const std::size_t shape = i + firstShapeBlur;
+      if (shape >= shapes.size()) {
         blur.hide();
         continue;
       }
-      const bool own = i + 1 < m_shapeMaterials.size();
-      blur.setLiquid(own ? m_shapeMaterials[i + 1].liquid : m_liquid);
-      blur.setRim(own ? m_shapeMaterials[i + 1].rim : m_rim);
-      blur.setLens(own ? m_shapeMaterials[i + 1].lens : m_lens);
+      const bool own = shape < m_shapeMaterials.size();
+      blur.setLiquid(own ? m_shapeMaterials[shape].liquid : m_liquid);
+      blur.setRim(own ? m_shapeMaterials[shape].rim : m_rim);
+      blur.setLens(own ? m_shapeMaterials[shape].lens : m_lens);
       blur.setFade(m_blurFade);
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,
-          shapeCorners(shapes[i + 1], motionScale, kBlurCornerSlack), &shapeClips[i + 1],
+          shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],
           options
       );
     }

@@ -278,7 +278,8 @@ namespace {
       destroyBuffer(previous);
       previous = replacement;
     } else if (action == "blur-region" || action == "blur-none") {
-      // blur-region <label> <x> <y> <width> <height>: ext-background-effect-v1 blur region of the layer surface.
+      // blur-region <label> <x> <y> <width> <height> [more rects]: ext-background-effect-v1 blur region of the layer
+      // surface, the union of the rects.
       if (state.blurManager == nullptr) {
         state.failed = state.closed = true;
         return;
@@ -300,6 +301,10 @@ namespace {
         }
         wl_region* region = wl_compositor_create_region(state.compositor);
         wl_region_add(region, x, y, width, height);
+        while (command >> x >> y >> width >> height) {
+          wl_region_add(region, x, y, width, height);
+        }
+        command.clear();
         ext_background_effect_surface_v1_set_blur_region(state.blurEffect, region);
         wl_region_destroy(region);
       }
