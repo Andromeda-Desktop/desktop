@@ -147,6 +147,12 @@ namespace {
       return p.termFindRing;
     case ColorRole::TermPillCwd:
       return p.termPillCwd;
+    case ColorRole::Card:
+      return p.card;
+    case ColorRole::DiffAdd:
+      return p.diffAdd;
+    case ColorRole::DiffDel:
+      return p.diffDel;
     case ColorRole::Scrim:
       return p.scrim;
     }
@@ -325,6 +331,9 @@ Palette lerpPalette(const Palette& a, const Palette& b, float t) {
       .termFindHitCurrent = lerpColor(a.termFindHitCurrent, b.termFindHitCurrent, t),
       .termFindRing = lerpColor(a.termFindRing, b.termFindRing, t),
       .termPillCwd = lerpColor(a.termPillCwd, b.termPillCwd, t),
+      .card = lerpColor(a.card, b.card, t),
+      .diffAdd = lerpColor(a.diffAdd, b.diffAdd, t),
+      .diffDel = lerpColor(a.diffDel, b.diffDel, t),
       .scrim = lerpColor(a.scrim, b.scrim, t),
   };
 }
@@ -372,6 +381,9 @@ Palette tokenPalette(bool light) noexcept {
       .termFindHitCurrent = tokenColor(s.termFindHitCurrent),
       .termFindRing = tokenColor(s.termFindRing),
       .termPillCwd = tokenColor(s.termPillCwd),
+      .card = tokenColor(s.card),
+      .diffAdd = tokenColor(s.diffAdd),
+      .diffDel = tokenColor(s.diffDel),
       .scrim = tokenColor(s.scrim),
   };
 }
