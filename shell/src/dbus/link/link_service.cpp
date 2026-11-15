@@ -566,7 +566,22 @@ std::string LinkService::deviceName(const std::string& deviceId) const {
     return device->name;
   }
   const auto peer = std::ranges::find(m_nearby, deviceId, &LinkNearby::id);
-  return peer != m_nearby.end() ? peer->alias : deviceId;
+  if (peer != m_nearby.end()) {
+    return peer->alias;
+  }
+  // localsend-unverified:<ip>/<alias> (link-daemon localsend::UNVERIFIED): the alias is the sender's own claim.
+  constexpr std::string_view kUnverified = "localsend-unverified:";
+  if (deviceId.starts_with(kUnverified)) {
+    const std::string_view rest = std::string_view(deviceId).substr(kUnverified.size());
+    const auto slash = rest.find('/');
+    if (slash != std::string_view::npos) {
+      return i18n::tr(
+          "notifications.internal.link-unverified", "alias", std::string(rest.substr(slash + 1)), "address",
+          std::string(rest.substr(0, slash))
+      );
+    }
+  }
+  return deviceId;
 }
 
 void LinkService::browse(const std::string& deviceId) {
