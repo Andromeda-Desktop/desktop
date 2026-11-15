@@ -76,6 +76,9 @@ public:
   // An Open picker window of this app (not the portal): done gets the chosen files, empty when cancelled.
   void pickFiles(std::string title, std::string acceptLabel,
                  std::function<void(std::vector<std::filesystem::path>)> done, bool directory = false);
+  // A Save picker window of this app: done gets the one chosen path, empty when cancelled.
+  void pickSaveFile(std::string title, std::string currentName,
+                    std::function<void(std::vector<std::filesystem::path>)> done);
   void searchAnswered(const std::string& text, std::vector<std::shared_ptr<const FileInfo>> rows);
 
 protected:

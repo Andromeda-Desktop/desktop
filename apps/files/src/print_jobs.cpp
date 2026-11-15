@@ -1,0 +1,202 @@
+#include "print_jobs.h"
+
+#include "core/deferred_call.h"
+#include "core/log.h"
+#include "dbus/session_bus.h"
+
+#include <glib.h>
+#include <sdbus-c++/sdbus-c++.h>
+
+#include <chrono>
+#include <format>
+#include <thread>
+#include <utility>
+#include <vector>
+
+namespace {
+  constexpr Logger kLog("print-jobs");
+  constexpr auto kInterface = "org.freedesktop.Notifications";
+  constexpr auto kPollInterval = std::chrono::milliseconds(1000);
+} // namespace
+
+void openPrinterSettings() {
+    const gchar* argv[] = {"andromeda-shell", "msg", "settings-open", "devices", nullptr};
+    GError* error = nullptr;
+    if (!g_spawn_async(nullptr, const_cast<gchar**>(argv), nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr,
+                       &error)) {
+      kLog.warn("open printers: {}", error != nullptr ? error->message : "?");
+      g_clear_error(&error);
+    }
+}
+
+PrintJobs::PrintJobs(SessionBus& bus) {
+  if (!bus.connected())
+    return;
+  try {
+    m_proxy = sdbus::createProxy(bus.connection(), sdbus::ServiceName{kInterface},
+                                 sdbus::ObjectPath{"/org/freedesktop/Notifications"});
+    m_proxy->uponSignal("ActionInvoked").onInterface(kInterface).call([this](std::uint32_t note, const std::string& key) {
+      const auto it = m_byNote.find(note);
+      if (it == m_byNote.end())
+        return;
+      const auto job = m_jobs.find(it->second);
+      if (job == m_jobs.end())
+        return;
+      if (key == "cancel") {
+        std::thread([printer = job->second.printer, id = job->first] { cancelJob(printer, id); }).detach();
+        close(note);
+        m_byNote.erase(it);
+        m_jobs.erase(job);
+      } else if (key == "queue") {
+        openPrinterSettings();
+      }
+    });
+    m_proxy->uponSignal("NotificationClosed").onInterface(kInterface).call([this](std::uint32_t note, std::uint32_t) {
+      const auto it = m_byNote.find(note);
+      if (it == m_byNote.end())
+        return;
+      if (const auto job = m_jobs.find(it->second); job != m_jobs.end())
+        job->second.note = 0;
+      m_byNote.erase(it);
+    });
+  } catch (const sdbus::Error& e) {
+    kLog.warn("notifications unavailable: {}", e.what());
+    m_proxy.reset();
+  }
+}
+
+PrintJobs::~PrintJobs() { *m_alive = false; }
+
+void PrintJobs::track(int jobId, std::string printer, std::string printerLabel, std::string title, int pages) {
+  m_jobs[jobId] = Job{.printer = std::move(printer), .label = std::move(printerLabel), .title = std::move(title),
+                      .pages = pages};
+  apply(jobId, JobStatus{.state = JobState::Waiting});
+  if (!m_timer.active())
+    m_timer.startRepeating(kPollInterval, [this] { poll(); });
+}
+
+void PrintJobs::failed(const std::string& summary, const std::string& body) {
+  if (!m_proxy)
+    return;
+  const std::map<std::string, sdbus::Variant> hints{
+      {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Files"}}},
+      {"urgency", sdbus::Variant{std::uint8_t{2}}}};
+  try {
+    m_proxy->callMethodAsync("Notify")
+        .onInterface(kInterface)
+        .withArguments(std::string{"Files"}, std::uint32_t{0}, std::string{"dialog-warning"}, summary, body,
+                       std::vector<std::string>{}, hints, std::int32_t{-1})
+        .uponReplyInvoke([](std::optional<sdbus::Error> error, std::uint32_t) {
+          if (error)
+            kLog.warn("notify: {}", error->what());
+        });
+  } catch (const sdbus::Error& e) {
+    kLog.warn("notify: {}", e.what());
+  }
+}
+
+void PrintJobs::poll() {
+  if (m_jobs.empty()) {
+    m_timer.stop();
+    return;
+  }
+  if (m_poll == Poll::Running)
+    return;
+  m_poll = Poll::Running;
+  std::vector<int> ids;
+  std::map<int, std::string> printers;
+  for (const auto& [id, job] : m_jobs) {
+    ids.push_back(id);
+    printers[id] = job.printer;
+  }
+  std::thread([this, ids = std::move(ids), printers = std::move(printers), alive = std::weak_ptr<bool>(m_alive)] {
+    std::vector<std::pair<int, JobStatus>> statuses;
+    for (const int id : ids)
+      statuses.emplace_back(id, jobStatus(printers.at(id), id));
+    DeferredCall::callLater([this, statuses = std::move(statuses), alive] {
+      if (alive.expired())
+        return;
+      m_poll = Poll::Idle;
+      for (const auto& [id, status] : statuses)
+        apply(id, status);
+    });
+  }).detach();
+}
+
+void PrintJobs::apply(int jobId, const JobStatus& status) {
+  const auto it = m_jobs.find(jobId);
+  if (it == m_jobs.end())
+    return;
+  Job& job = it->second;
+  switch (status.state) {
+  case JobState::Waiting:
+    show(jobId, Shown::Progress, std::format("Printing “{}”", job.title), std::format("{} · waiting", job.label));
+    break;
+  case JobState::Printing:
+    show(jobId, Shown::Progress, std::format("Printing “{}”", job.title),
+         job.pages > 0 ? std::format("{} · page {} of {}", job.label, std::min(status.pagesDone + 1, job.pages), job.pages)
+                       : job.label);
+    break;
+  case JobState::Stopped:
+    show(jobId, Shown::Problem, std::format("“{}” did not print", job.title),
+         std::format("{}: {}. The job waits.", job.label, status.reason.empty() ? "stopped" : status.reason));
+    break;
+  case JobState::Done:
+  case JobState::Failed:
+    if (status.state == JobState::Failed)
+      kLog.info("job {} ended without printing", jobId);
+    if (job.note != 0) {
+      m_byNote.erase(job.note);
+      close(job.note);
+    }
+    m_jobs.erase(it);
+    break;
+  }
+}
+
+void PrintJobs::show(int jobId, Shown kind, const std::string& summary, const std::string& body) {
+  Job& job = m_jobs.at(jobId);
+  // A notification the user closed comes back only when the job's state changes kind.
+  if (kind == job.shown && (job.note == 0 || body == job.body))
+    return;
+  job.shown = kind;
+  job.body = body;
+  if (!m_proxy)
+    return;
+  const bool problem = kind == Shown::Problem;
+  const std::vector<std::string> actions =
+      problem ? std::vector<std::string>{"cancel", "Cancel Job", "queue", "Show Queue"} : std::vector<std::string>{};
+  const std::map<std::string, sdbus::Variant> hints{
+      {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Files"}}},
+      {"urgency", sdbus::Variant{static_cast<std::uint8_t>(problem ? 2 : 1)}},
+      {"transient", sdbus::Variant{!problem}}};
+  try {
+    // Synchronous, so the next update replaces this notification instead of adding a second one.
+    std::uint32_t note = 0;
+    m_proxy->callMethod("Notify")
+        .onInterface(kInterface)
+        .withTimeout(std::chrono::milliseconds(500))
+        .withArguments(std::string{"Files"}, job.note, std::string{problem ? "dialog-warning" : "printer"}, summary,
+                       body, actions, hints, std::int32_t{0})
+        .storeResultsTo(note);
+    if (job.note != note)
+      m_byNote.erase(job.note);
+    job.note = note;
+    m_byNote[note] = jobId;
+  } catch (const sdbus::Error& e) {
+    kLog.warn("notify: {}", e.what());
+  }
+}
+
+void PrintJobs::close(std::uint32_t note) {
+  if (!m_proxy || note == 0)
+    return;
+  try {
+    m_proxy->callMethodAsync("CloseNotification")
+        .onInterface(kInterface)
+        .withArguments(note)
+        .uponReplyInvoke([](std::optional<sdbus::Error>) {});
+  } catch (const sdbus::Error& e) {
+    kLog.warn("close notification: {}", e.what());
+  }
+}

@@ -272,11 +272,26 @@ void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& requ
       loop(), request,
       PrintSheet::Callbacks{
           .print =
-              [this, &window, answered, id](const PrintOptions& options) {
+              [this, &window, answered, id](const PrintOptions& options, const std::string& printerLabel,
+                                             int pages) {
                 if (!answered())
                   return;
-                m_printPortal->print(id, options, nullptr);
+                m_printPortal->print(id, options, printerLabel, pages);
                 closeWindow(window);
+              },
+          .savePdf =
+              [this, &window, id, title = request.title] {
+                std::string name = title.empty() ? std::string("Document") : title;
+                if (!name.ends_with(".pdf"))
+                  name = fs::path(name).stem().string() + ".pdf";
+                pickSaveFile("Save as PDF", name, [this, &window, id](std::vector<fs::path> paths) {
+                  const auto it = m_dialogs.find(&window);
+                  if (paths.empty() || it == m_dialogs.end() || it->second.id != id || it->second.answered)
+                    return;
+                  it->second.answered = true;
+                  m_printPortal->savePdf(id, paths.front());
+                  closeWindow(window);
+                });
               },
           .cancel =
               [this, &window, answered, id] {
@@ -287,8 +302,8 @@ void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& requ
               },
           .rebuild = [&window] { window.requestRebuild(); },
       });
-  window.setContentBuilder([sheet = dialog.print.get(), &window](Renderer&, float, float) {
-    return sheet->build(window.uiScale());
+  window.setContentBuilder([sheet = dialog.print.get(), &window](Renderer& renderer, float width, float) {
+    return sheet->build(renderer, window.uiScale(), width);
   });
   window.setFirstKeyHandler([sheet = dialog.print.get()](const KeyboardEvent& e) { return sheet->firstKey(e); });
   window.setKeyHandler([sheet = dialog.print.get()](const KeyboardEvent& e) { return sheet->key(e); });
@@ -400,6 +415,18 @@ void FilesApp::pickFiles(std::string title, std::string acceptLabel,
   request.acceptLabel = std::move(acceptLabel);
   request.multiple = !directory;
   request.directory = directory;
+  openPicker(id, request);
+}
+
+void FilesApp::pickSaveFile(std::string title, std::string currentName,
+                            std::function<void(std::vector<fs::path>)> done) {
+  const std::uint64_t id = m_nextLocalPick++;
+  m_localPicks.emplace(id, std::move(done));
+  PickerPortal::Request request;
+  request.kind = PickerPortal::Request::Kind::Save;
+  request.title = std::move(title);
+  request.acceptLabel = "Save";
+  request.currentName = std::move(currentName);
   openPicker(id, request);
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "print_jobs.h"
 #include "print_settings.h"
 
 #include <cstdint>
@@ -40,10 +41,12 @@ public:
   PrintPortal& operator=(const PrintPortal&) = delete;
 
   void cancel(std::uint64_t id);
-  // Sends the job; `done` gets the reason when it fails. Remembers the options for the app and printer.
-  void print(std::uint64_t id, const PrintOptions& options,
-             std::function<void(std::optional<std::string> error)> done);
-  [[nodiscard]] bool idle() const noexcept { return m_pending.empty(); }
+  // Sends the job and follows it in a notification; a failure shows one too. Remembers the options for the app and
+  // printer. pages = the pages the job prints, for the progress line.
+  void print(std::uint64_t id, const PrintOptions& options, const std::string& printerLabel, int pages);
+  // Copies the document to path as the app made it.
+  void savePdf(std::uint64_t id, const std::filesystem::path& path);
+  [[nodiscard]] bool idle() const noexcept { return m_pending.empty() && m_jobs.idle(); }
 
 private:
   struct Pending;
@@ -54,6 +57,7 @@ private:
   Handlers m_handlers;
   std::filesystem::path m_stateFile;
   std::unique_ptr<sdbus::IObject> m_object;
+  PrintJobs m_jobs;
   std::map<std::uint64_t, std::unique_ptr<Pending>> m_pending;
   std::uint64_t m_nextId = 1;
   std::uint32_t m_nextToken = 1;

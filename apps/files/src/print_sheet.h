@@ -2,15 +2,19 @@
 
 #include "cups_printers.h"
 #include "print_portal.h"
+#include "render/core/texture_handle.h"
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 class AppLoop;
 class Node;
+class Renderer;
 struct KeyboardEvent;
 
 namespace preview {
@@ -22,7 +26,8 @@ namespace preview {
 class PrintSheet {
 public:
   struct Callbacks {
-    std::function<void(const PrintOptions&)> print;
+    std::function<void(const PrintOptions&, const std::string& printerLabel, int pages)> print;
+    std::function<void()> savePdf; // pick a path and save the document as the app made it
     std::function<void()> cancel;
     std::function<void()> rebuild;
   };
@@ -32,6 +37,7 @@ public:
     int width = 0;
     int height = 0;
     int stride = 0;
+    TextureHandle texture; // uploaded once at the first build that shows it; bgra is freed then
   };
 
   PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbacks callbacks);
@@ -39,21 +45,34 @@ public:
   PrintSheet(const PrintSheet&) = delete;
   PrintSheet& operator=(const PrintSheet&) = delete;
 
-  [[nodiscard]] std::unique_ptr<Node> build(float scale);
-  // Esc cancels and Enter prints, also from the range field; they run before the app's own key commands.
+  [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float scale, float width);
+  // Esc goes back from More Options, else cancels; Enter prints. Both also work from the range field and run
+  // before the app's own key commands.
   bool firstKey(const KeyboardEvent& event);
-  bool key(const KeyboardEvent& event); // Left / Right turn pages
+  bool key(const KeyboardEvent& event); // Left / Right turn sheets
 
 private:
   enum class Printers { Loading, Loaded };
   enum class Preview { Loading, Ready, Failed };
+  enum class Screen { Main, More };
+  enum class Target { Printer, SaveAsPdf };
+  enum class Size { Page, Thumb };
 
   void startPreview();
-  void renderPage(int page);
+  void requestPage(int page, Size size);
   void selectPrinter(std::size_t index);
+  void selectSaveAsPdf();
   void submit();
+  void showSheet(int sheet);
   [[nodiscard]] const PrinterInfo* printer() const;
   [[nodiscard]] bool rangeValid() const;
+  [[nodiscard]] std::vector<int> pagesToPrint() const; // 0-based
+  [[nodiscard]] int perSheet() const;
+  [[nodiscard]] std::unique_ptr<Node> buildPreview(Renderer& renderer, float scale, float width);
+  [[nodiscard]] std::unique_ptr<Node> buildSheet(Renderer& renderer, int sheet, const std::vector<int>& pages, float height, Size size,
+                                                 bool selected);
+  void buildMain(Node& column, float scale);
+  void buildMore(Node& column, float scale);
 
   AppLoop& m_loop;
   PrintPortal::PrintRequest m_request;
@@ -64,6 +83,8 @@ private:
   Printers m_printersState = Printers::Loading;
   std::vector<PrinterInfo> m_printers;
   std::size_t m_printer = 0;
+  Target m_target = Target::Printer;
+  Screen m_screen = Screen::Main;
 
   bool m_allPages = true;
   std::string m_rangeText;
@@ -73,9 +94,11 @@ private:
   std::string m_tempPath;
   std::unique_ptr<preview::HelperClient> m_helper;
   int m_pageCount = 0;
-  int m_page = 0;
-  std::shared_ptr<Pixels> m_pagePixels;
-  std::uint64_t m_renderGeneration = 0;
+  int m_sheet = 0;
+  std::map<int, std::shared_ptr<Pixels>> m_pages;  // 0-based page → preview pixels
+  std::map<int, std::shared_ptr<Pixels>> m_thumbs; // 0-based page → thumbnail pixels
+  std::set<std::pair<int, Size>> m_requested;
+  std::vector<TextureHandle> m_dropped; // textures of evicted pages, unloaded at the next build
 
   bool m_sent = false;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

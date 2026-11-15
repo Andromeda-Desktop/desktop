@@ -73,6 +73,7 @@ executable('andromeda-files',
     'src/app_chooser_portal.cpp',
     'src/email_portal.cpp',
     'src/cups_printers.cpp',
+    'src/print_jobs.cpp',
     'src/print_portal.cpp',
     'src/print_sheet.cpp',
     'src/app_chooser_sheet.cpp',
@@ -109,7 +110,7 @@ if _dbus_run_session.found()
   test('picker_portal_dbus', _dbus_run_session, args: ['--', _picker_portal_dbus_exe.full_path()],
     depends: _picker_portal_dbus_exe)
   _print_portal_dbus_exe = executable('print_portal_dbus_test', 'tests/print_portal_dbus_test.cpp',
-    'src/print_portal.cpp', 'src/cups_printers.cpp', link_with: _files_lib,
+    'src/print_portal.cpp', 'src/print_jobs.cpp', 'src/cups_printers.cpp', link_with: _files_lib,
     dependencies: [_desk_app_dep, _cups_dep], include_directories: include_directories('src'), cpp_args: _warnings)
   test('print_portal_dbus', _dbus_run_session, args: ['--', _print_portal_dbus_exe.full_path()],
     depends: _print_portal_dbus_exe)

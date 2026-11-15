@@ -99,9 +99,18 @@ std::vector<std::pair<std::string, std::string>> cupsJobOptions(const PrintOptio
     break;
   case Scaling::Custom:
     out.emplace_back("print-scaling", "none");
-    out.emplace_back("scaling", std::to_string(o.scalePercent));
+    out.emplace_back("natural-scaling", std::to_string(o.scalePercent));
     break;
   }
+  if (o.margins != Margins::Printer) {
+    const char* pt = o.margins == Margins::None ? "0" : o.margins == Margins::Narrow ? "18" : "54";
+    for (const char* side : {"page-left", "page-right", "page-top", "page-bottom"})
+      out.emplace_back(side, pt);
+  }
+  if (o.reverseOrder)
+    out.emplace_back("outputorder", "reverse");
+  if (o.booklet)
+    out.emplace_back("booklet", "on");
   for (const auto& kv : o.printerOptions)
     out.push_back(kv);
   return out;

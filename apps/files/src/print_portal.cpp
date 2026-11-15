@@ -10,6 +10,8 @@
 #include <sdbus-c++/sdbus-c++.h>
 
 #include <algorithm>
+#include <fcntl.h>
+#include <format>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -52,6 +54,18 @@ namespace {
       o.orientation = static_cast<Orientation>(std::clamp(integer(g, "orientation", 0), 0, 2));
       o.scaling = static_cast<Scaling>(std::clamp(integer(g, "scaling", 0), 0, 2));
       o.scalePercent = std::clamp(integer(g, "scale", 100), 10, 400);
+      o.margins = static_cast<Margins>(std::clamp(integer(g, "margins", 0), 0, 3));
+      o.reverseOrder = integer(g, "reverse", 0) != 0;
+      o.booklet = integer(g, "booklet", 0) != 0;
+      // "key=value;key=value": the printer's own IPP options.
+      const std::string own = str(g, "printer-options");
+      for (std::string_view rest = own; !rest.empty();) {
+        const auto semi = rest.find(';');
+        const std::string_view kv = rest.substr(0, semi);
+        if (const auto eq = kv.find('='); eq != std::string_view::npos && eq > 0)
+          o.printerOptions.emplace_back(std::string(kv.substr(0, eq)), std::string(kv.substr(eq + 1)));
+        rest = semi == std::string_view::npos ? std::string_view{} : rest.substr(semi + 1);
+      }
     }
     g_key_file_free(kf);
     return o;
@@ -71,6 +85,13 @@ namespace {
     g_key_file_set_integer(kf, g.c_str(), "orientation", static_cast<int>(o.orientation));
     g_key_file_set_integer(kf, g.c_str(), "scaling", static_cast<int>(o.scaling));
     g_key_file_set_integer(kf, g.c_str(), "scale", o.scalePercent);
+    g_key_file_set_integer(kf, g.c_str(), "margins", static_cast<int>(o.margins));
+    g_key_file_set_integer(kf, g.c_str(), "reverse", o.reverseOrder ? 1 : 0);
+    g_key_file_set_integer(kf, g.c_str(), "booklet", o.booklet ? 1 : 0);
+    std::string own;
+    for (const auto& [k, v] : o.printerOptions)
+      own += (own.empty() ? "" : ";") + k + '=' + v;
+    g_key_file_set_string(kf, g.c_str(), "printer-options", own.c_str());
     gsize size = 0;
     gchar* data = g_key_file_to_data(kf, &size, nullptr);
     std::error_code ec;
@@ -130,7 +151,7 @@ struct PrintPortal::Pending {
 };
 
 PrintPortal::PrintPortal(SessionBus& bus, Handlers handlers, std::filesystem::path stateFile)
-    : m_bus(bus), m_handlers(std::move(handlers)), m_stateFile(std::move(stateFile)) {
+    : m_bus(bus), m_handlers(std::move(handlers)), m_stateFile(std::move(stateFile)), m_jobs(bus) {
   m_object = sdbus::createObject(m_bus.connection(), kObjectPath);
   m_object
       ->addVTable(
@@ -207,27 +228,70 @@ bool PrintPortal::apply(std::uint64_t id, PrintEvent event) {
 
 void PrintPortal::cancel(std::uint64_t id) { apply(id, PrintEvent::UserCancel); }
 
-void PrintPortal::print(std::uint64_t id, const PrintOptions& options,
-                        std::function<void(std::optional<std::string> error)> done) {
+void PrintPortal::print(std::uint64_t id, const PrintOptions& options, const std::string& printerLabel, int pages) {
   if (!apply(id, PrintEvent::UserPrint))
     return;
   Pending& p = *m_pending.at(id);
   saveRemembered(m_stateFile, p.appId, options);
-  std::thread([this, id, fd = ::dup(p.fd), options, title = p.title, done = std::move(done),
+  std::thread([this, id, fd = ::dup(p.fd), options, printerLabel, pages, title = p.title,
                alive = std::weak_ptr<bool>(m_alive)] {
     auto outcome = submitJob(title, fd, options);
     ::close(fd);
-    std::optional<std::string> error;
-    if (const auto* e = std::get_if<JobError>(&outcome))
-      error = e->message;
-    DeferredCall::callLater([this, id, error, done, alive] {
+    DeferredCall::callLater([this, id, outcome = std::move(outcome), options, printerLabel, pages, title, alive] {
       if (alive.expired())
         return;
-      if (error)
-        kLog.warn("print job failed: {}", *error);
-      apply(id, error ? PrintEvent::JobFailed : PrintEvent::JobSent);
-      if (done)
-        done(error);
+      if (const auto* e = std::get_if<JobError>(&outcome)) {
+        kLog.warn("print job failed: {}", e->message);
+        m_jobs.failed(std::format("“{}” did not print", title), std::format("{}: {}", printerLabel, e->message));
+        apply(id, PrintEvent::JobFailed);
+        return;
+      }
+      m_jobs.track(std::get<int>(outcome), options.printer, printerLabel, title, pages);
+      apply(id, PrintEvent::JobSent);
+    });
+  }).detach();
+}
+
+void PrintPortal::savePdf(std::uint64_t id, const std::filesystem::path& path) {
+  if (!apply(id, PrintEvent::UserPrint))
+    return;
+  const Pending& p = *m_pending.at(id);
+  std::thread([this, id, fd = ::dup(p.fd), path, title = p.title, alive = std::weak_ptr<bool>(m_alive)] {
+    std::error_code ec;
+    const std::filesystem::path tmp = path.string() + ".part";
+    bool ok = false;
+    if (const int out = ::open(tmp.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644); out >= 0) {
+      char buf[65536];
+      ok = true;
+      for (off_t offset = 0;;) {
+        const ssize_t n = ::pread(fd, buf, sizeof buf, offset);
+        if (n <= 0) {
+          ok = n == 0;
+          break;
+        }
+        if (::write(out, buf, static_cast<std::size_t>(n)) != n) {
+          ok = false;
+          break;
+        }
+        offset += n;
+      }
+      ok = ::close(out) == 0 && ok;
+    }
+    ::close(fd);
+    if (ok)
+      std::filesystem::rename(tmp, path, ec);
+    if (!ok || ec)
+      std::filesystem::remove(tmp, ec);
+    const bool saved = ok && !ec;
+    DeferredCall::callLater([this, id, saved, path, title, alive] {
+      if (alive.expired())
+        return;
+      if (!saved) {
+        kLog.warn("save as PDF failed: {}", path.string());
+        m_jobs.failed(std::format("“{}” was not saved", title),
+                      std::format("Could not write {}.", path.filename().string()));
+      }
+      apply(id, saved ? PrintEvent::JobSent : PrintEvent::JobFailed);
     });
   }).detach();
 }

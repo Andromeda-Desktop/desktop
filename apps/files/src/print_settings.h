@@ -9,6 +9,7 @@
 enum class Duplex { Off, LongEdge, ShortEdge };
 enum class Orientation { Auto, Portrait, Landscape };
 enum class Scaling { Fit, Actual, Custom };
+enum class Margins { Printer, None, Narrow, Wide };
 
 // One page range, 1-based and inclusive.
 struct PageRange {
@@ -28,6 +29,9 @@ struct PrintOptions {
   Orientation orientation = Orientation::Auto;
   Scaling scaling = Scaling::Fit;
   int scalePercent = 100; // used when scaling == Custom
+  Margins margins = Margins::Printer;
+  bool reverseOrder = false;
+  bool booklet = false;
   std::vector<std::pair<std::string, std::string>> printerOptions; // the printer's own IPP options
 };
 

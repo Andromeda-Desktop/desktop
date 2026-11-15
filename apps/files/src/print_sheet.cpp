@@ -5,10 +5,13 @@
 #include "core/log.h"
 #include "design_tokens.h"
 #include "helper_client.h"
+#include "print_jobs.h"
 #include "render/core/renderer.h"
 #include "render/scene/node.h"
 #include "render/core/texture_manager.h"
+#include "render/scene/input_area.h"
 #include "ui/builders.h"
+#include "ui/controls/box.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/image.h"
@@ -52,38 +55,86 @@ namespace {
     return name;
   }
 
-  // The rendered page; uploads new pixels on the next layout, where a Renderer is at hand.
-  class PageNode final : public Node {
+  constexpr int kThumbRenderWidth = 120;
+  constexpr float kThumbHeight = 48.0F; // mockup .thumbs
+  constexpr int kThumbsVisible = 8;
+  constexpr std::size_t kPageCache = 24;
+
+  // One sheet of paper: the pages placed on it in a cols × rows grid, each fitted into its cell. Uploads new pixels
+  // on layout, where a Renderer is at hand.
+  class SheetNode final : public Node {
   public:
-    PageNode(std::shared_ptr<PrintSheet::Pixels> pixels, float height) : m_pixels(std::move(pixels)) {
-      m_image = static_cast<Image*>(addChild(std::make_unique<Image>()));
-      m_image->setFit(ImageFit::Contain);
-      const float aspect = m_pixels && m_pixels->height > 0
-          ? static_cast<float>(m_pixels->width) / static_cast<float>(m_pixels->height)
-          : 0.773F; // A4 until the first page arrives
-      m_width = height * aspect;
-      m_height = height;
-      setSize(m_width, m_height);
+    // A cell's texture is invalid while its page renders: the cell stays white.
+    SheetNode(std::vector<TextureHandle> cells, int cols, int rows, float width, float height, float scale, bool ring)
+        : m_cells(std::move(cells)), m_cols(cols), m_rows(rows) {
+      if (ring) {
+        const float r = 2.0F * scale;
+        auto* box = static_cast<Box*>(addChild(ui::box({.border = colorSpecFromRole(ColorRole::Accent), .borderWidth = r,
+                                                        .radius = 4.0F * scale})));
+        box->setPosition(-r - 1.0F * scale, -r - 1.0F * scale);
+        box->setSize(width + 2.0F * (r + 1.0F * scale), height + 2.0F * (r + 1.0F * scale));
+        m_ring = box;
+      }
+      m_paper = static_cast<Box*>(addChild(ui::box({.fill = fixedColorSpec(rgba(1.0F, 1.0F, 1.0F, 1.0F)),
+                                                    .border = colorSpecFromRole(ColorRole::Separator),
+                                                    .borderWidth = std::max(1.0F, 0.5F * scale)})));
+      m_paper->setSize(width, height);
+      for (const TextureHandle& cell : m_cells) {
+        auto* image = static_cast<Image*>(addChild(std::make_unique<Image>()));
+        image->setFit(ImageFit::Contain);
+        image->setVisible(cell.valid());
+        m_images.push_back(image);
+      }
+      setSize(width, height);
     }
 
   protected:
     void doLayout(Renderer& renderer) override {
-      if (m_pixels && !m_loaded) {
-        m_image->setSourceRaw(renderer, m_pixels->bgra.data(), m_pixels->bgra.size(), m_pixels->width,
-                              m_pixels->height, m_pixels->stride, PixmapFormat::BGRA);
-        m_loaded = true;
+      if (m_ring)
+        m_ring->layout(renderer);
+      m_paper->setSize(width(), height());
+      m_paper->layout(renderer);
+      const bool many = m_cells.size() > 1;
+      const float margin = many ? std::min(width(), height()) * 0.04F : 0.0F;
+      const float cw = (width() - 2.0F * margin - static_cast<float>(m_cols - 1) * margin) / static_cast<float>(m_cols);
+      const float ch = (height() - 2.0F * margin - static_cast<float>(m_rows - 1) * margin) / static_cast<float>(m_rows);
+      for (std::size_t i = 0; i < m_cells.size(); ++i) {
+        if (!m_cells[i].valid())
+          continue;
+        Image* image = m_images[i];
+        if (!m_bound)
+          image->setExternalTexture(renderer, m_cells[i]);
+        const int col = static_cast<int>(i) % m_cols;
+        const int row = static_cast<int>(i) / m_cols;
+        image->setPosition(margin + static_cast<float>(col) * (cw + margin),
+                           margin + static_cast<float>(row) * (ch + margin));
+        image->setSize(cw, ch);
+        image->layout(renderer);
       }
-      m_image->setSize(m_width, m_height);
-      m_image->layout(renderer);
+      m_bound = true;
     }
 
   private:
-    std::shared_ptr<PrintSheet::Pixels> m_pixels;
-    Image* m_image = nullptr;
-    float m_width = 0.0F;
-    float m_height = 0.0F;
-    bool m_loaded = false;
+    std::vector<TextureHandle> m_cells;
+    std::vector<Image*> m_images;
+    Box* m_ring = nullptr;
+    Box* m_paper = nullptr;
+    int m_cols = 1;
+    int m_rows = 1;
+    bool m_bound = false;
   };
+
+  struct Grid {
+    int cols = 1;
+    int rows = 1;
+  };
+
+  Grid gridFor(int perSheet, bool landscapeSheet) {
+    Grid g = perSheet == 2 ? Grid{2, 1} : perSheet == 4 ? Grid{2, 2} : perSheet == 6 ? Grid{3, 2} : Grid{1, 1};
+    if (!landscapeSheet && g.cols > g.rows)
+      std::swap(g.cols, g.rows);
+    return g;
+  }
 
   ColorSpec stateColour(PrinterState state) {
     switch (state) {
@@ -178,34 +229,45 @@ void PrintSheet::startPreview() {
       m_preview = Preview::Failed;
     } else {
       m_pageCount = static_cast<int>(std::min<std::uint32_t>(r.msg.b, 100000));
-      renderPage(0);
+      m_preview = Preview::Ready;
     }
     if (m_cb.rebuild)
       m_cb.rebuild();
   });
 }
 
-void PrintSheet::renderPage(int page) {
-  if (!m_helper || page < 0 || page >= m_pageCount)
+void PrintSheet::requestPage(int page, Size size) {
+  auto& cache = size == Size::Page ? m_pages : m_thumbs;
+  if (!m_helper || page < 0 || page >= m_pageCount || cache.contains(page) || m_requested.contains({page, size}))
     return;
-  m_page = page;
-  const std::uint64_t generation = ++m_renderGeneration;
-  m_helper->request({.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = kPageRenderWidth,
-                     .c = kPageRenderWidth * 2},
-                    [this, generation, alive = std::weak_ptr<bool>(m_alive)](const preview::HelperReply& r) {
-                      if (alive.expired() || generation != m_renderGeneration)
+  m_requested.insert({page, size});
+  const auto width = static_cast<std::uint32_t>(size == Size::Page ? kPageRenderWidth : kThumbRenderWidth);
+  m_helper->request({.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = width, .c = width * 2},
+                    [this, page, size, alive = std::weak_ptr<bool>(m_alive)](const preview::HelperReply& r) {
+                      if (alive.expired())
                         return;
+                      m_requested.erase({page, size});
+                      auto& done = size == Size::Page ? m_pages : m_thumbs;
                       if (r.msg.op != preview::op::Page || !r.data) {
-                        m_preview = Preview::Failed;
-                      } else {
-                        auto px = std::make_shared<Pixels>();
-                        const auto bytes = r.data->bytes();
-                        px->bgra.assign(bytes.begin(), bytes.end());
-                        px->width = static_cast<int>(r.msg.b);
-                        px->height = static_cast<int>(r.msg.c);
-                        px->stride = static_cast<int>(r.msg.d);
-                        m_pagePixels = std::move(px);
-                        m_preview = Preview::Ready;
+                        kLog.info("page {} of \"{}\" did not render", page + 1, m_request.title);
+                        return;
+                      }
+                      auto px = std::make_shared<Pixels>();
+                      const auto bytes = r.data->bytes();
+                      px->bgra.assign(bytes.begin(), bytes.end());
+                      px->width = static_cast<int>(r.msg.b);
+                      px->height = static_cast<int>(r.msg.c);
+                      px->stride = static_cast<int>(r.msg.d);
+                      done[page] = std::move(px);
+                      // Keep the pages nearest the shown sheet.
+                      const int centre = m_sheet * perSheet();
+                      while (done.size() > kPageCache) {
+                        const auto far = std::ranges::max_element(done, {}, [centre](const auto& kv) {
+                          return std::abs(kv.first - centre);
+                        });
+                        if (far->second->texture.valid())
+                          m_dropped.push_back(far->second->texture);
+                        done.erase(far);
                       }
                       if (m_cb.rebuild)
                         m_cb.rebuild();
@@ -213,10 +275,11 @@ void PrintSheet::renderPage(int page) {
 }
 
 const PrinterInfo* PrintSheet::printer() const {
-  return m_printer < m_printers.size() ? &m_printers[m_printer] : nullptr;
+  return m_target == Target::Printer && m_printer < m_printers.size() ? &m_printers[m_printer] : nullptr;
 }
 
 void PrintSheet::selectPrinter(std::size_t index) {
+  m_target = Target::Printer;
   m_printer = index;
   const PrinterInfo& p = m_printers[index];
   if (p.name != m_options.printer) {
@@ -230,16 +293,51 @@ void PrintSheet::selectPrinter(std::size_t index) {
     m_options.colour = false;
 }
 
+void PrintSheet::selectSaveAsPdf() {
+  m_target = Target::SaveAsPdf;
+  m_screen = Screen::Main;
+}
+
 bool PrintSheet::rangeValid() const { return m_allPages || (m_rangeError.empty() && !m_rangeText.empty()); }
 
+int PrintSheet::perSheet() const { return m_target == Target::SaveAsPdf ? 1 : std::max(1, m_options.numberUp); }
+
+std::vector<int> PrintSheet::pagesToPrint() const {
+  std::vector<int> pages;
+  if (m_target == Target::Printer && !m_allPages && rangeValid()) {
+    for (const PageRange& r : parsePageRanges(m_rangeText, std::max(m_pageCount, 1)).first)
+      for (int p = r.first; p <= r.last; ++p)
+        pages.push_back(p - 1);
+    return pages;
+  }
+  for (int p = 0; p < m_pageCount; ++p)
+    pages.push_back(p);
+  return pages;
+}
+
 void PrintSheet::submit() {
-  if (m_sent || !printer() || !rangeValid())
+  if (m_sent)
     return;
+  if (m_target == Target::SaveAsPdf) {
+    if (m_cb.savePdf)
+      m_cb.savePdf();
+    return;
+  }
+  const PrinterInfo* p = printer();
+  if (!p || !rangeValid())
+    return;
+  m_options.ranges.reset();
   if (!m_allPages)
     m_options.ranges = parsePageRanges(m_rangeText, std::max(m_pageCount, 1)).first;
   m_sent = true;
   if (m_cb.print)
-    m_cb.print(m_options);
+    m_cb.print(m_options, p->label, static_cast<int>(pagesToPrint().size()));
+}
+
+void PrintSheet::showSheet(int sheet) {
+  m_sheet = sheet;
+  if (m_cb.rebuild)
+    m_cb.rebuild();
 }
 
 bool PrintSheet::firstKey(const KeyboardEvent& event) {
@@ -247,8 +345,13 @@ bool PrintSheet::firstKey(const KeyboardEvent& event) {
     return false;
   switch (event.sym) {
   case XKB_KEY_Escape:
-    if (m_cb.cancel)
+    if (m_screen == Screen::More) {
+      m_screen = Screen::Main;
+      if (m_cb.rebuild)
+        m_cb.rebuild();
+    } else if (m_cb.cancel) {
       m_cb.cancel();
+    }
     return true;
   case XKB_KEY_Return:
   case XKB_KEY_KP_Enter:
@@ -260,202 +363,468 @@ bool PrintSheet::firstKey(const KeyboardEvent& event) {
 }
 
 bool PrintSheet::key(const KeyboardEvent& event) {
-  if (!event.pressed || m_pageCount < 2 || (event.sym != XKB_KEY_Left && event.sym != XKB_KEY_Right))
+  if (!event.pressed || (event.sym != XKB_KEY_Left && event.sym != XKB_KEY_Right))
     return false;
-  renderPage(std::clamp(m_page + (event.sym == XKB_KEY_Left ? -1 : 1), 0, m_pageCount - 1));
+  const int pages = static_cast<int>(pagesToPrint().size());
+  const int sheets = std::max(1, (pages + perSheet() - 1) / perSheet());
+  if (sheets < 2)
+    return false;
+  showSheet(std::clamp(m_sheet + (event.sym == XKB_KEY_Left ? -1 : 1), 0, sheets - 1));
   return true;
 }
 
-std::unique_ptr<Node> PrintSheet::build(float s) {
-  const float rowH = Tokens::sizeRow * s;
-  const float ctlH = Tokens::sizeControlM * s;
-  const float body = Style::fontSizeBody * s;
-  const float caption = Style::fontSizeCaption * s;
-  const auto label = [&](std::string text, ColorRole role = ColorRole::Label1, float size = 0.0F) {
-    return ui::label({.text = std::move(text), .fontSize = size > 0.0F ? size : body, .fontWeight = FontWeight::Medium,
-                      .color = colorSpecFromRole(role), .maxLines = 2, .ellipsize = TextEllipsize::End});
-  };
-
-  auto sheet = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP16 * s, .padding = Tokens::spaceP12 * s,
-                        .flexGrow = 1.0F});
-
-  // Left: the preview.
-  auto pv = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP12 * s,
-                        .padding = Tokens::spaceP16 * s, .fill = colorSpecFromRole(ColorRole::Fill1),
-                        .radius = Tokens::radiusR12 * s, .flexGrow = 1.0F});
-  switch (m_preview) {
-  case Preview::Loading:
-    pv->addChild(label("Preparing preview…", ColorRole::Label2, caption));
+std::unique_ptr<Node> PrintSheet::buildSheet(Renderer& renderer, int sheet, const std::vector<int>& pages, float height, Size size,
+                                             bool selected) {
+  const int n = perSheet();
+  auto& cache = size == Size::Page ? m_pages : m_thumbs;
+  std::vector<TextureHandle> cells;
+  for (int i = sheet * n; i < std::min<int>((sheet + 1) * n, static_cast<int>(pages.size())); ++i) {
+    const int page = pages[static_cast<std::size_t>(i)];
+    requestPage(page, size);
+    const auto it = cache.find(page);
+    if (it == cache.end()) {
+      cells.emplace_back();
+      continue;
+    }
+    Pixels& px = *it->second;
+    if (!px.texture.valid()) {
+      px.texture = renderer.textureManager().loadFromRaw(px.bgra.data(), px.bgra.size(), px.width, px.height,
+                                                         px.stride, PixmapFormat::BGRA);
+      px.bgra = {};
+    }
+    cells.push_back(px.texture);
+  }
+  // The page shape from the first rendered page, else the app's paper, else A4.
+  float pageAspect = 0.707F;
+  for (const auto& px : {m_pages.empty() ? nullptr : m_pages.begin()->second,
+                         m_thumbs.empty() ? nullptr : m_thumbs.begin()->second}) {
+    if (px && px->height > 0) {
+      pageAspect = static_cast<float>(px->width) / static_cast<float>(px->height);
+      break;
+    }
+  }
+  const bool pageLandscape = pageAspect > 1.0F;
+  bool landscape = pageLandscape;
+  switch (m_options.orientation) {
+  case Orientation::Auto:
+    landscape = (n == 2 || n == 6) ? !pageLandscape : pageLandscape;
     break;
-  case Preview::Failed:
-    pv->addChild(ui::glyph({.glyph = std::string("file"), .glyphSize = 40.0F * s, .color = colorSpecFromRole(ColorRole::Label3)}));
-    pv->addChild(label("No preview for this file. It prints as usual.", ColorRole::Label2, caption));
+  case Orientation::Portrait:
+    landscape = false;
     break;
-  case Preview::Ready:
-    pv->addChild(std::make_unique<PageNode>(m_pagePixels, kPageHeight * s));
-    pv->addChild(label(m_pageCount > 1 ? std::format("Page {} of {} · ←/→", m_page + 1, m_pageCount)
-                                       : std::string("Page 1 of 1"),
-                       ColorRole::Label2, caption));
+  case Orientation::Landscape:
+    landscape = true;
     break;
   }
-  sheet->addChild(std::move(pv));
+  float paperAspect = pageLandscape ? 1.0F / pageAspect : pageAspect; // short side / long side
+  if (m_target == Target::Printer)
+    if (const auto mm = mediaSizeMm(m_options.media); mm && mm->first > 0 && mm->second > 0)
+      paperAspect = static_cast<float>(std::min(mm->first, mm->second) / std::max(mm->first, mm->second));
+  const float aspect = landscape ? 1.0F / paperAspect : paperAspect;
+  const Grid g = gridFor(n, landscape);
+  const float s = height / (size == Size::Page ? kPageHeight : kThumbHeight);
+  return std::make_unique<SheetNode>(std::move(cells), g.cols, g.rows, height * aspect, height, s, selected);
+}
 
-  // Right: title, the choices card, buttons.
-  auto col = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .width = kColumnWidth * s});
-  auto ttl = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s});
-  ttl->addChild(ui::label({.text = std::format("Print “{}”", m_request.title.empty() ? "Document" : m_request.title),
-                           .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
-                           .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
-                           .ellipsize = TextEllipsize::Middle}));
-  ttl->addChild(label(m_pageCount > 0 ? std::format("{} · {} {}", appName(m_request.appId), m_pageCount,
-                                                    m_pageCount == 1 ? "page" : "pages")
-                                      : appName(m_request.appId),
-                      ColorRole::Label2, caption));
-  col->addChild(std::move(ttl));
+std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, float width) {
+  const float caption = Style::fontSizeCaption * s;
+  auto pv = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP12 * s,
+                        .padding = Tokens::spaceP16 * s, .fill = colorSpecFromRole(ColorRole::Fill1),
+                        .radius = Tokens::radiusR16 * s, .flexGrow = 1.0F});
+  const auto note = [&](std::string text) {
+    return ui::label({.text = std::move(text), .fontSize = caption, .fontWeight = FontWeight::Medium,
+                      .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 2,
+                      .ellipsize = TextEllipsize::End});
+  };
+  switch (m_preview) {
+  case Preview::Loading:
+    pv->addChild(note("Preparing preview…"));
+    return pv;
+  case Preview::Failed:
+    pv->addChild(ui::glyph({.glyph = std::string("file"), .glyphSize = 40.0F * s,
+                            .color = colorSpecFromRole(ColorRole::Label3)}));
+    pv->addChild(note("No preview for this file. It prints as usual."));
+    return pv;
+  case Preview::Ready:
+    break;
+  }
+  const std::vector<int> pages = pagesToPrint();
+  const int n = perSheet();
+  const int sheets = std::max(1, (static_cast<int>(pages.size()) + n - 1) / n);
+  m_sheet = std::clamp(m_sheet, 0, sheets - 1);
+  pv->addChild(buildSheet(renderer, m_sheet, pages, kPageHeight * s, Size::Page, false));
 
-  auto card = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
-                          .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR12 * s,
-                          .border = colorSpecFromRole(ColorRole::GlassCardEdge), .borderWidth = std::max(1.0F, 0.5F * s),
-                          .fillWidth = true});
-  const auto opt = [&](std::string key, std::unique_ptr<Node> value) {
-    auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingH = Tokens::spaceP12 * s,
-                      .height = rowH});
-    r->addChild(ui::label({.text = std::move(key), .fontSize = body, .fontWeight = FontWeight::Medium,
-                           .color = colorSpecFromRole(ColorRole::Label2), .width = kKeyWidth * s, .maxLines = 1,
-                           .ellipsize = TextEllipsize::End}));
-    value->setFlexGrow(1.0F);
-    r->addChild(std::move(value));
-    return r;
+  if (sheets > 1) {
+    const float gap = Tokens::spaceP8 * s;
+    auto strip = ui::row({.align = FlexAlign::Center, .gap = gap});
+    // As many thumbnails as the pane holds: sheet padding, column and gap, then the pane's own padding.
+    const float pane = width - (2.0F * Tokens::spaceP12 + kColumnWidth + Tokens::spaceP16 + 2.0F * Tokens::spaceP16) * s;
+    const float thumbW = buildSheet(renderer, m_sheet, pages, kThumbHeight * s, Size::Thumb, false)->width() + gap;
+    const int visible = std::clamp(static_cast<int>((pane + gap) / thumbW), 1, kThumbsVisible);
+    const int first = std::clamp(m_sheet - visible / 2, 0, std::max(0, sheets - visible));
+    for (int i = first; i < std::min(sheets, first + visible); ++i) {
+      auto thumb = buildSheet(renderer, i, pages, kThumbHeight * s, Size::Thumb, i == m_sheet);
+      const float w = thumb->width();
+      const float h = thumb->height();
+      strip->addChild(ui::inputArea({.width = w, .height = h,
+                                     .onClick = [this, i](const InputArea::PointerData&) { showSheet(i); }},
+                                    std::move(thumb)));
+    }
+    pv->addChild(std::move(strip));
+  }
+  const char* unit = n > 1 ? "Sheet" : "Page";
+  pv->addChild(note(sheets > 1 ? std::format("{} {} of {} · ←/→", unit, m_sheet + 1, sheets)
+                               : std::format("{} 1 of 1", unit)));
+  return pv;
+}
+
+namespace {
+  // The shared row builders of both screens.
+  struct Rows {
+    float s;
+    float body;
+    float caption;
+    float rowH;
+    float ctlH;
+
+    std::unique_ptr<Flex> card() const {
+      return ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
+                         .fill = colorSpecFromRole(ColorRole::GlassCard), .radius = Tokens::radiusR16 * s,
+                         .border = colorSpecFromRole(ColorRole::GlassCardEdge),
+                         .borderWidth = std::max(1.0F, 0.5F * s), .fillWidth = true});
+    }
+
+    std::unique_ptr<Label> label(std::string text, ColorRole role = ColorRole::Label1, float size = 0.0F) const {
+      return ui::label({.text = std::move(text), .fontSize = size > 0.0F ? size : body,
+                        .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(role), .maxLines = 2,
+                        .ellipsize = TextEllipsize::End});
+    }
+
+    // A row with its key; rows after the first get a hairline on top (mockup .opt + .opt).
+    void opt(Flex& card, std::string key, std::unique_ptr<Node> value) const {
+      if (card.children().size() > 0)
+        card.addChild(ui::row({.fill = colorSpecFromRole(ColorRole::Separator), .fillWidth = true,
+                               .height = std::max(1.0F, 0.5F * s)}));
+      auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingH = Tokens::spaceP12 * s,
+                        .height = rowH});
+      auto keyBox = ui::row({.align = FlexAlign::Center, .width = kKeyWidth * s});
+      keyBox->addChild(ui::label({.text = std::move(key), .fontSize = body, .fontWeight = FontWeight::Medium,
+                                  .color = colorSpecFromRole(ColorRole::Label2), .maxWidth = kKeyWidth * s,
+                                  .maxLines = 1, .ellipsize = TextEllipsize::End}));
+      r->addChild(std::move(keyBox));
+      value->setFlexGrow(1.0F);
+      r->addChild(std::move(value));
+      card.addChild(std::move(r));
+    }
+
+    std::unique_ptr<Flex> note(std::string text, ColorRole role) const {
+      auto r = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP12 * s});
+      r->addChild(ui::row({.width = (kKeyWidth + Tokens::spaceP12) * s}));
+      auto l = label(std::move(text), role, caption);
+      l->setFlexGrow(1.0F);
+      r->addChild(std::move(l));
+      return r;
+    }
+
+    std::unique_ptr<Flex> seg(std::vector<std::string> labels, std::size_t on,
+                              std::function<void(std::size_t)> change) const {
+      std::vector<ui::SegmentedOption> options;
+      for (auto& l : labels)
+        options.push_back({.label = std::move(l)});
+      auto wrap = ui::row({.align = FlexAlign::Center});
+      wrap->addChild(ui::segmented({.options = std::move(options), .selectedIndex = on, .fontSize = body,
+                                    .onChange = std::move(change)}));
+      return wrap;
+    }
+
+    std::unique_ptr<Flex> select(std::vector<std::string> options, std::size_t on,
+                                 std::function<void(std::size_t)> change) const {
+      auto wrap = ui::row({.align = FlexAlign::Center});
+      wrap->addChild(ui::select({.options = std::move(options), .selectedIndex = on, .fontSize = body,
+                                 .controlHeight = ctlH,
+                                 .onSelectionChanged = [change = std::move(change)](std::size_t i, std::string_view) {
+                                   change(i);
+                                 }}));
+      return wrap;
+    }
+
+    std::unique_ptr<Flex> toggle(bool on, std::function<void(bool)> change) const {
+      auto wrap = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End});
+      wrap->addChild(ui::toggle({.checked = on, .onChange = std::move(change)}));
+      return wrap;
+    }
   };
-  const auto note = [&](std::string text, ColorRole role) {
-    auto r = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP12 * s});
-    r->addChild(ui::row({.width = (kKeyWidth + Tokens::spaceP12) * s}));
-    auto l = label(std::move(text), role, caption);
-    l->setFlexGrow(1.0F);
-    r->addChild(std::move(l));
-    return r;
-  };
-  const auto seg = [&](std::vector<std::string> labels, std::size_t on, std::function<void(std::size_t)> change) {
-    std::vector<ui::SegmentedOption> options;
-    for (auto& l : labels)
-      options.push_back({.label = std::move(l)});
-    auto wrap = ui::row({.align = FlexAlign::Center});
-    wrap->addChild(ui::segmented({.options = std::move(options), .selectedIndex = on, .fontSize = body,
-                                  .onChange = std::move(change)}));
-    return wrap;
-  };
+} // namespace
+
+void PrintSheet::buildMain(Node& col, float s) {
+  const Rows rows{s, Style::fontSizeBody * s, Style::fontSizeCaption * s, Tokens::sizeRow * s,
+                  Tokens::sizeControlM * s};
   const auto rebuild = [this] {
     if (m_cb.rebuild)
       m_cb.rebuild();
   };
 
-  const PrinterInfo* p = printer();
+  auto ttl = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s});
+  ttl->addChild(ui::label({.text = std::format("Print “{}”", m_request.title.empty() ? "Document" : m_request.title),
+                           .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
+                           .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
+                           .ellipsize = TextEllipsize::Middle}));
+  ttl->addChild(rows.label(m_pageCount > 0 ? std::format("{} · {} {}", appName(m_request.appId), m_pageCount,
+                                                         m_pageCount == 1 ? "page" : "pages")
+                                           : appName(m_request.appId),
+                           ColorRole::Label2, rows.caption));
+  col.addChild(std::move(ttl));
+
+  auto card = rows.card();
   if (m_printersState == Printers::Loading) {
-    card->addChild(opt("Printer", label("Looking for printers…", ColorRole::Label2)));
-  } else if (!p) {
-    card->addChild(opt("Printer", label("No printers found", ColorRole::Label2)));
-    card->addChild(note("Add a printer in Settings › Printers.", ColorRole::Label2));
-  } else {
-    std::vector<std::string> names;
-    std::vector<ColorSpec> dots;
-    for (const PrinterInfo& each : m_printers) {
-      names.push_back(each.label);
-      dots.push_back(stateColour(each.state));
-    }
-    card->addChild(opt("Printer", ui::select({.options = std::move(names), .selectedIndex = m_printer,
-                                              .fontSize = body, .controlHeight = ctlH,
-                                              .optionIndicators = std::move(dots),
-                                              .onSelectionChanged = [this, rebuild](std::size_t i, std::string_view) {
-                                                selectPrinter(i);
-                                                rebuild();
-                                              }})));
-    auto st = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s});
-    st->addChild(ui::row({.width = (kKeyWidth + Tokens::spaceP12 - Tokens::spaceP8) * s}));
-    const float dot = 8.0F * s;
-    st->addChild(ui::row({.fill = stateColour(p->state), .radius = dot / 2.0F, .width = dot, .height = dot}));
-    auto stl = label(stateText(*p), p->state == PrinterState::NeedsAttention ? ColorRole::DangerText : ColorRole::Label2,
-                     caption);
-    stl->setFlexGrow(1.0F);
-    st->addChild(std::move(stl));
-    card->addChild(std::move(st));
-
-    auto copies = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-    copies->addChild(ui::stepper({.minValue = 1, .maxValue = 999, .step = 1, .value = m_options.copies,
-                                  .onValueChanged = [this](int v) { m_options.copies = v; }}));
-    copies->addChild(ui::row({.flexGrow = 1.0F}));
-    copies->addChild(label("Collate"));
-    copies->addChild(ui::toggle({.checked = m_options.collate, .onChange = [this](bool on) { m_options.collate = on; }}));
-    card->addChild(opt("Copies", std::move(copies)));
-
-    auto pages = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-    pages->addChild(seg({m_pageCount > 0 ? std::format("All {}", m_pageCount) : std::string("All"), "Range"},
-                        m_allPages ? 0 : 1, [this, rebuild](std::size_t i) {
-                          m_allPages = i == 0;
-                          rebuild();
-                        }));
-    pages->addChild(ui::input({.value = m_rangeText, .placeholder = std::string("e.g. 1-2, 4"), .fontSize = body,
-                               .controlHeight = ctlH, .invalid = !m_allPages && !m_rangeError.empty(),
-                               .enabled = !m_allPages, .flexGrow = 1.0F,
-                               .onChange = [this, rebuild](const std::string& text) {
-                                 const bool had = !m_rangeError.empty();
-                                 m_rangeText = text;
-                                 m_rangeError = text.empty() ? std::string()
-                                                             : parsePageRanges(text, std::max(m_pageCount, 1))
-                                                                   .second.value_or(RangeError{})
-                                                                   .message;
-                                 if (had != !m_rangeError.empty())
-                                   rebuild();
-                               },
-                               .onSubmit = [this](const std::string&) { submit(); }}));
-    card->addChild(opt("Pages", std::move(pages)));
-    if (!m_allPages && !m_rangeError.empty())
-      card->addChild(note(m_rangeError, ColorRole::DangerText));
-
-    if (p->duplex)
-      card->addChild(opt("Two-sided", seg({"Off", "Long Edge", "Short Edge"}, static_cast<std::size_t>(m_options.duplex),
-                                          [this](std::size_t i) { m_options.duplex = static_cast<Duplex>(i); })));
-    if (p->colour)
-      card->addChild(opt("Colour", seg({"Colour", "Black and White"}, m_options.colour ? 0 : 1,
-                                       [this](std::size_t i) { m_options.colour = i == 0; })));
-    if (!p->media.empty()) {
-      std::vector<std::string> media;
-      std::size_t on = 0;
-      for (std::size_t i = 0; i < p->media.size(); ++i) {
-        media.push_back(mediaLabel(p->media[i]));
-        if (p->media[i] == m_options.media)
-          on = i;
-      }
-      auto paper = ui::row({.align = FlexAlign::Center});
-      paper->addChild(ui::select({.options = std::move(media), .selectedIndex = on, .fontSize = body,
-                                  .controlHeight = ctlH,
-                                  .onSelectionChanged = [this, rebuild, all = p->media](std::size_t i, std::string_view) {
-                                    m_options.media = all[i];
-                                    rebuild();
-                                  }}));
-      card->addChild(opt("Paper", std::move(paper)));
-      if (!m_appMedia.empty() && m_options.media != m_appMedia)
-        card->addChild(note(std::format("The app laid out the pages for {}. They print scaled to fit.",
-                                        mediaLabel(m_appMedia)),
-                            ColorRole::Label2));
-    }
+    rows.opt(*card, "Printer", rows.label("Looking for printers…", ColorRole::Label2));
+    col.addChild(std::move(card));
+    return;
   }
-  col->addChild(std::move(card));
+
+  std::vector<std::string> names;
+  std::vector<std::string> states;
+  std::vector<ColorSpec> dots;
+  for (const PrinterInfo& each : m_printers) {
+    names.push_back(each.label);
+    states.push_back(stateText(each));
+    dots.push_back(stateColour(each.state));
+  }
+  names.emplace_back("Save as PDF");
+  states.emplace_back();
+  auto printerSelect = ui::row({.align = FlexAlign::Center});
+  printerSelect->addChild(ui::select(
+      {.options = std::move(names),
+       .selectedIndex = m_target == Target::SaveAsPdf ? m_printers.size() : m_printer, .fontSize = rows.body,
+       .controlHeight = rows.ctlH, .optionIndicators = std::move(dots), .optionSubtitles = std::move(states),
+       .separatorBefore = m_printers.size(), .actions = {"Add Printer…"},
+       .onAction = [](std::size_t) { openPrinterSettings(); },
+       .onSelectionChanged = [this, rebuild](std::size_t i, std::string_view) {
+         if (i < m_printers.size())
+           selectPrinter(i);
+         else
+           selectSaveAsPdf();
+         rebuild();
+       }}));
+  rows.opt(*card, "Printer", std::move(printerSelect));
+
+  const PrinterInfo* p = printer();
+  if (!p) {
+    card->addChild(rows.note(m_printers.empty() ? "No printers found. Add one in Settings › Printers, or save a PDF."
+                                                : "Saves the document as the app made it.",
+                             ColorRole::Label2));
+    col.addChild(std::move(card));
+    return;
+  }
+
+  auto st = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s});
+  st->addChild(ui::row({.width = (kKeyWidth + Tokens::spaceP12 - Tokens::spaceP8) * s}));
+  const float dot = 8.0F * s;
+  st->addChild(ui::row({.fill = stateColour(p->state), .radius = dot / 2.0F, .width = dot, .height = dot}));
+  auto stl = rows.label(stateText(*p), p->state == PrinterState::NeedsAttention ? ColorRole::DangerText
+                                                                                 : ColorRole::Label2,
+                        rows.caption);
+  stl->setFlexGrow(1.0F);
+  st->addChild(std::move(stl));
+  card->addChild(std::move(st));
+
+  auto copies = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+  copies->addChild(ui::stepper({.minValue = 1, .maxValue = 999, .step = 1, .value = m_options.copies,
+                                .onValueChanged = [this](int v) { m_options.copies = v; }}));
+  copies->addChild(ui::row({.flexGrow = 1.0F}));
+  copies->addChild(rows.label("Collate"));
+  copies->addChild(ui::toggle({.checked = m_options.collate, .onChange = [this](bool on) { m_options.collate = on; }}));
+  rows.opt(*card, "Copies", std::move(copies));
+
+  auto pages = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+  pages->addChild(rows.seg({m_pageCount > 0 ? std::format("All {}", m_pageCount) : std::string("All"), "Range"},
+                           m_allPages ? 0 : 1, [this, rebuild](std::size_t i) {
+                             m_allPages = i == 0;
+                             rebuild();
+                           }));
+  pages->addChild(ui::input({.value = m_rangeText, .placeholder = std::string("e.g. 1-2, 4"), .fontSize = rows.body,
+                             .controlHeight = rows.ctlH, .invalid = !m_allPages && !m_rangeError.empty(),
+                             .enabled = !m_allPages, .flexGrow = 1.0F,
+                             .onChange = [this, rebuild](const std::string& text) {
+                               const bool had = !m_rangeError.empty();
+                               m_rangeText = text;
+                               m_rangeError = text.empty() ? std::string()
+                                                           : parsePageRanges(text, std::max(m_pageCount, 1))
+                                                                 .second.value_or(RangeError{})
+                                                                 .message;
+                               // A rebuild on every key would take the field's focus; the preview follows at the
+                               // next one.
+                               if (had != !m_rangeError.empty())
+                                 rebuild();
+                             },
+                             .onSubmit = [this](const std::string&) { submit(); }}));
+  rows.opt(*card, "Pages", std::move(pages));
+  if (!m_allPages && !m_rangeError.empty())
+    card->addChild(rows.note(m_rangeError, ColorRole::DangerText));
+
+  if (p->duplex)
+    rows.opt(*card, "Two-sided",
+             rows.seg({"Off", "Long Edge", "Short Edge"}, static_cast<std::size_t>(m_options.duplex),
+                      [this](std::size_t i) { m_options.duplex = static_cast<Duplex>(i); }));
+  if (p->colour)
+    rows.opt(*card, "Colour", rows.seg({"Colour", "Black and White"}, m_options.colour ? 0 : 1,
+                                       [this](std::size_t i) { m_options.colour = i == 0; }));
+  if (!p->media.empty()) {
+    std::vector<std::string> media;
+    std::size_t on = 0;
+    for (std::size_t i = 0; i < p->media.size(); ++i) {
+      media.push_back(mediaLabel(p->media[i]));
+      if (p->media[i] == m_options.media)
+        on = i;
+    }
+    rows.opt(*card, "Paper", rows.select(std::move(media), on, [this, rebuild, all = p->media](std::size_t i) {
+      m_options.media = all[i];
+      rebuild();
+    }));
+    if (!m_appMedia.empty() && m_options.media != m_appMedia)
+      card->addChild(rows.note(std::format("The app laid out the pages for {}. They print scaled to fit.",
+                                           mediaLabel(m_appMedia)),
+                               ColorRole::Label2));
+  }
+  col.addChild(std::move(card));
+
+  auto more = rows.card();
+  const float rowW = (kColumnWidth - 2.0F * Tokens::spaceP4) * s;
+  auto moreRow = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP12 * s, .width = rowW,
+                          .height = rows.rowH});
+  auto moreLabel = rows.label("More Options…", ColorRole::AccentText);
+  moreLabel->setFlexGrow(1.0F);
+  moreRow->addChild(std::move(moreLabel));
+  moreRow->addChild(ui::glyph({.glyph = std::string("chevron-right"), .glyphSize = 14.0F * s,
+                               .color = colorSpecFromRole(ColorRole::AccentText)}));
+  more->addChild(ui::inputArea({.width = rowW, .height = rows.rowH,
+                                .onClick = [this, rebuild](const InputArea::PointerData&) {
+                                  m_screen = Screen::More;
+                                  rebuild();
+                                }},
+                               std::move(moreRow)));
+  col.addChild(std::move(more));
+}
+
+void PrintSheet::buildMore(Node& col, float s) {
+  const Rows rows{s, Style::fontSizeBody * s, Style::fontSizeCaption * s, Tokens::sizeRow * s,
+                  Tokens::sizeControlM * s};
+  const auto rebuild = [this] {
+    if (m_cb.rebuild)
+      m_cb.rebuild();
+  };
+
+  auto header = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP4 * s});
+  header->addChild(ui::button({.glyph = std::string("chevron-left"), .glyphSize = 14.0F * s,
+                               .variant = ButtonVariant::Default, .tooltip = std::string("Back"),
+                               .radius = 16.0F * s, .width = 32.0F * s, .height = 32.0F * s,
+                               .onClick = [this, rebuild] {
+                                 m_screen = Screen::Main;
+                                 rebuild();
+                               }}));
+  header->addChild(ui::label({.text = std::string("More Options"), .fontSize = Tokens::typeTitle3.size * s,
+                              .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
+  col.addChild(std::move(header));
+
+  auto card = rows.card();
+  static constexpr int kPerSheet[] = {1, 2, 4, 6};
+  std::size_t up = 0;
+  for (std::size_t i = 0; i < std::size(kPerSheet); ++i)
+    if (kPerSheet[i] == m_options.numberUp)
+      up = i;
+  rows.opt(*card, "Per sheet", rows.seg({"1", "2", "4", "6"}, up, [this, rebuild](std::size_t i) {
+    m_options.numberUp = kPerSheet[i];
+    m_sheet = 0;
+    rebuild();
+  }));
+  rows.opt(*card, "Orientation",
+           rows.seg({"Auto", "Portrait", "Landscape"}, static_cast<std::size_t>(m_options.orientation),
+                    [this, rebuild](std::size_t i) {
+                      m_options.orientation = static_cast<Orientation>(i);
+                      rebuild();
+                    }));
+  auto scale = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+  scale->addChild(rows.seg({"Fit", "100 %", "Custom"}, static_cast<std::size_t>(m_options.scaling),
+                           [this, rebuild](std::size_t i) {
+                             m_options.scaling = static_cast<Scaling>(i);
+                             rebuild();
+                           }));
+  if (m_options.scaling == Scaling::Custom)
+    scale->addChild(ui::stepper({.minValue = 10, .maxValue = 400, .step = 5, .value = m_options.scalePercent,
+                                 .onValueChanged = [this](int v) { m_options.scalePercent = v; }}));
+  rows.opt(*card, "Scale", std::move(scale));
+  rows.opt(*card, "Margins", rows.select({"Default", "None", "Narrow", "Wide"},
+                                         static_cast<std::size_t>(m_options.margins),
+                                         [this](std::size_t i) { m_options.margins = static_cast<Margins>(i); }));
+  rows.opt(*card, "Order", rows.select({"Front to Back", "Back to Front"}, m_options.reverseOrder ? 1 : 0,
+                                       [this](std::size_t i) { m_options.reverseOrder = i == 1; }));
+  rows.opt(*card, "Booklet", rows.toggle(m_options.booklet, [this](bool on) { m_options.booklet = on; }));
+  col.addChild(std::move(card));
+
+  const PrinterInfo* p = printer();
+  if (!p || p->options.empty())
+    return;
+  auto caption = ui::row({.paddingV = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP12 * s});
+  caption->addChild(ui::label({.text = p->label, .fontSize = rows.caption, .fontWeight = FontWeight::SemiBold,
+                               .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
+                               .ellipsize = TextEllipsize::End}));
+  col.addChild(std::move(caption));
+  auto own = rows.card();
+  for (const PrinterOption& o : p->options) {
+    std::size_t on = o.defaultIndex;
+    for (const auto& [k, v] : m_options.printerOptions)
+      if (k == o.key)
+        if (const auto it = std::ranges::find(o.values, v); it != o.values.end())
+          on = static_cast<std::size_t>(it - o.values.begin());
+    rows.opt(*own, o.label, rows.select(o.valueLabels, on, [this, key = o.key, values = o.values](std::size_t i) {
+      auto& opts = m_options.printerOptions;
+      std::erase_if(opts, [&](const auto& kv) { return kv.first == key; });
+      opts.emplace_back(key, values[i]);
+    }));
+  }
+  col.addChild(std::move(own));
+}
+
+std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width) {
+  for (TextureHandle& texture : m_dropped)
+    renderer.textureManager().unload(texture);
+  m_dropped.clear();
+  const float body = Style::fontSizeBody * s;
+  const float ctlH = Tokens::sizeControlM * s;
+  auto sheet = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP16 * s, .padding = Tokens::spaceP12 * s,
+                        .flexGrow = 1.0F});
+  sheet->addChild(buildPreview(renderer, s, width));
+
+  auto col = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .width = kColumnWidth * s});
+  if (m_screen == Screen::More)
+    buildMore(*col, s);
+  else
+    buildMain(*col, s);
   col->addChild(ui::row({.flexGrow = 1.0F}));
 
-  auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
-                          .padding = Tokens::spaceP4 * s});
+  auto buttons = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP4 * s});
   Button::ButtonPalette plain = Button::defaultPalette(ButtonVariant::Default);
   plain.borderWidth = 0.0F;
+  const bool pdf = m_target == Target::SaveAsPdf;
+  if (!pdf && m_printersState == Printers::Loaded)
+    buttons->addChild(ui::button({.text = std::string("Save as PDF…"), .fontSize = body,
+                                  .variant = ButtonVariant::Default, .customPalette = plain,
+                                  .paddingH = Tokens::spaceP12 * s, .radius = Tokens::radiusR8 * s, .height = ctlH,
+                                  .onClick = [this] {
+                                    if (m_cb.savePdf)
+                                      m_cb.savePdf();
+                                  }}));
+  buttons->addChild(ui::row({.flexGrow = 1.0F}));
   buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = body, .variant = ButtonVariant::Default,
                                 .customPalette = plain, .paddingH = Tokens::spaceP12 * s,
                                 .radius = Tokens::radiusR8 * s, .height = ctlH, .onClick = [this] {
                                   if (m_cb.cancel)
                                     m_cb.cancel();
                                 }}));
-  buttons->addChild(ui::button({.text = std::string("Print"), .fontSize = body,
-                                .enabled = p != nullptr && rangeValid() && !m_sent, .variant = ButtonVariant::Primary,
-                                .paddingH = Tokens::spaceP12 * s, .radius = Tokens::radiusR8 * s, .height = ctlH,
-                                .onClick = [this] { submit(); }}));
+  buttons->addChild(ui::button({.text = std::string(pdf ? "Save…" : "Print"), .fontSize = body,
+                                .enabled = !m_sent && (pdf || (printer() != nullptr && rangeValid())),
+                                .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP12 * s,
+                                .radius = Tokens::radiusR8 * s, .height = ctlH, .onClick = [this] { submit(); }}));
   col->addChild(std::move(buttons));
   sheet->addChild(std::move(col));
   return sheet;
