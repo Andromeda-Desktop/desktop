@@ -11,7 +11,6 @@ project(
   ],
 )
 
-gnome = import('gnome')
 
 # --- dependencies -----------------------------------------------------------
 
@@ -25,7 +24,6 @@ cairo_dep = dependency('cairo')
 tomlplusplus_dep = dependency('tomlplusplus')
 nlohmann_json_dep = dependency('nlohmann_json')
 
-gtk4_dep = dependency('gtk4', version: '>=4.12', required: get_option('picker'))
 
 # --- wayland protocol codegen ------------------------------------------------
 
@@ -142,26 +140,19 @@ endif
 
 # --- picker ------------------------------------------------------------------
 
-if gtk4_dep.found()
-  picker_resources = gnome.compile_resources(
-    'picker-resources',
-    'src/picker/resources.gresource.xml',
-    source_dir: 'src/picker',
-  )
-  executable(
-    'andromeda-share-picker',
-    files(
-      'src/picker/main.cpp',
-      'src/picker/previews.cpp',
-      'src/wayland/wayland.cpp',
-      'src/loop/loop.cpp',
-    ) + picker_resources + protocol_sources,
-    include_directories: [include_directories('src'), include_directories('.')],
-    dependencies: [gtk4_dep, nlohmann_json_dep, wayland_client_dep, libdrm_dep, dependency('threads')],
-    install: true,
-    install_dir: get_option('libexecdir'),
-  )
-endif
+# The source sheet (src/share_picker): a libdesk-app window over the asking app, started per Start request.
+executable(
+  'andromeda-share-picker',
+  'src/share_picker/main.cpp',
+  dependencies: [
+    subproject('libdesk-app').get_variable('desk_app_dep'),
+    nlohmann_json_dep,
+    dependency('gio-unix-2.0'),
+    dependency('xkbcommon'),
+  ],
+  install: true,
+  install_dir: get_option('libexecdir'),
+)
 
 # --- data files --------------------------------------------------------------
 
