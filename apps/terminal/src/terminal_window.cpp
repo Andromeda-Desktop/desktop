@@ -71,6 +71,7 @@ namespace term {
         m_newWindow(std::move(newWindow)) {
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
+      m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
       for (Session& session : m_views) {
         session.view->sceneDestroyed();
       }
@@ -529,10 +530,23 @@ namespace term {
     while (!m_agentBar->children().empty()) {
       m_agentBar->removeChild(m_agentBar->children().back().get());
     }
+    m_bandStatus = nullptr;
     ContentView* shown = shownView();
     AgentView* view = shown != nullptr ? shown->agent() : nullptr;
     if (view == nullptr || m_findOpen) {
+      m_agentTick.stop();
       return;
+    }
+    if (!view->ticking()) {
+      m_agentTick.stop();
+    } else if (!m_agentTick.active()) {
+      m_agentTick.startRepeating(std::chrono::seconds(1), [this] {
+        ContentView* now = shownView();
+        if (AgentView* agent = now != nullptr ? now->agent() : nullptr; agent != nullptr && m_bandStatus != nullptr) {
+          m_bandStatus->setText(agent->statusText());
+          m_window.invalidate();
+        }
+      });
     }
     const std::uint64_t key = view->key();
     m_agentBar->addChild(view->band(m_window.uiScale(), [this, key](const Node* anchor) {
@@ -542,7 +556,7 @@ namespace term {
           return open != nullptr ? open->planList(scale) : ui::column({});
         });
       }
-    }));
+    }, &m_bandStatus));
   }
 
   AgentView* TerminalWindow::agentView(std::uint64_t key) {
@@ -755,6 +769,7 @@ namespace term {
 
   void TerminalWindow::surfaceLost() {
     m_tickSurface = nullptr;
+    m_bandStatus = nullptr;
     for (Session& session : m_views) {
       session.view->sceneDestroyed();
     }

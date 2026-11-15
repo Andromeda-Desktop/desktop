@@ -34,7 +34,13 @@ namespace term {
     [[nodiscard]] const agent::Session* session() const;
     [[nodiscard]] AgentView* agent() noexcept override { return this; }
     // Title band pills: the plan (once the agent sent one; onPlan opens it under the pill) and the status.
-    [[nodiscard]] std::unique_ptr<Node> band(float scale, std::function<void(const Node* anchor)> onPlan) const;
+    // status receives the status pill's label: statusText() refreshes it in place while ticking().
+    [[nodiscard]] std::unique_ptr<Node> band(float scale, std::function<void(const Node* anchor)> onPlan,
+                                             Label** status) const;
+    // "working · 4:12", "done · 6:58", "ready", ...
+    [[nodiscard]] std::string statusText() const;
+    // A turn runs: the status clock advances each second.
+    [[nodiscard]] bool ticking() const;
     // The plan popover: content and height in logical px before scale.
     [[nodiscard]] std::unique_ptr<Node> planList(float scale) const;
     [[nodiscard]] float planHeight() const;

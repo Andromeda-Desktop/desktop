@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -11,6 +12,7 @@
 namespace term::agent {
 
   using Json = nlohmann::json;
+  using WallTime = std::chrono::system_clock::time_point;
 
   // One mode for the whole session (TASK-terminal step 9 state model). A turn that waits for a permission
   // answer is Working with a non-empty pending list.
@@ -20,6 +22,8 @@ namespace term::agent {
 
   struct Turn {
     std::string text;
+    WallTime started;
+    std::optional<WallTime> ended; // set when the turn ends, is cancelled or the agent exits
   };
   struct Prose {
     std::string text;
@@ -42,6 +46,7 @@ namespace term::agent {
     std::vector<DiffHunk> diffs;
     std::string output; // tail of the tool output
     ActionStatus status = ActionStatus::Running;
+    WallTime started = std::chrono::system_clock::now();
   };
   struct Option {
     std::string id;
@@ -112,6 +117,7 @@ namespace term::agent {
   private:
     bool transition(Phase next);
     void startPrompt(std::string text);
+    void endTurnTime();
     void endTurn(std::optional<Stop> stop);
     void closeRequests(const char* answer);
     void respond(Request& request, const std::string& optionId);

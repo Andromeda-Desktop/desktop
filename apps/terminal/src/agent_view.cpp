@@ -15,6 +15,7 @@
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <functional>
 #include <string_view>
@@ -22,6 +23,32 @@
 namespace term {
 
   namespace {
+
+    // "4:12", or "1:04:12" past an hour.
+    std::string clockText(std::chrono::seconds elapsed) {
+      const auto n = std::max<std::int64_t>(0, elapsed.count());
+      return n >= 3600 ? std::format("{}:{:02}:{:02}", n / 3600, n / 60 % 60, n % 60) : std::format("{}:{:02}", n / 60, n % 60);
+    }
+
+    std::string agoText(agent::WallTime at) {
+      const auto minutes = std::chrono::duration_cast<std::chrono::minutes>(std::chrono::system_clock::now() - at).count();
+      if (minutes < 1) {
+        return "now";
+      }
+      if (minutes < 60) {
+        return std::format("{} min ago", minutes);
+      }
+      return minutes < 24 * 60 ? std::format("{} h ago", minutes / 60) : std::format("{} d ago", minutes / (24 * 60));
+    }
+
+    const agent::Turn* lastTurn(const agent::Session& model) {
+      for (auto it = model.entries().rbegin(); it != model.entries().rend(); ++it) {
+        if (const auto* turn = std::get_if<agent::Turn>(&*it)) {
+          return turn;
+        }
+      }
+      return nullptr;
+    }
 
     constexpr std::uint32_t kEscape = 0xff1b;
 
@@ -241,7 +268,38 @@ namespace term {
 
   } // namespace
 
-  std::unique_ptr<Node> AgentView::band(float s, std::function<void(const Node* anchor)> onPlan) const {
+  std::string AgentView::statusText() const {
+    const agent::Session* model = session();
+    if (model == nullptr) {
+      return {};
+    }
+    const agent::Turn* turn = lastTurn(*model);
+    const auto now = std::chrono::system_clock::now();
+    const auto clock = [&](bool running) {
+      if (turn == nullptr) {
+        return std::string();
+      }
+      const auto end = running || !turn->ended ? now : *turn->ended;
+      return " \u00b7 " + clockText(std::chrono::duration_cast<std::chrono::seconds>(end - turn->started));
+    };
+    switch (model->rowStatus()) {
+      case agent::RowStatus::Starting: return "starting";
+      case agent::RowStatus::Ready: return "ready";
+      case agent::RowStatus::Working: return (thinking() ? "thinking" : "working") + clock(true);
+      case agent::RowStatus::NeedsPermission: return "needs you" + clock(true);
+      case agent::RowStatus::Done: return "done" + clock(false);
+      case agent::RowStatus::Stopped: return "stopped" + clock(false);
+      case agent::RowStatus::Failed: return "agent stopped";
+    }
+    return {};
+  }
+
+  bool AgentView::ticking() const {
+    const agent::Session* model = session();
+    return model != nullptr && (model->phase() == agent::Phase::Working || model->phase() == agent::Phase::Cancelling);
+  }
+
+  std::unique_ptr<Node> AgentView::band(float s, std::function<void(const Node* anchor)> onPlan, Label** status) const {
     const Kit kit{s};
     const float h = Tokens::spaceP24 * s;
     auto row = std::make_unique<BandRow>();
@@ -280,38 +338,31 @@ namespace term {
       row->full = pill(std::move(text));
       row->compact = pill(std::format("{} of {}", done, plan.size()));
     }
-    std::string text;
     std::string_view glyph = "circle";
     ColorRole ink = ColorRole::Label2;
     bool spin = false;
     bool escape = false;
     switch (model->rowStatus()) {
       case agent::RowStatus::Starting:
-        text = "starting";
         spin = true;
         break;
-      case agent::RowStatus::Ready: text = "ready"; break;
+      case agent::RowStatus::Ready: break;
       case agent::RowStatus::Working:
-        text = thinking() ? "thinking" : "working";
         spin = true;
         escape = true;
         break;
       case agent::RowStatus::NeedsPermission:
-        text = "needs you";
         glyph = "hand-stop";
         ink = ColorRole::AccentText;
         escape = true;
         break;
       case agent::RowStatus::Done:
-        text = "done";
         glyph = "check";
         break;
       case agent::RowStatus::Stopped:
-        text = "stopped";
         glyph = "player-stop-filled";
         break;
       case agent::RowStatus::Failed:
-        text = "agent stopped";
         glyph = "alert-circle";
         ink = ColorRole::TermRed;
         break;
@@ -328,7 +379,11 @@ namespace term {
     } else {
       pill->addChild(ui::glyph({.glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s, .color = colorSpecFromRole(ink)}));
     }
-    pill->addChild(kit.text(text, Tokens::typeFootnote, ink, FontWeight::Medium));
+    auto label = kit.text(statusText(), Tokens::typeFootnote, ink, FontWeight::Medium);
+    if (status != nullptr) {
+      *status = label.get();
+    }
+    pill->addChild(std::move(label));
     if (escape) {
       pill->addChild(ui::keycap({.text = "Esc", .scale = s}));
     }
@@ -411,6 +466,8 @@ namespace term {
             return e.text.size();
           } else if constexpr (std::is_same_v<T, agent::Action>) {
             return (e.output.size() << 8) ^ (e.diffs.size() << 4) ^ static_cast<std::uint64_t>(e.status);
+          } else if constexpr (std::is_same_v<T, agent::Turn>) {
+            return std::hash<std::string>{}(agoText(e.started));
           } else if constexpr (std::is_same_v<T, agent::Request>) {
             const auto& pending = model->pending();
             const auto at = std::ranges::find(pending, entry);
@@ -506,6 +563,8 @@ namespace term {
                                    .width = indent});
             row->addChild(std::move(mark));
             row->addChild(kit.text(e.text, Tokens::typeParagraph, ColorRole::Label1, FontWeight::Medium, measure));
+            row->addChild(ui::row({.flexGrow = 1.0F}));
+            row->addChild(kit.text(agoText(e.started), Tokens::typeCaption, ColorRole::Label2));
             item->addChild(std::move(row));
           } else if constexpr (std::is_same_v<T, agent::Prose>) {
             auto prose = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .maxWidth = indent + measure});

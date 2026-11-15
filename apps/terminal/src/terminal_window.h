@@ -104,6 +104,8 @@ namespace term {
     std::uint64_t m_rowSelected = 0; // the row with selected labels: it changes at half the tint's travel
     std::vector<std::pair<std::uint64_t, StatusRow*>> m_rows; // session id, its sidebar row
     Timer m_tick;
+    Timer m_agentTick;             // 1 Hz while the shown agent session runs a turn
+    Label* m_bandStatus = nullptr; // the shown agent's status pill label
     [[nodiscard]] StatusRow::Data rowData(const SessionInfo& session) const;
     void refreshRows();
     [[nodiscard]] std::unique_ptr<StatusRow> makeRow(std::uint64_t id);

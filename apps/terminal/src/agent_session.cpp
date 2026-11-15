@@ -103,7 +103,7 @@ namespace term::agent {
                         {"id", id},
                         {"method", "session/prompt"},
                         {"params", {{"sessionId", m_sessionId}, {"prompt", Json::array({{{"type", "text"}, {"text", text}}})}}}});
-    m_entries.emplace_back(Turn{std::move(text)});
+    m_entries.emplace_back(Turn{.text = std::move(text), .started = std::chrono::system_clock::now()});
   }
 
   void Session::cancel() {
@@ -313,12 +313,24 @@ namespace term::agent {
 
   void Session::promptFailed(const std::string& message) { endTurn(Stop{StopKind::Failed, message}); }
 
+  void Session::endTurnTime() {
+    for (auto it = m_entries.rbegin(); it != m_entries.rend(); ++it) {
+      if (auto* turn = std::get_if<Turn>(&*it)) {
+        if (!turn->ended) {
+          turn->ended = std::chrono::system_clock::now();
+        }
+        return;
+      }
+    }
+  }
+
   void Session::endTurn(std::optional<Stop> stop) {
     if (m_phase != Phase::Working && m_phase != Phase::Cancelling) {
       return;
     }
     closeRequests("cancelled");
     m_promptId.reset();
+    endTurnTime();
     for (auto& entry : m_entries) {
       if (auto* prose = std::get_if<Prose>(&entry)) {
         prose->streaming = false;
@@ -353,6 +365,7 @@ namespace term::agent {
     m_pending.clear();
     m_queued.clear();
     m_promptId.reset();
+    endTurnTime();
     for (auto& entry : m_entries) {
       if (auto* prose = std::get_if<Prose>(&entry)) {
         prose->streaming = false;
