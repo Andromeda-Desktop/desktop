@@ -471,6 +471,10 @@ namespace xdpu {
 
   uint32_t Session::persistMode() const { return m_impl->selectedPersistMode; }
 
+  void Session::setCursorMode(uint32_t cursorMode) { m_impl->selectedCursorMode = cursorMode; }
+
+  void Session::setPersistMode(uint32_t persistMode) { m_impl->selectedPersistMode = std::min<uint32_t>(persistMode, 2); }
+
   const std::vector<Session::Selection>& Session::restoreSelections() const { return m_impl->restore; }
 
   void Session::setSelections(std::vector<Selection> selections) { m_impl->currentSelections = std::move(selections); }

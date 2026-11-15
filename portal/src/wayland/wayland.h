@@ -128,7 +128,14 @@ namespace xdpu {
     // Compositor-reported focused output, marked `"focused": true` in the chooser request.
     void setFocusedOutput(std::optional<std::string> name);
 
-    std::string buildChooserJson(uint32_t sourceTypes, bool multiple) const;
+    // The asking app, for the picker's header, parent sheet and option rows; empty fields are left out.
+    struct ChooserCaller {
+      std::string appId;
+      std::string parentWindow;
+      std::string cursorMode; // "hidden", "embedded" or "metadata"; empty: the picker shows no Show Pointer row
+      bool canRemember = false;
+    };
+    std::string buildChooserJson(uint32_t sourceTypes, bool multiple, const ChooserCaller& caller) const;
 
     struct Impl;
     struct CursorCapture;

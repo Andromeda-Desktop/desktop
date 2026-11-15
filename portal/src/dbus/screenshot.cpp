@@ -621,7 +621,7 @@ namespace xdpu {
         }
 
         auto self = std::static_pointer_cast<ScreenshotOperation>(shared_from_this());
-        std::string input = portal.wayland.buildChooserJson(1, false);
+        std::string input = portal.wayland.buildChooserJson(1, false, {});
         input.push_back('\n');
         process = AsyncProcess::start(
             portal.loop, portal.config.screencast.chooserCmd, std::move(input), [self](ProcessResult child) {

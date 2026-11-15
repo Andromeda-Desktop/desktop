@@ -1208,9 +1208,19 @@ namespace xdpu {
 
   void WaylandContext::setFocusedOutput(std::optional<std::string> name) { m_impl->focusedOutput = std::move(name); }
 
-  std::string WaylandContext::buildChooserJson(uint32_t sourceTypes, bool multiple) const {
+  std::string WaylandContext::buildChooserJson(uint32_t sourceTypes, bool multiple, const ChooserCaller& caller) const {
     nlohmann::json request;
     request["multiple"] = multiple;
+    if (!caller.appId.empty()) {
+      request["app_id"] = caller.appId;
+    }
+    if (!caller.parentWindow.empty()) {
+      request["parent_window"] = caller.parentWindow;
+    }
+    if (!caller.cursorMode.empty()) {
+      request["cursor_mode"] = caller.cursorMode;
+    }
+    request["can_remember"] = caller.canRemember;
     request["types"] = nlohmann::json::array();
     request["outputs"] = nlohmann::json::array();
     request["windows"] = nlohmann::json::array();

@@ -253,6 +253,21 @@ namespace xdpu {
       return matches;
     }
 
+    // Optional picker answers: "show_pointer" (an app that asked for no pointer gets it embedded) and "remember".
+    void applyChooserChoices(Session& session, std::string_view output) {
+      const auto json = nlohmann::json::parse(firstLine(output), nullptr, false);
+      if (const auto it = json.find("show_pointer"); it != json.end() && it->is_boolean()) {
+        if (!it->get<bool>()) {
+          session.setCursorMode(kCursorHidden);
+        } else if (session.cursorMode() == kCursorHidden) {
+          session.setCursorMode(kCursorEmbedded);
+        }
+      }
+      if (const auto it = json.find("remember"); it != json.end() && it->is_boolean() && !it->get<bool>()) {
+        session.setPersistMode(0);
+      }
+    }
+
     std::vector<Session::Selection>
     parseChooserSelections(const WaylandContext& wayland, std::string_view output, bool multiple) {
       const std::string line = firstLine(output);
@@ -384,9 +399,8 @@ namespace xdpu {
                                      const std::string& parentWindow, const PortalResults& options
                                  ) {
                     (void)appId;
-                    (void)parentWindow;
                     (void)options;
-                    start(std::move(result), std::string(handle), std::string(sessionHandle));
+                    start(std::move(result), std::string(handle), std::string(sessionHandle), parentWindow);
                   })
                   .withInputParamNames("handle", "session_handle", "app_id", "parent_window", "options")
                   .withOutputParamNames("response", "results"),
@@ -474,6 +488,7 @@ namespace xdpu {
       std::optional<Session::DynamicMode> requestedDynamicMode;
       uint64_t screenCastSerial = 0;
       CaptureCursorMode captureCursorMode = CaptureCursorMode::Hidden;
+      std::string parentWindow;
 
       StartOperation(Impl& portal, PortalResponse&& result, std::shared_ptr<Session> session)
           : portal(portal), result(std::move(result)), session(std::move(session)) {}
@@ -584,7 +599,14 @@ namespace xdpu {
         }
 
         auto self = shared_from_this();
-        std::string input = portal.wayland.buildChooserJson(session->sourceTypes(), session->multiple());
+        const uint32_t cursor = session->cursorMode();
+        std::string input = portal.wayland.buildChooserJson(
+            session->sourceTypes(), session->multiple(),
+            {.appId = session->appId(),
+             .parentWindow = parentWindow,
+             .cursorMode = cursor == kCursorEmbedded ? "embedded" : cursor == kCursorMetadata ? "metadata" : "hidden",
+             .canRemember = session->persistMode() > 0}
+        );
         input.push_back('\n');
         process = AsyncProcess::start(
             portal.loop, portal.config.screencast.chooserCmd, std::move(input), [self](ProcessResult child) {
@@ -616,6 +638,7 @@ namespace xdpu {
                 self->finish(1, {});
                 return;
               }
+              applyChooserChoices(*self->session, child.output);
               self->startCaptures(std::move(selections));
             }
         );
@@ -1005,7 +1028,10 @@ namespace xdpu {
       }
     }
 
-    void start(PortalResponse&& result, const std::string& handle, const std::string& sessionPath) {
+    void start(
+        PortalResponse&& result, const std::string& handle, const std::string& sessionPath,
+        const std::string& parentWindow
+    ) {
       const auto sessionIt = sessions.find(sessionPath);
       if (sessionIt == sessions.end() || sessionIt->second->closed()) {
         auto request = std::make_shared<Request>(connection, handle, []() {});
@@ -1015,6 +1041,7 @@ namespace xdpu {
       }
 
       auto op = std::make_shared<StartOperation>(*this, std::move(result), sessionIt->second);
+      op->parentWindow = parentWindow;
       inflight.insert(op);
       op->start(handle);
     }

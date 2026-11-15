@@ -91,6 +91,9 @@ namespace xdpu {
     bool multiple() const;
     uint32_t cursorMode() const;
     uint32_t persistMode() const;
+    // The picker's Show Pointer and Remember answers override what the app asked for.
+    void setCursorMode(uint32_t cursorMode);
+    void setPersistMode(uint32_t persistMode);
     const std::vector<Selection>& restoreSelections() const;
 
     void setSelections(std::vector<Selection> selections);
