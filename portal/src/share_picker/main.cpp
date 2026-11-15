@@ -3,10 +3,8 @@
 // {"selections":[...], "show_pointer":bool, "remember":bool}; no selections = cancel.
 #include "app/app_loop.h"
 #include "app/app_window.h"
-#include "app/command_table.h"
-#include "app/state_store.h"
+#include "app/desk_app.h"
 #include "core/deferred_call.h"
-#include "core/log.h"
 #include "design_tokens.h"
 #include "render/core/texture_manager.h"
 #include "share_picker/thumbnails.h"
@@ -23,8 +21,6 @@
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 #include <cstdio>
-#include <cstdlib>
-#include <filesystem>
 #include <iostream>
 #include <iterator>
 #include <set>
@@ -462,10 +458,17 @@ namespace {
     std::unique_ptr<Node> buttons(float scale) {
       auto row = ui::row({.gap = Tokens::spaceP8 * scale});
       row->addChild(ui::spacer());
-      row->addChild(ui::button({.text = std::string("Cancel"), .onClick = [this] { finish(false); }}));
+      row->addChild(ui::button({.text = std::string("Cancel"),
+                                .fontSize = Style::fontSizeBody * scale,
+                                .minHeight = Style::controlHeight * scale,
+                                .paddingH = Tokens::spaceP12 * scale,
+                                .onClick = [this] { finish(false); }}));
       row->addChild(ui::button({.text = std::string("Share"),
+                                .fontSize = Style::fontSizeBody * scale,
                                 .enabled = !m_selected.empty(),
                                 .variant = ButtonVariant::Primary,
+                                .minHeight = Style::controlHeight * scale,
+                                .paddingH = Tokens::spaceP12 * scale,
                                 .onClick = [this] { finish(true); }}));
       return row;
     }
@@ -488,48 +491,52 @@ namespace {
     std::unique_ptr<xdpu::Thumbnails> m_thumbnails; // last: its worker joins before the members it posts to go
   };
 
+  // One process per request: no single instance, so a second picker never forwards to the first.
+  class SharePickerApp final : public DeskApp {
+  public:
+    explicit SharePickerApp(Request request)
+        : DeskApp({.id = "dev.andromeda.SharePicker", .name = "Share", .singleInstance = false}),
+          m_parentWindow(request.parentWindow), m_picker(std::move(request), loop()) {}
+    ~SharePickerApp() override { destroyWindows(); }
+    SharePickerApp(const SharePickerApp&) = delete;
+    SharePickerApp& operator=(const SharePickerApp&) = delete;
+
+    Picker& picker() { return m_picker; }
+
+  protected:
+    AppWindow& createWindow() override {
+      AppWindow& window = addWindow({.title = m_picker.title(),
+                                     .stateKey = "picker",
+                                     .width = kSheetWidth,
+                                     .height = kSheetHeight,
+                                     .minWidth = kSheetWidth,
+                                     .minHeight = kSheetHeight,
+                                     .fixedSize = true,
+                                     .parentWindow = m_parentWindow,
+                                     .header = false});
+      m_picker.attach(window);
+      window.setContentBuilder(
+          [this, &window](Renderer& renderer, float, float) { return m_picker.build(renderer, window.uiScale()); });
+      window.setLayoutCallback([this] { m_picker.updateShown(); });
+      window.setKeyHandler([this](const KeyboardEvent& event) { return m_picker.key(event); });
+      return window;
+    }
+
+    // The window X cancels.
+    void windowClosed(AppWindow& /*window*/) override { m_picker.finish(false); }
+
+  private:
+    std::string m_parentWindow;
+    Picker m_picker;
+  };
+
 } // namespace
 
-int main() {
-  initLogLevelFromEnvironment();
+int main(int argc, char* argv[]) {
   std::string line;
   std::getline(std::cin, line);
-  Request request = parseRequest(line);
-
-  AppLoop loop;
-  if (!loop.initialize()) {
-    return 1;
-  }
-  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-  StateStore state(std::filesystem::path(runtime != nullptr ? runtime : "/tmp") / "andromeda-share-picker.json");
-  CommandTable commands;
-  Picker picker(request, loop);
-  AppWindow window(loop, commands, state,
-                   {.appId = "dev.andromeda.SharePicker",
-                    .title = picker.title(),
-                    .stateKey = "picker",
-                    .width = kSheetWidth,
-                    .height = kSheetHeight,
-                    .minWidth = kSheetWidth,
-                    .minHeight = kSheetHeight,
-                    .fixedSize = true,
-                    .parentWindow = request.parentWindow,
-                    .header = false});
-  picker.attach(window);
-  window.setContentBuilder(
-      [&picker, &window](Renderer& renderer, float, float) { return picker.build(renderer, window.uiScale()); });
-  window.setLayoutCallback([&picker] { picker.updateShown(); });
-  window.setKeyHandler([&picker](const KeyboardEvent& event) { return picker.key(event); });
-  window.setClosedCallback([&picker] { picker.finish(false); });
-  // DeskApp routes input to its windows; this program has one window and no DeskApp.
-  loop.wayland().setPointerEventCallback([&window](const PointerEvent& event) { window.onPointerEvent(event); });
-  loop.wayland().setKeyboardEventCallback([&window](const KeyboardEvent& event) { window.onKeyboardEvent(event); });
-  if (!window.open()) {
-    picker.finish(false);
-    return 1;
-  }
-  window.activate({});
-  const int code = loop.run();
-  picker.finish(false);
+  SharePickerApp app(parseRequest(line));
+  const int code = app.run(argc, argv);
+  app.picker().finish(false);
   return code;
 }

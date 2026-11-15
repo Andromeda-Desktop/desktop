@@ -134,7 +134,7 @@ int DeskApp::run(int argc, char* argv[]) {
   } catch (const std::exception& e) {
     kLog.warn("no session bus ({}); single instance is off", e.what());
   }
-  m_instance = std::make_unique<SingleInstance>(m_bus.get(), m_info.id);
+  m_instance = std::make_unique<SingleInstance>(m_info.singleInstance ? m_bus.get() : nullptr, m_info.id);
   const SingleInstance::Role role = m_instance->claim(
       uris, {
                 .activate = [this](const std::string& token) { activate(token); },

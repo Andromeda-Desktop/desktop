@@ -25,6 +25,7 @@ public:
   struct Info {
     std::string id;   // reverse-DNS app id and D-Bus name, e.g. "dev.andromeda.Files"
     std::string name; // shown in the window title
+    bool singleInstance = true; // false: every launch runs alone and claims no D-Bus name (a per-request helper)
   };
 
   explicit DeskApp(Info info);
