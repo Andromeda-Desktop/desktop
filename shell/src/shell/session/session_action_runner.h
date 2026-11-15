@@ -41,6 +41,7 @@ public:
   [[nodiscard]] bool lockThenSuspendDetached() const;
 
 private:
+  [[nodiscard]] bool suspendDetached(bool plain) const;
   [[nodiscard]] SessionActionHooks::AsyncHook hookFor(std::string_view action) const;
   [[nodiscard]] bool suspendBlocking() const;
   [[nodiscard]] bool rebootBlocking() const;

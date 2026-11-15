@@ -339,15 +339,19 @@ SessionActionHooks::AsyncHook SessionActionRunner::hookFor(std::string_view acti
 
 bool SessionActionRunner::lock() const { return requestLock(m_lockScreen); }
 
-bool SessionActionRunner::requestSuspendDetached() const {
+bool SessionActionRunner::requestSuspendDetached() const { return suspendDetached(true); }
+
+// A plain suspend tells the lock to skip its lock before sleep. A suspend behind a lock must not: if the lock ends
+// before PrepareForSleep, the skip would let the session sleep unlocked; without it a held lock is already ready.
+bool SessionActionRunner::suspendDetached(bool plain) const {
   logActionContext("suspend");
-  if (m_hooks.onBeforePlainSuspend) {
+  if (plain && m_hooks.onBeforePlainSuspend) {
     m_hooks.onBeforePlainSuspend();
   }
   std::scoped_lock lock(m_powerMutex);
   const bool started =
       runPowerActionResolved("suspend", m_suspendCommandOverride, "suspend", PowerLaunchMode::Detached);
-  if (!started && m_hooks.onPlainSuspendAborted) {
+  if (plain && !started && m_hooks.onPlainSuspendAborted) {
     m_hooks.onPlainSuspendAborted();
   }
   return started;
@@ -409,7 +413,7 @@ bool SessionActionRunner::requestSuspendThenHibernateDetached() const {
 }
 
 bool SessionActionRunner::lockThenSuspendDetached() const {
-  m_lockScreen.runAfterSessionLocked([this] { (void)requestSuspendDetached(); });
+  m_lockScreen.runAfterSessionLocked([this] { (void)suspendDetached(false); });
   m_lockScreen.prepareForSleep();
   return true;
 }
