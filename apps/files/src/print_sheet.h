@@ -16,6 +16,7 @@ class AppLoop;
 class Button;
 class Flex;
 class Input;
+class InputArea;
 class Label;
 class Node;
 class Renderer;
@@ -52,7 +53,8 @@ public:
   [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float scale, float width);
   // Esc goes back from More Options, else cancels; Enter prints. Both also work from the range field and run
   // before the app's own key commands.
-  bool firstKey(const KeyboardEvent& event);
+  // focused: the window's keyboard focus; Enter goes to a focused control that is not a text field.
+  bool firstKey(const KeyboardEvent& event, const InputArea* focused);
   bool key(const KeyboardEvent& event); // Left / Right turn sheets
 
 private:

@@ -2,6 +2,7 @@
 
 #include "app/app_loop.h"
 #include "core/deferred_call.h"
+#include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "design_tokens.h"
 #include "helper_client.h"
@@ -10,6 +11,7 @@
 #include "render/scene/node.h"
 #include "render/core/texture_manager.h"
 #include "render/scene/input_area.h"
+#include "render/scene/input_dispatcher.h"
 #include "ui/builders.h"
 #include "ui/controls/box.h"
 #include "ui/controls/button.h"
@@ -372,7 +374,7 @@ void PrintSheet::showSheet(int sheet) {
     m_cb.rebuild();
 }
 
-bool PrintSheet::firstKey(const KeyboardEvent& event) {
+bool PrintSheet::firstKey(const KeyboardEvent& event, const InputArea* focused) {
   if (!event.pressed || event.modifiers != 0)
     return false;
   switch (event.sym) {
@@ -387,6 +389,8 @@ bool PrintSheet::firstKey(const KeyboardEvent& event) {
     return true;
   case XKB_KEY_Return:
   case XKB_KEY_KP_Enter:
+    if (focused != nullptr && focused->textInputClient() == nullptr)
+      return false;
     submit();
     return true;
   default:
@@ -512,6 +516,24 @@ std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, floa
 
 namespace {
   // The shared row builders of both screens.
+  // Keys let AppWindow put keyboard focus back on the same control after a rebuild.
+  void tagFocus(Node& node, const std::string& prefix, int& n) {
+    if (auto* seg = dynamic_cast<Segmented*>(&node)) {
+      if (InputArea* area = seg->focusArea())
+        area->setTabFocusKey(std::format("{}.{}", prefix, n++));
+      return;
+    }
+    if (auto* area = dynamic_cast<InputArea*>(&node); area && area->focusable() && area->tabStop())
+      area->setTabFocusKey(std::format("{}.{}", prefix, n++));
+    for (const auto& child : node.children())
+      tagFocus(*child, prefix, n);
+  }
+
+  void tagFocus(Node& node, const std::string& prefix) {
+    int n = 0;
+    tagFocus(node, prefix, n);
+  }
+
   struct Rows {
     float s;
     float body;
@@ -540,10 +562,11 @@ namespace {
       auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingH = Tokens::spaceP12 * s,
                         .height = rowH});
       auto keyBox = ui::row({.align = FlexAlign::Center, .width = kKeyWidth * s});
-      keyBox->addChild(ui::label({.text = std::move(key), .fontSize = body, .fontWeight = FontWeight::Medium,
+      keyBox->addChild(ui::label({.text = key, .fontSize = body, .fontWeight = FontWeight::Medium,
                                   .color = colorSpecFromRole(ColorRole::Label2), .maxWidth = kKeyWidth * s,
                                   .maxLines = 1, .ellipsize = TextEllipsize::End}));
       r->addChild(std::move(keyBox));
+      tagFocus(*value, "print." + key);
       value->setFlexGrow(1.0F);
       r->addChild(std::move(value));
       card.addChild(std::move(r));
@@ -686,7 +709,11 @@ void PrintSheet::buildMain(Node& col, float s) {
                              },
                              .onSubmit = [this](const std::string&) { submit(); },
                              // The preview follows the range once the field is left.
-                             .onFocusLoss = rebuild}));
+                             .onFocusLoss =
+                                 [rebuild] {
+                                   if (!InputDispatcher::inSceneTeardown())
+                                     rebuild();
+                                 }}));
   rows.opt(*card, "Pages", std::move(pages));
   m_rangeNote = static_cast<Flex*>(card->addChild(rows.note(m_rangeError, ColorRole::DangerText, &m_rangeNoteLabel)));
 
@@ -725,11 +752,20 @@ void PrintSheet::buildMain(Node& col, float s) {
   moreRow->addChild(std::move(moreLabel));
   moreRow->addChild(ui::glyph({.glyph = std::string("chevron-right"), .glyphSize = 14.0F * s,
                                .color = colorSpecFromRole(ColorRole::AccentText)}));
-  more->addChild(ui::inputArea({.width = rowW, .height = rows.rowH,
-                                .onClick = [this, rebuild](const InputArea::PointerData&) {
-                                  m_screen = Screen::More;
-                                  rebuild();
-                                }},
+  const auto openMore = [this, rebuild] {
+    m_screen = Screen::More;
+    rebuild();
+  };
+  more->addChild(ui::inputArea({.focusable = true, .width = rowW, .height = rows.rowH,
+                                .onClick = [openMore](const InputArea::PointerData&) { openMore(); },
+                                .configure =
+                                    [openMore](InputArea& a) {
+                                      a.setTabFocusKey("print.more");
+                                      a.setOnKeyDown([openMore](const InputArea::KeyData& k) {
+                                        if (KeybindMatcher::matches(KeybindAction::Validate, k.sym, k.modifiers))
+                                          openMore();
+                                      });
+                                    }},
                                std::move(moreRow)));
   col.addChild(std::move(more));
 }
@@ -752,6 +788,7 @@ void PrintSheet::buildMore(Node& col, float s) {
                                }}));
   header->addChild(ui::label({.text = std::string("More Options"), .fontSize = Tokens::typeTitle3.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1)}));
+  tagFocus(*header, "print.back");
   col.addChild(std::move(header));
 
   auto card = rows.card();
@@ -857,6 +894,7 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
                                 .enabled = !m_sent && (pdf || (printer() != nullptr && rangeValid())),
                                 .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP12 * s,
                                 .radius = Tokens::radiusR8 * s, .height = ctlH, .onClick = [this] { submit(); }}));
+  tagFocus(*buttons, "print.buttons");
   col->addChild(std::move(buttons));
   sheet->addChild(std::move(col));
   showRange();

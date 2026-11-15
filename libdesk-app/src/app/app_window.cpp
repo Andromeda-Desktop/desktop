@@ -832,6 +832,8 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
         .width = kWindowButton * s,
         .height = kWindowButton * s,
         .onClick = [this, id = std::string(command)] { m_commands.run(id); },
+        // Window commands have keys; Tab starts in the content.
+        .configure = [](Button& b) { b.setTabStop(false); },
     }));
   };
   add("minus", "window.minimize", false, nullptr);
@@ -874,6 +876,9 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   double headerMs = 0.0;
   double layoutMs = 0.0;
   double hookMs = 0.0;
+  // Only a keyed control gets focus back: an index can point at a different control after the rebuild.
+  InputDispatcher::TabFocusSnapshot focus = m_input.captureTabFocus();
+  focus.index.reset();
   m_input.setSceneRoot(nullptr);
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
@@ -969,6 +974,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   }
   m_root->setPopupContext(m_select.get());
   m_input.setSceneRoot(m_root.get());
+  if (m_input.focusedArea() == nullptr)
+    m_input.restoreTabFocus(std::move(focus));
   m_surface->setSceneRoot(m_root.get());
   if (m_onLayout) {
     const auto hookStart = std::chrono::steady_clock::now();

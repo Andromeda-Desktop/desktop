@@ -26,8 +26,9 @@ namespace {
     case KeybindAction::Down:
       return plain && sym == XKB_KEY_Down;
     case KeybindAction::TabNext:
+      return plain && sym == XKB_KEY_Tab;
     case KeybindAction::TabPrevious:
-      return false; // InputDispatcher cycles focus on these before the focused field sees Tab
+      return modifiers == KeyMod::Shift && (sym == XKB_KEY_ISO_Left_Tab || sym == XKB_KEY_Tab);
     case KeybindAction::Delete:
       return plain && sym == XKB_KEY_Delete;
     case KeybindAction::Copy:

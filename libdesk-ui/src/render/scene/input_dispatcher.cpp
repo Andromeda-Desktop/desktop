@@ -464,7 +464,7 @@ void InputDispatcher::keyEvent(
     std::uint32_t sym, std::uint32_t utf32, std::uint32_t modifiers, bool pressed, bool preedit
 ) {
   pruneDetachedAreas();
-  if (pressed && !preedit) {
+  if (pressed && !preedit && (m_focusedArea == nullptr || !m_focusedArea->capturesAllKeys())) {
     if (KeybindMatcher::matches(KeybindAction::TabPrevious, sym, modifiers) && cycleTabFocus(true)) {
       return;
     }
