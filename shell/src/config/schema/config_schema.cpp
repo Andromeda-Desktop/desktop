@@ -869,7 +869,15 @@ namespace noctalia::config::schema {
 
   const Schema<LockscreenWidgetsConfig>& lockscreenWidgetsSchema() {
     static const Schema<LockscreenWidgetsConfig> s = {
-        field(&LockscreenWidgetsConfig::enabled, "enabled"),
+        field(
+            &LockscreenWidgetsConfig::enabled, "enabled",
+            RowSpec{
+                .section = "security",
+                .group = "lock-screen",
+                .label = "lockscreen.widgets",
+                .tags = "lock screen widgets layout",
+            }
+        ),
         field(&LockscreenWidgetsConfig::schemaVersion, "schema_version"),
         subTable(&LockscreenWidgetsConfig::grid, "grid", desktopWidgetsGridSchema()),
     };
@@ -2470,7 +2478,18 @@ namespace noctalia::config::schema {
                   .tags = "screenshot capture run pipe command stdin",
               }
           ),
-          field(&ShellConfig::ScreenshotConfig::pipeCommand, "pipe_command"),
+          field(
+              &ShellConfig::ScreenshotConfig::pipeCommand, "pipe_command",
+              RowSpec{
+                  .kind = RowSpec::Kind::Text,
+                  .section = "screenshot",
+                  .group = "screenshot-output",
+                  .label = "shell.screenshot-pipe-command",
+                  .tags = "screenshot capture run pipe command stdin png",
+                  .placeholderKey = "settings.schema.shell.screenshot-pipe-command.placeholder",
+                  .width = 320.0F,
+              }
+          ),
           field(
               &ShellConfig::ScreenshotConfig::directory, "directory",
               RowSpec{
@@ -2505,7 +2524,16 @@ namespace noctalia::config::schema {
                   .tags = "screenshot capture save file format png jpeg jpg webp jxl jpeg-xl",
               }
           ),
-          field(&ShellConfig::ScreenshotConfig::quality, "quality", kScreenshotQualityRange),
+          field(
+              &ShellConfig::ScreenshotConfig::quality, "quality", kScreenshotQualityRange,
+              RowSpec{
+                  .kind = RowSpec::Kind::Slider,
+                  .section = "screenshot",
+                  .group = "screenshot-output",
+                  .label = "shell.screenshot-quality",
+                  .tags = "screenshot capture save file quality compression lossless jpeg webp jxl",
+              }
+          ),
       };
       return s;
     }
@@ -2825,7 +2853,15 @@ namespace noctalia::config::schema {
                 .tags = "auth password",
             }
         ),
-        field(&ShellConfig::automountDrives, "automount_drives"),
+        field(
+            &ShellConfig::automountDrives, "automount_drives",
+            RowSpec{
+                .section = "devices",
+                .group = "removable-media",
+                .label = "shell.automount-drives",
+                .tags = "usb drive disk stick card mount removable",
+            }
+        ),
         enumField(
             &ShellConfig::passwordMaskStyle, "password_style", kPasswordMaskStyles,
             RowSpec{
@@ -2864,7 +2900,17 @@ namespace noctalia::config::schema {
         ),
         colorSpecField(&ShellConfig::appIconColor, "app_icon_color", /*alwaysEmit=*/false),
         field(&ShellConfig::launchAppsAsSystemdServices, "launch_apps_as_systemd_services"),
-        field(&ShellConfig::launchAppsCustomCommand, "launch_apps_custom_command"),
+        field(
+            &ShellConfig::launchAppsCustomCommand, "launch_apps_custom_command",
+            RowSpec{
+                .kind = RowSpec::Kind::Text,
+                .section = "shell",
+                .group = "general",
+                .tags = "app command custom launcher dock taskbar",
+                .placeholderKey = "settings.schema.shell.launch-apps-custom-command.placeholder",
+                .width = 320.0F,
+            }
+        ),
         field(
             &ShellConfig::clipboardEnabled, "clipboard_enabled",
             RowSpec{.section = "shell", .group = "clipboard", .tags = "clipboard history paste copy"}
@@ -2874,9 +2920,18 @@ namespace noctalia::config::schema {
             RowSpec{.section = "shell", .group = "clipboard", .tags = "clipboard paste close quit exit persist"}
         ),
         field(
-            &ShellConfig::clipboardHistoryMaxEntries, "clipboard_history_max_entries", kClipboardHistoryMaxEntriesRange
+            &ShellConfig::clipboardHistoryMaxEntries, "clipboard_history_max_entries", kClipboardHistoryMaxEntriesRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Stepper,
+                .section = "shell",
+                .group = "clipboard",
+                .tags = "clipboard history limit entries",
+            }
         ),
-        field(&ShellConfig::clipboardConfirmClearHistory, "clipboard_confirm_clear_history"),
+        field(
+            &ShellConfig::clipboardConfirmClearHistory, "clipboard_confirm_clear_history",
+            RowSpec{.section = "shell", .group = "clipboard", .tags = "clipboard history clear confirm pinned"}
+        ),
         field(
             &ShellConfig::screenTimeEnabled, "screen_time_enabled",
             RowSpec{
@@ -2888,8 +2943,22 @@ namespace noctalia::config::schema {
         ),
         field(&ShellConfig::sharedGlContext, "shared_gl_context"),
         field(&ShellConfig::disableMipmaps, "disable_mipmaps"),
-        enumField(&ShellConfig::clipboardAutoPaste, "clipboard_auto_paste", kClipboardAutoPasteModes),
-        field(&ShellConfig::clipboardImageActionCommand, "clipboard_image_action_command"),
+        enumField(
+            &ShellConfig::clipboardAutoPaste, "clipboard_auto_paste", kClipboardAutoPasteModes,
+            RowSpec{.kind = RowSpec::Kind::Select, .section = "shell", .group = "clipboard", .tags = "clipboard paste"}
+        ),
+        field(
+            &ShellConfig::clipboardImageActionCommand, "clipboard_image_action_command",
+            RowSpec{
+                .kind = RowSpec::Kind::Text,
+                .section = "shell",
+                .group = "clipboard",
+                .label = "shell.clipboard-image-action",
+                .tags = "clipboard image action annotation editor external gimp satty gradia",
+                .placeholderKey = "settings.schema.shell.clipboard-image-action.placeholder",
+                .width = 320.0F,
+            }
+        ),
         pathStringField(&ShellConfig::avatarPath, "avatar_path"),
         subTable(&ShellConfig::shadow, "shadow", shellShadowSchema()),
         subTable(&ShellConfig::panel, "panel", shellPanelSchema()),

@@ -147,13 +147,11 @@ namespace settings {
       entries.push_back(std::move(e));
     }
     {
-      auto e = makeEntry(
-          SettingsSection::Security, "lock-screen", tr("settings.schema.lockscreen.widgets.label"),
-          tr("settings.schema.lockscreen.widgets.description"), {"lockscreen_widgets", "enabled"},
-          ToggleSetting{cfg.lockscreenWidgets.enabled}, "lock screen widgets layout"
+      auto widgetRows = generateSchemaEntries(
+          noctalia::config::schema::lockscreenWidgetsSchema(), cfg.lockscreenWidgets, {"lockscreen_widgets"}
       );
-      e.visibleWhen = lockscreenOn;
-      entries.push_back(std::move(e));
+      appendRow(entries, widgetRows, "enabled");
+      entries.back().visibleWhen = lockscreenOn;
     }
     auto privacyRows =
         generateSchemaEntries(noctalia::config::schema::privacySchema(), cfg.shell.privacy, {"shell", "privacy"});
@@ -196,11 +194,7 @@ namespace settings {
                             "readline_shortcuts"}) {
       appendRow(entries, shellRows, key);
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Devices, "removable-media", tr("settings.schema.shell.automount-drives.label"),
-        tr("settings.schema.shell.automount-drives.description"), {"shell", "automount_drives"},
-        ToggleSetting{cfg.shell.automountDrives}, "usb drive disk stick card mount removable"
-    ));
+    appendRow(entries, shellRows, "automount_drives");
     entries.push_back(makeEntry(
         SettingsSection::Shell, "keyboard-layout", tr("settings.schema.shell.keyboard-layout-custom-labels.label"),
         tr("settings.schema.shell.keyboard-layout-custom-labels.description"),
@@ -224,78 +218,21 @@ namespace settings {
             .enabled = env.systemdUserManaged || cfg.shell.launchAppsAsSystemdServices
         }
     ));
-    {
-      auto e = makeEntry(
-          SettingsSection::Shell, "general", tr("settings.schema.shell.launch-apps-custom-command.label"),
-          tr("settings.schema.shell.launch-apps-custom-command.description"), {"shell", "launch_apps_custom_command"},
-          TextSetting{
-              .value = cfg.shell.launchAppsCustomCommand,
-              .placeholder = tr("settings.schema.shell.launch-apps-custom-command.placeholder"),
-              .width = 320.0F,
-              .browseFileExtensions = {},
-          },
-          "app command custom launcher dock taskbar"
-      );
-      e.visibleWhen = [managed = env.systemdUserManaged](const Config& c) {
-        return !(c.shell.launchAppsAsSystemdServices && managed);
-      };
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, shellRows, "launch_apps_custom_command");
+    entries.back().visibleWhen = [managed = env.systemdUserManaged](const Config& c) {
+      return !(c.shell.launchAppsAsSystemdServices && managed);
+    };
     const SettingVisibility clipboardOn = [](const Config& c) { return c.shell.clipboardEnabled; };
     appendRow(entries, shellRows, "clipboard_enabled");
     // Deliberately not gated on clipboardOn: this keeps the live selection
     // alive, which is part of the transport that stays active when history
     // retention is turned off.
     appendRow(entries, shellRows, "clipboard_keep_from_closed_apps");
-    {
-      auto e = makeEntry(
-          SettingsSection::Shell, "clipboard", tr("settings.schema.shell.clipboard-history-max-entries.label"),
-          tr("settings.schema.shell.clipboard-history-max-entries.description"),
-          {"shell", "clipboard_history_max_entries"},
-          StepperSetting{
-              .value = cfg.shell.clipboardHistoryMaxEntries,
-              .minValue = static_cast<int>(noctalia::config::schema::kClipboardHistoryMaxEntriesRange.min.value()),
-              .maxValue = static_cast<int>(noctalia::config::schema::kClipboardHistoryMaxEntriesRange.max.value()),
-              .step = static_cast<int>(noctalia::config::schema::kClipboardHistoryMaxEntriesRange.step.value())
-          },
-          "clipboard history limit entries"
-      );
-      e.visibleWhen = clipboardOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Shell, "clipboard", tr("settings.schema.shell.clipboard-confirm-clear-history.label"),
-          tr("settings.schema.shell.clipboard-confirm-clear-history.description"),
-          {"shell", "clipboard_confirm_clear_history"}, ToggleSetting{cfg.shell.clipboardConfirmClearHistory},
-          "clipboard history clear confirm pinned"
-      );
-      e.visibleWhen = clipboardOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Shell, "clipboard", tr("settings.schema.shell.clipboard-auto-paste.label"),
-          tr("settings.schema.shell.clipboard-auto-paste.description"), {"shell", "clipboard_auto_paste"},
-          enumSelect(kClipboardAutoPasteModes, cfg.shell.clipboardAutoPaste), "clipboard paste"
-      );
-      e.visibleWhen = clipboardOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Shell, "clipboard", tr("settings.schema.shell.clipboard-image-action.label"),
-          tr("settings.schema.shell.clipboard-image-action.description"), {"shell", "clipboard_image_action_command"},
-          TextSetting{
-              .value = cfg.shell.clipboardImageActionCommand,
-              .placeholder = tr("settings.schema.shell.clipboard-image-action.placeholder"),
-              .width = 320.0F,
-              .browseFileExtensions = {}
-          },
-          "clipboard image action annotation editor external gimp satty gradia"
-      );
-      e.visibleWhen = clipboardOn;
-      entries.push_back(std::move(e));
+    for (const auto* key :
+         {"clipboard_history_max_entries", "clipboard_confirm_clear_history", "clipboard_auto_paste",
+          "clipboard_image_action_command"}) {
+      appendRow(entries, shellRows, key);
+      entries.back().visibleWhen = clipboardOn;
     }
     auto screenshotRows = generateSchemaEntries(
         noctalia::config::schema::screenshotSchema(), cfg.shell.screenshot, {"shell", "screenshot"}
@@ -308,32 +245,11 @@ namespace settings {
     for (const auto* key : {"copy_to_clipboard", "save_to_file", "directory", "filename_pattern", "format"}) {
       appendRow(entries, screenshotRows, key);
     }
-    {
-      auto e = makeEntry(
-          SettingsSection::Screenshot, "screenshot-output", tr("settings.schema.shell.screenshot-quality.label"),
-          tr("settings.schema.shell.screenshot-quality.description"), {"shell", "screenshot", "quality"},
-          sliderFor(cfg.shell.screenshot.quality, noctalia::config::schema::kScreenshotQualityRange, true),
-          "screenshot capture save file quality compression lossless jpeg webp jxl"
-      );
-      e.visibleWhen = [](const Config& c) { return c.shell.screenshot.format != ScreenshotFormat::Png; };
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, screenshotRows, "quality");
+    entries.back().visibleWhen = [](const Config& c) { return c.shell.screenshot.format != ScreenshotFormat::Png; };
     appendRow(entries, screenshotRows, "pipe_to_command");
-    {
-      auto e = makeEntry(
-          SettingsSection::Screenshot, "screenshot-output", tr("settings.schema.shell.screenshot-pipe-command.label"),
-          tr("settings.schema.shell.screenshot-pipe-command.description"), {"shell", "screenshot", "pipe_command"},
-          TextSetting{
-              .value = cfg.shell.screenshot.pipeCommand,
-              .placeholder = tr("settings.schema.shell.screenshot-pipe-command.placeholder"),
-              .width = 320.0F,
-              .browseFileExtensions = {}
-          },
-          "screenshot capture run pipe command stdin png"
-      );
-      e.visibleWhen = [](const Config& c) { return c.shell.screenshot.pipeToCommand; };
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, screenshotRows, "pipe_command");
+    entries.back().visibleWhen = [](const Config& c) { return c.shell.screenshot.pipeToCommand; };
     auto windowSwitcherRows = generateSchemaEntries(
         noctalia::config::schema::windowSwitcherSchema(), cfg.shell.windowSwitcher, {"shell", "window_switcher"}
     );
