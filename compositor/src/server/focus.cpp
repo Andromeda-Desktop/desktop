@@ -462,7 +462,9 @@ namespace andromeda {
     if (layer != nullptr) {
       *layer = hitLayer;
     }
-    if (view != nullptr || hitLayer != nullptr || *surface != nullptr || m_server.sessionLocked()
+    // Background and bottom layers (wallpaper, desktop icons) sit under the gap too; they must not block the edge probe.
+    const bool belowWindows = hitLayer != nullptr && hitLayer->layerSurface()->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+    if (view != nullptr || (*surface != nullptr && !belowWindows) || m_server.sessionLocked()
         || (m_server.overview() != nullptr && m_server.overview()->active()) || ssdFrameAt(lx, ly).has_value()) {
       return view;
     }
@@ -494,10 +496,19 @@ namespace andromeda {
     if (px == lx && py == ly) {
       return nullptr;
     }
-    View* edgeView = sceneViewAt(px, py, surface, sx, sy, &hitLayer);
-    if (edgeView == nullptr || hitLayer != nullptr || *surface == nullptr) {
-      *surface = nullptr;
+    wlr_surface* edgeSurface = nullptr;
+    LayerSurface* edgeLayer = nullptr;
+    double edgeSx = 0;
+    double edgeSy = 0;
+    View* edgeView = sceneViewAt(px, py, &edgeSurface, &edgeSx, &edgeSy, &edgeLayer);
+    if (edgeView == nullptr || edgeLayer != nullptr || edgeSurface == nullptr) {
       return nullptr;
+    }
+    *surface = edgeSurface;
+    *sx = edgeSx;
+    *sy = edgeSy;
+    if (layer != nullptr) {
+      *layer = nullptr;
     }
     return edgeView;
   }

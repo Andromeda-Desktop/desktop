@@ -7,6 +7,7 @@ readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
+readonly LAYER_CLIENT="${ANDROMEDA_LAYER_CLIENT:-./build-debug/tests/layer-client}"
 
 pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
@@ -57,6 +58,13 @@ curve = "linear"
 follows_mouse = true
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
+
+# A wallpaper covers the gap, as on a real desktop; the gap must still reach the window.
+"$LAYER_CLIENT" HEADLESS-1 0 > /dev/null 2>&1 &
+for _ in $(seq 60); do
+  [[ $("$ANDROMEDA" layers --json | jq 'length') -ge 1 ]] && break
+  sleep 0.1
+done
 
 pointer move 900 360
 spawn_client "edge-left"
