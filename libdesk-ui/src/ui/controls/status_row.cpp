@@ -62,9 +62,7 @@ void StatusRow::setOnClick(std::function<void()> callback) { m_onClick = std::mo
 
 void StatusRow::applyState() {
   const bool strong = m_data.unseen || m_data.selected;
-  if (m_data.selected) {
-    setFill(colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F));
-  } else if (m_area != nullptr && m_area->hovered()) {
+  if (!m_data.selected && m_area != nullptr && m_area->hovered()) {
     setFill(colorSpecFromRole(ColorRole::Fill1));
   } else {
     setFill(clearColorSpec());

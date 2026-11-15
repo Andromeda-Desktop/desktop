@@ -8,6 +8,7 @@
 #include "core/log.h"
 #include "time/time_format.h"
 #include "ui/builders.h"
+#include "ui/controls/selection_list.h"
 #include "ui/controls/status_row.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/label.h"
@@ -53,31 +54,18 @@ namespace term {
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close)
       : m_loop(loop), m_window(window), m_notifier(notifier), m_close(std::move(close)) {
+    // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       for (Session& session : m_views) {
         session.view->sceneDestroyed();
       }
-      TerminalView* view = shownView();
-      m_builtId = view != nullptr ? *m_sessions.shown() : 0;
-      if (view == nullptr) {
-        return nullptr;
-      }
-      Surface* surface = m_window.surface();
-      const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
-      auto node = view->build(renderer, m_window.uiScale(), deviceScale, width, height);
-      // After this build is in the scene: the dispatcher focuses only attached areas.
-      DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
-        if (alive.expired()) {
-          return;
-        }
-        m_retired.clear();
-        if (TerminalView* shown = shownView(); shown != nullptr && shown->focusArea() != nullptr) {
-          m_window.input().setFocus(shown->focusArea());
-        }
-      });
-      return node;
+      auto slot = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
+      m_contentSlot = slot.get();
+      m_contentWidth = width;
+      m_contentHeight = height;
+      fillSlot(renderer);
+      return slot;
     });
-    // Session rows are plain labels until the status-row control exists (handoff.yaml status-row).
     m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float /*height*/) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
       const float button = Tokens::sizeControlM * s;
@@ -107,8 +95,10 @@ namespace term {
                                 .radius = button / 2.0F, .height = button,
                                 .onClick = [this] { openSession(NewShell{}); }}));
       side->addChild(std::move(top));
-      auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
+      auto list = std::make_unique<SelectionList>(s);
+      list->setGap(Tokens::spaceP4 * s);
       m_rows.clear();
+      m_tintTarget = 0;
       for (const SessionInfo& session : m_sessions.sessions()) {
         auto row = std::make_unique<StatusRow>(s);
         row->setOnClick([this, id = session.id] {
@@ -252,9 +242,40 @@ namespace term {
     if (const SessionInfo* info = m_sessions.find(id); info != nullptr && !info->cwd.empty()) {
       m_window.setTitle(info->cwd);
     }
-    if (id != m_builtId) {
-      m_window.requestRebuild();
+    if (id != m_builtId && m_contentSlot != nullptr) {
+      m_window.updateInPlace([this](Renderer& renderer) {
+        for (Session& session : m_views) {
+          session.view->sceneDestroyed();
+        }
+        std::vector<std::unique_ptr<Node>> removed;
+        while (!m_contentSlot->children().empty()) {
+          removed.push_back(m_contentSlot->removeChild(m_contentSlot->children().back().get()));
+        }
+        m_window.input().forgetDetached(); // while the removed areas still live
+        removed.clear();
+        fillSlot(renderer);
+        m_contentSlot->markLayoutDirty();
+      });
     }
+  }
+
+  void TerminalWindow::fillSlot(Renderer& renderer) {
+    TerminalView* view = shownView();
+    m_builtId = view != nullptr ? *m_sessions.shown() : 0;
+    if (view == nullptr) {
+      return;
+    }
+    Surface* surface = m_window.surface();
+    const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
+    m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
+    // After this build is in the scene: the dispatcher focuses only attached areas.
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+      if (alive.expired()) {
+        return;
+      }
+      m_retired.clear();
+      focusGrid();
+    });
   }
 
   bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
@@ -295,7 +316,7 @@ namespace term {
   StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {
     StatusRow::Data data{.name = session.name.empty() ? session.cwd : session.name,
                          .unseen = session.seen == Seen::Unseen,
-                         .selected = session.id == m_sessions.shown()};
+                         .selected = session.id == m_rowSelected};
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
       data.symbol = "loader-2";
       data.status = withCommand("running", running->command);
@@ -323,6 +344,16 @@ namespace term {
 
   // Rows change in place; the 1 Hz tick runs only while a command runs, for its elapsed time.
   void TerminalWindow::refreshRows() {
+    if (const std::uint64_t shown = m_sessions.shown().value_or(0); m_rowList != nullptr && shown != m_tintTarget) {
+      m_tintTarget = shown;
+      const auto it = std::ranges::find(m_rows, shown, &std::pair<std::uint64_t, StatusRow*>::first);
+      // The label weight moves to the new row at half the tint's travel.
+      m_rowList->setSelected(it != m_rows.end() ? it->second : nullptr, true, [this, shown] {
+        m_rowSelected = shown;
+        refreshRows();
+        m_window.invalidate();
+      });
+    }
     bool running = false;
     for (const auto& [id, row] : m_rows) {
       if (const SessionInfo* session = m_sessions.find(id); session != nullptr) {

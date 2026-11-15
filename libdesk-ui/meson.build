@@ -286,6 +286,7 @@ _desk_ui_sources = files(
   'src/ui/controls/select.cpp',
   'src/ui/controls/select_dropdown_popup.cpp',
   'src/ui/tooltip/tooltip_manager.cpp',
+  'src/ui/controls/selection_list.cpp',
   'src/ui/controls/separator.cpp',
   'src/ui/controls/slider.cpp',
   'src/ui/controls/spacer.cpp',

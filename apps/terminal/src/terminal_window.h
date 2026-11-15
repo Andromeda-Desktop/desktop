@@ -16,6 +16,8 @@
 class AppLoop;
 class AppWindow;
 class Input;
+class Renderer;
+class SelectionList;
 class Surface;
 
 namespace term {
@@ -66,7 +68,9 @@ namespace term {
     SessionList m_sessions;
     std::string m_filter; // the sidebar search text
     Input* m_search = nullptr;
-    Node* m_rowList = nullptr;
+    SelectionList* m_rowList = nullptr;
+    std::uint64_t m_tintTarget = 0; // the row the tint moves to
+    std::uint64_t m_rowSelected = 0; // the row with selected labels: it changes at half the tint's travel
     std::vector<std::pair<std::uint64_t, StatusRow*>> m_rows; // session id, its sidebar row
     Timer m_tick;
     [[nodiscard]] StatusRow::Data rowData(const SessionInfo& session) const;
@@ -81,6 +85,10 @@ namespace term {
     std::vector<Session> m_retired;
     std::uint64_t m_nextId = 1;
     std::uint64_t m_builtId = 0;
+    Node* m_contentSlot = nullptr; // holds the shown view's nodes
+    float m_contentWidth = 0.0F;
+    float m_contentHeight = 0.0F;
+    void fillSlot(Renderer& renderer);
     bool m_active = false;
     Surface* m_tickSurface = nullptr;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
