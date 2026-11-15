@@ -279,6 +279,7 @@ namespace settings {
             i18n::tr("settings.schema." + label + "." + (featureMissing ? std::string(row.missingKey) : "description")),
             std::move(path), std::move(control), std::string(row.tags), row.advanced
         ));
+        entries.back().fromSchema = true;
       }
       return entries;
     }

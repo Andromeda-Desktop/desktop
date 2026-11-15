@@ -1,0 +1,107 @@
+# page	path (or title:<key> for rows without a path)	reason the row stays hand-written
+appearance	shell.app_icon_color	unset shows the effective tint, which the schema write() cannot give
+appearance	shell.font_family	font picker: search list when fonts are known, else text; placeholder is the inherited font
+appearance	title:settings.schema.appearance.palette-inspector.label	button, no config key
+bar:default	bar.default.auto_hide	one select writes auto_hide and smart_auto_hide
+bar:default	bar.default.dead_zone.actions.back	gesture action control
+bar:default	bar.default.dead_zone.actions.forward	gesture action control
+bar:default	bar.default.dead_zone.actions.left	gesture action control
+bar:default	bar.default.dead_zone.actions.middle	gesture action control
+bar:default	bar.default.dead_zone.actions.right	gesture action control
+bar:default	bar.default.dead_zone.actions.scroll_down	gesture action control
+bar:default	bar.default.dead_zone.actions.scroll_left	gesture action control
+bar:default	bar.default.dead_zone.actions.scroll_right	gesture action control
+bar:default	bar.default.dead_zone.actions.scroll_up	gesture action control
+bar:default	bar.default.font_family	font picker: search list when fonts are known, else text; placeholder is the inherited font
+bar:default	bar.default.font_weight	weight options depend on the resolved font family
+bar:default	bar.default.position	position is not in barFieldsSchema yet (parse order); override shows the inherited edge
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.auto_hide	one select writes auto_hide and smart_auto_hide
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.back	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.forward	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.left	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.middle	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.right	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.scroll_down	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.scroll_left	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.scroll_right	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.dead_zone.actions.scroll_up	gesture action control
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.font_family	font picker: search list when fonts are known, else text; placeholder is the inherited font
+bar:default:monitor:DP-1	bar.default.monitor.DP-1.position	position is not in barFieldsSchema yet (parse order); override shows the inherited edge
+control-center	control_center.shortcuts	shortcut list control
+date-time	title:settings.datetime.local-rtc	systemd timedated call, no config key
+dock	dock.auto_hide	one select writes auto_hide and smart_auto_hide
+dock	dock.launcher_custom_image	image browse with a runtime fallback folder
+dock:monitor:laptop	dock.monitor.laptop.auto_hide	one select writes auto_hide and smart_auto_hide
+dock:monitor:laptop	dock.monitor.laptop.launcher_custom_image	image browse with a runtime fallback folder
+hooks	hooks.battery_charging	hook command rows built per hook kind
+hooks	hooks.battery_discharging	hook command rows built per hook kind
+hooks	hooks.battery_percentage_changed	hook command rows built per hook kind
+hooks	hooks.battery_plugged	hook command rows built per hook kind
+hooks	hooks.bluetooth_disabled	hook command rows built per hook kind
+hooks	hooks.bluetooth_enabled	hook command rows built per hook kind
+hooks	hooks.colors_changed	hook command rows built per hook kind
+hooks	hooks.logging_out	hook command rows built per hook kind
+hooks	hooks.power_profile_changed	hook command rows built per hook kind
+hooks	hooks.rebooting	hook command rows built per hook kind
+hooks	hooks.session_locked	hook command rows built per hook kind
+hooks	hooks.session_unlocked	hook command rows built per hook kind
+hooks	hooks.shutting_down	hook command rows built per hook kind
+hooks	hooks.started	hook command rows built per hook kind
+hooks	hooks.theme_mode_changed	hook command rows built per hook kind
+hooks	hooks.wallpaper_changed	hook command rows built per hook kind
+hooks	hooks.wifi_disabled	hook command rows built per hook kind
+hooks	hooks.wifi_enabled	hook command rows built per hook kind
+launcher	shell.launcher.panels.ignored	list suggestions come from the panel catalog
+launcher	shell.launcher.providers.calculator.global	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.calculator.prefix	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.emoji.global	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.emoji.prefix	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.panels.global	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.panels.prefix	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.session.global	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.session.prefix	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.wallpaper.global	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.wallpaper.prefix	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.windows.global	per-provider rows over a runtime provider list
+launcher	shell.launcher.providers.windows.prefix	per-provider rows over a runtime provider list
+layout	shell.desktop_layout	preset select that writes many keys
+location	location.latitude	optional number control
+location	location.longitude	optional number control
+notifications	notification.filter	notification filter list control
+panels	shell.panel_anchor_bar	options are the configured bar names
+power	idle.behavior	idle behaviour list control
+power	shell.session.actions	session action list control
+security	lockscreen.transition	transition picker control
+security	lockscreen.wallpaper	image browse with a fallback folder from the wallpaper config
+security	shell.greeter_sync.privilege_command	shown only when greeter sync is available
+services	shell.mpris.blacklist	list suggestions come from MPRIS players
+shell	shell.avatar_path	value comes from the environment, not the config
+shell	shell.keyboard_layout.custom_labels	string map control
+system	system.monitor.cpu_freq_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.cpu_temp_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.cpu_usage_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.disk_free_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.disk_free_pct_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.disk_used_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.disk_used_pct_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.gpu_temp_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.gpu_usage_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.gpu_vram_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.net_rx_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.net_tx_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.ram_pct_activity_threshold	range control writes activity and critical thresholds
+system	system.monitor.swap_pct_activity_threshold	range control writes activity and critical thresholds
+wallpaper	wallpaper.directory	placeholder is the runtime pictures folder
+wallpaper	wallpaper.monitor.DP-1.directory	per-monitor row titled with the connector name
+wallpaper	wallpaper.monitor.DP-1.directory_dark	per-monitor row titled with the connector name
+wallpaper	wallpaper.monitor.DP-1.directory_light	per-monitor row titled with the connector name
+wallpaper	wallpaper.monitor.DP-1.fill_color	per-monitor row titled with the connector name
+wallpaper	wallpaper.transition	transition picker control
+windows	hot_corners.bottom_left.action	per-corner rows; command visibility depends on the action
+windows	hot_corners.bottom_left.command	per-corner rows; command visibility depends on the action
+windows	hot_corners.bottom_right.action	per-corner rows; command visibility depends on the action
+windows	hot_corners.bottom_right.command	per-corner rows; command visibility depends on the action
+windows	hot_corners.top_left.action	per-corner rows; command visibility depends on the action
+windows	hot_corners.top_left.command	per-corner rows; command visibility depends on the action
+windows	hot_corners.top_right.action	per-corner rows; command visibility depends on the action
+windows	hot_corners.top_right.command	per-corner rows; command visibility depends on the action

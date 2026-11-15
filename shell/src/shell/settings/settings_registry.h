@@ -324,6 +324,7 @@ namespace settings {
     bool advanced = false;
     std::string searchText;
     SettingVisibility visibleWhen; // empty = always visible
+    bool fromSchema = false;       // built from a config schema RowSpec, not written by hand
   };
 
   // Runtime conditions that gate optional sections (e.g. compositor-specific features).

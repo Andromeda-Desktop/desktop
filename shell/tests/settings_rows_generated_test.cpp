@@ -1,6 +1,8 @@
 // Rows built from the config schema must equal the hand-written rows they replaced.
 // tests/settings_rows_generated/hand_written_rows.tsv holds those rows, captured from the
 // registry before any of them moved to the schema (`--write-fixture <file>` rewrites it).
+// A row still written by hand must be on tests/settings_rows_generated/hand_written_allowed.tsv
+// (page, path or title key, reason); a new hand-written row or a stale list entry fails the test.
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "config/config_types.h"
 #include "shell/settings/settings_registry.h"
@@ -221,8 +223,10 @@ int main(int argc, char** argv) {
     }
     return out ? 0 : 1;
   }
-  if (args.size() != 2) {
-    std::println(stderr, "usage: settings_rows_generated_test <fixture.tsv> <en.json> | --write-fixture <file>");
+  if (args.size() != 3) {
+    std::println(
+        stderr, "usage: settings_rows_generated_test <fixture.tsv> <en.json> <allowed.tsv> | --write-fixture <file>"
+    );
     return 1;
   }
 
@@ -288,6 +292,36 @@ int main(int argc, char** argv) {
         ok = false;
         std::println(stderr, "{}: no en.json key {}", joined(entry.path, '.'), key);
       }
+    }
+  }
+  std::vector<std::string> allowed;
+  {
+    std::ifstream in{std::string(args[2])};
+    for (std::string line; std::getline(in, line);) {
+      if (!line.empty() && !line.starts_with('#')) {
+        allowed.push_back(line.substr(0, line.find('\t', line.find('\t') + 1)));
+      }
+    }
+  }
+  std::vector<std::string> handWritten;
+  for (const auto& entry : entries) {
+    if (!entry.fromSchema) {
+      handWritten.push_back(
+          barSettingContentSectionKey(entry) + '\t'
+          + (entry.path.empty() ? "title:" + keyOf(entry.title) : joined(entry.path, '.'))
+      );
+    }
+  }
+  for (const auto& row : handWritten) {
+    if (!std::ranges::contains(allowed, row)) {
+      ok = false;
+      std::println(stderr, "hand-written row not on the allow-list: {}", row);
+    }
+  }
+  for (const auto& row : allowed) {
+    if (!std::ranges::contains(handWritten, row)) {
+      ok = false;
+      std::println(stderr, "allow-list entry has no hand-written row: {}", row);
     }
   }
   return ok ? 0 : 1;

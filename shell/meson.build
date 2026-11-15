@@ -1349,6 +1349,7 @@ if build_tests
       test_args = [
         meson.project_source_root() / 'tests' / 'settings_rows_generated' / 'hand_written_rows.tsv',
         meson.project_source_root() / 'assets' / 'translations' / 'en.json',
+        meson.project_source_root() / 'tests' / 'settings_rows_generated' / 'hand_written_allowed.tsv',
       ]
     endif
     test(test_name, test_exe, args: test_args, depends: test_name == 'math_provider' ? [noctalia_calc_module] : [])
