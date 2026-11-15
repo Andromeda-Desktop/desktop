@@ -150,6 +150,9 @@ void Scrollbar::update(float viewportExtent, float contentExtent, float scrollOf
   for (RectNode* mark : m_markNodes) {
     mark->setVisible(m_shown);
   }
+  if (m_currentMarkNode != nullptr) {
+    m_currentMarkNode->setVisible(m_shown && m_currentMark.has_value());
+  }
   if (!m_shown) {
     m_thumbTravel = 0.0F;
     setExpanded(false);
@@ -274,6 +277,20 @@ void Scrollbar::setMarks(std::vector<float> marks) {
   markPaintDirty();
 }
 
+void Scrollbar::setCurrentMark(std::optional<float> mark, const ColorSpec& color) {
+  if (mark == m_currentMark && color == m_currentMarkColor) {
+    return;
+  }
+  m_currentMark = mark;
+  m_currentMarkColor = color;
+  if (m_currentMarkNode == nullptr) {
+    m_currentMarkNode = static_cast<RectNode*>(insertChildAt(1 + m_markNodes.size(), std::make_unique<RectNode>()));
+  }
+  m_currentMarkNode->setVisible(m_shown && m_currentMark.has_value());
+  applyGeometry();
+  markPaintDirty();
+}
+
 void Scrollbar::applyMarks(float trackExtent) {
   const float length = Tokens::componentScrollbarHoverWidth * m_contentScale;
   const float thick = 2.0F * m_contentScale;
@@ -282,10 +299,8 @@ void Scrollbar::applyMarks(float trackExtent) {
       ? m_crossOffset
       : m_crossOffset + thickness() - length;
   const RoundedRectStyle style = makeSolid(resolveColorSpec(colorSpecFromRole(ColorRole::Label3), this), thick * 0.5F);
-  for (std::size_t i = 0; i < m_marks.size(); ++i) {
-    const float along = m_trackInset + std::clamp(m_marks[i], 0.0F, 1.0F) * (trackExtent - thick);
-    RectNode* mark = m_markNodes[i];
-    mark->setStyle(style);
+  const auto place = [&](RectNode* mark, float at) {
+    const float along = m_trackInset + std::clamp(at, 0.0F, 1.0F) * (trackExtent - thick);
     if (m_orientation == ScrollOrientation::Horizontal) {
       mark->setPosition(along, cross);
       mark->setFrameSize(thick, length);
@@ -293,6 +308,14 @@ void Scrollbar::applyMarks(float trackExtent) {
       mark->setPosition(cross, along);
       mark->setFrameSize(length, thick);
     }
+  };
+  for (std::size_t i = 0; i < m_marks.size(); ++i) {
+    m_markNodes[i]->setStyle(style);
+    place(m_markNodes[i], m_marks[i]);
+  }
+  if (m_currentMarkNode != nullptr && m_currentMark) {
+    m_currentMarkNode->setStyle(makeSolid(resolveColorSpec(m_currentMarkColor, this), thick * 0.5F));
+    place(m_currentMarkNode, *m_currentMark);
   }
 }
 

@@ -3,6 +3,7 @@
 #include "context_row.h"
 #include "core/timer_manager.h"
 #include "pty_session.h"
+#include "render/core/color.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
 #include "render/scene/terminal_grid_node.h"
@@ -24,6 +25,7 @@
 class InputArea;
 class Node;
 class Renderer;
+class RectNode;
 class Scrollbar;
 struct KeyboardEvent;
 class TextureManager;
@@ -56,6 +58,8 @@ namespace term {
       std::function<void(const std::string& cwd)> cwdChanged;
       // Ctrl+click on a link: an http(s), mailto or file URI.
       std::function<void(const std::string& uri)> openUri;
+      // Find results changed: match count and the current match (1 = newest), while find is open.
+      std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
     };
 
     explicit TerminalView(Host host);
@@ -87,6 +91,11 @@ namespace term {
     // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
     void setWindowActive(bool active);
+    // Find over the screen and scrollback; an empty query clears the hits.
+    void setFindQuery(const std::string& query);
+    // older: toward history (Enter); else toward the prompt (Shift+Enter).
+    void findStep(bool older);
+    void closeFind();
 
     [[nodiscard]] InputArea* focusArea() const noexcept { return m_area; }
     [[nodiscard]] PtySession& session() noexcept { return m_session; }
@@ -125,6 +134,8 @@ namespace term {
     [[nodiscard]] bool mouseTracking();
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     void syncContext();
+    // Under the terminal lock: feeds the search and reads its hits as viewport cells.
+    void readFind(GhosttyTerminal terminal);
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
     // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
     void setScrollPx(float px);
@@ -221,6 +232,33 @@ namespace term {
     std::uint32_t m_faint = 0;
     std::uint32_t m_background = 0;
     std::uint32_t m_selection = 0;
+    Color m_findHit{};
+    Color m_findHitCurrent{};
+    struct FindHit {
+      GhosttyPointCoordinate start; // viewport cells, inclusive
+      GhosttyPointCoordinate end;
+      bool operator==(const FindHit& o) const {
+        return start.x == o.start.x && start.y == o.start.y && end.x == o.end.x && end.y == o.end.y;
+      }
+    };
+    struct FindClosed {};
+    struct FindOpen {
+      GhosttySearch search = nullptr; // freed under the terminal lock
+      bool selectFirst = false;       // select the newest match once one is found
+      std::vector<FindHit> hits;      // in the viewport
+      std::optional<FindHit> current;
+      std::size_t total = 0;
+      std::optional<std::size_t> index; // 0 = newest
+      std::vector<float> marks;         // scrollbar fractions
+      std::optional<float> currentMark;
+    };
+    std::variant<FindClosed, FindOpen> m_find;
+    std::vector<GhosttySelection> m_findScratch;
+    bool m_marksDirty = false;
+    Node* m_findLayer = nullptr; // moves with the grid origin
+    RectNode* m_findRing = nullptr;
+    void updateMarks();
+    [[nodiscard]] bool findHitAt(std::uint32_t row, std::uint16_t col, bool& current) const;
     std::vector<TerminalCell> m_rowBuffer;
     bool m_exitReported = false;
   };

@@ -5,7 +5,9 @@
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <functional>
 #include <memory>
 #include <string>
@@ -15,6 +17,9 @@
 
 class AppLoop;
 class AppWindow;
+class Button;
+class Label;
+class Node;
 class Input;
 class Renderer;
 class SelectionList;
@@ -81,6 +86,16 @@ namespace term {
     void applyFilter();
     void openFirstMatch();
     void focusGrid();
+    // Find bar in the title band (Ctrl+Shift+F): it searches the shown session.
+    void openFind();
+    void closeFind();
+    void setFindCount(std::size_t total, std::optional<std::size_t> current);
+    bool m_findOpen = false;
+    std::string m_findQuery;
+    Node* m_findBar = nullptr;
+    Input* m_findInput = nullptr;
+    Label* m_findCount = nullptr;
+    std::array<Button*, 2> m_findSteps{}; // prev, next
     std::vector<Session> m_views;
     // Closed sessions whose nodes are still in the scene: freed after the next build replaced them.
     std::vector<Session> m_retired;

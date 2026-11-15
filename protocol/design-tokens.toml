@@ -500,6 +500,9 @@ cell_height = 112.0
 icon = 64.0
 gap = 8.0
 
+[component.terminal]
+find_width = 360.0  # find capsule in the title band (D find14 mockup)
+
 [component.files]  # Files v2 list columns (mockup files-v2-live.html section 2, FILES-UX 2.9)
 column_date = 112.0
 column_size = 72.0

@@ -11,7 +11,9 @@
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
 #include "ui/controls/status_row.h"
+#include "ui/controls/button.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/input.h"
 #include "ui/controls/label.h"
 #include "ui/palette.h"
 #include "ui/style.h"
@@ -111,6 +113,78 @@ namespace term {
       applyFilter();
       return side;
     });
+    m_window.setHeaderAccessoryBuilder([this]() -> std::unique_ptr<Node> {
+      const float s = m_window.uiScale();
+      const float button = Tokens::spaceP24 * s;
+      auto slot = ui::row({.align = FlexAlign::Center, .flexGrow = 1.0F});
+      auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .flexGrow = 1.0F});
+      auto field = ui::row({.align = FlexAlign::Center, .maxWidth = Tokens::componentTerminalFindWidth * s, .flexGrow = 1.0F});
+      field->addChild(ui::searchCapsule({
+          .out = &m_findInput,
+          .placeholder = "Find",
+          .scale = s,
+          .value = m_findQuery,
+          .flexGrow = 1.0F,
+          .onChange =
+              [this](const std::string& text) {
+                m_findQuery = text;
+                if (TerminalView* view = shownView(); view != nullptr) {
+                  view->setFindQuery(text);
+                }
+                if (text.empty()) {
+                  setFindCount(0, std::nullopt);
+                }
+              },
+          .onSubmit =
+              [this](const std::string& /*text*/) {
+                if (TerminalView* view = shownView(); view != nullptr) {
+                  view->findStep(true);
+                }
+              },
+          .onKeyEvent = [this](std::uint32_t sym, std::uint32_t mods) {
+            constexpr std::uint32_t kEscape = 0xff1b;
+            constexpr std::uint32_t kReturn = 0xff0d;
+            if (sym == kEscape) {
+              closeFind();
+              return true;
+            }
+            if (sym == kReturn && (mods & KeyMod::Shift) != 0) {
+              if (TerminalView* view = shownView(); view != nullptr) {
+                view->findStep(false);
+              }
+              return true;
+            }
+            return false;
+          },
+      }));
+      bar->addChild(std::move(field));
+      bar->addChild(ui::label({.out = &m_findCount, .fontSize = Tokens::typeFootnote.size * s,
+                               .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ColorRole::Label2),
+                               .maxLines = 1}));
+      const auto round = [&](const char* glyph, const char* tooltip, Button** out, std::function<void()> onClick) {
+        return ui::button({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s,
+                           .variant = ButtonVariant::Ghost, .tooltip = std::string(tooltip), .radius = button / 2.0F,
+                           .width = button, .height = button, .onClick = std::move(onClick)});
+      };
+      bar->addChild(round("chevron-up", "Previous match  Shift+Enter", &m_findSteps[0], [this] {
+        if (TerminalView* view = shownView(); view != nullptr) {
+          view->findStep(false);
+        }
+      }));
+      bar->addChild(round("chevron-down", "Next match  Enter", &m_findSteps[1], [this] {
+        if (TerminalView* view = shownView(); view != nullptr) {
+          view->findStep(true);
+        }
+      }));
+      bar->addChild(round("x", "Close  Escape", nullptr, [this] { closeFind(); }));
+      m_findBar = bar.get();
+      m_findBar->setVisible(m_findOpen);
+      m_findBar->setParticipatesInLayout(m_findOpen);
+      slot->addChild(std::move(bar));
+      m_window.setHeaderSearchMode(m_findOpen);
+      setFindCount(0, std::nullopt);
+      return slot;
+    });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       if (sessionKey(event)) {
         return true;
@@ -181,7 +255,13 @@ namespace term {
                 m_window.setTitle(shown);
               }
             },
-        .openUri = [this](const std::string& uri) { openUri(uri); }});
+        .openUri = [this](const std::string& uri) { openUri(uri); },
+        .findChanged =
+            [this, id](std::size_t total, std::optional<std::size_t> current) {
+              if (m_sessions.shown() == id) {
+                setFindCount(total, current);
+              }
+            }});
     TerminalView& ref = *view;
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);
@@ -248,6 +328,9 @@ namespace term {
   }
 
   void TerminalWindow::show(std::uint64_t id) {
+    if (m_findOpen && m_builtId != id) {
+      closeFind();
+    }
     for (Session& session : m_views) {
       session.view->setWindowActive(session.id == id && m_active);
     }
@@ -313,6 +396,10 @@ namespace term {
     }
     if (shift && (event.unshifted == 't' || event.unshifted == 'T')) {
       openSession(NewShell{});
+      return true;
+    }
+    if (shift && (event.unshifted == 'f' || event.unshifted == 'F')) {
+      openFind();
       return true;
     }
     if (!shift && event.unshifted >= '1' && event.unshifted <= '9') {
@@ -434,6 +521,48 @@ namespace term {
   void TerminalWindow::focusGrid() {
     if (TerminalView* view = shownView(); view != nullptr && view->focusArea() != nullptr) {
       m_window.input().setFocus(view->focusArea());
+    }
+  }
+
+  void TerminalWindow::openFind() {
+    if (m_findBar == nullptr || m_findInput == nullptr) {
+      return;
+    }
+    m_findOpen = true;
+    m_findBar->setVisible(true);
+    m_findBar->setParticipatesInLayout(true);
+    m_window.setHeaderSearchMode(true);
+    m_window.input().setFocus(m_findInput->inputArea());
+    if (TerminalView* view = shownView(); view != nullptr && !m_findQuery.empty()) {
+      view->setFindQuery(m_findQuery);
+    }
+  }
+
+  void TerminalWindow::closeFind() {
+    m_findOpen = false;
+    for (Session& session : m_views) {
+      session.view->closeFind();
+    }
+    if (m_findBar != nullptr) {
+      m_findBar->setVisible(false);
+      m_findBar->setParticipatesInLayout(false);
+    }
+    m_window.setHeaderSearchMode(false);
+    focusGrid();
+  }
+
+  void TerminalWindow::setFindCount(std::size_t total, std::optional<std::size_t> current) {
+    if (m_findCount == nullptr) {
+      return;
+    }
+    m_findCount->setText(m_findQuery.empty() ? std::string()
+                         : total == 0       ? std::string("No matches")
+                         : current          ? std::format("{} of {}", *current, total)
+                                            : std::format("{} matches", total));
+    for (Button* step : m_findSteps) {
+      if (step != nullptr) {
+        step->setEnabled(total > 0);
+      }
     }
   }
 

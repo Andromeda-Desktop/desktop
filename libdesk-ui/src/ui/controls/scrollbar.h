@@ -2,11 +2,13 @@
 
 #include "core/timer_manager.h"
 #include "render/scene/node.h"
+#include "ui/palette.h"
 #include "ui/signal.h"
 #include "ui/style.h"
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 
 class InputArea;
@@ -36,6 +38,8 @@ public:
 
   // Marks on the track (commands, find hits), as fractions of the content extent, 0 = start.
   void setMarks(std::vector<float> marks);
+  // One mark drawn over the others in `color` (the current find hit); nullopt removes it.
+  void setCurrentMark(std::optional<float> mark, const ColorSpec& color);
 
   // Overlay bar: hidden at rest, shown while the offset changes or the pointer is on it.
   void setAutoHide(bool autoHide);
@@ -68,6 +72,9 @@ private:
   RectNode* m_thumb = nullptr;
   std::vector<float> m_marks;
   std::vector<RectNode*> m_markNodes; // drawn between the track and the thumb
+  std::optional<float> m_currentMark;
+  ColorSpec m_currentMarkColor;
+  RectNode* m_currentMarkNode = nullptr; // above the other marks, below the thumb
   InputArea* m_trackArea = nullptr;
   InputArea* m_thumbArea = nullptr;
 
