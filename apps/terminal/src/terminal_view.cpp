@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
+#include "git_branch.h"
 #include "key_map.h"
 #include "kitty_images.h"
 #include "link_finder.h"
@@ -14,6 +15,7 @@
 #include "ui/controls/input.h"
 #include "ui/controls/scrollbar.h"
 #include "ui/palette.h"
+#include "time/time_format.h"
 #include "ui/style.h"
 #include "wayland/text_input_service.h"
 
@@ -203,6 +205,7 @@ namespace term {
     m_grid = grid.get();
     m_grid->setFont(std::string(Tokens::fontMono), Tokens::typeMono.size * uiScale, Tokens::typeMono.line * uiScale, deviceScale);
     m_images = std::make_unique<KittyImages>(*m_grid);
+    m_context = std::make_unique<ContextRow>(*m_grid);
     setGridOrigin(kInset * uiScale, kTopInset * uiScale);
     auto area = ui::inputArea({.out = &m_area,
                                .focusable = true,
@@ -269,7 +272,9 @@ namespace term {
       const float thickness = m_scrollbar->reservedThickness();
       m_scrollbar->setPosition(width - thickness, 0.0F);
       m_scrollbar->setSize(thickness, height);
-      m_scrollState = {};
+      const float cellH = m_grid->cellHeight();
+      m_scrollbar->update(static_cast<float>(m_scrollState.len) * cellH, static_cast<float>(m_scrollState.total) * cellH,
+                          m_scrollPx);
     }
     m_width = width;
     m_height = height;
@@ -364,7 +369,17 @@ namespace term {
       m_scrollState = scroll;
       const float cellH = m_grid->cellHeight();
       m_scrollbar->update(static_cast<float>(scroll.len) * cellH, static_cast<float>(scroll.total) * cellH, m_scrollPx);
+      m_scrollbar->setMarks(m_session.withCommands([&](GhosttyTerminal, const CommandIndex& index) {
+        std::vector<float> marks;
+        for (const auto& entry : index.entries()) {
+          if (const auto row = CommandIndex::row(entry.prompt.get(), GHOSTTY_POINT_TAG_SCREEN); row && scroll.total > 0) {
+            marks.push_back(static_cast<float>(*row) / static_cast<float>(scroll.total));
+          }
+        }
+        return marks;
+      }));
     }
+    syncContext();
     GhosttyRenderStateColors colors{};
     colors.size = sizeof(colors);
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
@@ -686,6 +701,95 @@ namespace term {
   void TerminalView::setGridOrigin(float x, float y) {
     m_grid->setGridOrigin(x, y);
     m_images->setOrigin(x, y);
+    m_context->setOrigin(x, y);
+  }
+
+  void TerminalView::syncContext() {
+    using Caption = ContextItem::Caption;
+    const auto now = std::chrono::steady_clock::now();
+    const std::uint64_t top = m_viewRow;
+    const std::uint64_t bottom = top + static_cast<std::uint64_t>(std::max(0, viewRows())) + 1;
+    const char* homeEnv = std::getenv("HOME");
+    const std::string home = homeEnv != nullptr ? homeEnv : "";
+    auto placed = m_session.withCommands([&](GhosttyTerminal t, CommandIndex& index) {
+      std::vector<ContextRow::Placed> out;
+      GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+      std::uint16_t cols = 0;
+      // Prompt refs live on the primary screen; a full-screen program draws over it.
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS
+          || screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY
+          || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLS, &cols) != GHOSTTY_SUCCESS) {
+        return out;
+      }
+      const auto blank = [&](std::uint32_t row) {
+        for (std::uint16_t x = 0; x < cols; ++x) {
+          GhosttyPoint point{};
+          point.tag = GHOSTTY_POINT_TAG_SCREEN;
+          point.value.coordinate = {.x = x, .y = row};
+          GhosttyGridRef ref{};
+          GhosttyCell cell = 0;
+          bool text = false;
+          if (ghostty_terminal_grid_ref(t, point, &ref) == GHOSTTY_SUCCESS
+              && ghostty_grid_ref_cell(&ref, &cell) == GHOSTTY_SUCCESS
+              && ghostty_cell_get(cell, GHOSTTY_CELL_DATA_HAS_TEXT, &text) == GHOSTTY_SUCCESS && text) {
+            return false;
+          }
+        }
+        return true;
+      };
+      auto& entries = index.entries();
+      for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
+        const auto row = CommandIndex::row(it->prompt.get(), GHOSTTY_POINT_TAG_SCREEN);
+        if (!row || *row < top) {
+          break;
+        }
+        // A user prompt (starship, a styled PS1) keeps its own row: the pills go only in our blank row.
+        if (*row >= bottom || !blank(*row)) {
+          continue;
+        }
+        const std::string path = pathFromFileUri(it->cwdUri);
+        if (it->branchState == CommandEntry::Branch::Unread) {
+          const auto branch = path.empty() ? std::nullopt : gitBranch(path);
+          it->branchState = branch ? CommandEntry::Branch::Known : CommandEntry::Branch::None;
+          it->branch = branch.value_or("");
+        }
+        ContextItem item;
+        item.path = path;
+        const bool inHome = !home.empty() && (path == home || path.starts_with(home + "/"));
+        item.cwd = inHome ? "~" + path.substr(home.size()) : path;
+        item.branch = it->branch;
+        const auto clock = [](std::chrono::steady_clock::duration d) {
+          const double seconds = std::chrono::duration<double>(d).count();
+          return seconds < 60.0 ? std::format("{:.1f} s", seconds)
+                                : formatClockTime(static_cast<std::int64_t>(seconds));
+        };
+        switch (it->phase) {
+        case CommandEntry::Phase::Prompt: break;
+        case CommandEntry::Phase::Running:
+          item.caption = Caption::Running;
+          item.time = "running · " + formatClockTime(std::chrono::duration_cast<std::chrono::seconds>(now - it->started).count());
+          break;
+        case CommandEntry::Phase::Done:
+          item.caption = it->exitCode.value_or(0) == 0 ? Caption::Done : Caption::Failed;
+          item.exit = std::format("exit {}", it->exitCode.value_or(0));
+          item.time = clock(it->duration);
+          break;
+        }
+        out.push_back({.row = static_cast<std::uint32_t>(*row - top), .item = std::move(item)});
+      }
+      return out;
+    });
+    const bool running = std::ranges::any_of(placed, [](const ContextRow::Placed& p) {
+      return p.item.caption == Caption::Running;
+    });
+    const float inset = kInset * m_uiScale;
+    m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + Tokens::spaceP8 * m_uiScale,
+                    m_uiScale);
+    if (running && !m_contextTick.active()) {
+      m_contextTick.startRepeating(std::chrono::seconds(1), [this] { syncContext(); });
+    } else if (!running) {
+      m_contextTick.stop();
+    }
   }
 
   void TerminalView::scheduleRedraw(Redraw redraw) {
@@ -849,12 +953,14 @@ namespace term {
     if (ctrl && m_grid != nullptr && m_grid->columns() > 0 && m_grid->rows() > 0) {
       next = linkAt(cellAt(m_pointerX, m_pointerY));
     }
-    if (next == m_link) {
+    const bool overPill = m_context != nullptr && m_context->hitTest(m_pointerX, m_pointerY).has_value();
+    if (next == m_link && overPill == m_overPill) {
       return;
     }
     m_link = std::move(next);
+    m_overPill = overPill;
     if (m_area != nullptr) {
-      m_area->setCursorShape(m_link ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : 0);
+      m_area->setCursorShape(m_link || m_overPill ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : 0);
     }
     scheduleRedraw(Redraw::All);
   }
@@ -872,6 +978,18 @@ namespace term {
         m_host.openUri(m_link->uri);
       }
       return;
+    }
+    if (button == BTN_LEFT && pressed) {
+      if (const auto pill = m_context->hitTest(localX, localY)) {
+        if (pill->pill == ContextRow::Hit::Pill::Branch) {
+          if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+            clipboard->setClipboardText(pill->value);
+          }
+        } else if (m_host.openUri) {
+          m_host.openUri(fileUri(pill->value));
+        }
+        return;
+      }
     }
     const std::uint32_t bit = 1U << mouse;
     const std::uint32_t mods = modifiers();

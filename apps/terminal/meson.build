@@ -24,7 +24,7 @@ if not _ghostty.found()
 endif
 
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
-  'src/shell_integration.cpp', 'src/command_index.cpp',
+  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/git_branch.cpp',
   dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
@@ -69,6 +69,7 @@ _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
 executable('andromeda-terminal',
   'src/key_map.cpp',
   'src/kitty_images.cpp',
+  'src/context_row.cpp',
   'src/main.cpp',
   'src/notifier.cpp',
   'src/terminal_app.cpp',

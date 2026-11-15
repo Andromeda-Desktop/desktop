@@ -1,5 +1,7 @@
 #pragma once
 
+#include "context_row.h"
+#include "core/timer_manager.h"
 #include "pty_session.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
@@ -122,6 +124,7 @@ namespace term {
     bool wheel(const InputArea::PointerData& d);
     [[nodiscard]] bool mouseTracking();
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
+    void syncContext();
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
     // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
     void setScrollPx(float px);
@@ -188,6 +191,7 @@ namespace term {
     std::variant<CommandIdle, CommandRunning> m_command;
     std::string m_cwd;
     std::optional<HoverLink> m_link;
+    bool m_overPill = false; // the pointer is on a context-row pill
     TextInputService* m_textInput = nullptr;
     std::string m_preedit;
     GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows
@@ -203,6 +207,8 @@ namespace term {
     InputArea* m_area = nullptr;
     TerminalGridNode* m_grid = nullptr;
     std::unique_ptr<KittyImages> m_images;
+    std::unique_ptr<ContextRow> m_context;
+    Timer m_contextTick; // 1 Hz, only while a shown prompt's command runs
     std::array<std::uint16_t, 2> m_cellPx{}; // cell size the terminal last got, device px
     Scrollbar* m_scrollbar = nullptr;
     GhosttyTerminalScrollbar m_scrollState{}; // rows; the bar is updated only when this changes

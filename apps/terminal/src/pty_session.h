@@ -14,7 +14,6 @@
 #include <string>
 #include <sys/types.h>
 #include <thread>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -74,7 +73,7 @@ public:
   template <typename F> auto withCommands(F&& f) {
     std::lock_guard lock(m_termMutex);
     m_commands.prune();
-    return f(m_terminal, std::as_const(m_commands));
+    return f(m_terminal, m_commands);
   }
 
   SessionState state() const { return m_state.load(); }

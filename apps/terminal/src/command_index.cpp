@@ -42,7 +42,12 @@ CommandEntry* CommandIndex::start(GhosttyTerminal terminal) {
     const auto p = row(e.prompt.get(), GHOSTTY_POINT_TAG_SCREEN);
     return e.phase == CommandEntry::Phase::Prompt || !p || *p >= *at;
   });
-  return &m_entries.emplace_back(CommandEntry{.prompt = std::move(ref)});
+  CommandEntry& entry = m_entries.emplace_back(CommandEntry{.prompt = std::move(ref)});
+  GhosttyString pwd{};
+  if (ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_PWD, &pwd) == GHOSTTY_SUCCESS && pwd.len > 0) {
+    entry.cwdUri.assign(reinterpret_cast<const char*>(pwd.ptr), pwd.len);
+  }
+  return &entry;
 }
 
 void CommandIndex::onMark(GhosttyTerminal terminal, const CommandMark& mark,

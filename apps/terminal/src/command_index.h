@@ -31,6 +31,11 @@ struct CommandEntry {
   Phase phase = Phase::Prompt;
   TrackedRef prompt; // the cell of the 133;A cursor
   TrackedRef output; // the cell of the 133;C cursor; null in Prompt
+  std::string cwdUri; // OSC 7 at the prompt
+  // The git branch of cwdUri, read on the UI thread the first time the prompt row is shown.
+  enum class Branch : std::uint8_t { Unread, None, Known };
+  Branch branchState = Branch::Unread;
+  std::string branch; // Known only
   std::string command;
   std::optional<int> exitCode;
   std::chrono::steady_clock::time_point started;
@@ -45,6 +50,7 @@ public:
   // Drops entries whose prompt left the terminal (scrollback trimmed or cleared, or no scrollback).
   void prune();
   const std::vector<CommandEntry>& entries() const { return m_entries; }
+  std::vector<CommandEntry>& entries() { return m_entries; }
 
   // The ref's row in `tag` space, or nullopt when it has no value there.
   static std::optional<std::uint32_t> row(GhosttyTrackedGridRef ref, GhosttyPointTag tag);

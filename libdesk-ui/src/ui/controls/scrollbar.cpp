@@ -147,6 +147,9 @@ void Scrollbar::update(float viewportExtent, float contentExtent, float scrollOf
   m_thumb->setVisible(m_shown);
   m_trackArea->setVisible(m_shown);
   m_thumbArea->setVisible(m_shown);
+  for (RectNode* mark : m_markNodes) {
+    mark->setVisible(m_shown);
+  }
   if (!m_shown) {
     m_thumbTravel = 0.0F;
     setExpanded(false);
@@ -175,8 +178,7 @@ void Scrollbar::reveal() {
     return;
   }
   driveReveal(1.0F);
-  constexpr std::chrono::milliseconds kHideDelay{1000};
-  m_hideTimer.start(kHideDelay, [this] {
+  m_hideTimer.start(std::chrono::milliseconds{Tokens::componentScrollbarHideMs}, [this] {
     if (m_expansion > 0.0F) {
       reveal();
       return;
@@ -250,6 +252,48 @@ void Scrollbar::applyGeometry() {
 
   applyPalette();
   applyThumbPosition(m_lastScrollOffset, m_maxScroll);
+  applyMarks(trackExtent);
+}
+
+void Scrollbar::setMarks(std::vector<float> marks) {
+  if (marks == m_marks) {
+    return;
+  }
+  m_marks = std::move(marks);
+  while (m_markNodes.size() < m_marks.size()) {
+    m_markNodes.push_back(static_cast<RectNode*>(insertChildAt(1, std::make_unique<RectNode>())));
+  }
+  while (m_markNodes.size() > m_marks.size()) {
+    removeChild(m_markNodes.back());
+    m_markNodes.pop_back();
+  }
+  for (RectNode* mark : m_markNodes) {
+    mark->setVisible(m_shown);
+  }
+  applyGeometry();
+  markPaintDirty();
+}
+
+void Scrollbar::applyMarks(float trackExtent) {
+  const float length = Tokens::componentScrollbarHoverWidth * m_contentScale;
+  const float thick = 2.0F * m_contentScale;
+  // Flush with the bar's outer edge, so a mark never reaches past the gutter.
+  const float cross = Style::rtl() && m_orientation == ScrollOrientation::Vertical
+      ? m_crossOffset
+      : m_crossOffset + thickness() - length;
+  const RoundedRectStyle style = makeSolid(resolveColorSpec(colorSpecFromRole(ColorRole::Label3), this), thick * 0.5F);
+  for (std::size_t i = 0; i < m_marks.size(); ++i) {
+    const float along = m_trackInset + std::clamp(m_marks[i], 0.0F, 1.0F) * (trackExtent - thick);
+    RectNode* mark = m_markNodes[i];
+    mark->setStyle(style);
+    if (m_orientation == ScrollOrientation::Horizontal) {
+      mark->setPosition(along, cross);
+      mark->setFrameSize(thick, length);
+    } else {
+      mark->setPosition(cross, along);
+      mark->setFrameSize(length, thick);
+    }
+  }
 }
 
 void Scrollbar::updateExpanded() {

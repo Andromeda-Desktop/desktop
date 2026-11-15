@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <vector>
 
 class InputArea;
 class RectNode;
@@ -33,6 +34,9 @@ public:
 
   void update(float viewportExtent, float contentExtent, float scrollOffset);
 
+  // Marks on the track (commands, find hits), as fractions of the content extent, 0 = start.
+  void setMarks(std::vector<float> marks);
+
   // Overlay bar: hidden at rest, shown while the offset changes or the pointer is on it.
   void setAutoHide(bool autoHide);
   [[nodiscard]] bool autoHide() const noexcept { return m_autoHide; }
@@ -52,6 +56,7 @@ private:
   void applyPalette();
   void onPaletteToneChanged() override { applyPalette(); }
   void applyThumbPosition(float scrollOffset, float maxScroll);
+  void applyMarks(float trackExtent);
   void applyGeometry();
   void updateExpanded();
   void setExpanded(bool expanded);
@@ -61,6 +66,8 @@ private:
 
   RectNode* m_track = nullptr;
   RectNode* m_thumb = nullptr;
+  std::vector<float> m_marks;
+  std::vector<RectNode*> m_markNodes; // drawn between the track and the thumb
   InputArea* m_trackArea = nullptr;
   InputArea* m_thumbArea = nullptr;
 

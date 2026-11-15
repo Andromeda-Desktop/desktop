@@ -17,4 +17,7 @@ namespace term {
   // spacer after a wide character.
   [[nodiscard]] std::optional<LinkSpan> findLink(std::span<const char32_t> cells, int col, const std::string& cwd);
 
+  // file:// URI of a local absolute path, percent-escaped.
+  [[nodiscard]] std::string fileUri(const std::string& path);
+
 } // namespace term

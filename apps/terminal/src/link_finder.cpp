@@ -45,22 +45,6 @@ namespace term {
       return out;
     }
 
-    std::string fileUri(const std::string& path) {
-      static constexpr char kHex[] = "0123456789ABCDEF";
-      std::string out = "file://";
-      for (const char ch : path) {
-        const auto c = static_cast<unsigned char>(ch);
-        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-            || std::string_view("/-._~").contains(ch)) {
-          out += ch;
-        } else {
-          out += '%';
-          out += kHex[c >> 4];
-          out += kHex[c & 0xF];
-        }
-      }
-      return out;
-    }
 
     // Drops up to two ":<digits>" suffixes (line, column).
     std::string_view withoutPosition(std::string_view s) {
@@ -76,6 +60,23 @@ namespace term {
     }
 
   } // namespace
+
+  std::string fileUri(const std::string& path) {
+    static constexpr char kHex[] = "0123456789ABCDEF";
+    std::string out = "file://";
+    for (const char ch : path) {
+      const auto c = static_cast<unsigned char>(ch);
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+          || std::string_view("/-._~").contains(ch)) {
+        out += ch;
+      } else {
+        out += '%';
+        out += kHex[c >> 4];
+        out += kHex[c & 0xF];
+      }
+    }
+    return out;
+  }
 
   std::optional<LinkSpan> findLink(std::span<const char32_t> cells, int col, const std::string& cwd) {
     const int n = static_cast<int>(cells.size());
