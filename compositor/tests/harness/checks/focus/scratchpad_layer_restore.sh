@@ -60,12 +60,12 @@ wait_for_field() {
   return 1
 }
 
-wait_for_ready() {
+wait_for_line() {
   for _ in $(seq 80); do
-    grep -q '^ready$' "$1" && return 0
+    grep -qx "$2" "$1" && return 0
     sleep 0.1
   done
-  echo "exclusive-zone panel did not map: $(< "$1")"
+  echo "exclusive-zone panel did not print $2: $(< "$1")"
   return 1
 }
 
@@ -73,9 +73,9 @@ steal_with_layer() {
   local log=$1 layer_pid=
   "$LAYER_CLIENT" HEADLESS-1 40 keyboard=exclusive > "$log" 2>&1 &
   layer_pid=$!
-  wait_for_ready "$log" || return 1
-  wait_for_field "$WS" active false || return 1
-  wait_for_field "$SCRATCH" active false || return 1
+  wait_for_line "$log" ready || return 1
+  # The window under the layer stays activated; only the seat moves to the layer.
+  wait_for_line "$log" keyboard-enter || return 1
   kill "$layer_pid" 2>/dev/null || true
   wait "$layer_pid" 2>/dev/null || true
 }
