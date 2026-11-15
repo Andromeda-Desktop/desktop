@@ -131,117 +131,6 @@ namespace config_export {
       return table;
     }
 
-    BarConfig applyMonitorOverride(const BarConfig& base, const BarMonitorOverride& ovr) {
-      BarConfig resolved = base;
-      if (ovr.position)
-        resolved.position = *ovr.position;
-      if (ovr.enabled)
-        resolved.enabled = *ovr.enabled;
-      if (ovr.autoHide)
-        resolved.autoHide = *ovr.autoHide;
-      if (ovr.autoHideDelayMs)
-        resolved.autoHideDelayMs = *ovr.autoHideDelayMs;
-      if (ovr.smartAutoHide)
-        resolved.smartAutoHide = *ovr.smartAutoHide;
-      if (ovr.showOnWorkspaceSwitch)
-        resolved.showOnWorkspaceSwitch = *ovr.showOnWorkspaceSwitch;
-      if (ovr.reserveSpace)
-        resolved.reserveSpace = *ovr.reserveSpace;
-      if (ovr.layer)
-        resolved.layer = *ovr.layer;
-      if (ovr.thickness)
-        resolved.thickness = *ovr.thickness;
-      if (ovr.backgroundOpacity)
-        resolved.backgroundOpacity = *ovr.backgroundOpacity;
-      if (ovr.compositorBlur)
-        resolved.compositorBlur = *ovr.compositorBlur;
-      if (ovr.border)
-        resolved.border = *ovr.border;
-      if (ovr.borderWidth)
-        resolved.borderWidth = *ovr.borderWidth;
-      if (ovr.radius) {
-        resolved.radius = *ovr.radius;
-        resolved.radiusTopLeft = *ovr.radius;
-        resolved.radiusTopRight = *ovr.radius;
-        resolved.radiusBottomLeft = *ovr.radius;
-        resolved.radiusBottomRight = *ovr.radius;
-      }
-      if (ovr.radiusTopLeft)
-        resolved.radiusTopLeft = *ovr.radiusTopLeft;
-      if (ovr.radiusTopRight)
-        resolved.radiusTopRight = *ovr.radiusTopRight;
-      if (ovr.radiusBottomLeft)
-        resolved.radiusBottomLeft = *ovr.radiusBottomLeft;
-      if (ovr.radiusBottomRight)
-        resolved.radiusBottomRight = *ovr.radiusBottomRight;
-      if (ovr.concaveEdgeCorners)
-        resolved.concaveEdgeCorners = *ovr.concaveEdgeCorners;
-      if (ovr.marginEnds)
-        resolved.marginEnds = *ovr.marginEnds;
-      if (ovr.marginEdge)
-        resolved.marginEdge = *ovr.marginEdge;
-      if (ovr.marginOppositeEdge)
-        resolved.marginOppositeEdge = *ovr.marginOppositeEdge;
-      if (ovr.padding)
-        resolved.padding = *ovr.padding;
-      if (ovr.widgetSpacing)
-        resolved.widgetSpacing = *ovr.widgetSpacing;
-      if (ovr.shadow)
-        resolved.shadow = *ovr.shadow;
-      if (ovr.contactShadow)
-        resolved.contactShadow = *ovr.contactShadow;
-      if (ovr.panelOverlap)
-        resolved.panelOverlap = *ovr.panelOverlap;
-      if (ovr.capsuleThickness)
-        resolved.capsuleThickness = *ovr.capsuleThickness;
-      if (ovr.fontFamily)
-        resolved.fontFamily = *ovr.fontFamily;
-      if (ovr.startWidgets)
-        resolved.startWidgets = *ovr.startWidgets;
-      if (ovr.centerWidgets)
-        resolved.centerWidgets = *ovr.centerWidgets;
-      if (ovr.endWidgets)
-        resolved.endWidgets = *ovr.endWidgets;
-      if (ovr.scale)
-        resolved.scale = *ovr.scale;
-      if (ovr.fontScale)
-        resolved.fontScale = *ovr.fontScale;
-      if (ovr.widgetCapsuleDefault)
-        resolved.widgetCapsuleDefault = *ovr.widgetCapsuleDefault;
-      if (ovr.widgetCapsuleFill)
-        resolved.widgetCapsuleFill = *ovr.widgetCapsuleFill;
-      if (ovr.widgetCapsuleBorderSpecified) {
-        resolved.widgetCapsuleBorderSpecified = true;
-        resolved.widgetCapsuleBorder = ovr.widgetCapsuleBorder;
-      }
-      if (ovr.widgetCapsuleForeground)
-        resolved.widgetCapsuleForeground = *ovr.widgetCapsuleForeground;
-      if (ovr.widgetColor)
-        resolved.widgetColor = *ovr.widgetColor;
-      if (ovr.widgetIconColor)
-        resolved.widgetIconColor = *ovr.widgetIconColor;
-      if (ovr.widgetCapsuleGroups)
-        resolved.widgetCapsuleGroups = *ovr.widgetCapsuleGroups;
-      if (ovr.widgetCapsulePadding)
-        resolved.widgetCapsulePadding = static_cast<float>(*ovr.widgetCapsulePadding);
-      if (ovr.widgetCapsuleRadius.has_value()) {
-        resolved.widgetCapsuleRadius = ovr.widgetCapsuleRadius;
-      }
-      if (ovr.widgetCapsuleOpacity)
-        resolved.widgetCapsuleOpacity = static_cast<float>(*ovr.widgetCapsuleOpacity);
-      if (ovr.widgetCapsuleBorderWidth)
-        resolved.widgetCapsuleBorderWidth = *ovr.widgetCapsuleBorderWidth;
-      if (ovr.hoverHighlight)
-        resolved.hoverHighlight = *ovr.hoverHighlight;
-      if (ovr.showTooltip)
-        resolved.showTooltip = *ovr.showTooltip;
-      if (ovr.deadZone.actions)
-        resolved.deadZone.actions = *ovr.deadZone.actions;
-      if (ovr.deadZone.clickThrough)
-        resolved.deadZone.clickThrough = *ovr.deadZone.clickThrough;
-      return resolved;
-    }
-
     // Base bar always emits position; the concrete fields come from the schema.
     // Each monitor override is resolved against the base and flattened through the
     // same schema, with match + (optional) position written explicitly — the
@@ -256,7 +145,7 @@ namespace config_export {
           if (ovr.match.empty()) {
             continue;
           }
-          toml::table monitor = schema::writeTable(applyMonitorOverride(bar, ovr), schema::barFieldsSchema());
+          toml::table monitor = schema::writeTable(resolveBarMonitorOverride(bar, ovr), schema::barFieldsSchema());
           monitor.insert_or_assign("match", ovr.match);
           if (ovr.position) {
             monitor.insert_or_assign("position", *ovr.position);

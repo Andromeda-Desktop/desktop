@@ -796,6 +796,7 @@ struct DockConfig {
 };
 
 [[nodiscard]] DockConfig resolveDockMonitorOverride(const DockConfig& base, const DockMonitorOverride& override);
+[[nodiscard]] BarConfig resolveBarMonitorOverride(const BarConfig& base, const BarMonitorOverride& ovr);
 
 struct DesktopWidgetsGridState {
   bool visible = true;
