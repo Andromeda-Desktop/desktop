@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -134,6 +135,7 @@ namespace term {
     bool wheel(const InputArea::PointerData& d);
     [[nodiscard]] bool mouseTracking();
     void syncContext();
+    void readBranch(const void* prompt, std::string cwdUri, std::string path);
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
     // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
@@ -236,6 +238,8 @@ namespace term {
     struct FindClosed {};
     std::variant<FindClosed, TerminalFind> m_find; // destroyed under the terminal lock
     bool m_marksDirty = false;
+    using CommandMarksKey = std::pair<std::size_t, std::optional<std::uint32_t>>; // entries, oldest prompt row
+    CommandMarksKey m_commandMarksKey;
     Node* m_findLayer = nullptr; // moves with the grid origin
     RectNode* m_findRing = nullptr;
     void updateMarks();

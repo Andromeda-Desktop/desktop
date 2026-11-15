@@ -33,6 +33,7 @@
 #include <format>
 #include <cstdlib>
 #include <optional>
+#include <thread>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -424,6 +425,14 @@ namespace term {
       m_scrollbar->update(static_cast<float>(scroll.len) * cellH, static_cast<float>(scroll.total) * cellH, m_scrollPx);
       m_marksDirty = true;
     }
+    if (find == nullptr && m_scrollbar != nullptr) {
+      // A full scrollback moves every prompt up a row while total, offset and len stay the same.
+      const auto key = m_session.withCommands([](GhosttyTerminal, const CommandIndex& index) {
+        const auto& e = index.entries();
+        return CommandMarksKey{e.size(), e.empty() ? std::nullopt : CommandIndex::row(e.front().prompt.get(), GHOSTTY_POINT_TAG_SCREEN)};
+      });
+      m_marksDirty = m_marksDirty || key != std::exchange(m_commandMarksKey, key);
+    }
     if (std::exchange(m_marksDirty, false)) {
       updateMarks();
     }
@@ -706,6 +715,27 @@ namespace term {
     return path;
   }
 
+  void TerminalView::readBranch(const void* prompt, std::string cwdUri, std::string path) {
+    // .git/HEAD can sit on a slow or hung network mount: read it off the UI thread.
+    std::thread([this, alive = std::weak_ptr<bool>(m_alive), prompt, cwdUri = std::move(cwdUri), path = std::move(path)] {
+      auto branch = gitBranch(path);
+      DeferredCall::callLater([this, alive, prompt, cwdUri, branch = std::move(branch)] {
+        if (alive.expired()) {
+          return;
+        }
+        m_session.withCommands([&](GhosttyTerminal, CommandIndex& index) {
+          for (auto& entry : index.entries()) {
+            if (entry.prompt.get() == prompt && entry.cwdUri == cwdUri && entry.branchState == CommandEntry::Branch::Pending) {
+              entry.branchState = branch ? CommandEntry::Branch::Known : CommandEntry::Branch::None;
+              entry.branch = branch.value_or("");
+            }
+          }
+        });
+        scheduleRedraw(Redraw::All);
+      });
+    }).detach();
+  }
+
   void TerminalView::onMark(const CommandMark& mark) {
     constexpr auto kNotifyAfter = std::chrono::seconds(10);
     switch (mark.kind) {
@@ -810,9 +840,10 @@ namespace term {
         }
         const std::string path = pathFromFileUri(it->cwdUri);
         if (it->branchState == CommandEntry::Branch::Unread) {
-          const auto branch = path.empty() ? std::nullopt : gitBranch(path);
-          it->branchState = branch ? CommandEntry::Branch::Known : CommandEntry::Branch::None;
-          it->branch = branch.value_or("");
+          it->branchState = path.empty() ? CommandEntry::Branch::None : CommandEntry::Branch::Pending;
+          if (!path.empty()) {
+            readBranch(it->prompt.get(), it->cwdUri, path);
+          }
         }
         ContextItem item;
         item.path = path;

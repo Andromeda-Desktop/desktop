@@ -32,8 +32,8 @@ struct CommandEntry {
   TrackedRef prompt; // the cell of the 133;A cursor
   TrackedRef output; // the cell of the 133;C cursor; null in Prompt
   std::string cwdUri; // OSC 7 at the prompt
-  // The git branch of cwdUri, read on the UI thread the first time the prompt row is shown.
-  enum class Branch : std::uint8_t { Unread, None, Known };
+  // The git branch of cwdUri, read off the UI thread the first time the prompt row is shown.
+  enum class Branch : std::uint8_t { Unread, Pending, None, Known };
   Branch branchState = Branch::Unread;
   std::string branch; // Known only
   std::string command;
