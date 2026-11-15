@@ -51,6 +51,7 @@ class BiometricEnrollment;
 class SessionBus;
 class Box;
 class BluetoothService;
+class PrintersModel;
 class PipeWireService;
 class Slider;
 class INetworkService;
@@ -304,6 +305,8 @@ private:
   void addWifiContent(float scale);
   void addBluetoothContent(float scale);
   void addNetworkContent(float scale);
+  void addPrintersContent(float scale);
+  void openPrinterAddressSheet();
   void addSoundContent(float scale);
   void runSpeaker(std::vector<std::string> args, settings::SpeakerEvent start);
   void startSpeakerCommand(std::vector<std::string> args);
@@ -553,6 +556,8 @@ private:
   std::string m_detail;
   std::function<INetworkService*()> m_networkProvider;
   std::function<BluetoothService*()> m_bluetoothProvider;
+  // Created when the Printers page first shows.
+  std::unique_ptr<PrintersModel> m_printers;
   std::function<PipeWireService*()> m_audioProvider;
   std::function<PowerProfilesService*()> m_powerProfilesProvider;
   std::function<PowerConfigService*()> m_powerConfigProvider;

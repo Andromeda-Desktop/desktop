@@ -1084,6 +1084,7 @@ void SettingsWindow::rebuildSettingsContent() {
     addWifiContent(scale);
     addBluetoothContent(scale);
     addNetworkContent(scale);
+    addPrintersContent(scale);
     addSoundContent(scale);
     addUsersContent(scale);
     addPrivacyContent(scale);

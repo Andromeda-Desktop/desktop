@@ -1,4 +1,5 @@
 #include "shell/settings/settings_window.h"
+#include "shell/settings/printers_model.h"
 
 #include "auth/biometric_enrollment.h"
 #include "system/app_permissions.h"
@@ -444,7 +445,12 @@ void SettingsWindow::open(std::string context) {
   std::string bar;
   std::string search;
   bool expert = false;
-  if (context.starts_with("bar:")) {
+  std::string detail;
+  if (context.starts_with("printer:")) {
+    // "printer:<queue>" from a print notification opens that queue's details; the queue name is the title.
+    page = "printers";
+    detail = context + "\t" + context.substr(8);
+  } else if (context.starts_with("bar:")) {
     page = "bar";
     bar = context.substr(4);
   } else if (context.starts_with("search:")) {
@@ -462,6 +468,9 @@ void SettingsWindow::open(std::string context) {
   const bool navigate = !page.empty() || !search.empty();
   if (!page.empty()) {
     navigateTo(page, bar, expert);
+  }
+  if (!detail.empty()) {
+    openDetail(std::move(detail));
   }
   if (!search.empty()) {
     m_searchQuery = std::move(search);

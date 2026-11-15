@@ -42,10 +42,11 @@ namespace settings {
     constexpr PageGroup kMore = PageGroup::More;
 
     // IA order (.agent/mockups/settings-ia.html).
-    const std::array<SettingsPage, 30> kPages{{
+    const std::array<SettingsPage, 31> kPages{{
         {"wifi", kConn, "wifi", {}},
         {"bluetooth", kConn, "bluetooth", {}},
         {"network", kConn, "world", {}},
+        {"printers", kConn, "printer", {}},
         {"appearance", kPers, "palette", kAppearance},
         {"wallpaper", kPers, "photo", kWallpaper},
         {"lock-screen", kPers, "lock", {}},
@@ -272,7 +273,7 @@ namespace settings {
 
   std::span<const SettingsPage> settingsPages() { return kPages; }
 
-  bool settingsPageHasOwnContent(std::string_view pageId) { return pageId == "wifi" || pageId == "bluetooth" || pageId == "network" || pageId == "sound" || pageId == "mouse" || pageId == "users" || pageId == "privacy" || pageId == "problems" || pageId == "software-update"; }
+  bool settingsPageHasOwnContent(std::string_view pageId) { return pageId == "wifi" || pageId == "bluetooth" || pageId == "network" || pageId == "printers" || pageId == "sound" || pageId == "mouse" || pageId == "users" || pageId == "privacy" || pageId == "problems" || pageId == "software-update"; }
 
   const SettingsPage* settingsPageFromId(std::string_view id) {
     if (const auto* it = std::ranges::find(kPages, id, &SettingsPage::id); it != kPages.end()) {
