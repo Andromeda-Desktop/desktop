@@ -124,6 +124,13 @@ public:
   void setOnKeyDown(KeyCallback callback);
   void setOnKeyUp(KeyCallback callback);
   void setOnFocusGain(VoidCallback callback);
+  // The focused area hears when InputDispatcher::focusVisible() changes.
+  void setOnFocusVisibleChange(VoidCallback callback) { m_onFocusVisibleChange = std::move(callback); }
+  void dispatchFocusVisibleChange() {
+    if (m_onFocusVisibleChange) {
+      m_onFocusVisibleChange();
+    }
+  }
   void setOnFocusLoss(VoidCallback callback);
   void setTextInputClient(TextInputClient* client);
   [[nodiscard]] TextInputClient* textInputClient() const noexcept { return m_textInputClient; }
@@ -253,6 +260,7 @@ private:
   PinchCallback m_onPinch;
   KeyCallback m_onKeyDown;
   KeyCallback m_onKeyUp;
+  VoidCallback m_onFocusVisibleChange;
   VoidCallback m_onFocusGain;
   VoidCallback m_onFocusLoss;
 

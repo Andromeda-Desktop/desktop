@@ -773,6 +773,7 @@ void PrintSheet::buildMain(Node& col, float s) {
                                       auto* r = static_cast<Flex*>(a.addChild(std::move(ring)));
                                       a.setOnFocusGain([r] { r->setVisible(InputDispatcher::focusVisible()); });
                                       a.setOnFocusLoss([r] { r->setVisible(false); });
+                                      a.setOnFocusVisibleChange([r] { r->setVisible(InputDispatcher::focusVisible()); });
                                       a.setOnKeyDown([openMore](const InputArea::KeyData& k) {
                                         if (KeybindMatcher::matches(KeybindAction::Validate, k.sym, k.modifiers))
                                           openMore();

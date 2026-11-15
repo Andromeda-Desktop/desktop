@@ -248,6 +248,7 @@ Button::Button() {
   });
   area->setFocusable(true);
   area->setOnFocusGain([this] { applyVisualState(); });
+  area->setOnFocusVisibleChange([this] { applyVisualState(); });
   area->setOnFocusLoss([this] { applyVisualState(); });
   area->setOnKeyDown([this](const InputArea::KeyData& key) {
     if (!key.pressed || !m_enabled || !m_onClick) {

@@ -203,8 +203,8 @@ void InputDispatcher::pointerMotion(float x, float y, std::uint32_t serial) {
 bool InputDispatcher::pointerButton(
     float x, float y, std::uint32_t button, bool pressed, std::uint32_t serial, std::uint32_t time, bool touch
 ) {
-  if (pressed) {
-    s_focusVisible = false;
+  if (pressed && std::exchange(s_focusVisible, false) && m_focusedArea != nullptr) {
+    m_focusedArea->dispatchFocusVisibleChange();
   }
   if (m_touchGesture.pending && pressed) {
     m_touchGesture = {};
