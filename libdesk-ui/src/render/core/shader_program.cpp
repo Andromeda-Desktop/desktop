@@ -2,12 +2,121 @@
 
 #include "render/core/startup_metrics.h"
 
+#include <GLES3/gl3.h>
 #include <chrono>
-
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unistd.h>
+#include <vector>
 
 namespace {
+
+  // Linked programs on disk: Mesa's own cache keeps only the GPU code, so the GLSL compile and link still run
+  // at every start without this. The driver rejects a stale or corrupt binary (build id, CRC); create() then compiles.
+  struct BinaryCache {
+    std::filesystem::path dir;
+    std::string driver; // GL_RENDERER and GL_VERSION: part of each key
+  };
+
+  std::optional<BinaryCache> probeBinaryCache() {
+    const auto* version = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+    const auto* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    if (version == nullptr || renderer == nullptr || !std::string_view(version).starts_with("OpenGL ES 3")) {
+      return std::nullopt;
+    }
+    GLint formats = 0;
+    glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS, &formats);
+    std::filesystem::path base;
+    if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] == '/') {
+      base = xdg;
+    } else if (const char* home = std::getenv("HOME"); home != nullptr && home[0] == '/') {
+      base = std::filesystem::path(home) / ".cache";
+    }
+    if (formats <= 0 || base.empty()) {
+      return std::nullopt;
+    }
+    return BinaryCache{.dir = base / "andromeda" / "gl-programs", .driver = std::string(renderer) + '\n' + version};
+  }
+
+  const std::optional<BinaryCache>& binaryCache() {
+    static const std::optional<BinaryCache> cache = probeBinaryCache();
+    return cache;
+  }
+
+  std::filesystem::path binaryPath(const BinaryCache& cache, const char* vertexSource, const char* fragmentSource) {
+    std::uint64_t hash = 14695981039346656037ULL; // FNV-1a 64
+    for (const std::string_view part : {std::string_view(vertexSource), std::string_view(fragmentSource),
+                                        std::string_view(cache.driver)}) {
+      for (const char c : part) {
+        hash = (hash ^ static_cast<unsigned char>(c)) * 1099511628211ULL;
+      }
+      hash = (hash ^ 0xffU) * 1099511628211ULL; // part separator
+    }
+    char name[32];
+    std::snprintf(name, sizeof(name), "%016llx.bin", static_cast<unsigned long long>(hash));
+    return cache.dir / name;
+  }
+
+  // File layout: the GLenum binary format, then the driver's blob.
+  bool loadBinary(GLuint program, const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::vector<char> data{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    GLenum format = 0;
+    if (data.size() <= sizeof(format)) {
+      return false;
+    }
+    std::memcpy(&format, data.data(), sizeof(format));
+    glProgramBinary(program, format, data.data() + sizeof(format), static_cast<GLsizei>(data.size() - sizeof(format)));
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (linked == GL_FALSE) {
+      while (glGetError() != GL_NO_ERROR) {
+      }
+    }
+    return linked == GL_TRUE;
+  }
+
+  void saveBinary(GLuint program, const std::filesystem::path& path) {
+    GLint length = 0;
+    glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &length);
+    if (length <= 0) {
+      return;
+    }
+    GLenum format = 0;
+    std::vector<char> data(sizeof(format) + static_cast<std::size_t>(length));
+    GLsizei written = 0;
+    glGetProgramBinary(program, length, &written, &format, data.data() + sizeof(format));
+    if (written <= 0) {
+      return;
+    }
+    std::memcpy(data.data(), &format, sizeof(format));
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    // Another process can write the same key: each writes its own temp file, and rename is atomic.
+    const std::filesystem::path tmp = path.string() + "." + std::to_string(::getpid()) + ".tmp";
+    {
+      std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+      out.write(data.data(), static_cast<std::streamsize>(sizeof(format) + static_cast<std::size_t>(written)));
+      if (!out) {
+        out.close();
+        std::filesystem::remove(tmp, ec);
+        return;
+      }
+    }
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+      std::filesystem::remove(tmp, ec);
+    }
+  }
 
   GLuint compileShader(GLenum type, const char* source) {
     const GLuint shader = glCreateShader(type);
@@ -52,6 +161,19 @@ ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept {
 void ShaderProgram::create(const char* vertexSource, const char* fragmentSource) {
   destroy();
   const auto buildStart = std::chrono::steady_clock::now();
+  const std::optional<BinaryCache>& cache = binaryCache();
+  std::filesystem::path cached;
+  if (cache.has_value()) {
+    cached = binaryPath(*cache, vertexSource, fragmentSource);
+    m_program = glCreateProgram();
+    if (m_program != 0 && loadBinary(m_program, cached)) {
+      startup_metrics::recordProgramBuild(
+          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count()
+      );
+      return;
+    }
+    destroy();
+  }
 
   const GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexSource);
   GLuint fragmentShader = 0;
@@ -71,6 +193,9 @@ void ShaderProgram::create(const char* vertexSource, const char* fragmentSource)
 
   glAttachShader(m_program, vertexShader);
   glAttachShader(m_program, fragmentShader);
+  if (cache.has_value()) {
+    glProgramParameteri(m_program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+  }
   glLinkProgram(m_program);
 
   glDeleteShader(vertexShader);
@@ -85,6 +210,9 @@ void ShaderProgram::create(const char* vertexSource, const char* fragmentSource)
     glGetProgramInfoLog(m_program, logLength, nullptr, log.data());
     destroy();
     throw std::runtime_error("shader link failed: " + log);
+  }
+  if (cache.has_value()) {
+    saveBinary(m_program, cached);
   }
   startup_metrics::recordProgramBuild(
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count()

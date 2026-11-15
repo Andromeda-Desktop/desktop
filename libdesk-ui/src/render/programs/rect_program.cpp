@@ -468,6 +468,23 @@ void main() {
         {"uniform vec4 u_radii;", "varying vec4 v_radii;\n#define u_radii v_radii"},
         {"uniform float u_border_width;", "varying float v_border_width;\n#define u_border_width v_border_width"},
     };
+    // The values batchable() fixes become constants, so the compiler drops gradients, dashes and shadows.
+    const std::pair<const char*, const char*> constants[] = {
+        {"uniform int u_fill_mode;", "const int u_fill_mode = 1;"},
+        {"uniform vec4 u_corner_shapes;", "const vec4 u_corner_shapes = vec4(0.0);"},
+        {"uniform int u_no_aa;", "const int u_no_aa = 0;"},
+        {"uniform int u_invert_fill;", "const int u_invert_fill = 0;"},
+        {"uniform vec2 u_border_dash;", "const vec2 u_border_dash = vec2(0.0);"},
+        {"uniform int u_outer_shadow;", "const int u_outer_shadow = 0;"},
+        {"uniform int u_shadow_exclusion;", "const int u_shadow_exclusion = 0;"},
+    };
+    for (const auto& [from, to] : constants) {
+      const std::size_t at = source.find(from);
+      if (at == std::string::npos) {
+        throw std::runtime_error("rect batch shader: uniform not found");
+      }
+      source.replace(at, std::strlen(from), to);
+    }
     for (const auto& [from, to] : varyings) {
       const std::size_t at = source.find(from);
       if (at == std::string::npos) {
@@ -561,6 +578,9 @@ void RectProgram::drawBatched(const std::vector<float>& vertices) const {
 }
 
 void RectProgram::ensureBatchInitialized() {
+  if (m_batchProgram.isValid()) {
+    return;
+  }
   const std::string fragment = batchFragmentSource();
   m_batchProgram.create(kBatchVertexShaderSource, fragment.c_str());
   const GLuint id = m_batchProgram.id();
@@ -571,15 +591,6 @@ void RectProgram::ensureBatchInitialized() {
       throw std::runtime_error("failed to query rect batch shader attributes");
     }
   }
-  // Uniforms keep their values in the program object: set the ones batchable() fixes once.
-  glUseProgram(id);
-  glUniform1i(glGetUniformLocation(id, "u_fill_mode"), 1);
-  glUniform4f(glGetUniformLocation(id, "u_corner_shapes"), 0.0F, 0.0F, 0.0F, 0.0F);
-  glUniform1i(glGetUniformLocation(id, "u_no_aa"), 0);
-  glUniform1i(glGetUniformLocation(id, "u_invert_fill"), 0);
-  glUniform2f(glGetUniformLocation(id, "u_border_dash"), 0.0F, 0.0F);
-  glUniform1i(glGetUniformLocation(id, "u_outer_shadow"), 0);
-  glUniform1i(glGetUniformLocation(id, "u_shadow_exclusion"), 0);
 }
 
 void RectProgram::ensureInitialized() {
@@ -653,7 +664,6 @@ void RectProgram::ensureInitialized() {
       || m_transformLocation < 0) {
     throw std::runtime_error("failed to query rounded-rect shader locations");
   }
-  ensureBatchInitialized();
 }
 
 void RectProgram::destroy() {

@@ -17,7 +17,9 @@ public:
   RectProgram(const RectProgram&) = delete;
   RectProgram& operator=(const RectProgram&) = delete;
 
+  // Each program compiles on first use: a frame of only batchable rects never builds the full one.
   void ensureInitialized();
+  void ensureBatchInitialized();
   void destroy();
   void abandon() noexcept;
 
@@ -36,7 +38,6 @@ public:
   void drawBatched(const std::vector<float>& vertices) const;
 
 private:
-  void ensureBatchInitialized();
 
   ShaderProgram m_program;
   ShaderProgram m_batchProgram;

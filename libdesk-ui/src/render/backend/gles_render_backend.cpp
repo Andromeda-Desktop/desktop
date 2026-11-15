@@ -709,13 +709,14 @@ void GlesRenderBackend::drawRect(
     float surfaceWidth, float surfaceHeight, float width, float height, const RoundedRectStyle& style,
     const Mat3& transform
 ) {
-  m_rectProgram.ensureInitialized();
   if (RectProgram::batchable(style)) {
+    m_rectProgram.ensureBatchInitialized();
     RectProgram::appendBatched(m_rectBatch, surfaceWidth, surfaceHeight, width, height, style, transform);
     ++m_batchStats.rects;
     return;
   }
   flushRectBatch();
+  m_rectProgram.ensureInitialized();
   m_rectProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
 }
 
