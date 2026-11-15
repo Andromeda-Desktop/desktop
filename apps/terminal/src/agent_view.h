@@ -65,6 +65,7 @@ namespace term {
     void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
 
     [[nodiscard]] bool thinking() const;
+    [[nodiscard]] bool streamingAt(std::size_t entry) const;
     [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
     void answer(std::size_t option);
@@ -82,6 +83,7 @@ namespace term {
     float m_scale = 1.0F;
     float m_lastWidth = 0.0F; // the width of the item being built
     Flex* m_root = nullptr;
+    Flex* m_composer = nullptr;
     Flex* m_jump = nullptr;  // holds the jump pill while it shows
     std::size_t m_seen = 0;  // items the user has seen at the bottom of the log
     Flex* m_slash = nullptr; // the slash command menu over the composer

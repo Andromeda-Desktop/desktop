@@ -479,6 +479,13 @@ namespace term {
 
   const agent::Session* AgentView::session() const { return m_host.session(m_key); }
 
+  // The reply at this entry is still arriving: it is the last entry of a running turn.
+  bool AgentView::streamingAt(std::size_t entry) const {
+    const agent::Session* model = session();
+    return model != nullptr && model->phase() == agent::Phase::Working && entry + 1 == model->entries().size()
+           && std::holds_alternative<agent::Prose>(model->entries()[entry]) && std::get<agent::Prose>(model->entries()[entry]).streaming;
+  }
+
   // Working with the user's prompt as the last entry: the agent has not answered yet.
   bool AgentView::thinking() const {
     const agent::Session* model = session();
@@ -508,7 +515,7 @@ namespace term {
         [&](const auto& e) -> std::uint64_t {
           using T = std::decay_t<decltype(e)>;
           if constexpr (std::is_same_v<T, agent::Prose>) {
-            return e.text.size() * 2 + (e.streaming ? 1 : 0);
+            return e.text.size() * 4 + (e.streaming ? 1 : 0) + (streamingAt(entry) ? 2 : 0);
           } else if constexpr (std::is_same_v<T, agent::Note>) {
             return e.text.size();
           } else if constexpr (std::is_same_v<T, agent::Action>) {
@@ -616,7 +623,18 @@ namespace term {
           } else if constexpr (std::is_same_v<T, agent::Prose>) {
             auto prose = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .maxWidth = indent + measure});
             prose->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s, indent);
-            for (const auto& block : agent::markdownBlocks(e.text)) {
+            auto blocks = agent::markdownBlocks(e.text);
+            if (streamingAt(entry)) {
+              // A thin caret ends the last run while the reply streams (no blink). It takes the label colour: Label draws
+              // one colour, so the handoff's accent needs colour spans in Label.
+              const std::string caret = "\u258f";
+              if (blocks.empty() || blocks.back().kind == agent::Block::Kind::Code) {
+                blocks.push_back({agent::Block::Kind::Paragraph, caret});
+              } else {
+                blocks.back().text += caret;
+              }
+            }
+            for (const auto& block : blocks) {
               if (block.kind == agent::Block::Kind::Code) {
                 prose->addChild(kit.well(lines(block.text), ColorRole::Label1, false));
               } else {
@@ -835,7 +853,8 @@ namespace term {
         syncJump();
       }
     });
-    auto composer = ui::row({.align = FlexAlign::Center,
+    auto composer = ui::row({.out = &m_composer,
+                             .align = FlexAlign::Center,
                              .gap = Tokens::spaceP8 * s,
                              .fill = colorSpecFromRole(ColorRole::Fill1),
                              .radius = Style::scaledRadius(Tokens::sizeControlXl / 2.0F, s),
@@ -856,6 +875,17 @@ namespace term {
                                         syncSlash();
                                       },
                                   .onSubmit = [this](const std::string& text) { submit(text); }}));
+    // Focus: a 1.5 px accent inner ring on the composer.
+    m_input->setOnFocusGain([this, s] {
+      if (m_composer != nullptr) {
+        m_composer->setBorder(focusRingColorSpec(), 1.5F * s);
+      }
+    });
+    m_input->setOnFocusLoss([this] {
+      if (m_composer != nullptr) {
+        m_composer->setBorder(clearColorSpec(), 0.0F);
+      }
+    });
     composer->addChild(ui::label({.out = &m_meta, .fontSize = Tokens::typeCaption.size * s, .color = colorSpecFromRole(ColorRole::Label2)}));
     const float round = Tokens::componentButtonHeightM * s;
     composer->addChild(ui::button({.out = &m_send,
@@ -908,6 +938,7 @@ namespace term {
 
   void AgentView::sceneDestroyed() {
     m_root = nullptr;
+    m_composer = nullptr;
     m_jump = nullptr;
     m_slash = nullptr;
     m_log = nullptr;
