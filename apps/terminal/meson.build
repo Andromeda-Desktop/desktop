@@ -63,6 +63,14 @@ _agentd = custom_target('andromeda-agentd',
 test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings), args: [_ptyd.full_path()], depends: _ptyd, timeout: 30)
 
+# Agent sessions (step 9): the ACP session model; no IO, so the model test drives it directly.
+_agent = static_library('terminal_agent', 'src/agent_session.cpp',
+  dependencies: dependency('nlohmann_json'), cpp_args: _warnings)
+_agent_dep = declare_dependency(link_with: _agent, include_directories: include_directories('src'),
+  dependencies: dependency('nlohmann_json'))
+test('agent_session', executable('agent_session_test', 'tests/agent_session_test.cpp',
+  dependencies: _agent_dep, cpp_args: _warnings))
+
 test('link_finder', executable('link_finder_test', 'tests/link_finder_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
