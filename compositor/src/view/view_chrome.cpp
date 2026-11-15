@@ -321,10 +321,20 @@ namespace andromeda {
     const fx_corner_radii corners =
         titleBarHeight() > 0 ? corner_radii_new(0, 0, radius, radius) : corner_radii_all(radius);
     const BackgroundEffectManager* effects = m_server->backgroundEffects();
+    const pixman_region32_t* surfaceRegion =
+        effects != nullptr && rootSurface() != nullptr ? effects->blurRegion(rootSurface()) : nullptr;
+    // The region is surface-local; the xdg scene helper puts the surface at (-geometry.x, -geometry.y) in the tree.
+    pixman_region32_t region;
+    pixman_region32_init(&region);
+    if (surfaceRegion != nullptr) {
+      pixman_region32_copy(&region, surfaceRegion);
+      pixman_region32_translate(&region, -geometryBox().x, -geometryBox().y);
+    }
     m_decoration.updateBlur(
         m_contentTree, rootSurface(), nodeBox, geometryBox(), corners, nullptr, effectiveOpacity(), m_fadeAlpha,
-        effects != nullptr && rootSurface() != nullptr ? effects->blurRegion(rootSurface()) : nullptr
+        surfaceRegion != nullptr ? &region : nullptr
     );
+    pixman_region32_fini(&region);
   }
 
   void View::updateShadow() {
