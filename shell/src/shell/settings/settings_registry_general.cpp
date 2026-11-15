@@ -140,11 +140,7 @@ namespace settings {
     appendRow(entries, accessibilityRows, "ui_scale");
     // On andromeda the compositor's appearance.increase_contrast row replaces this one.
     if (env.compositorSettings == nullptr) {
-      entries.push_back(makeEntry(
-          SettingsSection::TextScale, "accessibility", tr("settings.schema.accessibility.high-contrast.label"),
-          tr("settings.schema.accessibility.high-contrast.description"), {"accessibility", "high_contrast"},
-          ToggleSetting{cfg.accessibility.highContrast}, "accessibility high contrast visually impaired"
-      ));
+      appendRow(entries, accessibilityRows, "high_contrast");
     }
     for (const auto* key : {"button_borders", "input_borders", "popup_borders", "card_borders"}) {
       appendRow(entries, shellRows, key);
@@ -226,15 +222,11 @@ namespace settings {
           std::move(select), "accent color colour highlight tint wallpaper custom"
       ));
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Wallpaper, "general", tr("settings.schema.shared.enabled.label"),
-        tr("settings.schema.wallpaper.enabled.description"), {"wallpaper", "enabled"},
-        ToggleSetting{cfg.wallpaper.enabled}, "background image"
-    ));
     auto wallpaperRows = generateSchemaEntries(noctalia::config::schema::wallpaperSchema(), cfg.wallpaper, {"wallpaper"});
     auto automationRows = generateSchemaEntries(
         noctalia::config::schema::wallpaperAutomationRowsSchema(), cfg.wallpaper.automation, {"wallpaper", "automation"}
     );
+    appendRow(entries, wallpaperRows, "enabled");
     appendRow(entries, wallpaperRows, "fill_mode");
     entries.push_back(makeEntry(
         SettingsSection::Wallpaper, "general", tr("settings.schema.wallpaper.fill-color.label"),

@@ -330,20 +330,10 @@ namespace settings {
 
     // Andromeda-specific integrations
     if (env.andromedaOverviewTypeToLaunchSupported) {
-      entries.push_back(makeEntry(
-          SettingsSection::Services, "audio", tr("settings.schema.shell.andromeda-audio-provider.label"),
-          tr("settings.schema.shell.andromeda-audio-provider.description"),
-          {"shell", "andromeda_audio_provider_enabled"}, ToggleSetting{cfg.shell.andromedaAudioProviderEnabled},
-          "andromeda audio spectrum shader effects provider"
-      ));
+      appendRow(entries, shellRows, "andromeda_audio_provider_enabled");
     }
     if (env.andromedaOverviewCloseOnLaunchSupported) {
-      entries.push_back(makeEntry(
-          SettingsSection::Overview, "overview", tr("settings.schema.shell.andromeda-overview-close-on-launch.label"),
-          tr("settings.schema.shell.andromeda-overview-close-on-launch.description"),
-          {"shell", "andromeda_overview_close_on_launch_enabled"},
-          ToggleSetting{cfg.shell.andromedaOverviewCloseOnLaunchEnabled}, "andromeda overview close app launch launcher"
-      ));
+      appendRow(entries, shellRows, "andromeda_overview_close_on_launch_enabled");
     }
   }
 

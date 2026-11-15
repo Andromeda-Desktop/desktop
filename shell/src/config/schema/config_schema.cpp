@@ -2842,8 +2842,24 @@ namespace noctalia::config::schema {
             [](toml::table&, const ShellConfig&) {}
         ),
         field(&ShellConfig::andromedaOverviewTypeToLaunchEnabled, "andromeda_overview_type_to_launch_enabled"),
-        field(&ShellConfig::andromedaAudioProviderEnabled, "andromeda_audio_provider_enabled"),
-        field(&ShellConfig::andromedaOverviewCloseOnLaunchEnabled, "andromeda_overview_close_on_launch_enabled"),
+        field(
+            &ShellConfig::andromedaAudioProviderEnabled, "andromeda_audio_provider_enabled",
+            RowSpec{
+                .section = "services",
+                .group = "audio",
+                .label = "shell.andromeda-audio-provider",
+                .tags = "andromeda audio spectrum shader effects provider",
+            }
+        ),
+        field(
+            &ShellConfig::andromedaOverviewCloseOnLaunchEnabled, "andromeda_overview_close_on_launch_enabled",
+            RowSpec{
+                .section = "overview",
+                .group = "overview",
+                .label = "shell.andromeda-overview-close-on-launch",
+                .tags = "andromeda overview close app launch launcher",
+            }
+        ),
         field(
             &ShellConfig::polkitAgent, "polkit_agent",
             RowSpec{
@@ -2977,7 +2993,16 @@ namespace noctalia::config::schema {
 
   const Schema<WallpaperConfig>& wallpaperSchema() {
     static const Schema<WallpaperConfig> s = {
-        field(&WallpaperConfig::enabled, "enabled"),
+        field(
+            &WallpaperConfig::enabled, "enabled",
+            RowSpec{
+                .section = "wallpaper",
+                .group = "general",
+                .label = "wallpaper.enabled",
+                .title = "shared.enabled",
+                .tags = "background image",
+            }
+        ),
         enumField(
             &WallpaperConfig::fillMode, "fill_mode", kWallpaperFillModes,
             RowSpec{
@@ -4385,7 +4410,15 @@ namespace noctalia::config::schema {
                 .tags = "size scale interface zoom panels",
             }
         ),
-        field(&AccessibilityConfig::highContrast, "high_contrast"),
+        field(
+            &AccessibilityConfig::highContrast, "high_contrast",
+            RowSpec{
+                .section = "text-scale",
+                .group = "accessibility",
+                .label = "accessibility.high-contrast",
+                .tags = "accessibility high contrast visually impaired",
+            }
+        ),
     };
     return s;
   }
