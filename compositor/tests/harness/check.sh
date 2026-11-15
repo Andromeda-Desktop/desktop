@@ -403,10 +403,6 @@ check_xwayland_proxy() {
   sed -n '2,12p' "$CHECKS_DIR/$1.sh" | sed -n 's/^# harness: xwayland_proxy=\(association\)$/\1/p' | head -1
 }
 
-check_render_thread() {
-  sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -qx '# harness: render_thread' && echo 1 || true
-}
-
 # `# harness: watchdog` boots the instance as its own systemd service: NOTIFY_SOCKET is a datagram socket the harness
 # reads into $ANDROMEDA_RUNTIME_DIR/notify.log (one "<ms since epoch> <payload>" line per datagram), WATCHDOG_USEC 2 s.
 check_watchdog() {
@@ -548,8 +544,7 @@ start_instance() {
   local xwayland=$2
   local cursor_theme=$3
   local xwayland_proxy=$4
-  local render_thread=$5
-  local watchdog=$6
+  local watchdog=$5
   # sockaddr_un caps paths at 108 bytes and the compositor appends
   # "/andromeda-wayland-0.sock" (23) to XDG_RUNTIME_DIR, so keep the root short. A
   # long path makes wl_display_add_socket fail and the boot abort.
@@ -598,9 +593,9 @@ start_instance() {
     notify_environment=("NOTIFY_SOCKET=$RUNTIME_DIR/notify.sock" WATCHDOG_USEC=2000000 HARNESS_SYSTEMD_SERVICE=1)
   fi
   setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u NOTIFY_SOCKET -u WATCHDOG_USEC -u WATCHDOG_PID \
+    -u ANDROMEDA_RENDER_THREAD \
     "${xwayland_environment[@]}" \
     "${notify_environment[@]}" \
-    ${render_thread:+ANDROMEDA_RENDER_THREAD=1} \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     XDG_DATA_HOME="$RUNTIME_DIR/xdg-data" \
@@ -777,7 +772,7 @@ run_one() {
 
   BOOT_ERROR=
   if ! start_instance "$(check_outputs "$name")" "$(check_xwayland "$name")" "$cursor_theme" \
-    "$(check_xwayland_proxy "$name")" "$(check_render_thread "$name")" "$(check_watchdog "$name")"; then
+    "$(check_xwayland_proxy "$name")" "$(check_watchdog "$name")"; then
     publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
     return 0
   fi

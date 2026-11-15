@@ -541,7 +541,7 @@ namespace andromeda {
 
   void Server::startRenderThread() {
     const char* env = std::getenv("ANDROMEDA_RENDER_THREAD");
-    if (env == nullptr || std::string_view(env) != "1") {
+    if (env != nullptr && std::string_view(env) == "0") {
       return;
     }
     if (fx_renderer_start_render_thread(m_renderer, wl_display_get_event_loop(m_display))) {

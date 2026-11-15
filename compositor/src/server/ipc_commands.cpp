@@ -1334,7 +1334,7 @@ namespace andromeda {
       return nlohmann::json{{"error", "stall-submit needs a duration in ms"}};
     }
     if (!fx_renderer_inject_submit_stall(server.renderer(), ms)) {
-      return nlohmann::json{{"error", "no render thread (ANDROMEDA_RENDER_THREAD=1)"}};
+      return nlohmann::json{{"error", "no render thread (ANDROMEDA_RENDER_THREAD=0 or it failed to start)"}};
     }
     for (const auto& output : server.outputs()) {
       output->scheduleFullFrame();

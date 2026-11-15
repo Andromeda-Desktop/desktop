@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# harness: render_thread
 # A GPU submit stuck 250 ms or more on the render thread writes a stall report of its own with developer diagnostics
 # on: component andromeda-render, the render thread's samples and user stack. The main loop does not stall, so it
 # writes none.

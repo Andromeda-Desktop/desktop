@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# harness: render_thread
 # harness: watchdog
 # systemd kills the session when WATCHDOG=1 stops for WATCHDOG_USEC. A GPU submit stuck for 6 s stops only the render
 # thread, so the main loop keeps pinging every WATCHDOG_USEC / 2 (1 s here) through the stall.
