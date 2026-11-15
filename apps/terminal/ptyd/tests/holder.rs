@@ -45,7 +45,11 @@ impl TestClient {
 
     /// Next message, with the pty fd it carries.
     fn recv(&mut self) -> (HolderMsg, Option<OwnedFd>) {
-        let deadline = Instant::now() + TIMEOUT;
+        self.try_recv(TIMEOUT).expect("no message from the holder")
+    }
+
+    fn try_recv(&mut self, wait: Duration) -> Option<(HolderMsg, Option<OwnedFd>)> {
+        let deadline = Instant::now() + wait;
         loop {
             if let Some((tag, payload, used)) = split_frame(&self.buf).unwrap() {
                 let msg = HolderMsg::decode(tag, payload).unwrap();
@@ -53,22 +57,26 @@ impl TestClient {
                 let fd = matches!(msg, HolderMsg::Spawned { .. } | HolderMsg::Attached { .. })
                     .then(|| self.fds.pop_front())
                     .flatten();
-                return (msg, fd);
+                return Some((msg, fd));
             }
             let left = deadline.saturating_duration_since(Instant::now());
-            assert!(!left.is_zero(), "no message from the holder");
+            if left.is_zero() {
+                return None;
+            }
             self.stream.set_read_timeout(Some(left)).unwrap();
             let mut space = [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(1))];
             let mut control = RecvAncillaryBuffer::new(&mut space);
             let mut chunk = [0u8; 65536];
-            let n = recvmsg(
+            let n = match recvmsg(
                 &self.stream,
                 &mut [std::io::IoSliceMut::new(&mut chunk)],
                 &mut control,
                 RecvFlags::CMSG_CLOEXEC,
-            )
-            .unwrap()
-            .bytes;
+            ) {
+                Ok(r) => r.bytes,
+                Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => continue,
+                Err(e) => panic!("recvmsg: {e}"),
+            };
             assert!(n > 0, "holder closed the connection");
             for msg in control.drain() {
                 if let RecvAncillaryMessage::ScmRights(fds) = msg {
@@ -358,4 +366,435 @@ fn relaunch_runs_only_for_orphaned_running_sessions() {
         wait_for(|| marker.exists(), TIMEOUT),
         "no relaunch after a client crash"
     );
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Owner {
+    Client(usize),
+    Orphaned,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Life {
+    Running,
+    ExitSent,
+    Exited,
+}
+
+struct ModelSession {
+    owner: Owner,
+    life: Life,
+    pid: u32,
+    /// Every byte of the stream from offset 0, as the clients received it.
+    history: Vec<u8>,
+    tokens: Vec<u32>,
+}
+
+/// Drives random event sequences against one holder and checks its invariants after each event.
+struct Model {
+    path: PathBuf,
+    rng: u64,
+    clients: Vec<Option<(TestClient, std::collections::HashMap<u64, OwnedFd>)>>,
+    observer: TestClient,
+    sessions: std::collections::BTreeMap<u64, ModelSession>,
+    gone: std::collections::HashSet<u64>,
+    next_token: u32,
+    marker: PathBuf,
+    relaunches: u64,
+    /// Whether a running orphan existed in each of the last few steps; a relaunch runs asynchronously.
+    orphan_window: VecDeque<bool>,
+}
+
+impl Model {
+    fn pick(&mut self, n: usize) -> usize {
+        self.rng ^= self.rng << 13;
+        self.rng ^= self.rng >> 7;
+        self.rng ^= self.rng << 17;
+        (self.rng % n as u64) as usize
+    }
+
+    fn choose<T: Copy>(&mut self, items: &[T]) -> Option<T> {
+        (!items.is_empty()).then(|| items[self.pick(items.len())])
+    }
+
+    fn live_clients(&self) -> Vec<usize> {
+        (0..self.clients.len())
+            .filter(|&i| self.clients[i].is_some())
+            .collect()
+    }
+
+    fn sessions_where(&self, f: impl Fn(&ModelSession) -> bool) -> Vec<u64> {
+        self.sessions
+            .iter()
+            .filter(|(_, s)| f(s))
+            .map(|(&id, _)| id)
+            .collect()
+    }
+
+    fn client(&mut self, slot: usize) -> &mut TestClient {
+        &mut self.clients[slot].as_mut().unwrap().0
+    }
+
+    fn owned_fd(&self, id: u64) -> &OwnedFd {
+        let Owner::Client(slot) = self.sessions[&id].owner else {
+            panic!("session {id} has no client")
+        };
+        &self.clients[slot].as_ref().unwrap().1[&id]
+    }
+
+    /// Applies a stream message to the model; returns a reply message to the caller.
+    fn handle(&mut self, slot: usize, msg: HolderMsg) -> Option<HolderMsg> {
+        let id = match &msg {
+            HolderMsg::Output { id, .. }
+            | HolderMsg::WantSnapshot { id }
+            | HolderMsg::Exited { id, .. } => *id,
+            _ => return Some(msg),
+        };
+        if self.gone.contains(&id) {
+            return None;
+        }
+        let s = self
+            .sessions
+            .get_mut(&id)
+            .expect("message for an unknown session");
+        assert_eq!(
+            s.owner,
+            Owner::Client(slot),
+            "session {id} message went to client {slot}"
+        );
+        match msg {
+            HolderMsg::Output { offset, bytes, .. } => {
+                assert_eq!(
+                    offset,
+                    s.history.len() as u64,
+                    "session {id}: output gap or duplicate"
+                );
+                s.history.extend_from_slice(&bytes);
+            }
+            HolderMsg::WantSnapshot { .. } => {
+                let snap = ClientMsg::Snapshot {
+                    id,
+                    offset: s.history.len() as u64,
+                    blob: s.history.clone(),
+                };
+                self.client(slot).send(snap);
+            }
+            HolderMsg::Exited { .. } => {
+                assert_eq!(s.life, Life::ExitSent, "session {id} exited unasked");
+                s.life = Life::Exited;
+            }
+            _ => unreachable!(),
+        }
+        None
+    }
+
+    fn pump(&mut self, slot: usize, wait: Duration) -> Option<(HolderMsg, Option<OwnedFd>)> {
+        let (msg, fd) = self.client(slot).try_recv(wait)?;
+        self.handle(slot, msg).map(|m| (m, fd))
+    }
+
+    /// Handles stream messages until none arrives within `wait`.
+    fn drain(&mut self, slot: usize, wait: Duration) {
+        while let Some((msg, _)) = self.client(slot).try_recv(wait) {
+            if let Some(reply) = self.handle(slot, msg) {
+                panic!("unexpected reply {reply:?}");
+            }
+        }
+    }
+
+    fn reply(&mut self, slot: usize) -> (HolderMsg, Option<OwnedFd>) {
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            assert!(!left.is_zero(), "no reply for client {slot}");
+            if let Some(r) = self.pump(slot, left) {
+                return r;
+            }
+        }
+    }
+
+    fn pump_until(&mut self, slot: usize, what: &str, done: impl Fn(&Self) -> bool) {
+        let deadline = Instant::now() + TIMEOUT;
+        while !done(self) {
+            assert!(Instant::now() < deadline, "timed out waiting for {what}");
+            if let Some((msg, _)) = self.pump(slot, Duration::from_millis(50)) {
+                panic!("unexpected reply {msg:?}");
+            }
+        }
+    }
+
+    fn token_counts_ok(s: &ModelSession, exact: bool) -> bool {
+        s.tokens.iter().all(|t| {
+            let n = s
+                .history
+                .windows(token(*t).len())
+                .filter(|w| *w == token(*t).as_bytes())
+                .count();
+            if exact { n == 2 } else { n >= 2 }
+        })
+    }
+
+    fn step(&mut self) {
+        let clients = self.live_clients();
+        let attached = self.sessions_where(|s| s.owner != Owner::Orphaned);
+        let running =
+            self.sessions_where(|s| s.owner != Owner::Orphaned && s.life == Life::Running);
+        let orphans = self.sessions_where(|s| s.owner == Owner::Orphaned);
+        match self.pick(8) {
+            0 if clients.len() < 3 => {
+                let c = TestClient::connect(&self.path);
+                self.clients.push(Some((c, Default::default())));
+            }
+            1 => {
+                let Some(slot) = self.choose(&clients) else {
+                    return;
+                };
+                self.clients[slot] = None;
+                for (&id, s) in self.sessions.iter_mut() {
+                    if s.owner == Owner::Client(slot) {
+                        s.owner = Owner::Orphaned;
+                        if s.life == Life::Exited {
+                            self.gone.insert(id);
+                        }
+                    }
+                }
+                self.sessions.retain(|id, _| !self.gone.contains(id));
+            }
+            2 => {
+                let Some(slot) = self.choose(&clients) else {
+                    return;
+                };
+                self.client(slot).send(ClientMsg::Spawn {
+                    req: 1,
+                    size: WinSize {
+                        cols: 80,
+                        rows: 24,
+                        xpixel: 0,
+                        ypixel: 0,
+                    },
+                    cwd: String::new(),
+                    argv: ["sh", "-c", "echo P$$P; exec cat"]
+                        .map(String::from)
+                        .to_vec(),
+                    env: vec!["PATH=/usr/bin:/bin".into()],
+                });
+                let (HolderMsg::Spawned { req: 1, id }, Some(fd)) = self.reply(slot) else {
+                    panic!("spawn failed")
+                };
+                self.clients[slot].as_mut().unwrap().1.insert(id, fd);
+                self.sessions.insert(
+                    id,
+                    ModelSession {
+                        owner: Owner::Client(slot),
+                        life: Life::Running,
+                        pid: 0,
+                        history: Vec::new(),
+                        tokens: Vec::new(),
+                    },
+                );
+                self.pump_until(slot, "pid line", |m| {
+                    contains(&m.sessions[&id].history, "P\r\n")
+                });
+                let text = String::from_utf8_lossy(&self.sessions[&id].history).into_owned();
+                let pid = text.split('P').nth(1).unwrap().parse().unwrap();
+                self.sessions.get_mut(&id).unwrap().pid = pid;
+            }
+            3 | 4 => {
+                let Some(id) = self.choose(&running) else {
+                    return;
+                };
+                let t = self.next_token;
+                self.next_token += 1;
+                rustix::io::write(self.owned_fd(id), format!("{}\n", token(t)).as_bytes()).unwrap();
+                self.sessions.get_mut(&id).unwrap().tokens.push(t);
+            }
+            5 => {
+                let Some(id) = self.choose(&running) else {
+                    return;
+                };
+                rustix::io::write(self.owned_fd(id), b"\x04").unwrap();
+                self.sessions.get_mut(&id).unwrap().life = Life::ExitSent;
+                let Owner::Client(slot) = self.sessions[&id].owner else {
+                    unreachable!()
+                };
+                self.pump_until(slot, "exit", |m| m.sessions[&id].life == Life::Exited);
+            }
+            6 => {
+                let (Some(id), Some(slot)) = (self.choose(&orphans), self.choose(&clients)) else {
+                    return;
+                };
+                self.client(slot).send(ClientMsg::Attach { id });
+                let (
+                    HolderMsg::Attached {
+                        id: i,
+                        offset,
+                        snapshot,
+                        tail,
+                    },
+                    Some(fd),
+                ) = self.reply(slot)
+                else {
+                    panic!("attach {id} failed")
+                };
+                assert_eq!((i, offset), (id, snapshot.len() as u64));
+                let s = self.sessions.get_mut(&id).unwrap();
+                let replay = [snapshot, tail].concat();
+                assert!(
+                    replay.starts_with(&s.history),
+                    "session {id}: replay lost or changed bytes"
+                );
+                s.history = replay;
+                s.owner = Owner::Client(slot);
+                self.clients[slot].as_mut().unwrap().1.insert(id, fd);
+            }
+            7 => {
+                let Some(id) = self.choose(&attached) else {
+                    return;
+                };
+                let Owner::Client(slot) = self.sessions[&id].owner else {
+                    unreachable!()
+                };
+                if self.pick(2) == 0 {
+                    let blob = self.sessions[&id].history.clone();
+                    self.client(slot).send(ClientMsg::Snapshot {
+                        id,
+                        offset: blob.len() as u64,
+                        blob,
+                    });
+                    return;
+                }
+                self.client(slot).send(ClientMsg::Close { id });
+                self.clients[slot].as_mut().unwrap().1.remove(&id);
+                let s = self.sessions.remove(&id).unwrap();
+                self.gone.insert(id);
+                let proc = format!("/proc/{}", s.pid);
+                assert!(
+                    wait_for(|| !Path::new(&proc).exists(), TIMEOUT),
+                    "Close left child {} running",
+                    s.pid
+                );
+            }
+            _ => {}
+        }
+    }
+
+    /// Waits until the holder's orphan list equals the model's, and checks relaunches.
+    fn check(&mut self) {
+        for slot in self.live_clients() {
+            self.drain(slot, Duration::from_millis(1));
+        }
+        let want = self.sessions_where(|s| s.owner == Owner::Orphaned);
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            self.observer.send(ClientMsg::List);
+            let HolderMsg::Orphans { mut ids } = self.observer.recv().0 else {
+                panic!("no orphan list")
+            };
+            ids.sort();
+            if ids == want {
+                break;
+            }
+            assert!(Instant::now() < deadline, "orphans {ids:?}, model {want:?}");
+        }
+        self.orphan_window.push_back(!want.is_empty());
+        if self.orphan_window.len() > 5 {
+            self.orphan_window.pop_front();
+        }
+        let n = std::fs::metadata(&self.marker).map_or(0, |m| m.len());
+        if n > self.relaunches {
+            assert!(
+                self.orphan_window.iter().any(|&o| o),
+                "relaunch without an orphan"
+            );
+            self.relaunches = n;
+        }
+    }
+
+    /// Attaches every orphan and checks that each written line came back exactly once from the echo and once from cat.
+    fn finish(&mut self) {
+        if self.live_clients().is_empty() {
+            self.clients
+                .push(Some((TestClient::connect(&self.path), Default::default())));
+        }
+        let slot = self.live_clients()[0];
+        for id in self.sessions_where(|s| s.owner == Owner::Orphaned) {
+            self.client(slot).send(ClientMsg::Attach { id });
+            let (HolderMsg::Attached { snapshot, tail, .. }, Some(fd)) = self.reply(slot) else {
+                panic!("attach {id}")
+            };
+            let s = self.sessions.get_mut(&id).unwrap();
+            let replay = [snapshot, tail].concat();
+            assert!(
+                replay.starts_with(&s.history),
+                "session {id}: replay lost or changed bytes"
+            );
+            s.history = replay;
+            s.owner = Owner::Client(slot);
+            self.clients[slot].as_mut().unwrap().1.insert(id, fd);
+        }
+        for id in self.sessions_where(|_| true) {
+            let Owner::Client(owner) = self.sessions[&id].owner else {
+                unreachable!()
+            };
+            self.pump_until(owner, "every token", |m| {
+                Self::token_counts_ok(&m.sessions[&id], false)
+            });
+        }
+        for slot in self.live_clients() {
+            self.drain(slot, Duration::from_millis(50));
+        }
+        for (id, s) in &self.sessions {
+            assert!(
+                Self::token_counts_ok(s, true),
+                "session {id}: a line came back more than once"
+            );
+        }
+    }
+}
+
+fn token(t: u32) -> String {
+    format!("<{t}>")
+}
+
+#[test]
+fn random_event_sequences_keep_the_holder_invariants() {
+    let seeds: Vec<u64> = match std::env::var("PTYD_MODEL_SEED") {
+        Ok(s) => vec![s.parse().unwrap()],
+        Err(_) => (1..=6).collect(),
+    };
+    // A holder outlives its seed and may still relaunch into its directory.
+    let mut dirs = Vec::new();
+    for seed in seeds {
+        eprintln!("PTYD_MODEL_SEED={seed}");
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("relaunched");
+        let (_d, path) = start(Config {
+            relaunch: Some(vec![
+                "sh".into(),
+                "-c".into(),
+                format!("echo >> {}", marker.display()),
+            ]),
+            relaunch_delay: Duration::from_millis(20),
+            snapshot_at: 64,
+            ..Config::default()
+        });
+        let mut m = Model {
+            observer: TestClient::connect(&path),
+            path,
+            rng: seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1,
+            clients: Vec::new(),
+            sessions: Default::default(),
+            gone: Default::default(),
+            next_token: 0,
+            marker,
+            relaunches: 0,
+            orphan_window: VecDeque::new(),
+        };
+        for _ in 0..120 {
+            m.step();
+            m.check();
+        }
+        m.finish();
+        dirs.push((dir, _d));
+    }
 }
