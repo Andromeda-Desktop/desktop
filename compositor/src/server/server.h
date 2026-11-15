@@ -554,6 +554,8 @@ namespace andromeda {
     void removeLayerSurface(LayerSurface* layerSurface, wlr_output* output);
     void removeSessionLock(SessionLock* lock);
     void activateSessionLock(SessionLock* lock);
+    // Lock file, Locked state and the secure blank over every output.
+    void lockBehindBlank();
     void unlockSession();
     void raiseLockTree();
     void updateLockBlank();

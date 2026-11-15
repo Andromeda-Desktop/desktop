@@ -123,6 +123,13 @@ namespace andromeda {
     if (m_sessionLock.get() != lock) {
       return;
     }
+    lockBehindBlank();
+    if (m_desktopShell != nullptr) {
+      m_desktopShell->sendRecovered();
+    }
+  }
+
+  void Server::lockBehindBlank() {
     if (m_lockFileManaged) {
       const std::string path = lockFilePath();
       mkdir(path.substr(0, path.rfind('/')).c_str(), 0700);
@@ -140,9 +147,6 @@ namespace andromeda {
     updateLockBlank();
     setLockBlankEnabled(true);
     raiseLockTree();
-    if (m_desktopShell != nullptr) {
-      m_desktopShell->sendRecovered();
-    }
   }
 
   // The one place the lock mode changes. Every lock entry runs the same steps, so the restart lock cannot skip any.
@@ -249,7 +253,12 @@ namespace andromeda {
     if (m_sessionLock.get() != lock) {
       return;
     }
+    const bool abandoned = !lock->unlocked();
     m_sessionLock.reset();
+    // A lock client that dies before its surfaces show leaves the lock request standing: lock behind the blank.
+    if (abandoned && !sessionLocked()) {
+      lockBehindBlank();
+    }
     if (!sessionLocked()) {
       wlr_scene_node_set_enabled(&m_lockTree->node, false);
     } else if (m_desktopShell != nullptr) {

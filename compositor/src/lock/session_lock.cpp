@@ -407,7 +407,7 @@ namespace andromeda {
       if (server->sessionLocked()) {
         kLog.warn("session lock client destroyed while locked; keeping session locked");
       } else {
-        kLog.info("session lock client destroyed before lock confirmation");
+        kLog.warn("session lock client destroyed before lock confirmation; locking behind the blank");
       }
     }
     server->removeSessionLock(this);
