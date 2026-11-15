@@ -460,6 +460,16 @@ void Node::markPaintDirty() {
   propagatePaintDirty();
 }
 
+void Node::markPaintDirty(const DamageRect& local) {
+  if (!m_selfPaintDirty) {
+    if (!m_partialDamage) {
+      m_partialDamage = std::make_unique<DamageRegion>();
+    }
+    m_partialDamage->add(local);
+  }
+  propagatePaintDirty();
+}
+
 void Node::takePaintedBounds(Node* subtree, DamageRegion& out) {
   if (subtree->m_paintedBounds) {
     out.add(*subtree->m_paintedBounds);
@@ -516,6 +526,9 @@ void Node::notifyInvalidated(NodeInvalidation invalidation) {
 
 void Node::clearDirty() {
   m_selfPaintDirty = false;
+  if (m_partialDamage) {
+    m_partialDamage->clear();
+  }
   m_paintDirty = false;
   m_layoutDirty = false;
   for (auto& child : m_children) {

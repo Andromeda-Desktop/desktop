@@ -26,6 +26,7 @@ struct TerminalCell {
   std::uint32_t fg = 0;   // 0xRRGGBB
   std::uint32_t bg = 0;   // 0xRRGGBB
   std::uint16_t flags = 0;
+  bool operator==(const TerminalCell&) const = default;
 };
 
 enum class TerminalCursorStyle : std::uint8_t { Block, HollowBlock, Bar, Underline };
@@ -78,6 +79,7 @@ public:
 private:
   void doInvalidateGpuResources(Renderer& renderer) override;
   void buildRow(int row);
+  void markRowDirty(int row);
   void buildCursor();
   void rebuildAll();
   void appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y, std::uint32_t rgb);

@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -194,6 +195,17 @@ namespace {
         out.add(*bounds);
       }
       node->setPaintedBounds(bounds);
+    } else if (const DamageRegion* partial = node->partialDamage(); partial != nullptr) {
+      for (const DamageRect& r : partial->rects()) {
+        DamageRect w{std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                     std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest()};
+        for (const Vec2 c : {world.transformPoint(r.x0, r.y0), world.transformPoint(r.x1, r.y0),
+                             world.transformPoint(r.x1, r.y1), world.transformPoint(r.x0, r.y1)}) {
+          w = {std::min(w.x0, c.x), std::min(w.y0, c.y), std::max(w.x1, c.x), std::max(w.y1, c.y)};
+        }
+        out.add(DamageRect{w.x0 - kPaintCullSlack, w.y0 - kPaintCullSlack, w.x1 + kPaintCullSlack,
+                           w.y1 + kPaintCullSlack});
+      }
     }
     for (const auto& child : node->children()) {
       if (!collectDamage(child.get(), world, whole, out)) {

@@ -95,22 +95,39 @@ void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
   }
   auto& stored = m_cells[static_cast<std::size_t>(row)];
   const std::size_t n = std::min(cells.size(), stored.size());
+  if (std::equal(cells.begin(), cells.begin() + static_cast<std::ptrdiff_t>(n), stored.begin())
+      && std::all_of(stored.begin() + static_cast<std::ptrdiff_t>(n), stored.end(),
+                     [](const TerminalCell& c) { return c == TerminalCell{}; })) {
+    return;
+  }
   std::copy_n(cells.begin(), n, stored.begin());
   std::fill(stored.begin() + static_cast<std::ptrdiff_t>(n), stored.end(), TerminalCell{});
   buildRow(row);
   if (m_cursor && m_cursor->row == row) {
     buildCursor();
   }
-  markPaintDirty();
+  markRowDirty(row);
+}
+
+void TerminalGridNode::markRowDirty(int row) {
+  // Half a cell above and below: glyphs that overhang their cell (italic, tall emoji) leave pixels in the next rows.
+  const float h = cellHeight();
+  const float top = m_originY + static_cast<float>(row) * h;
+  markPaintDirty(DamageRect{0.0F, top - h * 0.5F, width(), top + h * 1.5F});
 }
 
 void TerminalGridNode::setCursor(std::optional<TerminalCursor> cursor) {
   if (cursor == m_cursor) {
     return;
   }
+  if (m_cursor) {
+    markRowDirty(m_cursor->row);
+  }
   m_cursor = cursor;
   buildCursor();
-  markPaintDirty();
+  if (m_cursor) {
+    markRowDirty(m_cursor->row);
+  }
 }
 
 void TerminalGridNode::commit(TextureManager& textures) {
@@ -132,7 +149,6 @@ void TerminalGridNode::commit(TextureManager& textures) {
     textures.updateSubImage(m_texture,
                             pixels.data() + static_cast<std::size_t>(top) * static_cast<std::size_t>(m_atlas.width()) * 4,
                             0, top, m_atlas.width(), m_atlas.dirtyBottom() - top, TextureDataFormat::Rgba);
-    markPaintDirty();
   }
   m_atlas.clearDirty();
 }

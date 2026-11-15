@@ -194,11 +194,15 @@ public:
   );
 
   void markPaintDirty();
+  // Only `local` (node coordinates) changed; a whole-node markPaintDirty in the same frame wins.
+  void markPaintDirty(const DamageRect& local);
   void markLayoutDirty();
   void clearDirty();
 
   // Damage tracking, driven by RenderContext: the node's own pixels changed since the last frame.
   [[nodiscard]] bool selfPaintDirty() const noexcept { return m_selfPaintDirty; }
+  // Node-local rects from markPaintDirty(rect) since the last frame; null or empty when none.
+  [[nodiscard]] const DamageRegion* partialDamage() const noexcept { return m_partialDamage.get(); }
   // World bounds (logical, with paint overflow) the node covered in the last frame; nullopt when it drew nothing.
   [[nodiscard]] const std::optional<DamageRect>& paintedBounds() const noexcept { return m_paintedBounds; }
   void setPaintedBounds(const std::optional<DamageRect>& bounds) noexcept { m_paintedBounds = bounds; }
@@ -242,6 +246,7 @@ private:
   bool m_selfPaintDirty = true;
   std::optional<DamageRect> m_paintedBounds;
   std::unique_ptr<DamageRegion> m_pendingDamage;
+  std::unique_ptr<DamageRegion> m_partialDamage;
   bool m_clipChildren = false;
   bool m_paintContained = false;
   bool m_excludeSubtreeFromTabOrder = false;
