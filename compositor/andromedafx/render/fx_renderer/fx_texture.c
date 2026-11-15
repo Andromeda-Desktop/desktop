@@ -541,9 +541,10 @@ static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture
     }
   }
 
-  // wlroots queries an output capture source's format once and keeps it until the next mode change, so a stalled
-  // render thread must not turn this into INVALID: it answers what the GL query gives for 8-bit targets on Mesa.
-  if (!fx_renderer_take_context(texture->fx_renderer)) {
+  // A capture asks at request time, so this never waits for the render thread; wlroots keeps an output capture
+  // source's first answer until the next mode change, so it is never INVALID either: while the context is away it
+  // answers what the GL query gives for 8-bit targets on Mesa.
+  if (!fx_renderer_context_home(&texture->fx_renderer->wlr_renderer)) {
     const bool alpha = texture->buffer != NULL && pixel_format_has_alpha(texture->buffer->drm_format);
     return alpha ? (bgra ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_ABGR8888)
                  : (bgra ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888);

@@ -366,8 +366,8 @@ namespace andromeda {
 
     bool m_handlingFrame = false;
     // Idle -> Submitting (handleFrame kicked the render thread) -> Idle (completeFrame). A frame event while
-    // Submitting makes it SubmittingDirty, which schedules one more frame on completion. WaitingContext: another
-    // output's submit holds the GL context; the frame is scheduled again when it returns.
+    // Submitting makes it SubmittingDirty, which schedules one more frame on completion if the scene still needs one.
+    // WaitingContext: another output's submit holds the GL context; the frame is scheduled again when it returns.
     enum class FrameState : uint8_t { Idle, WaitingContext, Submitting, SubmittingDirty };
     FrameState m_frameState = FrameState::Idle;
     // What handleFrame passes to completeFrame across the render thread's submit.

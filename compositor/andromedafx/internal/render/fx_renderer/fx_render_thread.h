@@ -51,7 +51,7 @@ void fx_render_thread_queue(struct fx_render_thread* thread, const struct fx_sub
 // Never blocks.
 void fx_render_thread_kick(struct fx_render_thread* thread, fx_submit_done_fn done, void* data);
 
-#define FX_RENDER_THREAD_SYNC_TIMEOUT_MS 50
+#define FX_RENDER_THREAD_SYNC_TIMEOUT_MS 1000
 
 // Blocks until the job in flight and every queued op ran and the context is Home, at most
 // FX_RENDER_THREAD_SYNC_TIMEOUT_MS: false when the context is still away then (a stalled GPU submit), and the caller

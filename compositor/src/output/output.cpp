@@ -3081,7 +3081,9 @@ namespace andromeda {
     const bool dirty = m_frameState == FrameState::SubmittingDirty;
     m_frameState = FrameState::Idle;
     m_pendingFrame.reset();
-    if (dirty) {
+    // A request during Submitting may come from damage this frame already drew (its own animation tick, before the
+    // build): without the thread the commit's frame_pending dropped it. Only damage or a need after the build counts.
+    if (dirty && wlr_scene_output_needs_frame(m_sceneOutput)) {
       wlr_output_schedule_frame(m_output);
     }
   }

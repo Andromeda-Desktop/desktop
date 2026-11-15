@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# harness: render_thread
 # A GPU submit stuck for 6 s (another process holding the kernel buffer locks) stops only the render thread: the
 # main loop answers IPC within 250 ms throughout (the stall-report threshold; most of it is the IPC client's spawn),
-# a window opened meanwhile maps, a screen capture taken meanwhile ends without blocking the loop (a capture waits at
-# most 50 ms for the context, then fails), and once the submit returns its buffer, uploaded late, is on screen.
+# a window opened meanwhile maps, a screen capture taken meanwhile ends without blocking the loop (its format query
+# never waits for the context), and once the submit returns its buffer, uploaded late, is on screen.
 set -euo pipefail
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
 readonly TITLE=render-thread-stall

@@ -381,7 +381,7 @@ struct fx_effect_shader* fx_effect_shader_create(
   kind_sections(kind, &section, &extra, &suffix);
   struct fx_renderer* fx = fx_get_renderer(renderer);
   struct wlr_egl_context previous;
-  if (!wlr_egl_make_current(fx->egl, &previous)) {
+  if (!fx_renderer_take_context(fx) || !wlr_egl_make_current(fx->egl, &previous)) {
     return NULL;
   }
   struct fx_effect_shader* shader = calloc(1, sizeof(*shader));
