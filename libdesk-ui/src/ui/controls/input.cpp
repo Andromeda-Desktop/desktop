@@ -1849,7 +1849,7 @@ void Input::clearFromButton() {
     return;
   }
   pushUndoSnapshot(EditCoalesceKind::Discrete);
-  m_value.clear();
+  util::secureWipe(m_value);
   m_cursorPos = 0;
   m_selectionAnchor = 0;
   m_preeditStart = 0;
@@ -2453,8 +2453,12 @@ void Input::deleteSelection() {
 }
 
 void Input::clearEditHistory() {
-  m_undoStack.clear();
-  m_redoStack.clear();
+  for (auto* stack : {&m_undoStack, &m_redoStack}) {
+    for (EditSnapshot& snapshot : *stack) {
+      util::secureWipe(snapshot.value);
+    }
+    stack->clear();
+  }
   resetUndoCoalescing();
 }
 
