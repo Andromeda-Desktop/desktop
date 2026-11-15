@@ -303,6 +303,7 @@ package_andromeda-compositor-git() {
   mv "$pkgdir"/usr/lib/libwlroots-0.20.so* "$pkgdir"/usr/lib/libliftoff.so.* "$pkgdir/usr/lib/andromeda/"
   rm -r "$pkgdir/usr/include/wlroots-0.20" "$pkgdir/usr/lib/pkgconfig/wlroots-0.20.pc"
   rm "$pkgdir/usr/include/libliftoff.h" "$pkgdir/usr/lib/libliftoff.so" "$pkgdir/usr/lib/pkgconfig/libliftoff.pc"
+  rmdir --ignore-fail-on-non-empty "$pkgdir/usr/include" "$pkgdir/usr/lib/pkgconfig"
   install -Dm644 desktop/session/at-spi-dbus-bus.service.d/andromeda-stop-registry.conf \
     "$pkgdir/usr/lib/systemd/user/at-spi-dbus-bus.service.d/andromeda-stop-registry.conf"
   for unit in 'app-blueman@autostart.service' 'app-nm\x2dapplet@autostart.service'; do
