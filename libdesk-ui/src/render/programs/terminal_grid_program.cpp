@@ -48,13 +48,13 @@ void main() {
 }
 )";
 
-  // The atlas is GL_ALPHA coverage; the output stays premultiplied.
+  // The atlas is premultiplied RGBA: coverage glyphs are white and take v_color, colour glyphs get a white v_color.
   constexpr char kGlyphFragment[] = R"(
 precision mediump float;
 uniform sampler2D u_atlas;
 varying vec2 v_texcoord;
 varying vec4 v_color;
-void main() { gl_FragColor = v_color * texture2D(u_atlas, v_texcoord).a; }
+void main() { gl_FragColor = v_color * texture2D(u_atlas, v_texcoord); }
 )";
 
   constexpr GLsizei kRectStride = 6 * sizeof(float);

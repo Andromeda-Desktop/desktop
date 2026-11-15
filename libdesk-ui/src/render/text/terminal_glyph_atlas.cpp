@@ -22,6 +22,7 @@ struct TerminalGlyphAtlas::Library {
 
 struct TerminalGlyphAtlas::FontFace {
   FT_Face face = nullptr;
+  bool color = false; // bitmap colour font (CBDT/sbix): rendered as BGRA, scaled to the cell
   bool embolden = false;
   bool oblique = false;
   ~FontFace() {
@@ -35,6 +36,7 @@ namespace {
 
   constexpr int kInitialHeight = 256;
   constexpr int kPadding = 1;
+  constexpr std::size_t kBytesPerPixel = 4;
 
   struct FontMatch {
     std::string file;
@@ -43,14 +45,15 @@ namespace {
   };
 
   // needs != 0 asks for a face that covers that codepoint (fallback).
-  std::optional<FontMatch> matchFont(const std::string& family, bool bold, bool italic, char32_t needs) {
+  // color asks for a colour font (emoji); otherwise colour fonts are excluded.
+  std::optional<FontMatch> matchFont(const std::string& family, bool bold, bool italic, char32_t needs, bool color) {
     FcPattern* pattern = FcNameParse(reinterpret_cast<const FcChar8*>(family.c_str()));
     if (pattern == nullptr) {
       return std::nullopt;
     }
     FcPatternAddInteger(pattern, FC_WEIGHT, bold ? FC_WEIGHT_SEMIBOLD : FC_WEIGHT_REGULAR);
     FcPatternAddInteger(pattern, FC_SLANT, italic ? FC_SLANT_ITALIC : FC_SLANT_ROMAN);
-    FcPatternAddBool(pattern, FC_COLOR, FcFalse);
+    FcPatternAddBool(pattern, FC_COLOR, color ? FcTrue : FcFalse);
     if (needs != 0) {
       FcCharSet* charset = FcCharSetCreate();
       FcCharSetAddChar(charset, needs);
@@ -124,8 +127,24 @@ TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::openFace(const std::string& fi
     return it->second.get();
   }
   auto font = std::make_unique<FontFace>();
-  if (FT_New_Face(m_library->ft, file.c_str(), index, &font->face) != 0 || !FT_IS_SCALABLE(font->face)
-      || FT_Set_Pixel_Sizes(font->face, 0, static_cast<FT_UInt>(std::lround(m_pixelSize))) != 0) {
+  const bool opened = FT_New_Face(m_library->ft, file.c_str(), index, &font->face) == 0;
+  bool sized = false;
+  if (opened && FT_IS_SCALABLE(font->face)) {
+    sized = FT_Set_Pixel_Sizes(font->face, 0, static_cast<FT_UInt>(std::lround(m_pixelSize))) == 0;
+  } else if (opened && FT_HAS_COLOR(font->face) && font->face->num_fixed_sizes > 0) {
+    // A bitmap emoji font: the smallest strike at least the cell height, else the largest; glyph() scales it down.
+    int best = 0;
+    for (int i = 1; i < font->face->num_fixed_sizes; ++i) {
+      const int h = font->face->available_sizes[i].height;
+      const int bestH = font->face->available_sizes[best].height;
+      if ((bestH < m_cellHeight && h > bestH) || (h >= m_cellHeight && h < bestH)) {
+        best = i;
+      }
+    }
+    sized = FT_Select_Size(font->face, best) == 0;
+    font->color = sized;
+  }
+  if (!sized) {
     font.reset();
   } else {
     font->embolden = embolden;
@@ -137,13 +156,13 @@ TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::openFace(const std::string& fi
   return raw;
 }
 
-TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::faceFor(Face face, char32_t needs) {
+TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::faceFor(Face face, char32_t needs, bool color) {
   const bool bold = face == Face::Bold || face == Face::BoldItalic;
   const bool italic = face == Face::Italic || face == Face::BoldItalic;
   if (needs == 0 && m_primary[static_cast<int>(face)] != nullptr) {
     return m_primary[static_cast<int>(face)];
   }
-  const auto match = matchFont(m_family, bold, italic, needs);
+  const auto match = matchFont(m_family, bold, italic, needs, color);
   if (!match) {
     return nullptr;
   }
@@ -166,31 +185,46 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
 
   FontFace* font = faceFor(face, 0);
   FT_UInt index = font != nullptr ? FT_Get_Char_Index(font->face, codepoint) : 0;
-  if (index == 0) {
-    font = faceFor(face, codepoint);
+  // Pictographs from U+1F000 default to emoji presentation: a colour font first. Other symbols prefer a text face.
+  const bool emoji = codepoint >= 0x1F000;
+  for (const bool color : {emoji, !emoji}) {
+    if (index != 0) {
+      break;
+    }
+    font = faceFor(face, codepoint, color);
     index = font != nullptr ? FT_Get_Char_Index(font->face, codepoint) : 0;
   }
-  if (index == 0 || FT_Load_Glyph(font->face, index, FT_LOAD_TARGET_LIGHT) != 0) {
+  const FT_Int32 loadFlags = font != nullptr && font->color ? FT_LOAD_COLOR : FT_LOAD_TARGET_LIGHT;
+  if (index == 0 || FT_Load_Glyph(font->face, index, loadFlags) != 0) {
     m_missing.insert(key);
     return nullptr;
   }
   FT_GlyphSlot slot = font->face->glyph;
-  if (font->embolden) {
+  if (font->embolden && !font->color) {
     FT_GlyphSlot_Embolden(slot);
   }
-  if (font->oblique) {
+  if (font->oblique && !font->color) {
     FT_GlyphSlot_Oblique(slot);
   }
-  if (FT_Render_Glyph(slot, FT_RENDER_MODE_LIGHT) != 0 || slot->bitmap.pixel_mode != FT_PIXEL_MODE_GRAY) {
+  if ((slot->format != FT_GLYPH_FORMAT_BITMAP && FT_Render_Glyph(slot, FT_RENDER_MODE_LIGHT) != 0)
+      || (slot->bitmap.pixel_mode != FT_PIXEL_MODE_GRAY && slot->bitmap.pixel_mode != FT_PIXEL_MODE_BGRA)) {
     m_missing.insert(key);
     return nullptr;
   }
 
   Glyph g{};
   const auto& bitmap = slot->bitmap;
-  const int w = static_cast<int>(bitmap.width);
-  const int h = static_cast<int>(bitmap.rows);
-  if (w > 0 && h > 0) {
+  const bool bgra = bitmap.pixel_mode == FT_PIXEL_MODE_BGRA;
+  const int srcW = static_cast<int>(bitmap.width);
+  const int srcH = static_cast<int>(bitmap.rows);
+  // A colour glyph shrinks to fit two cells; box filtering keeps it smooth.
+  const float shrink = bgra && srcW > 0 && srcH > 0
+                           ? std::min({1.0F, 2.0F * static_cast<float>(m_cellWidth) / static_cast<float>(srcW),
+                                       static_cast<float>(m_cellHeight) / static_cast<float>(srcH)})
+                           : 1.0F;
+  const int w = std::max(bgra ? 1 : 0, static_cast<int>(std::lround(static_cast<float>(srcW) * shrink)));
+  const int h = std::max(bgra ? 1 : 0, static_cast<int>(std::lround(static_cast<float>(srcH) * shrink)));
+  if (srcW > 0 && srcH > 0) {
     int x = 0;
     int y = 0;
     if (!place(w + kPadding, h + kPadding, x, y)) {
@@ -201,8 +235,34 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
       }
     }
     for (int row = 0; row < h; ++row) {
-      std::memcpy(&m_pixels[static_cast<std::size_t>(y + row) * kWidth + static_cast<std::size_t>(x)],
-                  bitmap.buffer + static_cast<std::ptrdiff_t>(row) * bitmap.pitch, static_cast<std::size_t>(w));
+      std::uint8_t* dst =
+          &m_pixels[(static_cast<std::size_t>(y + row) * kWidth + static_cast<std::size_t>(x)) * kBytesPerPixel];
+      for (int col = 0; col < w; ++col, dst += kBytesPerPixel) {
+        if (!bgra) {
+          const std::uint8_t a = bitmap.buffer[static_cast<std::ptrdiff_t>(row) * bitmap.pitch + col];
+          dst[0] = dst[1] = dst[2] = dst[3] = a;
+          continue;
+        }
+        // Average the source pixels this destination pixel covers (premultiplied BGRA in, RGBA out).
+        const int sx0 = col * srcW / w;
+        const int sx1 = std::max(sx0 + 1, (col + 1) * srcW / w);
+        const int sy0 = row * srcH / h;
+        const int sy1 = std::max(sy0 + 1, (row + 1) * srcH / h);
+        std::uint32_t sum[4] = {};
+        for (int sy = sy0; sy < sy1; ++sy) {
+          const std::uint8_t* src = bitmap.buffer + static_cast<std::ptrdiff_t>(sy) * bitmap.pitch + sx0 * 4;
+          for (int sx = sx0; sx < sx1; ++sx, src += 4) {
+            sum[0] += src[2];
+            sum[1] += src[1];
+            sum[2] += src[0];
+            sum[3] += src[3];
+          }
+        }
+        const auto n = static_cast<std::uint32_t>((sx1 - sx0) * (sy1 - sy0));
+        for (int c = 0; c < 4; ++c) {
+          dst[c] = static_cast<std::uint8_t>(sum[c] / n);
+        }
+      }
     }
     m_dirtyTop = std::min(m_dirtyTop, y);
     m_dirtyBottom = std::max(m_dirtyBottom, y + h);
@@ -211,8 +271,9 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
         .y = static_cast<std::uint16_t>(y),
         .width = static_cast<std::uint16_t>(w),
         .height = static_cast<std::uint16_t>(h),
-        .left = static_cast<std::int16_t>(slot->bitmap_left),
-        .top = static_cast<std::int16_t>(slot->bitmap_top),
+        .left = static_cast<std::int16_t>(bgra ? (2 * m_cellWidth - w) / 2 : slot->bitmap_left),
+        .top = static_cast<std::int16_t>(bgra ? m_baseline - (m_cellHeight - h) / 2 : slot->bitmap_top),
+        .color = bgra,
     };
   }
   auto [it, inserted] = m_glyphs.emplace(key, g);
@@ -237,7 +298,7 @@ bool TerminalGlyphAtlas::place(int width, int height, int& x, int& y) {
       return false;
     }
     m_height = grown;
-    m_pixels.resize(static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(m_height), 0);
+    m_pixels.resize(static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(m_height) * kBytesPerPixel, 0);
     m_dirtyTop = 0;
     m_dirtyBottom = m_height;
   }
@@ -252,7 +313,7 @@ void TerminalGlyphAtlas::reset() {
   m_glyphs.clear();
   m_missing.clear();
   m_height = kInitialHeight;
-  m_pixels.assign(static_cast<std::size_t>(kWidth) * kInitialHeight, 0);
+  m_pixels.assign(static_cast<std::size_t>(kWidth) * kInitialHeight * kBytesPerPixel, 0);
   m_shelfX = 0;
   m_shelfY = 0;
   m_shelfHeight = 0;

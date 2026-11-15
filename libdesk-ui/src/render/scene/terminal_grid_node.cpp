@@ -124,13 +124,14 @@ void TerminalGridNode::commit(TextureManager& textures) {
   m_textureManager = &textures;
   const auto& pixels = m_atlas.pixels();
   if (!m_texture.valid() || m_texture.height != m_atlas.height()) {
-    textures.replace(m_texture, pixels.data(), m_atlas.width(), m_atlas.height(), TextureDataFormat::Alpha,
+    textures.replace(m_texture, pixels.data(), m_atlas.width(), m_atlas.height(), TextureDataFormat::Rgba,
                      TextureFilter::Nearest);
     markPaintDirty();
   } else if (m_atlas.dirtyTop() < m_atlas.dirtyBottom()) {
     const int top = m_atlas.dirtyTop();
-    textures.updateSubImage(m_texture, pixels.data() + static_cast<std::size_t>(top) * static_cast<std::size_t>(m_atlas.width()),
-                            0, top, m_atlas.width(), m_atlas.dirtyBottom() - top, TextureDataFormat::Alpha);
+    textures.updateSubImage(m_texture,
+                            pixels.data() + static_cast<std::size_t>(top) * static_cast<std::size_t>(m_atlas.width()) * 4,
+                            0, top, m_atlas.width(), m_atlas.dirtyBottom() - top, TextureDataFormat::Rgba);
     markPaintDirty();
   }
   m_atlas.clearDirty();
@@ -172,7 +173,7 @@ void TerminalGridNode::appendGlyph(std::vector<float>& out, char32_t codepoint, 
   const float v0 = g->y;
   const float u1 = u0 + g->width;
   const float v1 = v0 + g->height;
-  const Rgba c = premultiplied(rgb);
+  const Rgba c = g->color ? premultiplied(0xFFFFFF) : premultiplied(rgb);
   const float corners[6][4] = {{x0, y0, u0, v0}, {x1, y0, u1, v0}, {x0, y1, u0, v1},
                                {x1, y0, u1, v0}, {x1, y1, u1, v1}, {x0, y1, u0, v1}};
   for (const auto& p : corners) {

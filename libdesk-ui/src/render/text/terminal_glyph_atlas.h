@@ -7,8 +7,9 @@
 #include <unordered_set>
 #include <vector>
 
-// A grayscale glyph atlas for a monospace cell grid: FreeType rasterizes each (codepoint, face) once into one
-// A8 bitmap. Glyphs missing from the font come from a fontconfig fallback face.
+// A glyph atlas for a monospace cell grid: FreeType rasterizes each (codepoint, face) once into one premultiplied
+// RGBA bitmap. Coverage glyphs are stored as white (a, a, a, a) and take the text colour; colour glyphs (emoji) keep
+// their own and are scaled to fit two cells. Glyphs missing from the font come from a fontconfig fallback face.
 class TerminalGlyphAtlas {
 public:
   enum class Face : std::uint8_t { Regular, Bold, Italic, BoldItalic };
@@ -21,6 +22,7 @@ public:
     std::uint16_t height = 0;
     std::int16_t left = 0;
     std::int16_t top = 0;
+    bool color = false; // draw with a white vertex colour, not the text colour
   };
 
   TerminalGlyphAtlas();
@@ -40,6 +42,7 @@ public:
   [[nodiscard]] int underlinePosition() const noexcept { return m_underlinePosition; }
   [[nodiscard]] int strokeThickness() const noexcept { return m_strokeThickness; }
 
+  // RGBA, 4 bytes per pixel, width() pixels per row.
   [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept { return m_pixels; }
   [[nodiscard]] int width() const noexcept { return kWidth; }
   [[nodiscard]] int height() const noexcept { return m_height; }
@@ -64,7 +67,7 @@ private:
   static constexpr int kWidth = 1024;
   static constexpr int kMaxHeight = 4096;
 
-  FontFace* faceFor(Face face, char32_t needs);
+  FontFace* faceFor(Face face, char32_t needs, bool color = false);
   FontFace* openFace(const std::string& file, int index, bool embolden, bool oblique);
   bool place(int width, int height, int& x, int& y);
   void reset();
