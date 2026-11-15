@@ -239,13 +239,15 @@ namespace term {
                                      a.setOnFocusLoss([this] {
                                        m_areaFocused = false;
                                        updateFocus();
-                                       updateLink(false); // Ctrl may come up in another window
+                                       clearLink(); // Ctrl may come up in another window
                                      });
-                                     a.setOnLeave([this] { updateLink(false); });
+                                     a.setOnLeave([this] { clearLink(); });
                                      a.setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_MIDDLE, BTN_RIGHT}));
                                      a.setOnPress([this](const InputArea::PointerData& d) {
                                        pointerButton(d.button, d.localX, d.localY, d.pressed, d.time);
                                      });
+                                     a.setOnEnter(
+                                         [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
                                      a.setOnMotion(
                                          [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
                                      a.setOnAxisHandler([this](const InputArea::PointerData& d) { return wheel(d); });
@@ -318,7 +320,7 @@ namespace term {
     }
     // Output or a scroll can move the text under a shown link.
     if (m_link) {
-      updateLink(true);
+      updateLink((modifiers() & KeyMod::Ctrl) != 0, true);
     }
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
@@ -1093,11 +1095,28 @@ namespace term {
     m_scrollbar->setCurrentMark(std::nullopt, {});
   }
 
-  void TerminalView::updateLink(bool ctrl) {
-    std::optional<HoverLink> next;
-    if (ctrl && m_grid != nullptr && m_grid->columns() > 0 && m_grid->rows() > 0) {
-      next = linkAt(cellAt(m_pointerX, m_pointerY));
+  void TerminalView::updateLink(bool ctrl, bool rescan) {
+    if (m_grid == nullptr || m_grid->columns() <= 0 || m_grid->rows() <= 0) {
+      return;
     }
+    const GhosttyPointCoordinate cell = cellAt(m_pointerX, m_pointerY);
+    std::optional<HoverLink> next = m_link;
+    // linkAt scans the row and stats paths: only when the cell, Ctrl or the text changed.
+    if (rescan || !m_linkProbe || m_linkProbe->ctrl != ctrl || m_linkProbe->cell.x != cell.x
+        || m_linkProbe->cell.y != cell.y) {
+      // A program that tracks the mouse owns plain clicks; Ctrl still reaches links.
+      next = ctrl || !mouseTracking() ? linkAt(cell) : std::nullopt;
+      m_linkProbe = LinkProbe{.cell = cell, .ctrl = ctrl};
+    }
+    applyLink(std::move(next));
+  }
+
+  void TerminalView::clearLink() {
+    m_linkProbe.reset();
+    applyLink(std::nullopt);
+  }
+
+  void TerminalView::applyLink(std::optional<HoverLink> next) {
     const bool overPill = m_context != nullptr && m_context->hitTest(m_pointerX, m_pointerY).has_value();
     if (next == m_link && overPill == m_overPill) {
       return;
@@ -1118,7 +1137,7 @@ namespace term {
     const GhosttyMouseButton mouse = button == BTN_LEFT     ? GHOSTTY_MOUSE_BUTTON_LEFT
                                      : button == BTN_MIDDLE ? GHOSTTY_MOUSE_BUTTON_MIDDLE
                                                             : GHOSTTY_MOUSE_BUTTON_RIGHT;
-    if (button == BTN_LEFT && pressed && m_link) {
+    if (button == BTN_LEFT && pressed && m_link && (modifiers() & KeyMod::Ctrl) != 0) {
       if (m_host.openUri) {
         m_host.openUri(m_link->uri);
       }
@@ -1161,7 +1180,9 @@ namespace term {
                           && cell.y == m_lastClick.cell.y;
       m_lastClick = {.time = time, .cell = cell, .count = repeat ? m_lastClick.count % 3 + 1 : 1};
       if (m_lastClick.count == 1) {
-        m_drag = DragSelecting{.anchor = cell};
+        // Looked up here, not from hover: a tap has no motion before its press.
+        auto link = mouseTracking() ? std::nullopt : linkAt(cell);
+        m_drag = DragSelecting{.anchor = cell, .link = link ? std::optional(std::move(link->uri)) : std::nullopt};
       } else {
         m_drag = DragIdle{};
         selectAround(cell, m_lastClick.count);
@@ -1169,9 +1190,12 @@ namespace term {
       return;
     }
     const auto* drag = std::get_if<DragSelecting>(&m_drag);
-    // A click without a drag clears the selection.
+    // A click without a drag clears the selection and opens the link it hit.
     if (drag != nullptr && !drag->moved) {
       clearSelection();
+      if (drag->link && m_host.openUri) {
+        m_host.openUri(*drag->link);
+      }
     }
     m_drag = DragIdle{};
   }

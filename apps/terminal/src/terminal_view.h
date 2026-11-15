@@ -111,6 +111,7 @@ namespace term {
     struct DragSelecting {
       GhosttyPointCoordinate anchor; // viewport cell where the drag started
       bool moved = false;
+      std::optional<std::string> link; // URI under a single press; a release without a drag opens it
     };
     struct CommandIdle {};
     struct CommandRunning {
@@ -161,7 +162,9 @@ namespace term {
       bool operator==(const HoverLink&) const = default;
     };
     [[nodiscard]] std::optional<HoverLink> linkAt(GhosttyPointCoordinate cell);
-    void updateLink(bool ctrl);
+    void updateLink(bool ctrl, bool rescan = false);
+    void clearLink();
+    void applyLink(std::optional<HoverLink> next);
 
     // IME: commits go to the program; the preedit is drawn over the grid at the cursor.
     [[nodiscard]] TextInputState textInputState() const override;
@@ -207,6 +210,11 @@ namespace term {
     std::string m_cwd;
     std::optional<HoverLink> m_link;
     bool m_overPill = false; // the pointer is on a context-row pill
+    struct LinkProbe {
+      GhosttyPointCoordinate cell;
+      bool ctrl;
+    };
+    std::optional<LinkProbe> m_linkProbe; // the input m_link was computed from
     TextInputService* m_textInput = nullptr;
     std::string m_preedit;
     GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows
