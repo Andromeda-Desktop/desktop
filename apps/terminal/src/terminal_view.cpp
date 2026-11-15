@@ -6,11 +6,16 @@
 #include "wayland/wayland_seat.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
+#include "core/text_clipboard.h"
 #include "ui/builders.h"
+#include "ui/controls/input.h"
 #include "ui/palette.h"
+
+#include <linux/input-event-codes.h>
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -116,6 +121,7 @@ namespace term {
     m_background = m_dark ? kViewDark : kViewLight;
     m_foreground = over(colorForRole(ColorRole::Label1), m_background);
     m_faint = over(colorForRole(ColorRole::Label2), m_background);
+    m_selection = mix(m_background, over(colorForRole(ColorRole::Accent), m_background), 0.4F);
     const auto& ansi = m_dark ? kAnsiDark : kAnsiLight;
     m_session.withTerminal([&](GhosttyTerminal t) {
       if (t == nullptr) {
@@ -150,6 +156,7 @@ namespace term {
                                .configure =
                                    [this](InputArea& a) {
                                      a.setCapturesAllKeys(true);
+                                     a.setRetainsFocusOnPointerRelease(true);
                                      a.setOnFocusGain([this] {
                                        m_areaFocused = true;
                                        updateFocus();
@@ -158,6 +165,13 @@ namespace term {
                                        m_areaFocused = false;
                                        updateFocus();
                                      });
+                                     a.setOnPress([this](const InputArea::PointerData& d) {
+                                       if (d.button == BTN_LEFT) {
+                                         pointerPress(d.localX, d.localY, d.pressed);
+                                       }
+                                     });
+                                     a.setOnMotion(
+                                         [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
                                    }},
                               std::move(grid));
     setSize(width, height);
@@ -187,10 +201,10 @@ namespace term {
   }
 
   void TerminalView::frame() {
-    const bool focusChanged = std::exchange(m_focusChanged, false);
+    const Redraw redraw = std::exchange(m_redraw, Redraw::None);
     if (!m_session.takeWake()) {
-      if (focusChanged) {
-        refresh(false);
+      if (redraw != Redraw::None) {
+        refresh(redraw == Redraw::All);
       }
       return;
     }
@@ -202,9 +216,10 @@ namespace term {
     }
     // Synchronized output (mode 2026): keep the last frame; the release wakes us again.
     if (m_session.renderHeld()) {
+      m_redraw = redraw;
       return;
     }
-    refresh(false);
+    refresh(redraw == Redraw::All);
   }
 
   void TerminalView::refresh(bool all) {
@@ -240,6 +255,9 @@ namespace term {
     const bool clean = false;
     while (nextRow()) {
       ghostty_render_state_row_get(m_rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_cells);
+      auto selected = GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
+      const bool rowSelected =
+          ghostty_render_state_row_get(m_rows, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &selected) == GHOSTTY_SUCCESS;
       m_rowBuffer.clear();
       while (ghostty_render_state_row_cells_next(m_cells)) {
         TerminalCell cell{};
@@ -273,6 +291,10 @@ namespace term {
         }
         if ((flags & GHOSTTY_STYLE_FLAG_INVISIBLE) != 0) {
           cell.codepoint = 0;
+        }
+        if (rowSelected && m_rowBuffer.size() >= selected.start_x && m_rowBuffer.size() <= selected.end_x) {
+          bg = m_selection;
+          hasBg = true;
         }
         cell.fg = fg;
         cell.bg = bg;
@@ -350,6 +372,10 @@ namespace term {
                                || ((mods & (KeyMod::Ctrl | KeyMod::Shift)) == (KeyMod::Ctrl | KeyMod::Shift)
                                    && event.unshifted >= 0x20 && event.unshifted < 0x7f);
       if (windowChord) {
+        if (mods == (KeyMod::Ctrl | KeyMod::Shift) && (event.unshifted == 'c' || event.unshifted == 'v')) {
+          event.unshifted == 'c' ? copySelection() : paste();
+          return true;
+        }
         return false;
       }
       m_keysDown.insert(event.key);
@@ -417,9 +443,115 @@ namespace term {
       }
     }
     // Runs during scene teardown too: the grid may be gone, so the next frame redraws the cursor.
-    m_focusChanged = true;
+    scheduleRedraw(Redraw::Dirty);
+  }
+
+  void TerminalView::scheduleRedraw(Redraw redraw) {
+    m_redraw = std::max(m_redraw, redraw);
     if (m_host.requestFrame) {
       m_host.requestFrame();
+    }
+  }
+
+  GhosttyPointCoordinate TerminalView::cellAt(float localX, float localY) const {
+    const float col = std::floor((localX - kInset * m_uiScale) / m_grid->cellWidth());
+    const float row = std::floor((localY - kTopInset * m_uiScale) / m_grid->cellHeight());
+    return {.x = static_cast<std::uint16_t>(std::clamp(col, 0.0F, static_cast<float>(m_grid->columns() - 1))),
+            .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(m_grid->rows() - 1)))};
+  }
+
+  void TerminalView::pointerPress(float localX, float localY, bool pressed) {
+    if (m_grid == nullptr || m_grid->columns() <= 0 || m_grid->rows() <= 0) {
+      return;
+    }
+    if (pressed) {
+      m_drag = DragSelecting{.anchor = cellAt(localX, localY)};
+      return;
+    }
+    const auto* drag = std::get_if<DragSelecting>(&m_drag);
+    // A click without a drag clears the selection.
+    if (drag != nullptr && !drag->moved) {
+      m_session.withTerminal([](GhosttyTerminal t) {
+        if (t != nullptr) {
+          ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, nullptr);
+        }
+      });
+      scheduleRedraw(Redraw::All);
+    }
+    m_drag = DragIdle{};
+  }
+
+  void TerminalView::pointerMotion(float localX, float localY) {
+    auto* drag = std::get_if<DragSelecting>(&m_drag);
+    if (drag == nullptr || m_grid == nullptr) {
+      return;
+    }
+    const GhosttyPointCoordinate cell = cellAt(localX, localY);
+    if (!drag->moved && cell.x == drag->anchor.x && cell.y == drag->anchor.y) {
+      return;
+    }
+    drag->moved = true;
+    const bool set = m_session.withTerminal([&](GhosttyTerminal t) {
+      GhosttySelection selection{};
+      return t != nullptr
+             && ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = drag->anchor}},
+                                          &selection.start)
+                    == GHOSTTY_SUCCESS
+             && ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = cell}},
+                                          &selection.end)
+                    == GHOSTTY_SUCCESS
+             && ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS;
+    });
+    if (set) {
+      scheduleRedraw(Redraw::All);
+    }
+  }
+
+  void TerminalView::copySelection() {
+    std::string text;
+    m_session.withTerminal([&](GhosttyTerminal t) {
+      GhosttySelection selection{};
+      GhosttyFormatter formatter = nullptr;
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SELECTION, &selection) != GHOSTTY_SUCCESS
+          || ghostty_formatter_terminal_new(nullptr, &formatter, t) != GHOSTTY_SUCCESS) {
+        return;
+      }
+      const bool on = true;
+      ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
+      ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &on);
+      ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &on);
+      std::uint8_t* ptr = nullptr;
+      std::size_t len = 0;
+      if (ghostty_formatter_format_alloc(formatter, nullptr, &ptr, &len) == GHOSTTY_SUCCESS) {
+        text.assign(reinterpret_cast<const char*>(ptr), len);
+        ghostty_free(nullptr, ptr, len);
+      }
+      ghostty_formatter_free(formatter);
+    });
+    TextClipboard* clipboard = Input::textClipboard();
+    if (!text.empty() && clipboard != nullptr) {
+      clipboard->setClipboardText(std::move(text));
+    }
+  }
+
+  void TerminalView::paste() {
+    TextClipboard* clipboard = Input::textClipboard();
+    std::optional<std::string> text = clipboard != nullptr ? clipboard->clipboardText() : std::nullopt;
+    if (!text || text->empty()) {
+      return;
+    }
+    const bool bracketed = m_session.withTerminal([](GhosttyTerminal t) {
+      GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_BRACKETED_PASTE, .value = false};
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &mode) == GHOSTTY_SUCCESS && mode.value;
+    });
+    std::size_t needed = 0;
+    ghostty_paste_encode(text->data(), text->size(), bracketed, nullptr, 0, &needed);
+    std::vector<std::uint8_t> buf(needed);
+    std::size_t written = 0;
+    if (ghostty_paste_encode(text->data(), text->size(), bracketed, buf.data(), buf.size(), &written)
+            == GHOSTTY_SUCCESS
+        && written > 0) {
+      m_session.write({buf.data(), written});
     }
   }
 

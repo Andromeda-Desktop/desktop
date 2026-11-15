@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 class InputArea;
@@ -41,8 +42,8 @@ namespace term {
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
     void frame();
 
-    // A key for the program; false when the window should handle it (Super, Ctrl+Shift chords, keys pressed
-    // before the grid had focus).
+    // A key for the program, or Ctrl+Shift+C/V (copy the selection, paste); false when the window should handle
+    // it (Super, other Ctrl+Shift chords, keys pressed before the grid had focus).
     bool key(const KeyboardEvent& event);
     // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
@@ -52,8 +53,22 @@ namespace term {
     [[nodiscard]] PtySession& session() noexcept { return m_session; }
 
   private:
+    // Redraw owed to the next frame tick: Dirty rows only, or All rows (the selection changed).
+    enum class Redraw : std::uint8_t { None, Dirty, All };
+    struct DragIdle {};
+    struct DragSelecting {
+      GhosttyPointCoordinate anchor; // viewport cell where the drag started
+      bool moved = false;
+    };
+
     void refresh(bool all);
     void applyPalette();
+    void scheduleRedraw(Redraw redraw);
+    [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
+    void pointerPress(float localX, float localY, bool pressed);
+    void pointerMotion(float localX, float localY);
+    void copySelection();
+    void paste();
 
     Host m_host;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
@@ -69,7 +84,8 @@ namespace term {
     bool m_windowActive = true;
     bool m_areaFocused = false;
     bool m_focused = false;
-    bool m_focusChanged = false; // the cursor shape waits for the next frame
+    Redraw m_redraw = Redraw::None;
+    std::variant<DragIdle, DragSelecting> m_drag;
 
     InputArea* m_area = nullptr;
     TerminalGridNode* m_grid = nullptr;
@@ -79,6 +95,7 @@ namespace term {
     std::uint32_t m_foreground = 0;
     std::uint32_t m_faint = 0;
     std::uint32_t m_background = 0;
+    std::uint32_t m_selection = 0;
     std::vector<TerminalCell> m_rowBuffer;
     bool m_exitReported = false;
   };
