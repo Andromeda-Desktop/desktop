@@ -86,7 +86,6 @@ gstreamer_dep       = dependency('gstreamer-1.0')
 gstreamer_app_dep   = dependency('gstreamer-app-1.0')
 gstreamer_video_dep = dependency('gstreamer-video-1.0')
 gstreamer_allocators_dep = dependency('gstreamer-allocators-1.0')
-libsecret_dep       = dependency('libsecret-1', version: '>=0.20')
 libsodium_dep       = dependency('libsodium', version: '>=1.0.18')
 libxcrypt_dep       = dependency('libxcrypt')
 # PipeWire/SPA headers use GCC extensions that trigger -Wpedantic/-Wconversion;
@@ -966,7 +965,6 @@ _noctalia_system_dependencies = [
   gstreamer_app_dep,
   gstreamer_video_dep,
   gstreamer_allocators_dep,
-  libsecret_dep,
   libsodium_dep,
   libxcrypt_dep,
   pipewire_dep,
@@ -1414,6 +1412,16 @@ if build_tests
       dbus_run_session,
       args: ['--', secret_collection_probe_integration_exe.full_path()],
       depends: secret_collection_probe_integration_exe,
+    )
+    secret_service_prompt_integration_exe = executable('secret_service_prompt_integration_test',
+      sources: files('tests/secret_service_prompt_integration_test.cpp'),
+      dependencies: noctalia_core_dep,
+      override_options: ['b_ndebug=false'],
+    )
+    test('secret_service_prompt_integration',
+      dbus_run_session,
+      args: ['--', secret_service_prompt_integration_exe.full_path()],
+      depends: secret_service_prompt_integration_exe,
     )
     foreach mode : ['registration', 'discovery', 'vanished']
       test('tray_' + mode + '_integration',

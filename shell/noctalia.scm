@@ -103,7 +103,6 @@
            libjxl
            libical
            libqalculate
-           libsecret
            libsndfile
            libsodium
            libwebp

@@ -1,18 +1,21 @@
 #include "security/secret_store.h"
 #include "protocols/crash_capture.h"
+#include "util/secure_wipe.h"
 #include "util/thread_name.h"
 
 #include "core/log.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
-#include <libsecret/secret.h>
-#include <limits>
+#include <map>
 #include <memory>
+#include <optional>
+#include <poll.h>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string_view>
 #include <sys/eventfd.h>
@@ -110,419 +113,332 @@ namespace security {
       };
     }
 
-    const SecretSchema& schema() {
-      static const SecretSchema value = {
-          SecretStoreSchemaName.data(),
-          SECRET_SCHEMA_NONE,
-          {
-              {"application", SECRET_SCHEMA_ATTRIBUTE_STRING},
-              {"scope", SECRET_SCHEMA_ATTRIBUTE_STRING},
-              {"owner", SECRET_SCHEMA_ATTRIBUTE_STRING},
-              {"name", SECRET_SCHEMA_ATTRIBUTE_STRING},
-              {"version", SECRET_SCHEMA_ATTRIBUTE_STRING},
-              {nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING},
-          },
-      };
-      return value;
+    constexpr auto kCallTimeout = std::chrono::seconds(10);
+    constexpr const char* kSecretsName = "org.freedesktop.secrets";
+    constexpr const char* kServiceInterface = "org.freedesktop.Secret.Service";
+    constexpr const char* kCollectionInterface = "org.freedesktop.Secret.Collection";
+    constexpr const char* kItemInterface = "org.freedesktop.Secret.Item";
+    constexpr const char* kPromptInterface = "org.freedesktop.Secret.Prompt";
+    constexpr const char* kSessionInterface = "org.freedesktop.Secret.Session";
+    constexpr const char* kNoObject = "/";
+
+    // (session, parameters, value, content type)
+    using Secret = sdbus::Struct<sdbus::ObjectPath, std::vector<std::uint8_t>, std::vector<std::uint8_t>, std::string>;
+    using Paths = std::vector<sdbus::ObjectPath>;
+
+    SecretStoreBackendResult makeResult(SecretStoreStatus status, SecretStoreErrorCategory category) {
+      return {.status = status, .errorCategory = category};
     }
 
-    using HashTablePtr = std::unique_ptr<GHashTable, decltype(&g_hash_table_unref)>;
-    using SecretValuePtr = std::unique_ptr<SecretValue, decltype(&secret_value_unref)>;
-    using ErrorPtr = std::unique_ptr<GError, decltype(&g_error_free)>;
-    using CancellablePtr = std::shared_ptr<GCancellable>;
+    SecretStoreBackendResult lockedResult() {
+      return makeResult(SecretStoreStatus::DeniedOrLocked, SecretStoreErrorCategory::Locked);
+    }
 
-    struct SecretItemListDeleter {
-      void operator()(GList* items) const {
-        g_list_free_full(items, [](gpointer item) { g_object_unref(item); });
+    std::map<std::string, std::string> makeAttributes(const SecretStoreAttributes& attributes) {
+      return {
+          // libsecret adds the schema name on store and search; keep it so secrets stored by libsecret still match.
+          {"xdg:schema", std::string(SecretStoreSchemaName)},
+          {"application", attributes.application},
+          {"scope", attributes.scope},
+          {"owner", attributes.owner},
+          {"name", attributes.name},
+          {"version", attributes.version},
+      };
+    }
+
+    SecretStoreBackendResult resultFromError(const sdbus::Error& error) {
+      const std::string_view name = error.getName();
+      if (name == "org.freedesktop.Secret.Error.IsLocked") {
+        return lockedResult();
       }
+      if (name == "org.freedesktop.DBus.Error.AccessDenied") {
+        return makeResult(SecretStoreStatus::DeniedOrLocked, SecretStoreErrorCategory::PermissionDenied);
+      }
+      if (name == "org.freedesktop.DBus.Error.ServiceUnknown" || name == "org.freedesktop.DBus.Error.NameHasNoOwner"
+          || name == "org.freedesktop.DBus.Error.Spawn.ServiceNotFound") {
+        return makeResult(SecretStoreStatus::Unavailable, SecretStoreErrorCategory::ProviderUnavailable);
+      }
+      if (name.starts_with("org.freedesktop.Secret.Error.")) {
+        return makeResult(SecretStoreStatus::BackendError, SecretStoreErrorCategory::Protocol);
+      }
+      return makeResult(SecretStoreStatus::BackendError, SecretStoreErrorCategory::Other);
+    }
+
+    struct OperationCancelled {};
+
+    // Owned by the cancel callback too: SecretStoreCancellation::cancel() may run a copy after clearCancelCallback().
+    class CancelEvent {
+    public:
+      CancelEvent() : m_fd(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK)) {
+        if (m_fd < 0) {
+          throw sdbus::createError(errno, "eventfd");
+        }
+      }
+      ~CancelEvent() { close(m_fd); }
+      CancelEvent(const CancelEvent&) = delete;
+      CancelEvent& operator=(const CancelEvent&) = delete;
+
+      void signal() const {
+        const std::uint64_t one = 1;
+        [[maybe_unused]] const auto written = write(m_fd, &one, sizeof(one));
+      }
+      [[nodiscard]] int fd() const { return m_fd; }
+
+    private:
+      int m_fd;
     };
 
-    using SecretItemListPtr = std::unique_ptr<GList, SecretItemListDeleter>;
+    // One private session-bus connection per operation, driven on the worker thread. Every call waits in poll() on the
+    // bus and the cancel event, so a cancel ends a pending call or an open prompt at once.
+    class SecretService {
+    public:
+      explicit SecretService(int cancelFd)
+          : m_cancelFd(cancelFd), m_bus(sdbus::createSessionBusConnection()),
+            m_service(proxy(sdbus::ObjectPath{"/org/freedesktop/secrets"})) {
+        sdbus::Variant output;
+        call(*m_service, kServiceInterface, "OpenSession", std::string{"plain"}, sdbus::Variant{std::string{}})
+            >> output >> m_session;
+      }
 
-    HashTablePtr makeAttributes(const SecretStoreAttributes& attributes) {
-      HashTablePtr table(g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free), &g_hash_table_unref);
-      const auto insert = [&table](const char* key, const std::string& value) {
-        g_hash_table_insert(table.get(), g_strdup(key), g_strdup(value.c_str()));
-      };
-      insert("application", attributes.application);
-      insert("scope", attributes.scope);
-      insert("owner", attributes.owner);
-      insert("name", attributes.name);
-      insert("version", attributes.version);
-      return table;
-    }
-
-    bool isRemoteError(const GError& error, const char* expected) {
-      if (!g_dbus_error_is_remote_error(&error)) {
-        return false;
-      }
-      std::unique_ptr<char, decltype(&g_free)> remote(g_dbus_error_get_remote_error(&error), &g_free);
-      return remote != nullptr && std::string_view(remote.get()) == expected;
-    }
-
-    SecretStoreBackendResult resultFromError(const GError* error) {
-      if (error == nullptr) {
-        return {
-            .status = SecretStoreStatus::BackendError,
-            .errorCategory = SecretStoreErrorCategory::Other,
-        };
-      }
-      if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
-        return cancelledResult();
-      }
-      if (g_error_matches(error, SECRET_ERROR, SECRET_ERROR_IS_LOCKED)
-          || isRemoteError(*error, "org.freedesktop.Secret.Error.IsLocked")) {
-        return {
-            .status = SecretStoreStatus::DeniedOrLocked,
-            .errorCategory = SecretStoreErrorCategory::Locked,
-        };
-      }
-      if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED)
-          || g_error_matches(error, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED)
-          || isRemoteError(*error, "org.freedesktop.DBus.Error.AccessDenied")) {
-        return {
-            .status = SecretStoreStatus::DeniedOrLocked,
-            .errorCategory = SecretStoreErrorCategory::PermissionDenied,
-        };
-      }
-      if (g_error_matches(error, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN)
-          || g_error_matches(error, G_DBUS_ERROR, G_DBUS_ERROR_NAME_HAS_NO_OWNER)
-          || g_error_matches(error, G_DBUS_ERROR, G_DBUS_ERROR_SPAWN_SERVICE_NOT_FOUND)
-          || isRemoteError(*error, "org.freedesktop.DBus.Error.ServiceUnknown")
-          || isRemoteError(*error, "org.freedesktop.DBus.Error.NameHasNoOwner")
-          || isRemoteError(*error, "org.freedesktop.DBus.Error.Spawn.ServiceNotFound")) {
-        return {
-            .status = SecretStoreStatus::Unavailable,
-            .errorCategory = SecretStoreErrorCategory::ProviderUnavailable,
-        };
-      }
-      if (error->domain == SECRET_ERROR) {
-        return {
-            .status = SecretStoreStatus::BackendError,
-            .errorCategory = SecretStoreErrorCategory::Protocol,
-        };
-      }
-      return {
-          .status = SecretStoreStatus::BackendError,
-          .errorCategory = SecretStoreErrorCategory::Other,
-      };
-    }
-
-    // libsecret logs a GLib critical (unref of a null object) when no Secret Service is on the bus. Ask the bus first
-    // and report the same "service unknown" error a missing provider gives. The probe uses sd-bus: GDBus would start
-    // the gdbus and gmain threads for good even when no provider exists.
-    bool secretServiceOnBus() {
-      std::unique_ptr<sdbus::IProxy> bus;
-      try {
-        bus = sdbus::createProxy(
-            sdbus::createSessionBusConnection(), sdbus::ServiceName{"org.freedesktop.DBus"},
-            sdbus::ObjectPath{"/org/freedesktop/DBus"}, sdbus::dont_run_event_loop_thread
-        );
-      } catch (const sdbus::Error&) {
-        return true;
-      }
-      try {
-        bool owned = false;
-        bus->callMethod("NameHasOwner")
-            .onInterface("org.freedesktop.DBus")
-            .withArguments(std::string("org.freedesktop.secrets"))
-            .storeResultsTo(owned);
-        if (owned) {
-          return true;
+      ~SecretService() {
+        try {
+          proxy(m_session)->callMethod("Close").onInterface(kSessionInterface).dontExpectReply();
+        } catch (const sdbus::Error&) {
         }
-      } catch (const sdbus::Error&) {
       }
-      try {
-        std::vector<std::string> names;
-        bus->callMethod("ListActivatableNames").onInterface("org.freedesktop.DBus").storeResultsTo(names);
-        return std::ranges::find(names, "org.freedesktop.secrets") != names.end();
-      } catch (const sdbus::Error&) {
-        return true;
-      }
-    }
 
-    SecretService* getSecretService(SecretServiceFlags flags, GCancellable* cancellable, GError** error) {
-      if (!secretServiceOnBus()) {
-        g_set_error_literal(error, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN, "no Secret Service on the session bus");
-        return nullptr;
-      }
-      return secret_service_get_sync(flags, cancellable, error);
-    }
+      SecretService(const SecretService&) = delete;
+      SecretService& operator=(const SecretService&) = delete;
 
-    SecretStoreCollectionState inspectDefaultCollection(GCancellable* cancellable) {
-      GError* rawError = nullptr;
-      const auto flags = static_cast<SecretServiceFlags>(SECRET_SERVICE_OPEN_SESSION | SECRET_SERVICE_LOAD_COLLECTIONS);
-      SecretService* rawService = getSecretService(flags, cancellable, &rawError);
-      ErrorPtr error(rawError, &g_error_free);
-      if (rawService == nullptr) {
-        return SecretStoreCollectionState::Unknown;
+      sdbus::ObjectPath defaultCollection() {
+        sdbus::ObjectPath path;
+        call(*m_service, kServiceInterface, "ReadAlias", std::string{"default"}) >> path;
+        return path;
       }
-      const auto service =
-          std::unique_ptr<SecretService, void (*)(SecretService*)>(rawService, [](SecretService* value) {
-            g_object_unref(value);
-          });
 
-      rawError = nullptr;
-      SecretCollection* rawCollection = secret_collection_for_alias_sync(
-          service.get(), SECRET_COLLECTION_DEFAULT, SECRET_COLLECTION_NONE, cancellable, &rawError
-      );
-      error.reset(rawError);
-      if (rawCollection == nullptr) {
-        return error == nullptr ? SecretStoreCollectionState::Missing : SecretStoreCollectionState::Unknown;
+      SecretStoreCollectionState inspectDefaultCollection() {
+        try {
+          const sdbus::ObjectPath path = defaultCollection();
+          if (path == kNoObject) {
+            return SecretStoreCollectionState::Missing;
+          }
+          sdbus::Variant locked;
+          call(*proxy(path), "org.freedesktop.DBus.Properties", "Get", std::string{kCollectionInterface},
+               std::string{"Locked"})
+              >> locked;
+          return locked.get<bool>() ? SecretStoreCollectionState::Locked : SecretStoreCollectionState::Unlocked;
+        } catch (const sdbus::Error&) {
+          return SecretStoreCollectionState::Unknown;
+        }
       }
-      const auto collection =
-          std::unique_ptr<SecretCollection, void (*)(SecretCollection*)>(rawCollection, [](SecretCollection* value) {
-            g_object_unref(value);
-          });
-      return secret_collection_get_locked(collection.get()) != 0 ? SecretStoreCollectionState::Locked
-                                                                 : SecretStoreCollectionState::Unlocked;
-    }
 
-    SecretStoreBackendResult unlockDefaultCollection(GCancellable* cancellable) {
-      GError* rawError = nullptr;
-      const auto flags = static_cast<SecretServiceFlags>(SECRET_SERVICE_OPEN_SESSION | SECRET_SERVICE_LOAD_COLLECTIONS);
-      SecretService* rawService = getSecretService(flags, cancellable, &rawError);
-      ErrorPtr error(rawError, &g_error_free);
-      if (rawService == nullptr) {
-        return error != nullptr ? resultFromError(error.get())
-                                : SecretStoreBackendResult{
-                                      .status = SecretStoreStatus::BackendError,
-                                      .errorCategory = SecretStoreErrorCategory::Other,
-                                  };
+      SecretStoreBackendResult withDefaultCollectionState(SecretStoreBackendResult result) {
+        result.defaultCollectionState = inspectDefaultCollection();
+        return result;
       }
-      const auto service =
-          std::unique_ptr<SecretService, void (*)(SecretService*)>(rawService, [](SecretService* value) {
-            g_object_unref(value);
-          });
 
-      rawError = nullptr;
-      SecretCollection* rawCollection = secret_collection_for_alias_sync(
-          service.get(), SECRET_COLLECTION_DEFAULT, SECRET_COLLECTION_NONE, cancellable, &rawError
-      );
-      error.reset(rawError);
-      if (rawCollection == nullptr) {
-        return error != nullptr ? resultFromError(error.get())
-                                : SecretStoreBackendResult{
-                                      .status = SecretStoreStatus::DeniedOrLocked,
-                                      .errorCategory = SecretStoreErrorCategory::Locked,
-                                  };
+      std::pair<Paths, Paths> search(const std::map<std::string, std::string>& attributes) {
+        Paths unlocked;
+        Paths locked;
+        call(*m_service, kServiceInterface, "SearchItems", attributes) >> unlocked >> locked;
+        return {std::move(unlocked), std::move(locked)};
       }
-      const auto collection =
-          std::unique_ptr<SecretCollection, void (*)(SecretCollection*)>(rawCollection, [](SecretCollection* value) {
-            g_object_unref(value);
-          });
 
-      // Ask the Secret Service to unlock the default collection. Where the provider holds a
-      // PAM-supplied password this returns silently; otherwise the user gets the keyring prompt.
-      GList* objects = g_list_prepend(nullptr, collection.get());
-      GList* rawUnlocked = nullptr;
-      rawError = nullptr;
-      const gint unlockedCount =
-          secret_service_unlock_sync(service.get(), objects, cancellable, &rawUnlocked, &rawError);
-      g_list_free(objects);
-      SecretItemListPtr unlocked(rawUnlocked);
-      error.reset(rawError);
-      if (unlockedCount < 0) {
-        return resultFromError(error.get());
+      // The objects the service unlocked; nullopt when the user dismissed the prompt.
+      std::optional<Paths> unlock(const Paths& objects) {
+        Paths unlocked;
+        sdbus::ObjectPath prompt;
+        call(*m_service, kServiceInterface, "Unlock", objects) >> unlocked >> prompt;
+        if (prompt != kNoObject) {
+          auto result = runPrompt(prompt);
+          if (!result.has_value()) {
+            return std::nullopt;
+          }
+          unlocked = result->get<Paths>();
+        }
+        return unlocked;
       }
-      if (unlockedCount == 0) {
-        return SecretStoreBackendResult{
-            .status = SecretStoreStatus::DeniedOrLocked,
-            .errorCategory = SecretStoreErrorCategory::Locked,
+
+      Secret getSecret(const sdbus::ObjectPath& item) {
+        Secret secret;
+        call(*proxy(item), kItemInterface, "GetSecret", m_session) >> secret;
+        return secret;
+      }
+
+      // The default collection path, created when missing; nullopt when the user dismissed the prompt.
+      std::optional<sdbus::ObjectPath> createDefaultCollection() {
+        const std::map<std::string, sdbus::Variant> properties{
+            {"org.freedesktop.Secret.Collection.Label", sdbus::Variant{std::string{"Default keyring"}}},
         };
+        sdbus::ObjectPath collection;
+        sdbus::ObjectPath prompt;
+        call(*m_service, kServiceInterface, "CreateCollection", properties, std::string{"default"})
+            >> collection >> prompt;
+        if (prompt == kNoObject) {
+          return collection;
+        }
+        auto result = runPrompt(prompt);
+        if (!result.has_value()) {
+          return std::nullopt;
+        }
+        return result->get<sdbus::ObjectPath>();
       }
-      return SecretStoreBackendResult{
-          .status = SecretStoreStatus::Success,
-          .errorCategory = SecretStoreErrorCategory::None,
-      };
-    }
 
-    SecretStoreBackendResult withDefaultCollectionState(SecretStoreBackendResult result, GCancellable* cancellable) {
-      result.defaultCollectionState = inspectDefaultCollection(cancellable);
-      return result;
-    }
+      // False when the user dismissed the prompt.
+      bool createItem(
+          const sdbus::ObjectPath& collection, const std::map<std::string, std::string>& attributes,
+          std::span<const std::uint8_t> bytes, const std::string& label
+      ) {
+        const std::map<std::string, sdbus::Variant> properties{
+            {"org.freedesktop.Secret.Item.Label", sdbus::Variant{label}},
+            {"org.freedesktop.Secret.Item.Attributes", sdbus::Variant{attributes}},
+        };
+        Secret secret{
+            m_session, std::vector<std::uint8_t>{}, std::vector<std::uint8_t>(bytes.begin(), bytes.end()),
+            std::string{"application/octet-stream"}
+        };
+        sdbus::ObjectPath item;
+        sdbus::ObjectPath prompt;
+        try {
+          call(*proxy(collection), kCollectionInterface, "CreateItem", properties, secret, true) >> item >> prompt;
+        } catch (...) {
+          wipe(secret);
+          throw;
+        }
+        wipe(secret);
+        return prompt == kNoObject || runPrompt(prompt).has_value();
+      }
+
+      // False when the user dismissed the prompt.
+      bool deleteItem(const sdbus::ObjectPath& item) {
+        sdbus::ObjectPath prompt;
+        call(*proxy(item), kItemInterface, "Delete") >> prompt;
+        return prompt == kNoObject || runPrompt(prompt).has_value();
+      }
+
+      static void wipe(Secret& secret) {
+        auto& value = std::get<2>(secret);
+        util::secureWipe(value.data(), value.size());
+      }
+
+    private:
+      std::unique_ptr<sdbus::IProxy> proxy(const sdbus::ObjectPath& path) {
+        return sdbus::createProxy(*m_bus, sdbus::ServiceName{kSecretsName}, path);
+      }
+
+      template <typename... Args>
+      sdbus::MethodReply call(sdbus::IProxy& target, const char* interface, const char* method, const Args&... args) {
+        auto message = target.createMethodCall(sdbus::InterfaceName{interface}, sdbus::MethodName{method});
+        (message << ... << args);
+        std::optional<sdbus::MethodReply> reply;
+        std::optional<sdbus::Error> error;
+        const auto slot = target.callMethodAsync(
+            message,
+            [&reply, &error](sdbus::MethodReply value, std::optional<sdbus::Error> failure) {
+              if (failure.has_value()) {
+                error = std::move(failure);
+              } else {
+                reply = std::move(value);
+              }
+            },
+            kCallTimeout, sdbus::return_slot
+        );
+        waitUntil([&reply, &error] { return reply.has_value() || error.has_value(); });
+        if (error.has_value()) {
+          throw *error;
+        }
+        return std::move(*reply);
+      }
+
+      // The prompt's result, or nullopt when the user dismissed it. A cancel dismisses the prompt.
+      std::optional<sdbus::Variant> runPrompt(const sdbus::ObjectPath& path) {
+        auto prompt = proxy(path);
+        std::optional<std::pair<bool, sdbus::Variant>> completed;
+        prompt->uponSignal("Completed").onInterface(kPromptInterface).call([&completed](bool dismissed, sdbus::Variant result) {
+          completed.emplace(dismissed, std::move(result));
+        });
+        try {
+          call(*prompt, kPromptInterface, "Prompt", std::string{});
+          waitUntil([&completed] { return completed.has_value(); });
+        } catch (const OperationCancelled&) {
+          try {
+            prompt->callMethod("Dismiss").onInterface(kPromptInterface).dontExpectReply();
+          } catch (const sdbus::Error&) {
+          }
+          throw;
+        }
+        if (completed->first) {
+          return std::nullopt;
+        }
+        return std::move(completed->second);
+      }
+
+      template <typename Predicate> void waitUntil(const Predicate& done) {
+        while (true) {
+          while (m_bus->processPendingEvent()) {
+          }
+          if (done()) {
+            return;
+          }
+          const auto data = m_bus->getEventLoopPollData();
+          std::array<pollfd, 3> fds{{
+              {.fd = data.fd, .events = data.events, .revents = 0},
+              {.fd = data.eventFd, .events = POLLIN, .revents = 0},
+              {.fd = m_cancelFd, .events = POLLIN, .revents = 0},
+          }};
+          if (poll(fds.data(), fds.size(), data.getPollTimeout()) < 0 && errno != EINTR) {
+            throw sdbus::createError(errno, "poll");
+          }
+          if ((fds[2].revents & POLLIN) != 0) {
+            throw OperationCancelled{};
+          }
+        }
+      }
+
+      int m_cancelFd;
+      std::unique_ptr<sdbus::IConnection> m_bus;
+      std::unique_ptr<sdbus::IProxy> m_service;
+      sdbus::ObjectPath m_session;
+    };
 
     template <typename Function>
-    SecretStoreBackendResult withCancellable(SecretStoreCancellation& cancellation, Function&& function) {
+    SecretStoreBackendResult withService(SecretStoreCancellation& cancellation, Function&& function) {
       if (cancellation.cancelled()) {
         return cancelledResult();
       }
-
-      CancellablePtr native(g_cancellable_new(), [](GCancellable* value) { g_object_unref(value); });
-      cancellation.setCancelCallback([native] { g_cancellable_cancel(native.get()); });
-      SecretStoreBackendResult result = function(native.get());
+      SecretStoreBackendResult result;
+      try {
+        const auto cancelEvent = std::make_shared<CancelEvent>();
+        cancellation.setCancelCallback([cancelEvent] { cancelEvent->signal(); });
+        try {
+          SecretService service(cancelEvent->fd());
+          result = function(service);
+        } catch (const OperationCancelled&) {
+          result = cancelledResult();
+        }
+      } catch (const sdbus::Error& error) {
+        result = resultFromError(error);
+      }
       cancellation.clearCancelCallback();
       return result;
     }
 
-    class LibsecretBackend final : public SecretStoreBackend {
+    class SecretServiceBackend final : public SecretStoreBackend {
     public:
       SecretStoreBackendResult probe(SecretStoreCancellation& cancellation) override {
-        return withCancellable(cancellation, [](GCancellable* cancellable) {
-          GError* rawError = nullptr;
-          SecretService* service = getSecretService(SECRET_SERVICE_OPEN_SESSION, cancellable, &rawError);
-          ErrorPtr error(rawError, &g_error_free);
-          if (service == nullptr) {
-            return resultFromError(error.get());
-          }
-          g_object_unref(service);
-          return SecretStoreBackendResult{
-              .status = SecretStoreStatus::Success,
-              .errorCategory = SecretStoreErrorCategory::None,
-          };
+        return withService(cancellation, [](SecretService&) {
+          return makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
         });
       }
 
       SecretStoreBackendResult
       lookup(const SecretStoreAttributes& attributes, SecretStoreCancellation& cancellation) override {
-        return withCancellable(cancellation, [&attributes](GCancellable* cancellable) {
-          auto table = makeAttributes(attributes);
-          // KWallet's ksecretd answers GetSecret on a wallet it has not opened yet with an empty secret
-          // instead of an error, and counts each such request toward its "repeated failed attempts"
-          // warning. Stored secrets are never empty, so an empty one means the wallet must be opened.
-          bool emptySecretFound = false;
-          const auto loadUnlocked = [cancellable, &emptySecretFound](
-                                        const SecretItemListPtr& items, bool& lockedItemFound
-                                    ) -> std::optional<SecretStoreBackendResult> {
-            for (GList* node = items.get(); node != nullptr; node = node->next) {
-              auto* item = SECRET_ITEM(node->data);
-
-              // Treat GetSecret as authoritative: the item proxy's cached Locked property may be stale.
-              GError* rawError = nullptr;
-              if (secret_item_load_secret_sync(item, cancellable, &rawError) == 0) {
-                ErrorPtr error(rawError, &g_error_free);
-                if (error == nullptr) {
-                  return SecretStoreBackendResult{
-                      .status = SecretStoreStatus::BackendError,
-                      .errorCategory = SecretStoreErrorCategory::Protocol,
-                  };
-                }
-                SecretStoreBackendResult errorResult = resultFromError(error.get());
-                if (errorResult.status == SecretStoreStatus::DeniedOrLocked
-                    && errorResult.errorCategory == SecretStoreErrorCategory::Locked) {
-                  // A genuinely locked item does not rule out a readable match further down the list.
-                  lockedItemFound = true;
-                  continue;
-                }
-                return errorResult;
-              }
-              SecretValue* value = secret_item_get_secret(item);
-              if (value == nullptr) {
-                return SecretStoreBackendResult{
-                    .status = SecretStoreStatus::BackendError,
-                    .errorCategory = SecretStoreErrorCategory::Protocol,
-                };
-              }
-              gsize length = 0;
-              const gchar* secret = secret_value_get(value, &length);
-              if (secret == nullptr) {
-                return SecretStoreBackendResult{
-                    .status = SecretStoreStatus::BackendError,
-                    .errorCategory = SecretStoreErrorCategory::Protocol,
-                };
-              }
-              if (length == 0) {
-                emptySecretFound = true;
-                lockedItemFound = true;
-                continue;
-              }
-              const auto bytes = std::span(reinterpret_cast<const std::uint8_t*>(secret), length);
-              return SecretStoreBackendResult{
-                  .status = SecretStoreStatus::Success,
-                  .errorCategory = SecretStoreErrorCategory::None,
-                  .value = SecureBuffer(bytes),
-              };
-            }
-            return std::nullopt;
-          };
-
-          GError* rawError = nullptr;
-          SecretService* rawService = getSecretService(SECRET_SERVICE_OPEN_SESSION, cancellable, &rawError);
-          ErrorPtr error(rawError, &g_error_free);
-          if (rawService == nullptr) {
-            return withDefaultCollectionState(resultFromError(error.get()), cancellable);
+        return withService(cancellation, [&attributes](SecretService& service) {
+          try {
+            return lookupIn(service, makeAttributes(attributes));
+          } catch (const sdbus::Error& error) {
+            return service.withDefaultCollectionState(resultFromError(error));
           }
-          const auto service =
-              std::unique_ptr<SecretService, void (*)(SecretService*)>(rawService, [](SecretService* value) {
-                g_object_unref(value);
-              });
-
-          rawError = nullptr;
-          const auto inspectFlags = static_cast<SecretSearchFlags>(SECRET_SEARCH_ALL);
-          SecretItemListPtr items(
-              secret_service_search_sync(service.get(), &schema(), table.get(), inspectFlags, cancellable, &rawError)
-          );
-          error.reset(rawError);
-          if (error != nullptr) {
-            return withDefaultCollectionState(resultFromError(error.get()), cancellable);
-          }
-
-          bool lockedItemFound = false;
-          if (auto result = loadUnlocked(items, lockedItemFound); result.has_value()) {
-            return std::move(*result);
-          }
-          if (!lockedItemFound || emptySecretFound) {
-            // No matching item surfaced. A locked default collection cannot be enumerated, so an
-            // empty result there is indistinguishable from "absent" until it is unlocked. Unlock it
-            // and retry; a reachable (unlocked or missing) collection is reported absent without a
-            // prompt. An empty secret means the provider has not opened the wallet even though it
-            // may report it unlocked, so ask it to open the wallet regardless.
-            if (!emptySecretFound) {
-              const auto collectionState = inspectDefaultCollection(cancellable);
-              if (collectionState != SecretStoreCollectionState::Locked) {
-                SecretStoreBackendResult notFound{
-                    .status = SecretStoreStatus::NotFound,
-                    .errorCategory = SecretStoreErrorCategory::None,
-                };
-                notFound.defaultCollectionState = collectionState;
-                return notFound;
-              }
-            }
-
-            SecretStoreBackendResult unlockResult = unlockDefaultCollection(cancellable);
-            if (unlockResult.status == SecretStoreStatus::Cancelled) {
-              return cancelledResult();
-            }
-            if (unlockResult.status != SecretStoreStatus::Success) {
-              return withDefaultCollectionState(std::move(unlockResult), cancellable);
-            }
-          }
-
-          rawError = nullptr;
-          const auto unlockFlags = static_cast<SecretSearchFlags>(SECRET_SEARCH_ALL | SECRET_SEARCH_UNLOCK);
-          SecretItemListPtr unlockedItems(
-              secret_service_search_sync(service.get(), &schema(), table.get(), unlockFlags, cancellable, &rawError)
-          );
-          error.reset(rawError);
-          if (error == nullptr) {
-            bool remainsLocked = false;
-            if (auto result = loadUnlocked(unlockedItems, remainsLocked); result.has_value()) {
-              return std::move(*result);
-            }
-            if (!remainsLocked) {
-              // The collection is reachable and simply holds no matching secret.
-              return withDefaultCollectionState(
-                  SecretStoreBackendResult{
-                      .status = SecretStoreStatus::NotFound,
-                      .errorCategory = SecretStoreErrorCategory::None,
-                  },
-                  cancellable
-              );
-            }
-          } else {
-            SecretStoreBackendResult errorResult = resultFromError(error.get());
-            if (errorResult.status != SecretStoreStatus::Cancelled) {
-              return withDefaultCollectionState(std::move(errorResult), cancellable);
-            }
-          }
-
-          return withDefaultCollectionState(
-              SecretStoreBackendResult{
-                  .status = SecretStoreStatus::DeniedOrLocked,
-                  .errorCategory = SecretStoreErrorCategory::Locked,
-              },
-              cancellable
-          );
         });
       }
 
@@ -531,56 +447,145 @@ namespace security {
           SecretStoreCancellation& cancellation
       ) override {
         // Empty secrets are refused: lookup treats an empty secret as an unopened KWallet wallet.
-        if (bytes.empty() || bytes.size() > static_cast<std::size_t>(std::numeric_limits<gssize>::max())) {
+        if (bytes.empty()) {
           return invalidRequestResult();
         }
-        return withCancellable(cancellation, [&attributes, bytes, &label](GCancellable* cancellable) {
-          auto table = makeAttributes(attributes);
-          const auto* data = reinterpret_cast<const char*>(bytes.data());
-          SecretValuePtr value(
-              secret_value_new(data, static_cast<gssize>(bytes.size()), "application/octet-stream"), &secret_value_unref
-          );
-          GError* rawError = nullptr;
-          const gboolean stored = secret_password_storev_binary_sync(
-              &schema(), table.get(), SECRET_COLLECTION_DEFAULT, label.c_str(), value.get(), cancellable, &rawError
-          );
-          ErrorPtr error(rawError, &g_error_free);
-          if (stored != 0) {
-            return SecretStoreBackendResult{
-                .status = SecretStoreStatus::Success,
-                .errorCategory = SecretStoreErrorCategory::None,
-            };
+        return withService(cancellation, [&attributes, bytes, &label](SecretService& service) {
+          try {
+            std::optional<sdbus::ObjectPath> collection = service.defaultCollection();
+            if (*collection == kNoObject) {
+              collection = service.createDefaultCollection();
+            } else if (service.inspectDefaultCollection() != SecretStoreCollectionState::Unlocked) {
+              const auto unlocked = service.unlock({*collection});
+              if (unlocked.has_value() && unlocked->empty()) {
+                return service.withDefaultCollectionState(lockedResult());
+              }
+              if (!unlocked.has_value()) {
+                collection.reset();
+              }
+            }
+            // A dismissed prompt is the user's cancel.
+            if (!collection.has_value() || !service.createItem(*collection, makeAttributes(attributes), bytes, label)) {
+              return cancelledResult();
+            }
+            return makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
+          } catch (const sdbus::Error& error) {
+            return service.withDefaultCollectionState(resultFromError(error));
           }
-          return error != nullptr ? withDefaultCollectionState(resultFromError(error.get()), cancellable)
-                                  : cancelledResult();
         });
       }
 
       SecretStoreBackendResult
       erase(const SecretStoreAttributes& attributes, SecretStoreCancellation& cancellation) override {
-        return withCancellable(cancellation, [&attributes](GCancellable* cancellable) {
-          auto table = makeAttributes(attributes);
-          GError* rawError = nullptr;
-          const gboolean erased = secret_password_clearv_sync(&schema(), table.get(), cancellable, &rawError);
-          ErrorPtr error(rawError, &g_error_free);
-          if (erased != 0) {
-            return SecretStoreBackendResult{
-                .status = SecretStoreStatus::Success,
-                .errorCategory = SecretStoreErrorCategory::None,
-            };
+        return withService(cancellation, [&attributes](SecretService& service) {
+          auto [items, locked] = service.search(makeAttributes(attributes));
+          if (items.empty() && locked.empty()) {
+            return makeResult(SecretStoreStatus::NotFound, SecretStoreErrorCategory::None);
           }
-          if (error != nullptr) {
-            return resultFromError(error.get());
+          bool remainsLocked = false;
+          if (!locked.empty()) {
+            const auto unlocked = service.unlock(locked);
+            if (!unlocked.has_value()) {
+              return cancelledResult();
+            }
+            items.insert(items.end(), unlocked->begin(), unlocked->end());
+            remainsLocked = unlocked->size() < locked.size();
           }
-          return SecretStoreBackendResult{
-              .status = SecretStoreStatus::NotFound,
-              .errorCategory = SecretStoreErrorCategory::None,
-          };
+          for (const auto& item : items) {
+            if (!service.deleteItem(item)) {
+              return cancelledResult();
+            }
+          }
+          return remainsLocked ? lockedResult() : makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
         });
+      }
+
+    private:
+      static SecretStoreBackendResult
+      lookupIn(SecretService& service, const std::map<std::string, std::string>& attributes) {
+        // KWallet's ksecretd answers GetSecret on a wallet it has not opened yet with an empty secret
+        // instead of an error, and counts each such request toward its "repeated failed attempts"
+        // warning. Stored secrets are never empty, so an empty one means the wallet must be opened.
+        bool emptySecretFound = false;
+        const auto loadUnlocked = [&service, &emptySecretFound](
+                                      const Paths& items, bool& lockedItemFound
+                                  ) -> std::optional<SecretStoreBackendResult> {
+          for (const auto& item : items) {
+            Secret secret;
+            try {
+              secret = service.getSecret(item);
+            } catch (const sdbus::Error& error) {
+              SecretStoreBackendResult errorResult = resultFromError(error);
+              if (errorResult.errorCategory == SecretStoreErrorCategory::Locked) {
+                // A locked item does not rule out a readable match further down the list.
+                lockedItemFound = true;
+                continue;
+              }
+              return errorResult;
+            }
+            const auto& value = std::get<2>(secret);
+            if (value.empty()) {
+              emptySecretFound = true;
+              lockedItemFound = true;
+              continue;
+            }
+            SecretStoreBackendResult found = makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
+            found.value = SecureBuffer(std::span<const std::uint8_t>(value));
+            SecretService::wipe(secret);
+            return found;
+          }
+          return std::nullopt;
+        };
+
+        auto [unlocked, locked] = service.search(attributes);
+        bool lockedItemFound = !locked.empty();
+        if (auto result = loadUnlocked(unlocked, lockedItemFound); result.has_value()) {
+          return std::move(*result);
+        }
+        if (!lockedItemFound || emptySecretFound) {
+          // No matching item surfaced. A locked default collection cannot be enumerated, so an
+          // empty result there is indistinguishable from "absent" until it is unlocked. Unlock it
+          // and retry; a reachable (unlocked or missing) collection is reported absent without a
+          // prompt. An empty secret means the provider has not opened the wallet even though it
+          // may report it unlocked, so ask it to open the wallet regardless.
+          if (!emptySecretFound) {
+            const auto collectionState = service.inspectDefaultCollection();
+            if (collectionState != SecretStoreCollectionState::Locked) {
+              SecretStoreBackendResult notFound = makeResult(SecretStoreStatus::NotFound, SecretStoreErrorCategory::None);
+              notFound.defaultCollectionState = collectionState;
+              return notFound;
+            }
+          }
+          const sdbus::ObjectPath collection = service.defaultCollection();
+          const auto unlocked = collection == kNoObject ? std::nullopt : service.unlock({collection});
+          if (!unlocked.has_value() || unlocked->empty()) {
+            return service.withDefaultCollectionState(lockedResult());
+          }
+        }
+
+        auto [items, stillLocked] = service.search(attributes);
+        bool remainsLocked = false;
+        if (!stillLocked.empty()) {
+          const auto unlocked = service.unlock(stillLocked);
+          if (unlocked.has_value()) {
+            items.insert(items.end(), unlocked->begin(), unlocked->end());
+          }
+          remainsLocked = !unlocked.has_value() || unlocked->size() < stillLocked.size();
+        }
+        if (auto result = loadUnlocked(items, remainsLocked); result.has_value()) {
+          return std::move(*result);
+        }
+        if (!remainsLocked) {
+          // The collection is reachable and simply holds no matching secret.
+          return service.withDefaultCollectionState(
+              makeResult(SecretStoreStatus::NotFound, SecretStoreErrorCategory::None)
+          );
+        }
+        return service.withDefaultCollectionState(lockedResult());
       }
     };
 
-    std::unique_ptr<SecretStoreBackend> makeLibsecretBackend() { return std::make_unique<LibsecretBackend>(); }
+    std::unique_ptr<SecretStoreBackend> makeSecretServiceBackend() { return std::make_unique<SecretServiceBackend>(); }
   } // namespace
 
   SecretStoreAttributes secretStoreAttributes(const SecretId& id) {
@@ -926,7 +931,7 @@ namespace security {
     std::chrono::steady_clock::time_point m_lastErrorLog;
   };
 
-  SecretStore::SecretStore() : SecretStore(makeLibsecretBackend()) {}
+  SecretStore::SecretStore() : SecretStore(makeSecretServiceBackend()) {}
 
   SecretStore::SecretStore(std::unique_ptr<SecretStoreBackend> backend)
       : m_impl(std::make_unique<Impl>(std::move(backend))) {}

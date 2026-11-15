@@ -30,7 +30,6 @@
   libqalculate,
   libxml2,
   md4c,
-  libsecret,
   libsodium,
   stb,
   fetchFromGitHub,
@@ -118,7 +117,6 @@ lib.warnIf cudaSupport
     libqalculate
     libxml2
     md4c
-    libsecret
     libsodium
     stb'
     nlohmann_json

@@ -122,7 +122,7 @@ Reminder times come from the encrypted event cache, so they work offline and acr
 
 Each CalDAV account has exactly one credential source:
 
-- `credential_source = "secret-service"` is the default. Enter the password through Settings. It requires a provider in the login session, such as GNOME Keyring, KWallet, or KeePassXC. `libsecret` is the client library; installing it alone does not start or configure a provider.
+- `credential_source = "secret-service"` is the default. Enter the password through Settings. It requires a provider in the login session, such as GNOME Keyring, KWallet, or KeePassXC.
 - `credential_source = "file"` requires an absolute `password_file` path. Noctalia reads that regular file for every sync and never reads or writes a Secret Service password for the account. One trailing LF or CRLF is ignored. Empty files, embedded NUL bytes, non-regular files, and files larger than 64 KiB are rejected.
 
 File-backed credentials work with agenix, sops-nix, and systemd credentials. Configure the secret manager to make the decrypted file readable by the user running Noctalia; Noctalia never edits or deletes the file. Google refresh tokens remain writable credentials and always require Secret Service.

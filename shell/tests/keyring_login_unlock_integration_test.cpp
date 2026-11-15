@@ -49,5 +49,21 @@ int main() {
   TEST_CHECK(dispatchCompletion(store) && looked);
   TEST_CHECK(status == security::SecretStoreStatus::Success);
   TEST_CHECK(value == text);
+
+  bool erased = false;
+  (void)store.erase(id, [&](security::SecretStoreStatus s) {
+    status = s;
+    erased = true;
+  });
+  TEST_CHECK(dispatchCompletion(store) && erased);
+  TEST_CHECK(status == security::SecretStoreStatus::Success);
+
+  looked = false;
+  (void)store.lookup(id, [&](security::SecretStoreStatus s, security::SecureBuffer) {
+    status = s;
+    looked = true;
+  });
+  TEST_CHECK(dispatchCompletion(store) && looked);
+  TEST_CHECK(status == security::SecretStoreStatus::NotFound);
   return 0;
 }
