@@ -14,6 +14,7 @@
 class InputArea;
 class Node;
 class Renderer;
+class Scrollbar;
 struct KeyboardEvent;
 class TextureManager;
 
@@ -127,6 +128,8 @@ namespace term {
 
     InputArea* m_area = nullptr;
     TerminalGridNode* m_grid = nullptr;
+    Scrollbar* m_scrollbar = nullptr;
+    GhosttyTerminalScrollbar m_scrollState{}; // rows; the bar is updated only when this changes
     TextureManager* m_textures = nullptr;
     float m_uiScale = 1.0F;
     float m_deviceScale = 1.0F; // buffer px per logical px the atlas was loaded for

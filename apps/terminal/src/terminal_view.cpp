@@ -9,6 +9,7 @@
 #include "core/text_clipboard.h"
 #include "ui/builders.h"
 #include "ui/controls/input.h"
+#include "ui/controls/scrollbar.h"
 #include "ui/palette.h"
 #include "wayland/text_input_service.h"
 
@@ -214,6 +215,21 @@ namespace term {
                                          [this](const InputArea::PointerData& d) { return wheel(d.axis, d.axisSteps); });
                                    }},
                               std::move(grid));
+    auto bar = std::make_unique<Scrollbar>();
+    m_scrollbar = bar.get();
+    m_scrollState = {};
+    m_scrollbar->setAutoHide(true);
+    m_scrollbar->setContentScale(uiScale);
+    m_scrollbar->setOnScrollChanged([this](float offset) {
+      const auto row = static_cast<std::size_t>(std::max(0L, std::lround(offset / m_grid->cellHeight())));
+      m_session.withTerminal([&](GhosttyTerminal t) {
+        if (t != nullptr) {
+          ghostty_terminal_scroll_viewport(t, {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW, .value = {.row = row}});
+        }
+      });
+      scheduleRedraw(Redraw::All);
+    });
+    area->addChild(std::move(bar));
     setSize(width, height);
     refresh(true);
     return area;
@@ -227,6 +243,12 @@ namespace term {
       m_area->setSize(width, height);
     }
     m_grid->setSize(width, height);
+    if (m_scrollbar != nullptr) {
+      const float thickness = m_scrollbar->reservedThickness();
+      m_scrollbar->setPosition(width - thickness, 0.0F);
+      m_scrollbar->setSize(thickness, height);
+      m_scrollState = {};
+    }
     m_width = width;
     m_height = height;
     const float inset = kInset * m_uiScale;
@@ -278,11 +300,24 @@ namespace term {
     if (m_grid == nullptr) {
       return;
     }
+    GhosttyTerminalScrollbar scroll{};
     const bool updated = m_session.withTerminal([&](GhosttyTerminal t) {
-      return t != nullptr && ghostty_render_state_begin_update(m_state, t) == GHOSTTY_SUCCESS;
+      if (t == nullptr || ghostty_render_state_begin_update(m_state, t) != GHOSTTY_SUCCESS) {
+        return false;
+      }
+      ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scroll);
+      return true;
     });
     if (!updated || ghostty_render_state_end_update(m_state) != GHOSTTY_SUCCESS) {
       return;
+    }
+    if (m_scrollbar != nullptr
+        && (scroll.total != m_scrollState.total || scroll.offset != m_scrollState.offset
+            || scroll.len != m_scrollState.len)) {
+      m_scrollState = scroll;
+      const float cellH = m_grid->cellHeight();
+      m_scrollbar->update(static_cast<float>(scroll.len) * cellH, static_cast<float>(scroll.total) * cellH,
+                          static_cast<float>(scroll.offset) * cellH);
     }
     GhosttyRenderStateColors colors{};
     colors.size = sizeof(colors);
