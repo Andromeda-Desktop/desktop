@@ -94,24 +94,60 @@ namespace noctalia::config::schema {
   }
 
   const Schema<OsdKindsConfig>& osdKindsSchema() {
+    const auto kind = [](std::string_view label, std::string_view tags, bool advanced = false) {
+      return RowSpec{.section = "notifications", .group = "kinds", .label = label, .tags = tags, .advanced = advanced};
+    };
     static const Schema<OsdKindsConfig> s = {
-        field(&OsdKindsConfig::volume, "volume"),
-        field(&OsdKindsConfig::volumeOutput, "volume_output"),
-        field(&OsdKindsConfig::volumeInput, "volume_input"),
-        field(&OsdKindsConfig::brightness, "brightness"),
-        field(&OsdKindsConfig::wifi, "wifi"),
-        field(&OsdKindsConfig::bluetooth, "bluetooth"),
-        field(&OsdKindsConfig::powerProfile, "power_profile"),
-        field(&OsdKindsConfig::caffeine, "caffeine"),
-        field(&OsdKindsConfig::nightlight, "nightlight"),
-        field(&OsdKindsConfig::dnd, "dnd"),
-        field(&OsdKindsConfig::lockKeys, "lock_keys"),
-        field(&OsdKindsConfig::keyboardLayout, "keyboard_layout"),
-        field(&OsdKindsConfig::media, "media"),
-        field(&OsdKindsConfig::mediaVolume, "media_volume"),
-        field(&OsdKindsConfig::privacy, "privacy"),
-        field(&OsdKindsConfig::keyboardBacklight, "keyboard_backlight"),
-        field(&OsdKindsConfig::custom, "custom"),
+        field(
+            &OsdKindsConfig::volume, "volume",
+            kind("shell.osd-kinds-volume", "hud overlay audio output input microphone")
+        ),
+        field(
+            &OsdKindsConfig::volumeOutput, "volume_output",
+            kind("shell.osd-kinds-volume-output", "hud overlay audio speaker sink output", true)
+        ),
+        field(
+            &OsdKindsConfig::volumeInput, "volume_input",
+            kind("shell.osd-kinds-volume-input", "hud overlay audio microphone source input", true)
+        ),
+        field(
+            &OsdKindsConfig::brightness, "brightness",
+            kind("shell.osd-kinds-brightness", "hud overlay display backlight")
+        ),
+        field(&OsdKindsConfig::wifi, "wifi", kind("shell.osd-kinds-wifi", "hud overlay wireless network")),
+        field(&OsdKindsConfig::bluetooth, "bluetooth", kind("shell.osd-kinds-bluetooth", "hud overlay bt")),
+        field(
+            &OsdKindsConfig::powerProfile, "power_profile",
+            kind("shell.osd-kinds-power-profile", "hud overlay balanced performance power saver")
+        ),
+        field(&OsdKindsConfig::caffeine, "caffeine", kind("shell.osd-kinds-caffeine", "hud overlay idle inhibitor")),
+        field(
+            &OsdKindsConfig::nightlight, "nightlight",
+            kind("shell.osd-kinds-nightlight", "hud overlay night light gamma")
+        ),
+        field(&OsdKindsConfig::dnd, "dnd", kind("shell.osd-kinds-dnd", "hud overlay do not disturb notifications")),
+        field(
+            &OsdKindsConfig::lockKeys, "lock_keys",
+            kind("shell.osd-kinds-lock-keys", "hud overlay caps num scroll keyboard")
+        ),
+        field(
+            &OsdKindsConfig::keyboardLayout, "keyboard_layout",
+            kind("shell.osd-kinds-keyboard-layout", "hud overlay xkb input language layout switch")
+        ),
+        field(&OsdKindsConfig::media, "media", kind("shell.osd-kinds-media", "hud overlay mpris audio music")),
+        field(
+            &OsdKindsConfig::mediaVolume, "media_volume",
+            kind("shell.osd-kinds-media-volume", "hud overlay mpris media player volume level")
+        ),
+        field(
+            &OsdKindsConfig::privacy, "privacy",
+            kind("shell.osd-kinds-privacy", "hud overlay microphone camera screen share recording")
+        ),
+        field(
+            &OsdKindsConfig::keyboardBacklight, "keyboard_backlight",
+            kind("shell.osd-kinds-keyboard-backlight", "hud overlay keyboard backlight kbd")
+        ),
+        field(&OsdKindsConfig::custom, "custom", kind("shell.osd-kinds-custom", "hud overlay plugin custom script")),
     };
     return s;
   }
@@ -141,6 +177,34 @@ namespace noctalia::config::schema {
   } // namespace
 
   const Schema<OsdConfig>& osdSchema() {
+    const auto osd = [](std::string_view label, std::string_view tags, RowSpec::Kind kind = RowSpec::Kind::Toggle,
+                        std::vector<RowSpec::Choice> choices = {}) {
+      return RowSpec{
+          .kind = kind,
+          .section = "notifications",
+          .group = "osd",
+          .label = label,
+          .tags = tags,
+          .choices = std::move(choices)
+      };
+    };
+    // The control offers less than the config accepts.
+    const auto offset = [&](std::string_view label, std::string_view tags) {
+      auto row = osd(label, tags, RowSpec::Kind::Stepper);
+      row.suffix = "px";
+      row.range = Range<double>{0.0, 200.0, 1.0};
+      return row;
+    };
+    const std::vector<RowSpec::Choice> positions = {
+        {"top_right", "settings.options.screen-position.top-right"},
+        {"top_left", "settings.options.screen-position.top-left"},
+        {"top_center", "settings.options.screen-position.top-center"},
+        {"bottom_right", "settings.options.screen-position.bottom-right"},
+        {"bottom_left", "settings.options.screen-position.bottom-left"},
+        {"bottom_center", "settings.options.screen-position.bottom-center"},
+        {"center_right", "settings.options.screen-position.center-right"},
+        {"center_left", "settings.options.screen-position.center-left"},
+    };
     static const Schema<OsdConfig> s = {
         field(
             &OsdConfig::enabled, "enabled",
@@ -151,18 +215,62 @@ namespace noctalia::config::schema {
                 .tags = "hud overlay master enable disable all",
             }
         ),
-        field(&OsdConfig::position, "position"),
-        field(&OsdConfig::positionVertical, "position_vertical"),
-        field(&OsdConfig::orientation, "orientation"),
-        field(&OsdConfig::hideDelayMs, "hide_delay_ms", kOsdHideDelayMsRange),
-        field(&OsdConfig::scale, "scale", kScaleRange),
-        field(&OsdConfig::backgroundOpacity, "background_opacity", kUnitRange),
-        field(&OsdConfig::border, "border"),
+        field(
+            &OsdConfig::position, "position",
+            osd("shell.osd-position", "hud overlay volume brightness horizontal text", RowSpec::Kind::Select, positions)
+        ),
+        field(
+            &OsdConfig::positionVertical, "position_vertical",
+            osd("shell.osd-position-vertical", "hud overlay volume brightness vertical slider", RowSpec::Kind::Select,
+                positions)
+        ),
+        field(
+            &OsdConfig::orientation, "orientation",
+            [&] {
+              auto row =
+                  osd("shell.osd-orientation", "hud overlay volume brightness vertical", RowSpec::Kind::Select,
+                      {{"horizontal", "settings.options.orientation.horizontal"},
+                       {"vertical", "settings.options.orientation.vertical"}});
+              row.segmented = true;
+              return row;
+            }()
+        ),
+        field(
+            &OsdConfig::hideDelayMs, "hide_delay_ms", kOsdHideDelayMsRange,
+            [&] {
+              auto row =
+                  osd("shell.osd-hide-delay", "hud overlay popup timeout duration visible", RowSpec::Kind::Stepper);
+              row.suffix = "ms";
+              return row;
+            }()
+        ),
+        field(
+            &OsdConfig::scale, "scale", kScaleRange,
+            osd("shell.osd-scale", "hud overlay volume brightness size scale multiplier", RowSpec::Kind::Slider)
+        ),
+        field(
+            &OsdConfig::backgroundOpacity, "background_opacity", kUnitRange,
+            osd("shell.osd-background-opacity", "hud overlay popup alpha transparency translucent opacity",
+                RowSpec::Kind::Slider)
+        ),
+        field(&OsdConfig::border, "border", osd("shell.osd-border", "outline border")),
         colorField(&OsdConfig::borderColor, "border_color"),
-        field(&OsdConfig::borderWidth, "border_width", kOsdBorderWidthRange),
-        field(&OsdConfig::followFocusedOutput, "follow_focused_output"),
-        field(&OsdConfig::offsetX, "offset_x", Range<std::int64_t>{0, std::nullopt}),
-        field(&OsdConfig::offsetY, "offset_y", Range<std::int64_t>{0, std::nullopt}),
+        field(
+            &OsdConfig::borderWidth, "border_width", kOsdBorderWidthRange,
+            osd("shell.osd-border-width", "outline border width thickness", RowSpec::Kind::Slider)
+        ),
+        field(
+            &OsdConfig::followFocusedOutput, "follow_focused_output",
+            osd("shell.osd-follow-focused-output", "monitor output display focused active hud overlay")
+        ),
+        field(
+            &OsdConfig::offsetX, "offset_x", Range<std::int64_t>{0, std::nullopt},
+            offset("shell.osd-offset-x", "hud overlay horizontal margin")
+        ),
+        field(
+            &OsdConfig::offsetY, "offset_y", Range<std::int64_t>{0, std::nullopt},
+            offset("shell.osd-offset-y", "hud overlay vertical margin")
+        ),
         field(&OsdConfig::monitors, "monitors"),
         subTable(&OsdConfig::kinds, "kinds", osdKindsSchema()),
     };

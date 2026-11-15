@@ -49,105 +49,18 @@ namespace settings {
     auto osdRows = generateSchemaEntries(noctalia::config::schema::osdSchema(), cfg.osd, {"osd"});
     appendRow(entries, osdRows, "enabled");
     const std::size_t osdGatedStart = entries.size();
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-orientation.label"),
-        tr("settings.schema.shell.osd-orientation.description"), {"osd", "orientation"},
-        asSegmented(plainSelect(
-            {{"horizontal", "settings.options.orientation.horizontal"},
-             {"vertical", "settings.options.orientation.vertical"}},
-            cfg.osd.orientation
-        )),
-        "hud overlay volume brightness vertical"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-position.label"),
-        tr("settings.schema.shell.osd-position.description"), {"osd", "position"},
-        plainSelect(
-            {{"top_right", "settings.options.screen-position.top-right"},
-             {"top_left", "settings.options.screen-position.top-left"},
-             {"top_center", "settings.options.screen-position.top-center"},
-             {"bottom_right", "settings.options.screen-position.bottom-right"},
-             {"bottom_left", "settings.options.screen-position.bottom-left"},
-             {"bottom_center", "settings.options.screen-position.bottom-center"},
-             {"center_right", "settings.options.screen-position.center-right"},
-             {"center_left", "settings.options.screen-position.center-left"}},
-            cfg.osd.position
-        ),
-        "hud overlay volume brightness horizontal text"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-position-vertical.label"),
-        tr("settings.schema.shell.osd-position-vertical.description"), {"osd", "position_vertical"},
-        plainSelect(
-            {{"top_right", "settings.options.screen-position.top-right"},
-             {"top_left", "settings.options.screen-position.top-left"},
-             {"top_center", "settings.options.screen-position.top-center"},
-             {"bottom_right", "settings.options.screen-position.bottom-right"},
-             {"bottom_left", "settings.options.screen-position.bottom-left"},
-             {"bottom_center", "settings.options.screen-position.bottom-center"},
-             {"center_right", "settings.options.screen-position.center-right"},
-             {"center_left", "settings.options.screen-position.center-left"}},
-            cfg.osd.positionVertical
-        ),
-        "hud overlay volume brightness vertical slider"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-hide-delay.label"),
-        tr("settings.schema.shell.osd-hide-delay.description"), {"osd", "hide_delay_ms"},
-        StepperSetting{
-            .value = static_cast<int>(cfg.osd.hideDelayMs),
-            .minValue = static_cast<int>(noctalia::config::schema::kOsdHideDelayMsRange.min.value()),
-            .maxValue = static_cast<int>(noctalia::config::schema::kOsdHideDelayMsRange.max.value()),
-            .step = static_cast<int>(noctalia::config::schema::kOsdHideDelayMsRange.step.value()),
-            .valueSuffix = "ms",
-        },
-        "hud overlay popup timeout duration visible"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-scale.label"),
-        tr("settings.schema.shell.osd-scale.description"), {"osd", "scale"},
-        sliderFor(cfg.osd.scale, noctalia::config::schema::kScaleRange, false),
-        "hud overlay volume brightness size scale multiplier"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-offset-x.label"),
-        tr("settings.schema.shell.osd-offset-x.description"), {"osd", "offset_x"},
-        StepperSetting{.value = cfg.osd.offsetX, .minValue = 0, .maxValue = 200, .step = 1, .valueSuffix = "px"},
-        "hud overlay horizontal margin"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-offset-y.label"),
-        tr("settings.schema.shell.osd-offset-y.description"), {"osd", "offset_y"},
-        StepperSetting{.value = cfg.osd.offsetY, .minValue = 0, .maxValue = 200, .step = 1, .valueSuffix = "px"},
-        "hud overlay vertical margin"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-background-opacity.label"),
-        tr("settings.schema.shell.osd-background-opacity.description"), {"osd", "background_opacity"},
-        sliderFor(cfg.osd.backgroundOpacity, noctalia::config::schema::kUnitRange, false),
-        "hud overlay popup alpha transparency translucent opacity"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-border.label"),
-        tr("settings.schema.shell.osd-border.description"), {"osd", "border"}, ToggleSetting{cfg.osd.border},
-        "outline border"
-    ));
+    for (const std::string_view key :
+         {"orientation", "position", "position_vertical", "hide_delay_ms", "scale", "offset_x", "offset_y",
+          "background_opacity", "border"}) {
+      appendRow(entries, osdRows, key);
+    }
     entries.push_back(makeEntry(
         SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-border-color.label"),
         tr("settings.schema.shell.osd-border-color.description"), {"osd", "border_color"},
         colorSpecPicker(cfg.osd.borderColor), "outline border color theme accent"
     ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-border-width.label"),
-        tr("settings.schema.shell.osd-border-width.description"), {"osd", "border_width"},
-        sliderFor(cfg.osd.borderWidth, noctalia::config::schema::kOsdBorderWidthRange, false),
-        "outline border width thickness"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-follow-focused-output.label"),
-        tr("settings.schema.shell.osd-follow-focused-output.description"), {"osd", "follow_focused_output"},
-        ToggleSetting{cfg.osd.followFocusedOutput}, "monitor output display focused active hud overlay"
-    ));
+    appendRow(entries, osdRows, "border_width");
+    appendRow(entries, osdRows, "follow_focused_output");
     {
       auto e = makeEntry(
           SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-monitors.label"),
@@ -158,104 +71,16 @@ namespace settings {
       e.visibleWhen = [](const Config& c) { return !c.osd.followFocusedOutput; };
       entries.push_back(std::move(e));
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-volume.label"),
-        tr("settings.schema.shell.osd-kinds-volume.description"), {"osd", "kinds", "volume"},
-        ToggleSetting{cfg.osd.kinds.volume}, "hud overlay audio output input microphone"
-    ));
-    {
-      const SettingVisibility volumeOn = [](const Config& c) { return c.osd.kinds.volume; };
-      SettingEntry outputEntry = makeEntry(
-          SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-volume-output.label"),
-          tr("settings.schema.shell.osd-kinds-volume-output.description"), {"osd", "kinds", "volume_output"},
-          ToggleSetting{cfg.osd.kinds.volumeOutput}, "hud overlay audio speaker sink output"
-      );
-      outputEntry.advanced = true;
-      outputEntry.visibleWhen = volumeOn;
-      entries.push_back(std::move(outputEntry));
-      SettingEntry inputEntry = makeEntry(
-          SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-volume-input.label"),
-          tr("settings.schema.shell.osd-kinds-volume-input.description"), {"osd", "kinds", "volume_input"},
-          ToggleSetting{cfg.osd.kinds.volumeInput}, "hud overlay audio microphone source input"
-      );
-      inputEntry.advanced = true;
-      inputEntry.visibleWhen = volumeOn;
-      entries.push_back(std::move(inputEntry));
+    auto kindRows = generateSchemaEntries(noctalia::config::schema::osdKindsSchema(), cfg.osd.kinds, {"osd", "kinds"});
+    for (auto& row : kindRows) {
+      const std::string& key = row.path.back();
+      if (key == "volume_output" || key == "volume_input") {
+        row.visibleWhen = [](const Config& c) { return c.osd.kinds.volume; };
+      } else if (key == "media_volume") {
+        row.visibleWhen = [](const Config& c) { return c.osd.kinds.media; };
+      }
+      entries.push_back(std::move(row));
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-brightness.label"),
-        tr("settings.schema.shell.osd-kinds-brightness.description"), {"osd", "kinds", "brightness"},
-        ToggleSetting{cfg.osd.kinds.brightness}, "hud overlay display backlight"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-wifi.label"),
-        tr("settings.schema.shell.osd-kinds-wifi.description"), {"osd", "kinds", "wifi"},
-        ToggleSetting{cfg.osd.kinds.wifi}, "hud overlay wireless network"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-bluetooth.label"),
-        tr("settings.schema.shell.osd-kinds-bluetooth.description"), {"osd", "kinds", "bluetooth"},
-        ToggleSetting{cfg.osd.kinds.bluetooth}, "hud overlay bt"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-power-profile.label"),
-        tr("settings.schema.shell.osd-kinds-power-profile.description"), {"osd", "kinds", "power_profile"},
-        ToggleSetting{cfg.osd.kinds.powerProfile}, "hud overlay balanced performance power saver"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-caffeine.label"),
-        tr("settings.schema.shell.osd-kinds-caffeine.description"), {"osd", "kinds", "caffeine"},
-        ToggleSetting{cfg.osd.kinds.caffeine}, "hud overlay idle inhibitor"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-nightlight.label"),
-        tr("settings.schema.shell.osd-kinds-nightlight.description"), {"osd", "kinds", "nightlight"},
-        ToggleSetting{cfg.osd.kinds.nightlight}, "hud overlay night light gamma"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-dnd.label"),
-        tr("settings.schema.shell.osd-kinds-dnd.description"), {"osd", "kinds", "dnd"},
-        ToggleSetting{cfg.osd.kinds.dnd}, "hud overlay do not disturb notifications"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-lock-keys.label"),
-        tr("settings.schema.shell.osd-kinds-lock-keys.description"), {"osd", "kinds", "lock_keys"},
-        ToggleSetting{cfg.osd.kinds.lockKeys}, "hud overlay caps num scroll keyboard"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-keyboard-layout.label"),
-        tr("settings.schema.shell.osd-kinds-keyboard-layout.description"), {"osd", "kinds", "keyboard_layout"},
-        ToggleSetting{cfg.osd.kinds.keyboardLayout}, "hud overlay xkb input language layout switch"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-media.label"),
-        tr("settings.schema.shell.osd-kinds-media.description"), {"osd", "kinds", "media"},
-        ToggleSetting{cfg.osd.kinds.media}, "hud overlay mpris audio music"
-    ));
-    {
-      SettingEntry mediaVolumeEntry = makeEntry(
-          SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-media-volume.label"),
-          tr("settings.schema.shell.osd-kinds-media-volume.description"), {"osd", "kinds", "media_volume"},
-          ToggleSetting{cfg.osd.kinds.mediaVolume}, "hud overlay mpris media player volume level"
-      );
-      mediaVolumeEntry.visibleWhen = [](const Config& c) { return c.osd.kinds.media; };
-      entries.push_back(std::move(mediaVolumeEntry));
-    }
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-privacy.label"),
-        tr("settings.schema.shell.osd-kinds-privacy.description"), {"osd", "kinds", "privacy"},
-        ToggleSetting{cfg.osd.kinds.privacy}, "hud overlay microphone camera screen share recording"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-keyboard-backlight.label"),
-        tr("settings.schema.shell.osd-kinds-keyboard-backlight.description"), {"osd", "kinds", "keyboard_backlight"},
-        ToggleSetting{cfg.osd.kinds.keyboardBacklight}, "hud overlay keyboard backlight kbd"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "kinds", tr("settings.schema.shell.osd-kinds-custom.label"),
-        tr("settings.schema.shell.osd-kinds-custom.description"), {"osd", "kinds", "custom"},
-        ToggleSetting{cfg.osd.kinds.custom}, "hud overlay plugin custom script"
-    ));
     // Gate every OSD entry after the master toggle on osd.enabled, preserving any per-entry visibility.
     for (std::size_t i = osdGatedStart; i < entries.size(); ++i) {
       SettingVisibility prev = std::move(entries[i].visibleWhen);
