@@ -45,6 +45,8 @@ namespace andromeda::stall {
     inline void* gFrames[kMaxFrames];
     inline std::atomic<int> gFrameCount{0};
     inline sem_t gStackDone;
+    // The tid whose stack the open capture wants, or 0; a handler claims it once, so a signal late from a timed-out capture writes nothing.
+    inline std::atomic<pid_t> gArmedTid{0};
     // Every Watch shares the stack signal, its handler and gFrames: one installs them, one captures at a time.
     inline std::once_flag gHandlerOnce;
     inline std::mutex gCaptureLock;
@@ -53,6 +55,11 @@ namespace andromeda::stall {
 
     inline void onStackSignal(int /*sig*/) {
       const int savedErrno = errno;
+      pid_t armed = ::gettid();
+      if (!gArmedTid.compare_exchange_strong(armed, 0)) {
+        errno = savedErrno;
+        return;
+      }
       gFrameCount.store(::backtrace(gFrames, kMaxFrames), std::memory_order_release);
       ::sem_post(&gStackDone);
       errno = savedErrno;
@@ -285,17 +292,24 @@ namespace andromeda::stall {
       while (sem_trywait(&detail::gStackDone) == 0) {
       }
       detail::gFrameCount.store(0);
+      detail::gArmedTid.store(m_tid);
       if (::tgkill(::getpid(), m_tid, detail::stackSignal()) == 0) {
         timespec deadline{};
         clock_gettime(CLOCK_REALTIME, &deadline);
         deadline.tv_nsec += 100'000'000;
         deadline.tv_sec += deadline.tv_nsec / 1'000'000'000;
         deadline.tv_nsec %= 1'000'000'000;
-        if (sem_timedwait(&detail::gStackDone, &deadline) == 0) {
-          m_pending->userStack = symbolize();
-        } else {
-          m_pending->userStack = "unavailable: the thread did not take the signal within 100 ms\n";
+        bool taken = sem_timedwait(&detail::gStackDone, &deadline) == 0;
+        pid_t armed = m_tid;
+        if (!taken && !detail::gArmedTid.compare_exchange_strong(armed, 0)) {
+          // The handler claimed the capture and runs only backtrace(): its post is near.
+          while (sem_wait(&detail::gStackDone) != 0) {
+          }
+          taken = true;
         }
+        m_pending->userStack = taken ? symbolize() : "unavailable: the thread did not take the signal within 100 ms\n";
+      } else {
+        detail::gArmedTid.store(0);
       }
       captureLock.unlock();
       if (detail::isGpuWait(wchan)) {
