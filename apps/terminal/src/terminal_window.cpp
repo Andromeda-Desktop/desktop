@@ -555,8 +555,11 @@ namespace term {
     } else if (!m_agentTick.active()) {
       m_agentTick.startRepeating(std::chrono::seconds(1), [this] {
         ContentView* now = shownView();
-        if (AgentView* agent = now != nullptr ? now->agent() : nullptr; agent != nullptr && m_bandStatus != nullptr) {
-          m_bandStatus->setText(agent->statusText());
+        if (AgentView* agent = now != nullptr ? now->agent() : nullptr; agent != nullptr) {
+          if (m_bandStatus != nullptr) {
+            m_bandStatus->setText(agent->statusText());
+          }
+          agent->tick();
           m_window.invalidate();
         }
       });

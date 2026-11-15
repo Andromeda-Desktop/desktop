@@ -41,6 +41,8 @@ namespace term {
     [[nodiscard]] std::string statusText() const;
     // A turn runs: the status clock advances each second.
     [[nodiscard]] bool ticking() const;
+    // Advances the elapsed time of the running actions in view, in place: a rebind restarts their spinners.
+    void tick();
     // The plan popover: content and height in logical px before scale.
     [[nodiscard]] std::unique_ptr<Node> planList(float scale) const;
     [[nodiscard]] float planHeight() const;
@@ -66,7 +68,8 @@ namespace term {
 
     [[nodiscard]] bool thinking() const;
     [[nodiscard]] bool streamingAt(std::size_t entry) const;
-    [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width);
+    // elapsed receives a running action's elapsed-time label.
+    [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width, Label** elapsed);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
     void answer(std::size_t option);
     void submit(const std::string& text);
@@ -90,6 +93,13 @@ namespace term {
     std::size_t m_slashSelected = 0;
     std::string m_slashDismissed; // the composer text Esc closed the menu at
     VirtualListView* m_log = nullptr;
+    // Elapsed-time labels of the running actions bound into log slots; a slot rebind drops its entry.
+    struct ActionClock {
+      const Node* holder;
+      Label* label;
+      agent::WallTime started;
+    };
+    std::vector<ActionClock> m_clocks;
     Input* m_input = nullptr;
     Label* m_meta = nullptr;
     Button* m_send = nullptr;

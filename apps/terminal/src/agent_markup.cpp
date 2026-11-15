@@ -69,6 +69,44 @@ namespace term::agent {
       return i > 0 && line.substr(i).starts_with(". ") ? i + 2 : std::string_view::npos;
     }
 
+    std::string_view trim(std::string_view text) {
+      const auto first = text.find_first_not_of(" \t");
+      return first == std::string_view::npos ? std::string_view() : text.substr(first, text.find_last_not_of(" \t") - first + 1);
+    }
+
+    // "|---|:--:|": the line under a table header.
+    bool tableRule(std::string_view line) {
+      line = trim(line);
+      return line.find('|') != std::string_view::npos && line.find('-') != std::string_view::npos
+             && line.find_first_not_of("|-: \t") == std::string_view::npos;
+    }
+
+    // "| a | b |" -> {"a", "b"}; an escaped \| stays in its cell.
+    std::vector<std::string> tableCells(std::string_view line) {
+      line = trim(line);
+      if (line.starts_with('|')) {
+        line.remove_prefix(1);
+      }
+      if (line.ends_with('|') && !line.ends_with("\\|")) {
+        line.remove_suffix(1);
+      }
+      std::vector<std::string> cells;
+      std::string cell;
+      for (std::size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '\\' && i + 1 < line.size() && line[i + 1] == '|') {
+          cell += '|';
+          ++i;
+        } else if (line[i] == '|') {
+          cells.push_back(inlineMarkup(trim(cell)));
+          cell.clear();
+        } else {
+          cell += line[i];
+        }
+      }
+      cells.push_back(inlineMarkup(trim(cell)));
+      return cells;
+    }
+
   } // namespace
 
   std::vector<Block> markdownBlocks(std::string_view markdown) {
@@ -106,6 +144,32 @@ namespace term::agent {
       }
       if (line.find_first_not_of(" \t") == std::string_view::npos) {
         endParagraph();
+        continue;
+      }
+      if (line.find('|') != std::string_view::npos && pos <= markdown.size()
+          && tableRule(markdown.substr(pos, markdown.find('\n', pos) - pos))) {
+        endParagraph();
+        Block table{Block::Kind::Table, {}};
+        table.rows.push_back(tableCells(line));
+        const std::size_t columns = table.rows.front().size();
+        const auto next = [&] {
+          const auto end = markdown.find('\n', pos);
+          const std::string_view row = markdown.substr(pos, end == std::string_view::npos ? std::string_view::npos : end - pos);
+          pos = end == std::string_view::npos ? markdown.size() + 1 : end + 1;
+          return row;
+        };
+        next();
+        while (pos <= markdown.size()) {
+          const std::size_t at = pos;
+          const std::string_view row = next();
+          if (row.find('|') == std::string_view::npos || trim(row).empty()) {
+            pos = at;
+            break;
+          }
+          table.rows.push_back(tableCells(row));
+          table.rows.back().resize(columns);
+        }
+        blocks.push_back(std::move(table));
         continue;
       }
       if (const std::size_t start = itemStart(line); start != std::string_view::npos) {

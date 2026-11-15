@@ -31,6 +31,12 @@ namespace term {
       return n >= 3600 ? std::format("{}:{:02}:{:02}", n / 3600, n / 60 % 60, n % 60) : std::format("{}:{:02}", n / 60, n % 60);
     }
 
+    // A running action: "41 s", then "1:05".
+    std::string elapsedText(agent::WallTime started) {
+      const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - started);
+      return elapsed.count() < 60 ? std::format("{} s", std::max<std::int64_t>(0, elapsed.count())) : clockText(elapsed);
+    }
+
     std::string agoText(agent::WallTime at) {
       const auto minutes = std::chrono::duration_cast<std::chrono::minutes>(std::chrono::system_clock::now() - at).count();
       if (minutes < 1) {
@@ -206,6 +212,38 @@ namespace term {
         auto spin = ui::spinner({.color = colorSpecFromRole(ColorRole::AccentText), .spinnerSize = Tokens::sizeSymbol * s});
         spin->start();
         return spin;
+      }
+
+      // Column-major so each column takes its widest cell: all cells in a row share one height, so rows line up and the
+      // separators meet. Wider than the reply column, the table scrolls sideways.
+      std::unique_ptr<Node> table(const std::vector<std::vector<std::string>>& rows) const {
+        auto grid = ui::row({.align = FlexAlign::Start});
+        for (std::size_t c = 0; c < rows.front().size(); ++c) {
+          auto column = ui::column({.align = FlexAlign::Stretch});
+          for (std::size_t r = 0; r < rows.size(); ++r) {
+            if (r > 0) {
+              column->addChild(ui::column({.fill = colorSpecFromRole(ColorRole::Separator), .height = 1.0F}));
+            }
+            auto cell = ui::row({.align = FlexAlign::Center,
+                                 .paddingH = Tokens::spaceP12 * s,
+                                 .height = (r == 0 ? Tokens::componentListTableHeader : Tokens::sizeRowCompact) * s});
+            cell->addChild(ui::label({.text = rows[r][c],
+                                      .fontSize = (r == 0 ? Tokens::typeFootnote : Tokens::typeParagraph).size * s,
+                                      .fontWeight = r == 0 ? FontWeight::Medium : FontWeight::Normal,
+                                      .color = colorSpecFromRole(r == 0 ? ColorRole::Label2 : ColorRole::Label1),
+                                      .maxLines = 1,
+                                      .configure = [](Label& label) { label.setUseMarkup(true); }}));
+            column->addChild(std::move(cell));
+          }
+          grid->addChild(std::move(column));
+        }
+        auto scroll = ui::scrollView({.contentScale = s,
+                                      .viewportPaddingH = 0.0F,
+                                      .viewportPaddingV = 0.0F,
+                                      .fillWidth = true,
+                                      .configure = [](ScrollView& view) { view.setOrientation(ScrollOrientation::Horizontal); }});
+        scroll->content()->addChild(std::move(grid));
+        return scroll;
       }
 
       // A mono block on fill_1: output tails, error wells, command wells.
@@ -536,12 +574,20 @@ namespace term {
 
   bool AgentView::itemInteractive(std::size_t index) const {
     const agent::Session* model = session();
-    return model != nullptr && index >= 1 && index - 1 < model->entries().size()
-           && std::holds_alternative<agent::Request>(model->entries()[index - 1]);
+    if (model == nullptr || index < 1 || index - 1 >= model->entries().size()) {
+      return false;
+    }
+    const auto& entry = model->entries()[index - 1];
+    const auto* prose = std::get_if<agent::Prose>(&entry);
+    // A reply with a table takes input: the table scrolls sideways.
+    return std::holds_alternative<agent::Request>(entry)
+           || (prose != nullptr && std::ranges::any_of(agent::markdownBlocks(prose->text), [](const agent::Block& block) {
+                return block.kind == agent::Block::Kind::Table;
+              }));
   }
 
   float AgentView::measureItem(Renderer& renderer, std::size_t index, float width) {
-    auto node = buildItem(index, width);
+    auto node = buildItem(index, width, nullptr);
     return node->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height;
   }
 
@@ -549,13 +595,25 @@ namespace term {
 
   void AgentView::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float width, bool /*hovered*/) {
     auto& holder = static_cast<Flex&>(item);
+    std::erase_if(m_clocks, [&](const ActionClock& clock) { return clock.holder == &item; });
     while (!holder.children().empty()) {
       holder.removeChild(holder.children().back().get());
     }
-    holder.addChild(buildItem(index, width));
+    Label* elapsed = nullptr;
+    holder.addChild(buildItem(index, width, &elapsed));
+    if (elapsed != nullptr) {
+      const auto& action = std::get<agent::Action>(session()->entries()[index - 1]);
+      m_clocks.push_back({.holder = &item, .label = elapsed, .started = action.started});
+    }
   }
 
-  std::unique_ptr<Node> AgentView::buildItem(std::size_t index, float width) {
+  void AgentView::tick() {
+    for (const ActionClock& clock : m_clocks) {
+      clock.label->setText(elapsedText(clock.started));
+    }
+  }
+
+  std::unique_ptr<Node> AgentView::buildItem(std::size_t index, float width, Label** elapsed) {
     m_lastWidth = width;
     const Kit kit{m_scale};
     const float s = m_scale;
@@ -628,7 +686,7 @@ namespace term {
               // A thin caret ends the last run while the reply streams (no blink). It takes the label colour: Label draws
               // one colour, so the handoff's accent needs colour spans in Label.
               const std::string caret = "\u258f";
-              if (blocks.empty() || blocks.back().kind == agent::Block::Kind::Code) {
+              if (blocks.empty() || blocks.back().kind != agent::Block::Kind::Paragraph) {
                 blocks.push_back({agent::Block::Kind::Paragraph, caret});
               } else {
                 blocks.back().text += caret;
@@ -637,6 +695,8 @@ namespace term {
             for (const auto& block : blocks) {
               if (block.kind == agent::Block::Kind::Code) {
                 prose->addChild(kit.well(lines(block.text), ColorRole::Label1, false));
+              } else if (block.kind == agent::Block::Kind::Table) {
+                prose->addChild(kit.table(block.rows));
               } else {
                 prose->addChild(kit.text(block.text, Tokens::typeParagraph, ColorRole::Label1, FontWeight::Normal, measure, true));
               }
@@ -671,7 +731,7 @@ namespace term {
             ColorRole endRole = ColorRole::Label2;
             switch (e.status) {
               case agent::ActionStatus::Pending: end = "waiting for you"; break;
-              case agent::ActionStatus::Running: break;
+              case agent::ActionStatus::Running: end = elapsedText(e.started); break;
               case agent::ActionStatus::Done:
                 if (!e.diffs.empty()) {
                   end = countCaption(e);
@@ -685,7 +745,11 @@ namespace term {
               case agent::ActionStatus::Cancelled: end = "cancelled"; break;
             }
             if (!end.empty()) {
-              row->addChild(kit.text(end, Tokens::typeFootnote, endRole, failed ? FontWeight::SemiBold : FontWeight::Normal));
+              auto endLabel = kit.text(end, Tokens::typeFootnote, endRole, failed ? FontWeight::SemiBold : FontWeight::Normal);
+              if (e.status == agent::ActionStatus::Running && elapsed != nullptr) {
+                *elapsed = endLabel.get();
+              }
+              row->addChild(std::move(endLabel));
             }
             if (e.status == agent::ActionStatus::Done) {
               row->addChild(kit.glyph("check", ColorRole::Label2));
@@ -942,6 +1006,7 @@ namespace term {
     m_jump = nullptr;
     m_slash = nullptr;
     m_log = nullptr;
+    m_clocks.clear();
     m_input = nullptr;
     m_meta = nullptr;
     m_send = nullptr;
