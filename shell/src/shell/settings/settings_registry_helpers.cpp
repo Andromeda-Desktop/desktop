@@ -1,5 +1,6 @@
 #include "shell/settings/settings_registry_internal.h"
 #include "config/app_icon_settings.h"
+#include "ui/auth/clock_style.h"
 
 #include "config/config_types.h"
 #include "config/schema/config_schema.h"
@@ -150,14 +151,38 @@ namespace settings {
     }
 
 
-    SelectSetting languageSelect(std::string_view selected) {
+    std::vector<SelectOption> runtimeSelectOptions(noctalia::config::schema::RowSpec::Options options) {
+      using Options = noctalia::config::schema::RowSpec::Options;
       std::vector<SelectOption> opts;
-      opts.reserve(i18n::kSupportedLanguages.size() + 1);
-      opts.push_back(SelectOption{"", i18n::tr("common.states.auto")});
-      for (const auto& language : i18n::kSupportedLanguages) {
-        opts.push_back(SelectOption{std::string(language.code), std::string(language.displayName)});
+      switch (options) {
+      case Options::Languages:
+        opts.push_back(SelectOption{"", i18n::tr("common.states.auto")});
+        for (const auto& language : i18n::kSupportedLanguages) {
+          opts.push_back(SelectOption{std::string(language.code), std::string(language.displayName)});
+        }
+        break;
+      case Options::SoundThemes:
+        for (const auto& [value, label] : SoundPlayer::availableThemes()) {
+          opts.push_back(SelectOption{value, label});
+        }
+        if (opts.empty()) {
+          opts.push_back(SelectOption{"freedesktop", i18n::tr("settings.schema.services.sound-theme.default")});
+        }
+        break;
+      case Options::ClockStyles:
+        for (const ClockStyle& style : clockStyles()) {
+          opts.push_back(SelectOption{
+              std::string(style.id), i18n::tr(std::format("settings.schema.lockscreen.clock-style.{}", style.id))
+          });
+        }
+        break;
+      case Options::None:
+      case Options::Outputs:
+      case Options::Fonts:
+      case Options::BatteryDevices:
+        break;
       }
-      return SelectSetting{std::move(opts), std::string(selected)};
+      return opts;
     }
 
 

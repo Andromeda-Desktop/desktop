@@ -139,8 +139,9 @@ namespace noctalia::config::schema {
   // RowSpec wins: some controls offer a narrower range than the config accepts.
   struct RowSpec {
     enum class Kind : std::uint8_t { Toggle, Slider, Select, Text, Stepper, Color, OptionalStepper, List, KeybindList };
-    enum class Options : std::uint8_t { None, Outputs, Fonts, BatteryDevices };
+    enum class Options : std::uint8_t { None, Outputs, Fonts, BatteryDevices, Languages, SoundThemes, ClockStyles };
     enum class Browse : std::uint8_t { None, Folder, File };
+    enum class Needs : std::uint8_t { None, Ddcutil, SystemdUser, GammaControl };
     struct Choice {
       std::string_view value;
       std::string_view labelKey;
@@ -165,11 +166,16 @@ namespace noctalia::config::schema {
     Browse browse = Browse::None;
     Range<double> range;
     std::vector<Choice> choices;
-    Options options = Options::None; // list suggestions, taken from the settings registry environment
+    Options options = Options::None; // list suggestions or select options resolved by the settings registry
+    bool clearOnEmpty = false;       // select: choosing the empty value removes the key
     bool allowNone = false;          // colour offers an unset entry
     std::string_view unsetLabelKey;  // label of the unset colour or stepper state
     int fallback = 0;                // optional stepper value when it leaves the unset state
     std::size_t maxItems = 0;        // keybind list length cap; 0 = no cap
+    // A toggle whose system feature is missing can only be switched off, and its description
+    // becomes "settings.schema.<label>.<missingKey>".
+    Needs needs = Needs::None;
+    std::string_view missingKey;
   };
 
   // One descriptor: binds a single TOML key in a parent table to part of a

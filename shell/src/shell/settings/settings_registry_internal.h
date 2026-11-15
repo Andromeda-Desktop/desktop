@@ -102,7 +102,23 @@ namespace settings {
     [[nodiscard]] std::string_view barAutoHideMode(bool autoHide, bool smartAutoHide);
     [[nodiscard]] SelectSetting autoHideModeSelect(std::string_view mode, std::vector<std::string> smartPath);
     std::vector<SelectOption> controlCenterShortcutOptions(const Config& cfg);
-    SelectSetting languageSelect(std::string_view selected);
+    [[nodiscard]] inline bool
+    hasFeature(const RegistryEnvironment& env, noctalia::config::schema::RowSpec::Needs needs) {
+      using Needs = noctalia::config::schema::RowSpec::Needs;
+      switch (needs) {
+      case Needs::None:
+        return true;
+      case Needs::Ddcutil:
+        return env.ddcutilAvailable;
+      case Needs::SystemdUser:
+        return env.systemdUserManaged;
+      case Needs::GammaControl:
+        return env.gammaControlAvailable;
+      }
+      return true;
+    }
+    // Options of a select whose choices are known only at runtime (languages, sound themes, clock styles).
+    std::vector<SelectOption> runtimeSelectOptions(noctalia::config::schema::RowSpec::Options options);
     ColorSpecPickerSetting
     colorSpecPicker(const std::optional<ColorSpec>& selected, bool allowNone, std::string noneLabel = {});
     ColorSpecPickerSetting
@@ -148,9 +164,11 @@ namespace settings {
         }
         case RowSpec::Kind::Select: {
           SelectSetting select;
+          select.options = runtimeSelectOptions(row.options);
           for (const auto& choice : row.choices) {
             select.options.push_back(SelectOption{std::string(choice.value), i18n::tr(choice.labelKey)});
           }
+          select.clearOnEmpty = row.clearOnEmpty;
           select.selectedValue = value.value_or(std::string{});
           select.segmented = row.segmented;
           select.preferredWidth = row.width;
@@ -250,10 +268,15 @@ namespace settings {
         path.emplace_back(field.key);
         const std::string label = row.label.empty() ? std::string(row.section) + "." + i18n::keySegment(field.key)
                                                     : std::string(row.label);
+        const bool featureMissing = row.needs != RowSpec::Needs::None && !hasFeature(*env, row.needs);
+        if (featureMissing) {
+          auto& toggle = std::get<ToggleSetting>(control);
+          toggle.enabled = toggle.checked;
+        }
         entries.push_back(makeEntry(
             settingsSectionFromId(row.section).value(), std::string(row.group),
             i18n::tr("settings.schema." + (row.title.empty() ? label : std::string(row.title)) + ".label"),
-            i18n::tr("settings.schema." + label + ".description"),
+            i18n::tr("settings.schema." + label + "." + (featureMissing ? std::string(row.missingKey) : "description")),
             std::move(path), std::move(control), std::string(row.tags), row.advanced
         ));
       }

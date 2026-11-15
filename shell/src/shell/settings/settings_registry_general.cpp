@@ -50,7 +50,7 @@ namespace settings {
 
     // Appearance
     auto themeRows = generateSchemaEntries(noctalia::config::schema::themeSchema(), cfg.theme, {"theme"});
-    shellRows = generateSchemaEntries(noctalia::config::schema::shellSchema(), cfg.shell, {"shell"});
+    shellRows = generateSchemaEntries(noctalia::config::schema::shellSchema(), cfg.shell, {"shell"}, &env);
     for (const auto* key : {"mode", "shell_mode", "source"}) {
       appendRow(entries, themeRows, key);
     }
@@ -112,11 +112,7 @@ namespace settings {
           std::move(fontFamilyControl), "typeface"
       ));
     }
-    entries.push_back(makeEntry(
-        SettingsSection::TextScale, "text", tr("settings.schema.appearance.language.label"),
-        tr("settings.schema.appearance.language.description"), {"shell", "lang"}, languageSelect(cfg.shell.lang),
-        "locale translation", true
-    ));
+    appendRow(entries, shellRows, "lang");
     appendRow(entries, shellRows, "corner_radius_scale");
     appendRow(entries, shellRows, "app_icon_colorize");
     {

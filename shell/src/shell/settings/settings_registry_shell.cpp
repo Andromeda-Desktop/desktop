@@ -17,7 +17,6 @@
 #include "shell/settings/color_spec_picker.h"
 #include "shell/settings/font_weight_catalog.h"
 #include "shell/wallpaper/wallpaper_paths.h"
-#include "ui/auth/clock_style.h"
 #include "system/sysmon_threshold_profile.h"
 #include "theme/builtin_palettes.h"
 #include "ui/app_icon_colorization.h"
@@ -71,21 +70,7 @@ namespace settings {
         return c.lockscreen.enabled && c.lockscreen.theme == "andromeda";
       };
       lockRow("layout", andromedaOn);
-      std::vector<SelectOption> styles;
-      for (const ClockStyle& style : clockStyles()) {
-        styles.push_back(SelectOption{
-            .value = std::string(style.id),
-            .label = tr(std::format("settings.schema.lockscreen.clock-style.{}", style.id)),
-        });
-      }
-      auto clockStyle = makeEntry(
-          SettingsSection::Security, "lock-screen", tr("settings.schema.lockscreen.clock-style.label"),
-          tr("settings.schema.lockscreen.clock-style.description"), {"lockscreen", "clock_style"},
-          SelectSetting{std::move(styles), cfg.lockscreen.clockStyle}, "lock screen clock style font"
-      );
-      clockStyle.visibleWhen = andromedaOn;
-      entries.push_back(std::move(clockStyle));
-      for (const auto* key : {"clock_size", "clock_format_24h", "clock_seconds", "notification_content", "owner_message"}) {
+      for (const auto* key : {"clock_style", "clock_size", "clock_format_24h", "clock_seconds", "notification_content", "owner_message"}) {
         lockRow(key, andromedaOn);
       }
     }
@@ -198,17 +183,7 @@ namespace settings {
         },
         "keyboard layout nickname alias label"
     ));
-    entries.push_back(makeEntry(
-        SettingsSection::Shell, "general", tr("settings.schema.shell.launch-apps-as-systemd-services.label"),
-        env.systemdUserManaged ? tr("settings.schema.shell.launch-apps-as-systemd-services.description")
-                               : tr("settings.schema.shell.launch-apps-as-systemd-services.requires-systemd-session"),
-        {"shell", "launch_apps_as_systemd_services"},
-        ToggleSetting{
-            .checked = cfg.shell.launchAppsAsSystemdServices,
-            // Keep a leftover `true` switchable off even when the session cannot honor it.
-            .enabled = env.systemdUserManaged || cfg.shell.launchAppsAsSystemdServices
-        }
-    ));
+    appendRow(entries, shellRows, "launch_apps_as_systemd_services");
     appendRow(entries, shellRows, "launch_apps_custom_command");
     entries.back().visibleWhen = [managed = env.systemdUserManaged](const Config& c) {
       return !(c.shell.launchAppsAsSystemdServices && managed);

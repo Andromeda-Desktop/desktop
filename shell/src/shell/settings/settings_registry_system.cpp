@@ -56,25 +56,8 @@ namespace settings {
       if (env.systemBatteryAvailable) {
         auto batteryRows = generateSchemaEntries(noctalia::config::schema::batterySchema(), cfg.battery, {"battery"});
         appendRow(entries, batteryRows, "warning_threshold");
-        // Values are power-profiles-daemon profile names; empty keeps the current profile.
-        const auto profileOptions = [&] {
-          return std::vector<SelectOption>{
-              {.value = "", .label = tr("settings.schema.system.battery-profile.keep")},
-              {.value = "power-saver", .label = tr("power.profiles.power-saver")},
-              {.value = "balanced", .label = tr("power.profiles.balanced")},
-              {.value = "performance", .label = tr("power.profiles.performance")},
-          };
-        };
-        entries.push_back(makeEntry(
-            SettingsSection::System, "battery", tr("settings.schema.system.battery-profile-on-ac.label"),
-            tr("settings.schema.system.battery-profile-on-ac.description"), {"battery", "profile_on_ac"},
-            SelectSetting{profileOptions(), cfg.battery.profileOnAc, true}, "power mode profile charger plugged ac"
-        ));
-        entries.push_back(makeEntry(
-            SettingsSection::System, "battery", tr("settings.schema.system.battery-profile-on-battery.label"),
-            tr("settings.schema.system.battery-profile-on-battery.description"), {"battery", "profile_on_battery"},
-            SelectSetting{profileOptions(), cfg.battery.profileOnBattery, true}, "power mode profile battery unplugged"
-        ));
+        appendRow(entries, batteryRows, "profile_on_ac");
+        appendRow(entries, batteryRows, "profile_on_battery");
       }
       for (const auto& device : env.batteryDeviceOptions) {
         int value = 0;
@@ -271,16 +254,10 @@ namespace settings {
       entries.back().visibleWhen = weatherOn;
     }
 
-    if (!env.gammaControlAvailable) {
-      entries.push_back(makeEntry(
-          SettingsSection::Location, "night-light", tr("settings.schema.services.night-light.label"),
-          tr("settings.schema.services.night-light.requires-gamma-control"), {"nightlight", "enabled"},
-          ToggleSetting{.checked = cfg.nightlight.enabled, .enabled = false}, "nightlight"
-      ));
-    } else {
-      auto nightLightRows =
-          generateSchemaEntries(noctalia::config::schema::nightlightSchema(), cfg.nightlight, {"nightlight"});
-      appendRow(entries, nightLightRows, "enabled");
+    auto nightLightRows =
+        generateSchemaEntries(noctalia::config::schema::nightlightSchema(), cfg.nightlight, {"nightlight"}, &env);
+    appendRow(entries, nightLightRows, "enabled");
+    if (env.gammaControlAvailable) {
       const SettingVisibility nightLightOn = [](const Config& c) { return c.nightlight.enabled; };
       appendRow(entries, nightLightRows, "force");
       entries.back().visibleWhen = nightLightOn;
@@ -414,33 +391,16 @@ namespace settings {
           "sound_volume"}) {
       appendRow(entries, audioRows, key);
     }
-    std::vector<SelectOption> soundThemeOptions;
-    for (const auto& [value, label] : SoundPlayer::availableThemes()) {
-      soundThemeOptions.push_back(SelectOption{value, label});
-    }
-    if (soundThemeOptions.empty()) {
-      soundThemeOptions.push_back(SelectOption{"freedesktop", tr("settings.schema.services.sound-theme.default")});
-    }
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "audio", tr("settings.schema.services.sound-theme.label"),
-        tr("settings.schema.services.sound-theme.description"), {"audio", "sound_theme"},
-        SelectSetting{std::move(soundThemeOptions), cfg.audio.soundTheme}, "sound theme"
-    ));
+    appendRow(entries, audioRows, "sound_theme");
     for (std::size_t i = soundsGatedStart; i < entries.size(); ++i) {
       SettingVisibility prev = std::move(entries[i].visibleWhen);
       entries[i].visibleWhen = prev
           ? SettingVisibility{[prev = std::move(prev)](const Config& c) { return c.audio.enableSounds && prev(c); }}
           : SettingVisibility{[](const Config& c) { return c.audio.enableSounds; }};
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "brightness", tr("settings.schema.services.ddcutil.label"),
-        env.ddcutilAvailable ? tr("settings.schema.services.ddcutil.description")
-                             : tr("settings.schema.services.ddcutil.requires-ddcutil"),
-        {"brightness", "enable_ddcutil"},
-        ToggleSetting{.checked = cfg.brightness.enableDdcutil, .enabled = env.ddcutilAvailable}, "monitor ddcutil"
-    ));
     auto brightnessRows =
-        generateSchemaEntries(noctalia::config::schema::brightnessSchema(), cfg.brightness, {"brightness"});
+        generateSchemaEntries(noctalia::config::schema::brightnessSchema(), cfg.brightness, {"brightness"}, &env);
+    appendRow(entries, brightnessRows, "enable_ddcutil");
     appendRow(entries, brightnessRows, "minimum_brightness");
     appendRow(entries, brightnessRows, "sync_all_monitors");
     appendRow(entries, brightnessRows, "automatic");

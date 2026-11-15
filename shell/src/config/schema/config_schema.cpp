@@ -56,7 +56,17 @@ namespace noctalia::config::schema {
                 .tags = "sound",
             }
         ),
-        field(&AudioConfig::soundTheme, "sound_theme"),
+        field(
+            &AudioConfig::soundTheme, "sound_theme",
+            RowSpec{
+                .kind = RowSpec::Kind::Select,
+                .section = "services",
+                .group = "audio",
+                .label = "services.sound-theme",
+                .tags = "sound theme",
+                .options = RowSpec::Options::SoundThemes,
+            }
+        ),
         field(
             &AudioConfig::autoSwitchHdmi, "auto_switch_hdmi",
             RowSpec{
@@ -373,7 +383,14 @@ namespace noctalia::config::schema {
             &LockscreenConfig::ownerMessage, "owner_message",
             lock("lockscreen.owner-message", "lock screen owner message lost found contact", RowSpec::Kind::Text)
         ),
-        field(&LockscreenConfig::clockStyle, "clock_style"),
+        field(
+            &LockscreenConfig::clockStyle, "clock_style",
+            [&] {
+              auto row = lock("lockscreen.clock-style", "lock screen clock style font", RowSpec::Kind::Select);
+              row.options = RowSpec::Options::ClockStyles;
+              return row;
+            }()
+        ),
         field(
             &LockscreenConfig::clockSize, "clock_size",
             lockSelect(
@@ -558,7 +575,12 @@ namespace noctalia::config::schema {
         field(
             &NightLightConfig::enabled, "enabled",
             RowSpec{
-                .section = "location", .group = "night-light", .label = "services.night-light", .tags = "nightlight"
+                .section = "location",
+                .group = "night-light",
+                .label = "services.night-light",
+                .tags = "nightlight",
+                .needs = RowSpec::Needs::GammaControl,
+                .missingKey = "requires-gamma-control",
             }
         ),
         field(
@@ -1050,7 +1072,17 @@ namespace noctalia::config::schema {
 
   const Schema<BrightnessConfig>& brightnessSchema() {
     static const Schema<BrightnessConfig> s = {
-        field(&BrightnessConfig::enableDdcutil, "enable_ddcutil"),
+        field(
+            &BrightnessConfig::enableDdcutil, "enable_ddcutil",
+            RowSpec{
+                .section = "services",
+                .group = "brightness",
+                .label = "services.ddcutil",
+                .tags = "monitor ddcutil",
+                .needs = RowSpec::Needs::Ddcutil,
+                .missingKey = "requires-ddcutil",
+            }
+        ),
         field(
             &BrightnessConfig::syncBrightnessOfAllMonitors, "sync_all_monitors",
             RowSpec{
@@ -1091,6 +1123,21 @@ namespace noctalia::config::schema {
   }
 
   const Schema<BatteryConfig>& batterySchema() {
+    // Values are power-profiles-daemon profile names; empty keeps the current profile.
+    const auto batteryProfileRow = [](std::string_view label, std::string_view tags) {
+      return RowSpec{
+          .kind = RowSpec::Kind::Select,
+          .section = "system",
+          .group = "battery",
+          .label = label,
+          .tags = tags,
+          .choices = {{"", "settings.schema.system.battery-profile.keep"},
+                      {"power-saver", "power.profiles.power-saver"},
+                      {"balanced", "power.profiles.balanced"},
+                      {"performance", "power.profiles.performance"}},
+          .clearOnEmpty = true,
+      };
+    };
     static const Schema<BatteryConfig> s = {
         field(
             &BatteryConfig::warningThreshold, "warning_threshold", kBatteryWarningThresholdRange,
@@ -1102,8 +1149,14 @@ namespace noctalia::config::schema {
                 .tags = "battery low warning threshold notification",
             }
         ),
-        field(&BatteryConfig::profileOnAc, "profile_on_ac"),
-        field(&BatteryConfig::profileOnBattery, "profile_on_battery"),
+        field(
+            &BatteryConfig::profileOnAc, "profile_on_ac",
+            batteryProfileRow("system.battery-profile-on-ac", "power mode profile charger plugged ac")
+        ),
+        field(
+            &BatteryConfig::profileOnBattery, "profile_on_battery",
+            batteryProfileRow("system.battery-profile-on-battery", "power mode profile battery unplugged")
+        ),
         // selector comes only from the map key; empty selectors are dropped.
         namedMap<BatteryConfig, BatteryDeviceWarningThreshold>(
             &BatteryConfig::deviceThresholds, "device", batteryDeviceSchema(),
@@ -1976,7 +2029,9 @@ namespace noctalia::config::schema {
 
   namespace {
     // Plain string, but emitted only when non-empty (shell.lang).
-    template <typename Struct> Field<Struct> stringIfNonEmptyField(std::string Struct::* member, std::string_view key) {
+    template <typename Struct>
+    Field<Struct>
+    stringIfNonEmptyField(std::string Struct::* member, std::string_view key, std::optional<RowSpec> row = std::nullopt) {
       return custom<Struct>(
           key,
           [member, key](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics& diag) {
@@ -1990,7 +2045,8 @@ namespace noctalia::config::schema {
             if (!(in.*member).empty()) {
               tbl.insert_or_assign(key, in.*member);
             }
-          }
+          },
+          std::move(row)
       );
     }
 
@@ -3094,7 +3150,18 @@ namespace noctalia::config::schema {
             },
             [](toml::table& tbl, const ShellConfig& in) { tbl.insert_or_assign("font_family", in.fontFamily); }
         ),
-        stringIfNonEmptyField(&ShellConfig::lang, "lang"),
+        stringIfNonEmptyField(
+            &ShellConfig::lang, "lang",
+            RowSpec{
+                .kind = RowSpec::Kind::Select,
+                .section = "text-scale",
+                .group = "text",
+                .label = "appearance.language",
+                .tags = "locale translation",
+                .advanced = true,
+                .options = RowSpec::Options::Languages,
+            }
+        ),
         field(
             &ShellConfig::timeFormat, "time_format",
             RowSpec{
@@ -3225,7 +3292,15 @@ namespace noctalia::config::schema {
             RowSpec{.section = "appearance", .group = "icons", .tags = "tint all application icons"}
         ),
         colorSpecField(&ShellConfig::appIconColor, "app_icon_color", /*alwaysEmit=*/false),
-        field(&ShellConfig::launchAppsAsSystemdServices, "launch_apps_as_systemd_services"),
+        field(
+            &ShellConfig::launchAppsAsSystemdServices, "launch_apps_as_systemd_services",
+            RowSpec{
+                .section = "shell",
+                .group = "general",
+                .needs = RowSpec::Needs::SystemdUser,
+                .missingKey = "requires-systemd-session",
+            }
+        ),
         field(
             &ShellConfig::launchAppsCustomCommand, "launch_apps_custom_command",
             RowSpec{
