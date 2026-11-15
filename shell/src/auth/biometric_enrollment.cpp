@@ -128,9 +128,9 @@ void BiometricEnrollment::probeFace() {
             m_gaze->callMethodAsync("ListFaces")
                 .onInterface(kGazeInterface)
                 .withArguments(m_user)
-                .uponReplyInvoke([this](std::optional<sdbus::Error> e, const std::vector<FaceEntry>& faces) {
+                .uponReplyInvoke([this](std::optional<sdbus::Error> replyError, const std::vector<FaceEntry>& faces) {
                   m_faces.clear();
-                  if (!e.has_value()) {
+                  if (!replyError.has_value()) {
                     for (const auto& face : faces) {
                       m_faces.push_back(face.get<0>());
                     }
@@ -200,8 +200,8 @@ void BiometricEnrollment::probeFinger() {
             m_fprintDevice->callMethodAsync("Get")
                 .onInterface(kPropertiesInterface)
                 .withArguments(std::string{kFprintDeviceInterface}, std::string{"num-enroll-stages"})
-                .uponReplyInvoke([this](std::optional<sdbus::Error> e, const sdbus::Variant& value) {
-                  m_fingerStages = e.has_value() ? 0 : value.get<std::int32_t>();
+                .uponReplyInvoke([this](std::optional<sdbus::Error> replyError, const sdbus::Variant& value) {
+                  m_fingerStages = replyError.has_value() ? 0 : value.get<std::int32_t>();
                 });
           }
           m_fingerPresent = true;
@@ -261,9 +261,9 @@ void BiometricEnrollment::start(Method method, const std::string& name) {
                   m_gaze->callMethodAsync("EnrollStart")
                       .onInterface(kGazeInterface)
                       .withArguments(faceName)
-                      .uponReplyInvoke([this](std::optional<sdbus::Error> e) {
-                        if (e.has_value() && m_enrolling == Method::Face) {
-                          kLog.info("gazed EnrollStart failed: {}", e->what());
+                      .uponReplyInvoke([this](std::optional<sdbus::Error> replyError) {
+                        if (replyError.has_value() && m_enrolling == Method::Face) {
+                          kLog.info("gazed EnrollStart failed: {}", replyError->what());
                           finish(false);
                         }
                       });
@@ -305,9 +305,9 @@ void BiometricEnrollment::start(Method method, const std::string& name) {
                 m_fprintDevice->callMethodAsync("EnrollStart")
                     .onInterface(kFprintDeviceInterface)
                     .withArguments(finger)
-                    .uponReplyInvoke([this](std::optional<sdbus::Error> e) {
-                      if (e.has_value() && m_enrolling == Method::Finger) {
-                        kLog.info("fprintd EnrollStart failed: {}", e->what());
+                    .uponReplyInvoke([this](std::optional<sdbus::Error> replyError) {
+                      if (replyError.has_value() && m_enrolling == Method::Finger) {
+                        kLog.info("fprintd EnrollStart failed: {}", replyError->what());
                         finish(false);
                       }
                     });
@@ -420,9 +420,9 @@ void BiometricEnrollment::removeFinger(const std::string& finger, DoneCallback d
                     m_fprintDevice->callMethodAsync("DeleteEnrolledFinger")
                         .onInterface(kFprintDeviceInterface)
                         .withArguments(finger)
-                        .uponReplyInvoke([this, done](std::optional<sdbus::Error> e) {
-                          if (e.has_value()) {
-                            kLog.info("fprintd DeleteEnrolledFinger failed: {}", e->what());
+                        .uponReplyInvoke([this, done](std::optional<sdbus::Error> replyError) {
+                          if (replyError.has_value()) {
+                            kLog.info("fprintd DeleteEnrolledFinger failed: {}", replyError->what());
                           }
                           tryCall("fprintd Release", [&] {
                             m_fprintDevice->callMethodAsync("Release")
@@ -430,7 +430,7 @@ void BiometricEnrollment::removeFinger(const std::string& finger, DoneCallback d
                                 .uponReplyInvoke(ignoreReply);
                           });
                           listFingers();
-                          done(!e.has_value());
+                          done(!replyError.has_value());
                         });
                   })) {
                 tryCall("fprintd Release", [&] {
