@@ -137,7 +137,7 @@ bool printServiceRunning() {
   return true;
 }
 
-std::vector<PrinterInfo> listPrinters() {
+std::vector<PrinterInfo> listPrinters(const std::function<bool(const std::string&)>& withCapabilities) {
   cups_dest_t* raw = nullptr;
   const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
   std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
@@ -170,8 +170,11 @@ std::vector<PrinterInfo> listPrinters() {
     // A person who pauses a queue may say why (cupsdisable -r); that beats the bare "Paused".
     if (std::string message = option(d, "printer-state-message"); p.paused && !message.empty())
       p.reason = std::move(message);
-    p.queuedJobs = queuedJobs(d.name);
-    fillCapabilities(&d, p);
+    if (withCapabilities(p.name)) {
+      p.queuedJobs = queuedJobs(d.name);
+      fillCapabilities(&d, p);
+      p.capabilities = true;
+    }
     // The user's own defaults (lpoptions) win over the printer's.
     if (std::string media = option(d, "media"); !media.empty())
       p.defaultMedia = std::move(media);
@@ -324,7 +327,11 @@ JobStatus jobStatus(const std::string& printer, int jobId) {
   return st;
 }
 
-void cancelJob(const std::string& printer, int jobId) { cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), jobId, 0); }
+std::optional<JobError> cancelJob(const std::string& printer, int jobId) {
+  if (cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), jobId, 0) != IPP_STATUS_OK)
+    return JobError{cupsLastErrorString()};
+  return std::nullopt;
+}
 
 std::vector<JobInfo> listJobs() {
   cups_job_t* jobs = nullptr;
@@ -429,7 +436,7 @@ std::optional<JobError> printTestPage(const std::string& printer) {
 
 std::optional<JobError> setDefaultPrinter(const std::string& printer) {
   return editUserDests([&](cups_dest_t* dests, int count) {
-    bool found = false;
+    bool found = printer.empty();
     for (int i = 0; i < count; ++i) {
       dests[i].is_default = printer == dests[i].name && !dests[i].instance;
       found = found || dests[i].is_default;
@@ -506,7 +513,15 @@ std::variant<FoundPrinter, JobError> probePrinter(const std::string& address) {
 }
 
 std::optional<JobError> addPrinter(const FoundPrinter& printer) {
-  const std::string name = queueName(printer.label);
+  std::string name = queueName(printer.label);
+  {
+    cups_dest_t* raw = nullptr;
+    const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
+    std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
+    const std::string base = name;
+    for (int n = 2; cupsGetDest(name.c_str(), nullptr, count, raw) != nullptr; ++n)
+      name = base + "_" + std::to_string(n);
+  }
   ipp_t* request = ippNewRequest(IPP_OP_CUPS_ADD_MODIFY_PRINTER);
   ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(name).c_str());
   ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cupsUser());

@@ -37,11 +37,15 @@ void PrintersModel::refresh() {
     return;
   }
   m_refresh = Refresh::Running;
-  runDetached([this]() -> std::function<void()> {
+  std::vector<std::string> known;
+  for (const auto& [name, caps] : m_caps) {
+    known.push_back(name);
+  }
+  runDetached([this, known = std::move(known)]() -> std::function<void()> {
     Snapshot s;
     s.running = printServiceRunning();
     if (s.running) {
-      s.printers = listPrinters();
+      s.printers = listPrinters([&](const std::string& name) { return !std::ranges::contains(known, name); });
       s.jobs = listJobs();
     }
     return [this, s = std::move(s)]() mutable {
@@ -56,13 +60,29 @@ void PrintersModel::refresh() {
 }
 
 void PrintersModel::apply(Snapshot s) {
-  const Service service = s.running ? Service::Ready : Service::Missing;
-  bool changed = service != m_service || s.printers != m_printers || s.jobs != m_jobs;
-  if (m_adding && !m_adding->error &&
-      std::ranges::contains(s.printers, m_adding->printer.uri, &PrinterInfo::uri)) {
-    m_adding.reset();
-    changed = true;
+  for (auto& p : s.printers) {
+    if (p.capabilities) {
+      m_caps[p.name] = p;
+    } else if (const auto it = m_caps.find(p.name); it != m_caps.end()) {
+      const PrinterInfo& c = it->second;
+      p.duplex = c.duplex;
+      p.colour = c.colour;
+      p.media = c.media;
+      p.options = c.options;
+      p.queuedJobs = c.queuedJobs;
+      p.capabilities = true;
+      // The user's own defaults (lpoptions) arrive without a capability fetch; the printer's come from the cache.
+      if (p.defaultMedia.empty()) {
+        p.defaultMedia = c.defaultMedia;
+      }
+      if (p.defaultSides.empty()) {
+        p.defaultSides = c.defaultSides;
+      }
+    }
   }
+  std::erase_if(m_errors, [&](const auto& e) { return !std::ranges::contains(s.printers, e.first, &PrinterInfo::name); });
+  const Service service = s.running ? Service::Ready : Service::Missing;
+  const bool changed = service != m_service || s.printers != m_printers || s.jobs != m_jobs;
   m_service = service;
   m_printers = std::move(s.printers);
   m_jobs = std::move(s.jobs);
@@ -76,7 +96,7 @@ std::vector<FoundPrinter> PrintersModel::nearby() const {
   for (const auto& f : m_found) {
     const bool queued = std::ranges::contains(m_printers, f.uri, &PrinterInfo::uri);
     const bool adding = m_adding && m_adding->printer.uri == f.uri;
-    if (!queued && !adding) {
+    if (!queued && !adding && !std::ranges::contains(m_addedUris, f.uri)) {
       out.push_back(f);
     }
   }
@@ -104,6 +124,8 @@ void PrintersModel::discover() {
     return;
   }
   m_discovery = Discovery::Running;
+  // CUPS reports no removals on a fresh browse, so a rescan starts empty: printers that left drop off.
+  m_found.clear();
   m_changed();
   runDetached([this, alive = std::weak_ptr<void>(m_alive)]() -> std::function<void()> {
     discoverPrinters(kDiscoveryMs, [this, alive](FoundPrinter found) {
@@ -121,14 +143,20 @@ void PrintersModel::discover() {
   });
 }
 
-void PrintersModel::act(const std::string& printer, std::function<std::optional<JobError>()> action) {
-  runDetached([this, printer, action = std::move(action)]() -> std::function<void()> {
+void PrintersModel::act(const std::string& printer, std::function<std::optional<JobError>()> action,
+                        std::function<void()> onSuccess) {
+  runDetached([this, printer, action = std::move(action), onSuccess = std::move(onSuccess)]() -> std::function<void()> {
     std::optional<JobError> error = action();
-    return [this, printer, error = std::move(error)] {
+    return [this, printer, error = std::move(error), onSuccess] {
+      // The action may change the printer's defaults; fetch its capabilities again.
+      m_caps.erase(printer);
       if (error) {
         m_errors[printer] = error->message;
       } else {
         m_errors.erase(printer);
+        if (onSuccess) {
+          onSuccess();
+        }
       }
       m_changed();
       refresh();
@@ -137,10 +165,7 @@ void PrintersModel::act(const std::string& printer, std::function<std::optional<
 }
 
 void PrintersModel::cancelJob(const std::string& printer, int jobId) {
-  act(printer, [printer, jobId]() -> std::optional<JobError> {
-    ::cancelJob(printer, jobId);
-    return std::nullopt;
-  });
+  act(printer, [printer, jobId] { return ::cancelJob(printer, jobId); });
 }
 
 void PrintersModel::add(FoundPrinter printer) {
@@ -152,10 +177,13 @@ void PrintersModel::add(FoundPrinter printer) {
   runDetached([this, printer = std::move(printer)]() -> std::function<void()> {
     std::optional<JobError> error = addPrinter(printer);
     return [this, error = std::move(error)] {
-      if (error && m_adding) {
+      if (m_adding && error) {
         m_adding->error = error->message;
-        m_changed();
+      } else if (m_adding) {
+        m_addedUris.push_back(m_adding->printer.uri);
+        m_adding.reset();
       }
+      m_changed();
       refresh();
     };
   });

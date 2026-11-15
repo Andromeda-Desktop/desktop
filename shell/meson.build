@@ -674,6 +674,7 @@ _noctalia_sources = files(
   'src/shell/settings/settings_content_bluetooth.cpp',
   'src/shell/settings/settings_content_printers.cpp',
   'src/shell/settings/printers_model.cpp',
+  'src/shell/settings/settings_window_printers.cpp',
   'src/shell/settings/settings_content_network.cpp',
   'src/shell/settings/settings_content_sound.cpp',
   'src/shell/settings/speaker_sound.cpp',

@@ -236,9 +236,7 @@ namespace settings {
       Flex* card = addCard(content, scale);
       addSwitchRow(*card, {}, i18n::tr("settings.printers.default-printer"), p.isDefault, scale,
                    [model, n = p.name](bool on) {
-                     if (on) {
-                       model->act(n, [n] { return setDefaultPrinter(n); });
-                     }
+                     model->act(n, [n, on] { return setDefaultPrinter(on ? n : std::string{}); });
                    });
 
       const std::vector<JobInfo> jobs = jobsOf(*model, p.name);
@@ -271,8 +269,7 @@ namespace settings {
       auto remove = row(scale);
       remove->addChild(plainButton(i18n::tr("settings.printers.remove"), ButtonVariant::Destructive, scale,
                                    [model, n = p.name, back = ctx.back] {
-                                     model->act(n, [n] { return removePrinter(n); });
-                                     back();
+                                     model->act(n, [n] { return removePrinter(n); }, back);
                                    }));
       actions->addChild(std::move(remove));
     }
@@ -285,7 +282,7 @@ namespace settings {
       if (looking) {
         trailing = ui::spinner({.spinnerSize = Tokens::sizeSymbolInline * scale, .spinning = true});
       } else {
-        trailing = iconButton("refresh", i18n::tr("settings.wifi.scan"), scale, [model] { model->discover(); });
+        trailing = iconButton("refresh", i18n::tr("settings.printers.scan"), scale, [model] { model->discover(); });
       }
       addHeader(content, i18n::tr("settings.printers.nearby"), std::move(trailing), scale);
       Flex* card = addCard(content, scale);

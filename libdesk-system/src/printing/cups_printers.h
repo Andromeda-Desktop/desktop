@@ -37,6 +37,7 @@ struct PrinterInfo {
   std::string defaultMedia;
   std::string defaultSides; // IPP sides keyword; empty when the printer has no default
   std::vector<PrinterOption> options; // only options with a choice (two or more values)
+  bool capabilities = false; // duplex, colour, media and options are filled
 
   bool operator==(const PrinterInfo&) const = default;
 };
@@ -48,7 +49,10 @@ struct JobError {
 // Blocking libcups calls; run them off the UI thread.
 // True when cupsd answers on its socket.
 [[nodiscard]] bool printServiceRunning();
-[[nodiscard]] std::vector<PrinterInfo> listPrinters();
+// withCapabilities(name) false skips the printer's capability fetch (a network request to the printer) and its
+// job count; that PrinterInfo has capabilities false.
+[[nodiscard]] std::vector<PrinterInfo> listPrinters(
+    const std::function<bool(const std::string&)>& withCapabilities = [](const std::string&) { return true; });
 [[nodiscard]] std::variant<int, JobError> submitJob(const std::string& title, int fd, const PrintOptions& options);
 
 // Unknown: CUPS did not answer, so the last state stands. Cancelled ends quietly; Failed tells the user.
@@ -61,7 +65,7 @@ struct JobStatus {
 };
 
 [[nodiscard]] JobStatus jobStatus(const std::string& printer, int jobId);
-void cancelJob(const std::string& printer, int jobId);
+std::optional<JobError> cancelJob(const std::string& printer, int jobId);
 
 struct JobInfo {
   int id = 0;
@@ -83,7 +87,7 @@ struct JobInfo {
 [[nodiscard]] std::optional<JobError> cancelAllJobs(const std::string& printer);
 [[nodiscard]] std::optional<JobError> removePrinter(const std::string& printer);
 [[nodiscard]] std::optional<JobError> printTestPage(const std::string& printer);
-// Per-user (lpoptions), so no admin rights: the default printer and its default paper and sides.
+// Per-user (lpoptions), so no admin rights: the default printer ("" for none) and its default paper and sides.
 [[nodiscard]] std::optional<JobError> setDefaultPrinter(const std::string& printer);
 [[nodiscard]] std::optional<JobError> setPrinterDefault(const std::string& printer, const std::string& key,
                                                         const std::string& value);
@@ -100,5 +104,5 @@ struct FoundPrinter {
 void discoverPrinters(int timeoutMs, const std::function<void(FoundPrinter)>& onFound);
 // Asks an IP address, host name or ipp(s):// URI for its IPP attributes.
 [[nodiscard]] std::variant<FoundPrinter, JobError> probePrinter(const std::string& address);
-// Creates a driverless queue (ppd-name everywhere), enabled and accepting jobs.
+// Creates a driverless queue (ppd-name everywhere), enabled and accepting jobs, under a name no queue has yet.
 [[nodiscard]] std::optional<JobError> addPrinter(const FoundPrinter& printer);

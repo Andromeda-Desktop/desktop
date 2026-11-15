@@ -41,7 +41,8 @@ public:
   [[nodiscard]] const std::string* error(const std::string& printer) const;
 
   // Runs a queue action (pause, resume, cancel, set default, ...) off the main thread, then refreshes.
-  void act(const std::string& printer, std::function<std::optional<JobError>()> action);
+  void act(const std::string& printer, std::function<std::optional<JobError>()> action,
+           std::function<void()> onSuccess = {});
   void cancelJob(const std::string& printer, int jobId);
   void add(FoundPrinter printer);
   void probe(std::string address, std::function<void(std::variant<FoundPrinter, JobError>)> done);
@@ -71,4 +72,8 @@ private:
   std::vector<FoundPrinter> m_found;
   std::optional<Adding> m_adding;
   std::map<std::string, std::string> m_errors;
+  // Capabilities per queue name, fetched once: they need a request to the printer itself.
+  std::map<std::string, PrinterInfo> m_caps;
+  // Added this session; CUPS may store a different URI than the found one, so they stay out of Nearby.
+  std::vector<std::string> m_addedUris;
 };
