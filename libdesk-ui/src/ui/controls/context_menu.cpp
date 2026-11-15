@@ -17,6 +17,7 @@ namespace {
   TOKENS_LIVE(kMenuPadding, Tokens::spaceP4); // rulebook 9.9: p 4, so item text sits 12 from the menu edge
   TOKENS_LIVE(kItemHeight, Tokens::componentMenuItem);
   constexpr float kSeparatorHeight = 10.0F;
+  constexpr float kTwoLineItemHeight = 44.0F; // handoff print printer_menu: two-line rows h44
   constexpr float kItemGap = 0.0F;
   // Rulebook 9.9: items in body type, shortcuts one step down in footnote.
   TOKENS_LIVE(kMenuFontSize, Style::fontSizeBody);
@@ -48,7 +49,16 @@ namespace {
     if (entry.danger) {
       return colorSpecFromRole(ColorRole::Danger, interactive ? 1.0F : 0.55F);
     }
+    if (entry.accent) {
+      return colorSpecFromRole(ColorRole::AccentText, interactive ? 1.0F : 0.55F);
+    }
     return interactive ? enabledItemColor() : disabledItemColor();
+  }
+  float entryHeight(const ContextMenuControlEntry& entry) {
+    if (entry.separator) {
+      return kSeparatorHeight;
+    }
+    return entry.subtitle.empty() ? kItemHeight : kTwoLineItemHeight;
   }
   float entryIndent(const ContextMenuControlEntry& entry, float scale) {
     return static_cast<float>(entry.indentLevel) * Style::spaceMd * scale;
@@ -56,14 +66,18 @@ namespace {
 
   // Horizontal space the entry's leading indicator dot / swatch strip occupies, including its
   // trailing gap. The strip's metrics are font-derived, so this is layout-independent.
-  float leadingVisualSlot(const ContextMenuControlEntry& entry, float scale) {
+  bool hasDotColumn(const std::vector<ContextMenuControlEntry>& entries) {
+    return std::ranges::any_of(entries, [](const ContextMenuControlEntry& e) { return e.indicatorColor.has_value(); });
+  }
+  // dotColumn: some row has a dot, so rows without one keep its space and their labels line up.
+  float leadingVisualSlot(const ContextMenuControlEntry& entry, float scale, bool dotColumn) {
     if (!entry.swatchPreview.empty()) {
       ColorSwatchPreviewStrip strip;
       strip.setMetricsFromFontSize(kMenuFontSize * scale);
       strip.setPreview(entry.swatchPreview);
       return strip.preferredWidth() + Style::spaceSm * scale;
     }
-    if (entry.indicatorColor.has_value()) {
+    if (dotColumn && !entry.header) {
       return std::round(kMenuFontSize * scale) + Style::spaceSm * scale;
     }
     return 0.0F;
@@ -241,6 +255,7 @@ float ContextMenuControl::preferredWidth(
   scale = safeScale(scale);
   float maxRowWidth = 0.0F;
   const bool symbols = hasSymbolColumn(entries);
+  const bool dots = hasDotColumn(entries);
   for (const ContextMenuControlEntry& entry : entries) {
     if (!entry.dots.empty()) {
       maxRowWidth = std::max(maxRowWidth, static_cast<float>(entry.dots.size()) * kDotCell * scale);
@@ -253,7 +268,11 @@ float ContextMenuControl::preferredWidth(
                              : (reserveToggleSpace || hasToggle(entry)) ? kToggleSlot * scale
                                                                         : 0.0F;
     const FontWeight weight = entry.header ? FontWeight::Bold : FontWeight::Normal;
-    const float textWidth = std::ceil(renderer.measureText(entry.label, kMenuFontSize * scale, {weight}).width);
+    const float textWidth = std::ceil(std::max(
+        renderer.measureText(entry.label, kMenuFontSize * scale, {weight}).width,
+        entry.subtitle.empty() ? 0.0F
+                               : renderer.measureText(entry.subtitle, Style::fontSizeCaption * scale, {FontWeight::Normal})
+                                     .width));
     // Mirrors rebuildRows: 8px label inset each side, 30px right when a chevron is drawn.
     const float sidePadding = (entry.hasSubmenu ? 30.0F : 16.0F) * scale;
     const float shortcutSlot = entry.shortcut.empty() || entry.header
@@ -262,7 +281,7 @@ float ContextMenuControl::preferredWidth(
             + Style::spaceLg * scale;
     maxRowWidth = std::max(
         maxRowWidth,
-        textWidth + entryIndent(entry, scale) + toggleSlot + leadingVisualSlot(entry, scale) + shortcutSlot
+        textWidth + entryIndent(entry, scale) + toggleSlot + leadingVisualSlot(entry, scale, dots) + shortcutSlot
             + sidePadding
     );
   }
@@ -280,7 +299,7 @@ float ContextMenuControl::preferredHeight(
 
   float contentHeight = 0.0F;
   for (std::size_t i = 0; i < visibleEntries; ++i) {
-    contentHeight += (entries[i].separator ? kSeparatorHeight : kItemHeight) * scale;
+    contentHeight += entryHeight(entries[i]) * scale;
   }
   return kMenuPadding * scale * 2.0F + contentHeight + kItemGap * scale * static_cast<float>(visibleEntries - 1);
 }
@@ -310,8 +329,6 @@ void ContextMenuControl::rebuild(Renderer& renderer) {
 void ContextMenuControl::rebuildRows(Renderer& renderer) {
   const float scale = m_contentScale;
   const float menuPadding = kMenuPadding * scale;
-  const float itemHeight = kItemHeight * scale;
-  const float separatorHeight = kSeparatorHeight * scale;
   const float itemGap = kItemGap * scale;
   const std::size_t visibleItems = std::min(m_entries.size(), m_maxVisible);
   const float rowWidth = width() - menuPadding * 2.0F;
@@ -322,12 +339,13 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
   m_rows.clear();
   m_rows.reserve(visibleItems);
   const bool symbols = hasSymbolColumn(m_entries);
+  const bool dots = hasDotColumn(m_entries);
 
   for (std::size_t i = 0; i < visibleItems; ++i) {
     const ContextMenuControlEntry& entry = m_entries[i];
     const bool interactive = isInteractive(entry);
     const bool separator = entry.separator;
-    const float rowHeight = separator ? separatorHeight : itemHeight;
+    const float rowHeight = entryHeight(entry) * scale;
 
     auto row = std::make_unique<InputArea>();
     row->setFrameSize(rowWidth, rowHeight);
@@ -440,7 +458,7 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
         row->addChild(std::move(shortcut));
       }
 
-      const float leadingSlot = leadingVisualSlot(entry, scale);
+      const float leadingSlot = leadingVisualSlot(entry, scale, dots);
       if (!entry.swatchPreview.empty()) {
         auto strip = std::make_unique<ColorSwatchPreviewStrip>();
         strip->setMetricsFromFontSize(kMenuFontSize * scale);
@@ -472,7 +490,24 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
           .ellipsize = entry.ellipsize,
       });
       label->measure(renderer);
-      label->setPosition(8.0F * scale + indent + toggleSlot + leadingSlot, (rowHeight - label->height()) * 0.5F);
+      const float textX = 8.0F * scale + indent + toggleSlot + leadingSlot;
+      if (entry.subtitle.empty()) {
+        label->setPosition(textX, (rowHeight - label->height()) * 0.5F);
+      } else {
+        auto sub = ui::label({
+            .text = entry.subtitle,
+            .fontSize = Style::fontSizeCaption * scale,
+            .color = colorSpecFromRole(ColorRole::Label2),
+            .maxWidth = label->maxWidth(),
+            .maxLines = 1,
+            .ellipsize = TextEllipsize::End,
+        });
+        sub->measure(renderer);
+        const float top = std::round((rowHeight - label->height() - sub->height()) * 0.5F);
+        label->setPosition(textX, top);
+        sub->setPosition(textX, top + label->height());
+        row->addChild(std::move(sub));
+      }
       row->addChild(std::move(label));
 
       if (entry.hasSubmenu) {
@@ -528,9 +563,10 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
     };
     if (rowBgPtr != nullptr && labelPtr != nullptr) {
       visual.apply = [rowBgPtr, labelPtr, togglePtr, chevronPtr, interactive, separator,
-                      header = entry.header, danger = entry.danger](bool highlighted) {
+                      header = entry.header, danger = entry.danger, accent = entry.accent](bool highlighted) {
         rowBgPtr->setFill(highlighted ? colorSpecFromRole(ColorRole::Fill3) : clearColorSpec());
-        const ColorSpec ink = danger ? colorSpecFromRole(ColorRole::Danger, interactive ? 1.0F : 0.55F)
+        const ColorSpec ink = danger   ? colorSpecFromRole(ColorRole::Danger, interactive ? 1.0F : 0.55F)
+                              : accent ? colorSpecFromRole(ColorRole::AccentText, interactive ? 1.0F : 0.55F)
                               : highlighted ? colorSpecFromRole(ColorRole::Label1)
                               : interactive ? enabledItemColor()
                                             : disabledItemColor();

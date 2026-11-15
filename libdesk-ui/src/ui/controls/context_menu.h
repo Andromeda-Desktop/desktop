@@ -41,6 +41,9 @@ struct ContextMenuControlEntry {
   // A leading 16 symbol. When any row has one, every row keeps the symbol column and check/radio marks draw in it.
   std::string glyph;
   bool danger = false; // a destructive action: label and symbol in the danger colour
+  bool accent = false; // a link-like action ("Add Printer…"): label in the accent text colour
+  // A second line under the label in label_2 (a printer's state); the row grows to the two-line height.
+  std::string subtitle;
   // A row of colour dots instead of a label (Files tag row); a click on a dot activates the entry with that id.
   struct Dot {
     std::int32_t id = 0;

@@ -334,6 +334,10 @@ namespace ui {
     std::optional<std::vector<ColorSpec>> optionIndicators = std::nullopt;
     std::optional<std::vector<ColorSwatchPreview>> colorSwatchPreviews = std::nullopt;
     std::optional<bool> notifyOnReselect = std::nullopt;
+    std::optional<std::vector<std::string>> optionSubtitles = std::nullopt; // two-line menu rows
+    std::optional<std::size_t> separatorBefore = std::nullopt;
+    std::vector<std::string> actions;                    // accent rows after the options
+    std::function<void(std::size_t)> onAction = nullptr; // an action row picked; the selection stays
     std::optional<bool> enabled = std::nullopt;
     std::optional<float> surfaceOpacity = std::nullopt;
     std::optional<float> width = std::nullopt;

@@ -26,12 +26,16 @@ public:
     std::vector<std::string> options;
     std::vector<ColorSpec> indicatorColors;
     std::vector<ColorSwatchPreview> optionSwatchPreviews;
+    std::vector<std::string> optionSubtitles;
+    std::size_t separatorBefore = static_cast<std::size_t>(-1); // option index a separator line goes above
+    std::vector<std::string> actions; // accent rows after the options; they do not change the selection
     std::size_t selectedIndex = static_cast<std::size_t>(-1);
     std::size_t maxVisibleOptions = 6;
   };
 
   struct DropdownCallbacks {
     std::function<void(std::size_t index)> onSelect;
+    std::function<void(std::size_t action)> onAction;
     std::function<void()> onDismiss;
   };
 

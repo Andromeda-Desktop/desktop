@@ -38,6 +38,10 @@ public:
   void setOptionIndicators(std::vector<ColorSpec> colors);
   void setColorSwatchPreviews(std::vector<ColorSwatchPreview> previews);
   void setNotifyOnReselect(bool enabled);
+  void setOptionSubtitles(std::vector<std::string> subtitles);
+  void setSeparatorBefore(std::size_t index);
+  // Accent rows after the options ("Add Printer…"); picking one runs onAction and keeps the selection.
+  void setActions(std::vector<std::string> labels, std::function<void(std::size_t)> onAction);
   void setOnSelectionChanged(std::function<void(std::size_t, std::string_view)> callback);
 
   [[nodiscard]] std::size_t selectedIndex() const noexcept { return m_selectedIndex; }
@@ -84,6 +88,10 @@ private:
   std::vector<ColorSpec> m_indicatorColors;
   std::vector<ColorSwatchPreview> m_optionSwatchPreviews;
   bool m_notifyOnReselect = false;
+  std::vector<std::string> m_optionSubtitles;
+  std::size_t m_separatorBefore = npos;
+  std::vector<std::string> m_actions;
+  std::function<void(std::size_t)> m_onAction;
   Signal<>::ScopedConnection m_paletteConn;
   Signal<>::ScopedConnection m_inputBordersConn;
 

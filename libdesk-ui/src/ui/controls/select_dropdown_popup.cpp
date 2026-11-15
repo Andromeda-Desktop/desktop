@@ -52,9 +52,13 @@ void SelectDropdownPopup::openSelectDropdown(const DropdownRequest& request, Dro
     return;
   }
 
+  constexpr std::int32_t kActionId = 1 << 24; // action rows: ids from here, above any option index
   std::vector<ContextMenuControlEntry> entries;
-  entries.reserve(request.options.size());
+  entries.reserve(request.options.size() + request.actions.size() + 1);
   for (std::size_t i = 0; i < request.options.size(); ++i) {
+    if (i == request.separatorBefore) {
+      entries.push_back(ContextMenuControlEntry{.id = -1, .enabled = false, .separator = true});
+    }
     entries.push_back(
         ContextMenuControlEntry{
             .id = static_cast<std::int32_t>(i),
@@ -65,12 +69,25 @@ void SelectDropdownPopup::openSelectDropdown(const DropdownRequest& request, Dro
                                                                  : std::nullopt,
             .swatchPreview =
                 i < request.optionSwatchPreviews.size() ? request.optionSwatchPreviews[i] : ColorSwatchPreview{},
+            .subtitle = i < request.optionSubtitles.size() ? request.optionSubtitles[i] : std::string{},
         }
     );
   }
+  for (std::size_t i = 0; i < request.actions.size(); ++i) {
+    entries.push_back(ContextMenuControlEntry{.id = kActionId + static_cast<std::int32_t>(i),
+                                              .label = request.actions[i],
+                                              .checkmark = true, // keeps the check column so labels line up
+                                              .toggleState = 0,
+                                              .accent = true});
+  }
 
-  m_popup.setOnActivate([onSelect = std::move(callbacks.onSelect)](const ContextMenuControlEntry& entry) {
-    if (onSelect) {
+  m_popup.setOnActivate([onSelect = std::move(callbacks.onSelect),
+                         onAction = std::move(callbacks.onAction)](const ContextMenuControlEntry& entry) {
+    if (entry.id >= kActionId) {
+      if (onAction) {
+        onAction(static_cast<std::size_t>(entry.id - kActionId));
+      }
+    } else if (onSelect) {
       onSelect(static_cast<std::size_t>(std::max<std::int32_t>(0, entry.id)));
     }
   });

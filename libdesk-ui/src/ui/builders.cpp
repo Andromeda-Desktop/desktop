@@ -585,6 +585,15 @@ namespace ui {
     if (props.onSelectionChanged) {
       control->setOnSelectionChanged(std::move(props.onSelectionChanged));
     }
+    if (props.optionSubtitles.has_value()) {
+      control->setOptionSubtitles(std::move(*props.optionSubtitles));
+    }
+    if (props.separatorBefore.has_value()) {
+      control->setSeparatorBefore(*props.separatorBefore);
+    }
+    if (!props.actions.empty()) {
+      control->setActions(std::move(props.actions), std::move(props.onAction));
+    }
     applyNodeProps(*control, props);
     if (props.configure) {
       props.configure(*control);

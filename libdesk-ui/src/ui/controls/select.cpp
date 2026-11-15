@@ -221,6 +221,15 @@ void Select::setColorSwatchPreviews(std::vector<ColorSwatchPreview> previews) {
 
 void Select::setNotifyOnReselect(bool enabled) { m_notifyOnReselect = enabled; }
 
+void Select::setOptionSubtitles(std::vector<std::string> subtitles) { m_optionSubtitles = std::move(subtitles); }
+
+void Select::setSeparatorBefore(std::size_t index) { m_separatorBefore = index; }
+
+void Select::setActions(std::vector<std::string> labels, std::function<void(std::size_t)> onAction) {
+  m_actions = std::move(labels);
+  m_onAction = std::move(onAction);
+}
+
 void Select::setOnSelectionChanged(std::function<void(std::size_t, std::string_view)> callback) {
   m_onSelectionChanged = std::move(callback);
 }
@@ -457,6 +466,9 @@ void Select::openPopupDropdown() {
       .options = m_options,
       .indicatorColors = m_indicatorColors,
       .optionSwatchPreviews = m_optionSwatchPreviews,
+      .optionSubtitles = m_optionSubtitles,
+      .separatorBefore = m_separatorBefore,
+      .actions = m_actions,
       .selectedIndex = m_selectedIndex,
       .maxVisibleOptions = static_cast<std::size_t>(kMaxVisibleOptions),
   };
@@ -467,6 +479,14 @@ void Select::openPopupDropdown() {
             m_open = false;
             animateCaret(false);
             setSelectedIndex(index);
+          },
+      .onAction =
+          [this](std::size_t action) {
+            m_open = false;
+            animateCaret(false);
+            if (m_onAction) {
+              m_onAction(action);
+            }
           },
       .onDismiss =
           [this] {
