@@ -102,6 +102,7 @@ namespace {
     Node* accessory = nullptr;
     float accessoryMin = 0.0F; // the accessory's own minimum; fit() lowers it so the row never overflows
     float titleMin = 0.0F;     // the title keeps this much (or its natural width) before the accessory folds more
+    std::function<float(Renderer&)> accessoryFloor; // the accessory never folds below it; the title gives way first
 
   protected:
     void doLayout(Renderer& renderer) override {
@@ -180,7 +181,8 @@ namespace {
         title->setMaxWidth(0.0F);
         const float natural = static_cast<Node*>(title)->measure(renderer, {}).width;
         const float keep = std::min(natural, titleMin);
-        allowed = std::clamp(w - used - keep, 0.0F, accessoryMin);
+        const float floor = accessoryFloor ? accessoryFloor(renderer) : 0.0F;
+        allowed = std::clamp(w - used - keep, floor, std::max(accessoryMin, floor));
         flex->setMinWidth(allowed);
       }
       title->setMaxWidth(std::max(1.0F, w - used - allowed));
@@ -830,6 +832,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
     auto accessory = m_headerAccessory();
     accessory->setFlexGrow(1.0F);
     header->accessory = accessory.get();
+    header->accessoryFloor = m_headerAccessoryFloor;
     if (auto* flex = dynamic_cast<Flex*>(accessory.get())) {
       header->accessoryMin = flex->minWidth();
     }

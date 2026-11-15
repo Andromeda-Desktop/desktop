@@ -79,6 +79,8 @@ public:
   void setHeaderAccessoryBuilder(std::function<std::unique_ptr<Node>()> builder) {
     m_headerAccessory = std::move(builder);
   }
+  // The accessory width the header never folds: past it the title ellipsizes instead.
+  void setHeaderAccessoryFloor(std::function<float(Renderer&)> floor) { m_headerAccessoryFloor = std::move(floor); }
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
   // Keys no command took and no text field owns (type-ahead, arrows in a list). True = handled.
   void setKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_keyHandler = std::move(handler); }
@@ -179,6 +181,7 @@ private:
   ContentBuilder m_builder;
   SidebarBuilder m_sidebarBuilder;
   std::function<std::unique_ptr<Node>()> m_headerAccessory;
+  std::function<float(Renderer&)> m_headerAccessoryFloor;
   std::function<bool(const KeyboardEvent&)> m_keyHandler;
   std::function<bool(const KeyboardEvent&)> m_firstKeyHandler;
   std::function<void(bool)> m_onActive;

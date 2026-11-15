@@ -197,12 +197,59 @@ namespace term {
     constexpr float kPlanWidth = 360.0F;
     constexpr float kPlanRowGap = 4.0F;
 
+    // The title band: the status pill never shrinks; the plan pill reads "Plan N of M · current" when it fits, else
+    // "N of M", else hides. It measures at its minimum so the header ellipsizes the title before it folds the band.
+    class BandRow final : public Flex {
+    public:
+      Node* status = nullptr;
+      Node* full = nullptr;
+      Node* compact = nullptr;
+
+    protected:
+      LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override {
+        const LayoutSize size = Flex::doMeasure(renderer, constraints);
+        float w = status->measure(renderer, {}).width;
+        if (compact != nullptr) {
+          w += gap() + compact->measure(renderer, {}).width;
+        }
+        return {.width = std::max(w, constraints.minWidth), .height = size.height};
+      }
+      void doLayout(Renderer& renderer) override {
+        choose(renderer, width());
+        Flex::doLayout(renderer);
+      }
+      void doArrange(Renderer& renderer, const LayoutRect& rect) override {
+        choose(renderer, rect.width);
+        Flex::doArrange(renderer, rect);
+      }
+
+    private:
+      void choose(Renderer& renderer, float w) {
+        if (full == nullptr) {
+          return;
+        }
+        const float room = w - status->measure(renderer, {}).width - gap();
+        const bool showFull = full->measure(renderer, {}).width <= room;
+        show(full, showFull);
+        show(compact, !showFull && compact->measure(renderer, {}).width <= room);
+      }
+      static void show(Node* node, bool on) {
+        node->setVisible(on);
+        node->setParticipatesInLayout(on);
+      }
+    };
+
   } // namespace
 
   std::unique_ptr<Node> AgentView::band(float s, std::function<void(const Node* anchor)> onPlan) const {
     const Kit kit{s};
     const float h = Tokens::spaceP24 * s;
-    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+    auto row = std::make_unique<BandRow>();
+    row->setDirection(FlexDirection::Horizontal);
+    row->setAlign(FlexAlign::Center);
+    row->setJustify(FlexJustify::End);
+    row->setGap(Tokens::spaceP8 * s);
+    row->setFlexGrow(1.0F);
     const agent::Session* model = session();
     if (model == nullptr) {
       return row;
@@ -215,19 +262,23 @@ namespace term {
       if (current != plan.end()) {
         text += " \u00b7 " + current->content;
       }
-      auto button = ui::button({.text = text,
-                                .glyph = std::string("list-check"),
-                                .fontSize = Tokens::typeFootnote.size * s,
-                                .glyphSize = Tokens::spaceP12 * s,
-                                .variant = ButtonVariant::Tonal,
-                                .maxWidth = kPlanWidth * s,
-                                .paddingH = Tokens::spaceP8 * s,
-                                .gap = Tokens::spaceP4 * s,
-                                .radius = h / 2.0F,
-                                .height = h});
-      Button* anchor = button.get();
-      button->setOnClick([anchor, onPlan = std::move(onPlan)] { onPlan(anchor); });
-      row->addChild(std::move(button));
+      const auto pill = [&](std::string label) {
+        auto button = ui::button({.text = std::move(label),
+                                  .glyph = std::string("list-check"),
+                                  .fontSize = Tokens::typeFootnote.size * s,
+                                  .glyphSize = Tokens::spaceP12 * s,
+                                  .variant = ButtonVariant::Tonal,
+                                  .maxWidth = kPlanWidth * s,
+                                  .paddingH = Tokens::spaceP8 * s,
+                                  .gap = Tokens::spaceP4 * s,
+                                  .radius = h / 2.0F,
+                                  .height = h});
+        Button* anchor = button.get();
+        button->setOnClick([anchor, onPlan] { onPlan(anchor); });
+        return row->addChild(std::move(button));
+      };
+      row->full = pill(std::move(text));
+      row->compact = pill(std::format("{} of {}", done, plan.size()));
     }
     std::string text;
     std::string_view glyph = "circle";
@@ -281,7 +332,7 @@ namespace term {
     if (escape) {
       pill->addChild(ui::keycap({.text = "Esc", .scale = s}));
     }
-    row->addChild(std::move(pill));
+    row->status = row->addChild(std::move(pill));
     return row;
   }
 

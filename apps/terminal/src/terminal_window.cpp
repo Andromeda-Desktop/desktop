@@ -200,6 +200,7 @@ namespace term {
       setFindCount(0, std::nullopt);
       return slot;
     });
+    m_window.setHeaderAccessoryFloor([this](Renderer& renderer) { return m_agentBar->measure(renderer, {}).width; });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       if (sessionKey(event)) {
         return true;
