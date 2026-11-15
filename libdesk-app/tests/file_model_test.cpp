@@ -1,6 +1,7 @@
 #include "core/deferred_call.h"
 #include "core/files/directory_watcher.h"
 #include "core/files/file_model.h"
+#include "core/timer_manager.h"
 
 #include <algorithm>
 #include <chrono>
@@ -25,7 +26,7 @@ namespace {
     }
   }
 
-  // The app loop in miniature: the DeferredCall wake fd and the watcher, until done() or 3 s.
+  // The app loop in miniature: the DeferredCall wake fd, the watcher and the timers, until done() or 3 s.
   template <typename F> bool pump(DirectoryWatcher& watcher, F done) {
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (!done()) {
@@ -40,6 +41,7 @@ namespace {
         fn();
       }
       watcher.dispatch(fds, start);
+      TimerManager::instance().tick();
     }
     return true;
   }
@@ -92,34 +94,37 @@ int main() {
   expect(joined(names(view)) == "a10.txt", "the filter is a case-insensitive substring: " + joined(names(view)));
   view.setFilter("");
 
+  // Watch events arrive as one Updated batch per flush; `modified` names the entries that existed and changed.
   std::vector<FileModel::Change> changes;
   auto token = model->subscribe([&](const FileModel::Change& c) { changes.push_back(c); });
-  const auto saw = [&](FileModel::Change::Type type, const std::string& name) {
+  const auto sizeIs = [&](const std::string& name, std::uintmax_t size) {
     return pump(watcher, [&] {
-      return std::ranges::any_of(changes, [&](const auto& c) { return c.type == type && c.name == name; });
+      const auto* entry = model->find(name);
+      return entry != nullptr && entry->size == size;
     });
   };
+  const auto gone = [&](const std::string& name) { return pump(watcher, [&] { return model->find(name) == nullptr; }); };
 
   write(dir / "new.txt", 5);
-  expect(saw(FileModel::Change::Type::Inserted, "new.txt"), "a created file is inserted");
-  expect(model->find("new.txt") != nullptr && model->find("new.txt")->size == 5, "the inserted entry has its size");
+  expect(sizeIs("new.txt", 5), "a created file is inserted with its size");
+  changes.clear();
 
   write(dir / "new.txt", 50);
-  expect(saw(FileModel::Change::Type::Updated, "new.txt"), "a rewritten file is updated");
-  expect(pump(watcher, [&] { return model->find("new.txt")->size == 50; }), "the update carries the new size");
+  expect(sizeIs("new.txt", 50), "a rewritten file carries the new size");
+  expect(std::ranges::any_of(changes, [](const auto& c) { return std::ranges::contains(c.modified, "new.txt"); }),
+         "a rewritten file is reported as modified");
 
   fs::rename(dir / "new.txt", dir / "renamed.txt");
-  expect(saw(FileModel::Change::Type::Renamed, "new.txt"), "a rename inside the folder is one rename");
-  expect(model->find("new.txt") == nullptr && model->find("renamed.txt") != nullptr, "the rename moves the entry");
+  expect(sizeIs("renamed.txt", 50) && model->find("new.txt") == nullptr, "a rename inside the folder moves the entry");
 
   fs::rename(dir / "renamed.txt", other / "renamed.txt");
-  expect(saw(FileModel::Change::Type::Removed, "renamed.txt"), "a move out of the folder removes the entry");
+  expect(gone("renamed.txt"), "a move out of the folder removes the entry");
 
   fs::rename(other / "renamed.txt", dir / "back.txt");
-  expect(saw(FileModel::Change::Type::Inserted, "back.txt"), "a move into the folder inserts the entry");
+  expect(sizeIs("back.txt", 50), "a move into the folder inserts the entry");
 
   fs::remove(dir / "b.txt");
-  expect(saw(FileModel::Change::Type::Removed, "b.txt"), "a deleted file is removed");
+  expect(gone("b.txt"), "a deleted file is removed");
   expect(joined(names(view)) == "zdir,a2.txt,a10.txt,back.txt", "the view follows the model: " + joined(names(view)));
 
   fs::remove_all(dir);
