@@ -576,7 +576,7 @@ void TrayService::startWithWatcherDetection() {
         if (name == std::string{kWatcherBusName}) {
           if (m_watcherRole == WatcherRole::Client) {
             if (old_owner.empty() && !new_owner.empty()) {
-              DeferredCall::callLater([this] { connectToExternalWatcher(); });
+              DeferredCall::callLater(whileAlive([this] { connectToExternalWatcher(); }));
             } else if (!old_owner.empty() && new_owner.empty()) {
               disconnectExternalWatcher();
             }
@@ -585,7 +585,7 @@ void TrayService::startWithWatcherDetection() {
         }
 
         if (old_owner.empty() && !new_owner.empty() && isStatusNotifierItemBusName(name)) {
-          DeferredCall::callLater([this, name] { tryRegisterItemForBusName(name); });
+          DeferredCall::callLater(whileAlive([this, name] { tryRegisterItemForBusName(name); }));
         }
         if (!old_owner.empty() && new_owner.empty()) {
           removeItemsForBusName(name);
@@ -630,10 +630,10 @@ void TrayService::startAsWatcherOwner() {
     msg >> serviceOrPath;
     const char* sender = msg.getSender();
     msg.createReply().send();
-    DeferredCall::callLater([this, serviceOrPath = std::move(serviceOrPath),
-                             senderBusName = std::string(sender != nullptr ? sender : "")] {
+    DeferredCall::callLater(whileAlive([this, serviceOrPath = std::move(serviceOrPath),
+                                        senderBusName = std::string(sender != nullptr ? sender : "")] {
       onRegisterStatusNotifierItem(serviceOrPath, senderBusName);
-    });
+    }));
   };
 
   m_watcherObject
@@ -677,8 +677,8 @@ void TrayService::startAsWatcherOwner() {
   kLog.debug("tray watcher active on {}", std::string{kWatcherBusName});
 
   m_watcherObject->emitSignal("StatusNotifierHostRegistered").onInterface(kWatcherInterface);
-  DeferredCall::callLater([this] { discoverExistingItems(); });
-  DeferredCall::callLater([this] { discoverExistingItems(); });
+  DeferredCall::callLater(whileAlive([this] { discoverExistingItems(); }));
+  DeferredCall::callLater(whileAlive([this] { discoverExistingItems(); }));
 }
 
 void TrayService::startAsWatcherClient() {
@@ -697,10 +697,10 @@ void TrayService::startAsWatcherClient() {
   if (externalWatcherHasOwner()) {
     // Deferred so a watcher that is already running does not deliver its items
     // before the shell UI that consumes them has been initialized.
-    DeferredCall::callLater([this] { connectToExternalWatcher(); });
+    DeferredCall::callLater(whileAlive([this] { connectToExternalWatcher(); }));
   }
-  DeferredCall::callLater([this] { discoverExistingItems(); });
-  DeferredCall::callLater([this] { discoverExistingItems(); });
+  DeferredCall::callLater(whileAlive([this] { discoverExistingItems(); }));
+  DeferredCall::callLater(whileAlive([this] { discoverExistingItems(); }));
 }
 
 void TrayService::connectToExternalWatcher() {
@@ -1546,7 +1546,7 @@ void TrayService::onRegisterStatusNotifierHost(const std::string& host) {
     );
   }
   emitChanged();
-  DeferredCall::callLater([this] { discoverExistingItems(); });
+  DeferredCall::callLater(whileAlive([this] { discoverExistingItems(); }));
 }
 
 void TrayService::discoverExistingItems() {
@@ -1603,8 +1603,6 @@ void TrayService::tryRegisterItemForBusName(const std::string& busName, std::fun
     }
   };
 
-  // Note: This lambda captures 'this' without a lifetime guard. TrayService is application-lifetime,
-  // so this is safe in practice, but if that ever changes, a guard is needed to avoid use-after-free.
   for (const auto candidatePath : candidatePaths) {
     const auto candidatePathString = std::string(candidatePath);
     try {
@@ -1615,8 +1613,12 @@ void TrayService::tryRegisterItemForBusName(const std::string& busName, std::fun
           .onInterface("org.freedesktop.DBus.Properties")
           .withTimeout(kItemPropertyTimeout)
           .withArguments(kItemInterface)
-          .uponReplyInvoke([this, busName, candidatePathString, pending, registeredAny, finish,
+          .uponReplyInvoke([this, alive = std::weak_ptr<void>(m_aliveGuard), busName, candidatePathString, pending,
+                            registeredAny, finish,
                             probe](std::optional<sdbus::Error> error, const std::map<std::string, sdbus::Variant>&) {
+            if (alive.expired()) {
+              return;
+            }
             if (!error.has_value()) {
               registerOrRefreshItem(busName, candidatePathString);
               *registeredAny = true;
@@ -1645,13 +1647,13 @@ void TrayService::scheduleBusOnlyRegistrationProbe(const std::string& busName, i
   // First attempt is immediate; later attempts back off so a slow SNI can answer.
   const int attemptIndex = kBusOnlyRegistrationProbeAttempts - retriesRemaining;
   const auto delay = kBusOnlyRegistrationProbeBackoff * std::max(0, attemptIndex);
-  (void)TimerManager::instance().start(0, delay, [this, busName, retriesRemaining] {
+  (void)TimerManager::instance().start(0, delay, whileAlive([this, busName, retriesRemaining] {
     tryRegisterItemForBusName(busName, [this, busName, retriesRemaining](bool registered) {
       if (!registered) {
         scheduleBusOnlyRegistrationProbe(busName, retriesRemaining - 1);
       }
     });
-  });
+  }));
 }
 
 void TrayService::scheduleMetadataRefreshRetry(const std::string& itemId, int retriesRemaining) {
@@ -1661,7 +1663,7 @@ void TrayService::scheduleMetadataRefreshRetry(const std::string& itemId, int re
 
   // Let the in-flight GetAll finish (or time out) before judging readiness.
   const auto delay = kItemPropertyTimeout + std::chrono::milliseconds(100);
-  (void)TimerManager::instance().start(0, delay, [this, itemId, retriesRemaining] {
+  (void)TimerManager::instance().start(0, delay, whileAlive([this, itemId, retriesRemaining] {
     auto it = m_items.find(itemId);
     if (it == m_items.end()) {
       return;
@@ -1671,7 +1673,7 @@ void TrayService::scheduleMetadataRefreshRetry(const std::string& itemId, int re
     }
     refreshItemMetadata(itemId);
     scheduleMetadataRefreshRetry(itemId, retriesRemaining - 1);
-  });
+  }));
 }
 
 bool TrayService::isMetadataReady(const TrayItemInfo& item) const {
@@ -1830,7 +1832,7 @@ void TrayService::registerOrRefreshItem(const std::string& busName, const std::s
 
   if (looks_like_dbus_name(busName)) {
     requestProcessNameForItem(itemId, busName);
-    DeferredCall::callLater([this, itemId] { refreshItemMetadata(itemId); });
+    DeferredCall::callLater(whileAlive([this, itemId] { refreshItemMetadata(itemId); }));
     scheduleMetadataRefreshRetry(itemId, 4);
   }
 }
@@ -1939,8 +1941,6 @@ void TrayService::resolvePathOnlyItemProxy(const std::string& itemId) {
               return;
             }
 
-            // Note: This lambda captures 'this' without a lifetime guard. TrayService is application-lifetime,
-            // so this is safe in practice, but if that ever changes, a guard is needed to avoid use-after-free.
             try {
               auto probe = std::shared_ptr<sdbus::IProxy>(
                   sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{candidate}, sdbus::ObjectPath{objectPath})
@@ -1950,11 +1950,15 @@ void TrayService::resolvePathOnlyItemProxy(const std::string& itemId) {
                   .withTimeout(kProbeTimeout)
                   .withArguments(kItemInterface)
                   .uponReplyInvoke(
-                      [this, itemId, candidate, objectPath, probeNext, probe](
+                      [this, alive = std::weak_ptr<void>(m_aliveGuard), itemId, candidate, objectPath, probeNext,
+                       probe](
                           std::optional<sdbus::Error> probeError, // NOLINT(performance-unnecessary-value-param)
 
                           const std::map<std::string, sdbus::Variant>&
                       ) {
+                        if (alive.expired()) {
+                          return;
+                        }
                         if (probeError.has_value()) {
                           invokeSharedCallback(probeNext);
                           return;
@@ -2050,12 +2054,12 @@ void TrayService::refreshItemMetadata(const std::string& itemId) {
                 // Removal waits for the next loop turn: this reply runs inside the proxy it would destroy.
                 if (error->getName() == "org.freedesktop.DBus.Error.ServiceUnknown"
                     || error->getName() == "org.freedesktop.DBus.Error.NameHasNoOwner") {
-                  DeferredCall::callLater([this, itemId, proxy] {
+                  DeferredCall::callLater(whileAlive([this, itemId, proxy] {
                     const auto it = m_itemProxies.find(itemId);
                     if (it != m_itemProxies.end() && it->second.get() == proxy) {
                       removeItemById(itemId);
                     }
-                  });
+                  }));
                   return;
                 }
                 ensureMenuCache(itemId, currentItemIt->second.busName, currentItemIt->second.menuObjectPath);

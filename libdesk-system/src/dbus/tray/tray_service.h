@@ -92,6 +92,15 @@ public:
   [[nodiscard]] bool openContextMenu(const std::string& itemId, std::int32_t x = 0, std::int32_t y = 0);
 
 private:
+  // Wraps a deferred or timer callback so that it does nothing after the service is destroyed.
+  template <typename F> auto whileAlive(F fn) {
+    return [alive = std::weak_ptr<void>(m_aliveGuard), fn = std::move(fn)]() mutable {
+      if (!alive.expired()) {
+        fn();
+      }
+    };
+  }
+
   struct MenuCache {
     std::unique_ptr<sdbus::IProxy> proxy;
     std::unordered_map<std::int32_t, TrayMenuEntry> entriesById;
@@ -165,4 +174,6 @@ private:
   bool m_started = false;
   ChangeCallback m_changeCallback;
   MenuToggleCallback m_menuToggleCallback;
+  // Declared last, so it expires first; probe proxies, timers and deferred calls can outlive the service.
+  std::shared_ptr<void> m_aliveGuard = std::make_shared<int>(0);
 };
