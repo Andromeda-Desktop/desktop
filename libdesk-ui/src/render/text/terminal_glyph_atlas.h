@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -42,8 +43,8 @@ public:
   [[nodiscard]] int underlinePosition() const noexcept { return m_underlinePosition; }
   [[nodiscard]] int strokeThickness() const noexcept { return m_strokeThickness; }
 
-  // RGBA, 4 bytes per pixel, width() pixels per row.
-  [[nodiscard]] const std::vector<std::uint8_t>& pixels() const noexcept { return m_pixels; }
+  // RGBA, 4 bytes per pixel, width() pixels per row, height() rows.
+  [[nodiscard]] const std::uint8_t* pixels() const noexcept { return m_pixels.get(); }
   [[nodiscard]] int width() const noexcept { return kWidth; }
   [[nodiscard]] int height() const noexcept { return m_height; }
   // Rows [dirtyTop, dirtyBottom) changed since clearDirty(); empty when dirtyTop >= dirtyBottom.
@@ -55,6 +56,9 @@ public:
 
 private:
   struct FontFace;
+  struct FreeDeleter {
+    void operator()(std::uint8_t* p) const noexcept { std::free(p); }
+  };
   struct Key {
     char32_t codepoint;
     Face face;
@@ -70,6 +74,7 @@ private:
   FontFace* faceFor(Face face, char32_t needs, bool color = false);
   FontFace* openFace(const std::string& file, int index, bool embolden, bool oblique);
   bool place(int width, int height, int& x, int& y);
+  static std::unique_ptr<std::uint8_t, FreeDeleter> allocatePixels(int height);
   void reset();
 
   std::string m_family;
@@ -87,7 +92,8 @@ private:
   int m_underlinePosition = 0;
   int m_strokeThickness = 1;
 
-  std::vector<std::uint8_t> m_pixels;
+  // calloc: rows no glyph has reached stay untouched pages, so they take no RAM.
+  std::unique_ptr<std::uint8_t, FreeDeleter> m_pixels;
   int m_height = 0;
   int m_shelfX = 0;
   int m_shelfY = 0;

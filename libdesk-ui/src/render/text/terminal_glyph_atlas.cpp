@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <new>
 #include <optional>
 
 struct TerminalGlyphAtlas::Library {
@@ -236,7 +237,7 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
     }
     for (int row = 0; row < h; ++row) {
       std::uint8_t* dst =
-          &m_pixels[(static_cast<std::size_t>(y + row) * kWidth + static_cast<std::size_t>(x)) * kBytesPerPixel];
+          m_pixels.get() + (static_cast<std::size_t>(y + row) * kWidth + static_cast<std::size_t>(x)) * kBytesPerPixel;
       for (int col = 0; col < w; ++col, dst += kBytesPerPixel) {
         if (!bgra) {
           const std::uint8_t a = bitmap.buffer[static_cast<std::ptrdiff_t>(row) * bitmap.pitch + col];
@@ -280,6 +281,15 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
   return it->second.width == 0 ? nullptr : &it->second;
 }
 
+std::unique_ptr<std::uint8_t, TerminalGlyphAtlas::FreeDeleter> TerminalGlyphAtlas::allocatePixels(int height) {
+  auto* p = static_cast<std::uint8_t*>(
+      std::calloc(static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(height), kBytesPerPixel));
+  if (p == nullptr) {
+    throw std::bad_alloc();
+  }
+  return std::unique_ptr<std::uint8_t, FreeDeleter>(p);
+}
+
 bool TerminalGlyphAtlas::place(int width, int height, int& x, int& y) {
   if (width > kWidth) {
     return false;
@@ -297,8 +307,10 @@ bool TerminalGlyphAtlas::place(int width, int height, int& x, int& y) {
     if (grown > kMaxHeight) {
       return false;
     }
+    auto pixels = allocatePixels(grown);
+    std::memcpy(pixels.get(), m_pixels.get(), static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(m_height) * kBytesPerPixel);
+    m_pixels = std::move(pixels);
     m_height = grown;
-    m_pixels.resize(static_cast<std::size_t>(kWidth) * static_cast<std::size_t>(m_height) * kBytesPerPixel, 0);
     m_dirtyTop = 0;
     m_dirtyBottom = m_height;
   }
@@ -313,7 +325,7 @@ void TerminalGlyphAtlas::reset() {
   m_glyphs.clear();
   m_missing.clear();
   m_height = kInitialHeight;
-  m_pixels.assign(static_cast<std::size_t>(kWidth) * kInitialHeight * kBytesPerPixel, 0);
+  m_pixels = allocatePixels(kInitialHeight);
   m_shelfX = 0;
   m_shelfY = 0;
   m_shelfHeight = 0;

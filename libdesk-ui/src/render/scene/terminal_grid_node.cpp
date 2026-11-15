@@ -139,15 +139,15 @@ void TerminalGridNode::commit(TextureManager& textures) {
     m_textureManager->unload(m_texture);
   }
   m_textureManager = &textures;
-  const auto& pixels = m_atlas.pixels();
+  const std::uint8_t* pixels = m_atlas.pixels();
   if (!m_texture.valid() || m_texture.height != m_atlas.height()) {
-    textures.replace(m_texture, pixels.data(), m_atlas.width(), m_atlas.height(), TextureDataFormat::Rgba,
+    textures.replace(m_texture, pixels, m_atlas.width(), m_atlas.height(), TextureDataFormat::Rgba,
                      TextureFilter::Nearest);
     markPaintDirty();
   } else if (m_atlas.dirtyTop() < m_atlas.dirtyBottom()) {
     const int top = m_atlas.dirtyTop();
     textures.updateSubImage(m_texture,
-                            pixels.data() + static_cast<std::size_t>(top) * static_cast<std::size_t>(m_atlas.width()) * 4,
+                            pixels + static_cast<std::size_t>(top) * static_cast<std::size_t>(m_atlas.width()) * 4,
                             0, top, m_atlas.width(), m_atlas.dirtyBottom() - top, TextureDataFormat::Rgba);
   }
   m_atlas.clearDirty();
