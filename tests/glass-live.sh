@@ -204,5 +204,5 @@ while read -r name t0 t1 e0 e1 c0 c1 s0 s1 crss srss; do
     "$(cpu "$c0" "$c1")" "$(cpu "$s0" "$s1")" "$crss" "$srss" "$bkpx" "$lensn" "$bdkpx" "$fp16" "$rec50" "$rec99" "$exec50" "$exec99" "$((missed_all - missed))" | tee -a "$OUT/report.txt"
 done < "$OUT/scenarios.txt"
 cat "$OUT/scanout.txt" 2> /dev/null | tee -a "$OUT/report.txt"
-echo "budget: p99 GPU <= 4.17 ms (25 % of a 60 Hz frame); missed frames should be 0 outside idle" | tee -a "$OUT/report.txt"
+echo "budget: exec99 (own GPU) <= 4.17 ms (25 % of a 60 Hz frame); missed frames should be 0 outside idle; p99 adds the submit hand-off and queueing" | tee -a "$OUT/report.txt"
 echo "stress rows, reported but not budgeted: launcher_typing_over_scroll, worst" | tee -a "$OUT/report.txt"

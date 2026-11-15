@@ -88,9 +88,11 @@ energy() { cat "$RAPL" 2>/dev/null || echo 0; }
 cpu_ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
 rss_kb() { awk '/^VmRSS/ {print $2}' "/proc/$1/status" 2>/dev/null || echo 0; }
 
-# p50 p99 max of GPU ns (column 4) and frame count for log lines with start time in [from, to).
+# Frame count and p50 p99 max (ms) of frame log column $4 for lines with start time in [from, to). Column 13 is the
+# frame's own GPU execution (the budget); column 4 runs from the end of CPU recording to the end of the GPU, so it
+# also holds the submit hand-off and time queued behind other GPU work.
 frame_stats() {
-  awk -v from="$2" -v to="$3" '$1 >= from && $1 < to {print $4}' "$1" | sort -n | awk '
+  awk -v from="$2" -v to="$3" -v c="$4" '$1 >= from && $1 < to && $c >= 0 {print $c}' "$1" | sort -n | awk '
     {v[NR] = $1} END {
       if (NR == 0) {print "0 0 0 0"; exit}
       p50 = v[int(NR * 0.50) > 0 ? int(NR * 0.50) : 1]; p99 = v[int(NR * 0.99) > 0 ? int(NR * 0.99) : 1]
@@ -232,18 +234,20 @@ done
 
 # Report: per scenario and mode. Budget: 25 % of a 60 Hz frame on the target GPU, scaled to this GPU.
 budget=$(awk -v s="$BUDGET_SCALE" 'BEGIN {printf "%.3f", 16.667 * 0.25 / s}')
-printf '%-16s %-8s %7s %8s %8s %8s %7s %6s %8s\n' scenario mode frames p50ms p99ms maxms watts cpu% rssMB
+printf '%-16s %-8s %7s %8s %8s %8s %8s %7s %6s %8s\n' scenario mode frames p50ms p99ms maxms sub99ms watts cpu% rssMB
 for name in idle cc_over_motion open_close window_open_close launcher_typing worst workspace_switch; do
   [[ -z ${SCENARIOS:-} || " $SCENARIOS " == *" $name "* ]] || continue
   for mode in "${MODES[@]}"; do
     line=$(awk -v n="$name" '$1 == n' "$OUT/$mode/scenarios.txt")
     read -r _ t0 t1 _ watts cpu rss <<< "$line"
-    read -r frames p50 p99 max <<< "$(frame_stats "$OUT/$mode/frames.log" "$t0" "$t1")"
-    printf '%-16s %-8s %7s %8s %8s %8s %7s %6s %8.1f\n' "$name" "$mode" "$frames" "$p50" "$p99" "$max" "$watts" "$cpu" \
+    read -r frames p50 p99 max <<< "$(frame_stats "$OUT/$mode/frames.log" "$t0" "$t1" 13)"
+    read -r _ _ sub99 _ <<< "$(frame_stats "$OUT/$mode/frames.log" "$t0" "$t1" 4)"
+    printf '%-16s %-8s %7s %8s %8s %8s %8s %7s %6s %8.1f\n' "$name" "$mode" "$frames" "$p50" "$p99" "$max" "$sub99" "$watts" "$cpu" \
       "$(awk -v k="$rss" 'BEGIN {print k / 1024}')"
   done
 done
-echo "budget: p99 <= ${budget} ms (25 % of 16.7 ms, BUDGET_SCALE=$BUDGET_SCALE); idle frames must be 0"
+echo "budget: own GPU p99 <= ${budget} ms (25 % of 16.7 ms, BUDGET_SCALE=$BUDGET_SCALE); idle frames must be 0"
+echo "sub99: p99 from the end of CPU recording to the end of the GPU (hand-off and queueing included; not budgeted)"
 echo "output: $BENCH_MODE"
 [[ $LOWEND == 1 ]] && echo "low end: gpu $gpu_mhz MHz, cpu ${LOW_CPUS[*]} at $((cpu_khz / 1000)) MHz, 200 % quota"
 [[ -s $OUT/${MODES[0]}/gpu.json ]] || echo "gpu busy: n/a (grant once: sudo setcap cap_perfmon+ep /usr/bin/intel_gpu_top)"
