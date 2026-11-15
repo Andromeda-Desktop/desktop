@@ -23,6 +23,8 @@
 #include <cstdio>
 #include <iostream>
 #include <iterator>
+#include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -59,11 +61,12 @@ namespace {
   enum class Tab { Window, App, Screen };
   enum class Answer { Pending, Answered };
 
-  Request parseRequest(const std::string& line) {
+  // Empty when the line is not a valid request: the picker then answers cancel without a window.
+  std::optional<Request> parseRequest(const std::string& line) try {
     Request request;
     const auto json = nlohmann::json::parse(line, nullptr, false);
     if (!json.is_object()) {
-      return request;
+      return std::nullopt;
     }
     request.multiple = json.value("multiple", false);
     for (const auto& type : json.value("types", nlohmann::json::array())) {
@@ -88,10 +91,17 @@ namespace {
     request.cursorOption = !cursor.empty();
     request.showPointer = !cursor.empty() && cursor != "hidden";
     request.canRemember = json.value("can_remember", false);
-    return request;
-  }
+      return request;
+    } catch (const nlohmann::json::exception&) {
+      return std::nullopt;
+    }
 
   // The asking app's name from its desktop entry; empty when the portal could not name the caller.
+  struct AppInfo {
+    std::string name;
+    std::string icon;
+  };
+
   std::string appName(const std::string& appId) {
     if (appId.empty()) {
       return {};
@@ -144,7 +154,10 @@ namespace {
         finish(false);
         return true;
       }
-      if ((event.sym == XKB_KEY_Return || event.sym == XKB_KEY_KP_Enter) && !m_selected.empty()) {
+      // A focused widget (Tab moved focus to Cancel or a tile) handles Enter itself.
+      const bool plain = (event.modifiers & (KeyMod::Ctrl | KeyMod::Alt | KeyMod::Super)) == 0;
+      if ((event.sym == XKB_KEY_Return || event.sym == XKB_KEY_KP_Enter) && plain && canShare()
+          && m_window->input().focusedArea() == nullptr) {
         finish(true);
         return true;
       }
@@ -234,6 +247,16 @@ namespace {
       return m_tab == Tab::App && !source.monitor ? source.appId : source.id;
     }
 
+    const AppInfo& appInfo(const std::string& appId) const {
+      auto it = m_apps.find(appId);
+      if (it == m_apps.end()) {
+        it = m_apps.emplace(appId, AppInfo{.name = appName(appId), .icon = appIconFile(appId)}).first;
+      }
+      return it->second;
+    }
+
+    [[nodiscard]] bool canShare() const { return !m_selected.empty() && m_selectedTab == m_tab; }
+    
     [[nodiscard]] bool selectedSource(const Source& source) const {
       if (source.blocked) {
         return false;
@@ -247,13 +270,22 @@ namespace {
 
     [[nodiscard]] std::vector<const Source*> visible() const {
       std::vector<const Source*> list;
-      std::set<std::string> apps;
+      // App tab: one tile per app, standing for its first capturable window (a lock tile only when none is).
+      std::map<std::string, std::size_t> apps;
       for (const Source& source : m_request.sources) {
         if (source.monitor != (m_tab == Tab::Screen)) {
           continue;
         }
-        if (m_tab == Tab::App && (source.appId.empty() || !apps.insert(source.appId).second)) {
-          continue;
+        if (m_tab == Tab::App) {
+          if (source.appId.empty()) {
+            continue;
+          }
+          if (const auto [it, added] = apps.try_emplace(source.appId, list.size()); !added) {
+            if (list[it->second]->blocked && !source.blocked) {
+              list[it->second] = &source;
+            }
+            continue;
+          }
         }
         list.push_back(&source);
       }
@@ -314,6 +346,7 @@ namespace {
                                      .scale = scale,
                                      .onChange = [this, order](std::size_t index) {
                                        m_tab = order.at(index);
+                                       m_scrollState = {};
                                        m_window->requestRebuild();
                                      }}));
       }
@@ -358,11 +391,11 @@ namespace {
       body->addChild(std::move(frame));
       std::string name = source.title;
       if (m_tab == Tab::App) {
-        const std::string app = appName(source.appId);
+        const std::string app = appInfo(source.appId).name;
         name = app.empty() ? source.appId : app;
       }
       auto caption = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale, .paddingH = Tokens::spaceP4 * scale});
-      if (const std::string icon = appIconFile(source.appId); !source.monitor && !icon.empty()) {
+      if (const std::string& icon = appInfo(source.appId).icon; !source.monitor && !icon.empty()) {
         caption->addChild(std::make_unique<AppIconNode>(icon, Tokens::spaceP16 * scale));
       }
       auto text = ui::label({.text = name,
@@ -371,14 +404,15 @@ namespace {
                              .color = colorSpecFromRole(source.blocked ? ColorRole::Label2 : ColorRole::Label1),
                              .maxLines = 1,
                              .textAlign = TextAlign::Start,
-                             .ellipsize = TextEllipsize::End});
+                             .ellipsize = TextEllipsize::End,
+                             .configure = [scale](Label& label) { label.setLineHeight(Tokens::typeFootnote.line * scale); }});
       text->setFlexGrow(1.0F);
       caption->addChild(std::move(text));
       body->addChild(std::move(caption));
       const Source* target = &source;
       return ui::inputArea({.focusable = true,
                             .width = width,
-                            .height = (kThumbHeight + 2.0F * kRingBand + Tokens::spaceP8 + Tokens::spaceP16) * scale,
+                            .height = (kThumbHeight + 2.0F * kRingBand + Tokens::spaceP8 + Tokens::typeFootnote.line) * scale,
                             .onClick = [this, target](const InputArea::PointerData&) { toggle(*target); }},
                            std::move(body));
     }
@@ -470,7 +504,7 @@ namespace {
                                 .onClick = [this] { finish(false); }}));
       row->addChild(ui::button({.text = std::string("Share"),
                                 .fontSize = Style::fontSizeBody * scale,
-                                .enabled = !m_selected.empty(),
+                                .enabled = canShare(),
                                 .variant = ButtonVariant::Primary,
                                 .paddingH = Tokens::spaceP16 * scale,
                                 .radius = height / 2.0F,
@@ -485,6 +519,8 @@ namespace {
     Tab m_tab = Tab::Window;
     Tab m_selectedTab = Tab::Window;
     std::set<std::string> m_selected;
+    // Desktop-entry and icon lookups hit the disk: once per app id, not per rebuild.
+    mutable std::map<std::string, AppInfo> m_apps;
     bool m_showPointer = false;
     bool m_remember = false;
     Answer m_answer = Answer::Pending;
@@ -541,7 +577,13 @@ namespace {
 int main(int argc, char* argv[]) {
   std::string line;
   std::getline(std::cin, line);
-  SharePickerApp app(parseRequest(line));
+  std::optional<Request> request = parseRequest(line);
+  if (!request) {
+    std::fprintf(stderr, "share-picker: invalid request\n");
+    std::printf("{\"selections\":[]}\n");
+    return 1;
+  }
+  SharePickerApp app(std::move(*request));
   const int code = app.run(argc, argv);
   app.picker().finish(false);
   return code;

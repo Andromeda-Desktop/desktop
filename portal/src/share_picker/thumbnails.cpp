@@ -60,7 +60,7 @@ namespace xdpu {
     }
 
     // One shown source. Configuring: waits for buffer constraints. Capturing: a frame is in flight.
-    // Waiting: the pacing timer runs. Stopped: the source is gone or cannot be captured.
+    // Waiting: the pacing timer m_timer runs (valid only then). Stopped: the source is gone or cannot be captured.
     class Live {
     public:
       enum class State { Configuring, Capturing, Waiting, Stopped };
@@ -115,6 +115,10 @@ namespace xdpu {
           return;
         }
         m_buffer = m_wayland.createShmBuffer(info.bufferWidth, info.bufferHeight, format, stride, m_fd, m_size);
+        if (m_buffer == nullptr) {
+          stop();
+          return;
+        }
         m_width = info.bufferWidth;
         m_height = info.bufferHeight;
         m_format = format;
@@ -153,15 +157,14 @@ namespace xdpu {
       void wait(int delayMs) {
         m_state = State::Waiting;
         m_timer = m_loop.addTimer(delayMs, [this] {
-          m_timer = 0;
           capture();
         });
       }
 
       void cancelTimer() {
-        if (m_timer != 0) {
+        if (m_state == State::Waiting) {
           m_loop.removeTimer(m_timer);
-          m_timer = 0;
+          m_state = State::Configuring;
         }
       }
 
