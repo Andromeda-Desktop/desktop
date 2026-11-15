@@ -1,0 +1,32 @@
+project('andromeda-terminal', ['c', 'cpp'],
+  version: '0.1.0',
+  meson_version: '>=1.1',
+  default_options: [
+    'cpp_std=c++23',
+    'cpp_extensions=false',
+    'warning_level=0',
+    'b_ndebug=if-release',
+  ],
+)
+
+# Terminal (.agent/TASK-terminal.md): libghostty-vt core; the system package first, else the pinned build
+# from tools/build-libghostty.sh.
+_warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
+
+_ghostty = dependency('libghostty-vt', version: '>=1.0.1', required: false)
+if not _ghostty.found()
+  _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix'
+  _ghostty = declare_dependency(
+    include_directories: include_directories('subprojects/libghostty-vt/prefix/include'),
+    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib'),
+    link_args: ['-Wl,-rpath,' + _prefix / 'lib'],
+  )
+endif
+
+_core = static_library('terminal_core', 'src/pty_session.cpp',
+  dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'], cpp_args: _warnings)
+_core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
+  include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads')])
+
+test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings), timeout: 30)
