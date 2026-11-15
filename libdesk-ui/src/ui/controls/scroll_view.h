@@ -31,6 +31,8 @@ public:
   [[nodiscard]] bool dragging() const noexcept { return m_dragging; }
   // Keep the view pinned to the bottom while content grows, as long as the user has not scrolled away from the bottom.
   void setStickToBottom(bool enabled);
+  // Scrollbar marks: fractions of the content extent, 0 = start.
+  void setMarks(std::vector<float> marks);
   // One-shot absolute jump deferred until the next layout pass, after the
   // content extent and maxScrollOffset() have been computed.
   void requestScrollToOffset(float offset);

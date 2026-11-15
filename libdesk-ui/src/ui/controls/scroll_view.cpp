@@ -408,6 +408,8 @@ void ScrollView::setOnScrollChanged(std::function<void(float)> callback) { m_onS
 
 void ScrollView::setStickToBottom(bool enabled) { m_stickToBottom = enabled; }
 
+void ScrollView::setMarks(std::vector<float> marks) { m_scrollbar->setMarks(std::move(marks)); }
+
 void ScrollView::requestScrollToOffset(float offset) {
   stopScrollAnimation();
   m_pendingScrollOffset = offset;

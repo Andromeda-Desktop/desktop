@@ -9,6 +9,7 @@
 #include "ui/controls/flex.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
+#include "ui/controls/scroll_view.h"
 #include "ui/controls/spinner.h"
 #include "ui/palette.h"
 #include "ui/style.h"
@@ -51,6 +52,52 @@ namespace term {
     }
 
     constexpr std::uint32_t kEscape = 0xff1b;
+    constexpr std::uint32_t kEnd = 0xff57;
+    constexpr std::uint32_t kTab = 0xff09;
+    constexpr std::uint32_t kReturn = 0xff0d;
+    constexpr std::uint32_t kUp = 0xff52;
+    constexpr std::uint32_t kDown = 0xff54;
+
+    // The content plane: log over composer, and the jump pill floating centred just above the composer.
+    class AgentRoot final : public Flex {
+    public:
+      Node* jump = nullptr;
+      Node* slash = nullptr;
+      Node* dock = nullptr;
+      float scale = 1.0F;
+
+    protected:
+      void doLayout(Renderer& renderer) override {
+        Flex::doLayout(renderer);
+        place(renderer);
+      }
+      void doArrange(Renderer& renderer, const LayoutRect& rect) override {
+        Flex::doArrange(renderer, rect);
+        place(renderer);
+      }
+
+    private:
+      static void float_(Renderer& renderer, Node& node, float x, float y, float w, float h) {
+        node.arrange(renderer, {.x = x, .y = y, .width = w, .height = h});
+      }
+      void place(Renderer& renderer) {
+        if (dock == nullptr) {
+          return;
+        }
+        if (jump != nullptr && jump->visible()) {
+          const LayoutSize size = jump->measure(renderer, {});
+          // The dock's top padding is the 16 gap between the pill and the composer.
+          float_(renderer, *jump, (width() - size.width) / 2.0F, dock->y() - size.height, size.width, size.height);
+        }
+        if (slash != nullptr && slash->visible()) {
+          const float inset = Tokens::spaceP16 * scale;
+          const float w = std::min(Tokens::componentAgentSlashWidth * scale, width() - 2.0F * inset);
+          const LayoutSize size = slash->measure(renderer, {.minWidth = w, .maxWidth = w});
+          float_(renderer, *slash, inset, dock->y() + inset - Tokens::componentPopoverOffset * scale - size.height, w,
+                 size.height);
+        }
+      }
+    };
 
     std::string mono() { return std::string(Tokens::fontMono); }
 
@@ -775,10 +822,19 @@ namespace term {
                                          float height) {
     m_scale = uiScale;
     const float s = uiScale;
-    auto root = ui::column({.out = &m_root, .align = FlexAlign::Stretch, .width = width, .height = height,
-                            .configure = [](Flex& flex) { flex.setFill(colorSpecFromRole(ColorRole::View)); }});
+    auto root = std::make_unique<AgentRoot>();
+    root->setDirection(FlexDirection::Vertical);
+    root->setAlign(FlexAlign::Stretch);
+    root->setSize(width, height);
+    root->setFill(colorSpecFromRole(ColorRole::View));
+    m_root = root.get();
     root->addChild(ui::virtualListView({.out = &m_log, .contentScale = s, .adapter = this, .flexGrow = 1.0F}));
     m_log->scrollView().setStickToBottom(true);
+    m_log->setOnScrolled([this] {
+      if (atBottom()) {
+        syncJump();
+      }
+    });
     auto composer = ui::row({.align = FlexAlign::Center,
                              .gap = Tokens::spaceP8 * s,
                              .fill = colorSpecFromRole(ColorRole::Fill1),
@@ -793,7 +849,12 @@ namespace term {
                                   .fontSize = Tokens::typeParagraph.size * s,
                                   .frameVisible = false,
                                   .flexGrow = 1.0F,
-                                  .onChange = [this](const std::string&) { syncComposer(); },
+                                  .onChange =
+                                      [this](const std::string&) {
+                                        m_slashSelected = 0;
+                                        syncComposer();
+                                        syncSlash();
+                                      },
                                   .onSubmit = [this](const std::string& text) { submit(text); }}));
     composer->addChild(ui::label({.out = &m_meta, .fontSize = Tokens::typeCaption.size * s, .color = colorSpecFromRole(ColorRole::Label2)}));
     const float round = Tokens::componentButtonHeightM * s;
@@ -823,8 +884,19 @@ namespace term {
                                    }}));
     auto dock = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP16 * s});
     dock->addChild(std::move(composer));
-    root->addChild(std::move(dock));
+    root->dock = root->addChild(std::move(dock));
+    auto jump = ui::row({.out = &m_jump});
+    jump->setParticipatesInLayout(false);
+    jump->setVisible(false);
+    root->jump = root->addChild(std::move(jump));
+    auto slash = ui::column({.out = &m_slash, .align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s});
+    slash->setParticipatesInLayout(false);
+    slash->setVisible(false);
+    root->slash = root->addChild(std::move(slash));
+    root->scale = s;
+    m_seen = itemCount();
     syncComposer();
+    syncLog();
     return root;
   }
 
@@ -836,6 +908,8 @@ namespace term {
 
   void AgentView::sceneDestroyed() {
     m_root = nullptr;
+    m_jump = nullptr;
+    m_slash = nullptr;
     m_log = nullptr;
     m_input = nullptr;
     m_meta = nullptr;
@@ -846,10 +920,159 @@ namespace term {
   InputArea* AgentView::focusArea() const noexcept { return m_input != nullptr ? m_input->inputArea() : nullptr; }
 
   void AgentView::changed() {
-    if (m_log != nullptr) {
-      m_log->notifyDataChanged();
-    }
     syncComposer();
+    syncLog();
+  }
+
+  bool AgentView::atBottom() const {
+    const ScrollView& scroll = m_log->scrollView();
+    return scroll.scrollOffset() >= scroll.maxScrollOffset() - 1.0F;
+  }
+
+  // Before the list lays out the new items: at the bottom it follows them, scrolled up the jump pill counts them.
+  void AgentView::syncLog() {
+    const agent::Session* model = session();
+    if (m_log == nullptr || model == nullptr) {
+      return;
+    }
+    std::vector<std::size_t> turns;
+    for (std::size_t i = 0; i < model->entries().size(); ++i) {
+      if (std::holds_alternative<agent::Turn>(model->entries()[i])) {
+        turns.push_back(i + 1);
+      }
+    }
+    m_log->setMarkedItems(std::move(turns));
+    m_log->notifyDataChanged();
+    syncJump();
+  }
+
+  // The jump pill shows while the log is scrolled up and entries or a request arrived since the user left the bottom.
+  void AgentView::syncJump() {
+    const agent::Session* model = session();
+    if (m_jump == nullptr || model == nullptr) {
+      return;
+    }
+    const std::size_t count = itemCount();
+    const bool away = !atBottom();
+    if (!away || count < m_seen) {
+      m_seen = count;
+    }
+    const bool asks = away && !model->pending().empty();
+    const std::size_t fresh = away ? count - m_seen : 0;
+    const bool show = asks || fresh > 0;
+    if (show) {
+      const float s = m_scale;
+      const Kit kit{s};
+      std::string text = std::format("{} new below", fresh);
+      if (asks) {
+        const auto& request = std::get<agent::Request>(model->entries()[model->pending().front()]);
+        std::string target;
+        for (const auto& e : model->entries()) {
+          if (const auto* action = std::get_if<agent::Action>(&e); action != nullptr && action->id == request.toolCallId) {
+            target = !action->command.empty() ? action->command : action->title;
+          }
+        }
+        text = target.empty() ? std::string("Claude asks you") : "Claude asks to run " + target;
+      }
+      while (!m_jump->children().empty()) {
+        m_jump->removeChild(m_jump->children().back().get());
+      }
+      const float h = Tokens::sizeControlM * s;
+      m_jump->setFill(colorSpecFromRole(ColorRole::Card));
+      m_jump->setRadius(h / 2.0F);
+      m_jump->setBorder(colorSpecFromRole(ColorRole::Separator), 0.5F * s);
+      auto pill = ui::button({.text = text,
+                              .glyph = std::string(asks ? "hand-stop" : "arrow-down"),
+                              .fontSize = Tokens::typeFootnote.size * s,
+                              .glyphSize = Tokens::spaceP12 * s,
+                              .variant = ButtonVariant::Ghost,
+                              .maxWidth = Tokens::componentAgentMeasure * s,
+                              .paddingH = Tokens::spaceP12 * s,
+                              .gap = Tokens::spaceP8 * s,
+                              .radius = h / 2.0F,
+                              .height = h,
+                              .onClick = [this] { jumpToEnd(); }});
+      pill->addChild(ui::keycap({.text = "End", .scale = s}));
+      m_jump->addChild(std::move(pill));
+    }
+    if (m_jump->visible() != show) {
+      m_jump->setVisible(show);
+      m_root->markLayoutDirty();
+    }
+  }
+
+  // The commands that complete the composer text: it is "/" plus a prefix, without a space, and not dismissed by Esc.
+  std::vector<std::string> AgentView::slashMatches() const {
+    const agent::Session* model = session();
+    std::vector<std::string> out;
+    if (m_input == nullptr || model == nullptr) {
+      return out;
+    }
+    const std::string& text = m_input->value();
+    if (!text.starts_with('/') || text.find(' ') != std::string::npos || text == m_slashDismissed) {
+      return out;
+    }
+    for (const auto& command : model->commands()) {
+      if (command.starts_with(std::string_view(text).substr(1))) {
+        out.push_back(command);
+      }
+    }
+    return out;
+  }
+
+  void AgentView::syncSlash() {
+    if (m_slash == nullptr) {
+      return;
+    }
+    const auto matches = slashMatches();
+    while (!m_slash->children().empty()) {
+      m_slash->removeChild(m_slash->children().back().get());
+    }
+    const float s = m_scale;
+    m_slash->setFill(colorSpecFromRole(ColorRole::Popover));
+    m_slash->setRadius(Style::scaledRadius(Tokens::componentPopoverRadius, s));
+    m_slash->setBorder(colorSpecFromRole(ColorRole::Separator), 0.5F * s);
+    const std::size_t typed = m_input->value().size();
+    m_slashSelected = std::min(m_slashSelected, matches.empty() ? 0 : matches.size() - 1);
+    // Rows read label_1; the selected row takes the sidebar's selection tint.
+    const ColorSpec clear = clearColorSpec();
+    const ColorSpec ink = colorSpecFromRole(ColorRole::Label1);
+    const ColorSpec tint = colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F);
+    for (std::size_t i = 0; i < matches.size(); ++i) {
+      const std::string name = "/" + matches[i];
+      const ColorSpec bg = i == m_slashSelected ? tint : clear;
+      Button::ButtonPalette palette{.normal = {.bg = bg, .border = clear, .label = ink},
+                                    .hover = {.bg = i == m_slashSelected ? tint : colorSpecFromRole(ColorRole::Fill1), .border = clear, .label = ink},
+                                    .pressed = {.bg = colorSpecFromRole(ColorRole::Fill2), .border = clear, .label = ink},
+                                    .disabled = {.bg = clear, .border = clear, .label = ink}};
+      auto row = ui::button({.text = name,
+                             .fontSize = Tokens::typeFootnote.size * s,
+                             .contentAlign = ButtonContentAlign::Start,
+                             .variant = ButtonVariant::Ghost,
+                             .customPalette = palette,
+                             .paddingH = Tokens::spaceP8 * s,
+                             .radius = Style::scaledRadius(Tokens::radiusR8, s),
+                             .height = Tokens::componentAgentActionRow * s,
+                             .onClick = [this, name] { submit(name); }});
+      // The typed prefix reads 700 and underlined.
+      row->label()->setFontFamily(mono());
+      row->label()->setUseMarkup(true);
+      row->label()->setText("<b><u>" + agent::escapeMarkup(name.substr(0, typed)) + "</u></b>" + agent::escapeMarkup(name.substr(typed)));
+      m_slash->addChild(std::move(row));
+    }
+    const bool show = !matches.empty();
+    if (m_slash->visible() != show) {
+      m_slash->setVisible(show);
+    }
+    m_root->markLayoutDirty();
+  }
+
+  void AgentView::jumpToEnd() {
+    if (m_log != nullptr) {
+      m_log->scrollView().requestScrollToBottom();
+      m_seen = itemCount();
+      syncJump();
+    }
   }
 
   // Hint, meta and button follow the phase: stop while a turn runs, send when there is text to send.
@@ -904,10 +1127,35 @@ namespace term {
     if (!event.pressed || model == nullptr) {
       return false;
     }
+    if (const auto matches = slashMatches(); m_slash != nullptr && m_slash->visible() && !matches.empty()) {
+      if (event.sym == kUp || event.sym == kDown) {
+        const std::size_t n = matches.size();
+        m_slashSelected = (m_slashSelected + (event.sym == kDown ? 1 : n - 1)) % n;
+        syncSlash();
+        return true;
+      }
+      if (event.sym == kTab) {
+        m_input->setValue("/" + matches[m_slashSelected] + " ");
+        return true;
+      }
+      if (event.sym == kReturn) {
+        submit("/" + matches[m_slashSelected]);
+        return true;
+      }
+      if (event.sym == kEscape) {
+        m_slashDismissed = m_input->value();
+        syncSlash();
+        return true;
+      }
+    }
     if (event.sym == kEscape && (model->phase() == agent::Phase::Working)) {
       model->cancel();
       m_host.flush(m_key);
       changed();
+      return true;
+    }
+    if (event.sym == kEnd && m_jump != nullptr && m_jump->visible()) {
+      jumpToEnd();
       return true;
     }
     if (event.modifiers == 0 && event.unshifted >= '1' && event.unshifted <= '4' && !model->pending().empty()

@@ -70,12 +70,23 @@ namespace term {
     void answer(std::size_t option);
     void submit(const std::string& text);
     void syncComposer();
+    void syncLog();
+    void syncJump();
+    void jumpToEnd();
+    [[nodiscard]] std::vector<std::string> slashMatches() const;
+    void syncSlash();
+    [[nodiscard]] bool atBottom() const;
 
     agent::Host& m_host;
     std::uint64_t m_key;
     float m_scale = 1.0F;
     float m_lastWidth = 0.0F; // the width of the item being built
     Flex* m_root = nullptr;
+    Flex* m_jump = nullptr;  // holds the jump pill while it shows
+    std::size_t m_seen = 0;  // items the user has seen at the bottom of the log
+    Flex* m_slash = nullptr; // the slash command menu over the composer
+    std::size_t m_slashSelected = 0;
+    std::string m_slashDismissed; // the composer text Esc closed the menu at
     VirtualListView* m_log = nullptr;
     Input* m_input = nullptr;
     Label* m_meta = nullptr;

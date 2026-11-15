@@ -190,6 +190,13 @@ void VirtualListView::doLayout(Renderer& renderer) {
     recomputeMetrics(renderer, viewportW);
   }
   m_canvas->setVirtualSize(m_virtualWidth, m_virtualHeight);
+  std::vector<float> marks;
+  for (const std::size_t index : m_markedItems) {
+    if (index < m_itemCount && m_virtualHeight > 0.0F) {
+      marks.push_back(m_itemOffsets[index] / m_virtualHeight);
+    }
+  }
+  m_scroll->setMarks(std::move(marks));
 
   if (m_pendingScrollToIndex) {
     m_pendingScrollToIndex = false;
@@ -306,7 +313,19 @@ LayoutSize VirtualListView::doMeasure(Renderer& /*renderer*/, const LayoutConstr
 
 void VirtualListView::doArrange(Renderer& renderer, const LayoutRect& rect) { arrangeByLayout(renderer, rect); }
 
-void VirtualListView::onScrollChanged(float /*offset*/) { markLayoutDirty(); }
+void VirtualListView::onScrollChanged(float /*offset*/) {
+  markLayoutDirty();
+  if (m_onScrolled) {
+    m_onScrolled();
+  }
+}
+
+void VirtualListView::setMarkedItems(std::vector<std::size_t> items) {
+  if (items != m_markedItems) {
+    m_markedItems = std::move(items);
+    markLayoutDirty();
+  }
+}
 
 void VirtualListView::setHoveredIndex(std::optional<std::size_t> index) {
   if (m_hoveredIndex == index) {

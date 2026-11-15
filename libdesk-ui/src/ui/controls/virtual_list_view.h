@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <functional>
 #include <vector>
 
 class Renderer;
@@ -53,6 +54,10 @@ public:
   void scrollToIndex(std::size_t index);
 
   [[nodiscard]] ScrollView& scrollView() noexcept { return *m_scroll; }
+  // Runs after the scroll offset changed (user scroll, stick to bottom or a programmatic scroll).
+  void setOnScrolled(std::function<void()> callback) { m_onScrolled = std::move(callback); }
+  // Scrollbar marks at these items' tops.
+  void setMarkedItems(std::vector<std::size_t> items);
 
 protected:
   void doLayout(Renderer& renderer) override;
@@ -95,6 +100,8 @@ private:
   std::vector<float> m_itemHeights;
   std::vector<float> m_itemOffsets;
 
+  std::function<void()> m_onScrolled;
+  std::vector<std::size_t> m_markedItems;
   float m_itemGap = 0.0F;
   float m_virtualWidth = 0.0F;
   float m_virtualHeight = 0.0F;

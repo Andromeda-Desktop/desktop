@@ -516,6 +516,7 @@ verb_width = 56.0  # verb column
 indent = 24.0  # turn mark column; replies, actions and notes start here
 block_indent = 48.0  # hunks, output tails and error wells
 tail_lines = 3  # live output lines under a running tool
+slash_width = 420.0  # slash command menu over the composer
 
 [component.files]  # Files v2 list columns (mockup files-v2-live.html section 2, FILES-UX 2.9)
 column_date = 112.0
