@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -99,6 +100,7 @@ private:
   std::string m_rangeText;
   std::string m_rangeError;
   // The range field updates these in place: a rebuild would take its focus and caret. Valid until the next build.
+  std::size_t m_rangeCaret = std::numeric_limits<std::size_t>::max(); // byte offset; selectRange clamps max to the end
   Input* m_rangeInput = nullptr;
   Flex* m_rangeNote = nullptr;
   Label* m_rangeNoteLabel = nullptr;

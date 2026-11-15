@@ -185,8 +185,11 @@ std::variant<int, JobError> submitJob(const std::string& title, int fd, const Pr
   if (cupsCreateDestJob(CUPS_HTTP_DEFAULT, dest, info, &jobId, title.c_str(), numOptions, options) != IPP_STATUS_OK)
     return finish(JobError{cupsLastErrorString()});
   if (cupsStartDestDocument(CUPS_HTTP_DEFAULT, dest, info, jobId, title.c_str(), CUPS_FORMAT_AUTO, 0, nullptr, 1) !=
-      HTTP_STATUS_CONTINUE)
-    return finish(JobError{cupsLastErrorString()});
+      HTTP_STATUS_CONTINUE) {
+    JobError error{cupsLastErrorString()};
+    cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+    return finish(std::move(error));
+  }
   char buf[65536];
   off_t offset = 0;
   while (true) {

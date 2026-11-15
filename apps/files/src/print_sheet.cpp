@@ -362,7 +362,7 @@ void PrintSheet::submit() {
     return;
   m_options.ranges.reset();
   if (!m_allPages)
-    m_options.ranges = parsePageRanges(m_rangeText, std::max(m_pageCount, 1)).first;
+    m_options.ranges = parsePageRanges(m_rangeText, pageLimit()).first;
   m_sent = true;
   if (m_cb.print)
     m_cb.print(m_options, p->label, static_cast<int>(pagesToPrint().size()));
@@ -704,6 +704,8 @@ void PrintSheet::buildMain(Node& col, float s) {
                              .enabled = !m_allPages, .flexGrow = 1.0F,
                              .onChange = [this](const std::string& text) {
                                m_rangeText = text;
+                               if (m_rangeInput != nullptr)
+                                 m_rangeCaret = m_rangeInput->caret();
                                validateRange();
                                showRange();
                              },
@@ -713,7 +715,9 @@ void PrintSheet::buildMain(Node& col, float s) {
                                  [rebuild] {
                                    if (!InputDispatcher::inSceneTeardown())
                                      rebuild();
-                                 }}));
+                                 },
+                             // A rebuild keeps the caret where the user typed.
+                             .configure = [this](Input& input) { input.selectRange(m_rangeCaret, m_rangeCaret); }}));
   rows.opt(*card, "Pages", std::move(pages));
   m_rangeNote = static_cast<Flex*>(card->addChild(rows.note(m_rangeError, ColorRole::DangerText, &m_rangeNoteLabel)));
 

@@ -82,6 +82,7 @@ public:
   void selectAll();
   // Byte offsets into value(), clamped; the caret ends at `end`.
   void selectRange(std::size_t start, std::size_t end);
+  [[nodiscard]] std::size_t caret() const noexcept { return m_cursorPos; }
   void moveCaretLeft(bool shift = false);
   void moveCaretRight(bool shift = false);
 
