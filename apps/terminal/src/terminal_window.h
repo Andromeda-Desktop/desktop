@@ -36,6 +36,7 @@ namespace term {
 
   private:
     void requestFrame();
+    void openUri(const std::string& uri);
 
     AppLoop& m_loop;
     AppWindow& m_window;

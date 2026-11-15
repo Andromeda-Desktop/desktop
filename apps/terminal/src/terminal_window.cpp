@@ -7,6 +7,7 @@
 #include "core/log.h"
 #include "wayland/wayland_connection.h"
 
+#include <gio/gio.h>
 #include <pwd.h>
 #include <unistd.h>
 
@@ -57,7 +58,8 @@ namespace term {
                        const std::string home = homeDir();
                        const bool inHome = path == home || path.starts_with(home + "/");
                        m_window.setTitle(inHome ? "~" + path.substr(home.size()) : path);
-                     }}) {
+                     },
+                 .openUri = [this](const std::string& uri) { openUri(uri); }}) {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       Surface* surface = m_window.surface();
       const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
@@ -100,6 +102,19 @@ namespace term {
   void TerminalWindow::surfaceLost() {
     m_tickSurface = nullptr;
     m_view.sceneDestroyed();
+  }
+
+  void TerminalWindow::openUri(const std::string& uri) {
+    // The opened app activates its window with this token; without one the compositor only marks it urgent.
+    std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
+    if (const std::string token = m_loop.wayland().requestActivationToken(m_window.wlSurface()); !token.empty()) {
+      g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
+    }
+    GError* error = nullptr;
+    if (!g_app_info_launch_default_for_uri(uri.c_str(), context.get(), &error)) {
+      kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
+      g_clear_error(&error);
+    }
   }
 
   void TerminalWindow::requestFrame() {

@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "key_map.h"
+#include "link_finder.h"
 #include "wayland/wayland_seat.h"
 #include "render/animation/motion_service.h"
 #include "render/core/renderer.h"
@@ -14,6 +15,8 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "wayland/text_input_service.h"
+
+#include "cursor-shape-v1-client-protocol.h"
 
 #include <linux/input-event-codes.h>
 
@@ -228,7 +231,9 @@ namespace term {
                                      a.setOnFocusLoss([this] {
                                        m_areaFocused = false;
                                        updateFocus();
+                                       updateLink(false); // Ctrl may come up in another window
                                      });
+                                     a.setOnLeave([this] { updateLink(false); });
                                      a.setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_MIDDLE, BTN_RIGHT}));
                                      a.setOnPress([this](const InputArea::PointerData& d) {
                                        pointerButton(d.button, d.localX, d.localY, d.pressed, d.time);
@@ -298,6 +303,10 @@ namespace term {
   void TerminalView::frame() {
     if (m_grid != nullptr) {
       commitAtlas();
+    }
+    // Output or a scroll can move the text under a shown link.
+    if (m_link) {
+      updateLink(true);
     }
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
@@ -458,6 +467,11 @@ namespace term {
         }
         m_rowBuffer.push_back(cell);
       }
+      if (m_link && m_link->row == y) {
+        for (int x = m_link->start; x < std::min<int>(m_link->end, static_cast<int>(m_rowBuffer.size())); ++x) {
+          m_rowBuffer[static_cast<std::size_t>(x)].flags |= TerminalCell::Underline;
+        }
+      }
       if (inViewport && y == cy && !m_preedit.empty()) {
         preeditWidth = overlayPreedit(cx, defaultFg, defaultBg);
       }
@@ -514,6 +528,9 @@ namespace term {
   bool TerminalView::key(const KeyboardEvent& event) {
     if (event.preedit) {
       return false;
+    }
+    if (event.key == KEY_LEFTCTRL || event.key == KEY_RIGHTCTRL) {
+      updateLink(event.pressed);
     }
     if (!event.pressed) {
       if (m_keysDown.erase(event.key) == 0) {
@@ -749,6 +766,90 @@ namespace term {
     return m_host.modifiers ? m_host.modifiers() : 0;
   }
 
+  std::optional<TerminalView::HoverLink> TerminalView::linkAt(GhosttyPointCoordinate cell) {
+    const int columns = m_grid->columns();
+    std::vector<char32_t> cells(static_cast<std::size_t>(columns), U' ');
+    std::string osc8;
+    int start = cell.x;
+    int end = cell.x + 1;
+    m_session.withTerminal([&](GhosttyTerminal t) {
+      if (t == nullptr) {
+        return;
+      }
+      const auto refAt = [&](int x, GhosttyGridRef& ref) {
+        const GhosttyPointCoordinate at{.x = static_cast<std::uint16_t>(x), .y = cell.y};
+        return ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = at}}, &ref)
+               == GHOSTTY_SUCCESS;
+      };
+      const auto uriAt = [&](int x) {
+        GhosttyGridRef ref{};
+        std::size_t len = 0;
+        if (!refAt(x, ref) || ghostty_grid_ref_hyperlink_uri(&ref, nullptr, 0, &len) != GHOSTTY_OUT_OF_SPACE) {
+          return std::string();
+        }
+        std::string uri(len, '\0');
+        return ghostty_grid_ref_hyperlink_uri(&ref, reinterpret_cast<std::uint8_t*>(uri.data()), len, &len)
+                       == GHOSTTY_SUCCESS
+                   ? uri
+                   : std::string();
+      };
+      osc8 = uriAt(cell.x);
+      if (!osc8.empty()) {
+        while (start > 0 && uriAt(start - 1) == osc8) {
+          --start;
+        }
+        while (end < columns && uriAt(end) == osc8) {
+          ++end;
+        }
+        return;
+      }
+      for (int x = 0; x < columns; ++x) {
+        GhosttyGridRef ref{};
+        GhosttyCell raw = 0;
+        if (!refAt(x, ref) || ghostty_grid_ref_cell(&ref, &raw) != GHOSTTY_SUCCESS) {
+          continue;
+        }
+        GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
+        if (ghostty_cell_get(raw, GHOSTTY_CELL_DATA_WIDE, &wide) == GHOSTTY_SUCCESS && wide == GHOSTTY_CELL_WIDE_SPACER_TAIL) {
+          cells[static_cast<std::size_t>(x)] = 0;
+          continue;
+        }
+        std::uint32_t codepoints[4];
+        std::size_t count = 0;
+        if (ghostty_grid_ref_graphemes(&ref, codepoints, 4, &count) == GHOSTTY_SUCCESS && count > 0) {
+          cells[static_cast<std::size_t>(x)] = codepoints[0];
+        }
+      }
+    });
+    if (!osc8.empty()) {
+      constexpr std::string_view kSchemes[] = {"http://", "https://", "mailto:", "file://"};
+      if (!std::ranges::any_of(kSchemes, [&](std::string_view s) { return osc8.starts_with(s); })) {
+        return std::nullopt;
+      }
+      return HoverLink{.row = cell.y, .start = start, .end = end, .uri = std::move(osc8)};
+    }
+    const auto found = findLink(cells, cell.x, m_cwd);
+    if (!found) {
+      return std::nullopt;
+    }
+    return HoverLink{.row = cell.y, .start = found->start, .end = found->end, .uri = found->uri};
+  }
+
+  void TerminalView::updateLink(bool ctrl) {
+    std::optional<HoverLink> next;
+    if (ctrl && m_grid != nullptr && m_grid->columns() > 0 && m_grid->rows() > 0) {
+      next = linkAt(cellAt(m_pointerX, m_pointerY));
+    }
+    if (next == m_link) {
+      return;
+    }
+    m_link = std::move(next);
+    if (m_area != nullptr) {
+      m_area->setCursorShape(m_link ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : 0);
+    }
+    scheduleRedraw(Redraw::All);
+  }
+
   void TerminalView::pointerButton(std::uint32_t button, float localX, float localY, bool pressed,
                                    std::uint32_t time) {
     if (m_grid == nullptr || m_grid->columns() <= 0 || m_grid->rows() <= 0) {
@@ -757,6 +858,12 @@ namespace term {
     const GhosttyMouseButton mouse = button == BTN_LEFT     ? GHOSTTY_MOUSE_BUTTON_LEFT
                                      : button == BTN_MIDDLE ? GHOSTTY_MOUSE_BUTTON_MIDDLE
                                                             : GHOSTTY_MOUSE_BUTTON_RIGHT;
+    if (button == BTN_LEFT && pressed && m_link) {
+      if (m_host.openUri) {
+        m_host.openUri(m_link->uri);
+      }
+      return;
+    }
     const std::uint32_t bit = 1U << mouse;
     const std::uint32_t mods = modifiers();
     // Shift bypasses mouse reporting so the user can still select; a reported press always gets its release.
@@ -803,6 +910,7 @@ namespace term {
     }
     m_pointerX = localX;
     m_pointerY = localY;
+    updateLink((modifiers() & KeyMod::Ctrl) != 0);
     auto* drag = std::get_if<DragSelecting>(&m_drag);
     if (drag == nullptr) {
       const std::uint32_t mods = modifiers();

@@ -23,7 +23,7 @@ if not _ghostty.found()
   )
 endif
 
-_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/holder_client.cpp',
+_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp',
   dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'], cpp_args: _warnings)
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads')])
@@ -46,6 +46,9 @@ _ptyd = custom_target('andromeda-ptyd',
 )
 test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings), args: [_ptyd.full_path()], depends: _ptyd, timeout: 30)
+
+test('link_finder', executable('link_finder_test', 'tests/link_finder_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings))
 
 cpp = meson.get_compiler('cpp')
 if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''

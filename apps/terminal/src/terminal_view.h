@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -45,6 +46,8 @@ namespace term {
       std::function<void(const std::string& summary, const std::string& body)> commandFinished;
       // The shell reported a new working directory (OSC 7); a local path.
       std::function<void(const std::string& cwd)> cwdChanged;
+      // Ctrl+click on a link: an http(s), mailto or file URI.
+      std::function<void(const std::string& uri)> openUri;
     };
 
     explicit TerminalView(Host host);
@@ -125,6 +128,16 @@ namespace term {
     void clearSelection();
     void scrollToBottom();
     [[nodiscard]] std::uint32_t modifiers() const;
+    // Ctrl+hover: the link under the pointer gets an underline and the pointer cursor.
+    struct HoverLink {
+      std::uint32_t row = 0; // viewport row
+      int start = 0;         // columns [start, end)
+      int end = 0;
+      std::string uri;
+      bool operator==(const HoverLink&) const = default;
+    };
+    [[nodiscard]] std::optional<HoverLink> linkAt(GhosttyPointCoordinate cell);
+    void updateLink(bool ctrl);
 
     // IME: commits go to the program; the preedit is drawn over the grid at the cursor.
     [[nodiscard]] TextInputState textInputState() const override;
@@ -167,6 +180,7 @@ namespace term {
     Click m_lastClick;
     std::variant<CommandIdle, CommandRunning> m_command;
     std::string m_cwd;
+    std::optional<HoverLink> m_link;
     TextInputService* m_textInput = nullptr;
     std::string m_preedit;
     GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows
