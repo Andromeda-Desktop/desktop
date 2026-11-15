@@ -1698,6 +1698,7 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
   }));
   // The field owns plain keys while focused: the window's list keys and type-ahead must not take them.
   m_ui->renameField->inputArea()->setCapturesAllKeys(true);
+  m_ui->renameField->inputArea()->setCapturesTab(true);
   renameBox->addChild(ui::label({.out = &m_ui->renameError, .fontSize = Style::fontSizeCaption * s,
                                  .color = colorSpecFromRole(ColorRole::DangerText), .maxLines = 2, .visible = false}));
   stage->addChild(std::move(renameBox));

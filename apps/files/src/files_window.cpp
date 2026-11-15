@@ -3563,7 +3563,7 @@ std::unique_ptr<Node> FilesWindow::buildPathSheet(float s) {
           },
       .configure =
           [this](Input& input) {
-            input.inputArea()->setCapturesAllKeys(true);
+            input.inputArea()->setCapturesTab(true);
             input.selectRange(input.value().size(), input.value().size());
             m_window.input().setFocus(input.inputArea());
           },

@@ -6,6 +6,7 @@
 #include "render/scene/input_area.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/label.h"
+#include "render/scene/input_dispatcher.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "render/scene/accessible.h"
@@ -691,7 +692,7 @@ void Button::resolveVisualStateColors(Color& targetBg, Color& targetBorder, Colo
           || m_variant == ButtonVariant::Tab
           || m_variant == ButtonVariant::Ghost);
   bool isHovered = m_enabled && (m_hoveredVisual || (!m_hoverSuppressed && hovered()));
-  if (isInputFocused && !keyboardNavFocus) {
+  if (isInputFocused && !keyboardNavFocus && !InputDispatcher::focusVisible()) {
     isHovered = true;
   }
   bool isPressed = m_enabled && (m_pressedVisual || pressed());
@@ -729,6 +730,21 @@ void Button::resolveVisualStateColors(Color& targetBg, Color& targetBorder, Colo
 }
 
 void Button::applyVisualState() {
+  const bool ring = m_enabled && m_inputArea != nullptr && m_inputArea->focused() && InputDispatcher::focusVisible()
+      && !(m_keyboardFocusHint
+           && (m_variant == ButtonVariant::TabActive || m_variant == ButtonVariant::Tab
+               || m_variant == ButtonVariant::Ghost));
+  if (ring && m_focusRing == nullptr) {
+    auto node = std::make_unique<Flex>();
+    node->setParticipatesInLayout(false);
+    node->setBorder(focusRingColorSpec(), Style::focusRingWidth);
+    m_focusRing = static_cast<Flex*>(addChild(std::move(node)));
+  }
+  if (m_focusRing != nullptr && m_focusRing->visible() != ring) {
+    m_focusRing->setVisible(ring);
+    markLayoutDirty();
+  }
+
   Color targetBg;
   Color targetBorder;
   Color targetLabel;
@@ -917,6 +933,13 @@ void Button::doLayout(Renderer& renderer) {
     m_badge->setPosition(width() - m_badge->width() - margin, margin);
   }
 
+  if (m_focusRing != nullptr && m_focusRing->visible()) {
+    // Concentric outward: 2 px gap, then the 2 px ring (rulebook 11, R7).
+    const float out = Style::focusRingGap + Style::focusRingWidth;
+    m_focusRing->setPosition(-out, -out);
+    m_focusRing->setSize(width() + 2.0F * out, height() + 2.0F * out);
+    m_focusRing->setRadius(radius() + out);
+  }
   if (m_selectionRing != nullptr && m_selectionRing->visible()) {
     m_selectionRing->setPosition(0.0F, 0.0F);
     m_selectionRing->setSize(width(), height());

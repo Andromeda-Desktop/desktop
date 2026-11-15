@@ -32,6 +32,8 @@ public:
   [[nodiscard]] static InputDispatcher* owning(const Node* node);
   // True inside the focus loss that a scene teardown (a window rebuild) sends, not a user's blur.
   [[nodiscard]] static bool inSceneTeardown() noexcept { return s_sceneTeardown; }
+  // True after Tab moved focus, until the next pointer press: the focus ring shows only then (rulebook 11).
+  [[nodiscard]] static bool focusVisible() noexcept { return s_focusVisible; }
 
   void setSceneRoot(Node* root);
   void setCursorShapeCallback(CursorShapeCallback callback);
@@ -83,6 +85,7 @@ public:
 
 private:
   static inline bool s_sceneTeardown = false;
+  static inline bool s_focusVisible = false;
   InputArea* findInputAreaAt(float x, float y);
   [[nodiscard]] bool isAttachedToScene(const InputArea* area) const;
   void pruneDetachedAreas();

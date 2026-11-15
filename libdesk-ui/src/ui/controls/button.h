@@ -139,6 +139,7 @@ private:
   Label* m_badgeLabel = nullptr;
   Flex* m_checkBadge = nullptr;
   Flex* m_selectionRing = nullptr;
+  Flex* m_focusRing = nullptr;
   float m_selectionRingRadius = 0.0F;
   class Glyph* m_checkBadgeGlyph = nullptr;
   float m_checkBadgeScale = 1.0F;

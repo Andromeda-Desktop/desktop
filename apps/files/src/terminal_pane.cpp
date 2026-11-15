@@ -441,6 +441,7 @@ std::unique_ptr<Node> TerminalPane::build(Renderer& renderer, float scale, float
        .configure =
            [this](InputArea& a) {
              a.setCapturesAllKeys(true);
+             a.setCapturesTab(true);
              a.setOnKeyDown([this](const InputArea::KeyData& k) { key(k.sym, k.utf32, k.modifiers); });
              a.setOnFocusGain([this] { scheduleRefresh(); });
              a.setOnFocusLoss([this] { scheduleRefresh(); });

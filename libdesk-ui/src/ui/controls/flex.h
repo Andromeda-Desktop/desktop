@@ -62,6 +62,7 @@ public:
   void clearFill();
   [[nodiscard]] const ColorSpec& fill() const noexcept { return m_fill; }
   void setRadius(float radius);
+  [[nodiscard]] float radius() const noexcept;
   void setRadii(const Radii& radii);
   void setBorder(const ColorSpec& color, float width);
   // Explicit fixed color.

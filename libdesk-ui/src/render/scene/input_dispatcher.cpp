@@ -203,6 +203,9 @@ void InputDispatcher::pointerMotion(float x, float y, std::uint32_t serial) {
 bool InputDispatcher::pointerButton(
     float x, float y, std::uint32_t button, bool pressed, std::uint32_t serial, std::uint32_t time, bool touch
 ) {
+  if (pressed) {
+    s_focusVisible = false;
+  }
   if (m_touchGesture.pending && pressed) {
     m_touchGesture = {};
   } else if (m_touchGesture.pending && button == m_touchGesture.button) {
@@ -439,6 +442,7 @@ bool InputDispatcher::cycleTabFocusInSubtree(Node* subtree, bool reverse) {
   if (order.empty()) {
     return false;
   }
+  s_focusVisible = true;
 
   auto it = std::ranges::find(order, m_focusedArea);
   if (it == order.end()) {
@@ -464,7 +468,7 @@ void InputDispatcher::keyEvent(
     std::uint32_t sym, std::uint32_t utf32, std::uint32_t modifiers, bool pressed, bool preedit
 ) {
   pruneDetachedAreas();
-  if (pressed && !preedit && (m_focusedArea == nullptr || !m_focusedArea->capturesAllKeys())) {
+  if (pressed && !preedit && (m_focusedArea == nullptr || !m_focusedArea->capturesTab())) {
     if (KeybindMatcher::matches(KeybindAction::TabPrevious, sym, modifiers) && cycleTabFocus(true)) {
       return;
     }
@@ -489,6 +493,7 @@ bool InputDispatcher::cycleTabFocus(bool reverse) {
   if (order.empty()) {
     return false;
   }
+  s_focusVisible = true;
 
   auto it = std::ranges::find(order, m_focusedArea);
   if (it == order.end()) {

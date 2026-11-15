@@ -230,6 +230,8 @@ void Flex::setRadius(float radius) {
   m_background->setStyle(style);
 }
 
+float Flex::radius() const noexcept { return m_background != nullptr ? m_background->style().radius.tl : 0.0F; }
+
 void Flex::setRadii(const Radii& radii) {
   ensureBackground();
   auto style = m_background->style();

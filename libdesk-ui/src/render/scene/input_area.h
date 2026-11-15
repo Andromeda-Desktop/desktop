@@ -134,6 +134,9 @@ public:
   // would otherwise intercept (Cancel, Tab): a recording keybind recorder must be
   // able to record Escape.
   void setCapturesAllKeys(bool capture) noexcept { m_capturesAllKeys = capture; }
+  // Tab and Shift+Tab go to this area instead of moving focus (terminals, completion, rename).
+  void setCapturesTab(bool capture) noexcept { m_capturesTab = capture; }
+  [[nodiscard]] bool capturesTab() const noexcept { return m_capturesTab; }
   [[nodiscard]] bool capturesAllKeys() const noexcept { return m_capturesAllKeys; }
 
   // Configuration
@@ -284,6 +287,7 @@ private:
   TextInputClient* m_textInputClient = nullptr;
   bool m_retainsFocusOnPointerRelease = false;
   bool m_capturesAllKeys = false;
+  bool m_capturesTab = false;
 
   TooltipContent m_tooltipContent;
   TooltipProvider m_tooltipProvider;

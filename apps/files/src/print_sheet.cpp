@@ -759,8 +759,20 @@ void PrintSheet::buildMain(Node& col, float s) {
   more->addChild(ui::inputArea({.focusable = true, .width = rowW, .height = rows.rowH,
                                 .onClick = [openMore](const InputArea::PointerData&) { openMore(); },
                                 .configure =
-                                    [openMore](InputArea& a) {
+                                    [openMore, rowW, s](InputArea& a) {
                                       a.setTabFocusKey("print.more");
+                                      // The ring goes round the card: its 4 px padding, then gap and ring (rulebook 11).
+                                      const float out = Tokens::spaceP4 * s + Style::focusRingGap + Style::focusRingWidth;
+                                      auto ring = std::make_unique<Flex>();
+                                      ring->setParticipatesInLayout(false);
+                                      ring->setBorder(focusRingColorSpec(), Style::focusRingWidth);
+                                      ring->setRadius(Tokens::radiusR16 * s + Style::focusRingGap + Style::focusRingWidth);
+                                      ring->setPosition(-out, -out);
+                                      ring->setSize(rowW + 2.0F * out, a.height() + 2.0F * out);
+                                      ring->setVisible(false);
+                                      auto* r = static_cast<Flex*>(a.addChild(std::move(ring)));
+                                      a.setOnFocusGain([r] { r->setVisible(InputDispatcher::focusVisible()); });
+                                      a.setOnFocusLoss([r] { r->setVisible(false); });
                                       a.setOnKeyDown([openMore](const InputArea::KeyData& k) {
                                         if (KeybindMatcher::matches(KeybindAction::Validate, k.sym, k.modifiers))
                                           openMore();

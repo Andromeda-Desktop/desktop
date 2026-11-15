@@ -273,6 +273,7 @@ void KeybindRecorder::enterRecording() {
   }
   m_recording = true;
   m_inputArea->setCapturesAllKeys(true);
+  m_inputArea->setCapturesTab(true);
   if (recordingObserver()) {
     recordingObserver()(true);
   }
@@ -287,6 +288,7 @@ void KeybindRecorder::exitRecording(bool /*commit*/) {
   }
   m_recording = false;
   m_inputArea->setCapturesAllKeys(false);
+  m_inputArea->setCapturesTab(false);
   if (recordingObserver()) {
     recordingObserver()(false);
   }
