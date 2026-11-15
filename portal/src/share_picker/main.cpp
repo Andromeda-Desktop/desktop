@@ -6,8 +6,10 @@
 #include "app/command_table.h"
 #include "app/state_store.h"
 #include "core/deferred_call.h"
+#include "design_tokens.h"
 #include "render/core/texture_manager.h"
 #include "share_picker/thumbnails.h"
+#include "ui/app_icon.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/image.h"
@@ -32,8 +34,10 @@ namespace {
 
   constexpr std::uint32_t kSheetWidth = 656;
   // Two rows of tiles; more rows scroll.
-  constexpr std::uint32_t kSheetHeight = 464;
+  constexpr std::uint32_t kSheetHeight = 448;
   constexpr float kThumbHeight = 96.0F;
+  // The selection ring band around a thumbnail: Style::focusRingGap, then Style::focusRingWidth.
+  constexpr float kRingBand = 4.0F;
 
   struct Source {
     bool monitor = false;
@@ -126,7 +130,8 @@ namespace {
     std::unique_ptr<Node> build(Renderer& renderer, float scale) {
       m_images.assign(m_request.sources.size(), nullptr);
       m_scroll = nullptr;
-      auto sheet = ui::column({.align = FlexAlign::Stretch, .gap = 16.0F * scale, .padding = 16.0F * scale, .flexGrow = 1.0F});
+      auto sheet = ui::column(
+          {.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * scale, .padding = Tokens::spaceP12 * scale, .flexGrow = 1.0F});
       sheet->addChild(header(scale));
       sheet->addChild(grid(renderer, scale));
       sheet->addChild(options(scale));
@@ -276,16 +281,19 @@ namespace {
     }
 
     std::unique_ptr<Node> header(float scale) {
-      auto row = ui::row({.align = FlexAlign::Center, .gap = 12.0F * scale});
+      auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * scale});
+      if (const std::string icon = appIconFile(m_request.appId); !icon.empty()) {
+        row->addChild(std::make_unique<AppIconNode>(icon, Tokens::spaceP40 * scale));
+      }
       auto text = ui::column({.align = FlexAlign::Start, .gap = 0.0F, .flexGrow = 1.0F});
       text->addChild(ui::label({.text = title(),
-                                .fontSize = 17.0F * scale,
+                                .fontSize = Tokens::typeTitle2.size * scale,
                                 .fontWeight = FontWeight::SemiBold,
                                 .color = colorSpecFromRole(ColorRole::Label1),
                                 .maxLines = 1,
                                 .ellipsize = TextEllipsize::End}));
       text->addChild(ui::label({.text = std::string("It sees only what you pick, until you stop."),
-                                .fontSize = 13.0F * scale,
+                                .fontSize = Tokens::typeBody.size * scale,
                                 .color = colorSpecFromRole(ColorRole::Label2)}));
       row->addChild(std::move(text));
       std::vector<ui::SegmentedOption> tabs;
@@ -315,66 +323,73 @@ namespace {
       return row;
     }
 
+    // A tile: the thumbnail inside a ring band (accent ring when selected), then the app icon and name.
     std::unique_ptr<Node> tile(Renderer& renderer, const Source& source, float width, float scale) {
       const bool on = !source.blocked && m_selectedTab == m_tab && m_selected.contains(keyOf(source));
-      auto body = ui::column({.align = FlexAlign::Stretch,
-                              .gap = 6.0F * scale,
-                              .padding = 6.0F * scale,
-                              .fill = on ? std::optional(colorSpecFromRole(ColorRole::Fill2)) : std::nullopt,
-                              .radius = 12.0F * scale,
-                              .border = on ? std::optional(colorSpecFromRole(ColorRole::Accent)) : std::nullopt,
-                              .borderWidth = 2.0F * scale,
-                              .width = width});
+      auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * scale, .width = width});
+      auto frame = ui::column({.align = FlexAlign::Stretch,
+                               .padding = kRingBand * scale,
+                               .radius = (Tokens::radiusR4 + kRingBand) * scale,
+                               .border = on ? std::optional(colorSpecFromRole(ColorRole::Accent)) : std::nullopt,
+                               .borderWidth = Style::focusRingWidth * scale});
       auto thumb = ui::column({.align = FlexAlign::Center,
                                .justify = FlexJustify::Center,
-                               .gap = 4.0F * scale,
+                               .gap = Tokens::spaceP4 * scale,
                                .fill = colorSpecFromRole(ColorRole::Fill2),
-                               .radius = 8.0F * scale,
+                               .radius = Tokens::radiusR4 * scale,
                                .border = colorSpecFromRole(ColorRole::Stroke),
                                .borderWidth = 0.5F * scale,
                                .height = kThumbHeight * scale});
       if (source.blocked) {
         thumb->addChild(ui::glyph({.glyph = std::string("lock"),
-                                   .glyphSize = 16.0F * scale,
+                                   .glyphSize = Tokens::spaceP16 * scale,
                                    .color = colorSpecFromRole(ColorRole::Label2)}));
         thumb->addChild(ui::label({.text = std::string("Blocks capture"),
-                                   .fontSize = 11.0F * scale,
+                                   .fontSize = Tokens::typeCaption.size * scale,
+                                   .fontWeight = FontWeight::Medium,
                                    .color = colorSpecFromRole(ColorRole::Label2)}));
       } else {
         const auto index = static_cast<std::size_t>(&source - m_request.sources.data());
         thumb->addChild(ui::image({.out = &m_images[index],
                                    .fit = ImageFit::Contain,
-                                   .radius = 8.0F * scale,
-                                   .width = width - 12.0F * scale,
+                                   .radius = Tokens::radiusR4 * scale,
+                                   .width = width - 2.0F * kRingBand * scale,
                                    .height = kThumbHeight * scale,
                                    .configure = [this, &renderer, index](Image& image) { upload(renderer, image, index); }}));
       }
-      body->addChild(std::move(thumb));
+      frame->addChild(std::move(thumb));
+      body->addChild(std::move(frame));
       std::string name = source.title;
       if (m_tab == Tab::App) {
         const std::string app = appName(source.appId);
         name = app.empty() ? source.appId : app;
       }
-      body->addChild(ui::label({.text = name,
-                                .fontSize = 12.0F * scale,
-                                .fontWeight = FontWeight::Medium,
-                                .color = colorSpecFromRole(source.blocked ? ColorRole::Label2 : ColorRole::Label1),
-                                .maxLines = 1,
-                                .textAlign = TextAlign::Start,
-                                .ellipsize = TextEllipsize::End}));
+      auto caption = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale, .paddingH = Tokens::spaceP4 * scale});
+      if (const std::string icon = appIconFile(source.appId); !source.monitor && !icon.empty()) {
+        caption->addChild(std::make_unique<AppIconNode>(icon, Tokens::spaceP16 * scale));
+      }
+      auto text = ui::label({.text = name,
+                             .fontSize = Tokens::typeFootnote.size * scale,
+                             .fontWeight = FontWeight::Medium,
+                             .color = colorSpecFromRole(source.blocked ? ColorRole::Label2 : ColorRole::Label1),
+                             .maxLines = 1,
+                             .textAlign = TextAlign::Start,
+                             .ellipsize = TextEllipsize::End});
+      text->setFlexGrow(1.0F);
+      caption->addChild(std::move(text));
+      body->addChild(std::move(caption));
       const Source* target = &source;
-      constexpr float kLabelHeight = 16.0F;
       return ui::inputArea({.focusable = true,
                             .width = width,
-                            .height = (kThumbHeight + kLabelHeight + 3.0F * 6.0F) * scale,
+                            .height = (kThumbHeight + 2.0F * kRingBand + Tokens::spaceP8 + Tokens::spaceP16) * scale,
                             .onClick = [this, target](const InputArea::PointerData&) { toggle(*target); }},
                            std::move(body));
     }
 
     std::unique_ptr<Node> grid(Renderer& renderer, float scale) {
       constexpr int kColumns = 3;
-      const float gap = 12.0F * scale;
-      const float width = (static_cast<float>(kSheetWidth) * scale - 2.0F * 16.0F * scale - 2.0F * gap) / kColumns;
+      const float gap = Tokens::spaceP12 * scale;
+      const float width = (static_cast<float>(kSheetWidth) * scale - 2.0F * Tokens::spaceP12 * scale - 2.0F * gap) / kColumns;
       auto scroll = ui::scrollView({.out = &m_scroll,
                                     .state = &m_scrollState,
                                     .contentScale = scale,
@@ -387,7 +402,7 @@ namespace {
       const auto list = visible();
       if (list.empty()) {
         rows->addChild(ui::label({.text = std::string(m_tab == Tab::Screen ? "No screens to share" : "No windows to share"),
-                                  .fontSize = 13.0F * scale,
+                                  .fontSize = Tokens::typeBody.size * scale,
                                   .color = colorSpecFromRole(ColorRole::Label2)}));
       }
       std::unique_ptr<Flex> line;
@@ -408,14 +423,22 @@ namespace {
 
     std::unique_ptr<Node> switchRow(const std::string& label, const std::string& detail, bool checked,
                                     std::function<void(bool)> change, float scale) {
-      auto row = ui::row({.align = FlexAlign::Center, .gap = 12.0F * scale, .padding = 12.0F * scale,
-                          .fill = colorSpecFromRole(ColorRole::Fill1), .radius = 8.0F * scale, .flexGrow = 1.0F});
+      auto row = ui::row({.align = FlexAlign::Center,
+                          .gap = Tokens::spaceP12 * scale,
+                          .paddingV = Tokens::spaceP8 * scale,
+                          .paddingH = Tokens::spaceP12 * scale,
+                          .fill = colorSpecFromRole(ColorRole::GlassCard),
+                          .radius = Tokens::radiusR8 * scale,
+                          .border = colorSpecFromRole(ColorRole::GlassCardEdge),
+                          .borderWidth = std::max(1.0F, 0.5F * scale),
+                          .minHeight = Tokens::spaceP48 * scale,
+                          .flexGrow = 1.0F});
       auto text = ui::column({.align = FlexAlign::Start, .gap = 0.0F, .flexGrow = 1.0F});
-      text->addChild(ui::label({.text = label, .fontSize = 13.0F * scale, .fontWeight = FontWeight::Medium,
+      text->addChild(ui::label({.text = label, .fontSize = Tokens::typeBody.size * scale, .fontWeight = FontWeight::Medium,
                                 .color = colorSpecFromRole(ColorRole::Label1)}));
       if (!detail.empty()) {
-        text->addChild(ui::label({.text = detail, .fontSize = 12.0F * scale,
-                                  .color = colorSpecFromRole(ColorRole::Label2)}));
+        text->addChild(ui::label({.text = detail, .fontSize = Tokens::typeFootnote.size * scale,
+                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2)}));
       }
       row->addChild(std::move(text));
       row->addChild(ui::toggle({.checked = checked, .scale = scale, .onChange = std::move(change)}));
@@ -423,7 +446,7 @@ namespace {
     }
 
     std::unique_ptr<Node> options(float scale) {
-      auto row = ui::row({.gap = 24.0F * scale});
+      auto row = ui::row({.gap = Tokens::spaceP24 * scale});
       if (m_request.cursorOption) {
         row->addChild(switchRow("Show Pointer", {}, m_showPointer, [this](bool on) { m_showPointer = on; }, scale));
       }
@@ -436,7 +459,7 @@ namespace {
     }
 
     std::unique_ptr<Node> buttons(float scale) {
-      auto row = ui::row({.gap = 8.0F * scale});
+      auto row = ui::row({.gap = Tokens::spaceP8 * scale});
       row->addChild(ui::spacer());
       row->addChild(ui::button({.text = std::string("Cancel"), .onClick = [this] { finish(false); }}));
       row->addChild(ui::button({.text = std::string("Share"),
@@ -487,6 +510,7 @@ int main() {
                     .height = kSheetHeight,
                     .minWidth = kSheetWidth,
                     .minHeight = kSheetHeight,
+                    .fixedSize = true,
                     .parentWindow = request.parentWindow,
                     .header = false});
   picker.attach(window);
