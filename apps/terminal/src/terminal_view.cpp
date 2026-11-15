@@ -2,16 +2,17 @@
 
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
+#include "key_map.h"
+#include "wayland/wayland_seat.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
 #include "ui/palette.h"
 
-#include <xkbcommon/xkbcommon-keysyms.h>
-
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 
 namespace term {
 
@@ -85,10 +86,14 @@ namespace term {
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);
     ghostty_render_state_row_cells_new(nullptr, &m_cells);
+    ghostty_key_encoder_new(nullptr, &m_encoder);
+    ghostty_key_event_new(nullptr, &m_keyEvent);
   }
 
   TerminalView::~TerminalView() {
     m_alive.reset();
+    ghostty_key_event_free(m_keyEvent);
+    ghostty_key_encoder_free(m_encoder);
     ghostty_render_state_row_cells_free(m_cells);
     ghostty_render_state_row_iterator_free(m_rows);
     ghostty_render_state_free(m_state);
@@ -145,8 +150,13 @@ namespace term {
                                .configure =
                                    [this](InputArea& a) {
                                      a.setCapturesAllKeys(true);
-                                     a.setOnKeyDown([this](const InputArea::KeyData& k) {
-                                       key(k.sym, k.utf32, k.modifiers);
+                                     a.setOnFocusGain([this] {
+                                       m_areaFocused = true;
+                                       updateFocus();
+                                     });
+                                     a.setOnFocusLoss([this] {
+                                       m_areaFocused = false;
+                                       updateFocus();
                                      });
                                    }},
                               std::move(grid));
@@ -177,7 +187,11 @@ namespace term {
   }
 
   void TerminalView::frame() {
+    const bool focusChanged = std::exchange(m_focusChanged, false);
     if (!m_session.takeWake()) {
+      if (focusChanged) {
+        refresh(false);
+      }
       return;
     }
     if (m_session.state() == SessionState::Exited && !m_exitReported) {
@@ -310,7 +324,7 @@ namespace term {
       m_grid->setCursor(TerminalCursor{
           .column = wideTail && cx > 0 ? cx - 1 : cx,
           .row = cy,
-          .style = shape,
+          .style = m_focused ? shape : TerminalCursorStyle::HollowBlock,
           .color = colors.cursor_has_value ? pack(colors.cursor) : defaultFg,
           .textColor = defaultBg,
       });
@@ -322,47 +336,91 @@ namespace term {
     }
   }
 
-  // Minimal xterm encoding until step 4 moves keys to libghostty's key encoder.
-  void TerminalView::key(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modifiers) {
-    std::string out;
-    const bool ctrl = (modifiers & KeyMod::Ctrl) != 0;
-    const bool alt = (modifiers & KeyMod::Alt) != 0;
-    switch (sym) {
-    case XKB_KEY_Return:
-    case XKB_KEY_KP_Enter: out = "\r"; break;
-    case XKB_KEY_BackSpace: out = ctrl ? "\x08" : "\x7f"; break;
-    case XKB_KEY_Tab: out = "\t"; break;
-    case XKB_KEY_ISO_Left_Tab: out = "\x1b[Z"; break;
-    case XKB_KEY_Escape: out = "\x1b"; break;
-    case XKB_KEY_Up: out = "\x1b[A"; break;
-    case XKB_KEY_Down: out = "\x1b[B"; break;
-    case XKB_KEY_Right: out = "\x1b[C"; break;
-    case XKB_KEY_Left: out = "\x1b[D"; break;
-    case XKB_KEY_Home: out = "\x1b[H"; break;
-    case XKB_KEY_End: out = "\x1b[F"; break;
-    case XKB_KEY_Insert: out = "\x1b[2~"; break;
-    case XKB_KEY_Delete: out = "\x1b[3~"; break;
-    case XKB_KEY_Page_Up: out = "\x1b[5~"; break;
-    case XKB_KEY_Page_Down: out = "\x1b[6~"; break;
-    default:
-      if (ctrl && utf32 != 0 && utf32 < 0x80) {
-        const auto c = static_cast<char>(utf32 >= 'a' && utf32 <= 'z' ? utf32 - 'a' + 'A' : utf32);
-        if (c >= '@' && c <= '_') {
-          out += static_cast<char>(c - '@');
-        } else if (c == ' ') {
-          out += '\0';
-        }
-      } else if (utf32 != 0) {
-        appendUtf8(out, utf32);
-      }
+  bool TerminalView::key(const KeyboardEvent& event) {
+    if (event.preedit) {
+      return false;
     }
-    if (out.empty()) {
+    if (!event.pressed) {
+      if (m_keysDown.erase(event.key) == 0) {
+        return false;
+      }
+    } else {
+      const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Alt | KeyMod::Shift | KeyMod::Super);
+      const bool windowChord = (mods & KeyMod::Super) != 0
+                               || ((mods & (KeyMod::Ctrl | KeyMod::Shift)) == (KeyMod::Ctrl | KeyMod::Shift)
+                                   && event.unshifted >= 0x20 && event.unshifted < 0x7f);
+      if (windowChord) {
+        return false;
+      }
+      m_keysDown.insert(event.key);
+    }
+
+    GhosttyMods mods = 0;
+    mods |= (event.modifiers & KeyMod::Shift) != 0 ? GHOSTTY_MODS_SHIFT : 0;
+    mods |= (event.modifiers & KeyMod::Ctrl) != 0 ? GHOSTTY_MODS_CTRL : 0;
+    mods |= (event.modifiers & KeyMod::Alt) != 0 ? GHOSTTY_MODS_ALT : 0;
+    // Text excludes C0 controls and DEL: the encoder builds those from the key and mods.
+    const bool text = event.utf32 >= 0x20 && event.utf32 != 0x7f && !(event.utf32 >= 0xE000 && event.utf32 < 0xF900);
+    std::string utf8;
+    if (text) {
+      appendUtf8(utf8, event.utf32);
+    }
+    ghostty_key_event_set_action(m_keyEvent, !event.pressed ? GHOSTTY_KEY_ACTION_RELEASE
+                                             : event.repeat ? GHOSTTY_KEY_ACTION_REPEAT
+                                                            : GHOSTTY_KEY_ACTION_PRESS);
+    ghostty_key_event_set_key(m_keyEvent, ghosttyKey(event.key, event.sym, event.unshifted));
+    ghostty_key_event_set_mods(m_keyEvent, mods);
+    // xkb used Shift to pick the text ("A", "!"), so the encoder must not add it again.
+    ghostty_key_event_set_consumed_mods(m_keyEvent, text ? static_cast<GhosttyMods>(mods & GHOSTTY_MODS_SHIFT) : 0);
+    ghostty_key_event_set_utf8(m_keyEvent, {reinterpret_cast<const std::uint8_t*>(utf8.data()), utf8.size()});
+    ghostty_key_event_set_unshifted_codepoint(m_keyEvent, event.unshifted);
+
+    m_session.withTerminal([&](GhosttyTerminal t) {
+      if (t != nullptr) {
+        ghostty_key_encoder_set_from_terminal(m_encoder, t);
+      }
+    });
+    const bool altPrefix = true;
+    ghostty_key_encoder_set(m_encoder, GHOSTTY_KEY_ENCODER_OPT_ALT_ESC_PREFIX, &altPrefix);
+    std::uint8_t buf[128];
+    std::size_t written = 0;
+    if (ghostty_key_encoder_encode(m_encoder, m_keyEvent, buf, sizeof(buf), &written) == GHOSTTY_SUCCESS && written > 0) {
+      m_session.write({buf, written});
+    }
+    return true;
+  }
+
+  void TerminalView::setWindowActive(bool active) {
+    m_windowActive = active;
+    updateFocus();
+  }
+
+  void TerminalView::updateFocus() {
+    const bool focused = m_windowActive && m_areaFocused;
+    if (focused == m_focused) {
       return;
     }
-    if (alt) {
-      out.insert(out.begin(), '\x1b');
+    m_focused = focused;
+    if (!focused) {
+      m_keysDown.clear();
     }
-    m_session.write({reinterpret_cast<const std::uint8_t*>(out.data()), out.size()});
+    const bool report = m_session.withTerminal([](GhosttyTerminal t) {
+      GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_FOCUS_EVENT, .value = false};
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &mode) == GHOSTTY_SUCCESS && mode.value;
+    });
+    if (report) {
+      std::uint8_t buf[8];
+      std::size_t written = 0;
+      if (ghostty_focus_encode(focused ? GHOSTTY_FOCUS_GAINED : GHOSTTY_FOCUS_LOST, buf, sizeof(buf), &written)
+          == GHOSTTY_SUCCESS) {
+        m_session.write({buf, written});
+      }
+    }
+    // Runs during scene teardown too: the grid may be gone, so the next frame redraws the cursor.
+    m_focusChanged = true;
+    if (m_host.requestFrame) {
+      m_host.requestFrame();
+    }
   }
 
 } // namespace term

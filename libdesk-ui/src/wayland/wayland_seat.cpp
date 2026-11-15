@@ -784,6 +784,7 @@ void WaylandSeat::handleKeyboardKey(
   auto utf32 = static_cast<std::uint32_t>(xkb_state_key_get_utf32(self->m_xkbState, xkbKeycode));
 
   const std::uint32_t mods = self->keyboardModifiers();
+  const std::uint32_t unshifted = input::unshiftedCodepoint(self->m_xkbKeymap, self->m_xkbState, xkbKeycode);
 
   const bool pressed = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
 
@@ -844,7 +845,8 @@ void WaylandSeat::handleKeyboardKey(
   // (e.g. lockscreen unlock) that makes the held key irrelevant.
   if (pressed && self->m_repeatRate > 0) {
     self->m_repeatKey =
-        KeyboardEvent{.sym = sym, .utf32 = utf32, .key = key, .modifiers = mods, .pressed = true, .repeat = true};
+        KeyboardEvent{.sym = sym, .utf32 = utf32, .key = key, .unshifted = unshifted, .modifiers = mods, .pressed = true,
+                      .repeat = true};
     self->m_repeatActive = true;
     self->m_repeatInDelay = true;
     self->m_repeatNextFire = SteadyClock::now() + std::chrono::milliseconds(self->m_repeatDelayMs);
@@ -858,6 +860,7 @@ void WaylandSeat::handleKeyboardKey(
           .sym = sym,
           .utf32 = utf32,
           .key = key,
+          .unshifted = unshifted,
           .modifiers = mods,
           .pressed = pressed,
       }

@@ -77,6 +77,9 @@ public:
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
   // Keys no command took and no text field owns (type-ahead, arrows in a list). True = handled.
   void setKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_keyHandler = std::move(handler); }
+  // Every key (press, repeat, release) before the window commands, when no menu, popover or sheet is open.
+  // True = handled. A terminal uses it: its Ctrl and Alt chords belong to the program it runs.
+  void setFirstKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_firstKeyHandler = std::move(handler); }
   // A window-modal sheet (rulebook 9.10): a scrim over the window and the card centred on it. The builder runs on
   // each scene build; Escape calls onCancel. Window keys and commands wait while it shows.
   void presentSheet(std::function<std::unique_ptr<Node>(float scale)> builder, std::function<void()> onCancel);
@@ -167,6 +170,7 @@ private:
   SidebarBuilder m_sidebarBuilder;
   std::function<std::unique_ptr<Node>()> m_headerAccessory;
   std::function<bool(const KeyboardEvent&)> m_keyHandler;
+  std::function<bool(const KeyboardEvent&)> m_firstKeyHandler;
   std::function<void(bool)> m_onActive;
   std::function<std::unique_ptr<Node>(float)> m_sheetBuilder;
   std::function<void()> m_sheetCancel;

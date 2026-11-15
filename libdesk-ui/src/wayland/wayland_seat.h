@@ -65,6 +65,7 @@ struct KeyboardEvent {
   std::uint32_t sym = 0;       // XKB keysym
   std::uint32_t utf32 = 0;     // Unicode codepoint (0 for non-printable keys)
   std::uint32_t key = 0;       // raw Linux keycode
+  std::uint32_t unshifted = 0; // codepoint of the key with no modifier in the active layout (0 for no text)
   std::uint32_t modifiers = 0; // KeyMod bitmask
   bool pressed = false;
   bool preedit = false; // dead key preview (composing in progress)

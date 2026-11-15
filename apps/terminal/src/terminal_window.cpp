@@ -47,6 +47,10 @@ namespace term {
       });
       return node;
     });
+    m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+      return m_view.focusArea() != nullptr && m_window.input().focusedArea() == m_view.focusArea() && m_view.key(event);
+    });
+    m_window.setActiveCallback([this](bool active) { m_view.setWindowActive(active); });
     m_window.setLayoutCallback([this] {
       const AppWindow::Rect rect = m_window.contentRect();
       m_view.setSize(rect.width, rect.height);

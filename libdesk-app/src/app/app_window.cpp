@@ -1349,6 +1349,9 @@ void AppWindow::onKeyboardEvent(const KeyboardEvent& event) {
     invalidate();
     return;
   }
+  if (m_firstKeyHandler && m_firstKeyHandler(event)) {
+    return;
+  }
   const InputArea* focused = m_input.focusedArea();
   const bool typing = focused != nullptr && (focused->capturesAllKeys() || focused->textInputClient() != nullptr);
   // A focused text field owns plain keys and its editing chords (Ctrl+A/C/X/V/Z/Y, Shift+Insert); other commands

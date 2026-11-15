@@ -6,11 +6,13 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 class InputArea;
 class Node;
 class Renderer;
+struct KeyboardEvent;
 class TextureManager;
 
 namespace term {
@@ -39,12 +41,18 @@ namespace term {
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
     void frame();
 
+    // A key for the program; false when the window should handle it (Super, Ctrl+Shift chords, keys pressed
+    // before the grid had focus).
+    bool key(const KeyboardEvent& event);
+    // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
+    // cursor and focus reports (mode 1004); otherwise a hollow cursor.
+    void setWindowActive(bool active);
+
     [[nodiscard]] InputArea* focusArea() const noexcept { return m_area; }
     [[nodiscard]] PtySession& session() noexcept { return m_session; }
 
   private:
     void refresh(bool all);
-    void key(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modifiers);
     void applyPalette();
 
     Host m_host;
@@ -53,6 +61,15 @@ namespace term {
     GhosttyRenderState m_state = nullptr;
     GhosttyRenderStateRowIterator m_rows = nullptr;
     GhosttyRenderStateRowCells m_cells = nullptr;
+    GhosttyKeyEncoder m_encoder = nullptr;
+    GhosttyKeyEvent m_keyEvent = nullptr;
+    std::unordered_set<std::uint32_t> m_keysDown; // evdev codes whose press went to the program
+    void updateFocus();
+
+    bool m_windowActive = true;
+    bool m_areaFocused = false;
+    bool m_focused = false;
+    bool m_focusChanged = false; // the cursor shape waits for the next frame
 
     InputArea* m_area = nullptr;
     TerminalGridNode* m_grid = nullptr;
