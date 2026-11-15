@@ -143,7 +143,7 @@ def collect_tr_keys(text: str) -> tuple[set[str], set[str]]:
 def check_catalog(keys: Iterable[str], catalog: dict[str, str]) -> list[str]:
     missing: list[str] = []
     for k in sorted(keys):
-        if k.endswith("."):
+        if k.endswith((".", "-")):
             continue
         if k not in catalog:
             missing.append(k)
@@ -328,7 +328,7 @@ def collect_key_literals(text: str) -> tuple[set[str], set[str]]:
     for m in KEY_LITERAL_RE.finditer(text):
         exact.add(m.group(1))
     # Also capture prefix-style literals like "foo.bar." (ends with dot)
-    for m in re.finditer(r'"([a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+\.)"', text):
+    for m in re.finditer(r'"([a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+[.-])"', text):
         prefixes.add(m.group(1))
     return exact, prefixes
 

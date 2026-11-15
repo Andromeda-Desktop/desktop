@@ -4973,7 +4973,7 @@
           "description": "Actions applied after capture, or when you choose Done in the annotation editor."
         },
         "screenshot-pipe-command": {
-          "description": "Program and arguments (quotes allowed, no shell) with the PNG on stdin; the saved file path is in NOCTALIA_SCREENSHOT_PATH. For annotators or uploaders (for example: swappy -f - or satty -f -)",
+          "description": "Program and arguments (quotes allowed, no shell) with the PNG on stdin; the saved file path is in ANDROMEDA_SCREENSHOT_PATH. For annotators or uploaders (for example: swappy -f - or satty -f -)",
           "label": "Pipe Command",
           "placeholder": "swappy -f -"
         },
