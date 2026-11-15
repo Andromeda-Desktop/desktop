@@ -100,11 +100,7 @@ namespace term {
       m_rows.clear();
       m_tintTarget = 0;
       for (const SessionInfo& session : m_sessions.sessions()) {
-        auto row = std::make_unique<StatusRow>(s);
-        row->setOnClick([this, id = session.id] {
-          apply(session_event::Show{id});
-          focusGrid();
-        });
+        auto row = makeRow(session.id);
         m_rows.push_back({session.id, row.get()});
         list->addChild(std::move(row));
       }
@@ -225,8 +221,22 @@ namespace term {
       m_close();
       return;
     }
-    if (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event)) {
-      m_window.requestRebuild(); // the sidebar gains or loses a row
+    if (const auto* open = std::get_if<session_event::Open>(&event); open != nullptr && m_rowList != nullptr) {
+      const auto& sessions = m_sessions.sessions();
+      const auto index = static_cast<std::size_t>(std::ranges::find(sessions, open->id, &SessionInfo::id) - sessions.begin());
+      m_window.updateInPlace([this, id = open->id, index](Renderer& /*renderer*/) {
+        auto row = makeRow(id);
+        m_rows.insert(m_rows.begin() + static_cast<std::ptrdiff_t>(index), {id, row.get()});
+        m_rowList->insertAnimated(std::move(row), index, Tokens::sizeRowTwoCompact * m_window.uiScale());
+      });
+    }
+    if (const auto* close = std::get_if<session_event::Close>(&event); close != nullptr && m_rowList != nullptr) {
+      if (const auto it = std::ranges::find(m_rows, close->id, &std::pair<std::uint64_t, StatusRow*>::first);
+          it != m_rows.end()) {
+        StatusRow* row = it->second;
+        m_rows.erase(it);
+        m_rowList->removeAnimated(row, [this] { m_window.input().forgetDetached(); });
+      }
     }
     if (m_sessions.shown() != before) {
       show(*m_sessions.shown());
@@ -311,6 +321,15 @@ namespace term {
       return true;
     }
     return false;
+  }
+
+  std::unique_ptr<StatusRow> TerminalWindow::makeRow(std::uint64_t id) {
+    auto row = std::make_unique<StatusRow>(m_window.uiScale());
+    row->setOnClick([this, id] {
+      apply(session_event::Show{id});
+      focusGrid();
+    });
+    return row;
   }
 
   StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {

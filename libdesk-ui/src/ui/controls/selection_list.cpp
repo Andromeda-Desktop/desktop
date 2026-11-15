@@ -55,7 +55,9 @@ void SelectionList::place() {
   }
   m_tint->setRadius(Style::scaledRadius(Tokens::radiusR8, m_scale));
   const float top = m_selected->y();
-  const float bottom = top + m_selected->height();
+  // A row that is still opening: the tint takes its rest height, so it does not shrink and grow with the opening.
+  const float bottom = top + (m_selected == m_inserting ? std::max(m_insertHeight, m_selected->height())
+                                                         : m_selected->height());
   AnimationManager* animations = animationManager();
   if (std::exchange(m_pendingTravel, false) && animations != nullptr) {
     const bool down = top > m_top;
@@ -98,4 +100,77 @@ void SelectionList::place() {
 void SelectionList::apply() {
   m_tint->setPosition(0.0F, m_top);
   m_tint->setFrameSize(width(), std::max(0.0F, m_bottom - m_top));
+}
+
+void SelectionList::insertAnimated(std::unique_ptr<Flex> row, std::size_t index, float height) {
+  Flex* added = static_cast<Flex*>(insertChildAt(index + 1, std::move(row)));
+  AnimationManager* animations = animationManager();
+  if (animations == nullptr) {
+    return;
+  }
+  const float restMin = added->minHeight();
+  m_inserting = added;
+  m_insertHeight = height;
+  added->setClipChildren(true);
+  added->setOpacity(0.0F);
+  added->setMinHeight(0.0F);
+  added->setMaxHeight(0.01F); // 0 reads as no limit
+  animations->animateGated(
+      0.0F, height, Style::spring(Tokens::springMove),
+      [this, added](float h) {
+        added->setMinHeight(h);
+        added->setMaxHeight(std::max(h, 0.01F));
+        markLayoutDirty();
+      },
+      Tokens::motionContentGate,
+      [animations, added, this] {
+        animations->animateSpring(0.0F, 1.0F, Style::spring(Tokens::springFade),
+                                  [added](float v) { added->setOpacity(v); }, {}, this);
+      },
+      [this, added, restMin] {
+        if (m_inserting == added) {
+          m_inserting = nullptr;
+        }
+        added->setMinHeight(restMin);
+        added->setMaxHeight(0.0F);
+        added->setClipChildren(false);
+        added->setOpacity(1.0F);
+        markLayoutDirty();
+      },
+      this, 0.0F, Unit::Px);
+}
+
+void SelectionList::removeAnimated(Flex* row, std::function<void()> beforeFree) {
+  auto free = [this, row, beforeFree = std::move(beforeFree)] {
+    if (row == m_selected) {
+      m_selected = nullptr;
+    }
+    if (row == m_inserting) {
+      m_inserting = nullptr;
+    }
+    std::unique_ptr<Node> owned = removeChild(row);
+    if (beforeFree) {
+      beforeFree();
+    }
+    markLayoutDirty();
+  };
+  AnimationManager* animations = animationManager();
+  if (animations == nullptr) {
+    free();
+    return;
+  }
+  row->setClipChildren(true);
+  const float from = row->height();
+  animations->animateSpring(1.0F, 0.0F, Style::spring(Tokens::springFadeOut), [row](float v) { row->setOpacity(v); },
+                            [this, animations, row, from, free = std::move(free)]() mutable {
+                              row->setMinHeight(0.0F);
+                              animations->animateSpring(
+                                  from, 0.0F, Style::spring(Tokens::springMove),
+                                  [this, row](float h) {
+                                    row->setMaxHeight(std::max(h, 0.01F));
+                                    markLayoutDirty();
+                                  },
+                                  std::move(free), this, 0.0F, Unit::Px);
+                            },
+                            this);
 }

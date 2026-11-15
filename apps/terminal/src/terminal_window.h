@@ -75,6 +75,7 @@ namespace term {
     Timer m_tick;
     [[nodiscard]] StatusRow::Data rowData(const SessionInfo& session) const;
     void refreshRows();
+    [[nodiscard]] std::unique_ptr<StatusRow> makeRow(std::uint64_t id);
     [[nodiscard]] bool matches(const SessionInfo& session) const;
     void setFilter(const std::string& text);
     void applyFilter();
