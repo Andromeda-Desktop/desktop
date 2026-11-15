@@ -122,6 +122,14 @@ namespace {
       std::println(stderr, "cairo_text_renderer_test: FAIL: the metrics cache kept sensitive text");
       return 1;
     }
+    // A value drawn unmasked, then masked again: the next frame drops it.
+    (void)renderer.measure(1.0F, "shown-then-masked", 13.0F);
+    CairoTextRenderer::forgetAllText();
+    renderer.releaseTransient();
+    if (renderer.holdsText("shown-then-masked")) {
+      std::println(stderr, "cairo_text_renderer_test: FAIL: forgetAllText left a cached text");
+      return 1;
+    }
     return 0;
   }
 }  // namespace

@@ -9,6 +9,7 @@
 #include "render/animation/animation.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/color.h"
+#include "render/text/cairo_text_renderer.h"
 #include "render/core/render_styles.h"
 #include "render/core/renderer.h"
 #include "render/scene/glyph_node.h"
@@ -505,6 +506,10 @@ void Input::setPasswordMode(bool enabled) {
   m_passwordMode = enabled;
   m_passwordRevealed = false;
   m_label->setSensitive(enabled);
+  // The value was drawn unmasked before, so a text cache may hold it.
+  if (enabled && !m_value.empty()) {
+    CairoTextRenderer::forgetAllText();
+  }
   if (m_passwordMode) {
     clearEditHistory();
   } else {

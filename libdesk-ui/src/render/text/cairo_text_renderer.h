@@ -3,6 +3,7 @@
 #include "render/core/renderer.h"
 #include "render/core/texture_handle.h"
 
+#include <atomic>
 #include <cstddef>
 #include <chrono>
 #include <cstdint>
@@ -76,6 +77,9 @@ public:
   // releaseTransient(), which the owner calls once the GPU is done with the last frame.
   void setCaching(bool enabled) noexcept { m_caching = enabled; }
   void releaseTransient();
+  // Every renderer drops its caches at its next releaseTransient(): text drawn unmasked (a password field masked
+  // again) must not stay cached.
+  static void forgetAllText() noexcept { s_textEpoch.fetch_add(1, std::memory_order_relaxed); }
   // True when a cache keeps `text` (raster or metrics).
   [[nodiscard]] bool holdsText(std::string_view text) const;
 
@@ -251,6 +255,8 @@ private:
   float m_textScale = 1.0F;
   bool m_caching = true;
   std::list<CacheEntry> m_transient;
+  std::uint64_t m_textEpoch = 0; // the s_textEpoch this renderer's caches were last cleared for
+  inline static std::atomic<std::uint64_t> s_textEpoch{0};
 
   static constexpr std::size_t kMaxCacheEntries = 512;
   static constexpr std::size_t kMaxCacheBytes = 32 * 1024 * 1024;

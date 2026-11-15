@@ -332,6 +332,11 @@ bool CairoTextRenderer::holdsText(std::string_view text) const {
 }
 
 void CairoTextRenderer::releaseTransient() {
+  if (const std::uint64_t epoch = s_textEpoch.load(std::memory_order_relaxed); epoch != m_textEpoch) {
+    m_textEpoch = epoch;
+    clearCaches(); // runs this function again with the epoch current
+    return;
+  }
   for (auto& entry : m_transient) {
     for (auto& tile : entry.tiles) {
       if (m_textureManager != nullptr) {
