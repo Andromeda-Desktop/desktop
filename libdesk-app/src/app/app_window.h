@@ -140,7 +140,7 @@ public:
   [[nodiscard]] InputDispatcher& input() noexcept { return m_input; }
   [[nodiscard]] ToplevelSurface* surface() noexcept { return m_surface.get(); }
 
-  // The app routes events here only for this window's surface (AppWindows::route*).
+  // The app routes events here only for this window's surface (DeskApp::routePointer, routeKey).
   void onPointerEvent(const PointerEvent& event);
   void onPinchEvent(const PinchEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);

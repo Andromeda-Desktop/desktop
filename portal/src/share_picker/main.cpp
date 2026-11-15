@@ -6,6 +6,7 @@
 #include "app/command_table.h"
 #include "app/state_store.h"
 #include "core/deferred_call.h"
+#include "core/log.h"
 #include "design_tokens.h"
 #include "render/core/texture_manager.h"
 #include "share_picker/thumbnails.h"
@@ -490,6 +491,7 @@ namespace {
 } // namespace
 
 int main() {
+  initLogLevelFromEnvironment();
   std::string line;
   std::getline(std::cin, line);
   Request request = parseRequest(line);
@@ -519,6 +521,9 @@ int main() {
   window.setLayoutCallback([&picker] { picker.updateShown(); });
   window.setKeyHandler([&picker](const KeyboardEvent& event) { return picker.key(event); });
   window.setClosedCallback([&picker] { picker.finish(false); });
+  // DeskApp routes input to its windows; this program has one window and no DeskApp.
+  loop.wayland().setPointerEventCallback([&window](const PointerEvent& event) { window.onPointerEvent(event); });
+  loop.wayland().setKeyboardEventCallback([&window](const KeyboardEvent& event) { window.onKeyboardEvent(event); });
   if (!window.open()) {
     picker.finish(false);
     return 1;
