@@ -125,7 +125,7 @@ namespace settings {
     template <typename Struct>
     std::vector<SettingEntry> generateSchemaEntries(
         const noctalia::config::schema::Schema<Struct>& schema, const Struct& values,
-        const std::vector<std::string>& prefix
+        const std::vector<std::string>& prefix, const RegistryEnvironment* env = nullptr
     ) {
       using noctalia::config::schema::RowSpec;
       std::vector<SettingEntry> entries;
@@ -181,6 +181,58 @@ namespace settings {
               .valueSuffix = std::string(row.suffix),
           };
           break;
+        case RowSpec::Kind::Color:
+          control = ColorSpecPickerSetting{
+              .roles = {},
+              .selectedValue = value.value_or(std::string{}),
+              .allowNone = row.allowNone,
+              .allowCustomColor = true,
+              .noneLabel = row.unsetLabelKey.empty() ? std::string{} : i18n::tr(row.unsetLabelKey),
+          };
+          break;
+        case RowSpec::Kind::OptionalStepper: {
+          const int minValue = static_cast<int>(row.range.min.value());
+          const int maxValue = static_cast<int>(row.range.max.value());
+          std::optional<int> current;
+          if (const auto v = noctalia::config::schema::finiteDouble(value)) {
+            current = std::clamp(static_cast<int>(std::lround(*v)), minValue, maxValue);
+          }
+          control = OptionalStepperSetting{
+              .value = current,
+              .minValue = minValue,
+              .maxValue = maxValue,
+              .step = static_cast<int>(row.range.step.value_or(1.0)),
+              .fallbackValue = current.value_or(row.fallback),
+              .unsetLabel = i18n::tr(row.unsetLabelKey),
+              .customLabel = i18n::tr("common.states.custom"),
+          };
+          break;
+        }
+        case RowSpec::Kind::List: {
+          ListSetting list;
+          if (const auto* items = value.as_array()) {
+            for (const auto& item : *items) {
+              if (const auto text = item.template value<std::string>()) {
+                list.items.push_back(*text);
+              }
+            }
+          }
+          switch (row.options) {
+          case RowSpec::Options::None:
+            break;
+          case RowSpec::Options::Outputs:
+            list.suggestedOptions = env->availableOutputs;
+            break;
+          case RowSpec::Options::Fonts:
+            list.suggestedOptions = env->fontFamilies;
+            break;
+          case RowSpec::Options::BatteryDevices:
+            list.suggestedOptions = env->batteryDeviceOptions;
+            break;
+          }
+          control = std::move(list);
+          break;
+        }
         }
         std::vector<std::string> path = prefix;
         path.emplace_back(field.key);

@@ -138,7 +138,8 @@ namespace noctalia::config::schema {
   // The field factory fills `range` and `choices` from its own range and enum table. A `range` set in the
   // RowSpec wins: some controls offer a narrower range than the config accepts.
   struct RowSpec {
-    enum class Kind : std::uint8_t { Toggle, Slider, Select, Text, Stepper };
+    enum class Kind : std::uint8_t { Toggle, Slider, Select, Text, Stepper, Color, OptionalStepper, List };
+    enum class Options : std::uint8_t { None, Outputs, Fonts, BatteryDevices };
     enum class Browse : std::uint8_t { None, Folder, File };
     struct Choice {
       std::string_view value;
@@ -164,6 +165,10 @@ namespace noctalia::config::schema {
     Browse browse = Browse::None;
     Range<double> range;
     std::vector<Choice> choices;
+    Options options = Options::None; // list suggestions, taken from the settings registry environment
+    bool allowNone = false;          // colour offers an unset entry
+    std::string_view unsetLabelKey;  // label of the unset colour or stepper state
+    int fallback = 0;                // optional stepper value when it leaves the unset state
   };
 
   // One descriptor: binds a single TOML key in a parent table to part of a
@@ -357,7 +362,9 @@ namespace noctalia::config::schema {
     };
   }
 
-  template <typename Struct> Field<Struct> field(std::vector<std::string> Struct::* member, std::string_view key) {
+  template <typename Struct>
+  Field<Struct>
+  field(std::vector<std::string> Struct::* member, std::string_view key, std::optional<RowSpec> row = std::nullopt) {
     return Field<Struct>{
         key,
         [member, key](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics& diag) {
@@ -374,6 +381,8 @@ namespace noctalia::config::schema {
           }
           tbl.insert_or_assign(key, std::move(arr));
         },
+        nullptr,
+        std::move(row),
     };
   }
 

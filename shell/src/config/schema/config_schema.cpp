@@ -1438,7 +1438,10 @@ namespace noctalia::config::schema {
     // string-or-empty unconditionally (wallpaper.fill_color); otherwise only when
     // set (monitor overrides). A present non-string value is a hard error.
     template <typename Struct>
-    Field<Struct> colorSpecField(std::optional<ColorSpec> Struct::* member, std::string_view key, bool alwaysEmit) {
+    Field<Struct> colorSpecField(
+        std::optional<ColorSpec> Struct::* member, std::string_view key, bool alwaysEmit,
+        std::optional<RowSpec> row = std::nullopt
+    ) {
       return custom<Struct>(
           key,
           [member, key](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics&) {
@@ -1461,7 +1464,8 @@ namespace noctalia::config::schema {
             } else if (alwaysEmit) {
               tbl.insert_or_assign(key, std::string{});
             }
-          }
+          },
+          std::move(row)
       );
     }
 
@@ -3594,7 +3598,9 @@ namespace noctalia::config::schema {
     // colorSpecField it does NOT treat an empty string as nullopt; it matches the
     // legacy bar/capsule_group reads (which parse whatever string is present).
     template <typename Struct>
-    Field<Struct> optionalColorField(std::optional<ColorSpec> Struct::* member, std::string_view key) {
+    Field<Struct> optionalColorField(
+        std::optional<ColorSpec> Struct::* member, std::string_view key, std::optional<RowSpec> row = std::nullopt
+    ) {
       return custom<Struct>(
           key,
           [member, key](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics&) {
@@ -3611,7 +3617,8 @@ namespace noctalia::config::schema {
             if ((in.*member).has_value()) {
               tbl.insert_or_assign(key, colorSpecToConfigString(*(in.*member)));
             }
-          }
+          },
+          std::move(row)
       );
     }
 
@@ -3760,8 +3767,12 @@ namespace noctalia::config::schema {
 
     template <typename Struct>
     Field<Struct> optionalDoubleField(
-        std::optional<double> Struct::* member, std::string_view key, std::optional<Range<double>> range = std::nullopt
+        std::optional<double> Struct::* member, std::string_view key, std::optional<Range<double>> range = std::nullopt,
+        std::optional<RowSpec> row = std::nullopt
     ) {
+      if (row && range && !row->range.min) {
+        row->range = *range;
+      }
       return custom<Struct>(
           key,
           [member, key, range](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics& diag) {
@@ -3775,7 +3786,8 @@ namespace noctalia::config::schema {
             if ((in.*member).has_value()) {
               tbl.insert_or_assign(key, *(in.*member));
             }
-          }
+          },
+          std::move(row)
       );
     }
 
