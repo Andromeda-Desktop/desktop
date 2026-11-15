@@ -2889,6 +2889,11 @@ namespace andromeda {
 
     m_frameState = FrameState::Submitting;
     if (frame.built) {
+      // A frame requested while this one was built (its own animation tick damage) is in it: without the thread the
+      // commit's frame_pending made wlroots drop that idle frame, and with the commit deferred it would loop.
+      if (m_output->idle_frame != nullptr) {
+        wl_event_source_remove(std::exchange(m_output->idle_frame, nullptr));
+      }
       fx_renderer_kick(m_server->renderer(), onFrameSubmitted, this);
     } else {
       completeFrame(true);
@@ -3081,9 +3086,7 @@ namespace andromeda {
     const bool dirty = m_frameState == FrameState::SubmittingDirty;
     m_frameState = FrameState::Idle;
     m_pendingFrame.reset();
-    // A request during Submitting may come from damage this frame already drew (its own animation tick, before the
-    // build): without the thread the commit's frame_pending dropped it. Only damage or a need after the build counts.
-    if (dirty && wlr_scene_output_needs_frame(m_sceneOutput)) {
+    if (dirty) {
       wlr_output_schedule_frame(m_output);
     }
   }
