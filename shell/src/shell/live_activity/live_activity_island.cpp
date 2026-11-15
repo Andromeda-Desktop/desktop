@@ -131,7 +131,7 @@ namespace {
   constexpr float kHoverButton = 32.0F;
   constexpr float kHoverGap = 12.0F;
   constexpr float kHoverButtonGap = 8.0F;
-  constexpr float kCloseInset = 8.0F; // banner close button to the card's top and trailing edges
+  constexpr const float& kCloseInset = Tokens::spaceP8; // banner close button to the card's top and trailing edges
   constexpr auto kScrollEnd = std::chrono::milliseconds(60);
   // wl_pointer axis_source.finger and axis.horizontal_scroll. Not from wayland-client-protocol.h: its math.h puts
   // std::lerp in the global namespace, which clashes with lerp below.
@@ -207,7 +207,7 @@ namespace {
 
   constexpr float kLaneArt = 22.0F;
   constexpr float kLaneArtRadius = 6.0F;
-  constexpr float kLaneBarsHeight = 16.0F;
+  constexpr const float& kLaneBarsHeight = Tokens::spaceP16;
   constexpr float kRecordDot = 8.0F;
   float lanePillWidth(const CenterIslandSpace& space, float scale) {
     return island_lane::pillWidth(space.height, scale, kHeight);
@@ -1236,7 +1236,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   const float restArtSize = lane ? kLaneArt : kArt;
   const float restArtRadius = lane ? kLaneArtRadius : kArtRadius;
   const float barsH = barsHeight(inst);
-  auto bars = ui::node({.width = 3.0F * kBarWidth + 2.0F * kBarGap, .height = barsH});
+  auto bars = ui::node({.width = kBarWidth * 3.0F + kBarGap * 2.0F, .height = barsH});
   inst.bars = bars.get();
   for (std::size_t i = 0; i < inst.barBox.size(); ++i) {
     auto bar = ui::box({.out = &inst.barBox[i], .fill = colorSpecFromRole(ColorRole::Accent), .radius = 1.5F});

@@ -98,3 +98,4 @@ S1 | shell/src/shell/settings/settings_window_automation.cpp | .width = 240.0F *
 S1 | shell/src/shell/settings/settings_window.cpp | kWindowMinWidth = | Settings window minimum 360: narrow windows collapse the sidebar to a rail, then to a back-button stack (D6)
 S1 | shell/src/shell/settings/settings_selection_style.h | kSearchFieldWidth = | Settings sidebar search field width 200 (D6 rail and stack layouts)
 S1 | shell/src/shell/settings/settings_selection_style.h | kRailWidth = | rail width is a sum of tokens; 2.0F counts both sides, not a size
+S1 | shell/src/shell/live_activity/live_activity_island.cpp | kLaneArtRadius = | lane media art 22 r6 from .agent/DESIGN.md "Vertical-bar live island"; no 6 px radius token

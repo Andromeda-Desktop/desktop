@@ -1,14 +1,16 @@
 #pragma once
 
+#include "design_tokens.h"
+
 #include <algorithm>
 #include <cmath>
 
 // The live island in a left or right bar lane (DESIGN.md "Vertical-bar live island"), in layout px.
 namespace island_lane {
 
-  inline constexpr float kCardGap = 8.0F;   // pill to the expanded card
-  inline constexpr float kSymbolPad = 8.0F; // pill end next to a glyph, a dot or the art
-  inline constexpr float kTextPad = 12.0F;  // pill end next to text
+  inline constexpr const float& kCardGap = Tokens::spaceP8;   // pill to the expanded card
+  inline constexpr const float& kSymbolPad = Tokens::spaceP8; // pill end next to a glyph, a dot or the art
+  inline constexpr const float& kTextPad = Tokens::spaceP12;  // pill end next to text
 
   struct Box {
     float x = 0.0F;
