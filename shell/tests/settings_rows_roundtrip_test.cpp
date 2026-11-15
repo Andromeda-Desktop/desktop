@@ -151,11 +151,14 @@ int main() {
                                                                       "[location]\nsunrise = \"06:00\"\nsunset = \"20:00\"\n";
   ::setenv("ANDROMEDA_CONFIG_HOME", (root / "config").c_str(), 1);
   ::setenv("XDG_STATE_HOME", (root / "state").c_str(), 1);
+  ::unsetenv("ANDROMEDA_STATE_HOME");
+  ::unsetenv("NOCTALIA_STATE_HOME");
   ::setenv("HOME", root.c_str(), 1);
 
   ConfigService config;
   std::vector<std::vector<std::string>> paths;
-  for (const auto& entry : registryOf(config.config())) {
+  auto before = registryOf(config.config());
+  for (const auto& entry : before) {
     if (entry.fromSchema) {
       paths.push_back(entry.path);
     }
@@ -164,9 +167,10 @@ int main() {
   bool ok = !paths.empty();
   std::size_t checked = 0;
   for (const auto& path : paths) {
-    const auto before = registryOf(config.config());
     const SettingEntry* row = rowAt(before, path);
     if (row == nullptr) {
+      ok = false;
+      std::println(stderr, "{}: row gone after an earlier reset", joined(path));
       continue;
     }
     const auto oldShown = shownValue(row->control);
@@ -177,6 +181,7 @@ int main() {
     if (!config.setOverride(path, write->value)) {
       ok = false;
       std::println(stderr, "{}: override rejected", joined(path));
+      before = registryOf(config.config());
       continue;
     }
     const auto after = registryOf(config.config());
@@ -187,8 +192,8 @@ int main() {
       std::println(stderr, "{}: wrote {}, row shows {}", joined(path), write->shown, shown.value_or("<no row>"));
     }
     config.clearOverrides({path}, nullptr);
-    const auto reset = registryOf(config.config());
-    const SettingEntry* cleared = rowAt(reset, path);
+    before = registryOf(config.config());
+    const SettingEntry* cleared = rowAt(before, path);
     const auto resetShown = cleared != nullptr ? shownValue(cleared->control) : std::nullopt;
     if (resetShown != oldShown) {
       ok = false;

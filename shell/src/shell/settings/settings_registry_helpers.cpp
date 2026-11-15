@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -151,10 +152,25 @@ namespace settings {
     }
 
 
-    std::vector<SelectOption> runtimeSelectOptions(noctalia::config::schema::RowSpec::Options options) {
+    std::vector<SelectOption>
+    runtimeOptions(noctalia::config::schema::RowSpec::Options options, const RegistryEnvironment* env) {
       using Options = noctalia::config::schema::RowSpec::Options;
       std::vector<SelectOption> opts;
       switch (options) {
+      case Options::None:
+        break;
+      case Options::Outputs:
+        assert(env);
+        opts = env->availableOutputs;
+        break;
+      case Options::Fonts:
+        assert(env);
+        opts = env->fontFamilies;
+        break;
+      case Options::BatteryDevices:
+        assert(env);
+        opts = env->batteryDeviceOptions;
+        break;
       case Options::Languages:
         opts.push_back(SelectOption{"", i18n::tr("common.states.auto")});
         for (const auto& language : i18n::kSupportedLanguages) {
@@ -175,11 +191,6 @@ namespace settings {
               std::string(style.id), i18n::tr(std::format("settings.schema.lockscreen.clock-style.{}", style.id))
           });
         }
-        break;
-      case Options::None:
-      case Options::Outputs:
-      case Options::Fonts:
-      case Options::BatteryDevices:
         break;
       }
       return opts;

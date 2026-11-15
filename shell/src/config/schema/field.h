@@ -579,6 +579,15 @@ namespace noctalia::config::schema {
     };
   }
 
+  template <typename Enum, std::size_t N>
+  std::vector<RowSpec::Choice> enumChoices(const EnumOption<Enum> (&options)[N]) {
+    std::vector<RowSpec::Choice> choices;
+    for (const auto& option : options) {
+      choices.push_back({option.key, option.labelKey});
+    }
+    return choices;
+  }
+
   // Enum field backed by an existing EnumOption<E>[] table. Trims input, and
   // warns (does not fail) on unknown keys — matching the legacy behavior.
   template <typename Struct, typename Enum, std::size_t N>
@@ -588,9 +597,8 @@ namespace noctalia::config::schema {
   ) {
     const EnumOption<Enum>* opts = options;
     if (row) {
-      for (const auto& option : options) {
-        row->choices.push_back({option.key, option.labelKey});
-      }
+      const auto choices = enumChoices(options);
+      row->choices.insert(row->choices.end(), choices.begin(), choices.end());
     }
     return Field<Struct>{
         key,

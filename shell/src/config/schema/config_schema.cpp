@@ -20,6 +20,10 @@
 namespace noctalia::config::schema {
 
   namespace {
+    std::vector<RowSpec::Choice> layerChoices() {
+      return {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}};
+    }
+
     template <typename Struct, typename Enum, std::size_t N>
     Field<Struct> enumArrayField(
         std::vector<Enum> Struct::* member, std::string_view key, const EnumOption<Enum> (&options)[N],
@@ -1690,8 +1694,7 @@ namespace noctalia::config::schema {
                   .label = "wallpaper.automation-order",
                   .tags = "rotate slideshow",
                   .segmented = true,
-                  .choices = {{"random", "settings.options.wallpaper.order.random"},
-                              {"alphabetical", "settings.options.wallpaper.order.alphabetical"}},
+                  .choices = enumChoices(kWallpaperAutomationOrders),
               }
           ),
           field(
@@ -2231,7 +2234,7 @@ namespace noctalia::config::schema {
                   .group = "general",
                   .tags = "floating detached panel layer shell z-order input method popup fullscreen",
                   .segmented = true,
-                  .choices = {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}},
+                  .choices = layerChoices(),
               }
           ),
           enumField(
@@ -4088,7 +4091,7 @@ namespace noctalia::config::schema {
               .group = "general",
               .tags = "layer shell z-order",
               .segmented = true,
-              .choices = {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}},
+              .choices = layerChoices(),
           }
       );
     }
@@ -4404,7 +4407,7 @@ namespace noctalia::config::schema {
                 .group = "behavior",
                 .tags = "layer shell z-order",
                 .segmented = true,
-                .choices = {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}},
+                .choices = layerChoices(),
             }
         ),
         field(

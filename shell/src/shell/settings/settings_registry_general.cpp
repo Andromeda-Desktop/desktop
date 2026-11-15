@@ -507,12 +507,13 @@ namespace settings {
     for (const auto* key : {"show_icons", "show_app_origin_indicator", "app_grid", "compact"}) {
       appendRow(entries, launcherRows, key);
     }
+    for (auto& row : launcherRows) {
+      if (row.path.back() == "sort_by_usage") {
+        std::get<ToggleSetting>(row.control).enabled = cfg.shell.launcher.trackUsage;
+      }
+    }
     appendGroup(entries, launcherRows, "behavior");
     appendGroup(entries, launcherRows, "history");
-    const auto sortByUsage = std::ranges::find_if(entries, [](const SettingEntry& e) {
-      return e.path == std::vector<std::string>{"shell", "launcher", "sort_by_usage"};
-    });
-    std::get<ToggleSetting>(sortByUsage->control).enabled = cfg.shell.launcher.trackUsage;
     appendRow(entries, launcherRows, "pinned");
     appendGroup(entries, launcherRows, "providers");
     for (const auto& provider : kLauncherProviderSettings) {

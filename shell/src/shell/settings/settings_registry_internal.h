@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -59,38 +60,6 @@ namespace settings {
         {.name = "windows", .prefixPlaceholder = "win"},
     });
 
-
-    // Builds a slider whose bounds come from the shared schema Range, the same
-    // constant the parser clamps with. This keeps the UI range and the config clamp
-    // one source. `integerValue` (write as int64) stays explicit: it is a UI/write
-    // choice, not implied by the range's numeric type (e.g. transition_duration).
-    template <typename V, typename T>
-    SliderSetting sliderFor(V value, const noctalia::config::schema::Range<T>& range, bool integerValue) {
-      return SliderSetting{
-          static_cast<double>(value), static_cast<double>(range.min.value()), static_cast<double>(range.max.value()),
-          static_cast<double>(range.step.value()), integerValue
-      };
-    }
-
-
-    template <typename T, std::size_t N> SelectSetting enumSelect(const EnumOption<T> (&options)[N], T selected) {
-      std::vector<SelectOption> opts;
-      opts.reserve(N);
-      std::string selectedValue;
-      for (const auto& option : options) {
-        std::string key(option.key);
-        if (option.value == selected) {
-          selectedValue = key;
-        }
-        opts.push_back(SelectOption{std::move(key), i18n::tr(option.labelKey)});
-      }
-      if (selectedValue.empty() && N > 0) {
-        selectedValue = std::string(options[0].key);
-      }
-      return SelectSetting{std::move(opts), std::move(selectedValue)};
-    }
-
-
     [[nodiscard]] SliderSetting barCornerSlider(std::int32_t value);
     [[nodiscard]] std::string deadZoneDefault(noctalia::bar::Gesture gesture);
     [[nodiscard]] SliderSetting barReservedSlider(double value, double maxValue, double step, bool integer);
@@ -117,8 +86,9 @@ namespace settings {
       }
       return true;
     }
-    // Options of a select whose choices are known only at runtime (languages, sound themes, clock styles).
-    std::vector<SelectOption> runtimeSelectOptions(noctalia::config::schema::RowSpec::Options options);
+    // Choices known only at runtime: select options or list suggestions. Outputs, Fonts and BatteryDevices need `env`.
+    std::vector<SelectOption>
+    runtimeOptions(noctalia::config::schema::RowSpec::Options options, const RegistryEnvironment* env);
     ColorSpecPickerSetting
     colorSpecPicker(const std::optional<ColorSpec>& selected, bool allowNone, std::string noneLabel = {});
     ColorSpecPickerSetting
@@ -145,6 +115,8 @@ namespace settings {
           continue;
         }
         const RowSpec& row = *field.row;
+        assert(env || row.needs == RowSpec::Needs::None);
+        assert(row.needs == RowSpec::Needs::None || (row.kind == RowSpec::Kind::Toggle && !row.missingKey.empty()));
         toml::table written;
         field.write(written, values);
         const auto value = std::as_const(written)[field.key];
@@ -164,7 +136,7 @@ namespace settings {
         }
         case RowSpec::Kind::Select: {
           SelectSetting select;
-          select.options = runtimeSelectOptions(row.options);
+          select.options = runtimeOptions(row.options, env);
           for (const auto& choice : row.choices) {
             select.options.push_back(SelectOption{std::string(choice.value), i18n::tr(choice.labelKey)});
           }
@@ -233,19 +205,7 @@ namespace settings {
               }
             }
           }
-          switch (row.options) {
-          case RowSpec::Options::None:
-            break;
-          case RowSpec::Options::Outputs:
-            list.suggestedOptions = env->availableOutputs;
-            break;
-          case RowSpec::Options::Fonts:
-            list.suggestedOptions = env->fontFamilies;
-            break;
-          case RowSpec::Options::BatteryDevices:
-            list.suggestedOptions = env->batteryDeviceOptions;
-            break;
-          }
+          list.suggestedOptions = runtimeOptions(row.options, env);
           control = std::move(list);
           break;
         }
