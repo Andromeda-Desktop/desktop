@@ -26,6 +26,15 @@ namespace {
 
   constexpr Logger kLog("text");
 
+  // Cache keys can hold text drawn before a password field was masked again; wipe each one as it leaves the cache.
+  // extract() keeps the bucket valid: wiping a key in place would change its hash.
+  template <typename Map> void wipeAndClear(Map& map) {
+    while (!map.empty()) {
+      auto node = map.extract(map.begin());
+      util::secureWipe(node.key().text);
+    }
+  }
+
   constexpr float kAxisAlignedEpsilon = 0.0001F;
 
   inline std::uint32_t sizeKey(float value) { return std::bit_cast<std::uint32_t>(std::max(0.0F, value)); }
@@ -306,10 +315,10 @@ void CairoTextRenderer::clearCaches() {
       }
     }
   }
-  m_cache.clear();
+  wipeAndClear(m_cache);
   m_lru.clear();
   m_cacheBytes = 0;
-  m_metricsCache.clear();
+  wipeAndClear(m_metricsCache);
   m_fontMetricsCache.clear();
 }
 
@@ -321,7 +330,7 @@ void CairoTextRenderer::invalidateGlyphTextures() {
       }
     }
   }
-  m_cache.clear();
+  wipeAndClear(m_cache);
   m_lru.clear();
   m_cacheBytes = 0;
 }
@@ -349,7 +358,7 @@ void CairoTextRenderer::releaseTransient() {
 
 void CairoTextRenderer::abandonGlyphTextures() noexcept {
   m_transient.clear();
-  m_cache.clear();
+  wipeAndClear(m_cache);
   m_lru.clear();
   m_cacheBytes = 0;
 }
@@ -585,7 +594,7 @@ CairoTextRenderer::TextMetrics CairoTextRenderer::measure(
   g_object_unref(layout);
 
   if (m_metricsCache.size() >= kMaxMetricsEntries) {
-    m_metricsCache.clear();
+    wipeAndClear(m_metricsCache);
   }
   m_metricsCache.emplace(std::move(key), metrics);
   return metrics;
@@ -1044,7 +1053,8 @@ void CairoTextRenderer::evict(CacheMap::iterator it) {
   }
   m_cacheBytes -= it->second.bytes;
   m_lru.erase(it->second.lruIt);
-  m_cache.erase(it);
+  auto node = m_cache.extract(it);
+  util::secureWipe(node.key().text);
 }
 
 void CairoTextRenderer::evictIfNeeded() {
@@ -1184,7 +1194,7 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   mkey.ellipsize = key.ellipsize;
   mkey.useMarkup = key.useMarkup;
   if (m_metricsCache.size() >= kMaxMetricsEntries) {
-    m_metricsCache.clear();
+    wipeAndClear(m_metricsCache);
   }
   m_metricsCache.emplace(std::move(mkey), entry.metrics);
 
