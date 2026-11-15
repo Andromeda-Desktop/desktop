@@ -35,6 +35,7 @@ struct op_list {
 struct waiter {
   fx_submit_done_fn fn;
   void* data;
+  bool ok; // in `ready`: the result of the job it waited on
 };
 
 struct waiter_list {
@@ -63,6 +64,8 @@ struct fx_render_thread {
   struct op_list queued;        // for the next job
   struct waiter_list next;      // run after the next job
   struct waiter_list current;   // run after the job in flight
+  struct waiter_list ready;     // job done, run from `ready_idle` (a blocking sync never runs waiters nested)
+  struct wl_event_source* ready_idle;
   struct op_list in_flight;     // owned by the render thread while Away
 
   pthread_mutex_t mutex;
@@ -252,35 +255,70 @@ static void start_job(struct fx_render_thread* thread) {
   pthread_mutex_unlock(&thread->mutex);
 }
 
+// The job finished: the context is Home again. Its waiters move to `ready`.
+static void finish_job(struct fx_render_thread* thread, bool ok) {
+  thread->location = FX_CONTEXT_HOME;
+  wlr_egl_set_lent(thread->renderer->egl, false);
+  fx_renderer_collect_gl_garbage(thread->renderer);
+  fx_renderer_upload_pending_textures(thread->renderer);
+  release_ops(&thread->in_flight);
+  for (size_t i = 0; i < thread->current.len; i++) {
+    struct waiter waiter = thread->current.items[i];
+    waiter.ok = ok;
+    if (grow((void**)&thread->ready.items, &thread->ready.cap, thread->ready.len, sizeof(*thread->ready.items))) {
+      thread->ready.items[thread->ready.len++] = waiter;
+    } else {
+      wlr_log(WLR_ERROR, "render thread: out of memory for a waiter");
+    }
+  }
+  thread->current.len = 0;
+}
+
+// Takes the finished job if there is one; false while it still runs.
+static bool take_done_job(struct fx_render_thread* thread) {
+  pthread_mutex_lock(&thread->mutex);
+  if (thread->job != JOB_DONE) {
+    pthread_mutex_unlock(&thread->mutex);
+    return false;
+  }
+  const bool ok = thread->job_ok;
+  thread->job = JOB_IDLE;
+  pthread_mutex_unlock(&thread->mutex);
+  finish_job(thread, ok);
+  return true;
+}
+
+static void run_ready(struct fx_render_thread* thread) {
+  if (thread->ready_idle != NULL) {
+    wl_event_source_remove(thread->ready_idle);
+    thread->ready_idle = NULL;
+  }
+  // A waiter can queue and kick again; it then lands in `next`, not in the list run here.
+  struct waiter_list ready = thread->ready;
+  thread->ready = (struct waiter_list){0};
+  for (size_t i = 0; i < ready.len; i++) {
+    ready.items[i].fn(ready.items[i].data, ready.items[i].ok);
+  }
+  free(ready.items);
+  if (thread->location == FX_CONTEXT_HOME && (thread->queued.len > 0 || thread->next.len > 0)) {
+    start_job(thread);
+  }
+}
+
+static void handle_ready_idle(void* data) {
+  struct fx_render_thread* thread = data;
+  thread->ready_idle = NULL;
+  run_ready(thread);
+}
+
 static int handle_done(int fd, uint32_t mask, void* data) {
   struct fx_render_thread* thread = data;
   uint64_t count;
   if (read(fd, &count, sizeof(count)) < 0 && errno != EAGAIN) {
     wlr_log_errno(WLR_ERROR, "render thread: eventfd read failed");
   }
-  pthread_mutex_lock(&thread->mutex);
-  if (thread->job != JOB_DONE) {
-    pthread_mutex_unlock(&thread->mutex);
-    return 0;
-  }
-  const bool ok = thread->job_ok;
-  thread->job = JOB_IDLE;
-  pthread_mutex_unlock(&thread->mutex);
-
-  thread->location = FX_CONTEXT_HOME;
-  wlr_egl_set_lent(thread->renderer->egl, false);
-  fx_renderer_collect_gl_garbage(thread->renderer);
-  fx_renderer_upload_pending_textures(thread->renderer);
-  release_ops(&thread->in_flight);
-  // A waiter can queue and kick again; it then lands in `next`, not in the list run here.
-  struct waiter_list done = thread->current;
-  thread->current = (struct waiter_list){0};
-  for (size_t i = 0; i < done.len; i++) {
-    done.items[i].fn(done.items[i].data, ok);
-  }
-  free(done.items);
-  if (thread->location == FX_CONTEXT_HOME && (thread->queued.len > 0 || thread->next.len > 0)) {
-    start_job(thread);
+  if (take_done_job(thread) || thread->ready.len > 0) {
+    run_ready(thread);
   }
   return 0;
 }
@@ -344,6 +382,13 @@ void fx_render_thread_destroy(struct fx_render_thread* thread) {
   close(thread->event_fd);
   release_ops(&thread->in_flight);
   release_ops(&thread->queued);
+  if (thread->ready_idle != NULL) {
+    wl_event_source_remove(thread->ready_idle);
+  }
+  for (size_t i = 0; i < thread->ready.len; i++) {
+    thread->ready.items[i].fn(thread->ready.items[i].data, thread->ready.items[i].ok);
+  }
+  free(thread->ready.items);
   for (size_t i = 0; i < thread->current.len; i++) {
     thread->current.items[i].fn(thread->current.items[i].data, false);
   }
@@ -395,6 +440,27 @@ void fx_render_thread_kick(struct fx_render_thread* thread, fx_submit_done_fn do
   }
 }
 
+static void wait_job(struct fx_render_thread* thread) {
+  pthread_mutex_lock(&thread->mutex);
+  while (thread->job == JOB_POSTED) {
+    pthread_cond_wait(&thread->wake, &thread->mutex);
+  }
+  pthread_mutex_unlock(&thread->mutex);
+  take_done_job(thread);
+}
+
+void fx_render_thread_sync(struct fx_render_thread* thread) {
+  while (thread->location == FX_CONTEXT_AWAY || thread->queued.len > 0) {
+    if (thread->location == FX_CONTEXT_HOME) {
+      start_job(thread);
+    }
+    wait_job(thread);
+  }
+  if (thread->ready.len > 0 && thread->ready_idle == NULL) {
+    thread->ready_idle = wl_event_loop_add_idle(thread->loop, handle_ready_idle, thread);
+  }
+}
+
 static void ignore_done(void* data, bool ok) {
   (void)data;
   (void)ok;
@@ -417,6 +483,7 @@ void fx_render_thread_kick_later(struct fx_render_thread* thread) {
 void fx_render_thread_cancel(struct fx_render_thread* thread, fx_submit_done_fn done, void* data) {
   remove_waiter(&thread->current, done, data);
   remove_waiter(&thread->next, done, data);
+  remove_waiter(&thread->ready, done, data);
 }
 
 int64_t fx_render_thread_busy_since_ns(const struct fx_render_thread* thread) {

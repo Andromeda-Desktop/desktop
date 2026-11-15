@@ -181,6 +181,7 @@ static struct wlr_render_pass* begin_buffer_pass_with_output(
     struct fx_offscreen_buffers* output_buffers, enum wlr_color_transfer_function pq_sdr_transfer
 ) {
   struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  fx_renderer_take_context(renderer);
 
   struct wlr_egl_context prev_ctx = {0};
   if (!wlr_egl_make_current(renderer->egl, &prev_ctx)) {
@@ -480,6 +481,16 @@ void fx_renderer_kick(struct wlr_renderer* wlr_renderer, void (*done)(void* data
     return;
   }
   fx_render_thread_kick(renderer->render_thread, done, data);
+}
+
+void fx_renderer_take_context(struct fx_renderer* renderer) {
+  if (renderer->render_thread != NULL && !renderer->defer_submits) {
+    fx_render_thread_sync(renderer->render_thread);
+  }
+}
+
+void fx_renderer_defer_submits(struct wlr_renderer* wlr_renderer, bool defer) {
+  fx_get_renderer(wlr_renderer)->defer_submits = defer;
 }
 
 void fx_renderer_cancel_kick(struct wlr_renderer* wlr_renderer, void (*done)(void* data, bool ok), void* data) {

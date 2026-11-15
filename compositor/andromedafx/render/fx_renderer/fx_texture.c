@@ -462,6 +462,7 @@ fx_texture_read_pixels(struct wlr_texture* wlr_texture, const struct wlr_texture
   }
 
   struct wlr_egl_context prev_ctx;
+  fx_renderer_take_context(texture->fx_renderer);
   if (!wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
     return false;
   }
@@ -523,6 +524,7 @@ static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture
   uint32_t fmt = DRM_FORMAT_INVALID;
 
   struct wlr_egl_context prev_ctx;
+  fx_renderer_take_context(texture->fx_renderer);
   if (!wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
     return fmt;
   }

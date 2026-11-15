@@ -24,6 +24,9 @@ bool fx_renderer_start_render_thread(struct wlr_renderer* renderer, struct wl_ev
 // Runs the flushes and fences queued so far, then `done` on the event loop (ok false when one failed). Without a render
 // thread they already ran and `done` runs now. Never blocks.
 void fx_renderer_kick(struct wlr_renderer* renderer, void (*done)(void* data, bool ok), void* data);
+// While set, render passes leave their flushes and fences queued for fx_renderer_kick (an output frame's build).
+// Otherwise a pass submits before it returns, as without a render thread.
+void fx_renderer_defer_submits(struct wlr_renderer* renderer, bool defer);
 // Drops a `done` not yet run, for an owner that goes away.
 void fx_renderer_cancel_kick(struct wlr_renderer* renderer, void (*done)(void* data, bool ok), void* data);
 // CLOCK_MONOTONIC ns at which the render thread's running job started; 0 when it is idle or there is none.

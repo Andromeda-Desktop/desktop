@@ -2845,7 +2845,9 @@ namespace andromeda {
       {
         ANDROMEDA_ZONE("Output::buildState");
         m_stallProbe.mark(StallProbe::Mark::BuildStart);
+        fx_renderer_defer_submits(m_server->renderer(), true);
         built = wlr_scene_output_build_state(m_sceneOutput, &state, &sceneOptions);
+        fx_renderer_defer_submits(m_server->renderer(), false);
         m_stallProbe.mark(StallProbe::Mark::BuildEnd);
       }
       if (built && m_frameTimers != nullptr) {

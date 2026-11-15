@@ -528,7 +528,11 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
     } else {
       fx_render_thread_queue(thread, &(struct fx_submit_op){.kind = FX_SUBMIT_FLUSH});
     }
-    fx_render_thread_kick_later(thread);
+    if (renderer->defer_submits) {
+      fx_render_thread_kick_later(thread);
+    } else {
+      fx_render_thread_sync(thread);
+    }
     ok = true;
     goto out;
   }

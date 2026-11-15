@@ -127,6 +127,9 @@ void fx_renderer_delete_gl(struct fx_renderer* renderer, enum fx_gl_object kind,
 void fx_renderer_delete_egl_image(struct fx_renderer* renderer, EGLImageKHR image);
 // Deletes what was queued while the context was lent. Call with the context Home.
 void fx_renderer_collect_gl_garbage(struct fx_renderer* renderer);
+// Blocks until the render thread is done with the context, for synchronous GL outside an output frame (capture and
+// cursor passes, readback). Output frames never start while it is away: output.cpp waits for the context.
+void fx_renderer_take_context(struct fx_renderer* renderer);
 // Uploads the textures created while the context was lent. Call with the context Home.
 void fx_renderer_upload_pending_textures(struct fx_renderer* renderer);
 
@@ -249,6 +252,8 @@ struct fx_renderer {
 
   // Null until fx_renderer_start_render_thread; submits then flush on the calling thread.
   struct fx_render_thread* render_thread;
+  // Set around an output frame's build: its submits wait for fx_renderer_kick. Other passes submit before returning.
+  bool defer_submits;
   // GL objects released while the render thread held the context, deleted when it returns.
   struct fx_gl_garbage* gl_garbage;
   size_t gl_garbage_len, gl_garbage_cap;
