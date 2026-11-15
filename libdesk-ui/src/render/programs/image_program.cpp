@@ -58,6 +58,7 @@ void main() {
 )";
 
   constexpr char kFragmentShaderSource[] = R"(
+#extension GL_OES_standard_derivatives : require
 precision highp float;
 
 uniform sampler2D u_texture;
@@ -104,12 +105,18 @@ vec4 scrim_fill(float position) {
     return mix(u_scrim_color2, u_scrim_color3, scrim_segment_t(position, stops.z, stops.w));
 }
 
+// Box-filter edge coverage, one device pixel wide: a pixel-aligned edge keeps 100% inside. The width comes from
+// v_local, not the distance, whose derivative jumps at the corner kink of a square rect.
+float coverage_for(float distance) {
+    float pixel_width = max(0.5 * (length(dFdx(v_local)) + length(dFdy(v_local))), 1e-5);
+    return clamp(0.5 - distance / pixel_width, 0.0, 1.0);
+}
+
 void main() {
-    float aa = 0.85;
     float radius = min(u_radius, min(u_size.x, u_size.y) * 0.5);
     vec2 centered = v_local - u_size * 0.5;
     float outer_distance = rounded_rect_distance(centered, u_size * 0.5, radius);
-    float outer_coverage = 1.0 - smoothstep(-aa, aa, outer_distance);
+    float outer_coverage = coverage_for(outer_distance);
     if (outer_coverage <= 0.0) {
         discard;
     }
@@ -142,7 +149,7 @@ void main() {
     float inner_radius = max(radius - u_border_width, 0.0);
     vec2 inner_half = max(u_size * 0.5 - vec2(u_border_width), vec2(0.0));
     float inner_distance = rounded_rect_distance(centered, inner_half, inner_radius);
-    float inner_coverage = 1.0 - smoothstep(-aa, aa, inner_distance);
+    float inner_coverage = coverage_for(inner_distance);
 
     // Match the rect shader: the border is a stroke ring, not a full-area
     // backplane behind transparent image pixels.
