@@ -1,0 +1,21 @@
+[package]
+name = "andromeda-ptyd"
+version = "0.1.0"
+edition = "2024"
+# As system/Cargo.toml: the resolver then keeps dependencies buildable with Ubuntu 26.04 rustc 1.93.
+rust-version = "1.89"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+rustix = { version = "1", default-features = false, features = ["std", "fs", "net", "event", "process", "pty", "termios", "time"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[profile.release]
+lto = "thin"
+panic = "abort"
