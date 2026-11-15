@@ -30,6 +30,8 @@ namespace {
 
 // Bytes the IO thread feeds the parser per lock; bounds how long the UI waits for the lock.
 constexpr std::size_t kReadChunk = 64 * 1024;
+// History limit, as the Ghostty app; the library default keeps a single page.
+constexpr std::size_t kScrollbackBytes = 10'000'000;
 
 winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
   winsize ws{};
@@ -70,6 +72,7 @@ bool PtySession::spawn(const SpawnOptions& o) {
   if (ghostty_terminal_new(nullptr, &m_terminal, o.cols, o.rows) != GHOSTTY_SUCCESS) return false;
   ghostty_terminal_resize(m_terminal, o.cols, o.rows, o.cellWidthPx, o.cellHeightPx);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_USERDATA, this);
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &kScrollbackBytes);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void*>(&onWritePty));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_RENDER_HOLD, reinterpret_cast<const void*>(&onRenderHold));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT,
@@ -173,13 +176,18 @@ void PtySession::ioLoop() {
     }
     if (fds[0].revents & POLLOUT || fds[1].revents & POLLIN) flushOutbound();
     if (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) {
-      ssize_t n = ::read(m_master, buf.data(), buf.size());
-      if (n > 0) {
+      // A PTY read returns at most 4 KiB: drain up to a chunk, so a flood takes one lock per chunk.
+      std::size_t got = 0;
+      ssize_t n = 0;
+      while (got < buf.size() && (n = ::read(m_master, buf.data() + got, buf.size() - got)) > 0) {
+        got += static_cast<std::size_t>(n);
+      }
+      if (got > 0) {
         {
           std::lock_guard lock(m_termMutex);
-          ghostty_terminal_vt_write(m_terminal, buf.data(), static_cast<std::size_t>(n));
+          ghostty_terminal_vt_write(m_terminal, buf.data(), got);
         }
-        m_bytesRead += static_cast<std::uint64_t>(n);
+        m_bytesRead += got;
         flushOutbound();
         if (!m_renderHeld.load()) signalWake();
         continue;
