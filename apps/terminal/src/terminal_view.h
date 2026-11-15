@@ -61,7 +61,7 @@ namespace term {
     TerminalView(const TerminalView&) = delete;
     TerminalView& operator=(const TerminalView&) = delete;
 
-    bool start(std::vector<std::string> argv, std::string cwd);
+    bool start(std::vector<std::string> argv, std::string cwd, const std::vector<std::string>& extraEnv = {});
     // Takes over a session whose terminal process died; false when the holder no longer has it.
     bool reattach(std::uint64_t heldId);
 

@@ -24,7 +24,9 @@ if not _ghostty.found()
 endif
 
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
-  dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'], cpp_args: _warnings)
+  'src/shell_integration.cpp',
+  dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'],
+  cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads')])
 
@@ -85,5 +87,6 @@ install_data('data/andromeda-ptyd.socket', install_dir: _user_unit_dir)
 install_symlink('andromeda-ptyd.socket', pointing_to: '../andromeda-ptyd.socket',
   install_dir: _user_unit_dir / 'sockets.target.wants')
 
+install_subdir('data/shell-integration', install_dir: get_option('datadir') / 'andromeda' / 'terminal')
 install_data('data/dev.andromeda.Terminal.desktop', install_dir: get_option('datadir') / 'applications')
 install_data('data/icons/dev.andromeda.Terminal.svg', install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps')

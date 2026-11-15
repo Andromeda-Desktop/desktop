@@ -3,6 +3,7 @@
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "notifier.h"
+#include "shell_integration.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
@@ -188,7 +189,8 @@ namespace term {
       const auto* fresh = std::get_if<NewShell>(&origin);
       const std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
       const std::string shell = loginShell();
-      if (!ref.start({shell, "-l"}, cwd.empty() ? homeDir() : cwd)) {
+      const ShellLaunch launch = shellLaunch(shell, shellIntegrationDir(), [](const char* name) { return std::getenv(name); });
+      if (!ref.start(launch.argv, cwd.empty() ? homeDir() : cwd, launch.env)) {
         kLog.warn("cannot start {}", shell);
       }
     }

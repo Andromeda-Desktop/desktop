@@ -148,10 +148,9 @@ namespace term {
     ghostty_render_state_free(m_state);
   }
 
-  bool TerminalView::start(std::vector<std::string> argv, std::string cwd) {
-    // VTE_VERSION turns on the distro's vte.sh shell integration: OSC 7 (cwd) and OSC 133 (command marks).
-    std::vector<std::string> env = {"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=andromeda-terminal",
-                                    "VTE_VERSION=7600"};
+  bool TerminalView::start(std::vector<std::string> argv, std::string cwd, const std::vector<std::string>& extraEnv) {
+    std::vector<std::string> env = {"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=andromeda-terminal"};
+    env.insert(env.end(), extraEnv.begin(), extraEnv.end());
     if (!m_session.spawn({.argv = std::move(argv), .cwd = std::move(cwd), .env = std::move(env)})) {
       return false;
     }
