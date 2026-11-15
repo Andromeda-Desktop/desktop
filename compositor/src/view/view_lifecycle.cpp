@@ -1028,10 +1028,18 @@ namespace andromeda {
           initial.height = std::max(1, initial.height - config().appearance.titleBar.height);
         }
         const SizeHints hints = sizeHints();
-        const int width =
-            (initial.width > 0 && !wantMaximizeToEdges) ? clampWidth(initial.width, hints) : initial.width;
-        const int height =
-            (initial.height > 0 && !wantMaximizeToEdges) ? clampHeight(initial.height, hints) : initial.height;
+        // A minimum larger than the output must not push the window off it: the usable area caps the opening size,
+        // and configure_bounds tells the client to lower its minimum.
+        const int width = (initial.width > 0 && !wantMaximizeToEdges)
+            ? std::min(clampWidth(initial.width, hints), usable.width)
+            : initial.width;
+        const int height = (initial.height > 0 && !wantMaximizeToEdges)
+            ? std::min(clampHeight(initial.height, hints), usable.height)
+            : initial.height;
+        constexpr int kConfigureBoundsSince = 4; // xdg-shell configure_bounds; wlroots asserts the version
+        if (m_toplevel != nullptr && wl_resource_get_version(m_toplevel->resource) >= kConfigureBoundsSince) {
+          wlr_xdg_toplevel_set_bounds(m_toplevel, usable.width, usable.height);
+        }
         configureSize(width, height);
         if (wantMaximized) {
           setMaximizedState(true);

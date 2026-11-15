@@ -51,7 +51,7 @@ public:
   PrintSheet(const PrintSheet&) = delete;
   PrintSheet& operator=(const PrintSheet&) = delete;
 
-  [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float scale, float width);
+  [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float scale, float width, float height);
   // Esc goes back from More Options, else cancels; Enter prints. Both also work from the range field and run
   // before the app's own key commands.
   // focused: the window's keyboard focus; Enter goes to a focused control that is not a text field.
@@ -78,7 +78,7 @@ private:
   void showRange();
   [[nodiscard]] std::vector<int> pagesToPrint() const; // 0-based
   [[nodiscard]] int perSheet() const;
-  [[nodiscard]] std::unique_ptr<Node> buildPreview(Renderer& renderer, float scale, float width);
+  [[nodiscard]] std::unique_ptr<Node> buildPreview(Renderer& renderer, float scale, float width, float height);
   [[nodiscard]] std::unique_ptr<Node> buildSheet(Renderer& renderer, int sheet, const std::vector<int>& pages, float height, Size size,
                                                  bool selected);
   void buildMain(Node& column, float scale);

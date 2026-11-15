@@ -82,10 +82,10 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
   xdg_toplevel_set_title(m_toplevel, config.title.empty() ? "Noctalia" : config.title.c_str());
   setAccessibleTitle(config.title);
   xdg_toplevel_set_app_id(m_toplevel, config.appId != nullptr ? config.appId : "dev.noctalia.Noctalia");
+  m_minWidth = config.minWidth;
+  m_minHeight = config.minHeight;
   if (config.minWidth > 0 || config.minHeight > 0) {
-    xdg_toplevel_set_min_size(
-        m_toplevel, static_cast<std::int32_t>(config.minWidth), static_cast<std::int32_t>(config.minHeight)
-    );
+    sendMinSize();
   }
   if (config.maxWidth > 0 || config.maxHeight > 0) {
     xdg_toplevel_set_max_size(
@@ -113,9 +113,20 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
 void ToplevelSurface::setClosedCallback(std::function<void()> callback) { m_closedCallback = std::move(callback); }
 
 void ToplevelSurface::setMinSize(std::uint32_t minWidth, std::uint32_t minHeight) {
-  if (m_toplevel != nullptr) {
-    xdg_toplevel_set_min_size(m_toplevel, static_cast<std::int32_t>(minWidth), static_cast<std::int32_t>(minHeight));
+  m_minWidth = minWidth;
+  m_minHeight = minHeight;
+  sendMinSize();
+}
+
+void ToplevelSurface::sendMinSize() {
+  if (m_toplevel == nullptr) {
+    return;
   }
+  const auto cap = [](std::uint32_t value, std::uint32_t bound) { return bound > 0 ? std::min(value, bound) : value; };
+  xdg_toplevel_set_min_size(
+      m_toplevel, static_cast<std::int32_t>(cap(m_minWidth, m_boundsWidth)),
+      static_cast<std::int32_t>(cap(m_minHeight, m_boundsHeight))
+  );
 }
 
 void ToplevelSurface::setTitle(const std::string& title) {
@@ -284,8 +295,17 @@ void ToplevelSurface::handleToplevelClose(void* data, xdg_toplevel* /*toplevel*/
 }
 
 void ToplevelSurface::handleToplevelConfigureBounds(
-    void* /*data*/, xdg_toplevel* /*toplevel*/, std::int32_t /*width*/, std::int32_t /*height*/
-) {}
+    void* data, xdg_toplevel* /*toplevel*/, std::int32_t width, std::int32_t height
+) {
+  auto* self = static_cast<ToplevelSurface*>(data);
+  const auto bound = [](std::int32_t v) { return static_cast<std::uint32_t>(std::max(v, 0)); };
+  if (self->m_boundsWidth == bound(width) && self->m_boundsHeight == bound(height)) {
+    return;
+  }
+  self->m_boundsWidth = bound(width);
+  self->m_boundsHeight = bound(height);
+  self->sendMinSize();
+}
 
 void ToplevelSurface::
     handleToplevelWmCapabilities(void* /*data*/, xdg_toplevel* /*toplevel*/, wl_array* /*capabilities*/) {}

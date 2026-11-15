@@ -302,8 +302,8 @@ void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& requ
               },
           .rebuild = [&window] { window.requestRebuild(); },
       });
-  window.setContentBuilder([sheet = dialog.print.get(), &window](Renderer& renderer, float width, float) {
-    return sheet->build(renderer, window.uiScale(), width);
+  window.setContentBuilder([sheet = dialog.print.get(), &window](Renderer& renderer, float width, float height) {
+    return sheet->build(renderer, window.uiScale(), width, height);
   });
   window.setFirstKeyHandler([sheet = dialog.print.get(), &window](const KeyboardEvent& e) {
     return sheet->firstKey(e, window.input().focusedArea());

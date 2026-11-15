@@ -462,7 +462,7 @@ std::unique_ptr<Node> PrintSheet::buildSheet(Renderer& renderer, int sheet, cons
   return std::make_unique<SheetNode>(std::move(cells), g.cols, g.rows, height * aspect, height, s, selected);
 }
 
-std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, float width) {
+std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, float width, float height) {
   const float caption = Style::fontSizeCaption * s;
   auto pv = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP12 * s,
                         .padding = Tokens::spaceP16 * s, .fill = colorSpecFromRole(ColorRole::Fill1),
@@ -488,7 +488,11 @@ std::unique_ptr<Node> PrintSheet::buildPreview(Renderer& renderer, float s, floa
   const int n = perSheet();
   const int sheets = std::max(1, (static_cast<int>(pages.size()) + n - 1) / n);
   m_sheet = std::clamp(m_sheet, 0, sheets - 1);
-  pv->addChild(buildSheet(renderer, m_sheet, pages, kPageHeight * s, Size::Page, false));
+  // The page fits the pane height: sheet and pane padding, the caption line, and the strip when it shows.
+  const float reserved = (2.0F * Tokens::spaceP12 + 2.0F * Tokens::spaceP16 + Tokens::spaceP12) * s + 2.0F * caption
+      + (sheets > 1 ? kThumbHeight * s + Tokens::spaceP12 * s : 0.0F);
+  const float pageH = std::clamp(height - reserved, kThumbHeight * s, kPageHeight * s);
+  pv->addChild(buildSheet(renderer, m_sheet, pages, pageH, Size::Page, false));
 
   if (sheets > 1) {
     const float gap = Tokens::spaceP8 * s;
@@ -867,7 +871,7 @@ void PrintSheet::buildMore(Node& col, float s) {
   col.addChild(std::move(own));
 }
 
-std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width) {
+std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width, float height) {
   for (TextureHandle& texture : m_dropped)
     renderer.textureManager().unload(texture);
   m_dropped.clear();
@@ -879,7 +883,7 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
   const float ctlH = Tokens::sizeControlM * s;
   auto sheet = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP16 * s, .padding = Tokens::spaceP12 * s,
                         .flexGrow = 1.0F});
-  sheet->addChild(buildPreview(renderer, s, width));
+  sheet->addChild(buildPreview(renderer, s, width, height));
 
   auto col = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .width = kColumnWidth * s});
   if (m_screen == Screen::More)

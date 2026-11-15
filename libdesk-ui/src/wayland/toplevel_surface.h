@@ -91,6 +91,12 @@ private:
   std::uint32_t m_floatingHeight = 0;
   std::uint32_t m_resizeMargin = 0;
   std::uint32_t m_margin = 0;
+  std::uint32_t m_minWidth = 0;
+  std::uint32_t m_minHeight = 0;
+  // configure_bounds, 0 when the compositor sends none; the minimum size never exceeds it.
+  std::uint32_t m_boundsWidth = 0;
+  std::uint32_t m_boundsHeight = 0;
+  void sendMinSize();
   std::uint32_t m_windowWidth = 0;
   std::uint32_t m_windowHeight = 0;
   std::uint32_t m_pendingWidth = 0;
