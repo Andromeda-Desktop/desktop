@@ -121,7 +121,7 @@ namespace {
       m_name = appName(m_request.appId);
       m_showPointer = m_request.showPointer;
       m_tab = m_request.windows ? Tab::Window : Tab::Screen;
-      m_frames.resize(m_request.sources.size());
+      m_textures.resize(m_request.sources.size());
       std::vector<xdpu::ThumbnailSource> sources;
       for (const Source& source : m_request.sources) {
         sources.push_back({.monitor = source.monitor, .identifier = source.id});
@@ -227,18 +227,22 @@ namespace {
     void onThumbnails() {
       for (xdpu::Thumbnail& thumbnail : m_thumbnails->take()) {
         const std::size_t index = thumbnail.index;
-        m_frames[index] = std::move(thumbnail);
-        if (Image* image = m_images[index]; image != nullptr) {
-          m_window->updateInPlace([this, image, index](Renderer& renderer) { upload(renderer, *image, index); });
-        }
+        m_window->updateInPlace([this, index, frame = std::move(thumbnail)](Renderer& renderer) {
+          upload(renderer, frame, index);
+        });
       }
     }
 
-    void upload(Renderer& renderer, Image& image, std::size_t index) const {
-      const xdpu::Thumbnail& frame = m_frames[index];
-      if (!frame.rgb.empty()) {
-        image.setSourceRaw(renderer, frame.rgb.data(), frame.rgb.size(), frame.width, frame.height, frame.width * 3,
-                           PixmapFormat::RGB);
+    // One texture per source outlives rebuilds: a rebuild binds it again instead of uploading the frame.
+    void upload(Renderer& renderer, const xdpu::Thumbnail& frame, std::size_t index) {
+      TextureHandle& texture = m_textures[index];
+      if (texture.valid()) {
+        renderer.textureManager().unload(texture);
+      }
+      texture = renderer.textureManager().loadFromRaw(frame.rgb.data(), frame.rgb.size(), frame.width, frame.height,
+                                                      frame.width * 3, PixmapFormat::RGB);
+      if (Image* image = m_images[index]; image != nullptr) {
+        image->setExternalTexture(renderer, texture);
       }
     }
 
@@ -385,7 +389,11 @@ namespace {
                                    .radius = Tokens::radiusR4 * scale,
                                    .width = width - 2.0F * kRingBand * scale,
                                    .height = kThumbHeight * scale,
-                                   .configure = [this, &renderer, index](Image& image) { upload(renderer, image, index); }}));
+                                   .configure = [this, &renderer, index](Image& image) {
+                                     if (m_textures[index].valid()) {
+                                       image.setExternalTexture(renderer, m_textures[index]);
+                                     }
+                                   }}));
       }
       frame->addChild(std::move(thumb));
       body->addChild(std::move(frame));
@@ -528,7 +536,7 @@ namespace {
     ScrollView* m_scroll = nullptr;
     ScrollViewState m_scrollState;
     std::vector<Image*> m_images;            // per source; rebuilt with the tree
-    std::vector<xdpu::Thumbnail> m_frames;   // per source; the last live frame
+    std::vector<TextureHandle> m_textures;   // per source; the last live frame, owned here
     std::vector<std::size_t> m_shown;
     std::unique_ptr<xdpu::Thumbnails> m_thumbnails; // last: its worker joins before the members it posts to go
   };

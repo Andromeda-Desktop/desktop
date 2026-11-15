@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "dbus/request.h"
 #include "loop/loop.h"
+#include "wayland/shm_format.h"
 #include "wayland/wayland.h"
 
 #include <algorithm>
@@ -98,27 +99,14 @@ namespace xdpu {
     }
 
     std::optional<std::string> savePng(WaylandContext::ScreenshotResult& shot) {
-      cairo_format_t cairoFormat = CAIRO_FORMAT_INVALID;
-      bool needSwapRB = false;
-      switch (shot.format) {
-      case DRM_FORMAT_XRGB8888:
-        cairoFormat = CAIRO_FORMAT_RGB24;
-        break;
-      case DRM_FORMAT_ARGB8888:
-        cairoFormat = CAIRO_FORMAT_ARGB32;
-        break;
-      case DRM_FORMAT_XBGR8888:
-        cairoFormat = CAIRO_FORMAT_RGB24;
-        needSwapRB = true;
-        break;
-      case DRM_FORMAT_ABGR8888:
-        cairoFormat = CAIRO_FORMAT_ARGB32;
-        needSwapRB = true;
-        break;
-      default:
+      const auto channel = rgbOffsets(shot.format);
+      if (!channel) {
         std::fprintf(stderr, "screenshot: unsupported screenshot DRM format 0x%08x\n", shot.format);
         return std::nullopt;
       }
+      const bool alpha = shot.format == DRM_FORMAT_ARGB8888 || shot.format == DRM_FORMAT_ABGR8888;
+      const cairo_format_t cairoFormat = alpha ? CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_RGB24;
+      const bool needSwapRB = channel->r != 2;
 
       // Cairo expects BGRX/BGRA byte order; swap R↔B for XBGR/ABGR inputs.
       if (needSwapRB) {
@@ -230,17 +218,8 @@ namespace xdpu {
     std::optional<Color> sampleColor(
         const WaylandContext::ScreenshotResult& shot, const OutputInfo& output, int32_t globalX, int32_t globalY
     ) {
-      // Little-endian DRM formats: XRGB/ARGB store B,G,R in memory, XBGR/ABGR R,G,B.
-      bool bgr = false;
-      switch (shot.format) {
-      case DRM_FORMAT_XRGB8888:
-      case DRM_FORMAT_ARGB8888:
-        break;
-      case DRM_FORMAT_XBGR8888:
-      case DRM_FORMAT_ABGR8888:
-        bgr = true;
-        break;
-      default:
+      const auto channel = rgbOffsets(shot.format);
+      if (!channel) {
         return std::nullopt;
       }
       if (shot.width == 0 || shot.height == 0 || shot.stride < shot.width * 4 || shot.pixels.empty()) {
@@ -277,10 +256,8 @@ namespace xdpu {
       }
 
       constexpr double scale = 1.0 / 255.0;
-      const double first = static_cast<double>(shot.pixels[offset + 0]) * scale;
-      const double g = static_cast<double>(shot.pixels[offset + 1]) * scale;
-      const double third = static_cast<double>(shot.pixels[offset + 2]) * scale;
-      return bgr ? Color{first, g, third} : Color{third, g, first};
+      const auto byte = [&](int index) { return static_cast<double>(shot.pixels[offset + index]) * scale; };
+      return Color{byte(channel->r), byte(channel->g), byte(channel->b)};
     }
 
   } // namespace

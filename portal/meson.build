@@ -109,6 +109,12 @@ if get_option('tests')
   )
   test('capture-transform', capture_transform_test)
 
+  test('share-picker-live-state', executable(
+    'live-state-test',
+    'tests/live_state.cpp',
+    include_directories: include_directories('src'),
+  ))
+
   executable(
     'screencast-test-client',
     'tests/screencast_test_client.cpp',

@@ -1,14 +1,15 @@
 #include "share_picker/thumbnails.h"
 
 #include "loop/loop.h"
+#include "share_picker/live_state.h"
 #include "wayland/capture_transform.h"
+#include "wayland/shm_format.h"
 #include "wayland/wayland.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
-#include <drm_fourcc.h>
 #include <map>
 #include <mutex>
 #include <set>
@@ -26,13 +27,6 @@ namespace xdpu {
 
     using Clock = std::chrono::steady_clock;
 
-    bool supportedFormat(uint32_t format) {
-      return format == DRM_FORMAT_XRGB8888
-          || format == DRM_FORMAT_ARGB8888
-          || format == DRM_FORMAT_XBGR8888
-          || format == DRM_FORMAT_ABGR8888;
-    }
-
     // Downsamples straight from SHM and undoes the buffer transform in the same pass: no full-size copy.
     Thumbnail downsample(const void* mapping, uint32_t width, uint32_t height, uint32_t format, uint32_t transform) {
       const double scale = std::min(1.0, kMaxThumbnailSide / std::max(width, height));
@@ -42,7 +36,7 @@ namespace xdpu {
       Thumbnail thumbnail{.width = swapAxes ? sh : sw, .height = swapAxes ? sw : sh};
       const auto stride = static_cast<std::size_t>(thumbnail.width) * 3;
       thumbnail.rgb.resize(stride * static_cast<std::size_t>(thumbnail.height));
-      const bool bgr = format == DRM_FORMAT_XBGR8888 || format == DRM_FORMAT_ABGR8888;
+      const RgbOffsets channel = *rgbOffsets(format);
       const auto* pixels = static_cast<const uint32_t*>(mapping);
       for (int y = 0; y < thumbnail.height; ++y) {
         auto* row = thumbnail.rgb.data() + static_cast<std::size_t>(y) * stride;
@@ -51,20 +45,17 @@ namespace xdpu {
           const uint32_t pixel =
               pixels[(static_cast<std::size_t>(v) * height / sh) * width + static_cast<std::size_t>(u) * width / sw];
           auto* rgb = row + static_cast<std::size_t>(x) * 3;
-          rgb[0] = (pixel >> (bgr ? 0 : 16)) & 0xff;
-          rgb[1] = (pixel >> 8) & 0xff;
-          rgb[2] = (pixel >> (bgr ? 16 : 0)) & 0xff;
+          rgb[0] = (pixel >> (8 * channel.r)) & 0xff;
+          rgb[1] = (pixel >> (8 * channel.g)) & 0xff;
+          rgb[2] = (pixel >> (8 * channel.b)) & 0xff;
         }
       }
       return thumbnail;
     }
 
-    // One shown source. Configuring: waits for buffer constraints. Capturing: a frame is in flight.
-    // Waiting: the pacing timer m_timer runs (valid only then). Stopped: the source is gone or cannot be captured.
+    // One shown source; its mode lives in m_state and changes only in apply() (share_picker/live_state.h).
     class Live {
     public:
-      enum class State { Configuring, Capturing, Waiting, Stopped };
-
       Live(Loop& loop, WaylandContext& wayland, std::size_t index, const ThumbnailSource& source,
            std::function<void(Thumbnail)> publish)
           : m_loop(loop), m_wayland(wayland), m_index(index), m_publish(std::move(publish)) {
@@ -72,14 +63,16 @@ namespace xdpu {
         m_session = source.monitor ? wayland.createOutputCapture(source.identifier, CaptureCursorMode::Hidden, constraints)
                                    : wayland.createToplevelCapture(source.identifier, CaptureCursorMode::Hidden, constraints);
         if (!m_session) {
-          m_state = State::Stopped;
+          apply(LiveEvent::SessionStopped);
           return;
         }
-        m_session->stoppedCb = [this] { stop(); };
+        m_session->stoppedCb = [this] { apply(LiveEvent::SessionStopped); };
       }
 
       ~Live() {
-        cancelTimer();
+        if (m_state == LiveState::Waiting) {
+          m_loop.removeTimer(m_timer);
+        }
         m_frame.reset();
         m_session.reset();
         releaseBuffer();
@@ -89,44 +82,66 @@ namespace xdpu {
       Live& operator=(const Live&) = delete;
 
     private:
-      void configure(const CaptureConstraints& info) {
-        if (m_state == State::Stopped) {
+      // A frame callback may call apply() again from inside startCapture: the state is stored first.
+      void apply(LiveEvent event) {
+        const std::optional<LiveStep> step = liveTransition(m_state, event);
+        if (!step) {
+          std::fprintf(stderr, "share-picker: thumbnail event %d ignored in state %d\n", static_cast<int>(event),
+                       static_cast<int>(m_state));
           return;
         }
-        m_frame.reset();
-        cancelTimer();
-        const uint32_t format = WaylandContext::preferredShmFormat(info.shmFormats);
-        if (!supportedFormat(format) || info.bufferWidth == 0 || info.bufferHeight == 0 || info.bufferWidth > 16384
-            || info.bufferHeight > 16384) {
-          stop();
+        if (step->cancelTimer) {
+          m_loop.removeTimer(m_timer);
+        }
+        if (step->dropFrame) {
+          m_frame.reset();
+        }
+        m_state = step->next;
+        if (step->startTimer) {
+          m_timer = m_loop.addTimer(m_delayMs, [this] { apply(LiveEvent::TimerFired); });
+        }
+        if (step->startCapture) {
+          capture();
+        }
+      }
+
+      void configure(const CaptureConstraints& info) {
+        if (m_state == LiveState::Stopped) {
           return;
+        }
+        // The buffer is replaced below: no frame may still write into the old one.
+        m_frame.reset();
+        apply(allocate(info) ? LiveEvent::Configured : LiveEvent::ConfigureFailed);
+      }
+
+      bool allocate(const CaptureConstraints& info) {
+        const uint32_t format = WaylandContext::preferredShmFormat(info.shmFormats);
+        if (!rgbOffsets(format) || info.bufferWidth == 0 || info.bufferHeight == 0 || info.bufferWidth > 16384
+            || info.bufferHeight > 16384) {
+          return false;
         }
         releaseBuffer();
         const uint32_t stride = info.bufferWidth * 4;
         m_size = static_cast<std::size_t>(stride) * info.bufferHeight;
         m_fd = memfd_create("andromeda-share-thumbnail", MFD_CLOEXEC);
         if (m_fd < 0 || ftruncate(m_fd, static_cast<off_t>(m_size)) < 0) {
-          stop();
-          return;
+          return false;
         }
         m_mapping = mmap(nullptr, m_size, PROT_READ | PROT_WRITE, MAP_SHARED, m_fd, 0);
         if (m_mapping == MAP_FAILED) {
-          stop();
-          return;
+          return false;
         }
         m_buffer = m_wayland.createShmBuffer(info.bufferWidth, info.bufferHeight, format, stride, m_fd, m_size);
         if (m_buffer == nullptr) {
-          stop();
-          return;
+          return false;
         }
         m_width = info.bufferWidth;
         m_height = info.bufferHeight;
         m_format = format;
-        capture();
+        return true;
       }
 
       void capture() {
-        m_state = State::Capturing;
         m_started = Clock::now();
         m_frame = m_wayland.captureFrame(
             *m_session, m_buffer, /*damageBuffer=*/true,
@@ -135,42 +150,24 @@ namespace xdpu {
               thumbnail.index = m_index;
               m_publish(std::move(thumbnail));
               const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - m_started);
-              wait(std::max(1, kFrameIntervalMs - static_cast<int>(elapsed.count())));
+              m_delayMs = std::max(1, kFrameIntervalMs - static_cast<int>(elapsed.count()));
+              apply(LiveEvent::FrameReady);
             },
             [this](CaptureFailureReason reason) {
               switch (reason) {
               case CaptureFailureReason::Retry:
-                wait(kFrameIntervalMs);
+                m_delayMs = kFrameIntervalMs;
+                apply(LiveEvent::Retry);
                 break;
               case CaptureFailureReason::ConstraintsChanged:
-                m_state = State::Configuring;
+                apply(LiveEvent::ConstraintsChanged);
                 break;
               case CaptureFailureReason::Stopped:
-                stop();
+                apply(LiveEvent::SessionStopped);
                 break;
               }
             });
         m_wayland.flush();
-      }
-
-      // Called from inside a frame callback: the next capture replaces m_frame from the timer, not here.
-      void wait(int delayMs) {
-        m_state = State::Waiting;
-        m_timer = m_loop.addTimer(delayMs, [this] {
-          capture();
-        });
-      }
-
-      void cancelTimer() {
-        if (m_state == State::Waiting) {
-          m_loop.removeTimer(m_timer);
-          m_state = State::Configuring;
-        }
-      }
-
-      void stop() {
-        m_state = State::Stopped;
-        cancelTimer();
       }
 
       void releaseBuffer() {
@@ -192,7 +189,7 @@ namespace xdpu {
       WaylandContext& m_wayland;
       std::size_t m_index;
       std::function<void(Thumbnail)> m_publish;
-      State m_state = State::Configuring;
+      LiveState m_state = LiveState::Configuring;
       std::unique_ptr<WaylandContext::CaptureSession> m_session;
       std::unique_ptr<WaylandContext::CaptureFrame> m_frame;
       wl_buffer* m_buffer = nullptr;
@@ -202,7 +199,8 @@ namespace xdpu {
       uint32_t m_width = 0;
       uint32_t m_height = 0;
       uint32_t m_format = 0;
-      int m_timer = 0;
+      int m_timer = 0;   // valid only in Waiting
+      int m_delayMs = kFrameIntervalMs;
       Clock::time_point m_started;
     };
   } // namespace
