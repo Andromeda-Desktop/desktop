@@ -127,6 +127,8 @@ void fx_renderer_delete_gl(struct fx_renderer* renderer, enum fx_gl_object kind,
 void fx_renderer_delete_egl_image(struct fx_renderer* renderer, EGLImageKHR image);
 // Deletes what was queued while the context was lent. Call with the context Home.
 void fx_renderer_collect_gl_garbage(struct fx_renderer* renderer);
+// Uploads the textures created while the context was lent. Call with the context Home.
+void fx_renderer_upload_pending_textures(struct fx_renderer* renderer);
 
 // Drops the buffer's effect capture and clears its owner.
 void fx_framebuffer_release_effect_capture(struct fx_framebuffer* buffer);
@@ -174,6 +176,11 @@ struct fx_texture {
   pixman_region32_t slot_stale[FX_SHM_SLOTS]; // damage each slot has not received yet
   int slot;
   bool slot_failed; // a slot could not be created; stop adding slots
+
+  // Created while the render thread held the context: the buffer stays locked (a shm client gets its release only
+  // after the upload) and is uploaded when the context returns, before any pass can sample it.
+  struct wlr_buffer* pending_upload;
+  struct wl_list pending_link; // fx_renderer.pending_textures
 };
 
 struct fx_texture* fx_get_texture(struct wlr_texture* wlr_texture);
@@ -353,6 +360,7 @@ struct fx_renderer {
 
   struct wl_list buffers;           // fx_framebuffer.link
   struct wl_list textures;          // fx_texture.link
+  struct wl_list pending_textures;  // fx_texture.pending_link
   struct wl_list backdrop_probes;   // fx_backdrop_probe.link
   struct wl_list offscreen_buffers; // fx_offscreen_buffers.link
   struct wl_list output_luts;       // fx_output_lut.link

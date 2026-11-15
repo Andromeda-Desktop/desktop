@@ -256,7 +256,9 @@ static bool fx_texture_update_from_buffer(
 ) {
   struct fx_texture* texture = fx_get_texture(wlr_texture);
 
-  if (texture->drm_format == DRM_FORMAT_INVALID) {
+  // false makes wlr_client_buffer create a new texture, which defers its upload while the context is lent.
+  if (texture->drm_format == DRM_FORMAT_INVALID || texture->pending_upload != NULL
+      || !fx_renderer_context_home(&texture->fx_renderer->wlr_renderer)) {
     return false;
   }
 
@@ -380,6 +382,10 @@ static bool fx_texture_update_from_buffer(
 
 void fx_texture_destroy(struct fx_texture* texture) {
   wl_list_remove(&texture->link);
+  if (texture->pending_upload != NULL) {
+    wl_list_remove(&texture->pending_link);
+    wlr_buffer_unlock(texture->pending_upload);
+  }
   if (texture->buffer != NULL) {
     wlr_buffer_unlock(texture->locked_buffer);
   } else if (texture->slots[0] != NULL) {
@@ -874,6 +880,17 @@ struct wlr_buffer* fx_texture_get_scanout_buffer(struct wlr_texture* wlr_texture
 
 struct wlr_texture* fx_texture_from_buffer(struct wlr_renderer* wlr_renderer, struct wlr_buffer* buffer) {
   struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  if (!fx_renderer_context_home(wlr_renderer)) {
+    struct fx_texture* texture = fx_texture_create(renderer, buffer->width, buffer->height);
+    if (texture == NULL) {
+      return NULL;
+    }
+    texture->target = GL_TEXTURE_2D;
+    texture->drm_format = DRM_FORMAT_INVALID;
+    texture->pending_upload = wlr_buffer_lock(buffer);
+    wl_list_insert(renderer->pending_textures.prev, &texture->pending_link);
+    return &texture->wlr_texture;
+  }
 
   void* data;
   uint32_t format;
@@ -900,4 +917,35 @@ void fx_texture_get_attribs(struct wlr_texture* wlr_texture, struct fx_texture_a
       .tex = texture->tex,
       .has_alpha = texture->has_alpha,
   };
+}
+
+void fx_renderer_upload_pending_textures(struct fx_renderer* renderer) {
+  struct fx_texture *texture, *tmp;
+  wl_list_for_each_safe(texture, tmp, &renderer->pending_textures, pending_link) {
+    struct wlr_buffer* buffer = texture->pending_upload;
+    wl_list_remove(&texture->pending_link);
+    texture->pending_upload = NULL;
+    struct wlr_texture* uploaded = fx_texture_from_buffer(&renderer->wlr_renderer, buffer);
+    wlr_buffer_unlock(buffer);
+    if (uploaded == NULL) {
+      wlr_log(WLR_ERROR, "deferred texture upload failed; the surface draws empty");
+      continue;
+    }
+    // Move the GL state into the texture the scene already holds; the shell held none.
+    struct fx_texture* real = fx_get_texture(uploaded);
+    texture->target = real->target;
+    texture->tex = real->tex;
+    texture->fbo = real->fbo;
+    texture->has_alpha = real->has_alpha;
+    texture->drm_format = real->drm_format;
+    texture->buffer = real->buffer;
+    texture->locked_buffer = real->locked_buffer;
+    memcpy(texture->slots, real->slots, sizeof(texture->slots));
+    memcpy(texture->slot_tex, real->slot_tex, sizeof(texture->slot_tex));
+    memcpy(texture->slot_stale, real->slot_stale, sizeof(texture->slot_stale));
+    texture->slot = real->slot;
+    texture->slot_failed = real->slot_failed;
+    wl_list_remove(&real->link);
+    free(real);
+  }
 }

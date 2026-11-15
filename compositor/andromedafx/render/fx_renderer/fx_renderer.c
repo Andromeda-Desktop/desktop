@@ -770,6 +770,7 @@ struct wlr_renderer* fx_renderer_create_egl(struct wlr_egl* egl) {
 
   wl_list_init(&renderer->buffers);
   wl_list_init(&renderer->textures);
+  wl_list_init(&renderer->pending_textures);
   wl_list_init(&renderer->backdrop_probes);
   wl_list_init(&renderer->offscreen_buffers);
   wl_list_init(&renderer->output_luts);
