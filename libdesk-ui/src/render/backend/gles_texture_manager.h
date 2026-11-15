@@ -10,6 +10,7 @@
 class GlesTextureManager final : public TextureManager {
 public:
   GlesTextureManager();
+  [[nodiscard]] std::uint64_t generation() const noexcept override { return m_generation; }
   ~GlesTextureManager() override;
 
   GlesTextureManager(const GlesTextureManager&) = delete;

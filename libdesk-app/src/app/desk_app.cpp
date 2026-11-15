@@ -281,6 +281,7 @@ bool DeskApp::reconnect() {
   // close() never reaches windowClosed: the app's per-window state (a terminal's pty) stays.
   for (const auto& w : m_windows) {
     w->close();
+    windowSurfaceLost(*w);
   }
   m_pointerSurface = nullptr;
   // Its destructor unhooks the selection listener from the old connection.

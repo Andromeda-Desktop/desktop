@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <limits>
 #include <optional>
 #include <thread>
@@ -51,6 +53,17 @@ namespace {
 
   DeferredSource g_deferred;
   TimerSource g_timers;
+
+  // A compositor exit at logout removes the socket; a crash leaves it (socket-activated, or a stale file).
+  bool compositorSocketExists() {
+    const char* name = std::getenv("WAYLAND_DISPLAY");
+    const std::filesystem::path socket = name != nullptr && *name != '\0' ? name : "wayland-0";
+    if (socket.is_absolute()) {
+      return std::filesystem::exists(socket);
+    }
+    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+    return runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / socket);
+  }
 
   bool isDisconnect(int err) { return err == EPIPE || err == ECONNRESET || err == ENOTCONN || err == EBADF; }
 
@@ -123,8 +136,12 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   m_gl.cleanup();
   m_wayland.disconnect();
   const auto deadline = std::chrono::steady_clock::now() + timeout;
-  // A socket-activated compositor accepts at once; a plain socket is gone until the new compositor binds it.
+  // A socket-activated compositor accepts at once; a stale socket refuses until the new compositor binds it.
   for (auto wait = std::chrono::milliseconds(50);; wait = std::min(wait * 2, std::chrono::milliseconds(1000))) {
+    if (!compositorSocketExists()) {
+      kLog.info("the compositor socket is gone: the session ended");
+      return false;
+    }
     try {
       if (m_wayland.connect()) {
         break;

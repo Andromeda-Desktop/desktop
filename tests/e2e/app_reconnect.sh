@@ -49,7 +49,7 @@ await_mapped Files "at start"
 app "$TERMINAL_APP" > "$OUT/terminal.log" 2>&1 &
 TERMINAL_PID=$!
 await_mapped Terminal "at start"
-for _ in $(seq 100); do [[ -s $RUNTIME/shell.pid ]] && break; sleep 0.05; done
+"$ROOT/tools/wait.sh" --file "$RUNTIME/shell.pid" --timeout 5 > /dev/null || fail "the terminal started no shell"
 SHELL_PID=$(cat "$RUNTIME/shell.pid")
 files=$(pgrep -P "$FILES_PID" || echo "$FILES_PID")
 term=$(pgrep -P "$TERMINAL_PID" || echo "$TERMINAL_PID")
@@ -57,16 +57,16 @@ type_into_terminal() {
   run "$ANDROMEDA" msg "focus-or-spawn:dev.andromeda.Terminal $TERMINAL_APP" > /dev/null
   run "$ANDROMEDA" settle > /dev/null
   # A new wtype connection can lose its first key, and long text can garble: short text, leading spaces sh ignores.
-  run wtype "  touch typed-$1" -k Return
-  for _ in $(seq 100); do [[ -e $RUNTIME/typed-$1 ]] && break; sleep 0.05; done
-  [[ -e $RUNTIME/typed-$1 ]] || { shot "typed-$1"; run "$ANDROMEDA" windows --json > "$OUT/windows-$1.json"; fail "keys typed $1 the restart did not reach the terminal's shell"; }
+  run wtype "  echo 1 > typed-$1" -k Return
+  "$ROOT/tools/wait.sh" --file "$RUNTIME/typed-$1" --timeout 5 > /dev/null || { shot "typed-$1"; run "$ANDROMEDA" windows --json > "$OUT/windows-$1.json"; fail "keys typed $1 the restart did not reach the terminal's shell"; }
 }
 type_into_terminal before
 shot before
 
 kill -SEGV "$compositor"
 wait "$compositor" 2> /dev/null || true
-rm -f "$RUNTIME/wayland-0" "$RUNTIME/wayland-0.lock" "$RUNTIME/andromeda-wayland-0.sock"
+# The crash leaves wayland-0 (apps retry while it refuses) and the IPC socket boot_headless waits for.
+rm -f "$RUNTIME/andromeda-wayland-0.sock"
 mv "$OUT/andromeda.log" "$OUT/andromeda-1.log"
 boot_headless 1
 

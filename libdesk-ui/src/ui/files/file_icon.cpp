@@ -98,9 +98,15 @@ namespace {
 
   // One texture per (asset, pixel size) for every icon on screen: SVG rasterising stays off the scroll path.
   TextureHandle iconTexture(Renderer& renderer, const std::string& asset, int px) {
-    static std::map<std::tuple<TextureManager*, std::string, int>, TextureHandle> cache;
+    static std::map<std::pair<std::string, int>, TextureHandle> cache;
+    static std::uint64_t cacheGeneration = 0;
     TextureManager* tm = &renderer.textureManager();
-    const auto key = std::tuple{tm, asset, px};
+    // A new GL context (compositor reconnect) has a new generation: the cached handles name dead textures.
+    if (tm->generation() != cacheGeneration) {
+      cache.clear();
+      cacheGeneration = tm->generation();
+    }
+    const auto key = std::pair{asset, px};
     if (auto it = cache.find(key); it != cache.end()) {
       return it->second;
     }

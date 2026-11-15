@@ -34,6 +34,8 @@ public:
 
   static void setGlobalMipmapsEnabled(bool enabled) { s_mipmapsEnabled = enabled; }
   [[nodiscard]] static bool globalMipmapsEnabled() { return s_mipmapsEnabled; }
+  // Unique per GL texture namespace: a handle of another generation names a dead texture.
+  [[nodiscard]] virtual std::uint64_t generation() const noexcept { return 0; }
 
   [[nodiscard]] virtual TextureHandle
   loadFromRgba(const std::uint8_t* data, int width, int height, bool mipmap = false) = 0;

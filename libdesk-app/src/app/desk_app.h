@@ -71,6 +71,8 @@ protected:
   virtual void windowClosed(AppWindow& /*window*/) {}
   // The compositor went away with the GL context: forget texture ids held outside window scenes; do not free them.
   virtual void gpuLost() {}
+  // The window's surface and scene are gone for a compositor reconnect; it opens again with a new surface.
+  virtual void windowSurfaceLost(AppWindow& /*window*/) {}
   // False for a service process that outlives its windows (the file picker); it then calls quit() itself.
   [[nodiscard]] virtual bool quitWithLastWindow() const { return true; }
   // For a subclass destructor whose members the windows' content uses: destroys them first, with no windowClosed.
