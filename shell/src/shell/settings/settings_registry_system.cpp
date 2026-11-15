@@ -366,16 +366,8 @@ namespace settings {
       appendRow(entries, calendarRows, key);
       entries.back().visibleWhen = calendarOn;
     }
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "general", tr("settings.schema.services.calendar-dedupe-ignore-patterns.label"),
-          tr("settings.schema.services.calendar-dedupe-ignore-patterns.description"),
-          {"calendar", "dedupe_ignore_patterns"}, ListSetting{.items = cfg.calendar.dedupeIgnorePatterns},
-          "calendar events duplicate merge regex title"
-      );
-      e.visibleWhen = [](const Config& c) { return c.calendar.enabled && c.calendar.dedupeEvents; };
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, calendarRows, "dedupe_ignore_patterns");
+    entries.back().visibleWhen = [](const Config& c) { return c.calendar.enabled && c.calendar.dedupeEvents; };
     // Week numbers are a grid decoration, so they stay available when event syncing is off.
     auto calendarTabRows = generateSchemaEntries(
         noctalia::config::schema::calendarTabRowsSchema(), cfg.controlCenter.calendarTab, {"control_center", "calendar"}
@@ -499,18 +491,8 @@ namespace settings {
     ));
 
     // Idle
-    entries.push_back(makeEntry(
-        SettingsSection::Power, "idle", tr("settings.schema.idle.pre-action-fade.label"),
-        tr("settings.schema.idle.pre-action-fade.description"), {"idle", "pre_action_fade_seconds"},
-        StepperSetting{
-            .value = static_cast<int>(std::lround(std::clamp(cfg.idle.preActionFadeSeconds, 0.0F, 30.0F))),
-            .minValue = 0,
-            .maxValue = 30,
-            .step = 1,
-            .valueSuffix = "s"
-        },
-        "idle fade dim seconds overlay"
-    ));
+    auto idleRows = generateSchemaEntries(noctalia::config::schema::idleSchema(), cfg.idle, {"idle"});
+    appendRow(entries, idleRows, "pre_action_fade_seconds");
     entries.push_back(makeEntry(
         SettingsSection::Power, "idle", tr("settings.schema.idle.behaviors.label"),
         tr("settings.schema.idle.behaviors.description"), {"idle", "behavior"},

@@ -228,11 +228,7 @@ namespace settings {
     );
     appendRow(entries, wallpaperRows, "enabled");
     appendRow(entries, wallpaperRows, "fill_mode");
-    entries.push_back(makeEntry(
-        SettingsSection::Wallpaper, "general", tr("settings.schema.wallpaper.fill-color.label"),
-        tr("settings.schema.wallpaper.fill-color.description"), {"wallpaper", "fill_color"},
-        colorSpecPicker(cfg.wallpaper.fillColor, true), "background solid color"
-    ));
+    appendRow(entries, wallpaperRows, "fill_color");
     entries.push_back(makeEntry(
         SettingsSection::Wallpaper, "directories", tr("settings.schema.wallpaper.directory.label"),
         tr("settings.schema.wallpaper.directory.description"), {"wallpaper", "directory"},
@@ -340,11 +336,7 @@ namespace settings {
     appendGroup(entries, wallpaperRows, "transition");
     appendRow(entries, automationRows, "enabled");
     appendRow(entries, automationRows, "interval_seconds");
-    entries.push_back(makeEntry(
-        SettingsSection::Wallpaper, "automation", tr("settings.schema.wallpaper.automation-order.label"),
-        tr("settings.schema.wallpaper.automation-order.description"), {"wallpaper", "automation", "order"},
-        asSegmented(enumSelect(kWallpaperAutomationOrders, cfg.wallpaper.automation.order)), "rotate slideshow"
-    ));
+    appendRow(entries, automationRows, "order");
     appendGroup(entries, automationRows, "automation");
   }
 
@@ -382,14 +374,7 @@ namespace settings {
           "autohide smart workspace"
       ));
       appendRow(entries, dockRows, "reserve_space");
-      entries.push_back(makeEntry(
-          SettingsSection::Dock, "behavior", tr("settings.schema.dock.layer.label"),
-          tr("settings.schema.dock.layer.description"), path("layer"),
-          asSegmented(plainSelect(
-              {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}}, dock.layer
-          )),
-          "layer shell z-order"
-      ));
+      appendRow(entries, dockRows, "layer");
       appendGroup(entries, dockRows, "behavior");
       appendRow(entries, dockRows, "launcher_position");
       const SettingVisibility dockLauncherEnabled = [currentDock](const Config& current) {
@@ -433,11 +418,7 @@ namespace settings {
       entries.back().visibleWhen = [currentDock](const Config& current) {
         return currentDock(current).marginEdge == 0;
       };
-      entries.push_back(makeEntry(
-          SettingsSection::Dock, "shape", tr("settings.schema.dock.border.label"),
-          tr("settings.schema.dock.border.description"), path("border"), colorSpecPicker(dock.border), "outline color",
-          true
-      ));
+      appendRow(entries, dockRows, "border");
       appendRow(entries, dockRows, "border_width");
       appendRow(entries, dockRows, "background_opacity");
       if (env.backgroundEffectBlurSupported) {
@@ -447,11 +428,7 @@ namespace settings {
       appendRow(entries, dockRows, "magnification");
       appendRow(entries, dockRows, "magnification_scale");
       appendGroup(entries, dockRows, "focus-styling");
-      entries.push_back(makeEntry(
-          SettingsSection::Dock, "pinned-apps", tr("settings.schema.dock.pinned-apps.label"),
-          tr("settings.schema.dock.pinned-apps.description"), path("pinned"), ListSetting{.items = dock.pinned},
-          "pinned apps dock"
-      ));
+      appendRow(entries, dockRows, "pinned");
     };
 
     addDockSettings(cfg.dock, {"dock"}, std::nullopt);
@@ -497,24 +474,12 @@ namespace settings {
           std::move(anchorBarSelect), "anchor attach bar panel wallpaper launcher"
       ));
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Panels, "general", tr("settings.schema.panels.floating-layer.label"),
-        tr("settings.schema.panels.floating-layer.description"), {"shell", "panel", "floating_layer"},
-        asSegmented(plainSelect(
-            {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}},
-            cfg.shell.panel.floatingLayer
-        )),
-        "floating detached panel layer shell z-order input method popup fullscreen"
-    ));
     panelRows =
         generateSchemaEntries(noctalia::config::schema::panelSchema(), cfg.shell.panel, {"shell", "panel"});
+    appendRow(entries, panelRows, "floating_layer");
     appendRow(entries, panelRows, "transparency_mode");
     appendRow(entries, panelRows, "borders");
-    entries.push_back(makeEntry(
-        SettingsSection::Panels, "effects", tr("settings.schema.panels.border-color.label"),
-        tr("settings.schema.panels.border-color.description"), {"shell", "panel", "border_color"},
-        colorSpecPicker(cfg.shell.panel.borderColor), "outline border color theme accent"
-    ));
+    appendRow(entries, panelRows, "border_color");
     appendRow(entries, panelRows, "border_width");
     appendRow(entries, panelRows, "shadow");
     appendGroup(entries, panelRows, "effects");
@@ -560,11 +525,7 @@ namespace settings {
         ToggleSetting{cfg.shell.launcher.sortByUsage, cfg.shell.launcher.trackUsage},
         "launcher sort usage recently used frequency"
     ));
-    entries.push_back(makeEntry(
-        SettingsSection::Launcher, "pinned-apps", tr("settings.schema.panels.launcher-pinned-apps.label"),
-        tr("settings.schema.panels.launcher-pinned-apps.description"), {"shell", "launcher", "pinned"},
-        ListSetting{.items = cfg.shell.launcher.pinned}, "launcher pinned apps"
-    ));
+    appendRow(entries, launcherRows, "pinned");
     appendGroup(entries, launcherRows, "providers");
     for (const auto& provider : kLauncherProviderSettings) {
       const auto it = std::ranges::find(cfg.shell.launcher.providers, provider.name, &LauncherProviderConfig::name);

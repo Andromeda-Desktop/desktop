@@ -46,31 +46,15 @@ namespace settings {
     const auto& env = ctx.env;
     auto& entries = ctx.entries;
 
-    auto osdRows = generateSchemaEntries(noctalia::config::schema::osdSchema(), cfg.osd, {"osd"});
+    auto osdRows = generateSchemaEntries(noctalia::config::schema::osdSchema(), cfg.osd, {"osd"}, &env);
     appendRow(entries, osdRows, "enabled");
     const std::size_t osdGatedStart = entries.size();
     for (const std::string_view key :
          {"orientation", "position", "position_vertical", "hide_delay_ms", "scale", "offset_x", "offset_y",
-          "background_opacity", "border"}) {
+          "background_opacity", "border", "border_color", "border_width", "follow_focused_output", "monitors"}) {
       appendRow(entries, osdRows, key);
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-border-color.label"),
-        tr("settings.schema.shell.osd-border-color.description"), {"osd", "border_color"},
-        colorSpecPicker(cfg.osd.borderColor), "outline border color theme accent"
-    ));
-    appendRow(entries, osdRows, "border_width");
-    appendRow(entries, osdRows, "follow_focused_output");
-    {
-      auto e = makeEntry(
-          SettingsSection::Notifications, "osd", tr("settings.schema.shell.osd-monitors.label"),
-          tr("settings.schema.shell.osd-monitors.description"), {"osd", "monitors"},
-          ListSetting{.items = cfg.osd.monitors, .suggestedOptions = env.availableOutputs},
-          "monitor output display screen hud overlay"
-      );
-      e.visibleWhen = [](const Config& c) { return !c.osd.followFocusedOutput; };
-      entries.push_back(std::move(e));
-    }
+    entries.back().visibleWhen = [](const Config& c) { return !c.osd.followFocusedOutput; };
     auto kindRows = generateSchemaEntries(noctalia::config::schema::osdKindsSchema(), cfg.osd.kinds, {"osd", "kinds"});
     for (auto& row : kindRows) {
       const std::string& key = row.path.back();
@@ -139,11 +123,7 @@ namespace settings {
         const BarConfig* b = findBar(c, barName);
         return b != nullptr && b->marginEdge == 0;
       };
-      entries.push_back(makeEntry(
-          section, "shape", tr("settings.schema.bar.border.label"), tr("settings.schema.bar.border.description"),
-          path("border"), colorSpecPicker(bar.border), "outline color", true
-      ));
-      for (const auto* key : {"border_width", "islands", "background_opacity"}) {
+      for (const auto* key : {"border", "border_width", "islands", "background_opacity"}) {
         appendRow(entries, barRows, key);
       }
       if (env.backgroundEffectBlurSupported) {
@@ -189,55 +169,14 @@ namespace settings {
             "font text weight"
         ));
       }
-      appendRow(entries, barRows, "widget_spacing");
-      entries.push_back(makeEntry(
-          section, "widgets", tr("settings.schema.bar.widget-color.label"),
-          tr("settings.schema.bar.widget-color.description"), path("color"), colorSpecPicker(bar.widgetColor, true),
-          "color foreground", true
-      ));
-      entries.push_back(makeEntry(
-          section, "widgets", tr("settings.schema.bar.widget-icon-color.label"),
-          tr("settings.schema.bar.widget-icon-color.description"), path("icon_color"),
-          colorSpecPicker(bar.widgetIconColor, true), "color icon", true
-      ));
-      for (const auto* key : {"hover_highlight", "show_tooltip", "capsule", "capsule_thickness"}) {
+      for (const auto* key : {"widget_spacing", "color", "icon_color", "hover_highlight", "show_tooltip", "capsule", "capsule_thickness"}) {
         appendRow(entries, barRows, key);
       }
       const SettingVisibility capsuleOn = [on = bar.widgetCapsuleDefault](const Config&) { return on; };
-      {
-        auto e = makeEntry(
-            section, "capsules", tr("settings.schema.bar.capsule-radius.label"),
-            tr("settings.schema.bar.capsule-radius.description"), path("capsule_radius"),
-            OptionalStepperSetting{
-                .value = radiusStepperValue(bar.widgetCapsuleRadius),
-                .minValue = 0,
-                .maxValue = 80,
-                .step = 1,
-                .fallbackValue = radiusStepperFallback(bar.widgetCapsuleRadius),
-                .unsetLabel = tr("common.states.auto"),
-                .customLabel = tr("common.states.custom")
-            },
-            "pill rounded radius", true
-        );
-        entries.push_back(std::move(e));
-      }
-      {
-        auto e = makeEntry(
-            section, "capsules", tr("settings.schema.bar.capsule-fill.label"),
-            tr("settings.schema.bar.capsule-fill.description"), path("capsule_fill"),
-            colorSpecPicker(bar.widgetCapsuleFill), "color pill", true
-        );
-        e.visibleWhen = capsuleOn;
-        entries.push_back(std::move(e));
-      }
-      {
-        auto e = makeEntry(
-            section, "capsules", tr("settings.schema.bar.capsule-foreground.label"),
-            tr("settings.schema.bar.capsule-foreground.description"), path("capsule_foreground"),
-            colorSpecPicker(bar.widgetCapsuleForeground, true), "color foreground pill", true
-        );
-        e.visibleWhen = capsuleOn;
-        entries.push_back(std::move(e));
+      appendRow(entries, barRows, "capsule_radius");
+      for (const auto* key : {"capsule_fill", "capsule_foreground"}) {
+        appendRow(entries, barRows, key);
+        entries.back().visibleWhen = capsuleOn;
       }
       {
         auto e = makeEntry(
@@ -252,20 +191,9 @@ namespace settings {
         appendRow(entries, barRows, key);
         entries.back().visibleWhen = capsuleOn;
       }
-      entries.push_back(makeEntry(
-          section, "widget-list", tr("settings.schema.bar.start-widgets.label"),
-          tr("settings.schema.bar.start-widgets.description"), path("start"), ListSetting{.items = bar.startWidgets},
-          "left"
-      ));
-      entries.push_back(makeEntry(
-          section, "widget-list", tr("settings.schema.bar.center-widgets.label"),
-          tr("settings.schema.bar.center-widgets.description"), path("center"), ListSetting{.items = bar.centerWidgets},
-          "middle"
-      ));
-      entries.push_back(makeEntry(
-          section, "widget-list", tr("settings.schema.bar.end-widgets.label"),
-          tr("settings.schema.bar.end-widgets.description"), path("end"), ListSetting{.items = bar.endWidgets}, "right"
-      ));
+      for (const auto* key : {"start", "center", "end"}) {
+        appendRow(entries, barRows, key);
+      }
       auto deadZoneRows = generateSchemaEntries(
           noctalia::config::schema::barDeadZoneSchema(), bar.deadZone, std::vector<std::string>{"bar", bar.name, "dead_zone"}
       );
@@ -467,21 +395,9 @@ namespace settings {
           appendRow(entries, ovrRows, key);
           entries.back().visibleWhen = monitorCapsuleOn;
         }
-        entries.push_back(makeEntry(
-            section, "widget-list", tr("settings.schema.bar.start-widgets.label"),
-            tr("settings.schema.bar.start-widgets.description"), monitorPath("start"),
-            ListSetting{.items = ovr.startWidgets.value_or(bar.startWidgets)}, "left"
-        ));
-        entries.push_back(makeEntry(
-            section, "widget-list", tr("settings.schema.bar.center-widgets.label"),
-            tr("settings.schema.bar.center-widgets.description"), monitorPath("center"),
-            ListSetting{.items = ovr.centerWidgets.value_or(bar.centerWidgets)}, "middle"
-        ));
-        entries.push_back(makeEntry(
-            section, "widget-list", tr("settings.schema.bar.end-widgets.label"),
-            tr("settings.schema.bar.end-widgets.description"), monitorPath("end"),
-            ListSetting{.items = ovr.endWidgets.value_or(bar.endWidgets)}, "right"
-        ));
+        for (const auto* key : {"start", "center", "end"}) {
+          appendRow(entries, ovrRows, key);
+        }
         auto ovrDeadZoneRows = generateSchemaEntries(
             noctalia::config::schema::barDeadZoneSchema(), resolved.deadZone,
             std::vector<std::string>{"bar", bar.name, "monitor", ovr.match, "dead_zone"}

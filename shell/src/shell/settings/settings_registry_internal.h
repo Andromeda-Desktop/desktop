@@ -174,7 +174,10 @@ namespace settings {
           break;
         case RowSpec::Kind::Stepper:
           control = StepperSetting{
-              .value = static_cast<int>(value.value_or(std::int64_t{0})),
+              .value = std::clamp(
+                  static_cast<int>(std::lround(noctalia::config::schema::finiteDouble(value).value_or(0.0))),
+                  static_cast<int>(row.range.min.value()), static_cast<int>(row.range.max.value())
+              ),
               .minValue = static_cast<int>(row.range.min.value()),
               .maxValue = static_cast<int>(row.range.max.value()),
               .step = static_cast<int>(row.range.step.value_or(1.0)),

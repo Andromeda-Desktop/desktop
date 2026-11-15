@@ -170,7 +170,8 @@ namespace noctalia::config::schema {
     // Concrete ColorSpec stored as a config string; always emitted. A present
     // non-string value is a hard error (mirrors colorStringValue).
     // Define before all the schema, so colorField can be use when needs.
-    template <typename Struct> Field<Struct> colorField(ColorSpec Struct::* member, std::string_view key) {
+    template <typename Struct>
+    Field<Struct> colorField(ColorSpec Struct::* member, std::string_view key, std::optional<RowSpec> row = std::nullopt) {
       return custom<Struct>(
           key,
           [member, key](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics&) {
@@ -185,7 +186,8 @@ namespace noctalia::config::schema {
           },
           [member, key](toml::table& tbl, const Struct& in) {
             tbl.insert_or_assign(key, colorSpecToConfigString(in.*member));
-          }
+          },
+          std::move(row)
       );
     }
   } // namespace
@@ -268,7 +270,10 @@ namespace noctalia::config::schema {
                 RowSpec::Kind::Slider)
         ),
         field(&OsdConfig::border, "border", osd("shell.osd-border", "outline border")),
-        colorField(&OsdConfig::borderColor, "border_color"),
+        colorField(
+            &OsdConfig::borderColor, "border_color",
+            osd("shell.osd-border-color", "outline border color theme accent", RowSpec::Kind::Color)
+        ),
         field(
             &OsdConfig::borderWidth, "border_width", kOsdBorderWidthRange,
             osd("shell.osd-border-width", "outline border width thickness", RowSpec::Kind::Slider)
@@ -285,7 +290,14 @@ namespace noctalia::config::schema {
             &OsdConfig::offsetY, "offset_y", Range<std::int64_t>{0, std::nullopt},
             offset("shell.osd-offset-y", "hud overlay vertical margin")
         ),
-        field(&OsdConfig::monitors, "monitors"),
+        field(
+            &OsdConfig::monitors, "monitors",
+            [&] {
+              auto row = osd("shell.osd-monitors", "monitor output display screen hud overlay", RowSpec::Kind::List);
+              row.options = RowSpec::Options::Outputs;
+              return row;
+            }()
+        ),
         subTable(&OsdConfig::kinds, "kinds", osdKindsSchema()),
     };
     return s;
@@ -420,7 +432,14 @@ namespace noctalia::config::schema {
         ),
         pathStringField(&LockscreenConfig::wallpaper, "wallpaper"),
         field(&LockscreenConfig::wallpaperOutputs, "wallpaper_outputs"),
-        field(&LockscreenConfig::monitors, "monitors"),
+        field(
+            &LockscreenConfig::monitors, "monitors",
+            [&] {
+              auto row = lock("lockscreen.monitors", "lock screen monitor output connector", RowSpec::Kind::List);
+              row.options = RowSpec::Options::Outputs;
+              return row;
+            }()
+        ),
     };
     return s;
   }
@@ -1584,6 +1603,16 @@ namespace noctalia::config::schema {
               },
               [](toml::table& tbl, const WallpaperAutomationConfig& in) {
                 tbl.insert_or_assign("order", std::string(enumToKey(kWallpaperAutomationOrders, in.order)));
+              },
+              RowSpec{
+                  .kind = RowSpec::Kind::Select,
+                  .section = "wallpaper",
+                  .group = "automation",
+                  .label = "wallpaper.automation-order",
+                  .tags = "rotate slideshow",
+                  .segmented = true,
+                  .choices = {{"random", "settings.options.wallpaper.order.random"},
+                              {"alphabetical", "settings.options.wallpaper.order.alphabetical"}},
               }
           ),
           field(
@@ -1746,7 +1775,18 @@ namespace noctalia::config::schema {
 
   const Schema<IdleConfig>& idleSchema() {
     static const Schema<IdleConfig> s = {
-        field(&IdleConfig::preActionFadeSeconds, "pre_action_fade_seconds", Range<float>{0.0F, 120.0F}),
+        field(
+            &IdleConfig::preActionFadeSeconds, "pre_action_fade_seconds", Range<float>{0.0F, 120.0F},
+            RowSpec{
+                .kind = RowSpec::Kind::Stepper,
+                .section = "power",
+                .group = "idle",
+                .label = "idle.pre-action-fade",
+                .tags = "idle fade dim seconds overlay",
+                .suffix = "s",
+                .range = {0.0, 30.0, 1.0},
+            }
+        ),
         // behavior_order is emitted here (vector order); the actual reorder runs
         // last, after the behavior map has been read.
         custom<IdleConfig>(
@@ -2006,7 +2046,15 @@ namespace noctalia::config::schema {
               &ShellConfig::PanelConfig::borders, "borders",
               RowSpec{.section = "panels", .group = "effects", .tags = "outline border shell edge"}
           ),
-          colorField(&ShellConfig::PanelConfig::borderColor, "border_color"),
+          colorField(
+              &ShellConfig::PanelConfig::borderColor, "border_color",
+              RowSpec{
+                  .kind = RowSpec::Kind::Color,
+                  .section = "panels",
+                  .group = "effects",
+                  .tags = "outline border color theme accent",
+              }
+          ),
           field(
               &ShellConfig::PanelConfig::borderWidth, "border_width", kPanelBorderWidthRange,
               RowSpec{
@@ -2052,6 +2100,14 @@ namespace noctalia::config::schema {
               },
               [](toml::table& tbl, const ShellConfig::PanelConfig& in) {
                 tbl.insert_or_assign("floating_layer", in.floatingLayer);
+              },
+              RowSpec{
+                  .kind = RowSpec::Kind::Select,
+                  .section = "panels",
+                  .group = "general",
+                  .tags = "floating detached panel layer shell z-order input method popup fullscreen",
+                  .segmented = true,
+                  .choices = {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}},
               }
           ),
           enumField(
@@ -2309,7 +2365,16 @@ namespace noctalia::config::schema {
                   .tags = "launcher ignore disable mouse input pointer keyboard only",
               }
           ),
-          field(&ShellConfig::LauncherConfig::pinned, "pinned"),
+          field(
+              &ShellConfig::LauncherConfig::pinned, "pinned",
+              RowSpec{
+                  .kind = RowSpec::Kind::List,
+                  .section = "launcher",
+                  .group = "pinned-apps",
+                  .label = "panels.launcher-pinned-apps",
+                  .tags = "launcher pinned apps",
+              }
+          ),
           field(
               &ShellConfig::LauncherConfig::fetchExchangeRates, "fetch_exchange_rates",
               RowSpec{
@@ -3180,7 +3245,16 @@ namespace noctalia::config::schema {
                 .segmented = true,
             }
         ),
-        colorSpecField(&WallpaperConfig::fillColor, "fill_color", /*alwaysEmit=*/true),
+        colorSpecField(
+            &WallpaperConfig::fillColor, "fill_color", /*alwaysEmit=*/true,
+            RowSpec{
+                .kind = RowSpec::Kind::Color,
+                .section = "wallpaper",
+                .group = "general",
+                .tags = "background solid color",
+                .allowNone = true,
+            }
+        ),
         enumArrayField(
             &WallpaperConfig::transitions, "transition", kWallpaperTransitions, std::optional<WallpaperTransition>{}
         ),
@@ -3389,7 +3463,16 @@ namespace noctalia::config::schema {
                 .tags = "calendar events duplicate merge",
             }
         ),
-        field(&CalendarConfig::dedupeIgnorePatterns, "dedupe_ignore_patterns"),
+        field(
+            &CalendarConfig::dedupeIgnorePatterns, "dedupe_ignore_patterns",
+            RowSpec{
+                .kind = RowSpec::Kind::List,
+                .section = "calendar",
+                .group = "general",
+                .label = "services.calendar-dedupe-ignore-patterns",
+                .tags = "calendar events duplicate merge regex title",
+            }
+        ),
         field(
             &CalendarConfig::refreshMinutes, "refresh_minutes", kRefreshMinutesRange,
             RowSpec{
@@ -4053,7 +4136,10 @@ namespace noctalia::config::schema {
             &DockConfig::compositorBlur, "compositor_blur",
             RowSpec{.section = "dock", .group = "effects", .tags = "blur background effect"}
         ),
-        colorField(&DockConfig::border, "border"),
+        colorField(
+            &DockConfig::border, "border",
+            RowSpec{.kind = RowSpec::Kind::Color, .section = "dock", .group = "shape", .tags = "outline color", .advanced = true}
+        ),
         field(
             &DockConfig::borderWidth, "border_width", kDockBorderWidthRange,
             RowSpec{
@@ -4156,7 +4242,15 @@ namespace noctalia::config::schema {
                 warnWrongType(tbl, "layer", parentPath, diag, "a string");
               }
             },
-            [](toml::table& tbl, const DockConfig& in) { tbl.insert_or_assign("layer", in.layer); }
+            [](toml::table& tbl, const DockConfig& in) { tbl.insert_or_assign("layer", in.layer); },
+            RowSpec{
+                .kind = RowSpec::Kind::Select,
+                .section = "dock",
+                .group = "behavior",
+                .tags = "layer shell z-order",
+                .segmented = true,
+                .choices = {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}},
+            }
         ),
         field(
             &DockConfig::reserveSpace, "reserve_space",
@@ -4250,7 +4344,16 @@ namespace noctalia::config::schema {
             &DockConfig::launcherCustomImageColorize, "launcher_custom_image_colorize",
             RowSpec{.section = "dock", .group = "layout", .tags = "launcher apps image tint color"}
         ),
-        field(&DockConfig::pinned, "pinned"),
+        field(
+            &DockConfig::pinned, "pinned",
+            RowSpec{
+                .kind = RowSpec::Kind::List,
+                .section = "dock",
+                .group = "pinned-apps",
+                .label = "dock.pinned-apps",
+                .tags = "pinned apps dock",
+            }
+        ),
         namedMap<DockConfig, DockMonitorOverride>(
             &DockConfig::monitorOverrides, "monitor", dockMonitorOverrideSchema(),
             [](DockMonitorOverride& out, std::string_view name) {
@@ -4380,7 +4483,10 @@ namespace noctalia::config::schema {
             &BarConfig::islands, "islands",
             RowSpec{.section = "bar", .group = "effects", .tags = "islands floating pills sections"}
         ),
-        colorField(&BarConfig::border, "border"),
+        colorField(
+            &BarConfig::border, "border",
+            RowSpec{.kind = RowSpec::Kind::Color, .section = "bar", .group = "shape", .tags = "outline color", .advanced = true}
+        ),
         field(
             &BarConfig::borderWidth, "border_width", kBarBorderWidthRange,
             RowSpec{
@@ -4489,17 +4595,61 @@ namespace noctalia::config::schema {
         ),
         field(&BarConfig::fontWeight, "font_weight"),
         optionalTrimmedStringField(&BarConfig::fontFamily, "font_family"),
-        field(&BarConfig::startWidgets, "start"),
-        field(&BarConfig::centerWidgets, "center"),
-        field(&BarConfig::endWidgets, "end"),
+        field(
+            &BarConfig::startWidgets, "start",
+            RowSpec{.kind = RowSpec::Kind::List, .section = "bar", .group = "widget-list", .label = "bar.start-widgets", .tags = "left"}
+        ),
+        field(
+            &BarConfig::centerWidgets, "center",
+            RowSpec{.kind = RowSpec::Kind::List, .section = "bar", .group = "widget-list", .label = "bar.center-widgets", .tags = "middle"}
+        ),
+        field(
+            &BarConfig::endWidgets, "end",
+            RowSpec{.kind = RowSpec::Kind::List, .section = "bar", .group = "widget-list", .label = "bar.end-widgets", .tags = "right"}
+        ),
         field(
             &BarConfig::widgetCapsuleDefault, "capsule",
             RowSpec{.section = "bar", .group = "capsules", .label = "bar.widget-capsules", .tags = "pill"}
         ),
-        colorField(&BarConfig::widgetCapsuleFill, "capsule_fill"),
-        optionalColorField(&BarConfig::widgetCapsuleForeground, "capsule_foreground"),
-        optionalColorField(&BarConfig::widgetColor, "color"),
-        optionalColorField(&BarConfig::widgetIconColor, "icon_color"),
+        colorField(
+            &BarConfig::widgetCapsuleFill, "capsule_fill",
+            RowSpec{.kind = RowSpec::Kind::Color, .section = "bar", .group = "capsules", .tags = "color pill", .advanced = true}
+        ),
+        optionalColorField(
+            &BarConfig::widgetCapsuleForeground, "capsule_foreground",
+            RowSpec{
+                .kind = RowSpec::Kind::Color,
+                .section = "bar",
+                .group = "capsules",
+                .tags = "color foreground pill",
+                .advanced = true,
+                .allowNone = true,
+            }
+        ),
+        optionalColorField(
+            &BarConfig::widgetColor, "color",
+            RowSpec{
+                .kind = RowSpec::Kind::Color,
+                .section = "bar",
+                .group = "widgets",
+                .label = "bar.widget-color",
+                .tags = "color foreground",
+                .advanced = true,
+                .allowNone = true,
+            }
+        ),
+        optionalColorField(
+            &BarConfig::widgetIconColor, "icon_color",
+            RowSpec{
+                .kind = RowSpec::Kind::Color,
+                .section = "bar",
+                .group = "widgets",
+                .label = "bar.widget-icon-color",
+                .tags = "color icon",
+                .advanced = true,
+                .allowNone = true,
+            }
+        ),
         arrayOf<BarConfig, BarCapsuleGroupStyle>(
             &BarConfig::widgetCapsuleGroups, "capsule_group", barCapsuleGroupSchema(),
             [](const BarCapsuleGroupStyle& g) { return !g.id.empty(); }
@@ -4508,7 +4658,18 @@ namespace noctalia::config::schema {
             &BarConfig::widgetCapsulePadding, "capsule_padding", kBarCapsulePaddingRange,
             capsuleSlider("pill inset", {0.0F, 48.0F, 1.0F})
         ),
-        optionalDoubleField(&BarConfig::widgetCapsuleRadius, "capsule_radius", kBarCapsuleRadiusRangeD),
+        optionalDoubleField(
+            &BarConfig::widgetCapsuleRadius, "capsule_radius", kBarCapsuleRadiusRangeD,
+            RowSpec{
+                .kind = RowSpec::Kind::OptionalStepper,
+                .section = "bar",
+                .group = "capsules",
+                .tags = "pill rounded radius",
+                .advanced = true,
+                .unsetLabelKey = "common.states.auto",
+                .fallback = 8,
+            }
+        ),
         field(
             &BarConfig::widgetCapsuleOpacity, "capsule_opacity", kBarOpacityRange,
             capsuleSlider("pill alpha", {0.0F, 1.0F, 0.01F})

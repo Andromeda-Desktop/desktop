@@ -54,7 +54,7 @@ namespace settings {
     }
     const SettingVisibility lockscreenOn = [](const Config& c) { return c.lockscreen.enabled; };
     auto lockscreenRows =
-        generateSchemaEntries(noctalia::config::schema::lockscreenSchema(), cfg.lockscreen, {"lockscreen"});
+        generateSchemaEntries(noctalia::config::schema::lockscreenSchema(), cfg.lockscreen, {"lockscreen"}, &env);
     appendRow(entries, lockscreenRows, "enabled");
     const auto lockRow = [&](std::string_view key, const SettingVisibility& visibleWhen) {
       appendRow(entries, lockscreenRows, key);
@@ -136,16 +136,7 @@ namespace settings {
     }
     lockRow("blur_intensity", lockscreenOn);
     lockRow("tint_intensity", lockscreenOn);
-    {
-      auto e = makeEntry(
-          SettingsSection::Security, "lock-screen", tr("settings.schema.lockscreen.monitors.label"),
-          tr("settings.schema.lockscreen.monitors.description"), {"lockscreen", "monitors"},
-          ListSetting{.items = cfg.lockscreen.monitors, .suggestedOptions = env.availableOutputs},
-          "lock screen monitor output connector"
-      );
-      e.visibleWhen = lockscreenOn;
-      entries.push_back(std::move(e));
-    }
+    lockRow("monitors", lockscreenOn);
     {
       auto widgetRows = generateSchemaEntries(
           noctalia::config::schema::lockscreenWidgetsSchema(), cfg.lockscreenWidgets, {"lockscreen_widgets"}
