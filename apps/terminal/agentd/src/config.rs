@@ -1,11 +1,10 @@
-use std::{env, path::PathBuf, time::Duration};
+use std::{env, path::PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct Config {
     pub model: String,
     pub allowed_tools: Vec<String>,
     pub max_turns: Option<u32>,
-    pub timeout: Duration,
     pub store_dir: PathBuf,
     pub claude_dir: PathBuf,
 }
@@ -28,12 +27,6 @@ impl Config {
             max_turns: env::var("CLAUDE_ACP_MAX_TURNS")
                 .ok()
                 .and_then(|s| s.parse().ok()),
-            timeout: Duration::from_millis(
-                env::var("CLAUDE_ACP_TIMEOUT")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(300_000),
-            ),
             store_dir: env::var_os("CLAUDE_ACP_STORE_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| home.join(".local/share/andromeda/agentd")),

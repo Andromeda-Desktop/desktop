@@ -1,14 +1,17 @@
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use agent_client_protocol::schema::v1::{
     self as acp, ContentBlock, ContentChunk, PermissionOption, PermissionOptionKind,
     RequestPermissionRequest, SessionConfigOption, SessionConfigOptionCategory,
     SessionConfigSelectOption, SessionNotification, SessionUpdate, StopReason, TextContent,
-    ToolCall, ToolCallContent, ToolCallStatus, ToolKind,
+    ToolCall, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolKind,
 };
 use agent_client_protocol::{Client, ConnectionTo, Error};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -19,7 +22,7 @@ use uuid::Uuid;
 use crate::{
     config::Config,
     history::History,
-    runner::{self, Event, McpServer, PermissionRequest, RunError, RunRequest},
+    runner::{self, Event, McpServer, PermissionRequest, RunError, RunRequest, Stop},
     store::{Session, Store},
     validation,
 };
@@ -278,37 +281,105 @@ impl Bridge {
 
         let mut tool_counter = 0;
         let seen_tool_ids = Mutex::new(HashSet::new());
+        let plan_tool_ids = Mutex::new(HashSet::new());
+        let emitted = AtomicBool::new(false);
         let result = {
             let mut on_event = |event: Event| match event {
-                Event::Text(text) => notify(
-                    &connection,
-                    &id,
-                    SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
-                        TextContent::new(text),
-                    ))),
-                ),
-                Event::Thought(text) => notify(
-                    &connection,
-                    &id,
-                    SessionUpdate::AgentThoughtChunk(ContentChunk::new(ContentBlock::Text(
-                        TextContent::new(text),
-                    ))),
-                ),
+                Event::Text(text) => {
+                    emitted.store(true, Ordering::Relaxed);
+                    notify(
+                        &connection,
+                        &id,
+                        SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
+                            TextContent::new(text),
+                        ))),
+                    )
+                }
+                Event::Thought(text) => {
+                    emitted.store(true, Ordering::Relaxed);
+                    notify(
+                        &connection,
+                        &id,
+                        SessionUpdate::AgentThoughtChunk(ContentChunk::new(ContentBlock::Text(
+                            TextContent::new(text),
+                        ))),
+                    )
+                }
                 Event::Tool {
                     id: tool_use_id,
                     name,
                     input,
                 } => {
+                    emitted.store(true, Ordering::Relaxed);
                     tool_counter += 1;
                     let tool_id = tool_use_id.unwrap_or_else(|| format!("call_{tool_counter}"));
-                    seen_tool_ids.lock().unwrap().insert(tool_id.clone());
-                    let tool = ToolCall::new(tool_id, tool_title(&name, &input))
+                    if name == "TodoWrite" {
+                        plan_tool_ids.lock().unwrap().insert(tool_id);
+                        notify(&connection, &id, SessionUpdate::Plan(plan(&input)));
+                        return;
+                    }
+                    if !seen_tool_ids.lock().unwrap().insert(tool_id.clone()) {
+                        return;
+                    }
+                    let view = tool_view(&name, &input);
+                    let tool = ToolCall::new(tool_id, view.title)
                         .name(name)
-                        .kind(ToolKind::Execute)
-                        .status(ToolCallStatus::Completed)
+                        .kind(view.kind)
+                        .status(ToolCallStatus::InProgress)
+                        .locations(view.locations)
+                        .content(view.content)
                         .raw_input(input);
                     notify(&connection, &id, SessionUpdate::ToolCall(tool));
                 }
+                Event::ToolResult {
+                    id: tool_id,
+                    output,
+                    is_error,
+                } => {
+                    if plan_tool_ids.lock().unwrap().contains(&tool_id) {
+                        return;
+                    }
+                    let fields = acp::ToolCallUpdateFields::new()
+                        .status(if is_error {
+                            ToolCallStatus::Failed
+                        } else {
+                            ToolCallStatus::Completed
+                        })
+                        .raw_output(json!({ "output": output_tail(&output) }));
+                    notify(
+                        &connection,
+                        &id,
+                        SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(tool_id, fields)),
+                    );
+                }
+                Event::Init {
+                    slash_commands,
+                    mode,
+                } => {
+                    let commands = slash_commands
+                        .into_iter()
+                        .map(|name| acp::AvailableCommand::new(name, ""))
+                        .collect();
+                    notify(
+                        &connection,
+                        &id,
+                        SessionUpdate::AvailableCommandsUpdate(acp::AvailableCommandsUpdate::new(
+                            commands,
+                        )),
+                    );
+                    if let Some(mode) = mode {
+                        notify(
+                            &connection,
+                            &id,
+                            SessionUpdate::CurrentModeUpdate(acp::CurrentModeUpdate::new(mode)),
+                        );
+                    }
+                }
+                Event::Usage { used, size } => notify(
+                    &connection,
+                    &id,
+                    SessionUpdate::UsageUpdate(acp::UsageUpdate::new(used, size.unwrap_or(0))),
+                ),
             };
             let on_permission = |permission: PermissionRequest| -> runner::PermissionFuture {
                 let tool_id = if permission.tool_use_id.is_empty() {
@@ -322,22 +393,23 @@ impl Bridge {
                 } else {
                     title
                 };
-                let content = vec![ToolCallContent::from(ContentBlock::Text(TextContent::new(
-                    permission_content(&permission, &session.cwd),
-                )))];
+                let view = tool_view(&permission.name, &permission.input);
+                let content = view.content;
                 let fields = acp::ToolCallUpdateFields::new()
                     .title(title.clone())
                     .name(permission.name.clone())
-                    .kind(ToolKind::Execute)
+                    .kind(view.kind)
                     .status(ToolCallStatus::Pending)
+                    .locations(view.locations.clone())
                     .raw_input(permission.input.clone())
                     .content(content.clone());
                 let update = acp::ToolCallUpdate::new(tool_id.clone(), fields);
                 if seen_tool_ids.lock().unwrap().insert(tool_id.clone()) {
                     let tool = ToolCall::new(tool_id.clone(), title)
                         .name(permission.name.clone())
-                        .kind(ToolKind::Execute)
+                        .kind(view.kind)
                         .status(ToolCallStatus::Pending)
+                        .locations(view.locations)
                         .raw_input(permission.input.clone())
                         .content(content);
                     notify(&connection, &id, SessionUpdate::ToolCall(tool));
@@ -362,7 +434,12 @@ impl Bridge {
                 }
                 options.push(PermissionOption::new(
                     "reject_once",
-                    "Reject once",
+                    "Reject",
+                    PermissionOptionKind::RejectOnce,
+                ));
+                options.push(PermissionOption::new(
+                    "reject_note",
+                    "Reject with a note",
                     PermissionOptionKind::RejectOnce,
                 ));
                 let request = connection.send_request(RequestPermissionRequest::new(
@@ -392,7 +469,7 @@ impl Bridge {
                         SessionUpdate::ToolCallUpdate(acp::ToolCallUpdate::new(
                             tool_id,
                             acp::ToolCallUpdateFields::new().status(if approved {
-                                ToolCallStatus::Completed
+                                ToolCallStatus::InProgress
                             } else {
                                 ToolCallStatus::Failed
                             }),
@@ -417,9 +494,17 @@ impl Bridge {
                                 "decisionClassification": "user_permanent"
                             })
                         }
+                        // The turn stops so the user's next prompt is the note.
+                        Some("reject_note") => json!({
+                            "behavior": "deny",
+                            "message": "The user rejected this tool call and will say what to do instead.",
+                            "interrupt": true,
+                            "toolUseID": permission.tool_use_id,
+                            "decisionClassification": "user_reject"
+                        }),
                         _ => json!({
                             "behavior": "deny",
-                            "message": "Permission denied in Zed",
+                            "message": "The user rejected this tool call.",
                             "toolUseID": permission.tool_use_id,
                             "decisionClassification": "user_reject"
                         }),
@@ -442,7 +527,7 @@ impl Bridge {
                 )
                 .await
                 {
-                    Err(RunError::Failed(_)) if !session.native => {
+                    Err(RunError::Failed(_)) if !session.native && !emitted.load(Ordering::Relaxed) => {
                         self.store.clear_persisted(Path::new(&session.cwd));
                         runner::run(
                             &self.config,
@@ -479,19 +564,15 @@ impl Bridge {
                         ),
                     );
                 }
-                Ok(acp::PromptResponse::new(StopReason::EndTurn))
+                Ok(acp::PromptResponse::new(match result.stop {
+                    Stop::EndTurn => StopReason::EndTurn,
+                    Stop::MaxTokens => StopReason::MaxTokens,
+                    Stop::MaxTurns => StopReason::MaxTurnRequests,
+                    Stop::Refusal => StopReason::Refusal,
+                }))
             }
             Err(RunError::Cancelled) => Ok(acp::PromptResponse::new(StopReason::Cancelled)),
-            Err(RunError::Failed(error)) => {
-                notify(
-                    &connection,
-                    &id,
-                    SessionUpdate::AgentMessageChunk(ContentChunk::new(ContentBlock::Text(
-                        TextContent::new(format!("Error: {error}")),
-                    ))),
-                );
-                Ok(acp::PromptResponse::new(StopReason::EndTurn))
-            }
+            Err(RunError::Failed(error)) => Err(Error::new(-32603, error)),
         }
     }
 
@@ -629,17 +710,134 @@ fn tool_title(name: &str, input: &Value) -> String {
     }
 }
 
-fn permission_content(permission: &PermissionRequest, cwd: &Path) -> String {
-    let detail = match permission.input.get("command").and_then(Value::as_str) {
-        Some(command) if permission.name == "Bash" => {
-            format!("Command:\n\n{command}")
-        }
-        _ => format!(
-            "Arguments:\n\n{}",
-            serde_json::to_string_pretty(&permission.input).unwrap_or_default()
-        ),
+struct ToolView {
+    title: String,
+    kind: ToolKind,
+    locations: Vec<ToolCallLocation>,
+    content: Vec<ToolCallContent>,
+}
+
+/// How a Claude Code tool call reads in the client: its kind, the files it touches and,
+/// for edits, the diff (old_string/new_string hunks; a Write is a new-file diff).
+fn tool_view(name: &str, input: &Value) -> ToolView {
+    let path = input
+        .get("file_path")
+        .or_else(|| input.get("notebook_path"))
+        .or_else(|| input.get("path"))
+        .and_then(Value::as_str);
+    let location = |line: Option<u64>| -> Vec<ToolCallLocation> {
+        path.map(|p| {
+            vec![ToolCallLocation::new(p).line(line.and_then(|l| u32::try_from(l).ok()))]
+        })
+        .unwrap_or_default()
     };
-    format!("Working directory: {}\n\n{detail}", cwd.display())
+    let diff = |old: Option<&str>, new: &str| -> ToolCallContent {
+        let mut diff = acp::Diff::new(path.unwrap_or(""), new);
+        if let Some(old) = old {
+            diff = diff.old_text(old.to_owned());
+        }
+        diff.into()
+    };
+    let text = |key: &str| input.get(key).and_then(Value::as_str);
+    let (kind, locations, content) = match name {
+        "Read" => (ToolKind::Read, location(input["offset"].as_u64()), vec![]),
+        "Write" => (
+            ToolKind::Edit,
+            location(None),
+            vec![diff(None, text("content").unwrap_or(""))],
+        ),
+        "Edit" => (
+            ToolKind::Edit,
+            location(None),
+            vec![diff(
+                Some(text("old_string").unwrap_or("")),
+                text("new_string").unwrap_or(""),
+            )],
+        ),
+        "MultiEdit" => (
+            ToolKind::Edit,
+            location(None),
+            input["edits"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|edit| {
+                    diff(
+                        Some(edit["old_string"].as_str().unwrap_or("")),
+                        edit["new_string"].as_str().unwrap_or(""),
+                    )
+                })
+                .collect(),
+        ),
+        "NotebookEdit" => (ToolKind::Edit, location(None), vec![]),
+        "Bash" | "BashOutput" | "KillShell" => (ToolKind::Execute, vec![], vec![]),
+        "Grep" | "Glob" | "LS" => (ToolKind::Search, location(None), vec![]),
+        "WebFetch" | "WebSearch" => (ToolKind::Fetch, vec![], vec![]),
+        "Task" | "Agent" => (ToolKind::Think, vec![], vec![]),
+        "ExitPlanMode" | "EnterPlanMode" => (ToolKind::SwitchMode, vec![], vec![]),
+        _ => (ToolKind::Other, vec![], vec![]),
+    };
+    let title = match name {
+        "Grep" | "Glob" => {
+            let pattern = text("pattern").unwrap_or("");
+            match path {
+                Some(p) => format!("{pattern} in {p}"),
+                None => pattern.to_owned(),
+            }
+        }
+        "WebFetch" => text("url").unwrap_or(name).to_owned(),
+        "WebSearch" => text("query").unwrap_or(name).to_owned(),
+        "Task" | "Agent" => text("description").unwrap_or(name).to_owned(),
+        _ => tool_title(name, input),
+    };
+    ToolView {
+        title,
+        kind,
+        locations,
+        content,
+    }
+}
+
+/// A TodoWrite call as an ACP plan (full replace).
+fn plan(input: &Value) -> acp::Plan {
+    acp::Plan::new(
+        input["todos"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|todo| {
+                let status = match todo["status"].as_str() {
+                    Some("completed") => acp::PlanEntryStatus::Completed,
+                    Some("in_progress") => acp::PlanEntryStatus::InProgress,
+                    _ => acp::PlanEntryStatus::Pending,
+                };
+                acp::PlanEntry::new(
+                    todo["content"].as_str().unwrap_or(""),
+                    acp::PlanEntryPriority::Medium,
+                    status,
+                )
+            })
+            .collect(),
+    )
+}
+
+/// At most the last 200 lines and 32 KiB of a tool's output: the client shows a tail.
+fn output_tail(output: &str) -> String {
+    const MAX_LINES: usize = 200;
+    const MAX_BYTES: usize = 32 * 1024;
+    let start = output
+        .rmatch_indices('\n')
+        .nth(MAX_LINES - 1)
+        .map_or(0, |(i, _)| i + 1);
+    let mut tail = &output[start..];
+    if tail.len() > MAX_BYTES {
+        let mut cut = tail.len() - MAX_BYTES;
+        while !tail.is_char_boundary(cut) {
+            cut += 1;
+        }
+        tail = &tail[cut..];
+    }
+    tail.to_owned()
 }
 
 fn run_request<'a>(

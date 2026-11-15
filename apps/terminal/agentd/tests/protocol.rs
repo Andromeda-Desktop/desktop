@@ -309,6 +309,7 @@ IFS= read -r answer || exit 12
 for part in '"type":"control_response"' '"request_id":"permission-1"' '"behavior":"allow"' '"toolUseID":"tool-1"'; do
   case "$answer" in *"$part"*) ;; *) exit 13;; esac
 done
+printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","content":"touched"}]}}'
 printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"approved"}]}}'
 printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43a2","result":"done"}'
 "#,
@@ -349,11 +350,8 @@ printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43
         permission["params"]["toolCall"]["rawInput"]["command"],
         "touch /tmp/claude-approval-test"
     );
-    let content = permission["params"]["toolCall"]["content"][0]["content"]["text"]
-        .as_str()
-        .unwrap();
-    assert!(content.contains("touch /tmp/claude-approval-test"));
-    assert!(content.contains(project.to_str().unwrap()));
+    assert_eq!(permission["params"]["toolCall"]["kind"], "execute");
+    assert_eq!(permission["params"]["toolCall"]["status"], "pending");
     send(
         &mut child,
         json!({"jsonrpc":"2.0","id":permission["id"],"result":{
@@ -586,5 +584,113 @@ printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43
             .iter()
             .any(|v| v["params"]["update"]["content"]["text"] == "resumed")
     );
+    child.kill().await.unwrap();
+}
+
+#[tokio::test]
+async fn claude_events_become_typed_updates_and_stop_reasons() {
+    let temp = tempfile::tempdir().unwrap();
+    let bin = temp.path().join("bin");
+    let project = temp.path().join("project");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    fake_claude(
+        &bin,
+        r#"
+IFS= read -r initial || exit 10
+printf '%s\n' '{"type":"system","subtype":"init","session_id":"79ed6f89-b693-4192-8169-4554404b43a2","slash_commands":["compact","review"],"permissionMode":"default"}'
+printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":4000,"cache_creation_input_tokens":90},"content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"content":"Write the test","status":"completed"},{"content":"Fix it","status":"in_progress"}]}},{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"/p/a.cpp","old_string":"old","new_string":"new"}}]}}'
+printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"},{"type":"tool_result","tool_use_id":"t2","content":[{"type":"text","text":"no such file"}],"is_error":true}]}}'
+printf '%s\n' '{"type":"assistant","message":{"stop_reason":"refusal","content":[{"type":"text","text":"I cannot help with that."}]}}'
+printf '%s\n' '{"type":"result","subtype":"success","session_id":"79ed6f89-b693-4192-8169-4554404b43a2","result":"","modelUsage":{"m":{"contextWindow":200000}}}'
+"#,
+    );
+    let (mut child, mut reader) = start(&bin, &temp.path().join("store"));
+    initialize(&mut child, &mut reader).await;
+    send(&mut child, json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":project,"mcpServers":[]}})).await;
+    let (new, _) = response(&mut reader, 2).await;
+    let id = new["result"]["sessionId"].as_str().unwrap().to_owned();
+    send(
+        &mut child,
+        json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+            "sessionId":id,"prompt":[{"type":"text","text":"go"}]
+        }}),
+    )
+    .await;
+    let (prompt, updates) = response(&mut reader, 3).await;
+    assert_eq!(prompt["result"]["stopReason"], "refusal");
+    let of = |kind: &str| -> Vec<&Value> {
+        updates
+            .iter()
+            .map(|v| &v["params"]["update"])
+            .filter(|u| u["sessionUpdate"] == kind)
+            .collect()
+    };
+    let commands = of("available_commands_update");
+    assert_eq!(commands[0]["availableCommands"][1]["name"], "review");
+    let plan = of("plan");
+    assert_eq!(plan[0]["entries"][1]["status"], "in_progress");
+    let calls = of("tool_call");
+    assert_eq!(calls.len(), 1, "TodoWrite is a plan, not a tool call");
+    assert_eq!(calls[0]["kind"], "edit");
+    assert_eq!(calls[0]["locations"][0]["path"], "/p/a.cpp");
+    assert_eq!(calls[0]["content"][0]["type"], "diff");
+    assert_eq!(calls[0]["content"][0]["oldText"], "old");
+    assert_eq!(calls[0]["content"][0]["newText"], "new");
+    let results = of("tool_call_update");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0]["toolCallId"], "t2");
+    assert_eq!(results[0]["status"], "failed");
+    assert_eq!(results[0]["rawOutput"]["output"], "no such file");
+    let usage = of("usage_update");
+    assert_eq!(usage[0]["used"], 4100);
+    assert_eq!(usage[0]["size"], 200000);
+    child.kill().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_run_that_fails_after_output_is_an_error_and_is_not_rerun() {
+    let temp = tempfile::tempdir().unwrap();
+    let bin = temp.path().join("bin");
+    let project = temp.path().join("project");
+    let runs = temp.path().join("runs");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    fake_claude(
+        &bin,
+        &format!(
+            r#"
+IFS= read -r initial || exit 10
+echo run >> '{}'
+case "$*" in *--resume*) ;; *)
+printf '%s\n' '{{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43a2","result":"ok"}}'
+exit 0;; esac
+printf '%s\n' '{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"t1","name":"Bash","input":{{"command":"touch x"}}}}]}}}}'
+echo 'boom' >&2
+exit 3
+"#,
+            runs.display()
+        ),
+    );
+    let (mut child, mut reader) = start(&bin, &temp.path().join("store"));
+    initialize(&mut child, &mut reader).await;
+    send(&mut child, json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":project,"mcpServers":[]}})).await;
+    let (new, _) = response(&mut reader, 2).await;
+    let id = new["result"]["sessionId"].as_str().unwrap().to_owned();
+    let mut prompt = async |n: i64| {
+        send(
+            &mut child,
+            json!({"jsonrpc":"2.0","id":n,"method":"session/prompt","params":{
+                "sessionId":id,"prompt":[{"type":"text","text":"go"}]
+            }}),
+        )
+        .await;
+        response(&mut reader, n).await.0
+    };
+    let first = prompt(3).await;
+    assert_eq!(first["result"]["stopReason"], "end_turn");
+    let second = prompt(4).await;
+    assert!(second["error"]["message"].as_str().unwrap().contains("boom"));
+    assert_eq!(fs::read_to_string(&runs).unwrap().lines().count(), 2);
     child.kill().await.unwrap();
 }

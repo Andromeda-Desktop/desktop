@@ -6,7 +6,6 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::Command,
     sync::watch,
-    time::{Instant, timeout_at},
 };
 
 use crate::config::Config;
@@ -28,6 +27,27 @@ pub enum Event {
         name: String,
         input: Value,
     },
+    /// The output of a tool call; `output` is the text of the tool_result block.
+    ToolResult {
+        id: String,
+        output: String,
+        is_error: bool,
+    },
+    /// The system init message: the slash commands and permission mode of this run.
+    Init {
+        slash_commands: Vec<String>,
+        mode: Option<String>,
+    },
+    /// Tokens in context after the last model call, and the context window when known.
+    Usage { used: u64, size: Option<u64> },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stop {
+    EndTurn,
+    MaxTokens,
+    MaxTurns,
+    Refusal,
 }
 
 #[derive(Debug)]
@@ -68,6 +88,7 @@ pub struct RunRequest<'a> {
 
 pub struct RunResult {
     pub session_id: String,
+    pub stop: Stop,
 }
 
 async fn write_message(
@@ -167,23 +188,20 @@ pub async fn run(
         String::from_utf8_lossy(&bytes).into_owned()
     });
     let mut lines = BufReader::new(stdout).lines();
-    let deadline = Instant::now() + config.timeout;
     let mut session_id = String::new();
     let mut saw_text_delta = false;
     let mut saw_thought_delta = false;
     let mut result_error = None;
+    let mut stop = Stop::EndTurn;
+    let mut used = 0u64;
 
     loop {
         let line = tokio::select! {
-            line = timeout_at(deadline, lines.next_line()) => match line {
-                Ok(Ok(line)) => line,
-                Ok(Err(e)) => {
+            line = lines.next_line() => match line {
+                Ok(line) => line,
+                Err(e) => {
                     let _ = child.kill().await;
                     return Err(RunError::Failed(format!("failed reading claude output: {e}")));
-                }
-                Err(_) => {
-                    let _ = child.kill().await;
-                    return Err(RunError::Failed("claude timed out".into()));
                 }
             },
             _ = cancelled.changed() => {
@@ -286,7 +304,51 @@ pub async fn run(
                 }
                 _ => {}
             },
+            Some("system") if value["subtype"] == "init" => {
+                on_event(Event::Init {
+                    slash_commands: value["slash_commands"]
+                        .as_array()
+                        .map(|names| {
+                            names
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_owned)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    mode: value["permissionMode"].as_str().map(str::to_owned),
+                });
+            }
+            Some("user") => {
+                for block in value["message"]["content"].as_array().into_iter().flatten() {
+                    if block["type"] != "tool_result" {
+                        continue;
+                    }
+                    let Some(id) = block["tool_use_id"].as_str() else {
+                        continue;
+                    };
+                    on_event(Event::ToolResult {
+                        id: id.to_owned(),
+                        output: tool_result_text(&block["content"]),
+                        is_error: block["is_error"].as_bool().unwrap_or(false),
+                    });
+                }
+            }
             Some("assistant") => {
+                let usage = &value["message"]["usage"];
+                let tokens = ["input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"]
+                    .iter()
+                    .filter_map(|key| usage[key].as_u64())
+                    .sum::<u64>();
+                if tokens > 0 {
+                    used = tokens;
+                }
+                match value["message"]["stop_reason"].as_str() {
+                    Some("max_tokens") => stop = Stop::MaxTokens,
+                    Some("refusal") => stop = Stop::Refusal,
+                    Some(_) => stop = Stop::EndTurn,
+                    None => {}
+                }
                 if let Some(blocks) = value["message"]["content"].as_array() {
                     for block in blocks {
                         match block["type"].as_str() {
@@ -316,6 +378,7 @@ pub async fn run(
                 saw_text_delta = false;
                 saw_thought_delta = false;
             }
+            Some("result") if value["subtype"] == "error_max_turns" => stop = Stop::MaxTurns,
             Some("result") if value["is_error"].as_bool() == Some(true) => {
                 result_error = Some(
                     value["result"]
@@ -327,19 +390,19 @@ pub async fn run(
             _ => {}
         }
         if event["type"] == "result" {
+            if used > 0 {
+                let size = value["modelUsage"]
+                    .as_object()
+                    .and_then(|models| models.values().find_map(|m| m["contextWindow"].as_u64()));
+                on_event(Event::Usage { used, size });
+            }
             break;
         }
     }
     drop(stdin);
     let status = tokio::select! {
-        status = timeout_at(deadline, child.wait()) => match status {
-            Ok(Ok(status)) => status,
-            Ok(Err(e)) => return Err(RunError::Failed(format!("claude process failed: {e}"))),
-            Err(_) => {
-                let _ = child.kill().await;
-                return Err(RunError::Failed("claude timed out".into()));
-            }
-        },
+        status = child.wait() => status
+            .map_err(|e| RunError::Failed(format!("claude process failed: {e}")))?,
         _ = cancelled.changed() => {
             if *cancelled.borrow() {
                 let _ = child.kill().await;
@@ -359,5 +422,18 @@ pub async fn run(
             stderr.trim()
         )));
     }
-    Ok(RunResult { session_id })
+    Ok(RunResult { session_id, stop })
+}
+
+/// The text of a tool_result `content`: a string, or text blocks joined by newlines.
+fn tool_result_text(content: &Value) -> String {
+    match content {
+        Value::String(text) => text.clone(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter_map(|block| block["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
 }
