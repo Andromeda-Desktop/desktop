@@ -86,25 +86,33 @@ namespace term {
       const float button = Tokens::sizeControlM * s;
       auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s,
                               .width = width});
-      auto top = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-      top->addChild(ui::searchCapsule({
-          .out = &m_search,
-          .placeholder = "Sessions",
-          .height = Tokens::sizeControlL,
-          .scale = s,
-          .value = m_filter,
-          .flexGrow = 1.0F,
-          .onChange = [this](const std::string& text) { setFilter(text); },
-          .onSubmit = [this](const std::string& /*text*/) { openFirstMatch(); },
-          .onKeyEvent = [this](std::uint32_t sym, std::uint32_t /*mods*/) {
-            constexpr std::uint32_t kEscape = 0xff1b;
-            if (sym != kEscape) {
-              return false;
-            }
-            focusGrid();
-            return true;
-          },
-      }));
+      // Under the window's compact width the sidebar is an icon rail (as in Files): "+" and session symbols only.
+      m_rail = width < 120.0F * s;
+      auto top = ui::row({.align = FlexAlign::Center, .justify = m_rail ? FlexJustify::Center : FlexJustify::Start,
+                          .gap = Tokens::spaceP8 * s});
+      m_search = nullptr;
+      if (m_rail) {
+        m_filter.clear();
+      } else {
+        top->addChild(ui::searchCapsule({
+            .out = &m_search,
+            .placeholder = "Sessions",
+            .height = Tokens::sizeControlL,
+            .scale = s,
+            .value = m_filter,
+            .flexGrow = 1.0F,
+            .onChange = [this](const std::string& text) { setFilter(text); },
+            .onSubmit = [this](const std::string& /*text*/) { openFirstMatch(); },
+            .onKeyEvent = [this](std::uint32_t sym, std::uint32_t /*mods*/) {
+              constexpr std::uint32_t kEscape = 0xff1b;
+              if (sym != kEscape) {
+                return false;
+              }
+              focusGrid();
+              return true;
+            },
+        }));
+      }
       top->addChild(ui::button({.out = &m_newButton, .glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s,
                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("New"),
                                 .radius = button / 2.0F, .height = button,
@@ -463,6 +471,7 @@ namespace term {
 
   std::unique_ptr<StatusRow> TerminalWindow::makeRow(std::uint64_t id) {
     auto row = std::make_unique<StatusRow>(m_window.uiScale());
+    row->setRail(m_rail);
     row->setOnClick([this, id] {
       apply(session_event::Show{id});
       focusGrid();

@@ -93,6 +93,7 @@ namespace term {
     SessionList m_sessions;
     std::string m_filter; // the sidebar search text
     Input* m_search = nullptr;
+    bool m_rail = false; // the sidebar is an icon rail
     Flex* m_agentBar = nullptr; // title band pills of the shown agent session
     void syncAgentBar();
     void fillAgentBar();

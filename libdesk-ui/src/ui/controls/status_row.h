@@ -28,6 +28,8 @@ public:
   void setData(const Data& data);
   void setTime(const std::string& time);
   void setOnClick(std::function<void()> callback);
+  // An icon rail (narrow window): the symbol alone, centred; the name becomes its tooltip.
+  void setRail(bool rail);
 
 protected:
   void doLayout(Renderer& renderer) override;
@@ -43,6 +45,8 @@ private:
   Label* m_name = nullptr;
   Label* m_status = nullptr;
   Label* m_time = nullptr;
+  Node* m_text = nullptr;
+  bool m_rail = false;
   InputArea* m_area = nullptr;
   std::function<void()> m_onClick;
 };

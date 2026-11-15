@@ -24,7 +24,7 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   text->addChild(ui::label({.out = &m_status, .fontSize = Tokens::typeFootnote.size * s,
                             .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                             .ellipsize = TextEllipsize::End}));
-  addChild(std::move(text));
+  m_text = addChild(std::move(text));
   addChild(ui::label({.out = &m_time, .fontSize = Tokens::typeFootnote.size * s, .fontFeatures = std::string("tnum"),
                       .maxLines = 1}));
   auto area = ui::inputArea({.participatesInLayout = false});
@@ -47,6 +47,9 @@ void StatusRow::setData(const Data& data) {
   m_status->setVisible(!data.status.empty());
   m_status->setParticipatesInLayout(!data.status.empty());
   m_time->setText(data.time);
+  if (m_rail) {
+    m_area->setTooltip(data.name);
+  }
   applyState();
   markLayoutDirty();
 }
@@ -56,6 +59,17 @@ void StatusRow::setTime(const std::string& time) {
   if (m_time->setText(time)) {
     markLayoutDirty();
   }
+}
+
+void StatusRow::setRail(bool rail) {
+  m_rail = rail;
+  setJustify(rail ? FlexJustify::Center : FlexJustify::Start);
+  for (Node* node : {m_text, static_cast<Node*>(m_time)}) {
+    node->setVisible(!rail);
+    node->setParticipatesInLayout(!rail);
+  }
+  m_area->setTooltip(rail ? m_data.name : std::string());
+  markLayoutDirty();
 }
 
 void StatusRow::setOnClick(std::function<void()> callback) { m_onClick = std::move(callback); }
