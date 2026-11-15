@@ -90,6 +90,9 @@ control_center.shortcuts
 control_center.show_avatar_border
 control_center.show_session_button
 control_center.show_shortcut_labels
+desktop_icons.enabled
+desktop_icons.snap_to_grid
+desktop_icons.start_corner
 desktop_widgets.enabled
 dock.active_monitor_only
 dock.active_opacity
