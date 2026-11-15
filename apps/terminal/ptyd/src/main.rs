@@ -1,6 +1,6 @@
 //! andromeda-ptyd: holds terminal ptys so their programs outlive the terminal window process.
 //!
-//! Usage: andromeda-ptyd [--socket PATH] [--relaunch PROGRAM ARGS...]
+//! Usage: andromeda-ptyd [--socket PATH] [--snapshot-at BYTES] [--relaunch PROGRAM ARGS...]
 //! Without --socket it takes the listening socket from systemd (LISTEN_FDS=1, fd 3).
 
 use std::os::fd::{FromRawFd, OwnedFd};
@@ -26,6 +26,13 @@ fn main() {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--socket" => socket = args.next(),
+            "--snapshot-at" => match args.next().and_then(|v| v.parse().ok()) {
+                Some(bytes) => config.snapshot_at = bytes,
+                None => {
+                    eprintln!("andromeda-ptyd: --snapshot-at needs a byte count");
+                    std::process::exit(2);
+                }
+            },
             "--relaunch" => config.relaunch = Some(args.by_ref().collect()),
             other => {
                 eprintln!("andromeda-ptyd: unknown argument {other}");

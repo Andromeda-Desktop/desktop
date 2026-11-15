@@ -23,13 +23,29 @@ if not _ghostty.found()
   )
 endif
 
-_core = static_library('terminal_core', 'src/pty_session.cpp',
+_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/holder_client.cpp',
   dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'], cpp_args: _warnings)
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads')])
 
+# The pty holder (Rust) builds with cargo into this build dir, as andromeda-preview's helper.
+cargo = find_program('cargo')
+_cargo_profile = get_option('buildtype') == 'debug' ? 'debug' : 'release'
+_ptyd = custom_target('andromeda-ptyd',
+  output: 'andromeda-ptyd',
+  build_always_stale: true,
+  console: true,
+  command: [
+    'sh', '-c', '"$1" build --quiet --locked $2 --manifest-path "$3" --target-dir "$4" && cp "$4/$5/andromeda-ptyd" "$6"',
+    '_', cargo, _cargo_profile == 'release' ? '--release' : '--profile=dev',
+    meson.current_source_dir() / 'ptyd' / 'Cargo.toml', meson.current_build_dir() / 'cargo-target', _cargo_profile,
+    '@OUTPUT@',
+  ],
+  install: true,
+  install_dir: get_option('libexecdir') / 'andromeda',
+)
 test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
-  dependencies: _core_dep, cpp_args: _warnings), timeout: 30)
+  dependencies: _core_dep, cpp_args: _warnings), args: [_ptyd.full_path()], depends: _ptyd, timeout: 30)
 
 cpp = meson.get_compiler('cpp')
 if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
@@ -51,22 +67,6 @@ executable('andromeda-terminal',
   install: true,
 )
 
-# The pty holder (Rust) builds with cargo into this build dir, as andromeda-preview's helper.
-cargo = find_program('cargo')
-_cargo_profile = get_option('buildtype') == 'debug' ? 'debug' : 'release'
-custom_target('andromeda-ptyd',
-  output: 'andromeda-ptyd',
-  build_always_stale: true,
-  console: true,
-  command: [
-    'sh', '-c', '"$1" build --quiet --locked $2 --manifest-path "$3" --target-dir "$4" && cp "$4/$5/andromeda-ptyd" "$6"',
-    '_', cargo, _cargo_profile == 'release' ? '--release' : '--profile=dev',
-    meson.current_source_dir() / 'ptyd' / 'Cargo.toml', meson.current_build_dir() / 'cargo-target', _cargo_profile,
-    '@OUTPUT@',
-  ],
-  install: true,
-  install_dir: get_option('libexecdir') / 'andromeda',
-)
 _user_unit_dir = get_option('prefix') / 'lib' / 'systemd' / 'user'
 configure_file(input: 'data/andromeda-ptyd.service.in', output: 'andromeda-ptyd.service',
   configuration: {

@@ -1,5 +1,13 @@
+#include "holder_client.h"
 #include "pty_session.h"
 
+#include <cstdlib>
+#include <filesystem>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -105,13 +113,117 @@ void keyInputReachesProgram() {
   CHECK(screenText(s).find("got:typed") != std::string::npos);
 }
 
-} // namespace
+std::string vtText(GhosttyTerminal t) {
+  GhosttyFormatter f = nullptr;
+  ghostty_formatter_terminal_new(nullptr, &f, t);
+  GhosttyFormatterFormat emit = GHOSTTY_FORMATTER_FORMAT_VT;
+  ghostty_formatter_set(f, GHOSTTY_FORMATTER_OPT_EMIT, &emit);
+  std::uint8_t* p = nullptr;
+  std::size_t n = 0;
+  ghostty_formatter_format_alloc(f, nullptr, &p, &n);
+  std::string out(reinterpret_cast<char*>(p), n);
+  ghostty_free(nullptr, p, n);
+  ghostty_formatter_free(f);
+  return out;
+}
 
-int main() {
-  transitionsKeepInvariants();
+GhosttyTerminalScreen activeScreen(GhosttyTerminal t) {
+  GhosttyTerminalScreen screen{};
+  ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
+  return screen;
+}
+
+// The terminal process dies while a full-screen program sits mid escape sequence on the alternate screen.
+// A new process reattaches: its screen must equal a terminal that parsed the whole stream in one go.
+void reattachRestoresScreenMidEscape() {
+  const std::string before = "\033[?1049h\033[2J\033[HTOP\r\n\033[3";
+  const std::string after = "1mRED";
+  const std::string script = "stty -echo; printf '\\033[?1049h\\033[2J\\033[HTOP\\n\\033[3'; read x; printf '1mRED'; exec cat";
+  int ids[2];
+  CHECK(::pipe(ids) == 0);
+  const pid_t crashing = ::fork();
+  if (crashing == 0) {
+    Waker w;
+    auto* s = new PtySession([&] { w.wake(); });
+    if (!s->spawn({.argv = {"/bin/sh", "-c", script}}) || !s->heldId()) _exit(2);
+    // The holder asks for a snapshot after every output (--snapshot-at 1): wait for the one at the escape.
+    if (!w.waitFor(*s, [&] { return s->savedOffset() == before.size(); })) _exit(3);
+    const std::uint64_t id = *s->heldId();
+    (void)::write(ids[1], &id, sizeof id);
+    _exit(0);
+  }
+  ::close(ids[1]);
+  std::uint64_t id = 0;
+  CHECK(::read(ids[0], &id, sizeof id) == sizeof id);
+  ::close(ids[0]);
+  int status = 0;
+  ::waitpid(crashing, &status, 0);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
+  Waker w;
+  PtySession s([&] { w.wake(); });
+  bool attached = false;
+  for (int i = 0; i < 500 && !attached; ++i) {
+    // The holder sees the hang-up of the dead process asynchronously.
+    const auto orphans = holder::listOrphans();
+    attached = std::find(orphans.begin(), orphans.end(), id) != orphans.end() && s.attach(id, 80, 24, 8, 16);
+    if (!attached) ::usleep(10'000);
+  }
+  CHECK(attached);
+  if (!attached) return;
+  s.write({reinterpret_cast<const std::uint8_t*>("x\n"), 2});
+  CHECK(w.waitFor(s, [&] { return screenText(s).find("RED") != std::string::npos; }));
+
+  GhosttyTerminal reference = nullptr;
+  ghostty_terminal_new(nullptr, &reference, 80, 24);
+  const std::string all = before + after;
+  ghostty_terminal_vt_write(reference, reinterpret_cast<const std::uint8_t*>(all.data()), all.size());
+  s.withTerminal([&](GhosttyTerminal t) {
+    CHECK(activeScreen(t) == GHOSTTY_TERMINAL_SCREEN_ALTERNATE);
+    CHECK(vtText(t) == vtText(reference));
+    return 0;
+  });
+  ghostty_terminal_free(reference);
+}
+
+void runSessionTests() {
   runsCommandAndReportsExit();
   answersDeviceStatusReport();
   keyInputReachesProgram();
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+  transitionsKeepInvariants();
+  ::setenv("ANDROMEDA_PTYD_SOCKET", "/nonexistent/ptyd.sock", 1);
+  runSessionTests();
+
+  if (argc < 2) {
+    std::fprintf(stderr, "FAIL usage: pty_session_test <andromeda-ptyd>\n");
+    return 1;
+  }
+  char dir[] = "/tmp/pty-session-test-XXXXXX";
+  CHECK(::mkdtemp(dir) != nullptr);
+  const std::string sock = std::string(dir) + "/ptyd.sock";
+  const pid_t holderPid = ::fork();
+  if (holderPid == 0) {
+    ::execl(argv[1], argv[1], "--socket", sock.c_str(), "--snapshot-at", "1", nullptr);
+    _exit(127);
+  }
+  ::setenv("ANDROMEDA_PTYD_SOCKET", sock.c_str(), 1);
+  for (int i = 0; i < 500 && !std::filesystem::exists(sock); ++i) ::usleep(10'000);
+  CHECK(std::filesystem::exists(sock));
+  runSessionTests();
+  {
+    Waker w;
+    PtySession s([&] { w.wake(); });
+    CHECK(s.spawn({.argv = {"/bin/true"}}) && s.heldId().has_value());
+  }
+  reattachRestoresScreenMidEscape();
+  ::kill(holderPid, SIGTERM);
+  ::waitpid(holderPid, nullptr, 0);
+  std::filesystem::remove_all(dir);
   if (failures == 0) std::puts("pty_session: all passed");
   return failures == 0 ? 0 : 1;
 }

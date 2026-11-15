@@ -1,4 +1,5 @@
 #include "pty_session.h"
+#include "holder_client.h"
 #include <algorithm>
 
 #include <cerrno>
@@ -35,6 +36,12 @@ constexpr std::size_t kReadChunk = 64 * 1024;
 constexpr std::size_t kInboundMax = 128 * 1024;
 // History limit, as the Ghostty app; the library default keeps a single page.
 constexpr std::size_t kScrollbackBytes = 10'000'000;
+// An unfinished escape sequence up to this size survives a holder snapshot.
+constexpr std::size_t kContinuationBytes = 1u << 20;
+// A program killed by the loss of its holder reports as killed by SIGHUP.
+constexpr int kHolderLostStatus = 128 + SIGHUP;
+
+int exitCode(int status) { return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status); }
 
 winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
   winsize ws{};
@@ -62,9 +69,13 @@ PtySession::~PtySession() {
   m_inReady.notify_all();
   if (m_io.joinable()) m_io.join();
   if (m_parser.joinable()) m_parser.join();
-  if (m_pid > 0 && m_state.load() == SessionState::Running) {
-    ::kill(m_pid, SIGHUP);
-    ::waitpid(m_pid, nullptr, 0);
+  if (auto* local = std::get_if<LocalChild>(&m_link); local && m_state.load() == SessionState::Running) {
+    ::kill(local->pid, SIGHUP);
+    ::waitpid(local->pid, nullptr, 0);
+  }
+  if (auto* held = std::get_if<HeldSession>(&m_link)) {
+    (void)holder::sendAll(held->socket, holder::encodeClose(held->id));
+    ::close(held->socket);
   }
   if (m_master >= 0) ::close(m_master);
   if (m_eventFd >= 0) ::close(m_eventFd);
@@ -76,17 +87,58 @@ void PtySession::apply(SessionEvent event) {
   if (next) m_state = *next;
 }
 
-bool PtySession::spawn(const SpawnOptions& o) {
-  if (m_state.load() != SessionState::Idle || o.argv.empty()) return false;
-  if (ghostty_terminal_new(nullptr, &m_terminal, o.cols, o.rows) != GHOSTTY_SUCCESS) return false;
-  ghostty_terminal_resize(m_terminal, o.cols, o.rows, o.cellWidthPx, o.cellHeightPx);
+bool PtySession::newTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
+  if (ghostty_terminal_new(nullptr, &m_terminal, cols, rows) != GHOSTTY_SUCCESS) return false;
+  ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
+  configureTerminal();
+  return true;
+}
+
+void PtySession::configureTerminal() {
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_USERDATA, this);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &kScrollbackBytes);
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES, &kContinuationBytes);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void*>(&onWritePty));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_RENDER_HOLD, reinterpret_cast<const void*>(&onRenderHold));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT,
                        reinterpret_cast<const void*>(&onSemanticPrompt));
+}
 
+bool PtySession::spawn(const SpawnOptions& o) {
+  if (m_state.load() != SessionState::Idle || o.argv.empty()) return false;
+  if (!newTerminal(o.cols, o.rows, o.cellWidthPx, o.cellHeightPx)) return false;
+  if (!spawnHeld(o) && !spawnLocal(o)) return false;
+  start();
+  return true;
+}
+
+bool PtySession::spawnHeld(const SpawnOptions& o) {
+  const int sock = holder::connectSocket();
+  if (sock < 0) return false;
+  std::vector<std::string> env;
+  for (char** e = environ; *e != nullptr; ++e) env.emplace_back(*e);
+  env.insert(env.end(), {"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=andromeda-terminal"});
+  env.insert(env.end(), o.env.begin(), o.env.end());
+  const winsize ws = makeWinsize(o.cols, o.rows, o.cellWidthPx, o.cellHeightPx);
+  const holder::WinSize size{ws.ws_col, ws.ws_row, ws.ws_xpixel, ws.ws_ypixel};
+  int fd = -1;
+  std::optional<holder::Message> reply;
+  if (holder::sendAll(sock, holder::encodeSpawn(1, size, o.cwd, o.argv, env))) {
+    reply = holder::receiveOne(sock, m_sockBuf, fd);
+  }
+  const auto* spawned = reply ? std::get_if<holder::Spawned>(&*reply) : nullptr;
+  if (spawned == nullptr || fd < 0) {
+    if (fd >= 0) ::close(fd);
+    ::close(sock);
+    m_sockBuf.clear();
+    return false;
+  }
+  m_master = fd;
+  m_link = HeldSession{sock, spawned->id};
+  return true;
+}
+
+bool PtySession::spawnLocal(const SpawnOptions& o) {
   std::vector<char*> argv;
   for (const auto& a : o.argv) argv.push_back(const_cast<char*>(a.c_str()));
   argv.push_back(nullptr);
@@ -107,15 +159,73 @@ bool PtySession::spawn(const SpawnOptions& o) {
     ::execvp(argv[0], argv.data());
     _exit(127);
   }
-  m_pid = pid;
   m_master = master;
-  ::fcntl(m_master, F_SETFL, ::fcntl(m_master, F_GETFL) | O_NONBLOCK);
-  ::fcntl(m_master, F_SETFD, FD_CLOEXEC);
+  m_link = LocalChild{pid};
+  return true;
+}
+
+bool PtySession::attach(std::uint64_t id, std::uint16_t cols, std::uint16_t rows, std::uint16_t cw,
+                        std::uint16_t ch) {
+  if (m_state.load() != SessionState::Idle) return false;
+  const int sock = holder::connectSocket();
+  if (sock < 0) return false;
+  int fd = -1;
+  std::optional<holder::Message> reply;
+  if (holder::sendAll(sock, holder::encodeAttach(id))) reply = holder::receiveOne(sock, m_sockBuf, fd);
+  auto* attached = reply ? std::get_if<holder::Attached>(&*reply) : nullptr;
+  if (attached == nullptr) {
+    ::close(sock);
+    m_sockBuf.clear();
+    return false;
+  }
+  // A snapshot from another terminal build may not decode: the tail alone then still shows the latest output.
+  bool restored = false;
+  if (!attached->snapshot.empty()) {
+    GhosttySnapshotDecoder decoder = nullptr;
+    if (ghostty_snapshot_decoder_new_buf(nullptr, &decoder, attached->snapshot.data(), attached->snapshot.size()) ==
+        GHOSTTY_SUCCESS) {
+      ghostty_snapshot_decoder_set(decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_MAX_CONTINUATION_BYTES, &kContinuationBytes);
+      const bool retain = true;
+      ghostty_snapshot_decoder_set(decoder, GHOSTTY_SNAPSHOT_DECODER_OPT_RETAIN_CONTINUATION, &retain);
+      restored = ghostty_snapshot_decoder_decode(decoder, &m_terminal) == GHOSTTY_SUCCESS;
+      ghostty_snapshot_decoder_free(decoder);
+    }
+  }
+  if (restored) {
+    ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
+    configureTerminal();
+  } else if (!newTerminal(cols, rows, cw, ch)) {
+    if (fd >= 0) ::close(fd);
+    ::close(sock);
+    return false;
+  }
+  m_inbound = std::move(attached->tail);
+  m_parsed = attached->offset;
+  m_received = attached->offset + m_inbound.size();
+  m_master = fd;
+  m_link = HeldSession{sock, id};
+  if (m_master >= 0) {
+    const winsize ws = makeWinsize(cols, rows, cw, ch);
+    ::ioctl(m_master, TIOCSWINSZ, &ws);
+  }
+  start();
+  return true;
+}
+
+std::optional<std::uint64_t> PtySession::heldId() const {
+  if (const auto* held = std::get_if<HeldSession>(&m_link)) return held->id;
+  return std::nullopt;
+}
+
+void PtySession::start() {
+  if (m_master >= 0) {
+    ::fcntl(m_master, F_SETFL, ::fcntl(m_master, F_GETFL) | O_NONBLOCK);
+    ::fcntl(m_master, F_SETFD, FD_CLOEXEC);
+  }
   m_eventFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   apply(SessionEvent::Spawned);
   m_io = std::thread([this] { ioLoop(); });
   m_parser = std::thread([this] { parseLoop(); });
-  return true;
 }
 
 void PtySession::write(std::span<const std::uint8_t> bytes) {
@@ -166,7 +276,84 @@ void PtySession::flushOutbound() {
   m_outbound.erase(m_outbound.begin(), m_outbound.begin() + static_cast<std::ptrdiff_t>(done));
 }
 
+void PtySession::endInput(std::optional<int> heldStatus) {
+  {
+    std::lock_guard lock(m_inMutex);
+    m_heldStatus = heldStatus;
+    m_inEof = true;
+  }
+  m_inReady.notify_one();
+}
+
+void PtySession::ioLoopHeld(const HeldSession& held) {
+  std::vector<int> fds;
+  for (;;) {
+    bool wantOut;
+    {
+      std::lock_guard lock(m_outMutex);
+      wantOut = !m_outbound.empty() && m_master >= 0;
+    }
+    bool full;
+    {
+      std::lock_guard lock(m_inMutex);
+      full = m_inbound.size() >= kInboundMax;
+    }
+    // A full queue leaves the socket unread; the holder then stops reading the pty, so the program blocks.
+    pollfd pfds[3] = {{full ? -1 : held.socket, POLLIN, 0}, {wantOut ? m_master : -1, POLLOUT, 0}, {m_eventFd, POLLIN, 0}};
+    if (::poll(pfds, 3, -1) < 0) {
+      if (errno == EINTR) continue;
+      return endInput(kHolderLostStatus << 8);
+    }
+    if (pfds[2].revents & POLLIN) {
+      std::uint64_t v;
+      (void)::read(m_eventFd, &v, sizeof v);
+      if (m_stopping) return;
+    }
+    if (pfds[1].revents & POLLOUT || pfds[2].revents & POLLIN) flushOutbound();
+    if (full || !(pfds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+    long n;
+    while ((n = holder::receive(held.socket, m_sockBuf, fds, true)) > 0) {
+      if (m_sockBuf.size() >= kReadChunk) break;
+    }
+    for (int fd : fds) ::close(fd);
+    fds.clear();
+    std::size_t used = 0;
+    std::vector<std::uint8_t> output;
+    std::optional<int> exited;
+    bool broken = n == 0 || (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK);
+    for (;;) {
+      std::optional<holder::Message> msg;
+      const auto took = holder::decode(std::span(m_sockBuf).subspan(used), msg);
+      if (!took) broken = true;
+      if (!took || *took == 0) break;
+      used += *took;
+      if (auto* o = std::get_if<holder::Output>(&*msg)) {
+        // A gap means a lost frame: the screen would be wrong from here on.
+        if (o->offset != m_received) {
+          broken = true;
+          break;
+        }
+        m_received += o->bytes.size();
+        output.insert(output.end(), o->bytes.begin(), o->bytes.end());
+      } else if (std::holds_alternative<holder::WantSnapshot>(*msg)) {
+        m_snapshotWanted = true;
+      } else if (auto* e = std::get_if<holder::Exited>(&*msg)) {
+        exited = e->status;
+      }
+    }
+    m_sockBuf.erase(m_sockBuf.begin(), m_sockBuf.begin() + static_cast<std::ptrdiff_t>(used));
+    {
+      std::lock_guard lock(m_inMutex);
+      m_inbound.insert(m_inbound.end(), output.begin(), output.end());
+    }
+    m_inReady.notify_one();
+    if (exited) return endInput(exited);
+    if (broken) return endInput(kHolderLostStatus << 8);
+  }
+}
+
 void PtySession::ioLoop() {
+  if (const auto* held = std::get_if<HeldSession>(&m_link)) return ioLoopHeld(*held);
   std::vector<std::uint8_t> buf(kReadChunk);
   for (;;) {
     bool wantOut;
@@ -209,13 +396,24 @@ void PtySession::ioLoop() {
       continue;
     }
     if (n < 0 && (errno == EAGAIN || errno == EINTR)) continue;
-    {
-      std::lock_guard lock(m_inMutex);
-      m_inEof = true;
-    }
-    m_inReady.notify_one();
-    return;
+    return endInput(std::nullopt);
   }
+}
+
+void PtySession::sendSnapshot(const HeldSession& held) {
+  std::uint8_t* blob = nullptr;
+  std::size_t len = 0;
+  GhosttyResult result;
+  {
+    std::lock_guard lock(m_termMutex);
+    result = ghostty_snapshot_encode_alloc(m_terminal, nullptr, &blob, &len);
+  }
+  if (result != GHOSTTY_SUCCESS) return;
+  {
+    std::lock_guard lock(m_sockMutex);
+    if (holder::sendAll(held.socket, holder::encodeSnapshot(held.id, m_parsed, {blob, len}))) m_savedOffset = m_parsed;
+  }
+  ghostty_free(nullptr, blob, len);
 }
 
 void PtySession::parseLoop() {
@@ -224,9 +422,9 @@ void PtySession::parseLoop() {
     bool wasFull;
     {
       std::unique_lock lock(m_inMutex);
-      m_inReady.wait(lock, [this] { return m_stopping || m_inEof || !m_inbound.empty(); });
+      m_inReady.wait(lock, [this] { return m_stopping || m_inEof || !m_inbound.empty() || m_snapshotWanted; });
       if (m_stopping) return;
-      if (m_inbound.empty()) break;
+      if (m_inbound.empty() && m_inEof) break;
       wasFull = m_inbound.size() >= kInboundMax;
       work.clear();
       work.swap(m_inbound);
@@ -242,13 +440,22 @@ void PtySession::parseLoop() {
         ghostty_terminal_vt_write(m_terminal, work.data() + at, len);
       }
       m_bytesRead += len;
+      m_parsed += len;
       flushOutbound();
       if (!m_renderHeld.load()) signalWake();
     }
+    if (const auto* held = std::get_if<HeldSession>(&m_link); held && m_snapshotWanted.exchange(false)) {
+      sendSnapshot(*held);
+    }
   }
-  int status = 0;
-  ::waitpid(m_pid, &status, 0);
-  m_exitStatus = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+  if (const auto* local = std::get_if<LocalChild>(&m_link)) {
+    int status = 0;
+    ::waitpid(local->pid, &status, 0);
+    m_exitStatus = exitCode(status);
+  } else {
+    std::lock_guard lock(m_inMutex);
+    m_exitStatus = exitCode(m_heldStatus.value_or(kHolderLostStatus << 8));
+  }
   apply(SessionEvent::ChildExited);
   signalWake();
 }

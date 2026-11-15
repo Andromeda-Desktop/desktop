@@ -10,7 +10,9 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <sys/types.h>
 #include <thread>
+#include <variant>
 #include <vector>
 
 namespace term {
@@ -41,6 +43,8 @@ struct SpawnOptions {
 
 // One shell or program on a PTY. A reader thread drains the PTY into a bounded queue while a parser
 // thread feeds the terminal, so the program keeps writing during a parse; the UI thread reads terminal state through withTerminal() once per frame.
+// The pty lives in andromeda-ptyd when it is reachable, so the program outlives a crash of this process; the reader
+// then reads the holder socket, and keys and window size still go straight to a dup of the pty master.
 class PtySession {
 public:
   // Called on the IO thread when new state is ready, at most once until takeWake().
@@ -53,6 +57,11 @@ public:
   PtySession& operator=(const PtySession&) = delete;
 
   bool spawn(const SpawnOptions& options);
+  // Takes over an orphaned holder session (holder::listOrphans) and restores its screen.
+  bool attach(std::uint64_t id, std::uint16_t cols, std::uint16_t rows, std::uint16_t cellWidthPx,
+              std::uint16_t cellHeightPx);
+  // The holder session id, or nullopt when the pty is local.
+  std::optional<std::uint64_t> heldId() const;
   void write(std::span<const std::uint8_t> bytes);
   void resize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cellWidthPx, std::uint16_t cellHeightPx);
 
@@ -69,10 +78,28 @@ public:
   SessionState state() const { return m_state.load(); }
   std::optional<int> exitStatus() const;
   std::uint64_t bytesRead() const { return m_bytesRead.load(); }
+  // Output offset of the last snapshot sent to the holder: a reattach replays only the output after it.
+  std::uint64_t savedOffset() const { return m_savedOffset.load(); }
 
 private:
+  struct LocalChild {
+    pid_t pid;
+  };
+  struct HeldSession {
+    int socket;
+    std::uint64_t id;
+  };
+
+  bool newTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cellWidthPx, std::uint16_t cellHeightPx);
+  void configureTerminal();
+  bool spawnHeld(const SpawnOptions& options);
+  bool spawnLocal(const SpawnOptions& options);
+  void start();
   void ioLoop();
+  void ioLoopHeld(const HeldSession& held);
   void parseLoop();
+  void sendSnapshot(const HeldSession& held);
+  void endInput(std::optional<int> heldStatus);
   void signalWake();
   void flushOutbound();
   void queueOutbound(std::span<const std::uint8_t> bytes);
@@ -87,9 +114,17 @@ private:
   GhosttyTerminal m_terminal = nullptr;
   std::mutex m_termMutex;
 
+  // Set before the threads start and fixed after.
+  std::variant<std::monostate, LocalChild, HeldSession> m_link;
+  // Local: the pty master. Held: a dup of the holder's master, for writes and TIOCSWINSZ only.
   int m_master = -1;
   int m_eventFd = -1;
-  int m_pid = -1;
+  // Holder socket bytes not yet decoded; the reader thread's after start().
+  std::vector<std::uint8_t> m_sockBuf;
+  // Output offsets: received by the reader thread, parsed by the parser thread.
+  std::uint64_t m_received = 0;
+  std::uint64_t m_parsed = 0;
+  std::mutex m_sockMutex;
   std::thread m_io;
   std::thread m_parser;
 
@@ -98,6 +133,8 @@ private:
   std::condition_variable m_inReady;
   std::vector<std::uint8_t> m_inbound;
   bool m_inEof = false;
+  // Held: the wait status the holder reported, set with m_inEof.
+  std::optional<int> m_heldStatus;
 
   std::mutex m_outMutex;
   std::vector<std::uint8_t> m_outbound;
@@ -107,7 +144,9 @@ private:
   std::atomic<bool> m_wakePending{false};
   std::atomic<bool> m_renderHeld{false};
   std::atomic<bool> m_stopping{false};
+  std::atomic<bool> m_snapshotWanted{false};
   std::atomic<std::uint64_t> m_bytesRead{0};
+  std::atomic<std::uint64_t> m_savedOffset{0};
 };
 
 } // namespace term
