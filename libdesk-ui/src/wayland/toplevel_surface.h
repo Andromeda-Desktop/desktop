@@ -47,6 +47,7 @@ public:
 
   void setClosedCallback(std::function<void()> callback);
   void setMinSize(std::uint32_t minWidth, std::uint32_t minHeight);
+  void setTitle(const std::string& title);
   void beginMove(std::uint32_t serial);
   void beginResize(std::uint32_t serial, std::uint32_t edges);
   void setMaximized(bool maximized);

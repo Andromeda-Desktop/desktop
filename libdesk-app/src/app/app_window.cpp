@@ -561,6 +561,9 @@ void AppWindow::saveGeometry() {
 
 void AppWindow::setTitle(std::string title) {
   m_config.title = std::move(title);
+  if (m_surface != nullptr) {
+    m_surface->setTitle(m_config.title);
+  }
   if (m_titleLabel != nullptr && m_titleLabel->setText(m_config.title)) {
     invalidate();
   }

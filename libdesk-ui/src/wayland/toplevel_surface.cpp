@@ -118,6 +118,12 @@ void ToplevelSurface::setMinSize(std::uint32_t minWidth, std::uint32_t minHeight
   }
 }
 
+void ToplevelSurface::setTitle(const std::string& title) {
+  if (m_toplevel != nullptr) {
+    xdg_toplevel_set_title(m_toplevel, title.c_str());
+  }
+}
+
 void ToplevelSurface::beginMove(std::uint32_t serial) {
   if (m_toplevel != nullptr) {
     xdg_toplevel_move(m_toplevel, m_connection.seat(), serial);
