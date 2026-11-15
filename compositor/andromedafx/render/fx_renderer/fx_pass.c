@@ -1137,22 +1137,18 @@ static void light_cache_forget(struct fx_effect_light_cache* cache) {
 }
 
 static void light_cache_release(struct fx_effect_light_cache* cache) {
-  glDeleteFramebuffers(1, &cache->emission_framebuffer);
-  glDeleteTextures(1, &cache->emission_texture);
-  glDeleteFramebuffers(FX_LIGHT_LEVELS + 1, cache->framebuffers);
-  glDeleteTextures(FX_LIGHT_LEVELS + 1, cache->textures);
+  fx_renderer_delete_gl(cache->renderer, FX_GL_FRAMEBUFFER, cache->emission_framebuffer);
+  fx_renderer_delete_gl(cache->renderer, FX_GL_TEXTURE, cache->emission_texture);
+  for (int i = 0; i <= FX_LIGHT_LEVELS; i++) {
+    fx_renderer_delete_gl(cache->renderer, FX_GL_FRAMEBUFFER, cache->framebuffers[i]);
+    fx_renderer_delete_gl(cache->renderer, FX_GL_TEXTURE, cache->textures[i]);
+  }
   light_cache_forget(cache);
 }
 
 // Releases the GL objects in the renderer's context and stops tracking the renderer.
 static void light_cache_detach(struct fx_effect_light_cache* cache) {
-  struct wlr_egl_context previous;
-  if (wlr_egl_make_current(cache->renderer->egl, &previous)) {
-    light_cache_release(cache);
-    wlr_egl_restore_context(&previous);
-  } else {
-    light_cache_forget(cache);
-  }
+  light_cache_release(cache);
   wl_list_remove(&cache->renderer_destroy.link);
   cache->renderer = NULL;
 }
@@ -1946,15 +1942,7 @@ void fx_output_lut_destroy(struct fx_output_lut* lut) {
   wl_list_remove(&lut->link);
   wlr_addon_finish(&lut->addon);
 
-  struct wlr_egl_context prev_ctx;
-  if (wlr_egl_make_current(lut->renderer->egl, &prev_ctx)) {
-    push_fx_debug(lut->renderer);
-    glDeleteTextures(1, &lut->texture);
-    pop_fx_debug(lut->renderer);
-    wlr_egl_restore_context(&prev_ctx);
-  } else {
-    wlr_log(WLR_ERROR, "Failed to activate EGL context while destroying output LUT");
-  }
+  fx_renderer_delete_gl(lut->renderer, FX_GL_TEXTURE, lut->texture);
   free(lut);
 }
 

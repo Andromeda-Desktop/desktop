@@ -383,27 +383,15 @@ void fx_texture_destroy(struct fx_texture* texture) {
   if (texture->buffer != NULL) {
     wlr_buffer_unlock(texture->locked_buffer);
   } else if (texture->slots[0] != NULL) {
-    struct wlr_egl_context prev_ctx;
-    wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx);
-    glDeleteFramebuffers(1, &texture->fbo);
-    wlr_egl_restore_context(&prev_ctx);
+    fx_renderer_delete_gl(texture->fx_renderer, FX_GL_FRAMEBUFFER, texture->fbo);
     // The slot framebuffers own the GL textures.
     for (int i = 0; i < FX_SHM_SLOTS && texture->slots[i] != NULL; ++i) {
       wlr_buffer_drop(texture->slots[i]);
       pixman_region32_fini(&texture->slot_stale[i]);
     }
   } else {
-    struct wlr_egl_context prev_ctx;
-    wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx);
-
-    push_fx_debug(texture->fx_renderer);
-
-    glDeleteTextures(1, &texture->tex);
-    glDeleteFramebuffers(1, &texture->fbo);
-
-    pop_fx_debug(texture->fx_renderer);
-
-    wlr_egl_restore_context(&prev_ctx);
+    fx_renderer_delete_gl(texture->fx_renderer, FX_GL_TEXTURE, texture->tex);
+    fx_renderer_delete_gl(texture->fx_renderer, FX_GL_FRAMEBUFFER, texture->fbo);
   }
 
   free(texture);

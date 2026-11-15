@@ -102,13 +102,7 @@ static void addon_handle_destroy(struct wlr_addon* addon) {
     }
   }
 
-  if (fbos->audio_texture != 0) {
-    struct wlr_egl_context previous;
-    if (wlr_egl_make_current(fbos->renderer->egl, &previous)) {
-      glDeleteTextures(1, &fbos->audio_texture);
-      wlr_egl_restore_context(&previous);
-    }
-  }
+  fx_renderer_delete_gl(fbos->renderer, FX_GL_TEXTURE, fbos->audio_texture);
   clear_effect_buffers(fbos);
   drop_framebuffer(&fbos->sdr_capture_buffer);
   drop_framebuffer(&fbos->blend_buffer);

@@ -127,6 +127,8 @@ static inline void free_shaders(struct fx_renderer* renderer) {
 static void fx_renderer_destroy(struct wlr_renderer* wlr_renderer) {
   struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
   fx_render_thread_destroy(renderer->render_thread);
+  renderer->render_thread = NULL;
+  fx_renderer_collect_gl_garbage(renderer);
   fx_effect_shader_unref(renderer->animation_shadow_horizontal);
   fx_effect_shader_unref(renderer->animation_shadow_vertical);
 
@@ -170,6 +172,7 @@ static void fx_renderer_destroy(struct wlr_renderer* wlr_renderer) {
     close(renderer->drm_fd);
   }
 
+  free(renderer->gl_garbage);
   free(renderer);
 }
 
@@ -484,6 +487,81 @@ void fx_renderer_cancel_kick(struct wlr_renderer* wlr_renderer, void (*done)(voi
   if (renderer->render_thread != NULL) {
     fx_render_thread_cancel(renderer->render_thread, done, data);
   }
+}
+
+static void delete_gl_now(struct fx_renderer* renderer, const struct fx_gl_garbage* item) {
+  switch (item->kind) {
+  case FX_GL_TEXTURE:
+    glDeleteTextures(1, &item->name);
+    break;
+  case FX_GL_FRAMEBUFFER:
+    glDeleteFramebuffers(1, &item->name);
+    break;
+  case FX_GL_RENDERBUFFER:
+    glDeleteRenderbuffers(1, &item->name);
+    break;
+  case FX_GL_BUFFER:
+    glDeleteBuffers(1, &item->name);
+    break;
+  case FX_GL_PROGRAM:
+    glDeleteProgram(item->name);
+    break;
+  case FX_GL_QUERY:
+    renderer->procs.glDeleteQueriesEXT(1, &item->name);
+    break;
+  case FX_GL_EGL_IMAGE:
+    wlr_egl_destroy_image(renderer->egl, item->image);
+    break;
+  }
+}
+
+static void delete_gl(struct fx_renderer* renderer, struct fx_gl_garbage item) {
+  if (fx_renderer_context_home(&renderer->wlr_renderer)) {
+    struct wlr_egl_context previous;
+    if (wlr_egl_make_current(renderer->egl, &previous)) {
+      delete_gl_now(renderer, &item);
+      wlr_egl_restore_context(&previous);
+    }
+    return;
+  }
+  if (renderer->gl_garbage_len == renderer->gl_garbage_cap) {
+    const size_t cap = renderer->gl_garbage_cap == 0 ? 32 : renderer->gl_garbage_cap * 2;
+    struct fx_gl_garbage* items = realloc(renderer->gl_garbage, cap * sizeof(*items));
+    if (items == NULL) {
+      wlr_log(WLR_ERROR, "out of memory: leaking a GL object released while the render thread holds the context");
+      return;
+    }
+    renderer->gl_garbage = items;
+    renderer->gl_garbage_cap = cap;
+  }
+  renderer->gl_garbage[renderer->gl_garbage_len++] = item;
+}
+
+void fx_renderer_delete_gl(struct fx_renderer* renderer, enum fx_gl_object kind, GLuint name) {
+  if (name != 0) {
+    delete_gl(renderer, (struct fx_gl_garbage){.kind = kind, .name = name});
+  }
+}
+
+void fx_renderer_delete_egl_image(struct fx_renderer* renderer, EGLImageKHR image) {
+  if (image != EGL_NO_IMAGE_KHR) {
+    delete_gl(renderer, (struct fx_gl_garbage){.kind = FX_GL_EGL_IMAGE, .image = image});
+  }
+}
+
+void fx_renderer_collect_gl_garbage(struct fx_renderer* renderer) {
+  if (renderer->gl_garbage_len == 0) {
+    return;
+  }
+  struct wlr_egl_context previous;
+  if (!wlr_egl_make_current(renderer->egl, &previous)) {
+    return;
+  }
+  for (size_t i = 0; i < renderer->gl_garbage_len; i++) {
+    delete_gl_now(renderer, &renderer->gl_garbage[i]);
+  }
+  renderer->gl_garbage_len = 0;
+  wlr_egl_restore_context(&previous);
 }
 
 int64_t fx_renderer_busy_since_ns(struct wlr_renderer* wlr_renderer) {

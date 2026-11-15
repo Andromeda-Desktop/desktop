@@ -205,11 +205,7 @@ void fx_effect_shader_unref(struct fx_effect_shader* shader) {
     return;
   }
   if (shader->renderer != NULL) {
-    struct wlr_egl_context previous;
-    if (wlr_egl_make_current(shader->renderer->egl, &previous)) {
-      glDeleteProgram(shader->program);
-      wlr_egl_restore_context(&previous);
-    }
+    fx_renderer_delete_gl(shader->renderer, FX_GL_PROGRAM, shader->program);
     wl_list_remove(&shader->destroy.link);
   }
   free(shader);

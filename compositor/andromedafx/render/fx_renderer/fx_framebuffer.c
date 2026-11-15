@@ -309,21 +309,11 @@ void fx_framebuffer_destroy(struct fx_framebuffer* fx_buffer) {
   wl_list_remove(&fx_buffer->link);
   wlr_addon_finish(&fx_buffer->addon);
 
-  struct wlr_egl_context prev_ctx;
-  wlr_egl_make_current(fx_buffer->renderer->egl, &prev_ctx);
-
-  glDeleteFramebuffers(1, &fx_buffer->fbo);
-  fx_buffer->fbo = -1;
-  glDeleteRenderbuffers(1, &fx_buffer->rbo);
-  fx_buffer->rbo = -1;
-  glDeleteTextures(1, &fx_buffer->tex);
-  fx_buffer->tex = -1;
-  glDeleteRenderbuffers(1, &fx_buffer->sb);
-  fx_buffer->sb = -1;
-
-  wlr_egl_destroy_image(fx_buffer->renderer->egl, fx_buffer->image);
-
-  wlr_egl_restore_context(&prev_ctx);
+  fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_FRAMEBUFFER, fx_buffer->fbo);
+  fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_RENDERBUFFER, fx_buffer->rbo);
+  fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_TEXTURE, fx_buffer->tex);
+  fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_RENDERBUFFER, fx_buffer->sb);
+  fx_renderer_delete_egl_image(fx_buffer->renderer, fx_buffer->image);
 
   free(fx_buffer);
 }

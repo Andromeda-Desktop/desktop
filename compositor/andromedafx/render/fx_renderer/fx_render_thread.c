@@ -269,6 +269,7 @@ static int handle_done(int fd, uint32_t mask, void* data) {
 
   thread->location = FX_CONTEXT_HOME;
   wlr_egl_set_lent(thread->renderer->egl, false);
+  fx_renderer_collect_gl_garbage(thread->renderer);
   release_ops(&thread->in_flight);
   // A waiter can queue and kick again; it then lands in `next`, not in the list run here.
   struct waiter_list done = thread->current;

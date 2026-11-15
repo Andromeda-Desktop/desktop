@@ -12,6 +12,22 @@
 #include <wlr/render/interface.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/render/wlr_texture.h>
+
+enum fx_gl_object {
+  FX_GL_TEXTURE,
+  FX_GL_FRAMEBUFFER,
+  FX_GL_RENDERBUFFER,
+  FX_GL_BUFFER,
+  FX_GL_PROGRAM,
+  FX_GL_QUERY,
+  FX_GL_EGL_IMAGE,
+};
+
+struct fx_gl_garbage {
+  enum fx_gl_object kind;
+  GLuint name;
+  EGLImageKHR image;
+};
 #include <wlr/util/addon.h>
 #include <wlr/util/box.h>
 
@@ -104,6 +120,13 @@ void fx_framebuffer_bind(struct fx_framebuffer* buffer);
  * Note: Doesn't drop the wlr_buffer, so should only be used internally.
  */
 void fx_framebuffer_destroy(struct fx_framebuffer* buffer);
+
+struct fx_renderer;
+// Deletes a GL object now, or once the render thread returns the context. Binds the context itself; 0 is a no-op.
+void fx_renderer_delete_gl(struct fx_renderer* renderer, enum fx_gl_object kind, GLuint name);
+void fx_renderer_delete_egl_image(struct fx_renderer* renderer, EGLImageKHR image);
+// Deletes what was queued while the context was lent. Call with the context Home.
+void fx_renderer_collect_gl_garbage(struct fx_renderer* renderer);
 
 // Drops the buffer's effect capture and clears its owner.
 void fx_framebuffer_release_effect_capture(struct fx_framebuffer* buffer);
@@ -219,6 +242,9 @@ struct fx_renderer {
 
   // Null until fx_renderer_start_render_thread; submits then flush on the calling thread.
   struct fx_render_thread* render_thread;
+  // GL objects released while the render thread held the context, deleted when it returns.
+  struct fx_gl_garbage* gl_garbage;
+  size_t gl_garbage_len, gl_garbage_cap;
 
   struct wlr_egl* egl;
   int drm_fd;

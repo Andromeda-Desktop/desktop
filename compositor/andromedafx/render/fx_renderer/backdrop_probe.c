@@ -106,18 +106,10 @@ static void release_fence(struct fx_backdrop_probe* probe) {
 
 static void release_gl(struct fx_backdrop_probe* probe) {
   release_fence(probe);
-  if (probe->framebuffer != 0) {
-    glDeleteFramebuffers(1, &probe->framebuffer);
-    probe->framebuffer = 0;
-  }
-  if (probe->pack_buffer != 0) {
-    glDeleteBuffers(1, &probe->pack_buffer);
-    probe->pack_buffer = 0;
-  }
-  if (probe->texture != 0) {
-    glDeleteTextures(1, &probe->texture);
-    probe->texture = 0;
-  }
+  fx_renderer_delete_gl(probe->renderer, FX_GL_FRAMEBUFFER, probe->framebuffer);
+  fx_renderer_delete_gl(probe->renderer, FX_GL_BUFFER, probe->pack_buffer);
+  fx_renderer_delete_gl(probe->renderer, FX_GL_TEXTURE, probe->texture);
+  probe->framebuffer = probe->pack_buffer = probe->texture = 0;
 }
 
 struct fx_backdrop_probe* fx_backdrop_probe_create(struct wlr_renderer* wlr_renderer) {
@@ -150,10 +142,7 @@ void fx_backdrop_probe_destroy(struct fx_backdrop_probe* probe) {
     return;
   }
   if (probe->renderer != NULL) {
-    struct wlr_egl_context saved;
-    wlr_egl_make_current(probe->renderer->egl, &saved);
     release_gl(probe);
-    wlr_egl_restore_context(&saved);
     wl_list_remove(&probe->link);
   }
   free(probe);
