@@ -31,6 +31,8 @@ namespace term {
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const WindowOrigin& origin,
                    std::function<void()> close);
     ~TerminalWindow();
+    // The surface and scene were destroyed (compositor reconnect): the next requestFrame hooks the new surface.
+    void surfaceLost();
 
   private:
     void requestFrame();

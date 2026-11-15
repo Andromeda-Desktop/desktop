@@ -21,6 +21,7 @@ namespace term {
   protected:
     AppWindow& createWindow() override;
     void windowClosed(AppWindow& window) override;
+    void windowSurfaceLost(AppWindow& window) override;
     // Each directory among the files opens a window there (andromeda-terminal <dir>, Files "Open Terminal Here").
     void open(const std::vector<std::string>& uris, const std::string& activationToken) override;
     // With no window yet, sessions that lost their terminal process come back first, one window each.

@@ -197,9 +197,10 @@ PrintSheet::PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbac
 }
 
 void PrintSheet::abandonGpuResources() {
-  m_pages.clear();
-  m_thumbs.clear();
-  m_requested.clear();
+  // An uploaded page freed its pixels: it renders again. A page still holding pixels uploads at the next build.
+  for (auto* cache : {&m_pages, &m_thumbs}) {
+    std::erase_if(*cache, [](const auto& entry) { return entry.second->texture.valid(); });
+  }
   m_dropped.clear();
 }
 

@@ -25,6 +25,8 @@ namespace term {
 
   void TerminalApp::windowClosed(AppWindow& window) { m_windows.erase(&window); }
 
+  void TerminalApp::windowSurfaceLost(AppWindow& window) { m_windows.at(&window)->surfaceLost(); }
+
   void TerminalApp::open(const std::vector<std::string>& uris, const std::string& activationToken) {
     bool opened = false;
     for (const std::string& uri : uris) {

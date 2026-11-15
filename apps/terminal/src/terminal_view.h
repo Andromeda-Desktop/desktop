@@ -62,6 +62,11 @@ namespace term {
     void setSize(float width, float height);
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
     void frame();
+    // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.
+    void sceneDestroyed() {
+      m_grid = nullptr;
+      m_area = nullptr;
+    }
     // The output buffer scale changed: the next frame reloads the glyph atlas at this scale.
     void setDeviceScale(float deviceScale);
 

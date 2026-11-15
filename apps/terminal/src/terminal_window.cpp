@@ -97,6 +97,11 @@ namespace term {
     }
   }
 
+  void TerminalWindow::surfaceLost() {
+    m_tickSurface = nullptr;
+    m_view.sceneDestroyed();
+  }
+
   void TerminalWindow::requestFrame() {
     Surface* surface = m_window.surface();
     if (surface == nullptr) {
