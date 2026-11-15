@@ -25,11 +25,28 @@ namespace {
 
   // Pages whose plain rows come from the config schema. Listed here, not read from the RowSpecs, so a
   // dropped RowSpec shows up as a missing row.
-  constexpr std::array<std::string_view, 19> kGeneratedPages{
-      "control-center", "screenshot", "notifications", "appearance", "launcher",
-      "panels",         "wallpaper",  "shell",         "windows",    "security",
-      "services",       "text-scale", "desktop",       "location",
-      "calendar",       "system",     "power",         "dock",       "bar:default",
+  constexpr std::array<std::string_view, 21> kGeneratedPages{
+      "control-center",
+      "screenshot",
+      "notifications",
+      "appearance",
+      "launcher",
+      "panels",
+      "wallpaper",
+      "shell",
+      "windows",
+      "security",
+      "services",
+      "text-scale",
+      "desktop",
+      "location",
+      "calendar",
+      "system",
+      "power",
+      "dock",
+      "bar:default",
+      "bar:default:monitor:DP-1",
+      "dock:monitor:laptop",
   };
 
   // i18n has no catalog loaded here, so tr(key) returns "!!key!!": unwrap it back to the key.
@@ -129,12 +146,24 @@ namespace {
     return {};
   }
 
-  // Default config plus one bar, with every environment feature on, so conditional rows appear.
+  // Default config plus one bar with a monitor override, a dock override and one output, with every
+  // environment feature on, so conditional and per-monitor rows appear. Each override sets one value, so
+  // its rows show both explicit and inherited values.
   std::vector<SettingEntry> registryUnderTest() {
     Config cfg;
     cfg.bars.push_back(BarConfig{});
     cfg.bars.back().name = "default";
+    BarMonitorOverride barOverride;
+    barOverride.match = "DP-1";
+    barOverride.thickness = 48;
+    cfg.bars.back().monitorOverrides.push_back(barOverride);
+    DockMonitorOverride dockOverride;
+    dockOverride.tableName = "laptop";
+    dockOverride.match = "eDP-1";
+    dockOverride.iconSize = 40;
+    cfg.dock.monitorOverrides.push_back(dockOverride);
     RegistryEnvironment env;
+    env.availableOutputs = {SelectOption{.value = "DP-1", .label = "DP-1"}};
     env.andromedaOverviewTypeToLaunchSupported = true;
     env.andromedaOverviewCloseOnLaunchSupported = true;
     env.screencopySupported = true;
