@@ -35,6 +35,13 @@ int64_t fx_renderer_busy_since_ns(struct wlr_renderer* renderer);
 bool fx_renderer_context_home(struct wlr_renderer* renderer);
 // Test hook: the next render-thread job sleeps `ms` first. False without a render thread.
 bool fx_renderer_inject_submit_stall(struct wlr_renderer* renderer, int ms);
+// Runs on the render thread around each job, for a stall watch. Process-wide; NULL removes it. `watch` must outlive
+// the renderer.
+struct fx_render_job_watch {
+  void (*begin)(void);
+  void (*end)(void);
+};
+void fx_renderer_set_job_watch(const struct fx_render_job_watch* watch);
 
 struct fx_renderer* fx_get_renderer(struct wlr_renderer* wlr_renderer);
 

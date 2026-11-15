@@ -462,8 +462,7 @@ fx_texture_read_pixels(struct wlr_texture* wlr_texture, const struct wlr_texture
   }
 
   struct wlr_egl_context prev_ctx;
-  fx_renderer_take_context(texture->fx_renderer);
-  if (!wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
+  if (!fx_renderer_take_context(texture->fx_renderer) || !wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
     return false;
   }
   push_fx_debug(texture->fx_renderer);
@@ -519,28 +518,6 @@ out:
 static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture) {
   struct fx_texture* texture = fx_get_texture(wlr_texture);
 
-  push_fx_debug(texture->fx_renderer);
-
-  uint32_t fmt = DRM_FORMAT_INVALID;
-
-  struct wlr_egl_context prev_ctx;
-  fx_renderer_take_context(texture->fx_renderer);
-  if (!wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
-    return fmt;
-  }
-
-  if (!fx_texture_bind(texture)) {
-    goto out;
-  }
-
-  GLint gl_format = -1, gl_type = -1, alpha_size = -1;
-  glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &gl_format);
-  glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE, &gl_type);
-  glGetIntegerv(GL_ALPHA_BITS, &alpha_size);
-
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  pop_fx_debug(texture->fx_renderer);
-
   // GLES2 can always read a framebuffer back as GL_RGBA/GL_UNSIGNED_BYTE, and
   // as GL_BGRA_EXT with EXT_read_format_bgra. Capture clients are commonly
   // written against the BGRA byte order, but drivers report GL_RGBA for 8-bit
@@ -557,14 +534,41 @@ static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture
     switch (texture->buffer->drm_format) {
     case DRM_FORMAT_XRGB2101010:
     case DRM_FORMAT_XBGR2101010:
-      fmt = bgra ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888;
-      goto out;
+      return bgra ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888;
     case DRM_FORMAT_ARGB2101010:
     case DRM_FORMAT_ABGR2101010:
-      fmt = bgra ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_ABGR8888;
-      goto out;
+      return bgra ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_ABGR8888;
     }
   }
+
+  // wlroots queries an output capture source's format once and keeps it until the next mode change, so a stalled
+  // render thread must not turn this into INVALID: it answers what the GL query gives for 8-bit targets on Mesa.
+  if (!fx_renderer_take_context(texture->fx_renderer)) {
+    const bool alpha = texture->buffer != NULL && pixel_format_has_alpha(texture->buffer->drm_format);
+    return alpha ? (bgra ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_ABGR8888)
+                 : (bgra ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888);
+  }
+
+  uint32_t fmt = DRM_FORMAT_INVALID;
+  struct wlr_egl_context prev_ctx;
+  if (!wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
+    return fmt;
+  }
+  push_fx_debug(texture->fx_renderer);
+
+  if (!fx_texture_bind(texture)) {
+    pop_fx_debug(texture->fx_renderer);
+    goto out;
+  }
+
+  GLint gl_format = -1, gl_type = -1, alpha_size = -1;
+  glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &gl_format);
+  glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE, &gl_type);
+  glGetIntegerv(GL_ALPHA_BITS, &alpha_size);
+
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  pop_fx_debug(texture->fx_renderer);
+
   const struct fx_pixel_format* pix_fmt = get_fx_format_from_gl(gl_format, gl_type, alpha_size > 0);
   switch (pix_fmt != NULL ? pix_fmt->drm_format : DRM_FORMAT_INVALID) {
   case DRM_FORMAT_ABGR8888:

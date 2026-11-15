@@ -45,6 +45,9 @@ namespace andromeda::stall {
     inline void* gFrames[kMaxFrames];
     inline std::atomic<int> gFrameCount{0};
     inline sem_t gStackDone;
+    // Every Watch shares the stack signal, its handler and gFrames: one installs them, one captures at a time.
+    inline std::once_flag gHandlerOnce;
+    inline std::mutex gCaptureLock;
 
     inline int stackSignal() { return SIGRTMIN + 5; }
 
@@ -173,19 +176,20 @@ namespace andromeda::stall {
     Watch(const Watch&) = delete;
     Watch& operator=(const Watch&) = delete;
 
-    // Developer diagnostics: reports with stacks. Call on the watched thread.
+    // Developer diagnostics: reports with stacks. Any thread.
     void setDeveloper(bool on) {
-      if (on && !m_handlerInstalled) {
-        m_handlerInstalled = true;
-        sem_init(&detail::gStackDone, 0, 0);
-        // backtrace() loads libgcc_s on its first call, which allocates: never let that first call be the handler's.
-        void* warm[2];
-        (void)::backtrace(warm, 2);
-        struct sigaction action{};
-        action.sa_handler = &detail::onStackSignal;
-        action.sa_flags = SA_RESTART;
-        sigemptyset(&action.sa_mask);
-        sigaction(detail::stackSignal(), &action, nullptr);
+      if (on) {
+        std::call_once(detail::gHandlerOnce, [] {
+          sem_init(&detail::gStackDone, 0, 0);
+          // backtrace() loads libgcc_s on its first call, which allocates: never let that first call be the handler's.
+          void* warm[2];
+          (void)::backtrace(warm, 2);
+          struct sigaction action{};
+          action.sa_handler = &detail::onStackSignal;
+          action.sa_flags = SA_RESTART;
+          sigemptyset(&action.sa_mask);
+          sigaction(detail::stackSignal(), &action, nullptr);
+        });
       }
       m_developer.store(on);
     }
@@ -277,6 +281,7 @@ namespace andromeda::stall {
 
     void capture(std::uint64_t start, const std::string& wchan) {
       m_pending = std::make_unique<Pending>();
+      std::unique_lock captureLock(detail::gCaptureLock);
       while (sem_trywait(&detail::gStackDone) == 0) {
       }
       detail::gFrameCount.store(0);
@@ -292,6 +297,7 @@ namespace andromeda::stall {
           m_pending->userStack = "unavailable: the thread did not take the signal within 100 ms\n";
         }
       }
+      captureLock.unlock();
       if (detail::isGpuWait(wchan)) {
         m_pending->kernelStacks = detail::kernelStacks();
       }
@@ -410,7 +416,6 @@ namespace andromeda::stall {
     const pid_t m_tid;
     const std::string m_task;
     const int m_timer;
-    bool m_handlerInstalled = false;
     std::atomic<bool> m_developer{false};
     std::atomic<std::uint64_t> m_startNs{0};
     // The start of the pass a report is pending for, 0 when none; m_pending is touched only by the watch thread.

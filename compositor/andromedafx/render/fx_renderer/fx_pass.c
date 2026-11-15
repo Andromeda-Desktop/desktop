@@ -530,10 +530,10 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
     }
     if (renderer->defer_submits) {
       fx_render_thread_kick_later(thread);
+      ok = true;
     } else {
-      fx_render_thread_sync(thread);
+      ok = fx_render_thread_sync(thread);
     }
-    ok = true;
     goto out;
   }
 

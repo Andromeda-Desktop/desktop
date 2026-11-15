@@ -1,6 +1,7 @@
 #include "output/stall_probe.h"
 
 #include <andromedafx/render/frame_stats.h>
+#include "wlr.h"
 #include "protocols/stall_watch.h"
 
 #include <atomic>
@@ -102,6 +103,20 @@ namespace andromeda {
       return instance;
     }
 
+    // Constructed on the render thread by its first job: a Watch samples the thread that constructs it.
+    stall::Watch& renderWatch() {
+      static stall::Watch instance("andromeda-render");
+      return instance;
+    }
+
+    const fx_render_job_watch kRenderJobWatch = {
+        .begin = [] {
+          renderWatch().setDeveloper(true);
+          renderWatch().arm(monotonicNs());
+        },
+        .end = [] { renderWatch().disarm(); },
+    };
+
   } // namespace
 
   StallProbe::Totals StallProbe::readTotals() {
@@ -137,6 +152,7 @@ namespace andromeda {
 
   void StallProbe::setDeveloper(bool on) {
     watchdog().setDeveloper(on);
+    fx_renderer_set_job_watch(on ? &kRenderJobWatch : nullptr);
   }
 
 #ifdef ANDROMEDA_TEST_IPC

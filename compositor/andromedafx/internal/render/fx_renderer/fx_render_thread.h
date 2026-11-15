@@ -51,9 +51,13 @@ void fx_render_thread_queue(struct fx_render_thread* thread, const struct fx_sub
 // Never blocks.
 void fx_render_thread_kick(struct fx_render_thread* thread, fx_submit_done_fn done, void* data);
 
-// Blocks until the job in flight and every queued op ran and the context is Home. The waiters run from the event loop
-// afterwards, never inside this call. For passes outside an output frame.
-void fx_render_thread_sync(struct fx_render_thread* thread);
+#define FX_RENDER_THREAD_SYNC_TIMEOUT_MS 50
+
+// Blocks until the job in flight and every queued op ran and the context is Home, at most
+// FX_RENDER_THREAD_SYNC_TIMEOUT_MS: false when the context is still away then (a stalled GPU submit), and the caller
+// fails its work. The waiters run from the event loop afterwards, never inside this call. For passes outside an output
+// frame.
+bool fx_render_thread_sync(struct fx_render_thread* thread);
 
 // Kicks with no waiter once the current event dispatch returns, for passes nobody waits on (cursor, captures).
 void fx_render_thread_kick_later(struct fx_render_thread* thread);

@@ -186,6 +186,12 @@ static bool run_op(struct fx_renderer* renderer, struct queued_op* queued) {
   return false;
 }
 
+static _Atomic(const struct fx_render_job_watch*) job_watch;
+
+void fx_renderer_set_job_watch(const struct fx_render_job_watch* watch) {
+  atomic_store(&job_watch, watch);
+}
+
 static void* thread_main(void* data) {
   struct fx_render_thread* thread = data;
   pthread_setname_np(pthread_self(), "andromeda-render");
@@ -199,11 +205,22 @@ static void* thread_main(void* data) {
     }
     pthread_mutex_unlock(&thread->mutex);
 
+    const struct fx_render_job_watch* watch = atomic_load(&job_watch);
+    if (watch != NULL) {
+      watch->begin();
+    }
     atomic_store(&thread->busy_since_ns, now_ns());
     const int stall_ms = atomic_exchange(&thread->stall_ms, 0);
     if (stall_ms > 0) {
-      struct timespec stall = {.tv_sec = stall_ms / 1000, .tv_nsec = (long)(stall_ms % 1000) * 1000000};
-      nanosleep(&stall, NULL);
+      // The stall watch's stack signal ends a relative sleep early: sleep to the deadline.
+      struct timespec until;
+      clock_gettime(CLOCK_MONOTONIC, &until);
+      until.tv_sec += stall_ms / 1000;
+      until.tv_nsec += (long)(stall_ms % 1000) * 1000000;
+      until.tv_sec += until.tv_nsec / 1000000000L;
+      until.tv_nsec %= 1000000000L;
+      while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, NULL) == EINTR) {
+      }
     }
     bool ok = wlr_egl_make_current(thread->renderer->egl, NULL);
     for (size_t i = 0; ok && i < thread->in_flight.len; i++) {
@@ -211,6 +228,9 @@ static void* thread_main(void* data) {
     }
     wlr_egl_unset_current(thread->renderer->egl);
     atomic_store(&thread->busy_since_ns, 0);
+    if (watch != NULL) {
+      watch->end();
+    }
 
     pthread_mutex_lock(&thread->mutex);
     thread->job_ok = ok;
@@ -336,7 +356,11 @@ struct fx_render_thread* fx_render_thread_create(struct fx_renderer* renderer, s
   thread->loop = loop;
   thread->location = FX_CONTEXT_HOME;
   pthread_mutex_init(&thread->mutex, NULL);
-  pthread_cond_init(&thread->wake, NULL);
+  pthread_condattr_t wake_attr;
+  pthread_condattr_init(&wake_attr);
+  pthread_condattr_setclock(&wake_attr, CLOCK_MONOTONIC);
+  pthread_cond_init(&thread->wake, &wake_attr);
+  pthread_condattr_destroy(&wake_attr);
   thread->event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
   if (thread->event_fd < 0) {
     goto error;
@@ -444,25 +468,38 @@ void fx_render_thread_kick(struct fx_render_thread* thread, fx_submit_done_fn do
   }
 }
 
-static void wait_job(struct fx_render_thread* thread) {
+// False when the job still runs at `deadline` (CLOCK_MONOTONIC); handle_done takes it when it ends.
+static bool wait_job(struct fx_render_thread* thread, const struct timespec* deadline) {
   pthread_mutex_lock(&thread->mutex);
-  while (thread->job == JOB_POSTED) {
-    pthread_cond_wait(&thread->wake, &thread->mutex);
+  int err = 0;
+  while (thread->job == JOB_POSTED && err != ETIMEDOUT) {
+    err = pthread_cond_timedwait(&thread->wake, &thread->mutex, deadline);
   }
   pthread_mutex_unlock(&thread->mutex);
-  take_done_job(thread);
+  return take_done_job(thread);
 }
 
-void fx_render_thread_sync(struct fx_render_thread* thread) {
+bool fx_render_thread_sync(struct fx_render_thread* thread) {
+  struct timespec deadline;
+  clock_gettime(CLOCK_MONOTONIC, &deadline);
+  deadline.tv_nsec += FX_RENDER_THREAD_SYNC_TIMEOUT_MS * 1000000L;
+  deadline.tv_sec += deadline.tv_nsec / 1000000000L;
+  deadline.tv_nsec %= 1000000000L;
+  bool home = true;
   while (thread->location == FX_CONTEXT_AWAY || thread->queued.len > 0) {
     if (thread->location == FX_CONTEXT_HOME) {
       start_job(thread);
     }
-    wait_job(thread);
+    if (!wait_job(thread, &deadline)) {
+      wlr_log(WLR_DEBUG, "render thread: context still away after %d ms, the caller fails", FX_RENDER_THREAD_SYNC_TIMEOUT_MS);
+      home = false;
+      break;
+    }
   }
   if (thread->ready.len > 0 && thread->ready_idle == NULL) {
     thread->ready_idle = wl_event_loop_add_idle(thread->loop, handle_ready_idle, thread);
   }
+  return home;
 }
 
 static void ignore_done(void* data, bool ok) {
