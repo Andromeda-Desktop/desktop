@@ -48,6 +48,8 @@ public:
 
   PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbacks callbacks);
   ~PrintSheet();
+  // The GL context is gone: drops the uploaded pages (their pixels were freed at upload); a build requests them again.
+  void abandonGpuResources();
   PrintSheet(const PrintSheet&) = delete;
   PrintSheet& operator=(const PrintSheet&) = delete;
 

@@ -196,6 +196,13 @@ PrintSheet::PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbac
   startPreview();
 }
 
+void PrintSheet::abandonGpuResources() {
+  m_pages.clear();
+  m_thumbs.clear();
+  m_requested.clear();
+  m_dropped.clear();
+}
+
 PrintSheet::~PrintSheet() {
   *m_alive = false;
   if (m_helper)

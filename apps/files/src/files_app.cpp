@@ -536,6 +536,15 @@ AppWindow& FilesApp::createWindow() {
   return window;
 }
 
+void FilesApp::gpuLost() {
+  m_thumbnails.abandonGpuResources();
+  for (auto& [window, dialog] : m_dialogs) {
+    if (dialog.print) {
+      dialog.print->abandonGpuResources();
+    }
+  }
+}
+
 void FilesApp::windowClosed(AppWindow& window) {
   if (const auto it = m_dialogs.find(&window); it != m_dialogs.end()) {
     // Closed from the frame: the request ends as cancelled.
