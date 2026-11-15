@@ -226,20 +226,8 @@ namespace settings {
     auto locationRows = generateSchemaEntries(noctalia::config::schema::locationSchema(), cfg.location, {"location"});
     appendRow(entries, locationRows, "auto_locate");
     const SettingVisibility autoLocateOff = [](const Config& c) { return !c.location.autoLocate; };
-    {
-      auto e = makeEntry(
-          SettingsSection::Location, "location", tr("settings.schema.services.location-address.label"),
-          tr("settings.schema.services.location-address.description"), {"location", "address"},
-          TextSetting{
-              .value = cfg.location.address,
-              .placeholder = tr("settings.schema.services.location-address.placeholder"),
-              .browseFileExtensions = {}
-          },
-          "location address city geocode"
-      );
-      e.visibleWhen = autoLocateOff;
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, locationRows, "address");
+    entries.back().visibleWhen = autoLocateOff;
     // Manual coordinates: shown only when no network location is configured (auto-locate off
     // and no address). The address gate is build-time; the auto-locate gate is evaluated live.
     const SettingVisibility manualLocationHidden = [](const Config&) { return false; };
@@ -276,15 +264,8 @@ namespace settings {
     auto weatherRows = generateSchemaEntries(noctalia::config::schema::weatherSchema(), cfg.weather, {"weather"});
     appendRow(entries, weatherRows, "enabled");
     const SettingVisibility weatherOn = [](const Config& c) { return c.weather.enabled; };
-    {
-      auto e = makeEntry(
-          SettingsSection::Location, "weather", tr("settings.schema.shell.show-location.label"),
-          tr("settings.schema.shell.show-location.description"), {"shell", "show_location"},
-          ToggleSetting{cfg.shell.showLocation}, "weather"
-      );
-      e.visibleWhen = weatherOn;
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, shellRows, "show_location");
+    entries.back().visibleWhen = weatherOn;
     for (const auto* key : {"unit", "effects", "refresh_minutes"}) {
       appendRow(entries, weatherRows, key);
       entries.back().visibleWhen = weatherOn;
@@ -297,14 +278,10 @@ namespace settings {
           ToggleSetting{.checked = cfg.nightlight.enabled, .enabled = false}, "nightlight"
       ));
     } else {
-      entries.push_back(makeEntry(
-          SettingsSection::Location, "night-light", tr("settings.schema.services.night-light.label"),
-          tr("settings.schema.services.night-light.description"), {"nightlight", "enabled"},
-          ToggleSetting{cfg.nightlight.enabled}, "nightlight"
-      ));
-      const SettingVisibility nightLightOn = [](const Config& c) { return c.nightlight.enabled; };
       auto nightLightRows =
           generateSchemaEntries(noctalia::config::schema::nightlightSchema(), cfg.nightlight, {"nightlight"});
+      appendRow(entries, nightLightRows, "enabled");
+      const SettingVisibility nightLightOn = [](const Config& c) { return c.nightlight.enabled; };
       appendRow(entries, nightLightRows, "force");
       entries.back().visibleWhen = nightLightOn;
       // Both sliders span the same range; the day > night invariant is enforced at commit time
@@ -460,31 +437,11 @@ namespace settings {
       appendRow(entries, audioRows, key);
     }
     const std::size_t soundsGatedStart = entries.size();
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "audio", tr("settings.schema.services.volume-sounds.label"),
-        tr("settings.schema.services.volume-sounds.description"), {"audio", "enable_volume_sounds"},
-        ToggleSetting{cfg.audio.enableVolumeSounds}, "sound"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "audio", tr("settings.schema.services.notification-sounds.label"),
-        tr("settings.schema.services.notification-sounds.description"), {"audio", "enable_notification_sounds"},
-        ToggleSetting{cfg.audio.enableNotificationSounds}, "sound"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "audio", tr("settings.schema.services.power-sounds.label"),
-        tr("settings.schema.services.power-sounds.description"), {"audio", "enable_power_sounds"},
-        ToggleSetting{cfg.audio.enablePowerSounds}, "sound"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "audio", tr("settings.schema.services.screenshot-sounds.label"),
-        tr("settings.schema.services.screenshot-sounds.description"), {"audio", "enable_screenshot_sounds"},
-        ToggleSetting{cfg.audio.enableScreenshotSounds}, "sound"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Services, "audio", tr("settings.schema.services.sound-volume.label"),
-        tr("settings.schema.services.sound-volume.description"), {"audio", "sound_volume"},
-        sliderFor(cfg.audio.soundVolume, noctalia::config::schema::kUnitRange, false), "sound"
-    ));
+    for (const auto* key :
+         {"enable_volume_sounds", "enable_notification_sounds", "enable_power_sounds", "enable_screenshot_sounds",
+          "sound_volume"}) {
+      appendRow(entries, audioRows, key);
+    }
     std::vector<SelectOption> soundThemeOptions;
     for (const auto& [value, label] : SoundPlayer::availableThemes()) {
       soundThemeOptions.push_back(SelectOption{value, label});

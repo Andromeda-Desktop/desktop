@@ -28,6 +28,9 @@ namespace noctalia::config::schema {
   }
 
   const Schema<AudioConfig>& audioSchema() {
+    const auto sound = [](std::string_view label) {
+      return RowSpec{.section = "services", .group = "audio", .label = label, .tags = "sound"};
+    };
     static const Schema<AudioConfig> s = {
         field(
             &AudioConfig::enableOverdrive, "enable_overdrive",
@@ -37,11 +40,22 @@ namespace noctalia::config::schema {
             &AudioConfig::enableSounds, "enable_sounds",
             RowSpec{.section = "services", .group = "audio", .label = "services.shell-sounds", .tags = "sound"}
         ),
-        field(&AudioConfig::enableVolumeSounds, "enable_volume_sounds"),
-        field(&AudioConfig::enableNotificationSounds, "enable_notification_sounds"),
-        field(&AudioConfig::enablePowerSounds, "enable_power_sounds"),
-        field(&AudioConfig::enableScreenshotSounds, "enable_screenshot_sounds"),
-        field(&AudioConfig::soundVolume, "sound_volume", kUnitRange),
+        field(&AudioConfig::enableVolumeSounds, "enable_volume_sounds", sound("services.volume-sounds")),
+        field(
+            &AudioConfig::enableNotificationSounds, "enable_notification_sounds", sound("services.notification-sounds")
+        ),
+        field(&AudioConfig::enablePowerSounds, "enable_power_sounds", sound("services.power-sounds")),
+        field(&AudioConfig::enableScreenshotSounds, "enable_screenshot_sounds", sound("services.screenshot-sounds")),
+        field(
+            &AudioConfig::soundVolume, "sound_volume", kUnitRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "services",
+                .group = "audio",
+                .label = "services.sound-volume",
+                .tags = "sound",
+            }
+        ),
         field(&AudioConfig::soundTheme, "sound_theme"),
         field(
             &AudioConfig::autoSwitchHdmi, "auto_switch_hdmi",
@@ -522,10 +536,20 @@ namespace noctalia::config::schema {
 
   const Schema<NightLightConfig>& nightlightSchema() {
     static const Schema<NightLightConfig> s = {
-        field(&NightLightConfig::enabled, "enabled"),
+        field(
+            &NightLightConfig::enabled, "enabled",
+            RowSpec{
+                .section = "location", .group = "night-light", .label = "services.night-light", .tags = "nightlight"
+            }
+        ),
         field(
             &NightLightConfig::force, "force",
-            RowSpec{.section = "location", .group = "night-light", .label = "services.force-night-light", .tags = "nightlight"}
+            RowSpec{
+                .section = "location",
+                .group = "night-light",
+                .label = "services.force-night-light",
+                .tags = "nightlight"
+            }
         ),
         field(&NightLightConfig::dayTemperature, "temperature_day", Range<std::int64_t>{1000, 25000}),
         field(&NightLightConfig::nightTemperature, "temperature_night", Range<std::int64_t>{1000, 25000}),
@@ -565,7 +589,17 @@ namespace noctalia::config::schema {
                 .tags = "location ip geolocate gps coordinate",
             }
         ),
-        field(&LocationConfig::address, "address"),
+        field(
+            &LocationConfig::address, "address",
+            RowSpec{
+                .kind = RowSpec::Kind::Text,
+                .section = "location",
+                .group = "location",
+                .label = "services.location-address",
+                .tags = "location address city geocode",
+                .placeholderKey = "settings.schema.services.location-address.placeholder",
+            }
+        ),
         field(
             &LocationConfig::customSchedule, "custom_schedule",
             RowSpec{
@@ -921,8 +955,27 @@ namespace noctalia::config::schema {
         field(&HotCornersConfig::Corner::command, "command"),
     };
     static const Schema<HotCornersConfig> s = {
-        field(&HotCornersConfig::enabled, "enabled"),
-        field(&HotCornersConfig::delayMs, "delay_ms", kHotCornersDelayMsRange),
+        field(
+            &HotCornersConfig::enabled, "enabled",
+            RowSpec{
+                .section = "windows",
+                .group = "hot-corners",
+                .label = "desktop.hot-corners-enabled",
+                .tags = "hot corners trigger mouse edge screen",
+            }
+        ),
+        field(
+            &HotCornersConfig::delayMs, "delay_ms", kHotCornersDelayMsRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "windows",
+                .group = "hot-corners",
+                .label = "desktop.hot-corners-delay-ms",
+                .tags = "hot corners delay hold ms timeout",
+                .integer = true,
+                .suffix = "ms",
+            }
+        ),
         subTable(&HotCornersConfig::topLeft, "top_left", cornerSchema),
         subTable(&HotCornersConfig::topRight, "top_right", cornerSchema),
         subTable(&HotCornersConfig::bottomLeft, "bottom_left", cornerSchema),
@@ -3016,7 +3069,10 @@ namespace noctalia::config::schema {
                 .tags = "settings window background alpha transparency translucent opacity",
             }
         ),
-        field(&ShellConfig::showLocation, "show_location"),
+        field(
+            &ShellConfig::showLocation, "show_location",
+            RowSpec{.section = "location", .group = "weather", .label = "shell.show-location", .tags = "weather"}
+        ),
         field(
             &ShellConfig::appIconColorize, "app_icon_colorize",
             RowSpec{.section = "appearance", .group = "icons", .tags = "tint all application icons"}

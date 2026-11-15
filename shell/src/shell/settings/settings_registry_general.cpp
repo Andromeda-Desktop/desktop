@@ -669,24 +669,11 @@ namespace settings {
 
     // On Andromeda the compositor owns hot corners; the shell's were moved to it (HotCorners::migrateToCompositor).
     if (env.compositorSettings == nullptr) {
-      entries.push_back(makeEntry(
-          SettingsSection::Windows, "hot-corners", tr("settings.schema.desktop.hot-corners-enabled.label"),
-          tr("settings.schema.desktop.hot-corners-enabled.description"), {"hot_corners", "enabled"},
-          ToggleSetting{cfg.hotCorners.enabled}, "hot corners trigger mouse edge screen"
-      ));
-      {
-        auto delay = sliderFor(
-            static_cast<std::int64_t>(cfg.hotCorners.delayMs), noctalia::config::schema::kHotCornersDelayMsRange, true
-        );
-        delay.valueSuffix = "ms";
-        SettingEntry e = makeEntry(
-            SettingsSection::Windows, "hot-corners", tr("settings.schema.desktop.hot-corners-delay-ms.label"),
-            tr("settings.schema.desktop.hot-corners-delay-ms.description"), {"hot_corners", "delay_ms"},
-            std::move(delay), "hot corners delay hold ms timeout"
-        );
-        e.visibleWhen = [](const Config& conf) { return conf.hotCorners.enabled; };
-        entries.push_back(std::move(e));
-      }
+      auto hotCornerRows =
+          generateSchemaEntries(noctalia::config::schema::hotCornersSchema(), cfg.hotCorners, {"hot_corners"});
+      appendRow(entries, hotCornerRows, "enabled");
+      appendRow(entries, hotCornerRows, "delay_ms");
+      entries.back().visibleWhen = [](const Config& conf) { return conf.hotCorners.enabled; };
 
       auto hotCornerActionSelect = [](const std::string& current) {
         return plainSelect(
