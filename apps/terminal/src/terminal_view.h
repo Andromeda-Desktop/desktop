@@ -3,6 +3,7 @@
 #include "context_row.h"
 #include "core/timer_manager.h"
 #include "pty_session.h"
+#include "terminal_find.h"
 #include "render/core/color.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
@@ -135,7 +136,6 @@ namespace term {
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     void syncContext();
     // Under the terminal lock: feeds the search and reads its hits as viewport cells.
-    void readFind(GhosttyTerminal terminal);
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
     // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
     void setScrollPx(float px);
@@ -234,31 +234,12 @@ namespace term {
     std::uint32_t m_selection = 0;
     Color m_findHit{};
     Color m_findHitCurrent{};
-    struct FindHit {
-      GhosttyPointCoordinate start; // viewport cells, inclusive
-      GhosttyPointCoordinate end;
-      bool operator==(const FindHit& o) const {
-        return start.x == o.start.x && start.y == o.start.y && end.x == o.end.x && end.y == o.end.y;
-      }
-    };
     struct FindClosed {};
-    struct FindOpen {
-      GhosttySearch search = nullptr; // freed under the terminal lock
-      bool selectFirst = false;       // select the newest match once one is found
-      std::vector<FindHit> hits;      // in the viewport
-      std::optional<FindHit> current;
-      std::size_t total = 0;
-      std::optional<std::size_t> index; // 0 = newest
-      std::vector<float> marks;         // scrollbar fractions
-      std::optional<float> currentMark;
-    };
-    std::variant<FindClosed, FindOpen> m_find;
-    std::vector<GhosttySelection> m_findScratch;
+    std::variant<FindClosed, TerminalFind> m_find; // destroyed under the terminal lock
     bool m_marksDirty = false;
     Node* m_findLayer = nullptr; // moves with the grid origin
     RectNode* m_findRing = nullptr;
     void updateMarks();
-    [[nodiscard]] bool findHitAt(std::uint32_t row, std::uint16_t col, bool& current) const;
     std::vector<TerminalCell> m_rowBuffer;
     bool m_exitReported = false;
   };

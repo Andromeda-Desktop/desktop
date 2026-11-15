@@ -24,7 +24,7 @@ if not _ghostty.found()
 endif
 
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
-  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/git_branch.cpp',
+  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/git_branch.cpp', 'src/terminal_find.cpp',
   dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
@@ -56,6 +56,9 @@ test('command_index', executable('command_index_test', 'tests/command_index_test
   dependencies: _core_dep, cpp_args: _warnings))
 
 test('session_list', executable('session_list_test', 'tests/session_list_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings))
+
+test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
 cpp = meson.get_compiler('cpp')

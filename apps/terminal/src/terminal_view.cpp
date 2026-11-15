@@ -139,8 +139,8 @@ namespace term {
 
   TerminalView::~TerminalView() {
     m_alive.reset();
-    if (auto* find = std::get_if<FindOpen>(&m_find)) {
-      m_session.withTerminal([&](GhosttyTerminal) { ghostty_search_free(find->search); });
+    if (std::holds_alternative<TerminalFind>(m_find)) {
+      m_session.withTerminal([&](GhosttyTerminal) { m_find = FindClosed{}; });
     }
     if (m_textInput != nullptr) {
       m_textInput->clearFocusedClient(this);
@@ -348,18 +348,17 @@ namespace term {
       return;
     }
     GhosttyTerminalScrollbar scroll{};
-    auto* find = std::get_if<FindOpen>(&m_find);
-    const std::size_t findTotal = find != nullptr ? find->total : 0;
-    const auto findIndex = find != nullptr ? find->index : std::nullopt;
-    const auto findHits = find != nullptr ? find->hits : std::vector<FindHit>{};
-    const auto findCurrent = find != nullptr ? find->current : std::nullopt;
+    auto* find = std::get_if<TerminalFind>(&m_find);
+    const auto findHits = find != nullptr ? find->hits() : std::vector<FindHit>{};
+    const auto findCurrent = find != nullptr ? find->current() : std::nullopt;
+    bool findChanged = false;
     const bool updated = m_session.withTerminal([&](GhosttyTerminal t) {
       if (t == nullptr) {
         return false;
       }
       // Before the render state: selecting the first match can scroll the viewport.
       if (find != nullptr) {
-        readFind(t);
+        findChanged = find->read(t);
       }
       if (ghostty_render_state_begin_update(m_state, t) != GHOSTTY_SUCCESS) {
         return false;
@@ -372,21 +371,19 @@ namespace term {
     }
     if (find != nullptr) {
       // Bounded progress off the lock; the next frame feeds the search again until it completes.
-      GhosttySearchStatus status = GHOSTTY_SEARCH_STATUS_COMPLETE;
-      const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(2);
-      while (ghostty_search_tick(find->search, &status) == GHOSTTY_SUCCESS && status == GHOSTTY_SEARCH_STATUS_RUNNING
-             && std::chrono::steady_clock::now() < until) {
-      }
-      if (status != GHOSTTY_SEARCH_STATUS_COMPLETE || find->selectFirst) {
+      if (find->tick(std::chrono::milliseconds(2))) {
         scheduleRedraw(Redraw::All);
       }
-      if ((find->total != findTotal || find->index != findIndex) && m_host.findChanged) {
-        m_host.findChanged(find->total, find->index ? std::optional<std::size_t>(*find->index + 1) : std::nullopt);
+      if (findChanged) {
+        m_marksDirty = true;
+        if (m_host.findChanged) {
+          m_host.findChanged(find->total(), find->index() ? std::optional<std::size_t>(*find->index() + 1) : std::nullopt);
+        }
       }
-      if (find->hits != findHits || find->current != findCurrent) {
+      if (find->hits() != findHits || find->current() != findCurrent) {
         all = true;
       }
-      const auto& cur = find->current;
+      const auto& cur = find->current();
       m_findRing->setVisible(cur.has_value() && cur->start.y == cur->end.y);
       if (cur && cur->start.y == cur->end.y) {
         const float cw = m_grid->cellWidth();
@@ -504,7 +501,7 @@ namespace term {
         if ((flags & GHOSTTY_STYLE_FLAG_INVISIBLE) != 0) {
           cell.codepoint = 0;
         }
-        if (bool current = false; findHitAt(y, static_cast<std::uint16_t>(m_rowBuffer.size()), current)) {
+        if (bool current = false; find != nullptr && find->hitAt(y, static_cast<std::uint16_t>(m_rowBuffer.size()), current)) {
           bg = over(current ? m_findHitCurrent : m_findHit, bg);
           hasBg = true;
         }
@@ -1004,45 +1001,28 @@ namespace term {
   }
 
   void TerminalView::setFindQuery(const std::string& query) {
-    if (!std::holds_alternative<FindOpen>(m_find)) {
-      m_find = FindOpen{};
+    if (!std::holds_alternative<TerminalFind>(m_find)) {
+      m_find.emplace<TerminalFind>();
     }
-    auto& find = std::get<FindOpen>(m_find);
-    m_session.withTerminal([&](GhosttyTerminal t) {
-      if (t == nullptr || (find.search == nullptr && ghostty_search_new(nullptr, &find.search, t) != GHOSTTY_SUCCESS)) {
-        return;
-      }
-      const GhosttyString needle{.ptr = reinterpret_cast<const std::uint8_t*>(query.data()), .len = query.size()};
-      ghostty_search_set(find.search, GHOSTTY_SEARCH_OPT_NEEDLE, &needle);
-    });
-    find.selectFirst = !query.empty();
+    m_session.withTerminal([&](GhosttyTerminal t) { std::get<TerminalFind>(m_find).setQuery(t, query); });
     m_marksDirty = true;
     scheduleRedraw(Redraw::All);
   }
 
   void TerminalView::findStep(bool older) {
-    auto* find = std::get_if<FindOpen>(&m_find);
-    if (find == nullptr || find->search == nullptr) {
+    auto* find = std::get_if<TerminalFind>(&m_find);
+    if (find == nullptr) {
       return;
     }
-    m_session.withTerminal([&](GhosttyTerminal) {
-      if (older) {
-        ghostty_search_select_next(find->search);
-      } else {
-        ghostty_search_select_prev(find->search);
-      }
-    });
-    find->selectFirst = false;
+    m_session.withTerminal([&](GhosttyTerminal) { find->step(older); });
     scheduleRedraw(Redraw::All);
   }
 
   void TerminalView::closeFind() {
-    auto* find = std::get_if<FindOpen>(&m_find);
-    if (find == nullptr) {
+    if (!std::holds_alternative<TerminalFind>(m_find)) {
       return;
     }
-    m_session.withTerminal([&](GhosttyTerminal) { ghostty_search_free(find->search); });
-    m_find = FindClosed{};
+    m_session.withTerminal([&](GhosttyTerminal) { m_find = FindClosed{}; });
     m_marksDirty = true;
     if (m_findRing != nullptr) {
       m_findRing->setVisible(false);
@@ -1050,109 +1030,13 @@ namespace term {
     scheduleRedraw(Redraw::All);
   }
 
-  void TerminalView::readFind(GhosttyTerminal t) {
-    auto& find = std::get<FindOpen>(m_find);
-    if (find.search == nullptr) {
-      return;
-    }
-    ghostty_search_feed(find.search);
-    std::size_t total = 0;
-    ghostty_search_get(find.search, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, &total);
-    if (find.selectFirst && total > 0) {
-      ghostty_search_select_next(find.search);
-      find.selectFirst = false;
-      ghostty_search_feed(find.search); // the viewport may have moved to the match
-    }
-    std::size_t index = 0;
-    const bool selected = ghostty_search_get(find.search, GHOSTTY_SEARCH_DATA_SELECTED_INDEX, &index) == GHOSTTY_SUCCESS;
-    const auto point = [&](const GhosttyGridRef& ref, GhosttyPointTag tag) -> std::optional<GhosttyPointCoordinate> {
-      GhosttyPointCoordinate at{};
-      if (ghostty_terminal_point_from_grid_ref(t, &ref, tag, &at) != GHOSTTY_SUCCESS) {
-        return std::nullopt;
-      }
-      return at;
-    };
-    const auto before = [](const GhosttyPointCoordinate& a, const GhosttyPointCoordinate& b) {
-      return a.y < b.y || (a.y == b.y && a.x < b.x);
-    };
-    // The ends keep the order they were found in; hits are stored top-left first.
-    const auto hit = [&](const GhosttySelection& sel, GhosttyPointTag tag) -> std::optional<FindHit> {
-      const auto a = point(sel.start, tag);
-      const auto b = point(sel.end, tag);
-      if (!a || !b) {
-        return std::nullopt;
-      }
-      return before(*b, *a) ? FindHit{*b, *a} : FindHit{*a, *b};
-    };
-    const auto matches = [&](GhosttySearchData key) {
-      GhosttySelectionBuffer buffer{.ptr = nullptr, .cap = 0, .len = 0};
-      if (ghostty_search_get(find.search, key, &buffer) == GHOSTTY_OUT_OF_SPACE) {
-        m_findScratch.resize(buffer.len);
-        buffer = {.ptr = m_findScratch.data(), .cap = m_findScratch.size(), .len = 0};
-        ghostty_search_get(find.search, key, &buffer);
-      }
-      return std::span<const GhosttySelection>(m_findScratch.data(), buffer.ptr != nullptr ? buffer.len : 0);
-    };
-    find.hits.clear();
-    for (const GhosttySelection& sel : matches(GHOSTTY_SEARCH_DATA_VIEWPORT_MATCHES)) {
-      if (const auto h = hit(sel, GHOSTTY_POINT_TAG_VIEWPORT)) {
-        find.hits.push_back(*h);
-      }
-    }
-    GhosttySelection current{};
-    const bool hasCurrent =
-        selected && ghostty_search_get(find.search, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &current) == GHOSTTY_SUCCESS;
-    find.current = hasCurrent ? hit(current, GHOSTTY_POINT_TAG_VIEWPORT) : std::nullopt;
-    const auto newIndex = selected ? std::optional<std::size_t>(index) : std::nullopt;
-    if (total == find.total && newIndex == find.index) {
-      return;
-    }
-    find.total = total;
-    find.index = newIndex;
-    // Scrollbar marks: one per track step is enough, so many hits stay cheap.
-    GhosttyTerminalScrollbar scroll{};
-    ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scroll);
-    constexpr std::size_t kSteps = 1024;
-    find.marks.clear();
-    if (scroll.total > 0) {
-      const auto fraction = [&](std::uint32_t row) { return static_cast<float>(row) / static_cast<float>(scroll.total); };
-      std::size_t last = kSteps;
-      for (const GhosttySelection& sel : matches(GHOSTTY_SEARCH_DATA_MATCHES)) {
-        if (const auto at = point(sel.start, GHOSTTY_POINT_TAG_SCREEN)) {
-          const auto step = static_cast<std::size_t>(fraction(at->y) * static_cast<float>(kSteps - 1));
-          if (step != last) {
-            find.marks.push_back(fraction(at->y));
-            last = step;
-          }
-        }
-      }
-      const auto at = hasCurrent ? point(current.start, GHOSTTY_POINT_TAG_SCREEN) : std::nullopt;
-      find.currentMark = at ? std::optional<float>(fraction(at->y)) : std::nullopt;
-    }
-    m_marksDirty = true;
-  }
-
-  bool TerminalView::findHitAt(std::uint32_t row, std::uint16_t col, bool& current) const {
-    const auto* find = std::get_if<FindOpen>(&m_find);
-    if (find == nullptr) {
-      return false;
-    }
-    const auto in = [&](const FindHit& h) {
-      const bool afterStart = row > h.start.y || (row == h.start.y && col >= h.start.x);
-      const bool beforeEnd = row < h.end.y || (row == h.end.y && col <= h.end.x);
-      return afterStart && beforeEnd;
-    };
-    current = find->current && in(*find->current);
-    return current || std::ranges::any_of(find->hits, in);
-  }
-
   void TerminalView::updateMarks() {
     if (m_scrollbar == nullptr) {
       return;
     }
-    if (const auto* find = std::get_if<FindOpen>(&m_find)) {
-      m_scrollbar->setMarks(find->marks);
-      m_scrollbar->setCurrentMark(find->currentMark, colorSpecFromRole(ColorRole::TermFindRing));
+    if (const auto* find = std::get_if<TerminalFind>(&m_find)) {
+      m_scrollbar->setMarks(find->marks());
+      m_scrollbar->setCurrentMark(find->currentMark(), colorSpecFromRole(ColorRole::TermFindRing));
       return;
     }
     const std::uint64_t total = m_scrollState.total;
