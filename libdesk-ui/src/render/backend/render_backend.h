@@ -156,6 +156,16 @@ public:
   [[nodiscard]] virtual int maxTextureSize() = 0;
   virtual void setScissor(RenderScissor scissor) = 0;
   virtual void disableScissor() = 0;
+  // Rounded child clip, nested: depth 1 is the outermost. Between push and pop, draws land only inside every open clip.
+  // area bounds every draw until the pop (the clip box within the repaint passes); stencil work stays inside it.
+  virtual void pushRoundedClip(
+      float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+      RenderScissor area, int depth
+  ) = 0;
+  virtual void popRoundedClip(
+      float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+      RenderScissor area, int depth
+  ) = 0;
   virtual void drawRect(
       float surfaceWidth, float surfaceHeight, float width, float height, const RoundedRectStyle& style,
       const Mat3& transform

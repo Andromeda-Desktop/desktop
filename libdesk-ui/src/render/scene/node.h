@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/core/damage_region.h"
+#include "render/core/render_styles.h"
 
 #include <cstdint>
 #include <functional>
@@ -110,7 +111,8 @@ public:
   [[nodiscard]] bool participatesInLayout() const noexcept { return m_participatesInLayout; }
   [[nodiscard]] bool paintDirty() const noexcept { return m_paintDirty; }
   [[nodiscard]] bool layoutDirty() const noexcept { return m_layoutDirty; }
-  [[nodiscard]] bool clipChildren() const noexcept { return m_clipChildren; }
+  [[nodiscard]] bool clipChildren() const noexcept { return m_clip.has_value(); }
+  [[nodiscard]] const std::optional<Radii>& childClip() const noexcept { return m_clip; }
   [[nodiscard]] bool paintContained() const noexcept { return m_paintContained; }
   [[nodiscard]] bool hitTestVisible() const noexcept { return m_hitTestVisible; }
   [[nodiscard]] HitTestOutset hitTestOutset() const noexcept { return m_hitTestOutset; }
@@ -143,6 +145,8 @@ public:
   void setVisible(bool visible);
   void setParticipatesInLayout(bool participatesInLayout);
   void setClipChildren(bool clipChildren);
+  // Clips children to this node's box with rounded corners (turns clipping on).
+  void setClipRadii(const Radii& radii);
   // Promises that every node in this subtree paints within its own bounds (plus a small slack).
   // Lets the renderer skip subtrees entirely outside the active clip.
   void setPaintContained(bool paintContained);
@@ -247,7 +251,7 @@ private:
   std::optional<DamageRect> m_paintedBounds;
   std::unique_ptr<DamageRegion> m_pendingDamage;
   std::unique_ptr<DamageRegion> m_partialDamage;
-  bool m_clipChildren = false;
+  std::optional<Radii> m_clip; // children clip to this node's box with these corner radii; nullopt = no clip
   bool m_paintContained = false;
   bool m_excludeSubtreeFromTabOrder = false;
   bool m_hitTestVisible = true;

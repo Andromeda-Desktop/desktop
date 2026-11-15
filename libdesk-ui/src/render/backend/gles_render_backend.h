@@ -59,6 +59,14 @@ public:
   [[nodiscard]] int maxTextureSize() override;
   void setScissor(RenderScissor scissor) override;
   void disableScissor() override;
+  void pushRoundedClip(
+      float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+      RenderScissor area, int depth
+  ) override;
+  void popRoundedClip(
+      float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+      RenderScissor area, int depth
+  ) override;
   void drawRect(
       float surfaceWidth, float surfaceHeight, float width, float height, const RoundedRectStyle& style,
       const Mat3& transform
@@ -127,6 +135,10 @@ private:
   std::uint32_t m_viewportHeight = 0;
   std::optional<RenderBlendMode> m_blendMode;
   bool m_scissorEnabled = false;
+  void writeClipStencil(
+      float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+      RenderScissor area, unsigned op, int ref
+  );
   bool m_scissorValid = false;
   RenderScissor m_scissor;
   GlesTextureManager m_textureManager;

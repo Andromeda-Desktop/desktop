@@ -148,6 +148,7 @@ private:
   };
   std::array<RepaintPass, DamageRegion::kMaxRects> m_passes{};
   std::size_t m_passCount = 0;
+  int m_roundedClipDepth = 0; // open pushRoundedClip calls in the current renderNode walk
   bool m_graphicsResetPending = false;
   GlSharedContext* m_shared = nullptr;
 };

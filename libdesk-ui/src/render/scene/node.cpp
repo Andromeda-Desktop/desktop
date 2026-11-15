@@ -309,10 +309,18 @@ void Node::setParticipatesInLayout(bool participatesInLayout) {
 }
 
 void Node::setClipChildren(bool clipChildren) {
-  if (m_clipChildren == clipChildren) {
+  if (m_clip.has_value() == clipChildren) {
     return;
   }
-  m_clipChildren = clipChildren;
+  m_clip = clipChildren ? std::optional<Radii>(Radii{}) : std::nullopt;
+  markPaintDirty();
+}
+
+void Node::setClipRadii(const Radii& radii) {
+  if (m_clip == radii) {
+    return;
+  }
+  m_clip = radii;
   markPaintDirty();
 }
 
@@ -551,7 +559,7 @@ Node* Node::hitTestImpl(Node* node, float px, float py, bool allowOverflow, cons
   const Vec2 local = worldTransform.inverse().transformPoint(px, py);
   const bool inside = node->containsLocalPoint(local.x, local.y, true);
 
-  if ((!allowOverflow || node->m_clipChildren) && !inside) {
+  if ((!allowOverflow || node->m_clip.has_value()) && !inside) {
     return nullptr;
   }
 

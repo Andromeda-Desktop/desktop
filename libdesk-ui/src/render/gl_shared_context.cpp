@@ -58,6 +58,8 @@ namespace {
       8,
       EGL_ALPHA_SIZE,
       8,
+      EGL_STENCIL_SIZE, // rounded child clips (pushRoundedClip)
+      8,
       EGL_NONE,
   };
 

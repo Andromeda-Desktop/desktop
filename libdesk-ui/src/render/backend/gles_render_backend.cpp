@@ -456,6 +456,7 @@ bool GlesRenderBackend::beginFrame(RenderTarget& target) {
   setViewport(target.bufferWidth(), target.bufferHeight());
   setBlendMode(RenderBlendMode::PremultipliedAlpha);
   disableScissor();
+  glDisable(GL_STENCIL_TEST);
   return true;
 }
 
@@ -705,6 +706,51 @@ void GlesRenderBackend::disableScissor() {
   flushRectBatch();
   glDisable(GL_SCISSOR_TEST);
   m_scissorEnabled = false;
+}
+
+void GlesRenderBackend::writeClipStencil(
+    float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+    RenderScissor area, unsigned op, int ref
+) {
+  setScissor(area); // flushes rects queued under the previous clip state
+  flushRectBatch();
+  if (ref == 0 && op == GL_INCR) {
+    // An outermost clip starts from a clear stencil; it holds garbage after a swap. Draws stay inside area.
+    glClearStencil(0);
+    glClear(GL_STENCIL_BUFFER_BIT);
+  }
+  glEnable(GL_STENCIL_TEST);
+  glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+  glStencilFunc(GL_EQUAL, ref, 0xFF);
+  glStencilOp(GL_KEEP, GL_KEEP, static_cast<GLenum>(op));
+  RoundedRectStyle shape;
+  shape.fill = Color{1.0F, 1.0F, 1.0F, 1.0F};
+  shape.radius = radii;
+  // The rect shader discards uncovered fragments, so only the rounded shape writes the stencil.
+  drawRect(surfaceWidth, surfaceHeight, width, height, shape, transform);
+  flushRectBatch();
+  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+  glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+}
+
+void GlesRenderBackend::pushRoundedClip(
+    float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+    RenderScissor area, int depth
+) {
+  writeClipStencil(surfaceWidth, surfaceHeight, width, height, radii, transform, area, GL_INCR, depth - 1);
+  glStencilFunc(GL_EQUAL, depth, 0xFF);
+}
+
+void GlesRenderBackend::popRoundedClip(
+    float surfaceWidth, float surfaceHeight, float width, float height, const Radii& radii, const Mat3& transform,
+    RenderScissor area, int depth
+) {
+  writeClipStencil(surfaceWidth, surfaceHeight, width, height, radii, transform, area, GL_DECR, depth);
+  if (depth <= 1) {
+    glDisable(GL_STENCIL_TEST);
+  } else {
+    glStencilFunc(GL_EQUAL, depth - 1, 0xFF);
+  }
 }
 
 void GlesRenderBackend::drawRect(

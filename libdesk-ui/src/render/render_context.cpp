@@ -764,7 +764,30 @@ void RenderContext::renderNode(
     return;
   }
   drawSelf(kTerminalGridAll);
+  const std::optional<Radii>& roundClip = node->childClip();
+  const bool rounded = roundClip && !childrenClipped
+                       && (roundClip->tl > 0.0F || roundClip->tr > 0.0F || roundClip->br > 0.0F || roundClip->bl > 0.0F);
+  RenderScissor area{};
+  if (rounded) {
+    // Stencil work covers only where children can draw: the clip box within the repaint passes.
+    area = scissorForClip(sw, sh, bw, bh, childClipLeft, childClipTop, childClipRight, childClipBottom);
+    if (m_passCount > 0) {
+      RenderScissor passes = m_passes[0].scissor;
+      for (std::size_t i = 1; i < m_passCount; ++i) {
+        const RenderScissor& s = m_passes[i].scissor;
+        const std::int32_t x0 = std::min(passes.x, s.x);
+        const std::int32_t y0 = std::min(passes.y, s.y);
+        passes = {.x = x0, .y = y0, .width = std::max(passes.x + passes.width, s.x + s.width) - x0,
+                  .height = std::max(passes.y + passes.height, s.y + s.height) - y0};
+      }
+      area = intersectScissors(area, passes);
+    }
+    m_backend->pushRoundedClip(sw, sh, node->width(), node->height(), *roundClip, worldTransform, area, ++m_roundedClipDepth);
+  }
   drawChildren(kMinZ, kMaxZ);
+  if (rounded) {
+    m_backend->popRoundedClip(sw, sh, node->width(), node->height(), *roundClip, worldTransform, area, m_roundedClipDepth--);
+  }
 }
 
 void RenderContext::drawNodeSelf(

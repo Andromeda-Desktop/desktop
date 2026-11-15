@@ -695,8 +695,10 @@ void AppWindow::syncSidebarBlur() {
     const int w = static_cast<int>(std::lround(m_sidebarNode->width()));
     const int h = static_cast<int>(std::lround(m_sidebarNode->height()));
     const float r = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
-    // The window corners round only the sidebar's outer (left) corners.
-    rects = Surface::tessellateRoundedRect(margin, margin, w, h, r, 0.0F, 0.0F, r);
+    // The window corners round only the sidebar's outer (left) corners; the blur also covers the strip under the main
+    // pane's concave corners.
+    const int under = m_config.transparentContent ? 0 : static_cast<int>(std::lround(r));
+    rects = Surface::tessellateRoundedRect(margin, margin, w + under, h, r, 0.0F, 0.0F, r);
   }
   if (rects == m_sidebarBlur) {
     return;
@@ -953,8 +955,16 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     }
     main->addChild(std::move(bar));
   }
+  // Concave edge: the main pane's left corners round into the sidebar, whose tint shows behind them.
+  const bool concave = sidebarShown > 0.0F && !m_config.transparentContent;
+  const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
   if (!m_config.transparentContent) {
     main->setFill(colorSpecFromRole(ColorRole::SolidRegular));
+  }
+  if (concave) {
+    const Radii corners{edgeRadius, 0.0F, 0.0F, edgeRadius};
+    main->setRadii(corners);
+    main->setClipRadii(corners);
   }
   const float headerHeight = header ? kHeaderHeight * m_uiScale : 0.0F;
   const float contentHeight = std::max(0.0F, height - headerHeight);
@@ -969,25 +979,30 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   auto body = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
   if (sidebarWidth > 0.0F) {
-    // Mockup .side: a 0.5 px separator-colour hairline on the sidebar's own fill, so no gap shows the wallpaper.
-    const float edgeW = 0.5F * m_uiScale;
+    const ColorSpec sidebarFill = m_config.sidebarMaterial == SidebarMaterial::Glass
+                                      ? colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint)
+                                      : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});
-    sidebar->setFill(m_config.sidebarMaterial == SidebarMaterial::Glass
-                         ? colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint)
-                         : colorSpecFromRole(ColorRole::SolidThin));
-    auto list = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .width = sidebarWidth - edgeW});
+    sidebar->setFill(sidebarFill);
+    auto list = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .width = sidebarWidth});
     partStart = std::chrono::steady_clock::now();
-    list->addChild(m_sidebarBuilder(renderer, sidebarWidth - edgeW, height));
+    list->addChild(m_sidebarBuilder(renderer, sidebarWidth, height));
     sidebarMs = since(partStart);
     sidebar->addChild(std::move(list));
-    sidebar->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Separator), .width = edgeW}));
     // Fully hidden, it leaves the layout: a 0 min/max width reads as "no limit" and would show it at full width. It is
     // still built, so the app's handles to its rows stay valid.
     sidebar->setVisible(sidebarShown > 0.0F);
     sidebar->setParticipatesInLayout(sidebarShown > 0.0F);
     body->addChild(std::move(sidebar));
+    if (concave) {
+      // The sidebar tint continues under the main pane, so its rounded corners show the sidebar, not the wallpaper.
+      auto under = ui::box({.fill = sidebarFill, .width = edgeRadius, .height = height});
+      under->setParticipatesInLayout(false);
+      under->setPosition(sidebarShown, 0.0F);
+      body->addChild(std::move(under));
+    }
   }
   body->addChild(std::move(main));
   body->setSize(width, height);
