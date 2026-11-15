@@ -9,16 +9,12 @@
 #include "wayland/wayland.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cstdio>
-#include <iomanip>
 #include <nlohmann/json.hpp>
 #include <optional>
-#include <random>
 #include <sdbus-c++/sdbus-c++.h>
 #include <set>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -306,27 +302,6 @@ namespace xdpu {
       }
 
       return selections;
-    }
-
-    std::string makeUuid() {
-      std::random_device random;
-      std::uniform_int_distribution<uint32_t> dist(0, 255);
-      std::array<uint8_t, 16> bytes{};
-      for (uint8_t& byte : bytes) {
-        byte = static_cast<uint8_t>(dist(random));
-      }
-      bytes[6] = static_cast<uint8_t>((bytes[6] & 0x0f) | 0x40);
-      bytes[8] = static_cast<uint8_t>((bytes[8] & 0x3f) | 0x80);
-
-      std::ostringstream out;
-      out << std::hex << std::setfill('0');
-      for (size_t i = 0; i < bytes.size(); ++i) {
-        if (i == 4 || i == 6 || i == 8 || i == 10) {
-          out << '-';
-        }
-        out << std::setw(2) << static_cast<int>(bytes[i]);
-      }
-      return out.str();
     }
 
   } // namespace
@@ -885,9 +860,8 @@ namespace xdpu {
         results.emplace("streams", sdbus::Variant{streams});
 
         if (session->persistMode() > 0) {
-          const std::string token = makeUuid();
           results.emplace("persist_mode", sdbus::Variant{session->persistMode()});
-          results.emplace("restore_data", session->restoreDataVariant(token));
+          results.emplace("restore_data", session->restoreDataVariant());
         }
         if (session->hasDynamicStreams()) {
           if (const auto mode = session->dynamicMode()) {

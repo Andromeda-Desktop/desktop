@@ -575,14 +575,13 @@ namespace xdpu {
     return stream == m_impl->streams.end() ? std::nullopt : std::optional((*stream)->dynamicMode);
   }
 
-  sdbus::Variant Session::restoreDataVariant(const std::string& token) const {
+  sdbus::Variant Session::restoreDataVariant() const {
     std::vector<PortalResults> entries;
     entries.reserve(m_impl->currentSelections.size());
     for (const Selection& selection : m_impl->currentSelections) {
       PortalResults entry;
       entry.emplace("kind", sdbus::Variant{kindName(selection.kind)});
       entry.emplace("title", sdbus::Variant{selection.title});
-      entry.emplace("token", sdbus::Variant{token});
       if (selection.kind == SourceKind::Monitor) {
         entry.emplace("output", sdbus::Variant{selection.output});
       } else {

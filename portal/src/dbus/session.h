@@ -111,7 +111,7 @@ namespace xdpu {
     [[nodiscard]] bool hasDynamicStreams() const;
     [[nodiscard]] std::optional<DynamicMode> dynamicMode() const;
 
-    sdbus::Variant restoreDataVariant(const std::string& token) const;
+    sdbus::Variant restoreDataVariant() const;
 
     void clearStreams();
     void close();
