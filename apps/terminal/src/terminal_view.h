@@ -4,9 +4,12 @@
 #include "render/scene/terminal_grid_node.h"
 #include "ui/text_input_client.h"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <unordered_set>
 #include <variant>
 #include <vector>
@@ -20,6 +23,9 @@ class TextureManager;
 
 namespace term {
 
+  // file://host/path (percent-escaped) to a local path; a bare path comes back as is.
+  [[nodiscard]] std::string pathFromFileUri(std::string_view uri);
+
   // One terminal session drawn as a libdesk-ui cell grid. The app window and the Files pane both host it.
   // All methods run on the UI thread; the session's IO thread only wakes it.
   class TerminalView final : private TextInputClient {
@@ -30,6 +36,10 @@ namespace term {
       std::function<void(int status)> exited;
       // Current keyboard modifiers (KeyMod bits): pointer events carry none.
       std::function<std::uint32_t()> modifiers;
+      // A long command finished while the grid had no focus (OSC 133): post a notification.
+      std::function<void(const std::string& summary, const std::string& body)> commandFinished;
+      // The shell reported a new working directory (OSC 7); a local path.
+      std::function<void(const std::string& cwd)> cwdChanged;
     };
 
     explicit TerminalView(Host host);
@@ -66,6 +76,11 @@ namespace term {
       GhosttyPointCoordinate anchor; // viewport cell where the drag started
       bool moved = false;
     };
+    struct CommandIdle {};
+    struct CommandRunning {
+      std::chrono::steady_clock::time_point start;
+      std::string text;
+    };
     struct Click {
       std::uint32_t time = 0; // ms, Wayland event time
       GhosttyPointCoordinate cell{};
@@ -77,6 +92,8 @@ namespace term {
     int overlayPreedit(int x, std::uint32_t fg, std::uint32_t bg);
     void applyPalette();
     void scheduleRedraw(Redraw redraw);
+    void onMark(const CommandMark& mark);
+    void updateCwd();
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
     void pointerButton(std::uint32_t button, float localX, float localY, bool pressed, std::uint32_t time);
     void pointerMotion(float localX, float localY);
@@ -114,6 +131,8 @@ namespace term {
     float m_pointerY = 0.0F;
     float m_wheelRemainder = 0.0F;
     Click m_lastClick;
+    std::variant<CommandIdle, CommandRunning> m_command;
+    std::string m_cwd;
     TextInputService* m_textInput = nullptr;
     std::string m_preedit;
     GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows

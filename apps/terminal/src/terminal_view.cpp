@@ -18,7 +18,9 @@
 #include <wayland-client-protocol.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <format>
 #include <cstdlib>
 #include <optional>
 #include <string>
@@ -116,6 +118,13 @@ namespace term {
               m_host.requestFrame();
             }
           });
+        }, [this, alive = std::weak_ptr<bool>(m_alive)](const CommandMark& mark) {
+          // IO thread, under the terminal lock.
+          DeferredCall::callLater([this, alive, mark] {
+            if (!alive.expired()) {
+              onMark(mark);
+            }
+          });
         }) {
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);
@@ -141,7 +150,9 @@ namespace term {
   }
 
   bool TerminalView::start(std::vector<std::string> argv, std::string cwd) {
-    std::vector<std::string> env = {"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=andromeda-terminal"};
+    // VTE_VERSION turns on the distro's vte.sh shell integration: OSC 7 (cwd) and OSC 133 (command marks).
+    std::vector<std::string> env = {"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=andromeda-terminal",
+                                    "VTE_VERSION=7600"};
     if (!m_session.spawn({.argv = std::move(argv), .cwd = std::move(cwd), .env = std::move(env)})) {
       return false;
     }
@@ -544,6 +555,71 @@ namespace term {
     }
     // Runs during scene teardown too: the grid may be gone, so the next frame redraws the cursor.
     scheduleRedraw(Redraw::Dirty);
+  }
+
+  std::string pathFromFileUri(std::string_view uri) {
+    std::string_view rest = uri;
+    if (rest.starts_with("file://")) {
+      rest.remove_prefix(7);
+      const auto slash = rest.find('/');
+      rest = slash == std::string_view::npos ? std::string_view{} : rest.substr(slash);
+    }
+    std::string path;
+    for (std::size_t i = 0; i < rest.size(); ++i) {
+      if (rest[i] == '%' && i + 2 < rest.size() && std::isxdigit(static_cast<unsigned char>(rest[i + 1]))
+          && std::isxdigit(static_cast<unsigned char>(rest[i + 2]))) {
+        path += static_cast<char>(std::stoi(std::string(rest.substr(i + 1, 2)), nullptr, 16));
+        i += 2;
+      } else {
+        path += rest[i];
+      }
+    }
+    return path;
+  }
+
+  void TerminalView::onMark(const CommandMark& mark) {
+    constexpr auto kNotifyAfter = std::chrono::seconds(10);
+    switch (mark.kind) {
+    case CommandMark::Kind::OutputStart:
+      m_command = CommandRunning{.start = std::chrono::steady_clock::now(), .text = mark.command};
+      break;
+    case CommandMark::Kind::CommandEnd: {
+      const auto* running = std::get_if<CommandRunning>(&m_command);
+      const auto elapsed = running != nullptr ? std::chrono::steady_clock::now() - running->start
+                                              : std::chrono::steady_clock::duration{};
+      if (running != nullptr && elapsed >= kNotifyAfter && !m_focused && m_host.commandFinished) {
+        const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+        const std::string took =
+            seconds >= 60 ? std::format("{} min {} s", seconds / 60, seconds % 60) : std::format("{} s", seconds);
+        const bool failed = mark.exitCode.value_or(0) != 0;
+        std::string body = running->text.empty() ? std::string{"A command"} : running->text;
+        body += failed ? std::format(" exited with {} after {}", *mark.exitCode, took) : std::format(" took {}", took);
+        m_host.commandFinished(failed ? "Command failed" : "Command finished", body);
+      }
+      m_command = CommandIdle{};
+      break;
+    }
+    case CommandMark::Kind::PromptStart: updateCwd(); break;
+    case CommandMark::Kind::InputStart: break;
+    }
+  }
+
+  void TerminalView::updateCwd() {
+    std::string uri = m_session.withTerminal([](GhosttyTerminal t) {
+      GhosttyString pwd{};
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_PWD, &pwd) != GHOSTTY_SUCCESS || pwd.len == 0) {
+        return std::string{};
+      }
+      return std::string(reinterpret_cast<const char*>(pwd.ptr), pwd.len);
+    });
+    const std::string path = pathFromFileUri(uri);
+    if (path.empty() || path == m_cwd) {
+      return;
+    }
+    m_cwd = path;
+    if (m_host.cwdChanged) {
+      m_host.cwdChanged(m_cwd);
+    }
   }
 
   void TerminalView::scheduleRedraw(Redraw redraw) {

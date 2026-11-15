@@ -25,6 +25,7 @@ struct CommandMark {
   enum class Kind : std::uint8_t { PromptStart, InputStart, OutputStart, CommandEnd };
   Kind kind;
   std::optional<int> exitCode;
+  std::string command; // OutputStart: the command line, when the shell sends it
 };
 
 struct SpawnOptions {

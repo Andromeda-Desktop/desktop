@@ -2,6 +2,7 @@
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
+#include "notifier.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "wayland/wayland_connection.h"
@@ -33,10 +34,26 @@ namespace term {
     }
   } // namespace
 
-  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, std::function<void()> close)
-      : m_loop(loop), m_window(window),
+  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const std::string& cwd,
+                                 std::function<void()> close)
+      : m_loop(loop), m_window(window), m_notifier(notifier),
         m_view({.requestFrame = [this] { requestFrame(); }, .exited = [close = std::move(close)](int) { close(); },
-                 .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); }}) {
+                 .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
+                 .commandFinished =
+                     [this](const std::string& summary, const std::string& body) {
+                       m_notifier.notify(summary, body,
+                                         [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& token) {
+                                           if (!alive.expired()) {
+                                             m_window.activate(token);
+                                           }
+                                         });
+                     },
+                 .cwdChanged =
+                     [this](const std::string& path) {
+                       const std::string home = homeDir();
+                       const bool inHome = path == home || path.starts_with(home + "/");
+                       m_window.setTitle(inHome ? "~" + path.substr(home.size()) : path);
+                     }}) {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       Surface* surface = m_window.surface();
       const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
@@ -58,7 +75,7 @@ namespace term {
       m_view.setSize(rect.width, rect.height);
     });
     const std::string shell = loginShell();
-    if (!m_view.start({shell, "-l"}, homeDir())) {
+    if (!m_view.start({shell, "-l"}, cwd.empty() ? homeDir() : cwd)) {
       kLog.warn("cannot start {}", shell);
     }
   }

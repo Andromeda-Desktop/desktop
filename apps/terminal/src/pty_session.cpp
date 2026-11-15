@@ -217,6 +217,7 @@ void PtySession::onSemanticPrompt(GhosttyTerminal, void* self, const GhosttyTerm
   default: return;
   }
   if (e->has_exit_code) mark.exitCode = e->exit_code;
+  if (e->command.len > 0) mark.command.assign(reinterpret_cast<const char*>(e->command.ptr), e->command.len);
   s->m_onMark(mark);
 }
 
