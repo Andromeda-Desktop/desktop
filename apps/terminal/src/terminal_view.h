@@ -208,7 +208,6 @@ namespace term {
     float m_pendingDeviceScale = 1.0F;
     float m_width = 0.0F;
     float m_height = 0.0F;
-    bool m_dark = true;
     std::uint32_t m_foreground = 0;
     std::uint32_t m_faint = 0;
     std::uint32_t m_background = 0;

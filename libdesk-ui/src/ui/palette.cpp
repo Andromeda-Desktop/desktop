@@ -125,6 +125,28 @@ namespace {
       return p.glassCardEdge;
     case ColorRole::Popover:
       return p.popover;
+    case ColorRole::View:
+      return p.view;
+    case ColorRole::TermRed:
+      return p.termRed;
+    case ColorRole::TermGreen:
+      return p.termGreen;
+    case ColorRole::TermYellow:
+      return p.termYellow;
+    case ColorRole::TermBlue:
+      return p.termBlue;
+    case ColorRole::TermMagenta:
+      return p.termMagenta;
+    case ColorRole::TermCyan:
+      return p.termCyan;
+    case ColorRole::TermFindHit:
+      return p.termFindHit;
+    case ColorRole::TermFindHitCurrent:
+      return p.termFindHitCurrent;
+    case ColorRole::TermFindRing:
+      return p.termFindRing;
+    case ColorRole::TermPillCwd:
+      return p.termPillCwd;
     case ColorRole::Scrim:
       return p.scrim;
     }
@@ -292,6 +314,17 @@ Palette lerpPalette(const Palette& a, const Palette& b, float t) {
       .glassCard = lerpColor(a.glassCard, b.glassCard, t),
       .glassCardEdge = lerpColor(a.glassCardEdge, b.glassCardEdge, t),
       .popover = lerpColor(a.popover, b.popover, t),
+      .view = lerpColor(a.view, b.view, t),
+      .termRed = lerpColor(a.termRed, b.termRed, t),
+      .termGreen = lerpColor(a.termGreen, b.termGreen, t),
+      .termYellow = lerpColor(a.termYellow, b.termYellow, t),
+      .termBlue = lerpColor(a.termBlue, b.termBlue, t),
+      .termMagenta = lerpColor(a.termMagenta, b.termMagenta, t),
+      .termCyan = lerpColor(a.termCyan, b.termCyan, t),
+      .termFindHit = lerpColor(a.termFindHit, b.termFindHit, t),
+      .termFindHitCurrent = lerpColor(a.termFindHitCurrent, b.termFindHitCurrent, t),
+      .termFindRing = lerpColor(a.termFindRing, b.termFindRing, t),
+      .termPillCwd = lerpColor(a.termPillCwd, b.termPillCwd, t),
       .scrim = lerpColor(a.scrim, b.scrim, t),
   };
 }
@@ -328,6 +361,17 @@ Palette tokenPalette(bool light) noexcept {
       .glassCard = tokenColor(s.glassCard),
       .glassCardEdge = tokenColor(s.glassCardEdge),
       .popover = tokenColor(s.popover),
+      .view = tokenColor(s.view),
+      .termRed = tokenColor(s.termRed),
+      .termGreen = tokenColor(s.termGreen),
+      .termYellow = tokenColor(s.termYellow),
+      .termBlue = tokenColor(s.termBlue),
+      .termMagenta = tokenColor(s.termMagenta),
+      .termCyan = tokenColor(s.termCyan),
+      .termFindHit = tokenColor(s.termFindHit),
+      .termFindHitCurrent = tokenColor(s.termFindHitCurrent),
+      .termFindRing = tokenColor(s.termFindRing),
+      .termPillCwd = tokenColor(s.termPillCwd),
       .scrim = tokenColor(s.scrim),
   };
 }

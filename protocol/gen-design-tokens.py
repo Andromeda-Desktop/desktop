@@ -171,7 +171,8 @@ def emit_css(tokens, out_path):
     out = ["/* Generated from protocol/design-tokens.toml by protocol/gen-design-tokens.py. Do not edit. */", ":root {"]
     css_vars(rest, (), out)
     for name, t in tokens.get("type", {}).items():
-        out.append(f"  --type-{name}: {t['weight']} {t['size']}px/{t['line']}px var(--font-family);")
+        family = "var(--font-mono)" if name == "mono" else "var(--font-family)"
+        out.append(f"  --type-{name}: {t['weight']} {t['size']}px/{t['line']}px {family};")
     smoothing = tokens.get("radius", {}).get("smoothing", 0.0)
     out.append(f"  --corner-extent: {round(1 + 0.88 * smoothing, 4)};")
     out.append(f"  --corner-k: {round(math.log2(2 + 5 * smoothing), 4)};")

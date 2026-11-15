@@ -49,6 +49,7 @@ hit_touch = 40.0
 
 [font]
 family = "Inter"
+mono = "Fira Code, monospace"   # terminal grid and code (rulebook §3 mono)
 
 # line is the line box in px (a multiple of 4); tracking in em, from Inter's dynamic metrics
 # (-0.0223 + 0.185 e^(-0.1745 size)). A label box is one line box per line, text centred in it.
@@ -101,6 +102,11 @@ tracking = 0.0
 size = 34.0
 line = 40.0
 weight = 500
+tracking = 0.0
+[type.mono]
+size = 13.0
+line = 18.0
+weight = 400
 tracking = 0.0
 [type.hero]
 size = 80.0
@@ -157,6 +163,16 @@ card = "#ffffffff"
 header = "#ececf1ff"
 popover = "#f8f8faff"
 sidebar = "#ececf1ff"
+term_red = "#a92321ff"
+term_green = "#146720ff"
+term_yellow = "#715403ff"
+term_blue = "#2f56a1ff"
+term_magenta = "#814085ff"
+term_cyan = "#06626bff"
+term_find_hit = "#f5a52447"
+term_find_hit_current = "#f5a5249e"
+term_find_ring = "#c26a00ff"
+term_pill_cwd = "#2f56a11a"
 
 [scheme.dark]
 label_1 = "#f4f4f6eb"
@@ -197,6 +213,16 @@ card = "#28282cff"
 header = "#222226ff"
 popover = "#28282cff"
 sidebar = "#1c1c20ff"
+term_red = "#ff7c70ff"
+term_green = "#68b56cff"
+term_yellow = "#ca9d33ff"
+term_blue = "#77a4f6ff"
+term_magenta = "#d28cd6ff"
+term_cyan = "#03b5c3ff"
+term_find_hit = "#f5a52438"
+term_find_hit_current = "#f5a52480"
+term_find_ring = "#f5a524ff"
+term_pill_cwd = "#77a4f624"
 
 # One blur recipe for every material, drawn by the compositor and cached while the backdrop is static.
 [blur]

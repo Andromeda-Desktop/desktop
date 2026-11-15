@@ -37,18 +37,8 @@ namespace term {
 
   namespace {
 
-    // D-SPEC.md: the grid is Fira Code 13 on an 18 px line, inset 24.
-    constexpr const char* kFontFamily = "Fira Code,monospace";
-    constexpr float kFontSize = 13.0F;
-    constexpr float kLineHeight = 18.0F;
-    constexpr float kInset = 24.0F;
-    constexpr float kTopInset = 8.0F;
-
-    // D-SPEC.md theme: ANSI 1-6 at 7:1 on the view plane; the bright set (9-14) repeats them.
-    constexpr std::uint32_t kAnsiLight[6] = {0xa92321, 0x146720, 0x715403, 0x2f56a1, 0x814085, 0x06626b};
-    constexpr std::uint32_t kAnsiDark[6] = {0xff7c70, 0x68b56c, 0xca9d33, 0x77a4f6, 0xd28cd6, 0x03b5c3};
-    constexpr std::uint32_t kViewLight = 0xffffff;
-    constexpr std::uint32_t kViewDark = 0x18181b;
+    const float& kInset = Tokens::spaceP24;
+    const float& kTopInset = Tokens::spaceP8;
 
     std::uint32_t pack(GhosttyColorRgb c) { return (std::uint32_t(c.r) << 16) | (std::uint32_t(c.g) << 8) | c.b; }
 
@@ -178,15 +168,13 @@ namespace term {
   }
 
   void TerminalView::applyPalette() {
-    m_dark = [] {
-      const Color& label = colorForRole(ColorRole::Label1);
-      return 0.2126F * label.r + 0.7152F * label.g + 0.0722F * label.b > 0.5F;
-    }();
-    m_background = m_dark ? kViewDark : kViewLight;
+    m_background = over(colorForRole(ColorRole::View), 0);
     m_foreground = over(colorForRole(ColorRole::Label1), m_background);
     m_faint = over(colorForRole(ColorRole::Label2), m_background);
     m_selection = mix(m_background, over(colorForRole(ColorRole::Accent), m_background), 0.4F);
-    const auto& ansi = m_dark ? kAnsiDark : kAnsiLight;
+    // ANSI 1-6; the bright set (9-14) repeats them.
+    constexpr std::array<ColorRole, 6> kAnsi = {ColorRole::TermRed,  ColorRole::TermGreen,   ColorRole::TermYellow,
+                                                ColorRole::TermBlue, ColorRole::TermMagenta, ColorRole::TermCyan};
     m_session.withTerminal([&](GhosttyTerminal t) {
       if (t == nullptr) {
         return;
@@ -194,8 +182,8 @@ namespace term {
       GhosttyColorRgb palette[256]{};
       ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, palette);
       for (int i = 0; i < 6; ++i) {
-        palette[1 + i] = unpack(ansi[i]);
-        palette[9 + i] = unpack(ansi[i]);
+        palette[1 + i] = unpack(over(colorForRole(kAnsi[i]), m_background));
+        palette[9 + i] = palette[1 + i];
       }
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
       const GhosttyColorRgb fg = unpack(m_foreground);
@@ -210,9 +198,11 @@ namespace term {
     m_uiScale = uiScale;
     m_deviceScale = deviceScale;
     m_pendingDeviceScale = deviceScale;
+    // A rebuild follows every palette change (Appearance::apply), so the grid colours track the theme.
+    applyPalette();
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
-    m_grid->setFont(kFontFamily, kFontSize * uiScale, kLineHeight * uiScale, deviceScale);
+    m_grid->setFont(std::string(Tokens::fontMono), Tokens::typeMono.size * uiScale, Tokens::typeMono.line * uiScale, deviceScale);
     m_images = std::make_unique<KittyImages>(*m_grid);
     setGridOrigin(kInset * uiScale, kTopInset * uiScale);
     auto area = ui::inputArea({.out = &m_area,
@@ -314,7 +304,7 @@ namespace term {
     }
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
-      m_grid->setFont(kFontFamily, kFontSize * m_uiScale, kLineHeight * m_uiScale, m_deviceScale);
+      m_grid->setFont(std::string(Tokens::fontMono), Tokens::typeMono.size * m_uiScale, Tokens::typeMono.line * m_uiScale, m_deviceScale);
       setSize(m_width, m_height);
     }
     const Redraw redraw = std::exchange(m_redraw, Redraw::None);

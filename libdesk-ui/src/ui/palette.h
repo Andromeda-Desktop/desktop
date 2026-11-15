@@ -44,6 +44,17 @@ enum class ColorRole : std::uint8_t {
   GlassCard,
   GlassCardEdge,
   Popover,
+  View,
+  TermRed,
+  TermGreen,
+  TermYellow,
+  TermBlue,
+  TermMagenta,
+  TermCyan,
+  TermFindHit,
+  TermFindHitCurrent,
+  TermFindRing,
+  TermPillCwd,
   // Internal: the modal dim layer. No token entry, so the legacy name "scrim" still maps to Shadow.
   Scrim,
 };
@@ -53,7 +64,7 @@ struct ColorRoleToken {
   std::string_view token;
 };
 
-inline constexpr std::array<ColorRoleToken, 29> kColorRoleTokens = {{
+inline constexpr std::array<ColorRoleToken, 40> kColorRoleTokens = {{
     {ColorRole::Label1, "label_1"},
     {ColorRole::Label2, "label_2"},
     {ColorRole::Fill1, "fill_1"},
@@ -83,6 +94,17 @@ inline constexpr std::array<ColorRoleToken, 29> kColorRoleTokens = {{
     {ColorRole::GlassCard, "glass_card"},
     {ColorRole::GlassCardEdge, "glass_card_edge"},
     {ColorRole::Popover, "popover"},
+    {ColorRole::View, "view"},
+    {ColorRole::TermRed, "term_red"},
+    {ColorRole::TermGreen, "term_green"},
+    {ColorRole::TermYellow, "term_yellow"},
+    {ColorRole::TermBlue, "term_blue"},
+    {ColorRole::TermMagenta, "term_magenta"},
+    {ColorRole::TermCyan, "term_cyan"},
+    {ColorRole::TermFindHit, "term_find_hit"},
+    {ColorRole::TermFindHitCurrent, "term_find_hit_current"},
+    {ColorRole::TermFindRing, "term_find_ring"},
+    {ColorRole::TermPillCwd, "term_pill_cwd"},
 }};
 
 [[nodiscard]] constexpr Color clearColor() noexcept { return rgba(0.0F, 0.0F, 0.0F, 0.0F); }
@@ -141,6 +163,17 @@ struct Palette {
   Color glassCard;
   Color glassCardEdge;
   Color popover;
+  Color view;
+  Color termRed;
+  Color termGreen;
+  Color termYellow;
+  Color termBlue;
+  Color termMagenta;
+  Color termCyan;
+  Color termFindHit;
+  Color termFindHitCurrent;
+  Color termFindRing;
+  Color termPillCwd;
   Color scrim;
 
   bool operator==(const Palette&) const = default;
