@@ -582,7 +582,8 @@ void AppWindow::invalidate() {
   }
   if (m_root->layoutDirty()) {
     m_surface->requestLayout();
-  } else if (m_root->paintDirty()) {
+  } else if (m_root->paintDirty() || m_animations.hasActive()) {
+    // An animation an input event started ticks only on frame callbacks.
     m_surface->requestRedraw();
   }
 }
@@ -1009,6 +1010,12 @@ std::uint32_t AppWindow::resizeEdgesAt(float x, float y) const {
     edges |= XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
   }
   return edges;
+}
+
+void AppWindow::onAxisStop(std::uint32_t axis) {
+  if (isOpen() && m_pointerInside && m_input.pointerAxisStop(axis)) {
+    invalidate();
+  }
 }
 
 void AppWindow::onPointerEvent(const PointerEvent& event) {

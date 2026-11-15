@@ -146,6 +146,7 @@ public:
   // The app routes events here only for this window's surface (DeskApp::routePointer, routeKey).
   void onPointerEvent(const PointerEvent& event);
   void onPinchEvent(const PinchEvent& event);
+  void onAxisStop(std::uint32_t axis);
   void onKeyboardEvent(const KeyboardEvent& event);
 
 private:

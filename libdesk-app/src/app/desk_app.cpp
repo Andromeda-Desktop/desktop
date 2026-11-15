@@ -193,6 +193,11 @@ int DeskApp::run(int argc, char* argv[]) {
       window->onPinchEvent(event);
     }
   });
+  m_loop.wayland().setAxisStopCallback([this](wl_surface* surface, std::uint32_t axis) {
+    if (AppWindow* window = windowFor(surface != nullptr ? surface : m_pointerSurface)) {
+      window->onAxisStop(axis);
+    }
+  });
   m_loop.wayland().setKeyboardEventCallback([this](const KeyboardEvent& event) { routeKey(event); });
 
   startup();

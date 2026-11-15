@@ -81,6 +81,8 @@ void WaylandSeat::setCursorShapeManager(wp_cursor_shape_manager_v1* manager) { m
 
 void WaylandSeat::setPinchEventCallback(PinchEventCallback callback) { m_pinchEventCallback = std::move(callback); }
 
+void WaylandSeat::setAxisStopCallback(AxisStopCallback callback) { m_axisStopCallback = std::move(callback); }
+
 void WaylandSeat::setPointerGestures(zwp_pointer_gestures_v1* gestures) {
   m_pointerGestures = gestures;
   if (m_pointerGestures == nullptr || m_pointer == nullptr || m_pinch != nullptr) {
@@ -449,6 +451,7 @@ void WaylandSeat::handlePointerAxisStop(
   auto* self = static_cast<WaylandSeat*>(data);
   if (axis < self->m_axisGestureSerial.size()) {
     ++self->m_axisGestureSerial[axis];
+    self->m_pendingAxisStop[axis] = true;
   }
 }
 
@@ -493,6 +496,7 @@ void WaylandSeat::handlePointerFrame(void* data, wl_pointer* /*pointer*/) {
   auto* self = static_cast<WaylandSeat*>(data);
   std::vector<PointerEvent> events = std::move(self->m_pendingPointerEvents);
   self->m_pendingPointerEvents.clear();
+  const std::array<bool, 2> stops = std::exchange(self->m_pendingAxisStop, {});
   self->m_pendingAxisSource = 0;
   // Detents never carry across a frame; drop any the compositor left uncoupled.
   self->m_pendingAxisDetents.fill({});
@@ -524,6 +528,11 @@ void WaylandSeat::handlePointerFrame(void* data, wl_pointer* /*pointer*/) {
     }
 
     self->m_pointerEventCallback(event);
+  }
+  for (std::uint32_t axis = 0; axis < stops.size(); ++axis) {
+    if (stops[axis] && self->m_axisStopCallback) {
+      self->m_axisStopCallback(self->m_lastPointerSurface, axis);
+    }
   }
 }
 

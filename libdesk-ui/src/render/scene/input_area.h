@@ -109,6 +109,7 @@ public:
   void setOnCancel(VoidCallback callback);
   void setOnAxis(PointerCallback callback);
   void setOnAxisHandler(AxisCallback callback);
+  void setOnAxisStop(std::function<void(std::uint32_t axis)> callback) { m_onAxisStop = std::move(callback); }
   void setOnPinch(PinchCallback callback) { m_onPinch = std::move(callback); }
   [[nodiscard]] bool handlesPinch() const noexcept { return static_cast<bool>(m_onPinch); }
 
@@ -212,6 +213,14 @@ public:
       m_onPinch(data);
     }
   }
+  // False when the area takes no axis stop.
+  bool dispatchAxisStop(std::uint32_t axis) {
+    if (!m_onAxisStop) {
+      return false;
+    }
+    m_onAxisStop(axis);
+    return true;
+  }
   [[nodiscard]] bool dispatchAxis(
       float localX, float localY, std::uint32_t axis, std::uint32_t axisSource, double axisValue,
       std::int32_t axisDiscrete, std::int32_t axisValue120, float axisLines, std::uint32_t axisGestureSerial = 0
@@ -237,6 +246,7 @@ private:
   PointerCallback m_onClick;
   VoidCallback m_onCancel;
   AxisCallback m_onAxis;
+  std::function<void(std::uint32_t)> m_onAxisStop;
   PinchCallback m_onPinch;
   KeyCallback m_onKeyDown;
   KeyCallback m_onKeyUp;

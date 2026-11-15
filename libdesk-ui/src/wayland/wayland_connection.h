@@ -153,6 +153,7 @@ public:
   void setOutputLifecycleCallbacks(std::function<void(wl_output*)> added, std::function<void(wl_output*)> removed);
   void setPointerEventCallback(WaylandSeat::PointerEventCallback callback);
   void setPinchEventCallback(WaylandSeat::PinchEventCallback callback);
+  void setAxisStopCallback(WaylandSeat::AxisStopCallback callback);
   void setKeyboardEventCallback(WaylandSeat::KeyboardEventCallback callback);
   void setKeyboardModifiersCallback(WaylandSeat::KeyboardModifiersCallback callback);
   void setLockKeysChangeCallback(WaylandSeat::LockKeysChangeCallback callback);

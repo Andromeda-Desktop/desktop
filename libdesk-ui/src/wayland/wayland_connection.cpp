@@ -790,6 +790,10 @@ void WaylandConnection::setPinchEventCallback(WaylandSeat::PinchEventCallback ca
   m_seatHandler.setPinchEventCallback(std::move(callback));
 }
 
+void WaylandConnection::setAxisStopCallback(WaylandSeat::AxisStopCallback callback) {
+  m_seatHandler.setAxisStopCallback(std::move(callback));
+}
+
 void WaylandConnection::setPointerEventCallback(WaylandSeat::PointerEventCallback callback) {
   m_pointerEventCallback = std::move(callback);
   m_seatHandler.setPointerEventCallback([this](const PointerEvent& event) {

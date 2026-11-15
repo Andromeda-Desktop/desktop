@@ -51,6 +51,8 @@ public:
   bool pointerButton(
       float x, float y, std::uint32_t button, bool pressed, std::uint32_t serial, std::uint32_t time, bool touch
   );
+  // The end of a touchpad scroll goes to the captured or hovered area, or the nearest ancestor that takes it.
+  bool pointerAxisStop(std::uint32_t axis);
   bool pointerAxis(
       float x, float y, std::uint32_t axis, std::uint32_t axisSource, double value, std::int32_t discrete,
       std::int32_t value120, float lines, std::uint32_t axisGestureSerial = 0
