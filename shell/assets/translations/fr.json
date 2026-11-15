@@ -2970,7 +2970,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Transmet l’image PNG capturée à une commande shell via l’entrée standard",
+          "description": "Transmet l’image PNG capturée à une commande via l’entrée standard",
           "label": "Transmettre à une commande"
         },
         "screenshot-region-modifier": {

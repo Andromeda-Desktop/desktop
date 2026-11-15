@@ -3075,7 +3075,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Gửi ảnh PNG đã chụp đến một lệnh shell qua stdin",
+          "description": "Gửi ảnh PNG đã chụp đến một lệnh qua stdin",
           "label": "Đẩy vào lệnh"
         },
         "screenshot-save-to-file": {

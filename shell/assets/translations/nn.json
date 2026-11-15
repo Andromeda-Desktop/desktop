@@ -2999,7 +2999,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Send det oppteke PNG-et til ein skalkommando på stdin",
+          "description": "Send det oppteke PNG-et til ein kommando på stdin",
           "label": "Røyra til kommando"
         },
         "screenshot-remember-last-region": {

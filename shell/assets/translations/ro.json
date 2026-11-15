@@ -3552,7 +3552,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Trimite PNG-ul capturat către o comandă shell pe stdin",
+          "description": "Trimite PNG-ul capturat către o comandă pe stdin",
           "label": "Trimite prin pipe către comandă"
         },
         "screenshot-quality": {

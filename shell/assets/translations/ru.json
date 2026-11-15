@@ -3552,7 +3552,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Отправлять захваченный PNG shell-команде через stdin",
+          "description": "Отправлять захваченный PNG команде через stdin",
           "label": "Передать команде"
         },
         "screenshot-quality": {

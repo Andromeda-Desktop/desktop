@@ -2944,7 +2944,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Надіслати захоплений PNG команді оболонки через stdin",
+          "description": "Надіслати захоплений PNG команді через stdin",
           "label": "Передати в команду"
         },
         "screenshot-remember-last-region": {

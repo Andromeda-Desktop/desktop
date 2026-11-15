@@ -3532,7 +3532,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "将截取的 PNG 图片通过 stdin 传递给 Shell 命令",
+          "description": "将截取的 PNG 图片通过 stdin 传递给命令",
           "label": "通过管道传递给命令"
         },
         "screenshot-quality": {

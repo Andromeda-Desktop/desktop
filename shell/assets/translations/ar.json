@@ -3047,7 +3047,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "إرسال لقطة الشاشة إلى أمر غلاف عبر الدخل القياسي",
+          "description": "إرسال لقطة الشاشة إلى أمر عبر الدخل القياسي",
           "label": "التمرير إلى أمر"
         },
         "screenshot-remember-last-region": {

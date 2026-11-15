@@ -2987,7 +2987,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Envia el PNG capturat a una ordre de shell per stdin",
+          "description": "Envia el PNG capturat a una ordre per stdin",
           "label": "Canonada a l'ordre"
         },
         "screenshot-remember-last-region": {

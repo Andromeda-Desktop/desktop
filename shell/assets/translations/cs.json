@@ -2520,7 +2520,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Poslat zachycený PNG do příkazu shellu přes stdin",
+          "description": "Poslat zachycený PNG do příkazu přes stdin",
           "label": "Předat do příkazu"
         },
         "screenshot-save-to-file": {

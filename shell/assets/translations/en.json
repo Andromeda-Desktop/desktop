@@ -4978,7 +4978,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Send the captured PNG to a shell command on stdin",
+          "description": "Send the captured PNG to a command on stdin",
           "label": "Pipe to Command"
         },
         "screenshot-quality": {

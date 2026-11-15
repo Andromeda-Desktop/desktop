@@ -2892,7 +2892,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Küldd el az elfogott PNG-t egy shell parancsnak stdin-re",
+          "description": "Küldd el az elfogott PNG-t egy parancsnak stdin-re",
           "label": "Átirányítás parancsra"
         },
         "screenshot-save-to-file": {

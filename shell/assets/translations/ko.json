@@ -3066,7 +3066,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "캡처된 PNG를 stdin의 쉘 명령어로 전송",
+          "description": "캡처된 PNG를 stdin으로 명령어에 전송",
           "label": "명령어로 파이프"
         },
         "screenshot-remember-last-region": {

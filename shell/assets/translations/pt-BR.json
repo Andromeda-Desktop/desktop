@@ -3552,7 +3552,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Envia o PNG capturado para um comando do shell em stdin",
+          "description": "Envia o PNG capturado para um comando em stdin",
           "label": "Pipe para Comando"
         },
         "screenshot-quality": {

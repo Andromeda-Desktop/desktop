@@ -2214,7 +2214,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Wyślij przechwycony PNG do polecenia powłoki na stdin",
+          "description": "Wyślij przechwycony PNG do polecenia na stdin",
           "label": "Prześlij do polecenia"
         },
         "screenshot-save-to-file": {

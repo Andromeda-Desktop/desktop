@@ -2271,7 +2271,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Stuur de gemaakte PNG naar een shell-commando op stdin",
+          "description": "Stuur de gemaakte PNG naar een commando op stdin",
           "label": "Pipen naar commando"
         },
         "screenshot-save-to-file": {

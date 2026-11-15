@@ -3015,7 +3015,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "שלח את ה-PNG שצולם לפקודת shell דרך stdin",
+          "description": "שלח את ה-PNG שצולם לפקודה דרך stdin",
           "label": "העבר לפקודה"
         },
         "screenshot-remember-last-region": {

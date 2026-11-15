@@ -3016,7 +3016,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Yakalanan PNG'yi stdin üzerinden bir kabuk komutuna gönder",
+          "description": "Yakalanan PNG'yi stdin üzerinden bir komuta gönder",
           "label": "Komuta Aktar"
         },
         "screenshot-remember-last-region": {

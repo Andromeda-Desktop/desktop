@@ -3010,7 +3010,7 @@
           "placeholder": "swappy -f -"
         },
         "screenshot-pipe-to-command": {
-          "description": "Sende das aufgenommene PNG über stdin an einen Shell-Befehl",
+          "description": "Sende das aufgenommene PNG über stdin an einen Befehl",
           "label": "An Befehl weiterleiten"
         },
         "screenshot-remember-last-region": {
