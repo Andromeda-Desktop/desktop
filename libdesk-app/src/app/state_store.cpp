@@ -80,6 +80,9 @@ void StateStore::set(std::string_view pointer, nlohmann::json value) {
 
 bool StateStore::flush() {
   m_saveTimer.stop();
+  if (!m_dirty) {
+    return true;
+  }
   std::error_code ec;
   std::filesystem::create_directories(m_file.parent_path(), ec);
   const std::string tmp = m_file.string() + ".tmp";

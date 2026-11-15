@@ -45,6 +45,14 @@ int main() {
     expect(!store.dirty(), "setting the same value is no change");
   }
   {
+    // A second instance forwards to the first and never loads the state.
+    StateStore unloaded(file);
+    expect(unloaded.flush(), "a flush with no change succeeds");
+    StateStore store(file);
+    store.load();
+    expect(store.get<int>("/window/main/width", 0) == 812, "a flush with no change keeps the saved state");
+  }
+  {
     // The destructor writes a pending change, as when the window closes before the save delay.
     StateStore store(file);
     store.load();
