@@ -65,15 +65,6 @@ namespace settings {
     }
 
 
-    [[nodiscard]] std::vector<KeyChord>
-    effectiveKeybindItems(const std::vector<KeyChord>& configured, KeybindAction action) {
-      if (!configured.empty()) {
-        return configured;
-      }
-      return defaultKeybindSet(action);
-    }
-
-
     SelectSetting asSegmented(SelectSetting setting) {
       setting.segmented = true;
       return setting;

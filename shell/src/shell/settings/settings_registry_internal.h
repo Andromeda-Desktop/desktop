@@ -94,8 +94,6 @@ namespace settings {
     [[nodiscard]] SliderSetting barCornerSlider(std::int32_t value);
     [[nodiscard]] std::string deadZoneDefault(noctalia::bar::Gesture gesture);
     [[nodiscard]] SliderSetting barReservedSlider(double value, double maxValue, double step, bool integer);
-    [[nodiscard]] std::vector<KeyChord>
-    effectiveKeybindItems(const std::vector<KeyChord>& configured, KeybindAction action);
     SelectSetting asSegmented(SelectSetting setting);
     StepperSetting barMarginStepper(std::int32_t value);
     StepperSetting barPanelOverlapStepper(std::int32_t value);
@@ -234,6 +232,20 @@ namespace settings {
             break;
           }
           control = std::move(list);
+          break;
+        }
+        case RowSpec::Kind::KeybindList: {
+          KeybindListSetting keybinds{.items = {}, .maxItems = row.maxItems};
+          if (const auto* items = value.as_array()) {
+            for (const auto& item : *items) {
+              if (const auto text = item.template value<std::string>()) {
+                if (auto chord = parseKeyChordSpec(*text)) {
+                  keybinds.items.push_back(*chord);
+                }
+              }
+            }
+          }
+          control = std::move(keybinds);
           break;
         }
         }

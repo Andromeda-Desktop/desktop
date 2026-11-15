@@ -1653,8 +1653,10 @@ namespace noctalia::config::schema {
     // One keybind action: reads a single chord string or an array of them
     // (warning on an unparseable chord, rethrowing on a hard parse exception);
     // writes the configured chords, or the built-in defaults when none are set.
-    Field<KeybindsConfig>
-    keybindActionField(std::vector<KeyChord> KeybindsConfig::* member, std::string_view key, KeybindAction action) {
+    Field<KeybindsConfig> keybindActionField(
+        std::vector<KeyChord> KeybindsConfig::* member, std::string_view key, KeybindAction action,
+        std::string_view tags
+    ) {
       return custom<KeybindsConfig>(
           key,
           [member, key](const toml::table& tbl, KeybindsConfig& out, std::string_view parentPath, Diagnostics& diag) {
@@ -1704,6 +1706,13 @@ namespace noctalia::config::schema {
               emit(values);
             }
             tbl.insert_or_assign(key, std::move(arr));
+          },
+          RowSpec{
+              .kind = RowSpec::Kind::KeybindList,
+              .section = "keybinds",
+              .group = "keybinds",
+              .tags = tags,
+              .maxItems = 4,
           }
       );
     }
@@ -1713,17 +1722,29 @@ namespace noctalia::config::schema {
 
   const Schema<KeybindsConfig>& keybindsSchema() {
     static const Schema<KeybindsConfig> s = {
-        keybindActionField(&KeybindsConfig::validate, "validate", KeybindAction::Validate),
-        keybindActionField(&KeybindsConfig::cancel, "cancel", KeybindAction::Cancel),
-        keybindActionField(&KeybindsConfig::left, "left", KeybindAction::Left),
-        keybindActionField(&KeybindsConfig::right, "right", KeybindAction::Right),
-        keybindActionField(&KeybindsConfig::up, "up", KeybindAction::Up),
-        keybindActionField(&KeybindsConfig::down, "down", KeybindAction::Down),
-        keybindActionField(&KeybindsConfig::tabNext, "tab_next", KeybindAction::TabNext),
-        keybindActionField(&KeybindsConfig::tabPrevious, "tab_previous", KeybindAction::TabPrevious),
-        keybindActionField(&KeybindsConfig::deleteEntry, "delete", KeybindAction::Delete),
-        keybindActionField(&KeybindsConfig::copy, "copy", KeybindAction::Copy),
-        keybindActionField(&KeybindsConfig::save, "save", KeybindAction::Save),
+        keybindActionField(
+            &KeybindsConfig::validate, "validate", KeybindAction::Validate,
+            "keybind shortcut hotkey enter accept submit confirm"
+        ),
+        keybindActionField(
+            &KeybindsConfig::cancel, "cancel", KeybindAction::Cancel, "keybind shortcut hotkey escape close dismiss"
+        ),
+        keybindActionField(&KeybindsConfig::left, "left", KeybindAction::Left, "keybind shortcut hotkey arrow move"),
+        keybindActionField(&KeybindsConfig::right, "right", KeybindAction::Right, "keybind shortcut hotkey arrow move"),
+        keybindActionField(&KeybindsConfig::up, "up", KeybindAction::Up, "keybind shortcut hotkey arrow move"),
+        keybindActionField(&KeybindsConfig::down, "down", KeybindAction::Down, "keybind shortcut hotkey arrow move"),
+        keybindActionField(
+            &KeybindsConfig::tabNext, "tab_next", KeybindAction::TabNext, "keybind shortcut hotkey tab focus pane"
+        ),
+        keybindActionField(
+            &KeybindsConfig::tabPrevious, "tab_previous", KeybindAction::TabPrevious,
+            "keybind shortcut hotkey shift tab focus pane"
+        ),
+        keybindActionField(
+            &KeybindsConfig::deleteEntry, "delete", KeybindAction::Delete, "keybind shortcut hotkey delete remove clear"
+        ),
+        keybindActionField(&KeybindsConfig::copy, "copy", KeybindAction::Copy, "keybind shortcut hotkey copy clipboard"),
+        keybindActionField(&KeybindsConfig::save, "save", KeybindAction::Save, "keybind shortcut hotkey save file"),
     };
     return s;
   }

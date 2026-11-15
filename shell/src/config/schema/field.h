@@ -138,7 +138,7 @@ namespace noctalia::config::schema {
   // The field factory fills `range` and `choices` from its own range and enum table. A `range` set in the
   // RowSpec wins: some controls offer a narrower range than the config accepts.
   struct RowSpec {
-    enum class Kind : std::uint8_t { Toggle, Slider, Select, Text, Stepper, Color, OptionalStepper, List };
+    enum class Kind : std::uint8_t { Toggle, Slider, Select, Text, Stepper, Color, OptionalStepper, List, KeybindList };
     enum class Options : std::uint8_t { None, Outputs, Fonts, BatteryDevices };
     enum class Browse : std::uint8_t { None, Folder, File };
     struct Choice {
@@ -169,6 +169,7 @@ namespace noctalia::config::schema {
     bool allowNone = false;          // colour offers an unset entry
     std::string_view unsetLabelKey;  // label of the unset colour or stepper state
     int fallback = 0;                // optional stepper value when it leaves the unset state
+    std::size_t maxItems = 0;        // keybind list length cap; 0 = no cap
   };
 
   // One descriptor: binds a single TOML key in a parent table to part of a
