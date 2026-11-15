@@ -1,6 +1,8 @@
-#include "cups_printers.h"
+#include "printing/cups_printers.h"
 
 #include <cups/cups.h>
+
+#include <cstdlib>
 
 #include <algorithm>
 #include <cctype>
@@ -112,6 +114,8 @@ void fillCapabilities(cups_dest_t* dest, PrinterInfo& p) {
   cups_size_t def{};
   if (cupsGetDestMediaDefault(CUPS_HTTP_DEFAULT, dest, info, CUPS_MEDIA_FLAGS_DEFAULT, &def))
     p.defaultMedia = def.media;
+  if (ipp_attribute_t* sides = cupsFindDestDefault(CUPS_HTTP_DEFAULT, dest, info, CUPS_SIDES))
+    p.defaultSides = attrValue(sides, 0);
   fillOptions(dest, info, p);
   cupsFreeDestInfo(info);
 }
@@ -124,6 +128,14 @@ int queuedJobs(const char* name) {
 }
 
 } // namespace
+
+bool printServiceRunning() {
+  http_t* http = httpConnect2(cupsServer(), ippPort(), nullptr, AF_UNSPEC, cupsEncryption(), 1, 1000, nullptr);
+  if (!http)
+    return false;
+  httpClose(http);
+  return true;
+}
 
 std::vector<PrinterInfo> listPrinters() {
   cups_dest_t* raw = nullptr;
@@ -140,6 +152,8 @@ std::vector<PrinterInfo> listPrinters() {
     if (p.label.empty())
       p.label = p.name;
     p.isDefault = d.is_default;
+    p.uri = option(d, "device-uri");
+    p.location = option(d, "printer-location");
     const std::string firstReason = firstStateReason(option(d, "printer-state-reasons"));
     const std::string state = option(d, "printer-state"); // IPP: 3 idle, 4 processing, 5 stopped
     if (firstReason.starts_with("offline") || firstReason.starts_with("connecting"))
@@ -150,10 +164,19 @@ std::vector<PrinterInfo> listPrinters() {
       p.state = PrinterState::Printing;
     else
       p.state = PrinterState::Ready;
+    p.paused = state == "5" && option(d, "printer-state-reasons").find("paused") != std::string::npos;
     if (!firstReason.empty())
       p.reason = reasonText(firstReason);
+    // A person who pauses a queue may say why (cupsdisable -r); that beats the bare "Paused".
+    if (std::string message = option(d, "printer-state-message"); p.paused && !message.empty())
+      p.reason = std::move(message);
     p.queuedJobs = queuedJobs(d.name);
     fillCapabilities(&d, p);
+    // The user's own defaults (lpoptions) win over the printer's.
+    if (std::string media = option(d, "media"); !media.empty())
+      p.defaultMedia = std::move(media);
+    if (std::string sides = option(d, CUPS_SIDES); !sides.empty())
+      p.defaultSides = std::move(sides);
     out.push_back(std::move(p));
   }
   std::stable_sort(out.begin(), out.end(), [](const PrinterInfo& a, const PrinterInfo& b) {
@@ -302,3 +325,196 @@ JobStatus jobStatus(const std::string& printer, int jobId) {
 }
 
 void cancelJob(const std::string& printer, int jobId) { cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), jobId, 0); }
+
+std::vector<JobInfo> listJobs() {
+  cups_job_t* jobs = nullptr;
+  const int n = cupsGetJobs2(CUPS_HTTP_DEFAULT, &jobs, nullptr, 0, CUPS_WHICHJOBS_ACTIVE);
+  std::vector<JobInfo> out;
+  for (int i = 0; i < n; ++i) {
+    const cups_job_t& j = jobs[i];
+    JobInfo info{.id = j.id, .printer = j.dest ? j.dest : "", .title = j.title ? j.title : ""};
+    if (j.state == IPP_JSTATE_PROCESSING) {
+      const JobStatus st = jobStatus(info.printer, j.id);
+      info.state = st.state == JobState::Stopped ? JobState::Stopped : JobState::Printing;
+      info.pagesDone = st.pagesDone;
+    } else {
+      info.state = j.state == IPP_JSTATE_STOPPED ? JobState::Stopped : JobState::Waiting;
+    }
+    out.push_back(std::move(info));
+  }
+  cupsFreeJobs(n, jobs);
+  std::ranges::sort(out, {}, &JobInfo::id);
+  return out;
+}
+
+namespace {
+
+std::string printerUri(const std::string& printer) {
+  char uri[1024];
+  httpAssembleURIf(HTTP_URI_CODING_ALL, uri, sizeof uri, "ipp", nullptr, "localhost", 0, "/printers/%s", printer.c_str());
+  return uri;
+}
+
+std::optional<JobError> lastError() {
+  if (cupsLastError() <= IPP_STATUS_OK_EVENTS_COMPLETE)
+    return std::nullopt;
+  return JobError{cupsLastErrorString()};
+}
+
+std::optional<JobError> printerOperation(ipp_op_t op, const std::string& printer) {
+  ipp_t* request = ippNewRequest(op);
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(printer).c_str());
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cupsUser());
+  ippDelete(cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/admin/"));
+  return lastError();
+}
+
+// Rewrites the user's lpoptions after edit(dests) changed them.
+template <typename Edit> std::optional<JobError> editUserDests(Edit edit) {
+  cups_dest_t* raw = nullptr;
+  const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
+  std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
+  if (!edit(raw, count))
+    return JobError{"The printer is no longer available."};
+  if (cupsSetDests2(CUPS_HTTP_DEFAULT, count, raw) != 0)
+    return JobError{"Your printer settings could not be saved."};
+  return std::nullopt;
+}
+
+// A CUPS queue name from a label: letters, digits and '_' only, at most 127 bytes.
+std::string queueName(const std::string& label) {
+  std::string name;
+  for (const char c : label) {
+    if (std::isalnum(static_cast<unsigned char>(c)))
+      name += c;
+    else if (!name.empty() && name.back() != '_')
+      name += '_';
+  }
+  while (!name.empty() && name.back() == '_')
+    name.pop_back();
+  name.resize(std::min<std::size_t>(name.size(), 127));
+  return name.empty() ? std::string("Printer") : name;
+}
+
+std::string attrString(ipp_t* response, const char* name) {
+  ipp_attribute_t* a = ippFindAttribute(response, name, IPP_TAG_ZERO);
+  const char* v = a ? ippGetString(a, 0, nullptr) : nullptr;
+  return v ? v : "";
+}
+
+} // namespace
+
+std::optional<JobError> pausePrinter(const std::string& printer) { return printerOperation(IPP_OP_PAUSE_PRINTER, printer); }
+
+std::optional<JobError> resumePrinter(const std::string& printer) {
+  return printerOperation(IPP_OP_RESUME_PRINTER, printer);
+}
+
+std::optional<JobError> removePrinter(const std::string& printer) {
+  return printerOperation(IPP_OP_CUPS_DELETE_PRINTER, printer);
+}
+
+std::optional<JobError> cancelAllJobs(const std::string& printer) {
+  cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), CUPS_JOBID_ALL, 0);
+  return lastError();
+}
+
+std::optional<JobError> printTestPage(const std::string& printer) {
+  const char* dataDir = std::getenv("CUPS_DATADIR");
+  const std::string file = std::string(dataDir ? dataDir : "/usr/share/cups") + "/data/default-testpage.pdf";
+  if (cupsPrintFile2(CUPS_HTTP_DEFAULT, printer.c_str(), file.c_str(), "Test Page", 0, nullptr) == 0)
+    return JobError{cupsLastErrorString()};
+  return std::nullopt;
+}
+
+std::optional<JobError> setDefaultPrinter(const std::string& printer) {
+  return editUserDests([&](cups_dest_t* dests, int count) {
+    bool found = false;
+    for (int i = 0; i < count; ++i) {
+      dests[i].is_default = printer == dests[i].name && !dests[i].instance;
+      found = found || dests[i].is_default;
+    }
+    return found;
+  });
+}
+
+std::optional<JobError> setPrinterDefault(const std::string& printer, const std::string& key, const std::string& value) {
+  return editUserDests([&](cups_dest_t* dests, int count) {
+    cups_dest_t* d = cupsGetDest(printer.c_str(), nullptr, count, dests);
+    if (!d)
+      return false;
+    d->num_options = cupsAddOption(key.c_str(), value.c_str(), d->num_options, &d->options);
+    return true;
+  });
+}
+
+void discoverPrinters(int timeoutMs, const std::function<void(FoundPrinter)>& onFound) {
+  struct Browse {
+    const std::function<void(FoundPrinter)>& onFound;
+    std::vector<std::string> seen;
+  } browse{onFound, {}};
+  cupsEnumDests(
+      CUPS_DEST_FLAGS_NONE, timeoutMs, nullptr, CUPS_PRINTER_DISCOVERED, CUPS_PRINTER_DISCOVERED,
+      [](void* data, unsigned flags, cups_dest_t* dest) -> int {
+        auto& b = *static_cast<Browse*>(data);
+        std::string uri = option(*dest, "device-uri");
+        if ((flags & CUPS_DEST_FLAGS_REMOVED) || uri.empty() || std::ranges::contains(b.seen, uri))
+          return 1;
+        std::string label = option(*dest, "printer-make-and-model");
+        if (label.empty())
+          label = option(*dest, "printer-info");
+        b.seen.push_back(uri);
+        b.onFound({.label = label.empty() ? uri : std::move(label), .uri = std::move(uri)});
+        return 1;
+      },
+      &browse);
+}
+
+std::variant<FoundPrinter, JobError> probePrinter(const std::string& address) {
+  const std::string uri = address.find("://") != std::string::npos ? address : "ipp://" + address + "/ipp/print";
+  char scheme[32], user[256], host[256], resource[1024];
+  int port = 0;
+  if (httpSeparateURI(HTTP_URI_CODING_ALL, uri.c_str(), scheme, sizeof scheme, user, sizeof user, host, sizeof host,
+                      &port, resource, sizeof resource) < HTTP_URI_STATUS_OK)
+    return JobError{"This is not a printer address."};
+  const http_encryption_t encryption =
+      std::string_view(scheme) == "ipps" ? HTTP_ENCRYPTION_ALWAYS : HTTP_ENCRYPTION_IF_REQUESTED;
+  http_t* http = httpConnect2(host, port, nullptr, AF_UNSPEC, encryption, 1, 5000, nullptr);
+  if (!http)
+    return JobError{"No printer answers at this address."};
+  ipp_t* request = ippNewRequest(IPP_OP_GET_PRINTER_ATTRIBUTES);
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, uri.c_str());
+  static const char* const kAttrs[] = {"printer-make-and-model", "printer-info", "document-format-supported"};
+  ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 3, nullptr, kAttrs);
+  ipp_t* response = cupsDoRequest(http, request, resource);
+  httpClose(http);
+  if (!response || ippGetStatusCode(response) > IPP_STATUS_OK_EVENTS_COMPLETE) {
+    ippDelete(response);
+    return JobError{"No printer answers at this address."};
+  }
+  bool driverless = false;
+  if (ipp_attribute_t* formats = ippFindAttribute(response, "document-format-supported", IPP_TAG_MIMETYPE))
+    for (const char* f : {"image/pwg-raster", "image/urf", "application/pdf"})
+      driverless = driverless || ippContainsString(formats, f);
+  std::string label = attrString(response, "printer-make-and-model");
+  if (label.empty())
+    label = attrString(response, "printer-info");
+  ippDelete(response);
+  if (!driverless)
+    return JobError{"This printer needs a driver. Andromeda adds only driverless printers."};
+  return FoundPrinter{.label = label.empty() ? uri : label, .uri = uri};
+}
+
+std::optional<JobError> addPrinter(const FoundPrinter& printer) {
+  const std::string name = queueName(printer.label);
+  ipp_t* request = ippNewRequest(IPP_OP_CUPS_ADD_MODIFY_PRINTER);
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(name).c_str());
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cupsUser());
+  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "ppd-name", nullptr, "everywhere");
+  ippAddString(request, IPP_TAG_PRINTER, IPP_TAG_URI, "device-uri", nullptr, printer.uri.c_str());
+  ippAddString(request, IPP_TAG_PRINTER, IPP_TAG_TEXT, "printer-info", nullptr, printer.label.c_str());
+  ippAddBoolean(request, IPP_TAG_PRINTER, "printer-is-accepting-jobs", 1);
+  ippAddInteger(request, IPP_TAG_PRINTER, IPP_TAG_ENUM, "printer-state", IPP_PSTATE_IDLE);
+  ippDelete(cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/admin/"));
+  return lastError();
+}

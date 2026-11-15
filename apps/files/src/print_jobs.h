@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cups_printers.h"
+#include "printing/cups_printers.h"
 #include "core/timer_manager.h"
 
 #include <cstdint>
@@ -10,8 +10,8 @@
 
 class SessionBus;
 
-// Opens Settings at the printers (Devices until Settings has a Printers page).
-void openPrinterSettings();
+// Opens Settings › Printers, or one printer's queue when `printer` (a CUPS queue name) is set.
+void openPrinterSettings(const std::string& printer = {});
 
 namespace sdbus {
   class IProxy;

@@ -19,8 +19,9 @@ namespace {
   constexpr auto kPollInterval = std::chrono::milliseconds(1000);
 } // namespace
 
-void openPrinterSettings() {
-    const gchar* argv[] = {"andromeda-shell", "msg", "settings-open", "devices", nullptr};
+void openPrinterSettings(const std::string& printer) {
+    const std::string context = printer.empty() ? "printers" : "printer:" + printer;
+    const gchar* argv[] = {"andromeda-shell", "msg", "settings-open", context.c_str(), nullptr};
     GError* error = nullptr;
     if (!g_spawn_async(nullptr, const_cast<gchar**>(argv), nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr,
                        &error)) {
@@ -48,7 +49,7 @@ PrintJobs::PrintJobs(SessionBus& bus) {
         m_byNote.erase(it);
         m_jobs.erase(job);
       } else if (key == "queue") {
-        openPrinterSettings();
+        openPrinterSettings(job->second.printer);
       }
     });
     m_proxy->uponSignal("NotificationClosed").onInterface(kInterface).call([this](std::uint32_t note, std::uint32_t) {

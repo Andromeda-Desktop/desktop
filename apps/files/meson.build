@@ -28,12 +28,11 @@ _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
 # Gallery video in place: the preview's subsurface player and sandboxed media helper (audio loads lazily).
 _preview_media_dep = subproject('andromeda-preview').get_variable('preview_media_dep')
 _gio_unix_dep = dependency('gio-unix-2.0') # GUnixMountMonitor, GDesktopAppInfo
-_cups_dep = cpp.find_library('cups') # libcups ships no cups.pc
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
 _files_lib = static_library('files_core',
   sources: files('src/trash.cpp', 'src/archive_listing.cpp', 'src/permission_access.cpp', 'src/server_url.cpp',
-    'src/tags.cpp', 'src/exif_date.cpp', 'src/state_file.cpp', 'src/print_settings.cpp'),
+    'src/tags.cpp', 'src/exif_date.cpp', 'src/state_file.cpp'),
   dependencies: _desk_app_dep,
   cpp_args: _warnings,
 )
@@ -72,7 +71,6 @@ executable('andromeda-files',
     'src/files_window_picker.cpp',
     'src/app_chooser_portal.cpp',
     'src/email_portal.cpp',
-    'src/cups_printers.cpp',
     'src/print_jobs.cpp',
     'src/print_portal.cpp',
     'src/print_sheet.cpp',
@@ -83,7 +81,7 @@ executable('andromeda-files',
     'src/main.cpp',
   ),
   link_with: _files_lib,
-  dependencies: [_desk_app_dep, _gio_unix_dep, dependency('vterm'), _preview_media_dep, _cups_dep],
+  dependencies: [_desk_app_dep, _gio_unix_dep, dependency('vterm'), _preview_media_dep],
   cpp_args: _warnings,
   install: true,
 )
@@ -110,8 +108,8 @@ if _dbus_run_session.found()
   test('picker_portal_dbus', _dbus_run_session, args: ['--', _picker_portal_dbus_exe.full_path()],
     depends: _picker_portal_dbus_exe)
   _print_portal_dbus_exe = executable('print_portal_dbus_test', 'tests/print_portal_dbus_test.cpp',
-    'src/print_portal.cpp', 'src/print_jobs.cpp', 'src/cups_printers.cpp', link_with: _files_lib,
-    dependencies: [_desk_app_dep, _cups_dep], include_directories: include_directories('src'), cpp_args: _warnings)
+    'src/print_portal.cpp', 'src/print_jobs.cpp', link_with: _files_lib,
+    dependencies: _desk_app_dep, include_directories: include_directories('src'), cpp_args: _warnings)
   test('print_portal_dbus', _dbus_run_session, args: ['--', _print_portal_dbus_exe.full_path()],
     depends: _print_portal_dbus_exe)
 endif

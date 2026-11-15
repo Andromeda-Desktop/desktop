@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cups_printers.h"
+#include "printing/cups_printers.h"
 #include "print_portal.h"
 #include "render/core/texture_handle.h"
 
@@ -49,6 +49,7 @@ public:
   PrintSheet(AppLoop& loop, PrintPortal::PrintRequest request, Callbacks callbacks);
   ~PrintSheet();
   // The GL context is gone: drops the uploaded pages (their pixels were freed at upload); a build requests them again.
+  // Renders in flight stay requested.
   void abandonGpuResources();
   PrintSheet(const PrintSheet&) = delete;
   PrintSheet& operator=(const PrintSheet&) = delete;

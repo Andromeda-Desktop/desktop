@@ -1,7 +1,7 @@
 #pragma once
 
 #include "print_jobs.h"
-#include "print_settings.h"
+#include "printing/print_settings.h"
 
 #include <cstdint>
 #include <filesystem>

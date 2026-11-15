@@ -35,6 +35,7 @@ _deps = [
   _desk_ui_dep,
   dependency('sdbus-c++'),
   dependency('libsystemd'),
+  cpp.find_library('cups'), # libcups ships no cups.pc
 ]
 
 _sources = files(
@@ -84,6 +85,8 @@ _sources = files(
   'src/dbus/sensor/ambient_light_service.cpp',
   'src/dbus/udisks/udisks_service.cpp',
   'src/dbus/upower/upower_service.cpp',
+  'src/printing/cups_printers.cpp',
+  'src/printing/print_settings.cpp',
 )
 
 _inc = include_directories('src')

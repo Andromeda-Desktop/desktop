@@ -2,7 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
-#include "cups_printers.h"
+#include "printing/cups_printers.h"
 #include "dbus/session_bus.h"
 #include "state_file.h"
 
