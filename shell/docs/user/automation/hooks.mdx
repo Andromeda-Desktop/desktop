@@ -5,7 +5,7 @@ sidebar:
   order: 0
 ---
 
-Hooks are advanced automation entries under `[hooks]` in the Noctalia config stack. For hand-written hooks, put them in any `*.toml` file under `~/.config/noctalia/`. They run extra commands when specific Noctalia events happen.
+Hooks are advanced automation entries under `[hooks]` in the Noctalia config stack. For hand-written hooks, put them in any `*.toml` file under `~/.config/andromeda/shell/`. They run extra commands when specific Noctalia events happen.
 
 Each event is a shell command string or an array of shell command strings that run in order. Use `noctalia msg ...` when a hook needs to call Noctalia IPC.
 
@@ -43,10 +43,10 @@ To run an action only when the battery is discharging and has just crossed below
 
 ```toml
 [hooks]
-battery_percentage_changed = "ANDROMEDA_BATTERY_THRESHOLD=20 ~/.config/noctalia/hooks/battery-threshold.sh"
+battery_percentage_changed = "ANDROMEDA_BATTERY_THRESHOLD=20 ~/.config/andromeda/shell/hooks/battery-threshold.sh"
 ```
 
-```bash title="~/.config/noctalia/hooks/battery-threshold.sh"
+```bash title="~/.config/andromeda/shell/hooks/battery-threshold.sh"
 #!/usr/bin/env bash
 set -euo pipefail
 
