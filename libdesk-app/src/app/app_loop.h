@@ -7,6 +7,7 @@
 #include "wayland/wayland_connection.h"
 
 #include <chrono>
+#include <future>
 #include <unordered_map>
 #include <vector>
 
@@ -43,6 +44,7 @@ private:
   WaylandConnection m_wayland;
   GlSharedContext m_gl;
   RenderContext m_render;
+  std::future<void> m_iconNames;
   KeyRepeatPollSource m_keyRepeat;
   std::vector<PollSource*> m_sources;
   std::unordered_map<PollSource*, std::chrono::steady_clock::time_point> m_deadlines;

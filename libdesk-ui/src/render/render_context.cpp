@@ -1,5 +1,6 @@
 #include "render/render_context.h"
 
+
 #include "core/files/resource_paths.h"
 #include "core/log.h"
 #include "core/scoped_timer.h"
@@ -29,6 +30,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <fontconfig/fontconfig.h>
 #include <optional>
 #include <cstdlib>
 #include <cmath>
@@ -220,6 +222,8 @@ namespace {
 RenderContext::RenderContext() = default;
 
 RenderContext::~RenderContext() { cleanup(); }
+
+void RenderContext::prepareFonts() { (void)FcInit(); }
 
 void RenderContext::initialize(GlSharedContext& shared) {
   cleanup();

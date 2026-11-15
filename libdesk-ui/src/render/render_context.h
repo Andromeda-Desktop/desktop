@@ -35,6 +35,8 @@ public:
   RenderContext& operator=(const RenderContext&) = delete;
 
   void initialize(GlSharedContext& shared);
+  // CPU-only font setup (the fontconfig configuration); may run while EGL initializes on another thread.
+  static void prepareFonts();
   void cleanup();
   void prepareForGraphicsReset();
   void restoreAfterGraphicsReset(GlSharedContext& shared);

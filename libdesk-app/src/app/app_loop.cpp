@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/timer_manager.h"
+#include "render/text/glyph_registry.h"
 #include "wayland/surface.h"
 
 #include <algorithm>
@@ -74,8 +75,14 @@ bool AppLoop::initialize() {
     kLog.error("failed to connect to the Wayland compositor");
     return false;
   }
+  // Icon names parse from JSON (~13 ms); the header's first glyph lookup waits only for what is left.
+  m_iconNames = std::async(std::launch::async, [] { (void)GlyphRegistry::contains(""); });
   try {
-    m_gl.initialize(m_wayland.display());
+    // EGL init loads Mesa (~50 ms) while fontconfig reads its configuration here. Mesa uses its own Wayland event
+    // queue, and no context is made current on the worker.
+    auto egl = std::async(std::launch::async, [this] { m_gl.initialize(m_wayland.display()); });
+    RenderContext::prepareFonts();
+    egl.get();
     m_render.initialize(m_gl);
   } catch (const std::exception& e) {
     kLog.error("GL setup failed: {}", e.what());
