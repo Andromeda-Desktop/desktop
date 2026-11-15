@@ -5,6 +5,7 @@
 #include "render/core/texture_manager.h"
 #include "render/scene/image_node.h"
 #include "render/scene/node.h"
+#include "render/scene/terminal_grid_node.h"
 
 #include <algorithm>
 #include <cmath>
@@ -74,7 +75,23 @@ namespace term {
     ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, reinterpret_cast<const void*>(&decodePng));
   }
 
-  KittyImages::KittyImages(Node& layer) : m_layer(layer) {}
+  KittyImages::KittyImages(TerminalGridNode& grid) {
+    static_assert(GHOSTTY_IMAGE_LAYER_BELOW_BACKGROUND == 0 && GHOSTTY_IMAGE_LAYER_BELOW_TEXT == 1
+                  && GHOSTTY_IMAGE_LAYER_ABOVE_TEXT == 2);
+    constexpr std::array<int, 3> kZ{TerminalGridNode::kBelowBackgroundZ, TerminalGridNode::kBelowTextZ, 0};
+    for (std::size_t i = 0; i < m_layers.size(); ++i) {
+      auto layer = std::make_unique<Node>();
+      layer->setZIndex(kZ[i]);
+      m_layers[i] = layer.get();
+      grid.addChild(std::move(layer));
+    }
+  }
+
+  void KittyImages::setOrigin(float x, float y) {
+    for (Node* layer : m_layers) {
+      layer->setPosition(x, y);
+    }
+  }
 
   KittyImages::~KittyImages() {
     freeAll();
@@ -194,13 +211,16 @@ namespace term {
                             .height = h.height,
                             .rect = {r.x, r.y, r.width, r.height},
                             .uv = {static_cast<float>(r.sx) / w, static_cast<float>(r.sy) / hh,
-                                   static_cast<float>(r.sw) / w, static_cast<float>(r.sh) / hh}});
+                                   static_cast<float>(r.sw) / w, static_cast<float>(r.sh) / hh},
+                            .layer = static_cast<std::size_t>(r.layer)});
     }
     if (placements == m_drawn) {
       return true;
     }
-    while (!m_layer.children().empty()) {
-      m_layer.removeChild(m_layer.children().back().get());
+    for (Node* layer : m_layers) {
+      while (!layer->children().empty()) {
+        layer->removeChild(layer->children().back().get());
+      }
     }
     for (const Placement& p : placements) {
       auto node = std::make_unique<ImageNode>();
@@ -210,7 +230,7 @@ namespace term {
       node->setFitMode(ImageFitMode::Stretch);
       node->setPosition(p.rect[0], p.rect[1]);
       node->setFrameSize(p.rect[2], p.rect[3]);
-      m_layer.addChild(std::move(node));
+      m_layers[p.layer]->addChild(std::move(node));
     }
     m_drawn = std::move(placements);
     return true;

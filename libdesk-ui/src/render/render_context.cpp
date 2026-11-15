@@ -683,40 +683,6 @@ void RenderContext::renderNode(
     return;
   }
 
-  // The node's own draw is skipped where it misses the clip; its children may still reach it. Same bounds as damage.
-  // Glyph nodes have no size (ink sits above and right of the baseline origin), so they are never culled.
-  if (node->type() != NodeType::Base) {
-    const std::optional<DamageRect> paint =
-        hasClip && node->type() != NodeType::Glyph ? paintBounds(node, worldTransform) : std::nullopt;
-    const auto reaches = [&](const DamageRect& r) {
-      return node->type() == NodeType::Glyph || (paint && paint->overlaps(r));
-    };
-    bool drawn = false;
-    if (!hasClip) {
-      m_backend->disableScissor();
-      drawNodeSelf(renderScale, node, worldTransform, effectiveOpacity, sw, sh, bw, bh);
-      drawn = true;
-    } else if (reaches(clip)) {
-      const RenderScissor clipScissor = scissorForClip(sw, sh, bw, bh, clipLeft, clipTop, clipRight, clipBottom);
-      if (m_passCount == 0) {
-        m_backend->setScissor(clipScissor);
-        drawNodeSelf(renderScale, node, worldTransform, effectiveOpacity, sw, sh, bw, bh);
-        drawn = true;
-      }
-      for (std::size_t i = 0; i < m_passCount; ++i) {
-        const RepaintPass& pass = m_passes[i];
-        const RenderScissor scissor = intersectScissors(clipScissor, pass.scissor);
-        if (!reaches(pass.logical) || scissor.width <= 0 || scissor.height <= 0) {
-          continue;
-        }
-        m_backend->setScissor(scissor);
-        drawNodeSelf(renderScale, node, worldTransform, effectiveOpacity, sw, sh, bw, bh);
-        drawn = true;
-      }
-    }
-    ++(drawn ? m_statDrawn : m_statCulled);
-  }
-
   float childClipLeft = clipLeft;
   float childClipTop = clipTop;
   float childClipRight = clipRight;
@@ -730,22 +696,80 @@ void RenderContext::renderNode(
     childClipBottom = hasClip ? std::min(childClipBottom, boundsBottom) : boundsBottom;
     childHasClip = true;
   }
+  const bool childrenClipped = childHasClip && (childClipRight <= childClipLeft || childClipBottom <= childClipTop);
 
-  if (childHasClip && (childClipRight <= childClipLeft || childClipBottom <= childClipTop)) {
+  // The node's own draw is skipped where it misses the clip; its children may still reach it. Same bounds as damage.
+  // Glyph nodes have no size (ink sits above and right of the baseline origin), so they are never culled.
+  const std::optional<DamageRect> paint = node->type() != NodeType::Base && hasClip && node->type() != NodeType::Glyph
+      ? paintBounds(node, worldTransform)
+      : std::nullopt;
+  const auto drawSelf = [&](std::uint8_t gridPhases) {
+    if (node->type() == NodeType::Base) {
+      return;
+    }
+    const auto reaches = [&](const DamageRect& r) {
+      return node->type() == NodeType::Glyph || (paint && paint->overlaps(r));
+    };
+    bool drawn = false;
+    if (!hasClip) {
+      m_backend->disableScissor();
+      drawNodeSelf(renderScale, node, worldTransform, effectiveOpacity, sw, sh, bw, bh, gridPhases);
+      drawn = true;
+    } else if (reaches(clip)) {
+      const RenderScissor clipScissor = scissorForClip(sw, sh, bw, bh, clipLeft, clipTop, clipRight, clipBottom);
+      if (m_passCount == 0) {
+        m_backend->setScissor(clipScissor);
+        drawNodeSelf(renderScale, node, worldTransform, effectiveOpacity, sw, sh, bw, bh, gridPhases);
+        drawn = true;
+      }
+      for (std::size_t i = 0; i < m_passCount; ++i) {
+        const RepaintPass& pass = m_passes[i];
+        const RenderScissor scissor = intersectScissors(clipScissor, pass.scissor);
+        if (!reaches(pass.logical) || scissor.width <= 0 || scissor.height <= 0) {
+          continue;
+        }
+        m_backend->setScissor(scissor);
+        drawNodeSelf(renderScale, node, worldTransform, effectiveOpacity, sw, sh, bw, bh, gridPhases);
+        drawn = true;
+      }
+    }
+    if ((gridPhases & kTerminalGridText) != 0) {
+      ++(drawn ? m_statDrawn : m_statCulled);
+    }
+  };
+  const auto drawChildren = [&](int minZ, int maxZ) {
+    if (childrenClipped) {
+      return;
+    }
+    forEachChildInPaintOrder(node, [&](const Node* child) {
+      if (child->zIndex() < minZ || child->zIndex() > maxZ) {
+        return;
+      }
+      renderNode(
+          renderScale, child, worldTransform, effectiveOpacity, sw, sh, bw, bh, childClipLeft, childClipTop,
+          childClipRight, childClipBottom, childHasClip, false, paintContained
+      );
+    });
+  };
+
+  constexpr int kMinZ = std::numeric_limits<int>::min();
+  constexpr int kMaxZ = std::numeric_limits<int>::max();
+  if (node->type() == NodeType::TerminalGrid) {
+    drawSelf(kTerminalGridFill);
+    drawChildren(kMinZ, TerminalGridNode::kBelowBackgroundZ);
+    drawSelf(kTerminalGridBackgrounds);
+    drawChildren(TerminalGridNode::kBelowBackgroundZ + 1, TerminalGridNode::kBelowTextZ);
+    drawSelf(kTerminalGridText);
+    drawChildren(TerminalGridNode::kBelowTextZ + 1, kMaxZ);
     return;
   }
-
-  forEachChildInPaintOrder(node, [&](const Node* child) {
-    renderNode(
-        renderScale, child, worldTransform, effectiveOpacity, sw, sh, bw, bh, childClipLeft, childClipTop, childClipRight,
-        childClipBottom, childHasClip, false, paintContained
-    );
-  });
+  drawSelf(kTerminalGridAll);
+  drawChildren(kMinZ, kMaxZ);
 }
 
 void RenderContext::drawNodeSelf(
     float renderScale, const Node* node, const Mat3& worldTransform, float effectiveOpacity, float sw, float sh, float bw,
-    float bh
+    float bh, std::uint8_t gridPhases
 ) {
   switch (node->type()) {
   case NodeType::Rect: {
@@ -913,6 +937,7 @@ void RenderContext::drawNodeSelf(
         .surfaceHeight = sh,
         .transform = worldTransform,
         .opacity = effectiveOpacity,
+        .phases = gridPhases,
     };
     const std::uint32_t bg = grid->background();
     draw.background[0] = static_cast<float>((bg >> 16) & 0xFF) / 255.0F;

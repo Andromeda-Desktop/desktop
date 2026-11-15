@@ -199,7 +199,6 @@ namespace term {
 
     InputArea* m_area = nullptr;
     TerminalGridNode* m_grid = nullptr;
-    Node* m_imageLayer = nullptr; // child of m_grid: kitty images draw above the text
     std::unique_ptr<KittyImages> m_images;
     std::array<std::uint16_t, 2> m_cellPx{}; // cell size the terminal last got, device px
     Scrollbar* m_scrollbar = nullptr;

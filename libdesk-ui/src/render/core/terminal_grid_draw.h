@@ -3,8 +3,17 @@
 #include "render/core/mat3.h"
 #include "render/core/texture_handle.h"
 
+#include <cstdint>
 #include <span>
 #include <vector>
+
+// Parts of a grid draw, bottom up: the background fill, cell backgrounds (rects), text (glyphs, then over).
+enum TerminalGridPhase : std::uint8_t {
+  kTerminalGridFill = 1 << 0,
+  kTerminalGridBackgrounds = 1 << 1,
+  kTerminalGridText = 1 << 2,
+  kTerminalGridAll = kTerminalGridFill | kTerminalGridBackgrounds | kTerminalGridText,
+};
 
 // One frame of a terminal cell grid. Each vector is one triangle list; positions are node-local logical px.
 struct TerminalGridDraw {
@@ -22,4 +31,5 @@ struct TerminalGridDraw {
   float surfaceHeight = 0.0F;
   Mat3 transform = Mat3::identity();
   float opacity = 1.0F;
+  std::uint8_t phases = kTerminalGridAll; // TerminalGridPhase bits to draw
 };

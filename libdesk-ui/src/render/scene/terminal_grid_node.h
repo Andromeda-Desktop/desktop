@@ -45,6 +45,10 @@ struct TerminalCursor {
 // changed rows; only those rows rebuild their vertices. Positions are logical px; glyphs stay on device pixels.
 class TerminalGridNode : public Node {
 public:
+  // Children with zIndex <= kBelowBackgroundZ draw between the background fill and the cell backgrounds; those up to
+  // kBelowTextZ between the cell backgrounds and the text; the rest above the text.
+  static constexpr int kBelowBackgroundZ = -2;
+  static constexpr int kBelowTextZ = -1;
   TerminalGridNode();
   ~TerminalGridNode() override;
   TerminalGridNode(const TerminalGridNode&) = delete;

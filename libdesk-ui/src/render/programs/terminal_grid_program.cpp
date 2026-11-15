@@ -95,6 +95,20 @@ void TerminalGridProgram::abandon() noexcept {
 }
 
 void TerminalGridProgram::draw(const TerminalGridDraw& grid) const {
+  if ((grid.phases & kTerminalGridFill) != 0) {
+    drawFill(grid);
+  }
+  if ((grid.phases & kTerminalGridBackgrounds) != 0) {
+    drawRects(grid.rects, grid);
+  }
+  if ((grid.phases & kTerminalGridText) != 0) {
+    drawGlyphs(grid.glyphs, grid);
+    drawRects(grid.over, grid);
+    drawGlyphs(grid.overGlyphs, grid);
+  }
+}
+
+void TerminalGridProgram::drawFill(const TerminalGridDraw& grid) const {
   std::vector<float>& fill = m_fill;
   fill.clear();
   const float corners[6][2] = {{0, 0}, {grid.width, 0}, {0, grid.height}, {grid.width, 0}, {grid.width, grid.height}, {0, grid.height}};
@@ -102,10 +116,6 @@ void TerminalGridProgram::draw(const TerminalGridDraw& grid) const {
     fill.insert(fill.end(), {c[0], c[1], grid.background[0], grid.background[1], grid.background[2], grid.background[3]});
   }
   drawRects({&fill, 1}, grid);
-  drawRects(grid.rects, grid);
-  drawGlyphs(grid.glyphs, grid);
-  drawRects(grid.over, grid);
-  drawGlyphs(grid.overGlyphs, grid);
 }
 
 void TerminalGridProgram::drawRects(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid) const {

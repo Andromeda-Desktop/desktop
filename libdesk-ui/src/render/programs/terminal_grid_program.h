@@ -16,6 +16,7 @@ public:
   void draw(const TerminalGridDraw& grid) const;
 
 private:
+  void drawFill(const TerminalGridDraw& grid) const;
   void drawRects(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid) const;
   void drawGlyphs(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid) const;
 

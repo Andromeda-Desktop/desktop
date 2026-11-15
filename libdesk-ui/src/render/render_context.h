@@ -115,9 +115,10 @@ private:
       float bw, float bh, float clipLeft, float clipTop, float clipRight, float clipBottom, bool hasClip,
       bool ignoreNodeOpacity, bool parentPaintContained
   );
+  // gridPhases: the TerminalGridPhase bits of a TerminalGrid node; other nodes ignore it.
   void drawNodeSelf(
       float renderScale, const Node* node, const Mat3& worldTransform, float effectiveOpacity, float sw, float sh,
-      float bw, float bh
+      float bw, float bh, std::uint8_t gridPhases = kTerminalGridAll
   );
 
   enum class GlState : std::uint8_t { None, Pending, Ready, Failed };

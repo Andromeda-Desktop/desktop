@@ -213,10 +213,7 @@ namespace term {
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
     m_grid->setFont(kFontFamily, kFontSize * uiScale, kLineHeight * uiScale, deviceScale);
-    auto imageLayer = std::make_unique<Node>();
-    m_imageLayer = imageLayer.get();
-    m_grid->addChild(std::move(imageLayer));
-    m_images = std::make_unique<KittyImages>(*m_imageLayer);
+    m_images = std::make_unique<KittyImages>(*m_grid);
     setGridOrigin(kInset * uiScale, kTopInset * uiScale);
     auto area = ui::inputArea({.out = &m_area,
                                .focusable = true,
@@ -690,10 +687,10 @@ namespace term {
     }
   }
 
-  // The image layer moves with the grid origin: placements are in cells from the top-left viewport cell.
+  // The image layers move with the grid origin: placements are in cells from the top-left viewport cell.
   void TerminalView::setGridOrigin(float x, float y) {
     m_grid->setGridOrigin(x, y);
-    m_imageLayer->setPosition(x, y);
+    m_images->setOrigin(x, y);
   }
 
   void TerminalView::scheduleRedraw(Redraw redraw) {
