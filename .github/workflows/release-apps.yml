@@ -1,5 +1,5 @@
-# A tag files-v*, player-v* or viewer-v* builds only that app (Files and Viewer also the preview) and adds its packages
-# to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the latest v* release
+# A tag files-v*, player-v*, viewer-v* or terminal-v* builds only that app (Files and Viewer also the preview) and adds
+# its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the latest v* release
 # (releases/latest/download) and the Debian apt repository (releases/download/debian). The app's own release holds
 # its Arch packages and is never marked latest. The tag version must match the app's meson project version.
 # A v* release with the app package split must exist first: andromeda 0.2.8 and older own the app files.
@@ -8,7 +8,7 @@ name: release-apps
 
 on:
   push:
-    tags: ["files-v*", "player-v*", "viewer-v*"]
+    tags: ["files-v*", "player-v*", "viewer-v*", "terminal-v*"]
   workflow_dispatch:
     inputs:
       tag: { description: "App tag (files-v0.1.0); it must exist unless ref is set", required: true }
@@ -144,7 +144,10 @@ jobs:
           mkdir apt
           shopt -s nullglob
           out=$HOME/.cache/andromeda-ubuntu/deb-$BASE
-          for deb in "$out/andromeda-${ANDROMEDA_APP}_"*.deb "$out/andromeda-preview_"*.deb; do
+          debs=("$out/andromeda-${ANDROMEDA_APP}_"*.deb)
+          # The preview deb of any other app build is empty.
+          [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || debs+=("$out/andromeda-preview_"*.deb)
+          for deb in "${debs[@]}"; do
             name=$(basename "$deb")
             cp "$deb" "apt/${name//:/.}"
           done

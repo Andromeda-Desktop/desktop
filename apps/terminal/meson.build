@@ -10,7 +10,7 @@ project('andromeda-terminal', ['c', 'cpp'],
 )
 
 # Terminal (.agent/TASK-terminal.md): libghostty-vt core; the system package first, else the pinned build
-# from tools/build-libghostty.sh.
+# from tools/build-libghostty.sh, linked statically so the binary needs no private library path.
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
 _ghostty = dependency('libghostty-vt', version: '>=1.0.1', required: false)
@@ -18,8 +18,8 @@ if not _ghostty.found()
   _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix'
   _ghostty = declare_dependency(
     include_directories: include_directories('subprojects/libghostty-vt/prefix/include'),
-    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib'),
-    link_args: ['-Wl,-rpath,' + _prefix / 'lib'],
+    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib', static: true),
+    compile_args: '-DGHOSTTY_STATIC',
   )
 endif
 
