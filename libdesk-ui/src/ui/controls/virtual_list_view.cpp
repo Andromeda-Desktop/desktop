@@ -139,6 +139,13 @@ void VirtualListView::notifyItemChanged(std::size_t index) {
   }
 }
 
+void VirtualListView::setAnchorBottom(bool anchor) {
+  if (m_anchorBottom != anchor) {
+    m_anchorBottom = anchor;
+    markLayoutDirty();
+  }
+}
+
 void VirtualListView::setItemGap(float gap) {
   const float next = std::max(0.0F, gap);
   if (m_itemGap == next) {
@@ -188,6 +195,13 @@ void VirtualListView::doLayout(Renderer& renderer) {
   if (m_scroll->reservesScrollbarGutter() || m_virtualHeight > viewportH + 0.5F) {
     viewportW = std::max(0.0F, innerW - scrollbarGutter);
     recomputeMetrics(renderer, viewportW);
+  }
+  if (m_anchorBottom && m_virtualHeight < viewportH) {
+    const float shift = viewportH - m_virtualHeight;
+    for (float& offset : m_itemOffsets) {
+      offset += shift;
+    }
+    m_virtualHeight = viewportH;
   }
   m_canvas->setVirtualSize(m_virtualWidth, m_virtualHeight);
   std::vector<float> marks;

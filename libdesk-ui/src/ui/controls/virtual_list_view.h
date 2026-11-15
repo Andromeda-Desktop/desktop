@@ -48,6 +48,8 @@ public:
   void notifyItemChanged(std::size_t index);
 
   void setItemGap(float gap);
+  // Items shorter than the viewport sit at its bottom (a chat log).
+  void setAnchorBottom(bool anchor);
   void setOverscanItems(std::size_t items);
   // Content scale of the hosting surface; scales the scrollbar geometry.
   void setContentScale(float scale);
@@ -103,6 +105,7 @@ private:
   std::function<void()> m_onScrolled;
   std::vector<std::size_t> m_markedItems;
   float m_itemGap = 0.0F;
+  bool m_anchorBottom = false;
   float m_virtualWidth = 0.0F;
   float m_virtualHeight = 0.0F;
   std::size_t m_overscanItems = 3;

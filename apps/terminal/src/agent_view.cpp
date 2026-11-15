@@ -989,6 +989,7 @@ namespace term {
     m_root = root.get();
     root->addChild(ui::virtualListView({.out = &m_log, .contentScale = s, .adapter = this, .flexGrow = 1.0F}));
     m_log->scrollView().setStickToBottom(true);
+    m_log->setAnchorBottom(true);
     m_log->setOnScrolled([this] {
       if (atBottom()) {
         syncJump();
