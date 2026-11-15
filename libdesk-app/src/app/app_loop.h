@@ -39,6 +39,8 @@ public:
   // Drops GL and the dead connection, connects to the compositor that took over the socket and restarts GL.
   // False when none answers within the timeout. Windows must be closed first.
   bool reconnect(std::chrono::milliseconds timeout);
+  // After a GL context reset: abandons the dead objects and makes a new context. Throws when that fails.
+  void recoverGraphics();
 
   // Runs until quit() or a hangup the disconnect handler does not recover. Returns the quit code, 0 on hangup,
   // 1 on a Wayland error.

@@ -6,6 +6,7 @@
 #include "app/command_table.h"
 #include "app/single_instance.h"
 #include "app/state_store.h"
+#include "core/graphics_recovery.h"
 #include "core/timer_manager.h"
 
 #include <memory>
@@ -69,7 +70,8 @@ protected:
   [[nodiscard]] virtual AppWindow& createWindow() = 0;
   // Before a closed window is destroyed: drop what refers to it.
   virtual void windowClosed(AppWindow& /*window*/) {}
-  // The compositor went away with the GL context: forget texture ids held outside window scenes; do not free them.
+  // The GL context died (compositor gone or a GPU reset): forget texture ids held outside window scenes; do not free
+  // them.
   virtual void gpuLost() {}
   // The window's surface and scene are gone for a compositor reconnect; it opens again with a new surface.
   virtual void windowSurfaceLost(AppWindow& /*window*/) {}
@@ -88,9 +90,12 @@ private:
   void reapClosed();
   // Reopens every window on the compositor that took over the socket; false when none did.
   bool reconnect();
+  // Rebuilds GL after a context reset and every window's scene, so textures upload again.
+  void recoverGraphics();
 
   Info m_info;
   AppLoop m_loop;
+  GraphicsRecovery m_graphicsRecovery{[this] { recoverGraphics(); }};
   std::unique_ptr<SessionBus> m_bus;
   std::unique_ptr<SessionBusPollSource> m_busSource;
   std::unique_ptr<Appearance> m_appearance; // after the bus: it uses it

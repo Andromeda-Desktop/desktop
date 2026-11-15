@@ -176,6 +176,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     return 1;
   }
   m_loop.setDisconnectHandler([this] { return reconnect(); });
+  m_loop.gl().setGraphicsResetCallback([this](RenderGraphicsResetStatus /*status*/) { m_graphicsRecovery.onReset(); });
   if (m_bus != nullptr) {
     m_busSource = std::make_unique<SessionBusPollSource>(*m_bus);
     m_loop.addSource(m_busSource.get());
@@ -275,6 +276,27 @@ void DeskApp::closeWindow(AppWindow& window) {
     }
     reapClosed();
   });
+}
+
+void DeskApp::recoverGraphics() {
+  gpuLost();
+  try {
+    m_loop.recoverGraphics();
+  } catch (const std::exception& e) {
+    if (const auto delay = m_graphicsRecovery.failed()) {
+      kLog.warn("graphics context recovery failed (attempt {}); retrying in {}ms: {}",
+                m_graphicsRecovery.failedAttempts(), delay->count(), e.what());
+    } else {
+      kLog.error("graphics context recovery failed after {} attempts; rendering stays disabled: {}",
+                 m_graphicsRecovery.failedAttempts(), e.what());
+    }
+    return;
+  }
+  m_graphicsRecovery.succeeded();
+  for (const auto& w : m_windows) {
+    w->requestRebuild();
+  }
+  kLog.info("graphics context recovery completed");
 }
 
 bool DeskApp::reconnect() {

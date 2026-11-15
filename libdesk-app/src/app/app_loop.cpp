@@ -128,6 +128,13 @@ std::vector<PollSource*> AppLoop::sources() {
   return all;
 }
 
+void AppLoop::recoverGraphics() {
+  m_render.prepareForGraphicsReset();
+  m_gl.recreateRootContext();
+  m_render.restoreAfterGraphicsReset(m_gl);
+  m_render.finishGraphicsResetRecovery();
+}
+
 bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   if (m_egl.valid()) {
     m_egl.wait();

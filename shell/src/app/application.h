@@ -1,7 +1,7 @@
 #pragma once
 
 #include "app/app_poll_sources.h"
-#include "app/graphics_recovery.h"
+#include "core/graphics_recovery.h"
 #include "app/greeter_sync.h"
 #include "app/lock_before_sleep.h"
 #include "app/modules/bluetooth_module.h"
