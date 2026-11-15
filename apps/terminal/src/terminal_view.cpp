@@ -44,6 +44,7 @@ namespace term {
 
     const float& kInset = Tokens::spaceP24;
     const float& kTopInset = Tokens::spaceP8;
+    const float& kBottomInset = Tokens::spaceP8;
 
     std::uint32_t pack(GhosttyColorRgb c) { return (std::uint32_t(c.r) << 16) | (std::uint32_t(c.g) << 8) | c.b; }
 
@@ -293,7 +294,7 @@ namespace term {
     m_height = height;
     const float inset = kInset * m_uiScale;
     const int cols = std::max(2, static_cast<int>((width - 2.0F * inset) / m_grid->cellWidth()));
-    const int rows = std::max(1, static_cast<int>((height - kTopInset * m_uiScale - inset) / m_grid->cellHeight()));
+    const int rows = std::max(1, static_cast<int>((height - (kTopInset + kBottomInset) * m_uiScale) / m_grid->cellHeight()));
     // Device px: images a program sizes from the cell size stay sharp at any scale.
     const std::array<std::uint16_t, 2> cellPx{static_cast<std::uint16_t>(std::lround(m_grid->cellWidth() * m_deviceScale)),
                                               static_cast<std::uint16_t>(std::lround(m_grid->cellHeight() * m_deviceScale))};
