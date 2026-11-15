@@ -195,13 +195,13 @@ namespace term {
                           .configure = [markup](Label& label) { label.setUseMarkup(markup); }});
       }
 
-      std::unique_ptr<Label> code(std::string value, ColorRole role, int maxLines = 0) const {
+      std::unique_ptr<Label> code(std::string value, ColorRole role, int maxLines = 0, bool ellipsize = true) const {
         return ui::label({.text = std::move(value),
                           .fontSize = Tokens::typeFootnote.size * s,
                           .fontFamily = mono(),
                           .color = colorSpecFromRole(role),
                           .maxLines = maxLines,
-                          .ellipsize = maxLines > 0 ? std::optional(TextEllipsize::End) : std::nullopt});
+                          .ellipsize = maxLines > 0 && ellipsize ? std::optional(TextEllipsize::End) : std::nullopt});
       }
 
       std::unique_ptr<Glyph> glyph(std::string_view name, ColorRole role) const {
@@ -215,7 +215,7 @@ namespace term {
       }
 
       // Column-major so each column takes its widest cell: all cells in a row share one height, so rows line up and the
-      // separators meet. Wider than the reply column, the table scrolls sideways.
+      // separators meet.
       std::unique_ptr<Node> table(const std::vector<std::vector<std::string>>& rows) const {
         auto grid = ui::row({.align = FlexAlign::Start});
         for (std::size_t c = 0; c < rows.front().size(); ++c) {
@@ -237,27 +237,40 @@ namespace term {
           }
           grid->addChild(std::move(column));
         }
+        return sideways(std::move(grid));
+      }
+
+      // A mono block on fill_1: output tails, error wells, command wells. Wide lines end in an ellipsis, or with
+      // scroll the block scrolls sideways (code blocks in replies).
+      std::unique_ptr<Flex> well(std::vector<std::string_view> rows, ColorRole role, bool lastStrong, bool scroll = false) const {
+        auto box = ui::column({.align = FlexAlign::Stretch,
+                               .paddingV = Tokens::spaceP8 * s,
+                               .paddingH = scroll ? 0.0F : Tokens::spaceP12 * s,
+                               .fill = colorSpecFromRole(ColorRole::Fill1),
+                               .radius = Style::scaledRadius(Tokens::radiusR8, s)});
+        auto text = ui::column({.align = FlexAlign::Start, .paddingH = scroll ? Tokens::spaceP12 * s : 0.0F});
+        for (std::size_t i = 0; i < rows.size(); ++i) {
+          const bool strong = lastStrong && i + 1 == rows.size();
+          text->addChild(code(std::string(rows[i]), strong ? ColorRole::Label1 : role, 1, !scroll));
+        }
+        if (!scroll) {
+          text->setAlign(FlexAlign::Stretch);
+          box->addChild(std::move(text));
+          return box;
+        }
+        box->addChild(sideways(std::move(text)));
+        return box;
+      }
+
+      // Content wider than the reply column scrolls sideways.
+      std::unique_ptr<ScrollView> sideways(std::unique_ptr<Node> content) const {
         auto scroll = ui::scrollView({.contentScale = s,
                                       .viewportPaddingH = 0.0F,
                                       .viewportPaddingV = 0.0F,
                                       .fillWidth = true,
                                       .configure = [](ScrollView& view) { view.setOrientation(ScrollOrientation::Horizontal); }});
-        scroll->content()->addChild(std::move(grid));
+        scroll->content()->addChild(std::move(content));
         return scroll;
-      }
-
-      // A mono block on fill_1: output tails, error wells, command wells.
-      std::unique_ptr<Flex> well(std::vector<std::string_view> rows, ColorRole role, bool lastStrong) const {
-        auto box = ui::column({.align = FlexAlign::Stretch,
-                               .paddingV = Tokens::spaceP8 * s,
-                               .paddingH = Tokens::spaceP12 * s,
-                               .fill = colorSpecFromRole(ColorRole::Fill1),
-                               .radius = Style::scaledRadius(Tokens::radiusR8, s)});
-        for (std::size_t i = 0; i < rows.size(); ++i) {
-          const bool strong = lastStrong && i + 1 == rows.size();
-          box->addChild(code(std::string(rows[i]), strong ? ColorRole::Label1 : role, 1));
-        }
-        return box;
       }
 
       // width: the box width; lines ellipsize inside it.
@@ -579,10 +592,10 @@ namespace term {
     }
     const auto& entry = model->entries()[index - 1];
     const auto* prose = std::get_if<agent::Prose>(&entry);
-    // A reply with a table takes input: the table scrolls sideways.
+    // A reply with a table or code block takes input: they scroll sideways.
     return std::holds_alternative<agent::Request>(entry)
            || (prose != nullptr && std::ranges::any_of(agent::markdownBlocks(prose->text), [](const agent::Block& block) {
-                return block.kind == agent::Block::Kind::Table;
+                return block.kind == agent::Block::Kind::Table || block.kind == agent::Block::Kind::Code;
               }));
   }
 
@@ -694,7 +707,7 @@ namespace term {
             }
             for (const auto& block : blocks) {
               if (block.kind == agent::Block::Kind::Code) {
-                prose->addChild(kit.well(lines(block.text), ColorRole::Label1, false));
+                prose->addChild(kit.well(lines(block.text), ColorRole::Label1, false, true));
               } else if (block.kind == agent::Block::Kind::Table) {
                 prose->addChild(kit.table(block.rows));
               } else {
