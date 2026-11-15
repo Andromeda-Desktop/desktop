@@ -15,6 +15,7 @@
 #include "starred.h"
 #include "vaults.h"
 #include "drives.h"
+#include "email_portal.h"
 #include "system_portals.h"
 #include "tags.h"
 
@@ -110,6 +111,7 @@ private:
   std::unique_ptr<PickerPortal> m_portal;
   std::unique_ptr<AppChooserPortal> m_chooserPortal;
   std::unique_ptr<SystemPortals> m_systemPortals;
+  std::unique_ptr<EmailPortal> m_emailPortal;
   IndexSearch m_index;
   std::unique_ptr<FileManager1> m_fileManager;
   std::unique_ptr<LinkShare> m_linkShare;

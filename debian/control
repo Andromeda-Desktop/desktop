@@ -82,7 +82,7 @@ Description: Andromeda Quick Look
 
 Package: andromeda-files
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-preview (>= ${binary:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-preview (>= ${binary:Version}), xdg-utils
 Suggests: gocryptfs, gvfs-backends, exfatprogs, dosfstools, ntfs-3g
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)

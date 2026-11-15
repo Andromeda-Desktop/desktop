@@ -261,7 +261,7 @@ package_andromeda-preview-git() {
 # --skip-subprojects: libdesk-* install nothing and the preview ships in andromeda-preview-git.
 package_andromeda-files-git() {
   pkgdesc='Andromeda Files: file manager, file pickers and FileManager1'
-  depends=("${_app_libs[@]}" andromeda-preview-git libvterm)
+  depends=("${_app_libs[@]}" andromeda-preview-git libvterm xdg-utils)
   optdepends=('gocryptfs: Files vaults'
               'gvfs-mtp: Files phones over MTP'
               'gvfs-gphoto2: Files cameras over PTP'

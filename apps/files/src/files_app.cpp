@@ -164,6 +164,7 @@ void FilesApp::startup() {
               }
             },
     });
+    m_emailPortal = std::make_unique<EmailPortal>(*bus());
     scheduleIdleQuit();
     return;
   }
@@ -187,7 +188,8 @@ void FilesApp::startup() {
 void FilesApp::scheduleIdleQuit() {
   // D-Bus activation starts the picker again for the next request.
   m_idleQuit.start(std::chrono::minutes(2), [this] {
-    if (windows().empty() && m_portal->idle() && m_chooserPortal->idle() && m_systemPortals->idle() && m_pendingTags.empty()) {
+    if (windows().empty() && m_portal->idle() && m_chooserPortal->idle() && m_systemPortals->idle() && m_emailPortal->idle()
+        && m_pendingTags.empty()) {
       quit(0);
     } else {
       scheduleIdleQuit();

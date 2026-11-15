@@ -1130,9 +1130,9 @@ build = "shell"
 
 [[feature]]
 name = "apps: Files FileManager1 and pickers"
-keywords = ["filemanager1", "file manager dbus", "file picker", "open file dialog", "picker"]
+keywords = ["filemanager1", "file manager dbus", "file picker", "open file dialog", "picker", "email portal", "compose email"]
 module = "shell"
-entry = ["apps/files/src/file_manager1.cpp", "apps/files/src/picker_portal.cpp"]
+entry = ["apps/files/src/file_manager1.cpp", "apps/files/src/picker_portal.cpp", "apps/files/src/email_portal.cpp"]
 test = "tests/e2e/files_filemanager1.sh"
 build = "shell"
 
