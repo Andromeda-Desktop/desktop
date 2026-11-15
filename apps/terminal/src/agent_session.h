@@ -73,7 +73,8 @@ namespace term::agent {
   // the client drains outbox() into the agent's stdin.
   class Session {
   public:
-    explicit Session(std::string cwd);
+    // Request ids start at firstId; sessions that share one agent connection need disjoint ranges.
+    explicit Session(std::string cwd, std::int64_t firstId = 1);
 
     // Agent side.
     void started(std::string sessionId);

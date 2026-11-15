@@ -36,7 +36,7 @@ namespace term::agent {
 
   } // namespace
 
-  Session::Session(std::string cwd) : m_cwd(std::move(cwd)) {}
+  Session::Session(std::string cwd, std::int64_t firstId) : m_cwd(std::move(cwd)), m_nextId(firstId) {}
 
   bool Session::transition(Phase next) {
     const auto legal = [&] {

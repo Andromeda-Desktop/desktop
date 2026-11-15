@@ -90,6 +90,10 @@ if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
 endif
 
 _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+_agentd_path = ['-DANDROMEDA_AGENTD_PATH="' + get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'andromeda-agentd' + '"']
+test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp',
+  dependencies: [_agent_dep, _desk_app_dep], cpp_args: _warnings + _agentd_path),
+  args: [_agentd.full_path()], depends: _agentd, timeout: 60)
 
 executable('andromeda-terminal',
   'src/key_map.cpp',
@@ -100,8 +104,9 @@ executable('andromeda-terminal',
   'src/terminal_app.cpp',
   'src/terminal_view.cpp',
   'src/terminal_window.cpp',
-  dependencies: [_core_dep, _desk_app_dep],
-  cpp_args: _warnings,
+  'src/agent_host.cpp',
+  dependencies: [_core_dep, _agent_dep, _desk_app_dep],
+  cpp_args: _warnings + _agentd_path,
   install: true,
 )
 
