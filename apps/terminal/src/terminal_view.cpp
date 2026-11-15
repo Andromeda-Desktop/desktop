@@ -4,6 +4,7 @@
 #include "core/input/key_modifiers.h"
 #include "key_map.h"
 #include "wayland/wayland_seat.h"
+#include "render/animation/motion_service.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
 #include "core/text_clipboard.h"
@@ -11,6 +12,7 @@
 #include "ui/controls/input.h"
 #include "ui/controls/scrollbar.h"
 #include "ui/palette.h"
+#include "ui/style.h"
 #include "wayland/text_input_service.h"
 
 #include <linux/input-event-codes.h>
@@ -129,6 +131,9 @@ namespace term {
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);
     ghostty_render_state_row_cells_new(nullptr, &m_cells);
+    // One row below the viewport: a pixel scroll shows part of it.
+    const GhosttyRenderStateOverscan overscan{.above = 0, .below = 1};
+    ghostty_render_state_set(m_state, GHOSTTY_RENDER_STATE_OPT_OVERSCAN, &overscan);
     ghostty_key_encoder_new(nullptr, &m_encoder);
     ghostty_key_event_new(nullptr, &m_keyEvent);
     ghostty_mouse_encoder_new(nullptr, &m_mouseEncoder);
@@ -222,23 +227,25 @@ namespace term {
                                      });
                                      a.setOnMotion(
                                          [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
-                                     a.setOnAxisHandler(
-                                         [this](const InputArea::PointerData& d) { return wheel(d.axis, d.axisSteps); });
+                                     a.setOnAxisHandler([this](const InputArea::PointerData& d) { return wheel(d); });
+                                     a.setOnAxisStop([this](std::uint32_t axis) {
+                                       if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL
+                                           && m_scrollMotion == ScrollMotion::Finger) {
+                                         settleScroll();
+                                       }
+                                     });
                                    }},
                               std::move(grid));
+    // The partial rows of a pixel scroll stay inside the view.
+    area->setClipChildren(true);
     auto bar = std::make_unique<Scrollbar>();
     m_scrollbar = bar.get();
     m_scrollState = {};
     m_scrollbar->setAutoHide(true);
     m_scrollbar->setContentScale(uiScale);
     m_scrollbar->setOnScrollChanged([this](float offset) {
-      const auto row = static_cast<std::size_t>(std::max(0L, std::lround(offset / m_grid->cellHeight())));
-      m_session.withTerminal([&](GhosttyTerminal t) {
-        if (t != nullptr) {
-          ghostty_terminal_scroll_viewport(t, {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW, .value = {.row = row}});
-        }
-      });
-      scheduleRedraw(Redraw::All);
+      const float cellH = m_grid->cellHeight();
+      animateScroll(std::round(offset / cellH) * cellH, Tokens::springFollow, 0.0F, true);
     });
     area->addChild(std::move(bar));
     setSize(width, height);
@@ -265,10 +272,10 @@ namespace term {
     const float inset = kInset * m_uiScale;
     const int cols = std::max(2, static_cast<int>((width - 2.0F * inset) / m_grid->cellWidth()));
     const int rows = std::max(1, static_cast<int>((height - kTopInset * m_uiScale - inset) / m_grid->cellHeight()));
-    if (cols == m_grid->columns() && rows == m_grid->rows()) {
+    if (cols == m_grid->columns() && rows == viewRows()) {
       return;
     }
-    m_grid->setGridSize(cols, rows);
+    m_grid->setGridSize(cols, rows + 1);
     m_session.resize(static_cast<std::uint16_t>(cols), static_cast<std::uint16_t>(rows),
                      static_cast<std::uint16_t>(std::lround(m_grid->cellWidth())),
                      static_cast<std::uint16_t>(std::lround(m_grid->cellHeight())));
@@ -322,13 +329,24 @@ namespace term {
     if (!updated || ghostty_render_state_end_update(m_state) != GHOSTTY_SUCCESS) {
       return;
     }
+    if (scroll.offset != m_viewRow) {
+      // Ghostty moved the viewport (output at the bottom, a jump to the bottom, pruned history): back to a whole row.
+      if (m_scrollAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {
+        m_area->animationManager()->cancel(m_scrollAnim);
+      }
+      m_scrollAnim = 0;
+      m_scrollMotion = ScrollMotion::Rest;
+      m_scrollSamples.clear();
+      m_viewRow = scroll.offset;
+      m_scrollPx = static_cast<float>(scroll.offset) * m_grid->cellHeight();
+      m_grid->setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale);
+    }
     if (m_scrollbar != nullptr
         && (scroll.total != m_scrollState.total || scroll.offset != m_scrollState.offset
             || scroll.len != m_scrollState.len)) {
       m_scrollState = scroll;
       const float cellH = m_grid->cellHeight();
-      m_scrollbar->update(static_cast<float>(scroll.len) * cellH, static_cast<float>(scroll.total) * cellH,
-                          static_cast<float>(scroll.offset) * cellH);
+      m_scrollbar->update(static_cast<float>(scroll.len) * cellH, static_cast<float>(scroll.total) * cellH, m_scrollPx);
     }
     GhosttyRenderStateColors colors{};
     colors.size = sizeof(colors);
@@ -437,6 +455,11 @@ namespace term {
     }
     const GhosttyRenderStateDirty none = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_state, GHOSTTY_RENDER_STATE_OPT_DIRTY, &none);
+    GhosttyRenderStateOverscan captured{};
+    ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_OVERSCAN, &captured);
+    if (captured.below == 0) {
+      m_grid->setRow(viewRows(), {});
+    }
 
     if (inViewport && (cx != m_cursorCell.x || cy != m_cursorCell.y)) {
       m_cursorCell = {.x = cx, .y = cy};
@@ -631,9 +654,11 @@ namespace term {
 
   GhosttyPointCoordinate TerminalView::cellAt(float localX, float localY) const {
     const float col = std::floor((localX - kInset * m_uiScale) / m_grid->cellWidth());
-    const float row = std::floor((localY - kTopInset * m_uiScale) / m_grid->cellHeight());
+    const float cellH = m_grid->cellHeight();
+    const float fraction = m_scrollPx - static_cast<float>(m_viewRow) * cellH;
+    const float row = std::floor((localY - kTopInset * m_uiScale + fraction) / cellH);
     return {.x = static_cast<std::uint16_t>(std::clamp(col, 0.0F, static_cast<float>(m_grid->columns() - 1))),
-            .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(m_grid->rows() - 1)))};
+            .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(viewRows() - 1)))};
   }
 
   int TerminalView::overlayPreedit(int x, std::uint32_t fg, std::uint32_t bg) {
@@ -827,7 +852,7 @@ namespace term {
     size.padding_left = left;
     size.padding_top = top;
     size.padding_right = px(m_width - static_cast<float>(left + cellW * static_cast<std::uint32_t>(m_grid->columns())));
-    size.padding_bottom = px(m_height - static_cast<float>(top + cellH * static_cast<std::uint32_t>(m_grid->rows())));
+    size.padding_bottom = px(m_height - static_cast<float>(top + cellH * static_cast<std::uint32_t>(viewRows())));
     ghostty_mouse_encoder_set(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
     const bool anyPressed = m_buttonsReported != 0;
     ghostty_mouse_encoder_set(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &anyPressed);
@@ -848,57 +873,158 @@ namespace term {
     return true;
   }
 
-  bool TerminalView::wheel(std::uint32_t axis, float steps) {
-    if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL || m_grid == nullptr) {
+  bool TerminalView::mouseTracking() {
+    return m_session.withTerminal([](GhosttyTerminal t) {
+      bool on = false;
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &on) == GHOSTTY_SUCCESS && on;
+    });
+  }
+
+  bool TerminalView::wheel(const InputArea::PointerData& d) {
+    if (d.axis != WL_POINTER_AXIS_VERTICAL_SCROLL || m_grid == nullptr) {
       return false;
     }
-    m_wheelRemainder += steps;
+    m_wheelRemainder += d.axisSteps;
     const int notches = static_cast<int>(m_wheelRemainder);
     m_wheelRemainder -= static_cast<float>(notches);
-    if (notches == 0) {
-      return true;
-    }
     const std::uint32_t mods = modifiers();
-    const GhosttyMouseButton button = notches < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE;
-    const float x = m_pointerX;
-    const float y = m_pointerY;
-    if ((mods & KeyMod::Shift) == 0 && reportMouse(GHOSTTY_MOUSE_ACTION_PRESS, button, x, y, mods)) {
-      for (int i = 1; i < std::abs(notches); ++i) {
-        reportMouse(GHOSTTY_MOUSE_ACTION_PRESS, button, x, y, mods);
+    if ((mods & KeyMod::Shift) == 0 && mouseTracking()) {
+      const GhosttyMouseButton button = notches < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE;
+      for (int i = 0; i < std::abs(notches); ++i) {
+        reportMouse(GHOSTTY_MOUSE_ACTION_PRESS, button, m_pointerX, m_pointerY, mods);
       }
       return true;
     }
     constexpr int kRowsPerNotch = 3;
     // The alternate screen has no scrollback: with mode 1007 the wheel becomes arrow keys (less, man, vim).
-    const auto arrows = m_session.withTerminal([&](GhosttyTerminal t) -> std::string {
+    const auto alternate = m_session.withTerminal([&](GhosttyTerminal t) -> std::optional<std::string> {
       GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
       GhosttyTerminalModeConfig alternateScroll{.mode = GHOSTTY_MODE_MOUSE_ALTERNATE_SCROLL, .value = false};
       GhosttyTerminalModeConfig cursorKeys{.mode = GHOSTTY_MODE_CURSOR_KEYS, .value = false};
-      if (t == nullptr) {
-        return {};
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS
+          || screen != GHOSTTY_TERMINAL_SCREEN_ALTERNATE) {
+        return std::nullopt;
       }
-      if (ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) == GHOSTTY_SUCCESS
-          && screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE
-          && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &alternateScroll) == GHOSTTY_SUCCESS
+      std::string out;
+      if (ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &alternateScroll) == GHOSTTY_SUCCESS
           && alternateScroll.value) {
         ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &cursorKeys);
-        std::string out;
         for (int i = 0; i < std::abs(notches) * kRowsPerNotch; ++i) {
           out += cursorKeys.value ? "\x1bO" : "\x1b[";
           out += notches < 0 ? 'A' : 'B';
         }
-        return out;
       }
-      ghostty_terminal_scroll_viewport(
-          t, {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, .value = {.delta = notches * kRowsPerNotch}});
-      return {};
+      return out;
     });
-    if (!arrows.empty()) {
-      m_session.write({reinterpret_cast<const std::uint8_t*>(arrows.data()), arrows.size()});
-    } else {
-      scheduleRedraw(Redraw::All);
+    if (alternate) {
+      if (!alternate->empty()) {
+        m_session.write({reinterpret_cast<const std::uint8_t*>(alternate->data()), alternate->size()});
+      }
+      return true;
+    }
+    const float cellH = m_grid->cellHeight();
+    if (d.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
+      if (m_scrollMotion == ScrollMotion::Settling && m_area->animationManager() != nullptr) {
+        m_area->animationManager()->cancel(m_scrollAnim);
+        m_scrollAnim = 0;
+      }
+      if (m_scrollMotion != ScrollMotion::Finger) {
+        m_scrollSamples.clear();
+      }
+      m_scrollMotion = ScrollMotion::Finger;
+      setScrollPx(m_scrollPx + d.scrollDelta(cellH * kRowsPerNotch));
+      m_scrollSamples.push_back({.time = d.time, .px = m_scrollPx});
+      std::erase_if(m_scrollSamples, [&](const ScrollSample& s) { return d.time - s.time > 100; });
+      return true;
+    }
+    if (notches != 0) {
+      const float from = m_scrollMotion == ScrollMotion::Settling ? m_scrollTarget : std::round(m_scrollPx / cellH) * cellH;
+      animateScroll(from + static_cast<float>(notches * kRowsPerNotch) * cellH, Tokens::springMove, 0.0F, true);
     }
     return true;
+  }
+
+  void TerminalView::setScrollPx(float px) {
+    const float cellH = m_grid->cellHeight();
+    const float maxPx = static_cast<float>(m_scrollState.total - m_scrollState.len) * cellH;
+    m_scrollPx = std::clamp(px, 0.0F, std::max(0.0F, maxPx));
+    const auto row = static_cast<std::uint64_t>(m_scrollPx / cellH);
+    if (row != m_viewRow) {
+      m_viewRow = row;
+      m_session.withTerminal([&](GhosttyTerminal t) {
+        if (t != nullptr) {
+          ghostty_terminal_scroll_viewport(
+              t, {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_ROW, .value = {.row = static_cast<std::size_t>(row)}});
+        }
+      });
+      scheduleRedraw(Redraw::All);
+    }
+    m_grid->setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale - (m_scrollPx - static_cast<float>(row) * cellH));
+    if (m_scrollbar != nullptr) {
+      m_scrollbar->update(static_cast<float>(m_scrollState.len) * cellH, static_cast<float>(m_scrollState.total) * cellH,
+                          m_scrollPx);
+    }
+  }
+
+  // Springs toward `target`, snapped to a whole row; a later wheel notch or fling retargets the running spring.
+  void TerminalView::animateScroll(float target, const Tokens::Spring& spring, float velocity, bool spatial) {
+    const float cellH = m_grid->cellHeight();
+    const float maxPx = static_cast<float>(m_scrollState.total - m_scrollState.len) * cellH;
+    m_scrollTarget = std::clamp(std::round(target / cellH) * cellH, 0.0F, std::max(0.0F, maxPx));
+    m_scrollSamples.clear();
+    AnimationManager* animations = m_area != nullptr ? m_area->animationManager() : nullptr;
+    m_scrollMotion = ScrollMotion::Settling;
+    if (animations != nullptr) {
+      m_scrollAnim = animations->drive(
+          m_scrollAnim, m_scrollPx, m_scrollTarget, Style::spring(spring), [this](float v) { setScrollPx(v); },
+          [this] {
+            m_scrollAnim = 0;
+            m_scrollMotion = ScrollMotion::Rest;
+          },
+          this, velocity, Unit::Px, spatial);
+    }
+    if (animations == nullptr || m_scrollAnim == 0) {
+      m_scrollAnim = 0;
+      setScrollPx(m_scrollTarget);
+      m_scrollMotion = ScrollMotion::Rest;
+    }
+  }
+
+  // Rulebook 7.7: project the finger's velocity, snap to the nearest row, settle on `page` with that velocity.
+  // Reduced motion (7.8): settle on `close` from the current position, no velocity carry.
+  void TerminalView::settleScroll() {
+    if (MotionService::instance().reduced()) {
+      animateScroll(m_scrollPx, Tokens::springClose, 0.0F, false);
+      return;
+    }
+    const float v = fingerVelocity();
+    constexpr float kDeceleration = 0.998F;
+    animateScroll(m_scrollPx + v * kDeceleration / (1.0F - kDeceleration) / 1000.0F, Tokens::springPage, v, true);
+  }
+
+  // px/s: least squares over the samples of the last 100 ms.
+  float TerminalView::fingerVelocity() const {
+    if (m_scrollSamples.size() < 2) {
+      return 0.0F;
+    }
+    double meanT = 0.0;
+    double meanP = 0.0;
+    const std::uint32_t t0 = m_scrollSamples.front().time;
+    for (const ScrollSample& s : m_scrollSamples) {
+      meanT += static_cast<double>(s.time - t0);
+      meanP += s.px;
+    }
+    const auto n = static_cast<double>(m_scrollSamples.size());
+    meanT /= n;
+    meanP /= n;
+    double num = 0.0;
+    double den = 0.0;
+    for (const ScrollSample& s : m_scrollSamples) {
+      const double dt = static_cast<double>(s.time - t0) - meanT;
+      num += dt * (s.px - meanP);
+      den += dt * dt;
+    }
+    return den > 0.0 ? static_cast<float>(num / den * 1000.0) : 0.0F;
   }
 
   void TerminalView::selectAround(GhosttyPointCoordinate cell, int count) {

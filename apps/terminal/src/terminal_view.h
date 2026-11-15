@@ -1,7 +1,10 @@
 #pragma once
 
 #include "pty_session.h"
+#include "render/animation/animation_manager.h"
+#include "render/scene/input_area.h"
 #include "render/scene/terminal_grid_node.h"
+#include "design_tokens.h"
 #include "ui/text_input_client.h"
 
 #include <chrono>
@@ -97,7 +100,15 @@ namespace term {
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
     void pointerButton(std::uint32_t button, float localX, float localY, bool pressed, std::uint32_t time);
     void pointerMotion(float localX, float localY);
-    bool wheel(std::uint32_t axis, float steps);
+    bool wheel(const InputArea::PointerData& d);
+    [[nodiscard]] bool mouseTracking();
+    // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
+    [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
+    // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
+    void setScrollPx(float px);
+    void animateScroll(float target, const Tokens::Spring& spring, float velocity, bool spatial);
+    void settleScroll();
+    [[nodiscard]] float fingerVelocity() const;
     // Sends the event to the program when it tracks the mouse; false when it does not.
     bool reportMouse(GhosttyMouseAction action, GhosttyMouseButton button, float localX, float localY,
                      std::uint32_t mods);
@@ -130,6 +141,19 @@ namespace term {
     float m_pointerX = 0.0F; // last pointer position, local px: wheel reports need one
     float m_pointerY = 0.0F;
     float m_wheelRemainder = 0.0F;
+    // Rest: the view sits on a whole row and follows ghostty. Finger: a touchpad tracks 1:1. Settling: a spring
+    // (wheel notch or fling) runs toward m_scrollTarget, a whole row.
+    enum class ScrollMotion : std::uint8_t { Rest, Finger, Settling };
+    struct ScrollSample {
+      std::uint32_t time; // ms
+      float px;
+    };
+    ScrollMotion m_scrollMotion = ScrollMotion::Rest;
+    float m_scrollPx = 0.0F;
+    float m_scrollTarget = 0.0F;
+    std::uint64_t m_viewRow = 0; // the viewport row ghostty was last scrolled to
+    AnimationManager::Id m_scrollAnim = 0;
+    std::vector<ScrollSample> m_scrollSamples; // finger positions of the last 100 ms (rulebook 7.7)
     Click m_lastClick;
     std::variant<CommandIdle, CommandRunning> m_command;
     std::string m_cwd;
