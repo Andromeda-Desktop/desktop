@@ -25,6 +25,7 @@ struct queued_op {
   struct fx_submit_op op;
   struct wlr_dmabuf_attributes dmabuf; // FX_SUBMIT_IMPLICIT: read on the main thread, fds owned by the locked buffer
   bool has_dmabuf;
+  EGLSyncKHR probe_sync; // FX_SUBMIT_PROBE_FENCE: made on the render thread, handed to the probes on the main thread
 };
 
 struct op_list {
@@ -140,11 +141,11 @@ static bool attach_implicit_fence(struct wlr_egl* egl, const struct queued_op* q
   return attached;
 }
 
-static bool run_op(struct fx_renderer* renderer, const struct queued_op* queued) {
+static bool run_op(struct fx_renderer* renderer, struct queued_op* queued) {
   struct wlr_egl* egl = renderer->egl;
   switch (queued->op.kind) {
   case FX_SUBMIT_PROBE_FENCE:
-    fx_backdrop_probes_fence(renderer);
+    queued->probe_sync = egl->procs.eglCreateSyncKHR(egl->display, EGL_SYNC_FENCE_KHR, NULL);
     return true;
   case FX_SUBMIT_FLUSH:
     glFlush();
@@ -224,9 +225,12 @@ static void* thread_main(void* data) {
   return NULL;
 }
 
-static void release_ops(struct op_list* list) {
+static void release_ops(struct fx_render_thread* thread, struct op_list* list) {
   for (size_t i = 0; i < list->len; i++) {
     struct fx_submit_op* op = &list->ops[i].op;
+    if (op->kind == FX_SUBMIT_PROBE_FENCE && list->ops[i].probe_sync != EGL_NO_SYNC_KHR) {
+      fx_backdrop_probes_attach_fence(thread->renderer, list->ops[i].probe_sync);
+    }
     if (op->timeline != NULL) {
       wlr_drm_syncobj_timeline_unref(op->timeline);
     }
@@ -261,7 +265,7 @@ static void finish_job(struct fx_render_thread* thread, bool ok) {
   wlr_egl_set_lent(thread->renderer->egl, false);
   fx_renderer_collect_gl_garbage(thread->renderer);
   fx_renderer_upload_pending_textures(thread->renderer);
-  release_ops(&thread->in_flight);
+  release_ops(thread, &thread->in_flight);
   for (size_t i = 0; i < thread->current.len; i++) {
     struct waiter waiter = thread->current.items[i];
     waiter.ok = ok;
@@ -380,8 +384,8 @@ void fx_render_thread_destroy(struct fx_render_thread* thread) {
   }
   wl_event_source_remove(thread->source);
   close(thread->event_fd);
-  release_ops(&thread->in_flight);
-  release_ops(&thread->queued);
+  release_ops(thread, &thread->in_flight);
+  release_ops(thread, &thread->queued);
   if (thread->ready_idle != NULL) {
     wl_event_source_remove(thread->ready_idle);
   }

@@ -2,6 +2,8 @@
 #define RENDER_FX_RENDERER_BACKDROP_PROBE_H
 
 #include "andromedafx/render/backdrop_probe.h"
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <stdbool.h>
 #include <wlr/util/box.h>
@@ -24,6 +26,9 @@ void fx_backdrop_probe_capture(
 /** Releases the GL objects of every probe of this renderer; the renderer's context is current. */
 // Fences every probe captured since the last submit with one sync; called at render pass submit.
 void fx_backdrop_probes_fence(struct fx_renderer* renderer);
+// Hands `sync` (made on the render thread for this pass) to every probe awaiting one; destroys it when none does.
+// Main thread only: it walks the probe list.
+void fx_backdrop_probes_attach_fence(struct fx_renderer* renderer, EGLSyncKHR sync);
 void fx_backdrop_probes_release(struct fx_renderer* renderer);
 
 #endif
