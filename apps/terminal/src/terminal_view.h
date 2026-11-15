@@ -7,6 +7,7 @@
 #include "design_tokens.h"
 #include "ui/text_input_client.h"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -26,6 +27,8 @@ struct KeyboardEvent;
 class TextureManager;
 
 namespace term {
+
+  class KittyImages;
 
   // file://host/path (percent-escaped) to a local path; a bare path comes back as is.
   [[nodiscard]] std::string pathFromFileUri(std::string_view uri);
@@ -107,6 +110,7 @@ namespace term {
     int overlayPreedit(int x, std::uint32_t fg, std::uint32_t bg);
     void applyPalette();
     void scheduleRedraw(Redraw redraw);
+    void setGridOrigin(float x, float y);
     void onMark(const CommandMark& mark);
     void updateCwd();
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
@@ -195,6 +199,9 @@ namespace term {
 
     InputArea* m_area = nullptr;
     TerminalGridNode* m_grid = nullptr;
+    Node* m_imageLayer = nullptr; // child of m_grid: kitty images draw above the text
+    std::unique_ptr<KittyImages> m_images;
+    std::array<std::uint16_t, 2> m_cellPx{}; // cell size the terminal last got, device px
     Scrollbar* m_scrollbar = nullptr;
     GhosttyTerminalScrollbar m_scrollState{}; // rows; the bar is updated only when this changes
     float m_uiScale = 1.0F;

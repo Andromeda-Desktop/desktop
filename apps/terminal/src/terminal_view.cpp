@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "key_map.h"
+#include "kitty_images.h"
 #include "link_finder.h"
 #include "wayland/wayland_seat.h"
 #include "render/animation/motion_service.h"
@@ -212,7 +213,11 @@ namespace term {
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
     m_grid->setFont(kFontFamily, kFontSize * uiScale, kLineHeight * uiScale, deviceScale);
-    m_grid->setGridOrigin(kInset * uiScale, kTopInset * uiScale);
+    auto imageLayer = std::make_unique<Node>();
+    m_imageLayer = imageLayer.get();
+    m_grid->addChild(std::move(imageLayer));
+    m_images = std::make_unique<KittyImages>(*m_imageLayer);
+    setGridOrigin(kInset * uiScale, kTopInset * uiScale);
     auto area = ui::inputArea({.out = &m_area,
                                .focusable = true,
                                .width = width,
@@ -285,13 +290,15 @@ namespace term {
     const float inset = kInset * m_uiScale;
     const int cols = std::max(2, static_cast<int>((width - 2.0F * inset) / m_grid->cellWidth()));
     const int rows = std::max(1, static_cast<int>((height - kTopInset * m_uiScale - inset) / m_grid->cellHeight()));
-    if (cols == m_grid->columns() && rows == viewRows()) {
+    // Device px: images a program sizes from the cell size stay sharp at any scale.
+    const std::array<std::uint16_t, 2> cellPx{static_cast<std::uint16_t>(std::lround(m_grid->cellWidth() * m_deviceScale)),
+                                              static_cast<std::uint16_t>(std::lround(m_grid->cellHeight() * m_deviceScale))};
+    if (cols == m_grid->columns() && rows == viewRows() && cellPx == m_cellPx) {
       return;
     }
+    m_cellPx = cellPx;
     m_grid->setGridSize(cols, rows + 1);
-    m_session.resize(static_cast<std::uint16_t>(cols), static_cast<std::uint16_t>(rows),
-                     static_cast<std::uint16_t>(std::lround(m_grid->cellWidth())),
-                     static_cast<std::uint16_t>(std::lround(m_grid->cellHeight())));
+    m_session.resize(static_cast<std::uint16_t>(cols), static_cast<std::uint16_t>(rows), cellPx[0], cellPx[1]);
     refresh(true);
   }
 
@@ -349,6 +356,10 @@ namespace term {
     if (!updated || ghostty_render_state_end_update(m_state) != GHOSTTY_SUCCESS) {
       return;
     }
+    if (!m_images->sync(m_state, m_session, m_host.textures ? m_host.textures() : nullptr, m_grid->cellWidth(),
+                        m_grid->cellHeight(), m_deviceScale)) {
+      scheduleRedraw(Redraw::Dirty);
+    }
     if (scroll.offset != m_viewRow) {
       // Ghostty moved the viewport (output at the bottom, a jump to the bottom, pruned history): back to a whole row.
       if (m_scrollAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {
@@ -359,7 +370,7 @@ namespace term {
       m_scrollSamples.clear();
       m_viewRow = scroll.offset;
       m_scrollPx = static_cast<float>(scroll.offset) * m_grid->cellHeight();
-      m_grid->setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale);
+      setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale);
     }
     if (m_scrollbar != nullptr
         && (scroll.total != m_scrollState.total || scroll.offset != m_scrollState.offset
@@ -677,6 +688,12 @@ namespace term {
     if (m_host.cwdChanged) {
       m_host.cwdChanged(m_cwd);
     }
+  }
+
+  // The image layer moves with the grid origin: placements are in cells from the top-left viewport cell.
+  void TerminalView::setGridOrigin(float x, float y) {
+    m_grid->setGridOrigin(x, y);
+    m_imageLayer->setPosition(x, y);
   }
 
   void TerminalView::scheduleRedraw(Redraw redraw) {
@@ -1084,7 +1101,7 @@ namespace term {
       });
       scheduleRedraw(Redraw::All);
     }
-    m_grid->setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale - (m_scrollPx - static_cast<float>(row) * cellH));
+    setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale - (m_scrollPx - static_cast<float>(row) * cellH));
     if (m_scrollbar != nullptr) {
       m_scrollbar->update(static_cast<float>(m_scrollState.len) * cellH, static_cast<float>(m_scrollState.total) * cellH,
                           m_scrollPx);

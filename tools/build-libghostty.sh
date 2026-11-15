@@ -3,8 +3,9 @@
 # on PATH (Ubuntu ships none), the pinned zig tarball is fetched.
 set -euo pipefail
 VER=1.0.1
-# The terminal uses none of these; grid-introspection stays: ghostty_cell_get reads the wide-cell flag.
-FEATURES=-color,-glyph-protocol,-kitty-graphics
+# The terminal uses none of these; grid-introspection stays (ghostty_cell_get reads the wide-cell flag), kitty-graphics
+# stays (inline images).
+FEATURES=-color,-glyph-protocol
 SRC_SHA=333dfce97641ef9b536bb9e08907ad86abaaada50e8f7417b70d9284adef37aa
 DEPS_SHA=91a4e10960a52bf5bf4b15aa2a2cddaff8a89d6cd903d3055bda4fd17de3356d
 ZIG_VER=0.17.1

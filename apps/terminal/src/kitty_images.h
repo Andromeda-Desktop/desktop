@@ -1,0 +1,58 @@
+#pragma once
+
+#include "render/core/texture_handle.h"
+
+#include <array>
+#include <cstdint>
+#include <ghostty/vt.h>
+#include <unordered_map>
+#include <vector>
+
+class Node;
+class TextureManager;
+
+namespace term {
+
+  class PtySession;
+
+  // Draws the kitty graphics placements of a render state as image nodes above the grid text. The layer node sits at
+  // the grid origin: placements are in cells from the top-left viewport cell.
+  class KittyImages {
+  public:
+    // Process-wide; call once before a terminal parses output. Without it, PNG transmissions are refused.
+    static void installPngDecoder();
+
+    explicit KittyImages(Node& layer);
+    ~KittyImages();
+    KittyImages(const KittyImages&) = delete;
+    KittyImages& operator=(const KittyImages&) = delete;
+
+    // After each render state update; scale is device px per logical px (the cell size the terminal got is in device
+    // px). False when placements wait for GL (textures null): the caller asks for another frame.
+    bool sync(GhosttyRenderState state, PtySession& session, TextureManager* textures, float cellWidth,
+              float cellHeight, float scale);
+
+  private:
+    struct Texture {
+      std::uint64_t generation = 0;
+      TextureHandle handle;
+    };
+    struct Placement {
+      TextureId texture{};
+      int width = 0; // texture px
+      int height = 0;
+      std::array<float, 4> rect{}; // x, y, width, height in logical px from the layer
+      std::array<float, 4> uv{};
+      bool operator==(const Placement&) const = default;
+    };
+
+    void freeAll();
+
+    Node& m_layer;
+    GhosttyRenderStateImageIterator m_iterator = nullptr;
+    TextureManager* m_textures = nullptr;
+    std::unordered_map<std::uint32_t, Texture> m_cache; // image id -> texture of that image generation
+    std::vector<Placement> m_drawn;
+  };
+
+} // namespace term

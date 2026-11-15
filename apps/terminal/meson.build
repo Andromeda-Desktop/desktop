@@ -60,6 +60,7 @@ _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
 
 executable('andromeda-terminal',
   'src/key_map.cpp',
+  'src/kitty_images.cpp',
   'src/main.cpp',
   'src/notifier.cpp',
   'src/terminal_app.cpp',

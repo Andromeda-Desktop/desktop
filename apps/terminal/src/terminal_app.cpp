@@ -1,6 +1,7 @@
 #include "terminal_app.h"
 
 #include "holder_client.h"
+#include "kitty_images.h"
 #include "notifier.h"
 #include "terminal_window.h"
 
@@ -9,7 +10,9 @@
 
 namespace term {
 
-  TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {}
+  TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
+    KittyImages::installPngDecoder();
+  }
 
   TerminalApp::~TerminalApp() = default;
 
