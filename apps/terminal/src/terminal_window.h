@@ -1,5 +1,6 @@
 #pragma once
 
+#include "settings_store.h"
 #include "core/timer_manager.h"
 #include "session_list.h"
 #include "ui/controls/status_row.h"
@@ -54,6 +55,7 @@ namespace term {
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
     // activation token.
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents, ThumbnailService& thumbnails,
+                   SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
                    std::function<void()> close, std::function<void(const std::string& token)> newWindow);
     ~TerminalWindow();
@@ -88,6 +90,8 @@ namespace term {
     Notifier& m_notifier;
     agent::Host& m_agents;
     ThumbnailService& m_thumbnails;
+    SettingsStore& m_settings;
+    Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
     std::function<void(const std::string& token)> m_newWindow;
     SessionList m_sessions;

@@ -64,11 +64,18 @@ namespace term {
   } // namespace
 
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents,
-                                 ThumbnailService& thumbnails,
+                                 ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
                                  std::function<void(const std::string& token)> newWindow)
-      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_close(std::move(close)),
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
         m_newWindow(std::move(newWindow)) {
+    m_settingsChanged = m_settings.changed().connect([this] {
+      for (Session& session : m_views) {
+        if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
+          terminal->applySettings(m_settings.settings());
+        }
+      }
+    });
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
@@ -298,14 +305,23 @@ namespace term {
               if (m_sessions.shown() == id) {
                 setFindCount(total, current);
               }
-            }});
+            },
+        .settings = m_settings.settings()});
     TerminalView& ref = *view;
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);
     if (reattach == nullptr || !ref.reattach(reattach->heldId)) {
       const auto* fresh = std::get_if<NewShell>(&origin);
-      const std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
-      const std::string shell = loginShell();
+      std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
+      if (cwd.empty() && m_settings.settings().startDir == StartDir::Current) {
+        for (const Session& session : m_views) {
+          if (const auto* shown = dynamic_cast<const TerminalView*>(session.view.get());
+              shown != nullptr && session.id == m_sessions.shown()) {
+            cwd = shown->cwd();
+          }
+        }
+      }
+      const std::string shell = m_settings.settings().shell.empty() ? loginShell() : m_settings.settings().shell;
       const ShellLaunch launch = shellLaunch(shell, shellIntegrationDir(), [](const char* name) { return std::getenv(name); });
       if (!ref.start(launch.argv, cwd.empty() ? homeDir() : cwd, launch.env)) {
         kLog.warn("cannot start {}", shell);

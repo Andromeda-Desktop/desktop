@@ -169,7 +169,7 @@ namespace term {
     if (!m_session.spawn({.argv = std::move(argv), .cwd = std::move(cwd), .env = std::move(env)})) {
       return false;
     }
-    applyPalette();
+    applyTerminalSettings();
     return true;
   }
 
@@ -177,17 +177,76 @@ namespace term {
     if (!m_session.attach(heldId, 80, 24, 8, 16)) {
       return false;
     }
-    applyPalette();
+    applyTerminalSettings();
     return true;
   }
 
+  void TerminalView::setGridFont() {
+    const std::string family =
+        m_settings.font.empty() ? std::string(Tokens::fontMono) : m_settings.font + ", " + std::string(Tokens::fontMono);
+    const auto size = static_cast<float>(m_settings.fontSize);
+    m_grid->setFont(family, size * m_uiScale, std::round(size * Tokens::typeMono.line / Tokens::typeMono.size) * m_uiScale,
+                    m_deviceScale);
+  }
+
+  void TerminalView::applyTerminalSettings() {
+    applyPalette();
+    m_session.withTerminal([&](GhosttyTerminal t) {
+      if (t == nullptr) {
+        return;
+      }
+      const std::size_t scrollback = static_cast<std::size_t>(m_settings.scrollbackMb) * 1'000'000;
+      ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
+      GhosttyCursorStyle cursor = GHOSTTY_CURSOR_STYLE_BLOCK;
+      switch (m_settings.cursor) {
+      case CursorShape::Block: break;
+      case CursorShape::Bar: cursor = GHOSTTY_CURSOR_STYLE_BAR; break;
+      case CursorShape::Underline: cursor = GHOSTTY_CURSOR_STYLE_UNDERLINE; break;
+      }
+      ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE, &cursor);
+      // DECSCUSR reset: the cursor takes the default now; a program that sets its own sets it again.
+      constexpr std::string_view kResetCursor = "\x1b[0 q";
+      ghostty_terminal_vt_write(t, reinterpret_cast<const std::uint8_t*>(kResetCursor.data()), kResetCursor.size());
+    });
+  }
+
+  void TerminalView::applySettings(const Settings& settings) {
+    if (settings == m_settings) {
+      return;
+    }
+    const bool font = settings.font != m_settings.font || settings.fontSize != m_settings.fontSize;
+    const bool terminal = settings.theme != m_settings.theme || settings.cursor != m_settings.cursor
+                          || settings.scrollbackMb != m_settings.scrollbackMb;
+    m_settings = settings;
+    if (terminal) {
+      applyTerminalSettings();
+      scheduleRedraw(Redraw::All);
+    }
+    if (font && m_grid != nullptr) {
+      setGridFont();
+      setSize(m_width, m_height);
+      scheduleRedraw(Redraw::All);
+    }
+  }
+
+  Color TerminalView::themed(ColorRole role) const {
+    switch (m_settings.theme) {
+    case Theme::System: return colorForRole(role);
+    case Theme::Light: return colorForRole(role, tokenPalette(true));
+    case Theme::Dark: return colorForRole(role, tokenPalette(false));
+    case Theme::Amoled:
+      return role == ColorRole::View ? Color{0.0F, 0.0F, 0.0F, 1.0F} : colorForRole(role, tokenPalette(false));
+    }
+    return colorForRole(role);
+  }
+
   void TerminalView::applyPalette() {
-    m_background = over(colorForRole(ColorRole::View), 0);
-    m_foreground = over(colorForRole(ColorRole::Label1), m_background);
-    m_faint = over(colorForRole(ColorRole::Label2), m_background);
-    m_selection = mix(m_background, over(colorForRole(ColorRole::Accent), m_background), 0.4F);
-    m_findHit = colorForRole(ColorRole::TermFindHit);
-    m_findHitCurrent = colorForRole(ColorRole::TermFindHitCurrent);
+    m_background = over(themed(ColorRole::View), 0);
+    m_foreground = over(themed(ColorRole::Label1), m_background);
+    m_faint = over(themed(ColorRole::Label2), m_background);
+    m_selection = mix(m_background, over(themed(ColorRole::Accent), m_background), 0.4F);
+    m_findHit = themed(ColorRole::TermFindHit);
+    m_findHitCurrent = themed(ColorRole::TermFindHitCurrent);
     // ANSI 1-6; the bright set (9-14) repeats them.
     constexpr std::array<ColorRole, 6> kAnsi = {ColorRole::TermRed,  ColorRole::TermGreen,   ColorRole::TermYellow,
                                                 ColorRole::TermBlue, ColorRole::TermMagenta, ColorRole::TermCyan};
@@ -198,7 +257,7 @@ namespace term {
       GhosttyColorRgb palette[256]{};
       ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, palette);
       for (int i = 0; i < 6; ++i) {
-        palette[1 + i] = unpack(over(colorForRole(kAnsi[i]), m_background));
+        palette[1 + i] = unpack(over(themed(kAnsi[i]), m_background));
         palette[9 + i] = palette[1 + i];
       }
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
@@ -218,7 +277,7 @@ namespace term {
     applyPalette();
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
-    m_grid->setFont(std::string(Tokens::fontMono), Tokens::typeMono.size * uiScale, Tokens::typeMono.line * uiScale, deviceScale);
+    setGridFont();
     m_images = std::make_unique<KittyImages>(*m_grid);
     m_context = std::make_unique<ContextRow>(*m_grid);
     auto findLayer = std::make_unique<Node>();
@@ -359,7 +418,7 @@ namespace term {
     }
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
-      m_grid->setFont(std::string(Tokens::fontMono), Tokens::typeMono.size * m_uiScale, Tokens::typeMono.line * m_uiScale, m_deviceScale);
+      setGridFont();
       setSize(m_width, m_height);
     }
     const Redraw redraw = std::exchange(m_redraw, Redraw::None);
@@ -775,7 +834,6 @@ namespace term {
   }
 
   void TerminalView::onMark(const CommandMark& mark) {
-    constexpr auto kNotifyAfter = std::chrono::seconds(10);
     switch (mark.kind) {
     case CommandMark::Kind::OutputStart:
       m_command = CommandRunning{.start = std::chrono::steady_clock::now(), .text = mark.command};
@@ -787,7 +845,8 @@ namespace term {
       const auto* running = std::get_if<CommandRunning>(&m_command);
       const auto elapsed = running != nullptr ? std::chrono::steady_clock::now() - running->start
                                               : std::chrono::steady_clock::duration{};
-      if (running != nullptr && elapsed >= kNotifyAfter && !m_focused && m_host.commandFinished) {
+      if (running != nullptr && m_settings.notifyLong && elapsed >= std::chrono::seconds(m_settings.notifySeconds)
+          && (!m_focused || !m_settings.notifyUnfocusedOnly) && m_host.commandFinished) {
         const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
         const std::string took =
             seconds >= 60 ? std::format("{} min {} s", seconds / 60, seconds % 60) : std::format("{} s", seconds);
@@ -1271,6 +1330,9 @@ namespace term {
       } else {
         m_drag = DragIdle{};
         selectAround(cell, m_lastClick.count);
+        if (m_settings.copyOnSelect) {
+          copySelection();
+        }
       }
       return;
     }
@@ -1281,6 +1343,8 @@ namespace term {
       if (drag->link && m_host.openUri) {
         m_host.openUri(*drag->link);
       }
+    } else if (drag != nullptr && m_settings.copyOnSelect) {
+      copySelection();
     }
     m_drag = DragIdle{};
   }
@@ -1393,7 +1457,7 @@ namespace term {
     m_wheelRemainder += d.axisSteps;
     const int notches = static_cast<int>(m_wheelRemainder);
     m_wheelRemainder -= static_cast<float>(notches);
-    constexpr int kRowsPerNotch = 3;
+    const int rowsPerNotch = m_settings.scrollRows;
     const float cellH = m_grid->cellHeight();
     const std::uint32_t mods = modifiers();
     if ((mods & KeyMod::Shift) == 0 && mouseTracking()) {
@@ -1401,7 +1465,7 @@ namespace term {
       // detent steps would send about 12 a second.
       int reports = notches;
       if (d.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
-        m_reportPx += d.scrollDelta(cellH * kRowsPerNotch);
+        m_reportPx += d.scrollDelta(cellH * rowsPerNotch);
         reports = static_cast<int>(m_reportPx / cellH);
         m_reportPx -= static_cast<float>(reports) * cellH;
       }
@@ -1424,7 +1488,7 @@ namespace term {
       if (ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &alternateScroll) == GHOSTTY_SUCCESS
           && alternateScroll.value) {
         ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &cursorKeys);
-        for (int i = 0; i < std::abs(notches) * kRowsPerNotch; ++i) {
+        for (int i = 0; i < std::abs(notches) * rowsPerNotch; ++i) {
           out += cursorKeys.value ? "\x1bO" : "\x1b[";
           out += notches < 0 ? 'A' : 'B';
         }
@@ -1446,14 +1510,14 @@ namespace term {
         m_scrollSamples.clear();
       }
       m_scrollMotion = ScrollMotion::Finger;
-      setScrollPx(m_scrollPx + d.scrollDelta(cellH * kRowsPerNotch));
+      setScrollPx(m_scrollPx + d.scrollDelta(cellH * rowsPerNotch));
       m_scrollSamples.push_back({.time = d.time, .px = m_scrollPx});
       std::erase_if(m_scrollSamples, [&](const ScrollSample& s) { return d.time - s.time > 100; });
       return true;
     }
     if (notches != 0) {
       const float from = m_scrollMotion == ScrollMotion::Settling ? m_scrollTarget : std::round(m_scrollPx / cellH) * cellH;
-      animateScroll(from + static_cast<float>(notches * kRowsPerNotch) * cellH, Tokens::springMove, 0.0F, true);
+      animateScroll(from + static_cast<float>(notches * rowsPerNotch) * cellH, Tokens::springMove, 0.0F, true);
     }
     return true;
   }

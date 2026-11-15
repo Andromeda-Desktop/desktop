@@ -201,6 +201,8 @@ extern Palette palette;
 [[nodiscard]] Color colorForRole(ColorRole role, float alpha, const Node* node) noexcept;
 [[nodiscard]] const Palette& paletteForTone(PaletteTone tone) noexcept;
 [[nodiscard]] const Color& colorForRole(ColorRole role, PaletteTone tone) noexcept;
+// The role in `p`, for a surface that shows a scheme other than the active one.
+[[nodiscard]] const Color& colorForRole(ColorRole role, const Palette& p) noexcept;
 // The tone of `kind` at the current glass slider (glass::tone).
 [[nodiscard]] PaletteTone glassTone(glass::Kind kind) noexcept;
 // The palette of PaletteTone::Dark. ThemeService sets it before setPalette(), which re-resolves every control.

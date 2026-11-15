@@ -4,8 +4,10 @@
 #include "context_row.h"
 #include "core/timer_manager.h"
 #include "pty_session.h"
+#include "settings.h"
 #include "terminal_find.h"
 #include "render/core/color.h"
+#include "ui/palette.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
 #include "render/scene/terminal_grid_node.h"
@@ -67,6 +69,7 @@ namespace term {
       std::function<void(const std::string& uri)> openUri;
       // Find results changed: match count and the current match (1 = newest), while find is open.
       std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
+      Settings settings;
     };
 
     explicit TerminalView(Host host);
@@ -84,6 +87,10 @@ namespace term {
     void setSize(float width, float height) override;
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
     void frame() override;
+    // Preferences changed: font, theme, cursor, scrolling and notifications apply at once.
+    void applySettings(const Settings& settings);
+    // The shell's working directory (OSC 7); empty until it reports one.
+    [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
     // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.
     void sceneDestroyed() override {
       m_grid = nullptr;
@@ -220,6 +227,10 @@ namespace term {
       bool ctrl;
     };
     std::optional<LinkProbe> m_linkProbe; // the input m_link was computed from
+    Settings m_settings = m_host.settings;
+    void applyTerminalSettings();
+    [[nodiscard]] Color themed(ColorRole role) const;
+    void setGridFont();
     // Hover preview of m_link: Armed waits the tooltip delay; Shown holds the content and, for an image, the
     // thumbnail it acquired (thumbPath; released when the preview leaves Shown).
     struct PreviewOff {};

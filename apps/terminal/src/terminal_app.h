@@ -35,6 +35,7 @@ namespace term {
     // Before the windows: their agent views close their sessions in it.
     std::unique_ptr<agent::Host> m_agents;
     ThumbnailService m_thumbnails; // outlives the windows: their views release thumbnails
+    SettingsStore m_settings;
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next

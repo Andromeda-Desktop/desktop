@@ -182,6 +182,8 @@ const Palette& paletteForTone(PaletteTone tone) noexcept {
 
 void setDarkPalette(const Palette& p) { g_darkPalette = p; }
 
+const Color& colorForRole(ColorRole role, const Palette& p) noexcept { return roleIn(p, role); }
+
 const Color& colorForRole(ColorRole role, PaletteTone tone) noexcept { return roleIn(paletteForTone(tone), role); }
 
 PaletteTone glassTone(glass::Kind kind) noexcept {

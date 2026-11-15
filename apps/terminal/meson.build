@@ -71,6 +71,13 @@ _agent_dep = declare_dependency(link_with: _agent, include_directories: include_
 test('agent_session', executable('agent_session_test', 'tests/agent_session_test.cpp',
   dependencies: _agent_dep, cpp_args: _warnings))
 
+# Preferences file model: TOML parse and write, no IO.
+_settings = static_library('terminal_settings', 'src/settings.cpp',
+  dependencies: dependency('tomlplusplus').partial_dependency(includes: true), cpp_args: _warnings)
+_settings_dep = declare_dependency(link_with: _settings, include_directories: include_directories('src'))
+test('settings', executable('settings_test', 'tests/settings_test.cpp',
+  dependencies: _settings_dep, cpp_args: _warnings))
+
 test('link_finder', executable('link_finder_test', 'tests/link_finder_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
@@ -104,9 +111,10 @@ executable('andromeda-terminal',
   'src/terminal_app.cpp',
   'src/terminal_view.cpp',
   'src/terminal_window.cpp',
+  'src/settings_store.cpp',
   'src/agent_host.cpp',
   'src/agent_view.cpp',
-  dependencies: [_core_dep, _agent_dep, _desk_app_dep],
+  dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep],
   cpp_args: _warnings + _agentd_path,
   install: true,
 )
