@@ -265,7 +265,7 @@ Filesystem paths resolve as follows: `~` expands to `$HOME`, absolute paths are 
 
 `noctalia.state` (below) lives only in memory - it is cleared when the plugin stops. To keep data across restarts, write it to a file. Do **not** persist inside `noctalia.pluginDir()`: for git-installed plugins that directory is a runtime copy that Noctalia rewrites on update, so anything you save there is lost.
 
-Use `noctalia.pluginDataDir()` instead. It returns a per-plugin folder that survives updates, is scoped to your plugin id, follows Noctalia's `NOCTALIA_STATE_HOME` override, and is created for you on first call.
+Use `noctalia.pluginDataDir()` instead. It returns a per-plugin folder that survives updates, is scoped to your plugin id, follows Noctalia's `ANDROMEDA_STATE_HOME` override, and is created for you on first call.
 
 ```lua
 local dir = noctalia.pluginDataDir()

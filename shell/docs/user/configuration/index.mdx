@@ -7,20 +7,20 @@ sidebar:
 
 Noctalia can be configured in two ways: files you write yourself, and settings the app saves for you.
 
-For most people, the important rule is simple: put your own configuration in `~/.config/noctalia/`. If something changed in the GUI and now seems to ignore your file, check `~/.local/state/noctalia/overrides.toml`.
+For most people, the important rule is simple: put your own configuration in `~/.config/andromeda/shell/`. If something changed in the GUI and now seems to ignore your file, check `~/.local/state/andromeda/shell/overrides.toml`.
 
 ## The two layers
 
 Your hand-written config lives in:
 
-- `$NOCTALIA_CONFIG_HOME/noctalia/`
-- `$XDG_CONFIG_HOME/noctalia/`
-- or `~/.config/noctalia/`
+- `$ANDROMEDA_CONFIG_HOME/andromeda/shell/`
+- `$XDG_CONFIG_HOME/andromeda/shell/`
+- or `~/.config/andromeda/shell/`
 
 Noctalia reads every `*.toml` file in that folder, sorts them alphabetically, and merges them into one config. A single `config.toml` is the easiest setup:
 
 ```toml
-# ~/.config/noctalia/config.toml
+# ~/.config/andromeda/shell/config.toml
 [theme]
 mode = "dark"
 
@@ -31,7 +31,7 @@ position = "top"
 You can also split things up if you like tidy dotfiles:
 
 ```text
-~/.config/noctalia/
+~/.config/andromeda/shell/
 ├── bar.toml
 ├── theme.toml
 └── widgets.toml
@@ -39,20 +39,20 @@ You can also split things up if you like tidy dotfiles:
 
 GUI-managed overrides live in:
 
-- `$NOCTALIA_STATE_HOME/noctalia/overrides.toml`
-- `$XDG_STATE_HOME/noctalia/overrides.toml`
-- or `~/.local/state/noctalia/overrides.toml`
+- `$ANDROMEDA_STATE_HOME/andromeda/shell/overrides.toml`
+- `$XDG_STATE_HOME/andromeda/shell/overrides.toml`
+- or `~/.local/state/andromeda/shell/overrides.toml`
 
 Noctalia writes this file when you change settings through the UI, setup flows, IPC-backed controls, and other runtime actions that need to persist. If the file is a symbolic link, Noctalia writes through to the link target and keeps the link in place.
 
-`NOCTALIA_CONFIG_HOME` and `NOCTALIA_STATE_HOME` have the same "home root" shape as the XDG variables. For example, `NOCTALIA_CONFIG_HOME=/tmp/profile` reads `/tmp/profile/noctalia/`. Use these Noctalia-specific variables when you want a separate shell profile without changing the environment inherited by apps launched from Noctalia.
+`ANDROMEDA_CONFIG_HOME` and `ANDROMEDA_STATE_HOME` have the same "home root" shape as the XDG variables. For example, `ANDROMEDA_CONFIG_HOME=/tmp/profile` reads `/tmp/profile/andromeda/shell/`. Use these Noctalia-specific variables when you want a separate shell profile without changing the environment inherited by apps launched from Noctalia.
 
 ## Including extra files
 
 Automatic loading only sees `*.toml` files sitting directly in the config folder. To pull in files from subdirectories, load a specific file, or control load order without renaming files, add an `[include]` table:
 
 ```toml
-# ~/.config/noctalia/config.toml
+# ~/.config/andromeda/shell/config.toml
 [include]
 files = [
   "widgets/",                  # a directory: every *.toml inside it (sorted, non-recursive)
@@ -84,7 +84,7 @@ Includes can nest (an included file can include more files), and each file is lo
 By default, every `*.toml` in the config folder still loads automatically alongside your includes. If you keep alternative setups in the root that should not all load at once - say `profile_a.toml` and `profile_b.toml` - set `autoload = false` in your entry file. Then **only** the file(s) that set it (plus whatever they include) load, and the other root files are ignored:
 
 ```toml
-# ~/.config/noctalia/config.toml
+# ~/.config/andromeda/shell/config.toml
 [include]
 autoload = false
 files = ["profiles/work.toml"]
@@ -108,9 +108,9 @@ If you are confused about why a hand-written value is not taking effect, inspect
 
 ## Where should I edit?
 
-Use `~/.config/noctalia/` for curated config: the things you want to keep in dotfiles, copy to another machine, or manage declaratively.
+Use `~/.config/andromeda/shell/` for curated config: the things you want to keep in dotfiles, copy to another machine, or manage declaratively.
 
-Treat `~/.local/state/noctalia/overrides.toml` as an app-managed override file. It is useful to inspect when debugging GUI changes, and safe to delete when you want to clear those overrides. Keeping it outside `~/.config` also lets the GUI save changes when your config directory is read-only, for example on NixOS. Support reports include config sources and `overrides.toml`, but omit `state.toml` contents because they can contain private runtime data.
+Treat `~/.local/state/andromeda/shell/overrides.toml` as an app-managed override file. It is useful to inspect when debugging GUI changes, and safe to delete when you want to clear those overrides. Keeping it outside `~/.config` also lets the GUI save changes when your config directory is read-only, for example on NixOS. Support reports include config sources and `overrides.toml`, but omit `state.toml` contents because they can contain private runtime data.
 
 Both layers are watched for changes and hot-reloaded. A save is applied about 150 ms after the file is written, so editors that save in several steps reload once; removing a config file also reloads. If neither layer exists, Noctalia uses its built-in defaults.
 
@@ -118,7 +118,7 @@ Both layers are watched for changes and hot-reloaded. A save is applied about 15
 
 When a release changes the shape of a setting, Noctalia migrates old values before parsing them so the running shell keeps the intended behavior. The app-owned `overrides.toml` is upgraded once and stamped with an internal `config_version`; Noctalia manages that marker and excludes it from exported user config.
 
-Files under `~/.config/noctalia/` are never rewritten. Values that need migration are normalized temporarily on every load, and Settings keeps a warning visible until you update the source TOML. The warning and notification identify the source file, line, column, and exact legacy key to edit. Noctalia sends the notification when it first finds an affected key, when a new affected key appears, and every three days while affected values remain.
+Files under `~/.config/andromeda/shell/` are never rewritten. Values that need migration are normalized temporarily on every load, and Settings keeps a warning visible until you update the source TOML. The warning and notification identify the source file, line, column, and exact legacy key to edit. Noctalia sends the notification when it first finds an affected key, when a new affected key appears, and every three days while affected values remain.
 
 Run the validator to list every affected key, its source location, and its canonical replacement:
 
@@ -134,23 +134,23 @@ Where Noctalia keeps everything, by purpose:
 
 | What                           | Where                                                      | Purpose                                                        |
 | ------------------------------ | ---------------------------------------------------------- | -------------------------------------------------------------- |
-| Your config                    | `~/.config/noctalia/config.toml`                           | hand-written / declarative - the base layer                    |
-| GUI overrides                  | `~/.local/state/noctalia/overrides.toml`                    | written by Settings; wins over your config                     |
-| Internal UI state              | `~/.local/state/noctalia/state.toml`                       | app-managed non-secret state and last-used values              |
+| Your config                    | `~/.config/andromeda/shell/config.toml`                           | hand-written / declarative - the base layer                    |
+| GUI overrides                  | `~/.local/state/andromeda/shell/overrides.toml`                    | written by Settings; wins over your config                     |
+| Internal UI state              | `~/.local/state/andromeda/shell/state.toml`                       | app-managed non-secret state and last-used values              |
 | Calendar credentials           | Desktop Secret Service or an explicit CalDAV password file | CalDAV passwords and Google refresh tokens                     |
 | Encrypted storage key          | Desktop Secret Service or an explicit key file             | master key for encrypted clipboard history and calendar events |
-| Calendar event cache           | `$XDG_CACHE_HOME/noctalia/calendar/events.enc`             | encrypted last-known-good events                               |
-| Local plugins                  | `~/.local/share/noctalia/plugins/`                         | plugins you install or place by hand                           |
-| Plugin source repos            | `~/.local/state/noctalia/plugins/sources/`                 | git-source repo caches, re-fetchable                           |
-| Exported plugin files          | `~/.local/state/noctalia/plugins/materialized/`            | runtime files exported from git sources                        |
+| Calendar event cache           | `$XDG_CACHE_HOME/andromeda/shell/calendar/events.enc`             | encrypted last-known-good events                               |
+| Local plugins                  | `~/.local/share/andromeda/shell/plugins/`                         | plugins you install or place by hand                           |
+| Plugin source repos            | `~/.local/state/andromeda/shell/plugins/sources/`                 | git-source repo caches, re-fetchable                           |
+| Exported plugin files          | `~/.local/state/andromeda/shell/plugins/materialized/`            | runtime files exported from git sources                        |
 
 It comes down to **three storage owners**:
 
-- **Yours** - `~/.config/noctalia/` (settings you write) and `~/.local/share/noctalia/` (plugins you install).
-- **Noctalia's** - `~/.local/state/noctalia/` (GUI overrides, UI state, plugin repo caches, exported plugin files, and downloaded catalogs).
+- **Yours** - `~/.config/andromeda/shell/` (settings you write) and `~/.local/share/andromeda/shell/` (plugins you install).
+- **Noctalia's** - `~/.local/state/andromeda/shell/` (GUI overrides, UI state, plugin repo caches, exported plugin files, and downloaded catalogs).
 - **Credential provider's** - durable calendar credentials and the encrypted storage master key managed by Secret Service, or explicit credential/key files managed by an external provisioner such as agenix. Deleting Noctalia's state directory does not remove them.
 
-Every path honors the relevant standard `XDG_CONFIG_HOME` / `XDG_STATE_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` variable (and the `NOCTALIA_CONFIG_HOME` / `NOCTALIA_STATE_HOME` / `NOCTALIA_DATA_HOME` overrides where applicable).
+Every path honors the relevant standard `XDG_CONFIG_HOME` / `XDG_STATE_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME` variable (and the `ANDROMEDA_CONFIG_HOME` / `ANDROMEDA_STATE_HOME` / `ANDROMEDA_DATA_HOME` overrides where applicable).
 
 ## Exporting config
 
@@ -197,7 +197,7 @@ Run the validator to catch problems before they silently take effect:
 noctalia config validate
 ```
 
-With no argument it checks the merged configuration exactly as the shell loads it: every `*.toml` in `~/.config/noctalia/` (or `$NOCTALIA_CONFIG_HOME`), then the `overrides.toml` overrides in `~/.local/state/noctalia/`. Pass a directory to validate just that directory's `*.toml` files instead:
+With no argument it checks the merged configuration exactly as the shell loads it: every `*.toml` in `~/.config/andromeda/shell/` (or `$ANDROMEDA_CONFIG_HOME`), then the `overrides.toml` overrides in `~/.local/state/andromeda/shell/`. Pass a directory to validate just that directory's `*.toml` files instead:
 
 ```sh
 noctalia config validate ./my-config-dir
@@ -212,8 +212,8 @@ noctalia config validate ./config.toml
 Every diagnostic is prefixed with the file, line, and column it came from, followed by the dotted config path:
 
 ```
-WARN  /home/you/.config/noctalia/bar.toml:14:10: bar.main.foo: unknown setting
-ERROR /home/you/.config/noctalia/widgets.toml:22:12: widget.clock.timezone: unknown timezone "Europe/Berln"
+WARN  /home/you/.config/andromeda/shell/bar.toml:14:10: bar.main.foo: unknown setting
+ERROR /home/you/.config/andromeda/shell/widgets.toml:22:12: widget.clock.timezone: unknown timezone "Europe/Berln"
 ```
 
 With several config files in play (or `overrides.toml` overriding one of them), the reported file is the one whose definition actually won the merge.
