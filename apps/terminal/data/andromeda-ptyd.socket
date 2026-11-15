@@ -1,0 +1,10 @@
+[Unit]
+Description=Andromeda Terminal pty holder socket
+
+[Socket]
+ListenStream=%t/andromeda/ptyd-1.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

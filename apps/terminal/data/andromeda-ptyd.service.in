@@ -1,0 +1,10 @@
+[Unit]
+Description=Andromeda Terminal pty holder, keeps shells running when a terminal window process dies
+Requires=andromeda-ptyd.socket
+PartOf=graphical-session.target
+
+[Service]
+# Shells run in this unit's cgroup; stopping it at log-out hangs them up.
+Slice=app.slice
+ExecStart=@libexecdir@/andromeda/andromeda-ptyd --relaunch systemd-run --user --collect --quiet --slice=app.slice @bindir@/andromeda-terminal
+Restart=no

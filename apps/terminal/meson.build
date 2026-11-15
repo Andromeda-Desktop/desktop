@@ -51,5 +51,32 @@ executable('andromeda-terminal',
   install: true,
 )
 
+# The pty holder (Rust) builds with cargo into this build dir, as andromeda-preview's helper.
+cargo = find_program('cargo')
+_cargo_profile = get_option('buildtype') == 'debug' ? 'debug' : 'release'
+custom_target('andromeda-ptyd',
+  output: 'andromeda-ptyd',
+  build_always_stale: true,
+  console: true,
+  command: [
+    'sh', '-c', '"$1" build --quiet --locked $2 --manifest-path "$3" --target-dir "$4" && cp "$4/$5/andromeda-ptyd" "$6"',
+    '_', cargo, _cargo_profile == 'release' ? '--release' : '--profile=dev',
+    meson.current_source_dir() / 'ptyd' / 'Cargo.toml', meson.current_build_dir() / 'cargo-target', _cargo_profile,
+    '@OUTPUT@',
+  ],
+  install: true,
+  install_dir: get_option('libexecdir') / 'andromeda',
+)
+_user_unit_dir = get_option('prefix') / 'lib' / 'systemd' / 'user'
+configure_file(input: 'data/andromeda-ptyd.service.in', output: 'andromeda-ptyd.service',
+  configuration: {
+    'libexecdir': get_option('prefix') / get_option('libexecdir'),
+    'bindir': get_option('prefix') / get_option('bindir'),
+  },
+  install_dir: _user_unit_dir)
+install_data('data/andromeda-ptyd.socket', install_dir: _user_unit_dir)
+install_symlink('andromeda-ptyd.socket', pointing_to: '../andromeda-ptyd.socket',
+  install_dir: _user_unit_dir / 'sockets.target.wants')
+
 install_data('data/dev.andromeda.Terminal.desktop', install_dir: get_option('datadir') / 'applications')
 install_data('data/icons/dev.andromeda.Terminal.svg', install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps')
