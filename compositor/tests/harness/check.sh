@@ -402,6 +402,10 @@ check_xwayland_proxy() {
   sed -n '2,12p' "$CHECKS_DIR/$1.sh" | sed -n 's/^# harness: xwayland_proxy=\(association\)$/\1/p' | head -1
 }
 
+check_render_thread() {
+  sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -qx '# harness: render_thread' && echo 1 || true
+}
+
 check_xcursor_theme() {
   if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: xcursor-theme=true'; then
     echo andromeda-harness
@@ -511,6 +515,7 @@ start_instance() {
   local xwayland=$2
   local cursor_theme=$3
   local xwayland_proxy=$4
+  local render_thread=$5
   # sockaddr_un caps paths at 108 bytes and the compositor appends
   # "/andromeda-wayland-0.sock" (23) to XDG_RUNTIME_DIR, so keep the root short. A
   # long path makes wl_display_add_socket fail and the boot abort.
@@ -552,6 +557,7 @@ start_instance() {
   local pgid_file=$RUNTIME_DIR/instance.pgid
   setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
     "${xwayland_environment[@]}" \
+    ${render_thread:+ANDROMEDA_RENDER_THREAD=1} \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     XDG_DATA_HOME="$RUNTIME_DIR/xdg-data" \
@@ -727,7 +733,7 @@ run_one() {
 
   BOOT_ERROR=
   if ! start_instance "$(check_outputs "$name")" "$(check_xwayland "$name")" "$cursor_theme" \
-    "$(check_xwayland_proxy "$name")"; then
+    "$(check_xwayland_proxy "$name")" "$(check_render_thread "$name")"; then
     publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
     return 0
   fi

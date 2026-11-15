@@ -701,6 +701,7 @@ namespace andromeda {
     }
     m_rendererLost.notify = onRendererLost;
     wl_signal_add(&m_renderer->events.lost, &m_rendererLost);
+    startRenderThread();
 
     if (!wlr_renderer_init_wl_shm(m_renderer, m_display)) {
       throw std::runtime_error("failed to initialize wl_shm");
@@ -1434,7 +1435,14 @@ namespace andromeda {
         wl_display_get_event_loop(m_display),
         [](void* data) {
           auto* server = static_cast<Server*>(data);
-          (void)notifyService(server->m_notifySocket, "WATCHDOG=1");
+          // A render thread stuck in one GPU submit for 30 s will not come back: let systemd restart the session.
+          constexpr int64_t kStuckSubmitNs = 30'000'000'000;
+          const int64_t busySince = fx_renderer_busy_since_ns(server->m_renderer);
+          timespec now{};
+          clock_gettime(CLOCK_MONOTONIC, &now);
+          if (busySince == 0 || now.tv_sec * 1'000'000'000LL + now.tv_nsec - busySince < kStuckSubmitNs) {
+            (void)notifyService(server->m_notifySocket, "WATCHDOG=1");
+          }
           wl_event_source_timer_update(server->m_watchdogTimer, server->m_watchdogIntervalMs);
           return 0;
         },

@@ -5,6 +5,7 @@
 
 #include "render/fx_renderer/backdrop_probe.h"
 #include "render/fx_renderer/fx_renderer.h"
+#include "render/fx_renderer/fx_render_thread.h"
 
 #include "render/egl.h"
 #include "render/fx_renderer/shaders.h"
@@ -125,6 +126,7 @@ static inline void free_shaders(struct fx_renderer* renderer) {
 
 static void fx_renderer_destroy(struct wlr_renderer* wlr_renderer) {
   struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  fx_render_thread_destroy(renderer->render_thread);
   fx_effect_shader_unref(renderer->animation_shadow_horizontal);
   fx_effect_shader_unref(renderer->animation_shadow_vertical);
 
@@ -459,6 +461,49 @@ struct wlr_renderer* fx_renderer_create_with_drm_fd_gbm(int drm_fd) {
 }
 
 struct wlr_renderer* fx_renderer_create(struct wlr_backend* backend) { return renderer_autocreate(backend, -1, false); }
+
+bool fx_renderer_start_render_thread(struct wlr_renderer* wlr_renderer, struct wl_event_loop* loop) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  if (renderer->render_thread == NULL) {
+    renderer->render_thread = fx_render_thread_create(renderer, loop);
+  }
+  return renderer->render_thread != NULL;
+}
+
+void fx_renderer_kick(struct wlr_renderer* wlr_renderer, void (*done)(void* data, bool ok), void* data) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  if (renderer->render_thread == NULL) {
+    done(data, true);
+    return;
+  }
+  fx_render_thread_kick(renderer->render_thread, done, data);
+}
+
+void fx_renderer_cancel_kick(struct wlr_renderer* wlr_renderer, void (*done)(void* data, bool ok), void* data) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  if (renderer->render_thread != NULL) {
+    fx_render_thread_cancel(renderer->render_thread, done, data);
+  }
+}
+
+int64_t fx_renderer_busy_since_ns(struct wlr_renderer* wlr_renderer) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  return renderer->render_thread == NULL ? 0 : fx_render_thread_busy_since_ns(renderer->render_thread);
+}
+
+bool fx_renderer_context_home(struct wlr_renderer* wlr_renderer) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  return renderer->render_thread == NULL || fx_render_thread_location(renderer->render_thread) == FX_CONTEXT_HOME;
+}
+
+bool fx_renderer_inject_submit_stall(struct wlr_renderer* wlr_renderer, int ms) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  if (renderer->render_thread == NULL) {
+    return false;
+  }
+  fx_render_thread_inject_stall(renderer->render_thread, ms);
+  return true;
+}
 
 static bool link_shaders(struct fx_renderer* renderer) {
   // quad fragment shader

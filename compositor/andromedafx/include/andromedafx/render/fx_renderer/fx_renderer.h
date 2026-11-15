@@ -16,6 +16,23 @@ struct wlr_renderer* fx_renderer_create_with_drm_fd(int drm_fd);
 struct wlr_renderer* fx_renderer_create_with_drm_fd_gbm(int drm_fd);
 struct wlr_renderer* fx_renderer_create(struct wlr_backend* backend);
 
+struct wl_event_loop;
+// Moves every GL flush and fence of `renderer` to its own thread, completing on `loop`. False when the thread cannot
+// start; the renderer then submits on the calling thread.
+bool fx_renderer_start_render_thread(struct wlr_renderer* renderer, struct wl_event_loop* loop);
+
+// Runs the flushes and fences queued so far, then `done` on the event loop (ok false when one failed). Without a render
+// thread they already ran and `done` runs now. Never blocks.
+void fx_renderer_kick(struct wlr_renderer* renderer, void (*done)(void* data, bool ok), void* data);
+// Drops a `done` not yet run, for an owner that goes away.
+void fx_renderer_cancel_kick(struct wlr_renderer* renderer, void (*done)(void* data, bool ok), void* data);
+// CLOCK_MONOTONIC ns at which the render thread's running job started; 0 when it is idle or there is none.
+int64_t fx_renderer_busy_since_ns(struct wlr_renderer* renderer);
+// False while the render thread holds the GL context: no GL call may start on the caller's thread until a kick's done.
+bool fx_renderer_context_home(struct wlr_renderer* renderer);
+// Test hook: the next render-thread job sleeps `ms` first. False without a render thread.
+bool fx_renderer_inject_submit_stall(struct wlr_renderer* renderer, int ms);
+
 struct fx_renderer* fx_get_renderer(struct wlr_renderer* wlr_renderer);
 
 bool fx_renderer_check_ext(struct wlr_renderer* renderer, const char* ext);

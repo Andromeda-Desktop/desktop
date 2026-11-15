@@ -539,6 +539,18 @@ namespace andromeda {
     }
   }
 
+  void Server::startRenderThread() {
+    const char* env = std::getenv("ANDROMEDA_RENDER_THREAD");
+    if (env == nullptr || std::string_view(env) != "1") {
+      return;
+    }
+    if (fx_renderer_start_render_thread(m_renderer, wl_display_get_event_loop(m_display))) {
+      kLog.info("render thread started");
+    } else {
+      kLog.warn("render thread failed to start; submitting on the main thread");
+    }
+  }
+
   void Server::recreateRenderer() {
     kLog.warn("GPU context lost, recreating renderer");
 
@@ -578,6 +590,7 @@ namespace andromeda {
     }
     m_renderer = newRenderer;
     m_allocator = newAllocator;
+    startRenderThread();
     effectRegistry().prepare(m_renderer);
     // Rebind existing caches before the old renderer invalidates its programs.
     // A frozen clock may deduplicate every subsequent animation tick.

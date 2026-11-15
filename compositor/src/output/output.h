@@ -281,6 +281,11 @@ namespace andromeda {
     static int onDirectScanoutTimer(void* data);
 
     void handleFrame();
+    // Commits the frame handleFrame built, once the render thread ran its GPU submits (`submitted` false when one
+    // failed), then does the post-commit work.
+    void completeFrame(bool submitted);
+    static void onFrameSubmitted(void* data, bool ok);
+    static void onRendererHome(void* data, bool ok);
     void handleRequestState(void* data);
     void handlePresent(void* data);
     void handleDestroy();
@@ -360,6 +365,27 @@ namespace andromeda {
     int m_arrangedLayoutY = 0;
 
     bool m_handlingFrame = false;
+    // Idle -> Submitting (handleFrame kicked the render thread) -> Idle (completeFrame). A frame event while
+    // Submitting makes it SubmittingDirty, which schedules one more frame on completion. WaitingContext: another
+    // output's submit holds the GL context; the frame is scheduled again when it returns.
+    enum class FrameState : uint8_t { Idle, WaitingContext, Submitting, SubmittingDirty };
+    FrameState m_frameState = FrameState::Idle;
+    // What handleFrame passes to completeFrame across the render thread's submit.
+    struct PendingFrame {
+      timespec now{};
+      uint64_t nowMsec = 0;
+      bool requestTearing = false;
+      bool effectsEligible = false;
+      bool animationsActive = false;
+      bool rendered = false;
+      bool built = false;
+      bool gammaPending = false;
+      bool commitFailed = false;
+      bool busyRetry = false;
+      wlr_output_state state{};
+      std::optional<wlr_fbox> zoom;
+    };
+    std::optional<PendingFrame> m_pendingFrame;
     StallProbe m_stallProbe;
     ConfiguredCommit m_configuredCommit;
     bool m_gammaDirty = false;

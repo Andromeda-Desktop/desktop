@@ -1717,6 +1717,14 @@ namespace andromeda {
   };
 
   Output::~Output() {
+    if (m_frameState == FrameState::WaitingContext) {
+      fx_renderer_cancel_kick(m_server->renderer(), onRendererHome, this);
+    } else if (m_frameState != FrameState::Idle) {
+      fx_renderer_cancel_kick(m_server->renderer(), onFrameSubmitted, this);
+    }
+    if (m_pendingFrame && m_pendingFrame->rendered) {
+      wlr_output_state_finish(&m_pendingFrame->state);
+    }
     if (m_awaitingFirstFrame) {
       scanout_keeper::firstFrameShown();
     }
@@ -2596,6 +2604,18 @@ namespace andromeda {
     if (m_heldFramePhase != HeldFramePhase::Crossing && greeterShowsNothing()) {
       return;
     }
+    if (m_frameState == FrameState::Submitting || m_frameState == FrameState::SubmittingDirty) {
+      m_frameState = FrameState::SubmittingDirty;
+      return;
+    }
+    if (m_frameState == FrameState::WaitingContext) {
+      return;
+    }
+    if (!fx_renderer_context_home(m_server->renderer())) {
+      m_frameState = FrameState::WaitingContext;
+      fx_renderer_kick(m_server->renderer(), onRendererHome, this);
+      return;
+    }
     advanceHeldFrame(HeldFrameEvent::GreeterShown);
     const OutputFrameScope frameScope(*m_server);
     stepHeldFrame();
@@ -2750,8 +2770,13 @@ namespace andromeda {
     // the unconditional wlr_scene_output_send_frame_done call at the bottom: mailbox/FIFO clients (games via DXVK,
     // video players) block on wl_surface.frame before submitting their next buffer. If we skip frame_done on the
     // "nothing to render" path, they never commit again, damage stays clean, and the output stops producing frames.
-    bool commitFailed = false;
-    bool busyRetry = false;
+    PendingFrame& frame = m_pendingFrame.emplace();
+    frame.now = now;
+    frame.nowMsec = nowMsec;
+    frame.requestTearing = requestTearing;
+    frame.effectsEligible = effectsEligible;
+    frame.animationsActive = animationsActive;
+    bool& commitFailed = frame.commitFailed;
     // Sample the plane before the needs_frame test below: a cursor-only move
     // damages nothing else, so this frame is the only commit that can carry
     // the damage. wlroots clears needs_frame on commit, so every mutation
@@ -2792,10 +2817,10 @@ namespace andromeda {
       }
       ANDROMEDA_ZONE("Output::render");
 
-      wlr_output_state state{};
+      frame.rendered = true;
+      wlr_output_state& state = frame.state;
       wlr_output_state_init(&state);
 
-      bool commitOk = false;
       const int captureLocks = captureRenderLocks(externalLocks);
       wlr_scene_output_state_options sceneOptions{};
       sceneOptions.capture_sdr = hdrActive() && captureLocks > 0;
@@ -2816,7 +2841,7 @@ namespace andromeda {
       // Before the render, so clients draw their next frame while we composite (1-3 ms more per period). No client
       // request runs until this handler returns, so the call at the bottom then finds no new callbacks.
       wlr_scene_output_send_frame_done(m_sceneOutput, &now);
-      bool built = false;
+      bool& built = frame.built;
       {
         ANDROMEDA_ZONE("Output::buildState");
         m_stallProbe.mark(StallProbe::Mark::BuildStart);
@@ -2833,7 +2858,7 @@ namespace andromeda {
       if (built) {
         // Hardware gamma only (DRM). Nested Wayland has no gamma LUT; leave that alone.
         // Apply only when dirty: uploading the LUT every frame stalls the compositor.
-        bool gammaPending = false;
+        bool& gammaPending = frame.gammaPending;
         if (m_gammaDirty) {
           if (hdrActive()) {
             m_gammaDirty = false;
@@ -2853,10 +2878,46 @@ namespace andromeda {
           }
         }
 
-        std::optional<wlr_fbox> zoom;
+        std::optional<wlr_fbox>& zoom = frame.zoom;
         if (m_zoom > 1.0) {
           zoom = applyZoom(state);
         }
+      }
+    }
+
+    m_frameState = FrameState::Submitting;
+    if (frame.built) {
+      fx_renderer_kick(m_server->renderer(), onFrameSubmitted, this);
+    } else {
+      completeFrame(true);
+    }
+  }
+
+  void Output::onFrameSubmitted(void* data, bool ok) { static_cast<Output*>(data)->completeFrame(ok); }
+
+  void Output::onRendererHome(void* data, bool /*ok*/) {
+    auto* self = static_cast<Output*>(data);
+    self->m_frameState = FrameState::Idle;
+    wlr_output_schedule_frame(self->m_output);
+  }
+
+  void Output::completeFrame(bool submitted) {
+    ANDROMEDA_ZONE("Output::completeFrame");
+    PendingFrame& frame = *m_pendingFrame;
+    timespec now = frame.now;
+    const uint64_t nowMsec = frame.nowMsec;
+    const bool requestTearing = frame.requestTearing;
+    const bool effectsEligible = frame.effectsEligible;
+    const bool animationsActive = frame.animationsActive;
+    const bool gammaPending = frame.gammaPending;
+    const std::optional<wlr_fbox>& zoom = frame.zoom;
+    bool& commitFailed = frame.commitFailed;
+    bool& busyRetry = frame.busyRetry;
+    if (frame.rendered) {
+      wlr_output_state& state = frame.state;
+      bool commitOk = false;
+      // A failed submit leaves the buffer unfinished: no commit, and the retry redraws it.
+      if (frame.built && submitted) {
         const bool hasBuffer = (state.committed & WLR_OUTPUT_STATE_BUFFER) != 0;
         bool commitTearing = requestTearing && hasBuffer;
         const bool recoveringFromFailedCommit = m_tearingRecovery.regularCommitPending();
@@ -3013,6 +3074,13 @@ namespace andromeda {
     wlr_scene_output_send_frame_done(m_sceneOutput, &now);
     if (m_workspaceGroup != nullptr) {
       m_workspaceGroup->sendSlideFrameDone(&now);
+    }
+
+    const bool dirty = m_frameState == FrameState::SubmittingDirty;
+    m_frameState = FrameState::Idle;
+    m_pendingFrame.reset();
+    if (dirty) {
+      wlr_output_schedule_frame(m_output);
     }
   }
 

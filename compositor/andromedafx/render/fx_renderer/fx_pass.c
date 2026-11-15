@@ -6,6 +6,7 @@
 #include "render/fx_renderer/backdrop_probe.h"
 #include "render/fx_renderer/effect.h"
 #include "render/fx_renderer/fx_renderer.h"
+#include "render/fx_renderer/fx_render_thread.h"
 #include "render/fx_renderer/shaders.h"
 #include "render/pass.h"
 #include "render/tracy.h"
@@ -511,6 +512,26 @@ static bool render_pass_submit(struct wlr_render_pass* wlr_pass) {
   }
 
   TRACY_FN(tracy_gpu_zone_end(&gpu_ctx); tracy_gpu_zone_end(&pass->frame_gpu_zone); gpu_zones_open = false;)
+
+  if (renderer->render_thread != NULL) {
+    struct fx_render_thread* thread = renderer->render_thread;
+    fx_render_thread_queue(thread, &(struct fx_submit_op){.kind = FX_SUBMIT_PROBE_FENCE});
+    if (pass->signal_timeline != NULL) {
+      fx_render_thread_queue(
+          thread, &(struct fx_submit_op){
+                      .kind = FX_SUBMIT_TIMELINE, .timeline = pass->signal_timeline, .point = pass->signal_point}
+      );
+    } else if (pass->implicit_sync_target) {
+      fx_render_thread_queue(
+          thread, &(struct fx_submit_op){.kind = FX_SUBMIT_IMPLICIT, .buffer = pass->output_buffer->buffer}
+      );
+    } else {
+      fx_render_thread_queue(thread, &(struct fx_submit_op){.kind = FX_SUBMIT_FLUSH});
+    }
+    fx_render_thread_kick_later(thread);
+    ok = true;
+    goto out;
+  }
 
   fx_backdrop_probes_fence(renderer);
   if (pass->signal_timeline != NULL) {

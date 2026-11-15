@@ -737,6 +737,8 @@ namespace andromeda {
     void updateSeatCapabilities();
     void beginSessionLock(wlr_session_lock_v1* lock);
     void recreateRenderer();
+    // ANDROMEDA_RENDER_THREAD=1 moves GPU submits off the main thread (opt-in until every GL caller handles it).
+    void startRenderThread();
     void applyConfig(const ConfigEffects& effects);
     // Recompile every keyboard's keymap from the current config and system keymap.
     void applyKeyboardConfig();

@@ -1326,6 +1326,23 @@ namespace andromeda {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json IpcCommands::stallSubmit([[maybe_unused]] Server& server, [[maybe_unused]] std::string_view arg) {
+#ifdef ANDROMEDA_TEST_IPC
+    int ms = 0;
+    std::from_chars(arg.data(), arg.data() + arg.size(), ms);
+    if (ms <= 0) {
+      return nlohmann::json{{"error", "stall-submit needs a duration in ms"}};
+    }
+    if (!fx_renderer_inject_submit_stall(server.renderer(), ms)) {
+      return nlohmann::json{{"error", "no render thread (ANDROMEDA_RENDER_THREAD=1)"}};
+    }
+    for (const auto& output : server.outputs()) {
+      output->scheduleFullFrame();
+    }
+#endif
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::clockAdvance(Server& /*server*/, std::string_view /*arg*/) {
     return nlohmann::json{{"ok", nullptr}};
   }
@@ -1651,6 +1668,8 @@ namespace andromeda {
        IpcCommandGroup::Harness, false, &IpcCommands::settle, nullptr, 35},
       {"stall-frame", "<ms>", "block the main thread for <ms> in the next frame (stall report check)",
        IpcCommandGroup::Harness, true, &IpcCommands::stallFrame, nullptr},
+      {"stall-submit", "<ms>", "make the next render-thread GPU submit sleep <ms> (render thread check)",
+       IpcCommandGroup::Harness, true, &IpcCommands::stallSubmit, nullptr},
       {"clock-freeze", "", "stop animation time", IpcCommandGroup::Harness, false, &IpcCommands::clockFreeze, nullptr},
       {"clock-advance", "<ms>", "move frozen animation time forward and wait until every output has drawn it",
        IpcCommandGroup::Harness, true, &IpcCommands::clockAdvance, nullptr, 35},

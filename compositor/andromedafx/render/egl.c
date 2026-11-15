@@ -1,4 +1,7 @@
+#define _GNU_SOURCE
 #include "render/egl.h"
+
+#include <dlfcn.h>
 
 #include "util/env.h"
 
@@ -800,7 +803,20 @@ bool wlr_egl_destroy_image(struct wlr_egl* egl, EGLImage image) {
   return egl->procs.eglDestroyImageKHR(egl->display, image);
 }
 
+void wlr_egl_set_lent(struct wlr_egl* egl, bool lent) {
+  egl->lender = pthread_self();
+  egl->lent = lent;
+}
+
 bool wlr_egl_make_current(struct wlr_egl* egl, struct wlr_egl_context* save_context) {
+  if (pthread_equal(pthread_self(), egl->lender) && egl->lent) {
+    void* caller = __builtin_return_address(0);
+    Dl_info info = {0};
+    dladdr(caller, &info);
+    wlr_log(WLR_ERROR, "GL call while the render thread holds the context (caller %s+%#tx)",
+        info.dli_fname != NULL ? info.dli_fname : "?", (char*)caller - (char*)info.dli_fbase);
+    return false;
+  }
   if (save_context != NULL) {
     *save_context = current_state;
   }

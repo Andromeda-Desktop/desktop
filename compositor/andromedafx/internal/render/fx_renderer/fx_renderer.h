@@ -217,6 +217,9 @@ bool wlr_render_timer_is_fx(struct wlr_render_timer* timer);
 struct fx_renderer {
   struct wlr_renderer wlr_renderer;
 
+  // Null until fx_renderer_start_render_thread; submits then flush on the calling thread.
+  struct fx_render_thread* render_thread;
+
   struct wlr_egl* egl;
   int drm_fd;
   struct wlr_allocator* allocator;

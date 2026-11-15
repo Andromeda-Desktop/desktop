@@ -1,6 +1,7 @@
 #ifndef RENDER_EGL_H
 #define RENDER_EGL_H
 
+#include <pthread.h>
 #include <wlr/render/egl.h>
 
 enum wlr_egl_drm_fd_strategy {
@@ -59,7 +60,13 @@ struct wlr_egl {
   PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHR;
   // NVIDIA does not honor implicit DMA-BUF fences.
   bool ignores_implicit_fences;
+  // True while `lender` has handed the context to the render thread; `lender` may not bind it until it returns.
+  bool lent;
+  pthread_t lender;
 };
+
+// Marks the context lent to (or back from) another thread; the calling thread is the lender.
+void wlr_egl_set_lent(struct wlr_egl* egl, bool lent);
 
 struct wlr_egl_context {
   EGLDisplay display;

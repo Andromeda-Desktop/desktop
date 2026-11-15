@@ -33,6 +33,7 @@ andromedafx_sources = files(
   'render/fx_renderer/fx_offscreen_buffers.c',
   'render/fx_renderer/fx_pass.c',
   'render/fx_renderer/fx_renderer.c',
+  'render/fx_renderer/fx_render_thread.c',
   'render/fx_renderer/fx_texture.c',
   'render/fx_renderer/effect_shader.c',
   'render/fx_renderer/pixel_format.c',

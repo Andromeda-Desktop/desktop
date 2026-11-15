@@ -267,6 +267,9 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, float* luminance) {
     }
     fence->signaled = true;
   }
+  if (!fx_renderer_context_home(&probe->renderer->wlr_renderer)) {
+    return false; // the render thread holds the context; the caller polls again
+  }
   release_fence(probe);
   struct wlr_egl_context saved;
   if (!wlr_egl_make_current(egl, &saved)) {
