@@ -26,6 +26,8 @@ namespace term {
       // New terminal state is ready: ask for a frame tick that calls frame().
       std::function<void()> requestFrame;
       std::function<void(int status)> exited;
+      // Current keyboard modifiers (KeyMod bits): pointer events carry none.
+      std::function<std::uint32_t()> modifiers;
     };
 
     explicit TerminalView(Host host);
@@ -60,13 +62,26 @@ namespace term {
       GhosttyPointCoordinate anchor; // viewport cell where the drag started
       bool moved = false;
     };
+    struct Click {
+      std::uint32_t time = 0; // ms, Wayland event time
+      GhosttyPointCoordinate cell{};
+      int count = 0; // 1 cell, 2 word, 3 line
+    };
 
     void refresh(bool all);
     void applyPalette();
     void scheduleRedraw(Redraw redraw);
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
-    void pointerPress(float localX, float localY, bool pressed);
+    void pointerButton(std::uint32_t button, float localX, float localY, bool pressed, std::uint32_t time);
     void pointerMotion(float localX, float localY);
+    bool wheel(std::uint32_t axis, float steps);
+    // Sends the event to the program when it tracks the mouse; false when it does not.
+    bool reportMouse(GhosttyMouseAction action, GhosttyMouseButton button, float localX, float localY,
+                     std::uint32_t mods);
+    void selectAround(GhosttyPointCoordinate cell, int count);
+    void clearSelection();
+    void scrollToBottom();
+    [[nodiscard]] std::uint32_t modifiers() const;
     void copySelection();
     void paste();
 
@@ -78,6 +93,14 @@ namespace term {
     GhosttyRenderStateRowCells m_cells = nullptr;
     GhosttyKeyEncoder m_encoder = nullptr;
     GhosttyKeyEvent m_keyEvent = nullptr;
+    GhosttyMouseEncoder m_mouseEncoder = nullptr;
+    GhosttyMouseEvent m_mouseEvent = nullptr;
+    std::uint32_t m_buttonsReported = 0; // bit per GhosttyMouseButton whose press went to the program
+    GhosttyPointCoordinate m_motionCell{}; // last cell a motion report went out for
+    float m_pointerX = 0.0F; // last pointer position, local px: wheel reports need one
+    float m_pointerY = 0.0F;
+    float m_wheelRemainder = 0.0F;
+    Click m_lastClick;
     std::unordered_set<std::uint32_t> m_keysDown; // evdev codes whose press went to the program
     void updateFocus();
 
@@ -91,6 +114,8 @@ namespace term {
     TerminalGridNode* m_grid = nullptr;
     TextureManager* m_textures = nullptr;
     float m_uiScale = 1.0F;
+    float m_width = 0.0F;
+    float m_height = 0.0F;
     bool m_dark = true;
     std::uint32_t m_foreground = 0;
     std::uint32_t m_faint = 0;

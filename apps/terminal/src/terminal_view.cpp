@@ -13,8 +13,11 @@
 
 #include <linux/input-event-codes.h>
 
+#include <wayland-client-protocol.h>
+
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <utility>
@@ -50,6 +53,14 @@ namespace term {
         const float cb = static_cast<float>((b >> shift) & 0xFF);
         out |= static_cast<std::uint32_t>(std::lround(ca + (cb - ca) * t)) << shift;
       }
+      return out;
+    }
+
+    GhosttyMods ghosttyMods(std::uint32_t mods) {
+      GhosttyMods out = 0;
+      out |= (mods & KeyMod::Shift) != 0 ? GHOSTTY_MODS_SHIFT : 0;
+      out |= (mods & KeyMod::Ctrl) != 0 ? GHOSTTY_MODS_CTRL : 0;
+      out |= (mods & KeyMod::Alt) != 0 ? GHOSTTY_MODS_ALT : 0;
       return out;
     }
 
@@ -93,10 +104,14 @@ namespace term {
     ghostty_render_state_row_cells_new(nullptr, &m_cells);
     ghostty_key_encoder_new(nullptr, &m_encoder);
     ghostty_key_event_new(nullptr, &m_keyEvent);
+    ghostty_mouse_encoder_new(nullptr, &m_mouseEncoder);
+    ghostty_mouse_event_new(nullptr, &m_mouseEvent);
   }
 
   TerminalView::~TerminalView() {
     m_alive.reset();
+    ghostty_mouse_event_free(m_mouseEvent);
+    ghostty_mouse_encoder_free(m_mouseEncoder);
     ghostty_key_event_free(m_keyEvent);
     ghostty_key_encoder_free(m_encoder);
     ghostty_render_state_row_cells_free(m_cells);
@@ -165,13 +180,14 @@ namespace term {
                                        m_areaFocused = false;
                                        updateFocus();
                                      });
+                                     a.setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_MIDDLE, BTN_RIGHT}));
                                      a.setOnPress([this](const InputArea::PointerData& d) {
-                                       if (d.button == BTN_LEFT) {
-                                         pointerPress(d.localX, d.localY, d.pressed);
-                                       }
+                                       pointerButton(d.button, d.localX, d.localY, d.pressed, d.time);
                                      });
                                      a.setOnMotion(
                                          [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
+                                     a.setOnAxisHandler(
+                                         [this](const InputArea::PointerData& d) { return wheel(d.axis, d.axisSteps); });
                                    }},
                               std::move(grid));
     setSize(width, height);
@@ -187,6 +203,8 @@ namespace term {
       m_area->setSize(width, height);
     }
     m_grid->setSize(width, height);
+    m_width = width;
+    m_height = height;
     const float inset = kInset * m_uiScale;
     const int cols = std::max(2, static_cast<int>((width - 2.0F * inset) / m_grid->cellWidth()));
     const int rows = std::max(1, static_cast<int>((height - kTopInset * m_uiScale - inset) / m_grid->cellHeight()));
@@ -381,10 +399,7 @@ namespace term {
       m_keysDown.insert(event.key);
     }
 
-    GhosttyMods mods = 0;
-    mods |= (event.modifiers & KeyMod::Shift) != 0 ? GHOSTTY_MODS_SHIFT : 0;
-    mods |= (event.modifiers & KeyMod::Ctrl) != 0 ? GHOSTTY_MODS_CTRL : 0;
-    mods |= (event.modifiers & KeyMod::Alt) != 0 ? GHOSTTY_MODS_ALT : 0;
+    const GhosttyMods mods = ghosttyMods(event.modifiers);
     // Text excludes C0 controls and DEL: the encoder builds those from the key and mods.
     const bool text = event.utf32 >= 0x20 && event.utf32 != 0x7f && !(event.utf32 >= 0xE000 && event.utf32 < 0xF900);
     std::string utf8;
@@ -411,6 +426,7 @@ namespace term {
     std::uint8_t buf[128];
     std::size_t written = 0;
     if (ghostty_key_encoder_encode(m_encoder, m_keyEvent, buf, sizeof(buf), &written) == GHOSTTY_SUCCESS && written > 0) {
+      scrollToBottom();
       m_session.write({buf, written});
     }
     return true;
@@ -460,30 +476,81 @@ namespace term {
             .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(m_grid->rows() - 1)))};
   }
 
-  void TerminalView::pointerPress(float localX, float localY, bool pressed) {
+  std::uint32_t TerminalView::modifiers() const {
+    return m_host.modifiers ? m_host.modifiers() : 0;
+  }
+
+  void TerminalView::pointerButton(std::uint32_t button, float localX, float localY, bool pressed,
+                                   std::uint32_t time) {
     if (m_grid == nullptr || m_grid->columns() <= 0 || m_grid->rows() <= 0) {
       return;
     }
+    const GhosttyMouseButton mouse = button == BTN_LEFT     ? GHOSTTY_MOUSE_BUTTON_LEFT
+                                     : button == BTN_MIDDLE ? GHOSTTY_MOUSE_BUTTON_MIDDLE
+                                                            : GHOSTTY_MOUSE_BUTTON_RIGHT;
+    const std::uint32_t bit = 1U << mouse;
+    const std::uint32_t mods = modifiers();
+    // Shift bypasses mouse reporting so the user can still select; a reported press always gets its release.
+    const bool reported = (m_buttonsReported & bit) != 0;
+    if ((pressed && (mods & KeyMod::Shift) == 0) || (!pressed && reported)) {
+      if (pressed) {
+        m_buttonsReported |= bit;
+      } else {
+        m_buttonsReported &= ~bit;
+      }
+      if (reportMouse(pressed ? GHOSTTY_MOUSE_ACTION_PRESS : GHOSTTY_MOUSE_ACTION_RELEASE, mouse, localX, localY,
+                      mods)) {
+        return;
+      }
+      m_buttonsReported &= ~bit;
+    }
+    if (button != BTN_LEFT) {
+      return;
+    }
     if (pressed) {
-      m_drag = DragSelecting{.anchor = cellAt(localX, localY)};
+      const GhosttyPointCoordinate cell = cellAt(localX, localY);
+      const bool repeat = m_lastClick.count > 0 && time - m_lastClick.time <= 400 && cell.x == m_lastClick.cell.x
+                          && cell.y == m_lastClick.cell.y;
+      m_lastClick = {.time = time, .cell = cell, .count = repeat ? m_lastClick.count % 3 + 1 : 1};
+      if (m_lastClick.count == 1) {
+        m_drag = DragSelecting{.anchor = cell};
+      } else {
+        m_drag = DragIdle{};
+        selectAround(cell, m_lastClick.count);
+      }
       return;
     }
     const auto* drag = std::get_if<DragSelecting>(&m_drag);
     // A click without a drag clears the selection.
     if (drag != nullptr && !drag->moved) {
-      m_session.withTerminal([](GhosttyTerminal t) {
-        if (t != nullptr) {
-          ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, nullptr);
-        }
-      });
-      scheduleRedraw(Redraw::All);
+      clearSelection();
     }
     m_drag = DragIdle{};
   }
 
   void TerminalView::pointerMotion(float localX, float localY) {
+    if (m_grid == nullptr || m_grid->columns() <= 0 || m_grid->rows() <= 0) {
+      return;
+    }
+    m_pointerX = localX;
+    m_pointerY = localY;
     auto* drag = std::get_if<DragSelecting>(&m_drag);
-    if (drag == nullptr || m_grid == nullptr) {
+    if (drag == nullptr) {
+      const std::uint32_t mods = modifiers();
+      const GhosttyPointCoordinate cell = cellAt(localX, localY);
+      if ((mods & KeyMod::Shift) != 0 || (cell.x == m_motionCell.x && cell.y == m_motionCell.y)) {
+        return;
+      }
+      GhosttyMouseButton held = GHOSTTY_MOUSE_BUTTON_UNKNOWN;
+      for (const GhosttyMouseButton b : {GHOSTTY_MOUSE_BUTTON_LEFT, GHOSTTY_MOUSE_BUTTON_MIDDLE, GHOSTTY_MOUSE_BUTTON_RIGHT}) {
+        if ((m_buttonsReported & (1U << b)) != 0) {
+          held = b;
+          break;
+        }
+      }
+      if (reportMouse(GHOSTTY_MOUSE_ACTION_MOTION, held, localX, localY, mods)) {
+        m_motionCell = cell;
+      }
       return;
     }
     const GhosttyPointCoordinate cell = cellAt(localX, localY);
@@ -503,6 +570,156 @@ namespace term {
              && ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS;
     });
     if (set) {
+      scheduleRedraw(Redraw::All);
+    }
+  }
+
+  bool TerminalView::reportMouse(GhosttyMouseAction action, GhosttyMouseButton button, float localX, float localY,
+                                 std::uint32_t mods) {
+    const bool tracking = m_session.withTerminal([&](GhosttyTerminal t) {
+      bool on = false;
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &on) != GHOSTTY_SUCCESS || !on) {
+        return false;
+      }
+      ghostty_mouse_encoder_set_from_terminal(m_mouseEncoder, t);
+      return true;
+    });
+    if (!tracking) {
+      return false;
+    }
+    auto px = [](float v) { return static_cast<std::uint32_t>(std::max(0L, std::lround(v))); };
+    const std::uint32_t left = px(kInset * m_uiScale);
+    const std::uint32_t top = px(kTopInset * m_uiScale);
+    const std::uint32_t cellW = std::max(1U, px(m_grid->cellWidth()));
+    const std::uint32_t cellH = std::max(1U, px(m_grid->cellHeight()));
+    auto size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+    size.screen_width = px(m_width);
+    size.screen_height = px(m_height);
+    size.cell_width = cellW;
+    size.cell_height = cellH;
+    size.padding_left = left;
+    size.padding_top = top;
+    size.padding_right = px(m_width - static_cast<float>(left + cellW * static_cast<std::uint32_t>(m_grid->columns())));
+    size.padding_bottom = px(m_height - static_cast<float>(top + cellH * static_cast<std::uint32_t>(m_grid->rows())));
+    ghostty_mouse_encoder_set(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+    const bool anyPressed = m_buttonsReported != 0;
+    ghostty_mouse_encoder_set(m_mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_ANY_BUTTON_PRESSED, &anyPressed);
+    ghostty_mouse_event_set_action(m_mouseEvent, action);
+    if (button == GHOSTTY_MOUSE_BUTTON_UNKNOWN) {
+      ghostty_mouse_event_clear_button(m_mouseEvent);
+    } else {
+      ghostty_mouse_event_set_button(m_mouseEvent, button);
+    }
+    ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMods(mods));
+    ghostty_mouse_event_set_position(m_mouseEvent, {.x = localX, .y = localY});
+    std::uint8_t buf[64];
+    std::size_t written = 0;
+    if (ghostty_mouse_encoder_encode(m_mouseEncoder, m_mouseEvent, buf, sizeof(buf), &written) == GHOSTTY_SUCCESS
+        && written > 0) {
+      m_session.write({buf, written});
+    }
+    return true;
+  }
+
+  bool TerminalView::wheel(std::uint32_t axis, float steps) {
+    if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL || m_grid == nullptr) {
+      return false;
+    }
+    m_wheelRemainder += steps;
+    const int notches = static_cast<int>(m_wheelRemainder);
+    m_wheelRemainder -= static_cast<float>(notches);
+    if (notches == 0) {
+      return true;
+    }
+    const std::uint32_t mods = modifiers();
+    const GhosttyMouseButton button = notches < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE;
+    const float x = m_pointerX;
+    const float y = m_pointerY;
+    if ((mods & KeyMod::Shift) == 0 && reportMouse(GHOSTTY_MOUSE_ACTION_PRESS, button, x, y, mods)) {
+      for (int i = 1; i < std::abs(notches); ++i) {
+        reportMouse(GHOSTTY_MOUSE_ACTION_PRESS, button, x, y, mods);
+      }
+      return true;
+    }
+    constexpr int kRowsPerNotch = 3;
+    // The alternate screen has no scrollback: with mode 1007 the wheel becomes arrow keys (less, man, vim).
+    const auto arrows = m_session.withTerminal([&](GhosttyTerminal t) -> std::string {
+      GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+      GhosttyTerminalModeConfig alternateScroll{.mode = GHOSTTY_MODE_MOUSE_ALTERNATE_SCROLL, .value = false};
+      GhosttyTerminalModeConfig cursorKeys{.mode = GHOSTTY_MODE_CURSOR_KEYS, .value = false};
+      if (t == nullptr) {
+        return {};
+      }
+      if (ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) == GHOSTTY_SUCCESS
+          && screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE
+          && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &alternateScroll) == GHOSTTY_SUCCESS
+          && alternateScroll.value) {
+        ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &cursorKeys);
+        std::string out;
+        for (int i = 0; i < std::abs(notches) * kRowsPerNotch; ++i) {
+          out += cursorKeys.value ? "\x1bO" : "\x1b[";
+          out += notches < 0 ? 'A' : 'B';
+        }
+        return out;
+      }
+      ghostty_terminal_scroll_viewport(
+          t, {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, .value = {.delta = notches * kRowsPerNotch}});
+      return {};
+    });
+    if (!arrows.empty()) {
+      m_session.write({reinterpret_cast<const std::uint8_t*>(arrows.data()), arrows.size()});
+    } else {
+      scheduleRedraw(Redraw::All);
+    }
+    return true;
+  }
+
+  void TerminalView::selectAround(GhosttyPointCoordinate cell, int count) {
+    const bool set = m_session.withTerminal([&](GhosttyTerminal t) {
+      GhosttyGridRef ref{};
+      GhosttySelection selection{};
+      if (t == nullptr
+          || ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = cell}}, &ref)
+                 != GHOSTTY_SUCCESS) {
+        return false;
+      }
+      GhosttyResult result = GHOSTTY_NO_VALUE;
+      if (count == 2) {
+        auto options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
+        options.ref = ref;
+        result = ghostty_terminal_select_word(t, &options, &selection);
+      } else {
+        auto options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectLineOptions);
+        options.ref = ref;
+        result = ghostty_terminal_select_line(t, &options, &selection);
+      }
+      return result == GHOSTTY_SUCCESS
+             && ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, &selection) == GHOSTTY_SUCCESS;
+    });
+    if (set) {
+      scheduleRedraw(Redraw::All);
+    }
+  }
+
+  void TerminalView::clearSelection() {
+    m_session.withTerminal([](GhosttyTerminal t) {
+      if (t != nullptr) {
+        ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SELECTION, nullptr);
+      }
+    });
+    scheduleRedraw(Redraw::All);
+  }
+
+  // Typing or pasting returns a scrolled-back view to the live screen.
+  void TerminalView::scrollToBottom() {
+    const bool moved = m_session.withTerminal([](GhosttyTerminal t) {
+      bool active = true;
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE, &active) == GHOSTTY_SUCCESS
+             && !active
+             && ghostty_terminal_scroll_viewport(t, {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM, .value = {}})
+                    == GHOSTTY_SUCCESS;
+    });
+    if (moved) {
       scheduleRedraw(Redraw::All);
     }
   }
@@ -551,6 +768,7 @@ namespace term {
     if (ghostty_paste_encode(text->data(), text->size(), bracketed, buf.data(), buf.size(), &written)
             == GHOSTTY_SUCCESS
         && written > 0) {
+      scrollToBottom();
       m_session.write({buf.data(), written});
     }
   }

@@ -4,6 +4,7 @@
 #include "app/app_window.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "wayland/wayland_connection.h"
 
 #include <pwd.h>
 #include <unistd.h>
@@ -34,7 +35,8 @@ namespace term {
 
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, std::function<void()> close)
       : m_loop(loop), m_window(window),
-        m_view({.requestFrame = [this] { requestFrame(); }, .exited = [close = std::move(close)](int) { close(); }}) {
+        m_view({.requestFrame = [this] { requestFrame(); }, .exited = [close = std::move(close)](int) { close(); },
+                 .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); }}) {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       Surface* surface = m_window.surface();
       const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
