@@ -84,6 +84,7 @@ namespace term::agent {
     // Agent side.
     void started(std::string sessionId);
     void update(const Json& params);           // session/update notification params
+    void configure(const Json& options);       // ACP configOptions: picks the model's display name
     void permission(Json rpcId, const Json& params); // session/request_permission request
     void promptDone(const std::string& stopReason);
     void promptFailed(const std::string& message);
@@ -110,6 +111,8 @@ namespace term::agent {
     [[nodiscard]] std::uint64_t contextSize() const noexcept { return m_size; }
     [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
     [[nodiscard]] const std::string& title() const noexcept { return m_title; }
+    // "Opus 5.5"; empty until the agent reports its config options.
+    [[nodiscard]] const std::string& model() const noexcept { return m_model; }
 
     // Outgoing JSON-RPC messages since the last call, oldest first.
     std::vector<Json> takeOutbox();
@@ -127,6 +130,7 @@ namespace term::agent {
     std::string m_cwd;
     std::string m_sessionId;
     std::string m_title;
+    std::string m_model;
     Phase m_phase = Phase::Starting;
     std::optional<StopKind> m_lastStop;
     std::vector<Entry> m_entries;

@@ -308,6 +308,7 @@ namespace term::agent {
           const auto result = message.value("result", Json::object());
           if (const auto sid = result.value("sessionId", slot.sessionId); !sid.empty() && !message.contains("error")) {
             slot.sessionId = sid;
+            slot.model->configure(result.value("configOptions", Json::array()));
             slot.model->started(sid);
           } else {
             slot.model->exited(1, message.value("error", Json::object()).value("message", std::string{"The agent did not open the session."}));

@@ -330,9 +330,11 @@ namespace term {
     constexpr float kPlanRowGap = 4.0F;
 
     // The title band: the status pill never shrinks; the plan pill reads "Plan N of M · current" when it fits, else
-    // "N of M", else hides. It measures at its minimum so the header ellipsizes the title before it folds the band.
+    // "N of M", else hides; the agent pill shows only in the room left. It measures at its minimum so the header
+    // ellipsizes the title before it folds the band.
     class BandRow final : public Flex {
     public:
+      Node* agent = nullptr;
       Node* status = nullptr;
       Node* full = nullptr;
       Node* compact = nullptr;
@@ -357,13 +359,19 @@ namespace term {
 
     private:
       void choose(Renderer& renderer, float w) {
-        if (full == nullptr) {
-          return;
+        float room = w - status->measure(renderer, {}).width;
+        if (full != nullptr) {
+          const float fullW = full->measure(renderer, {}).width + gap();
+          const float compactW = compact->measure(renderer, {}).width + gap();
+          const bool showFull = fullW <= room;
+          const bool showCompact = !showFull && compactW <= room;
+          show(full, showFull);
+          show(compact, showCompact);
+          room -= showFull ? fullW : showCompact ? compactW : 0.0F;
         }
-        const float room = w - status->measure(renderer, {}).width - gap();
-        const bool showFull = full->measure(renderer, {}).width <= room;
-        show(full, showFull);
-        show(compact, !showFull && compact->measure(renderer, {}).width <= room);
+        if (agent != nullptr) {
+          show(agent, agent->measure(renderer, {}).width + gap() <= room);
+        }
       }
       static void show(Node* node, bool on) {
         node->setVisible(on);
@@ -416,6 +424,19 @@ namespace term {
     const agent::Session* model = session();
     if (model == nullptr) {
       return row;
+    }
+    if (!model->model().empty()) {
+      auto pill = ui::row({.align = FlexAlign::Center,
+                           .gap = Tokens::spaceP4 * s,
+                           .paddingH = Tokens::spaceP8 * s,
+                           .fill = colorSpecFromRole(ColorRole::Fill1),
+                           .radius = h / 2.0F,
+                           .height = h});
+      pill->addChild(ui::glyph({.glyph = std::string("sparkles"),
+                                .glyphSize = Tokens::spaceP12 * s,
+                                .color = colorSpecFromRole(ColorRole::Label2)}));
+      pill->addChild(kit.text("Claude \u00b7 " + model->model(), Tokens::typeFootnote, ColorRole::Label1));
+      row->agent = row->addChild(std::move(pill));
     }
     const auto& plan = model->plan();
     if (!plan.empty()) {

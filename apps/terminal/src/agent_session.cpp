@@ -252,9 +252,29 @@ namespace term::agent {
     } else if (kind == "usage_update") {
       m_used = u.value("used", std::uint64_t{0});
       m_size = u.value("size", std::uint64_t{0});
+    } else if (kind == "config_option_update") {
+      configure(u.value("configOptions", Json::array()));
     } else if (kind == "session_info_update") {
       if (auto title = str(u, "title"); !title.empty()) {
         m_title = std::move(title);
+      }
+    }
+  }
+
+  void Session::configure(const Json& options) {
+    if (!options.is_array()) {
+      return;
+    }
+    for (const Json& option : options) {
+      if (!option.is_object() || (str(option, "category") != "model" && str(option, "id") != "model")) {
+        continue;
+      }
+      const std::string current = str(option, "currentValue");
+      m_model = current;
+      for (const Json& choice : option.value("options", Json::array())) {
+        if (choice.is_object() && str(choice, "value") == current && !str(choice, "name").empty()) {
+          m_model = str(choice, "name");
+        }
       }
     }
   }
