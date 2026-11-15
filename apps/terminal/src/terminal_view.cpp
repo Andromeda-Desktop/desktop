@@ -198,7 +198,6 @@ namespace term {
     m_uiScale = uiScale;
     m_deviceScale = deviceScale;
     m_pendingDeviceScale = deviceScale;
-    m_textures = &renderer.textureManager();
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
     m_grid->setFont(kFontFamily, kFontSize * uiScale, kLineHeight * uiScale, deviceScale);
@@ -211,6 +210,7 @@ namespace term {
                                .configure =
                                    [this](InputArea& a) {
                                      a.setCapturesAllKeys(true);
+                                     a.setCapturesTab(true);
                                      a.setRetainsFocusOnPointerRelease(true);
                                      a.setTextInputClient(this);
                                      a.setOnFocusGain([this] {
@@ -288,6 +288,9 @@ namespace term {
   }
 
   void TerminalView::frame() {
+    if (m_grid != nullptr) {
+      commitAtlas();
+    }
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
       m_grid->setFont(kFontFamily, kFontSize * m_uiScale, kLineHeight * m_uiScale, m_deviceScale);
@@ -489,8 +492,14 @@ namespace term {
     } else {
       m_grid->setCursor(std::nullopt);
     }
-    if (m_textures != nullptr) {
-      m_grid->commit(*m_textures);
+    commitAtlas();
+  }
+
+  void TerminalView::commitAtlas() {
+    if (TextureManager* textures = m_host.textures ? m_host.textures() : nullptr) {
+      m_grid->commit(*textures);
+    } else if (m_host.requestFrame) {
+      m_host.requestFrame(); // the frame tick runs after GL attaches and before the frame renders
     }
   }
 

@@ -29,7 +29,7 @@ namespace {
 
 int main(int argc, char* argv[]) {
   AppLoop loop;
-  if (!loop.initialize()) {
+  if (!loop.initialize(true)) {
     kLog.error("no Wayland compositor");
     return 1;
   }

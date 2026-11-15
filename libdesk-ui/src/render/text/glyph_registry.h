@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -8,21 +9,22 @@
 // Glyph names resolve in this order:
 // 1. Explicit codepoint literals such as U+F123 or 0xF123.
 // 2. Hand-curated Noctalia aliases from glyph_registry.cpp.
-// 3. Native Tabler icon names from assets/fonts/tabler.json.
+// 3. Native Tabler icon names (compiled in from libdesk-ui/data/tabler.json).
 namespace GlyphRegistry {
 
-  struct TablerGlyphMetadata {
+  struct TablerGlyph {
+    std::string_view name;
     char32_t codepoint = 0;
-    std::string category;
+    std::string_view category;
   };
 
   [[nodiscard]] bool contains(std::string_view name);
   [[nodiscard]] char32_t lookup(std::string_view name);
 
-  // Full Tabler icon catalog with structured metadata.
-  [[nodiscard]] const std::unordered_map<std::string, TablerGlyphMetadata>& tablerGlyphMetadata();
-  // Full Tabler icon catalog (loaded from assets/fonts/tabler.json on first registry use).
-  [[nodiscard]] const std::unordered_map<std::string, char32_t>& tablerIcons();
+  // The Tabler catalog, sorted by name; the views point to static storage.
+  [[nodiscard]] std::size_t tablerGlyphCount();
+  [[nodiscard]] TablerGlyph tablerGlyphAt(std::size_t index);
+  [[nodiscard]] std::optional<TablerGlyph> findTablerGlyph(std::string_view name);
   [[nodiscard]] std::optional<std::string_view> categoryFor(std::string_view name);
   // Hand-curated Noctalia alias -> native Tabler icon name map.
   [[nodiscard]] const std::unordered_map<std::string, std::string_view>& aliases();

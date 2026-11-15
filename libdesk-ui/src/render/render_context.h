@@ -34,9 +34,16 @@ public:
   RenderContext(const RenderContext&) = delete;
   RenderContext& operator=(const RenderContext&) = delete;
 
+  // initializeText() then attachGl().
   void initialize(GlSharedContext& shared);
-  // CPU-only font setup (the fontconfig configuration); may run while EGL initializes on another thread.
-  static void prepareFonts();
+  // Text measuring (fontconfig, Pango, FreeType) without GL: scenes build and lay out before EGL is up.
+  void initializeText();
+  // GL comes later: the first GL use (or ensureGl()) runs attach, which waits for EGL and calls attachGl().
+  void attachGlLater(std::function<void()> attach);
+  void attachGl(GlSharedContext& shared);
+  // Runs a pending attach. False when GL is missing or its attach threw before (the throw reaches the first caller).
+  bool ensureGl();
+  [[nodiscard]] bool glReady() const noexcept { return m_glState == GlState::Ready; }
   void cleanup();
   void prepareForGraphicsReset();
   void restoreAfterGraphicsReset(GlSharedContext& shared);
@@ -61,7 +68,7 @@ public:
   void invalidateGlyphTexturesNextFrame() noexcept { m_glyphTexturesDirty = true; }
   void invalidateGpuResourcesNextFrame() noexcept;
 
-  [[nodiscard]] RenderBackend& backend() noexcept { return *m_backend; }
+  [[nodiscard]] RenderBackend& backend();
   [[nodiscard]] const RenderBackend& backend() const noexcept { return *m_backend; }
 
   // Texture/text-generation access for ScaledRenderer views and graphics-lifecycle owners.
@@ -113,6 +120,9 @@ private:
       float bw, float bh
   );
 
+  enum class GlState : std::uint8_t { None, Pending, Ready, Failed };
+  GlState m_glState = GlState::None;
+  std::function<void()> m_glAttach; // set only while Pending
   std::unique_ptr<RenderBackend> m_backend;
   CairoTextRenderer m_textRenderer;
   CairoGlyphRenderer m_glyphRenderer;

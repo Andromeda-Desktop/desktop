@@ -59,15 +59,16 @@ namespace startup_metrics {
     }
   }
 
-  void recordFirstFrame() {
+  bool recordFirstFrame() {
     if (g_firstFrameLogged) {
-      return;
+      return false;
     }
     g_firstFrameLogged = true;
     kLog.info(
         "first frame at {:.0f} ms after process start; EGL init {:.1f} ms; {} GL programs built in {:.1f} ms",
         sinceProcessStart(), g_eglInitMs, g_programCount, g_programMs
     );
+    return true;
   }
 
 } // namespace startup_metrics

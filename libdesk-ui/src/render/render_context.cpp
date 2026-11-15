@@ -223,24 +223,55 @@ RenderContext::RenderContext() = default;
 
 RenderContext::~RenderContext() { cleanup(); }
 
-void RenderContext::prepareFonts() { (void)FcInit(); }
-
 void RenderContext::initialize(GlSharedContext& shared) {
-  cleanup();
-  m_shared = &shared;
-  m_backend = createDefaultRenderBackend();
-  m_backend->initialize(shared);
+  initializeText();
+  attachGl(shared);
+}
 
+void RenderContext::initializeText() {
+  cleanup();
   // Pango handles font fallback via Fontconfig automatically — no explicit chain.
-  m_backend->textureManager().probeExtensions();
-  m_textRenderer.initialize(m_backend.get(), &m_backend->textureManager());
-  m_glyphRenderer.initialize(
-      paths::assetPath("fonts/noctalia-tabler.ttf").string(), m_backend.get(), &m_backend->textureManager()
-  );
+  m_textRenderer.initialize(nullptr, nullptr);
+  m_glyphRenderer.initialize(paths::assetPath("fonts/noctalia-tabler.ttf").string(), nullptr, nullptr);
   m_textRenderer.setFontFamily(m_textFontFamily);
   m_textRenderer.setBaseDirection(m_textBaseDirRtl);
   ++m_textMetricsGeneration;
+}
+
+void RenderContext::attachGlLater(std::function<void()> attach) {
+  if (m_glState != GlState::None) {
+    throw std::logic_error("RenderContext: GL is already attached or pending");
+  }
+  m_glAttach = std::move(attach);
+  m_glState = GlState::Pending;
+}
+
+void RenderContext::attachGl(GlSharedContext& shared) {
+  if (m_glState == GlState::Ready) {
+    throw std::logic_error("RenderContext: GL is already attached");
+  }
+  m_shared = &shared;
+  m_backend = createDefaultRenderBackend();
+  m_backend->initialize(shared);
+  m_backend->textureManager().probeExtensions();
+  m_textRenderer.attachBackend(m_backend.get(), &m_backend->textureManager());
+  m_glyphRenderer.attachBackend(m_backend.get(), &m_backend->textureManager());
   m_graphicsResetPending = false;
+  m_glState = GlState::Ready;
+}
+
+bool RenderContext::ensureGl() {
+  if (m_glState == GlState::Pending) {
+    const std::function<void()> attach = std::exchange(m_glAttach, {});
+    m_glState = GlState::Failed; // attach sets Ready through attachGl()
+    attach();
+  }
+  return m_glState == GlState::Ready;
+}
+
+RenderBackend& RenderContext::backend() {
+  ensureGl();
+  return *m_backend;
 }
 
 void RenderContext::restoreAfterGraphicsReset(GlSharedContext& shared) {
@@ -278,7 +309,7 @@ void RenderContext::expireIdleCaches() {
 }
 
 bool RenderContext::makeCurrentNoSurface() {
-  if (m_backend == nullptr || m_graphicsResetPending) {
+  if (!ensureGl() || m_graphicsResetPending) {
     return false;
   }
   return m_backend->makeCurrentNoSurface();
@@ -971,4 +1002,6 @@ void RenderContext::cleanup() {
     m_backend->cleanup();
     m_backend.reset();
   }
+  m_glAttach = {};
+  m_glState = GlState::None;
 }

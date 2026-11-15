@@ -1625,7 +1625,7 @@ bool Surface::ensureRenderTargetReady() {
   if (m_renderContext == nullptr) {
     return true;
   }
-  if (m_surface == nullptr || m_width == 0 || m_height == 0) {
+  if (m_surface == nullptr || m_width == 0 || m_height == 0 || !m_renderContext->ensureGl()) {
     return false;
   }
 

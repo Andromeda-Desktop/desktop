@@ -149,6 +149,9 @@ public:
   void onAxisStop(std::uint32_t axis);
   void onKeyboardEvent(const KeyboardEvent& event);
 
+  // Builds the scene before the loop runs, while EGL loads: the build needs no GL.
+  void prepareFirstFrame() { prepareFrame(true); }
+
 private:
   void attachSheet(Renderer& renderer, float width, float height, float margin);
   void detachSheet();

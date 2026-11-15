@@ -36,6 +36,8 @@ namespace term {
     struct Host {
       // New terminal state is ready: ask for a frame tick that calls frame().
       std::function<void()> requestFrame;
+      // Null until GL is attached: the scene builds before EGL is up.
+      std::function<TextureManager*()> textures;
       std::function<void(int status)> exited;
       // Current keyboard modifiers (KeyMod bits): pointer events carry none.
       std::function<std::uint32_t()> modifiers;
@@ -127,6 +129,7 @@ namespace term {
     void paste();
 
     Host m_host;
+    void commitAtlas();
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     PtySession m_session;
     GhosttyRenderState m_state = nullptr;
@@ -173,7 +176,6 @@ namespace term {
     TerminalGridNode* m_grid = nullptr;
     Scrollbar* m_scrollbar = nullptr;
     GhosttyTerminalScrollbar m_scrollState{}; // rows; the bar is updated only when this changes
-    TextureManager* m_textures = nullptr;
     float m_uiScale = 1.0F;
     float m_deviceScale = 1.0F; // buffer px per logical px the atlas was loaded for
     float m_pendingDeviceScale = 1.0F;

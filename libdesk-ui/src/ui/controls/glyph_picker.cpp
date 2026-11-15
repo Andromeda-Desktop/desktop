@@ -22,26 +22,27 @@ public:
   };
 
   GlyphGridAdapter(float chromeScale) : m_chromeScale(chromeScale) {
-    const auto& tabler = GlyphRegistry::tablerGlyphMetadata();
+    const std::size_t tablerCount = GlyphRegistry::tablerGlyphCount();
     const auto& aliases = GlyphRegistry::aliases();
     std::set<std::string> categories;
 
     std::unordered_set<std::string> seen;
-    seen.reserve(tabler.size() + aliases.size());
-    m_master.reserve(tabler.size() + aliases.size());
+    seen.reserve(tablerCount + aliases.size());
+    m_master.reserve(tablerCount + aliases.size());
 
     for (const auto& [name, target] : aliases) {
       if (seen.insert(name).second) {
-        if (const auto it = tabler.find(std::string(target)); it != tabler.end()) {
-          m_master.push_back({name, it->second.codepoint, it->second.category});
-          categories.insert(it->second.category);
+        if (const auto glyph = GlyphRegistry::findTablerGlyph(target)) {
+          m_master.push_back({name, glyph->codepoint, std::string(glyph->category)});
+          categories.emplace(glyph->category);
         }
       }
     }
-    for (const auto& [name, metadata] : tabler) {
-      if (seen.insert(name).second) {
-        m_master.push_back({name, metadata.codepoint, metadata.category});
-        categories.insert(metadata.category);
+    for (std::size_t i = 0; i < tablerCount; ++i) {
+      const GlyphRegistry::TablerGlyph glyph = GlyphRegistry::tablerGlyphAt(i);
+      if (seen.emplace(glyph.name).second) {
+        m_master.push_back({std::string(glyph.name), glyph.codepoint, std::string(glyph.category)});
+        categories.emplace(glyph.category);
       }
     }
     std::ranges::sort(m_master, {}, &Entry::name);

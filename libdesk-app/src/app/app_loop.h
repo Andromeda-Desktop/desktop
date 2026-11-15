@@ -22,7 +22,7 @@ public:
   AppLoop& operator=(const AppLoop&) = delete;
 
   // Connects Wayland, starts GL and the render context. False when no compositor answers.
-  bool initialize();
+  bool initialize(bool sharedGl);
 
   [[nodiscard]] WaylandConnection& wayland() noexcept { return m_wayland; }
   [[nodiscard]] const WaylandConnection& wayland() const noexcept { return m_wayland; }
@@ -44,7 +44,7 @@ private:
   WaylandConnection m_wayland;
   GlSharedContext m_gl;
   RenderContext m_render;
-  std::future<void> m_iconNames;
+  std::future<void> m_egl; // declared after m_gl and m_wayland: its destructor waits for the worker that uses them
   KeyRepeatPollSource m_keyRepeat;
   std::vector<PollSource*> m_sources;
   std::unordered_map<PollSource*, std::chrono::steady_clock::time_point> m_deadlines;

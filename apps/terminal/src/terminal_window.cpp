@@ -37,7 +37,11 @@ namespace term {
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const std::string& cwd,
                                  std::function<void()> close)
       : m_loop(loop), m_window(window), m_notifier(notifier),
-        m_view({.requestFrame = [this] { requestFrame(); }, .exited = [close = std::move(close)](int) { close(); },
+        m_view({.requestFrame = [this] { requestFrame(); },
+                .textures = [this]() -> TextureManager* {
+                  RenderContext& render = m_loop.renderContext();
+                  return render.glReady() ? &render.textureManager() : nullptr;
+                }, .exited = [close = std::move(close)](int) { close(); },
                  .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
                  .commandFinished =
                      [this](const std::string& summary, const std::string& body) {

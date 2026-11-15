@@ -25,7 +25,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <sdbus-c++/Error.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace {
@@ -115,9 +114,9 @@ int DeskApp::run(int argc, char* argv[]) {
   std::optional<int> exit;
   try {
     exit = start(argc, argv);
-  } catch (const sdbus::Error& e) {
-    // The bus died while the start registered objects or signal handlers; a later loss quits through the loop.
-    kLog.error("{} start: {}", m_info.id, e.getMessage());
+  } catch (const std::exception& e) {
+    // GL setup failed, or the bus died while the start registered objects; a later bus loss quits through the loop.
+    kLog.error("{} start: {}", m_info.id, e.what());
     exit = 1;
   }
   if (!exit) {
@@ -173,7 +172,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     return 0;
   }
 
-  if (!m_loop.initialize()) {
+  if (!m_loop.initialize(m_info.sharedGl)) {
     return 1;
   }
   if (m_bus != nullptr) {
@@ -246,6 +245,11 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     kLog.error("{} opened no window", m_info.id);
     return 1;
   }
+  // The first windows build and lay out while EGL still loads; GL attaches after them.
+  for (const auto& w : m_windows) {
+    w->prepareFirstFrame();
+  }
+  m_loop.renderContext().ensureGl();
   return std::nullopt;
 }
 

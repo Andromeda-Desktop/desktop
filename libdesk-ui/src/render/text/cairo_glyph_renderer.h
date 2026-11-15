@@ -41,6 +41,10 @@ public:
   CairoGlyphRenderer& operator=(const CairoGlyphRenderer&) = delete;
 
   void initialize(const std::string& fontPath, RenderBackend* backend, TextureManager* textures);
+  void attachBackend(RenderBackend* backend, TextureManager* textures) noexcept {
+    m_backend = backend;
+    m_textureManager = textures;
+  }
   void cleanup();
 
   // Drops the uploaded icon-glyph textures so they are re-rasterized on the next

@@ -8,7 +8,7 @@
 
 namespace term {
 
-  TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal"}) {}
+  TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {}
 
   TerminalApp::~TerminalApp() = default;
 

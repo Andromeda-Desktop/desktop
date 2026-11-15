@@ -97,7 +97,10 @@ RenderTarget::~RenderTarget() { destroy(); }
 
 void RenderTarget::create(wl_surface* surface, RenderContext& context) {
   m_renderer.setContext(&context);
-  create(surface, context.backend());
+  // Without GL the renderer only measures; Surface::ensureRenderTargetReady() creates the GL target.
+  if (context.glReady()) {
+    create(surface, context.backend());
+  }
 }
 
 void RenderTarget::create(wl_surface* surface, RenderBackend& backend) {

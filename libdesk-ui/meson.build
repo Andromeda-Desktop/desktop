@@ -147,6 +147,12 @@ _protocol_sources += custom_target('wlr-layer-shell-unstable-v1-client-source',
 )
 _protocol_headers += _wlr_ls_h
 
+_protocol_headers += custom_target('tabler-glyphs-header',
+  input: ['protocols/gen-tabler-glyphs.py', 'data/tabler.json'],
+  output: 'tabler_glyphs.h',
+  command: [find_program('python3'), '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
+)
+
 _protocol_headers += custom_target('design-tokens-header',
   input: ['protocols/gen-design-tokens.py', 'protocols/design-tokens.toml'],
   output: 'design_tokens.h',

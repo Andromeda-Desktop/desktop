@@ -8,6 +8,7 @@ namespace startup_metrics {
   void recordEglInit(double ms);
   void recordProgramBuild(double ms);
   // Logs the breakdown once, on the first presented frame.
-  void recordFirstFrame();
+  // True on the first call only.
+  bool recordFirstFrame();
 
 } // namespace startup_metrics

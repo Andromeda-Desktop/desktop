@@ -57,6 +57,11 @@ public:
   CairoTextRenderer& operator=(const CairoTextRenderer&) = delete;
 
   void initialize(RenderBackend* backend, TextureManager* textures);
+  // Measuring needs only initialize(); drawing needs the backend too.
+  void attachBackend(RenderBackend* backend, TextureManager* textures) noexcept {
+    m_backend = backend;
+    m_textureManager = textures;
+  }
   void cleanup();
 
   void setFontFamily(std::string family);
