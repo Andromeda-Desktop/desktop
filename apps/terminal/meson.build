@@ -46,6 +46,20 @@ _ptyd = custom_target('andromeda-ptyd',
   install: true,
   install_dir: get_option('libexecdir') / 'andromeda',
 )
+# Agent sessions daemon (Rust, ACP over stdio; fork of kkestell/claude-code-acp, MIT): the app starts one per instance.
+_agentd = custom_target('andromeda-agentd',
+  output: 'andromeda-agentd',
+  build_always_stale: true,
+  console: true,
+  command: [
+    'sh', '-c', '"$1" build --quiet --locked $2 --manifest-path "$3" --target-dir "$4" && cp "$4/$5/andromeda-agentd" "$6"',
+    '_', cargo, _cargo_profile == 'release' ? '--release' : '--profile=dev',
+    meson.current_source_dir() / 'agentd' / 'Cargo.toml', meson.current_build_dir() / 'cargo-target', _cargo_profile,
+    '@OUTPUT@',
+  ],
+  install: true,
+  install_dir: get_option('libexecdir') / 'andromeda',
+)
 test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings), args: [_ptyd.full_path()], depends: _ptyd, timeout: 30)
 
