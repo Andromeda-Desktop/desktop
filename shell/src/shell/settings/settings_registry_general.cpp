@@ -397,16 +397,8 @@ namespace settings {
         return effective.launcherPosition == DockLauncherPosition::Start
             || effective.launcherPosition == DockLauncherPosition::End;
       };
-      {
-        auto entry = makeEntry(
-            SettingsSection::Dock, "layout", tr("settings.schema.dock.launcher-icon.label"),
-            tr("settings.schema.dock.launcher-icon.description"), path("launcher_icon"),
-            TextSetting{.value = dock.launcherIcon, .placeholder = "grid-dots", .browseFileExtensions = {}},
-            "launcher apps icon glyph"
-        );
-        entry.visibleWhen = dockLauncherEnabled;
-        entries.push_back(std::move(entry));
-      }
+      appendRow(entries, dockRows, "launcher_icon");
+      entries.back().visibleWhen = dockLauncherEnabled;
       {
         auto entry = makeEntry(
             SettingsSection::Dock, "layout", tr("settings.schema.dock.launcher-custom-image.label"),
@@ -423,16 +415,8 @@ namespace settings {
         entry.visibleWhen = dockLauncherEnabled;
         entries.push_back(std::move(entry));
       }
-      {
-        auto entry = makeEntry(
-            SettingsSection::Dock, "layout", tr("settings.schema.dock.launcher-custom-image-colorize.label"),
-            tr("settings.schema.dock.launcher-custom-image-colorize.description"),
-            path("launcher_custom_image_colorize"), ToggleSetting{dock.launcherCustomImageColorize},
-            "launcher apps image tint color"
-        );
-        entry.visibleWhen = dockLauncherEnabled;
-        entries.push_back(std::move(entry));
-      }
+      appendRow(entries, dockRows, "launcher_custom_image_colorize");
+      entries.back().visibleWhen = dockLauncherEnabled;
       appendRow(entries, dockRows, "position");
       appendRow(entries, dockRows, "icon_size");
       appendRow(entries, dockRows, "main_axis_padding");
@@ -445,15 +429,10 @@ namespace settings {
       appendRow(entries, dockRows, "radius_top_right");
       appendRow(entries, dockRows, "radius_bottom_left");
       appendRow(entries, dockRows, "radius_bottom_right");
-      {
-        auto entry = makeEntry(
-            SettingsSection::Dock, "shape", tr("settings.schema.dock.concave-edge-corners.label"),
-            tr("settings.schema.dock.concave-edge-corners.description"), path("concave_edge_corners"),
-            ToggleSetting{dock.concaveEdgeCorners}, "rounded corner carve"
-        );
-        entry.visibleWhen = [currentDock](const Config& current) { return currentDock(current).marginEdge == 0; };
-        entries.push_back(std::move(entry));
-      }
+      appendRow(entries, dockRows, "concave_edge_corners");
+      entries.back().visibleWhen = [currentDock](const Config& current) {
+        return currentDock(current).marginEdge == 0;
+      };
       entries.push_back(makeEntry(
           SettingsSection::Dock, "shape", tr("settings.schema.dock.border.label"),
           tr("settings.schema.dock.border.description"), path("border"), colorSpecPicker(dock.border), "outline color",
@@ -462,11 +441,7 @@ namespace settings {
       appendRow(entries, dockRows, "border_width");
       appendRow(entries, dockRows, "background_opacity");
       if (env.backgroundEffectBlurSupported) {
-        entries.push_back(makeEntry(
-            SettingsSection::Dock, "effects", tr("settings.schema.dock.compositor-blur.label"),
-            tr("settings.schema.dock.compositor-blur.description"), path("compositor_blur"),
-            ToggleSetting{dock.compositorBlur}, "blur background effect"
-        ));
+        appendRow(entries, dockRows, "compositor_blur");
       }
       appendRow(entries, dockRows, "shadow");
       appendRow(entries, dockRows, "magnification");
@@ -486,6 +461,21 @@ namespace settings {
       );
     }
   }
+
+  namespace {
+    // Shown while a click on the panel's bar widget can move it: attached, or floating at "auto".
+    void appendOpenNearClickRow(
+        std::vector<SettingEntry>& entries, std::vector<SettingEntry>& panelRows, std::string_view panelKey,
+        PanelPlacement ShellConfig::PanelConfig::* placement, std::string ShellConfig::PanelConfig::* position
+    ) {
+      appendRow(entries, panelRows, "open_near_click_" + std::string(panelKey));
+      entries.back().visibleWhen = [placement, position](const Config& c) {
+        const auto& panel = c.shell.panel;
+        return panel.*placement == PanelPlacement::Attached
+            || (panel.*placement == PanelPlacement::Floating && panel.*position == "auto");
+      };
+    }
+  } // namespace
 
   void registry_detail::add_panels_settings(RegistryContext& ctx) {
     using i18n::tr;
@@ -526,66 +516,15 @@ namespace settings {
         colorSpecPicker(cfg.shell.panel.borderColor), "outline border color theme accent"
     ));
     appendRow(entries, panelRows, "border_width");
-    entries.push_back(makeEntry(
-        SettingsSection::Panels, "effects", tr("settings.schema.shared.shadow.label"),
-        tr("settings.schema.panels.shadow.description"), {"shell", "panel", "shadow"},
-        ToggleSetting{cfg.shell.panel.shadow}, "shadow depth"
-    ));
+    appendRow(entries, panelRows, "shadow");
     appendGroup(entries, panelRows, "effects");
-    // Position select for a panel. Floating pins it on screen; attached honors only
-    // positions on the bar's edge (see shell::attachedPositionAlign).
-    const auto panelPositionEntry = [&](SettingsSection section, std::string group, std::string_view panelKey,
-                                        std::string_view labelKey, std::string_view descKey,
-                                        const std::string& current) {
-      return makeEntry(
-          section, std::move(group), tr(labelKey), tr(descKey),
-          {std::string("shell"), std::string("panel"), std::string(panelKey) + "_position"},
-          plainSelect(
-              {{"auto", "settings.options.panel-position.auto"},
-               {"center", "settings.options.screen-position.center"},
-               {"top_left", "settings.options.screen-position.top-left"},
-               {"top_center", "settings.options.screen-position.top-center"},
-               {"top_right", "settings.options.screen-position.top-right"},
-               {"center_left", "settings.options.screen-position.center-left"},
-               {"center_right", "settings.options.screen-position.center-right"},
-               {"bottom_left", "settings.options.screen-position.bottom-left"},
-               {"bottom_center", "settings.options.screen-position.bottom-center"},
-               {"bottom_right", "settings.options.screen-position.bottom-right"}},
-              current
-          ),
-          "panel position screen anchor corner edge floating attached align bottom right"
-      );
-    };
-
-    // Click override: when on, a click on the panel's bar widget opens it near the widget
-    // instead of at its Position.
-    const auto panelOpenNearClickEntry = [](SettingsSection section, std::string group, std::string_view panelKey,
-                                            std::string_view labelKey, std::string_view descKey, bool nearClick,
-                                            PanelPlacement ShellConfig::PanelConfig::* placement,
-                                            std::string ShellConfig::PanelConfig::* position) {
-      auto e = makeEntry(
-          section, std::move(group), tr(labelKey), tr(descKey),
-          {"shell", "panel", std::string("open_near_click_") + std::string(panelKey)}, ToggleSetting{nearClick},
-          "open near click trigger widget along bar position anchor"
-      );
-      e.visibleWhen = [placement, position](const Config& c) {
-        const auto& panel = c.shell.panel;
-        return panel.*placement == PanelPlacement::Attached
-            || (panel.*placement == PanelPlacement::Floating && panel.*position == "auto");
-      };
-      return e;
-    };
 
     appendRow(entries, panelRows, "launcher_placement");
-    entries.push_back(panelPositionEntry(
-        SettingsSection::Panels, "launcher", "launcher", "settings.schema.panels.position-launcher.label",
-        "settings.schema.panels.position-launcher.description", cfg.shell.panel.launcherPosition
-    ));
-    entries.push_back(panelOpenNearClickEntry(
-        SettingsSection::Panels, "launcher", "launcher", "settings.schema.panels.open-near-click-launcher.label",
-        "settings.schema.panels.open-near-click-launcher.description", cfg.shell.panel.openNearClickLauncher,
-        &ShellConfig::PanelConfig::launcherPlacement, &ShellConfig::PanelConfig::launcherPosition
-    ));
+    appendRow(entries, panelRows, "launcher_position");
+    appendOpenNearClickRow(
+        entries, panelRows, "launcher", &ShellConfig::PanelConfig::launcherPlacement,
+        &ShellConfig::PanelConfig::launcherPosition
+    );
     const SettingVisibility launcherFull = [](const Config& c) {
       return c.shell.launcher.layout == ShellConfig::LauncherLayout::Full;
     };
@@ -666,32 +605,19 @@ namespace settings {
       }
     }
     appendRow(entries, panelRows, "clipboard_placement");
-    entries.push_back(panelPositionEntry(
-        SettingsSection::Panels, "clipboard", "clipboard", "settings.schema.panels.position-clipboard.label",
-        "settings.schema.panels.position-clipboard.description", cfg.shell.panel.clipboardPosition
-    ));
-    entries.push_back(panelOpenNearClickEntry(
-        SettingsSection::Panels, "clipboard", "clipboard", "settings.schema.panels.open-near-click-clipboard.label",
-        "settings.schema.panels.open-near-click-clipboard.description", cfg.shell.panel.openNearClickClipboard,
-        &ShellConfig::PanelConfig::clipboardPlacement, &ShellConfig::PanelConfig::clipboardPosition
-    ));
+    appendRow(entries, panelRows, "clipboard_position");
+    appendOpenNearClickRow(
+        entries, panelRows, "clipboard", &ShellConfig::PanelConfig::clipboardPlacement,
+        &ShellConfig::PanelConfig::clipboardPosition
+    );
     appendRow(entries, panelRows, "polkit_placement");
-    entries.push_back(panelPositionEntry(
-        SettingsSection::Panels, "polkit", "polkit", "settings.schema.panels.position-polkit.label",
-        "settings.schema.panels.position-polkit.description", cfg.shell.panel.polkitPosition
-    ));
+    appendRow(entries, panelRows, "polkit_position");
     appendGroup(entries, panelRows, "wallpaper");
-    entries.push_back(panelPositionEntry(
-        SettingsSection::Panels, "wallpaper", "wallpaper", "settings.schema.panels.position-wallpaper.label",
-        "settings.schema.panels.position-wallpaper.description", cfg.shell.panel.wallpaperPosition
-    ));
-    entries.push_back(panelOpenNearClickEntry(
-        SettingsSection::Panels, "wallpaper", "wallpaper", "settings.schema.panels.open-near-click-wallpaper.label",
-        "settings.schema.panels.open-near-click-wallpaper.description", cfg.shell.panel.openNearClickWallpaper,
-        &ShellConfig::PanelConfig::wallpaperPlacement, &ShellConfig::PanelConfig::wallpaperPosition
-    ));
-    ctx.panelPositionEntry = panelPositionEntry;
-    ctx.panelOpenNearClickEntry = panelOpenNearClickEntry;
+    appendRow(entries, panelRows, "wallpaper_position");
+    appendOpenNearClickRow(
+        entries, panelRows, "wallpaper", &ShellConfig::PanelConfig::wallpaperPlacement,
+        &ShellConfig::PanelConfig::wallpaperPosition
+    );
   }
 
   void registry_detail::add_controlcenter_settings(RegistryContext& ctx) {
@@ -699,22 +625,14 @@ namespace settings {
     const auto& cfg = ctx.cfg;
     auto& entries = ctx.entries;
     auto& panelRows = ctx.panelRows;
-    const auto& panelPositionEntry = ctx.panelPositionEntry;
-    const auto& panelOpenNearClickEntry = ctx.panelOpenNearClickEntry;
 
     // Control Center
     appendRow(entries, panelRows, "control_center_placement");
-    entries.push_back(panelPositionEntry(
-        SettingsSection::Panels, "control-center", "control_center",
-        "settings.schema.panels.position-control-center.label",
-        "settings.schema.panels.position-control-center.description", cfg.shell.panel.controlCenterPosition
-    ));
-    entries.push_back(panelOpenNearClickEntry(
-        SettingsSection::Panels, "control-center", "control_center",
-        "settings.schema.panels.open-near-click-control-center.label",
-        "settings.schema.panels.open-near-click-control-center.description", cfg.shell.panel.openNearClickControlCenter,
-        &ShellConfig::PanelConfig::controlCenterPlacement, &ShellConfig::PanelConfig::controlCenterPosition
-    ));
+    appendRow(entries, panelRows, "control_center_position");
+    appendOpenNearClickRow(
+        entries, panelRows, "control_center", &ShellConfig::PanelConfig::controlCenterPlacement,
+        &ShellConfig::PanelConfig::controlCenterPosition
+    );
     auto controlCenterRows =
         generateSchemaEntries(noctalia::config::schema::controlCenterSchema(), cfg.controlCenter, {"control_center"});
     appendGroup(entries, controlCenterRows, "layout");

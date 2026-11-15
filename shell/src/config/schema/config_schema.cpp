@@ -1855,6 +1855,36 @@ namespace noctalia::config::schema {
     }
 
     const Schema<ShellConfig::PanelConfig>& shellPanelSchema() {
+      const auto panelPosition = [](std::string_view group, std::string_view label) {
+        static const std::vector<RowSpec::Choice> positions = {
+            {"auto", "settings.options.panel-position.auto"},
+            {"center", "settings.options.screen-position.center"},
+            {"top_left", "settings.options.screen-position.top-left"},
+            {"top_center", "settings.options.screen-position.top-center"},
+            {"top_right", "settings.options.screen-position.top-right"},
+            {"center_left", "settings.options.screen-position.center-left"},
+            {"center_right", "settings.options.screen-position.center-right"},
+            {"bottom_left", "settings.options.screen-position.bottom-left"},
+            {"bottom_center", "settings.options.screen-position.bottom-center"},
+            {"bottom_right", "settings.options.screen-position.bottom-right"},
+        };
+        return RowSpec{
+            .kind = RowSpec::Kind::Select,
+            .section = "panels",
+            .group = group,
+            .label = label,
+            .tags = "panel position screen anchor corner edge floating attached align bottom right",
+            .choices = positions,
+        };
+      };
+      const auto openNearClick = [](std::string_view group, std::string_view label) {
+        return RowSpec{
+            .section = "panels",
+            .group = group,
+            .label = label,
+            .tags = "open near click trigger widget along bar position anchor",
+        };
+      };
       static const Schema<ShellConfig::PanelConfig> s = {
           retiredField<ShellConfig::PanelConfig>("session_placement"),
           retiredField<ShellConfig::PanelConfig>("session_position"),
@@ -1882,7 +1912,10 @@ namespace noctalia::config::schema {
                   .tags = "outline border width thickness",
               }
           ),
-          field(&ShellConfig::PanelConfig::shadow, "shadow"),
+          field(
+              &ShellConfig::PanelConfig::shadow, "shadow",
+              RowSpec{.section = "panels", .group = "effects", .title = "shared.shadow", .tags = "shadow depth"}
+          ),
           field(
               &ShellConfig::PanelConfig::listItemBackground, "list_item_background",
               RowSpec{
@@ -1972,11 +2005,26 @@ namespace noctalia::config::schema {
                   .segmented = true,
               }
           ),
-          field(&ShellConfig::PanelConfig::launcherPosition, "launcher_position"),
-          field(&ShellConfig::PanelConfig::clipboardPosition, "clipboard_position"),
-          field(&ShellConfig::PanelConfig::controlCenterPosition, "control_center_position"),
-          field(&ShellConfig::PanelConfig::wallpaperPosition, "wallpaper_position"),
-          field(&ShellConfig::PanelConfig::polkitPosition, "polkit_position"),
+          field(
+              &ShellConfig::PanelConfig::launcherPosition, "launcher_position",
+              panelPosition("launcher", "panels.position-launcher")
+          ),
+          field(
+              &ShellConfig::PanelConfig::clipboardPosition, "clipboard_position",
+              panelPosition("clipboard", "panels.position-clipboard")
+          ),
+          field(
+              &ShellConfig::PanelConfig::controlCenterPosition, "control_center_position",
+              panelPosition("control-center", "panels.position-control-center")
+          ),
+          field(
+              &ShellConfig::PanelConfig::wallpaperPosition, "wallpaper_position",
+              panelPosition("wallpaper", "panels.position-wallpaper")
+          ),
+          field(
+              &ShellConfig::PanelConfig::polkitPosition, "polkit_position",
+              panelPosition("polkit", "panels.position-polkit")
+          ),
           field(
               &ShellConfig::PanelConfig::floatingOffset, "floating_offset", Range<std::int64_t>{0, 100},
               RowSpec{
@@ -1987,10 +2035,22 @@ namespace noctalia::config::schema {
                   .suffix = "px",
               }
           ),
-          field(&ShellConfig::PanelConfig::openNearClickControlCenter, "open_near_click_control_center"),
-          field(&ShellConfig::PanelConfig::openNearClickLauncher, "open_near_click_launcher"),
-          field(&ShellConfig::PanelConfig::openNearClickClipboard, "open_near_click_clipboard"),
-          field(&ShellConfig::PanelConfig::openNearClickWallpaper, "open_near_click_wallpaper"),
+          field(
+              &ShellConfig::PanelConfig::openNearClickControlCenter, "open_near_click_control_center",
+              openNearClick("control-center", "panels.open-near-click-control-center")
+          ),
+          field(
+              &ShellConfig::PanelConfig::openNearClickLauncher, "open_near_click_launcher",
+              openNearClick("launcher", "panels.open-near-click-launcher")
+          ),
+          field(
+              &ShellConfig::PanelConfig::openNearClickClipboard, "open_near_click_clipboard",
+              openNearClick("clipboard", "panels.open-near-click-clipboard")
+          ),
+          field(
+              &ShellConfig::PanelConfig::openNearClickWallpaper, "open_near_click_wallpaper",
+              openNearClick("wallpaper", "panels.open-near-click-wallpaper")
+          ),
       };
       return s;
     }
@@ -3816,7 +3876,10 @@ namespace noctalia::config::schema {
                 .tags = "alpha transparency translucent opacity",
             }
         ),
-        field(&DockConfig::compositorBlur, "compositor_blur"),
+        field(
+            &DockConfig::compositorBlur, "compositor_blur",
+            RowSpec{.section = "dock", .group = "effects", .tags = "blur background effect"}
+        ),
         colorField(&DockConfig::border, "border"),
         field(
             &DockConfig::borderWidth, "border_width", kDockBorderWidthRange,
@@ -3872,7 +3935,10 @@ namespace noctalia::config::schema {
             &DockConfig::radiusBottomRight, "radius_bottom_right", kDockRadiusRange,
             dockCorner("dock.corner-bottom-right", "shared.corner-bottom-right")
         ),
-        field(&DockConfig::concaveEdgeCorners, "concave_edge_corners"),
+        field(
+            &DockConfig::concaveEdgeCorners, "concave_edge_corners",
+            RowSpec{.section = "dock", .group = "shape", .tags = "rounded corner carve"}
+        ),
         field(
             &DockConfig::marginEnds, "margin_ends", kDockMarginEndsRange,
             RowSpec{
@@ -3996,9 +4062,21 @@ namespace noctalia::config::schema {
                 .segmented = true,
             }
         ),
-        field(&DockConfig::launcherIcon, "launcher_icon"),
+        field(
+            &DockConfig::launcherIcon, "launcher_icon",
+            RowSpec{
+                .kind = RowSpec::Kind::Text,
+                .section = "dock",
+                .group = "layout",
+                .tags = "launcher apps icon glyph",
+                .placeholder = "grid-dots",
+            }
+        ),
         pathStringField(&DockConfig::launcherCustomImage, "launcher_custom_image"),
-        field(&DockConfig::launcherCustomImageColorize, "launcher_custom_image_colorize"),
+        field(
+            &DockConfig::launcherCustomImageColorize, "launcher_custom_image_colorize",
+            RowSpec{.section = "dock", .group = "layout", .tags = "launcher apps image tint color"}
+        ),
         field(&DockConfig::pinned, "pinned"),
         namedMap<DockConfig, DockMonitorOverride>(
             &DockConfig::monitorOverrides, "monitor", dockMonitorOverrideSchema(),

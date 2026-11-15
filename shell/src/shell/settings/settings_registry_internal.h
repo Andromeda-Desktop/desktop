@@ -204,15 +204,6 @@ namespace settings {
       std::function<SelectSetting(std::string_view)> positionSelect;
       std::vector<SettingEntry> shellRows;
       std::vector<SettingEntry> panelRows;
-      std::function<SettingEntry(
-          SettingsSection, std::string, std::string_view, std::string_view, std::string_view, const std::string&
-      )>
-          panelPositionEntry;
-      std::function<SettingEntry(
-          SettingsSection, std::string, std::string_view, std::string_view, std::string_view, bool,
-          PanelPlacement ShellConfig::PanelConfig::*, std::string ShellConfig::PanelConfig::*
-      )>
-          panelOpenNearClickEntry;
     };
 
     void addCompositorEntries(
