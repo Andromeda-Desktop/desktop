@@ -64,7 +64,7 @@ test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings), args: [_ptyd.full_path()], depends: _ptyd, timeout: 30)
 
 # Agent sessions (step 9): the ACP session model; no IO, so the model test drives it directly.
-_agent = static_library('terminal_agent', 'src/agent_session.cpp',
+_agent = static_library('terminal_agent', 'src/agent_session.cpp', 'src/agent_markup.cpp',
   dependencies: dependency('nlohmann_json'), cpp_args: _warnings)
 _agent_dep = declare_dependency(link_with: _agent, include_directories: include_directories('src'),
   dependencies: dependency('nlohmann_json'))
@@ -105,6 +105,7 @@ executable('andromeda-terminal',
   'src/terminal_view.cpp',
   'src/terminal_window.cpp',
   'src/agent_host.cpp',
+  'src/agent_view.cpp',
   dependencies: [_core_dep, _agent_dep, _desk_app_dep],
   cpp_args: _warnings + _agentd_path,
   install: true,

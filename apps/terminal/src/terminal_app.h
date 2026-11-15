@@ -26,8 +26,11 @@ namespace term {
     void open(const std::vector<std::string>& uris, const std::string& activationToken) override;
     // With no window yet, sessions that lost their terminal process come back first, one window each.
     void activate(const std::string& activationToken) override;
+    void openWindow(const std::string& activationToken);
 
   private:
+    // Before the windows: their agent views close their sessions in it.
+    std::unique_ptr<agent::Host> m_agents;
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next

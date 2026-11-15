@@ -1,5 +1,6 @@
 #include "terminal_app.h"
 
+#include "agent_host.h"
 #include "holder_client.h"
 #include "kitty_images.h"
 #include "notifier.h"
@@ -12,6 +13,11 @@ namespace term {
 
   TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
     KittyImages::installPngDecoder();
+    m_agents = std::make_unique<agent::Host>([this](std::uint64_t key) {
+      for (auto& [window, terminal] : m_windows) {
+        terminal->agentChanged(key);
+      }
+    });
   }
 
   TerminalApp::~TerminalApp() = default;
@@ -21,8 +27,9 @@ namespace term {
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
-    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
-                                                          [this, &window] { closeWindow(window); });
+    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, *m_agents, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
+                                                          [this, &window] { closeWindow(window); },
+                                                          [this](const std::string& token) { openWindow(token); });
     return window;
   }
 
@@ -50,20 +57,30 @@ namespace term {
     }
   }
 
+  void TerminalApp::openWindow(const std::string& activationToken) {
+    AppWindow& window = createWindow();
+    if (window.open()) {
+      window.activate(activationToken);
+    }
+  }
+
+  // Each launch opens a window, as in other terminals; the dock raises a running window without a launch.
   void TerminalApp::activate(const std::string& activationToken) {
+    if (!windows().empty()) {
+      openWindow(activationToken);
+      return;
+    }
     bool reattached = false;
-    if (windows().empty()) {
-      std::vector<WindowOrigin> origins;
-      for (const std::uint64_t id : holder::listOrphans()) {
-        origins.emplace_back(Reattach{id});
-      }
-      if (!origins.empty()) {
-        m_nextOrigins = std::move(origins);
-        AppWindow& window = createWindow();
-        if (window.open()) {
-          window.activate(activationToken);
-          reattached = true;
-        }
+    std::vector<WindowOrigin> origins;
+    for (const std::uint64_t id : holder::listOrphans()) {
+      origins.emplace_back(Reattach{id});
+    }
+    if (!origins.empty()) {
+      m_nextOrigins = std::move(origins);
+      AppWindow& window = createWindow();
+      if (window.open()) {
+        window.activate(activationToken);
+        reattached = true;
       }
     }
     if (!reattached) {

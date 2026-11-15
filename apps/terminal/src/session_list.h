@@ -11,7 +11,7 @@ namespace term {
 
   using SessionClock = std::chrono::steady_clock;
 
-  enum class SessionKind : std::uint8_t { Shell, App, Ssh, Container };
+  enum class SessionKind : std::uint8_t { Shell, App, Ssh, Container, Agent };
 
   struct CommandIdle {
     bool operator==(const CommandIdle&) const = default;

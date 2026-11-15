@@ -1,5 +1,7 @@
 #include "terminal_window.h"
 
+#include "agent_host.h"
+
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "notifier.h"
@@ -52,11 +54,20 @@ namespace term {
       const char* home = std::getenv("HOME");
       return home != nullptr ? home : "/";
     }
+
+    // A path for the sidebar and title: $HOME shows as ~.
+    std::string shownPath(const std::string& path) {
+      const std::string home = homeDir();
+      const bool inHome = path == home || path.starts_with(home + "/");
+      return inHome ? "~" + path.substr(home.size()) : path;
+    }
   } // namespace
 
-  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier,
-                                 const std::vector<WindowOrigin>& origins, std::function<void()> close)
-      : m_loop(loop), m_window(window), m_notifier(notifier), m_close(std::move(close)) {
+  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents,
+                                 const std::vector<WindowOrigin>& origins, std::function<void()> close,
+                                 std::function<void(const std::string& token)> newWindow)
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_close(std::move(close)),
+        m_newWindow(std::move(newWindow)) {
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       for (Session& session : m_views) {
@@ -93,10 +104,10 @@ namespace term {
             return true;
           },
       }));
-      top->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s,
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string("New session  Ctrl+Shift+T"),
+      top->addChild(ui::button({.out = &m_newButton, .glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s,
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string("New"),
                                 .radius = button / 2.0F, .height = button,
-                                .onClick = [this] { openSession(NewShell{}); }}));
+                                .onClick = [this] { openNewMenu(); }}));
       side->addChild(std::move(top));
       auto list = std::make_unique<SelectionList>(s);
       list->setGap(Tokens::spaceP4 * s);
@@ -128,7 +139,7 @@ namespace term {
           .onChange =
               [this](const std::string& text) {
                 m_findQuery = text;
-                if (TerminalView* view = shownView(); view != nullptr) {
+                if (TerminalView* view = shownTerminal(); view != nullptr) {
                   view->setFindQuery(text);
                 }
                 if (text.empty()) {
@@ -137,7 +148,7 @@ namespace term {
               },
           .onSubmit =
               [this](const std::string& /*text*/) {
-                if (TerminalView* view = shownView(); view != nullptr) {
+                if (TerminalView* view = shownTerminal(); view != nullptr) {
                   view->findStep(true);
                 }
               },
@@ -149,7 +160,7 @@ namespace term {
               return true;
             }
             if (sym == kReturn && (mods & KeyMod::Shift) != 0) {
-              if (TerminalView* view = shownView(); view != nullptr) {
+              if (TerminalView* view = shownTerminal(); view != nullptr) {
                 view->findStep(false);
               }
               return true;
@@ -167,12 +178,12 @@ namespace term {
                            .width = button, .height = button, .onClick = std::move(onClick)});
       };
       bar->addChild(round("chevron-up", "Previous match  Shift+Enter", &m_findSteps[0], [this] {
-        if (TerminalView* view = shownView(); view != nullptr) {
+        if (TerminalView* view = shownTerminal(); view != nullptr) {
           view->findStep(false);
         }
       }));
       bar->addChild(round("chevron-down", "Next match  Enter", &m_findSteps[1], [this] {
-        if (TerminalView* view = shownView(); view != nullptr) {
+        if (TerminalView* view = shownTerminal(); view != nullptr) {
           view->findStep(true);
         }
       }));
@@ -181,6 +192,10 @@ namespace term {
       m_findBar->setVisible(m_findOpen);
       m_findBar->setParticipatesInLayout(m_findOpen);
       slot->addChild(std::move(bar));
+      auto agentBar = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .flexGrow = 1.0F});
+      m_agentBar = agentBar.get();
+      fillAgentBar();
+      slot->addChild(std::move(agentBar));
       m_window.setHeaderSearchMode(m_findOpen);
       setFindCount(0, std::nullopt);
       return slot;
@@ -189,19 +204,19 @@ namespace term {
       if (sessionKey(event)) {
         return true;
       }
-      TerminalView* view = shownView();
+      ContentView* view = shownView();
       return view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == view->focusArea() &&
              view->key(event);
     });
     m_window.setActiveCallback([this](bool active) {
       m_active = active;
-      if (TerminalView* view = shownView(); view != nullptr) {
+      if (ContentView* view = shownView(); view != nullptr) {
         view->setWindowActive(active);
       }
     });
     m_window.setLayoutCallback([this] {
       const AppWindow::Rect rect = m_window.contentRect();
-      if (TerminalView* view = shownView(); view != nullptr) {
+      if (ContentView* view = shownView(); view != nullptr) {
         view->setSize(rect.width, rect.height);
       }
     });
@@ -212,6 +227,14 @@ namespace term {
 
   void TerminalWindow::openSession(const WindowOrigin& origin) {
     const std::uint64_t id = m_nextId++;
+    if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
+      const std::uint64_t key = s_nextAgentKey++;
+      const std::string cwd = fresh->cwd.empty() ? homeDir() : fresh->cwd;
+      m_agents.open(key, cwd);
+      m_views.push_back({id, std::make_unique<AgentView>(m_agents, key)});
+      apply(session_event::Open{id, SessionKind::Agent, "Claude", shownPath(cwd)});
+      return;
+    }
     auto alive = std::weak_ptr<bool>(m_alive);
     auto view = std::make_unique<TerminalView>(TerminalView::Host{
         .requestFrame = [this] { requestFrame(); },
@@ -247,9 +270,7 @@ namespace term {
             },
         .cwdChanged =
             [this, id](const std::string& path) {
-              const std::string home = homeDir();
-              const bool inHome = path == home || path.starts_with(home + "/");
-              const std::string shown = inHome ? "~" + path.substr(home.size()) : path;
+              const std::string shown = shownPath(path);
               apply(session_event::Cwd{id, shown});
               if (m_sessions.shown() == id) {
                 m_window.setTitle(shown);
@@ -277,13 +298,18 @@ namespace term {
     apply(session_event::Open{id, SessionKind::Shell, "", ""});
   }
 
-  TerminalView* TerminalWindow::shownView() {
+  ContentView* TerminalWindow::shownView() {
     const auto id = m_sessions.shown();
     if (!id) {
       return nullptr;
     }
     const auto it = std::ranges::find(m_views, *id, &Session::id);
     return it == m_views.end() ? nullptr : it->view.get();
+  }
+
+  TerminalView* TerminalWindow::shownTerminal() {
+    ContentView* view = shownView();
+    return view != nullptr ? view->terminal() : nullptr;
   }
 
   void TerminalWindow::apply(const SessionListEvent& event) {
@@ -331,6 +357,7 @@ namespace term {
     if (m_findOpen && m_builtId != id) {
       closeFind();
     }
+    syncAgentBar();
     for (Session& session : m_views) {
       session.view->setWindowActive(session.id == id && m_active);
     }
@@ -355,7 +382,7 @@ namespace term {
   }
 
   void TerminalWindow::fillSlot(Renderer& renderer) {
-    TerminalView* view = shownView();
+    ContentView* view = shownView();
     m_builtId = view != nullptr ? *m_sessions.shown() : 0;
     if (view == nullptr) {
       return;
@@ -398,6 +425,21 @@ namespace term {
       openSession(NewShell{});
       return true;
     }
+    if (shift && (event.unshifted == 'a' || event.unshifted == 'A')) {
+      openAgentHere();
+      return true;
+    }
+    // A shell session ends with its shell; an agent session ends here.
+    if (shift && (event.unshifted == 'w' || event.unshifted == 'W')) {
+      if (ContentView* view = shownView(); view != nullptr && view->agent() != nullptr) {
+        apply(session_event::Close{*m_sessions.shown()});
+      }
+      return true;
+    }
+    if (shift && (event.unshifted == 'n' || event.unshifted == 'N')) {
+      m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
+      return true;
+    }
     if (shift && (event.unshifted == 'f' || event.unshifted == 'F')) {
       openFind();
       return true;
@@ -421,10 +463,126 @@ namespace term {
     return row;
   }
 
+  // The agent works in the shown session's directory; the sidebar keeps it with ~ for $HOME.
+  void TerminalWindow::openAgentHere() {
+    const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
+    std::string cwd = shown != nullptr ? shown->cwd : std::string();
+    if (cwd.starts_with("~")) {
+      cwd = homeDir() + cwd.substr(1);
+    }
+    openSession(NewAgent{cwd});
+  }
+
+  void TerminalWindow::openNewMenu() {
+    if (m_newButton == nullptr) {
+      return;
+    }
+    enum : std::int32_t { kShell = 1, kAgent, kWindow };
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m_newButton, x, y);
+    m_window.openContextMenu({{.id = kShell, .label = "New session", .shortcut = "Ctrl+Shift+T", .glyph = "prompt"},
+                              {.id = kAgent, .label = "New agent", .shortcut = "Ctrl+Shift+A", .glyph = "robot"},
+                              {.id = kWindow, .label = "New window", .shortcut = "Ctrl+Shift+N", .glyph = "app-window"}},
+                             x, y + m_newButton->height(),
+                             [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
+                               if (alive.expired()) {
+                                 return;
+                               }
+                               switch (id) {
+                                 case kShell: openSession(NewShell{}); break;
+                                 case kAgent: openAgentHere(); break;
+                                 case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
+                                 default: break;
+                               }
+                             });
+  }
+
+  // The shown agent session's pills fill the title band while find is closed; other sessions leave it empty.
+  void TerminalWindow::syncAgentBar() {
+    if (m_agentBar == nullptr) {
+      return;
+    }
+    m_window.updateInPlace([this](Renderer& /*renderer*/) {
+      fillAgentBar();
+      m_agentBar->markLayoutDirty();
+    });
+  }
+
+  void TerminalWindow::fillAgentBar() {
+    while (!m_agentBar->children().empty()) {
+      m_agentBar->removeChild(m_agentBar->children().back().get());
+    }
+    ContentView* shown = shownView();
+    AgentView* view = shown != nullptr ? shown->agent() : nullptr;
+    if (view == nullptr || m_findOpen) {
+      return;
+    }
+    const std::uint64_t key = view->key();
+    m_agentBar->addChild(view->band(m_window.uiScale(), [this, key](const Node* anchor) {
+      if (AgentView* agent = agentView(key); agent != nullptr) {
+        m_window.openPopover(anchor, 360.0F, agent->planHeight(), [this, key](float scale) -> std::unique_ptr<Node> {
+          AgentView* open = agentView(key);
+          return open != nullptr ? open->planList(scale) : ui::column({});
+        });
+      }
+    }));
+  }
+
+  AgentView* TerminalWindow::agentView(std::uint64_t key) {
+    for (Session& session : m_views) {
+      if (AgentView* view = session.view->agent(); view != nullptr && view->key() == key) {
+        return view;
+      }
+    }
+    return nullptr;
+  }
+
+  void TerminalWindow::agentChanged(std::uint64_t key) {
+    for (Session& session : m_views) {
+      if (AgentView* view = session.view->agent(); view != nullptr && view->key() == key) {
+        view->changed();
+        if (m_sessions.shown() == session.id) {
+          syncAgentBar();
+        }
+        refreshRows();
+        m_window.invalidate();
+        return;
+      }
+    }
+  }
+
   StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {
     StatusRow::Data data{.name = session.name.empty() ? session.cwd : session.name,
                          .unseen = session.seen == Seen::Unseen,
                          .selected = session.id == m_rowSelected};
+    if (session.kind == SessionKind::Agent) {
+      const auto it = std::ranges::find(m_views, session.id, &Session::id);
+      const agent::Session* model = it != m_views.end() && it->view->agent() != nullptr ? it->view->agent()->session() : nullptr;
+      const agent::RowStatus status = model != nullptr ? model->rowStatus() : agent::RowStatus::Failed;
+      data.symbol = "robot";
+      switch (status) {
+        case agent::RowStatus::Starting: data.status = "starting"; break;
+        case agent::RowStatus::Ready: data.status = "ready"; break;
+        case agent::RowStatus::Working:
+          data.symbol = "loader-2";
+          data.status = "working";
+          break;
+        case agent::RowStatus::NeedsPermission:
+          data.symbol = "hand-stop";
+          data.status = "needs permission";
+          break;
+        case agent::RowStatus::Done: data.status = "done"; break;
+        case agent::RowStatus::Stopped: data.status = "stopped by you"; break;
+        case agent::RowStatus::Failed:
+          data.symbol = "alert-circle";
+          data.symbolDanger = true;
+          data.status = "failed";
+          break;
+      }
+      data.status = withCommand(data.status, model != nullptr ? model->title() : std::string());
+      return data;
+    }
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
       data.symbol = "loader-2";
       data.status = withCommand("running", running->command);
@@ -442,6 +600,7 @@ namespace term {
         case SessionKind::App: data.symbol = "app-window"; break;
         case SessionKind::Ssh: data.symbol = "server"; break;
         case SessionKind::Container: data.symbol = "box"; break;
+        case SessionKind::Agent: data.symbol = "robot"; break;
       }
     }
     if (session.kind == SessionKind::App) {
@@ -519,21 +678,22 @@ namespace term {
   }
 
   void TerminalWindow::focusGrid() {
-    if (TerminalView* view = shownView(); view != nullptr && view->focusArea() != nullptr) {
+    if (ContentView* view = shownView(); view != nullptr && view->focusArea() != nullptr) {
       m_window.input().setFocus(view->focusArea());
     }
   }
 
   void TerminalWindow::openFind() {
-    if (m_findBar == nullptr || m_findInput == nullptr) {
+    if (m_findBar == nullptr || m_findInput == nullptr || shownTerminal() == nullptr) {
       return;
     }
     m_findOpen = true;
     m_findBar->setVisible(true);
     m_findBar->setParticipatesInLayout(true);
     m_window.setHeaderSearchMode(true);
+    syncAgentBar();
     m_window.input().setFocus(m_findInput->inputArea());
-    if (TerminalView* view = shownView(); view != nullptr && !m_findQuery.empty()) {
+    if (TerminalView* view = shownTerminal(); view != nullptr && !m_findQuery.empty()) {
       view->setFindQuery(m_findQuery);
     }
   }
@@ -541,13 +701,16 @@ namespace term {
   void TerminalWindow::closeFind() {
     m_findOpen = false;
     for (Session& session : m_views) {
-      session.view->closeFind();
+      if (TerminalView* terminal = session.view->terminal(); terminal != nullptr) {
+        terminal->closeFind();
+      }
     }
     if (m_findBar != nullptr) {
       m_findBar->setVisible(false);
       m_findBar->setParticipatesInLayout(false);
     }
     m_window.setHeaderSearchMode(false);
+    syncAgentBar();
     focusGrid();
   }
 
