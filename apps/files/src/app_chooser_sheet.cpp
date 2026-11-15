@@ -373,10 +373,13 @@ std::unique_ptr<Node> AccessSheet::build(float s) {
   }
   box->addChild(ui::node({.flexGrow = 1.0F}));
   auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
+  const float btnH = Tokens::sizeControlM * s;
   buttons->addChild(ui::button({.text = m_request.denyLabel, .fontSize = Style::fontSizeBody * s,
-                                .variant = ButtonVariant::Default, .onClick = [this] { answer(false); }}));
+                                .variant = ButtonVariant::Default, .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F,
+                                .height = btnH, .onClick = [this] { answer(false); }}));
   buttons->addChild(ui::button({.text = m_request.grantLabel, .fontSize = Style::fontSizeBody * s,
-                                .variant = ButtonVariant::Primary, .onClick = [this] { answer(true); }}));
+                                .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F,
+                                .height = btnH, .onClick = [this] { answer(true); }}));
   box->addChild(std::move(buttons));
   return box;
 }

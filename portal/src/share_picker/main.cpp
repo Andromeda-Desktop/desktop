@@ -458,17 +458,21 @@ namespace {
     std::unique_ptr<Node> buttons(float scale) {
       auto row = ui::row({.gap = Tokens::spaceP8 * scale});
       row->addChild(ui::spacer());
+      // System dialog footers: both buttons are capsules (rulebook 9.5).
+      const float height = Style::controlHeight * scale;
       row->addChild(ui::button({.text = std::string("Cancel"),
                                 .fontSize = Style::fontSizeBody * scale,
-                                .minHeight = Style::controlHeight * scale,
-                                .paddingH = Tokens::spaceP12 * scale,
+                                .paddingH = Tokens::spaceP16 * scale,
+                                .radius = height / 2.0F,
+                                .height = height,
                                 .onClick = [this] { finish(false); }}));
       row->addChild(ui::button({.text = std::string("Share"),
                                 .fontSize = Style::fontSizeBody * scale,
                                 .enabled = !m_selected.empty(),
                                 .variant = ButtonVariant::Primary,
-                                .minHeight = Style::controlHeight * scale,
-                                .paddingH = Tokens::spaceP12 * scale,
+                                .paddingH = Tokens::spaceP16 * scale,
+                                .radius = height / 2.0F,
+                                .height = height,
                                 .onClick = [this] { finish(true); }}));
       return row;
     }

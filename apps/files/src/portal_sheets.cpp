@@ -165,10 +165,14 @@ std::unique_ptr<Node> PortalSheet::build(float s) {
   box->addChild(ui::node({.flexGrow = 1.0F}));
   auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s,
                           .fillWidth = true});
+  // System dialog footers: both buttons are capsules (rulebook 9.5).
+  const float btnH = Tokens::sizeControlM * s;
   buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Style::fontSizeBody * s,
-                                .variant = ButtonVariant::Default, .onClick = [this] { cancel(); }}));
+                                .variant = ButtonVariant::Default, .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F,
+                                .height = btnH, .onClick = [this] { cancel(); }}));
   buttons->addChild(ui::button({.text = action, .fontSize = Style::fontSizeBody * s,
-                                .variant = ButtonVariant::Primary, .onClick = [this] { accept(); }}));
+                                .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP16 * s, .radius = btnH / 2.0F,
+                                .height = btnH, .onClick = [this] { accept(); }}));
   box->addChild(std::move(buttons));
   return box;
 }
