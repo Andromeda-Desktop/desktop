@@ -42,6 +42,8 @@ public:
     std::uint32_t height = 640;
     std::uint32_t minWidth = 480;
     std::uint32_t minHeight = 320;
+    // The window keeps width x height (min = max size, no saved size): compositors float it like a dialog.
+    bool fixedSize = false;
     bool navigation = false; // back / forward buttons in the header (commands go.back, go.forward)
     float sidebarWidth = 0.0F; // logical px before ui scale; 0 = no sidebar
     std::string parentWindow;  // portal form "wayland:<xdg-foreign handle>": a dialog of another app's window

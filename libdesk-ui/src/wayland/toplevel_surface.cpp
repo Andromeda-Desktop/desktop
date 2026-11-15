@@ -87,6 +87,11 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
         m_toplevel, static_cast<std::int32_t>(config.minWidth), static_cast<std::int32_t>(config.minHeight)
     );
   }
+  if (config.maxWidth > 0 || config.maxHeight > 0) {
+    xdg_toplevel_set_max_size(
+        m_toplevel, static_cast<std::int32_t>(config.maxWidth), static_cast<std::int32_t>(config.maxHeight)
+    );
+  }
 
   if (config.maximized) {
     xdg_toplevel_set_maximized(m_toplevel);

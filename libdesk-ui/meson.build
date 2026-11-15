@@ -69,6 +69,7 @@ _system_deps = [
   dependency('glib-2.0'),
   dependency('gobject-2.0'),
   dependency('gio-2.0'),
+  dependency('gio-unix-2.0'), # GDesktopAppInfo: app icons by desktop id (ui/app_icon.cpp)
   dependency('md4c'),
   dependency('nlohmann_json'),
   dependency('sdbus-c++'),
@@ -304,6 +305,7 @@ _desk_ui_sources = files(
   'src/ui/dialogs/layer_popup_host.cpp',
   'src/ui/dialogs/search_picker_popup.cpp',
   'src/ui/drag_drop_controller.cpp',
+  'src/ui/app_icon.cpp',
   'src/ui/palette.cpp',
   'src/ui/popup_chrome.cpp',
   'src/ui/scroll_into_view.cpp',

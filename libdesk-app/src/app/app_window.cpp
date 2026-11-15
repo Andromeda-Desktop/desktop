@@ -429,11 +429,12 @@ bool AppWindow::open() {
   }
 
   const auto scaled = [this](std::uint32_t v) { return static_cast<std::uint32_t>(std::lround(static_cast<float>(v) * m_uiScale)); };
-  const std::uint32_t minW = scaled(m_config.minWidth);
-  const std::uint32_t minH = scaled(m_config.minHeight);
-  const auto width = std::max(minW, m_state.get<std::uint32_t>(key("width"), scaled(m_config.width)));
-  const auto height = std::max(minH, m_state.get<std::uint32_t>(key("height"), scaled(m_config.height)));
-  const bool maximized = m_state.get<bool>(key("maximized"), false);
+  const bool fixed = m_config.fixedSize;
+  const std::uint32_t minW = scaled(fixed ? m_config.width : m_config.minWidth);
+  const std::uint32_t minH = scaled(fixed ? m_config.height : m_config.minHeight);
+  const auto width = fixed ? minW : std::max(minW, m_state.get<std::uint32_t>(key("width"), scaled(m_config.width)));
+  const auto height = fixed ? minH : std::max(minH, m_state.get<std::uint32_t>(key("height"), scaled(m_config.height)));
+  const bool maximized = !fixed && m_state.get<bool>(key("maximized"), false);
 
   m_surface = std::make_unique<ToplevelSurface>(wayland);
   m_surface->setRenderContext(&m_loop.renderContext());
@@ -469,6 +470,8 @@ bool AppWindow::open() {
       .height = height,
       .minWidth = minW,
       .minHeight = minH,
+      .maxWidth = fixed ? minW : 0,
+      .maxHeight = fixed ? minH : 0,
       .title = m_config.title,
       .appId = m_config.appId.c_str(),
       .maximized = maximized,

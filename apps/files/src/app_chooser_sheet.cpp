@@ -2,6 +2,7 @@
 
 #include "design_tokens.h"
 #include "render/core/renderer.h"
+#include "ui/app_icon.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/checkbox.h"
@@ -44,33 +45,6 @@ namespace {
     }
   };
 
-  // An app icon from a file path: it loads at the first layout, when a renderer is there (like PlaceIcon).
-  class AppIconNode final : public Node {
-  public:
-    AppIconNode(std::string path, float size) : m_path(std::move(path)), m_size(size) {
-      m_image = static_cast<Image*>(addChild(std::make_unique<Image>()));
-      m_image->setSize(size, size);
-      setSize(size, size);
-    }
-
-  protected:
-    void doLayout(Renderer& renderer) override {
-      const int px = static_cast<int>(std::ceil(m_size * renderer.renderScale()));
-      if (px != m_loadedPx && !m_path.empty()) {
-        m_image->setSourceFile(renderer, m_path, px);
-        m_loadedPx = px;
-      }
-      m_image->setSize(m_size, m_size);
-      m_image->layout(renderer);
-    }
-
-  private:
-    std::string m_path;
-    float m_size;
-    Image* m_image = nullptr;
-    int m_loadedPx = 0;
-  };
-
   std::string withoutDesktop(std::string id) {
     if (id.ends_with(".desktop")) {
       id.resize(id.size() - std::string_view(".desktop").size());
@@ -78,32 +52,10 @@ namespace {
     return id;
   }
 
-  std::string iconOf(GAppInfo* info) {
-    GIcon* icon = g_app_info_get_icon(info);
-    if (icon == nullptr) {
-      return {};
-    }
-    if (G_IS_FILE_ICON(icon)) {
-      gchar* path = g_file_get_path(g_file_icon_get_file(G_FILE_ICON(icon)));
-      std::string out = path != nullptr ? path : "";
-      g_free(path);
-      return out;
-    }
-    if (G_IS_THEMED_ICON(icon)) {
-      for (const gchar* const* name = g_themed_icon_get_names(G_THEMED_ICON(icon)); name != nullptr && *name != nullptr;
-           ++name) {
-        if (std::string file = iconFileFor(*name); !file.empty()) {
-          return file;
-        }
-      }
-    }
-    return {};
-  }
-
   AppChooserSheet::App appFor(GAppInfo* info) {
     return {.id = withoutDesktop(g_app_info_get_id(info) != nullptr ? g_app_info_get_id(info) : ""),
             .name = g_app_info_get_display_name(info) != nullptr ? g_app_info_get_display_name(info) : "",
-            .icon = iconOf(info)};
+            .icon = appInfoIconFile(info)};
   }
 
   std::optional<AppChooserSheet::App> appById(const std::string& id) {
@@ -116,42 +68,6 @@ namespace {
     return app;
   }
 } // namespace
-
-std::string iconFileFor(const std::string& icon) {
-  if (icon.empty()) {
-    return {};
-  }
-  std::error_code ec;
-  if (icon.starts_with('/')) {
-    return fs::exists(icon, ec) ? icon : std::string();
-  }
-  // The sizes a 24-48 px row looks sharp with at 1x-2x, then any scalable art, then pixmaps.
-  std::vector<fs::path> roots;
-  if (const char* home = g_get_user_data_dir()) {
-    roots.emplace_back(fs::path(home) / "icons");
-  }
-  for (const gchar* const* dir = g_get_system_data_dirs(); dir != nullptr && *dir != nullptr; ++dir) {
-    roots.emplace_back(fs::path(*dir) / "icons");
-  }
-  static constexpr std::array kSizes{"scalable", "96x96", "64x64", "128x128", "48x48", "256x256", "32x32"};
-  for (const fs::path& root : roots) {
-    for (const char* size : kSizes) {
-      for (const char* ext : {".svg", ".png"}) {
-        const fs::path file = root / "hicolor" / size / "apps" / (icon + ext);
-        if (fs::exists(file, ec)) {
-          return file.string();
-        }
-      }
-    }
-  }
-  for (const char* ext : {".svg", ".png", ".xpm"}) {
-    const fs::path file = fs::path("/usr/share/pixmaps") / (icon + ext);
-    if (fs::exists(file, ec)) {
-      return file.string();
-    }
-  }
-  return {};
-}
 
 namespace {
   void dedupeByName(std::vector<AppChooserSheet::App>& apps) {

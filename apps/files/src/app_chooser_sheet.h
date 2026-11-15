@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app_chooser_portal.h"
+#include "ui/app_icon.h"
 
 #include <cstdint>
 #include <functional>
@@ -66,5 +67,3 @@ private:
   bool m_answered = false;
 };
 
-// A GIO icon name or path as a file under the icon theme dirs (hicolor, pixmaps), or "".
-[[nodiscard]] std::string iconFileFor(const std::string& icon);

@@ -17,6 +17,8 @@ struct ToplevelSurfaceConfig {
   std::uint32_t height = 480;
   std::uint32_t minWidth = 0;
   std::uint32_t minHeight = 0;
+  std::uint32_t maxWidth = 0; // 0: no maximum
+  std::uint32_t maxHeight = 0;
   std::string title = "Noctalia";
   const char* appId = "dev.noctalia.Noctalia";
   bool maximized = false; // asked before the first commit, so the first configure is already maximized
