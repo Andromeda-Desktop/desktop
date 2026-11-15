@@ -179,6 +179,8 @@ namespace term {
   std::unique_ptr<Node> TerminalView::build(Renderer& renderer, float uiScale, float deviceScale, float width,
                                             float height) {
     m_uiScale = uiScale;
+    m_deviceScale = deviceScale;
+    m_pendingDeviceScale = deviceScale;
     m_textures = &renderer.textureManager();
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
@@ -188,6 +190,7 @@ namespace term {
                                .focusable = true,
                                .width = width,
                                .height = height,
+                               .flexGrow = 1.0F,
                                .configure =
                                    [this](InputArea& a) {
                                      a.setCapturesAllKeys(true);
@@ -239,7 +242,17 @@ namespace term {
     refresh(true);
   }
 
+  void TerminalView::setDeviceScale(float deviceScale) {
+    m_pendingDeviceScale = deviceScale;
+    scheduleRedraw(Redraw::All);
+  }
+
   void TerminalView::frame() {
+    if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
+      m_deviceScale = m_pendingDeviceScale;
+      m_grid->setFont(kFontFamily, kFontSize * m_uiScale, kLineHeight * m_uiScale, m_deviceScale);
+      setSize(m_width, m_height);
+    }
     const Redraw redraw = std::exchange(m_redraw, Redraw::None);
     if (!m_session.takeWake()) {
       if (redraw != Redraw::None) {

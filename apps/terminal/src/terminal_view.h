@@ -44,6 +44,8 @@ namespace term {
     void setSize(float width, float height);
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
     void frame();
+    // The output buffer scale changed: the next frame reloads the glyph atlas at this scale.
+    void setDeviceScale(float deviceScale);
 
     // A key for the program, or Ctrl+Shift+C/V (copy the selection, paste); false when the window should handle
     // it (Super, other Ctrl+Shift chords, keys pressed before the grid had focus).
@@ -127,6 +129,8 @@ namespace term {
     TerminalGridNode* m_grid = nullptr;
     TextureManager* m_textures = nullptr;
     float m_uiScale = 1.0F;
+    float m_deviceScale = 1.0F; // buffer px per logical px the atlas was loaded for
+    float m_pendingDeviceScale = 1.0F;
     float m_width = 0.0F;
     float m_height = 0.0F;
     bool m_dark = true;

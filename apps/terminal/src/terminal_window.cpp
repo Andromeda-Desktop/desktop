@@ -67,6 +67,7 @@ namespace term {
     m_alive.reset();
     if (m_tickSurface != nullptr && m_tickSurface == m_window.surface()) {
       m_tickSurface->setFrameTickCallback(nullptr);
+      m_tickSurface->setScaleChangedCallback(nullptr);
     }
   }
 
@@ -81,6 +82,7 @@ namespace term {
         m_loop.renderContext().makeCurrent(m_window.surface()->renderTarget());
         m_view.frame();
       });
+      surface->setScaleChangedCallback([this](float scale) { m_view.setDeviceScale(scale); });
     }
     surface->requestFrameTick();
   }
