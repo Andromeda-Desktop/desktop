@@ -31,6 +31,7 @@ namespace {
   TOKENS_LIVE(kPadV, Style::spaceXs);
   TOKENS_LIVE(kLineHeight, Tokens::typeFootnote.line);
   TOKENS_LIVE(kOffset, Tokens::componentTooltipOffset);
+  TOKENS_LIVE(kPreview, Tokens::componentTooltipPreview);
   TOKENS_LIVE(kTableColumnGap, Style::spaceMd);
   constexpr float kBorder = Style::borderWidth;
   // Tabular figures keep the value column still while a rate or percent ticks.
@@ -48,6 +49,48 @@ namespace {
         .maxWidth = maxWidth,
         .maxLines = kMaxTextLines,
     });
+  }
+
+  struct PreviewLayout {
+    float imageW = 0.0F;
+    float imageH = 0.0F;
+    std::unique_ptr<Label> title;
+    std::unique_ptr<Label> detail;
+    float w = 0.0F;
+    float h = 0.0F;
+  };
+
+  // Image on top (long edge kPreview), then the title and the detail line; the widest part sets the width.
+  PreviewLayout layoutPreview(Renderer& renderer, const TooltipPreview& preview, float scale) {
+    PreviewLayout l;
+    const float maxW = kMaxContentWidth * scale;
+    const float fontSize = Style::fontSizeCaption * scale;
+    if (preview.image.valid() && preview.image.width > 0 && preview.image.height > 0) {
+      const float k = kPreview * scale / static_cast<float>(std::max(preview.image.width, preview.image.height));
+      l.imageW = std::round(static_cast<float>(preview.image.width) * k);
+      l.imageH = std::round(static_cast<float>(preview.image.height) * k);
+      l.w = l.imageW;
+      l.h = l.imageH + kPadV * scale;
+    }
+    const auto line = [&](const std::string& text, ColorRole role) {
+      auto label = ui::label({
+          .text = text,
+          .fontSize = fontSize,
+          .color = colorSpecFromRole(role),
+          .maxWidth = maxW,
+          .maxLines = 1,
+          .ellipsize = TextEllipsize::Middle,
+      });
+      label->measure(renderer);
+      l.w = std::max(l.w, label->width());
+      l.h += label->height();
+      return label;
+    };
+    l.title = line(preview.title, ColorRole::Label1);
+    if (!preview.detail.empty()) {
+      l.detail = line(preview.detail, ColorRole::Label2);
+    }
+    return l;
   }
 
   struct TableColumnWidths {
@@ -664,6 +707,13 @@ TooltipManager::Size TooltipManager::measureContent(Renderer& renderer, const To
     return {std::max(w, 1U), std::max(h, 1U)};
   }
 
+  if (const auto* preview = std::get_if<TooltipPreview>(&content)) {
+    const PreviewLayout l = layoutPreview(renderer, *preview, scale);
+    auto w = static_cast<std::uint32_t>(std::ceil(l.w + padH * 2.0F));
+    auto h = static_cast<std::uint32_t>(std::ceil(l.h + padV * 2.0F));
+    return {std::max(w, 1U), std::max(h, 1U)};
+  }
+
   if (const auto* rows = std::get_if<std::vector<TooltipRow>>(&content)) {
     if (rows->empty()) {
       return {};
@@ -730,6 +780,27 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
     label->measure(renderer);
     label->setPosition(padH, std::round((h - label->height()) * 0.5F));
     m_sceneRoot->addChild(std::move(label));
+    return;
+  }
+
+  if (const auto* preview = std::get_if<TooltipPreview>(&content)) {
+    PreviewLayout l = layoutPreview(renderer, *preview, scale);
+    float y = padV;
+    if (l.imageH > 0.0F) {
+      auto image = ui::image({.radius = std::max(0.0F, radius - padV)});
+      image->setExternalTexture(renderer, preview->image);
+      image->setSize(l.imageW, l.imageH);
+      image->setPosition(std::round((w - l.imageW) * 0.5F), y);
+      m_sceneRoot->addChild(std::move(image));
+      y += l.imageH + padV;
+    }
+    for (auto* label : {&l.title, &l.detail}) {
+      if (*label != nullptr) {
+        (*label)->setPosition(padH, y);
+        y += (*label)->height();
+        m_sceneRoot->addChild(std::move(*label));
+      }
+    }
     return;
   }
 

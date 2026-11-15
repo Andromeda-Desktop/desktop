@@ -22,12 +22,16 @@ namespace term {
 
   TerminalApp::~TerminalApp() = default;
 
+  void TerminalApp::startup() { loop().addSource(&m_thumbnails); }
+
+  void TerminalApp::gpuLost() { m_thumbnails.abandonGpuResources(); }
+
   AppWindow& TerminalApp::createWindow() {
     AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .sidebarMaterial = AppWindow::SidebarMaterial::Glass});
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
-    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, *m_agents, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
+    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, *m_agents, m_thumbnails, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
                                                           [this](const std::string& token) { openWindow(token); });
     return window;

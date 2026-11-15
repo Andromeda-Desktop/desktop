@@ -11,6 +11,7 @@
 #include "render/scene/terminal_grid_node.h"
 #include "design_tokens.h"
 #include "ui/text_input_client.h"
+#include "ui/tooltip_content.h"
 
 #include <array>
 #include <chrono>
@@ -32,6 +33,7 @@ class RectNode;
 class Scrollbar;
 struct KeyboardEvent;
 class TextureManager;
+class ThumbnailService;
 
 namespace term {
 
@@ -49,6 +51,8 @@ namespace term {
       std::function<void()> requestFrame;
       // Null until GL is attached: the scene builds before EGL is up.
       std::function<TextureManager*()> textures;
+      // Image thumbnails for the link hover preview; null shows text only.
+      ThumbnailService* thumbnails = nullptr;
       std::function<void(int status)> exited;
       // Current keyboard modifiers (KeyMod bits): pointer events carry none.
       std::function<std::uint32_t()> modifiers;
@@ -84,6 +88,7 @@ namespace term {
     void sceneDestroyed() override {
       m_grid = nullptr;
       m_area = nullptr;
+      m_linkAnchor = nullptr;
     }
     // The output buffer scale changed: the next frame reloads the glyph atlas at this scale.
     void setDeviceScale(float deviceScale) override;
@@ -215,6 +220,23 @@ namespace term {
       bool ctrl;
     };
     std::optional<LinkProbe> m_linkProbe; // the input m_link was computed from
+    // Hover preview of m_link: Armed waits the tooltip delay; Shown holds the content and, for an image, the
+    // thumbnail it acquired (thumbPath; released when the preview leaves Shown).
+    struct PreviewOff {};
+    struct PreviewArmed {};
+    struct PreviewShown {
+      TooltipPreview content;
+      std::string thumbPath;
+      int thumbPx = 0;
+    };
+    using Preview = std::variant<PreviewOff, PreviewArmed, PreviewShown>;
+    Preview m_preview;
+    Timer m_previewTimer;
+    std::shared_ptr<void> m_thumbWake;
+    Node* m_linkAnchor = nullptr; // the tooltip anchor over the link span
+    void setPreview(Preview next);
+    void showPreview();
+    [[nodiscard]] int previewPx() const;
     TextInputService* m_textInput = nullptr;
     std::string m_preedit;
     GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows

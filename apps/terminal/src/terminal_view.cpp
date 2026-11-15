@@ -11,6 +11,9 @@
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
 #include "render/scene/rect_node.h"
+#include "render/core/thumbnail_service.h"
+#include "core/files/file_info.h"
+#include "ui/files/file_format.h"
 #include "core/text_clipboard.h"
 #include "ui/builders.h"
 #include "ui/controls/input.h"
@@ -148,6 +151,9 @@ namespace term {
     if (m_textInput != nullptr) {
       m_textInput->clearFocusedClient(this);
     }
+    if (const auto* shown = std::get_if<PreviewShown>(&m_preview); shown != nullptr && !shown->thumbPath.empty()) {
+      m_host.thumbnails->release(shown->thumbPath, shown->thumbPx);
+    }
     ghostty_mouse_event_free(m_mouseEvent);
     ghostty_mouse_encoder_free(m_mouseEncoder);
     ghostty_key_event_free(m_keyEvent);
@@ -220,6 +226,15 @@ namespace term {
     m_findRing = static_cast<RectNode*>(findLayer->addChild(std::make_unique<RectNode>()));
     m_findRing->setVisible(false);
     m_findLayer = m_grid->addChild(std::move(findLayer));
+    m_linkAnchor = m_findLayer->addChild(std::make_unique<Node>());
+    if (m_host.thumbnails != nullptr && m_thumbWake == nullptr) {
+      // A finished decode only wakes the view: frame() uploads it with GL current.
+      m_thumbWake = std::make_shared<ThumbnailService::Subscription>(m_host.thumbnails->subscribePendingUpload([this] {
+        if (std::holds_alternative<PreviewShown>(m_preview) && m_host.requestFrame) {
+          m_host.requestFrame();
+        }
+      }));
+    }
     setGridOrigin(kInset * uiScale, kTopInset * uiScale);
     auto area = ui::inputArea({.out = &m_area,
                                .focusable = true,
@@ -242,6 +257,13 @@ namespace term {
                                        clearLink(); // Ctrl may come up in another window
                                      });
                                      a.setOnLeave([this] { clearLink(); });
+                                     a.setTooltipProvider([this] -> TooltipContent {
+                                       if (const auto* shown = std::get_if<PreviewShown>(&m_preview)) {
+                                         return shown->content;
+                                       }
+                                       return {};
+                                     });
+                                     a.setTooltipPlacement(TooltipPlacement::Below);
                                      a.setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_MIDDLE, BTN_RIGHT}));
                                      a.setOnPress([this](const InputArea::PointerData& d) {
                                        pointerButton(d.button, d.localX, d.localY, d.pressed, d.time);
@@ -261,6 +283,7 @@ namespace term {
                               std::move(grid));
     // The partial rows of a pixel scroll stay inside the view.
     area->setClipChildren(true);
+    area->setTooltipAnchorNode(m_linkAnchor);
     auto bar = std::make_unique<Scrollbar>();
     m_scrollbar = bar.get();
     m_scrollState = {};
@@ -321,6 +344,18 @@ namespace term {
     // Output or a scroll can move the text under a shown link.
     if (m_link) {
       updateLink((modifiers() & KeyMod::Ctrl) != 0, true);
+    }
+    if (auto* shown = std::get_if<PreviewShown>(&m_preview);
+        shown != nullptr && !shown->thumbPath.empty() && !shown->content.image.valid()) {
+      if (TextureManager* textures = m_host.textures ? m_host.textures() : nullptr) {
+        (void)m_host.thumbnails->uploadPending(*textures);
+        if (const TextureHandle image = m_host.thumbnails->peek(shown->thumbPath, shown->thumbPx); image.valid()) {
+          shown->content.image = image;
+          if (m_area != nullptr) {
+            m_area->requestTooltipRefresh();
+          }
+        }
+      }
     }
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
@@ -1121,12 +1156,62 @@ namespace term {
     if (next == m_link && overPill == m_overPill) {
       return;
     }
+    const bool linkChanged = next != m_link;
     m_link = std::move(next);
     m_overPill = overPill;
     if (m_area != nullptr) {
       m_area->setCursorShape(m_link || m_overPill ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : 0);
     }
+    if (linkChanged) {
+      if (m_link && m_linkAnchor != nullptr && m_grid != nullptr) {
+        const float cw = m_grid->cellWidth();
+        const float ch = m_grid->cellHeight();
+        m_linkAnchor->setPosition(static_cast<float>(m_link->start) * cw, static_cast<float>(m_link->row) * ch);
+        m_linkAnchor->setSize(static_cast<float>(m_link->end - m_link->start) * cw, ch);
+      }
+      setPreview(m_link ? Preview{PreviewArmed{}} : Preview{PreviewOff{}});
+    }
     scheduleRedraw(Redraw::All);
+  }
+
+  int TerminalView::previewPx() const {
+    return static_cast<int>(std::lround(Tokens::componentTooltipPreview * m_uiScale * m_deviceScale));
+  }
+
+  void TerminalView::setPreview(Preview next) {
+    if (const auto* shown = std::get_if<PreviewShown>(&m_preview); shown != nullptr && !shown->thumbPath.empty()) {
+      m_host.thumbnails->release(shown->thumbPath, shown->thumbPx);
+    }
+    m_preview = std::move(next);
+    m_previewTimer.stop();
+    if (std::holds_alternative<PreviewArmed>(m_preview)) {
+      m_previewTimer.start(std::chrono::milliseconds(Tokens::componentTooltipDelayMs), [this] { showPreview(); });
+    }
+    if (m_area != nullptr) {
+      m_area->requestTooltipRefresh();
+    }
+  }
+
+  // Armed implies m_link: a link change re-arms or turns the preview off.
+  void TerminalView::showPreview() {
+    PreviewShown shown;
+    shown.content.title = m_link->uri;
+    if (m_link->uri.starts_with("file://")) {
+      if (const std::filesystem::path path = pathFromFileUri(m_link->uri); !path.empty()) {
+        shown.content.title = path.has_filename() ? path.filename().string() : path.string();
+        if (const auto info = statFile(path)) {
+          shown.content.detail = info->isDir ? fileKindLabel(*info)
+                                             : fileKindLabel(*info) + " · " + formatFileSize(info->size);
+          if (m_host.thumbnails != nullptr && info->contentType.starts_with("image/")) {
+            shown.thumbPath = path.string();
+            shown.thumbPx = previewPx();
+            shown.content.image =
+                m_host.thumbnails->acquire(shown.thumbPath, shown.thumbPx, ThumbnailService::Priority::Now);
+          }
+        }
+      }
+    }
+    setPreview(std::move(shown));
   }
 
   void TerminalView::pointerButton(std::uint32_t button, float localX, float localY, bool pressed,

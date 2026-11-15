@@ -596,6 +596,7 @@ radius = 8.0
 padding_x = 8.0
 offset = 8.0
 delay_ms = 600
+preview = 200.0 # long edge of an image preview (terminal link hover)
 
 [component.toast]
 height = 40.0

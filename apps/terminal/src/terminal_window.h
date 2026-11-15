@@ -25,6 +25,7 @@ class Input;
 class Renderer;
 class SelectionList;
 class Surface;
+class ThumbnailService;
 
 namespace term {
 
@@ -52,7 +53,7 @@ namespace term {
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
     // activation token.
-    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents,
+    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents, ThumbnailService& thumbnails,
                    const std::vector<WindowOrigin>& origins,
                    std::function<void()> close, std::function<void(const std::string& token)> newWindow);
     ~TerminalWindow();
@@ -86,6 +87,7 @@ namespace term {
     AppWindow& m_window;
     Notifier& m_notifier;
     agent::Host& m_agents;
+    ThumbnailService& m_thumbnails;
     std::function<void()> m_close;
     std::function<void(const std::string& token)> m_newWindow;
     SessionList m_sessions;

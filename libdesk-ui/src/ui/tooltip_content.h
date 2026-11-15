@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/core/renderer.h"
+#include "render/core/texture_handle.h"
 
 #include <string>
 #include <string_view>
@@ -45,4 +46,15 @@ struct TooltipAnchorInsets {
   float left = 0.0F;
 };
 
-using TooltipContent = std::variant<std::monostate, std::string, std::vector<TooltipRow>>;
+// A link or file preview: an optional image (owned by the caller, alive while shown), a title and a detail line.
+struct TooltipPreview {
+  TextureHandle image;
+  std::string title;
+  std::string detail;
+
+  bool operator==(const TooltipPreview& o) const {
+    return image.id == o.image.id && image.generation == o.image.generation && title == o.title && detail == o.detail;
+  }
+};
+
+using TooltipContent = std::variant<std::monostate, std::string, std::vector<TooltipRow>, TooltipPreview>;
