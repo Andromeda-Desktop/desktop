@@ -1295,6 +1295,7 @@ if build_tests
     'session_end_phase',
     'settings_pages',
     'settings_rows_generated',
+    'settings_rows_roundtrip',
     'shared_worker',
     'state_store',
     'string_utils',
