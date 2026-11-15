@@ -13,6 +13,8 @@ namespace term::agent {
     std::string text;
     // Table only: the header row first; every row has the header's column count; cells hold Pango markup.
     std::vector<std::vector<std::string>> rows = {};
+    // Table only, per column: "---:" in the rule line aligns the column to the end (numbers).
+    std::vector<bool> alignEnd = {};
   };
 
   // The Markdown subset agents write: paragraphs, `code`, **bold**, *italic*, fenced code, - and 1. lists, pipe tables.

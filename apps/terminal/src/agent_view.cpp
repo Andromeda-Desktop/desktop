@@ -3,6 +3,7 @@
 #include "agent_host.h"
 #include "agent_markup.h"
 #include "design_tokens.h"
+#include "render/animation/animation_manager.h"
 #include "render/scene/node.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -68,6 +69,7 @@ namespace term {
     class AgentRoot final : public Flex {
     public:
       Node* jump = nullptr;
+      Node* jumpShadow = nullptr; // e2 key shadow under the jump pill
       Node* slash = nullptr;
       Node* dock = nullptr;
       float scale = 1.0F;
@@ -93,7 +95,10 @@ namespace term {
         if (jump != nullptr && jump->visible()) {
           const LayoutSize size = jump->measure(renderer, {});
           // The dock's top padding is the 16 gap between the pill and the composer.
-          float_(renderer, *jump, (width() - size.width) / 2.0F, dock->y() - size.height, size.width, size.height);
+          const float x = (width() - size.width) / 2.0F;
+          const float y = dock->y() - size.height;
+          float_(renderer, *jump, x, y, size.width, size.height);
+          float_(renderer, *jumpShadow, x, y + Tokens::elevationE2.keyY * scale, size.width, size.height);
         }
         if (slash != nullptr && slash->visible()) {
           const float inset = Tokens::spaceP16 * scale;
@@ -216,7 +221,7 @@ namespace term {
 
       // Column-major so each column takes its widest cell: all cells in a row share one height, so rows line up and the
       // separators meet.
-      std::unique_ptr<Node> table(const std::vector<std::vector<std::string>>& rows) const {
+      std::unique_ptr<Node> table(const std::vector<std::vector<std::string>>& rows, const std::vector<bool>& alignEnd) const {
         auto grid = ui::row({.align = FlexAlign::Start});
         for (std::size_t c = 0; c < rows.front().size(); ++c) {
           auto column = ui::column({.align = FlexAlign::Stretch});
@@ -225,11 +230,13 @@ namespace term {
               column->addChild(ui::column({.fill = colorSpecFromRole(ColorRole::Separator), .height = 1.0F}));
             }
             auto cell = ui::row({.align = FlexAlign::Center,
+                                 .justify = alignEnd[c] ? FlexJustify::End : FlexJustify::Start,
                                  .paddingH = Tokens::spaceP12 * s,
                                  .height = (r == 0 ? Tokens::componentListTableHeader : Tokens::sizeRowCompact) * s});
             cell->addChild(ui::label({.text = rows[r][c],
                                       .fontSize = (r == 0 ? Tokens::typeFootnote : Tokens::typeParagraph).size * s,
                                       .fontWeight = r == 0 ? FontWeight::Medium : FontWeight::Normal,
+                                      .fontFeatures = alignEnd[c] ? std::optional<std::string>("tnum") : std::nullopt,
                                       .color = colorSpecFromRole(r == 0 ? ColorRole::Label2 : ColorRole::Label1),
                                       .maxLines = 1,
                                       .configure = [](Label& label) { label.setUseMarkup(true); }}));
@@ -570,7 +577,7 @@ namespace term {
           } else if constexpr (std::is_same_v<T, agent::Note>) {
             return e.text.size();
           } else if constexpr (std::is_same_v<T, agent::Action>) {
-            return (e.output.size() << 8) ^ (e.diffs.size() << 4) ^ static_cast<std::uint64_t>(e.status);
+            return (e.output.size() << 8) ^ (e.diffs.size() << 4) ^ static_cast<std::uint64_t>(e.status) ^ (asked(e) ? 1U << 7 : 0U);
           } else if constexpr (std::is_same_v<T, agent::Turn>) {
             return std::hash<std::string>{}(agoText(e.started));
           } else if constexpr (std::is_same_v<T, agent::Request>) {
@@ -606,7 +613,55 @@ namespace term {
 
   std::unique_ptr<Node> AgentView::createItem() { return ui::column({.align = FlexAlign::Stretch}); }
 
-  void AgentView::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float width, bool /*hovered*/) {
+  bool AgentView::asked(const agent::Action& action) const {
+    const agent::Session& model = *session();
+    return std::ranges::any_of(model.pending(), [&](std::size_t entry) {
+      const auto* request = std::get_if<agent::Request>(&model.entries()[entry]);
+      return request != nullptr && request->toolCallId == action.id;
+    });
+  }
+
+  // The card opens from its header row to full height on spring.move; the rest fades in once the move passes the
+  // content gate. Reduced motion jumps to the end.
+  void AgentView::arrive(Renderer& renderer, Flex& holder, float width) {
+    AnimationManager* animations = holder.animationManager();
+    auto* outer = holder.children().empty() ? nullptr : static_cast<Flex*>(holder.children().front().get());
+    if (animations == nullptr || outer == nullptr || outer->children().empty()) {
+      return;
+    }
+    auto* card = static_cast<Flex*>(outer->children().front().get());
+    const float full = outer->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height - 2.0F * Tokens::spaceP8 * m_scale;
+    const float closed = (Tokens::spaceP12 + Tokens::componentAgentActionRow) * m_scale; // top padding + header row
+    std::vector<Node*> body;
+    for (std::size_t i = 1; i < card->children().size(); ++i) {
+      body.push_back(card->children()[i].get());
+      body.back()->setOpacity(0.0F);
+    }
+    card->setClipChildren(true);
+    card->setMaxHeight(closed);
+    animations->animateGated(
+        closed, full, Style::spring(Tokens::springMove),
+        [card](float h) {
+          card->setMaxHeight(h);
+          card->markLayoutDirty();
+        },
+        Tokens::motionContentGate,
+        [animations, body, card] {
+          animations->animateSpring(0.0F, 1.0F, Style::spring(Tokens::springFade), [body](float v) {
+            for (Node* node : body) {
+              node->setOpacity(v);
+            }
+          }, {}, card);
+        },
+        [card] {
+          card->setMaxHeight(0.0F);
+          card->setClipChildren(false);
+          card->markLayoutDirty();
+        },
+        card, 0.0F, Unit::Px);
+  }
+
+  void AgentView::bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool /*hovered*/) {
     auto& holder = static_cast<Flex&>(item);
     std::erase_if(m_clocks, [&](const ActionClock& clock) { return clock.holder == &item; });
     while (!holder.children().empty()) {
@@ -614,6 +669,10 @@ namespace term {
     }
     Label* elapsed = nullptr;
     holder.addChild(buildItem(index, width, &elapsed));
+    const auto& pending = session()->pending();
+    if (index >= 1 && std::ranges::find(pending, index - 1) != pending.end() && m_arrived.insert(index - 1).second) {
+      arrive(renderer, holder, width);
+    }
     if (elapsed != nullptr) {
       const auto& action = std::get<agent::Action>(session()->entries()[index - 1]);
       m_clocks.push_back({.holder = &item, .label = elapsed, .started = action.started});
@@ -696,9 +755,11 @@ namespace term {
             prose->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s, indent);
             auto blocks = agent::markdownBlocks(e.text);
             if (streamingAt(entry)) {
-              // A thin caret ends the last run while the reply streams (no blink). It takes the label colour: Label draws
-              // one colour, so the handoff's accent needs colour spans in Label.
-              const std::string caret = "\u258f";
+              // A thin accent caret ends the last run while the reply streams (no blink).
+              const Color accent = colorForRole(ColorRole::AccentText);
+              const auto byte = [](float v) { return static_cast<int>(std::lround(std::clamp(v, 0.0F, 1.0F) * 255.0F)); };
+              const std::string caret = std::format("<span foreground=\"#{:02x}{:02x}{:02x}\">\u258f</span>", byte(accent.r),
+                                                    byte(accent.g), byte(accent.b));
               if (blocks.empty() || blocks.back().kind != agent::Block::Kind::Paragraph) {
                 blocks.push_back({agent::Block::Kind::Paragraph, caret});
               } else {
@@ -709,7 +770,7 @@ namespace term {
               if (block.kind == agent::Block::Kind::Code) {
                 prose->addChild(kit.well(lines(block.text), ColorRole::Label1, false, true));
               } else if (block.kind == agent::Block::Kind::Table) {
-                prose->addChild(kit.table(block.rows));
+                prose->addChild(kit.table(block.rows, block.alignEnd));
               } else {
                 prose->addChild(kit.text(block.text, Tokens::typeParagraph, ColorRole::Label1, FontWeight::Normal, measure, true));
               }
@@ -722,6 +783,9 @@ namespace term {
                                     FontWeight::Normal, measure, true));
             item->addChild(std::move(note));
           } else if constexpr (std::is_same_v<T, agent::Action>) {
+            if (asked(e)) {
+              return; // its request card stands in its place
+            }
             const Verb verb = verbFor(e.kind);
             const bool failed = e.status == agent::ActionStatus::Failed;
             const bool muted = e.status == agent::ActionStatus::Cancelled || e.status == agent::ActionStatus::Rejected;
@@ -992,6 +1056,9 @@ namespace term {
     auto dock = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP16 * s});
     dock->addChild(std::move(composer));
     root->dock = root->addChild(std::move(dock));
+    auto shadow = ui::box({.out = &m_jumpShadow, .visible = false, .participatesInLayout = false});
+    shadow->setSoftness(Tokens::elevationE2.keyBlur * s);
+    root->jumpShadow = root->addChild(std::move(shadow));
     auto jump = ui::row({.out = &m_jump});
     jump->setParticipatesInLayout(false);
     jump->setVisible(false);
@@ -1017,6 +1084,7 @@ namespace term {
     m_root = nullptr;
     m_composer = nullptr;
     m_jump = nullptr;
+    m_jumpShadow = nullptr;
     m_slash = nullptr;
     m_log = nullptr;
     m_clocks.clear();
@@ -1089,6 +1157,9 @@ namespace term {
       const float h = Tokens::sizeControlM * s;
       m_jump->setFill(colorSpecFromRole(ColorRole::Card));
       m_jump->setRadius(h / 2.0F);
+      m_jumpShadow->setRadius(h / 2.0F);
+      m_jumpShadow->setFill(colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE2.keyLight
+                                                                                         : Tokens::elevationE2.keyDark));
       m_jump->setBorder(colorSpecFromRole(ColorRole::Separator), 0.5F * s);
       auto pill = ui::button({.text = text,
                               .glyph = std::string(asks ? "hand-stop" : "arrow-down"),
@@ -1106,6 +1177,7 @@ namespace term {
     }
     if (m_jump->visible() != show) {
       m_jump->setVisible(show);
+      m_jumpShadow->setVisible(show);
       m_root->markLayoutDirty();
     }
   }

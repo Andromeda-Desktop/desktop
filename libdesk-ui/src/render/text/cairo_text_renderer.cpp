@@ -92,10 +92,17 @@ namespace {
     }
   }
 
-  bool containsColorGlyph(PangoLayout* layout) {
+  // Colour glyphs (emoji) or a markup foreground span: the text needs the RGBA path, a one-colour tint would lose them.
+  bool hasOwnColor(PangoLayout* layout) {
     for (GSList* line = pango_layout_get_lines_readonly(layout); line != nullptr; line = line->next) {
       for (GSList* run = static_cast<PangoLayoutLine*>(line->data)->runs; run != nullptr; run = run->next) {
-        const auto* glyphs = static_cast<PangoGlyphItem*>(run->data)->glyphs;
+        const auto* item = static_cast<PangoGlyphItem*>(run->data);
+        for (GSList* attr = item->item->analysis.extra_attrs; attr != nullptr; attr = attr->next) {
+          if (static_cast<PangoAttribute*>(attr->data)->klass->type == PANGO_ATTR_FOREGROUND) {
+            return true;
+          }
+        }
+        const auto* glyphs = item->glyphs;
         for (int i = 0; i < glyphs->num_glyphs; ++i) {
           if (glyphs->glyphs[i].attr.is_color) {
             return true;
@@ -1136,7 +1143,7 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   if (!m_caching) {
     PangoLayout* layout =
         buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
-    const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !containsColorGlyph(layout);
+    const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !hasOwnColor(layout);
     Color rasterColor = color;
     if (!tinted) {
       rasterColor.a = 1.0F;
@@ -1171,7 +1178,7 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
 
   PangoLayout* layout =
       buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
-  const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !containsColorGlyph(layout);
+  const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !hasOwnColor(layout);
   if (tinted) {
     key.colorRgba = 0U;
   }

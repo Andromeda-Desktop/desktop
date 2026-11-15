@@ -152,6 +152,14 @@ namespace term::agent {
         Block table{Block::Kind::Table, {}};
         table.rows.push_back(tableCells(line));
         const std::size_t columns = table.rows.front().size();
+        const std::string_view rule = trim(markdown.substr(pos, markdown.find('\n', pos) - pos));
+        std::size_t cellStart = rule.starts_with('|') ? 1 : 0;
+        while (table.alignEnd.size() < columns && cellStart < rule.size()) {
+          const auto bar = rule.find('|', cellStart);
+          table.alignEnd.push_back(trim(rule.substr(cellStart, bar - cellStart)).ends_with(':'));
+          cellStart = bar == std::string_view::npos ? rule.size() : bar + 1;
+        }
+        table.alignEnd.resize(columns);
         const auto next = [&] {
           const auto end = markdown.find('\n', pos);
           const std::string_view row = markdown.substr(pos, end == std::string_view::npos ? std::string_view::npos : end - pos);

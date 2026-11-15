@@ -7,8 +7,10 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <set>
 
 class Button;
+class Box;
 class Flex;
 class Input;
 class Label;
@@ -70,6 +72,9 @@ namespace term {
     [[nodiscard]] bool streamingAt(std::size_t entry) const;
     // elapsed receives a running action's elapsed-time label.
     [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width, Label** elapsed);
+    // A pending request asks about this action: the card replaces its row.
+    [[nodiscard]] bool asked(const agent::Action& action) const;
+    void arrive(Renderer& renderer, Flex& holder, float width);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
     void answer(std::size_t option);
     void submit(const std::string& text);
@@ -88,6 +93,7 @@ namespace term {
     Flex* m_root = nullptr;
     Flex* m_composer = nullptr;
     Flex* m_jump = nullptr;  // holds the jump pill while it shows
+    Box* m_jumpShadow = nullptr;
     std::size_t m_seen = 0;  // items the user has seen at the bottom of the log
     Flex* m_slash = nullptr; // the slash command menu over the composer
     std::size_t m_slashSelected = 0;
@@ -100,6 +106,7 @@ namespace term {
       agent::WallTime started;
     };
     std::vector<ActionClock> m_clocks;
+    std::set<std::size_t> m_arrived; // request entries whose card has played its arrival
     Input* m_input = nullptr;
     Label* m_meta = nullptr;
     Button* m_send = nullptr;
