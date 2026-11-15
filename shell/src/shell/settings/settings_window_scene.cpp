@@ -26,6 +26,7 @@
 #include "shell/settings/settings_content.h"
 #include "shell/settings/settings_content_common.h"
 #include "shell/settings/settings_content_plugins.h"
+#include "shell/settings/printers_model.h"
 #include "shell/settings/settings_pages.h"
 #include "shell/settings/settings_selection_style.h"
 #include "shell/settings/settings_sidebar.h"
@@ -1069,6 +1070,14 @@ void SettingsWindow::rebuildSettingsContent() {
       const auto colon = m_detail.find(':');
       std::string name = colon == std::string::npos ? m_detail : m_detail.substr(colon + 1);
       name = name.substr(0, name.find('\t'));
+      // A notification opens "printer:<queue>"; the loaded model gives the display name.
+      if (m_detail.starts_with("printer:") && m_printers != nullptr) {
+        const auto& printers = m_printers->printers();
+        const std::string queue = m_detail.substr(m_detail.find('\t') + 1);
+        if (const auto it = std::ranges::find(printers, queue, &PrinterInfo::name); it != printers.end()) {
+          name = it->label;
+        }
+      }
       title = name.empty() ? pageLabel : pageLabel + " › " + name;
     }
     m_contentContainer->addChild(

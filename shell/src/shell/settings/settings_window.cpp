@@ -447,7 +447,7 @@ void SettingsWindow::open(std::string context) {
   bool expert = false;
   std::string detail;
   if (context.starts_with("printer:")) {
-    // "printer:<queue>" from a print notification opens that queue's details; the queue name is the title.
+    // "printer:<queue>" from a print notification opens that queue's details.
     page = "printers";
     detail = context + "\t" + context.substr(8);
   } else if (context.starts_with("bar:")) {
