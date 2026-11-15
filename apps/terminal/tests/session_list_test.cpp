@@ -36,7 +36,7 @@ void checkInvariants(const SessionList& list) {
   }
 }
 
-SessionEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
+SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
   switch (std::uniform_int_distribution<int>(0, 7)(rng)) {
   case 0: return Open{id, SessionKind::Shell, "s", "~"};
@@ -59,7 +59,7 @@ int main() {
     auto now = SessionClock::time_point{};
     for (step = 0; step < 400; ++step) {
       now += std::chrono::milliseconds(250);
-      const SessionEvent event = randomEvent(rng, now);
+      const SessionListEvent event = randomEvent(rng, now);
       const SessionList before = list;
       const auto shownBefore = list.shown();
       const ApplyResult result = list.apply(event);

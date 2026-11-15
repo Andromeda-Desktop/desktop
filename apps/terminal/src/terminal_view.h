@@ -47,6 +47,9 @@ namespace term {
       std::function<std::uint32_t()> modifiers;
       // A long command finished while the grid had no focus (OSC 133): post a notification.
       std::function<void(const std::string& summary, const std::string& body)> commandFinished;
+      // OSC 133: a command started running / ended (exit code when the shell reports one).
+      std::function<void(const std::string& command)> commandStarted;
+      std::function<void(std::optional<int> exitCode)> commandEnded;
       // The shell reported a new working directory (OSC 7); a local path.
       std::function<void(const std::string& cwd)> cwdChanged;
       // Ctrl+click on a link: an http(s), mailto or file URI.

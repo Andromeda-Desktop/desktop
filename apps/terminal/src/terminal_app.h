@@ -30,7 +30,7 @@ namespace term {
   private:
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
-    WindowOrigin m_nextOrigin; // what the window createWindow() makes next runs
+    std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
   };
 
 } // namespace term

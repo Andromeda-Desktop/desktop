@@ -21,7 +21,7 @@ namespace term {
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
-    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, std::exchange(m_nextOrigin, NewShell{}),
+    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); });
     return window;
   }
@@ -38,7 +38,7 @@ namespace term {
       if (!std::filesystem::is_directory(path, ec)) {
         continue;
       }
-      m_nextOrigin = NewShell{path};
+      m_nextOrigins = {NewShell{path}};
       AppWindow& window = createWindow();
       if (window.open()) {
         window.activate(activationToken);
@@ -53,8 +53,12 @@ namespace term {
   void TerminalApp::activate(const std::string& activationToken) {
     bool reattached = false;
     if (windows().empty()) {
+      std::vector<WindowOrigin> origins;
       for (const std::uint64_t id : holder::listOrphans()) {
-        m_nextOrigin = Reattach{id};
+        origins.emplace_back(Reattach{id});
+      }
+      if (!origins.empty()) {
+        m_nextOrigins = std::move(origins);
         AppWindow& window = createWindow();
         if (window.open()) {
           window.activate(activationToken);

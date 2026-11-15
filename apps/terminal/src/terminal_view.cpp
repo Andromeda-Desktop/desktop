@@ -637,6 +637,9 @@ namespace term {
     switch (mark.kind) {
     case CommandMark::Kind::OutputStart:
       m_command = CommandRunning{.start = std::chrono::steady_clock::now(), .text = mark.command};
+      if (m_host.commandStarted) {
+        m_host.commandStarted(mark.command);
+      }
       break;
     case CommandMark::Kind::CommandEnd: {
       const auto* running = std::get_if<CommandRunning>(&m_command);
@@ -650,6 +653,9 @@ namespace term {
         std::string body = running->text.empty() ? std::string{"A command"} : running->text;
         body += failed ? std::format(" exited with {} after {}", *mark.exitCode, took) : std::format(" took {}", took);
         m_host.commandFinished(failed ? "Command failed" : "Command finished", body);
+      }
+      if (running != nullptr && m_host.commandEnded) {
+        m_host.commandEnded(mark.exitCode);
       }
       m_command = CommandIdle{};
       break;

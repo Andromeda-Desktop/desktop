@@ -80,9 +80,9 @@ namespace term {
     };
   } // namespace session_event
 
-  using SessionEvent = std::variant<session_event::Open, session_event::Close, session_event::Show,
-                                    session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
-                                    session_event::Cwd, session_event::Kind>;
+  using SessionListEvent = std::variant<session_event::Open, session_event::Close, session_event::Show,
+                                        session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
+                                        session_event::Cwd, session_event::Kind>;
 
   enum class ApplyResult : std::uint8_t { Applied, Rejected, LastClosed };
 
@@ -91,7 +91,7 @@ namespace term {
   class SessionList {
   public:
     // The only transition function. A rejected event leaves the list unchanged.
-    ApplyResult apply(const SessionEvent& event);
+    ApplyResult apply(const SessionListEvent& event);
 
     [[nodiscard]] const std::vector<SessionInfo>& sessions() const noexcept { return m_sessions; }
     [[nodiscard]] const std::vector<std::uint64_t>& recent() const noexcept { return m_recent; }

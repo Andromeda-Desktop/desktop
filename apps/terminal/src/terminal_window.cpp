@@ -4,6 +4,7 @@
 #include "app/app_window.h"
 #include "notifier.h"
 #include "core/deferred_call.h"
+#include "core/input/key_modifiers.h"
 #include "core/log.h"
 #include "wayland/wayland_connection.h"
 
@@ -11,6 +12,7 @@
 #include <pwd.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 
@@ -35,60 +37,188 @@ namespace term {
     }
   } // namespace
 
-  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const WindowOrigin& origin,
-                                 std::function<void()> close)
-      : m_loop(loop), m_window(window), m_notifier(notifier),
-        m_view({.requestFrame = [this] { requestFrame(); },
-                .textures = [this]() -> TextureManager* {
-                  RenderContext& render = m_loop.renderContext();
-                  return render.glReady() ? &render.textureManager() : nullptr;
-                }, .exited = [close = std::move(close)](int) { close(); },
-                 .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
-                 .commandFinished =
-                     [this](const std::string& summary, const std::string& body) {
-                       m_notifier.notify(summary, body,
-                                         [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& token) {
-                                           if (!alive.expired()) {
-                                             m_window.activate(token);
-                                           }
-                                         });
-                     },
-                 .cwdChanged =
-                     [this](const std::string& path) {
-                       const std::string home = homeDir();
-                       const bool inHome = path == home || path.starts_with(home + "/");
-                       m_window.setTitle(inHome ? "~" + path.substr(home.size()) : path);
-                     },
-                 .openUri = [this](const std::string& uri) { openUri(uri); }}) {
-    m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
+  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier,
+                                 const std::vector<WindowOrigin>& origins, std::function<void()> close)
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_close(std::move(close)) {
+    m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
+      for (Session& session : m_views) {
+        session.view->sceneDestroyed();
+      }
+      TerminalView* view = shownView();
+      m_builtId = view != nullptr ? *m_sessions.shown() : 0;
+      if (view == nullptr) {
+        return nullptr;
+      }
       Surface* surface = m_window.surface();
       const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
-      auto node = m_view.build(renderer, m_window.uiScale(), deviceScale, width, height);
+      auto node = view->build(renderer, m_window.uiScale(), deviceScale, width, height);
       // After this build is in the scene: the dispatcher focuses only attached areas.
       DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
-        if (!alive.expired() && m_view.focusArea() != nullptr) {
-          m_window.input().setFocus(m_view.focusArea());
+        if (alive.expired()) {
+          return;
+        }
+        m_retired.clear();
+        if (TerminalView* shown = shownView(); shown != nullptr && shown->focusArea() != nullptr) {
+          m_window.input().setFocus(shown->focusArea());
         }
       });
       return node;
     });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
-      return m_view.focusArea() != nullptr && m_window.input().focusedArea() == m_view.focusArea() && m_view.key(event);
+      if (sessionKey(event)) {
+        return true;
+      }
+      TerminalView* view = shownView();
+      return view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == view->focusArea() &&
+             view->key(event);
     });
-    m_window.setActiveCallback([this](bool active) { m_view.setWindowActive(active); });
+    m_window.setActiveCallback([this](bool active) {
+      m_active = active;
+      if (TerminalView* view = shownView(); view != nullptr) {
+        view->setWindowActive(active);
+      }
+    });
     m_window.setLayoutCallback([this] {
       const AppWindow::Rect rect = m_window.contentRect();
-      m_view.setSize(rect.width, rect.height);
+      if (TerminalView* view = shownView(); view != nullptr) {
+        view->setSize(rect.width, rect.height);
+      }
     });
-    if (const auto* reattach = std::get_if<Reattach>(&origin); reattach != nullptr && m_view.reattach(reattach->heldId)) {
+    for (const WindowOrigin& origin : origins) {
+      openSession(origin);
+    }
+  }
+
+  void TerminalWindow::openSession(const WindowOrigin& origin) {
+    const std::uint64_t id = m_nextId++;
+    auto alive = std::weak_ptr<bool>(m_alive);
+    auto view = std::make_unique<TerminalView>(TerminalView::Host{
+        .requestFrame = [this] { requestFrame(); },
+        .textures = [this]() -> TextureManager* {
+          RenderContext& render = m_loop.renderContext();
+          return render.glReady() ? &render.textureManager() : nullptr;
+        },
+        // exited runs inside the view's frame(): the view is destroyed later.
+        .exited =
+            [this, id, alive](int) {
+              DeferredCall::callLater([this, id, alive] {
+                if (!alive.expired()) {
+                  apply(session_event::Close{id});
+                }
+              });
+            },
+        .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
+        .commandFinished =
+            [this](const std::string& summary, const std::string& body) {
+              m_notifier.notify(summary, body, [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& token) {
+                if (!alive.expired()) {
+                  m_window.activate(token);
+                }
+              });
+            },
+        .commandStarted =
+            [this, id](const std::string& command) {
+              apply(session_event::CommandStart{id, command, SessionClock::now()});
+            },
+        .commandEnded =
+            [this, id](std::optional<int> exitCode) {
+              apply(session_event::CommandEnd{id, exitCode, SessionClock::now()});
+            },
+        .cwdChanged =
+            [this, id](const std::string& path) {
+              const std::string home = homeDir();
+              const bool inHome = path == home || path.starts_with(home + "/");
+              const std::string shown = inHome ? "~" + path.substr(home.size()) : path;
+              apply(session_event::Cwd{id, shown});
+              if (m_sessions.shown() == id) {
+                m_window.setTitle(shown);
+              }
+            },
+        .openUri = [this](const std::string& uri) { openUri(uri); }});
+    TerminalView& ref = *view;
+    m_views.push_back({id, std::move(view)});
+    const auto* reattach = std::get_if<Reattach>(&origin);
+    if (reattach == nullptr || !ref.reattach(reattach->heldId)) {
+      const auto* fresh = std::get_if<NewShell>(&origin);
+      const std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
+      const std::string shell = loginShell();
+      if (!ref.start({shell, "-l"}, cwd.empty() ? homeDir() : cwd)) {
+        kLog.warn("cannot start {}", shell);
+      }
+    }
+    apply(session_event::Open{id, SessionKind::Shell, "", ""});
+  }
+
+  TerminalView* TerminalWindow::shownView() {
+    const auto id = m_sessions.shown();
+    if (!id) {
+      return nullptr;
+    }
+    const auto it = std::ranges::find(m_views, *id, &Session::id);
+    return it == m_views.end() ? nullptr : it->view.get();
+  }
+
+  void TerminalWindow::apply(const SessionListEvent& event) {
+    const auto before = m_sessions.shown();
+    const ApplyResult result = m_sessions.apply(event);
+    if (result == ApplyResult::Rejected) {
       return;
     }
-    const auto* fresh = std::get_if<NewShell>(&origin);
-    const std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
-    const std::string shell = loginShell();
-    if (!m_view.start({shell, "-l"}, cwd.empty() ? homeDir() : cwd)) {
-      kLog.warn("cannot start {}", shell);
+    if (const auto* close = std::get_if<session_event::Close>(&event)) {
+      const auto it = std::ranges::find(m_views, close->id, &Session::id);
+      if (close->id == m_builtId) {
+        m_retired.push_back(std::move(*it));
+      }
+      m_views.erase(it);
     }
+    if (result == ApplyResult::LastClosed) {
+      m_close();
+      return;
+    }
+    if (m_sessions.shown() != before) {
+      show(*m_sessions.shown());
+    }
+  }
+
+  void TerminalWindow::show(std::uint64_t id) {
+    for (Session& session : m_views) {
+      session.view->setWindowActive(session.id == id && m_active);
+    }
+    if (const SessionInfo* info = m_sessions.find(id); info != nullptr && !info->cwd.empty()) {
+      m_window.setTitle(info->cwd);
+    }
+    if (id != m_builtId) {
+      m_window.requestRebuild();
+    }
+  }
+
+  bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
+    constexpr std::uint32_t kTab = 0xff09;
+    constexpr std::uint32_t kLeftTab = 0xfe20;
+    const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super);
+    if (!event.pressed || (mods & KeyMod::Ctrl) == 0 || (mods & (KeyMod::Alt | KeyMod::Super)) != 0) {
+      return false;
+    }
+    const bool shift = (mods & KeyMod::Shift) != 0;
+    const auto& recent = m_sessions.recent();
+    if (event.sym == kTab || event.sym == kLeftTab) {
+      if (recent.size() > 1) {
+        apply(session_event::Show{shift ? recent.back() : recent[1]});
+      }
+      return true;
+    }
+    if (shift && (event.unshifted == 't' || event.unshifted == 'T')) {
+      openSession(NewShell{});
+      return true;
+    }
+    if (!shift && event.unshifted >= '1' && event.unshifted <= '9') {
+      const auto index = static_cast<std::size_t>(event.unshifted - '1');
+      if (index < m_sessions.sessions().size()) {
+        apply(session_event::Show{m_sessions.sessions()[index].id});
+      }
+      return true;
+    }
+    return false;
   }
 
   TerminalWindow::~TerminalWindow() {
@@ -101,7 +231,9 @@ namespace term {
 
   void TerminalWindow::surfaceLost() {
     m_tickSurface = nullptr;
-    m_view.sceneDestroyed();
+    for (Session& session : m_views) {
+      session.view->sceneDestroyed();
+    }
   }
 
   void TerminalWindow::openUri(const std::string& uri) {
@@ -126,9 +258,16 @@ namespace term {
       m_tickSurface = surface;
       surface->setFrameTickCallback([this](float) {
         m_loop.renderContext().makeCurrent(m_window.surface()->renderTarget());
-        m_view.frame();
+        // Hidden sessions run frame() too: it reports their exit; without a grid it draws nothing.
+        for (std::size_t i = 0; i < m_views.size(); ++i) {
+          m_views[i].view->frame();
+        }
       });
-      surface->setScaleChangedCallback([this](float scale) { m_view.setDeviceScale(scale); });
+      surface->setScaleChangedCallback([this](float scale) {
+        for (Session& session : m_views) {
+          session.view->setDeviceScale(scale);
+        }
+      });
     }
     surface->requestFrameTick();
   }

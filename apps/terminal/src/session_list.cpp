@@ -30,7 +30,7 @@ namespace term {
     get(id)->seen = Seen::Seen;
   }
 
-  ApplyResult SessionList::apply(const SessionEvent& event) {
+  ApplyResult SessionList::apply(const SessionListEvent& event) {
     using namespace session_event;
     const bool ok = std::visit(
         Overload{
