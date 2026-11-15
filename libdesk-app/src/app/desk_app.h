@@ -9,6 +9,7 @@
 #include "core/timer_manager.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -72,6 +73,8 @@ protected:
   void destroyWindows() { m_windows.clear(); }
 
 private:
+  // Everything before the loop runs; an exit code when the process must end without the loop.
+  std::optional<int> start(int argc, char* argv[]);
   void addStandardCommands();
   void routePointer(const PointerEvent& event);
   void routeKey(const KeyboardEvent& event);

@@ -17,6 +17,7 @@
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
 
+#include <optional>
 #include <string_view>
 #include <csignal>
 #include <fcntl.h>
@@ -24,6 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <sdbus-c++/Error.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace {
@@ -110,6 +112,29 @@ DeskApp::~DeskApp() {
 }
 
 int DeskApp::run(int argc, char* argv[]) {
+  std::optional<int> exit;
+  try {
+    exit = start(argc, argv);
+  } catch (const sdbus::Error& e) {
+    // The bus died while the start registered objects or signal handlers; a later loss quits through the loop.
+    kLog.error("{} start: {}", m_info.id, e.getMessage());
+    exit = 1;
+  }
+  if (!exit) {
+    exit = m_loop.run();
+    shutdown();
+  }
+  // Window content can call into subclass members, which die before ~DeskApp: close while they live.
+  for (const auto& w : m_windows) {
+    w->close();
+    windowClosed(*w);
+  }
+  m_windows.clear();
+  m_state.flush();
+  return *exit;
+}
+
+std::optional<int> DeskApp::start(int argc, char* argv[]) {
   initLogLevelFromEnvironment();
   std::vector<std::string> uris;
   bool serviceStart = false; // D-Bus activation: the Activate or Open call that started us makes the window
@@ -221,10 +246,7 @@ int DeskApp::run(int argc, char* argv[]) {
     kLog.error("{} opened no window", m_info.id);
     return 1;
   }
-  const int code = m_loop.run();
-  shutdown();
-  m_state.flush();
-  return code;
+  return std::nullopt;
 }
 
 AppWindow& DeskApp::addWindow(AppWindow::Config config) {
