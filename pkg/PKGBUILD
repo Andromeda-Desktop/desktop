@@ -342,7 +342,7 @@ package_andromeda-compositor-git() {
 package_andromeda-shell-git() {
   pkgdesc='Noctalia desktop shell, desktop fork'
   depends=(bash cairo curl fontconfig freetype2 git glib2 glibc harfbuzz hicolor-icon-theme jemalloc libgcc libglvnd
-    libical libjxl libpipewire libqalculate librsvg libsndfile libsodium libstdc++ libwebp libwireplumber
+    libical libjxl libpipewire libqalculate librsvg libsndfile libsodium openssl libstdc++ libwebp libwireplumber
     libxkbcommon libxml2 md4c pam polkit pango qrencode sdbus-cpp tomlplusplus wayland
     gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugin-pipewire gst-plugin-va andromeda-system-git)
   optdepends=('ddcutil: monitor brightness control' 'fprintd: fingerprint unlock and fingerprint for admin prompts')

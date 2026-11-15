@@ -97,6 +97,8 @@ namespace security {
     ) = 0;
     virtual SecretStoreBackendResult
     erase(const SecretStoreAttributes& attributes, SecretStoreCancellation& cancellation) = 0;
+    // The worker goes idle: drop connections kept between operations.
+    virtual void release() {}
   };
 
   class SecretStoreOperation {

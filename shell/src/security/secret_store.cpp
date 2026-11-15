@@ -1,9 +1,9 @@
 #include "security/secret_store.h"
+
+#include "core/log.h"
 #include "protocols/crash_capture.h"
 #include "util/secure_wipe.h"
 #include "util/thread_name.h"
-
-#include "core/log.h"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +14,12 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <openssl/bn.h>
+#include <openssl/core_names.h>
+#include <openssl/crypto.h>
+#include <openssl/evp.h>
+#include <openssl/kdf.h>
+#include <openssl/rand.h>
 #include <optional>
 #include <poll.h>
 #include <sdbus-c++/sdbus-c++.h>
@@ -154,7 +160,8 @@ namespace security {
       if (name == "org.freedesktop.DBus.Error.AccessDenied") {
         return makeResult(SecretStoreStatus::DeniedOrLocked, SecretStoreErrorCategory::PermissionDenied);
       }
-      if (name == "org.freedesktop.DBus.Error.ServiceUnknown" || name == "org.freedesktop.DBus.Error.NameHasNoOwner"
+      if (name == "org.freedesktop.DBus.Error.ServiceUnknown"
+          || name == "org.freedesktop.DBus.Error.NameHasNoOwner"
           || name == "org.freedesktop.DBus.Error.Spawn.ServiceNotFound") {
         return makeResult(SecretStoreStatus::Unavailable, SecretStoreErrorCategory::ProviderUnavailable);
       }
@@ -165,6 +172,137 @@ namespace security {
     }
 
     struct OperationCancelled {};
+
+    [[noreturn]] void cryptoFailure(const char* what) {
+      throw sdbus::Error(sdbus::Error::Name{"org.andromeda.Secret.Error.Transport"}, what);
+    }
+
+    using AesKey = std::array<std::uint8_t, 16>;
+
+    // The client half of dh-ietf1024-sha256-aes128-cbc-pkcs7 (Secret Service spec, "Transfer of Secrets"): Oakley
+    // group 2 with generator 2, and HKDF-SHA256 without salt or info over the shared secret padded to 128 bytes.
+    class DhExchange {
+    public:
+      DhExchange() {
+        if (m_prime == nullptr || m_private == nullptr || m_context == nullptr) {
+          cryptoFailure("DH setup");
+        }
+        BN_set_flags(m_private.get(), BN_FLG_CONSTTIME);
+        do {
+          if (BN_priv_rand_range(m_private.get(), m_prime.get()) != 1) {
+            cryptoFailure("DH private key");
+          }
+        } while (BN_cmp(m_private.get(), BN_value_one()) <= 0);
+        BigNum generator(BN_new(), &BN_free);
+        BigNum publicKey(BN_new(), &BN_free);
+        if (generator == nullptr
+            || publicKey == nullptr
+            || BN_set_word(generator.get(), 2) != 1
+            || BN_mod_exp(publicKey.get(), generator.get(), m_private.get(), m_prime.get(), m_context.get()) != 1) {
+          cryptoFailure("DH public key");
+        }
+        m_public = bytes(publicKey.get());
+      }
+
+      [[nodiscard]] const std::vector<std::uint8_t>& publicKey() const { return m_public; }
+
+      [[nodiscard]] AesKey deriveKey(const std::vector<std::uint8_t>& peer) const {
+        BigNum peerKey(BN_bin2bn(peer.data(), static_cast<int>(peer.size()), nullptr), &BN_free);
+        BigNum upper(BN_dup(m_prime.get()), &BN_free);
+        if (peerKey == nullptr
+            || upper == nullptr
+            || BN_sub_word(upper.get(), 1) != 1
+            || BN_cmp(peerKey.get(), BN_value_one()) <= 0
+            || BN_cmp(peerKey.get(), upper.get()) >= 0) {
+          cryptoFailure("DH peer key out of range");
+        }
+        BigNum shared(BN_secure_new(), &BN_clear_free);
+        if (shared == nullptr
+            || BN_mod_exp(shared.get(), peerKey.get(), m_private.get(), m_prime.get(), m_context.get()) != 1) {
+          cryptoFailure("DH shared secret");
+        }
+        std::vector<std::uint8_t> ikm = bytes(shared.get());
+        AesKey key{};
+        std::unique_ptr<EVP_KDF, decltype(&EVP_KDF_free)> kdf(EVP_KDF_fetch(nullptr, "HKDF", nullptr), &EVP_KDF_free);
+        std::unique_ptr<EVP_KDF_CTX, decltype(&EVP_KDF_CTX_free)> context(
+            kdf == nullptr ? nullptr : EVP_KDF_CTX_new(kdf.get()), &EVP_KDF_CTX_free
+        );
+        char digest[] = "SHA256";
+        const std::array<OSSL_PARAM, 3> params{
+            OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST, digest, 0),
+            OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_KEY, ikm.data(), ikm.size()),
+            OSSL_PARAM_construct_end(),
+        };
+        const bool derived =
+            context != nullptr && EVP_KDF_derive(context.get(), key.data(), key.size(), params.data()) == 1;
+        OPENSSL_cleanse(ikm.data(), ikm.size());
+        if (!derived) {
+          cryptoFailure("HKDF");
+        }
+        return key;
+      }
+
+    private:
+      using BigNum = std::unique_ptr<BIGNUM, decltype(&BN_free)>;
+      static constexpr int kPrimeBytes = 128;
+
+      static std::vector<std::uint8_t> bytes(const BIGNUM* value) {
+        std::vector<std::uint8_t> out(kPrimeBytes);
+        if (BN_bn2binpad(value, out.data(), kPrimeBytes) != kPrimeBytes) {
+          cryptoFailure("DH encoding");
+        }
+        return out;
+      }
+
+      BigNum m_prime{BN_get_rfc2409_prime_1024(nullptr), &BN_free};
+      BigNum m_private{BN_secure_new(), &BN_clear_free};
+      std::unique_ptr<BN_CTX, decltype(&BN_CTX_free)> m_context{BN_CTX_secure_new(), &BN_CTX_free};
+      std::vector<std::uint8_t> m_public;
+    };
+
+    using CipherContext = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>;
+
+    // AES-128-CBC with PKCS#7 padding; the parameters carry the random IV.
+    std::pair<std::vector<std::uint8_t>, std::vector<std::uint8_t>>
+    encrypt(const AesKey& key, std::span<const std::uint8_t> plain) {
+      std::vector<std::uint8_t> iv(16);
+      std::vector<std::uint8_t> cipher(plain.size() + 16);
+      CipherContext context(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
+      int length = 0;
+      int tail = 0;
+      if (context == nullptr
+          || RAND_bytes(iv.data(), static_cast<int>(iv.size())) != 1
+          || EVP_EncryptInit_ex(context.get(), EVP_aes_128_cbc(), nullptr, key.data(), iv.data()) != 1
+          || EVP_EncryptUpdate(context.get(), cipher.data(), &length, plain.data(), static_cast<int>(plain.size())) != 1
+          || EVP_EncryptFinal_ex(context.get(), cipher.data() + length, &tail) != 1) {
+        cryptoFailure("AES encrypt");
+      }
+      cipher.resize(static_cast<std::size_t>(length + tail));
+      return {std::move(iv), std::move(cipher)};
+    }
+
+    std::vector<std::uint8_t>
+    decrypt(const AesKey& key, const std::vector<std::uint8_t>& iv, const std::vector<std::uint8_t>& cipher) {
+      if (iv.size() != 16 || cipher.size() % 16 != 0) {
+        cryptoFailure("AES message size");
+      }
+      std::vector<std::uint8_t> plain(cipher.size() + 16);
+      CipherContext context(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free);
+      int length = 0;
+      int tail = 0;
+      const bool ok = context != nullptr
+          && EVP_DecryptInit_ex(context.get(), EVP_aes_128_cbc(), nullptr, key.data(), iv.data()) == 1
+          && EVP_DecryptUpdate(context.get(), plain.data(), &length, cipher.data(), static_cast<int>(cipher.size()))
+              == 1
+          && EVP_DecryptFinal_ex(context.get(), plain.data() + length, &tail) == 1;
+      if (!ok) {
+        OPENSSL_cleanse(plain.data(), plain.size());
+        cryptoFailure("AES decrypt");
+      }
+      OPENSSL_cleanse(plain.data() + length + tail, plain.size() - static_cast<std::size_t>(length + tail));
+      plain.resize(static_cast<std::size_t>(length + tail));
+      return plain;
+    }
 
     // Owned by the cancel callback too: SecretStoreCancellation::cancel() may run a copy after clearCancelCallback().
     class CancelEvent {
@@ -188,19 +326,43 @@ namespace security {
       int m_fd;
     };
 
-    // One private session-bus connection per operation, driven on the worker thread. Every call waits in poll() on the
-    // bus and the cancel event, so a cancel ends a pending call or an open prompt at once.
+    // A private session-bus connection with one Secret Service session, used only on the worker thread. Every call
+    // waits in poll() on the bus and the cancel event, so a cancel ends a pending call or an open prompt at once.
     class SecretService {
     public:
       explicit SecretService(int cancelFd)
           : m_cancelFd(cancelFd), m_bus(sdbus::createSessionBusConnection()),
             m_service(proxy(sdbus::ObjectPath{"/org/freedesktop/secrets"})) {
+        const DhExchange exchange;
         sdbus::Variant output;
-        call(*m_service, kServiceInterface, "OpenSession", std::string{"plain"}, sdbus::Variant{std::string{}})
-            >> output >> m_session;
+        try {
+          call(
+              *m_service, kServiceInterface, "OpenSession", std::string{"dh-ietf1024-sha256-aes128-cbc-pkcs7"},
+              sdbus::Variant{exchange.publicKey()}
+          )
+              >> output
+              >> m_session;
+          m_key = exchange.deriveKey(output.get<std::vector<std::uint8_t>>());
+        } catch (const sdbus::Error& error) {
+          if (std::string_view(error.getName()) != "org.freedesktop.DBus.Error.NotSupported") {
+            throw;
+          }
+          static std::once_flag logged;
+          std::call_once(logged, [] {
+            kLog.warn("Secret Service has no encrypted transport, secrets cross the bus in plain");
+          });
+          call(*m_service, kServiceInterface, "OpenSession", std::string{"plain"}, sdbus::Variant{std::string{}})
+              >> output
+              >> m_session;
+        }
       }
 
+      void setCancelFd(int fd) { m_cancelFd = fd; }
+
       ~SecretService() {
+        if (m_key.has_value()) {
+          OPENSSL_cleanse(m_key->data(), m_key->size());
+        }
         try {
           proxy(m_session)->callMethod("Close").onInterface(kSessionInterface).dontExpectReply();
         } catch (const sdbus::Error&) {
@@ -223,9 +385,10 @@ namespace security {
             return SecretStoreCollectionState::Missing;
           }
           sdbus::Variant locked;
-          call(*proxy(path), "org.freedesktop.DBus.Properties", "Get", std::string{kCollectionInterface},
-               std::string{"Locked"})
-              >> locked;
+          call(
+              *proxy(path), "org.freedesktop.DBus.Properties", "Get", std::string{kCollectionInterface},
+              std::string{"Locked"}
+          ) >> locked;
           return locked.get<bool>() ? SecretStoreCollectionState::Locked : SecretStoreCollectionState::Unlocked;
         } catch (const sdbus::Error&) {
           return SecretStoreCollectionState::Unknown;
@@ -259,10 +422,17 @@ namespace security {
         return unlocked;
       }
 
-      Secret getSecret(const sdbus::ObjectPath& item) {
+      // The plain secret value; the caller wipes it.
+      std::vector<std::uint8_t> getSecret(const sdbus::ObjectPath& item) {
         Secret secret;
         call(*proxy(item), kItemInterface, "GetSecret", m_session) >> secret;
-        return secret;
+        auto& value = std::get<2>(secret);
+        if (!m_key.has_value() || value.empty()) {
+          return std::move(value);
+        }
+        std::vector<std::uint8_t> plain = decrypt(*m_key, std::get<1>(secret), value);
+        wipe(secret);
+        return plain;
       }
 
       // The default collection path, created when missing; nullopt when the user dismissed the prompt.
@@ -273,7 +443,8 @@ namespace security {
         sdbus::ObjectPath collection;
         sdbus::ObjectPath prompt;
         call(*m_service, kServiceInterface, "CreateCollection", properties, std::string{"default"})
-            >> collection >> prompt;
+            >> collection
+            >> prompt;
         if (prompt == kNoObject) {
           return collection;
         }
@@ -297,6 +468,12 @@ namespace security {
             m_session, std::vector<std::uint8_t>{}, std::vector<std::uint8_t>(bytes.begin(), bytes.end()),
             std::string{"application/octet-stream"}
         };
+        if (m_key.has_value()) {
+          auto [iv, cipher] = encrypt(*m_key, bytes);
+          wipe(secret);
+          std::get<1>(secret) = std::move(iv);
+          std::get<2>(secret) = std::move(cipher);
+        }
         sdbus::ObjectPath item;
         sdbus::ObjectPath prompt;
         try {
@@ -354,9 +531,11 @@ namespace security {
       std::optional<sdbus::Variant> runPrompt(const sdbus::ObjectPath& path) {
         auto prompt = proxy(path);
         std::optional<std::pair<bool, sdbus::Variant>> completed;
-        prompt->uponSignal("Completed").onInterface(kPromptInterface).call([&completed](bool dismissed, sdbus::Variant result) {
-          completed.emplace(dismissed, std::move(result));
-        });
+        prompt->uponSignal("Completed")
+            .onInterface(kPromptInterface)
+            .call([&completed](bool dismissed, sdbus::Variant result) {
+              completed.emplace(dismissed, std::move(result));
+            });
         try {
           call(*prompt, kPromptInterface, "Prompt", std::string{});
           waitUntil([&completed] { return completed.has_value(); });
@@ -399,46 +578,24 @@ namespace security {
       std::unique_ptr<sdbus::IConnection> m_bus;
       std::unique_ptr<sdbus::IProxy> m_service;
       sdbus::ObjectPath m_session;
+      std::optional<AesKey> m_key;
     };
-
-    template <typename Function>
-    SecretStoreBackendResult withService(SecretStoreCancellation& cancellation, Function&& function) {
-      if (cancellation.cancelled()) {
-        return cancelledResult();
-      }
-      SecretStoreBackendResult result;
-      try {
-        const auto cancelEvent = std::make_shared<CancelEvent>();
-        cancellation.setCancelCallback([cancelEvent] { cancelEvent->signal(); });
-        try {
-          SecretService service(cancelEvent->fd());
-          result = function(service);
-        } catch (const OperationCancelled&) {
-          result = cancelledResult();
-        }
-      } catch (const sdbus::Error& error) {
-        result = resultFromError(error);
-      }
-      cancellation.clearCancelCallback();
-      return result;
-    }
 
     class SecretServiceBackend final : public SecretStoreBackend {
     public:
+      void release() override { m_service.reset(); }
+
       SecretStoreBackendResult probe(SecretStoreCancellation& cancellation) override {
-        return withService(cancellation, [](SecretService&) {
+        return run(cancellation, ErrorState::Plain, [](SecretService& service) {
+          (void)service.defaultCollection();
           return makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
         });
       }
 
       SecretStoreBackendResult
       lookup(const SecretStoreAttributes& attributes, SecretStoreCancellation& cancellation) override {
-        return withService(cancellation, [&attributes](SecretService& service) {
-          try {
-            return lookupIn(service, makeAttributes(attributes));
-          } catch (const sdbus::Error& error) {
-            return service.withDefaultCollectionState(resultFromError(error));
-          }
+        return run(cancellation, ErrorState::WithDefaultCollection, [&attributes](SecretService& service) {
+          return lookupIn(service, makeAttributes(attributes));
         });
       }
 
@@ -450,34 +607,33 @@ namespace security {
         if (bytes.empty()) {
           return invalidRequestResult();
         }
-        return withService(cancellation, [&attributes, bytes, &label](SecretService& service) {
-          try {
-            std::optional<sdbus::ObjectPath> collection = service.defaultCollection();
-            if (*collection == kNoObject) {
-              collection = service.createDefaultCollection();
-            } else if (service.inspectDefaultCollection() != SecretStoreCollectionState::Unlocked) {
-              const auto unlocked = service.unlock({*collection});
-              if (unlocked.has_value() && unlocked->empty()) {
-                return service.withDefaultCollectionState(lockedResult());
+        return run(
+            cancellation, ErrorState::WithDefaultCollection, [&attributes, bytes, &label](SecretService& service) {
+              std::optional<sdbus::ObjectPath> collection = service.defaultCollection();
+              if (*collection == kNoObject) {
+                collection = service.createDefaultCollection();
+              } else if (service.inspectDefaultCollection() != SecretStoreCollectionState::Unlocked) {
+                const auto unlocked = service.unlock({*collection});
+                if (unlocked.has_value() && unlocked->empty()) {
+                  return service.withDefaultCollectionState(lockedResult());
+                }
+                if (!unlocked.has_value()) {
+                  collection.reset();
+                }
               }
-              if (!unlocked.has_value()) {
-                collection.reset();
+              // A dismissed prompt is the user's cancel.
+              if (!collection.has_value()
+                  || !service.createItem(*collection, makeAttributes(attributes), bytes, label)) {
+                return cancelledResult();
               }
+              return makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
             }
-            // A dismissed prompt is the user's cancel.
-            if (!collection.has_value() || !service.createItem(*collection, makeAttributes(attributes), bytes, label)) {
-              return cancelledResult();
-            }
-            return makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
-          } catch (const sdbus::Error& error) {
-            return service.withDefaultCollectionState(resultFromError(error));
-          }
-        });
+        );
       }
 
       SecretStoreBackendResult
       erase(const SecretStoreAttributes& attributes, SecretStoreCancellation& cancellation) override {
-        return withService(cancellation, [&attributes](SecretService& service) {
+        return run(cancellation, ErrorState::Plain, [&attributes](SecretService& service) {
           auto [items, locked] = service.search(makeAttributes(attributes));
           if (items.empty() && locked.empty()) {
             return makeResult(SecretStoreStatus::NotFound, SecretStoreErrorCategory::None);
@@ -496,11 +652,62 @@ namespace security {
               return cancelledResult();
             }
           }
-          return remainsLocked ? lockedResult() : makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
+          return remainsLocked ? lockedResult()
+                               : makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
         });
       }
 
     private:
+      enum class ErrorState { Plain, WithDefaultCollection };
+
+      // Runs the operation on the kept connection. A failure on a kept connection retries once on a new one: the
+      // provider may have restarted and dropped the session.
+      template <typename Function>
+      SecretStoreBackendResult
+      run(SecretStoreCancellation& cancellation, ErrorState errorState, const Function& function) {
+        if (cancellation.cancelled()) {
+          return cancelledResult();
+        }
+        SecretStoreBackendResult result;
+        try {
+          const auto cancelEvent = std::make_shared<CancelEvent>();
+          cancellation.setCancelCallback([cancelEvent] { cancelEvent->signal(); });
+          try {
+            for (bool kept = m_service != nullptr;; kept = false) {
+              try {
+                if (m_service == nullptr) {
+                  m_service = std::make_unique<SecretService>(cancelEvent->fd());
+                }
+                m_service->setCancelFd(cancelEvent->fd());
+                result = function(*m_service);
+                break;
+              } catch (const sdbus::Error& error) {
+                m_service.reset();
+                if (kept) {
+                  continue;
+                }
+                result = resultFromError(error);
+                if (errorState == ErrorState::WithDefaultCollection) {
+                  try {
+                    SecretService fresh(cancelEvent->fd());
+                    result.defaultCollectionState = fresh.inspectDefaultCollection();
+                  } catch (const sdbus::Error&) {
+                  }
+                }
+                break;
+              }
+            }
+          } catch (const OperationCancelled&) {
+            m_service.reset();
+            result = cancelledResult();
+          }
+        } catch (const sdbus::Error& error) {
+          result = resultFromError(error);
+        }
+        cancellation.clearCancelCallback();
+        return result;
+      }
+
       static SecretStoreBackendResult
       lookupIn(SecretService& service, const std::map<std::string, std::string>& attributes) {
         // KWallet's ksecretd answers GetSecret on a wallet it has not opened yet with an empty secret
@@ -511,9 +718,9 @@ namespace security {
                                       const Paths& items, bool& lockedItemFound
                                   ) -> std::optional<SecretStoreBackendResult> {
           for (const auto& item : items) {
-            Secret secret;
+            std::vector<std::uint8_t> value;
             try {
-              secret = service.getSecret(item);
+              value = service.getSecret(item);
             } catch (const sdbus::Error& error) {
               SecretStoreBackendResult errorResult = resultFromError(error);
               if (errorResult.errorCategory == SecretStoreErrorCategory::Locked) {
@@ -523,7 +730,6 @@ namespace security {
               }
               return errorResult;
             }
-            const auto& value = std::get<2>(secret);
             if (value.empty()) {
               emptySecretFound = true;
               lockedItemFound = true;
@@ -531,7 +737,7 @@ namespace security {
             }
             SecretStoreBackendResult found = makeResult(SecretStoreStatus::Success, SecretStoreErrorCategory::None);
             found.value = SecureBuffer(std::span<const std::uint8_t>(value));
-            SecretService::wipe(secret);
+            util::secureWipe(value.data(), value.size());
             return found;
           }
           return std::nullopt;
@@ -551,7 +757,8 @@ namespace security {
           if (!emptySecretFound) {
             const auto collectionState = service.inspectDefaultCollection();
             if (collectionState != SecretStoreCollectionState::Locked) {
-              SecretStoreBackendResult notFound = makeResult(SecretStoreStatus::NotFound, SecretStoreErrorCategory::None);
+              SecretStoreBackendResult notFound =
+                  makeResult(SecretStoreStatus::NotFound, SecretStoreErrorCategory::None);
               notFound.defaultCollectionState = collectionState;
               return notFound;
             }
@@ -583,6 +790,8 @@ namespace security {
         }
         return service.withDefaultCollectionState(lockedResult());
       }
+
+      std::unique_ptr<SecretService> m_service;
     };
 
     std::unique_ptr<SecretStoreBackend> makeSecretServiceBackend() { return std::make_unique<SecretServiceBackend>(); }
@@ -787,6 +996,7 @@ namespace security {
         {
           std::unique_lock lock(m_queueMutex);
           if (!m_queueCv.wait_for(lock, kWorkerIdleExit, [this]() { return m_shutdown || !m_requests.empty(); })) {
+            m_backend->release();
             m_workerRunning = false;
             return;
           }

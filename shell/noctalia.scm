@@ -105,6 +105,7 @@
            libqalculate
            libsndfile
            libsodium
+           openssl
            libwebp
            libxkbcommon
            libxml2

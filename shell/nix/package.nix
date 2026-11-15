@@ -31,6 +31,7 @@
   libxml2,
   md4c,
   libsodium,
+  openssl,
   stb,
   fetchFromGitHub,
   nlohmann_json,
@@ -118,6 +119,7 @@ lib.warnIf cudaSupport
     libxml2
     md4c
     libsodium
+    openssl
     stb'
     nlohmann_json
     tomlplusplus

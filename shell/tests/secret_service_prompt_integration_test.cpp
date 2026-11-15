@@ -8,10 +8,10 @@
 #include <condition_variable>
 #include <cstdint>
 #include <map>
-#include <span>
 #include <mutex>
 #include <poll.h>
 #include <sdbus-c++/sdbus-c++.h>
+#include <span>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -40,9 +40,14 @@ namespace {
           m_session(sdbus::createObject(*m_connection, kSession)) {
       m_service
           ->addVTable(
-              sdbus::registerMethod("OpenSession").implementedAs([](const std::string&, const sdbus::Variant&) {
-                return std::tuple{sdbus::Variant{std::string{}}, kSession};
-              }),
+              // No encrypted transport: the store must fall back to plain.
+              sdbus::registerMethod("OpenSession")
+                  .implementedAs([](const std::string& algorithm, const sdbus::Variant&) {
+                    if (algorithm != "plain") {
+                      throw sdbus::Error(sdbus::Error::Name{"org.freedesktop.DBus.Error.NotSupported"}, algorithm);
+                    }
+                    return std::tuple{sdbus::Variant{std::string{}}, kSession};
+                  }),
               sdbus::registerMethod("ReadAlias").implementedAs([](const std::string&) { return kCollection; }),
               sdbus::registerMethod("SearchItems").implementedAs([this](const std::map<std::string, std::string>&) {
                 std::scoped_lock lock(m_mutex);
@@ -98,8 +103,9 @@ namespace {
               sdbus::registerSignal("Completed").withParameters<bool, sdbus::Variant>()
           )
           .forInterface(kPromptInterface);
-      m_session->addVTable(sdbus::registerMethod("Close").implementedAs([] {}))
-          .forInterface("org.freedesktop.Secret.Session");
+      m_session->addVTable(
+                   sdbus::registerMethod("Close").implementedAs([] {})
+      ).forInterface("org.freedesktop.Secret.Session");
       m_connection->enterEventLoopAsync();
     }
 
@@ -152,7 +158,9 @@ namespace {
     }
 
     void complete(bool dismissed, const Paths& unlocked) {
-      m_prompt->emitSignal("Completed").onInterface(kPromptInterface).withArguments(dismissed, sdbus::Variant{unlocked});
+      m_prompt->emitSignal("Completed")
+          .onInterface(kPromptInterface)
+          .withArguments(dismissed, sdbus::Variant{unlocked});
     }
 
     std::mutex m_mutex;

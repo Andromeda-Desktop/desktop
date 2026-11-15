@@ -86,6 +86,7 @@ gstreamer_dep       = dependency('gstreamer-1.0')
 gstreamer_app_dep   = dependency('gstreamer-app-1.0')
 gstreamer_video_dep = dependency('gstreamer-video-1.0')
 gstreamer_allocators_dep = dependency('gstreamer-allocators-1.0')
+libcrypto_dep       = dependency('libcrypto', version: '>=3.0')
 libsodium_dep       = dependency('libsodium', version: '>=1.0.18')
 libxcrypt_dep       = dependency('libxcrypt')
 # PipeWire/SPA headers use GCC extensions that trigger -Wpedantic/-Wconversion;
@@ -965,6 +966,7 @@ _noctalia_system_dependencies = [
   gstreamer_app_dep,
   gstreamer_video_dep,
   gstreamer_allocators_dep,
+  libcrypto_dep,
   libsodium_dep,
   libxcrypt_dep,
   pipewire_dep,
