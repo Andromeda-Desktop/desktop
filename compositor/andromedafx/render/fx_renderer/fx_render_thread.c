@@ -194,7 +194,6 @@ void fx_renderer_set_job_watch(const struct fx_render_job_watch* watch) {
 
 static void* thread_main(void* data) {
   struct fx_render_thread* thread = data;
-  pthread_setname_np(pthread_self(), "andromeda-render");
   pthread_mutex_lock(&thread->mutex);
   for (;;) {
     while (thread->job != JOB_POSTED && thread->job != JOB_STOP) {
@@ -372,6 +371,8 @@ struct fx_render_thread* fx_render_thread_create(struct fx_renderer* renderer, s
   if (pthread_create(&thread->thread, NULL, thread_main, thread) != 0) {
     goto error;
   }
+  // Named here, not in thread_main: the caller finds the thread by name right after this returns.
+  pthread_setname_np(thread->thread, "andro-render");
   return thread;
 
 error:

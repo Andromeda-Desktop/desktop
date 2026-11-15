@@ -24,8 +24,8 @@ namespace andromeda {
       std::ifstream commFile(entry.path() / "comm");
       std::string comm;
       std::getline(commFile, comm);
-      // gdrv: Mesa's driver threads; andromeda-render: the GPU submit thread (fx_render_thread.c).
-      if (!comm.contains("gdrv") && comm != "andromeda-render") {
+      // gdrv: Mesa's driver threads; andro-render: the GPU submit thread (fx_render_thread.c; comm holds 15 chars).
+      if (!comm.contains("gdrv") && comm != "andro-render") {
         continue;
       }
       const pid_t tid = static_cast<pid_t>(std::stol(entry.path().filename().string()));
