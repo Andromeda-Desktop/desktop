@@ -34,6 +34,7 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <format>
+#include <limits>
 #include <thread>
 #include <unistd.h>
 
@@ -59,6 +60,10 @@ namespace {
   constexpr float kThumbHeight = 48.0F; // mockup .thumbs
   constexpr int kThumbsVisible = 8;
   constexpr std::size_t kPageCache = 24;
+  constexpr int kMaxPerSheet = 6;
+  // The strip shows up to kThumbsVisible sheets of up to kMaxPerSheet pages; a smaller cache evicts a shown page,
+  // whose render rebuilds and asks for it again.
+  constexpr std::size_t kThumbCache = kThumbsVisible * kMaxPerSheet + kMaxPerSheet;
 
   // One sheet of paper: the pages placed on it in a cols × rows grid, each fitted into its cell. Uploads new pixels
   // on layout, where a Renderer is at hand.
@@ -231,6 +236,7 @@ void PrintSheet::startPreview() {
       m_pageCount = static_cast<int>(std::min<std::uint32_t>(r.msg.b, 100000));
       m_preview = Preview::Ready;
     }
+    validateRange();
     if (m_cb.rebuild)
       m_cb.rebuild();
   });
@@ -259,11 +265,16 @@ void PrintSheet::requestPage(int page, Size size) {
                       px->height = static_cast<int>(r.msg.c);
                       px->stride = static_cast<int>(r.msg.d);
                       done[page] = std::move(px);
-                      // Keep the pages nearest the shown sheet.
+                      // Keep the pages nearest the shown sheet, by position in the pages to print (ascending).
+                      const std::vector<int> order = pagesToPrint();
+                      const auto position = [&order](int pg) {
+                        return static_cast<int>(std::ranges::lower_bound(order, pg) - order.begin());
+                      };
                       const int centre = m_sheet * perSheet();
-                      while (done.size() > kPageCache) {
-                        const auto far = std::ranges::max_element(done, {}, [centre](const auto& kv) {
-                          return std::abs(kv.first - centre);
+                      while (done.size() > (size == Size::Page ? kPageCache : kThumbCache)) {
+                        const auto far = std::ranges::max_element(done, {}, [&](const auto& kv) {
+                          return std::ranges::binary_search(order, kv.first) ? std::abs(position(kv.first) - centre)
+                                                                             : std::numeric_limits<int>::max();
                         });
                         if (far->second->texture.valid())
                           m_dropped.push_back(far->second->texture);
@@ -300,13 +311,34 @@ void PrintSheet::selectSaveAsPdf() {
 
 bool PrintSheet::rangeValid() const { return m_allPages || (m_rangeError.empty() && !m_rangeText.empty()); }
 
+// Without a page count (preview loading or failed) any page number passes; CUPS skips pages past the end.
+int PrintSheet::pageLimit() const { return m_pageCount > 0 ? m_pageCount : std::numeric_limits<int>::max(); }
+
+void PrintSheet::validateRange() {
+  m_rangeError = m_rangeText.empty() ? std::string()
+                                     : parsePageRanges(m_rangeText, pageLimit()).second.value_or(RangeError{}).message;
+}
+
+void PrintSheet::showRange() {
+  const bool error = !m_allPages && !m_rangeError.empty();
+  if (m_rangeInput)
+    m_rangeInput->setInvalid(error);
+  if (m_rangeNote) {
+    m_rangeNoteLabel->setText(m_rangeError);
+    m_rangeNote->setVisible(error);
+    m_rangeNote->setParticipatesInLayout(error);
+  }
+  if (m_printButton && m_target == Target::Printer)
+    m_printButton->setEnabled(!m_sent && printer() != nullptr && rangeValid());
+}
+
 int PrintSheet::perSheet() const { return m_target == Target::SaveAsPdf ? 1 : std::max(1, m_options.numberUp); }
 
 std::vector<int> PrintSheet::pagesToPrint() const {
   std::vector<int> pages;
   if (m_target == Target::Printer && !m_allPages && rangeValid()) {
-    for (const PageRange& r : parsePageRanges(m_rangeText, std::max(m_pageCount, 1)).first)
-      for (int p = r.first; p <= r.last; ++p)
+    for (const PageRange& r : parsePageRanges(m_rangeText, pageLimit()).first)
+      for (int p = r.first; p <= std::min(r.last, m_pageCount); ++p)
         pages.push_back(p - 1);
     return pages;
   }
@@ -517,11 +549,13 @@ namespace {
       card.addChild(std::move(r));
     }
 
-    std::unique_ptr<Flex> note(std::string text, ColorRole role) const {
+    std::unique_ptr<Flex> note(std::string text, ColorRole role, Label** out = nullptr) const {
       auto r = ui::row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP12 * s});
       r->addChild(ui::row({.width = (kKeyWidth + Tokens::spaceP12) * s}));
       auto l = label(std::move(text), role, caption);
       l->setFlexGrow(1.0F);
+      if (out)
+        *out = l.get();
       r->addChild(std::move(l));
       return r;
     }
@@ -541,7 +575,7 @@ namespace {
                                  std::function<void(std::size_t)> change) const {
       auto wrap = ui::row({.align = FlexAlign::Center});
       wrap->addChild(ui::select({.options = std::move(options), .selectedIndex = on, .fontSize = body,
-                                 .controlHeight = ctlH,
+                                 .controlHeight = ctlH, .glyphSize = 14.0F * s,
                                  .onSelectionChanged = [change = std::move(change)](std::size_t i, std::string_view) {
                                    change(i);
                                  }}));
@@ -592,13 +626,13 @@ void PrintSheet::buildMain(Node& col, float s) {
   }
   names.emplace_back("Save as PDF");
   states.emplace_back();
-  auto printerSelect = ui::row({.align = FlexAlign::Center});
+  auto printerSelect = ui::row({.align = FlexAlign::Center, .flexGrow = 1.0F});
   printerSelect->addChild(ui::select(
       {.options = std::move(names),
        .selectedIndex = m_target == Target::SaveAsPdf ? m_printers.size() : m_printer, .fontSize = rows.body,
-       .controlHeight = rows.ctlH, .optionIndicators = std::move(dots), .optionSubtitles = std::move(states),
+       .controlHeight = rows.ctlH, .glyphSize = 14.0F * s, .optionIndicators = std::move(dots), .optionSubtitles = std::move(states),
        .separatorBefore = m_printers.size(), .actions = {"Add Printer…"},
-       .onAction = [](std::size_t) { openPrinterSettings(); },
+       .onAction = [](std::size_t) { openPrinterSettings(); }, .flexGrow = 1.0F,
        .onSelectionChanged = [this, rebuild](std::size_t i, std::string_view) {
          if (i < m_printers.size())
            selectPrinter(i);
@@ -629,7 +663,7 @@ void PrintSheet::buildMain(Node& col, float s) {
   card->addChild(std::move(st));
 
   auto copies = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-  copies->addChild(ui::stepper({.minValue = 1, .maxValue = 999, .step = 1, .value = m_options.copies,
+  copies->addChild(ui::stepper({.minValue = 1, .maxValue = 999, .step = 1, .value = m_options.copies, .scale = s,
                                 .onValueChanged = [this](int v) { m_options.copies = v; }}));
   copies->addChild(ui::row({.flexGrow = 1.0F}));
   copies->addChild(rows.label("Collate"));
@@ -642,25 +676,19 @@ void PrintSheet::buildMain(Node& col, float s) {
                              m_allPages = i == 0;
                              rebuild();
                            }));
-  pages->addChild(ui::input({.value = m_rangeText, .placeholder = std::string("e.g. 1-2, 4"), .fontSize = rows.body,
+  pages->addChild(ui::input({.out = &m_rangeInput, .value = m_rangeText, .placeholder = std::string("e.g. 1-2, 4"), .fontSize = rows.body,
                              .controlHeight = rows.ctlH, .invalid = !m_allPages && !m_rangeError.empty(),
                              .enabled = !m_allPages, .flexGrow = 1.0F,
-                             .onChange = [this, rebuild](const std::string& text) {
-                               const bool had = !m_rangeError.empty();
+                             .onChange = [this](const std::string& text) {
                                m_rangeText = text;
-                               m_rangeError = text.empty() ? std::string()
-                                                           : parsePageRanges(text, std::max(m_pageCount, 1))
-                                                                 .second.value_or(RangeError{})
-                                                                 .message;
-                               // A rebuild on every key would take the field's focus; the preview follows at the
-                               // next one.
-                               if (had != !m_rangeError.empty())
-                                 rebuild();
+                               validateRange();
+                               showRange();
                              },
-                             .onSubmit = [this](const std::string&) { submit(); }}));
+                             .onSubmit = [this](const std::string&) { submit(); },
+                             // The preview follows the range once the field is left.
+                             .onFocusLoss = rebuild}));
   rows.opt(*card, "Pages", std::move(pages));
-  if (!m_allPages && !m_rangeError.empty())
-    card->addChild(rows.note(m_rangeError, ColorRole::DangerText));
+  m_rangeNote = static_cast<Flex*>(card->addChild(rows.note(m_rangeError, ColorRole::DangerText, &m_rangeNoteLabel)));
 
   if (p->duplex)
     rows.opt(*card, "Two-sided",
@@ -750,7 +778,7 @@ void PrintSheet::buildMore(Node& col, float s) {
                              rebuild();
                            }));
   if (m_options.scaling == Scaling::Custom)
-    scale->addChild(ui::stepper({.minValue = 10, .maxValue = 400, .step = 5, .value = m_options.scalePercent,
+    scale->addChild(ui::stepper({.minValue = 10, .maxValue = 400, .step = 5, .value = m_options.scalePercent, .scale = s,
                                  .onValueChanged = [this](int v) { m_options.scalePercent = v; }}));
   rows.opt(*card, "Scale", std::move(scale));
   rows.opt(*card, "Margins", rows.select({"Default", "None", "Narrow", "Wide"},
@@ -789,6 +817,10 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
   for (TextureHandle& texture : m_dropped)
     renderer.textureManager().unload(texture);
   m_dropped.clear();
+  m_rangeInput = nullptr;
+  m_rangeNote = nullptr;
+  m_rangeNoteLabel = nullptr;
+  m_printButton = nullptr;
   const float body = Style::fontSizeBody * s;
   const float ctlH = Tokens::sizeControlM * s;
   auto sheet = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP16 * s, .padding = Tokens::spaceP12 * s,
@@ -821,11 +853,12 @@ std::unique_ptr<Node> PrintSheet::build(Renderer& renderer, float s, float width
                                   if (m_cb.cancel)
                                     m_cb.cancel();
                                 }}));
-  buttons->addChild(ui::button({.text = std::string(pdf ? "Save…" : "Print"), .fontSize = body,
+  buttons->addChild(ui::button({.out = &m_printButton, .text = std::string(pdf ? "Save…" : "Print"), .fontSize = body,
                                 .enabled = !m_sent && (pdf || (printer() != nullptr && rangeValid())),
                                 .variant = ButtonVariant::Primary, .paddingH = Tokens::spaceP12 * s,
                                 .radius = Tokens::radiusR8 * s, .height = ctlH, .onClick = [this] { submit(); }}));
   col->addChild(std::move(buttons));
   sheet->addChild(std::move(col));
+  showRange();
   return sheet;
 }

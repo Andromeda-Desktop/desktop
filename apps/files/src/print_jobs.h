@@ -34,6 +34,8 @@ public:
 private:
   enum class Poll { Idle, Running };
   enum class Shown { Nothing, Progress, Problem };
+  // Stale: the job changed while a Notify was in flight; the reply sends the latest.
+  enum class Sending { Idle, InFlight, Stale };
 
   struct Job {
     std::string printer;
@@ -42,12 +44,15 @@ private:
     int pages = 0;
     std::uint32_t note = 0; // notification id, 0 before the first Notify reply
     Shown shown = Shown::Nothing;
+    Sending sending = Sending::Idle;
+    std::string summary;
     std::string body;
   };
 
   void poll();
   void apply(int jobId, const JobStatus& status);
   void show(int jobId, Shown kind, const std::string& summary, const std::string& body);
+  void send(int jobId);
   void close(std::uint32_t note);
 
   std::unique_ptr<sdbus::IProxy> m_proxy;

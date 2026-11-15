@@ -13,6 +13,10 @@
 #include <vector>
 
 class AppLoop;
+class Button;
+class Flex;
+class Input;
+class Label;
 class Node;
 class Renderer;
 struct KeyboardEvent;
@@ -66,6 +70,9 @@ private:
   void showSheet(int sheet);
   [[nodiscard]] const PrinterInfo* printer() const;
   [[nodiscard]] bool rangeValid() const;
+  [[nodiscard]] int pageLimit() const;
+  void validateRange();
+  void showRange();
   [[nodiscard]] std::vector<int> pagesToPrint() const; // 0-based
   [[nodiscard]] int perSheet() const;
   [[nodiscard]] std::unique_ptr<Node> buildPreview(Renderer& renderer, float scale, float width);
@@ -89,6 +96,11 @@ private:
   bool m_allPages = true;
   std::string m_rangeText;
   std::string m_rangeError;
+  // The range field updates these in place: a rebuild would take its focus and caret. Valid until the next build.
+  Input* m_rangeInput = nullptr;
+  Flex* m_rangeNote = nullptr;
+  Label* m_rangeNoteLabel = nullptr;
+  Button* m_printButton = nullptr;
 
   Preview m_preview = Preview::Loading;
   std::string m_tempPath;

@@ -39,10 +39,11 @@ struct JobError {
 [[nodiscard]] std::vector<PrinterInfo> listPrinters();
 [[nodiscard]] std::variant<int, JobError> submitJob(const std::string& title, int fd, const PrintOptions& options);
 
-enum class JobState { Waiting, Printing, Stopped, Done, Failed };
+// Unknown: CUPS did not answer, so the last state stands. Cancelled ends quietly; Failed tells the user.
+enum class JobState { Unknown, Waiting, Printing, Stopped, Done, Cancelled, Failed };
 
 struct JobStatus {
-  JobState state = JobState::Failed;
+  JobState state = JobState::Unknown;
   int pagesDone = 0;
   std::string reason; // why the job or its printer is stopped, in plain words
 };

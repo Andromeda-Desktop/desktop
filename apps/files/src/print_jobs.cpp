@@ -141,10 +141,15 @@ void PrintJobs::apply(int jobId, const JobStatus& status) {
     show(jobId, Shown::Problem, std::format("“{}” did not print", job.title),
          std::format("{}: {}. The job waits.", job.label, status.reason.empty() ? "stopped" : status.reason));
     break;
+  case JobState::Unknown:
+    break;
   case JobState::Done:
+  case JobState::Cancelled:
   case JobState::Failed:
     if (status.state == JobState::Failed)
-      kLog.info("job {} ended without printing", jobId);
+      failed(std::format("“{}” did not print", job.title),
+             std::format("{}: {}.", job.label, status.reason.empty() ? "the printer stopped the job" : status.reason));
+    // A Notify still in flight closes its notification in the reply, as the job is gone.
     if (job.note != 0) {
       m_byNote.erase(job.note);
       close(job.note);
@@ -157,13 +162,23 @@ void PrintJobs::apply(int jobId, const JobStatus& status) {
 void PrintJobs::show(int jobId, Shown kind, const std::string& summary, const std::string& body) {
   Job& job = m_jobs.at(jobId);
   // A notification the user closed comes back only when the job's state changes kind.
-  if (kind == job.shown && (job.note == 0 || body == job.body))
+  if (kind == job.shown && ((job.note == 0 && job.sending == Sending::Idle) || body == job.body))
     return;
   job.shown = kind;
+  job.summary = summary;
   job.body = body;
+  if (job.sending != Sending::Idle) {
+    job.sending = Sending::Stale;
+    return;
+  }
+  send(jobId);
+}
+
+void PrintJobs::send(int jobId) {
+  Job& job = m_jobs.at(jobId);
   if (!m_proxy)
     return;
-  const bool problem = kind == Shown::Problem;
+  const bool problem = job.shown == Shown::Problem;
   const std::vector<std::string> actions =
       problem ? std::vector<std::string>{"cancel", "Cancel Job", "queue", "Show Queue"} : std::vector<std::string>{};
   const std::map<std::string, sdbus::Variant> hints{
@@ -171,19 +186,37 @@ void PrintJobs::show(int jobId, Shown kind, const std::string& summary, const st
       {"urgency", sdbus::Variant{static_cast<std::uint8_t>(problem ? 2 : 1)}},
       {"transient", sdbus::Variant{!problem}}};
   try {
-    // Synchronous, so the next update replaces this notification instead of adding a second one.
-    std::uint32_t note = 0;
-    m_proxy->callMethod("Notify")
+    // One Notify in flight per job, so each update replaces the notification instead of adding a second one.
+    job.sending = Sending::InFlight;
+    m_proxy->callMethodAsync("Notify")
         .onInterface(kInterface)
-        .withTimeout(std::chrono::milliseconds(500))
-        .withArguments(std::string{"Files"}, job.note, std::string{problem ? "dialog-warning" : "printer"}, summary,
-                       body, actions, hints, std::int32_t{0})
-        .storeResultsTo(note);
-    if (job.note != note)
-      m_byNote.erase(job.note);
-    job.note = note;
-    m_byNote[note] = jobId;
+        .withArguments(std::string{"Files"}, job.note, std::string{problem ? "dialog-warning" : "printer"}, job.summary,
+                       job.body, actions, hints, std::int32_t{0})
+        .uponReplyInvoke([this, jobId, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+                                                                             std::uint32_t note) {
+          if (alive.expired())
+            return;
+          const auto it = m_jobs.find(jobId);
+          if (it == m_jobs.end()) {
+            close(note);
+            return;
+          }
+          Job& job = it->second;
+          const bool stale = job.sending == Sending::Stale;
+          job.sending = Sending::Idle;
+          if (error) {
+            kLog.warn("notify: {}", error->what());
+            return;
+          }
+          if (job.note != note)
+            m_byNote.erase(job.note);
+          job.note = note;
+          m_byNote[note] = jobId;
+          if (stale)
+            send(jobId);
+        });
   } catch (const sdbus::Error& e) {
+    job.sending = Sending::Idle;
     kLog.warn("notify: {}", e.what());
   }
 }

@@ -34,6 +34,12 @@ int main() {
     expect(ranges.empty() && error && error->message.contains("Page 7") && error->message.contains("4 pages"),
            "a page past the end names the page and the page count");
   }
+  {
+    const auto [ranges, error] = parsePageRanges("6, 1-2, 2-3", 6);
+    expect(!error && ranges.size() == 2 && ranges[0].first == 1 && ranges[0].last == 3 && ranges[1].first == 6 &&
+               ranges[1].last == 6,
+           "ranges out of order or overlapping come back ascending and merged, as CUPS needs");
+  }
   expect(parsePageRanges("3-1", 4).second.has_value(), "a reversed range is rejected");
   expect(parsePageRanges("0", 4).second.has_value(), "page 0 is rejected");
   expect(parsePageRanges("a-b", 4).second.has_value(), "words are rejected");

@@ -1,6 +1,8 @@
 #include "print_settings.h"
 
+#include <algorithm>
 #include <charconv>
+#include <ranges>
 #include <string_view>
 
 namespace {
@@ -52,7 +54,16 @@ std::pair<std::vector<PageRange>, std::optional<RangeError>> parsePageRanges(con
   }
   if (ranges.empty())
     return fail("Type the pages to print, for example 1-2, 4.");
-  return {std::move(ranges), std::nullopt};
+  // CUPS takes page-ranges only ascending and without overlap; each page prints once, in page order.
+  std::ranges::sort(ranges, {}, &PageRange::first);
+  std::vector<PageRange> merged{ranges.front()};
+  for (const PageRange& r : ranges | std::views::drop(1)) {
+    if (r.first <= merged.back().last + 1)
+      merged.back().last = std::max(merged.back().last, r.last);
+    else
+      merged.push_back(r);
+  }
+  return {std::move(merged), std::nullopt};
 }
 
 std::vector<std::pair<std::string, std::string>> cupsJobOptions(const PrintOptions& o) {

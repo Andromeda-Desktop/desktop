@@ -197,12 +197,18 @@ std::variant<int, JobError> submitJob(const std::string& title, int fd, const Pr
     }
     if (n == 0)
       break;
-    if (cupsWriteRequestData(CUPS_HTTP_DEFAULT, buf, static_cast<size_t>(n)) != HTTP_STATUS_CONTINUE)
-      return finish(JobError{cupsLastErrorString()});
+    if (cupsWriteRequestData(CUPS_HTTP_DEFAULT, buf, static_cast<size_t>(n)) != HTTP_STATUS_CONTINUE) {
+      JobError error{cupsLastErrorString()};
+      cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+      return finish(std::move(error));
+    }
     offset += n;
   }
-  if (cupsFinishDestDocument(CUPS_HTTP_DEFAULT, dest, info) != IPP_STATUS_OK)
-    return finish(JobError{cupsLastErrorString()});
+  if (cupsFinishDestDocument(CUPS_HTTP_DEFAULT, dest, info) != IPP_STATUS_OK) {
+    JobError error{cupsLastErrorString()};
+    cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+    return finish(std::move(error));
+  }
   return finish(jobId);
 }
 
@@ -244,6 +250,13 @@ JobStatus jobStatus(const std::string& printer, int jobId) {
   JobStatus st;
   if (!response)
     return st;
+  if (const ipp_status_t status = ippGetStatusCode(response); status > IPP_STATUS_OK_EVENTS_COMPLETE) {
+    // A job CUPS no longer knows (history purged) has ended; other errors leave the state Unknown.
+    if (status == IPP_STATUS_ERROR_NOT_FOUND)
+      st.state = JobState::Cancelled;
+    ippDelete(response);
+    return st;
+  }
   const int state = ippGetInteger(ippFindAttribute(response, "job-state", IPP_TAG_ENUM), 0);
   st.pagesDone = ippGetInteger(ippFindAttribute(response, "job-impressions-completed", IPP_TAG_INTEGER), 0);
   std::string reasons;
@@ -270,8 +283,13 @@ JobStatus jobStatus(const std::string& printer, int jobId) {
   case IPP_JSTATE_COMPLETED:
     st.state = JobState::Done;
     break;
-  default:
+  case IPP_JSTATE_CANCELED:
+    st.state = JobState::Cancelled;
+    break;
+  case IPP_JSTATE_ABORTED:
     st.state = JobState::Failed;
+    break;
+  default:
     break;
   }
   if (!reason.empty())
