@@ -429,4 +429,5 @@ void GlSharedContext::cleanup() {
   m_contextAttributesRobust = false;
   m_resetNotificationEnabled = false;
   m_videoMemoryPurgeNotificationEnabled = false;
+  m_graphicsResetReported = false;
 }

@@ -522,11 +522,17 @@ void AppWindow::close() {
   m_menu.reset();
   m_select.reset();
   m_popover.reset();
+  // Sheet and sidebar animations write through raw node pointers and have no node owner.
+  m_animations.cancelAll();
   // Nodes unload their textures through the surface's renderer: they go first.
   m_root.reset();
   m_titleLabel = nullptr;
   m_surface.reset();
   m_maximizeButton = nullptr;
+  m_buttonDown = false;
+  m_buttonsHeld = 0;
+  m_pointerInside = false;
+  m_inResizeBand = false;
 }
 
 void AppWindow::onClosedByCompositor() {

@@ -7,6 +7,7 @@
 #include "wayland/wayland_connection.h"
 
 #include <chrono>
+#include <functional>
 #include <future>
 #include <unordered_map>
 #include <vector>
@@ -33,7 +34,14 @@ public:
   void addSource(PollSource* source);
   void removeSource(PollSource* source);
 
-  // Runs until quit() or a compositor hangup. Returns the quit code, 0 on hangup, 1 on a Wayland error.
+  // Runs on a compositor hangup inside run(): true when the app reconnected, false to end run() with 0.
+  void setDisconnectHandler(std::function<bool()> handler) { m_onDisconnect = std::move(handler); }
+  // Drops GL and the dead connection, connects to the compositor that took over the socket and restarts GL.
+  // False when none answers within the timeout. Windows must be closed first.
+  bool reconnect(std::chrono::milliseconds timeout);
+
+  // Runs until quit() or a hangup the disconnect handler does not recover. Returns the quit code, 0 on hangup,
+  // 1 on a Wayland error.
   int run();
   void quit(int code = 0);
   [[nodiscard]] bool quitting() const noexcept { return m_quit; }
@@ -48,6 +56,8 @@ private:
   KeyRepeatPollSource m_keyRepeat;
   std::vector<PollSource*> m_sources;
   std::unordered_map<PollSource*, std::chrono::steady_clock::time_point> m_deadlines;
+  std::function<bool()> m_onDisconnect;
+  bool m_sharedGl = true;
   bool m_quit = false;
   int m_exitCode = 0;
 };

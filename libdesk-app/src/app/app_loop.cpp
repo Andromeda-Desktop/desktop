@@ -9,6 +9,8 @@
 #include <cerrno>
 #include <exception>
 #include <limits>
+#include <optional>
+#include <thread>
 #include <poll.h>
 #include <wayland-client-core.h>
 
@@ -70,6 +72,7 @@ AppLoop::AppLoop() : m_keyRepeat(m_wayland) {}
 AppLoop::~AppLoop() = default;
 
 bool AppLoop::initialize(bool sharedGl) {
+  m_sharedGl = sharedGl;
   if (!m_wayland.connect()) {
     kLog.error("failed to connect to the Wayland compositor");
     return false;
@@ -112,13 +115,57 @@ std::vector<PollSource*> AppLoop::sources() {
   return all;
 }
 
+bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
+  if (m_egl.valid()) {
+    m_egl.wait();
+  }
+  m_render.cleanup();
+  m_gl.cleanup();
+  m_wayland.disconnect();
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  // A socket-activated compositor accepts at once; a plain socket is gone until the new compositor binds it.
+  for (auto wait = std::chrono::milliseconds(50);; wait = std::min(wait * 2, std::chrono::milliseconds(1000))) {
+    try {
+      if (m_wayland.connect()) {
+        break;
+      }
+    } catch (const std::exception& e) {
+      kLog.info("reconnect: {}", e.what());
+    }
+    m_wayland.disconnect();
+    if (std::chrono::steady_clock::now() + wait > deadline) {
+      kLog.error("no compositor took over within {} ms", timeout.count());
+      return false;
+    }
+    std::this_thread::sleep_for(wait);
+  }
+  try {
+    m_gl.initialize(m_wayland.display(), m_sharedGl);
+    m_render.initializeText();
+  } catch (const std::exception& e) {
+    kLog.error("GL setup after reconnect failed: {}", e.what());
+    return false;
+  }
+  m_render.attachGl(m_gl);
+  kLog.info("reconnected to the compositor");
+  return true;
+}
+
 int AppLoop::run() {
   wl_display* display = m_wayland.display();
-  auto fail = [&](const char* what) {
+  // nullopt: the disconnect handler reconnected, and the loop goes on with the new display.
+  auto lost = [&]() -> std::optional<int> {
+    if (!m_onDisconnect || !m_onDisconnect()) {
+      return 0;
+    }
+    display = m_wayland.display();
+    return std::nullopt;
+  };
+  auto fail = [&](const char* what) -> std::optional<int> {
     const int err = errno;
     if (isDisconnect(err)) {
       kLog.info("compositor closed the connection during {}", what);
-      return 0;
+      return lost();
     }
     kLog.error("{} failed: {}", what, m_wayland.describeDisplayError(err));
     return 1;
@@ -136,7 +183,10 @@ int AppLoop::run() {
 
     while (wl_display_prepare_read(display) != 0) {
       if (dispatchGuarded(display) < 0) {
-        return fail("Wayland dispatch");
+        if (const auto code = fail("Wayland dispatch")) {
+          return *code;
+        }
+        continue;
       }
     }
     short waylandEvents = POLLIN;
@@ -147,7 +197,10 @@ int AppLoop::run() {
     if (flushed < 0) {
       if (errno != EAGAIN) {
         wl_display_cancel_read(display);
-        return fail("Wayland flush");
+        if (const auto code = fail("Wayland flush")) {
+          return *code;
+        }
+        continue;
       }
       waylandEvents |= POLLOUT;
     }
@@ -197,22 +250,34 @@ int AppLoop::run() {
       } while (flushed < 0 && errno == EINTR);
       if (flushed < 0 && errno != EAGAIN) {
         wl_display_cancel_read(display);
-        return fail("Wayland flush");
+        if (const auto code = fail("Wayland flush")) {
+          return *code;
+        }
+        continue;
       }
     }
     if ((fds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
       if (wl_display_read_events(display) < 0) {
-        return fail("Wayland read");
+        if (const auto code = fail("Wayland read")) {
+          return *code;
+        }
+        continue;
       }
     } else {
       wl_display_cancel_read(display);
     }
     if (dispatchGuarded(display) < 0) {
-      return fail("Wayland dispatch");
+      if (const auto code = fail("Wayland dispatch")) {
+        return *code;
+      }
+      continue;
     }
     if ((fds[0].revents & (POLLHUP | POLLERR)) != 0) {
       kLog.info("compositor closed the connection");
-      return 0;
+      if (const auto code = lost()) {
+        return *code;
+      }
+      continue;
     }
 
     const auto after = std::chrono::steady_clock::now();

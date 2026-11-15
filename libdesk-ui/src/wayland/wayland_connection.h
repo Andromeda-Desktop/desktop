@@ -145,6 +145,8 @@ public:
   using ChangeCallback = std::function<void()>;
 
   bool connect();
+  // Destroys every Wayland object and the display; connect() starts over. Safe on a dead connection.
+  void disconnect() { cleanup(); }
   bool
   connectUntil(std::chrono::steady_clock::time_point deadline, WaylandConnection* eventConnection, std::string& error);
 

@@ -175,6 +175,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   if (!m_loop.initialize(m_info.sharedGl)) {
     return 1;
   }
+  m_loop.setDisconnectHandler([this] { return reconnect(); });
   if (m_bus != nullptr) {
     m_busSource = std::make_unique<SessionBusPollSource>(*m_bus);
     m_loop.addSource(m_busSource.get());
@@ -274,6 +275,28 @@ void DeskApp::closeWindow(AppWindow& window) {
     }
     reapClosed();
   });
+}
+
+bool DeskApp::reconnect() {
+  // close() never reaches windowClosed: the app's per-window state (a terminal's pty) stays.
+  for (const auto& w : m_windows) {
+    w->close();
+  }
+  m_pointerSurface = nullptr;
+  // Its destructor unhooks the selection listener from the old connection.
+  Input::setTextClipboard(nullptr);
+  m_clipboard.reset();
+  gpuLost();
+  if (!m_loop.reconnect(std::chrono::seconds(10))) {
+    return false;
+  }
+  m_clipboard = std::make_unique<AppClipboard>(m_loop.wayland());
+  Input::setTextClipboard(m_clipboard.get());
+  for (const auto& w : m_windows) {
+    w->open();
+  }
+  reapClosed();
+  return true;
 }
 
 void DeskApp::reapClosed() {

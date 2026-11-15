@@ -260,6 +260,11 @@ void WaylandSeat::cleanup() {
     m_keyboard = nullptr;
   }
   m_repeatActive = false;
+  m_pinchSurface = nullptr;
+  m_pendingPointerEvents.clear();
+  m_lastPointerSurface = nullptr;
+  m_pointerEnterSerial = 0;
+  m_lastKeyboardSurface = nullptr;
 }
 
 void WaylandSeat::handleSeatCapabilities(void* data, wl_seat* seat, std::uint32_t caps) {

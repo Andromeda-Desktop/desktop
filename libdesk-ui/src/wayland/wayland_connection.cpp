@@ -1739,6 +1739,7 @@ void WaylandConnection::cleanup() {
   m_surfaceOutputs.clear();
   m_layerSurfaceMap.clear();
   m_hasLayerShellGlobal = false;
+  m_lastPointerOutput = nullptr;
   m_outputAddedCallback = nullptr;
   m_outputRemovedCallback = nullptr;
 }
