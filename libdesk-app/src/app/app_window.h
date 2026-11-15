@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 class AppLoop;
 class Button;
@@ -34,6 +35,9 @@ namespace desk {
 
 class AppWindow {
 public:
+  // Glass: the compositor blurs what lies below the sidebar and the sidebar draws only the Sheet tint over it.
+  enum class SidebarMaterial : std::uint8_t { Solid, Glass };
+
   struct Config {
     std::string appId;
     std::string title;
@@ -46,6 +50,7 @@ public:
     bool fixedSize = false;
     bool navigation = false; // back / forward buttons in the header (commands go.back, go.forward)
     float sidebarWidth = 0.0F; // logical px before ui scale; 0 = no sidebar
+    SidebarMaterial sidebarMaterial = SidebarMaterial::Solid;
     std::string parentWindow;  // portal form "wayland:<xdg-foreign handle>": a dialog of another app's window
     bool transparentContent = false; // the content area shows what lies below the window surface (a video subsurface)
     bool headerWhenFullscreen = true;
@@ -206,6 +211,8 @@ private:
   Button* m_moreButton = nullptr;
   Flex* m_sidebarNode = nullptr;
   float m_sidebarMix = 1.0F; // 0 = collapsed
+  std::vector<InputRect> m_sidebarBlur; // the blur region last sent; empty = none
+  void syncSidebarBlur();
   bool m_sidebarVisible = true;
   std::uint32_t m_sidebarAnim = 0;
   std::unique_ptr<ContextMenuPopup> m_menu;

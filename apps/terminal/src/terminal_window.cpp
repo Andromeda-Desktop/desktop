@@ -6,6 +6,11 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "ui/builders.h"
+#include "ui/controls/flex.h"
+#include "ui/controls/label.h"
+#include "ui/palette.h"
+#include "ui/style.h"
 #include "wayland/wayland_connection.h"
 
 #include <gio/gio.h>
@@ -63,6 +68,24 @@ namespace term {
         }
       });
       return node;
+    });
+    // A plain session list until the status-row control exists (handoff.yaml status-row).
+    m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float /*height*/) -> std::unique_ptr<Node> {
+      const float s = m_window.uiScale();
+      auto list = ui::column({.align = FlexAlign::Stretch, .gap = Style::spaceXs * s, .padding = Style::spaceMd * s,
+                              .width = width});
+      const std::optional<std::uint64_t> shown = m_sessions.shown();
+      for (const SessionInfo& session : m_sessions.sessions()) {
+        list->addChild(ui::label({
+            .text = session.name.empty() ? session.cwd : session.name,
+            .fontSize = Tokens::typeBody.size * s,
+            .fontWeight = session.id == shown ? FontWeight::SemiBold : FontWeight::Normal,
+            .color = colorSpecFromRole(session.id == shown ? ColorRole::Label1 : ColorRole::Label2),
+            .maxLines = 1,
+            .ellipsize = TextEllipsize::End,
+        }));
+      }
+      return list;
     });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       if (sessionKey(event)) {
@@ -174,6 +197,10 @@ namespace term {
     if (result == ApplyResult::LastClosed) {
       m_close();
       return;
+    }
+    if (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event) ||
+        std::holds_alternative<session_event::Rename>(event) || std::holds_alternative<session_event::Cwd>(event)) {
+      m_window.requestRebuild(); // the sidebar list shows names and cwds
     }
     if (m_sessions.shown() != before) {
       show(*m_sessions.shown());

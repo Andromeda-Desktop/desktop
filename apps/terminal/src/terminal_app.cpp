@@ -17,7 +17,7 @@ namespace term {
   TerminalApp::~TerminalApp() = default;
 
   AppWindow& TerminalApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520});
+    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .sidebarMaterial = AppWindow::SidebarMaterial::Glass});
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }

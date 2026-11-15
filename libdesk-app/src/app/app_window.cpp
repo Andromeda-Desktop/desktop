@@ -436,6 +436,7 @@ bool AppWindow::open() {
   const auto height = fixed ? minH : std::max(minH, m_state.get<std::uint32_t>(key("height"), scaled(m_config.height)));
   const bool maximized = !fixed && m_state.get<bool>(key("maximized"), false);
 
+  m_sidebarBlur.clear(); // a new surface has no blur region yet
   m_surface = std::make_unique<ToplevelSurface>(wayland);
   m_surface->setRenderContext(&m_loop.renderContext());
   m_surface->setAnimationManager(&m_animations);
@@ -650,6 +651,7 @@ void AppWindow::prepareFrame(bool needsLayout) {
     m_rebuild = false;
     m_compact = compact;
     buildScene(renderer, width, height);
+    syncSidebarBlur();
     return;
   }
   // Held while a button is down, as a rebuild is: a press under the sheet must end where it started.
@@ -682,6 +684,28 @@ void AppWindow::prepareFrame(bool needsLayout) {
     if (m_onLayout) {
       m_onLayout();
     }
+  }
+  syncSidebarBlur();
+}
+
+void AppWindow::syncSidebarBlur() {
+  std::vector<InputRect> rects;
+  if (m_config.sidebarMaterial == SidebarMaterial::Glass && m_sidebarNode != nullptr && m_sidebarNode->visible()) {
+    const auto margin = static_cast<int>(m_surface->margin());
+    const int w = static_cast<int>(std::lround(m_sidebarNode->width()));
+    const int h = static_cast<int>(std::lround(m_sidebarNode->height()));
+    const float r = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
+    // The window corners round only the sidebar's outer (left) corners.
+    rects = Surface::tessellateRoundedRect(margin, margin, w, h, r, 0.0F, 0.0F, r);
+  }
+  if (rects == m_sidebarBlur) {
+    return;
+  }
+  m_sidebarBlur = std::move(rects);
+  if (m_sidebarBlur.empty()) {
+    m_surface->clearBlurRegion();
+  } else {
+    m_surface->setBlurRegion(m_sidebarBlur);
   }
 }
 
@@ -950,7 +974,9 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});
-    sidebar->setFill(colorSpecFromRole(ColorRole::SolidThin));
+    sidebar->setFill(m_config.sidebarMaterial == SidebarMaterial::Glass
+                         ? colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint)
+                         : colorSpecFromRole(ColorRole::SolidThin));
     auto list = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .width = sidebarWidth - edgeW});
     partStart = std::chrono::steady_clock::now();
     list->addChild(m_sidebarBuilder(renderer, sidebarWidth - edgeW, height));
