@@ -33,7 +33,14 @@ fn main() {
                     std::process::exit(2);
                 }
             },
-            "--relaunch" => config.relaunch = Some(args.by_ref().collect()),
+            "--relaunch" => {
+                let argv: Vec<String> = args.by_ref().collect();
+                if argv.is_empty() {
+                    eprintln!("andromeda-ptyd: --relaunch needs a command");
+                    std::process::exit(2);
+                }
+                config.relaunch = Some(argv);
+            }
             other => {
                 eprintln!("andromeda-ptyd: unknown argument {other}");
                 std::process::exit(2);

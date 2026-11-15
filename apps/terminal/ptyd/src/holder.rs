@@ -30,6 +30,8 @@ pub struct Config {
     pub client_queue_cap: usize,
     /// Return when no client and no session was present for this long.
     pub idle_exit: Option<Duration>,
+    /// A closed session's child that still runs this long after SIGHUP gets SIGKILL.
+    pub close_grace: Duration,
 }
 
 impl Default for Config {
@@ -41,6 +43,7 @@ impl Default for Config {
             tail_cap: 8 << 20,
             client_queue_cap: 1 << 20,
             idle_exit: Some(Duration::from_secs(30)),
+            close_grace: Duration::from_secs(3),
         }
     }
 }
@@ -55,7 +58,11 @@ type SessionId = u64;
 enum Owner {
     Attached(ClientId),
     Orphaned,
-    /// The user closed it: the child got SIGHUP; the session goes when the child is reaped.
+    /// The user closed it: the child got SIGHUP and gets SIGKILL at `kill_at` if it ignores that.
+    Closing {
+        kill_at: Instant,
+    },
+    /// Closed and the child got SIGKILL, or had already exited; the session goes when the child is reaped.
     Closed,
 }
 
@@ -215,6 +222,25 @@ impl Holder {
                 self.relaunch_at = None;
                 self.relaunch(now);
             }
+            for s in self.sessions.values_mut() {
+                if let Owner::Closing { kill_at } = s.owner
+                    && kill_at <= now
+                {
+                    if s.pidfd.is_some() {
+                        let _ =
+                            rustix::process::kill_process(Pid::from_child(&s.child), Signal::KILL);
+                    }
+                    s.owner = Owner::Closed;
+                }
+            }
+            let kill_at = self
+                .sessions
+                .values()
+                .filter_map(|s| match s.owner {
+                    Owner::Closing { kill_at } => Some(kill_at),
+                    _ => None,
+                })
+                .min();
             let idle_deadline = self
                 .idle_since
                 .zip(self.config.idle_exit)
@@ -222,7 +248,7 @@ impl Holder {
             if idle_deadline.is_some_and(|at| at <= now) {
                 return Ok(());
             }
-            let deadline = [self.relaunch_at, idle_deadline]
+            let deadline = [self.relaunch_at, idle_deadline, kill_at]
                 .into_iter()
                 .flatten()
                 .min();
@@ -250,7 +276,7 @@ impl Holder {
                 .clients
                 .get(&c)
                 .is_some_and(|c| c.queued >= self.config.client_queue_cap),
-            Owner::Orphaned | Owner::Closed => false,
+            Owner::Orphaned | Owner::Closing { .. } | Owner::Closed => false,
         }
     }
 
@@ -438,6 +464,9 @@ impl Holder {
                     if s.pidfd.is_some() {
                         let _ =
                             rustix::process::kill_process(Pid::from_child(&s.child), Signal::HUP);
+                        s.owner = Owner::Closing {
+                            kill_at: Instant::now() + self.config.close_grace,
+                        };
                     }
                     s.on_hangup();
                     s.tail = Vec::new();
@@ -633,7 +662,7 @@ impl Holder {
         };
         match s.owner {
             Owner::Attached(client) => self.send(client, &HolderMsg::Exited { id, status }, None),
-            Owner::Orphaned | Owner::Closed => {
+            Owner::Orphaned | Owner::Closing { .. } | Owner::Closed => {
                 self.sessions.remove(&id);
             }
         }

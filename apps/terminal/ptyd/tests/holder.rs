@@ -336,6 +336,24 @@ fn close_hangs_up_the_child() {
 }
 
 #[test]
+fn close_kills_a_child_that_ignores_sighup() {
+    let (_dir, path) = start(Config {
+        close_grace: Duration::from_millis(100),
+        ..Config::default()
+    });
+    let mut c = TestClient::connect(&path);
+    let (id, _fd) = c.spawn(&["sh", "-c", "trap '' HUP; echo pid=$$; exec sleep 100"]);
+    let seen = c.read_until(id, 0, Vec::new(), |s| contains(s, "\n"));
+    let text = String::from_utf8(seen).unwrap();
+    let pid = text.trim().strip_prefix("pid=").unwrap().to_string();
+    c.send(ClientMsg::Close { id });
+    assert!(
+        wait_for(|| !Path::new(&format!("/proc/{pid}")).exists(), TIMEOUT),
+        "child {pid} ignored SIGHUP and still exists"
+    );
+}
+
+#[test]
 fn relaunch_runs_only_for_orphaned_running_sessions() {
     let dir = tempfile::tempdir().unwrap();
     let marker = dir.path().join("relaunched");
