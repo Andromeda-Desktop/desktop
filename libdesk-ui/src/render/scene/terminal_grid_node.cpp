@@ -219,6 +219,10 @@ void TerminalGridNode::buildRow(int row) {
     if ((cell.flags & TerminalCell::Overline) != 0) {
       rect(x, top, right, top + thickness, cell.fg);
     }
+    // A wide cell draws both columns; its tail cell would paint over the right half.
+    if ((cell.flags & TerminalCell::Wide) != 0) {
+      ++col;
+    }
   }
 }
 

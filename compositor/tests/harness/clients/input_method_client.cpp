@@ -1,7 +1,8 @@
 // Holds an input-method keyboard grab and an input-method-owned virtual keyboard. Optional lifecycle modes create the
 // grab only while text input is active, with either a transient or persistent owned keyboard. A separate harness
 // virtual keyboard drives physical modifiers through the grab. Surrounding text and content type are printed when a
-// done event applies them.
+// done event applies them. The scripted mode grabs no keyboard; it reads "preedit TEXT", "commit TEXT" and "clear"
+// lines from stdin and sends them to the focused text input.
 
 #include "input-method-unstable-v2-client-protocol.h"
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
@@ -11,6 +12,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <poll.h>
 #include <print>
 #include <string>
 #include <unistd.h>
@@ -27,6 +30,8 @@ namespace {
     zwp_input_method_v2* inputMethod = nullptr;
     zwp_input_method_keyboard_grab_v2* grab = nullptr;
     bool activationLifecycle = false;
+    bool scripted = false;
+    uint32_t doneCount = 0; // the serial zwp_input_method_v2.commit must echo
     bool persistentKeyboard = false;
     bool pendingActivate = false;
     bool pendingDeactivate = false;
@@ -102,6 +107,11 @@ namespace {
   }
   void inputMethodDone(void* data, zwp_input_method_v2*) {
     auto& state = *static_cast<State*>(data);
+    ++state.doneCount;
+    if (state.scripted && state.pendingActivate) {
+      state.pendingActivate = false;
+      std::println("activated");
+    }
     if (state.pendingSurrounding) {
       state.pendingSurrounding = false;
       std::println(
@@ -202,8 +212,9 @@ int main(int argc, char** argv) {
   const bool lifecycle = argc == 2
       && (std::strcmp(argv[1], "activation-lifecycle") == 0
           || std::strcmp(argv[1], "persistent-activation-lifecycle") == 0);
-  if (argc > 2 || (argc == 2 && !lifecycle)) {
-    std::println(stderr, "usage: {} [activation-lifecycle|persistent-activation-lifecycle]", argv[0]);
+  const bool scripted = argc == 2 && std::strcmp(argv[1], "scripted") == 0;
+  if (argc > 2 || (argc == 2 && !lifecycle && !scripted)) {
+    std::println(stderr, "usage: {} [activation-lifecycle|persistent-activation-lifecycle|scripted]", argv[0]);
     return EXIT_FAILURE;
   }
   wl_display* display = wl_display_connect(nullptr);
@@ -215,6 +226,7 @@ int main(int argc, char** argv) {
   State state;
   state.display = display;
   state.activationLifecycle = lifecycle;
+  state.scripted = scripted;
   state.persistentKeyboard = argc == 2 && std::strcmp(argv[1], "persistent-activation-lifecycle") == 0;
   wl_registry* registry = wl_display_get_registry(display);
   wl_registry_add_listener(registry, &kRegistryListener, &state);
@@ -229,7 +241,7 @@ int main(int argc, char** argv) {
   if (state.persistentKeyboard) {
     state.ownedKeyboard = zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(state.keyboardManager, state.seat);
   }
-  if (!state.activationLifecycle) {
+  if (!state.activationLifecycle && !state.scripted) {
     createKeyboardGrab(state);
   }
   if (wl_display_roundtrip(display) < 0) {
@@ -241,7 +253,40 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  while (wl_display_dispatch(display) >= 0) {
+  while (state.scripted) {
+    wl_display_flush(display);
+    pollfd fds[2] = {{.fd = wl_display_get_fd(display), .events = POLLIN, .revents = 0},
+                     {.fd = STDIN_FILENO, .events = POLLIN, .revents = 0}};
+    if (poll(fds, 2, -1) < 0) {
+      break;
+    }
+    if ((fds[0].revents & POLLIN) != 0 && wl_display_dispatch(display) < 0) {
+      break;
+    }
+    if ((fds[1].revents & (POLLIN | POLLHUP)) == 0) {
+      continue;
+    }
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+      break;
+    }
+    if (line.starts_with("preedit ")) {
+      const std::string text = line.substr(8);
+      const auto end = static_cast<int32_t>(text.size());
+      zwp_input_method_v2_set_preedit_string(state.inputMethod, text.c_str(), end, end);
+    } else if (line.starts_with("commit ")) {
+      zwp_input_method_v2_set_preedit_string(state.inputMethod, "", 0, 0);
+      zwp_input_method_v2_commit_string(state.inputMethod, line.substr(7).c_str());
+    } else if (line == "clear") {
+      zwp_input_method_v2_set_preedit_string(state.inputMethod, "", 0, 0);
+    } else {
+      continue;
+    }
+    zwp_input_method_v2_commit(state.inputMethod, state.doneCount);
+    std::println("sent {}", line);
+    std::fflush(stdout);
+  }
+  while (!state.scripted && wl_display_dispatch(display) >= 0) {
   }
 
   destroyGrab(state);

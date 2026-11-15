@@ -2,6 +2,7 @@
 
 #include "pty_session.h"
 #include "render/scene/terminal_grid_node.h"
+#include "ui/text_input_client.h"
 
 #include <cstdint>
 #include <functional>
@@ -20,7 +21,7 @@ namespace term {
 
   // One terminal session drawn as a libdesk-ui cell grid. The app window and the Files pane both host it.
   // All methods run on the UI thread; the session's IO thread only wakes it.
-  class TerminalView {
+  class TerminalView final : private TextInputClient {
   public:
     struct Host {
       // New terminal state is ready: ask for a frame tick that calls frame().
@@ -31,7 +32,7 @@ namespace term {
     };
 
     explicit TerminalView(Host host);
-    ~TerminalView();
+    ~TerminalView() override;
     TerminalView(const TerminalView&) = delete;
     TerminalView& operator=(const TerminalView&) = delete;
 
@@ -69,6 +70,8 @@ namespace term {
     };
 
     void refresh(bool all);
+    // Writes the preedit, underlined, into m_rowBuffer from column x; returns the columns it covers.
+    int overlayPreedit(int x, std::uint32_t fg, std::uint32_t bg);
     void applyPalette();
     void scheduleRedraw(Redraw redraw);
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
@@ -82,6 +85,13 @@ namespace term {
     void clearSelection();
     void scrollToBottom();
     [[nodiscard]] std::uint32_t modifiers() const;
+
+    // IME: commits go to the program; the preedit is drawn over the grid at the cursor.
+    [[nodiscard]] TextInputState textInputState() const override;
+    void textInputApplyEdit(const TextInputEdit& edit) override;
+    void textInputResetPreedit() override;
+    void textInputActivated(TextInputService& service) override;
+    void textInputDeactivated(TextInputService& service) override;
     void copySelection();
     void paste();
 
@@ -101,6 +111,9 @@ namespace term {
     float m_pointerY = 0.0F;
     float m_wheelRemainder = 0.0F;
     Click m_lastClick;
+    TextInputService* m_textInput = nullptr;
+    std::string m_preedit;
+    GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows
     std::unordered_set<std::uint32_t> m_keysDown; // evdev codes whose press went to the program
     void updateFocus();
 

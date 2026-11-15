@@ -10,6 +10,7 @@
 #include "ui/builders.h"
 #include "ui/controls/input.h"
 #include "ui/palette.h"
+#include "wayland/text_input_service.h"
 
 #include <linux/input-event-codes.h>
 
@@ -20,6 +21,7 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace term {
@@ -52,6 +54,21 @@ namespace term {
         const float ca = static_cast<float>((a >> shift) & 0xFF);
         const float cb = static_cast<float>((b >> shift) & 0xFF);
         out |= static_cast<std::uint32_t>(std::lround(ca + (cb - ca) * t)) << shift;
+      }
+      return out;
+    }
+
+    std::vector<char32_t> decodeUtf8(std::string_view s) {
+      std::vector<char32_t> out;
+      for (std::size_t i = 0; i < s.size();) {
+        const auto b = static_cast<unsigned char>(s[i]);
+        const int len = b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 1;
+        char32_t cp = len == 1 ? b : b & (0x7F >> len);
+        for (int k = 1; k < len && i + k < s.size(); ++k) {
+          cp = (cp << 6) | (static_cast<unsigned char>(s[i + k]) & 0x3F);
+        }
+        out.push_back(cp);
+        i += static_cast<std::size_t>(len);
       }
       return out;
     }
@@ -110,6 +127,9 @@ namespace term {
 
   TerminalView::~TerminalView() {
     m_alive.reset();
+    if (m_textInput != nullptr) {
+      m_textInput->clearFocusedClient(this);
+    }
     ghostty_mouse_event_free(m_mouseEvent);
     ghostty_mouse_encoder_free(m_mouseEncoder);
     ghostty_key_event_free(m_keyEvent);
@@ -172,6 +192,7 @@ namespace term {
                                    [this](InputArea& a) {
                                      a.setCapturesAllKeys(true);
                                      a.setRetainsFocusOnPointerRelease(true);
+                                     a.setTextInputClient(this);
                                      a.setOnFocusGain([this] {
                                        m_areaFocused = true;
                                        updateFocus();
@@ -257,6 +278,20 @@ namespace term {
     const std::uint32_t defaultBg = pack(colors.background);
     m_grid->setBackground(defaultBg);
 
+    bool visible = false;
+    bool inViewport = false;
+    std::uint16_t cx = 0;
+    std::uint16_t cy = 0;
+    ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &visible);
+    ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &inViewport);
+    if (inViewport) {
+      ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cx);
+      ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cy);
+    }
+    // The preedit row must be redrawn when the cursor moves or the preedit changes.
+    all = all || !m_preedit.empty();
+    int preeditWidth = 0;
+
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rows);
     std::uint16_t index = 0;
     std::uint16_t y = 0;
@@ -335,23 +370,24 @@ namespace term {
         }
         m_rowBuffer.push_back(cell);
       }
+      if (inViewport && y == cy && !m_preedit.empty()) {
+        preeditWidth = overlayPreedit(cx, defaultFg, defaultBg);
+      }
       m_grid->setRow(y, m_rowBuffer);
       ghostty_render_state_row_set(m_rows, GHOSTTY_RENDER_STATE_ROW_OPT_DIRTY, &clean);
     }
     const GhosttyRenderStateDirty none = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_state, GHOSTTY_RENDER_STATE_OPT_DIRTY, &none);
 
-    bool visible = false;
-    bool inViewport = false;
-    ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISIBLE, &visible);
-    ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_HAS_VALUE, &inViewport);
+    if (inViewport && (cx != m_cursorCell.x || cy != m_cursorCell.y)) {
+      m_cursorCell = {.x = cx, .y = cy};
+      if (m_textInput != nullptr) {
+        m_textInput->notifyClientStateChanged(this, TextInputChangeCause::Other);
+      }
+    }
     if (visible && inViewport) {
-      std::uint16_t cx = 0;
-      std::uint16_t cy = 0;
       bool wideTail = false;
       GhosttyCursorStyle visual = GHOSTTY_CURSOR_STYLE_BLOCK;
-      ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_X, &cx);
-      ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_Y, &cy);
       ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VIEWPORT_WIDE_TAIL, &wideTail);
       ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_VISUAL_STYLE, &visual);
       TerminalCursorStyle shape = TerminalCursorStyle::Block;
@@ -362,7 +398,7 @@ namespace term {
       default: break;
       }
       m_grid->setCursor(TerminalCursor{
-          .column = wideTail && cx > 0 ? cx - 1 : cx,
+          .column = std::min((wideTail && cx > 0 ? cx - 1 : cx) + preeditWidth, m_grid->columns() - 1),
           .row = cy,
           .style = m_focused ? shape : TerminalCursorStyle::HollowBlock,
           .color = colors.cursor_has_value ? pack(colors.cursor) : defaultFg,
@@ -474,6 +510,73 @@ namespace term {
     const float row = std::floor((localY - kTopInset * m_uiScale) / m_grid->cellHeight());
     return {.x = static_cast<std::uint16_t>(std::clamp(col, 0.0F, static_cast<float>(m_grid->columns() - 1))),
             .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(m_grid->rows() - 1)))};
+  }
+
+  int TerminalView::overlayPreedit(int x, std::uint32_t fg, std::uint32_t bg) {
+    int col = x;
+    for (const char32_t cp : decodeUtf8(m_preedit)) {
+      const int width = std::max<int>(1, ghostty_unicode_codepoint_width(cp));
+      if (col + width > static_cast<int>(m_rowBuffer.size())) {
+        break;
+      }
+      m_rowBuffer[static_cast<std::size_t>(col)] = TerminalCell{
+          .codepoint = cp,
+          .fg = fg,
+          .bg = bg,
+          .flags = static_cast<std::uint16_t>(TerminalCell::Background | TerminalCell::Underline
+                                              | (width == 2 ? TerminalCell::Wide : 0)),
+      };
+      if (width == 2) {
+        m_rowBuffer[static_cast<std::size_t>(col) + 1] =
+            TerminalCell{.codepoint = 0, .fg = fg, .bg = bg, .flags = TerminalCell::Background};
+      }
+      col += width;
+    }
+    return col - x;
+  }
+
+  TextInputState TerminalView::textInputState() const {
+    float sceneX = 0.0F;
+    float sceneY = 0.0F;
+    if (m_area != nullptr) {
+      Node::absolutePosition(m_area, sceneX, sceneY);
+    }
+    const float cellW = m_grid != nullptr ? m_grid->cellWidth() : 1.0F;
+    const float cellH = m_grid != nullptr ? m_grid->cellHeight() : 1.0F;
+    return TextInputState{
+        .cursorRectX = static_cast<std::int32_t>(std::lround(sceneX + kInset * m_uiScale + m_cursorCell.x * cellW)),
+        .cursorRectY = static_cast<std::int32_t>(
+            std::lround(sceneY + kTopInset * m_uiScale + static_cast<float>(m_cursorCell.y) * cellH)),
+        .cursorRectWidth = static_cast<std::int32_t>(std::max(1L, std::lround(cellW))),
+        .cursorRectHeight = static_cast<std::int32_t>(std::max(1L, std::lround(cellH))),
+        .sendSurroundingText = false,
+    };
+  }
+
+  void TerminalView::textInputApplyEdit(const TextInputEdit& edit) {
+    if (edit.hasPreedit && edit.preeditText != m_preedit) {
+      m_preedit = edit.preeditText;
+      scheduleRedraw(Redraw::All);
+    }
+    if (edit.hasCommitText && !edit.commitText.empty()) {
+      scrollToBottom();
+      m_session.write({reinterpret_cast<const std::uint8_t*>(edit.commitText.data()), edit.commitText.size()});
+    }
+  }
+
+  void TerminalView::textInputResetPreedit() {
+    if (!m_preedit.empty()) {
+      m_preedit.clear();
+      scheduleRedraw(Redraw::All);
+    }
+  }
+
+  void TerminalView::textInputActivated(TextInputService& service) { m_textInput = &service; }
+
+  void TerminalView::textInputDeactivated(TextInputService& service) {
+    if (m_textInput == &service) {
+      m_textInput = nullptr;
+    }
   }
 
   std::uint32_t TerminalView::modifiers() const {
