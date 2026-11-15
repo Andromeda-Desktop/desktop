@@ -143,9 +143,13 @@ endif
 # The source sheet (src/share_picker): a libdesk-app window over the asking app, started per Start request.
 executable(
   'andromeda-share-picker',
-  'src/share_picker/main.cpp',
+  ['src/share_picker/main.cpp', 'src/share_picker/thumbnails.cpp', 'src/loop/loop.cpp', 'src/wayland/wayland.cpp']
+    + protocol_sources,
+  include_directories: include_directories('src'),
   dependencies: [
     subproject('libdesk-app').get_variable('desk_app_dep'),
+    wayland_client_dep,
+    libdrm_dep,
     nlohmann_json_dep,
     dependency('gio-unix-2.0'),
     dependency('xkbcommon'),

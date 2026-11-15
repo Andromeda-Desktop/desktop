@@ -581,6 +581,15 @@ void AppWindow::invalidate() {
   }
 }
 
+void AppWindow::updateInPlace(const std::function<void(Renderer&)>& change) {
+  if (m_surface == nullptr || m_root == nullptr) {
+    return;
+  }
+  m_loop.renderContext().makeCurrent(m_surface->renderTarget());
+  change(m_surface->renderTarget().renderer());
+  invalidate();
+}
+
 void AppWindow::toggleFullscreen() {
   if (m_surface != nullptr) {
     m_surface->setFullscreen(!m_surface->state().fullscreen);

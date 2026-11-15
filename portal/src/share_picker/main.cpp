@@ -5,8 +5,13 @@
 #include "app/app_window.h"
 #include "app/command_table.h"
 #include "app/state_store.h"
+#include "core/deferred_call.h"
+#include "render/core/texture_manager.h"
+#include "share_picker/thumbnails.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/image.h"
+#include "ui/controls/scroll_view.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
@@ -105,16 +110,25 @@ namespace {
       m_name = appName(m_request.appId);
       m_showPointer = m_request.showPointer;
       m_tab = m_request.windows ? Tab::Window : Tab::Screen;
+      m_frames.resize(m_request.sources.size());
+      std::vector<xdpu::ThumbnailSource> sources;
+      for (const Source& source : m_request.sources) {
+        sources.push_back({.monitor = source.monitor, .identifier = source.id});
+      }
+      m_thumbnails = std::make_unique<xdpu::Thumbnails>(
+          std::move(sources), [this] { DeferredCall::callLater([this] { onThumbnails(); }); });
     }
 
     [[nodiscard]] std::string title() const {
       return m_name.empty() ? std::string("Choose what to share") : "Choose what " + m_name + " can see";
     }
 
-    std::unique_ptr<Node> build(float scale) {
+    std::unique_ptr<Node> build(Renderer& renderer, float scale) {
+      m_images.assign(m_request.sources.size(), nullptr);
+      m_scroll = nullptr;
       auto sheet = ui::column({.align = FlexAlign::Stretch, .gap = 16.0F * scale, .padding = 16.0F * scale, .flexGrow = 1.0F});
       sheet->addChild(header(scale));
-      sheet->addChild(grid(scale));
+      sheet->addChild(grid(renderer, scale));
       sheet->addChild(options(scale));
       sheet->addChild(buttons(scale));
       return sheet;
@@ -135,7 +149,34 @@ namespace {
       return false;
     }
 
-    void setRebuild(std::function<void()> rebuild) { m_rebuild = std::move(rebuild); }
+    void attach(AppWindow& window) { m_window = &window; }
+
+    // Starts live capture for the tiles inside the scroll viewport and stops it for the rest.
+    void updateShown() {
+      if (m_scroll == nullptr) {
+        return;
+      }
+      float left = 0.0F;
+      float top = 0.0F;
+      Node::absolutePosition(m_scroll, left, top);
+      const float bottom = top + m_scroll->height();
+      std::vector<std::size_t> shown;
+      for (std::size_t index = 0; index < m_images.size(); ++index) {
+        if (m_images[index] == nullptr) {
+          continue;
+        }
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(m_images[index], x, y);
+        if (y + m_images[index]->height() > top && y < bottom) {
+          shown.push_back(index);
+        }
+      }
+      if (shown != m_shown) {
+        m_shown = shown;
+        m_thumbnails->show(std::move(shown));
+      }
+    }
 
     // Window close and Escape cancel; Share prints the selection. Only the first answer counts.
     void finish(bool share) {
@@ -168,6 +209,24 @@ namespace {
     }
 
   private:
+    void onThumbnails() {
+      for (xdpu::Thumbnail& thumbnail : m_thumbnails->take()) {
+        const std::size_t index = thumbnail.index;
+        m_frames[index] = std::move(thumbnail);
+        if (Image* image = m_images[index]; image != nullptr) {
+          m_window->updateInPlace([this, image, index](Renderer& renderer) { upload(renderer, *image, index); });
+        }
+      }
+    }
+
+    void upload(Renderer& renderer, Image& image, std::size_t index) const {
+      const xdpu::Thumbnail& frame = m_frames[index];
+      if (!frame.rgb.empty()) {
+        image.setSourceRaw(renderer, frame.rgb.data(), frame.rgb.size(), frame.width, frame.height, frame.width * 3,
+                           PixmapFormat::RGB);
+      }
+    }
+
     // A selection key: the output name, the window identifier, or on the App tab the app id.
     [[nodiscard]] std::string keyOf(const Source& source) const {
       return m_tab == Tab::App && !source.monitor ? source.appId : source.id;
@@ -213,7 +272,7 @@ namespace {
       } else {
         m_selected.insert(key);
       }
-      m_rebuild();
+      m_window->requestRebuild();
     }
 
     std::unique_ptr<Node> header(float scale) {
@@ -250,13 +309,13 @@ namespace {
                                      .scale = scale,
                                      .onChange = [this, order](std::size_t index) {
                                        m_tab = order.at(index);
-                                       m_rebuild();
+                                       m_window->requestRebuild();
                                      }}));
       }
       return row;
     }
 
-    std::unique_ptr<Node> tile(const Source& source, float width, float scale) {
+    std::unique_ptr<Node> tile(Renderer& renderer, const Source& source, float width, float scale) {
       const bool on = !source.blocked && m_selectedTab == m_tab && m_selected.contains(keyOf(source));
       auto body = ui::column({.align = FlexAlign::Stretch,
                               .gap = 6.0F * scale,
@@ -281,6 +340,14 @@ namespace {
         thumb->addChild(ui::label({.text = std::string("Blocks capture"),
                                    .fontSize = 11.0F * scale,
                                    .color = colorSpecFromRole(ColorRole::Label2)}));
+      } else {
+        const auto index = static_cast<std::size_t>(&source - m_request.sources.data());
+        thumb->addChild(ui::image({.out = &m_images[index],
+                                   .fit = ImageFit::Contain,
+                                   .radius = 8.0F * scale,
+                                   .width = width - 12.0F * scale,
+                                   .height = kThumbHeight * scale,
+                                   .configure = [this, &renderer, index](Image& image) { upload(renderer, image, index); }}));
       }
       body->addChild(std::move(thumb));
       std::string name = source.title;
@@ -304,11 +371,16 @@ namespace {
                            std::move(body));
     }
 
-    std::unique_ptr<Node> grid(float scale) {
+    std::unique_ptr<Node> grid(Renderer& renderer, float scale) {
       constexpr int kColumns = 3;
       const float gap = 12.0F * scale;
       const float width = (static_cast<float>(kSheetWidth) * scale - 2.0F * 16.0F * scale - 2.0F * gap) / kColumns;
-      auto scroll = ui::scrollView({.contentScale = scale, .scrollbarAutoHide = true, .flexGrow = 1.0F});
+      auto scroll = ui::scrollView({.out = &m_scroll,
+                                    .state = &m_scrollState,
+                                    .contentScale = scale,
+                                    .scrollbarAutoHide = true,
+                                    .flexGrow = 1.0F,
+                                    .onScrollChanged = [this](float) { updateShown(); }});
       Flex* rows = scroll->content();
       rows->setGap(gap);
       rows->setAlign(FlexAlign::Start);
@@ -326,7 +398,7 @@ namespace {
           }
           line = ui::row({.gap = gap});
         }
-        line->addChild(tile(*list[i], width, scale));
+        line->addChild(tile(renderer, *list[i], width, scale));
       }
       if (line) {
         rows->addChild(std::move(line));
@@ -383,7 +455,13 @@ namespace {
     bool m_showPointer = false;
     bool m_remember = false;
     Answer m_answer = Answer::Pending;
-    std::function<void()> m_rebuild;
+    AppWindow* m_window = nullptr;
+    ScrollView* m_scroll = nullptr;
+    ScrollViewState m_scrollState;
+    std::vector<Image*> m_images;            // per source; rebuilt with the tree
+    std::vector<xdpu::Thumbnail> m_frames;   // per source; the last live frame
+    std::vector<std::size_t> m_shown;
+    std::unique_ptr<xdpu::Thumbnails> m_thumbnails; // last: its worker joins before the members it posts to go
   };
 
 } // namespace
@@ -411,8 +489,10 @@ int main() {
                     .minHeight = kSheetHeight,
                     .parentWindow = request.parentWindow,
                     .header = false});
-  picker.setRebuild([&window] { window.requestRebuild(); });
-  window.setContentBuilder([&picker, &window](Renderer&, float, float) { return picker.build(window.uiScale()); });
+  picker.attach(window);
+  window.setContentBuilder(
+      [&picker, &window](Renderer& renderer, float, float) { return picker.build(renderer, window.uiScale()); });
+  window.setLayoutCallback([&picker] { picker.updateShown(); });
   window.setKeyHandler([&picker](const KeyboardEvent& event) { return picker.key(event); });
   window.setClosedCallback([&picker] { picker.finish(false); });
   if (!window.open()) {

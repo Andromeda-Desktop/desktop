@@ -102,6 +102,8 @@ public:
   void refreshNavigation();
   // Repaints or relayouts after a node changed in place.
   void invalidate();
+  // Runs change with the GL context current (texture uploads outside a frame), then repaints what it changed.
+  void updateInPlace(const std::function<void(Renderer&)>& change);
   // Raises the window for a launch that carried an xdg-activation token.
   void activate(const std::string& token);
   // A context menu at a point in window (scene) coordinates; `activated` gets the entry id, after the menu closed.
