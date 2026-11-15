@@ -83,6 +83,11 @@ namespace term {
         m_hits.push_back(*h);
       }
     }
+    std::ranges::sort(m_hits, before, &FindHit::start);
+    m_maxSpan = 0;
+    for (const FindHit& h : m_hits) {
+      m_maxSpan = std::max(m_maxSpan, h.end.y - h.start.y);
+    }
     GhosttySelection current{};
     const bool hasCurrent =
         selected && ghostty_search_get(m_search, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &current) == GHOSTTY_SUCCESS;
@@ -144,7 +149,18 @@ namespace term {
       return afterStart && beforeEnd;
     };
     current = m_current && in(*m_current);
-    return current || std::ranges::any_of(m_hits, in);
+    if (current) {
+      return true;
+    }
+    // Hits are sorted by start: only those starting from row - m_maxSpan up to this cell can cover it.
+    const std::uint32_t first = row > m_maxSpan ? row - m_maxSpan : 0;
+    for (auto it = std::ranges::lower_bound(m_hits, first, {}, [](const FindHit& h) { return h.start.y; });
+         it != m_hits.end() && (it->start.y < row || (it->start.y == row && it->start.x <= col)); ++it) {
+      if (in(*it)) {
+        return true;
+      }
+    }
+    return false;
   }
 
 } // namespace term

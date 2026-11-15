@@ -502,6 +502,8 @@ gap = 8.0
 
 [component.terminal]
 find_width = 360.0  # find capsule in the title band (D find14 mockup)
+find_ring = 1.5  # current-hit ring width (D-SPEC find)
+find_hit_radius = 2.0  # current-hit ring corner, inside the ring
 
 [component.files]  # Files v2 list columns (mockup files-v2-live.html section 2, FILES-UX 2.9)
 column_date = 112.0
@@ -550,6 +552,7 @@ hover_width = 8.0
 inset = 2.0
 min_length = 32.0
 hide_ms = 800
+mark_thickness = 2.0  # command and find marks are hover_width x this (rulebook 9.8)
 
 [component.menu]  # 9.9
 radius = 12.0

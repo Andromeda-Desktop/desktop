@@ -133,9 +133,8 @@ namespace term {
     void pointerMotion(float localX, float localY);
     bool wheel(const InputArea::PointerData& d);
     [[nodiscard]] bool mouseTracking();
-    // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     void syncContext();
-    // Under the terminal lock: feeds the search and reads its hits as viewport cells.
+    // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
     // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
     void setScrollPx(float px);

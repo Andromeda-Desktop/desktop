@@ -22,6 +22,7 @@
 
 #include "cursor-shape-v1-client-protocol.h"
 
+#include <unistd.h>
 #include <linux/input-event-codes.h>
 
 #include <wayland-client-protocol.h>
@@ -388,10 +389,10 @@ namespace term {
       if (cur && cur->start.y == cur->end.y) {
         const float cw = m_grid->cellWidth();
         const float ch = m_grid->cellHeight();
-        const float ring = 1.5F * m_uiScale;
+        const float ring = Tokens::componentTerminalFindRing * m_uiScale;
         m_findRing->setStyle(RoundedRectStyle{.fill = Color{0.0F, 0.0F, 0.0F, 0.0F},
                                               .border = colorForRole(ColorRole::TermFindRing),
-                                              .radius = Radii(2.0F * m_uiScale + ring),
+                                              .radius = Radii(Tokens::componentTerminalFindHitRadius * m_uiScale + ring),
                                               .borderWidth = ring});
         m_findRing->setPosition(static_cast<float>(cur->start.x) * cw - ring, static_cast<float>(cur->start.y) * ch - ring);
         m_findRing->setFrameSize(static_cast<float>(cur->end.x - cur->start.x + 1) * cw + 2.0F * ring, ch + 2.0F * ring);
@@ -682,7 +683,15 @@ namespace term {
     if (rest.starts_with("file://")) {
       rest.remove_prefix(7);
       const auto slash = rest.find('/');
-      rest = slash == std::string_view::npos ? std::string_view{} : rest.substr(slash);
+      const std::string_view host = rest.substr(0, slash);
+      std::array<char, 256> own{};
+      const bool local = host.empty() || host == "localhost"
+          || (gethostname(own.data(), own.size() - 1) == 0 && host == std::string_view(own.data()));
+      // A remote shell's cwd is not a local path: no Files, no branch.
+      if (!local || slash == std::string_view::npos) {
+        return {};
+      }
+      rest = rest.substr(slash);
     }
     std::string path;
     for (std::size_t i = 0; i < rest.size(); ++i) {

@@ -47,7 +47,8 @@ namespace term {
   private:
     GhosttySearch m_search = nullptr;
     bool m_selectFirst = false; // select the newest match once one is found
-    std::vector<FindHit> m_hits; // in the viewport
+    std::vector<FindHit> m_hits; // in the viewport, sorted by start
+    std::uint32_t m_maxSpan = 0; // most rows one hit spans past its start
     std::optional<FindHit> m_current;
     std::size_t m_total = 0;
     std::optional<std::size_t> m_index;

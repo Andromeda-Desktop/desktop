@@ -62,6 +62,17 @@ void checkInvariants(const TerminalFind& find, GhosttyTerminal t, const std::vec
     CHECK(h.start.y < kRows && h.end.y < kRows && h.start.y == h.end.y);
     CHECK(static_cast<std::size_t>(h.end.x - h.start.x + 1) == needle.size());
   }
+  for (std::uint32_t row = 0; row < kRows; ++row) {
+    for (std::uint16_t col = 0; col < kCols; ++col) {
+      const auto covers = [&](const FindHit& h) {
+        return (row > h.start.y || (row == h.start.y && col >= h.start.x)) && (row < h.end.y || (row == h.end.y && col <= h.end.x));
+      };
+      bool current = false;
+      const bool hit = find.hitAt(row, col, current);
+      CHECK(hit == std::ranges::any_of(find.hits(), covers));
+      CHECK(current == (find.current() && covers(*find.current())));
+    }
+  }
   if (find.current()) {
     CHECK(std::ranges::find(find.hits(), *find.current()) != find.hits().end());
   }

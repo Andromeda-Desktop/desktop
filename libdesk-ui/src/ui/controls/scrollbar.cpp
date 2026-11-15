@@ -293,7 +293,7 @@ void Scrollbar::setCurrentMark(std::optional<float> mark, const ColorSpec& color
 
 void Scrollbar::applyMarks(float trackExtent) {
   const float length = Tokens::componentScrollbarHoverWidth * m_contentScale;
-  const float thick = 2.0F * m_contentScale;
+  const float thick = Tokens::componentScrollbarMarkThickness * m_contentScale;
   // Flush with the bar's outer edge, so a mark never reaches past the gutter.
   const float cross = Style::rtl() && m_orientation == ScrollOrientation::Vertical
       ? m_crossOffset
@@ -361,6 +361,7 @@ void Scrollbar::applyPalette() {
   if (m_thumb != nullptr) {
     m_thumb->setStyle(makeSolid(resolveColorSpec(scrollbarThumbColor(), this), radius));
   }
+  applyMarks(std::max(0.0F, m_viewportExtent - m_trackInset * 2.0F));
 }
 
 void Scrollbar::applyThumbPosition(float scrollOffset, float maxScroll) {
