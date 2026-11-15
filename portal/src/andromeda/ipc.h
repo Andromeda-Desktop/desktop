@@ -4,6 +4,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 
 namespace xdpu {
@@ -29,10 +30,12 @@ namespace xdpu {
   public:
     using ScreenCastHandler = std::function<void(const ScreenCastCommand&)>;
     using FocusHandler = std::function<void(const std::optional<std::string>&)>;
+    // Identifiers of the windows whose capture shows nothing (dsk_surface_v1.set_secure).
+    using CaptureBlockedHandler = std::function<void(std::set<std::string>)>;
 
     AndromedaIpc(
         Loop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
-        FocusHandler focusedOutputHandler
+        FocusHandler focusedOutputHandler, CaptureBlockedHandler captureBlockedHandler
     );
     ~AndromedaIpc();
 

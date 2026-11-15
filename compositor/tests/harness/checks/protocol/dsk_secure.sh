@@ -162,6 +162,15 @@ printf h >&"$late_fd"
 await_lines "$LATE_LOG" child-hidden 1
 "$ANDROMEDA" settle
 late_id=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.app_id == "secure-late") | .id')
+# IPC windows report capture_blocked, so the share picker can show a lock tile for the window.
+blocked() {
+  "$ANDROMEDA" settle
+  "$ANDROMEDA" windows --json | jq -r --arg id "$1" '.[] | select(.id == $id) | .capture_blocked'
+}
+if [[ $(blocked "$late_id") != false ]]; then
+  echo "a window with a hidden secure child reports capture_blocked $(blocked "$late_id")"
+  exit 1
+fi
 CAPTURE_PIXELS=1 "$ANDROMEDA_CAPTURE_CLIENT" --window "$late_id" > "$LATE_CAPTURE_LOG" 2>&1 &
 pids+=($!)
 if ! await_lines "$LATE_CAPTURE_LOG" 'pixels .* color=ffff0000' 1 > /dev/null; then
@@ -170,6 +179,10 @@ if ! await_lines "$LATE_CAPTURE_LOG" 'pixels .* color=ffff0000' 1 > /dev/null; t
 fi
 printf s >&"$late_fd"
 await_lines "$LATE_LOG" child-shown 1
+if [[ $(blocked "$late_id") != true ]]; then
+  echo "a window with a shown secure child reports capture_blocked $(blocked "$late_id")"
+  exit 1
+fi
 # The frame after the child shows: black when redacted, blue when it leaks.
 if ! await_lines "$LATE_CAPTURE_LOG" 'pixels .* color=ff0000\(00\|ff\)' 1 > /dev/null; then
   echo "a window capture got no frame after the secure child showed: $(grep '^pixels' "$LATE_CAPTURE_LOG" | tail -3 | tr '\n' '|')"
@@ -184,6 +197,10 @@ fi
 late_red=$(grep -c '^pixels .* color=ffff0000' "$LATE_CAPTURE_LOG" || true)
 printf x >&"$late_fd"
 await_lines "$LATE_LOG" child-destroyed 1
+if [[ $(blocked "$late_id") != false ]]; then
+  echo "a window whose secure child is destroyed reports capture_blocked $(blocked "$late_id")"
+  exit 1
+fi
 if ! await_lines "$LATE_CAPTURE_LOG" 'pixels .* color=ffff0000' $((late_red + 1)) > /dev/null; then
   echo "a window capture stays black after its secure subsurface is destroyed: $(grep '^pixels' "$LATE_CAPTURE_LOG" | tail -3 | tr '\n' '|')"
   exit 1

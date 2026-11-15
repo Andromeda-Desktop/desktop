@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <sys/types.h>
 #include <vector>
@@ -127,6 +128,8 @@ namespace xdpu {
     const std::vector<ToplevelInfo>& toplevels() const;
     // Compositor-reported focused output, marked `"focused": true` in the chooser request.
     void setFocusedOutput(std::optional<std::string> name);
+    // Compositor-reported windows whose capture shows nothing, marked `"capture_blocked": true` in the chooser request.
+    void setCaptureBlocked(std::set<std::string> identifiers);
 
     // The asking app, for the picker's header, parent sheet and option rows; empty fields are left out.
     struct ChooserCaller {

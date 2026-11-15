@@ -28,7 +28,8 @@ int main() {
     xdpu::AndromedaIpc andromedaIpc(
         loop, [&portal](const xdpu::ScreenCastCommand& command) { portal.onScreenCastCommand(command); },
         [&portal](const std::optional<std::string>& identifier) { portal.onFocusedWindowChanged(identifier); },
-        [&portal](const std::optional<std::string>& output) { portal.onFocusedOutputChanged(output); }
+        [&portal](const std::optional<std::string>& output) { portal.onFocusedOutputChanged(output); },
+        [&wayland](std::set<std::string> identifiers) { wayland.setCaptureBlocked(std::move(identifiers)); }
     );
     portal.setScreenCastActiveHandler([&andromedaIpc](bool active) { andromedaIpc.setScreenCastActive(active); });
 

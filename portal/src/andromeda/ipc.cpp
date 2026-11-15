@@ -45,6 +45,7 @@ namespace xdpu {
     ScreenCastHandler screenCastHandler;
     FocusHandler focusedWindowHandler;
     FocusHandler focusedOutputHandler;
+    CaptureBlockedHandler captureBlockedHandler;
     int fd = -1;
     int watch = 0;
     std::string input;
@@ -53,10 +54,11 @@ namespace xdpu {
 
     Impl(
         Loop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
-        FocusHandler focusedOutputHandler
+        FocusHandler focusedOutputHandler, CaptureBlockedHandler captureBlockedHandler
     )
         : loop(loop), screenCastHandler(std::move(screenCastHandler)),
-          focusedWindowHandler(std::move(focusedWindowHandler)), focusedOutputHandler(std::move(focusedOutputHandler)) {
+          focusedWindowHandler(std::move(focusedWindowHandler)), focusedOutputHandler(std::move(focusedOutputHandler)),
+          captureBlockedHandler(std::move(captureBlockedHandler)) {
       const std::string path = socketPath();
       if (path.empty()) {
         std::fprintf(stderr, "andromeda-ipc: compositor socket path is unavailable\n");
@@ -230,19 +232,29 @@ namespace xdpu {
       const std::string eventName = event.value("event", "");
       if (eventName == "windows") {
         std::optional<std::string> focused;
+        std::set<std::string> blocked;
         if (data->is_array()) {
           for (const auto& window : *data) {
-            if (window.is_object() && window.value("active", false)) {
-              const std::string identifier = window.value("id", "");
-              if (!identifier.empty()) {
-                focused = identifier;
-              }
-              break;
+            if (!window.is_object()) {
+              continue;
+            }
+            const std::string identifier = window.value("id", "");
+            if (identifier.empty()) {
+              continue;
+            }
+            if (!focused && window.value("active", false)) {
+              focused = identifier;
+            }
+            if (window.value("capture_blocked", false)) {
+              blocked.insert(identifier);
             }
           }
         }
         if (focusedWindowHandler) {
           focusedWindowHandler(focused);
+        }
+        if (captureBlockedHandler) {
+          captureBlockedHandler(std::move(blocked));
         }
         return;
       }
@@ -305,11 +317,12 @@ namespace xdpu {
 
   AndromedaIpc::AndromedaIpc(
       Loop& loop, ScreenCastHandler screenCastHandler, FocusHandler focusedWindowHandler,
-      FocusHandler focusedOutputHandler
+      FocusHandler focusedOutputHandler, CaptureBlockedHandler captureBlockedHandler
   )
       : m_impl(
             std::make_unique<Impl>(
-                loop, std::move(screenCastHandler), std::move(focusedWindowHandler), std::move(focusedOutputHandler)
+                loop, std::move(screenCastHandler), std::move(focusedWindowHandler), std::move(focusedOutputHandler),
+                std::move(captureBlockedHandler)
             )
         ) {}
 

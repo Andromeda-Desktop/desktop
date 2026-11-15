@@ -666,6 +666,7 @@ namespace andromeda {
       entry["floating"] = view.floating();
       entry["title_bar"] = view.titleBarHeight() > 0;
       entry["fullscreen"] = view.scheduledFullscreen();
+      entry["capture_blocked"] = view.captureBlocked();
       entry["maximized"] = view.scheduledMaximized();
       entry["maximized_to_edges"] = view.maximizedToEdges();
       entry["pinned"] = view.pinned();

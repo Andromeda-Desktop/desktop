@@ -155,6 +155,8 @@ namespace andromeda {
     // Hides the capture tree behind a black rectangle of the window's size, so a window capture shows no content,
     // while any mapped surface of the window (its subsurfaces and popups included) is secure (dsk_surface_v1.set_secure).
     void refreshCaptureHidden();
+    // The last refreshCaptureHidden result; IPC windows report it as capture_blocked (the share picker's lock tile).
+    [[nodiscard]] bool captureBlocked() const { return m_captureBlocked; }
     // Watches a popup's surface tree, so a subsurface that maps or unmaps in it refreshes the capture.
     void watchPopupSurfaceTree(wlr_surface* popup) { watchViewSurfaceTree(popup); }
     [[nodiscard]] bool mapped() const { return m_lifecycle != Lifecycle::Unmapped; }
@@ -1002,6 +1004,7 @@ namespace andromeda {
     wlr_scene* m_captureScene = nullptr;
     // In m_captureScene; enabled while refreshCaptureHidden hides the window's surfaces.
     wlr_scene_rect* m_captureBlank = nullptr;
+    bool m_captureBlocked = false;
     void sizeCaptureBlank();
     ViewDecoration m_decoration;
     std::unique_ptr<ViewChromeAttachment> m_chromeAttachment;
