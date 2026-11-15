@@ -64,9 +64,10 @@ namespace term {
   } // namespace
 
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents,
+                                 ThumbnailService& thumbnails,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
                                  std::function<void(const std::string& token)> newWindow)
-      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_close(std::move(close)),
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_close(std::move(close)),
         m_newWindow(std::move(newWindow)) {
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
@@ -243,6 +244,7 @@ namespace term {
           RenderContext& render = m_loop.renderContext();
           return render.glReady() ? &render.textureManager() : nullptr;
         },
+        .thumbnails = &m_thumbnails,
         // exited runs inside the view's frame(): the view is destroyed later.
         .exited =
             [this, id, alive](int) {
