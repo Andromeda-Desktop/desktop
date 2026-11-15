@@ -384,7 +384,8 @@ namespace term {
     for (Session& session : m_views) {
       session.view->setWindowActive(session.id == id && m_active);
     }
-    if (const SessionInfo* info = m_sessions.find(id); info != nullptr && !info->cwd.empty()) {
+    if (const SessionInfo* info = m_sessions.find(id);
+        info != nullptr && info->kind != SessionKind::Agent && !info->cwd.empty()) {
       m_window.setTitle(info->cwd);
     }
     if (id != m_builtId && m_contentSlot != nullptr) {
@@ -533,6 +534,11 @@ namespace term {
     if (m_agentBar == nullptr) {
       return;
     }
+    // An agent session's title is its first prompt (or the agent's session title).
+    if (ContentView* shown = shownView(); shown != nullptr && shown->agent() != nullptr) {
+      const agent::Session* model = shown->agent()->session();
+      m_window.setTitle(model != nullptr && !model->title().empty() ? model->title() : std::string("New session"));
+    }
     m_window.updateInPlace([this](Renderer& /*renderer*/) {
       fillAgentBar();
       m_agentBar->markLayoutDirty();
@@ -626,7 +632,9 @@ namespace term {
           data.status = "failed";
           break;
       }
-      data.status = withCommand(data.status, model != nullptr ? model->title() : std::string());
+      if (model != nullptr && !model->title().empty()) {
+        data.name = model->title();
+      }
       return data;
     }
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
