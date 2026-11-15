@@ -144,7 +144,8 @@ public:
 
   using ChangeCallback = std::function<void()>;
 
-  bool connect();
+  // With a deadline, a compositor that accepts but never answers makes it throw at the deadline.
+  bool connect(std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
   // Destroys every Wayland object and the display; connect() starts over. Safe on a dead connection.
   void disconnect() { cleanup(); }
   bool

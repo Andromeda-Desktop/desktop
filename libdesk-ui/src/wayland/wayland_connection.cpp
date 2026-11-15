@@ -697,7 +697,7 @@ bool WaylandConnection::setupDisplay(wl_display* display, std::string& error) {
   return true;
 }
 
-bool WaylandConnection::connect() {
+bool WaylandConnection::connect(std::optional<std::chrono::steady_clock::time_point> deadline) {
   if (m_display != nullptr) {
     return true;
   }
@@ -710,14 +710,21 @@ bool WaylandConnection::connect() {
     throw std::runtime_error(setupError);
   }
 
-  if (wl_display_roundtrip(m_display) < 0) {
+  if (deadline) {
+    std::string error;
+    if (!waitForInitialSync(*this, this, *deadline, "Wayland registry discovery", error)
+        || !waitForInitialSync(*this, this, *deadline, "Wayland output discovery", error)) {
+      cleanup();
+      throw std::runtime_error(error);
+    }
+  } else if (wl_display_roundtrip(m_display) < 0) {
     const int roundtripErrno = errno;
     const std::string detail = describeDisplayError(roundtripErrno);
     cleanup();
     throw std::runtime_error(std::format("failed during Wayland registry roundtrip: {}", detail));
   }
 
-  if (wl_display_roundtrip(m_display) < 0) {
+  if (!deadline && wl_display_roundtrip(m_display) < 0) {
     const int roundtripErrno = errno;
     const std::string detail = describeDisplayError(roundtripErrno);
     cleanup();

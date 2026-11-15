@@ -3,7 +3,8 @@
 # and a new compositor on the same socket name:
 #   - the Terminal or Files process is gone (a new pid, or no process),
 #   - either window does not map again within 10 s,
-#   - the terminal's shell is a new process, or typed keys do not reach it.
+#   - the terminal's shell is a new process, or typed keys do not reach it,
+#   - with a compositor that accepts but never answers, an app is still running 15 s later (no time limit).
 # Screenshots: $OUT/before.png, $OUT/after.png.
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/app-reconnect}
@@ -69,6 +70,7 @@ wait "$compositor" 2> /dev/null || true
 rm -f "$RUNTIME/andromeda-wayland-0.sock"
 mv "$OUT/andromeda.log" "$OUT/andromeda-1.log"
 boot_headless 1
+compositor=$!
 
 await_mapped Files "after the restart"
 await_mapped Terminal "after the restart"
@@ -80,4 +82,58 @@ kill -0 "$SHELL_PID" 2> /dev/null || fail "the terminal's shell $SHELL_PID died"
 
 shot after
 type_into_terminal after
+
+# Socket activation as andromeda.socket does it: a supervisor holds wayland-0 across the crash and starts the
+# compositor on it again (Restart=on-failure). The apps connect into the backlog and wait for the new compositor.
+kill -SEGV "$compositor"
+wait "$compositor" 2> /dev/null || true
+rm -f "$RUNTIME/andromeda-wayland-0.sock"
+cat > "$RUNTIME/held-socket.py" <<'PY'
+import os, socket, subprocess, sys
+path, log = sys.argv[1], sys.argv[2]
+os.unlink(path)
+server = socket.socket(socket.AF_UNIX)
+server.bind(path)
+server.listen(16)
+fd = os.dup(server.fileno())  # above 3, so the shell redirect never closes it
+command = ["/bin/sh", "-c", f'export LISTEN_PID=$$ LISTEN_FDS=1; exec "$@" 3<&{fd} {fd}<&-', "held", *sys.argv[3:]]
+with open(log, "a") as out:
+    while subprocess.run(command, pass_fds=(fd,), stdout=out, stderr=out).returncode != 0:
+        pass
+PY
+env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
+  WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 \
+  python3 -I "$RUNTIME/held-socket.py" "$RUNTIME/wayland-0" "$OUT/andromeda-held.log" "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" &
+SUPERVISOR=$!
+await_mapped Files "on the socket-activated compositor"
+await_mapped Terminal "on the socket-activated compositor"
+held_compositor() { pgrep -P "$SUPERVISOR" -n; }
+first=$(held_compositor)
+kill -SEGV "$first"
+for _ in $(seq 100); do [[ $(held_compositor) != "$first" && -n $(held_compositor) ]] && break; sleep 0.05; done
+await_mapped Files "after the socket-activated restart"
+await_mapped Terminal "after the socket-activated restart"
+for log in files terminal; do
+  [[ $(grep -c "reconnected to the compositor" "$OUT/$log.log") -ge 3 ]] || fail "$log did not reconnect through the held socket"
+done
+kill -0 "$files" 2> /dev/null && kill -0 "$term" 2> /dev/null || fail "an app died across the socket-activated restart"
+type_into_terminal held
+
+# A hung compositor: the socket accepts and never answers. The apps give up at their 10 s deadline and exit.
+kill -KILL "$SUPERVISOR"
+wait "$SUPERVISOR" 2> /dev/null || true
+kill -KILL "$(pgrep -n -f "^$ANDROMEDA -c $RUNTIME/andromeda.toml")" 2> /dev/null || true
+python3 -I -c '
+import os, socket, sys
+path = sys.argv[1]
+os.unlink(path)
+server = socket.socket(socket.AF_UNIX)
+server.bind(path)
+server.listen(8)
+held = [server.accept()[0] for _ in range(8)]
+' "$RUNTIME/wayland-0" &
+for pid in "$files" "$term"; do
+  "$ROOT/tools/wait.sh" --pid "$pid" --timeout 15 > /dev/null || fail "app $pid still runs 15 s after the compositor hung"
+done
+grep -q "timed out" "$OUT/files.log" || fail "Files did not report the reconnect time-out"
 echo "pass app_reconnect"

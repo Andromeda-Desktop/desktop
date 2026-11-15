@@ -137,13 +137,14 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   m_wayland.disconnect();
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   // A socket-activated compositor accepts at once; a stale socket refuses until the new compositor binds it.
+  // Past the deadline the app exits as before the reconnect; a terminal's shells stay in andromeda-ptyd.
   for (auto wait = std::chrono::milliseconds(50);; wait = std::min(wait * 2, std::chrono::milliseconds(1000))) {
     if (!compositorSocketExists()) {
       kLog.info("the compositor socket is gone: the session ended");
       return false;
     }
     try {
-      if (m_wayland.connect()) {
+      if (m_wayland.connect(deadline)) {
         break;
       }
     } catch (const std::exception& e) {
@@ -156,8 +157,24 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
     }
     std::this_thread::sleep_for(wait);
   }
+  // EGL setup talks to the compositor on its own event queue with no time limit, so a worker runs it. Windows are
+  // closed and their state flushed: past the limit the process ends at once, as the worker cannot be stopped.
+  auto egl = std::make_shared<std::promise<void>>();
+  std::future<void> eglDone = egl->get_future();
+  std::thread([this, egl] {
+    try {
+      m_gl.initialize(m_wayland.display(), m_sharedGl);
+      egl->set_value();
+    } catch (...) {
+      egl->set_exception(std::current_exception());
+    }
+  }).detach();
+  if (eglDone.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+    kLog.error("GL setup on the new compositor took over 5 s; exiting");
+    std::_Exit(1);
+  }
   try {
-    m_gl.initialize(m_wayland.display(), m_sharedGl);
+    eglDone.get();
     m_render.initializeText();
   } catch (const std::exception& e) {
     kLog.error("GL setup after reconnect failed: {}", e.what());
