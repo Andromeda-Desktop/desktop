@@ -39,6 +39,7 @@
 
 #include <nlohmann/json.hpp>
 #include "server/server.h"
+#include "util/driver_threads.h"
 #include "core/async_file_writer.h"
 #include "core/screen_activity_recorder.h"
 #include "server/server_events_internal.h"
@@ -545,7 +546,8 @@ namespace andromeda {
       return;
     }
     if (fx_renderer_start_render_thread(m_renderer, wl_display_get_event_loop(m_display))) {
-      kLog.info("render thread started");
+      kLog.info("render thread started; {} GPU thread(s) share the main thread's real-time policy",
+                shareSchedulingWithDriverThreads());
     } else {
       kLog.warn("render thread failed to start; submitting on the main thread");
     }
