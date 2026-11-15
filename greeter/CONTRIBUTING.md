@@ -55,15 +55,12 @@ installation or greetd state. Use them only when testing installation and real l
 ```text
 src/
   accounts/   User account icons and avatar data
-  compositor/ Bundled wlroots compositor
   config/     Shared configuration types
-  core/       Logging, resources, deferred work, and UI phases
   greetd/     greetd IPC client
   greeter/    Login UI, sessions, preferences, appearance sync, and actions
-  render/     OpenGL ES rendering, text, scene graph, and animation
   tools/      Small installed helper programs
-  ui/         Reusable controls, palette, and style
-  wayland/    Wayland client connection, seats, and output handling
+  wayland/    Wayland client connection and output handling
+subprojects/libdesk-ui/  Logging, rendering, text, controls, palette, and style (shared with the shell)
 assets/       Fonts, icons, and other runtime resources
 data/        Installed service, policy, and tmpfiles files
 scripts/      Installation, greetd, and development helpers
@@ -72,8 +69,7 @@ examples/    Commented greeter configuration
 ```
 
 Headers live beside their source files. Project headers use paths relative to `src/` where the existing code does so.
-The bundled compositor is part of this repository and is built from `src/compositor/`; do not replace it with a system
-compositor dependency.
+The greeter runs inside the Andromeda compositor, which is built from the repository's top-level `compositor/`.
 
 ## Testing changes
 
