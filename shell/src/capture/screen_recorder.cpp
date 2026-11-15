@@ -276,13 +276,13 @@ void ScreenRecorder::startCast() {
               .onInterface(kScreenCast)
               .withArguments(sdbus::ObjectPath{m_sessionHandle}, Results{})
               .storeResultsTo(fd);
-          // Each attempt's pipewiresrc owns and closes its own duplicate; the portal's fd closes when this returns.
+          // pipewiresrc dups the fd when it opens (NULL->READY, inside startPipeline) and never closes ours.
           startPipeline([&fd, node = std::get<0>(list.front())](const Make& make) {
             GstElement* src = make("pipewiresrc");
             if (src != nullptr) {
               const std::string path = std::to_string(node);
               g_object_set(
-                  src, "fd", ::dup(fd.get()), "path", path.c_str(), "do-timestamp", TRUE, "keepalive-time", 1000,
+                  src, "fd", fd.get(), "path", path.c_str(), "do-timestamp", TRUE, "keepalive-time", 1000,
                   nullptr
               );
             }
