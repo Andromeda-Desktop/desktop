@@ -98,7 +98,7 @@ namespace {
     }
     GDesktopAppInfo* info = g_desktop_app_info_new((appId + ".desktop").c_str());
     if (info == nullptr) {
-      return appId;
+      return {};
     }
     std::string name = g_app_info_get_name(G_APP_INFO(info));
     g_object_unref(info);
@@ -432,10 +432,12 @@ namespace {
                           .flexGrow = 1.0F});
       auto text = ui::column({.align = FlexAlign::Start, .gap = 0.0F, .flexGrow = 1.0F});
       text->addChild(ui::label({.text = label, .fontSize = Tokens::typeBody.size * scale, .fontWeight = FontWeight::Medium,
-                                .color = colorSpecFromRole(ColorRole::Label1)}));
+                                .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
+                                .ellipsize = TextEllipsize::End}));
       if (!detail.empty()) {
         text->addChild(ui::label({.text = detail, .fontSize = Tokens::typeFootnote.size * scale,
-                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2)}));
+                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
+                                  .maxLines = 1, .ellipsize = TextEllipsize::End}));
       }
       row->addChild(std::move(text));
       row->addChild(ui::toggle({.checked = checked, .scale = scale, .onChange = std::move(change)}));
