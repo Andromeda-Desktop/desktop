@@ -9,6 +9,7 @@
 #include "shell/settings/settings_content_privacy.h"
 #include "shell/settings/settings_window.h"
 #include "system/app_permissions.h"
+#include "util/parse_number.h"
 
 #include <systemd/sd-bus.h>
 #include <pwd.h>
@@ -68,11 +69,7 @@ namespace {
     // After ")" the fields start at 3 (state); start-time is field 22.
     for (int i = 3; i <= 22 && (fields >> field); ++i) {
     }
-    try {
-      return std::stoull(field);
-    } catch (...) {
-      return 0;
-    }
+    return parseNumber<std::uint64_t>(field).value_or(0);
   }
 
 } // namespace

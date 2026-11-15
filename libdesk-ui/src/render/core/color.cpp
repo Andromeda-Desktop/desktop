@@ -232,7 +232,7 @@ bool tryParseHexColor(std::string_view input, Color& out) {
   try {
     out = hex(normalized);
     return true;
-  } catch (...) {
+  } catch (const std::invalid_argument&) {
     return false;
   }
 }
@@ -254,7 +254,7 @@ static bool parseCssColor(std::string_view text, Color& out, bool allowNamedColo
     try {
       out = hex(text);
       return true;
-    } catch (...) {
+    } catch (const std::invalid_argument&) {
       return false;
     }
   }
@@ -598,7 +598,7 @@ static bool parseCssColor(std::string_view text, Color& out, bool allowNamedColo
     try {
       out = hex(it->second);
       return true;
-    } catch (...) {
+    } catch (const std::invalid_argument&) {
       return false;
     }
   }

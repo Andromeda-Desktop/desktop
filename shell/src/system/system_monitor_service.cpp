@@ -411,7 +411,7 @@ namespace {
   noctalia::system::cpu_temp::ProbeResult readCpuTempSensor(const SystemConfig::MonitorConfig& config) {
     try {
       return noctalia::system::cpu_temp::read("/sys/class/hwmon", "/sys/class/thermal", config.cpuTempSensorPath);
-    } catch (...) {
+    } catch (const std::filesystem::filesystem_error&) {
       return noctalia::system::cpu_temp::ProbeResult{
           .reading = std::nullopt, .error = "CPU temperature sensor scan failed"
       };
@@ -1230,7 +1230,7 @@ void SystemMonitorService::start() {
   m_prevNetBytes.clear();
   try {
     m_thread = std::thread([this] { samplingLoop(); });
-  } catch (...) {
+  } catch (const std::system_error&) {
     m_running = false;
     throw;
   }

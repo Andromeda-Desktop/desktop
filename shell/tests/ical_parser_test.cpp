@@ -40,7 +40,7 @@ namespace {
     const local_days ld{year{y} / month{static_cast<unsigned>(mo)} / day{static_cast<unsigned>(d)}};
     try {
       return time_point_cast<system_clock::duration>(time_point_cast<seconds>(current_zone()->to_sys(ld)));
-    } catch (...) {
+    } catch (const std::runtime_error&) {
       return sys_days{year{y} / month{static_cast<unsigned>(mo)} / day{static_cast<unsigned>(d)}};
     }
   }
@@ -50,7 +50,7 @@ namespace {
         local_days{year{y} / month{static_cast<unsigned>(mo)} / day{static_cast<unsigned>(d)}} + hours{h} + minutes{mi};
     try {
       return time_point_cast<system_clock::duration>(time_point_cast<seconds>(current_zone()->to_sys(lt)));
-    } catch (...) {
+    } catch (const std::runtime_error&) {
       const sys_days civilDay{year{y} / month{static_cast<unsigned>(mo)} / day{static_cast<unsigned>(d)}};
       return civilDay + hours{h} + minutes{mi};
     }

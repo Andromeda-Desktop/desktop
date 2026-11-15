@@ -2452,7 +2452,7 @@ bool LuauHost::startAsyncProcessMatch(std::vector<std::string> needles, int call
       inFlightAsyncProcessMatches().fetch_sub(1, std::memory_order_relaxed);
       handler(hostId, callbackRef, matched);
     }).detach();
-  } catch (...) {
+  } catch (const std::system_error&) {
     m_asyncProcessMatchCallbackRefs.erase(callbackRef);
     globalInFlight.fetch_sub(1, std::memory_order_relaxed);
     return false;

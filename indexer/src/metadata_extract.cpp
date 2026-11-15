@@ -52,7 +52,7 @@ namespace andromeda::index {
         }
       }
       return text.empty() ? std::nullopt : std::optional(std::move(text));
-    } catch (...) {
+    } catch (const std::exception&) {
       // A broken or unsupported file: no metadata.
       return std::nullopt;
     }

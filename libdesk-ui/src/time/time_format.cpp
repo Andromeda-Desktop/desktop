@@ -267,7 +267,7 @@ std::string formatLocalTime(const char* fmt) {
   const auto local = local_seconds{seconds{raw + localTm.tm_gmtoff}};
   try {
     return std::vformat(std::locale(""), normalizedFmt, std::make_format_args(local));
-  } catch (...) {
+  } catch (const std::runtime_error&) {
     return normalizedFmt;
   }
 }
@@ -278,7 +278,7 @@ bool isValidTimezone(std::string_view tzName) {
   }
   try {
     return std::chrono::locate_zone(tzName) != nullptr;
-  } catch (...) {
+  } catch (const std::runtime_error&) {
     return false;
   }
 }
@@ -292,7 +292,7 @@ std::string formatTimezoneUnixTime(std::int64_t unixSeconds, std::string_view fm
   const time_zone* tz = nullptr;
   try {
     tz = locate_zone(tzName);
-  } catch (...) {
+  } catch (const std::runtime_error&) {
     return formatLocalUnixTime(unixSeconds, fmt);
   }
 
@@ -330,7 +330,7 @@ std::string formatTimezoneUnixTime(std::int64_t unixSeconds, std::string_view fm
 
   try {
     return std::vformat(std::locale(""), normalizedFmt, std::make_format_args(local));
-  } catch (...) {
+  } catch (const std::runtime_error&) {
     return normalizedFmt;
   }
 }
@@ -362,7 +362,7 @@ std::string formatLocalUnixTime(std::int64_t unixSeconds, std::string_view fmt) 
   const auto local = local_seconds{seconds{raw + localTm.tm_gmtoff}};
   try {
     return std::vformat(std::locale(""), normalizedFmt, std::make_format_args(local));
-  } catch (...) {
+  } catch (const std::runtime_error&) {
     return normalizedFmt;
   }
 }
@@ -401,7 +401,7 @@ std::string formatIsoTime(std::string_view isoTime, const char* fmt) {
   const auto local = local_seconds{tp.time_since_epoch()};
   try {
     return std::vformat(std::locale(""), normalizedFmt, std::make_format_args(local));
-  } catch (...) {
+  } catch (const std::runtime_error&) {
     return normalizedFmt;
   }
 }
