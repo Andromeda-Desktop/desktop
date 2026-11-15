@@ -815,7 +815,14 @@ namespace security {
               result = m_backend->erase(request.attributes, *request.cancellation);
               break;
             }
+          } catch (const std::exception& e) {
+            kLog.warn("secret backend threw: {}", e.what());
+            result = {
+                .status = SecretStoreStatus::BackendError,
+                .errorCategory = SecretStoreErrorCategory::Other,
+            };
           } catch (...) {
+            kLog.warn("secret backend threw a non-standard exception");
             result = {
                 .status = SecretStoreStatus::BackendError,
                 .errorCategory = SecretStoreErrorCategory::Other,
