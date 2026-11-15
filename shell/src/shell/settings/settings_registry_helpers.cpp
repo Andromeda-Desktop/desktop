@@ -93,14 +93,6 @@ namespace settings {
     }
 
 
-    std::optional<int> radiusStepperValue(const std::optional<double>& value) {
-      if (!value.has_value()) {
-        return std::nullopt;
-      }
-      return std::clamp(static_cast<int>(std::lround(*value)), 0, 80);
-    }
-
-
     SelectSetting
     plainSelect(std::initializer_list<std::pair<std::string_view, std::string_view>> items, std::string_view selected) {
       std::vector<SelectOption> opts;

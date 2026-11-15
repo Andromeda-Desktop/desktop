@@ -230,6 +230,10 @@ namespace settings {
 
         const BarConfig resolved = resolveBarMonitorOverride(bar, ovr);
         auto ovrRows = generateSchemaEntries(noctalia::config::schema::barFieldsSchema(), resolved, root);
+        auto inheritRows = generateInheritEntries(
+            noctalia::config::schema::barFieldsSchema(), bar, noctalia::config::schema::barMonitorOverrideSchema(), ovr,
+            root
+        );
         appendRow(entries, ovrRows, "enabled");
         entries.push_back(makeEntry(
             section, "general", tr("settings.schema.shared.position.label"),
@@ -282,10 +286,7 @@ namespace settings {
           const std::int32_t marginEdge = mo && mo->marginEdge.has_value() ? *mo->marginEdge : b->marginEdge;
           return marginEdge == 0;
         };
-        entries.push_back(makeEntry(
-            section, "shape", tr("settings.schema.bar.border.label"), tr("settings.schema.bar.border.description"),
-            monitorPath("border"), colorSpecPicker(ovr.border, true, tr("common.states.inherit")), "outline color", true
-        ));
+        appendRow(entries, inheritRows, "border");
         for (const auto* key : {"border_width", "background_opacity"}) {
           appendRow(entries, ovrRows, key);
         }
@@ -318,69 +319,17 @@ namespace settings {
           ));
         }
         appendRow(entries, ovrRows, "widget_spacing");
-        entries.push_back(makeEntry(
-            section, "widgets", tr("settings.schema.bar.widget-color.label"),
-            tr("settings.schema.bar.widget-color.description"), monitorPath("color"),
-            colorSpecPicker(ovr.widgetColor, true, tr("common.states.inherit")), "color foreground", true
-        ));
-        entries.push_back(makeEntry(
-            section, "widgets", tr("settings.schema.bar.widget-icon-color.label"),
-            tr("settings.schema.bar.widget-icon-color.description"), monitorPath("icon_color"),
-            colorSpecPicker(ovr.widgetIconColor, true, tr("common.states.inherit")), "color icon", true
-        ));
+        appendRow(entries, inheritRows, "color");
+        appendRow(entries, inheritRows, "icon_color");
         for (const auto* key : {"capsule", "capsule_thickness"}) {
           appendRow(entries, ovrRows, key);
         }
         const SettingVisibility monitorCapsuleOn =
             [on = ovr.widgetCapsuleDefault.value_or(bar.widgetCapsuleDefault)](const Config&) { return on; };
-        {
-          auto e = makeEntry(
-              section, "capsules", tr("settings.schema.bar.capsule-radius.label"),
-              tr("settings.schema.bar.capsule-radius.description"), monitorPath("capsule_radius"),
-              OptionalStepperSetting{
-                  .value = radiusStepperValue(ovr.widgetCapsuleRadius),
-                  .minValue = 0,
-                  .maxValue = 80,
-                  .step = 1,
-                  .fallbackValue = radiusStepperFallback(bar.widgetCapsuleRadius),
-                  .unsetLabel = tr("common.states.inherit"),
-                  .customLabel = tr("common.states.custom")
-              },
-              "pill rounded radius", true
-          );
-          entries.push_back(std::move(e));
-        }
-        {
-          auto e = makeEntry(
-              section, "capsules", tr("settings.schema.bar.capsule-fill.label"),
-              tr("settings.schema.bar.capsule-fill.description"), monitorPath("capsule_fill"),
-              colorSpecPicker(ovr.widgetCapsuleFill, true, tr("common.states.inherit")), "color pill", true
-          );
-          e.visibleWhen = monitorCapsuleOn;
-          entries.push_back(std::move(e));
-        }
-        {
-          auto e = makeEntry(
-              section, "capsules", tr("settings.schema.bar.capsule-foreground.label"),
-              tr("settings.schema.bar.capsule-foreground.description"), monitorPath("capsule_foreground"),
-              colorSpecPicker(ovr.widgetCapsuleForeground, true, tr("common.states.inherit")), "color foreground pill",
-              true
-          );
-          e.visibleWhen = monitorCapsuleOn;
-          entries.push_back(std::move(e));
-        }
-        {
-          auto e = makeEntry(
-              section, "capsules", tr("settings.schema.bar.capsule-border.label"),
-              tr("settings.schema.bar.capsule-border.description"), monitorPath("capsule_border"),
-              colorSpecPicker(
-                  ovr.widgetCapsuleBorderSpecified ? ovr.widgetCapsuleBorder : std::optional<ColorSpec>{}, true,
-                  tr("common.states.inherit")
-              ),
-              "color pill outline", true
-          );
-          e.visibleWhen = monitorCapsuleOn;
-          entries.push_back(std::move(e));
+        appendRow(entries, inheritRows, "capsule_radius");
+        for (const auto* key : {"capsule_fill", "capsule_foreground", "capsule_border"}) {
+          appendRow(entries, inheritRows, key);
+          entries.back().visibleWhen = monitorCapsuleOn;
         }
         for (const auto* key : {"capsule_border_width", "capsule_padding", "capsule_opacity"}) {
           appendRow(entries, ovrRows, key);

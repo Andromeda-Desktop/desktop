@@ -97,7 +97,6 @@ namespace settings {
     SelectSetting asSegmented(SelectSetting setting);
     StepperSetting barMarginStepper(std::int32_t value);
     StepperSetting barPanelOverlapStepper(std::int32_t value);
-    std::optional<int> radiusStepperValue(const std::optional<double>& value);
     SelectSetting
     plainSelect(std::initializer_list<std::pair<std::string_view, std::string_view>> items, std::string_view selected);
     [[nodiscard]] std::string_view barAutoHideMode(bool autoHide, bool smartAutoHide);
@@ -115,8 +114,6 @@ namespace settings {
     );
     void appendGroup(std::vector<SettingEntry>& entries, std::vector<SettingEntry>& generated, std::string_view group);
     void appendRow(std::vector<SettingEntry>& entries, std::vector<SettingEntry>& generated, std::string_view key);
-
-    inline int radiusStepperFallback(const std::optional<double>& value) { return radiusStepperValue(value).value_or(8); }
 
     // Rows for the fields of `schema` that have a RowSpec, in schema order. The current value is read back
     // through the field's own write(), so a row shows exactly what the config file would hold.
@@ -261,6 +258,45 @@ namespace settings {
         ));
       }
       return entries;
+    }
+
+    // Rows of an override table whose colour and optional-stepper keys may stay unset. Each takes the RowSpec
+    // of the parent field with the same key; unset shows "inherit", and the stepper leaves it at the parent value.
+    template <typename Parent, typename Override>
+    std::vector<SettingEntry> generateInheritEntries(
+        const noctalia::config::schema::Schema<Parent>& parentSchema, const Parent& parent,
+        const noctalia::config::schema::Schema<Override>& overrideSchema, const Override& values,
+        const std::vector<std::string>& prefix
+    ) {
+      using noctalia::config::schema::RowSpec;
+      noctalia::config::schema::Schema<Override> schema;
+      for (const auto& parentField : parentSchema) {
+        if (!parentField.row
+            || (parentField.row->kind != RowSpec::Kind::Color && parentField.row->kind != RowSpec::Kind::OptionalStepper)) {
+          continue;
+        }
+        const auto it = std::ranges::find(overrideSchema, parentField.key, &noctalia::config::schema::Field<Override>::key);
+        if (it == overrideSchema.end()) {
+          continue;
+        }
+        RowSpec row = *parentField.row;
+        row.allowNone = true;
+        row.unsetLabelKey = "common.states.inherit";
+        if (row.kind == RowSpec::Kind::OptionalStepper) {
+          toml::table written;
+          parentField.write(written, parent);
+          if (const auto v = noctalia::config::schema::finiteDouble(std::as_const(written)[parentField.key])) {
+            row.fallback = std::clamp(
+                static_cast<int>(std::lround(*v)), static_cast<int>(row.range.min.value()),
+                static_cast<int>(row.range.max.value())
+            );
+          }
+        }
+        auto field = *it;
+        field.row = std::move(row);
+        schema.push_back(std::move(field));
+      }
+      return generateSchemaEntries(schema, values, prefix);
     }
 
 
