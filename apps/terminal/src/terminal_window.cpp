@@ -6,7 +6,9 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "time/time_format.h"
 #include "ui/builders.h"
+#include "ui/controls/status_row.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/label.h"
 #include "ui/palette.h"
@@ -35,6 +37,11 @@ namespace term {
         return pw->pw_shell;
       }
       return "/bin/sh";
+    }
+
+    // The status comes first, so truncation removes the command, never the outcome.
+    std::string withCommand(const std::string& status, const std::string& command) {
+      return command.empty() ? status : status + " · " + command;
     }
 
     std::string homeDir() {
@@ -102,22 +109,18 @@ namespace term {
       side->addChild(std::move(top));
       auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
       m_rows.clear();
-      const std::optional<std::uint64_t> shown = m_sessions.shown();
       for (const SessionInfo& session : m_sessions.sessions()) {
-        Label* row = nullptr;
-        list->addChild(ui::label({
-            .out = &row,
-            .text = session.name.empty() ? session.cwd : session.name,
-            .fontSize = Tokens::typeBody.size * s,
-            .fontWeight = session.id == shown ? FontWeight::SemiBold : FontWeight::Normal,
-            .color = colorSpecFromRole(session.id == shown ? ColorRole::Label1 : ColorRole::Label2),
-            .maxLines = 1,
-            .ellipsize = TextEllipsize::End,
-        }));
-        m_rows.push_back({session.id, row});
+        auto row = std::make_unique<StatusRow>(s);
+        row->setOnClick([this, id = session.id] {
+          apply(session_event::Show{id});
+          focusGrid();
+        });
+        m_rows.push_back({session.id, row.get()});
+        list->addChild(std::move(row));
       }
       m_rowList = list.get();
       side->addChild(std::move(list));
+      refreshRows();
       applyFilter();
       return side;
     });
@@ -232,13 +235,14 @@ namespace term {
       m_close();
       return;
     }
-    if (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event) ||
-        std::holds_alternative<session_event::Rename>(event) || std::holds_alternative<session_event::Cwd>(event)) {
-      m_window.requestRebuild(); // the sidebar list shows names and cwds
+    if (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event)) {
+      m_window.requestRebuild(); // the sidebar gains or loses a row
     }
     if (m_sessions.shown() != before) {
       show(*m_sessions.shown());
     }
+    refreshRows();
+    m_window.invalidate();
   }
 
   void TerminalWindow::show(std::uint64_t id) {
@@ -286,6 +290,54 @@ namespace term {
       return true;
     }
     return false;
+  }
+
+  StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {
+    StatusRow::Data data{.name = session.name.empty() ? session.cwd : session.name,
+                         .unseen = session.seen == Seen::Unseen,
+                         .selected = session.id == m_sessions.shown()};
+    if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
+      data.symbol = "loader-2";
+      data.status = withCommand("running", running->command);
+      data.time = formatClockTime(
+          std::chrono::duration_cast<std::chrono::seconds>(SessionClock::now() - running->start).count());
+    } else if (const auto* finished = std::get_if<CommandFinished>(&session.command)) {
+      data.symbol = finished->failed() ? "alert-circle" : "circle-check";
+      data.symbolDanger = finished->failed();
+      data.status =
+          withCommand(finished->failed() ? "exit " + std::to_string(*finished->exitCode) : "done", finished->command);
+      data.time = formatClockTime(std::chrono::duration_cast<std::chrono::seconds>(finished->duration).count());
+    } else {
+      switch (session.kind) {
+        case SessionKind::Shell: data.symbol = "prompt"; break;
+        case SessionKind::App: data.symbol = "app-window"; break;
+        case SessionKind::Ssh: data.symbol = "server"; break;
+        case SessionKind::Container: data.symbol = "box"; break;
+      }
+    }
+    if (session.kind == SessionKind::App) {
+      data.symbol = "app-window";
+    }
+    return data;
+  }
+
+  // Rows change in place; the 1 Hz tick runs only while a command runs, for its elapsed time.
+  void TerminalWindow::refreshRows() {
+    bool running = false;
+    for (const auto& [id, row] : m_rows) {
+      if (const SessionInfo* session = m_sessions.find(id); session != nullptr) {
+        row->setData(rowData(*session));
+        running = running || std::holds_alternative<CommandRunning>(session->command);
+      }
+    }
+    if (!running) {
+      m_tick.stop();
+    } else if (!m_tick.active()) {
+      m_tick.startRepeating(std::chrono::seconds(1), [this] {
+        refreshRows();
+        m_window.invalidate();
+      });
+    }
   }
 
   bool TerminalWindow::matches(const SessionInfo& session) const {

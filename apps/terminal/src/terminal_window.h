@@ -1,6 +1,8 @@
 #pragma once
 
+#include "core/timer_manager.h"
 #include "session_list.h"
+#include "ui/controls/status_row.h"
 #include "terminal_view.h"
 
 #include <cstdint>
@@ -65,7 +67,10 @@ namespace term {
     std::string m_filter; // the sidebar search text
     Input* m_search = nullptr;
     Node* m_rowList = nullptr;
-    std::vector<std::pair<std::uint64_t, Node*>> m_rows; // session id, its sidebar row
+    std::vector<std::pair<std::uint64_t, StatusRow*>> m_rows; // session id, its sidebar row
+    Timer m_tick;
+    [[nodiscard]] StatusRow::Data rowData(const SessionInfo& session) const;
+    void refreshRows();
     [[nodiscard]] bool matches(const SessionInfo& session) const;
     void setFilter(const std::string& text);
     void applyFilter();
