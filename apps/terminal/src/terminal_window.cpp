@@ -203,10 +203,14 @@ namespace term {
     });
     m_window.setHeaderAccessoryFloor([this](Renderer& renderer) { return m_agentBar->measure(renderer, {}).width; });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+      ContentView* view = shownView();
+      // A click on a button leaves focus nowhere: keys go back to the shown session.
+      if (view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == nullptr) {
+        m_window.input().setFocus(view->focusArea());
+      }
       if (sessionKey(event)) {
         return true;
       }
-      ContentView* view = shownView();
       return view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == view->focusArea() &&
              view->key(event);
     });
