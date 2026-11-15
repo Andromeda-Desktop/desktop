@@ -2,7 +2,10 @@
 
 #include "terminal_view.h"
 
+#include <cstdint>
 #include <functional>
+#include <string>
+#include <variant>
 
 class AppLoop;
 class AppWindow;
@@ -12,11 +15,20 @@ namespace term {
 
   class Notifier;
 
+  // cwd: the shell's start directory; empty starts in $HOME.
+  struct NewShell {
+    std::string cwd;
+  };
+  // A session in andromeda-ptyd that lost its terminal process.
+  struct Reattach {
+    std::uint64_t heldId;
+  };
+  using WindowOrigin = std::variant<NewShell, Reattach>;
+
   class TerminalWindow {
   public:
     // close: closes this window later, outside the current callback (DeskApp::closeWindow).
-    // cwd: the shell's start directory; empty starts in $HOME.
-    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const std::string& cwd,
+    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const WindowOrigin& origin,
                    std::function<void()> close);
     ~TerminalWindow();
 

@@ -202,6 +202,7 @@ bool PtySession::attach(std::uint64_t id, std::uint16_t cols, std::uint16_t rows
   m_inbound = std::move(attached->tail);
   m_parsed = attached->offset;
   m_received = attached->offset + m_inbound.size();
+  m_replayEnd = m_received;
   m_master = fd;
   m_link = HeldSession{sock, id};
   if (m_master >= 0) {
@@ -433,8 +434,9 @@ void PtySession::parseLoop() {
       std::uint64_t one = 1;
       (void)::write(m_eventFd, &one, sizeof one);
     }
-    for (std::size_t at = 0; at < work.size(); at += kReadChunk) {
-      const std::size_t len = std::min(kReadChunk, work.size() - at);
+    for (std::size_t at = 0, len = 0; at < work.size(); at += len) {
+      len = std::min(kReadChunk, work.size() - at);
+      if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
       {
         std::lock_guard lock(m_termMutex);
         ghostty_terminal_vt_write(m_terminal, work.data() + at, len);
@@ -461,7 +463,9 @@ void PtySession::parseLoop() {
 }
 
 void PtySession::onWritePty(GhosttyTerminal, void* self, const std::uint8_t* data, std::size_t len) {
-  static_cast<PtySession*>(self)->queueOutbound({data, len});
+  auto* s = static_cast<PtySession*>(self);
+  if (s->m_parsed < s->m_replayEnd) return;
+  s->queueOutbound({data, len});
 }
 
 void PtySession::onRenderHold(GhosttyTerminal, void* self, bool held) {

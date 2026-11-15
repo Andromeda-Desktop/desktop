@@ -1,5 +1,6 @@
 #include "terminal_app.h"
 
+#include "holder_client.h"
 #include "notifier.h"
 #include "terminal_window.h"
 
@@ -17,7 +18,7 @@ namespace term {
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
-    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, std::exchange(m_nextCwd, {}),
+    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, std::exchange(m_nextOrigin, NewShell{}),
                                                           [this, &window] { closeWindow(window); });
     return window;
   }
@@ -32,7 +33,7 @@ namespace term {
       if (!std::filesystem::is_directory(path, ec)) {
         continue;
       }
-      m_nextCwd = path;
+      m_nextOrigin = NewShell{path};
       AppWindow& window = createWindow();
       if (window.open()) {
         window.activate(activationToken);
@@ -41,6 +42,23 @@ namespace term {
     }
     if (!opened) {
       activate(activationToken);
+    }
+  }
+
+  void TerminalApp::activate(const std::string& activationToken) {
+    bool reattached = false;
+    if (windows().empty()) {
+      for (const std::uint64_t id : holder::listOrphans()) {
+        m_nextOrigin = Reattach{id};
+        AppWindow& window = createWindow();
+        if (window.open()) {
+          window.activate(activationToken);
+          reattached = true;
+        }
+      }
+    }
+    if (!reattached) {
+      DeskApp::activate(activationToken);
     }
   }
 

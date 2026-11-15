@@ -134,20 +134,24 @@ GhosttyTerminalScreen activeScreen(GhosttyTerminal t) {
 }
 
 // The terminal process dies while a full-screen program sits mid escape sequence on the alternate screen.
-// A new process reattaches: its screen must equal a terminal that parsed the whole stream in one go.
-void reattachRestoresScreenMidEscape() {
-  const std::string before = "\033[?1049h\033[2J\033[HTOP\r\n\033[3";
-  const std::string after = "1mRED";
-  const std::string script = "stty -echo; printf '\\033[?1049h\\033[2J\\033[HTOP\\n\\033[3'; read x; printf '1mRED'; exec cat";
+// A new process reattaches: its screen must equal a terminal that parsed the whole stream in one go, and the
+// program must not get a second reply to a query it sent before the crash. `snapshotted`: the holder keeps a
+// snapshot at the crash point (--snapshot-at 1), else the reattach replays all output.
+void reattachRestoresScreenMidEscape(bool snapshotted) {
+  const std::string before = "\033[6n\033[?1049h\033[2J\033[HTOP\r\n\033[3";
+  const std::string after = "1mRED<x>";
+  const std::string script = "stty -echo; printf '\\033[6n'; IFS= read -rsd R r; "
+                             "printf '\\033[?1049h\\033[2J\\033[HTOP\\n\\033[3'; IFS= read -r x; "
+                             "printf '1mRED<%q>' \"$x\"; exec cat";
   int ids[2];
   CHECK(::pipe(ids) == 0);
   const pid_t crashing = ::fork();
   if (crashing == 0) {
     Waker w;
     auto* s = new PtySession([&] { w.wake(); });
-    if (!s->spawn({.argv = {"/bin/sh", "-c", script}}) || !s->heldId()) _exit(2);
-    // The holder asks for a snapshot after every output (--snapshot-at 1): wait for the one at the escape.
-    if (!w.waitFor(*s, [&] { return s->savedOffset() == before.size(); })) _exit(3);
+    if (!s->spawn({.argv = {"/bin/bash", "-c", script}}) || !s->heldId()) _exit(2);
+    const auto crashPoint = [&] { return (snapshotted ? s->savedOffset() : s->bytesRead()) == before.size(); };
+    if (!w.waitFor(*s, crashPoint)) _exit(3);
     const std::uint64_t id = *s->heldId();
     (void)::write(ids[1], &id, sizeof id);
     _exit(0);
@@ -171,8 +175,10 @@ void reattachRestoresScreenMidEscape() {
   }
   CHECK(attached);
   if (!attached) return;
+  // Type only after the replay: a reply the replay wrongly sends then lands in this line, where %q shows it.
+  CHECK(w.waitFor(s, [&] { return s.bytesRead() == (snapshotted ? 0 : before.size()); }));
   s.write({reinterpret_cast<const std::uint8_t*>("x\n"), 2});
-  CHECK(w.waitFor(s, [&] { return screenText(s).find("RED") != std::string::npos; }));
+  CHECK(w.waitFor(s, [&] { return screenText(s).find("RED<") != std::string::npos; }));
 
   GhosttyTerminal reference = nullptr;
   ghostty_terminal_new(nullptr, &reference, 80, 24);
@@ -205,24 +211,26 @@ int main(int argc, char** argv) {
   }
   char dir[] = "/tmp/pty-session-test-XXXXXX";
   CHECK(::mkdtemp(dir) != nullptr);
-  const std::string sock = std::string(dir) + "/ptyd.sock";
-  const pid_t holderPid = ::fork();
-  if (holderPid == 0) {
-    ::execl(argv[1], argv[1], "--socket", sock.c_str(), "--snapshot-at", "1", nullptr);
-    _exit(127);
+  for (const bool snapshotted : {true, false}) {
+    const std::string sock = std::string(dir) + (snapshotted ? "/snap.sock" : "/tail.sock");
+    const pid_t holderPid = ::fork();
+    if (holderPid == 0) {
+      ::execl(argv[1], argv[1], "--socket", sock.c_str(), "--snapshot-at", snapshotted ? "1" : "1000000", nullptr);
+      _exit(127);
+    }
+    ::setenv("ANDROMEDA_PTYD_SOCKET", sock.c_str(), 1);
+    for (int i = 0; i < 500 && !std::filesystem::exists(sock); ++i) ::usleep(10'000);
+    CHECK(std::filesystem::exists(sock));
+    if (snapshotted) {
+      runSessionTests();
+      Waker w;
+      PtySession s([&] { w.wake(); });
+      CHECK(s.spawn({.argv = {"/bin/true"}}) && s.heldId().has_value());
+    }
+    reattachRestoresScreenMidEscape(snapshotted);
+    ::kill(holderPid, SIGTERM);
+    ::waitpid(holderPid, nullptr, 0);
   }
-  ::setenv("ANDROMEDA_PTYD_SOCKET", sock.c_str(), 1);
-  for (int i = 0; i < 500 && !std::filesystem::exists(sock); ++i) ::usleep(10'000);
-  CHECK(std::filesystem::exists(sock));
-  runSessionTests();
-  {
-    Waker w;
-    PtySession s([&] { w.wake(); });
-    CHECK(s.spawn({.argv = {"/bin/true"}}) && s.heldId().has_value());
-  }
-  reattachRestoresScreenMidEscape();
-  ::kill(holderPid, SIGTERM);
-  ::waitpid(holderPid, nullptr, 0);
   std::filesystem::remove_all(dir);
   if (failures == 0) std::puts("pty_session: all passed");
   return failures == 0 ? 0 : 1;

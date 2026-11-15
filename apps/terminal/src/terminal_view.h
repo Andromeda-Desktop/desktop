@@ -53,6 +53,8 @@ namespace term {
     TerminalView& operator=(const TerminalView&) = delete;
 
     bool start(std::vector<std::string> argv, std::string cwd);
+    // Takes over a session whose terminal process died; false when the holder no longer has it.
+    bool reattach(std::uint64_t heldId);
 
     // uiScale: logical px per design px; deviceScale: buffer px per logical px. The GL context is current.
     std::unique_ptr<Node> build(Renderer& renderer, float uiScale, float deviceScale, float width, float height);

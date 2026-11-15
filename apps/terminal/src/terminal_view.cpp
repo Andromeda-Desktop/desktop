@@ -165,6 +165,14 @@ namespace term {
     return true;
   }
 
+  bool TerminalView::reattach(std::uint64_t heldId) {
+    if (!m_session.attach(heldId, 80, 24, 8, 16)) {
+      return false;
+    }
+    applyPalette();
+    return true;
+  }
+
   void TerminalView::applyPalette() {
     m_dark = [] {
       const Color& label = colorForRole(ColorRole::Label1);

@@ -34,7 +34,7 @@ namespace term {
     }
   } // namespace
 
-  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const std::string& cwd,
+  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, const WindowOrigin& origin,
                                  std::function<void()> close)
       : m_loop(loop), m_window(window), m_notifier(notifier),
         m_view({.requestFrame = [this] { requestFrame(); },
@@ -78,6 +78,11 @@ namespace term {
       const AppWindow::Rect rect = m_window.contentRect();
       m_view.setSize(rect.width, rect.height);
     });
+    if (const auto* reattach = std::get_if<Reattach>(&origin); reattach != nullptr && m_view.reattach(reattach->heldId)) {
+      return;
+    }
+    const auto* fresh = std::get_if<NewShell>(&origin);
+    const std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
     const std::string shell = loginShell();
     if (!m_view.start({shell, "-l"}, cwd.empty() ? homeDir() : cwd)) {
       kLog.warn("cannot start {}", shell);

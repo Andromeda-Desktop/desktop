@@ -124,6 +124,8 @@ private:
   // Output offsets: received by the reader thread, parsed by the parser thread.
   std::uint64_t m_received = 0;
   std::uint64_t m_parsed = 0;
+  // Output before this offset is a replay after attach: the program got the terminal's replies to it already.
+  std::uint64_t m_replayEnd = 0;
   std::mutex m_sockMutex;
   std::thread m_io;
   std::thread m_parser;
