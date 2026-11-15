@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <string>
 
@@ -69,14 +70,43 @@ namespace term {
       });
       return node;
     });
-    // A plain session list until the status-row control exists (handoff.yaml status-row).
+    // Session rows are plain labels until the status-row control exists (handoff.yaml status-row).
     m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float /*height*/) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
-      auto list = ui::column({.align = FlexAlign::Stretch, .gap = Style::spaceXs * s, .padding = Style::spaceMd * s,
+      const float button = Tokens::sizeControlM * s;
+      auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s,
                               .width = width});
+      auto top = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+      top->addChild(ui::searchCapsule({
+          .out = &m_search,
+          .placeholder = "Sessions",
+          .keycap = "Ctrl K",
+          .scale = s,
+          .value = m_filter,
+          .flexGrow = 1.0F,
+          .onChange = [this](const std::string& text) { setFilter(text); },
+          .onSubmit = [this](const std::string& /*text*/) { openFirstMatch(); },
+          .onKeyEvent = [this](std::uint32_t sym, std::uint32_t /*mods*/) {
+            constexpr std::uint32_t kEscape = 0xff1b;
+            if (sym != kEscape) {
+              return false;
+            }
+            focusGrid();
+            return true;
+          },
+      }));
+      top->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s,
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string("New session  Ctrl+Shift+T"),
+                                .radius = button / 2.0F, .height = button,
+                                .onClick = [this] { openSession(NewShell{}); }}));
+      side->addChild(std::move(top));
+      auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
+      m_rows.clear();
       const std::optional<std::uint64_t> shown = m_sessions.shown();
       for (const SessionInfo& session : m_sessions.sessions()) {
+        Label* row = nullptr;
         list->addChild(ui::label({
+            .out = &row,
             .text = session.name.empty() ? session.cwd : session.name,
             .fontSize = Tokens::typeBody.size * s,
             .fontWeight = session.id == shown ? FontWeight::SemiBold : FontWeight::Normal,
@@ -84,8 +114,12 @@ namespace term {
             .maxLines = 1,
             .ellipsize = TextEllipsize::End,
         }));
+        m_rows.push_back({session.id, row});
       }
-      return list;
+      m_rowList = list.get();
+      side->addChild(std::move(list));
+      applyFilter();
+      return side;
     });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       if (sessionKey(event)) {
@@ -234,6 +268,12 @@ namespace term {
       }
       return true;
     }
+    if (!shift && (event.unshifted == 'k' || event.unshifted == 'K')) {
+      if (m_search != nullptr && m_window.sidebarVisible()) {
+        m_window.input().setFocus(m_search->inputArea());
+      }
+      return true;
+    }
     if (shift && (event.unshifted == 't' || event.unshifted == 'T')) {
       openSession(NewShell{});
       return true;
@@ -246,6 +286,51 @@ namespace term {
       return true;
     }
     return false;
+  }
+
+  bool TerminalWindow::matches(const SessionInfo& session) const {
+    const auto lower = [](std::string text) {
+      std::ranges::transform(text, text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      return text;
+    };
+    const std::string needle = lower(m_filter);
+    return needle.empty() || lower(session.name).find(needle) != std::string::npos ||
+           lower(session.cwd).find(needle) != std::string::npos;
+  }
+
+  void TerminalWindow::setFilter(const std::string& text) {
+    m_filter = text;
+    applyFilter();
+    m_window.invalidate();
+  }
+
+  // In place, not by rebuild: a rebuild would take the keys from the search field.
+  void TerminalWindow::applyFilter() {
+    for (const auto& [id, row] : m_rows) {
+      const SessionInfo* session = m_sessions.find(id);
+      const bool visible = session != nullptr && matches(*session);
+      row->setVisible(visible);
+      row->setParticipatesInLayout(visible);
+    }
+    if (m_rowList != nullptr) {
+      m_rowList->markLayoutDirty();
+    }
+  }
+
+  void TerminalWindow::openFirstMatch() {
+    for (const SessionInfo& session : m_sessions.sessions()) {
+      if (matches(session)) {
+        apply(session_event::Show{session.id});
+        break;
+      }
+    }
+    focusGrid();
+  }
+
+  void TerminalWindow::focusGrid() {
+    if (TerminalView* view = shownView(); view != nullptr && view->focusArea() != nullptr) {
+      m_window.input().setFocus(view->focusArea());
+    }
   }
 
   TerminalWindow::~TerminalWindow() {

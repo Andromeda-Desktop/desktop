@@ -1,6 +1,8 @@
 #include "ui/builders.h"
 
 #include "ui/controls/scroll_view.h"
+#include "ui/palette.h"
+#include "ui/style.h"
 
 #include <utility>
 
@@ -1089,5 +1091,36 @@ namespace ui {
   }
 
   std::unique_ptr<Spacer> spacer() { return std::make_unique<Spacer>(); }
+
+  std::unique_ptr<Flex> keycap(const KeycapProps& props) {
+    const float s = props.scale;
+    const float h = Tokens::sizeKeycap * s;
+    auto cap = row({.align = FlexAlign::Center, .paddingH = Tokens::spaceP4 * s, .radius = Tokens::radiusR4 * s,
+                    .border = colorSpecFromRole(ColorRole::Separator), .borderWidth = Style::borderWidth,
+                    .minHeight = h, .maxHeight = h});
+    cap->addChild(label({.text = props.text, .fontSize = Tokens::typeCaption.size * s, .fontWeight = FontWeight::Medium,
+                         .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
+    return cap;
+  }
+
+  std::unique_ptr<Flex> searchCapsule(SearchCapsuleProps props) {
+    const float s = props.scale;
+    const float h = props.height.value_or(Tokens::sizeControlM) * s;
+    const float symbol = Tokens::sizeSymbol * s;
+    auto capsule = row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Fill2),
+                        .radius = h / 2.0F, .minHeight = h, .maxHeight = h, .flexGrow = props.flexGrow});
+    const float keycapInset = (h - Tokens::sizeKeycap * s) / 2.0F; // R5: concentric with the end cap
+    capsule->setPadding(0.0F, props.keycap.empty() ? Tokens::spaceP8 * s : keycapInset, 0.0F, (h - symbol) / 2.0F);
+    capsule->addChild(glyph({.glyph = std::string("search"), .glyphSize = symbol,
+                             .color = colorSpecFromRole(ColorRole::Label2)}));
+    capsule->addChild(input({.out = props.out, .value = std::move(props.value), .placeholder = std::move(props.placeholder),
+                             .fontSize = Tokens::typeBody.size * s, .controlHeight = h, .horizontalPadding = 0.0F,
+                             .frameVisible = false, .flexGrow = 1.0F, .onChange = std::move(props.onChange),
+                             .onSubmit = std::move(props.onSubmit), .onKeyEvent = std::move(props.onKeyEvent)}));
+    if (!props.keycap.empty()) {
+      capsule->addChild(keycap({.text = props.keycap, .scale = s}));
+    }
+    return capsule;
+  }
 
 } // namespace ui

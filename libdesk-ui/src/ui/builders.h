@@ -611,6 +611,29 @@ namespace ui {
     std::function<void(ProgressBar&)> configure = nullptr;
   };
 
+  // A keyboard shortcut hint (rulebook keycap): h 20, r 4, caption label_2, 1 px separator border.
+  struct KeycapProps {
+    std::string text;
+    float scale = 1.0F;
+  };
+
+  // A search field in a capsule (rulebook search field): symbol 16 at inset 8, g 8, text, optional keycap at the end
+  // (R5 inset). The height sets the radius (h / 2).
+  struct SearchCapsuleProps {
+    Input** out = nullptr;
+    std::string placeholder;
+    std::string keycap; // empty: none
+    std::optional<float> height = std::nullopt; // logical px before scale; default size control_m
+    float scale = 1.0F;
+    std::optional<std::string> value = std::nullopt;
+    std::optional<float> flexGrow = std::nullopt;
+    std::function<void(const std::string&)> onChange = nullptr;
+    std::function<void(const std::string&)> onSubmit = nullptr;
+    std::function<bool(std::uint32_t, std::uint32_t)> onKeyEvent = nullptr;
+  };
+
+  [[nodiscard]] std::unique_ptr<Flex> keycap(const KeycapProps& props);
+  [[nodiscard]] std::unique_ptr<Flex> searchCapsule(SearchCapsuleProps props);
   [[nodiscard]] std::unique_ptr<Flex> flex(FlexDirection direction, const FlexProps& props);
   [[nodiscard]] std::unique_ptr<Input> input(InputProps props);
   [[nodiscard]] std::unique_ptr<InputArea> inputArea(InputAreaProps props = {});

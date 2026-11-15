@@ -44,6 +44,7 @@ row_two = 56.0
 symbol_inline = 12.0
 symbol = 16.0
 symbol_l = 20.0
+keycap = 20.0        # keycap hint height (rulebook keycap)
 hit_min = 24.0
 hit_touch = 40.0
 

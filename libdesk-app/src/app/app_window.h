@@ -91,6 +91,7 @@ public:
   void dismissSheet();
   // Collapses or restores the sidebar on spring.page (the Files Gallery is full-bleed); the header stays in place.
   void setSidebarVisible(bool visible);
+  [[nodiscard]] bool sidebarVisible() const noexcept { return m_sidebarVisible; }
   // Asks for a new window size (logical px before ui scale). False when the compositor sizes the window: then the
   // size becomes the minimum, so the compositor grows it.
   bool requestSize(std::uint32_t width, std::uint32_t height);

@@ -7,11 +7,13 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
 class AppLoop;
 class AppWindow;
+class Input;
 class Surface;
 
 namespace term {
@@ -60,6 +62,15 @@ namespace term {
     Notifier& m_notifier;
     std::function<void()> m_close;
     SessionList m_sessions;
+    std::string m_filter; // the sidebar search text
+    Input* m_search = nullptr;
+    Node* m_rowList = nullptr;
+    std::vector<std::pair<std::uint64_t, Node*>> m_rows; // session id, its sidebar row
+    [[nodiscard]] bool matches(const SessionInfo& session) const;
+    void setFilter(const std::string& text);
+    void applyFilter();
+    void openFirstMatch();
+    void focusGrid();
     std::vector<Session> m_views;
     // Closed sessions whose nodes are still in the scene: freed after the next build replaced them.
     std::vector<Session> m_retired;
