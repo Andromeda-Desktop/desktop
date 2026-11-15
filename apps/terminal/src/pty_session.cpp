@@ -1,4 +1,5 @@
 #include "pty_session.h"
+#include <algorithm>
 
 #include <cerrno>
 #include <csignal>
@@ -28,8 +29,10 @@ std::optional<SessionState> transition(SessionState from, SessionEvent event) {
 
 namespace {
 
-// Bytes the IO thread feeds the parser per lock; bounds how long the UI waits for the lock.
+// Bytes the parser feeds the terminal per lock; bounds how long the UI waits for the lock.
 constexpr std::size_t kReadChunk = 64 * 1024;
+// The reader stops reading at this backlog, so the kernel blocks the program and Ctrl+C output is not far behind.
+constexpr std::size_t kInboundMax = 128 * 1024;
 // History limit, as the Ghostty app; the library default keeps a single page.
 constexpr std::size_t kScrollbackBytes = 10'000'000;
 
@@ -52,7 +55,13 @@ PtySession::~PtySession() {
     std::uint64_t one = 1;
     (void)::write(m_eventFd, &one, sizeof one);
   }
+  {
+    // Under the queue lock, so the parser cannot test m_stopping and then miss this notify.
+    std::lock_guard lock(m_inMutex);
+  }
+  m_inReady.notify_all();
   if (m_io.joinable()) m_io.join();
+  if (m_parser.joinable()) m_parser.join();
   if (m_pid > 0 && m_state.load() == SessionState::Running) {
     ::kill(m_pid, SIGHUP);
     ::waitpid(m_pid, nullptr, 0);
@@ -105,6 +114,7 @@ bool PtySession::spawn(const SpawnOptions& o) {
   m_eventFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   apply(SessionEvent::Spawned);
   m_io = std::thread([this] { ioLoop(); });
+  m_parser = std::thread([this] { parseLoop(); });
   return true;
 }
 
@@ -164,7 +174,15 @@ void PtySession::ioLoop() {
       std::lock_guard lock(m_outMutex);
       wantOut = !m_outbound.empty();
     }
-    pollfd fds[2] = {{m_master, static_cast<short>(POLLIN | (wantOut ? POLLOUT : 0)), 0}, {m_eventFd, POLLIN, 0}};
+    bool full;
+    {
+      std::lock_guard lock(m_inMutex);
+      full = m_inbound.size() >= kInboundMax;
+    }
+    // A full queue leaves the master out of the poll (it would report POLLHUP at once); the parser's eventfd write
+    // resumes reading.
+    const short events = static_cast<short>((full ? 0 : POLLIN) | (wantOut ? POLLOUT : 0));
+    pollfd fds[2] = {{events != 0 ? m_master : -1, events, 0}, {m_eventFd, POLLIN, 0}};
     if (::poll(fds, 2, -1) < 0) {
       if (errno == EINTR) continue;
       break;
@@ -175,32 +193,64 @@ void PtySession::ioLoop() {
       if (m_stopping) return;
     }
     if (fds[0].revents & POLLOUT || fds[1].revents & POLLIN) flushOutbound();
-    if (fds[0].revents & (POLLIN | POLLHUP | POLLERR)) {
-      // A PTY read returns at most 4 KiB: drain up to a chunk, so a flood takes one lock per chunk.
-      std::size_t got = 0;
-      ssize_t n = 0;
-      while (got < buf.size() && (n = ::read(m_master, buf.data() + got, buf.size() - got)) > 0) {
-        got += static_cast<std::size_t>(n);
+    if (full || !(fds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+    // A PTY read returns at most 4 KiB: drain up to a chunk, so a flood takes one queue lock per chunk.
+    std::size_t got = 0;
+    ssize_t n = 0;
+    while (got < buf.size() && (n = ::read(m_master, buf.data() + got, buf.size() - got)) > 0) {
+      got += static_cast<std::size_t>(n);
+    }
+    if (got > 0) {
+      {
+        std::lock_guard lock(m_inMutex);
+        m_inbound.insert(m_inbound.end(), buf.begin(), buf.begin() + static_cast<std::ptrdiff_t>(got));
       }
-      if (got > 0) {
-        {
-          std::lock_guard lock(m_termMutex);
-          ghostty_terminal_vt_write(m_terminal, buf.data(), got);
-        }
-        m_bytesRead += got;
-        flushOutbound();
-        if (!m_renderHeld.load()) signalWake();
-        continue;
+      m_inReady.notify_one();
+      continue;
+    }
+    if (n < 0 && (errno == EAGAIN || errno == EINTR)) continue;
+    {
+      std::lock_guard lock(m_inMutex);
+      m_inEof = true;
+    }
+    m_inReady.notify_one();
+    return;
+  }
+}
+
+void PtySession::parseLoop() {
+  std::vector<std::uint8_t> work;
+  for (;;) {
+    bool wasFull;
+    {
+      std::unique_lock lock(m_inMutex);
+      m_inReady.wait(lock, [this] { return m_stopping || m_inEof || !m_inbound.empty(); });
+      if (m_stopping) return;
+      if (m_inbound.empty()) break;
+      wasFull = m_inbound.size() >= kInboundMax;
+      work.clear();
+      work.swap(m_inbound);
+    }
+    if (wasFull) {
+      std::uint64_t one = 1;
+      (void)::write(m_eventFd, &one, sizeof one);
+    }
+    for (std::size_t at = 0; at < work.size(); at += kReadChunk) {
+      const std::size_t len = std::min(kReadChunk, work.size() - at);
+      {
+        std::lock_guard lock(m_termMutex);
+        ghostty_terminal_vt_write(m_terminal, work.data() + at, len);
       }
-      if (n < 0 && (errno == EAGAIN || errno == EINTR)) continue;
-      int status = 0;
-      ::waitpid(m_pid, &status, 0);
-      m_exitStatus = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
-      apply(SessionEvent::ChildExited);
-      signalWake();
-      return;
+      m_bytesRead += len;
+      flushOutbound();
+      if (!m_renderHeld.load()) signalWake();
     }
   }
+  int status = 0;
+  ::waitpid(m_pid, &status, 0);
+  m_exitStatus = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+  apply(SessionEvent::ChildExited);
+  signalWake();
 }
 
 void PtySession::onWritePty(GhosttyTerminal, void* self, const std::uint8_t* data, std::size_t len) {

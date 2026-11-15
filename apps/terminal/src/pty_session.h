@@ -3,6 +3,7 @@
 #include <ghostty/vt.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -38,8 +39,8 @@ struct SpawnOptions {
   std::uint16_t cellHeightPx = 16;
 };
 
-// One shell or program on a PTY. A private IO thread reads the PTY and feeds the
-// terminal; the UI thread reads terminal state through withTerminal() once per frame.
+// One shell or program on a PTY. A reader thread drains the PTY into a bounded queue while a parser
+// thread feeds the terminal, so the program keeps writing during a parse; the UI thread reads terminal state through withTerminal() once per frame.
 class PtySession {
 public:
   // Called on the IO thread when new state is ready, at most once until takeWake().
@@ -71,6 +72,7 @@ public:
 
 private:
   void ioLoop();
+  void parseLoop();
   void signalWake();
   void flushOutbound();
   void queueOutbound(std::span<const std::uint8_t> bytes);
@@ -89,6 +91,13 @@ private:
   int m_eventFd = -1;
   int m_pid = -1;
   std::thread m_io;
+  std::thread m_parser;
+
+  // PTY bytes the reader queued for the parser; m_inEof once the PTY closed.
+  std::mutex m_inMutex;
+  std::condition_variable m_inReady;
+  std::vector<std::uint8_t> m_inbound;
+  bool m_inEof = false;
 
   std::mutex m_outMutex;
   std::vector<std::uint8_t> m_outbound;
