@@ -1154,6 +1154,15 @@ test = "tests/e2e/viewer_pdf.sh"
 build = "shell"
 notes = "Entry is a directory. Own meson tree (apps/viewer/meson.build)."
 
+[[feature]]
+name = "apps: Terminal"
+keywords = ["terminal", "shell", "pty", "libghostty", "cell grid", "console"]
+module = "terminal"
+entry = ["apps/terminal/src", "apps/terminal/meson.build", "libdesk-ui/src/render/scene/terminal_grid_node.cpp", "libdesk-ui/src/render/text/terminal_glyph_atlas.cpp", "libdesk-ui/src/render/programs/terminal_grid_program.cpp"]
+test = "apps/terminal/tests/pty_session_test.cpp"
+build = "terminal"
+notes = "Own meson tree. libghostty-vt: system package or tools/build-libghostty.sh. Plan: .agent/TASK-terminal.md."
+
 # ---------- portal ----------
 
 [[feature]]

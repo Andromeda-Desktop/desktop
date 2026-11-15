@@ -7,6 +7,7 @@
 #include "render/core/mat3.h"
 #include "render/core/render_styles.h"
 #include "render/core/texture_handle.h"
+#include "render/core/terminal_grid_draw.h"
 
 #include <cstdint>
 #include <memory>
@@ -189,6 +190,7 @@ public:
       TextureId dataTexture, int textureWidth, float surfaceWidth, float surfaceHeight, float width, float height,
       const GraphStyle& style, const Mat3& transform
   ) = 0;
+  virtual void drawTerminalGrid(const TerminalGridDraw& grid) = 0;
   virtual void drawWallpaper(const WallpaperDrawParams& params) = 0;
   virtual void drawWallpaperMask(const WallpaperMaskDrawParams& params) = 0;
   virtual void drawLockscreenTransition(const LockscreenTransitionDrawParams& params) = 0;

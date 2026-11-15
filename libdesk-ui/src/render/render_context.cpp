@@ -23,6 +23,7 @@
 #include "render/scene/rect_node.h"
 #include "render/scene/screen_corner_node.h"
 #include "render/scene/spinner_node.h"
+#include "render/scene/terminal_grid_node.h"
 #include "render/scene/text_node.h"
 #include "render/scene/wallpaper_node.h"
 
@@ -847,6 +848,30 @@ void RenderContext::drawNodeSelf(
           graph->textureId(), graph->textureWidth(), sw, sh, node->width(), node->height(), style, worldTransform
       );
     }
+    break;
+  }
+  case NodeType::TerminalGrid: {
+    const auto* grid = static_cast<const TerminalGridNode*>(node);
+    TerminalGridDraw draw{
+        .width = node->width(),
+        .height = node->height(),
+        .atlas = grid->atlasTexture(),
+        .atlasWidth = grid->atlasWidth(),
+        .atlasHeight = grid->atlasHeight(),
+        .rects = grid->rectLists(),
+        .glyphs = grid->glyphLists(),
+        .over = grid->cursorRectLists(),
+        .overGlyphs = grid->cursorGlyphLists(),
+        .surfaceWidth = sw,
+        .surfaceHeight = sh,
+        .transform = worldTransform,
+        .opacity = effectiveOpacity,
+    };
+    const std::uint32_t bg = grid->background();
+    draw.background[0] = static_cast<float>((bg >> 16) & 0xFF) / 255.0F;
+    draw.background[1] = static_cast<float>((bg >> 8) & 0xFF) / 255.0F;
+    draw.background[2] = static_cast<float>(bg & 0xFF) / 255.0F;
+    m_backend->drawTerminalGrid(draw);
     break;
   }
   case NodeType::Wallpaper: {

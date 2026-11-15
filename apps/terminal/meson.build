@@ -30,3 +30,24 @@ _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
 
 test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings), timeout: 30)
+
+cpp = meson.get_compiler('cpp')
+if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
+  add_project_arguments('-fexperimental-library', language: 'cpp')
+  add_project_link_arguments('-lc++experimental', language: 'cpp')
+endif
+
+_desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+
+executable('andromeda-terminal',
+  'src/main.cpp',
+  'src/terminal_app.cpp',
+  'src/terminal_view.cpp',
+  'src/terminal_window.cpp',
+  dependencies: [_core_dep, _desk_app_dep],
+  cpp_args: _warnings,
+  install: true,
+)
+
+install_data('data/dev.andromeda.Terminal.desktop', install_dir: get_option('datadir') / 'applications')
+install_data('data/icons/dev.andromeda.Terminal.svg', install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps')

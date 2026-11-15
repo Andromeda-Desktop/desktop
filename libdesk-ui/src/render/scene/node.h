@@ -26,6 +26,7 @@ enum class NodeType : std::uint8_t {
   FancyAudioVisualizer,
   Effect,
   Graph,
+  TerminalGrid,
   Wallpaper,
   LockscreenTransition,
   RenderProxy,
