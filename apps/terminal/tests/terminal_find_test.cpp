@@ -31,9 +31,15 @@ std::size_t count(const std::string& line, const std::string& needle) {
 }
 
 // Like TerminalView::refresh: read under the lock, tick off it, repeat while tick asks for another frame.
+// What the find bar shows: updated only when read() reports a change, as TerminalView does.
+using Label = std::optional<std::pair<std::size_t, std::optional<std::size_t>>>;
+Label label;
+
 void settle(TerminalFind& find, GhosttyTerminal t) {
   for (int frame = 0; frame < 1000; ++frame) {
-    find.read(t);
+    if (find.read(t)) {
+      label = {{find.total(), find.index()}};
+    }
     if (!find.tick(std::chrono::milliseconds(2))) {
       return;
     }
@@ -70,6 +76,11 @@ void checkInvariants(const TerminalFind& find, GhosttyTerminal t, const std::vec
   CHECK(find.marks().empty() == (find.total() == 0));
   CHECK(find.marks().size() <= find.total());
   CHECK(std::ranges::all_of(find.marks(), [](float f) { return f >= 0.0F && f < 1.0F; }));
+  for (const float f : find.marks()) {
+    const auto row = static_cast<std::size_t>(f * static_cast<float>(scroll.total) + 0.5F);
+    CHECK(row < lines.size() && count(lines[row], needle) > 0);
+  }
+  CHECK(label == Label({find.total(), find.index()}));
   CHECK(find.currentMark().has_value() == find.index().has_value());
 }
 
@@ -103,6 +114,7 @@ void run() {
         }
         needle = pick(5) == 0 ? std::string() : kNeedles[pick(kNeedles.size())];
         find->setQuery(t, needle);
+        label.reset();
         break;
       case 3:
       case 4:

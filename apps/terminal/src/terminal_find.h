@@ -24,14 +24,14 @@ namespace term {
   public:
     TerminalFind() = default;
     ~TerminalFind();
-    TerminalFind(TerminalFind&& o) noexcept;
-    TerminalFind& operator=(TerminalFind&& o) noexcept;
+    TerminalFind(TerminalFind&&) = delete;
+    TerminalFind& operator=(TerminalFind&&) = delete;
     TerminalFind(const TerminalFind&) = delete;
     TerminalFind& operator=(const TerminalFind&) = delete;
 
     void setQuery(GhosttyTerminal terminal, std::string_view query);
     void step(bool older);
-    // Feeds the search and reads the results; true when total or index changed.
+    // Feeds the search and reads the results; true when total, index or marks changed, and on the first read of a query.
     bool read(GhosttyTerminal terminal);
     // Bounded search progress off the lock; true while another read() is needed.
     bool tick(std::chrono::nanoseconds budget);
@@ -53,6 +53,10 @@ namespace term {
     std::optional<std::size_t> m_index;
     std::vector<float> m_marks;
     std::optional<float> m_currentMark;
+    bool m_reported = false;     // total and index reached the caller since the query changed
+    bool m_running = false;      // the last tick left the search unfinished
+    bool m_marksStale = false;
+    std::uint64_t m_marksTotal = 0; // scroll total the marks are fractions of
     std::vector<GhosttySelection> m_scratch;
   };
 

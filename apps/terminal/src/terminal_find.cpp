@@ -2,32 +2,10 @@
 
 #include <algorithm>
 #include <span>
-#include <utility>
 
 namespace term {
 
   TerminalFind::~TerminalFind() { ghostty_search_free(m_search); }
-
-  TerminalFind::TerminalFind(TerminalFind&& o) noexcept
-      : m_search(std::exchange(o.m_search, nullptr)), m_selectFirst(o.m_selectFirst), m_hits(std::move(o.m_hits)),
-        m_current(o.m_current), m_total(o.m_total), m_index(o.m_index), m_marks(std::move(o.m_marks)),
-        m_currentMark(o.m_currentMark), m_scratch(std::move(o.m_scratch)) {}
-
-  TerminalFind& TerminalFind::operator=(TerminalFind&& o) noexcept {
-    if (this != &o) {
-      ghostty_search_free(m_search);
-      m_search = std::exchange(o.m_search, nullptr);
-      m_selectFirst = o.m_selectFirst;
-      m_hits = std::move(o.m_hits);
-      m_current = o.m_current;
-      m_total = o.m_total;
-      m_index = o.m_index;
-      m_marks = std::move(o.m_marks);
-      m_currentMark = o.m_currentMark;
-      m_scratch = std::move(o.m_scratch);
-    }
-    return *this;
-  }
 
   void TerminalFind::setQuery(GhosttyTerminal terminal, std::string_view query) {
     if (terminal == nullptr || (m_search == nullptr && ghostty_search_new(nullptr, &m_search, terminal) != GHOSTTY_SUCCESS)) {
@@ -36,6 +14,8 @@ namespace term {
     const GhosttyString needle{.ptr = reinterpret_cast<const std::uint8_t*>(query.data()), .len = query.size()};
     ghostty_search_set(m_search, GHOSTTY_SEARCH_OPT_NEEDLE, &needle);
     m_selectFirst = !query.empty();
+    m_reported = false;
+    m_running = true;
   }
 
   void TerminalFind::step(bool older) {
@@ -108,11 +88,17 @@ namespace term {
         selected && ghostty_search_get(m_search, GHOSTTY_SEARCH_DATA_SELECTED_MATCH, &current) == GHOSTTY_SUCCESS;
     m_current = hasCurrent ? hit(current) : std::nullopt;
     const auto newIndex = selected ? std::optional<std::size_t>(index) : std::nullopt;
-    if (total == m_total && newIndex == m_index) {
-      return false;
-    }
+    const bool changed = total != m_total || newIndex != m_index || !m_reported;
     m_total = total;
     m_index = newIndex;
+    m_reported = true;
+    m_marksStale = m_marksStale || changed || scroll.total != m_marksTotal;
+    // Copying every match each frame of a long search is costly: marks wait until it completes.
+    if (!m_marksStale || m_running) {
+      return changed;
+    }
+    m_marksStale = false;
+    m_marksTotal = scroll.total;
     // Scrollbar marks: one per track step is enough, so many hits stay cheap.
     constexpr std::size_t kSteps = 1024;
     m_marks.clear();
@@ -144,10 +130,11 @@ namespace term {
     while (ghostty_search_tick(m_search, &status) == GHOSTTY_SUCCESS && status == GHOSTTY_SEARCH_STATUS_RUNNING
            && std::chrono::steady_clock::now() < until) {
     }
+    m_running = status != GHOSTTY_SEARCH_STATUS_COMPLETE;
     // Matches found by these ticks reach the view only through the next read().
     std::size_t total = 0;
     ghostty_search_get(m_search, GHOSTTY_SEARCH_DATA_TOTAL_MATCHES, &total);
-    return status != GHOSTTY_SEARCH_STATUS_COMPLETE || total != m_total || (m_selectFirst && total > 0);
+    return m_running || m_marksStale || total != m_total || (m_selectFirst && total > 0);
   }
 
   bool TerminalFind::hitAt(std::uint32_t row, std::uint16_t col, bool& current) const {
