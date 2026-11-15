@@ -136,9 +136,11 @@ float Scrollbar::thickness() const noexcept {
 void Scrollbar::update(float viewportExtent, float contentExtent, float scrollOffset) {
   m_viewportExtent = viewportExtent;
   m_contentExtent = contentExtent;
-  const bool moved = scrollOffset != m_lastScrollOffset;
+  const float maxScroll = std::max(0.0F, contentExtent - viewportExtent);
+  // Content that grows or shrinks at the pinned end (a log following its tail) is no scroll.
+  const bool moved = scrollOffset != m_lastScrollOffset && maxScroll - scrollOffset != m_maxScroll - m_lastScrollOffset;
   m_lastScrollOffset = scrollOffset;
-  m_maxScroll = std::max(0.0F, contentExtent - viewportExtent);
+  m_maxScroll = maxScroll;
 
   m_shown = contentExtent > viewportExtent + 0.5F;
   m_track->setVisible(m_shown);
