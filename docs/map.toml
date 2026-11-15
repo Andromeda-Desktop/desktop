@@ -1175,13 +1175,13 @@ build = "shell"
 notes = "Not a just build module: build with cd portal && just build (justfile:10)."
 
 [[feature]]
-name = "portal: file chooser picker UI"
-keywords = ["file chooser", "portal picker", "picker ui", "previews"]
-module = "shell"
-entry = ["portal/src/picker/main.cpp", "portal/src/picker/previews.cpp"]
-test = "tests/e2e/filechooser_impl_call.py"
-build = "shell"
-notes = "Not a just build module: build with cd portal && just build (justfile:10)."
+name = "portal: screen-share picker"
+keywords = ["share picker", "screencast picker", "portal picker", "thumbnails"]
+module = "portal"
+entry = ["portal/src/share_picker/main.cpp", "portal/src/share_picker/thumbnails.cpp"]
+test = "portal/tests/screencast_transform.sh"
+build = "portal"
+notes = "Build: just build portal. Fake-chooser tests set [screencast] chooser_cmd."
 
 [[feature]]
 name = "portal: PipeWire capture"

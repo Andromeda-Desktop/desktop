@@ -368,7 +368,7 @@ package_andromeda-shell-git() {
 
 package_xdg-desktop-portal-andromeda-git() {
   pkgdesc='xdg-desktop-portal backend for Andromeda (ScreenCast, Screenshot)'
-  depends=(xdg-desktop-portal sdbus-cpp libpipewire wayland libdrm mesa cairo tomlplusplus gtk4)
+  depends=(xdg-desktop-portal sdbus-cpp libpipewire wayland libdrm mesa cairo tomlplusplus)
   provides=(xdg-desktop-portal-andromeda xdg-desktop-portal-impl)
   conflicts=(xdg-desktop-portal-andromeda xdg-desktop-portal-umbriel-git)
   replaces=(xdg-desktop-portal-umbriel-git)
