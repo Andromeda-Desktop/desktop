@@ -76,7 +76,7 @@ namespace xdpu {
         value.y = selection.y;
         value.width = selection.width > 0 ? selection.width : static_cast<int32_t>(constraints.bufferWidth);
         value.height = selection.height > 0 ? selection.height : static_cast<int32_t>(constraints.bufferHeight);
-        value.mappingId = selection.kind == SourceKind::Window ? selection.appId : selection.output;
+        value.mappingId = selection.kind == SourceKind::Window ? selection.identifier : selection.output;
         return value;
       }
 
