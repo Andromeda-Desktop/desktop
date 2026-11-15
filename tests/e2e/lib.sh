@@ -47,7 +47,7 @@ rm_runtime() {
 # run CMD...: run inside the session. A private HOME keeps Noctalia's theme templates and gsettings writes out of the
 # real user config.
 run() {
-  env -u DISPLAY -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME HOME="$RUNTIME/home" \
+  env -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u XDG_CONFIG_HOME -u XDG_DATA_HOME -u XDG_STATE_HOME -u XDG_CACHE_HOME HOME="$RUNTIME/home" \
     XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 ANDROMEDA_SOCKET="$RUNTIME/andromeda-wayland-0.sock" "$@"
 }
 
