@@ -655,6 +655,11 @@ void AppWindow::prepareFrame(bool needsLayout) {
       child->setSize(width - 2.0F * margin, height - 2.0F * margin);
     }
     m_root->layout(renderer);
+    m_contentRect.width = std::max(0.0F, width - margin - m_contentRect.x);
+    m_contentRect.height = std::max(0.0F, height - margin - m_contentRect.y);
+    if (m_onLayout) {
+      m_onLayout();
+    }
   }
 }
 
