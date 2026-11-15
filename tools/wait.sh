@@ -36,9 +36,9 @@ case $mode in
     pat=$match
     [ -z "$fail" ] || pat="($match)|($fail)"
     # Process substitution: the shell exits with grep and does not wait for tail.
-    setsid bash -c 'grep -m1 -E -- "$1" < <(exec tail -n +1 -F -- "$2" 2> /dev/null)' _ "$pat" "$target" > "$out" &
+    setsid bash -c 'grep -a -m1 -E -- "$1" < <(exec tail -n +1 -F -- "$2" 2> /dev/null)' _ "$pat" "$target" > "$out" &
     ;;
-  pid) setsid tail --pid="$target" -f /dev/null & ;;
+  pid) setsid tail --pid="$target" -s 0.02 -f /dev/null & ;;
   file) setsid bash -c 'head -c1 < <(exec tail -c +1 -F -- "$1" 2> /dev/null) > /dev/null' _ "$target" & ;;
   dbus) setsid gdbus wait "$bus" -- "$target" > /dev/null 2>&1 & ;;
 esac
