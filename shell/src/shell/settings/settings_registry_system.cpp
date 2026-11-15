@@ -286,12 +286,9 @@ namespace settings {
       entries.back().visibleWhen = nightLightOn;
       // Both sliders span the same range; the day > night invariant is enforced at commit time
       // via SliderSetting::linkedCommit, which pushes the other temperature when needed.
-      const auto tempMin = static_cast<double>(NightLightConfig::kTemperatureMin);
-      const auto tempMax = static_cast<double>(NightLightConfig::kTemperatureMax);
-      const auto tempStep = static_cast<double>(NightLightConfig::kTemperatureGap);
-
-      SliderSetting daySlider{static_cast<double>(cfg.nightlight.dayTemperature), tempMin, tempMax, tempStep, true};
-      daySlider.linkedCommit = [curNight = cfg.nightlight.nightTemperature](double v) {
+      appendRow(entries, nightLightRows, "temperature_day");
+      entries.back().visibleWhen = nightLightOn;
+      std::get<SliderSetting>(entries.back().control).linkedCommit = [curNight = cfg.nightlight.nightTemperature](double v) {
         std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> overrides;
         const auto newDay = std::clamp(
             static_cast<std::int32_t>(std::lround(v)), NightLightConfig::kTemperatureMin,
@@ -315,18 +312,10 @@ namespace settings {
         }
         return overrides;
       };
-      {
-        auto e = makeEntry(
-            SettingsSection::Location, "night-light", tr("settings.schema.services.day-temperature.label"),
-            tr("settings.schema.services.day-temperature.description"), {"nightlight", "temperature_day"},
-            std::move(daySlider), "nightlight kelvin"
-        );
-        e.visibleWhen = nightLightOn;
-        entries.push_back(std::move(e));
-      }
 
-      SliderSetting nightSlider{static_cast<double>(cfg.nightlight.nightTemperature), tempMin, tempMax, tempStep, true};
-      nightSlider.linkedCommit = [curDay = cfg.nightlight.dayTemperature](double v) {
+      appendRow(entries, nightLightRows, "temperature_night");
+      entries.back().visibleWhen = nightLightOn;
+      std::get<SliderSetting>(entries.back().control).linkedCommit = [curDay = cfg.nightlight.dayTemperature](double v) {
         std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> overrides;
         const auto newNight = std::clamp(
             static_cast<std::int32_t>(std::lround(v)), NightLightConfig::kTemperatureMin,
@@ -348,15 +337,6 @@ namespace settings {
         }
         return overrides;
       };
-      {
-        auto e = makeEntry(
-            SettingsSection::Location, "night-light", tr("settings.schema.services.night-temperature.label"),
-            tr("settings.schema.services.night-temperature.description"), {"nightlight", "temperature_night"},
-            std::move(nightSlider), "nightlight kelvin"
-        );
-        e.visibleWhen = nightLightOn;
-        entries.push_back(std::move(e));
-      }
     }
 
     const SettingVisibility calendarOn = [](const Config& c) { return c.calendar.enabled; };

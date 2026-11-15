@@ -570,8 +570,34 @@ namespace noctalia::config::schema {
                 .tags = "nightlight"
             }
         ),
-        field(&NightLightConfig::dayTemperature, "temperature_day", Range<std::int64_t>{1000, 25000}),
-        field(&NightLightConfig::nightTemperature, "temperature_night", Range<std::int64_t>{1000, 25000}),
+        field(
+            &NightLightConfig::dayTemperature, "temperature_day", Range<std::int64_t>{1000, 25000},
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "location",
+                .group = "night-light",
+                .label = "services.day-temperature",
+                .tags = "nightlight kelvin",
+                .integer = true,
+                .range = {static_cast<double>(NightLightConfig::kTemperatureMin),
+                          static_cast<double>(NightLightConfig::kTemperatureMax),
+                          static_cast<double>(NightLightConfig::kTemperatureGap)},
+            }
+        ),
+        field(
+            &NightLightConfig::nightTemperature, "temperature_night", Range<std::int64_t>{1000, 25000},
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "location",
+                .group = "night-light",
+                .label = "services.night-temperature",
+                .tags = "nightlight kelvin",
+                .integer = true,
+                .range = {static_cast<double>(NightLightConfig::kTemperatureMin),
+                          static_cast<double>(NightLightConfig::kTemperatureMax),
+                          static_cast<double>(NightLightConfig::kTemperatureGap)},
+            }
+        ),
         // Day must lead night by at least the gap; pull night down, bumping day up
         // only if night would fall below the floor.
         finalize<NightLightConfig>([](NightLightConfig& nl, std::string_view path, Diagnostics& diag) {
@@ -1970,8 +1996,29 @@ namespace noctalia::config::schema {
 
     const Schema<ShellConfig::ShadowConfig>& shellShadowSchema() {
       static const Schema<ShellConfig::ShadowConfig> s = {
-          enumField(&ShellConfig::ShadowConfig::direction, "direction", kShadowDirections),
-          field(&ShellConfig::ShadowConfig::alpha, "alpha", kUnitRange),
+          enumField(
+              &ShellConfig::ShadowConfig::direction, "direction", kShadowDirections,
+              RowSpec{
+                  .kind = RowSpec::Kind::Select,
+                  .section = "appearance",
+                  .group = "surfaces",
+                  .label = "appearance.global-shadow-direction",
+                  .title = "shared.shadow-direction",
+                  .tags = "shadow direction",
+              }
+          ),
+          field(
+              &ShellConfig::ShadowConfig::alpha, "alpha", kUnitRange,
+              RowSpec{
+                  .kind = RowSpec::Kind::Slider,
+                  .section = "appearance",
+                  .group = "surfaces",
+                  .label = "appearance.global-shadow-alpha",
+                  .title = "shared.shadow-alpha",
+                  .tags = "shadow opacity",
+                  .advanced = true,
+              }
+          ),
       };
       return s;
     }
@@ -2376,7 +2423,15 @@ namespace noctalia::config::schema {
                   .tags = "launcher track usage recent history frequency privacy",
               }
           ),
-          field(&ShellConfig::LauncherConfig::sortByUsage, "sort_by_usage"),
+          field(
+              &ShellConfig::LauncherConfig::sortByUsage, "sort_by_usage",
+              RowSpec{
+                  .section = "launcher",
+                  .group = "history",
+                  .label = "panels.launcher-sort-by-usage",
+                  .tags = "launcher sort usage recently used frequency",
+              }
+          ),
           field(
               &ShellConfig::LauncherConfig::ignoreMouse, "ignore_mouse",
               RowSpec{
@@ -2963,6 +3018,8 @@ namespace noctalia::config::schema {
       return s;
     }
   } // namespace
+
+  const Schema<ShellConfig::ShadowConfig>& shellShadowRowsSchema() { return shellShadowSchema(); }
 
   const Schema<ShellConfig::ScreenshotConfig>& screenshotSchema() { return shellScreenshotSchema(); }
   const Schema<ShellConfig::LauncherConfig>& launcherSchema() { return shellLauncherSchema(); }
@@ -3731,7 +3788,8 @@ namespace noctalia::config::schema {
     // outline" (nullopt). Emitted only when specified, as the color or empty string.
     template <typename Struct>
     Field<Struct> capsuleBorderField(
-        std::optional<ColorSpec> Struct::* colorMember, bool Struct::* specifiedMember, std::string_view key
+        std::optional<ColorSpec> Struct::* colorMember, bool Struct::* specifiedMember, std::string_view key,
+        std::optional<RowSpec> row = std::nullopt
     ) {
       return custom<Struct>(
           key,
@@ -3757,7 +3815,8 @@ namespace noctalia::config::schema {
                   key, (in.*colorMember).has_value() ? colorSpecToConfigString(*(in.*colorMember)) : std::string{}
               );
             }
-          }
+          },
+          std::move(row)
       );
     }
 
@@ -4695,7 +4754,17 @@ namespace noctalia::config::schema {
             &BarConfig::widgetCapsuleOpacity, "capsule_opacity", kBarOpacityRange,
             capsuleSlider("pill alpha", {0.0F, 1.0F, 0.01F})
         ),
-        capsuleBorderField(&BarConfig::widgetCapsuleBorder, &BarConfig::widgetCapsuleBorderSpecified, "capsule_border"),
+        capsuleBorderField(
+            &BarConfig::widgetCapsuleBorder, &BarConfig::widgetCapsuleBorderSpecified, "capsule_border",
+            RowSpec{
+                .kind = RowSpec::Kind::Color,
+                .section = "bar",
+                .group = "capsules",
+                .tags = "color pill outline",
+                .advanced = true,
+                .allowNone = true,
+            }
+        ),
         field(
             &BarConfig::widgetCapsuleBorderWidth, "capsule_border_width", kBarCapsuleBorderWidthRange,
             capsuleSlider("pill outline width", {})

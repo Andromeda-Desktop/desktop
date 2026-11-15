@@ -178,16 +178,7 @@ namespace settings {
         appendRow(entries, barRows, key);
         entries.back().visibleWhen = capsuleOn;
       }
-      {
-        auto e = makeEntry(
-            section, "capsules", tr("settings.schema.bar.capsule-border.label"),
-            tr("settings.schema.bar.capsule-border.description"), path("capsule_border"),
-            colorSpecPicker(bar.widgetCapsuleBorder, true), "color pill outline", true
-        );
-        e.visibleWhen = capsuleOn;
-        entries.push_back(std::move(e));
-      }
-      for (const auto* key : {"capsule_border_width", "capsule_padding", "capsule_opacity"}) {
+      for (const auto* key : {"capsule_border", "capsule_border_width", "capsule_padding", "capsule_opacity"}) {
         appendRow(entries, barRows, key);
         entries.back().visibleWhen = capsuleOn;
       }

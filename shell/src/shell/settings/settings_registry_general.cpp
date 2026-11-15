@@ -145,16 +145,10 @@ namespace settings {
     for (const auto* key : {"button_borders", "input_borders", "popup_borders", "card_borders"}) {
       appendRow(entries, shellRows, key);
     }
-    entries.push_back(makeEntry(
-        SettingsSection::Appearance, "surfaces", tr("settings.schema.shared.shadow-direction.label"),
-        tr("settings.schema.appearance.global-shadow-direction.description"), {"shell", "shadow", "direction"},
-        enumSelect(kShadowDirections, cfg.shell.shadow.direction), "shadow direction"
-    ));
-    entries.push_back(makeEntry(
-        SettingsSection::Appearance, "surfaces", tr("settings.schema.shared.shadow-alpha.label"),
-        tr("settings.schema.appearance.global-shadow-alpha.description"), {"shell", "shadow", "alpha"},
-        sliderFor(cfg.shell.shadow.alpha, noctalia::config::schema::kUnitRange, false), "shadow opacity", true
-    ));
+    auto shadowRows =
+        generateSchemaEntries(noctalia::config::schema::shellShadowRowsSchema(), cfg.shell.shadow, {"shell", "shadow"});
+    appendRow(entries, shadowRows, "direction");
+    appendRow(entries, shadowRows, "alpha");
     appendRow(entries, shellRows, "popup_shadows");
   }
 
@@ -519,12 +513,10 @@ namespace settings {
     }
     appendGroup(entries, launcherRows, "behavior");
     appendGroup(entries, launcherRows, "history");
-    entries.push_back(makeEntry(
-        SettingsSection::Launcher, "history", tr("settings.schema.panels.launcher-sort-by-usage.label"),
-        tr("settings.schema.panels.launcher-sort-by-usage.description"), {"shell", "launcher", "sort_by_usage"},
-        ToggleSetting{cfg.shell.launcher.sortByUsage, cfg.shell.launcher.trackUsage},
-        "launcher sort usage recently used frequency"
-    ));
+    const auto sortByUsage = std::ranges::find_if(entries, [](const SettingEntry& e) {
+      return e.path == std::vector<std::string>{"shell", "launcher", "sort_by_usage"};
+    });
+    std::get<ToggleSetting>(sortByUsage->control).enabled = cfg.shell.launcher.trackUsage;
     appendRow(entries, launcherRows, "pinned");
     appendGroup(entries, launcherRows, "providers");
     for (const auto& provider : kLauncherProviderSettings) {

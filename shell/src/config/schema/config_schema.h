@@ -35,6 +35,7 @@ namespace noctalia::config::schema {
   const Schema<SystemConfig::MonitorConfig>& systemMonitorRowsSchema();    // [system.monitor]
   const Schema<ControlCenterConfig::CalendarTabConfig>& calendarTabRowsSchema(); // [control_center.calendar]
   const Schema<WallpaperAutomationConfig>& wallpaperAutomationRowsSchema(); // [wallpaper.automation]
+  const Schema<ShellConfig::ShadowConfig>& shellShadowRowsSchema();         // [shell.shadow]
   const Schema<PluginsConfig>& pluginsSchema();
   const Schema<HotCornersConfig>& hotCornersSchema();
   const Schema<CalendarConfig::Reminders>& calendarRemindersSchema();
