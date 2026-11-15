@@ -430,6 +430,47 @@ std::expected<DecodedRasterImage, std::string> decodeWuffsImage(const std::uint8
   return decoded;
 }
 
+std::expected<DecodedRasterImage, std::string> decodePngImage(const std::uint8_t* data, std::size_t size) {
+  if ((data == nullptr) || !isPng(data, size)) {
+    return std::unexpected("not a PNG image");
+  }
+  auto decoder = wuffs_png__decoder::alloc();
+  if (!decoder) {
+    return std::unexpected("out of memory");
+  }
+  auto src = wuffs_base__ptr_u8__reader(const_cast<std::uint8_t*>(data), size, true);
+  wuffs_base__image_config config{};
+  if (auto status = decoder->decode_image_config(&config, &src); !status.is_ok()) {
+    return std::unexpected(status.message());
+  }
+  const std::uint32_t width = config.pixcfg.width();
+  const std::uint32_t height = config.pixcfg.height();
+  if (static_cast<std::uint64_t>(width) * height > kMaxDecodePixels) {
+    return std::unexpected("image too large");
+  }
+  config.pixcfg.set(WUFFS_BASE__PIXEL_FORMAT__RGBA_NONPREMUL, WUFFS_BASE__PIXEL_SUBSAMPLING__NONE, width, height);
+
+  DecodedRasterImage decoded;
+  decoded.width = static_cast<int>(width);
+  decoded.height = static_cast<int>(height);
+  decoded.pixels.resize(static_cast<std::size_t>(width) * height * 4);
+  wuffs_base__pixel_buffer pixbuf{};
+  if (auto status = pixbuf.set_from_slice(
+          &config.pixcfg, wuffs_base__make_slice_u8(decoded.pixels.data(), decoded.pixels.size())
+      );
+      !status.is_ok()) {
+    return std::unexpected(status.message());
+  }
+  std::vector<std::uint8_t> work(decoder->workbuf_len().max_incl);
+  if (auto status = decoder->decode_frame(
+          &pixbuf, &src, WUFFS_BASE__PIXEL_BLEND__SRC, wuffs_base__make_slice_u8(work.data(), work.size()), nullptr
+      );
+      !status.is_ok()) {
+    return std::unexpected(status.message());
+  }
+  return decoded;
+}
+
 namespace {
 
   bool isGif(const std::uint8_t* data, std::size_t size) {

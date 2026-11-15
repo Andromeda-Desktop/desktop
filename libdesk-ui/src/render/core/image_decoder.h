@@ -23,6 +23,10 @@ decodeRasterImage(const std::uint8_t* data, std::size_t size);
 [[nodiscard]] std::expected<DecodedRasterImage, std::string>
 decodeWuffsImage(const std::uint8_t* data, std::size_t size);
 
+// PNG only (wuffs), no EXIF orientation; links only the PNG codec, unlike decodeWuffsImage.
+[[nodiscard]] std::expected<DecodedRasterImage, std::string>
+decodePngImage(const std::uint8_t* data, std::size_t size);
+
 // WebP only (libwebp), EXIF orientation applied; any other format is an error.
 [[nodiscard]] std::expected<DecodedRasterImage, std::string>
 decodeWebPImage(const std::uint8_t* data, std::size_t size);

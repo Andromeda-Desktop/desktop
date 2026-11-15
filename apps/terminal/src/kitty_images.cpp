@@ -18,7 +18,7 @@ namespace term {
 
     bool decodePng(void* /*userdata*/, const GhosttyAllocator* allocator, const std::uint8_t* data, std::size_t len,
                    GhosttySysImage* out) {
-      auto image = decodeWuffsImage(data, len);
+      auto image = decodePngImage(data, len);
       if (!image) {
         return false;
       }
