@@ -35,16 +35,6 @@ namespace term {
   namespace {
     constexpr Logger kLog("terminal");
 
-    std::string loginShell() {
-      if (const char* shell = std::getenv("SHELL"); shell != nullptr && *shell != '\0') {
-        return shell;
-      }
-      if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_shell != nullptr) {
-        return pw->pw_shell;
-      }
-      return "/bin/sh";
-    }
-
     // The status comes first, so truncation removes the command, never the outcome.
     std::string withCommand(const std::string& status, const std::string& command) {
       return command.empty() ? status : status + " · " + command;
@@ -66,9 +56,10 @@ namespace term {
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents,
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
-                                 std::function<void(const std::string& token)> newWindow)
+                                 std::function<void(const std::string& token)> newWindow,
+                                 std::function<void(const std::string& token)> preferences)
       : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
-        m_newWindow(std::move(newWindow)) {
+        m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)) {
     m_settingsChanged = m_settings.changed().connect([this] {
       for (Session& session : m_views) {
         if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
@@ -321,7 +312,7 @@ namespace term {
           }
         }
       }
-      const std::string shell = m_settings.settings().shell.empty() ? loginShell() : m_settings.settings().shell;
+      const std::string shell = m_settings.settings().shell.empty() ? defaultShell() : m_settings.settings().shell;
       const ShellLaunch launch = shellLaunch(shell, shellIntegrationDir(), [](const char* name) { return std::getenv(name); });
       if (!ref.start(launch.argv, cwd.empty() ? homeDir() : cwd, launch.env)) {
         kLog.warn("cannot start {}", shell);
@@ -468,6 +459,10 @@ namespace term {
       }
       return true;
     }
+    if (!shift && event.unshifted == ',') {
+      m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
+      return true;
+    }
     if (shift && (event.unshifted == 'n' || event.unshifted == 'N')) {
       m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
       return true;
@@ -510,13 +505,14 @@ namespace term {
     if (m_newButton == nullptr) {
       return;
     }
-    enum : std::int32_t { kShell = 1, kAgent, kWindow };
+    enum : std::int32_t { kShell = 1, kAgent, kWindow, kPreferences };
     float x = 0.0F;
     float y = 0.0F;
     Node::absolutePosition(m_newButton, x, y);
     m_window.openContextMenu({{.id = kShell, .label = "New session", .shortcut = "Ctrl+Shift+T", .glyph = "prompt"},
                               {.id = kAgent, .label = "New agent", .shortcut = "Ctrl+Shift+A", .glyph = "robot"},
-                              {.id = kWindow, .label = "New window", .shortcut = "Ctrl+Shift+N", .glyph = "app-window"}},
+                              {.id = kWindow, .label = "New window", .shortcut = "Ctrl+Shift+N", .glyph = "app-window"},
+                              {.id = kPreferences, .label = "Preferences", .shortcut = "Ctrl+,", .glyph = "settings"}},
                              x, y + m_newButton->height(),
                              [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
                                if (alive.expired()) {
@@ -526,6 +522,7 @@ namespace term {
                                  case kShell: openSession(NewShell{}); break;
                                  case kAgent: openAgentHere(); break;
                                  case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
+                                 case kPreferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
                                  default: break;
                                }
                              });

@@ -43,6 +43,8 @@ namespace term {
 
   // file://host/path (percent-escaped) to a local path; a bare path comes back as is.
   [[nodiscard]] std::string pathFromFileUri(std::string_view uri);
+  // A colour role under a terminal theme: System follows the desktop scheme, AMOLED is Dark on pure black.
+  [[nodiscard]] Color themeColor(Theme theme, ColorRole role);
 
   // One terminal session drawn as a libdesk-ui cell grid. The app window and the Files pane both host it.
   // All methods run on the UI thread; the session's IO thread only wakes it.

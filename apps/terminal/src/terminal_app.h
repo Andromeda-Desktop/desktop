@@ -2,6 +2,7 @@
 
 #include "app/desk_app.h"
 #include "render/core/thumbnail_service.h"
+#include "prefs_window.h"
 #include "terminal_window.h"
 
 #include <map>
@@ -28,6 +29,7 @@ namespace term {
     // With no window yet, sessions that lost their terminal process come back first, one window each.
     void activate(const std::string& activationToken) override;
     void openWindow(const std::string& activationToken);
+    void openPreferences(const std::string& activationToken);
     void startup() override;
     void gpuLost() override;
 
@@ -36,6 +38,8 @@ namespace term {
     std::unique_ptr<agent::Host> m_agents;
     ThumbnailService m_thumbnails; // outlives the windows: their views release thumbnails
     SettingsStore m_settings;
+    AppWindow* m_prefsWindow = nullptr;
+    std::unique_ptr<PrefsWindow> m_prefs;
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next

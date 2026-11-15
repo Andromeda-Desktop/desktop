@@ -57,7 +57,8 @@ namespace term {
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
-                   std::function<void()> close, std::function<void(const std::string& token)> newWindow);
+                   std::function<void()> close, std::function<void(const std::string& token)> newWindow,
+                   std::function<void(const std::string& token)> preferences);
     ~TerminalWindow();
     // The surface and scene were destroyed (compositor reconnect): the next requestFrame hooks the new surface.
     void surfaceLost();
@@ -94,6 +95,7 @@ namespace term {
     Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
     std::function<void(const std::string& token)> m_newWindow;
+    std::function<void(const std::string& token)> m_preferences;
     SessionList m_sessions;
     std::string m_filter; // the sidebar search text
     Input* m_search = nullptr;

@@ -11,6 +11,9 @@ typedef struct _GFileMonitor GFileMonitor;
 
 namespace term {
 
+  // The shell when Settings::shell is empty: $SHELL, else the passwd entry, else /bin/sh.
+  [[nodiscard]] std::string defaultShell();
+
   // The preferences file and its live state. A hand edit applies as soon as the file is written; a bad file keeps
   // the last good settings in use and reports the error.
   class SettingsStore {

@@ -33,13 +33,37 @@ namespace term {
     }
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, *m_agents, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
-                                                          [this](const std::string& token) { openWindow(token); });
+                                                          [this](const std::string& token) { openWindow(token); },
+                                                          [this](const std::string& token) { openPreferences(token); });
     return window;
   }
 
-  void TerminalApp::windowClosed(AppWindow& window) { m_windows.erase(&window); }
+  void TerminalApp::windowClosed(AppWindow& window) {
+    if (&window == m_prefsWindow) {
+      m_prefs.reset();
+      m_prefsWindow = nullptr;
+    }
+    m_windows.erase(&window);
+  }
 
-  void TerminalApp::windowSurfaceLost(AppWindow& window) { m_windows.at(&window)->surfaceLost(); }
+  void TerminalApp::windowSurfaceLost(AppWindow& window) {
+    if (auto it = m_windows.find(&window); it != m_windows.end()) {
+      it->second->surfaceLost();
+    }
+  }
+
+  // One Preferences window per app: a second Ctrl+, raises it.
+  void TerminalApp::openPreferences(const std::string& activationToken) {
+    if (m_prefsWindow == nullptr) {
+      m_prefsWindow = &addWindow({.appId = info().id, .title = "Preferences", .stateKey = "preferences", .width = 760,
+                                  .height = 560, .minWidth = 560, .minHeight = 400, .sidebarWidth = 200.0F});
+      m_prefs = std::make_unique<PrefsWindow>(*m_prefsWindow, m_settings);
+      if (!m_prefsWindow->open()) {
+        return;
+      }
+    }
+    m_prefsWindow->activate(activationToken);
+  }
 
   void TerminalApp::open(const std::vector<std::string>& uris, const std::string& activationToken) {
     bool opened = false;

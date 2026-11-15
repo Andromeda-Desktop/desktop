@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
+#include <pwd.h>
+#include <unistd.h>
 
 namespace term {
 
@@ -24,6 +26,16 @@ namespace term {
     }
 
   } // namespace
+
+  std::string defaultShell() {
+    if (const char* shell = std::getenv("SHELL"); shell != nullptr && *shell != '\0') {
+      return shell;
+    }
+    if (const passwd* pw = getpwuid(getuid()); pw != nullptr && pw->pw_shell != nullptr) {
+      return pw->pw_shell;
+    }
+    return "/bin/sh";
+  }
 
   SettingsStore::SettingsStore() : m_path(configPath()) {
     std::error_code ec;

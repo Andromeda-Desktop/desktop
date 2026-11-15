@@ -229,8 +229,10 @@ namespace term {
     }
   }
 
-  Color TerminalView::themed(ColorRole role) const {
-    switch (m_settings.theme) {
+  Color TerminalView::themed(ColorRole role) const { return themeColor(m_settings.theme, role); }
+
+  Color themeColor(Theme theme, ColorRole role) {
+    switch (theme) {
     case Theme::System: return colorForRole(role);
     case Theme::Light: return colorForRole(role, tokenPalette(true));
     case Theme::Dark: return colorForRole(role, tokenPalette(false));
