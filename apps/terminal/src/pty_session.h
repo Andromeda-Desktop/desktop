@@ -1,5 +1,7 @@
 #pragma once
 
+#include "command_index.h"
+
 #include <ghostty/vt.h>
 
 #include <atomic>
@@ -12,6 +14,7 @@
 #include <string>
 #include <sys/types.h>
 #include <thread>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -23,13 +26,6 @@ enum class SessionEvent : std::uint8_t { Spawned, ChildExited };
 
 // Returns the next state, or nullopt when the event is invalid in `from`.
 std::optional<SessionState> transition(SessionState from, SessionEvent event);
-
-struct CommandMark {
-  enum class Kind : std::uint8_t { PromptStart, InputStart, OutputStart, CommandEnd };
-  Kind kind;
-  std::optional<int> exitCode;
-  std::string command; // OutputStart: the command line, when the shell sends it
-};
 
 struct SpawnOptions {
   std::vector<std::string> argv;
@@ -74,6 +70,12 @@ public:
     std::lock_guard lock(m_termMutex);
     return f(m_terminal);
   }
+  // f(terminal, commands) under the terminal lock; entries that left the terminal are gone.
+  template <typename F> auto withCommands(F&& f) {
+    std::lock_guard lock(m_termMutex);
+    m_commands.prune();
+    return f(m_terminal, std::as_const(m_commands));
+  }
 
   SessionState state() const { return m_state.load(); }
   std::optional<int> exitStatus() const;
@@ -113,6 +115,7 @@ private:
   MarkFn m_onMark;
   GhosttyTerminal m_terminal = nullptr;
   std::mutex m_termMutex;
+  CommandIndex m_commands; // under m_termMutex
 
   // Set before the threads start and fixed after.
   std::variant<std::monostate, LocalChild, HeldSession> m_link;

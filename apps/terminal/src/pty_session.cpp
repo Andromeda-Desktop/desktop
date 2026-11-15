@@ -1,6 +1,8 @@
 #include "pty_session.h"
+
 #include "holder_client.h"
 #include <algorithm>
+#include <chrono>
 
 #include <cerrno>
 #include <csignal>
@@ -474,9 +476,8 @@ void PtySession::onRenderHold(GhosttyTerminal, void* self, bool held) {
   if (!held) s->signalWake();
 }
 
-void PtySession::onSemanticPrompt(GhosttyTerminal, void* self, const GhosttyTerminalSemanticPrompt* e) {
+void PtySession::onSemanticPrompt(GhosttyTerminal terminal, void* self, const GhosttyTerminalSemanticPrompt* e) {
   auto* s = static_cast<PtySession*>(self);
-  if (!s->m_onMark) return;
   CommandMark mark{};
   switch (e->kind) {
   case GHOSTTY_SEMANTIC_PROMPT_PROMPT_START: mark.kind = CommandMark::Kind::PromptStart; break;
@@ -487,7 +488,8 @@ void PtySession::onSemanticPrompt(GhosttyTerminal, void* self, const GhosttyTerm
   }
   if (e->has_exit_code) mark.exitCode = e->exit_code;
   if (e->command.len > 0) mark.command.assign(reinterpret_cast<const char*>(e->command.ptr), e->command.len);
-  s->m_onMark(mark);
+  s->m_commands.onMark(terminal, mark, std::chrono::steady_clock::now());
+  if (s->m_onMark) s->m_onMark(mark);
 }
 
 } // namespace term
