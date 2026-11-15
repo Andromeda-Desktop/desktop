@@ -1,5 +1,6 @@
 #pragma once
 
+#include "content_view.h"
 #include "context_row.h"
 #include "core/timer_manager.h"
 #include "pty_session.h"
@@ -41,7 +42,7 @@ namespace term {
 
   // One terminal session drawn as a libdesk-ui cell grid. The app window and the Files pane both host it.
   // All methods run on the UI thread; the session's IO thread only wakes it.
-  class TerminalView final : private TextInputClient {
+  class TerminalView final : public ContentView, private TextInputClient {
   public:
     struct Host {
       // New terminal state is ready: ask for a frame tick that calls frame().
@@ -74,32 +75,33 @@ namespace term {
     bool reattach(std::uint64_t heldId);
 
     // uiScale: logical px per design px; deviceScale: buffer px per logical px. The GL context is current.
-    std::unique_ptr<Node> build(Renderer& renderer, float uiScale, float deviceScale, float width, float height);
+    std::unique_ptr<Node> build(Renderer& renderer, float uiScale, float deviceScale, float width, float height) override;
     // The view got a new size (logical px): resizes the grid and the PTY.
-    void setSize(float width, float height);
+    void setSize(float width, float height) override;
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
-    void frame();
+    void frame() override;
     // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.
-    void sceneDestroyed() {
+    void sceneDestroyed() override {
       m_grid = nullptr;
       m_area = nullptr;
     }
     // The output buffer scale changed: the next frame reloads the glyph atlas at this scale.
-    void setDeviceScale(float deviceScale);
+    void setDeviceScale(float deviceScale) override;
 
     // A key for the program, or Ctrl+Shift+C/V (copy the selection, paste); false when the window should handle
     // it (Super, other Ctrl+Shift chords, keys pressed before the grid had focus).
-    bool key(const KeyboardEvent& event);
+    bool key(const KeyboardEvent& event) override;
     // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
-    void setWindowActive(bool active);
+    void setWindowActive(bool active) override;
     // Find over the screen and scrollback; an empty query clears the hits.
     void setFindQuery(const std::string& query);
     // older: toward history (Enter); else toward the prompt (Shift+Enter).
     void findStep(bool older);
     void closeFind();
 
-    [[nodiscard]] InputArea* focusArea() const noexcept { return m_area; }
+    [[nodiscard]] InputArea* focusArea() const noexcept override { return m_area; }
+    [[nodiscard]] TerminalView* terminal() noexcept override { return this; }
     [[nodiscard]] PtySession& session() noexcept { return m_session; }
 
   private:
@@ -186,6 +188,7 @@ namespace term {
     float m_pointerX = 0.0F; // last pointer position, local px: wheel reports need one
     float m_pointerY = 0.0F;
     float m_wheelRemainder = 0.0F;
+    float m_reportPx = 0.0F; // finger travel not yet sent as wheel reports
     // Rest: the view sits on a whole row and follows ghostty. Finger: a touchpad tracks 1:1. Settling: a spring
     // (wheel notch or fling) runs toward m_scrollTarget, a whole row.
     enum class ScrollMotion : std::uint8_t { Rest, Finger, Settling };

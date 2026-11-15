@@ -1283,15 +1283,24 @@ namespace term {
     m_wheelRemainder += d.axisSteps;
     const int notches = static_cast<int>(m_wheelRemainder);
     m_wheelRemainder -= static_cast<float>(notches);
+    constexpr int kRowsPerNotch = 3;
+    const float cellH = m_grid->cellHeight();
     const std::uint32_t mods = modifiers();
     if ((mods & KeyMod::Shift) == 0 && mouseTracking()) {
-      const GhosttyMouseButton button = notches < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE;
-      for (int i = 0; i < std::abs(notches); ++i) {
+      // A finger sends one report per row of travel, so the program scrolls at the finger's pace; the rate-capped
+      // detent steps would send about 12 a second.
+      int reports = notches;
+      if (d.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
+        m_reportPx += d.scrollDelta(cellH * kRowsPerNotch);
+        reports = static_cast<int>(m_reportPx / cellH);
+        m_reportPx -= static_cast<float>(reports) * cellH;
+      }
+      const GhosttyMouseButton button = reports < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE;
+      for (int i = 0; i < std::abs(reports); ++i) {
         reportMouse(GHOSTTY_MOUSE_ACTION_PRESS, button, m_pointerX, m_pointerY, mods);
       }
       return true;
     }
-    constexpr int kRowsPerNotch = 3;
     // The alternate screen has no scrollback: with mode 1007 the wheel becomes arrow keys (less, man, vim).
     const auto alternate = m_session.withTerminal([&](GhosttyTerminal t) -> std::optional<std::string> {
       GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
@@ -1318,7 +1327,6 @@ namespace term {
       }
       return true;
     }
-    const float cellH = m_grid->cellHeight();
     if (d.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
       if (m_scrollMotion == ScrollMotion::Settling && m_area->animationManager() != nullptr) {
         m_area->animationManager()->cancel(m_scrollAnim);
