@@ -279,6 +279,7 @@ kill_check_group() {
 # the only way they do not outlive the run.
 kill_instance() {
   stop_keyboard
+  stop_notify_listener
   if [[ -n $IPC_CLIENT_PID ]] && kill -0 "$IPC_CLIENT_PID" 2>/dev/null; then
     kill -KILL "$IPC_CLIENT_PID" 2>/dev/null || true
     wait "$IPC_CLIENT_PID" 2>/dev/null || true
@@ -406,6 +407,38 @@ check_render_thread() {
   sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -qx '# harness: render_thread' && echo 1 || true
 }
 
+# `# harness: watchdog` boots the instance as its own systemd service: NOTIFY_SOCKET is a datagram socket the harness
+# reads into $ANDROMEDA_RUNTIME_DIR/notify.log (one "<ms since epoch> <payload>" line per datagram), WATCHDOG_USEC 2 s.
+check_watchdog() {
+  sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -qx '# harness: watchdog' && echo 1 || true
+}
+
+stop_notify_listener() {
+  [[ -z ${NOTIFY_LISTENER_PID:-} ]] && return 0
+  kill "$NOTIFY_LISTENER_PID" 2>/dev/null || true
+  wait "$NOTIFY_LISTENER_PID" 2>/dev/null || true
+  NOTIFY_LISTENER_PID=
+}
+
+# The compositor fails its boot when READY=1 cannot be sent, so the socket exists before the instance starts.
+start_notify_listener() {
+  python3 - "$1" "$2" > /dev/null 2>&1 << 'PY2' &
+import socket, sys, time
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+sock.bind(sys.argv[1])
+with open(sys.argv[2], "a", buffering=1) as log:
+    while True:
+        log.write(f"{time.time_ns() // 1000000} {sock.recv(4096).decode(errors='replace')}\n")
+PY2
+  NOTIFY_LISTENER_PID=$!
+  local waited_ms=0
+  while [[ ! -S $1 ]]; do
+    kill -0 "$NOTIFY_LISTENER_PID" 2>/dev/null && ((waited_ms < 5000)) || return 1
+    sleep 0.005
+    waited_ms=$((waited_ms + 5))
+  done
+}
+
 check_xcursor_theme() {
   if sed -n '2,12p' "$CHECKS_DIR/$1.sh" | grep -q '^# harness: xcursor-theme=true'; then
     echo andromeda-harness
@@ -516,6 +549,7 @@ start_instance() {
   local cursor_theme=$3
   local xwayland_proxy=$4
   local render_thread=$5
+  local watchdog=$6
   # sockaddr_un caps paths at 108 bytes and the compositor appends
   # "/andromeda-wayland-0.sock" (23) to XDG_RUNTIME_DIR, so keep the root short. A
   # long path makes wl_display_add_socket fail and the boot abort.
@@ -555,8 +589,17 @@ start_instance() {
   # signalled. The wrapper reports the group id it leads and then execs the
   # compositor in place, so SERVER_PID stays the compositor.
   local pgid_file=$RUNTIME_DIR/instance.pgid
-  setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+  local notify_environment=()
+  if [[ -n $watchdog ]]; then
+    start_notify_listener "$RUNTIME_DIR/notify.sock" "$RUNTIME_DIR/notify.log" || {
+      BOOT_ERROR="the notify socket listener did not start"
+      return 1
+    }
+    notify_environment=("NOTIFY_SOCKET=$RUNTIME_DIR/notify.sock" WATCHDOG_USEC=2000000 HARNESS_SYSTEMD_SERVICE=1)
+  fi
+  setsid env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS -u NOTIFY_SOCKET -u WATCHDOG_USEC -u WATCHDOG_PID \
     "${xwayland_environment[@]}" \
+    "${notify_environment[@]}" \
     ${render_thread:+ANDROMEDA_RENDER_THREAD=1} \
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
@@ -565,7 +608,7 @@ start_instance() {
     WLR_BACKENDS=headless \
     WLR_LIBINPUT_NO_DEVICES=1 \
     WLR_HEADLESS_OUTPUTS="$outputs" \
-    bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
+    bash -c 'echo $$ > "$1"; shift; [[ -z ${HARNESS_SYSTEMD_SERVICE:-} ]] || export SYSTEMD_EXEC_PID=$$; exec "$@"' _ "$pgid_file" \
     "$BINARY" -c "$config" > "$log" 2>&1 &
   SERVER_PID=$!
   INSTANCE_PGID=$(child_pgid "$pgid_file" "$SERVER_PID")
@@ -671,6 +714,7 @@ stop_instance() {
     wait "$IPC_CLIENT_PID" 2>/dev/null || true
   fi
   IPC_CLIENT_PID=
+  stop_notify_listener
   stop_keyboard
   reap_instance_group
 
@@ -704,7 +748,7 @@ run_check_body() {
     DBUS_SYSTEM_BUS_ADDRESS="unix:path=$RUNTIME_DIR/no-system-bus" \
     XDG_RUNTIME_DIR="$RUNTIME_DIR" \
     WAYLAND_DISPLAY=wayland-0 \
-    bash -c 'echo $$ > "$1"; shift; exec "$@"' _ "$pgid_file" \
+    bash -c 'echo $$ > "$1"; shift; [[ -z ${HARNESS_SYSTEMD_SERVICE:-} ]] || export SYSTEMD_EXEC_PID=$$; exec "$@"' _ "$pgid_file" \
     timeout -k 5 "$CHECK_TIMEOUT" bash "$CHECKS_DIR/$name.sh" > "$output_file" 2>&1 &
   local body_pid=$!
   CHECK_PGID=$(child_pgid "$pgid_file" "$body_pid")
@@ -733,7 +777,7 @@ run_one() {
 
   BOOT_ERROR=
   if ! start_instance "$(check_outputs "$name")" "$(check_xwayland "$name")" "$cursor_theme" \
-    "$(check_xwayland_proxy "$name")" "$(check_render_thread "$name")"; then
+    "$(check_xwayland_proxy "$name")" "$(check_render_thread "$name")" "$(check_watchdog "$name")"; then
     publish "$prefix" 1 "$check_start" "$BOOT_ERROR"
     return 0
   fi
