@@ -12,6 +12,7 @@
 #include "greeter/greeter_sessions.h"
 #include "greeter/greeter_window.h"
 #include "greeter/power_actions.h"
+#include "render/core/image_file_loader.h"
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
 #include "render/render_context.h"
@@ -672,7 +673,7 @@ void GreeterSurface::initialize(RenderContext* context) {
 
   if (!m_hideLogo) {
     const auto logoPath = greeter::greeterAssetPath("noctalia.svg");
-    m_brandLogoTexture = m_renderContext->textureManager().loadFromFile(logoPath.string(), 1024, true);
+    m_brandLogoTexture = loadTextureFile(m_renderContext->textureManager(), logoPath.string(), 1024, true);
     if (m_bottomBrandLogo != nullptr && m_brandLogoTexture.id != 0) {
       m_bottomBrandLogo->setTextureId(m_brandLogoTexture.id);
       m_bottomBrandLogo->setTextureSize(m_brandLogoTexture.width, m_brandLogoTexture.height);
@@ -2192,7 +2193,7 @@ void GreeterSurface::syncHeaderUserAvatar(
     }
     m_loadedHeaderAvatarPath = iconPath;
     m_loadedHeaderAvatarPixelSize = avatarPixelSize;
-    m_headerAvatarTexture = m_renderContext->textureManager().loadFromFile(iconPath, avatarPixelSize, true);
+    m_headerAvatarTexture = loadTextureFile(m_renderContext->textureManager(), iconPath, avatarPixelSize, true);
   }
 
   if (!canShowAvatar || iconPath.empty() || m_headerAvatarTexture.id == 0) {
@@ -2265,7 +2266,7 @@ void GreeterSurface::syncWallpaperTexture() {
   } else if (!m_wallpaperPath.empty()) {
     std::error_code ec;
     if (std::filesystem::is_regular_file(m_wallpaperPath, ec) && !ec) {
-      m_wallpaperTexture = m_renderContext->textureManager().loadFromFile(m_wallpaperPath, 0, true);
+      m_wallpaperTexture = loadTextureFile(m_renderContext->textureManager(), m_wallpaperPath, 0, true);
       if (m_wallpaperTexture.id != 0) {
         m_wallpaper->setTextures(
             m_wallpaperTexture.id, {}, static_cast<float>(m_wallpaperTexture.width),

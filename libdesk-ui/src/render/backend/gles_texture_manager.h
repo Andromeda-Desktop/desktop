@@ -15,9 +15,6 @@ public:
   GlesTextureManager(const GlesTextureManager&) = delete;
   GlesTextureManager& operator=(const GlesTextureManager&) = delete;
 
-  [[nodiscard]] TextureHandle loadFromFile(const std::string& path, int targetSize = 0, bool mipmap = false) override;
-  [[nodiscard]] TextureHandle
-  loadFromEncodedBytes(const std::uint8_t* data, std::size_t size, bool mipmap = false) override;
   [[nodiscard]] TextureHandle
   loadFromRgba(const std::uint8_t* data, int width, int height, bool mipmap = false) override;
   [[nodiscard]] TextureHandle loadFromRaw(
@@ -48,9 +45,6 @@ public:
 private:
   // The EGL_ANDROID_native_fence_sync fd for the submitted work, or -1.
   [[nodiscard]] int nativeWorkFence();
-  TextureHandle decodeEncodedRaster(
-      const std::uint8_t* data, std::size_t size, const std::string* debugPath = nullptr, bool mipmap = false
-  );
   TextureHandle uploadPixels(
       const std::uint8_t* data, int width, int height, TextureDataFormat format,
       TextureFilter filter = TextureFilter::Linear, bool mipmap = false

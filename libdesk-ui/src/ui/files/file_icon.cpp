@@ -4,6 +4,7 @@
 #include "core/files/file_info.h"
 #include "core/files/resource_paths.h"
 #include "render/core/color.h"
+#include "render/core/image_file_loader.h"
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
 #include "render/core/thumbnail_service.h"
@@ -103,7 +104,7 @@ namespace {
     if (auto it = cache.find(key); it != cache.end()) {
       return it->second;
     }
-    const TextureHandle handle = tm->loadFromFile(paths::assetPath("files-icons/" + asset + ".svg").string(), px);
+    const TextureHandle handle = loadTextureFile(*tm, paths::assetPath("files-icons/" + asset + ".svg").string(), px);
     cache.emplace(key, handle);
     return handle;
   }

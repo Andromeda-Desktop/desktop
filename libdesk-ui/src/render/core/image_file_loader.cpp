@@ -1,6 +1,9 @@
 #include "render/core/image_file_loader.h"
 
+#include "core/log.h"
 #include "render/core/image_decoder.h"
+#include "render/core/image_source_log.h"
+#include "render/core/texture_manager.h"
 #include "util/file_utils.h"
 
 #include <algorithm>
@@ -635,4 +638,23 @@ float rgbaBrightLuminance(const std::vector<std::uint8_t>& rgba) {
     }
   }
   return 1.0F;
+}
+
+TextureHandle loadTextureFile(TextureManager& textures, const std::string& path, int targetSize, bool mipmap) {
+  static constexpr Logger kLog("texture");
+  auto loaded = loadImageFile(path, targetSize);
+  if (!loaded) {
+    kLog.warn("failed to load image: {} ({})", ImageSourceLog::describe(path), loaded.error());
+    return {};
+  }
+  auto handle = textures.loadFromRgba(loaded->rgba.data(), loaded->width, loaded->height, mipmap);
+  bool opaque = true;
+  for (std::size_t index = 3; index < loaded->rgba.size(); index += 4) {
+    if (loaded->rgba[index] != 0xFF) {
+      opaque = false;
+      break;
+    }
+  }
+  handle.opaque = handle.valid() && opaque;
+  return handle;
 }

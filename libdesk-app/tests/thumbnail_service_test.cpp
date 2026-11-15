@@ -23,8 +23,6 @@ namespace {
   class FakeTextures final : public TextureManager {
   public:
     int uploads = 0;
-    TextureHandle loadFromFile(const std::string&, int, bool) override { return {}; }
-    TextureHandle loadFromEncodedBytes(const std::uint8_t*, std::size_t, bool) override { return {}; }
     TextureHandle loadFromRgba(const std::uint8_t*, int width, int height, bool) override {
       ++uploads;
       return {.id = TextureId(static_cast<std::uint32_t>(uploads)), .width = width, .height = height};
