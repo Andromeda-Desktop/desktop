@@ -30,6 +30,11 @@ namespace {
   // The compact Save sheet (mockup §6 dialog 456 wide): header, three field rows, buttons.
   constexpr std::uint32_t kSaveWidth = 456;
   constexpr std::uint32_t kSaveHeight = 272;
+  // Print (mockup system-dialogs §3): preview left, 420 wide choices column right.
+  constexpr std::uint32_t kPrintWidth = 960;
+  constexpr std::uint32_t kPrintHeight = 560;
+  constexpr std::uint32_t kPrintMinWidth = 760;
+  constexpr std::uint32_t kPrintMinHeight = 480;
   // Open With (mockup §4) and the Access dialog (FILES-UI-SPEC §11).
   constexpr std::uint32_t kChooserWidth = 416;
   constexpr std::uint32_t kChooserHeight = 560;
@@ -165,6 +170,22 @@ void FilesApp::startup() {
             },
     });
     m_emailPortal = std::make_unique<EmailPortal>(*bus());
+    m_printPortal = std::make_unique<PrintPortal>(
+        *bus(),
+        PrintPortal::Handlers{
+            .open = [this](std::uint64_t id, const PrintPortal::PrintRequest& r) { openPrint(id, r); },
+            .closed =
+                [this](std::uint64_t id) {
+                  for (auto& [window, dialog] : m_dialogs) {
+                    if (dialog.id == id && dialog.print != nullptr) {
+                      dialog.answered = true;
+                      closeWindow(*window);
+                      return;
+                    }
+                  }
+                },
+        },
+        std::filesystem::path(g_get_user_state_dir()) / "andromeda" / "print.ini");
     scheduleIdleQuit();
     return;
   }
@@ -189,6 +210,7 @@ void FilesApp::scheduleIdleQuit() {
   // D-Bus activation starts the picker again for the next request.
   m_idleQuit.start(std::chrono::minutes(2), [this] {
     if (windows().empty() && m_portal->idle() && m_chooserPortal->idle() && m_systemPortals->idle() && m_emailPortal->idle()
+        && m_printPortal->idle()
         && m_pendingTags.empty()) {
       quit(0);
     } else {
@@ -227,6 +249,52 @@ void FilesApp::openPicker(std::uint64_t id, const PickerPortal::Request& request
   files->setPicker(id, request);
   if (!window.open()) {
     pickerAnswered(id, {.response = 2, .uris = {}, .filter = {}});
+    closeWindow(window);
+    return;
+  }
+  window.activate({});
+}
+
+void FilesApp::openPrint(std::uint64_t id, const PrintPortal::PrintRequest& request) {
+  AppWindow& window = addWindow({.appId = info().id, .title = "Print", .stateKey = "print", .width = kPrintWidth,
+                                 .height = kPrintHeight, .minWidth = kPrintMinWidth, .minHeight = kPrintMinHeight,
+                                 .parentWindow = request.parentWindow});
+  Dialog& dialog = m_dialogs[&window];
+  dialog.id = id;
+  const auto answered = [this, &window] {
+    const auto it = m_dialogs.find(&window);
+    if (it == m_dialogs.end() || it->second.answered)
+      return false;
+    it->second.answered = true;
+    return true;
+  };
+  dialog.print = std::make_unique<PrintSheet>(
+      loop(), request,
+      PrintSheet::Callbacks{
+          .print =
+              [this, &window, answered, id](const PrintOptions& options) {
+                if (!answered())
+                  return;
+                m_printPortal->print(id, options, nullptr);
+                closeWindow(window);
+              },
+          .cancel =
+              [this, &window, answered, id] {
+                if (!answered())
+                  return;
+                m_printPortal->cancel(id);
+                closeWindow(window);
+              },
+          .rebuild = [&window] { window.requestRebuild(); },
+      });
+  window.setContentBuilder([sheet = dialog.print.get(), &window](Renderer&, float, float) {
+    return sheet->build(window.uiScale());
+  });
+  window.setFirstKeyHandler([sheet = dialog.print.get()](const KeyboardEvent& e) { return sheet->firstKey(e); });
+  window.setKeyHandler([sheet = dialog.print.get()](const KeyboardEvent& e) { return sheet->key(e); });
+  if (!window.open()) {
+    m_printPortal->cancel(id);
+    m_dialogs.erase(&window);
     closeWindow(window);
     return;
   }
@@ -442,7 +510,9 @@ AppWindow& FilesApp::createWindow() {
 void FilesApp::windowClosed(AppWindow& window) {
   if (const auto it = m_dialogs.find(&window); it != m_dialogs.end()) {
     // Closed from the frame: the request ends as cancelled.
-    if (!it->second.answered && it->second.portal != nullptr) {
+    if (!it->second.answered && it->second.print != nullptr) {
+      m_printPortal->cancel(it->second.id);
+    } else if (!it->second.answered && it->second.portal != nullptr) {
       m_systemPortals->answer(it->second.id, 1);
     } else if (!it->second.answered && m_chooserPortal != nullptr) {
       if (it->second.chooser != nullptr) {

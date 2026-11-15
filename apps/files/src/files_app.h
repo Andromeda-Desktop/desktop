@@ -16,6 +16,8 @@
 #include "vaults.h"
 #include "drives.h"
 #include "email_portal.h"
+#include "print_portal.h"
+#include "print_sheet.h"
 #include "system_portals.h"
 #include "tags.h"
 
@@ -94,6 +96,7 @@ private:
   void openChooser(std::uint64_t id, const AppChooserPortal::ChooseRequest& request);
   void openAccess(std::uint64_t id, const AppChooserPortal::AccessRequest& request);
   void openPortalSheet(std::uint64_t id, const SystemPortals::Request& request);
+  void openPrint(std::uint64_t id, const PrintPortal::PrintRequest& request);
   void dialogAction(const std::string& name, const std::vector<std::string>& parameter);
   void tagAction(FilesWindow& window, const std::string& name, const std::vector<std::string>& parameter);
   void scheduleIdleQuit();
@@ -112,6 +115,7 @@ private:
   std::unique_ptr<AppChooserPortal> m_chooserPortal;
   std::unique_ptr<SystemPortals> m_systemPortals;
   std::unique_ptr<EmailPortal> m_emailPortal;
+  std::unique_ptr<PrintPortal> m_printPortal;
   IndexSearch m_index;
   std::unique_ptr<FileManager1> m_fileManager;
   std::unique_ptr<LinkShare> m_linkShare;
@@ -126,6 +130,7 @@ private:
     std::unique_ptr<AppChooserSheet> chooser;
     std::unique_ptr<AccessSheet> access;
     std::unique_ptr<PortalSheet> portal;
+    std::unique_ptr<PrintSheet> print;
     bool answered = false;
   };
   std::map<AppWindow*, Dialog> m_dialogs;

@@ -167,3 +167,21 @@ std::optional<PrintTransition> printTransition(PrintStage stage, PrintEvent even
   }
   return std::nullopt;
 }
+
+std::string mediaLabel(const std::string& pwgName) {
+  static constexpr std::pair<std::string_view, std::string_view> kNames[] = {
+      {"iso_a3", "A3"},         {"iso_a4", "A4"},       {"iso_a5", "A5"},         {"iso_a6", "A6"},
+      {"iso_b5", "B5"},         {"jis_b5", "B5 (JIS)"}, {"na_letter", "Letter"},  {"na_legal", "Legal"},
+      {"na_executive", "Executive"}, {"na_ledger", "Tabloid"}, {"iso_dl", "Envelope DL"}, {"na_number-10", "Envelope #10"},
+      {"na_index-4x6", "4 × 6 in"}, {"na_5x7", "5 × 7 in"}, {"oe_photo-l", "Photo L"},
+  };
+  const auto underscore = pwgName.rfind('_');
+  const std::string_view prefix = std::string_view(pwgName).substr(0, underscore);
+  for (const auto& [key, label] : kNames)
+    if (prefix == key)
+      return std::string(label);
+  if (const auto size = mediaSizeMm(pwgName))
+    return std::to_string(static_cast<int>(size->first + 0.5)) + " × " + std::to_string(static_cast<int>(size->second + 0.5)) +
+           " mm";
+  return pwgName;
+}

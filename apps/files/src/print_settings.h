@@ -56,3 +56,6 @@ struct PrintTransition {
 
 // nullopt = the event is not valid in this stage and changes nothing. Each request gets exactly one reply.
 [[nodiscard]] std::optional<PrintTransition> printTransition(PrintStage stage, PrintEvent event);
+
+// "A4", "Letter", else "210 × 297 mm" from a PWG media name.
+[[nodiscard]] std::string mediaLabel(const std::string& pwgName);
