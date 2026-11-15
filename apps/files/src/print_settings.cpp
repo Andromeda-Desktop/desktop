@@ -133,3 +133,37 @@ std::optional<std::pair<double, double>> mediaSizeMm(const std::string& pwgName)
     return std::nullopt;
   return std::pair{w * factor, h * factor};
 }
+
+std::optional<PrintTransition> printTransition(PrintStage stage, PrintEvent event) {
+  switch (stage) {
+  case PrintStage::SheetOpen:
+    switch (event) {
+    case PrintEvent::UserPrint:
+      return PrintTransition{PrintStage::Submitting, std::nullopt};
+    case PrintEvent::UserCancel:
+      return PrintTransition{PrintStage::Ended, 1U};
+    case PrintEvent::CallerClose:
+      return PrintTransition{PrintStage::Ended, 2U};
+    default:
+      return std::nullopt;
+    }
+  case PrintStage::Submitting:
+    switch (event) {
+    case PrintEvent::JobSent:
+      return PrintTransition{PrintStage::Ended, 0U};
+    case PrintEvent::JobFailed:
+      return PrintTransition{PrintStage::Ended, 2U};
+    case PrintEvent::CallerClose:
+      return PrintTransition{PrintStage::CallerGone, 2U};
+    default:
+      return std::nullopt;
+    }
+  case PrintStage::CallerGone:
+    if (event == PrintEvent::JobSent || event == PrintEvent::JobFailed)
+      return PrintTransition{PrintStage::Ended, std::nullopt};
+    return std::nullopt;
+  case PrintStage::Ended:
+    return std::nullopt;
+  }
+  return std::nullopt;
+}

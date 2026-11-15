@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -43,3 +44,15 @@ struct RangeError {
 
 // Width and height in millimetres from a PWG self-describing media name ("iso_a4_210x297mm", "na_letter_8.5x11in").
 [[nodiscard]] std::optional<std::pair<double, double>> mediaSizeMm(const std::string& pwgName);
+
+// A Print request: the sheet is open, the job is being sent (with or without the caller still waiting), or it ended.
+enum class PrintStage { SheetOpen, Submitting, CallerGone, Ended };
+enum class PrintEvent { UserPrint, UserCancel, CallerClose, JobSent, JobFailed };
+
+struct PrintTransition {
+  PrintStage next;
+  std::optional<std::uint32_t> reply; // the portal response to send now: 0 printed, 1 cancelled, 2 other
+};
+
+// nullopt = the event is not valid in this stage and changes nothing. Each request gets exactly one reply.
+[[nodiscard]] std::optional<PrintTransition> printTransition(PrintStage stage, PrintEvent event);

@@ -112,9 +112,6 @@ namespace {
   }
 } // namespace
 
-// A request lives from Print until the job is sent or the caller or the user gives up.
-enum class PrintStage { SheetOpen, Submitting, CallerGone };
-
 struct PrintPortal::Pending {
   sdbus::Result<std::uint32_t, Options> result;
   std::unique_ptr<sdbus::IObject> requestObject;
@@ -165,23 +162,9 @@ PrintPortal::PrintPortal(SessionBus& bus, Handlers handlers, std::filesystem::pa
                 pending->requestObject = sdbus::createObject(m_bus.connection(), handle);
                 pending->requestObject
                     ->addVTable(sdbus::registerMethod("Close").implementedAs([this, id] {
-                      const auto it = m_pending.find(id);
-                      if (it == m_pending.end() || it->second->stage == PrintStage::CallerGone)
-                        return;
-                      it->second->result.returnResults(std::uint32_t{2}, Options{});
-                      if (it->second->stage == PrintStage::Submitting) {
-                        it->second->stage = PrintStage::CallerGone; // the job goes on; its end erases the entry
-                        return;
-                      }
-                      it->second->stage = PrintStage::CallerGone;
-                      // The Request object owns this callback: erase it after the callback returns.
-                      DeferredCall::callLater([this, id, alive = std::weak_ptr<bool>(m_alive)] {
-                        if (alive.expired())
-                          return;
-                        m_pending.erase(id);
-                        if (m_handlers.closed)
-                          m_handlers.closed(id);
-                      });
+                      const bool sheetOpen = stageOf(id) == PrintStage::SheetOpen;
+                      if (apply(id, PrintEvent::CallerClose) && sheetOpen && m_handlers.closed)
+                        m_handlers.closed(id);
                     }))
                     .forInterface(kRequestInterface);
                 const PrintRequest request{.appId = appId, .parentWindow = std::move(parent),
@@ -197,30 +180,38 @@ PrintPortal::PrintPortal(SessionBus& bus, Handlers handlers, std::filesystem::pa
 
 PrintPortal::~PrintPortal() { *m_alive = false; }
 
-void PrintPortal::finish(std::uint64_t id, std::uint32_t response) {
+std::optional<PrintStage> PrintPortal::stageOf(std::uint64_t id) const {
   const auto it = m_pending.find(id);
-  if (it == m_pending.end())
-    return;
-  auto pending = std::move(it->second);
-  m_pending.erase(it);
-  if (pending->stage != PrintStage::CallerGone)
-    pending->result.returnResults(response, Options{});
+  return it == m_pending.end() ? std::nullopt : std::optional{it->second->stage};
 }
 
-void PrintPortal::cancel(std::uint64_t id) {
+bool PrintPortal::apply(std::uint64_t id, PrintEvent event) {
   const auto it = m_pending.find(id);
-  if (it == m_pending.end() || it->second->stage != PrintStage::SheetOpen)
-    return;
-  finish(id, 1);
+  if (it == m_pending.end())
+    return false;
+  const auto t = printTransition(it->second->stage, event);
+  if (!t)
+    return false;
+  it->second->stage = t->next;
+  if (t->reply)
+    it->second->result.returnResults(*t->reply, Options{});
+  if (t->next == PrintStage::Ended) {
+    // A Close callback belongs to the Request object: drop the request after the callback returns.
+    DeferredCall::callLater([this, id, alive = std::weak_ptr<bool>(m_alive)] {
+      if (!alive.expired())
+        m_pending.erase(id);
+    });
+  }
+  return true;
 }
+
+void PrintPortal::cancel(std::uint64_t id) { apply(id, PrintEvent::UserCancel); }
 
 void PrintPortal::print(std::uint64_t id, const PrintOptions& options,
                         std::function<void(std::optional<std::string> error)> done) {
-  const auto it = m_pending.find(id);
-  if (it == m_pending.end() || it->second->stage != PrintStage::SheetOpen)
+  if (!apply(id, PrintEvent::UserPrint))
     return;
-  Pending& p = *it->second;
-  p.stage = PrintStage::Submitting;
+  Pending& p = *m_pending.at(id);
   saveRemembered(m_stateFile, p.appId, options);
   std::thread([this, id, fd = ::dup(p.fd), options, title = p.title, done = std::move(done),
                alive = std::weak_ptr<bool>(m_alive)] {
@@ -234,7 +225,7 @@ void PrintPortal::print(std::uint64_t id, const PrintOptions& options,
         return;
       if (error)
         kLog.warn("print job failed: {}", *error);
-      finish(id, error ? 2U : 0U);
+      apply(id, error ? PrintEvent::JobFailed : PrintEvent::JobSent);
       if (done)
         done(error);
     });

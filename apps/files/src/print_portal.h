@@ -47,7 +47,8 @@ public:
 
 private:
   struct Pending;
-  void finish(std::uint64_t id, std::uint32_t response);
+  [[nodiscard]] std::optional<PrintStage> stageOf(std::uint64_t id) const;
+  bool apply(std::uint64_t id, PrintEvent event); // false = not valid now
 
   SessionBus& m_bus;
   Handlers m_handlers;

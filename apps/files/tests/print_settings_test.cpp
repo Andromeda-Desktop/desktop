@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <print>
+#include <random>
 #include <string>
 
 namespace {
@@ -53,5 +54,28 @@ int main() {
   expect(option(o, "print-color-mode") == "monochrome", "black and white");
   expect(option(o, "number-up") == "2", "number-up");
   expect(option(o, "orientation-requested") == "4", "landscape");
+
+  // Random event sequences: one reply per request, nothing after Ended, a sent job never answers "cancelled".
+  std::mt19937 rng(7);
+  for (int run = 0; run < 2000; ++run) {
+    PrintStage stage = PrintStage::SheetOpen;
+    int replies = 0;
+    bool sending = false;
+    for (int step = 0; step < 12; ++step) {
+      const auto event = static_cast<PrintEvent>(rng() % 5);
+      const auto t = printTransition(stage, event);
+      if (!t)
+        continue;
+      expect(stage != PrintStage::Ended, "no transition leaves Ended");
+      if (t->reply) {
+        ++replies;
+        expect(!(sending && *t->reply == 1), "a job being sent is never answered as cancelled");
+      }
+      sending = sending || t->next == PrintStage::Submitting;
+      stage = t->next;
+    }
+    expect(replies <= 1, "at most one reply per request");
+    expect(stage != PrintStage::Ended || replies == 1, "an ended request was answered exactly once");
+  }
   return g_failures == 0 ? 0 : 1;
 }
