@@ -54,12 +54,8 @@ namespace settings {
     // System
     if (env.batteryAvailable) {
       if (env.systemBatteryAvailable) {
-        entries.push_back(makeEntry(
-            SettingsSection::System, "battery", tr("settings.schema.system.battery-warning-threshold.label"),
-            tr("settings.schema.system.battery-warning-threshold.description"), {"battery", "warning_threshold"},
-            sliderFor(cfg.battery.warningThreshold, noctalia::config::schema::kBatteryWarningThresholdRange, true),
-            "battery low warning threshold notification"
-        ));
+        auto batteryRows = generateSchemaEntries(noctalia::config::schema::batterySchema(), cfg.battery, {"battery"});
+        appendRow(entries, batteryRows, "warning_threshold");
         // Values are power-profiles-daemon profile names; empty keeps the current profile.
         const auto profileOptions = [&] {
           return std::vector<SelectOption>{
@@ -125,48 +121,13 @@ namespace settings {
     );
     appendRow(entries, systemMonitorRows, "enabled");
     {
-      // The slider goes down to 0, which disables the metric (no polling, no dGPU wakeups).
-      constexpr float kPollMin = SystemConfig::MonitorConfig::kDisabledPollSeconds;
-      constexpr float kPollMax = SystemConfig::MonitorConfig::kMaxPollSeconds;
-      constexpr float kPollStep = 1.0F;
       const auto& mon = cfg.system.monitor;
-      auto addPoll = [&](std::string_view labelKey, std::string_view descKey, std::vector<std::string> path,
-                         float value) {
-        const float clampedValue = std::clamp(value, kPollMin, kPollMax);
-        SliderSetting slider{clampedValue, kPollMin, kPollMax, kPollStep, true};
-        slider.valueSuffix = "s";
-        auto entry = makeEntry(
-            SettingsSection::System, "monitor-polling", tr(labelKey), tr(descKey), std::move(path), std::move(slider),
-            "system monitor", true
-        );
-        entry.visibleWhen = monitorOn;
-        entries.push_back(std::move(entry));
-      };
-      addPoll(
-          "settings.schema.services.system-monitor.cpu-poll.label",
-          "settings.schema.services.system-monitor.cpu-poll.description", {"system", "monitor", "cpu_poll_seconds"},
-          mon.cpuPollSeconds
-      );
-      addPoll(
-          "settings.schema.services.system-monitor.gpu-poll.label",
-          "settings.schema.services.system-monitor.gpu-poll.description", {"system", "monitor", "gpu_poll_seconds"},
-          mon.gpuPollSeconds
-      );
-      addPoll(
-          "settings.schema.services.system-monitor.memory-poll.label",
-          "settings.schema.services.system-monitor.memory-poll.description",
-          {"system", "monitor", "memory_poll_seconds"}, mon.memoryPollSeconds
-      );
-      addPoll(
-          "settings.schema.services.system-monitor.network-poll.label",
-          "settings.schema.services.system-monitor.network-poll.description",
-          {"system", "monitor", "network_poll_seconds"}, mon.networkPollSeconds
-      );
-      addPoll(
-          "settings.schema.services.system-monitor.disk-poll.label",
-          "settings.schema.services.system-monitor.disk-poll.description", {"system", "monitor", "disk_poll_seconds"},
-          mon.diskPollSeconds
-      );
+      for (const auto* key :
+           {"cpu_poll_seconds", "gpu_poll_seconds", "memory_poll_seconds", "network_poll_seconds",
+            "disk_poll_seconds"}) {
+        appendRow(entries, systemMonitorRows, key);
+        entries.back().visibleWhen = monitorOn;
+      }
 
       // One dual-thumb range row per metric: low thumb = activity threshold, high thumb = critical.
       auto addThresholdPair = [&](std::string_view baseKey, std::string_view statLabelKey, double activityValue,
@@ -424,34 +385,9 @@ namespace settings {
     const SettingVisibility calendarOn = [](const Config& c) { return c.calendar.enabled; };
     auto calendarRows = generateSchemaEntries(noctalia::config::schema::calendarSchema(), cfg.calendar, {"calendar"});
     appendRow(entries, calendarRows, "enabled");
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "general", tr("settings.schema.services.calendar-event-date-format.label"),
-          tr("settings.schema.services.calendar-event-date-format.description"), {"calendar", "event_date_format"},
-          TextSetting{.value = cfg.calendar.eventDateFormat, .placeholder = "%A %e %B", .browseFileExtensions = {}},
-          "calendar date format strftime chrono"
-      );
-      e.visibleWhen = calendarOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "general", tr("settings.schema.services.calendar-event-time-format.label"),
-          tr("settings.schema.services.calendar-event-time-format.description"), {"calendar", "event_time_format"},
-          TextSetting{.value = cfg.calendar.eventTimeFormat, .placeholder = "%H:%M", .browseFileExtensions = {}},
-          "calendar time format strftime chrono"
-      );
-      e.visibleWhen = calendarOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "general", tr("settings.schema.services.calendar-dedupe-events.label"),
-          tr("settings.schema.services.calendar-dedupe-events.description"), {"calendar", "dedupe_events"},
-          ToggleSetting{cfg.calendar.dedupeEvents}, "calendar events duplicate merge"
-      );
-      e.visibleWhen = calendarOn;
-      entries.push_back(std::move(e));
+    for (const auto* key : {"event_date_format", "event_time_format", "dedupe_events"}) {
+      appendRow(entries, calendarRows, key);
+      entries.back().visibleWhen = calendarOn;
     }
     {
       auto e = makeEntry(
@@ -467,81 +403,26 @@ namespace settings {
     auto calendarTabRows = generateSchemaEntries(
         noctalia::config::schema::calendarTabRowsSchema(), cfg.controlCenter.calendarTab, {"control_center", "calendar"}
     );
+    std::vector<SettingEntry> pastEventsThreshold;
+    appendRow(pastEventsThreshold, calendarTabRows, "past_events_threshold_minutes");
     appendGroup(entries, calendarTabRows, "general");
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "general", tr("settings.schema.services.calendar-past-events-threshold.label"),
-          tr("settings.schema.services.calendar-past-events-threshold.description"),
-          {"control_center", "calendar", "past_events_threshold_minutes"},
-          sliderFor(
-              cfg.controlCenter.calendarTab.pastEventsThresholdMinutes,
-              noctalia::config::schema::kPastEventsThresholdMinutesRange, true
-          ),
-          "calendar past events threshold minutes hide old finished"
-      );
-      e.visibleWhen = [](const Config& c) { return c.controlCenter.calendarTab.hidePastEvents; };
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "calendar-reminders", tr("settings.schema.services.calendar-reminders.label"),
-          tr("settings.schema.services.calendar-reminders.description"), {"calendar", "reminders", "enabled"},
-          ToggleSetting{cfg.calendar.reminders.enabled}, "calendar reminder notification alarm upcoming"
-      );
-      e.visibleWhen = calendarOn;
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, pastEventsThreshold, "past_events_threshold_minutes");
+    entries.back().visibleWhen = [](const Config& c) { return c.controlCenter.calendarTab.hidePastEvents; };
+    auto reminderRows = generateSchemaEntries(
+        noctalia::config::schema::calendarRemindersSchema(), cfg.calendar.reminders, {"calendar", "reminders"}
+    );
+    appendRow(entries, reminderRows, "enabled");
+    entries.back().visibleWhen = calendarOn;
     const SettingVisibility remindersOn = [](const Config& c) {
       return c.calendar.enabled && c.calendar.reminders.enabled;
     };
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "calendar-reminders",
-          tr("settings.schema.services.calendar-reminder-use-event.label"),
-          tr("settings.schema.services.calendar-reminder-use-event.description"),
-          {"calendar", "reminders", "use_event_reminders"}, ToggleSetting{cfg.calendar.reminders.useEventReminders},
-          "calendar reminder valarm override event"
-      );
-      e.visibleWhen = remindersOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "calendar-reminders", tr("settings.schema.services.calendar-reminder-lead.label"),
-          tr("settings.schema.services.calendar-reminder-lead.description"),
-          {"calendar", "reminders", "default_lead_minutes"},
-          sliderFor(
-              cfg.calendar.reminders.defaultLeadMinutes, noctalia::config::schema::kReminderLeadMinutesRange, true
-          ),
-          "calendar reminder lead minutes before default"
-      );
-      e.visibleWhen = remindersOn;
-      entries.push_back(std::move(e));
-    }
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "calendar-reminders", tr("settings.schema.services.calendar-digest-time.label"),
-          tr("settings.schema.services.calendar-digest-time.description"),
-          {"calendar", "reminders", "all_day_digest_time"},
-          TextSetting{
-              .value = cfg.calendar.reminders.allDayDigestTime, .placeholder = "09:00", .browseFileExtensions = {}
-          },
-          "calendar all day digest time morning"
-      );
-      e.visibleWhen = remindersOn;
-      entries.push_back(std::move(e));
+    for (const auto* key : {"use_event_reminders", "default_lead_minutes", "all_day_digest_time"}) {
+      appendRow(entries, reminderRows, key);
+      entries.back().visibleWhen = remindersOn;
     }
     // Sync cadence belongs with the accounts it drives; the account rows are injected right after it.
-    {
-      auto e = makeEntry(
-          SettingsSection::Calendar, "calendar-accounts",
-          tr("settings.schema.services.calendar-refresh-interval.label"),
-          tr("settings.schema.services.calendar-refresh-interval.description"), {"calendar", "refresh_minutes"},
-          sliderFor(cfg.calendar.refreshMinutes, noctalia::config::schema::kRefreshMinutesRange, true), "calendar sync"
-      );
-      e.visibleWhen = calendarOn;
-      entries.push_back(std::move(e));
-    }
+    appendRow(entries, calendarRows, "refresh_minutes");
+    entries.back().visibleWhen = calendarOn;
     {
       // timedated keeps the RTC mode in /etc/adjtime (third line LOCAL or UTC).
       std::ifstream adjtime("/etc/adjtime");

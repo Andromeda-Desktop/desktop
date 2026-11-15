@@ -415,6 +415,22 @@ namespace noctalia::config::schema {
     // Poll-second floats are stored verbatim here; the [1,120]/disabled clamping
     // happens at consumption, not at parse time; so no Range is attached.
     const Schema<SystemConfig::MonitorConfig>& systemMonitorSchema() {
+      // 0 disables the metric; the loader clamps any other value into [kMinPollSeconds, kMaxPollSeconds].
+      const auto poll = [](std::string_view label) {
+        return RowSpec{
+            .kind = RowSpec::Kind::Slider,
+            .section = "system",
+            .group = "monitor-polling",
+            .label = label,
+            .tags = "system monitor",
+            .advanced = true,
+            .integer = true,
+            .suffix = "s",
+            .range = {
+                SystemConfig::MonitorConfig::kDisabledPollSeconds, SystemConfig::MonitorConfig::kMaxPollSeconds, 1.0
+            },
+        };
+      };
       static const Schema<SystemConfig::MonitorConfig> s = {
           field(
               &SystemConfig::MonitorConfig::enabled, "enabled",
@@ -426,11 +442,26 @@ namespace noctalia::config::schema {
               }
           ),
           field(&SystemConfig::MonitorConfig::cpuTempSensorPath, "cpu_temp_sensor_path"),
-          field(&SystemConfig::MonitorConfig::cpuPollSeconds, "cpu_poll_seconds"),
-          field(&SystemConfig::MonitorConfig::gpuPollSeconds, "gpu_poll_seconds"),
-          field(&SystemConfig::MonitorConfig::memoryPollSeconds, "memory_poll_seconds"),
-          field(&SystemConfig::MonitorConfig::networkPollSeconds, "network_poll_seconds"),
-          field(&SystemConfig::MonitorConfig::diskPollSeconds, "disk_poll_seconds"),
+          field(
+              &SystemConfig::MonitorConfig::cpuPollSeconds, "cpu_poll_seconds", std::nullopt,
+              poll("services.system-monitor.cpu-poll")
+          ),
+          field(
+              &SystemConfig::MonitorConfig::gpuPollSeconds, "gpu_poll_seconds", std::nullopt,
+              poll("services.system-monitor.gpu-poll")
+          ),
+          field(
+              &SystemConfig::MonitorConfig::memoryPollSeconds, "memory_poll_seconds", std::nullopt,
+              poll("services.system-monitor.memory-poll")
+          ),
+          field(
+              &SystemConfig::MonitorConfig::networkPollSeconds, "network_poll_seconds", std::nullopt,
+              poll("services.system-monitor.network-poll")
+          ),
+          field(
+              &SystemConfig::MonitorConfig::diskPollSeconds, "disk_poll_seconds", std::nullopt,
+              poll("services.system-monitor.disk-poll")
+          ),
           field(&SystemConfig::MonitorConfig::cpuUsageActivityThreshold, "cpu_usage_activity_threshold"),
           field(&SystemConfig::MonitorConfig::cpuUsageCriticalThreshold, "cpu_usage_critical_threshold"),
           field(&SystemConfig::MonitorConfig::cpuTempActivityThreshold, "cpu_temp_activity_threshold"),
@@ -963,7 +994,16 @@ namespace noctalia::config::schema {
 
   const Schema<BatteryConfig>& batterySchema() {
     static const Schema<BatteryConfig> s = {
-        field(&BatteryConfig::warningThreshold, "warning_threshold", kBatteryWarningThresholdRange),
+        field(
+            &BatteryConfig::warningThreshold, "warning_threshold", kBatteryWarningThresholdRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "system",
+                .group = "battery",
+                .label = "system.battery-warning-threshold",
+                .tags = "battery low warning threshold notification",
+            }
+        ),
         field(&BatteryConfig::profileOnAc, "profile_on_ac"),
         field(&BatteryConfig::profileOnBattery, "profile_on_battery"),
         // selector comes only from the map key; empty selectors are dropped.
@@ -1029,7 +1069,14 @@ namespace noctalia::config::schema {
           ),
           field(
               &ControlCenterConfig::CalendarTabConfig::pastEventsThresholdMinutes, "past_events_threshold_minutes",
-              kPastEventsThresholdMinutesRange
+              kPastEventsThresholdMinutesRange,
+              RowSpec{
+                  .kind = RowSpec::Kind::Slider,
+                  .section = "calendar",
+                  .group = "general",
+                  .label = "services.calendar-past-events-threshold",
+                  .tags = "calendar past events threshold minutes hide old finished",
+              }
           ),
       };
       return s;
@@ -3232,11 +3279,32 @@ namespace noctalia::config::schema {
   }
 
   const Schema<CalendarConfig::Reminders>& calendarRemindersSchema() {
+    const auto reminder = [](std::string_view label, std::string_view tags,
+                             RowSpec::Kind kind = RowSpec::Kind::Toggle) {
+      return RowSpec{.kind = kind, .section = "calendar", .group = "calendar-reminders", .label = label, .tags = tags};
+    };
     static const Schema<CalendarConfig::Reminders> s = {
-        field(&CalendarConfig::Reminders::enabled, "enabled"),
-        field(&CalendarConfig::Reminders::useEventReminders, "use_event_reminders"),
-        field(&CalendarConfig::Reminders::defaultLeadMinutes, "default_lead_minutes", kReminderLeadMinutesRange),
-        field(&CalendarConfig::Reminders::allDayDigestTime, "all_day_digest_time"),
+        field(
+            &CalendarConfig::Reminders::enabled, "enabled",
+            reminder("services.calendar-reminders", "calendar reminder notification alarm upcoming")
+        ),
+        field(
+            &CalendarConfig::Reminders::useEventReminders, "use_event_reminders",
+            reminder("services.calendar-reminder-use-event", "calendar reminder valarm override event")
+        ),
+        field(
+            &CalendarConfig::Reminders::defaultLeadMinutes, "default_lead_minutes", kReminderLeadMinutesRange,
+            reminder(
+                "services.calendar-reminder-lead", "calendar reminder lead minutes before default",
+                RowSpec::Kind::Slider
+            )
+        ),
+        field(&CalendarConfig::Reminders::allDayDigestTime, "all_day_digest_time", [&] {
+          auto row =
+              reminder("services.calendar-digest-time", "calendar all day digest time morning", RowSpec::Kind::Text);
+          row.placeholder = "09:00";
+          return row;
+        }()),
     };
     return s;
   }
@@ -3252,11 +3320,48 @@ namespace noctalia::config::schema {
                 .tags = "calendar events caldav google",
             }
         ),
-        field(&CalendarConfig::dedupeEvents, "dedupe_events"),
+        field(
+            &CalendarConfig::dedupeEvents, "dedupe_events",
+            RowSpec{
+                .section = "calendar",
+                .group = "general",
+                .label = "services.calendar-dedupe-events",
+                .tags = "calendar events duplicate merge",
+            }
+        ),
         field(&CalendarConfig::dedupeIgnorePatterns, "dedupe_ignore_patterns"),
-        field(&CalendarConfig::refreshMinutes, "refresh_minutes", kRefreshMinutesRange),
-        field(&CalendarConfig::eventDateFormat, "event_date_format"),
-        field(&CalendarConfig::eventTimeFormat, "event_time_format"),
+        field(
+            &CalendarConfig::refreshMinutes, "refresh_minutes", kRefreshMinutesRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "calendar",
+                .group = "calendar-accounts",
+                .label = "services.calendar-refresh-interval",
+                .tags = "calendar sync",
+            }
+        ),
+        field(
+            &CalendarConfig::eventDateFormat, "event_date_format",
+            RowSpec{
+                .kind = RowSpec::Kind::Text,
+                .section = "calendar",
+                .group = "general",
+                .label = "services.calendar-event-date-format",
+                .tags = "calendar date format strftime chrono",
+                .placeholder = "%A %e %B",
+            }
+        ),
+        field(
+            &CalendarConfig::eventTimeFormat, "event_time_format",
+            RowSpec{
+                .kind = RowSpec::Kind::Text,
+                .section = "calendar",
+                .group = "general",
+                .label = "services.calendar-event-time-format",
+                .tags = "calendar time format strftime chrono",
+                .placeholder = "%H:%M",
+            }
+        ),
         subTable(&CalendarConfig::reminders, "reminders", calendarRemindersSchema()),
         namedMap<CalendarConfig, CalendarConfig::Account>(
             &CalendarConfig::accounts, "account", calendarAccountSchema(),
