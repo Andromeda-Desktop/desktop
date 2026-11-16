@@ -532,6 +532,7 @@ palette_off_opacity = 0.38  # a palette row that cannot run now
 
 [component.split]  # split panes in Terminal and Viewer (design-split handoff.yaml)
 focus_ring = 1.5  # accent ring on the focused split card
+stroke = 0.5  # a split card's edge, and the plate it leaves when it closes or leaves
 divider_hit = 24.0  # a split divider's drag area: the gap and 8 into each card
 drop_fill = 0.14  # accent alpha of the half a dropped row would take
 drag_source_opacity = 0.38  # a row while it drags onto a card (design-split drop)

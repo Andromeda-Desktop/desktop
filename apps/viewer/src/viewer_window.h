@@ -89,6 +89,7 @@ namespace viewer {
     // Rebuilds only this document's pages (zoom, fit, a new pane size); unset: the whole window rebuilds.
     void setContentRebuild(std::function<void()> rebuild) { m_contentRebuild = std::move(rebuild); }
     [[nodiscard]] float builtWidth() const { return m_areaWidth; }
+    [[nodiscard]] float builtHeight() const { return m_areaHeight; }
     // Another tab shows: this one's scene nodes are about to go; its next build makes them again.
     void detach();
     // Sends queued render jobs while the window's budget has room.
@@ -153,6 +154,7 @@ namespace viewer {
     [[nodiscard]] std::unique_ptr<Node> buildNoteField(std::size_t page, annot::Point at, float pageWidth);
     [[nodiscard]] float pageAreaWidth() const;
     float m_areaWidth = 0.0F; // the width of the last build: the window's content or this document's pane
+    float m_areaHeight = 0.0F;
     [[nodiscard]] std::unique_ptr<Node> buildOutline(float width);
     [[nodiscard]] std::unique_ptr<Node> buildResults(float width);
     // One SELECT_LINE at a time fills the snippet of the next built result row that has none.

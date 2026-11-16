@@ -1410,6 +1410,7 @@ namespace viewer {
     m_dropped.clear();
     forgetNodes();
     m_areaWidth = width;
+    m_areaHeight = height;
     // Fit width uses the page area inside the padding; set it before the toolbar shows the zoom.
     m_model.setViewportWidth(std::max(100.0F, pageAreaWidth() - 2.0F * kPagePadding * s));
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});

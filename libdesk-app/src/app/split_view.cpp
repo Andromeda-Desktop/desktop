@@ -21,9 +21,15 @@ using TileNode = andromeda::tiling::DwindleTree::Node;
 
 SplitView::SplitView(AppWindow& window, Callbacks callbacks) : m_window(window), m_callbacks(std::move(callbacks)) {
   // A press anywhere on a card (caption, content, a gap between pages) focuses it; the press still reaches its area.
+  // Only a press whose area is in the card counts: an overlay over the card (a sheet, a menu) keeps its press.
   m_window.input().setPressCallback([this](float x, float y) {
+    const Node* hit = m_window.input().inputAreaAt(x, y);
     for (const Card& card : m_cards) {
-      if (card.id != m_ringPane && card.cell->containsScenePoint(x, y)) {
+      bool inside = false;
+      for (const Node* node = hit; node != nullptr && !inside; node = node->parent()) {
+        inside = node == card.cell;
+      }
+      if (card.id != m_ringPane && inside) {
         m_callbacks.focus(card.id);
         return;
       }
@@ -92,7 +98,7 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
     const PaneRect& r = closed->rect;
     Box* plate = nullptr;
     auto box = ui::box({.out = &plate, .fill = closed->fill, .border = colorSpecFromRole(ColorRole::Stroke),
-                        .borderWidth = 0.5F * s, .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
+                        .borderWidth = Tokens::componentSplitStroke * s, .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
                         .width = r.width, .height = r.height, .participatesInLayout = false});
     box->setPosition(r.x, r.y);
     m_slot->insertChildAt(0, std::move(box));
@@ -205,7 +211,7 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
     cell->addChild(std::move(box));
     // Over the card: the contents fill their whole rect and would cover a border of the card itself. Clicks pass through.
     cell->addChild(ui::box({.out = &card.stroke, .fill = clear, .border = colorSpecFromRole(ColorRole::Stroke),
-                            .borderWidth = 0.5F * s, .radius = radius, .width = r.width, .height = r.height,
+                            .borderWidth = Tokens::componentSplitStroke * s, .radius = radius, .width = r.width, .height = r.height,
                             .participatesInLayout = false}));
     cell->addChild(ui::box({.out = &card.ring, .fill = clear, .border = focusRingColorSpec(),
                             .borderWidth = Tokens::componentSplitFocusRing * s, .radius = radius, .width = r.width,
@@ -329,7 +335,7 @@ void SplitView::revealFrom(Renderer& renderer, std::unique_ptr<Node> content, co
     }
     Box* plate = nullptr;
     auto box = ui::box({.out = &plate, .fill = m_callbacks.surface(id), .border = colorSpecFromRole(ColorRole::Stroke),
-                        .borderWidth = 0.5F * s, .radius = radius, .width = r.width, .height = r.height,
+                        .borderWidth = Tokens::componentSplitStroke * s, .radius = radius, .width = r.width, .height = r.height,
                         .participatesInLayout = false});
     box->setPosition(r.x, r.y);
     m_slot->addChild(std::move(box));

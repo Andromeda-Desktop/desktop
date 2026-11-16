@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "app/split_view.h"
 #include "tab_set.h"
@@ -66,6 +67,8 @@ namespace viewer {
     void leave(std::uint64_t id);
     // One pane's pages rebuild in place; the whole window when `id` shows alone.
     void rebuildPane(std::uint64_t id);
+    // rebuildPane once, after the current event.
+    void schedulePane(std::uint64_t id);
     // A Documents row dragged to the scene point: the drop preview, and on drop the join.
     void rowDrag(std::uint64_t id, bool drop, float sceneX, float sceneY);
     void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
@@ -86,6 +89,7 @@ namespace viewer {
     Node* m_caption = nullptr; // the header accessory of the last build
     wl_surface* m_dropSurface = nullptr;
     bool m_immersive = false;
+    std::unordered_set<std::uint64_t> m_pendingPanes; // panes that rebuild after the current event
     bool m_dragGhost = false; // a dragged Documents row shows its ghost
     float m_rowWidth = 0.0F;  // a Documents row's width, for its drag ghost
     bool m_allDocuments = false; // the Documents group shows every row, not the first 3

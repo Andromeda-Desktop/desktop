@@ -167,7 +167,7 @@ namespace viewer {
       m_window.setSidebarVisible(true);
     }
     const std::uint64_t id = m_nextId++;
-    tab->setContentRebuild([this, id] { rebuildPane(id); });
+    tab->setContentRebuild([this, id] { schedulePane(id); });
     m_docs.emplace(id, std::move(tab));
     m_set.apply(tab_event::Open{id});
     changed();
@@ -323,6 +323,22 @@ namespace viewer {
     }
   }
 
+  void ViewerTabs::schedulePane(std::uint64_t id) {
+    if (!m_pendingPanes.insert(id).second) {
+      return;
+    }
+    // After the event that asked: its handler may run in an area of the pane that the rebuild removes.
+    DeferredCall::callLater([this, id, alive = std::weak_ptr<bool>(m_alive)] {
+      if (alive.expired()) {
+        return;
+      }
+      m_pendingPanes.erase(id);
+      if (m_docs.contains(id)) {
+        rebuildPane(id);
+      }
+    });
+  }
+
   void ViewerTabs::rebuildPane(std::uint64_t id) {
     if (m_split.rebuildContent(id)) {
       m_docs.at(id)->onLayout();
@@ -338,7 +354,11 @@ namespace viewer {
   }
 
   void ViewerTabs::rowDrag(std::uint64_t id, bool drop, float sceneX, float sceneY) {
-    const auto target = canJoin(id) ? m_split.dropAt(*m_set.focused(), sceneX, sceneY) : std::nullopt;
+    if (!m_docs.contains(id)) {
+      drop = true; // the document closed while it dragged: end the drag with no target
+    }
+    const auto target =
+        m_docs.contains(id) && canJoin(id) ? m_split.dropAt(*m_set.focused(), sceneX, sceneY) : std::nullopt;
     const float s = m_window.uiScale();
     if (!drop && !m_dragGhost) {
       m_window.setDragGhost(documentRow("file", m_docs.at(id)->title(), false, ColorRole::Label1,
@@ -386,9 +406,9 @@ namespace viewer {
             },
         // A pane's fit width follows its new size.
         .settle =
-            [this](std::uint64_t id, float width, float) {
-              if (m_docs.at(id)->builtWidth() != width) {
-                rebuildPane(id);
+            [this](std::uint64_t id, float width, float height) {
+              if (m_docs.at(id)->builtWidth() != width || m_docs.at(id)->builtHeight() != height) {
+                schedulePane(id);
               } else {
                 m_docs.at(id)->onLayout();
               }
@@ -528,6 +548,11 @@ namespace viewer {
           }
           if (d.pressed) {
             *drag = {.phase = Drag::Pressed, .x = d.sceneX, .y = d.sceneY};
+            // A drag whose row went away mid-drag never dropped: its ghost goes now.
+            if (std::exchange(m_dragGhost, false)) {
+              m_window.clearDragGhost();
+              m_split.showDropPreview(std::nullopt);
+            }
             return;
           }
           const bool dropped = drag->phase == Drag::Dragging;
@@ -548,12 +573,9 @@ namespace viewer {
         });
       }
       area->setOnClick([this, later, run, drag, doc](const InputArea::PointerData& d) {
-        if (std::exchange(drag->phase, Drag::Idle) == Drag::Dropped) {
-          return;
-        }
         if (d.button == BTN_RIGHT && doc) {
           openRowMenu(*doc, d.sceneX, d.sceneY);
-        } else if (d.button == BTN_LEFT) {
+        } else if (d.button == BTN_LEFT && std::exchange(drag->phase, Drag::Idle) != Drag::Dropped) {
           later(run);
         }
       });
