@@ -2109,7 +2109,9 @@ LayoutSize Input::doMeasure(Renderer& renderer, const LayoutConstraints& constra
 
 void Input::updateCursorVisibility() {
   const bool focused = m_inputArea != nullptr && m_inputArea->focused();
-  m_cursor->setVisible(focused && m_cursorBlinkVisible);
+  m_cursor->setVisible(focused);
+  // The blink changes opacity only: a visibility change would lay out the whole window on every blink.
+  m_cursor->setOpacity(m_cursorBlinkVisible ? 1.0F : 0.0F);
 }
 
 void Input::revealCursor() {
