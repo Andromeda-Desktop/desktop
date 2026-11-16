@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <utility>
 
@@ -50,7 +51,7 @@ namespace term {
   void TerminalApp::gpuLost() { m_thumbnails.abandonGpuResources(); }
 
   AppWindow& TerminalApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .material = m_settings.settings().material == WindowMaterial::Glass ? AppWindow::Material::Glass : AppWindow::Material::Solid, .contentCard = true});
+    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .material = appMaterial(m_settings.settings().material), .glassAlpha = glassAlpha(m_settings.settings()), .contentCard = true});
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
@@ -163,7 +164,10 @@ namespace term {
                   [this] {
                     std::error_code ec;
                     std::filesystem::create_directories(themesDir(), ec);
-                    m_nextOrigins = {NewAgent{.kind = agent::Kind::Claude, .cwd = themesDir().string(), .prompt = themeAgentPrompt()}};
+                    // The instructions are Claude's project memory in the themes folder, so the user writes the first
+                    // message: what theme to make.
+                    std::ofstream(themesDir() / "CLAUDE.md") << themeAgentPrompt();
+                    m_nextOrigins = {NewAgent{.kind = agent::Kind::Claude, .cwd = themesDir().string()}};
                     openWindow(loop().wayland().requestActivationToken(m_prefsWindow->wlSurface()));
                   },
               .openFolder =
@@ -253,6 +257,8 @@ namespace term {
       origins.emplace_back(Reattach{id});
     }
     if (!origins.empty()) {
+      // Sessions left running wait in the sidebar; the window opens on a new shell, not on an old screen.
+      origins.emplace_back(NewShell{});
       m_nextOrigins = std::move(origins);
       AppWindow& window = createWindow();
       if (window.open()) {
