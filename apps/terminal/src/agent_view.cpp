@@ -1042,7 +1042,7 @@ namespace term {
             const bool first = std::ranges::find_if(entries.begin(), entries.begin() + static_cast<std::ptrdiff_t>(entry),
                                                     [](const agent::Entry& x) { return std::holds_alternative<agent::Turn>(x); })
                                == entries.begin() + static_cast<std::ptrdiff_t>(entry);
-            auto row = ui::row({.align = FlexAlign::Start});
+            auto row = ui::row({.align = FlexAlign::Start, .width = width - 2.0F * inset});
             row->setPadding(first ? 0.0F : Tokens::spaceP16 * s, 0.0F, Tokens::spaceP8 * s, 0.0F);
             auto mark = ui::label({.text = "›",
                                    .fontSize = Tokens::typeParagraph.size * s,
@@ -1051,8 +1051,10 @@ namespace term {
                                    .color = colorSpecFromRole(ColorRole::AccentText),
                                    .width = indent});
             row->addChild(std::move(mark));
-            row->addChild(kit.text(e.text, Tokens::typeParagraph, ColorRole::Label1, FontWeight::Medium, measure));
-            row->addChild(ui::row({.flexGrow = 1.0F}));
+            // The column takes the room the time leaves; the prompt wraps at the measure or that room.
+            auto text = ui::column({.align = FlexAlign::Start, .flexGrow = 1.0F});
+            text->addChild(kit.text(e.text, Tokens::typeParagraph, ColorRole::Label1, FontWeight::Medium, measure));
+            row->addChild(std::move(text));
             row->addChild(kit.text(agoText(e.started), Tokens::typeCaption, ColorRole::Label2));
             item->addChild(std::move(row));
           } else if constexpr (std::is_same_v<T, agent::Prose>) {
