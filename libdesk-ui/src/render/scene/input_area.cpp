@@ -142,14 +142,15 @@ bool InputArea::containsLocalPoint(float localX, float localY, bool includeHitOu
 void InputArea::setTooltip(std::string text) {
   m_tooltipProvider = {};
   m_tooltipRefreshInterval = {};
-  m_tooltipContent = std::move(text);
+  // Empty text means no tooltip; shown, it is a bare capsule.
+  m_tooltipContent = text.empty() ? TooltipContent{} : TooltipContent{std::move(text)};
   notifyTooltipChanged();
 }
 
 void InputArea::setTooltip(std::vector<TooltipRow> rows) {
   m_tooltipProvider = {};
   m_tooltipRefreshInterval = {};
-  m_tooltipContent = std::move(rows);
+  m_tooltipContent = rows.empty() ? TooltipContent{} : TooltipContent{std::move(rows)};
   notifyTooltipChanged();
 }
 
