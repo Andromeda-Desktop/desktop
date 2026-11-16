@@ -48,6 +48,9 @@ namespace term {
     [[nodiscard]] std::unique_ptr<Node> materialTiles(float scale, float width);
     // The selected tile's swatch with the accent check badge at its bottom-right corner.
     [[nodiscard]] static std::unique_ptr<Node> checked(std::unique_ptr<Node> swatch, bool on, float scale);
+    // A clickable choice tile: the swatch (tileW x tileH, ringed and checked when on) over its name.
+    [[nodiscard]] static std::unique_ptr<Node> tile(std::unique_ptr<Flex> swatch, std::string_view name, bool on, float scale,
+                                                    float tileW, float tileH, std::function<void()> pick);
     [[nodiscard]] std::unique_ptr<Flex> card(const Group& group, float scale, float width) const;
     void change(const std::function<void(Settings&)>& edit);
     void showPage(Page page);

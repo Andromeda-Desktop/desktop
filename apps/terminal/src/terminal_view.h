@@ -73,7 +73,6 @@ namespace term {
       // Find results changed: match count and the current match (1 = newest), while find is open.
       std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
       Settings settings;
-      bool glass = false; // the window is glass: the grid background is translucent
     };
 
     explicit TerminalView(Host host);
@@ -277,7 +276,8 @@ namespace term {
     std::unique_ptr<KittyImages> m_images;
     std::unique_ptr<ContextRow> m_context;
     Timer m_contextTick; // 1 Hz, only while a shown prompt's command runs
-    enum class Blink : std::uint8_t { Steady, Shown, Hidden }; // Steady: the cursor shows and no timer runs
+    // Steady and Expired: the cursor shows and no timer runs; Expired = blinking timed out, a key restarts it.
+    enum class Blink : std::uint8_t { Steady, Shown, Hidden, Expired };
     Blink m_blink = Blink::Steady;
     std::optional<TerminalCursor> m_cursor; // from the last refresh; the blink tick shows or hides it
     Timer m_blinkTimer;
@@ -305,6 +305,7 @@ namespace term {
     RectNode* m_findRing = nullptr;
     RectNode* m_bellFlash = nullptr; // over the whole grid, under the text
     AnimationManager::Id m_bellAnim = 0;
+    std::chrono::steady_clock::time_point m_lastBell;
     void updateMarks();
     std::vector<TerminalCell> m_rowBuffer;
     bool m_exitReported = false;

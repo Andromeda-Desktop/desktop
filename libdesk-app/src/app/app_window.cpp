@@ -597,6 +597,13 @@ void AppWindow::requestRebuild() {
   }
 }
 
+void AppWindow::setMaterial(Material material) {
+  if (material != m_config.material) {
+    m_config.material = material;
+    requestRebuild();
+  }
+}
+
 void AppWindow::invalidate() {
   if (m_surface == nullptr || m_root == nullptr) {
     return;
@@ -692,7 +699,7 @@ void AppWindow::prepareFrame(bool needsLayout) {
 
 void AppWindow::syncBlur() {
   std::vector<InputRect> rects;
-  if (m_config.material == Material::Glass && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
+  if (m_config.material == Material::Glass && !Style::reduceTransparency() && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
     const auto margin = static_cast<float>(m_surface->margin());
     const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
     const float r = square ? 0.0F : Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
@@ -961,8 +968,9 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   // Glass has no concave edge: a sidebar-tint strip under the translucent main pane would stack two tints.
   const bool concave = sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
+  const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint);
   if (!m_config.transparentContent) {
-    main->setFill(colorSpecFromRole(m_config.material == Material::Glass ? ColorRole::TintThick : ColorRole::SolidRegular));
+    main->setFill(m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidRegular));
   }
   if (concave) {
     const Radii corners{edgeRadius, 0.0F, 0.0F, edgeRadius};
@@ -982,9 +990,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   auto body = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
   if (sidebarWidth > 0.0F) {
-    const ColorSpec sidebarFill = m_config.material == Material::Glass
-                                      ? colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint)
-                                      : colorSpecFromRole(ColorRole::SolidThin);
+    const ColorSpec sidebarFill = m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});

@@ -147,6 +147,7 @@ public:
 
   [[nodiscard]] wl_surface* wlSurface() const noexcept;
   [[nodiscard]] Material material() const noexcept { return m_config.material; }
+  void setMaterial(Material material);
   // This window's surface or its open menu popup: the app routes that surface's events here.
   [[nodiscard]] bool ownsSurface(wl_surface* surface) const noexcept;
   [[nodiscard]] float uiScale() const noexcept { return m_uiScale; }

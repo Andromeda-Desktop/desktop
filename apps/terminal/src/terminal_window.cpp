@@ -61,6 +61,8 @@ namespace term {
       : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)) {
     m_settingsChanged = m_settings.changed().connect([this] {
+      m_window.setMaterial(m_settings.settings().material == WindowMaterial::Glass ? AppWindow::Material::Glass
+                                                                                  : AppWindow::Material::Solid);
       for (Session& session : m_views) {
         if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
           terminal->applySettings(m_settings.settings());
@@ -298,8 +300,7 @@ namespace term {
                 setFindCount(total, current);
               }
             },
-        .settings = m_settings.settings(),
-        .glass = m_window.material() == AppWindow::Material::Glass});
+        .settings = m_settings.settings()});
     TerminalView& ref = *view;
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);

@@ -227,10 +227,14 @@ namespace term {
     const bool terminal = settings.theme != m_settings.theme || settings.cursor != m_settings.cursor
                           || settings.cursorBlink != m_settings.cursorBlink
                           || settings.scrollbackMb != m_settings.scrollbackMb;
+    const bool material = settings.material != m_settings.material;
     m_settings = settings;
     if (terminal) {
       applyTerminalSettings();
       scheduleRedraw(Redraw::All);
+    }
+    if (material) {
+      scheduleRedraw(Redraw::Dirty); // the refresh sets the grid background alpha
     }
     if (font && m_grid != nullptr) {
       setGridFont();
@@ -560,7 +564,7 @@ namespace term {
     const std::uint32_t defaultFg = pack(colors.foreground);
     const std::uint32_t defaultBg = pack(colors.background);
     m_grid->setBackground(defaultBg);
-    m_grid->setBackgroundAlpha(m_host.glass ? Tokens::componentTerminalGlassAlpha : 1.0F);
+    m_grid->setBackgroundAlpha(m_settings.material == WindowMaterial::Glass && !Style::reduceTransparency() ? Tokens::componentTerminalGlassAlpha : 1.0F);
 
     bool visible = false;
     bool inViewport = false;
@@ -685,9 +689,7 @@ namespace term {
     }
     bool blinking = false;
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &blinking);
-    updateBlink(visible && inViewport && blinking && m_focused
-                && std::chrono::steady_clock::now() - m_blinkSince
-                       < std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCursorBlinkTimeoutMs)));
+    updateBlink(visible && inViewport && blinking && m_focused);
     m_cursor.reset();
     if (visible && inViewport) {
       bool wideTail = false;
@@ -789,6 +791,12 @@ namespace term {
   }
 
   void TerminalView::onBell() {
+    // At most one bell per flash, so a stream of BEL (cat of a binary file) neither floods the compositor nor flickers.
+    const auto now = std::chrono::steady_clock::now();
+    if (now - m_lastBell < std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalBellFlashMs))) {
+      return;
+    }
+    m_lastBell = now;
     switch (m_settings.bell) {
     case Bell::Off: return;
     case Bell::Sound:
@@ -822,22 +830,25 @@ namespace term {
   }
 
   void TerminalView::updateBlink(bool wanted) {
-    if (!wanted) {
+    const auto timeout = std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCursorBlinkTimeoutMs));
+    if (!wanted || std::chrono::steady_clock::now() - m_blinkSince >= timeout) {
       m_blinkTimer.stop();
-      m_blink = Blink::Steady;
+      m_blink = wanted ? Blink::Expired : Blink::Steady;
       return;
     }
-    if (m_blink != Blink::Steady) {
+    if (m_blink == Blink::Shown || m_blink == Blink::Hidden) {
       return;
     }
     m_blink = Blink::Shown;
-    const auto timeout = std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCursorBlinkTimeoutMs));
     m_blinkTimer.startRepeating(std::chrono::milliseconds(static_cast<int>(Tokens::motionCaretBlinkMs)), [this, timeout] {
-      m_blink = m_blink == Blink::Shown ? Blink::Hidden : Blink::Shown;
-      if (std::chrono::steady_clock::now() - m_blinkSince >= timeout) {
-        scheduleRedraw(Redraw::Dirty); // the refresh stops the timer and shows the cursor
+      // A held frame (mode 2026) must not change; the refresh after the hold or the timeout restarts or ends it.
+      if (m_session.renderHeld() || std::chrono::steady_clock::now() - m_blinkSince >= timeout) {
+        m_blinkTimer.stop();
+        m_blink = Blink::Steady;
+        scheduleRedraw(Redraw::Dirty);
         return;
       }
+      m_blink = m_blink == Blink::Shown ? Blink::Hidden : Blink::Shown;
       if (m_grid != nullptr) {
         m_grid->setCursor(m_blink == Blink::Hidden ? std::nullopt : m_cursor);
       }

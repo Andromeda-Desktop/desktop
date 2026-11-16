@@ -18,7 +18,7 @@ namespace term {
     Theme theme = Theme::System;
     CursorShape cursor = CursorShape::Block; // until the program sets its own (DECSCUSR)
     bool cursorBlink = true;                 // until the program sets its own (DECSCUSR, mode 12)
-    WindowMaterial material = WindowMaterial::Solid; // windows opened after the change
+    WindowMaterial material = WindowMaterial::Solid;
     std::string font;                        // empty: the type token's mono family
     int fontSize = 13;                       // px at ui_scale 1
     int scrollbackMb = 10;

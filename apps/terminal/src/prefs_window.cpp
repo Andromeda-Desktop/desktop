@@ -265,7 +265,7 @@ namespace term {
     // Appearance
     out.push_back({Page::Appearance, "", {{"Preview", "", [this](float s, float w) { return preview(s, w); }, true}}});
     out.push_back({Page::Appearance, "Theme", {{"", "", [self](float s, float w) { return self->themeTiles(s, w); }, true}}});
-    out.push_back({Page::Appearance, "Window", {{"New windows", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}}});
+    out.push_back({Page::Appearance, "Window", {{"", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}}});
     out.push_back({Page::Appearance,
                    "",
                    {{"Cursor", std::string(kCursorHint),
@@ -532,6 +532,23 @@ namespace term {
     return pinned;
   }
 
+  std::unique_ptr<Node> PrefsWindow::tile(std::unique_ptr<Flex> swatch, std::string_view name, bool on, float s,
+                                          float tileW, float tileH, std::function<void()> pick) {
+    swatch->setBorder(colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Separator),
+                      (on ? Style::focusRingWidth : Style::borderWidth) * s);
+    auto column = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
+    column->addChild(checked(std::move(swatch), on, s));
+    column->addChild(ui::label({.text = std::string(name),
+                                .fontSize = Tokens::typeBody.size * s,
+                                .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
+                                .color = colorSpecFromRole(ColorRole::Label1)}));
+    return ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+                          .width = tileW,
+                          .height = tileH + Tokens::spaceP4 * s + Tokens::typeBody.line * s,
+                          .onClick = [pick = std::move(pick)](const InputArea::PointerData&) { pick(); }},
+                         std::move(column));
+  }
+
   std::unique_ptr<Node> PrefsWindow::materialTiles(float s, float width) {
     constexpr std::array<std::pair<WindowMaterial, std::string_view>, 2> kMaterials{
         {{WindowMaterial::Solid, "Solid"}, {WindowMaterial::Glass, "Glass"}}};
@@ -563,24 +580,11 @@ namespace term {
                                 .padding = inset,
                                 .fill = colorSpecFromRole(ColorRole::Accent),
                                 .radius = Style::scaledRadiusSm(s),
-                                .border = on ? colorSpecFromRole(ColorRole::Label1) : colorSpecFromRole(ColorRole::Separator),
-                                .borderWidth = (on ? 2.0F : 1.0F) * s,
                                 .width = tileW,
                                 .height = tileH},
                                std::move(window));
-      auto tile = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
-      tile->addChild(checked(std::move(swatch), on, s));
-      tile->addChild(ui::label({.text = std::string(name),
-                                .fontSize = Tokens::typeBody.size * s,
-                                .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
-                                .color = colorSpecFromRole(ColorRole::Label1)}));
-      row->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
-                                   .width = tileW,
-                                   .height = tileH + Tokens::spaceP4 * s + Tokens::typeBody.line * s,
-                                   .onClick = [this, material](const InputArea::PointerData&) {
-                                     change([material](Settings& x) { x.material = material; });
-                                   }},
-                                  std::move(tile)));
+      row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH,
+                         [this, material] { change([material](Settings& x) { x.material = material; }); }));
     }
     return row;
   }
@@ -602,8 +606,6 @@ namespace term {
                                 .padding = Tokens::spaceP8 * s,
                                 .fill = fixedColorSpec(bg),
                                 .radius = Style::scaledRadiusSm(s),
-                                .border = on ? colorSpecFromRole(ColorRole::Label1) : colorSpecFromRole(ColorRole::Separator),
-                                .borderWidth = (on ? 2.0F : 1.0F) * s,
                                 .width = tileW,
                                 .height = tileH});
       swatch->addChild(ui::label({.text = "~ ❯ ls",
@@ -614,19 +616,8 @@ namespace term {
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .fontFamily = std::string(Tokens::fontMono),
                                   .color = fixedColorSpec(themeColor(theme, ColorRole::TermBlue))}));
-      auto tile = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
-      tile->addChild(checked(std::move(swatch), on, s));
-      tile->addChild(ui::label({.text = std::string(name),
-                                .fontSize = Tokens::typeBody.size * s,
-                                .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
-                                .color = colorSpecFromRole(ColorRole::Label1)}));
-      row->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
-                                   .width = tileW,
-                                   .height = tileH + Tokens::spaceP4 * s + Tokens::typeBody.line * s,
-                                   .onClick = [this, theme](const InputArea::PointerData&) {
-                                     change([theme](Settings& x) { x.theme = theme; });
-                                   }},
-                                  std::move(tile)));
+      row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH,
+                         [this, theme] { change([theme](Settings& x) { x.theme = theme; }); }));
     }
     return row;
   }
