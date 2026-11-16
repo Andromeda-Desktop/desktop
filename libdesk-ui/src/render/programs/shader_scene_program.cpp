@@ -41,8 +41,8 @@ uniform vec3 scene_accent;
 
   constexpr const char* kSuffix = R"(
 void main() {
-  vec4 c = clamp(scene(v_uv), 0.0, 1.0);
-  gl_FragColor = vec4(c.rgb * c.a, c.a) * u_opacity;
+  // A scene is an opaque window background: the window declares it opaque, so the compositor skips what lies below.
+  gl_FragColor = vec4(clamp(scene(v_uv).rgb, 0.0, 1.0), 1.0) * u_opacity;
 }
 )";
 

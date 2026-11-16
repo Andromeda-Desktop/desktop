@@ -89,6 +89,7 @@ public:
   // Runs once, after the next render that swaps a new buffer.
   void callOnNextPresent(std::function<void()> callback) { m_nextPresentCallback = std::move(callback); }
   void setInputRegion(const std::vector<InputRect>& rects);
+  void setOpaqueRegion(const std::vector<InputRect>& rects);
   void setBlurRegion(const std::vector<InputRect>& rects);
   // Declares the whole surface opaque, or not, from its next commit, so the compositor can skip what lies beneath it.
   void setOpaque(bool opaque);

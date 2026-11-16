@@ -715,6 +715,22 @@ void Surface::setInputRegion(const std::vector<InputRect>& rects) {
   wl_region_destroy(region);
 }
 
+void Surface::setOpaqueRegion(const std::vector<InputRect>& rects) {
+  if (m_surface == nullptr) {
+    return;
+  }
+  wl_region* region = wl_compositor_create_region(m_connection.compositor());
+  if (region == nullptr) {
+    return;
+  }
+  for (const auto& r : rects) {
+    wl_region_add(region, r.x, r.y, r.width, r.height);
+  }
+  wl_surface_set_opaque_region(m_surface, region);
+  wl_region_destroy(region);
+  m_opaque = false; // not the whole surface: a later setOpaque(true) must still apply
+}
+
 void Surface::setOpaque(bool opaque) {
   if (m_surface == nullptr || m_opaque == opaque) {
     return;

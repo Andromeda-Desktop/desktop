@@ -56,6 +56,7 @@ namespace {
   constexpr float kHeaderGap = 8.0F;
   constexpr float kTitleExtra = 4.0F; // mockup .title margin-left
   constexpr float kWindowButton = 24.0F;
+  constexpr float kTitleBackingInset = 8.0F; // title text inside its scene backing capsule (R5)
   constexpr float kWindowButtonInset = 12.0F;
   constexpr float kWindowButtonGap = 8.0F;
   constexpr float kWindowButtonSymbol = 12.0F;
@@ -709,6 +710,13 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
   }
   m_sceneLayer->setPosition(static_cast<std::int32_t>(margin), static_cast<std::int32_t>(margin));
   m_sceneLayer->resize(w, h);
+  // Opaque but the rounded corners, so the compositor draws nothing below the scene.
+  const int r = std::min(static_cast<int>(std::ceil(radius)), static_cast<int>(std::min(w, h) / 2));
+  const int iw = static_cast<int>(w);
+  const int ih = static_cast<int>(h);
+  m_sceneLayer->setOpaqueRegion({{.x = 0, .y = r, .width = iw, .height = ih - 2 * r},
+                                 {.x = r, .y = 0, .width = iw - 2 * r, .height = r},
+                                 {.x = r, .y = ih - r, .width = iw - 2 * r, .height = r}});
   m_sceneRoot->setSize(width, height);
   m_sceneClip->setSize(width, height);
   m_sceneClip->setClipRadii(Radii{radius, radius, radius, radius});
@@ -800,8 +808,19 @@ void AppWindow::applySceneFills() {
     return fixedColorSpec(tint);
   };
   m_mainNode->setFill(fill(m_sceneContentBacked ? m_scene->tint : m_sceneTextTint));
-  if (m_headerNode != nullptr) {
-    m_headerNode->setFill(m_sceneContentBacked ? fill(sceneTextBacking()) : clearColorSpec());
+  // Backed content keeps the band on the content's light plane: like the grid's text, only the title and the window
+  // buttons take the backing, as capsules.
+  const ColorSpec backing = m_sceneContentBacked ? fill(sceneTextBacking()) : clearColorSpec();
+  const float s = m_uiScale;
+  if (auto* title = static_cast<Flex*>(m_titleRow); title != nullptr) {
+    const float inset = m_sceneContentBacked ? kTitleBackingInset * s : 0.0F;
+    title->setFill(backing);
+    title->setRadii(Radii{kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F});
+    title->setPadding(0.0F, inset, 0.0F, inset + (m_config.navigation ? kTitleExtra * s : 0.0F));
+  }
+  if (m_windowButtons != nullptr) {
+    m_windowButtons->setFill(backing);
+    m_windowButtons->setRadii(Radii{kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F});
   }
 }
 
@@ -1104,7 +1123,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   add("minus", "window.minimize", false, nullptr);
   add(maximized ? "minimize" : "square", "window.maximize", false, &m_maximizeButton);
   add("x", "window.close", true, nullptr);
-  header->addChild(std::move(buttons));
+  m_windowButtons = static_cast<Flex*>(header->addChild(std::move(buttons)));
   m_buildingHeader = false;
   applyHeaderSearchMode();
   return header;
