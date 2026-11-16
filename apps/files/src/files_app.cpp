@@ -526,12 +526,14 @@ AppWindow& FilesApp::createWindow() {
   const bool lastFolder = last.starts_with('/') && fs::is_directory(last, ec);
   fs::path location = !m_nextLocation.empty() ? m_nextLocation : lastFolder ? fs::path(last) : fs::path(g_get_home_dir());
   m_nextLocation.clear();
+  // Read before the window exists: its first navigation saves its single tab over the saved ones.
+  const nlohmann::json savedTabs = plainLaunch ? state().get<nlohmann::json>("/files/tabs", nlohmann::json{}) : nlohmann::json{};
   auto& files = m_windows[&window] = std::make_unique<FilesWindow>(*this, window, std::move(location), photos);
   if (!lastFolder && !last.empty()) {
     files->reopenPlace(last);
   }
   if (plainLaunch) {
-    files->restoreTabs(state().get<nlohmann::json>("/files/tabs", nlohmann::json{}));
+    files->restoreTabs(savedTabs);
   }
   return window;
 }
