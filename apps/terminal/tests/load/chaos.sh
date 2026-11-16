@@ -56,7 +56,8 @@ for c in $CASES; do
       run wl-copy < "$OUT/res/paste.src" &
       sleep 1
       rm -f "$OUT/res/paste.out"
-      term_type "stty -icanon; cat > $OUT/res/paste.out"
+      # Bracketed paste, as shells set it: without it a multi-line paste asks for a confirm.
+      term_type "printf '\\e[?2004h'; stty -icanon; cat > $OUT/res/paste.out"
       sleep 0.5
       t0=$(date +%s)
       key -M ctrl -M shift v -m shift -m ctrl

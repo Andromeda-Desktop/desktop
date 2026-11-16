@@ -80,6 +80,8 @@ if [[ $PARTS == *kill* ]]; then
     TPID=
     term_start ours
     res="$OUT/res/reattach"; rm -f "$res"
+    # load_jobs left `yes` in the foreground: stop it, so the shell reads the next line.
+    run wtype -k Shift_L -M ctrl c -m ctrl
     term_type "echo \$\$ > $res"
     gate "restart reattaches the held shell" bash -c "\"$ROOTDIR/tools/wait.sh\" --file $res --timeout 10 > /dev/null && [[ \$(cat $res) == ${pids%% *} ]]"
   else
