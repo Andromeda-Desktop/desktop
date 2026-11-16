@@ -2,6 +2,7 @@
 
 #include "settings_store.h"
 #include "core/timer_manager.h"
+#include "session_layout.h"
 #include "session_list.h"
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
@@ -88,14 +89,19 @@ namespace term {
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
-                   std::function<void()> close, std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
+                   std::function<void()> close, std::function<void()> layoutChanged,
+                   std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
                    std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile);
     ~TerminalWindow();
     // The surface and scene were destroyed (compositor reconnect): the next requestFrame hooks the new surface.
     void surfaceLost();
 
-    // Opens a session and shows it.
-    void openSession(const WindowOrigin& origin);
+    // Opens a session and shows it; returns its id.
+    std::uint64_t openSession(const WindowOrigin& origin);
+    // The shell sessions to reopen after a reboot.
+    [[nodiscard]] SavedWindow layout() const;
+    // Opens the saved sessions with their names and splits, and shows the saved one.
+    void restore(const SavedWindow& saved);
     [[nodiscard]] TerminalView::Host terminalHost(std::uint64_t id);
     void adoptSession(std::uint64_t id, MovedSession moved);
     void moveToNewWindow(std::uint64_t id);
@@ -113,7 +119,9 @@ namespace term {
 
     void requestFrame();
     void openUri(const std::string& uri);
-    void apply(const SessionListEvent& event);
+    // Unsaved: the change stays out of the saved layout until the next saved change (a shell killed at logout).
+    enum class LayoutSave : std::uint8_t { Saved, Unsaved };
+    void apply(const SessionListEvent& event, LayoutSave save = LayoutSave::Saved);
     [[nodiscard]] Settings viewSettings() const; // the setting with this window's zoom
     void applyViewSettings();
     void updateSceneState(); // scene busy, secret and remote follow the visible panes
@@ -152,6 +160,7 @@ namespace term {
     int m_zoom = 0; // text size steps (px at ui_scale 1) added to the setting in this window
     Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
+    std::function<void()> m_layoutChanged; // a session opened, closed, moved, was renamed or changed folder
     std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> m_newWindow;
     std::function<void(const std::string& token)> m_preferences;
     ChooseSaveFile m_chooseSaveFile;

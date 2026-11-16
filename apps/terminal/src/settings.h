@@ -41,6 +41,7 @@ namespace term {
     Bell bell = Bell::Flash;
     std::string shell;  // empty: the login shell
     StartDir startDir = StartDir::Home;
+    bool restoreSessions = true; // with no held session at start, reopen the last sessions, splits and names
     bool notifyLong = true;
     int notifySeconds = 10;
     bool notifyUnfocusedOnly = true;

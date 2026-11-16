@@ -32,12 +32,14 @@ namespace term {
     // "exec": parameter[0] is the start directory, the rest the command (andromeda-terminal -e).
     void action(const std::string& name, const std::vector<std::string>& parameter,
                 const std::string& activationToken) override;
-    // With no window yet, sessions that lost their terminal process come back first, one window each.
+    // With no window yet, sessions that lost their terminal process come back first, all in one window; with none,
+    // the windows saved at the last quit open again (sessions.restore).
     void activate(const std::string& activationToken) override;
     void openWindow(const std::string& activationToken);
     void openPreferences(const std::string& activationToken);
     void openPath(const std::filesystem::path& path); // in its default app, activated from the Preferences window
     void startup() override;
+    void shutdown() override;
     void gpuLost() override;
 
   private:
@@ -56,6 +58,10 @@ namespace term {
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
+    // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.
+    enum class LayoutSave : std::uint8_t { Live, Kept };
+    LayoutSave m_layoutSave = LayoutSave::Live;
+    void saveLayouts();
   };
 
 } // namespace term

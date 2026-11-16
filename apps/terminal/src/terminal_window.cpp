@@ -37,6 +37,7 @@
 #include <linux/input-event-codes.h>
 
 #include <algorithm>
+#include <csignal>
 #include <format>
 #include <cctype>
 #include <cmath>
@@ -110,9 +111,10 @@ namespace term {
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
+                                 std::function<void()> layoutChanged,
                                  std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
                                  std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
-      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)), m_layoutChanged(std::move(layoutChanged)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
         m_chooseSaveFile(std::move(chooseSaveFile)) {
     m_settingsChanged = m_settings.changed().connect([this] {
@@ -409,10 +411,12 @@ namespace term {
         .thumbnails = &m_thumbnails,
         // exited runs inside the view's frame(): the view is destroyed later.
         .exited =
-            [this, id, alive](int) {
-              DeferredCall::callLater([this, id, alive] {
+            [this, id, alive](int status) {
+              // A logout kills the shells with the app: the session stays in the layout a restore reopens.
+              const bool killed = status == 128 + SIGHUP || status == 128 + SIGTERM || status == 128 + SIGKILL;
+              DeferredCall::callLater([this, id, alive, killed] {
                 if (!alive.expired()) {
-                  apply(session_event::Close{id});
+                  apply(session_event::Close{id}, killed ? LayoutSave::Unsaved : LayoutSave::Saved);
                 }
               });
             },
@@ -530,12 +534,12 @@ namespace term {
     m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {Adopt{std::move(moved)}});
   }
 
-  void TerminalWindow::openSession(const WindowOrigin& origin) {
+  std::uint64_t TerminalWindow::openSession(const WindowOrigin& origin) {
     const auto* adopt = std::get_if<Adopt>(&origin);
     const std::uint64_t id = adopt != nullptr ? adopt->session->id : s_nextId++;
     if (adopt != nullptr) {
       adoptSession(id, std::move(*adopt->session));
-      return;
+      return id;
     }
     if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
       const std::uint64_t key = s_nextAgentKey++;
@@ -549,7 +553,7 @@ namespace term {
       agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
       m_views.push_back({id, std::move(agentView)});
       apply(session_event::Open{id, SessionKind::Agent, std::string(agent::info(fresh->kind).name), shownPath(cwd)});
-      return;
+      return id;
     }
     auto view = std::make_unique<TerminalView>(terminalHost(id));
     TerminalView& ref = *view;
@@ -580,6 +584,27 @@ namespace term {
       }
     }
     apply(session_event::Open{id, SessionKind::Shell, "", ""});
+    return id;
+  }
+
+  SavedWindow TerminalWindow::layout() const {
+    return saveLayout(m_sessions, [this](std::uint64_t id) {
+      const auto it = std::ranges::find(m_views, id, &Session::id);
+      const auto* view = it != m_views.end() ? dynamic_cast<const TerminalView*>(it->view.get()) : nullptr;
+      return view != nullptr ? view->cwd() : std::string();
+    });
+  }
+
+  void TerminalWindow::restore(const SavedWindow& saved) {
+    std::vector<std::uint64_t> ids;
+    for (const SavedSession& session : saved.sessions) {
+      std::error_code error;
+      // A folder removed since the save starts the shell in $HOME.
+      ids.push_back(openSession(NewShell{.cwd = std::filesystem::is_directory(session.cwd, error) ? session.cwd : ""}));
+    }
+    for (const SessionListEvent& event : restoreEvents(saved, ids)) {
+      apply(event);
+    }
   }
 
   ContentView* TerminalWindow::shownView() {
@@ -633,7 +658,7 @@ namespace term {
     }));
   }
 
-  void TerminalWindow::apply(const SessionListEvent& event) {
+  void TerminalWindow::apply(const SessionListEvent& event, LayoutSave save) {
     const auto before = m_sessions.shown();
     const auto splitsBefore = m_sessions.splits();
     const ApplyResult result = m_sessions.apply(event);
@@ -665,6 +690,12 @@ namespace term {
         }
         m_views.erase(it);
       }
+    }
+    if (save == LayoutSave::Saved && (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event) ||
+        std::holds_alternative<session_event::Show>(event) || std::holds_alternative<session_event::Rename>(event) ||
+        std::holds_alternative<session_event::Cwd>(event) || std::holds_alternative<session_event::Kind>(event) ||
+        std::holds_alternative<session_event::Join>(event) || std::holds_alternative<session_event::Leave>(event))) {
+      m_layoutChanged();
     }
     if (result == ApplyResult::LastClosed) {
       m_close();

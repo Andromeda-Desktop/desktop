@@ -311,6 +311,7 @@ namespace term {
     r.choice("terminal", "bell", kBells, s.bell);
     r.string("sessions", "shell", s.shell);
     r.choice("sessions", "start_in", kStartDirs, s.startDir);
+    r.boolean("sessions", "restore", s.restoreSessions);
     r.boolean("notifications", "long_command", s.notifyLong);
     r.integer("notifications", "long_command_seconds", SettingsLimits::kNotifyMin, SettingsLimits::kNotifyMax,
               s.notifySeconds);
@@ -348,6 +349,7 @@ namespace term {
     auto& sessions = tableIn(root, "sessions");
     sessions.insert_or_assign("shell", s.shell);
     sessions.insert_or_assign("start_in", std::string(nameOf(kStartDirs, s.startDir)));
+    sessions.insert_or_assign("restore", s.restoreSessions);
     auto& notifications = tableIn(root, "notifications");
     notifications.insert_or_assign("long_command", s.notifyLong);
     notifications.insert_or_assign("long_command_seconds", s.notifySeconds);

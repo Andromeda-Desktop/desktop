@@ -51,6 +51,7 @@ namespace term {
     }
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, [this](agent::Kind kind) -> agent::Host& { return agentHost(kind); }, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
+                                                          [this] { saveLayouts(); },
                                                           [this](const std::string& token, std::vector<WindowOrigin> origins) {
                                                             m_nextOrigins = std::move(origins);
                                                             openWindow(token);
@@ -59,6 +60,7 @@ namespace term {
                                                           [this, &window](const std::string& suggested, auto picked) {
                                                             chooseSaveFile(window, suggested, std::move(picked));
                                                           });
+    saveLayouts();
     return window;
   }
 
@@ -69,6 +71,22 @@ namespace term {
       m_prefsWindow = nullptr;
     }
     m_windows.erase(&window);
+    saveLayouts();
+  }
+
+  void TerminalApp::shutdown() { m_layoutSave = LayoutSave::Kept; }
+
+  void TerminalApp::saveLayouts() {
+    if (m_layoutSave == LayoutSave::Kept) {
+      return;
+    }
+    std::vector<SavedWindow> windows;
+    for (const auto& [window, terminal] : m_windows) {
+      if (SavedWindow saved = terminal->layout(); !saved.sessions.empty()) {
+        windows.push_back(std::move(saved));
+      }
+    }
+    state().set("/terminal/windows", toJson(windows));
   }
 
   void TerminalApp::windowSurfaceLost(AppWindow& window) {
@@ -215,6 +233,16 @@ namespace term {
       if (window.open()) {
         window.activate(activationToken);
         reattached = true;
+      }
+    } else if (m_settings.settings().restoreSessions) {
+      for (const SavedWindow& saved : windowsFromJson(state().get("/terminal/windows", nlohmann::json::array()))) {
+        m_nextOrigins.clear();
+        AppWindow& window = createWindow();
+        m_windows.at(&window)->restore(saved);
+        if (window.open()) {
+          window.activate(activationToken);
+          reattached = true;
+        }
       }
     }
     if (!reattached) {

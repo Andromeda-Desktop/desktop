@@ -509,7 +509,9 @@ namespace term {
                        })},
                       {"New sessions start in", "",
                        segmented({"Home", "Current folder"}, static_cast<std::size_t>(now.startDir),
-                                 [](Settings& x, std::size_t i) { x.startDir = static_cast<StartDir>(i); })}}});
+                                 [](Settings& x, std::size_t i) { x.startDir = static_cast<StartDir>(i); })},
+                      {"Restore sessions", "After a restart: folders, names and splits",
+                       toggle(now.restoreSessions, [](Settings& x, bool on) { x.restoreSessions = on; })}}});
     }
 
     // Notifications

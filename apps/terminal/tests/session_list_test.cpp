@@ -1,8 +1,12 @@
+#include "session_layout.h"
 #include "session_list.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <map>
+#include <nlohmann/json.hpp>
 #include <random>
+#include <string>
 #include <set>
 
 using namespace term;
@@ -50,6 +54,32 @@ void checkInvariants(const SessionList& list) {
     CHECK(list.find(*list.shown()) != nullptr);
     CHECK(list.find(*list.shown())->seen == Seen::Seen);
   }
+}
+
+// The saved layout survives JSON and a restore into new sessions unchanged: shell sessions, names, splits, shown.
+void checkRestore(const SessionList& list) {
+  const SavedWindow saved = saveLayout(list, [](std::uint64_t id) { return "/d" + std::to_string(id); });
+  CHECK(saved.sessions.size() == static_cast<std::size_t>(std::ranges::count(list.sessions(), SessionKind::Shell, &SessionInfo::kind)));
+  const auto loaded = windowsFromJson(nlohmann::json::parse(toJson({saved}).dump()));
+  if (saved.sessions.empty()) {
+    CHECK(loaded.empty());
+    return;
+  }
+  CHECK(loaded.size() == 1 && loaded[0] == saved);
+  SessionList restored;
+  std::vector<std::uint64_t> ids;
+  std::map<std::uint64_t, std::string> cwds;
+  for (std::size_t i = 0; i < saved.sessions.size(); ++i) {
+    const std::uint64_t id = 100 + i;
+    restored.apply(Open{id, SessionKind::Shell, "", ""});
+    ids.push_back(id);
+    cwds[id] = saved.sessions[i].cwd;
+  }
+  for (const SessionListEvent& event : restoreEvents(loaded.at(0), ids)) {
+    CHECK(restored.apply(event) != ApplyResult::Rejected);
+  }
+  CHECK(saveLayout(restored, [&](std::uint64_t id) { return cwds[id]; }) == saved);
+  checkInvariants(restored);
 }
 
 SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
@@ -125,6 +155,9 @@ int main() {
         }
       }
       checkInvariants(list);
+      if (step % 10 == 0) {
+        checkRestore(list);
+      }
     }
   }
   if (failures == 0) {
