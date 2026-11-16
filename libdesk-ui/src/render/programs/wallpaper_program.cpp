@@ -1,11 +1,14 @@
 #include "render/programs/wallpaper_program.h"
 
+#include "core/log.h"
 #include "render/programs/wallpaper_sampling_glsl.h"
 
 #include <stdexcept>
 #include <string>
 
 namespace {
+
+  constexpr Logger kLog("wallpaper");
 
   constexpr char kVertexShader[] = R"(
 precision highp float;
@@ -438,14 +441,46 @@ void main() {
 } // namespace
 
 void WallpaperProgram::ensureInitialized(WallpaperTransition transition) {
-  static constexpr std::array<const char*, kTransitionCount> kFragments = {
-      kFadeFragment,      kWipeFragment,  kDiscFragment,  kStripesFragment, kZoomFragment, kHoneycombFragment,
-      kVortexFragment,    kPixelFragment, kDiamondFragment, kGoldenFragment, kMeltFragment,
-  };
+  static constexpr auto kFragments = [] {
+    std::array<const char*, kTransitionCount> fragments{};
+    const auto set = [&fragments](WallpaperTransition t, const char* source) {
+      fragments[static_cast<std::size_t>(t)] = source;
+    };
+    set(WallpaperTransition::Fade, kFadeFragment);
+    set(WallpaperTransition::Wipe, kWipeFragment);
+    set(WallpaperTransition::Disc, kDiscFragment);
+    set(WallpaperTransition::Stripes, kStripesFragment);
+    set(WallpaperTransition::Zoom, kZoomFragment);
+    set(WallpaperTransition::Honeycomb, kHoneycombFragment);
+    set(WallpaperTransition::Vortex, kVortexFragment);
+    set(WallpaperTransition::Pixel, kPixelFragment);
+    set(WallpaperTransition::Diamond, kDiamondFragment);
+    set(WallpaperTransition::Golden, kGoldenFragment);
+    set(WallpaperTransition::Melt, kMeltFragment);
+    return fragments;
+  }();
   const auto index = static_cast<std::size_t>(transition);
   // Each transition compiles on its first draw: a linked program holds about 0.7 MiB of driver memory.
-  if (index < kTransitionCount && !m_programs[index].program.isValid()) {
+  if (index >= kTransitionCount) {
+    return;
+  }
+  auto& pd = m_programs[index];
+  if (pd.program.isValid() || pd.linkFailed) {
+    // draw() replaces a failed transition with Fade, so Fade must be ready.
+    if (pd.linkFailed && transition != WallpaperTransition::Fade) {
+      ensureInitialized(WallpaperTransition::Fade);
+    }
+    return;
+  }
+  try {
     initProgram(index, kFragments[index]);
+  } catch (const std::runtime_error& error) {
+    pd.program.destroy();
+    pd.linkFailed = true;
+    kLog.warn("wallpaper transition {} falls back to fade: {}", index, error.what());
+    if (transition != WallpaperTransition::Fade) {
+      ensureInitialized(WallpaperTransition::Fade);
+    }
   }
 }
 
@@ -515,6 +550,9 @@ void WallpaperProgram::initProgram(std::size_t index, const char* fragSource) {
 
 void WallpaperProgram::draw(const WallpaperDrawParams& p) const {
   auto idx = static_cast<std::size_t>(p.transition);
+  if (idx < kTransitionCount && m_programs[idx].linkFailed) {
+    idx = static_cast<std::size_t>(WallpaperTransition::Fade);
+  }
   if (idx >= kTransitionCount || !m_programs[idx].program.isValid() || p.quadWidth <= 0.0F || p.quadHeight <= 0.0F) {
     return;
   }

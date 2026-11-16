@@ -29,6 +29,7 @@ private:
 
   struct ProgramData {
     ShaderProgram program;
+    bool linkFailed = false;
     GLint positionLoc = -1;
     GLint surfaceSizeLoc = -1;
     GLint quadSizeLoc = -1;

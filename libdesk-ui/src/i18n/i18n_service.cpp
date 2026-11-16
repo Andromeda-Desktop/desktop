@@ -76,8 +76,7 @@ namespace i18n {
     const std::string candidate = resolveRequestedLanguage(preferredLang);
     m_requestedLanguage = candidate;
 
-    // English fallback is always loaded first so lookup() can fall back to it
-    // even if the active catalog is English itself.
+    // English is always loaded as the fallback; for English itself the active catalog stays empty.
     if (!loadCatalog("en", m_fallback)) {
       kLog.warn("could not load English fallback catalog");
     }
