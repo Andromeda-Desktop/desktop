@@ -693,14 +693,11 @@ namespace term {
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
       data.symbol = "loader-2";
       data.status = withCommand("running", running->command);
-      data.time = formatClockTime(
-          std::chrono::duration_cast<std::chrono::seconds>(SessionClock::now() - running->start).count());
     } else if (const auto* finished = std::get_if<CommandFinished>(&session.command)) {
       data.symbol = finished->failed() ? "alert-circle" : "circle-check";
       data.symbolDanger = finished->failed();
       data.status =
           withCommand(finished->failed() ? "exit " + std::to_string(*finished->exitCode) : "done", finished->command);
-      data.time = formatClockTime(std::chrono::duration_cast<std::chrono::seconds>(finished->duration).count());
     } else {
       switch (session.kind) {
         case SessionKind::Shell: data.symbol = "prompt"; break;
@@ -716,7 +713,7 @@ namespace term {
     return data;
   }
 
-  // Rows change in place; the 1 Hz tick runs only while a command runs, for its elapsed time.
+  // Rows change in place.
   void TerminalWindow::refreshRows() {
     if (const std::uint64_t shown = m_sessions.shown().value_or(0); m_rowList != nullptr && shown != m_tintTarget) {
       m_tintTarget = shown;
@@ -728,20 +725,10 @@ namespace term {
         m_window.invalidate();
       });
     }
-    bool running = false;
     for (const auto& [id, row] : m_rows) {
       if (const SessionInfo* session = m_sessions.find(id); session != nullptr) {
         row->setData(rowData(*session));
-        running = running || std::holds_alternative<CommandRunning>(session->command);
       }
-    }
-    if (!running) {
-      m_tick.stop();
-    } else if (!m_tick.active()) {
-      m_tick.startRepeating(std::chrono::seconds(1), [this] {
-        refreshRows();
-        m_window.invalidate();
-      });
     }
   }
 
