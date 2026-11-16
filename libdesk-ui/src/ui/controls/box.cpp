@@ -13,6 +13,8 @@ Box::Box() {
   auto rect = std::make_unique<RectNode>();
   m_rect = static_cast<RectNode*>(addChild(std::move(rect)));
   m_style = m_rect->style();
+  m_style.fill = resolveColorSpec(m_fill, this);
+  syncStyle();
   m_paletteConn = paletteChanged().connect([this] { applyPalette(); });
 }
 
