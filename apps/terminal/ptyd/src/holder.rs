@@ -415,10 +415,14 @@ impl Holder {
                 Ok(n) => client.inbuf.extend_from_slice(&buf[..n]),
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(_) => return false,
+                Err(_) => {
+                    ok = false;
+                    break;
+                }
             }
         }
-        // Frames that came before a hang-up still count: a client sends its last Snapshot and then exits.
+        // Frames that came before a hang-up still count: a client sends its last Snapshot or Close and then exits.
+        // A client that exits with unread output resets the socket (ECONNRESET), not EOF.
         let inbuf = std::mem::take(&mut client.inbuf);
         let mut pos = 0;
         loop {
