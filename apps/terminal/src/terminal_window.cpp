@@ -34,6 +34,7 @@
 #include <linux/input-event-codes.h>
 
 #include <algorithm>
+#include <format>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -65,6 +66,17 @@ namespace term {
     // The status comes first, so truncation removes the command, never the outcome.
     std::string withCommand(const std::string& status, const std::string& command) {
       return command.empty() ? status : status + " · " + command;
+    }
+
+    // A caption sits on the command's own output, so a finished state names how long it took, not the command.
+    std::string captionState(const SessionInfo& session, const std::string& rowStatus) {
+      const auto* finished = std::get_if<CommandFinished>(&session.command);
+      if (finished == nullptr || session.kind == SessionKind::Agent) {
+        return rowStatus;
+      }
+      const auto took = std::chrono::duration_cast<std::chrono::seconds>(finished->duration).count();
+      return (finished->failed() ? "exit " + std::to_string(*finished->exitCode) : std::string("done")) + " · "
+          + (took < 60 ? std::format("{} s", took) : formatClockTime(took));
     }
 
     std::string homeDir() {
@@ -1102,7 +1114,8 @@ namespace term {
     }
     const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
     const StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
-    m_window.setCaption({.symbol = data.symbol, .state = data.status, .danger = data.symbolDanger, .spinning = data.spinning});
+    const std::string state = shown != nullptr ? captionState(*shown, data.status) : std::string{};
+    m_window.setCaption({.symbol = data.symbol, .state = state, .danger = data.symbolDanger, .spinning = data.spinning});
     if (refreshCards()) {
       m_window.updateInPlace([this](Renderer& renderer) {
         fitCaptions(renderer);
@@ -1805,7 +1818,8 @@ namespace term {
       if (session == nullptr) {
         continue;
       }
-      const StatusRow::Data data = rowData(*session);
+      StatusRow::Data data = rowData(*session);
+      data.status = captionState(*session, data.status);
       const ColorSpec ink = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2);
       changed = changed || card.name->text() != data.name || card.state->text() != data.status;
       card.name->setText(data.name);
