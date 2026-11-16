@@ -25,6 +25,19 @@ namespace viewer {
 
   ViewerTabs::ViewerTabs(AppLoop& loop, AppWindow& window, StateStore& state)
       : m_loop(loop), m_window(window), m_state(state), m_split(window, splitCallbacks()) {
+    // A job that ends gives its room to the other shown documents' queues.
+    m_budget.released = [this](ViewerWindow* from) {
+      DeferredCall::callLater([this, from, alive = std::weak_ptr<bool>(m_alive)] {
+        if (alive.expired()) {
+          return;
+        }
+        for (const std::uint64_t id : m_set.visible()) {
+          if (ViewerWindow* doc = m_docs.at(id).get(); doc != from) {
+            doc->resume();
+          }
+        }
+      });
+    };
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       return build(renderer, width, height);
     });
@@ -121,7 +134,7 @@ namespace viewer {
   }
 
   void ViewerTabs::add(const std::filesystem::path& path) {
-    auto tab = std::make_unique<ViewerWindow>(m_loop, m_window, m_state);
+    auto tab = std::make_unique<ViewerWindow>(m_loop, m_window, m_state, m_budget);
     tab->setTitleChanged([this] { updateTitle(); });
     tab->open(path);
     if (ViewerWindow* old = active() != nullptr ? active() : m_blank.get()) {
@@ -148,7 +161,17 @@ namespace viewer {
 
   void ViewerTabs::select(std::uint64_t id) {
     ViewerWindow* old = active();
+    const auto* split = m_set.splitOf(id);
+    const bool inPlace = m_split.split() && split != nullptr && m_set.focused() && split == m_set.splitOf(*m_set.focused());
     if (m_set.focused() == id || !m_set.apply(tab_event::Focus{id})) {
+      return;
+    }
+    // A pane of the shown split: the ring, caption tools and sidebar move; no pane rebuilds.
+    if (inPlace) {
+      old->blur();
+      m_split.setFocused(id, true);
+      updateTitle();
+      m_window.rebuildSidebar();
       return;
     }
     old->detach();
@@ -313,7 +336,7 @@ namespace viewer {
     if (active() == nullptr) {
       m_split.reset();
       if (!m_blank) {
-        m_blank = std::make_unique<ViewerWindow>(m_loop, m_window, m_state);
+        m_blank = std::make_unique<ViewerWindow>(m_loop, m_window, m_state, m_budget);
       }
       return m_blank->build(renderer, width, height);
     }

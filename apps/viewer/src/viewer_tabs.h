@@ -8,6 +8,7 @@
 
 #include "app/split_view.h"
 #include "tab_set.h"
+#include "viewer_window.h"
 
 class AppLoop;
 class AppWindow;
@@ -63,6 +64,7 @@ namespace viewer {
     AppLoop& m_loop;
     AppWindow& m_window;
     StateStore& m_state;
+    ViewerWindow::RenderBudget m_budget; // before the documents: they give their jobs back on destruction
     TabSet m_set;
     std::unordered_map<std::uint64_t, std::unique_ptr<ViewerWindow>> m_docs;
     std::uint64_t m_nextId = 1;

@@ -1180,6 +1180,15 @@ void AppWindow::syncBlur() {
   }
 }
 
+void AppWindow::rebuildSidebar() {
+  if (m_surface == nullptr || m_root == nullptr) {
+    return;
+  }
+  updateInPlace([this](Renderer& renderer) {
+    swapSidebar(renderer, m_root->height() - 2.0F * static_cast<float>(m_surface->margin()));
+  });
+}
+
 void AppWindow::swapSidebar(Renderer& renderer, float height) {
   if (m_sidebarNode == nullptr || !m_sidebarBuilder || m_sidebarNode->children().empty()) {
     return;

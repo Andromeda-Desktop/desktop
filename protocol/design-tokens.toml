@@ -537,7 +537,7 @@ divider_hit = 24.0  # a split divider's drag area: the gap and 8 into each card
 drop_fill = 0.14  # accent alpha of the half a dropped row would take
 
 [component.viewer]
-split_min_width = 360.0  # a document pane in a split is never narrower (caption included)
+split_min_width = 400.0  # a document pane in a split is never narrower: page, zoom, one tool and the window buttons fit
 split_min_height = 280.0  # nor lower
 
 [component.agent]  # agent session view (design-agent handoff.yaml)

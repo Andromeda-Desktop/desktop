@@ -317,6 +317,8 @@
   --component-split-focus-ring: 1.5px;
   --component-split-divider-hit: 24.0px;
   --component-split-drop-fill: 0.14px;
+  --component-viewer-split-min-width: 400.0px;
+  --component-viewer-split-min-height: 280.0px;
   --component-agent-measure: 640.0px;
   --component-agent-action-row: 26.0px;
   --component-agent-verb-width: 56.0px;

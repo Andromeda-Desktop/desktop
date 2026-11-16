@@ -14,6 +14,7 @@
 #include "render/core/texture_manager.h"
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
+#include "ui/controls/context_menu.h"
 #include "ui/controls/box.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/image.h"
@@ -36,6 +37,7 @@
 #include <glib.h>
 #include <charconv>
 #include <cstring>
+#include <array>
 #include <format>
 #include <gio/gio.h>
 #include <linux/input-event-codes.h>
@@ -164,8 +166,28 @@ namespace viewer {
     }
   } // namespace
 
-  ViewerWindow::ViewerWindow(AppLoop& loop, AppWindow& window, StateStore& state)
-      : m_loop(loop), m_window(window), m_state(state) {}
+  ViewerWindow::ViewerWindow(AppLoop& loop, AppWindow& window, StateStore& state, RenderBudget& budget)
+      : m_loop(loop), m_window(window), m_state(state), m_budget(budget) {}
+
+  void ViewerWindow::takeJob() {
+    ++m_inFlight;
+    ++m_budget.inFlight;
+  }
+
+  void ViewerWindow::endJob() {
+    --m_inFlight;
+    --m_budget.inFlight;
+    if (m_budget.released) {
+      m_budget.released(this);
+    }
+  }
+
+  void ViewerWindow::releaseJobs() {
+    m_budget.inFlight -= std::exchange(m_inFlight, 0);
+    if (m_budget.released) {
+      m_budget.released(this);
+    }
+  }
 
   // A rebuilt ScrollView clamps its offset to its content, which is empty until the first layout: restore after it.
   void ViewerWindow::onLayout() {
@@ -203,6 +225,7 @@ namespace viewer {
     }
     m_decoder.cancel();
     dropHelper();
+    m_budget.inFlight -= m_inFlight;
   }
 
   void ViewerWindow::dropHelper() {
@@ -237,7 +260,7 @@ namespace viewer {
     }
     m_tiles.clear();
     m_jobs.clear();
-    m_inFlight = 0;
+    releaseJobs();
     m_pendingInk.clear();
     m_image = {};
     m_selection.reset();
@@ -667,9 +690,10 @@ namespace viewer {
   }
 
   void ViewerWindow::pump() {
-    // Two in flight: the helper works on one while the next waits, and a scroll never queues stale work behind it.
+    // Two in flight per window, shared by its panes: a helper works on one while the next waits, and a scroll never
+    // queues stale work behind it.
     constexpr int kInFlight = 2;
-    while (m_inFlight < kInFlight && !m_jobs.empty() && m_helper) {
+    while (m_budget.inFlight < kInFlight && !m_jobs.empty() && m_helper) {
       const Job job = m_jobs.front();
       m_jobs.erase(m_jobs.begin());
       if (job.kind == Job::Kind::Tile) {
@@ -709,14 +733,14 @@ namespace viewer {
     tile.pageWidth = job.width;
     tile.x = job.x;
     tile.y = job.y;
-    ++m_inFlight;
+    takeJob();
     preview::HelperMsg msg{.op = preview::op::RenderTile, .a = static_cast<std::uint32_t>(job.page), .b = job.width,
                            .c = job.x, .d = job.y, .e = job.w << 16U | job.h};
     m_helper->request(msg, [this, job, generation = m_generation](const preview::HelperReply& reply) {
       if (generation != m_generation) {
         return;
       }
-      --m_inFlight;
+      endJob();
       const auto it = m_tiles.find(job.key);
       const auto& m = reply.msg;
       const bool valid = m.op == preview::op::Page && reply.data != nullptr && m.b == job.w && m.c == job.h
@@ -929,7 +953,7 @@ namespace viewer {
 
   void ViewerWindow::requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width) {
     cache[page].requestedWidth = width;
-    ++m_inFlight;
+    takeJob();
     const std::uint64_t seq = ++m_renderSeq;
     m_helper->request(
         {.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = width, .c = kMaxPageHeight},
@@ -937,7 +961,7 @@ namespace viewer {
           if (generation != m_generation) {
             return;
           }
-          --m_inFlight;
+          endJob();
           // Sent last, so it runs after this reply is stored.
           DeferredCall::callLater([this, generation] {
             if (generation == m_generation) {
@@ -1462,14 +1486,37 @@ namespace viewer {
     zoomButton("plus", "Zoom In", &ViewerWindow::zoomIn);
     bar->addChild(std::move(zoom));
     bar->addChild(ui::row({.flexGrow = 1.0F}));
-    bar->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.glyph = "cursor-text", .tooltip = "Select Text"},
-                                                                             {.glyph = "highlight", .tooltip = "Highlight"},
-                                                                             {.glyph = "note", .tooltip = "Note"},
-                                                                             {.glyph = "pencil", .tooltip = "Draw"},
-                                                                             {.glyph = "signature", .tooltip = "Sign"}},
-                                 .selectedIndex = static_cast<std::size_t>(m_tool),
-                                 .compact = true,
-                                 .onChange = [this](std::size_t i) { setTool(static_cast<Tool>(i)); }}));
+    static constexpr std::array<std::pair<const char*, const char*>, 5> kTools{
+        {{"cursor-text", "Select Text"}, {"highlight", "Highlight"}, {"note", "Note"}, {"pencil", "Draw"}, {"signature", "Sign"}}};
+    // A split pane has room for one tool button: it shows the current tool and opens the others as a menu.
+    if (m_window.contentCards()) {
+      Button* tool = nullptr;
+      bar->addChild(ui::button({.out = &tool, .glyph = std::string(kTools[static_cast<std::size_t>(m_tool)].first),
+                                .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
+                                .tooltip = std::string(kTools[static_cast<std::size_t>(m_tool)].second),
+                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = small, .height = small}));
+      tool->setOnClick([this, tool] {
+        std::vector<ContextMenuControlEntry> entries;
+        for (std::size_t i = 0; i < kTools.size(); ++i) {
+          entries.push_back({.id = static_cast<std::int32_t>(i), .label = kTools[i].second, .radio = true,
+                             .toggleState = i == static_cast<std::size_t>(m_tool) ? 1 : 0});
+        }
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(tool, x, y);
+        m_window.openContextMenu(std::move(entries), x, y + tool->height(),
+                                 [this](std::int32_t id) { setTool(static_cast<Tool>(id)); });
+      });
+    } else {
+      std::vector<ui::SegmentedOption> options;
+      for (const auto& [glyph, tip] : kTools) {
+        options.push_back({.glyph = glyph, .tooltip = tip});
+      }
+      bar->addChild(ui::segmented({.options = std::move(options),
+                                   .selectedIndex = static_cast<std::size_t>(m_tool),
+                                   .compact = true,
+                                   .onChange = [this](std::size_t i) { setTool(static_cast<Tool>(i)); }}));
+    }
     if (!m_window.sidebarVisible()) {
       bar->addChild(ui::button({.glyph = std::string("search"), .glyphSize = Tokens::sizeSymbol * s,
                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Find"),

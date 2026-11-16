@@ -40,7 +40,13 @@ namespace viewer {
   public:
     enum class Tool : std::uint8_t { Select, Highlight, Note, Draw, Sign };
 
-    ViewerWindow(AppLoop& loop, AppWindow& window, StateStore& state);
+    // Helper jobs in flight across every document of one window; `released` runs when one ends.
+    struct RenderBudget {
+      int inFlight = 0;
+      std::function<void(ViewerWindow* from)> released;
+    };
+
+    ViewerWindow(AppLoop& loop, AppWindow& window, StateStore& state, RenderBudget& budget);
     ~ViewerWindow();
     ViewerWindow(const ViewerWindow&) = delete;
     ViewerWindow& operator=(const ViewerWindow&) = delete;
@@ -81,6 +87,13 @@ namespace viewer {
     void setTitleChanged(std::function<void()> changed) { m_titleChanged = std::move(changed); }
     // Another tab shows: this one's scene nodes are about to go; its next build makes them again.
     void detach();
+    // Sends queued render jobs while the window's budget has room.
+    void resume() { pump(); }
+    // Another pane of the split takes focus: this one's caption tools and sidebar nodes go; its pages stay.
+    void blur() {
+      forgetCaption();
+      forgetSidebar();
+    }
     // Asks Save / Don't Save / Cancel; `close` runs once the tab may close.
     void askSaveBeforeClose(std::function<void()> close);
 
@@ -278,7 +291,12 @@ namespace viewer {
     void follow(const Link& link);
     std::unordered_map<std::uint64_t, Tile> m_tiles; // by tileKey
     std::vector<Job> m_jobs;
-    int m_inFlight = 0;
+    int m_inFlight = 0; // this document's share of m_budget.inFlight
+    RenderBudget& m_budget;
+    void takeJob();
+    void endJob();
+    // Stale replies are dropped: this document's jobs leave the window's budget at once.
+    void releaseJobs();
     std::uint64_t m_renderSeq = 0;
     std::vector<PendingInk> m_pendingInk;
     std::vector<Node*> m_tileLayers;
