@@ -9,7 +9,7 @@ pub mod proto;
 pub mod sandbox;
 
 use proto::{
-    ERR_BAD_REQUEST, KIND_TEXT, Msg, OP_ANNOT_ADD, OP_AUDIO, OP_COVER, OP_TAGS, OP_ANNOT_REMOVE, OP_FIND, OP_SAVE, OP_FRAME, OP_INFO, OP_INFO_REPLY, OP_LINKS, OP_RELEASE, OP_RENDER, OP_RENDER_TILE, OP_SELECT, OP_TEXT,
+    ERR_BAD_REQUEST, KIND_TEXT, Msg, OP_ANNOT_ADD, OP_AUDIO, OP_COVER, OP_TAGS, OP_ANNOT_REMOVE, OP_FIND, OP_SAVE, OP_FRAME, OP_INFO, OP_INFO_REPLY, OP_LINKS, OP_OUTLINE, OP_RELEASE, OP_RENDER, OP_RENDER_TILE, OP_SELECT, OP_TEXT,
 };
 use rustix::fd::{AsFd, BorrowedFd};
 use std::fs::File;
@@ -65,6 +65,7 @@ pub fn serve(sock: BorrowedFd<'_>, mut source: Source) -> std::io::Result<()> {
             }
             (Source::Pdf(pdf), OP_FIND) => pdf.find(req.a, &payload),
             (Source::Pdf(pdf), OP_LINKS) => pdf.links(req.a),
+            (Source::Pdf(pdf), OP_OUTLINE) => pdf.outline(),
             (Source::Pdf(pdf), OP_SELECT) => pdf.select(req.a, req.b, &payload),
             (Source::Pdf(pdf), OP_ANNOT_ADD) => pdf.annotate(req.a, req.b, req.c, req_fd).map(|m| (m, None)),
             (Source::Pdf(pdf), OP_ANNOT_REMOVE) => pdf.remove_annot(req.b).map(|m| (m, None)),

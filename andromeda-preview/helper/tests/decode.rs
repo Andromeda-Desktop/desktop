@@ -263,3 +263,35 @@ fn pdf_links_give_their_area_and_target() {
     assert_eq!((none.op, none.b), (proto::OP_LINKS_REPLY, 0));
     assert!(fd.is_none());
 }
+
+#[test]
+fn pdf_outline_is_flat_in_reading_order() {
+    let file = tempfile::Builder::new().suffix(".pdf").tempfile().unwrap();
+    let surface = cairo::PdfSurface::new(200.0, 100.0, file.path()).unwrap();
+    let first = surface.add_outline(cairo::PDF_OUTLINE_ROOT, "One", "page=1", cairo::PdfOutline::OPEN).unwrap();
+    surface.add_outline(first, "One a", "page=2", cairo::PdfOutline::empty()).unwrap();
+    surface.add_outline(cairo::PDF_OUTLINE_ROOT, "Two", "page=3", cairo::PdfOutline::empty()).unwrap();
+    let cr = cairo::Context::new(&surface).unwrap();
+    for _ in 0..3 {
+        cr.show_page().unwrap();
+    }
+    drop(cr);
+    surface.finish();
+    let helper = Helper::start("pdf", file.path());
+    let (reply, fd) = helper.ask(Msg::new(proto::OP_OUTLINE, 0, 0, 0, 0));
+    assert_eq!((reply.op, reply.b), (proto::OP_OUTLINE_REPLY, 3));
+    let bytes = read_fd(fd.unwrap());
+    let u = |i: usize| u32::from_le_bytes(bytes[i * 4..][..4].try_into().unwrap());
+    let rows: Vec<_> = (0..3).map(|r| (u(r * 3), u(r * 3 + 1), u(r * 3 + 2))).collect();
+    assert_eq!(rows, [(0, 0, 3), (1, 1, 5), (0, 2, 3)]);
+    assert_eq!(&bytes[36..], b"OneOne aTwo");
+}
+
+#[test]
+fn pdf_without_outline_has_none() {
+    let file = sample_pdf();
+    let helper = Helper::start("pdf", file.path());
+    let (reply, fd) = helper.ask(Msg::new(proto::OP_OUTLINE, 0, 0, 0, 0));
+    assert_eq!((reply.op, reply.b), (proto::OP_OUTLINE_REPLY, 0));
+    assert!(fd.is_none());
+}

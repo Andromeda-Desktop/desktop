@@ -23,6 +23,7 @@ class AppWindow;
 class Image;
 class Label;
 class Box;
+class Flex;
 class Input;
 class Node;
 class Renderer;
@@ -126,6 +127,13 @@ namespace viewer {
     [[nodiscard]] std::unique_ptr<Node> buildToolbar(float width);
     [[nodiscard]] std::unique_ptr<Node> buildPages(Renderer& renderer);
     [[nodiscard]] std::unique_ptr<Node> buildSidebar(Renderer& renderer);
+    [[nodiscard]] std::unique_ptr<Node> buildThumbs(Renderer& renderer);
+    // The width left of the window for the page column: the window less the sidebar.
+    [[nodiscard]] float pageAreaWidth() const;
+    [[nodiscard]] std::unique_ptr<Node> buildOutline();
+    void requestOutline();
+    // The outline entry the current page belongs to: the last one that starts at or before it.
+    [[nodiscard]] std::optional<std::size_t> currentEntry() const;
     [[nodiscard]] std::unique_ptr<Node> buildMessage(const std::string& title, const std::string& caption);
 
     void openPdf();
@@ -211,6 +219,16 @@ namespace viewer {
       std::vector<Link> links;
     };
     std::vector<PageLinks> m_links;
+    struct OutlineEntry {
+      std::uint32_t depth = 0;
+      std::optional<std::size_t> page;
+      std::string title;
+    };
+    std::vector<OutlineEntry> m_outline;
+    enum class SidebarView : std::uint8_t { Pages, Outline };
+    SidebarView m_sidebarView = SidebarView::Pages;
+    std::vector<Flex*> m_outlineRows;
+    std::optional<std::size_t> m_shownEntry;
     void requestLinks(std::size_t page);
     [[nodiscard]] const Link* linkAt(std::size_t page, float x, float y) const;
     void follow(const Link& link);

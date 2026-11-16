@@ -54,6 +54,8 @@ namespace preview {
     inline constexpr std::uint32_t Peaks = 14;
     // a = page -> LinksReply.
     inline constexpr std::uint32_t Links = 16;
+    // -> OutlineReply.
+    inline constexpr std::uint32_t Outline = 17;
     inline constexpr std::uint32_t InfoReply = 0x81;
     inline constexpr std::uint32_t Page = 0x82;
     inline constexpr std::uint32_t TextReply = 0x83;
@@ -75,6 +77,8 @@ namespace preview {
     // a = page, b = links; data (b > 0) = b records of 4 f32 in points, u32 kLink*, u32 target page or URI bytes;
     // then the URIs in order.
     inline constexpr std::uint32_t LinksReply = 0x8d;
+    // b = entries; data (b > 0) = per entry u32 depth, u32 page (0xffffffff: none), u32 title bytes; then the titles.
+    inline constexpr std::uint32_t OutlineReply = 0x8e;
     inline constexpr std::uint32_t Error = 0xff;
   } // namespace op
 

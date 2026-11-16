@@ -1,7 +1,7 @@
 //! Decoders the helper runs inside its sandbox. Each returns a sealed memfd the window maps read-only.
 
 use crate::proto::{
-    ERR_BAD_REQUEST, ERR_BINARY, ERR_DECODE, ERR_RANGE, ERR_TOO_LARGE, KIND_PDF, LINK_PAGE, LINK_URI, Msg, OP_FIND_REPLY, OP_INFO_REPLY, OP_LINKS_REPLY,
+    ERR_BAD_REQUEST, ERR_BINARY, ERR_DECODE, ERR_RANGE, ERR_TOO_LARGE, KIND_PDF, LINK_PAGE, LINK_URI, Msg, OP_FIND_REPLY, OP_INFO_REPLY, OP_LINKS_REPLY, OP_OUTLINE_REPLY,
     OP_PAGE, OP_SELECT_REPLY, OP_TEXT_REPLY, SELECT_GLYPH, SELECT_LINE, SELECT_WORD,
 };
 use rustix::fd::OwnedFd;
@@ -146,6 +146,62 @@ unsafe fn dest_page(doc: *mut poppler::ffi::PopplerDocument, dest: *mut poppler:
     u32::try_from(page_num).ok().and_then(|n| n.checked_sub(1))
 }
 
+/// Outline entries and nesting kept from a file; an outline past these is cut.
+const MAX_OUTLINE: u32 = 4096;
+const MAX_OUTLINE_DEPTH: u32 = 32;
+
+#[derive(Default)]
+struct Outline {
+    rows: Vec<u8>,
+    titles: Vec<u8>,
+    count: u32,
+}
+
+impl Outline {
+    /// Adds `iter` and its siblings after it, each followed by its children.
+    #[allow(unsafe_code)]
+    fn walk(&mut self, doc: *mut poppler::ffi::PopplerDocument, iter: &mut poppler::IndexIter, depth: u32) {
+        use glib::translate::ToGlibPtrMut;
+        use poppler::ffi;
+        loop {
+            if self.count >= MAX_OUTLINE {
+                return;
+            }
+            let raw: *mut ffi::PopplerIndexIter = iter.to_glib_none_mut().0;
+            // SAFETY: `raw` is a live iterator; the action it returns is ours to free, and its title and dest live
+            // until then.
+            unsafe {
+                let action = ffi::poppler_index_iter_get_action(raw);
+                if !action.is_null() {
+                    let title = (*action).any.title;
+                    let title = if title.is_null() { &[][..] } else { std::ffi::CStr::from_ptr(title).to_bytes() };
+                    let page = if (*action).type_ == ffi::POPPLER_ACTION_GOTO_DEST {
+                        dest_page(doc, (*action).goto_dest.dest)
+                    } else {
+                        None
+                    };
+                    if let Ok(len) = u32::try_from(title.len()) {
+                        for v in [depth, page.unwrap_or(u32::MAX), len] {
+                            self.rows.extend_from_slice(&v.to_le_bytes());
+                        }
+                        self.titles.extend_from_slice(title);
+                        self.count += 1;
+                    }
+                    ffi::poppler_action_free(action);
+                }
+            }
+            if depth < MAX_OUTLINE_DEPTH
+                && let Some(mut child) = iter.child()
+            {
+                self.walk(doc, &mut child, depth + 1);
+            }
+            if !iter.next() {
+                return;
+            }
+        }
+    }
+}
+
 fn push_rect(out: &mut Vec<u8>, x0: f64, y0: f64, x1: f64, y1: f64) {
     for v in [x0, y0, x1, y1] {
         out.extend_from_slice(&(v as f32).to_le_bytes());
@@ -218,6 +274,30 @@ impl Pdf {
         records.extend(uris);
         let fd = if count > 0 { Some(sealed("preview-links", &records)?) } else { None };
         Ok((Msg::new(OP_LINKS_REPLY, index, count, 0, 0), fd))
+    }
+
+    /// The document outline in reading order; no fd when there is none.
+    ///
+    /// # Errors
+    /// `ERR_DECODE` when the reply cannot be written.
+    #[allow(unsafe_code)]
+    pub fn outline(&self) -> Result<(Msg, Option<OwnedFd>), u32> {
+        use glib::translate::{FromGlibPtrFull, ToGlibPtr};
+        let doc: *mut poppler::ffi::PopplerDocument = self.doc.to_glib_none().0;
+        // SAFETY: `doc` is live; a null iterator (no outline) becomes None.
+        let root: Option<poppler::IndexIter> =
+            unsafe { FromGlibPtrFull::from_glib_full(poppler::ffi::poppler_index_iter_new(doc)) };
+        let mut out = Outline::default();
+        if let Some(mut iter) = root {
+            out.walk(doc, &mut iter, 0);
+        }
+        let fd = if out.count > 0 {
+            out.rows.extend(out.titles);
+            Some(sealed("preview-outline", &out.rows)?)
+        } else {
+            None
+        };
+        Ok((Msg::new(OP_OUTLINE_REPLY, 0, out.count, 0, 0), fd))
     }
 
     /// The places of `query` on page `index`, top left origin; no fd when there is none.

@@ -218,7 +218,9 @@ namespace viewer {
       m_pages.assign(m_model.pageCount(), {});
       m_thumbs.assign(m_model.pageCount(), {});
       m_links.assign(m_model.pageCount(), {});
+      m_outline.clear();
       m_mode = Mode::Pdf;
+      requestOutline();
       kLog.info("opened pdf {} pages", m_model.pageCount());
       rebuild();
     });
@@ -729,6 +731,15 @@ namespace viewer {
       }
       m_shownPage = page;
     }
+    if (const auto entry = currentEntry(); entry != m_shownEntry) {
+      for (const auto i : {m_shownEntry, entry}) {
+        if (i && *i < m_outlineRows.size() && m_outlineRows[*i] != nullptr) {
+          m_outlineRows[*i]->setFill(i == entry ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
+                                                : clearColorSpec());
+        }
+      }
+      m_shownEntry = entry;
+    }
     m_window.invalidate();
   }
 
@@ -1153,6 +1164,7 @@ namespace viewer {
     m_hscroll = nullptr;
     m_column = nullptr;
     m_thumbScroll = nullptr;
+    m_outlineRows.clear();
     m_searchInput = nullptr;
     m_noteInput = nullptr;
     m_pageInput = nullptr;
@@ -1174,6 +1186,8 @@ namespace viewer {
     }
     m_dropped.clear();
     forgetNodes();
+    // Fit width uses the page area inside the padding; set it before the toolbar shows the zoom.
+    m_model.setViewportWidth(std::max(100.0F, pageAreaWidth() - 2.0F * kPagePadding * s));
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
     // Full screen is immersive: the page column alone.
     const bool immersive = m_window.fullscreen() && m_mode == Mode::Pdf;
@@ -1322,23 +1336,24 @@ namespace viewer {
     return bar;
   }
 
+  float ViewerWindow::pageAreaWidth() const {
+    const bool sidebar = m_sidebar && !m_window.fullscreen();
+    return m_window.contentRect().width - (sidebar ? kSidebarWidth * m_window.uiScale() : 0.0F);
+  }
+
   std::unique_ptr<Node> ViewerWindow::buildPages(Renderer& renderer) {
     const float s = m_window.uiScale();
     const float pad = kPagePadding * s;
     auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = pad});
     scroll->setFlexGrow(1.0F);
-    // Fit-width uses the area inside the padding; the sidebar and the window size change it.
-    const bool sidebar = m_sidebar && !m_window.fullscreen();
-    const float area = m_window.contentRect().width - (sidebar ? kSidebarWidth * s : 0.0F);
-    const float viewport = area - 2.0F * pad;
-    m_model.setViewportWidth(std::max(100.0F, viewport));
+    const float area = pageAreaWidth();
     // A page wider than the view pans sideways in its own scroll view; vertical scrolling passes through it.
     auto hscroll = ui::scrollView({.viewportPaddingH = pad, .viewportPaddingV = 0.0F});
     hscroll->setOrientation(ScrollOrientation::Horizontal);
     hscroll->setScrollbarVisible(false);
     hscroll->setSize(area, m_model.contentHeight());
     auto columnNode = ui::column({.align = FlexAlign::Center, .gap = DocumentModel::kPageGap,
-                                  .width = std::max(viewport, widestPage())});
+                                  .width = std::max(area - 2.0F * pad, widestPage())});
     Node* column = columnNode.get();
     const float zoom = m_model.zoom();
     for (std::size_t i = 0; i < m_pages.size(); ++i) {
@@ -1446,6 +1461,110 @@ namespace viewer {
   }
 
   std::unique_ptr<Node> ViewerWindow::buildSidebar(Renderer& renderer) {
+    if (m_outline.empty()) {
+      return buildThumbs(renderer);
+    }
+    const float s = m_window.uiScale();
+    auto column = ui::column({.align = FlexAlign::Stretch, .width = kSidebarWidth * s});
+    auto top = ui::row({.justify = FlexJustify::Center, .paddingV = Style::spaceMd * s});
+    top->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "Pages"}, {.label = "Outline"}},
+                                 .selectedIndex = m_sidebarView == SidebarView::Outline ? 1U : 0U,
+                                 .compact = true,
+                                 .equalSegmentWidths = true,
+                                 .width = (kSidebarWidth - 2.0F * Style::spaceMd) * s,
+                                 .onChange =
+                                     [this](std::size_t i) {
+                                       m_sidebarView = i == 1 ? SidebarView::Outline : SidebarView::Pages;
+                                       rebuild();
+                                     }}));
+    column->addChild(std::move(top));
+    auto list = m_sidebarView == SidebarView::Outline ? buildOutline() : buildThumbs(renderer);
+    list->setFlexGrow(1.0F);
+    column->addChild(std::move(list));
+    return column;
+  }
+
+  std::optional<std::size_t> ViewerWindow::currentEntry() const {
+    const std::size_t page = currentPage();
+    std::optional<std::size_t> best;
+    for (std::size_t i = 0; i < m_outline.size(); ++i) {
+      const auto& target = m_outline[i].page;
+      if (target && *target <= page && (!best || *target >= *m_outline[*best].page)) {
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  std::unique_ptr<Node> ViewerWindow::buildOutline() {
+    const float s = m_window.uiScale();
+    const float pad = Style::spaceSm * s;
+    auto scroll = ui::scrollView({.viewportPaddingH = pad, .viewportPaddingV = 0.0F});
+    const float width = kSidebarWidth * s - 2.0F * pad;
+    const float height = Tokens::componentSidebarRow * s;
+    const auto current = currentEntry();
+    m_shownEntry = current;
+    m_outlineRows.assign(m_outline.size(), nullptr);
+    for (std::size_t i = 0; i < m_outline.size(); ++i) {
+      const OutlineEntry& entry = m_outline[i];
+      auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .width = width, .height = height,
+                                 .onClick = [this, i](const InputArea::PointerData&) {
+                                   if (i < m_outline.size() && m_outline[i].page) {
+                                     goToPage(*m_outline[i].page);
+                                   }
+                                 }});
+      auto row = ui::row({.align = FlexAlign::Center,
+                          .fill = i == current ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
+                                               : clearColorSpec(),
+                          .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s),
+                          .width = width,
+                          .height = height});
+      // Deeper levels indent up to four steps; past that the title would have no room in the narrow sidebar.
+      const float indent = static_cast<float>(std::min<std::uint32_t>(entry.depth, 4)) * Tokens::spaceP12 * s;
+      row->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s + indent);
+      row->addChild(ui::label({.text = entry.title, .fontSize = Style::fontSizeCaption * s,
+                               .color = colorSpecFromRole(entry.page ? ColorRole::Label1 : ColorRole::Label2),
+                               .maxLines = 1, .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
+      m_outlineRows[i] = row.get();
+      area->addChild(std::move(row));
+      scroll->content()->addChild(std::move(area));
+    }
+    return scroll;
+  }
+
+  void ViewerWindow::requestOutline() {
+    m_helper->request({.op = preview::op::Outline}, {}, [this, generation = m_generation](const preview::HelperReply& reply) {
+      if (generation != m_generation || reply.msg.op != preview::op::OutlineReply || reply.data == nullptr) {
+        return;
+      }
+      const auto bytes = reply.data->bytes();
+      constexpr std::size_t kRow = 3 * sizeof(std::uint32_t);
+      const std::size_t count = reply.msg.b;
+      std::size_t text = count * kRow;
+      if (text > bytes.size()) {
+        return;
+      }
+      std::vector<OutlineEntry> outline;
+      outline.reserve(count);
+      for (std::size_t r = 0; r < count; ++r) {
+        std::uint32_t v[3];
+        std::memcpy(v, bytes.data() + r * kRow, sizeof(v));
+        if (v[2] > bytes.size() - text) {
+          return;
+        }
+        OutlineEntry entry{.depth = v[0], .title = std::string(reinterpret_cast<const char*>(bytes.data()) + text, v[2])};
+        if (v[1] < m_model.pageCount()) {
+          entry.page = v[1];
+        }
+        text += v[2];
+        outline.push_back(std::move(entry));
+      }
+      m_outline = std::move(outline);
+      rebuild();
+    });
+  }
+
+  std::unique_ptr<Node> ViewerWindow::buildThumbs(Renderer& renderer) {
     const float s = m_window.uiScale();
     auto scroll = ui::scrollView({.viewportPaddingH = Style::spaceMd * s, .viewportPaddingV = Style::spaceMd * s});
     scroll->setSize(kSidebarWidth * s, 0.0F);

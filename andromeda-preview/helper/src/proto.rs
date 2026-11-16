@@ -41,6 +41,8 @@ pub const OP_COVER: u32 = 13;
 pub const OP_PEAKS: u32 = 14;
 /// a = page index. Reply `OP_LINKS_REPLY`.
 pub const OP_LINKS: u32 = 16;
+/// Reply `OP_OUTLINE_REPLY`.
+pub const OP_OUTLINE: u32 = 17;
 pub const LINK_PAGE: u32 = 0;
 pub const LINK_URI: u32 = 1;
 pub const MAX_PEAKS: u32 = 1024;
@@ -75,6 +77,9 @@ pub const OP_PEAKS_REPLY: u32 = 0x8c;
 /// a = page, b = link count; fd (when b > 0) = b records of 4 f32 (x0, y0, x1, y1) in points, origin top left,
 /// u32 `LINK_*`, u32 target page index or URI byte length; then the URIs of the `LINK_URI` records in order.
 pub const OP_LINKS_REPLY: u32 = 0x8d;
+/// b = entry count; fd (when b > 0) = per entry in reading order u32 depth (0 = top), u32 target page index
+/// (`u32::MAX` for none), u32 title byte length; then the UTF-8 titles in order.
+pub const OP_OUTLINE_REPLY: u32 = 0x8e;
 /// a = ERR_*.
 pub const OP_ERROR: u32 = 0xff;
 
