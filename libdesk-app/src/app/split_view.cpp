@@ -19,9 +19,19 @@
 
 using TileNode = andromeda::tiling::DwindleTree::Node;
 
-SplitView::SplitView(AppWindow& window, Callbacks callbacks) : m_window(window), m_callbacks(std::move(callbacks)) {}
+SplitView::SplitView(AppWindow& window, Callbacks callbacks) : m_window(window), m_callbacks(std::move(callbacks)) {
+  // A press anywhere on a card (caption, content, a gap between pages) focuses it; the press still reaches its area.
+  m_window.input().setPressCallback([this](float x, float y) {
+    for (const Card& card : m_cards) {
+      if (card.id != m_ringPane && card.cell->containsScenePoint(x, y)) {
+        m_callbacks.focus(card.id);
+        return;
+      }
+    }
+  });
+}
 
-SplitView::~SplitView() = default;
+SplitView::~SplitView() { m_window.input().setPressCallback({}); }
 
 void SplitView::reset() {
   m_slot = nullptr;
@@ -127,11 +137,12 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
     box->setPaletteTone(toneOn(resolveColorSpec(card.fill)));
 
     // Caption (split mockup .cap): h 40, p 0 8 0 16; lead, name, state, accessory, trail, window buttons top right.
-    auto cap = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .minHeight = caption, .maxHeight = caption});
+    auto cap = ui::row({.out = &card.caption, .align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .minWidth = r.width,
+                        .minHeight = caption, .maxWidth = r.width, .maxHeight = caption, .width = r.width, .height = caption});
     cap->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP16 * s);
-    // A click focuses the pane; a drag moves the window, as the header does.
-    auto area = ui::inputArea({.participatesInLayout = false});
-    area->setSize(r.width, caption);
+    // A drag moves the window, as the header does. The area holds the caption row: a hit on
+    // its labels finds the area among their parents.
+    auto area = ui::inputArea({.width = r.width, .height = caption});
     card.captionArea = area.get();
     struct Press {
       bool down = false;
@@ -151,12 +162,6 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
         m_window.beginMove(press->serial);
       }
     });
-    area->setOnClick([this, id = card.id](const InputArea::PointerData& data) {
-      if (data.button == BTN_LEFT) {
-        m_callbacks.focus(id);
-      }
-    });
-    cap->addChild(std::move(area));
     Caption parts = m_callbacks.caption(card.id);
     if (parts.lead) {
       card.lead = parts.lead.get();
@@ -186,18 +191,21 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
       card.buttons = buttons.get();
       cap->addChild(std::move(buttons));
     }
-    box->addChild(std::move(cap));
+    card.captionArea->addChild(std::move(cap));
+    box->addChild(std::move(area));
     auto holder = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .flexGrow = 1.0F});
     holder->addChild(m_callbacks.content(renderer, card.id, r.width, std::max(0.0F, r.height - caption)));
     box->addChild(std::move(holder));
     cell->addChild(std::move(box));
-    // Over the card: the contents fill their whole rect and would cover a border of the card itself.
+    // Over the card: the contents fill their whole rect and would cover a border of the card itself. Clicks pass through.
     cell->addChild(ui::box({.out = &card.stroke, .fill = clear, .border = colorSpecFromRole(ColorRole::Stroke),
                             .borderWidth = 0.5F * s, .radius = radius, .width = r.width, .height = r.height,
                             .participatesInLayout = false}));
     cell->addChild(ui::box({.out = &card.ring, .fill = clear, .border = focusRingColorSpec(),
                             .borderWidth = Tokens::componentSplitFocusRing * s, .radius = radius, .width = r.width,
                             .height = r.height, .opacity = 0.0F, .participatesInLayout = false}));
+    card.stroke->setHitTestVisible(false);
+    card.ring->setHitTestVisible(false);
     cells.push_back(std::move(cell));
   }
   // A plain node lays its cards out where the tree put them.
@@ -379,6 +387,9 @@ void SplitView::applyCellRects(const std::vector<PaneRect>& rects) {
       box->setSize(r.width, r.height);
     }
     card.captionArea->setSize(r.width, caption);
+    card.caption->setMinWidth(r.width);
+    card.caption->setMaxWidth(r.width);
+    card.caption->setSize(r.width, caption);
   }
 }
 

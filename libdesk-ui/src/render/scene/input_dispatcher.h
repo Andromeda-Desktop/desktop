@@ -18,6 +18,8 @@ public:
   using CursorShapeCallback = std::function<void(std::uint32_t serial, std::uint32_t shape)>;
   using HoverChangeCallback = std::function<void(InputArea* oldArea, InputArea* newArea)>;
   using FocusChangeCallback = std::function<void(InputArea* oldArea, InputArea* newArea)>;
+  // Every button press at scene x, y, before it reaches its area.
+  using PressCallback = std::function<void(float x, float y)>;
   struct TabFocusSnapshot {
     std::optional<std::size_t> index;
     std::optional<std::string> key;
@@ -39,6 +41,7 @@ public:
   void setCursorShapeCallback(CursorShapeCallback callback);
   void setHoverChangeCallback(HoverChangeCallback callback);
   void setFocusChangeCallback(FocusChangeCallback callback);
+  void setPressCallback(PressCallback callback);
   void setTextInputContext(
       wl_surface* surface, TextInputService* service, bool keyboardFocusActivation = false,
       wl_surface* keyboardFocusParentSurface = nullptr
@@ -112,6 +115,7 @@ private:
   CursorShapeCallback m_cursorShapeCallback;
   HoverChangeCallback m_hoverChangeCallback;
   FocusChangeCallback m_focusChangeCallback;
+  PressCallback m_pressCallback;
   wl_surface* m_textInputSurface = nullptr;
   TextInputService* m_textInputService = nullptr;
   bool m_textInputKeyboardFocusActivation = false;

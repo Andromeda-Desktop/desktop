@@ -123,6 +123,8 @@ void InputDispatcher::setFocusChangeCallback(FocusChangeCallback callback) {
   m_focusChangeCallback = std::move(callback);
 }
 
+void InputDispatcher::setPressCallback(PressCallback callback) { m_pressCallback = std::move(callback); }
+
 void InputDispatcher::setCursorShapeCallback(CursorShapeCallback callback) {
   m_cursorShapeCallback = std::move(callback);
 }
@@ -220,6 +222,9 @@ bool InputDispatcher::pointerButton(
   m_hasPointerPosition = true;
 
   pruneDetachedAreas();
+  if (pressed && m_pressCallback) {
+    m_pressCallback(x, y);
+  }
 
   InputArea* target = m_capturedArea;
   if (target == nullptr) {

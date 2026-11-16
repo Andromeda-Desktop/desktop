@@ -98,6 +98,7 @@ private:
     ColorSpec fill;
     Flex* cell = nullptr;
     InputArea* captionArea = nullptr;
+    Flex* caption = nullptr; // the caption row inside captionArea
     Box* stroke = nullptr; // the card's edge, over its content
     Box* ring = nullptr;   // the focus ring over the stroke
     std::uint32_t focusAnim = 0;
