@@ -75,6 +75,8 @@ namespace viewer {
 
   AppWindow& ViewerApp::createWindow() {
     AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 900, .height = 760,
+                                       // The PDF toolbar's buttons, zoom and search field fit from this width.
+                                       .minWidth = 720,
                                        .headerWhenFullscreen = false});
     m_windows[&window] = std::make_unique<ViewerWindow>(loop(), window);
     return window;
