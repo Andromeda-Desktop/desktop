@@ -1,8 +1,9 @@
-//! Imports a speaker tuning from the user's own Windows install (a Dolby DAX3 driver file, an HP
+//! Imports a speaker tuning from the user's own Windows install (a Dolby DAX3 driver file, a DTS APO4 EQ, an HP
 //! Sonitude preset archive or an Equalizer APO config) into a profile that the `PipeWire` filter-chain generator reads.
 
 pub mod chain;
 pub mod dax2;
+pub mod dts;
 pub mod sonitude;
 pub mod surface;
 
@@ -18,7 +19,7 @@ pub const MAX_XML_BYTES: usize = 4 << 20;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Tuning {
-    /// Where the tuning came from, shown in Settings: `Dolby`, `Sonitude` or `Equalizer APO`.
+    /// Where the tuning came from, shown in Settings: `Dolby`, `DTS`, `Sonitude` or `Equalizer APO`.
     #[serde(default = "dolby")]
     pub source: String,
     /// HDA codec subsystem id, upper-case hex, for example `10431A63`.

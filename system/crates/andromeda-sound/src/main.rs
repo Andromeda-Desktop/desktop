@@ -316,7 +316,7 @@ fn import(mut args: impl Iterator<Item = String>) -> Result<PathBuf> {
         let found = with_windows(windows, |roots| first_ok(roots.iter().map(|r| find_tuning(r, &stem, vendor))));
         found.with_context(|| {
             format!(
-                "no Windows partition with a speaker tuning (Dolby {stem}*.xml or DAX2 .inf, Sonitude archive or Equalizer APO config)"
+                "no Windows partition with a speaker tuning (Dolby {stem}*.xml or DAX2 .inf, DTS APO4 EQ, Sonitude archive or Equalizer APO config)"
             )
         })??
     };
@@ -365,11 +365,26 @@ fn find_tuning(root: &Path, stem: &str, vendor_id: u32) -> Option<Result<androme
     let store = root.join("Windows/System32/DriverStore/FileRepository");
     let packages: Vec<PathBuf> = fs::read_dir(&store).into_iter().flatten().flatten().map(|d| d.path()).collect();
     let eqapo = root.join("Program Files/EqualizerAPO/config/config.txt");
-    let tries: [&dyn Fn() -> Option<Result<andromeda_sound::Tuning>>; 2] =
-        [&|| find_vendor(&packages, Layout::DriverStore, &store, stem, vendor_id), &|| {
-            eqapo.is_file().then(|| eqapo_file(&eqapo, Some(root), &subsystem_of(stem)))
-        }];
+    let subsystem = subsystem_of(stem);
+    let tries: [&dyn Fn() -> Option<Result<andromeda_sound::Tuning>>; 3] = [
+        &|| find_vendor(&packages, Layout::DriverStore, &store, stem, vendor_id),
+        &|| find_dts(root, &subsystem),
+        &|| eqapo.is_file().then(|| eqapo_file(&eqapo, Some(root), &subsystem)),
+    ];
     first_ok(tries.iter().map(|f| f()))
+}
+
+/// The DTS APO4 speaker EQ this Windows install holds for the codec; an error only when none reads.
+fn find_dts(root: &Path, subsystem: &str) -> Option<Result<andromeda_sound::Tuning>> {
+    let mut failed = None;
+    for dir in andromeda_sound::dts::folders(root) {
+        match andromeda_sound::dts::read_dir(&dir, subsystem) {
+            Ok(Some(t)) => return Some(Ok(t)),
+            Ok(None) => {}
+            Err(e) => failed = failed.or(Some(e)),
+        }
+    }
+    failed.map(Err)
 }
 
 /// The first tuning found; an error only when no source gives one.
