@@ -2403,6 +2403,22 @@ void FilesWindow::refreshCompare() {
   }).detach();
 }
 
+void FilesWindow::sendToOtherPane(bool move) {
+  if (m_panes[1] == nullptr) {
+    return;
+  }
+  const std::vector<fs::path> sources = selectedPaths();
+  const fs::path target = m_panes[m_activePane == 0 ? 1 : 0]->location();
+  if (sources.empty() || target.empty()) {
+    return;
+  }
+  if (move) {
+    startJob("Moving", sources.size(), [&](FileOpsClient& ops, auto done) { ops.move(sources, target, done); });
+  } else {
+    startJob("Copying", sources.size(), [&](FileOpsClient& ops, auto done) { ops.copy(sources, target, done); });
+  }
+}
+
 void FilesWindow::syncCompare() {
   if (!m_compareOn || m_panes[1] == nullptr) {
     return;

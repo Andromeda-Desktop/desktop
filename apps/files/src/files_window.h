@@ -115,6 +115,8 @@ public:
     }
   }
   void syncCompare();
+  // Copies (or moves) the active pane's selection into the other pane's folder (F5, F6 in split view).
+  void sendToOtherPane(bool move);
   [[nodiscard]] bool canCompare() const noexcept { return m_panes[1] != nullptr; }
   [[nodiscard]] bool comparing() const noexcept { return m_compareOn; }
   [[nodiscard]] class SelectPatternSheet* patternSheet() const;
