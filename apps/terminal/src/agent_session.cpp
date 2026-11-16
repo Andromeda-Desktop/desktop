@@ -451,7 +451,8 @@ namespace term::agent {
       }
     }
     if (inTurn || m_phase == Phase::Starting || status != 0) {
-      m_entries.emplace_back(Stop{StopKind::Failed, "the agent process exited with code " + std::to_string(status) + ".\n" + stderrTail});
+      m_entries.emplace_back(
+          Stop{StopKind::Failed, "the agent process exited with code " + std::to_string(status) + ".\n" + stderrTail, status});
     }
     m_lastStop = StopKind::Failed;
     m_outbox.clear();

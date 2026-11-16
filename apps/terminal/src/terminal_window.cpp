@@ -679,6 +679,14 @@ namespace term {
           data.status = "failed";
           break;
       }
+          if (model != nullptr) {
+            const auto& entries = model->entries();
+            const auto stop = std::find_if(entries.rbegin(), entries.rend(),
+                                           [](const agent::Entry& e) { return std::holds_alternative<agent::Stop>(e); });
+            if (stop != entries.rend() && std::get<agent::Stop>(*stop).exitCode) {
+              data.status += " \u00b7 agent exited " + std::to_string(*std::get<agent::Stop>(*stop).exitCode);
+            }
+          }
       if (model != nullptr && !model->title().empty()) {
         data.name = model->title();
       }

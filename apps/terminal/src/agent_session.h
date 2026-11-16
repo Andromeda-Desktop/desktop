@@ -65,6 +65,7 @@ namespace term::agent {
   struct Stop {
     StopKind kind;
     std::string message; // Failed: the cause in its first line, then the agent's log tail
+    std::optional<int> exitCode; // Failed because the agent process exited
   };
   using Entry = std::variant<Turn, Prose, Note, Action, Request, Stop>;
 
