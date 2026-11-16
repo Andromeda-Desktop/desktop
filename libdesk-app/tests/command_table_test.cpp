@@ -46,6 +46,15 @@ int main() {
   expect(table.find("edit.undo")->label == "Undo Typing", "same id replaces the command");
   expect(table.handleKey(XKB_KEY_z, KeyMod::Ctrl) && undo == 12, "the replacement owns its chord again");
 
+  int zoom = 0;
+  table.add({.id = "view.zoom-in", .label = "Zoom In", .shortcut = KeyChord{XKB_KEY_plus, KeyMod::Ctrl},
+             .run = [&] { ++zoom; }, .alternate = KeyChord{XKB_KEY_equal, KeyMod::Ctrl}});
+  expect(table.handleKey(XKB_KEY_plus, KeyMod::Ctrl | KeyMod::Shift) && zoom == 1, "Ctrl+plus typed with Shift runs");
+  expect(table.handleKey(XKB_KEY_equal, KeyMod::Ctrl) && zoom == 2, "the alternate chord runs");
+  expect(!table.handleKey(XKB_KEY_equal, KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt), "Alt still blocks a symbol chord");
+  canRedo = false;
+  expect(!table.handleKey(XKB_KEY_Z, KeyMod::Ctrl | KeyMod::Shift), "Shift on a letter is never dropped");
+
   expect(!table.run("missing"), "an unknown id does not run");
   canRedo = false;
   expect(!table.run("edit.redo") && !table.isEnabled("edit.redo"), "run() honours enabled");

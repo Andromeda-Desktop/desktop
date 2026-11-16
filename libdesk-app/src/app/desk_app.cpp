@@ -417,6 +417,13 @@ void DeskApp::addStandardCommands() {
       .run = withWindow([](AppWindow& w) { w.toggleMaximized(); }),
   });
   m_commands.add({
+      .id = "window.fullscreen",
+      .label = "Full Screen",
+      .group = "Window",
+      .shortcut = chord(XKB_KEY_F11, 0),
+      .run = withWindow([](AppWindow& w) { w.toggleFullscreen(); }),
+  });
+  m_commands.add({
       .id = "window.minimize",
       .label = "Minimize",
       .group = "Window",

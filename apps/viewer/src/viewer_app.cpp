@@ -33,7 +33,7 @@ namespace viewer {
 
   void ViewerApp::addCommands() {
     const auto add = [this](const char* id, const char* label, const char* group, std::uint32_t sym,
-                            std::uint32_t mods, void (ViewerWindow::*run)()) {
+                            std::uint32_t mods, void (ViewerWindow::*run)(), std::uint32_t altSym = 0) {
       commands().add({.id = id, .label = label, .group = group,
                       .shortcut = sym != 0 ? std::optional<KeyChord>(KeyChord{sym, mods}) : std::nullopt,
                       .enabled = [this] { return active() != nullptr; },
@@ -41,23 +41,17 @@ namespace viewer {
                         if (ViewerWindow* w = active(); w != nullptr) {
                           (w->*run)();
                         }
-                      }});
+                      },
+                      .alternate = altSym != 0 ? std::optional<KeyChord>(KeyChord{altSym, mods}) : std::nullopt});
     };
     add("edit.find", "Find", "Edit", XKB_KEY_f, KeyMod::Ctrl, &ViewerWindow::focusSearch);
     add("edit.copy", "Copy", "Edit", XKB_KEY_c, KeyMod::Ctrl, &ViewerWindow::copySelection);
-    add("view.zoom-in", "Zoom In", "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn);
+    add("view.zoom-in", "Zoom In", "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn, XKB_KEY_equal);
     add("view.zoom-out", "Zoom Out", "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);
     add("view.zoom-fit", "Fit Width", "View", XKB_KEY_0, KeyMod::Ctrl, &ViewerWindow::zoomFit);
     add("edit.undo", "Undo", "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
     add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
     add("view.toggle-sidebar", "Show Sidebar", "View", 0, 0, &ViewerWindow::toggleSidebar);
-    commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",
-                    .shortcut = KeyChord{.sym = XKB_KEY_F11, .modifiers = 0}, .enabled = {},
-                    .run = [this] {
-                      if (AppWindow* window = activeWindow()) {
-                        window->toggleFullscreen();
-                      }
-                    }});
   }
 
   ViewerWindow* ViewerApp::active() const {

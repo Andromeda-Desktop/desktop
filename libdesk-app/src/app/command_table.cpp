@@ -1,5 +1,6 @@
 #include "app/command_table.h"
 
+#include "core/input/key_modifiers.h"
 #include "core/log.h"
 
 #include <algorithm>
@@ -12,18 +13,30 @@ namespace {
   bool chordMatches(const KeyChord& chord, std::uint32_t sym, std::uint32_t modifiers) {
     return chord.modifiers == modifiers && xkb_keysym_to_lower(chord.sym) == xkb_keysym_to_lower(sym);
   }
+
+  bool holds(const AppCommand& command, std::uint32_t sym, std::uint32_t modifiers) {
+    return (command.shortcut.has_value() && chordMatches(*command.shortcut, sym, modifiers))
+        || (command.alternate.has_value() && chordMatches(*command.alternate, sym, modifiers));
+  }
+
+  // Shift is part of typing a printable symbol such as "plus", but not of a letter or of Tab.
+  bool shiftTypesSymbol(std::uint32_t sym, std::uint32_t modifiers) {
+    return (modifiers & KeyMod::Shift) != 0 && xkb_keysym_to_utf32(sym) > 0x20
+        && xkb_keysym_to_lower(sym) == xkb_keysym_to_upper(sym);
+  }
 } // namespace
 
 void CommandTable::add(AppCommand command) {
   remove(command.id);
-  if (command.shortcut.has_value()) {
-    const KeyChord chord = *command.shortcut;
-    const auto owner = std::ranges::find_if(m_commands, [&](const AppCommand& c) {
-      return c.shortcut.has_value() && chordMatches(*c.shortcut, chord.sym, chord.modifiers);
-    });
+  for (std::optional<KeyChord>* slot : {&command.shortcut, &command.alternate}) {
+    if (!slot->has_value()) {
+      continue;
+    }
+    const KeyChord chord = **slot;
+    const auto owner = std::ranges::find_if(m_commands, [&](const AppCommand& c) { return holds(c, chord.sym, chord.modifiers); });
     if (owner != m_commands.end()) {
       kLog.warn("shortcut {} of {} is held by {}; dropped", keyChordToString(chord), command.id, owner->id);
-      command.shortcut.reset();
+      slot->reset();
     }
   }
   m_commands.push_back(std::move(command));
@@ -55,13 +68,18 @@ bool CommandTable::run(std::string_view id) const {
 }
 
 const AppCommand* CommandTable::match(std::uint32_t sym, std::uint32_t modifiers) const {
-  for (const AppCommand& command : m_commands) {
-    if (command.shortcut.has_value() && chordMatches(*command.shortcut, sym, modifiers)
-        && (!command.enabled || command.enabled())) {
-      return &command;
+  const auto find = [&](std::uint32_t mods) -> const AppCommand* {
+    for (const AppCommand& command : m_commands) {
+      if (holds(command, sym, mods) && (!command.enabled || command.enabled())) {
+        return &command;
+      }
     }
+    return nullptr;
+  };
+  if (const AppCommand* exact = find(modifiers)) {
+    return exact;
   }
-  return nullptr;
+  return shiftTypesSymbol(sym, modifiers) ? find(modifiers & ~KeyMod::Shift) : nullptr;
 }
 
 bool CommandTable::handleKey(std::uint32_t sym, std::uint32_t modifiers) const {

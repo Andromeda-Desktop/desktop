@@ -17,6 +17,7 @@ struct AppCommand {
   std::optional<KeyChord> shortcut;
   std::function<bool()> enabled;   // empty = always enabled
   std::function<void()> run;
+  std::optional<KeyChord> alternate; // a second chord that runs the command; menus show only `shortcut`
 };
 
 class CommandTable {
@@ -30,7 +31,8 @@ public:
   [[nodiscard]] bool isEnabled(std::string_view id) const;
   // Runs an enabled command. False when the id is unknown or the command is disabled.
   bool run(std::string_view id) const;
-  // The enabled command whose shortcut matches the key, or nullptr.
+  // The enabled command whose shortcut or alternate matches the key, or nullptr. A chord written with a symbol
+  // that needs Shift (Ctrl+plus) also matches when Shift is held to type it.
   [[nodiscard]] const AppCommand* match(std::uint32_t sym, std::uint32_t modifiers) const;
   // Matches and runs; true when a command took the key.
   bool handleKey(std::uint32_t sym, std::uint32_t modifiers) const;
