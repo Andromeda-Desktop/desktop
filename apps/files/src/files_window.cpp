@@ -4041,6 +4041,10 @@ void FilesWindow::updateJobPill() {
   }
 }
 
+void FilesWindow::stepIconSize(int steps) {
+  m_browser->setIconSize(steps == 0 ? 0.0F : m_browser->iconSize() + static_cast<float>(steps) * Tokens::spaceP16);
+}
+
 void FilesWindow::openViewOptions(const Node* anchor) {
   if (m_picker.has_value()) {
     return;

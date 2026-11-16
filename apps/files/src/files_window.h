@@ -189,6 +189,8 @@ public:
   [[nodiscard]] std::optional<LinkShare::Device> galleryPhone() const;
   // View Options (FILES-UI-SPEC §16) under `anchor`, or under the header sort button (Ctrl+J, menus).
   void openViewOptions(const Node* anchor = nullptr);
+  // One slider step bigger (+1) or smaller (-1); 0 restores the default size.
+  void stepIconSize(int steps);
   // Add to Sidebar / Remove from Sidebar for selected folders (FB3 pins, Finder ⌃⌘T).
   void togglePin();
   [[nodiscard]] bool selectionPinned() const;

@@ -846,6 +846,7 @@ void FilesApp::addCommands() {
     std::optional<KeyChord> shortcut;
     bool (*enabled)(const FilesWindow&);
     void (*run)(FilesWindow&);
+    std::optional<KeyChord> alternate{};
   };
   const auto always = [](const FilesWindow&) { return true; };
   const auto selection = [](const FilesWindow& w) { return w.hasSelection(); };
@@ -951,6 +952,12 @@ void FilesApp::addCommands() {
        [](FilesWindow& w) { w.groupBy(FileGroupBy::Tags); }},
       {"view.options", "View Options…", "View", chord(XKB_KEY_j, KeyMod::Ctrl),
        [](const FilesWindow& w) { return !w.isPicker(); }, [](FilesWindow& w) { w.openViewOptions(); }},
+      {"view.zoom-in", "Bigger Icons", "View", chord(XKB_KEY_plus, KeyMod::Ctrl), always,
+       [](FilesWindow& w) { w.stepIconSize(1); }, chord(XKB_KEY_equal, KeyMod::Ctrl)},
+      {"view.zoom-out", "Smaller Icons", "View", chord(XKB_KEY_minus, KeyMod::Ctrl), always,
+       [](FilesWindow& w) { w.stepIconSize(-1); }},
+      {"view.zoom-reset", "Default Icon Size", "View", chord(XKB_KEY_0, KeyMod::Ctrl), always,
+       [](FilesWindow& w) { w.stepIconSize(0); }},
       {"view.details", "Show Details", "View", chord(XKB_KEY_p, KeyMod::Alt), [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.toggleDetails(); }},
       // Ctrl+(Shift+)Tab lives in FileBrowser::onKey (pickers have no commands); these entries put the tabs in the More menu.
@@ -994,6 +1001,7 @@ void FilesApp::addCommands() {
             run(*w);
           }
         },
+        .alternate = spec.alternate,
     });
   }  // Ctrl+W closes the current tab first, the window only with one tab left (Finder, Dolphin).
   commands().add({
