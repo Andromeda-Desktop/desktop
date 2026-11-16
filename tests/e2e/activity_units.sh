@@ -10,7 +10,7 @@ mkdir -p "$OUT"
 : > "$OUT/calls.txt"
 SRC=$ROOT/shell
 BIN=$OUT/activity-units
-g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -o "$BIN" \
+g++ -std=c++23 -I"$SRC/src" -I"$ROOT/libdesk-system/src" -I"$ROOT/libdesk-ui/src" -I"$ROOT/libdesk-ui" -o "$BIN" \
   "$(dirname "$0")/activity_units.cpp" "$ROOT/libdesk-system/src/dbus/systemd/systemd_units_service.cpp" \
   "$ROOT/libdesk-system/src/dbus/systemd/systemd_unit_name.cpp" "$ROOT/libdesk-system/src/dbus/session_bus.cpp" \
   "$ROOT/libdesk-ui/src/core/log.cpp" -lsdbus-c++

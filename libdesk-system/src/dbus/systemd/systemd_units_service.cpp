@@ -124,16 +124,42 @@ void SystemdUnitsService::refresh() {
         std::erase_if(m_unitProxies, [&units](const auto& entry) {
           return std::ranges::none_of(units, [&entry](const SystemdUnit& u) { return u.objectPath == entry.first; });
         });
+        // A unit known from the last refresh keeps its details until this refresh reads them again.
+        bool allKnown = true;
+        for (auto& unit : units) {
+          const auto known = std::ranges::lower_bound(m_units, unit.name, {}, &SystemdUnit::name);
+          if (known == m_units.end() || known->name != unit.name || known->objectPath != unit.objectPath) {
+            allKnown = false;
+            continue;
+          }
+          unit.slice = known->slice;
+          unit.controlGroup = known->controlGroup;
+          unit.fragmentPath = known->fragmentPath;
+          unit.unitFileState = known->unitFileState;
+          unit.unitFilePreset = known->unitFilePreset;
+          unit.activeEnterUsec = known->activeEnterUsec;
+        }
         m_units = std::move(units);
         m_pending = static_cast<int>(m_units.size()) * 2;
-        if (m_pending == 0) {
+        m_queue.clear();
+        if (m_pending == 0 || allKnown) {
           notify();
-          return;
         }
         for (const auto& unit : m_units) {
-          loadDetails(unit.name, unit.objectPath, generation);
+          m_queue.push_back({.name = unit.name, .path = unit.objectPath, .typeInterface = false});
+          m_queue.push_back({.name = unit.name, .path = unit.objectPath, .typeInterface = true});
         }
+        pump(generation);
       });
+}
+
+void SystemdUnitsService::pump(std::uint64_t generation) {
+  while (m_inFlight < kMaxInFlight && !m_queue.empty()) {
+    const DetailJob job = std::move(m_queue.front());
+    m_queue.pop_front();
+    ++m_inFlight;
+    loadDetails(job, generation);
+  }
 }
 
 void SystemdUnitsService::finishOne(std::uint64_t generation) {
@@ -142,33 +168,27 @@ void SystemdUnitsService::finishOne(std::uint64_t generation) {
   }
 }
 
-void SystemdUnitsService::loadDetails(const std::string& name, const std::string& path, std::uint64_t generation) {
-  auto& proxy = unitProxy(path);
-  proxy.getAllPropertiesAsync().onInterface(kUnitInterface).uponReplyInvoke(
-      [this, name, generation](std::optional<sdbus::Error> error, const Properties& props) {
-        if (generation != m_generation) {
-          return;
+void SystemdUnitsService::loadDetails(const DetailJob& job, std::uint64_t generation) {
+  unitProxy(job.path)
+      .getAllPropertiesAsync()
+      .onInterface(job.typeInterface ? typeInterface(job.name) : kUnitInterface)
+      .uponReplyInvoke([this, name = job.name, type = job.typeInterface,
+                        generation](std::optional<sdbus::Error> error, const Properties& props) {
+        --m_inFlight;
+        if (generation == m_generation) {
+          auto it = std::ranges::find(m_units, name, &SystemdUnit::name);
+          if (!error.has_value() && it != m_units.end()) {
+            if (type) {
+              it->slice = valueOr<std::string>(props, "Slice", {});
+              it->controlGroup = valueOr<std::string>(props, "ControlGroup", {});
+            } else {
+              applyUnitProperties(*it, props);
+            }
+          }
+          finishOne(generation);
         }
-        auto it = std::ranges::find(m_units, name, &SystemdUnit::name);
-        if (!error.has_value() && it != m_units.end()) {
-          applyUnitProperties(*it, props);
-        }
-        finishOne(generation);
-      }
-  );
-  proxy.getAllPropertiesAsync().onInterface(typeInterface(name)).uponReplyInvoke(
-      [this, name, generation](std::optional<sdbus::Error> error, const Properties& props) {
-        if (generation != m_generation) {
-          return;
-        }
-        auto it = std::ranges::find(m_units, name, &SystemdUnit::name);
-        if (!error.has_value() && it != m_units.end()) {
-          it->slice = valueOr<std::string>(props, "Slice", {});
-          it->controlGroup = valueOr<std::string>(props, "ControlGroup", {});
-        }
-        finishOne(generation);
-      }
-  );
+        pump(m_generation);
+      });
 }
 
 void SystemdUnitsService::removeUnit(const std::string& name) {

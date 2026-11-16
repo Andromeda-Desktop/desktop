@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -49,13 +50,22 @@ public:
   // Sorted by name. Complete only after onChange: details arrive asynchronously.
   [[nodiscard]] const std::vector<SystemdUnit>& units() const noexcept { return m_units; }
 
-  // onChange fires once when the list and every unit's details have arrived.
+  // onChange fires when the list and every unit's details have arrived. When every listed unit has details from the
+  // last refresh, it also fires at once with those: the second call carries the fresh details.
   void refresh();
   // Each signal wakes the shell, so live updates stay off while no one shows the list.
   void setLive(bool live);
 
 private:
-  void loadDetails(const std::string& name, const std::string& path, std::uint64_t generation);
+  struct DetailJob {
+    std::string name;
+    std::string path;
+    bool typeInterface = false; // the Service/Scope interface (Slice, ControlGroup), else the Unit interface
+  };
+  // systemd answers one GetAll at a time (~1 ms each): more calls in flight only queue in the bus daemon.
+  static constexpr int kMaxInFlight = 32;
+  void pump(std::uint64_t generation);
+  void loadDetails(const DetailJob& job, std::uint64_t generation);
   void loadUnit(const std::string& name, const std::string& path);
   void removeUnit(const std::string& name);
   void finishOne(std::uint64_t generation);
@@ -71,6 +81,8 @@ private:
   std::vector<sdbus::Slot> m_signalSlots;
   std::uint64_t m_generation = 0;
   int m_pending = 0;
+  std::deque<DetailJob> m_queue; // GetAll calls of the current refresh not yet sent
+  int m_inFlight = 0;
   bool m_available = false;
   std::string m_lastError;
 };
