@@ -508,6 +508,9 @@ namespace term {
 
   void TerminalWindow::fillSlot(Renderer& renderer) {
     m_cards.clear();
+    m_dividers.clear();
+    m_dragDivider.reset();
+    m_dropPreview = nullptr;
     m_ringPane = 0;
     ContentView* view = shownView();
     if (view == nullptr) {
@@ -526,6 +529,15 @@ namespace term {
       const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
       m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
     }
+    const float s = m_window.uiScale();
+    auto preview = ui::box({.out = &m_dropPreview,
+                            .fill = colorSpecFromRole(ColorRole::Accent, Tokens::componentTerminalDropFill),
+                            .border = focusRingColorSpec(),
+                            .borderWidth = Tokens::componentTerminalFocusRing * s,
+                            .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
+                            .visible = false,
+                            .participatesInLayout = false});
+    m_contentSlot->addChild(std::move(preview));
     // After this build is in the scene: the dispatcher focuses only attached areas.
     DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
       if (alive.expired()) {
@@ -615,6 +627,7 @@ namespace term {
       focusGrid();
     });
     row->setOnSecondaryClick([this, id](float x, float y) { openRowMenu(id, x, y); });
+    row->setOnDrag([this, id](StatusRow::DragPhase phase, float x, float y) { rowDrag(id, phase, x, y); });
     return row;
   }
 
@@ -1412,6 +1425,67 @@ namespace term {
       if (const auto it = std::ranges::find(m_views, card.id, &Session::id); it != m_views.end()) {
         it->view->setSize(card.rect.width, card.rect.height - caption);
       }
+    }
+  }
+
+  std::optional<TerminalWindow::DropTarget> TerminalWindow::dropTarget(std::uint64_t dragged, float sceneX,
+                                                                       float sceneY) const {
+    const auto shown = m_sessions.shown();
+    if (!shown || m_contentSlot == nullptr || dragged == *shown || m_sessions.splitOf(dragged) != nullptr) {
+      return std::nullopt;
+    }
+    if (const auto* split = m_sessions.splitOf(*shown); split != nullptr && split->size() >= kMaxPanes) {
+      return std::nullopt;
+    }
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m_contentSlot, x, y);
+    const float px = sceneX - x;
+    const float py = sceneY - y;
+    std::vector<std::pair<std::uint64_t, PaneRect>> panes;
+    if (m_cards.empty()) {
+      panes.emplace_back(*shown, PaneRect{0.0F, 0.0F, m_contentWidth, m_contentHeight});
+    }
+    for (const PaneCard& card : m_cards) {
+      panes.emplace_back(card.id, card.rect);
+    }
+    for (const auto& [id, r] : panes) {
+      if (px < r.x || py < r.y || px >= r.x + r.width || py >= r.y + r.height) {
+        continue;
+      }
+      // The nearest edge picks the half.
+      const float fx = (px - r.x) / r.width;
+      const float fy = (py - r.y) / r.height;
+      const float edge = std::min({fx, 1.0F - fx, fy, 1.0F - fy});
+      const float halfW = std::floor(r.width / 2.0F);
+      const float halfH = std::floor(r.height / 2.0F);
+      if (edge == fx) {
+        return DropTarget{id, true, {r.x, r.y, halfW, r.height}};
+      }
+      if (edge == 1.0F - fx) {
+        return DropTarget{id, false, {r.x + halfW, r.y, r.width - halfW, r.height}};
+      }
+      if (edge == fy) {
+        return DropTarget{id, true, {r.x, r.y, r.width, halfH}};
+      }
+      return DropTarget{id, false, {r.x, r.y + halfH, r.width, r.height - halfH}};
+    }
+    return std::nullopt;
+  }
+
+  void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
+    const auto target = dropTarget(id, sceneX, sceneY);
+    if (m_dropPreview != nullptr) {
+      if (target && phase == StatusRow::DragPhase::Move) {
+        m_dropPreview->setPosition(target->rect.x, target->rect.y);
+        m_dropPreview->setSize(target->rect.width, target->rect.height);
+      }
+      m_dropPreview->setVisible(target && phase == StatusRow::DragPhase::Move);
+      m_window.invalidate();
+    }
+    if (target && phase == StatusRow::DragPhase::Drop) {
+      apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
+      focusGrid();
     }
   }
 

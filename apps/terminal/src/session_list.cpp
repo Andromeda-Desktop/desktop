@@ -137,13 +137,15 @@ namespace term {
                 return false;
               }
               const auto* existing = splitOf(e.target);
-              if (existing == nullptr) {
-                m_splits.push_back({e.target, e.joining});
-              } else if (existing->size() >= kMaxPanes) {
+              if (existing != nullptr && existing->size() >= kMaxPanes) {
                 return false;
-              } else {
-                const_cast<std::vector<std::uint64_t>*>(existing)->push_back(e.joining);
               }
+              if (existing == nullptr) {
+                existing = &m_splits.emplace_back(std::vector<std::uint64_t>{e.target});
+              }
+              auto& panes = *const_cast<std::vector<std::uint64_t>*>(existing);
+              const auto at = std::ranges::find(panes, e.target) + (e.before ? 0 : 1);
+              panes.insert(at, e.joining);
               show(e.joining);
               return true;
             },

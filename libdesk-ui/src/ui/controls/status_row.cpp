@@ -10,6 +10,7 @@
 #include "ui/style.h"
 
 #include <linux/input-event-codes.h>
+#include <cmath>
 #include <utility>
 
 StatusRow::StatusRow(float scale) : m_scale(scale) {
@@ -48,7 +49,37 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   area->setOnEnter([this](const InputArea::PointerData& /*data*/) { applyState(); });
   area->setOnLeave([this] { applyState(); });
   area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+  area->setOnPress([this](const InputArea::PointerData& data) {
+    if (data.button != BTN_LEFT || !m_onDrag) {
+      return;
+    }
+    if (data.pressed) {
+      m_drag = Drag::Pressed;
+      m_pressX = data.sceneX;
+      m_pressY = data.sceneY;
+      return;
+    }
+    const bool dropped = m_drag == Drag::Dragging;
+    m_drag = dropped ? Drag::Dropped : Drag::Idle;
+    if (dropped) {
+      setOpacity(1.0F);
+      m_onDrag(DragPhase::Drop, data.sceneX, data.sceneY);
+    }
+  });
+  area->setOnMotion([this](const InputArea::PointerData& data) {
+    if (m_drag == Drag::Pressed && std::hypot(data.sceneX - m_pressX, data.sceneY - m_pressY) > Tokens::spaceP4 * m_scale) {
+      m_drag = Drag::Dragging;
+      setOpacity(Tokens::componentTerminalDragSourceOpacity);
+    }
+    if (m_drag == Drag::Dragging) {
+      m_onDrag(DragPhase::Move, data.sceneX, data.sceneY);
+    }
+  });
   area->setOnClick([this](const InputArea::PointerData& data) {
+    if (data.button == BTN_LEFT && m_drag == Drag::Dropped) {
+      m_drag = Drag::Idle;
+      return;
+    }
     if (data.button == BTN_RIGHT) {
       if (m_onSecondaryClick) {
         m_onSecondaryClick(data.sceneX, data.sceneY);

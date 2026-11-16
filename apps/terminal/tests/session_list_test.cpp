@@ -65,7 +65,7 @@ SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   case 6: return Cwd{id, "/tmp"};
   case 7: return Kind{id, SessionKind::Ssh};
   case 8:
-  case 9: return Join{id, other};
+  case 9: return Join{id, other, std::uniform_int_distribution<int>(0, 1)(rng) == 0};
   default: return Leave{id};
   }
 }
@@ -105,14 +105,9 @@ int main() {
           CHECK(list.shown() == shownBefore);
         }
         if (const auto* e = std::get_if<Join>(&event)) {
-          CHECK(list.splitOf(e->target) != nullptr && list.splitOf(e->target) == list.splitOf(e->joining));
-          CHECK(list.shown() == e->joining);
-          const auto* was = before.splitOf(e->target);
-          CHECK(list.splitOf(e->target)->size() == (was ? was->size() + 1 : 2));
-        }
-        if (const auto* e = std::get_if<Leave>(&event)) {
-          CHECK(list.splitOf(e->id) == nullptr);
-          CHECK(list.shown() == shownBefore);
+          const auto& panes = *list.splitOf(e->target);
+          const auto at = [&](std::uint64_t id) { return std::ranges::find(panes, id) - panes.begin(); };
+          CHECK(at(e->joining) == at(e->target) + (e->before ? -1 : 1));
         }
         if (const auto* e = std::get_if<CommandEnd>(&event)) {
           CHECK((list.find(e->id)->seen == Seen::Unseen) == !std::ranges::contains(before.visible(), e->id));

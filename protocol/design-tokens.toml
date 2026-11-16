@@ -521,6 +521,8 @@ group_row = 32.0  # a split member's row in the sidebar group block
 divider_hit = 24.0  # a split divider's drag area: the gap and 8 into each card
 split_min_columns = 20.0  # a divider stops where a pane would show fewer columns
 split_min_rows = 5.0  # and fewer rows
+drop_fill = 0.14  # accent alpha of the half a dropped row would take
+drag_source_opacity = 0.38  # a session row while it drags onto a card (design-split drop)
 
 [component.agent]  # agent session view (design-agent handoff.yaml)
 measure = 640.0  # prose max width, 70 ch of body 14

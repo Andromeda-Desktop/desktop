@@ -199,6 +199,15 @@ namespace term {
     void relayoutSplit(bool settle);
     void placeDividers();
     void dragDivider(std::size_t index, float sceneX, float sceneY);
+    // A sidebar row dragged onto a pane: the half under the pointer previews where it joins.
+    struct DropTarget {
+      std::uint64_t target = 0;
+      bool before = false; // the left or top half
+      PaneRect rect;       // in the slot
+    };
+    [[nodiscard]] std::optional<DropTarget> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
+    void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
+    Box* m_dropPreview = nullptr;
     std::uint64_t m_ringPane = 0;  // the card that draws the focus ring
     void buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes);
     // Ring, shadow, caption weight and the find and agent bars follow the shown session, in place.

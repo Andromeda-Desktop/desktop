@@ -78,10 +78,12 @@ namespace term {
       std::uint64_t id;
       SessionKind kind;
     };
-    // Puts `joining` beside `target` (in target's split, or a new one) and focuses it.
+    // Puts `joining` beside `target` (in target's split, or a new one), right after it in pane order or right
+    // before it, and focuses it.
     struct Join {
       std::uint64_t target;
       std::uint64_t joining;
+      bool before = false;
     };
     struct Leave {
       std::uint64_t id;
