@@ -108,7 +108,8 @@ cpu_ticks() { awk '{ print $14 + $15 }' /proc/"$1"/stat; }
 rss_kb() { awk '/^VmRSS:/{print $2}' /proc/"$1"/status; }
 hwm_kb() { awk '/^VmHWM:/{print $2}' /proc/"$1"/status; }
 pss_kb() { awk '/^Pss:/{print $2}' /proc/"$1"/smaps_rollup; }
-fds() { ls /proc/"$1"/fd | wc -l; }
+# fds PID: open fds without GPU buffers (dmabuf), which the driver frees a few frames late.
+fds() { find /proc/"$1"/fd -mindepth 1 -printf '%l\n' 2> /dev/null | grep -vc '^/dmabuf:' || true; }
 threads() { awk '/^Threads:/{print $2}' /proc/"$1"/status; }
 
 # alive: the terminal runs and its log has no crash line.
