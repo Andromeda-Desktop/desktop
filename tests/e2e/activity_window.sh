@@ -20,6 +20,7 @@ printf '\n[accessibility]\nui_scale = %s\n' "$UI_SCALE" >> "$RUNTIME/home/.confi
 
 MOCK="$(cd "$(dirname "$0")" && pwd)/mock_systemd1.py"
 export SCOPE REAL_RUNTIME POINTER=$ROOT/compositor/build-debug/tests/pointer-client
+export CLICK="$(cd "$(dirname "$0")" && pwd)/activity_click.sh"
 export CHATTER="$(cd "$(dirname "$0")" && pwd)/tcp_chatter.py"
 BEFORE_NOCTALIA='REAL_RUNTIME=$REAL_RUNTIME python3 '"$MOCK"' "$OUT/calls.txt" > "$OUT/mock.log" 2>&1 &
   for _ in $(seq 50); do grep -q ready "$OUT/mock.log" && break; sleep 0.1; done'
@@ -83,6 +84,16 @@ with_noctalia '
   wait $!
   for _ in $(seq 15); do label_shown "Quit…" && break; sleep 0.1; done
   label_shown "Quit…" || { echo "FAIL: Quit… did not return after Shift"; exit 1; }
+
+  # Sample: 5 s of thread snapshots, then the report with Copy; Done returns to the actions.
+  ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" bash "$CLICK" "Sample"
+  ! label_shown "Copy" || { echo "FAIL: the sample report showed before 5 s"; exit 1; }
+  for _ in $(seq 100); do label_shown "Copy" && break; sleep 0.1; done
+  label_shown "Copy" || { echo "FAIL: no sample report after 10 s"; exit 1; }
+  grim "$OUT/sample.png"
+  ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" bash "$CLICK" "Done"
+  for _ in $(seq 15); do label_shown "Sample" && break; sleep 0.1; done
+  label_shown "Sample" || { echo "FAIL: Done did not return to the Sample action"; exit 1; }
 
   "$POINTER" 1280 720 tap 111 > /dev/null # Delete: Quit… on the selected row asks first
   for _ in $(seq 10); do

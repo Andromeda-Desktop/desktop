@@ -1,7 +1,9 @@
 #include "shell/activity/activity_ui.h"
 #include "shell/activity/activity_window.h"
 
+#include "clipboard/clipboard_service.h"
 #include "compositors/shell_wayland_connection.h"
+#include "core/shared_worker.h"
 #include "core/input/key_modifiers.h"
 #include "dbus/systemd/systemd_unit_name.h"
 #include "render/scene/accessible.h"
@@ -16,6 +18,7 @@
 #include "ui/controls/toggle.h"
 
 #include <ctime>
+#include <unistd.h>
 #include <map>
 
 using namespace activity_ui;
@@ -156,7 +159,11 @@ std::unique_ptr<Flex> ActivityWindow::buildInspector(Renderer& renderer, float s
   Flex* details = scroll->content();
   details->setAlign(FlexAlign::Stretch);
   details->setGap(Style::spaceMd * scale);
-  if (m_inspectTab != InspectTab::Overview) {
+  const bool sampleShown = m_sample.key == row->key
+      && (m_sample.phase == SampleRun::Phase::Done || m_sample.phase == SampleRun::Phase::Failed);
+  if (sampleShown) {
+    addSampleReport(*details, scale);
+  } else if (m_inspectTab != InspectTab::Overview) {
     addInspection(*details, *row, scale);
   } else {
     addOverview(*details, *row, scale);
@@ -457,6 +464,11 @@ void ActivityWindow::addActions(Flex& inspector, const ActivityRow& row, float s
     return;
   }
   auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Style::spaceSm * scale});
+  if (m_sample.phase == SampleRun::Phase::Running && m_sample.key == row.key) {
+    buttons->addChild(text(i18n::tr("activity.sampling"), Style::fontSizeCaption * scale, ColorRole::Label2));
+  } else {
+    buttons->addChild(actionButton(i18n::tr("activity.action-sample"), scale, [this] { startSample(); }));
+  }
   // Shift turns Quit… into Force Quit… (the label follows the key; activity_window.cpp onKeyboardEvent).
   const char* quit = m_shiftHeld ? "activity.action-force-quit-ask"
       : row.hasWindow            ? "activity.action-quit-ask"
@@ -756,4 +768,137 @@ void ActivityWindow::addContainerInspector(Flex& inspector, const ContainerInfo&
     action("activity.action-stop", ContainerService::Action::Stop);
   }
   inspector.addChild(std::move(buttons));
+}
+
+void ActivityWindow::resetSample() {
+  m_sampleTimer.stop();
+  ++m_sampleGeneration;
+  m_sample = {};
+}
+
+void ActivityWindow::startSample() {
+  const ActivityRow* row = selectedRow();
+  if (row == nullptr || m_sample.phase == SampleRun::Phase::Running) {
+    return;
+  }
+  std::vector<std::string> groups;
+  for (const auto& unit : m_monitor->userUnits().units()) {
+    if (!unit.controlGroup.empty() && std::ranges::find(row->units, unit.name) != row->units.end()) {
+      groups.push_back(unit.controlGroup);
+    }
+  }
+  resetSample();
+  m_sample = {.phase = SampleRun::Phase::Running, .key = row->key, .startedAt = std::chrono::steady_clock::now()};
+  requestRebuild();
+  SharedWorker::instance().post<std::vector<ThreadSnapshot>>(
+      m_alive,
+      [root = m_monitor->activity().cgroupRoot(), groups = std::move(groups)] {
+        std::vector<int> pids;
+        for (const auto& group : groups) {
+          std::ranges::copy(cgroupPids(root, group), std::back_inserter(pids));
+        }
+        return snapshotThreads(pids);
+      },
+      [this, generation = m_sampleGeneration](std::vector<ThreadSnapshot> before) {
+        if (generation != m_sampleGeneration) {
+          return;
+        }
+        if (before.empty()) {
+          m_sample.phase = SampleRun::Phase::Failed;
+          requestRebuild();
+          return;
+        }
+        m_sample.before = std::move(before);
+        m_sampleTimer.start(kSampleFor, [this, generation] { finishSample(generation); });
+      }
+  );
+}
+
+void ActivityWindow::finishSample(std::uint64_t generation) {
+  std::vector<int> pids;
+  for (const auto& thread : m_sample.before) {
+    if (pids.empty() || pids.back() != thread.pid) {
+      pids.push_back(thread.pid);
+    }
+  }
+  const ActivityRow* row = findRow(m_sample.key);
+  SharedWorker::instance().post<SampleSummary>(
+      m_alive,
+      [pids = std::move(pids), before = std::move(m_sample.before), startedAt = m_sample.startedAt,
+       title = row != nullptr ? identity(*row).name : m_sample.key] {
+        const auto after = snapshotThreads(pids);
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - startedAt).count();
+        return summarizeSample(title, before, after, seconds, ::sysconf(_SC_CLK_TCK), std::time(nullptr));
+      },
+      [this, generation](SampleSummary summary) {
+        if (generation != m_sampleGeneration) {
+          return;
+        }
+        m_sample.phase = SampleRun::Phase::Done;
+        m_sample.summary = std::move(summary);
+        m_inspectorScroll = {};
+        requestRebuild();
+      }
+  );
+}
+
+void ActivityWindow::addSampleReport(Flex& details, float scale) {
+  static constexpr std::size_t kShownThreads = 12;
+  static constexpr std::size_t kShownWaits = 5;
+  const SampleSummary& summary = m_sample.summary;
+  auto reportCard = card(m_glass, scale);
+  reportCard->setPadding(Style::spaceMd * scale, Style::spaceLg * scale);
+  reportCard->setGap(Style::spaceSm * scale);
+  reportCard->addChild(caption(i18n::tr("activity.sample-title"), scale));
+  if (m_sample.phase == SampleRun::Phase::Failed) {
+    reportCard->addChild(text(i18n::tr("activity.sample-none"), Style::fontSizeBody * scale, ColorRole::Label2));
+  } else {
+    reportCard->addChild(ui::label({
+        .text = i18n::tr("activity.sample-summary", "processes", std::to_string(summary.processes), "threads",
+                         std::to_string(summary.threads.size()), "cpu", cpuText(summary.totalPercent)),
+        .fontSize = Style::fontSizeCaption * scale,
+        .color = colorSpecFromRole(ColorRole::Label2),
+        .maxLines = 2,
+    }));
+    const auto pair = [&](std::string left, std::string right, std::string below) {
+      auto line = ui::column({.align = FlexAlign::Stretch});
+      line->addChild(ui::row(
+          {.align = FlexAlign::Center, .gap = Style::spaceSm * scale},
+          ui::label({.text = std::move(left), .fontSize = Style::fontSizeBody * scale,
+                     .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1,
+                     .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}),
+          ui::label({.text = std::move(right), .fontSize = Style::fontSizeBody * scale,
+                     .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ColorRole::Label1),
+                     .maxLines = 1})
+      ));
+      if (!below.empty()) {
+        line->addChild(ui::label({.text = std::move(below), .fontSize = Style::fontSizeCaption * scale,
+                                  .color = colorSpecFromRole(ColorRole::Label3), .maxLines = 1,
+                                  .ellipsize = TextEllipsize::End}));
+      }
+      reportCard->addChild(std::move(line));
+    };
+    for (std::size_t i = 0; i < summary.threads.size() && i < kShownThreads; ++i) {
+      const SampleThread& thread = summary.threads[i];
+      pair(thread.name, cpuText(thread.percent),
+           thread.wait == "–" ? i18n::tr("activity.sample-running") : i18n::tr("activity.sample-waits", "place", thread.wait));
+    }
+    reportCard->addChild(caption(i18n::tr("activity.sample-waits-title"), scale));
+    for (std::size_t i = 0; i < summary.waits.size() && i < kShownWaits; ++i) {
+      const auto& [place, count] = summary.waits[i];
+      pair(place == "–" ? i18n::tr("activity.sample-running") : place, std::to_string(count), {});
+    }
+  }
+  auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Style::spaceSm * scale});
+  if (m_sample.phase == SampleRun::Phase::Done && m_clipboard != nullptr) {
+    buttons->addChild(actionButton(i18n::tr("activity.action-copy"), scale, [this] {
+      (void)m_clipboard->copyText(sampleReport(m_sample.summary));
+    }));
+  }
+  buttons->addChild(actionButton(i18n::tr("activity.action-done"), scale, [this] {
+    resetSample();
+    requestRebuild();
+  }));
+  reportCard->addChild(std::move(buttons));
+  details.addChild(std::move(reportCard));
 }

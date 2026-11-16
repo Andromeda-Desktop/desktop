@@ -9,6 +9,7 @@
 #include "render/scene/node.h"
 #include "system/activity_details.h"
 #include "system/activity_monitor.h"
+#include "system/activity_sample.h"
 #include "system/background_activity_monitor.h"
 #include "system/battery_impact.h"
 #include "system/icon_resolver.h"
@@ -29,6 +30,7 @@
 
 class ActivityActions;
 class Button;
+class ClipboardService;
 class ConfigService;
 class Flex;
 class Glyph;
@@ -73,6 +75,7 @@ public:
   void setUPowerProvider(std::function<UPowerService*()> provider) { m_upowerProvider = std::move(provider); }
   // Docker / Podman engines for the Containers pane; the pane shows only when an engine socket exists.
   void setContainers(ContainerService* containers) { m_containers = containers; }
+  void setClipboard(ClipboardService* clipboard) { m_clipboard = clipboard; }
 
   // rowKey selects that row when it exists; "containers" or "ctr:<id>" opens the Containers pane.
   void open(const std::string& rowKey = {});
@@ -103,6 +106,11 @@ private:
   enum class Sampling : std::uint8_t { Off, Live, Paused };
   void setSampling(Sampling next);
   void setShiftHeld(bool held);
+  // Sample: two thread snapshots of the selected row, kSampleFor apart, then a text report in the inspector.
+  void startSample();
+  void finishSample(std::uint64_t generation);
+  void resetSample();
+  void addSampleReport(Flex& details, float scale);
   void prepareFrame(bool needsUpdate, bool needsLayout);
   void buildScene(Renderer& renderer, float width, float height);
   // activity_table.cpp
@@ -277,6 +285,18 @@ private:
   bool m_leftShiftHeld = false;
   bool m_rightShiftHeld = false;
   bool m_shiftHeld = false; // either Shift key down: Quit… reads Force Quit…
+  struct SampleRun {
+    enum class Phase : std::uint8_t { Idle, Running, Done, Failed };
+    Phase phase = Phase::Idle;
+    std::string key; // the sampled row; another selection resets the run
+    std::vector<ThreadSnapshot> before;
+    std::chrono::steady_clock::time_point startedAt;
+    SampleSummary summary; // Done only
+  };
+  SampleRun m_sample;
+  std::uint64_t m_sampleGeneration = 0; // drops worker results of a reset or replaced run
+  Timer m_sampleTimer;
+  ClipboardService* m_clipboard = nullptr;
   std::string m_selectedKey;
   std::string m_query;
   std::vector<std::string> m_order; // visible row keys, by section then sort column

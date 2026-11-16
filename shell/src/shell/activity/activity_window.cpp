@@ -296,6 +296,7 @@ void ActivityWindow::destroyWindow() {
     return;
   }
   m_skeletonTimer.stop();
+  resetSample();
   setSampling(Sampling::Off);
   if (m_monitor != nullptr) {
     m_monitor->setChangeCallback({});
@@ -877,6 +878,7 @@ void ActivityWindow::refreshAfterSample() {
 
 void ActivityWindow::select(const std::string& key) {
   if (m_selectedKey != key) {
+    resetSample();
     m_inspectorScroll = {};
     m_confirm = Confirm::None;
     m_inspectTab = InspectTab::Overview;

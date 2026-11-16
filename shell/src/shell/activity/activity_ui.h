@@ -44,6 +44,7 @@ namespace activity_ui {
   inline constexpr float kHeatAlpha = 0.26F;
   inline constexpr int kSkeletonRows = 6;
   inline constexpr auto kSkeletonFor = std::chrono::milliseconds(300);
+  inline constexpr auto kSampleFor = std::chrono::seconds(5);
   inline constexpr auto kResortEvery = std::chrono::seconds(5);
 
   inline std::string memoryText(std::uint64_t bytes) {

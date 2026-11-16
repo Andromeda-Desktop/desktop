@@ -76,6 +76,7 @@ void Application::initActivity() {
   );
   m_activityWindow.setBackgroundMonitor(m_backgroundActivityMonitor.get());
   m_activityWindow.setDetails(&m_activityDetails);
+  m_activityWindow.setClipboard(&m_clipboardService);
   m_activityWindow.setSystemMonitorProvider([this]() { return m_systemMonitor.get(); });
   m_activityWindow.setUPowerProvider([this]() { return upower(); });
   // ANDROMEDA_CONTAINER_SOCKETS (colon-separated) replaces the engine socket search, for tests.
