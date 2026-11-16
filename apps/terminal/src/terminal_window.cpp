@@ -931,7 +931,8 @@ namespace term {
     }
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
       // A quiet program (an editor, a pager, a sleep) is not loading work: no spinner and no frames (rulebook P21).
-      data.spinning = running->output == CommandOutput::Active;
+      // A shown session's grid already shows its output, so only sessions off screen spin.
+      data.spinning = running->output == CommandOutput::Active && !std::ranges::contains(m_sessions.visible(), session.id);
       data.symbol = data.spinning ? "" : "player-play";
       data.status = withCommand("running", running->command);
     } else if (const auto* finished = std::get_if<CommandFinished>(&session.command)) {

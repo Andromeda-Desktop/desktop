@@ -1012,6 +1012,7 @@ namespace term {
       if (m_host.commandOutput) {
         m_host.commandOutput(CommandOutput::Active);
       }
+      syncContext();
     }
     if (!m_quietTimer.active()) {
       armQuiet(std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCommandQuietMs)));
@@ -1035,6 +1036,7 @@ namespace term {
       if (m_host.commandOutput) {
         m_host.commandOutput(CommandOutput::Quiet);
       }
+      syncContext();
     });
   }
 
@@ -1120,6 +1122,8 @@ namespace term {
     const std::uint64_t bottom = top + static_cast<std::uint64_t>(std::max(0, viewRows())) + 1;
     const char* homeEnv = std::getenv("HOME");
     const std::string home = homeEnv != nullptr ? homeEnv : "";
+    const auto* command = std::get_if<CommandRunning>(&m_command);
+    const bool printing = command != nullptr && command->output == CommandOutput::Active;
     auto placed = m_session.withCommands([&](GhosttyTerminal t, CommandIndex& index) {
       std::vector<ContextRow::Placed> out;
       GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
@@ -1180,7 +1184,9 @@ namespace term {
         case CommandEntry::Phase::Prompt: break;
         case CommandEntry::Phase::Running:
           item.caption = Caption::Running;
-          item.time = "running · " + formatClockTime(std::chrono::duration_cast<std::chrono::seconds>(now - it->started).count());
+          // The elapsed time shows only while the program prints: a quiet one gets no 1 Hz frames.
+          item.time = printing ? "running · " + formatClockTime(std::chrono::duration_cast<std::chrono::seconds>(now - it->started).count())
+                               : "running";
           break;
         case CommandEntry::Phase::Done:
           item.caption = it->exitCode.value_or(0) == 0 ? Caption::Done : Caption::Failed;
@@ -1198,9 +1204,9 @@ namespace term {
     const float inset = kInset * m_uiScale;
     m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + Tokens::spaceP8 * m_uiScale,
                     m_uiScale);
-    if (running && !m_contextTick.active()) {
+    if (running && printing && !m_contextTick.active()) {
       m_contextTick.startRepeating(std::chrono::seconds(1), [this] { syncContext(); });
-    } else if (!running) {
+    } else if (!running || !printing) {
       m_contextTick.stop();
     }
   }
