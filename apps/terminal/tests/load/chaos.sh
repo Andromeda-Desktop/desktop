@@ -52,6 +52,7 @@ for c in $CASES; do
       gate "4 sessions flooding for 10 s" responsive ;;
     paste)
       head -c 50000000 "$CORPUS/ascii" > "$OUT/res/paste.src"
+      want=$(stat -c %s "$OUT/res/paste.src")
       run wl-copy < "$OUT/res/paste.src" &
       sleep 1
       rm -f "$OUT/res/paste.out"
@@ -61,13 +62,13 @@ for c in $CASES; do
       key -M ctrl -M shift v -m shift -m ctrl
       pasted() {
         for _ in $(seq 1200); do
-          [[ $(stat -c %s "$OUT/res/paste.out" 2> /dev/null || echo 0) -ge 49000000 ]] && return 0
+          [[ $(stat -c %s "$OUT/res/paste.out" 2> /dev/null || echo 0) -ge $want ]] && return 0
           sleep 0.1
         done
-        echo "pasted $(stat -c %s "$OUT/res/paste.out" 2> /dev/null || echo 0) of 50000000 bytes"
+        echo "pasted $(stat -c %s "$OUT/res/paste.out" 2> /dev/null || echo 0) of $want bytes"
         return 1
       }
-      gate "50 MB paste arrives within 120 s" pasted
+      gate "$((want / 1000000)) MB paste arrives within 120 s" pasted
       echo "  paste took $(($(date +%s) - t0)) s"
       key -M ctrl c -m ctrl; sleep 0.5; term_type 'stty sane' ;;
     holder_kill)

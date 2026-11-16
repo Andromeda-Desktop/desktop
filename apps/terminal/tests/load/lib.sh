@@ -18,7 +18,12 @@ CRASH='AddressSanitizer|LeakSanitizer|runtime error:|Segmentation fault|Aborted|
 load_boot() {
   $PROBE gen "$CORPUS" "$MIB"
   boot_headless 1
-  trap 'term_stop; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
+  trap 'term_stop; pkill -P "${KBD_PID:-0}" wtype || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
+  # Headless has no real keyboard: each wtype would add and remove the seat keyboard, and keys sent before the app
+  # binds it are lost. One idle virtual keyboard keeps it, as a physical keyboard does.
+  # An idle wtype never sees the compositor go: the trap stops it (KBD_PID is the subshell that runs it).
+  run wtype -s 86400000 > /dev/null 2>&1 &
+  KBD_PID=$!
   CFG="$RUNTIME/home/.config/andromeda"
   mkdir -p "$CFG"
   if [[ ${HOLDER:-0} == 1 ]]; then
@@ -60,7 +65,12 @@ term_start() {
   t0=$(date +%s%N)
   for _ in $(seq 500); do mapped "$(app_id "$TID")" && break; sleep 0.02; done
   START_MS=$((($(date +%s%N) - t0) / 1000000))
-  mapped "$(app_id "$TID")" || { echo "$TID did not map" >&2; return 1; }
+  if ! mapped "$(app_id "$TID")"; then
+    echo "$TID did not map; threads (name wchan state):" >&2
+    local t
+    for t in /proc/$TPID/task/*; do echo "  $(< "$t/comm") $(< "$t/wchan") $(awk '{print $3}' "$t/stat")" >&2; done
+    return 1
+  fi
   # The launcher can exec or fork; take the newest process of that binary under our runtime.
   if [[ $TID == ours ]]; then TPID=$(pgrep -n -f -- "$OURS"); else TPID=$(pgrep -n -x "$TID"); fi
   run "$ANDROMEDA" msg window-toggle-maximize > /dev/null || true
