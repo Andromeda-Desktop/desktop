@@ -74,6 +74,7 @@ private:
   FontFace* faceFor(Face face, char32_t needs, bool color = false);
   FontFace* openFace(const std::string& file, int index, bool embolden, bool oblique);
   bool place(int width, int height, int& x, int& y);
+  const Glyph* sprite(const Key& key, const std::vector<std::uint8_t>& alpha);
   static std::unique_ptr<std::uint8_t, FreeDeleter> allocatePixels(int height);
   void reset();
 

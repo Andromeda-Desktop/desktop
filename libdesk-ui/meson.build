@@ -239,6 +239,7 @@ _desk_ui_sources = files(
   'src/render/text/cairo_text_renderer.cpp',
   'src/render/text/font_registry.cpp',
   'src/render/text/terminal_glyph_atlas.cpp',
+  'src/render/text/terminal_sprites.cpp',
   'src/render/text/font_weight_catalog.cpp',
   'src/render/text/glyph_registry.cpp',
   'src/render/wallpaper_renderer.cpp',
