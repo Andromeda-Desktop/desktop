@@ -193,6 +193,8 @@ public:
   static void absolutePosition(const Node* node, float& outX, float& outY);
   static void mapToScene(const Node* node, float localX, float localY, float& outSceneX, float& outSceneY);
   static bool mapFromScene(const Node* node, float sceneX, float sceneY, float& outLocalX, float& outLocalY);
+  // Parent-space transform: position, then rotation and scale about the transform origin.
+  [[nodiscard]] Mat3 localTransform() const;
   static void transformedBounds(const Node* node, float& outLeft, float& outTop, float& outRight, float& outBottom);
   static void transformedBounds(
       const Node* node, const Mat3& world, float& outLeft, float& outTop, float& outRight, float& outBottom

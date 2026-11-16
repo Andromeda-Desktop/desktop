@@ -12,20 +12,11 @@
 
 namespace {
 
-  Mat3 localTransform(const Node* node) {
-    const float cx = node->transformOriginX();
-    const float cy = node->transformOriginY();
-    return Mat3::translation(node->x(), node->y())
-        * Mat3::translation(cx, cy)
-        * Mat3::rotation(node->rotation())
-        * Mat3::scale(node->scaleX(), node->scaleY())
-        * Mat3::translation(-cx, -cy);
-  }
 
   Mat3 computeWorldTransform(const Node* node) {
     Mat3 world = Mat3::identity();
     for (const Node* current = node; current != nullptr; current = current->parent()) {
-      world = localTransform(current) * world;
+      world = current->localTransform() * world;
     }
     return world;
   }
@@ -210,6 +201,17 @@ bool Node::pointInsideNode(
   localX = local.x;
   localY = local.y;
   return node->containsLocalPoint(localX, localY, includeHitOutset);
+}
+
+Mat3 Node::localTransform() const {
+  // Most nodes only translate: skip the rotation (sin, cos) and four matrix products. Exact: R(0) and S(1) are identity.
+  if (m_rotation == 0.0F && m_scaleX == 1.0F && m_scaleY == 1.0F) {
+    return Mat3::translation(m_x, m_y);
+  }
+  const float cx = transformOriginX();
+  const float cy = transformOriginY();
+  return Mat3::translation(m_x, m_y) * Mat3::translation(cx, cy) * Mat3::rotation(m_rotation)
+      * Mat3::scale(m_scaleX, m_scaleY) * Mat3::translation(-cx, -cy);
 }
 
 void Node::setPosition(float x, float y) {
@@ -560,7 +562,7 @@ Node* Node::hitTestImpl(Node* node, float px, float py, bool allowOverflow, cons
     return nullptr;
   }
 
-  const Mat3 worldTransform = parentTransform * localTransform(node);
+  const Mat3 worldTransform = parentTransform * node->localTransform();
   const Vec2 local = worldTransform.inverse().transformPoint(px, py);
   const bool inside = node->containsLocalPoint(local.x, local.y, true);
 
@@ -633,6 +635,16 @@ bool Node::mapFromScene(const Node* node, float sceneX, float sceneY, float& out
 void Node::transformedBounds(
     const Node* node, const Mat3& world, float& outLeft, float& outTop, float& outRight, float& outBottom
 ) {
+  // No rotation or skew: two corners give the box, the same values as the four-corner walk.
+  if (world.m[1] == 0.0F && world.m[3] == 0.0F) {
+    const float x1 = world.m[0] * node->width() + world.m[6];
+    const float y1 = world.m[4] * node->height() + world.m[7];
+    outLeft = std::min(world.m[6], x1);
+    outRight = std::max(world.m[6], x1);
+    outTop = std::min(world.m[7], y1);
+    outBottom = std::max(world.m[7], y1);
+    return;
+  }
   const Vec2 corners[] = {
       world.transformPoint(0.0F, 0.0F),
       world.transformPoint(node->width(), 0.0F),

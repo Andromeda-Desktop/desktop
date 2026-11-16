@@ -170,15 +170,6 @@ namespace {
     return cover.contains(area) && !reachesOutsideCorners(bounds, style.radius, scale, inset, area);
   }
 
-  Mat3 nodeLocalTransform(const Node* node) {
-    const float cx = node->transformOriginX();
-    const float cy = node->transformOriginY();
-    return Mat3::translation(node->x(), node->y())
-        * Mat3::translation(cx, cy)
-        * Mat3::rotation(node->rotation())
-        * Mat3::scale(node->scaleX(), node->scaleY())
-        * Mat3::translation(-cx, -cy);
-  }
 
   std::optional<DamageRect> paintBounds(const Node* node, const Mat3& world) {
     if (node->type() == NodeType::Base) {
@@ -246,7 +237,7 @@ namespace {
       return false;
     }
     node->markPaintedSubtree();
-    const Mat3 world = parentTransform * nodeLocalTransform(node);
+    const Mat3 world = parentTransform * node->localTransform();
     const std::optional<DamageRect> bounds = paintBounds(node, world);
     const bool whole = subtreeChanged || node->selfPaintDirty();
     const auto add = [&clip, &out](const DamageRect& r) {
@@ -743,7 +734,7 @@ void RenderContext::findOccluders(const Node* node, const Mat3& parentTransform,
   if (!node->visible() || node->type() == NodeType::RenderProxy) {
     return;
   }
-  const Mat3 world = parentTransform * nodeLocalTransform(node);
+  const Mat3 world = parentTransform * node->localTransform();
   const float opacity = parentOpacity * node->opacity();
   if (opacity <= 0.0F) {
     return;
@@ -784,7 +775,7 @@ void RenderContext::renderNode(
     return;
   }
 
-  const Mat3 worldTransform = parentTransform * nodeLocalTransform(node);
+  const Mat3 worldTransform = parentTransform * node->localTransform();
   const float effectiveOpacity = ignoreNodeOpacity ? parentOpacity : parentOpacity * node->opacity();
   float boundsLeft = 0.0F;
   float boundsTop = 0.0F;
