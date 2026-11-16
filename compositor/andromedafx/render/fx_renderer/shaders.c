@@ -486,3 +486,14 @@ bool link_blur2_composite_program(
 
   return true;
 }
+
+bool ensure_tex_program(struct tex_shader* shader) {
+  const struct tex_shader_variant* v = &shader->variant;
+  return shader->program != 0 || link_tex_program(shader, v->source, v->effects, v->sample_clamp, v->flares);
+}
+
+bool ensure_blur2_composite_program(struct blur2_composite_shader* shader) {
+  const struct blur2_composite_variant* v = &shader->variant;
+  return shader->blur.base.program != 0
+      || link_blur2_composite_program(shader, v->effects, v->corners, v->flares, v->glass);
+}

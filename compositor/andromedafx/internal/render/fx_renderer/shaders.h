@@ -135,8 +135,17 @@ struct quad_grad_round_shader {
 
 bool link_quad_grad_round_program(struct quad_grad_round_shader* shader, int max_len);
 
+// Link parameters of a variant that links on its first draw (0 program until then).
+struct tex_shader_variant {
+  enum fx_tex_shader_source source;
+  bool effects;
+  bool sample_clamp;
+  bool flares;
+};
+
 struct tex_shader {
   GLuint program;
+  struct tex_shader_variant variant;
   GLint proj;
   GLint tex_proj;
   GLint tex;
@@ -177,6 +186,8 @@ struct tex_shader {
 bool link_tex_program(
     struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp, bool flares
 );
+// Links the recorded variant if it has no program yet: each linked variant holds about 0.6 MiB of driver memory.
+bool ensure_tex_program(struct tex_shader* shader);
 
 struct output_shader {
   GLuint program;
@@ -237,8 +248,16 @@ bool link_blur2_with_effects_program(struct blur2_with_effects_shader* shader);
 
 // The final blur upsample drawn straight into the pass target. The effects
 // uniforms are -1 without blur effects, the corner ones without corners.
+struct blur2_composite_variant {
+  bool effects;
+  bool corners;
+  bool flares;
+  bool glass;
+};
+
 struct blur2_composite_shader {
   struct blur2_with_effects_shader blur;
+  struct blur2_composite_variant variant;
   GLint alpha;
   GLint clamp_level;
 
@@ -269,5 +288,6 @@ struct blur2_composite_shader {
 bool link_blur2_composite_program(
     struct blur2_composite_shader* shader, bool effects, bool corners, bool flares, bool glass
 );
+bool ensure_blur2_composite_program(struct blur2_composite_shader* shader);
 
 #endif
