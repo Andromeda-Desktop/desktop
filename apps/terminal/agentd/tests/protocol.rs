@@ -691,6 +691,8 @@ exit 3
     assert_eq!(first["result"]["stopReason"], "end_turn");
     let second = prompt(4).await;
     assert!(second["error"]["message"].as_str().unwrap().contains("boom"));
+    assert_eq!(second["error"]["data"]["exitCode"], 3);
+    assert_eq!(second["error"]["data"]["stderr"], "boom");
     assert_eq!(fs::read_to_string(&runs).unwrap().lines().count(), 2);
     child.kill().await.unwrap();
 }

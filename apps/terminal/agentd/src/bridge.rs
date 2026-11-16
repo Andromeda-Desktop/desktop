@@ -539,7 +539,7 @@ impl Bridge {
                 )
                 .await
                 {
-                    Err(RunError::Failed(_)) if !session.native && !emitted.load(Ordering::Relaxed) => {
+                    Err(RunError::Failed(_) | RunError::Exited { .. }) if !session.native && !emitted.load(Ordering::Relaxed) => {
                         self.store.clear_persisted(Path::new(&session.cwd));
                         runner::run(
                             &self.config,
@@ -585,6 +585,11 @@ impl Bridge {
             }
             Err(RunError::Cancelled) => Ok(acp::PromptResponse::new(StopReason::Cancelled)),
             Err(RunError::Failed(error)) => Err(Error::new(-32603, error)),
+            Err(RunError::Exited { code, stderr }) => {
+                let data = json!({ "exitCode": code, "stderr": stderr });
+                let message = RunError::Exited { code, stderr }.to_string();
+                Err(Error::new(-32603, message).data(data))
+            }
         }
     }
 

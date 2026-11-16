@@ -66,6 +66,8 @@ pub type PermissionFuture = Pin<Box<dyn Future<Output = Value> + Send>>;
 pub enum RunError {
     Cancelled,
     Failed(String),
+    /// The claude process exited non-zero; stderr is its trimmed log.
+    Exited { code: i32, stderr: String },
 }
 
 impl std::fmt::Display for RunError {
@@ -73,6 +75,7 @@ impl std::fmt::Display for RunError {
         match self {
             Self::Cancelled => write!(f, "cancelled"),
             Self::Failed(s) => write!(f, "{s}"),
+            Self::Exited { code, stderr } => write!(f, "claude exited with code {code}: {stderr}"),
         }
     }
 }
@@ -417,10 +420,10 @@ pub async fn run(
         return Err(RunError::Failed(error));
     }
     if !status.success() {
-        return Err(RunError::Failed(format!(
-            "claude exited with {status}: {}",
-            stderr.trim()
-        )));
+        return Err(RunError::Exited {
+            code: status.code().unwrap_or(-1),
+            stderr: stderr.trim().to_string(),
+        });
     }
     Ok(RunResult { session_id, stop })
 }

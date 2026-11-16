@@ -51,7 +51,7 @@ namespace {
       }
     }
 
-    void agentEvent() {
+    void agentEvent(unsigned seed, int step) {
       const std::string tool = "t" + std::to_string(pick(4));
       switch (pick(9)) {
       case 0:
@@ -80,13 +80,23 @@ namespace {
           static const char* reasons[] = {"end_turn", "refusal", "max_tokens", "cancelled"};
           const bool error = pick(5) == 0;
           Json message = {{"jsonrpc", "2.0"}, {"id", promptInFlight}};
+          const bool claudeExit = error && pick(2) == 0;
           if (error) {
             message["error"] = {{"code", -32603}, {"message", "boom"}};
+            if (claudeExit) {
+              message["error"]["data"] = {{"exitCode", 1}, {"stderr", "boom"}};
+            }
           } else {
             message["result"] = {{"stopReason", reasons[pick(4)]}};
           }
           promptInFlight = -1;
           session.response(message);
+          if (claudeExit) {
+            check(session.phase() == Phase::Failed && session.pending().empty(),
+                  "a claude exit fails the session and closes its requests", seed, step);
+            alive = false;
+            openRpc.clear();
+          }
         }
         break;
       case 7:
@@ -175,7 +185,7 @@ int main() {
     h.rng.seed(seed);
     for (int step = 0; step < 80; ++step) {
       if (h.pick(2) == 0 && h.alive) {
-        h.agentEvent();
+        h.agentEvent(seed, step);
       } else {
         h.userEvent(seed, step);
       }

@@ -361,7 +361,12 @@ namespace term::agent {
       return false;
     }
     if (const auto error = message.find("error"); error != message.end()) {
-      promptFailed(error->is_object() ? str(*error, "message") : std::string{"The agent reported an error."});
+      const Json data = error->is_object() ? error->value("data", Json::object()) : Json::object();
+      if (const auto code = data.find("exitCode"); data.is_object() && code != data.end() && code->is_number_integer()) {
+        exited(code->get<int>(), str(data, "stderr"));
+      } else {
+        promptFailed(error->is_object() ? str(*error, "message") : std::string{"The agent reported an error."});
+      }
     } else {
       promptDone(str(message.value("result", Json::object()), "stopReason"));
     }
