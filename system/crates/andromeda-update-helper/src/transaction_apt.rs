@@ -81,7 +81,7 @@ pub fn upgrade(
     dry_run: bool,
     accepted: &[String],
     events: &tokio::sync::mpsc::UnboundedSender<Event>,
-    before_commit: &mut dyn FnMut() -> Result<()>,
+    before_commit: &mut dyn FnMut(&[String]) -> Result<()>,
 ) -> Result<Outcome> {
     if scope == Scope::Andromeda {
         return upgrade_andromeda(dry_run, accepted, events, before_commit);
@@ -111,7 +111,7 @@ pub fn upgrade(
     } else {
         explicit(&targets[..apt_targets], &removed, accepted)?
     };
-    before_commit()?;
+    before_commit(&targets)?;
     if apt_installs || !removed.is_empty() {
         apt_upgrade(&command, !removed.is_empty(), events)?;
     }
@@ -131,7 +131,7 @@ fn upgrade_andromeda(
     dry_run: bool,
     accepted: &[String],
     events: &tokio::sync::mpsc::UnboundedSender<Event>,
-    before_commit: &mut dyn FnMut() -> Result<()>,
+    before_commit: &mut dyn FnMut(&[String]) -> Result<()>,
 ) -> Result<Outcome> {
     if !dry_run {
         let source = format!("Dir::Etc::sourcelist={}", andromeda_update::repo::APT_SOURCE);
@@ -174,7 +174,7 @@ fn upgrade_andromeda(
     } else {
         explicit(&targets[..targets.len() - removed.len()], &removed, accepted)?
     };
-    before_commit()?;
+    before_commit(&targets)?;
     apt_upgrade(&command, !removed.is_empty(), events)?;
     Ok(Outcome { targets, questions, committed: true })
 }
@@ -244,6 +244,31 @@ fn snap_targets(text: &str) -> Vec<String> {
             Some(format!("{} {}", cols.next()?, cols.next()?))
         })
         .collect()
+}
+
+/// Finishes a cut-off dpkg run: configures the unpacked packages, then completes what apt left half done. dpkg's
+/// own lock dies with its process, so there is no stale lock.
+pub fn repair(_targets: &[String], _journal_time: std::time::SystemTime) -> Result<()> {
+    let configure = Command::new("dpkg")
+        .env("LC_ALL", "C")
+        .env("DEBIAN_FRONTEND", "noninteractive")
+        .args(["--force-confdef", "--force-confold", "--configure", "-a"])
+        .stdin(Stdio::null())
+        .status()
+        .context("dpkg --configure -a")?;
+    if !configure.success() {
+        bail!("dpkg --configure -a: {configure}");
+    }
+    let fix = apt_get()
+        .args(["-y", "-q", "-f", "install"])
+        .args(["-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"])
+        .stdin(Stdio::null())
+        .status()
+        .context("apt-get -f install")?;
+    if !fix.success() {
+        bail!("apt-get -f install: {fix}");
+    }
+    Ok(())
 }
 
 fn apt_upgrade(action: &[String], remove: bool, events: &tokio::sync::mpsc::UnboundedSender<Event>) -> Result<()> {

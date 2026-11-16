@@ -13,9 +13,9 @@ use zbus::object_server::SignalEmitter;
 use zbus::{Connection, interface};
 use zbus_polkit::policykit1::{AuthorityProxy, CheckAuthorizationFlags, Subject};
 
-use crate::migrations;
 use crate::snapshot;
 use crate::transaction::{self, Event, Scope};
+use crate::{guard, migrations};
 
 pub const PATH: &str = "/org/andromeda/UpdateHelper1";
 
@@ -156,12 +156,19 @@ impl Helper {
         let work = tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
             // The pre snapshot is taken only once the transaction is sure to commit.
             let mut pre = None;
-            let outcome = transaction::upgrade(scope, dry_run, &accepted, &tx, &mut || {
+            if !dry_run {
+                guard::recover(&state_dir)?;
+            }
+            let outcome = transaction::upgrade(scope, dry_run, &accepted, &tx, &mut |targets| {
+                guard::boot_mounted()?;
                 pre = runtime
                     .block_on(snapshot::pre(&snapper_conn))
                     .map_err(|e| anyhow::anyhow!("the snapshot before the update failed: {e}"))?;
-                Ok(())
+                guard::begin(&state_dir, targets)
             });
+            if !dry_run {
+                guard::end(&state_dir);
+            }
             if let Some(pre) = pre {
                 runtime.block_on(snapshot::post(&snapper_conn, pre));
             }

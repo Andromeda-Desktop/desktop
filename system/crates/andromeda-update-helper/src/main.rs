@@ -1,6 +1,7 @@
 //! andromeda-update-helper: root actions for Software Update (docs/system.md §1, U2). System bus,
 //! `org.andromeda.UpdateHelper1`, D-Bus activated through systemd; exits after 5 idle minutes.
 
+mod guard;
 mod helper;
 mod migrations;
 mod snapshot;
@@ -30,6 +31,11 @@ async fn main() -> Result<()> {
     match std::env::args().nth(1).as_deref() {
         Some("--seed-migrations") => return migrations::seed(migrations_dir, &state_dir, true),
         Some("--run-migrations") => return migrations::run(migrations_dir, &state_dir, true).map(|_| ()),
+        // andromeda-update-recover.service at boot. The SIGTERM handler stays installed and ignores it: a stop waits.
+        Some("--recover") => {
+            let _ = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+            return tokio::task::spawn_blocking(move || guard::recover(&state_dir)).await?;
+        }
         _ => {}
     }
     let running = Arc::new(AtomicBool::new(false));
@@ -38,11 +44,21 @@ async fn main() -> Result<()> {
     let helper = helper::Helper { state_dir, running: running.clone(), last_call: last_call.clone(), started };
     let _conn = zbus::connection::Builder::system().serve_at(helper::PATH, helper).name(NAME).build().await?;
     log::info!("serving {NAME}");
+    // A stop (shutdown, package upgrade) waits for a running commit: KillMode=mixed leaves its children alone and
+    // TimeoutStopSec covers the longest commit.
+    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    let mut stopping = false;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
-        tick.tick().await;
+        tokio::select! {
+            _ = tick.tick() => {}
+            _ = term.recv() => {
+                log::info!("stop requested: exits once no update runs");
+                stopping = true;
+            }
+        }
         let since_call = started.elapsed().saturating_sub(Duration::from_secs(last_call.load(Ordering::Relaxed)));
-        if !running.load(Ordering::Relaxed) && since_call > IDLE_EXIT {
+        if !running.load(Ordering::Relaxed) && (stopping || since_call > IDLE_EXIT) {
             return Ok(());
         }
     }

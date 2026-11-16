@@ -1,0 +1,14 @@
+[Unit]
+Description=Andromeda: repair a system update that was cut off
+ConditionPathExists=/var/lib/andromeda-update/interrupted
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/andromeda/andromeda-update-helper --recover
+StateDirectory=andromeda-update
+KillMode=mixed
+TimeoutSec=30min
+
+[Install]
+WantedBy=multi-user.target

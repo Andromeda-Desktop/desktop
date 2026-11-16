@@ -1,8 +1,12 @@
 [Unit]
 Description=Andromeda software update helper
+After=andromeda-update-recover.service
 
 [Service]
 Type=dbus
 BusName=org.andromeda.UpdateHelper1
 ExecStart=/usr/lib/andromeda/andromeda-update-helper
 StateDirectory=andromeda-update
+# A stop waits for a running commit: SIGTERM goes to the helper only, which exits once the commit ends.
+KillMode=mixed
+TimeoutStopSec=30min

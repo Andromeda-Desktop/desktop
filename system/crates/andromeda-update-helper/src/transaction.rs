@@ -134,6 +134,44 @@ pub const NEEDS_SYSTEM: &str = "needs a system update first";
 
 /// `dry_run`: prepares against the databases as they are (no sync: a sync without the upgrade would leave a partial
 /// upgrade state) and lists the targets. Otherwise syncs, prepares and commits.
+/// libalpm set up as pacman sets it up from pacman.conf.
+fn open() -> Result<(pacmanconf::Config, Alpm)> {
+    let conf = pacmanconf::Config::new().context("pacman-conf")?;
+    let mut alpm = alpm_utils::alpm_with_conf(&conf).context("libalpm")?;
+    // alpm_with_conf sets IgnorePkg but not IgnoreGroup.
+    alpm.set_ignoregroups(conf.ignore_group.iter()).context("IgnoreGroup")?;
+    // pacman-conf omits the system hook dir that pacman adds itself; without it no kernel, initramfs or depmod hook runs.
+    let hook_dirs: Vec<&str> =
+        std::iter::once(SYSTEM_HOOK_DIR).chain(conf.hook_dir.iter().map(String::as_str)).collect();
+    alpm.set_hookdirs(hook_dirs.iter()).context("HookDir")?;
+    Ok((conf, alpm))
+}
+
+/// Reinstalls the journalled targets (`name version`; `-name` removals are skipped) from the synced databases, so
+/// every package of a cut-off commit is complete and its hooks run. The packages come from the cache the commit
+/// filled.
+pub fn repair(targets: &[String], journal_time: std::time::SystemTime) -> Result<()> {
+    let (_, mut alpm) = open()?;
+    let lock = std::path::PathBuf::from(alpm.lockfile());
+    // A lock older than the journal is the cut-off commit's own; a newer one belongs to a live pacman run.
+    if std::fs::metadata(&lock).and_then(|m| m.modified()).is_ok_and(|t| t <= journal_time) {
+        std::fs::remove_file(&lock).context("stale database lock")?;
+    }
+    alpm.trans_init(TransFlag::NONE).context("start transaction")?;
+    let result = (|| -> Result<()> {
+        for name in targets.iter().filter(|t| !t.starts_with('-')).filter_map(|t| t.split(' ').next()) {
+            if let Some(pkg) = alpm.syncdbs().find_satisfier(name) {
+                alpm.trans_add_pkg(pkg).map_err(|e| anyhow!("{name}: {e}"))?;
+            }
+        }
+        alpm.trans_prepare().map_err(|e| anyhow!("prepare: {e}"))?;
+        alpm.trans_commit().map_err(|e| anyhow!("commit: {e}"))?;
+        Ok(())
+    })();
+    let _ = alpm.trans_release();
+    result
+}
+
 /// `before_commit` runs once the commit is certain (the snapshot); its error stops the upgrade.
 /// `accepted`: the questions the user answered "yes". The commit runs only when the user accepted every question the
 /// prepare asked; a commit-time question that is not accepted gets the safe answer, and its failure ends the run with
@@ -143,16 +181,9 @@ pub fn upgrade(
     dry_run: bool,
     accepted: &[String],
     events: &tokio::sync::mpsc::UnboundedSender<Event>,
-    before_commit: &mut dyn FnMut() -> Result<()>,
+    before_commit: &mut dyn FnMut(&[String]) -> Result<()>,
 ) -> Result<Outcome> {
-    let conf = pacmanconf::Config::new().context("pacman-conf")?;
-    let mut alpm = alpm_utils::alpm_with_conf(&conf).context("libalpm")?;
-    // alpm_with_conf sets IgnorePkg but not IgnoreGroup.
-    alpm.set_ignoregroups(conf.ignore_group.iter()).context("IgnoreGroup")?;
-    // pacman-conf omits the system hook dir that pacman adds itself; without it no kernel, initramfs or depmod hook runs.
-    let hook_dirs: Vec<&str> =
-        std::iter::once(SYSTEM_HOOK_DIR).chain(conf.hook_dir.iter().map(String::as_str)).collect();
-    alpm.set_hookdirs(hook_dirs.iter()).context("HookDir")?;
+    let (conf, mut alpm) = open()?;
     let asked = Rc::new(RefCell::new(Vec::new()));
     record_questions(&alpm, &asked, accepted);
     if !dry_run {
@@ -198,7 +229,7 @@ pub fn upgrade(
         if dry_run || !crate::helper::consented(&questions, accepted) || targets.is_empty() {
             return Ok(Outcome { targets, questions, committed: false });
         }
-        before_commit()?;
+        before_commit(&targets)?;
         alpm.set_progress_cb(events.clone(), |p: Progress, pkg: &str, percent: i32, _: usize, _: usize, tx| {
             let _ = tx.send(Event::Progress(stage(p).to_owned(), percent, pkg.to_owned()));
         });

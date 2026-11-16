@@ -200,6 +200,11 @@ package_andromeda-system-git() {
     "$pkgdir/usr/share/libalpm/hooks/andromeda-migrations.hook"
   install -Dm644 desktop/system/data/andromeda-update-helper.service \
     "$pkgdir/usr/lib/systemd/system/andromeda-update-helper.service"
+  install -Dm644 desktop/system/data/andromeda-update-recover.service \
+    "$pkgdir/usr/lib/systemd/system/andromeda-update-recover.service"
+  install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
+  ln -s ../andromeda-update-recover.service \
+    "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/andromeda-update-recover.service"
   install -Dm644 desktop/system/data/andromeda-update-tonight.service \
     "$pkgdir/usr/lib/systemd/system/andromeda-update-tonight.service"
   install -Dm644 desktop/system/data/andromeda-update-tonight.timer \
