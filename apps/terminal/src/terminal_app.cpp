@@ -24,7 +24,7 @@ namespace term {
 
   TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
     KittyImages::installPngDecoder();
-    m_agents = std::make_unique<agent::Host>([this](std::uint64_t key) {
+    m_agents = std::make_unique<agent::Host>(agent::Kind::Claude, [this](std::uint64_t key) {
       for (auto& [window, terminal] : m_windows) {
         terminal->agentChanged(key);
       }

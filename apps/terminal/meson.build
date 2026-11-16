@@ -106,7 +106,7 @@ endif
 
 _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
 _agentd_path = ['-DANDROMEDA_AGENTD_PATH="' + get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'andromeda-agentd' + '"']
-test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp',
+test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp', 'src/agent_kind.cpp',
   dependencies: [_agent_dep, _desk_app_dep], cpp_args: _warnings + _agentd_path),
   args: [_agentd.full_path()], depends: _agentd, timeout: 60)
 test('split_trees', executable('split_trees_test', 'tests/split_trees_test.cpp', 'src/split_trees.cpp',
@@ -130,7 +130,7 @@ executable('andromeda-terminal',
   'src/theme_store.cpp',
   'src/theme_cli.cpp',
   'src/prefs_window.cpp',
-  'src/agent_host.cpp',
+  'src/agent_host.cpp', 'src/agent_kind.cpp',
   'src/agent_view.cpp',
   dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')],
   cpp_args: _warnings + _agentd_path,

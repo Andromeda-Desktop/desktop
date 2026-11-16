@@ -49,7 +49,7 @@ namespace term::agent {
 
   } // namespace
 
-  Host::Host(Changed changed) : m_changed(std::move(changed)) {}
+  Host::Host(Kind kind, Changed changed) : m_kind(kind), m_changed(std::move(changed)) {}
 
   Host::~Host() {
     m_alive.reset();
@@ -147,10 +147,14 @@ namespace term::agent {
     posix_spawn_file_actions_adddup2(&actions, in[0], STDIN_FILENO);
     posix_spawn_file_actions_adddup2(&actions, out[1], STDOUT_FILENO);
     posix_spawn_file_actions_adddup2(&actions, err[1], STDERR_FILENO);
-    const auto path = program();
-    std::array<char*, 2> argv{const_cast<char*>(path.c_str()), nullptr};
+    std::vector<std::string> args = command(m_kind);
+    std::vector<char*> argv;
+    for (std::string& arg : args) {
+      argv.push_back(arg.data());
+    }
+    argv.push_back(nullptr);
     pid_t pid = -1;
-    const int rc = posix_spawn(&pid, path.c_str(), &actions, nullptr, argv.data(), environ);
+    const int rc = posix_spawnp(&pid, argv.front(), &actions, nullptr, argv.data(), environ);
     posix_spawn_file_actions_destroy(&actions);
     ::close(in[0]);
     ::close(out[1]);
@@ -159,7 +163,7 @@ namespace term::agent {
       ::close(in[1]);
       ::close(out[0]);
       ::close(err[0]);
-      onExit(127, "Could not start " + path + ".");
+      onExit(127, "Could not start " + args.front() + ".");
       return false;
     }
     m_pid = pid;

@@ -73,7 +73,7 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"79ed6f89-b693-
   int changes = 0;
   int result = EXIT_SUCCESS;
   {
-    Host host([&](std::uint64_t) { ++changes; });
+    Host host(Kind::Claude, [&](std::uint64_t) { ++changes; });
     Session& s = host.open(7, (root / "project").string());
     if (!pumpUntil([&] { return s.phase() == Phase::Idle; })) {
       result = fail("the session did not start");

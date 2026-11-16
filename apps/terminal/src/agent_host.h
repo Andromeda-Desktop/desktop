@@ -12,11 +12,12 @@
 
 #include <sys/types.h>
 
+#include "agent_kind.h"
 #include "agent_session.h"
 
 namespace term::agent {
 
-  // One andromeda-agentd process per app instance, shared by all agent sessions (TASK-terminal step 9).
+  // One ACP server process per agent kind and app instance, shared by the sessions of that kind.
   // Reads and writes run on their own threads; every callback and model change runs on the UI thread
   // (DeferredCall). The host is the ACP client: it routes updates, permission requests and prompt replies
   // to the session models and sends what their outboxes hold.
@@ -24,7 +25,7 @@ namespace term::agent {
   public:
     using Changed = std::function<void(std::uint64_t key)>;
 
-    explicit Host(Changed changed);
+    Host(Kind kind, Changed changed);
     ~Host();
     Host(const Host&) = delete;
     Host& operator=(const Host&) = delete;
@@ -55,6 +56,7 @@ namespace term::agent {
     void onExit(int status, std::string stderrTail);
     Slot* slotBySessionId(const std::string& id, std::uint64_t* key);
 
+    Kind m_kind;
     Changed m_changed;
     std::map<std::uint64_t, Slot> m_slots;
     std::shared_ptr<Shared> m_shared;
