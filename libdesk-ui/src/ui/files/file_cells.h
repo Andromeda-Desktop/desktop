@@ -24,6 +24,9 @@ namespace file_columns {
   inline constexpr std::uint8_t kArtist = 4;
 } // namespace file_columns
 
+// The fill of selected items and of the selection chip.
+ColorSpec selectionTint();
+
 struct FileCellState {
   bool selected = false;
   bool hovered = false;

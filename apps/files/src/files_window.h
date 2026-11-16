@@ -318,6 +318,10 @@ private:
   enum class HistoryStep : std::uint8_t { Undo, Redo };
   std::map<std::string, HistoryStep> m_historyJobs; // running undo jobs and the stack each one feeds when done
   void runHistory(HistoryStep step);
+  void fillCommandBar(Flex& row, float scale);
+  [[nodiscard]] std::uint32_t commandBarKey() const;
+  void refreshCommandBar();
+  std::uint32_t m_commandBarKey = 0;
   std::map<std::string, FileOpsClient::Job> m_phoneJobs; // Link transfers this window started, by "link:<id>"
   std::set<std::string> m_trashReloaded; // other windows' finished jobs the Trash view reloaded for
   std::map<std::string, std::function<void(const std::string&)>> m_renameDone; // rename job -> its inline field

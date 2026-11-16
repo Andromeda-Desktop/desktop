@@ -89,6 +89,8 @@ public:
     std::function<void(const std::filesystem::path&)> quickLook;
     // The view changed (Ctrl+1-4, the switch); the Files window hides its sidebar while the Gallery shows.
     std::function<void(View)> viewChanged;
+    // Fills the path bar's command row (Paste, the selection's actions, Undo/Redo); runs on refreshBarActions.
+    std::function<void(Flex& row, float scale)> barActions;
     // Adds the host's circles after the view switch (mockup .ahdr: split, info).
     std::function<void(Flex& row, float scale)> headerButtons;
     // Set: search offers the This PC scope (FILES-UI-SPEC §15). The host queries its index for `text` with an index
@@ -263,6 +265,10 @@ public:
   void walk(int delta);
   [[nodiscard]] std::optional<std::filesystem::path> cursorPath() const;
   void clearSelection();
+  // Rebuilds the path bar's command row: its inputs changed (selection, clipboard, undo).
+  void refreshBarActions();
+  // The stage is too narrow for labelled commands: the host draws them as icons with tooltips.
+  [[nodiscard]] bool barNarrow() const noexcept { return m_barNarrow; }
 
   // Drag and drop (FILES-UX §2.3). A drag over the browser at a scene point updates the drop cue and spring-load and
   // returns where a drop there goes; nullopt = no drop (a dragged item, a descendant, a file, a read-only folder).
@@ -402,6 +408,7 @@ private:
   Timer m_staleTimer;
   FileSort m_sort;
   std::vector<std::shared_ptr<const FileInfo>> m_rows; // what the current page shows
+  bool m_barNarrow = false;
 
   std::set<std::string> m_selected;
   std::optional<std::string> m_anchor;

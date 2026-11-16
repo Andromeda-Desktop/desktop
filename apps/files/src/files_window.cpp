@@ -476,6 +476,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
       .quickLook = [this](const fs::path& path) { quickLook(path, true); },
       // The Gallery is full-bleed (mockup §15): the sidebar folds away while it shows.
       .viewChanged = [this](FileBrowser::View view) { m_window.setSidebarVisible(view != FileBrowser::View::Gallery); },
+      .barActions = [this](Flex& row, float s) { fillCommandBar(row, s); },
       .headerButtons =
           [this](Flex& row, float s) {
             m_pillAnchor = nullptr;
@@ -1074,7 +1075,89 @@ bool FilesWindow::inFolder() const { return m_browser->listingId().empty() && !l
 const fs::path& FilesWindow::location() const noexcept { return m_browser->location(); }
 bool FilesWindow::hasSelection() const noexcept { return m_browser->selectionCount() > 0; }
 
+// The inputs of the command bar: it rebuilds only when one of them changes.
+std::uint32_t FilesWindow::commandBarKey() const {
+  const CommandTable& commands = m_app.commands();
+  std::uint32_t key = 0;
+  std::uint32_t bit = 1;
+  for (const char* id : {"edit.paste", "edit.copy", "file.rename", "edit.trash", "file.restore", "edit.delete", "edit.undo",
+                         "edit.redo"}) {
+    key |= commands.isEnabled(id) ? bit : 0;
+    bit <<= 1;
+  }
+  key |= (m_app.clipboard().paths.empty() ? 0U : bit) | (m_browser->barNarrow() ? bit << 1 : 0U);
+  return key ^ (static_cast<std::uint32_t>(m_app.clipboard().paths.size()) << 12);
+}
+
+void FilesWindow::refreshCommandBar() {
+  if (m_browser != nullptr && commandBarKey() != m_commandBarKey) {
+    m_browser->refreshBarActions();
+  }
+}
+
+// Concept B (.agent/scratch/design-files-selbar): labelled commands for the selection, Paste while the clipboard
+// holds files, Undo and Redo last. Below the narrow width the labels fold into tooltips; Paste keeps its label.
+void FilesWindow::fillCommandBar(Flex& row, float s) {
+  m_commandBarKey = commandBarKey();
+  const CommandTable& commands = m_app.commands();
+  const bool narrow = m_browser->barNarrow();
+  const auto button = [&](std::string id, const char* glyph, std::string label, ButtonVariant variant, bool danger,
+                          bool showLabel) {
+    std::optional<Button::ButtonPalette> palette;
+    if (danger) {
+      Button::ButtonPalette p = Button::defaultPalette(ButtonVariant::Ghost);
+      p.normal.label = p.hover.label = p.pressed.label = colorSpecFromRole(ColorRole::Danger);
+      palette = p;
+    }
+    const float h = Tokens::sizeControlM * s;
+    row.addChild(ui::button({
+        .text = showLabel ? std::optional<std::string>(label) : std::nullopt,
+        .glyph = std::string(glyph),
+        .fontSize = Style::fontSizeCaption * s,
+        .glyphSize = Tokens::sizeSymbol * s,
+        .enabled = commands.isEnabled(id),
+        .variant = variant,
+        .customPalette = palette,
+        .tooltip = label,
+        .paddingH = showLabel ? std::optional<float>(Tokens::spaceP8 * s) : std::nullopt,
+        .radius = Style::scaledRadius(Tokens::radiusR8, s),
+        .width = showLabel ? std::nullopt : std::optional<float>(h),
+        .height = h,
+        // The bar rebuilds after a command runs: the click returns before its button goes.
+        .onClick = [this, id = std::move(id)] {
+          DeferredCall::callLater([this, id, alive = std::weak_ptr<bool>(m_alive)] {
+            if (!alive.expired()) {
+              m_app.commands().run(id);
+            }
+          });
+        },
+    }));
+  };
+  const std::size_t clip = m_app.clipboard().paths.size();
+  if (commands.isEnabled("edit.paste") && clip > 0) {
+    button("edit.paste", "clipboard", clip == 1 ? std::string("Paste 1 item") : std::format("Paste {} items", clip),
+           ButtonVariant::Primary, false, true);
+  }
+  if (m_browser->selectionCount() > 0) {
+    if (inTrash()) {
+      button("file.restore", "restore", "Put Back", ButtonVariant::Ghost, false, !narrow);
+      button("edit.delete", "trash-x", "Delete Immediately…", ButtonVariant::Ghost, true, !narrow);
+    } else {
+      if (m_browser->selectionCount() == 1) {
+        button("file.rename", "pencil", "Rename", ButtonVariant::Ghost, false, !narrow);
+      }
+      button("edit.copy", "copy", "Copy", ButtonVariant::Ghost, false, !narrow);
+      button("edit.cut", "scissors", "Cut", ButtonVariant::Ghost, false, !narrow);
+      button("edit.trash", "trash", "Move to Trash", ButtonVariant::Ghost, true, !narrow);
+    }
+  }
+  row.addChild(ui::box({.width = Tokens::spaceP8 * s, .height = Tokens::spaceP8 * s}));
+  button("edit.undo", "arrow-back-up", "Undo (Ctrl+Z)", ButtonVariant::Ghost, false, false);
+  button("edit.redo", "arrow-forward-up", "Redo (Ctrl+Shift+Z)", ButtonVariant::Ghost, false, false);
+}
+
 void FilesWindow::onBrowserChanged() {
+  refreshCommandBar();
   if (m_picker.has_value() && m_pickerPrimary != nullptr && m_picker->confirmReplace.empty()) {
     m_pickerPrimary->setText(pickerPrimaryLabel());
   }
@@ -3721,6 +3804,7 @@ void FilesWindow::copySelection(bool cut) {
   }
   const auto paths = selectedPaths();
   m_app.clipboard() = {.paths = paths, .cut = cut};
+  refreshCommandBar();
   // The system clipboard too, so other apps paste the files (GNOME, KDE and browsers read one of these types).
   std::string uris;
   std::string text;
@@ -3843,6 +3927,7 @@ void FilesWindow::pasteInternal() {
   }
   if (clip.cut) {
     m_app.clipboard() = {};
+    refreshCommandBar();
     startJob("Moving", clip.paths.size(), [&](FileOpsClient& ops, auto done) { ops.move(clip.paths, location(), done); });
   } else {
     startJob("Copying", clip.paths.size(), [&](FileOpsClient& ops, auto done) { ops.copy(clip.paths, location(), done); });
@@ -4291,6 +4376,7 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
         m_app.redoStack().clear();
       }
     }
+    refreshCommandBar();
     const std::string what = job.kind == "trash" ? "Moved to Trash"
         : job.kind == "copy"                    ? "Copied"
         : job.kind == "move"                    ? "Moved"

@@ -41,7 +41,6 @@ namespace {
   const float& kDurationWidth = Tokens::componentFilesColumnDuration;
   const float& kArtistWidth = Tokens::componentFilesColumnArtist;
 
-  ColorSpec selectionTint() { return colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F); }
 
   // Byte range in `name` of the first hit of `query`, both compared case-folded per character.
   std::optional<std::pair<std::size_t, std::size_t>> matchRange(const std::string& name, const std::string& query) {
@@ -93,6 +92,8 @@ namespace {
     a.disabled = state.disabled;
   }
 } // namespace
+
+ColorSpec selectionTint() { return colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F); }
 
 std::string shownFileName(const FileInfo& info, bool hideExtension) {
   if (!hideExtension || info.isDir) {

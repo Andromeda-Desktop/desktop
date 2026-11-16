@@ -152,6 +152,7 @@ namespace {
   constexpr auto kSpringLoad = std::chrono::milliseconds(700); // FILES-UX §2.3
   const float& kSidebarRow = Tokens::componentSidebarRow;
   const float& kPathBar = Tokens::sizeRowCompact; // FILES-UX §0.2: compact row, not 28
+  constexpr float kBarLabelsMin = 600.0F; // logical stage width the labelled command bar needs; below it, icons only
   const float& kListHeader = Tokens::componentListTableHeader;
   const float& kIconGap = Tokens::componentGridGap;
   const float& kContentPad = Tokens::componentFilesGridPadding;
@@ -437,6 +438,10 @@ struct FileBrowser::Ui {
   bool pathBarWanted = false;
   Flex* crumbRow = nullptr; // split pane only
   Label* status = nullptr;
+  Flex* selChip = nullptr; // "N selected" and its clear button, in place of the crumbs while items are selected
+  Label* selCount = nullptr;
+  Flex* selGrow = nullptr;
+  Flex* actions = nullptr;
   std::array<Button*, 4> viewButtons{};
   std::array<Box*, 4> viewShadows{};
   std::array<Box*, 4> galleryMarks{}; // the screen outline, then the three filmstrip dashes
@@ -1731,6 +1736,14 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
   stage->onLayout = [this](Renderer& renderer, float w, float h) {
     if (w != m_ui->stageWidth) {
       m_ui->stageWidth = w;
+      if (const bool narrow = w < kBarLabelsMin * m_ui->scale; narrow != m_barNarrow) {
+        m_barNarrow = narrow;
+        DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+          if (!alive.expired()) {
+            refreshBarActions();
+          }
+        });
+      }
       syncListHeader(); // before the pages arrange below, so a narrow split pane drops Date and Kind at once
     }
     if (m_options.thumbnails != nullptr && m_options.thumbnails->uploadPending(renderer.textureManager())) {
@@ -1800,13 +1813,32 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
   m_ui->pathBarWanted = pathBar;
   rule->setVisible(pathBar && m_options.view != View::Gallery);
   m_ui->pathRule = content->addChild(std::move(rule));
-  // Mockup .pbar: padding 0 16, gap 4, 500 12 label_2, last segment label_1; status, then the icon-size slider.
-  auto path = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP16 * s,
-                       .height = kPathBar * s});
+  // Command bar (.agent/scratch/design-files-selbar concept B): one row high in every state, so the grid never moves.
+  // Crumbs and status, or the selection chip and its size; then the icon-size slider and the host's commands.
+  auto path = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
+                       .height = Tokens::sizeRow * s});
+  const float chipH = Tokens::sizeControlM * s - Tokens::spaceP4 * s;
+  auto chip = ui::row({.out = &m_ui->selChip, .align = FlexAlign::Center, .gap = Tokens::spaceP4 * s,
+                       .paddingH = Tokens::spaceP8 * s, .fill = selectionTint(),
+                       .radius = chipH / 2.0F, .height = chipH, .visible = false});
+  chip->addChild(ui::label({.out = &m_ui->selCount, .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::SemiBold,
+                            .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1}));
+  chip->addChild(ui::button({.glyph = std::string("x"), .glyphSize = Tokens::sizeSymbolInline * s,
+                             .variant = ButtonVariant::Ghost, .tooltip = std::string("Clear Selection (Esc)"),
+                             .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
+                             .height = Tokens::sizeControlS * s, .onClick = [this] {
+                               DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+                                 if (!alive.expired()) {
+                                   clearSelection();
+                                 }
+                               });
+                             }}));
+  path->addChild(std::move(chip));
   path->addChild(ui::row({.out = &m_ui->pathRow, .align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .clipChildren = true,
                           .flexGrow = 1.0F}));
   path->addChild(ui::label({.out = &m_ui->status, .fontSize = Style::fontSizeCaption * s,
                             .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
+  path->addChild(ui::row({.out = &m_ui->selGrow, .flexGrow = 1.0F, .visible = false}));
   path->addChild(ui::slider({
       .out = &m_ui->zoom,
       .minValue = Tokens::componentFilesIconMin,
@@ -1821,6 +1853,12 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
       .onValueChanged = [this](double v) { setIconSize(static_cast<float>(v)); },
   }));
   m_ui->zoom->accessibleState().name = "Icon size";
+  path->addChild(ui::row({.out = &m_ui->actions, .align = FlexAlign::Center, .gap = Tokens::spaceP4 * s}));
+  DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] { // the host's browser pointer is set by then
+    if (!alive.expired()) {
+      refreshBarActions();
+    }
+  });
   path->setVisible(pathBar && m_options.view != View::Gallery);
   m_ui->pathBar = content->addChild(std::move(path));
 
@@ -2353,7 +2391,6 @@ void FileBrowser::present(Motion motion) {
   refreshRows();
 
   Page& out = ui.other();
-  const float w = ui.stageWidth;
   const std::uint64_t gen = ++m_presentGen;
   const auto animateOpacity = [this](Page& page, float from, float to, const Tokens::Spring& spring,
                                      std::string_view label, std::function<void()> done) {
@@ -2810,9 +2847,17 @@ void FileBrowser::refreshChrome() {
   Ui& ui = *m_ui;
   const float s = ui.scale;
   refreshViewButtons();
+  const bool selecting = !m_selected.empty();
   if (ui.zoom != nullptr) {
-    ui.zoom->setVisible(m_options.view == View::Icons);
-    ui.zoom->setParticipatesInLayout(m_options.view == View::Icons);
+    const bool zoom = m_options.view == View::Icons && !selecting;
+    ui.zoom->setVisible(zoom);
+    ui.zoom->setParticipatesInLayout(zoom);
+  }
+  if (ui.selChip != nullptr) {
+    ui.selChip->setVisible(selecting);
+    ui.selGrow->setVisible(selecting);
+    ui.pathRow->setVisible(!selecting);
+    ui.selCount->setText(std::format("{} selected", m_selected.size()));
   }
   syncListHeader();
 
@@ -2890,9 +2935,14 @@ void FileBrowser::refreshChrome() {
   if (ui.status != nullptr && ui.cur().custom != nullptr) {
     ui.status->setText({});
   } else if (ui.status != nullptr) {
-    std::string text = m_selected.empty() ? (m_rows.size() == 1 ? std::string("1 item") : std::format("{} items", m_rows.size()))
-                                          : std::format("{} of {} selected", m_selected.size(), m_rows.size());
-    if (!m_listing.has_value()) {
+    std::string text = m_rows.size() == 1 ? std::string("1 item") : std::format("{} items", m_rows.size());
+    if (selecting) {
+      std::uint64_t bytes = 0;
+      for (const auto& row : m_rows) {
+        bytes += m_selected.contains(row->name) ? row->size : 0;
+      }
+      text = bytes > 0 ? formatFileSize(bytes) : std::string();
+    } else if (!m_listing.has_value()) {
       readFreeSpace();
       if (m_freeFor == m_location && m_free.has_value()) {
         text += std::format(" · {} free", formatFileSize(*m_free));
@@ -3587,6 +3637,21 @@ void FileBrowser::walk(int delta) {
 std::optional<std::filesystem::path> FileBrowser::cursorPath() const {
   const auto c = cursorIndex();
   return c.has_value() ? std::optional(pathOf(*m_rows[*c])) : std::nullopt;
+}
+
+void FileBrowser::refreshBarActions() {
+  if (m_ui == nullptr || m_ui->actions == nullptr) {
+    return;
+  }
+  while (!m_ui->actions->children().empty()) {
+    (void)m_ui->actions->removeChild(m_ui->actions->children().back().get());
+  }
+  if (m_host.barActions) {
+    m_host.barActions(*m_ui->actions, m_ui->scale);
+  }
+  if (m_host.invalidate) {
+    m_host.invalidate();
+  }
 }
 
 void FileBrowser::clearSelection() {
