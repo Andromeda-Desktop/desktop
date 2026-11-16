@@ -98,34 +98,23 @@ namespace viewer {
     }
   } // namespace
 
-  ViewerWindow::ViewerWindow(AppLoop& loop, AppWindow& window) : m_loop(loop), m_window(window) {
-    m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
-      return build(renderer, width, height);
-    });
-    m_window.setKeyHandler([this](const KeyboardEvent& event) { return onKey(event); });
-    m_window.setCloseGuard([this] {
-      if (!unsaved()) {
-        return true;
+  ViewerWindow::ViewerWindow(AppLoop& loop, AppWindow& window) : m_loop(loop), m_window(window) {}
+
+  // A rebuilt ScrollView clamps its offset to its content, which is empty until the first layout: restore after it.
+  void ViewerWindow::onLayout() {
+    // Once per rebuild: a document shorter than the old offset clamps, and must not loop.
+    // A placed note's field takes the keys at once.
+    if (m_focusNote && m_noteInput != nullptr) {
+      m_focusNote = false;
+      m_window.input().setFocus(m_noteInput->inputArea());
+    }
+    if (m_restoreScroll && m_scroll != nullptr) {
+      m_restoreScroll = false;
+      if (m_scroll->scrollOffset() != m_scrollOffset) {
+        m_scroll->setScrollOffset(m_scrollOffset);
+        m_window.invalidate();
       }
-      askSaveBeforeClose();
-      return false;
-    });
-    // A rebuilt ScrollView clamps its offset to its content, which is empty until the first layout: restore after it.
-    m_window.setLayoutCallback([this] {
-      // Once per rebuild: a document shorter than the old offset clamps, and must not loop.
-      // A placed note's field takes the keys at once.
-      if (m_focusNote && m_noteInput != nullptr) {
-        m_focusNote = false;
-        m_window.input().setFocus(m_noteInput->inputArea());
-      }
-      if (m_restoreScroll && m_scroll != nullptr) {
-        m_restoreScroll = false;
-        if (m_scroll->scrollOffset() != m_scrollOffset) {
-          m_scroll->setScrollOffset(m_scrollOffset);
-          m_window.invalidate();
-        }
-      }
-    });
+    }
   }
 
   ViewerWindow::~ViewerWindow() {
@@ -177,7 +166,7 @@ namespace viewer {
     m_scrollOffset = 0.0F;
     m_hOffset = 0.0F;
     m_error.clear();
-    m_window.setTitle(path.filename().string());
+    updateTitle();
     const auto kind = preview::kindForContentType(contentTypeOf(path));
     if (kind == preview::FileKind::Pdf) {
       openPdf();
@@ -269,7 +258,7 @@ namespace viewer {
       m_decoder.cancel();
       m_path = path;
       m_folderIndex = static_cast<std::size_t>(next);
-      m_window.setTitle(path.filename().string());
+      updateTitle();
       openImage();
       rebuild();
       return;
@@ -1023,12 +1012,7 @@ namespace viewer {
     }
   }
 
-  std::unique_ptr<Node> ViewerWindow::build(Renderer& renderer, float width, float height) {
-    const float s = m_window.uiScale();
-    for (TextureHandle& texture : m_dropped) {
-      renderer.textureManager().unload(texture);
-    }
-    m_dropped.clear();
+  void ViewerWindow::forgetNodes() {
     m_scroll = nullptr;
     m_hscroll = nullptr;
     m_column = nullptr;
@@ -1037,7 +1021,6 @@ namespace viewer {
     m_noteInput = nullptr;
     m_positionLabel = nullptr;
     m_countLabel = nullptr;
-    // The old tree is gone: its tile nodes with it.
     for (auto& [key, tile] : m_tiles) {
       tile.node = nullptr;
     }
@@ -1046,6 +1029,15 @@ namespace viewer {
     m_thumbImages.assign(m_thumbs.size(), nullptr);
     m_thumbFrames.assign(m_thumbs.size(), nullptr);
     m_markLayers.assign(m_pages.size(), nullptr);
+  }
+
+  std::unique_ptr<Node> ViewerWindow::build(Renderer& renderer, float width, float height) {
+    const float s = m_window.uiScale();
+    for (TextureHandle& texture : m_dropped) {
+      renderer.textureManager().unload(texture);
+    }
+    m_dropped.clear();
+    forgetNodes();
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
     // Full screen is immersive: the page column alone.
     const bool immersive = m_window.fullscreen() && m_mode == Mode::Pdf;
@@ -1640,13 +1632,27 @@ namespace viewer {
     close(fd);
   }
 
+  std::string ViewerWindow::title() const { return (unsaved() ? "• " : "") + m_path.filename().string(); }
+
   void ViewerWindow::updateTitle() {
-    m_window.setTitle((unsaved() ? "• " : "") + m_path.filename().string());
+    if (std::string now = title(); now != m_shownTitle) {
+      m_shownTitle = std::move(now);
+      if (m_titleChanged) {
+        m_titleChanged();
+      }
+    }
   }
 
-  void ViewerWindow::askSaveBeforeClose() {
+  void ViewerWindow::detach() {
+    forgetNodes();
+    m_window.animations().cancel(m_zoomAnim);
+    m_zoomAnim = 0;
+    m_zoomFrom = 1.0F;
+  }
+
+  void ViewerWindow::askSaveBeforeClose(std::function<void()> close) {
     m_window.presentSheet(
-        [this](float s) {
+        [this, close](float s) {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
                                  .padding = Tokens::componentDialogPadding * s,
                                  .width = Tokens::componentDialogAlertWidth * s});
@@ -1659,16 +1665,16 @@ namespace viewer {
                                    .maxLines = 3}));
           auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
           buttons->addChild(ui::button({.text = std::string("Don’t Save"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Destructive, .onClick = [this] {
+                                        .variant = ButtonVariant::Destructive, .onClick = [this, close] {
                                           m_window.dismissSheet();
-                                          m_window.finishClose();
+                                          close();
                                         }}));
           buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
           buttons->addChild(ui::button({.text = std::string("Save"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Primary, .onClick = [this] {
+                                        .variant = ButtonVariant::Primary, .onClick = [this, close] {
                                           m_window.dismissSheet();
-                                          saveThen([this] { m_window.finishClose(); });
+                                          saveThen(close);
                                         }}));
           box->addChild(std::move(buttons));
           return box;

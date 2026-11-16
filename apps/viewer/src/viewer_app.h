@@ -6,11 +6,17 @@
 #include <map>
 #include <memory>
 
+namespace desk {
+  class FileChooser;
+  class ForeignExport;
+}
+
 namespace viewer {
 
+  class ViewerTabs;
   class ViewerWindow;
 
-  // andromeda-viewer: one process (DeskApp single instance); each opened file gets its own window.
+  // andromeda-viewer: one process (DeskApp single instance); an opened file becomes a tab of the active window.
   class ViewerApp final : public DeskApp {
   public:
     ViewerApp();
@@ -27,8 +33,13 @@ namespace viewer {
   private:
     void addCommands();
     [[nodiscard]] ViewerWindow* active() const;
+    [[nodiscard]] ViewerTabs* activeTabs() const;
+    void chooseFile();
 
-    std::map<AppWindow*, std::unique_ptr<ViewerWindow>> m_windows;
+    std::unique_ptr<desk::FileChooser> m_chooser;
+    std::unique_ptr<desk::ForeignExport> m_export;
+
+    std::map<AppWindow*, std::unique_ptr<ViewerTabs>> m_windows;
   };
 
 } // namespace viewer

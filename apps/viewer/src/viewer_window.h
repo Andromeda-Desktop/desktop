@@ -59,6 +59,19 @@ namespace viewer {
     void save() { saveThen({}); }
     void setTool(Tool tool);
 
+    // ViewerTabs drives these for the tab it shows.
+    [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float width, float height);
+    [[nodiscard]] bool onKey(const KeyboardEvent& event);
+    void onLayout();
+    [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
+    // The file name, after a dirty mark when unsaved.
+    [[nodiscard]] std::string title() const;
+    void setTitleChanged(std::function<void()> changed) { m_titleChanged = std::move(changed); }
+    // Another tab shows: this one's scene nodes are about to go; its next build makes them again.
+    void detach();
+    // Asks Save / Don't Save / Cancel; `close` runs once the tab may close.
+    void askSaveBeforeClose(std::function<void()> close);
+
   private:
     enum class Mode : std::uint8_t { Empty, Loading, Pdf, Image, Error };
     struct Page {
@@ -105,7 +118,6 @@ namespace viewer {
       std::string text;
     };
 
-    [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float width, float height);
     [[nodiscard]] std::unique_ptr<Node> buildToolbar(float width);
     [[nodiscard]] std::unique_ptr<Node> buildPages(Renderer& renderer);
     [[nodiscard]] std::unique_ptr<Node> buildSidebar(Renderer& renderer);
@@ -144,7 +156,6 @@ namespace viewer {
     void updateSelect(float x, float y);
     void requestSelect();
     void rebuild();
-    [[nodiscard]] bool onKey(const KeyboardEvent& event);
     [[nodiscard]] std::size_t currentPage() const;
     void onPagePress(std::size_t page, float x, float y, bool pressed);
     void onPageMotion(float x, float y);
@@ -164,9 +175,9 @@ namespace viewer {
     void moveStamp(const RectF& box);
     void rerenderPage(std::size_t page);
     void placeSignature(std::size_t page, float x, float y);
-    [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
     void updateTitle();
-    void askSaveBeforeClose();
+    // Forgets every scene node: the tree they were in is gone.
+    void forgetNodes();
     // `then` runs once the file on disk holds every edit.
     void saveThen(std::function<void()> then);
     [[nodiscard]] std::unique_ptr<Node> buildSignaturePad();
@@ -255,6 +266,8 @@ namespace viewer {
       annot::Point grab;
     };
     std::optional<StampFocus> m_stamp;
+    std::function<void()> m_titleChanged;
+    std::string m_shownTitle;
     bool m_signing = false;
     std::vector<annot::Stroke> m_padStrokes;
     bool m_padDrawing = false;

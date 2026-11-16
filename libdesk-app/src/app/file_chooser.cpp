@@ -50,6 +50,11 @@ namespace desk {
     request("OpenFile", parentWindow, title, {{"directory", sdbus::Variant{true}}}, std::move(picked));
   }
 
+  void FileChooser::openFile(const std::string& parentWindow, const std::string& title,
+                             std::function<void(std::optional<std::filesystem::path>)> picked) {
+    request("OpenFile", parentWindow, title, {}, std::move(picked));
+  }
+
   void FileChooser::saveFile(const std::string& parentWindow, const std::string& title, const std::string& currentName,
                              std::function<void(std::optional<std::filesystem::path>)> picked) {
     request("SaveFile", parentWindow, title, {{"current_name", sdbus::Variant{currentName}}}, std::move(picked));

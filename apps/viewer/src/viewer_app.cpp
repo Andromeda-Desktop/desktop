@@ -2,7 +2,11 @@
 
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "viewer_tabs.h"
 #include "viewer_window.h"
+#include "app/file_chooser.h"
+#include "app/foreign_export.h"
+#include "wayland/wayland_connection.h"
 
 #include <gio/gio.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -53,6 +57,34 @@ namespace viewer {
     add("edit.redo", "Redo", "Edit", XKB_KEY_z, KeyMod::Ctrl | KeyMod::Shift, &ViewerWindow::redo);
     add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
     add("view.toggle-sidebar", "Show Sidebar", "View", 0, 0, &ViewerWindow::toggleSidebar);
+    const auto tabs = [this](const char* id, const char* label, std::optional<KeyChord> key, void (ViewerTabs::*run)(),
+                             std::optional<KeyChord> alternate = std::nullopt) {
+      commands().add({.id = id, .label = label, .group = "Window", .shortcut = key,
+                      .enabled = [this] { return activeTabs() != nullptr; },
+                      .run = [this, run] {
+                        if (ViewerTabs* t = activeTabs(); t != nullptr) {
+                          (t->*run)();
+                        }
+                      },
+                      .alternate = alternate});
+    };
+    // Ctrl+W closes the tab, the window only with its last tab; Close Window gives up Ctrl+W first: a held shortcut
+    // cannot be taken.
+    commands().add({.id = "window.close", .label = "Close Window", .group = "Window", .run = [this] {
+                      if (AppWindow* window = activeWindow()) {
+                        closeWindow(*window);
+                      }
+                    }});
+    tabs("window.close-tab", "Close Tab", KeyChord{XKB_KEY_w, KeyMod::Ctrl}, &ViewerTabs::closeActive);
+    tabs("view.next-tab", "Next Tab", KeyChord{XKB_KEY_Tab, KeyMod::Ctrl}, &ViewerTabs::next);
+    tabs("view.previous-tab", "Previous Tab", KeyChord{XKB_KEY_ISO_Left_Tab, KeyMod::Ctrl | KeyMod::Shift},
+         &ViewerTabs::previous, KeyChord{XKB_KEY_Tab, KeyMod::Ctrl | KeyMod::Shift});
+    const auto open = [this](const char* id, const char* label, std::uint32_t sym) {
+      commands().add({.id = id, .label = label, .group = "File", .shortcut = KeyChord{sym, KeyMod::Ctrl},
+                      .run = [this] { chooseFile(); }});
+    };
+    open("file.open", "Open…", XKB_KEY_o);
+    open("file.new-tab", "New Tab", XKB_KEY_t);
     commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",
                     .shortcut = KeyChord{.sym = XKB_KEY_F11, .modifiers = 0},
                     .enabled = [this] { return activeWindow() != nullptr; },
@@ -67,10 +99,36 @@ namespace viewer {
                     .run = [this] { activeWindow()->toggleFullscreen(); }});
   }
 
-  ViewerWindow* ViewerApp::active() const {
+  ViewerTabs* ViewerApp::activeTabs() const {
     AppWindow* window = activeWindow();
     const auto it = window != nullptr ? m_windows.find(window) : m_windows.end();
     return it != m_windows.end() ? it->second.get() : nullptr;
+  }
+
+  ViewerWindow* ViewerApp::active() const {
+    const ViewerTabs* tabs = activeTabs();
+    return tabs != nullptr ? tabs->active() : nullptr;
+  }
+
+  void ViewerApp::chooseFile() {
+    AppWindow* window = activeWindow();
+    if (window == nullptr || bus() == nullptr) {
+      return;
+    }
+    if (m_chooser == nullptr) {
+      m_chooser = std::make_unique<desk::FileChooser>(*bus());
+    }
+    if (m_export == nullptr) {
+      m_export = std::make_unique<desk::ForeignExport>(loop().wayland().display());
+    }
+    m_export->handle(window->wlSurface(), [this, window](const std::string& parent) {
+      m_chooser->openFile(parent, "Open", [this, window](std::optional<std::filesystem::path> path) {
+        // The window may have closed while the dialog showed.
+        if (const auto it = m_windows.find(window); path && it != m_windows.end()) {
+          it->second->add(*path);
+        }
+      });
+    });
   }
 
   AppWindow& ViewerApp::createWindow() {
@@ -78,7 +136,7 @@ namespace viewer {
                                        // The PDF toolbar's buttons, zoom and search field fit from this width.
                                        .minWidth = 720,
                                        .headerWhenFullscreen = false});
-    m_windows[&window] = std::make_unique<ViewerWindow>(loop(), window);
+    m_windows[&window] = std::make_unique<ViewerTabs>(loop(), window);
     return window;
   }
 
@@ -89,10 +147,20 @@ namespace viewer {
         kLog.warn("cannot open {}", uri);
         continue;
       }
-      AppWindow& window = createWindow();
-      m_windows[&window]->open(path);
-      window.open();
-      window.activate(activationToken);
+      // A file opens as a tab of the active window, else of any open one, else of a new window.
+      AppWindow* window = activeWindow();
+      if (window == nullptr && !m_windows.empty()) {
+        window = m_windows.begin()->first;
+      }
+      const bool fresh = window == nullptr;
+      if (fresh) {
+        window = &createWindow();
+      }
+      m_windows[window]->add(path);
+      if (fresh) {
+        window->open();
+      }
+      window->activate(activationToken);
     }
   }
 
