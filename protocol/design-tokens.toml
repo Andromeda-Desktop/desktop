@@ -625,6 +625,7 @@ card_gap = 8.0  # contentCard windows: the sidebar material shows this wide arou
 card_radius = 16.0  # the content card corner, as the split mockup (user, 2026-11-16)
 title_bar = 40.0
 header = 48.0
+caption = 40.0  # contentCard windows: the header is the card caption (terminal split design A)
 button = 24.0
 button_inset = 8.0
 resize_band = 8.0

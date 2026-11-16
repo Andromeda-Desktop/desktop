@@ -120,6 +120,7 @@ public:
   void setSceneContentBacked(bool backed);
   // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
   [[nodiscard]] float sceneTextBacking() const noexcept;
+  [[nodiscard]] float headerHeight() const noexcept; // surface px
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
   // Keys no command took and no text field owns (type-ahead, arrows in a list). True = handled.
   void setKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_keyHandler = std::move(handler); }

@@ -45,9 +45,10 @@ namespace term {
 
   namespace {
 
-    const float& kInset = Tokens::spaceP24;
-    const float& kTopInset = Tokens::spaceP8;
-    const float& kBottomInset = Tokens::spaceP8;
+    // The grid inside its card, below the caption (split mockup .card2 .grid).
+    const float& kInset = Tokens::spaceP16;
+    constexpr float kTopInset = 0.0F;
+    const float& kBottomInset = Tokens::spaceP12;
 
     std::uint32_t pack(GhosttyColorRgb c) { return (std::uint32_t(c.r) << 16) | (std::uint32_t(c.g) << 8) | c.b; }
 

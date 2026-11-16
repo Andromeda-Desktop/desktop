@@ -828,6 +828,10 @@ void AppWindow::applySceneFills() {
   }
 }
 
+float AppWindow::headerHeight() const noexcept {
+  return (m_config.contentCard ? Tokens::componentWindowCaption : kHeaderHeight) * m_uiScale;
+}
+
 void AppWindow::setMainFill(std::optional<ColorSpec> fill) {
   m_mainFill = std::move(fill);
   applyMainFill();
@@ -1003,10 +1007,15 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   header->setDirection(FlexDirection::Horizontal);
   header->setAlign(FlexAlign::Center);
   header->setGap(kHeaderGap * s);
-  header->setPadding(0.0F, kNavInset * s);
+  // A card's header is its caption: 0 8 0 16 (split mockup .cap).
+  if (m_config.contentCard) {
+    header->setPadding(0.0F, kNavInset * s, 0.0F, Tokens::spaceP16 * s);
+  } else {
+    header->setPadding(0.0F, kNavInset * s);
+  }
   header->setFillWidth(true);
-  header->setMinHeight(kHeaderHeight * s);
-  header->setMaxHeight(kHeaderHeight * s);
+  header->setMinHeight(headerHeight());
+  header->setMaxHeight(headerHeight());
   m_buildingHeader = true;
   if (m_config.navigation) {
     std::size_t slot = 0;
@@ -1041,12 +1050,13 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   title->addChild(ui::label({
       .out = &m_titleLabel,
       .text = m_config.title,
-      .fontSize = Tokens::typeTitle2.size * s,
+      .fontSize = (m_config.contentCard ? Tokens::typeHeadline.size : Tokens::typeTitle2.size) * s,
       .fontWeight = FontWeight::SemiBold,
       .color = colorSpecFromRole(ColorRole::Label1),
       .maxLines = 1,
       .ellipsize = TextEllipsize::End,
   }));
+  m_titleLabel->setLineHeight((m_config.contentCard ? Tokens::typeHeadline.line : Tokens::typeTitle2.line) * s);
   header->title = m_titleLabel;
   header->titleMin = 96.0F * s;
   if (m_titleClick) {
@@ -1251,7 +1261,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     main->setClipRadii(Radii{r, r, r, r});
     main->setBorder(colorSpecFromRole(ColorRole::Stroke), 0.5F * m_uiScale);
   }
-  const float headerHeight = header ? kHeaderHeight * m_uiScale : 0.0F;
+  const float headerHeight = header ? this->headerHeight() : 0.0F;
   const float contentHeight = std::max(0.0F, height - headerHeight - 2.0F * m_cardGap);
   m_contentRect = {.x = margin + sidebarShown + cardLeft, .y = margin + m_cardGap + headerHeight,
                    .width = mainWidth, .height = contentHeight};
@@ -1465,7 +1475,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
     }
     m_input.pointerMotion(x, y, event.serial);
     const float windowY = y - static_cast<float>(m_surface->margin());
-    const bool inHeader = windowY >= 0.0F && windowY < kHeaderHeight * m_uiScale && m_input.hoveredArea() == nullptr;
+    const bool inHeader = windowY >= 0.0F && windowY < headerHeight() && m_input.hoveredArea() == nullptr;
     if (event.pressed && inHeader && event.button == BTN_LEFT) {
       m_buttonDown = false;
       m_buttonsHeld = 0;
