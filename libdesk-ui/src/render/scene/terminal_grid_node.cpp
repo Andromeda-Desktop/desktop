@@ -123,34 +123,54 @@ void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
                      [](const TerminalCell& c) { return c == TerminalCell{}; })) {
     return;
   }
+  int first = -1;
+  int last = -1;
+  for (std::size_t col = 0; col < stored.size(); ++col) {
+    if (stored[col] != (col < n ? cells[col] : TerminalCell{})) {
+      first = first < 0 ? static_cast<int>(col) : first;
+      last = static_cast<int>(col);
+    }
+  }
   std::copy_n(cells.begin(), n, stored.begin());
   std::fill(stored.begin() + static_cast<std::ptrdiff_t>(n), stored.end(), TerminalCell{});
   buildRow(row);
   if (m_cursor && m_cursor->row == row) {
     buildCursor();
   }
-  markRowDirty(row);
+  if (m_textBacking > 0.0F) {
+    markRowDirty(row); // a backing run joins text across blanks, so one cell can change the whole row's backing
+  } else {
+    // One cell of slack each side: a wide cell's other half and glyph overhang.
+    const float w = cellWidth();
+    const float left = m_originX + static_cast<float>(first - 1) * w;
+    markRowDirty(row, left, left + static_cast<float>(last - first + 3) * w);
+  }
 }
 
-void TerminalGridNode::markRowDirty(int row) {
+void TerminalGridNode::markRowDirty(int row) { markRowDirty(row, 0.0F, width()); }
+
+void TerminalGridNode::markRowDirty(int row, float left, float right) {
   // Half a cell above and below: glyphs that overhang their cell (italic, tall emoji) leave pixels in the next rows.
   const float h = cellHeight();
   const float top = m_originY + static_cast<float>(row) * h;
-  markPaintDirty(DamageRect{0.0F, top - h * 0.5F, width(), top + h * 1.5F});
+  markPaintDirty(DamageRect{std::max(left, 0.0F), top - h * 0.5F, std::min(right, width()), top + h * 1.5F});
 }
 
 void TerminalGridNode::setCursor(std::optional<TerminalCursor> cursor) {
   if (cursor == m_cursor) {
     return;
   }
-  if (m_cursor) {
-    markRowDirty(m_cursor->row);
-  }
+  const auto markCursor = [this] {
+    if (m_cursor) {
+      const float w = cellWidth();
+      const float left = m_originX + static_cast<float>(m_cursor->column - 1) * w;
+      markRowDirty(m_cursor->row, left, left + static_cast<float>(m_cursor->wide ? 4 : 3) * w);
+    }
+  };
+  markCursor();
   m_cursor = cursor;
   buildCursor();
-  if (m_cursor) {
-    markRowDirty(m_cursor->row);
-  }
+  markCursor();
 }
 
 void TerminalGridNode::commit(TextureManager& textures) {

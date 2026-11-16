@@ -94,6 +94,7 @@ private:
   void doInvalidateGpuResources(Renderer& renderer) override;
   void buildRow(int row);
   void markRowDirty(int row);
+  void markRowDirty(int row, float left, float right); // node-local logical x range
   void buildCursor();
   void rebuildAll();
   void appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y, std::uint32_t rgb);
