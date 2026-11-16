@@ -378,8 +378,8 @@ void VirtualListView::recomputeMetrics(Renderer& renderer, float width) {
     }
 
     m_itemOffsets[index] = cursor;
-    m_itemHeights[index] = cache.height;
-    cursor += cache.height;
+    m_itemHeights[index] = saneHeight(m_adapter->itemHeightOverride(index, cache.height));
+    cursor += m_itemHeights[index];
     if (index + 1 < m_itemCount) {
       cursor += m_itemGap;
     }

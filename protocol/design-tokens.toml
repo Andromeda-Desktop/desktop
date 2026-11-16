@@ -659,3 +659,5 @@ padding = 24.0
 padding_compact = 16.0
 column = 640.0
 column_wide = 960.0  # responsive apps: the column grows from column to column_wide, then stays centred
+scene_sidebar_tint = 0.55  # the same in the sidebar, so it reads as a separate layer
+copy_button = 28.0  # round copy button at a code block's top-right; the code keeps p40 clear

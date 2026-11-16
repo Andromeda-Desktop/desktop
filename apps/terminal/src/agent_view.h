@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <set>
 
@@ -69,6 +70,7 @@ namespace term {
     [[nodiscard]] std::uint64_t itemRevision(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t index) const override;
     [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
+    [[nodiscard]] float itemHeightOverride(std::size_t index, float measured) override;
     [[nodiscard]] std::unique_ptr<Node> createItem() override;
     void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
 
@@ -91,7 +93,23 @@ namespace term {
     [[nodiscard]] bool restartable(std::size_t entry) const;
     void toggleDetail(const std::string& id); // an action row click opens or closes its diff or output
     [[nodiscard]] const agent::Request* requestFor(const agent::Action& action) const;
-    void arrive(Renderer& renderer, Flex& holder, float width);
+    // A request card's list item opens from its header row and carries the log above; an answer folds the item from
+    // card height to the row that carries the answer. Height on spring.move, the new content fades in on spring.fade
+    // past the content gate. The springs belong to the log, so rebinds keep them; bindItem reapplies the state.
+    enum class CardMotion : std::uint8_t { Opening, FoldQueued, Folding }; // FoldQueued waits for the row's height
+    struct Motion {
+      CardMotion phase = CardMotion::Opening;
+      float height = 0.0F;  // the item height in px
+      float opacity = 0.0F; // of the card body (Opening) or the row (Folding)
+      Flex* holder = nullptr; // the slot bound to the item, if any
+      int springs = 0;        // live springs; the motion ends when the last one ends
+      std::uint32_t move = 0;
+      std::uint32_t fade = 0;
+    };
+    void startMotion(std::size_t index, float from, float to);
+    void applyMotion(const Motion& motion) const;
+    void endSpring(std::size_t index);
+    void cancelMotion(std::size_t index);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
     void answer(std::size_t option);
     void submit(const std::string& text);
@@ -117,7 +135,8 @@ namespace term {
     std::string m_slashDismissed; // the composer text Esc closed the menu at
     VirtualListView* m_log = nullptr;
     std::vector<Clock> m_clocks;
-    std::set<std::size_t> m_arrived; // request entries whose card has played its arrival
+    std::map<std::size_t, float> m_arrived; // open request items whose card has arrived -> the card item height
+    std::map<std::size_t, Motion> m_motions; // by list item index
     std::function<void(const std::string& uri)> m_openUri;
     std::set<std::string> m_expanded; // action ids whose detail the user opened
     Input* m_input = nullptr;

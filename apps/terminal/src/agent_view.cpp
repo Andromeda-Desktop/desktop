@@ -13,6 +13,7 @@
 #include "core/text_clipboard.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
+#include "ui/controls/pinned.h"
 #include "ui/controls/scroll_view.h"
 #include "ui/controls/spinner.h"
 #include "ui/palette.h"
@@ -317,6 +318,9 @@ namespace term {
                                .fill = colorSpecFromRole(ColorRole::Fill1),
                                .radius = Style::scaledRadius(Tokens::radiusR8, s)});
         auto text = ui::column({.align = FlexAlign::Start, .paddingH = scroll ? Tokens::spaceP12 * s : 0.0F});
+        if (scroll) {
+          text->setPadding(0.0F, Tokens::spaceP40 * s, 0.0F, Tokens::spaceP12 * s); // clear of the copy button
+        }
         for (std::size_t i = 0; i < rows.size(); ++i) {
           const bool strong = lastStrong && i + 1 == rows.size();
           text->addChild(code(std::string(rows[i]), strong ? ColorRole::Label1 : role, 1, !scroll));
@@ -482,7 +486,11 @@ namespace term {
     switch (model->rowStatus()) {
       case agent::RowStatus::Starting: return "starting";
       case agent::RowStatus::Ready: return "ready";
-      case agent::RowStatus::Working: return (thinking() ? "thinking" : "working") + clock(true);
+      case agent::RowStatus::Working:
+        return (thinking()                                      ? "thinking"
+                : streamingAt(model->entries().size() - 1) ? "replying"
+                                                                : "working")
+               + clock(true);
       case agent::RowStatus::NeedsPermission: return "needs you" + clock(true);
       case agent::RowStatus::Done:
       case agent::RowStatus::Declined: return "done" + clock(false);
@@ -774,57 +782,132 @@ namespace term {
     });
   }
 
-  // The card opens from its header row to full height on spring.move; the rest fades in once the move passes the
-  // content gate. Reduced motion jumps to the end.
-  void AgentView::arrive(Renderer& renderer, Flex& holder, float width) {
-    AnimationManager* animations = holder.animationManager();
-    auto* outer = holder.children().empty() ? nullptr : static_cast<Flex*>(holder.children().front().get());
-    if (animations == nullptr || outer == nullptr || outer->children().empty()) {
-      return;
+  float AgentView::itemHeightOverride(std::size_t index, float measured) {
+    const agent::Session* model = session();
+    if (model != nullptr && index >= 1 && std::ranges::find(model->pending(), index - 1) != model->pending().end()) {
+      const bool fresh = !m_arrived.contains(index);
+      m_arrived[index] = measured;
+      if (fresh && m_log != nullptr && m_log->animationManager() != nullptr) {
+        const float closed = (Tokens::spaceP12 + Tokens::componentAgentActionRow + 2.0F * Tokens::spaceP8) * m_scale;
+        m_motions[index] = {.phase = CardMotion::Opening, .height = closed};
+        startMotion(index, closed, measured);
+      }
     }
-    auto* card = static_cast<Flex*>(outer->children().front().get());
-    const float full = outer->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height - 2.0F * Tokens::spaceP8 * m_scale;
-    const float closed = (Tokens::spaceP12 + Tokens::componentAgentActionRow) * m_scale; // top padding + header row
-    std::vector<Node*> body;
-    for (std::size_t i = 1; i < card->children().size(); ++i) {
-      body.push_back(card->children()[i].get());
-      body.back()->setOpacity(0.0F);
+    if (const auto it = m_motions.find(index); it != m_motions.end() && it->second.phase == CardMotion::FoldQueued) {
+      it->second.phase = CardMotion::Folding;
+      startMotion(index, it->second.height, measured);
     }
-    card->setClipChildren(true);
-    card->setMaxHeight(closed);
-    animations->animateGated(
-        closed, full, Style::spring(Tokens::springMove),
-        [card](float h) {
-          card->setMaxHeight(h);
-          card->markLayoutDirty();
-        },
-        Tokens::motionContentGate,
-        [animations, body, card] {
-          animations->animateSpring(0.0F, 1.0F, Style::spring(Tokens::springFade), [body](float v) {
-            for (Node* node : body) {
-              node->setOpacity(v);
-            }
-          }, {}, card);
-        },
-        [card] {
-          card->setMaxHeight(0.0F);
-          card->setClipChildren(false);
-          card->markLayoutDirty();
-        },
-        card, 0.0F, Unit::Px);
+    const auto it = m_motions.find(index);
+    return it != m_motions.end() ? it->second.height : measured;
   }
 
-  void AgentView::bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool /*hovered*/) {
+  void AgentView::startMotion(std::size_t index, float from, float to) {
+    AnimationManager* animations = m_log->animationManager();
+    m_motions[index].springs = 1;
+    const auto move = animations->animateGated(
+        from, to, Style::spring(Tokens::springMove),
+        [this, index](float h) {
+          if (const auto it = m_motions.find(index); it != m_motions.end()) {
+            it->second.height = h;
+            applyMotion(it->second);
+            m_log->markLayoutDirty();
+          }
+        },
+        Tokens::motionContentGate,
+        [this, index, animations] {
+          if (const auto it = m_motions.find(index); it == m_motions.end()) {
+            return;
+          } else {
+            ++it->second.springs;
+          }
+          const auto fade = animations->animateSpring(
+              0.0F, 1.0F, Style::spring(Tokens::springFade),
+              [this, index](float v) {
+                if (const auto it = m_motions.find(index); it != m_motions.end()) {
+                  it->second.opacity = v;
+                  applyMotion(it->second);
+                }
+              },
+              [this, index] { endSpring(index); }, m_log);
+          if (const auto it = m_motions.find(index); it != m_motions.end()) {
+            it->second.fade = fade;
+          }
+        },
+        [this, index] { endSpring(index); }, m_log, 0.0F, Unit::Px);
+    if (const auto it = m_motions.find(index); it != m_motions.end()) {
+      it->second.move = move;
+    }
+  }
+
+  // Opening: the slot holds the card's outer column; Folding: the row that carries the answer.
+  void AgentView::applyMotion(const Motion& motion) const {
+    if (motion.holder == nullptr || motion.holder->children().empty()) {
+      return;
+    }
+    Node* top = motion.holder->children().front().get();
+    if (motion.phase != CardMotion::Opening) {
+      top->setOpacity(motion.opacity);
+      return;
+    }
+    if (top->children().empty()) {
+      return;
+    }
+    auto* card = static_cast<Flex*>(top->children().front().get());
+    card->setClipChildren(true);
+    card->setMaxHeight(std::max(1.0F, motion.height - 2.0F * Tokens::spaceP8 * m_scale));
+    for (std::size_t i = 1; i < card->children().size(); ++i) {
+      card->children()[i]->setOpacity(motion.opacity);
+    }
+    card->markLayoutDirty();
+  }
+
+  void AgentView::endSpring(std::size_t index) {
+    const auto it = m_motions.find(index);
+    if (it == m_motions.end() || --it->second.springs > 0) {
+      return;
+    }
+    Motion done = it->second;
+    m_motions.erase(it);
+    done.opacity = 1.0F;
+    applyMotion(done);
+    if (done.phase == CardMotion::Opening && done.holder != nullptr && !done.holder->children().empty()
+        && !done.holder->children().front()->children().empty()) {
+      auto* card = static_cast<Flex*>(done.holder->children().front()->children().front().get());
+      card->setMaxHeight(0.0F);
+      card->setClipChildren(false);
+      card->markLayoutDirty();
+    }
+    m_log->markLayoutDirty();
+  }
+
+  void AgentView::cancelMotion(std::size_t index) {
+    const auto it = m_motions.find(index);
+    if (it == m_motions.end()) {
+      return;
+    }
+    if (AnimationManager* animations = m_log->animationManager(); animations != nullptr) {
+      animations->cancel(it->second.move);
+      animations->cancel(it->second.fade);
+    }
+    m_motions.erase(it);
+  }
+
+  void AgentView::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float width, bool /*hovered*/) {
     auto& holder = static_cast<Flex&>(item);
     std::erase_if(m_clocks, [&](const Clock& clock) { return clock.holder == &item; });
+    for (auto& [at, motion] : m_motions) {
+      if (motion.holder == &holder) {
+        motion.holder = nullptr;
+      }
+    }
     while (!holder.children().empty()) {
       holder.removeChild(holder.children().back().get());
     }
     Clock clock;
     holder.addChild(buildItem(index, width, &clock));
-    const auto& pending = session()->pending();
-    if (index >= 1 && std::ranges::find(pending, index - 1) != pending.end() && m_arrived.insert(index - 1).second) {
-      arrive(renderer, holder, width);
+    if (const auto it = m_motions.find(index); it != m_motions.end()) {
+      it->second.holder = &holder;
+      applyMotion(it->second);
     }
     if (clock.label != nullptr) {
       clock.holder = &item;
@@ -860,13 +943,27 @@ namespace term {
       } else if (!model->mode().empty()) {
         banner->addChild(kit.text("Mode: " + model->mode(), Tokens::typeCaption, ColorRole::Label2));
       }
-      auto chips = ui::row({.align = FlexAlign::Center, .wrap = true, .gap = Tokens::spaceP8 * s, .maxWidth = measure});
-      for (const auto& command : model->commands()) {
+      // An exact width: a Content-width row measures one line, then wraps taller at arrange.
+      auto chips = ui::row({.align = FlexAlign::Center, .wrap = true, .gap = Tokens::spaceP8 * s,
+                            .width = std::min(measure, width - 2.0F * inset)});
+      // A hint, not a list: the mockup's three when the agent has them, else its first three; "/" lists them all.
+      std::vector<std::string_view> shown;
+      for (const std::string_view name : {"compact", "review", "init"}) {
+        if (std::ranges::contains(model->commands(), name, &agent::Session::Command::name)) {
+          shown.push_back(name);
+        }
+      }
+      if (shown.empty()) {
+        for (std::size_t i = 0; i < std::min<std::size_t>(3, model->commands().size()); ++i) {
+          shown.push_back(model->commands()[i].name);
+        }
+      }
+      for (const std::string_view name : shown) {
         auto chip = ui::row({.paddingV = Tokens::spaceP2 * s,
                              .paddingH = Tokens::spaceP8 * s,
                              .fill = colorSpecFromRole(ColorRole::Fill1),
                              .radius = Style::scaledRadius(Tokens::radiusR4, s)});
-        chip->addChild(kit.code("/" + command.name, ColorRole::Label2, 1));
+        chip->addChild(kit.code("/" + std::string(name), ColorRole::Label2, 1));
         chips->addChild(std::move(chip));
       }
       if (model->modes().size() > 1) {
@@ -937,7 +1034,18 @@ namespace term {
             }
             for (const auto& block : blocks) {
               if (block.kind == agent::Block::Kind::Code) {
-                prose->addChild(kit.well(lines(block.text), ColorRole::Label1, false, true));
+                auto pinned = std::make_unique<Pinned>(Tokens::spaceP4 * s, Pinned::Corner::TopRight);
+                pinned->addChild(kit.well(lines(block.text), ColorRole::Label1, false, true));
+                const float size = Tokens::componentAgentCopyButton * s;
+                pinned->addChild(ui::button({.glyph = std::string("copy"), .glyphSize = Tokens::spaceP12 * s,
+                                             .variant = ButtonVariant::Ghost, .tooltip = std::string("Copy"),
+                                             .radius = size / 2.0F, .width = size, .height = size,
+                                             .onClick = [code = block.text] {
+                                               if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+                                                 clipboard->setClipboardText(code);
+                                               }
+                                             }}));
+                prose->addChild(std::move(pinned));
               } else if (block.kind == agent::Block::Kind::Table) {
                 prose->addChild(kit.table(block.rows, block.alignEnd));
               } else {
@@ -1355,6 +1463,10 @@ namespace term {
     m_jump = nullptr;
     m_jumpShadow = nullptr;
     m_slash = nullptr;
+    if (m_log != nullptr && m_log->animationManager() != nullptr) {
+      m_log->animationManager()->cancelForOwner(m_log);
+    }
+    m_motions.clear();
     m_log = nullptr;
     m_clocks.clear();
     m_input = nullptr;
@@ -1388,6 +1500,29 @@ namespace term {
       }
     }
     m_log->setMarkedItems(std::move(turns));
+    // An answered card folds into the row that carries its answer: its action row, else its own item.
+    for (auto it = m_arrived.begin(); it != m_arrived.end();) {
+      const std::size_t entry = it->first - 1;
+      if (std::ranges::find(model->pending(), entry) != model->pending().end()) {
+        ++it;
+        continue;
+      }
+      std::size_t target = it->first;
+      if (const auto* request = entry < model->entries().size() ? std::get_if<agent::Request>(&model->entries()[entry]) : nullptr) {
+        for (std::size_t i = 0; i < model->entries().size(); ++i) {
+          if (const auto* action = std::get_if<agent::Action>(&model->entries()[i]); action != nullptr && action->id == request->toolCallId) {
+            target = i + 1;
+          }
+        }
+      }
+      const auto open = m_motions.find(it->first);
+      const float from = open != m_motions.end() ? open->second.height : it->second;
+      cancelMotion(it->first);
+      if (m_log->animationManager() != nullptr) {
+        m_motions[target] = {.phase = CardMotion::FoldQueued, .height = from};
+      }
+      it = m_arrived.erase(it);
+    }
     m_log->notifyDataChanged();
     syncJump();
   }

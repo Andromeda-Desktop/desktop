@@ -366,6 +366,10 @@ impl Bridge {
                             commands,
                         )),
                     );
+                    // Claude reports its permission mode; its "default" is the mode listed as "manual".
+                    let mode = mode
+                        .map(|mode| if mode == "default" { "manual".to_owned() } else { mode })
+                        .filter(|mode| is_mode(mode));
                     if let Some(mode) = mode {
                         notify(
                             &connection,

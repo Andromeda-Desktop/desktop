@@ -30,6 +30,9 @@ public:
   [[nodiscard]] virtual bool itemInteractive(std::size_t /*index*/) const { return false; }
 
   [[nodiscard]] virtual float measureItem(Renderer& renderer, std::size_t index, float width) = 0;
+  // The height the list lays the item out at, asked on every layout; measured is the cached measureItem result. An
+  // adapter animates an item's height here and marks the list layout dirty each frame.
+  [[nodiscard]] virtual float itemHeightOverride(std::size_t /*index*/, float measured) { return measured; }
   [[nodiscard]] virtual std::unique_ptr<Node> createItem() = 0;
   virtual void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) = 0;
   virtual void onActivate(std::size_t /*index*/) {}
