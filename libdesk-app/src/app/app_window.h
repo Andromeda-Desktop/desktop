@@ -268,7 +268,7 @@ private:
   std::chrono::steady_clock::time_point m_sceneStepped{}; // when the scene clock last advanced
   std::chrono::steady_clock::time_point m_sceneAwakeUntil{};
   bool m_activated = false;
-  bool m_sceneTicking = false; // a frame tick or the step timer is pending on the scene layer
+  bool m_sceneTicking = false; // a scene step waits on its present or the step timer
   Timer m_sceneTimer;
   // The scene draws on its own subsurface below the window at reduced resolution: its frames repaint only that layer,
   // and the window's own frames stay as cheap as without a scene.

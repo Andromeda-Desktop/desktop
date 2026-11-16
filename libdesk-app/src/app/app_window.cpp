@@ -641,6 +641,8 @@ void AppWindow::setScene(std::optional<Scene> scene) {
   requestRebuild();
 }
 
+constexpr auto kSceneStep = std::chrono::milliseconds(33); // 30 scene frames a second
+
 void AppWindow::noteSceneActivity() {
   m_sceneAwakeUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Tokens::componentWindowSceneIdleMs);
   wakeScene();
@@ -650,24 +652,23 @@ void AppWindow::wakeScene() {
   if (m_sceneLayer != nullptr && m_activated && !m_sceneTicking) {
     m_sceneTicking = true;
     m_sceneStepped = std::chrono::steady_clock::now(); // resume where the motion stopped
-    m_sceneLayer->requestFrameTick();
+    m_sceneTimer.start(kSceneStep, [this] { sceneTick(); });
   }
 }
 
 void AppWindow::sceneTick() {
   const auto now = std::chrono::steady_clock::now();
   if (m_sceneNode == nullptr || !m_activated || now >= m_sceneAwakeUntil) {
-    m_sceneTicking = false; // no new tick: the layer asks for no frames until wakeScene
+    m_sceneTicking = false; // no new step until wakeScene
     return;
   }
-  constexpr auto kStep = std::chrono::milliseconds(33); // 30 scene frames a second
   const float elapsed = std::chrono::duration<float>(now - m_sceneStepped).count();
   m_sceneSeconds += std::min(elapsed, 0.133F); // a stall resumes the motion instead of jumping
   m_sceneNode->setTime(m_sceneSeconds);
   m_sceneStepped = now;
-  m_sceneLayer->requestRedraw();
-  // The next tick waits for this frame's callback too, so a hidden window stops asking.
-  m_sceneTimer.start(kStep, [this] { m_sceneLayer->requestFrameTick(); });
+  // The timer paces the scene, not frame ticks: a redraw re-arms a frame tick, which would step it at the output rate.
+  // The next step waits until this one is presented, so a hidden window stops stepping.
+  m_sceneLayer->callOnNextPresent([this] { m_sceneTimer.start(kSceneStep, [this] { sceneTick(); }); });
 }
 
 void AppWindow::syncSceneLayer(float width, float height, float margin, float radius) {
@@ -695,7 +696,6 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
     m_sceneLayer->setDebugName("scene");
     m_sceneLayer->setRenderContext(&m_loop.renderContext());
     m_sceneLayer->setResolutionScale(Tokens::componentWindowSceneResolution);
-    m_sceneLayer->setFrameTickCallback([this](float) { sceneTick(); });
     if (!m_sceneLayer->initialize(m_surface->wlSurface(), nullptr)) {
       m_sceneLayer.reset();
       m_sceneRoot.reset();
