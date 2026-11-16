@@ -103,8 +103,7 @@ namespace term {
     bool m_keysSecure = false; // m_secureEntry or a visible password prompt: no IME, no compositor shortcuts, no capture
     std::unordered_set<std::uint64_t> m_remoteSessions; // sessions on another host (SSH, container)
     void show(std::uint64_t id);
-    // Session keys: Ctrl+Shift+T new, Ctrl+Shift+A new agent session, Ctrl+Shift+W close an agent session,
-    // Ctrl+Shift+N new window, Ctrl+Shift+S secure keyboard entry, Ctrl+Tab / Ctrl+Shift+Tab recent, Ctrl+1..9 by position.
+    // Runs the window action bound to the key ([keybindings]); false for other keys and the grid's actions.
     bool sessionKey(const KeyboardEvent& event);
     void openAgentHere();
     void openNewMenu();
@@ -271,8 +270,8 @@ namespace term {
     // Captions follow their sessions; true when a name or state text changed (the captions need a fit).
     bool refreshCards();
     void fitCaptions(Renderer& renderer);
-    // Ctrl+Alt+arrow: the nearest pane in that direction; false when the key is not one.
-    bool focusPaneKey(const KeyboardEvent& event);
+    // Focuses the nearest pane in direction (dx, dy); false without a split.
+    bool focusPane(float dx, float dy);
     bool m_active = false;
     Surface* m_tickSurface = nullptr;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

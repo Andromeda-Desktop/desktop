@@ -516,31 +516,15 @@ namespace term {
 
     // Keyboard
     {
-      constexpr std::array<std::pair<std::string_view, std::string_view>, 20> kKeys{{
-          {"New session", "Ctrl Shift T"},
-          {"New window", "Ctrl Shift N"},
-          {"New agent session", "Ctrl Shift A"},
-          {"Close session", "Ctrl Shift W"},
-          {"Next session", "Ctrl Tab"},
-          {"Previous session", "Ctrl PgUp"},
-          {"Next session in the list", "Ctrl PgDn"},
-          {"Search sessions", "Ctrl Shift K"},
-          {"Find", "Ctrl Shift F"},
-          {"Copy", "Ctrl Shift C"},
-          {"Paste", "Ctrl Shift V"},
-          {"Scroll up a page", "Shift PgUp"},
-          {"Scroll down a page", "Shift PgDn"},
-          {"Previous prompt", "Ctrl Shift Up"},
-          {"Next prompt", "Ctrl Shift Down"},
-          {"Copy last command output", "Ctrl Shift X"},
-          {"Larger text", "Ctrl Shift ="},
-          {"Smaller text", "Ctrl Shift -"},
-          {"Default text size", "Ctrl Shift 0"},
-          {"Preferences", "Ctrl ,"},
-      }};
+      std::vector<std::pair<std::string, std::string>> keys;
+      for (const ActionInfo& info : actionTable()) {
+        if (std::string combo = now.keys.label(info.action, " "); !combo.empty()) {
+          keys.emplace_back(info.label, std::move(combo));
+        }
+      }
       out.push_back({Pane::Main,
                      "Keyboard",
-                     {{"Shortcuts", "", [self, n = kKeys.size()](float s, float) -> std::unique_ptr<Node> {
+                     {{"Shortcuts", "", [self, n = keys.size()](float s, float) -> std::unique_ptr<Node> {
                          const float w = Tokens::sizeControlL * s;
                          const float h = Tokens::sizeControlS * s;
                          auto link = ui::row({.align = FlexAlign::Center,
@@ -559,8 +543,8 @@ namespace term {
                                               std::move(link));
                        }}}});
       Group group{Pane::Keyboard, "", {}};
-      for (const auto& [label, combo] : kKeys) {
-        group.rows.push_back({std::string(label), "", [combo](float s, float) -> std::unique_ptr<Node> {
+      for (const auto& [label, combo] : keys) {
+        group.rows.push_back({label, "", [combo](float s, float) -> std::unique_ptr<Node> {
                                 auto caps = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
                                 for (std::string_view rest = combo; !rest.empty();) {
                                   const auto space = rest.find(' ');

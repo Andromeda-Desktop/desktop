@@ -16,6 +16,7 @@
 #include <optional>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace term {
 
@@ -130,6 +131,47 @@ namespace term {
         }
       }
     };
+
+    void keybindings(Reader& r, Keybindings& out) {
+      const toml::node* t = r.root.get("keybindings");
+      if (t == nullptr) {
+        return;
+      }
+      if (!t->is_table()) {
+        r.fail(*t, "[keybindings] must be a table");
+        return;
+      }
+      for (const auto& [key, node] : *t->as_table()) {
+        const auto action = actionNamed(key.str());
+        if (!action) {
+          r.fail(node, "keybindings." + std::string(key.str()) + " is not an action");
+          return;
+        }
+        const std::string where = "keybindings." + std::string(key.str());
+        std::vector<const toml::node*> specs;
+        if (const toml::array* list = node.as_array()) {
+          for (const toml::node& item : *list) {
+            specs.push_back(&item);
+          }
+        } else {
+          specs.push_back(&node);
+        }
+        std::vector<Chord> chords;
+        for (const toml::node* spec : specs) {
+          const auto text = spec->value_exact<std::string>();
+          if (text && *text == "none" && specs.size() == 1) {
+            break;
+          }
+          const auto chord = text ? parseChord(*text) : std::nullopt;
+          if (!chord) {
+            r.fail(*spec, where + " must be a key like \"ctrl+shift+t\" (ctrl, shift, alt), a list of keys, or \"none\"");
+            return;
+          }
+          chords.push_back(*chord);
+        }
+        out.bind(*action, std::move(chords));
+      }
+    }
 
     toml::table& tableIn(toml::table& root, std::string_view name) {
       toml::node* t = root.get(name);
@@ -268,6 +310,7 @@ namespace term {
     r.integer("notifications", "long_command_seconds", SettingsLimits::kNotifyMin, SettingsLimits::kNotifyMax,
               s.notifySeconds);
     r.boolean("notifications", "unfocused_only", s.notifyUnfocusedOnly);
+    keybindings(r, s.keys);
     if (r.error) {
       return *r.error;
     }

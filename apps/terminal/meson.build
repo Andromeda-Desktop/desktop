@@ -73,9 +73,10 @@ test('agent_session', executable('agent_session_test', 'tests/agent_session_test
   dependencies: _agent_dep, cpp_args: _warnings))
 
 # Preferences file model: TOML parse and write, no IO.
-_settings = static_library('terminal_settings', 'src/settings.cpp',
-  dependencies: dependency('tomlplusplus').partial_dependency(includes: true), cpp_args: _warnings)
-_settings_dep = declare_dependency(link_with: _settings, include_directories: include_directories('src'))
+_settings = static_library('terminal_settings', 'src/settings.cpp', 'src/keybindings.cpp',
+  dependencies: [dependency('tomlplusplus').partial_dependency(includes: true), dependency('xkbcommon')], cpp_args: _warnings)
+_settings_dep = declare_dependency(link_with: _settings, include_directories: include_directories('src'),
+  dependencies: dependency('xkbcommon'))
 test('settings', executable('settings_test', 'tests/settings_test.cpp',
   dependencies: _settings_dep, cpp_args: _warnings))
 

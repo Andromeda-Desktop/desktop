@@ -47,6 +47,9 @@
 
 namespace term {
 
+  static_assert(KeyMod::Shift == 1U && KeyMod::Ctrl == 2U && KeyMod::Alt == 4U && KeyMod::Super == 8U,
+                "keybindings.cpp mirrors the KeyMod bits");
+
   namespace {
     std::optional<AppWindow::Scene> windowScene(const SettingsStore& settings) {
       const ThemeSpec theme = resolveTheme(settings.settings().theme, settings.themes());
@@ -323,7 +326,7 @@ namespace term {
       if (view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == nullptr) {
         m_window.input().setFocus(view->focusArea());
       }
-      if (focusPaneKey(event) || sessionKey(event)) {
+      if (sessionKey(event)) {
         return true;
       }
       return view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == view->focusArea() &&
@@ -746,90 +749,78 @@ namespace term {
   }
 
   bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
-    constexpr std::uint32_t kTab = 0xff09;
-    constexpr std::uint32_t kLeftTab = 0xfe20;
-    constexpr std::uint32_t kPageUp = 0xff55;
-    constexpr std::uint32_t kPageDown = 0xff56;
-    const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super);
-    if (!event.pressed || (mods & KeyMod::Ctrl) == 0 || (mods & (KeyMod::Alt | KeyMod::Super)) != 0) {
+    const auto action = event.pressed ? m_settings.settings().keys.match(event.sym, event.unshifted, event.modifiers)
+                                      : std::nullopt;
+    if (!action) {
       return false;
     }
-    const bool shift = (mods & KeyMod::Shift) != 0;
     const auto& recent = m_sessions.recent();
-    if (event.sym == kTab || event.sym == kLeftTab) {
-      if (recent.size() > 1) {
-        apply(session_event::Show{shift ? recent.back() : recent[1]});
-      }
-      return true;
-    }
-    // Plain Ctrl+K stays with the shell (readline kill-line).
-    if (shift && (event.unshifted == 'k' || event.unshifted == 'K')) {
-      if (m_search != nullptr && m_window.sidebarVisible()) {
-        m_window.input().setFocus(m_search->inputArea());
-      }
-      return true;
-    }
-    if (!shift && (event.sym == kPageUp || event.sym == kPageDown)) {
+    const auto step = [this](bool forward) {
       const auto order = sidebarOrder();
       const auto shown = m_sessions.shown();
       if (const auto it = std::ranges::find(order, shown.value_or(0)); order.size() > 1 && it != order.end()) {
-        const auto step = static_cast<std::ptrdiff_t>(event.sym == kPageDown ? 1 : order.size() - 1);
-        const auto index = static_cast<std::size_t>((it - order.begin() + step) % static_cast<std::ptrdiff_t>(order.size()));
+        const auto by = static_cast<std::ptrdiff_t>(forward ? 1 : order.size() - 1);
+        const auto index = static_cast<std::size_t>((it - order.begin() + by) % static_cast<std::ptrdiff_t>(order.size()));
         apply(session_event::Show{order[index]});
       }
-      return true;
-    }
-    if (shift && (event.unshifted == '=' || event.unshifted == '-' || event.unshifted == '0')) {
+    };
+    const auto fontSize = [this](int size) {
       Settings next = m_settings.settings();
-      next.fontSize = event.unshifted == '0' ? Settings{}.fontSize
-                                             : std::clamp(next.fontSize + (event.unshifted == '=' ? 1 : -1),
-                                                          SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
+      next.fontSize = std::clamp(size, SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
       m_settings.update(next);
-      return true;
-    }
-    if (shift && (event.unshifted == 't' || event.unshifted == 'T')) {
-      openSession(NewShell{});
-      return true;
-    }
-    if (shift && (event.unshifted == 's' || event.unshifted == 'S')) {
-      toggleSecureEntry();
-      return true;
-    }
-    if (shift && (event.unshifted == 'h' || event.unshifted == 'H')) {
-      if (const auto shown = m_sessions.shown()) {
-        showScrollback(*shown);
+    };
+    switch (*action) {
+      case Action::NextRecent:
+      case Action::PreviousRecent:
+        if (recent.size() > 1) {
+          apply(session_event::Show{*action == Action::PreviousRecent ? recent.back() : recent[1]});
+        }
+        return true;
+      case Action::SearchSessions:
+        if (m_search != nullptr && m_window.sidebarVisible()) {
+          m_window.input().setFocus(m_search->inputArea());
+        }
+        return true;
+      case Action::PreviousSession: step(false); return true;
+      case Action::NextSession: step(true); return true;
+      case Action::FontBigger: fontSize(m_settings.settings().fontSize + 1); return true;
+      case Action::FontSmaller: fontSize(m_settings.settings().fontSize - 1); return true;
+      case Action::FontReset: fontSize(Settings{}.fontSize); return true;
+      case Action::NewSession: openSession(NewShell{}); return true;
+      case Action::SecureEntry: toggleSecureEntry(); return true;
+      case Action::ShowScrollback:
+        if (const auto shown = m_sessions.shown()) {
+          showScrollback(*shown);
+        }
+        return true;
+      case Action::NewAgent: openAgentHere(); return true;
+      // Closes the shown session, shell or agent; asks first while a command runs.
+      case Action::CloseSession: askClose({*m_sessions.shown()}); return true;
+      case Action::Preferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
+      case Action::NewWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
+      case Action::Find: openFind(); return true;
+      case Action::Session1:
+      case Action::Session2:
+      case Action::Session3:
+      case Action::Session4:
+      case Action::Session5:
+      case Action::Session6:
+      case Action::Session7:
+      case Action::Session8:
+      case Action::Session9: {
+        const auto index = static_cast<std::size_t>(*action) - static_cast<std::size_t>(Action::Session1);
+        if (const auto order = sidebarOrder(); index < order.size()) {
+          apply(session_event::Show{order[index]});
+        }
+        return true;
       }
-      return true;
+      // Without a split the keys go to the program.
+      case Action::FocusLeft: return focusPane(-1.0F, 0.0F);
+      case Action::FocusRight: return focusPane(1.0F, 0.0F);
+      case Action::FocusUp: return focusPane(0.0F, -1.0F);
+      case Action::FocusDown: return focusPane(0.0F, 1.0F);
+      default: return false; // the grid's own actions (TerminalView::key)
     }
-    if (shift && (event.unshifted == 'a' || event.unshifted == 'A')) {
-      openAgentHere();
-      return true;
-    }
-    // Closes the shown session, shell or agent; asks first while a command runs.
-    if (shift && (event.unshifted == 'w' || event.unshifted == 'W')) {
-      askClose({*m_sessions.shown()});
-      return true;
-    }
-    if (!shift && event.unshifted == ',') {
-      m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
-      return true;
-    }
-    if (shift && (event.unshifted == 'n' || event.unshifted == 'N')) {
-      m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
-      return true;
-    }
-    if (shift && (event.unshifted == 'f' || event.unshifted == 'F')) {
-      openFind();
-      return true;
-    }
-    if (!shift && event.unshifted >= '1' && event.unshifted <= '9') {
-      const auto index = static_cast<std::size_t>(event.unshifted - '1');
-      if (const auto order = sidebarOrder(); index < order.size()) {
-        apply(session_event::Show{order[index]});
-      }
-      return true;
-    }
-    return false;
   }
 
   std::vector<std::uint64_t> TerminalWindow::sidebarOrder() const {
@@ -860,6 +851,7 @@ namespace term {
   }
 
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
+    const Keybindings& keys = m_settings.settings().keys;
     enum : std::int32_t {
       kSplit = 1, kLeave, kRename, kDuplicate, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose
     };
@@ -876,14 +868,14 @@ namespace term {
     entries.push_back({.id = kDuplicate, .label = "Duplicate"});
     entries.push_back({.separator = true});
     const bool terminal = terminalOf(id) != nullptr;
-    entries.push_back({.id = kShowScrollback, .label = "Show scrollback", .shortcut = "Ctrl+Shift+H", .enabled = terminal});
+    entries.push_back({.id = kShowScrollback, .label = "Show scrollback", .shortcut = keys.label(Action::ShowScrollback), .enabled = terminal});
     entries.push_back({.id = kSaveScrollback, .label = "Save scrollback…", .enabled = terminal});
     entries.push_back({.separator = true});
-    entries.push_back({.id = kSecureEntry, .label = "Secure keyboard entry", .shortcut = "Ctrl+Shift+S",
+    entries.push_back({.id = kSecureEntry, .label = "Secure keyboard entry", .shortcut = keys.label(Action::SecureEntry),
                        .checkmark = true, .toggleState = m_secureEntry ? 1 : 0});
     entries.push_back({.separator = true});
     entries.push_back({.id = kCloseOthers, .label = "Close other sessions", .enabled = others});
-    entries.push_back({.id = kClose, .label = "Close", .shortcut = "Ctrl+Shift+W", .danger = true});
+    entries.push_back({.id = kClose, .label = "Close", .shortcut = keys.label(Action::CloseSession), .danger = true});
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, shown](std::int32_t item) {
                                switch (item) {
                                case kSplit:
@@ -1095,14 +1087,15 @@ namespace term {
     if (m_newButton == nullptr) {
       return;
     }
+    const Keybindings& keys = m_settings.settings().keys;
     enum : std::int32_t { kShell = 1, kAgent, kWindow, kPreferences };
     float x = 0.0F;
     float y = 0.0F;
     Node::absolutePosition(m_newButton, x, y);
-    m_window.openContextMenu({{.id = kShell, .label = "New session", .shortcut = "Ctrl+Shift+T", .glyph = "prompt"},
-                              {.id = kAgent, .label = "New agent", .shortcut = "Ctrl+Shift+A", .glyph = "robot"},
-                              {.id = kWindow, .label = "New window", .shortcut = "Ctrl+Shift+N", .glyph = "app-window"},
-                              {.id = kPreferences, .label = "Preferences", .shortcut = "Ctrl+,", .glyph = "settings"}},
+    m_window.openContextMenu({{.id = kShell, .label = "New session", .shortcut = keys.label(Action::NewSession), .glyph = "prompt"},
+                              {.id = kAgent, .label = "New agent", .shortcut = keys.label(Action::NewAgent), .glyph = "robot"},
+                              {.id = kWindow, .label = "New window", .shortcut = keys.label(Action::NewWindow), .glyph = "app-window"},
+                              {.id = kPreferences, .label = "Preferences", .shortcut = keys.label(Action::Preferences), .glyph = "settings"}},
                              x, y + m_newButton->height(),
                              [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
                                if (alive.expired()) {
@@ -2088,23 +2081,9 @@ namespace term {
     return changed;
   }
 
-  bool TerminalWindow::focusPaneKey(const KeyboardEvent& event) {
-    constexpr std::uint32_t kLeft = 0xff51;
-    constexpr std::uint32_t kUp = 0xff52;
-    constexpr std::uint32_t kRight = 0xff53;
-    constexpr std::uint32_t kDown = 0xff54;
-    const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super);
-    if (!event.pressed || mods != (KeyMod::Ctrl | KeyMod::Alt) || m_cards.empty()) {
+  bool TerminalWindow::focusPane(float dx, float dy) {
+    if (m_cards.empty()) {
       return false;
-    }
-    float dx = 0.0F;
-    float dy = 0.0F;
-    switch (event.sym) {
-      case kLeft: dx = -1.0F; break;
-      case kRight: dx = 1.0F; break;
-      case kUp: dy = -1.0F; break;
-      case kDown: dy = 1.0F; break;
-      default: return false;
     }
     const auto from = std::ranges::find(m_cards, m_ringPane, &PaneCard::id);
     if (from == m_cards.end()) {

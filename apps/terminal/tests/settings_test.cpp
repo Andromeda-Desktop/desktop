@@ -1,5 +1,7 @@
 #include "settings.h"
 
+#include <xkbcommon/xkbcommon-keysyms.h>
+
 #include <cstdio>
 #include <random>
 #include <string>
@@ -45,6 +47,10 @@ const char* kBad[] = {
     "[notifications]\nlong_command_seconds = 0\n",
     "appearance = 3\n",
     "[text\n",
+    "[keybindings]\nnew_tab = \"ctrl+t\"\n",
+    "[keybindings]\ncopy = \"ctrl+shift+nosuchkey\"\n",
+    "[keybindings]\ncopy = \"super+c\"\n",
+    "[keybindings]\ncopy = [\"ctrl+c\", 3]\n",
 };
 
 } // namespace
@@ -84,6 +90,42 @@ int main() {
       CHECK(!e->message.empty());
       CHECK(e->line >= 1);
     }
+  }
+
+  // Invariant: every default chord runs its own action (no two defaults collide).
+  constexpr std::uint32_t kShift = 1, kCtrl = 2;
+  const Keybindings defaults;
+  for (const ActionInfo& info : actionTable()) {
+    for (const Chord& chord : defaults.chords(info.action)) {
+      CHECK(defaults.match(chord.sym, 0, chord.modifiers) == info.action);
+    }
+  }
+  // Keys arrive as the layout gives them: shifted keysym plus the unshifted character.
+  CHECK(defaults.match(XKB_KEY_T, 't', kCtrl | kShift) == Action::NewSession);
+  CHECK(defaults.match(XKB_KEY_plus, '=', kCtrl | kShift) == Action::FontBigger);
+  CHECK(defaults.match(XKB_KEY_ISO_Left_Tab, 0, kCtrl | kShift) == Action::PreviousRecent);
+  CHECK(defaults.match(XKB_KEY_t, 't', kCtrl) == std::nullopt);
+
+  // Invariant: a user binding replaces the action's chords and takes its chord from any other action;
+  // "none" unbinds; Preferences writes keep the table.
+  const std::string user = "[keybindings]\nnew_session = \"ctrl+t\"\nfind = \"Ctrl+Shift+T\"\ncopy = \"none\"\n"
+                           "paste = [\"ctrl+shift+v\", \"shift+insert\"]\nclose_session = \"ctrl+shift+n\"\n";
+  const auto parsedUser = parseSettings(user);
+  CHECK(std::holds_alternative<Settings>(parsedUser));
+  if (const auto* p = std::get_if<Settings>(&parsedUser)) {
+    CHECK(p->keys.match(XKB_KEY_t, 't', kCtrl) == Action::NewSession);
+    CHECK(p->keys.match(XKB_KEY_T, 't', kCtrl | kShift) == Action::Find);
+    CHECK(p->keys.match(XKB_KEY_F, 'f', kCtrl | kShift) == std::nullopt);
+    CHECK(p->keys.match(XKB_KEY_C, 'c', kCtrl | kShift) == std::nullopt);
+    CHECK(p->keys.chords(Action::Copy).empty());
+    CHECK(p->keys.match(XKB_KEY_Insert, 0, kShift) == Action::Paste);
+    CHECK(p->keys.label(Action::Find) == "Ctrl+Shift+T");
+    CHECK(p->keys.match(XKB_KEY_N, 'n', kCtrl | kShift) == Action::CloseSession);
+    CHECK(p->keys.chords(Action::NewWindow).empty());
+    Settings changed = *p;
+    changed.fontSize = 20;
+    const auto rewritten = parseSettings(writeSettings(changed, user));
+    CHECK(std::holds_alternative<Settings>(rewritten) && std::get<Settings>(rewritten) == changed);
   }
 
   if (failures != 0) {

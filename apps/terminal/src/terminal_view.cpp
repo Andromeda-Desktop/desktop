@@ -877,27 +877,17 @@ namespace term {
       const bool windowChord = (mods & KeyMod::Super) != 0
                                || ((mods & (KeyMod::Ctrl | KeyMod::Shift)) == (KeyMod::Ctrl | KeyMod::Shift)
                                    && event.unshifted >= 0x20 && event.unshifted < 0x7f);
-      constexpr std::uint32_t kPageUp = 0xff55;
-      constexpr std::uint32_t kPageDown = 0xff56;
-      if (mods == KeyMod::Shift && (event.sym == kPageUp || event.sym == kPageDown)) {
-        scrollPage(event.sym == kPageUp ? -1 : 1);
-        return true;
-      }
-      constexpr std::uint32_t kUp = 0xff52;
-      constexpr std::uint32_t kDown = 0xff54;
-      if (mods == (KeyMod::Ctrl | KeyMod::Shift) && (event.sym == kUp || event.sym == kDown)) {
-        jumpPrompt(event.sym == kUp ? -1 : 1);
-        return true;
-      }
-      if (mods == (KeyMod::Ctrl | KeyMod::Shift) && event.unshifted == 'x') {
-        copyLastOutput();
-        return true;
+      switch (m_settings.keys.match(event.sym, event.unshifted, event.modifiers).value_or(Action::Count)) {
+        case Action::ScrollPageUp: scrollPage(-1); return true;
+        case Action::ScrollPageDown: scrollPage(1); return true;
+        case Action::PreviousPrompt: jumpPrompt(-1); return true;
+        case Action::NextPrompt: jumpPrompt(1); return true;
+        case Action::CopyLastOutput: copyLastOutput(); return true;
+        case Action::Copy: copySelection(); return true;
+        case Action::Paste: paste(); return true;
+        default: break;
       }
       if (windowChord) {
-        if (mods == (KeyMod::Ctrl | KeyMod::Shift) && (event.unshifted == 'c' || event.unshifted == 'v')) {
-          event.unshifted == 'c' ? copySelection() : paste();
-          return true;
-        }
         return false;
       }
       m_keysDown.insert(event.key);
