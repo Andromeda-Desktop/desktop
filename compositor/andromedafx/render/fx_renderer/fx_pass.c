@@ -2023,7 +2023,6 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     shader = &renderer->shaders.tex_effects_flares_rgba;
   }
   if (!ensure_tex_program(shader)) {
-    wlr_log(WLR_ERROR, "Could not link a texture shader variant");
     return;
   }
 
@@ -2978,7 +2977,6 @@ static void render_blur_composite(
              : corners ? &renderer->shaders.blur2_composite_corners
                        : &renderer->shaders.blur2_composite);
   if (!ensure_blur2_composite_program(shader)) {
-    wlr_log(WLR_ERROR, "Could not link a blur composite shader variant");
     return;
   }
 

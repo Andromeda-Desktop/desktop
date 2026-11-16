@@ -141,6 +141,7 @@ struct tex_shader_variant {
   bool effects;
   bool sample_clamp;
   bool flares;
+  bool link_failed;
 };
 
 struct tex_shader {
@@ -187,6 +188,7 @@ bool link_tex_program(
     struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp, bool flares
 );
 // Links the recorded variant if it has no program yet: each linked variant holds about 0.6 MiB of driver memory.
+// A failed link is logged once and never retried.
 bool ensure_tex_program(struct tex_shader* shader);
 
 struct output_shader {
@@ -253,6 +255,7 @@ struct blur2_composite_variant {
   bool corners;
   bool flares;
   bool glass;
+  bool link_failed;
 };
 
 struct blur2_composite_shader {

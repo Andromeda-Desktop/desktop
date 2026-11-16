@@ -488,12 +488,29 @@ bool link_blur2_composite_program(
 }
 
 bool ensure_tex_program(struct tex_shader* shader) {
-  const struct tex_shader_variant* v = &shader->variant;
-  return shader->program != 0 || link_tex_program(shader, v->source, v->effects, v->sample_clamp, v->flares);
+  struct tex_shader_variant* v = &shader->variant;
+  if (shader->program != 0 || v->link_failed) {
+    return shader->program != 0;
+  }
+  if (!link_tex_program(shader, v->source, v->effects, v->sample_clamp, v->flares)) {
+    v->link_failed = true;
+    wlr_log(WLR_ERROR, "Could not link tex shader (source %d effects %d clamp %d flares %d)", v->source, v->effects,
+        v->sample_clamp, v->flares);
+    return false;
+  }
+  return true;
 }
 
 bool ensure_blur2_composite_program(struct blur2_composite_shader* shader) {
-  const struct blur2_composite_variant* v = &shader->variant;
-  return shader->blur.base.program != 0
-      || link_blur2_composite_program(shader, v->effects, v->corners, v->flares, v->glass);
+  struct blur2_composite_variant* v = &shader->variant;
+  if (shader->blur.base.program != 0 || v->link_failed) {
+    return shader->blur.base.program != 0;
+  }
+  if (!link_blur2_composite_program(shader, v->effects, v->corners, v->flares, v->glass)) {
+    v->link_failed = true;
+    wlr_log(WLR_ERROR, "Could not link blur composite shader (effects %d corners %d flares %d glass %d)", v->effects,
+        v->corners, v->flares, v->glass);
+    return false;
+  }
+  return true;
 }
