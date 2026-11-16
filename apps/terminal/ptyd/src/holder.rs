@@ -731,6 +731,9 @@ impl Holder {
         };
         if let Ok(Some(status)) = s.child.try_wait() {
             use std::os::unix::process::ExitStatusExt;
+            if matches!(s.owner, Owner::Closing { .. } | Owner::Closed) {
+                hang_up_session(s.child.id());
+            }
             s.on_reaped(status.into_raw());
             self.finish_if_exited(id);
         }
@@ -815,6 +818,36 @@ impl Holder {
                 std::thread::spawn(move || child.wait());
             }
             Err(e) => eprintln!("andromeda-ptyd: relaunch {:?} failed: {e}", argv[0]),
+        }
+    }
+}
+
+/// Bash forwards its SIGHUP to its jobs only when the signal wins a race with the hangup, so a closed session hangs
+/// up what is left in it; nohup'd jobs ignore it, setsid'd ones are in another session.
+fn hang_up_session(sid: u32) {
+    let Ok(dir) = std::fs::read_dir("/proc") else {
+        return;
+    };
+    for entry in dir.flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+            continue;
+        };
+        if pid == sid {
+            continue;
+        }
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+            continue;
+        };
+        // The name may hold spaces and parentheses: fields restart after the last ')'.
+        let session = stat
+            .rsplit_once(')')
+            .and_then(|(_, rest)| rest.split_whitespace().nth(3))
+            .and_then(|f| f.parse::<u32>().ok());
+        if session == Some(sid)
+            && let Some(pid) = i32::try_from(pid).ok().and_then(Pid::from_raw)
+        {
+            let _ = rustix::process::kill_process(pid, Signal::HUP);
+            let _ = rustix::process::kill_process(pid, Signal::CONT);
         }
     }
 }

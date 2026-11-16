@@ -2,7 +2,8 @@
 # Leaks and teardown, ours only. Kill gates: closing a session, a window or the app, SIGTERM and SIGKILL end every
 # shell descendant (fg flood, bg jobs) with no zombie; under HOLDER=1 a SIGKILLed app reattaches its live sessions.
 # Leak gates: lifecycle loops return RSS within 5 % + 2 MiB and the fd count to the level after the warm-up; with
-# ASAN=1 (BIN = the build-asan binary) LeakSanitizer reports no leak in our code at exit.
+# ASAN=1 (BIN = the build-asan binary) LeakSanitizer reports no leak in our code at exit, and only fds are gated:
+# ASan's quarantine (256 MiB) keeps freed memory resident.
 # Env: PARTS ("kill leak"), LOOPS (scale, default 1 = 200 sessions, 50 windows, 100 themes).
 source "$(dirname "$0")/lib.sh"
 PARTS=${PARTS:-kill leak}
@@ -100,7 +101,7 @@ if [[ $PARTS == *leak* ]]; then
     local r f
     r=$(rss_kb "$TPID"); f=$(fds "$TPID")
     echo "  $1: rss $((r / 1024)) MiB (start $(($2 / 1024))), fds $f (start $3)"
-    [[ $r -le $(($2 * 105 / 100 + 2048)) && $f -le $3 ]] || { echo "rss $r kB vs $2, fds $f vs $3"; return 1; }
+    [[ ( ${ASAN:-0} == 1 || $r -le $(($2 * 105 / 100 + 2048)) ) && $f -le $3 ]] || { echo "rss $r kB vs $2, fds $f vs $3"; return 1; }
   }
   # shells: live shells of the app (children of the holder under HOLDER=1). Each step waits for its count, so a
   # slow build (ASan) never closes the only session.

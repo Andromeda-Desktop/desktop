@@ -10,9 +10,11 @@
 #include <string_view>
 
 #include <cerrno>
+#include <cstdio>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
+#include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <pty.h>
@@ -62,6 +64,34 @@ winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, st
 }
 
 // True when no ESC in `bytes` starts a DCS or an OSC and none ends it: the sixel and OSC 66 filters and the OSC scanners pass such bytes unchanged and stay idle.
+// Bash forwards its SIGHUP to its jobs only when the signal wins a race with the hangup, so a closed session hangs up
+// what is left in it itself; nohup'd jobs ignore it, setsid'd ones are in another session.
+void hangUpSession(pid_t sid) {
+  DIR* proc = ::opendir("/proc");
+  if (proc == nullptr) return;
+  while (const dirent* entry = ::readdir(proc)) {
+    char* end = nullptr;
+    const long pid = std::strtol(entry->d_name, &end, 10);
+    if (*end != '\0' || pid <= 0 || pid == sid) continue;
+    char path[32];
+    std::snprintf(path, sizeof path, "/proc/%ld/stat", pid);
+    const int fd = ::open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) continue;
+    char stat[512];
+    const ssize_t n = ::read(fd, stat, sizeof stat - 1);
+    ::close(fd);
+    if (n <= 0) continue;
+    stat[n] = '\0';
+    const char* afterName = std::strrchr(stat, ')'); // the name may hold spaces and parentheses
+    int session = 0;
+    if (afterName != nullptr && std::sscanf(afterName + 1, " %*c %*d %*d %d", &session) == 1 && session == sid) {
+      ::kill(static_cast<pid_t>(pid), SIGHUP);
+      ::kill(static_cast<pid_t>(pid), SIGCONT); // a stopped job takes the SIGHUP once it runs
+    }
+  }
+  ::closedir(proc);
+}
+
 bool plainChunk(std::span<const std::uint8_t> bytes) {
   const std::uint8_t* p = bytes.data();
   const std::uint8_t* const end = p + bytes.size();
@@ -103,6 +133,7 @@ PtySession::~PtySession() {
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+    hangUpSession(local->pid);
   }
   if (auto* held = std::get_if<HeldSession>(&m_link)) {
     (void)holder::sendAll(held->socket, holder::encodeClose(held->id));
