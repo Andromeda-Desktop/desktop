@@ -12,6 +12,7 @@ struct FileInfo {
   std::string name;              // file name bytes as on disk (not always UTF-8)
   std::string displayName;       // valid UTF-8 for labels
   std::string collateKey;        // natural, locale-aware order: "file2" before "file10"
+  std::string foldedName;        // displayName case-folded: the filter matches against it
   std::string contentType;       // from the name only, e.g. "image/png", "inode/directory"
   FileKind kind = FileKind::File;
   bool isDir = false;            // a directory, or a symlink to one
@@ -32,7 +33,7 @@ struct FileInfo {
 [[nodiscard]] std::optional<FileInfo> fileFromDirent(int dirFd, std::string_view name, unsigned char dType,
                                                      bool describe = true);
 // The fields that come from the name and kind alone, in two parts that touch different fields, so two threads may fill
-// one entry: hidden, displayName and collateKey; and contentType (GLib guesses types under one global lock).
+// one entry: hidden, displayName, collateKey and foldedName; and contentType (GLib guesses types under one global lock).
 void describeText(FileInfo& info);
 void describeType(FileInfo& info);
 // Reads the stat fields of info.name and clears pendingStat. False when it no longer exists.

@@ -567,7 +567,7 @@ void FileModelView::rebuild() {
     if (entry.hidden && !m_showHidden) {
       continue;
     }
-    if (!m_filter.empty() && folded(entry.displayName).find(m_filter) == std::string::npos) {
+    if (!m_filter.empty() && entry.foldedName.find(m_filter) == std::string::npos) {
       continue;
     }
     if (m_predicate && !m_predicate(entry)) {

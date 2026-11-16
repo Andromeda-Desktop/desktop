@@ -27,6 +27,7 @@ void describeText(FileInfo& info) {
     info.displayName = ownedString(g_filename_display_name(info.name.c_str()));
   }
   info.collateKey = ownedString(g_utf8_collate_key_for_filename(info.displayName.c_str(), -1));
+  info.foldedName = ownedString(g_utf8_casefold(info.displayName.data(), static_cast<gssize>(info.displayName.size())));
 }
 
 void describeType(FileInfo& info) {
