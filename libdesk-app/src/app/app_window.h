@@ -127,7 +127,8 @@ public:
     float tint = 1.0F; // the surface's alpha over the scene where nothing needs it for contrast
     bool operator==(const Scene&) const = default;
   };
-  void setScene(std::optional<Scene> scene);
+  // Called at every rebuild, so a scene follows a scheme change; nullopt shows no scene.
+  void setSceneSource(std::function<std::optional<Scene>()> source);
   // Input, output or any change the user sees: the scene moves for scene_idle_ms after the last one, while the window is
   // active. Keys and pointer events in this window count already.
   void noteSceneActivity();
@@ -321,7 +322,9 @@ private:
   Flex* m_sidebarNode = nullptr;
   Flex* m_mainNode = nullptr;
   std::optional<ColorSpec> m_mainFill;
+  void applyScene(std::optional<Scene> scene);
   std::optional<Scene> m_scene;
+  std::function<std::optional<Scene>()> m_sceneSource;
   ShaderSceneNode* m_sceneNode = nullptr; // null for a Picture backdrop
   Image* m_scenePicture = nullptr;
   float m_sceneSeconds = 0.0F;

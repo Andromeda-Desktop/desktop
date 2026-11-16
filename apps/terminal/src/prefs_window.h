@@ -60,7 +60,7 @@ namespace term {
 
     [[nodiscard]] std::vector<Group> groups() const;
     [[nodiscard]] std::unique_ptr<Node> buildColumn(float width, float height);
-    [[nodiscard]] std::unique_ptr<Node> preview(float scale, float width, float height) const;
+    [[nodiscard]] std::unique_ptr<Node> preview(Renderer& renderer, float scale, float width, float height) const;
     [[nodiscard]] std::unique_ptr<Node> themeTiles(float scale, float width);
     [[nodiscard]] std::unique_ptr<Node> materialTiles(float scale, float width);
     // The selected tile's swatch with the accent check badge at its bottom-right corner.

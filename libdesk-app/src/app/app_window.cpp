@@ -674,7 +674,12 @@ void AppWindow::setMaterial(Material material) {
   }
 }
 
-void AppWindow::setScene(std::optional<Scene> scene) {
+void AppWindow::setSceneSource(std::function<std::optional<Scene>()> source) {
+  m_sceneSource = std::move(source);
+  requestRebuild();
+}
+
+void AppWindow::applyScene(std::optional<Scene> scene) {
   if (scene == m_scene) {
     return;
   }
@@ -692,7 +697,6 @@ void AppWindow::setScene(std::optional<Scene> scene) {
     m_sceneRoot.reset();
   }
   m_scene = std::move(scene);
-  requestRebuild();
 }
 
 constexpr auto kSceneStep = std::chrono::milliseconds(33); // 30 scene frames a second
@@ -1465,6 +1469,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   };
   const auto buildStart = std::chrono::steady_clock::now();
   double contentMs = 0.0;
+  applyScene(m_sceneSource ? m_sceneSource() : std::nullopt);
   double sidebarMs = 0.0;
   double sheetMs = 0.0;
   double headerMs = 0.0;

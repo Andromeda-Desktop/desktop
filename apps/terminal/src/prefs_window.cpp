@@ -7,6 +7,8 @@
 #include "design_tokens.h"
 #include "terminal_view.h"
 #include "ui/builders.h"
+#include "core/files/resource_paths.h"
+#include "ui/controls/image.h"
 #include "ui/controls/pinned.h"
 #include "ui/palette.h"
 #include "render/animation/animation_manager.h"
@@ -177,7 +179,7 @@ namespace term {
       m_window.input().setFocus(m_search->inputArea());
       return true;
     });
-    m_window.setContentBuilder([this](Renderer&, float width, float height) -> std::unique_ptr<Node> {
+    m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
       const float gap = Tokens::componentWindowCardGap * s;
       const float columnW = std::round((width / s >= Tokens::componentTerminalPrefsWideFrom ? Tokens::componentTerminalPrefsColumnWide
@@ -191,7 +193,7 @@ namespace term {
       m_previewWidth -= gap;
       m_previewSlot = previewSlot.get();
       m_previewTheme = m_store.settings().theme;
-      previewSlot->addChild(preview(s, m_previewWidth, m_previewHeight));
+      previewSlot->addChild(preview(renderer, s, m_previewWidth, m_previewHeight));
 
       const float padH = Tokens::spaceP16 * s;
       auto column = ui::column({.align = FlexAlign::Stretch, .width = columnW, .height = height});
@@ -275,7 +277,7 @@ namespace term {
     if (m_slot == nullptr) {
       return;
     }
-    m_window.updateInPlace([this, transition](Renderer&) {
+    m_window.updateInPlace([this, transition](Renderer& renderer) {
       const bool reduced = MotionService::instance().reduced();
       const bool themeChanged = m_store.settings().theme != m_previewTheme;
       m_previewTheme = m_store.settings().theme;
@@ -311,7 +313,7 @@ namespace term {
       };
       AnimationManager& animations = m_window.animations();
 
-      m_previewSlot->addChild(preview(m_window.uiScale(), m_previewWidth, m_previewHeight));
+      m_previewSlot->addChild(preview(renderer, m_window.uiScale(), m_previewWidth, m_previewHeight));
       m_previewSlot->markLayoutDirty();
       if (oldPreview) {
         // P14-style crossfade: the old theme's preview fades out over the new one.
@@ -756,7 +758,7 @@ namespace term {
     return scroll;
   }
 
-  std::unique_ptr<Node> PrefsWindow::preview(float s, float width, float height) const {
+  std::unique_ptr<Node> PrefsWindow::preview(Renderer& renderer, float s, float width, float height) const {
     const Settings& now = m_store.settings();
     const ThemeSpec theme = resolveTheme(now.theme, m_store.themes());
     const std::string family = gridFont(now, theme);
@@ -786,36 +788,56 @@ namespace term {
     };
     // The prompt's context line: a band with the path and branch, the last command's result at the end.
     const auto context = [&](std::string result, bool first) {
-      auto row = ui::row({.align = FlexAlign::Center,
-                          .gap = Tokens::spaceP4 * s,
-                          .paddingH = Tokens::spaceP8 * s,
-                          .fill = fixedColorSpec(lerpColor(colors.view, colors.label1, 0.04F)),
-                          .radius = Tokens::radiusR8 * s,
-                          .minHeight = std::round(size * Tokens::typeMono.line / Tokens::typeMono.size)});
+      const float h = std::round(size * Tokens::typeMono.line / Tokens::typeMono.size);
+      auto pill = [&] {
+        return ui::row({.align = FlexAlign::Center,
+                        .gap = Tokens::spaceP4 * s,
+                        .paddingH = Tokens::spaceP8 * s,
+                        .fill = fixedColorSpec(lerpColor(colors.view, colors.label1, 0.04F)),
+                        .radius = Tokens::radiusR8 * s,
+                        .minHeight = h});
+      };
       if (!first) {
         box->addChild(ui::box({.height = size * 1.4F}));
       }
-      row->addChild(ui::label({.text = "~/src/desktop ", .fontSize = size, .fontFamily = family, .color = fixedColorSpec(colors.ansi[4])}));
-      row->addChild(ui::label({.text = "main", .fontSize = size, .fontFamily = family, .color = fixedColorSpec(colors.label2)}));
-      row->addChild(ui::column({.flexGrow = 1.0F}));
+      auto row = ui::row({.align = FlexAlign::Center, .minHeight = h});
+      auto band = pill();
+      band->addChild(ui::label({.text = "~/src/desktop ", .fontSize = size, .fontFamily = family, .color = fixedColorSpec(colors.ansi[4])}));
+      band->addChild(ui::label({.text = "main", .fontSize = size, .fontFamily = family, .color = fixedColorSpec(colors.label2)}));
+      row->addChild(std::move(band));
       if (!result.empty()) {
-        row->addChild(ui::label({.text = std::move(result), .fontSize = meta, .color = fixedColorSpec(colors.label2)}));
+        row->addChild(ui::column({.flexGrow = 1.0F}));
+        auto tail = pill();
+        tail->addChild(ui::label({.text = std::move(result), .fontSize = meta, .color = fixedColorSpec(colors.label2)}));
+        row->addChild(std::move(tail));
       }
+      box->addChild(std::move(row));
+    };
+    // The prompt as the shell integration draws it: the brand mark, then the command.
+    const auto prompt = [&](std::string command, const Color& ink) {
+      auto row = ui::row({.align = FlexAlign::Center, .gap = 0.0F, .clipChildren = true, .width = inner});
+      auto mark = std::make_unique<Image>();
+      mark->setSize(size, size);
+      mark->setForegroundTint(fixedColorSpec(colors.accent));
+      (void)mark->setSourceFile(renderer, paths::assetPath("amark.svg").string(), static_cast<int>(std::lround(size)));
+      row->addChild(std::move(mark));
+      row->addChild(ui::label({.text = " " + std::move(command), .fontSize = size, .fontFamily = family,
+                               .color = fixedColorSpec(ink), .maxLines = 1}));
       box->addChild(std::move(row));
     };
     const char* cursor = now.cursor == CursorShape::Bar ? "▏" : now.cursor == CursorShape::Underline ? "▁" : "█";
     context("2.4 s", true);
-    line({{"λ  ", colors.accent}, {"cargo test -p service", colors.label1}});
+    prompt("cargo test -p service", colors.label1);
     line({{"   Compiling service v0.4.1 (/src/desktop/service)", colors.label2}});
     line({{"test service::accepts_signed_index ... ", colors.label1}, {"ok", colors.ansi[2]}});
     line({{"warning", colors.ansi[3]}, {": unused import ", colors.label1}, {"`std::io`", colors.ansi[6]}});
     line({{"test service::resumes_partial ... ", colors.label1}, {"FAILED", colors.ansi[1]}});
     context("exit 101 · 0.8 s", false);
-    line({{"λ  ", colors.accent}, {"git log --oneline -2", colors.label1}});
+    prompt("git log --oneline -2", colors.label1);
     line({{"e1e5790", colors.ansi[3]}, {" Terminal themes show their own colours", colors.label1}});
     line({{"4873f2d", colors.ansi[3]}, {" Terminal theme Import…", colors.label1}});
     context("", false);
-    line({{"λ  ", colors.accent}, {cursor, colors.accent}});
+    prompt(cursor, colors.accent);
 
     box->addChild(ui::column({.flexGrow = 1.0F}));
     std::string name = now.theme;

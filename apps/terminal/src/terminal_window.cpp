@@ -125,7 +125,7 @@ namespace term {
       if (ContentView* view = shownView(); view != nullptr) {
         m_window.setMainFill(view->surface());
       }
-      m_window.setScene(windowScene(m_settings));
+      m_window.requestRebuild();
       if (!m_cards.empty()) {
         m_window.updateInPlace([this](Renderer& /*renderer*/) {
           paintPaneFocus(false);
@@ -133,7 +133,7 @@ namespace term {
         });
       }
     });
-    m_window.setScene(windowScene(m_settings));
+    m_window.setSceneSource([this] { return windowScene(m_settings); });
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
