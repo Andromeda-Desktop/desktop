@@ -331,7 +331,7 @@ FileGallery::FileGallery(float scale, ThumbnailService* thumbnails, AnimationMan
   add("more", actionButton("dots", s, nullptr, act("more")));
   m_actions = static_cast<Flex*>(addChild(std::move(actions)));
 
-  // The Info card (mockup .ginfo): 280 wide, 20 radius, 16 padding, 12 gap; filled by buildInfoCard.
+  // The Info card (mockup .ginfo): 280 wide, popover radius, 16 padding, 12 gap; filled by buildInfoCard.
   auto card = capsule(s, Style::scaledRadius(Tokens::componentPopoverRadius, s));
   card->setFill(colorSpecFromRole(ColorRole::Popover, kCardAlpha));
   card->setDirection(FlexDirection::Vertical);
