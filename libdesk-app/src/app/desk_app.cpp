@@ -254,6 +254,10 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     kLog.error("{} opened no window", m_info.id);
     return 1;
   }
+  // Appearance replies that already arrived apply before the first build, so it is not built twice.
+  if (m_bus != nullptr) {
+    m_bus->processPendingEvents();
+  }
   // The first windows build and lay out while EGL still loads; GL attaches after them.
   for (const auto& w : m_windows) {
     w->prepareFirstFrame();

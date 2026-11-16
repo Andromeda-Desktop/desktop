@@ -132,6 +132,11 @@ void Appearance::apply() {
   setPalette(paletteFor(m_light));
   MotionService::instance().setReduced(m_reducedMotion);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
+  const Applied now{m_light, m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]}};
+  if (now == m_applied) {
+    return;
+  }
+  m_applied = now;
   if (m_changed) {
     m_changed();
   }

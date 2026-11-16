@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <functional>
 #include <memory>
 
@@ -35,5 +36,14 @@ private:
   bool m_reducedMotion = false;
   bool m_powerSaver = false;
   double m_accent[3] = {0.0, 0.0, 0.0};
+  struct Applied {
+    bool light = false;
+    bool hasAccent = false;
+    bool reducedMotion = false;
+    bool powerSaver = false;
+    std::array<double, 3> accent{};
+    bool operator==(const Applied&) const = default;
+  };
+  Applied m_applied; // what windows last built with; the defaults match the startup palette
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };
