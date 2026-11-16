@@ -535,12 +535,13 @@ namespace term {
       m_rebuildPending = true;
       m_window.requestRebuild();
     } else if (const auto* open = std::get_if<session_event::Open>(&event); open != nullptr && m_rowList != nullptr) {
-      // A new session joins no split: it is the list's last child.
-      const std::size_t index = m_rowList->children().size() - 1;
-      m_window.updateInPlace([this, id = open->id, index](Renderer& /*renderer*/) {
+      // A new session joins no split: it is the list's last child. Rows that animate out stay children until their
+      // animation ends but have already left m_rows, so a child index is no m_rows index.
+      m_window.updateInPlace([this, id = open->id](Renderer& /*renderer*/) {
         auto row = makeRow(id);
-        m_rows.insert(m_rows.begin() + static_cast<std::ptrdiff_t>(index), {id, row.get()});
-        m_rowList->insertAnimated(std::move(row), index, Tokens::sizeRowTwoCompact * m_window.uiScale());
+        m_rows.emplace_back(id, row.get());
+        m_rowList->insertAnimated(std::move(row), m_rowList->children().size() - 1,
+                                  Tokens::sizeRowTwoCompact * m_window.uiScale());
       });
     }
     if (const auto* close = std::get_if<session_event::Close>(&event); close != nullptr && m_rowList != nullptr && !regroup) {
