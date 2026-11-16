@@ -32,7 +32,7 @@ _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic'
 
 _files_lib = static_library('files_core',
   sources: files('src/trash.cpp', 'src/archive_listing.cpp', 'src/permission_access.cpp', 'src/server_url.cpp',
-    'src/tags.cpp', 'src/exif_date.cpp', 'src/state_file.cpp'),
+    'src/tags.cpp', 'src/exif_date.cpp', 'src/state_file.cpp', 'src/admin_session.cpp'),
   dependencies: _desk_app_dep,
   cpp_args: _warnings,
 )
@@ -50,6 +50,8 @@ executable('andromeda-files',
     'src/compress_sheet.cpp',
     'src/extract_sheet.cpp',
     'src/get_info_sheet.cpp',
+    'src/admin_process.cpp',
+    'src/admin_view.cpp',
     'src/starred.cpp',
     'src/terminal.cpp',
     'src/index_search.cpp',
@@ -113,6 +115,8 @@ if _dbus_run_session.found()
   test('print_portal_dbus', _dbus_run_session, args: ['--', _print_portal_dbus_exe.full_path()],
     depends: _print_portal_dbus_exe)
 endif
+test('admin_session', executable('admin_session_test', 'tests/admin_session_test.cpp', link_with: _files_lib,
+  dependencies: _desk_app_dep, include_directories: include_directories('src'), cpp_args: _warnings))
 test('trash', executable('trash_test', 'tests/trash_test.cpp', link_with: _files_lib, dependencies: _desk_app_dep,
   include_directories: include_directories('src'), cpp_args: _warnings))
 test('service_menus', executable('service_menus_test', 'tests/service_menus_test.cpp', 'src/service_menus.cpp',

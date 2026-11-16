@@ -11,6 +11,7 @@
 #include "compress_sheet.h"
 #include "folder_compare.h"
 #include "extract_sheet.h"
+#include "admin_view.h"
 #include "get_info_sheet.h"
 #include "job_pill.h"
 #include "link_share.h"
@@ -88,6 +89,7 @@ public:
   void toggleStar(); // Ctrl+D on the selection
   [[nodiscard]] bool selectionStarred() const;
   void openTerminalHere(); // the selected folder, else the current one
+  void openAsAdmin();      // the selected folder, else the current one, listed and changed through the root helper
   void toggleTerminal(); // F4: the terminal pane under the view (mockup §16)
   void slideTerminal(float target);
   void selectByPattern(); // Ctrl+S sheet (mockup §16)
@@ -331,6 +333,9 @@ private:
   std::uint32_t m_dragMods = 0; // modifiers at the last drag motion
   std::unique_ptr<BatchRenameSheet> m_batchRename;
   std::unique_ptr<ArchiveListing> m_archive; // the archive open as a listing
+  std::unique_ptr<AdminView> m_admin;         // set once a folder opened as the administrator in this window
+  // The administrator view while it shows in the current tab; changes then go to its helper, not FileOps1.
+  [[nodiscard]] AdminView* adminHere() const;
   std::unique_ptr<CompressSheet> m_compress;
   std::unique_ptr<ExtractSheet> m_extract;
   std::string m_archivePassword; // the last password an extract was started with: a drag-out from it uses it

@@ -455,6 +455,11 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
       .modal = [this] { return m_window.hasSheet(); },
       .rename =
           [this](const fs::path& path, const std::string& name, std::function<void(const std::string&)> done) {
+            if (AdminView* admin = adminHere()) {
+              admin->rename(path, name);
+              done({});
+              return;
+            }
             FileOpsClient* ops = m_app.fileOps();
             if (ops == nullptr) {
               done("File operations are not available.");
@@ -902,6 +907,14 @@ void FilesWindow::dropData(const fs::path& folder, const std::string& mime, cons
 }
 
 void FilesWindow::newFolder() {
+  if (AdminView* admin = adminHere()) {
+    std::string name = "New Folder";
+    for (int n = 2; std::ranges::any_of(m_browser->rows(), [&](const auto& r) { return r->displayName == name; }); ++n) {
+      name = std::format("New Folder {}", n);
+    }
+    admin->newFolder(name);
+    return;
+  }
   if (!inFolder()) {
     return;
   }
@@ -2003,6 +2016,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
     add("file.star", selectionStarred() ? "Remove from Starred" : "Add to Starred", "star");
     add("file.pin", selectionPinned() ? "Remove from Sidebar" : "Add to Sidebar");
     add("file.open-terminal", {}, "terminal-2");
+  add("file.open-admin", {}, "shield-lock");
     // Actions ›: KDE service menus that cover the selection, X-KDE-Submenu groups as their own submenus.
     m_serviceActions = service_menus::forItems(paths);
     if (!m_serviceActions.empty()) {
@@ -2633,6 +2647,26 @@ void FilesWindow::openTerminalHere() {
   if (openTerminalIn(dir).empty()) {
     showToast("No terminal app is installed", false);
   }
+}
+
+AdminView* FilesWindow::adminHere() const {
+  return m_admin != nullptr && AdminView::isAdminListing(m_browser->listingId()) ? m_admin.get() : nullptr;
+}
+
+void FilesWindow::openAsAdmin() {
+  const auto paths = selectedPaths();
+  const fs::path dir = paths.size() == 1 && isDir(paths.front()) ? paths.front()
+                       : adminHere() != nullptr                   ? m_admin->dir()
+                                                                  : location();
+  if (m_admin == nullptr) {
+    m_admin = std::make_unique<AdminView>(AdminView::Host{
+        .show = [this](FileBrowser::Listing listing) { m_browser->showListing(std::move(listing)); },
+        .toast = [this](const std::string& text, bool ok) { showToast(text, ok); },
+        .leave = [this](const fs::path& folder) { m_browser->go(folder); },
+    });
+  }
+  kLog.info("open as administrator {}", dir.string());
+  m_admin->open(dir);
 }
 
 void FilesWindow::openArchive(const fs::path& archive) {
@@ -3420,6 +3454,10 @@ void FilesWindow::askDeleteSelection() {
         buttons->addChild(ui::button({.text = std::string("Delete"), .fontSize = Style::fontSizeBody * s,
                                       .variant = ButtonVariant::Destructive, .onClick = [this, paths] {
                                         m_window.dismissSheet();
+                                        if (AdminView* admin = adminHere()) {
+                                          admin->remove(paths);
+                                          return;
+                                        }
                                         startJob("Deleting", paths.size(),
                                                  [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
                                       }}));
@@ -3966,6 +4004,14 @@ void FilesWindow::pasteInternal() {
   if (clip.paths.empty()) {
     return;
   }
+  if (AdminView* admin = adminHere()) {
+    if (clip.cut) {
+      m_app.clipboard() = {};
+      refreshCommandBar();
+    }
+    admin->transfer(clip.paths, admin->dir(), clip.cut);
+    return;
+  }
   if (clip.cut) {
     m_app.clipboard() = {};
     refreshCommandBar();
@@ -3976,6 +4022,10 @@ void FilesWindow::pasteInternal() {
 }
 
 void FilesWindow::trashSelection() {
+  if (adminHere() != nullptr) {
+    askDeleteSelection(); // root's Trash is no place for system files: delete, after a confirm
+    return;
+  }
   const auto paths = selectedPaths();
   if (inTrash() || paths.empty()) {
     return;

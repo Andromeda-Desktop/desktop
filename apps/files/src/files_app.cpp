@@ -901,6 +901,8 @@ void FilesApp::addCommands() {
        [](FilesWindow& w) { w.toggleTerminal(); }},
       {"file.open-terminal", "Open Terminal Here", "File", chord(XKB_KEY_F4, KeyMod::Shift),
        [](const FilesWindow& w) { return !w.inTrash(); }, [](FilesWindow& w) { w.openTerminalHere(); }},
+      {"file.open-admin", "Open as Administrator", "File", std::nullopt,
+       [](const FilesWindow& w) { return !w.inTrash() && !w.isPicker(); }, [](FilesWindow& w) { w.openAsAdmin(); }},
       {"file.restore", "Put Back", "File", std::nullopt,
        [](const FilesWindow& w) { return w.inTrash() && w.hasSelection(); }, [](FilesWindow& w) { w.restoreSelection(); }},
       {"file.new-folder", "New Folder", "File", chord(XKB_KEY_N, KeyMod::Ctrl | KeyMod::Shift),
