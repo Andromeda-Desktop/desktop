@@ -513,8 +513,7 @@ theme_tile_aspect = 0.55  # Preferences theme tile: height / width
 window_tile_aspect = 0.28  # Preferences Solid / Glass tile: height / width
 window_tile_sidebar = 0.3  # the sidebar's share of the window drawn in that tile
 cursor_blink_timeout_ms = 10000  # the cursor stops blinking this long after the last key or focus
-bell_flash_ms = 150  # the grid's bell flash fades out over this time
-bell_flash_alpha = 0.12  # the flash's start opacity: the text colour over the grid
+bell_interval_ms = 150  # at most one bell per this time, so a stream of BEL rings once
 glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the window's thick tint
 
 [component.agent]  # agent session view (design-agent handoff.yaml)

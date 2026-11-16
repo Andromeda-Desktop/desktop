@@ -303,6 +303,7 @@ namespace term {
     m_findLayer = m_grid->addChild(std::move(findLayer));
     auto flash = std::make_unique<RectNode>();
     flash->setZIndex(TerminalGridNode::kBelowTextZ);
+    flash->setOpacity(0.0F);
     flash->setVisible(false);
     if (m_bellAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {
       m_area->animationManager()->cancel(m_bellAnim);
@@ -791,9 +792,9 @@ namespace term {
   }
 
   void TerminalView::onBell() {
-    // At most one bell per flash, so a stream of BEL (cat of a binary file) neither floods the compositor nor flickers.
+    // A stream of BEL (cat of a binary file) rings once: it neither floods the compositor nor flickers.
     const auto now = std::chrono::steady_clock::now();
-    if (now - m_lastBell < std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalBellFlashMs))) {
+    if (now - m_lastBell < std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalBellIntervalMs))) {
       return;
     }
     m_lastBell = now;
@@ -813,18 +814,21 @@ namespace term {
     if (m_bellAnim != 0) {
       animations->cancel(m_bellAnim);
     }
-    Color tint = themed(ColorRole::Label1);
-    tint.a = Tokens::componentTerminalBellFlashAlpha;
-    m_bellFlash->setStyle(RoundedRectStyle{.fill = tint});
+    // D-SPEC comfort rule: a 1 px label_2 underline of the title band for one fade cycle, never a flash.
+    m_bellFlash->setStyle(RoundedRectStyle{.fill = themed(ColorRole::Label2)});
     m_bellFlash->setPosition(0.0F, 0.0F);
-    m_bellFlash->setFrameSize(m_width, m_height);
+    m_bellFlash->setFrameSize(m_width, Style::borderWidth * m_uiScale);
     m_bellFlash->setVisible(true);
-    m_bellAnim = animations->animateTimer(
-        1.0F, 0.0F, static_cast<float>(Tokens::componentTerminalBellFlashMs), Easing::Linear,
-        [this](float v) { m_bellFlash->setOpacity(v); },
-        [this] {
-          m_bellAnim = 0;
-          m_bellFlash->setVisible(false);
+    m_bellAnim = animations->animateSpring(
+        m_bellFlash->opacity(), 1.0F, Style::spring(Tokens::springFade), [this](float v) { m_bellFlash->setOpacity(v); },
+        [this, animations] {
+          m_bellAnim = animations->animateSpring(
+              1.0F, 0.0F, Style::spring(Tokens::springFadeOut), [this](float v) { m_bellFlash->setOpacity(v); },
+              [this] {
+                m_bellAnim = 0;
+                m_bellFlash->setVisible(false);
+              },
+              this);
         },
         this);
   }

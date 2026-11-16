@@ -303,7 +303,7 @@ namespace term {
     CommandMarksKey m_commandMarksKey;
     Node* m_findLayer = nullptr; // moves with the grid origin
     RectNode* m_findRing = nullptr;
-    RectNode* m_bellFlash = nullptr; // over the whole grid, under the text
+    RectNode* m_bellFlash = nullptr; // the bell line along the title band's bottom edge
     AnimationManager::Id m_bellAnim = 0;
     std::chrono::steady_clock::time_point m_lastBell;
     void updateMarks();
