@@ -164,6 +164,8 @@ namespace term {
     // older: toward history (Enter); else toward the prompt (Shift+Enter).
     void findStep(bool older);
     void closeFind();
+    // A drop on the grid: text/uri-list as shell-quoted paths, any other type as text, both through paste.
+    void pasteDrop(const std::string& mime, const std::string& data);
 
     [[nodiscard]] InputArea* focusArea() const noexcept override { return m_area; }
     [[nodiscard]] TerminalView* terminal() noexcept override { return this; }

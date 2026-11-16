@@ -36,6 +36,8 @@ class SelectionList;
 class Surface;
 class ThumbnailService;
 
+struct wl_surface;
+
 namespace term {
 
   class Notifier;
@@ -161,6 +163,8 @@ namespace term {
     // Closed sessions whose nodes are still in the scene: freed after the next build replaced them.
     std::vector<Session> m_retired;
     std::uint64_t m_nextId = 1;
+    void registerDropTarget();
+    wl_surface* m_dropSurface = nullptr; // the surface the drop target is on
     // Agent session keys are unique in the app: all windows share one host.
     static inline std::uint64_t s_nextAgentKey = 0;
     // The panes whose views are in the slot, in layout order: the shown session alone, or its split.

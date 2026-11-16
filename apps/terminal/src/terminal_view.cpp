@@ -21,6 +21,7 @@
 #include "ui/palette.h"
 #include "time/time_format.h"
 #include "ui/style.h"
+#include "util/string_utils.h"
 #include "wayland/text_input_service.h"
 
 #include "cursor-shape-v1-client-protocol.h"
@@ -2207,6 +2208,35 @@ namespace term {
         }
       });
     }
+  }
+
+  void TerminalView::pasteDrop(const std::string& mime, const std::string& data) {
+    if (mime != "text/uri-list") {
+      pasteText(data);
+      return;
+    }
+    // Each file as one shell word: quoted only when it holds a character the shell treats specially.
+    const auto word = [](std::string_view s) {
+      const bool plain = !s.empty() && std::ranges::all_of(s, [](unsigned char c) {
+        return std::isalnum(c) != 0 || std::string_view("_@%+=:,./-").find(static_cast<char>(c)) != std::string_view::npos;
+      });
+      return plain ? std::string(s) : StringUtils::shellQuote(s);
+    };
+    std::string text;
+    for (std::size_t at = 0; at < data.size();) {
+      const std::size_t end = std::min(data.find('\n', at), data.size());
+      std::string_view line(data.data() + at, end - at);
+      at = end + 1;
+      if (line.ends_with('\r')) {
+        line.remove_suffix(1);
+      }
+      if (line.empty() || line.starts_with('#')) {
+        continue;
+      }
+      const std::string path = line.starts_with("file://") ? pathFromFileUri(line) : std::string();
+      text += (text.empty() ? "" : " ") + word(path.empty() ? line : path); // a remote file stays a URI
+    }
+    pasteText(std::move(text));
   }
 
   void TerminalView::pasteText(std::string text) {

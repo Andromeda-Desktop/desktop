@@ -24,6 +24,7 @@
 #include "ui/contrast.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
 
 #include "cursor-shape-v1-client-protocol.h"
@@ -137,6 +138,7 @@ namespace term {
       m_contentWidth = width;
       m_contentHeight = height;
       fillSlot(renderer);
+      registerDropTarget();
       return slot;
     });
     m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float /*height*/) -> std::unique_ptr<Node> {
@@ -1321,8 +1323,36 @@ namespace term {
     }
   }
 
+  void TerminalWindow::registerDropTarget() {
+    wl_surface* surface = m_window.wlSurface();
+    DragAndDrop* dnd = m_loop.wayland().dragAndDrop();
+    if (surface == nullptr || dnd == nullptr || surface == m_dropSurface) {
+      return;
+    }
+    m_dropSurface = surface;
+    dnd->setAcceptedTypes({"text/uri-list", "text/plain;charset=utf-8", "text/plain"});
+    const auto over = [this](float x, float y) {
+      TerminalView* view = shownTerminal();
+      return view != nullptr && view->focusArea() != nullptr && view->focusArea()->containsScenePoint(x, y) ? view : nullptr;
+    };
+    dnd->setTarget(surface, {
+        .enter = [](const std::vector<std::string>& /*mimes*/) { return true; },
+        .motion = [over](float x, float y) -> std::uint32_t { return over(x, y) != nullptr ? DragAndDrop::Copy : DragAndDrop::None; },
+        .leave = [] {},
+        .drop =
+            [over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
+              if (TerminalView* view = over(x, y); view != nullptr) {
+                view->pasteDrop(mime, data);
+              }
+            },
+    });
+  }
+
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
+    if (DragAndDrop* dnd = m_loop.wayland().dragAndDrop(); dnd != nullptr && m_dropSurface != nullptr) {
+      dnd->clearTarget(m_dropSurface);
+    }
     if (m_tickSurface != nullptr && m_tickSurface == m_window.surface()) {
       m_tickSurface->setFrameTickCallback(nullptr);
       m_tickSurface->setScaleChangedCallback(nullptr);
@@ -1331,6 +1361,7 @@ namespace term {
 
   void TerminalWindow::surfaceLost() {
     m_tickSurface = nullptr;
+    m_dropSurface = nullptr; // the old surface died with its target
     m_bandStatus = nullptr;
     for (Session& session : m_views) {
       session.view->sceneDestroyed();
