@@ -243,6 +243,11 @@ namespace {
     p.disabled = p.normal;
     return p;
   }
+// The content's left edge: the card keeps a left gap only while no sidebar shows beside it.
+float contentLeft(float margin, float sidebarShown, float cardGap) {
+  return margin + sidebarShown + (sidebarShown > 0.0F ? 0.0F : cardGap);
+}
+
 } // namespace
 
 AppWindow::AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, Config config)
@@ -1189,8 +1194,7 @@ void AppWindow::swapSidebar(Renderer& renderer, float height) {
   m_sidebarNode->removeChild(m_sidebarNode->children().front().get());
   m_sidebarNode->insertChildAt(0, std::move(list));
   m_sidebarNode->markLayoutDirty();
-  m_contentRect.x = static_cast<float>(m_surface->margin()) + shown;
-  m_contentRect.width = static_cast<float>(m_surface->windowWidth()) - shown;
+  m_contentRect.x = contentLeft(static_cast<float>(m_surface->margin()), shown, m_cardGap);
 }
 
 void AppWindow::refreshNavigation() {
@@ -1564,7 +1568,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   }
   const float headerHeight = header ? this->headerHeight() : 0.0F;
   const float contentHeight = std::max(0.0F, height - headerHeight - 2.0F * m_cardGap);
-  m_contentRect = {.x = margin + sidebarShown + cardLeft, .y = margin + m_cardGap + headerHeight,
+  m_contentRect = {.x = contentLeft(margin, sidebarShown, m_cardGap), .y = margin + m_cardGap + headerHeight,
                    .width = mainWidth, .height = contentHeight};
   auto partStart = std::chrono::steady_clock::now();
   std::unique_ptr<Node> content = m_builder ? m_builder(renderer, mainWidth, contentHeight) : ui::node({});
@@ -1866,8 +1870,7 @@ void AppWindow::setSidebarVisible(bool visible) {
         m_sidebarNode->setMinWidth(w);
         m_sidebarNode->setMaxWidth(w);
         m_sidebarNode->markLayoutDirty();
-        m_contentRect.x = static_cast<float>(m_surface->margin()) + w;
-        m_contentRect.width = static_cast<float>(m_surface->windowWidth()) - w;
+        m_contentRect.x = contentLeft(static_cast<float>(m_surface->margin()), w, m_cardGap);
         m_surface->requestLayout();
       },
       [this] { m_sidebarAnim = 0; }, nullptr, 0.0F, Threshold::px((m_compact ? kRailWidth : m_config.sidebarWidth) * m_uiScale), true);

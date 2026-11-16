@@ -4678,6 +4678,7 @@ void FileBrowser::updateEdgeScroll(float sceneX, float sceneY) {
     m_edgeScroll.stop();
   } else if (!m_edgeScroll.active()) {
     constexpr auto kTick = std::chrono::milliseconds(16);
+    m_edgeLast = std::chrono::steady_clock::now();
     m_edgeScroll.startRepeating(kTick, [this] {
       Page& p = m_ui->cur();
       VirtualGridView* g = activeGrid();
@@ -4685,7 +4686,11 @@ void FileBrowser::updateEdgeScroll(float sceneX, float sceneY) {
         m_edgeScroll.stop();
         return;
       }
-      g->scrollView().scrollBy(m_edgeSpeed * 0.016F);
+      // The timer fires late under load: scroll by the time that passed, at most 50 ms after a stall.
+      const auto now = std::chrono::steady_clock::now();
+      const float dt = std::min(std::chrono::duration<float>(now - m_edgeLast).count(), 0.05F);
+      m_edgeLast = now;
+      g->scrollView().scrollBy(m_edgeSpeed * dt);
       if (m_host.invalidate) {
         m_host.invalidate();
       }

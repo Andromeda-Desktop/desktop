@@ -9,6 +9,7 @@
 #include "ui/palette.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -506,6 +507,7 @@ private:
   Timer m_springTimer;
   Timer m_edgeScroll;     // a drag at a view edge scrolls it (FILES-UX §2.3)
   float m_edgeSpeed = 0.0F; // px/s, negative = up
+  std::chrono::steady_clock::time_point m_edgeLast; // the last edge-scroll step
   void updateEdgeScroll(float sceneX, float sceneY);
   std::optional<DropTarget> m_lastDrop;
 
