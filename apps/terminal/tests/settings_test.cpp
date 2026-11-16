@@ -17,7 +17,8 @@ Settings randomSettings(std::mt19937& rng) {
   auto pick = [&](int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(rng); };
   const char* fonts[] = {"", "Fira Code", "JetBrains Mono", "Noto Sans Mono CJK \"JP\"", "x\\y\n"};
   Settings s;
-  s.theme = static_cast<Theme>(pick(0, 3));
+  const char* themes[] = {"system", "light", "dark", "amoled", "nord", "my_theme-2"};
+  s.theme = themes[pick(0, 5)];
   s.cursor = static_cast<CursorShape>(pick(0, 2));
   s.cursorBlink = pick(0, 1) != 0;
   s.material = static_cast<WindowMaterial>(pick(0, 1));
@@ -37,7 +38,7 @@ Settings randomSettings(std::mt19937& rng) {
 
 // Values that must be rejected, each with the line it sits on.
 const char* kBad[] = {
-    "[appearance]\ntheme = \"neon\"\n",
+    "[appearance]\ntheme = \"Neon Theme\"\n",
     "[text]\nsize = 200\n",
     "[text]\nsize = \"13\"\n",
     "[terminal]\ncopy_on_select = 1\n",

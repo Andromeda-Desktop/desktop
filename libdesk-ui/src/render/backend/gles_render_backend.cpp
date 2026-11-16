@@ -872,6 +872,11 @@ void GlesRenderBackend::drawGraph(
   m_graphProgram.draw(dataTexture, textureWidth, surfaceWidth, surfaceHeight, width, height, style, transform);
 }
 
+void GlesRenderBackend::drawShaderScene(const ShaderSceneDraw& scene) {
+  flushRectBatch();
+  m_shaderSceneProgram.draw(scene);
+}
+
 void GlesRenderBackend::drawTerminalGrid(const TerminalGridDraw& grid) {
   flushRectBatch();
   m_terminalGridProgram.ensureInitialized();
@@ -960,6 +965,7 @@ void GlesRenderBackend::destroyGpuObjects() {
   m_effectProgram.destroy();
   m_graphProgram.destroy();
   m_terminalGridProgram.destroy();
+  m_shaderSceneProgram.destroy();
   m_wallpaperProgram.destroy();
   m_wallpaperMaskProgram.destroy();
   m_lockscreenTransitionProgram.destroy();
@@ -982,6 +988,7 @@ void GlesRenderBackend::abandonGpuObjects() noexcept {
   m_effectProgram.abandon();
   m_graphProgram.abandon();
   m_terminalGridProgram.abandon();
+  m_shaderSceneProgram.abandon();
   m_wallpaperProgram.abandon();
   m_wallpaperMaskProgram.abandon();
   m_lockscreenTransitionProgram.abandon();

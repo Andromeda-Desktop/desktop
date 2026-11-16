@@ -435,6 +435,25 @@ namespace term {
                             }});
       content->addChild(card(error, s, cardWidth));
     }
+    if (m_page == Page::Appearance) {
+      for (const ThemeEntry& entry : m_store.themes().entries()) {
+        const auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state);
+        if (invalid == nullptr) {
+          continue;
+        }
+        Group error{m_page, "", {}};
+        const std::string where = invalid->error.line > 0 ? "Line " + std::to_string(invalid->error.line) + ": " : "";
+        error.rows.push_back({"Theme \"" + entry.id + "\" has an error",
+                              where + invalid->error.message
+                                  + (invalid->lastGood ? ". The last good version stays in use." : "."),
+                              [](float sc, float) {
+                                return ui::glyph({.glyph = "alert-triangle",
+                                                  .glyphSize = Tokens::sizeSymbol * sc,
+                                                  .color = colorSpecFromRole(ColorRole::TermRed)});
+                              }});
+        content->addChild(card(error, s, cardWidth));
+      }
+    }
 
     const std::vector<Group> all = groups();
     if (m_query.empty()) {
@@ -485,31 +504,29 @@ namespace term {
 
   std::unique_ptr<Node> PrefsWindow::preview(float s, float width) const {
     const Settings& now = m_store.settings();
-    const Theme theme = now.theme;
-    const std::string family =
-        now.font.empty() ? std::string(Tokens::fontMono) : now.font + ", " + std::string(Tokens::fontMono);
+    const ThemeSpec theme = resolveTheme(now.theme, m_store.themes());
+    const std::string family = gridFont(now, theme);
     const float size = static_cast<float>(now.fontSize) * s;
-    auto bg = themeColor(theme, ColorRole::View);
-    bg.a = 1.0F;
+    const ThemePalette colors = themePalette(theme);
     auto box = ui::column({.align = FlexAlign::Start,
                            .gap = Tokens::spaceP2 * s,
                            .padding = Tokens::spaceP12 * s,
-                           .fill = fixedColorSpec(bg),
+                           .fill = fixedColorSpec(colors.view),
                            .radius = Style::scaledRadiusSm(s),
                            .width = width});
-    const auto line = [&](std::string text, ColorRole role) {
+    const auto line = [&](std::string text, const Color& color) {
       box->addChild(ui::label({.text = std::move(text),
                                .fontSize = size,
                                .fontFamily = family,
-                               .color = fixedColorSpec(themeColor(theme, role)),
+                               .color = fixedColorSpec(color),
                                .maxWidth = width - Tokens::spaceP12 * s * 2.0F,
                                .maxLines = 1}));
     };
     const char* cursor = now.cursor == CursorShape::Bar ? "▏" : now.cursor == CursorShape::Underline ? "▁" : "█";
-    line("~/src/desktop main ❯ cargo test", ColorRole::Label1);
-    line("test service::accepts_signed_index ... ok", ColorRole::TermGreen);
-    line("test service::resumes_partial ... FAILED", ColorRole::TermRed);
-    line(std::string("~/src/desktop main ❯ ") + cursor, ColorRole::Label1);
+    line("~/src/desktop main ❯ cargo test", colors.label1);
+    line("test service::accepts_signed_index ... ok", colors.ansi[2]);
+    line("test service::resumes_partial ... FAILED", colors.ansi[1]);
+    line(std::string("~/src/desktop main ❯ ") + cursor, colors.label1);
     return box;
   }
 
@@ -590,36 +607,61 @@ namespace term {
   }
 
   std::unique_ptr<Node> PrefsWindow::themeTiles(float s, float width) {
-    constexpr std::array<std::pair<Theme, std::string_view>, 4> kThemes{
-        {{Theme::System, "Andromeda"}, {Theme::Light, "Light"}, {Theme::Dark, "Dark"}, {Theme::Amoled, "AMOLED"}}};
+    struct Choice {
+      std::string id;
+      std::string name;
+      ThemeSpec spec;
+    };
+    std::vector<Choice> choices{{"system", "Andromeda", Theme::System},
+                                {"light", "Light", Theme::Light},
+                                {"dark", "Dark", Theme::Dark},
+                                {"amoled", "AMOLED", Theme::Amoled}};
+    for (const ThemeEntry& entry : m_store.themes().entries()) {
+      if (const ThemePackage* package = m_store.themes().find(entry.id)) {
+        choices.push_back({entry.id, package->name, *package});
+      }
+    }
+    constexpr std::size_t kPerRow = 4;
     const float gap = Tokens::spaceP12 * s;
-    const float tileW = std::floor((width - gap * 3.0F) / 4.0F);
+    const float tileW = std::floor((width - gap * static_cast<float>(kPerRow - 1)) / static_cast<float>(kPerRow));
     const float tileH = std::round(tileW * Tokens::componentTerminalThemeTileAspect);
-    const Theme current = m_store.settings().theme;
-    auto row = ui::row({.gap = gap, .width = width});
-    for (const auto& [theme, name] : kThemes) {
-      const bool on = theme == current;
-      auto bg = themeColor(theme, ColorRole::View);
-      bg.a = 1.0F;
+    const std::string& current = m_store.settings().theme;
+    auto grid = ui::column({.align = FlexAlign::Start, .gap = gap, .width = width});
+    std::unique_ptr<Flex> row;
+    for (std::size_t i = 0; i < choices.size(); ++i) {
+      if (i % kPerRow == 0) {
+        if (row) {
+          grid->addChild(std::move(row));
+        }
+        row = ui::row({.gap = gap, .width = width});
+      }
+      const Choice& choice = choices[i];
+      const ThemePalette colors = themePalette(choice.spec);
       auto swatch = ui::column({.align = FlexAlign::Start,
                                 .gap = Tokens::spaceP2 * s,
                                 .padding = Tokens::spaceP8 * s,
-                                .fill = fixedColorSpec(bg),
+                                .fill = fixedColorSpec(colors.view),
                                 .radius = Style::scaledRadiusSm(s),
                                 .width = tileW,
                                 .height = tileH});
       swatch->addChild(ui::label({.text = "~ ❯ ls",
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .fontFamily = std::string(Tokens::fontMono),
-                                  .color = fixedColorSpec(themeColor(theme, ColorRole::Label1))}));
+                                  .color = fixedColorSpec(colors.label1)}));
       swatch->addChild(ui::label({.text = "src  docs",
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .fontFamily = std::string(Tokens::fontMono),
-                                  .color = fixedColorSpec(themeColor(theme, ColorRole::TermBlue))}));
-      row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH,
-                         [this, theme] { change([theme](Settings& x) { x.theme = theme; }); }));
+                                  .color = fixedColorSpec(colors.ansi[4])}));
+      row->addChild(tile(std::move(swatch), choice.name, choice.id == current, s, tileW, tileH,
+                         [this, id = choice.id] { change([id](Settings& x) { x.theme = id; }); }));
     }
-    return row;
+    grid->addChild(std::move(row));
+    grid->addChild(ui::label({.text = "Add themes in " + m_store.themes().dir().string(),
+                              .fontSize = Tokens::typeFootnote.size * s,
+                              .color = colorSpecFromRole(ColorRole::Label2),
+                              .maxWidth = width,
+                              .maxLines = 2}));
+    return grid;
   }
 
 } // namespace term

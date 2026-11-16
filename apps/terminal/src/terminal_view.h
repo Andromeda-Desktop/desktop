@@ -5,11 +5,14 @@
 #include "core/timer_manager.h"
 #include "pty_session.h"
 #include "settings.h"
+#include "theme_store.h"
 #include "terminal_find.h"
 #include "render/core/color.h"
 #include "ui/palette.h"
+#include "ui/theme_palette.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
+#include "render/scene/shader_scene_node.h"
 #include "render/scene/terminal_grid_node.h"
 #include "design_tokens.h"
 #include "ui/text_input_client.h"
@@ -45,6 +48,14 @@ namespace term {
   [[nodiscard]] std::string pathFromFileUri(std::string_view uri);
   // A colour role under a terminal theme: System follows the desktop scheme, AMOLED is Dark on pure black.
   [[nodiscard]] Color themeColor(Theme theme, ColorRole role);
+  // A built-in theme or an installed package; a package follows the desktop's light or dark scheme.
+  using ThemeSpec = std::variant<Theme, ThemePackage>;
+  // The grid colours of a terminal theme, derived from its view, label and accent anchors.
+  [[nodiscard]] ThemePalette themePalette(const ThemeSpec& theme);
+  // The theme an id names; an unknown id falls back to System.
+  [[nodiscard]] ThemeSpec resolveTheme(std::string_view id, const ThemeStore& themes);
+  // The grid font family list: the user's font, else the theme's, then the mono token.
+  [[nodiscard]] std::string gridFont(const Settings& settings, const ThemeSpec& theme);
 
   // One terminal session drawn as a libdesk-ui cell grid. The app window and the Files pane both host it.
   // All methods run on the UI thread; the session's IO thread only wakes it.
@@ -73,6 +84,7 @@ namespace term {
       // Find results changed: match count and the current match (1 = newest), while find is open.
       std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
       Settings settings;
+      ThemeSpec theme = Theme::System;
     };
 
     explicit TerminalView(Host host);
@@ -91,7 +103,8 @@ namespace term {
     // Pulls the terminal state into the grid. Call with the GL context current, once per frame tick.
     void frame() override;
     // Preferences changed: font, theme, cursor, scrolling and notifications apply at once.
-    void applySettings(const Settings& settings);
+    void applySettings(const Settings& settings, const ThemeSpec& theme);
+    [[nodiscard]] ColorSpec surface() const override { return fixedColorSpec(rgbHex(m_background)); }
     // The shell's working directory (OSC 7); empty until it reports one.
     [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
     // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.
@@ -101,6 +114,8 @@ namespace term {
       }
       m_bellAnim = 0;
       m_bellFlash = nullptr;
+      m_scene = nullptr;
+      m_sceneTint = nullptr;
       m_grid = nullptr;
       m_area = nullptr;
       m_linkAnchor = nullptr;
@@ -237,7 +252,10 @@ namespace term {
     };
     std::optional<LinkProbe> m_linkProbe; // the input m_link was computed from
     Settings m_settings = m_host.settings;
+    ThemeSpec m_theme = m_host.theme;
     void applyTerminalSettings();
+    // Adds, updates or removes the theme scene under the grid.
+    void syncScene();
     [[nodiscard]] Color themed(ColorRole role) const;
     void setGridFont();
     // Hover preview of m_link: Armed waits the tooltip delay; Shown holds the content and, for an image, the
@@ -304,6 +322,10 @@ namespace term {
     Node* m_findLayer = nullptr; // moves with the grid origin
     RectNode* m_findRing = nullptr;
     RectNode* m_bellFlash = nullptr; // the bell line along the title band's bottom edge
+    ShaderSceneNode* m_scene = nullptr; // the theme's scene under the cells; null when the theme has none
+    RectNode* m_sceneTint = nullptr;    // the surface colour over the scene, so the text stays readable
+    float m_sceneSeconds = 0.0F;        // scene time: runs only while the view is focused
+    std::chrono::steady_clock::time_point m_sceneShown{}; // when the scene time last advanced
     AnimationManager::Id m_bellAnim = 0;
     std::chrono::steady_clock::time_point m_lastBell;
     void updateMarks();

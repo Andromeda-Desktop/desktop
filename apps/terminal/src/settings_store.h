@@ -1,6 +1,7 @@
 #pragma once
 
 #include "settings.h"
+#include "theme_store.h"
 #include "ui/signal.h"
 
 #include <filesystem>
@@ -35,7 +36,8 @@ namespace term {
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return m_path; }
     // Writes the file at once; listeners run before it returns.
     void update(const Settings& settings);
-    // Settings or the file state changed.
+    [[nodiscard]] const ThemeStore& themes() const noexcept { return m_themes; }
+    // Settings, the file state or an installed theme changed.
     [[nodiscard]] Signal<>& changed() noexcept { return m_changed; }
 
   private:
@@ -48,6 +50,8 @@ namespace term {
     std::string m_bytes; // the file as last read or written: an event with the same bytes changes nothing
     GFileMonitor* m_monitor = nullptr;
     Signal<> m_changed;
+    ThemeStore m_themes;
+    Signal<>::ScopedConnection m_themesChanged = m_themes.changed().connect([this] { m_changed.emit(); });
   };
 
 } // namespace term

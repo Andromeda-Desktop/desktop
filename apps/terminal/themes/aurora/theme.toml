@@ -1,0 +1,9 @@
+name = "Aurora"
+[light]
+surface = "#eef0fb"
+text = "#1d2140"
+accent = "#3a7d6b"
+[dark]
+surface = "#0a0e1f"
+text = "#e4e8ff"
+accent = "#62e3b0"

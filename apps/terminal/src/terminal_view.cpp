@@ -188,9 +188,14 @@ namespace term {
     return true;
   }
 
+  std::string gridFont(const Settings& settings, const ThemeSpec& theme) {
+    const auto* package = std::get_if<ThemePackage>(&theme);
+    const std::string& font = !settings.font.empty() || package == nullptr ? settings.font : package->font;
+    return font.empty() ? std::string(Tokens::fontMono) : font + ", " + std::string(Tokens::fontMono);
+  }
+
   void TerminalView::setGridFont() {
-    const std::string family =
-        m_settings.font.empty() ? std::string(Tokens::fontMono) : m_settings.font + ", " + std::string(Tokens::fontMono);
+    const std::string family = gridFont(m_settings, m_theme);
     const auto size = static_cast<float>(m_settings.fontSize);
     m_grid->setFont(family, size * m_uiScale, std::round(size * Tokens::typeMono.line / Tokens::typeMono.size) * m_uiScale,
                     m_deviceScale);
@@ -219,18 +224,21 @@ namespace term {
     });
   }
 
-  void TerminalView::applySettings(const Settings& settings) {
-    if (settings == m_settings) {
+  void TerminalView::applySettings(const Settings& settings, const ThemeSpec& theme) {
+    if (settings == m_settings && theme == m_theme) {
       return;
     }
-    const bool font = settings.font != m_settings.font || settings.fontSize != m_settings.fontSize;
-    const bool terminal = settings.theme != m_settings.theme || settings.cursor != m_settings.cursor
+    const bool font = settings.font != m_settings.font || settings.fontSize != m_settings.fontSize
+                      || gridFont(settings, theme) != gridFont(m_settings, m_theme);
+    const bool terminal = theme != m_theme || settings.cursor != m_settings.cursor
                           || settings.cursorBlink != m_settings.cursorBlink
                           || settings.scrollbackMb != m_settings.scrollbackMb;
     const bool material = settings.material != m_settings.material;
     m_settings = settings;
+    m_theme = theme;
     if (terminal) {
       applyTerminalSettings();
+      syncScene();
       scheduleRedraw(Redraw::All);
     }
     if (material) {
@@ -243,7 +251,56 @@ namespace term {
     }
   }
 
-  Color TerminalView::themed(ColorRole role) const { return themeColor(m_settings.theme, role); }
+  Color TerminalView::themed(ColorRole role) const {
+    if (const auto* builtin = std::get_if<Theme>(&m_theme)) {
+      return themeColor(*builtin, role);
+    }
+    return colorForRole(role, tokenPalette(isResolvedLightTheme()));
+  }
+
+  void TerminalView::syncScene() {
+    if (m_grid == nullptr) {
+      return;
+    }
+    const auto* package = std::get_if<ThemePackage>(&m_theme);
+    if (package == nullptr || package->scene.empty()) {
+      if (m_scene != nullptr) {
+        (void)m_grid->removeChild(m_scene);
+        (void)m_grid->removeChild(m_sceneTint);
+        m_scene = nullptr;
+        m_sceneTint = nullptr;
+      }
+      return;
+    }
+    if (m_scene == nullptr) {
+      auto scene = std::make_unique<ShaderSceneNode>();
+      scene->setZIndex(TerminalGridNode::kBelowBackgroundZ - 1);
+      m_scene = static_cast<ShaderSceneNode*>(m_grid->addChild(std::move(scene)));
+      auto tint = std::make_unique<RectNode>();
+      tint->setZIndex(TerminalGridNode::kBelowBackgroundZ);
+      m_sceneTint = static_cast<RectNode*>(m_grid->addChild(std::move(tint)));
+      m_sceneShown = std::chrono::steady_clock::now();
+    }
+    const ThemePalette colors = themePalette(m_theme);
+    m_scene->setSource(package->scene);
+    m_scene->setColors(colors.view, colors.label1, colors.accent, !isResolvedLightTheme());
+    m_scene->setFrameSize(m_grid->width(), m_grid->height());
+    Color tint = colors.view;
+    tint.a = Tokens::componentTerminalSceneTint;
+    m_sceneTint->setStyle(RoundedRectStyle{.fill = tint});
+    m_sceneTint->setFrameSize(m_grid->width(), m_grid->height());
+    m_host.requestFrame();
+  }
+
+  ThemeSpec resolveTheme(std::string_view id, const ThemeStore& themes) {
+    if (const auto builtin = builtinTheme(id)) {
+      return *builtin;
+    }
+    if (const ThemePackage* package = themes.find(id)) {
+      return *package;
+    }
+    return Theme::System;
+  }
 
   Color themeColor(Theme theme, ColorRole role) {
     switch (theme) {
@@ -256,25 +313,33 @@ namespace term {
     return colorForRole(role);
   }
 
+  ThemePalette themePalette(const ThemeSpec& spec) {
+    if (const auto* package = std::get_if<ThemePackage>(&spec)) {
+      const ThemeAnchorSet& a = isResolvedLightTheme() ? package->light : package->dark;
+      return deriveThemePalette({.surface = rgbHex(a.surface), .text = rgbHex(a.text), .accent = rgbHex(a.accent)});
+    }
+    const Theme theme = std::get<Theme>(spec);
+    const std::uint32_t view = over(themeColor(theme, ColorRole::View), 0);
+    auto opaque = [&](ColorRole role) { return rgbHex(over(themeColor(theme, role), view)); };
+    return deriveThemePalette({.surface = rgbHex(view), .text = opaque(ColorRole::Label1), .accent = opaque(ColorRole::Accent)});
+  }
+
   void TerminalView::applyPalette() {
-    m_background = over(themed(ColorRole::View), 0);
-    m_foreground = over(themed(ColorRole::Label1), m_background);
-    m_faint = over(themed(ColorRole::Label2), m_background);
-    m_selection = mix(m_background, over(themed(ColorRole::Accent), m_background), 0.4F);
+    const ThemePalette derived = themePalette(m_theme);
+    m_background = over(derived.view, 0);
+    m_foreground = over(derived.label1, 0);
+    m_faint = over(derived.label2, 0);
+    m_selection = mix(m_background, over(derived.accent, 0), 0.4F);
     m_findHit = themed(ColorRole::TermFindHit);
     m_findHitCurrent = themed(ColorRole::TermFindHitCurrent);
-    // ANSI 1-6; the bright set (9-14) repeats them.
-    constexpr std::array<ColorRole, 6> kAnsi = {ColorRole::TermRed,  ColorRole::TermGreen,   ColorRole::TermYellow,
-                                                ColorRole::TermBlue, ColorRole::TermMagenta, ColorRole::TermCyan};
     m_session.withTerminal([&](GhosttyTerminal t) {
       if (t == nullptr) {
         return;
       }
       GhosttyColorRgb palette[256]{};
       ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLOR_PALETTE_DEFAULT, palette);
-      for (int i = 0; i < 6; ++i) {
-        palette[1 + i] = unpack(over(themed(kAnsi[i]), m_background));
-        palette[9 + i] = palette[1 + i];
+      for (std::size_t i = 0; i < derived.ansi.size(); ++i) {
+        palette[i] = unpack(over(derived.ansi[i], 0));
       }
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
       const GhosttyColorRgb fg = unpack(m_foreground);
@@ -310,6 +375,7 @@ namespace term {
     }
     m_bellAnim = 0;
     m_bellFlash = static_cast<RectNode*>(m_grid->addChild(std::move(flash)));
+    syncScene();
     m_linkAnchor = m_findLayer->addChild(std::make_unique<Node>());
     if (m_host.thumbnails != nullptr && m_thumbWake == nullptr) {
       // A finished decode only wakes the view: frame() uploads it with GL current.
@@ -391,6 +457,10 @@ namespace term {
       m_area->setSize(width, height);
     }
     m_grid->setSize(width, height);
+    if (m_scene != nullptr) {
+      m_scene->setFrameSize(width, height);
+      m_sceneTint->setFrameSize(width, height);
+    }
     if (m_scrollbar != nullptr) {
       const float thickness = m_scrollbar->reservedThickness();
       m_scrollbar->setPosition(width - thickness, 0.0F);
@@ -424,6 +494,18 @@ namespace term {
   void TerminalView::frame() {
     if (m_grid != nullptr) {
       commitAtlas();
+    }
+    // The scene moves only while focused: an unfocused window asks for no frames for it.
+    if (m_scene != nullptr && m_focused) {
+      constexpr float kSceneStep = 1.0F / 30.0F; // seconds per scene frame
+      const auto now = std::chrono::steady_clock::now();
+      const float elapsed = std::chrono::duration<float>(now - m_sceneShown).count();
+      if (elapsed >= kSceneStep) {
+        m_sceneSeconds += std::min(elapsed, 4.0F * kSceneStep);
+        m_scene->setTime(m_sceneSeconds);
+        m_sceneShown = now;
+      }
+      m_host.requestFrame();
     }
     // Output or a scroll can move the text under a shown link.
     if (m_link) {
@@ -881,6 +963,10 @@ namespace term {
       m_keysDown.clear();
     } else {
       restartBlink();
+      if (m_scene != nullptr) {
+        m_sceneShown = std::chrono::steady_clock::now();
+        m_host.requestFrame();
+      }
     }
     const bool report = m_session.withTerminal([](GhosttyTerminal t) {
       GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_FOCUS_EVENT, .value = false};

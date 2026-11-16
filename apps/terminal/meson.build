@@ -101,6 +101,10 @@ _agentd_path = ['-DANDROMEDA_AGENTD_PATH="' + get_option('prefix') / get_option(
 test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp',
   dependencies: [_agent_dep, _desk_app_dep], cpp_args: _warnings + _agentd_path),
   args: [_agentd.full_path()], depends: _agentd, timeout: 60)
+test('theme_palette', executable('theme_palette_test', 'tests/theme_palette_test.cpp',
+  dependencies: _desk_app_dep, cpp_args: _warnings))
+test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp', 'src/theme_store.cpp',
+  dependencies: [_settings_dep, _desk_app_dep], cpp_args: _warnings))
 
 executable('andromeda-terminal',
   'src/key_map.cpp',
@@ -112,6 +116,7 @@ executable('andromeda-terminal',
   'src/terminal_view.cpp',
   'src/terminal_window.cpp',
   'src/settings_store.cpp',
+  'src/theme_store.cpp',
   'src/prefs_window.cpp',
   'src/agent_host.cpp',
   'src/agent_view.cpp',

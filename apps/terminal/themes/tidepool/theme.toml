@@ -1,0 +1,9 @@
+name = "Tidepool"
+[light]
+surface = "#d9f1f2"
+text = "#0e3a44"
+accent = "#d2477a"
+[dark]
+surface = "#0b2a33"
+text = "#d7f3f2"
+accent = "#ff8fb4"

@@ -10,7 +10,9 @@
 #include <toml++/toml.hpp>
 #pragma GCC diagnostic pop
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <optional>
 #include <sstream>
 #include <utility>
@@ -21,7 +23,7 @@ namespace term {
 
     template <typename E, std::size_t N> using Names = std::array<std::pair<E, std::string_view>, N>;
 
-    constexpr Names<Theme, 4> kThemes{{{Theme::System, "system"},
+    constexpr Names<Theme, 4> kBuiltinThemes{{{Theme::System, "system"},
                                        {Theme::Light, "light"},
                                        {Theme::Dark, "dark"},
                                        {Theme::Amoled, "amoled"}}};
@@ -99,6 +101,16 @@ namespace term {
         }
       }
 
+      void themeId(std::string_view table, std::string_view key, std::string& out) {
+        if (const toml::node* n = find(table, key)) {
+          if (const auto v = n->value_exact<std::string>(); v && isThemeId(*v)) {
+            out = *v;
+          } else {
+            fail(*n, where(table, key) + " must be \"system\", \"light\", \"dark\", \"amoled\" or a theme folder name");
+          }
+        }
+      }
+
       template <typename E, std::size_t N>
       void choice(std::string_view table, std::string_view key, const Names<E, N>& names, E& out) {
         if (const toml::node* n = find(table, key)) {
@@ -130,6 +142,85 @@ namespace term {
 
   } // namespace
 
+  std::optional<Theme> builtinTheme(std::string_view id) {
+    for (const auto& [theme, name] : kBuiltinThemes) {
+      if (name == id) {
+        return theme;
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool isThemeId(std::string_view id) {
+    auto lowerOrDigit = [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'); };
+    return !id.empty() && id.size() <= 64 && lowerOrDigit(id[0])
+           && std::ranges::all_of(id, [&](char c) { return lowerOrDigit(c) || c == '-' || c == '_'; });
+  }
+
+  std::variant<ThemePackage, SettingsError> parseThemePackage(std::string_view text) {
+    toml::parse_result parsed = toml::parse(text);
+    if (!parsed) {
+      const toml::parse_error& e = parsed.error();
+      return SettingsError{std::string(e.description()), static_cast<int>(e.source().begin.line)};
+    }
+    const toml::table& root = parsed.table();
+    auto failAt = [](const toml::node& n, std::string message) {
+      return SettingsError{std::move(message), static_cast<int>(n.source().begin.line)};
+    };
+    // Unknown keys are errors, so a typo in a hand-made or generated theme shows up at once.
+    for (const auto& [key, node] : root) {
+      if (key != "name" && key != "font" && key != "light" && key != "dark") {
+        return failAt(node, "unknown key \"" + std::string(key.str()) + "\"");
+      }
+    }
+    ThemePackage theme;
+    const toml::node* nameNode = root.get("name");
+    if (nameNode == nullptr) {
+      return SettingsError{"name is required", 0};
+    }
+    const auto name = nameNode->value_exact<std::string>();
+    if (!name || name->empty()) {
+      return failAt(*nameNode, "name must be a non-empty string");
+    }
+    theme.name = *name;
+    if (const toml::node* font = root.get("font")) {
+      const auto v = font->value_exact<std::string>();
+      if (!v) {
+        return failAt(*font, "font must be a string");
+      }
+      theme.font = *v;
+    }
+    for (const auto& [schemeName, anchors] : {std::pair{"light", &theme.light}, std::pair{"dark", &theme.dark}}) {
+      const toml::node* scheme = root.get(schemeName);
+      if (scheme == nullptr || !scheme->is_table()) {
+        return scheme == nullptr ? SettingsError{"[" + std::string(schemeName) + "] with surface, text and accent is required", 0}
+                                 : failAt(*scheme, "[" + std::string(schemeName) + "] must be a table");
+      }
+      const toml::table& t = *scheme->as_table();
+      for (const auto& [key, node] : t) {
+        if (key != "surface" && key != "text" && key != "accent") {
+          return failAt(node, "unknown key \"" + std::string(schemeName) + "." + std::string(key.str()) + "\"");
+        }
+      }
+      for (const auto& [key, out] : {std::pair{"surface", &anchors->surface}, std::pair{"text", &anchors->text},
+                                     std::pair{"accent", &anchors->accent}}) {
+        const std::string where = std::string(schemeName) + "." + key;
+        const toml::node* n = t.get(key);
+        if (n == nullptr) {
+          return failAt(*scheme, where + " is required");
+        }
+        const auto v = n->value_exact<std::string>();
+        const bool hex = v && v->size() == 7 && (*v)[0] == '#'
+                         && std::ranges::all_of(v->substr(1), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; });
+        if (!hex) {
+          return failAt(*n, where + " must be a colour like \"#1e1e2e\"");
+        }
+        *out = static_cast<std::uint32_t>(std::stoul(v->substr(1), nullptr, 16));
+      }
+    }
+    return theme;
+  }
+
   std::variant<Settings, SettingsError> parseSettings(std::string_view text) {
     toml::parse_result parsed = toml::parse(text);
     if (!parsed) {
@@ -138,7 +229,7 @@ namespace term {
     }
     Settings s;
     Reader r{parsed.table(), std::nullopt};
-    r.choice("appearance", "theme", kThemes, s.theme);
+    r.themeId("appearance", "theme", s.theme);
     r.choice("appearance", "cursor", kCursors, s.cursor);
     r.boolean("appearance", "cursor_blink", s.cursorBlink);
     r.choice("appearance", "window", kMaterials, s.material);
@@ -168,7 +259,7 @@ namespace term {
       root = std::move(parsed).table();
     }
     auto& appearance = tableIn(root, "appearance");
-    appearance.insert_or_assign("theme", std::string(nameOf(kThemes, s.theme)));
+    appearance.insert_or_assign("theme", s.theme);
     appearance.insert_or_assign("cursor", std::string(nameOf(kCursors, s.cursor)));
     appearance.insert_or_assign("cursor_blink", s.cursorBlink);
     appearance.insert_or_assign("window", std::string(nameOf(kMaterials, s.material)));

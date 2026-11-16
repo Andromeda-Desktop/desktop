@@ -65,7 +65,7 @@ namespace term {
                                                                                   : AppWindow::Material::Solid);
       for (Session& session : m_views) {
         if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
-          terminal->applySettings(m_settings.settings());
+          terminal->applySettings(m_settings.settings(), resolveTheme(m_settings.settings().theme, m_settings.themes()));
         }
       }
     });
@@ -302,7 +302,8 @@ namespace term {
                 setFindCount(total, current);
               }
             },
-        .settings = m_settings.settings()});
+        .settings = m_settings.settings(),
+        .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())});
     TerminalView& ref = *view;
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);

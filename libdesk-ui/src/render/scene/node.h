@@ -28,6 +28,7 @@ enum class NodeType : std::uint8_t {
   Effect,
   Graph,
   TerminalGrid,
+  ShaderScene,
   Wallpaper,
   LockscreenTransition,
   RenderProxy,

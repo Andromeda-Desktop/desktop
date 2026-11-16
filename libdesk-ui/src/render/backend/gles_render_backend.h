@@ -11,6 +11,7 @@
 #include "render/programs/glyph_program.h"
 #include "render/programs/graph_program.h"
 #include "render/programs/terminal_grid_program.h"
+#include "render/programs/shader_scene_program.h"
 #include "render/programs/image_program.h"
 #include "render/programs/lockscreen_transition_program.h"
 #include "render/programs/rect_program.h"
@@ -102,6 +103,7 @@ public:
       const GraphStyle& style, const Mat3& transform
   ) override;
   void drawTerminalGrid(const TerminalGridDraw& grid) override;
+  void drawShaderScene(const ShaderSceneDraw& scene) override;
   void drawWallpaper(const WallpaperDrawParams& params) override;
   void drawWallpaperMask(const WallpaperMaskDrawParams& params) override;
   void drawLockscreenTransition(const LockscreenTransitionDrawParams& params) override;
@@ -156,6 +158,7 @@ private:
   EffectProgram m_effectProgram;
   GraphProgram m_graphProgram;
   TerminalGridProgram m_terminalGridProgram;
+  ShaderSceneProgram m_shaderSceneProgram;
   WallpaperProgram m_wallpaperProgram;
   WallpaperMaskProgram m_wallpaperMaskProgram;
   LockscreenTransitionProgram m_lockscreenTransitionProgram;

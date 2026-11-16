@@ -515,6 +515,7 @@ window_tile_sidebar = 0.3  # the sidebar's share of the window drawn in that til
 cursor_blink_timeout_ms = 10000  # the cursor stops blinking this long after the last key or focus
 bell_interval_ms = 150  # at most one bell per this time, so a stream of BEL rings once
 glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the window's thick tint
+scene_tint = 0.4  # the theme surface's alpha over a theme scene, under the text
 
 [component.agent]  # agent session view (design-agent handoff.yaml)
 measure = 640.0  # prose max width, 70 ch of body 14

@@ -24,6 +24,7 @@
 #include "render/scene/rect_node.h"
 #include "render/scene/screen_corner_node.h"
 #include "render/scene/spinner_node.h"
+#include "render/scene/shader_scene_node.h"
 #include "render/scene/terminal_grid_node.h"
 #include "render/scene/text_node.h"
 #include "render/scene/wallpaper_node.h"
@@ -969,6 +970,24 @@ void RenderContext::drawNodeSelf(
     draw.background[2] = static_cast<float>(bg & 0xFF) / 255.0F * bgAlpha;
     draw.background[3] = bgAlpha;
     m_backend->drawTerminalGrid(draw);
+    break;
+  }
+  case NodeType::ShaderScene: {
+    const auto* scene = static_cast<const ShaderSceneNode*>(node);
+    auto rgb = [](const Color& c) { return std::array<float, 3>{c.r, c.g, c.b}; };
+    m_backend->drawShaderScene(ShaderSceneDraw{.source = scene->source(),
+                                               .width = node->width(),
+                                               .height = node->height(),
+                                               .surfaceWidth = sw,
+                                               .surfaceHeight = sh,
+                                               .scale = renderScale,
+                                               .time = scene->time(),
+                                               .dark = scene->dark(),
+                                               .surface = rgb(scene->surface()),
+                                               .text = rgb(scene->text()),
+                                               .accent = rgb(scene->accent()),
+                                               .transform = worldTransform,
+                                               .opacity = effectiveOpacity});
     break;
   }
   case NodeType::Wallpaper: {
