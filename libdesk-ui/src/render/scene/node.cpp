@@ -483,6 +483,7 @@ void Node::takePaintedBounds(Node* subtree, DamageRegion& out) {
     out.add(*subtree->m_paintedBounds);
     subtree->m_paintedBounds.reset();
   }
+  subtree->m_paintedClip.reset();
   for (auto& child : subtree->m_children) {
     takePaintedBounds(child.get(), out);
   }

@@ -148,8 +148,15 @@ namespace {
   // True when the node fills all of `area` with fully opaque pixels. Only solid, axis-aligned rects at full opacity
   // count; the cover stays inside the corners, the border and the anti-aliased edge.
   bool coversOpaque(const Node* node, const Mat3& world, float opacity, const DamageRect& bounds, const DamageRect& area) {
-    if (node->type() != NodeType::Rect || opacity < 1.0F || world.m[1] != 0.0F || world.m[3] != 0.0F
-        || world.m[0] <= 0.0F || world.m[4] <= 0.0F) {
+    if (opacity < 1.0F || world.m[1] != 0.0F || world.m[3] != 0.0F || world.m[0] <= 0.0F || world.m[4] <= 0.0F) {
+      return false;
+    }
+    if (node->type() == NodeType::TerminalGrid) {
+      // The background fill (TerminalGridProgram::drawFill) paints the node box unblended. A pass is whole buffer
+      // pixels, so inside the box every pixel centre is.
+      return static_cast<const TerminalGridNode*>(node)->backgroundAlpha() >= 1.0F && bounds.contains(area);
+    }
+    if (node->type() != NodeType::Rect) {
       return false;
     }
     const RoundedRectStyle& style = static_cast<const RectNode*>(node)->style();
@@ -223,7 +230,11 @@ namespace {
 
   // Adds what changed under `node` since the last frame and records the new painted bounds. A node whose own paint
   // changed (position, opacity, style) repaints its whole subtree. False when the frame needs a full repaint.
-  bool collectDamage(Node* node, const Mat3& parentTransform, bool subtreeChanged, DamageRegion& out) {
+  // `clip`: ancestors' clipChildren area, old and new united; pixels outside it never change.
+  bool collectDamage(
+      Node* node, const Mat3& parentTransform, bool subtreeChanged, const std::optional<DamageRect>& clip,
+      DamageRegion& out
+  ) {
     if (!subtreeChanged && !node->paintDirty() && !node->layoutDirty()) {
       return true;
     }
@@ -237,12 +248,20 @@ namespace {
     const Mat3 world = parentTransform * nodeLocalTransform(node);
     const std::optional<DamageRect> bounds = paintBounds(node, world);
     const bool whole = subtreeChanged || node->selfPaintDirty();
+    const auto add = [&clip, &out](const DamageRect& r) {
+      const DamageRect cut = clip ? DamageRect{std::max(r.x0, clip->x0), std::max(r.y0, clip->y0),
+                                               std::min(r.x1, clip->x1), std::min(r.y1, clip->y1)}
+                                  : r;
+      if (!cut.empty()) {
+        out.add(cut);
+      }
+    };
     if (whole || node->paintedBounds() != bounds) {
       if (node->paintedBounds()) {
-        out.add(*node->paintedBounds());
+        add(*node->paintedBounds());
       }
       if (bounds) {
-        out.add(*bounds);
+        add(*bounds);
       }
       node->setPaintedBounds(bounds);
     } else if (const DamageRegion* partial = node->partialDamage(); partial != nullptr) {
@@ -253,12 +272,25 @@ namespace {
                              world.transformPoint(r.x1, r.y1), world.transformPoint(r.x0, r.y1)}) {
           w = {std::min(w.x0, c.x), std::min(w.y0, c.y), std::max(w.x1, c.x), std::max(w.y1, c.y)};
         }
-        out.add(DamageRect{w.x0 - kPartialDamageSlack, w.y0 - kPartialDamageSlack, w.x1 + kPartialDamageSlack,
-                           w.y1 + kPartialDamageSlack});
+        add(DamageRect{w.x0 - kPartialDamageSlack, w.y0 - kPartialDamageSlack, w.x1 + kPartialDamageSlack,
+                       w.y1 + kPartialDamageSlack});
       }
     }
+    std::optional<DamageRect> childClip = clip;
+    if (node->clipChildren()) {
+      // Same rect renderNode scissors children to. Until the node has a recorded clip, children stay unclipped here.
+      DamageRect box;
+      Node::transformedBounds(node, world, box.x0, box.y0, box.x1, box.y1);
+      if (const std::optional<DamageRect>& previous = node->paintedClip(); previous) {
+        const DamageRect both = uniteRects(*previous, box);
+        childClip = clip ? DamageRect{std::max(both.x0, clip->x0), std::max(both.y0, clip->y0),
+                                      std::min(both.x1, clip->x1), std::min(both.y1, clip->y1)}
+                         : both;
+      }
+      node->setPaintedClip(box);
+    }
     for (const auto& child : node->children()) {
-      if (!collectDamage(child.get(), world, whole, out)) {
+      if (!collectDamage(child.get(), world, whole, childClip, out)) {
         return false;
       }
     }
@@ -437,7 +469,7 @@ bool RenderContext::renderScene(RenderTarget& target, Node* sceneRoot, const Wal
   DamageRegion damage;
   if (sceneRoot != nullptr) {
     damage = sceneRoot->takePendingDamage();
-    if (!collectDamage(sceneRoot, Mat3::identity(), false, damage) && !full) {
+    if (!collectDamage(sceneRoot, Mat3::identity(), false, std::nullopt, damage) && !full) {
       full = true;
       fullReason = "render-proxy";
     }

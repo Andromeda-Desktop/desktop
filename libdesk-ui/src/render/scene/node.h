@@ -211,6 +211,9 @@ public:
   // World bounds (logical, with paint overflow) the node covered in the last frame; nullopt when it drew nothing.
   [[nodiscard]] const std::optional<DamageRect>& paintedBounds() const noexcept { return m_paintedBounds; }
   void setPaintedBounds(const std::optional<DamageRect>& bounds) noexcept { m_paintedBounds = bounds; }
+  // A clipping node's clip rect in surface coordinates at the last damage pass: the area its children's pixels can be in.
+  [[nodiscard]] const std::optional<DamageRect>& paintedClip() const noexcept { return m_paintedClip; }
+  void setPaintedClip(const std::optional<DamageRect>& clip) noexcept { m_paintedClip = clip; }
   // Adds the painted bounds of `subtree` to `out` and forgets them.
   static void takePaintedBounds(Node* subtree, DamageRegion& out);
   // Root only: bounds of subtrees removed since the last frame.
@@ -250,6 +253,7 @@ private:
   bool m_layoutDirty = true;
   bool m_selfPaintDirty = true;
   std::optional<DamageRect> m_paintedBounds;
+  std::optional<DamageRect> m_paintedClip;
   std::unique_ptr<DamageRegion> m_pendingDamage;
   std::unique_ptr<DamageRegion> m_partialDamage;
   std::optional<Radii> m_clip; // children clip to this node's box with these corner radii; nullopt = no clip

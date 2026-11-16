@@ -155,6 +155,11 @@ namespace {
                                : y + (inY > 0 ? pick(rng, -4.0F, 40.0F) : -h - pick(rng, -4.0F, 40.0F)));
       return;
     }
+    if (scene.groups.size() > 1 && chance(rng, 0.15F)) {
+      // A group moves or resizes: what its clip showed before must repaint too.
+      placeRandomly(rng, *scene.groups[std::uniform_int_distribution<std::size_t>(1, scene.groups.size() - 1)(rng)]);
+      return;
+    }
     RectNode* rect = scene.rects[std::uniform_int_distribution<std::size_t>(0, scene.rects.size() - 1)(rng)];
     switch (std::uniform_int_distribution(0, 4)(rng)) {
     case 0: rect->setPosition(kS * pick(rng, -8.0F, 96.0F), kS * pick(rng, -8.0F, 96.0F)); break;
