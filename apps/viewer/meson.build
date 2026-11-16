@@ -19,9 +19,11 @@ endif
 
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
-_model = static_library('viewer_model', 'src/document_model.cpp', cpp_args: _warnings)
+_model = static_library('viewer_model', 'src/document_model.cpp', 'src/tab_set.cpp', cpp_args: _warnings)
 
 test('document_model', executable('document_model_test', 'tests/document_model_test.cpp', link_with: _model,
+  include_directories: include_directories('src'), cpp_args: _warnings))
+test('tab_set', executable('tab_set_test', 'tests/tab_set_test.cpp', link_with: _model,
   include_directories: include_directories('src'), cpp_args: _warnings))
 
 _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')

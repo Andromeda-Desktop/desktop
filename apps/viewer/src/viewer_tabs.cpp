@@ -15,6 +15,7 @@
 #include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
 
+#include <algorithm>
 #include <format>
 #include <gio/gio.h>
 #include <sstream>
@@ -125,34 +126,44 @@ namespace viewer {
     if (ViewerWindow* old = active() != nullptr ? active() : m_blank.get()) {
       old->detach();
     }
-    if (m_tabs.empty() && !m_immersive) {
+    if (m_set.tabs().empty() && !m_immersive) {
       m_window.setSidebarVisible(true);
     }
-    const std::size_t at = m_tabs.empty() ? 0 : m_active + 1;
-    m_tabs.insert(m_tabs.begin() + static_cast<std::ptrdiff_t>(at), std::move(tab));
-    m_active = at;
+    const std::uint64_t id = m_nextId++;
+    m_docs.emplace(id, std::move(tab));
+    m_set.apply(tab_event::Open{id});
     updateTitle();
     m_window.requestRebuild();
   }
 
-  ViewerWindow* ViewerTabs::active() const { return m_active < m_tabs.size() ? m_tabs[m_active].get() : nullptr; }
+  ViewerWindow* ViewerTabs::active() const {
+    const auto id = m_set.focused();
+    return id ? m_docs.at(*id).get() : nullptr;
+  }
 
-  void ViewerTabs::select(std::size_t index) {
-    if (index >= m_tabs.size() || index == m_active) {
+  std::optional<std::uint64_t> ViewerTabs::idOf(const ViewerWindow* tab) const {
+    const auto it = std::ranges::find_if(m_docs, [tab](const auto& d) { return d.second.get() == tab; });
+    return it != m_docs.end() ? std::optional(it->first) : std::nullopt;
+  }
+
+  void ViewerTabs::select(std::uint64_t id) {
+    ViewerWindow* old = active();
+    if (m_set.focused() == id || !m_set.apply(tab_event::Focus{id})) {
       return;
     }
-    m_tabs[m_active]->detach();
-    m_active = index;
+    old->detach();
     updateTitle();
     m_window.requestRebuild();
   }
 
   void ViewerTabs::step(int direction) {
-    if (m_tabs.size() < 2) {
+    const auto& tabs = m_set.tabs();
+    if (tabs.size() < 2) {
       return;
     }
-    const auto n = static_cast<long>(m_tabs.size());
-    select(static_cast<std::size_t>(((static_cast<long>(m_active) + direction) % n + n) % n));
+    const auto n = static_cast<long>(tabs.size());
+    const auto at = static_cast<long>(std::ranges::find(tabs, *m_set.focused()) - tabs.begin());
+    select(tabs[static_cast<std::size_t>(((at + direction) % n + n) % n)]);
   }
 
   void ViewerTabs::closeActive() {
@@ -161,26 +172,23 @@ namespace viewer {
       return;
     }
     if (!tab->unsaved()) {
-      remove(m_active);
+      remove(*m_set.focused());
       return;
     }
     tab->askSaveBeforeClose([this, tab, alive = std::weak_ptr<bool>(m_alive)] {
       if (alive.expired()) {
         return;
       }
-      if (const auto it = std::ranges::find(m_tabs, tab, &std::unique_ptr<ViewerWindow>::get); it != m_tabs.end()) {
-        remove(static_cast<std::size_t>(it - m_tabs.begin()));
+      if (const auto id = idOf(tab)) {
+        remove(*id);
       }
     });
   }
 
-  std::optional<std::size_t> ViewerTabs::firstUnsaved() const {
-    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
-      if (m_tabs[i]->unsaved()) {
-        return i;
-      }
-    }
-    return std::nullopt;
+  std::optional<std::uint64_t> ViewerTabs::firstUnsaved() const {
+    const auto& tabs = m_set.tabs();
+    const auto it = std::ranges::find_if(tabs, [this](std::uint64_t id) { return m_docs.at(id)->unsaved(); });
+    return it != tabs.end() ? std::optional(*it) : std::nullopt;
   }
 
   void ViewerTabs::continueClose() {
@@ -190,15 +198,15 @@ namespace viewer {
       return;
     }
     select(*unsaved);
-    ViewerWindow* tab = m_tabs[*unsaved].get();
+    ViewerWindow* tab = m_docs.at(*unsaved).get();
     tab->askSaveBeforeClose([this, tab, alive = std::weak_ptr<bool>(m_alive)] {
       if (alive.expired()) {
         return;
       }
       // Answered: this tab no longer holds the window open; the next unsaved one asks.
-      if (const auto it = std::ranges::find(m_tabs, tab, &std::unique_ptr<ViewerWindow>::get); it != m_tabs.end()) {
-        if (m_tabs.size() > 1) {
-          remove(static_cast<std::size_t>(it - m_tabs.begin()));
+      if (const auto id = idOf(tab)) {
+        if (m_set.tabs().size() > 1) {
+          remove(*id);
         } else {
           m_window.finishClose();
           return;
@@ -208,15 +216,13 @@ namespace viewer {
     });
   }
 
-  void ViewerTabs::remove(std::size_t index) {
-    if (m_tabs.size() <= 1) {
+  void ViewerTabs::remove(std::uint64_t id) {
+    if (m_set.tabs().size() <= 1) {
       m_window.finishClose();
       return;
     }
-    m_tabs.erase(m_tabs.begin() + static_cast<std::ptrdiff_t>(index));
-    if (index < m_active || m_active >= m_tabs.size()) {
-      m_active = m_active == 0 ? 0 : m_active - 1;
-    }
+    m_set.apply(tab_event::Close{id});
+    m_docs.erase(id);
     updateTitle();
     m_window.requestRebuild();
   }
@@ -273,7 +279,7 @@ namespace viewer {
     if (auto search = tab->buildSearch()) {
       side->addChild(std::move(search));
     }
-    if (m_tabs.size() >= 2 || !tab->isPdf()) {
+    if (m_set.tabs().size() >= 2 || !tab->isPdf()) {
       side->addChild(buildDocuments(width - 2.0F * pad));
     }
     if (auto list = tab->buildSidebarList(renderer, width - 2.0F * pad)) {
@@ -286,14 +292,15 @@ namespace viewer {
   std::unique_ptr<Node> ViewerTabs::buildDocuments(float width) {
     const float s = m_window.uiScale();
     constexpr std::size_t kShown = 3;
-    const bool cut = m_tabs.size() > kShown + 1 && !m_allDocuments;
+    const auto& tabs = m_set.tabs();
+    const bool cut = tabs.size() > kShown + 1 && !m_allDocuments;
     auto group = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
     auto head = ui::row({.align = FlexAlign::Center});
     head->setPadding(0.0F, Tokens::spaceP8 * s);
     const ColorSpec footnote = colorSpecFromRole(ColorRole::Label2);
     head->addChild(ui::label({.text = "Documents", .fontSize = Tokens::typeFootnote.size * s,
                               .fontWeight = FontWeight::SemiBold, .color = footnote, .flexGrow = 1.0F}));
-    head->addChild(ui::label({.text = std::to_string(m_tabs.size()), .fontSize = Tokens::typeFootnote.size * s,
+    head->addChild(ui::label({.text = std::to_string(tabs.size()), .fontSize = Tokens::typeFootnote.size * s,
                               .fontWeight = FontWeight::Medium, .color = footnote}));
     group->addChild(std::move(head));
     const auto later = [this](auto fn) {
@@ -304,12 +311,9 @@ namespace viewer {
       });
     };
     // The active document always shows: past the cut it takes the last shown row.
-    std::vector<std::size_t> rows;
-    for (std::size_t i = 0; i < m_tabs.size() && (!cut || i < kShown); ++i) {
-      rows.push_back(i);
-    }
-    if (cut && m_active >= kShown) {
-      rows.back() = m_active;
+    std::vector<std::uint64_t> rows(tabs.begin(), cut ? tabs.begin() + kShown : tabs.end());
+    if (cut && std::ranges::find(rows, *m_set.focused()) == rows.end()) {
+      rows.back() = *m_set.focused();
     }
     const auto row = [&](std::string glyph, std::string text, bool on, ColorRole ink, std::function<void(ViewerTabs&)> run,
                          std::string name) {
@@ -334,12 +338,12 @@ namespace viewer {
       r->addChild(std::move(area));
       group->addChild(std::move(r));
     };
-    for (const std::size_t i : rows) {
-      const std::string title = m_tabs[i]->title();
-      row("file", title, i == m_active, ColorRole::Label1, [i](ViewerTabs& t) { t.select(i); }, title);
+    for (const std::uint64_t id : rows) {
+      const std::string title = m_docs.at(id)->title();
+      row("file", title, id == m_set.focused(), ColorRole::Label1, [id](ViewerTabs& t) { t.select(id); }, title);
     }
-    if (m_tabs.size() > kShown + 1) {
-      const std::string text = cut ? std::format("{} more", m_tabs.size() - rows.size()) : std::string("Show fewer");
+    if (tabs.size() > kShown + 1) {
+      const std::string text = cut ? std::format("{} more", tabs.size() - rows.size()) : std::string("Show fewer");
       row("dots", text, false, ColorRole::Label2, [](ViewerTabs& t) {
         t.m_allDocuments = !t.m_allDocuments;
         t.m_window.requestRebuild();

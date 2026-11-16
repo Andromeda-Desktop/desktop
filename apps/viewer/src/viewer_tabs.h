@@ -4,7 +4,9 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
-#include <vector>
+#include <unordered_map>
+
+#include "tab_set.h"
 
 class AppLoop;
 class AppWindow;
@@ -30,7 +32,7 @@ namespace viewer {
     // Opens `path` in a new tab after the active one and shows it.
     void add(const std::filesystem::path& path);
     [[nodiscard]] ViewerWindow* active() const;
-    void select(std::size_t index);
+    void select(std::uint64_t id);
     void next() { step(1); }
     void previous() { step(-1); }
     // Asks first when the tab has unsaved edits; the last tab closes the window.
@@ -42,10 +44,11 @@ namespace viewer {
     [[nodiscard]] std::unique_ptr<Node> buildDocuments(float width);
     // Full screen hides the sidebar; leaving it brings back the user's choice.
     void syncImmersive();
-    [[nodiscard]] std::optional<std::size_t> firstUnsaved() const;
+    [[nodiscard]] std::optional<std::uint64_t> firstUnsaved() const;
     // Asks for each tab with unsaved edits in turn, then closes the window.
     void continueClose();
-    void remove(std::size_t index);
+    void remove(std::uint64_t id);
+    [[nodiscard]] std::optional<std::uint64_t> idOf(const ViewerWindow* tab) const;
     void step(int direction);
     void updateTitle();
     // Files dropped on the window open as tabs.
@@ -54,8 +57,9 @@ namespace viewer {
     AppLoop& m_loop;
     AppWindow& m_window;
     StateStore& m_state;
-    std::vector<std::unique_ptr<ViewerWindow>> m_tabs;
-    std::size_t m_active = 0;
+    TabSet m_set;
+    std::unordered_map<std::uint64_t, std::unique_ptr<ViewerWindow>> m_docs;
+    std::uint64_t m_nextId = 1;
     // A window with no tab shows this never-opened one: the toolbar and the open-or-drop message.
     std::unique_ptr<ViewerWindow> m_blank;
     Node* m_caption = nullptr; // the header accessory of the last build
