@@ -52,6 +52,18 @@ namespace viewer {
     add("edit.undo", "Undo", "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
     add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
     add("view.toggle-sidebar", "Show Sidebar", "View", 0, 0, &ViewerWindow::toggleSidebar);
+    commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",
+                    .shortcut = KeyChord{.sym = XKB_KEY_F11, .modifiers = 0},
+                    .enabled = [this] { return activeWindow() != nullptr; },
+                    .run = [this] {
+                      if (AppWindow* w = activeWindow(); w != nullptr) {
+                        w->toggleFullscreen();
+                      }
+                    }});
+    commands().add({.id = "view.leave-fullscreen", .label = "Leave Full Screen", .group = "View",
+                    .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
+                    .enabled = [this] { return activeWindow() != nullptr && activeWindow()->fullscreen(); },
+                    .run = [this] { activeWindow()->toggleFullscreen(); }});
   }
 
   ViewerWindow* ViewerApp::active() const {
@@ -61,7 +73,8 @@ namespace viewer {
   }
 
   AppWindow& ViewerApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 900, .height = 760});
+    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 900, .height = 760,
+                                       .headerWhenFullscreen = false});
     m_windows[&window] = std::make_unique<ViewerWindow>(loop(), window);
     return window;
   }

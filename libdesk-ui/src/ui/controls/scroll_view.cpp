@@ -84,6 +84,9 @@ ScrollView::ScrollView() {
     dragMove(primaryPosition(data, m_orientation));
   });
   viewportArea->setOnAxisHandler([this](const InputArea::PointerData& data) {
+    if (m_axisFilter && m_axisFilter(data)) {
+      return true;
+    }
     // A pager also turns on a mouse wheel of the other axis; a touchpad swipe must match the axis.
     const bool wheelPages = m_pageStep > 0.0F && data.axisSource != WL_POINTER_AXIS_SOURCE_FINGER;
     if (!scrollable() || (data.axis != scrollAxis(m_orientation) && !wheelPages)) {
@@ -405,6 +408,10 @@ void ScrollView::bindState(ScrollViewState* state) {
 }
 
 void ScrollView::setOnScrollChanged(std::function<void(float)> callback) { m_onScrollChanged = std::move(callback); }
+
+void ScrollView::setOnPinch(std::function<void(const InputArea::PinchData&)> callback) {
+  m_viewportArea->setOnPinch(std::move(callback));
+}
 
 void ScrollView::setStickToBottom(bool enabled) { m_stickToBottom = enabled; }
 

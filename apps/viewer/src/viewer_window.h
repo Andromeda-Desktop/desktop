@@ -7,6 +7,7 @@
 #include "image_loader.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/texture_handle.h"
+#include "render/scene/input_area.h"
 
 #include <filesystem>
 #include <functional>
@@ -129,7 +130,13 @@ namespace viewer {
     ScrollView* m_scroll = nullptr;
     float m_zoomFrom = 1.0F; // the next page column starts at this scale and springs to 1
     AnimationManager::Id m_zoomAnim = 0;
-    void zoomTo(const std::function<void()>& apply);
+    // anchorY: the viewport y that stays in place (negative = the middle); animate springs the column to the new size.
+    void zoomTo(const std::function<void()>& apply, float anchorY = -1.0F, bool animate = true);
+    void pinch(const InputArea::PinchData& data);
+    [[nodiscard]] bool wheelZoom(const InputArea::PointerData& data);
+    float m_zoomAnchorY = 0.0F;   // viewport y of the column's scale origin
+    float m_pinchStart = 1.0F;    // model zoom when the pinch began
+    float m_pinchScale = 1.0F;    // live pinch scale on the column, clamped to the zoom limits
     float m_scrollOffset = 0.0F;
     bool m_restoreScroll = false;
     Input* m_searchInput = nullptr;

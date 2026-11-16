@@ -1,5 +1,6 @@
 #pragma once
 
+#include "render/scene/input_area.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/scrollbar.h"
 #include "ui/palette.h"
@@ -74,6 +75,10 @@ public:
   void setPaging(float step);
   void scrollToPage(std::size_t page);
   void setOnScrollChanged(std::function<void(float)> callback);
+  // Runs before the view scrolls; returning true takes the event (Ctrl+wheel zoom in a document view).
+  void setAxisFilter(std::function<bool(const InputArea::PointerData&)> filter) { m_axisFilter = std::move(filter); }
+  // A touchpad pinch anywhere over the viewport.
+  void setOnPinch(std::function<void(const InputArea::PinchData&)> callback);
   // A drag driven from outside the viewport area (a child that took the press): `position` is the pointer along
   // the scroll axis in the view's own frame.
   void dragBegin(float position);
@@ -128,6 +133,7 @@ private:
   // May dangle by layout time; located under content() before it is dereferenced.
   const Node* m_pendingScrollIntoView = nullptr;
   std::function<void(float)> m_onScrollChanged;
+  std::function<bool(const InputArea::PointerData&)> m_axisFilter;
   ColorSpec m_backgroundFill = clearColorSpec();
   ColorSpec m_backgroundBorder = clearColorSpec();
   Signal<>::ScopedConnection m_paletteConn;

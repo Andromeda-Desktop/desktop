@@ -30,6 +30,7 @@
 #include <format>
 #include <gio/gio.h>
 #include <linux/input-event-codes.h>
+#include <wayland-client-protocol.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace viewer {
@@ -536,9 +537,9 @@ namespace viewer {
 
   void ViewerWindow::zoomFit() { zoomTo([this] { m_model.fitWidth(); }); }
 
-  void ViewerWindow::zoomTo(const std::function<void()>& apply) {
-    // The pages re-render at the new zoom; the column then springs from the old size to the new one around the
-    // middle of the view, and the scroll keeps that middle in place.
+  void ViewerWindow::zoomTo(const std::function<void()>& apply, float anchorY, bool animate) {
+    // The pages re-render at the new zoom; the column springs from the old size to the new one around the anchor,
+    // and the scroll keeps the anchor in place.
     const float before = m_model.zoom();
     apply();
     const float after = m_model.zoom();
@@ -547,11 +548,54 @@ namespace viewer {
     }
     const float f = after / before;
     if (m_scroll != nullptr) {
-      const float half = m_scroll->height() / 2.0F;
-      m_scrollOffset = std::max(0.0F, (m_scroll->scrollOffset() + half) * f - half);
+      const float y = anchorY < 0.0F ? m_scroll->height() / 2.0F : anchorY;
+      m_scrollOffset = std::max(0.0F, (m_scroll->scrollOffset() + y) * f - y);
+      m_zoomAnchorY = y;
     }
-    m_zoomFrom = 1.0F / f;
+    m_zoomFrom = animate ? 1.0F / f : 1.0F;
     rebuild();
+  }
+
+  void ViewerWindow::pinch(const InputArea::PinchData& data) {
+    if (m_scroll == nullptr) {
+      return;
+    }
+    using Phase = InputArea::PinchData::Phase;
+    Node* column = m_scroll->content();
+    if (data.phase == Phase::Begin) {
+      m_pinchStart = m_model.zoom();
+      m_pinchScale = 1.0F;
+      m_zoomAnchorY = data.localY;
+      return;
+    }
+    if (data.phase == Phase::End) {
+      const float scale = m_pinchScale;
+      m_pinchScale = 1.0F;
+      if (data.cancelled || scale == 1.0F) {
+        column->setScale(1.0F);
+        m_window.invalidate();
+        return;
+      }
+      // The column already shows the new size: commit it without a spring.
+      zoomTo([this, scale] { m_model.zoomBy(scale); }, m_zoomAnchorY, false);
+      return;
+    }
+    m_pinchScale = std::clamp(static_cast<float>(data.scale), DocumentModel::kMinZoom / m_pinchStart,
+                              DocumentModel::kMaxZoom / m_pinchStart);
+    // Scaling the laid-out column follows the fingers every frame; the pages re-render once, at the end.
+    column->setTransformOrigin(m_scroll->width() / 2.0F, m_scroll->scrollOffset() + m_zoomAnchorY);
+    column->setScale(m_pinchScale);
+    m_window.invalidate();
+  }
+
+  bool ViewerWindow::wheelZoom(const InputArea::PointerData& data) {
+    if ((m_loop.wayland().keyboardModifiers() & KeyMod::Ctrl) == 0 || data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+      return false;
+    }
+    // One wheel notch (value 15) zooms by 10 %; a touchpad scales in proportion.
+    const float factor = std::pow(1.1F, -static_cast<float>(data.axisValue) / 15.0F);
+    zoomTo([this, factor] { m_model.zoomBy(factor); }, data.localY);
+    return true;
   }
 
   void ViewerWindow::toggleSidebar() {
@@ -612,8 +656,12 @@ namespace viewer {
     m_thumbScroll = nullptr;
     m_searchInput = nullptr;
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
-    root->addChild(buildToolbar(width));
-    root->addChild(ui::separator({}));
+    // Full screen is immersive: the page column alone.
+    const bool immersive = m_window.fullscreen() && m_mode == Mode::Pdf;
+    if (!immersive) {
+      root->addChild(buildToolbar(width));
+      root->addChild(ui::separator({}));
+    }
     switch (m_mode) {
     case Mode::Empty:
       root->addChild(buildMessage("Open a document or image", "or drop a file here"));
@@ -637,7 +685,7 @@ namespace viewer {
         break;
       }
       auto body = ui::row({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-      if (m_sidebar) {
+      if (m_sidebar && !immersive) {
         body->addChild(buildSidebar(renderer));
         body->addChild(ui::separator({.orientation = SeparatorOrientation::VerticalRule}));
       }
@@ -736,7 +784,8 @@ namespace viewer {
     scroll->content()->setGap(DocumentModel::kPageGap);
     scroll->content()->setAlign(FlexAlign::Center);
     // Fit-width uses the area inside the padding; the sidebar and the window size change it.
-    const float viewport = m_window.contentRect().width - (m_sidebar ? kSidebarWidth * s : 0.0F) - 2.0F * kPagePadding * s;
+    const bool sidebar = m_sidebar && !m_window.fullscreen();
+    const float viewport = m_window.contentRect().width - (sidebar ? kSidebarWidth * s : 0.0F) - 2.0F * kPagePadding * s;
     m_model.setViewportWidth(std::max(100.0F, viewport));
     const float zoom = m_model.zoom();
     const auto current = m_model.currentHit();
@@ -789,12 +838,20 @@ namespace viewer {
       onScroll();
       m_window.invalidate();
     });
+    scroll->setOnPinch([this](const InputArea::PinchData& data) { pinch(data); });
+    scroll->setAxisFilter([this](const InputArea::PointerData& data) { return wheelZoom(data); });
     m_scroll = scroll.get();
     m_restoreScroll = m_scrollOffset > 0.0F;
+    if (m_pinchScale != 1.0F) {
+      // A render reply rebuilt the view mid-pinch: keep the live scale.
+      const AppWindow::Rect view = m_window.contentRect();
+      scroll->content()->setTransformOrigin(view.width / 2.0F, m_scrollOffset + m_zoomAnchorY);
+      scroll->content()->setScale(m_pinchScale);
+    }
     if (m_zoomFrom != 1.0F) {
       Node* column = scroll->content();
       const AppWindow::Rect view = m_window.contentRect(); // the scroll view is not laid out yet
-      column->setTransformOrigin(view.width / 2.0F, m_scrollOffset + view.height / 2.0F);
+      column->setTransformOrigin(view.width / 2.0F, m_scrollOffset + m_zoomAnchorY);
       column->setScale(m_zoomFrom);
       m_zoomAnim = m_window.animations().drive(
           m_zoomAnim, m_zoomFrom, 1.0F, Style::spring(Tokens::springMove),
