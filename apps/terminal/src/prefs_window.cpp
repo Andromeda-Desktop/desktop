@@ -541,19 +541,24 @@ namespace term {
                            .fill = fixedColorSpec(colors.view),
                            .radius = Style::scaledRadiusSm(s),
                            .width = width});
-    const auto line = [&](std::string text, const Color& color) {
-      box->addChild(ui::label({.text = std::move(text),
-                               .fontSize = size,
-                               .fontFamily = family,
-                               .color = fixedColorSpec(color),
-                               .maxWidth = width - Tokens::spaceP12 * s * 2.0F,
-                               .maxLines = 1}));
+    // A prompt and test output, coloured run by run: path, branch, the accent ❯, the command.
+    const auto line = [&](std::vector<std::pair<std::string, Color>> runs) {
+      auto row = ui::row({.gap = 0.0F});
+      for (auto& [text, color] : runs) {
+        row->addChild(ui::label({.text = std::move(text),
+                                 .fontSize = size,
+                                 .fontFamily = family,
+                                 .color = fixedColorSpec(color),
+                                 .maxLines = 1}));
+      }
+      box->addChild(std::move(row));
     };
     const char* cursor = now.cursor == CursorShape::Bar ? "▏" : now.cursor == CursorShape::Underline ? "▁" : "█";
-    line("~/src/desktop main ❯ cargo test", colors.label1);
-    line("test service::accepts_signed_index ... ok", colors.ansi[2]);
-    line("test service::resumes_partial ... FAILED", colors.ansi[1]);
-    line(std::string("~/src/desktop main ❯ ") + cursor, colors.label1);
+    line({{"~/src/desktop ", colors.ansi[4]}, {"main ", colors.ansi[5]}, {"❯ ", colors.accent}, {"cargo test", colors.label1}});
+    line({{"test service::accepts_signed_index ... ", colors.label2}, {"ok", colors.ansi[2]}});
+    line({{"warning: ", colors.ansi[3]}, {"unused import ", colors.label1}, {"`std::io`", colors.ansi[6]}});
+    line({{"test service::resumes_partial ... ", colors.label2}, {"FAILED", colors.ansi[1]}});
+    line({{"~/src/desktop ", colors.ansi[4]}, {"main ", colors.ansi[5]}, {"❯ ", colors.accent}, {cursor, colors.accent}});
     return box;
   }
 
@@ -674,14 +679,22 @@ namespace term {
                                 .radius = Style::scaledRadiusSm(s),
                                 .width = tileW,
                                 .height = tileH});
-      swatch->addChild(ui::label({.text = "~ ❯ ls",
-                                  .fontSize = Tokens::typeFootnote.size * s,
-                                  .fontFamily = std::string(Tokens::fontMono),
-                                  .color = fixedColorSpec(colors.label1)}));
-      swatch->addChild(ui::label({.text = "src  docs",
-                                  .fontSize = Tokens::typeFootnote.size * s,
-                                  .fontFamily = std::string(Tokens::fontMono),
-                                  .color = fixedColorSpec(colors.ansi[4])}));
+      auto prompt = ui::row({.gap = 0.0F});
+      for (const auto& [text, color] : {std::pair{"❯ ", colors.accent}, std::pair{"ls", colors.label1}}) {
+        prompt->addChild(ui::label({.text = text,
+                                    .fontSize = Tokens::typeFootnote.size * s,
+                                    .fontFamily = std::string(Tokens::fontMono),
+                                    .color = fixedColorSpec(color)}));
+      }
+      swatch->addChild(std::move(prompt));
+      auto range = ui::row({.gap = Tokens::spaceP2 * s});
+      for (int i = 1; i <= 6; ++i) {
+        range->addChild(ui::column({.fill = fixedColorSpec(colors.ansi[i]),
+                                    .radius = Tokens::spaceP4 * s,
+                                    .width = Tokens::spaceP8 * s,
+                                    .height = Tokens::spaceP8 * s}));
+      }
+      swatch->addChild(std::move(range));
       row->addChild(tile(std::move(swatch), choice.name, choice.id == current, s, tileW, tileH,
                          [this, id = choice.id](const InputArea::PointerData&) {
                            change([id](Settings& x) { x.theme = id; });

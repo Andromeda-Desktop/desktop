@@ -21,8 +21,16 @@ int step = 0;
 
 std::string toml(const ThemePackage& p) {
   auto set = [](const char* name, const ThemeAnchorSet& a) {
-    return std::format("[{}]\nsurface = \"#{:06x}\"\ntext = \"#{:06x}\"\naccent = \"#{:06x}\"\n", name, a.surface,
-                       a.text, a.accent);
+    std::string out = std::format("[{}]\nsurface = \"#{:06x}\"\ntext = \"#{:06x}\"\naccent = \"#{:06x}\"\n", name,
+                                  a.surface, a.text, a.accent);
+    if (a.palette) {
+      out += "palette = [";
+      for (const std::uint32_t c : *a.palette) {
+        out += std::format("\"#{:06x}\", ", c);
+      }
+      out += "]\n";
+    }
+    return out;
   };
   std::string out = "name = \"" + p.name + "\"\n";
   if (!p.font.empty()) {
@@ -45,6 +53,8 @@ int main() {
       "name = \"\"\n",
       "nme = \"x\"\n",
       "[light\n",
+      "name = \"x\"\n[light]\nsurface = \"#ffffff\"\ntext = \"#000000\"\naccent = \"#000000\"\npalette = [\"#000000\"]\n"
+      "[dark]\nsurface = \"#000000\"\ntext = \"#ffffff\"\naccent = \"#ffffff\"\n", // palette of 1
   };
   const char* ids[] = {"nord", "paper", "neon-2", "dark", "Bad Name", "x_y"};
   for (const unsigned s : {1U, 2U, 3U}) {
@@ -64,7 +74,12 @@ int main() {
       case 0: { // write a valid package
         auto anchors = [&] {
           auto c = [&] { return static_cast<std::uint32_t>(pick(0, 0xffffff)); };
-          return ThemeAnchorSet{c(), c(), c()};
+          ThemeAnchorSet set{c(), c(), c()};
+          if (pick(0, 2) == 0) {
+            set.palette.emplace();
+            std::ranges::generate(*set.palette, c);
+          }
+          return set;
         };
         ThemePackage p{.name = "Theme " + std::to_string(pick(0, 9)), .light = anchors(), .dark = anchors(),
                        .font = pick(0, 1) != 0 ? "Fira Code" : ""};
@@ -87,7 +102,7 @@ int main() {
       }
       case 1: // write a bad file
         std::filesystem::create_directories(folder);
-        std::ofstream(folder / "theme.toml") << bad[pick(0, 4)];
+        std::ofstream(folder / "theme.toml") << bad[pick(0, 5)];
         model[id] = {std::nullopt};
         break;
       case 2: // remove the file, keep the folder
@@ -103,7 +118,7 @@ int main() {
         std::filesystem::create_directories(source);
         const bool good = pick(0, 1) != 0;
         const ThemePackage p{.name = "Imported", .light = {0xffffff, 0x101010, 0x2060c0}, .dark = {0x101010, 0xf0f0f0, 0x60a0ff}};
-        std::ofstream(source / "theme.toml") << (good ? toml(p) : bad[pick(0, 4)]);
+        std::ofstream(source / "theme.toml") << (good ? toml(p) : bad[pick(0, 5)]);
         std::ofstream(source / "notes.txt") << "not part of a package";
         const auto before = scanThemes(dir, entries);
         const auto result = importThemeFolder(source, dir);

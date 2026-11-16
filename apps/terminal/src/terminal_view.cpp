@@ -302,7 +302,12 @@ namespace term {
   ThemePalette themePalette(const ThemeSpec& spec) {
     if (const auto* package = std::get_if<ThemePackage>(&spec)) {
       const ThemeAnchorSet& a = isResolvedLightTheme() ? package->light : package->dark;
-      return deriveThemePalette({.surface = rgbHex(a.surface), .text = rgbHex(a.text), .accent = rgbHex(a.accent)});
+      std::optional<std::array<Color, 16>> ansi;
+      if (a.palette) {
+        ansi.emplace();
+        std::ranges::transform(*a.palette, ansi->begin(), [](std::uint32_t c) { return rgbHex(c); });
+      }
+      return deriveThemePalette({.surface = rgbHex(a.surface), .text = rgbHex(a.text), .accent = rgbHex(a.accent), .ansi = ansi});
     }
     const Theme theme = std::get<Theme>(spec);
     const std::uint32_t view = over(themeColor(theme, ColorRole::View), 0);
@@ -316,6 +321,7 @@ namespace term {
     m_foreground = over(derived.label1, 0);
     m_faint = over(derived.label2, 0);
     m_selection = mix(m_background, over(derived.accent, 0), 0.4F);
+    m_cursorColor = over(derived.accent, 0);
     m_findHit = themed(ColorRole::TermFindHit);
     m_findHitCurrent = themed(ColorRole::TermFindHitCurrent);
     m_session.withTerminal([&](GhosttyTerminal t) {
@@ -768,7 +774,7 @@ namespace term {
           .column = std::min((wideTail && cx > 0 ? cx - 1 : cx) + preeditWidth, m_grid->columns() - 1),
           .row = cy,
           .style = m_focused ? shape : TerminalCursorStyle::HollowBlock,
-          .color = colors.cursor_has_value ? pack(colors.cursor) : defaultFg,
+          .color = colors.cursor_has_value ? pack(colors.cursor) : m_cursorColor,
           .textColor = defaultBg,
       };
     }

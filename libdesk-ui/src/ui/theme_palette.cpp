@@ -3,6 +3,7 @@
 #include "ui/contrast.h"
 
 #include <algorithm>
+#include <cmath>
 #include <numbers>
 
 namespace {
@@ -16,6 +17,18 @@ namespace {
   constexpr std::array<Hue, 6> kHues = {{{27, 0.17}, {145, 0.13}, {85, 0.13}, {262, 0.13}, {325, 0.13}, {205, 0.13}}};
   constexpr double kLightnessStep = 0.005;
   constexpr double kBrightStep = 0.08;
+  constexpr double kMaxHueTurn = 15.0;   // degrees toward the accent
+  constexpr double kMinAccentChroma = 0.03; // below this the accent hue is noise
+
+  // Turns the hue toward the accent by half the angle between them, at most kMaxHueTurn.
+  Hue harmonized(Hue hue, const Oklch& accent) {
+    if (accent.chroma < kMinAccentChroma) {
+      return hue;
+    }
+    const double diff = std::remainder(accent.hueRadians * 180.0 / std::numbers::pi - hue.degrees, 360.0);
+    hue.degrees += std::copysign(std::min(std::abs(diff) * 0.5, kMaxHueTurn), diff);
+    return hue;
+  }
 
   Color withOpaqueAlpha(Color c) {
     c.a = 1.0F;
@@ -48,18 +61,29 @@ ThemePalette deriveThemePalette(const ThemeAnchors& anchors) {
   p.label2 = ensureContrast(mixOpaque(p.label1, p.view, 0.35F), p.view, std::min(4.5, reach), toward);
   p.accent = ensureContrast(withOpaqueAlpha(anchors.accent), p.view, std::min(3.0, reach), toward);
 
+  if (anchors.ansi) {
+    for (std::size_t i = 0; i < p.ansi.size(); ++i) {
+      const Color given = withOpaqueAlpha((*anchors.ansi)[i]);
+      p.ansi[i] = i == 0 ? given : ensureContrast(given, p.view, std::min(4.5, reach), toward);
+    }
+    return p;
+  }
+
+  std::array<Hue, 6> hues = kHues;
+  const Oklch accent = toOklch(p.accent);
+  std::ranges::transform(hues, hues.begin(), [&](const Hue& h) { return harmonized(h, accent); });
   // The lightness nearest the surface at which all six hues reach the text ratio.
   const double viewLightness = toOklch(p.view).lightness;
   double ring = lighten ? 1.0 : 0.0;
   for (double l = viewLightness; lighten ? l <= 1.0 : l >= 0.0; l += toward * kLightnessStep) {
-    if (std::ranges::all_of(kHues, [&](const Hue& h) { return contrastRatio(hueAt(h, l), p.view) >= text; })) {
+    if (std::ranges::all_of(hues, [&](const Hue& h) { return contrastRatio(hueAt(h, l), p.view) >= text; })) {
       ring = l;
       break;
     }
   }
-  for (std::size_t i = 0; i < kHues.size(); ++i) {
-    p.ansi[1 + i] = hueAt(kHues[i], ring);
-    p.ansi[9 + i] = ensureContrast(hueAt(kHues[i], ring + toward * kBrightStep), p.view, text, toward);
+  for (std::size_t i = 0; i < hues.size(); ++i) {
+    p.ansi[1 + i] = hueAt(hues[i], ring);
+    p.ansi[9 + i] = ensureContrast(hueAt(hues[i], ring + toward * kBrightStep), p.view, text, toward);
   }
 
   Oklch raised = toOklch(p.view);

@@ -198,10 +198,16 @@ namespace term {
       }
       const toml::table& t = *scheme->as_table();
       for (const auto& [key, node] : t) {
-        if (key != "surface" && key != "text" && key != "accent") {
+        if (key != "surface" && key != "text" && key != "accent" && key != "palette") {
           return failAt(node, "unknown key \"" + std::string(schemeName) + "." + std::string(key.str()) + "\"");
         }
       }
+      const auto hexColor = [](const toml::node& n) -> std::optional<std::uint32_t> {
+        const auto v = n.value_exact<std::string>();
+        const bool hex = v && v->size() == 7 && (*v)[0] == '#'
+                         && std::ranges::all_of(v->substr(1), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; });
+        return hex ? std::optional(static_cast<std::uint32_t>(std::stoul(v->substr(1), nullptr, 16))) : std::nullopt;
+      };
       for (const auto& [key, out] : {std::pair{"surface", &anchors->surface}, std::pair{"text", &anchors->text},
                                      std::pair{"accent", &anchors->accent}}) {
         const std::string where = std::string(schemeName) + "." + key;
@@ -209,13 +215,27 @@ namespace term {
         if (n == nullptr) {
           return failAt(*scheme, where + " is required");
         }
-        const auto v = n->value_exact<std::string>();
-        const bool hex = v && v->size() == 7 && (*v)[0] == '#'
-                         && std::ranges::all_of(v->substr(1), [](char c) { return std::isxdigit(static_cast<unsigned char>(c)) != 0; });
-        if (!hex) {
+        const auto colour = hexColor(*n);
+        if (!colour) {
           return failAt(*n, where + " must be a colour like \"#1e1e2e\"");
         }
-        *out = static_cast<std::uint32_t>(std::stoul(v->substr(1), nullptr, 16));
+        *out = *colour;
+      }
+      if (const toml::node* n = t.get("palette")) {
+        const std::string where = std::string(schemeName) + ".palette";
+        const toml::array* list = n->as_array();
+        if (list == nullptr || list->size() != 16) {
+          return failAt(*n, where + " must list 16 colours (ANSI 0-15)");
+        }
+        std::array<std::uint32_t, 16> palette{};
+        for (std::size_t i = 0; i < palette.size(); ++i) {
+          const auto colour = hexColor(*list->get(i));
+          if (!colour) {
+            return failAt(*list->get(i), where + " entries must be colours like \"#1e1e2e\"");
+          }
+          palette[i] = *colour;
+        }
+        anchors->palette = palette;
       }
     }
     return theme;

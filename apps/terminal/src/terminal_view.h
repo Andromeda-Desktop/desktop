@@ -340,6 +340,7 @@ namespace term {
     std::uint32_t m_faint = 0;
     std::uint32_t m_background = 0;
     std::uint32_t m_selection = 0;
+    std::uint32_t m_cursorColor = 0; // the theme accent; a program's OSC 12 colour wins
     Color m_findHit{};
     Color m_findHitCurrent{};
     struct FindClosed {};

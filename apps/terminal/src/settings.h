@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -53,12 +54,12 @@ namespace term {
     bool operator==(const SettingsError&) const = default;
   };
 
-  // A missing key keeps its default; a wrong type or an out-of-range value is an error.
   // 0xRRGGBB colours a theme author picks for one scheme.
   struct ThemeAnchorSet {
     std::uint32_t surface = 0;
     std::uint32_t text = 0;
     std::uint32_t accent = 0;
+    std::optional<std::array<std::uint32_t, 16>> palette; // ANSI 0-15; derived from the anchors when absent
     bool operator==(const ThemeAnchorSet&) const = default;
   };
 

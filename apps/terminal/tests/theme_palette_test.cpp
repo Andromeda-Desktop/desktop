@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <numbers>
 #include <random>
 
 namespace {
@@ -44,6 +45,45 @@ void checkInvariants(const ThemeAnchors& anchors) {
   CHECK(high < 0.1 || high - low <= 0.01);
 }
 
+// An author's palette: kept where it already reads, lifted by lightness only where it does not.
+void checkAuthorPalette(const ThemeAnchors& anchors) {
+  const ThemePalette p = deriveThemePalette(anchors);
+  const double reach = std::max(contrastRatio(rgbHex(0xffffff), p.view), contrastRatio(rgbHex(0x000000), p.view));
+  CHECK(p.ansi[0] == (*anchors.ansi)[0]);
+  for (int i = 1; i < 16; ++i) {
+    const Color given = (*anchors.ansi)[i];
+    CHECK(contrastRatio(p.ansi[i], p.view) >= std::min(4.5, reach) - kEps);
+    if (contrastRatio(given, p.view) >= 4.5) {
+      CHECK(p.ansi[i] == given);
+    }
+  }
+}
+
+// Accents of clearly different hues give different ANSI colours on the same surface.
+void checkAccentShowsInAnsi(const ThemeAnchors& anchors, double turnDegrees) {
+  Oklch other = toOklch(anchors.accent);
+  if (other.chroma < 0.08) {
+    return;
+  }
+  other.hueRadians += turnDegrees * std::numbers::pi / 180.0;
+  ThemeAnchors turned = anchors;
+  turned.accent = fromOklch(other);
+  if (toOklch(turned.accent).chroma < 0.08) {
+    return;
+  }
+  const ThemePalette a = deriveThemePalette(anchors);
+  const ThemePalette b = deriveThemePalette(turned);
+  const double reach = std::max(contrastRatio(rgbHex(0xffffff), a.view), contrastRatio(rgbHex(0x000000), a.view));
+  if (reach < 10.0) {
+    return; // near-mid surfaces push the ring to black or white, where hue has no room
+  }
+  bool differs = false;
+  for (int i = 1; i <= 6; ++i) {
+    differs = differs || !(a.ansi[i] == b.ansi[i]);
+  }
+  CHECK(differs);
+}
+
 // The scene tint: the smallest 0.01 step at or above the floor where label 2 keeps 4.5:1 over every backdrop colour.
 void checkTint(const ThemeAnchors& anchors, const std::array<Color, 8>& backdrop, float floor) {
   const ThemePalette p = deriveThemePalette(anchors);
@@ -77,6 +117,10 @@ int main() {
     };
     for (step = 0; step < 300; ++step) {
       checkInvariants({.surface = color(), .text = color(), .accent = color()});
+      checkAccentShowsInAnsi({.surface = color(), .text = color(), .accent = color()}, 60.0 + unit(rng) * 240.0);
+      std::array<Color, 16> own{};
+      std::ranges::generate(own, color);
+      checkAuthorPalette({.surface = color(), .text = color(), .accent = color(), .ansi = own});
       std::array<Color, 8> backdrop{};
       std::ranges::generate(backdrop, color);
       checkTint({.surface = color(), .text = color(), .accent = color()}, backdrop, std::round(unit(rng) * 80.0F) / 100.0F);
