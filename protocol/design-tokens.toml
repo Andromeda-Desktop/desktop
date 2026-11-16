@@ -49,7 +49,7 @@ hit_min = 24.0
 hit_touch = 40.0
 
 [font]
-family = "Inter"
+family = "Inter Variable"
 mono = "Fira Code, monospace"   # terminal grid and code (rulebook §3 mono)
 
 # line is the line box in px (a multiple of 4); tracking in em, from Inter's dynamic metrics
