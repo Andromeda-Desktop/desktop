@@ -138,6 +138,22 @@ fn pdf_page_renders_at_the_asked_width() {
 }
 
 #[test]
+fn pdf_tile_is_that_part_of_the_page() {
+    let file = sample_pdf();
+    let helper = Helper::start("pdf", file.path());
+    // The page 4000 px wide: black left of x = 2000. The tile spans 1900..2100.
+    let mut req = Msg::new(proto::OP_RENDER_TILE, 0, 4000, 1900, 900);
+    req.e = 200 << 16 | 50;
+    let (tile, fd) = helper.ask(req);
+    assert_eq!((tile.op, tile.b, tile.c), (OP_PAGE, 200, 50));
+    let stride = tile.d as usize;
+    let pixels = read_fd(fd.unwrap());
+    let px = |x: usize, y: usize| u32::from_ne_bytes(pixels[y * stride + x * 4..][..4].try_into().unwrap());
+    assert_eq!(px(90, 25), 0xff00_0000);
+    assert_eq!(px(110, 25), 0xffff_ffff);
+}
+
+#[test]
 fn pdf_page_out_of_range_is_an_error() {
     let file = sample_pdf();
     let helper = Helper::start("pdf", file.path());

@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class AppLoop;
@@ -68,6 +69,25 @@ namespace viewer {
       // Uploaded on the next build; the pixels are then dropped.
       TextureHandle texture;
     };
+    struct Job {
+      enum class Kind : std::uint8_t { Page, Tile, Thumb };
+      Kind kind = Kind::Page;
+      std::size_t page = 0;
+      std::uint32_t width = 0; // the whole page width in device px
+      std::uint32_t x = 0;     // tile only: its rect in device px of that width
+      std::uint32_t y = 0;
+      std::uint32_t w = 0;
+      std::uint32_t h = 0;
+      std::uint64_t key = 0;
+    };
+    struct Tile {
+      std::size_t page = 0;
+      std::uint32_t pageWidth = 0; // 0 after an edit: rendered again on the next pass
+      std::uint32_t x = 0;
+      std::uint32_t y = 0;
+      Page px;
+      Image* node = nullptr;
+    };
     struct Selection {
       std::size_t page = 0;
       float x0 = 0.0F; // points, page-local
@@ -91,6 +111,14 @@ namespace viewer {
     void dropHelper();
     void requestVisiblePages();
     void requestThumbs();
+    void queueTiles();
+    void queueThumbs();
+    void pump();
+    [[nodiscard]] static std::uint64_t tileKey(std::size_t page, std::uint32_t tx, std::uint32_t ty);
+    void dropTile(Tile& tile);
+    void requestTile(const Job& job);
+    void showTile(Tile& tile);
+    [[nodiscard]] Image* placeTile(const Tile& tile);
     void requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width);
     void dropPage(Page& page);
     void showRender(std::vector<Page>& cache, std::size_t page);
@@ -130,6 +158,10 @@ namespace viewer {
     DocumentModel m_model;
     std::vector<Page> m_pages;
     std::vector<Page> m_thumbs;
+    std::unordered_map<std::uint64_t, Tile> m_tiles; // by tileKey
+    std::vector<Job> m_jobs;
+    int m_inFlight = 0;
+    std::vector<Node*> m_tileLayers;
     // Textures of evicted pages; build() unloads them, as only it has the renderer.
     std::vector<TextureHandle> m_dropped;
     ScrollView* m_thumbScroll = nullptr;

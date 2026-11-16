@@ -11,6 +11,9 @@ use std::mem::MaybeUninit;
 pub const OP_INFO: u32 = 1;
 /// a = page index, b = target width in pixels, c = max height in pixels.
 pub const OP_RENDER: u32 = 2;
+/// A part of a page: a = page index, b = whole page width in pixels (the scale), c = x, d = y,
+/// e = tile width << 16 | tile height, all in pixels of that scale. Reply `OP_PAGE` with the tile.
+pub const OP_RENDER_TILE: u32 = 15;
 pub const OP_TEXT: u32 = 3;
 /// Next video frame. Reply `OP_FRAME` or `OP_END`.
 pub const OP_FRAME: u32 = 4;

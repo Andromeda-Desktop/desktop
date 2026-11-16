@@ -15,6 +15,30 @@ pub const TEXT_LIMIT: usize = 1 << 20;
 const BINARY_PROBE: usize = 8192;
 pub const MAX_WIDTH: u32 = 8192;
 pub const MAX_HEIGHT: u32 = 16384;
+/// A tile is at most this many pixels on a side.
+pub const MAX_TILE: u32 = 2048;
+/// The widest page a tile may come from (8 x zoom of a wide page on a 2x display).
+pub const MAX_TILE_SCALE_WIDTH: u32 = 65536;
+
+/// Draws the `w` x `h` part at (`x`, `y`) of `page` at `scale` pixels per point into a sealed memfd.
+fn draw(page: &poppler::Page, index: u32, scale: f64, x: u32, y: u32, w: u32, h: u32) -> Result<(Msg, OwnedFd), u32> {
+    let wi = i32::try_from(w).map_err(|_| ERR_TOO_LARGE)?;
+    let hi = i32::try_from(h).map_err(|_| ERR_TOO_LARGE)?;
+    let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, wi, hi).map_err(|_| ERR_DECODE)?;
+    {
+        let cr = cairo::Context::new(&surface).map_err(|_| ERR_DECODE)?;
+        cr.set_source_rgb(1.0, 1.0, 1.0);
+        cr.paint().map_err(|_| ERR_DECODE)?;
+        cr.translate(-f64::from(x), -f64::from(y));
+        cr.scale(scale, scale);
+        page.render(&cr);
+    }
+    surface.flush();
+    let stride = u32::try_from(surface.stride()).map_err(|_| ERR_DECODE)?;
+    let data = surface.data().map_err(|_| ERR_DECODE)?;
+    let fd = sealed("preview-page", &data)?;
+    Ok((Msg::new(OP_PAGE, index, w, h, stride), fd))
+}
 /// Hits per page and selection rects per reply; a page with more is cut there.
 pub const MAX_RECTS: usize = 4096;
 /// The largest thumbnail side (freedesktop x-large is 512, xx-large 1024).
@@ -216,21 +240,27 @@ impl Pdf {
         if height > MAX_HEIGHT.min(max_height.max(1)) {
             return Err(ERR_TOO_LARGE);
         }
-        let w = i32::try_from(width).map_err(|_| ERR_TOO_LARGE)?;
-        let h = i32::try_from(height).map_err(|_| ERR_TOO_LARGE)?;
-        let mut surface = cairo::ImageSurface::create(cairo::Format::ARgb32, w, h).map_err(|_| ERR_DECODE)?;
-        {
-            let cr = cairo::Context::new(&surface).map_err(|_| ERR_DECODE)?;
-            cr.set_source_rgb(1.0, 1.0, 1.0);
-            cr.paint().map_err(|_| ERR_DECODE)?;
-            cr.scale(scale, scale);
-            page.render(&cr);
+        draw(&page, index, scale, 0, 0, width, height)
+    }
+
+    /// Renders the `w` x `h` pixel part at (`x`, `y`) of the page drawn `page_width` pixels wide, on white.
+    ///
+    /// # Errors
+    /// `ERR_RANGE` for a page index past the end, `ERR_TOO_LARGE` for a tile or scale over the caps.
+    pub fn render_tile(&self, index: u32, page_width: u32, x: u32, y: u32, w: u32, h: u32) -> Result<(Msg, OwnedFd), u32> {
+        let page = self.page(index)?;
+        let (pw, ph) = page.size();
+        if page_width == 0 || page_width > MAX_TILE_SCALE_WIDTH || pw <= 0.0 || ph <= 0.0 {
+            return Err(ERR_TOO_LARGE);
         }
-        surface.flush();
-        let stride = u32::try_from(surface.stride()).map_err(|_| ERR_DECODE)?;
-        let data = surface.data().map_err(|_| ERR_DECODE)?;
-        let fd = sealed("preview-page", &data)?;
-        Ok((Msg::new(OP_PAGE, index, width, height, stride), fd))
+        if w == 0 || h == 0 || w > MAX_TILE || h > MAX_TILE {
+            return Err(ERR_TOO_LARGE);
+        }
+        let scale = f64::from(page_width) / pw;
+        if f64::from(x) >= f64::from(page_width) || f64::from(y) >= ph * scale {
+            return Err(ERR_RANGE);
+        }
+        draw(&page, index, scale, x, y, w, h)
     }
 
     /// The first page fitted in a `size` x `size` box on white, as PNG (the freedesktop thumbnailer contract).

@@ -43,6 +43,9 @@ namespace viewer {
     constexpr float kThumbWidth = 104.0F;
     constexpr float kPagePadding = 24.0F;
     constexpr std::uint32_t kMaxRenderWidth = 8192;
+    // Device px: a whole page renders at most this wide; past it, kTile x kTile tiles show the part in view.
+    constexpr std::uint32_t kBaseWidth = 2048;
+    constexpr std::uint32_t kTile = 512;
     constexpr std::uint32_t kMaxPageHeight = 16384;
     constexpr std::uint32_t kImageBox = 8192;
     // proto MAX_PAYLOAD: a longer request ends the helper.
@@ -141,6 +144,12 @@ namespace viewer {
     }
     m_pages.clear();
     m_thumbs.clear();
+    for (auto& [key, tile] : m_tiles) {
+      dropTile(tile);
+    }
+    m_tiles.clear();
+    m_jobs.clear();
+    m_inFlight = 0;
     m_image = {};
     m_selection.reset();
     m_searchText.clear();
@@ -271,6 +280,8 @@ namespace viewer {
     if (m_mode != Mode::Pdf || !m_helper || m_scroll == nullptr) {
       return;
     }
+    // The queue holds what the view needs now, most needed first; what scrolled away is never sent.
+    m_jobs.clear();
     const float top = m_scroll->scrollOffset();
     auto [first, last] = m_model.visiblePages(top, top + m_scroll->height() * 1.5F);
     const float scale = m_window.uiScale();
@@ -286,19 +297,73 @@ namespace viewer {
     }
     for (std::size_t i = first; i <= last && i < m_pages.size(); ++i) {
       const RectF box = m_model.pageBox(i);
-      const auto width = std::min(kMaxRenderWidth, static_cast<std::uint32_t>(std::lround((box.x1 - box.x0) * scale)));
+      // Past kBaseWidth the whole page stays at that width and tiles carry the detail in view.
+      const auto width = std::min(kBaseWidth, static_cast<std::uint32_t>(std::lround((box.x1 - box.x0) * scale)));
       // Render again only when the zoom changed the width noticeably.
       if (m_pages[i].requestedWidth != 0 && std::abs(static_cast<float>(m_pages[i].requestedWidth) - static_cast<float>(width))
                                                 < 0.1F * static_cast<float>(width)) {
         continue;
       }
-      requestRender(m_pages, i, width);
+      m_jobs.push_back({.kind = Job::Kind::Page, .page = i, .width = width});
     }
-    requestThumbs();
+    queueTiles();
+    queueThumbs();
+    pump();
   }
 
-  void ViewerWindow::requestThumbs() {
-    if (m_mode != Mode::Pdf || !m_helper || m_thumbScroll == nullptr) {
+  void ViewerWindow::queueTiles() {
+    if (m_hscroll == nullptr) {
+      return;
+    }
+    const float s = m_window.uiScale();
+    const float pad = kPagePadding * s;
+    const float top = m_scroll->scrollOffset() - pad;
+    const float left = m_hscroll->scrollOffset() - pad;
+    const float viewW = m_hscroll->width();
+    const float viewH = m_scroll->height();
+    const float column = std::max(m_hscroll->width() - 2.0F * pad, widestPage());
+    std::vector<std::uint64_t> keep;
+    for (std::size_t i = 0; i < m_pages.size(); ++i) {
+      const RectF box = m_model.pageBox(i);
+      const float w = box.x1 - box.x0;
+      const auto pageWidth = static_cast<std::uint32_t>(std::lround(w * s));
+      if (pageWidth <= kBaseWidth || box.y1 < top - viewH || box.y0 > top + 2.0F * viewH) {
+        continue;
+      }
+      const float px = pageWidth / w; // device px per logical px
+      const float pageX = (column - w) / 2.0F;
+      const auto pageHeight = static_cast<std::uint32_t>(std::lround((box.y1 - box.y0) * px));
+      // The view plus one tile around it, in device px of this page.
+      const float x0 = std::max(0.0F, (left - pageX) * px - kTile);
+      const float x1 = std::min(static_cast<float>(pageWidth), (left + viewW - pageX) * px + kTile);
+      const float y0 = std::max(0.0F, (top - box.y0) * px - kTile);
+      const float y1 = std::min(static_cast<float>(pageHeight), (top + viewH - box.y0) * px + kTile);
+      for (auto ty = static_cast<std::uint32_t>(y0 / kTile); static_cast<float>(ty * kTile) < y1; ++ty) {
+        for (auto tx = static_cast<std::uint32_t>(x0 / kTile); static_cast<float>(tx * kTile) < x1; ++tx) {
+          const std::uint64_t key = tileKey(i, tx, ty);
+          keep.push_back(key);
+          if (const auto it = m_tiles.find(key); it != m_tiles.end() && it->second.pageWidth == pageWidth) {
+            continue;
+          }
+          m_jobs.push_back({.kind = Job::Kind::Tile, .page = i, .width = pageWidth, .x = tx * kTile, .y = ty * kTile,
+                            .w = std::min(kTile, pageWidth - tx * kTile), .h = std::min(kTile, pageHeight - ty * kTile),
+                            .key = key});
+        }
+      }
+    }
+    std::ranges::sort(keep);
+    for (auto it = m_tiles.begin(); it != m_tiles.end();) {
+      if (!std::ranges::binary_search(keep, it->first)) {
+        dropTile(it->second);
+        it = m_tiles.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  void ViewerWindow::queueThumbs() {
+    if (m_thumbScroll == nullptr) {
       return;
     }
     const float s = m_window.uiScale();
@@ -318,10 +383,117 @@ namespace viewer {
           }
         }
       } else if (m_thumbs[i].requestedWidth == 0) {
-        requestRender(m_thumbs, i, width);
+        m_jobs.push_back({.kind = Job::Kind::Thumb, .page = i, .width = width});
       }
       y += h + Style::spaceMd * s;
     }
+  }
+
+  void ViewerWindow::requestThumbs() {
+    if (m_mode != Mode::Pdf || !m_helper) {
+      return;
+    }
+    std::erase_if(m_jobs, [](const Job& job) { return job.kind == Job::Kind::Thumb; });
+    queueThumbs();
+    pump();
+  }
+
+  void ViewerWindow::pump() {
+    // Two in flight: the helper works on one while the next waits, and a scroll never queues stale work behind it.
+    constexpr int kInFlight = 2;
+    while (m_inFlight < kInFlight && !m_jobs.empty() && m_helper) {
+      const Job job = m_jobs.front();
+      m_jobs.erase(m_jobs.begin());
+      if (job.kind == Job::Kind::Tile) {
+        if (const auto it = m_tiles.find(job.key); it != m_tiles.end() && it->second.pageWidth == job.width) {
+          continue;
+        }
+        requestTile(job);
+      } else {
+        std::vector<Page>& cache = job.kind == Job::Kind::Page ? m_pages : m_thumbs;
+        if (job.page >= cache.size() || cache[job.page].requestedWidth == job.width) {
+          continue;
+        }
+        requestRender(cache, job.page, job.width);
+      }
+    }
+  }
+
+  std::uint64_t ViewerWindow::tileKey(std::size_t page, std::uint32_t tx, std::uint32_t ty) {
+    return static_cast<std::uint64_t>(page) << 32U | static_cast<std::uint64_t>(ty) << 16U | tx;
+  }
+
+  void ViewerWindow::dropTile(Tile& tile) {
+    if (tile.px.texture.valid()) {
+      m_dropped.push_back(tile.px.texture);
+    }
+    if (tile.node != nullptr && tile.node->parent() != nullptr) {
+      (void)tile.node->parent()->removeChild(tile.node);
+      m_window.invalidate();
+    }
+    tile = {};
+  }
+
+  void ViewerWindow::requestTile(const Job& job) {
+    Tile& tile = m_tiles[job.key];
+    dropTile(tile);
+    tile.page = job.page;
+    tile.pageWidth = job.width;
+    tile.x = job.x;
+    tile.y = job.y;
+    ++m_inFlight;
+    preview::HelperMsg msg{.op = preview::op::RenderTile, .a = static_cast<std::uint32_t>(job.page), .b = job.width,
+                           .c = job.x, .d = job.y, .e = job.w << 16U | job.h};
+    m_helper->request(msg, [this, job, generation = m_generation](const preview::HelperReply& reply) {
+      if (generation != m_generation) {
+        return;
+      }
+      --m_inFlight;
+      const auto it = m_tiles.find(job.key);
+      const auto& m = reply.msg;
+      const bool valid = m.op == preview::op::Page && reply.data != nullptr && m.b == job.w && m.c == job.h
+          && m.b <= m.d / 4 && static_cast<std::uint64_t>(m.d) * m.c <= reply.data->bytes().size();
+      if (it != m_tiles.end() && it->second.pageWidth == job.width && valid) {
+        Tile& tile = it->second;
+        tile.px.pixels = reply.data;
+        tile.px.width = m.b;
+        tile.px.height = m.c;
+        tile.px.stride = m.d;
+        showTile(tile);
+        kLog.debug("tile page {} at {},{} of width {}", job.page + 1, job.x, job.y, job.width);
+      }
+      pump();
+    });
+  }
+
+  void ViewerWindow::showTile(Tile& tile) {
+    if (tile.page >= m_tileLayers.size() || m_tileLayers[tile.page] == nullptr) {
+      return; // the next build places it
+    }
+    m_window.updateInPlace([&](Renderer& renderer) {
+      for (TextureHandle& texture : m_dropped) {
+        renderer.textureManager().unload(texture);
+      }
+      m_dropped.clear();
+      const TextureHandle texture = pageTexture(renderer, tile.px);
+      if (tile.node == nullptr) {
+        tile.node = placeTile(tile);
+      }
+      if (tile.node != nullptr) {
+        tile.node->setExternalTexture(renderer, texture);
+      }
+    });
+  }
+
+  Image* ViewerWindow::placeTile(const Tile& tile) {
+    Node* layer = m_tileLayers[tile.page];
+    const RectF box = m_model.pageBox(tile.page);
+    const float f = (box.x1 - box.x0) / static_cast<float>(tile.pageWidth); // logical px per tile px
+    auto image = ui::image({.fit = ImageFit::Stretch, .width = static_cast<float>(tile.px.width) * f,
+                            .height = static_cast<float>(tile.px.height) * f});
+    image->setParticipatesInLayout(false);
+    image->setPosition(static_cast<float>(tile.x) * f, static_cast<float>(tile.y) * f);
+    return static_cast<Image*>(layer->addChild(std::move(image)));
   }
 
   void ViewerWindow::dropPage(Page& page) {
@@ -436,11 +608,22 @@ namespace viewer {
 
   void ViewerWindow::requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width) {
     cache[page].requestedWidth = width;
+    ++m_inFlight;
     m_helper->request(
         {.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = width, .c = kMaxPageHeight},
         [this, &cache, page, width, generation = m_generation](const preview::HelperReply& reply) {
+          if (generation != m_generation) {
+            return;
+          }
+          --m_inFlight;
+          // Sent last, so it runs after this reply is stored.
+          DeferredCall::callLater([this, generation] {
+            if (generation == m_generation) {
+              pump();
+            }
+          });
           // A newer request for this page (a zoom, an edit) replaces this reply.
-          if (generation != m_generation || page >= cache.size() || cache[page].requestedWidth != width) {
+          if (page >= cache.size() || cache[page].requestedWidth != width) {
             return;
           }
           const auto& m = reply.msg;
@@ -775,6 +958,11 @@ namespace viewer {
     m_searchInput = nullptr;
     m_positionLabel = nullptr;
     m_countLabel = nullptr;
+    // The old tree is gone: its tile nodes with it.
+    for (auto& [key, tile] : m_tiles) {
+      tile.node = nullptr;
+    }
+    m_tileLayers.assign(m_pages.size(), nullptr);
     m_pageImages.assign(m_pages.size(), nullptr);
     m_thumbImages.assign(m_thumbs.size(), nullptr);
     m_thumbFrames.assign(m_thumbs.size(), nullptr);
@@ -941,6 +1129,11 @@ namespace viewer {
       image->setParticipatesInLayout(false);
       m_pageImages[i] = image.get();
       sheet->addChild(std::move(image));
+      auto tiles = ui::box({.width = w, .height = h});
+      tiles->setParticipatesInLayout(false);
+      tiles->setClipChildren(true);
+      m_tileLayers[i] = tiles.get();
+      sheet->addChild(std::move(tiles));
       auto layer = ui::box({.width = w, .height = h});
       layer->setParticipatesInLayout(false);
       m_markLayers[i] = layer.get();
@@ -956,6 +1149,21 @@ namespace viewer {
     hscroll->content()->addChild(std::move(columnNode));
     for (std::size_t i = 0; i < m_markLayers.size(); ++i) {
       fillMarks(i);
+    }
+    // Tiles of the old zoom go; the stretched whole page shows until the new ones come.
+    for (auto it = m_tiles.begin(); it != m_tiles.end();) {
+      Tile& tile = it->second;
+      const RectF box = m_model.pageBox(tile.page);
+      if (tile.pageWidth != static_cast<std::uint32_t>(std::lround((box.x1 - box.x0) * s))) {
+        dropTile(tile);
+        it = m_tiles.erase(it);
+        continue;
+      }
+      if (const TextureHandle texture = pageTexture(renderer, tile.px); texture.valid()) {
+        tile.node = placeTile(tile);
+        tile.node->setExternalTexture(renderer, texture);
+      }
+      ++it;
     }
     hscroll->setOnScrollChanged([this](float offset) { m_hOffset = offset; });
     hscroll->requestScrollToOffset(m_hOffset);
@@ -1142,6 +1350,12 @@ namespace viewer {
     if (page < m_pages.size()) {
       m_pages[page].requestedWidth = 0;
       m_thumbs[page].requestedWidth = 0;
+      // Its tiles render again with the edit.
+      for (auto& [key, tile] : m_tiles) {
+        if (tile.page == page) {
+          tile.pageWidth = 0;
+        }
+      }
     }
     requestVisiblePages();
   }

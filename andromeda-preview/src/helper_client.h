@@ -28,6 +28,8 @@ namespace preview {
   namespace op {
     inline constexpr std::uint32_t Info = 1;
     inline constexpr std::uint32_t Render = 2;
+    // a = page, b = whole page width px, c = x, d = y, e = w << 16 | h. Reply Page with the tile.
+    inline constexpr std::uint32_t RenderTile = 15;
     inline constexpr std::uint32_t Text = 3;
     inline constexpr std::uint32_t Frame = 4;
     // a = frame id. No reply.
