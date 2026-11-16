@@ -287,7 +287,9 @@ namespace term {
       if (t == nullptr) {
         return;
       }
-      const std::size_t scrollback = static_cast<std::size_t>(m_settings.scrollbackMb) * 1'000'000;
+      const std::size_t scrollback = m_settings.scrollback == Scrollback::Unlimited
+                                         ? SIZE_MAX
+                                         : static_cast<std::size_t>(m_settings.scrollbackMb) * 1'000'000;
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &scrollback);
       GhosttyCursorStyle cursor = GHOSTTY_CURSOR_STYLE_BLOCK;
       switch (m_settings.cursor) {
@@ -312,7 +314,7 @@ namespace term {
                       || gridFont(settings, theme) != gridFont(m_settings, m_theme);
     const bool terminal = theme != m_theme || settings.cursor != m_settings.cursor
                           || settings.cursorBlink != m_settings.cursorBlink
-                          || settings.scrollbackMb != m_settings.scrollbackMb;
+                          || settings.scrollback != m_settings.scrollback || settings.scrollbackMb != m_settings.scrollbackMb;
     const bool material = settings.material != m_settings.material;
     const bool pad = settings.padding != m_settings.padding;
     const bool bold = settings.boldIsBright != m_settings.boldIsBright;

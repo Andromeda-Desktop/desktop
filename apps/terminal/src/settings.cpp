@@ -32,6 +32,7 @@ namespace term {
         {{CursorShape::Block, "block"}, {CursorShape::Bar, "bar"}, {CursorShape::Underline, "underline"}}};
     constexpr Names<StartDir, 2> kStartDirs{{{StartDir::Home, "home"}, {StartDir::Current, "current"}}};
     constexpr Names<Bell, 3> kBells{{{Bell::Flash, "flash"}, {Bell::Sound, "sound"}, {Bell::Off, "off"}}};
+    constexpr Names<Scrollback, 2> kScrollbacks{{{Scrollback::Limited, "limited"}, {Scrollback::Unlimited, "unlimited"}}};
     constexpr Names<WindowMaterial, 2> kMaterials{
         {{WindowMaterial::Solid, "solid"}, {WindowMaterial::Glass, "glass"}}};
 
@@ -300,6 +301,7 @@ namespace term {
     r.boolean("appearance", "focus_ring", s.focusRing);
     r.string("text", "font", s.font);
     r.integer("text", "size", SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax, s.fontSize);
+    r.choice("terminal", "scrollback", kScrollbacks, s.scrollback);
     r.integer("terminal", "scrollback_mb", SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax,
               s.scrollbackMb);
     r.boolean("terminal", "copy_on_select", s.copyOnSelect);
@@ -336,6 +338,7 @@ namespace term {
     text.insert_or_assign("font", s.font);
     text.insert_or_assign("size", s.fontSize);
     auto& terminal = tableIn(root, "terminal");
+    terminal.insert_or_assign("scrollback", std::string(nameOf(kScrollbacks, s.scrollback)));
     terminal.insert_or_assign("scrollback_mb", s.scrollbackMb);
     terminal.insert_or_assign("copy_on_select", s.copyOnSelect);
     terminal.insert_or_assign("scroll_rows", s.scrollRows);

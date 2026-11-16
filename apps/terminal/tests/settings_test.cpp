@@ -27,6 +27,7 @@ Settings randomSettings(std::mt19937& rng) {
   s.bell = static_cast<Bell>(pick(0, 2));
   s.font = fonts[pick(0, 4)];
   s.fontSize = pick(SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
+  s.scrollback = static_cast<Scrollback>(pick(0, 1));
   s.scrollbackMb = pick(SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax);
   s.copyOnSelect = pick(0, 1) != 0;
   s.boldIsBright = pick(0, 1) != 0;

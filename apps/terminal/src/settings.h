@@ -20,6 +20,7 @@ namespace term {
   enum class StartDir : std::uint8_t { Home, Current };
   enum class Bell : std::uint8_t { Flash, Sound, Off };
   enum class WindowMaterial : std::uint8_t { Solid, Glass };
+  enum class Scrollback : std::uint8_t { Limited, Unlimited };
 
   // User preferences, from $XDG_CONFIG_HOME/andromeda/terminal.toml. The defaults are the built-in behaviour.
   struct Settings {
@@ -32,7 +33,8 @@ namespace term {
     int fontSize = 13;                       // px at ui_scale 1
     bool boldIsBright = false; // bold text in palette colours 0-7 takes the bright 8-15
     int padding = 0;           // px at ui_scale 1, added to the built-in space on every side of the grid
-    int scrollbackMb = 10;
+    Scrollback scrollback = Scrollback::Limited;
+    int scrollbackMb = 10; // the limit while Limited
     bool copyOnSelect = false;
     int scrollRows = 3; // per wheel notch
     Bell bell = Bell::Flash;
