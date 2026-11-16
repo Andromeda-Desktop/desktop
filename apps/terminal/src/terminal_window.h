@@ -125,6 +125,10 @@ namespace term {
     void renameSession(std::uint64_t id, std::string name); // empty: the automatic name
     // All windows of the app, in opening order (the command palette lists their sessions).
     void setWindows(std::function<std::vector<TerminalWindow*>()> windows) { m_windows = std::move(windows); }
+    void setPaletteRecent(std::function<std::vector<std::string>()> load, std::function<void(std::vector<std::string>)> save) {
+      m_loadRecent = std::move(load);
+      m_saveRecent = std::move(save);
+    }
 
   private:
     struct Session {
@@ -159,7 +163,9 @@ namespace term {
       std::optional<std::string> preview; // the theme id this window shows while its row is current
     };
     std::variant<PaletteClosed, PaletteOpen> m_palette;
-    static inline std::vector<std::string> s_paletteRecent; // picked item ids, newest first
+    // The app's saved palette picks (item ids, newest first); empty until setPaletteRecent.
+    std::function<std::vector<std::string>()> m_loadRecent;
+    std::function<void(std::vector<std::string>)> m_saveRecent;
     std::function<std::vector<TerminalWindow*>()> m_windows;
     void openPalette(PaletteTarget target = PaletteTarget::Any);
     void closePalette(bool rootGone = false); // rootGone: the slot it was in was rebuilt

@@ -169,6 +169,7 @@ namespace term {
     bool key(const KeyboardEvent& event) override;
     // Runs a grid action ([keybindings]: copy, paste, scroll, prompt jumps); false for the window's actions.
     bool runAction(Action action);
+    [[nodiscard]] bool hasSelection();
     // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
     void setWindowActive(bool active) override;

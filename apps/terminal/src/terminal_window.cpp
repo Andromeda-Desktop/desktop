@@ -1627,8 +1627,13 @@ namespace term {
       }
       const bool focus = action == Action::FocusLeft || action == Action::FocusRight || action == Action::FocusUp ||
                          action == Action::FocusDown;
-      addAction(std::format("action:{}", info.name), std::string(info.label), std::move(caps),
-                focus && m_cards.empty() ? "Not in a split" : "", [this, action] {
+      std::string off;
+      if (focus && m_cards.empty()) {
+        off = "Not in a split";
+      } else if (action == Action::Copy && (shownTerminal() == nullptr || !shownTerminal()->hasSelection())) {
+        off = "No selection";
+      }
+      addAction(std::format("action:{}", info.name), std::string(info.label), std::move(caps), std::move(off), [this, action] {
                   if (TerminalView* view = shownTerminal(); view != nullptr && view->runAction(action)) {
                     return;
                   }
@@ -1691,7 +1696,7 @@ namespace term {
     std::vector<palette::Item> items = paletteItems(target, open.runs);
     const bool any = target == PaletteTarget::Any;
     open.ui = std::make_shared<CommandPalette>(
-        m_window.animations(), std::move(items), any ? s_paletteRecent : std::vector<std::string>{},
+        m_window.animations(), std::move(items), any && m_loadRecent ? m_loadRecent() : std::vector<std::string>{},
         CommandPalette::Host{
             .run =
                 [this, any](const palette::Item& item) {
@@ -1704,12 +1709,13 @@ namespace term {
                     return;
                   }
                   std::function<void()> run = std::move(it->second);
-                  if (any) {
-                    std::erase(s_paletteRecent, item.id);
-                    s_paletteRecent.insert(s_paletteRecent.begin(), item.id);
-                    if (s_paletteRecent.size() > 10) {
-                      s_paletteRecent.pop_back();
-                    }
+                  // Session ids are per run: a saved one could name another session after a restart.
+                  if (any && item.kind != palette::Kind::Session && m_loadRecent && m_saveRecent) {
+                    std::vector<std::string> recent = m_loadRecent();
+                    std::erase(recent, item.id);
+                    recent.insert(recent.begin(), item.id);
+                    recent.resize(std::min<std::size_t>(recent.size(), 10));
+                    m_saveRecent(std::move(recent));
                   }
                   closePalette();
                   run();

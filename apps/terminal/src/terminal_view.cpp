@@ -2325,6 +2325,13 @@ namespace term {
         std::move(closed));
   }
 
+  bool TerminalView::hasSelection() {
+    return m_session.withTerminal([](GhosttyTerminal t) {
+      GhosttySelection selection{};
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SELECTION, &selection) == GHOSTTY_SUCCESS;
+    });
+  }
+
   std::string TerminalView::selectionText() {
     return m_session.withTerminal([&](GhosttyTerminal t) {
       GhosttySelection selection{};

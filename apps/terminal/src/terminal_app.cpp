@@ -73,6 +73,9 @@ namespace term {
       std::ranges::sort(out, {}, &TerminalWindow::windowId);
       return out;
     });
+    m_windows[&window]->setPaletteRecent(
+        [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
+        [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });
     saveLayouts();
     return window;
   }
