@@ -128,6 +128,7 @@ namespace andromeda {
     case A::LayoutToggleSplit:
       return Group::MoveSize;
     case A::WindowClose:
+    case A::WindowCloseOrPowerOverlay:
     case A::WindowKill:
     case A::WindowMinimize:
     case A::WindowRestoreMinimized:

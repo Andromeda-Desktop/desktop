@@ -175,6 +175,7 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `column-toggle-tab-bar`                | Show or hide the focused tab group's bar                   |
 | `column-toggle-tabbed`                 | Tab the rows around the focused window, or stack its tabs  |
 | `window-close:[<window-id>]`           | Close the focused window, or the given window              |
+| `window-close-or-power-overlay`        | Close the focused window; with none, open the power menu   |
 | `window-kill:[<window-id>]`            | Kill the process owning the focused or given window        |
 | `window-minimize:[<window-id>]`        | Minimize the focused floating window, or the given window  |
 | `window-restore-minimized`             | Restore the latest minimized window on this workspace      |

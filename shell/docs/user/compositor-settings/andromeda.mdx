@@ -88,18 +88,23 @@ Andromeda can launch Noctalia IPC commands directly from its `[keybinds]` table.
 
 ```toml
 [keybinds]
-"Mod+Space" = "spawn:noctalia msg panel-toggle launcher"
-"Mod+S" = "spawn:noctalia msg panel-toggle control-center"
-"Mod+Comma" = "spawn:noctalia msg settings-toggle"
-"Alt+Tab" = "spawn:noctalia msg window-switcher hold"
-"Mod+Shift+A" = "spawn:noctalia msg screenshot-annotate"
-"Mod+Ctrl+A" = "spawn:noctalia msg annotate"
+"Mod+Space" = "spawn:andromeda-shell msg panel-toggle launcher"
+"Mod+S" = "spawn:andromeda-shell msg panel-toggle control-center"
+"Mod+Comma" = "spawn:andromeda-shell msg settings-toggle"
+"Alt+Tab" = "spawn:andromeda-shell msg window-switcher hold"
+"Mod+Shift+A" = "spawn:andromeda-shell msg screenshot-annotate"
+"Mod+Ctrl+A" = "spawn:andromeda-shell msg annotate"
 
-"XF86AudioRaiseVolume" = "spawn:noctalia msg volume-up"
-"XF86AudioLowerVolume" = "spawn:noctalia msg volume-down"
-"XF86AudioMute" = "spawn:noctalia msg volume-mute"
-"XF86MonBrightnessUp" = "spawn:noctalia msg brightness-up"
-"XF86MonBrightnessDown" = "spawn:noctalia msg brightness-down"
+"XF86AudioRaiseVolume" = "spawn:andromeda-shell msg volume-up"
+"XF86AudioLowerVolume" = "spawn:andromeda-shell msg volume-down"
+"XF86AudioMute" = "spawn:andromeda-shell msg volume-mute"
+"XF86MonBrightnessUp" = "spawn:andromeda-shell msg brightness-up"
+"XF86MonBrightnessDown" = "spawn:andromeda-shell msg brightness-down"
+"XF86KbdBrightnessUp" = "spawn:andromeda-shell msg keyboard-backlight-up"
+"XF86KbdBrightnessDown" = "spawn:andromeda-shell msg keyboard-backlight-down"
+"XF86AudioPlay" = "spawn:andromeda-shell msg media toggle"
+"XF86AudioNext" = "spawn:andromeda-shell msg media next"
+"XF86AudioPrev" = "spawn:andromeda-shell msg media previous"
 ```
 
 `Mod` uses Andromeda's configured modifier from `general.mod_key` and defaults to Super in a native session. See [Keybinds](/andromeda/keybinds/) for more Noctalia IPC examples and the complete action reference.

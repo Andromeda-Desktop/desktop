@@ -393,6 +393,8 @@ namespace andromeda {
         {"window-center", "", "Center the focused floating window on its output", KeybindAction::WindowCenter},
         {"window-close", "[<window-id>]", "Close the focused window, or the given window", KeybindAction::WindowClose,
          ActionArgKind::OptionalWindowId},
+        {"window-close-or-power-overlay", "", "Close the focused window; with none, open the power menu",
+         KeybindAction::WindowCloseOrPowerOverlay},
         {"window-consume-from-left", "", "Pull the left column's window into the focused column",
          KeybindAction::WindowConsumeFromLeft},
         {"window-consume-from-right", "", "Pull the right column's window into the focused column",

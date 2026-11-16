@@ -177,14 +177,14 @@ numlock_toggle = true
 "Mod+Q" = { action = "window-close", repeat = false }
 "Mod+Escape" = { action = "shell:panel-toggle control-center session", repeat = false }
 "Ctrl+Alt+Delete" = { action = "shell:power-overlay", repeat = false }
+"Alt+F4" = { action = "window-close-or-power-overlay", repeat = false }
 # The shell holds logind's handle-power-key block: a press opens the power menu (or the Settings › Power choice),
 # holding fills the shut-down ring, the release cancels it.
 "XF86PowerOff" = { action = "shell:power-overlay key-down", release_action = "shell:power-overlay key-up", repeat = false, allow_when_locked = true }
 "Mod+Shift+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
 
 # Media, volume and brightness keys from any input device, routed through the
-# Noctalia shell so its OSDs show. Safe while the session is locked.
-# https://docs.noctalia.dev/noctalia/compositor-settings/andromeda
+# shell so its OSDs show. Safe while the session is locked.
 "XF86AudioRaiseVolume" = { action = "spawn:andromeda-shell msg volume-up", allow_when_locked = true }
 "XF86AudioLowerVolume" = { action = "spawn:andromeda-shell msg volume-down", allow_when_locked = true }
 "XF86AudioMute" = { action = "spawn:andromeda-shell msg volume-mute", allow_when_locked = true, repeat = false }
@@ -195,6 +195,16 @@ numlock_toggle = true
 "XF86AudioPrev" = { action = "spawn:andromeda-shell msg media previous", allow_when_locked = true }
 "XF86MonBrightnessUp" = { action = "spawn:andromeda-shell msg brightness-up", allow_when_locked = true }
 "XF86MonBrightnessDown" = { action = "spawn:andromeda-shell msg brightness-down", allow_when_locked = true }
+"XF86KbdBrightnessUp" = { action = "spawn:andromeda-shell msg keyboard-backlight-up", allow_when_locked = true }
+"XF86KbdBrightnessDown" = { action = "spawn:andromeda-shell msg keyboard-backlight-down", allow_when_locked = true }
+"XF86KbdLightOnOff" = { action = "spawn:andromeda-shell msg keyboard-backlight-toggle", allow_when_locked = true, repeat = false }
+
+# Launch keys on multimedia keyboards open the apps set in Settings > Default Apps.
+"XF86WWW" = { action = "spawn:andromeda-shell msg default-app-open browser", repeat = false }
+"XF86HomePage" = { action = "spawn:andromeda-shell msg default-app-open browser", repeat = false }
+"XF86Mail" = { action = "spawn:andromeda-shell msg default-app-open mail", repeat = false }
+"XF86Explorer" = { action = "spawn:andromeda-shell msg default-app-open files", repeat = false }
+"XF86MyComputer" = { action = "spawn:andromeda-shell msg default-app-open files", repeat = false }
 
 # Screenshots and screen recording
 "Print" = { action = "shell:screenshot-region", repeat = false }

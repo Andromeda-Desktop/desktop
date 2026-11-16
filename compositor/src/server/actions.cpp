@@ -819,6 +819,21 @@ namespace andromeda {
       return true;
     }
 
+    bool actionWindowCloseOrPowerOverlay(Server& server, const Keybind& /*bind*/, std::string* error) {
+      if (View* view = focusedWindow(server)) {
+        view->requestClose();
+        return true;
+      }
+      DesktopShell* shell = server.desktopShell();
+      if (shell == nullptr || !shell->sendAction("power-overlay")) {
+        if (error != nullptr) {
+          *error = "no desktop shell is bound";
+        }
+        return false;
+      }
+      return true;
+    }
+
     bool actionWindowKill(Server& server, const Keybind& bind, std::string* error) {
       const auto target = clientTarget(server, windowIdArg(bind));
       if (!target.has_value()) {
@@ -2267,6 +2282,7 @@ namespace andromeda {
         nullptr,
         &actionSpawn,
         &actionWindowClose,
+        &actionWindowCloseOrPowerOverlay,
         &actionWindowKill,
         &actionWindowMinimize,
         &actionWindowRestoreMinimized,

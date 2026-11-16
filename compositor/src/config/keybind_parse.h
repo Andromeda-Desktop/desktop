@@ -33,6 +33,7 @@ namespace andromeda {
     None,
     Spawn,
     WindowClose,
+    WindowCloseOrPowerOverlay,
     WindowKill,
     WindowMinimize,
     WindowRestoreMinimized,
