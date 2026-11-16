@@ -717,6 +717,7 @@ namespace andromeda {
     if (m_workspaceGroup != nullptr) {
       m_workspaceGroup->abandonReveal();
     }
+    const float previousScale = m_output->scale;
     const OutputRule* rule = findOutputRule(config(), identity());
     const auto sdrTransfer = configuredSdrTransfer() == SdrTransfer::Srgb ? WLR_COLOR_TRANSFER_FUNCTION_SRGB
                                                                           : WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
@@ -1174,6 +1175,10 @@ namespace andromeda {
           "output '{}': applied mode={}x{}@{}mHz scale={} transform={}", m_output->name, m_output->width,
           m_output->height, m_output->refresh, m_output->scale, static_cast<int>(m_output->transform)
       );
+      // An apply deferred past a pending page flip lands after the reload told every surface its scale.
+      if (m_output->scale != previousScale) {
+        m_server->refreshSurfaceScales();
+      }
     } else if (!desktopEnabled() && m_mirrorSource == nullptr) {
       const OutputRule* rule = findOutputRule(config(), identity());
       if (rule == nullptr && !outputCanAutoEnable(m_output)) {
