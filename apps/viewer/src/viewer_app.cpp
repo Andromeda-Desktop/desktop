@@ -83,6 +83,26 @@ namespace viewer {
     tabs("view.next-tab", "Next Tab", KeyChord{XKB_KEY_Tab, KeyMod::Ctrl}, &ViewerTabs::next);
     tabs("view.previous-tab", "Previous Tab", KeyChord{XKB_KEY_ISO_Left_Tab, KeyMod::Ctrl | KeyMod::Shift},
          &ViewerTabs::previous, KeyChord{XKB_KEY_Tab, KeyMod::Ctrl | KeyMod::Shift});
+    struct PaneKey {
+      const char* id;
+      const char* label;
+      std::uint32_t sym;
+      float dx;
+      float dy;
+    };
+    for (const PaneKey& key : {PaneKey{"view.focus-left", "Focus Pane Left", XKB_KEY_Left, -1.0F, 0.0F},
+                               PaneKey{"view.focus-right", "Focus Pane Right", XKB_KEY_Right, 1.0F, 0.0F},
+                               PaneKey{"view.focus-up", "Focus Pane Up", XKB_KEY_Up, 0.0F, -1.0F},
+                               PaneKey{"view.focus-down", "Focus Pane Down", XKB_KEY_Down, 0.0F, 1.0F}}) {
+      commands().add({.id = key.id, .label = key.label, .group = "Window",
+                      .shortcut = KeyChord{key.sym, KeyMod::Ctrl | KeyMod::Alt},
+                      .enabled = [this] { return activeTabs() != nullptr; },
+                      .run = [this, dx = key.dx, dy = key.dy] {
+                        if (ViewerTabs* t = activeTabs(); t != nullptr) {
+                          t->focusPane(dx, dy);
+                        }
+                      }});
+    }
     const auto open = [this](const char* id, const char* label, std::uint32_t sym) {
       commands().add({.id = id, .label = label, .group = "File", .shortcut = KeyChord{sym, KeyMod::Ctrl},
                       .run = [this] { chooseFile(); }});

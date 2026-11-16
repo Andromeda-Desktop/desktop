@@ -77,7 +77,7 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   area->setOnMotion([this](const InputArea::PointerData& data) {
     if (m_drag == Drag::Pressed && std::hypot(data.sceneX - m_pressX, data.sceneY - m_pressY) > Tokens::spaceP4 * m_scale) {
       m_drag = Drag::Dragging;
-      setOpacity(Tokens::componentTerminalDragSourceOpacity);
+      setOpacity(Tokens::componentSplitDragSourceOpacity);
     }
     if (m_drag == Drag::Dragging) {
       m_onDrag(DragPhase::Move, data.sceneX, data.sceneY);

@@ -524,7 +524,6 @@ scene_tint = 0.15  # the theme surface's alpha over a theme scene where no text 
 group_row = 32.0  # a split member's row in the sidebar group block
 split_min_columns = 20.0  # a divider stops where a pane would show fewer columns
 split_min_rows = 5.0  # and fewer rows
-drag_source_opacity = 0.38  # a session row while it drags onto a card (design-split drop)
 palette_dim = 0.55  # shadow alpha over the pane the command palette acts on (design-palette B)
 palette_header = 24.0  # the palette's "Sessions", "Recent" and "N more" lines
 palette_rows = 8  # palette results shown at once; the rest scroll
@@ -535,6 +534,7 @@ palette_off_opacity = 0.38  # a palette row that cannot run now
 focus_ring = 1.5  # accent ring on the focused split card
 divider_hit = 24.0  # a split divider's drag area: the gap and 8 into each card
 drop_fill = 0.14  # accent alpha of the half a dropped row would take
+drag_source_opacity = 0.38  # a row while it drags onto a card (design-split drop)
 
 [component.viewer]
 split_min_width = 400.0  # a document pane in a split is never narrower: page, zoom, one tool and the window buttons fit

@@ -9,6 +9,7 @@
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
+#include "ui/controls/context_menu.h"
 #include "ui/controls/flex.h"
 #include "ui/palette.h"
 #include "ui/style.h"
@@ -17,11 +18,33 @@
 #include "wayland/wayland_connection.h"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <gio/gio.h>
+#include <linux/input-event-codes.h>
 #include <sstream>
 
 namespace viewer {
+
+  namespace {
+
+    // A Documents row: glyph and ellipsized name; also the drag ghost of a document row.
+    std::unique_ptr<Flex> documentRow(std::string glyph, std::string text, bool on, ColorRole ink, ColorSpec fill,
+                                      float width, float s) {
+      auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = fill,
+                        .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s),
+                        .width = width, .height = Tokens::componentSidebarRow * s});
+      r->setPadding(0.0F, Tokens::spaceP8 * s);
+      r->addChild(ui::glyph({.glyph = std::move(glyph), .glyphSize = Tokens::sizeSymbolInline * s,
+                             .color = colorSpecFromRole(ColorRole::Label2)}));
+      r->addChild(ui::label({.text = std::move(text), .fontSize = Style::fontSizeCaption * s,
+                             .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
+                             .color = colorSpecFromRole(ink), .maxLines = 1, .ellipsize = TextEllipsize::End,
+                             .flexGrow = 1.0F}));
+      return r;
+    }
+
+  } // namespace
 
   ViewerTabs::ViewerTabs(AppLoop& loop, AppWindow& window, StateStore& state)
       : m_loop(loop), m_window(window), m_state(state), m_split(window, splitCallbacks()) {
@@ -262,18 +285,81 @@ namespace viewer {
       return;
     }
     if (m_set.splitOf(id) != nullptr && m_set.splitOf(id) == m_set.splitOf(*focused)) {
-      m_set.apply(tab_event::Leave{id});
-      changed();
+      leave(id);
       return;
     }
-    ViewerWindow* old = active();
-    if (m_set.splitOf(id) == nullptr && m_set.apply(tab_event::Join{.target = *focused, .joining = id})) {
-      m_split.pendJoin({.target = *focused, .joining = id});
-      old->detach();
-      changed();
+    if (canJoin(id)) {
+      join(id, std::nullopt);
       return;
     }
     select(id);
+  }
+
+  bool ViewerTabs::canJoin(std::uint64_t id) const {
+    const auto focused = m_set.focused();
+    if (!focused || id == *focused || m_set.splitOf(id) != nullptr) {
+      return false;
+    }
+    const auto* split = m_set.splitOf(*focused);
+    return split == nullptr || split->size() < kMaxPanes;
+  }
+
+  void ViewerTabs::join(std::uint64_t id, const std::optional<ui::SplitDrop>& drop) {
+    const std::uint64_t target = drop ? drop->target : *m_set.focused();
+    ViewerWindow* old = active();
+    if (!m_set.apply(tab_event::Join{.target = target, .joining = id, .before = drop && drop->before})) {
+      return;
+    }
+    m_split.pendJoin({.target = target, .joining = id, .edge = drop ? drop->edge : 0U},
+                     drop ? std::optional(drop->rect) : std::nullopt);
+    old->detach();
+    changed();
+  }
+
+  void ViewerTabs::leave(std::uint64_t id) {
+    if (m_set.apply(tab_event::Leave{id})) {
+      changed();
+    }
+  }
+
+  void ViewerTabs::focusPane(float dx, float dy) {
+    if (const auto id = m_split.paneInDirection(dx, dy)) {
+      select(*id);
+    }
+  }
+
+  void ViewerTabs::rowDrag(std::uint64_t id, bool drop, float sceneX, float sceneY) {
+    const auto target = canJoin(id) ? m_split.dropAt(*m_set.focused(), sceneX, sceneY) : std::nullopt;
+    const float s = m_window.uiScale();
+    if (!drop && !m_dragGhost) {
+      m_window.setDragGhost(documentRow("file", m_docs.at(id)->title(), false, ColorRole::Label1,
+                                        colorSpecFromRole(ColorRole::SolidRegular), m_rowWidth, s));
+      m_dragGhost = true;
+    }
+    if (!drop) {
+      m_window.moveDragGhost(sceneX - Tokens::spaceP16 * s, sceneY - Tokens::componentSidebarRow * s / 2.0F);
+    } else if (std::exchange(m_dragGhost, false)) {
+      m_window.clearDragGhost();
+    }
+    m_split.showDropPreview(target && !drop ? std::optional(target->rect) : std::nullopt);
+    if (target && drop) {
+      join(id, target);
+    }
+  }
+
+  void ViewerTabs::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
+    enum : std::int32_t { kSplit = 1, kLeave };
+    std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = "Split with current", .enabled = canJoin(id)}};
+    if (m_set.splitOf(id) != nullptr) {
+      entries.push_back({.id = kLeave, .label = "Leave split"});
+    }
+    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
+      if (item == kSplit && canJoin(id)) {
+        join(id, std::nullopt);
+      } else if (item == kLeave) {
+        leave(id);
+      }
+    });
   }
 
   SplitView::Callbacks ViewerTabs::splitCallbacks() {
@@ -401,23 +487,60 @@ namespace viewer {
     if (cut && std::ranges::find(rows, *m_set.focused()) == rows.end()) {
       rows.back() = *m_set.focused();
     }
+    m_rowWidth = width;
     const auto row = [&](std::string glyph, std::string text, bool on, ColorRole ink, std::function<void(ViewerTabs&)> run,
-                         std::string name) {
-      auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s,
-                        .fill = on ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
-                                   : clearColorSpec(),
-                        .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s),
-                        .width = width, .height = Tokens::componentSidebarRow * s});
-      r->setPadding(0.0F, Tokens::spaceP8 * s);
-      r->addChild(ui::glyph({.glyph = std::move(glyph), .glyphSize = Tokens::sizeSymbolInline * s,
-                             .color = colorSpecFromRole(ColorRole::Label2)}));
-      r->addChild(ui::label({.text = std::move(text), .fontSize = Style::fontSizeCaption * s,
-                             .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
-                             .color = colorSpecFromRole(ink), .maxLines = 1, .ellipsize = TextEllipsize::End,
-                             .flexGrow = 1.0F}));
+                         std::string name, std::optional<std::uint64_t> doc = std::nullopt) {
+      auto r = documentRow(std::move(glyph), std::move(text), on, ink,
+                           on ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
+                              : clearColorSpec(),
+                           width, s);
       auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
       area->setSize(width, Tokens::componentSidebarRow * s);
-      area->setOnClick([later, run](const InputArea::PointerData&) { later(run); });
+      // A document row drags onto a pane half to join the split; a right click opens its menu.
+      enum class Drag : std::uint8_t { Idle, Pressed, Dragging, Dropped };
+      struct RowDrag {
+        Drag phase = Drag::Idle;
+        float x = 0.0F;
+        float y = 0.0F;
+      };
+      auto drag = std::make_shared<RowDrag>();
+      if (doc) {
+        area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+        area->setOnPress([this, drag, node = r.get(), id = *doc](const InputArea::PointerData& d) {
+          if (d.button != BTN_LEFT) {
+            return;
+          }
+          if (d.pressed) {
+            *drag = {.phase = Drag::Pressed, .x = d.sceneX, .y = d.sceneY};
+            return;
+          }
+          const bool dropped = drag->phase == Drag::Dragging;
+          drag->phase = dropped ? Drag::Dropped : Drag::Idle;
+          if (dropped) {
+            node->setOpacity(1.0F);
+            rowDrag(id, true, d.sceneX, d.sceneY);
+          }
+        });
+        area->setOnMotion([this, drag, node = r.get(), id = *doc, s](const InputArea::PointerData& d) {
+          if (drag->phase == Drag::Pressed && std::hypot(d.sceneX - drag->x, d.sceneY - drag->y) > Tokens::spaceP4 * s) {
+            drag->phase = Drag::Dragging;
+            node->setOpacity(Tokens::componentSplitDragSourceOpacity);
+          }
+          if (drag->phase == Drag::Dragging) {
+            rowDrag(id, false, d.sceneX, d.sceneY);
+          }
+        });
+      }
+      area->setOnClick([this, later, run, drag, doc](const InputArea::PointerData& d) {
+        if (std::exchange(drag->phase, Drag::Idle) == Drag::Dropped) {
+          return;
+        }
+        if (d.button == BTN_RIGHT && doc) {
+          openRowMenu(*doc, d.sceneX, d.sceneY);
+        } else if (d.button == BTN_LEFT) {
+          later(run);
+        }
+      });
       Accessible& a = area->accessibleState();
       a.role = AccessibleRole::Tab;
       a.name = std::move(name);
@@ -427,7 +550,7 @@ namespace viewer {
     };
     for (const std::uint64_t id : rows) {
       const std::string title = m_docs.at(id)->title();
-      row("file", title, id == m_set.focused(), ColorRole::Label1, [id](ViewerTabs& t) { t.clickRow(id); }, title);
+      row("file", title, id == m_set.focused(), ColorRole::Label1, [id](ViewerTabs& t) { t.clickRow(id); }, title, id);
     }
     if (tabs.size() > kShown + 1) {
       const std::string text = cut ? std::format("{} more", tabs.size() - rows.size()) : std::string("Show fewer");

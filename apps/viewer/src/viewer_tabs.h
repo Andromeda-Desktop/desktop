@@ -37,6 +37,8 @@ namespace viewer {
     void select(std::uint64_t id);
     void next() { step(1); }
     void previous() { step(-1); }
+    // Focus moves to the split pane nearest in direction (dx, dy).
+    void focusPane(float dx, float dy);
     // Asks first when the tab has unsaved edits; the last tab closes the window.
     void closeActive();
 
@@ -57,6 +59,14 @@ namespace viewer {
     void changed();
     // Ctrl+click: a free row joins the shown document's split, a member leaves it; else the row shows.
     void clickRow(std::uint64_t id);
+    // `id` may join the focused document's split: it is free, not focused, and the split has room.
+    [[nodiscard]] bool canJoin(std::uint64_t id) const;
+    // `id` joins the focused document's split, or the half of a pane it was dropped on.
+    void join(std::uint64_t id, const std::optional<ui::SplitDrop>& drop);
+    void leave(std::uint64_t id);
+    // A Documents row dragged to the scene point: the drop preview, and on drop the join.
+    void rowDrag(std::uint64_t id, bool drop, float sceneX, float sceneY);
+    void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
     [[nodiscard]] SplitView::Callbacks splitCallbacks();
     // Files dropped on the window open as tabs.
     void registerDropTarget();
@@ -74,6 +84,8 @@ namespace viewer {
     Node* m_caption = nullptr; // the header accessory of the last build
     wl_surface* m_dropSurface = nullptr;
     bool m_immersive = false;
+    bool m_dragGhost = false; // a dragged Documents row shows its ghost
+    float m_rowWidth = 0.0F;  // a Documents row's width, for its drag ghost
     bool m_allDocuments = false; // the Documents group shows every row, not the first 3
     bool m_sidebarBeforeImmersive = true;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
