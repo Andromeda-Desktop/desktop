@@ -170,6 +170,7 @@ void DesktopIcons::open() {
   if (m_view == nullptr) {
     m_view = std::make_unique<FileModelView>(FileModel::open(m_dir, m_watcher));
     m_view->setSort({.key = FileSortKey::Name, .foldersFirst = true});
+    m_allStats = m_view->model().needAllStats(); // stacks pick the newest file; .desktop labels are cached by mtime
     m_view->setChangedCallback([this] {
       m_groupsStale = true;
       rebuildCells();

@@ -28,9 +28,10 @@ namespace {
     }
   }
 
-  // The app loop in miniature: the DeferredCall wake fd, the watcher and the timers, until done() or 3 s.
-  template <typename F> bool pump(DirectoryWatcher& watcher, F done) {
-    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  // The app loop in miniature: the DeferredCall wake fd, the watcher and the timers, until done() or the limit.
+  template <typename F>
+  bool pump(DirectoryWatcher& watcher, F done, std::chrono::milliseconds limit = std::chrono::seconds(3)) {
+    const auto until = std::chrono::steady_clock::now() + limit;
     while (!done()) {
       if (std::chrono::steady_clock::now() > until) {
         return false;
@@ -143,6 +144,7 @@ int main() {
     std::ofstream(big / ("f" + std::to_string(i)));
   }
   auto bigModel = FileModel::open(big, watcher);
+  auto bigAll = bigModel->needAllStats();
   expect(pump(watcher, [&] { return bigModel->status() == FileModel::Status::Ready; }), "the big listing finishes");
   int resets = 0;
   auto resetToken = bigModel->subscribe([&](const FileModel::Change& c) { resets += c.type == FileModel::Change::Type::Reset ? 1 : 0; });
@@ -151,10 +153,24 @@ int main() {
   expect(bigModel->entries().size() == 1500, "the reload lists every file");
   resetToken.reset();
   bigModel.reset();
+  bigAll.reset();
+  // Without a needAllStats() token a big folder stats only the rows asked for; a token then stats the rest.
   auto again = FileModel::open(big, watcher);
-  expect(pump(watcher, [&] { return again->status() == FileModel::Status::Ready && !again->statPending(); }),
-         "a new model of the folder finishes after the old one was dropped mid-stat");
+  expect(pump(watcher, [&] { return again->status() == FileModel::Status::Ready; }), "the folder lists again");
+  const auto wanted = std::vector(again->entries().begin(), again->entries().begin() + 10);
+  again->prioritizeStat(wanted);
+  expect(pump(watcher, [&] {
+           return std::ranges::none_of(std::span(again->entries()).first(10), [](const auto& e) { return e->pendingStat; });
+         }),
+         "the rows asked for get their stat");
+  expect(!pump(watcher, [&] { return !again->statPending(); }, std::chrono::milliseconds(500)) &&
+             again->entries().back()->pendingStat,
+         "rows nobody asked for stay unstatted");
+  auto againAll = again->needAllStats();
+  expect(pump(watcher, [&] { return !again->statPending(); }),
+         "a token stats the rest after the old model was dropped mid-stat");
   expect(std::ranges::none_of(again->entries(), [](const auto& e) { return e->pendingStat; }), "every entry has its stat");
+  againAll.reset();
   again.reset();
 
   // A listing big enough to split across threads still comes in name order with every name field.
@@ -190,6 +206,7 @@ int main() {
       }
     }
     auto mixedModel = FileModel::open(mixed, watcher);
+    auto mixedAll = mixedModel->needAllStats();
     FileModelView live(mixedModel);
     FileSort sort;
     bool hidden = false;

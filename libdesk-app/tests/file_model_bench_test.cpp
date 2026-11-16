@@ -62,6 +62,7 @@ int main() {
   DirectoryWatcher watcher;
   const auto start = Clock::now();
   auto model = FileModel::open(dir, watcher);
+  auto all = model->needAllStats();
   FileModelView view(model);
   Clock::time_point firstNames{};
   bool prioritized = false;

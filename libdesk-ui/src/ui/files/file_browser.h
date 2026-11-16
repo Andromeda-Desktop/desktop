@@ -344,7 +344,8 @@ private:
   void attachModel();
   void onModelChanged();
   void onRowsPatched(std::span<const std::size_t> rows);
-  void logLoadTimes();
+  void logLoadTimes(bool rowsStatted = false);
+  void updateStatDemand(bool selecting);
   void present(Motion motion);
   void refreshRows();
   void rebindPages();
@@ -416,6 +417,7 @@ private:
   std::vector<HistoryEntry> m_forward;
   std::shared_ptr<FileModel> m_model;
   std::unique_ptr<FileModelView> m_modelView;
+  std::shared_ptr<void> m_allStats; // needAllStats() while a group, view, filter or selection reads every row
   std::shared_ptr<void> m_modelEdits; // FileModel subscription: an edited file's preview decodes again
   std::set<std::string> m_staleThumbs; // edited files whose previews reload once they are quiet
   Timer m_staleTimer;

@@ -166,6 +166,7 @@ private:
   IconResolver m_iconResolver;
   std::filesystem::path m_dir;
   std::unique_ptr<FileModelView> m_view;
+  std::shared_ptr<void> m_allStats;
   wl_output* m_output = nullptr;
   std::unique_ptr<LayerSurface> m_surface;
   std::unique_ptr<Node> m_sceneRoot;

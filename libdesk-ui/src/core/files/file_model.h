@@ -61,8 +61,10 @@ public:
   [[nodiscard]] std::shared_ptr<void> subscribe(Listener listener);
   // Lists the directory again (after a watch overflow, or on F5).
   void reload();
-  // Stats these rows (the visible ones) before the others; replaces the previous request.
+  // A big listing stats only the rows asked for here (the visible ones); replaces the previous request.
   void prioritizeStat(std::span<const std::shared_ptr<const FileInfo>> rows);
+  // While a returned token lives, every entry gets its stat (a size or date sort or group, a gallery, the desktop).
+  [[nodiscard]] std::shared_ptr<void> needAllStats();
   // True until every entry of the current listing has its stat fields.
   [[nodiscard]] bool statPending() const noexcept { return m_statJob != nullptr; }
 
@@ -72,6 +74,7 @@ private:
 
   FileModel(std::filesystem::path dir, DirectoryWatcher& watcher);
   void applyStats(StatJob& job);
+  void updateStatWalk();
   void insertSorted(std::shared_ptr<const FileInfo> info);
   void startWatch();
   void onWatch(DirectoryWatcher::Event event, const std::string& name, const std::string& newName);
@@ -91,6 +94,7 @@ private:
   std::set<std::string> m_pending; // names a watch event touched; held while a listing runs, applied on its result
   Timer m_flush;
   std::shared_ptr<StatJob> m_statJob;
+  std::size_t m_allStatsWanted = 0; // live needAllStats() tokens
 };
 
 // A sorted, filtered row list over a FileModel, for one view.
@@ -134,4 +138,5 @@ private:
   std::vector<std::size_t> m_patched;
   std::function<void()> m_onChanged;
   std::function<void(std::span<const std::size_t>)> m_onPatched;
+  std::shared_ptr<void> m_allStats; // held under a size or date sort
 };

@@ -2358,6 +2358,7 @@ void FileBrowser::navigate(HistoryEntry target, Motion motion, std::vector<std::
 }
 
 void FileBrowser::attachModel() {
+  m_allStats.reset();
   m_modelView.reset();
   m_modelEdits.reset();
   m_model.reset();
@@ -2412,7 +2413,7 @@ void FileBrowser::onRowsPatched(std::span<const std::size_t> rows) {
     onModelChanged();
     return;
   }
-  logLoadTimes();
+  logLoadTimes(!rows.empty());
   Page& page = m_ui->cur();
   const auto& view = m_modelView->rows();
   for (const std::size_t r : rows) {
@@ -2427,7 +2428,17 @@ void FileBrowser::onRowsPatched(std::span<const std::size_t> rows) {
   notifyChanged();
 }
 
-void FileBrowser::logLoadTimes() {
+void FileBrowser::updateStatDemand(bool selecting) {
+  // A big folder stats only its visible rows; these need every row: date and size groups, the gallery's days, the
+  // Recent filter and the selection's total size.
+  const bool groups = (m_group == FileGroupBy::Date || m_group == FileGroupBy::Size) && m_options.view != View::Columns;
+  const bool recent = m_searchKind == SearchKind::Recent && (!m_filter.empty() || m_ui->searchFocused);
+  const bool need = m_model != nullptr && m_model->statPending() &&
+                    (groups || recent || m_options.view == View::Gallery || selecting);
+  m_allStats = need ? (m_allStats != nullptr ? m_allStats : m_model->needAllStats()) : nullptr;
+}
+
+void FileBrowser::logLoadTimes(bool rowsStatted) {
   // tests/e2e/files_speed.sh reads these: names listed, then every stat read (FB-SPEED budgets).
   if (m_navigateAt != std::chrono::steady_clock::time_point{}) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_navigateAt).count();
@@ -2435,7 +2446,8 @@ void FileBrowser::logLoadTimes() {
       m_listedLogged = true;
       kLog.debug("listed {} in {:.1f} ms", m_model->entries().size(), ms);
     }
-    if (!m_model->statPending()) {
+    // A big folder stats only its visible rows: the first of them counts as statted.
+    if (!m_model->statPending() || rowsStatted) {
       kLog.debug("statted {} in {:.1f} ms", m_model->entries().size(), ms);
       m_navigateAt = {};
     }
@@ -2985,6 +2997,7 @@ void FileBrowser::refreshChrome() {
   const float s = ui.scale;
   refreshViewButtons();
   const bool selecting = !m_selected.empty();
+  updateStatDemand(selecting);
   if (ui.zoom != nullptr) {
     const bool zoom = m_options.view == View::Icons && !selecting;
     ui.zoom->setVisible(zoom);

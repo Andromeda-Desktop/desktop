@@ -67,9 +67,20 @@ struct FileModel::StatJob {
   std::mutex mutex; // guards the members below
   std::deque<std::size_t> priority;
   std::vector<std::pair<std::size_t, std::shared_ptr<const FileInfo>>> batch;
-  std::size_t workersLeft = 0;
-  bool finished = false;
+  // Demand: workers stat priority rows, then exit. Walk: they also take every row in name order.
+  enum class Mode : std::uint8_t { Demand, Walk } mode = Mode::Demand;
+  std::size_t running = 0;
+  bool finished = false; // every row was taken and the last worker left
   bool drainPosted = false;
+
+  // With mutex held: starts the workers the mode and the queue can use.
+  void startWorkers(const std::shared_ptr<StatJob>& self) {
+    const std::size_t most = std::clamp<std::size_t>(std::thread::hardware_concurrency(), 1, kMaxStatWorkers);
+    const std::size_t want = mode == Mode::Walk ? most : std::min(most, priority.size());
+    for (; running < want && !finished; ++running) {
+      std::thread([self] { run(self); }).detach();
+    }
+  }
 
   // With mutex held.
   void postDrain(const std::shared_ptr<StatJob>& self) {
@@ -85,21 +96,26 @@ struct FileModel::StatJob {
   }
 
   static void run(const std::shared_ptr<StatJob>& job) {
-    while (!job->cancelled.load(std::memory_order_relaxed)) {
+    while (true) {
       std::size_t index = 0;
       bool urgent = false;
       {
+        // Leaving decides under the lock, so a row queued after a worker looked always finds a worker.
         std::scoped_lock lock(job->mutex);
-        if (!job->priority.empty()) {
+        const bool cancelled = job->cancelled.load(std::memory_order_relaxed);
+        if (!cancelled && !job->priority.empty()) {
           index = job->priority.front();
           job->priority.pop_front();
           urgent = true;
+        } else if (!cancelled && job->mode == Mode::Walk) {
+          index = job->next.fetch_add(1, std::memory_order_relaxed);
         }
-      }
-      if (!urgent) {
-        index = job->next.fetch_add(1, std::memory_order_relaxed);
-        if (index >= job->base.size()) {
-          break;
+        if (!urgent && (cancelled || job->mode == Mode::Demand || index >= job->base.size())) {
+          if (--job->running == 0 && (job->next.load(std::memory_order_relaxed) >= job->base.size() || !job->batch.empty())) {
+            job->finished = job->next.load(std::memory_order_relaxed) >= job->base.size();
+            job->postDrain(job);
+          }
+          return;
         }
       }
       if (job->claimed[index].exchange(true, std::memory_order_relaxed)) {
@@ -114,11 +130,6 @@ struct FileModel::StatJob {
       if (urgent || job->batch.size() >= kStatBatch) {
         job->postDrain(job);
       }
-    }
-    std::scoped_lock lock(job->mutex);
-    if (--job->workersLeft == 0) {
-      job->finished = true;
-      job->postDrain(job);
     }
   }
 };
@@ -316,20 +327,33 @@ void FileModel::reload() {
       self->m_entries = std::move(listing->entries);
       self->m_statJob = job;
       self->m_listing = false;
+      self->updateStatWalk();
       self->notify({.type = Change::Type::Reset});
       // A change that raced the listing may be in it already; a flush stats each name again, so it is idempotent.
       self->flushWatch();
     });
-    if (job == nullptr) {
-      return;
-    }
-    const std::size_t workers = std::clamp<std::size_t>(std::thread::hardware_concurrency(), 1, kMaxStatWorkers);
-    job->workersLeft = workers;
-    for (std::size_t i = 1; i < workers; ++i) {
-      std::thread([job] { StatJob::run(job); }).detach();
-    }
-    StatJob::run(job);
   }).detach();
+}
+
+std::shared_ptr<void> FileModel::needAllStats() {
+  ++m_allStatsWanted;
+  updateStatWalk();
+  std::weak_ptr<FileModel> weak = weak_from_this();
+  return {nullptr, [weak](void*) {
+            if (auto self = weak.lock()) {
+              --self->m_allStatsWanted;
+              self->updateStatWalk();
+            }
+          }};
+}
+
+void FileModel::updateStatWalk() {
+  if (m_statJob == nullptr) {
+    return;
+  }
+  std::scoped_lock lock(m_statJob->mutex);
+  m_statJob->mode = m_allStatsWanted > 0 ? StatJob::Mode::Walk : StatJob::Mode::Demand;
+  m_statJob->startWorkers(m_statJob);
 }
 
 void FileModel::prioritizeStat(std::span<const std::shared_ptr<const FileInfo>> rows) {
@@ -350,6 +374,7 @@ void FileModel::prioritizeStat(std::span<const std::shared_ptr<const FileInfo>> 
       job.priority.push_back(static_cast<std::size_t>(it - job.base.begin()));
     }
   }
+  job.startWorkers(m_statJob);
 }
 
 void FileModel::applyStats(StatJob& job) {
@@ -505,6 +530,8 @@ FileModelView::FileModelView(std::shared_ptr<FileModel> model) : m_model(std::mo
 
 void FileModelView::setSort(FileSort sort) {
   m_sort = sort;
+  const bool statKey = sort.key == FileSortKey::Size || sort.key == FileSortKey::Modified || sort.key == FileSortKey::Added;
+  m_allStats = statKey ? (m_allStats != nullptr ? m_allStats : m_model->needAllStats()) : nullptr;
   rebuild();
 }
 
