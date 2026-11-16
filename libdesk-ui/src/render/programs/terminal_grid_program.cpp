@@ -99,11 +99,11 @@ void TerminalGridProgram::draw(const TerminalGridDraw& grid) const {
     drawFill(grid);
   }
   if ((grid.phases & kTerminalGridBackgrounds) != 0) {
-    drawRects(grid.rects, grid);
+    drawRects(grid.rects, grid, grid.cellTransform);
   }
   if ((grid.phases & kTerminalGridText) != 0) {
     drawGlyphs(grid.glyphs, grid);
-    drawRects(grid.over, grid);
+    drawRects(grid.over, grid, grid.cellTransform);
     drawGlyphs(grid.overGlyphs, grid);
   }
 }
@@ -115,13 +115,14 @@ void TerminalGridProgram::drawFill(const TerminalGridDraw& grid) const {
   for (const auto& c : corners) {
     fill.insert(fill.end(), {c[0], c[1], grid.background[0], grid.background[1], grid.background[2], grid.background[3]});
   }
-  drawRects({&fill, 1}, grid);
+  drawRects({&fill, 1}, grid, grid.transform);
 }
 
-void TerminalGridProgram::drawRects(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid) const {
+void TerminalGridProgram::drawRects(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid,
+                                    const Mat3& transform) const {
   glUseProgram(m_rect.id());
   glUniform2f(m_rectSurface, grid.surfaceWidth, grid.surfaceHeight);
-  glUniformMatrix3fv(m_rectTransform, 1, GL_FALSE, grid.transform.m.data());
+  glUniformMatrix3fv(m_rectTransform, 1, GL_FALSE, transform.m.data());
   glUniform1f(m_rectOpacity, grid.opacity);
   const auto position = static_cast<GLuint>(m_rectPosition);
   const auto color = static_cast<GLuint>(m_rectColor);
@@ -145,7 +146,7 @@ void TerminalGridProgram::drawGlyphs(std::span<const std::vector<float>> lists, 
   }
   glUseProgram(m_glyph.id());
   glUniform2f(m_glyphSurface, grid.surfaceWidth, grid.surfaceHeight);
-  glUniformMatrix3fv(m_glyphTransform, 1, GL_FALSE, grid.transform.m.data());
+  glUniformMatrix3fv(m_glyphTransform, 1, GL_FALSE, grid.cellTransform.m.data());
   glUniform1f(m_glyphOpacity, grid.opacity);
   glUniform2f(m_glyphAtlasSize, static_cast<float>(grid.atlasWidth), static_cast<float>(grid.atlasHeight));
   glActiveTexture(GL_TEXTURE0);

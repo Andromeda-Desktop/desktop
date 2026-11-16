@@ -17,7 +17,7 @@ public:
 
 private:
   void drawFill(const TerminalGridDraw& grid) const;
-  void drawRects(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid) const;
+  void drawRects(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid, const Mat3& transform) const;
   void drawGlyphs(std::span<const std::vector<float>> lists, const TerminalGridDraw& grid) const;
 
   mutable std::vector<float> m_fill;

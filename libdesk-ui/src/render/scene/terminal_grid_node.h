@@ -1,5 +1,6 @@
 #pragma once
 
+#include "render/core/mat3.h"
 #include "render/core/texture_handle.h"
 #include "render/scene/node.h"
 #include "render/text/terminal_glyph_atlas.h"
@@ -75,9 +76,15 @@ public:
   // The background fill's alpha: below 1 the window's glass shows through the default-background cells.
   void setBackgroundAlpha(float alpha);
   [[nodiscard]] float backgroundAlpha() const noexcept { return m_backgroundAlpha; }
+  // Over a see-through background: the background colour at this alpha behind each run of text (runs join across
+  // gaps of fewer than kBackingGap blank cells), so the text keeps its contrast while empty cells stay clear. 0 = off.
+  void setTextBacking(float alpha);
+  static constexpr int kBackingGap = 4;
   [[nodiscard]] TextureId atlasTexture() const noexcept { return m_texture.id; }
   [[nodiscard]] int atlasWidth() const noexcept { return m_atlas.width(); }
   [[nodiscard]] int atlasHeight() const noexcept { return m_texture.height; }
+  // The grid origin snapped to device px; cell vertices exclude it, so a scroll step rebuilds no rows.
+  [[nodiscard]] Vec2 cellOffset() const noexcept;
   [[nodiscard]] std::span<const std::vector<float>> rectLists() const noexcept { return m_rects; }
   [[nodiscard]] std::span<const std::vector<float>> glyphLists() const noexcept { return m_glyphs; }
   [[nodiscard]] std::span<const std::vector<float>> cursorRectLists() const noexcept { return {&m_cursorRects, 1}; }
@@ -99,6 +106,7 @@ private:
   float m_originY = 0.0F;
   std::uint32_t m_background = 0;
   float m_backgroundAlpha = 1.0F;
+  float m_textBacking = 0.0F;
   std::vector<std::vector<TerminalCell>> m_cells;
   std::optional<TerminalCursor> m_cursor;
   std::uint64_t m_builtGeneration = 0;

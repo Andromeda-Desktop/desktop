@@ -86,6 +86,8 @@ namespace term {
       std::function<void(const std::string& uri)> openUri;
       // Find results changed: match count and the current match (1 = newest), while find is open.
       std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
+      // The alpha of the backing behind text over a theme scene (AppWindow::sceneTextBacking); null = none.
+      std::function<float()> textBacking;
       Settings settings;
       ThemeSpec theme = Theme::System;
     };

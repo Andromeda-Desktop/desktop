@@ -960,6 +960,7 @@ void RenderContext::drawNodeSelf(
         .surfaceWidth = sw,
         .surfaceHeight = sh,
         .transform = worldTransform,
+        .cellTransform = worldTransform * Mat3::translation(grid->cellOffset().x, grid->cellOffset().y),
         .opacity = effectiveOpacity,
         .phases = gridPhases,
     };

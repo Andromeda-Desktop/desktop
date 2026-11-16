@@ -2,6 +2,8 @@
 
 #include "render/core/color.h"
 
+#include <span>
+
 // OKLCH colour; hue in radians.
 struct Oklch {
   double lightness = 0.0;
@@ -18,3 +20,7 @@ struct Oklch {
 // the background (0) until it meets minRatio; returns the best endpoint when no lightness does.
 [[nodiscard]] Color ensureContrast(const Color& foreground, const Color& background, double minRatio = 4.5,
                                    int preferLight = 0);
+// The smallest alpha in [minAlpha, 1], in steps of 0.01, at which label keeps minRatio over the surface composited at
+// that alpha on every backdrop colour (opaque). 1 when no smaller alpha does.
+[[nodiscard]] float tintForContrast(const Color& label, const Color& surface, std::span<const Color> backdrop,
+                                    float minAlpha, double minRatio = 4.5);

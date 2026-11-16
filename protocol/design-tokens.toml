@@ -515,7 +515,7 @@ window_tile_sidebar = 0.3  # the sidebar's share of the window drawn in that til
 cursor_blink_timeout_ms = 10000  # the cursor stops blinking this long after the last key or focus
 bell_interval_ms = 150  # at most one bell per this time, so a stream of BEL rings once
 glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the window's thick tint
-scene_tint = 0.4  # the theme surface's alpha over a theme scene, under the text
+scene_tint = 0.15  # the theme surface's alpha over a theme scene where no text needs it; text gets a measured backing
 
 [component.agent]  # agent session view (design-agent handoff.yaml)
 measure = 640.0  # prose max width, 70 ch of body 14
@@ -626,6 +626,8 @@ header = 48.0
 button = 24.0
 button_inset = 8.0
 resize_band = 8.0
+scene_idle_ms = 10000  # a theme scene stops moving this long after the last input or output
+scene_resolution = 0.5  # a theme scene renders at this fraction of the output resolution
 
 [component.launcher]  # 9.14
 width = 680.0
@@ -661,5 +663,3 @@ padding = 24.0
 padding_compact = 16.0
 column = 640.0
 column_wide = 960.0  # responsive apps: the column grows from column to column_wide, then stays centred
-scene_sidebar_tint = 0.55  # the same in the sidebar, so it reads as a separate layer
-copy_button = 28.0  # round copy button at a code block's top-right; the code keeps p40 clear

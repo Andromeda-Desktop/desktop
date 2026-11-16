@@ -49,7 +49,7 @@ namespace term {
       const ThemePalette colors = themePalette(theme);
       return AppWindow::Scene{.source = std::get<ThemePackage>(theme).scene, .surface = colors.view, .text = colors.label1,
                               .accent = colors.accent, .label2 = colors.label2, .dark = !isResolvedLightTheme(),
-                              .tint = Tokens::componentTerminalSceneTint, .sidebarTint = Tokens::componentTerminalSceneSidebarTint};
+                              .tint = Tokens::componentTerminalSceneTint};
     }
   } // namespace
 
@@ -93,7 +93,6 @@ namespace term {
         m_window.setMainFill(titlePlane(*view));
       }
       m_window.setScene(windowScene(m_settings));
-      requestFrame();
     });
     m_window.setScene(windowScene(m_settings));
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
@@ -260,9 +259,6 @@ namespace term {
       if (ContentView* view = shownView(); view != nullptr) {
         view->setWindowActive(active);
       }
-      if (active) {
-        requestFrame(); // the scene moves again
-      }
     });
     m_window.setLayoutCallback([this] {
       const AppWindow::Rect rect = m_window.contentRect();
@@ -337,6 +333,7 @@ namespace term {
                 setFindCount(total, current);
               }
             },
+        .textBacking = [this] { return m_window.sceneTextBacking(); },
         .settings = m_settings.settings(),
         .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())});
     TerminalView& ref = *view;
@@ -453,6 +450,7 @@ namespace term {
       return;
     }
     m_window.setMainFill(titlePlane(*view));
+    m_window.setSceneContentBacked(dynamic_cast<TerminalView*>(view) != nullptr);
     Surface* surface = m_window.surface();
     const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
     m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
@@ -868,6 +866,7 @@ namespace term {
   }
 
   void TerminalWindow::requestFrame() {
+    m_window.noteSceneActivity(); // output, a blink or an animation: the scene moves with the terminal
     Surface* surface = m_window.surface();
     if (surface == nullptr) {
       return;
@@ -879,10 +878,6 @@ namespace term {
         // Hidden sessions run frame() too: it reports their exit; without a grid it draws nothing.
         for (std::size_t i = 0; i < m_views.size(); ++i) {
           m_views[i].view->frame();
-        }
-        // The scene moves only while the window is active: an inactive window asks for no frames for it.
-        if (m_active && m_window.stepScene()) {
-          requestFrame();
         }
       });
       surface->setScaleChangedCallback([this](float scale) {

@@ -3,6 +3,7 @@
 #include "ui/controls/context_menu.h"
 #include "ui/palette.h"
 
+#include "core/timer_manager.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_dispatcher.h"
 #include "render/scene/node.h"
@@ -25,6 +26,7 @@ class Flex;
 class Label;
 class Renderer;
 class ShaderSceneNode;
+class Subsurface;
 class StateStore;
 struct KeyboardEvent;
 struct PinchEvent;
@@ -96,21 +98,27 @@ public:
   // The Solid main pane's plane, header included: the content's surface, so the header and the content read as one
   // plane. nullopt = solid_regular. Glass keeps its sheet tint.
   void setMainFill(std::optional<ColorSpec> fill);
-  // A theme scene behind the whole window: the sidebar and the main pane become surface tints over it, with no blur.
+  // A theme scene behind the whole window, with no blur. The sidebar and header take the text tint: the least surface
+  // alpha at which label 2 keeps 4.5:1 over every sampled scene colour (rulebook 5.3). The main pane takes the light
+  // `tint` when the content backs its own text (setSceneContentBacked), else the text tint.
   struct Scene {
     std::string source; // the fragment shader body (ShaderSceneNode contract)
     Color surface;
     Color text;
     Color accent;
+    Color label2;
     bool dark = false;
-    float tint = 1.0F;        // the surface's alpha over the scene in the main pane, header included
-    float sidebarTint = 1.0F; // the same in the sidebar
+    float tint = 1.0F; // the surface's alpha over the scene where nothing needs it for contrast
     bool operator==(const Scene&) const = default;
   };
   void setScene(std::optional<Scene> scene);
-  // Advances the scene clock at most 30 times a second. True while a scene shows: the caller keeps frames coming,
-  // and calls it only while the window is active, so an inactive window asks for no frames.
-  bool stepScene();
+  // Input, output or any change the user sees: the scene moves for scene_idle_ms after the last one, while the window is
+  // active. Keys and pointer events in this window count already.
+  void noteSceneActivity();
+  // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
+  void setSceneContentBacked(bool backed);
+  // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
+  [[nodiscard]] float sceneTextBacking() const noexcept;
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
   // Keys no command took and no text field owns (type-ahead, arrows in a list). True = handled.
   void setKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_keyHandler = std::move(handler); }
@@ -251,7 +259,25 @@ private:
   std::optional<Scene> m_scene;
   ShaderSceneNode* m_sceneNode = nullptr;
   float m_sceneSeconds = 0.0F;
+  std::optional<Scene> m_sceneMeasured; // the scene the tints below were measured for
+  float m_sceneTextTint = 1.0F;
+  bool m_sceneContentBacked = false;
+  Flex* m_headerNode = nullptr;
+  void measureScene();
+  void applySceneFills();
   std::chrono::steady_clock::time_point m_sceneStepped{}; // when the scene clock last advanced
+  std::chrono::steady_clock::time_point m_sceneAwakeUntil{};
+  bool m_activated = false;
+  bool m_sceneTicking = false; // a frame tick or the step timer is pending on the scene layer
+  Timer m_sceneTimer;
+  // The scene draws on its own subsurface below the window at reduced resolution: its frames repaint only that layer,
+  // and the window's own frames stay as cheap as without a scene.
+  std::unique_ptr<Subsurface> m_sceneLayer;
+  std::unique_ptr<Node> m_sceneRoot;
+  Node* m_sceneClip = nullptr;
+  void syncSceneLayer(float width, float height, float margin, float radius);
+  void sceneTick();
+  void wakeScene();
   float m_sidebarMix = 1.0F; // 0 = collapsed
   std::vector<InputRect> m_blur; // the blur region last sent; empty = none
   void syncBlur();

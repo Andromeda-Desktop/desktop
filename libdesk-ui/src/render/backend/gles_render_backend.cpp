@@ -478,6 +478,8 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
   flushRectBatch();
   if (auto* offscreen = glesOffscreenTarget(target); offscreen != nullptr) {
     offscreen->markFrame();
+    // A window surface's makeCurrent keeps the binding when its EGL surface is already current.
+    GlesFramebuffer::bindDefault();
     return;
   }
   auto& surface = glesSurfaceTarget(target);
@@ -585,6 +587,7 @@ bool GlesRenderBackend::readPixels(RenderTarget& target, std::span<std::uint8_t>
     std::copy_n(b, stride, a);
     std::copy_n(row.data(), stride, b);
   }
+  GlesFramebuffer::bindDefault();
   return true;
 }
 

@@ -59,6 +59,10 @@ float TerminalGridNode::cellWidth() const noexcept { return logical(m_atlas.cell
 
 float TerminalGridNode::cellHeight() const noexcept { return logical(m_atlas.cellHeight()); }
 
+Vec2 TerminalGridNode::cellOffset() const noexcept {
+  return {logical(static_cast<int>(std::lround(m_originX * m_scale))), logical(static_cast<int>(std::lround(m_originY * m_scale)))};
+}
+
 float TerminalGridNode::logical(int devicePx) const noexcept { return static_cast<float>(devicePx) / m_scale; }
 
 void TerminalGridNode::setGridSize(int columns, int rows) {
@@ -77,7 +81,6 @@ void TerminalGridNode::setGridOrigin(float x, float y) {
   }
   m_originX = x;
   m_originY = y;
-  rebuildAll();
   markPaintDirty();
 }
 
@@ -86,6 +89,18 @@ void TerminalGridNode::setBackground(std::uint32_t rgb) {
     return;
   }
   m_background = rgb;
+  if (m_textBacking > 0.0F) {
+    rebuildAll();
+  }
+  markPaintDirty();
+}
+
+void TerminalGridNode::setTextBacking(float alpha) {
+  if (alpha == m_textBacking) {
+    return;
+  }
+  m_textBacking = alpha;
+  rebuildAll();
   markPaintDirty();
 }
 
@@ -187,10 +202,8 @@ void TerminalGridNode::appendGlyph(std::vector<float>& out, char32_t codepoint, 
   if (g == nullptr) {
     return;
   }
-  const int ox = static_cast<int>(std::lround(m_originX * m_scale));
-  const int oy = static_cast<int>(std::lround(m_originY * m_scale));
-  const float x0 = logical(ox + x + g->left);
-  const float y0 = logical(oy + y + m_atlas.baseline() - g->top);
+  const float x0 = logical(x + g->left);
+  const float y0 = logical(y + m_atlas.baseline() - g->top);
   const float x1 = x0 + logical(g->width);
   const float y1 = y0 + logical(g->height);
   const float u0 = g->x;
@@ -215,14 +228,38 @@ void TerminalGridNode::buildRow(int row) {
   if (cw <= 0 || ch <= 0) {
     return;
   }
-  const int ox = static_cast<int>(std::lround(m_originX * m_scale));
-  const int oy = static_cast<int>(std::lround(m_originY * m_scale));
   const int top = row * ch;
   const int thickness = m_atlas.strokeThickness();
   const auto& cells = m_cells[static_cast<std::size_t>(row)];
   auto rect = [&](int x0, int y0, int x1, int y1, std::uint32_t rgb) {
-    pushRect(rects, logical(ox + x0), logical(oy + y0), logical(ox + x1), logical(oy + y1), premultiplied(rgb));
+    pushRect(rects, logical(x0), logical(y0), logical(x1), logical(y1), premultiplied(rgb));
   };
+  if (m_textBacking > 0.0F) {
+    const int n = static_cast<int>(cells.size());
+    int start = -1;
+    int end = -1; // one past the last text cell of the open run
+    auto flush = [&] {
+      if (start >= 0) {
+        pushRect(rects, logical(start * cw), logical(top), logical(end * cw), logical(top + ch),
+                 premultiplied(m_background, m_textBacking));
+      }
+    };
+    for (int col = 0; col < n; ++col) {
+      const TerminalCell& cell = cells[static_cast<std::size_t>(col)];
+      if (cell.codepoint <= U' ') {
+        continue;
+      }
+      if (start >= 0 && col - end >= kBackingGap) {
+        flush();
+        start = -1;
+      }
+      if (start < 0) {
+        start = col;
+      }
+      end = col + ((cell.flags & TerminalCell::Wide) != 0 ? 2 : 1);
+    }
+    flush();
+  }
   for (int col = 0; col < static_cast<int>(cells.size()); ++col) {
     const TerminalCell& cell = cells[static_cast<std::size_t>(col)];
     const int x = col * cw;
@@ -261,15 +298,13 @@ void TerminalGridNode::buildCursor() {
     return;
   }
   const TerminalCursor& c = *m_cursor;
-  const int ox = static_cast<int>(std::lround(m_originX * m_scale));
-  const int oy = static_cast<int>(std::lround(m_originY * m_scale));
   const int x0 = c.column * cw;
   const int y0 = c.row * ch;
   const int x1 = x0 + (c.wide ? 2 : 1) * cw;
   const int y1 = y0 + ch;
   const int stroke = std::max(1, static_cast<int>(std::lround(1.5F * m_scale)));
   auto rect = [&](int a, int b, int r, int d) {
-    pushRect(m_cursorRects, logical(ox + a), logical(oy + b), logical(ox + r), logical(oy + d), premultiplied(c.color));
+    pushRect(m_cursorRects, logical(a), logical(b), logical(r), logical(d), premultiplied(c.color));
   };
   switch (c.style) {
   case TerminalCursorStyle::Block: {

@@ -92,6 +92,9 @@ public:
   void setBlurRegion(const std::vector<InputRect>& rects);
   // Declares the whole surface opaque, or not, from its next commit, so the compositor can skip what lies beneath it.
   void setOpaque(bool opaque);
+  // Renders at this fraction of the output resolution, for a backdrop that is soft anyway. Needs the viewport path
+  // (fractional-scale-v1 + viewporter); without it the surface renders at full resolution.
+  void setResolutionScale(float scale);
   void clearBlurRegion();
   // While held, the surface commits no buffer, so it stays unmapped; releasing it draws the next frame.
   void holdRender(bool held);
@@ -229,6 +232,7 @@ private:
   bool m_renderHeld = false;
   bool m_running = false;
   bool m_opaque = false;
+  float m_resolutionScale = 1.0F;
   bool m_configured = false;
   bool m_inFrameHandler = false;
   bool m_inPrepareFrame = false;

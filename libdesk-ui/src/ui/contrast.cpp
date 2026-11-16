@@ -126,3 +126,24 @@ Color ensureContrast(const Color& foreground, const Color& background, double mi
   }
   return best;
 }
+
+float tintForContrast(const Color& label, const Color& surface, std::span<const Color> backdrop, float minAlpha,
+                      double minRatio) {
+  // Luminance is not monotone in alpha when channels move in opposite directions: test each step, not a bisection.
+  // The tolerance keeps a floor such as 0.29 (28.999... or 29.0001 in float) on its own step.
+  for (int step = static_cast<int>(std::ceil(minAlpha * 100.0F - 1e-3F)); step < 100; ++step) {
+    const float a = static_cast<float>(step) / 100.0F;
+    bool holds = true;
+    for (const Color& b : backdrop) {
+      const Color over{surface.r * a + b.r * (1.0F - a), surface.g * a + b.g * (1.0F - a), surface.b * a + b.b * (1.0F - a), 1.0F};
+      if (contrastRatio(label, over) < minRatio) {
+        holds = false;
+        break;
+      }
+    }
+    if (holds) {
+      return a;
+    }
+  }
+  return 1.0F;
+}

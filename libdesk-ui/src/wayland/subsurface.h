@@ -31,6 +31,7 @@ public:
   bool initialize(wl_surface* parentSurface, wl_output* output);
 
   void setPosition(std::int32_t x, std::int32_t y);
+  void resize(std::uint32_t width, std::uint32_t height);
   void setStacking(SubsurfaceStacking stacking);
 
 private:

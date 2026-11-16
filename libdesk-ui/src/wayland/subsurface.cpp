@@ -91,6 +91,14 @@ void Subsurface::setPosition(std::int32_t x, std::int32_t y) {
   wl_surface_commit(m_parentSurface);
 }
 
+void Subsurface::resize(std::uint32_t width, std::uint32_t height) {
+  m_config.width = width;
+  m_config.height = height;
+  if (isRunning() && width > 0 && height > 0 && (width != this->width() || height != this->height())) {
+    onConfigure(width, height);
+  }
+}
+
 void Subsurface::setStacking(SubsurfaceStacking stacking) {
   if (m_config.stacking == stacking) {
     return;

@@ -2,6 +2,7 @@
 #include "ui/theme_palette.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -43,6 +44,25 @@ void checkInvariants(const ThemeAnchors& anchors) {
   CHECK(high < 0.1 || high - low <= 0.01);
 }
 
+// The scene tint: the smallest 0.01 step at or above the floor where label 2 keeps 4.5:1 over every backdrop colour.
+void checkTint(const ThemeAnchors& anchors, const std::array<Color, 8>& backdrop, float floor) {
+  const ThemePalette p = deriveThemePalette(anchors);
+  const float t = tintForContrast(p.label2, p.view, backdrop, floor);
+  const auto holds = [&](float a) {
+    return std::ranges::all_of(backdrop, [&](const Color& b) {
+      const Color over{p.view.r * a + b.r * (1.0F - a), p.view.g * a + b.g * (1.0F - a), p.view.b * a + b.b * (1.0F - a), 1.0F};
+      return contrastRatio(p.label2, over) >= 4.5;
+    });
+  };
+  CHECK(t >= floor - 1e-4F && t <= 1.0F);
+  if (t < 1.0F) {
+    CHECK(holds(t));
+  }
+  if (t - 0.01F >= floor) {
+    CHECK(!holds(t - 0.01F));
+  }
+}
+
 } // namespace
 
 int main() {
@@ -57,6 +77,9 @@ int main() {
     };
     for (step = 0; step < 300; ++step) {
       checkInvariants({.surface = color(), .text = color(), .accent = color()});
+      std::array<Color, 8> backdrop{};
+      std::ranges::generate(backdrop, color);
+      checkTint({.surface = color(), .text = color(), .accent = color()}, backdrop, std::round(unit(rng) * 80.0F) / 100.0F);
     }
   }
   seed = 0;

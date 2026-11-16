@@ -454,6 +454,8 @@ namespace term {
   void TerminalView::frame() {
     if (m_grid != nullptr) {
       commitAtlas();
+      // The window measures the scene when it builds, after the settings reached this view.
+      m_grid->setTextBacking(hasScene(m_theme) && m_host.textBacking ? m_host.textBacking() : 0.0F);
     }
     // Output or a scroll can move the text under a shown link.
     if (m_link) {

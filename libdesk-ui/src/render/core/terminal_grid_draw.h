@@ -15,7 +15,7 @@ enum TerminalGridPhase : std::uint8_t {
   kTerminalGridAll = kTerminalGridFill | kTerminalGridBackgrounds | kTerminalGridText,
 };
 
-// One frame of a terminal cell grid. Each vector is one triangle list; positions are node-local logical px.
+// One frame of a terminal cell grid. Each vector is one triangle list; positions are logical px from the grid origin.
 struct TerminalGridDraw {
   float width = 0.0F; // node size; the background fills it
   float height = 0.0F;
@@ -29,7 +29,8 @@ struct TerminalGridDraw {
   std::span<const std::vector<float>> overGlyphs;
   float surfaceWidth = 0.0F;
   float surfaceHeight = 0.0F;
-  Mat3 transform = Mat3::identity();
+  Mat3 transform = Mat3::identity();     // the fill
+  Mat3 cellTransform = Mat3::identity(); // rects and glyphs: transform with the grid origin
   float opacity = 1.0F;
   std::uint8_t phases = kTerminalGridAll; // TerminalGridPhase bits to draw
 };

@@ -1,6 +1,10 @@
 #include "app/app_window.h"
 
+#include "render/render_context.h"
+#include "render/render_target.h"
 #include "render/scene/shader_scene_node.h"
+#include "ui/contrast.h"
+#include "wayland/subsurface.h"
 
 #include "app/foreign_parent.h"
 
@@ -464,6 +468,10 @@ bool AppWindow::open() {
     saveGeometry();
     if (st.activated != wasActive) {
       wasActive = st.activated;
+      m_activated = st.activated;
+      if (m_activated) {
+        noteSceneActivity();
+      }
       if (m_onActive) {
         m_onActive(st.activated);
       }
@@ -550,7 +558,13 @@ void AppWindow::close() {
   m_moreButton = nullptr;
   m_sidebarNode = nullptr;
   m_mainNode = nullptr;
+  m_headerNode = nullptr;
   m_sceneNode = nullptr;
+  m_sceneClip = nullptr;
+  m_sceneTimer.stop();
+  m_sceneLayer.reset(); // a subsurface must go before its parent
+  m_sceneTicking = false;
+  m_sceneRoot.reset();
   m_sheetCard = nullptr;
   m_sheetShade = nullptr;
   m_sheetScrim = nullptr;
@@ -627,21 +641,168 @@ void AppWindow::setScene(std::optional<Scene> scene) {
   requestRebuild();
 }
 
-bool AppWindow::stepScene() {
-  if (m_sceneNode == nullptr) {
-    return m_scene.has_value();
+void AppWindow::noteSceneActivity() {
+  m_sceneAwakeUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Tokens::componentWindowSceneIdleMs);
+  wakeScene();
+}
+
+void AppWindow::wakeScene() {
+  if (m_sceneLayer != nullptr && m_activated && !m_sceneTicking) {
+    m_sceneTicking = true;
+    m_sceneStepped = std::chrono::steady_clock::now(); // resume where the motion stopped
+    m_sceneLayer->requestFrameTick();
   }
-  constexpr float kStep = 1.0F / 30.0F; // seconds per scene frame
+}
+
+void AppWindow::sceneTick() {
   const auto now = std::chrono::steady_clock::now();
+  if (m_sceneNode == nullptr || !m_activated || now >= m_sceneAwakeUntil) {
+    m_sceneTicking = false; // no new tick: the layer asks for no frames until wakeScene
+    return;
+  }
+  constexpr auto kStep = std::chrono::milliseconds(33); // 30 scene frames a second
   const float elapsed = std::chrono::duration<float>(now - m_sceneStepped).count();
-  if (elapsed >= kStep) {
-    // A long pause (inactive, hidden) resumes the motion where it stopped instead of jumping.
-    m_sceneSeconds += std::min(elapsed, 4.0F * kStep);
-    m_sceneNode->setTime(m_sceneSeconds);
-    m_sceneStepped = now;
+  m_sceneSeconds += std::min(elapsed, 0.133F); // a stall resumes the motion instead of jumping
+  m_sceneNode->setTime(m_sceneSeconds);
+  m_sceneStepped = now;
+  m_sceneLayer->requestRedraw();
+  // The next tick waits for this frame's callback too, so a hidden window stops asking.
+  m_sceneTimer.start(kStep, [this] { m_sceneLayer->requestFrameTick(); });
+}
+
+void AppWindow::syncSceneLayer(float width, float height, float margin, float radius) {
+  if (!m_scene || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
+    m_sceneNode = nullptr;
+    m_sceneClip = nullptr;
+    m_sceneTicking = false;
+    m_sceneTimer.stop();
+    m_sceneLayer.reset();
+    m_sceneRoot.reset();
+    return;
+  }
+  const auto w = static_cast<std::uint32_t>(std::lround(width));
+  const auto h = static_cast<std::uint32_t>(std::lround(height));
+  if (w == 0 || h == 0) {
+    return;
+  }
+  if (m_sceneLayer == nullptr) {
+    m_sceneRoot = std::make_unique<Node>();
+    m_sceneClip = m_sceneRoot->addChild(std::make_unique<Node>());
+    m_sceneNode = static_cast<ShaderSceneNode*>(m_sceneClip->addChild(std::make_unique<ShaderSceneNode>()));
+    m_sceneLayer = std::make_unique<Subsurface>(
+        m_loop.wayland(), SubsurfaceConfig{.width = w, .height = h, .x = static_cast<std::int32_t>(margin),
+                                           .y = static_cast<std::int32_t>(margin), .stacking = SubsurfaceStacking::BelowParent});
+    m_sceneLayer->setDebugName("scene");
+    m_sceneLayer->setRenderContext(&m_loop.renderContext());
+    m_sceneLayer->setResolutionScale(Tokens::componentWindowSceneResolution);
+    m_sceneLayer->setFrameTickCallback([this](float) { sceneTick(); });
+    if (!m_sceneLayer->initialize(m_surface->wlSurface(), nullptr)) {
+      m_sceneLayer.reset();
+      m_sceneRoot.reset();
+      m_sceneNode = nullptr;
+      m_sceneClip = nullptr;
+      return;
+    }
+    m_sceneLayer->setInputRegion({});
+    m_sceneLayer->setSceneRoot(m_sceneRoot.get());
+    wakeScene();
+  }
+  m_sceneLayer->setPosition(static_cast<std::int32_t>(margin), static_cast<std::int32_t>(margin));
+  m_sceneLayer->resize(w, h);
+  m_sceneRoot->setSize(width, height);
+  m_sceneClip->setSize(width, height);
+  m_sceneClip->setClipRadii(Radii{radius, radius, radius, radius});
+  m_sceneNode->setSource(m_scene->source);
+  m_sceneNode->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
+  m_sceneNode->setTime(m_sceneSeconds);
+  m_sceneNode->setFrameSize(width, height);
+  m_sceneLayer->requestRedraw();
+}
+
+void AppWindow::measureScene() {
+  // Every window of the app shows the same theme: one measurement each.
+  static std::vector<std::pair<Scene, float>> measured;
+  if (const auto it = std::ranges::find(measured, *m_scene, &std::pair<Scene, float>::first); it != measured.end()) {
+    m_sceneMeasured = m_scene;
+    m_sceneTextTint = it->second;
+    return;
+  }
+  // A 32x20 render at four times stands for the scene's whole loop; it runs once per theme.
+  constexpr std::uint32_t kWidth = 32;
+  constexpr std::uint32_t kHeight = 20;
+  constexpr std::array<float, 4> kTimes{0.0F, 7.0F, 19.0F, 31.0F};
+  const auto start = std::chrono::steady_clock::now();
+  RenderContext& context = m_loop.renderContext();
+  RenderTarget target;
+  target.createOffscreen(context);
+  target.setContentScale(1.0F);
+  target.setLogicalSize(kWidth, kHeight);
+  target.resize(kWidth, kHeight);
+  Node root;
+  root.setSize(kWidth, kHeight);
+  auto node = std::make_unique<ShaderSceneNode>();
+  node->setSource(m_scene->source);
+  node->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
+  node->setFrameSize(kWidth, kHeight);
+  auto* scene = static_cast<ShaderSceneNode*>(root.addChild(std::move(node)));
+  std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
+  std::vector<Color> backdrop;
+  for (const float time : kTimes) {
+    scene->setTime(time);
+    if (!context.renderScene(target, &root) || !context.readPixels(target, pixels)) {
+      break;
+    }
+    for (std::size_t i = 0; i < pixels.size(); i += 4) {
+      const float a = static_cast<float>(pixels[i + 3]) / 255.0F;
+      if (a > 0.0F) { // premultiplied
+        backdrop.push_back(Color{static_cast<float>(pixels[i]) / 255.0F / a, static_cast<float>(pixels[i + 1]) / 255.0F / a,
+                                 static_cast<float>(pixels[i + 2]) / 255.0F / a, 1.0F});
+      }
+    }
+  }
+  target.destroy();
+  m_sceneTextTint = backdrop.empty() ? 1.0F : tintForContrast(m_scene->label2, m_scene->surface, backdrop, m_scene->tint);
+  if (!backdrop.empty()) { // else GL is not up: the next build measures again, opaque until then
+    m_sceneMeasured = m_scene;
+    constexpr std::size_t kKept = 8; // themes switched in one session
+    if (measured.size() == kKept) {
+      measured.erase(measured.begin());
+    }
+    measured.emplace_back(*m_scene, m_sceneTextTint);
+  }
+  kLog.debug("scene text tint {:.2f} from {} samples in {:.1f} ms", m_sceneTextTint,
+             backdrop.size(), std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+}
+
+void AppWindow::setSceneContentBacked(bool backed) {
+  if (backed != m_sceneContentBacked) {
+    m_sceneContentBacked = backed;
+    applySceneFills();
     invalidate();
   }
-  return true;
+}
+
+float AppWindow::sceneTextBacking() const noexcept {
+  if (!m_scene || m_scene->tint >= 1.0F) {
+    return 0.0F;
+  }
+  // Two layers of alpha a and b cover 1 - (1 - a)(1 - b).
+  return 1.0F - (1.0F - m_sceneTextTint) / (1.0F - m_scene->tint);
+}
+
+void AppWindow::applySceneFills() {
+  if (!m_scene || m_mainNode == nullptr || m_config.transparentContent) {
+    return;
+  }
+  const auto fill = [this](float alpha) {
+    Color tint = m_scene->surface;
+    tint.a = alpha;
+    return fixedColorSpec(tint);
+  };
+  m_mainNode->setFill(fill(m_sceneContentBacked ? m_scene->tint : m_sceneTextTint));
+  if (m_headerNode != nullptr) {
+    m_headerNode->setFill(m_sceneContentBacked ? fill(sceneTextBacking()) : clearColorSpec());
+  }
 }
 
 void AppWindow::setMainFill(std::optional<ColorSpec> fill) {
@@ -738,6 +899,9 @@ void AppWindow::prepareFrame(bool needsLayout) {
     m_root->layout(renderer);
     m_contentRect.width = std::max(0.0F, width - margin - m_contentRect.x);
     m_contentRect.height = std::max(0.0F, height - margin - m_contentRect.y);
+    const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
+    syncSceneLayer(width - 2.0F * margin, height - 2.0F * margin, margin,
+                   square ? 0.0F : Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale));
     if (m_onLayout) {
       m_onLayout();
     }
@@ -987,7 +1151,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_navButtons = {};
   m_sidebarNode = nullptr;
   m_mainNode = nullptr;
-  m_sceneNode = nullptr;
+  m_headerNode = nullptr;
   const auto teardownStart = std::chrono::steady_clock::now();
   m_root.reset();
   const double teardownMs = since(teardownStart);
@@ -1012,7 +1176,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     if (m_config.transparentContent) {
       bar->setFill(colorSpecFromRole(ColorRole::SolidRegular));
     }
-    main->addChild(std::move(bar));
+    m_headerNode = static_cast<Flex*>(main->addChild(std::move(bar)));
   }
   // Concave edge: the main pane's left corners round into the sidebar, whose tint shows behind them.
   // Glass has no concave edge: a sidebar-tint strip under the translucent main pane would stack two tints.
@@ -1020,17 +1184,19 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   const bool concave = sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
   const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint);
+  if (m_scene && m_sceneMeasured != m_scene) {
+    measureScene();
+  }
   const auto sceneFill = [this](float alpha) {
     Color tint = m_scene->surface;
     tint.a = alpha;
     return fixedColorSpec(tint);
   };
-  if (m_scene && !m_config.transparentContent) {
-    main->setFill(sceneFill(m_scene->tint));
-  } else if (!m_config.transparentContent) {
+  if (!m_scene && !m_config.transparentContent) {
     main->setFill(m_config.material == Material::Glass ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
   }
   m_mainNode = main.get();
+  applySceneFills();
   if (concave) {
     const Radii corners{edgeRadius, 0.0F, 0.0F, edgeRadius};
     main->setRadii(corners);
@@ -1049,7 +1215,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   auto body = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
   if (sidebarWidth > 0.0F) {
-    const ColorSpec sidebarFill = m_scene ? sceneFill(m_scene->sidebarTint)
+    const ColorSpec sidebarFill = m_scene ? sceneFill(m_sceneTextTint)
                                   : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
@@ -1079,21 +1245,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   const auto layoutStart = std::chrono::steady_clock::now();
   body->layout(renderer);
   layoutMs = since(layoutStart);
-  if (m_scene) {
-    const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
-    const float r = square ? 0.0F : edgeRadius;
-    auto clip = ui::node({});
-    clip->setSize(width, height);
-    clip->setPosition(margin, margin);
-    clip->setClipRadii(Radii{r, r, r, r});
-    auto scene = std::make_unique<ShaderSceneNode>();
-    scene->setSource(m_scene->source);
-    scene->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
-    scene->setTime(m_sceneSeconds);
-    scene->setFrameSize(width, height);
-    m_sceneNode = static_cast<ShaderSceneNode*>(clip->addChild(std::move(scene)));
-    m_root->addChild(std::move(clip));
-  }
+  const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
+  syncSceneLayer(width, height, margin, square ? 0.0F : edgeRadius);
   m_root->addChild(std::move(body));
   m_sheetCard = nullptr;
   m_sheetShade = nullptr;
@@ -1172,6 +1325,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   if (!isOpen()) {
     return;
   }
+  noteSceneActivity();
   if (m_popover != nullptr && m_popover->isOpen() && m_popover->onPointerEvent(event)) {
     return;
   }
@@ -1486,6 +1640,7 @@ void AppWindow::onKeyboardEvent(const KeyboardEvent& event) {
   if (!isOpen()) {
     return;
   }
+  noteSceneActivity();
   if (m_select != nullptr && m_select->isSelectDropdownOpen()) {
     m_select->onKeyboardEvent(event);
     return;

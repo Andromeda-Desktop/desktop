@@ -343,17 +343,29 @@ Surface::~Surface() {
 
 bool Surface::isRunning() const noexcept { return m_running; }
 
+void Surface::setResolutionScale(float scale) {
+  if (scale == m_resolutionScale) {
+    return;
+  }
+  m_resolutionScale = scale;
+  if (m_configured) {
+    m_renderTarget.setContentScale(effectiveBufferScale());
+    resizeRenderTarget();
+    requestRedraw();
+  }
+}
+
 void Surface::setDebugName(std::string name) { m_debugName = std::move(name); }
 
 float Surface::effectiveBufferScale() const noexcept {
   if (m_fractionalScale != nullptr && m_viewport != nullptr) {
     if (m_preferredScaleNumerator > 0) {
-      return std::max(1.0F, static_cast<float>(m_preferredScaleNumerator) / 120.0F);
+      return std::max(1.0F, static_cast<float>(m_preferredScaleNumerator) / 120.0F) * m_resolutionScale;
     }
     if (m_configuredScaleNumerator > 0) {
-      return std::max(1.0F, static_cast<float>(m_configuredScaleNumerator) / 120.0F);
+      return std::max(1.0F, static_cast<float>(m_configuredScaleNumerator) / 120.0F) * m_resolutionScale;
     }
-    return static_cast<float>(std::max(1, m_bufferScale));
+    return static_cast<float>(std::max(1, m_bufferScale)) * m_resolutionScale;
   }
   return static_cast<float>(std::max(1, m_bufferScale));
 }
