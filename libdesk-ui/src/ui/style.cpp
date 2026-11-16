@@ -95,7 +95,8 @@ namespace Style {
   glass::Material glassMaterial(glass::Kind kind) noexcept { return glassMaterial(kind, glassTone(kind)); }
 
   glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept {
-    return glass::material(kind, g_glass, g_reduceTransparency, isLightPalette() && tone == PaletteTone::Scheme);
+    const bool light = tone == PaletteTone::Light || (isLightPalette() && tone == PaletteTone::Scheme);
+    return glass::material(kind, g_glass, g_reduceTransparency, light);
   }
 
   float glassTint(glass::Kind kind, float opacity) noexcept {

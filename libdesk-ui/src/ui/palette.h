@@ -205,8 +205,11 @@ extern Palette palette;
 [[nodiscard]] const Color& colorForRole(ColorRole role, const Palette& p) noexcept;
 // The tone of `kind` at the current glass slider (glass::tone).
 [[nodiscard]] PaletteTone glassTone(glass::Kind kind) noexcept;
-// The palette of PaletteTone::Dark. ThemeService sets it before setPalette(), which re-resolves every control.
+// The palettes of PaletteTone::Dark and ::Light. Set them before setPalette(), which re-resolves every control.
 void setDarkPalette(const Palette& p);
+void setLightPalette(const Palette& p);
+// The tone whose ink reads on `surface` (the 0.179 luminance split of isLightPalette).
+[[nodiscard]] PaletteTone toneOn(const Color& surface) noexcept;
 [[nodiscard]] ColorSpec colorSpecFromRole(ColorRole role, float alpha = 1.0F) noexcept;
 // Glass material fill: the tint over the compositor blur, or the opaque solid when transparency is reduced.
 // The palette color is opaque, so a caller's opacity (Style::glassTint) replaces its alpha, never multiplies it.

@@ -64,6 +64,7 @@ namespace {
   }
 
   Palette g_darkPalette = tokenPalette(false);
+  Palette g_lightPalette = tokenPalette(true);
 
   const Color& roleIn(const Palette& p, ColorRole role) noexcept {
     switch (role) {
@@ -176,11 +177,19 @@ const Palette& paletteForTone(PaletteTone tone) noexcept {
     return palette;
   case PaletteTone::Dark:
     return g_darkPalette;
+  case PaletteTone::Light:
+    return g_lightPalette;
   }
   return palette;
 }
 
 void setDarkPalette(const Palette& p) { g_darkPalette = p; }
+
+void setLightPalette(const Palette& p) { g_lightPalette = p; }
+
+PaletteTone toneOn(const Color& surface) noexcept {
+  return relativeLuminance(surface) > 0.179F ? PaletteTone::Light : PaletteTone::Dark;
+}
 
 const Color& colorForRole(ColorRole role, const Palette& p) noexcept { return roleIn(p, role); }
 

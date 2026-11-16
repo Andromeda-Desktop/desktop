@@ -92,13 +92,17 @@ void Appearance::read(bool backend) {
 }
 
 void Appearance::apply() {
-  Palette palette = tokenPalette(m_light);
-  if (m_hasAccent) {
-    palette.accent = rgba(static_cast<float>(m_accent[0]), static_cast<float>(m_accent[1]),
-                          static_cast<float>(m_accent[2]), 1.0F);
-  }
+  const auto paletteFor = [this](bool light) {
+    Palette p = tokenPalette(light);
+    if (m_hasAccent) {
+      p.accent = rgba(static_cast<float>(m_accent[0]), static_cast<float>(m_accent[1]), static_cast<float>(m_accent[2]), 1.0F);
+    }
+    return p;
+  };
+  setDarkPalette(paletteFor(false));
+  setLightPalette(paletteFor(true));
   setResolvedThemeLight(m_light);
-  setPalette(palette);
+  setPalette(paletteFor(m_light));
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   if (m_changed) {
     m_changed();

@@ -86,7 +86,7 @@ struct Accessible;
 
 // The palette a subtree resolves colour roles from. Scheme: the light or dark scheme. Dark: the dark palette in either
 // scheme (small liquid shapes, glass::tone).
-enum class PaletteTone : std::uint8_t { Scheme, Dark };
+enum class PaletteTone : std::uint8_t { Scheme, Dark, Light };
 
 class Node {
 public:
