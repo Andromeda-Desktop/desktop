@@ -26,7 +26,7 @@ RUN apt-get -o Acquire::Retries=5 update && apt-get install -y -qq --no-install-
   libei-dev libxcb-xtest0-dev dbus dbus-bin libglib2.0-bin grim wtype jq wl-clipboard foot imagemagick ffmpeg pipewire pipewire-bin wireplumber \
   pulseaudio-utils gstreamer1.0-tools xdotool mpv flatpak libgl1-mesa-dri mesa-vulkan-drivers fonts-noto-core \
   fonts-noto-color-emoji python3-gi python3-dbus python3-pil gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  xkb-data gdb
+  xkb-data gdb systemd procps iproute2
 EOF
 
 names=("$@")
@@ -36,15 +36,18 @@ status=0
 # The compositor's renderer needs a DRM render node: pass the host GPU and its render group.
 gpu=()
 [[ -e /dev/dri ]] && gpu=(--device /dev/dri --group-add "$(stat -c %g /dev/dri/renderD128)")
-docker run --rm --user "$(id -u):$(id -g)" "${gpu[@]}" -e HOME=/tmp --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT/src:/src" -w /src \
+# quickshare and link_mirror unshare a user and net namespace; the default seccomp profile refuses it.
+docker run --rm --security-opt seccomp=unconfined --user "$(id -u):$(id -g)" "${gpu[@]}" -e HOME=/tmp --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT/src:/src" -w /src \
   -e NOCTALIA -e SCRIPTS="$scripts" "$IMAGE" bash -c '
   set -o pipefail
   # A setup that failed halfway leaves a dir without build.ninja; remove it and set up again.
   { [ -f compositor/build-debug/build.ninja ] || { rm -rf compositor/build-debug &&
       meson setup --buildtype=debug -Dtests=enabled compositor/build-debug compositor; }
     [ -f shell/build-debug/build.ninja ] || { rm -rf shell/build-debug && meson setup --buildtype=debug shell/build-debug shell; }
+    [ -f indexer/build/build.ninja ] || { rm -rf indexer/build && meson setup indexer/build indexer; }
     # -k0: one run shows every compile error, not only the first.
-    meson compile -C compositor/build-debug --ninja-args=-k0 && meson compile -C shell/build-debug --ninja-args=-k0
+    meson compile -C compositor/build-debug --ninja-args=-k0 && meson compile -C shell/build-debug --ninja-args=-k0 &&
+      meson compile -C indexer/build
   } > /src/build.log 2>&1 || exit 10
   { meson test -C compositor/build-debug --no-rebuild --print-errorlogs
     meson test -C shell/build-debug --no-rebuild --print-errorlogs
@@ -52,7 +55,8 @@ docker run --rm --user "$(id -u):$(id -g)" "${gpu[@]}" -e HOME=/tmp --cpus "${UB
   d=/tmp/andromeda-e2e; mkdir -p "$d"; : > /src/e2e-failed.txt
   for t in $SCRIPTS; do
     n=$(basename "$t" .sh); case $n in lib|mirror) continue ;; esac
-    if bash "$t" > "$d/$n.log" 2>&1; then echo "pass $n"; else echo "FAIL $n"; echo "$n" >> /src/e2e-failed.txt; fi
+    rc=0; bash "$t" > "$d/$n.log" 2>&1 || rc=$?
+    case $rc in 0) echo "pass $n" ;; 77) echo "skip $n" ;; *) echo "FAIL $n"; echo "$n" >> /src/e2e-failed.txt ;; esac
   done
   mkdir -p /src/e2e-logs && cp "$d"/*.log /src/e2e-logs/ 2> /dev/null
   [ -z "${unit:-}" ] || exit 11
