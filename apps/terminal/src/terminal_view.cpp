@@ -358,8 +358,10 @@ namespace term {
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_PALETTE, palette);
       const GhosttyColorRgb fg = unpack(m_foreground);
       const GhosttyColorRgb bg = unpack(m_background);
+      const GhosttyColorRgb cursor = unpack(m_cursorColor); // without it OSC 12 queries get no answer
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_FOREGROUND, &fg);
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_BACKGROUND, &bg);
+      ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_COLOR_CURSOR, &cursor);
     });
   }
 
