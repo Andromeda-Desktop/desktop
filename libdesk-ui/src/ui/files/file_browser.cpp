@@ -1856,10 +1856,15 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
       page.root->setOpacity(page.opacity);
       page.background->setSize(w, h);
       const bool icons = m_options.view == View::Icons;
+      float top = 0.0F; // under the banner
+      if (page.banner != nullptr) {
+        top = page.banner->measure(renderer, LayoutConstraints::available(w, h)).height;
+        page.banner->arrange(renderer, LayoutRect{.x = 0.0F, .y = 0.0F, .width = w, .height = top});
+      }
       if (page.custom != nullptr) {
         page.icons->setVisible(false);
         page.listBox->setVisible(false);
-        page.custom->arrange(renderer, LayoutRect{.x = 0.0F, .y = 0.0F, .width = w, .height = h});
+        page.custom->arrange(renderer, LayoutRect{.x = 0.0F, .y = top, .width = w, .height = h - top});
         continue;
       }
       if (m_options.view == View::Columns || m_options.view == View::Gallery) {
@@ -1869,11 +1874,6 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
       page.listBox->setVisible(m_options.view == View::List || m_ui->viewAnim != 0);
       page.icons->setOpacity(icons ? m_ui->viewMix : 1.0F - m_ui->viewMix);
       page.listBox->setOpacity(icons ? 1.0F - m_ui->viewMix : m_ui->viewMix);
-      float top = 0.0F; // under the banner
-      if (page.banner != nullptr) {
-        top = page.banner->measure(renderer, LayoutConstraints::available(w, h)).height;
-        page.banner->arrange(renderer, LayoutRect{.x = 0.0F, .y = 0.0F, .width = w, .height = top});
-      }
       page.icons->arrange(renderer, LayoutRect{.x = pad, .y = top + pad, .width = w - pad - pad, .height = h - top - pad});
       page.listBox->arrange(renderer, LayoutRect{.x = 0.0F, .y = top, .width = w, .height = h - top});
       page.empty->arrange(renderer, LayoutRect{.x = 0.0F, .y = top, .width = w, .height = h - top});
@@ -2251,6 +2251,9 @@ void FileBrowser::jump(const fs::path& dir) {
 void FileBrowser::showListing(Listing listing) {
   if (m_listingId == listing.id && m_listing.has_value()) {
     m_listing = std::move(listing);
+    // The new listing's page and banner may differ (a status page that changed): build them again.
+    m_ui->cur().customId.clear();
+    m_ui->cur().bannerId.clear();
     refreshRows();
     return;
   }
