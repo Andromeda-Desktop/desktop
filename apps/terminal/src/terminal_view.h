@@ -87,9 +87,11 @@ namespace term {
       // Current keyboard modifiers (KeyMod bits): pointer events carry none.
       std::function<std::uint32_t()> modifiers;
       // Post a desktop notification: a long command finished while the grid had no focus (OSC 133), or the
-      // program asked (OSC 9 / 777 / 99). activated gets the clicked button (0: the body); either may be empty.
-      std::function<void(const Notice& notice, std::function<void(int button)> activated, std::function<void()> closed)>
+      // program asked (OSC 9 / 777 / 99). clicked gets the activation token and button (0: the body).
+      std::function<void(const Notice& notice, std::function<void(const std::string& token, int button)> clicked,
+                         std::function<void()> closed)>
           notify;
+      std::function<void(const std::string& token)> focus; // raise the window that shows this view
       std::function<void(const std::string& key)> closeNotice; // OSC 99 p=close for a Notice::key
       // A paste with a newline into a program without bracketed paste: run paste after the user agrees.
       std::function<void(const std::string& text, std::function<void()> paste)> confirmPaste;
@@ -266,6 +268,8 @@ namespace term {
     void textInputActivated(TextInputService& service) override;
     void textInputDeactivated(TextInputService& service) override;
     void programNotice(const Notice& notice);
+    // m_host.notify with a click that raises the window that shows this view then, if the notice asks for focus.
+    void notify(const Notice& notice, std::function<void(int button)> activated, std::function<void()> closed);
     std::string selectionText();
     void updatePointerShape(); // a link or pill wins over the program's shape (OSC 22)
     GhosttyMouseShape m_programShape = GHOSTTY_MOUSE_SHAPE_TEXT;

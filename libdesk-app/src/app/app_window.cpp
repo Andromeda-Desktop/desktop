@@ -1,6 +1,7 @@
 #include "app/app_window.h"
 
 #include "render/render_context.h"
+#include "render/text/glyph_registry.h"
 #include "render/render_target.h"
 #include "render/core/image_file_loader.h"
 #include "render/scene/shader_scene_node.h"
@@ -1437,7 +1438,7 @@ void AppWindow::setCaption(Caption caption) {
 void AppWindow::applyCaption() {
   const ColorSpec ink = colorSpecFromRole(m_caption.danger ? ColorRole::Danger : ColorRole::Label2);
   if (m_captionSymbol != nullptr) {
-    const bool shown = !m_headerSearch && !m_caption.spinning && !m_caption.symbol.empty();
+    const bool shown = !m_headerSearch && !m_caption.spinning && GlyphRegistry::contains(m_caption.symbol);
     if (shown) {
       m_captionSymbol->setGlyph(m_caption.symbol);
     }

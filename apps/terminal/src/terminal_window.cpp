@@ -11,6 +11,7 @@
 #include "core/log.h"
 #include "time/time_format.h"
 #include "render/animation/animation_manager.h"
+#include "render/text/glyph_registry.h"
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
 #include "ui/controls/status_row.h"
@@ -60,7 +61,7 @@ namespace term {
       // The grid and the prompt band draw ANSI colours too; one that is weak even on the plain view is left out.
       std::vector<Color> inks{colors.label2};
       for (std::size_t i = 1; i < colors.ansi.size(); ++i) {
-        if (contrastRatio(colors.ansi[i], colors.view) >= 4.5) {
+        if (contrastRatio(colors.ansi[i], colors.view) >= Tokens::componentTerminalSceneInkContrast) {
           inks.push_back(colors.ansi[i]);
         }
       }
@@ -421,26 +422,16 @@ namespace term {
             },
         .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
         .notify =
-            [this, id](const Notice& notice, std::function<void(int)> activated, std::function<void()> closed) {
+            [this, id](const Notice& notice, std::function<void(const std::string&, int)> clicked,
+                       std::function<void()> closed) {
               if (notice.when == Notice::When::Invisible && m_active && std::ranges::contains(m_sessions.visible(), id)) {
                 return;
               }
               m_notifier.notify(
-                  notice, notice.key.empty() ? std::string{} : std::format("{}/{}", id, notice.key),
-                  [this, alive = std::weak_ptr<bool>(m_alive), focus = notice.focus,
-                   activated = std::move(activated)](const std::string& token, int button) {
-                    if (alive.expired()) {
-                      return;
-                    }
-                    if (focus) {
-                      m_window.activate(token);
-                    }
-                    if (activated) {
-                      activated(button);
-                    }
-                  },
+                  notice, notice.key.empty() ? std::string{} : std::format("{}/{}", id, notice.key), std::move(clicked),
                   std::move(closed));
             },
+        .focus = [this](const std::string& token) { m_window.activate(token); },
         .closeNotice = [this, id](const std::string& key) { m_notifier.close(std::format("{}/{}", id, key)); },
         .confirmPaste = [this](const std::string& text, std::function<void()> paste) { askPaste(text, std::move(paste)); },
         .titleChanged = [this, id](std::string title) { apply(session_event::Title{id, std::move(title)}); },
@@ -531,7 +522,7 @@ namespace term {
     if (info == nullptr || it == m_views.end()) {
       return;
     }
-    auto moved = std::make_shared<MovedSession>(MovedSession{.view = std::move(it->view), .info = *info,
+    auto moved = std::make_shared<MovedSession>(MovedSession{.id = id, .view = std::move(it->view), .info = *info,
                                                              .secret = m_secretSessions.contains(id),
                                                              .remote = m_remoteSessions.contains(id)});
     m_views.erase(it);
@@ -542,8 +533,9 @@ namespace term {
   }
 
   void TerminalWindow::openSession(const WindowOrigin& origin) {
-    const std::uint64_t id = m_nextId++;
-    if (const auto* adopt = std::get_if<Adopt>(&origin)) {
+    const auto* adopt = std::get_if<Adopt>(&origin);
+    const std::uint64_t id = adopt != nullptr ? adopt->session->id : s_nextId++;
+    if (adopt != nullptr) {
       adoptSession(id, std::move(*adopt->session));
       return;
     }
@@ -2174,7 +2166,7 @@ namespace term {
       const ColorSpec ink = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2);
       changed = changed || card.name->text() != data.name || card.state->text() != data.status;
       card.name->setText(data.name);
-      const bool symbol = !data.spinning && !data.symbol.empty();
+      const bool symbol = !data.spinning && GlyphRegistry::contains(data.symbol);
       changed = changed || card.symbol->visible() != symbol;
       if (symbol && card.symbol->setGlyph(data.symbol)) {
         changed = true;

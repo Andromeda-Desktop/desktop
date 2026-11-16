@@ -1208,13 +1208,29 @@ namespace term {
       if (tool == "ssh" || tool == "autossh" || tool == "mosh" || tool == "et") {
         return Remote{.kind = Remote::Kind::Ssh, .host = operand(1, "bBcDEeFIiJLlmOoPpQRSWw")};
       }
+      // A container is named by -n/-c/--name/--container NAME, --name=NAME, or the first operand.
+      const auto container = [&](std::size_t from) -> std::optional<std::string> {
+        for (std::size_t i = from; i < words.size(); ++i) {
+          const std::string_view w = words[i];
+          if (w == "--") {
+            break; // the command run inside
+          }
+          if ((w == "-n" || w == "-c" || w == "--name" || w == "--container") && i + 1 < words.size()) {
+            return std::string(words[i + 1]);
+          }
+          if (w.starts_with("--name=") || w.starts_with("--container=")) {
+            return std::string(w.substr(w.find('=') + 1));
+          }
+        }
+        return operand(from, "cdnr");
+      };
       if (tool == "distrobox-enter") {
-        return Remote{.kind = Remote::Kind::Container, .host = operand(1, "n")};
+        return Remote{.kind = Remote::Kind::Container, .host = container(1)};
       }
       const auto enter = std::ranges::find(words, std::string_view("enter"));
       if ((tool == "toolbox" || tool == "distrobox") && enter != words.end()) {
         return Remote{.kind = Remote::Kind::Container,
-                      .host = operand(static_cast<std::size_t>(enter - words.begin()) + 1, "cnr")};
+                      .host = container(static_cast<std::size_t>(enter - words.begin()) + 1)};
       }
       const auto has = [&](std::string_view w) { return std::ranges::contains(words, w); };
       if ((tool == "podman" || tool == "docker" || tool == "kubectl") && (has("exec") || has("run"))
@@ -1313,7 +1329,7 @@ namespace term {
         const bool failed = mark.exitCode.value_or(0) != 0;
         std::string body = running->text.empty() ? std::string{"A command"} : running->text;
         body += failed ? std::format(" exited with {} after {}", *mark.exitCode, took) : std::format(" took {}", took);
-        m_host.notify(Notice{.title = failed ? "Command failed" : "Command finished", .body = std::move(body)}, {}, {});
+        notify(Notice{.title = failed ? "Command failed" : "Command finished", .body = std::move(body)}, {}, {});
       }
       if (running != nullptr && m_host.commandEnded) {
         m_host.commandEnded(mark.exitCode);
@@ -2243,7 +2259,25 @@ namespace term {
     if (notice.reportClose) {
       closed = [reply, key = notice.key] { reply(Osc99Scanner::closedReply(key)); };
     }
-    m_host.notify(notice, std::move(activated), std::move(closed));
+    notify(notice, std::move(activated), std::move(closed));
+  }
+
+  void TerminalView::notify(const Notice& notice, std::function<void(int)> activated, std::function<void()> closed) {
+    m_host.notify(
+        notice,
+        [this, alive = std::weak_ptr<bool>(m_alive), focus = notice.focus,
+         activated = std::move(activated)](const std::string& token, int button) {
+          if (alive.expired()) {
+            return;
+          }
+          if (focus && m_host.focus) {
+            m_host.focus(token);
+          }
+          if (activated) {
+            activated(button);
+          }
+        },
+        std::move(closed));
   }
 
   std::string TerminalView::selectionText() {
