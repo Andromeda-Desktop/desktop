@@ -92,13 +92,15 @@ namespace {
     }
   }
 
-  // Colour glyphs (emoji) or a markup foreground span: the text needs the RGBA path, a one-colour tint would lose them.
+  // Colour glyphs (emoji) or a markup foreground or background span: the text needs the RGBA path, a one-colour tint
+  // would lose them.
   bool hasOwnColor(PangoLayout* layout) {
     for (GSList* line = pango_layout_get_lines_readonly(layout); line != nullptr; line = line->next) {
       for (GSList* run = static_cast<PangoLayoutLine*>(line->data)->runs; run != nullptr; run = run->next) {
         const auto* item = static_cast<PangoGlyphItem*>(run->data);
         for (GSList* attr = item->item->analysis.extra_attrs; attr != nullptr; attr = attr->next) {
-          if (static_cast<PangoAttribute*>(attr->data)->klass->type == PANGO_ATTR_FOREGROUND) {
+          const PangoAttrType type = static_cast<PangoAttribute*>(attr->data)->klass->type;
+          if (type == PANGO_ATTR_FOREGROUND || type == PANGO_ATTR_BACKGROUND) {
             return true;
           }
         }

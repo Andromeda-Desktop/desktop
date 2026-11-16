@@ -1108,8 +1108,9 @@ namespace ui {
     // Height follows the renderer's text scale: control_m, control_l at XL text, unless the caller fixes it.
     class SearchCapsule final : public Flex {
     public:
-      SearchCapsule(std::optional<float> height, float scale, bool hasKeycap)
-          : m_height(height), m_scale(scale), m_hasKeycap(hasKeycap) {}
+      // endSize: logical height of the trailing keycap or buttons; 0 when none.
+      SearchCapsule(std::optional<float> height, float scale, float endSize)
+          : m_height(height), m_scale(scale), m_endSize(endSize) {}
 
       void setInput(Input* input) noexcept { m_input = input; }
 
@@ -1135,8 +1136,8 @@ namespace ui {
         setMinHeight(h);
         setMaxHeight(h);
         setRadius(h / 2.0F);
-        const float keycapInset = (h - Tokens::sizeKeycap * m_scale) / 2.0F; // R5: concentric with the end cap
-        setPadding(0.0F, m_hasKeycap ? keycapInset : Tokens::spaceP8 * m_scale, 0.0F,
+        const float endInset = (h - m_endSize * m_scale) / 2.0F; // R5: concentric with the end cap
+        setPadding(0.0F, m_endSize > 0.0F ? endInset : Tokens::spaceP8 * m_scale, 0.0F,
                    (h - Tokens::sizeSymbol * m_scale) / 2.0F);
         if (m_input != nullptr) {
           m_input->setControlHeight(h);
@@ -1145,7 +1146,7 @@ namespace ui {
 
       std::optional<float> m_height;
       float m_scale;
-      bool m_hasKeycap;
+      float m_endSize;
       Input* m_input = nullptr;
       float m_applied = 0.0F;
     };
@@ -1155,7 +1156,8 @@ namespace ui {
   std::unique_ptr<Flex> searchCapsule(SearchCapsuleProps props) {
     const float s = props.scale;
     const float h = props.height.value_or(Tokens::sizeControlM) * s;
-    auto capsule = std::make_unique<SearchCapsule>(props.height, s, !props.keycap.empty());
+    const float endSize = !props.keycap.empty() ? Tokens::sizeKeycap : props.trailing.empty() ? 0.0F : Tokens::sizeControlS;
+    auto capsule = std::make_unique<SearchCapsule>(props.height, s, endSize);
     capsule->setDirection(FlexDirection::Horizontal);
     capsule->setAlign(FlexAlign::Center);
     capsule->setGap(Tokens::spaceP8 * s);
@@ -1176,6 +1178,9 @@ namespace ui {
     }
     if (!props.keycap.empty()) {
       capsule->addChild(keycap({.text = props.keycap, .scale = s}));
+    }
+    for (auto& node : props.trailing) {
+      capsule->addChild(std::move(node));
     }
     return capsule;
   }

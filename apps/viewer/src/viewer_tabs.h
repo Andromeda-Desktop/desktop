@@ -55,6 +55,7 @@ namespace viewer {
     std::size_t m_active = 0;
     // A window with no tab shows this never-opened one: the toolbar and the open-or-drop message.
     std::unique_ptr<ViewerWindow> m_blank;
+    Node* m_caption = nullptr; // the header accessory of the last build
     wl_surface* m_dropSurface = nullptr;
     bool m_immersive = false;
     bool m_allDocuments = false; // the Documents group shows every row, not the first 3

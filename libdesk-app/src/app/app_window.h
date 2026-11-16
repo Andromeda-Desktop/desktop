@@ -78,6 +78,7 @@ public:
   using SidebarBuilder = std::function<std::unique_ptr<Node>(Renderer& renderer, float width, float height)>;
 
   AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, Config config);
+  [[nodiscard]] CommandTable& commands() const noexcept { return m_commands; }
   ~AppWindow();
 
   AppWindow(const AppWindow&) = delete;

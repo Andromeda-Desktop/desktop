@@ -27,7 +27,29 @@ namespace viewer {
     });
     m_window.setHeaderAccessoryBuilder([this]() -> std::unique_ptr<Node> {
       ViewerWindow* tab = active() != nullptr ? active() : m_blank.get();
-      return tab != nullptr ? tab->buildCaption() : ui::row({});
+      auto caption = tab != nullptr ? tab->buildCaption() : ui::row({});
+      m_caption = caption.get();
+      return caption;
+    });
+    // Page, zoom and tools keep their width; the title ellipsizes first.
+    m_window.setHeaderAccessoryWidths([this](Renderer& renderer) {
+      // The children, not the row: fit() sets the row's minimum width.
+      auto* row = dynamic_cast<Flex*>(m_caption);
+      if (row == nullptr) {
+        return AppWindow::HeaderAccessoryWidths{};
+      }
+      float width = 0.0F;
+      int shown = 0;
+      for (const auto& child : row->children()) {
+        if (child->visible() && child->participatesInLayout()) {
+          width += child->measure(renderer, {}).width;
+          ++shown;
+        }
+      }
+      if (shown > 1) {
+        width += row->gap() * static_cast<float>(shown - 1);
+      }
+      return AppWindow::HeaderAccessoryWidths{.floor = width, .keep = width};
     });
     m_window.setSidebarBuilder([this](Renderer& renderer, float width, float /*height*/) {
       return buildSidebar(renderer, width);
@@ -250,7 +272,7 @@ namespace viewer {
     if (auto search = tab->buildSearch()) {
       side->addChild(std::move(search));
     }
-    if (m_tabs.size() >= 2) {
+    if (m_tabs.size() >= 2 || !tab->isPdf()) {
       side->addChild(buildDocuments(width - 2.0F * pad));
     }
     if (auto list = tab->buildSidebarList(renderer, width - 2.0F * pad)) {
@@ -300,7 +322,7 @@ namespace viewer {
                              .color = colorSpecFromRole(ColorRole::Label2)}));
       r->addChild(ui::label({.text = std::move(text), .fontSize = Style::fontSizeCaption * s,
                              .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
-                             .color = colorSpecFromRole(ink), .maxLines = 1, .ellipsize = TextEllipsize::Middle,
+                             .color = colorSpecFromRole(ink), .maxLines = 1, .ellipsize = TextEllipsize::End,
                              .flexGrow = 1.0F}));
       auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
       area->setOnClick([later, run](const InputArea::PointerData&) { later(run); });

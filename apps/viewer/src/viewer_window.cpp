@@ -2,6 +2,7 @@
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
+#include "app/command_table.h"
 #include "core/text_clipboard.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "ui/controls/input.h"
@@ -118,6 +119,39 @@ namespace viewer {
       return text;
     }
 
+    // Pango markup of a snippet: each case-insensitive match of `query` on an accent wash, as on the page.
+    std::string hitMarkup(std::string_view text, const std::string& query, bool current) {
+      const auto escape = [](std::string& out, std::string_view part) {
+        for (const char c : part) {
+          out += c == '&' ? "&amp;" : c == '<' ? "&lt;" : c == '>' ? "&gt;" : std::string(1, c);
+        }
+      };
+      std::string lower(text);
+      std::string needle(query);
+      for (std::string* v : {&lower, &needle}) {
+        std::ranges::transform(*v, v->begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      }
+      const Color c = colorForRole(current ? ColorRole::TermFindHitCurrent : ColorRole::TermFindHit);
+      const auto byte = [](float v) { return static_cast<unsigned>(std::lround(std::clamp(v, 0.0F, 1.0F) * 255.0F)); };
+      const Color ink = colorForRole(ColorRole::Label1);
+      const std::string open = std::format(
+          R"(<span background="#{:02x}{:02x}{:02x}" bgalpha="{}%" foreground="#{:02x}{:02x}{:02x}" fgalpha="{}%">)",
+          byte(c.r), byte(c.g), byte(c.b), std::max(1L, std::lround(c.a * 100.0F)), byte(ink.r), byte(ink.g),
+          byte(ink.b), std::max(1L, std::lround(ink.a * 100.0F)));
+      std::string out;
+      std::size_t from = 0;
+      for (std::size_t at = needle.empty() ? std::string::npos : lower.find(needle); at != std::string::npos;
+           at = lower.find(needle, from)) {
+        escape(out, text.substr(from, at - from));
+        out += open;
+        escape(out, text.substr(at, needle.size()));
+        out += "</span>";
+        from = at + needle.size();
+      }
+      escape(out, text.substr(from));
+      return out;
+    }
+
     std::vector<std::uint8_t> areaPayload(float x0, float y0, float x1, float y1) {
       std::vector<std::uint8_t> out(16);
       const float v[4] = {std::min(x0, x1), std::min(y0, y1), std::max(x0, x1), std::max(y0, y1)};
@@ -222,7 +256,7 @@ namespace viewer {
     m_mode = Mode::Loading;
     m_helper = preview::HelperClient::start(preview::HelperKind::Pdf, m_path.string());
     if (!m_helper) {
-      fail("This file cannot be opened");
+      fail("This file cannot be opened.");
       return;
     }
     m_loop.addSource(m_helper.get());
@@ -236,7 +270,7 @@ namespace viewer {
             dropHelper();
           }
         });
-        fail("This file cannot be opened");
+        fail("This file cannot be opened.");
         return;
       }
       m_model.reset(std::min<std::uint32_t>(reply.msg.b, 100000), static_cast<float>(reply.msg.c) / 100.0F,
@@ -272,7 +306,7 @@ namespace viewer {
         return;
       }
       if (pixels.width == 0) {
-        fail("This image cannot be opened");
+        fail("This image cannot be opened.");
         return;
       }
       m_image = std::move(pixels);
@@ -668,7 +702,7 @@ namespace viewer {
     const auto& hits = m_model.hits(i);
     for (std::size_t k = 0; k < hits.size(); ++k) {
       const bool isCurrent = current && current->page == i && current->index == k;
-      mark(hits[k], ColorRole::Accent, isCurrent ? 0.55F : 0.25F);
+      mark(hits[k], isCurrent ? ColorRole::TermFindHitCurrent : ColorRole::TermFindHit, 1.0F);
     }
     if (m_selection && m_selection->page == i) {
       for (const RectF& r : m_selection->rects) {
@@ -1504,6 +1538,17 @@ namespace viewer {
     if (m_mode != Mode::Pdf) {
       return nullptr;
     }
+    const float s = m_window.uiScale();
+    std::vector<std::unique_ptr<Node>> arrows;
+    if (!m_searchText.empty()) {
+      for (const bool forward : {false, true}) {
+        arrows.push_back(ui::button({.glyph = std::string(forward ? "chevron-down" : "chevron-up"),
+                                     .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
+                                     .tooltip = std::string(forward ? "Next Result" : "Previous Result"),
+                                     .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
+                                     .height = Tokens::sizeControlS * s, .onClick = [this, forward] { moveHit(forward); }}));
+      }
+    }
     auto capsule = ui::searchCapsule({
         .out = &m_searchInput,
         .placeholder = "Search",
@@ -1520,6 +1565,7 @@ namespace viewer {
           search("");
           return true;
         },
+        .trailing = std::move(arrows),
     });
     // A rebuild hands the keyboard focus to the new field by this key.
     m_searchInput->inputArea()->setTabFocusKey("search");
@@ -1606,9 +1652,13 @@ namespace viewer {
         row->setPadding(Tokens::spaceP8 * s, Tokens::spaceP8 * s);
         const auto snippet = m_snippets.find(page << 32 | index);
         Label* text = nullptr;
-        row->addChild(ui::label({.out = &text, .text = snippet != m_snippets.end() ? snippet->second : std::string(" "),
-                                 .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label1),
-                                 .maxLines = 2, .ellipsize = TextEllipsize::End}));
+        row->addChild(ui::label({.out = &text, .text = " ", .fontSize = Style::fontSizeCaption * s,
+                                 .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 2,
+                                 .ellipsize = TextEllipsize::End}));
+        text->setUseMarkup(true);
+        if (snippet != m_snippets.end()) {
+          (void)text->setText(hitMarkup(snippet->second, m_searchText, isCurrentRow(page, index)));
+        }
         row->addChild(ui::label({.text = std::format("Page {}", page + 1), .fontSize = Tokens::typeFootnote.size * s,
                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
                                  .maxLines = 1}));
@@ -1631,10 +1681,18 @@ namespace viewer {
         const bool on = now && r.page == now->first && r.index == now->second;
         r.row->setFill(on ? colorSpecFromRole(ColorRole::Lens) : clearColorSpec());
         r.row->setBorder(on ? colorSpecFromRole(ColorRole::LensEdge) : clearColorSpec(), on ? 0.5F * s : 0.0F);
+        const auto snippet = m_snippets.find(static_cast<std::uint64_t>(r.page) << 32 | r.index);
+        if (on != isCurrentRow(r.page, r.index) && snippet != m_snippets.end() && r.snippet != nullptr) {
+          (void)r.snippet->setText(hitMarkup(snippet->second, m_searchText, on));
+        }
       }
       m_shownHit = now;
     }
     requestSnippet();
+  }
+
+  bool ViewerWindow::isCurrentRow(std::size_t page, std::size_t index) const {
+    return m_shownHit && m_shownHit->first == page && m_shownHit->second == index;
   }
 
   void ViewerWindow::requestSnippet() {
@@ -1671,7 +1729,7 @@ namespace viewer {
             }
             for (const ResultRow& row : m_resultRows) {
               if ((static_cast<std::uint64_t>(row.page) << 32 | row.index) == key && row.snippet != nullptr) {
-                (void)row.snippet->setText(text);
+                (void)row.snippet->setText(hitMarkup(text, m_searchText, isCurrentRow(row.page, row.index)));
               }
             }
             m_snippets[key] = std::move(text);
@@ -2251,15 +2309,28 @@ namespace viewer {
     return sheet;
   }
 
+  // Rulebook "empty": symbol 48, 16, title-3, 4, body (2 lines), 16, one regular button.
   std::unique_ptr<Node> ViewerWindow::buildMessage(const std::string& title, const std::string& caption) {
     const float s = m_window.uiScale();
-    auto box = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Style::spaceSm * s,
-                           .flexGrow = 1.0F});
-    box->addChild(ui::label({.text = title, .fontSize = Style::fontSizeTitle * s,
-                             .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
-                             .textAlign = TextAlign::Center}));
-    box->addChild(ui::label({.text = caption, .fontSize = Style::fontSizeCaption * s,
-                             .color = colorSpecFromRole(ColorRole::Label2)}));
+    auto box = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = 0.0F, .flexGrow = 1.0F});
+    auto column = ui::column({.align = FlexAlign::Center, .gap = 0.0F, .maxWidth = Tokens::componentEmptyMaxWidth * s});
+    column->addChild(ui::glyph({.glyph = std::string("file"), .glyphSize = Tokens::componentEmptySymbol * s,
+                                .color = colorSpecFromRole(ColorRole::Label3)}));
+    column->addChild(ui::node({.height = Tokens::spaceP16 * s}));
+    auto heading = ui::label({.text = title, .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
+                              .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
+                              .textAlign = TextAlign::Center, .ellipsize = TextEllipsize::Middle});
+    heading->setLineHeight(Tokens::typeTitle3.line * s);
+    column->addChild(std::move(heading));
+    column->addChild(ui::node({.height = Tokens::spaceP4 * s}));
+    auto body = ui::label({.text = caption, .fontSize = Tokens::typeParagraph.size * s,
+                           .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 2,
+                           .textAlign = TextAlign::Center, .ellipsize = TextEllipsize::End});
+    body->setLineHeight(Tokens::typeParagraph.line * s);
+    column->addChild(std::move(body));
+    column->addChild(ui::node({.height = Tokens::spaceP16 * s}));
+    column->addChild(ui::button({.text = std::string("Open…"), .onClick = [this] { m_window.commands().run("file.open"); }}));
+    box->addChild(std::move(column));
     return box;
   }
 

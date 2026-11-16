@@ -630,6 +630,7 @@ namespace ui {
     std::function<void(const std::string&)> onChange = nullptr;
     std::function<void(const std::string&)> onSubmit = nullptr;
     std::function<bool(std::uint32_t, std::uint32_t)> onKeyEvent = nullptr;
+    std::vector<std::unique_ptr<Node>> trailing; // control_s nodes after the field; use instead of a keycap
   };
 
   [[nodiscard]] std::unique_ptr<Flex> keycap(const KeycapProps& props);

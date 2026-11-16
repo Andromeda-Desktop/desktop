@@ -70,6 +70,7 @@ namespace viewer {
     [[nodiscard]] std::unique_ptr<Node> buildCaption();
     // The sidebar's search capsule; null when the document cannot be searched.
     [[nodiscard]] std::unique_ptr<Node> buildSearch();
+    [[nodiscard]] bool isPdf() const noexcept { return m_mode == Mode::Pdf; }
     // The sidebar's switch (Pages, Outline, Results) and its list; null when there is no page list.
     [[nodiscard]] std::unique_ptr<Node> buildSidebarList(Renderer& renderer, float width);
     [[nodiscard]] bool onKey(const KeyboardEvent& event);
@@ -137,6 +138,7 @@ namespace viewer {
     [[nodiscard]] std::unique_ptr<Node> buildResults(float width);
     // One SELECT_LINE at a time fills the snippet of the next built result row that has none.
     void requestSnippet();
+    [[nodiscard]] bool isCurrentRow(std::size_t page, std::size_t index) const; // the row shown as the current hit
     void refreshResults();
     void requestOutline();
     // The outline entry the current page belongs to: the last one that starts at or before it.
