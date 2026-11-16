@@ -40,6 +40,9 @@ CONF
 # rm_runtime: deletes $RUNTIME in a cleanup trap. Helpers the private bus started (thumbnailers, previews) can
 # outlive the kill by a moment and write into it, so a failed delete tries again for up to 2 s.
 rm_runtime() {
+  # A script that sets its own trap still stops the compositor and the clients it started.
+  kill $(jobs -p) 2> /dev/null || true
+  wait 2> /dev/null
   for _ in $(seq 10); do rm -rf "$RUNTIME" 2> /dev/null && return 0; sleep 0.2; done
   rm -rf "$RUNTIME"
 }
