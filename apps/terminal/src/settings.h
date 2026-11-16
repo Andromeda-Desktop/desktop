@@ -19,7 +19,9 @@ namespace term {
   enum class CursorShape : std::uint8_t { Block, Bar, Underline };
   enum class StartDir : std::uint8_t { Home, Current };
   enum class Bell : std::uint8_t { Flash, Sound, Off };
-  enum class WindowMaterial : std::uint8_t { Solid, Glass };
+  enum class WindowMaterial : std::uint8_t { Solid, Glass, GlassSidebar, GlassContent };
+  [[nodiscard]] constexpr bool glassSidebar(WindowMaterial m) { return m == WindowMaterial::Glass || m == WindowMaterial::GlassSidebar; }
+  [[nodiscard]] constexpr bool glassContent(WindowMaterial m) { return m == WindowMaterial::Glass || m == WindowMaterial::GlassContent; }
   enum class Scrollback : std::uint8_t { Limited, Unlimited };
 
   // User preferences, from $XDG_CONFIG_HOME/andromeda/terminal.toml. The defaults are the built-in behaviour.
@@ -28,7 +30,7 @@ namespace term {
     CursorShape cursor = CursorShape::Bar; // until the program sets its own (DECSCUSR)
     bool cursorBlink = false;                // until the program sets its own (DECSCUSR, mode 12)
     WindowMaterial material = WindowMaterial::Solid;
-    std::optional<int> glassOpacity; // percent of the text background over Glass; nullopt: the design token
+    std::optional<int> glassOpacity; // percent opacity of the glass parts; nullopt: the design token
     bool focusRing = false; // accent ring on the focused split pane
     std::string font;                        // empty: the type token's mono family
     int fontSize = 13;                       // px at ui_scale 1

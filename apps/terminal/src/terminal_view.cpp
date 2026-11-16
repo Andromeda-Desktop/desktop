@@ -266,7 +266,7 @@ namespace term {
     if (hasScene(m_theme)) {
       return 0.0F;
     }
-    if (m_settings.material != WindowMaterial::Glass || Style::reduceTransparency()) {
+    if (!glassContent(m_settings.material) || Style::reduceTransparency()) {
       return 1.0F;
     }
     return m_settings.glassOpacity ? static_cast<float>(*m_settings.glassOpacity) / 100.0F : Tokens::componentTerminalGlassAlpha;

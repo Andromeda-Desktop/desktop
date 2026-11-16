@@ -689,6 +689,21 @@ void AppWindow::setMaterial(Material material) {
   }
 }
 
+void AppWindow::setGlassAlpha(std::optional<float> alpha) {
+  if (alpha != m_config.glassAlpha) {
+    m_config.glassAlpha = alpha;
+    requestRebuild();
+  }
+}
+
+bool AppWindow::glassSidebar() const noexcept {
+  return m_config.material == Material::Glass || m_config.material == Material::GlassSidebar;
+}
+
+bool AppWindow::glassContent() const noexcept {
+  return m_config.material == Material::Glass || m_config.material == Material::GlassContent;
+}
+
 void AppWindow::setSceneSource(std::function<std::optional<Scene>()> source) {
   m_sceneSource = std::move(source);
   requestRebuild();
@@ -1020,12 +1035,13 @@ void AppWindow::applySceneFills() {
     return fixedColorSpec(tint);
   };
   // Content that backs its own text shows the scene at the light tint; otherwise the pane backs text like the sidebar.
-  // A card lies on the frame: the frame keeps the text tint only when the card adds none, so the scene shows through.
+  // A card lies on the frame, which keeps the sidebar tint all around it.
   const float paneTint = m_sceneContentBacked ? m_scene->tint : m_sceneTextTint;
   if (m_config.contentCard) {
     m_mainNode->setFill(m_sceneContentBacked ? fill(paneTint) : clearColorSpec());
     if (m_cardFrame != nullptr) {
-      m_cardFrame->setFill(m_sceneContentBacked ? clearColorSpec() : fill(m_sceneTextTint));
+      // The ring around the card is the sidebar layer, so the card reads as sitting on it.
+      m_cardFrame->setFill(fill(m_sceneTextTint));
     }
   } else {
     m_mainNode->setFill(fill(paneTint));
@@ -1046,13 +1062,13 @@ void AppWindow::setMainFill(std::optional<ColorSpec> fill) {
   invalidate();
 }
 
-// Solid: the main pane takes the content's plane. Glass: the main pane keeps the glass and the header band takes the
+// Solid content: the main pane takes the content's plane. Glass content: the main pane keeps the glass and the header band takes the
 // plane, as the content draws it over the same glass, so band and content read as one plane.
 void AppWindow::applyMainFill() {
   if (m_mainNode == nullptr || m_config.transparentContent || m_scene || m_contentCards) {
     return;
   }
-  if (m_config.material == Material::Solid) {
+  if (!glassContent()) {
     m_mainNode->setFill(m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
   } else if (m_headerNode != nullptr) {
     m_headerNode->setFill(m_mainFill.value_or(clearColorSpec()));
@@ -1173,7 +1189,7 @@ void AppWindow::prepareFrame(bool needsLayout) {
 
 void AppWindow::syncBlur() {
   std::vector<InputRect> rects;
-  if (m_config.material == Material::Glass && !m_scene && !Style::reduceTransparency() && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
+  if (m_config.material != Material::Solid && !m_scene && !Style::reduceTransparency() && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
     const auto margin = static_cast<float>(m_surface->margin());
     const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
     const float r = square ? 0.0F : Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
@@ -1576,7 +1592,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   // A scene shows through both panes, so a strip under the main corners would show as a darker band.
   const bool concave = !card && sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
-  const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint);
+  const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), m_config.glassAlpha.value_or(Style::glassMaterial(glass::Kind::Sheet).tint));
   if (m_scene && m_sceneMeasured != m_scene) {
     measureScene();
   }
@@ -1586,7 +1602,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     return fixedColorSpec(tint);
   };
   if (!m_scene && !m_config.transparentContent && !m_contentCards) {
-    main->setFill(m_config.material == Material::Glass ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
+    main->setFill(glassContent() ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
   }
   m_mainNode = main.get();
   applyMainFill();
@@ -1617,7 +1633,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   body->setPaletteTone(chromeTone());
   if (sidebarWidth > 0.0F) {
     const ColorSpec sidebarFill = m_scene ? sceneFill(m_sceneTextTint)
-                                  : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
+                                  : glassSidebar() ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});
@@ -1644,8 +1660,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     // The material under the card is the sidebar's, so the window reads as one surface with the card on it.
     auto frame = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
     frame->setPadding(m_cardGap, m_cardGap, m_cardGap, cardLeft);
-    frame->setFill(m_scene ? (m_sceneContentBacked ? clearColorSpec() : sceneFill(m_sceneTextTint))
-                           : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin));
+    frame->setFill(m_scene ? sceneFill(m_sceneTextTint)
+                           : glassSidebar() ? glassFill : colorSpecFromRole(ColorRole::SolidThin));
     m_cardFrame = frame.get();
     frame->addChild(std::move(main));
     body->addChild(std::move(frame));

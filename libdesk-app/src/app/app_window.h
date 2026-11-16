@@ -48,7 +48,8 @@ class AppWindow {
 public:
   // Glass: the compositor blurs what lies below the whole window; the sidebar draws the Sheet tint over it and the main
   // pane the thick tint. Content that paints its own background must make it translucent to show the glass.
-  enum class Material : std::uint8_t { Solid, Glass };
+  // Glass: sidebar and content are glass over the blur; GlassSidebar and GlassContent make only that part glass.
+  enum class Material : std::uint8_t { Solid, Glass, GlassSidebar, GlassContent };
 
   struct Config {
     std::string appId;
@@ -63,6 +64,7 @@ public:
     bool navigation = false; // back / forward buttons in the header (commands go.back, go.forward)
     float sidebarWidth = 0.0F; // logical px before ui scale; 0 = no sidebar
     Material material = Material::Solid;
+    std::optional<float> glassAlpha; // tint alpha of the glass parts; nullopt: the desktop glass slider (Sheet)
     std::string parentWindow;  // portal form "wayland:<xdg-foreign handle>": a dialog of another app's window
     bool transparentContent = false; // the content area shows what lies below the window surface (a video subsurface)
     bool contentCard = false; // the content is a rounded card inset card_gap on the sidebar material
@@ -254,6 +256,7 @@ public:
   [[nodiscard]] wl_surface* wlSurface() const noexcept;
   [[nodiscard]] Material material() const noexcept { return m_config.material; }
   void setMaterial(Material material);
+  void setGlassAlpha(std::optional<float> alpha);
   // This window's surface or its open menu popup: the app routes that surface's events here.
   [[nodiscard]] bool ownsSurface(wl_surface* surface) const noexcept;
   [[nodiscard]] float uiScale() const noexcept { return m_uiScale; }
@@ -335,6 +338,8 @@ private:
   Flex* m_sidebarNode = nullptr;
   Flex* m_bodyNode = nullptr;
   [[nodiscard]] std::optional<PaletteTone> chromeTone() const;
+  [[nodiscard]] bool glassSidebar() const noexcept;
+  [[nodiscard]] bool glassContent() const noexcept;
   Flex* m_mainNode = nullptr;
   std::optional<ColorSpec> m_mainFill;
   void applyScene(std::optional<Scene> scene);

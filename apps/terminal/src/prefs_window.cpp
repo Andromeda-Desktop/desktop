@@ -28,6 +28,19 @@
 
 namespace term {
 
+  namespace {
+    std::string_view materialName(WindowMaterial material) {
+    switch (material) {
+    case WindowMaterial::Solid: return "Solid";
+    case WindowMaterial::Glass: return "Glass";
+    case WindowMaterial::GlassSidebar: return "Glass sidebar";
+    case WindowMaterial::GlassContent: return "Glass content";
+    }
+    return "Solid";
+  }
+
+  } // namespace
+
   // A clipped slot whose children sit at their layout place plus a slide offset; a child out of the layout keeps the
   // place it had in it. An outgoing page stays in the slot out of the layout until its spring ends.
   class SlideSlot final : public Flex {
@@ -414,7 +427,7 @@ namespace term {
                    .rows = {{"Window", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}},
                    .bare = true});
     const int glassOpacity = now.glassOpacity.value_or(static_cast<int>(std::lround(Tokens::componentTerminalGlassAlpha * 100.0F)));
-    const bool glass = now.material == WindowMaterial::Glass && !Style::reduceTransparency();
+    const bool glass = now.material != WindowMaterial::Solid && !Style::reduceTransparency();
     out.push_back({Pane::Main,
                    "",
                    {{"Glass opacity", glass ? "" : "Glass windows only",
@@ -861,7 +874,7 @@ namespace term {
     status->addChild(ui::column({.fill = fixedColorSpec(colors.accent), .radius = dot / 2.0F, .width = dot, .height = dot}));
     status->addChild(ui::label({.text = name, .fontSize = meta, .fontWeight = FontWeight::SemiBold, .color = fixedColorSpec(colors.label1)}));
     status->addChild(ui::label({.text = "·  " + fontName + " " + std::to_string(now.fontSize) + "  ·  "
-                                    + (now.material == WindowMaterial::Glass ? "Glass" : "Solid"),
+                                    + std::string(materialName(now.material)),
                                 .fontSize = meta,
                                 .fontWeight = FontWeight::Medium,
                                 .color = fixedColorSpec(colors.label2),
@@ -913,27 +926,31 @@ namespace term {
   }
 
   std::unique_ptr<Node> PrefsWindow::materialTiles(float s, float width) {
-    constexpr std::array<std::pair<WindowMaterial, std::string_view>, 2> kMaterials{
-        {{WindowMaterial::Solid, "Solid"}, {WindowMaterial::Glass, "Glass"}}};
+    constexpr std::array kMaterials{WindowMaterial::Solid, WindowMaterial::Glass, WindowMaterial::GlassSidebar,
+                                    WindowMaterial::GlassContent};
     const float gap = Tokens::spaceP12 * s;
     const float tileW = std::floor((width - gap) / 2.0F);
     const float tileH = std::round(tileW * Tokens::componentTerminalWindowTileAspect);
     const float inset = Tokens::spaceP12 * s;
     const WindowMaterial current = m_store.settings().material;
-    auto row = ui::row({.gap = gap, .width = width});
-    for (const auto& [material, name] : kMaterials) {
+    auto grid = ui::column({.gap = gap, .width = width});
+    std::unique_ptr<Flex> row;
+    for (const WindowMaterial material : kMaterials) {
+      if (!row) {
+        row = ui::row({.gap = gap, .width = width});
+      }
+      const std::string_view name = materialName(material);
       const bool on = material == current;
-      const bool isGlass = material == WindowMaterial::Glass;
       const float innerW = tileW - inset * 2.0F;
       const float sideW = std::round(innerW * Tokens::componentTerminalWindowTileSidebar);
       const float r = Style::scaledRadiusSm(s);
       auto window = ui::row({.width = innerW, .height = tileH - inset * 2.0F});
-      const float tint = isGlass ? Style::glassMaterial(glass::Kind::Sheet).tint : 1.0F;
-      auto side = ui::column({.fill = colorSpecFromRole(ColorRole::SolidThin, tint),
+      const float tint = Style::glassMaterial(glass::Kind::Sheet).tint;
+      auto side = ui::column({.fill = colorSpecFromRole(ColorRole::SolidThin, glassSidebar(material) ? tint : 1.0F),
                               .fillHeight = true,
                               .width = sideW});
       side->setRadii(Radii{r, 0.0F, 0.0F, r});
-      auto main = ui::column({.fill = colorSpecFromRole(ColorRole::SolidRegular, tint),
+      auto main = ui::column({.fill = colorSpecFromRole(ColorRole::SolidRegular, glassContent(material) ? tint : 1.0F),
                               .fillHeight = true,
                               .flexGrow = 1.0F});
       main->setRadii(Radii{0.0F, r, r, 0.0F});
@@ -950,8 +967,11 @@ namespace term {
                          [this, material](const InputArea::PointerData&) {
                            change([material](Settings& x) { x.material = material; });
                          }));
+      if (row->children().size() == 2) {
+        grid->addChild(std::move(row));
+      }
     }
-    return row;
+    return grid;
   }
 
   std::unique_ptr<Node> PrefsWindow::themeTiles(float s, float width) {

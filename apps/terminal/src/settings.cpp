@@ -33,8 +33,9 @@ namespace term {
     constexpr Names<StartDir, 2> kStartDirs{{{StartDir::Home, "home"}, {StartDir::Current, "current"}}};
     constexpr Names<Bell, 3> kBells{{{Bell::Flash, "flash"}, {Bell::Sound, "sound"}, {Bell::Off, "off"}}};
     constexpr Names<Scrollback, 2> kScrollbacks{{{Scrollback::Limited, "limited"}, {Scrollback::Unlimited, "unlimited"}}};
-    constexpr Names<WindowMaterial, 2> kMaterials{
-        {{WindowMaterial::Solid, "solid"}, {WindowMaterial::Glass, "glass"}}};
+    constexpr Names<WindowMaterial, 4> kMaterials{
+        {{WindowMaterial::Solid, "solid"}, {WindowMaterial::Glass, "glass"}, {WindowMaterial::GlassSidebar, "glass_sidebar"},
+         {WindowMaterial::GlassContent, "glass_content"}}};
 
     template <typename E, std::size_t N> std::string_view nameOf(const Names<E, N>& names, E value) {
       for (const auto& [e, name] : names) {

@@ -8,6 +8,7 @@
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
 #include "agent_view.h"
+#include "app/app_window.h"
 #include "app/split_view.h"
 #include "ui/split_layout.h"
 
@@ -44,6 +45,20 @@ class ThumbnailService;
 struct wl_surface;
 
 namespace term {
+
+  [[nodiscard]] inline AppWindow::Material appMaterial(WindowMaterial m) {
+    switch (m) {
+    case WindowMaterial::Solid: return AppWindow::Material::Solid;
+    case WindowMaterial::Glass: return AppWindow::Material::Glass;
+    case WindowMaterial::GlassSidebar: return AppWindow::Material::GlassSidebar;
+    case WindowMaterial::GlassContent: return AppWindow::Material::GlassContent;
+    }
+    return AppWindow::Material::Solid;
+  }
+  // The Glass opacity setting drives the window's glass parts; unset, they follow the desktop glass slider.
+  [[nodiscard]] inline std::optional<float> glassAlpha(const Settings& s) {
+    return s.glassOpacity ? std::optional(static_cast<float>(*s.glassOpacity) / 100.0F) : std::nullopt;
+  }
 
   class Notifier;
   namespace agent {
