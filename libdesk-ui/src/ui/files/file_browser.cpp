@@ -2370,6 +2370,7 @@ void FileBrowser::attachModel() {
   m_modelView->setSort(m_sort);
   m_modelView->setShowHidden(m_options.showHidden);
   m_modelView->setChangedCallback([this] { onModelChanged(); });
+  m_modelView->setRowsPatchedCallback([this](std::span<const std::size_t> rows) { onRowsPatched(rows); });
   // A file still being written (a download, a recording) changes every batch: its preview decodes once it has been
   // quiet for a second, not on every change.
   m_modelEdits = m_model->subscribe([this, dir = m_location](const FileModel::Change& change) {
@@ -2401,10 +2402,32 @@ void FileBrowser::attachModel() {
   });
 }
 
-void FileBrowser::onModelChanged() {
-  if (m_model == nullptr || m_model->status() == FileModel::Status::Loading) {
+void FileBrowser::onRowsPatched(std::span<const std::size_t> rows) {
+  // In place only while m_rows is exactly the model view's rows: no listing, expansion, search, kind filter or groups.
+  const bool kindFilter = m_searchKind != SearchKind::All && (!m_filter.empty() || m_ui->searchFocused);
+  const bool grouped = m_group != FileGroupBy::None && m_options.view != View::Columns;
+  if (m_model == nullptr || m_model->status() != FileModel::Status::Ready || m_waiting || m_skeletonShown ||
+      m_listing.has_value() || (expandable() && !m_expanded.empty()) || searchingEverywhere() || kindFilter || grouped ||
+      m_rows.size() != m_modelView->rows().size() || m_ui->cur().rows.size() != m_rows.size()) {
+    onModelChanged();
     return;
   }
+  logLoadTimes();
+  Page& page = m_ui->cur();
+  const auto& view = m_modelView->rows();
+  for (const std::size_t r : rows) {
+    m_rows[r] = view[r];
+    page.rows[r] = view[r];
+    if (page.icons != nullptr) {
+      page.icons->notifyItemChanged(r);
+      page.list->notifyItemChanged(r);
+    }
+  }
+  refreshChrome();
+  notifyChanged();
+}
+
+void FileBrowser::logLoadTimes() {
   // tests/e2e/files_speed.sh reads these: names listed, then every stat read (FB-SPEED budgets).
   if (m_navigateAt != std::chrono::steady_clock::time_point{}) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - m_navigateAt).count();
@@ -2417,6 +2440,13 @@ void FileBrowser::onModelChanged() {
       m_navigateAt = {};
     }
   }
+}
+
+void FileBrowser::onModelChanged() {
+  if (m_model == nullptr || m_model->status() == FileModel::Status::Loading) {
+    return;
+  }
+  logLoadTimes();
   if (m_waiting) {
     present(m_pendingMotion);
     return;

@@ -16,6 +16,7 @@
 #include <optional>
 #include <map>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -341,6 +342,8 @@ private:
   void clearSkeleton(Page& page);
   void attachModel();
   void onModelChanged();
+  void onRowsPatched(std::span<const std::size_t> rows);
+  void logLoadTimes();
   void present(Motion motion);
   void refreshRows();
   void rebindPages();

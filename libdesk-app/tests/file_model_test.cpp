@@ -6,10 +6,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <format>
 #include <filesystem>
 #include <fstream>
 #include <poll.h>
 #include <print>
+#include <span>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -154,6 +156,88 @@ int main() {
          "a new model of the folder finishes after the old one was dropped mid-stat");
   expect(std::ranges::none_of(again->entries(), [](const auto& e) { return e->pendingStat; }), "every entry has its stat");
   again.reset();
+
+  // Model-based: after any sequence of sort, filter, hidden, file and reload events, every callback (a rebuild or an
+  // in-place stat patch) leaves the view equal to a fresh view of the same model and settings.
+  {
+    const fs::path mixed = root / "mixed";
+    fs::create_directories(mixed);
+    for (int i = 0; i < 3000; ++i) {
+      if (i % 50 == 0) {
+        fs::create_directories(mixed / ("d" + std::to_string(i)));
+      } else {
+        write(mixed / ((i % 7 == 0 ? ".h" : "f") + std::to_string(i) + (i % 3 == 0 ? ".txt" : ".png")), i % 13);
+      }
+    }
+    auto mixedModel = FileModel::open(mixed, watcher);
+    FileModelView live(mixedModel);
+    FileSort sort;
+    bool hidden = false;
+    std::string filter;
+    int patches = 0;
+    int checks = 0;
+    const auto check = [&](const char* what) {
+      FileModelView fresh(mixedModel);
+      fresh.setSort(sort);
+      fresh.setShowHidden(hidden);
+      fresh.setFilter(filter);
+      ++checks;
+      if (fresh.rows() != live.rows()) {
+        expect(false, std::format("{}: view differs from a fresh view ({} vs {} rows)", what, live.rows().size(),
+                                  fresh.rows().size()));
+      }
+    };
+    live.setChangedCallback([&] { check("rebuild"); });
+    live.setRowsPatchedCallback([&](std::span<const std::size_t> rows) {
+      ++patches;
+      for (const std::size_t r : rows) {
+        expect(r < live.rows().size(), "a patched row index is in range");
+      }
+      check("patch");
+    });
+    expect(pump(watcher, [&] { return mixedModel->status() == FileModel::Status::Ready && !mixedModel->statPending(); }),
+           "the mixed folder lists");
+    mixedModel->reload();
+    expect(pump(watcher, [&] { return mixedModel->status() == FileModel::Status::Ready && !mixedModel->statPending(); }),
+           "the mixed folder lists again");
+    expect(patches > 0, "stat batches under a name sort patch rows in place");
+    std::srand(7);
+    const FileSortKey keys[] = {FileSortKey::Name, FileSortKey::Size, FileSortKey::Modified, FileSortKey::Kind};
+    const char* filters[] = {"", "1", "PNG", "d"};
+    int created = 0;
+    for (int step = 0; step < 150; ++step) {
+      switch (std::rand() % 8) { // 5-7 reload: each reload restarts the stat batches
+      case 0:
+        sort = {.key = keys[std::rand() % 4], .descending = std::rand() % 2 == 0, .foldersFirst = std::rand() % 2 == 0};
+        live.setSort(sort);
+        break;
+      case 1:
+        filter = filters[std::rand() % 4];
+        live.setFilter(filter);
+        break;
+      case 2:
+        hidden = !hidden;
+        live.setShowHidden(hidden);
+        break;
+      case 3:
+        write(mixed / ("n" + std::to_string(created++)), static_cast<std::size_t>(std::rand() % 40));
+        break;
+      case 4:
+        fs::remove(mixed / ("f" + std::to_string(1 + std::rand() % 2999) + ".png"));
+        break;
+      default:
+        mixedModel->reload();
+        break;
+      }
+      if (std::rand() % 2 == 0) {
+        pump(watcher, [&] { return mixedModel->status() == FileModel::Status::Ready && !mixedModel->statPending(); });
+      }
+    }
+    expect(pump(watcher, [&] { return mixedModel->status() == FileModel::Status::Ready && !mixedModel->statPending(); }),
+           "the mixed folder settles");
+    check("settled");
+    std::println("file_model_test: {} checks, {} patches", checks, patches);
+  }
 
   fs::remove_all(root);
   return g_failures == 0 ? 0 : 1;

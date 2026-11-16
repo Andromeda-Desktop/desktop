@@ -34,6 +34,9 @@ public:
     std::string name;    // Inserted, Removed, Updated, Renamed (old name); empty Updated = a batch of stat results
     std::string newName; // Renamed
     std::vector<std::string> modified; // a batch: names that were there before and changed (their previews are stale)
+    // A stat batch: only these entries() indices got a new pointer; names, count and order are unchanged.
+    bool statOnly = false;
+    std::vector<std::size_t> statted;
   };
   using Listener = std::function<void(const Change& change)>;
 
@@ -103,6 +106,11 @@ public:
   void setPredicate(std::function<bool(const FileInfo&)> predicate);
   // Called after the rows changed (any model change or setting).
   void setChangedCallback(std::function<void()> callback) { m_onChanged = std::move(callback); }
+  // When set, a stat batch that keeps the row order replaces rows in place and reports their indices here instead of
+  // calling the changed callback.
+  void setRowsPatchedCallback(std::function<void(std::span<const std::size_t>)> callback) {
+    m_onPatched = std::move(callback);
+  }
 
   [[nodiscard]] const std::vector<std::shared_ptr<const FileInfo>>& rows() const noexcept { return m_rows; }
   [[nodiscard]] FileModel& model() noexcept { return *m_model; }
@@ -113,6 +121,7 @@ public:
 
 private:
   void rebuild();
+  bool patch(const FileModel::Change& change);
 
   std::shared_ptr<FileModel> m_model;
   std::shared_ptr<void> m_subscription;
@@ -121,5 +130,8 @@ private:
   std::string m_filter;
   std::function<bool(const FileInfo&)> m_predicate;
   std::vector<std::shared_ptr<const FileInfo>> m_rows;
+  std::vector<std::uint32_t> m_rowOf; // entries() index -> m_rows index, kNoRow when filtered out
+  std::vector<std::size_t> m_patched;
   std::function<void()> m_onChanged;
+  std::function<void(std::span<const std::size_t>)> m_onPatched;
 };

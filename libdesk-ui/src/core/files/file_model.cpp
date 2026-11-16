@@ -313,25 +313,26 @@ void FileModel::applyStats(StatJob& job) {
     finished = job.finished;
     job.drainPosted = false;
   }
-  bool changed = false;
+  Change change{.type = Change::Type::Updated, .statOnly = true};
+  change.statted.reserve(batch.size());
   for (auto& [index, info] : batch) {
     if (index < m_entries.size() && m_entries[index] == job.base[index]) {
       m_entries[index] = std::move(info);
-      changed = true;
+      change.statted.push_back(index);
       continue;
     }
     // Watch events moved the row: find it by name, and keep a newer stat from upsert.
     const auto it = std::ranges::find_if(m_entries, [&](const auto& e) { return e->name == info->name; });
     if (it != m_entries.end() && (*it)->pendingStat) {
       *it = std::move(info);
-      changed = true;
+      change.statted.push_back(static_cast<std::size_t>(it - m_entries.begin()));
     }
   }
   if (finished) {
     m_statJob.reset();
   }
-  if (changed || finished) {
-    notify({.type = Change::Type::Updated});
+  if (!change.statted.empty() || finished) {
+    notify(change);
   }
 }
 
@@ -443,7 +444,11 @@ void FileModel::notify(const Change& change) {
 }
 
 FileModelView::FileModelView(std::shared_ptr<FileModel> model) : m_model(std::move(model)) {
-  m_subscription = m_model->subscribe([this](const FileModel::Change&) { rebuild(); });
+  m_subscription = m_model->subscribe([this](const FileModel::Change& change) {
+    if (!patch(change)) {
+      rebuild();
+    }
+  });
   rebuild();
 }
 
@@ -498,32 +503,71 @@ bool FileModelView::before(const FileInfo& a, const FileInfo& b, const FileSort&
   return sort.descending ? cmp > 0 : cmp < 0;
 }
 
+namespace {
+constexpr std::uint32_t kNoRow = UINT32_MAX;
+}
+
 void FileModelView::rebuild() {
-  m_rows.clear();
-  for (const auto& entry : m_model->entries()) {
-    if (entry->hidden && !m_showHidden) {
+  const auto& entries = m_model->entries();
+  std::vector<std::uint32_t> order;
+  order.reserve(entries.size());
+  for (std::uint32_t i = 0; i < entries.size(); ++i) {
+    const FileInfo& entry = *entries[i];
+    if (entry.hidden && !m_showHidden) {
       continue;
     }
-    if (!m_filter.empty() && folded(entry->displayName).find(m_filter) == std::string::npos) {
+    if (!m_filter.empty() && folded(entry.displayName).find(m_filter) == std::string::npos) {
       continue;
     }
-    if (m_predicate && !m_predicate(*entry)) {
+    if (m_predicate && !m_predicate(entry)) {
       continue;
     }
-    m_rows.push_back(entry);
+    order.push_back(i);
   }
   if (m_sort.key == FileSortKey::Name) {
     // The model keeps name order, so a name sort is a reverse and a stable partition: O(n), no compares.
     if (m_sort.descending) {
-      std::ranges::reverse(m_rows);
+      std::ranges::reverse(order);
     }
     if (m_sort.foldersFirst) {
-      std::ranges::stable_partition(m_rows, [](const auto& row) { return row->isDir; });
+      std::ranges::stable_partition(order, [&](std::uint32_t i) { return entries[i]->isDir; });
     }
   } else {
-    std::ranges::sort(m_rows, [this](const auto& a, const auto& b) { return before(*a, *b, m_sort); });
+    std::ranges::sort(order, [&](std::uint32_t a, std::uint32_t b) { return before(*entries[a], *entries[b], m_sort); });
+  }
+  m_rows.resize(order.size());
+  m_rowOf.assign(entries.size(), kNoRow);
+  for (std::uint32_t r = 0; r < order.size(); ++r) {
+    m_rows[r] = entries[order[r]];
+    m_rowOf[order[r]] = r;
   }
   if (m_onChanged) {
     m_onChanged();
   }
+}
+
+bool FileModelView::patch(const FileModel::Change& change) {
+  const auto& entries = m_model->entries();
+  const bool statKey = m_sort.key == FileSortKey::Size || m_sort.key == FileSortKey::Modified ||
+                       m_sort.key == FileSortKey::Added;
+  if (!change.statOnly || !m_onPatched || m_predicate || statKey || m_rowOf.size() != entries.size()) {
+    return false;
+  }
+  m_patched.clear();
+  for (const std::size_t index : change.statted) {
+    const std::uint32_t r = m_rowOf[index];
+    if (r == kNoRow) {
+      continue; // hidden and the filter read only the name, which a stat keeps
+    }
+    const FileInfo& was = *m_rows[r];
+    const FileInfo& now = *entries[index];
+    // isDir comes from the stat when getdents gave no type; contentType orders a kind sort.
+    if (was.isDir != now.isDir || was.contentType != now.contentType) {
+      return false;
+    }
+    m_rows[r] = entries[index];
+    m_patched.push_back(r);
+  }
+  m_onPatched(m_patched);
+  return true;
 }
