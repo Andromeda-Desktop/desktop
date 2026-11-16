@@ -67,6 +67,11 @@ with_noctalia() {
       eval "${BEFORE_NOCTALIA:-}"
       "$NOCTALIA" > "$OUT/noctalia.log" 2>&1 &
       for _ in $(seq 100); do "$NOCTALIA" msg settings-close > /dev/null 2>&1 && break; sleep 0.1; done
+      # The bar reserves its edge when it maps and moves windows aside: a window position read before then is stale.
+      for _ in $(seq 100); do
+        "$ANDROMEDA" layers --json 2> /dev/null | jq -e "[.. | objects | select((.namespace? // \"\") | startswith(\"noctalia-bar\")) | select(.mapped == true)] | length > 0" > /dev/null && break
+        sleep 0.05
+      done
       eval "$1"
     ' _ "$1"
 }
