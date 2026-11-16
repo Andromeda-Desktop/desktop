@@ -131,7 +131,14 @@ namespace viewer {
     m_signing = false;
     m_drawing = false;
     m_path = path;
+    for (Page& page : m_pages) {
+      dropPage(page);
+    }
+    for (Page& page : m_thumbs) {
+      dropPage(page);
+    }
     m_pages.clear();
+    m_thumbs.clear();
     m_image = {};
     m_selection.reset();
     m_searchText.clear();
@@ -181,6 +188,7 @@ namespace viewer {
       m_model.reset(std::min<std::uint32_t>(reply.msg.b, 100000), static_cast<float>(reply.msg.c) / 100.0F,
                     static_cast<float>(reply.msg.d) / 100.0F);
       m_pages.assign(m_model.pageCount(), {});
+      m_thumbs.assign(m_model.pageCount(), {});
       m_mode = Mode::Pdf;
       kLog.info("opened pdf {} pages", m_model.pageCount());
       rebuild();
@@ -265,8 +273,8 @@ namespace viewer {
     // Keep a few rendered pages around the view; a long document must not hold every page in memory.
     constexpr std::size_t kKeep = 3;
     for (std::size_t i = 0; i < m_pages.size(); ++i) {
-      if ((i + kKeep < first || i > last + kKeep) && m_pages[i].pixels != nullptr) {
-        m_pages[i] = {};
+      if (i + kKeep < first || i > last + kKeep) {
+        dropPage(m_pages[i]);
       }
     }
     for (std::size_t i = first; i <= last && i < m_pages.size(); ++i) {
@@ -277,30 +285,92 @@ namespace viewer {
                                                 < 0.1F * static_cast<float>(width)) {
         continue;
       }
-      m_pages[i].requestedWidth = width;
-      m_helper->request(
-          {.op = preview::op::Render, .a = static_cast<std::uint32_t>(i), .b = width, .c = kMaxPageHeight},
-          [this, i, generation = m_generation](const preview::HelperReply& reply) {
-            if (generation != m_generation || i >= m_pages.size()) {
-              return;
-            }
-            const auto& m = reply.msg;
-            // Untrusted sizes: rows must fit the stride and the mapping.
-            const bool valid = m.op == preview::op::Page && reply.data != nullptr && m.b > 0 && m.c > 0
-                && m.b <= kMaxRenderWidth && m.c <= kMaxPageHeight && m.b <= m.d / 4
-                && static_cast<std::uint64_t>(m.d) * m.c <= reply.data->bytes().size();
-            if (!valid) {
-              m_pages[i].requestedWidth = 0;
-              return;
-            }
-            m_pages[i] = {reply.data, m.b, m.c, m.d, m_pages[i].requestedWidth};
-            if (i == 0) {
-              kLog.info("shown pdf page 1");
-            }
-            rebuild();
-          }
-      );
+      requestRender(m_pages, i, width);
     }
+    requestThumbs();
+  }
+
+  void ViewerWindow::requestThumbs() {
+    if (m_mode != Mode::Pdf || !m_helper || m_thumbScroll == nullptr) {
+      return;
+    }
+    const float s = m_window.uiScale();
+    const float view = m_window.contentRect().height;
+    const float top = m_thumbScroll->scrollOffset() - view;
+    const float bottom = m_thumbScroll->scrollOffset() + 2.0F * view;
+    const auto width = static_cast<std::uint32_t>(std::lround(kThumbWidth * s));
+    float y = Style::spaceMd * s;
+    for (std::size_t i = 0; i < m_thumbs.size(); ++i) {
+      const RectF box = m_model.pageBox(i);
+      const float h = kThumbWidth * s * (box.y1 - box.y0) / std::max(1.0F, box.x1 - box.x0);
+      if (y + h < top || y > bottom) {
+        dropPage(m_thumbs[i]);
+      } else if (m_thumbs[i].requestedWidth == 0) {
+        requestRender(m_thumbs, i, width);
+      }
+      y += h + Style::spaceMd * s;
+    }
+  }
+
+  void ViewerWindow::dropPage(Page& page) {
+    if (page.texture.valid()) {
+      m_dropped.push_back(page.texture);
+    }
+    page = {};
+  }
+
+  TextureHandle ViewerWindow::pageTexture(Renderer& renderer, Page& page) {
+    if (page.pixels != nullptr) {
+      if (page.texture.valid()) {
+        m_dropped.push_back(page.texture);
+      }
+      const auto bytes = page.pixels->bytes();
+      page.texture = renderer.textureManager().loadFromRaw(bytes.data(), bytes.size(), static_cast<int>(page.width),
+                                                           static_cast<int>(page.height), static_cast<int>(page.stride),
+                                                           PixmapFormat::BGRA);
+      page.pixels.reset();
+    }
+    if (page.texture.valid() && page.texture.generation != renderer.textureManager().generation()) {
+      // The GL context was lost with the texture; render the page again.
+      page = {};
+      DeferredCall::callLater([this, generation = m_generation] {
+        if (generation == m_generation) {
+          requestVisiblePages();
+        }
+      });
+    }
+    return page.texture;
+  }
+
+  void ViewerWindow::requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width) {
+    cache[page].requestedWidth = width;
+    m_helper->request(
+        {.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = width, .c = kMaxPageHeight},
+        [this, &cache, page, width, generation = m_generation](const preview::HelperReply& reply) {
+          // A newer request for this page (a zoom, an edit) replaces this reply.
+          if (generation != m_generation || page >= cache.size() || cache[page].requestedWidth != width) {
+            return;
+          }
+          const auto& m = reply.msg;
+          // Untrusted sizes: rows must fit the stride and the mapping.
+          const bool valid = m.op == preview::op::Page && reply.data != nullptr && m.b > 0 && m.c > 0
+              && m.b <= kMaxRenderWidth && m.c <= kMaxPageHeight && m.b <= m.d / 4
+              && static_cast<std::uint64_t>(m.d) * m.c <= reply.data->bytes().size();
+          if (!valid) {
+            cache[page].requestedWidth = 0;
+            return;
+          }
+          Page& slot = cache[page];
+          slot.pixels = reply.data;
+          slot.width = m.b;
+          slot.height = m.c;
+          slot.stride = m.d;
+          if (page == 0 && &cache == &m_pages) {
+            kLog.info("shown pdf page 1");
+          }
+          rebuild();
+        }
+    );
   }
 
   void ViewerWindow::search(const std::string& query) {
@@ -534,7 +604,12 @@ namespace viewer {
 
   std::unique_ptr<Node> ViewerWindow::build(Renderer& renderer, float width, float height) {
     const float s = m_window.uiScale();
+    for (TextureHandle& texture : m_dropped) {
+      renderer.textureManager().unload(texture);
+    }
+    m_dropped.clear();
     m_scroll = nullptr;
+    m_thumbScroll = nullptr;
     m_searchInput = nullptr;
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
     root->addChild(buildToolbar(width));
@@ -674,11 +749,9 @@ namespace viewer {
       auto paper = ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .width = w, .height = h});
       paper->setParticipatesInLayout(false);
       sheet->addChild(std::move(paper));
-      if (const Page& page = m_pages[i]; page.pixels != nullptr) {
+      if (const TextureHandle texture = pageTexture(renderer, m_pages[i]); texture.valid()) {
         auto image = ui::image({.fit = ImageFit::Contain, .width = w, .height = h});
-        const auto bytes = page.pixels->bytes();
-        image->setSourceRaw(renderer, bytes.data(), bytes.size(), static_cast<int>(page.width),
-                            static_cast<int>(page.height), static_cast<int>(page.stride), PixmapFormat::BGRA);
+        image->setExternalTexture(renderer, texture);
         image->setParticipatesInLayout(false);
         sheet->addChild(std::move(image));
       }
@@ -744,7 +817,7 @@ namespace viewer {
     scroll->content()->setGap(Style::spaceMd * s);
     scroll->content()->setAlign(FlexAlign::Center);
     const std::size_t current = currentPage();
-    for (std::size_t i = 0; i < m_pages.size(); ++i) {
+    for (std::size_t i = 0; i < m_thumbs.size(); ++i) {
       const RectF box = m_model.pageBox(i);
       const float w = kThumbWidth * s;
       const float h = w * (box.y1 - box.y0) / std::max(1.0F, box.x1 - box.x0);
@@ -760,16 +833,16 @@ namespace viewer {
                             .borderWidth = i == current ? 2.0F * s : 1.0F, .width = w, .height = h});
       frame->setParticipatesInLayout(false);
       thumb->addChild(std::move(frame));
-      if (const Page& page = m_pages[i]; page.pixels != nullptr) {
+      if (const TextureHandle texture = pageTexture(renderer, m_thumbs[i]); texture.valid()) {
         auto image = ui::image({.fit = ImageFit::Contain, .width = w, .height = h});
-        const auto bytes = page.pixels->bytes();
-        image->setSourceRaw(renderer, bytes.data(), bytes.size(), static_cast<int>(page.width),
-                            static_cast<int>(page.height), static_cast<int>(page.stride), PixmapFormat::BGRA, true);
+        image->setExternalTexture(renderer, texture);
         image->setParticipatesInLayout(false);
         thumb->addChild(std::move(image));
       }
       scroll->content()->addChild(std::move(thumb));
     }
+    scroll->setOnScrollChanged([this](float) { requestThumbs(); });
+    m_thumbScroll = scroll.get();
     return scroll;
   }
 
@@ -882,6 +955,7 @@ namespace viewer {
   void ViewerWindow::rerenderPage(std::size_t page) {
     if (page < m_pages.size()) {
       m_pages[page].requestedWidth = 0;
+      m_thumbs[page].requestedWidth = 0;
     }
     requestVisiblePages();
   }

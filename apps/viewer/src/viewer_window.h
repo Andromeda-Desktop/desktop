@@ -6,6 +6,7 @@
 #include "helper_client.h"
 #include "image_loader.h"
 #include "render/animation/animation_manager.h"
+#include "render/core/texture_handle.h"
 
 #include <filesystem>
 #include <functional>
@@ -61,6 +62,8 @@ namespace viewer {
       std::uint32_t height = 0;
       std::uint32_t stride = 0;
       std::uint32_t requestedWidth = 0;
+      // Uploaded on the next build; the pixels are then dropped.
+      TextureHandle texture;
     };
     struct Selection {
       std::size_t page = 0;
@@ -84,6 +87,10 @@ namespace viewer {
     void fail(std::string reason);
     void dropHelper();
     void requestVisiblePages();
+    void requestThumbs();
+    void requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width);
+    void dropPage(Page& page);
+    [[nodiscard]] TextureHandle pageTexture(Renderer& renderer, Page& page);
     void onScroll();
     void search(const std::string& query);
     void scanNext();
@@ -114,6 +121,10 @@ namespace viewer {
     std::unique_ptr<preview::HelperClient> m_helper;
     DocumentModel m_model;
     std::vector<Page> m_pages;
+    std::vector<Page> m_thumbs;
+    // Textures of evicted pages; build() unloads them, as only it has the renderer.
+    std::vector<TextureHandle> m_dropped;
+    ScrollView* m_thumbScroll = nullptr;
     bool m_sidebar = true;
     ScrollView* m_scroll = nullptr;
     float m_zoomFrom = 1.0F; // the next page column starts at this scale and springs to 1
