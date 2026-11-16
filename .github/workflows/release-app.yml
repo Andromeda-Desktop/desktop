@@ -33,5 +33,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber src/install.sh src/andromeda-release.asc

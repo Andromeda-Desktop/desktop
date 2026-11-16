@@ -110,5 +110,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber repo/* src/install.sh src/andromeda-release.asc
+          # Users read releases/latest: it moves here only when both repositories are on the newest tag.
+          names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
+          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --json tagName -q '.[].tagName' | grep -E '^v[0-9]' | sort -V | tail -n 1)
+          if [[ $TAG == "$newest" ]] && grep -qx andromeda.db <<< "$names" && grep -qx InRelease <<< "$names"; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
+          fi
