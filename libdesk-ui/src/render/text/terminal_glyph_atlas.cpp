@@ -178,8 +178,14 @@ TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::faceFor(Face face, char32_t ne
   return font;
 }
 
-const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, Face face) {
-  const Key key{codepoint, face};
+const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, Face face, float scale) {
+  const auto units = static_cast<std::uint16_t>(std::clamp(std::lround(scale * kScaleUnit), 1L, 16L * kScaleUnit));
+  const Key key{codepoint, face, units};
+  scale = static_cast<float>(units) / kScaleUnit;
+  const auto scaled = [scale](int px) { return static_cast<int>(std::lround(static_cast<float>(px) * scale)); };
+  const int cellWidth = scaled(m_cellWidth);
+  const int cellHeight = scaled(m_cellHeight);
+  const int baseline = scaled(m_baseline);
   if (auto it = m_glyphs.find(key); it != m_glyphs.end()) {
     return it->second.width == 0 ? nullptr : &it->second;
   }
@@ -187,8 +193,8 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
     return nullptr;
   }
   if (std::vector<std::uint8_t> alpha;
-      terminal_sprites::draw(codepoint, m_cellWidth, m_cellHeight, m_strokeThickness, alpha)) {
-    return sprite(key, alpha);
+      terminal_sprites::draw(codepoint, cellWidth, cellHeight, std::max(1, scaled(m_strokeThickness)), alpha)) {
+    return sprite(key, alpha, cellWidth, cellHeight, baseline);
   }
 
   FontFace* font = faceFor(face, 0);
@@ -203,7 +209,16 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
     index = font != nullptr ? FT_Get_Char_Index(font->face, codepoint) : 0;
   }
   const FT_Int32 loadFlags = font != nullptr && font->color ? FT_LOAD_COLOR : FT_LOAD_TARGET_LIGHT;
-  if (index == 0 || FT_Load_Glyph(font->face, index, loadFlags) != 0) {
+  // Faces stay at the grid size; a scaled glyph sizes its face for this one load.
+  const bool resize = font != nullptr && units != kScaleUnit && FT_IS_SCALABLE(font->face);
+  if (resize) {
+    FT_Set_Pixel_Sizes(font->face, 0, static_cast<FT_UInt>(std::lround(m_pixelSize * scale)));
+  }
+  const bool loaded = index != 0 && FT_Load_Glyph(font->face, index, loadFlags) == 0;
+  if (resize) {
+    FT_Set_Pixel_Sizes(font->face, 0, static_cast<FT_UInt>(std::lround(m_pixelSize)));
+  }
+  if (!loaded) {
     m_missing.insert(key);
     return nullptr;
   }
@@ -227,8 +242,8 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
   const int srcH = static_cast<int>(bitmap.rows);
   // A colour glyph shrinks to fit two cells; box filtering keeps it smooth.
   const float shrink = bgra && srcW > 0 && srcH > 0
-                           ? std::min({1.0F, 2.0F * static_cast<float>(m_cellWidth) / static_cast<float>(srcW),
-                                       static_cast<float>(m_cellHeight) / static_cast<float>(srcH)})
+                           ? std::min({1.0F, 2.0F * static_cast<float>(cellWidth) / static_cast<float>(srcW),
+                                       static_cast<float>(cellHeight) / static_cast<float>(srcH)})
                            : 1.0F;
   const int w = std::max(bgra ? 1 : 0, static_cast<int>(std::lround(static_cast<float>(srcW) * shrink)));
   const int h = std::max(bgra ? 1 : 0, static_cast<int>(std::lround(static_cast<float>(srcH) * shrink)));
@@ -279,8 +294,8 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
         .y = static_cast<std::uint16_t>(y),
         .width = static_cast<std::uint16_t>(w),
         .height = static_cast<std::uint16_t>(h),
-        .left = static_cast<std::int16_t>(bgra ? (2 * m_cellWidth - w) / 2 : slot->bitmap_left),
-        .top = static_cast<std::int16_t>(bgra ? m_baseline - (m_cellHeight - h) / 2 : slot->bitmap_top),
+        .left = static_cast<std::int16_t>(bgra ? (2 * cellWidth - w) / 2 : slot->bitmap_left),
+        .top = static_cast<std::int16_t>(bgra ? baseline - (cellHeight - h) / 2 : slot->bitmap_top),
         .color = bgra,
     };
   }
@@ -289,31 +304,32 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
 }
 
 // A sprite fills its cell exactly: origin at the cell's top left.
-const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::sprite(const Key& key, const std::vector<std::uint8_t>& alpha) {
+const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::sprite(const Key& key, const std::vector<std::uint8_t>& alpha, int width,
+                                                           int height, int baseline) {
   int x = 0;
   int y = 0;
-  if (!place(m_cellWidth + kPadding, m_cellHeight + kPadding, x, y)) {
+  if (!place(width + kPadding, height + kPadding, x, y)) {
     reset();
-    if (!place(m_cellWidth + kPadding, m_cellHeight + kPadding, x, y)) {
+    if (!place(width + kPadding, height + kPadding, x, y)) {
       m_missing.insert(key);
       return nullptr;
     }
   }
-  for (int row = 0; row < m_cellHeight; ++row) {
+  for (int row = 0; row < height; ++row) {
     std::uint8_t* dst =
         m_pixels.get() + (static_cast<std::size_t>(y + row) * kWidth + static_cast<std::size_t>(x)) * kBytesPerPixel;
-    for (int col = 0; col < m_cellWidth; ++col, dst += kBytesPerPixel) {
-      dst[0] = dst[1] = dst[2] = dst[3] = alpha[static_cast<std::size_t>(row) * m_cellWidth + col];
+    for (int col = 0; col < width; ++col, dst += kBytesPerPixel) {
+      dst[0] = dst[1] = dst[2] = dst[3] = alpha[static_cast<std::size_t>(row) * width + col];
     }
   }
   m_dirtyTop = std::min(m_dirtyTop, y);
-  m_dirtyBottom = std::max(m_dirtyBottom, y + m_cellHeight);
+  m_dirtyBottom = std::max(m_dirtyBottom, y + height);
   const Glyph g{.x = static_cast<std::uint16_t>(x),
                 .y = static_cast<std::uint16_t>(y),
-                .width = static_cast<std::uint16_t>(m_cellWidth),
-                .height = static_cast<std::uint16_t>(m_cellHeight),
+                .width = static_cast<std::uint16_t>(width),
+                .height = static_cast<std::uint16_t>(height),
                 .left = 0,
-                .top = static_cast<std::int16_t>(m_baseline),
+                .top = static_cast<std::int16_t>(baseline),
                 .color = false};
   return &m_glyphs.insert_or_assign(key, g).first->second;
 }

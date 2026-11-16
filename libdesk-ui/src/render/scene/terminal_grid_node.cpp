@@ -123,6 +123,15 @@ void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
                      [](const TerminalCell& c) { return c == TerminalCell{}; })) {
     return;
   }
+  // Rows a sized run reaches below its own, before and after this change.
+  const auto reach = [](std::span<const TerminalCell> span) {
+    int below = 0;
+    for (const TerminalCell& c : span) {
+      below = (c.flags & TerminalCell::Sized) != 0 ? std::max(below, c.textScale - 1) : below;
+    }
+    return below;
+  };
+  const int below = std::max(reach(stored), reach(cells));
   int first = -1;
   int last = -1;
   for (std::size_t col = 0; col < stored.size(); ++col) {
@@ -137,7 +146,11 @@ void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
   if (m_cursor && m_cursor->row == row) {
     buildCursor();
   }
-  if (m_textBacking > 0.0F) {
+  if (below > 0) {
+    // A cell of a sized run moves every glyph after it in the run.
+    const float w = cellWidth();
+    markRowDirty(row, m_originX - w, m_originX + static_cast<float>(m_columns + 1) * w, below);
+  } else if (m_textBacking > 0.0F) {
     markRowDirty(row); // a backing run joins text across blanks, so one cell can change the whole row's backing
   } else {
     // One cell of slack each side: a wide cell's other half and glyph overhang.
@@ -153,11 +166,12 @@ void TerminalGridNode::markRowDirty(int row) {
   markRowDirty(row, m_originX - w, m_originX + static_cast<float>(m_columns + 1) * w);
 }
 
-void TerminalGridNode::markRowDirty(int row, float left, float right) {
+void TerminalGridNode::markRowDirty(int row, float left, float right, int below) {
   // Half a cell above and below: glyphs that overhang their cell (italic, tall emoji) leave pixels in the next rows.
   const float h = cellHeight();
   const float top = m_originY + static_cast<float>(row) * h;
-  markPaintDirty(DamageRect{std::max(left, 0.0F), top - h * 0.5F, std::min(right, width()), top + h * 1.5F});
+  markPaintDirty(DamageRect{std::max(left, 0.0F), top - h * 0.5F, std::min(right, width()),
+                            top + h * (1.5F + static_cast<float>(below))});
 }
 
 void TerminalGridNode::setCursor(std::optional<TerminalCursor> cursor) {
@@ -221,13 +235,14 @@ void TerminalGridNode::rebuildAll() {
 }
 
 void TerminalGridNode::appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y,
-                                   std::uint32_t rgb) {
-  const TerminalGlyphAtlas::Glyph* g = m_atlas.glyph(codepoint, faceFor(flags));
+                                   std::uint32_t rgb, float scale) {
+  const TerminalGlyphAtlas::Glyph* g = m_atlas.glyph(codepoint, faceFor(flags), scale);
   if (g == nullptr) {
     return;
   }
+  const int baseline = static_cast<int>(std::lround(static_cast<float>(m_atlas.baseline()) * scale));
   const float x0 = logical(x + g->left);
-  const float y0 = logical(y + m_atlas.baseline() - g->top);
+  const float y0 = logical(y + baseline - g->top);
   const float x1 = x0 + logical(g->width);
   const float y1 = y0 + logical(g->height);
   const float u0 = g->x;
@@ -291,6 +306,39 @@ void TerminalGridNode::underline(const TerminalCell& cell, int x, int right, int
   }
 }
 
+// The run's cells hold its text, then blank padding to the block width.
+void TerminalGridNode::appendSizedRun(std::vector<float>& out, std::span<const TerminalCell> run, int x, int y) {
+  const TerminalCell& first = run.front();
+  const int n = first.textFraction >> 4;
+  const int d = first.textFraction & 0xF;
+  const float fraction = n > 0 && d > n ? static_cast<float>(n) / static_cast<float>(d) : 1.0F;
+  const float scale = static_cast<float>(first.textScale) * fraction;
+  std::size_t end = run.size();
+  while (end > 0 && run[end - 1].codepoint <= U' ' && (end < 2 || (run[end - 2].flags & TerminalCell::Wide) == 0)) {
+    --end;
+  }
+  int natural = 0;
+  for (std::size_t i = 0; i < end; i += (run[i].flags & TerminalCell::Wide) != 0 ? 2 : 1) {
+    natural += (run[i].flags & TerminalCell::Wide) != 0 ? 2 : 1;
+  }
+  const float cw = static_cast<float>(m_atlas.cellWidth());
+  const float ch = static_cast<float>(m_atlas.cellHeight());
+  const auto offset = [](int align, float room) { return align == 1 ? room : align == 2 ? room / 2.0F : 0.0F; };
+  float pen = static_cast<float>(x)
+              + offset(first.textAlign & 0x3, static_cast<float>(run.size()) * cw - static_cast<float>(natural) * cw * scale);
+  const int top = y + static_cast<int>(std::lround(
+                          offset(first.textAlign >> 2, static_cast<float>(first.textScale) * ch - ch * scale)));
+  for (std::size_t i = 0; i < end;) {
+    const TerminalCell& cell = run[i];
+    const int cells = (cell.flags & TerminalCell::Wide) != 0 ? 2 : 1;
+    if (cell.codepoint > U' ') {
+      appendGlyph(out, cell.codepoint, cell.flags, static_cast<int>(std::lround(pen)), top, cell.fg, scale);
+    }
+    pen += static_cast<float>(cells) * cw * scale;
+    i += static_cast<std::size_t>(cells);
+  }
+}
+
 void TerminalGridNode::buildRow(int row) {
   auto& rects = m_rects[static_cast<std::size_t>(row)];
   auto& glyphs = m_glyphs[static_cast<std::size_t>(row)];
@@ -337,10 +385,18 @@ void TerminalGridNode::buildRow(int row) {
     const TerminalCell& cell = cells[static_cast<std::size_t>(col)];
     const int x = col * cw;
     const int right = x + ((cell.flags & TerminalCell::Wide) != 0 ? 2 : 1) * cw;
+    const bool sized = (cell.flags & TerminalCell::Sized) != 0;
     if ((cell.flags & TerminalCell::Background) != 0) {
-      rect(x, top, right, top + ch, cell.bg);
+      rect(x, top, right, top + ch * (sized ? cell.textScale : 1), cell.bg);
     }
-    if (cell.codepoint > U' ') {
+    if (sized && (cell.flags & TerminalCell::SizedStart) != 0) {
+      std::size_t end = static_cast<std::size_t>(col) + 1;
+      while (end < cells.size() && (cells[end].flags & (TerminalCell::Sized | TerminalCell::SizedStart)) == TerminalCell::Sized) {
+        ++end;
+      }
+      appendSizedRun(glyphs, std::span(cells).subspan(static_cast<std::size_t>(col), end - static_cast<std::size_t>(col)),
+                     x, top);
+    } else if (!sized && cell.codepoint > U' ') {
       appendGlyph(glyphs, cell.codepoint, cell.flags, x, top, cell.fg);
     }
     if ((cell.flags & TerminalCell::Underline) != 0) {

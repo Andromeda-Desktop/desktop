@@ -23,6 +23,8 @@ struct TerminalCell {
     Overline = 1 << 5,
     Wide = 1 << 6, // the glyph and background span this cell and the next
     DecorationColor = 1 << 7, // underline in decoration, not fg
+    Sized = 1 << 8, // OSC 66 text: textScale, textFraction and textAlign apply
+    SizedStart = 1 << 9, // the first cell of a sized run; the run ends before the next start or unsized cell
   };
   enum class UnderlineStyle : std::uint8_t { Single, Double, Curly, Dotted, Dashed };
   char32_t codepoint = 0;      // 0 = no glyph
@@ -31,6 +33,11 @@ struct TerminalCell {
   std::uint32_t decoration = 0; // 0xRRGGBB, with DecorationColor
   std::uint16_t flags = 0;
   UnderlineStyle underline = UnderlineStyle::Single; // with Underline
+  // With Sized: the run's text draws s times larger in a block s rows tall, from this row down, and n/d (n < d)
+  // smaller again inside it, aligned by v (0 top, 1 bottom, 2 centre) and h (0 left, 1 right, 2 centre).
+  std::uint8_t textScale = 1;    // s, 1-7
+  std::uint8_t textFraction = 0; // n << 4 | d
+  std::uint8_t textAlign = 0;    // v << 2 | h
   bool operator==(const TerminalCell&) const = default;
 };
 
@@ -101,10 +108,12 @@ private:
   template <typename Rect>
   void underline(const TerminalCell& cell, int x, int right, int top, std::uint32_t rgb, Rect& rect) const;
   void markRowDirty(int row);
-  void markRowDirty(int row, float left, float right); // node-local logical x range
+  void markRowDirty(int row, float left, float right, int below = 0); // node-local logical x range; below: extra rows
+  void appendSizedRun(std::vector<float>& out, std::span<const TerminalCell> run, int x, int y);
   void buildCursor();
   void rebuildAll();
-  void appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y, std::uint32_t rgb);
+  void appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y, std::uint32_t rgb,
+                   float scale = 1.0F);
   [[nodiscard]] float logical(int devicePx) const noexcept;
 
   TerminalGlyphAtlas m_atlas;

@@ -54,6 +54,22 @@ namespace term {
 
     std::uint32_t pack(GhosttyColorRgb c) { return (std::uint32_t(c.r) << 16) | (std::uint32_t(c.g) << 8) | c.b; }
 
+    // The OSC 8 URI of a viewport cell; empty without a link.
+    std::string hyperlinkUri(GhosttyTerminal t, int x, std::uint32_t y) {
+      const GhosttyPointCoordinate at{.x = static_cast<std::uint16_t>(x), .y = y};
+      GhosttyGridRef ref{};
+      std::size_t len = 0;
+      if (ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = at}}, &ref)
+              != GHOSTTY_SUCCESS
+          || ghostty_grid_ref_hyperlink_uri(&ref, nullptr, 0, &len) != GHOSTTY_OUT_OF_SPACE) {
+        return {};
+      }
+      std::string uri(len, '\0');
+      return ghostty_grid_ref_hyperlink_uri(&ref, reinterpret_cast<std::uint8_t*>(uri.data()), len, &len) == GHOSTTY_SUCCESS
+                 ? uri
+                 : std::string();
+    }
+
     GhosttyColorRgb unpack(std::uint32_t rgb) {
       return {static_cast<std::uint8_t>(rgb >> 16), static_cast<std::uint8_t>(rgb >> 8), static_cast<std::uint8_t>(rgb)};
     }
@@ -729,6 +745,7 @@ namespace term {
       const bool rowSelected =
           ghostty_render_state_row_get(m_rows, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &selected) == GHOSTTY_SUCCESS;
       m_rowBuffer.clear();
+      bool linked = false;
       while (ghostty_render_state_row_cells_next(m_cells)) {
         TerminalCell cell{};
         std::uint32_t codepoints[4];
@@ -801,8 +818,16 @@ namespace term {
           } else if (wide != GHOSTTY_CELL_WIDE_NARROW) {
             cell.codepoint = 0;
           }
+          bool link = false;
+          if (ghostty_cell_get(raw, GHOSTTY_CELL_DATA_HAS_HYPERLINK, &link) == GHOSTTY_SUCCESS && link) {
+            cell.flags |= TerminalCell::Sized; // a candidate; markSizedRuns keeps it only for an OSC 66 link
+            linked = true;
+          }
         }
         m_rowBuffer.push_back(cell);
+      }
+      if (linked) {
+        markSizedRuns(y);
       }
       if (m_link && m_link->row == y) {
         for (int x = m_link->start; x < std::min<int>(m_link->end, static_cast<int>(m_rowBuffer.size())); ++x) {
@@ -1492,6 +1517,34 @@ namespace term {
     return m_host.modifiers ? m_host.modifiers() : 0;
   }
 
+  void TerminalView::markSizedRuns(std::uint16_t y) {
+    // The render state has no link URIs; the terminal may be ahead of it, but then the row is dirty and fills again.
+    m_session.withTerminal([&](GhosttyTerminal t) {
+      std::string previous;
+      for (int x = 0; x < static_cast<int>(m_rowBuffer.size()); ++x) {
+        TerminalCell& cell = m_rowBuffer[static_cast<std::size_t>(x)];
+        if ((cell.flags & TerminalCell::Sized) == 0) {
+          previous.clear();
+          continue;
+        }
+        std::string uri = t != nullptr ? hyperlinkUri(t, x, y) : std::string();
+        const std::optional<TextSize> size = textSizeOfUri(uri);
+        if (!size) {
+          cell.flags &= static_cast<std::uint16_t>(~TerminalCell::Sized);
+          previous.clear();
+          continue;
+        }
+        if (uri != previous) {
+          cell.flags |= TerminalCell::SizedStart; // the run number in the URI tells adjacent runs apart
+        }
+        cell.textScale = static_cast<std::uint8_t>(size->s);
+        cell.textFraction = static_cast<std::uint8_t>(size->n << 4 | size->d);
+        cell.textAlign = static_cast<std::uint8_t>(size->v << 2 | size->h);
+        previous = std::move(uri);
+      }
+    });
+  }
+
   std::optional<TerminalView::HoverLink> TerminalView::linkAt(GhosttyPointCoordinate cell) {
     const int columns = m_grid->columns();
     std::vector<char32_t> cells(static_cast<std::size_t>(columns), U' ');
@@ -1507,18 +1560,7 @@ namespace term {
         return ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = at}}, &ref)
                == GHOSTTY_SUCCESS;
       };
-      const auto uriAt = [&](int x) {
-        GhosttyGridRef ref{};
-        std::size_t len = 0;
-        if (!refAt(x, ref) || ghostty_grid_ref_hyperlink_uri(&ref, nullptr, 0, &len) != GHOSTTY_OUT_OF_SPACE) {
-          return std::string();
-        }
-        std::string uri(len, '\0');
-        return ghostty_grid_ref_hyperlink_uri(&ref, reinterpret_cast<std::uint8_t*>(uri.data()), len, &len)
-                       == GHOSTTY_SUCCESS
-                   ? uri
-                   : std::string();
-      };
+      const auto uriAt = [&](int x) { return hyperlinkUri(t, x, cell.y); };
       osc8 = uriAt(cell.x);
       if (textSizeOfUri(osc8)) {
         osc8.clear(); // a sized text run (OSC 66), not a link

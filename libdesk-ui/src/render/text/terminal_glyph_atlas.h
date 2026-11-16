@@ -34,8 +34,9 @@ public:
   // family: a fontconfig family list ("Fira Code,monospace"). Sizes are device pixels. False when no face loads.
   bool load(const std::string& family, float pixelSize, float lineHeight);
 
-  // Rasterizes on first use. Null for a glyph with no ink (space) or no font that has it.
-  const Glyph* glyph(char32_t codepoint, Face face);
+  // Rasterizes on first use. Null for a glyph with no ink (space) or no font that has it. scale (1/64 steps, up to
+  // 16) sizes the glyph and its bearings to a cell that many times larger.
+  const Glyph* glyph(char32_t codepoint, Face face, float scale = 1.0F);
 
   [[nodiscard]] int cellWidth() const noexcept { return m_cellWidth; }
   [[nodiscard]] int cellHeight() const noexcept { return m_cellHeight; }
@@ -62,13 +63,17 @@ private:
   struct FreeDeleter {
     void operator()(std::uint8_t* p) const noexcept { std::free(p); }
   };
+  static constexpr std::uint16_t kScaleUnit = 64;
   struct Key {
     char32_t codepoint;
     Face face;
+    std::uint16_t scale = kScaleUnit;
     bool operator==(const Key&) const = default;
   };
   struct KeyHash {
-    std::size_t operator()(const Key& k) const noexcept { return (std::size_t(k.codepoint) << 2) | std::size_t(k.face); }
+    std::size_t operator()(const Key& k) const noexcept {
+      return (std::size_t(k.scale) << 40) | (std::size_t(k.codepoint) << 2) | std::size_t(k.face);
+    }
   };
 
   static constexpr int kWidth = 1024;
@@ -77,7 +82,7 @@ private:
   FontFace* faceFor(Face face, char32_t needs, bool color = false);
   FontFace* openFace(const std::string& file, int index, bool embolden, bool oblique);
   bool place(int width, int height, int& x, int& y);
-  const Glyph* sprite(const Key& key, const std::vector<std::uint8_t>& alpha);
+  const Glyph* sprite(const Key& key, const std::vector<std::uint8_t>& alpha, int width, int height, int baseline);
   static std::unique_ptr<std::uint8_t, FreeDeleter> allocatePixels(int height);
   void reset();
 

@@ -250,6 +250,8 @@ namespace term {
       std::string uri;
       bool operator==(const HoverLink&) const = default;
     };
+    // Keeps Sized on m_rowBuffer cells whose link is an OSC 66 run (viewport row y) and fills their size.
+    void markSizedRuns(std::uint16_t y);
     [[nodiscard]] std::optional<HoverLink> linkAt(GhosttyPointCoordinate cell);
     void updateLink(bool ctrl, bool rescan = false);
     void clearLink();
