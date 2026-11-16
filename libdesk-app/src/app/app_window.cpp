@@ -1107,6 +1107,11 @@ void AppWindow::updateInPlace(const std::function<void(Renderer&)>& change) {
   if (m_surface == nullptr || m_root == nullptr) {
     return;
   }
+  // Before the first frame the EGL surface may not exist yet: the scene rebuilds from state on that frame instead.
+  if (!m_surface->renderTarget().isReady()) {
+    requestRebuild();
+    return;
+  }
   m_loop.renderContext().makeCurrent(m_surface->renderTarget());
   change(m_surface->renderTarget().renderer());
   invalidate();
@@ -1245,6 +1250,24 @@ void AppWindow::refreshNavigation() {
   invalidate();
 }
 
+std::unique_ptr<Node> AppWindow::buildSidebarToggle() {
+  if (!m_config.contentCard || !m_config.sidebarToggle || !m_sidebarBuilder) {
+    return nullptr;
+  }
+  const float s = m_uiScale;
+  return ui::button({
+      .glyph = std::string("layout-sidebar"),
+      .glyphSize = Tokens::sizeSymbol * s,
+      .enabled = m_commands.isEnabled("view.toggle-sidebar"),
+      .variant = ButtonVariant::Ghost,
+      .tooltip = std::string("Sidebar"),
+      .radius = Style::scaledRadius(Tokens::radiusR8, s),
+      .width = Tokens::sizeControlM * s,
+      .height = Tokens::sizeControlM * s,
+      .onClick = [this] { m_commands.run("view.toggle-sidebar"); },
+  });
+}
+
 std::unique_ptr<Node> AppWindow::buildWindowButtons() {
   const float s = m_uiScale;
   auto buttons = ui::row({.align = FlexAlign::Center, .gap = kWindowButtonGap * s, .paddingH = (kWindowButtonInset - kNavInset) * s});
@@ -1324,18 +1347,8 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
       }));
     }
   }
-  if (m_config.contentCard && m_config.sidebarToggle && m_sidebarBuilder) {
-    header->addChild(ui::button({
-        .glyph = std::string("layout-sidebar"),
-        .glyphSize = Tokens::sizeSymbol * s,
-        .enabled = m_commands.isEnabled("view.toggle-sidebar"),
-        .variant = ButtonVariant::Ghost,
-        .tooltip = std::string("Sidebar"),
-        .radius = Style::scaledRadius(Tokens::radiusR8, s),
-        .width = Tokens::sizeControlM * s,
-        .height = Tokens::sizeControlM * s,
-        .onClick = [this] { m_commands.run("view.toggle-sidebar"); },
-    }));
+  if (auto toggle = buildSidebarToggle()) {
+    header->addChild(std::move(toggle));
   }
   // Mockup .title: 600 17/24, 4 after the arrows; it ellipsizes at the end only when the header is full (rulebook 9.12).
   auto title = ui::row({.align = FlexAlign::Center, .clipChildren = true});

@@ -1,11 +1,14 @@
 #pragma once
 
 #include "render/animation/animation_manager.h"
+#include "ui/palette.h"
 #include "ui/controls/flex.h"
 
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <utility>
 
 class Box;
 
@@ -18,6 +21,10 @@ public:
 
   // nullptr hides the tint. `animate` false jumps (first build, reduced motion is handled by the springs).
   void setSelected(Node* child, bool animate, std::function<void()> onCross = {});
+  // The tint's fill; nullopt takes the desktop accent tint. An app with its own theme passes that theme's tint.
+  void setTint(std::optional<ColorSpec> fill) { m_fill = std::move(fill); }
+  // The accent's alpha in the default tint, for an app tint of another hue.
+  [[nodiscard]] static float selectionTintAlpha();
 
   // Motion P13: the row opens from height 0 to `height` on spring.move, its content fades in from content_gate of the
   // travel; at rest it takes its own height again (XL text grows it). `index` counts rows, not the tint.
@@ -36,6 +43,7 @@ private:
 
   float m_scale;
   Box* m_tint = nullptr;
+  std::optional<ColorSpec> m_fill;
   Node* m_selected = nullptr;
   Node* m_inserting = nullptr; // the row that is opening, and its rest height
   float m_insertHeight = 0.0F;

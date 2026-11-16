@@ -27,6 +27,14 @@ namespace term {
 
   TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
     KittyImages::installPngDecoder();
+    // The header's sidebar button; the keyboard path is Action::ToggleSidebar, which the user can rebind.
+    commands().add({.id = "view.toggle-sidebar", .label = "Show Sidebar", .group = "View",
+                    .enabled = [this] { return activeWindow() != nullptr; },
+                    .run = [this] {
+                      if (AppWindow* window = activeWindow(); window != nullptr) {
+                        window->setSidebarVisible(!window->sidebarVisible());
+                      }
+                    }});
   }
 
   agent::Host& TerminalApp::agentHost(agent::Kind kind) {
@@ -51,7 +59,7 @@ namespace term {
   void TerminalApp::gpuLost() { m_thumbnails.abandonGpuResources(); }
 
   AppWindow& TerminalApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .material = appMaterial(m_settings.settings().material), .glassAlpha = glassAlpha(m_settings.settings()), .contentCard = true});
+    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .material = appMaterial(m_settings.settings().material), .glassAlpha = glassAlpha(m_settings.settings()), .contentCard = true, .sidebarToggle = true});
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }

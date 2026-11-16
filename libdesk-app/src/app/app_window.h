@@ -200,10 +200,12 @@ public:
   // contentCard: a menu button ends the caption; it calls `open` with the scene point below it. Set before the first build.
   void setCaptionMenu(std::function<void(float sceneX, float sceneY)> open) { m_captionMenu = std::move(open); }
   // contentCard: the content draws its own cards (a split view), so the window draws no main card and no header. The
-  // content puts buildWindowButtons() and buildHeaderAccessory() in its captions. Rebuilds the window.
+  // content puts buildSidebarToggle(), buildWindowButtons() and buildHeaderAccessory() in its captions. Rebuilds the window.
   void setContentCards(bool on);
   [[nodiscard]] bool contentCards() const noexcept { return m_contentCards; }
   [[nodiscard]] std::unique_ptr<Node> buildWindowButtons();
+  // The sidebar button (config sidebarToggle); nullptr when the window has none.
+  [[nodiscard]] std::unique_ptr<Node> buildSidebarToggle();
   [[nodiscard]] std::unique_ptr<Node> buildHeaderAccessory() { return m_headerAccessory ? m_headerAccessory() : nullptr; }
   // An interactive move from a pointer press with this serial.
   void beginMove(std::uint32_t serial);

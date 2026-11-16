@@ -139,9 +139,16 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
                            .softness = Tokens::elevationE2.keyBlur * s,
                            .width = r.width,
                            .height = r.height,
-                           .visible = false,
                            .participatesInLayout = false});
     shadow->setPosition(0.0F, Tokens::elevationE2.keyY * s);
+    // Cut out under the card, so a see-through card (a theme scene, glass) shows no dark tint.
+    RoundedRectStyle cut = card.shadow->style();
+    cut.shadowExclusion = true;
+    cut.shadowExclusionOffsetY = Tokens::elevationE2.keyY * s;
+    cut.shadowExclusionWidth = r.width;
+    cut.shadowExclusionHeight = r.height;
+    cut.shadowExclusionRadius = Radii{radius, radius, radius, radius};
+    card.shadow->setStyle(cut);
     cell->addChild(std::move(shadow));
     auto box = ui::column({.align = FlexAlign::Stretch, .fill = card.fill, .radius = radius, .flexGrow = 1.0F});
     box->setClipRadii(Radii{radius, radius, radius, radius});
@@ -175,6 +182,12 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
       }
     });
     Caption parts = m_callbacks.caption(card.id);
+    // The window's header is gone in a split: the top left card holds its sidebar button.
+    if (r.x == 0.0F && r.y == 0.0F) {
+      if (auto toggle = m_window.buildSidebarToggle()) {
+        cap->addChild(std::move(toggle));
+      }
+    }
     if (parts.lead) {
       card.lead = parts.lead.get();
       cap->addChild(std::move(parts.lead));
@@ -540,15 +553,12 @@ void SplitView::paintFocus(bool animate) {
     const bool focused = card.id == m_ringPane;
     AnimationManager* animations = card.ring->animationManager();
     const float target = focused ? 1.0F : 0.0F;
-    // The shadow fills the card's rect: a see-through card (a theme scene, glass) would show it as a dark tint.
-    const bool lift = (card.fill.role ? 1.0F : card.fill.fixed.a) * card.fill.alpha >= 1.0F;
-    const auto set = [node = card.ring, shadow = card.shadow, ring, lift](float v) {
+    const auto set = [node = card.ring, shadow = card.shadow, ring](float v) {
       node->setOpacity(v * ring);
-      shadow->setOpacity(v);
-      shadow->setVisible(lift && v > 0.0F);
+      shadow->setOpacity(Tokens::componentSplitRestShadow + v * (1.0F - Tokens::componentSplitRestShadow));
     };
     if (animate && animations != nullptr) {
-      card.focusAnim = animations->drive(card.focusAnim, card.shadow->opacity(), target,
+      card.focusAnim = animations->drive(card.focusAnim, (card.shadow->opacity() - Tokens::componentSplitRestShadow) / (1.0F - Tokens::componentSplitRestShadow), target,
                                          Style::spring(focused ? Tokens::springFade : Tokens::springFadeOut), set, {},
                                          card.ring);
     } else {

@@ -47,8 +47,10 @@ void SelectionList::doArrange(Renderer& renderer, const LayoutRect& rect) {
   place();
 }
 
+float SelectionList::selectionTintAlpha() { return isResolvedLightTheme() ? 0.32F : 0.24F; }
+
 void SelectionList::place() {
-  m_tint->setFill(colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F));
+  m_tint->setFill(m_fill.value_or(colorSpecFromRole(ColorRole::Accent, selectionTintAlpha())));
   if (m_selected == nullptr || !m_selected->visible()) {
     m_tint->setVisible(false);
     return;

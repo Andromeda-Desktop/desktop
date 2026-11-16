@@ -129,6 +129,8 @@ namespace term {
       m_split.repaintFocus();
     });
     m_window.setSceneSource([this] { return windowScene(m_settings); });
+    // Split cards are placed for the content width at build: the settled sidebar width needs a new layout.
+    m_window.setSidebarSettled([this] { m_window.requestRebuild(); });
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
@@ -181,6 +183,11 @@ namespace term {
                                 .onClick = [this] { openNewMenu(); }}));
       side->addChild(std::move(top));
       auto list = std::make_unique<SelectionList>(s);
+      if (const ThemeSpec theme = resolveTheme(m_settings.settings().theme, m_settings.themes()); hasScene(theme)) {
+        list->setTint(fixedColorSpec(withAlpha(themePalette(theme).label1, Tokens::componentTerminalSceneSelection)));
+      } else {
+        list->setTint(fixedColorSpec(withAlpha(themePalette(theme).accent, SelectionList::selectionTintAlpha())));
+      }
       list->setGap(Tokens::spaceP4 * s);
       m_rows.clear();
       m_groups.clear();
@@ -865,6 +872,7 @@ namespace term {
       case Action::NewWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); return true;
       case Action::Find: openFind(); return true;
       case Action::CommandPalette: openPalette(); return true;
+      case Action::ToggleSidebar: m_window.setSidebarVisible(!m_window.sidebarVisible()); return true;
       case Action::Session1:
       case Action::Session2:
       case Action::Session3:

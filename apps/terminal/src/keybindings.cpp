@@ -57,6 +57,7 @@ namespace term {
         {Action::ScrollPageUp, "scroll_page_up", "Scroll up a page", "shift+page_up"},
         {Action::ScrollPageDown, "scroll_page_down", "Scroll down a page", "shift+page_down"},
         {Action::CommandPalette, "command_palette", "Command palette", "ctrl+shift+p"},
+        {Action::ToggleSidebar, "toggle_sidebar", "Show or hide the sidebar", "ctrl+shift+b"},
     }};
     static_assert(
         [] {
