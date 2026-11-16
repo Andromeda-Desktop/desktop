@@ -3905,7 +3905,7 @@ void FilesWindow::openWith() {
   const auto paths = selectedPaths();
   const auto info = statFile(paths.front());
   AppChooserPortal::ChooseRequest request{.appId = {}, .parentWindow = {}, .choices = {}, .lastChoice = {},
-                                          .contentType = info ? info->contentType : std::string(),
+                                          .contentType = info ? info->contentType.str() : std::string(),
                                           .filename = paths.size() == 1 ? paths.front().filename().string() : ""};
   // The answer runs inside the sheet: the sheet goes after this callback.
   m_openWith = std::make_shared<AppChooserSheet>(

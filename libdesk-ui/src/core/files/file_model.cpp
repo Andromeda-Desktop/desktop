@@ -565,7 +565,7 @@ bool FileModelView::before(const FileInfo& a, const FileInfo& b, const FileSort&
     cmp = a.mtimeNs < b.mtimeNs ? -1 : a.mtimeNs > b.mtimeNs ? 1 : 0;
     break;
   case FileSortKey::Kind:
-    cmp = a.contentType.compare(b.contentType);
+    cmp = a.contentType.str().compare(b.contentType.str());
     break;
   case FileSortKey::Added:
     cmp = a.addedNs < b.addedNs ? -1 : a.addedNs > b.addedNs ? 1 : 0;

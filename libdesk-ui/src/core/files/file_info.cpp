@@ -3,8 +3,10 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <gio/gio.h>
+#include <mutex>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <unordered_set>
 
 namespace {
   std::string ownedString(gchar* text) {
@@ -17,7 +19,27 @@ namespace {
     static const bool utf8 = g_get_filename_charsets(nullptr) != FALSE;
     return utf8;
   }
+  struct TransparentHash {
+    using is_transparent = void;
+    std::size_t operator()(std::string_view s) const { return std::hash<std::string_view>{}(s); }
+  };
 } // namespace
+
+const std::string ContentType::kEmpty;
+
+ContentType::ContentType(std::string_view type) {
+  if (type.empty()) {
+    return;
+  }
+  static std::mutex lock;
+  static auto* table = new std::unordered_set<std::string, TransparentHash, std::equal_to<>>();
+  const std::lock_guard guard(lock);
+  auto it = table->find(type);
+  if (it == table->end()) {
+    it = table->emplace(type).first;
+  }
+  m_type = &*it;
+}
 
 void describeText(FileInfo& info) {
   info.hidden = !info.name.empty() && info.name.front() == '.';

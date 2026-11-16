@@ -8,12 +8,37 @@
 
 enum class FileKind : std::uint8_t { File, Directory, Symlink, Other };
 
+// A string kept once per process: rows of the same type share it. Interned strings live until exit.
+class ContentType {
+public:
+  ContentType() = default;
+  ContentType(std::string_view type);
+  ContentType(const char* type) : ContentType(std::string_view(type)) {}
+  ContentType(const std::string& type) : ContentType(std::string_view(type)) {}
+
+  operator const std::string&() const { return *m_type; }
+  operator std::string_view() const { return *m_type; }
+  [[nodiscard]] const std::string& str() const { return *m_type; }
+  [[nodiscard]] const char* c_str() const { return m_type->c_str(); }
+  [[nodiscard]] bool empty() const { return m_type->empty(); }
+  [[nodiscard]] bool starts_with(std::string_view prefix) const { return m_type->starts_with(prefix); }
+
+  friend bool operator==(const ContentType& a, const ContentType& b) { return a.m_type == b.m_type; }
+  friend bool operator==(const ContentType& a, std::string_view b) { return *a.m_type == b; }
+  friend bool operator==(const ContentType& a, const std::string& b) { return *a.m_type == b; }
+  friend bool operator==(const ContentType& a, const char* b) { return *a.m_type == b; }
+
+private:
+  static const std::string kEmpty;
+  const std::string* m_type = &kEmpty;
+};
+
 struct FileInfo {
   std::string name;              // file name bytes as on disk (not always UTF-8)
   std::string ownDisplayName;    // empty when displayName() is name: most rows, which saves a heap string per row
   std::string collateKey;        // natural, locale-aware order: "file2" before "file10"
   std::string ownFoldedName;     // empty when foldedName() is displayName()
-  std::string contentType;       // from the name only, e.g. "image/png", "inode/directory"
+  ContentType contentType;       // from the name only, e.g. "image/png", "inode/directory"
   FileKind kind = FileKind::File;
   bool isDir = false;            // a directory, or a symlink to one
   bool hidden = false;           // a dot file

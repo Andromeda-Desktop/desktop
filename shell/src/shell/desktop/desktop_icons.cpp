@@ -99,7 +99,7 @@ namespace {
     }
     std::string specific = info.contentType;
     std::ranges::replace(specific, '/', '-');
-    const std::string major = info.contentType.substr(0, info.contentType.find('/'));
+    const std::string major = info.contentType.str().substr(0, info.contentType.str().find('/'));
     return {specific, major + "-x-generic", "text-x-generic"};
   }
 } // namespace
