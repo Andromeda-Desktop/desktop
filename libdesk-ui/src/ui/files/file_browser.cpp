@@ -1366,15 +1366,13 @@ void FileBrowser::refreshSidebar() {
           .radius = Tokens::spaceP20 * s / 2.0F,
           .width = Tokens::spaceP20 * s,
           .height = Tokens::spaceP20 * s,
-          .opacity = 0.0F,
           .onClick = [run = place.onEject] { DeferredCall::callLater(run); },
       }));
       eject->setZIndex(1); // above the row's input area
     }
     Flex* rowBody = flex.get();
     if (eject != nullptr) {
-      eject->setOnEnter([this, rowBody, eject, current] {
-        eject->setOpacity(1.0F);
+      eject->setOnEnter([this, rowBody, current] {
         if (!current) {
           rowBody->setFill(colorSpecFromRole(ColorRole::Fill1));
         }
@@ -1382,8 +1380,7 @@ void FileBrowser::refreshSidebar() {
           m_host.invalidate();
         }
       });
-      eject->setOnLeave([this, rowBody, eject, current] {
-        eject->setOpacity(0.0F);
+      eject->setOnLeave([this, rowBody, current] {
         if (!current) {
           rowBody->setFill(clearColorSpec());
         }
@@ -1392,23 +1389,17 @@ void FileBrowser::refreshSidebar() {
         }
       });
     }
-    area->setOnEnter([this, rowBody, current, eject](const InputArea::PointerData&) {
+    area->setOnEnter([this, rowBody, current](const InputArea::PointerData&) {
       if (!current) {
         rowBody->setFill(colorSpecFromRole(ColorRole::Fill1));
-      }
-      if (eject != nullptr) {
-        eject->setOpacity(1.0F);
       }
       if (m_host.invalidate) {
         m_host.invalidate();
       }
     });
-    area->setOnLeave([this, rowBody, current, eject] {
+    area->setOnLeave([this, rowBody, current] {
       if (!current) {
         rowBody->setFill(clearColorSpec());
-      }
-      if (eject != nullptr) {
-        eject->setOpacity(0.0F);
       }
       if (m_host.invalidate) {
         m_host.invalidate();

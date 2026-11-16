@@ -92,6 +92,8 @@ for w in 1440 1024 800 640 480; do
   bad=$(header_overlap "$m")
   [[ -z $bad ]] || fail "at $w the header has $bad"
 done
+action edit.select-all
+shoot selected 480 # the command bar at the narrowest width: icons with tooltips
 action go "[<'file://$HOME_DIR/Documents'>]"
 wait_log 0 "location $HOME_DIR/Documents" || fail "Documents did not open"
 for w in 1440 800 480; do width "$w"; shoot list-docs "$w"; done

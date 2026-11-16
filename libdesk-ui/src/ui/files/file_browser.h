@@ -61,7 +61,7 @@ public:
     enum class Group : std::uint8_t { Favourites, Locations, Tags, Last } group = Group::Locations;
     std::optional<Color> dot;   // set: a 12 px round dot in this colour replaces the art (tags)
     std::optional<float> usage; // set: a 40 x 4 usage bar, 0..1 used (This PC)
-    bool eject = false;         // a hover-only eject button that runs onEject
+    bool eject = false;         // an eject button that runs onEject
     std::function<void()> onEject;
     bool dropFiles = false;     // a host place that takes dropped files (a phone): DropTarget::place = id
   };

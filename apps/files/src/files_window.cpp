@@ -1148,6 +1148,27 @@ void FilesWindow::fillCommandBar(Flex& row, float s) {
       }
       button("edit.copy", "copy", "Copy", ButtonVariant::Ghost, false, !narrow);
       button("edit.cut", "scissors", "Cut", ButtonVariant::Ghost, false, !narrow);
+      Button* share = nullptr;
+      const float h = Tokens::sizeControlM * s;
+      row.addChild(ui::button({
+          .out = &share,
+          .text = narrow ? std::nullopt : std::optional<std::string>("Share"),
+          .glyph = std::string("share"),
+          .fontSize = Style::fontSizeCaption * s,
+          .glyphSize = Tokens::sizeSymbol * s,
+          .variant = ButtonVariant::Ghost,
+          .tooltip = std::string("Share"),
+          .paddingH = narrow ? std::nullopt : std::optional<float>(Tokens::spaceP8 * s),
+          .radius = Style::scaledRadius(Tokens::radiusR8, s),
+          .width = narrow ? std::optional<float>(h) : std::nullopt,
+          .height = h,
+      }));
+      share->setOnClick([this, share] {
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::mapToScene(share, 0.0F, 0.0F, x, y); // the menu opens over the bar, above the button
+        showShareMenu(x, y);
+      });
       button("edit.trash", "trash", "Move to Trash", ButtonVariant::Ghost, true, !narrow);
     }
   }
