@@ -328,6 +328,7 @@ _desk_ui_sources = files(
   'src/ui/palette.cpp',
   'src/ui/popup_chrome.cpp',
   'src/ui/scroll_into_view.cpp',
+  'src/ui/split_layout.cpp',
   'src/ui/split_pane_focus.cpp',
   'src/ui/style.cpp',
   'src/ui/surface_shadow.cpp',

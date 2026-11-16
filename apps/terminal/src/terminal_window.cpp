@@ -2032,7 +2032,7 @@ namespace term {
     m_dividers.clear();
     const float grip = Tokens::spaceP32 * s;
     std::vector<TileNode*> splits;
-    if (andromeda::tiling::DwindleTree* tree = m_trees.sync(m_sessions, panes, splitRoom()); tree != nullptr) {
+    if (andromeda::tiling::DwindleTree* tree = m_trees.sync([this](std::uint64_t id) { return m_sessions.splitOf(id); }, panes, splitRoom()); tree != nullptr) {
       std::vector<TileNode*> stack{tree->root()};
       while (!stack.empty()) {
         TileNode* node = stack.back();
@@ -2144,7 +2144,7 @@ namespace term {
     });
   }
 
-  SplitTrees::Room TerminalWindow::splitRoom() const {
+  ui::SplitTrees::Room TerminalWindow::splitRoom() const {
     return {.area = {.width = static_cast<int>(std::lround(m_contentWidth)), .height = static_cast<int>(std::lround(m_contentHeight))},
             .gap = static_cast<int>(std::lround(Tokens::componentWindowCardGap * m_window.uiScale())),
             .minWidth = paneMinimum().first};
@@ -2167,23 +2167,15 @@ namespace term {
   }
 
   std::vector<TerminalWindow::PaneRect> TerminalWindow::paneRects(const std::vector<std::uint64_t>& panes) {
-    std::vector<PaneRect> out(panes.size());
-    andromeda::tiling::DwindleTree* tree = m_trees.sync(m_sessions, panes, splitRoom());
+    andromeda::tiling::DwindleTree* tree =
+        m_trees.sync([this](std::uint64_t id) { return m_sessions.splitOf(id); }, panes, splitRoom());
     if (tree == nullptr) {
-      return out;
+      return std::vector<PaneRect>(panes.size());
     }
-    const int gap = static_cast<int>(std::lround(Tokens::componentWindowCardGap * m_window.uiScale()));
-    const andromeda::tiling::TileBox area{.width = static_cast<int>(std::lround(m_contentWidth)),
-                               .height = static_cast<int>(std::lround(m_contentHeight))};
-    // preserveSplit: a pane keeps its side when the window changes shape.
-    for (const andromeda::tiling::Tile& tile : tree->arrange(area, gap, /*preserveSplit=*/true)) {
-      if (const auto it = std::ranges::find(panes, tile.key); it != panes.end()) {
-        out[static_cast<std::size_t>(it - panes.begin())] = {static_cast<float>(tile.box.x), static_cast<float>(tile.box.y),
-                                                              static_cast<float>(tile.box.width),
-                                                              static_cast<float>(tile.box.height)};
-      }
-    }
-    return out;
+    return ui::arrangePanes(*tree, panes,
+                            {.width = static_cast<int>(std::lround(m_contentWidth)),
+                             .height = static_cast<int>(std::lround(m_contentHeight))},
+                            static_cast<int>(std::lround(Tokens::componentWindowCardGap * m_window.uiScale())));
   }
 
   // The caption's room for the name and the state: padding 16 + 8, the symbol, four gaps, the menu button, and the
@@ -2203,17 +2195,7 @@ namespace term {
     const float gap = Tokens::componentWindowCardGap * s;
     const float hit = Tokens::componentTerminalDividerHit * s;
     for (const Divider& divider : m_dividers) {
-      // Over the gap between the split's two halves, along the whole split.
-      const andromeda::tiling::TileBox& a = divider.split->area;
-      const andromeda::tiling::TileBox& first = divider.split->left->area;
-      PaneRect r;
-      if (divider.vertical) {
-        r = {static_cast<float>(first.x + first.width) + (gap - hit) / 2.0F, static_cast<float>(a.y), hit,
-             static_cast<float>(a.height)};
-      } else {
-        r = {static_cast<float>(a.x), static_cast<float>(first.y + first.height) + (gap - hit) / 2.0F,
-             static_cast<float>(a.width), hit};
-      }
+      const PaneRect r = ui::dividerRect(*divider.split, divider.vertical, gap, hit);
       divider.area->setPosition(r.x, r.y);
       divider.area->setSize(r.width, r.height);
       divider.grip->setPosition((r.width - divider.grip->width()) / 2.0F, (r.height - divider.grip->height()) / 2.0F);
@@ -2226,29 +2208,12 @@ namespace term {
     }
     TileNode* split = m_dividers[index].split;
     const bool horizontal = m_dividers[index].vertical;
-    const float span = static_cast<float>(horizontal ? split->area.width : split->area.height);
-    if (span <= 0.0F) {
-      return;
-    }
     float x = 0.0F;
     float y = 0.0F;
     Node::absolutePosition(m_contentSlot, x, y);
     const float at = horizontal ? sceneX - x - static_cast<float>(split->area.x) : sceneY - y - static_cast<float>(split->area.y);
-    // Each side keeps room for its smallest panes: side by side they add up (with the gaps), stacked the largest wins.
-    const float gap = Tokens::componentWindowCardGap * m_window.uiScale();
     const auto [minW, minH] = paneMinimum();
-    const auto least = [&](auto&& self, const TileNode* node) -> float {
-      if (node->type == TileNode::Leaf) {
-        return horizontal ? minW : minH;
-      }
-      const float a = self(self, node->left.get());
-      const float b = self(self, node->right.get());
-      return node->type == (horizontal ? TileNode::HSplit : TileNode::VSplit) ? a + gap + b : std::max(a, b);
-    };
-    // arrange puts the gap's centre at ratio x span.
-    const float lo = (least(least, split->left.get()) + gap / 2.0F) / span;
-    const float hi = 1.0F - (least(least, split->right.get()) + gap / 2.0F) / span;
-    split->ratio = lo <= hi ? std::clamp(at / span, lo, hi) : 0.5;
+    split->ratio = ui::dividerRatio(*split, horizontal, at, Tokens::componentWindowCardGap * m_window.uiScale(), minW, minH);
     relayoutSplit(false);
   }
 
@@ -2321,28 +2286,7 @@ namespace term {
     for (const PaneCard& card : m_cards) {
       panes.emplace_back(card.id, card.rect);
     }
-    for (const auto& [id, r] : panes) {
-      if (px < r.x || py < r.y || px >= r.x + r.width || py >= r.y + r.height) {
-        continue;
-      }
-      // The nearest edge picks the half.
-      const float fx = (px - r.x) / r.width;
-      const float fy = (py - r.y) / r.height;
-      const float edge = std::min({fx, 1.0F - fx, fy, 1.0F - fy});
-      const float halfW = std::floor(r.width / 2.0F);
-      const float halfH = std::floor(r.height / 2.0F);
-      if (edge == fx) {
-        return DropTarget{id, true, andromeda::tiling::EdgeLeft, {r.x, r.y, halfW, r.height}};
-      }
-      if (edge == 1.0F - fx) {
-        return DropTarget{id, false, andromeda::tiling::EdgeRight, {r.x + halfW, r.y, r.width - halfW, r.height}};
-      }
-      if (edge == fy) {
-        return DropTarget{id, true, andromeda::tiling::EdgeTop, {r.x, r.y, r.width, halfH}};
-      }
-      return DropTarget{id, false, andromeda::tiling::EdgeBottom, {r.x, r.y + halfH, r.width, r.height - halfH}};
-    }
-    return std::nullopt;
+    return ui::splitDrop(panes, px, py);
   }
 
   void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
@@ -2500,23 +2444,11 @@ namespace term {
     if (from == m_cards.end()) {
       return true;
     }
-    const auto centre = [](const PaneRect& r) { return std::pair{r.x + r.width / 2.0F, r.y + r.height / 2.0F}; };
-    const auto [fx, fy] = centre(from->rect);
-    std::optional<std::uint64_t> best;
-    float bestScore = 0.0F;
+    ui::SplitPanes panes;
     for (const PaneCard& card : m_cards) {
-      const auto [cx, cy] = centre(card.rect);
-      const float along = (cx - fx) * dx + (cy - fy) * dy;
-      if (card.id == from->id || along <= 0.0F) {
-        continue;
-      }
-      // The nearest pane ahead, with sideways offset weighted, so Right from a stacked pane picks its row.
-      const float score = along + 2.0F * std::abs(dx != 0.0F ? cy - fy : cx - fx);
-      if (!best || score < bestScore) {
-        best = card.id;
-        bestScore = score;
-      }
+      panes.emplace_back(card.id, card.rect);
     }
+    const std::optional<std::uint64_t> best = ui::paneInDirection(panes, from->id, dx, dy);
     if (best) {
       apply(session_event::Show{*best});
       focusGrid();

@@ -1,4 +1,5 @@
-#include "split_trees.h"
+#include "session_list.h"
+#include "ui/split_layout.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -6,6 +7,7 @@
 #include <set>
 
 using namespace term;
+using ui::SplitTrees;
 using namespace term::session_event;
 using andromeda::tiling::DwindleTree;
 using andromeda::tiling::Tile;
@@ -72,7 +74,7 @@ int main() {
       const bool accepted = list.apply(event) != ApplyResult::Rejected;
       const auto split = list.visible();
       const SplitTrees::Room room{.area = {.width = 1200, .height = 800}, .gap = 8, .minWidth = 200.0F};
-      DwindleTree* own = trees.sync(list, split, room);
+      DwindleTree* own = trees.sync([&list](std::uint64_t id) { return list.splitOf(id); }, split, room);
       checkInvariants(list, trees, own, split);
       if (own == nullptr) {
         continue;

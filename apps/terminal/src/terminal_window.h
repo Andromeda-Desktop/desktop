@@ -8,7 +8,7 @@
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
 #include "agent_view.h"
-#include "split_trees.h"
+#include "ui/split_layout.h"
 
 #include <array>
 #include <map>
@@ -261,12 +261,7 @@ namespace term {
     float m_contentHeight = 0.0F;
     void fillSlot(Renderer& renderer);
     // A split: one card per pane, each with its caption over the pane's view.
-    struct PaneRect {
-      float x = 0.0F;
-      float y = 0.0F;
-      float width = 0.0F;
-      float height = 0.0F;
-    };
+    using PaneRect = ui::PaneRect;
     struct PaneCard {
       std::uint64_t id = 0;
       PaneRect rect;
@@ -287,10 +282,10 @@ namespace term {
     std::vector<PaneCard> m_cards; // empty while one session shows
     // Each split lays out on the compositor's dwindle tree; its leaves are session ids.
     using TileNode = andromeda::tiling::DwindleTree::Node;
-    SplitTrees m_trees;
+    ui::SplitTrees m_trees;
     // The smallest pane: split_min_columns x split_min_rows cells of the font, with the grid's insets.
     [[nodiscard]] std::pair<float, float> paneMinimum() const;
-    [[nodiscard]] SplitTrees::Room splitRoom() const;
+    [[nodiscard]] ui::SplitTrees::Room splitRoom() const;
     struct Divider {
       bool vertical = true; // between columns
       TileNode* split = nullptr;
@@ -306,12 +301,7 @@ namespace term {
     void placeDividers();
     void dragDivider(std::size_t index, float sceneX, float sceneY);
     // A sidebar row dragged onto a pane: the half under the pointer previews where it joins.
-    struct DropTarget {
-      std::uint64_t target = 0;
-      bool before = false; // the left or top half
-      std::uint32_t edge = 0; // the TileEdge of that half
-      PaneRect rect;       // in the slot
-    };
+    using DropTarget = ui::SplitDrop; // rect in the slot
     [[nodiscard]] std::optional<DropTarget> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
     Box* m_dropPreview = nullptr;
