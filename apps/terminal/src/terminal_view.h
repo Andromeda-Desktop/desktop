@@ -204,6 +204,8 @@ namespace term {
     void readBranch(const void* prompt, std::string cwdUri, std::string path);
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
+    // Scrolls by the viewport height less one row; negative pages go back into the scrollback.
+    void scrollPage(int pages);
     // Viewport top in px from the top of the scrollback: ghostty scrolls whole rows, the grid origin the remainder.
     void setScrollPx(float px);
     void animateScroll(float target, const Tokens::Spring& spring, float velocity, bool spatial);

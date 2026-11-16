@@ -809,6 +809,12 @@ namespace term {
       const bool windowChord = (mods & KeyMod::Super) != 0
                                || ((mods & (KeyMod::Ctrl | KeyMod::Shift)) == (KeyMod::Ctrl | KeyMod::Shift)
                                    && event.unshifted >= 0x20 && event.unshifted < 0x7f);
+      constexpr std::uint32_t kPageUp = 0xff55;
+      constexpr std::uint32_t kPageDown = 0xff56;
+      if (mods == KeyMod::Shift && (event.sym == kPageUp || event.sym == kPageDown)) {
+        scrollPage(event.sym == kPageUp ? -1 : 1);
+        return true;
+      }
       if (windowChord) {
         if (mods == (KeyMod::Ctrl | KeyMod::Shift) && (event.unshifted == 'c' || event.unshifted == 'v')) {
           event.unshifted == 'c' ? copySelection() : paste();
@@ -1768,6 +1774,13 @@ namespace term {
       animateScroll(from + static_cast<float>(notches * rowsPerNotch) * cellH, Tokens::springMove, 0.0F, true);
     }
     return true;
+  }
+
+  void TerminalView::scrollPage(int pages) {
+    const float cellH = m_grid->cellHeight();
+    const float from = m_scrollMotion == ScrollMotion::Settling ? m_scrollTarget : std::round(m_scrollPx / cellH) * cellH;
+    const auto rows = static_cast<float>(std::max<std::size_t>(m_scrollState.len, 2) - 1);
+    animateScroll(from + static_cast<float>(pages) * rows * cellH, Tokens::springMove, 0.0F, true);
   }
 
   void TerminalView::setScrollPx(float px) {

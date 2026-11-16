@@ -635,6 +635,8 @@ namespace term {
   bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
     constexpr std::uint32_t kTab = 0xff09;
     constexpr std::uint32_t kLeftTab = 0xfe20;
+    constexpr std::uint32_t kPageUp = 0xff55;
+    constexpr std::uint32_t kPageDown = 0xff56;
     const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super);
     if (!event.pressed || (mods & KeyMod::Ctrl) == 0 || (mods & (KeyMod::Alt | KeyMod::Super)) != 0) {
       return false;
@@ -647,10 +649,29 @@ namespace term {
       }
       return true;
     }
-    if (!shift && (event.unshifted == 'k' || event.unshifted == 'K')) {
+    // Plain Ctrl+K stays with the shell (readline kill-line).
+    if (shift && (event.unshifted == 'k' || event.unshifted == 'K')) {
       if (m_search != nullptr && m_window.sidebarVisible()) {
         m_window.input().setFocus(m_search->inputArea());
       }
+      return true;
+    }
+    if (!shift && (event.sym == kPageUp || event.sym == kPageDown)) {
+      const auto order = sidebarOrder();
+      const auto shown = m_sessions.shown();
+      if (const auto it = std::ranges::find(order, shown.value_or(0)); order.size() > 1 && it != order.end()) {
+        const auto step = static_cast<std::ptrdiff_t>(event.sym == kPageDown ? 1 : order.size() - 1);
+        const auto index = static_cast<std::size_t>((it - order.begin() + step) % static_cast<std::ptrdiff_t>(order.size()));
+        apply(session_event::Show{order[index]});
+      }
+      return true;
+    }
+    if (shift && (event.unshifted == '=' || event.unshifted == '-' || event.unshifted == '0')) {
+      Settings next = m_settings.settings();
+      next.fontSize = event.unshifted == '0' ? Settings{}.fontSize
+                                             : std::clamp(next.fontSize + (event.unshifted == '=' ? 1 : -1),
+                                                          SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
+      m_settings.update(next);
       return true;
     }
     if (shift && (event.unshifted == 't' || event.unshifted == 'T')) {
