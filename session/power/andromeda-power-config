@@ -116,6 +116,13 @@ if [ "$key" = initramfs-systemd ]; then
   mkdir -p "$backup"
   cp -p "$conf" "$backup/mkinitcpio.conf"
   for img in $images; do [ ! -f "$root$img" ] || cp -p --parents "$root$img" "$backup"; done
+  # mkinitcpio writes an image in place (a power cut leaves it cut short) unless 1.25x its size is free.
+  for img in $images; do
+    [ -f "$root$img" ] || continue
+    size=$(stat -c %s "$root$img")
+    [ $((size + size / 4)) -lt "$(df --output=avail -B1 "$root$img" | tail -n 1)" ] \
+      || manual "not enough free space next to $img to rebuild it safely" "$guide"
+  done
   sed -i "s/^HOOKS=.*/HOOKS=($new)/" "$conf"
   if mkinitcpio -P; then
     mkdir -p "$root/run/andromeda-power"
@@ -125,7 +132,11 @@ if [ "$key" = initramfs-systemd ]; then
   fi
   echo "mkinitcpio -P failed; restored $conf and the images from $backup" >&2
   cp -p "$backup/mkinitcpio.conf" "$conf"
-  for img in $images; do [ ! -f "$backup$root$img" ] || cp -p "$backup$root$img" "$root$img"; done
+  for img in $images; do
+    [ -f "$backup$root$img" ] || continue
+    cp -p "$backup$root$img" "$root$img.andromeda-restore" && mv -f "$root$img.andromeda-restore" "$root$img" \
+      || rm -f "$root$img.andromeda-restore"
+  done
   exit 5
 fi
 

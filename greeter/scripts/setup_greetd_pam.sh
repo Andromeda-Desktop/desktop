@@ -47,7 +47,7 @@ cp "${PAM_FILE}" "${backup}"
 echo "info: backup created at ${backup}"
 
 tmp="$(mktemp)"
-trap 'rm -f "${tmp}"' EXIT
+trap 'rm -f "${tmp}" "${PAM_FILE}.new"' EXIT
 
 # Insert after last session line, or append.
 if grep -q -E "^[[:space:]]*session[[:space:]]+" "${PAM_FILE}"; then
@@ -65,5 +65,8 @@ else
   printf "\n%s\n" "${PAM_LINE}" >> "${tmp}"
 fi
 
-install -m 0644 "${tmp}" "${PAM_FILE}"
+# A rename in the same directory: a crash leaves the old file or the new one, never a partial one.
+install -m 0644 "${tmp}" "${PAM_FILE}.new"
+sync "${PAM_FILE}.new"
+mv -f "${PAM_FILE}.new" "${PAM_FILE}"
 echo "info: patched ${PAM_FILE} with ${PAM_MODULE} session line."
