@@ -17,6 +17,10 @@ public:
   // Replace the system clipboard selection with the given text.
   virtual void setClipboardText(std::string text) = 0;
 
+  // The whole clipboard text, read when asked and with no size limit (a terminal paste); clipboardText() can stop at a
+  // limit.
+  virtual void requestClipboardText(std::function<void(std::optional<std::string>)> done) { done(clipboardText()); }
+
   // The primary selection (select to copy, middle click to paste); hosts without one keep these defaults.
   [[nodiscard]] virtual std::optional<std::string> primaryText() { return std::nullopt; }
   virtual void setPrimaryText(std::string /*text*/) {}

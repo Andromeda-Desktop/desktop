@@ -53,6 +53,22 @@ void AppClipboard::setClipboardText(std::string text) {
                     {.mimeTypes = kTextTypes, .data = [text = std::move(text)](const std::string&) { return text; }});
 }
 
+void AppClipboard::requestClipboardText(std::function<void(std::optional<std::string>)> done) {
+  // The read-ahead keeps "" for a clipboard over kMaxTextBytes.
+  if (m_text && !m_text->empty()) {
+    done(m_text);
+    return;
+  }
+  DragAndDrop* dnd = m_wayland.dragAndDrop();
+  if (dnd == nullptr) {
+    done(std::nullopt);
+    return;
+  }
+  dnd->readSelection(kTextTypes, [done = std::move(done)](const std::string& mime, std::string bytes) {
+    done(mime.empty() ? std::nullopt : std::optional(std::move(bytes)));
+  });
+}
+
 std::optional<std::string> AppClipboard::primaryText() {
   PrimarySelection* primary = m_wayland.primarySelection();
   return primary != nullptr ? primary->text() : std::nullopt;

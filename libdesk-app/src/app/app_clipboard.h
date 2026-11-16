@@ -20,6 +20,7 @@ public:
 
   [[nodiscard]] std::optional<std::string> clipboardText() override { return m_text; }
   void setClipboardText(std::string text) override;
+  void requestClipboardText(std::function<void(std::optional<std::string>)> done) override;
   [[nodiscard]] std::optional<std::string> primaryText() override;
   void setPrimaryText(std::string text) override;
   void requestPrimaryText(std::function<void(std::optional<std::string>)> done) override;
