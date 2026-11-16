@@ -150,6 +150,7 @@ namespace viewer {
     void addAnnotation(std::size_t page, std::uint32_t kind, std::uint32_t rgb, const std::vector<std::uint8_t>& body);
     void rerenderPage(std::size_t page);
     void placeSignature(std::size_t page, float x, float y);
+    [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
     void updateTitle();
     [[nodiscard]] std::unique_ptr<Node> buildSignaturePad();
 
@@ -216,7 +217,8 @@ namespace viewer {
     Tool m_tool = Tool::Select;
     // Helper annotation ids in the order they were made (Ctrl+Z removes the last).
     std::vector<std::uint32_t> m_edits;
-    bool m_unsaved = false;
+    // m_edits.size() when the file on disk last matched; empty once undo went below it (there is no redo).
+    std::optional<std::size_t> m_savedDepth = 0;
     bool m_saving = false;
     std::optional<std::pair<std::size_t, annot::Point>> m_notePoint;
     std::size_t m_strokePage = 0;

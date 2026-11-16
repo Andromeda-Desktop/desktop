@@ -120,7 +120,7 @@ namespace viewer {
   }
 
   ViewerWindow::~ViewerWindow() {
-    if (m_unsaved) {
+    if (unsaved()) {
       kLog.info("unsaved edits dropped: {}", m_path.string());
     }
     m_decoder.cancel();
@@ -139,7 +139,7 @@ namespace viewer {
     m_decoder.cancel();
     dropHelper();
     m_edits.clear();
-    m_unsaved = false;
+    m_savedDepth = 0;
     m_notePoint.reset();
     m_signing = false;
     m_drawing = false;
@@ -1402,7 +1402,6 @@ namespace viewer {
               ink.shownAfter = m_renderSeq; // a render sent after this one shows the stroke
             }
           }
-          m_unsaved = true;
           kLog.info("annotated page {} kind {} ({} edits)", page + 1, kind, m_edits.size());
           updateTitle();
           rerenderPage(page);
@@ -1426,24 +1425,26 @@ namespace viewer {
   }
 
   void ViewerWindow::undo() {
-    if (m_edits.empty() || !m_helper) {
+    if (m_edits.empty() || m_saving || !m_helper) {
       return;
     }
     const std::uint32_t id = m_edits.back();
     m_edits.pop_back();
+    if (m_savedDepth > m_edits.size()) {
+      m_savedDepth.reset();
+    }
+    updateTitle();
     m_helper->request({.op = preview::op::AnnotRemove, .b = id},
                       [this, generation = m_generation](const preview::HelperReply& reply) {
                         if (generation != m_generation || reply.msg.op != preview::op::AnnotReply) {
                           return;
                         }
-                        m_unsaved = !m_edits.empty();
-                        updateTitle();
                         rerenderPage(reply.msg.a);
                       });
   }
 
   void ViewerWindow::save() {
-    if (!m_unsaved || m_saving || !m_helper) {
+    if (!unsaved() || m_saving || !m_helper) {
       return;
     }
     // A temp file next to the original, renamed over it once complete: a failed save leaves the original intact.
@@ -1469,7 +1470,7 @@ namespace viewer {
     m_saving = true;
     m_helper->request(
         {.op = preview::op::Save}, fd,
-        [this, tmp, target, keep, generation = m_generation](const preview::HelperReply& reply) {
+        [this, tmp, target, keep, depth = m_edits.size(), generation = m_generation](const preview::HelperReply& reply) {
           std::error_code err;
           const bool written = reply.msg.op == preview::op::Saved && keep >= 0 && fsync(keep) == 0;
           if (keep >= 0) {
@@ -1495,7 +1496,7 @@ namespace viewer {
             kLog.warn("saving {} failed", m_path.string());
             return;
           }
-          m_unsaved = false;
+          m_savedDepth = depth;
           kLog.info("saved {}", m_path.string());
           updateTitle();
         }
@@ -1504,7 +1505,7 @@ namespace viewer {
   }
 
   void ViewerWindow::updateTitle() {
-    m_window.setTitle((m_unsaved ? "• " : "") + m_path.filename().string());
+    m_window.setTitle((unsaved() ? "• " : "") + m_path.filename().string());
   }
 
   std::unique_ptr<Node> ViewerWindow::buildSignaturePad() {
