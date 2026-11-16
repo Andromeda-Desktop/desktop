@@ -341,7 +341,10 @@ namespace term {
     if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
       const std::uint64_t key = s_nextAgentKey++;
       const std::string cwd = fresh->cwd.empty() ? homeDir() : fresh->cwd;
-      m_agents.open(key, cwd);
+      agent::Session& session = m_agents.open(key, cwd);
+      if (!fresh->prompt.empty() && session.send(fresh->prompt)) {
+        m_agents.flush(key);
+      }
       auto agentView = std::make_unique<AgentView>(m_agents, key);
       agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
       m_views.push_back({id, std::move(agentView)});

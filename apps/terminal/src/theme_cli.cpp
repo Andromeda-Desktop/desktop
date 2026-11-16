@@ -130,6 +130,26 @@ namespace term {
     }
   } // namespace
 
+  std::string themeAgentPrompt() {
+    std::error_code ec;
+    const std::string self = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+    const std::string cli = ec ? std::string("andromeda-terminal") : self;
+    return std::format(R"(Make an Andromeda Terminal theme with me. Ask me in one short question what mood or colours I want, unless I already said it.
+
+Use the terminal's theme CLI ({0} theme ...):
+- `{0} theme new <id>` makes {1}/<id>/theme.toml; <id> uses only a-z, 0-9, - and _.
+- Edit theme.toml. It has exactly these keys; any other key is an error:
+    name = "Display name"
+    font = "Mono font family"   # optional; must be installed (fc-list :spacing=mono family)
+    [light] and [dark], each with surface, text and accent = "#rrggbb" (both tables are required)
+  Pick the anchors for mood: the terminal derives the full palette (16 ANSI colours at 7:1) from them.
+- Optional backdrop beside theme.toml, one of: scene.glsl (GLSL ES 1.0 that defines vec4 scene(vec2 uv); inputs scene_time, scene_size, scene_dark, scene_surface, scene_text, scene_accent, scene_busy, scene_success, scene_failure, scene_bell; at most 64 KiB) or background.png/jpg/webp (at most 64 MiB).
+- `{0} theme validate <id>` must pass; it prints file:line: message on an error.
+- `{0} theme preview <id>` prints the derived palettes and contrast ratios.
+- `{0} theme apply <id>` uses it; the window changes at once. Then ask me if I want changes.)",
+                       cli, themesDir().string());
+  }
+
   std::optional<int> runThemeCli(int argc, char* argv[]) {
     if (argc < 2 || std::string_view(argv[1]) != "theme") {
       return std::nullopt;

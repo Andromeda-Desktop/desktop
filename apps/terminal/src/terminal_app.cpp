@@ -1,4 +1,6 @@
 #include "terminal_app.h"
+#include "theme_cli.h"
+#include "theme_store.h"
 
 #include "agent_host.h"
 #include "holder_client.h"
@@ -6,10 +8,19 @@
 #include "notifier.h"
 #include "terminal_window.h"
 
+#include "core/log.h"
+
+#include <gio/gio.h>
+
 #include <filesystem>
+#include <memory>
 #include <utility>
 
 namespace term {
+
+  namespace {
+    constexpr Logger kLog("terminal");
+  } // namespace
 
   TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
     KittyImages::installPngDecoder();
@@ -57,7 +68,32 @@ namespace term {
     if (m_prefsWindow == nullptr) {
       m_prefsWindow = &addWindow({.appId = info().id, .title = "Preferences", .stateKey = "preferences", .width = 760,
                                   .height = 560, .minWidth = 560, .minHeight = 400, .sidebarWidth = 200.0F});
-      m_prefs = std::make_unique<PrefsWindow>(*m_prefsWindow, m_settings);
+      m_prefs = std::make_unique<PrefsWindow>(
+          *m_prefsWindow, m_settings,
+          PrefsWindow::ThemeActions{
+              .createWithAgent =
+                  [this] {
+                    std::error_code ec;
+                    std::filesystem::create_directories(themesDir(), ec);
+                    m_nextOrigins = {NewAgent{.cwd = themesDir().string(), .prompt = themeAgentPrompt()}};
+                    openWindow(loop().wayland().requestActivationToken(m_prefsWindow->wlSurface()));
+                  },
+              .openFolder =
+                  [this] {
+                    std::error_code ec;
+                    std::filesystem::create_directories(themesDir(), ec);
+                    std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
+                    if (const std::string token = loop().wayland().requestActivationToken(m_prefsWindow->wlSurface());
+                        !token.empty()) {
+                      g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
+                    }
+                    GError* error = nullptr;
+                    const std::string uri = "file://" + themesDir().string();
+                    if (!g_app_info_launch_default_for_uri(uri.c_str(), context.get(), &error)) {
+                      kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
+                      g_clear_error(&error);
+                    }
+                  }});
       if (!m_prefsWindow->open()) {
         return;
       }

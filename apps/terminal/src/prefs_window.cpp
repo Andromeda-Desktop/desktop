@@ -99,8 +99,8 @@ namespace term {
 
   } // namespace
 
-  PrefsWindow::PrefsWindow(AppWindow& window, SettingsStore& store)
-      : m_window(window), m_store(store), m_monoFonts(monoFamilies()), m_shells(installedShells()) {
+  PrefsWindow::PrefsWindow(AppWindow& window, SettingsStore& store, ThemeActions actions)
+      : m_window(window), m_store(store), m_actions(std::move(actions)), m_monoFonts(monoFamilies()), m_shells(installedShells()) {
     m_window.setTitle(std::string(kPages[0].title));
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       const bool ctrlOnly = (event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt)) == KeyMod::Ctrl;
@@ -554,7 +554,8 @@ namespace term {
   }
 
   std::unique_ptr<Node> PrefsWindow::tile(std::unique_ptr<Flex> swatch, std::string_view name, bool on, float s,
-                                          float tileW, float tileH, std::function<void()> pick) {
+                                          float tileW, float tileH,
+                                          std::function<void(const InputArea::PointerData&)> pick) {
     swatch->setBorder(colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Separator),
                       (on ? Style::focusRingWidth : Style::borderWidth) * s);
     auto column = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
@@ -566,7 +567,7 @@ namespace term {
     return ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
                           .width = tileW,
                           .height = tileH + Tokens::spaceP4 * s + Tokens::typeBody.line * s,
-                          .onClick = [pick = std::move(pick)](const InputArea::PointerData&) { pick(); }},
+                          .onClick = [pick = std::move(pick)](const InputArea::PointerData& data) { pick(data); }},
                          std::move(column));
   }
 
@@ -605,7 +606,9 @@ namespace term {
                                 .height = tileH},
                                std::move(window));
       row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH,
-                         [this, material] { change([material](Settings& x) { x.material = material; }); }));
+                         [this, material](const InputArea::PointerData&) {
+                           change([material](Settings& x) { x.material = material; });
+                         }));
     }
     return row;
   }
@@ -657,14 +660,34 @@ namespace term {
                                   .fontFamily = std::string(Tokens::fontMono),
                                   .color = fixedColorSpec(colors.ansi[4])}));
       row->addChild(tile(std::move(swatch), choice.name, choice.id == current, s, tileW, tileH,
-                         [this, id = choice.id] { change([id](Settings& x) { x.theme = id; }); }));
+                         [this, id = choice.id](const InputArea::PointerData&) {
+                           change([id](Settings& x) { x.theme = id; });
+                         }));
     }
+    if (choices.size() % kPerRow == 0) {
+      grid->addChild(std::move(row));
+      row = ui::row({.gap = gap, .width = width});
+    }
+    auto add = ui::column({.align = FlexAlign::Center,
+                           .justify = FlexJustify::Center,
+                           .radius = Style::scaledRadiusSm(s),
+                           .width = tileW,
+                           .height = tileH},
+                          ui::glyph({.glyph = std::string("plus"),
+                                     .glyphSize = Tokens::sizeSymbolInline * s,
+                                     .color = colorSpecFromRole(ColorRole::Label2)}));
+    row->addChild(tile(std::move(add), "Add theme", false, s, tileW, tileH, [this](const InputArea::PointerData& at) {
+      enum : std::int32_t { kCreate = 1, kFolder };
+      m_window.openContextMenu({{.id = kCreate, .label = "Create with Claude", .glyph = "robot"},
+                                {.id = kFolder, .label = "Open themes folder", .glyph = "folder"}},
+                               at.sceneX, at.sceneY, [this](std::int32_t item) {
+                                 const auto& action = item == kCreate ? m_actions.createWithAgent : m_actions.openFolder;
+                                 if (action) {
+                                   action();
+                                 }
+                               });
+    }));
     grid->addChild(std::move(row));
-    grid->addChild(ui::label({.text = "Add themes in " + m_store.themes().dir().string(),
-                              .fontSize = Tokens::typeFootnote.size * s,
-                              .color = colorSpecFromRole(ColorRole::Label2),
-                              .maxWidth = width,
-                              .maxLines = 2}));
     return grid;
   }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "settings_store.h"
+#include "render/scene/input_area.h"
 #include "ui/controls/scroll_view.h"
 
 #include <cstdint>
@@ -22,7 +23,12 @@ namespace term {
   // control writes the preferences file at once; the file's changes (also hand edits) rebuild the content.
   class PrefsWindow {
   public:
-    PrefsWindow(AppWindow& window, SettingsStore& store);
+    // The Add theme tile's menu.
+    struct ThemeActions {
+      std::function<void()> createWithAgent; // a new window with an agent session that makes a theme with the user
+      std::function<void()> openFolder;      // the themes folder in the file manager
+    };
+    PrefsWindow(AppWindow& window, SettingsStore& store, ThemeActions actions);
     PrefsWindow(const PrefsWindow&) = delete;
     PrefsWindow& operator=(const PrefsWindow&) = delete;
 
@@ -50,7 +56,8 @@ namespace term {
     [[nodiscard]] static std::unique_ptr<Node> checked(std::unique_ptr<Node> swatch, bool on, float scale);
     // A clickable choice tile: the swatch (tileW x tileH, ringed and checked when on) over its name.
     [[nodiscard]] static std::unique_ptr<Node> tile(std::unique_ptr<Flex> swatch, std::string_view name, bool on, float scale,
-                                                    float tileW, float tileH, std::function<void()> pick);
+                                                    float tileW, float tileH,
+                                                    std::function<void(const InputArea::PointerData&)> pick);
     [[nodiscard]] std::unique_ptr<Flex> card(const Group& group, float scale, float width) const;
     void change(const std::function<void(Settings&)>& edit);
     void showPage(Page page);
@@ -60,6 +67,7 @@ namespace term {
 
     AppWindow& m_window;
     SettingsStore& m_store;
+    ThemeActions m_actions;
     Page m_page = Page::Appearance;
     std::string m_query;
     Input* m_search = nullptr;

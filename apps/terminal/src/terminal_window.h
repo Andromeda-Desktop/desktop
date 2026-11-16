@@ -54,6 +54,7 @@ namespace term {
   // An agent session (ACP) in cwd; empty starts in $HOME.
   struct NewAgent {
     std::string cwd;
+    std::string prompt; // sent as the first message; empty: none
   };
   using WindowOrigin = std::variant<NewShell, Reattach, NewAgent>;
 
