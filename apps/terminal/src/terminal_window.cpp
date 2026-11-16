@@ -232,10 +232,10 @@ namespace term {
               [this](const std::string& text) {
                 m_findQuery = text;
                 if (TerminalView* view = shownTerminal(); view != nullptr) {
-                  view->setFindQuery(text);
+                  view->setFindQuery(text, m_findOptions);
                 }
                 if (text.empty()) {
-                  setFindCount(0, std::nullopt);
+                  setFindCount(0, std::nullopt, FindError::None);
                 }
               },
           .onSubmit =
@@ -257,15 +257,28 @@ namespace term {
               }
               return true;
             }
+            const bool altOnly = (mods & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super)) == KeyMod::Alt;
+            if (altOnly && (sym == 'c' || sym == 'r')) {
+              toggleFindOption(sym == 'r');
+              return true;
+            }
             return false;
           },
       }));
       bar->addChild(std::move(field));
+      const auto toggle = [&](const char* glyph, const char* tooltip, bool on, Button** out, bool regex) {
+        return ui::button({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s, .controlHeight = button, .selected = on,
+                           .variant = ButtonVariant::Ghost, .tooltip = std::string(tooltip),
+                           .radius = button / 2.0F, .width = button, .height = button,
+                           .onClick = [this, regex] { toggleFindOption(regex); }});
+      };
+      bar->addChild(toggle("letter-case", "Match case  Alt+C", m_findOptions.matchCase, &m_findToggles[0], false));
+      bar->addChild(toggle("regex", "Regular expression  Alt+R", m_findOptions.regex, &m_findToggles[1], true));
       bar->addChild(ui::label({.out = &m_findCount, .fontSize = Tokens::typeFootnote.size * s,
                                .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ColorRole::Label2),
                                .maxLines = 1}));
       const auto round = [&](const char* glyph, const char* tooltip, Button** out, std::function<void()> onClick) {
-        return ui::button({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s,
+        return ui::button({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s, .controlHeight = button,
                            .variant = ButtonVariant::Ghost, .tooltip = std::string(tooltip), .radius = button / 2.0F,
                            .width = button, .height = button, .onClick = std::move(onClick)});
       };
@@ -289,7 +302,7 @@ namespace term {
       fillAgentBar();
       slot->addChild(std::move(agentBar));
       m_window.setHeaderSearchMode(m_findOpen);
-      setFindCount(0, std::nullopt);
+      setFindCount(0, std::nullopt, FindError::None);
       return slot;
     });
     m_window.setHeaderAccessoryWidths([this](Renderer& renderer) {
@@ -467,9 +480,9 @@ namespace term {
             },
         .openUri = [this](const std::string& uri) { openUri(uri); },
         .findChanged =
-            [this, id](std::size_t total, std::optional<std::size_t> current) {
+            [this, id](std::size_t total, std::optional<std::size_t> current, FindError error) {
               if (m_sessions.shown() == id) {
-                setFindCount(total, current);
+                setFindCount(total, current, error);
               }
             },
         .textBacking = [this] { return m_window.sceneTextBacking(); },
@@ -1017,6 +1030,7 @@ namespace term {
       m_agentBar->removeChild(m_agentBar->children().back().get());
     }
     m_bandStatus = nullptr;
+    m_agentBar->setParticipatesInLayout(!m_findOpen); // the find bar takes the whole slot
     ContentView* shown = shownView();
     AgentView* view = shown != nullptr ? shown->agent() : nullptr;
     if (view == nullptr || m_findOpen) {
@@ -1259,7 +1273,18 @@ namespace term {
     syncAgentBar();
     m_window.input().setFocus(m_findInput->inputArea());
     if (TerminalView* view = shownTerminal(); view != nullptr && !m_findQuery.empty()) {
-      view->setFindQuery(m_findQuery);
+      view->setFindQuery(m_findQuery, m_findOptions);
+    }
+  }
+
+  void TerminalWindow::toggleFindOption(bool regex) {
+    bool& option = regex ? m_findOptions.regex : m_findOptions.matchCase;
+    option = !option;
+    if (Button* button = m_findToggles[regex ? 1 : 0]; button != nullptr) {
+      button->setSelected(option);
+    }
+    if (TerminalView* view = shownTerminal(); view != nullptr && !m_findQuery.empty()) {
+      view->setFindQuery(m_findQuery, m_findOptions);
     }
   }
 
@@ -1279,12 +1304,14 @@ namespace term {
     focusGrid();
   }
 
-  void TerminalWindow::setFindCount(std::size_t total, std::optional<std::size_t> current) {
+  void TerminalWindow::setFindCount(std::size_t total, std::optional<std::size_t> current, FindError error) {
     if (m_findCount == nullptr) {
       return;
     }
-    m_findCount->setText(m_findQuery.empty() ? std::string()
-                         : total == 0       ? std::string("No matches")
+    m_findCount->setText(m_findQuery.empty()                    ? std::string()
+                         : error == FindError::InvalidPattern ? std::string("Invalid pattern")
+                         : error == FindError::TooComplex     ? std::string("Pattern too complex")
+                         : total == 0                         ? std::string("No matches")
                          : current          ? std::format("{} of {}", *current, total)
                                             : std::format("{} matches", total));
     for (Button* step : m_findSteps) {

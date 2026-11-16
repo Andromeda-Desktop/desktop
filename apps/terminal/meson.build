@@ -23,12 +23,13 @@ if not _ghostty.found()
   )
 endif
 
+_desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc99.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/git_branch.cpp', 'src/terminal_find.cpp',
-  dependencies: [_ghostty, dependency('threads')], link_args: ['-lutil'],
+  dependencies: [_ghostty, dependency('threads'), _desk_ui_dep], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + meson.project_version() + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
-  include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads')])
+  include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads'), _desk_ui_dep])
 
 # The pty holder (Rust) builds with cargo into this build dir, as andromeda-preview's helper.
 cargo = find_program('cargo')

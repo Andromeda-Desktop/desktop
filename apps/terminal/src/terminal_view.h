@@ -106,7 +106,7 @@ namespace term {
       // Ctrl+click on a link: an http(s), mailto or file URI.
       std::function<void(const std::string& uri)> openUri;
       // Find results changed: match count and the current match (1 = newest), while find is open.
-      std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
+      std::function<void(std::size_t total, std::optional<std::size_t> current, FindError error)> findChanged;
       // The alpha of the backing behind text over a theme scene (AppWindow::sceneTextBacking); null = none.
       std::function<float()> textBacking;
       Settings settings;
@@ -160,7 +160,7 @@ namespace term {
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
     void setWindowActive(bool active) override;
     // Find over the screen and scrollback; an empty query clears the hits.
-    void setFindQuery(const std::string& query);
+    void setFindQuery(const std::string& query, FindOptions options);
     // older: toward history (Enter); else toward the prompt (Shift+Enter).
     void findStep(bool older);
     void closeFind();
@@ -373,6 +373,8 @@ namespace term {
     Color m_findHitCurrent{};
     struct FindClosed {};
     std::variant<FindClosed, TerminalFind> m_find; // destroyed under the terminal lock
+    Timer m_findRescan; // one shot: the frame that rescans a changed screen for a regex or case-sensitive query
+    static constexpr std::chrono::milliseconds kFindRescan{250};
     bool m_marksDirty = false;
     using CommandMarksKey = std::pair<std::size_t, std::optional<std::uint32_t>>; // entries, oldest prompt row
     CommandMarksKey m_commandMarksKey;

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -19,7 +20,17 @@ namespace term {
     }
   };
 
+  struct FindOptions {
+    bool regex = false;
+    bool matchCase = false;
+    bool operator==(const FindOptions&) const = default;
+  };
+
+  enum class FindError : std::uint8_t { None, InvalidPattern, TooComplex };
+
   // Every call except tick() runs under the terminal lock, and so does the destructor.
+  // A plain query uses libghostty's incremental search (ASCII case-insensitive); a regex or case-sensitive query
+  // matches the formatted screen text itself.
   class TerminalFind {
   public:
     TerminalFind() = default;
@@ -29,7 +40,7 @@ namespace term {
     TerminalFind(const TerminalFind&) = delete;
     TerminalFind& operator=(const TerminalFind&) = delete;
 
-    void setQuery(GhosttyTerminal terminal, std::string_view query);
+    void setQuery(GhosttyTerminal terminal, std::string_view query, FindOptions options = {});
     void step(bool older);
     // Feeds the search and reads the results; true when total, index or marks changed, and on the first read of a query.
     bool read(GhosttyTerminal terminal);
@@ -43,8 +54,38 @@ namespace term {
     [[nodiscard]] const std::vector<float>& marks() const { return m_marks; }  // scrollbar fractions
     [[nodiscard]] std::optional<float> currentMark() const { return m_currentMark; }
     [[nodiscard]] bool hitAt(std::uint32_t row, std::uint16_t col, bool& current) const;
+    [[nodiscard]] FindError error() const { return m_error; }
+    // The own matcher runs: it sees new screen text only after contentChanged(), at the next read().
+    [[nodiscard]] bool scansText() const { return m_text.has_value(); }
+    void contentChanged();
 
   private:
+    // A match in screen rows, by byte offset into each row's formatted text; end is exclusive.
+    struct TextHit {
+      std::uint32_t startRow = 0;
+      std::uint32_t startByte = 0;
+      std::uint32_t endRow = 0;
+      std::uint32_t endByte = 0;
+      auto operator<=>(const TextHit&) const = default;
+    };
+    struct TextQuery {
+      std::string needle;
+      FindOptions options;
+    };
+    bool readText(GhosttyTerminal terminal);
+    void scanText(GhosttyTerminal terminal);
+    void viewportHits(GhosttyTerminal terminal, const GhosttyTerminalScrollbar& scroll);
+
+    std::optional<TextQuery> m_text;     // set while the own matcher runs instead of libghostty's search
+    std::vector<TextHit> m_textHits;     // top of the screen first
+    std::optional<std::size_t> m_textSel; // into m_textHits
+    enum class TextScan : std::uint8_t { Fresh, ScreenChanged, QueryChanged };
+    TextScan m_textScan = TextScan::Fresh;
+    bool m_textReveal = false;           // scroll the selection into view at the next read
+    bool m_textViewStale = false;        // m_hits must be rebuilt from m_textHits
+    std::uint64_t m_textOffset = 0;      // viewport offset m_hits was built for
+    FindError m_error = FindError::None;
+
     GhosttySearch m_search = nullptr;
     bool m_selectFirst = false; // select the newest match once one is found
     std::vector<FindHit> m_hits; // in the viewport, sorted by start

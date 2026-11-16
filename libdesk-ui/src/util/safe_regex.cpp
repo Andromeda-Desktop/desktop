@@ -43,6 +43,30 @@ bool SafeRegex::search(const std::string& text) const {
   return found;
 }
 
+bool SafeRegex::forEachMatch(std::string_view text, const std::function<void(std::size_t, std::size_t)>& found) const {
+  if (overBudget() || !g_utf8_validate(text.data(), static_cast<gssize>(text.size()), nullptr)) {
+    return false;
+  }
+  GMatchInfo* info = nullptr;
+  GError* error = nullptr;
+  g_regex_match_full(m_regex.get(), text.data(), static_cast<gssize>(text.size()), 0, static_cast<GRegexMatchFlags>(0),
+                     &info, &error);
+  while (error == nullptr && g_match_info_matches(info) != 0 && !overBudget()) {
+    gint start = 0;
+    gint end = 0;
+    if (g_match_info_fetch_pos(info, 0, &start, &end) != 0 && end > start) {
+      found(static_cast<std::size_t>(start), static_cast<std::size_t>(end));
+    }
+    g_match_info_next(info, &error);
+  }
+  g_match_info_free(info);
+  if (error != nullptr) {
+    *m_exhausted = true; // the match limit
+    g_clear_error(&error);
+  }
+  return !*m_exhausted;
+}
+
 std::string SafeRegex::replace(const std::string& text, const std::string& replacement) const {
   if (overBudget() || !g_utf8_validate(text.data(), static_cast<gssize>(text.size()), nullptr)) {
     return text;

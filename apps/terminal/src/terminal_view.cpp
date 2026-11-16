@@ -590,6 +590,17 @@ namespace term {
       return;
     }
     if (find != nullptr) {
+      GhosttyRenderStateDirty dirty = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
+      ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_DIRTY, &dirty);
+      // Rescanning the whole screen text is costly: a changing screen is rescanned at most every kFindRescan.
+      if (dirty != GHOSTTY_RENDER_STATE_DIRTY_FALSE && find->scansText() && !m_findRescan.active()) {
+        m_findRescan.start(kFindRescan, [this] {
+          if (auto* f = std::get_if<TerminalFind>(&m_find)) {
+            m_session.withTerminal([&](GhosttyTerminal) { f->contentChanged(); });
+            scheduleRedraw(Redraw::All);
+          }
+        });
+      }
       // Bounded progress off the lock; the next frame feeds the search again until it completes.
       if (find->tick(std::chrono::milliseconds(2))) {
         scheduleRedraw(Redraw::All);
@@ -597,7 +608,8 @@ namespace term {
       if (findChanged) {
         m_marksDirty = true;
         if (m_host.findChanged) {
-          m_host.findChanged(find->total(), find->index() ? std::optional<std::size_t>(*find->index() + 1) : std::nullopt);
+          m_host.findChanged(find->total(), find->index() ? std::optional<std::size_t>(*find->index() + 1) : std::nullopt,
+                             find->error());
         }
       }
       if (find->hits() != findHits || find->current() != findCurrent) {
@@ -1528,11 +1540,11 @@ namespace term {
     return HoverLink{.row = cell.y, .start = found->start, .end = found->end, .uri = found->uri};
   }
 
-  void TerminalView::setFindQuery(const std::string& query) {
+  void TerminalView::setFindQuery(const std::string& query, FindOptions options) {
     if (!std::holds_alternative<TerminalFind>(m_find)) {
       m_find.emplace<TerminalFind>();
     }
-    m_session.withTerminal([&](GhosttyTerminal t) { std::get<TerminalFind>(m_find).setQuery(t, query); });
+    m_session.withTerminal([&](GhosttyTerminal t) { std::get<TerminalFind>(m_find).setQuery(t, query, options); });
     m_marksDirty = true;
     scheduleRedraw(Redraw::All);
   }

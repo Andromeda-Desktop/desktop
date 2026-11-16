@@ -147,7 +147,10 @@ namespace term {
     // Find bar in the title band (Ctrl+Shift+F): it searches the shown session.
     void openFind();
     void closeFind();
-    void setFindCount(std::size_t total, std::optional<std::size_t> current);
+    void setFindCount(std::size_t total, std::optional<std::size_t> current, FindError error);
+    void toggleFindOption(bool regex);
+    FindOptions m_findOptions;
+    std::array<Button*, 2> m_findToggles{}; // match case, regex
     bool m_findOpen = false;
     std::string m_findQuery;
     Node* m_findBar = nullptr;

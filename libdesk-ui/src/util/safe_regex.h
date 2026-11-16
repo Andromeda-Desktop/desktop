@@ -1,9 +1,12 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 using GRegex = struct _GRegex;
 
@@ -15,6 +18,9 @@ public:
 
   // False for no match, a name that is not UTF-8, or a pattern past its limits (then also exhausted()).
   [[nodiscard]] bool search(const std::string& text) const;
+  // Calls found(start, end) with the byte range of each non-empty match, left to right. False for text that is not
+  // UTF-8 or a pattern past its limits (then also exhausted()).
+  bool forEachMatch(std::string_view text, const std::function<void(std::size_t, std::size_t)>& found) const;
   // ECMAScript replacement syntax ($1, $&, $$); unchanged on no match or a pattern past its limits.
   [[nodiscard]] std::string replace(const std::string& text, const std::string& replacement) const;
   // The pattern hit the backtracking limit or used up the budget: the caller says so instead of a partial result.
