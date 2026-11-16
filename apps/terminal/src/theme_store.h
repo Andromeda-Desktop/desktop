@@ -58,6 +58,7 @@ namespace term {
     [[nodiscard]] Signal<>& changed() noexcept { return m_changed; }
 
   private:
+    [[nodiscard]] std::vector<ThemeEntry> scan(const std::vector<ThemeEntry>& previous) const;
     void reload();
     void watch();
 

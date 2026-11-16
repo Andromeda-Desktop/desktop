@@ -8,6 +8,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <tuple>
 #include <unistd.h>
 
 using namespace term;
@@ -169,6 +170,26 @@ int main() {
       }
     }
     std::filesystem::remove_all(dir.parent_path());
+  }
+  {
+    // Shipped packages show beside the user's; a user package with the same id replaces the shipped one.
+    const auto root = std::filesystem::temp_directory_path() / std::format("theme-store-shipped-{}", getpid());
+    const auto user = root / "home" / "andromeda" / "themes";
+    const auto shipped = root / "sys" / "andromeda" / "terminal" / "themes";
+    const ThemePackage mine{.name = "Mine", .light = {0xffffff, 0x101010, 0x2060c0}, .dark = {0x101010, 0xf0f0f0, 0x60a0ff}};
+    const ThemePackage theirs{.name = "Shipped", .light = {0xfafafa, 0x202020, 0xc02060}, .dark = {0x202020, 0xe0e0e0, 0xff60a0}};
+    for (const auto& [dir, id, package] : {std::tuple{user, "aurora", mine}, std::tuple{shipped, "aurora", theirs},
+                                           std::tuple{shipped, "tidepool", theirs}}) {
+      std::filesystem::create_directories(dir / id);
+      std::ofstream(dir / id / "theme.toml") << toml(package);
+    }
+    setenv("XDG_DATA_HOME", (root / "home").c_str(), 1);
+    setenv("XDG_DATA_DIRS", (root / "sys").c_str(), 1);
+    const ThemeStore store;
+    CHECK(store.find("tidepool") != nullptr && store.find("tidepool")->name == "Shipped");
+    CHECK(store.find("aurora") != nullptr && store.find("aurora")->name == "Mine");
+    CHECK(store.entries().size() == 2);
+    std::filesystem::remove_all(root);
   }
   if (failures != 0) {
     std::fprintf(stderr, "%d failures\n", failures);

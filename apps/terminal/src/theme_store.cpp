@@ -169,10 +169,26 @@ namespace term {
     return result;
   }
 
+  // The user's packages, then the valid packages the system ships (<XDG_DATA_DIRS>/andromeda/terminal/themes) under an
+  // id the user has not taken: a user copy of a shipped theme replaces it.
+  std::vector<ThemeEntry> ThemeStore::scan(const std::vector<ThemeEntry>& previous) const {
+    std::vector<ThemeEntry> entries = scanThemes(m_dir, previous);
+    for (const gchar* const* dir = g_get_system_data_dirs(); *dir != nullptr; ++dir) {
+      for (ThemeEntry& shipped : scanThemes(std::filesystem::path(*dir) / "andromeda" / "terminal" / "themes", previous)) {
+        if (std::holds_alternative<ThemeEntry::Valid>(shipped.state) &&
+            std::ranges::none_of(entries, [&](const ThemeEntry& e) { return e.id == shipped.id; })) {
+          entries.push_back(std::move(shipped));
+        }
+      }
+    }
+    std::ranges::sort(entries, {}, &ThemeEntry::id);
+    return entries;
+  }
+
   ThemeStore::ThemeStore() : m_dir(themesDir()) {
     std::error_code ec;
     std::filesystem::create_directories(m_dir, ec);
-    m_entries = scanThemes(m_dir, {});
+    m_entries = scan({});
     watch();
   }
 
@@ -180,7 +196,7 @@ namespace term {
 
   void ThemeStore::reload() {
     watch();
-    std::vector<ThemeEntry> entries = scanThemes(m_dir, m_entries);
+    std::vector<ThemeEntry> entries = scan(m_entries);
     if (entries == m_entries) {
       return;
     }

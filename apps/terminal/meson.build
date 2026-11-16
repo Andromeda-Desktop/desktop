@@ -159,5 +159,6 @@ install_symlink('andromeda-ptyd.socket', pointing_to: '../andromeda-ptyd.socket'
   install_dir: _user_unit_dir / 'sockets.target.wants')
 
 install_subdir('data/shell-integration', install_dir: get_option('datadir') / 'andromeda' / 'terminal')
+install_subdir('themes', install_dir: get_option('datadir') / 'andromeda' / 'terminal')
 install_data('data/dev.andromeda.Terminal.desktop', install_dir: get_option('datadir') / 'applications')
 install_data('data/icons/dev.andromeda.Terminal.svg', install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps')
