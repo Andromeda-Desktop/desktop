@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/core/color.h"
+#include "render/core/shader_scene_draw.h"
 #include "render/scene/node.h"
 
 #include <string>

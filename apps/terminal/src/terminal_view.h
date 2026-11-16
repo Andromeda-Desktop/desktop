@@ -73,6 +73,8 @@ namespace term {
     const auto* package = std::get_if<ThemePackage>(&theme);
     return package != nullptr && !std::holds_alternative<std::monostate>(package->backdrop);
   }
+  // The alpha of the grid background: 0 over a theme scene, the glass opacity on glass content, else 1.
+  [[nodiscard]] float backgroundAlpha(const Settings& settings, const ThemeSpec& theme);
   // The grid font family list: the user's font, else the theme's, then the mono token.
   [[nodiscard]] std::string gridFont(const Settings& settings, const ThemeSpec& theme);
 

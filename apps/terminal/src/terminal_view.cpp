@@ -261,16 +261,18 @@ namespace term {
     return font.empty() ? std::string(Tokens::fontMono) : font + ", " + std::string(Tokens::fontMono);
   }
 
-  float TerminalView::backgroundAlpha() const {
+  float backgroundAlpha(const Settings& settings, const ThemeSpec& theme) {
     // A theme scene: the window's tinted main pane is the grid background.
-    if (hasScene(m_theme)) {
+    if (hasScene(theme)) {
       return 0.0F;
     }
-    if (!glassContent(m_settings.material) || Style::reduceTransparency()) {
+    if (!glassContent(settings.material) || Style::reduceTransparency()) {
       return 1.0F;
     }
-    return m_settings.glassOpacity ? static_cast<float>(*m_settings.glassOpacity) / 100.0F : Tokens::componentTerminalGlassAlpha;
+    return settings.glassOpacity ? static_cast<float>(*settings.glassOpacity) / 100.0F : Tokens::componentTerminalGlassAlpha;
   }
+
+  float TerminalView::backgroundAlpha() const { return term::backgroundAlpha(m_settings, m_theme); }
 
   ColorSpec TerminalView::surface() const {
     Color color = rgbHex(m_background);

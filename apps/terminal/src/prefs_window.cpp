@@ -13,6 +13,7 @@
 #include "ui/palette.h"
 #include "render/animation/animation_manager.h"
 #include "render/animation/motion_service.h"
+#include "render/scene/shader_scene_node.h"
 #include "ui/style.h"
 #include "wayland/wayland_seat.h"
 
@@ -786,13 +787,40 @@ namespace term {
     const std::string family = gridFont(now, theme);
     const float size = static_cast<float>(now.fontSize) * s;
     const ThemePalette colors = themePalette(theme);
+    const bool scene = hasScene(theme);
+    const float radius = Tokens::componentWindowCardRadius * s;
+    // The card stands for the main pane: the theme's scene under its tint, or the grid's glass alpha.
     auto box = ui::column({.align = FlexAlign::Stretch,
-                           .fill = fixedColorSpec(colors.view),
-                           .radius = Tokens::componentWindowCardRadius * s,
+                           .fill = fixedColorSpec(withAlpha(colors.view, scene ? Tokens::componentTerminalSceneTint
+                                                                               : backgroundAlpha(now, theme))),
+                           .radius = radius,
                            .border = colorSpecFromRole(ColorRole::Separator),
                            .borderWidth = Style::borderWidth * s,
+                           .clipChildren = scene,
                            .width = width,
                            .height = height});
+    if (scene) {
+      box->setClipRadii(Radii{radius, radius, radius, radius});
+      // One still frame: the preview runs no scene clock.
+      std::unique_ptr<Node> backdrop;
+      const auto& source = std::get<ThemePackage>(theme).backdrop;
+      if (const auto* picture = std::get_if<ThemePackage::Picture>(&source)) {
+        auto image = std::make_unique<Image>();
+        image->setFit(ImageFit::Cover);
+        (void)image->setSourceFile(renderer, picture->path, static_cast<int>(std::ceil(std::max(width, height))));
+        image->setSize(width, height);
+        backdrop = std::move(image);
+      } else {
+        auto shader = std::make_unique<ShaderSceneNode>();
+        shader->setSource(std::get<ThemePackage::Shader>(source).source);
+        shader->setColors(colors.view, colors.label1, colors.accent, !isResolvedLightTheme());
+        shader->setFrameSize(width, height);
+        backdrop = std::move(shader);
+      }
+      backdrop->setParticipatesInLayout(false);
+      backdrop->setZIndex(-1);
+      box->addChild(std::move(backdrop));
+    }
     box->setPadding(Tokens::spaceP16 * s, Tokens::spaceP24 * s);
     const float meta = Tokens::typeFootnote.size * s;
     const float inner = std::max(0.0F, width - Tokens::spaceP24 * s * 2.0F);
