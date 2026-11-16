@@ -346,6 +346,7 @@ namespace term {
     void updateFocus();
     void updateBlink(bool wanted);
     void restartBlink();
+    void updateTextBlink();
 
     bool m_windowActive = true;
     bool m_areaFocused = false;
@@ -368,6 +369,12 @@ namespace term {
     Blink m_blink = Blink::Steady;
     std::optional<TerminalCursor> m_cursor; // from the last refresh; the blink tick shows or hides it
     Timer m_blinkTimer;
+    // Off: no blinking text (SGR 5) on screen and no timer. Shown, Hidden: its phase. The tick is one shot and the next
+    // refresh arms it again, so a window that gets no frame ticks (hidden) stops blinking.
+    enum class TextBlink : std::uint8_t { Off, Shown, Hidden };
+    TextBlink m_textBlink = TextBlink::Off;
+    std::vector<std::uint8_t> m_blinkRows; // per viewport row: 1 while it holds blinking text
+    Timer m_textBlinkTimer;
     std::chrono::steady_clock::time_point m_blinkSince; // the last key or focus gain
     std::array<std::uint16_t, 2> m_cellPx{}; // cell size the terminal last got, device px
     Scrollbar* m_scrollbar = nullptr;

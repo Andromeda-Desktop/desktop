@@ -756,6 +756,7 @@ namespace term {
     });
 
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rows);
+    m_blinkRows.resize(static_cast<std::size_t>(viewRows()) + 1);
     std::uint16_t index = 0;
     std::uint16_t y = 0;
     auto nextRow = [&] {
@@ -777,6 +778,7 @@ namespace term {
           ghostty_render_state_row_get(m_rows, GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION, &selected) == GHOSTTY_SUCCESS;
       m_rowBuffer.clear();
       bool linked = false;
+      bool blinks = false;
       while (ghostty_render_state_row_cells_next(m_cells)) {
         TerminalCell cell{};
         std::uint32_t codepoints[4];
@@ -809,6 +811,10 @@ namespace term {
         }
         if ((flags & GHOSTTY_STYLE_FLAG_INVISIBLE) != 0) {
           cell.codepoint = 0;
+        }
+        if ((flags & GHOSTTY_STYLE_FLAG_BLINK) != 0) {
+          blinks = true;
+          cell.codepoint = m_textBlink == TextBlink::Hidden ? 0 : cell.codepoint;
         }
         if (bool current = false; find != nullptr && find->hitAt(y, static_cast<std::uint16_t>(m_rowBuffer.size()), current)) {
           bg = over(current ? m_findHitCurrent : m_findHit, bg);
@@ -859,6 +865,9 @@ namespace term {
       }
       if (linked) {
         markSizedRuns(y);
+      }
+      if (y < m_blinkRows.size()) {
+        m_blinkRows[y] = blinks ? 1 : 0;
       }
       for (const CommandSpan& span : spans) {
         const std::uint64_t row = top + y;
@@ -923,7 +932,25 @@ namespace term {
       };
     }
     m_grid->setCursor(m_blink == Blink::Hidden ? std::nullopt : m_cursor);
+    updateTextBlink();
     commitAtlas();
+  }
+
+  void TerminalView::updateTextBlink() {
+    if (!std::ranges::contains(m_blinkRows, std::uint8_t{1})) {
+      m_textBlinkTimer.stop();
+      m_textBlink = TextBlink::Off;
+      return;
+    }
+    if (m_textBlink == TextBlink::Off) {
+      m_textBlink = TextBlink::Shown;
+    }
+    if (!m_textBlinkTimer.active()) {
+      m_textBlinkTimer.start(std::chrono::milliseconds(static_cast<int>(Tokens::motionCaretBlinkMs)), [this] {
+        m_textBlink = m_textBlink == TextBlink::Shown ? TextBlink::Hidden : TextBlink::Shown;
+        scheduleRedraw(Redraw::All);
+      });
+    }
   }
 
   void TerminalView::commitAtlas() {
