@@ -77,6 +77,7 @@ public:
   ) override;
   void drawImage(const RenderImageDraw& draw) override;
   void drawGlyph(const RenderGlyphDraw& draw) override;
+  void drawGlyphRun(const RenderGlyphRun& run) override;
   void drawSpinner(
       float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style,
       const Mat3& transform

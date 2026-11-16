@@ -93,6 +93,17 @@ struct RenderGlyphDraw {
   Mat3 transform = Mat3::identity();
 };
 
+// Alpha-coverage quads from one texture, tinted alike: 6 vertices per quad, positions in surface pixels.
+struct RenderGlyphRun {
+  TextureId texture;
+  float surfaceWidth = 0.0F;
+  float surfaceHeight = 0.0F;
+  std::span<const float> positions; // x, y per vertex
+  std::span<const float> texcoords; // u, v per vertex
+  float opacity = 1.0F;
+  Color tint = rgba(1.0F, 1.0F, 1.0F, 1.0F);
+};
+
 struct RenderScissor {
   std::int32_t x = 0;
   std::int32_t y = 0;
@@ -173,6 +184,7 @@ public:
   ) = 0;
   virtual void drawImage(const RenderImageDraw& draw) = 0;
   virtual void drawGlyph(const RenderGlyphDraw& draw) = 0;
+  virtual void drawGlyphRun(const RenderGlyphRun& run) = 0;
   virtual void drawSpinner(
       float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style,
       const Mat3& transform

@@ -955,6 +955,18 @@ void GlesRenderBackend::drawGlyph(const RenderGlyphDraw& draw) {
   );
 }
 
+void GlesRenderBackend::drawGlyphRun(const RenderGlyphRun& run) {
+  flushRectBatch();
+  gpuMark(GpuSplitTimer::kGlyph);
+  if (run.texture == 0 || run.positions.empty()) {
+    return;
+  }
+  m_glyphProgram.ensureInitialized();
+  m_glyphProgram.drawTintedRun(
+      run.texture, run.surfaceWidth, run.surfaceHeight, run.positions, run.texcoords, run.opacity, run.tint
+  );
+}
+
 void GlesRenderBackend::drawSpinner(
     float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style, const Mat3& transform
 ) {

@@ -159,3 +159,31 @@ void GlyphProgram::drawTinted(
   glUniform4f(m_tintLocation, tint.r, tint.g, tint.b, tint.a);
   bindCommon(texture, surfaceWidth, surfaceHeight, width, height, u0, v0, u1, v1, opacity, transform);
 }
+
+void GlyphProgram::drawTintedRun(
+    TextureId texture, float surfaceWidth, float surfaceHeight, std::span<const float> positions,
+    std::span<const float> texcoords, float opacity, const Color& tint
+) const {
+  if (!m_program.isValid() || texture == 0 || positions.empty() || positions.size() != texcoords.size()) {
+    return;
+  }
+  glUseProgram(m_program.id());
+  glUniform1f(m_tintModeLocation, 1.0F);
+  glUniform4f(m_tintLocation, tint.r, tint.g, tint.b, tint.a);
+  glUniform2f(m_surfaceSizeLocation, surfaceWidth, surfaceHeight);
+  glUniform2f(m_rectLocation, 1.0F, 1.0F);
+  glUniform1f(m_opacityLocation, opacity);
+  glUniformMatrix3fv(m_transformLocation, 1, GL_FALSE, Mat3::identity().m.data());
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture.value()));
+  glUniform1i(m_samplerLocation, 0);
+  const auto posAttr = static_cast<GLuint>(m_positionLocation);
+  const auto texAttr = static_cast<GLuint>(m_texCoordLocation);
+  glVertexAttribPointer(posAttr, 2, GL_FLOAT, GL_FALSE, 0, positions.data());
+  glVertexAttribPointer(texAttr, 2, GL_FLOAT, GL_FALSE, 0, texcoords.data());
+  glEnableVertexAttribArray(posAttr);
+  glEnableVertexAttribArray(texAttr);
+  glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(positions.size() / 2));
+  glDisableVertexAttribArray(posAttr);
+  glDisableVertexAttribArray(texAttr);
+}

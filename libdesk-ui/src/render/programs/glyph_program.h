@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "render/core/mat3.h"
 #include "render/core/shader_program.h"
 
@@ -36,6 +38,12 @@ public:
   void drawTinted(
       TextureId texture, float surfaceWidth, float surfaceHeight, float width, float height, float u0, float v0,
       float u1, float v1, float opacity, const Color& tint, const Mat3& transform = Mat3::identity()
+  ) const;
+
+  // Many alpha-tint quads in one draw: positions (surface pixels) and texcoords hold x, y per vertex, 6 per quad.
+  void drawTintedRun(
+      TextureId texture, float surfaceWidth, float surfaceHeight, std::span<const float> positions,
+      std::span<const float> texcoords, float opacity, const Color& tint
   ) const;
 
 private:

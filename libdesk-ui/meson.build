@@ -238,6 +238,7 @@ _desk_ui_sources = files(
   'src/render/scene/accessible.cpp',
   'src/a11y/atspi_bridge.cpp',
   'src/render/text/cairo_glyph_renderer.cpp',
+  'src/render/text/text_glyph_atlas.cpp',
   'src/render/text/cairo_text_renderer.cpp',
   'src/render/text/font_registry.cpp',
   'src/render/text/terminal_glyph_atlas.cpp',

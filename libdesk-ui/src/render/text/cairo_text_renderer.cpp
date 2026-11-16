@@ -36,6 +36,7 @@ namespace {
   }
 
   constexpr float kAxisAlignedEpsilon = 0.0001F;
+  constexpr float kAtlasMaxPx = 96.0F; // device px font size; glyphs stay far below TextGlyphAtlas::kSize
 
   inline std::uint32_t sizeKey(float value) { return std::bit_cast<std::uint32_t>(std::max(0.0F, value)); }
 
@@ -331,6 +332,7 @@ void CairoTextRenderer::clearCaches() {
   m_fontMetricsCache.clear();
   dropShaped(m_shaped);
   dropShaped(m_shapedOld);
+  m_atlas.clear(m_textureManager);
 }
 
 void CairoTextRenderer::invalidateGlyphTextures() {
@@ -344,6 +346,7 @@ void CairoTextRenderer::invalidateGlyphTextures() {
   wipeAndClear(m_cache);
   m_lru.clear();
   m_cacheBytes = 0;
+  m_atlas.clear(m_textureManager);
 }
 
 bool CairoTextRenderer::holdsText(std::string_view text) const {
@@ -392,6 +395,7 @@ void CairoTextRenderer::abandonGlyphTextures() noexcept {
   wipeAndClear(m_cache);
   m_lru.clear();
   m_cacheBytes = 0;
+  m_atlas.abandon();
 }
 
 void CairoTextRenderer::setFontFamily(std::string family) {
@@ -813,9 +817,9 @@ void CairoTextRenderer::measureCharSpans(
 
 void CairoTextRenderer::rasterizeLayout(
     float contentScale, PangoLayout* layout, const Color& color, bool tinted, float strokePx, const TextFont& font,
-    CacheEntry& entry
+    CacheEntry& entry, bool atlas
 ) {
-  entry.tinted = tinted;
+  entry.ink = tinted ? CacheEntry::Ink::Coverage : CacheEntry::Ink::Rgba;
   // Pixel-sized surface: ceil the logical rect up.
   // For aligned multi-line text, Pango's logical rect is NOT anchored at x=0:
   // logical.x is the block's alignment offset within set_width (e.g. for
@@ -854,6 +858,12 @@ void CairoTextRenderer::rasterizeLayout(
   // fractional baseline (hint metrics off).
   const int baselinePango = pango_layout_get_baseline(layout);
   entry.baselinePx = static_cast<float>(baselinePango / PANGO_SCALE + extraTopPx);
+  if (atlas && buildAtlasQuads(layout, extraLeftPx - blockLeftPx, extraTopPx, entry)) {
+    entry.pixelWidth = pxWidth;
+    entry.pixelHeight = pxHeight;
+    entry.metrics = metricsFromLayout(contentScale, layout);
+    return;
+  }
 
   if (m_glMaxTextureSize <= 0 && m_backend != nullptr) {
     m_glMaxTextureSize = m_backend->maxTextureSize();
@@ -1081,6 +1091,82 @@ void CairoTextRenderer::touch(CacheMap::iterator it) {
   it->second.lastUsed = std::chrono::steady_clock::now();
 }
 
+bool CairoTextRenderer::buildAtlasQuads(PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry) {
+  constexpr float kPage = TextGlyphAtlas::kSize;
+  // A full page clears the atlas mid-walk and voids the quads made before it, so walk again once on the new page.
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    const std::uint64_t generation = m_atlas.generation();
+    entry.quadPositions.clear();
+    entry.quadTexcoords.clear();
+    bool ok = true;
+    PangoLayoutIter* iter = pango_layout_get_iter(layout);
+    do {
+      PangoRectangle logical;
+      pango_layout_iter_get_line_extents(iter, nullptr, &logical);
+      // Same integer line origin as the raster path's cairo_translate.
+      const int lineX = logical.x / PANGO_SCALE + originXPx;
+      const int baseline = pango_layout_iter_get_baseline(iter) / PANGO_SCALE + extraTopPx;
+      int pen = 0;
+      for (GSList* l = pango_layout_iter_get_line_readonly(iter)->runs; l != nullptr && ok; l = l->next) {
+        const auto* run = static_cast<const PangoGlyphItem*>(l->data);
+        PangoFont* font = run->item->analysis.font;
+        cairo_scaled_font_t* scaled =
+            PANGO_IS_CAIRO_FONT(font) ? pango_cairo_font_get_scaled_font(PANGO_CAIRO_FONT(font)) : nullptr;
+        if (scaled == nullptr) {
+          ok = false;
+          break;
+        }
+        for (int i = 0; i < run->glyphs->num_glyphs; ++i) {
+          const PangoGlyphInfo& info = run->glyphs->glyphs[i];
+          const int penAt = pen;
+          pen += info.geometry.width;
+          if (info.glyph == PANGO_GLYPH_EMPTY) {
+            continue;
+          }
+          if ((info.glyph & PANGO_GLYPH_UNKNOWN_FLAG) != 0U) {
+            ok = false;
+            break;
+          }
+          // Cairo's image backend puts a glyph at floor(x + 1/8) with phase floor(4x + 1/2) & 3.
+          const long quarter = std::lround(
+              static_cast<double>(penAt + info.geometry.x_offset) * TextGlyphAtlas::kSubpixelSteps / PANGO_SCALE
+          );
+          const auto whole =
+              static_cast<long>(std::floor(static_cast<double>(quarter) / TextGlyphAtlas::kSubpixelSteps));
+          const auto phase = static_cast<int>(quarter - whole * TextGlyphAtlas::kSubpixelSteps);
+          const TextGlyphAtlas::Glyph* glyph = m_atlas.glyph(*m_textureManager, scaled, info.glyph, phase);
+          if (glyph == nullptr) {
+            continue;
+          }
+          const auto x0 = static_cast<float>(lineX + whole + glyph->left);
+          const auto y0 = static_cast<float>(
+              baseline + std::lround(static_cast<double>(info.geometry.y_offset) / PANGO_SCALE) + glyph->top
+          );
+          const float x1 = x0 + glyph->width;
+          const float y1 = y0 + glyph->height;
+          const float u0 = glyph->x / kPage;
+          const float v0 = glyph->y / kPage;
+          const float u1 = (glyph->x + glyph->width) / kPage;
+          const float v1 = (glyph->y + glyph->height) / kPage;
+          entry.quadPositions.insert(entry.quadPositions.end(), {x0, y0, x1, y0, x0, y1, x0, y1, x1, y0, x1, y1});
+          entry.quadTexcoords.insert(entry.quadTexcoords.end(), {u0, v0, u1, v0, u0, v1, u0, v1, u1, v0, u1, v1});
+        }
+      }
+    } while (ok && pango_layout_iter_next_line(iter));
+    pango_layout_iter_free(iter);
+    if (!ok || m_atlas.texture() == 0) {
+      return false;
+    }
+    if (m_atlas.generation() == generation) {
+      entry.ink = CacheEntry::Ink::Atlas;
+      entry.atlasGeneration = generation;
+      entry.bytes = (entry.quadPositions.size() + entry.quadTexcoords.size()) * sizeof(float);
+      return true;
+    }
+  }
+  return false;
+}
+
 void CairoTextRenderer::evict(CacheMap::iterator it) {
   for (auto& tile : it->second.tiles) {
     if (m_textureManager != nullptr) {
@@ -1193,6 +1279,11 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   key.ellipsize = ellipsize;
   key.useMarkup = useMarkup;
   auto it = m_cache.find(key);
+  if (it != m_cache.end() && it->second.ink == CacheEntry::Ink::Atlas
+      && it->second.atlasGeneration != m_atlas.generation()) {
+    evict(it);
+    it = m_cache.end();
+  }
   if (it != m_cache.end()) {
     touch(it);
     return &it->second;
@@ -1229,7 +1320,12 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
     rasterColor.a = 1.0F;
   }
   CacheEntry entry{};
-  rasterizeLayout(contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry);
+  // Large text gains little from the atlas, and its glyphs would crowd the page.
+  const bool atlas = tinted && font.stroke == 0.0F && !useMarkup && m_textureManager != nullptr
+                     && fontSize * contentScale <= kAtlasMaxPx;
+  rasterizeLayout(
+      contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry, atlas
+  );
   g_object_unref(layout);
 
   if (m_metricsCache.size() >= kMaxMetricsEntries) {
@@ -1272,7 +1368,7 @@ void CairoTextRenderer::draw(
 
   CacheEntry* entry =
       lookupOrRasterize(contentScale, text, fontSize, font, maxWidth, maxLines, align, color, ellipsize, useMarkup);
-  if (entry == nullptr || entry->tiles.empty()) {
+  if (entry == nullptr || (entry->tiles.empty() && entry->ink != CacheEntry::Ink::Atlas)) {
     return;
   }
   if (entry->tiles.size() > 1) {
@@ -1307,6 +1403,27 @@ void CairoTextRenderer::draw(
     baseWorld.m[7] = snapToBufferPixel(baseWorld.m[7], contentScale);
   }
 
+  if (entry->ink == CacheEntry::Ink::Atlas) {
+    m_runPositions.resize(entry->quadPositions.size());
+    for (std::size_t i = 0; i + 1 < m_runPositions.size(); i += 2) {
+      const Vec2 p =
+          baseWorld.transformPoint(entry->quadPositions[i] * invScale, entry->quadPositions[i + 1] * invScale);
+      m_runPositions[i] = p.x;
+      m_runPositions[i + 1] = p.y;
+    }
+    m_backend->drawGlyphRun(
+        RenderGlyphRun{
+            .texture = m_atlas.texture(),
+            .surfaceWidth = surfaceWidth,
+            .surfaceHeight = surfaceHeight,
+            .positions = m_runPositions,
+            .texcoords = entry->quadTexcoords,
+            .tint = color,
+        }
+    );
+    return;
+  }
+
   // Emit one quad per tile. Tiles share the same X/width and abut on exact
   // buffer-pixel boundaries (pixelYOffset is an integer number of raster
   // pixels), so there is no seam between adjacent tiles even at fractional
@@ -1315,7 +1432,7 @@ void CairoTextRenderer::draw(
     const float tileYLocal = static_cast<float>(tile.pixelYOffset) * invScale;
     const float tileH = static_cast<float>(tile.pixelHeight) * invScale;
     const Mat3 tileWorld = baseWorld * Mat3::translation(0.0F, tileYLocal);
-    if (entry->tinted) {
+    if (entry->ink == CacheEntry::Ink::Coverage) {
       m_backend->drawGlyph(
           RenderGlyphDraw{
               .texture = tile.texture.id,
