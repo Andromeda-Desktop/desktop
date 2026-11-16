@@ -35,8 +35,19 @@ namespace {
       if (static_cast<std::uint64_t>(pix.width()) * pix.height() > kMaxDecodePixels) {
         return AllocPixbufResult("image too large");
       }
-      return DecodeImageCallbacks::AllocPixbuf(imageConfig, allowUninitializedMemory);
+      (void)allowUninitializedMemory;
+      // Wuffs decodes straight into the returned vector, so a decode holds one copy of the pixels, not two.
+      pixels.resize(pix.pixbuf_len());
+      wuffs_base__pixel_buffer pixbuf;
+      const wuffs_base__status status =
+          pixbuf.set_from_slice(&pix, wuffs_base__make_slice_u8(pixels.data(), pixels.size()));
+      if (!status.is_ok()) {
+        return AllocPixbufResult(status.message());
+      }
+      return AllocPixbufResult(wuffs_aux::MemOwner(nullptr, &free), pixbuf);
     }
+
+    std::vector<std::uint8_t> pixels;
   };
 
   // Returns true if the buffer starts with the RIFF....WEBP signature.
@@ -376,8 +387,7 @@ namespace {
     DecodedRasterImage decoded;
     decoded.width = static_cast<int>(result.pixbuf.pixcfg.width());
     decoded.height = static_cast<int>(result.pixbuf.pixcfg.height());
-    decoded.pixels.resize(plane.width * plane.height);
-    std::memcpy(decoded.pixels.data(), plane.ptr, decoded.pixels.size());
+    decoded.pixels = std::move(callbacks.pixels);
     return decoded;
   }
 
