@@ -129,6 +129,21 @@ namespace term {
       std::string_view word;
     };
 
+    // The command, else the first path (relative to the session folder when inside it), else the title.
+    std::string actionTarget(const agent::Action& action, std::string_view cwd) {
+      if (!action.command.empty()) {
+        return action.command;
+      }
+      if (action.paths.empty()) {
+        return action.title;
+      }
+      std::string_view path = action.paths.front();
+      if (!cwd.empty() && path.starts_with(cwd) && path.size() > cwd.size() && path[cwd.size()] == '/') {
+        path.remove_prefix(cwd.size() + 1);
+      }
+      return std::string(path);
+    }
+
     Verb verbFor(std::string_view kind) {
       if (kind == "read") {
         return {"file-text", "Read"};
@@ -566,6 +581,23 @@ namespace term {
            && std::holds_alternative<agent::Prose>(model->entries()[entry]) && std::get<agent::Prose>(model->entries()[entry]).streaming;
   }
 
+  std::string AgentView::activity() const {
+    const agent::Session* model = session();
+    if (model == nullptr || model->phase() != agent::Phase::Working) {
+      return {};
+    }
+    if (thinking()) {
+      return "thinking";
+    }
+    const auto& entries = model->entries();
+    for (auto it = entries.rbegin(); it != entries.rend() && !std::holds_alternative<agent::Turn>(*it); ++it) {
+      if (const auto* action = std::get_if<agent::Action>(&*it); action != nullptr && action->status == agent::ActionStatus::Running) {
+        return std::string(verbFor(action->kind).word) + " \u00b7 " + actionTarget(*action, model->cwd());
+      }
+    }
+    return streamingAt(entries.size() - 1) ? "replying" : "working";
+  }
+
   // Working with the user's prompt as the last entry: the agent has not answered yet.
   bool AgentView::thinking() const {
     const agent::Session* model = session();
@@ -839,7 +871,7 @@ namespace term {
                                      .fontSize = Tokens::typeFootnote.size * s,
                                      .color = colorSpecFromRole(failed ? ColorRole::TermRed : ColorRole::Label2),
                                      .width = Tokens::componentAgentVerbWidth * s}));
-            const std::string target = !e.command.empty() ? e.command : !e.paths.empty() ? e.paths.front() : e.title;
+            const std::string target = actionTarget(e, model->cwd());
             auto targetLabel = kit.code(target, failed ? ColorRole::TermRed : muted ? ColorRole::Label2 : ColorRole::Label1, 1);
             targetLabel->setFlexGrow(1.0F);
             row->addChild(std::move(targetLabel));

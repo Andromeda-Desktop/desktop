@@ -43,6 +43,8 @@ namespace term {
     [[nodiscard]] std::string statusText() const;
     // A turn runs: the status clock advances each second.
     [[nodiscard]] bool ticking() const;
+    // The sidebar row's line while a turn runs: "Run · meson test", "replying", "thinking", "working"; else empty.
+    [[nodiscard]] std::string activity() const;
     // Advances the elapsed time of the running actions in view, in place: a rebind restarts their spinners.
     void tick();
     // The plan popover: content and height in logical px before scale.

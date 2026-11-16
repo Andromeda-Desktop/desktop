@@ -618,7 +618,7 @@ namespace term {
         case agent::RowStatus::Ready: data.status = "ready"; break;
         case agent::RowStatus::Working:
           data.symbol = "loader-2";
-          data.status = "working";
+          data.status = it->view->agent()->activity();
           break;
         case agent::RowStatus::NeedsPermission:
           data.symbol = "hand-stop";
