@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
   "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
-<!-- Files Get Info: change the permissions of items the user does not own (andromeda-fileops-admin). -->
+<!-- Files: Get Info changes and administrator tabs on items the user does not own (andromeda-fileops-admin). -->
 <policyconfig>
   <vendor>Andromeda</vendor>
   <action id="org.andromeda.files.admin">
-    <description>Change permissions of other users' files</description>
-    <message>Authentication is required to change the permissions of these items</message>
+    <description>Manage files as the administrator</description>
+    <message>Authentication is required to change files that belong to other users</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>

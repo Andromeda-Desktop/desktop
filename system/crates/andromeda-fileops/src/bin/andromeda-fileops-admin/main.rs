@@ -1,16 +1,20 @@
-//! Root helper for Get Info (FB-INFO): changes the mode of files the user does not own, after polkit
+//! Root helper for Files: Get Info (FB-INFO) changes the mode or owner of files the user does not own, and an
+//! administrator tab runs every listing and change through `serve`, after polkit
 //! (action org.andromeda.files.admin) let pkexec start it. The arguments come from an unprivileged caller, so every
 //! path is checked: absolute, no `.` or `..` parts, not under /proc, /sys or /dev; links are never changed or followed.
 //!
 //! andromeda-fileops-admin chmod <mode octal> <mask octal> <0|1 recursive> <path>...
 //! andromeda-fileops-admin chown <uid|-> <gid|-> <0|1 recursive> <path>...   ("-" keeps it)
 //! Prints "done <count>" and exits 0, or prints the error and exits 1.
+//! andromeda-fileops-admin serve   (a Files administrator tab: JSON lines on stdin and stdout, see serve.rs)
 
 use rustix::fs::{AtFlags, CWD, Dir, FileType, Gid, Mode, OFlags, Uid, chmodat, chownat, fstat, openat};
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
+
+mod serve;
 
 const READ_BITS: [u32; 3] = [0o400, 0o040, 0o004];
 const REFUSED_ROOTS: [&str; 3] = ["/proc", "/sys", "/dev"];
@@ -170,6 +174,15 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|a| a == "serve") {
+        return match serve::serve(std::io::stdin().lock(), std::io::stdout().lock()) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     match run(&args) {
         Ok(count) => {
             println!("done {count}");
