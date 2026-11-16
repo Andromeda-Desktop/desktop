@@ -597,6 +597,7 @@ void AppWindow::close() {
   m_sidebarNode = nullptr;
   m_mainNode = nullptr;
   m_headerNode = nullptr;
+  m_cardFrame = nullptr;
   m_sceneNode = nullptr;
   m_scenePicture = nullptr;
   m_sceneClip = nullptr;
@@ -939,7 +940,12 @@ void AppWindow::measureScene() {
     }
     target.destroy();
   }
-  m_sceneTextTint = backdrop.empty() ? 1.0F : tintForContrast(m_scene->label2, m_scene->surface, backdrop, m_scene->tint);
+  m_sceneTextTint = backdrop.empty() ? 1.0F : m_scene->tint;
+  if (!backdrop.empty()) {
+    for (const Color& ink : m_scene->inks) {
+      m_sceneTextTint = std::max(m_sceneTextTint, tintForContrast(ink, m_scene->surface, backdrop, m_scene->tint));
+    }
+  }
   // An empty shader sample means GL is not up: the next build measures again, opaque until then. A picture that does
   // not load stays opaque.
   if (!backdrop.empty() || picture != nullptr) {
@@ -980,11 +986,20 @@ void AppWindow::applySceneFills() {
     tint.a = alpha;
     return fixedColorSpec(tint);
   };
-  // A card lies on the frame, which already has the text tint: more tint would only hide the scene.
-  m_mainNode->setFill(m_config.contentCard ? clearColorSpec() : fill(m_sceneContentBacked ? m_scene->tint : m_sceneTextTint));
+  // Content that backs its own text shows the scene at the light tint; otherwise the pane backs text like the sidebar.
+  // A card lies on the frame: the frame keeps the text tint only when the card adds none, so the scene shows through.
+  const float paneTint = m_sceneContentBacked ? m_scene->tint : m_sceneTextTint;
+  if (m_config.contentCard) {
+    m_mainNode->setFill(m_sceneContentBacked ? fill(paneTint) : clearColorSpec());
+    if (m_cardFrame != nullptr) {
+      m_cardFrame->setFill(m_sceneContentBacked ? clearColorSpec() : fill(m_sceneTextTint));
+    }
+  } else {
+    m_mainNode->setFill(fill(paneTint));
+  }
   if (m_headerNode != nullptr) {
-    // On a card the band sits on the content plane; without one it backs its own text.
-    m_headerNode->setFill(m_sceneContentBacked && !m_config.contentCard ? fill(sceneTextBacking()) : clearColorSpec());
+    // Over the light tint the header backs its own text up to the text tint.
+    m_headerNode->setFill(m_sceneContentBacked ? fill(sceneTextBacking()) : clearColorSpec());
   }
 }
 
@@ -1556,8 +1571,9 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     // The material under the card is the sidebar's, so the window reads as one surface with the card on it.
     auto frame = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
     frame->setPadding(m_cardGap, m_cardGap, m_cardGap, cardLeft);
-    frame->setFill(m_scene ? sceneFill(m_sceneTextTint)
+    frame->setFill(m_scene ? (m_sceneContentBacked ? clearColorSpec() : sceneFill(m_sceneTextTint))
                            : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin));
+    m_cardFrame = frame.get();
     frame->addChild(std::move(main));
     body->addChild(std::move(frame));
   } else {

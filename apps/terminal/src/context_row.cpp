@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <format>
 #include <memory>
+#include <optional>
 
 namespace term {
 
@@ -26,7 +27,9 @@ namespace {
                       .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ink), .maxLines = 1});
   }
 
-  std::unique_ptr<Node> build(const ContextItem& item, float h, float width, float s, const ContextRow::Font& font) {
+  std::unique_ptr<Node> build(
+      const ContextItem& item, float h, float width, float s, const ContextRow::Font& font, std::optional<Color> backing
+  ) {
     auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
                         .fill = colorSpecFromRole(ColorRole::TermCommandBand), .radius = Tokens::radiusR8 * s,
                         .width = width, .height = h});
@@ -47,7 +50,13 @@ namespace {
       row->addChild(caption("· " + item.time, FontWeight::Medium, ColorRole::Label1, s));
       break;
     }
-    return row;
+    if (!backing) {
+      return row;
+    }
+    // Over a scene the band backs its labels as the grid backs its text runs.
+    auto back = ui::box({.fill = fixedColorSpec(*backing), .radius = Tokens::radiusR8 * s, .width = width, .height = h});
+    back->addChild(std::move(row));
+    return back;
   }
 
 } // namespace
@@ -59,7 +68,7 @@ std::string formatTook(std::chrono::duration<double> took) {
                         : formatClockTime(static_cast<std::int64_t>(seconds));
 }
 
-ContextRow::ContextRow(TerminalGridNode& grid) {
+ContextRow::ContextRow(TerminalGridNode& grid) : m_grid(grid) {
   auto layer = std::make_unique<Node>();
   layer->setZIndex(TerminalGridNode::kBelowTextZ);
   m_layer = grid.addChild(std::move(layer));
@@ -72,13 +81,21 @@ void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWid
       && std::equal(placed.begin(), placed.end(), m_placed.begin(),
                     [](const Placed& a, const Placed& b) { return a.item == b.item; });
   const bool sameSize = cellHeight == m_cellHeight && rowWidth == m_rowWidth && scale == m_scale && font == m_font;
-  if (!sameItems || !sameSize) {
+  const float backing = m_grid.textBacking();
+  if (!sameItems || !sameSize || backing != m_backing) {
+    m_backing = backing;
+    std::optional<Color> back;
+    if (backing > 0.0F) {
+      const std::uint32_t bg = m_grid.background();
+      back = Color{static_cast<float>((bg >> 16) & 0xFF) / 255.0F, static_cast<float>((bg >> 8) & 0xFF) / 255.0F,
+                   static_cast<float>(bg & 0xFF) / 255.0F, backing};
+    }
     for (Node* node : m_nodes) {
       m_layer->removeChild(node);
     }
     m_nodes.clear();
     for (const Placed& p : placed) {
-      m_nodes.push_back(m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font)));
+      m_nodes.push_back(m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font, back)));
     }
   }
   // The band padding sits left of column 0, so the path lines up with the text below.

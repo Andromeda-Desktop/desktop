@@ -229,9 +229,10 @@ AnimationManager::Id AnimationManager::drive(
 
 AnimationManager::Id AnimationManager::animateGated(
     float from, float to, const desk::motion::SpringConfig& spring, std::function<void(float)> setter, float fraction,
-    std::function<void()> onPass, std::function<void()> onComplete, const void* owner, float velocity, Threshold unit
+    std::function<void()> onPass, std::function<void()> onComplete, const void* owner, float velocity, Threshold unit,
+    bool spatial
 ) {
-  if (!MotionService::instance().enabled()) {
+  if (const MotionService& motion = MotionService::instance(); !motion.enabled() || (spatial && motion.reduced())) {
     return jump(to, unit, std::move(setter), std::move(onComplete), owner, std::move(onPass));
   }
   const Id id = animateSpring(from, to, spring, std::move(setter), std::move(onComplete), owner, velocity, unit);

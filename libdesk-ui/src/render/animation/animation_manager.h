@@ -51,7 +51,7 @@ public:
   Id animateGated(
       float from, float to, const desk::motion::SpringConfig& spring, std::function<void(float)> setter,
       float fraction, std::function<void()> onPass, std::function<void()> onComplete = {},
-      const void* owner = nullptr, float velocity = 0.0F, Threshold unit = Unit::Opacity
+      const void* owner = nullptr, float velocity = 0.0F, Threshold unit = Unit::Opacity, bool spatial = false
   );
   // Stagger for entries: child `index` starts 16 ms after child `index - 1`; children from the sixth on start together.
   // Exits never stagger. Without motion (off or reduced) every child starts at once.

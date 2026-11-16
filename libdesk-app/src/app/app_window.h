@@ -121,7 +121,7 @@ public:
     Color surface;
     Color text;
     Color accent;
-    Color label2;
+    std::vector<Color> inks; // text colours drawn over the scene: the text tint keeps 4.5:1 for each
     bool dark = false;
     float tint = 1.0F; // the surface's alpha over the scene where nothing needs it for contrast
     bool operator==(const Scene&) const = default;
@@ -325,6 +325,7 @@ private:
   float m_sceneTextTint = 1.0F;
   bool m_sceneContentBacked = false;
   Flex* m_headerNode = nullptr;
+  Flex* m_cardFrame = nullptr; // the plane under a content card, null without one
   void measureScene();
   void applySceneFills();
   void applyMainFill();

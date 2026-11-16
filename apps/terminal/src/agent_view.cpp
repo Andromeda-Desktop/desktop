@@ -872,7 +872,7 @@ namespace term {
             it->second.fade = fade;
           }
         },
-        [this, index] { endSpring(index); }, m_log, 0.0F, Unit::Px);
+        [this, index] { endSpring(index); }, m_log, 0.0F, Unit::Px, true);
     if (const auto it = m_motions.find(index); it != m_motions.end()) {
       it->second.move = move;
     }

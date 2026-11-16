@@ -83,6 +83,7 @@ public:
   // Over a see-through background: the background colour at this alpha behind each run of text (runs join across
   // gaps of fewer than kBackingGap blank cells), so the text keeps its contrast while empty cells stay clear. 0 = off.
   void setTextBacking(float alpha);
+  [[nodiscard]] float textBacking() const noexcept { return m_textBacking; }
   static constexpr int kBackingGap = 4;
   [[nodiscard]] TextureId atlasTexture() const noexcept { return m_texture.id; }
   [[nodiscard]] int atlasWidth() const noexcept { return m_atlas.width(); }

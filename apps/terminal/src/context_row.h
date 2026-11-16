@@ -55,7 +55,9 @@ public:
   [[nodiscard]] std::optional<Hit> hitTest(float x, float y) const;
 
 private:
+  TerminalGridNode& m_grid;
   Node* m_layer = nullptr;
+  float m_backing = 0.0F;
   std::vector<Placed> m_placed;
   std::vector<Node*> m_nodes;
   float m_cellHeight = 0.0F;

@@ -21,6 +21,7 @@
 #include "ui/controls/flex.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
+#include "ui/contrast.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "wayland/wayland_connection.h"
@@ -49,13 +50,20 @@ namespace term {
         return std::nullopt;
       }
       const ThemePalette colors = themePalette(theme);
+      // The grid and the prompt band draw ANSI colours too; one that is weak even on the plain view is left out.
+      std::vector<Color> inks{colors.label2};
+      for (std::size_t i = 1; i < colors.ansi.size(); ++i) {
+        if (contrastRatio(colors.ansi[i], colors.view) >= 4.5) {
+          inks.push_back(colors.ansi[i]);
+        }
+      }
       const auto& backdrop = std::get<ThemePackage>(theme).backdrop;
       const auto* picture = std::get_if<ThemePackage::Picture>(&backdrop);
       return AppWindow::Scene{.backdrop = picture != nullptr
                                               ? AppWindow::Scene::Backdrop{AppWindow::Scene::Picture{picture->path, picture->stamp}}
                                               : AppWindow::Scene::Backdrop{AppWindow::Scene::Shader{std::get<ThemePackage::Shader>(backdrop).source}},
                               .surface = colors.view, .text = colors.label1,
-                              .accent = colors.accent, .label2 = colors.label2, .dark = !isResolvedLightTheme(),
+                              .accent = colors.accent, .inks = std::move(inks), .dark = !isResolvedLightTheme(),
                               .tint = Tokens::componentTerminalSceneTint};
     }
   } // namespace
@@ -1547,7 +1555,7 @@ namespace term {
     step(0.0F);
     whenAnimating([this, step](AnimationManager& animations) {
       m_layoutAnim = animations.drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove), step,
-                                      [this] { m_window.invalidate(); }, m_cards.front().cell);
+                                      [this] { m_window.invalidate(); }, m_cards.front().cell, 0.0F, Unit::Progress, true);
     });
   }
 
