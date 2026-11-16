@@ -1598,6 +1598,7 @@ namespace term {
       const float s = m_scale;
       const Kit kit{s};
       std::string text = std::format("{} new below", fresh);
+      std::string command;
       if (asks) {
         const auto& request = std::get<agent::Request>(model->entries()[model->pending().front()]);
         std::string target;
@@ -1606,7 +1607,8 @@ namespace term {
             target = !action->command.empty() ? action->command : action->title;
           }
         }
-        text = target.empty() ? std::string("Claude asks you") : "Claude asks to run " + target;
+        text = target.empty() ? std::string("Claude asks you") : std::string("Claude asks to run");
+        command = target;
       }
       while (!m_jump->children().empty()) {
         m_jump->removeChild(m_jump->children().back().get());
@@ -1629,6 +1631,15 @@ namespace term {
                               .radius = h / 2.0F,
                               .height = h,
                               .onClick = [this] { jumpToEnd(); }});
+      if (!command.empty()) {
+        pill->addChild(ui::label({.text = command,
+                                  .fontSize = Tokens::typeFootnote.size * s,
+                                  .fontFamily = mono(),
+                                  .color = colorSpecFromRole(ColorRole::Label1),
+                                  .maxWidth = Tokens::componentAgentMeasure * s / 2.0F,
+                                  .maxLines = 1,
+                                  .ellipsize = TextEllipsize::End}));
+      }
       pill->addChild(ui::keycap({.text = "End", .scale = s}));
       m_jump->addChild(std::move(pill));
     }
@@ -1636,6 +1647,7 @@ namespace term {
       m_jump->setVisible(show);
       m_jumpShadow->setVisible(show);
       m_root->markLayoutDirty();
+      syncComposer();
     }
   }
 
@@ -1731,7 +1743,9 @@ namespace term {
     }
     const agent::Phase phase = model->phase();
     const bool running = phase == agent::Phase::Working || phase == agent::Phase::Cancelling;
-    m_input->setPlaceholder(!model->pending().empty()    ? "1–4 answers the request above"
+    // Scrolled up, the jump pill names the request and the card sits below the view.
+    const bool below = m_jump != nullptr && m_jump->visible();
+    m_input->setPlaceholder(!model->pending().empty()    ? (below ? "1–4 answers the request below" : "1–4 answers the request above")
                             : running                    ? "Queue a follow-up · Esc stops"
                             : phase == agent::Phase::Starting ? "Starting Claude…"
                             : phase == agent::Phase::Failed   ? "Reply to restart Claude in this session"
