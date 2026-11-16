@@ -104,7 +104,7 @@ namespace {
     Node* accessory = nullptr;
     float accessoryMin = 0.0F; // the accessory's own minimum; fit() lowers it so the row never overflows
     float titleMin = 0.0F;     // the title keeps this much (or its natural width) before the accessory folds more
-    std::function<float(Renderer&)> accessoryFloor; // the accessory never folds below it; the title gives way first
+    std::function<AppWindow::HeaderAccessoryWidths(Renderer&)> accessoryWidths;
 
   protected:
     void doLayout(Renderer& renderer) override {
@@ -182,9 +182,17 @@ namespace {
       if (flex != nullptr) {
         title->setMaxWidth(0.0F);
         const float natural = static_cast<Node*>(title)->measure(renderer, {}).width;
-        const float keep = std::min(natural, titleMin);
-        const float floor = accessoryFloor ? accessoryFloor(renderer) : 0.0F;
-        allowed = std::clamp(w - used - keep, floor, std::max(accessoryMin, floor));
+        const AppWindow::HeaderAccessoryWidths widths =
+            accessoryWidths ? accessoryWidths(renderer) : AppWindow::HeaderAccessoryWidths{};
+        const float room = w - used - natural;
+        const float spare = w - used - std::min(natural, titleMin);
+        if (room >= std::max(widths.keep, accessoryMin)) {
+          allowed = room;
+        } else if (spare >= widths.keep) {
+          allowed = std::clamp(spare, widths.keep, std::max(accessoryMin, widths.keep));
+        } else {
+          allowed = std::clamp(spare, widths.floor, std::max(accessoryMin, widths.floor));
+        }
         flex->setMinWidth(allowed);
       }
       title->setMaxWidth(std::max(1.0F, w - used - allowed));
@@ -823,7 +831,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
       }));
     }
   }
-  // Mockup .title: 600 17/24, 4 after the arrows; it ellipsizes in the middle only when the header is full.
+  // Mockup .title: 600 17/24, 4 after the arrows; it ellipsizes at the end only when the header is full (rulebook 9.12).
   auto title = ui::row({.align = FlexAlign::Center, .clipChildren = true});
   header->titleRow = title.get();
   m_titleRow = title.get();
@@ -835,7 +843,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
       .fontWeight = FontWeight::SemiBold,
       .color = colorSpecFromRole(ColorRole::Label1),
       .maxLines = 1,
-      .ellipsize = TextEllipsize::Middle,
+      .ellipsize = TextEllipsize::End,
   }));
   header->title = m_titleLabel;
   header->titleMin = 96.0F * s;
@@ -878,7 +886,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
     auto accessory = m_headerAccessory();
     accessory->setFlexGrow(1.0F);
     header->accessory = accessory.get();
-    header->accessoryFloor = m_headerAccessoryFloor;
+    header->accessoryWidths = m_headerAccessoryWidths;
     if (auto* flex = dynamic_cast<Flex*>(accessory.get())) {
       header->accessoryMin = flex->minWidth();
     }

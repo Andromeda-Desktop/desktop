@@ -48,7 +48,7 @@ namespace term {
       }
       const ThemePalette colors = themePalette(theme);
       return AppWindow::Scene{.source = std::get<ThemePackage>(theme).scene, .surface = colors.view, .text = colors.label1,
-                              .accent = colors.accent, .dark = !isResolvedLightTheme(),
+                              .accent = colors.accent, .label2 = colors.label2, .dark = !isResolvedLightTheme(),
                               .tint = Tokens::componentTerminalSceneTint, .sidebarTint = Tokens::componentTerminalSceneSidebarTint};
     }
   } // namespace
@@ -237,7 +237,12 @@ namespace term {
       setFindCount(0, std::nullopt);
       return slot;
     });
-    m_window.setHeaderAccessoryFloor([this](Renderer& renderer) { return m_agentBar->measure(renderer, {}).width; });
+    m_window.setHeaderAccessoryWidths([this](Renderer& renderer) {
+      const float floor = m_agentBar->measure(renderer, {}).width;
+      return AppWindow::HeaderAccessoryWidths{
+          .floor = floor,
+          .keep = m_agentBar->children().empty() ? floor : AgentView::bandKeep(*m_agentBar->children().front(), renderer)};
+    });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       ContentView* view = shownView();
       // A click on a button leaves focus nowhere: keys go back to the shown session.

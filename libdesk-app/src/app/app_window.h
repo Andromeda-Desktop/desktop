@@ -84,8 +84,15 @@ public:
   void setHeaderAccessoryBuilder(std::function<std::unique_ptr<Node>()> builder) {
     m_headerAccessory = std::move(builder);
   }
-  // The accessory width the header never folds: past it the title ellipsizes instead.
-  void setHeaderAccessoryFloor(std::function<float(Renderer&)> floor) { m_headerAccessoryFloor = std::move(floor); }
+  // floor: the accessory never folds below it; past it the title ellipsizes instead. keep: the accessory keeps this
+  // while the title ellipsizes down to its minimum; above it the accessory only gets room the full title leaves.
+  struct HeaderAccessoryWidths {
+    float floor = 0.0F;
+    float keep = 0.0F;
+  };
+  void setHeaderAccessoryWidths(std::function<HeaderAccessoryWidths(Renderer&)> widths) {
+    m_headerAccessoryWidths = std::move(widths);
+  }
   // The Solid main pane's plane, header included: the content's surface, so the header and the content read as one
   // plane. nullopt = solid_regular. Glass keeps its sheet tint.
   void setMainFill(std::optional<ColorSpec> fill);
@@ -206,7 +213,7 @@ private:
   ContentBuilder m_builder;
   SidebarBuilder m_sidebarBuilder;
   std::function<std::unique_ptr<Node>()> m_headerAccessory;
-  std::function<float(Renderer&)> m_headerAccessoryFloor;
+  std::function<HeaderAccessoryWidths(Renderer&)> m_headerAccessoryWidths;
   std::function<bool(const KeyboardEvent&)> m_keyHandler;
   std::function<bool(const KeyboardEvent&)> m_firstKeyHandler;
   std::function<void(bool)> m_onActive;

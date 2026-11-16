@@ -40,6 +40,8 @@ namespace term {
     [[nodiscard]] AgentView* agent() noexcept override { return this; }
     // Title band pills: the plan (once the agent sent one; onPlan opens it under the pill) and the status.
     // status receives the status pill's label: statusText() refreshes it in place while ticking().
+    // The width a band from band() keeps while the title ellipsizes.
+    [[nodiscard]] static float bandKeep(Node& band, Renderer& renderer);
     [[nodiscard]] std::unique_ptr<Node> band(float scale, std::function<void(const Node* anchor)> onPlan,
                                              Label** status) const;
     // "working · 4:12", "done · 6:58", "ready", ...

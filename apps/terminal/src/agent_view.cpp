@@ -315,9 +315,12 @@ namespace term {
         return sideways(std::move(grid));
       }
 
-      // A mono block on fill_1: output tails, error wells, command wells. Wide lines end in an ellipsis, or with
-      // scroll the block scrolls sideways (code blocks in replies).
-      std::unique_ptr<Flex> well(std::vector<std::string_view> rows, ColorRole role, bool lastStrong, bool scroll = false) const {
+      enum class Overflow : std::uint8_t { Ellipsize, Scroll, Wrap };
+      // A mono block on fill_1: output tails and error wells end wide lines in an ellipsis, code blocks in replies
+      // scroll sideways, command wells wrap anywhere in mono 13 500.
+      std::unique_ptr<Flex> well(std::vector<std::string_view> rows, ColorRole role, bool lastStrong,
+                                 Overflow overflow = Overflow::Ellipsize) const {
+        const bool scroll = overflow == Overflow::Scroll;
         auto box = ui::column({.align = FlexAlign::Stretch,
                                .paddingV = Tokens::spaceP8 * s,
                                .paddingH = scroll ? 0.0F : Tokens::spaceP12 * s,
@@ -329,6 +332,14 @@ namespace term {
         }
         for (std::size_t i = 0; i < rows.size(); ++i) {
           const bool strong = lastStrong && i + 1 == rows.size();
+          if (overflow == Overflow::Wrap) {
+            text->addChild(ui::label({.text = std::string(rows[i]),
+                                      .fontSize = Tokens::typeMono.size * s,
+                                      .fontWeight = FontWeight::Medium,
+                                      .fontFamily = mono(),
+                                      .color = colorSpecFromRole(strong ? ColorRole::Label1 : role)}));
+            continue;
+          }
           text->addChild(code(std::string(rows[i]), strong ? ColorRole::Label1 : role, 1, !scroll));
         }
         if (!scroll) {
@@ -420,11 +431,12 @@ namespace term {
   namespace {
 
     constexpr float kPlanWidth = 360.0F;
+    constexpr float kPlanPillWidth = 280.0F; // mockup .pill max-width
     constexpr float kPlanRowGap = 4.0F;
 
-    // The title band: the status pill never shrinks; the plan pill reads "Plan N of M · current" when it fits, else
-    // "N of M", else hides; the agent pill comes before the plan. It measures at its minimum so the header
-    // ellipsizes the title before it folds the band.
+    // The title band: the status pill never shrinks; the agent pill hides first, then the plan pill reads "N of M"
+    // instead of "Plan N of M · current", then hides. It measures at its floor (status and "N of M"); keep() is
+    // status and the full plan, which the header holds while the title ellipsizes.
     class BandRow final : public Flex {
     public:
       Node* agent = nullptr;
@@ -432,13 +444,14 @@ namespace term {
       Node* full = nullptr;
       Node* compact = nullptr;
 
+      float keep(Renderer& renderer) {
+        return status->measure(renderer, {}).width + (full != nullptr ? gap() + full->measure(renderer, {}).width : 0.0F);
+      }
+
     protected:
       LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override {
         const LayoutSize size = Flex::doMeasure(renderer, constraints);
         float w = status->measure(renderer, {}).width;
-        if (agent != nullptr) {
-          w += gap() + agent->measure(renderer, {}).width;
-        }
         if (compact != nullptr) {
           w += gap() + compact->measure(renderer, {}).width;
         }
@@ -456,15 +469,16 @@ namespace term {
     private:
       void choose(Renderer& renderer, float w) {
         float room = w - status->measure(renderer, {}).width;
-        if (agent != nullptr) {
-          const float agentW = agent->measure(renderer, {}).width + gap();
-          show(agent, agentW <= room);
-          room -= agentW <= room ? agentW : 0.0F;
-        }
+        bool showFull = true;
         if (full != nullptr) {
-          const bool showFull = full->measure(renderer, {}).width + gap() <= room;
+          const float fullW = full->measure(renderer, {}).width + gap();
+          showFull = fullW <= room;
           show(full, showFull);
           show(compact, !showFull && compact->measure(renderer, {}).width + gap() <= room);
+          room -= showFull ? fullW : 0.0F;
+        }
+        if (agent != nullptr) {
+          show(agent, showFull && agent->measure(renderer, {}).width + gap() <= room);
         }
       }
       static void show(Node* node, bool on) {
@@ -512,6 +526,11 @@ namespace term {
     return model != nullptr && (model->phase() == agent::Phase::Working || model->phase() == agent::Phase::Cancelling);
   }
 
+  float AgentView::bandKeep(Node& band, Renderer& renderer) {
+    auto* row = dynamic_cast<BandRow*>(&band);
+    return row != nullptr && row->status != nullptr ? row->keep(renderer) : band.measure(renderer, {}).width;
+  }
+
   std::unique_ptr<Node> AgentView::band(float s, std::function<void(const Node* anchor)> onPlan, Label** status) const {
     const Kit kit{s};
     const float h = Tokens::spaceP24 * s;
@@ -552,7 +571,7 @@ namespace term {
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .glyphSize = Tokens::spaceP12 * s,
                                   .variant = ButtonVariant::Tonal,
-                                  .maxWidth = kPlanWidth * s,
+                                  .maxWidth = kPlanPillWidth * s,
                                   .paddingH = Tokens::spaceP8 * s,
                                   .gap = Tokens::spaceP4 * s,
                                   .radius = h / 2.0F,
@@ -1041,7 +1060,7 @@ namespace term {
             for (const auto& block : blocks) {
               if (block.kind == agent::Block::Kind::Code) {
                 auto pinned = std::make_unique<Pinned>(Tokens::spaceP4 * s, Pinned::Corner::TopRight);
-                pinned->addChild(kit.well(lines(block.text), ColorRole::Label1, false, true));
+                pinned->addChild(kit.well(lines(block.text), ColorRole::Label1, false, Kit::Overflow::Scroll));
                 const float size = Tokens::componentAgentCopyButton * s;
                 pinned->addChild(ui::button({.glyph = std::string("copy"), .glyphSize = Tokens::spaceP12 * s,
                                              .variant = ButtonVariant::Ghost, .tooltip = std::string("Copy"),
@@ -1295,7 +1314,7 @@ namespace term {
                               Tokens::typeCaption, ColorRole::Label2));
     card->addChild(std::move(header));
     if (action != nullptr && kind == "execute" && !action->command.empty()) {
-      card->addChild(kit.well(lines(action->command), ColorRole::Label1, false));
+      card->addChild(kit.well(lines(action->command), ColorRole::Label1, false, Kit::Overflow::Wrap));
       card->addChild(kit.text("in " + model.cwd(), Tokens::typeCaption, ColorRole::Label2));
     } else if (action != nullptr && !action->diffs.empty()) {
       // Path bar (fill_1, top corners) over the first hunk (bottom corners): one block.
