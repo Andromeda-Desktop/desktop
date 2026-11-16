@@ -695,8 +695,17 @@ void AppWindow::noteSceneActivity() {
   wakeScene();
 }
 
+void AppWindow::setSceneHeld(bool held) {
+  if (held != m_sceneHeld) {
+    m_sceneHeld = held;
+    if (!held) {
+      noteSceneActivity();
+    }
+  }
+}
+
 void AppWindow::wakeScene() {
-  if (m_sceneNode != nullptr && m_activated && !m_sceneTicking) {
+  if (m_sceneNode != nullptr && m_activated && !m_sceneHeld && !m_sceneTicking) {
     m_sceneTicking = true;
     m_sceneStepped = std::chrono::steady_clock::now(); // resume where the motion stopped
     m_sceneTimer.start(kSceneStep, [this] { sceneTick(); });
@@ -705,7 +714,7 @@ void AppWindow::wakeScene() {
 
 void AppWindow::sceneTick() {
   const auto now = std::chrono::steady_clock::now();
-  if (m_sceneNode == nullptr || !m_activated || now >= m_sceneAwakeUntil) {
+  if (m_sceneNode == nullptr || !m_activated || m_sceneHeld || now >= m_sceneAwakeUntil) {
     m_sceneTicking = false; // no new step until wakeScene
     return;
   }

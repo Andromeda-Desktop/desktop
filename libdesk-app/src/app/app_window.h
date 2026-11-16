@@ -129,6 +129,8 @@ public:
   // Input, output or any change the user sees: the scene moves for scene_idle_ms after the last one, while the window is
   // active. Keys and pointer events in this window count already.
   void noteSceneActivity();
+  // Reduced motion or battery saver: the scene stays on its current frame until this turns false.
+  void setSceneHeld(bool held);
   // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
   void setSceneContentBacked(bool backed);
   // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
@@ -319,6 +321,7 @@ private:
   std::chrono::steady_clock::time_point m_sceneStepped{}; // when the scene clock last advanced
   std::chrono::steady_clock::time_point m_sceneAwakeUntil{};
   bool m_activated = false;
+  bool m_sceneHeld = false;
   bool m_sceneTicking = false; // a scene step waits on its present or the step timer
   Timer m_sceneTimer;
   // The scene draws on its own subsurface below the window at reduced resolution: its frames repaint only that layer,

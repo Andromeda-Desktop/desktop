@@ -1,6 +1,7 @@
 #include "app/appearance.h"
 
 #include "core/log.h"
+#include "render/animation/motion_service.h"
 #include "dbus/session_bus.h"
 #include "ui/palette.h"
 
@@ -14,6 +15,8 @@ namespace {
   constexpr auto kPortalSettings = "org.freedesktop.portal.Settings";
   constexpr auto kBackendSettings = "org.freedesktop.impl.portal.Settings";
   constexpr auto kNamespace = "org.freedesktop.appearance";
+  constexpr auto kPowerMonitor = "org.freedesktop.portal.PowerProfileMonitor";
+  constexpr auto kPowerSaverProperty = "power-saver-enabled";
   constexpr std::uint32_t kPreferLight = 2; // color-scheme: 0 no preference, 1 dark, 2 light
 
   // The frontend's Read wraps the value in one more variant; ReadOne and the backend do not.
@@ -39,6 +42,8 @@ Appearance::Appearance(SessionBus& bus, std::function<void()> changed) : m_bus(b
       m_accent[0] = r;
       m_accent[1] = g;
       m_accent[2] = b;
+    } else if (key == "reduced-motion" && value.containsValueOfType<std::uint32_t>()) {
+      m_reducedMotion = value.get<std::uint32_t>() == 1;
     } else {
       return;
     }
@@ -49,18 +54,38 @@ Appearance::Appearance(SessionBus& bus, std::function<void()> changed) : m_bus(b
     m_portal->uponSignal("SettingChanged").onInterface(kPortalSettings).call(onChanged);
     m_backend = sdbus::createProxy(m_bus.connection(), kBackend, kPath);
     m_backend->uponSignal("SettingChanged").onInterface(kBackendSettings).call(onChanged);
+    m_power = sdbus::createProxy(m_bus.connection(), kPortal, kPath);
+    m_power->uponSignal("PropertiesChanged")
+        .onInterface("org.freedesktop.DBus.Properties")
+        .call([this](const std::string& iface, const std::map<std::string, sdbus::Variant>& changed,
+                     const std::vector<std::string>& /*invalidated*/) {
+          if (const auto it = changed.find(kPowerSaverProperty); iface == kPowerMonitor && it != changed.end()
+                                                                   && it->second.containsValueOfType<bool>()) {
+            m_powerSaver = it->second.get<bool>();
+            apply();
+          }
+        });
   } catch (const sdbus::Error& e) {
     kLog.warn("settings portal: {}", e.getMessage());
     return;
   }
   read(false);
+  m_power->callMethodAsync("Get")
+      .onInterface("org.freedesktop.DBus.Properties")
+      .withArguments(std::string(kPowerMonitor), std::string(kPowerSaverProperty))
+      .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, sdbus::Variant value) {
+        if (!alive.expired() && !error.has_value() && value.containsValueOfType<bool>() && value.get<bool>()) {
+          m_powerSaver = true;
+          apply();
+        }
+      });
 }
 
 Appearance::~Appearance() = default;
 
 void Appearance::read(bool backend) {
   sdbus::IProxy* proxy = backend ? m_backend.get() : m_portal.get();
-  for (const char* key : {"color-scheme", "accent-color"}) {
+  for (const char* key : {"color-scheme", "accent-color", "reduced-motion"}) {
     proxy->callMethodAsync("Read")
         .onInterface(backend ? kBackendSettings : kPortalSettings)
         .withArguments(std::string(kNamespace), std::string(key))
@@ -85,6 +110,8 @@ void Appearance::read(bool backend) {
             m_accent[0] = r;
             m_accent[1] = g;
             m_accent[2] = b;
+          } else if (key == "reduced-motion" && value.containsValueOfType<std::uint32_t>()) {
+            m_reducedMotion = value.get<std::uint32_t>() == 1;
           }
           apply();
         });
@@ -103,6 +130,7 @@ void Appearance::apply() {
   setLightPalette(paletteFor(true));
   setResolvedThemeLight(m_light);
   setPalette(paletteFor(m_light));
+  MotionService::instance().setReduced(m_reducedMotion);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   if (m_changed) {
     m_changed();
