@@ -98,7 +98,7 @@ public:
   void onActivate(std::size_t index) override { activate(index); }
   [[nodiscard]] std::string itemTooltip(std::size_t index) const override {
     const auto& r = rows();
-    return index < r.size() ? r[index]->displayName : std::string();
+    return index < r.size() ? r[index]->displayName() : std::string();
   }
 };
 
@@ -312,7 +312,7 @@ void FileColumns::showPreview(const FileInfo* file) {
       const FileCellState state = m_host.state(*file, 0);
       icon->bind(*m_renderer, *file, state.path, state.thumbnails);
     }
-    m_previewName->setText(file->displayName);
+    m_previewName->setText(file->displayName());
     m_previewMeta->setText(std::format("{} · {}", fileKindLabel(*file), formatFileSize(file->size)));
   }
   if (m_host.invalidate) {
@@ -353,7 +353,7 @@ void FileColumns::appendGeometry(std::string& out) const {
       float x = 0.0F;
       float y = 0.0F;
       if (col->grid->absoluteAnchorForIndex(i, x, y)) {
-        out += std::format("column-item {} {} {}\n", rows[i]->displayName, static_cast<int>(x), static_cast<int>(y));
+        out += std::format("column-item {} {} {}\n", rows[i]->displayName(), static_cast<int>(x), static_cast<int>(y));
       }
     }
   }

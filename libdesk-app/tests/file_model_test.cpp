@@ -93,6 +93,10 @@ int main() {
   view.setSort({.key = FileSortKey::Size, .descending = true});
   expect(joined(names(view)) == "zdir,b.txt,a2.txt,a10.txt", "size descending keeps folders first: " + joined(names(view)));
   view.setSort({});
+  if (auto info = statFile(dir / "b.txt")) {
+    info->setNameKeepLabel((dir / "b.txt").string());
+    expect(info->displayName() == "b.txt", "a row keyed by its path keeps its file name as label: " + info->displayName());
+  }
   view.setFilter("A1");
   expect(joined(names(view)) == "a10.txt", "the filter is a case-insensitive substring: " + joined(names(view)));
   view.setFilter("");

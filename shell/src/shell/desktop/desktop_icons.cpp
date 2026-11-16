@@ -1060,7 +1060,7 @@ std::string DesktopIcons::labelFor(const FileInfo& info) const {
       return cached.second;
     }
   }
-  return info.displayName;
+  return info.displayName();
 }
 
 std::vector<std::size_t> DesktopIcons::selection() const {
@@ -1268,7 +1268,7 @@ void DesktopIcons::build() {
     }
     if (m_renaming == cell.info->name && !cell.stack) {
       // Inline rename: the field covers the name; the name without its extension starts selected (Finder).
-      const std::string current = cell.info->displayName;
+      const std::string current = cell.info->displayName();
       const std::size_t dot = current.rfind('.');
       const std::size_t stem = dot == std::string::npos || dot == 0 || cell.info->isDir ? current.size() : dot;
       const bool fresh = !m_renameText.has_value();

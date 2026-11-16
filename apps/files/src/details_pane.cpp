@@ -222,7 +222,7 @@ void DetailsPane::fill() {
     const auto& info = f.info;
     preview(path, info);
     auto names = ui::column({.align = FlexAlign::Stretch});
-    names->addChild(text(info ? info->displayName : path.filename().string(), Tokens::typeTitle3.size * s,
+    names->addChild(text(info ? info->displayName() : path.filename().string(), Tokens::typeTitle3.size * s,
                          FontWeight::SemiBold, ColorRole::Label1, 2));
     std::string detail = info ? fileKindLabel(*info) : std::string();
     if (info && info->isDir) {

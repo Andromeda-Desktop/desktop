@@ -17,7 +17,7 @@ namespace {
   std::string rows(const FileBrowser::Listing& listing) {
     std::string out;
     for (const auto& row : listing.rows) {
-      out += (out.empty() ? "" : ",") + row->displayName + (row->isDir ? "/" : "");
+      out += (out.empty() ? "" : ",") + row->displayName() + (row->isDir ? "/" : "");
     }
     return out;
   }

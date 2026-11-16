@@ -140,7 +140,7 @@ void IndexSearch::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx)
     // "path\tmtime_ns\tsize\tkind\tmatch"
     const std::string path(line.substr(0, line.find('\t')));
     if (auto info = statFile(std::filesystem::path(path))) {
-      info->name = path;
+      info->setNameKeepLabel(path);
       m_rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
     }
   }

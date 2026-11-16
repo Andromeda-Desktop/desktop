@@ -37,16 +37,16 @@ namespace {
   std::shared_ptr<FileInfo> makeRow(const fs::path& archive, const fs::path& inner, bool isDir) {
     auto info = std::make_shared<FileInfo>();
     info->name = (archive / inner).string();
-    info->displayName = inner.filename().string();
-    info->collateKey = owned(g_utf8_collate_key_for_filename(info->displayName.c_str(), -1));
+    info->setDisplayName(inner.filename().string());
+    info->collateKey = owned(g_utf8_collate_key_for_filename(info->displayName().c_str(), -1));
     info->isDir = isDir;
     info->kind = isDir ? FileKind::Directory : FileKind::File;
-    info->hidden = info->displayName.starts_with('.');
+    info->hidden = info->displayName().starts_with('.');
     if (isDir) {
       info->contentType = "inode/directory";
     } else {
       gboolean uncertain = FALSE;
-      gchar* type = g_content_type_guess(info->displayName.c_str(), nullptr, 0, &uncertain);
+      gchar* type = g_content_type_guess(info->displayName().c_str(), nullptr, 0, &uncertain);
       gchar* mime = type != nullptr ? g_content_type_get_mime_type(type) : nullptr;
       g_free(type);
       info->contentType = mime != nullptr ? owned(mime) : "application/octet-stream";

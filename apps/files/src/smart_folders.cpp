@@ -167,7 +167,7 @@ namespace smart_folders {
         }
         auto info = statFile(it->path());
         if (info && matches(folder, *info, name, cutoff)) {
-          info->name = it->path().string();
+          info->setNameKeepLabel(it->path().string());
           rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
         }
       }

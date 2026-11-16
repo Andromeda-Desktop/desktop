@@ -28,7 +28,7 @@ namespace {
     const std::string name = e.value("name", std::string());
     const std::string kind = e.value("kind", std::string());
     info->name = (dir / name).string();
-    info->displayName = name;
+    info->setDisplayName(name);
     info->collateKey = owned(g_utf8_collate_key_for_filename(name.c_str(), -1));
     info->isDir = kind == "dir";
     info->kind = kind == "dir" ? FileKind::Directory : kind == "link" ? FileKind::Symlink : kind == "file" ? FileKind::File : FileKind::Other;
@@ -133,7 +133,7 @@ void AdminView::change(nlohmann::json op, std::string done, std::function<void(c
 
 void AdminView::newFolder(std::function<void(const fs::path&)> made) {
   std::string name = "New Folder";
-  for (int n = 2; std::ranges::any_of(m_rows, [&](const auto& r) { return r->displayName == name; }); ++n) {
+  for (int n = 2; std::ranges::any_of(m_rows, [&](const auto& r) { return r->displayName() == name; }); ++n) {
     name = std::format("New Folder {}", n);
   }
   const fs::path path = m_dir / name;

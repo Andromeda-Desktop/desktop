@@ -63,7 +63,7 @@ namespace {
   }
 
   Kind pageKind(const FileInfo& info) {
-    const std::string ext = extensionOf(info.displayName);
+    const std::string ext = extensionOf(info.displayName());
     static const std::map<std::string, Kind> kKinds{
         {"pdf", {"PDF", 0xd93025, Art::Pdf}},     {"ods", {"ODS", 0x1a7f37, Art::Sheet}},
         {"xlsx", {"XLSX", 0x1a7f37, Art::Sheet}}, {"csv", {"CSV", 0x1a7f37, Art::Sheet}},

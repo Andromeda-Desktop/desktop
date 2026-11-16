@@ -10,9 +10,9 @@ enum class FileKind : std::uint8_t { File, Directory, Symlink, Other };
 
 struct FileInfo {
   std::string name;              // file name bytes as on disk (not always UTF-8)
-  std::string displayName;       // valid UTF-8 for labels
+  std::string ownDisplayName;    // empty when displayName() is name: most rows, which saves a heap string per row
   std::string collateKey;        // natural, locale-aware order: "file2" before "file10"
-  std::string foldedName;        // displayName case-folded: the filter matches against it
+  std::string ownFoldedName;     // empty when foldedName() is displayName()
   std::string contentType;       // from the name only, e.g. "image/png", "inode/directory"
   FileKind kind = FileKind::File;
   bool isDir = false;            // a directory, or a symlink to one
@@ -23,6 +23,21 @@ struct FileInfo {
   std::uint32_t mode = 0;
   std::uint64_t inode = 0;
   bool pendingStat = false;      // listed by name only: size, mtimeNs, mode and inode are not read yet
+
+  // Valid UTF-8 for labels.
+  [[nodiscard]] const std::string& displayName() const { return ownDisplayName.empty() ? name : ownDisplayName; }
+  // displayName() case-folded: the filter matches against it.
+  [[nodiscard]] const std::string& foldedName() const {
+    return ownFoldedName.empty() ? displayName() : ownFoldedName;
+  }
+  void setDisplayName(std::string shown) { ownDisplayName = shown == name ? std::string() : std::move(shown); }
+  // name becomes a path or another key; displayName() keeps the label.
+  void setNameKeepLabel(std::string key) {
+    if (ownDisplayName.empty()) {
+      ownDisplayName = std::move(name);
+    }
+    name = std::move(key);
+  }
 };
 
 // lstat + stat of one entry. Empty when it no longer exists.

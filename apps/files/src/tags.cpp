@@ -296,7 +296,7 @@ FileBrowser::Listing TagIndex::listing(const std::string& tag) const {
   if (const auto it = m_byTag.find(tag); it != m_byTag.end()) {
     for (const auto& path : it->second) {
       if (auto info = statFile(path)) {
-        info->name = path.string(); // absolute: the row opens as a path
+        info->setNameKeepLabel(path.string()); // absolute: the row opens as a path
         listing.rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
       }
     }

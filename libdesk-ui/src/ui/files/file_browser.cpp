@@ -375,7 +375,7 @@ public:
   }
   void setMenu(std::function<void(std::size_t, float, float)> menu) { m_menu = std::move(menu); }
   [[nodiscard]] std::string itemTooltip(std::size_t index) const override {
-    return m_rows != nullptr && index < m_rows->size() ? (*m_rows)[index]->displayName : std::string();
+    return m_rows != nullptr && index < m_rows->size() ? (*m_rows)[index]->displayName() : std::string();
   }
   [[nodiscard]] std::unique_ptr<Node> createSectionHeader() override { return std::make_unique<FileGroupHeader>(m_scale); }
   void bindSectionHeader(Node& header, std::size_t section, float width, float height) override {
@@ -2716,7 +2716,7 @@ void FileBrowser::refreshRows() {
     }
     if (!m_filter.empty()) {
       const std::string needle = TypeAhead::fold(m_filter);
-      std::erase_if(rows, [&](const auto& r) { return TypeAhead::fold(r->displayName).find(needle) == std::string::npos; });
+      std::erase_if(rows, [&](const auto& r) { return TypeAhead::fold(r->displayName()).find(needle) == std::string::npos; });
     }
     m_rows = std::move(rows);
   } else {
@@ -2731,7 +2731,7 @@ void FileBrowser::refreshRows() {
                 std::shared_ptr<const FileInfo> shown = row;
                 if (!prefix.empty()) {
                   auto copy = std::make_shared<FileInfo>(*row);
-                  copy->name = prefix + row->name;
+                  copy->setNameKeepLabel(prefix + row->name);
                   shown = copy;
                 }
                 rows.push_back(shown);
@@ -3719,7 +3719,7 @@ void FileBrowser::selectNames(const std::vector<std::string>& names) {
   std::optional<std::size_t> first;
   for (std::size_t i = 0; i < m_rows.size(); ++i) {
     const auto& row = m_rows[i];
-    if (rowEnabled(*row) && (std::ranges::contains(names, row->name) || std::ranges::contains(names, row->displayName))) {
+    if (rowEnabled(*row) && (std::ranges::contains(names, row->name) || std::ranges::contains(names, row->displayName()))) {
       m_selected.insert(row->name);
       m_anchor = row->name;
       first = first.value_or(i);
@@ -4322,7 +4322,7 @@ bool FileBrowser::onKey(const KeyboardEvent& event) {
     }
     const auto hit = m_typeAhead.feed(
         static_cast<char32_t>(event.utf32), m_rows.size(),
-        [this](std::size_t i) -> std::string_view { return m_rows[i]->displayName; }, cursorIndex()
+        [this](std::size_t i) -> std::string_view { return m_rows[i]->displayName(); }, cursorIndex()
     );
     if (hit.has_value()) {
       select(*hit, 0);
@@ -4350,7 +4350,7 @@ void FileBrowser::logGeometry() {
     float x = 0.0F;
     float y = 0.0F;
     if (grid->absoluteAnchorForIndex(i, x, y)) {
-      out += std::format("item {} {} {}\n", m_rows[i]->displayName, static_cast<int>(x), static_cast<int>(y));
+      out += std::format("item {} {} {}\n", m_rows[i]->displayName(), static_cast<int>(x), static_cast<int>(y));
     }
   }
   if (grid != nullptr) {
@@ -4800,15 +4800,15 @@ void FileBrowser::startRename(std::size_t index, bool all) {
     return;
   }
   const FileInfo& info = *m_rows[index];
-  m_rename = Rename{.name = info.name, .text = info.displayName};
+  m_rename = Rename{.name = info.name, .text = info.displayName()};
   setCursor(index, true);
   Input& field = *ui.renameField;
-  field.setValue(info.displayName);
+  field.setValue(info.displayName());
   field.setInvalid(false);
   field.setFontSize((m_options.view == View::Icons ? Style::fontSizeCaption : Style::fontSizeBody) * ui.scale);
   ui.renameError->setVisible(false);
   // F2 selects the stem: "report.final.pdf" -> "report.final"; folders and dotfiles select all.
-  const std::string& name = info.displayName;
+  const std::string& name = info.displayName();
   const std::size_t dot = name.rfind('.');
   if (all || info.isDir || dot == std::string::npos || dot == 0) {
     field.selectAll();
@@ -4819,7 +4819,7 @@ void FileBrowser::startRename(std::size_t index, bool all) {
   if (m_host.focus) {
     m_host.focus(field.inputArea());
   }
-  kLog.debug("rename {}", info.displayName);
+  kLog.debug("rename {}", info.displayName());
   if (m_host.invalidate) {
     m_host.invalidate();
   }
@@ -4920,7 +4920,7 @@ void FileBrowser::commitRename(bool next) {
       refreshChrome();
     }
   };
-  if (value == info.displayName) {
+  if (value == info.displayName()) {
     advance();
     return;
   }
@@ -4938,9 +4938,9 @@ void FileBrowser::commitRename(bool next) {
   }
   std::error_code ec;
   const fs::path renamed = pathOf(info).parent_path() / value; // a listing row's own folder, not m_location
-  if (fs::exists(renamed, ec) && value != info.displayName) {
+  if (fs::exists(renamed, ec) && value != info.displayName()) {
     // Case-only renames on the same entry are fine; another entry with that name is not.
-    if (lowerAscii(value) != lowerAscii(info.displayName)) {
+    if (lowerAscii(value) != lowerAscii(info.displayName())) {
       showError(std::format("“{}” is already taken.", value));
       return;
     }

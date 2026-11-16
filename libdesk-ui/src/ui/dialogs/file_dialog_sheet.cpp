@@ -91,7 +91,7 @@ void FileDialogSheet::create() {
       exts.push_back(lower(e.starts_with('.') ? e : "." + e));
     }
     options.enabled = [exts](const FileInfo& info) {
-      const std::string ext = lower(fs::path(info.displayName).extension().string());
+      const std::string ext = lower(fs::path(info.displayName()).extension().string());
       return std::ranges::contains(exts, ext);
     };
   }
@@ -319,7 +319,7 @@ void FileDialogSheet::updateControls() {
   if (m_options.mode == FileDialogMode::Save && m_name != nullptr) {
     const auto rows = m_browser->selectedRows();
     if (rows.size() == 1 && !rows.front()->isDir) {
-      m_name->setValue(rows.front()->displayName);
+      m_name->setValue(rows.front()->displayName());
     }
   }
   if (m_host != nullptr) {

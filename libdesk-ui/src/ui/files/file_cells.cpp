@@ -87,7 +87,7 @@ namespace {
   void describe(Node& cell, const FileInfo& info, const FileCellState& state) {
     Accessible& a = cell.accessibleState();
     a.role = AccessibleRole::ListItem;
-    a.name = info.displayName;
+    a.name = info.displayName();
     a.selected = state.selected;
     a.disabled = state.disabled;
   }
@@ -97,10 +97,10 @@ ColorSpec selectionTint() { return colorSpecFromRole(ColorRole::Accent, isResolv
 
 std::string shownFileName(const FileInfo& info, bool hideExtension) {
   if (!hideExtension || info.isDir) {
-    return info.displayName;
+    return info.displayName();
   }
-  const auto dot = info.displayName.rfind('.');
-  return dot == std::string::npos || dot == 0 ? info.displayName : info.displayName.substr(0, dot);
+  const auto dot = info.displayName().rfind('.');
+  return dot == std::string::npos || dot == 0 ? info.displayName() : info.displayName().substr(0, dot);
 }
 
 float FileIconCell::cellWidth(float iconSize, float scale) {

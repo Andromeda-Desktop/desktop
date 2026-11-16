@@ -887,7 +887,7 @@ void FilesWindow::renameSelection() {
   std::vector<fs::path> sources;
   for (const auto& row : rows) {
     sources.push_back(m_browser->pathOf(*row));
-    items.push_back({.name = row->displayName,
+    items.push_back({.name = row->displayName(),
                      .modified = std::chrono::system_clock::time_point(
                          std::chrono::duration_cast<std::chrono::system_clock::duration>(std::chrono::nanoseconds(row->mtimeNs))),
                      .taken = row->contentType == "image/jpeg" || row->contentType == "image/tiff"
@@ -896,7 +896,7 @@ void FilesWindow::renameSelection() {
   }
   std::set<std::string> existing;
   for (const auto& row : m_browser->rows()) {
-    existing.insert(row->displayName);
+    existing.insert(row->displayName());
   }
   m_batchRename = std::make_unique<BatchRenameSheet>(
       std::move(sources), std::move(items), std::move(existing),
@@ -1582,8 +1582,8 @@ void FilesWindow::loadTrash() {
     for (TrashItem& item : listTrash(dir)) {
       FileInfo info;
       info.name = (item.trashDir / "files" / item.name).string();
-      info.displayName = item.originalPath.filename().string();
-      gchar* key = g_utf8_collate_key_for_filename(info.displayName.c_str(), -1);
+      info.setDisplayName(item.originalPath.filename().string());
+      gchar* key = g_utf8_collate_key_for_filename(info.displayName().c_str(), -1);
       info.collateKey = key != nullptr ? key : "";
       g_free(key);
       info.isDir = item.isDir;
@@ -1883,7 +1883,7 @@ void FilesWindow::goRecents() {
         continue;
       }
       if (auto info = statFile(fs::path(path)); info.has_value() && !info->isDir) {
-        info->name = path; // absolute: the row opens as a path
+        info->setNameKeepLabel(path); // absolute: the row opens as a path
         listing.rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
       }
       g_free(path);
@@ -1932,7 +1932,7 @@ void FilesWindow::goStarred() {
   FileBrowser::Listing listing{.id = "starred", .title = "Starred", .rows = {}, .activatable = true};
   for (const fs::path& path : m_app.starred().paths()) {
     if (auto info = statFile(path); info.has_value()) {
-      info->name = path.string(); // absolute: the row opens as a path
+      info->setNameKeepLabel(path.string()); // absolute: the row opens as a path
       listing.rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
     }
   }

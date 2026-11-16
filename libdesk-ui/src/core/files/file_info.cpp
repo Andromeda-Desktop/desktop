@@ -22,12 +22,14 @@ namespace {
 void describeText(FileInfo& info) {
   info.hidden = !info.name.empty() && info.name.front() == '.';
   if (filenamesAreUtf8() && g_utf8_validate(info.name.data(), static_cast<gssize>(info.name.size()), nullptr)) {
-    info.displayName = info.name;
+    info.ownDisplayName.clear();
   } else {
-    info.displayName = ownedString(g_filename_display_name(info.name.c_str()));
+    info.setDisplayName(ownedString(g_filename_display_name(info.name.c_str())));
   }
-  info.collateKey = ownedString(g_utf8_collate_key_for_filename(info.displayName.c_str(), -1));
-  info.foldedName = ownedString(g_utf8_casefold(info.displayName.data(), static_cast<gssize>(info.displayName.size())));
+  const std::string& shown = info.displayName();
+  info.collateKey = ownedString(g_utf8_collate_key_for_filename(shown.c_str(), -1));
+  std::string folded = ownedString(g_utf8_casefold(shown.data(), static_cast<gssize>(shown.size())));
+  info.ownFoldedName = folded == shown ? std::string() : std::move(folded);
 }
 
 void describeType(FileInfo& info) {
