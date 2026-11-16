@@ -36,6 +36,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "cursor-shape-v1-client-protocol.h"
+#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 #include "wayland/wayland_seat.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -610,6 +611,7 @@ void AppWindow::close() {
   m_sheetScrim = nullptr;
   m_dsk.reset();
   m_captureSecure = false;
+  setShortcutsInhibited(false);
   m_surface.reset();
   m_maximizeButton = nullptr;
   m_buttonDown = false;
@@ -749,6 +751,18 @@ void AppWindow::setCaptureSecure(bool secure) {
   if (m_dsk->setSecure(secure)) {
     m_captureSecure = secure;
     invalidate(); // the request applies on the next commit
+  }
+}
+
+void AppWindow::setShortcutsInhibited(bool inhibited) {
+  if (inhibited == (m_shortcutsInhibitor != nullptr)) {
+    return;
+  }
+  if (!inhibited) {
+    zwp_keyboard_shortcuts_inhibitor_v1_destroy(m_shortcutsInhibitor);
+    m_shortcutsInhibitor = nullptr;
+  } else if (wl_surface* surface = wlSurface(); surface != nullptr) {
+    m_shortcutsInhibitor = m_loop.wayland().inhibitShortcuts(surface);
   }
 }
 
@@ -1419,7 +1433,10 @@ void AppWindow::setCaption(Caption caption) {
 void AppWindow::applyCaption() {
   const ColorSpec ink = colorSpecFromRole(m_caption.danger ? ColorRole::Danger : ColorRole::Label2);
   if (m_captionSymbol != nullptr) {
-    const bool shown = !m_headerSearch && !m_caption.spinning && !m_caption.symbol.empty() && m_captionSymbol->setGlyph(m_caption.symbol);
+    const bool shown = !m_headerSearch && !m_caption.spinning && !m_caption.symbol.empty();
+    if (shown) {
+      m_captionSymbol->setGlyph(m_caption.symbol);
+    }
     m_captionSymbol->setColor(ink);
     m_captionSymbol->setVisible(shown);
     m_captionSymbol->setParticipatesInLayout(shown);
@@ -1467,6 +1484,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_sidebarNode = nullptr;
   m_mainNode = nullptr;
   m_headerNode = nullptr;
+  m_cardFrame = nullptr;
   const auto teardownStart = std::chrono::steady_clock::now();
   m_root.reset();
   m_overlay = nullptr;
