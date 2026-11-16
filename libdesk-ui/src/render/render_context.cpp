@@ -248,6 +248,12 @@ namespace {
         out.add(cut);
       }
     };
+    // The descendants' painted bounds may be stale: repaint the area that holds their pixels and refresh them all.
+    const std::optional<DamageRect> staleArea = node->childArea();
+    if (staleArea) {
+      add(*staleArea);
+      node->setChildArea(std::nullopt);
+    }
     if (whole || node->paintedBounds() != bounds) {
       if (node->paintedBounds()) {
         add(*node->paintedBounds());
@@ -281,8 +287,21 @@ namespace {
       }
       node->setPaintedClip(box);
     }
+    // A moved node whose box fills its children's clip (scrolled content) repaints that whole clip anyway: record it
+    // as the child area, and from the second such frame on skip the walk over every descendant.
+    if (childClip && node->selfPaintDirty() && !node->children().empty()) {
+      DamageRect box;
+      Node::transformedBounds(node, world, box.x0, box.y0, box.x1, box.y1);
+      if (box.contains(*childClip)) {
+        node->setChildArea(childClip);
+        if (staleArea) {
+          add(*childClip);
+          return true;
+        }
+      }
+    }
     for (const auto& child : node->children()) {
-      if (!collectDamage(child.get(), world, whole, childClip, out)) {
+      if (!collectDamage(child.get(), world, whole || staleArea.has_value(), childClip, out)) {
         return false;
       }
     }
@@ -762,6 +781,14 @@ void RenderContext::findOccluders(const Node* node, const Mat3& parentTransform,
         blockedPasses |= 1U << i;
       }
     }
+  }
+  // The clip only shrinks and blocked passes only grow below here: with no open pass left, no descendant can occlude.
+  bool open = false;
+  for (std::size_t i = 0; i < m_passCount && !open; ++i) {
+    open = (blockedPasses & (1U << i)) == 0 && clip.contains(m_passes[i].logical);
+  }
+  if (!open) {
+    return;
   }
   forEachChildInPaintOrder(node, [&](const Node* child) { findOccluders(child, world, opacity, clip, blockedPasses); });
 }

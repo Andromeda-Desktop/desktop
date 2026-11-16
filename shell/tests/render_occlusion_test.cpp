@@ -21,7 +21,7 @@ namespace {
   constexpr std::uint32_t kSize = 384;
   constexpr float kS = 4.0F; // scene units to pixels: edits stay small against the target
   constexpr int kSeeds = 800;
-  constexpr int kEdits = 6;
+  constexpr int kEdits = 8;
 
   struct Scene {
     Node root;
@@ -29,6 +29,8 @@ namespace {
     std::vector<Node*> groups;
     // A small rect beside each card, in the card's parent: edits move it onto the card's corners and edges.
     std::vector<std::pair<RectNode*, const RectNode*>> edgeRects;
+    Node* content = nullptr; // scrolled content inside a clipping viewport, as in a list or grid view
+    std::vector<RectNode*> contentRects;
   };
 
   float pick(std::mt19937& rng, float lo, float hi) { return std::uniform_real_distribution<float>(lo, hi)(rng); }
@@ -119,6 +121,22 @@ namespace {
       scene.groups.push_back(group.get());
       parent->addChild(std::move(group));
     }
+    if (chance(rng, 0.5F)) {
+      auto viewport = std::make_unique<Node>();
+      placeRandomly(rng, *viewport);
+      viewport->setClipChildren(true);
+      auto content = std::make_unique<Node>();
+      content->setPosition(0.0F, -viewport->height());
+      content->setSize(viewport->width(), viewport->height() * 3.0F);
+      scene.content = content.get();
+      const int rows = std::uniform_int_distribution(3, 8)(rng);
+      for (int i = 0; i < rows; ++i) {
+        addRect(rng, scene, *content, true);
+        scene.contentRects.push_back(scene.rects.back());
+      }
+      viewport->addChild(std::move(content));
+      scene.root.addChild(std::move(viewport));
+    }
     const int rects = std::uniform_int_distribution(2, 10)(rng);
     for (int i = 0; i < rects; ++i) {
       Node& parent = *scene.groups[std::uniform_int_distribution<std::size_t>(0, scene.groups.size() - 1)(rng)];
@@ -131,6 +149,37 @@ namespace {
 
   // One small edit, so the next frame repaints only part of the target.
   void edit(std::mt19937& rng, Scene& scene) {
+    if (scene.content != nullptr && chance(rng, 0.35F)) {
+      scene.content->setPosition(0.0F, scene.content->y() + kS * pick(rng, -6.0F, 6.0F));
+      return;
+    }
+    if (!scene.contentRects.empty() && chance(rng, 0.3F)) {
+      // After a scroll: a row moves, hides or goes away while its painted bounds are from before the scroll.
+      const std::size_t i = std::uniform_int_distribution<std::size_t>(0, scene.contentRects.size() - 1)(rng);
+      RectNode* rect = scene.contentRects[i];
+      switch (std::uniform_int_distribution(0, 2)(rng)) {
+      case 0: rect->setPosition(rect->x() + kS * pick(rng, -8.0F, 8.0F), rect->y()); break;
+      case 1: rect->setVisible(!rect->visible()); break;
+      default:
+        std::erase(scene.rects, rect);
+        scene.contentRects.erase(scene.contentRects.begin() + static_cast<std::ptrdiff_t>(i));
+        rect->parent()->removeChild(rect);
+        if (scene.rects.empty()) {
+          addRect(rng, scene, scene.root, true);
+        }
+        break;
+      }
+      return;
+    }
+    if (scene.rects.size() > 1 && chance(rng, 0.08F)) {
+      const auto it = scene.rects.begin() + std::uniform_int_distribution<std::ptrdiff_t>(
+                                                 0, static_cast<std::ptrdiff_t>(scene.rects.size()) - 1
+                                             )(rng);
+      std::erase(scene.contentRects, *it);
+      (*it)->parent()->removeChild(*it);
+      scene.rects.erase(it);
+      return;
+    }
     if (!scene.edgeRects.empty() && chance(rng, 0.5F)) {
       const auto [rect, card] =
           scene.edgeRects[std::uniform_int_distribution<std::size_t>(0, scene.edgeRects.size() - 1)(rng)];

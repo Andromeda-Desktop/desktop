@@ -221,6 +221,10 @@ public:
   // A clipping node's clip rect in surface coordinates at the last damage pass: the area its children's pixels can be in.
   [[nodiscard]] const std::optional<DamageRect>& paintedClip() const noexcept { return m_paintedClip; }
   void setPaintedClip(const std::optional<DamageRect>& clip) noexcept { m_paintedClip = clip; }
+  // Surface area that holds every descendant's pixels while their painted bounds and clips may be stale: a moved
+  // node under a clip (scrolled content) records this instead of walking its subtree each frame.
+  [[nodiscard]] const std::optional<DamageRect>& childArea() const noexcept { return m_childArea; }
+  void setChildArea(const std::optional<DamageRect>& area) noexcept { m_childArea = area; }
   // A damage pass reached this node while visible: it or a descendant may hold painted bounds or a painted clip.
   void markPaintedSubtree() noexcept { m_paintedSubtree = true; }
   // Adds the painted bounds of `subtree` to `out` and forgets them.
@@ -265,6 +269,7 @@ private:
   bool m_selfPaintDirty = true;
   std::optional<DamageRect> m_paintedBounds;
   std::optional<DamageRect> m_paintedClip;
+  std::optional<DamageRect> m_childArea;
   bool m_paintedSubtree = false; // false: no painted bounds or clip anywhere in the subtree, so takePaintedBounds stops
   std::unique_ptr<DamageRegion> m_pendingDamage;
   std::unique_ptr<DamageRegion> m_partialDamage;
