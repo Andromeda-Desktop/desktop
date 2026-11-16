@@ -88,6 +88,12 @@ namespace viewer {
       Page px;
       Image* node = nullptr;
     };
+    // A finished stroke stays drawn until a page render made after the helper took it shows it.
+    struct PendingInk {
+      std::size_t page = 0;
+      annot::Stroke stroke;
+      std::optional<std::uint64_t> shownAfter; // set when the helper took the stroke
+    };
     struct Selection {
       std::size_t page = 0;
       float x0 = 0.0F; // points, page-local
@@ -123,6 +129,7 @@ namespace viewer {
     void dropPage(Page& page);
     void showRender(std::vector<Page>& cache, std::size_t page);
     void fillMarks(std::size_t page);
+    void addInkSegment(Node* layer, const annot::Point& a, const annot::Point& b);
     // Search hits, the selection, the stroke and the toolbar counts change in place, without a rebuild.
     void refreshMarks();
     void refreshLabels();
@@ -161,6 +168,8 @@ namespace viewer {
     std::unordered_map<std::uint64_t, Tile> m_tiles; // by tileKey
     std::vector<Job> m_jobs;
     int m_inFlight = 0;
+    std::uint64_t m_renderSeq = 0;
+    std::vector<PendingInk> m_pendingInk;
     std::vector<Node*> m_tileLayers;
     // Textures of evicted pages; build() unloads them, as only it has the renderer.
     std::vector<TextureHandle> m_dropped;
@@ -195,6 +204,8 @@ namespace viewer {
     float m_scrollOffset = 0.0F;
     bool m_restoreScroll = false;
     Input* m_searchInput = nullptr;
+    Input* m_noteInput = nullptr;
+    bool m_focusNote = false; // the next layout focuses the note field
     std::string m_searchText;
     bool m_scanPending = false;
     std::optional<Selection> m_selection;

@@ -46,6 +46,9 @@ namespace viewer {
     // Device px: a whole page renders at most this wide; past it, kTile x kTile tiles show the part in view.
     constexpr std::uint32_t kBaseWidth = 2048;
     constexpr std::uint32_t kTile = 512;
+    constexpr std::uint32_t kInkRgb = 0x1f5fd6;
+    constexpr std::uint32_t kNoteRgb = 0xffd400;
+    constexpr float kInkWidth = 1.0F; // points: poppler's default ink border
     constexpr std::uint32_t kMaxPageHeight = 16384;
     constexpr std::uint32_t kImageBox = 8192;
     // proto MAX_PAYLOAD: a longer request ends the helper.
@@ -101,6 +104,11 @@ namespace viewer {
     // A rebuilt ScrollView clamps its offset to its content, which is empty until the first layout: restore after it.
     m_window.setLayoutCallback([this] {
       // Once per rebuild: a document shorter than the old offset clamps, and must not loop.
+      // A placed note's field takes the keys at once.
+      if (m_focusNote && m_noteInput != nullptr) {
+        m_focusNote = false;
+        m_window.input().setFocus(m_noteInput->inputArea());
+      }
       if (m_restoreScroll && m_scroll != nullptr) {
         m_restoreScroll = false;
         if (m_scroll->scrollOffset() != m_scrollOffset) {
@@ -150,6 +158,7 @@ namespace viewer {
     m_tiles.clear();
     m_jobs.clear();
     m_inFlight = 0;
+    m_pendingInk.clear();
     m_image = {};
     m_selection.reset();
     m_searchText.clear();
@@ -435,8 +444,8 @@ namespace viewer {
   }
 
   void ViewerWindow::requestTile(const Job& job) {
+    // An existing tile (an edit made it stale) stays shown until its new pixels land.
     Tile& tile = m_tiles[job.key];
-    dropTile(tile);
     tile.page = job.page;
     tile.pageWidth = job.width;
     tile.x = job.x;
@@ -544,10 +553,40 @@ namespace viewer {
         mark(r, ColorRole::Accent, 0.35F);
       }
     }
-    if (m_drawing && m_strokePage == i) {
-      for (const annot::Point& p : m_stroke) {
-        mark({p.x - 1.0F, p.y - 1.0F, p.x + 1.0F, p.y + 1.0F}, ColorRole::Accent, 1.0F);
+    for (const PendingInk& ink : m_pendingInk) {
+      if (ink.page == i) {
+        for (std::size_t k = 1; k < ink.stroke.size(); ++k) {
+          addInkSegment(layer, ink.stroke[k - 1], ink.stroke[k]);
+        }
       }
+    }
+    if (m_drawing && m_strokePage == i) {
+      for (std::size_t k = 1; k < m_stroke.size(); ++k) {
+        addInkSegment(layer, m_stroke[k - 1], m_stroke[k]);
+      }
+    }
+    if (m_notePoint && m_notePoint->first == i) {
+      const float s = m_window.uiScale();
+      const float side = 14.0F * s;
+      auto pin = ui::box({.fill = fixedColorSpec(rgbHex(kNoteRgb)), .radius = 3.0F * s, .width = side, .height = side});
+      pin->setParticipatesInLayout(false);
+      pin->setPosition(m_notePoint->second.x * zoom - side / 2.0F, m_notePoint->second.y * zoom - side / 2.0F);
+      layer->addChild(std::move(pin));
+    }
+  }
+
+  void ViewerWindow::addInkSegment(Node* layer, const annot::Point& a, const annot::Point& b) {
+    // Round dots half a pen width apart read as one line; the page render replaces them.
+    const float zoom = m_model.zoom();
+    const float pen = kInkWidth * zoom;
+    const float length = std::hypot(b.x - a.x, b.y - a.y) * zoom;
+    const int steps = std::max(1, static_cast<int>(std::ceil(length / (pen * 0.5F))));
+    for (int k = 1; k <= steps; ++k) {
+      const float t = static_cast<float>(k) / static_cast<float>(steps);
+      auto dot = ui::box({.fill = fixedColorSpec(rgbHex(kInkRgb)), .radius = pen / 2.0F, .width = pen, .height = pen});
+      dot->setParticipatesInLayout(false);
+      dot->setPosition((a.x + (b.x - a.x) * t) * zoom - pen / 2.0F, (a.y + (b.y - a.y) * t) * zoom - pen / 2.0F);
+      layer->addChild(std::move(dot));
     }
   }
 
@@ -609,9 +648,10 @@ namespace viewer {
   void ViewerWindow::requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width) {
     cache[page].requestedWidth = width;
     ++m_inFlight;
+    const std::uint64_t seq = ++m_renderSeq;
     m_helper->request(
         {.op = preview::op::Render, .a = static_cast<std::uint32_t>(page), .b = width, .c = kMaxPageHeight},
-        [this, &cache, page, width, generation = m_generation](const preview::HelperReply& reply) {
+        [this, &cache, page, width, seq, generation = m_generation](const preview::HelperReply& reply) {
           if (generation != m_generation) {
             return;
           }
@@ -634,6 +674,11 @@ namespace viewer {
           if (!valid) {
             cache[page].requestedWidth = 0;
             return;
+          }
+          if (&cache == &m_pages && std::erase_if(m_pendingInk, [&](const PendingInk& ink) {
+                return ink.page == page && ink.shownAfter && *ink.shownAfter < seq;
+              }) > 0) {
+            fillMarks(page);
           }
           Page& slot = cache[page];
           slot.pixels = reply.data;
@@ -956,6 +1001,7 @@ namespace viewer {
     m_column = nullptr;
     m_thumbScroll = nullptr;
     m_searchInput = nullptr;
+    m_noteInput = nullptr;
     m_positionLabel = nullptr;
     m_countLabel = nullptr;
     // The old tree is gone: its tile nodes with it.
@@ -1060,19 +1106,23 @@ namespace viewer {
       tool(Tool::Draw, "pencil", "Draw");
       tool(Tool::Sign, "signature", "Sign");
       if (m_notePoint) {
-        bar->addChild(ui::input({
+        // The note field takes the search field's place, so the tools do not move.
+        auto note = ui::input({
             .placeholder = std::string("Note"),
-            .width = std::min(200.0F * s, width / 4.0F),
+            .width = std::min(240.0F * s, width / 3.0F),
             .onSubmit =
                 [this](const std::string& text) {
                   if (m_notePoint && !text.empty()) {
-                    addAnnotation(m_notePoint->first, preview::kAnnotNote, 0xffd400,
+                    addAnnotation(m_notePoint->first, preview::kAnnotNote, kNoteRgb,
                                   annot::noteBody(m_notePoint->second, text));
                   }
                   m_notePoint.reset();
                   rebuild();
                 },
-        }));
+        });
+        m_noteInput = note.get();
+        bar->addChild(std::move(note));
+        return bar;
       }
       auto field = ui::input({
           .value = m_searchText,
@@ -1261,6 +1311,7 @@ namespace viewer {
     case Tool::Note:
       if (pressed) {
         m_notePoint = {page, {x, y}};
+        m_focusNote = true;
         rebuild();
       }
       break;
@@ -1272,10 +1323,12 @@ namespace viewer {
       } else if (m_drawing) {
         m_drawing = false;
         if (m_stroke.size() > 1) {
-          addAnnotation(m_strokePage, preview::kAnnotInk, 0x1f5fd6, annot::inkBody({m_stroke}));
+          m_pendingInk.push_back({.page = m_strokePage, .stroke = m_stroke});
+          addAnnotation(m_strokePage, preview::kAnnotInk, kInkRgb, annot::inkBody({m_stroke}));
         }
         m_stroke.clear();
-        rebuild();
+        fillMarks(m_strokePage);
+        m_window.invalidate();
       }
       break;
     case Tool::Sign:
@@ -1291,7 +1344,9 @@ namespace viewer {
       // Points closer than half a point add nothing to the stroke.
       if (const auto& last = m_stroke.back(); std::hypot(x - last.x, y - last.y) >= 0.5F && m_stroke.size() < 8192) {
         m_stroke.push_back({x, y});
-        fillMarks(m_strokePage);
+        if (m_strokePage < m_markLayers.size() && m_markLayers[m_strokePage] != nullptr) {
+          addInkSegment(m_markLayers[m_strokePage], m_stroke[m_stroke.size() - 2], m_stroke.back());
+        }
         m_window.invalidate();
       }
     } else if (m_selecting) {
@@ -1334,9 +1389,19 @@ namespace viewer {
           }
           if (reply.msg.op != preview::op::AnnotReply) {
             kLog.warn("annotation {} on page {} refused", kind, page + 1);
+            if (std::erase_if(m_pendingInk, [&](const PendingInk& ink) { return ink.page == page && !ink.shownAfter; })
+                > 0) {
+              fillMarks(page);
+              m_window.invalidate();
+            }
             return;
           }
           m_edits.push_back(reply.msg.b);
+          for (PendingInk& ink : m_pendingInk) {
+            if (ink.page == page && !ink.shownAfter) {
+              ink.shownAfter = m_renderSeq; // a render sent after this one shows the stroke
+            }
+          }
           m_unsaved = true;
           kLog.info("annotated page {} kind {} ({} edits)", page + 1, kind, m_edits.size());
           updateTitle();
@@ -1440,7 +1505,6 @@ namespace viewer {
 
   void ViewerWindow::updateTitle() {
     m_window.setTitle((m_unsaved ? "• " : "") + m_path.filename().string());
-    rebuild();
   }
 
   std::unique_ptr<Node> ViewerWindow::buildSignaturePad() {
