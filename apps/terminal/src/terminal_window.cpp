@@ -722,6 +722,9 @@ namespace term {
         row->setData(rowData(*session));
       }
     }
+    const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
+    const StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
+    m_window.setCaption({.symbol = data.symbol, .state = data.status, .danger = data.symbolDanger});
   }
 
   bool TerminalWindow::matches(const SessionInfo& session) const {

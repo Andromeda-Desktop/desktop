@@ -17,6 +17,7 @@
 #include "render/animation/animation_manager.h"
 #include "render/render_context.h"
 #include "ui/builders.h"
+#include "ui/controls/glyph.h"
 #include "ui/controls/box.h"
 #include "core/input/key_chord.h"
 #include "ui/controls/button.h"
@@ -554,6 +555,8 @@ void AppWindow::close() {
   m_root.reset();
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
+  m_captionSymbol = nullptr;
+  m_captionState = nullptr;
   m_navButtons = {};
   m_moreButton = nullptr;
   m_sidebarNode = nullptr;
@@ -1092,7 +1095,21 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
     header->titleArea = area.get();
     title->addChild(std::move(area));
   }
+  // A card caption: status symbol, title, state footnote (split mockup .cap); siblings, so fit() measures them.
+  if (m_config.contentCard) {
+    header->addChild(ui::glyph({.out = &m_captionSymbol, .glyphSize = Tokens::sizeSymbol * s}));
+  }
   header->addChild(std::move(title));
+  if (m_config.contentCard) {
+    header->addChild(ui::label({
+        .out = &m_captionState,
+        .fontSize = Tokens::typeFootnote.size * s,
+        .maxLines = 1,
+        .ellipsize = TextEllipsize::End,
+    }));
+    m_captionState->setLineHeight(Tokens::typeFootnote.line * s);
+  }
+  applyCaption();
   if (m_headerAccessory) {
     // The accessory takes the free room (its search grows up to its maximum, then it right-aligns).
     auto accessory = m_headerAccessory();
@@ -1175,6 +1192,33 @@ void AppWindow::applyHeaderSearchMode() {
       node->setParticipatesInLayout(!m_headerSearch);
     }
   }
+  applyCaption();
+}
+
+void AppWindow::setCaption(Caption caption) {
+  if (caption == m_caption) {
+    return;
+  }
+  m_caption = std::move(caption);
+  applyCaption();
+  invalidate();
+}
+
+void AppWindow::applyCaption() {
+  const ColorSpec ink = colorSpecFromRole(m_caption.danger ? ColorRole::Danger : ColorRole::Label2);
+  if (m_captionSymbol != nullptr) {
+    const bool shown = !m_headerSearch && !m_caption.symbol.empty() && m_captionSymbol->setGlyph(m_caption.symbol);
+    m_captionSymbol->setColor(ink);
+    m_captionSymbol->setVisible(shown);
+    m_captionSymbol->setParticipatesInLayout(shown);
+  }
+  if (m_captionState != nullptr) {
+    const bool shown = !m_headerSearch && !m_caption.state.empty();
+    m_captionState->setText(m_caption.state);
+    m_captionState->setColor(ink);
+    m_captionState->setVisible(shown);
+    m_captionState->setParticipatesInLayout(shown);
+  }
 }
 
 void AppWindow::buildScene(Renderer& renderer, float width, float height) {
@@ -1195,6 +1239,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_input.setSceneRoot(nullptr);
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
+  m_captionSymbol = nullptr;
+  m_captionState = nullptr;
   m_maximizeButton = nullptr;
   m_navButtons = {};
   m_sidebarNode = nullptr;

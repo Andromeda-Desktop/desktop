@@ -23,6 +23,7 @@ class Button;
 class ContextMenuPopup;
 class CommandTable;
 class Flex;
+class Glyph;
 class Label;
 class Renderer;
 class ShaderSceneNode;
@@ -144,6 +145,14 @@ public:
   // Runs when the compositor activates or deactivates the window (xdg_toplevel activated state).
   void setActiveCallback(std::function<void(bool active)> callback) { m_onActive = std::move(callback); }
   void setTitle(std::string title);
+  // contentCard: the caption's status symbol and state footnote beside the title; empty parts hide.
+  struct Caption {
+    std::string symbol;
+    std::string state;
+    bool danger = false; // a failure: symbol and state in Danger
+    bool operator==(const Caption&) const = default;
+  };
+  void setCaption(Caption caption);
   // The edit menu of a text field in this window; false when the field is not in it.
   bool openTextMenu(class Input& input, float sceneX, float sceneY);
   // A click on the header title (Files: type a location, as Dolphin's editable path). Applies from the next rebuild.
@@ -246,6 +255,10 @@ private:
   std::unique_ptr<desk::ForeignParent> m_foreignParent;
   std::unique_ptr<Node> m_root;
   Label* m_titleLabel = nullptr;
+  Glyph* m_captionSymbol = nullptr;
+  Label* m_captionState = nullptr;
+  Caption m_caption;
+  void applyCaption();
   std::function<void()> m_titleClick;
   bool m_compact = false; // narrow window: icon-rail sidebar
   void swapSidebar(Renderer& renderer, float height);
