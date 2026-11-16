@@ -1519,6 +1519,9 @@ namespace term {
                    : std::string();
       };
       osc8 = uriAt(cell.x);
+      if (textSizeOfUri(osc8)) {
+        osc8.clear(); // a sized text run (OSC 66), not a link
+      }
       if (!osc8.empty()) {
         while (start > 0 && uriAt(start - 1) == osc8) {
           --start;

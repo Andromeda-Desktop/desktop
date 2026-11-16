@@ -452,9 +452,11 @@ void PtySession::parseLoop() {
       len = std::min(kReadChunk, work.size() - at);
       if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
       for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
+      m_filtered.clear();
+      m_textSize.feed({work.data() + at, len}, m_filtered);
       {
         std::lock_guard lock(m_termMutex);
-        ghostty_terminal_vt_write(m_terminal, work.data() + at, len);
+        ghostty_terminal_vt_write(m_terminal, m_filtered.data(), m_filtered.size());
       }
       if (!replaying()) {
         m_osc99.feed({work.data() + at, len}, [this](Osc99Scanner::Event e) {

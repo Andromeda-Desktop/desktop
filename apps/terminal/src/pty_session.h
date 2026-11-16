@@ -1,6 +1,7 @@
 #pragma once
 
 #include "command_index.h"
+#include "osc66.h"
 #include "osc99.h"
 
 #include <ghostty/vt.h>
@@ -165,6 +166,8 @@ private:
   // Output before this offset is a replay after attach: the program got the terminal's replies to it already.
   std::uint64_t m_replayEnd = 0;
   Osc99Scanner m_osc99;
+  TextSizeFilter m_textSize;           // parse thread
+  std::vector<std::uint8_t> m_filtered; // parse thread: one chunk after m_textSize
   std::mutex m_sockMutex;
   std::thread m_io;
   std::thread m_parser;
