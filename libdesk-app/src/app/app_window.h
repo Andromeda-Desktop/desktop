@@ -25,6 +25,7 @@ class ContextMenuPopup;
 class CommandTable;
 class Flex;
 class Glyph;
+class DskSurfaceClient;
 class Image;
 class Label;
 class Renderer;
@@ -136,6 +137,8 @@ public:
   void pulseScene(ScenePulse pulse);
   void setSceneBusy(bool busy);
   void setSceneSecret(bool secret); // a password prompt: the scene fades toward the surface
+  // Screenshots, screencopy and screencasts show the window as black while true (a password prompt).
+  void setCaptureSecure(bool secure);
   // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
   void setSceneContentBacked(bool backed);
   // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
@@ -329,6 +332,8 @@ private:
   bool m_sceneHeld = false;
   bool m_sceneBusy = false;
   bool m_sceneSecret = false;
+  bool m_captureSecure = false;
+  std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure; goes with m_surface
   float m_sceneBusyLevel = 0.0F;
   float m_sceneSecretLevel = 0.0F;
   std::array<std::optional<std::chrono::steady_clock::time_point>, 3> m_scenePulses{}; // by ScenePulse

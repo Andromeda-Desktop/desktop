@@ -46,6 +46,8 @@ public:
   DskSurfaceClient& operator=(const DskSurfaceClient&) = delete;
 
   void setElevation(Elevation level);
+  // Protocol version 14: captures show the surface and its subsurfaces as black. False on an older compositor.
+  bool setSecure(bool secure);
   void set(Property property, const Value& value);
   // Runs from the property's current value; `onDone` fires once when it settles, is retargeted or is cancelled.
   void animate(Property property, Curve curve, const Value& to, DoneCallback onDone = {}, StartedCallback onStarted = {});

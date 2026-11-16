@@ -453,7 +453,9 @@ namespace term {
 
   void TerminalWindow::updateSceneState() {
     const std::vector<std::uint64_t> visible = m_sessions.visible();
-    m_window.setSceneSecret(std::ranges::any_of(visible, [this](std::uint64_t id) { return m_secretSessions.contains(id); }));
+    const bool secret = std::ranges::any_of(visible, [this](std::uint64_t id) { return m_secretSessions.contains(id); });
+    m_window.setSceneSecret(secret);
+    m_window.setCaptureSecure(secret);
     m_window.setSceneBusy(std::ranges::any_of(visible, [this](std::uint64_t id) {
       const SessionInfo* info = m_sessions.find(id);
       return info != nullptr && std::holds_alternative<CommandRunning>(info->command);

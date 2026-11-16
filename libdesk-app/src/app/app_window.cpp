@@ -6,6 +6,7 @@
 #include "render/scene/shader_scene_node.h"
 #include "ui/controls/image.h"
 #include "ui/contrast.h"
+#include "wayland/dsk_surface_client.h"
 #include "wayland/subsurface.h"
 
 #include "app/foreign_parent.h"
@@ -606,6 +607,8 @@ void AppWindow::close() {
   m_sheetCard = nullptr;
   m_sheetShade = nullptr;
   m_sheetScrim = nullptr;
+  m_dsk.reset();
+  m_captureSecure = false;
   m_surface.reset();
   m_maximizeButton = nullptr;
   m_buttonDown = false;
@@ -721,6 +724,23 @@ void AppWindow::setSceneSecret(bool secret) {
   if (secret != m_sceneSecret) {
     m_sceneSecret = secret;
     noteSceneActivity();
+  }
+}
+
+void AppWindow::setCaptureSecure(bool secure) {
+  if (secure == m_captureSecure || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
+    return;
+  }
+  dsk_surface_manager_v1* manager = m_loop.wayland().dskSurfaceManager();
+  if (manager == nullptr) {
+    return; // another compositor: no capture control
+  }
+  if (m_dsk == nullptr) {
+    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface->wlSurface());
+  }
+  if (m_dsk->setSecure(secure)) {
+    m_captureSecure = secure;
+    invalidate(); // the request applies on the next commit
   }
 }
 

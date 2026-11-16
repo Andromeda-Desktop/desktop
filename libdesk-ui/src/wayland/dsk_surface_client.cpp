@@ -37,6 +37,14 @@ void DskSurfaceClient::set(Property property, const Value& value) {
   );
 }
 
+bool DskSurfaceClient::setSecure(bool secure) {
+  if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_surface)) < DSK_SURFACE_V1_SET_SECURE_SINCE_VERSION) {
+    return false;
+  }
+  dsk_surface_v1_set_secure(m_surface, secure ? 1U : 0U);
+  return true;
+}
+
 bool DskSurfaceClient::setVisibleRegion(wl_region* region) {
   if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_surface)) < DSK_SURFACE_V1_SET_VISIBLE_REGION_SINCE_VERSION) {
     return false;
