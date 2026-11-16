@@ -744,6 +744,8 @@ impl Holder {
     }
 
     fn disconnect(&mut self, client: ClientId) {
+        // A failed write can come before the poll reports the client's last frames (a Close, then hang-up).
+        self.read_client(client);
         self.clients.remove(&client);
         let mut orphaned_running = false;
         let mut exited = Vec::new();
