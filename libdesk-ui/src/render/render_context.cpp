@@ -164,6 +164,15 @@ namespace {
       pad = std::max(pad, style.borderWidth + style.softness + 2.0F);
     } else if (node->type() == NodeType::Glyph) {
       const auto* glyph = static_cast<const GlyphNode*>(node);
+      // A glyph node has no size: its ink sits in the em box above and right of the baseline origin, plus half an em.
+      const float s = glyph->fontSize();
+      for (const Vec2 corner : {world.transformPoint(-0.5F * s, -1.5F * s), world.transformPoint(1.5F * s, -1.5F * s),
+                                world.transformPoint(1.5F * s, 0.5F * s), world.transformPoint(-0.5F * s, 0.5F * s)}) {
+        left = std::min(left, corner.x);
+        top = std::min(top, corner.y);
+        right = std::max(right, corner.x);
+        bottom = std::max(bottom, corner.y);
+      }
       pad += std::max(std::abs(glyph->shadowOffsetX()), std::abs(glyph->shadowOffsetY()));
     }
     // The pads above are local units; a scaled or rotated node moves its overhang up to its largest axis scale.
@@ -700,8 +709,7 @@ void RenderContext::renderNode(
   const bool childrenClipped = childHasClip && (childClipRight <= childClipLeft || childClipBottom <= childClipTop);
 
   // The node's own draw is skipped where it misses the clip; its children may still reach it. Same bounds as damage.
-  // Glyph nodes have no size (ink sits above and right of the baseline origin), so they are never culled.
-  const std::optional<DamageRect> paint = node->type() != NodeType::Base && hasClip && node->type() != NodeType::Glyph
+  const std::optional<DamageRect> paint = node->type() != NodeType::Base && hasClip
       ? paintBounds(node, worldTransform)
       : std::nullopt;
   const auto drawSelf = [&](std::uint8_t gridPhases) {
@@ -709,7 +717,7 @@ void RenderContext::renderNode(
       return;
     }
     const auto reaches = [&](const DamageRect& r) {
-      return node->type() == NodeType::Glyph || (paint && paint->overlaps(r));
+      return paint && paint->overlaps(r);
     };
     bool drawn = false;
     if (!hasClip) {
