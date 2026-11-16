@@ -1,5 +1,7 @@
 #include "osc_frame.h"
 
+#include <cstring>
+
 namespace term {
 
 namespace {
@@ -38,9 +40,14 @@ void OscFrame::feed(std::span<const std::uint8_t> bytes, const std::function<voi
     const std::uint8_t b = bytes[at];
     bool consumed = true;
     switch (m_state) {
-      case State::Ground:
-        if (b == kEsc) m_state = State::Escape;
+      case State::Ground: {
+        // Most output is outside an OSC: jump to the next ESC.
+        const auto* esc = static_cast<const std::uint8_t*>(std::memchr(bytes.data() + at, kEsc, bytes.size() - at));
+        if (esc == nullptr) return;
+        at = static_cast<std::size_t>(esc - bytes.data());
+        m_state = State::Escape;
         break;
+      }
       case State::Escape:
         if (b == ']') {
           m_state = State::Prefix;
