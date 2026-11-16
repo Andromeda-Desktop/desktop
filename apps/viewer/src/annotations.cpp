@@ -1,5 +1,6 @@
 #include "annotations.h"
 
+#include <array>
 #include <cairo.h>
 #include <cstring>
 #include <fcntl.h>
@@ -55,6 +56,18 @@ namespace viewer::annot {
       }
     }
     return out;
+  }
+
+  void setStampBox(std::vector<std::uint8_t>& body, RectF box) {
+    std::vector<std::uint8_t> head;
+    putRect(head, box);
+    std::copy(head.begin(), head.end(), body.begin());
+  }
+
+  RectF stampBox(const std::vector<std::uint8_t>& body) {
+    std::array<float, 4> v{};
+    std::memcpy(v.data(), body.data(), sizeof(v));
+    return {v[0], v[1], v[2], v[3]};
   }
 
   std::vector<std::uint8_t> stampBody(RectF box, std::uint32_t width, std::uint32_t height,

@@ -24,6 +24,9 @@ namespace viewer::annot {
   // pixels: premultiplied BGRA (cairo ARGB32), stride width * 4.
   [[nodiscard]] std::vector<std::uint8_t> stampBody(RectF box, std::uint32_t width, std::uint32_t height,
                                                     const std::vector<std::uint8_t>& pixels);
+  // Moves a stampBody's box in place.
+  void setStampBox(std::vector<std::uint8_t>& body, RectF box);
+  [[nodiscard]] RectF stampBox(const std::vector<std::uint8_t>& body);
   // A sealed memfd holding `bytes`; -1 on failure. The caller closes it.
   [[nodiscard]] int sealedMemfd(const std::vector<std::uint8_t>& bytes);
 

@@ -157,7 +157,11 @@ namespace viewer {
     };
     // A new edit by the user: it ends the redo history.
     void addAnnotation(std::size_t page, std::uint32_t kind, std::uint32_t rgb, std::vector<std::uint8_t> body);
-    void sendAnnotation(Edit edit);
+    // `replaces`: the id of an edit this one takes the place of in the undo history (a moved stamp).
+    void sendAnnotation(Edit edit, std::optional<std::uint32_t> replaces = std::nullopt);
+    // True when the press or release went to the selected stamp.
+    bool stampPress(std::size_t page, float x, float y, bool pressed);
+    void moveStamp(const RectF& box);
     void rerenderPage(std::size_t page);
     void placeSignature(std::size_t page, float x, float y);
     [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
@@ -240,6 +244,17 @@ namespace viewer {
     annot::Stroke m_stroke;
     bool m_drawing = false;
     std::optional<std::pair<std::size_t, annot::Point>> m_pendingSign;
+    // The placed signature the user can move (drag inside) or resize (drag the corner handle); points.
+    struct StampFocus {
+      enum class Drag : std::uint8_t { None, Move, Resize };
+      std::uint32_t id = 0;
+      std::size_t page = 0;
+      RectF at;  // where the helper has it
+      RectF box; // where the frame shows it
+      Drag drag = Drag::None;
+      annot::Point grab;
+    };
+    std::optional<StampFocus> m_stamp;
     bool m_signing = false;
     std::vector<annot::Stroke> m_padStrokes;
     bool m_padDrawing = false;

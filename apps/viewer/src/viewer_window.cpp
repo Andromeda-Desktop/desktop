@@ -48,6 +48,8 @@ namespace viewer {
     constexpr std::uint32_t kTile = 512;
     constexpr std::uint32_t kInkRgb = 0x1f5fd6;
     constexpr std::uint32_t kNoteRgb = 0xffd400;
+    constexpr float kStampHandle = 12.0F; // logical px: the resize handle's side, and its grab reach
+    constexpr float kStampMinWidth = 24.0F; // points
     constexpr float kInkWidth = 2.0F; // points: the helper's INK_WIDTH
     constexpr std::uint32_t kMaxPageHeight = 16384;
     constexpr std::uint32_t kImageBox = 8192;
@@ -147,6 +149,7 @@ namespace viewer {
     dropHelper();
     m_edits.clear();
     m_undone.clear();
+    m_stamp.reset();
     m_savedDepth = 0;
     m_notePoint.reset();
     m_signing = false;
@@ -573,6 +576,21 @@ namespace viewer {
         addInkSegment(layer, m_stroke[k - 1], m_stroke[k]);
       }
     }
+    if (m_stamp && m_stamp->page == i) {
+      const float s = m_window.uiScale();
+      const RectF& b = m_stamp->box;
+      auto frame = ui::box({.border = colorSpecFromRole(ColorRole::Accent), .borderWidth = 1.5F * s,
+                            .width = (b.x1 - b.x0) * zoom, .height = (b.y1 - b.y0) * zoom});
+      frame->setParticipatesInLayout(false);
+      frame->setPosition(b.x0 * zoom, b.y0 * zoom);
+      layer->addChild(std::move(frame));
+      const float side = kStampHandle * s;
+      auto handle = ui::box({.fill = colorSpecFromRole(ColorRole::Accent), .radius = side / 2.0F, .width = side,
+                             .height = side});
+      handle->setParticipatesInLayout(false);
+      handle->setPosition(b.x1 * zoom - side / 2.0F, b.y1 * zoom - side / 2.0F);
+      layer->addChild(std::move(handle));
+    }
     if (m_notePoint && m_notePoint->first == i) {
       const float s = m_window.uiScale();
       const float side = 14.0F * s;
@@ -976,6 +994,13 @@ namespace viewer {
       }
       return false;
     case XKB_KEY_Escape:
+      if (m_stamp) {
+        const std::size_t page = m_stamp->page;
+        m_stamp.reset();
+        fillMarks(page);
+        m_window.invalidate();
+        return true;
+      }
       if (m_signing || m_notePoint) {
         m_signing = false;
         m_pendingSign.reset();
@@ -1305,6 +1330,9 @@ namespace viewer {
   }
 
   void ViewerWindow::onPagePress(std::size_t page, float x, float y, bool pressed) {
+    if (m_stamp && stampPress(page, x, y, pressed)) {
+      return;
+    }
     switch (m_tool) {
     case Tool::Select:
     case Tool::Highlight:
@@ -1348,6 +1376,21 @@ namespace viewer {
   }
 
   void ViewerWindow::onPageMotion(float x, float y) {
+    if (m_stamp && m_stamp->drag != StampFocus::Drag::None) {
+      StampFocus& st = *m_stamp;
+      const float dx = x - st.grab.x;
+      const float dy = y - st.grab.y;
+      if (st.drag == StampFocus::Drag::Move) {
+        st.box = {st.at.x0 + dx, st.at.y0 + dy, st.at.x1 + dx, st.at.y1 + dy};
+      } else {
+        const float w0 = st.at.x1 - st.at.x0;
+        const float w = std::max(kStampMinWidth, w0 + dx);
+        st.box = {st.at.x0, st.at.y0, st.at.x0 + w, st.at.y0 + w * (st.at.y1 - st.at.y0) / w0};
+      }
+      fillMarks(st.page);
+      m_window.invalidate();
+      return;
+    }
     if (m_tool == Tool::Draw && m_drawing) {
       // Points closer than half a point add nothing to the stroke.
       if (const auto& last = m_stroke.back(); std::hypot(x - last.x, y - last.y) >= 0.5F && m_stroke.size() < 8192) {
@@ -1360,6 +1403,59 @@ namespace viewer {
     } else if (m_selecting) {
       updateSelect(x, y);
     }
+  }
+
+  bool ViewerWindow::stampPress(std::size_t page, float x, float y, bool pressed) {
+    StampFocus& st = *m_stamp;
+    if (!pressed) {
+      if (st.drag == StampFocus::Drag::None) {
+        return false;
+      }
+      st.drag = StampFocus::Drag::None;
+      if (st.box.x0 != st.at.x0 || st.box.y0 != st.at.y0 || st.box.x1 != st.at.x1) {
+        moveStamp(st.box);
+      }
+      return true;
+    }
+    const float handle = kStampHandle * m_window.uiScale() / m_model.zoom();
+    const bool onHandle = std::abs(x - st.box.x1) <= handle && std::abs(y - st.box.y1) <= handle;
+    const bool inside = x >= st.box.x0 && x <= st.box.x1 && y >= st.box.y0 && y <= st.box.y1;
+    if (page != st.page || (!onHandle && !inside)) {
+      const std::size_t was = st.page;
+      m_stamp.reset();
+      fillMarks(was);
+      m_window.invalidate();
+      return false;
+    }
+    st.drag = onHandle ? StampFocus::Drag::Resize : StampFocus::Drag::Move;
+    st.grab = {x, y};
+    return true;
+  }
+
+  void ViewerWindow::moveStamp(const RectF& box) {
+    const auto it = std::ranges::find(m_edits, m_stamp->id, &Edit::id);
+    if (it == m_edits.end() || m_saving || !m_helper) {
+      m_stamp->box = m_stamp->at;
+      fillMarks(m_stamp->page);
+      return;
+    }
+    // The file on disk no longer matches once an edit it holds changes.
+    if (m_savedDepth > static_cast<std::size_t>(it - m_edits.begin())) {
+      m_savedDepth.reset();
+    }
+    Edit moved = *it;
+    annot::setStampBox(moved.body, box);
+    m_undone.clear();
+    m_helper->request({.op = preview::op::AnnotRemove, .b = moved.id},
+                      [this, generation = m_generation](const preview::HelperReply& reply) {
+                        if (generation == m_generation && reply.msg.op == preview::op::AnnotReply) {
+                          rerenderPage(reply.msg.a);
+                        }
+                      });
+    m_stamp->at = box;
+    const std::uint32_t old = moved.id;
+    sendAnnotation(std::move(moved), old);
+    updateTitle();
   }
 
   void ViewerWindow::placeSignature(std::size_t page, float x, float y) {
@@ -1385,7 +1481,7 @@ namespace viewer {
     sendAnnotation({.page = page, .kind = kind, .rgb = rgb, .body = std::move(body)});
   }
 
-  void ViewerWindow::sendAnnotation(Edit edit) {
+  void ViewerWindow::sendAnnotation(Edit edit, std::optional<std::uint32_t> replaces) {
     if (!m_helper) {
       return;
     }
@@ -1398,7 +1494,7 @@ namespace viewer {
     }
     m_helper->request(
         {.op = preview::op::AnnotAdd, .a = static_cast<std::uint32_t>(page), .b = kind, .c = edit.rgb}, fd,
-        [this, page, kind, edit = std::move(edit), generation = m_generation](const preview::HelperReply& reply) mutable {
+        [this, page, kind, edit = std::move(edit), replaces, generation = m_generation](const preview::HelperReply& reply) mutable {
           if (generation != m_generation) {
             return;
           }
@@ -1412,7 +1508,15 @@ namespace viewer {
             return;
           }
           edit.id = reply.msg.b;
-          m_edits.push_back(std::move(edit));
+          if (kind == preview::kAnnotStamp) {
+            m_stamp = StampFocus{.id = edit.id, .page = page, .at = annot::stampBox(edit.body), .box = annot::stampBox(edit.body)};
+          }
+          const auto old = replaces ? std::ranges::find(m_edits, *replaces, &Edit::id) : m_edits.end();
+          if (old != m_edits.end()) {
+            *old = std::move(edit);
+          } else {
+            m_edits.push_back(std::move(edit));
+          }
           for (PendingInk& ink : m_pendingInk) {
             if (ink.page == page && !ink.shownAfter) {
               ink.shownAfter = m_renderSeq; // a render sent after this one shows the stroke
@@ -1445,6 +1549,9 @@ namespace viewer {
       return;
     }
     const std::uint32_t id = m_edits.back().id;
+    if (m_stamp && m_stamp->id == id) {
+      m_stamp.reset();
+    }
     m_undone.push_back(std::move(m_edits.back()));
     m_edits.pop_back();
     if (m_savedDepth > m_edits.size()) {
