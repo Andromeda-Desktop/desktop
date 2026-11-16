@@ -30,6 +30,11 @@ namespace term {
     bool operator==(const ThemeEntry&) const = default;
   };
 
+  // <XDG_DATA_HOME>/andromeda/themes
+  [[nodiscard]] std::filesystem::path themesDir();
+  // One package folder, as the store reads it.
+  [[nodiscard]] ThemeEntry readThemeFolder(const std::filesystem::path& folder);
+
   // Reads every <dir>/<id>/theme.toml, sorted by id; previous supplies the last good package of each id.
   [[nodiscard]] std::vector<ThemeEntry> scanThemes(const std::filesystem::path& dir,
                                                    const std::vector<ThemeEntry>& previous);

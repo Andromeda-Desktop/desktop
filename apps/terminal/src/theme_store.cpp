@@ -103,7 +103,11 @@ namespace term {
     return entries;
   }
 
-  ThemeStore::ThemeStore() : m_dir(std::filesystem::path(g_get_user_data_dir()) / "andromeda" / "themes") {
+  std::filesystem::path themesDir() { return std::filesystem::path(g_get_user_data_dir()) / "andromeda" / "themes"; }
+
+  ThemeEntry readThemeFolder(const std::filesystem::path& folder) { return readEntry(folder, {}); }
+
+  ThemeStore::ThemeStore() : m_dir(themesDir()) {
     std::error_code ec;
     std::filesystem::create_directories(m_dir, ec);
     m_entries = scanThemes(m_dir, {});
