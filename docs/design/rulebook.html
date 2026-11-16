@@ -396,7 +396,13 @@ canvas.plot { width: 100%; height: 120px; display: block; }
 <a class="sub" href="#ch-D-1-tokens-protocol-design-tokens-toml" data-ch="D">1. Tokens (protocol/design-tokens.toml)</a>
 <a class="sub" href="#ch-D-2-shared-style-libdesk-ui-src-ui-style-h" data-ch="D">2. Shared style (libdesk-ui/src/ui/style.h)</a>
 <a class="sub" href="#ch-D-3-surfaces" data-ch="D">3. Surfaces</a>
-<a class="sub" href="#ch-D-4-migration-order-proposal" data-ch="D">4. Migration order (proposal)</a></div>
+<a class="sub" href="#ch-D-4-migration-order-proposal" data-ch="D">4. Migration order (proposal)</a>
+<a class="sub" href="#ch-D-files-v2-2026-11-07" data-ch="D">Files v2 (2026-11-07)</a>
+<a class="sub" href="#ch-D-bar-islands-2026-11-10" data-ch="D">Bar islands (2026-11-10)</a>
+<a class="sub" href="#ch-D-shape-glass-tone-2026-11-11" data-ch="D">Shape glass tone (2026-11-11)</a>
+<a class="sub" href="#ch-D-lock-screen-own-image-blur-2026-11-11" data-ch="D">Lock screen own image blur (2026-11-11)</a>
+<a class="sub" href="#ch-D-theme-transition-clock-2026-11-12" data-ch="D">Theme transition clock (2026-11-12)</a>
+<a class="sub" href="#ch-D-share-picker-2026-11-15" data-ch="D">Share picker (2026-11-15)</a></div>
 </nav>
 <main>
 <section class="doc cover" id="ch-cover"><h1>Andromeda design rulebook</h1>
@@ -506,7 +512,7 @@ when the two differ, this book wins and the TOML is fixed.</p>
 <section class="doc" id="ch-1"><h2>1. Principles</h2>
 <ol>
 <li><strong>Glass over your wallpaper, solid where you read.</strong> Chrome floats as glass; windows and long text sit on solid planes.</li>
-<li><strong>One selection object.</strong> The lens marks "you are here" in every component. Never an accent-filled pill.</li>
+<li><strong>One selection object.</strong> The lens marks "you are here" in every component. Never an accent-filled pill. One exception: a sidebar row shows selection with the accent tint (§9.7; user, 2026-11-15).</li>
 <li><strong>Accent means on.</strong> Accent colours on-states, the focus ring and the selected icon only. A screen at rest is
    nearly colourless.</li>
 <li><strong>Things come from somewhere.</strong> A surface grows out of the thing you touched and returns there when it closes.
@@ -704,14 +710,21 @@ display optical size carries its own tight spacing, so tracking is 0 (adding bot
 <td>34 / 40</td>
 <td>500</td>
 <td>0</td>
-<td>lock-screen date line, OSD big values</td>
+<td>OSD big values</td>
+</tr>
+<tr>
+<td>mono</td>
+<td>13 / 18</td>
+<td>400, 500, 600</td>
+<td>0</td>
+<td>terminal grid and code; Fira Code, ligatures on; the grid zoom scales it, UI text size does not (user, 2026-11-15)</td>
 </tr>
 <tr>
 <td>hero</td>
 <td>80 / 80</td>
 <td>300</td>
 <td>0</td>
-<td>lock-screen clock only</td>
+<td>lock-screen clock only (sizes S-XL in §9.15)</td>
 </tr>
 </tbody>
 </table>
@@ -756,15 +769,15 @@ Inter docs, WCAG), checked 2026-11-02.</p>
 </tr>
 <tr>
 <td>label_2</td>
-<td>#141418 62 %</td>
+<td>#141418 72 %</td>
 <td>#f4f4f6 62 %</td>
 <td>secondary text (&gt;= 4.5:1 on every plane)</td>
 </tr>
 <tr>
 <td>label_3</td>
-<td>#141418 38 %</td>
+<td>#141418 48 %</td>
 <td>#f4f4f6 38 %</td>
-<td>placeholders, disabled-looking hints, group headers; never essential text</td>
+<td>placeholders, disabled-looking hints, inactive dots; never essential text</td>
 </tr>
 <tr>
 <td>fill_1</td>
@@ -792,9 +805,21 @@ Inter docs, WCAG), checked 2026-11-02.</p>
 </tr>
 <tr>
 <td>stroke</td>
-<td>black 7 %</td>
+<td>black 12 %</td>
 <td>white 8 %</td>
-<td>0.5 px outline of glass and cards</td>
+<td>0.5 px outline of glass and cards; light glass keeps it on liquid shapes too (the white rim shows nothing over white)</td>
+</tr>
+<tr>
+<td>glass_card</td>
+<td>white 28 %</td>
+<td>white 6 %</td>
+<td>cards and slider tracks on glass sheets (control center tiles, detail groups)</td>
+</tr>
+<tr>
+<td>glass_card_edge</td>
+<td>black 8 %</td>
+<td>none</td>
+<td>0.5 px hairline of a glass_card</td>
 </tr>
 <tr>
 <td>edge</td>
@@ -840,14 +865,18 @@ Inter docs, WCAG), checked 2026-11-02.</p>
 </tr>
 </tbody>
 </table>
+<p><strong>Light is not inverted dark.</strong> Light mode does not reuse the dark alpha steps. Light glass over a mid-tone
+wallpaper reads mid-grey, so light labels sit one step darker (label_2 72 %, label_3 48 %), cards on glass are
+lighter than the sheet (glass_card), and every glass shape keeps a visible hairline. Nothing on a light sheet is
+pure white except a toggle knob: a white slider level or white row glares.</p>
 <p><strong>Fill ladder.</strong> Hover moves an item one step up the ladder (none -&gt; fill_1 -&gt; fill_2 -&gt; fill_3); pressed moves two.
 There is no other hover colour.</p>
 <p><strong>Accent rule.</strong> Accent fills: a toggle that is on, a slider fill in a window, an active round icon, a primary
-button, a checked box or radio, the focus ring, the selected icon inside the lens. Accent never fills a selection,
+button, a checked box or radio, the focus ring, the selected icon inside the lens. Accent never fills a selection (except the sidebar row tint, §9.7),
 a hovered item, a header, a badge count or a decoration.</p>
 <h3 id="ch-4-4-2-contrast-computed-wcag-2">4.2 Contrast (computed, WCAG 2)</h3>
-<p>label_1 18.4:1 light card, 13.7:1 dark card. label_2 5.2:1 light card, 4.9:1 light plane, 6.2:1 dark card.
-label_3 2.4:1 / 3.2:1 (decorative only). accent text 6.2:1 / 5.8:1. Over glass the tint rule in §5.3 keeps
+<p>label_1 18.4:1 light card, 13.7:1 dark card. label_2 7.3:1 light card, 6.6:1 light plane, 6.2:1 dark card.
+label_3 3.3:1 light / 3.2:1 dark (decorative only). accent text 6.2:1 / 5.8:1. Over glass the tint rule in §5.3 keeps
 label_2 at 4.5:1 or more.</p>
 </section>
 <section class="demo" id="demo-3">
@@ -915,14 +944,14 @@ label_2 at 4.5:1 or more.</p>
 <tbody>
 <tr>
 <td>regular</td>
-<td>white 62 %</td>
+<td>white 34 % (Tinted; slider Clear 20 % to Frosted 84 %, protocol/glass_material.h)</td>
 <td>#1c1c20 70 %</td>
 <td>dual Kawase 3 passes, radius 6, noise 0.02</td>
 </tr>
 <tr>
 <td>thick</td>
-<td>white 76 %</td>
-<td>#202024 84 %</td>
+<td>white 88 %</td>
+<td>#202024 92 %</td>
 <td>same</td>
 </tr>
 <tr>
@@ -939,7 +968,7 @@ label_2 at 4.5:1 or more.</p>
 </tr>
 </tbody>
 </table>
-<p>Every glass shape draws: tint, 0.5 px <code>stroke</code> outline, 0.5 px <code>edge</code> highlight on the inner top edge, then its
+<p>Every glass shape draws: tint, 0.5 px <code>stroke</code> outline (no top edge highlight), then its
 shadow. The compositor draws blur and shadow; the client draws tint and content.</p>
 <h3 id="ch-5-5-3-readable-glass">5.3 Readable glass</h3>
 <p>Each tint rises toward the next material until label_2 over the sampled backdrop reaches 4.5:1: regular toward
@@ -1017,11 +1046,6 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
 </tr>
 </thead>
 <tbody>
-<tr>
-<td>sidebar row</td>
-<td>rect r 8</td>
-<td>fills the row</td>
-</tr>
 <tr>
 <td>segmented control</td>
 <td>capsule</td>
@@ -1113,7 +1137,7 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
    Opacity, colour and blur use effect springs (bounce 0).</li>
 <li><strong>Bounce where momentum arrives.</strong> Opening, morphing, a release after a press and a lens arrival bounce.
    Closing, fading and page changes do not.</li>
-<li><strong>Exits are faster than entries</strong> (close 0.28 s against open 0.42 s) and never stagger.</li>
+<li><strong>Exits are faster than entries</strong> (close 0.28 s against open 0.30 s) and never stagger.</li>
 <li><strong>Retarget, never restart.</strong> A new target keeps the current value and velocity. No animation queues behind
    another. Reversing mid-flight turns the same spring around.</li>
 <li><strong>Gate on progress, not on time.</strong> "Content fades in after 35 %" means 35 % of the shape's travel, so the
@@ -1172,13 +1196,13 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
 </tr>
 <tr>
 <td>open</td>
-<td>0.42</td>
-<td>0.22</td>
-<td>224</td>
-<td>0.78</td>
-<td>480 ms</td>
-<td>1.9 %</td>
-<td>a surface grows from its source</td>
+<td>0.30</td>
+<td>0.10</td>
+<td>439</td>
+<td>0.90</td>
+<td>340 ms</td>
+<td>0.2 %</td>
+<td>a surface grows from its source (user, 2026-11-07: 0.42 / 0.22 felt slow and late)</td>
 </tr>
 <tr>
 <td>close</td>
@@ -1260,6 +1284,16 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
 <td>0</td>
 <td>opacity, colour, blur out</td>
 </tr>
+<tr>
+<td>follow</td>
+<td>0.12</td>
+<td>0</td>
+<td>2742</td>
+<td>1.00</td>
+<td>140 ms</td>
+<td>0</td>
+<td>motion a window open or close causes: left island width and title</td>
+</tr>
 </tbody>
 </table>
 <p>Overshoot is a fraction of the travel: a 360 px sheet that opens with 1.9 % passes its rest size by 7 px, enough to
@@ -1316,7 +1350,7 @@ reduced motion.</p>
 <li><strong>Exits overlap.</strong> On Return, content <code>fade_out</code> and the shape's <code>close</code> start on the same frame. Nothing waits.</li>
 <li><strong>Cross the faces.</strong> In a Morph the outgoing face fades out (fade_out), scales to 0.92 and blurs to 8 px; the
   incoming face fades in from 50 % of travel, from scale 0.92 and blur 8 px to 1 and 0. Both stay inside the clip.</li>
-<li><strong>Stagger entries only.</strong> Children of a growing surface start 16 ms apart; the sixth starts at 80 ms and the rest
+<li><strong>Stagger entries only.</strong> Children of a growing surface start 8 ms apart; the sixth starts at 40 ms and the rest
   start with it. This is the one time offset in the system. Exits never stagger.</li>
 <li><strong>Source hand-off.</strong> A source that becomes the surface (the center island, a dock icon that opens a window, a banner
   that opens the notification center) hides its face on the frame Grow starts: the growing shape IS the source. On
@@ -1479,6 +1513,7 @@ focused control as the source; global shortcuts use the island that owns the sur
 <li><strong>Velocity:</strong> from the last 100 ms of samples (least squares), not the last delta.</li>
 <li><strong>Projection:</strong> end = position + v x 0.998 / (1 - 0.998) / 1000 (v in px/s). Snap to the nearest target to the
   projected end. Then settle on <code>page</code> with the finger's velocity as the start velocity.</li>
+<li><strong>Stepped pagers:</strong> Stepped pagers (workspaces, the overview filmstrip) project with 0.997, so a moderate swipe advances one step; a hard flick still crosses several.</li>
 <li><strong>Thresholds:</strong> a sheet opens if the projected end passes 50 % of its travel or v &gt; 300 px/s toward open.</li>
 <li><strong>Cancel:</strong> a leave or cancel event settles to the snap target nearest the current position.</li>
 </ul>
@@ -1715,7 +1750,7 @@ row says so.</p>
 </tr>
 <tr>
 <td>workspace track</td>
-<td>cells h 24 capsule, min width 24, inset 4 in the island (R7: 16 - 4 = 12 = capsule 24); the current cell is the lens (P1); occupied cells caption label_2, empty label_3</td>
+<td>dots: 7 round, gap 5; the current workspace is a 20 x 7 capsule in label_1, others label_3 (user, 2026-11-02; replaces the lens cells)</td>
 </tr>
 <tr>
 <td>right island</td>
@@ -1738,7 +1773,7 @@ row says so.</p>
 <tbody>
 <tr>
 <td>OSD</td>
-<td>w 240 or more (hugs content), h 56 or more, capsule; symbol 16 inset 12, g 12; level h 4 capsule, level slider_fill on slider_track (as the slider, 9.3); the level moves on snap and retargets with no jump when the value changes fast; value caption ("60%") with tabular digits, width reserved for "100%"</td>
+<td>w 240 or more (hugs content), h 40 (<code>osd_height</code>), capsule; symbol 16 inset 12, g 12; level h 4 capsule, level slider_fill on slider_track (as the slider, 9.3); the level moves on snap and retargets with no jump when the value changes fast; value caption ("60%") with tabular digits, width reserved for "100%"; the OSD takes the island over a live activity for its 1.5 s and the activity face returns; the separate OSD card shows only on an output without a center island, with the same capsule, level and value</td>
 </tr>
 <tr>
 <td>live activity</td>
@@ -1769,7 +1804,7 @@ row says so.</p>
 </tr>
 <tr>
 <td>tile</td>
-<td>164 x 56, r 16 (R7: 28 - 12), p 12 / 12, fill_1, hover fill_2 (P3), press P2</td>
+<td>164 x 56, r 16 (R7: 28 - 12), p 12 / 12, glass_card + 0.5 px glass_card_edge, hover fill_2 (P3), press P2</td>
 </tr>
 <tr>
 <td>round icon</td>
@@ -1781,7 +1816,7 @@ row says so.</p>
 </tr>
 <tr>
 <td>slider pill</td>
-<td>full width x 48, r 16 (R7); track <code>slider_track</code> (black 20 % light, white 10 % dark) with a 1 px inner <code>slider_edge</code> (black 7 % light) so the white level keeps its outline on white glass; level <code>slider_fill</code> (white 94 % light, white 24 % dark) from the start edge, no knob; symbol 16 at inset 16 (R5 in a 48 rect: (48 - 16) / 2) in <code>on_slider_fill</code> (label_2 grey light, white 92 % dark); value footnote at inset 16 from the end: label_2 on the track, <code>on_slider_fill</code> where the fill passes under it</td>
+<td>full width x 48, r 16 (R7); track <code>slider_track</code> (black 6 % light, white 10 % dark), no edge; level <code>slider_fill</code> (white 92 % light, user 2026-11-08; white 24 % dark) from the start edge, no knob; symbol 16 at inset 16 (R5 in a 48 rect: (48 - 16) / 2) in <code>on_slider_fill</code> (label_1 light, white 92 % dark); value footnote at inset 16 from the end: label_2 on the track, <code>on_slider_fill</code> where the fill passes under it</td>
 </tr>
 <tr>
 <td>media card</td>
@@ -1843,7 +1878,8 @@ row says so.</p>
 <h3 id="ch-9-9-5-buttons">9.5 Buttons</h3>
 <p>Shape follows emphasis (macOS Tahoe, WWDC25): small and regular buttons are rounded rectangles r 8; large buttons
 and the one primary action of a view are capsules. A button on a capsule surface (island, OSD, live activity) is a
-capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
+capsule or circle. In a system dialog footer (portal and permission sheets) every button is a capsule, so Cancel
+matches the primary action. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 <table>
 <thead>
 <tr>
@@ -1936,7 +1972,7 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 </tr>
 <tr>
 <td>search field</td>
-<td>h 32, r 8, symbol 16 at inset 8, g 8, text; keycap hint at the end inset 8; h 40 in the launcher with r 12 (R7: 28 - 16)</td>
+<td>h 32, r 8, symbol 16 at inset 8, g 8, text; keycap hint at the end inset 8; h 40 in the launcher with r 12 (R7: 28 - 16); at the top of a sidebar under a window corner: capsule r 16 (R7: 24 - 8; user, 2026-11-15)</td>
 </tr>
 <tr>
 <td>popup button</td>
@@ -2027,7 +2063,7 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 </tr>
 <tr>
 <td>sidebar</td>
-<td>w 240, p 8, thick glass or <code>sidebar</code>; rows h 32, r 8, p 0 / 8, symbol 16 g 8; group header caption 600 label_3, 16 above, 4 below; selected row = lens; search field 32 at the top, 8 below it</td>
+<td>w 240, p 8, thick glass or <code>sidebar</code>; rows h 32, r 8, p 0 / 8, symbol 16 g 8; a list whose items have a live status uses two-line rows h 48 (name body, status line footnote label_2, status first, trailing time footnote tabular; a row with no status line centres its name on the symbol; user, 2026-11-15); group header caption 600 label_2, 16 above, 4 below; selected row = accent tint (24 % dark, 32 % light) with label_1 content, the same in Settings and the control center; search field 32 at the top, 8 below it</td>
 </tr>
 </tbody>
 </table>
@@ -2198,7 +2234,7 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 <tbody>
 <tr>
 <td>frame</td>
-<td>r 20 with the 40 title bar; r 24 with the 48 app header (concentric with its 32 controls at inset 8); E4 active, E3 inactive; 0.5 px stroke</td>
+<td>r 12 (radius set B, user 2026-11-08) with the 40 title bar and the 48 app header; E4 active, E3 inactive; 0.5 px stroke</td>
 </tr>
 <tr>
 <td>title bar (server-side)</td>
@@ -2210,7 +2246,7 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 </tr>
 <tr>
 <td>app header (our apps)</td>
-<td>h 48: back / forward icon buttons 32 at inset 8, title-2 g 12; window buttons as above at inset 12 (vertically centred); window radius 24</td>
+<td>h 48: back / forward icon buttons 32 at inset 8, title-2 g 12; window buttons as above at inset 12 (vertically centred); window radius 12</td>
 </tr>
 <tr>
 <td>resize</td>
@@ -2218,7 +2254,7 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 </tr>
 <tr>
 <td>snap preview</td>
-<td>a rect at the target bounds, r 20, fill_1 + 1 px stroke label_3, Grows from the pointer on open</td>
+<td>a rect at the target bounds, r 12, fill_1 + 1 px stroke label_3, Grows from the pointer on open</td>
 </tr>
 <tr>
 <td>active state</td>
@@ -2258,6 +2294,8 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 </tbody>
 </table>
 <h3 id="ch-9-9-14-launcher">9.14 Launcher</h3>
+<p>A Spotlight-style capsule (user 2026-11-03; direction A in <code>.agent/DESIGN.md</code>). Super+Space opens the field
+only; typing Grows it down into results.</p>
 <table>
 <thead>
 <tr>
@@ -2267,24 +2305,32 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 </thead>
 <tbody>
 <tr>
-<td>sheet</td>
-<td>w = 2 x 16 + 6 x 96 + 5 x 8 = 648, r 28, p 16, thick glass, E3; Grows from the dock launcher button (P19)</td>
+<td>pill</td>
+<td>w 680, h 56 capsule (r 28), centred, top at 1/5 of the output height; thick glass (§5.2), E3; symbol 20 label_2 at inset 20 (R5), g 12, field title-3, placeholder "Search" label_3</td>
 </tr>
 <tr>
-<td>search</td>
-<td>h 40, r 12 (R7: 28 - 16), symbol 16 at inset 12 (R5), title-3 placeholder label_3; g 16 to the grid</td>
-</tr>
-<tr>
-<td>grid</td>
-<td>6 columns x 4 rows of 96 x 112 cells, g 8 (§9.7); pages Slide (P12) with page dots below (§9.3)</td>
+<td>grow</td>
+<td>typing Grows the shape down, top edge fixed (P19); content fades in at the 35 % gate (7.4); an empty field shrinks it back</td>
 </tr>
 <tr>
 <td>results</td>
-<td>when typing, the grid becomes a list: rows 48 (app icon 32 g 12, name body + kind footnote label_2), current row = lens r 12</td>
+<td>hairline stroke under the field; section header footnote label_3 at inset 20, h 28; rows h 40: icon 24 at inset 20, g 12, title body label_1, kind footnote label_2 after g 8; current row = lens r 12 at inset 8 with "Open ↩" footnote label_2 at inset 20; 8 rows visible, then the list scrolls; height follows content (R2)</td>
+</tr>
+<tr>
+<td>footer</td>
+<td>h 36, hairline above; result count footnote label_3; key hints footnote label_2 with key caps fill_1 r 4: "Open ↩", "Actions ⌘K", "Close esc"</td>
+</tr>
+<tr>
+<td>apps</td>
+<td>the query "apps" or the dock launcher button shows the grid under the field: 6 columns x 4 rows of 96 x 112 cells, g 8 (§9.7); pages Slide (P12) with page dots below (§9.3)</td>
 </tr>
 </tbody>
 </table>
 <h3 id="ch-9-9-15-lock-screen">9.15 Lock screen</h3>
+<p>Mockup: <code>.agent/mockups/lockscreen.html</code> (approved 2026-11-03). Plan and security rules: <code>.agent/TASK-lockscreen.md</code>.
+Two themes: Andromeda (this section, the default) and Ryoku (the old look, kept as a theme outside the rulebook;
+listed in <code>deviations.md</code>). Values are at scale 1 on a 1280 x 800 output; fractions are of the output height.</p>
+<p><strong>Backdrop and text</strong></p>
 <table>
 <thead>
 <tr>
@@ -2295,26 +2341,261 @@ capsule or circle. Values (fields, pop-ups) are rounded rectangles r 8.</p>
 <tbody>
 <tr>
 <td>backdrop</td>
-<td>the wallpaper, blurred (same recipe) and dimmed 20 % black; text on it is white with a 0 / 1 / 2 black 30 % shadow</td>
+<td>the lock wallpaper, blurred (same recipe; Blur 0-100, 0 = sharp) and dimmed (Dim 0-60 %, default 20 % black)</td>
+</tr>
+<tr>
+<td>legibility clamp</td>
+<td>sample the backdrop under the clock, date and name; raise the dim until white text is 4.5:1, whatever the user's Blur, Dim or colour choice</td>
+</tr>
+<tr>
+<td>text</td>
+<td>the lock screen is always the dark scheme (also in light mode): white with a 0 / 1 / 2 black 30 % shadow (the shell's label shadow has no blur yet: 0 / 1 / 0); label_1 / label_2 / label_3 = white 96 / 70 / 46 %</td>
+</tr>
+<tr>
+<td>fonts</td>
+<td>the one exception to §3: the clock uses its clock style's font; "Text font" (bundled OFL, Inter default) sets the date, name, cards and widgets at the §3 sizes, weights &lt;= 600; the password field always stays Inter</td>
 </tr>
 <tr>
 <td>clock</td>
-<td>hero, centred, top at 1/4 of the output height; date title-3 8 above it</td>
+<td>hero role, tabular figures; sizes S 64 / M 80 (default) / L 96 / XL 120, line height = size; clock styles are presets of font, weight, layout and effect and may use any weight of their font</td>
 </tr>
 <tr>
-<td>account</td>
-<td>avatar 64, g 12, name title-3; centred at 2/3 of the height</td>
+<td>date</td>
+<td>title-3 (15 / 20, 600), 8 above the clock (Minimal: 8 below, label_2)</td>
 </tr>
 <tr>
-<td>password</td>
-<td>h 40 capsule, w 240, thick glass, text inset 16 (R5), placeholder label_3; g 16 below the name; wrong password: the field shakes (3 x 8 px on snap)</td>
-</tr>
-<tr>
-<td>status</td>
-<td>battery, network, keyboard layout as a 32 island top right (§9.1); the session menu button bottom right (icon button 40)</td>
+<td>materials</td>
+<td>dark glass in both modes: regular = rgb 28 28 32 at 40 %, thick = rgb 32 32 36 at 56 %, 0.5 px white 14 % stroke. Cards, widgets, island, session button = regular; password capsule, auth sheet, call card, reason card, menus, editor chrome = thick</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Auth area</strong> (one component; every layout places it, no layout covers it)</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>column</td>
+<td>avatar 64 (circle), g 12, name title-3, g 16, password capsule, g 12, hint, g 24, owner message</td>
+</tr>
+<tr>
+<td>capsule</td>
+<td>w 240, h 40, r 20, thick glass; text inset 16 (R5), trailing inset 8; placeholder "Password" body label_3; typed dots 15 px, tracking 3</td>
+</tr>
+<tr>
+<td>trailing</td>
+<td>idle: face symbol 16 label_2 (face enrolled) or fingerprint symbol 16 label_2 (reader present); typing: go button 24 circle, accent, white arrow 12</td>
+</tr>
+<tr>
+<td>hint</td>
+<td>footnote (12 / 16) label_2, one line, ellipsis; error hints danger_text</td>
+</tr>
+<tr>
+<td>owner message</td>
+<td>footnote label_2, two lines max, max width 320</td>
+</tr>
+<tr>
+<td>reason card</td>
+<td>lock from phone: thick glass, w 360, r 24, p 16; symbol 24, g 12, title-3 "Locked from <device>" + footnote label_2 "<time> · Face unlock off until you type your password"; 32 above the account column</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Auth states</strong> (the capsule and hint change; the column never moves)</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Capsule</th>
+<th>Hint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>idle, face enrolled</td>
+<td>placeholder, face symbol</td>
+<td>"Looking for you…" while the camera scans</td>
+</tr>
+<tr>
+<td>idle, no face enrolled</td>
+<td>placeholder, fingerprint symbol or none</td>
+<td>none</td>
+</tr>
+<tr>
+<td>fingerprint ready</td>
+<td>placeholder, fingerprint symbol</td>
+<td>"Touch the sensor"</td>
+</tr>
+<tr>
+<td>typing</td>
+<td>dots, go button</td>
+<td>none</td>
+</tr>
+<tr>
+<td>caps lock</td>
+<td>as typing</td>
+<td>"⇪ Caps Lock is on"</td>
+</tr>
+<tr>
+<td>wrong password</td>
+<td>shakes 3 x 8 px on snap; text clears</td>
+<td>danger_text "Wrong password" (+ " — try again or touch the sensor" when a reader is present)</td>
+</tr>
+<tr>
+<td>fail delay</td>
+<td>60 % opacity, input off; placeholder "Try again in m:ss" (tabular)</td>
+<td>"N failed attempts"</td>
+</tr>
+<tr>
+<td>PAM error</td>
+<td>input off until the error clears</td>
+<td>danger_text with the PAM message, prefixed "Can't check your password: "</td>
+</tr>
+<tr>
+<td>locked from phone</td>
+<td>placeholder; face and fingerprint off</td>
+<td>"Password required"</td>
+</tr>
+<tr>
+<td>checking</td>
+<td>input off; go button at 50 %</td>
+<td>none</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Layouts</strong> (starting points; the editor can move any widget, never the auth area)</p>
+<table>
+<thead>
+<tr>
+<th>Layout</th>
+<th>Spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Centered (default)</td>
+<td>clock top at 1/4, date 8 above it, centred; media card w 360 20 below the clock; chips row 8 below the card; auth column centred with the capsule centre at 3/4; status island and session button</td>
+</tr>
+<tr>
+<td>Glance</td>
+<td>glance layer: clock block at left 96, top 120; card column left 96, top 252, w 400, g 8; footnote label_2 "Press any key or look at the camera to unlock" centred, 72 from the bottom. A key press, click or pointer move Grows the auth sheet (P5 shape, from the centre): thick glass, w 360, r 28, p 32 / 24 / 24, g 12, E3, centred; the capsule inside uses fill_1 instead of glass; the glance layer recedes to 40 %. The first key press goes into the field. Face works on the glance layer</td>
+</tr>
+<tr>
+<td>Split</td>
+<td>clock block (size L) left 96, vertically centred; widget row 24 below the clock; auth column right edge 160 from the output edge, vertically centred</td>
+</tr>
+<tr>
+<td>Minimal</td>
+<td>clock (size L) centred, top at 2/5; date below it; capsule only (no avatar, no name), centred, 96 from the bottom; island and session button hide until the pointer moves</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Chrome</strong></p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>status island</td>
+<td>§9.1 island at top 8, right 8: h 32, r 16, p 0 12 0 8, g 8; symbols 16; text headline; battery, network, keyboard layout; charging adds the bolt</td>
+</tr>
+<tr>
+<td>session button</td>
+<td>icon button 40 (circle), regular glass, symbol 16; right 24, bottom 24; opens the power menu</td>
+</tr>
+<tr>
+<td>power menu</td>
+<td>thick glass, r 20, p 4, w 256, E3; 8 above the session button, right-aligned with it; items h 36, r 16 (R7), p 0 / 12, symbol 16, g 12, body label_1; current item = fill_2. Sleep, Restart, Shut down; no Log out</td>
+</tr>
+<tr>
+<td>inhibitor alert</td>
+<td>§9.10 alert, title-3 "Shut down anyway?" / "Restart anyway?", body "An app is preventing shutdown. Unsaved work in open apps is lost."; names no app while locked; Cancel (regular, default) + destructive capsule</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Cards and widgets</strong> (regular glass, r 16, p 12, g 12 unless stated)</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>media card</td>
+<td>art 40 r 8; title body 600 + footnote label_2 "artist · app", one line each; controls 32 circles, g 4, playing control on fill_2</td>
+</tr>
+<tr>
+<td>notification group</td>
+<td>app icon 24 r 6; body "<strong>App</strong> · N notifications"; footnote label_2 "Unlock to read"; trailing time footnote label_2. Content shown only when <code>lockscreen.notification_content = shown</code></td>
+</tr>
+<tr>
+<td>chip</td>
+<td>h 24, r 12, p 0 / 8, fill_1, footnote label_2; phone battery, notification count, charging time; g 8</td>
+</tr>
+<tr>
+<td>timer / alarm</td>
+<td>w 196; symbol 20, value body 600 tabular, footnote label_2 label</td>
+</tr>
+<tr>
+<td>call card</td>
+<td>thick glass, w 400, r 24, p 16; avatar 48 on fill_2, g 12, title-3 "Incoming call", footnote label_2 device (caller only when content = shown); 16 below: two h 40 capsules, g 8, equal width: "Decline" on danger with a lock symbol (asks for auth), "Answer on phone" on success</td>
+</tr>
+<tr>
+<td>small widget</td>
+<td>112 x 56, p 12; value title-3, label footnote label_2</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Editor</strong> (only while unlocked: Settings › Lock Screen › Customize opens a full-screen preview on a normal layer surface)</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Spec</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>editor bar</td>
+<td>thick glass capsule h 40, p 4, g 4, centred, top 16; segments h 32, r 16, p 0 / 16, body label_2; current segment white 92 % with dark text 600; "Done" small primary capsule, accent, 8 before it</td>
+</tr>
+<tr>
+<td>modes</td>
+<td>Slots / Free (+ "Snap to zones" toggle segment) / Wallpaper / Layout ▾ / Theme ▾</td>
+</tr>
+<tr>
+<td>slot</td>
+<td>dashed 1.5 px white 55 %, r 16; selected: 2 px accent_text + 4 px accent_text 25 % ring; empty slot "+" 112 x 56</td>
+</tr>
+<tr>
+<td>zones</td>
+<td>inset 48 left and right, dashed 1.5 px white 40 %, r 20; label chip h 20 at top -10, inset 16; Auth zone solid white 20 % over black 10 %, "Auth · fixed"</td>
+</tr>
+<tr>
+<td>free grid</td>
+<td>32 px dot grid, moves snap to 4; selection 2 px accent_text + handles 10; dragging lifts (rotate -1°, E3); the auth area shows danger 10 % with "Auth area — widgets cannot be dropped here"</td>
+</tr>
+<tr>
+<td>gallery</td>
+<td>thick glass, r 28, p 16, w 720 (wallpaper 880), bottom 24, centred; title-3 header, g 12; items fill_1 r 16 (72 high, 5 columns, g 8); current fill_2 + 1.5 px accent_text inset</td>
+</tr>
+<tr>
+<td>keyboard</td>
+<td>Tab selects, arrows move 4 px (Shift 32), Ctrl+arrows resize, Delete removes, Enter or Done saves, Escape discards</td>
+</tr>
+</tbody>
+</table>
+<p>Motion: lock and unlock P20; the auth sheet Grows on P5 springs; wrong password shake on snap; fail-delay
+countdown ticks without motion. Reduce motion: the sheet and the shake become fades.</p>
 <h3 id="ch-9-9-16-control-center">9.16 Control center</h3>
 <p>One thick-glass sheet that Grows out of the right island (P5). The layout of 9.3 stays; this section adds pages,
 detail pages, editing and every state. Mockup: <code>.agent/mockups/cc-v2-final.html</code>.</p>
@@ -2348,7 +2629,15 @@ detail pages, editing and every state. Mockup: <code>.agent/mockups/cc-v2-final.
 </tr>
 <tr>
 <td>detail page</td>
-<td>Slides in inside the sheet (P12); header h 48: back icon button 32, title-3, the module's toggle at the end; content = grouped rows (§9.7) on fill_1 cards r 12 (rows r 8 at p 4); footer: plain small buttons, the last opens the Settings page; Escape or back returns</td>
+<td>Slides in inside the sheet (P12); header h 48: back icon button 32, title-3, the module's toggle at the end; content = grouped rows (§9.7) on glass_card cards r 12 with a glass_card_edge hairline (rows r 8 at p 4); footer: plain small buttons, the last opens the Settings page; Escape or back returns</td>
+</tr>
+<tr>
+<td>current item</td>
+<td>the connected network, the current output or profile: leading symbol in a 24 accent circle (white symbol 12), no row fill and no lens; hover of any row = fill_1 (one step)</td>
+</tr>
+<tr>
+<td>inline form</td>
+<td>(Wi-Fi password) field h 32 r 8 fill_2 + small primary button h 32 r 8: one height, one radius; never a white field on glass</td>
 </tr>
 <tr>
 <td>edit mode</td>
@@ -2369,7 +2658,7 @@ detail pages, editing and every state. Mockup: <code>.agent/mockups/cc-v2-final.
 <tr>
 <td>Wi-Fi</td>
 <td>network name or "Off"</td>
-<td>toggle; Connected group (lens row, signal, lock); Other networks (sorted by signal, 5 then "Show all"); "Other Network..." (hidden SSID join), "Wi-Fi Settings..."</td>
+<td>toggle; Connected group (accent signal circle, lock); Other networks (sorted by signal, 5 then "Show all"); "Other Network..." (hidden SSID join), "Wi-Fi Settings..."</td>
 </tr>
 <tr>
 <td>Bluetooth</td>
@@ -2685,6 +2974,7 @@ that asks for more input ("Rename..."). Numbers as digits; percent without a spa
 <li>The surface opens from and returns to its source.</li>
 <li>Reduced motion, reduce transparency, increase contrast, light and dark were captured.</li>
 <li>A capture next to <code>rulebook.html</code> matches within 1 px at scale 1 and 1.5.</li>
+<li>The spec states worst-case data and the §16 budgets, and the change has before and after numbers for them.</li>
 </ol>
 </section>
 <section class="doc" id="ch-D"><h2>Deviations from the rulebook</h2>
@@ -2961,8 +3251,8 @@ rulebook yet, full restyle.</p>
 </tr>
 <tr>
 <td>Tooltips</td>
-<td>O</td>
-<td>-&gt; h 24 r 8 p 4/8 thick glass, 600 ms delay, warm show (9.11)</td>
+<td>N</td>
+<td>h 24 r 8 p 4/8 thick glass, 600 ms delay, warm show (9.11); key/value rows at 16 pitch (8 + 16 n); E3 shadow missing: the compositor draws none for xdg popups</td>
 </tr>
 <tr>
 <td>Menus (tray, context)</td>
@@ -2977,7 +3267,12 @@ rulebook yet, full restyle.</p>
 <tr>
 <td>Lock screen</td>
 <td>O</td>
-<td>51 off-grid literals -&gt; rulebook 9.15 (hero clock at 1/4 height, account at 2/3, password capsule 240 x 40, status island); motion P20</td>
+<td>51 off-grid literals -&gt; rulebook 9.15 (hero clock at 1/4 height, capsule centre at 3/4, password capsule 240 x 40, status island); motion P20. The Ryoku theme stays outside the rulebook on purpose (user 2026-11-03)</td>
+</tr>
+<tr>
+<td>Lock screen editor</td>
+<td>N</td>
+<td>vs .agent/mockups/lockscreen.html section 2: Free has a bottom toolbar of add chips (the mock shows no add control); a selected Free widget has one handle (bottom right, resize), not the mock's two; vs section 3 (Wallpaper tab): the tile grid shows 2 rows and scrolls by rows (the mock shows 1 row; a wallpaper folder does not fit in one)</td>
 </tr>
 <tr>
 <td>Window switcher</td>
@@ -3032,6 +3327,36 @@ rulebook yet, full restyle.</p>
   no duration animation outside continuous loops.</li>
 </ul>
 <p>Open decisions for the user are listed in <code>.agent/NEXT.md</code> ("Rulebook").</p>
+<h3 id="ch-D-files-v2-2026-11-07">Files v2 (2026-11-07)</h3>
+<ul>
+<li>File names truncate in the middle so the extension stays visible (rulebook: end ellipsis). Finder and Explorer do the same.</li>
+<li>Content-view selection is an accent tint per selected item, not the lens: many items can be selected; the lens marks only the focused/current item in tracks.</li>
+</ul>
+<h3 id="ch-D-bar-islands-2026-11-10">Bar islands (2026-11-10)</h3>
+<ul>
+<li>Left island order is workspace track first, then app icon and title (rulebook §9.1 lists app first). The track leads at the text inset 12; its pill ink sits on the box edge.</li>
+<li>Track to app icon: flex gap 8, not §9.1 "g 12". The icon's 16 box carries about 2 of clear margin, so the ink gap is 10, equal to icon -&gt; title (11). A 12 box gap read as a hole (user, 2026-11-10).</li>
+<li>Vertical left island ends at the app icon with box inset 10, not the symbol end 8 (R5): the icon's clear margin puts its ink 12 in, equal to the track's lead. Rule: equal optical (ink) end padding.</li>
+</ul>
+<h3 id="ch-D-shape-glass-tone-2026-11-11">Shape glass tone (2026-11-11)</h3>
+<ul>
+<li>All shell glass (bar islands, dock, center island, launcher pill, sheets, menus, tooltips, OSD, notifications) at Clear and Tinted uses dark glass with white content in both schemes (user, 2026-11-11); rulebook "Light is not inverted dark" implies light glass in light mode. Frosted (slider &gt;= 0.75) keeps the scheme glass. Over a bright backdrop the shape tint rises to the dense tint 0.84 so white symbols keep &gt;= 3:1. Apps and their windows keep the scheme.</li>
+</ul>
+<h3 id="ch-D-lock-screen-own-image-blur-2026-11-11">Lock screen own image blur (2026-11-11)</h3>
+<ul>
+<li>design-system.md rule 4 (blur only in the compositor): the lock screen's desktop wallpaper uses the compositor's cached blur (ext-background-effect-v1, <code>lock_surface.cpp:1440</code>). A lock image of its own is not behind the surface, so the compositor cannot blur it: the shell blurs it once at decode (<code>SharedTextureRequest.blur</code>, <code>lock_surface.cpp:2531</code>). No per-frame blur. Without compositor blur the desktop wallpaper shows sharp.</li>
+</ul>
+<h3 id="ch-D-theme-transition-clock-2026-11-12">Theme transition clock (2026-11-12)</h3>
+<ul>
+<li>Rulebook 7.9 (step on the frame clock, never a wall-clock timer): theme transitions step on a 16 ms wall timer (<code>shell/src/theme/theme_service.cpp:303</code>), because ThemeService owns no surface. The timer runs only during a transition, so idle wakeups stay at zero. All other shell animations step on <code>wl_callback</code> time (b2f463c8b).</li>
+</ul>
+<h3 id="ch-D-share-picker-2026-11-15">Share picker (2026-11-15)</h3>
+<ul>
+<li>Thumbnails fit inside the tile (contain), not the mockup's cover crop from the top left: real windows have any aspect
+  ratio, and a crop hides part of what the user is about to share.</li>
+<li>Tile padding 4 and caption gap 8, not the mockup's 6 and 6: 6 is off the 4 grid. The 4 px band around a thumbnail
+  holds the selection ring (2 px gap, 2 px accent), as the mockup's double shadow does.</li>
+</ul>
 </section>
 </main>
 </div>
