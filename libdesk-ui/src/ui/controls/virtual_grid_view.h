@@ -3,6 +3,7 @@
 #include "render/scene/node.h"
 #include "ui/tooltip_content.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/slot_layout_inputs.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -234,6 +235,7 @@ private:
   std::vector<bool> m_slotBoundSelected;
   std::vector<bool> m_slotBoundHovered;
   std::vector<bool> m_slotBoundOverlayHovered;
+  SlotLayoutInputs m_tileLayoutInputs;
 
   std::size_t m_columns = 0;
   float m_minCellWidth = 96.0F;

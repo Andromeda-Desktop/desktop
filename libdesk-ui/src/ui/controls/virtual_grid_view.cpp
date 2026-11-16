@@ -565,6 +565,9 @@ void VirtualGridView::doLayout(Renderer& renderer) {
   const std::size_t columns = metrics.columns;
   const float cellW = metrics.cellW;
   const float cellH = metrics.cellH;
+  const SlotLayoutInputs tileInputs = SlotLayoutInputs::of(renderer, cellW, cellH);
+  const bool layoutAllTiles = tileInputs != m_tileLayoutInputs;
+  m_tileLayoutInputs = tileInputs;
   const std::size_t rowCount = metrics.rowCount;
   float virtualHeight = metrics.virtualHeight;
   float virtualWidth = viewportW;
@@ -761,7 +764,10 @@ void VirtualGridView::doLayout(Renderer& renderer) {
         tile->setVisible(true);
         // Canvas's doLayout is a no-op, so we lay out each pool tile explicitly
         // here — otherwise the inner glyph/label children never get measured.
-        tile->layout(renderer);
+        // A scroll only moves the content node: a tile that kept its row and inputs keeps its layout.
+        if (dirty || layoutAllTiles || tile->layoutDirty()) {
+          tile->layout(renderer);
+        }
       }
     }
   }
@@ -844,7 +850,8 @@ void VirtualGridView::onScrollChanged(float /*offset*/) {
   }
   m_hoveredIndex.reset();
   m_hoveredOverlayIndex.reset();
-  markLayoutDirty();
+  // Rows entering the view need binding; the rest of the window keeps its layout.
+  markLocalLayoutDirty();
   notifyPageChanged();
 }
 

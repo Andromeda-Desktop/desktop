@@ -116,6 +116,7 @@ Node::~Node() {
 
 void Node::layout(Renderer& renderer) {
   uiAssertNotRendering("Node::layout");
+  m_localLayoutDirty = false;
   doLayout(renderer);
 }
 
@@ -509,6 +510,30 @@ void Node::markLayoutDirty() {
   propagatePaintDirty();
 }
 
+void Node::markLocalLayoutDirty() {
+  m_localLayoutDirty = true;
+  for (Node* node = this; node != nullptr && !node->m_localLayoutInSubtree; node = node->m_parent) {
+    node->m_localLayoutInSubtree = true;
+  }
+  propagatePaintDirty();
+}
+
+void Node::layoutLocalPending(Renderer& renderer) {
+  if (!m_localLayoutInSubtree) {
+    return;
+  }
+  m_localLayoutInSubtree = false;
+  if (!visible()) {
+    return;
+  }
+  if (m_localLayoutDirty) {
+    layout(renderer);
+  }
+  for (auto& child : m_children) {
+    child->layoutLocalPending(renderer);
+  }
+}
+
 void Node::propagatePaintDirty() {
   if (m_paintDirty) {
     return;
@@ -546,6 +571,8 @@ void Node::clearDirty() {
   }
   m_paintDirty = false;
   m_layoutDirty = false;
+  m_localLayoutDirty = false;
+  m_localLayoutInSubtree = false;
   for (auto& child : m_children) {
     if (child->paintDirty() || child->layoutDirty()) {
       child->clearDirty();

@@ -1455,10 +1455,18 @@ void Surface::destroySurface() {
 }
 
 void Surface::preparePendingFrame() {
-  if (m_prepareFrameCallback == nullptr || (!m_updateRequested && !m_layoutRequested)) {
+  const bool callbackDue = m_prepareFrameCallback != nullptr && (m_updateRequested || m_layoutRequested);
+  const bool localLayoutDue = m_sceneRoot != nullptr && m_sceneRoot->localLayoutPending();
+  if (!callbackDue && !localLayoutDue) {
     return;
   }
   if (!ensureRenderTargetReady()) {
+    return;
+  }
+  if (!callbackDue) {
+    UiPhaseScope preparePhase(UiPhase::PrepareFrame);
+    ScopedBoolFlag preparing{m_inPrepareFrame};
+    m_sceneRoot->layoutLocalPending(m_renderTarget.renderer());
     return;
   }
 
@@ -1478,6 +1486,10 @@ void Surface::preparePendingFrame() {
       callbackMs, "surface prepareFrame callback took {:.1F}ms ({}, {}x{} logical)", callbackMs,
       static_cast<const void*>(this), m_width, m_height
   );
+  // After the update and any root layout, which already laid out the nodes it reached.
+  if (m_sceneRoot != nullptr && m_sceneRoot->localLayoutPending()) {
+    m_sceneRoot->layoutLocalPending(m_renderTarget.renderer());
+  }
 }
 
 void Surface::kickFrameLoop() {

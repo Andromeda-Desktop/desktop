@@ -204,6 +204,11 @@ public:
   // Only `local` (node coordinates) changed; a whole-node markPaintDirty in the same frame wins.
   void markPaintDirty(const DamageRect& local);
   void markLayoutDirty();
+  // Lays out only this node at the next frame, after the update and root layout: for content that follows a scroll
+  // offset while the node's own size and its parent stay the same.
+  void markLocalLayoutDirty();
+  [[nodiscard]] bool localLayoutPending() const noexcept { return m_localLayoutInSubtree; }
+  void layoutLocalPending(Renderer& renderer);
   void clearDirty();
 
   // Damage tracking, driven by RenderContext: the node's own pixels changed since the last frame.
@@ -255,6 +260,8 @@ private:
   bool m_participatesInLayout = true;
   bool m_paintDirty = true;
   bool m_layoutDirty = true;
+  bool m_localLayoutDirty = false;     // this node waits for a local layout
+  bool m_localLayoutInSubtree = false; // this node or a descendant waits for one
   bool m_selfPaintDirty = true;
   std::optional<DamageRect> m_paintedBounds;
   std::optional<DamageRect> m_paintedClip;

@@ -2,6 +2,7 @@
 
 #include "render/scene/node.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/slot_layout_inputs.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -100,6 +101,7 @@ private:
   std::vector<std::uint64_t> m_slotBoundRevision;
   std::vector<int> m_slotBoundWidthKey;
   std::vector<bool> m_slotBoundHovered;
+  SlotLayoutInputs m_slotLayoutInputs;
 
   std::vector<HeightCache> m_heightCache;
   std::vector<float> m_itemHeights;

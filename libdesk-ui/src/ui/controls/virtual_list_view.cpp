@@ -263,6 +263,10 @@ void VirtualListView::doLayout(Renderer& renderer) {
   std::vector<bool> slotActive(m_pool.size(), false);
   if (!m_pool.empty() && end > first) {
     const int bindWidthKey = widthCacheKey(viewportW);
+    // Item heights vary, so the width alone keys the shared inputs; a height change resizes the slot and dirties it.
+    const SlotLayoutInputs slotInputs = SlotLayoutInputs::of(renderer, viewportW, 0.0F);
+    const bool layoutAllSlots = slotInputs != m_slotLayoutInputs;
+    m_slotLayoutInputs = slotInputs;
     for (std::size_t index = first; index < end; ++index) {
       const std::size_t slotIndex = index % m_pool.size();
       Slot* slot = m_pool[slotIndex];
@@ -298,7 +302,10 @@ void VirtualListView::doLayout(Renderer& renderer) {
       }
 
       slot->setVisible(true);
-      slot->layout(renderer);
+      // A scroll only moves the content: a slot that kept its item and inputs keeps its layout.
+      if (dirty || layoutAllSlots || slot->layoutDirty()) {
+        slot->layout(renderer);
+      }
     }
   }
 
