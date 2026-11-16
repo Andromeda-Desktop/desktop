@@ -66,7 +66,9 @@ void CommandIndex::onMark(GhosttyTerminal terminal, const CommandMark& mark,
     if (open != nullptr && open->phase == CommandEntry::Phase::Running) close(*open, std::nullopt, now);
     start(terminal);
     return;
-  case CommandMark::Kind::InputStart: return;
+  case CommandMark::Kind::InputStart:
+    if (open != nullptr && open->phase == CommandEntry::Phase::Prompt) open->input = trackCursor(terminal);
+    return;
   case CommandMark::Kind::OutputStart: {
     if (open != nullptr && open->phase == CommandEntry::Phase::Running) return;
     TrackedRef output = trackCursor(terminal);

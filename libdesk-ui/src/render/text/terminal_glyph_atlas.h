@@ -13,7 +13,7 @@
 // their own and are scaled to fit two cells. Glyphs missing from the font come from a fontconfig fallback face.
 class TerminalGlyphAtlas {
 public:
-  enum class Face : std::uint8_t { Regular, Bold, Italic, BoldItalic };
+  enum class Face : std::uint8_t { Regular, Bold, Italic, BoldItalic, Medium }; // 400, 600, 400 italic, 600 italic, 500
 
   // Device pixels. Bearings put the bitmap relative to the cell's left edge and baseline.
   struct Glyph {
@@ -72,7 +72,7 @@ private:
   };
   struct KeyHash {
     std::size_t operator()(const Key& k) const noexcept {
-      return (std::size_t(k.scale) << 40) | (std::size_t(k.codepoint) << 2) | std::size_t(k.face);
+      return (std::size_t(k.scale) << 40) | (std::size_t(k.codepoint) << 3) | std::size_t(k.face);
     }
   };
 
@@ -91,7 +91,7 @@ private:
   struct Library;
   std::unique_ptr<Library> m_library;
   std::unordered_map<std::string, std::unique_ptr<FontFace>> m_faces; // by "file#index"
-  FontFace* m_primary[4] = {};
+  FontFace* m_primary[5] = {};
   std::unordered_map<Key, Glyph, KeyHash> m_glyphs;
   std::unordered_set<Key, KeyHash> m_missing;
 

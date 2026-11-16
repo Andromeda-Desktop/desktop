@@ -35,6 +35,7 @@
 #include <cmath>
 #include <format>
 #include <cstdlib>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -722,6 +723,38 @@ namespace term {
     all = all || !m_preedit.empty();
     int preeditWidth = 0;
 
+    // Command lines (133;B to 133;C) in view, in screen cells; a line still being typed runs to the end of the screen.
+    struct CommandSpan {
+      std::uint64_t y0, x0, y1, x1;
+    };
+    const std::uint64_t top = m_viewRow;
+    const auto spans = m_session.withCommands([&](GhosttyTerminal t, const CommandIndex& commands) {
+      std::vector<CommandSpan> out;
+      GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen) != GHOSTTY_SUCCESS
+          || screen != GHOSTTY_TERMINAL_SCREEN_PRIMARY) {
+        return out; // the refs live on the primary screen
+      }
+      const auto& entries = commands.entries();
+      for (auto it = entries.rbegin(); it != entries.rend(); ++it) {
+        GhosttyPointCoordinate from{};
+        if (it->input == nullptr
+            || ghostty_tracked_grid_ref_point(it->input.get(), GHOSTTY_POINT_TAG_SCREEN, &from) != GHOSTTY_SUCCESS) {
+          continue;
+        }
+        GhosttyPointCoordinate to{.x = 0, .y = std::numeric_limits<std::uint32_t>::max()};
+        if (it->output != nullptr
+            && ghostty_tracked_grid_ref_point(it->output.get(), GHOSTTY_POINT_TAG_SCREEN, &to) != GHOSTTY_SUCCESS) {
+          continue;
+        }
+        if (to.y < top) {
+          break;
+        }
+        out.push_back({from.y, from.x, to.y, to.x});
+      }
+      return out;
+    });
+
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_ROW_ITERATOR, &m_rows);
     std::uint16_t index = 0;
     std::uint16_t y = 0;
@@ -826,6 +859,16 @@ namespace term {
       }
       if (linked) {
         markSizedRuns(y);
+      }
+      for (const CommandSpan& span : spans) {
+        const std::uint64_t row = top + y;
+        if (row < span.y0 || row > span.y1) {
+          continue;
+        }
+        const std::size_t end = row == span.y1 ? std::min<std::size_t>(span.x1, m_rowBuffer.size()) : m_rowBuffer.size();
+        for (std::size_t x = row == span.y0 ? span.x0 : 0; x < end; ++x) {
+          m_rowBuffer[x].flags |= TerminalCell::Command;
+        }
       }
       if (m_link && m_link->row == y) {
         for (int x = m_link->start; x < std::min<int>(m_link->end, static_cast<int>(m_rowBuffer.size())); ++x) {

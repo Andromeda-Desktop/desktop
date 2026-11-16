@@ -25,6 +25,7 @@ struct TerminalCell {
     DecorationColor = 1 << 7, // underline in decoration, not fg
     Sized = 1 << 8, // OSC 66 text: textScale, textFraction and textAlign apply
     SizedStart = 1 << 9, // the first cell of a sized run; the run ends before the next start or unsized cell
+    Command = 1 << 10, // the shell's command line (OSC 133 B to C): weight 500 unless Bold
   };
   enum class UnderlineStyle : std::uint8_t { Single, Double, Curly, Dotted, Dashed };
   char32_t codepoint = 0;      // 0 = no glyph

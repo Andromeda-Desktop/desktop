@@ -30,6 +30,7 @@ struct CommandEntry {
   enum class Phase : std::uint8_t { Prompt, Running, Done };
   Phase phase = Phase::Prompt;
   TrackedRef prompt; // the cell of the 133;A cursor
+  TrackedRef input;  // the cell of the 133;B cursor (the command line starts here); null before 133;B
   TrackedRef output; // the cell of the 133;C cursor; null in Prompt
   std::string cwdUri; // OSC 7 at the prompt
   std::string branch; // the shell's git_branch user var (OSC 1337 SetUserVar) after 133;A; empty: none

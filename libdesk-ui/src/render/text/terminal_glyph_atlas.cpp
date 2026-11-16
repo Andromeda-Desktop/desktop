@@ -48,12 +48,12 @@ namespace {
 
   // needs != 0 asks for a face that covers that codepoint (fallback).
   // color asks for a colour font (emoji); otherwise colour fonts are excluded.
-  std::optional<FontMatch> matchFont(const std::string& family, bool bold, bool italic, char32_t needs, bool color) {
+  std::optional<FontMatch> matchFont(const std::string& family, int weight, bool italic, char32_t needs, bool color) {
     FcPattern* pattern = FcNameParse(reinterpret_cast<const FcChar8*>(family.c_str()));
     if (pattern == nullptr) {
       return std::nullopt;
     }
-    FcPatternAddInteger(pattern, FC_WEIGHT, bold ? FC_WEIGHT_SEMIBOLD : FC_WEIGHT_REGULAR);
+    FcPatternAddInteger(pattern, FC_WEIGHT, weight);
     FcPatternAddInteger(pattern, FC_SLANT, italic ? FC_SLANT_ITALIC : FC_SLANT_ROMAN);
     FcPatternAddBool(pattern, FC_COLOR, color ? FcTrue : FcFalse);
     if (needs != 0) {
@@ -166,7 +166,8 @@ TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::faceFor(Face face, char32_t ne
   if (needs == 0 && m_primary[static_cast<int>(face)] != nullptr) {
     return m_primary[static_cast<int>(face)];
   }
-  const auto match = matchFont(m_family, bold, italic, needs, color);
+  const int weight = bold ? FC_WEIGHT_SEMIBOLD : face == Face::Medium ? FC_WEIGHT_MEDIUM : FC_WEIGHT_REGULAR;
+  const auto match = matchFont(m_family, weight, italic, needs, color);
   if (!match) {
     return nullptr;
   }

@@ -32,7 +32,10 @@ namespace {
     if (bold) {
       return TerminalGlyphAtlas::Face::Bold;
     }
-    return italic ? TerminalGlyphAtlas::Face::Italic : TerminalGlyphAtlas::Face::Regular;
+    if (italic) {
+      return TerminalGlyphAtlas::Face::Italic;
+    }
+    return (flags & TerminalCell::Command) != 0 ? TerminalGlyphAtlas::Face::Medium : TerminalGlyphAtlas::Face::Regular;
   }
 
 } // namespace
