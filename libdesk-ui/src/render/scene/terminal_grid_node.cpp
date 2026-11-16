@@ -147,7 +147,11 @@ void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
   }
 }
 
-void TerminalGridNode::markRowDirty(int row) { markRowDirty(row, 0.0F, width()); }
+void TerminalGridNode::markRowDirty(int row) {
+  // One cell of slack each side, as for a cell span; the padding outside the cells never changes with a row.
+  const float w = cellWidth();
+  markRowDirty(row, m_originX - w, m_originX + static_cast<float>(m_columns + 1) * w);
+}
 
 void TerminalGridNode::markRowDirty(int row, float left, float right) {
   // Half a cell above and below: glyphs that overhang their cell (italic, tall emoji) leave pixels in the next rows.

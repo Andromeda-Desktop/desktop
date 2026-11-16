@@ -48,6 +48,8 @@ namespace {
   constexpr float kSlowRenderOperationDebugMs = 50.0F;
   constexpr float kSlowRenderOperationWarnMs = 1000.0F;
   constexpr float kPaintCullSlack = 16.0F;
+  // A node's sub-rect damage already holds its content overhang; one pixel covers edge antialiasing.
+  constexpr float kPartialDamageSlack = 1.0F;
   constexpr auto kGpuCacheIdleExpiry = std::chrono::seconds(15);
   constexpr auto kCacheExpirySlack = std::chrono::seconds(1);
 
@@ -215,8 +217,8 @@ namespace {
                              world.transformPoint(r.x1, r.y1), world.transformPoint(r.x0, r.y1)}) {
           w = {std::min(w.x0, c.x), std::min(w.y0, c.y), std::max(w.x1, c.x), std::max(w.y1, c.y)};
         }
-        out.add(DamageRect{w.x0 - kPaintCullSlack, w.y0 - kPaintCullSlack, w.x1 + kPaintCullSlack,
-                           w.y1 + kPaintCullSlack});
+        out.add(DamageRect{w.x0 - kPartialDamageSlack, w.y0 - kPartialDamageSlack, w.x1 + kPartialDamageSlack,
+                           w.y1 + kPartialDamageSlack});
       }
     }
     for (const auto& child : node->children()) {
@@ -774,8 +776,36 @@ void RenderContext::renderNode(
   }
   drawSelf(kTerminalGridAll);
   const std::optional<Radii>& roundClip = node->childClip();
+  // Where no repaint pass reaches outside a corner arc, the scissor already gives the rounded clip: no stencil work.
+  const auto passesReachCorners = [&] {
+    const Mat3& m = worldTransform;
+    if (m_passCount == 0 || m.m[1] != 0.0F || m.m[3] != 0.0F) {
+      return true;
+    }
+    const float scale = std::min(std::abs(m.m[0]), std::abs(m.m[4]));
+    const Radii& r = *roundClip;
+    const DamageRect box{boundsLeft, boundsTop, boundsRight, boundsBottom};
+    return std::ranges::any_of(passes, [&](const RepaintPass& pass) {
+      const DamageRect a{std::max(box.x0, pass.logical.x0), std::max(box.y0, pass.logical.y0),
+                         std::min(box.x1, pass.logical.x1), std::min(box.y1, pass.logical.y1)};
+      if (a.empty()) {
+        return false;
+      }
+      // The pass point nearest each box corner is the one farthest outside that corner's arc; 1 px covers the edge.
+      const auto outside = [&](float radius, float px, float py, float cornerX, float cornerY) {
+        const float rr = radius * scale;
+        const float cx = cornerX + std::copysign(rr, px - cornerX);
+        const float cy = cornerY + std::copysign(rr, py - cornerY);
+        const bool inSquare = std::abs(px - cornerX) < rr && std::abs(py - cornerY) < rr;
+        return rr > 0.0F && inSquare && std::hypot(px - cx, py - cy) > rr - 1.0F;
+      };
+      return outside(r.tl, a.x0, a.y0, box.x0, box.y0) || outside(r.tr, a.x1, a.y0, box.x1, box.y0)
+          || outside(r.br, a.x1, a.y1, box.x1, box.y1) || outside(r.bl, a.x0, a.y1, box.x0, box.y1);
+    });
+  };
   const bool rounded = roundClip && !childrenClipped
-                       && (roundClip->tl > 0.0F || roundClip->tr > 0.0F || roundClip->br > 0.0F || roundClip->bl > 0.0F);
+                       && (roundClip->tl > 0.0F || roundClip->tr > 0.0F || roundClip->br > 0.0F || roundClip->bl > 0.0F)
+                       && passesReachCorners();
   RenderScissor area{};
   if (rounded) {
     // Stencil work covers only where children can draw: the clip box within the repaint passes.
