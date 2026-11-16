@@ -43,7 +43,16 @@ private:
   [[nodiscard]] bool libraryShown() const;
   void updateSidebar();
   void showView(LibraryView view);
+  // One library level above the view list: an album, a playlist or an artist.
+  struct LibraryLevel {
+    enum class Kind { Album, Playlist, Artist } kind;
+    std::size_t index = 0;
+    std::string artist;
+  };
   bool libraryBack();
+  void libraryForward();
+  // Opens a level from the view; a new level drops the Forward history.
+  void openLevel(LibraryLevel level, bool fromHistory = false);
   void playAlbumAt(std::size_t album, std::size_t index);
   void playSongsAt(std::size_t index);
   void playAlbumShuffled(std::size_t album);
@@ -76,6 +85,7 @@ private:
   std::optional<std::size_t> m_openAlbum;
   std::optional<std::size_t> m_openPlaylist;
   std::string m_openArtist;
+  std::vector<LibraryLevel> m_forward; // levels Back left, newest last
   bool m_lastHasVideo = false;
   std::string m_nowPlayingPath;
   bool m_volumeRestored = false;

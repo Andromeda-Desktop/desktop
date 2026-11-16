@@ -119,8 +119,9 @@ void PlayerApp::startup() {
                   .shortcut = KeyChord{.sym = XKB_KEY_Left, .modifiers = KeyMod::Alt},
                   .enabled = [this] { return m_openAlbum.has_value() || m_openPlaylist.has_value() || !m_openArtist.empty(); },
                   .run = [this] { libraryBack(); }});
-  commands().add({.id = "go.forward", .label = "Forward", .group = "Go", .shortcut = std::nullopt,
-                  .enabled = [] { return false; }, .run = [] {}});
+  commands().add({.id = "go.forward", .label = "Forward", .group = "Go",
+                  .shortcut = KeyChord{.sym = XKB_KEY_Right, .modifiers = KeyMod::Alt},
+                  .enabled = [this] { return !m_forward.empty(); }, .run = [this] { libraryForward(); }});
   commands().add({.id = "player.next", .label = "Next", .group = "Playback",
                   .shortcut = KeyChord{.sym = XKB_KEY_n, .modifiers = 0}, .enabled = {},
                   .run = [this] { m_mpv.next(); }});
@@ -296,7 +297,7 @@ void PlayerApp::action(const std::string& name, const std::vector<std::string>& 
   if (name == "library.show-album" && !parameter.empty() && m_library != nullptr) {
     if (const MusicAlbum* album = m_library->findAlbum(parameter.front())) {
       showView(LibraryView::Albums);
-      m_openAlbum = static_cast<std::size_t>(album - m_library->albums().data());
+      openLevel({.kind = LibraryLevel::Kind::Album, .index = static_cast<std::size_t>(album - m_library->albums().data())});
     }
     return;
   }
@@ -591,6 +592,7 @@ void PlayerApp::updateSidebar() {
 
 void PlayerApp::showView(LibraryView view) {
   m_view = view;
+  m_forward.clear();
   m_openAlbum.reset();
   m_openPlaylist.reset();
   m_openArtist.clear();
@@ -602,19 +604,45 @@ void PlayerApp::showView(LibraryView view) {
 
 bool PlayerApp::libraryBack() {
   if (m_openAlbum.has_value()) {
-    m_openAlbum.reset();
+    m_forward.push_back({.kind = LibraryLevel::Kind::Album, .index = *std::exchange(m_openAlbum, std::nullopt)});
   } else if (m_openPlaylist.has_value()) {
-    m_openPlaylist.reset();
+    m_forward.push_back({.kind = LibraryLevel::Kind::Playlist, .index = *std::exchange(m_openPlaylist, std::nullopt)});
   } else if (!m_openArtist.empty()) {
-    m_openArtist.clear();
+    m_forward.push_back({.kind = LibraryLevel::Kind::Artist, .artist = std::exchange(m_openArtist, {})});
   } else {
     return false;
   }
+  kLog.debug("library back");
   m_libraryScroll = {};
   if (m_window != nullptr) {
     m_window->requestRebuild();
   }
   return true;
+}
+
+void PlayerApp::libraryForward() {
+  if (m_forward.empty()) {
+    return;
+  }
+  LibraryLevel level = std::move(m_forward.back());
+  m_forward.pop_back();
+  openLevel(std::move(level), true);
+}
+
+void PlayerApp::openLevel(LibraryLevel level, bool fromHistory) {
+  if (!fromHistory) {
+    m_forward.clear();
+  }
+  switch (level.kind) {
+  case LibraryLevel::Kind::Album: m_openAlbum = level.index; break;
+  case LibraryLevel::Kind::Playlist: m_openPlaylist = level.index; break;
+  case LibraryLevel::Kind::Artist: m_openArtist = std::move(level.artist); break;
+  }
+  kLog.debug("library open {} {}", static_cast<int>(level.kind), fromHistory ? "forward" : "new");
+  m_libraryScroll = {};
+  if (m_window != nullptr) {
+    m_window->requestRebuild();
+  }
 }
 
 void PlayerApp::playAlbumAt(std::size_t album, std::size_t index) {
@@ -732,9 +760,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
       press->setSize(tile, cellHeight);
       press->setOnPress([this, a](const InputArea::PointerData& data) {
         if (data.pressed && data.button == BTN_LEFT) {
-          m_openAlbum = a;
-          m_libraryScroll = {};
-          m_window->requestRebuild();
+          openLevel({.kind = LibraryLevel::Kind::Album, .index = a});
         }
       });
       press->addChild(std::move(cell));
@@ -805,9 +831,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
       std::ranges::sort(artists);
       for (const std::string& artist : artists) {
         row(artist, [this, artist] {
-          m_openArtist = artist;
-          m_libraryScroll = {};
-          m_window->requestRebuild();
+          openLevel({.kind = LibraryLevel::Kind::Artist, .artist = artist});
         });
       }
     }
@@ -829,9 +853,7 @@ std::unique_ptr<Node> PlayerApp::buildLibrary(Renderer& renderer, float s, float
     for (std::size_t p = 0; p < m_library->playlists().size(); ++p) {
       const MusicPlaylist& playlist = m_library->playlists()[p];
       row(std::format("{}  ·  {}", playlist.name, songs(playlist.entries.size())), [this, p] {
-        m_openPlaylist = p;
-        m_libraryScroll = {};
-        m_window->requestRebuild();
+        openLevel({.kind = LibraryLevel::Kind::Playlist, .index = p});
       });
     }
     break;
