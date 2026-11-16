@@ -281,7 +281,7 @@ void main() {
     bool bind() {
       if (!m_framebuffer.valid() || m_framebuffer.width() != m_width || m_framebuffer.height() != m_height) {
         m_hasFrame = false;
-        if (!m_framebuffer.create(m_textures, m_width, m_height)) {
+        if (!m_framebuffer.create(m_textures, m_width, m_height, true)) {
           return false;
         }
       }

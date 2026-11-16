@@ -125,8 +125,44 @@ namespace {
     }
   }
 
-  // The area a node fills with fully opaque pixels, or nothing. Only solid, axis-aligned rects at full opacity count;
-  // the cover stays inside the corners, the border and the anti-aliased edge.
+  // True when `area` reaches outside a corner arc of `box` shrunk by `inset` (radii shrink with it); 1 px covers the
+  // edge. The point of `area` nearest a box corner is the one farthest outside that corner's arc.
+  bool reachesOutsideCorners(DamageRect box, const Radii& radii, float scale, float inset, const DamageRect& area) {
+    box = {box.x0 + inset, box.y0 + inset, box.x1 - inset, box.y1 - inset};
+    const DamageRect a{std::max(box.x0, area.x0), std::max(box.y0, area.y0), std::min(box.x1, area.x1),
+                       std::min(box.y1, area.y1)};
+    if (a.empty()) {
+      return false;
+    }
+    const auto outside = [&](float radius, float px, float py, float cornerX, float cornerY) {
+      const float rr = (radius * scale) - inset;
+      const float cx = cornerX + std::copysign(rr, px - cornerX);
+      const float cy = cornerY + std::copysign(rr, py - cornerY);
+      const bool inSquare = std::abs(px - cornerX) < rr && std::abs(py - cornerY) < rr;
+      return rr > 0.0F && inSquare && std::hypot(px - cx, py - cy) > rr - 1.0F;
+    };
+    return outside(radii.tl, a.x0, a.y0, box.x0, box.y0) || outside(radii.tr, a.x1, a.y0, box.x1, box.y0)
+        || outside(radii.br, a.x1, a.y1, box.x1, box.y1) || outside(radii.bl, a.x0, a.y1, box.x0, box.y1);
+  }
+
+  // True when the node fills all of `area` with fully opaque pixels. Only solid, axis-aligned rects at full opacity
+  // count; the cover stays inside the corners, the border and the anti-aliased edge.
+  bool coversOpaque(const Node* node, const Mat3& world, float opacity, const DamageRect& bounds, const DamageRect& area) {
+    if (node->type() != NodeType::Rect || opacity < 1.0F || world.m[1] != 0.0F || world.m[3] != 0.0F
+        || world.m[0] <= 0.0F || world.m[4] <= 0.0F) {
+      return false;
+    }
+    const RoundedRectStyle& style = static_cast<const RectNode*>(node)->style();
+    if (style.fillMode != FillMode::Solid || style.fill.a < 1.0F || style.invertFill || style.outerShadow
+        || style.shadowExclusion || style.logicalInset != RectInsets{} || style.corners != CornerShapes{}) {
+      return false;
+    }
+    const float scale = std::min(world.m[0], world.m[4]);
+    const float inset = (style.borderWidth + style.softness + 1.0F) * scale;
+    const DamageRect cover{bounds.x0 + inset, bounds.y0 + inset, bounds.x1 - inset, bounds.y1 - inset};
+    return cover.contains(area) && !reachesOutsideCorners(bounds, style.radius, scale, inset, area);
+  }
+
   Mat3 nodeLocalTransform(const Node* node) {
     const float cx = node->transformOriginX();
     const float cy = node->transformOriginY();
@@ -479,10 +515,36 @@ bool RenderContext::renderScene(RenderTarget& target, Node* sceneRoot, const Wal
         m_backend->setScissor(m_passes[i].scissor);
         m_backend->clear(rgba(0.0F, 0.0F, 0.0F, 0.0F));
       }
+      if (sceneRoot != nullptr) {
+        findOccluders(sceneRoot, Mat3::identity(), 1.0F, bounds, 0);
+      }
       renderNode(
           renderScale, sceneRoot, Mat3::identity(), 1.0F, sw, sh, bw, bh, bounds.x0, bounds.y0, bounds.x1, bounds.y1,
           true, false, false
       );
+      // A pass whose occluder did not draw (culled, clipped out) drew nothing: draw it again in full.
+      const auto drawnPasses = m_passes;
+      const std::size_t passCount = m_passCount;
+      m_passCount = 0;
+      for (std::size_t i = 0; i < passCount; ++i) {
+        if (drawnPasses[i].occluder != nullptr && !drawnPasses[i].occluderReached) {
+          m_passes[m_passCount] = drawnPasses[i];
+          m_passes[m_passCount++].occluder = nullptr;
+        }
+      }
+      if (m_passCount > 0) {
+        kLog.debug("occluder not drawn: {} passes drawn again", m_passCount);
+        for (std::size_t i = 0; i < m_passCount; ++i) {
+          m_backend->setScissor(m_passes[i].scissor);
+          m_backend->clear(rgba(0.0F, 0.0F, 0.0F, 0.0F));
+        }
+        renderNode(
+            renderScale, sceneRoot, Mat3::identity(), 1.0F, sw, sh, bw, bh, bounds.x0, bounds.y0, bounds.x1,
+            bounds.y1, true, false, false
+        );
+      }
+      m_passes = drawnPasses;
+      m_passCount = passCount;
       // The mask cuts the repainted pixels only; pixels outside the passes keep their earlier cut.
       if (wallpaperMask != nullptr && wallpaperMask->texture != 0) {
         m_backend->setBlendMode(RenderBlendMode::DestinationOut);
@@ -638,6 +700,45 @@ void RenderContext::handleGraphicsReset(RenderGraphicsResetStatus status) {
   m_shared->reportGraphicsReset(status, "render");
 }
 
+// Paint order as renderNode: own draw, then children. A later cover replaces an earlier one, so each pass keeps the
+// topmost. A pass that reaches outside an ancestor's rounded clip is blocked: the clip cuts the cover's corners.
+void RenderContext::findOccluders(const Node* node, const Mat3& parentTransform, float parentOpacity, DamageRect clip,
+                                  std::uint32_t blockedPasses) {
+  if (!node->visible() || node->type() == NodeType::RenderProxy) {
+    return;
+  }
+  const Mat3 world = parentTransform * nodeLocalTransform(node);
+  const float opacity = parentOpacity * node->opacity();
+  if (opacity <= 0.0F) {
+    return;
+  }
+  DamageRect bounds;
+  Node::transformedBounds(node, world, bounds.x0, bounds.y0, bounds.x1, bounds.y1);
+  for (std::size_t i = 0; i < m_passCount; ++i) {
+    const DamageRect& area = m_passes[i].logical;
+    if ((blockedPasses & (1U << i)) == 0 && clip.contains(area) && coversOpaque(node, world, opacity, bounds, area)) {
+      m_passes[i].occluder = node;
+    }
+  }
+  if (node->clipChildren()) {
+    clip = {std::max(clip.x0, bounds.x0), std::max(clip.y0, bounds.y0), std::min(clip.x1, bounds.x1),
+            std::min(clip.y1, bounds.y1)};
+    if (clip.empty()) {
+      return;
+    }
+  }
+  if (const std::optional<Radii>& round = node->childClip(); round) {
+    const bool axisAligned = world.m[1] == 0.0F && world.m[3] == 0.0F;
+    const float scale = std::min(std::abs(world.m[0]), std::abs(world.m[4]));
+    for (std::size_t i = 0; i < m_passCount; ++i) {
+      if (!axisAligned || reachesOutsideCorners(bounds, *round, scale, 0.0F, m_passes[i].logical)) {
+        blockedPasses |= 1U << i;
+      }
+    }
+  }
+  forEachChildInPaintOrder(node, [&](const Node* child) { findOccluders(child, world, opacity, clip, blockedPasses); });
+}
+
 void RenderContext::renderNode(
     float renderScale, const Node* node, const Mat3& parentTransform, float parentOpacity, float sw, float sh, float bw,
     float bh, float clipLeft, float clipTop, float clipRight, float clipBottom, bool hasClip, bool ignoreNodeOpacity,
@@ -734,7 +835,13 @@ void RenderContext::renderNode(
         drawn = true;
       }
       for (std::size_t i = 0; i < m_passCount; ++i) {
-        const RepaintPass& pass = m_passes[i];
+        RepaintPass& pass = m_passes[i];
+        if (pass.occluder != nullptr && !pass.occluderReached) {
+          if (pass.occluder != node) {
+            continue;
+          }
+          pass.occluderReached = true;
+        }
         const RenderScissor scissor = intersectScissors(clipScissor, pass.scissor);
         if (!reaches(pass.logical) || scissor.width <= 0 || scissor.height <= 0) {
           continue;
@@ -783,24 +890,9 @@ void RenderContext::renderNode(
       return true;
     }
     const float scale = std::min(std::abs(m.m[0]), std::abs(m.m[4]));
-    const Radii& r = *roundClip;
     const DamageRect box{boundsLeft, boundsTop, boundsRight, boundsBottom};
     return std::ranges::any_of(passes, [&](const RepaintPass& pass) {
-      const DamageRect a{std::max(box.x0, pass.logical.x0), std::max(box.y0, pass.logical.y0),
-                         std::min(box.x1, pass.logical.x1), std::min(box.y1, pass.logical.y1)};
-      if (a.empty()) {
-        return false;
-      }
-      // The pass point nearest each box corner is the one farthest outside that corner's arc; 1 px covers the edge.
-      const auto outside = [&](float radius, float px, float py, float cornerX, float cornerY) {
-        const float rr = radius * scale;
-        const float cx = cornerX + std::copysign(rr, px - cornerX);
-        const float cy = cornerY + std::copysign(rr, py - cornerY);
-        const bool inSquare = std::abs(px - cornerX) < rr && std::abs(py - cornerY) < rr;
-        return rr > 0.0F && inSquare && std::hypot(px - cx, py - cy) > rr - 1.0F;
-      };
-      return outside(r.tl, a.x0, a.y0, box.x0, box.y0) || outside(r.tr, a.x1, a.y0, box.x1, box.y0)
-          || outside(r.br, a.x1, a.y1, box.x1, box.y1) || outside(r.bl, a.x0, a.y1, box.x0, box.y1);
+      return reachesOutsideCorners(box, *roundClip, scale, 0.0F, pass.logical);
     });
   };
   const bool rounded = roundClip && !childrenClipped

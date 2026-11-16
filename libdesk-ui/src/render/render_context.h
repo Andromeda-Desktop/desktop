@@ -110,6 +110,8 @@ private:
 
   bool makeCurrentNoSurface();
   void handleGraphicsReset(RenderGraphicsResetStatus status);
+  void findOccluders(const Node* node, const Mat3& parentTransform, float parentOpacity, DamageRect clip,
+                     std::uint32_t blockedPasses);
   void renderNode(
       float renderScale, const Node* node, const Mat3& parentTransform, float parentOpacity, float sw, float sh,
       float bw, float bh, float clipLeft, float clipTop, float clipRight, float clipBottom, bool hasClip,
@@ -145,6 +147,8 @@ private:
   struct RepaintPass {
     RenderScissor scissor;
     DamageRect logical;
+    const Node* occluder = nullptr; // topmost node that covers the pass with opaque pixels; draws before it are hidden
+    bool occluderReached = false;
   };
   std::array<RepaintPass, DamageRegion::kMaxRects> m_passes{};
   std::size_t m_passCount = 0;

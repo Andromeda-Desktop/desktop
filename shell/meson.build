@@ -1244,6 +1244,7 @@ if build_tests
     'lock_free_layout',
     'clock_style',
     'offscreen_render',
+    'render_occlusion',
     'lockscreen_session_actions',
     'legacy_home_move',
     'log',

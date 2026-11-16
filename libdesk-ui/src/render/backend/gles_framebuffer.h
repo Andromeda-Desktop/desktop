@@ -17,7 +17,8 @@ public:
   GlesFramebuffer(GlesFramebuffer&& other) noexcept;
   GlesFramebuffer& operator=(GlesFramebuffer&& other) noexcept;
 
-  [[nodiscard]] bool create(TextureManager& textures, std::uint32_t width, std::uint32_t height);
+  // `stencil` adds a stencil buffer: a scene drawn into it can use rounded child clips (pushRoundedClip).
+  [[nodiscard]] bool create(TextureManager& textures, std::uint32_t width, std::uint32_t height, bool stencil = false);
   void destroy();
 
   void bind() const;
@@ -33,6 +34,7 @@ public:
 private:
   TextureManager* m_textures = nullptr;
   GLuint m_id = 0;
+  GLuint m_stencil = 0;
   TextureHandle m_color;
   std::uint32_t m_width = 0;
   std::uint32_t m_height = 0;

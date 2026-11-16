@@ -8,7 +8,7 @@ GlesFramebuffer::~GlesFramebuffer() { destroy(); }
 
 GlesFramebuffer::GlesFramebuffer(GlesFramebuffer&& other) noexcept
     : m_textures(std::exchange(other.m_textures, nullptr)), m_id(std::exchange(other.m_id, 0)),
-      m_color(std::exchange(other.m_color, {})), m_width(std::exchange(other.m_width, 0)),
+      m_stencil(std::exchange(other.m_stencil, 0)), m_color(std::exchange(other.m_color, {})), m_width(std::exchange(other.m_width, 0)),
       m_height(std::exchange(other.m_height, 0)) {}
 
 GlesFramebuffer& GlesFramebuffer::operator=(GlesFramebuffer&& other) noexcept {
@@ -19,13 +19,14 @@ GlesFramebuffer& GlesFramebuffer::operator=(GlesFramebuffer&& other) noexcept {
   destroy();
   m_textures = std::exchange(other.m_textures, nullptr);
   m_id = std::exchange(other.m_id, 0);
+  m_stencil = std::exchange(other.m_stencil, 0);
   m_color = std::exchange(other.m_color, {});
   m_width = std::exchange(other.m_width, 0);
   m_height = std::exchange(other.m_height, 0);
   return *this;
 }
 
-bool GlesFramebuffer::create(TextureManager& textures, std::uint32_t width, std::uint32_t height) {
+bool GlesFramebuffer::create(TextureManager& textures, std::uint32_t width, std::uint32_t height, bool stencil) {
   destroy();
   if (width == 0 || height == 0) {
     return false;
@@ -50,10 +51,22 @@ bool GlesFramebuffer::create(TextureManager& textures, std::uint32_t width, std:
   glFramebufferTexture2D(
       GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, static_cast<GLuint>(m_color.id.value()), 0
   );
+  if (stencil) {
+    glGenRenderbuffers(1, &m_stencil);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_stencil);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_STENCIL_INDEX8, static_cast<GLsizei>(width), static_cast<GLsizei>(height));
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_stencil);
+  }
   if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     destroy();
     return false;
+  }
+  if (stencil) {
+    glStencilMask(0xFF);
+    glClearStencil(0);
+    glClear(GL_STENCIL_BUFFER_BIT);
   }
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -67,6 +80,10 @@ void GlesFramebuffer::destroy() {
     glDeleteFramebuffers(1, &m_id);
     m_id = 0;
   }
+  if (m_stencil != 0) {
+    glDeleteRenderbuffers(1, &m_stencil);
+    m_stencil = 0;
+  }
 
   if (m_textures != nullptr) {
     m_textures->unload(m_color);
@@ -79,6 +96,7 @@ void GlesFramebuffer::destroy() {
 void GlesFramebuffer::abandon() noexcept {
   m_textures = nullptr;
   m_id = 0;
+  m_stencil = 0;
   m_color = {};
   m_width = 0;
   m_height = 0;
