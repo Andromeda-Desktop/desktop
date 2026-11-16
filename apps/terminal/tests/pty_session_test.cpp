@@ -221,7 +221,26 @@ IFS= read -rsd '\' r; printf '|%s|' "${r:4:18}"; exit 0)"}}));
   }
 }
 
+void kittyNotificationsReachTheApp() {
+  // OSC 99: a title and a base64 body in two chunks of one id, then a capability query that gets a reply.
+  Waker w;
+  std::mutex m;
+  std::vector<std::string> got;
+  PtySession s([&] { w.wake(); }, {}, {}, {}, {.notify = [&](std::string t, std::string b) {
+                 std::lock_guard lock(m);
+                 got.push_back(t + "/" + b);
+               }});
+  CHECK(s.spawn({.argv = {"/bin/bash", "-c", R"(stty -echo
+printf '\e]99;i=b1:d=0;Build\e\\'; printf '\e]99;i=b1:p=body:e=1;ZG9uZQ==\e\\'; printf '\e]99;i=q:p=?;\e\\'
+IFS= read -rsd '\' r; printf '|%s|' "${r:1:16}"; exit 0)"}}));
+  CHECK(w.waitFor(s, [&] { return s.state() == SessionState::Exited; }));
+  CHECK(screenText(s).find("|]99;i=q:p=?;a=fo|") != std::string::npos);
+  std::lock_guard lock(m);
+  CHECK(got == std::vector<std::string>{"Build/done"});
+}
+
 void runSessionTests() {
+  kittyNotificationsReachTheApp();
   runsCommandAndReportsExit();
   programEffectsReachTheApp();
   answersDeviceStatusReport();

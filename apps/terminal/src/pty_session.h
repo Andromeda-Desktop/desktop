@@ -1,6 +1,7 @@
 #pragma once
 
 #include "command_index.h"
+#include "osc99.h"
 
 #include <ghostty/vt.h>
 
@@ -54,7 +55,7 @@ public:
   struct Effects {
     std::function<void(std::string title)> title;                 // OSC 0 / 2
     std::function<void(std::string text, bool primary)> clipboard; // OSC 52 write, text/plain only
-    std::function<void(std::string title, std::string body)> notify; // OSC 9 / 777
+    std::function<void(std::string title, std::string body)> notify; // OSC 9 / 777 / 99
   };
 
   PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {}, SecretFn onSecret = {}, Effects effects = {});
@@ -151,6 +152,7 @@ private:
   std::uint64_t m_parsed = 0;
   // Output before this offset is a replay after attach: the program got the terminal's replies to it already.
   std::uint64_t m_replayEnd = 0;
+  Osc99Scanner m_osc99;
   std::mutex m_sockMutex;
   std::thread m_io;
   std::thread m_parser;

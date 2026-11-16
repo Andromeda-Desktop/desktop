@@ -455,6 +455,16 @@ void PtySession::parseLoop() {
         std::lock_guard lock(m_termMutex);
         ghostty_terminal_vt_write(m_terminal, work.data() + at, len);
       }
+      if (!replaying()) {
+        m_osc99.feed({work.data() + at, len}, [this](Osc99Scanner::Event e) {
+          if (const auto* show = std::get_if<Osc99Scanner::Show>(&e); show != nullptr && m_effects.notify) {
+            m_effects.notify(show->title, show->body);
+          } else if (const auto* query = std::get_if<Osc99Scanner::Query>(&e)) {
+            const std::string reply = Osc99Scanner::queryReply(query->id);
+            queueOutbound({reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size()});
+          }
+        });
+      }
       m_bytesRead += len;
       m_parsed += len;
       flushOutbound();
