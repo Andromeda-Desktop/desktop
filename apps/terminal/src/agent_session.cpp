@@ -471,7 +471,18 @@ namespace term::agent {
                  ? RowStatus::Done
                  : RowStatus::Ready;
     }
-    return *m_lastStop == StopKind::Failed ? RowStatus::Failed : RowStatus::Stopped;
+    switch (*m_lastStop) {
+    case StopKind::Refusal:
+      return RowStatus::Declined;
+    case StopKind::MaxTokens:
+    case StopKind::MaxTurns:
+      return RowStatus::Limited;
+    case StopKind::Cancelled:
+      return RowStatus::Stopped;
+    case StopKind::Failed:
+      break;
+    }
+    return RowStatus::Failed;
   }
 
   std::vector<Json> Session::takeOutbox() { return std::exchange(m_outbox, {}); }

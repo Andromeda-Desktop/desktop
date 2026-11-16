@@ -630,6 +630,11 @@ namespace term {
           data.status = "needs permission";
           break;
         case agent::RowStatus::Done: data.status = "done"; break;
+        case agent::RowStatus::Declined:
+          data.symbol = "ban";
+          data.status = "declined";
+          break;
+        case agent::RowStatus::Limited: data.status = "stopped at a limit"; break;
         case agent::RowStatus::Stopped: data.status = "stopped by you"; break;
         case agent::RowStatus::Failed:
           data.symbol = "alert-circle";

@@ -74,7 +74,8 @@ namespace term::agent {
   };
 
   // What the sidebar row says about the session.
-  enum class RowStatus : std::uint8_t { Starting, Ready, Working, NeedsPermission, Done, Stopped, Failed };
+  // Stopped: the user cancelled the turn; Limited: it hit a token or request limit; Declined: Claude refused it.
+  enum class RowStatus : std::uint8_t { Starting, Ready, Working, NeedsPermission, Done, Declined, Limited, Stopped, Failed };
 
   // The agent session model: ACP input and user actions in, transcript and outgoing JSON-RPC out. No IO;
   // the client drains outbox() into the agent's stdin.

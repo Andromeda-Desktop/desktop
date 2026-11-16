@@ -484,7 +484,9 @@ namespace term {
       case agent::RowStatus::Ready: return "ready";
       case agent::RowStatus::Working: return (thinking() ? "thinking" : "working") + clock(true);
       case agent::RowStatus::NeedsPermission: return "needs you" + clock(true);
-      case agent::RowStatus::Done: return "done" + clock(false);
+      case agent::RowStatus::Done:
+      case agent::RowStatus::Declined: return "done" + clock(false);
+      case agent::RowStatus::Limited:
       case agent::RowStatus::Stopped: return "stopped" + clock(false);
       case agent::RowStatus::Failed: return "agent stopped";
     }
@@ -567,8 +569,10 @@ namespace term {
         escape = true;
         break;
       case agent::RowStatus::Done:
+      case agent::RowStatus::Declined:
         glyph = "check";
         break;
+      case agent::RowStatus::Limited:
       case agent::RowStatus::Stopped:
         glyph = "player-stop-filled";
         break;
@@ -1543,7 +1547,8 @@ namespace term {
                             : running                    ? "Queue a follow-up · Esc stops"
                             : phase == agent::Phase::Starting ? "Starting Claude…"
                             : phase == agent::Phase::Failed   ? "Reply to restart Claude in this session"
-                                                              : "Ask Claude, or / for commands");
+                            : model->rowStatus() == agent::RowStatus::Ready ? "Ask Claude, or / for commands"
+                                                                            : "Reply, or / for commands");
     const agent::Session::Mode* mode = model->currentMode();
     std::string meta = mode != nullptr ? mode->name : model->mode();
     bool full = false;
