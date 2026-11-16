@@ -20,6 +20,14 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   setGap(Tokens::spaceP8 * s);
   setPadding(Tokens::spaceP8 * s);
   setRadius(Style::scaledRadius(Tokens::radiusR8, s));
+  // Under the fill: the raised chip's E1 shadow.
+  insertChildAt(0, ui::box({.out = &m_shadow,
+                            .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE1.keyLight
+                                                                                                : Tokens::elevationE1.keyDark),
+                            .radius = Style::scaledRadius(Tokens::radiusR8, s),
+                            .softness = Tokens::elevationE1.keyBlur * s,
+                            .visible = false,
+                            .participatesInLayout = false}));
   setMinHeight(Tokens::sizeRowTwoCompact * s);
   addChild(ui::glyph({.out = &m_symbol, .glyphSize = Tokens::sizeSymbol * s}));
   addChild(ui::spinner({.out = &m_spinner, .color = colorSpecFromRole(ColorRole::Label2), .spinnerSize = Tokens::sizeSymbol * s,
@@ -175,6 +183,7 @@ void StatusRow::applyState() {
     setFill(clearColorSpec());
   }
   setBorder(m_data.chip ? colorSpecFromRole(ColorRole::Stroke) : clearColorSpec(), m_data.chip ? 0.5F * m_scale : 0.0F);
+  m_shadow->setVisible(m_data.chip.has_value());
   const ColorSpec label1 = colorSpecFromRole(ColorRole::Label1);
   m_symbol->setColor(m_data.symbolDanger ? colorSpecFromRole(ColorRole::Danger)
                                          : (m_data.selected ? label1 : colorSpecFromRole(ColorRole::Label2)));
@@ -200,4 +209,6 @@ void StatusRow::placeArea() {
     m_area->setPosition(0.0F, 0.0F);
     m_area->setSize(width(), height());
   }
+  m_shadow->setPosition(0.0F, Tokens::elevationE1.keyY * m_scale);
+  m_shadow->setSize(width(), height());
 }

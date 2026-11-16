@@ -442,6 +442,9 @@ namespace term {
     const bool regroup = m_sessions.splits() != splitsBefore;
     if (const auto* close = std::get_if<session_event::Close>(&event)) {
       const auto it = std::ranges::find(m_views, close->id, &Session::id);
+      if (const auto card = std::ranges::find(m_cards, close->id, &PaneCard::id); card != m_cards.end()) {
+        m_closedCard = ClosedCard{card->rect, it->view->surface()};
+      }
       if (std::ranges::contains(m_builtPanes, close->id)) {
         m_retired.push_back(std::move(*it));
       }
@@ -452,6 +455,7 @@ namespace term {
       return;
     }
     if (regroup) {
+      m_rebuildPending = true;
       m_window.requestRebuild();
     } else if (const auto* open = std::get_if<session_event::Open>(&event); open != nullptr && m_rowList != nullptr) {
       // A new session joins no split: it is the list's last child.
@@ -497,7 +501,7 @@ namespace term {
       m_window.setContentCards(split);
       return;
     }
-    if (m_contentSlot != nullptr) {
+    if (m_contentSlot != nullptr && !m_rebuildPending) {
       m_window.updateInPlace([this](Renderer& renderer) {
         for (Session& session : m_views) {
           session.view->sceneDestroyed();
@@ -515,6 +519,8 @@ namespace term {
   }
 
   void TerminalWindow::fillSlot(Renderer& renderer) {
+    ++m_slotBuild;
+    m_rebuildPending = false;
     std::vector<std::pair<std::uint64_t, PaneRect>> from;
     for (const PaneCard& card : m_cards) {
       from.emplace_back(card.id, card.rect);
@@ -554,6 +560,23 @@ namespace term {
                             .visible = false,
                             .participatesInLayout = false});
     m_contentSlot->addChild(std::move(preview));
+    if (const auto closed = std::exchange(m_closedCard, std::nullopt); closed) {
+      const PaneRect& r = closed->rect;
+      Box* plate = nullptr;
+      auto box = ui::box({.out = &plate, .fill = closed->fill, .border = colorSpecFromRole(ColorRole::Stroke),
+                          .borderWidth = 0.5F * s, .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
+                          .width = r.width, .height = r.height, .participatesInLayout = false});
+      box->setPosition(r.x, r.y);
+      m_contentSlot->insertChildAt(0, std::move(box));
+      whenAnimating([this, plate](AnimationManager& animations) {
+        animations.drive(0, 1.0F, 0.0F, Style::spring(Tokens::springFadeOut), [plate](float v) { plate->setOpacity(v); },
+                         [this, plate] {
+                           m_contentSlot->removeChild(plate);
+                           m_window.invalidate();
+                         },
+                         plate);
+      });
+    }
     // After this build is in the scene: the dispatcher focuses only attached areas.
     DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
       if (alive.expired()) {
@@ -1331,8 +1354,7 @@ namespace term {
       starts.push_back(start);
     }
     m_dropFrom.reset();
-    AnimationManager* animations = m_contentSlot->animationManager();
-    if (!moves || from.empty() || animations == nullptr) {
+    if (!moves || from.empty()) {
       return;
     }
     const auto step = [this, starts](float t) {
@@ -1351,8 +1373,26 @@ namespace term {
       m_contentSlot->markLayoutDirty();
     };
     step(0.0F);
-    m_layoutAnim = animations->drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove), step,
-                                     [this] { m_window.invalidate(); }, m_cards.front().cell);
+    whenAnimating([this, step](AnimationManager& animations) {
+      m_layoutAnim = animations.drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove), step,
+                                      [this] { m_window.invalidate(); }, m_cards.front().cell);
+    });
+  }
+
+  void TerminalWindow::whenAnimating(std::function<void(AnimationManager&)> start) {
+    if (AnimationManager* animations = m_contentSlot->animationManager(); animations != nullptr) {
+      start(*animations);
+      return;
+    }
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive), build = m_slotBuild, start = std::move(start)] {
+      if (alive.expired() || build != m_slotBuild || m_contentSlot == nullptr) {
+        return;
+      }
+      if (AnimationManager* animations = m_contentSlot->animationManager(); animations != nullptr) {
+        start(*animations);
+        m_window.invalidate();
+      }
+    });
   }
 
   std::pair<float, float> TerminalWindow::paneMinimum() const {
@@ -1552,6 +1592,27 @@ namespace term {
 
   void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
     const auto target = dropTarget(id, sceneX, sceneY);
+    // A raised chip of the row under the pointer, its symbol where the pointer holds it.
+    const float s = m_window.uiScale();
+    if (phase == StatusRow::DragPhase::Move && !m_dragGhost) {
+      const auto row = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
+      const auto view = std::ranges::find(m_views, id, &Session::id);
+      if (const SessionInfo* session = m_sessions.find(id); session != nullptr && row != m_rows.end() && view != m_views.end()) {
+        auto ghost = std::make_unique<StatusRow>(s);
+        StatusRow::Data data = rowData(*session);
+        data.chip = view->view->surface();
+        ghost->setData(data);
+        ghost->setMinWidth(row->second->width());
+        ghost->setMaxWidth(row->second->width());
+        m_window.setDragGhost(std::move(ghost));
+        m_dragGhost = true;
+      }
+    }
+    if (phase == StatusRow::DragPhase::Move) {
+      m_window.moveDragGhost(sceneX - Tokens::spaceP16 * s, sceneY - Tokens::sizeRowTwoCompact * s / 2.0F);
+    } else if (std::exchange(m_dragGhost, false)) {
+      m_window.clearDragGhost();
+    }
     if (m_dropPreview != nullptr) {
       if (target && phase == StatusRow::DragPhase::Move) {
         m_dropPreview->setPosition(target->rect.x, target->rect.y);
@@ -1570,7 +1631,6 @@ namespace term {
 
   void TerminalWindow::paintPaneFocus(bool animate) {
     m_ringPane = m_sessions.shown().value_or(0);
-    const float s = m_window.uiScale();
     // The find and agent bars are the shown session's: they leave the old card before the new one builds them.
     std::vector<std::unique_ptr<Node>> removed;
     for (PaneCard& card : m_cards) {

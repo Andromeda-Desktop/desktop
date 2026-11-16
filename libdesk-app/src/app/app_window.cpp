@@ -422,6 +422,33 @@ void AppWindow::refreshPopover() {
   }
 }
 
+void AppWindow::setDragGhost(std::unique_ptr<Node> ghost) {
+  clearDragGhost();
+  if (m_overlay != nullptr) {
+    m_ghost = m_overlay->addChild(std::move(ghost));
+    invalidate();
+  }
+}
+
+void AppWindow::moveDragGhost(float sceneX, float sceneY) {
+  if (m_ghost == nullptr) {
+    return;
+  }
+  float x = 0.0F;
+  float y = 0.0F;
+  Node::absolutePosition(m_overlay, x, y);
+  m_ghost->setPosition(sceneX - x, sceneY - y);
+  invalidate();
+}
+
+void AppWindow::clearDragGhost() {
+  if (m_ghost != nullptr) {
+    m_overlay->removeChild(m_ghost);
+    m_ghost = nullptr;
+    invalidate();
+  }
+}
+
 void AppWindow::invalidatePopover() {
   if (m_popover != nullptr && m_popover->isOpen()) {
     m_popover->requestLayout();
@@ -554,6 +581,8 @@ void AppWindow::close() {
   m_sidebarMix = m_sidebarVisible ? 1.0F : 0.0F;
   // Nodes unload their textures through the surface's renderer: they go first.
   m_root.reset();
+  m_overlay = nullptr;
+  m_ghost = nullptr;
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
   m_captionSymbol = nullptr;
@@ -1299,6 +1328,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_headerNode = nullptr;
   const auto teardownStart = std::chrono::steady_clock::now();
   m_root.reset();
+  m_overlay = nullptr;
+  m_ghost = nullptr;
   const double teardownMs = since(teardownStart);
   m_root = ui::node({});
   m_root->setSize(width, height);
@@ -1424,6 +1455,10 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     attachSheet(renderer, width, height, margin);
     sheetMs = since(partStart);
   }
+  auto overlay = std::make_unique<Node>();
+  overlay->setHitTestVisible(false);
+  overlay->setPosition(margin, margin);
+  m_overlay = m_root->addChild(std::move(overlay));
 
   if (m_select == nullptr) {
     m_select = std::make_unique<WindowSelectPopup>(

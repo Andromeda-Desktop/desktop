@@ -179,6 +179,12 @@ public:
   void updateInPlace(const std::function<void(Renderer&)>& change);
   // Raises the window for a launch that carried an xdg-activation token.
   void activate(const std::string& token);
+  // A node over everything that follows the pointer (a dragged item's ghost); input passes through it. A rebuild drops
+  // it, and a rebuild waits while a button is down.
+  void setDragGhost(std::unique_ptr<Node> ghost);
+  // The ghost's top-left at a scene point.
+  void moveDragGhost(float sceneX, float sceneY);
+  void clearDragGhost();
   // A context menu at a point in window (scene) coordinates; `activated` gets the entry id, after the menu closed.
   void openContextMenu(std::vector<ContextMenuControlEntry> entries, float sceneX, float sceneY,
                        std::function<void(std::int32_t id)> activated);
@@ -250,6 +256,8 @@ private:
   std::function<std::unique_ptr<Node>(float)> m_sheetBuilder;
   std::function<void()> m_sheetCancel;
   Node* m_sheetCard = nullptr;
+  Node* m_overlay = nullptr; // the last root child: holds the drag ghost
+  Node* m_ghost = nullptr;
   Node* m_sheetShade = nullptr;
   class InputArea* m_sheetScrim = nullptr;
   bool m_sheetHandoff = false; // dismissed this turn: a sheet presented now replaces it in place, without a new fade

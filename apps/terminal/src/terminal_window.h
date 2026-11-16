@@ -213,6 +213,13 @@ namespace term {
     [[nodiscard]] std::optional<DropTarget> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
     Box* m_dropPreview = nullptr;
+    // A closed pane's place and fill: the next build fades a plate out there, under the cards that take its room.
+    struct ClosedCard {
+      PaneRect rect;
+      ColorSpec fill;
+    };
+    std::optional<ClosedCard> m_closedCard;
+    bool m_dragGhost = false; // the dragged row's chip follows the pointer
     std::uint64_t m_ringPane = 0;  // the card that draws the focus ring
     // from: where cards were before this build (a pane's old card, the single view, the drop preview); they move to
     // their new places on the move spring, a card with no old place fades in.
@@ -221,6 +228,11 @@ namespace term {
     // Cells, rings and caption areas at these rects; card.rect (the views' size) stays.
     void applyCellRects(const std::vector<PaneRect>& rects);
     std::uint32_t m_layoutAnim = 0;
+    std::uint64_t m_slotBuild = 0; // counts fillSlot calls
+    bool m_rebuildPending = false; // a window rebuild fills the slot: show() leaves it alone
+    // Runs `start` with the slot's animation manager: now, or after a full rebuild puts the slot in the scene (if no
+    // other build came first).
+    void whenAnimating(std::function<void(AnimationManager&)> start);
     std::optional<std::pair<std::uint64_t, PaneRect>> m_dropFrom; // the joining session's preview rect
     // Ring, shadow, caption weight and the find and agent bars follow the shown session, in place.
     void applyPaneFocus();

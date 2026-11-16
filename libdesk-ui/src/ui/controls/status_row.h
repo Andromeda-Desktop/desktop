@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 
+class Box;
 class Glyph;
 class Input;
 class InputArea;
@@ -58,6 +59,7 @@ private:
 
   float m_scale;
   Data m_data;
+  Box* m_shadow = nullptr; // E1 under the chip
   Glyph* m_symbol = nullptr;
   Spinner* m_spinner = nullptr;
   Label* m_name = nullptr;
