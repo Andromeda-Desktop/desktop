@@ -7,6 +7,8 @@
 #include "prefs_window.h"
 #include "terminal_window.h"
 
+#include <sdbus-c++/sdbus-c++.h>
+
 #include <array>
 #include <map>
 #include <memory>
@@ -59,9 +61,18 @@ namespace term {
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.
-    enum class LayoutSave : std::uint8_t { Live, Kept };
-    LayoutSave m_layoutSave = LayoutSave::Live;
+    enum class LayoutWrites : std::uint8_t { Live, Kept };
+    LayoutWrites m_layoutWrites = LayoutWrites::Live;
     void saveLayouts();
+    void sessionsChanged(LayoutSave save);
+
+    // org.andromeda.Terminal1 at kControlPath (terminal_control.cpp): `andromeda-terminal ctl` and other clients.
+    std::unique_ptr<sdbus::IObject> m_control;
+    void exportControl();
+    std::uint64_t controlOpen(const std::map<std::string, sdbus::Variant>& options);
+    // The session's window; throws the D-Bus error NoSession.
+    TerminalWindow& controlWindow(std::uint64_t id);
+    TerminalView& controlTerminal(std::uint64_t id); // throws NotTerminal for an agent session
   };
 
 } // namespace term

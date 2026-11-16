@@ -1,4 +1,5 @@
 #include "terminal_app.h"
+#include "terminal_control.h"
 #include "theme_cli.h"
 
 #include <filesystem>
@@ -41,6 +42,9 @@ namespace {
 
 int main(int argc, char* argv[]) {
   if (const auto exit = term::runThemeCli(argc, argv)) {
+    return *exit;
+  }
+  if (const auto exit = term::control::runCli(argc, argv)) {
     return *exit;
   }
   std::vector<std::string> args = deskArgs(argc, argv);

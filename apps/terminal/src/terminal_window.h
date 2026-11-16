@@ -47,6 +47,9 @@ namespace term {
     class Host;
   }
 
+  // Unsaved: the change stays out of the saved layout until the next saved change (a shell killed at logout).
+  enum class LayoutSave : std::uint8_t { Saved, Unsaved };
+
   // cwd: the shell's start directory; empty starts in $HOME.
   struct NewShell {
     std::string cwd;
@@ -89,7 +92,7 @@ namespace term {
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
-                   std::function<void()> close, std::function<void()> layoutChanged,
+                   std::function<void()> close, std::function<void(LayoutSave)> sessionsChanged,
                    std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
                    std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile);
     ~TerminalWindow();
@@ -111,6 +114,14 @@ namespace term {
     // An agent session of any window changed: repaints its view and row when it is in this window.
     void agentChanged(std::uint64_t key);
 
+    // Remote control (org.andromeda.Terminal1). Each acts only on a session of this window.
+    [[nodiscard]] std::uint32_t windowId() const noexcept { return m_windowId; }
+    [[nodiscard]] const SessionList& sessions() const noexcept { return m_sessions; }
+    [[nodiscard]] TerminalView* terminalOf(std::uint64_t id); // null: no such session, or an agent session
+    void focusSession(std::uint64_t id); // shows it and raises the window
+    void closeSession(std::uint64_t id); // with no confirm sheet
+    void renameSession(std::uint64_t id, std::string name); // empty: the automatic name
+
   private:
     struct Session {
       std::uint64_t id;
@@ -119,8 +130,6 @@ namespace term {
 
     void requestFrame();
     void openUri(const std::string& uri);
-    // Unsaved: the change stays out of the saved layout until the next saved change (a shell killed at logout).
-    enum class LayoutSave : std::uint8_t { Saved, Unsaved };
     void apply(const SessionListEvent& event, LayoutSave save = LayoutSave::Saved);
     [[nodiscard]] Settings viewSettings() const; // the setting with this window's zoom
     void applyViewSettings();
@@ -160,15 +169,17 @@ namespace term {
     int m_zoom = 0; // text size steps (px at ui_scale 1) added to the setting in this window
     Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
-    std::function<void()> m_layoutChanged; // a session opened, closed, moved, was renamed or changed folder
+    // A session opened, closed, was shown, renamed, joined or left a split, or changed folder or kind.
+    std::function<void(LayoutSave)> m_sessionsChanged;
     std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> m_newWindow;
     std::function<void(const std::string& token)> m_preferences;
     ChooseSaveFile m_chooseSaveFile;
     // A copy of a session's screen and scrollback: in a pager session (Ctrl+Shift+H), or to a file the user picks.
     void showScrollback(std::uint64_t id);
     void saveScrollback(std::uint64_t id);
-    TerminalView* terminalOf(std::uint64_t id);
     SessionList m_sessions;
+    static inline std::uint32_t s_nextWindowId = 1;
+    const std::uint32_t m_windowId = s_nextWindowId++;
     std::string m_filter; // the sidebar search text
     Input* m_search = nullptr;
     bool m_rail = false; // the sidebar is an icon rail

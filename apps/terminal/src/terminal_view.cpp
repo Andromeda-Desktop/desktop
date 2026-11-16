@@ -2362,9 +2362,17 @@ namespace term {
 
   // The output of the last finished command (OSC 133 C up to the next prompt) goes on the clipboard.
   void TerminalView::copyLastOutput() {
+    std::string text = lastOutputText();
+    TextClipboard* clipboard = Input::textClipboard();
+    if (!text.empty() && clipboard != nullptr) {
+      clipboard->setClipboardText(std::move(text));
+    }
+  }
+
+  std::string TerminalView::lastOutputText() {
     const auto columns = static_cast<std::uint16_t>(std::max(1, m_grid->columns()));
     const auto total = static_cast<std::uint32_t>(m_scrollState.total);
-    std::string text = m_session.withCommands([&](GhosttyTerminal t, const CommandIndex& index) -> std::string {
+    return m_session.withCommands([&](GhosttyTerminal t, const CommandIndex& index) -> std::string {
       const auto& entries = index.entries();
       for (std::size_t i = entries.size(); i-- > 0;) {
         const CommandEntry& entry = entries[i];
@@ -2387,10 +2395,43 @@ namespace term {
       }
       return {};
     });
-    TextClipboard* clipboard = Input::textClipboard();
-    if (!text.empty() && clipboard != nullptr) {
-      clipboard->setClipboardText(std::move(text));
+  }
+
+  std::string TerminalView::text(TextExtent extent) {
+    switch (extent) {
+    case TextExtent::All: return scrollbackText();
+    case TextExtent::Selection: return selectionText();
+    case TextExtent::LastOutput: return lastOutputText();
+    case TextExtent::Screen: break;
     }
+    return m_session.withTerminal([](GhosttyTerminal t) {
+      std::uint16_t cols = 0;
+      std::uint16_t rows = 0;
+      GhosttySelection selection{};
+      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLS, &cols) != GHOSTTY_SUCCESS
+          || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ROWS, &rows) != GHOSTTY_SUCCESS || cols == 0 || rows == 0) {
+        return std::string();
+      }
+      const GhosttyPoint first{.tag = GHOSTTY_POINT_TAG_ACTIVE, .value = {.coordinate = {.x = 0, .y = 0}}};
+      const GhosttyPoint last{.tag = GHOSTTY_POINT_TAG_ACTIVE,
+                              .value = {.coordinate = {.x = static_cast<std::uint16_t>(cols - 1), .y = rows - 1u}}};
+      if (ghostty_terminal_grid_ref(t, first, &selection.start) != GHOSTTY_SUCCESS
+          || ghostty_terminal_grid_ref(t, last, &selection.end) != GHOSTTY_SUCCESS) {
+        return std::string();
+      }
+      return formatText(t, &selection);
+    });
+  }
+
+  void TerminalView::sendText(const std::string& text, bool paste) {
+    if (text.empty()) {
+      return;
+    }
+    if (!paste) {
+      m_session.write({reinterpret_cast<const std::uint8_t*>(text.data()), text.size()});
+      return;
+    }
+    writePaste(text, bracketedPaste());
   }
 
   void TerminalView::copySelection() {
@@ -2456,10 +2497,7 @@ namespace term {
     if (text.empty()) {
       return;
     }
-    const bool bracketed = m_session.withTerminal([](GhosttyTerminal t) {
-      GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_BRACKETED_PASTE, .value = false};
-      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &mode) == GHOSTTY_SUCCESS && mode.value;
-    });
+    const bool bracketed = bracketedPaste();
     // Without bracketed paste a newline runs what came before it: the user confirms such a paste first.
     if (!bracketed && text.find_first_of("\r\n") != std::string::npos && m_host.confirmPaste) {
       m_host.confirmPaste(text, [this, alive = std::weak_ptr<bool>(m_alive), text] {
@@ -2470,6 +2508,13 @@ namespace term {
       return;
     }
     writePaste(std::move(text), bracketed);
+  }
+
+  bool TerminalView::bracketedPaste() {
+    return m_session.withTerminal([](GhosttyTerminal t) {
+      GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_BRACKETED_PASTE, .value = false};
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &mode) == GHOSTTY_SUCCESS && mode.value;
+    });
   }
 
   void TerminalView::writePaste(std::string text, bool bracketed) {

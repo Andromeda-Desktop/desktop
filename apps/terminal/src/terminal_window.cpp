@@ -111,10 +111,10 @@ namespace term {
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
-                                 std::function<void()> layoutChanged,
+                                 std::function<void(LayoutSave)> sessionsChanged,
                                  std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
                                  std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
-      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)), m_layoutChanged(std::move(layoutChanged)),
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)), m_sessionsChanged(std::move(sessionsChanged)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
         m_chooseSaveFile(std::move(chooseSaveFile)) {
     m_settingsChanged = m_settings.changed().connect([this] {
@@ -691,11 +691,11 @@ namespace term {
         m_views.erase(it);
       }
     }
-    if (save == LayoutSave::Saved && (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event) ||
+    if (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event) ||
         std::holds_alternative<session_event::Show>(event) || std::holds_alternative<session_event::Rename>(event) ||
         std::holds_alternative<session_event::Cwd>(event) || std::holds_alternative<session_event::Kind>(event) ||
-        std::holds_alternative<session_event::Join>(event) || std::holds_alternative<session_event::Leave>(event))) {
-      m_layoutChanged();
+        std::holds_alternative<session_event::Join>(event) || std::holds_alternative<session_event::Leave>(event)) {
+      m_sessionsChanged(save);
     }
     if (result == ApplyResult::LastClosed) {
       m_close();
@@ -1055,6 +1055,17 @@ namespace term {
   TerminalView* TerminalWindow::terminalOf(std::uint64_t id) {
     const auto it = std::ranges::find(m_views, id, &Session::id);
     return it != m_views.end() ? it->view->terminal() : nullptr;
+  }
+
+  void TerminalWindow::focusSession(std::uint64_t id) {
+    apply(session_event::Show{id});
+    m_window.activate(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
+  }
+
+  void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
+
+  void TerminalWindow::renameSession(std::uint64_t id, std::string name) {
+    apply(session_event::Rename{id, std::move(name)});
   }
 
   void TerminalWindow::showScrollback(std::uint64_t id) {

@@ -6,6 +6,7 @@
 #include "holder_client.h"
 #include "kitty_images.h"
 #include "notifier.h"
+#include "terminal_control.h"
 #include "terminal_window.h"
 
 #include "core/log.h"
@@ -40,7 +41,10 @@ namespace term {
 
   TerminalApp::~TerminalApp() = default;
 
-  void TerminalApp::startup() { loop().addSource(&m_thumbnails); }
+  void TerminalApp::startup() {
+    loop().addSource(&m_thumbnails);
+    exportControl();
+  }
 
   void TerminalApp::gpuLost() { m_thumbnails.abandonGpuResources(); }
 
@@ -51,7 +55,7 @@ namespace term {
     }
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, [this](agent::Kind kind) -> agent::Host& { return agentHost(kind); }, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
-                                                          [this] { saveLayouts(); },
+                                                          [this](LayoutSave save) { sessionsChanged(save); },
                                                           [this](const std::string& token, std::vector<WindowOrigin> origins) {
                                                             m_nextOrigins = std::move(origins);
                                                             openWindow(token);
@@ -74,10 +78,19 @@ namespace term {
     saveLayouts();
   }
 
-  void TerminalApp::shutdown() { m_layoutSave = LayoutSave::Kept; }
+  void TerminalApp::shutdown() { m_layoutWrites = LayoutWrites::Kept; }
+
+  void TerminalApp::sessionsChanged(LayoutSave save) {
+    if (save == LayoutSave::Saved) {
+      saveLayouts();
+    }
+    if (m_control != nullptr) {
+      m_control->emitSignal("SessionsChanged").onInterface(control::kInterface);
+    }
+  }
 
   void TerminalApp::saveLayouts() {
-    if (m_layoutSave == LayoutSave::Kept) {
+    if (m_layoutWrites == LayoutWrites::Kept) {
       return;
     }
     std::vector<SavedWindow> windows;

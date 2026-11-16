@@ -172,6 +172,11 @@ namespace term {
     void pasteDrop(const std::string& mime, const std::string& data);
     // Screen and scrollback as plain text, soft wraps joined.
     [[nodiscard]] std::string scrollbackText();
+    enum class TextExtent : std::uint8_t { Screen, All, Selection, LastOutput };
+    // Plain text, soft wraps joined. Screen: the rows the program draws on; LastOutput: the last finished command's.
+    [[nodiscard]] std::string text(TextExtent extent);
+    // To the program as typed bytes, or as a paste: bracketed when the program asked for it, with no confirm sheet.
+    void sendText(const std::string& text, bool paste);
     // Secure keyboard entry: keys reach the program as raw keys, never through the input method.
     void setSecureInput(bool secure, InputDispatcher& input);
     // Rebinds the view to another window (Move to new window); the session keeps running.
@@ -276,11 +281,13 @@ namespace term {
     static std::string formatText(GhosttyTerminal t, const GhosttySelection* selection); // null: the whole screen
     void jumpPrompt(int direction);
     void copyLastOutput();
+    std::string lastOutputText();
     void copySelection();
     void publishSelection();
     void paste();
     void pasteText(std::string text);
     void writePaste(std::string text, bool bracketed);
+    bool bracketedPaste(); // the program asked for bracketed paste (DECSET 2004)
 
     Host m_host;
     void commitAtlas();
