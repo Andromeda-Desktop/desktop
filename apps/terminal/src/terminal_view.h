@@ -250,8 +250,11 @@ namespace term {
     void textInputResetPreedit() override;
     void textInputActivated(TextInputService& service) override;
     void textInputDeactivated(TextInputService& service) override;
+    std::string selectionText();
     void copySelection();
+    void publishSelection();
     void paste();
+    void pasteText(std::string text);
 
     Host m_host;
     void commitAtlas();

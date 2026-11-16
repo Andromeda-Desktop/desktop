@@ -155,7 +155,12 @@ namespace term {
             .clipboard = [alive = std::weak_ptr<bool>(m_alive)](std::string text, bool primary) {
               DeferredCall::callLater([alive, text = std::move(text), primary]() mutable {
                 TextClipboard* clipboard = Input::textClipboard();
-                if (!alive.expired() && !primary && clipboard != nullptr) {
+                if (alive.expired() || clipboard == nullptr) {
+                  return;
+                }
+                if (primary) {
+                  clipboard->setPrimaryText(std::move(text));
+                } else {
                   clipboard->setClipboardText(std::move(text));
                 }
               });
@@ -1671,6 +1676,16 @@ namespace term {
       }
       m_buttonsReported &= ~bit;
     }
+    if (button == BTN_MIDDLE && pressed) {
+      if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+        clipboard->requestPrimaryText([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<std::string> text) {
+          if (!alive.expired() && text) {
+            pasteText(*text);
+          }
+        });
+      }
+      return;
+    }
     if (button != BTN_LEFT) {
       return;
     }
@@ -1686,9 +1701,7 @@ namespace term {
       } else {
         m_drag = DragIdle{};
         selectAround(cell, m_lastClick.count);
-        if (m_settings.copyOnSelect) {
-          copySelection();
-        }
+        publishSelection();
       }
       return;
     }
@@ -1699,8 +1712,8 @@ namespace term {
       if (drag->link && m_host.openUri) {
         m_host.openUri(*drag->link);
       }
-    } else if (drag != nullptr && m_settings.copyOnSelect) {
-      copySelection();
+    } else if (drag != nullptr) {
+      publishSelection();
     }
     m_drag = DragIdle{};
   }
@@ -2018,7 +2031,7 @@ namespace term {
     }
   }
 
-  void TerminalView::copySelection() {
+  std::string TerminalView::selectionText() {
     std::string text;
     m_session.withTerminal([&](GhosttyTerminal t) {
       GhosttySelection selection{};
@@ -2039,16 +2052,38 @@ namespace term {
       }
       ghostty_formatter_free(formatter);
     });
+    return text;
+  }
+
+  void TerminalView::copySelection() {
     TextClipboard* clipboard = Input::textClipboard();
-    if (!text.empty() && clipboard != nullptr) {
+    if (std::string text = selectionText(); !text.empty() && clipboard != nullptr) {
       clipboard->setClipboardText(std::move(text));
     }
   }
 
+  // A finished selection always becomes the primary selection; copy-on-select also puts it on the clipboard.
+  void TerminalView::publishSelection() {
+    TextClipboard* clipboard = Input::textClipboard();
+    std::string text = selectionText();
+    if (text.empty() || clipboard == nullptr) {
+      return;
+    }
+    if (m_settings.copyOnSelect) {
+      clipboard->setClipboardText(text);
+    }
+    clipboard->setPrimaryText(std::move(text));
+  }
+
   void TerminalView::paste() {
     TextClipboard* clipboard = Input::textClipboard();
-    std::optional<std::string> text = clipboard != nullptr ? clipboard->clipboardText() : std::nullopt;
-    if (!text || text->empty()) {
+    if (std::optional<std::string> text = clipboard != nullptr ? clipboard->clipboardText() : std::nullopt) {
+      pasteText(*text);
+    }
+  }
+
+  void TerminalView::pasteText(std::string text) {
+    if (text.empty()) {
       return;
     }
     const bool bracketed = m_session.withTerminal([](GhosttyTerminal t) {
@@ -2056,10 +2091,10 @@ namespace term {
       return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &mode) == GHOSTTY_SUCCESS && mode.value;
     });
     std::size_t needed = 0;
-    ghostty_paste_encode(text->data(), text->size(), bracketed, nullptr, 0, &needed);
+    ghostty_paste_encode(text.data(), text.size(), bracketed, nullptr, 0, &needed);
     std::vector<std::uint8_t> buf(needed);
     std::size_t written = 0;
-    if (ghostty_paste_encode(text->data(), text->size(), bracketed, buf.data(), buf.size(), &written)
+    if (ghostty_paste_encode(text.data(), text.size(), bracketed, buf.data(), buf.size(), &written)
             == GHOSTTY_SUCCESS
         && written > 0) {
       scrollToBottom();
