@@ -1848,6 +1848,10 @@ void AppWindow::attachSheet(Renderer& renderer, float width, float height, float
   card->setScale(0.96F + 0.04F * m_sheetMix);
   m_sheetCard = card.get();
   scrim->addChild(std::move(card));
+  // The sheet is modal: Tab walks only its own controls, never the window behind it.
+  for (const auto& child : m_root->children()) {
+    child->setExcludeSubtreeFromTabOrder(true);
+  }
   m_root->addChild(std::move(scrim));
 }
 
@@ -1858,6 +1862,9 @@ void AppWindow::detachSheet() {
     return;
   }
   auto removed = m_root->removeChild(scrim);
+  for (const auto& child : m_root->children()) {
+    child->setExcludeSubtreeFromTabOrder(false);
+  }
   m_input.forgetDetached(); // hover or focus inside the sheet goes while its nodes still live
   removed.reset();
   m_input.syncPointerHover();
