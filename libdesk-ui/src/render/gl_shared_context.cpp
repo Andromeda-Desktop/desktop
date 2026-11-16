@@ -15,6 +15,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -237,6 +238,8 @@ void GlSharedContext::initializeDisplay(EGLint surfaceType, bool createSharedCon
     m_rootContext = createContext(EGL_NO_CONTEXT, "root");
     kLog.info("initialized EGL {}.{} with shared root context", major, minor);
   } else {
+    // The first context costs 6-10 ms of driver setup; build it here, on the init worker, for the first surface.
+    m_spareContext = createContext(EGL_NO_CONTEXT, "first");
     kLog.info("initialized EGL {}.{} without shared context (isolated GPU contexts)", major, minor);
   }
 }
@@ -250,6 +253,10 @@ void GlSharedContext::recreateRootContext() {
   if (m_rootContext != EGL_NO_CONTEXT) {
     eglDestroyContext(m_display, m_rootContext);
     m_rootContext = EGL_NO_CONTEXT;
+  }
+  if (m_spareContext != EGL_NO_CONTEXT) {
+    eglDestroyContext(m_display, m_spareContext);
+    m_spareContext = EGL_NO_CONTEXT;
   }
   if (m_sharedContextEnabled) {
     m_rootContext = createContext(EGL_NO_CONTEXT, "root recovery");
@@ -289,6 +296,9 @@ void GlSharedContext::buildContextAttributes() {
 }
 
 EGLContext GlSharedContext::createContext(EGLContext shareContext, std::string_view label) {
+  if (shareContext == EGL_NO_CONTEXT && m_spareContext != EGL_NO_CONTEXT) {
+    return std::exchange(m_spareContext, EGL_NO_CONTEXT);
+  }
   EGLContext context = createContextWithCurrentAttributes(shareContext);
   if (context != EGL_NO_CONTEXT) {
     return context;

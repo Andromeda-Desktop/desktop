@@ -63,6 +63,7 @@ private:
   EGLDisplay m_display = EGL_NO_DISPLAY;
   EGLConfig m_config = nullptr;
   EGLContext m_rootContext = EGL_NO_CONTEXT;
+  EGLContext m_spareContext = EGL_NO_CONTEXT; // made on the init worker; the first createContext takes it
   std::vector<EGLint> m_contextAttributes;
   bool m_contextAttributesRobust = false;
   bool m_resetNotificationEnabled = false;
