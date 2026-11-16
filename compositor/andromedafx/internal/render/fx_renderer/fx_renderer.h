@@ -133,6 +133,8 @@ void fx_renderer_collect_gl_garbage(struct fx_renderer* renderer);
 bool fx_renderer_take_context(struct fx_renderer* renderer);
 // Uploads the textures created while the context was lent. Call with the context Home.
 void fx_renderer_upload_pending_textures(struct fx_renderer* renderer);
+// Frees the spare slots of each texture no client wrote for `idle_ms`. Returns true while a texture keeps a spare.
+bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms);
 
 // Drops the buffer's effect capture and clears its owner.
 void fx_framebuffer_release_effect_capture(struct fx_framebuffer* buffer);
@@ -152,6 +154,8 @@ bool fx_framebuffer_copy(
 ///
 
 #define FX_SHM_SLOTS 3
+// A texture no client wrote for this long keeps one slot: no frame still samples it, so the next write goes in place.
+#define FX_SHM_SLOT_IDLE_MS 1000
 
 struct fx_texture {
   struct wlr_texture wlr_texture;
@@ -180,6 +184,7 @@ struct fx_texture {
   pixman_region32_t slot_stale[FX_SHM_SLOTS]; // damage each slot has not received yet
   int slot;
   bool slot_failed; // a slot could not be created; stop adding slots
+  int64_t slot_written_ms; // CLOCK_MONOTONIC time of the last slot write
 
   // Created while the render thread held the context: the buffer stays locked (a shm client gets its release only
   // after the upload) and is uploaded when the context returns, before any pass can sample it.

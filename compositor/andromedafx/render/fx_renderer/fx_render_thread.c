@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "render/fx_renderer/fx_render_thread.h"
 #include "render/egl.h"
+#include "util/time.h"
 #include "render/fx_renderer/backdrop_probe.h"
 #include "render/fx_renderer/fx_renderer.h"
 #include <EGL/egl.h>
@@ -58,6 +59,7 @@ struct fx_render_thread {
   struct wl_event_loop* loop;
   struct wl_event_source* source;
   struct wl_event_source* idle_kick;
+  struct wl_event_source* slot_trim; // fires FX_SHM_SLOT_IDLE_MS after the last job: frees idle shm staging slots
   pthread_t thread;
 
   // Main thread only.
@@ -278,12 +280,28 @@ static void start_job(struct fx_render_thread* thread) {
   pthread_mutex_unlock(&thread->mutex);
 }
 
+static int trim_slots(void* data) {
+  struct fx_render_thread* thread = data;
+  // Away: the job's finish arms the timer again.
+  if (thread->location == FX_CONTEXT_HOME
+      && fx_renderer_trim_shm_slots(thread->renderer, get_current_time_msec(), FX_SHM_SLOT_IDLE_MS)) {
+    wl_event_source_timer_update(thread->slot_trim, FX_SHM_SLOT_IDLE_MS);
+  }
+  return 0;
+}
+
 // The job finished: the context is Home again. Its waiters move to `ready`.
 static void finish_job(struct fx_render_thread* thread, bool ok) {
   thread->location = FX_CONTEXT_HOME;
   wlr_egl_set_lent(thread->renderer->egl, false);
   fx_renderer_collect_gl_garbage(thread->renderer);
   fx_renderer_upload_pending_textures(thread->renderer);
+  if (thread->slot_trim == NULL) {
+    thread->slot_trim = wl_event_loop_add_timer(thread->loop, trim_slots, thread);
+  }
+  if (thread->slot_trim != NULL) {
+    wl_event_source_timer_update(thread->slot_trim, FX_SHM_SLOT_IDLE_MS);
+  }
   release_ops(thread, &thread->in_flight);
   for (size_t i = 0; i < thread->current.len; i++) {
     struct waiter waiter = thread->current.items[i];
@@ -404,6 +422,9 @@ void fx_render_thread_destroy(struct fx_render_thread* thread) {
   pthread_join(thread->thread, NULL);
   wlr_egl_set_lent(thread->renderer->egl, false);
 
+  if (thread->slot_trim != NULL) {
+    wl_event_source_remove(thread->slot_trim);
+  }
   if (thread->idle_kick != NULL) {
     wl_event_source_remove(thread->idle_kick);
   }

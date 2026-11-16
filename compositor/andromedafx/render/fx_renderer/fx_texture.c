@@ -6,6 +6,7 @@
 #include "andromedafx/render/fx_renderer/fx_offscreen_buffers.h"
 #include "andromedafx/render/fx_renderer/fx_renderer.h"
 
+#include "util/time.h"
 #include <assert.h>
 #include <drm_fourcc.h>
 #include <errno.h>
@@ -304,7 +305,9 @@ static bool fx_texture_update_from_buffer(
         next = candidate;
       }
     }
-    if (next < 0 && count < FX_SHM_SLOTS && !texture->slot_failed) {
+    const bool idle = count == 1 && texture->slots[0]->n_locks == 0
+        && get_current_time_msec() - texture->slot_written_ms >= FX_SHM_SLOT_IDLE_MS;
+    if (next < 0 && !idle && count < FX_SHM_SLOTS && !texture->slot_failed) {
       struct wlr_egl_context prev_ctx;
       wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx);
       texture->slots[count] = shm_slot_create(
@@ -336,6 +339,7 @@ static bool fx_texture_update_from_buffer(
     }
     shm_slot_write(texture->slots[texture->slot], &texture->slot_stale[texture->slot], data, stride);
     pixman_region32_clear(&texture->slot_stale[texture->slot]);
+    texture->slot_written_ms = get_current_time_msec();
     wlr_buffer_end_data_ptr_access(buffer);
     return true;
   }
@@ -924,6 +928,40 @@ void fx_texture_get_attribs(struct wlr_texture* wlr_texture, struct fx_texture_a
       .tex = texture->tex,
       .has_alpha = texture->has_alpha,
   };
+}
+
+bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms) {
+  bool spares = false;
+  struct fx_texture* texture;
+  wl_list_for_each(texture, &renderer->textures, link) {
+    if (texture->slots[0] == NULL || texture->slots[1] == NULL) {
+      continue;
+    }
+    bool scanned_out = false;
+    for (int i = 0; i < FX_SHM_SLOTS && texture->slots[i] != NULL; ++i) {
+      scanned_out = scanned_out || (i != texture->slot && texture->slots[i]->n_locks > 0);
+    }
+    if (scanned_out || now_ms - texture->slot_written_ms < idle_ms) {
+      spares = true;
+      continue;
+    }
+    const int keep = texture->slot;
+    for (int i = 0; i < FX_SHM_SLOTS && texture->slots[i] != NULL; ++i) {
+      if (i != keep) {
+        wlr_buffer_drop(texture->slots[i]);
+        pixman_region32_fini(&texture->slot_stale[i]);
+      }
+    }
+    texture->slots[0] = texture->slots[keep];
+    texture->slot_tex[0] = texture->slot_tex[keep];
+    texture->slot_stale[0] = texture->slot_stale[keep];
+    for (int i = 1; i < FX_SHM_SLOTS; ++i) {
+      texture->slots[i] = NULL;
+    }
+    texture->slot = 0;
+    texture->slot_failed = false;
+  }
+  return spares;
 }
 
 void fx_renderer_upload_pending_textures(struct fx_renderer* renderer) {
