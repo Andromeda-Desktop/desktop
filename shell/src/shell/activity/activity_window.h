@@ -96,6 +96,9 @@ private:
   };
 
   void destroyWindow();
+  // Off: no window. Live: the window samples once per second. Paused: the window is open but suspended (hidden).
+  enum class Sampling : std::uint8_t { Off, Live, Paused };
+  void setSampling(Sampling next);
   void prepareFrame(bool needsUpdate, bool needsLayout);
   void buildScene(Renderer& renderer, float width, float height);
   // activity_table.cpp
@@ -114,7 +117,7 @@ private:
   // activity_inspector.cpp
   [[nodiscard]] std::unique_ptr<Flex> buildInspector(Renderer& renderer, float scale);
   void addOverview(Flex& details, const ActivityRow& row, float scale);
-  void addProcesses(Flex& details, const ActivityRow& row, float scale);
+  void addInspection(Flex& details, const ActivityRow& row, float scale);
   void addActions(Flex& inspector, const ActivityRow& row, float scale);
   [[nodiscard]] std::unique_ptr<Flex> buildContainers(float scale);
   void addContainerCards(Flex& list, float scale);
@@ -182,6 +185,7 @@ private:
   ConfigService* m_config = nullptr;
   RenderContext* m_renderContext = nullptr;
   ActivityMonitor* m_monitor = nullptr;
+  Sampling m_sampling = Sampling::Off;
   ActivityActions* m_actions = nullptr;
   ContainerService* m_containers = nullptr;
   std::map<std::string, SystemdUnit> m_engineUnits; // by engine socket + "|" + unit name
@@ -214,7 +218,7 @@ private:
   Node* m_body = nullptr;
   AnimationManager m_animations;
   InputDispatcher m_inputDispatcher;
-  IconResolver m_icons;
+  IconResolver m_icons{true}; // misses cached: a row without an icon must not search the theme on every rebuild
   ScrollViewState m_listScroll;
   ScrollViewState m_inspectorScroll;
   wl_output* m_output = nullptr;
@@ -222,7 +226,7 @@ private:
 
   Pane m_pane = Pane::Memory;
   std::map<Pane, std::size_t> m_sortBy; // a header click; default: the pane's first value column
-  bool m_processesTab = false;          // inspector segment: Overview / Processes
+  InspectTab m_inspectTab = InspectTab::Overview; // inspector segment
   bool m_inspectorHidden = false;       // Space toggles it while a row is selected
   Confirm m_confirm = Confirm::None;
   std::string m_selectedKey;
@@ -234,6 +238,7 @@ private:
   Input* m_searchInput = nullptr;
   Node m_placeholderRoot;             // input root while the scene rebuilds
   std::unique_ptr<Node> m_keptSearch; // the search field between removal from the old tree and the new toolbar
+  Input* m_keptSearchInput = nullptr; // the input inside m_keptSearch
   float m_searchScale = 0.0F;
   std::string m_actionError;
   std::set<std::string> m_limitedKeys; // rows limited from this window; only these get the status mark
@@ -248,6 +253,7 @@ private:
   struct LiveGraph {
     Graph* graph = nullptr;
     std::function<std::vector<float>()> values;
+    std::function<std::vector<float>()> values2;
   };
   struct LiveHeat {
     Flex* cell = nullptr;

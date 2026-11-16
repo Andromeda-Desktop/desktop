@@ -19,15 +19,20 @@ void ActivityService::setUnits(std::vector<SystemdUnit> units) {
 }
 
 void ActivityService::setWindowUnits(std::map<std::string, std::string> windowAppIdByUnit) {
+  if (windowAppIdByUnit == m_windowAppIdByUnit) {
+    return;
+  }
   m_windowAppIdByUnit = std::move(windowAppIdByUnit);
   rebuild();
 }
 
-void ActivityService::setUnitTiers(std::map<std::string, std::string> tierByUnit) {
-  if (tierByUnit != m_tierByUnit) {
-    m_tierByUnit = std::move(tierByUnit);
-    rebuild();
+bool ActivityService::setUnitTiers(std::map<std::string, std::string> tierByUnit) {
+  if (tierByUnit == m_tierByUnit) {
+    return false;
   }
+  m_tierByUnit = std::move(tierByUnit);
+  rebuild();
+  return true;
 }
 
 std::string_view qosTierName(std::string_view tier) {
@@ -124,6 +129,7 @@ void ActivityService::rebuild() {
     const Timed& last = history->second.back();
     row.memoryBytes += last.sample.memoryBytes;
     row.cpuUsageUsec += last.sample.cpuUsageUsec;
+    row.threads += last.sample.threads;
     row.memoryPressure = std::max(row.memoryPressure, last.sample.memoryPressureAvg10);
     const Timed& first = history->second.front();
     const double seconds = std::chrono::duration<double>(last.at - first.at).count();

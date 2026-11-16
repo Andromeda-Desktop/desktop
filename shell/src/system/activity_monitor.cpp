@@ -116,8 +116,7 @@ void ActivityMonitor::requestTiers() {
             tiers.emplace(row.get<0>(), row.get<3>());
           }
         }
-        m_activity.setUnitTiers(std::move(tiers));
-        if (m_onChange) {
+        if (m_activity.setUnitTiers(std::move(tiers)) && m_onChange) {
           m_onChange();
         }
       });

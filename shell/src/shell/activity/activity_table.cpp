@@ -105,6 +105,12 @@ std::vector<ActivityWindow::Column> ActivityWindow::columnsFor(Pane pane) const 
         return energyBars(r.cpuPercent, gpuOf(r)) * 1000.0 + r.cpuPercent + gpuOf(r);
       },
   };
+  const Column threads{
+      .header = i18n::tr("activity.column-threads"),
+      .text = [](const ActivityRow& r) { return std::to_string(r.threads); },
+      .value = [](const ActivityRow& r) { return static_cast<double>(r.threads); },
+      .muted = true,
+  };
   const auto muted = [](Column column) {
     column.muted = true;
     return column;
@@ -117,18 +123,23 @@ std::vector<ActivityWindow::Column> ActivityWindow::columnsFor(Pane pane) const 
          .text = [](const ActivityRow& r) { return clockText(r.cpuUsageUsec); },
          .value = [](const ActivityRow& r) { return static_cast<double>(r.cpuUsageUsec); },
          .muted = true},
-        gpu,
-        running,
+        threads,
+        {.header = i18n::tr("activity.column-wakeups"),
+         .text = [this](const ActivityRow& r) {
+           const auto rate = m_details != nullptr ? m_details->wakeupsPerSec(r.key) : std::nullopt;
+           return rate.has_value() ? std::format("{:.0f}", *rate) : std::string("–");
+         },
+         .value = [this](const ActivityRow& r) {
+           return m_details != nullptr ? m_details->wakeupsPerSec(r.key).value_or(0.0) : 0.0;
+         },
+         .muted = true},
     };
   case Pane::Memory:
     return {
         memory,
         cpu,
         muted(energy),
-        {.header = i18n::tr("activity.column-pressure"),
-         .text = [](const ActivityRow& r) { return percentText(r.memoryPressure); },
-         .value = [](const ActivityRow& r) { return r.memoryPressure; },
-         .muted = true},
+        threads,
         {.header = i18n::tr("activity.column-user"),
          .text = [](const ActivityRow& r) {
            return i18n::tr(r.systemManager ? "activity.user-system" : "activity.user-you");
@@ -286,23 +297,41 @@ std::unique_ptr<Flex> ActivityWindow::buildToolbar(float scale) {
   bar->addChild(ui::spacer());
 
   if (m_keptSearch != nullptr && m_searchScale == scale) {
-    m_searchInput = static_cast<Input*>(bar->addChild(std::move(m_keptSearch)));
+    bar->addChild(std::move(m_keptSearch));
+    m_searchInput = std::exchange(m_keptSearchInput, nullptr);
   } else {
     m_keptSearch.reset();
+    m_keptSearchInput = nullptr;
     m_searchScale = scale;
-    bar->addChild(ui::input({
-        .out = &m_searchInput,
-        .value = m_query,
-        .placeholder = i18n::tr("activity.search"),
-        .fontSize = Style::fontSizeBody * scale,
-        .width = kSearchWidth * scale,
-        .height = Style::controlHeight * scale,
-        .onChange = [this](const std::string& query) {
-          m_query = query;
-          computeOrder();
-          requestRebuild();
-        },
-    }));
+    bar->addChild(ui::row(
+        {.align = FlexAlign::Center,
+         .gap = Style::spaceSm * scale,
+         .paddingH = Tokens::spaceP8 * scale,
+         .fill = colorSpecFromRole(ColorRole::Fill1),
+         .radius = Tokens::radiusR8 * scale,
+         .width = kSearchWidth * scale,
+         .height = Style::controlHeight * scale},
+        ui::glyph({
+            .glyph = "search",
+            .glyphSize = Style::fontSizeBody * scale,
+            .color = colorSpecFromRole(ColorRole::Label2),
+        }),
+        ui::input({
+            .out = &m_searchInput,
+            .value = m_query,
+            .placeholder = i18n::tr("activity.search"),
+            .fontSize = Style::fontSizeBody * scale,
+            .controlHeight = Style::controlHeight * scale,
+            .horizontalPadding = 0.0F,
+            .frameVisible = false,
+            .flexGrow = 1.0F,
+            .onChange = [this](const std::string& query) {
+              m_query = query;
+              computeOrder();
+              requestRebuild();
+            },
+        })
+    ));
   }
   if (Style::closeButtonsEnabled()) {
     bar->addChild(ui::button({
@@ -820,6 +849,7 @@ std::unique_ptr<Flex> ActivityWindow::buildStrip(float width, float scale) {
   std::string caption;
   std::vector<std::tuple<std::function<std::string()>, ColorRole, bool>> chips;
   std::function<std::vector<float>()> values;
+  std::function<std::vector<float>()> values2; // second series, drawn in Label3
   ColorRole graphRole = ColorRole::Accent;
   std::vector<Cell> cells;
   const auto rowsSum = [this](auto pick) {
@@ -835,9 +865,14 @@ std::unique_ptr<Flex> ActivityWindow::buildStrip(float width, float scale) {
   switch (m_pane) {
   case Pane::Cpu:
     caption = i18n::tr("activity.strip-cpu");
-    chips.emplace_back([last] { return i18n::tr("activity.chip-cpu", "value", percentText(last().cpuUsagePercent)); },
+    chips.emplace_back([last] { return i18n::tr("activity.chip-user", "value", percentText(last().cpuUserPercent)); },
                        ColorRole::Accent, false);
-    values = series([](const SystemStats& s) { return s.cpuUsagePercent; }, 100.0F);
+    chips.emplace_back(
+        [last] { return i18n::tr("activity.chip-system", "value", percentText(last().cpuSystemPercent)); },
+        ColorRole::Label3, false
+    );
+    values = series([](const SystemStats& s) { return s.cpuUserPercent; }, 100.0F);
+    values2 = series([](const SystemStats& s) { return s.cpuSystemPercent; }, 100.0F);
     cells = {
         {i18n::tr("activity.grid-idle"), [last] { return percentText(100.0 - last().cpuUsagePercent); }},
         {i18n::tr("activity.grid-load"), [last] { return std::format("{:.2f}", last().loadAvg1); }},
@@ -991,7 +1026,11 @@ std::unique_ptr<Flex> ActivityWindow::buildStrip(float width, float scale) {
   auto* graph = static_cast<Graph*>(
       graphBox->addChild(makeGraph(values(), graphWidth, kStripGraphHeight * scale, graphRole))
   );
-  m_liveGraphs.push_back({graph, std::move(values)});
+  if (values2) {
+    graph->setValues2(values2());
+    graph->setColor2(colorSpecFromRole(ColorRole::Label3));
+  }
+  m_liveGraphs.push_back({graph, std::move(values), std::move(values2)});
   graphBox->addChild(ui::row(
       {.align = FlexAlign::Center, .width = graphWidth},
       text(i18n::tr("activity.time-ago"), Tokens::typeCaption.size * scale, ColorRole::Label3, FontWeight::Medium),

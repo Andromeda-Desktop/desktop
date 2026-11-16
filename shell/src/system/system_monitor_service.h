@@ -25,6 +25,8 @@ struct SystemStats {
   std::chrono::steady_clock::time_point sampledAt;
   std::chrono::system_clock::time_point sampledAtWall;
   double cpuUsagePercent{0.0};
+  double cpuUserPercent{0.0};   // user + nice share of cpuUsagePercent
+  double cpuSystemPercent{0.0}; // system + irq + softirq share
   // Per-core usage in /proc/stat order. Empty unless a consumer holds a retainCpuCores()
   // reference; sampled on its own fixed 1s cadence. Offline cores are absent from /proc/stat,
   // so the length can change and an entry's position is not its core id.

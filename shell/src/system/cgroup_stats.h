@@ -10,6 +10,7 @@ struct CgroupSample {
   bool valid = false;
   std::uint64_t cpuUsageUsec = 0;
   std::uint64_t memoryBytes = 0;
+  std::uint64_t threads = 0; // pids.current: tasks, so threads, in the cgroup
   std::uint64_t ioReadBytes = 0;
   std::uint64_t ioWriteBytes = 0;
   double memoryPressureAvg10 = 0.0; // "some" share of time stalled on memory, percent

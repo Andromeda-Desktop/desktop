@@ -134,15 +134,14 @@ std::unique_ptr<Flex> ActivityWindow::buildInspector(Renderer& renderer, float s
       {.align = FlexAlign::Center},
       ui::segmented({
           .options = std::vector<ui::SegmentedOption>{{.label = i18n::tr("activity.inspector-overview")},
-                                                      {.label = i18n::tr("activity.inspector-processes")}},
-          .selectedIndex = m_processesTab ? 1U : 0U,
+                                                      {.label = i18n::tr("activity.inspector-network")},
+                                                      {.label = i18n::tr("activity.inspector-files")},
+                                                      {.label = i18n::tr("activity.inspector-threads")}},
+          .selectedIndex = static_cast<std::size_t>(m_inspectTab),
           .fontSize = Style::fontSizeBody * scale,
           .scale = scale,
-          .onChange = [this, key = row->key](std::size_t index) {
-            m_processesTab = index == 1;
-            if (m_processesTab && m_details != nullptr) {
-              m_details->setExpanded(key, true); // groups fill in on the next sample
-            }
+          .onChange = [this](std::size_t index) {
+            m_inspectTab = static_cast<InspectTab>(index);
             m_inspectorScroll = {};
             requestRebuild();
           },
@@ -154,8 +153,8 @@ std::unique_ptr<Flex> ActivityWindow::buildInspector(Renderer& renderer, float s
   Flex* details = scroll->content();
   details->setAlign(FlexAlign::Stretch);
   details->setGap(Style::spaceMd * scale);
-  if (m_processesTab) {
-    addProcesses(*details, *row, scale);
+  if (m_inspectTab != InspectTab::Overview) {
+    addInspection(*details, *row, scale);
   } else {
     addOverview(*details, *row, scale);
   }
@@ -352,11 +351,15 @@ void ActivityWindow::addOverview(Flex& details, const ActivityRow& row, float sc
   details.addChild(std::move(buttons));
 }
 
-void ActivityWindow::addProcesses(Flex& details, const ActivityRow& row, float scale) {
-  const auto* groups = m_details != nullptr ? m_details->groups(row.key) : nullptr;
-  if (groups == nullptr || groups->empty()) {
+void ActivityWindow::addInspection(Flex& details, const ActivityRow& row, float scale) {
+  const Inspection* shown = m_details != nullptr ? m_details->inspection(row.key) : nullptr;
+  const bool empty = shown == nullptr
+      || (m_inspectTab == InspectTab::Network && shown->sockets.empty())
+      || (m_inspectTab == InspectTab::Files && shown->files.empty())
+      || (m_inspectTab == InspectTab::Threads && shown->threads.empty());
+  if (empty) {
     details.addChild(ui::label({
-        .text = i18n::tr("activity.processes-empty"),
+        .text = i18n::tr(shown == nullptr ? "activity.loading" : "activity.inspect-empty"),
         .fontSize = Style::fontSizeBody * scale,
         .color = colorSpecFromRole(ColorRole::Label2),
         .maxLines = 3,
@@ -364,37 +367,36 @@ void ActivityWindow::addProcesses(Flex& details, const ActivityRow& row, float s
     return;
   }
   auto list = card(m_glass, scale);
-  for (const auto& group : *groups) {
-    Label* cpu = nullptr;
-    Label* memory = nullptr;
-    auto cpuCell = valueCell(cpuText(group.cpuPercent), scale);
-    auto memoryCell = valueCell(memoryText(group.residentBytes), scale, ColorRole::Label1);
-    cpu = cpuCell.get();
-    memory = memoryCell.get();
-    list->addChild(ui::row(
-        {.align = FlexAlign::Center, .minHeight = Tokens::sizeRow * scale},
-        ui::label({
-            .text = group.count > 1 ? std::format("{} ({})", group.command, group.count) : group.command,
-            .fontSize = Style::fontSizeBody * scale,
-            .color = colorSpecFromRole(ColorRole::Label1),
-            .maxLines = 1,
-            .ellipsize = TextEllipsize::Middle,
-            .flexGrow = 1.0F,
-        }),
-        std::move(cpuCell), std::move(memoryCell)
-    ));
-    const auto bind = [this, key = row.key, command = group.command](Label* label, auto textOf) {
-      m_liveText.push_back({label, [this, key, command, textOf] {
-                              const auto* live = m_details != nullptr ? m_details->groups(key) : nullptr;
-                              if (live == nullptr) {
+  switch (m_inspectTab) {
+  case InspectTab::Network:
+    for (const auto& socket : shown->sockets) {
+      list->addChild(cardRow(
+          socket.remote.empty() ? i18n::tr("activity.socket-listening", "address", socket.local) : socket.remote,
+          memoryText(socket.bytes), scale
+      ));
+    }
+    break;
+  case InspectTab::Files:
+    for (const auto& file : shown->files) {
+      list->addChild(cardRow(file, "", scale));
+    }
+    break;
+  case InspectTab::Threads:
+    for (const auto& thread : shown->threads) {
+      Label* value = nullptr;
+      list->addChild(cardRow(thread.name, cpuText(thread.cpuPercent), scale, &value));
+      m_liveText.push_back({value, [this, key = row.key, tid = thread.tid] {
+                              const Inspection* now = m_details != nullptr ? m_details->inspection(key) : nullptr;
+                              if (now == nullptr) {
                                 return std::string();
                               }
-                              const auto it = std::ranges::find(*live, command, &ProcessGroupUsage::command);
-                              return it != live->end() ? textOf(*it) : std::string();
+                              const auto it = std::ranges::find(now->threads, tid, &ThreadUsage::tid);
+                              return it != now->threads.end() ? cpuText(it->cpuPercent) : std::string("–");
                             }});
-    };
-    bind(cpu, [](const ProcessGroupUsage& g) { return cpuText(g.cpuPercent); });
-    bind(memory, [](const ProcessGroupUsage& g) { return memoryText(g.residentBytes); });
+    }
+    break;
+  case InspectTab::Overview:
+    break;
   }
   settings::addSettingsRowSeparators(*list, scale);
   details.addChild(std::move(list));

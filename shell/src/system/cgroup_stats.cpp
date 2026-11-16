@@ -120,6 +120,7 @@ CgroupSample readCgroupSample(const std::string& cgroupRoot, const std::string& 
   sample.valid = true;
   sample.cpuUsageUsec = parseCpuStatUsageUsec(cpu);
   sample.memoryBytes = toU64(readFile(dir / "memory.current"));
+  sample.threads = toU64(readFile(dir / "pids.current"));
   parseIoStat(readFile(dir / "io.stat"), sample.ioReadBytes, sample.ioWriteBytes);
   sample.memoryPressureAvg10 = parsePressureSomeAvg10(readFile(dir / "memory.pressure"));
   sample.cpuPressureAvg10 = parsePressureSomeAvg10(readFile(dir / "cpu.pressure"));

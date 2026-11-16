@@ -5,32 +5,48 @@
 #include "system/activity_service.h"
 
 #include <algorithm>
+#include <arpa/inet.h>
 #include <cerrno>
 #include <charconv>
 #include <cstring>
+#include <dirent.h>
+#include <fcntl.h>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <linux/inet_diag.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/sock_diag.h>
 #include <linux/tcp.h>
 #include <netinet/in.h>
+#include <set>
 #include <sstream>
+#include <string_view>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
 namespace {
 
+  // Plain read(2): /proc and cgroup files are small and read thousands of times per sample, where ifstream costs more
+  // than the read itself.
   std::string readFile(const fs::path& path) {
-    std::ifstream in(path);
-    std::ostringstream out;
-    out << in.rdbuf();
-    return out.str();
+    std::string out;
+    const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+      return out;
+    }
+    char buffer[4096];
+    for (ssize_t n = 0; (n = ::read(fd, buffer, sizeof(buffer))) > 0;) {
+      out.append(buffer, static_cast<std::size_t>(n));
+    }
+    ::close(fd);
+    return out;
   }
 
   std::uint64_t toU64(std::string_view text) {
@@ -182,11 +198,18 @@ namespace {
 
 } // namespace
 
-std::optional<std::map<std::uint64_t, std::map<std::uint32_t, std::uint64_t>>> readTcpBytesByCgroup() {
-  std::map<std::uint64_t, std::map<std::uint32_t, std::uint64_t>> result;
+namespace {
+
+  constexpr std::uint8_t kTcpListen = 10; // TCP_LISTEN in the kernel's tcp_states.h
+
+  using TcpVisit = std::function<void(const inet_diag_msg& diag, std::uint64_t cgroup, std::uint64_t bytes)>;
+
+  // Visits every TCP socket (IPv4 and IPv6) with its owning cgroup ID and bytes received + sent. False when the dump
+  // failed or ended early.
+  bool dumpTcp(const TcpVisit& visit) {
   const int fd = ::socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_SOCK_DIAG);
   if (fd < 0) {
-    return std::nullopt;
+    return false;
   }
   bool complete = true;
   for (const std::uint8_t family : {std::uint8_t{AF_INET}, std::uint8_t{AF_INET6}}) {
@@ -237,40 +260,135 @@ std::optional<std::map<std::uint64_t, std::map<std::uint32_t, std::uint64_t>>> r
             bytes = info.tcpi_bytes_received + info.tcpi_bytes_acked;
           }
         }
-        if (cgroup != 0 && diag->idiag_inode != 0) {
-          result[cgroup][diag->idiag_inode] = bytes;
-        }
+        visit(*diag, cgroup, bytes);
       }
     }
   }
   ::close(fd);
-  if (!complete) {
-    return std::nullopt;
-  }
-  return result;
+  return complete;
 }
 
-std::uint64_t readProcessCpuTicks(int pid) {
-  const std::string stat = readFile(std::format("/proc/{}/stat", pid));
-  // comm may contain spaces: fields restart after the last ')'. utime and stime are fields 14 and 15.
-  const std::size_t close = stat.rfind(')');
-  if (close == std::string::npos) {
+  std::string endpoint(std::uint8_t family, const std::uint32_t* address, std::uint16_t portBe) {
+    char text[INET6_ADDRSTRLEN] = {};
+    ::inet_ntop(family, address, text, sizeof(text));
+    const unsigned port = ntohs(portBe);
+    return family == AF_INET6 ? std::format("[{}]:{}", text, port) : std::format("{}:{}", text, port);
+  }
+
+  std::uint64_t cpuTicksOf(std::string_view stat) {
+    // comm may contain spaces: fields restart after the last ')'. utime and stime are fields 14 and 15.
+    const std::size_t close = stat.rfind(')');
+    if (close == std::string_view::npos || close + 2 > stat.size()) {
+      return 0;
+    }
+    std::string_view rest = stat.substr(close + 2);
+    std::uint64_t ticks = 0;
+    for (int field = 3; field <= 15 && !rest.empty(); ++field) {
+      const std::size_t space = rest.find(' ');
+      if (field >= 14) {
+        ticks += toU64(rest.substr(0, space));
+      }
+      if (space == std::string_view::npos) {
+        break;
+      }
+      rest.remove_prefix(space + 1);
+    }
+    return ticks;
+  }
+
+  template <typename Visit> void forEachEntry(const std::string& dir, Visit visit) {
+    DIR* handle = ::opendir(dir.c_str());
+    if (handle == nullptr) {
+      return;
+    }
+    while (const dirent* entry = ::readdir(handle)) {
+      if (entry->d_name[0] != '.') {
+        visit(std::string_view(entry->d_name));
+      }
+    }
+    ::closedir(handle);
+  }
+
+  std::vector<std::string> openFiles(const std::vector<int>& pids) {
+    std::set<std::string> files;
+    for (const int pid : pids) {
+      const std::string dir = std::format("/proc/{}/fd", pid);
+      forEachEntry(dir, [&](std::string_view fd) {
+        char target[4096];
+        const ssize_t n = ::readlink(std::format("{}/{}", dir, fd).c_str(), target, sizeof(target));
+        // Regular paths only: sockets, pipes and anon inodes read "socket:[..]", "pipe:[..]", "anon_inode:..".
+        if (n > 0 && target[0] == '/' && !std::string_view(target, static_cast<std::size_t>(n)).starts_with("/dev/")
+            && !std::string_view(target, static_cast<std::size_t>(n)).starts_with("/memfd:")) {
+          files.emplace(target, static_cast<std::size_t>(n));
+        }
+      });
+    }
+    std::vector<std::string> out(files.begin(), files.end());
+    if (out.size() > kMaxInspectFiles) {
+      out.resize(kMaxInspectFiles);
+    }
+    return out;
+  }
+
+  std::vector<ThreadUsage> threadUsage(
+      const std::vector<int>& pids, const std::map<int, std::uint64_t>& before, std::map<int, std::uint64_t>& after,
+      double seconds, int cpuCount
+  ) {
+    static const auto ticksPerSecond = static_cast<double>(::sysconf(_SC_CLK_TCK));
+    std::vector<ThreadUsage> out;
+    for (const int pid : pids) {
+      const std::string dir = std::format("/proc/{}/task", pid);
+      forEachEntry(dir, [&](std::string_view name) {
+        int tid = 0;
+        std::from_chars(name.data(), name.data() + name.size(), tid);
+        std::string comm = readFile(std::format("{}/{}/comm", dir, name));
+        if (tid <= 0 || comm.empty()) {
+          return; // exited between the reads
+        }
+        if (comm.back() == '\n') {
+          comm.pop_back();
+        }
+        const std::uint64_t ticks = cpuTicksOf(readFile(std::format("{}/{}/stat", dir, name)));
+        after[tid] = ticks;
+        double percent = 0.0;
+        if (const auto prev = before.find(tid); prev != before.end() && seconds > 0.0 && ticks >= prev->second) {
+          percent = static_cast<double>(ticks - prev->second) / ticksPerSecond / (seconds * std::max(1, cpuCount)) * 100.0;
+        }
+        out.push_back({.tid = tid, .name = std::move(comm), .cpuPercent = percent});
+      });
+    }
+    std::ranges::sort(out, [](const ThreadUsage& a, const ThreadUsage& b) {
+      return a.cpuPercent != b.cpuPercent ? a.cpuPercent > b.cpuPercent : a.tid < b.tid;
+    });
+    if (out.size() > kMaxInspectThreads) {
+      out.resize(kMaxInspectThreads);
+    }
+    return out;
+  }
+
+} // namespace
+
+std::uint64_t readTaskTimeslices(int pid) {
+  std::uint64_t total = 0;
+  DIR* tasks = ::opendir(std::format("/proc/{}/task", pid).c_str());
+  if (tasks == nullptr) {
     return 0;
   }
-  std::string_view rest = std::string_view(stat).substr(close + 2);
-  std::uint64_t ticks = 0;
-  for (int field = 3; field <= 15 && !rest.empty(); ++field) {
-    const std::size_t space = rest.find(' ');
-    if (field >= 14) {
-      ticks += toU64(rest.substr(0, space));
+  while (const dirent* entry = ::readdir(tasks)) {
+    if (entry->d_name[0] == '.') {
+      continue;
     }
-    if (space == std::string_view::npos) {
-      break;
+    // schedstat: "<ns on cpu> <ns waiting> <timeslices run>"
+    const std::string stat = readFile(std::format("/proc/{}/task/{}/schedstat", pid, entry->d_name));
+    if (const std::size_t last = stat.rfind(' '); last != std::string::npos) {
+      total += toU64(std::string_view(stat).substr(last + 1));
     }
-    rest.remove_prefix(space + 1);
   }
-  return ticks;
+  ::closedir(tasks);
+  return total;
 }
+
+std::uint64_t readProcessCpuTicks(int pid) { return cpuTicksOf(readFile(std::format("/proc/{}/stat", pid))); }
 
 int energyBars(double cpuPercent, double gpuPercent) {
   // GPU work costs about twice the power of the same CPU share on laptop parts; 4 bars from 20 % weighted.
@@ -303,23 +421,34 @@ bool ActivityDetails::update(
   if (m_probing) {
     return true; // the previous job still runs: this sample gets no GPU shares, the next one does
   }
+  std::unordered_map<std::string_view, std::string_view> groupByUnit;
+  groupByUnit.reserve(units.size());
+  for (const auto& unit : units) {
+    if (!unit.controlGroup.empty()) {
+      groupByUnit.emplace(unit.name, unit.controlGroup);
+    }
+  }
   std::vector<ProbeRow> probeRows;
   probeRows.reserve(rows.size());
   for (const auto& row : rows) {
-    ProbeRow& probeRow =
-        probeRows.emplace_back(ProbeRow{.key = row.key, .controlGroups = {}, .expanded = m_expanded.contains(row.key)});
+    ProbeRow& probeRow = probeRows.emplace_back(ProbeRow{
+        .key = row.key,
+        .controlGroups = {},
+        .expanded = m_expanded.contains(row.key),
+        .inspect = row.key == m_inspectKey ? m_inspectTab : InspectTab::Overview,
+    });
     for (const auto& name : row.units) {
-      if (const auto it = std::ranges::find(units, name, &SystemdUnit::name);
-          it != units.end() && !it->controlGroup.empty()) {
-        probeRow.controlGroups.push_back(it->controlGroup);
+      if (const auto it = groupByUnit.find(name); it != groupByUnit.end()) {
+        probeRow.controlGroups.emplace_back(it->second);
       }
     }
   }
   m_probing = true;
   SharedWorker::instance().post<ProbeResult>(
       m_alive,
-      [state = std::move(m_probeState), probeRows = std::move(probeRows), cgroupRoot, cpuCount, now]() mutable {
-        return probe(std::move(state), probeRows, cgroupRoot, cpuCount, now);
+      [state = std::move(m_probeState), probeRows = std::move(probeRows), cgroupRoot, cpuCount, now,
+       shown = m_shown]() mutable {
+        return probe(std::move(state), probeRows, cgroupRoot, cpuCount, now, shown);
       },
       [this, generation = m_generation, probed = std::move(probed)](ProbeResult result) {
         if (generation != m_generation) {
@@ -329,6 +458,9 @@ bool ActivityDetails::update(
         m_probeState = std::move(result.state);
         m_gpuPercent = std::move(result.gpuPercent);
         m_networkBytesPerSec = std::move(result.networkBytesPerSec);
+        m_wakeupsPerSec = std::move(result.wakeupsPerSec);
+        m_inspectionKey = std::move(result.inspectedKey);
+        m_inspection = std::move(result.inspection);
         m_groups = std::move(result.groups);
         if (probed) {
           probed();
@@ -341,7 +473,7 @@ bool ActivityDetails::update(
 
 ActivityDetails::ProbeResult ActivityDetails::probe(
     ProbeState state, const std::vector<ProbeRow>& rows, const std::string& cgroupRoot, int cpuCount,
-    std::chrono::steady_clock::time_point now
+    std::chrono::steady_clock::time_point now, Shown shown
 ) {
   static const auto ticksPerSecond = static_cast<double>(::sysconf(_SC_CLK_TCK));
   const double seconds =
@@ -349,7 +481,47 @@ ActivityDetails::ProbeResult ActivityDetails::probe(
   ProbeResult result;
   result.state.at = now;
   std::set<int> seenPids;
-  const auto tcp = readTcpBytesByCgroup();
+  const auto inspected = std::ranges::find_if(rows, [](const ProbeRow& row) { return row.inspect != InspectTab::Overview; });
+  Inspection inspection{.tab = inspected != rows.end() ? inspected->inspect : InspectTab::Overview};
+  std::vector<int> inspectedPids;
+  std::vector<std::uint64_t> inspectedIds;
+  if (inspected != rows.end()) {
+    for (const auto& cg : inspected->controlGroups) {
+      auto unitPids = cgroupPids(cgroupRoot, cg, &inspectedIds);
+      inspectedPids.insert(inspectedPids.end(), unitPids.begin(), unitPids.end());
+    }
+  }
+  std::optional<std::map<std::uint64_t, std::map<std::uint32_t, std::uint64_t>>> tcp;
+  if (shown.network || inspection.tab == InspectTab::Network) {
+    std::map<std::uint64_t, std::map<std::uint32_t, std::uint64_t>> bytesByCgroup;
+    const bool complete = dumpTcp([&](const inet_diag_msg& diag, std::uint64_t cgroup, std::uint64_t bytes) {
+      if (cgroup != 0 && diag.idiag_inode != 0) {
+        bytesByCgroup[cgroup][diag.idiag_inode] = bytes;
+      }
+      if (inspection.tab == InspectTab::Network && std::ranges::contains(inspectedIds, cgroup)) {
+        const bool listening = diag.idiag_state == kTcpListen;
+        inspection.sockets.push_back({
+            .local = endpoint(diag.idiag_family, diag.id.idiag_src, diag.id.idiag_sport),
+            .remote = listening ? std::string() : endpoint(diag.idiag_family, diag.id.idiag_dst, diag.id.idiag_dport),
+            .state = diag.idiag_state,
+            .bytes = bytes,
+        });
+      }
+    });
+    if (complete && shown.network) {
+      tcp = std::move(bytesByCgroup);
+    }
+  }
+  if (inspection.tab == InspectTab::Files) {
+    inspection.files = openFiles(inspectedPids);
+  } else if (inspection.tab == InspectTab::Threads) {
+    inspection.threads = threadUsage(inspectedPids, state.tidTicks, result.state.tidTicks, seconds, cpuCount);
+  }
+  std::ranges::sort(inspection.sockets, std::greater{}, &SocketDetail::bytes);
+  if (inspected != rows.end()) {
+    result.inspectedKey = inspected->key;
+    result.inspection = std::move(inspection);
+  }
   for (const auto& row : rows) {
     std::vector<int> pids;
     std::vector<std::uint64_t> cgroupIds;
@@ -375,6 +547,20 @@ ActivityDetails::ProbeResult ActivityDetails::probe(
         }
       }
       result.networkBytesPerSec[row.key] = static_cast<double>(netDelta) / seconds;
+    }
+    if (shown.wakeups) {
+      // A process new to this probe counts from here, so it adds no lifetime total to one sample.
+      std::uint64_t delta = 0;
+      for (const int pid : pids) {
+        const std::uint64_t slices = readTaskTimeslices(pid);
+        result.state.pidSlices[pid] = slices;
+        if (const auto before = state.pidSlices.find(pid); before != state.pidSlices.end() && slices >= before->second) {
+          delta += slices - before->second;
+        }
+      }
+      if (seconds > 0.0 && !state.pidSlices.empty()) {
+        result.wakeupsPerSec[row.key] = static_cast<double>(delta) / seconds;
+      }
     }
     std::map<std::string, std::uint64_t> deltaNs; // by engine, summed over the row's clients
     for (auto& [client, busy] : readGpuClients(pids, state.drmFds, now)) {
@@ -429,9 +615,9 @@ ActivityDetails::ProbeResult ActivityDetails::probe(
       result.state.socketBytes.insert(sockets.begin(), sockets.end());
     }
     result.state.socketsComplete = true;
-  } else {
-    result.state.socketBytes = std::move(state.socketBytes);
-  }
+  } else if (shown.network) {
+    result.state.socketBytes = std::move(state.socketBytes); // a failed dump keeps the baseline
+  } // not shown: no baseline, so the first shown sample reports no rate instead of the bytes of the whole gap
   std::erase_if(state.drmFds, [&seenPids](const auto& entry) { return !seenPids.contains(entry.first); });
   result.state.drmFds = std::move(state.drmFds);
   return result;
@@ -481,6 +667,20 @@ void ActivityDetails::setExpanded(const std::string& rowKey, bool expanded) {
   } else {
     m_expanded.erase(rowKey);
   }
+}
+
+void ActivityDetails::setInspected(std::string rowKey, InspectTab tab) {
+  m_inspectKey = std::move(rowKey);
+  m_inspectTab = tab;
+}
+
+const Inspection* ActivityDetails::inspection(const std::string& rowKey) const {
+  return rowKey == m_inspectionKey && m_inspection.tab == m_inspectTab && rowKey == m_inspectKey ? &m_inspection : nullptr;
+}
+
+std::optional<double> ActivityDetails::wakeupsPerSec(const std::string& rowKey) const {
+  const auto it = m_wakeupsPerSec.find(rowKey);
+  return it != m_wakeupsPerSec.end() ? std::optional{it->second} : std::nullopt;
 }
 
 std::optional<double> ActivityDetails::networkBytesPerSec(const std::string& rowKey) const {

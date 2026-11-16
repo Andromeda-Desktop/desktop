@@ -13,6 +13,8 @@ namespace noctalia::system::cpu_stat {
   struct Totals {
     std::uint64_t total{0};
     std::uint64_t idle{0};
+    std::uint64_t user{0};   // user + nice
+    std::uint64_t system{0}; // system + irq + softirq
   };
 
   // Parses one "/proc/stat" cpu row. `expectedLabel` pins which row is accepted ("cpu" for the
@@ -23,6 +25,13 @@ namespace noctalia::system::cpu_stat {
   // Busy percentage in [0, 100] between two samples, or nullopt when the window holds no jiffies
   // or the counters went backwards (suspend/resume, container reset).
   [[nodiscard]] std::optional<double> usageBetween(const Totals& prev, const Totals& current);
+
+  // User and system shares in [0, 100] between two samples, under the same conditions as usageBetween.
+  struct Split {
+    double user{0.0};
+    double system{0.0};
+  };
+  [[nodiscard]] std::optional<Split> splitBetween(const Totals& prev, const Totals& current);
 
   // The stat path is a parameter so tests can feed fixtures instead of the live /proc, matching
   // the hwmonRoot/thermalRoot seam in cpu_temp::read().

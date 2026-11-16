@@ -254,11 +254,37 @@ void ActivityWindow::open(const std::string& rowKey) {
   m_openedAt = std::chrono::steady_clock::now();
   m_skeletonTimer.start(kSkeletonFor, [this] { requestRebuild(); });
   m_monitor->setChangeCallback([this] { onSample(); });
-  m_monitor->retain();
-  m_sysmon = m_sysmonProvider ? m_sysmonProvider() : nullptr;
-  if (m_sysmon != nullptr) {
-    m_sysmon->retainSampling();
-    m_sysmon->retainGpuUsage();
+  m_surface->setStateCallback([this](const ToplevelState& state) {
+    setSampling(state.suspended ? Sampling::Paused : Sampling::Live);
+  });
+  setSampling(Sampling::Live);
+}
+
+void ActivityWindow::setSampling(Sampling next) {
+  if (next == m_sampling) {
+    return;
+  }
+  const bool wasLive = m_sampling == Sampling::Live;
+  if (next == Sampling::Paused && !wasLive) {
+    return; // a hidden window never starts sampling
+  }
+  m_sampling = next;
+  if (next == Sampling::Live) {
+    m_monitor->retain();
+    m_sysmon = m_sysmonProvider ? m_sysmonProvider() : nullptr;
+    if (m_sysmon != nullptr) {
+      m_sysmon->retainSampling();
+      m_sysmon->retainGpuUsage();
+    }
+    return;
+  }
+  if (wasLive) {
+    m_monitor->release();
+    if (m_sysmon != nullptr) {
+      m_sysmon->releaseGpuUsage();
+      m_sysmon->releaseSampling();
+      m_sysmon = nullptr;
+    }
   }
 }
 
@@ -269,14 +295,9 @@ void ActivityWindow::destroyWindow() {
     return;
   }
   m_skeletonTimer.stop();
+  setSampling(Sampling::Off);
   if (m_monitor != nullptr) {
     m_monitor->setChangeCallback({});
-    m_monitor->release();
-  }
-  if (m_sysmon != nullptr) {
-    m_sysmon->releaseGpuUsage();
-    m_sysmon->releaseSampling();
-    m_sysmon = nullptr;
   }
   if (m_details != nullptr) {
     m_details->resetShort();
@@ -303,6 +324,7 @@ void ActivityWindow::destroyWindow() {
   m_rowStates.clear();
   m_searchInput = nullptr;
   m_keptSearch.reset();
+  m_keptSearchInput = nullptr;
   m_query.clear();
   m_confirm = Confirm::None;
   m_order.clear();
@@ -314,6 +336,12 @@ void ActivityWindow::onSample() {
   if (m_monitor != nullptr && m_details != nullptr) {
     const auto& activity = m_monitor->activity();
     const auto start = std::chrono::steady_clock::now();
+    m_details->setShown({
+        .network =
+            m_pane == Pane::Network || m_pane == Pane::Containers || (selectedRow() != nullptr && !m_inspectorHidden),
+        .wakeups = m_pane == Pane::Cpu,
+    });
+    m_details->setInspected(m_inspectorHidden ? std::string() : m_selectedKey, m_inspectTab);
     const bool sampled = m_details->update(
         activity.rows(), m_monitor->userUnits().units(), activity.cgroupRoot(), activity.cpuCount(), start,
         [this] { refreshAfterSample(); }
@@ -434,8 +462,10 @@ void ActivityWindow::buildScene(Renderer& renderer, float width, float height) {
   m_liveHeat.clear();
   m_liveCalls.clear();
   indexRows();
-  if (m_searchInput != nullptr && m_searchInput->parent() != nullptr) {
-    m_keptSearch = m_searchInput->parent()->removeChild(m_searchInput);
+  if (Node* field = m_searchInput != nullptr ? m_searchInput->parent() : nullptr;
+      field != nullptr && field->parent() != nullptr) {
+    m_keptSearch = field->parent()->removeChild(field);
+    m_keptSearchInput = m_searchInput;
   }
   m_searchInput = nullptr;
   m_body = nullptr;
@@ -693,9 +723,22 @@ std::string ActivityWindow::structureKey() const {
       !m_monitor->activity().sampled() && std::chrono::steady_clock::now() - m_openedAt < kSkeletonFor;
   std::string key = std::format(
       "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}", static_cast<int>(m_pane), m_query, m_selectedKey, m_actionError, uiScale(),
-      m_monitor->activity().sampled(), skeleton, sortColumn(), m_processesTab, m_inspectorHidden,
+      m_monitor->activity().sampled(), skeleton, sortColumn(), static_cast<int>(m_inspectTab), m_inspectorHidden,
       static_cast<int>(m_confirm), containersAvailable()
   );
+  if (const Inspection* shown = m_details != nullptr ? m_details->inspection(m_selectedKey) : nullptr; shown != nullptr) {
+    // Lists rebuild when their entries change; thread CPU numbers update in place.
+    key += std::format("|i{}", shown->files.size());
+    for (const auto& socket : shown->sockets) {
+      key += std::format("|{}>{}:{}", socket.local, socket.remote, socket.state);
+    }
+    for (const auto& thread : shown->threads) {
+      key += std::format("|t{}", thread.tid);
+    }
+    if (!shown->files.empty()) {
+      key += "|" + shown->files.back();
+    }
+  }
   std::string problemKey;
   key += std::format("|p{}:{}", static_cast<int>(problem(&problemKey)), problemKey);
   for (const auto& rowKey : m_order) {
@@ -772,8 +815,11 @@ void ActivityWindow::updateLive() {
   for (const auto& call : m_liveCalls) {
     call();
   }
-  for (const auto& [graph, values] : m_liveGraphs) {
+  for (const auto& [graph, values, values2] : m_liveGraphs) {
     graph->setValues(values());
+    if (values2) {
+      graph->setValues2(values2());
+    }
   }
   for (const auto& [cell, share] : m_liveHeat) {
     const float value = share();
@@ -823,7 +869,7 @@ void ActivityWindow::select(const std::string& key) {
   if (m_selectedKey != key) {
     m_inspectorScroll = {};
     m_confirm = Confirm::None;
-    m_processesTab = false;
+    m_inspectTab = InspectTab::Overview;
     m_pendingLimits.reset();
   }
   m_selectedKey = key;

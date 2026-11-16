@@ -26,6 +26,7 @@ struct ActivityRow {
   double cpuPercent = 0.0; // share of all CPUs
   std::uint64_t memoryBytes = 0;
   std::uint64_t cpuUsageUsec = 0; // cumulative, for averages over the unit's lifetime
+  std::uint64_t threads = 0;
   double ioReadBytesPerSec = 0.0;
   double ioWriteBytesPerSec = 0.0;
   double memoryPressure = 0.0; // highest avg10 over the row's units, percent
@@ -48,7 +49,7 @@ public:
   // Unit name -> app_id of a window whose PID is in that unit (see unitForPid()).
   void setWindowUnits(std::map<std::string, std::string> windowAppIdByUnit);
   // Unit name -> QoS tier ("T0".."T3") from org.andromeda.Compositor1.Apps.List.
-  void setUnitTiers(std::map<std::string, std::string> tierByUnit);
+  bool setUnitTiers(std::map<std::string, std::string> tierByUnit); // true when the tiers changed
   // Reads every unit's cgroup once and rebuilds rows().
   void sample(std::chrono::steady_clock::time_point now);
   // sample() with the reads on the SharedWorker (~3.6 ms for 33 units); `done` runs on the main loop after

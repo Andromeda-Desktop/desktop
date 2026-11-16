@@ -1348,8 +1348,11 @@ void SystemMonitorService::samplingLoop() {
       const auto currentCpu = cpu_stat::readTotals();
       if (prevCpu.has_value() && currentCpu.has_value()) {
         if (const auto usage = cpu_stat::usageBetween(*prevCpu, *currentCpu); usage.has_value()) {
+          const auto split = cpu_stat::splitBetween(*prevCpu, *currentCpu).value_or(cpu_stat::Split{});
           std::scoped_lock lock{m_statsMutex};
           m_latest.cpuUsagePercent = *usage;
+          m_latest.cpuUserPercent = split.user;
+          m_latest.cpuSystemPercent = split.system;
         }
       }
       if (currentCpu.has_value()) {

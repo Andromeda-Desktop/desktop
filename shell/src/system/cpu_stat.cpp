@@ -46,8 +46,20 @@ namespace noctalia::system::cpu_stat {
 
     Totals totals{};
     totals.idle = idle + iowait;
+    totals.user = user + nice;
+    totals.system = system + irq + softirq;
     totals.total = user + nice + system + idle + iowait + irq + softirq + steal;
     return totals;
+  }
+
+  std::optional<Split> splitBetween(const Totals& prev, const Totals& current) {
+    if (current.total <= prev.total) {
+      return std::nullopt;
+    }
+    const auto share = [total = static_cast<double>(current.total - prev.total)](std::uint64_t a, std::uint64_t b) {
+      return a >= b ? std::clamp(100.0 * static_cast<double>(a - b) / total, 0.0, 100.0) : 0.0;
+    };
+    return Split{.user = share(current.user, prev.user), .system = share(current.system, prev.system)};
   }
 
   std::optional<double> usageBetween(const Totals& prev, const Totals& current) {
