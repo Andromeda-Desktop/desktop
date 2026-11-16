@@ -17,6 +17,7 @@
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
 
+#include <algorithm>
 #include <optional>
 #include <string_view>
 #include <csignal>
@@ -444,7 +445,15 @@ void DeskApp::addStandardCommands() {
       .label = "Quit",
       .group = "File",
       .shortcut = chord(XKB_KEY_q, KeyMod::Ctrl),
-      .run = [this] { DeferredCall::callLater([this] { m_loop.quit(0); }); },
+      .run =
+          [this] {
+            DeferredCall::callLater([this] {
+              // A window that refuses asks its user first (for example to save); Quit again after that.
+              if (std::ranges::all_of(m_windows, [](const auto& w) { return w->closeAllowed(); })) {
+                m_loop.quit(0);
+              }
+            });
+          },
   });
 }
 
