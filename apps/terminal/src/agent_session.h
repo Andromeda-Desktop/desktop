@@ -95,7 +95,7 @@ namespace term::agent {
     // A JSON-RPC response; true when it answered a request this model sent (session/prompt).
     bool response(const Json& message);
 
-    // User side. send() returns false when the session cannot take a prompt now (Starting, Failed).
+    // User side. send() queues the text while a turn runs or the agent starts; after a failure it restarts the agent.
     bool send(std::string text);
     void cancel();
     // Answers the oldest open request with its n-th option (0-based); false when there is none.

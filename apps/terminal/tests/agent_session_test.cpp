@@ -109,7 +109,11 @@ namespace {
       case 1: {
         const auto phase = session.phase();
         const bool sent = session.send("do it");
-        check(sent == (phase != Phase::Starting && phase != Phase::Failed), "send accepted iff the agent can take a prompt", seed, step);
+        check(sent, "a reply is always taken (run, queued, or it restarts the agent)", seed, step);
+        if (phase == Phase::Failed) {
+          check(session.phase() == Phase::Starting, "a reply after a failure restarts the agent", seed, step);
+          alive = true;
+        }
         break;
       }
       case 2:

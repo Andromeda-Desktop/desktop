@@ -1372,7 +1372,7 @@ namespace term {
     m_input->setPlaceholder(!model->pending().empty()    ? "1–4 answers the request above"
                             : running                    ? "Queue a follow-up · Esc stops"
                             : phase == agent::Phase::Starting ? "Starting Claude…"
-                            : phase == agent::Phase::Failed   ? "Claude stopped"
+                            : phase == agent::Phase::Failed   ? "Reply to restart Claude in this session"
                                                               : "Ask Claude, or / for commands");
     const agent::Session::Mode* mode = model->currentMode();
     std::string meta = mode != nullptr ? mode->name : model->mode();
@@ -1384,7 +1384,7 @@ namespace term {
     }
     m_meta->setText(meta);
     m_meta->setColor(colorSpecFromRole(full ? ColorRole::TermRed : ColorRole::Label2));
-    const bool canSend = !running && phase == agent::Phase::Idle && !m_input->value().empty();
+    const bool canSend = !running && (phase == agent::Phase::Idle || phase == agent::Phase::Failed) && !m_input->value().empty();
     m_send->setVisible(canSend);
     m_send->setParticipatesInLayout(canSend);
     m_stop->setVisible(running);

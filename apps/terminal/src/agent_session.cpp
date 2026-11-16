@@ -78,8 +78,11 @@ namespace term::agent {
   }
 
   bool Session::send(std::string text) {
-    if (m_phase == Phase::Starting || m_phase == Phase::Failed || text.empty()) {
+    if (text.empty()) {
       return false;
+    }
+    if (m_phase == Phase::Failed) {
+      restarting(); // a reply restarts the agent in this session
     }
     if (m_phase == Phase::Idle) {
       startPrompt(std::move(text));
