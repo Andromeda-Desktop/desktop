@@ -164,7 +164,6 @@ namespace term {
         top->addChild(ui::searchCapsule({
             .out = &m_search,
             .placeholder = "Sessions",
-            .height = Tokens::sizeControlL,
             .scale = s,
             .value = m_filter,
             .flexGrow = 1.0F,

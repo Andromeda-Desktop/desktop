@@ -1103,20 +1103,77 @@ namespace ui {
     return cap;
   }
 
+  namespace {
+
+    // Height follows the renderer's text scale: control_m, control_l at XL text, unless the caller fixes it.
+    class SearchCapsule final : public Flex {
+    public:
+      SearchCapsule(std::optional<float> height, float scale, bool hasKeycap)
+          : m_height(height), m_scale(scale), m_hasKeycap(hasKeycap) {}
+
+      void setInput(Input* input) noexcept { m_input = input; }
+
+    protected:
+      void doLayout(Renderer& renderer) override {
+        fit(renderer.textScale());
+        Flex::doLayout(renderer);
+      }
+      LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override {
+        fit(renderer.textScale());
+        return Flex::doMeasure(renderer, constraints);
+      }
+
+    private:
+      void fit(float textScale) {
+        const float base = m_height.value_or(textScale >= Tokens::typeRulesTextScaleXl ? Tokens::sizeControlL
+                                                                                         : Tokens::sizeControlM);
+        const float h = base * m_scale;
+        if (h == m_applied) {
+          return;
+        }
+        m_applied = h;
+        setMinHeight(h);
+        setMaxHeight(h);
+        setRadius(h / 2.0F);
+        const float keycapInset = (h - Tokens::sizeKeycap * m_scale) / 2.0F; // R5: concentric with the end cap
+        setPadding(0.0F, m_hasKeycap ? keycapInset : Tokens::spaceP8 * m_scale, 0.0F,
+                   (h - Tokens::sizeSymbol * m_scale) / 2.0F);
+        if (m_input != nullptr) {
+          m_input->setControlHeight(h);
+        }
+      }
+
+      std::optional<float> m_height;
+      float m_scale;
+      bool m_hasKeycap;
+      Input* m_input = nullptr;
+      float m_applied = 0.0F;
+    };
+
+  } // namespace
+
   std::unique_ptr<Flex> searchCapsule(SearchCapsuleProps props) {
     const float s = props.scale;
     const float h = props.height.value_or(Tokens::sizeControlM) * s;
-    const float symbol = Tokens::sizeSymbol * s;
-    auto capsule = row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Fill2),
-                        .radius = h / 2.0F, .minHeight = h, .maxHeight = h, .flexGrow = props.flexGrow});
-    const float keycapInset = (h - Tokens::sizeKeycap * s) / 2.0F; // R5: concentric with the end cap
-    capsule->setPadding(0.0F, props.keycap.empty() ? Tokens::spaceP8 * s : keycapInset, 0.0F, (h - symbol) / 2.0F);
-    capsule->addChild(glyph({.glyph = std::string("search"), .glyphSize = symbol,
+    auto capsule = std::make_unique<SearchCapsule>(props.height, s, !props.keycap.empty());
+    capsule->setDirection(FlexDirection::Horizontal);
+    capsule->setAlign(FlexAlign::Center);
+    capsule->setGap(Tokens::spaceP8 * s);
+    capsule->setFill(colorSpecFromRole(ColorRole::Fill2));
+    if (props.flexGrow) {
+      capsule->setFlexGrow(*props.flexGrow);
+    }
+    capsule->addChild(glyph({.glyph = std::string("search"), .glyphSize = Tokens::sizeSymbol * s,
                              .color = colorSpecFromRole(ColorRole::Label2)}));
-    capsule->addChild(input({.out = props.out, .value = std::move(props.value), .placeholder = std::move(props.placeholder),
+    Input* field = nullptr;
+    capsule->addChild(input({.out = &field, .value = std::move(props.value), .placeholder = std::move(props.placeholder),
                              .fontSize = Tokens::typeBody.size * s, .controlHeight = h, .horizontalPadding = 0.0F,
                              .frameVisible = false, .flexGrow = 1.0F, .onChange = std::move(props.onChange),
                              .onSubmit = std::move(props.onSubmit), .onKeyEvent = std::move(props.onKeyEvent)}));
+    capsule->setInput(field);
+    if (props.out != nullptr) {
+      *props.out = field;
+    }
     if (!props.keycap.empty()) {
       capsule->addChild(keycap({.text = props.keycap, .scale = s}));
     }
