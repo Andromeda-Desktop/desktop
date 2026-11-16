@@ -257,7 +257,7 @@ void PtySession::queueOutbound(std::span<const std::uint8_t> bytes) {
 
 void PtySession::resize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
   {
-    std::lock_guard lock(m_termMutex);
+    UiLock lock(*this);
     if (m_terminal != nullptr) ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
   }
   if (m_master >= 0) {
@@ -451,6 +451,7 @@ void PtySession::parseLoop() {
     for (std::size_t at = 0, len = 0; at < work.size(); at += len) {
       len = std::min(kReadChunk, work.size() - at);
       if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
+      for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
       {
         std::lock_guard lock(m_termMutex);
         ghostty_terminal_vt_write(m_terminal, work.data() + at, len);

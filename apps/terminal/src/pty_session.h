@@ -80,12 +80,12 @@ public:
   bool renderHeld() const { return m_renderHeld.load(); }
 
   template <typename F> auto withTerminal(F&& f) {
-    std::lock_guard lock(m_termMutex);
+    UiLock lock(*this);
     return f(m_terminal);
   }
   // f(terminal, commands) under the terminal lock; entries that left the terminal are gone.
   template <typename F> auto withCommands(F&& f) {
-    std::lock_guard lock(m_termMutex);
+    UiLock lock(*this);
     m_commands.prune();
     return f(m_terminal, m_commands);
   }
@@ -139,6 +139,17 @@ private:
   std::atomic<bool> m_bellPending{false};
   GhosttyTerminal m_terminal = nullptr;
   std::mutex m_termMutex;
+  // UI threads waiting for m_termMutex; the parser lets them in before it locks again (std::mutex is not fair).
+  std::atomic<int> m_uiWaiting{0};
+  struct UiLock {
+    explicit UiLock(PtySession& s) {
+      s.m_uiWaiting.fetch_add(1);
+      lock = std::unique_lock(s.m_termMutex);
+      s.m_uiWaiting.fetch_sub(1);
+      s.m_uiWaiting.notify_all();
+    }
+    std::unique_lock<std::mutex> lock;
+  };
   CommandIndex m_commands; // under m_termMutex
 
   // Set before the threads start and fixed after.
