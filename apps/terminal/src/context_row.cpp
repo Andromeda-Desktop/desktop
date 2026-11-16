@@ -5,24 +5,20 @@
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/label.h"
+#include "time/time_format.h"
 #include "ui/palette.h"
 
 #include <algorithm>
+#include <format>
 #include <memory>
 
 namespace term {
 
 namespace {
 
-  std::unique_ptr<Node> pill(const char* glyph, const std::string& text, ColorRole fill, ColorRole ink, float h,
-                             float s) {
-    auto pill = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
-                         .fill = colorSpecFromRole(fill), .radius = h * 0.5F, .height = h});
-    pill->addChild(ui::glyph({.glyph = std::string(glyph), .glyphSize = Tokens::spaceP12 * s,
-                              .color = colorSpecFromRole(ink)}));
-    pill->addChild(ui::label({.text = text, .fontSize = Tokens::typeFootnote.size * s,
-                              .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ink), .maxLines = 1}));
-    return pill;
+  std::unique_ptr<Label> mono(const std::string& text, ColorRole ink, const ContextRow::Font& font) {
+    return ui::label({.text = text, .fontSize = font.size, .fontFamily = font.family, .color = colorSpecFromRole(ink),
+                      .maxLines = 1});
   }
 
   std::unique_ptr<Label> caption(const std::string& text, FontWeight weight, ColorRole ink, float s) {
@@ -30,11 +26,14 @@ namespace {
                       .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ink), .maxLines = 1});
   }
 
-  std::unique_ptr<Node> build(const ContextItem& item, float h, float width, float s) {
-    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = width, .height = h});
-    row->addChild(pill("folder", item.cwd, ColorRole::TermPillCwd, ColorRole::TermBlue, h, s));
+  std::unique_ptr<Node> build(const ContextItem& item, float h, float width, float s, const ContextRow::Font& font) {
+    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
+                        .fill = colorSpecFromRole(ColorRole::TermCommandBand), .radius = Tokens::radiusR8 * s,
+                        .width = width, .height = h});
+    // A space cell between path and branch, as the shell would print it.
+    row->addChild(mono(item.branch.empty() ? item.cwd : item.cwd + " ", ColorRole::TermBlue, font));
     if (!item.branch.empty()) {
-      row->addChild(pill("git-branch", item.branch, ColorRole::Fill2, ColorRole::Label2, h, s));
+      row->addChild(mono(item.branch, ColorRole::Label2, font));
     }
     row->addChild(ui::box({.flexGrow = 1.0F}));
     switch (item.caption) {
@@ -53,6 +52,13 @@ namespace {
 
 } // namespace
 
+std::string formatTook(std::chrono::duration<double> took) {
+  const double seconds = took.count();
+  return seconds < 10.0 ? std::format("{:.1f} s", seconds)
+      : seconds < 60.0  ? std::format("{} s", static_cast<int>(seconds))
+                        : formatClockTime(static_cast<std::int64_t>(seconds));
+}
+
 ContextRow::ContextRow(TerminalGridNode& grid) {
   auto layer = std::make_unique<Node>();
   layer->setZIndex(TerminalGridNode::kBelowTextZ);
@@ -61,21 +67,21 @@ ContextRow::ContextRow(TerminalGridNode& grid) {
 
 void ContextRow::setOrigin(float x, float y) { m_layer->setPosition(x, y); }
 
-void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale) {
+void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font) {
   const bool sameItems = placed.size() == m_placed.size()
       && std::equal(placed.begin(), placed.end(), m_placed.begin(),
                     [](const Placed& a, const Placed& b) { return a.item == b.item; });
-  const bool sameSize = cellHeight == m_cellHeight && rowWidth == m_rowWidth && scale == m_scale;
+  const bool sameSize = cellHeight == m_cellHeight && rowWidth == m_rowWidth && scale == m_scale && font == m_font;
   if (!sameItems || !sameSize) {
     for (Node* node : m_nodes) {
       m_layer->removeChild(node);
     }
     m_nodes.clear();
     for (const Placed& p : placed) {
-      m_nodes.push_back(m_layer->addChild(build(p.item, cellHeight, rowWidth, scale)));
+      m_nodes.push_back(m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font)));
     }
   }
-  // The pill padding sits left of column 0, so the glyph lines up with the text below.
+  // The band padding sits left of column 0, so the path lines up with the text below.
   for (std::size_t i = 0; i < placed.size(); ++i) {
     m_nodes[i]->setPosition(-Tokens::spaceP8 * scale, static_cast<float>(placed[i].row) * cellHeight);
   }
@@ -83,6 +89,7 @@ void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWid
   m_cellHeight = cellHeight;
   m_rowWidth = rowWidth;
   m_scale = scale;
+  m_font = std::move(font);
 }
 
 std::optional<ContextRow::Hit> ContextRow::hitTest(float x, float y) const {
@@ -94,7 +101,7 @@ std::optional<ContextRow::Hit> ContextRow::hitTest(float x, float y) const {
       continue;
     }
     const ContextItem& item = m_placed[i].item;
-    // Children: the cwd pill, then the branch pill when there is a branch.
+    // Children: the path, then the branch when there is one.
     const std::size_t pills = item.branch.empty() ? 1 : 2;
     for (std::size_t c = 0; c < pills && c < row->children().size(); ++c) {
       const Node* pill = row->children()[c].get();

@@ -146,8 +146,8 @@ namespace {
       return p.termFindHitCurrent;
     case ColorRole::TermFindRing:
       return p.termFindRing;
-    case ColorRole::TermPillCwd:
-      return p.termPillCwd;
+    case ColorRole::TermCommandBand:
+      return p.termCommandBand;
     case ColorRole::Card:
       return p.card;
     case ColorRole::DiffAdd:
@@ -341,7 +341,7 @@ Palette lerpPalette(const Palette& a, const Palette& b, float t) {
       .termFindHit = lerpColor(a.termFindHit, b.termFindHit, t),
       .termFindHitCurrent = lerpColor(a.termFindHitCurrent, b.termFindHitCurrent, t),
       .termFindRing = lerpColor(a.termFindRing, b.termFindRing, t),
-      .termPillCwd = lerpColor(a.termPillCwd, b.termPillCwd, t),
+      .termCommandBand = lerpColor(a.termCommandBand, b.termCommandBand, t),
       .card = lerpColor(a.card, b.card, t),
       .diffAdd = lerpColor(a.diffAdd, b.diffAdd, t),
       .diffDel = lerpColor(a.diffDel, b.diffDel, t),
@@ -391,7 +391,7 @@ Palette tokenPalette(bool light) noexcept {
       .termFindHit = tokenColor(s.termFindHit),
       .termFindHitCurrent = tokenColor(s.termFindHitCurrent),
       .termFindRing = tokenColor(s.termFindRing),
-      .termPillCwd = tokenColor(s.termPillCwd),
+      .termCommandBand = tokenColor(s.termCommandBand),
       .card = tokenColor(s.card),
       .diffAdd = tokenColor(s.diffAdd),
       .diffDel = tokenColor(s.diffDel),

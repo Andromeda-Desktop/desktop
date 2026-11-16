@@ -44,6 +44,13 @@ namespace term {
 
   class KittyImages;
 
+  // The shell runs on another host: an ssh-like command or a container shell, or a remote OSC 7.
+  struct Remote {
+    enum class Kind : std::uint8_t { Ssh, Container };
+    Kind kind = Kind::Ssh;
+    std::optional<std::string> host; // empty until the command line or a remote OSC 7 names it
+  };
+
   // file://host/path (percent-escaped) to a local path; a bare path comes back as is.
   [[nodiscard]] std::string pathFromFileUri(std::string_view uri);
   // A colour role under a terminal theme: System follows the desktop scheme, AMOLED is Dark on pure black.
@@ -87,8 +94,8 @@ namespace term {
       std::function<void(CommandOutput output)> commandOutput;
       // The shell reported a new working directory (OSC 7); a local path.
       std::function<void(const std::string& cwd)> cwdChanged;
-      // The shell moved to another host (OSC 7 host, or an ssh / container command started) or back here.
-      std::function<void(bool remote)> hostChanged;
+      // The shell moved to another host (remote: none = this machine); moved is false when only the host name was learned.
+      std::function<void(const std::optional<Remote>& remote, bool moved)> hostChanged;
       // Ctrl+click on a link: an http(s), mailto or file URI.
       std::function<void(const std::string& uri)> openUri;
       // Find results changed: match count and the current match (1 = newest), while find is open.
@@ -163,9 +170,6 @@ namespace term {
       GhosttyPointCoordinate anchor; // viewport cell where the drag started
       bool moved = false;
       std::optional<std::string> link; // URI under a single press; a release without a drag opens it
-    };
-    struct Remote {
-      std::optional<std::string> host; // unknown while a command such as ssh runs; known from a remote OSC 7
     };
     struct CommandIdle {};
     struct CommandRunning {

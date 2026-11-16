@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -22,6 +23,9 @@ struct ContextItem {
   bool operator==(const ContextItem&) const = default;
 };
 
+// How long a command ran: "0.4 s", "18 s", "4:12".
+[[nodiscard]] std::string formatTook(std::chrono::duration<double> took);
+
 // The context rows of the visible prompts, in a grid layer below the text that moves with the grid origin.
 class ContextRow {
 public:
@@ -36,11 +40,18 @@ public:
     std::string value; // Cwd: the path; Branch: the branch name
   };
 
+  // The grid's mono font: the band's path and branch read as part of the prompt line.
+  struct Font {
+    std::string family;
+    float size = 0.0F; // px, ui scale applied
+    bool operator==(const Font&) const = default;
+  };
+
   explicit ContextRow(TerminalGridNode& grid);
   void setOrigin(float x, float y);
   // Moves the nodes when only rows changed; rebuilds them when an item or a size changed.
-  void sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale);
-  // The pill under (x, y) in grid coordinates.
+  void sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font);
+  // The path or branch under (x, y) in grid coordinates.
   [[nodiscard]] std::optional<Hit> hitTest(float x, float y) const;
 
 private:
@@ -50,6 +61,7 @@ private:
   float m_cellHeight = 0.0F;
   float m_rowWidth = 0.0F;
   float m_scale = 0.0F;
+  Font m_font;
 };
 
 } // namespace term

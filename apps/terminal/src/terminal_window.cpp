@@ -74,9 +74,8 @@ namespace term {
       if (finished == nullptr || session.kind == SessionKind::Agent) {
         return rowStatus;
       }
-      const auto took = std::chrono::duration_cast<std::chrono::seconds>(finished->duration).count();
       return (finished->failed() ? "exit " + std::to_string(*finished->exitCode) : std::string("done")) + " · "
-          + (took < 60 ? std::format("{} s", took) : formatClockTime(took));
+          + formatTook(finished->duration);
     }
 
     std::string homeDir() {
@@ -425,14 +424,20 @@ namespace term {
               apply(session_event::Cwd{id, shown});
             },
         .hostChanged =
-            [this, id](bool remote) {
+            [this, id](const std::optional<Remote>& remote, bool moved) {
               if (remote) {
                 m_remoteSessions.insert(id);
               } else {
                 m_remoteSessions.erase(id);
               }
-              if (std::ranges::contains(m_sessions.visible(), id)) {
+              if (moved && std::ranges::contains(m_sessions.visible(), id)) {
                 m_window.pulseScene(AppWindow::ScenePulse::Host);
+              }
+              const SessionInfo* info = m_sessions.find(id);
+              if (info != nullptr && info->kind != SessionKind::App && info->kind != SessionKind::Agent) {
+                const SessionKind kind = !remote ? SessionKind::Shell
+                    : remote->kind == Remote::Kind::Ssh ? SessionKind::Ssh : SessionKind::Container;
+                apply(session_event::Kind{id, kind, remote ? remote->host.value_or("") : ""});
               }
               updateSceneState();
             },
@@ -1007,7 +1012,8 @@ namespace term {
   }
 
   StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {
-    StatusRow::Data data{.name = session.name.empty() ? session.cwd : session.name,
+    const std::string& place = session.host.empty() ? session.cwd : session.host;
+    StatusRow::Data data{.name = session.name.empty() ? place : session.name,
                          .unseen = session.seen == Seen::Unseen,
                          .selected = session.id == m_rowSelected};
     if (session.kind == SessionKind::Agent) {
@@ -1052,7 +1058,11 @@ namespace term {
       }
       return data;
     }
-    if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
+    // The ssh or container command runs for the whole remote session: the row names the place, not that command.
+    if (session.kind == SessionKind::Ssh || session.kind == SessionKind::Container) {
+      data.symbol = session.kind == SessionKind::Ssh ? "server" : "box";
+      data.status = session.kind == SessionKind::Ssh ? "ssh" : "container";
+    } else if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
       // A quiet program (an editor, a pager, a sleep) is not loading work: no spinner and no frames (rulebook P21).
       // A shown session's grid already shows its output, so only sessions off screen spin.
       data.spinning = running->output == CommandOutput::Active && !std::ranges::contains(m_sessions.visible(), session.id);
@@ -1067,8 +1077,8 @@ namespace term {
       switch (session.kind) {
         case SessionKind::Shell: data.symbol = "prompt"; break;
         case SessionKind::App: data.symbol = "app-window"; break;
-        case SessionKind::Ssh: data.symbol = "server"; break;
-        case SessionKind::Container: data.symbol = "box"; break;
+        case SessionKind::Ssh:
+        case SessionKind::Container: break;
         case SessionKind::Agent: data.symbol = "robot"; break;
       }
     }

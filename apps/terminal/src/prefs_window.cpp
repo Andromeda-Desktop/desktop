@@ -797,25 +797,19 @@ namespace term {
       }
       box->addChild(std::move(row));
     };
-    // The prompt's context line: folder and branch pills, the last command's result at the end.
+    // The prompt's context line: a band with the path and branch, the last command's result at the end.
     const auto context = [&](std::string result, bool first) {
-      auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
-      if (!first) {
-        row->setPadding(size * 1.4F, 0.0F, 0.0F, 0.0F);
-      }
-      const auto pill = [&](std::string glyph, std::string text, Color fg, Color bg) {
-        auto p = ui::row({.align = FlexAlign::Center,
+      auto row = ui::row({.align = FlexAlign::Center,
                           .gap = Tokens::spaceP4 * s,
                           .paddingH = Tokens::spaceP8 * s,
-                          .fill = fixedColorSpec(bg),
-                          .radius = Tokens::typeFootnote.line * s / 2.0F,
-                          .minHeight = Tokens::typeFootnote.line * s});
-        p->addChild(ui::glyph({.glyph = std::move(glyph), .glyphSize = Tokens::sizeSymbolInline * s, .color = fixedColorSpec(fg)}));
-        p->addChild(ui::label({.text = std::move(text), .fontSize = meta, .fontWeight = FontWeight::Medium, .color = fixedColorSpec(fg)}));
-        row->addChild(std::move(p));
-      };
-      pill("folder", "~/src/desktop", colors.ansi[4], lerpColor(colors.view, colors.ansi[4], 0.14F));
-      pill("git-branch", "main", colors.label2, lerpColor(colors.view, colors.label1, 0.10F));
+                          .fill = fixedColorSpec(lerpColor(colors.view, colors.label1, 0.04F)),
+                          .radius = Tokens::radiusR8 * s,
+                          .minHeight = std::round(size * Tokens::typeMono.line / Tokens::typeMono.size)});
+      if (!first) {
+        box->addChild(ui::box({.height = size * 1.4F}));
+      }
+      row->addChild(ui::label({.text = "~/src/desktop ", .fontSize = size, .fontFamily = family, .color = fixedColorSpec(colors.ansi[4])}));
+      row->addChild(ui::label({.text = "main", .fontSize = size, .fontFamily = family, .color = fixedColorSpec(colors.label2)}));
       row->addChild(ui::column({.flexGrow = 1.0F}));
       if (!result.empty()) {
         row->addChild(ui::label({.text = std::move(result), .fontSize = meta, .color = fixedColorSpec(colors.label2)}));

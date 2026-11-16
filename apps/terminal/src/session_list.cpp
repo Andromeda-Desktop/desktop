@@ -138,6 +138,7 @@ namespace term {
                 return false;
               }
               s->kind = e.kind;
+              s->host = e.host;
               return true;
             },
             [&](const Join& e) {

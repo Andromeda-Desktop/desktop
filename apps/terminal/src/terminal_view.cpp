@@ -994,8 +994,8 @@ namespace term {
       return std::string(host);
     }
 
-    // A command line that opens a shell on another host or in a container.
-    bool opensRemoteShell(std::string_view command) {
+    // A command line that opens a shell on another host or in a container, with the host or container it names.
+    std::optional<Remote> opensRemoteShell(std::string_view command) {
       std::vector<std::string_view> words;
       for (const auto word : std::views::split(command, ' ')) {
         if (!word.empty()) {
@@ -1003,21 +1003,40 @@ namespace term {
         }
       }
       if (words.empty()) {
-        return false;
+        return std::nullopt;
       }
       std::string_view tool = words[0];
       tool.remove_prefix(tool.rfind('/') == std::string_view::npos ? 0 : tool.rfind('/') + 1);
-      if (tool == "ssh" || tool == "autossh" || tool == "mosh" || tool == "et" || tool == "distrobox-enter") {
-        return true;
+      // The first word after `from` that is no option; ssh options in `withArg` take the next word.
+      const auto operand = [&](std::size_t from, std::string_view withArg) -> std::optional<std::string> {
+        for (std::size_t i = from; i < words.size(); ++i) {
+          if (!words[i].starts_with('-')) {
+            const std::string_view target = words[i].substr(words[i].find('@') == std::string_view::npos ? 0 : words[i].find('@') + 1);
+            return target.empty() ? std::nullopt : std::optional<std::string>(target);
+          }
+          if (words[i].size() == 2 && withArg.find(words[i][1]) != std::string_view::npos) {
+            ++i;
+          }
+        }
+        return std::nullopt;
+      };
+      if (tool == "ssh" || tool == "autossh" || tool == "mosh" || tool == "et") {
+        return Remote{.kind = Remote::Kind::Ssh, .host = operand(1, "bBcDEeFIiJLlmOoPpQRSWw")};
+      }
+      if (tool == "distrobox-enter") {
+        return Remote{.kind = Remote::Kind::Container, .host = operand(1, "n")};
+      }
+      const auto enter = std::ranges::find(words, std::string_view("enter"));
+      if ((tool == "toolbox" || tool == "distrobox") && enter != words.end()) {
+        return Remote{.kind = Remote::Kind::Container,
+                      .host = operand(static_cast<std::size_t>(enter - words.begin()) + 1, "cnr")};
       }
       const auto has = [&](std::string_view w) { return std::ranges::contains(words, w); };
-      if (tool == "toolbox" || tool == "distrobox") {
-        return has("enter");
+      if ((tool == "podman" || tool == "docker" || tool == "kubectl") && (has("exec") || has("run"))
+          && (has("-it") || has("-ti"))) {
+        return Remote{.kind = Remote::Kind::Container};
       }
-      if (tool == "podman" || tool == "docker" || tool == "kubectl") {
-        return (has("exec") || has("run")) && (has("-it") || has("-ti"));
-      }
-      return false;
+      return std::nullopt;
     }
   } // namespace
 
@@ -1113,8 +1132,8 @@ namespace term {
       if (m_host.commandStarted) {
         m_host.commandStarted(mark.command);
       }
-      if (opensRemoteShell(mark.command)) {
-        setRemote(Remote{});
+      if (auto remote = opensRemoteShell(mark.command)) {
+        setRemote(std::move(remote));
       }
       armQuiet(std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCommandQuietMs)));
       break;
@@ -1152,8 +1171,12 @@ namespace term {
       }
       return std::string(reinterpret_cast<const char*>(pwd.ptr), pwd.len);
     });
-    std::optional<std::string> host = remoteHost(uri);
-    setRemote(host ? std::optional<Remote>(Remote{std::move(host)}) : std::nullopt);
+    if (std::optional<std::string> host = remoteHost(uri)) {
+      // A shell that a container command opened reports the container's own hostname.
+      setRemote(Remote{.kind = m_remote ? m_remote->kind : Remote::Kind::Ssh, .host = std::move(host)});
+    } else {
+      setRemote(std::nullopt);
+    }
     const std::string path = pathFromFileUri(uri);
     if (path.empty() || path == m_cwd) {
       return;
@@ -1164,13 +1187,14 @@ namespace term {
     }
   }
 
-  // A known host that names the one a command (ssh) opened is the same place: no second change.
+  // A known host that names the one a command (ssh) opened is the same place: no second move.
   void TerminalView::setRemote(std::optional<Remote> remote) {
     const bool same = (!m_remote && !remote)
         || (m_remote && remote && remote->host && (!m_remote->host || *m_remote->host == *remote->host));
+    const bool learned = same && m_remote && remote && m_remote->host != remote->host;
     m_remote = std::move(remote);
-    if (!same && m_host.hostChanged) {
-      m_host.hostChanged(m_remote.has_value());
+    if ((!same || learned) && m_host.hostChanged) {
+      m_host.hostChanged(m_remote, !same);
     }
   }
 
@@ -1258,11 +1282,6 @@ namespace term {
         const bool inHome = !home.empty() && (path == home || path.starts_with(home + "/"));
         item.cwd = inHome ? "~" + path.substr(home.size()) : path;
         item.branch = it->branch;
-        const auto clock = [](std::chrono::steady_clock::duration d) {
-          const double seconds = std::chrono::duration<double>(d).count();
-          return seconds < 60.0 ? std::format("{:.1f} s", seconds)
-                                : formatClockTime(static_cast<std::int64_t>(seconds));
-        };
         switch (it->phase) {
         case CommandEntry::Phase::Prompt: break;
         case CommandEntry::Phase::Running:
@@ -1274,7 +1293,7 @@ namespace term {
         case CommandEntry::Phase::Done:
           item.caption = it->exitCode.value_or(0) == 0 ? Caption::Done : Caption::Failed;
           item.exit = std::format("exit {}", it->exitCode.value_or(0));
-          item.time = clock(it->duration);
+          item.time = formatTook(it->duration);
           break;
         }
         out.push_back({.row = static_cast<std::uint32_t>(*row - top), .item = std::move(item)});
@@ -1285,8 +1304,9 @@ namespace term {
       return p.item.caption == Caption::Running;
     });
     const float inset = kInset * m_uiScale;
-    m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + Tokens::spaceP8 * m_uiScale,
-                    m_uiScale);
+    // The band reaches one space step past the grid on both sides.
+    m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + 2.0F * Tokens::spaceP8 * m_uiScale,
+                    m_uiScale, {.family = gridFont(m_settings, m_theme), .size = static_cast<float>(m_settings.fontSize) * m_uiScale});
     if (running && printing && !m_contextTick.active()) {
       m_contextTick.startRepeating(std::chrono::seconds(1), [this] { syncContext(); });
     } else if (!running || !printing) {

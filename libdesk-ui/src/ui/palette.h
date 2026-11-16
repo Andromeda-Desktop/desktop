@@ -54,7 +54,7 @@ enum class ColorRole : std::uint8_t {
   TermFindHit,
   TermFindHitCurrent,
   TermFindRing,
-  TermPillCwd,
+  TermCommandBand,
   Card,
   DiffAdd,
   DiffDel,
@@ -107,7 +107,7 @@ inline constexpr std::array<ColorRoleToken, 43> kColorRoleTokens = {{
     {ColorRole::TermFindHit, "term_find_hit"},
     {ColorRole::TermFindHitCurrent, "term_find_hit_current"},
     {ColorRole::TermFindRing, "term_find_ring"},
-    {ColorRole::TermPillCwd, "term_pill_cwd"},
+    {ColorRole::TermCommandBand, "term_command_band"},
     {ColorRole::Card, "card"},
     {ColorRole::DiffAdd, "diff_add"},
     {ColorRole::DiffDel, "diff_del"},
@@ -179,7 +179,7 @@ struct Palette {
   Color termFindHit;
   Color termFindHitCurrent;
   Color termFindRing;
-  Color termPillCwd;
+  Color termCommandBand;
   Color card;
   Color diffAdd;
   Color diffDel;

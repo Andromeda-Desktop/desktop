@@ -41,6 +41,7 @@ namespace term {
     SessionKind kind = SessionKind::Shell;
     std::string name;
     std::string cwd;
+    std::string host; // Ssh or Container: the host or container name, when known
     CommandState command;
     Seen seen = Seen::Seen;
     bool operator==(const SessionInfo&) const = default;
@@ -84,6 +85,7 @@ namespace term {
     struct Kind {
       std::uint64_t id;
       SessionKind kind;
+      std::string host;
     };
     // Puts `joining` beside `target` (in target's split, or a new one), right after it in pane order or right
     // before it, and focuses it.

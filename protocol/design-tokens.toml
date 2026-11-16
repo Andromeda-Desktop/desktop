@@ -173,7 +173,7 @@ term_cyan = "#06626bff"
 term_find_hit = "#f5a52447"
 term_find_hit_current = "#f5a5249e"
 term_find_ring = "#c26a00ff"
-term_pill_cwd = "#2f56a11a"
+term_command_band = "#14141809"  # label 3.5 %: the prompt line band
 diff_add = "#1467201a"  # term_green 10 %
 diff_del = "#a9232117"  # term_red 9 %
 
@@ -225,7 +225,7 @@ term_cyan = "#03b5c3ff"
 term_find_hit = "#f5a52438"
 term_find_hit_current = "#f5a52480"
 term_find_ring = "#f5a524ff"
-term_pill_cwd = "#77a4f624"
+term_command_band = "#ffffff0b"  # white 4.5 %
 diff_add = "#7fd88f1f"
 diff_del = "#ff8f871f"
 
