@@ -1,5 +1,6 @@
 #include "terminal_view.h"
 
+#include "a11y/atspi_bridge.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "key_map.h"
@@ -35,6 +36,7 @@
 #include <cmath>
 #include <format>
 #include <cstdlib>
+#include <filesystem>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -228,7 +230,14 @@ namespace term {
   }
 
   bool TerminalView::start(std::vector<std::string> argv, std::string cwd, const std::vector<std::string>& extraEnv) {
-    std::vector<std::string> env = {"TERM=xterm-256color", "COLORTERM=truecolor", "TERM_PROGRAM=andromeda-terminal"};
+    // xterm-andromeda once the install step compiled its terminfo; a build run from the tree keeps xterm-256color.
+    static const bool ownTerminfo = std::filesystem::exists(ANDROMEDA_TERMINFO_DIR "/x/xterm-andromeda");
+    std::vector<std::string> env = {ownTerminfo ? "TERM=xterm-andromeda" : "TERM=xterm-256color", "COLORTERM=truecolor",
+                                    "TERM_PROGRAM=andromeda-terminal"};
+    if (ownTerminfo && std::string_view(ANDROMEDA_TERMINFO_DIR) != "/usr/share/terminfo") {
+      const char* dirs = std::getenv("TERMINFO_DIRS");
+      env.push_back(std::string("TERMINFO_DIRS=" ANDROMEDA_TERMINFO_DIR ":") + (dirs != nullptr ? dirs : ""));
+    }
     env.insert(env.end(), extraEnv.begin(), extraEnv.end());
     if (!m_session.spawn({.argv = std::move(argv), .cwd = std::move(cwd), .env = std::move(env)})) {
       return false;
@@ -414,6 +423,7 @@ namespace term {
     applyPalette();
     auto grid = std::make_unique<TerminalGridNode>();
     m_grid = grid.get();
+    m_grid->setAccessible({.role = AccessibleRole::Terminal, .name = "Terminal", .text = std::string()});
     setGridFont();
     m_images = std::make_unique<KittyImages>(*m_grid);
     m_renderer = &renderer;
@@ -947,6 +957,9 @@ namespace term {
       };
     }
     m_grid->setCursor(m_blink == Blink::Hidden ? std::nullopt : m_cursor);
+    if (AtspiBridge::instance().active()) {
+      m_grid->syncAccessibleText(viewRows(), m_cursor);
+    }
     updateTextBlink();
     commitAtlas();
   }
@@ -1504,8 +1517,9 @@ namespace term {
     const float cellH = m_grid->cellHeight();
     const float fraction = m_scrollPx - static_cast<float>(m_viewRow) * cellH;
     const float row = std::floor((localY - (kTopInset + padding()) * m_uiScale + fraction) / cellH);
-    return {.x = static_cast<std::uint16_t>(std::clamp(col, 0.0F, static_cast<float>(m_grid->columns() - 1))),
-            .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(viewRows() - 1)))};
+    const auto y = static_cast<int>(std::clamp(row, 0.0F, static_cast<float>(viewRows() - 1)));
+    const auto x = m_grid->logicalColumn(y, static_cast<int>(std::clamp(col, 0.0F, static_cast<float>(m_grid->columns() - 1))));
+    return {.x = static_cast<std::uint16_t>(x), .y = static_cast<std::uint32_t>(y)};
   }
 
   int TerminalView::overlayPreedit(int x, std::uint32_t fg, std::uint32_t bg) {
@@ -1540,7 +1554,7 @@ namespace term {
     const float cellW = m_grid != nullptr ? m_grid->cellWidth() : 1.0F;
     const float cellH = m_grid != nullptr ? m_grid->cellHeight() : 1.0F;
     return TextInputState{
-        .cursorRectX = static_cast<std::int32_t>(std::lround(sceneX + (kInset + padding()) * m_uiScale + m_cursorCell.x * cellW)),
+        .cursorRectX = static_cast<std::int32_t>(std::lround(sceneX + (kInset + padding()) * m_uiScale + static_cast<float>(m_grid->visualColumn(static_cast<int>(m_cursorCell.y), m_cursorCell.x)) * cellW)),
         .cursorRectY = static_cast<std::int32_t>(
             std::lround(sceneY + (kTopInset + padding()) * m_uiScale + static_cast<float>(m_cursorCell.y) * cellH)),
         .cursorRectWidth = static_cast<std::int32_t>(std::max(1L, std::lround(cellW))),
@@ -2012,6 +2026,9 @@ namespace term {
       ghostty_mouse_event_set_button(m_mouseEvent, button);
     }
     ghostty_mouse_event_set_mods(m_mouseEvent, ghosttyMods(mods));
+    // The encoder takes the cell from the pixel: move a pointer over a reordered (right-to-left) cell to its logical column.
+    const GhosttyPointCoordinate cell = cellAt(localX, localY);
+    localX += static_cast<float>(cell.x - m_grid->visualColumn(static_cast<int>(cell.y), cell.x)) * m_grid->cellWidth();
     ghostty_mouse_event_set_position(m_mouseEvent, {.x = localX, .y = localY});
     std::uint8_t buf[64];
     std::size_t written = 0;

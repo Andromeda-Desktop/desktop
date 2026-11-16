@@ -82,6 +82,8 @@ namespace {
       return 42;
     case AccessibleRole::Separator:
       return 50;
+    case AccessibleRole::Terminal:
+      return 60;
     }
     return 39;
   }
@@ -128,6 +130,8 @@ namespace {
       return "progress bar";
     case AccessibleRole::Separator:
       return "separator";
+    case AccessibleRole::Terminal:
+      return "terminal";
     default:
       return "panel";
     }
@@ -215,7 +219,7 @@ namespace {
     return i;
   }
 
-  // (text, start, end) around `offset` in characters. kind: 0 character, 1 word, 3 whole text.
+  // (text, start, end) around `offset` in characters. kind: 0 character, 1 word, 2 line (ends after its '\n'), 3 whole text.
   std::tuple<std::string, std::int32_t, std::int32_t> textAt(const std::string& text, std::int32_t offset, std::uint32_t kind) {
     const std::int32_t count = charCount(text);
     if (kind >= 3 || count == 0) {
@@ -224,13 +228,19 @@ namespace {
     offset = std::clamp(offset, 0, count - 1);
     std::int32_t start = offset;
     std::int32_t end = offset + 1;
-    if (kind == 1) {
-      const auto spaceAt = [&](std::int32_t at) { return text[byteOffset(text, at)] == ' '; };
-      while (start > 0 && !spaceAt(start - 1)) {
+    if (kind == 1 || kind == 2) {
+      const auto breakAt = [&](std::int32_t at) {
+        const char c = text[byteOffset(text, at)];
+        return c == '\n' || (kind == 1 && c == ' ');
+      };
+      while (start > 0 && !breakAt(start - 1)) {
         --start;
       }
-      while (end < count && !spaceAt(end)) {
-        ++end;
+      if (kind == 1 || !breakAt(offset)) {
+        while (end < count && !breakAt(end)) {
+          ++end;
+        }
+        end += kind == 2 && end < count ? 1 : 0;
       }
     }
     const std::size_t from = byteOffset(text, start);
@@ -815,12 +825,12 @@ void AtspiBridge::exportItem(Item& entry) {
             }),
             sdbus::registerMethod("SetCaretOffset").implementedAs([](std::int32_t) { return false; }),
             sdbus::registerMethod("GetTextAtOffset").implementedAs([text](std::int32_t offset, std::uint32_t boundary) {
-              // AtspiTextBoundaryType: 0 char, 1-2 word; sentence and line boundaries return the whole field.
-              return textAt(text(), offset, boundary == 0 ? 0U : boundary <= 2 ? 1U : 3U);
+              // AtspiTextBoundaryType: 0 char, 1-2 word, 3-4 sentence (whole field), 5-6 line.
+              return textAt(text(), offset, boundary == 0 ? 0U : boundary <= 2 ? 1U : boundary >= 5 ? 2U : 3U);
             }),
             sdbus::registerMethod("GetStringAtOffset").implementedAs([text](std::int32_t offset, std::uint32_t granularity) {
-              // AtspiTextGranularity: 0 char, 1 word, 2+ whole field.
-              return textAt(text(), offset, std::min(granularity, 3U));
+              // AtspiTextGranularity: 0 char, 1 word, 2 sentence (whole field), 3 line, 4 paragraph (a line).
+              return textAt(text(), offset, granularity <= 1 ? granularity : granularity == 2 ? 3U : 2U);
             }),
             sdbus::registerMethod("GetCharacterAtOffset").implementedAs([text](std::int32_t offset) {
               const auto [ch, start, end] = textAt(text(), offset, 0);

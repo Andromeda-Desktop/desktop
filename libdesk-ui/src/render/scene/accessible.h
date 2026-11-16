@@ -33,6 +33,7 @@ enum class AccessibleRole : std::uint8_t {
   ScrollPane,
   ProgressBar,
   Separator,
+  Terminal,
 };
 
 // Roles a user acts on: they must have a name (DESK_A11Y_STRICT=1 checks it).

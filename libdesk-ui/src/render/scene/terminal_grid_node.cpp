@@ -1,5 +1,8 @@
 #include "render/scene/terminal_grid_node.h"
 
+#include "render/scene/accessible.h"
+#include "render/scene/terminal_bidi.h"
+
 #include "render/core/texture_manager.h"
 
 #include <algorithm>
@@ -73,6 +76,7 @@ void TerminalGridNode::setGridSize(int columns, int rows) {
   m_columns = std::max(columns, 0);
   rows = std::max(rows, 0);
   m_cells.assign(static_cast<std::size_t>(rows), std::vector<TerminalCell>(static_cast<std::size_t>(m_columns)));
+  m_bidi.assign(static_cast<std::size_t>(rows), std::nullopt);
   m_rects.assign(static_cast<std::size_t>(rows), {});
   m_glyphs.assign(static_cast<std::size_t>(rows), {});
   buildCursor();
@@ -146,6 +150,13 @@ void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
   }
   std::copy_n(cells.begin(), n, stored.begin());
   std::fill(stored.begin() + static_cast<std::ptrdiff_t>(n), stored.end(), TerminalCell{});
+  auto& bidi = m_bidi[static_cast<std::size_t>(row)];
+  const bool reordered = bidi.has_value();
+  bidi = terminalBidi(stored);
+  if (reordered || bidi) {
+    first = 0; // one changed cell can move every cell of a reordered row
+    last = m_columns - 1;
+  }
   buildRow(row);
   if (m_cursor && m_cursor->row == row) {
     buildCursor();
@@ -178,6 +189,83 @@ void TerminalGridNode::markRowDirty(int row, float left, float right, int below)
                             top + h * (1.5F + static_cast<float>(below))});
 }
 
+void TerminalGridNode::syncAccessibleText(int rows, const std::optional<TerminalCursor>& cursor) {
+  std::string text;
+  std::int32_t caret = 0;
+  std::int32_t chars = 0;
+  const auto put = [&](char32_t c) {
+    if (c < 0x80) {
+      text += static_cast<char>(c);
+    } else if (c < 0x800) {
+      text += static_cast<char>(0xC0 | (c >> 6));
+      text += static_cast<char>(0x80 | (c & 0x3F));
+    } else if (c < 0x10000) {
+      text += static_cast<char>(0xE0 | (c >> 12));
+      text += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+      text += static_cast<char>(0x80 | (c & 0x3F));
+    } else {
+      text += static_cast<char>(0xF0 | (c >> 18));
+      text += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+      text += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+      text += static_cast<char>(0x80 | (c & 0x3F));
+    }
+    ++chars;
+  };
+  rows = std::min(rows, static_cast<int>(m_cells.size()));
+  for (int row = 0; row < rows; ++row) {
+    if (row > 0) {
+      put(U'\n');
+    }
+    const auto& cells = m_cells[static_cast<std::size_t>(row)];
+    const bool cursorRow = cursor && cursor->row == row;
+    int end = static_cast<int>(cells.size());
+    while (end > 0 && (cells[static_cast<std::size_t>(end - 1)].codepoint == 0 || cells[static_cast<std::size_t>(end - 1)].codepoint == U' ')) {
+      --end;
+    }
+    if (cursorRow) {
+      end = std::max(end, std::min(cursor->column, static_cast<int>(cells.size())));
+    }
+    for (int col = 0; col < end; ++col) {
+      if (cursorRow && col == cursor->column) {
+        caret = chars;
+      }
+      if (col > 0 && (cells[static_cast<std::size_t>(col - 1)].flags & TerminalCell::Wide) != 0) {
+        continue;
+      }
+      const char32_t c = cells[static_cast<std::size_t>(col)].codepoint;
+      put(c == 0 ? U' ' : c);
+    }
+    if (cursorRow && cursor->column >= end) {
+      caret = chars;
+    }
+  }
+  auto& accessible = accessibleState();
+  accessible.text = std::move(text);
+  accessible.caretOffset = caret;
+}
+
+const std::vector<TerminalCell>& TerminalGridNode::drawnCells(int row) const {
+  const auto& bidi = m_bidi[static_cast<std::size_t>(row)];
+  return bidi ? bidi->cells : m_cells[static_cast<std::size_t>(row)];
+}
+
+int TerminalGridNode::visualColumn(int row, int column) const noexcept {
+  if (row < 0 || row >= rows() || !m_bidi[static_cast<std::size_t>(row)]) {
+    return column;
+  }
+  const auto& logical = m_bidi[static_cast<std::size_t>(row)]->logical;
+  const auto at = std::ranges::find(logical, column);
+  return at == logical.end() ? column : static_cast<int>(at - logical.begin());
+}
+
+int TerminalGridNode::logicalColumn(int row, int visual) const noexcept {
+  if (row < 0 || row >= rows() || !m_bidi[static_cast<std::size_t>(row)]) {
+    return visual;
+  }
+  const auto& logical = m_bidi[static_cast<std::size_t>(row)]->logical;
+  return visual >= 0 && visual < static_cast<int>(logical.size()) ? logical[static_cast<std::size_t>(visual)] : visual;
+}
+
 void TerminalGridNode::setCursor(std::optional<TerminalCursor> cursor) {
   if (cursor == m_cursor) {
     return;
@@ -185,7 +273,7 @@ void TerminalGridNode::setCursor(std::optional<TerminalCursor> cursor) {
   const auto markCursor = [this] {
     if (m_cursor) {
       const float w = cellWidth();
-      const float left = m_originX + static_cast<float>(m_cursor->column - 1) * w;
+      const float left = m_originX + static_cast<float>(visualColumn(m_cursor->row, m_cursor->column) - 1) * w;
       markRowDirty(m_cursor->row, left, left + static_cast<float>(m_cursor->wide ? 4 : 3) * w);
     }
   };
@@ -393,7 +481,7 @@ void TerminalGridNode::buildRow(int row) {
   }
   const int top = row * ch;
   const int thickness = m_atlas.strokeThickness();
-  const auto& cells = m_cells[static_cast<std::size_t>(row)];
+  const auto& cells = drawnCells(row);
   auto rect = [&](int x0, int y0, int x1, int y1, std::uint32_t rgb) {
     pushRect(rects, logical(x0), logical(y0), logical(x1), logical(y1), premultiplied(rgb));
   };
@@ -474,7 +562,8 @@ void TerminalGridNode::buildCursor() {
     return;
   }
   const TerminalCursor& c = *m_cursor;
-  const int x0 = c.column * cw;
+  const int column = visualColumn(c.row, c.column);
+  const int x0 = column * cw;
   const int y0 = c.row * ch;
   const int x1 = x0 + (c.wide ? 2 : 1) * cw;
   const int y1 = y0 + ch;
@@ -485,7 +574,7 @@ void TerminalGridNode::buildCursor() {
   switch (c.style) {
   case TerminalCursorStyle::Block: {
     rect(x0, y0, x1, y1);
-    const TerminalCell& cell = m_cells[static_cast<std::size_t>(c.row)][static_cast<std::size_t>(c.column)];
+    const TerminalCell& cell = drawnCells(c.row)[static_cast<std::size_t>(column)];
     if (cell.codepoint > U' ') {
       appendGlyph(m_cursorGlyphs, cell.codepoint, cell.flags, x0, y0, c.textColor);
     }

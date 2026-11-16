@@ -97,6 +97,8 @@ test('session_list', executable('session_list_test', 'tests/session_list_test.cp
 
 test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
+test('terminal_bidi', executable('terminal_bidi_test', 'tests/terminal_bidi_test.cpp',
+  dependencies: _desk_ui_dep, cpp_args: _warnings))
 
 cpp = meson.get_compiler('cpp')
 if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
@@ -116,6 +118,7 @@ test('theme_palette', executable('theme_palette_test', 'tests/theme_palette_test
 test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp', 'src/theme_store.cpp',
   dependencies: [_settings_dep, _desk_app_dep], cpp_args: _warnings))
 
+_terminfo_dir = get_option('prefix') / get_option('datadir') / 'terminfo'
 executable('andromeda-terminal',
   'src/key_map.cpp',
   'src/kitty_images.cpp',
@@ -133,9 +136,12 @@ executable('andromeda-terminal',
   'src/agent_host.cpp', 'src/agent_kind.cpp',
   'src/agent_view.cpp',
   dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')],
-  cpp_args: _warnings + _agentd_path,
+  cpp_args: _warnings + _agentd_path + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"'],
   install: true,
 )
+find_program('tic')
+meson.add_install_script('sh', '-c', 'mkdir -p "$DESTDIR$1" && tic -x -o "$DESTDIR$1" "$2"', 'tic',
+  _terminfo_dir, meson.current_source_dir() / 'data' / 'andromeda.terminfo')
 
 _user_unit_dir = get_option('prefix') / 'lib' / 'systemd' / 'user'
 configure_file(input: 'data/andromeda-ptyd.service.in', output: 'andromeda-ptyd.service',

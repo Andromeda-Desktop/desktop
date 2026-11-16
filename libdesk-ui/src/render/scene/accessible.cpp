@@ -22,6 +22,7 @@ namespace {
     case AccessibleRole::Tab:
     case AccessibleRole::ProgressBar:
     case AccessibleRole::Separator:
+    case AccessibleRole::Terminal:
       return true;
     default:
       return false;

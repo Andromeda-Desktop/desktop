@@ -42,6 +42,13 @@ struct TerminalCell {
   bool operator==(const TerminalCell&) const = default;
 };
 
+// One terminal row in display order (Unicode BiDi, left-to-right base): right-to-left runs reversed, Arabic letters
+// in their joined presentation forms, brackets mirrored inside right-to-left runs. A wide cell keeps its tail after it.
+struct TerminalBidiRow {
+  std::vector<TerminalCell> cells;
+  std::vector<std::uint16_t> logical; // logical column of each visual column
+};
+
 enum class TerminalCursorStyle : std::uint8_t { Block, HollowBlock, Bar, Underline };
 
 struct TerminalCursor {
@@ -80,6 +87,11 @@ public:
   void setBackground(std::uint32_t rgb);
   void setRow(int row, std::span<const TerminalCell> cells);
   void setCursor(std::optional<TerminalCursor> cursor);
+  // Rows hold logical cells; a row with right-to-left text draws reordered. These map a column between the two.
+  [[nodiscard]] int visualColumn(int row, int column) const noexcept;
+  [[nodiscard]] int logicalColumn(int row, int visual) const noexcept;
+  // Sets the accessible text to rows [0, rows) (trailing blanks cut, except up to the cursor) and the caret to cursor.
+  void syncAccessibleText(int rows, const std::optional<TerminalCursor>& cursor);
 
   // Uploads new glyphs to the atlas texture. Call with the render context current, before the frame renders.
   void commit(TextureManager& textures);
@@ -106,6 +118,7 @@ public:
 private:
   void doInvalidateGpuResources(Renderer& renderer) override;
   void buildRow(int row);
+  [[nodiscard]] const std::vector<TerminalCell>& drawnCells(int row) const;
   template <typename Rect>
   void underline(const TerminalCell& cell, int x, int right, int top, std::uint32_t rgb, Rect& rect) const;
   void markRowDirty(int row);
@@ -132,6 +145,7 @@ private:
   float m_backgroundAlpha = 1.0F;
   float m_textBacking = 0.0F;
   std::vector<std::vector<TerminalCell>> m_cells;
+  std::vector<std::optional<TerminalBidiRow>> m_bidi; // per row; empty = draws as stored
   std::optional<TerminalCursor> m_cursor;
   std::uint64_t m_builtGeneration = 0;
 
