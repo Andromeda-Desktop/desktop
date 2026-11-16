@@ -206,6 +206,7 @@ private:
 
   using CacheMap = std::unordered_map<CacheKey, CacheEntry, CacheKeyHash>;
   using MetricsMap = std::unordered_map<MetricsKey, TextMetrics, MetricsKeyHash>;
+  using ShapedMap = std::unordered_map<MetricsKey, PangoLayout*, MetricsKeyHash>;
   using FontMetricsMap = std::unordered_map<FontMetricsKey, TextMetrics, FontMetricsKeyHash>;
 
   // Font description for `font` at a raster pixel size; an empty family resolves to
@@ -235,6 +236,9 @@ private:
   void touch(CacheMap::iterator it);
   void evict(CacheMap::iterator it);
   void evictIfNeeded();
+  // The layout measure() shaped for `key`, now owned by the caller; nullptr when none is kept.
+  PangoLayout* takeShaped(const MetricsKey& key);
+  void dropShaped(ShapedMap& map);
   void clearCaches();
   // Re-read fontconfig when a font has been registered (by any surface) since the
   // last measure/draw, so newly loaded plugin fonts become resolvable here.
@@ -260,11 +264,16 @@ private:
   float m_textScale = 1.0F;
   bool m_caching = true;
   std::list<CacheEntry> m_transient;
+  // Layouts measure() shaped, so a draw miss of the same key takes one instead of shaping again. Owned. Each
+  // releaseTransient() (frame start) drops m_shapedOld and moves m_shaped there: a layout lives about one frame.
+  ShapedMap m_shaped;
+  ShapedMap m_shapedOld;
   std::uint64_t m_textEpoch = 0; // the s_textEpoch this renderer's caches were last cleared for
   inline static std::atomic<std::uint64_t> s_textEpoch{0};
 
   static constexpr std::size_t kMaxCacheEntries = 512;
   static constexpr std::size_t kMaxCacheBytes = 32 * 1024 * 1024;
   static constexpr std::size_t kMaxMetricsEntries = 1024;
+  static constexpr std::size_t kMaxShapedLayouts = 256;
   static constexpr std::size_t kMaxFontMetricsEntries = 64;
 };

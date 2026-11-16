@@ -329,6 +329,8 @@ void CairoTextRenderer::clearCaches() {
   m_cacheBytes = 0;
   wipeAndClear(m_metricsCache);
   m_fontMetricsCache.clear();
+  dropShaped(m_shaped);
+  dropShaped(m_shapedOld);
 }
 
 void CairoTextRenderer::invalidateGlyphTextures() {
@@ -363,6 +365,26 @@ void CairoTextRenderer::releaseTransient() {
     }
   }
   m_transient.clear();
+  dropShaped(m_shapedOld);
+  std::swap(m_shaped, m_shapedOld);
+}
+
+void CairoTextRenderer::dropShaped(ShapedMap& map) {
+  for (auto& [key, layout] : map) {
+    g_object_unref(layout);
+  }
+  map.clear();
+}
+
+PangoLayout* CairoTextRenderer::takeShaped(const MetricsKey& key) {
+  for (ShapedMap* map : {&m_shaped, &m_shapedOld}) {
+    if (auto it = map->find(key); it != map->end()) {
+      PangoLayout* layout = it->second;
+      map->erase(it);
+      return layout;
+    }
+  }
+  return nullptr;
 }
 
 void CairoTextRenderer::abandonGlyphTextures() noexcept {
@@ -600,7 +622,12 @@ CairoTextRenderer::TextMetrics CairoTextRenderer::measure(
   PangoLayout* layout =
       buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
   const auto metrics = metricsFromLayout(contentScale, layout);
-  g_object_unref(layout);
+  if (m_shaped.size() < kMaxShapedLayouts && m_shaped.try_emplace(key, layout).second) {
+    layout = nullptr;
+  }
+  if (layout != nullptr) {
+    g_object_unref(layout);
+  }
 
   if (m_metricsCache.size() >= kMaxMetricsEntries) {
     wipeAndClear(m_metricsCache);
@@ -1178,8 +1205,21 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
     return &it->second;
   }
 
-  PangoLayout* layout =
-      buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
+  MetricsKey mkey;
+  mkey.text = key.text;
+  mkey.font = key.font;
+  mkey.sizeBits = key.sizeBits;
+  mkey.maxWidthBits = key.maxWidthBits;
+  mkey.scaleBits = key.scaleBits;
+  mkey.maxLines = key.maxLines;
+  mkey.align = key.align;
+  mkey.ellipsize = key.ellipsize;
+  mkey.useMarkup = key.useMarkup;
+  PangoLayout* layout = takeShaped(mkey);
+  if (layout == nullptr) {
+    layout =
+        buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
+  }
   const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !hasOwnColor(layout);
   if (tinted) {
     key.colorRgba = 0U;
@@ -1192,16 +1232,6 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   rasterizeLayout(contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry);
   g_object_unref(layout);
 
-  MetricsKey mkey;
-  mkey.text = key.text;
-  mkey.font = key.font;
-  mkey.sizeBits = key.sizeBits;
-  mkey.maxWidthBits = key.maxWidthBits;
-  mkey.scaleBits = key.scaleBits;
-  mkey.maxLines = key.maxLines;
-  mkey.align = key.align;
-  mkey.ellipsize = key.ellipsize;
-  mkey.useMarkup = key.useMarkup;
   if (m_metricsCache.size() >= kMaxMetricsEntries) {
     wipeAndClear(m_metricsCache);
   }
