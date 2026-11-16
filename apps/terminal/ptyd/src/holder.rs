@@ -32,6 +32,9 @@ pub struct Config {
     pub idle_exit: Option<Duration>,
     /// A closed session's child that still runs this long after SIGHUP gets SIGKILL.
     pub close_grace: Duration,
+    /// Longest rest after a read: a slow stream then arrives in fewer, larger reads, which saves
+    /// wakeups in the holder and the client. A lone short read (an echo) still goes out at once.
+    pub coalesce: Duration,
 }
 
 impl Default for Config {
@@ -44,11 +47,16 @@ impl Default for Config {
             client_queue_cap: 1 << 20,
             idle_exit: Some(Duration::from_secs(30)),
             close_grace: Duration::from_secs(3),
+            coalesce: Duration::from_micros(100),
         }
     }
 }
 
 const READ_CHUNK: usize = 64 << 10;
+/// A rest aims to gather this much output; well under the 4 KiB tty buffer, so the writer does not block.
+const COALESCE_TARGET: usize = 1 << 10;
+/// A shorter rest saves less than the poll round it costs.
+const COALESCE_MIN: Duration = Duration::from_micros(20);
 const RELAUNCH_LIMIT: usize = 3;
 const RELAUNCH_WINDOW: Duration = Duration::from_secs(60);
 
@@ -93,6 +101,24 @@ struct Session {
     /// Output from `snapshot_offset` on.
     tail: Vec<u8>,
     want_sent_at: u64,
+    pace: ReadPace,
+    last_read: Instant,
+}
+
+/// The rest that lets the next read gather about COALESCE_TARGET bytes at the rate of this read,
+/// which brought `n` bytes `since` the previous one; None when the writer is fast.
+fn coalesce_rest(n: usize, since: Duration, max: Duration) -> Option<Duration> {
+    let rest = since
+        .mul_f64(COALESCE_TARGET as f64 / n.max(1) as f64)
+        .min(max);
+    (rest >= COALESCE_MIN).then_some(rest)
+}
+
+/// When the pty is read next.
+#[derive(Clone, Copy)]
+enum ReadPace {
+    Now,
+    After(Instant),
 }
 
 impl Session {
@@ -223,6 +249,11 @@ impl Holder {
                 self.relaunch(now);
             }
             for s in self.sessions.values_mut() {
+                if let ReadPace::After(at) = s.pace
+                    && at <= now
+                {
+                    s.pace = ReadPace::Now;
+                }
                 if let Owner::Closing { kill_at } = s.owner
                     && kill_at <= now
                 {
@@ -248,7 +279,15 @@ impl Holder {
             if idle_deadline.is_some_and(|at| at <= now) {
                 return Ok(());
             }
-            let deadline = [self.relaunch_at, idle_deadline, kill_at]
+            let read_at = self
+                .sessions
+                .values()
+                .filter_map(|s| match s.pace {
+                    ReadPace::After(at) => Some(at),
+                    ReadPace::Now => None,
+                })
+                .min();
+            let deadline = [self.relaunch_at, idle_deadline, kill_at, read_at]
                 .into_iter()
                 .flatten()
                 .min();
@@ -293,7 +332,10 @@ impl Holder {
             kinds.push(Event::Client(*id, PollFlags::empty()));
         }
         for (id, s) in &self.sessions {
-            if let Some(master) = s.master().filter(|_| !self.paused(s)) {
+            if let Some(master) = s
+                .master()
+                .filter(|_| matches!(s.pace, ReadPace::Now) && !self.paused(s))
+            {
                 fds.push(PollFd::new(master, PollFlags::IN));
                 kinds.push(Event::Master(*id));
             }
@@ -552,6 +594,8 @@ impl Holder {
                 snapshot_offset: 0,
                 tail: Vec::new(),
                 want_sent_at: 0,
+                pace: ReadPace::Now,
+                last_read: Instant::now(),
             },
             client_fd,
         ))
@@ -617,6 +661,10 @@ impl Holder {
                 self.finish_if_exited(id);
             }
             Ok(n) => {
+                let now = Instant::now();
+                let rest = coalesce_rest(n, now - s.last_read, self.config.coalesce);
+                s.last_read = now;
+                s.pace = rest.map_or(ReadPace::Now, |d| ReadPace::After(now + d));
                 buf.truncate(n);
                 let offset = s.read_offset();
                 s.tail.extend_from_slice(&buf);
