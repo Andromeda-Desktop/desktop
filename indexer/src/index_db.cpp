@@ -7,6 +7,7 @@
 #include <sqlite3.h>
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cctype>
 #include <cstdio>
@@ -110,6 +111,112 @@ namespace andromeda::index {
         }
       }
       return static_cast<const char*>(memmem(at, static_cast<std::size_t>(end - at), needle.data(), n));
+    }
+
+    // One bit per a-z and 0-9; every other byte shares one of 28 bits by its value.
+    std::uint64_t letterBit(char ch) {
+      const auto c = static_cast<unsigned char>(ch);
+      return std::uint64_t{1} << (c >= 'a' && c <= 'z' ? c - 'a' : c >= '0' && c <= '9' ? 26 + c - '0' : 36 + c % 28);
+    }
+
+    std::uint64_t letterMask(std::string_view text) {
+      std::uint64_t mask = 0;
+      for (const char ch : text) {
+        mask |= letterBit(ch);
+      }
+      return mask;
+    }
+
+    // letterMask of the bytes that start a word (see wordStart).
+    std::uint64_t startMask(std::string_view text) {
+      std::uint64_t mask = 0;
+      for (std::size_t i = 0; i < text.size(); ++i) {
+        const auto before = i == 0 ? 0 : static_cast<unsigned char>(text[i - 1]);
+        if (before < 0x80 && std::isalnum(before) == 0) {
+          mask |= letterBit(text[i]);
+        }
+      }
+      return mask;
+    }
+
+    // First p in [at, end) where a 1-2 byte needle starts a word (p is begin or follows a byte wordStart accepts).
+    // An SSE2 pass tests 16 positions per step: the needle's bytes and a separator before them.
+    const char* findWordStart(const char* begin, const char* at, const char* end, std::string_view needle) {
+      const std::size_t n = needle.size();
+      const auto isStart = [&](const char* p) {
+        if (p[0] != needle[0] || (n == 2 && (p + 1 >= end || p[1] != needle[1]))) {
+          return false;
+        }
+        const auto c = p == begin ? 0 : static_cast<unsigned char>(p[-1]);
+        return c < 0x80 && std::isalnum(c) == 0;
+      };
+      if (at == begin && at < end && isStart(at)) {
+        return at;
+      }
+      at += at == begin ? 1 : 0;
+      const __m128i first = _mm_set1_epi8(needle[0]);
+      const __m128i second = _mm_set1_epi8(n == 2 ? needle[1] : 0);
+      for (; end - at >= 17; at += 16) {
+        const __m128i a = _mm_loadu_si128(reinterpret_cast<const __m128i*>(at));
+        const __m128i b = _mm_loadu_si128(reinterpret_cast<const __m128i*>(at - 1));
+        __m128i hit = _mm_cmpeq_epi8(a, first);
+        if (n == 2) {
+          hit = _mm_and_si128(hit, _mm_cmpeq_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(at + 1)), second));
+        }
+        const __m128i ascii = _mm_cmpgt_epi8(b, _mm_set1_epi8(-1));
+        const __m128i digit = _mm_and_si128(_mm_cmpgt_epi8(b, _mm_set1_epi8('0' - 1)), _mm_cmplt_epi8(b, _mm_set1_epi8('9' + 1)));
+        const __m128i lower = _mm_and_si128(_mm_cmpgt_epi8(b, _mm_set1_epi8('a' - 1)), _mm_cmplt_epi8(b, _mm_set1_epi8('z' + 1)));
+        const __m128i upper = _mm_and_si128(_mm_cmpgt_epi8(b, _mm_set1_epi8('A' - 1)), _mm_cmplt_epi8(b, _mm_set1_epi8('Z' + 1)));
+        const __m128i sep = _mm_andnot_si128(_mm_or_si128(_mm_or_si128(digit, lower), upper), ascii);
+        if (const auto mask = static_cast<unsigned>(_mm_movemask_epi8(_mm_and_si128(hit, sep))); mask != 0) {
+          return at + std::countr_zero(mask);
+        }
+      }
+      for (; at < end; ++at) {
+        if (isStart(at)) {
+          return at;
+        }
+      }
+      return nullptr;
+    }
+
+    // Typo hits rank after every letters-in-order hit (whose rank grows with its span).
+    constexpr std::size_t kTypoRank = 1'000'000;
+
+    // Fewest edits (insert, delete, replace, swap of neighbours) that turn a prefix of [at, end) into needle (1-64
+    // bytes): Myers' bit-parallel edit distance with Hyyro's swap step, one step per byte, anchored at `at`.
+    using ByteBits = std::array<std::uint64_t, 256>; // bit i of [c]: needle[i] == c
+    ByteBits byteBits(std::string_view needle) {
+      ByteBits eq{};
+      for (std::size_t i = 0; i < needle.size(); ++i) {
+        eq[static_cast<unsigned char>(needle[i])] |= std::uint64_t{1} << i;
+      }
+      return eq;
+    }
+
+    int editsFrom(const char* at, const char* end, std::string_view needle, const ByteBits& eq) {
+      const std::uint64_t high = std::uint64_t{1} << (needle.size() - 1);
+      std::uint64_t vp = ~std::uint64_t{0};
+      std::uint64_t vn = 0;
+      std::uint64_t d0 = 0;
+      std::uint64_t lastEq = 0;
+      int score = static_cast<int>(needle.size());
+      int best = score;
+      for (const char* p = at; p < end && *p != '\0'; ++p) {
+        const std::uint64_t e = eq[static_cast<unsigned char>(*p)];
+        const std::uint64_t swapped = ((~d0 & e) << 1) & lastEq; // Hyyro: a swapped pair costs one edit
+        d0 = (((e & vp) + vp) ^ vp) | e | vn | swapped;
+        std::uint64_t hp = vn | ~(d0 | vp);
+        std::uint64_t hn = vp & d0;
+        score += (hp & high) != 0 ? 1 : (hn & high) != 0 ? -1 : 0;
+        hp = (hp << 1) | 1; // anchored: skipping the first k bytes costs k edits
+        hn <<= 1;
+        vp = hn | ~(d0 | hp);
+        vn = hp & d0;
+        lastEq = e;
+        best = std::min(best, score);
+      }
+      return best;
     }
 
     // Names are folded, so a letter or digit byte (or any UTF-8 byte) continues a word; anything else ends one.
@@ -380,9 +487,11 @@ namespace andromeda::index {
   }
 
   void IndexDb::appendName(std::int64_t id, std::string_view name, std::int64_t mtime, bool isDir) const {
+    const std::string folded = foldName(name);
     m_entries.push_back({.id = static_cast<std::uint32_t>(id), .offset = static_cast<std::uint32_t>(m_folded.size()),
-                         .mtime = seconds(mtime), .kind = fileKind(name, isDir), .removed = false});
-    m_folded += foldName(name);
+                         .mtime = seconds(mtime), .kind = fileKind(name, isDir), .removed = false,
+                         .letters = letterMask(folded), .starts = startMask(folded)});
+    m_folded += folded;
     m_folded += '\0';
   }
 
@@ -408,11 +517,26 @@ namespace andromeda::index {
       std::uint32_t mtime;
       std::int64_t id;
     };
+    // Only the best `limit` hits are kept, in a heap whose top is the worst kept: a 1-letter query at 1M names has
+    // ~500k hits.
+    const auto keep = static_cast<std::size_t>(std::max(limit, 0));
+    const auto better = [](const Hit& a, const Hit& b) { return a.rank != b.rank ? a.rank < b.rank : a.mtime > b.mtime; };
     std::vector<Hit> hits;
+    hits.reserve(keep);
+    const auto offer = [&](const Hit& hit) {
+      if (hits.size() < keep) {
+        hits.push_back(hit);
+        std::ranges::push_heap(hits, better);
+      } else if (keep != 0 && better(hit, hits.front())) {
+        std::ranges::pop_heap(hits, better);
+        hits.back() = hit;
+        std::ranges::push_heap(hits, better);
+      }
+    };
     if (needle.empty()) {
       for (const NameEntry& entry : m_entries) {
         if (!entry.removed && entry.kind == kind) {
-          hits.push_back({.rank = 0, .mtime = entry.mtime, .id = entry.id});
+          offer({.rank = 0, .mtime = entry.mtime, .id = entry.id});
         }
       }
     }
@@ -420,47 +544,76 @@ namespace andromeda::index {
     const char* const end = begin + m_folded.size();
     auto entry = m_entries.begin();
     for (const char* at = needle.empty() ? end : begin; at < end;) {
-      const char* found = findIn(at, end, needle);
+      const char* found = shortNeedle ? findWordStart(begin, at, end, needle) : findIn(at, end, needle);
       if (found == nullptr) {
         break;
       }
-      if (shortNeedle && !wordStart(begin, found)) {
-        at = found + 1;
-        continue;
-      }
       const auto offset = static_cast<std::uint32_t>(found - begin);
-      entry = std::ranges::upper_bound(entry, m_entries.end(), offset, {}, &NameEntry::offset) - 1;
+      // Hits come in offset order and `entry` only moves forward: a near hit is a few steps away, a far one is
+      // found by binary search (a walk over sparse hits would read every entry).
+      for (int step = 0; step < 8 && entry + 1 != m_entries.end() && (entry + 1)->offset <= offset; ++step) {
+        ++entry;
+      }
+      if (entry + 1 != m_entries.end() && (entry + 1)->offset <= offset) {
+        entry = std::ranges::upper_bound(entry, m_entries.end(), offset, {}, &NameEntry::offset) - 1;
+      }
       const auto next = entry + 1;
       at = next != m_entries.end() ? begin + next->offset : end;
       if (entry->removed || (!anyKind && entry->kind != kind)) {
         continue;
       }
       const std::size_t rank = offset != entry->offset ? 2 : (found[needle.size()] == '\0' ? 0 : 1);
-      hits.push_back({.rank = rank, .mtime = entry->mtime, .id = entry->id});
+      offer({.rank = rank, .mtime = entry->mtime, .id = entry->id});
     }
-    // Few substring hits: also names holding the letters in order ("dwnhelp" -> "download-helper"). A substring
-    // hit is also a subsequence, so names with a substring hit are skipped.
-    if (!shortNeedle && hits.size() < static_cast<std::size_t>(std::max(limit, 0))) {
+    const auto seenIds = [&] {
       std::vector<std::int64_t> seen;
       for (const Hit& hit : hits) {
         seen.push_back(hit.id);
       }
       std::ranges::sort(seen);
-      for (const NameEntry& e : m_entries) {
-        if (e.removed || (!anyKind && e.kind != kind)) {
+      return seen;
+    };
+    const std::uint64_t letters = letterMask(needle);
+    // Few substring hits: names with a word that starts with the needle's first byte and from there holds the
+    // needle's letters in order ("dwnhelp" -> "download-helper"), or begins within 1 edit of it (2 from 9 bytes; a
+    // swapped pair is one edit). Names with a substring hit are skipped; the masks skip a name with no such word start,
+    // or missing more needle letters than the edits allow, without reading it.
+    if (!shortNeedle && hits.size() < keep) {
+      const std::vector<std::int64_t> seen = seenIds();
+      const bool typos = needle.size() >= 4 && needle.size() <= 64;
+      const int most = !typos ? 0 : needle.size() >= 9 ? 2 : 1;
+      const std::size_t window = needle.size() + static_cast<std::size_t>(most);
+      const ByteBits eq = byteBits(typos ? needle : std::string_view());
+      const std::uint64_t first = letterBit(needle.front());
+      for (std::size_t i = 0; i < m_entries.size(); ++i) {
+        const NameEntry& e = m_entries[i];
+        const int missing = std::popcount(letters & ~e.letters);
+        if ((e.starts & first) == 0 || missing > most || e.removed || (!anyKind && e.kind != kind)) {
           continue;
         }
-        const std::size_t span = subsequenceSpan(begin, begin + e.offset, needle);
-        if (span != 0 && !std::ranges::binary_search(seen, e.id)) {
-          hits.push_back({.rank = 3 + span - needle.size(), .mtime = e.mtime, .id = e.id});
+        const char* name = begin + e.offset;
+        const char* nameEnd = i + 1 < m_entries.size() ? begin + m_entries[i + 1].offset - 1 : end - 1;
+        std::size_t rank = SIZE_MAX;
+        if (missing == 0) {
+          if (const std::size_t span = subsequenceSpan(begin, name, needle); span != 0) {
+            rank = 3 + span - needle.size();
+          }
+        }
+        for (const char* p = name; typos && rank >= kTypoRank && p < nameEnd; ++p) {
+          if (*p == needle.front() && wordStart(begin, p)) {
+            if (const int edits = editsFrom(p, std::min(nameEnd, p + window), needle, eq); edits <= most) {
+              rank = std::min(rank, kTypoRank + static_cast<std::size_t>(edits));
+            }
+          }
+        }
+        if (rank != SIZE_MAX && !std::ranges::binary_search(seen, static_cast<std::int64_t>(e.id))) {
+          offer({.rank = rank, .mtime = e.mtime, .id = e.id});
         }
       }
     }
-    const auto better = [](const Hit& a, const Hit& b) { return a.rank != b.rank ? a.rank < b.rank : a.mtime > b.mtime; };
-    const auto keep = std::min(hits.size(), static_cast<std::size_t>(std::max(limit, 0)));
-    std::ranges::partial_sort(hits, hits.begin() + static_cast<std::ptrdiff_t>(keep), better);
+    std::ranges::sort_heap(hits, better);
     std::vector<FileRow> rows;
-    for (std::size_t i = 0; i < keep; ++i) {
+    for (std::size_t i = 0; i < hits.size(); ++i) {
       sqlite3_bind_int64(m_row, 1, hits[i].id);
       if (sqlite3_step(m_row) == SQLITE_ROW) {
         rows.push_back({

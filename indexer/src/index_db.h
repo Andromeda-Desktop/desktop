@@ -102,7 +102,7 @@ namespace andromeda::index {
     static constexpr std::int64_t kMaxContentFile = 50LL * 1024 * 1024;
 
   private:
-    // Entries sorted by id (add() never reuses an id held here, removed or not), so offsets grow too. 16 bytes:
+    // Entries sorted by id (add() never reuses an id held here, removed or not), so offsets grow too. 32 bytes:
     // ids fit 32 bits, as each id is one more than the largest so far.
     struct NameEntry {
       std::uint32_t id;
@@ -110,8 +110,10 @@ namespace andromeda::index {
       std::uint32_t mtime;  // seconds, for ranking only
       FileKind kind;
       bool removed;
+      std::uint64_t letters; // letterMask of the folded name: a name lacking a needle letter is skipped unread
+      std::uint64_t starts;  // letterMask of the bytes that start a word in it
     };
-    static_assert(sizeof(NameEntry) == 16);
+    static_assert(sizeof(NameEntry) == 32);
 
     [[nodiscard]] std::string pathOf(std::int64_t id) const;
     [[nodiscard]] NameEntry* entryOf(std::int64_t id) const;

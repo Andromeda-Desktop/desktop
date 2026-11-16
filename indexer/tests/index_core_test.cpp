@@ -88,6 +88,12 @@ int main() {
     check(!found(db, "rt", "Quarterly Report.pdf"), "two letters inside a word do not match");
     check(found(db, "dwnhelp", "download-helper.sh"), "letters in order with gaps match");
     check(!found(db, "ownhelp", "download-helper.sh"), "a gapped match starts at a word start");
+    check(found(db, "reprot", "report-draft.txt"), "a swapped pair of letters matches");
+    check(found(db, "quaxterly", "Quarterly Report.pdf"), "a wrong letter matches");
+    check(found(db, "dwonload", "download-helper.sh"), "a swapped pair matches inside a longer name");
+    check(db.queryNames("zzqxwv", 50).empty(), "letters far from every name match nothing");
+    check(found(db, "rpeort", "report-draft.txt"), "a swap of the second and third letters is one edit");
+    check(!found(db, "rpoert", "report-draft.txt"), "two swaps in a short word are too many");
     check(found(db, "quart", "Quarterly Report.pdf"), "a root that is a git checkout is still indexed");
 
     // The launcher's kind filter: kind:<word> in the query line, alone = newest of that kind.
