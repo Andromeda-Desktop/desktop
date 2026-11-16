@@ -357,6 +357,7 @@ namespace term {
     m_faint = over(derived.label2, 0);
     m_selection = mix(m_background, over(derived.accent, 0), 0.4F);
     m_cursorColor = over(derived.accent, 0);
+    m_bandInks = {.path = derived.ansi[4], .label1 = derived.label1, .label2 = derived.label2, .accent = derived.accent};
     m_findHit = themed(ColorRole::TermFindHit);
     m_findHitCurrent = themed(ColorRole::TermFindHitCurrent);
     m_session.withTerminal([&](GhosttyTerminal t) {
@@ -1383,7 +1384,7 @@ namespace term {
     // The band reaches one space step past the grid on both sides.
     m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + 2.0F * Tokens::spaceP8 * m_uiScale,
                     m_uiScale, {.family = gridFont(m_settings, m_theme), .size = static_cast<float>(m_settings.fontSize) * m_uiScale},
-                    m_cursorColor);
+                    m_bandInks);
     if (m_host.requestFrame) {
       m_host.requestFrame(); // frame() applies the rows
     }

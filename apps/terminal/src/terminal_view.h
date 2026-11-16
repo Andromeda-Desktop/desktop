@@ -357,6 +357,7 @@ namespace term {
     TerminalGridNode* m_grid = nullptr;
     std::unique_ptr<KittyImages> m_images;
     std::unique_ptr<ContextRow> m_context;
+    ContextRow::Inks m_bandInks; // from the theme palette, set with the grid colours
     Renderer* m_renderer = nullptr; // the window renderer from build(); stable for the surface lifetime
     Timer m_contextTick; // 1 Hz, only while a shown prompt's command runs
     std::optional<ContextKey> m_contextKey; // what the shown pills were placed for

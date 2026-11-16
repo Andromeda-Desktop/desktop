@@ -1,5 +1,7 @@
 #pragma once
 
+#include "render/core/color.h"
+
 #include <chrono>
 #include <cstdint>
 #include <optional>
@@ -48,10 +50,19 @@ public:
     bool operator==(const Font&) const = default;
   };
 
+  // The theme's inks: each holds 4.5:1 on the view, and the window's scene tint keeps it over the scene.
+  struct Inks {
+    Color path;   // ANSI blue
+    Color label1;
+    Color label2;
+    Color accent; // the brand mark
+    bool operator==(const Inks&) const = default;
+  };
+
   explicit ContextRow(TerminalGridNode& grid);
   void setOrigin(float x, float y);
   // Keeps the rows for apply(); the caller asks for a frame.
-  void sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font, std::uint32_t accent);
+  void sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font, Inks inks);
   // Moves the nodes when only rows changed; rebuilds them when an item or a size changed. Runs in the frame tick, before
   // the window's layout pass and with GL current: rows added after that pass would draw unlaid.
   void apply(Renderer& renderer);
@@ -69,7 +80,7 @@ private:
     float rowWidth = 0.0F;
     float scale = 0.0F;
     Font font;
-    std::uint32_t accent = 0; // 0xRRGGBB, the theme accent the cursor uses
+    Inks inks;
   };
   std::optional<Input> m_pending; // set by sync(), taken by apply()
   std::vector<Node*> m_nodes;
@@ -78,7 +89,7 @@ private:
   float m_rowWidth = 0.0F;
   float m_scale = 0.0F;
   Font m_font;
-  std::uint32_t m_accent = 0;
+  Inks m_inks;
 };
 
 } // namespace term

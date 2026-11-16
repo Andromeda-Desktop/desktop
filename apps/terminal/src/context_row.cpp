@@ -19,18 +19,19 @@ namespace term {
 
 namespace {
 
-  std::unique_ptr<Label> mono(const std::string& text, ColorRole ink, const ContextRow::Font& font) {
-    return ui::label({.text = text, .fontSize = font.size, .fontFamily = font.family, .color = colorSpecFromRole(ink),
+  std::unique_ptr<Label> mono(const std::string& text, const Color& ink, const ContextRow::Font& font) {
+    return ui::label({.text = text, .fontSize = font.size, .fontFamily = font.family, .color = fixedColorSpec(ink),
                       .maxLines = 1});
   }
 
-  std::unique_ptr<Label> caption(const std::string& text, FontWeight weight, ColorRole ink, float s) {
+  std::unique_ptr<Label> caption(const std::string& text, FontWeight weight, const Color& ink, float s) {
     return ui::label({.text = text, .fontSize = Tokens::typeCaption.size * s, .fontWeight = weight,
-                      .fontFeatures = std::string("tnum"), .color = colorSpecFromRole(ink), .maxLines = 1});
+                      .fontFeatures = std::string("tnum"), .color = fixedColorSpec(ink), .maxLines = 1});
   }
 
   std::unique_ptr<Node> build(
-      const ContextItem& item, float h, float width, float s, const ContextRow::Font& font, std::optional<Color> backing
+      const ContextItem& item, float h, float width, float s, const ContextRow::Font& font,
+      const ContextRow::Inks& inks, std::optional<Color> backing
   ) {
     auto pill = [&] {
       return ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
@@ -48,9 +49,9 @@ namespace {
     };
     auto band = pill();
     // A space cell between path and branch, as the shell would print it.
-    band->addChild(mono(item.branch.empty() ? item.cwd : item.cwd + " ", ColorRole::TermBlue, font));
+    band->addChild(mono(item.branch.empty() ? item.cwd : item.cwd + " ", inks.path, font));
     if (!item.branch.empty()) {
-      band->addChild(mono(item.branch, ColorRole::Label2, font));
+      band->addChild(mono(item.branch, inks.label2, font));
     }
     auto row = ui::row({.align = FlexAlign::Center, .width = width, .height = h});
     row->addChild(backed(std::move(band)));
@@ -60,10 +61,10 @@ namespace {
     row->addChild(ui::box({.flexGrow = 1.0F}));
     auto tail = pill();
     if (item.caption == ContextItem::Caption::Failed) {
-      tail->addChild(caption(item.exit, FontWeight::SemiBold, ColorRole::Label1, s));
-      tail->addChild(caption("· " + item.time, FontWeight::Medium, ColorRole::Label1, s));
+      tail->addChild(caption(item.exit, FontWeight::SemiBold, inks.label1, s));
+      tail->addChild(caption("· " + item.time, FontWeight::Medium, inks.label1, s));
     } else {
-      tail->addChild(caption(item.time, FontWeight::Medium, ColorRole::Label2, s));
+      tail->addChild(caption(item.time, FontWeight::Medium, inks.label2, s));
     }
     row->addChild(backed(std::move(tail)));
     return row;
@@ -92,20 +93,20 @@ ContextRow::ContextRow(TerminalGridNode& grid) : m_grid(grid) {
 void ContextRow::setOrigin(float x, float y) { m_layer->setPosition(x, y); }
 
 void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font,
-                      std::uint32_t accent) {
-  m_pending = Input{std::move(placed), cellHeight, rowWidth, scale, std::move(font), accent};
+                      Inks inks) {
+  m_pending = Input{std::move(placed), cellHeight, rowWidth, scale, std::move(font), inks};
 }
 
 void ContextRow::apply(Renderer& renderer) {
   if (!m_pending) {
     return;
   }
-  auto [placed, cellHeight, rowWidth, scale, font, accent] = std::move(*std::exchange(m_pending, std::nullopt));
+  auto [placed, cellHeight, rowWidth, scale, font, inks] = std::move(*std::exchange(m_pending, std::nullopt));
   const bool sameItems = placed.size() == m_placed.size()
       && std::equal(placed.begin(), placed.end(), m_placed.begin(),
                     [](const Placed& a, const Placed& b) { return a.item == b.item; });
   const bool sameSize = cellHeight == m_cellHeight && rowWidth == m_rowWidth && scale == m_scale && font == m_font
-      && accent == m_accent;
+      && inks == m_inks;
   const float backing = m_grid.textBacking();
   if (!sameItems || !sameSize || backing != m_backing) {
     m_backing = backing;
@@ -126,12 +127,12 @@ void ContextRow::apply(Renderer& renderer) {
     const int side = static_cast<int>(std::lround(font.size));
     for (const Placed& p : placed) {
       // The grid does not arrange its children, and a layout request from the frame tick does not reach the window.
-      Node* row = m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font, back));
+      Node* row = m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font, inks, back));
       row->layout(renderer);
       m_nodes.push_back(row);
       auto mark = std::make_unique<Image>();
       mark->setSize(static_cast<float>(side), static_cast<float>(side));
-      mark->setForegroundTint(fixedColorSpec(rgb(accent)));
+      mark->setForegroundTint(fixedColorSpec(inks.accent));
       (void)mark->setSourceFile(renderer, paths::assetPath("amark.svg").string(), side);
       m_marks.push_back(m_layer->addChild(std::move(mark)));
     }
@@ -148,7 +149,7 @@ void ContextRow::apply(Renderer& renderer) {
   m_rowWidth = rowWidth;
   m_scale = scale;
   m_font = std::move(font);
-  m_accent = accent;
+  m_inks = inks;
 }
 
 std::optional<ContextRow::Hit> ContextRow::hitTest(float x, float y) const {
