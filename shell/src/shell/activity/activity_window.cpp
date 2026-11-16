@@ -22,6 +22,7 @@
 #include "ui/controls/graph.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
+#include "ui/controls/toggle.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
@@ -717,6 +718,33 @@ void ActivityWindow::setSelectedFrozen(bool frozen) {
   }
 }
 
+ActivityMonitor::Efficiency ActivityWindow::rowEfficiency(const ActivityRow& row) const {
+  using Efficiency = ActivityMonitor::Efficiency;
+  bool allOn = !row.units.empty();
+  for (const auto& unit : row.units) {
+    const Efficiency state = m_monitor->efficiency(unit);
+    if (state == Efficiency::Requesting || state == Efficiency::Releasing) {
+      return state;
+    }
+    allOn = allOn && state == Efficiency::On;
+  }
+  return allOn ? Efficiency::On : Efficiency::Off;
+}
+
+void ActivityWindow::setSelectedEfficiency(bool on) {
+  const ActivityRow* row = selectedRow();
+  if (row == nullptr) {
+    return;
+  }
+  for (const auto& unit : row->units) {
+    m_monitor->setEfficiency(unit, on, [this](const std::string& error) {
+      m_actionError = error.empty() ? std::string() : i18n::tr("activity.efficiency-failed", "error", error);
+      requestRebuild();
+    });
+  }
+  requestRebuild();
+}
+
 std::string ActivityWindow::structureKey() const {
   // Everything that decides which nodes exist: pane, order, captions, status marks, groups, cards, inspector parts.
   const bool skeleton =
@@ -726,6 +754,7 @@ std::string ActivityWindow::structureKey() const {
       m_monitor->activity().sampled(), skeleton, sortColumn(), static_cast<int>(m_inspectTab), m_inspectorHidden,
       static_cast<int>(m_confirm), containersAvailable()
   );
+  key += std::format("|e{}", m_monitor->efficiencyVersion());
   if (const Inspection* shown = m_details != nullptr ? m_details->inspection(m_selectedKey) : nullptr; shown != nullptr) {
     // Lists rebuild when their entries change; thread CPU numbers update in place.
     key += std::format("|i{}", shown->files.size());
@@ -1169,6 +1198,16 @@ std::string ActivityWindow::buttonsJson() const {
   const std::function<void(const Node&)> walk = [&](const Node& node) {
     if (!node.visible()) {
       return;
+    }
+    // Toggles count as buttons named by their accessible name, so scripts can click them.
+    const auto* toggle = dynamic_cast<const Toggle*>(&node);
+    if (toggle != nullptr && toggle->enabled() && toggle->accessible() != nullptr) {
+      float left = 0.0F;
+      float top = 0.0F;
+      float right = 0.0F;
+      float bottom = 0.0F;
+      Node::transformedBounds(&node, left, top, right, bottom);
+      out.push_back({{"text", toggle->accessible()->name}, {"x", (left + right) / 2.0F}, {"y", (top + bottom) / 2.0F}});
     }
     if (const auto* button = dynamic_cast<const Button*>(&node); button != nullptr && button->enabled()) {
       float left = 0.0F;

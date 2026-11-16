@@ -8,6 +8,7 @@
 #include "render/scene/input_dispatcher.h"
 #include "render/scene/node.h"
 #include "system/activity_details.h"
+#include "system/activity_monitor.h"
 #include "system/background_activity_monitor.h"
 #include "system/battery_impact.h"
 #include "system/icon_resolver.h"
@@ -27,7 +28,6 @@
 
 class ActivityActions;
 class Button;
-class ActivityMonitor;
 class ConfigService;
 class Flex;
 class Graph;
@@ -155,6 +155,9 @@ private:
   [[nodiscard]] Limits shownLimits(const ActivityRow& row) const;
   void indexRows();
   void setSelectedFrozen(bool frozen);
+  // On when every unit of the row is On; Requesting or Releasing while any call runs; else Off.
+  [[nodiscard]] ActivityMonitor::Efficiency rowEfficiency(const ActivityRow& row) const;
+  void setSelectedEfficiency(bool on);
   void updateLive();
   void forceQuitSelected();
   void stopSelected();

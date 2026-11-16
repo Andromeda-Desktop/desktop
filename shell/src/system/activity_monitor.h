@@ -4,7 +4,9 @@
 #include "system/activity_service.h"
 #include "core/timer_manager.h"
 
+#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -40,6 +42,16 @@ public:
   // One unit list and one cgroup read, then done(); no timer, no D-Bus subscription. For the background check.
   void sampleOnce(std::function<void()> done);
 
+  // Efficiency Mode: a T3 compositor hold on an app unit, owned by this shell. The compositor ends the hold when the
+  // unit ends or the shell leaves the bus.
+  enum class Efficiency : std::uint8_t { Off, Requesting, On, Releasing };
+  [[nodiscard]] Efficiency efficiency(const std::string& unit) const;
+  // Off -> Requesting -> On and On -> Releasing -> Off; a call in a Requesting or Releasing state does nothing.
+  // done gets the D-Bus error text, or "" on success.
+  void setEfficiency(const std::string& unit, bool on, std::function<void(std::string error)> done);
+  // Changes with every Efficiency state change.
+  [[nodiscard]] std::uint64_t efficiencyVersion() const noexcept { return m_efficiencyVersion; }
+
   [[nodiscard]] bool sampling() const noexcept { return m_sampling; }
   [[nodiscard]] const ActivityService& activity() const noexcept { return m_activity; }
   [[nodiscard]] const SystemdUnitsService& userUnits() const noexcept { return m_userUnits; }
@@ -64,4 +76,10 @@ private:
   bool m_leased = false;
   bool m_sampling = false;
   std::vector<std::function<void()>> m_onceWaiters;
+  struct EfficiencyHold {
+    Efficiency state = Efficiency::Off;
+    std::string holdId; // set in On and Releasing
+  };
+  std::map<std::string, EfficiencyHold> m_efficiency; // by unit; Off units have no entry
+  std::uint64_t m_efficiencyVersion = 0;
 };

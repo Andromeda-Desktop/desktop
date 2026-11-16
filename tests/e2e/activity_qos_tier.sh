@@ -4,7 +4,9 @@
 # shell reads org.andromeda.Compositor1.Apps of this headless compositor, not the session's one.
 # Fails when:
 #   - the tier-test row has no tier while its window shows,
-#   - the row does not show `hidden` after its workspace is switched away (test hidden delay 1 s).
+#   - with Efficiency Mode on, the row hides to a tier other than `hidden-long`,
+#   - with Efficiency Mode off again, the row does not show `hidden` after its workspace is switched away (test hidden
+#     delay 1 s).
 # Writes the dumps and logs to $OUT (default ./artifacts/activity-qos-tier).
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/activity-qos-tier}
@@ -49,6 +51,20 @@ shown=""
 for _ in $(seq 60); do shown=$(tier); [[ $shown == focused || $shown == visible ]] && break; sleep 0.1; done
 [[ $shown == focused || $shown == visible ]] || fail "tier-test shows tier '$shown' while its window shows"
 echo "PASS shown window: tier $shown"
+
+
+# Efficiency Mode: the hold takes the app to T3 (hidden-long) at once when it hides, not `hidden` first. The focused
+# app is exempt, and a shell window does not take that role, so the check starts when the window hides.
+export E2E="$(cd "$(dirname "$0")" && pwd)" POINTER=$ROOT/compositor/build-debug/tests/pointer-client
+click() { run env ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" bash "$E2E/activity_click.sh" "$1"; }
+click "Efficiency Mode"
+run "$ANDROMEDA" msg workspace-switch:2 > /dev/null
+for _ in $(seq 60); do shown=$(tier); [[ $shown == hidden* ]] && break; sleep 0.05; done
+[[ $shown == hidden-long ]] || fail "tier-test shows tier '$shown' when hidden with Efficiency Mode on"
+echo "PASS Efficiency Mode on: tier hidden-long"
+run "$ANDROMEDA" msg workspace-switch:1 > /dev/null
+for _ in $(seq 60); do shown=$(tier); [[ $shown == focused || $shown == visible ]] && break; sleep 0.1; done
+click "Efficiency Mode"
 
 run "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 for _ in $(seq 60); do shown=$(tier); [[ $shown == hidden ]] && break; sleep 0.1; done

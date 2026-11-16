@@ -11,6 +11,7 @@
 #include "ui/controls/button.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/image.h"
+#include "ui/controls/toggle.h"
 
 #include <ctime>
 #include <map>
@@ -222,20 +223,11 @@ void ActivityWindow::addOverview(Flex& details, const ActivityRow& row, float sc
       const auto rate = m_details != nullptr ? m_details->networkBytesPerSec(r.key) : std::nullopt;
       return rate.has_value() ? rateText(*rate) : std::string("–");
     });
-    // The QoS tier the compositor gives the app now (docs/qos.md §3).
-    fact(i18n::tr("activity.fact-priority"), [](const ActivityRow& r) {
-      const std::string_view tier = qosTierName(r.qosTier);
-      return tier.empty() ? std::string("–") : i18n::tr(std::format("activity.tier-{}", tier));
-    });
-    fact(i18n::tr("activity.fact-running-for"), [](const ActivityRow& r) { return uptimeText(r.startedUsec); });
     const auto* state = rowState(row.key);
     if (state != nullptr && !row.hasWindow) {
       facts->addChild(cardRow(
           i18n::tr("activity.fact-at-login"), i18n::tr(state->atLogin ? "activity.yes" : "activity.no"), scale
       ));
-    }
-    if (!row.units.empty()) {
-      facts->addChild(cardRow(i18n::tr("activity.fact-units"), unescapeUnitName(row.units.front()), scale));
     }
     settings::addSettingsRowSeparators(*facts, scale);
     details.addChild(std::move(facts));
@@ -288,6 +280,33 @@ void ActivityWindow::addOverview(Flex& details, const ActivityRow& row, float sc
                                 ? BackgroundActivityMonitor::reasonText(*liveState, found->memoryBytes)
                                 : std::string();
                           }});
+  }
+
+  if (row.hasWindow) {
+    using Efficiency = ActivityMonitor::Efficiency;
+    const Efficiency efficiency = rowEfficiency(row);
+    const std::string efficiencyName = i18n::tr("activity.efficiency");
+    Toggle* efficiencyToggle = nullptr;
+    auto efficiencyCard = card(m_glass, scale);
+    efficiencyCard->setPadding(Style::spaceMd * scale, Style::spaceLg * scale);
+    efficiencyCard->addChild(ui::row(
+        {.align = FlexAlign::Center, .gap = Style::spaceSm * scale},
+        ui::label({
+            .text = efficiencyName,
+            .fontSize = Style::fontSizeBody * scale,
+            .color = colorSpecFromRole(ColorRole::Label1),
+            .flexGrow = 1.0F,
+        }),
+        ui::toggle({
+            .out = &efficiencyToggle,
+            .checked = efficiency == Efficiency::On || efficiency == Efficiency::Requesting,
+            .enabled = efficiency == Efficiency::On || efficiency == Efficiency::Off,
+            .scale = scale,
+            .onChange = [this](bool on) { setSelectedEfficiency(on); },
+        })
+    ));
+    efficiencyToggle->accessibleState().name = efficiencyName;
+    details.addChild(std::move(efficiencyCard));
   }
 
   if (state == nullptr || row.hasWindow || m_actions == nullptr) {

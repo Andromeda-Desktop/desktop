@@ -115,11 +115,62 @@ void ActivityMonitor::requestTiers() {
           for (const auto& row : rows) {
             tiers.emplace(row.get<0>(), row.get<3>());
           }
+          // The compositor dropped the holds of units that ended.
+          if (std::erase_if(m_efficiency, [&tiers](const auto& entry) {
+                return entry.second.state == Efficiency::On && !tiers.contains(entry.first);
+              }) > 0) {
+            ++m_efficiencyVersion;
+          }
         }
         if (m_activity.setUnitTiers(std::move(tiers)) && m_onChange) {
           m_onChange();
         }
       });
+}
+
+ActivityMonitor::Efficiency ActivityMonitor::efficiency(const std::string& unit) const {
+  const auto it = m_efficiency.find(unit);
+  return it != m_efficiency.end() ? it->second.state : Efficiency::Off;
+}
+
+void ActivityMonitor::setEfficiency(const std::string& unit, bool on, std::function<void(std::string error)> done) {
+  const Efficiency from = efficiency(unit);
+  if (on && from == Efficiency::Off) {
+    m_efficiency[unit].state = Efficiency::Requesting;
+    ++m_efficiencyVersion;
+    m_compositorApps->callMethodAsync("HoldTier")
+        .onInterface("org.andromeda.Compositor1.Apps")
+        .withArguments(unit, std::string("T3"), std::string("Efficiency Mode"))
+        .uponReplyInvoke([this, unit, done = std::move(done)](std::optional<sdbus::Error> error, const std::string& id) {
+          if (error.has_value()) {
+            m_efficiency.erase(unit);
+          } else {
+            m_efficiency[unit] = {.state = Efficiency::On, .holdId = id};
+          }
+          ++m_efficiencyVersion;
+          done(error.has_value() ? error->getMessage() : std::string());
+        });
+    return;
+  }
+  if (!on && from == Efficiency::On) {
+    EfficiencyHold& hold = m_efficiency[unit];
+    hold.state = Efficiency::Releasing;
+    ++m_efficiencyVersion;
+    m_compositorApps->callMethodAsync("Release")
+        .onInterface("org.andromeda.Compositor1.Apps")
+        .withArguments(hold.holdId)
+        .uponReplyInvoke([this, unit, done = std::move(done)](std::optional<sdbus::Error> error) {
+          // NoHold: the compositor ended the hold already. Any other error leaves the hold in place.
+          const bool gone = !error.has_value() || error->getName().ends_with(".NoHold");
+          if (gone) {
+            m_efficiency.erase(unit);
+          } else if (const auto it = m_efficiency.find(unit); it != m_efficiency.end()) {
+            it->second.state = Efficiency::On;
+          }
+          ++m_efficiencyVersion;
+          done(gone ? std::string() : error->getMessage());
+        });
+  }
 }
 
 void ActivityMonitor::sampleNow() {

@@ -100,6 +100,7 @@ with_noctalia '
   "$NOCTALIA" msg theme-mode-set dark > /dev/null
   shot dark-cpu-1100 1100 zen-browser "mod control tap 2 mod none" "CPU ▾"
   shot dark-cpu-1600 1600 zen-browser "mod control tap 2 mod none" "CPU ▾"
+  shot dark-cpu-window-1100 1100 foot "mod control tap 2 mod none" "CPU ▾" # a row with a window: Efficiency Mode
   "$NOCTALIA" msg activity-dump > "$OUT/dump.json"
 '
 echo "PASS: shots in $OUT"

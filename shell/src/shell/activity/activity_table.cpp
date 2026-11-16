@@ -586,7 +586,8 @@ std::unique_ptr<Button> ActivityWindow::buildRow(
               role = ColorRole::Warning;
             } else if (m_limitedKeys.contains(row.key) && isFrozen(row)) {
               glyph = "player-pause";
-            } else if (limits.cpu != 0 || limits.memory != 0) {
+            } else if (limits.cpu != 0 || limits.memory != 0
+                       || rowEfficiency(row) == ActivityMonitor::Efficiency::On) {
               glyph = "leaf";
               role = ColorRole::Success;
             }
