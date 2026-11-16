@@ -56,7 +56,7 @@ namespace term {
   [[nodiscard]] ThemeSpec resolveTheme(std::string_view id, const ThemeStore& themes);
   [[nodiscard]] inline bool hasScene(const ThemeSpec& theme) {
     const auto* package = std::get_if<ThemePackage>(&theme);
-    return package != nullptr && !package->scene.empty();
+    return package != nullptr && !std::holds_alternative<std::monostate>(package->backdrop);
   }
   // The grid font family list: the user's font, else the theme's, then the mono token.
   [[nodiscard]] std::string gridFont(const Settings& settings, const ThemeSpec& theme);

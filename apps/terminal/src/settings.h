@@ -68,7 +68,16 @@ namespace term {
     ThemeAnchorSet light;
     ThemeAnchorSet dark;
     std::string font;  // empty: the user's font
-    std::string scene; // scene.glsl beside theme.toml; empty: no scene
+    struct Shader {
+      std::string source; // scene.glsl beside theme.toml
+      bool operator==(const Shader&) const = default;
+    };
+    struct Picture {
+      std::string path;       // background.<png|jpg|jpeg|webp|jxl|avif> beside theme.toml
+      std::int64_t stamp = 0; // file mtime, so an edited picture reloads
+      bool operator==(const Picture&) const = default;
+    };
+    std::variant<std::monostate, Shader, Picture> backdrop; // drawn behind the whole window
     bool operator==(const ThemePackage&) const = default;
   };
 

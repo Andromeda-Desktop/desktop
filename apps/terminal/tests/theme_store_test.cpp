@@ -70,7 +70,19 @@ int main() {
                        .font = pick(0, 1) != 0 ? "Fira Code" : ""};
         std::filesystem::create_directories(folder);
         std::ofstream(folder / "theme.toml") << toml(p);
-        model[id] = {p};
+        std::filesystem::remove(folder / "scene.glsl");
+        std::filesystem::remove(folder / "background.png");
+        const int backdrop = pick(0, 3); // none, scene, picture, both
+        if (backdrop == 1 || backdrop == 3) {
+          std::ofstream(folder / "scene.glsl") << "vec4 scene(vec2 uv) { return vec4(uv, 0.0, 1.0); }\n";
+          p.backdrop = ThemePackage::Shader{"vec4 scene(vec2 uv) { return vec4(uv, 0.0, 1.0); }\n"};
+        }
+        if (backdrop == 2 || backdrop == 3) {
+          std::ofstream(folder / "background.png") << "png";
+          const auto stamp = std::filesystem::last_write_time(folder / "background.png").time_since_epoch().count();
+          p.backdrop = ThemePackage::Picture{(folder / "background.png").string(), static_cast<std::int64_t>(stamp)};
+        }
+        model[id] = {backdrop == 3 ? std::nullopt : std::optional(p)};
         break;
       }
       case 1: // write a bad file

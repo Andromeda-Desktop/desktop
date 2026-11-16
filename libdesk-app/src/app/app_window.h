@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 class AppLoop;
@@ -24,6 +25,7 @@ class ContextMenuPopup;
 class CommandTable;
 class Flex;
 class Glyph;
+class Image;
 class Label;
 class Renderer;
 class ShaderSceneNode;
@@ -104,7 +106,17 @@ public:
   // alpha at which label 2 keeps 4.5:1 over every sampled scene colour (rulebook 5.3). The main pane takes the light
   // `tint` when the content backs its own text (setSceneContentBacked), else the text tint.
   struct Scene {
-    std::string source; // the fragment shader body (ShaderSceneNode contract)
+    struct Shader {
+      std::string source; // the fragment shader body (ShaderSceneNode contract)
+      bool operator==(const Shader&) const = default;
+    };
+    struct Picture {
+      std::string path; // an image file, drawn to cover the window; it never moves
+      std::int64_t stamp = 0;
+      bool operator==(const Picture&) const = default;
+    };
+    using Backdrop = std::variant<Shader, Picture>;
+    Backdrop backdrop;
     Color surface;
     Color text;
     Color accent;
@@ -294,7 +306,8 @@ private:
   Flex* m_mainNode = nullptr;
   std::optional<ColorSpec> m_mainFill;
   std::optional<Scene> m_scene;
-  ShaderSceneNode* m_sceneNode = nullptr;
+  ShaderSceneNode* m_sceneNode = nullptr; // null for a Picture backdrop
+  Image* m_scenePicture = nullptr;
   float m_sceneSeconds = 0.0F;
   std::optional<Scene> m_sceneMeasured; // the scene the tints below were measured for
   float m_sceneTextTint = 1.0F;

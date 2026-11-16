@@ -2,7 +2,9 @@
 
 #include "render/render_context.h"
 #include "render/render_target.h"
+#include "render/core/image_file_loader.h"
 #include "render/scene/shader_scene_node.h"
+#include "ui/controls/image.h"
 #include "ui/contrast.h"
 #include "wayland/subsurface.h"
 
@@ -594,6 +596,7 @@ void AppWindow::close() {
   m_mainNode = nullptr;
   m_headerNode = nullptr;
   m_sceneNode = nullptr;
+  m_scenePicture = nullptr;
   m_sceneClip = nullptr;
   m_sceneTimer.stop();
   m_sceneLayer.reset(); // a subsurface must go before its parent
@@ -671,6 +674,16 @@ void AppWindow::setScene(std::optional<Scene> scene) {
   if (scene && !m_scene) {
     m_sceneStepped = std::chrono::steady_clock::now();
   }
+  if (m_scene && scene && m_scene->backdrop != scene->backdrop) {
+    // The layer holds one shader node or one picture: a new backdrop builds a new layer.
+    m_sceneNode = nullptr;
+    m_scenePicture = nullptr;
+    m_sceneClip = nullptr;
+    m_sceneTicking = false;
+    m_sceneTimer.stop();
+    m_sceneLayer.reset();
+    m_sceneRoot.reset();
+  }
   m_scene = std::move(scene);
   requestRebuild();
 }
@@ -683,7 +696,7 @@ void AppWindow::noteSceneActivity() {
 }
 
 void AppWindow::wakeScene() {
-  if (m_sceneLayer != nullptr && m_activated && !m_sceneTicking) {
+  if (m_sceneNode != nullptr && m_activated && !m_sceneTicking) {
     m_sceneTicking = true;
     m_sceneStepped = std::chrono::steady_clock::now(); // resume where the motion stopped
     m_sceneTimer.start(kSceneStep, [this] { sceneTick(); });
@@ -726,6 +739,7 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
   }
   if (!m_scene || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
     m_sceneNode = nullptr;
+    m_scenePicture = nullptr;
     m_sceneClip = nullptr;
     m_sceneTicking = false;
     m_sceneTimer.stop();
@@ -741,7 +755,17 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
   if (m_sceneLayer == nullptr) {
     m_sceneRoot = std::make_unique<Node>();
     m_sceneClip = m_sceneRoot->addChild(std::make_unique<Node>());
-    m_sceneNode = static_cast<ShaderSceneNode*>(m_sceneClip->addChild(std::make_unique<ShaderSceneNode>()));
+    if (const auto* picture = std::get_if<Scene::Picture>(&m_scene->backdrop)) {
+      m_scenePicture = static_cast<Image*>(m_sceneClip->addChild(std::make_unique<Image>()));
+      m_scenePicture->setFit(ImageFit::Cover);
+      // Decoded once at the first size: a resize would decode the file again.
+      const auto side = static_cast<int>(std::ceil(std::max(width, height) * Tokens::componentWindowSceneResolution));
+      if (!m_scenePicture->setSourceFile(m_surface->renderTarget().renderer(), picture->path, side)) {
+        kLog.warn("theme background {} does not load", picture->path);
+      }
+    } else {
+      m_sceneNode = static_cast<ShaderSceneNode*>(m_sceneClip->addChild(std::make_unique<ShaderSceneNode>()));
+    }
     m_sceneLayer = std::make_unique<Subsurface>(
         m_loop.wayland(), SubsurfaceConfig{.width = w, .height = h, .x = static_cast<std::int32_t>(margin),
                                            .y = static_cast<std::int32_t>(margin), .stacking = SubsurfaceStacking::BelowParent});
@@ -752,6 +776,7 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
       m_sceneLayer.reset();
       m_sceneRoot.reset();
       m_sceneNode = nullptr;
+      m_scenePicture = nullptr;
       m_sceneClip = nullptr;
       return;
     }
@@ -766,10 +791,14 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
   m_sceneRoot->setSize(width, height);
   m_sceneClip->setSize(width, height);
   m_sceneClip->setClipRadii(Radii{radius, radius, radius, radius});
-  m_sceneNode->setSource(m_scene->source);
-  m_sceneNode->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
-  m_sceneNode->setTime(m_sceneSeconds);
-  m_sceneNode->setFrameSize(width, height);
+  if (m_scenePicture != nullptr) {
+    m_scenePicture->setSize(width, height);
+  } else {
+    m_sceneNode->setSource(std::get<Scene::Shader>(m_scene->backdrop).source);
+    m_sceneNode->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
+    m_sceneNode->setTime(m_sceneSeconds);
+    m_sceneNode->setFrameSize(width, height);
+  }
   m_sceneLayer->requestRedraw();
 }
 
@@ -781,42 +810,55 @@ void AppWindow::measureScene() {
     m_sceneTextTint = it->second;
     return;
   }
-  // A 32x20 render at four times stands for the scene's whole loop; it runs once per theme.
-  constexpr std::uint32_t kWidth = 32;
-  constexpr std::uint32_t kHeight = 20;
-  constexpr std::array<float, 4> kTimes{0.0F, 7.0F, 19.0F, 31.0F};
   const auto start = std::chrono::steady_clock::now();
-  RenderContext& context = m_loop.renderContext();
-  RenderTarget target;
-  target.createOffscreen(context);
-  target.setContentScale(1.0F);
-  target.setLogicalSize(kWidth, kHeight);
-  target.resize(kWidth, kHeight);
-  Node root;
-  root.setSize(kWidth, kHeight);
-  auto node = std::make_unique<ShaderSceneNode>();
-  node->setSource(m_scene->source);
-  node->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
-  node->setFrameSize(kWidth, kHeight);
-  auto* scene = static_cast<ShaderSceneNode*>(root.addChild(std::move(node)));
-  std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
   std::vector<Color> backdrop;
-  for (const float time : kTimes) {
-    scene->setTime(time);
-    if (!context.renderScene(target, &root) || !context.readPixels(target, pixels)) {
-      break;
-    }
-    for (std::size_t i = 0; i < pixels.size(); i += 4) {
-      const float a = static_cast<float>(pixels[i + 3]) / 255.0F;
-      if (a > 0.0F) { // premultiplied
-        backdrop.push_back(Color{static_cast<float>(pixels[i]) / 255.0F / a, static_cast<float>(pixels[i + 1]) / 255.0F / a,
-                                 static_cast<float>(pixels[i + 2]) / 255.0F / a, 1.0F});
+  const auto* picture = std::get_if<Scene::Picture>(&m_scene->backdrop);
+  if (picture != nullptr) {
+    // A 32 px copy stands for the picture; Cover shows only a part of it, so the tint can only be stricter.
+    if (auto image = loadImageFile(picture->path, 32)) {
+      for (std::size_t i = 0; i + 3 < image->rgba.size(); i += 4) {
+        backdrop.push_back(Color{static_cast<float>(image->rgba[i]) / 255.0F, static_cast<float>(image->rgba[i + 1]) / 255.0F,
+                                 static_cast<float>(image->rgba[i + 2]) / 255.0F, 1.0F});
       }
     }
+  } else {
+    // A 32x20 render at four times stands for the scene's whole loop; it runs once per theme.
+    constexpr std::uint32_t kWidth = 32;
+    constexpr std::uint32_t kHeight = 20;
+    constexpr std::array<float, 4> kTimes{0.0F, 7.0F, 19.0F, 31.0F};
+    RenderContext& context = m_loop.renderContext();
+    RenderTarget target;
+    target.createOffscreen(context);
+    target.setContentScale(1.0F);
+    target.setLogicalSize(kWidth, kHeight);
+    target.resize(kWidth, kHeight);
+    Node root;
+    root.setSize(kWidth, kHeight);
+    auto node = std::make_unique<ShaderSceneNode>();
+    node->setSource(std::get<Scene::Shader>(m_scene->backdrop).source);
+    node->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
+    node->setFrameSize(kWidth, kHeight);
+    auto* scene = static_cast<ShaderSceneNode*>(root.addChild(std::move(node)));
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
+    for (const float time : kTimes) {
+      scene->setTime(time);
+      if (!context.renderScene(target, &root) || !context.readPixels(target, pixels)) {
+        break;
+      }
+      for (std::size_t i = 0; i < pixels.size(); i += 4) {
+        const float a = static_cast<float>(pixels[i + 3]) / 255.0F;
+        if (a > 0.0F) { // premultiplied
+          backdrop.push_back(Color{static_cast<float>(pixels[i]) / 255.0F / a, static_cast<float>(pixels[i + 1]) / 255.0F / a,
+                                   static_cast<float>(pixels[i + 2]) / 255.0F / a, 1.0F});
+        }
+      }
+    }
+    target.destroy();
   }
-  target.destroy();
   m_sceneTextTint = backdrop.empty() ? 1.0F : tintForContrast(m_scene->label2, m_scene->surface, backdrop, m_scene->tint);
-  if (!backdrop.empty()) { // else GL is not up: the next build measures again, opaque until then
+  // An empty shader sample means GL is not up: the next build measures again, opaque until then. A picture that does
+  // not load stays opaque.
+  if (!backdrop.empty() || picture != nullptr) {
     m_sceneMeasured = m_scene;
     constexpr std::size_t kKept = 8; // themes switched in one session
     if (measured.size() == kKept) {

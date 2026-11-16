@@ -48,7 +48,12 @@ namespace term {
         return std::nullopt;
       }
       const ThemePalette colors = themePalette(theme);
-      return AppWindow::Scene{.source = std::get<ThemePackage>(theme).scene, .surface = colors.view, .text = colors.label1,
+      const auto& backdrop = std::get<ThemePackage>(theme).backdrop;
+      const auto* picture = std::get_if<ThemePackage::Picture>(&backdrop);
+      return AppWindow::Scene{.backdrop = picture != nullptr
+                                              ? AppWindow::Scene::Backdrop{AppWindow::Scene::Picture{picture->path, picture->stamp}}
+                                              : AppWindow::Scene::Backdrop{AppWindow::Scene::Shader{std::get<ThemePackage::Shader>(backdrop).source}},
+                              .surface = colors.view, .text = colors.label1,
                               .accent = colors.accent, .label2 = colors.label2, .dark = !isResolvedLightTheme(),
                               .tint = Tokens::componentTerminalSceneTint};
     }

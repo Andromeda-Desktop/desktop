@@ -27,22 +27,38 @@ namespace term {
       return nullptr;
     }
 
-    // A missing scene.glsl is no scene; false when the file is too large to be a scene.
-    bool readScene(const std::filesystem::path& folder, std::string& out) {
+    // scene.glsl or one background picture; an error message when the folder breaks the rules.
+    std::optional<std::string> readBackdrop(const std::filesystem::path& folder, ThemePackage& package) {
       constexpr std::uintmax_t kSceneLimit = 64 * 1024;
+      constexpr std::uintmax_t kPictureLimit = 64 * 1024 * 1024;
       std::error_code ec;
-      const std::uintmax_t size = std::filesystem::file_size(folder / "scene.glsl", ec);
-      if (ec) {
-        return true;
+      std::vector<std::filesystem::path> pictures;
+      for (const char* ext : {".png", ".jpg", ".jpeg", ".webp", ".jxl", ".avif"}) {
+        if (std::filesystem::is_regular_file(folder / ("background" + std::string(ext)), ec)) {
+          pictures.push_back(folder / ("background" + std::string(ext)));
+        }
       }
-      if (size > kSceneLimit) {
-        return false;
+      const std::uintmax_t sceneSize = std::filesystem::file_size(folder / "scene.glsl", ec);
+      const bool hasScene = !ec;
+      if (pictures.size() + (hasScene ? 1 : 0) > 1) {
+        return "use scene.glsl or one background picture, not both";
       }
-      std::ifstream in(folder / "scene.glsl", std::ios::binary);
-      std::ostringstream bytes;
-      bytes << in.rdbuf();
-      out = std::move(bytes).str();
-      return true;
+      if (hasScene) {
+        if (sceneSize > kSceneLimit) {
+          return "scene.glsl is larger than 64 KiB";
+        }
+        std::ifstream in(folder / "scene.glsl", std::ios::binary);
+        std::ostringstream bytes;
+        bytes << in.rdbuf();
+        package.backdrop = ThemePackage::Shader{std::move(bytes).str()};
+      } else if (!pictures.empty()) {
+        if (std::filesystem::file_size(pictures[0], ec) > kPictureLimit || ec) {
+          return pictures[0].filename().string() + " is larger than 64 MiB";
+        }
+        const auto stamp = std::filesystem::last_write_time(pictures[0], ec).time_since_epoch().count();
+        package.backdrop = ThemePackage::Picture{pictures[0].string(), static_cast<std::int64_t>(stamp)};
+      }
+      return std::nullopt;
     }
 
     ThemeEntry readEntry(const std::filesystem::path& folder, const std::vector<ThemeEntry>& previous) {
@@ -64,8 +80,8 @@ namespace term {
         auto parsed = parseThemePackage(bytes.str());
         if (auto* error = std::get_if<SettingsError>(&parsed)) {
           entry.state = invalid(std::move(error->message), error->line);
-        } else if (auto package = std::get<ThemePackage>(std::move(parsed)); !readScene(folder, package.scene)) {
-          entry.state = invalid("scene.glsl is larger than 64 KiB");
+        } else if (auto package = std::get<ThemePackage>(std::move(parsed)); auto backdropError = readBackdrop(folder, package)) {
+          entry.state = invalid(std::move(*backdropError));
         } else {
           entry.state = ThemeEntry::Valid{std::move(package)};
         }
