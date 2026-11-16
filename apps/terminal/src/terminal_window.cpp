@@ -1340,8 +1340,8 @@ namespace term {
     }
     placeDividers();
     refreshCards();
-    fitCaptions(renderer);
     paintPaneFocus(false);
+    fitCaptions(renderer);
     // Motion: each card from its old place; a new card from the drop preview, else it fades in.
     std::vector<std::optional<PaneRect>> starts;
     bool moves = false;
@@ -1689,8 +1689,9 @@ namespace term {
     if (m_cards.empty() || m_sessions.shown() == m_ringPane) {
       return;
     }
-    m_window.updateInPlace([this](Renderer& /*renderer*/) {
+    m_window.updateInPlace([this](Renderer& renderer) {
       paintPaneFocus(true);
+      fitCaptions(renderer);
       m_contentSlot->markLayoutDirty();
     });
   }
@@ -1700,9 +1701,14 @@ namespace term {
     const float gap = Tokens::spaceP8 * m_window.uiScale();
     const float nameMin = Tokens::spaceP24 * m_window.uiScale();
     for (PaneCard& card : m_cards) {
-      card.state->setMaxWidth(std::max(nameMin, card.textWidth - nameMin));
+      // The focused card's caption also holds the header accessory (the agent bar's state): the text gets the rest.
+      const float accessory = card.accessory->children().empty()
+          ? 0.0F
+          : static_cast<Node*>(card.accessory)->measure(renderer, LayoutConstraints{}).width + gap;
+      const float text = std::max(nameMin, card.textWidth - accessory);
+      card.state->setMaxWidth(std::max(nameMin, text - nameMin));
       const float state = card.state->visible() ? static_cast<Node*>(card.state)->measure(renderer, LayoutConstraints{}).width + gap : 0.0F;
-      card.name->setMaxWidth(std::max(nameMin, card.textWidth - state));
+      card.name->setMaxWidth(std::max(nameMin, text - state));
     }
   }
 
