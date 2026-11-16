@@ -280,10 +280,11 @@ public:
   // Drag and drop (FILES-UX §2.3). A drag over the browser at a scene point updates the drop cue and spring-load and
   // returns where a drop there goes; nullopt = no drop (a dragged item, a descendant, a file, a read-only folder).
   struct DropTarget {
-    std::filesystem::path folder; // empty for the Trash and a host place
-    bool trash = false;
-    std::string place;            // a Place::dropFiles row's id
-    bool listing = false;         // into a Listing::dropFolder or a folder row of that listing
+    // Listing: into a Listing::dropFolder or a folder row of that listing; the host makes the change.
+    enum class Kind : std::uint8_t { Folder, Listing, Trash, Place };
+    Kind kind = Kind::Folder;
+    std::filesystem::path folder; // Folder and Listing
+    std::string place;            // Place: a Place::dropFiles row's id
     bool operator==(const DropTarget&) const = default;
   };
   std::optional<DropTarget> dragOver(float sceneX, float sceneY);

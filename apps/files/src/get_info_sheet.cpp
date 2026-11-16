@@ -21,6 +21,7 @@
 #include <format>
 #include <gio/gio.h>
 #include <grp.h>
+#include <map>
 #include <pwd.h>
 #include <set>
 #include <sys/stat.h>
@@ -579,9 +580,23 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
   return box;
 }
 
-void GetInfoSheet::apply(AdminChange change) {
+void GetInfoSheet::apply(AdminChange change, const std::vector<Item>& before) {
   if (m_adminSink) {
-    m_adminSink(change);
+    // The sheet shows the change at once; a helper error puts the old values back (the toast says why).
+    m_adminSink(change, [this, alive = std::weak_ptr<bool>(m_alive), paths = change.paths, before](const std::string& error) {
+      if (alive.expired() || error.empty()) {
+        return;
+      }
+      for (Item& item : m_items) {
+        const auto was = std::ranges::find(before, item.path, &Item::path);
+        if (was != before.end() && std::ranges::contains(paths, item.path)) {
+          item.mode = was->mode;
+          item.uid = was->uid;
+          item.gid = was->gid;
+        }
+      }
+      later(m_rebuild);
+    });
     return;
   }
   auto done = [this, change](const std::string&, const std::string& error) {
@@ -601,13 +616,14 @@ void GetInfoSheet::setOwner(OwnerChange change) {
   if (m_ops == nullptr && !m_adminSink) {
     return;
   }
+  const std::vector<Item> before = m_items;
   std::vector<fs::path> paths;
   for (Item& item : m_items) {
     paths.push_back(item.path);
     item.uid = change.uid.value_or(item.uid);
     item.gid = change.gid.value_or(item.gid);
   }
-  apply({.paths = std::move(paths), .what = change, .recursive = m_recursive});
+  apply({.paths = std::move(paths), .what = change, .recursive = m_recursive}, before);
   later(m_rebuild);
 }
 
@@ -616,12 +632,13 @@ void GetInfoSheet::setAccess(int cls, int access) {
   if (m_ops == nullptr && !m_adminSink) {
     return;
   }
+  const std::vector<Item> before = m_items;
   std::vector<fs::path> paths;
   for (Item& item : m_items) {
     paths.push_back(item.path);
     item.mode = (item.mode & ~mask) | (mode & mask);
   }
-  apply({.paths = std::move(paths), .what = ModeChange{.mode = mode, .mask = mask}, .recursive = m_recursive});
+  apply({.paths = std::move(paths), .what = ModeChange{.mode = mode, .mask = mask}, .recursive = m_recursive}, before);
   later(m_rebuild);
 }
 
@@ -630,10 +647,15 @@ void GetInfoSheet::setRun(bool allow) {
     return;
   }
   // Each file gets x where it reads: one job per distinct mode keeps the rule exact.
+  const std::vector<Item> before = m_items;
+  std::map<std::pair<std::uint32_t, std::uint32_t>, std::vector<fs::path>> jobs;
   for (Item& item : m_items) {
     const auto [mode, mask] = runBits(item.mode, allow);
     item.mode = (item.mode & ~mask) | (mode & mask);
-    apply({.paths = {item.path}, .what = ModeChange{.mode = mode, .mask = mask}});
+    jobs[{mode, mask}].push_back(item.path);
+  }
+  for (auto& [bits, paths] : jobs) {
+    apply({.paths = std::move(paths), .what = ModeChange{.mode = bits.first, .mask = bits.second}}, before);
   }
   later(m_rebuild);
 }

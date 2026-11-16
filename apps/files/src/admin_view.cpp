@@ -65,19 +65,39 @@ void AdminView::start() {
     return;
   }
   m_process = std::make_unique<AdminProcess>([this, alive = std::weak_ptr<bool>(m_alive)] {
-    // The session changes phase inside its own calls: show the page after they return.
+    // The session changes phase inside its own calls: act after they return.
     DeferredCall::callLater([this, alive] {
       if (!alive.expired()) {
-        show();
+        releaseIfIdle();
+        show(false);
       }
     });
   });
 }
 
-void AdminView::open(const fs::path& dir) {
+AdminSession::Phase AdminView::phase() const {
+  return m_process != nullptr ? m_process->session().phase() : AdminSession::Phase::Closed;
+}
+
+void AdminView::release() {
+  m_unused = true;
+  releaseIfIdle();
+}
+
+void AdminView::releaseIfIdle() {
+  // A request in flight keeps the helper: its result still shows as a toast.
+  if (!m_unused || m_process == nullptr || phase() == AdminSession::Phase::Busy) {
+    return;
+  }
+  m_process.reset();
+  kLog.info("admin helper closed: no tab shows an administrator folder");
+}
+
+void AdminView::open(const fs::path& dir, bool navigate) {
   m_dir = dir;
+  m_unused = false;
   start();
-  show();
+  show(navigate);
   m_process->session().request({{"op", "list"}, {"path", dir.string()}},
                                [this, alive = std::weak_ptr<bool>(m_alive), dir](const nlohmann::json& reply) {
                                  if (alive.expired() || dir != m_dir) {
@@ -89,26 +109,40 @@ void AdminView::open(const fs::path& dir) {
                                    m_rows.push_back(rowOf(dir, e));
                                  }
                                  kLog.debug("admin list {} {} items", dir.string(), m_rows.size());
-                                 show();
+                                 show(false);
                                });
 }
 
-void AdminView::change(nlohmann::json op, std::string done) {
+void AdminView::change(nlohmann::json op, std::string done, std::function<void(const std::string& error)> then) {
   start();
-  m_process->session().request(std::move(op), [this, alive = std::weak_ptr<bool>(m_alive), done = std::move(done)](
-                                                  const nlohmann::json& reply) {
+  m_process->session().request(std::move(op), [this, alive = std::weak_ptr<bool>(m_alive), done = std::move(done),
+                                               then = std::move(then)](const nlohmann::json& reply) {
     if (alive.expired()) {
       return;
     }
     const bool ok = reply.value("ok", false);
-    kLog.debug("admin {} {}", done, ok ? "ok" : reply.value("error", std::string()));
-    m_host.toast(ok ? done : reply.value("error", std::string("The change failed.")));
+    const std::string error = ok ? std::string() : reply.value("error", std::string("The change failed."));
+    kLog.debug("admin {} {}", done, ok ? "ok" : error);
+    m_host.toast(ok ? done : error);
+    if (then) {
+      then(error);
+    }
     refresh();
   });
 }
 
-void AdminView::newFolder(const std::string& name) {
-  change({{"op", "mkdir"}, {"path", (m_dir / name).string()}}, std::format("Made {} as the administrator", name));
+void AdminView::newFolder(std::function<void(const fs::path&)> made) {
+  std::string name = "New Folder";
+  for (int n = 2; std::ranges::any_of(m_rows, [&](const auto& r) { return r->displayName == name; }); ++n) {
+    name = std::format("New Folder {}", n);
+  }
+  const fs::path path = m_dir / name;
+  change({{"op", "mkdir"}, {"path", path.string()}}, std::format("Made {} as the administrator", name),
+         [made = std::move(made), path](const std::string& error) {
+           if (error.empty()) {
+             made(path);
+           }
+         });
 }
 
 void AdminView::rename(const fs::path& path, const std::string& name) {
@@ -126,13 +160,14 @@ void AdminView::transfer(const std::vector<fs::path>& sources, const fs::path& d
                      sources.size() == 1 ? sources.front().filename().string() : std::format("{} items", sources.size())));
 }
 
-void AdminView::chmod(const std::vector<fs::path>& paths, std::uint32_t mode, std::uint32_t mask, bool recursive) {
+void AdminView::chmod(const std::vector<fs::path>& paths, std::uint32_t mode, std::uint32_t mask, bool recursive,
+                      std::function<void(const std::string& error)> done) {
   change({{"op", "chmod"}, {"paths", pathList(paths)}, {"mode", mode}, {"mask", mask}, {"recursive", recursive}},
-         "Permissions changed");
+         "Permissions changed", std::move(done));
 }
 
 void AdminView::chown(const std::vector<fs::path>& paths, std::optional<std::uint32_t> uid,
-                      std::optional<std::uint32_t> gid, bool recursive) {
+                      std::optional<std::uint32_t> gid, bool recursive, std::function<void(const std::string& error)> done) {
   nlohmann::json op{{"op", "chown"}, {"paths", pathList(paths)}, {"recursive", recursive}};
   if (uid.has_value()) {
     op["uid"] = *uid;
@@ -140,12 +175,12 @@ void AdminView::chown(const std::vector<fs::path>& paths, std::optional<std::uin
   if (gid.has_value()) {
     op["gid"] = *gid;
   }
-  change(std::move(op), "Owner changed");
+  change(std::move(op), "Owner changed", std::move(done));
 }
 
-void AdminView::show() {
-  const AdminSession::Phase phase = m_process->session().phase();
-  const bool listed = phase == AdminSession::Phase::Ready || phase == AdminSession::Phase::Busy;
+void AdminView::show(bool navigate) {
+  const AdminSession::Phase now = phase();
+  const bool listed = now == AdminSession::Phase::Ready || now == AdminSession::Phase::Busy;
   FileBrowser::Listing listing{.id = std::string(kPrefix) + m_dir.string(),
                                .title = m_dir == "/" ? std::string("/") : m_dir.filename().string(),
                                .rows = listed && m_error.empty() ? m_rows : std::vector<std::shared_ptr<const FileInfo>>{},
@@ -167,7 +202,7 @@ void AdminView::show() {
     return true;
   };
   listing.banner = [this](float s) { return banner(s); };
-  m_host.show(std::move(listing));
+  m_host.show(std::move(listing), navigate);
 }
 
 std::unique_ptr<Node> AdminView::banner(float s) {
@@ -192,17 +227,18 @@ std::unique_ptr<Node> AdminView::banner(float s) {
 }
 
 std::unique_ptr<Node> AdminView::statusPage(float s) {
-  const AdminSession& session = m_process->session();
+  const AdminSession::Phase now = phase(); // Closed: a listing from history, before its tab opens a helper again
   auto page = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP12 * s,
                           .flexGrow = 1.0F});
-  const bool failed = session.phase() == AdminSession::Phase::Failed;
+  const bool failed = now == AdminSession::Phase::Failed;
   const bool waiting = !failed && m_error.empty();
   if (waiting) {
     page->addChild(ui::spinner({.color = colorSpecFromRole(ColorRole::Label2), .spinnerSize = Tokens::sizeSymbol * s}));
   }
-  const std::string text = failed            ? session.failure()
+  const std::string text = failed            ? m_process->session().failure()
                            : !m_error.empty() ? m_error
-                           : session.phase() == AdminSession::Phase::Starting ? "Waiting for the administrator password…"
+                           : now == AdminSession::Phase::Starting || now == AdminSession::Phase::Closed
+                               ? "Waiting for the administrator password…"
                                                                                : "Reading the folder…";
   page->addChild(ui::label({.text = text, .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label2)}));
   if (failed) {

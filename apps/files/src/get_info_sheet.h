@@ -47,8 +47,9 @@ public:
     std::variant<ModeChange, OwnerChange> what;
     bool recursive = false;
   };
-  // Set in an administrator tab: every change goes here, not to FileOps1.
-  void setAdmin(std::function<void(const AdminChange&)> admin) { m_adminSink = std::move(admin); }
+  // Set in an administrator tab: every change goes here, not to FileOps1. done gets the error, empty on success.
+  using AdminSink = std::function<void(const AdminChange&, std::function<void(const std::string& error)> done)>;
+  void setAdmin(AdminSink admin) { m_adminSink = std::move(admin); }
 
   // Previous Versions (FB-INFO): the file in btrfs snapshots (snapper layout <dir>/.snapshots/<n>/snapshot/<rel>,
   // looked up in each ancestor on the same device), newest first, only versions that differ from the file.
@@ -93,7 +94,7 @@ private:
   [[nodiscard]] std::unique_ptr<Node> buildVersions(float s);
   void later(std::function<void()> fn);
   void setOwner(OwnerChange change);
-  void apply(AdminChange change);
+  void apply(AdminChange change, const std::vector<Item>& before); // before: the items as they were, for a rollback
   void failed(const std::string& error, AdminChange change);
   void changeAsAdmin();
 
@@ -107,7 +108,7 @@ private:
   std::optional<AdminChange> m_admin; // set: the error offers "Change as Administrator…"
   std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_restore;
   std::function<void(const std::filesystem::path&)> m_open;
-  std::function<void(const AdminChange&)> m_adminSink;
+  AdminSink m_adminSink;
   std::vector<Version> m_versions;
   Sum m_sha;
   Sum m_md5;

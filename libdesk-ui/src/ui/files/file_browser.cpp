@@ -4503,7 +4503,7 @@ std::optional<FileBrowser::DropTarget> FileBrowser::dragOver(float sceneX, float
     if (!m_dragPaths.empty() && std::ranges::all_of(m_dragPaths, [&](const fs::path& p) { return p.parent_path() == folder; })) {
       return std::nullopt;
     }
-    return DropTarget{.folder = folder, .listing = listing};
+    return DropTarget{.kind = listing ? DropTarget::Kind::Listing : DropTarget::Kind::Folder, .folder = folder};
   };
   std::optional<DropTarget> target;
   std::optional<std::string> item;
@@ -4513,10 +4513,10 @@ std::optional<FileBrowser::DropTarget> FileBrowser::dragOver(float sceneX, float
   for (const auto& [node, place] : m_ui->sidebarRows) {
     if (contains(node, sceneX, sceneY)) {
       if (place.dropFiles) {
-        target = DropTarget{.place = place.id};
+        target = DropTarget{.kind = DropTarget::Kind::Place, .place = place.id};
         placeCue = node;
       } else if (place.dropTrash) {
-        target = m_dragPaths.empty() ? std::nullopt : std::optional<DropTarget>(DropTarget{.trash = true});
+        target = m_dragPaths.empty() ? std::nullopt : std::optional<DropTarget>(DropTarget{.kind = DropTarget::Kind::Trash});
       } else if (!place.path.empty()) {
         target = accept(place.path);
         spring = Spring{.target = DropTarget{.folder = place.path}, .sidebar = true};
@@ -4575,8 +4575,8 @@ found:
   if (target != m_lastDrop) {
     m_lastDrop = target;
     kLog.debug("drop target {}", !target.has_value() ? std::string("none")
-                                 : target->trash     ? std::string("trash")
-                                 : !target->place.empty() ? target->place
+                                 : target->kind == DropTarget::Kind::Trash ? std::string("trash")
+                                 : target->kind == DropTarget::Kind::Place ? target->place
                                                          : target->folder.string());
   }
   return target;
@@ -4889,7 +4889,8 @@ void FileBrowser::commitRename(bool next) {
     return;
   }
   std::error_code ec;
-  if (fs::exists(m_location / value, ec) && value != info.displayName) {
+  const fs::path renamed = pathOf(info).parent_path() / value; // a listing row's own folder, not m_location
+  if (fs::exists(renamed, ec) && value != info.displayName) {
     // Case-only renames on the same entry are fine; another entry with that name is not.
     if (lowerAscii(value) != lowerAscii(info.displayName)) {
       showError(std::format("“{}” is already taken.", value));
@@ -4898,7 +4899,8 @@ void FileBrowser::commitRename(bool next) {
   }
   m_rename->busy = true;
   if (!next) {
-    m_pendingSelect = {value}; // the renamed item stays selected once the listing has it
+    // The renamed item stays selected once the listing has it; listing rows are named by their path.
+    m_pendingSelect = {m_listing.has_value() ? renamed.string() : value};
   }
   m_host.rename(pathOf(info), value, [this, alive = std::weak_ptr<bool>(m_alive), advance, showError](const std::string& error) {
     if (alive.expired()) {

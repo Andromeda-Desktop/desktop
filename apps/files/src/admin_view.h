@@ -14,7 +14,8 @@
 class AdminView {
 public:
   struct Host {
-    std::function<void(FileBrowser::Listing)> show;              // show this listing in the current tab
+    // navigate: put the listing in the current tab; else only refresh a current tab that shows it.
+    std::function<void(FileBrowser::Listing, bool navigate)> show;
     std::function<void(const std::string& text)> toast; // a result or an error; never offers Undo
     std::function<void(const std::filesystem::path& dir)> leave; // the bar's Close: the folder as the user
   };
@@ -26,21 +27,29 @@ public:
   }
   [[nodiscard]] const std::filesystem::path& dir() const noexcept { return m_dir; }
 
-  void open(const std::filesystem::path& dir);
-  void refresh() { open(m_dir); }
-  void newFolder(const std::string& name);
+  void open(const std::filesystem::path& dir, bool navigate = true);
+  void refresh() { open(m_dir, false); }
+  // Ends the helper once no request is out; the view lives on with the window, and the next open starts a helper.
+  void release();
+  [[nodiscard]] bool serving() const noexcept { return m_process != nullptr && !m_unused; }
+  // A free "New Folder" name in the whole listing; made() gets its path once the helper made it.
+  void newFolder(std::function<void(const std::filesystem::path&)> made);
   void rename(const std::filesystem::path& path, const std::string& name);
   void remove(const std::vector<std::filesystem::path>& paths);
   void transfer(const std::vector<std::filesystem::path>& sources, const std::filesystem::path& dest, bool move);
-  void chmod(const std::vector<std::filesystem::path>& paths, std::uint32_t mode, std::uint32_t mask, bool recursive);
+  // done gets the helper's error, empty on success.
+  void chmod(const std::vector<std::filesystem::path>& paths, std::uint32_t mode, std::uint32_t mask, bool recursive,
+             std::function<void(const std::string& error)> done);
   void chown(const std::vector<std::filesystem::path>& paths, std::optional<std::uint32_t> uid,
-             std::optional<std::uint32_t> gid, bool recursive);
+             std::optional<std::uint32_t> gid, bool recursive, std::function<void(const std::string& error)> done);
 
 private:
   static constexpr const char* kPrefix = "admin:";
   void start();
-  void change(nlohmann::json op, std::string done);
-  void show();
+  void change(nlohmann::json op, std::string done, std::function<void(const std::string& error)> then = {});
+  void show(bool navigate);
+  void releaseIfIdle();
+  [[nodiscard]] AdminSession::Phase phase() const; // Closed without a helper
   [[nodiscard]] std::unique_ptr<Node> banner(float scale);
   [[nodiscard]] std::unique_ptr<Node> statusPage(float scale);
 
@@ -49,5 +58,6 @@ private:
   std::filesystem::path m_dir;
   std::vector<std::shared_ptr<const FileInfo>> m_rows;
   std::string m_error; // the last listing error ("Permission denied"); empty after a good listing
+  bool m_unused = false; // no tab shows an admin folder: the helper ends when idle
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

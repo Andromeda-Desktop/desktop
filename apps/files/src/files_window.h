@@ -154,6 +154,8 @@ public:
   [[nodiscard]] bool inFolder() const;
   // A real folder or an administrator listing: new items and pastes can land here.
   [[nodiscard]] bool canAddHere() const;
+  // An administrator folder shows: changes go to the root helper, and nothing moves out of it (only copies).
+  [[nodiscard]] bool inAdmin() const { return adminHere() != nullptr; }
   [[nodiscard]] const std::filesystem::path& location() const noexcept;
   [[nodiscard]] float scale() const noexcept;
   [[nodiscard]] FileBrowser& browser() noexcept { return *m_browser; }

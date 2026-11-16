@@ -435,7 +435,9 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
             return dnd->startDrag(m_window.wlSurface(), m_app.loop().wayland().lastInputSerial(),
                                   {.mimeTypes = {"text/uri-list", "text/plain;charset=utf-8", "text/plain"},
                                    .data = [uris, text](const std::string& mime) { return mime == "text/uri-list" ? uris : text; },
-                                   .actions = DragAndDrop::Copy | DragAndDrop::Move | DragAndDrop::Ask,
+                                   // Root's items leave an admin folder only as copies, into any app.
+                                   .actions = adminHere() != nullptr ? DragAndDrop::Copy
+                                                                     : DragAndDrop::Copy | DragAndDrop::Move | DragAndDrop::Ask,
                                    .icon = m_dragIcon != nullptr ? m_dragIcon->wlSurface() : nullptr,
                                    .finished =
                                        [this, alive = std::weak_ptr<bool>(m_alive)](std::uint32_t, bool) {
@@ -643,7 +645,7 @@ void FilesWindow::registerDropTarget() {
               return DragAndDrop::None;
             }
             const auto target = dragOver(x, y);
-            if (!target.has_value() || (!target->place.empty() && !m_dragHasUris)) {
+            if (!target.has_value() || (target->kind == FileBrowser::DropTarget::Kind::Place && !m_dragHasUris)) {
               return DragAndDrop::None; // a phone takes files only
             }
             // The drop reads its data after the release, when the keys may be up: keep what the cue showed.
@@ -676,7 +678,7 @@ void FilesWindow::registerDropTarget() {
             const auto target = dragOver(x, y);
             if (target.has_value() && mime == "text/uri-list") {
               drop(*target, data, action);
-            } else if (target.has_value() && !target->trash && target->place.empty() && !target->listing) {
+            } else if (target.has_value() && target->kind == FileBrowser::DropTarget::Kind::Folder) {
               dropData(target->folder, mime, data);
             }
             for (const auto& pane : m_panes) {
@@ -690,10 +692,10 @@ void FilesWindow::registerDropTarget() {
 
 FilesWindow::DropOp FilesWindow::dropOp(const FileBrowser::DropTarget& target, const std::vector<fs::path>& sources,
                                         std::uint32_t modifiers) {
-  if (target.trash) {
+  if (target.kind == FileBrowser::DropTarget::Kind::Trash) {
     return DropOp::Trash;
   }
-  if (!target.place.empty()) {
+  if (target.kind == FileBrowser::DropTarget::Kind::Place) {
     return DropOp::Copy; // a phone gets a copy
   }
   const std::uint32_t mods = modifiers & (KeyMod::Ctrl | KeyMod::Shift);
@@ -712,16 +714,17 @@ FilesWindow::DropOp FilesWindow::dropOp(const FileBrowser::DropTarget& target, c
 
 std::optional<FilesWindow::DropOp> FilesWindow::adminDropOp(const FileBrowser::DropTarget& target,
                                                              const std::vector<fs::path>& sources, DropOp op) const {
-  if (target.listing) {
-    return op == DropOp::Link ? DropOp::Copy : op;
-  }
+  // The drag source offers only Copy for these (startDrag); the cursor here shows the same.
   const bool fromAdmin = m_admin != nullptr && std::ranges::any_of(sources, [&](const fs::path& p) {
     return p.parent_path() == m_admin->dir();
   });
-  if (!fromAdmin || op == DropOp::Copy || op == DropOp::Link) {
-    return op;
+  if (fromAdmin) {
+    return op == DropOp::Trash ? std::nullopt : std::optional(DropOp::Copy); // root's files get no Trash
   }
-  return op == DropOp::Move ? std::optional(DropOp::Copy) : std::nullopt; // root's files get no Trash
+  if (target.kind == FileBrowser::DropTarget::Kind::Listing) {
+    return op == DropOp::Link ? DropOp::Copy : op;
+  }
+  return op;
 }
 
 std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>& dragged) {
@@ -784,14 +787,14 @@ void FilesWindow::drop(const FileBrowser::DropTarget& target, const std::string&
     m_dragExtract->waiting.push_back([this, target, uriList, action] { drop(target, uriList, action); });
     return;
   }
-  if (target.place.starts_with("phone:")) {
+  if (target.kind == FileBrowser::DropTarget::Kind::Place && target.place.starts_with("phone:")) {
     kLog.debug("drop {} items onto {}", sources.size(), target.place);
     sendToPhone(target.place.substr(6), sources);
     return;
   }
   // The negotiated action is what the cursor showed; recomputing with the now-known sources could turn Copy into Move.
   const auto adminOp = adminDropOp(target, sources,
-                                   target.trash                     ? DropOp::Trash
+                                   target.kind == FileBrowser::DropTarget::Kind::Trash ? DropOp::Trash
                                    : action == DragAndDrop::Move    ? DropOp::Move
                                    : action == DragAndDrop::Copy    ? DropOp::Copy
                                    : action == DragAndDrop::Ask     ? DropOp::Link
@@ -800,13 +803,13 @@ void FilesWindow::drop(const FileBrowser::DropTarget& target, const std::string&
     return;
   }
   const DropOp op = *adminOp;
-  if (target.listing) {
+  if (target.kind == FileBrowser::DropTarget::Kind::Listing) {
     kLog.debug("drop {} items op {} into admin {}", sources.size(), static_cast<int>(op), target.folder.string());
     m_admin->transfer(sources, target.folder, op == DropOp::Move);
     return;
   }
   kLog.debug("drop {} items op {} into {}", sources.size(), static_cast<int>(op),
-             target.trash ? std::string("trash") : target.folder.string());
+             target.kind == FileBrowser::DropTarget::Kind::Trash ? std::string("trash") : target.folder.string());
   switch (op) {
   case DropOp::Trash:
     startJob("Moving to Trash", sources.size(), [&](FileOpsClient& ops, auto done) { ops.trash(sources, done); });
@@ -936,12 +939,7 @@ void FilesWindow::dropData(const fs::path& folder, const std::string& mime, cons
 
 void FilesWindow::newFolder() {
   if (AdminView* admin = adminHere()) {
-    std::string name = "New Folder";
-    for (int n = 2; std::ranges::any_of(m_browser->rows(), [&](const auto& r) { return r->displayName == name; }); ++n) {
-      name = std::format("New Folder {}", n);
-    }
-    admin->newFolder(name);
-    m_browser->renameWhenListed((admin->dir() / name).string());
+    admin->newFolder([this](const fs::path& made) { m_browser->renameWhenListed(made.string()); });
     return;
   }
   if (!inFolder()) {
@@ -1223,11 +1221,13 @@ void FilesWindow::fillCommandBar(Flex& row, float s) {
 
 void FilesWindow::onBrowserChanged() {
   refreshCommandBar();
-  DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
-    if (!alive.expired()) {
-      syncAdmin();
-    }
-  });
+  if (AdminView::isAdminListing(m_browser->listingId()) || (m_admin != nullptr && m_admin->serving())) {
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+      if (!alive.expired()) {
+        syncAdmin();
+      }
+    });
+  }
   if (m_picker.has_value() && m_pickerPrimary != nullptr && m_picker->confirmReplace.empty()) {
     m_pickerPrimary->setText(pickerPrimaryLabel());
   }
@@ -2704,21 +2704,28 @@ void FilesWindow::openAsAdmin() {
 void FilesWindow::syncAdmin() {
   const std::string& id = m_browser->listingId();
   if (AdminView::isAdminListing(id)) {
-    if (m_admin == nullptr || m_admin->dir() != AdminView::dirOf(id)) {
+    if (m_admin == nullptr || m_admin->dir() != AdminView::dirOf(id) || !m_admin->serving()) {
       openAdmin(AdminView::dirOf(id));
     }
     return;
   }
-  if (m_admin != nullptr && std::ranges::none_of(m_browser->tabListingIds(), AdminView::isAdminListing)) {
-    kLog.info("admin helper closed: no tab shows an administrator folder");
-    m_admin.reset();
+  const auto showsAdmin = [](const std::unique_ptr<FileBrowser>& pane) {
+    return pane != nullptr && std::ranges::any_of(pane->tabListingIds(), AdminView::isAdminListing);
+  };
+  if (m_admin != nullptr && m_admin->serving() && std::ranges::none_of(m_panes, showsAdmin)) {
+    m_admin->release();
   }
 }
 
 void FilesWindow::openAdmin(const fs::path& dir) {
   if (m_admin == nullptr) {
     m_admin = std::make_unique<AdminView>(AdminView::Host{
-        .show = [this](FileBrowser::Listing listing) { m_browser->showListing(std::move(listing)); },
+        .show =
+            [this](FileBrowser::Listing listing, bool navigate) {
+              if (navigate || m_browser->listingId() == listing.id) {
+                m_browser->showListing(std::move(listing));
+              }
+            },
         .toast = [this](const std::string& text) { showToast(text, false); },
         .leave = [this](const fs::path& folder) { m_browser->go(folder); },
     });
@@ -2857,12 +2864,12 @@ void FilesWindow::getInfo(std::vector<fs::path> paths) {
       [this] { m_window.invalidate(); });
   if (adminHere() != nullptr) {
     // The sheet is modal, so this tab and its helper stay until the sheet closes.
-    m_info->setAdmin([this](const GetInfoSheet::AdminChange& change) {
+    m_info->setAdmin([this](const GetInfoSheet::AdminChange& change, std::function<void(const std::string&)> done) {
       if (const auto* mode = std::get_if<GetInfoSheet::ModeChange>(&change.what)) {
-        m_admin->chmod(change.paths, mode->mode, mode->mask, change.recursive);
+        m_admin->chmod(change.paths, mode->mode, mode->mask, change.recursive, std::move(done));
       } else {
         const auto& owner = std::get<GetInfoSheet::OwnerChange>(change.what);
-        m_admin->chown(change.paths, owner.uid, owner.gid, change.recursive);
+        m_admin->chown(change.paths, owner.uid, owner.gid, change.recursive, std::move(done));
       }
     });
   }
