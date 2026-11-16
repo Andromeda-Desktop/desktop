@@ -74,11 +74,12 @@ namespace {
     float m_maxCellW;
   };
 
-  // A flex cell with an input area over all of it: hover fill_1, click opens.
+  // A flex cell with an input area over all of it: hover one fill step up (rulebook 4), click opens.
   class Cell final : public Flex {
   public:
     InputArea* area = nullptr;
     ColorSpec baseFill = clearColorSpec(); // the fill while not hovered
+    ColorSpec hoverFill = colorSpecFromRole(ColorRole::Fill1);
 
   protected:
     void doLayout(Renderer& renderer) override {
@@ -154,7 +155,7 @@ namespace {
     c->area = areaOwned.get();
     c->area->setZIndex(1); // above the icon and labels added after it: the whole cell hovers, not only the text
     Cell* body = c.get();
-    c->area->setOnEnter([body](const InputArea::PointerData&) { body->setFill(colorSpecFromRole(ColorRole::Fill1)); });
+    c->area->setOnEnter([body](const InputArea::PointerData&) { body->setFill(body->hoverFill); });
     c->area->setOnLeave([body] { body->setFill(body->baseFill); });
     c->area->setOnClick([open = std::move(open)](const InputArea::PointerData& data) {
       if (data.button == BTN_LEFT && open) {
@@ -180,6 +181,7 @@ namespace {
     c->setGap(Tokens::spaceP12 * s);
     c->setPadding(0.0F, Tokens::spaceP12 * s);
     c->baseFill = colorSpecFromRole(ColorRole::Fill1);
+    c->hoverFill = colorSpecFromRole(ColorRole::Fill2);
     c->setFill(c->baseFill);
     c->addChild(std::make_unique<PlaceIcon>(place.art, kDriveIcon * s));
     auto text = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s, .flexGrow = 1.0F});
