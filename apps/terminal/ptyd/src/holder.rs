@@ -100,6 +100,8 @@ struct Session {
     snapshot_offset: u64,
     /// Output from `snapshot_offset` on.
     tail: Vec<u8>,
+    /// The tail has no ESC or BEL before this offset: a cut scans on from here.
+    plain_to: u64,
     want_sent_at: u64,
     pace: ReadPace,
     last_read: Instant,
@@ -602,6 +604,7 @@ impl Holder {
                 owner: Owner::Orphaned,
                 snapshot: Vec::new(),
                 snapshot_offset: 0,
+                plain_to: 0,
                 tail: Vec::new(),
                 want_sent_at: 0,
                 pace: ReadPace::Now,
@@ -683,8 +686,17 @@ impl Holder {
                 let offset = s.read_offset();
                 s.tail.extend_from_slice(&buf);
                 if s.tail.len() > cap {
-                    // A reattach then replays the last `cap` bytes on a fresh terminal.
-                    let cut = s.tail.len() - cap;
+                    // A reattach replays the tail on a fresh terminal with no snapshot: start it at an ESC or after
+                    // a BEL (each ends a string sequence), else at a UTF-8 lead byte.
+                    let min = s.tail.len() - cap;
+                    let from = min.max(s.plain_to.saturating_sub(s.snapshot_offset) as usize);
+                    let cut = match s.tail[from..].iter().position(|&b| b == 0x1b || b == 0x07) {
+                        Some(i) => from + i + usize::from(s.tail[from + i] == 0x07),
+                        None => {
+                            s.plain_to = s.read_offset();
+                            min + s.tail[min..].iter().position(|&b| b & 0xc0 != 0x80).unwrap_or(0)
+                        }
+                    };
                     s.tail.drain(..cut);
                     s.snapshot_offset += cut as u64;
                     s.snapshot = Vec::new();

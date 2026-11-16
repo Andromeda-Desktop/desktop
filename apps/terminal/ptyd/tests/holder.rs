@@ -317,6 +317,40 @@ fn attached_output_flows_past_the_tail_cap_without_a_snapshot() {
 }
 
 #[test]
+fn a_cut_tail_starts_where_a_fresh_parser_starts_clean() {
+    let (_dir, path) = start(Config {
+        tail_cap: 4096,
+        snapshot_at: 1024,
+        ..Config::default()
+    });
+    let mut first = TestClient::connect(&path);
+    // A 6000-byte OSC 52 ended by BEL, then text: the cap cuts inside the OSC payload.
+    let (id, _fd) = first.spawn(&[
+        "sh",
+        "-c",
+        "printf '\\033]52;c;'; head -c 6000 /dev/zero | tr '\\0' A; printf '\\007'; head -c 3000 /dev/zero | tr '\\0' b; echo END; exec sleep 100",
+    ]);
+    let mut seen = Vec::new();
+    while !contains(&seen, "END") {
+        if let HolderMsg::Output { id: i, bytes, .. } = first.recv().0
+            && i == id
+        {
+            seen.extend_from_slice(&bytes);
+        }
+    }
+    drop(first);
+
+    let mut second = TestClient::connect(&path);
+    wait_for_orphans(&mut second);
+    second.send(ClientMsg::Attach { id });
+    let (HolderMsg::Attached { snapshot, tail, .. }, _) = second.recv() else {
+        panic!("not attached")
+    };
+    assert!(snapshot.is_empty());
+    assert!(tail.starts_with(b"b"), "tail starts with {:?}", String::from_utf8_lossy(&tail[..16]));
+}
+
+#[test]
 fn orphan_blocks_the_child_at_the_tail_cap_and_loses_nothing() {
     let cap = 4096;
     let (dir, path) = start(Config {
