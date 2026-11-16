@@ -53,7 +53,7 @@ namespace {
 
     void agentEvent(unsigned seed, int step) {
       const std::string tool = "t" + std::to_string(pick(4));
-      switch (pick(9)) {
+      switch (pick(10)) {
       case 0:
         session.update({{"update", {{"sessionUpdate", "agent_message_chunk"}, {"content", {{"type", "text"}, {"text", "x"}}}}}});
         break;
@@ -109,6 +109,9 @@ namespace {
         break;
       case 8:
         session.update({{"update", {{"sessionUpdate", "plan"}, {"entries", Json::array({{{"content", "a"}, {"status", "pending"}}})}}}});
+        break;
+      case 9:
+        session.setCompacting(pick(2) == 0);
         break;
       }
     }
@@ -174,6 +177,8 @@ namespace {
         check(openRpc.size() == session.pending().size(), "a request lost its response", seed, step);
       }
       check(session.phase() != Phase::Idle || promptInFlight < 0, "idle while a prompt is in flight", seed, step);
+      check(!session.compacting() || session.phase() == Phase::Working || session.phase() == Phase::Cancelling,
+            "compacting outside a running turn", seed, step);
     }
   };
 

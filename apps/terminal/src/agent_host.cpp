@@ -329,6 +329,8 @@ namespace term::agent {
     Slot* slot = slotBySessionId(params.value("sessionId", std::string{}), &key);
     if (method == "session/update" && slot != nullptr) {
       slot->model->update(params);
+    } else if (method == "_andromeda/compacting" && slot != nullptr) {
+      slot->model->setCompacting(params.value("compacting", false));
     } else if (method == "session/request_permission") {
       if (slot == nullptr) {
         // No session can show it: cancelled, never approved.

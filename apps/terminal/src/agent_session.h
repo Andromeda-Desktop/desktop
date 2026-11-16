@@ -120,6 +120,9 @@ namespace term::agent {
     [[nodiscard]] const std::string& mode() const noexcept { return m_mode; }
     [[nodiscard]] std::uint64_t contextUsed() const noexcept { return m_used; }
     [[nodiscard]] std::uint64_t contextSize() const noexcept { return m_size; }
+    // True only inside a running turn while Claude compacts the conversation.
+    [[nodiscard]] bool compacting() const noexcept { return m_compacting; }
+    void setCompacting(bool on) { m_compacting = on && m_phase == Phase::Working; }
     [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
     [[nodiscard]] const std::string& title() const noexcept { return m_title; }
     // "Opus 5.5"; empty until the agent reports its config options.
@@ -161,6 +164,7 @@ namespace term::agent {
     std::string m_mode;
     std::uint64_t m_used = 0;
     std::uint64_t m_size = 0;
+    bool m_compacting = false;
     std::int64_t m_nextId = 1;
     std::optional<std::int64_t> m_promptId;
     std::vector<Json> m_outbox;

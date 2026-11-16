@@ -600,6 +600,8 @@ async fn claude_events_become_typed_updates_and_stop_reasons() {
         r#"
 IFS= read -r initial || exit 10
 printf '%s\n' '{"type":"system","subtype":"init","session_id":"79ed6f89-b693-4192-8169-4554404b43a2","slash_commands":["compact","review"],"permissionMode":"default"}'
+printf '%s\n' '{"type":"system","subtype":"status","status":"compacting"}'
+printf '%s\n' '{"type":"system","subtype":"status","status":null}'
 printf '%s\n' '{"type":"assistant","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":4000,"cache_creation_input_tokens":90},"content":[{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"content":"Write the test","status":"completed"},{"content":"Fix it","status":"in_progress"}]}},{"type":"tool_use","id":"t2","name":"Edit","input":{"file_path":"/p/a.cpp","old_string":"old","new_string":"new"}}]}}'
 printf '%s\n' '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"},{"type":"tool_result","tool_use_id":"t2","content":[{"type":"text","text":"no such file"}],"is_error":true}]}}'
 printf '%s\n' '{"type":"assistant","message":{"stop_reason":"refusal","content":[{"type":"text","text":"I cannot help with that."}]}}'
@@ -646,6 +648,12 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"79ed6f89-b693-
     let usage = of("usage_update");
     assert_eq!(usage[0]["used"], 4100);
     assert_eq!(usage[0]["size"], 200000);
+    let compacting: Vec<&Value> = updates
+        .iter()
+        .filter(|v| v["method"] == "_andromeda/compacting")
+        .map(|v| &v["params"]["compacting"])
+        .collect();
+    assert_eq!(compacting, [&json!(true), &json!(false)]);
     child.kill().await.unwrap();
 }
 

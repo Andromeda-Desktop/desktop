@@ -408,6 +408,7 @@ namespace term::agent {
     }
     closeRequests("cancelled");
     m_promptId.reset();
+    m_compacting = false;
     endTurnTime();
     for (auto& entry : m_entries) {
       if (auto* prose = std::get_if<Prose>(&entry)) {
@@ -443,6 +444,7 @@ namespace term::agent {
     m_pending.clear();
     m_queued.clear();
     m_promptId.reset();
+    m_compacting = false;
     endTurnTime();
     for (auto& entry : m_entries) {
       if (auto* prose = std::get_if<Prose>(&entry)) {

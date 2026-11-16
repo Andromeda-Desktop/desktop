@@ -40,6 +40,8 @@ pub enum Event {
     },
     /// Tokens in context after the last model call, and the context window when known.
     Usage { used: u64, size: Option<u64> },
+    /// Claude compacts the conversation (system status "compacting") or has finished.
+    Compacting(bool),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -307,6 +309,10 @@ pub async fn run(
                 }
                 _ => {}
             },
+            Some("system") if value["subtype"] == "status" => {
+                on_event(Event::Compacting(value["status"] == "compacting"))
+            }
+            Some("system") if value["subtype"] == "compact_boundary" => on_event(Event::Compacting(false)),
             Some("system") if value["subtype"] == "init" => {
                 on_event(Event::Init {
                     slash_commands: value["slash_commands"]

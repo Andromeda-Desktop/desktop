@@ -1773,6 +1773,9 @@ namespace term {
       full = percent >= 90;
       meta += std::format("{}{} % context", meta.empty() ? "" : " · ", percent);
     }
+    if (model->compacting()) {
+      meta += meta.empty() ? "compacting" : " · compacting";
+    }
     m_meta->setText(meta);
     m_meta->setColor(colorSpecFromRole(full ? ColorRole::TermRed : ColorRole::Label2));
     const bool canSend = !running && (phase == agent::Phase::Idle || phase == agent::Phase::Failed) && !m_input->value().empty();

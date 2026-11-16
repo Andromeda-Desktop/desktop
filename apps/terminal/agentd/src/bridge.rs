@@ -13,7 +13,7 @@ use agent_client_protocol::schema::v1::{
     SessionConfigSelectOption, SessionNotification, SessionUpdate, StopReason, TextContent,
     ToolCall, ToolCallContent, ToolCallLocation, ToolCallStatus, ToolKind,
 };
-use agent_client_protocol::{Client, ConnectionTo, Error};
+use agent_client_protocol::{Client, ConnectionTo, Error, UntypedMessage};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde_json::{Value, json};
 use tokio::sync::watch;
@@ -383,6 +383,15 @@ impl Bridge {
                     &id,
                     SessionUpdate::UsageUpdate(acp::UsageUpdate::new(used, size.unwrap_or(0))),
                 ),
+                // ACP has no compaction update: an extension notification carries it.
+                Event::Compacting(on) => {
+                    let params = json!({ "sessionId": id, "compacting": on });
+                    if let Err(error) = UntypedMessage::new("_andromeda/compacting", params)
+                        .and_then(|message| connection.send_notification(message))
+                    {
+                        eprintln!("failed to send compacting: {error}");
+                    }
+                }
             };
             let on_permission = |permission: PermissionRequest| -> runner::PermissionFuture {
                 let tool_id = if permission.tool_use_id.is_empty() {
