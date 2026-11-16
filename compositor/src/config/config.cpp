@@ -5,6 +5,7 @@
 #include "config/config_merge.h"
 #include "config/config_registry.h"
 #include "config/fields.h"
+#include "config/keybind_parse.h"
 #include "config/managed_settings.h"
 #include "config/section.h"
 #include "config/store.h"
@@ -68,6 +69,32 @@ namespace andromeda {
       return fields;
     }
 
+    // A settings chord replaces the config.toml chord it parses equal to, whatever its spelling ("Mod+t" over "Mod+T").
+    void dropKeybindsRespelledBy(toml::table& merged, const toml::table& settings) {
+      auto* base = merged["keybinds"].as_table();
+      const auto* overrides = settings["keybinds"].as_table();
+      if (base == nullptr || overrides == nullptr) {
+        return;
+      }
+      for (const auto& [overrideKey, overrideValue] : *overrides) {
+        Keybind overrideChord;
+        if (!parseChord(overrideKey.str(), overrideChord)) {
+          continue;
+        }
+        std::vector<std::string> respelled;
+        for (const auto& [baseKey, baseValue] : *base) {
+          Keybind baseChord;
+          if (baseKey.str() != overrideKey.str() && parseChord(baseKey.str(), baseChord) &&
+              sameChord(baseChord, overrideChord)) {
+            respelled.emplace_back(baseKey.str());
+          }
+        }
+        for (const auto& key : respelled) {
+          base->erase(key);
+        }
+      }
+    }
+
     // The settings file carries what a settings app changed, so it merges over config.toml and its includes. A missing
     // file is normal; a broken one fails the load like any other config error.
     bool overlayManagedSettings(toml::table& merged, const std::filesystem::path& file) {
@@ -76,7 +103,9 @@ namespace andromeda {
         return true;
       }
       try {
-        configmerge::deepMerge(merged, toml::parse_file(file.string()));
+        toml::table settings = toml::parse_file(file.string());
+        dropKeybindsRespelledBy(merged, settings);
+        configmerge::deepMerge(merged, std::move(settings));
         return true;
       } catch (const toml::parse_error& parseError) {
         emitDiag(

@@ -1,4 +1,5 @@
 #include "check.h"
+#include "config/managed_settings.h"
 #include "config/resolve.h"
 #include "config/store.h"
 
@@ -869,6 +870,29 @@ ANDROMEDA_TEST(keybindTableLoadsAllowWhenLocked) {
   CHECK(allowedWhenLocked);
   CHECK(defaultsToBlocked);
   CHECK(!containsDiagnostic(store, "allow_when_locked"));
+}
+
+ANDROMEDA_TEST(settingsKeybindReplacesConfigChordSpelledDifferently) {
+  const TempConfig file;
+  const auto settingsPath = andromeda::managedSettingsFile(file.path());
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[keybinds]\n\"Mod+T\" = { action = \"spawn:old-terminal\", repeat = false }\n");
+  std::ofstream(settingsPath) << "[keybinds]\n'Mod+t' = 'spawn:new-terminal'\n";
+  const bool loaded = store.reload().success;
+  std::filesystem::remove(settingsPath);
+  CHECK(loaded);
+
+  const auto spawns = [&](std::string_view command) {
+    return std::ranges::any_of(store.config().keybinds, [command](const auto& bind) {
+      const auto* spawn = andromeda::payloadIf<andromeda::SpawnArg>(bind);
+      return spawn != nullptr && spawn->command == command;
+    });
+  };
+  CHECK(spawns("new-terminal"));
+  CHECK(!spawns("old-terminal"));
+  CHECK(!containsDiagnostic(store, "duplicate keybind"));
 }
 
 ANDROMEDA_TEST(keybindTableLoadsAllowWhenInhibited) {
