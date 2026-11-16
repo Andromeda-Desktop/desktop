@@ -300,7 +300,7 @@ package_andromeda-viewer-git() {
 
 package_andromeda-terminal-git() {
   pkgdesc='Andromeda Terminal: terminal emulator on libghostty-vt'
-  depends=("${_app_libs[@]}")
+  depends=("${_app_libs[@]}" ttf-fira-code) # the mono token font (design-tokens.toml font.mono)
   meson install -C build-terminal --destdir "$pkgdir" --skip-subprojects
   install -Dm644 desktop/apps/terminal/subprojects/libghostty-vt/prefix/LICENSE \
     "$pkgdir/usr/share/licenses/$pkgname/libghostty-vt-LICENSE"
