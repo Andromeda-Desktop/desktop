@@ -247,7 +247,7 @@ namespace term::agent {
       m_commands.clear();
       for (const auto& command : u.value("availableCommands", Json::array())) {
         if (auto name = str(command, "name"); !name.empty()) {
-          m_commands.push_back(std::move(name));
+          m_commands.push_back({.name = std::move(name), .description = str(command, "description")});
         }
       }
     } else if (kind == "current_mode_update") {

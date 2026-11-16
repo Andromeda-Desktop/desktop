@@ -94,7 +94,7 @@ namespace term {
     void syncLog();
     void syncJump();
     void jumpToEnd();
-    [[nodiscard]] std::vector<std::string> slashMatches() const;
+    [[nodiscard]] std::vector<agent::Session::Command> slashMatches() const;
     void syncSlash();
     [[nodiscard]] bool atBottom() const;
 

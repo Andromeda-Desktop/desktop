@@ -20,6 +20,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::{
+    commands,
     config::Config,
     history::History,
     runner::{self, Event, McpServer, PermissionRequest, RunError, RunRequest, Stop},
@@ -358,7 +359,11 @@ impl Bridge {
                 } => {
                     let commands = slash_commands
                         .into_iter()
-                        .map(|name| acp::AvailableCommand::new(name, ""))
+                        .map(|name| {
+                            let description =
+                                commands::describe(&name, &session.cwd, &self.config.claude_dir);
+                            acp::AvailableCommand::new(name, description)
+                        })
                         .collect();
                     notify(
                         &connection,

@@ -105,7 +105,11 @@ namespace term::agent {
     [[nodiscard]] RowStatus rowStatus() const noexcept;
     [[nodiscard]] const std::vector<Entry>& entries() const noexcept { return m_entries; }
     [[nodiscard]] const std::vector<PlanEntry>& plan() const noexcept { return m_plan; }
-    [[nodiscard]] const std::vector<std::string>& commands() const noexcept { return m_commands; }
+    struct Command {
+      std::string name;        // "compact", without the slash
+      std::string description; // empty when the agent sent none
+    };
+    [[nodiscard]] const std::vector<Command>& commands() const noexcept { return m_commands; }
     [[nodiscard]] const std::vector<std::size_t>& pending() const noexcept { return m_pending; }
     [[nodiscard]] const std::vector<std::string>& queued() const noexcept { return m_queued; }
     [[nodiscard]] const std::string& mode() const noexcept { return m_mode; }
@@ -148,7 +152,7 @@ namespace term::agent {
     std::vector<std::size_t> m_pending; // indices of unanswered Request entries, oldest first
     std::vector<std::string> m_queued;
     std::vector<PlanEntry> m_plan;
-    std::vector<std::string> m_commands;
+    std::vector<Command> m_commands;
     std::string m_mode;
     std::uint64_t m_used = 0;
     std::uint64_t m_size = 0;

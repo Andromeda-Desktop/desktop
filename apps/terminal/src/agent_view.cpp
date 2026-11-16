@@ -777,7 +777,7 @@ namespace term {
                              .paddingH = Tokens::spaceP8 * s,
                              .fill = colorSpecFromRole(ColorRole::Fill1),
                              .radius = Style::scaledRadius(Tokens::radiusR4, s)});
-        chip->addChild(kit.code("/" + command, ColorRole::Label2, 1));
+        chip->addChild(kit.code("/" + command.name, ColorRole::Label2, 1));
         chips->addChild(std::move(chip));
       }
       if (model->modes().size() > 1) {
@@ -1288,9 +1288,9 @@ namespace term {
   }
 
   // The commands that complete the composer text: it is "/" plus a prefix, without a space, and not dismissed by Esc.
-  std::vector<std::string> AgentView::slashMatches() const {
+  std::vector<agent::Session::Command> AgentView::slashMatches() const {
     const agent::Session* model = session();
-    std::vector<std::string> out;
+    std::vector<agent::Session::Command> out;
     if (m_input == nullptr || model == nullptr) {
       return out;
     }
@@ -1299,7 +1299,7 @@ namespace term {
       return out;
     }
     for (const auto& command : model->commands()) {
-      if (command.starts_with(std::string_view(text).substr(1))) {
+      if (command.name.starts_with(std::string_view(text).substr(1))) {
         out.push_back(command);
       }
     }
@@ -1325,7 +1325,7 @@ namespace term {
     const ColorSpec ink = colorSpecFromRole(ColorRole::Label1);
     const ColorSpec tint = colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F);
     for (std::size_t i = 0; i < matches.size(); ++i) {
-      const std::string name = "/" + matches[i];
+      const std::string name = "/" + matches[i].name;
       const ColorSpec bg = i == m_slashSelected ? tint : clear;
       Button::ButtonPalette palette{.normal = {.bg = bg, .border = clear, .label = ink},
                                     .hover = {.bg = i == m_slashSelected ? tint : colorSpecFromRole(ColorRole::Fill1), .border = clear, .label = ink},
@@ -1344,6 +1344,16 @@ namespace term {
       row->label()->setFontFamily(mono());
       row->label()->setUseMarkup(true);
       row->label()->setText("<b><u>" + agent::escapeMarkup(name.substr(0, typed)) + "</u></b>" + agent::escapeMarkup(name.substr(typed)));
+      row->label()->setMinWidth(Tokens::componentAgentSlashName * s);
+      row->label()->setMaxWidth(Tokens::componentAgentSlashName * s);
+      row->label()->setEllipsize(TextEllipsize::End);
+      row->setGap(Tokens::spaceP8 * s);
+      row->addChild(ui::label({.text = matches[i].description,
+                               .fontSize = Tokens::typeCaption.size * s,
+                               .color = colorSpecFromRole(i == m_slashSelected ? ColorRole::Label1 : ColorRole::Label2),
+                               .maxLines = 1,
+                               .ellipsize = TextEllipsize::End,
+                               .flexGrow = 1.0F}));
       m_slash->addChild(std::move(row));
     }
     const bool show = !matches.empty();
@@ -1427,11 +1437,11 @@ namespace term {
         return true;
       }
       if (event.sym == kTab) {
-        m_input->setValue("/" + matches[m_slashSelected] + " ");
+        m_input->setValue("/" + matches[m_slashSelected].name + " ");
         return true;
       }
       if (event.sym == kReturn) {
-        submit("/" + matches[m_slashSelected]);
+        submit("/" + matches[m_slashSelected].name);
         return true;
       }
       if (event.sym == kEscape) {

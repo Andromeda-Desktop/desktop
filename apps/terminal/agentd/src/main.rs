@@ -1,4 +1,5 @@
 mod bridge;
+mod commands;
 mod config;
 mod history;
 mod runner;
