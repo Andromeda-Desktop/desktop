@@ -500,6 +500,7 @@ namespace term {
       }
       return;
     }
+    noteCommandOutput();
     if (m_session.state() == SessionState::Exited && !m_exitReported) {
       m_exitReported = true;
       if (m_host.exited) {
@@ -1000,13 +1001,52 @@ namespace term {
     }).detach();
   }
 
+  void TerminalView::noteCommandOutput() {
+    auto* running = std::get_if<CommandRunning>(&m_command);
+    if (running == nullptr) {
+      return;
+    }
+    running->lastOutput = std::chrono::steady_clock::now();
+    if (running->output == CommandOutput::Quiet) {
+      running->output = CommandOutput::Active;
+      if (m_host.commandOutput) {
+        m_host.commandOutput(CommandOutput::Active);
+      }
+    }
+    if (!m_quietTimer.active()) {
+      armQuiet(std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCommandQuietMs)));
+    }
+  }
+
+  // Output does not move the deadline; the timer re-arms for the rest when output came after it was set.
+  void TerminalView::armQuiet(std::chrono::milliseconds delay) {
+    m_quietTimer.start(delay, [this] {
+      auto* running = std::get_if<CommandRunning>(&m_command);
+      if (running == nullptr) {
+        return;
+      }
+      const auto quiet = std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCommandQuietMs));
+      const auto since = std::chrono::steady_clock::now() - running->lastOutput;
+      if (since < quiet) {
+        armQuiet(std::chrono::ceil<std::chrono::milliseconds>(quiet - since));
+        return;
+      }
+      running->output = CommandOutput::Quiet;
+      if (m_host.commandOutput) {
+        m_host.commandOutput(CommandOutput::Quiet);
+      }
+    });
+  }
+
   void TerminalView::onMark(const CommandMark& mark) {
     switch (mark.kind) {
     case CommandMark::Kind::OutputStart:
-      m_command = CommandRunning{.start = std::chrono::steady_clock::now(), .text = mark.command};
+      m_command = CommandRunning{
+          .start = std::chrono::steady_clock::now(), .text = mark.command, .lastOutput = std::chrono::steady_clock::now()};
       if (m_host.commandStarted) {
         m_host.commandStarted(mark.command);
       }
+      armQuiet(std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCommandQuietMs)));
       break;
     case CommandMark::Kind::CommandEnd: {
       const auto* running = std::get_if<CommandRunning>(&m_command);
@@ -1026,6 +1066,7 @@ namespace term {
         m_host.commandEnded(mark.exitCode);
       }
       m_command = CommandIdle{};
+      m_quietTimer.stop();
       break;
     }
     case CommandMark::Kind::PromptStart: updateCwd(); break;

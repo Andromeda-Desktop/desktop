@@ -10,6 +10,7 @@
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
 #include "time/time_format.h"
+#include "render/animation/animation_manager.h"
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
 #include "ui/controls/status_row.h"
@@ -371,6 +372,7 @@ namespace term {
             [this, id](std::optional<int> exitCode) {
               apply(session_event::CommandEnd{id, exitCode, SessionClock::now()});
             },
+        .commandOutput = [this, id](CommandOutput output) { apply(session_event::Output{id, output}); },
         .cwdChanged =
             [this, id](const std::string& path) {
               const std::string shown = shownPath(path);
@@ -507,6 +509,10 @@ namespace term {
   }
 
   void TerminalWindow::fillSlot(Renderer& renderer) {
+    std::vector<std::pair<std::uint64_t, PaneRect>> from;
+    for (const PaneCard& card : m_cards) {
+      from.emplace_back(card.id, card.rect);
+    }
     m_cards.clear();
     m_dividers.clear();
     m_dragDivider.reset();
@@ -521,8 +527,12 @@ namespace term {
     m_window.setSceneContentBacked(dynamic_cast<TerminalView*>(view) != nullptr);
     // Before the window's frame follows (a rebuild is pending), the shown session fills the slot alone.
     if (const auto panes = m_sessions.visible(); panes.size() > 1 && m_window.contentCards()) {
+      // The old single view counts as a card over the whole slot.
+      if (from.empty() && !m_builtPanes.empty()) {
+        from.emplace_back(m_builtPanes.front(), PaneRect{0.0F, 0.0F, m_contentWidth, m_contentHeight});
+      }
       m_builtPanes = panes;
-      buildSplit(renderer, panes);
+      buildSplit(renderer, panes, from);
     } else {
       m_builtPanes = {*m_sessions.shown()};
       Surface* surface = m_window.surface();
@@ -914,7 +924,9 @@ namespace term {
       return data;
     }
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
-      data.spinning = true;
+      // A quiet program (an editor, a pager, a sleep) is not loading work: no spinner and no frames (rulebook P21).
+      data.spinning = running->output == CommandOutput::Active;
+      data.symbol = data.spinning ? "" : "player-play";
       data.status = withCommand("running", running->command);
     } else if (const auto* finished = std::get_if<CommandFinished>(&session.command)) {
       data.symbol = finished->failed() ? "alert-circle" : "circle-check";
@@ -1103,7 +1115,8 @@ namespace term {
     }
   }
 
-  void TerminalWindow::buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes) {
+  void TerminalWindow::buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes,
+                                  const std::vector<std::pair<std::uint64_t, PaneRect>>& from) {
     const float s = m_window.uiScale();
     const float gap = Tokens::componentWindowCardGap * s;
     const float radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s);
@@ -1217,9 +1230,12 @@ namespace term {
       box->addChild(std::move(holder));
       cell->addChild(std::move(box));
       // Over the card: the views fill their whole rect and would cover a border of the card itself.
-      auto ring = ui::box({.out = &card.ring, .fill = clear, .radius = radius, .width = r.width, .height = r.height,
-                           .participatesInLayout = false});
-      cell->addChild(std::move(ring));
+      cell->addChild(ui::box({.out = &card.stroke, .fill = clear, .border = colorSpecFromRole(ColorRole::Stroke),
+                              .borderWidth = 0.5F * s, .radius = radius, .width = r.width, .height = r.height,
+                              .participatesInLayout = false}));
+      cell->addChild(ui::box({.out = &card.ring, .fill = clear, .border = focusRingColorSpec(),
+                              .borderWidth = Tokens::componentTerminalFocusRing * s, .radius = radius, .width = r.width,
+                              .height = r.height, .opacity = 0.0F, .participatesInLayout = false}));
       cells.push_back(std::move(cell));
     }
     const auto line = [gap](bool rowDirection) {
@@ -1299,7 +1315,44 @@ namespace term {
     placeDividers();
     refreshCards();
     fitCaptions(renderer);
-    paintPaneFocus();
+    paintPaneFocus(false);
+    // Motion: each card from its old place; a new card from the drop preview, else it fades in.
+    std::vector<std::optional<PaneRect>> starts;
+    bool moves = false;
+    for (PaneCard& card : m_cards) {
+      std::optional<PaneRect> start;
+      if (m_dropFrom && m_dropFrom->first == card.id) {
+        start = m_dropFrom->second;
+      } else if (const auto it = std::ranges::find(from, card.id, &std::pair<std::uint64_t, PaneRect>::first); it != from.end()) {
+        start = it->second;
+      }
+      moves = moves || !start || start->x != card.rect.x || start->y != card.rect.y || start->width != card.rect.width ||
+              start->height != card.rect.height;
+      starts.push_back(start);
+    }
+    m_dropFrom.reset();
+    AnimationManager* animations = m_contentSlot->animationManager();
+    if (!moves || from.empty() || animations == nullptr) {
+      return;
+    }
+    const auto step = [this, starts](float t) {
+      std::vector<PaneRect> rects;
+      for (std::size_t i = 0; i < m_cards.size(); ++i) {
+        const PaneRect& to = m_cards[i].rect;
+        const PaneRect a = starts[i].value_or(to);
+        const auto mix = [t](float x, float y) { return x + (y - x) * t; };
+        rects.push_back({mix(a.x, to.x), mix(a.y, to.y), mix(a.width, to.width), mix(a.height, to.height)});
+        if (!starts[i]) {
+          // Content waits for content_gate of the travel, then fades in with it.
+          m_cards[i].cell->setOpacity(std::clamp((t - Tokens::motionContentGate) / (1.0F - Tokens::motionContentGate), 0.0F, 1.0F));
+        }
+      }
+      applyCellRects(rects);
+      m_contentSlot->markLayoutDirty();
+    };
+    step(0.0F);
+    m_layoutAnim = animations->drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove), step,
+                                     [this] { m_window.invalidate(); }, m_cards.front().cell);
   }
 
   std::vector<TerminalWindow::PaneRect> TerminalWindow::paneRects(std::size_t panes) const {
@@ -1394,26 +1447,35 @@ namespace term {
     relayoutSplit(false);
   }
 
+  void TerminalWindow::applyCellRects(const std::vector<PaneRect>& rects) {
+    const float caption = Tokens::componentWindowCaption * m_window.uiScale();
+    for (std::size_t i = 0; i < m_cards.size() && i < rects.size(); ++i) {
+      PaneCard& card = m_cards[i];
+      const PaneRect& r = rects[i];
+      card.cell->setMinWidth(r.width);
+      card.cell->setMaxWidth(r.width);
+      card.cell->setMinHeight(r.height);
+      card.cell->setMaxHeight(r.height);
+      card.cell->setSize(r.width, r.height);
+      for (Box* box : {card.shadow, card.stroke, card.ring}) {
+        box->setSize(r.width, r.height);
+      }
+      card.captionArea->setSize(r.width, caption);
+    }
+  }
+
   void TerminalWindow::relayoutSplit(bool settle) {
     if (m_cards.empty()) {
       return;
     }
     const std::vector<PaneRect> rects = paneRects(m_cards.size());
     const float caption = Tokens::componentWindowCaption * m_window.uiScale();
-    m_window.updateInPlace([this, &rects, caption](Renderer& renderer) {
+    m_window.updateInPlace([this, &rects](Renderer& renderer) {
       for (std::size_t i = 0; i < m_cards.size() && i < rects.size(); ++i) {
-        PaneCard& card = m_cards[i];
-        const PaneRect& r = card.rect = rects[i];
-        card.cell->setMinWidth(r.width);
-        card.cell->setMaxWidth(r.width);
-        card.cell->setMinHeight(r.height);
-        card.cell->setMaxHeight(r.height);
-        card.cell->setSize(r.width, r.height);
-        card.shadow->setSize(r.width, r.height);
-        card.ring->setSize(r.width, r.height);
-        card.captionArea->setSize(r.width, caption);
-        card.textWidth = captionTextWidth(r.width, i == 1);
+        m_cards[i].rect = rects[i];
+        m_cards[i].textWidth = captionTextWidth(rects[i].width, i == 1);
       }
+      applyCellRects(rects);
       fitCaptions(renderer);
       placeDividers();
       m_contentSlot->markLayoutDirty();
@@ -1484,12 +1546,13 @@ namespace term {
       m_window.invalidate();
     }
     if (target && phase == StatusRow::DragPhase::Drop) {
+      m_dropFrom = std::pair{id, target->rect};
       apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
       focusGrid();
     }
   }
 
-  void TerminalWindow::paintPaneFocus() {
+  void TerminalWindow::paintPaneFocus(bool animate) {
     m_ringPane = m_sessions.shown().value_or(0);
     const float s = m_window.uiScale();
     // The find and agent bars are the shown session's: they leave the old card before the new one builds them.
@@ -1504,9 +1567,25 @@ namespace term {
     }
     for (PaneCard& card : m_cards) {
       const bool focused = card.id == m_ringPane;
-      card.ring->setBorder(focused ? focusRingColorSpec() : colorSpecFromRole(ColorRole::Stroke),
-                           (focused ? Tokens::componentTerminalFocusRing : 0.5F) * s);
-      card.shadow->setVisible(focused);
+      AnimationManager* animations = card.ring->animationManager();
+      const float target = focused ? 1.0F : 0.0F;
+      const auto set = [&card](float v) {
+        card.ring->setOpacity(v);
+        card.shadow->setOpacity(v);
+        card.shadow->setVisible(v > 0.0F);
+      };
+      if (animate && animations != nullptr) {
+        card.focusAnim = animations->drive(card.focusAnim, card.ring->opacity(), target,
+                                           Style::spring(focused ? Tokens::springFade : Tokens::springFadeOut),
+                                           [ring = card.ring, shadow = card.shadow](float v) {
+                                             ring->setOpacity(v);
+                                             shadow->setOpacity(v);
+                                             shadow->setVisible(v > 0.0F);
+                                           },
+                                           {}, card.ring);
+      } else {
+        set(target);
+      }
       card.name->setFontWeight(focused ? FontWeight::SemiBold : FontWeight::Normal);
       if (focused) {
         if (auto accessory = m_window.buildHeaderAccessory()) {
@@ -1521,7 +1600,7 @@ namespace term {
       return;
     }
     m_window.updateInPlace([this](Renderer& /*renderer*/) {
-      paintPaneFocus();
+      paintPaneFocus(true);
       m_contentSlot->markLayoutDirty();
     });
   }

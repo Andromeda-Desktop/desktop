@@ -4,6 +4,7 @@
 #include "context_row.h"
 #include "core/timer_manager.h"
 #include "pty_session.h"
+#include "session_list.h"
 #include "settings.h"
 #include "theme_store.h"
 #include "terminal_find.h"
@@ -80,6 +81,8 @@ namespace term {
       // OSC 133: a command started running / ended (exit code when the shell reports one).
       std::function<void(const std::string& command)> commandStarted;
       std::function<void(std::optional<int> exitCode)> commandEnded;
+      // The running command started or stopped printing (CommandOutput: Active / Quiet).
+      std::function<void(CommandOutput output)> commandOutput;
       // The shell reported a new working directory (OSC 7); a local path.
       std::function<void(const std::string& cwd)> cwdChanged;
       // Ctrl+click on a link: an http(s), mailto or file URI.
@@ -161,6 +164,8 @@ namespace term {
     struct CommandRunning {
       std::chrono::steady_clock::time_point start;
       std::string text;
+      std::chrono::steady_clock::time_point lastOutput;
+      CommandOutput output = CommandOutput::Active;
     };
     struct Click {
       std::uint32_t time = 0; // ms, Wayland event time
@@ -175,6 +180,8 @@ namespace term {
     void scheduleRedraw(Redraw redraw);
     void setGridOrigin(float x, float y);
     void onMark(const CommandMark& mark);
+    void noteCommandOutput();
+    void armQuiet(std::chrono::milliseconds delay);
     void onBell();
     void updateCwd();
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
@@ -286,6 +293,7 @@ namespace term {
     using Preview = std::variant<PreviewOff, PreviewArmed, PreviewShown>;
     Preview m_preview;
     Timer m_previewTimer;
+    Timer m_quietTimer; // one shot at the running command's quiet deadline
     std::shared_ptr<void> m_thumbWake;
     Node* m_linkAnchor = nullptr; // the tooltip anchor over the link span
     void setPreview(Preview next);

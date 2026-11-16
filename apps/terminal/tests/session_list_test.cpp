@@ -55,7 +55,7 @@ void checkInvariants(const SessionList& list) {
 SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
   const std::uint64_t other = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
-  switch (std::uniform_int_distribution<int>(0, 11)(rng)) {
+  switch (std::uniform_int_distribution<int>(0, 12)(rng)) {
   case 0: return Open{id, SessionKind::Shell, "s", "~"};
   case 1: return Close{id};
   case 2: return Show{id};
@@ -66,6 +66,7 @@ SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   case 7: return Kind{id, SessionKind::Ssh};
   case 8:
   case 9: return Join{id, other, std::uniform_int_distribution<int>(0, 1)(rng) == 0};
+  case 10: return Output{id, std::uniform_int_distribution<int>(0, 1)(rng) == 0 ? CommandOutput::Active : CommandOutput::Quiet};
   default: return Leave{id};
   }
 }
@@ -108,6 +109,15 @@ int main() {
           const auto& panes = *list.splitOf(e->target);
           const auto at = [&](std::uint64_t id) { return std::ranges::find(panes, id) - panes.begin(); };
           CHECK(at(e->joining) == at(e->target) + (e->before ? -1 : 1));
+        }
+        if (const auto* e = std::get_if<CommandStart>(&event)) {
+          CHECK(std::get<CommandRunning>(list.find(e->id)->command).output == CommandOutput::Active);
+        }
+        if (const auto* e = std::get_if<Output>(&event)) {
+          const auto& was = std::get<CommandRunning>(before.find(e->id)->command);
+          const auto& now = std::get<CommandRunning>(list.find(e->id)->command);
+          CHECK(now.output == e->output && was.output != e->output);
+          CHECK(now.command == was.command && now.start == was.start);
         }
         if (const auto* e = std::get_if<CommandEnd>(&event)) {
           CHECK((list.find(e->id)->seen == Seen::Unseen) == !std::ranges::contains(before.visible(), e->id));

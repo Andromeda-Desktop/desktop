@@ -107,6 +107,15 @@ namespace term {
               }
               return true;
             },
+            [&](const Output& e) {
+              SessionInfo* s = get(e.id);
+              auto* running = s == nullptr ? nullptr : std::get_if<CommandRunning>(&s->command);
+              if (running == nullptr || running->output == e.output) {
+                return false;
+              }
+              running->output = e.output;
+              return true;
+            },
             [&](const Rename& e) {
               SessionInfo* s = get(e.id);
               if (s == nullptr) {

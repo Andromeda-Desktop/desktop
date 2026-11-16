@@ -16,9 +16,12 @@ namespace term {
   struct CommandIdle {
     bool operator==(const CommandIdle&) const = default;
   };
+  // Active while the command prints; Quiet after component.terminal.command_quiet_ms without output.
+  enum class CommandOutput : std::uint8_t { Active, Quiet };
   struct CommandRunning {
     std::string command;
     SessionClock::time_point start;
+    CommandOutput output = CommandOutput::Active;
     bool operator==(const CommandRunning&) const = default;
   };
   // exitCode is empty when the shell reports none; such a command counts as succeeded.
@@ -66,6 +69,10 @@ namespace term {
       std::optional<int> exitCode;
       SessionClock::time_point at;
     };
+    struct Output {
+      std::uint64_t id;
+      CommandOutput output;
+    };
     struct Rename {
       std::uint64_t id;
       std::string name;
@@ -93,7 +100,7 @@ namespace term {
   using SessionListEvent = std::variant<session_event::Open, session_event::Close, session_event::Show,
                                         session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
                                         session_event::Cwd, session_event::Kind, session_event::Join,
-                                        session_event::Leave>;
+                                        session_event::Leave, session_event::Output>;
 
   enum class ApplyResult : std::uint8_t { Applied, Rejected, LastClosed };
 

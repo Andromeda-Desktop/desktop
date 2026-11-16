@@ -171,7 +171,9 @@ namespace term {
       Flex* cell = nullptr;
       InputArea* captionArea = nullptr;
       float textWidth = 0.0F; // caption room for the name and the state
-      Box* ring = nullptr;    // the card's stroke, or the focus ring
+      Box* stroke = nullptr;  // the card's edge, over its view (a view fills its whole rect)
+      Box* ring = nullptr;    // the focus ring over the stroke: opacity 1 on the focused card
+      std::uint32_t focusAnim = 0;
       Box* shadow = nullptr;
       Glyph* symbol = nullptr;
       Spinner* spinner = nullptr;
@@ -209,10 +211,18 @@ namespace term {
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
     Box* m_dropPreview = nullptr;
     std::uint64_t m_ringPane = 0;  // the card that draws the focus ring
-    void buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes);
+    // from: where cards were before this build (a pane's old card, the single view, the drop preview); they move to
+    // their new places on the move spring, a card with no old place fades in.
+    void buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes,
+                    const std::vector<std::pair<std::uint64_t, PaneRect>>& from);
+    // Cells, rings and caption areas at these rects; card.rect (the views' size) stays.
+    void applyCellRects(const std::vector<PaneRect>& rects);
+    std::uint32_t m_layoutAnim = 0;
+    std::optional<std::pair<std::uint64_t, PaneRect>> m_dropFrom; // the joining session's preview rect
     // Ring, shadow, caption weight and the find and agent bars follow the shown session, in place.
     void applyPaneFocus();
-    void paintPaneFocus();
+    // animate: ring and shadow fade (in on fade, out on fade_out); else they jump.
+    void paintPaneFocus(bool animate);
     // Captions follow their sessions; true when a name or state text changed (the captions need a fit).
     bool refreshCards();
     void fitCaptions(Renderer& renderer);
