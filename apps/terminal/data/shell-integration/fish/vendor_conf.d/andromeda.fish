@@ -24,7 +24,7 @@ function __andromeda_branch
     set -l dir $PWD
     while true
         set -l git
-        if test -d "$dir/.git"
+        if test -f "$dir/.git/HEAD"
             set git "$dir/.git"
         else if test -f "$dir/.git"
             read -l line < "$dir/.git"; or return
