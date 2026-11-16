@@ -1,6 +1,7 @@
 #include "pty_session.h"
 
 #include "holder_client.h"
+#include <termios.h>
 #include <algorithm>
 #include <chrono>
 
@@ -56,8 +57,8 @@ winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, st
 
 } // namespace
 
-PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell)
-    : m_wake(std::move(wake)), m_onMark(std::move(onMark)), m_onBell(std::move(onBell)) {}
+PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell, SecretFn onSecret)
+    : m_wake(std::move(wake)), m_onMark(std::move(onMark)), m_onBell(std::move(onBell)), m_onSecret(std::move(onSecret)) {}
 
 PtySession::~PtySession() {
   m_stopping = true;
@@ -449,6 +450,14 @@ void PtySession::parseLoop() {
       m_parsed += len;
       flushOutbound();
       if (!m_renderHeld.load()) signalWake();
+    }
+    // A prompt turns echo off before it prints, so a check per output batch sees it without a timer.
+    if (termios mode{}; m_onSecret && m_master >= 0 && ::tcgetattr(m_master, &mode) == 0) {
+      const bool secret = (mode.c_lflag & ICANON) != 0 && (mode.c_lflag & ECHO) == 0;
+      if (secret != m_secret) {
+        m_secret = secret;
+        m_onSecret(secret);
+      }
     }
     if (const auto* held = std::get_if<HeldSession>(&m_link); held && m_snapshotWanted.exchange(false)) {
       sendSnapshot(*held);

@@ -70,6 +70,7 @@ namespace term {
       std::function<void()> requestFrame;
       std::function<void()> playBell; // the bell setting is Sound
       std::function<void()> bellRang; // any bell setting but Off, once per bell interval
+      std::function<void(bool)> secretInput; // the program reads a password (echo off), or stopped
       // Null until GL is attached: the scene builds before EGL is up.
       std::function<TextureManager*()> textures;
       // Image thumbnails for the link hover preview; null shows text only.

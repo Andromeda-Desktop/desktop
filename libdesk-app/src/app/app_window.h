@@ -135,6 +135,7 @@ public:
   enum class ScenePulse : std::uint8_t { Success, Failure, Bell };
   void pulseScene(ScenePulse pulse);
   void setSceneBusy(bool busy);
+  void setSceneSecret(bool secret); // a password prompt: the scene fades toward the surface
   // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
   void setSceneContentBacked(bool backed);
   // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
@@ -327,7 +328,9 @@ private:
   bool m_activated = false;
   bool m_sceneHeld = false;
   bool m_sceneBusy = false;
+  bool m_sceneSecret = false;
   float m_sceneBusyLevel = 0.0F;
+  float m_sceneSecretLevel = 0.0F;
   std::array<std::optional<std::chrono::steady_clock::time_point>, 3> m_scenePulses{}; // by ScenePulse
   bool m_sceneTicking = false; // a scene step waits on its present or the step timer
   Timer m_sceneTimer;

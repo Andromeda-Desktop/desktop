@@ -1118,6 +1118,7 @@ void RenderContext::drawNodeSelf(
                                                .text = rgb(scene->text()),
                                                .accent = rgb(scene->accent()),
                                                .signals = scene->signals(),
+                                               .secretDim = scene->secretDim(),
                                                .transform = worldTransform,
                                                .opacity = effectiveOpacity});
     break;

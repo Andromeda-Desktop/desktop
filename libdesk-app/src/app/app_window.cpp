@@ -717,6 +717,13 @@ void AppWindow::setSceneBusy(bool busy) {
   }
 }
 
+void AppWindow::setSceneSecret(bool secret) {
+  if (secret != m_sceneSecret) {
+    m_sceneSecret = secret;
+    noteSceneActivity();
+  }
+}
+
 void AppWindow::wakeScene() {
   if (m_sceneNode != nullptr && m_activated && !m_sceneHeld && !m_sceneTicking) {
     m_sceneTicking = true;
@@ -736,6 +743,7 @@ void AppWindow::sceneTick() {
   m_sceneNode->setTime(m_sceneSeconds);
   const float busyStep = elapsed * 1000.0F / static_cast<float>(Tokens::componentWindowSceneBusyMs);
   m_sceneBusyLevel = std::clamp(m_sceneBusyLevel + (m_sceneBusy ? busyStep : -busyStep), 0.0F, 1.0F);
+  m_sceneSecretLevel = std::clamp(m_sceneSecretLevel + (m_sceneSecret ? busyStep : -busyStep), 0.0F, 1.0F);
   const auto pulse = [&](ScenePulse kind, int durationMs) {
     auto& at = m_scenePulses[static_cast<std::size_t>(kind)];
     const float t = at ? std::chrono::duration<float, std::milli>(now - *at).count() / static_cast<float>(durationMs) : 1.0F;
@@ -749,7 +757,8 @@ void AppWindow::sceneTick() {
   m_sceneNode->setSignals({.busy = m_sceneBusyLevel,
                            .success = pulse(ScenePulse::Success, Tokens::componentWindowScenePulseMs),
                            .failure = pulse(ScenePulse::Failure, Tokens::componentWindowSceneFailurePulseMs),
-                           .bell = pulse(ScenePulse::Bell, Tokens::componentWindowScenePulseMs)});
+                           .bell = pulse(ScenePulse::Bell, Tokens::componentWindowScenePulseMs),
+                           .secret = m_sceneSecretLevel});
   m_sceneStepped = now;
   // The timer paces the scene, not frame ticks: a redraw re-arms a frame tick, which would step it at the output rate.
   // The next step waits until this one is presented, so a hidden window stops stepping.
@@ -803,6 +812,7 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
       }
     } else {
       m_sceneNode = static_cast<ShaderSceneNode*>(m_sceneClip->addChild(std::make_unique<ShaderSceneNode>()));
+      m_sceneNode->setSecretDim(Tokens::componentWindowSceneSecretDim);
     }
     m_sceneLayer = std::make_unique<Subsurface>(
         m_loop.wayland(), SubsurfaceConfig{.width = w, .height = h, .x = static_cast<std::int32_t>(margin),

@@ -47,8 +47,10 @@ public:
   using MarkFn = std::function<void(const CommandMark&)>;
   // IO thread, under the terminal lock; once until bellHandled(), so a burst of BEL rings once.
   using BellFn = std::function<void()>;
+  // IO thread, when the program starts or stops reading a secret: canonical input with echo off (a password prompt).
+  using SecretFn = std::function<void(bool)>;
 
-  PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {});
+  PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {}, SecretFn onSecret = {});
   void bellHandled() { m_bellPending = false; } // UI thread: the next BEL calls onBell again
   ~PtySession();
   PtySession(const PtySession&) = delete;
@@ -117,6 +119,8 @@ private:
   WakeFn m_wake;
   MarkFn m_onMark;
   BellFn m_onBell;
+  SecretFn m_onSecret;
+  bool m_secret = false; // IO thread
   std::atomic<bool> m_bellPending{false};
   GhosttyTerminal m_terminal = nullptr;
   std::mutex m_termMutex;

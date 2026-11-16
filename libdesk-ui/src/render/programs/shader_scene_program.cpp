@@ -40,13 +40,17 @@ uniform float scene_busy;
 uniform float scene_success;
 uniform float scene_failure;
 uniform float scene_bell;
+uniform float scene_secret;
+uniform float u_secret_dim;
 #line 1
 )";
 
   constexpr const char* kSuffix = R"(
 void main() {
   // A scene is an opaque window background: the window declares it opaque, so the compositor skips what lies below.
-  gl_FragColor = vec4(clamp(scene(v_uv).rgb, 0.0, 1.0), 1.0) * u_opacity;
+  // At a password prompt the scene fades toward the surface, whatever the theme draws.
+  vec3 c = mix(clamp(scene(v_uv).rgb, 0.0, 1.0), scene_surface, u_secret_dim * scene_secret);
+  gl_FragColor = vec4(c, 1.0) * u_opacity;
 }
 )";
 
@@ -116,6 +120,8 @@ ShaderSceneProgram::Entry& ShaderSceneProgram::entry(std::string_view source) {
   e.success = glGetUniformLocation(id, "scene_success");
   e.failure = glGetUniformLocation(id, "scene_failure");
   e.bell = glGetUniformLocation(id, "scene_bell");
+  e.secret = glGetUniformLocation(id, "scene_secret");
+  e.secretDim = glGetUniformLocation(id, "u_secret_dim");
   return e;
 }
 
@@ -153,6 +159,8 @@ void ShaderSceneProgram::draw(const ShaderSceneDraw& s) {
   glUniform1f(e.success, s.signals.success);
   glUniform1f(e.failure, s.signals.failure);
   glUniform1f(e.bell, s.signals.bell);
+  glUniform1f(e.secret, s.signals.secret);
+  glUniform1f(e.secretDim, s.secretDim);
   drawQuad(e.position, s.width, s.height);
 }
 

@@ -5,12 +5,14 @@
 #include <array>
 #include <string_view>
 
-// What the app reports to a scene, each 0..1: busy rises while a command runs; the others pulse once (0 -> 1 -> 0).
+// What the app reports to a scene, each 0..1: busy rises while a command runs, secret while a password is typed;
+// the others pulse once (0 -> 1 -> 0).
 struct SceneSignals {
   float busy = 0.0F;
   float success = 0.0F;
   float failure = 0.0F;
   float bell = 0.0F;
+  float secret = 0.0F;
   bool operator==(const SceneSignals&) const = default;
 };
 
@@ -28,6 +30,7 @@ struct ShaderSceneDraw {
   std::array<float, 3> text{};
   std::array<float, 3> accent{};
   SceneSignals signals;
+  float secretDim = 0.0F; // how far a full secret fades the scene toward the surface
   Mat3 transform = Mat3::identity();
   float opacity = 1.0F;
 };

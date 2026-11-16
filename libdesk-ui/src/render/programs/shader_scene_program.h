@@ -33,6 +33,8 @@ private:
     GLint success = -1;
     GLint failure = -1;
     GLint bell = -1;
+    GLint secret = -1;
+    GLint secretDim = -1;
   };
 
   Entry& entry(std::string_view source);

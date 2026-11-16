@@ -358,6 +358,15 @@ namespace term {
                 m_window.pulseScene(AppWindow::ScenePulse::Bell);
               }
             },
+        .secretInput =
+            [this, id](bool secret) {
+              if (secret) {
+                m_secretSessions.insert(id);
+              } else {
+                m_secretSessions.erase(id);
+              }
+              updateSceneState();
+            },
         .textures = [this]() -> TextureManager* {
           RenderContext& render = m_loop.renderContext();
           return render.glReady() ? &render.textureManager() : nullptr;
@@ -442,12 +451,9 @@ namespace term {
     return view != nullptr ? view->terminal() : nullptr;
   }
 
-  void TerminalWindow::updateSceneSignals(const SessionListEvent& event) {
+  void TerminalWindow::updateSceneState() {
     const std::vector<std::uint64_t> visible = m_sessions.visible();
-    if (const auto* end = std::get_if<session_event::CommandEnd>(&event);
-        end != nullptr && end->exitCode && std::ranges::contains(visible, end->id)) {
-      m_window.pulseScene(*end->exitCode == 0 ? AppWindow::ScenePulse::Success : AppWindow::ScenePulse::Failure);
-    }
+    m_window.setSceneSecret(std::ranges::any_of(visible, [this](std::uint64_t id) { return m_secretSessions.contains(id); }));
     m_window.setSceneBusy(std::ranges::any_of(visible, [this](std::uint64_t id) {
       const SessionInfo* info = m_sessions.find(id);
       return info != nullptr && std::holds_alternative<CommandRunning>(info->command);
@@ -461,9 +467,16 @@ namespace term {
     if (result == ApplyResult::Rejected) {
       return;
     }
+    if (const auto* end = std::get_if<session_event::CommandEnd>(&event);
+        end != nullptr && end->exitCode && std::ranges::contains(m_sessions.visible(), end->id)) {
+      m_window.pulseScene(*end->exitCode == 0 ? AppWindow::ScenePulse::Success : AppWindow::ScenePulse::Failure);
+    }
+    if (const auto* close = std::get_if<session_event::Close>(&event)) {
+      m_secretSessions.erase(close->id);
+    }
     // Output is the frequent event and changes neither the visible panes nor their commands.
     if (!std::holds_alternative<session_event::Output>(event)) {
-      updateSceneSignals(event);
+      updateSceneState();
     }
     // The sidebar's groups follow the splits: a rebuild regroups the rows (rare: a join, a leave, a member closed).
     const bool regroup = m_sessions.splits() != splitsBefore;

@@ -641,7 +641,8 @@ scene_idle_ms = 10000  # a theme scene stops moving this long after the last inp
 scene_resolution = 0.5  # a theme scene renders at this fraction of the output resolution
 scene_pulse_ms = 1200  # a scene's success and bell pulse rise and fall in this time
 scene_failure_pulse_ms = 2400  # a failure is one slow pulse (D-SPEC comfort)
-scene_busy_ms = 400  # scene_busy eases between 0 and 1 in this time
+scene_busy_ms = 400  # scene_busy and scene_secret ease between 0 and 1 in this time
+scene_secret_dim = 0.75  # at a password prompt the scene fades this far toward the theme surface
 
 [component.launcher]  # 9.14
 width = 680.0

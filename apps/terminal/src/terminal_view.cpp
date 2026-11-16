@@ -138,6 +138,12 @@ namespace term {
               onBell();
             }
           });
+        }, [this, alive = std::weak_ptr<bool>(m_alive)](bool secret) {
+          DeferredCall::callLater([this, alive, secret] {
+            if (!alive.expired() && m_host.secretInput) {
+              m_host.secretInput(secret);
+            }
+          });
         }) {
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);

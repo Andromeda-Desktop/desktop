@@ -40,6 +40,14 @@ public:
 
   [[nodiscard]] const std::string& source() const noexcept { return m_source; }
   [[nodiscard]] const SceneSignals& signals() const noexcept { return m_signals; }
+  // How far a full secret fades the scene toward the surface (the wrapper applies it, not the theme).
+  void setSecretDim(float dim) {
+    if (dim != m_secretDim) {
+      m_secretDim = dim;
+      markPaintDirty();
+    }
+  }
+  [[nodiscard]] float secretDim() const noexcept { return m_secretDim; }
   [[nodiscard]] float time() const noexcept { return m_time; }
   [[nodiscard]] const Color& surface() const noexcept { return m_surface; }
   [[nodiscard]] const Color& text() const noexcept { return m_text; }
@@ -50,6 +58,7 @@ private:
   std::string m_source;
   float m_time = 0.0F;
   SceneSignals m_signals;
+  float m_secretDim = 0.0F;
   Color m_surface;
   Color m_text;
   Color m_accent;
