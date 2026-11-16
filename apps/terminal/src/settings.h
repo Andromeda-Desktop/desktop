@@ -22,7 +22,7 @@ namespace term {
   struct Settings {
     std::string theme = "system"; // a built-in name or a theme package id
     CursorShape cursor = CursorShape::Block; // until the program sets its own (DECSCUSR)
-    bool cursorBlink = true;                 // until the program sets its own (DECSCUSR, mode 12)
+    bool cursorBlink = false;                // until the program sets its own (DECSCUSR, mode 12)
     WindowMaterial material = WindowMaterial::Solid;
     std::string font;                        // empty: the type token's mono family
     int fontSize = 13;                       // px at ui_scale 1
