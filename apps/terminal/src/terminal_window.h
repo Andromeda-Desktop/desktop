@@ -114,6 +114,8 @@ namespace term {
     void requestFrame();
     void openUri(const std::string& uri);
     void apply(const SessionListEvent& event);
+    [[nodiscard]] Settings viewSettings() const; // the setting with this window's zoom
+    void applyViewSettings();
     void updateSceneState(); // scene busy, secret and remote follow the visible panes
     std::unordered_set<std::uint64_t> m_secretSessions; // sessions at a password prompt
     void toggleSecureEntry();
@@ -147,6 +149,7 @@ namespace term {
     AgentHosts m_agents;
     ThumbnailService& m_thumbnails;
     SettingsStore& m_settings;
+    int m_zoom = 0; // text size steps (px at ui_scale 1) added to the setting in this window
     Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
     std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> m_newWindow;

@@ -118,11 +118,7 @@ namespace term {
     m_settingsChanged = m_settings.changed().connect([this] {
       m_window.setMaterial(m_settings.settings().material == WindowMaterial::Glass ? AppWindow::Material::Glass
                                                                                   : AppWindow::Material::Solid);
-      for (Session& session : m_views) {
-        if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
-          terminal->applySettings(m_settings.settings(), resolveTheme(m_settings.settings().theme, m_settings.themes()));
-        }
-      }
+      applyViewSettings();
       if (ContentView* view = shownView(); view != nullptr) {
         m_window.setMainFill(view->surface());
       }
@@ -480,7 +476,7 @@ namespace term {
               }
             },
         .textBacking = [this] { return m_window.sceneTextBacking(); },
-        .settings = m_settings.settings(),
+        .settings = viewSettings(),
         .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())};
   }
 
@@ -488,6 +484,8 @@ namespace term {
     if (TerminalView* terminal = moved.view->terminal(); terminal != nullptr) {
       terminal->setHost(terminalHost(id));
       terminal->setSecureInput(m_keysSecure, m_window.input());
+      const Settings settings = viewSettings();
+      terminal->applySettings(settings, resolveTheme(settings.theme, m_settings.themes()));
     } else if (AgentView* agent = moved.view->agent(); agent != nullptr) {
       agent->setOpenUri([this](const std::string& uri) { openUri(uri); });
     }
@@ -806,6 +804,21 @@ namespace term {
     });
   }
 
+  Settings TerminalWindow::viewSettings() const {
+    Settings settings = m_settings.settings();
+    settings.fontSize = std::clamp(settings.fontSize + m_zoom, SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
+    return settings;
+  }
+
+  void TerminalWindow::applyViewSettings() {
+    const Settings settings = viewSettings();
+    for (Session& session : m_views) {
+      if (auto* terminal = dynamic_cast<TerminalView*>(session.view.get())) {
+        terminal->applySettings(settings, resolveTheme(settings.theme, m_settings.themes()));
+      }
+    }
+  }
+
   bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
     const auto action = event.pressed ? m_settings.settings().keys.match(event.sym, event.unshifted, event.modifiers)
                                       : std::nullopt;
@@ -822,10 +835,11 @@ namespace term {
         apply(session_event::Show{order[index]});
       }
     };
-    const auto fontSize = [this](int size) {
-      Settings next = m_settings.settings();
-      next.fontSize = std::clamp(size, SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
-      m_settings.update(next);
+    // Zoom changes this window's text size only; the setting stays the size of new windows.
+    const auto zoom = [this](int steps) {
+      const int base = m_settings.settings().fontSize;
+      m_zoom = std::clamp(steps, SettingsLimits::kFontSizeMin - base, SettingsLimits::kFontSizeMax - base);
+      applyViewSettings();
     };
     switch (*action) {
       case Action::NextRecent:
@@ -841,9 +855,9 @@ namespace term {
         return true;
       case Action::PreviousSession: step(false); return true;
       case Action::NextSession: step(true); return true;
-      case Action::FontBigger: fontSize(m_settings.settings().fontSize + 1); return true;
-      case Action::FontSmaller: fontSize(m_settings.settings().fontSize - 1); return true;
-      case Action::FontReset: fontSize(Settings{}.fontSize); return true;
+      case Action::FontBigger: zoom(m_zoom + 1); return true;
+      case Action::FontSmaller: zoom(m_zoom - 1); return true;
+      case Action::FontReset: zoom(0); return true;
       case Action::NewSession: openSession(NewShell{}); return true;
       case Action::SecureEntry: toggleSecureEntry(); return true;
       case Action::ShowScrollback:
