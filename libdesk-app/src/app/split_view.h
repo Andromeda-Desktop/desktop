@@ -136,6 +136,9 @@ private:
   void relayout(bool settle);
   void paintFocus(bool animate);
   // Runs `start` with the slot's animation manager: now, or once this fill is in the scene.
+  // Leaving the cards: `content` grows from `start` (its old card) to the whole slot; the other cards fade out.
+  void revealFrom(Renderer& renderer, std::unique_ptr<Node> content, const PaneRect& start,
+                  const std::vector<std::pair<std::uint64_t, PaneRect>>& from);
   void whenAnimating(std::function<void(AnimationManager&)> start);
 
   AppWindow& m_window;

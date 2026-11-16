@@ -72,7 +72,13 @@ void SplitView::fill(Renderer& renderer, Node* slot, float width, float height, 
     setFocused(focused, false);
   } else {
     m_built = {focused};
-    m_slot->addChild(m_callbacks.content(renderer, focused, width, height));
+    auto content = m_callbacks.content(renderer, focused, width, height);
+    const auto old = std::ranges::find(from, focused, &std::pair<std::uint64_t, PaneRect>::first);
+    if (from.size() > 1 && old != from.end()) {
+      revealFrom(renderer, std::move(content), old->second, from);
+    } else {
+      m_slot->addChild(std::move(content));
+    }
   }
   const float s = m_window.uiScale();
   m_slot->addChild(ui::box({.out = &m_dropPreview,
@@ -307,6 +313,72 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
   whenAnimating([this, step](AnimationManager& animations) {
     m_layoutAnim = animations.drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove), step,
                                     [this] { m_window.invalidate(); }, m_cards.front().cell, 0.0F, Unit::Progress, true);
+  });
+}
+
+void SplitView::revealFrom(Renderer& renderer, std::unique_ptr<Node> content, const PaneRect& start,
+                           const std::vector<std::pair<std::uint64_t, PaneRect>>& from) {
+  const float s = m_window.uiScale();
+  const float radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s);
+  // The cards that leave fade out where they were, under the remaining one.
+  for (const auto& [id, r] : from) {
+    // A closed card has its own plate (fill).
+    const bool closed = m_closedCard && m_closedCard->rect.x == r.x && m_closedCard->rect.y == r.y;
+    if (id == m_built.front() || closed) {
+      continue;
+    }
+    Box* plate = nullptr;
+    auto box = ui::box({.out = &plate, .fill = m_callbacks.surface(id), .border = colorSpecFromRole(ColorRole::Stroke),
+                        .borderWidth = 0.5F * s, .radius = radius, .width = r.width, .height = r.height,
+                        .participatesInLayout = false});
+    box->setPosition(r.x, r.y);
+    m_slot->addChild(std::move(box));
+    whenAnimating([this, plate](AnimationManager& animations) {
+      animations.drive(0, 1.0F, 0.0F, Style::spring(Tokens::springFadeOut), [plate](float v) { plate->setOpacity(v); },
+                       [this, plate] {
+                         m_slot->removeChild(plate);
+                         m_window.invalidate();
+                       },
+                       plate);
+    });
+  }
+  // The remaining content lays out at its final size; a clip grows from its old card to the whole slot over it.
+  content->setSize(m_width, m_height);
+  content->layout(renderer);
+  auto window = std::make_unique<Node>();
+  window->setParticipatesInLayout(false);
+  window->setClipChildren(true);
+  Node* clip = window.get();
+  Node* inner = clip->addChild(std::move(content));
+  m_slot->addChild(std::move(window));
+  const auto step = [clip, inner, start, w = m_width, h = m_height](float t) {
+    const auto mix = [t](float a, float b) { return a + (b - a) * t; };
+    const float x = mix(start.x, 0.0F);
+    const float y = mix(start.y, 0.0F);
+    clip->setPosition(x, y);
+    clip->setSize(mix(start.width, w), mix(start.height, h));
+    inner->setPosition(-x, -y);
+  };
+  step(0.0F);
+  // At rest the content joins the slot's layout again, so a later resize sizes it.
+  const auto settle = [this, clip, inner] {
+    if (m_slot == nullptr || clip->parent() != m_slot) {
+      return;
+    }
+    std::unique_ptr<Node> owned = clip->removeChild(inner);
+    owned->setPosition(0.0F, 0.0F);
+    m_slot->insertChildAt(0, std::move(owned));
+    m_slot->removeChild(clip);
+    m_slot->markLayoutDirty();
+    m_window.invalidate();
+  };
+  whenAnimating([this, step, settle, clip](AnimationManager& animations) {
+    m_layoutAnim = animations.drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove),
+                                    [this, step](float t) {
+                                      step(t);
+                                      m_window.invalidate();
+                                    },
+                                    settle, clip, 0.0F, Unit::Progress, true);
   });
 }
 
