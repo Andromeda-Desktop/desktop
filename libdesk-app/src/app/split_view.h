@@ -92,6 +92,8 @@ public:
   void showDropPreview(const std::optional<PaneRect>& rect);
   // The next fill puts `join.joining` on `join.edge` of `join.target`; from: its card starts at this rect.
   void pendJoin(const ui::SplitTrees::Join& join, std::optional<PaneRect> from = std::nullopt);
+  // Two panes of one split trade tiles; the caller applies the same swap to its pane order.
+  void swapPanes(std::uint64_t a, std::uint64_t b) { m_trees.swap(a, b); }
 
 private:
   struct Card {

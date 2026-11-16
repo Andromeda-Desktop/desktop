@@ -174,6 +174,15 @@ namespace term {
               removeFromSplit(e.id);
               return true;
             },
+            [&](const Swap& e) {
+              const auto* split = splitOf(e.a);
+              if (e.a == e.b || split == nullptr || split != splitOf(e.b)) {
+                return false;
+              }
+              auto& panes = *const_cast<std::vector<std::uint64_t>*>(split);
+              std::iter_swap(std::ranges::find(panes, e.a), std::ranges::find(panes, e.b));
+              return true;
+            },
         },
         event);
     if (!ok) {

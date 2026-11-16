@@ -102,12 +102,18 @@ namespace term {
     struct Leave {
       std::uint64_t id;
     };
+    // Two panes of one split trade places in pane order.
+    struct Swap {
+      std::uint64_t a;
+      std::uint64_t b;
+    };
   } // namespace session_event
 
   using SessionListEvent = std::variant<session_event::Open, session_event::Close, session_event::Show,
                                         session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
                                         session_event::Cwd, session_event::Kind, session_event::Join,
-                                        session_event::Leave, session_event::Output, session_event::Title>;
+                                        session_event::Leave, session_event::Swap, session_event::Output,
+                                        session_event::Title>;
 
   enum class ApplyResult : std::uint8_t { Applied, Rejected, LastClosed };
 

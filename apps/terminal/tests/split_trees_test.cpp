@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <random>
+#include <optional>
 #include <set>
 
 using namespace term;
@@ -22,12 +23,13 @@ int step = 0;
 SessionListEvent randomEvent(std::mt19937& rng) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
   const std::uint64_t other = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
-  switch (std::uniform_int_distribution<int>(0, 6)(rng)) {
+  switch (std::uniform_int_distribution<int>(0, 7)(rng)) {
   case 0: return Open{id, SessionKind::Shell, "s", "~"};
   case 1: return Close{id};
   case 2: return Show{id};
   case 3:
   case 4: return Join{id, other, std::uniform_int_distribution<int>(0, 1)(rng) == 0};
+  case 5: return Swap{id, other};
   default: return Leave{id};
   }
 }
@@ -71,10 +73,23 @@ int main() {
       if (join != nullptr && list.shown()) {
         trees.pendJoin({.target = join->target, .joining = join->joining, .edge = dropped ? edge : 0U});
       }
-      const bool accepted = list.apply(event) != ApplyResult::Rejected;
-      const auto split = list.visible();
       const SplitTrees::Room room{.area = {.width = 1200, .height = 800}, .gap = 8, .minWidth = 200.0F};
-      DwindleTree* own = trees.sync([&list](std::uint64_t id) { return list.splitOf(id); }, split, room);
+      const auto splitOf = [&list](std::uint64_t id) { return list.splitOf(id); };
+      const auto* swap = std::get_if<Swap>(&event);
+      // Where both panes of a swap sit before it, when the window shows their split.
+      std::optional<std::pair<andromeda::tiling::TileBox, andromeda::tiling::TileBox>> before;
+      if (DwindleTree* shown = swap != nullptr ? trees.sync(splitOf, list.visible(), room) : nullptr;
+          shown != nullptr && shown->find(swap->a) != nullptr && shown->find(swap->b) != nullptr && swap->a != swap->b) {
+        const auto tiles = shown->arrange(room.area, room.gap, true);
+        const auto at = [&tiles](std::uint64_t key) { return std::ranges::find(tiles, key, &Tile::key)->box; };
+        before = std::pair{at(swap->a), at(swap->b)};
+      }
+      const bool accepted = list.apply(event) != ApplyResult::Rejected;
+      if (swap != nullptr && accepted) {
+        trees.swap(swap->a, swap->b);
+      }
+      const auto split = list.visible();
+      DwindleTree* own = trees.sync(splitOf, split, room);
       checkInvariants(list, trees, own, split);
       if (own == nullptr) {
         continue;
@@ -102,6 +117,15 @@ int main() {
           CHECK(j.x == t.x && j.y > t.y);
         }
       }
+      // A swap of two shown panes trades their tiles exactly.
+      if (before && accepted) {
+        const auto at = [&tiles](std::uint64_t key) { return std::ranges::find(tiles, key, &Tile::key)->box; };
+        const auto same = [](const andromeda::tiling::TileBox& x, const andromeda::tiling::TileBox& y) {
+          return x.x == y.x && x.y == y.y && x.width == y.width && x.height == y.height;
+        };
+        CHECK(same(at(swap->a), before->second) && same(at(swap->b), before->first));
+      }
+      CHECK(!(before && !accepted));
       // A dropped session lands on the edge of its target it was dropped on.
       if (dropped && accepted) {
         const auto at = [&tiles](std::uint64_t key) { return std::ranges::find(tiles, key, &Tile::key)->box; };

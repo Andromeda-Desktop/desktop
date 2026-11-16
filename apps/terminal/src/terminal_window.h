@@ -297,6 +297,10 @@ namespace term {
     bool refreshCards();
     // Focuses the nearest pane in direction (dx, dy); false without a split.
     bool focusPane(float dx, float dy);
+    // The shown pane trades places with its neighbour that way; false without a split (the keys go to the program).
+    bool movePane(float dx, float dy);
+    // A new shell joins the shown session on `edge` (a TileEdge); nothing when its split is full.
+    void splitNew(std::uint32_t edge);
     bool m_active = false;
     Surface* m_tickSurface = nullptr;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

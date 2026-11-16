@@ -31,6 +31,8 @@ namespace ui {
     };
     // The next sync puts `joining` on `edge` of `target`.
     void pendJoin(const Join& join) { m_pending = join; }
+    // `a` and `b` trade tiles in the tree that holds both; the layout keeps its shape.
+    void swap(std::uint64_t a, std::uint64_t b);
     // Where a split lays out: its area (px), the gap between panes and the narrowest pane.
     struct Room {
       andromeda::tiling::TileBox area;

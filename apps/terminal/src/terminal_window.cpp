@@ -695,7 +695,8 @@ namespace term {
     if (std::holds_alternative<session_event::Open>(event) || std::holds_alternative<session_event::Close>(event) ||
         std::holds_alternative<session_event::Show>(event) || std::holds_alternative<session_event::Rename>(event) ||
         std::holds_alternative<session_event::Cwd>(event) || std::holds_alternative<session_event::Kind>(event) ||
-        std::holds_alternative<session_event::Join>(event) || std::holds_alternative<session_event::Leave>(event)) {
+        std::holds_alternative<session_event::Join>(event) || std::holds_alternative<session_event::Leave>(event) ||
+        std::holds_alternative<session_event::Swap>(event)) {
       m_sessionsChanged(save);
     }
     if (result == ApplyResult::LastClosed) {
@@ -893,6 +894,12 @@ namespace term {
       case Action::FocusRight: return focusPane(1.0F, 0.0F);
       case Action::FocusUp: return focusPane(0.0F, -1.0F);
       case Action::FocusDown: return focusPane(0.0F, 1.0F);
+      case Action::MovePaneLeft: return movePane(-1.0F, 0.0F);
+      case Action::MovePaneRight: return movePane(1.0F, 0.0F);
+      case Action::MovePaneUp: return movePane(0.0F, -1.0F);
+      case Action::MovePaneDown: return movePane(0.0F, 1.0F);
+      case Action::SplitRight: splitNew(andromeda::tiling::EdgeRight); return true;
+      case Action::SplitDown: splitNew(andromeda::tiling::EdgeBottom); return true;
       default: return false; // the grid's own actions (TerminalView::key)
     }
   }
@@ -2019,6 +2026,29 @@ namespace term {
       focusGrid();
     }
     return true;
+  }
+
+  bool TerminalWindow::movePane(float dx, float dy) {
+    const auto shown = m_sessions.shown();
+    if (!m_split.split() || !shown) {
+      return false;
+    }
+    if (const auto other = m_split.paneInDirection(dx, dy)) {
+      m_split.swapPanes(*shown, *other);
+      apply(session_event::Swap{*shown, *other});
+    }
+    return true;
+  }
+
+  void TerminalWindow::splitNew(std::uint32_t edge) {
+    const auto target = m_sessions.shown();
+    if (const auto* split = target ? m_sessions.splitOf(*target) : nullptr; !target || (split != nullptr && split->size() >= kMaxPanes)) {
+      return;
+    }
+    const std::uint64_t id = openSession(NewShell{});
+    m_split.pendJoin({.target = *target, .joining = id, .edge = edge});
+    apply(session_event::Join{.target = *target, .joining = id, .before = edge == andromeda::tiling::EdgeLeft || edge == andromeda::tiling::EdgeTop});
+    focusGrid();
   }
 
   void TerminalWindow::requestFrame() {

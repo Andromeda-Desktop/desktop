@@ -84,6 +84,17 @@ namespace ui {
   }
 
 
+  void SplitTrees::swap(std::uint64_t a, std::uint64_t b) {
+    for (andromeda::tiling::DwindleTree& tree : m_trees) {
+      auto* first = tree.find(a);
+      auto* second = tree.find(b);
+      if (first != nullptr && second != nullptr) {
+        std::swap(first->key, second->key);
+        return;
+      }
+    }
+  }
+
   std::vector<PaneRect> arrangePanes(andromeda::tiling::DwindleTree& tree, const std::vector<std::uint64_t>& panes,
                                      const andromeda::tiling::TileBox& area, int gap) {
     std::vector<PaneRect> out(panes.size());
