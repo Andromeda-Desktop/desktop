@@ -623,6 +623,14 @@ void AppWindow::close() {
 
 void AppWindow::onClosedByCompositor() {
   // Out of the surface's own callback: destroying it inside would free the listener that runs.
+  DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+    if (!alive.expired() && closeAllowed()) {
+      finishClose();
+    }
+  });
+}
+
+void AppWindow::finishClose() {
   // Two windows can close in one dispatch; the first reap may destroy this one before its lambda runs.
   DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
     if (alive.expired()) {

@@ -55,7 +55,7 @@ namespace viewer {
     void toggleSidebar();
     void step(int direction);
     void undo();
-    void save();
+    void save() { saveThen({}); }
     void setTool(Tool tool);
 
   private:
@@ -152,6 +152,9 @@ namespace viewer {
     void placeSignature(std::size_t page, float x, float y);
     [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
     void updateTitle();
+    void askSaveBeforeClose();
+    // `then` runs once the file on disk holds every edit.
+    void saveThen(std::function<void()> then);
     [[nodiscard]] std::unique_ptr<Node> buildSignaturePad();
 
     AppLoop& m_loop;

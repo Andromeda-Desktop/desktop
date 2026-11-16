@@ -17,6 +17,8 @@ unsafe extern "C" {
 pub const ANNOT_HIGHLIGHT: u32 = 1;
 pub const ANNOT_NOTE: u32 = 2;
 pub const ANNOT_INK: u32 = 3;
+/// Ink stroke width in points; the viewer draws its live stroke (kInkWidth) at the same width.
+const INK_WIDTH: f64 = 2.0;
 pub const ANNOT_STAMP: u32 = 4;
 
 /// Body size cap: a signature image of 2048 x 1024 BGRA plus headers.
@@ -221,6 +223,7 @@ impl Pdf {
                     let ptr = ffi::poppler_annot_ink_new(doc, &raw mut bounds);
                     if !ptr.is_null() {
                         ffi::poppler_annot_ink_set_ink_list(ptr.cast(), paths.as_mut_ptr(), paths.len());
+                        ffi::poppler_annot_set_border_width(ptr, INK_WIDTH);
                     }
                     for p in paths {
                         ffi::poppler_path_free(p);

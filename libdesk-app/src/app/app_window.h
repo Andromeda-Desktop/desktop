@@ -171,6 +171,12 @@ public:
   void setStateKey(std::string stateKey);
   [[nodiscard]] bool hasSheet() const noexcept { return static_cast<bool>(m_sheetBuilder); }
   void setClosedCallback(std::function<void()> callback) { m_onClosed = std::move(callback); }
+  // Runs before a close from the header, Ctrl+W or the compositor; false keeps the window open, and the app later
+  // closes it with finishClose (for example after it asks to save).
+  void setCloseGuard(std::function<bool()> guard) { m_closeGuard = std::move(guard); }
+  [[nodiscard]] bool closeAllowed() const { return !m_closeGuard || m_closeGuard(); }
+  // Closes the window past its guard and tells the app, as a compositor close does.
+  void finishClose();
   // Runs when the compositor activates or deactivates the window (xdg_toplevel activated state).
   void setActiveCallback(std::function<void(bool active)> callback) { m_onActive = std::move(callback); }
   void setTitle(std::string title);
@@ -293,6 +299,7 @@ private:
   float m_sheetMix = 1.0F; // open motion: card opacity, scale 0.96 -> 1 (M31)
   std::uint32_t m_sheetAnim = 0;
   std::function<void()> m_onClosed;
+  std::function<bool()> m_closeGuard;
   std::function<void()> m_onLayout;
   bool m_sheetAttach = false; // a sheet waits to join the scene without a rebuild
   bool m_sheetDetach = false; // a closed sheet waits to leave it

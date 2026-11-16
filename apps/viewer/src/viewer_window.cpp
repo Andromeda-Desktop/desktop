@@ -48,7 +48,7 @@ namespace viewer {
     constexpr std::uint32_t kTile = 512;
     constexpr std::uint32_t kInkRgb = 0x1f5fd6;
     constexpr std::uint32_t kNoteRgb = 0xffd400;
-    constexpr float kInkWidth = 1.0F; // points: poppler's default ink border
+    constexpr float kInkWidth = 2.0F; // points: the helper's INK_WIDTH
     constexpr std::uint32_t kMaxPageHeight = 16384;
     constexpr std::uint32_t kImageBox = 8192;
     // proto MAX_PAYLOAD: a longer request ends the helper.
@@ -101,6 +101,13 @@ namespace viewer {
       return build(renderer, width, height);
     });
     m_window.setKeyHandler([this](const KeyboardEvent& event) { return onKey(event); });
+    m_window.setCloseGuard([this] {
+      if (!unsaved()) {
+        return true;
+      }
+      askSaveBeforeClose();
+      return false;
+    });
     // A rebuilt ScrollView clamps its offset to its content, which is empty until the first layout: restore after it.
     m_window.setLayoutCallback([this] {
       // Once per rebuild: a document shorter than the old offset clamps, and must not loop.
@@ -1443,7 +1450,7 @@ namespace viewer {
                       });
   }
 
-  void ViewerWindow::save() {
+  void ViewerWindow::saveThen(std::function<void()> then) {
     if (!unsaved() || m_saving || !m_helper) {
       return;
     }
@@ -1470,7 +1477,7 @@ namespace viewer {
     m_saving = true;
     m_helper->request(
         {.op = preview::op::Save}, fd,
-        [this, tmp, target, keep, depth = m_edits.size(), generation = m_generation](const preview::HelperReply& reply) {
+        [this, tmp, target, keep, depth = m_edits.size(), then = std::move(then), generation = m_generation](const preview::HelperReply& reply) {
           std::error_code err;
           const bool written = reply.msg.op == preview::op::Saved && keep >= 0 && fsync(keep) == 0;
           if (keep >= 0) {
@@ -1499,6 +1506,9 @@ namespace viewer {
           m_savedDepth = depth;
           kLog.info("saved {}", m_path.string());
           updateTitle();
+          if (then && !unsaved()) {
+            then();
+          }
         }
     );
     close(fd);
@@ -1506,6 +1516,38 @@ namespace viewer {
 
   void ViewerWindow::updateTitle() {
     m_window.setTitle((unsaved() ? "• " : "") + m_path.filename().string());
+  }
+
+  void ViewerWindow::askSaveBeforeClose() {
+    m_window.presentSheet(
+        [this](float s) {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s,
+                                 .padding = Tokens::componentDialogPadding * s,
+                                 .width = Tokens::componentDialogAlertWidth * s});
+          box->addChild(ui::label({.text = std::format("Save changes to “{}”?", m_path.filename().string()),
+                                   .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2,
+                                   .ellipsize = TextEllipsize::Middle}));
+          box->addChild(ui::label({.text = std::string("Your annotations are lost if you close without saving."),
+                                   .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
+                                   .maxLines = 3}));
+          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
+          buttons->addChild(ui::button({.text = std::string("Don’t Save"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Destructive, .onClick = [this] {
+                                          m_window.dismissSheet();
+                                          m_window.finishClose();
+                                        }}));
+          buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
+          buttons->addChild(ui::button({.text = std::string("Save"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Primary, .onClick = [this] {
+                                          m_window.dismissSheet();
+                                          saveThen([this] { m_window.finishClose(); });
+                                        }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] { m_window.dismissSheet(); });
   }
 
   std::unique_ptr<Node> ViewerWindow::buildSignaturePad() {
