@@ -602,6 +602,7 @@ void AppWindow::close() {
   m_navButtons = {};
   m_moreButton = nullptr;
   m_sidebarNode = nullptr;
+  m_bodyNode = nullptr;
   m_mainNode = nullptr;
   m_headerNode = nullptr;
   m_cardFrame = nullptr;
@@ -1056,10 +1057,22 @@ void AppWindow::applyMainFill() {
   } else if (m_headerNode != nullptr) {
     m_headerNode->setFill(m_mainFill.value_or(clearColorSpec()));
   }
+  if (m_bodyNode != nullptr) {
+    m_bodyNode->setPaletteTone(chromeTone());
+  }
   // The band's ink follows the plane it sits on, not the system scheme.
   if (m_headerNode != nullptr) {
     m_headerNode->setPaletteTone(m_mainFill ? std::optional(toneOn(resolveColorSpec(*m_mainFill))) : std::nullopt);
   }
+}
+
+// A solid window takes the tone of its content plane, so the sidebar and controls read as one surface with it: a light
+// terminal theme under a dark system scheme gets a light sidebar, not a dark one with low-contrast ink beside it.
+std::optional<PaletteTone> AppWindow::chromeTone() const {
+  if (!m_mainFill || m_scene || m_config.transparentContent || m_config.material != Material::Solid) {
+    return std::nullopt;
+  }
+  return toneOn(resolveColorSpec(*m_mainFill));
 }
 
 void AppWindow::invalidate() {
@@ -1522,6 +1535,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_maximizeButton = nullptr;
   m_navButtons = {};
   m_sidebarNode = nullptr;
+  m_bodyNode = nullptr;
   m_mainNode = nullptr;
   m_headerNode = nullptr;
   m_cardFrame = nullptr;
@@ -1599,7 +1613,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   holder->addChild(std::move(content));
   main->addChild(std::move(holder));
 
-  auto body = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
+  auto body = ui::row({.out = &m_bodyNode, .align = FlexAlign::Stretch, .width = width, .height = height});
+  body->setPaletteTone(chromeTone());
   if (sidebarWidth > 0.0F) {
     const ColorSpec sidebarFill = m_scene ? sceneFill(m_sceneTextTint)
                                   : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin);

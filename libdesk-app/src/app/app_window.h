@@ -333,6 +333,8 @@ private:
   std::array<Button*, 2> m_navButtons{};
   Button* m_moreButton = nullptr;
   Flex* m_sidebarNode = nullptr;
+  Flex* m_bodyNode = nullptr;
+  [[nodiscard]] std::optional<PaletteTone> chromeTone() const;
   Flex* m_mainNode = nullptr;
   std::optional<ColorSpec> m_mainFill;
   void applyScene(std::optional<Scene> scene);
