@@ -83,6 +83,13 @@ namespace {
     return 0.0F;
   }
 
+  // Measures text as the row draws it (a Label), so the menu width and the row layout agree to the pixel.
+  float labelWidth(Renderer& renderer, const std::string& text, float fontSize, FontWeight weight) {
+    auto label = ui::label({.text = text, .fontSize = fontSize, .fontWeight = weight, .maxLines = 1});
+    label->measure(renderer);
+    return label->width();
+  }
+
   std::string_view toggleGlyphName(const ContextMenuControlEntry& entry) {
     if (entry.toggleState == 2) {
       return "minus";
@@ -269,7 +276,7 @@ float ContextMenuControl::preferredWidth(
                                                                         : 0.0F;
     const FontWeight weight = entry.header ? FontWeight::Bold : FontWeight::Normal;
     const float textWidth = std::ceil(std::max(
-        renderer.measureText(entry.label, kMenuFontSize * scale, {weight}).width,
+        labelWidth(renderer, entry.label, kMenuFontSize * scale, weight),
         entry.subtitle.empty() ? 0.0F
                                : renderer.measureText(entry.subtitle, Style::fontSizeCaption * scale, {FontWeight::Normal})
                                      .width));
@@ -277,8 +284,7 @@ float ContextMenuControl::preferredWidth(
     const float sidePadding = (entry.hasSubmenu ? 30.0F : 16.0F) * scale;
     const float shortcutSlot = entry.shortcut.empty() || entry.header
         ? 0.0F
-        : std::ceil(renderer.measureText(entry.shortcut, kShortcutFontSize * scale, {FontWeight::Normal}).width)
-            + Style::spaceLg * scale;
+        : labelWidth(renderer, entry.shortcut, kShortcutFontSize * scale, FontWeight::Normal) + Style::spaceLg * scale;
     maxRowWidth = std::max(
         maxRowWidth,
         textWidth + entryIndent(entry, scale) + toggleSlot + leadingVisualSlot(entry, scale, dots) + shortcutSlot
