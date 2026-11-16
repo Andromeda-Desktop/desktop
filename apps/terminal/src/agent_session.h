@@ -47,6 +47,7 @@ namespace term::agent {
     std::string output; // tail of the tool output
     ActionStatus status = ActionStatus::Running;
     WallTime started = std::chrono::system_clock::now();
+    WallTime ended; // when the status became final (not Pending or Running); read only then
   };
   struct Option {
     std::string id;

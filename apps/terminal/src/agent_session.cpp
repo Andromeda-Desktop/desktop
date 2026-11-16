@@ -34,6 +34,13 @@ namespace term::agent {
       return current;
     }
 
+    // Every status change goes through here: a final status stamps the action's end.
+    void setStatus(Action& action, ActionStatus status) {
+      if (status != action.status && status != ActionStatus::Pending && status != ActionStatus::Running) {
+        action.ended = std::chrono::system_clock::now();
+      }
+      action.status = status;
+    }
   } // namespace
 
   Session::Session(std::string cwd, std::int64_t firstId) : m_cwd(std::move(cwd)), m_nextId(firstId) {}
@@ -131,7 +138,7 @@ namespace term::agent {
     m_pending.erase(m_pending.begin());
     if (auto* action = findAction(request.toolCallId)) {
       const bool allow = chosen.kind.starts_with("allow");
-      action->status = allow ? ActionStatus::Running : ActionStatus::Rejected;
+      setStatus(*action, allow ? ActionStatus::Running : ActionStatus::Rejected);
     }
     return true;
   }
@@ -148,7 +155,7 @@ namespace term::agent {
       auto& request = std::get<Request>(m_entries[index]);
       respond(request, answer);
       if (auto* action = findAction(request.toolCallId)) {
-        action->status = ActionStatus::Cancelled;
+        setStatus(*action, ActionStatus::Cancelled);
       }
     }
     m_pending.clear();
@@ -171,7 +178,7 @@ namespace term::agent {
       action.kind = kind;
     }
     if (const auto status = str(fields, "status"); !status.empty()) {
-      action.status = toStatus(status, action.status);
+      setStatus(action, toStatus(status, action.status));
     }
     if (const auto it = fields.find("rawInput"); it != fields.end() && it->is_object()) {
       action.command = str(*it, "command");
@@ -331,7 +338,7 @@ namespace term::agent {
     }
     if (action != nullptr) {
       applyTool(*action, call);
-      action->status = ActionStatus::Pending;
+      setStatus(*action, ActionStatus::Pending);
     }
     m_entries.emplace_back(std::move(request));
     m_pending.push_back(m_entries.size() - 1);
@@ -389,7 +396,7 @@ namespace term::agent {
         prose->streaming = false;
       } else if (auto* action = std::get_if<Action>(&entry);
                  action != nullptr && (action->status == ActionStatus::Running || action->status == ActionStatus::Pending)) {
-        action->status = stop && stop->kind == StopKind::Cancelled ? ActionStatus::Cancelled : ActionStatus::Done;
+        setStatus(*action, stop && stop->kind == StopKind::Cancelled ? ActionStatus::Cancelled : ActionStatus::Done);
       }
     }
     if (stop) {
@@ -424,7 +431,7 @@ namespace term::agent {
         prose->streaming = false;
       } else if (auto* action = std::get_if<Action>(&entry);
                  action != nullptr && (action->status == ActionStatus::Running || action->status == ActionStatus::Pending)) {
-        action->status = ActionStatus::Cancelled;
+        setStatus(*action, ActionStatus::Cancelled);
       }
     }
     if (inTurn || m_phase == Phase::Starting || status != 0) {

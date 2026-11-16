@@ -150,6 +150,8 @@ namespace {
         }
         if (const auto* action = std::get_if<Action>(&entry)) {
           check(actionIds.insert(action->id).second, "two actions with one id", seed, step);
+          const bool final = action->status != ActionStatus::Pending && action->status != ActionStatus::Running;
+          check(!final || action->ended >= action->started, "a finished action has no end time", seed, step);
         }
       }
       check(unanswered == session.pending().size(), "pending list and open requests differ", seed, step);

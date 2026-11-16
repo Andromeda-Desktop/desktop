@@ -8,6 +8,7 @@
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
+#include "core/text_clipboard.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
 #include "ui/controls/scroll_view.h"
@@ -640,11 +641,19 @@ namespace term {
             const auto at = std::ranges::find(pending, entry);
             return (e.answer ? std::hash<std::string>{}(*e.answer) : 1)
                    ^ (static_cast<std::uint64_t>(at - pending.begin()) << 32) ^ pending.size();
+          } else if constexpr (std::is_same_v<T, agent::Stop>) {
+            return restartable(entry) ? 1 : 0;
           } else {
             return 0;
           }
         },
         model->entries()[entry]);
+  }
+
+  bool AgentView::restartable(std::size_t entry) const {
+    const agent::Session* model = session();
+    return model != nullptr && model->phase() == agent::Phase::Failed && entry + 1 == model->entries().size()
+           && std::holds_alternative<agent::Stop>(model->entries()[entry]);
   }
 
   bool AgentView::itemInteractive(std::size_t index) const {
@@ -655,7 +664,7 @@ namespace term {
     const auto& entry = model->entries()[index - 1];
     const auto* prose = std::get_if<agent::Prose>(&entry);
     // A reply with a table or code block takes input: they scroll sideways.
-    return std::holds_alternative<agent::Request>(entry)
+    return std::holds_alternative<agent::Request>(entry) || restartable(index - 1)
            || (prose != nullptr && std::ranges::any_of(agent::markdownBlocks(prose->text), [](const agent::Block& block) {
                 return block.kind == agent::Block::Kind::Table || block.kind == agent::Block::Kind::Code;
               }));
@@ -907,7 +916,9 @@ namespace term {
                 endRole = ColorRole::TermRed;
                 break;
               case agent::ActionStatus::Rejected: end = "rejected"; break;
-              case agent::ActionStatus::Cancelled: end = "cancelled"; break;
+              case agent::ActionStatus::Cancelled:
+                end = "cancelled \u00b7 " + clockText(std::chrono::duration_cast<std::chrono::seconds>(e.ended - e.started));
+                break;
             }
             if (!end.empty()) {
               auto endLabel = kit.text(end, Tokens::typeFootnote, endRole, failed ? FontWeight::SemiBold : FontWeight::Normal);
@@ -982,6 +993,30 @@ namespace term {
             row->addChild(kit.glyph(glyph, role));
             auto said = kit.text(sentence, Tokens::typeParagraph, role, FontWeight::SemiBold, measure);
             row->addChild(std::move(said));
+            if (restartable(entry)) {
+              const auto small = [&](std::string text, std::function<void()> click) {
+                return ui::button({.text = std::move(text),
+                                   .fontSize = Tokens::typeFootnote.size * s,
+                                   .variant = ButtonVariant::Outline,
+                                   .radius = Tokens::componentButtonHeightS * s / 2.0F,
+                                   .height = Tokens::componentButtonHeightS * s,
+                                   .onClick = std::move(click)});
+              };
+              row->addChild(small("Restart", [this] {
+                if (agent::Session* model = m_host.session(m_key); model != nullptr) {
+                  model->restarting();
+                  m_host.flush(m_key);
+                  changed();
+                }
+              }));
+              if (!log.empty()) {
+                row->addChild(small("Copy log", [log] {
+                  if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+                    clipboard->setClipboardText(log);
+                  }
+                }));
+              }
+            }
             item->addChild(std::move(row));
             if (failure && !log.empty()) {
               auto rows = lines(log);

@@ -85,6 +85,8 @@ namespace term {
     [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width, Clock* clock);
     // A pending request asks about this action: the card replaces its row.
     [[nodiscard]] bool asked(const agent::Action& action) const;
+    // The entry is the crash that ended the session, which is still Failed: its row offers Restart.
+    [[nodiscard]] bool restartable(std::size_t entry) const;
     [[nodiscard]] const agent::Request* requestFor(const agent::Action& action) const;
     void arrive(Renderer& renderer, Flex& holder, float width);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
