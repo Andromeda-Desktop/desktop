@@ -184,6 +184,8 @@ void StatusRow::applyState() {
   }
   setBorder(m_data.chip ? colorSpecFromRole(ColorRole::Stroke) : clearColorSpec(), m_data.chip ? 0.5F * m_scale : 0.0F);
   m_shadow->setVisible(m_data.chip.has_value());
+  // The chip's ink follows its fill, not the sidebar's scheme.
+  setPaletteTone(m_data.chip ? std::optional(toneOn(resolveColorSpec(*m_data.chip))) : std::nullopt);
   const ColorSpec label1 = colorSpecFromRole(ColorRole::Label1);
   m_symbol->setColor(m_data.symbolDanger ? colorSpecFromRole(ColorRole::Danger)
                                          : (m_data.selected ? label1 : colorSpecFromRole(ColorRole::Label2)));

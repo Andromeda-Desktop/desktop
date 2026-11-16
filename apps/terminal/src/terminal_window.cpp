@@ -1190,6 +1190,8 @@ namespace term {
       cell->addChild(std::move(shadow));
       auto box = ui::column({.align = FlexAlign::Stretch, .fill = view.surface(), .radius = radius, .flexGrow = 1.0F});
       box->setClipRadii(Radii{radius, radius, radius, radius});
+      // The caption's ink follows the card's plane, not the desktop scheme (as the window header does).
+      box->setPaletteTone(toneOn(resolveColorSpec(view.surface())));
 
       // Caption (split mockup .cap): h 40, p 0 8 0 16; symbol, name, state, the session menu, window buttons top right.
       auto cap = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .minHeight = caption, .maxHeight = caption});
@@ -1653,18 +1655,22 @@ namespace term {
       AnimationManager* animations = card.ring->animationManager();
       const float target = focused ? 1.0F : 0.0F;
       const float ring = m_settings.settings().focusRing ? 1.0F : 0.0F;
-      const auto set = [&card, ring](float v) {
+      // The shadow fills the card's rect: a see-through card (a theme scene, glass) would show it as a dark tint.
+      const auto view = std::ranges::find(m_views, card.id, &Session::id);
+      const ColorSpec fill = view != m_views.end() ? view->view->surface() : ColorSpec{};
+      const bool lift = (fill.role ? 1.0F : fill.fixed.a) * fill.alpha >= 1.0F;
+      const auto set = [&card, ring, lift](float v) {
         card.ring->setOpacity(v * ring);
         card.shadow->setOpacity(v);
-        card.shadow->setVisible(v > 0.0F);
+        card.shadow->setVisible(lift && v > 0.0F);
       };
       if (animate && animations != nullptr) {
         card.focusAnim = animations->drive(card.focusAnim, card.shadow->opacity(), target,
                                            Style::spring(focused ? Tokens::springFade : Tokens::springFadeOut),
-                                           [node = card.ring, shadow = card.shadow, ring](float v) {
+                                           [node = card.ring, shadow = card.shadow, ring, lift](float v) {
                                              node->setOpacity(v * ring);
                                              shadow->setOpacity(v);
-                                             shadow->setVisible(v > 0.0F);
+                                             shadow->setVisible(lift && v > 0.0F);
                                            },
                                            {}, card.ring);
       } else {
