@@ -49,18 +49,32 @@ int main() {
   std::printf("load ms: %.1f\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - loadStart).count());
   std::printf("%lld entries\n", static_cast<long long>(db.count()));
 
-  // What a user types: 3 to 12 leading characters of a name, or of its second word.
-  std::vector<double> ms;
-  for (int q = 0; q < 2000; ++q) {
-    const std::string& name = names[rng() % names.size()];
-    const std::size_t from = (q % 2 == 0) ? 0 : name.find('-') + 1;
-    const std::string query = name.substr(from, 3 + rng() % 10);
-    const auto start = std::chrono::steady_clock::now();
-    const auto rows = db.queryNames(query, 20);
-    ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
-  }
-  std::ranges::sort(ms);
-  std::printf("query ms: p50 %.2f  p95 %.2f  max %.2f\n", ms[ms.size() / 2], ms[ms.size() * 95 / 100], ms.back());
+  // What a user types, three ways: 3 to 12 leading characters of a name or of its second word; 1 or 2 leading
+  // characters; and a fragment with every other letter left out, which takes the letters-in-order pass.
+  const auto run = [&](const char* label, auto makeQuery) {
+    std::vector<double> ms;
+    for (int q = 0; q < 2000; ++q) {
+      const std::string& name = names[rng() % names.size()];
+      const std::size_t from = (q % 2 == 0) ? 0 : name.find('-') + 1;
+      const std::string query = makeQuery(name.substr(from));
+      const auto start = std::chrono::steady_clock::now();
+      const auto rows = db.queryNames(query, 20);
+      ms.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+    }
+    std::ranges::sort(ms);
+    const double p95 = ms[ms.size() * 95 / 100];
+    std::printf("%s query ms: p50 %.2f  p95 %.2f  max %.2f\n", label, ms[ms.size() / 2], p95, ms.back());
+    return p95 < 5.0;
+  };
+  const bool typed = run("typed", [&](const std::string& word) { return word.substr(0, 3 + rng() % 10); });
+  const bool shortQuery = run("short", [&](const std::string& word) { return word.substr(0, 1 + rng() % 2); });
+  const bool gapped = run("gapped", [&](const std::string& word) {
+    std::string out;
+    for (std::size_t i = 0; i < std::min<std::size_t>(word.size(), 12); i += 2) {
+      out += word[i];
+    }
+    return out.size() >= 3 ? out : word.substr(0, 3);
+  });
   fs::remove_all(root);
-  return ms[ms.size() * 95 / 100] < 5.0 ? 0 : 1;
+  return typed && shortQuery && gapped ? 0 : 1;
 }

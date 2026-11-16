@@ -4,12 +4,14 @@
 #include "index_db.h"
 #include "query_server.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace andromeda::index;
@@ -43,6 +45,7 @@ int main() {
   const fs::path root = fs::temp_directory_path() / ("index-test-" + std::to_string(getpid()));
   touch(root / "Documents/Quarterly Report.pdf");
   touch(root / "Documents/report-draft.txt");
+  touch(root / "Downloads/download-helper.sh");
   touch(root / "Documents/notes/Report");
   touch(root / "code/repo/.git/HEAD");
   touch(root / "code/repo/secret-report.c");
@@ -76,7 +79,15 @@ int main() {
     check(found(db, "strasse aeon", "Straße Æon.md"), "ß and Æ match ss and ae");
     check(!found(db, "generated-notice", "generated-notice.txt"), "a Ninja build folder is skipped");
     check(!found(db, "cargo-notice", "cargo-notice.txt"), "a folder with CACHEDIR.TAG is skipped");
-    check(db.queryNames("ab", 50).empty(), "a query under 3 characters returns nothing");
+    const auto has = [](const std::vector<FileRow>& rows, const std::string& name) {
+      return std::ranges::any_of(rows, [&](const FileRow& r) { return r.name == name; });
+    };
+    check(has(db.queryNames("q", 50, FileKind::Pdf), "Quarterly Report.pdf"), "one letter with a kind matches a name start");
+    check(found(db, "qu", "Quarterly Report.pdf"), "two letters match a name start");
+    check(found(db, "re", "Quarterly Report.pdf"), "two letters match a word start");
+    check(!found(db, "rt", "Quarterly Report.pdf"), "two letters inside a word do not match");
+    check(found(db, "dwnhelp", "download-helper.sh"), "letters in order with gaps match");
+    check(!found(db, "ownhelp", "download-helper.sh"), "a gapped match starts at a word start");
     check(found(db, "quart", "Quarterly Report.pdf"), "a root that is a git checkout is still indexed");
 
     // The launcher's kind filter: kind:<word> in the query line, alone = newest of that kind.

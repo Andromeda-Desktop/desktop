@@ -89,10 +89,13 @@ namespace andromeda::index {
       return std::string(text);
     }
 
-    // First match of needle (3 bytes or more) in [at, end). An SSE2 filter on its first and last byte reads about
+    // First match of a non-empty needle in [at, end). An SSE2 filter on its first and last byte reads about
     // 16 bytes per step; glibc memmem manages about 3 GB/s on short needles.
     const char* findIn(const char* at, const char* end, std::string_view needle) {
       const std::size_t n = needle.size();
+      if (n == 1) {
+        return static_cast<const char*>(std::memchr(at, needle.front(), static_cast<std::size_t>(end - at)));
+      }
       const __m128i first = _mm_set1_epi8(needle.front());
       const __m128i last = _mm_set1_epi8(needle.back());
       for (; end - at >= static_cast<std::ptrdiff_t>(n + 15); at += 16) {
@@ -107,6 +110,29 @@ namespace andromeda::index {
         }
       }
       return static_cast<const char*>(memmem(at, static_cast<std::size_t>(end - at), needle.data(), n));
+    }
+
+    // Names are folded, so a letter or digit byte (or any UTF-8 byte) continues a word; anything else ends one.
+    bool wordStart(const char* begin, const char* p) {
+      const auto c = p == begin ? 0 : static_cast<unsigned char>(p[-1]);
+      return c < 0x80 && std::isalnum(c) == 0;
+    }
+
+    // Span of the greedy match of needle as a subsequence of name from its first word start that holds needle's first
+    // byte; 0 if none. A later start cannot match when the first one fails.
+    std::size_t subsequenceSpan(const char* begin, const char* name, std::string_view needle) {
+      for (const char* start = name; *start != '\0'; ++start) {
+        if (*start != needle.front() || !wordStart(begin, start)) {
+          continue;
+        }
+        std::size_t matched = 1;
+        const char* p = start + 1;
+        for (; *p != '\0' && matched < needle.size(); ++p) {
+          matched += *p == needle[matched] ? 1 : 0;
+        }
+        return matched == needle.size() ? static_cast<std::size_t>(p - start) : 0;
+      }
+      return 0;
     }
 
   } // namespace
@@ -371,12 +397,14 @@ namespace andromeda::index {
   std::vector<FileRow> IndexDb::queryNames(std::string_view text, int limit, FileKind kind) const {
     const std::string needle = foldName(trimmed(text));
     const bool anyKind = kind == FileKind::Any;
-    if ((anyKind && needle.size() < 3) || m_db == nullptr) {
+    if ((anyKind && needle.empty()) || m_db == nullptr) {
       return {};
     }
     loadNames();
+    // A 1-2 letter needle matches only at word starts: inside words it would match nearly every name.
+    const bool shortNeedle = needle.size() < 3;
     struct Hit {
-      int rank; // 0 exact name, 1 name prefix, 2 substring
+      std::size_t rank; // 0 exact name, 1 name prefix, 2 substring, 3 + extra span for letters in order with gaps
       std::uint32_t mtime;
       std::int64_t id;
     };
@@ -396,6 +424,10 @@ namespace andromeda::index {
       if (found == nullptr) {
         break;
       }
+      if (shortNeedle && !wordStart(begin, found)) {
+        at = found + 1;
+        continue;
+      }
       const auto offset = static_cast<std::uint32_t>(found - begin);
       entry = std::ranges::upper_bound(entry, m_entries.end(), offset, {}, &NameEntry::offset) - 1;
       const auto next = entry + 1;
@@ -403,8 +435,26 @@ namespace andromeda::index {
       if (entry->removed || (!anyKind && entry->kind != kind)) {
         continue;
       }
-      const int rank = offset != entry->offset ? 2 : (found[needle.size()] == '\0' ? 0 : 1);
+      const std::size_t rank = offset != entry->offset ? 2 : (found[needle.size()] == '\0' ? 0 : 1);
       hits.push_back({.rank = rank, .mtime = entry->mtime, .id = entry->id});
+    }
+    // Few substring hits: also names holding the letters in order ("dwnhelp" -> "download-helper"). A substring
+    // hit is also a subsequence, so names with a substring hit are skipped.
+    if (!shortNeedle && hits.size() < static_cast<std::size_t>(std::max(limit, 0))) {
+      std::vector<std::int64_t> seen;
+      for (const Hit& hit : hits) {
+        seen.push_back(hit.id);
+      }
+      std::ranges::sort(seen);
+      for (const NameEntry& e : m_entries) {
+        if (e.removed || (!anyKind && e.kind != kind)) {
+          continue;
+        }
+        const std::size_t span = subsequenceSpan(begin, begin + e.offset, needle);
+        if (span != 0 && !std::ranges::binary_search(seen, e.id)) {
+          hits.push_back({.rank = 3 + span - needle.size(), .mtime = e.mtime, .id = e.id});
+        }
+      }
     }
     const auto better = [](const Hit& a, const Hit& b) { return a.rank != b.rank ? a.rank < b.rank : a.mtime > b.mtime; };
     const auto keep = std::min(hits.size(), static_cast<std::size_t>(std::max(limit, 0)));
