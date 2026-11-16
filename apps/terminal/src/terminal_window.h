@@ -98,6 +98,9 @@ namespace term {
     [[nodiscard]] TerminalView::Host terminalHost(std::uint64_t id);
     void adoptSession(std::uint64_t id, MovedSession moved);
     void moveToNewWindow(std::uint64_t id);
+    [[nodiscard]] bool canJoinShown(std::uint64_t id) const;
+    void joinShown(std::uint64_t id);
+    void ctrlClickRow(std::uint64_t id);
     // An agent session of any window changed: repaints its view and row when it is in this window.
     void agentChanged(std::uint64_t key);
 

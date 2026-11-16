@@ -908,6 +908,10 @@ namespace term {
     auto row = std::make_unique<StatusRow>(m_window.uiScale());
     row->setRail(m_rail);
     row->setOnClick([this, id] {
+      if ((m_loop.wayland().keyboardModifiers() & KeyMod::Ctrl) != 0U) {
+        ctrlClickRow(id);
+        return;
+      }
       apply(session_event::Show{id});
       focusGrid();
     });
@@ -916,16 +920,41 @@ namespace term {
     return row;
   }
 
+  bool TerminalWindow::canJoinShown(std::uint64_t id) const {
+    const std::uint64_t shown = m_sessions.shown().value_or(0);
+    const auto* shownSplit = m_sessions.splitOf(shown);
+    return id != shown && m_sessions.splitOf(id) == nullptr && (shownSplit == nullptr || shownSplit->size() < kMaxPanes);
+  }
+
+  void TerminalWindow::joinShown(std::uint64_t id) {
+    const std::uint64_t shown = m_sessions.shown().value_or(0);
+    m_trees.pendJoin({.target = shown, .joining = id});
+    apply(session_event::Join{.target = shown, .joining = id});
+    focusGrid();
+  }
+
+  // Ctrl+click builds the shown split row by row: a free row joins it, a member leaves it; else a plain click.
+  void TerminalWindow::ctrlClickRow(std::uint64_t id) {
+    const std::uint64_t shown = m_sessions.shown().value_or(0);
+    const auto* shownSplit = m_sessions.splitOf(shown);
+    if (id != shown && shownSplit != nullptr && std::ranges::contains(*shownSplit, id)) {
+      apply(session_event::Leave{id});
+    } else if (canJoinShown(id)) {
+      joinShown(id);
+    } else {
+      apply(session_event::Show{id});
+      focusGrid();
+    }
+  }
+
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
     const Keybindings& keys = m_settings.settings().keys;
     enum : std::int32_t {
       kSplit = 1, kLeave, kRename, kDuplicate, kMoveToWindow, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose
     };
     const bool others = m_sessions.sessions().size() > 1;
-    const std::uint64_t shown = m_sessions.shown().value_or(0);
-    const auto* shownSplit = m_sessions.splitOf(shown);
     const bool member = m_sessions.splitOf(id) != nullptr;
-    const bool canSplit = id != shown && !member && (shownSplit == nullptr || shownSplit->size() < kMaxPanes);
+    const bool canSplit = canJoinShown(id);
     std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = "Split with current", .enabled = canSplit}};
     if (member) {
       entries.push_back({.id = kLeave, .label = "Leave split"});
@@ -943,13 +972,9 @@ namespace term {
     entries.push_back({.separator = true});
     entries.push_back({.id = kCloseOthers, .label = "Close other sessions", .enabled = others});
     entries.push_back({.id = kClose, .label = "Close", .shortcut = keys.label(Action::CloseSession), .danger = true});
-    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, shown](std::int32_t item) {
+    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
                                switch (item) {
-                               case kSplit:
-                                 m_trees.pendJoin({.target = shown, .joining = id});
-                                 apply(session_event::Join{.target = shown, .joining = id});
-                                 focusGrid();
-                                 break;
+                               case kSplit: joinShown(id); break;
                                case kLeave: apply(session_event::Leave{id}); break;
                                case kRename: renameSession(id); break;
                                case kDuplicate: duplicateSession(id); break;
