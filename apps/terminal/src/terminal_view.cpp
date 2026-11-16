@@ -305,6 +305,8 @@ namespace term {
                           || settings.cursorBlink != m_settings.cursorBlink
                           || settings.scrollbackMb != m_settings.scrollbackMb;
     const bool material = settings.material != m_settings.material;
+    const bool pad = settings.padding != m_settings.padding;
+    const bool bold = settings.boldIsBright != m_settings.boldIsBright;
     m_settings = settings;
     m_theme = theme;
     if (terminal) {
@@ -317,6 +319,15 @@ namespace term {
     if (font && m_grid != nullptr) {
       setGridFont();
       setSize(m_width, m_height);
+      scheduleRedraw(Redraw::All);
+    }
+    if (pad && m_grid != nullptr) {
+      setGridOrigin((kInset + padding()) * m_uiScale,
+                    (kTopInset + padding()) * m_uiScale - (m_scrollPx - static_cast<float>(m_viewRow) * m_grid->cellHeight()));
+      setSize(m_width, m_height);
+      scheduleRedraw(Redraw::All);
+    }
+    if (bold) {
       scheduleRedraw(Redraw::All);
     }
   }
@@ -430,7 +441,7 @@ namespace term {
         }
       }));
     }
-    setGridOrigin(kInset * uiScale, kTopInset * uiScale);
+    setGridOrigin((kInset + padding()) * uiScale, (kTopInset + padding()) * uiScale);
     auto area = ui::inputArea({.out = &m_area,
                                .focusable = true,
                                .width = width,
@@ -512,9 +523,9 @@ namespace term {
     }
     m_width = width;
     m_height = height;
-    const float inset = kInset * m_uiScale;
+    const float inset = (kInset + padding()) * m_uiScale;
     const int cols = std::max(2, static_cast<int>((width - 2.0F * inset) / m_grid->cellWidth()));
-    const int rows = std::max(1, static_cast<int>((height - (kTopInset + kBottomInset) * m_uiScale) / m_grid->cellHeight()));
+    const int rows = std::max(1, static_cast<int>((height - (kTopInset + kBottomInset + 2.0F * padding()) * m_uiScale) / m_grid->cellHeight()));
     // Device px: images a program sizes from the cell size stay sharp at any scale.
     const std::array<std::uint16_t, 2> cellPx{static_cast<std::uint16_t>(std::lround(m_grid->cellWidth() * m_deviceScale)),
                                               static_cast<std::uint16_t>(std::lround(m_grid->cellHeight() * m_deviceScale))};
@@ -677,7 +688,7 @@ namespace term {
       m_scrollSamples.clear();
       m_viewRow = scroll.offset;
       m_scrollPx = static_cast<float>(scroll.offset) * m_grid->cellHeight();
-      setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale);
+      setGridOrigin((kInset + padding()) * m_uiScale, (kTopInset + padding()) * m_uiScale);
     }
     if (m_scrollbar != nullptr
         && (scroll.total != m_scrollState.total || scroll.offset != m_scrollState.offset
@@ -795,6 +806,10 @@ namespace term {
         if (ghostty_render_state_row_cells_get(m_cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_FG_COLOR, &rgb)
             == GHOSTTY_SUCCESS) {
           fg = pack(rgb);
+        }
+        if (m_settings.boldIsBright && (style.flags & GHOSTTY_STYLE_FLAG_BOLD) != 0
+            && style.fg_color.tag == GHOSTTY_STYLE_COLOR_PALETTE && style.fg_color.value.palette < 8) {
+          fg = pack(colors.palette[style.fg_color.value.palette + 8]);
         }
         if (ghostty_render_state_row_cells_get(m_cells, GHOSTTY_RENDER_STATE_ROW_CELLS_DATA_BG_COLOR, &rgb)
             == GHOSTTY_SUCCESS) {
@@ -1446,7 +1461,7 @@ namespace term {
     const bool running = std::ranges::any_of(placed, [](const ContextRow::Placed& p) {
       return p.item.caption == Caption::Running;
     });
-    const float inset = kInset * m_uiScale;
+    const float inset = (kInset + padding()) * m_uiScale;
     // The band reaches one space step past the grid on both sides.
     m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + 2.0F * Tokens::spaceP8 * m_uiScale,
                     m_uiScale, {.family = gridFont(m_settings, m_theme), .size = static_cast<float>(m_settings.fontSize) * m_uiScale},
@@ -1469,10 +1484,10 @@ namespace term {
   }
 
   GhosttyPointCoordinate TerminalView::cellAt(float localX, float localY) const {
-    const float col = std::floor((localX - kInset * m_uiScale) / m_grid->cellWidth());
+    const float col = std::floor((localX - (kInset + padding()) * m_uiScale) / m_grid->cellWidth());
     const float cellH = m_grid->cellHeight();
     const float fraction = m_scrollPx - static_cast<float>(m_viewRow) * cellH;
-    const float row = std::floor((localY - kTopInset * m_uiScale + fraction) / cellH);
+    const float row = std::floor((localY - (kTopInset + padding()) * m_uiScale + fraction) / cellH);
     return {.x = static_cast<std::uint16_t>(std::clamp(col, 0.0F, static_cast<float>(m_grid->columns() - 1))),
             .y = static_cast<std::uint32_t>(std::clamp(row, 0.0F, static_cast<float>(viewRows() - 1)))};
   }
@@ -1509,9 +1524,9 @@ namespace term {
     const float cellW = m_grid != nullptr ? m_grid->cellWidth() : 1.0F;
     const float cellH = m_grid != nullptr ? m_grid->cellHeight() : 1.0F;
     return TextInputState{
-        .cursorRectX = static_cast<std::int32_t>(std::lround(sceneX + kInset * m_uiScale + m_cursorCell.x * cellW)),
+        .cursorRectX = static_cast<std::int32_t>(std::lround(sceneX + (kInset + padding()) * m_uiScale + m_cursorCell.x * cellW)),
         .cursorRectY = static_cast<std::int32_t>(
-            std::lround(sceneY + kTopInset * m_uiScale + static_cast<float>(m_cursorCell.y) * cellH)),
+            std::lround(sceneY + (kTopInset + padding()) * m_uiScale + static_cast<float>(m_cursorCell.y) * cellH)),
         .cursorRectWidth = static_cast<std::int32_t>(std::max(1L, std::lround(cellW))),
         .cursorRectHeight = static_cast<std::int32_t>(std::max(1L, std::lround(cellH))),
         .sendSurroundingText = false,
@@ -1958,8 +1973,8 @@ namespace term {
       return false;
     }
     auto px = [](float v) { return static_cast<std::uint32_t>(std::max(0L, std::lround(v))); };
-    const std::uint32_t left = px(kInset * m_uiScale);
-    const std::uint32_t top = px(kTopInset * m_uiScale);
+    const std::uint32_t left = px((kInset + padding()) * m_uiScale);
+    const std::uint32_t top = px((kTopInset + padding()) * m_uiScale);
     const std::uint32_t cellW = std::max(1U, px(m_grid->cellWidth()));
     const std::uint32_t cellH = std::max(1U, px(m_grid->cellHeight()));
     auto size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
@@ -2092,7 +2107,7 @@ namespace term {
       });
       scheduleRedraw(Redraw::All);
     }
-    setGridOrigin(kInset * m_uiScale, kTopInset * m_uiScale - (m_scrollPx - static_cast<float>(row) * cellH));
+    setGridOrigin((kInset + padding()) * m_uiScale, (kTopInset + padding()) * m_uiScale - (m_scrollPx - static_cast<float>(row) * cellH));
     if (m_scrollbar != nullptr) {
       m_scrollbar->update(static_cast<float>(m_scrollState.len) * cellH, static_cast<float>(m_scrollState.total) * cellH,
                           m_scrollPx);

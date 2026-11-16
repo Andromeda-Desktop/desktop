@@ -347,6 +347,8 @@ namespace term {
     void updateBlink(bool wanted);
     void restartBlink();
     void updateTextBlink();
+    // Settings::padding in logical px at ui_scale 1, added to each built-in grid inset.
+    [[nodiscard]] float padding() const noexcept { return static_cast<float>(m_settings.padding); }
 
     bool m_windowActive = true;
     bool m_areaFocused = false;

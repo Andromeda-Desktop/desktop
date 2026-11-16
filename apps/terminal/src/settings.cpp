@@ -294,6 +294,8 @@ namespace term {
     r.themeId("appearance", "theme", s.theme);
     r.choice("appearance", "cursor", kCursors, s.cursor);
     r.boolean("appearance", "cursor_blink", s.cursorBlink);
+    r.boolean("appearance", "bold_is_bright", s.boldIsBright);
+    r.integer("appearance", "padding", SettingsLimits::kPaddingMin, SettingsLimits::kPaddingMax, s.padding);
     r.choice("appearance", "window", kMaterials, s.material);
     r.boolean("appearance", "focus_ring", s.focusRing);
     r.string("text", "font", s.font);
@@ -326,6 +328,8 @@ namespace term {
     appearance.insert_or_assign("theme", s.theme);
     appearance.insert_or_assign("cursor", std::string(nameOf(kCursors, s.cursor)));
     appearance.insert_or_assign("cursor_blink", s.cursorBlink);
+    appearance.insert_or_assign("bold_is_bright", s.boldIsBright);
+    appearance.insert_or_assign("padding", s.padding);
     appearance.insert_or_assign("window", std::string(nameOf(kMaterials, s.material)));
     appearance.insert_or_assign("focus_ring", s.focusRing);
     auto& text = tableIn(root, "text");

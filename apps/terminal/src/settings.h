@@ -30,6 +30,8 @@ namespace term {
     bool focusRing = false; // accent ring on the focused split pane
     std::string font;                        // empty: the type token's mono family
     int fontSize = 13;                       // px at ui_scale 1
+    bool boldIsBright = false; // bold text in palette colours 0-7 takes the bright 8-15
+    int padding = 0;           // px at ui_scale 1, added to the built-in space on every side of the grid
     int scrollbackMb = 10;
     bool copyOnSelect = false;
     int scrollRows = 3; // per wheel notch
@@ -48,6 +50,7 @@ namespace term {
   struct SettingsLimits {
     static constexpr int kFontSizeMin = 8, kFontSizeMax = 32;
     static constexpr int kScrollbackMin = 1, kScrollbackMax = 1000;
+    static constexpr int kPaddingMin = 0, kPaddingMax = 64;
     static constexpr int kScrollRowsMin = 1, kScrollRowsMax = 20;
     static constexpr int kNotifyMin = 1, kNotifyMax = 3600;
   };

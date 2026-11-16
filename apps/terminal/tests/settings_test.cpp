@@ -29,6 +29,8 @@ Settings randomSettings(std::mt19937& rng) {
   s.fontSize = pick(SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
   s.scrollbackMb = pick(SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax);
   s.copyOnSelect = pick(0, 1) != 0;
+  s.boldIsBright = pick(0, 1) != 0;
+  s.padding = pick(SettingsLimits::kPaddingMin, SettingsLimits::kPaddingMax);
   s.scrollRows = pick(SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax);
   s.shell = pick(0, 1) != 0 ? "" : "/usr/bin/fish";
   s.startDir = static_cast<StartDir>(pick(0, 1));

@@ -454,7 +454,12 @@ namespace term {
                        })},
                       {"Size", "",
                        stepper(now.fontSize, SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax, " px",
-                               [](Settings& x, int v) { x.fontSize = v; })}}});
+                               [](Settings& x, int v) { x.fontSize = v; })},
+                      {"Bright bold", "Bold text in the first 8 colours takes their bright shade",
+                       toggle(now.boldIsBright, [](Settings& x, bool on) { x.boldIsBright = on; })},
+                      {"Padding", "Extra space around the text",
+                       stepper(now.padding, SettingsLimits::kPaddingMin, SettingsLimits::kPaddingMax, " px",
+                               [](Settings& x, int v) { x.padding = v; })}}});
     }
 
     out.push_back({Pane::Main,
