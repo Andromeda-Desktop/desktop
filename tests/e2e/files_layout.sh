@@ -44,7 +44,7 @@ wait_log() { for _ in $(seq "${3:-100}"); do grep -qE "$2" < <(tail -n +"$(($1 +
 mark() { wc -l < "$LOG"; }
 action() { DBUS_SESSION_BUS_ADDRESS=$BUS gdbus call --session -d "$APP" -o /dev/andromeda/Files \
   -m org.freedesktop.Application.ActivateAction "$1" "${2:-[]}" '{}' > /dev/null; }
-win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
+win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"${WIN_APP:-$APP}\")][0] // empty"; }
 wait_log 0 "first frame at" 200 || fail "the window drew no first frame"
 wait_log 0 "listed [0-9]+ in" 200 || fail "the folder did not list"
 run "$ANDROMEDA" msg window-float-toggle > /dev/null 2>&1 || true
@@ -101,6 +101,10 @@ action go "[<'file://$SRC/Screenshots'>]"
 wait_log 0 "location $SRC/Screenshots" || fail "Screenshots did not open"
 m=$(mark); action gallery "[<'file://$SRC/Screenshots/Screenshot_03_with_a_long_file_name.png'>]"
 wait_log "$m" "view gallery" || fail "the Gallery did not open"
+# The Gallery opens in its own Photos window.
+WIN_APP=dev.andromeda.Photos
+for _ in $(seq 100); do [[ -n $(win) ]] && break; sleep 0.05; done
+[[ -n $(win) ]] || fail "no Photos window"
 for w in 1440 800 480; do width "$w"; shoot gallery "$w"; done
 
 stalls=$(awk 'match($0, /prepareFrame callback took [0-9.]+ms/) { n++; v = substr($0, RSTART + 27, RLENGTH - 29); if (n > 1 && v + 0 > 50) c++ } END { print c + 0 }' "$LOG")
