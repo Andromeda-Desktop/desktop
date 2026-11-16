@@ -19,6 +19,9 @@ public:
   // program is already invalid and no context is current to delete it from.
   void abandon() noexcept;
 
+  // Frees the driver's shader compiler state if a program compiled since the last call; true when it did.
+  static bool releaseCompiler();
+
   [[nodiscard]] bool isValid() const noexcept;
   [[nodiscard]] GLuint id() const noexcept;
 

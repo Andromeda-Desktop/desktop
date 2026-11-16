@@ -503,9 +503,12 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
   const EGLBoolean swapped = rects.empty()
       ? eglSwapBuffers(m_display, surface.eglSurface())
       : m_swapWithDamage(m_display, surface.eglSurface(), rects.data(), static_cast<EGLint>(rects.size() / 4));
-  if (swapped == EGL_TRUE && startup_metrics::recordFirstFrame()) {
-    // Startup temporaries (icon JSON, font setup) are freed by now; glibc keeps their pages until a trim (~3 MB).
-    malloc_trim(0);
+  if (swapped == EGL_TRUE) {
+    const bool compilerReleased = ShaderProgram::releaseCompiler();
+    if (startup_metrics::recordFirstFrame() || compilerReleased) {
+      // Startup temporaries (icon JSON, font setup, compiler state) are freed by now; glibc keeps their pages until a trim.
+      malloc_trim(0);
+    }
   }
   if (swapped != EGL_TRUE) {
     // A failed swap is not fatal: during compositor teardown (session logout,

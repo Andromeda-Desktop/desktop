@@ -141,7 +141,20 @@ namespace {
     return shader;
   }
 
+  // glCompileShader since the last releaseCompiler on this thread's context.
+  thread_local bool g_compilerUsed = false;
+
 } // namespace
+
+bool ShaderProgram::releaseCompiler() {
+  if (!g_compilerUsed) {
+    return false;
+  }
+  // Mesa frees its GLSL builtin library here (~6 MiB) and rebuilds it on the next compile.
+  glReleaseShaderCompiler();
+  g_compilerUsed = false;
+  return true;
+}
 
 ShaderProgram::~ShaderProgram() { destroy(); }
 
@@ -175,6 +188,7 @@ void ShaderProgram::create(const char* vertexSource, const char* fragmentSource)
     destroy();
   }
 
+  g_compilerUsed = true;
   const GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexSource);
   GLuint fragmentShader = 0;
   try {
@@ -198,6 +212,9 @@ void ShaderProgram::create(const char* vertexSource, const char* fragmentSource)
   }
   glLinkProgram(m_program);
 
+  // An attached shader stays alive after glDeleteShader; Mesa keeps its NIR (~0.5 MiB each).
+  glDetachShader(m_program, vertexShader);
+  glDetachShader(m_program, fragmentShader);
   glDeleteShader(vertexShader);
   glDeleteShader(fragmentShader);
 
