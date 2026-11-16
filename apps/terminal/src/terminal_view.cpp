@@ -749,6 +749,19 @@ namespace term {
             | (GHOSTTY_STYLE_UNDERLINE(style) != 0 ? TerminalCell::Underline : 0)
             | ((flags & GHOSTTY_STYLE_FLAG_STRIKETHROUGH) != 0 ? TerminalCell::Strikethrough : 0)
             | ((flags & GHOSTTY_STYLE_FLAG_OVERLINE) != 0 ? TerminalCell::Overline : 0));
+        switch (GHOSTTY_STYLE_UNDERLINE(style)) {
+          case GHOSTTY_SGR_UNDERLINE_DOUBLE: cell.underline = TerminalCell::UnderlineStyle::Double; break;
+          case GHOSTTY_SGR_UNDERLINE_CURLY: cell.underline = TerminalCell::UnderlineStyle::Curly; break;
+          case GHOSTTY_SGR_UNDERLINE_DOTTED: cell.underline = TerminalCell::UnderlineStyle::Dotted; break;
+          case GHOSTTY_SGR_UNDERLINE_DASHED: cell.underline = TerminalCell::UnderlineStyle::Dashed; break;
+          default: break;
+        }
+        if (style.underline_color.tag != GHOSTTY_STYLE_COLOR_NONE) {
+          cell.decoration = pack(style.underline_color.tag == GHOSTTY_STYLE_COLOR_RGB
+                                     ? style.underline_color.value.rgb
+                                     : colors.palette[style.underline_color.value.palette]);
+          cell.flags |= TerminalCell::DecorationColor;
+        }
 
         GhosttyCell raw = 0;
         GhosttyCellWide wide = GHOSTTY_CELL_WIDE_NARROW;
@@ -2104,9 +2117,12 @@ namespace term {
   }
 
   void TerminalView::paste() {
-    TextClipboard* clipboard = Input::textClipboard();
-    if (std::optional<std::string> text = clipboard != nullptr ? clipboard->clipboardText() : std::nullopt) {
-      pasteText(*text);
+    if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+      clipboard->requestClipboardText([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<std::string> text) {
+        if (!alive.expired() && text) {
+          pasteText(*text);
+        }
+      });
     }
   }
 

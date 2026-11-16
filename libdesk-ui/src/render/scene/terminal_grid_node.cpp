@@ -242,6 +242,55 @@ void TerminalGridNode::appendGlyph(std::vector<float>& out, char32_t codepoint, 
   }
 }
 
+// Patterns use absolute x, so they run on across cells.
+template <typename Rect>
+void TerminalGridNode::underline(const TerminalCell& cell, int x, int right, int top, std::uint32_t rgb, Rect& rect) const {
+  const int t = m_atlas.strokeThickness();
+  const int ch = m_atlas.cellHeight();
+  const int y = top + m_atlas.underlinePosition();
+  const int bottom = top + ch;
+  switch (cell.underline) {
+    case TerminalCell::UnderlineStyle::Single: rect(x, y, right, y + t, rgb); break;
+    case TerminalCell::UnderlineStyle::Double: {
+      const int second = std::min(y + 2 * t, bottom - t);
+      const int first = std::min(y, second - 2 * t);
+      rect(x, first, right, first + t, rgb);
+      rect(x, second, right, second + t, rgb);
+      break;
+    }
+    case TerminalCell::UnderlineStyle::Dotted: {
+      const int period = 2 * t;
+      for (int px = x - x % period; px < right; px += period) {
+        rect(std::max(px, x), y, std::min(px + t, right), y + t, rgb);
+      }
+      break;
+    }
+    case TerminalCell::UnderlineStyle::Dashed: {
+      const int period = std::max(4 * t, m_atlas.cellWidth());
+      const int dash = period * 2 / 3;
+      for (int px = x - x % period; px < right; px += period) {
+        rect(std::max(px, x), y, std::min(px + dash, right), y + t, rgb);
+      }
+      break;
+    }
+    case TerminalCell::UnderlineStyle::Curly: {
+      // One wave per cell width, as tall as the room under the baseline allows.
+      const float amplitude = std::max(1.0F, std::min(1.5F * static_cast<float>(t), static_cast<float>(bottom - y - t) / 2.0F));
+      const float period = static_cast<float>(std::max(4, m_atlas.cellWidth()));
+      const float centre = static_cast<float>(y) + amplitude / 2.0F;
+      const auto at = [&](int px) {
+        return static_cast<int>(std::lround(centre - amplitude * std::sin(6.2831853F * static_cast<float>(px) / period)));
+      };
+      for (int px = x; px < right; ++px) {
+        const int a = at(px);
+        const int b = at(px + 1);
+        rect(px, std::max(top, std::min(a, b)), px + 1, std::min(bottom, std::max(a, b) + t), rgb);
+      }
+      break;
+    }
+  }
+}
+
 void TerminalGridNode::buildRow(int row) {
   auto& rects = m_rects[static_cast<std::size_t>(row)];
   auto& glyphs = m_glyphs[static_cast<std::size_t>(row)];
@@ -295,8 +344,7 @@ void TerminalGridNode::buildRow(int row) {
       appendGlyph(glyphs, cell.codepoint, cell.flags, x, top, cell.fg);
     }
     if ((cell.flags & TerminalCell::Underline) != 0) {
-      const int y = top + m_atlas.underlinePosition();
-      rect(x, y, right, y + thickness, cell.fg);
+      underline(cell, x, right, top, (cell.flags & TerminalCell::DecorationColor) != 0 ? cell.decoration : cell.fg, rect);
     }
     if ((cell.flags & TerminalCell::Strikethrough) != 0) {
       const int y = top + m_atlas.baseline() - ch / 4;

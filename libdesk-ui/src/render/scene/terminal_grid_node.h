@@ -22,11 +22,15 @@ struct TerminalCell {
     Strikethrough = 1 << 4,
     Overline = 1 << 5,
     Wide = 1 << 6, // the glyph and background span this cell and the next
+    DecorationColor = 1 << 7, // underline in decoration, not fg
   };
-  char32_t codepoint = 0; // 0 = no glyph
-  std::uint32_t fg = 0;   // 0xRRGGBB
-  std::uint32_t bg = 0;   // 0xRRGGBB
+  enum class UnderlineStyle : std::uint8_t { Single, Double, Curly, Dotted, Dashed };
+  char32_t codepoint = 0;      // 0 = no glyph
+  std::uint32_t fg = 0;        // 0xRRGGBB
+  std::uint32_t bg = 0;        // 0xRRGGBB
+  std::uint32_t decoration = 0; // 0xRRGGBB, with DecorationColor
   std::uint16_t flags = 0;
+  UnderlineStyle underline = UnderlineStyle::Single; // with Underline
   bool operator==(const TerminalCell&) const = default;
 };
 
@@ -93,6 +97,8 @@ public:
 private:
   void doInvalidateGpuResources(Renderer& renderer) override;
   void buildRow(int row);
+  template <typename Rect>
+  void underline(const TerminalCell& cell, int x, int right, int top, std::uint32_t rgb, Rect& rect) const;
   void markRowDirty(int row);
   void markRowDirty(int row, float left, float right); // node-local logical x range
   void buildCursor();
