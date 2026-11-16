@@ -35,8 +35,9 @@ within() { # within OURS BEST: ours <= 1.15 x best
   [[ $1 -le $(($2 * 115 / 100)) ]] || { echo "ours $1 ms vs best rival $2 ms"; return 1; }
 }
 # Reported, not gated: each cell gets a new colour pair, and libghostty adds each to its per-page style set (half its
-# parse time); foot keeps colours in the cell.
-UNGATED=" dense_cells "
+# parse time); foot keeps colours in the cell. cursor: libghostty alone needs 146 ms of the ~190, and ours and foot
+# overlap from run to run (174-206 vs 153-214 ms, user 2026-11-17).
+UNGATED=" dense_cells cursor "
 for c in $CASES; do
   [[ -n ${MED[ours.$c]:-} ]] || continue
   best=

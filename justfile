@@ -188,5 +188,5 @@ term-load suite="all":
     set -uo pipefail
     suites="{{suite}}"; [[ $suites == all ]] && suites="throughput latency chaos lifecycle soak"
     rc=0; mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/term-load"
-    for s in $suites; do echo "== $s"; apps/terminal/tests/load/$s.sh 2>&1 | tee ${XDG_CACHE_HOME:-$HOME/.cache}/term-load/$s.log | grep -E '^(PASS|FAIL|FAILS|info|skip)|^[a-z]+ +[a-z_]+ +[0-9]'; [[ ${PIPESTATUS[0]} -eq 0 ]] || rc=1; done
+    for s in $suites; do echo "== $s"; apps/terminal/tests/load/$s.sh 2>&1 | tee ${XDG_CACHE_HOME:-$HOME/.cache}/term-load/$s.log | grep -E '^(PASS|FAIL|FAILS|INFO|info|skip)|^[a-z]+ +[a-z_]+ +[0-9]'; [[ ${PIPESTATUS[0]} -eq 0 ]] || rc=1; done
     exit $rc
