@@ -12,7 +12,9 @@ depth = 1
 # Keeps a previous master's MODE_ID blob unowned until a modeset replaces it (destroying it failed with EPERM).
 # Sends a new MODE_ID in a commit without ALLOW_MODESET (upstream dropped the mode), so the kernel can fastset a
 # refresh-only change or reject it; legacy KMS rejects such a commit.
-diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch
+# Sends surface dma-buf feedback only when it changes: Mesa reallocates every window buffer on each feedback, and
+# the scene sent a copy of the default at each new window's first output commit.
+diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch
 
 [provide]
 dependency_names = wlroots-0.20
