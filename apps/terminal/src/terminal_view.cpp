@@ -569,6 +569,7 @@ namespace term {
       return;
     }
     GhosttyTerminalScrollbar scroll{};
+    GhosttyMouseShape programShape = m_programShape;
     auto* find = std::get_if<TerminalFind>(&m_find);
     const auto findHits = find != nullptr ? find->hits() : std::vector<FindHit>{};
     const auto findCurrent = find != nullptr ? find->current() : std::nullopt;
@@ -585,8 +586,13 @@ namespace term {
         return false;
       }
       ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SCROLLBAR, &scroll);
+      ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MOUSE_SHAPE, &programShape);
       return true;
     });
+    if (updated && programShape != m_programShape) {
+      m_programShape = programShape; // OSC 22
+      updatePointerShape();
+    }
     if (!updated || ghostty_render_state_end_update(m_state) != GHOSTTY_SUCCESS) {
       return;
     }
@@ -1614,6 +1620,36 @@ namespace term {
     applyLink(std::nullopt);
   }
 
+  void TerminalView::updatePointerShape() {
+    // libghostty's shapes are the W3C names in their own order; cursor-shape-v1 numbers them differently.
+    static constexpr std::uint32_t kShapes[] = {
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,     WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CONTEXT_MENU,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_HELP,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_PROGRESS,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_WAIT,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CELL,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_VERTICAL_TEXT,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALIAS,       WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COPY,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NO_DROP,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NOT_ALLOWED, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COL_RESIZE,  WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ROW_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE,   WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE,   WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE,   WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NESW_RESIZE, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NWSE_RESIZE,
+        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_IN,     WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_OUT,
+    };
+    if (m_area == nullptr) {
+      return;
+    }
+    const auto index = static_cast<std::size_t>(m_programShape);
+    const std::uint32_t program =
+        m_programShape != GHOSTTY_MOUSE_SHAPE_TEXT && index < std::size(kShapes) ? kShapes[index] : 0; // 0: the grid's own
+    m_area->setCursorShape(m_link || m_overPill ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : program);
+  }
+
   void TerminalView::applyLink(std::optional<HoverLink> next) {
     const bool overPill = m_context != nullptr && m_context->hitTest(m_pointerX, m_pointerY).has_value();
     if (next == m_link && overPill == m_overPill) {
@@ -1622,9 +1658,7 @@ namespace term {
     const bool linkChanged = next != m_link;
     m_link = std::move(next);
     m_overPill = overPill;
-    if (m_area != nullptr) {
-      m_area->setCursorShape(m_link || m_overPill ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : 0);
-    }
+    updatePointerShape();
     if (linkChanged) {
       if (m_link && m_linkAnchor != nullptr && m_grid != nullptr) {
         const float cw = m_grid->cellWidth();

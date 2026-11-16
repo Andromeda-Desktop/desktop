@@ -260,6 +260,8 @@ namespace term {
     void textInputDeactivated(TextInputService& service) override;
     void programNotice(const Notice& notice);
     std::string selectionText();
+    void updatePointerShape(); // a link or pill wins over the program's shape (OSC 22)
+    GhosttyMouseShape m_programShape = GHOSTTY_MOUSE_SHAPE_TEXT;
     static std::string formatText(GhosttyTerminal t, const GhosttySelection* selection); // null: the whole screen
     void jumpPrompt(int direction);
     void copyLastOutput();
