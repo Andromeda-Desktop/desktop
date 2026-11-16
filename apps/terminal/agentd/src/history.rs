@@ -8,6 +8,15 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
+/// A session title from its first prompt: whitespace collapsed, at most 120 characters, cut ends with "…".
+pub fn title_of(prompt: &str) -> String {
+    let words = prompt.split_whitespace().collect::<Vec<_>>().join(" ");
+    match words.char_indices().nth(120) {
+        Some((cut, _)) => format!("{}…", words[..cut].trim_end()),
+        None => words,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct HistoryEntry {
     pub id: String,
@@ -90,10 +99,7 @@ fn read_entry(path: &Path, id: &str) -> Option<HistoryEntry> {
                             .and_then(|block| block["text"].as_str())
                     })
                 });
-                title = text
-                    .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.chars().take(120).collect());
+                title = text.map(title_of).filter(|s| !s.is_empty());
             }
             if cwd.is_some() && title.is_some() {
                 break;

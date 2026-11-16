@@ -104,7 +104,14 @@ namespace term::agent {
       return;
     }
     if (m_title.empty()) {
-      m_title = text.substr(0, 120);
+      m_title = text;
+      if (m_title.size() > 120) {
+        std::size_t cut = 120;
+        while ((static_cast<unsigned char>(m_title[cut]) & 0xC0U) == 0x80U) {
+          --cut;
+        }
+        m_title = m_title.substr(0, cut) + "\u2026";
+      }
     }
     m_lastStop.reset();
     const auto id = m_nextId++;

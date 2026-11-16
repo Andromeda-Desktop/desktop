@@ -22,7 +22,7 @@ use uuid::Uuid;
 use crate::{
     commands,
     config::Config,
-    history::History,
+    history::{self, History},
     runner::{self, Event, McpServer, PermissionRequest, RunError, RunRequest, Stop},
     store::{Session, Store},
     validation,
@@ -264,13 +264,7 @@ impl Bridge {
         }
 
         if session.title.is_none() {
-            let title: String = prompt
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .chars()
-                .take(120)
-                .collect();
+            let title = history::title_of(&prompt);
             self.store
                 .update(&id, |session| session.title = Some(title.clone()));
             notify(
