@@ -415,7 +415,7 @@ void PtySession::ioLoop() {
   }
 }
 
-void PtySession::sendSnapshot(const HeldSession& held) {
+bool PtySession::sendSnapshot(const HeldSession& held) {
   std::uint8_t* blob = nullptr;
   std::size_t len = 0;
   GhosttyResult result;
@@ -423,12 +423,13 @@ void PtySession::sendSnapshot(const HeldSession& held) {
     std::lock_guard lock(m_termMutex);
     result = ghostty_snapshot_encode_alloc(m_terminal, nullptr, &blob, &len);
   }
-  if (result != GHOSTTY_SUCCESS) return;
+  if (result != GHOSTTY_SUCCESS) return false;
   {
     std::lock_guard lock(m_sockMutex);
     if (holder::sendAll(held.socket, holder::encodeSnapshot(held.id, m_parsed, {blob, len}))) m_savedOffset = m_parsed;
   }
   ghostty_free(nullptr, blob, len);
+  return true;
 }
 
 void PtySession::parseLoop() {
@@ -483,8 +484,9 @@ void PtySession::parseLoop() {
         m_onSecret(secret);
       }
     }
-    if (const auto* held = std::get_if<HeldSession>(&m_link); held && m_snapshotWanted.exchange(false)) {
-      sendSnapshot(*held);
+    if (const auto* held = std::get_if<HeldSession>(&m_link);
+        held && (m_snapshotWanted.exchange(false) || m_snapshotRetry)) {
+      m_snapshotRetry = !sendSnapshot(*held);
     }
   }
   if (const auto* local = std::get_if<LocalChild>(&m_link)) {

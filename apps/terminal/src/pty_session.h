@@ -114,7 +114,8 @@ private:
   void ioLoop();
   void ioLoopHeld(const HeldSession& held);
   void parseLoop();
-  void sendSnapshot(const HeldSession& held);
+  // False when the terminal cannot be encoded yet (inside an escape sequence longer than kContinuationBytes).
+  bool sendSnapshot(const HeldSession& held);
   void endInput(std::optional<int> heldStatus);
   void signalWake();
   void flushOutbound();
@@ -189,6 +190,7 @@ private:
   std::atomic<bool> m_renderHeld{false};
   std::atomic<bool> m_stopping{false};
   std::atomic<bool> m_snapshotWanted{false};
+  bool m_snapshotRetry = false; // parser thread: a wanted snapshot failed; try again after the next output
   std::atomic<std::uint64_t> m_bytesRead{0};
   std::atomic<std::uint64_t> m_savedOffset{0};
 };

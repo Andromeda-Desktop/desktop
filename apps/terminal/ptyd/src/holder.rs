@@ -306,16 +306,18 @@ impl Holder {
         }
     }
 
+    /// An attached session never waits for the tail cap: a snapshot can be impossible until the
+    /// child gets further (an escape sequence longer than the client keeps), so `read_master` drops
+    /// the oldest tail instead.
     fn paused(&self, s: &Session) -> bool {
-        if s.tail.len() >= self.config.tail_cap {
-            return true;
-        }
         match s.owner {
             Owner::Attached(c) => self
                 .clients
                 .get(&c)
                 .is_some_and(|c| c.queued >= self.config.client_queue_cap),
-            Owner::Orphaned | Owner::Closing { .. } | Owner::Closed => false,
+            Owner::Orphaned | Owner::Closing { .. } | Owner::Closed => {
+                s.tail.len() >= self.config.tail_cap
+            }
         }
     }
 
@@ -658,7 +660,11 @@ impl Holder {
             return;
         };
         let Some(master) = s.master() else { return };
-        let mut buf = vec![0u8; READ_CHUNK.min(cap.saturating_sub(s.tail.len())).max(1)];
+        let room = match s.owner {
+            Owner::Attached(_) => READ_CHUNK,
+            _ => READ_CHUNK.min(cap.saturating_sub(s.tail.len())).max(1),
+        };
+        let mut buf = vec![0u8; room];
         match rustix::io::read(master, &mut buf) {
             Ok(0) | Err(rustix::io::Errno::IO) => {
                 s.on_hangup();
@@ -672,6 +678,13 @@ impl Holder {
                 buf.truncate(n);
                 let offset = s.read_offset();
                 s.tail.extend_from_slice(&buf);
+                if s.tail.len() > cap {
+                    // A reattach then replays the last `cap` bytes on a fresh terminal.
+                    let cut = s.tail.len() - cap;
+                    s.tail.drain(..cut);
+                    s.snapshot_offset += cut as u64;
+                    s.snapshot = Vec::new();
+                }
                 if let Owner::Attached(client) = s.owner {
                     self.send(
                         client,

@@ -273,6 +273,28 @@ fn snapshot_replaces_the_tail_it_covers() {
 }
 
 #[test]
+fn attached_output_flows_past_the_tail_cap_without_a_snapshot() {
+    let cap = 4096;
+    let (_dir, path) = start(Config {
+        tail_cap: cap,
+        snapshot_at: 1024,
+        ..Config::default()
+    });
+    let mut c = TestClient::connect(&path);
+    let (id, _fd) = c.spawn(&["sh", "-c", "head -c 100000 /dev/zero | tr '\\0' a; echo END"]);
+    // Never answers WantSnapshot: as when the client cannot encode one.
+    let mut seen = Vec::new();
+    while !contains(&seen, "END") {
+        if let HolderMsg::Output { id: i, bytes, .. } = c.recv().0
+            && i == id
+        {
+            seen.extend_from_slice(&bytes);
+        }
+    }
+    assert_eq!(seen.iter().filter(|&&b| b == b'a').count(), 100000);
+}
+
+#[test]
 fn orphan_blocks_the_child_at_the_tail_cap_and_loses_nothing() {
     let cap = 4096;
     let (dir, path) = start(Config {
