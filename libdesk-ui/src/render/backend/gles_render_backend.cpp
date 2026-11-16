@@ -11,6 +11,7 @@
 
 #include <malloc.h>
 #include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -446,6 +447,123 @@ namespace {
   std::chrono::steady_clock::time_point g_frameBegin;
 } // namespace
 
+// Timestamps per frame, read back kSlots frames later so the CPU never waits on the GPU. Each mark starts an
+// interval of one kind of GPU work that lasts until the next mark.
+struct GpuSplitTimer {
+  enum Kind : std::uint8_t {
+    kSetup, kGridFill, kGridBackgrounds, kGridText, kGridAll, kClear, kRects, kImage, kGlyph, kSpinner, kEffect,
+    kScene, kFullscreen, kBlur, kStencil, kOtherDraw, kKinds
+  };
+  static constexpr std::array<std::string_view, kKinds> kNames{
+      "setup", "grid-fill", "grid-bg", "grid-text", "grid-all", "clear", "rects", "image", "glyph", "spinner",
+      "effect", "scene", "fullscreen", "blur", "stencil", "other"
+  };
+  static constexpr std::size_t kSlots = 4;
+  struct Mark {
+    GLuint query;
+    Kind kind;
+  };
+  PFNGLGENQUERIESEXTPROC gen = nullptr;
+  PFNGLDELETEQUERIESEXTPROC del = nullptr;
+  PFNGLQUERYCOUNTEREXTPROC counter = nullptr;
+  PFNGLGETQUERYOBJECTIVEXTPROC available = nullptr;
+  PFNGLGETQUERYOBJECTUI64VEXTPROC result = nullptr;
+  std::array<std::vector<Mark>, kSlots> slots;
+  std::array<std::vector<GLuint>, kSlots> pools;
+  std::size_t frame = 0;
+  bool open = false;
+
+  static Kind gridKind(std::uint8_t phases) {
+    switch (phases) {
+    case kTerminalGridFill: return kGridFill;
+    case kTerminalGridBackgrounds: return kGridBackgrounds;
+    case kTerminalGridText: return kGridText;
+    default: return kGridAll;
+    }
+  }
+
+  void mark(Kind kind) {
+    if (!open) {
+      return;
+    }
+    auto& pool = pools[frame % kSlots];
+    auto& marks = slots[frame % kSlots];
+    if (marks.size() == pool.size()) {
+      GLuint id = 0;
+      gen(1, &id);
+      pool.push_back(id);
+    }
+    counter(pool[marks.size()], GL_TIMESTAMP_EXT);
+    marks.push_back({pool[marks.size()], kind});
+  }
+
+  void begin() {
+    auto& marks = slots[frame % kSlots];
+    if (!marks.empty()) {
+      GLint ready = 0;
+      available(marks.back().query, GL_QUERY_RESULT_AVAILABLE_EXT, &ready);
+      if (ready != 0) {
+        report(marks);
+      }
+      marks.clear();
+    }
+    open = true;
+    mark(kSetup);
+  }
+
+  void end() {
+    if (open) {
+      mark(kSetup);
+      open = false;
+      ++frame;
+    }
+  }
+
+  void report(const std::vector<Mark>& marks) const {
+    std::array<double, kKinds> ms{};
+    GLuint64 first = 0;
+    GLuint64 prev = 0;
+    for (std::size_t i = 0; i < marks.size(); ++i) {
+      GLuint64 t = 0;
+      result(marks[i].query, GL_QUERY_RESULT_EXT, &t);
+      if (i == 0) {
+        first = t;
+      } else {
+        ms[marks[i - 1].kind] += static_cast<double>(t - prev) / 1e6;
+      }
+      prev = t;
+    }
+    std::string line = std::format("gpu-split total={:.3F}", static_cast<double>(prev - first) / 1e6);
+    for (std::size_t k = 0; k < kKinds; ++k) {
+      if (ms[k] >= 0.0005) {
+        line += std::format(" {}={:.3F}", kNames[k], ms[k]);
+      }
+    }
+    kLog.info("{}", line);
+  }
+
+  void destroy() {
+    for (auto& pool : pools) {
+      if (!pool.empty()) {
+        del(static_cast<GLsizei>(pool.size()), pool.data());
+      }
+      pool.clear();
+    }
+    for (auto& marks : slots) {
+      marks.clear();
+    }
+    open = false;
+  }
+};
+
+GlesRenderBackend::GlesRenderBackend() = default;
+
+void GlesRenderBackend::gpuMark(std::uint8_t kind) {
+  if (m_gpuTimer) {
+    m_gpuTimer->mark(static_cast<GpuSplitTimer::Kind>(kind));
+  }
+}
+
 bool GlesRenderBackend::beginFrame(RenderTarget& target) {
   g_frameBegin = std::chrono::steady_clock::now();
   flushRectBatch();
@@ -457,6 +575,20 @@ bool GlesRenderBackend::beginFrame(RenderTarget& target) {
   setBlendMode(RenderBlendMode::PremultipliedAlpha);
   disableScissor();
   glDisable(GL_STENCIL_TEST);
+  if (noctalia::profiling::enabled() && glesOffscreenTarget(target) == nullptr) {
+    if (!m_gpuTimer && hasGlExtension("GL_EXT_disjoint_timer_query")) {
+      auto timer = std::make_unique<GpuSplitTimer>();
+      timer->gen = reinterpret_cast<PFNGLGENQUERIESEXTPROC>(eglGetProcAddress("glGenQueriesEXT"));
+      timer->del = reinterpret_cast<PFNGLDELETEQUERIESEXTPROC>(eglGetProcAddress("glDeleteQueriesEXT"));
+      timer->counter = reinterpret_cast<PFNGLQUERYCOUNTEREXTPROC>(eglGetProcAddress("glQueryCounterEXT"));
+      timer->available = reinterpret_cast<PFNGLGETQUERYOBJECTIVEXTPROC>(eglGetProcAddress("glGetQueryObjectivEXT"));
+      timer->result = reinterpret_cast<PFNGLGETQUERYOBJECTUI64VEXTPROC>(eglGetProcAddress("glGetQueryObjectui64vEXT"));
+      m_gpuTimer = std::move(timer);
+    }
+    if (m_gpuTimer) {
+      m_gpuTimer->begin();
+    }
+  }
   return true;
 }
 
@@ -481,6 +613,9 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
     // A window surface's makeCurrent keeps the binding when its EGL surface is already current.
     GlesFramebuffer::bindDefault();
     return;
+  }
+  if (m_gpuTimer) {
+    m_gpuTimer->end();
   }
   auto& surface = glesSurfaceTarget(target);
   const auto swapStart = std::chrono::steady_clock::now();
@@ -630,6 +765,7 @@ void GlesRenderBackend::setViewport(std::uint32_t width, std::uint32_t height) {
 
 void GlesRenderBackend::clear(Color color) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kClear);
   glClearColor(color.r, color.g, color.b, color.a);
   glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -720,6 +856,7 @@ void GlesRenderBackend::writeClipStencil(
 ) {
   setScissor(area); // flushes rects queued under the previous clip state
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kStencil);
   if (ref == 0 && op == GL_INCR) {
     // An outermost clip starts from a clear stencil; it holds garbage after a swap. Draws stay inside area.
     glClearStencil(0);
@@ -770,6 +907,7 @@ void GlesRenderBackend::drawRect(
     return;
   }
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kRects);
   m_rectProgram.ensureInitialized();
   m_rectProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
 }
@@ -778,6 +916,7 @@ void GlesRenderBackend::flushRectBatch() {
   if (m_rectBatch.empty()) {
     return;
   }
+  gpuMark(GpuSplitTimer::kRects);
   m_rectProgram.drawBatched(m_rectBatch);
   m_rectBatch.clear();
   ++m_batchStats.draws;
@@ -785,6 +924,7 @@ void GlesRenderBackend::flushRectBatch() {
 
 void GlesRenderBackend::drawImage(const RenderImageDraw& draw) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kImage);
   m_imageProgram.ensureInitialized();
   m_imageProgram.draw(
       draw.texture, draw.surfaceWidth, draw.surfaceHeight, draw.width, draw.height, draw.tint, draw.monochromeTint,
@@ -795,6 +935,7 @@ void GlesRenderBackend::drawImage(const RenderImageDraw& draw) {
 
 void GlesRenderBackend::drawGlyph(const RenderGlyphDraw& draw) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kGlyph);
   if (draw.texture == 0) {
     return;
   }
@@ -818,6 +959,7 @@ void GlesRenderBackend::drawSpinner(
     float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style, const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kSpinner);
   m_spinnerProgram.ensureInitialized();
   m_spinnerProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
 }
@@ -827,6 +969,7 @@ void GlesRenderBackend::drawCountdownRing(
     const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_countdownRingProgram.ensureInitialized();
   m_countdownRingProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
 }
@@ -836,6 +979,7 @@ void GlesRenderBackend::drawScreenCorner(
     const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_screenCornerProgram.ensureInitialized();
   m_screenCornerProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
 }
@@ -845,6 +989,7 @@ void GlesRenderBackend::drawAudioSpectrum(
     const AudioSpectrumStyle& style, std::span<const float> values, const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_audioSpectrumProgram.ensureInitialized();
   m_audioSpectrumProgram.draw(
       surfaceWidth, surfaceHeight, pixelScaleX, pixelScaleY, width, height, style, values, transform
@@ -856,6 +1001,7 @@ void GlesRenderBackend::drawFancyAudioVisualizer(
     const FancyAudioVisualizerStyle& style, const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   (void)textureWidth;
   m_fancyAudioVisualizerProgram.ensureInitialized();
   m_fancyAudioVisualizerProgram.draw(audioTexture, surfaceWidth, surfaceHeight, width, height, style, transform);
@@ -865,6 +1011,7 @@ void GlesRenderBackend::drawEffect(
     float surfaceWidth, float surfaceHeight, float width, float height, const EffectStyle& style, const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kEffect);
   m_effectProgram.ensureInitialized();
   m_effectProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
 }
@@ -874,41 +1021,48 @@ void GlesRenderBackend::drawGraph(
     const GraphStyle& style, const Mat3& transform
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_graphProgram.ensureInitialized();
   m_graphProgram.draw(dataTexture, textureWidth, surfaceWidth, surfaceHeight, width, height, style, transform);
 }
 
 void GlesRenderBackend::drawShaderScene(const ShaderSceneDraw& scene) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kScene);
   m_shaderSceneProgram.draw(scene);
 }
 
 void GlesRenderBackend::drawTerminalGrid(const TerminalGridDraw& grid) {
   flushRectBatch();
   m_terminalGridProgram.ensureInitialized();
+  gpuMark(GpuSplitTimer::gridKind(grid.phases));
   m_terminalGridProgram.draw(grid);
 }
 
 void GlesRenderBackend::drawWallpaper(const WallpaperDrawParams& params) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_wallpaperProgram.ensureInitialized();
   m_wallpaperProgram.draw(params);
 }
 
 void GlesRenderBackend::drawWallpaperMask(const WallpaperMaskDrawParams& params) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_wallpaperMaskProgram.ensureInitialized();
   m_wallpaperMaskProgram.draw(params);
 }
 
 void GlesRenderBackend::drawLockscreenTransition(const LockscreenTransitionDrawParams& params) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kOtherDraw);
   m_lockscreenTransitionProgram.ensureInitialized();
   m_lockscreenTransitionProgram.draw(params);
 }
 
 void GlesRenderBackend::drawFullscreenTexture(TextureId texture, bool flipY) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kFullscreen);
   if (texture == 0) {
     return;
   }
@@ -927,6 +1081,7 @@ void GlesRenderBackend::drawFullscreenTexture(TextureId texture, bool flipY) {
 
 void GlesRenderBackend::drawFullscreenTint(Color color) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kFullscreen);
   ensureFullscreenTintProgram();
   glUseProgram(m_fullscreenTintProgram.id());
   const GLint colorLoc = glGetUniformLocation(m_fullscreenTintProgram.id(), "u_color");
@@ -938,6 +1093,7 @@ void GlesRenderBackend::drawFramebufferBlur(
     TextureId sourceTexture, std::uint32_t width, std::uint32_t height, float directionX, float directionY, float radius
 ) {
   flushRectBatch();
+  gpuMark(GpuSplitTimer::kBlur);
   if (sourceTexture == 0) {
     return;
   }
@@ -960,6 +1116,10 @@ void GlesRenderBackend::ensureFullscreenTintProgram() {
 
 void GlesRenderBackend::destroyGpuObjects() {
   m_rectBatch.clear();
+  if (m_gpuTimer) {
+    m_gpuTimer->destroy();
+    m_gpuTimer.reset();
+  }
   m_rectProgram.destroy();
   m_imageProgram.destroy();
   m_glyphProgram.destroy();
@@ -983,6 +1143,7 @@ void GlesRenderBackend::destroyGpuObjects() {
 
 void GlesRenderBackend::abandonGpuObjects() noexcept {
   m_rectBatch.clear();
+  m_gpuTimer.reset();
   m_rectProgram.abandon();
   m_imageProgram.abandon();
   m_glyphProgram.abandon();

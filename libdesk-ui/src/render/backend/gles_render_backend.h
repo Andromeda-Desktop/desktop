@@ -23,13 +23,16 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+struct GpuSplitTimer;
+
 class GlesRenderBackend final : public RenderBackend {
 public:
-  GlesRenderBackend() = default;
+  GlesRenderBackend();
   ~GlesRenderBackend() override;
 
   GlesRenderBackend(const GlesRenderBackend&) = delete;
@@ -148,6 +151,9 @@ private:
   // Vertices of queued batchable rects (RectProgram::appendBatched).
   std::vector<float> m_rectBatch;
   BatchStats m_batchStats;
+  // ANDROMEDA_PROFILE only: GPU time per frame split into terminal grid phases and the rest.
+  std::unique_ptr<GpuSplitTimer> m_gpuTimer;
+  void gpuMark(std::uint8_t kind);
   ImageProgram m_imageProgram;
   GlyphProgram m_glyphProgram;
   SpinnerProgram m_spinnerProgram;

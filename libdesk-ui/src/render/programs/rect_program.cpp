@@ -445,9 +445,11 @@ varying vec4 v_color;
 varying vec4 v_border_color;
 varying vec4 v_radii;
 varying vec4 v_logical_inset;
+varying float v_interior;
 
 void main() {
     v_pixel = a_position_pixel.zw;
+    v_interior = a_size_border.w;
     v_rect_size = a_size_border.xy;
     v_border_width = a_size_border.z;
     v_color = a_color;
@@ -492,6 +494,19 @@ void main() {
       }
       source.replace(at, std::strlen(from), to);
     }
+    // The interior quad of a split rect lies inside every edge, corner and border: the full shader returns the plain
+    // fill there. The flag is constant per triangle, so derivatives in the slow path stay valid.
+    constexpr std::string_view kMain = "void main() {";
+    const std::size_t main = source.find(kMain);
+    if (main == std::string::npos) {
+      throw std::runtime_error("rect batch shader: main not found");
+    }
+    source.insert(
+        main + kMain.size(),
+        "\n    if (v_interior > 0.5) {\n        if (v_color.a <= 0.0) discard;\n"
+        "        gl_FragColor = vec4(v_color.rgb * v_color.a, v_color.a);\n        return;\n    }"
+    );
+    source.insert(main, "varying float v_interior;\n");
     return smooth_corner::fragment(source.c_str());
   }
 
@@ -515,17 +530,30 @@ void RectProgram::appendBatched(
   if (width <= 0.0F || height <= 0.0F) {
     return;
   }
+  if (style.fill.a <= 0.0F && (style.borderWidth <= 0.0F || style.border.a <= 0.0F)) {
+    return;
+  }
   const float padding = std::max(style.borderWidth + style.softness + 2.0F, 2.0F);
-  const float quadWidth = width + padding * 2.0F;
-  const float quadHeight = height + padding * 2.0F;
-  const Mat3 quadTransform = transform * Mat3::translation(-padding, -padding);
-  const std::array<float, 12> corners = {
-      0.0F, 0.0F, 1.0F, 0.0F, 0.0F, 1.0F, 0.0F, 1.0F, 1.0F, 0.0F, 1.0F, 1.0F,
+  // Distance from each side inside which the shader result can differ from the plain fill: inset, border, the
+  // smoothed corner extent (smooth_rounded_box: e <= r * (1 + 0.88 s)) and the antialiasing ramp.
+  const float cornerScale = 1.0F + 0.88F * static_cast<float>(Tokens::radiusSmoothing);
+  const auto& r = style.radius;
+  const auto& inset = style.logicalInset;
+  const float edge = style.borderWidth + 2.0F;
+  const std::array<float, 4> xs = {
+      -padding, std::max(inset.left, 0.0F) + std::max({r.tl, r.bl, 0.0F}) * cornerScale + edge,
+      width - std::max(inset.right, 0.0F) - std::max({r.tr, r.br, 0.0F}) * cornerScale - edge, width + padding
   };
-  const auto& m = quadTransform.m;
-  for (std::size_t i = 0; i < corners.size(); i += 2) {
-    const float lx = corners[i] * quadWidth;
-    const float ly = corners[i + 1] * quadHeight;
+  const std::array<float, 4> ys = {
+      -padding, std::max(inset.top, 0.0F) + std::max({r.tl, r.tr, 0.0F}) * cornerScale + edge,
+      height - std::max(inset.bottom, 0.0F) - std::max({r.bl, r.br, 0.0F}) * cornerScale - edge, height + padding
+  };
+  // Below this interior size the extra eight quads cost more than the cheap pixels save.
+  constexpr float kMinInterior = 32.0F;
+  const bool split = xs[2] - xs[1] >= kMinInterior && ys[2] - ys[1] >= kMinInterior;
+
+  const auto& m = transform.m;
+  const auto vertex = [&](float lx, float ly, float interior) {
     const float px = m[0] * lx + m[3] * ly + m[6];
     const float py = m[1] * lx + m[4] * ly + m[7];
     out.insert(
@@ -533,12 +561,12 @@ void RectProgram::appendBatched(
         {
             (px / surfaceWidth) * 2.0F - 1.0F,
             1.0F - (py / surfaceHeight) * 2.0F,
-            lx - padding,
-            ly - padding,
+            lx,
+            ly,
             width,
             height,
             style.borderWidth,
-            0.0F,
+            interior,
             style.fill.r,
             style.fill.g,
             style.fill.b,
@@ -547,16 +575,34 @@ void RectProgram::appendBatched(
             style.border.g,
             style.border.b,
             style.border.a,
-            style.radius.tl,
-            style.radius.tr,
-            style.radius.br,
-            style.radius.bl,
-            style.logicalInset.left,
-            style.logicalInset.top,
-            style.logicalInset.right,
-            style.logicalInset.bottom,
+            r.tl,
+            r.tr,
+            r.br,
+            r.bl,
+            inset.left,
+            inset.top,
+            inset.right,
+            inset.bottom,
         }
     );
+  };
+  const auto quad = [&](float x0, float y0, float x1, float y1, float interior) {
+    vertex(x0, y0, interior);
+    vertex(x1, y0, interior);
+    vertex(x0, y1, interior);
+    vertex(x0, y1, interior);
+    vertex(x1, y0, interior);
+    vertex(x1, y1, interior);
+  };
+  if (!split) {
+    quad(xs[0], ys[0], xs[3], ys[3], 0.0F);
+    return;
+  }
+  // A 3x3 grid on shared vertices: no T-junctions, so no pixel is drawn twice or missed.
+  for (std::size_t row = 0; row < 3; ++row) {
+    for (std::size_t col = 0; col < 3; ++col) {
+      quad(xs[col], ys[row], xs[col + 1], ys[row + 1], row == 1 && col == 1 ? 1.0F : 0.0F);
+    }
   }
 }
 
