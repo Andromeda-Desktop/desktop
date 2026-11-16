@@ -19,7 +19,7 @@ namespace settings {
     using namespace page_rows;
 
     constexpr float kIcon = 32.0F;
-    constexpr float kStatusDotSize = 6.0F;
+    TOKENS_LIVE(kStatusDotSize, Tokens::componentListStatusDot);
     constexpr std::size_t kJobsOnPage = 3;
 
     std::string detailId(const PrinterInfo& p) { return "printer:" + p.label + "\t" + p.name; }

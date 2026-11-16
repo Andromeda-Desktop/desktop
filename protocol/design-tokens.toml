@@ -489,6 +489,7 @@ row_inset = 12.0
 header_gap = 8.0
 group_gap = 24.0
 table_header = 32.0
+status_dot = 6.0     # state dot beside a row subtitle (printer status)
 
 [component.sidebar]
 width = 240.0
@@ -613,6 +614,7 @@ symbol = 48.0
 radius = 12.0
 padding = 4.0
 item = 28.0
+item_two_line = 44.0 # title + subtitle row (printer menu)
 item_radius = "= component.menu.radius - component.menu.padding"
 item_inset = 8.0
 header = 24.0
