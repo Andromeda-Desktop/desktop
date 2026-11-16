@@ -1,5 +1,6 @@
 #include "index_search.h"
 
+#include "core/deferred_call.h"
 #include "core/files/file_info.h"
 #include "core/log.h"
 
@@ -11,6 +12,7 @@
 #include <format>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <thread>
 #include <unistd.h>
 
 namespace {
@@ -66,25 +68,20 @@ void IndexSearch::disconnect() {
   m_asked.clear();
   m_out.clear();
   m_in.clear();
-  m_rows.clear();
+  m_paths.clear();
 }
 
 void IndexSearch::query(const std::string& text, std::string_view kind, Answer done) {
-  send(text, kind, std::move(done), Request::Query);
+  send(text, kind, std::move(done), 0);
 }
 
 void IndexSearch::search(const std::string& text, std::string_view kind, Answer done) {
   m_debounce.start(kSearchDebounce, [this, text, kind = std::string(kind), done = std::move(done)]() mutable {
-    for (Asked& asked : m_asked) {
-      if (asked.request == Request::Search) {
-        asked.request = Request::SupersededSearch;
-      }
-    }
-    send(text, kind, std::move(done), Request::Search);
+    send(text, kind, std::move(done), ++m_searches);
   });
 }
 
-void IndexSearch::send(const std::string& text, std::string_view kind, Answer done, Request request) {
+void IndexSearch::send(const std::string& text, std::string_view kind, Answer done, std::uint64_t search) {
   if (!connect()) {
     done(text, {});
     return;
@@ -93,7 +90,7 @@ void IndexSearch::send(const std::string& text, std::string_view kind, Answer do
   std::string words = text;
   std::ranges::replace(words, '\n', ' ');
   m_out += std::format("query {} {}{}{}\n", kLimit, words, kind.empty() ? "" : " kind:", kind);
-  m_asked.push_back({.text = text, .done = std::move(done), .request = request});
+  m_asked.push_back({.text = text, .done = std::move(done), .search = search});
   flush();
 }
 
@@ -134,9 +131,7 @@ void IndexSearch::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx)
       auto asked = std::move(m_asked);
       disconnect();
       for (Asked& a : asked) {
-        if (a.request != Request::SupersededSearch) {
-          a.done(a.text, {});
-        }
+        answered(std::move(a), {});
       }
       return;
     }
@@ -150,22 +145,52 @@ void IndexSearch::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx)
       if (!m_asked.empty()) {
         Asked asked = std::move(m_asked.front());
         m_asked.pop_front();
-        if (asked.request != Request::SupersededSearch) {
-          asked.done(asked.text, std::move(m_rows));
-        }
+        answered(std::move(asked), std::move(m_paths));
       }
-      m_rows.clear();
-      continue;
-    }
-    if (!m_asked.empty() && m_asked.front().request == Request::SupersededSearch) {
+      m_paths.clear();
       continue;
     }
     // "path\tmtime_ns\tsize\tkind\tmatch"
-    const std::string path(line.substr(0, line.find('\t')));
-    if (auto info = statFile(std::filesystem::path(path))) {
-      info->setNameKeepLabel(path);
-      m_rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
+    if (!m_asked.empty() && !superseded(m_asked.front())) {
+      m_paths.emplace_back(line.substr(0, line.find('\t')));
     }
   }
   m_in.erase(0, start);
+}
+
+void IndexSearch::answered(Asked asked, std::vector<std::string> paths) {
+  const std::uint64_t answer = m_answers++;
+  const bool stat = !superseded(asked) && !paths.empty();
+  m_statting.emplace(answer, std::move(asked));
+  if (!stat) {
+    deliver(answer, {});
+    return;
+  }
+  std::thread([this, alive = std::weak_ptr<bool>(m_alive), answer, paths = std::move(paths)] {
+    Rows rows;
+    for (const std::string& path : paths) {
+      if (auto info = statFile(std::filesystem::path(path))) {
+        info->setNameKeepLabel(path);
+        rows.push_back(std::make_shared<const FileInfo>(std::move(*info)));
+      }
+    }
+    DeferredCall::callLater([this, alive, answer, rows = std::move(rows)]() mutable {
+      if (!alive.expired()) {
+        deliver(answer, std::move(rows));
+      }
+    });
+  }).detach();
+}
+
+void IndexSearch::deliver(std::uint64_t answer, Rows rows) {
+  m_statted.emplace(answer, std::move(rows));
+  for (auto it = m_statted.find(m_delivered); it != m_statted.end(); it = m_statted.find(m_delivered)) {
+    Rows ready = std::move(it->second);
+    m_statted.erase(it);
+    auto node = m_statting.extract(m_delivered);
+    ++m_delivered;
+    if (!superseded(node.mapped())) {
+      node.mapped().done(node.mapped().text, std::move(ready));
+    }
+  }
 }
