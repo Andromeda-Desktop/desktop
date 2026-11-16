@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -10,6 +11,7 @@
 class SessionBus;
 namespace sdbus {
   class IProxy;
+  class Variant;
 }
 
 namespace desk {
@@ -26,8 +28,15 @@ namespace desk {
     // request makes an open one's answer stale, so only the newest `picked` runs. parentWindow: "wayland:<handle>" or "".
     void chooseFolder(const std::string& parentWindow, const std::string& title,
                       std::function<void(std::optional<std::filesystem::path>)> picked);
+    // Asks where to save a new file, suggesting currentName; same contract as chooseFolder.
+    void saveFile(const std::string& parentWindow, const std::string& title, const std::string& currentName,
+                  std::function<void(std::optional<std::filesystem::path>)> picked);
 
   private:
+    void request(const char* method, const std::string& parentWindow, const std::string& title,
+                 std::map<std::string, sdbus::Variant> options,
+                 std::function<void(std::optional<std::filesystem::path>)> picked);
+
     SessionBus& m_bus;
     std::unique_ptr<sdbus::IProxy> m_portal;
     std::unique_ptr<sdbus::IProxy> m_request;

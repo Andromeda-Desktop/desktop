@@ -166,6 +166,8 @@ namespace term {
     void closeFind();
     // A drop on the grid: text/uri-list as shell-quoted paths, any other type as text, both through paste.
     void pasteDrop(const std::string& mime, const std::string& data);
+    // Screen and scrollback as plain text, soft wraps joined.
+    [[nodiscard]] std::string scrollbackText();
 
     [[nodiscard]] InputArea* focusArea() const noexcept override { return m_area; }
     [[nodiscard]] TerminalView* terminal() noexcept override { return this; }
@@ -258,7 +260,7 @@ namespace term {
     void textInputDeactivated(TextInputService& service) override;
     void programNotice(const Notice& notice);
     std::string selectionText();
-    static std::string formatText(GhosttyTerminal t, const GhosttySelection& selection);
+    static std::string formatText(GhosttyTerminal t, const GhosttySelection* selection); // null: the whole screen
     void jumpPrompt(int direction);
     void copyLastOutput();
     void copySelection();

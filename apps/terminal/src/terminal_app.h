@@ -48,6 +48,9 @@ namespace term {
     std::unique_ptr<PrefsWindow> m_prefs;
     std::unique_ptr<desk::ForeignExport> m_prefsExport; // parents the import dialog to Preferences; lives with it
     std::unique_ptr<desk::FileChooser> m_chooser;
+    std::unique_ptr<desk::ForeignExport> m_saveExport; // parents a save dialog to its terminal window
+    void chooseSaveFile(AppWindow& window, const std::string& suggested,
+                        std::function<void(std::optional<std::filesystem::path>)> picked);
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next

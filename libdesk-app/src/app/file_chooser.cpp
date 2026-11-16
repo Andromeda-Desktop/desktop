@@ -47,6 +47,16 @@ namespace desk {
 
   void FileChooser::chooseFolder(const std::string& parentWindow, const std::string& title,
                                  std::function<void(std::optional<std::filesystem::path>)> picked) {
+    request("OpenFile", parentWindow, title, {{"directory", sdbus::Variant{true}}}, std::move(picked));
+  }
+
+  void FileChooser::saveFile(const std::string& parentWindow, const std::string& title, const std::string& currentName,
+                             std::function<void(std::optional<std::filesystem::path>)> picked) {
+    request("SaveFile", parentWindow, title, {{"current_name", sdbus::Variant{currentName}}}, std::move(picked));
+  }
+
+  void FileChooser::request(const char* method, const std::string& parentWindow, const std::string& title,
+                            Options options, std::function<void(std::optional<std::filesystem::path>)> picked) {
     const std::uint64_t seq = ++m_seq;
     const std::string token = std::format("desk_choose{}", seq);
     try {
@@ -68,16 +78,15 @@ namespace desk {
               }
             });
           });
-      const Options options{{"handle_token", sdbus::Variant{token}},
-                            {"directory", sdbus::Variant{true}},
-                            {"modal", sdbus::Variant{true}}};
-      m_portal->callMethodAsync("OpenFile")
+      options.emplace("handle_token", sdbus::Variant{token});
+      options.emplace("modal", sdbus::Variant{true});
+      m_portal->callMethodAsync(method)
           .onInterface(kFileChooser)
           .withArguments(parentWindow, title, options)
-          .uponReplyInvoke([this, seq, picked, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
-                                                                                    sdbus::ObjectPath /*request*/) {
+          .uponReplyInvoke([this, seq, picked, method, alive = std::weak_ptr<bool>(m_alive)](
+                               std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
             if (error.has_value() && !alive.expired() && seq == m_seq) {
-              kLog.warn("OpenFile: {}", error->getMessage());
+              kLog.warn("{}: {}", method, error->getMessage());
               picked(std::nullopt);
             }
           });

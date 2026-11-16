@@ -45,7 +45,10 @@ namespace term {
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, *m_agents, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
                                                           [this](const std::string& token) { openWindow(token); },
-                                                          [this](const std::string& token) { openPreferences(token); });
+                                                          [this](const std::string& token) { openPreferences(token); },
+                                                          [this, &window](const std::string& suggested, auto picked) {
+                                                            chooseSaveFile(window, suggested, std::move(picked));
+                                                          });
     return window;
   }
 
@@ -80,6 +83,22 @@ namespace term {
   }
 
   // One Preferences window per app: a second Ctrl+, raises it.
+  void TerminalApp::chooseSaveFile(AppWindow& window, const std::string& suggested,
+                                   std::function<void(std::optional<std::filesystem::path>)> picked) {
+    if (bus() == nullptr) {
+      return;
+    }
+    if (m_chooser == nullptr) {
+      m_chooser = std::make_unique<desk::FileChooser>(*bus());
+    }
+    if (m_saveExport == nullptr) {
+      m_saveExport = std::make_unique<desk::ForeignExport>(loop().wayland().display());
+    }
+    m_saveExport->handle(window.wlSurface(), [this, suggested, picked = std::move(picked)](const std::string& parent) {
+      m_chooser->saveFile(parent, "Save Scrollback", suggested, picked);
+    });
+  }
+
   void TerminalApp::openPreferences(const std::string& activationToken) {
     if (m_prefsWindow == nullptr) {
       m_prefsWindow = &addWindow({.appId = info().id, .title = "Preferences", .stateKey = "preferences", .width = 760,

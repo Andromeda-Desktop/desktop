@@ -2101,19 +2101,23 @@ namespace term {
     return m_session.withTerminal([&](GhosttyTerminal t) {
       GhosttySelection selection{};
       return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SELECTION, &selection) == GHOSTTY_SUCCESS
-                 ? formatText(t, selection)
+                 ? formatText(t, &selection)
                  : std::string{};
     });
   }
 
-  std::string TerminalView::formatText(GhosttyTerminal t, const GhosttySelection& selection) {
+  std::string TerminalView::scrollbackText() {
+    return m_session.withTerminal([](GhosttyTerminal t) { return t != nullptr ? formatText(t, nullptr) : std::string(); });
+  }
+
+  std::string TerminalView::formatText(GhosttyTerminal t, const GhosttySelection* selection) {
     std::string text;
     GhosttyFormatter formatter = nullptr;
     if (ghostty_formatter_terminal_new(nullptr, &formatter, t) != GHOSTTY_SUCCESS) {
       return text;
     }
     const bool on = true;
-    ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
+    ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, selection);
     ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &on);
     ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &on);
     std::uint8_t* ptr = nullptr;
@@ -2170,7 +2174,7 @@ namespace term {
             || ghostty_terminal_grid_ref(t, last, &selection.end) != GHOSTTY_SUCCESS) {
           return {};
         }
-        return formatText(t, selection);
+        return formatText(t, &selection);
       }
       return {};
     });

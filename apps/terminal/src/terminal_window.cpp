@@ -39,7 +39,10 @@
 #include <format>
 #include <cctype>
 #include <cmath>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <string>
 
 namespace term {
@@ -104,9 +107,10 @@ namespace term {
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
                                  std::function<void(const std::string& token)> newWindow,
-                                 std::function<void(const std::string& token)> preferences)
+                                 std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
       : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
-        m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)) {
+        m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
+        m_chooseSaveFile(std::move(chooseSaveFile)) {
     m_settingsChanged = m_settings.changed().connect([this] {
       m_window.setMaterial(m_settings.settings().material == WindowMaterial::Glass ? AppWindow::Material::Glass
                                                                                   : AppWindow::Material::Solid);
@@ -761,6 +765,12 @@ namespace term {
       openSession(NewShell{});
       return true;
     }
+    if (shift && (event.unshifted == 'h' || event.unshifted == 'H')) {
+      if (const auto shown = m_sessions.shown()) {
+        showScrollback(*shown);
+      }
+      return true;
+    }
     if (shift && (event.unshifted == 'a' || event.unshifted == 'A')) {
       openAgentHere();
       return true;
@@ -820,7 +830,7 @@ namespace term {
   }
 
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
-    enum : std::int32_t { kSplit = 1, kLeave, kRename, kDuplicate, kCloseOthers, kClose };
+    enum : std::int32_t { kSplit = 1, kLeave, kRename, kDuplicate, kShowScrollback, kSaveScrollback, kCloseOthers, kClose };
     const bool others = m_sessions.sessions().size() > 1;
     const std::uint64_t shown = m_sessions.shown().value_or(0);
     const auto* shownSplit = m_sessions.splitOf(shown);
@@ -832,6 +842,10 @@ namespace term {
     }
     entries.push_back({.id = kRename, .label = "Rename", .enabled = !m_rail});
     entries.push_back({.id = kDuplicate, .label = "Duplicate"});
+    entries.push_back({.separator = true});
+    const bool terminal = terminalOf(id) != nullptr;
+    entries.push_back({.id = kShowScrollback, .label = "Show scrollback", .shortcut = "Ctrl+Shift+H", .enabled = terminal});
+    entries.push_back({.id = kSaveScrollback, .label = "Save scrollback…", .enabled = terminal});
     entries.push_back({.separator = true});
     entries.push_back({.id = kCloseOthers, .label = "Close other sessions", .enabled = others});
     entries.push_back({.id = kClose, .label = "Close", .shortcut = "Ctrl+Shift+W", .danger = true});
@@ -845,6 +859,8 @@ namespace term {
                                case kLeave: apply(session_event::Leave{id}); break;
                                case kRename: renameSession(id); break;
                                case kDuplicate: duplicateSession(id); break;
+                               case kShowScrollback: showScrollback(id); break;
+                               case kSaveScrollback: saveScrollback(id); break;
                                case kCloseOthers: {
                                  std::vector<std::uint64_t> ids;
                                  for (const SessionInfo& session : m_sessions.sessions()) {
@@ -878,6 +894,57 @@ namespace term {
     m_window.invalidate();
   }
 
+  TerminalView* TerminalWindow::terminalOf(std::uint64_t id) {
+    const auto it = std::ranges::find(m_views, id, &Session::id);
+    return it != m_views.end() ? it->view->terminal() : nullptr;
+  }
+
+  void TerminalWindow::showScrollback(std::uint64_t id) {
+    TerminalView* view = terminalOf(id);
+    if (view == nullptr) {
+      return;
+    }
+    const std::string text = view->scrollbackText();
+    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+    std::string path = std::string(runtime != nullptr && *runtime != '\0' ? runtime : "/tmp") + "/andromeda-scrollback-XXXXXX";
+    const int fd = mkstemp(path.data()); // 0600
+    if (fd < 0) {
+      kLog.warn("scrollback file: {}", std::strerror(errno));
+      return;
+    }
+    for (std::size_t done = 0; done < text.size();) {
+      const ssize_t n = ::write(fd, text.data() + done, text.size() - done);
+      if (n < 0 && errno == EINTR) {
+        continue;
+      }
+      if (n <= 0) {
+        break;
+      }
+      done += static_cast<std::size_t>(n);
+    }
+    ::close(fd);
+    // The shell removes the copy when the pager quits or the session closes (SIGHUP).
+    openSession(NewShell{.cwd = view->cwd(),
+                         .argv = {"sh", "-c", "trap 'rm -f \"$1\"' EXIT HUP TERM; ${PAGER:-less +G} \"$1\"", "sh", path}});
+  }
+
+  void TerminalWindow::saveScrollback(std::uint64_t id) {
+    TerminalView* view = terminalOf(id);
+    if (view == nullptr || !m_chooseSaveFile) {
+      return;
+    }
+    m_chooseSaveFile("scrollback.txt", [text = view->scrollbackText()](std::optional<std::filesystem::path> path) {
+      if (!path) {
+        return;
+      }
+      std::ofstream out(*path, std::ios::binary | std::ios::trunc);
+      out << text;
+      if (!out) {
+        kLog.warn("cannot save scrollback to {}", path->string());
+      }
+    });
+  }
+
   void TerminalWindow::duplicateSession(std::uint64_t id) {
     const SessionInfo* session = m_sessions.find(id);
     if (session == nullptr) {
@@ -886,7 +953,8 @@ namespace term {
     if (session->kind == SessionKind::Agent) {
       openSession(NewAgent{session->cwd});
     } else {
-      openSession(NewShell{session->cwd});
+      const TerminalView* view = terminalOf(id); // the row's cwd is the shown form (~/…), not a path
+      openSession(NewShell{view != nullptr ? view->cwd() : std::string()});
     }
   }
 

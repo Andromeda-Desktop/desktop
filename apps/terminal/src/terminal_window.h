@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <optional>
 #include <unordered_set>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -61,6 +62,10 @@ namespace term {
   };
   using WindowOrigin = std::variant<NewShell, Reattach, NewAgent>;
 
+  // Asks where to save a file named like suggested (the portal dialog, parented to this window); nullopt = cancelled.
+  using ChooseSaveFile = std::function<void(const std::string& suggested,
+                                            std::function<void(std::optional<std::filesystem::path>)> picked)>;
+
   class TerminalWindow {
   public:
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
@@ -70,7 +75,7 @@ namespace term {
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
                    std::function<void()> close, std::function<void(const std::string& token)> newWindow,
-                   std::function<void(const std::string& token)> preferences);
+                   std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile);
     ~TerminalWindow();
     // The surface and scene were destroyed (compositor reconnect): the next requestFrame hooks the new surface.
     void surfaceLost();
@@ -120,6 +125,11 @@ namespace term {
     std::function<void()> m_close;
     std::function<void(const std::string& token)> m_newWindow;
     std::function<void(const std::string& token)> m_preferences;
+    ChooseSaveFile m_chooseSaveFile;
+    // A copy of a session's screen and scrollback: in a pager session (Ctrl+Shift+H), or to a file the user picks.
+    void showScrollback(std::uint64_t id);
+    void saveScrollback(std::uint64_t id);
+    TerminalView* terminalOf(std::uint64_t id);
     SessionList m_sessions;
     std::string m_filter; // the sidebar search text
     Input* m_search = nullptr;
