@@ -113,13 +113,40 @@ namespace andromeda::index {
   }
 
   void LiveIndex::sweep() {
-    const std::vector<Folder> all = m_db.folders();
-    for (const Folder& folder : all) {
-      if (mtimeOf(folder.path) != folder.mtime) {
+    beginSweep();
+    while (!sweepSlice(std::chrono::milliseconds::max())) {
+    }
+    flush();
+  }
+
+  void LiveIndex::beginSweep() {
+    if (m_sweep == SweepState::Running) {
+      return;
+    }
+    m_sweepFolders = m_db.folders();
+    m_sweepNext = 0;
+    m_sweep = SweepState::Running;
+  }
+
+  bool LiveIndex::sweepSlice(std::chrono::milliseconds budget) {
+    if (m_sweep == SweepState::Idle) {
+      return true;
+    }
+    const auto until = budget == std::chrono::milliseconds::max() ? std::chrono::steady_clock::time_point::max()
+                                                                   : std::chrono::steady_clock::now() + budget;
+    for (; m_sweepNext < m_sweepFolders.size(); ++m_sweepNext) {
+      if ((m_sweepNext & 63) == 0 && m_sweepNext != 0 && std::chrono::steady_clock::now() >= until) {
+        return false;
+      }
+      const Folder& folder = m_sweepFolders[m_sweepNext];
+      // A flush between slices may have removed this folder and handed its id to a new row: check it still is ours.
+      if (mtimeOf(folder.path) != folder.mtime && m_db.idOf(folder.path) == folder.id) {
         m_dirty[folder.id] = folder.path;
       }
     }
-    flush();
+    m_sweepFolders = {};
+    m_sweep = SweepState::Idle;
+    return true;
   }
 
   void LiveIndex::rescan(std::int64_t id, const std::string& path) {

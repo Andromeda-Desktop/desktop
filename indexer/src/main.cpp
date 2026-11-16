@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
   if (command == "watch" || command == "serve") {
     constexpr int kQuietMs = 200;
     constexpr int kSweepMs = 10 * 60 * 1000;
+    constexpr int kSliceMs = 8; // longest a query waits behind a sweep slice
     const bool serve = command == "serve";
     // A write to an extract helper that died must fail with EPIPE, not end the daemon.
     std::signal(SIGPIPE, SIG_IGN);
@@ -109,22 +110,18 @@ int main(int argc, char** argv) {
     if (fd < 0) {
       return 1;
     }
-    // Changes made while no watcher ran are found by one sweep at start.
-    const auto sweepStart = std::chrono::steady_clock::now();
-    live.sweep();
-    // A sweep's folder list is freed at once; give the pages back instead of keeping them in the heap.
-    malloc_trim(0);
-    std::fprintf(stderr, "watching %zu folders; start sweep %lld ms\n", live.watchCount(),
-                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                            std::chrono::steady_clock::now() - sweepStart)
-                                            .count()));
     using Clock = std::chrono::steady_clock;
+    // Changes made while no watcher ran are found by a sweep at start; it runs in slices, so queries are answered
+    // from the first loop pass (a cold start sweep of 30k folders took 1.2 s).
+    auto sweepStart = Clock::now();
+    live.beginSweep();
+    std::fprintf(stderr, "watching %zu folders\n", live.watchCount());
     auto nextSweep = Clock::now() + std::chrono::milliseconds(kSweepMs);
     auto quietAt = Clock::now();
     while (true) {
       // Events only mark folders dirty; rescans wait for kQuietMs after the last event, so a burst costs one
       // pass. Queries do not move that deadline.
-      const auto wakeAt = live.dirty() ? quietAt : nextSweep;
+      const auto wakeAt = live.sweeping() ? Clock::now() : live.dirty() ? quietAt : nextSweep;
       const auto timeout = std::chrono::duration_cast<std::chrono::milliseconds>(wakeAt - Clock::now()).count();
       std::vector<pollfd> fds{{.fd = fd, .events = POLLIN, .revents = 0}};
       if (server) {
@@ -140,18 +137,28 @@ int main(int argc, char** argv) {
         }
       }
       const auto now = Clock::now();
-      if (live.dirty() && now >= quietAt) {
+      if (live.sweeping()) {
+        if (live.sweepSlice(std::chrono::milliseconds(kSliceMs))) {
+          live.flush();
+          if (const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - sweepStart).count();
+              ms >= 100) {
+            std::fprintf(stderr, "sweep %lld ms\n", static_cast<long long>(ms));
+          }
+          if (content) {
+            content->wake();
+          }
+          // A sweep's folder list is freed at once; give the pages back instead of keeping them in the heap.
+          malloc_trim(0);
+          nextSweep = Clock::now() + std::chrono::milliseconds(kSweepMs);
+        }
+      } else if (live.dirty() && now >= quietAt) {
         live.flush();
         if (content) {
           content->wakeLive();
         }
       } else if (!live.dirty() && now >= nextSweep) {
-        live.sweep();
-        if (content) {
-          content->wake();
-        }
-        malloc_trim(0);
-        nextSweep = Clock::now() + std::chrono::milliseconds(kSweepMs);
+        sweepStart = now;
+        live.beginSweep();
       }
     }
   }

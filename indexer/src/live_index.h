@@ -4,11 +4,13 @@
 
 #include <sys/types.h>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace andromeda::index {
 
@@ -33,6 +35,11 @@ namespace andromeda::index {
     // Rescans every indexed folder whose time on disk differs from the index (the fallback for unwatched folders
     // and for a full event queue).
     void sweep();
+    // The same sweep in slices, so queries are answered between them: beginSweep moves Idle to Running (no-op when
+    // Running); sweepSlice marks changed folders dirty for up to budget and returns true when the sweep is done.
+    void beginSweep();
+    bool sweepSlice(std::chrono::milliseconds budget);
+    [[nodiscard]] bool sweeping() const { return m_sweep == SweepState::Running; }
     [[nodiscard]] bool dirty() const { return !m_dirty.empty(); }
     [[nodiscard]] std::size_t watchCount() const { return m_byWatch.size(); }
 
@@ -53,6 +60,10 @@ namespace andromeda::index {
     std::unordered_map<int, Watched> m_byWatch;
     std::unordered_map<std::int64_t, int> m_watchOf;
     std::map<std::int64_t, std::string> m_dirty; // folder id -> path
+    enum class SweepState : std::uint8_t { Idle, Running };
+    SweepState m_sweep = SweepState::Idle;
+    std::vector<Folder> m_sweepFolders; // Running: the folders at beginSweep; m_sweepNext is the next to compare
+    std::size_t m_sweepNext = 0;
   };
 
 } // namespace andromeda::index
