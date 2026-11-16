@@ -225,7 +225,6 @@ namespace term {
     };
     ContextKey contextKey();
     void syncContext();
-    void readBranch(const void* prompt, std::string cwdUri, std::string path);
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
     [[nodiscard]] int viewRows() const noexcept { return m_grid->rows() - 1; }
     // Scrolls by the viewport height less one row; negative pages go back into the scrollback.

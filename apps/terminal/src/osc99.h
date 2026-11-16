@@ -1,5 +1,7 @@
 #pragma once
 
+#include "osc_frame.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -48,13 +50,9 @@ namespace term {
     static std::string closedReply(const std::string& key);
 
   private:
-    enum class State : std::uint8_t { Ground, Escape, Prefix, Payload, PayloadEscape, Skip, SkipEscape };
+    void finish(std::string_view payload, const std::function<void(Event)>& emit);
 
-    void finish(const std::function<void(Event)>& emit);
-
-    State m_state = State::Ground;
-    std::size_t m_prefixAt = 0;
-    std::string m_payload;
+    OscFrame m_frame{"99;", 8192};
     std::map<std::string, Notice> m_pending; // by key, until the chunk with d=1
   };
 

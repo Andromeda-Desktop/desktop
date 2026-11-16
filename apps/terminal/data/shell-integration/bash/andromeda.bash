@@ -1,4 +1,4 @@
-# Andromeda Terminal shell integration for bash: OSC 133 command marks with the command line, OSC 7 cwd.
+# Andromeda Terminal shell integration for bash: OSC 133 command marks with the command line, OSC 7 cwd, git branch (OSC 1337 SetUserVar).
 # The terminal starts `bash --posix -i` with ENV set to this file: POSIX mode reads only $ENV, so this file first
 # restores the normal startup files, then adds the hooks. The user's rc files stay untouched.
 if [[ -n "${ANDROMEDA_BASH_INJECT-}" ]]; then
@@ -36,6 +36,51 @@ if [[ $- == *i* && -z "${__andromeda_hooked-}" ]]; then
     REPLY="$out"
   }
 
+  # The git branch of $PWD into REPLY (short hash when detached; empty outside a repository). Builtins only.
+  __andromeda_branch() {
+    local dir="$PWD" git head
+    REPLY=""
+    while :; do
+      git=""
+      if [[ -d "$dir/.git" ]]; then
+        git="$dir/.git"
+      elif [[ -f "$dir/.git" ]]; then
+        builtin read -r git < "$dir/.git" || return
+        [[ "$git" == "gitdir: "* ]] || return
+        git="${git#gitdir: }"
+        [[ "$git" == /* ]] || git="$dir/$git"
+      fi
+      if [[ -n "$git" ]]; then
+        builtin read -r head < "$git/HEAD" 2> /dev/null || return
+        if [[ "$head" == "ref: refs/heads/"* ]]; then
+          REPLY="${head#ref: refs/heads/}"
+        elif (( ${#head} >= 7 )); then
+          REPLY="${head:0:7}"
+        fi
+        return
+      fi
+      [[ -z "$dir" ]] && return
+      dir="${dir%/*}"
+    done
+  }
+
+  # Base64 of $1 into REPLY.
+  __andromeda_base64() {
+    local LC_ALL=C text="$1" abc=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/ out="" a b c v
+    local -i i n=${#1}
+    for ((i = 0; i < n; i += 3)); do
+      builtin printf -v a '%d' "'${text:i:1}"
+      b=0 c=0
+      ((i + 1 < n)) && builtin printf -v b '%d' "'${text:i+1:1}"
+      ((i + 2 < n)) && builtin printf -v c '%d' "'${text:i+2:1}"
+      ((v = (a & 255) << 16 | (b & 255) << 8 | (c & 255)))
+      out+="${abc:v >> 18 & 63:1}${abc:v >> 12 & 63:1}"
+      if ((i + 1 < n)); then out+="${abc:v >> 6 & 63:1}"; else out+="="; fi
+      if ((i + 2 < n)); then out+="${abc:v & 63:1}"; else out+="="; fi
+    done
+    REPLY="$out"
+  }
+
   # Runs from PS0 in a command substitution: it prints, it cannot set variables.
   __andromeda_preexec() {
     local line
@@ -56,6 +101,9 @@ if [[ $- == *i* && -z "${__andromeda_hooked-}" ]]; then
     __andromeda_prompted=1
     __andromeda_urlencode "$PWD"
     builtin printf '\e]7;file://%s%s\a\e]133;A\a' "${HOSTNAME-}" "$REPLY"
+    __andromeda_branch
+    __andromeda_base64 "$REPLY"
+    builtin printf '\e]1337;SetUserVar=git_branch=%s\a' "$REPLY"
     return "$ret"
   }
 

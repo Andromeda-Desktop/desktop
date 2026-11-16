@@ -2,7 +2,6 @@
 
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
-#include "git_branch.h"
 #include "key_map.h"
 #include "kitty_images.h"
 #include "link_finder.h"
@@ -38,7 +37,6 @@
 #include <cstdlib>
 #include <optional>
 #include <ranges>
-#include <thread>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1166,27 +1164,6 @@ namespace term {
     return path;
   }
 
-  void TerminalView::readBranch(const void* prompt, std::string cwdUri, std::string path) {
-    // .git/HEAD can sit on a slow or hung network mount: read it off the UI thread.
-    std::thread([this, alive = std::weak_ptr<bool>(m_alive), prompt, cwdUri = std::move(cwdUri), path = std::move(path)] {
-      auto branch = gitBranch(path);
-      DeferredCall::callLater([this, alive, prompt, cwdUri, branch = std::move(branch)] {
-        if (alive.expired()) {
-          return;
-        }
-        m_session.withCommands([&](GhosttyTerminal, CommandIndex& index) {
-          for (auto& entry : index.entries()) {
-            if (entry.prompt.get() == prompt && entry.cwdUri == cwdUri && entry.branchState == CommandEntry::Branch::Pending) {
-              entry.branchState = branch ? CommandEntry::Branch::Known : CommandEntry::Branch::None;
-              entry.branch = branch.value_or("");
-            }
-          }
-        });
-        scheduleRedraw(Redraw::All);
-      });
-    }).detach();
-  }
-
   void TerminalView::noteCommandOutput() {
     auto* running = std::get_if<CommandRunning>(&m_command);
     if (running == nullptr) {
@@ -1373,12 +1350,6 @@ namespace term {
           continue;
         }
         const std::string path = pathFromFileUri(it->cwdUri);
-        if (it->branchState == CommandEntry::Branch::Unread) {
-          it->branchState = path.empty() ? CommandEntry::Branch::None : CommandEntry::Branch::Pending;
-          if (!path.empty()) {
-            readBranch(it->prompt.get(), it->cwdUri, path);
-          }
-        }
         ContextItem item;
         item.path = path;
         const bool inHome = !home.empty() && (path == home || path.starts_with(home + "/"));

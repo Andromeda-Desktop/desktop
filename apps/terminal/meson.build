@@ -24,8 +24,8 @@ if not _ghostty.found()
 endif
 
 _desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
-_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc99.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
-  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/git_branch.cpp', 'src/terminal_find.cpp',
+_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
+  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp',
   dependencies: [_ghostty, dependency('threads'), _desk_ui_dep], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + meson.project_version() + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],

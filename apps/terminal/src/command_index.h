@@ -32,10 +32,7 @@ struct CommandEntry {
   TrackedRef prompt; // the cell of the 133;A cursor
   TrackedRef output; // the cell of the 133;C cursor; null in Prompt
   std::string cwdUri; // OSC 7 at the prompt
-  // The git branch of cwdUri, read off the UI thread the first time the prompt row is shown.
-  enum class Branch : std::uint8_t { Unread, Pending, None, Known };
-  Branch branchState = Branch::Unread;
-  std::string branch; // Known only
+  std::string branch; // the shell's git_branch user var (OSC 1337 SetUserVar) after 133;A; empty: none
   std::string command;
   std::optional<int> exitCode;
   std::chrono::steady_clock::time_point started;
@@ -47,6 +44,8 @@ struct CommandEntry {
 class CommandIndex {
 public:
   void onMark(GhosttyTerminal terminal, const CommandMark& mark, std::chrono::steady_clock::time_point now);
+  // The shell's git_branch user var: belongs to the entry in Prompt; ignored when there is none.
+  void onBranch(std::string branch);
   // Drops entries whose prompt left the terminal (scrollback trimmed or cleared, or no scrollback).
   void prune();
   const std::vector<CommandEntry>& entries() const { return m_entries; }

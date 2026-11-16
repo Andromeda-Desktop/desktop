@@ -251,7 +251,21 @@ IFS= read -rsd '\' r; printf '|%s|' "${r:1:16}"; exit 0)"}}));
   CHECK((got == std::vector<std::string>{"b1:Build/done u2 ffalse rtrue o1 [Retry][Open]", "close:b1"}));
 }
 
+void shellBranchReachesThePrompt() {
+  // OSC 1337 SetUserVar=git_branch after 133;A names the prompt's branch; a sequence split across writes still counts.
+  Waker w;
+  PtySession s([&] { w.wake(); });
+  CHECK(s.spawn({.argv = {"/bin/bash", "-c", R"(printf '\e]133;A\a\e]1337;SetUser'; sleep 0.1; printf 'Var=git_branch=ZmVhdC/DqS14\a'
+printf '\e]1337;SetUserVar=other=eA==\a'; exit 0)"}}));
+  CHECK(w.waitFor(s, [&] { return s.state() == SessionState::Exited; }));
+  const std::string branch = s.withCommands([](GhosttyTerminal, const CommandIndex& index) {
+    return index.entries().empty() ? std::string("<none>") : index.entries().back().branch;
+  });
+  CHECK(branch == "feat/\xc3\xa9-x");
+}
+
 void runSessionTests() {
+  shellBranchReachesThePrompt();
   kittyNotificationsReachTheApp();
   runsCommandAndReportsExit();
   programEffectsReachTheApp();

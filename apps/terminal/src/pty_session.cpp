@@ -471,6 +471,12 @@ void PtySession::parseLoop() {
           }
         });
       }
+      m_userVar.feed({work.data() + at, len}, [this](std::string_view payload) {
+        constexpr std::string_view kBranch = "git_branch=";
+        if (!payload.starts_with(kBranch)) return;
+        std::lock_guard lock(m_termMutex);
+        m_commands.onBranch(base64Decode(payload.substr(kBranch.size())));
+      });
       m_bytesRead += len;
       m_parsed += len;
       flushOutbound();

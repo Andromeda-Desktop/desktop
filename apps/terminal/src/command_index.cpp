@@ -50,6 +50,12 @@ CommandEntry* CommandIndex::start(GhosttyTerminal terminal) {
   return &entry;
 }
 
+void CommandIndex::onBranch(std::string branch) {
+  if (m_entries.empty() || m_entries.back().phase != CommandEntry::Phase::Prompt || m_entries.back().branch == branch) return;
+  m_entries.back().branch = std::move(branch);
+  ++m_generation;
+}
+
 void CommandIndex::onMark(GhosttyTerminal terminal, const CommandMark& mark,
                           std::chrono::steady_clock::time_point now) {
   ++m_generation;
