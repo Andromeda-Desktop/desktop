@@ -19,6 +19,8 @@
 class AppLoop;
 class AppWindow;
 class Image;
+class Label;
+class Box;
 class Input;
 class Node;
 class Renderer;
@@ -91,6 +93,11 @@ namespace viewer {
     void requestThumbs();
     void requestRender(std::vector<Page>& cache, std::size_t page, std::uint32_t width);
     void dropPage(Page& page);
+    void showRender(std::vector<Page>& cache, std::size_t page);
+    void fillMarks(std::size_t page);
+    // Search hits, the selection, the stroke and the toolbar counts change in place, without a rebuild.
+    void refreshMarks();
+    void refreshLabels();
     [[nodiscard]] TextureHandle pageTexture(Renderer& renderer, Page& page);
     void onScroll();
     void search(const std::string& query);
@@ -127,16 +134,32 @@ namespace viewer {
     std::vector<TextureHandle> m_dropped;
     ScrollView* m_thumbScroll = nullptr;
     bool m_sidebar = true;
-    ScrollView* m_scroll = nullptr;
+    ScrollView* m_scroll = nullptr;  // vertical; holds m_hscroll, which pans a zoomed page sideways
+    ScrollView* m_hscroll = nullptr;
+    Node* m_column = nullptr;         // the page column inside m_hscroll
+    // Nodes of the last build, by page; a build replaces them all.
+    std::vector<Image*> m_pageImages;
+    std::vector<Image*> m_thumbImages;
+    std::vector<Box*> m_thumbFrames;
+    std::vector<Node*> m_markLayers;
+    Label* m_positionLabel = nullptr;
+    Label* m_countLabel = nullptr;
+    std::size_t m_shownPage = 0;
+    float m_hOffset = 0.0F;
     float m_zoomFrom = 1.0F; // the next page column starts at this scale and springs to 1
     AnimationManager::Id m_zoomAnim = 0;
-    // anchorY: the viewport y that stays in place (negative = the middle); animate springs the column to the new size.
-    void zoomTo(const std::function<void()>& apply, float anchorY = -1.0F, bool animate = true);
+    // (anchorX, anchorY): the viewport point that stays in place (negative = the middle); animate springs the column
+    // from the old size to the new one.
+    void zoomTo(const std::function<void()>& apply, float anchorX = -1.0F, float anchorY = -1.0F, bool animate = true);
+    [[nodiscard]] float widestPage() const;
     void pinch(const InputArea::PinchData& data);
     [[nodiscard]] bool wheelZoom(const InputArea::PointerData& data);
-    float m_zoomAnchorY = 0.0F;   // viewport y of the column's scale origin
+    float m_zoomAnchorX = 0.0F;   // viewport point of the column's scale origin
+    float m_zoomAnchorY = 0.0F;
     float m_pinchStart = 1.0F;    // model zoom when the pinch began
-    float m_pinchScale = 1.0F;    // live pinch scale on the column, clamped to the zoom limits
+    float m_pinchScale = 1.0F;
+    float m_pinchX = 0.0F;        // viewport point under the fingers at the pinch start
+    float m_pinchY = 0.0F;    // live pinch scale on the column, clamped to the zoom limits
     float m_scrollOffset = 0.0F;
     bool m_restoreScroll = false;
     Input* m_searchInput = nullptr;

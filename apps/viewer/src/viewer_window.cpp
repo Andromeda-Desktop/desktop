@@ -14,6 +14,7 @@
 #include "ui/controls/box.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/image.h"
+#include "ui/controls/label.h"
 #include "ui/controls/input.h"
 #include "ui/controls/scroll_view.h"
 #include "ui/palette.h"
@@ -145,6 +146,7 @@ namespace viewer {
     m_searchText.clear();
     m_model.clearSearch();
     m_scrollOffset = 0.0F;
+    m_hOffset = 0.0F;
     m_error.clear();
     m_window.setTitle(path.filename().string());
     const auto kind = preview::kindForContentType(contentTypeOf(path));
@@ -262,6 +264,7 @@ namespace viewer {
       m_scrollOffset = m_scroll->scrollOffset();
     }
     requestVisiblePages();
+    refreshLabels();
   }
 
   void ViewerWindow::requestVisiblePages() {
@@ -274,8 +277,11 @@ namespace viewer {
     // Keep a few rendered pages around the view; a long document must not hold every page in memory.
     constexpr std::size_t kKeep = 3;
     for (std::size_t i = 0; i < m_pages.size(); ++i) {
-      if (i + kKeep < first || i > last + kKeep) {
+      if ((i + kKeep < first || i > last + kKeep) && m_pages[i].requestedWidth != 0) {
         dropPage(m_pages[i]);
+        if (i < m_pageImages.size() && m_pageImages[i] != nullptr) {
+          m_window.updateInPlace([&](Renderer& renderer) { m_pageImages[i]->setExternalTexture(renderer, {}); });
+        }
       }
     }
     for (std::size_t i = first; i <= last && i < m_pages.size(); ++i) {
@@ -305,7 +311,12 @@ namespace viewer {
       const RectF box = m_model.pageBox(i);
       const float h = kThumbWidth * s * (box.y1 - box.y0) / std::max(1.0F, box.x1 - box.x0);
       if (y + h < top || y > bottom) {
-        dropPage(m_thumbs[i]);
+        if (m_thumbs[i].requestedWidth != 0) {
+          dropPage(m_thumbs[i]);
+          if (i < m_thumbImages.size() && m_thumbImages[i] != nullptr) {
+            m_window.updateInPlace([&](Renderer& renderer) { m_thumbImages[i]->setExternalTexture(renderer, {}); });
+          }
+        }
       } else if (m_thumbs[i].requestedWidth == 0) {
         requestRender(m_thumbs, i, width);
       }
@@ -318,6 +329,86 @@ namespace viewer {
       m_dropped.push_back(page.texture);
     }
     page = {};
+  }
+
+  void ViewerWindow::showRender(std::vector<Page>& cache, std::size_t page) {
+    std::vector<Image*>& images = &cache == &m_pages ? m_pageImages : m_thumbImages;
+    if (page >= images.size() || images[page] == nullptr) {
+      return; // the next build uploads it
+    }
+    m_window.updateInPlace([&](Renderer& renderer) {
+      for (TextureHandle& texture : m_dropped) {
+        renderer.textureManager().unload(texture);
+      }
+      m_dropped.clear();
+      images[page]->setExternalTexture(renderer, pageTexture(renderer, cache[page]));
+    });
+  }
+
+  void ViewerWindow::fillMarks(std::size_t i) {
+    if (i >= m_markLayers.size() || m_markLayers[i] == nullptr) {
+      return;
+    }
+    Node* layer = m_markLayers[i];
+    while (!layer->children().empty()) {
+      (void)layer->removeChild(layer->children().back().get());
+    }
+    const float zoom = m_model.zoom();
+    const auto mark = [&](const RectF& r, ColorRole role, float opacity) {
+      auto box = ui::box({.fill = colorSpecFromRole(role), .radius = 2.0F, .width = (r.x1 - r.x0) * zoom,
+                          .height = (r.y1 - r.y0) * zoom, .opacity = opacity});
+      box->setParticipatesInLayout(false);
+      box->setPosition(r.x0 * zoom, r.y0 * zoom);
+      layer->addChild(std::move(box));
+    };
+    const auto current = m_model.currentHit();
+    const auto& hits = m_model.hits(i);
+    for (std::size_t k = 0; k < hits.size(); ++k) {
+      const bool isCurrent = current && current->page == i && current->index == k;
+      mark(hits[k], ColorRole::Accent, isCurrent ? 0.55F : 0.25F);
+    }
+    if (m_selection && m_selection->page == i) {
+      for (const RectF& r : m_selection->rects) {
+        mark(r, ColorRole::Accent, 0.35F);
+      }
+    }
+    if (m_drawing && m_strokePage == i) {
+      for (const annot::Point& p : m_stroke) {
+        mark({p.x - 1.0F, p.y - 1.0F, p.x + 1.0F, p.y + 1.0F}, ColorRole::Accent, 1.0F);
+      }
+    }
+  }
+
+  void ViewerWindow::refreshMarks() {
+    for (std::size_t i = 0; i < m_markLayers.size(); ++i) {
+      fillMarks(i);
+    }
+    refreshLabels();
+    m_window.invalidate();
+  }
+
+  void ViewerWindow::refreshLabels() {
+    if (m_mode != Mode::Pdf) {
+      return;
+    }
+    const std::size_t page = currentPage();
+    if (m_positionLabel != nullptr) {
+      (void)m_positionLabel->setText(std::format("{} / {}", page + 1, m_model.pageCount()));
+    }
+    if (m_countLabel != nullptr) {
+      (void)m_countLabel->setText(m_model.countText());
+    }
+    if (page != m_shownPage) {
+      const float s = m_window.uiScale();
+      for (const std::size_t i : {m_shownPage, page}) {
+        if (i < m_thumbFrames.size() && m_thumbFrames[i] != nullptr) {
+          m_thumbFrames[i]->setBorder(colorSpecFromRole(i == page ? ColorRole::Accent : ColorRole::Separator),
+                                      i == page ? 2.0F * s : 1.0F);
+        }
+      }
+      m_shownPage = page;
+    }
+    m_window.invalidate();
   }
 
   TextureHandle ViewerWindow::pageTexture(Renderer& renderer, Page& page) {
@@ -366,10 +457,10 @@ namespace viewer {
           slot.width = m.b;
           slot.height = m.c;
           slot.stride = m.d;
+          showRender(cache, page);
           if (page == 0 && &cache == &m_pages) {
             kLog.info("shown pdf page 1");
           }
-          rebuild();
         }
     );
   }
@@ -385,7 +476,7 @@ namespace viewer {
       // With a find of the old search in flight, its reply starts the new scan.
       scanNext();
     }
-    rebuild();
+    refreshMarks();
   }
 
   void ViewerWindow::scanNext() {
@@ -421,7 +512,7 @@ namespace viewer {
             kLog.info("search \"{}\" {}", m_searchText, m_model.countText());
           }
           scanNext();
-          rebuild();
+          refreshMarks();
         }
     );
   }
@@ -446,7 +537,7 @@ namespace viewer {
   void ViewerWindow::moveHit(bool forward) {
     if (forward ? m_model.nextHit(currentPage()) : m_model.previousHit(currentPage())) {
       showCurrentHit();
-      rebuild();
+      refreshMarks();
     }
   }
 
@@ -495,7 +586,8 @@ namespace viewer {
               m_selection->rects.clear();
               m_selection->text.clear();
             }
-            rebuild();
+            fillMarks(m_selection->page);
+            m_window.invalidate();
           }
           if (m_selectDirty) {
             requestSelect();
@@ -537,54 +629,78 @@ namespace viewer {
 
   void ViewerWindow::zoomFit() { zoomTo([this] { m_model.fitWidth(); }); }
 
-  void ViewerWindow::zoomTo(const std::function<void()>& apply, float anchorY, bool animate) {
+  float ViewerWindow::widestPage() const {
+    float w = 0.0F;
+    for (std::size_t i = 0; i < m_model.pageCount(); ++i) {
+      const RectF box = m_model.pageBox(i);
+      w = std::max(w, box.x1 - box.x0);
+    }
+    return w;
+  }
+
+  void ViewerWindow::zoomTo(const std::function<void()>& apply, float anchorX, float anchorY, bool animate) {
     // The pages re-render at the new zoom; the column springs from the old size to the new one around the anchor,
-    // and the scroll keeps the anchor in place.
+    // and both scrolls keep the anchor in place.
     const float before = m_model.zoom();
+    const float w0 = widestPage();
     apply();
     const float after = m_model.zoom();
     if (after <= 0.0F || before == after) {
       return;
     }
     const float f = after / before;
-    if (m_scroll != nullptr) {
-      const float y = anchorY < 0.0F ? m_scroll->height() / 2.0F : anchorY;
-      m_scrollOffset = std::max(0.0F, (m_scroll->scrollOffset() + y) * f - y);
-      m_zoomAnchorY = y;
+    if (m_scroll != nullptr && m_hscroll != nullptr) {
+      const float pad = kPagePadding * m_window.uiScale();
+      const float view = m_hscroll->width() - 2.0F * pad;
+      const float ax = (anchorX < 0.0F ? m_scroll->width() / 2.0F : anchorX) - pad;
+      const float ay = (anchorY < 0.0F ? m_scroll->height() / 2.0F : anchorY) - pad;
+      m_scrollOffset = std::max(0.0F, (m_scroll->scrollOffset() + ay) * f - ay);
+      // A page narrower than the view sits centred in it: measure the anchor from the page edge.
+      const float w1 = w0 * f;
+      const float edge0 = std::max(0.0F, (view - w0) / 2.0F);
+      const float edge1 = std::max(0.0F, (view - w1) / 2.0F);
+      const float u = m_hscroll->scrollOffset() + ax - edge0;
+      m_hOffset = std::clamp(edge1 + u * f - ax, 0.0F, std::max(0.0F, w1 - view));
+      m_zoomAnchorX = m_hOffset + ax;
+      m_zoomAnchorY = m_scrollOffset + ay;
     }
     m_zoomFrom = animate ? 1.0F / f : 1.0F;
     rebuild();
   }
 
   void ViewerWindow::pinch(const InputArea::PinchData& data) {
-    if (m_scroll == nullptr) {
+    if (m_scroll == nullptr || m_hscroll == nullptr || m_column == nullptr) {
       return;
     }
     using Phase = InputArea::PinchData::Phase;
-    Node* column = m_scroll->content();
+    const float pad = kPagePadding * m_window.uiScale();
     if (data.phase == Phase::Begin) {
       m_pinchStart = m_model.zoom();
       m_pinchScale = 1.0F;
-      m_zoomAnchorY = data.localY;
+      m_pinchX = data.localX;
+      m_pinchY = data.localY;
+      // Column coordinates of the point under the fingers.
+      m_zoomAnchorX = m_hscroll->scrollOffset() + m_pinchX - pad;
+      m_zoomAnchorY = m_scroll->scrollOffset() + m_pinchY - pad;
       return;
     }
     if (data.phase == Phase::End) {
       const float scale = m_pinchScale;
       m_pinchScale = 1.0F;
       if (data.cancelled || scale == 1.0F) {
-        column->setScale(1.0F);
+        m_column->setScale(1.0F);
         m_window.invalidate();
         return;
       }
       // The column already shows the new size: commit it without a spring.
-      zoomTo([this, scale] { m_model.zoomBy(scale); }, m_zoomAnchorY, false);
+      zoomTo([this, scale] { m_model.zoomBy(scale); }, m_pinchX, m_pinchY, false);
       return;
     }
     m_pinchScale = std::clamp(static_cast<float>(data.scale), DocumentModel::kMinZoom / m_pinchStart,
                               DocumentModel::kMaxZoom / m_pinchStart);
     // Scaling the laid-out column follows the fingers every frame; the pages re-render once, at the end.
-    column->setTransformOrigin(m_scroll->width() / 2.0F, m_scroll->scrollOffset() + m_zoomAnchorY);
-    column->setScale(m_pinchScale);
+    m_column->setTransformOrigin(m_zoomAnchorX, m_zoomAnchorY);
+    m_column->setScale(m_pinchScale);
     m_window.invalidate();
   }
 
@@ -594,7 +710,7 @@ namespace viewer {
     }
     // One wheel notch (value 15) zooms by 10 %; a touchpad scales in proportion.
     const float factor = std::pow(1.1F, -static_cast<float>(data.axisValue) / 15.0F);
-    zoomTo([this, factor] { m_model.zoomBy(factor); }, data.localY);
+    zoomTo([this, factor] { m_model.zoomBy(factor); }, data.localX, data.localY);
     return true;
   }
 
@@ -653,8 +769,16 @@ namespace viewer {
     }
     m_dropped.clear();
     m_scroll = nullptr;
+    m_hscroll = nullptr;
+    m_column = nullptr;
     m_thumbScroll = nullptr;
     m_searchInput = nullptr;
+    m_positionLabel = nullptr;
+    m_countLabel = nullptr;
+    m_pageImages.assign(m_pages.size(), nullptr);
+    m_thumbImages.assign(m_thumbs.size(), nullptr);
+    m_thumbFrames.assign(m_thumbs.size(), nullptr);
+    m_markLayers.assign(m_pages.size(), nullptr);
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
     // Full screen is immersive: the page column alone.
     const bool immersive = m_window.fullscreen() && m_mode == Mode::Pdf;
@@ -722,8 +846,12 @@ namespace viewer {
       position = std::format("{} of {}", m_folderIndex + 1, m_folder.size());
     }
     if (!position.empty()) {
-      bar->addChild(ui::label({.text = position, .fontSize = Style::fontSizeCaption * s,
-                               .color = colorSpecFromRole(ColorRole::Label2)}));
+      auto label = ui::label({.text = position, .fontSize = Style::fontSizeCaption * s,
+                              .color = colorSpecFromRole(ColorRole::Label2)});
+      if (m_mode == Mode::Pdf) {
+        m_positionLabel = label.get();
+      }
+      bar->addChild(std::move(label));
     }
     if (m_mode == Mode::Pdf) {
       bar->addChild(ui::button({.glyph = std::string("minus"), .variant = ButtonVariant::Ghost,
@@ -766,29 +894,37 @@ namespace viewer {
           .onChange = [this](const std::string& text) { search(text); },
           .onSubmit = [this](const std::string&) { moveHit(true); },
       });
+      // A rebuild hands the keyboard focus to the new field by this key.
+      field->inputArea()->setTabFocusKey("search");
       m_searchInput = field.get();
       bar->addChild(std::move(field));
-      const std::string count = m_model.countText();
-      if (!count.empty()) {
-        bar->addChild(ui::label({.text = count, .fontSize = Style::fontSizeCaption * s,
-                                 .color = colorSpecFromRole(ColorRole::Label2)}));
-      }
+      auto count = ui::label({.text = m_model.countText(), .fontSize = Style::fontSizeCaption * s,
+                              .color = colorSpecFromRole(ColorRole::Label2)});
+      m_countLabel = count.get();
+      bar->addChild(std::move(count));
     }
     return bar;
   }
 
   std::unique_ptr<Node> ViewerWindow::buildPages(Renderer& renderer) {
     const float s = m_window.uiScale();
-    auto scroll = ui::scrollView({.viewportPaddingH = kPagePadding * s, .viewportPaddingV = kPagePadding * s});
+    const float pad = kPagePadding * s;
+    auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = pad});
     scroll->setFlexGrow(1.0F);
-    scroll->content()->setGap(DocumentModel::kPageGap);
-    scroll->content()->setAlign(FlexAlign::Center);
     // Fit-width uses the area inside the padding; the sidebar and the window size change it.
     const bool sidebar = m_sidebar && !m_window.fullscreen();
-    const float viewport = m_window.contentRect().width - (sidebar ? kSidebarWidth * s : 0.0F) - 2.0F * kPagePadding * s;
+    const float area = m_window.contentRect().width - (sidebar ? kSidebarWidth * s : 0.0F);
+    const float viewport = area - 2.0F * pad;
     m_model.setViewportWidth(std::max(100.0F, viewport));
+    // A page wider than the view pans sideways in its own scroll view; vertical scrolling passes through it.
+    auto hscroll = ui::scrollView({.viewportPaddingH = pad, .viewportPaddingV = 0.0F});
+    hscroll->setOrientation(ScrollOrientation::Horizontal);
+    hscroll->setScrollbarVisible(false);
+    hscroll->setSize(area, m_model.contentHeight());
+    auto columnNode = ui::column({.align = FlexAlign::Center, .gap = DocumentModel::kPageGap,
+                                  .width = std::max(viewport, widestPage())});
+    Node* column = columnNode.get();
     const float zoom = m_model.zoom();
-    const auto current = m_model.currentHit();
     for (std::size_t i = 0; i < m_pages.size(); ++i) {
       const RectF box = m_model.pageBox(i);
       const float w = box.x1 - box.x0;
@@ -798,42 +934,34 @@ namespace viewer {
       auto paper = ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .width = w, .height = h});
       paper->setParticipatesInLayout(false);
       sheet->addChild(std::move(paper));
+      auto image = ui::image({.fit = ImageFit::Contain, .width = w, .height = h});
       if (const TextureHandle texture = pageTexture(renderer, m_pages[i]); texture.valid()) {
-        auto image = ui::image({.fit = ImageFit::Contain, .width = w, .height = h});
         image->setExternalTexture(renderer, texture);
-        image->setParticipatesInLayout(false);
-        sheet->addChild(std::move(image));
       }
-      const auto mark = [&](const RectF& r, ColorRole role, float opacity) {
-        auto box2 = ui::box({.fill = colorSpecFromRole(role), .radius = 2.0F, .width = (r.x1 - r.x0) * zoom,
-                             .height = (r.y1 - r.y0) * zoom, .opacity = opacity});
-        box2->setParticipatesInLayout(false);
-        box2->setPosition(r.x0 * zoom, r.y0 * zoom);
-        sheet->addChild(std::move(box2));
-      };
-      const auto& hits = m_model.hits(i);
-      for (std::size_t k = 0; k < hits.size(); ++k) {
-        const bool isCurrent = current && current->page == i && current->index == k;
-        mark(hits[k], ColorRole::Accent, isCurrent ? 0.55F : 0.25F);
-      }
-      if (m_selection && m_selection->page == i) {
-        for (const RectF& r : m_selection->rects) {
-          mark(r, ColorRole::Accent, 0.35F);
-        }
-      }
-      if (m_drawing && m_strokePage == i) {
-        for (const annot::Point& p : m_stroke) {
-          mark({p.x - 1.0F, p.y - 1.0F, p.x + 1.0F, p.y + 1.0F}, ColorRole::Accent, 1.0F);
-        }
-      }
+      image->setParticipatesInLayout(false);
+      m_pageImages[i] = image.get();
+      sheet->addChild(std::move(image));
+      auto layer = ui::box({.width = w, .height = h});
+      layer->setParticipatesInLayout(false);
+      m_markLayers[i] = layer.get();
+      sheet->addChild(std::move(layer));
       sheet->setOnPress([this, i, zoom](const InputArea::PointerData& d) {
         if (d.button == BTN_LEFT) {
           onPagePress(i, d.localX / zoom, d.localY / zoom, d.pressed);
         }
       });
       sheet->setOnMotion([this, zoom](const InputArea::PointerData& d) { onPageMotion(d.localX / zoom, d.localY / zoom); });
-      scroll->content()->addChild(std::move(sheet));
+      column->addChild(std::move(sheet));
     }
+    hscroll->content()->addChild(std::move(columnNode));
+    for (std::size_t i = 0; i < m_markLayers.size(); ++i) {
+      fillMarks(i);
+    }
+    hscroll->setOnScrollChanged([this](float offset) { m_hOffset = offset; });
+    hscroll->requestScrollToOffset(m_hOffset);
+    m_hscroll = hscroll.get();
+    m_column = column;
+    scroll->content()->addChild(std::move(hscroll));
     scroll->setOnScrollChanged([this](float) {
       onScroll();
       m_window.invalidate();
@@ -844,19 +972,16 @@ namespace viewer {
     m_restoreScroll = m_scrollOffset > 0.0F;
     if (m_pinchScale != 1.0F) {
       // A render reply rebuilt the view mid-pinch: keep the live scale.
-      const AppWindow::Rect view = m_window.contentRect();
-      scroll->content()->setTransformOrigin(view.width / 2.0F, m_scrollOffset + m_zoomAnchorY);
-      scroll->content()->setScale(m_pinchScale);
+      column->setTransformOrigin(m_zoomAnchorX, m_zoomAnchorY);
+      column->setScale(m_pinchScale);
     }
     if (m_zoomFrom != 1.0F) {
-      Node* column = scroll->content();
-      const AppWindow::Rect view = m_window.contentRect(); // the scroll view is not laid out yet
-      column->setTransformOrigin(view.width / 2.0F, m_scrollOffset + m_zoomAnchorY);
+      column->setTransformOrigin(m_zoomAnchorX, m_zoomAnchorY);
       column->setScale(m_zoomFrom);
       m_zoomAnim = m_window.animations().drive(
           m_zoomAnim, m_zoomFrom, 1.0F, Style::spring(Tokens::springMove),
           [this, column](float v) {
-            if (m_scroll != nullptr && m_scroll->content() == column) {
+            if (m_column == column) {
               column->setScale(v);
               m_window.invalidate();
             }
@@ -874,6 +999,7 @@ namespace viewer {
     scroll->content()->setGap(Style::spaceMd * s);
     scroll->content()->setAlign(FlexAlign::Center);
     const std::size_t current = currentPage();
+    m_shownPage = current;
     for (std::size_t i = 0; i < m_thumbs.size(); ++i) {
       const RectF box = m_model.pageBox(i);
       const float w = kThumbWidth * s;
@@ -889,13 +1015,15 @@ namespace viewer {
                             .border = colorSpecFromRole(i == current ? ColorRole::Accent : ColorRole::Separator),
                             .borderWidth = i == current ? 2.0F * s : 1.0F, .width = w, .height = h});
       frame->setParticipatesInLayout(false);
+      m_thumbFrames[i] = frame.get();
       thumb->addChild(std::move(frame));
+      auto image = ui::image({.fit = ImageFit::Contain, .width = w, .height = h});
       if (const TextureHandle texture = pageTexture(renderer, m_thumbs[i]); texture.valid()) {
-        auto image = ui::image({.fit = ImageFit::Contain, .width = w, .height = h});
         image->setExternalTexture(renderer, texture);
-        image->setParticipatesInLayout(false);
-        thumb->addChild(std::move(image));
       }
+      image->setParticipatesInLayout(false);
+      m_thumbImages[i] = image.get();
+      thumb->addChild(std::move(image));
       scroll->content()->addChild(std::move(thumb));
     }
     scroll->setOnScrollChanged([this](float) { requestThumbs(); });
@@ -955,7 +1083,8 @@ namespace viewer {
       // Points closer than half a point add nothing to the stroke.
       if (const auto& last = m_stroke.back(); std::hypot(x - last.x, y - last.y) >= 0.5F && m_stroke.size() < 8192) {
         m_stroke.push_back({x, y});
-        rebuild();
+        fillMarks(m_strokePage);
+        m_window.invalidate();
       }
     } else if (m_selecting) {
       updateSelect(x, y);
