@@ -33,6 +33,7 @@
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
 #include "core/input/key_modifiers.h"
+#include "ui/files/file_cells.h"
 #include "ui/files/file_format.h"
 #include "ui/files/file_gallery.h"
 #include "ui/files/type_ahead.h"
@@ -1888,6 +1889,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
     add("edit.copy", {}, "copy");
     add("edit.cut", {}, "scissors");
     add("edit.copy-location");
+    add("file.make-link", {}, "link");
     separator();
     entries.push_back(shareEntry(ids));
     add("file.star", selectionStarred() ? "Remove from Starred" : "Add to Starred", "star");
@@ -3317,6 +3319,11 @@ void FilesWindow::emptyTrash() {
   startJob("Emptying Trash", m_trash.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
 }
 
+void FilesWindow::makeLink() {
+  const std::vector<fs::path> sources = selectedPaths();
+  startJob("Linking", sources.size(), [&](FileOpsClient& ops, auto done) { ops.link(sources, location(), done); });
+}
+
 void FilesWindow::compressSelection() {
   const auto paths = m_browser->selectedPaths();
   if (paths.empty()) {
@@ -4061,7 +4068,10 @@ void FilesWindow::openViewOptions(const Node* anchor) {
   constexpr float kWidth = 340.0F;
   constexpr float kBaseHeight = 400.0F;
   constexpr float kIconRow = 60.0F;
-  const float kHeight = kBaseHeight + (m_browser->view() == FileBrowser::View::Icons ? kIconRow : 0.0F);
+  const float kColumnsRows = 32.0F + (3.0F * Tokens::sizeRow); // the list view's Columns caption and three toggles
+  const FileBrowser::View view = m_browser->view();
+  const float kHeight = kBaseHeight + (view == FileBrowser::View::Icons ? kIconRow : 0.0F)
+                      + (view == FileBrowser::View::List ? kColumnsRows : 0.0F);
   const Node* at = anchor != nullptr ? anchor : m_browser->viewOptionsAnchor();
   if (at == nullptr) {
     return;
@@ -4162,6 +4172,17 @@ void FilesWindow::openViewOptions(const Node* anchor) {
       row->addChild(ui::toggle({.checked = on, .scale = s, .onChange = std::move(change)}));
       return row;
     };
+    if (static_cast<FileBrowser::View>(v.view) == FileBrowser::View::List) {
+      static constexpr std::array<std::pair<const char*, std::uint8_t>, 3> kColumns{
+          {{"Dimensions", file_columns::kDimensions}, {"Duration", file_columns::kDuration}, {"Artist", file_columns::kArtist}}};
+      auto columns = ui::column({.align = FlexAlign::Stretch});
+      for (const auto& [label, bit] : kColumns) {
+        columns->addChild(toggleRow(label, (b.listColumns() & bit) != 0, [this, bit](bool) {
+          m_browser->setListColumns(static_cast<std::uint8_t>(m_browser->listColumns() ^ bit));
+        }));
+      }
+      group("Columns", std::move(columns));
+    }
     auto shows = ui::column({.align = FlexAlign::Stretch});
     shows->addChild(toggleRow("Show Hidden Files", v.showHidden, [this](bool on) { m_browser->setShowHidden(on); }));
     shows->addChild(toggleRow("Show File Extensions", v.extensions, [this](bool on) { m_browser->setShowExtensions(on); }));

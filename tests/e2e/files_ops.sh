@@ -4,6 +4,7 @@
 # org.freedesktop.Application.ActivateAction (the same command ids as the keyboard shortcuts). Fails when:
 #   - pasting a.txt into a folder that holds a.txt does not raise a conflict, or Keep Both does not add "a (copy).txt",
 #   - Undo does not remove the copy, or leaves the original changed; Redo does not bring the copy back,
+#   - Make Link does not add a symlink to the selection next to it,
 #   - Move to Trash does not move a.txt into the home Trash, or Put Back does not return it with its content.
 # Writes the app and daemon logs to $OUT (default ./artifacts/files-ops).
 set -euo pipefail
@@ -105,11 +106,21 @@ echo "PASS undo"
 wait_for "the undo job did not finish as undoable" grep -q "job undo done undoable" "$OUT/files.log"
 action edit.redo
 wait_for "Redo did not bring back 'a (copy).txt'" test -f "$DST/a (copy).txt"
-wait_for "the redo job did not finish as undoable" test "$(grep -c "job undo done undoable" "$OUT/files.log")" -ge 2
+undo_jobs_done() { (( $(grep -c "job undo done undoable" "$OUT/files.log") >= $1 )); }
+wait_for "the redo job did not finish as undoable" undo_jobs_done 2
 [[ $(cat "$DST/a (copy).txt") == new && $(cat "$DST/a.txt") == old ]] || fail "Redo brought back the wrong content"
 action edit.undo
 wait_for "Undo after Redo did not remove 'a (copy).txt'" gone "$DST/a (copy).txt"
 echo "PASS redo"
+
+select_names "$DST" 1 "['a.txt']"
+action file.make-link
+wait_for "Make Link did not add a link to a.txt" test -L "$DST/a (copy).txt"
+[[ $(readlink "$DST/a (copy).txt") == "$DST/a.txt" ]] || fail "Make Link points at $(readlink "$DST/a (copy).txt")"
+wait_for "the link job did not finish as undoable" grep -q "job link done undoable" "$OUT/files.log"
+action edit.undo
+wait_for "Undo did not remove the link" gone "$DST/a (copy).txt"
+echo "PASS make link"
 
 select_names "$DST" 1 "['a.txt']"
 action edit.trash

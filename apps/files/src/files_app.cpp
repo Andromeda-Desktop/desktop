@@ -916,6 +916,8 @@ void FilesApp::addCommands() {
        [](const FilesWindow& w) { return w.trashHasItems(); }, [](FilesWindow& w) { w.askEmptyTrash(); }},
       {"file.tags", "Edit Tags…", "File", std::nullopt, [](const FilesWindow& w) { return !w.isPicker(); },
        [](FilesWindow& w) { w.openTagManager(); }},
+      {"file.make-link", "Make Link", "File", std::nullopt, [](const FilesWindow& w) { return w.inFolder() && w.hasSelection(); },
+       [](FilesWindow& w) { w.makeLink(); }},
       {"file.compress", "Compress…", "File", std::nullopt, [](const FilesWindow& w) { return !w.inTrash() && w.hasSelection(); },
        [](FilesWindow& w) { w.compressSelection(); }},
       {"file.extract-here", "Extract Here", "File", std::nullopt, [](const FilesWindow& w) { return w.canExtract(); },

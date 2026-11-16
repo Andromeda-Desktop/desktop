@@ -167,6 +167,7 @@ public:
   void renameSelection();
   void focusSearch();
   void compressSelection();
+  void makeLink(); // symlinks to the selection, next to it
   void getInfo(std::vector<std::filesystem::path> paths = {}); // empty = the selection, else the folder
   void showStorage();
   void emptyTrash();    // no question: the caller confirmed
