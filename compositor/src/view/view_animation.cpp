@@ -6,6 +6,7 @@
 #include "layout/scrolling.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "overview/overview_internal.h"
 #include "scene/effect_registry.h"
 #include "scene/ssd_frame.h"
 #include "scene/surface_blur.h"
@@ -29,6 +30,20 @@ extern "C" {
 
 namespace andromeda {
   namespace {
+    // A closing window's picture must not take clicks meant for the window under it.
+    void makeInert(wlr_scene_node* node) {
+      if (node->type == WLR_SCENE_NODE_BUFFER) {
+        wlr_scene_buffer_from_node(node)->point_accepts_input = ovimpl::rejectInput;
+      } else if (node->type == WLR_SCENE_NODE_RECT) {
+        wlr_scene_rect_from_node(node)->accepts_input = false;
+      } else if (node->type == WLR_SCENE_NODE_TREE) {
+        wlr_scene_node* child = nullptr;
+        wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) {
+          makeInert(child);
+        }
+      }
+    }
+
     constexpr Logger kLog("view");
   } // namespace
 
@@ -1111,6 +1126,7 @@ namespace andromeda {
       return kInvalidCloseSnapshot;
     }
 
+    makeInert(&snap->node);
     wlr_scene_node_copy_animations_for_snapshot(&snap->node, &m_contentTree->node);
     // Window and overlay effects live on the surface tree; the snapshot's content tree takes them over with time
     // frozen.
