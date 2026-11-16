@@ -3,11 +3,14 @@
 #include "app/app_window.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "core/deferred_call.h"
+#include "core/input/key_modifiers.h"
 #include "design_tokens.h"
 #include "terminal_view.h"
 #include "ui/builders.h"
+#include "ui/controls/pinned.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "wayland/wayland_seat.h"
 
 #include <fontconfig/fontconfig.h>
 
@@ -99,6 +102,14 @@ namespace term {
   PrefsWindow::PrefsWindow(AppWindow& window, SettingsStore& store)
       : m_window(window), m_store(store), m_monoFonts(monoFamilies()), m_shells(installedShells()) {
     m_window.setTitle(std::string(kPages[0].title));
+    m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+      const bool ctrlOnly = (event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt)) == KeyMod::Ctrl;
+      if (!event.pressed || !ctrlOnly || (event.unshifted != 'f' && event.unshifted != 'F') || m_search == nullptr) {
+        return false;
+      }
+      m_window.input().setFocus(m_search->inputArea());
+      return true;
+    });
     m_window.setSidebarBuilder([this](Renderer&, float width, float) { return buildSidebar(width); });
     m_window.setContentBuilder([this](Renderer&, float width, float height) -> std::unique_ptr<Node> {
       auto slot = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
@@ -130,14 +141,24 @@ namespace term {
     m_page = page;
     m_query.clear();
     m_scroll = {};
-    m_window.setTitle(std::string(kPages[static_cast<std::size_t>(page)].title));
+    markPages();
     m_window.requestRebuild();
   }
 
   void PrefsWindow::setQuery(std::string query) {
     m_query = std::move(query);
     m_scroll = {};
+    markPages();
     refill();
+  }
+
+  void PrefsWindow::markPages() {
+    m_window.setTitle(m_query.empty() ? std::string(kPages[static_cast<std::size_t>(m_page)].title) : "Results");
+    for (std::size_t i = 0; i < m_pageButtons.size(); ++i) {
+      const bool current = m_query.empty() && static_cast<Page>(i) == m_page;
+      m_pageButtons[i]->setSelected(current);
+      m_pageButtons[i]->setVariant(current ? ButtonVariant::TabActive : ButtonVariant::Ghost);
+    }
   }
 
   void PrefsWindow::refill() {
@@ -161,17 +182,21 @@ namespace term {
     auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .padding = Tokens::spaceP8 * s,
                             .width = width});
     auto search = ui::searchCapsule({
+        .out = &m_search,
         .placeholder = "Search settings",
+        .keycap = "Ctrl F",
         .height = Tokens::sizeControlL,
         .scale = s,
         .value = m_query,
         .onChange = [this](const std::string& text) { setQuery(text); },
     });
     side->addChild(ui::column({.align = FlexAlign::Stretch, .paddingV = Tokens::spaceP4 * s}, std::move(search)));
+    m_pageButtons.assign(kPages.size(), nullptr);
     for (std::size_t i = 0; i < kPages.size(); ++i) {
       const auto page = static_cast<Page>(i);
-      const bool current = page == m_page;
+      const bool current = m_query.empty() && page == m_page;
       side->addChild(ui::button({
+          .out = &m_pageButtons[i],
           .text = std::string(kPages[i].title),
           .glyph = std::string(kPages[i].glyph),
           .glyphSize = Tokens::sizeSymbol * s,
@@ -240,11 +265,13 @@ namespace term {
     // Appearance
     out.push_back({Page::Appearance, "", {{"Preview", "", [this](float s, float w) { return preview(s, w); }, true}}});
     out.push_back({Page::Appearance, "Theme", {{"", "", [self](float s, float w) { return self->themeTiles(s, w); }, true}}});
+    out.push_back({Page::Appearance, "Window", {{"New windows", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}}});
     out.push_back({Page::Appearance,
                    "",
                    {{"Cursor", std::string(kCursorHint),
                      segmented({"Block", "Bar", "Underline"}, static_cast<std::size_t>(now.cursor),
-                               [](Settings& x, std::size_t i) { x.cursor = static_cast<CursorShape>(i); })}}});
+                               [](Settings& x, std::size_t i) { x.cursor = static_cast<CursorShape>(i); })},
+                    {"Blinking cursor", "", toggle(now.cursorBlink, [](Settings& x, bool on) { x.cursorBlink = on; })}}});
 
     // Text
     {
@@ -280,7 +307,9 @@ namespace term {
                      toggle(now.copyOnSelect, [](Settings& x, bool on) { x.copyOnSelect = on; })},
                     {"Scroll speed", "Rows per wheel step",
                      stepper(now.scrollRows, SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax, " rows",
-                             [](Settings& x, int v) { x.scrollRows = v; })}}});
+                             [](Settings& x, int v) { x.scrollRows = v; })},
+                    {"Bell", "", segmented({"Flash", "Sound", "Off"}, static_cast<std::size_t>(now.bell),
+                                           [](Settings& x, std::size_t i) { x.bell = static_cast<Bell>(i); })}}});
 
     // Sessions
     {
@@ -350,7 +379,7 @@ namespace term {
       if (i > 0) {
         box->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator)}));
       }
-      const float inner = width - padH * 2.0F;
+      const float inner = width - (padH + Style::cardPadding * s) * 2.0F;
       if (row.wide) {
         box->addChild(ui::column({.align = FlexAlign::Start, .paddingV = padH, .paddingH = padH}, row.control(s, inner)));
         continue;
@@ -484,12 +513,84 @@ namespace term {
     return box;
   }
 
+  std::unique_ptr<Node> PrefsWindow::checked(std::unique_ptr<Node> swatch, bool on, float s) {
+    if (!on) {
+      return swatch;
+    }
+    const float d = Tokens::sizeSymbolL * s;
+    auto pinned = std::make_unique<Pinned>(Tokens::spaceP4 * s);
+    pinned->addChild(std::move(swatch));
+    pinned->addChild(ui::column({.align = FlexAlign::Center,
+                                 .justify = FlexJustify::Center,
+                                 .fill = colorSpecFromRole(ColorRole::Accent),
+                                 .radius = d / 2.0F,
+                                 .width = d,
+                                 .height = d},
+                                ui::glyph({.glyph = std::string("check"),
+                                           .glyphSize = Tokens::sizeSymbolInline * s,
+                                           .color = colorSpecFromRole(ColorRole::OnAccent)})));
+    return pinned;
+  }
+
+  std::unique_ptr<Node> PrefsWindow::materialTiles(float s, float width) {
+    constexpr std::array<std::pair<WindowMaterial, std::string_view>, 2> kMaterials{
+        {{WindowMaterial::Solid, "Solid"}, {WindowMaterial::Glass, "Glass"}}};
+    const float gap = Tokens::spaceP12 * s;
+    const float tileW = std::floor((width - gap) / 2.0F);
+    const float tileH = std::round(tileW * Tokens::componentTerminalWindowTileAspect);
+    const float inset = Tokens::spaceP12 * s;
+    const WindowMaterial current = m_store.settings().material;
+    auto row = ui::row({.gap = gap, .width = width});
+    for (const auto& [material, name] : kMaterials) {
+      const bool on = material == current;
+      const bool isGlass = material == WindowMaterial::Glass;
+      const float innerW = tileW - inset * 2.0F;
+      const float sideW = std::round(innerW * Tokens::componentTerminalWindowTileSidebar);
+      const float r = Style::scaledRadiusSm(s);
+      auto window = ui::row({.width = innerW, .height = tileH - inset * 2.0F});
+      const float tint = isGlass ? Style::glassMaterial(glass::Kind::Sheet).tint : 1.0F;
+      auto side = ui::column({.fill = colorSpecFromRole(ColorRole::SolidThin, tint),
+                              .fillHeight = true,
+                              .width = sideW});
+      side->setRadii(Radii{r, 0.0F, 0.0F, r});
+      auto main = ui::column({.fill = colorSpecFromRole(ColorRole::SolidRegular, tint),
+                              .fillHeight = true,
+                              .flexGrow = 1.0F});
+      main->setRadii(Radii{0.0F, r, r, 0.0F});
+      window->addChild(std::move(side));
+      window->addChild(std::move(main));
+      auto swatch = ui::column({.align = FlexAlign::Start,
+                                .padding = inset,
+                                .fill = colorSpecFromRole(ColorRole::Accent),
+                                .radius = Style::scaledRadiusSm(s),
+                                .border = on ? colorSpecFromRole(ColorRole::Label1) : colorSpecFromRole(ColorRole::Separator),
+                                .borderWidth = (on ? 2.0F : 1.0F) * s,
+                                .width = tileW,
+                                .height = tileH},
+                               std::move(window));
+      auto tile = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
+      tile->addChild(checked(std::move(swatch), on, s));
+      tile->addChild(ui::label({.text = std::string(name),
+                                .fontSize = Tokens::typeBody.size * s,
+                                .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
+                                .color = colorSpecFromRole(ColorRole::Label1)}));
+      row->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+                                   .width = tileW,
+                                   .height = tileH + Tokens::spaceP4 * s + Tokens::typeBody.line * s,
+                                   .onClick = [this, material](const InputArea::PointerData&) {
+                                     change([material](Settings& x) { x.material = material; });
+                                   }},
+                                  std::move(tile)));
+    }
+    return row;
+  }
+
   std::unique_ptr<Node> PrefsWindow::themeTiles(float s, float width) {
     constexpr std::array<std::pair<Theme, std::string_view>, 4> kThemes{
         {{Theme::System, "Andromeda"}, {Theme::Light, "Light"}, {Theme::Dark, "Dark"}, {Theme::Amoled, "AMOLED"}}};
     const float gap = Tokens::spaceP12 * s;
     const float tileW = std::floor((width - gap * 3.0F) / 4.0F);
-    const float tileH = std::round(tileW * 0.55F);
+    const float tileH = std::round(tileW * Tokens::componentTerminalThemeTileAspect);
     const Theme current = m_store.settings().theme;
     auto row = ui::row({.gap = gap, .width = width});
     for (const auto& [theme, name] : kThemes) {
@@ -501,7 +602,7 @@ namespace term {
                                 .padding = Tokens::spaceP8 * s,
                                 .fill = fixedColorSpec(bg),
                                 .radius = Style::scaledRadiusSm(s),
-                                .border = on ? colorSpecFromRole(ColorRole::Accent) : colorSpecFromRole(ColorRole::Separator),
+                                .border = on ? colorSpecFromRole(ColorRole::Label1) : colorSpecFromRole(ColorRole::Separator),
                                 .borderWidth = (on ? 2.0F : 1.0F) * s,
                                 .width = tileW,
                                 .height = tileH});
@@ -514,7 +615,7 @@ namespace term {
                                   .fontFamily = std::string(Tokens::fontMono),
                                   .color = fixedColorSpec(themeColor(theme, ColorRole::TermBlue))}));
       auto tile = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
-      tile->addChild(std::move(swatch));
+      tile->addChild(checked(std::move(swatch), on, s));
       tile->addChild(ui::label({.text = std::string(name),
                                 .fontSize = Tokens::typeBody.size * s,
                                 .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,

@@ -56,7 +56,8 @@ winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, st
 
 } // namespace
 
-PtySession::PtySession(WakeFn wake, MarkFn onMark) : m_wake(std::move(wake)), m_onMark(std::move(onMark)) {}
+PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell)
+    : m_wake(std::move(wake)), m_onMark(std::move(onMark)), m_onBell(std::move(onBell)) {}
 
 PtySession::~PtySession() {
   m_stopping = true;
@@ -104,6 +105,7 @@ void PtySession::configureTerminal() {
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_RENDER_HOLD, reinterpret_cast<const void*>(&onRenderHold));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT,
                        reinterpret_cast<const void*>(&onSemanticPrompt));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_BELL, reinterpret_cast<const void*>(&onBellRung));
 }
 
 bool PtySession::spawn(const SpawnOptions& o) {
@@ -474,6 +476,11 @@ void PtySession::onRenderHold(GhosttyTerminal, void* self, bool held) {
   auto* s = static_cast<PtySession*>(self);
   s->m_renderHeld = held;
   if (!held) s->signalWake();
+}
+
+void PtySession::onBellRung(GhosttyTerminal /*terminal*/, void* self) {
+  auto* s = static_cast<PtySession*>(self);
+  if (s->m_onBell && !s->m_bellPending.exchange(true)) s->m_onBell();
 }
 
 void PtySession::onSemanticPrompt(GhosttyTerminal terminal, void* self, const GhosttyTerminalSemanticPrompt* e) {

@@ -53,6 +53,7 @@ namespace term {
     struct Host {
       // New terminal state is ready: ask for a frame tick that calls frame().
       std::function<void()> requestFrame;
+      std::function<void()> playBell; // the bell setting is Sound
       // Null until GL is attached: the scene builds before EGL is up.
       std::function<TextureManager*()> textures;
       // Image thumbnails for the link hover preview; null shows text only.
@@ -72,6 +73,7 @@ namespace term {
       // Find results changed: match count and the current match (1 = newest), while find is open.
       std::function<void(std::size_t total, std::optional<std::size_t> current)> findChanged;
       Settings settings;
+      bool glass = false; // the window is glass: the grid background is translucent
     };
 
     explicit TerminalView(Host host);
@@ -95,6 +97,11 @@ namespace term {
     [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
     // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.
     void sceneDestroyed() override {
+      if (m_bellAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {
+        m_area->animationManager()->cancel(m_bellAnim); // its callbacks touch m_bellFlash, freed with the scene
+      }
+      m_bellAnim = 0;
+      m_bellFlash = nullptr;
       m_grid = nullptr;
       m_area = nullptr;
       m_linkAnchor = nullptr;
@@ -145,6 +152,7 @@ namespace term {
     void scheduleRedraw(Redraw redraw);
     void setGridOrigin(float x, float y);
     void onMark(const CommandMark& mark);
+    void onBell();
     void updateCwd();
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
     void pointerButton(std::uint32_t button, float localX, float localY, bool pressed, std::uint32_t time);
@@ -255,6 +263,8 @@ namespace term {
     GhosttyPointCoordinate m_cursorCell{}; // viewport cell the IME candidate window follows
     std::unordered_set<std::uint32_t> m_keysDown; // evdev codes whose press went to the program
     void updateFocus();
+    void updateBlink(bool wanted);
+    void restartBlink();
 
     bool m_windowActive = true;
     bool m_areaFocused = false;
@@ -267,6 +277,11 @@ namespace term {
     std::unique_ptr<KittyImages> m_images;
     std::unique_ptr<ContextRow> m_context;
     Timer m_contextTick; // 1 Hz, only while a shown prompt's command runs
+    enum class Blink : std::uint8_t { Steady, Shown, Hidden }; // Steady: the cursor shows and no timer runs
+    Blink m_blink = Blink::Steady;
+    std::optional<TerminalCursor> m_cursor; // from the last refresh; the blink tick shows or hides it
+    Timer m_blinkTimer;
+    std::chrono::steady_clock::time_point m_blinkSince; // the last key or focus gain
     std::array<std::uint16_t, 2> m_cellPx{}; // cell size the terminal last got, device px
     Scrollbar* m_scrollbar = nullptr;
     GhosttyTerminalScrollbar m_scrollState{}; // rows; the bar is updated only when this changes
@@ -288,6 +303,8 @@ namespace term {
     CommandMarksKey m_commandMarksKey;
     Node* m_findLayer = nullptr; // moves with the grid origin
     RectNode* m_findRing = nullptr;
+    RectNode* m_bellFlash = nullptr; // over the whole grid, under the text
+    AnimationManager::Id m_bellAnim = 0;
     void updateMarks();
     std::vector<TerminalCell> m_rowBuffer;
     bool m_exitReported = false;

@@ -39,6 +39,7 @@ struct zwp_keyboard_shortcuts_inhibitor_v1;
 struct ext_background_effect_manager_v1;
 struct dsk_surface_manager_v1;
 struct xdg_activation_v1;
+struct xdg_system_bell_v1;
 struct zxdg_decoration_manager_v1;
 struct zwp_text_input_manager_v3;
 struct hyprland_focus_grab_manager_v1;
@@ -227,6 +228,8 @@ public:
   [[nodiscard]] WaylandOutput* findOutputByXdg(zxdg_output_v1* xdgOutput);
 
   [[nodiscard]] bool hasXdgActivation() const noexcept;
+  // The system bell (xdg-system-bell v1): the desktop plays its bell for `surface`. Does nothing without the global.
+  void ringBell(wl_surface* surface) const;
   // appId marks the token as an app launch (the compositor shows the busy cursor until its window maps).
   [[nodiscard]] std::string requestActivationToken(wl_surface* surface, const std::string& appId = {}) const;
   // Raises and focuses surface with a token from another client (a second app launch); no-op without a token.
@@ -322,6 +325,7 @@ private:
   wp_cursor_shape_manager_v1* m_cursorShapeManager = nullptr;
   zwp_pointer_gestures_v1* m_pointerGestures = nullptr;
   xdg_activation_v1* m_xdgActivation = nullptr;
+  xdg_system_bell_v1* m_systemBell = nullptr;
   zxdg_decoration_manager_v1* m_decorationManager = nullptr;
   ext_idle_notifier_v1* m_idleNotifier = nullptr;
   zwp_idle_inhibit_manager_v1* m_idleInhibitManager = nullptr;

@@ -99,6 +99,7 @@ foreach _p : [
   ['xdg-output-unstable-v1', wayland_protos_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml'],
   ['xdg-shell', wayland_protos_dir / 'stable/xdg-shell/xdg-shell.xml'],
   ['xdg-activation-v1', wayland_protos_dir / 'staging/xdg-activation/xdg-activation-v1.xml'],
+  ['xdg-system-bell-v1', wayland_protos_dir / 'staging/xdg-system-bell/xdg-system-bell-v1.xml'],
   ['xdg-decoration-unstable-v1', wayland_protos_dir / 'unstable/xdg-decoration/xdg-decoration-unstable-v1.xml'],
   ['ext-idle-notify-v1', wayland_protos_dir / 'staging/ext-idle-notify/ext-idle-notify-v1.xml'],
   ['ext-background-effect-v1', wayland_protos_dir / 'staging/ext-background-effect/ext-background-effect-v1.xml'],

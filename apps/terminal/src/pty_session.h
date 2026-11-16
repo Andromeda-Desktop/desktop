@@ -45,8 +45,11 @@ public:
   // Called on the IO thread when new state is ready, at most once until takeWake().
   using WakeFn = std::function<void()>;
   using MarkFn = std::function<void(const CommandMark&)>;
+  // IO thread, under the terminal lock; once until bellHandled(), so a burst of BEL rings once.
+  using BellFn = std::function<void()>;
 
-  PtySession(WakeFn wake, MarkFn onMark = {});
+  PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {});
+  void bellHandled() { m_bellPending = false; } // UI thread: the next BEL calls onBell again
   ~PtySession();
   PtySession(const PtySession&) = delete;
   PtySession& operator=(const PtySession&) = delete;
@@ -109,9 +112,12 @@ private:
   static void onWritePty(GhosttyTerminal, void* self, const std::uint8_t* data, std::size_t len);
   static void onRenderHold(GhosttyTerminal, void* self, bool held);
   static void onSemanticPrompt(GhosttyTerminal, void* self, const GhosttyTerminalSemanticPrompt* event);
+  static void onBellRung(GhosttyTerminal, void* self);
 
   WakeFn m_wake;
   MarkFn m_onMark;
+  BellFn m_onBell;
+  std::atomic<bool> m_bellPending{false};
   GhosttyTerminal m_terminal = nullptr;
   std::mutex m_termMutex;
   CommandIndex m_commands; // under m_termMutex

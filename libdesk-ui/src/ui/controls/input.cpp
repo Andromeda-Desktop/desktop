@@ -56,7 +56,6 @@ namespace {
   constexpr float kCursorHeightRatio = 0.50F;
   constexpr float kCursorRevealPadding = 2.0F;
   constexpr float kClearGlyphScale = 0.85F;
-  constexpr auto kCursorBlinkInterval = std::chrono::milliseconds(530);
   constexpr auto kCursorBlinkResumeDelay = std::chrono::milliseconds(650);
   constexpr float kTextInnerInset = 3.0F;
   constexpr float kPlaceholderAlpha = 0.68F;
@@ -2125,7 +2124,7 @@ void Input::revealCursor() {
 }
 
 void Input::startCursorBlink() {
-  m_cursorBlinkTimer.startRepeating(kCursorBlinkInterval, [this] {
+  m_cursorBlinkTimer.startRepeating(std::chrono::milliseconds(static_cast<int>(Tokens::motionCaretBlinkMs)), [this] {
     if (m_inputArea == nullptr || !m_inputArea->focused()) {
       stopCursorBlink();
       return;

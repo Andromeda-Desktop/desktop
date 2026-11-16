@@ -130,6 +130,13 @@ namespace term {
               onMark(mark);
             }
           });
+        }, [this, alive = std::weak_ptr<bool>(m_alive)] {
+          DeferredCall::callLater([this, alive] {
+            if (!alive.expired()) {
+              m_session.bellHandled();
+              onBell();
+            }
+          });
         }) {
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);
@@ -204,6 +211,8 @@ namespace term {
       case CursorShape::Underline: cursor = GHOSTTY_CURSOR_STYLE_UNDERLINE; break;
       }
       ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_STYLE, &cursor);
+      const bool blink = m_settings.cursorBlink;
+      ghostty_terminal_set(t, GHOSTTY_TERMINAL_OPT_DEFAULT_CURSOR_BLINK, &blink);
       // DECSCUSR reset: the cursor takes the default now; a program that sets its own sets it again.
       constexpr std::string_view kResetCursor = "\x1b[0 q";
       ghostty_terminal_vt_write(t, reinterpret_cast<const std::uint8_t*>(kResetCursor.data()), kResetCursor.size());
@@ -216,6 +225,7 @@ namespace term {
     }
     const bool font = settings.font != m_settings.font || settings.fontSize != m_settings.fontSize;
     const bool terminal = settings.theme != m_settings.theme || settings.cursor != m_settings.cursor
+                          || settings.cursorBlink != m_settings.cursorBlink
                           || settings.scrollbackMb != m_settings.scrollbackMb;
     m_settings = settings;
     if (terminal) {
@@ -287,6 +297,14 @@ namespace term {
     m_findRing = static_cast<RectNode*>(findLayer->addChild(std::make_unique<RectNode>()));
     m_findRing->setVisible(false);
     m_findLayer = m_grid->addChild(std::move(findLayer));
+    auto flash = std::make_unique<RectNode>();
+    flash->setZIndex(TerminalGridNode::kBelowTextZ);
+    flash->setVisible(false);
+    if (m_bellAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {
+      m_area->animationManager()->cancel(m_bellAnim);
+    }
+    m_bellAnim = 0;
+    m_bellFlash = static_cast<RectNode*>(m_grid->addChild(std::move(flash)));
     m_linkAnchor = m_findLayer->addChild(std::make_unique<Node>());
     if (m_host.thumbnails != nullptr && m_thumbWake == nullptr) {
       // A finished decode only wakes the view: frame() uploads it with GL current.
@@ -542,6 +560,7 @@ namespace term {
     const std::uint32_t defaultFg = pack(colors.foreground);
     const std::uint32_t defaultBg = pack(colors.background);
     m_grid->setBackground(defaultBg);
+    m_grid->setBackgroundAlpha(m_host.glass ? Tokens::componentTerminalGlassAlpha : 1.0F);
 
     bool visible = false;
     bool inViewport = false;
@@ -664,6 +683,12 @@ namespace term {
         m_textInput->notifyClientStateChanged(this, TextInputChangeCause::Other);
       }
     }
+    bool blinking = false;
+    ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_CURSOR_BLINKING, &blinking);
+    updateBlink(visible && inViewport && blinking && m_focused
+                && std::chrono::steady_clock::now() - m_blinkSince
+                       < std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCursorBlinkTimeoutMs)));
+    m_cursor.reset();
     if (visible && inViewport) {
       bool wideTail = false;
       GhosttyCursorStyle visual = GHOSTTY_CURSOR_STYLE_BLOCK;
@@ -676,16 +701,15 @@ namespace term {
       case GHOSTTY_CURSOR_STYLE_BLOCK_HOLLOW: shape = TerminalCursorStyle::HollowBlock; break;
       default: break;
       }
-      m_grid->setCursor(TerminalCursor{
+      m_cursor = TerminalCursor{
           .column = std::min((wideTail && cx > 0 ? cx - 1 : cx) + preeditWidth, m_grid->columns() - 1),
           .row = cy,
           .style = m_focused ? shape : TerminalCursorStyle::HollowBlock,
           .color = colors.cursor_has_value ? pack(colors.cursor) : defaultFg,
           .textColor = defaultBg,
-      });
-    } else {
-      m_grid->setCursor(std::nullopt);
+      };
     }
+    m_grid->setCursor(m_blink == Blink::Hidden ? std::nullopt : m_cursor);
     commitAtlas();
   }
 
@@ -700,6 +724,9 @@ namespace term {
   bool TerminalView::key(const KeyboardEvent& event) {
     if (event.preedit) {
       return false;
+    }
+    if (event.pressed) {
+      restartBlink();
     }
     if (event.key == KEY_LEFTCTRL || event.key == KEY_RIGHTCTRL) {
       updateLink(event.pressed);
@@ -761,6 +788,74 @@ namespace term {
     updateFocus();
   }
 
+  void TerminalView::onBell() {
+    switch (m_settings.bell) {
+    case Bell::Off: return;
+    case Bell::Sound:
+      if (m_host.playBell) {
+        m_host.playBell();
+      }
+      return;
+    case Bell::Flash: break;
+    }
+    AnimationManager* animations = m_area != nullptr ? m_area->animationManager() : nullptr;
+    if (m_bellFlash == nullptr || animations == nullptr) {
+      return;
+    }
+    if (m_bellAnim != 0) {
+      animations->cancel(m_bellAnim);
+    }
+    Color tint = themed(ColorRole::Label1);
+    tint.a = Tokens::componentTerminalBellFlashAlpha;
+    m_bellFlash->setStyle(RoundedRectStyle{.fill = tint});
+    m_bellFlash->setPosition(0.0F, 0.0F);
+    m_bellFlash->setFrameSize(m_width, m_height);
+    m_bellFlash->setVisible(true);
+    m_bellAnim = animations->animateTimer(
+        1.0F, 0.0F, static_cast<float>(Tokens::componentTerminalBellFlashMs), Easing::Linear,
+        [this](float v) { m_bellFlash->setOpacity(v); },
+        [this] {
+          m_bellAnim = 0;
+          m_bellFlash->setVisible(false);
+        },
+        this);
+  }
+
+  void TerminalView::updateBlink(bool wanted) {
+    if (!wanted) {
+      m_blinkTimer.stop();
+      m_blink = Blink::Steady;
+      return;
+    }
+    if (m_blink != Blink::Steady) {
+      return;
+    }
+    m_blink = Blink::Shown;
+    const auto timeout = std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCursorBlinkTimeoutMs));
+    m_blinkTimer.startRepeating(std::chrono::milliseconds(static_cast<int>(Tokens::motionCaretBlinkMs)), [this, timeout] {
+      m_blink = m_blink == Blink::Shown ? Blink::Hidden : Blink::Shown;
+      if (std::chrono::steady_clock::now() - m_blinkSince >= timeout) {
+        scheduleRedraw(Redraw::Dirty); // the refresh stops the timer and shows the cursor
+        return;
+      }
+      if (m_grid != nullptr) {
+        m_grid->setCursor(m_blink == Blink::Hidden ? std::nullopt : m_cursor);
+      }
+      if (m_host.requestFrame) {
+        m_host.requestFrame();
+      }
+    });
+  }
+
+  void TerminalView::restartBlink() {
+    m_blinkSince = std::chrono::steady_clock::now();
+    m_blinkTimer.stop();
+    if (m_blink != Blink::Steady) {
+      m_blink = Blink::Steady;
+      scheduleRedraw(Redraw::Dirty);
+    }
+  }
+
   void TerminalView::updateFocus() {
     const bool focused = m_windowActive && m_areaFocused;
     if (focused == m_focused) {
@@ -769,6 +864,8 @@ namespace term {
     m_focused = focused;
     if (!focused) {
       m_keysDown.clear();
+    } else {
+      restartBlink();
     }
     const bool report = m_session.withTerminal([](GhosttyTerminal t) {
       GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_FOCUS_EVENT, .value = false};

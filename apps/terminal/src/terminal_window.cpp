@@ -251,6 +251,7 @@ namespace term {
     auto alive = std::weak_ptr<bool>(m_alive);
     auto view = std::make_unique<TerminalView>(TerminalView::Host{
         .requestFrame = [this] { requestFrame(); },
+        .playBell = [this] { m_loop.wayland().ringBell(m_window.wlSurface()); },
         .textures = [this]() -> TextureManager* {
           RenderContext& render = m_loop.renderContext();
           return render.glReady() ? &render.textureManager() : nullptr;
@@ -297,7 +298,8 @@ namespace term {
                 setFindCount(total, current);
               }
             },
-        .settings = m_settings.settings()});
+        .settings = m_settings.settings(),
+        .glass = m_window.material() == AppWindow::Material::Glass});
     TerminalView& ref = *view;
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);

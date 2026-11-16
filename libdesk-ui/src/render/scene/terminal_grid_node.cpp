@@ -89,6 +89,14 @@ void TerminalGridNode::setBackground(std::uint32_t rgb) {
   markPaintDirty();
 }
 
+void TerminalGridNode::setBackgroundAlpha(float alpha) {
+  if (alpha == m_backgroundAlpha) {
+    return;
+  }
+  m_backgroundAlpha = alpha;
+  markPaintDirty();
+}
+
 void TerminalGridNode::setRow(int row, std::span<const TerminalCell> cells) {
   if (row < 0 || row >= rows()) {
     return;

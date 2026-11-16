@@ -19,6 +19,9 @@ Settings randomSettings(std::mt19937& rng) {
   Settings s;
   s.theme = static_cast<Theme>(pick(0, 3));
   s.cursor = static_cast<CursorShape>(pick(0, 2));
+  s.cursorBlink = pick(0, 1) != 0;
+  s.material = static_cast<WindowMaterial>(pick(0, 1));
+  s.bell = static_cast<Bell>(pick(0, 2));
   s.font = fonts[pick(0, 4)];
   s.fontSize = pick(SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
   s.scrollbackMb = pick(SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax);

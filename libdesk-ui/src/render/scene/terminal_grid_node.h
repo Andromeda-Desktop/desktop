@@ -72,6 +72,9 @@ public:
   void commit(TextureManager& textures);
 
   [[nodiscard]] std::uint32_t background() const noexcept { return m_background; }
+  // The background fill's alpha: below 1 the window's glass shows through the default-background cells.
+  void setBackgroundAlpha(float alpha);
+  [[nodiscard]] float backgroundAlpha() const noexcept { return m_backgroundAlpha; }
   [[nodiscard]] TextureId atlasTexture() const noexcept { return m_texture.id; }
   [[nodiscard]] int atlasWidth() const noexcept { return m_atlas.width(); }
   [[nodiscard]] int atlasHeight() const noexcept { return m_texture.height; }
@@ -95,6 +98,7 @@ private:
   float m_originX = 0.0F;
   float m_originY = 0.0F;
   std::uint32_t m_background = 0;
+  float m_backgroundAlpha = 1.0F;
   std::vector<std::vector<TerminalCell>> m_cells;
   std::optional<TerminalCursor> m_cursor;
   std::uint64_t m_builtGeneration = 0;

@@ -28,6 +28,9 @@ namespace term {
     constexpr Names<CursorShape, 3> kCursors{
         {{CursorShape::Block, "block"}, {CursorShape::Bar, "bar"}, {CursorShape::Underline, "underline"}}};
     constexpr Names<StartDir, 2> kStartDirs{{{StartDir::Home, "home"}, {StartDir::Current, "current"}}};
+    constexpr Names<Bell, 3> kBells{{{Bell::Flash, "flash"}, {Bell::Sound, "sound"}, {Bell::Off, "off"}}};
+    constexpr Names<WindowMaterial, 2> kMaterials{
+        {{WindowMaterial::Solid, "solid"}, {WindowMaterial::Glass, "glass"}}};
 
     template <typename E, std::size_t N> std::string_view nameOf(const Names<E, N>& names, E value) {
       for (const auto& [e, name] : names) {
@@ -137,6 +140,8 @@ namespace term {
     Reader r{parsed.table(), std::nullopt};
     r.choice("appearance", "theme", kThemes, s.theme);
     r.choice("appearance", "cursor", kCursors, s.cursor);
+    r.boolean("appearance", "cursor_blink", s.cursorBlink);
+    r.choice("appearance", "window", kMaterials, s.material);
     r.string("text", "font", s.font);
     r.integer("text", "size", SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax, s.fontSize);
     r.integer("terminal", "scrollback_mb", SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax,
@@ -144,6 +149,7 @@ namespace term {
     r.boolean("terminal", "copy_on_select", s.copyOnSelect);
     r.integer("terminal", "scroll_rows", SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax,
               s.scrollRows);
+    r.choice("terminal", "bell", kBells, s.bell);
     r.string("sessions", "shell", s.shell);
     r.choice("sessions", "start_in", kStartDirs, s.startDir);
     r.boolean("notifications", "long_command", s.notifyLong);
@@ -164,6 +170,8 @@ namespace term {
     auto& appearance = tableIn(root, "appearance");
     appearance.insert_or_assign("theme", std::string(nameOf(kThemes, s.theme)));
     appearance.insert_or_assign("cursor", std::string(nameOf(kCursors, s.cursor)));
+    appearance.insert_or_assign("cursor_blink", s.cursorBlink);
+    appearance.insert_or_assign("window", std::string(nameOf(kMaterials, s.material)));
     auto& text = tableIn(root, "text");
     text.insert_or_assign("font", s.font);
     text.insert_or_assign("size", s.fontSize);
@@ -171,6 +179,7 @@ namespace term {
     terminal.insert_or_assign("scrollback_mb", s.scrollbackMb);
     terminal.insert_or_assign("copy_on_select", s.copyOnSelect);
     terminal.insert_or_assign("scroll_rows", s.scrollRows);
+    terminal.insert_or_assign("bell", std::string(nameOf(kBells, s.bell)));
     auto& sessions = tableIn(root, "sessions");
     sessions.insert_or_assign("shell", s.shell);
     sessions.insert_or_assign("start_in", std::string(nameOf(kStartDirs, s.startDir)));

@@ -24,6 +24,7 @@
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
+#include "xdg-system-bell-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -979,6 +980,12 @@ bool WaylandConnection::hasXdgShell() const noexcept { return m_xdgWmBase != nul
 bool WaylandConnection::hasIdleNotifier() const noexcept { return m_idleNotifier != nullptr; }
 bool WaylandConnection::hasIdleInhibitManager() const noexcept { return m_idleInhibitManager != nullptr; }
 bool WaylandConnection::hasXdgActivation() const noexcept { return m_xdgActivation != nullptr; }
+
+void WaylandConnection::ringBell(wl_surface* surface) const {
+  if (m_systemBell != nullptr) {
+    xdg_system_bell_v1_ring(m_systemBell, surface);
+  }
+}
 bool WaylandConnection::hasFractionalScale() const noexcept {
   return m_fractionalScaleManager != nullptr && m_viewporter != nullptr;
 }
@@ -1435,6 +1442,11 @@ void WaylandConnection::bindGlobal(
     return;
   }
 
+  if (interfaceName == xdg_system_bell_v1_interface.name) {
+    m_systemBell = static_cast<xdg_system_bell_v1*>(wl_registry_bind(registry, name, &xdg_system_bell_v1_interface, 1));
+    return;
+  }
+
   if (interfaceName == xdg_activation_v1_interface.name) {
     const auto bindVersion = std::min(version, kXdgActivationVersion);
     m_xdgActivation =
@@ -1620,6 +1632,10 @@ void WaylandConnection::cleanup() {
   if (m_xdgActivation != nullptr) {
     xdg_activation_v1_destroy(m_xdgActivation);
     m_xdgActivation = nullptr;
+  }
+  if (m_systemBell != nullptr) {
+    xdg_system_bell_v1_destroy(m_systemBell);
+    m_systemBell = nullptr;
   }
 
   if (m_idleNotifier != nullptr) {

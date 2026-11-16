@@ -10,7 +10,9 @@
 #include <vector>
 
 class AppWindow;
+class Button;
 class Flex;
+class Input;
 class Node;
 class Renderer;
 
@@ -43,16 +45,22 @@ namespace term {
     [[nodiscard]] std::unique_ptr<Node> buildSidebar(float width);
     [[nodiscard]] std::unique_ptr<Node> preview(float scale, float width) const;
     [[nodiscard]] std::unique_ptr<Node> themeTiles(float scale, float width);
+    [[nodiscard]] std::unique_ptr<Node> materialTiles(float scale, float width);
+    // The selected tile's swatch with the accent check badge at its bottom-right corner.
+    [[nodiscard]] static std::unique_ptr<Node> checked(std::unique_ptr<Node> swatch, bool on, float scale);
     [[nodiscard]] std::unique_ptr<Flex> card(const Group& group, float scale, float width) const;
     void change(const std::function<void(Settings&)>& edit);
     void showPage(Page page);
     void setQuery(std::string query);
     void refill();
+    void markPages(); // title and selected row: the page, or none while a search shows results
 
     AppWindow& m_window;
     SettingsStore& m_store;
     Page m_page = Page::Appearance;
     std::string m_query;
+    Input* m_search = nullptr;
+    std::vector<Button*> m_pageButtons; // in Page order, from the last sidebar build
     ScrollViewState m_scroll;
     Flex* m_slot = nullptr; // the content column refill() swaps
     float m_slotWidth = 0.0F;

@@ -438,7 +438,7 @@ bool AppWindow::open() {
   const auto height = fixed ? minH : std::max(minH, m_state.get<std::uint32_t>(key("height"), scaled(m_config.height)));
   const bool maximized = !fixed && m_state.get<bool>(key("maximized"), false);
 
-  m_sidebarBlur.clear(); // a new surface has no blur region yet
+  m_blur.clear(); // a new surface has no blur region yet
   m_surface = std::make_unique<ToplevelSurface>(wayland);
   m_surface->setRenderContext(&m_loop.renderContext());
   m_surface->setAnimationManager(&m_animations);
@@ -653,7 +653,7 @@ void AppWindow::prepareFrame(bool needsLayout) {
     m_rebuild = false;
     m_compact = compact;
     buildScene(renderer, width, height);
-    syncSidebarBlur();
+    syncBlur();
     return;
   }
   // Held while a button is down, as a rebuild is: a press under the sheet must end where it started.
@@ -687,29 +687,28 @@ void AppWindow::prepareFrame(bool needsLayout) {
       m_onLayout();
     }
   }
-  syncSidebarBlur();
+  syncBlur();
 }
 
-void AppWindow::syncSidebarBlur() {
+void AppWindow::syncBlur() {
   std::vector<InputRect> rects;
-  if (m_config.sidebarMaterial == SidebarMaterial::Glass && m_sidebarNode != nullptr && m_sidebarNode->visible()) {
-    const auto margin = static_cast<int>(m_surface->margin());
-    const int w = static_cast<int>(std::lround(m_sidebarNode->width()));
-    const int h = static_cast<int>(std::lround(m_sidebarNode->height()));
-    const float r = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
-    // The window corners round only the sidebar's outer (left) corners; the blur also covers the strip under the main
-    // pane's concave corners.
-    const int under = m_config.transparentContent ? 0 : static_cast<int>(std::lround(r));
-    rects = Surface::tessellateRoundedRect(margin, margin, w + under, h, r, 0.0F, 0.0F, r);
+  if (m_config.material == Material::Glass && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
+    const auto margin = static_cast<float>(m_surface->margin());
+    const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
+    const float r = square ? 0.0F : Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
+    rects = Surface::tessellateRoundedRect(static_cast<int>(margin), static_cast<int>(margin),
+                                           static_cast<int>(std::lround(m_contentRect.x + m_contentRect.width - margin)),
+                                           static_cast<int>(std::lround(m_contentRect.y + m_contentRect.height - margin)),
+                                           r, r, r, r);
   }
-  if (rects == m_sidebarBlur) {
+  if (rects == m_blur) {
     return;
   }
-  m_sidebarBlur = std::move(rects);
-  if (m_sidebarBlur.empty()) {
+  m_blur = std::move(rects);
+  if (m_blur.empty()) {
     m_surface->clearBlurRegion();
   } else {
-    m_surface->setBlurRegion(m_sidebarBlur);
+    m_surface->setBlurRegion(m_blur);
   }
 }
 
@@ -959,10 +958,11 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     main->addChild(std::move(bar));
   }
   // Concave edge: the main pane's left corners round into the sidebar, whose tint shows behind them.
-  const bool concave = sidebarShown > 0.0F && !m_config.transparentContent;
+  // Glass has no concave edge: a sidebar-tint strip under the translucent main pane would stack two tints.
+  const bool concave = sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
   if (!m_config.transparentContent) {
-    main->setFill(colorSpecFromRole(ColorRole::SolidRegular));
+    main->setFill(colorSpecFromRole(m_config.material == Material::Glass ? ColorRole::TintThick : ColorRole::SolidRegular));
   }
   if (concave) {
     const Radii corners{edgeRadius, 0.0F, 0.0F, edgeRadius};
@@ -982,7 +982,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   auto body = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
   if (sidebarWidth > 0.0F) {
-    const ColorSpec sidebarFill = m_config.sidebarMaterial == SidebarMaterial::Glass
+    const ColorSpec sidebarFill = m_config.material == Material::Glass
                                       ? colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint)
                                       : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.

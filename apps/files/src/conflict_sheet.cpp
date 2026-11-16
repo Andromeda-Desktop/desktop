@@ -13,6 +13,7 @@
 #include "ui/controls/checkbox.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/label.h"
+#include "ui/controls/pinned.h"
 #include "ui/files/file_format.h"
 #include "ui/files/file_icon.h"
 #include "ui/palette.h"
@@ -59,32 +60,6 @@ namespace {
   };
 
   // A click area the size of its one child: a plain InputArea measures as zero, so a row would give it no height.
-  // The preview (child 0) with a badge (child 1) pinned to its bottom-right corner, `inset` in from both edges.
-  class Pinned final : public Node {
-  public:
-    explicit Pinned(float inset) : m_inset(inset) {}
-
-  protected:
-    LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override {
-      return children().empty() ? LayoutSize{} : children().front()->measure(renderer, constraints);
-    }
-    void doArrange(Renderer& renderer, const LayoutRect& rect) override {
-      setPosition(rect.x, rect.y);
-      setSize(rect.width, rect.height);
-      if (children().size() < 2) {
-        return;
-      }
-      children()[0]->arrange(renderer, LayoutRect{.x = 0.0F, .y = 0.0F, .width = rect.width, .height = rect.height});
-      const LayoutSize badge = children()[1]->measure(renderer, LayoutConstraints{});
-      children()[1]->arrange(renderer, LayoutRect{.x = rect.width - badge.width - m_inset,
-                                                  .y = rect.height - badge.height - m_inset,
-                                                  .width = badge.width, .height = badge.height});
-    }
-
-  private:
-    float m_inset;
-  };
-
   class CardArea final : public InputArea {
   protected:
     LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override {

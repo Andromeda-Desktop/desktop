@@ -963,9 +963,11 @@ void RenderContext::drawNodeSelf(
         .phases = gridPhases,
     };
     const std::uint32_t bg = grid->background();
-    draw.background[0] = static_cast<float>((bg >> 16) & 0xFF) / 255.0F;
-    draw.background[1] = static_cast<float>((bg >> 8) & 0xFF) / 255.0F;
-    draw.background[2] = static_cast<float>(bg & 0xFF) / 255.0F;
+    const float bgAlpha = grid->backgroundAlpha();
+    draw.background[0] = static_cast<float>((bg >> 16) & 0xFF) / 255.0F * bgAlpha;
+    draw.background[1] = static_cast<float>((bg >> 8) & 0xFF) / 255.0F * bgAlpha;
+    draw.background[2] = static_cast<float>(bg & 0xFF) / 255.0F * bgAlpha;
+    draw.background[3] = bgAlpha;
     m_backend->drawTerminalGrid(draw);
     break;
   }

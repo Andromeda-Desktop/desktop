@@ -27,7 +27,7 @@ namespace term {
   void TerminalApp::gpuLost() { m_thumbnails.abandonGpuResources(); }
 
   AppWindow& TerminalApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .sidebarMaterial = AppWindow::SidebarMaterial::Glass});
+    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 820, .height = 520, .sidebarWidth = 240.0F, .material = m_settings.settings().material == WindowMaterial::Glass ? AppWindow::Material::Glass : AppWindow::Material::Solid});
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }

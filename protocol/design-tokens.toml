@@ -341,6 +341,7 @@ projection_decay = 0.998
 open_velocity = 300.0    # px/s toward open
 loading_delay_ms = 200
 loading_min_ms = 400
+caret_blink_ms = 530  # half a blink cycle: the text field caret and the terminal cursor
 
 # Component anatomy (rulebook 9). A value equal to a scale token says so in its comment; a nested radius is an
 # expression so it cannot drift from its container.
@@ -508,6 +509,13 @@ gap = 8.0
 find_width = 360.0  # find capsule in the title band (D find14 mockup)
 find_ring = 1.5  # current-hit ring width (D-SPEC find)
 find_hit_radius = 2.0  # current-hit ring corner, inside the ring
+theme_tile_aspect = 0.55  # Preferences theme tile: height / width
+window_tile_aspect = 0.28  # Preferences Solid / Glass tile: height / width
+window_tile_sidebar = 0.3  # the sidebar's share of the window drawn in that tile
+cursor_blink_timeout_ms = 10000  # the cursor stops blinking this long after the last key or focus
+bell_flash_ms = 150  # the grid's bell flash fades out over this time
+bell_flash_alpha = 0.12  # the flash's start opacity: the text colour over the grid
+glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the window's thick tint
 
 [component.agent]  # agent session view (design-agent handoff.yaml)
 measure = 640.0  # prose max width, 70 ch of body 14
