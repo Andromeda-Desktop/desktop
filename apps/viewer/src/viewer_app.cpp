@@ -54,6 +54,8 @@ namespace viewer {
     add("view.zoom-in", "Zoom In", "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn, XKB_KEY_equal);
     add("view.zoom-out", "Zoom Out", "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);
     add("view.zoom-fit", "Fit Width", "View", XKB_KEY_0, KeyMod::Ctrl, &ViewerWindow::zoomFit);
+    add("view.zoom-actual", "Actual Size", "View", XKB_KEY_1, KeyMod::Ctrl, &ViewerWindow::zoomActual);
+    add("view.zoom-page", "Fit Page", "View", XKB_KEY_2, KeyMod::Ctrl, &ViewerWindow::zoomFitPage);
     add("edit.undo", "Undo", "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
     add("edit.redo", "Redo", "Edit", XKB_KEY_z, KeyMod::Ctrl | KeyMod::Shift, &ViewerWindow::redo);
     add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);

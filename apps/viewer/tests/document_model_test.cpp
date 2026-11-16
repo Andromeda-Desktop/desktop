@@ -73,7 +73,14 @@ int main() {
     expect(model.pageAt(second.y0 + 1.0F) == 1 && model.pageAt(1e9F) == 2, "page under y");
     model.zoomBy(0.5F);
     model.setViewportWidth(2000.0F);
-    expect(model.zoom() == 1.0F && !model.fitsWidth(), "a user zoom stops following the viewport");
+    expect(model.zoom() == 1.0F && model.fit() == DocumentModel::Fit::None, "a user zoom stops following the viewport");
+    // Fit page takes the smaller of the width and height fits, and follows a new height.
+    model.setViewportHeight(1500.0F);
+    model.fitPage();
+    expect(model.zoom() == 1.5F, "fit page by height");
+    expect(model.setViewportHeight(3000.0F) && model.zoom() == 3.0F, "fit page follows the height");
+    model.setViewportWidth(500.0F);
+    expect(model.zoom() == 1.0F, "fit page by width");
   }
 
   return g_failures == 0 ? 0 : 1;

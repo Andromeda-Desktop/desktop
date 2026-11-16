@@ -3,6 +3,7 @@
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "core/text_clipboard.h"
+#include "cursor-shape-v1-client-protocol.h"
 #include "ui/controls/input.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_scanner.h"
@@ -108,6 +109,11 @@ namespace viewer {
     if (m_focusNote && m_noteInput != nullptr) {
       m_focusNote = false;
       m_window.input().setFocus(m_noteInput->inputArea());
+    }
+    // Fit page follows the view height, known only after layout.
+    if (m_scroll != nullptr && m_model.fit() == DocumentModel::Fit::Page &&
+        m_model.setViewportHeight(m_scroll->height() - 2.0F * kPagePadding * m_window.uiScale())) {
+      rebuild();
     }
     if (m_restoreScroll && m_scroll != nullptr) {
       m_restoreScroll = false;
@@ -894,6 +900,26 @@ namespace viewer {
 
   void ViewerWindow::zoomFit() { zoomTo([this] { m_model.fitWidth(); }); }
 
+  void ViewerWindow::zoomActual() { zoomTo([this] { m_model.setZoom(1.0F); }); }
+
+  // The current page fills the view, its top at the top.
+  void ViewerWindow::zoomFitPage() {
+    if (m_mode != Mode::Pdf || m_scroll == nullptr) {
+      return;
+    }
+    const std::size_t page = currentPage();
+    const float before = m_model.zoom();
+    zoomTo([this] {
+      m_model.setViewportHeight(m_scroll->height() - 2.0F * kPagePadding * m_window.uiScale());
+      m_model.fitPage();
+    });
+    if (m_model.zoom() == before) {
+      goToPage(page);
+    } else {
+      m_scrollOffset = m_model.pageBox(page).y0;
+    }
+  }
+
   float ViewerWindow::widestPage() const {
     float w = 0.0F;
     for (std::size_t i = 0; i < m_model.pageCount(); ++i) {
@@ -1240,7 +1266,9 @@ namespace viewer {
       const RectF box = m_model.pageBox(i);
       const float w = box.x1 - box.x0;
       const float h = box.y1 - box.y0;
-      auto sheet = ui::inputArea({.cursorShape = 9 /* text */, .width = w, .height = h});
+      auto sheet = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT, .width = w, .height = h});
+      sheet->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_MIDDLE}));
+      InputArea* sheetArea = sheet.get();
       sheet->setClipChildren(true);
       auto paper = ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .width = w, .height = h});
       paper->setParticipatesInLayout(false);
@@ -1261,12 +1289,25 @@ namespace viewer {
       layer->setParticipatesInLayout(false);
       m_markLayers[i] = layer.get();
       sheet->addChild(std::move(layer));
-      sheet->setOnPress([this, i, zoom](const InputArea::PointerData& d) {
+      sheet->setOnPress([this, i, zoom, sheetArea](const InputArea::PointerData& d) {
         if (d.button == BTN_LEFT) {
           onPagePress(i, d.localX / zoom, d.localY / zoom, d.pressed, d.time);
+        } else if (d.button == BTN_MIDDLE && m_scroll != nullptr && m_hscroll != nullptr) {
+          m_pan = d.pressed ? std::optional<Pan>(Pan{.x = d.sceneX, .y = d.sceneY, .top = m_scroll->scrollOffset(),
+                                                     .left = m_hscroll->scrollOffset()})
+                            : std::nullopt;
+          sheetArea->setCursorShape(d.pressed ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING
+                                                : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
         }
       });
-      sheet->setOnMotion([this, zoom](const InputArea::PointerData& d) { onPageMotion(d.localX / zoom, d.localY / zoom); });
+      sheet->setOnMotion([this, zoom](const InputArea::PointerData& d) {
+        if (m_pan && m_scroll != nullptr && m_hscroll != nullptr) {
+          m_hscroll->setScrollOffset(m_pan->left - (d.sceneX - m_pan->x));
+          m_scroll->setScrollOffset(m_pan->top - (d.sceneY - m_pan->y));
+          return;
+        }
+        onPageMotion(d.localX / zoom, d.localY / zoom);
+      });
       column->addChild(std::move(sheet));
     }
     hscroll->content()->addChild(std::move(columnNode));
@@ -1746,7 +1787,7 @@ namespace viewer {
                              .flexGrow = 1.0F});
     sheet->addChild(ui::label({.text = std::string("Draw your signature"), .fontSize = Style::fontSizeBody * s,
                                .color = colorSpecFromRole(ColorRole::Label1)}));
-    auto pad = ui::inputArea({.cursorShape = 2 /* crosshair */, .width = kPadWidth * s, .height = kPadHeight * s});
+    auto pad = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR, .width = kPadWidth * s, .height = kPadHeight * s});
     pad->setClipChildren(true);
     auto paper = ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .border = colorSpecFromRole(ColorRole::Separator),
                           .borderWidth = 1.0F, .radius = Style::scaledRadiusMd(s), .width = kPadWidth * s,

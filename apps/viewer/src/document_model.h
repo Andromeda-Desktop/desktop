@@ -27,12 +27,17 @@ namespace viewer {
     void setPageSize(std::size_t page, float widthPt, float heightPt);
     [[nodiscard]] std::size_t pageCount() const noexcept { return m_sizes.size(); }
 
-    // Zoom: points to logical px. Fit-width follows the viewport until the user zooms.
+    // Zoom: points to logical px. Fit width and fit page follow the viewport until the user zooms.
+    enum class Fit : std::uint8_t { None, Width, Page };
     void setViewportWidth(float width);
+    // True when the zoom changed.
+    bool setViewportHeight(float height);
+    void setZoom(float zoom);
     void zoomBy(float factor);
     void fitWidth();
+    void fitPage();
     [[nodiscard]] float zoom() const noexcept;
-    [[nodiscard]] bool fitsWidth() const noexcept { return m_fitWidth; }
+    [[nodiscard]] Fit fit() const noexcept { return m_fit; }
 
     // Page boxes in logical px, stacked top to bottom with kPageGap between them.
     [[nodiscard]] RectF pageBox(std::size_t page) const;
@@ -79,8 +84,9 @@ namespace viewer {
     float m_defaultWidth = 612.0F;
     float m_defaultHeight = 792.0F;
     float m_viewportWidth = 0.0F;
+    float m_viewportHeight = 0.0F;
     float m_zoom = 1.0F;
-    bool m_fitWidth = true;
+    Fit m_fit = Fit::Width;
 
     std::string m_query;
     std::vector<std::vector<RectF>> m_hits;

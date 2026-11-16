@@ -10,6 +10,7 @@ class AppLoop;
 class AppWindow;
 class Node;
 class Renderer;
+struct wl_surface;
 
 namespace viewer {
 
@@ -42,11 +43,16 @@ namespace viewer {
     void remove(std::size_t index);
     void step(int direction);
     void updateTitle();
+    // Files dropped on the window open as tabs.
+    void registerDropTarget();
 
     AppLoop& m_loop;
     AppWindow& m_window;
     std::vector<std::unique_ptr<ViewerWindow>> m_tabs;
     std::size_t m_active = 0;
+    // A window with no tab shows this never-opened one: the toolbar and the open-or-drop message.
+    std::unique_ptr<ViewerWindow> m_blank;
+    wl_surface* m_dropSurface = nullptr;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
   };
 

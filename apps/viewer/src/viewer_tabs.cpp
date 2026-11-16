@@ -12,6 +12,11 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "viewer_window.h"
+#include "wayland/drag_and_drop.h"
+#include "wayland/wayland_connection.h"
+
+#include <gio/gio.h>
+#include <sstream>
 
 namespace viewer {
 
@@ -37,13 +42,53 @@ namespace viewer {
     });
   }
 
-  ViewerTabs::~ViewerTabs() = default;
+  ViewerTabs::~ViewerTabs() {
+    if (m_dropSurface != nullptr) {
+      if (DragAndDrop* dnd = m_loop.wayland().dragAndDrop()) {
+        dnd->clearTarget(m_dropSurface);
+      }
+    }
+  }
+
+  void ViewerTabs::registerDropTarget() {
+    wl_surface* surface = m_window.wlSurface();
+    DragAndDrop* dnd = m_loop.wayland().dragAndDrop();
+    if (surface == nullptr || dnd == nullptr || surface == m_dropSurface) {
+      return;
+    }
+    m_dropSurface = surface;
+    dnd->setAcceptedTypes({"text/uri-list"});
+    dnd->setTarget(surface, {
+        .enter = [](const std::vector<std::string>&) { return true; },
+        .motion = [](float, float) -> std::uint32_t { return DragAndDrop::Copy; },
+        .leave = [] {},
+        .drop =
+            [this](float, float, std::uint32_t, const std::string& mime, std::string data) {
+              if (mime != "text/uri-list") {
+                return;
+              }
+              std::istringstream lines(data);
+              for (std::string line; std::getline(lines, line);) {
+                if (!line.empty() && line.back() == '\r') {
+                  line.pop_back();
+                }
+                if (line.empty() || line.front() == '#') {
+                  continue;
+                }
+                if (char* path = g_filename_from_uri(line.c_str(), nullptr, nullptr)) {
+                  add(path);
+                  g_free(path);
+                }
+              }
+            },
+    });
+  }
 
   void ViewerTabs::add(const std::filesystem::path& path) {
     auto tab = std::make_unique<ViewerWindow>(m_loop, m_window);
     tab->setTitleChanged([this] { updateTitle(); });
     tab->open(path);
-    if (ViewerWindow* old = active()) {
+    if (ViewerWindow* old = active() != nullptr ? active() : m_blank.get()) {
       old->detach();
     }
     const std::size_t at = m_tabs.empty() ? 0 : m_active + 1;
@@ -150,9 +195,16 @@ namespace viewer {
   }
 
   std::unique_ptr<Node> ViewerTabs::build(Renderer& renderer, float width, float height) {
+    registerDropTarget();
     ViewerWindow* tab = active();
-    if (m_tabs.size() < 2 || tab == nullptr || m_window.fullscreen()) {
-      return tab != nullptr ? tab->build(renderer, width, height) : ui::box({});
+    if (tab == nullptr) {
+      if (!m_blank) {
+        m_blank = std::make_unique<ViewerWindow>(m_loop, m_window);
+      }
+      return m_blank->build(renderer, width, height);
+    }
+    if (m_tabs.size() < 2 || m_window.fullscreen()) {
+      return tab->build(renderer, width, height);
     }
     const float s = m_window.uiScale();
     const float strip = Tokens::spaceP40 * s;

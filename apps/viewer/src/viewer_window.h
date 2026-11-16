@@ -53,6 +53,8 @@ namespace viewer {
     void zoomIn();
     void zoomOut();
     void zoomFit();
+    void zoomFitPage();
+    void zoomActual();
     void toggleSidebar();
     void step(int direction);
     void undo();
@@ -241,6 +243,14 @@ namespace viewer {
     std::string m_searchText;
     bool m_scanPending = false;
     std::optional<Selection> m_selection;
+    // A middle-button drag pans: the pointer (scene px) and both scroll offsets at the press.
+    struct Pan {
+      float x = 0.0F;
+      float y = 0.0F;
+      float top = 0.0F;
+      float left = 0.0F;
+    };
+    std::optional<Pan> m_pan;
     bool m_selecting = false;
     // The last left press on a page, to count double and triple clicks.
     struct Click {

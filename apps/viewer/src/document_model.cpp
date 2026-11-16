@@ -15,7 +15,7 @@ namespace viewer {
       m_defaultWidth = firstWidthPt;
       m_defaultHeight = firstHeightPt;
     }
-    m_fitWidth = true;
+    m_fit = Fit::Width;
     clearSearch();
   }
 
@@ -27,19 +27,33 @@ namespace viewer {
 
   void DocumentModel::setViewportWidth(float width) { m_viewportWidth = std::max(0.0F, width); }
 
+  bool DocumentModel::setViewportHeight(float height) {
+    const float before = zoom();
+    m_viewportHeight = std::max(0.0F, height);
+    return zoom() != before;
+  }
+
   float DocumentModel::zoom() const noexcept {
-    if (m_fitWidth && m_viewportWidth > 0.0F) {
-      return std::clamp(m_viewportWidth / m_defaultWidth, kMinZoom, kMaxZoom);
+    if (m_fit == Fit::None || m_viewportWidth <= 0.0F) {
+      return m_zoom;
     }
-    return m_zoom;
+    float fit = m_viewportWidth / m_defaultWidth;
+    if (m_fit == Fit::Page && m_viewportHeight > 0.0F) {
+      fit = std::min(fit, m_viewportHeight / m_defaultHeight);
+    }
+    return std::clamp(fit, kMinZoom, kMaxZoom);
   }
 
-  void DocumentModel::zoomBy(float factor) {
-    m_zoom = std::clamp(zoom() * factor, kMinZoom, kMaxZoom);
-    m_fitWidth = false;
+  void DocumentModel::setZoom(float zoom) {
+    m_zoom = std::clamp(zoom, kMinZoom, kMaxZoom);
+    m_fit = Fit::None;
   }
 
-  void DocumentModel::fitWidth() { m_fitWidth = true; }
+  void DocumentModel::zoomBy(float factor) { setZoom(zoom() * factor); }
+
+  void DocumentModel::fitWidth() { m_fit = Fit::Width; }
+
+  void DocumentModel::fitPage() { m_fit = Fit::Page; }
 
   float DocumentModel::pageWidthPx(std::size_t page) const {
     return (m_sizes[page].known ? m_sizes[page].width : m_defaultWidth) * zoom();
