@@ -385,27 +385,33 @@ namespace viewer {
   } // namespace
 
   void ViewerWindow::restoreViewState() {
+    m_documentKey = documentKey(m_path);
     const auto docs = m_state.get<nlohmann::json>("/viewer/documents", nlohmann::json::object());
     if (!docs.is_object()) {
       return;
     }
-    const auto it = docs.find(documentKey(m_path));
+    const auto it = docs.find(m_documentKey);
     if (it == docs.end() || !it->is_object()) {
       return;
     }
+    std::string fit;
+    float zoom = 1.0F;
+    std::size_t page = 0;
     try {
-      const std::string fit = it->value("fit", std::string("width"));
-      if (fit == "page") {
-        m_model.fitPage();
-      } else if (fit == "none") {
-        m_model.setZoom(it->value("zoom", 1.0F));
-      }
-      const auto page = it->value("page", std::size_t{0});
-      if (page > 0 && page < m_model.pageCount()) {
-        m_restorePage = page;
-      }
+      fit = it->value("fit", std::string("width"));
+      zoom = it->value("zoom", 1.0F);
+      page = it->value("page", std::size_t{0});
     } catch (const nlohmann::json::exception&) {
       kLog.warn("bad view state for {}", m_path.string());
+      return;
+    }
+    if (fit == "page") {
+      m_model.fitPage();
+    } else if (fit == "none") {
+      m_model.setZoom(zoom);
+    }
+    if (page > 0 && page < m_model.pageCount()) {
+      m_restorePage = page;
     }
   }
 
@@ -422,7 +428,7 @@ namespace viewer {
     if (!docs.is_object()) {
       docs = nlohmann::json::object();
     }
-    docs[documentKey(m_path)] = {{"page", view.page}, {"fit", fitName(view.fit)}, {"zoom", view.zoom},
+    docs[m_documentKey] = {{"page", view.page}, {"fit", fitName(view.fit)}, {"zoom", view.zoom},
                                  {"time", static_cast<std::int64_t>(std::time(nullptr))}};
     while (docs.size() > kRememberedDocuments) {
       const auto time = [](const nlohmann::json& entry) {
@@ -1365,6 +1371,7 @@ namespace viewer {
     }
     m_dropped.clear();
     forgetNodes();
+    m_areaWidth = width;
     // Fit width uses the page area inside the padding; set it before the toolbar shows the zoom.
     m_model.setViewportWidth(std::max(100.0F, pageAreaWidth() - 2.0F * kPagePadding * s));
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
@@ -1507,7 +1514,7 @@ namespace viewer {
     return card;
   }
 
-  float ViewerWindow::pageAreaWidth() const { return m_window.contentRect().width; }
+  float ViewerWindow::pageAreaWidth() const { return m_areaWidth; }
 
   std::unique_ptr<Node> ViewerWindow::buildPages(Renderer& renderer) {
     const float s = m_window.uiScale();

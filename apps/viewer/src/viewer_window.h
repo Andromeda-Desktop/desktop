@@ -135,6 +135,7 @@ namespace viewer {
     [[nodiscard]] std::unique_ptr<Node> buildThumbs(Renderer& renderer, float width);
     [[nodiscard]] std::unique_ptr<Node> buildNoteField(std::size_t page, annot::Point at, float pageWidth);
     [[nodiscard]] float pageAreaWidth() const;
+    float m_areaWidth = 0.0F; // the width of the last build: the window's content or this document's pane
     [[nodiscard]] std::unique_ptr<Node> buildOutline(float width);
     [[nodiscard]] std::unique_ptr<Node> buildResults(float width);
     // One SELECT_LINE at a time fills the snippet of the next built result row that has none.
@@ -223,6 +224,7 @@ namespace viewer {
     StateStore& m_state;
     std::optional<std::size_t> m_restorePage; // applied at the first layout that keeps the scene
     std::optional<ViewState> m_savedView;
+    std::string m_documentKey; // SHA-1 of the canonical path: the entry under /viewer/documents
     Mode m_mode = Mode::Empty;
     std::filesystem::path m_path;
     std::string m_error;
