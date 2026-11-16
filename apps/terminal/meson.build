@@ -25,7 +25,7 @@ endif
 
 _desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
-  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp',
+  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
   dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + meson.project_version() + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
@@ -97,6 +97,8 @@ test('session_list', executable('session_list_test', 'tests/session_list_test.cp
 
 test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
+test('palette_model', executable('palette_model_test', 'tests/palette_model_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings))
 test('terminal_bidi', executable('terminal_bidi_test', 'tests/terminal_bidi_test.cpp',
   dependencies: _desk_ui_dep, cpp_args: _warnings))
 
@@ -127,7 +129,7 @@ executable('andromeda-terminal',
   'src/notifier.cpp',
   'src/terminal_app.cpp',
   'src/terminal_view.cpp',
-  'src/terminal_window.cpp',
+  'src/terminal_window.cpp', 'src/command_palette.cpp',
   'src/split_trees.cpp',
   'src/settings_store.cpp',
   'src/theme_store.cpp',

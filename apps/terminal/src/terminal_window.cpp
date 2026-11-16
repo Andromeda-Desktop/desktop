@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <csignal>
 #include <format>
+#include <ranges>
 #include <cctype>
 #include <cmath>
 #include <cerrno>
@@ -136,6 +137,7 @@ namespace term {
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
+      closePalette(true);
       for (Session& session : m_views) {
         session.view->sceneDestroyed();
       }
@@ -735,6 +737,9 @@ namespace term {
     if (m_findOpen && (rebuild || (!m_cards.empty() && m_ringPane != id))) {
       closeFind();
     }
+    if (std::holds_alternative<PaletteOpen>(m_palette) && (rebuild || (!m_cards.empty() && m_ringPane != id))) {
+      closePalette();
+    }
     syncAgentBar();
     for (Session& session : m_views) {
       session.view->setWindowActive(std::ranges::contains(panes, session.id) && m_active);
@@ -838,6 +843,9 @@ namespace term {
   Settings TerminalWindow::viewSettings() const {
     Settings settings = m_settings.settings();
     settings.fontSize = std::clamp(settings.fontSize + m_zoom, SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
+    if (const auto* open = std::get_if<PaletteOpen>(&m_palette); open != nullptr && open->preview) {
+      settings.theme = *open->preview;
+    }
     return settings;
   }
 
@@ -853,9 +861,10 @@ namespace term {
   bool TerminalWindow::sessionKey(const KeyboardEvent& event) {
     const auto action = event.pressed ? m_settings.settings().keys.match(event.sym, event.unshifted, event.modifiers)
                                       : std::nullopt;
-    if (!action) {
-      return false;
-    }
+    return action && runAction(*action);
+  }
+
+  bool TerminalWindow::runAction(Action action) {
     const auto& recent = m_sessions.recent();
     const auto step = [this](bool forward) {
       const auto order = sidebarOrder();
@@ -872,11 +881,11 @@ namespace term {
       m_zoom = std::clamp(steps, SettingsLimits::kFontSizeMin - base, SettingsLimits::kFontSizeMax - base);
       applyViewSettings();
     };
-    switch (*action) {
+    switch (action) {
       case Action::NextRecent:
       case Action::PreviousRecent:
         if (recent.size() > 1) {
-          apply(session_event::Show{*action == Action::PreviousRecent ? recent.back() : recent[1]});
+          apply(session_event::Show{action == Action::PreviousRecent ? recent.back() : recent[1]});
         }
         return true;
       case Action::SearchSessions:
@@ -902,6 +911,7 @@ namespace term {
       case Action::Preferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
       case Action::NewWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); return true;
       case Action::Find: openFind(); return true;
+      case Action::CommandPalette: openPalette(); return true;
       case Action::Session1:
       case Action::Session2:
       case Action::Session3:
@@ -911,7 +921,7 @@ namespace term {
       case Action::Session7:
       case Action::Session8:
       case Action::Session9: {
-        const auto index = static_cast<std::size_t>(*action) - static_cast<std::size_t>(Action::Session1);
+        const auto index = static_cast<std::size_t>(action) - static_cast<std::size_t>(Action::Session1);
         if (const auto order = sidebarOrder(); index < order.size()) {
           apply(session_event::Show{order[index]});
         }
@@ -1566,6 +1576,239 @@ namespace term {
     m_window.setHeaderSearchMode(false);
     syncAgentBar();
     focusGrid();
+  }
+
+  std::vector<palette::Item> TerminalWindow::paletteItems(PaletteTarget target,
+                                                          std::unordered_map<std::string, std::function<void()>>& runs) {
+    std::vector<palette::Item> items;
+    const std::uint64_t shown = m_sessions.shown().value_or(0);
+    const auto sessionItem = [&](TerminalWindow& window, std::uint64_t id, std::string trailing) {
+      const SessionInfo* info = window.m_sessions.find(id);
+      const StatusRow::Data data = window.rowData(*info);
+      items.push_back({.kind = palette::Kind::Session, .id = std::format("session:{}", id), .label = data.name,
+                       .sub = data.status, .trailing = std::move(trailing),
+                       .glyph = data.spinning ? std::string("loader") : data.symbol, .danger = data.symbolDanger});
+      return items.back().id;
+    };
+    if (target == PaletteTarget::SplitWith) {
+      for (const std::uint64_t id : sidebarOrder()) {
+        if (canJoinShown(id)) {
+          runs[sessionItem(*this, id, {})] = [this, id] { joinShown(id); };
+        }
+      }
+      return items;
+    }
+    const std::vector<TerminalWindow*> windows = m_windows ? m_windows() : std::vector<TerminalWindow*>{this};
+    for (std::size_t n = 0; n < windows.size(); ++n) {
+      TerminalWindow* window = windows[n];
+      for (const std::uint64_t id : window->sidebarOrder()) {
+        std::string trailing = window != this ? std::format("window {}", n + 1) : id == shown ? "this pane" : "";
+        runs[sessionItem(*window, id, std::move(trailing))] = [window, id] { window->focusSession(id); };
+      }
+    }
+    const Keybindings& keys = m_settings.settings().keys;
+    const auto addAction = [&](std::string id, std::string label, std::vector<std::string> caps, std::string off,
+                               std::function<void()> run) {
+      items.push_back({.kind = palette::Kind::Action, .id = id, .label = std::move(label), .keys = std::move(caps),
+                       .off = std::move(off), .glyph = "player-play"});
+      runs[std::move(id)] = std::move(run);
+    };
+    constexpr std::string_view kCapSeparator = "\x1f";
+    for (const ActionInfo& info : actionTable()) {
+      const Action action = info.action;
+      if (action == Action::CommandPalette ||
+          (static_cast<int>(action) >= static_cast<int>(Action::Session1) &&
+           static_cast<int>(action) <= static_cast<int>(Action::Session9))) {
+        continue;
+      }
+      std::vector<std::string> caps;
+      for (const auto part : std::views::split(keys.label(action, kCapSeparator), kCapSeparator)) {
+        caps.emplace_back(std::string_view(part));
+      }
+      const bool focus = action == Action::FocusLeft || action == Action::FocusRight || action == Action::FocusUp ||
+                         action == Action::FocusDown;
+      addAction(std::format("action:{}", info.name), std::string(info.label), std::move(caps),
+                focus && m_cards.empty() ? "Not in a split" : "", [this, action] {
+                  if (TerminalView* view = shownTerminal(); view != nullptr && view->runAction(action)) {
+                    return;
+                  }
+                  runAction(action);
+                });
+    }
+    const bool others = m_sessions.sessions().size() > 1;
+    const bool canSplit = std::ranges::any_of(sidebarOrder(), [this](std::uint64_t id) { return canJoinShown(id); });
+    addAction("menu:split", "Split with…", {}, canSplit ? "" : "No session can join",
+              [this] { openPalette(PaletteTarget::SplitWith); });
+    addAction("menu:leave", "Leave split", {}, m_sessions.splitOf(shown) != nullptr ? "" : "Not in a split",
+              [this, shown] { apply(session_event::Leave{shown}); });
+    addAction("menu:rename", "Rename…", {}, m_rail ? "Sidebar is a rail" : "", [this, shown] { renameSession(shown); });
+    addAction("menu:duplicate", "Duplicate session", {}, "", [this, shown] { duplicateSession(shown); });
+    addAction("menu:move", "Move to new window", {}, others ? "" : "Only one session",
+              [this, shown] { moveToNewWindow(shown); });
+    addAction("menu:save", "Save scrollback…", {}, terminalOf(shown) != nullptr ? "" : "Not a terminal",
+              [this, shown] { saveScrollback(shown); });
+    addAction("menu:close-others", "Close other sessions", {}, others ? "" : "Only one session", [this, shown] {
+      std::vector<std::uint64_t> ids;
+      for (const SessionInfo& session : m_sessions.sessions()) {
+        if (session.id != shown) {
+          ids.push_back(session.id);
+        }
+      }
+      askClose(std::move(ids));
+    });
+    const auto pack = [](const Color& c) {
+      const auto byte = [](float v) { return static_cast<std::uint32_t>(std::lround(std::clamp(v, 0.0F, 1.0F) * 255.0F)); };
+      return (byte(c.r) << 24U) | (byte(c.g) << 16U) | (byte(c.b) << 8U) | byte(c.a);
+    };
+    const std::string current = m_settings.settings().theme;
+    for (const ThemeChoice& choice : themeChoices(m_settings.themes())) {
+      const ThemePalette colours = themePalette(choice.spec);
+      std::string id = "theme:" + choice.id;
+      items.push_back({.kind = palette::Kind::Theme, .id = id, .label = choice.name,
+                       .trailing = choice.id == current ? "current" : "",
+                       .swatch = {pack(colours.view), pack(colours.accent), pack(colours.ansi[3])}});
+      runs[std::move(id)] = [this, theme = choice.id] {
+        Settings settings = m_settings.settings();
+        settings.theme = theme;
+        m_settings.update(settings);
+      };
+    }
+    return items;
+  }
+
+  void TerminalWindow::openPalette(PaletteTarget target) {
+    if (std::holds_alternative<PaletteOpen>(m_palette)) {
+      closePalette();
+      return;
+    }
+    if (m_contentSlot == nullptr || shownView() == nullptr) {
+      return;
+    }
+    if (m_findOpen) {
+      closeFind();
+    }
+    PaletteOpen open;
+    std::vector<palette::Item> items = paletteItems(target, open.runs);
+    const bool any = target == PaletteTarget::Any;
+    open.ui = std::make_shared<CommandPalette>(
+        m_window.animations(), std::move(items), any ? s_paletteRecent : std::vector<std::string>{},
+        CommandPalette::Host{
+            .run =
+                [this, any](const palette::Item& item) {
+                  auto* now = std::get_if<PaletteOpen>(&m_palette);
+                  if (now == nullptr) {
+                    return;
+                  }
+                  const auto it = now->runs.find(item.id);
+                  if (it == now->runs.end()) {
+                    return;
+                  }
+                  std::function<void()> run = std::move(it->second);
+                  if (any) {
+                    std::erase(s_paletteRecent, item.id);
+                    s_paletteRecent.insert(s_paletteRecent.begin(), item.id);
+                    if (s_paletteRecent.size() > 10) {
+                      s_paletteRecent.pop_back();
+                    }
+                  }
+                  closePalette();
+                  run();
+                },
+            .runNoMatch =
+                [this](const std::string& query) {
+                  closePalette();
+                  const std::uint64_t id = openSession(NewShell{});
+                  apply(session_event::Rename{id, query});
+                },
+            .current =
+                [this](const palette::Item* item) {
+                  auto* now = std::get_if<PaletteOpen>(&m_palette);
+                  if (now == nullptr) {
+                    return;
+                  }
+                  std::optional<std::string> preview;
+                  if (item != nullptr && item->kind == palette::Kind::Theme) {
+                    preview = item->id.substr(std::string_view("theme:").size());
+                  }
+                  if (preview != now->preview) {
+                    now->preview = std::move(preview);
+                    applyViewSettings();
+                  }
+                },
+            .close = [this] { closePalette(); },
+            .relayout =
+                [this] {
+                  m_window.updateInPlace([this](Renderer& renderer) {
+                    if (auto* now = std::get_if<PaletteOpen>(&m_palette); now != nullptr) {
+                      now->root->layout(renderer);
+                      now->ui->afterLayout(true);
+                    }
+                  });
+                  m_window.invalidate();
+                },
+        });
+    const float s = m_window.uiScale();
+    const CommandPalette::Rect slot{0.0F, 0.0F, m_contentWidth, m_contentHeight};
+    CommandPalette::Rect dim = slot;
+    CommandPalette::Rect dock = slot;
+    const std::uint64_t pane = m_ringPane != 0 ? m_ringPane : m_sessions.shown().value_or(0);
+    if (const auto card = std::ranges::find(m_cards, pane, &PaneCard::id); card != m_cards.end()) {
+      const PaneRect& r = card->rect;
+      const float caption = Tokens::componentWindowCaption * s;
+      dim = {r.x, r.y + caption, r.width, r.height - caption};
+      if (r.width >= Tokens::componentTerminalPaletteNarrow * s) {
+        dock = {r.x, r.y, r.width, r.height};
+      }
+    }
+    m_palette = std::move(open);
+    m_window.updateInPlace([&](Renderer& renderer) {
+      auto& now = std::get<PaletteOpen>(m_palette);
+      auto root = now.ui->build(s, slot.width, slot.height, dim, dock);
+      now.root = m_contentSlot->addChild(std::move(root));
+      now.root->layout(renderer);
+      now.ui->afterLayout(false);
+      now.ui->grow();
+    });
+    m_window.input().setFocus(std::get<PaletteOpen>(m_palette).ui->focusArea());
+    m_window.invalidate();
+  }
+
+  void TerminalWindow::closePalette(bool rootGone) {
+    auto* open = std::get_if<PaletteOpen>(&m_palette);
+    if (open == nullptr) {
+      return;
+    }
+    PaletteOpen closing = std::move(*open);
+    m_palette = PaletteClosed{};
+    if (closing.preview) {
+      applyViewSettings();
+    }
+    if (rootGone) {
+      // Its nodes leave with the old slot later: they must not reach a freed palette.
+      closing.ui->detach();
+      DeferredCall::callLater([ui = closing.ui] {});
+      return;
+    }
+    const bool focused = m_window.input().focusedArea() == closing.ui->focusArea();
+    closing.ui->shrink([this, ui = closing.ui, root = closing.root, alive = std::weak_ptr<bool>(m_alive)] {
+      // Later: the root's destructor cancels the animation that runs this.
+      DeferredCall::callLater([this, ui, root, alive] {
+        if (alive.expired() || m_contentSlot == nullptr) {
+          return;
+        }
+        for (const auto& child : m_contentSlot->children()) {
+          if (child.get() == root) {
+            auto removed = m_contentSlot->removeChild(root);
+            m_window.input().forgetDetached();
+            break;
+          }
+        }
+        m_window.invalidate();
+      });
+    });
+    if (focused) {
+      focusGrid();
+    }
   }
 
   void TerminalWindow::setFindCount(std::size_t total, std::optional<std::size_t> current, FindError error) {

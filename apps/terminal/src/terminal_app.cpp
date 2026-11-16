@@ -13,6 +13,7 @@
 
 #include <gio/gio.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <utility>
@@ -64,6 +65,14 @@ namespace term {
                                                           [this, &window](const std::string& suggested, auto picked) {
                                                             chooseSaveFile(window, suggested, std::move(picked));
                                                           });
+    m_windows[&window]->setWindows([this] {
+      std::vector<TerminalWindow*> out;
+      for (const auto& [app, terminal] : m_windows) {
+        out.push_back(terminal.get());
+      }
+      std::ranges::sort(out, {}, &TerminalWindow::windowId);
+      return out;
+    });
     saveLayouts();
     return window;
   }

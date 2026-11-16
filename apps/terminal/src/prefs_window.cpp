@@ -141,26 +141,6 @@ namespace term {
       return text;
     }
 
-    struct ThemeChoice {
-      std::string id;
-      std::string name;
-      ThemeSpec spec;
-    };
-
-    // The built-in themes, then the valid packages, in tile order.
-    std::vector<ThemeChoice> themeChoices(const ThemeStore& store) {
-      std::vector<ThemeChoice> out{{"system", "Andromeda", Theme::System},
-                                   {"light", "Light", Theme::Light},
-                                   {"dark", "Dark", Theme::Dark},
-                                   {"amoled", "AMOLED", Theme::Amoled}};
-      for (const ThemeEntry& entry : store.entries()) {
-        if (const ThemePackage* package = store.find(entry.id)) {
-          out.push_back({entry.id, package->name, *package});
-        }
-      }
-      return out;
-    }
-
     std::unique_ptr<Node> keysLabel(std::string text, float s) {
       return ui::label({.text = std::move(text),
                         .fontSize = Tokens::typeBody.size * s,

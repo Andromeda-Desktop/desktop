@@ -62,6 +62,13 @@ namespace term {
   [[nodiscard]] ThemePalette themePalette(const ThemeSpec& theme);
   // The theme an id names; an unknown id falls back to System.
   [[nodiscard]] ThemeSpec resolveTheme(std::string_view id, const ThemeStore& themes);
+  struct ThemeChoice {
+    std::string id;
+    std::string name;
+    ThemeSpec spec;
+  };
+  // The built-in themes, then the valid packages, in tile order.
+  [[nodiscard]] std::vector<ThemeChoice> themeChoices(const ThemeStore& store);
   [[nodiscard]] inline bool hasScene(const ThemeSpec& theme) {
     const auto* package = std::get_if<ThemePackage>(&theme);
     return package != nullptr && !std::holds_alternative<std::monostate>(package->backdrop);
@@ -160,6 +167,8 @@ namespace term {
     // A key for the program, or Ctrl+Shift+C/V (copy the selection, paste); false when the window should handle
     // it (Super, other Ctrl+Shift chords, keys pressed before the grid had focus).
     bool key(const KeyboardEvent& event) override;
+    // Runs a grid action ([keybindings]: copy, paste, scroll, prompt jumps); false for the window's actions.
+    bool runAction(Action action);
     // The window gained or lost activation. Focus = the grid has keyboard focus in an active window: a solid
     // cursor and focus reports (mode 1004); otherwise a hollow cursor.
     void setWindowActive(bool active) override;

@@ -351,6 +351,19 @@ namespace term {
     return colorForRole(role, tokenPalette(isResolvedLightTheme()));
   }
 
+  std::vector<ThemeChoice> themeChoices(const ThemeStore& store) {
+    std::vector<ThemeChoice> out{{"system", "Andromeda", Theme::System},
+                                 {"light", "Light", Theme::Light},
+                                 {"dark", "Dark", Theme::Dark},
+                                 {"amoled", "AMOLED", Theme::Amoled}};
+    for (const ThemeEntry& entry : store.entries()) {
+      if (const ThemePackage* package = store.find(entry.id)) {
+        out.push_back({entry.id, package->name, *package});
+      }
+    }
+    return out;
+  }
+
   ThemeSpec resolveTheme(std::string_view id, const ThemeStore& themes) {
     if (const auto builtin = builtinTheme(id)) {
       return *builtin;
@@ -992,6 +1005,19 @@ namespace term {
     }
   }
 
+  bool TerminalView::runAction(Action action) {
+    switch (action) {
+      case Action::ScrollPageUp: scrollPage(-1); return true;
+      case Action::ScrollPageDown: scrollPage(1); return true;
+      case Action::PreviousPrompt: jumpPrompt(-1); return true;
+      case Action::NextPrompt: jumpPrompt(1); return true;
+      case Action::CopyLastOutput: copyLastOutput(); return true;
+      case Action::Copy: copySelection(); return true;
+      case Action::Paste: paste(); return true;
+      default: return false;
+    }
+  }
+
   bool TerminalView::key(const KeyboardEvent& event) {
     if (event.preedit) {
       return false;
@@ -1011,15 +1037,8 @@ namespace term {
       const bool windowChord = (mods & KeyMod::Super) != 0
                                || ((mods & (KeyMod::Ctrl | KeyMod::Shift)) == (KeyMod::Ctrl | KeyMod::Shift)
                                    && event.unshifted >= 0x20 && event.unshifted < 0x7f);
-      switch (m_settings.keys.match(event.sym, event.unshifted, event.modifiers).value_or(Action::Count)) {
-        case Action::ScrollPageUp: scrollPage(-1); return true;
-        case Action::ScrollPageDown: scrollPage(1); return true;
-        case Action::PreviousPrompt: jumpPrompt(-1); return true;
-        case Action::NextPrompt: jumpPrompt(1); return true;
-        case Action::CopyLastOutput: copyLastOutput(); return true;
-        case Action::Copy: copySelection(); return true;
-        case Action::Paste: paste(); return true;
-        default: break;
+      if (runAction(m_settings.keys.match(event.sym, event.unshifted, event.modifiers).value_or(Action::Count))) {
+        return true;
       }
       if (windowChord) {
         return false;

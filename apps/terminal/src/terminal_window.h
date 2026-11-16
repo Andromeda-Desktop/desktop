@@ -1,5 +1,6 @@
 #pragma once
 
+#include "command_palette.h"
 #include "settings_store.h"
 #include "core/timer_manager.h"
 #include "session_layout.h"
@@ -11,6 +12,7 @@
 
 #include <array>
 #include <map>
+#include <unordered_map>
 #include <cstdint>
 #include <optional>
 #include <unordered_set>
@@ -121,6 +123,8 @@ namespace term {
     void focusSession(std::uint64_t id); // shows it and raises the window
     void closeSession(std::uint64_t id); // with no confirm sheet
     void renameSession(std::uint64_t id, std::string name); // empty: the automatic name
+    // All windows of the app, in opening order (the command palette lists their sessions).
+    void setWindows(std::function<std::vector<TerminalWindow*>()> windows) { m_windows = std::move(windows); }
 
   private:
     struct Session {
@@ -144,6 +148,23 @@ namespace term {
     void show(std::uint64_t id);
     // Runs the window action bound to the key ([keybindings]); false for other keys and the grid's actions.
     bool sessionKey(const KeyboardEvent& event);
+    bool runAction(Action action);
+    // Command palette (Ctrl+Shift+P) docked to the focused pane. SplitWith lists only sessions that can join it.
+    enum class PaletteTarget : std::uint8_t { Any, SplitWith };
+    struct PaletteClosed {};
+    struct PaletteOpen {
+      std::shared_ptr<CommandPalette> ui; // shared: the close motion keeps it until its root leaves the scene
+      Node* root = nullptr;
+      std::unordered_map<std::string, std::function<void()>> runs; // by item id
+      std::optional<std::string> preview; // the theme id this window shows while its row is current
+    };
+    std::variant<PaletteClosed, PaletteOpen> m_palette;
+    static inline std::vector<std::string> s_paletteRecent; // picked item ids, newest first
+    std::function<std::vector<TerminalWindow*>()> m_windows;
+    void openPalette(PaletteTarget target = PaletteTarget::Any);
+    void closePalette(bool rootGone = false); // rootGone: the slot it was in was rebuilt
+    [[nodiscard]] std::vector<palette::Item> paletteItems(PaletteTarget target,
+                                                          std::unordered_map<std::string, std::function<void()>>& runs);
     void openAgentHere(agent::Kind kind);
     // The shown agent session's kind, else the first installed kind.
     agent::Kind defaultAgentKind();
