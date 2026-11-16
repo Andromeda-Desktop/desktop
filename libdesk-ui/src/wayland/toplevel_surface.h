@@ -33,6 +33,7 @@ struct ToplevelState {
   bool fullscreen = false;
   bool activated = false;
   bool tiled = false; // any tiled edge
+  bool suspended = false; // not visible: minimized, on another workspace or fully covered (xdg-shell v6)
   bool operator==(const ToplevelState&) const = default;
 };
 
