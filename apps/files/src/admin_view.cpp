@@ -207,7 +207,7 @@ void AdminView::show(bool navigate) {
 
 std::unique_ptr<Node> AdminView::banner(float s) {
   auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
-                      .fill = colorSpecFromRole(ColorRole::Danger, 0.16F),
+                      .fill = colorSpecFromRole(ColorRole::Danger, Tokens::componentFilesAdminWash),
                       .height = Tokens::sizeRowCompact * s + Tokens::spaceP8 * s});
   bar->addChild(ui::glyph({.glyph = "shield-lock", .glyphSize = Tokens::sizeSymbolInline * s,
                            .color = colorSpecFromRole(ColorRole::DangerText)}));

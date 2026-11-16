@@ -581,6 +581,7 @@ home_cell_height = 104.0
 drive_card_min = 280.0   # This PC drive cards: as many as fit at this width
 drive_card_max = 360.0   # ... each grows to at most this
 search_width = 240.0     # header search capsule (mockup section 1)
+admin_wash = 0.16        # the danger wash under an administrator tab's bar
 
 [component.scrollbar]
 width = 4.0
