@@ -606,6 +606,8 @@ LayoutSize Label::measureWithConstraints(Renderer& renderer, const LayoutConstra
       m_textNode->setMaxWidth(measureMaxWidth);
       m_textNode->setMaxLines(effectiveMaxLines);
     }
+    // A text budget of 0 means unbounded to the renderer: a box given no width shows no text instead.
+    m_textNode->setVisible(m_autoScroll || !constraints.hasMaxWidth || constraints.maxWidth > 0.0F);
   }
 
   if (m_sensitive) {
