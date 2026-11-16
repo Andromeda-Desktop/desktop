@@ -21,7 +21,7 @@ CRASH='AddressSanitizer|LeakSanitizer|runtime error:|Segmentation fault|Aborted|
 load_boot() {
   $PROBE gen "$CORPUS" "$MIB"
   boot_headless 1
-  trap 'term_stop; pkill -P "${KBD_PID:-0}" wtype || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
+  trap 'term_stop; [[ -n ${HOLDER_PID:-} ]] && kill "$HOLDER_PID"; pkill -P "${KBD_PID:-0}" wtype || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
   # Headless has no real keyboard: each wtype would add and remove the seat keyboard, and keys sent before the app
   # binds it are lost. One idle virtual keyboard keeps it, as a physical keyboard does.
   # An idle wtype never sees the compositor go: the trap stops it (KBD_PID is the subshell that runs it).
@@ -33,7 +33,8 @@ load_boot() {
     mkdir -p "$RUNTIME/andromeda"
     run "${PTYD:-$ROOTDIR/apps/terminal/ptyd/target/release/andromeda-ptyd}" --socket "$RUNTIME/andromeda/ptyd-1.sock" > "$OUT/ptyd.log" 2>&1 &
     "$ROOTDIR/tools/wait.sh" --file "$RUNTIME/andromeda/ptyd-1.sock" --timeout 10 > /dev/null || [[ -S $RUNTIME/andromeda/ptyd-1.sock ]]
-    HOLDER_PID=$!
+    # $! is the subshell that runs the `run` function; the holder is its only child.
+    HOLDER_PID=$(pgrep -P $!)
   fi
 }
 
