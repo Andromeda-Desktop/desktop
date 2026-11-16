@@ -167,7 +167,7 @@ public:
   [[nodiscard]] InputArea* focusArea() const noexcept;
   void setScale(float scale);
 
-  // Directional navigation (open, parent, history) slides (D7); jumps (sidebar, search) crossfade.
+  // Navigation switches the page at once; only a skeleton crossfades into its listing.
   void go(const std::filesystem::path& dir);
   void jump(const std::filesystem::path& dir);
   void showListing(Listing listing); // a jump
@@ -313,14 +313,14 @@ public:
 private:
   struct Ui;
   struct Page;
-  enum class Motion : std::uint8_t { None, Deeper, Back, Fade };
+  enum class Motion : std::uint8_t { None, Fade };
   struct HistoryEntry {
     std::filesystem::path path;
     std::optional<Listing> listing;
   };
 
   void navigate(HistoryEntry target, Motion motion, std::vector<std::string> select = {});
-  [[nodiscard]] bool pushHistory();
+  void pushHistory();
   void goSelecting(const std::filesystem::path& dir, std::vector<std::string> select);
   void clearSkeleton(Page& page);
   void attachModel();

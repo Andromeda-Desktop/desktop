@@ -150,8 +150,6 @@ namespace {
   constexpr auto kSkeletonHold = std::chrono::milliseconds(0); // content replaces the skeleton the moment it lands
   constexpr auto kDoubleClick = std::chrono::milliseconds(400);
   constexpr auto kSpringLoad = std::chrono::milliseconds(700); // FILES-UX §2.3
-  constexpr float kZoomIn = 0.96F;            // a folder's page grows from this scale as it opens
-  constexpr float kZoomOut = 1.04F;           // the parent's page shrinks from this one on Back
   const float& kSidebarRow = Tokens::componentSidebarRow;
   const float& kPathBar = Tokens::sizeRowCompact; // FILES-UX §0.2: compact row, not 28
   const float& kListHeader = Tokens::componentListTableHeader;
@@ -419,11 +417,7 @@ struct FileBrowser::Page {
   // The page is opaque, so the incoming page hides the outgoing one; node opacity multiplies into each draw, so a
   // page without its own fill would show the other page's cells through its own.
   Box* background = nullptr;
-  float x = 0.0F; // slide offset
   float opacity = 1.0F;
-  float scale = 1.0F; // folder zoom
-  AnimationManager::Id scaleAnim = 0;
-  AnimationManager::Id xAnim = 0;
   AnimationManager::Id fadeAnim = 0;
 };
 
@@ -1750,7 +1744,7 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
       }
       page.iconsAdapter->setRenderer(&renderer);
       page.listAdapter->setRenderer(&renderer);
-      page.root->setPosition(page.x, 0.0F);
+      page.root->setPosition(0.0F, 0.0F);
       page.root->setSize(w, h);
       page.root->setOpacity(page.opacity);
       page.background->setSize(w, h);
@@ -1835,9 +1829,7 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
   for (std::size_t i = 0; i < 2; ++i) {
     Page& page = m_ui->pages[i];
     const bool current = i == m_ui->current;
-    page.xAnim = page.fadeAnim = page.scaleAnim = 0;
-    page.scale = 1.0F;
-    page.x = 0.0F;
+    page.fadeAnim = 0;
     page.opacity = 1.0F;
     page.root->setVisible(current);
     page.root->setZIndex(current ? 1 : 0);
@@ -2087,14 +2079,13 @@ void FileBrowser::refreshTabs() {
   }
 }
 
-bool FileBrowser::pushHistory() {
-  // The first listing of a browser has nothing to go back to and nothing to animate from.
+void FileBrowser::pushHistory() {
+  // The first listing of a browser has nothing to go back to.
   if (m_location.empty() && !m_listing.has_value()) {
-    return false;
+    return;
   }
   m_back.push_back(current());
   m_forward.clear();
-  return true;
 }
 
 void FileBrowser::go(const fs::path& dir) { goSelecting(dir, {}); }
@@ -2103,11 +2094,8 @@ void FileBrowser::goSelecting(const fs::path& dir, std::vector<std::string> sele
   if (!m_listing.has_value() && dir == m_location) {
     return;
   }
-  const bool deeper = !m_location.empty() && dir.parent_path() == m_location;
-  const bool shallower = !m_location.empty() && m_location.string().starts_with(dir.string() + "/");
-  // Only a step down or up the tree slides; any other jump (sidebar, path, search) switches at once, as Finder does.
-  const Motion motion = deeper ? Motion::Deeper : shallower ? Motion::Back : Motion::None;
-  navigate({.path = dir}, pushHistory() ? motion : Motion::None, std::move(select));
+  pushHistory();
+  navigate({.path = dir}, Motion::None, std::move(select));
 }
 
 void FileBrowser::jump(const fs::path& dir) {
@@ -2135,7 +2123,15 @@ void FileBrowser::back() {
   m_forward.push_back(current());
   HistoryEntry target = std::move(m_back.back());
   m_back.pop_back();
-  navigate(std::move(target), Motion::Back);
+  // Back to an ancestor puts the cursor on the child we came through.
+  std::vector<std::string> select;
+  if (!target.listing.has_value() && !m_listing.has_value()) {
+    const fs::path rel = m_location.lexically_relative(target.path);
+    if (!rel.empty() && rel != "." && *rel.begin() != "..") {
+      select.push_back(rel.begin()->string());
+    }
+  }
+  navigate(std::move(target), Motion::None, std::move(select));
 }
 
 void FileBrowser::forward() {
@@ -2145,7 +2141,7 @@ void FileBrowser::forward() {
   m_back.push_back(current());
   HistoryEntry target = std::move(m_forward.back());
   m_forward.pop_back();
-  navigate(std::move(target), Motion::Deeper);
+  navigate(std::move(target), Motion::None);
 }
 
 void FileBrowser::up() {
@@ -2339,10 +2335,7 @@ void FileBrowser::present(Motion motion) {
   }
   m_pendingMotion = Motion::None;
   if (m_options.view == View::Columns || m_options.view == View::Gallery) {
-    motion = Motion::None; // D7: the columns view scrolls, never slides; the Gallery swaps the photo
-  }
-  if (MotionService::instance().reduced() && (motion == Motion::Deeper || motion == Motion::Back)) {
-    motion = Motion::Fade;
+    motion = Motion::None; // the columns view scrolls; the Gallery swaps the photo
   }
   Ui& ui = *m_ui;
   if (motion != Motion::None && ui.stage != nullptr && ui.stageWidth > 0.0F) {
@@ -2377,25 +2370,14 @@ void FileBrowser::present(Motion motion) {
         std::move(done), page.root
     );
   };
-  const auto resetZoom = [this](Page& page) {
-    m_animations.cancel(page.scaleAnim);
-    page.scaleAnim = 0;
-    page.scale = 1.0F;
-    if (page.root != nullptr) {
-      page.root->setScale(1.0F);
-    }
-  };
   // Only the latest navigation hides its outgoing page: an older one's callback would hit a page in use.
-  const auto hideOut = [this, gen, resetZoom] {
+  const auto hideOut = [this, gen] {
     if (gen != m_presentGen) {
       return;
     }
     Page& gone = m_ui->other();
-    resetZoom(gone);
-    m_animations.cancel(gone.xAnim);
     m_animations.cancel(gone.fadeAnim);
-    gone.xAnim = gone.fadeAnim = 0;
-    gone.x = 0.0F;
+    gone.fadeAnim = 0;
     gone.opacity = 1.0F;
     if (gone.root == nullptr) {
       return;
@@ -2414,17 +2396,14 @@ void FileBrowser::present(Motion motion) {
     in.root->setHitTestVisible(true);
     in.root->setZIndex(1);
   }
-  // The outgoing page stays drawn until its motion ends but takes no input from now: a back slide keeps it on top.
+  // The outgoing page stays drawn until its fade ends but takes no input from now.
   if (out.root != nullptr && &out != &in) {
     out.root->setHitTestVisible(false);
   }
   if (motion == Motion::None || out.root == nullptr || in.root == nullptr) {
-    m_animations.cancel(in.xAnim);
     m_animations.cancel(in.fadeAnim);
-    in.xAnim = in.fadeAnim = 0;
-    in.x = 0.0F;
+    in.fadeAnim = 0;
     in.opacity = 1.0F;
-    resetZoom(in);
     if (in.root != nullptr) {
       in.root->setPosition(0.0F, 0.0F);
       in.root->setOpacity(1.0F);
@@ -2432,40 +2411,11 @@ void FileBrowser::present(Motion motion) {
     if (out.root != nullptr && &out != &in && !m_waiting) {
       hideOut();
     }
-  } else if (motion == Motion::Fade) {
-    m_animations.cancel(in.xAnim);
-    in.xAnim = 0;
-    in.x = 0.0F;
+  } else {
     in.root->setPosition(0.0F, 0.0F);
-    resetZoom(in);
     // The opaque incoming page fades in over the outgoing one, which stays as it is: one picture blends into the next.
     out.root->setZIndex(0);
     animateOpacity(in, 0.0F, 1.0F, Tokens::springFade, "files.page.in", hideOut);
-  } else {
-    // Into a folder the new page grows from 96 %, back it shrinks from 104 %, fading in over the old page, which stays
-    // still: one page moves, for one short spring, where a full-width slide moved both across the window.
-    const bool deeper = motion == Motion::Deeper;
-    m_animations.cancel(in.xAnim);
-    in.xAnim = 0;
-    in.x = 0.0F;
-    in.root->setPosition(0.0F, 0.0F);
-    resetZoom(in);
-    out.root->setZIndex(0);
-    in.root->setZIndex(1);
-    const float h = ui.stage->height();
-    in.root->setTransformOrigin(w / 2.0F, h / 2.0F);
-    MotionTraceLabel trace("files.page.zoom");
-    in.scaleAnim = m_animations.drive(
-        in.scaleAnim, deeper ? kZoomIn : kZoomOut, 1.0F, Style::spring(Tokens::springFade),
-        [&in](float v) {
-          in.scale = v;
-          if (in.root != nullptr) {
-            in.root->setScale(v);
-          }
-        },
-        {}, in.root
-    );
-    animateOpacity(in, 0.0F, 1.0F, Tokens::springFade, "files.page", hideOut);
   }
   refreshChrome();
   notifyChanged();
@@ -4539,7 +4489,7 @@ void FileBrowser::dragEnded() {
     // D15: back where the drag started, with the history it had; the spring-loaded hops leave none.
     m_back = std::move(from->back);
     m_forward = std::move(from->forward);
-    navigate(std::move(from->entry), Motion::Back);
+    navigate(std::move(from->entry), Motion::None);
   }
 }
 

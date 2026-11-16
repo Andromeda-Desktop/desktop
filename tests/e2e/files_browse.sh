@@ -3,7 +3,7 @@
 # go back and to the parent, switch the view (fade) and type-ahead select; every step waits on the app log.
 # Fails when:
 #   - type-ahead "rep" does not put the cursor on report.pdf, or a repeated "r" does not cycle on from it,
-#   - Enter on a folder, Alt+Left or Backspace do not change the location, or the folder slide is not traced on page,
+#   - Enter on a folder, Alt+Left or Backspace do not change the location, or a folder change animates the page,
 #   - Ctrl+2 does not trace the view crossfade, or an animation reports missed frames (DESK_FRAME_STATS),
 #   - Ctrl+F and typing do not filter the folder, or Escape does not clear it.
 # Shots of the icons and list views go to $OUT (default ./artifacts/files-browse).
@@ -67,18 +67,16 @@ wait_log "$m" "cursor Résumé.pdf " || fail "a repeated r did not wrap around t
 sleep 1.1
 m=$(mark); keys tap 30 tap 28                   # a, Enter: open Andromeda
 wait_log "$m" "location $SRC/Andromeda\$" || fail "Enter did not open Andromeda"
-wait_log "$m" "motion files.page" || fail "opening a folder did not animate"
-wait_log "$m" "settle files.page " || fail "the folder slide did not settle"
+grep -q "motion files.page" < <(tail -n +"$((m + 1))" "$OUT/files.log") && fail "opening a folder animated the page"
 
 m=$(mark); keys mod alt tap 105 mod none        # Alt+Left: back
 wait_log "$m" "location $SRC\$" || fail "Alt+Left did not go back"
-wait_log "$m" "cursor Andromeda |selected 1 of 1 in $SRC|motion files.page" || fail "going back did not animate"
+wait_log "$m" "cursor Andromeda |selected 1 of 1 in $SRC" || fail "going back did not select Andromeda"
 
 m=$(mark); keys tap 30 tap 28                   # into Andromeda again, then Backspace: parent
 wait_log "$m" "location $SRC/Andromeda\$" || fail "Enter did not open Andromeda the second time"
 m=$(mark); keys tap 14
 wait_log "$m" "location $SRC\$" || fail "Backspace did not go to the parent"
-wait_log "$m" "settle files.page" || fail "the parent slide did not settle"
 
 m=$(mark); keys mod control tap 3 mod none       # Ctrl+2: list
 wait_log "$m" "view list" || fail "Ctrl+2 did not switch to the list"
