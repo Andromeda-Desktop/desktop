@@ -32,7 +32,13 @@ pub struct Bridge {
     config: Config,
     store: Store,
     history: History,
-    running: Mutex<HashMap<String, watch::Sender<bool>>>,
+    running: Mutex<HashMap<String, Running>>,
+}
+
+// A prompt in flight: its cancel flag and the permission mode its claude process runs in.
+struct Running {
+    cancel: watch::Sender<bool>,
+    mode: watch::Sender<String>,
 }
 
 impl Bridge {
@@ -200,6 +206,9 @@ impl Bridge {
             "mode" if is_mode(&value) => {
                 self.store
                     .update(&id, |session| session.mode = Some(value.clone()));
+                if let Some(run) = self.running.lock().unwrap().get(&id) {
+                    run.mode.send_replace(value.clone());
+                }
             }
             "model" => {
                 validation::model_id(&value).map_err(invalid)?;
@@ -230,8 +239,8 @@ impl Bridge {
     }
 
     pub fn cancel(&self, id: &str) {
-        if let Some(sender) = self.running.lock().unwrap().get(id) {
-            let _ = sender.send(true);
+        if let Some(run) = self.running.lock().unwrap().get(id) {
+            let _ = run.cancel.send(true);
         }
     }
 
@@ -255,12 +264,19 @@ impl Bridge {
             return Err(invalid("Empty prompt text"));
         }
         let (cancel_tx, cancel_rx) = watch::channel(false);
+        let (mode_tx, mode_rx) = watch::channel(session_mode(&session).to_owned());
         {
             let mut running = self.running.lock().unwrap();
             if running.contains_key(&id) {
                 return Err(invalid("A prompt is already running for this session"));
             }
-            running.insert(id.clone(), cancel_tx);
+            running.insert(
+                id.clone(),
+                Running {
+                    cancel: cancel_tx,
+                    mode: mode_tx,
+                },
+            );
         }
 
         if session.title.is_none() {
@@ -546,7 +562,7 @@ impl Bridge {
             if let Some(claude_id) = &session.claude_session_id {
                 match runner::run(
                     &self.config,
-                    run_request(&session, &prompt, &model, Some(claude_id)),
+                    run_request(&session, &prompt, &model, Some(claude_id), mode_rx.clone()),
                     cancel_rx.clone(),
                     &mut on_event,
                     on_permission,
@@ -557,7 +573,7 @@ impl Bridge {
                         self.store.clear_persisted(Path::new(&session.cwd));
                         runner::run(
                             &self.config,
-                            run_request(&session, &prompt, &model, None),
+                            run_request(&session, &prompt, &model, None, mode_rx.clone()),
                             cancel_rx,
                             &mut on_event,
                             on_permission,
@@ -569,7 +585,7 @@ impl Bridge {
             } else {
                 runner::run(
                     &self.config,
-                    run_request(&session, &prompt, &model, None),
+                    run_request(&session, &prompt, &model, None, mode_rx.clone()),
                     cancel_rx,
                     &mut on_event,
                     on_permission,
@@ -883,6 +899,7 @@ fn run_request<'a>(
     prompt: &'a str,
     model: &'a str,
     resume: Option<&'a str>,
+    mode_changes: watch::Receiver<String>,
 ) -> RunRequest<'a> {
     RunRequest {
         cwd: &session.cwd,
@@ -890,6 +907,7 @@ fn run_request<'a>(
         resume,
         model,
         mode: session_mode(session),
+        mode_changes,
         mcp_servers: &session.mcp_servers,
     }
 }

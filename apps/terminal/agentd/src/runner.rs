@@ -88,6 +88,8 @@ pub struct RunRequest<'a> {
     pub resume: Option<&'a str>,
     pub model: &'a str,
     pub mode: &'a str,
+    // A mode chosen while the run is in flight; sent to claude as set_permission_mode.
+    pub mode_changes: watch::Receiver<String>,
     pub mcp_servers: &'a [McpServer],
 }
 
@@ -106,6 +108,18 @@ async fn write_message(
         .write_all(&bytes)
         .await
         .map_err(|e| RunError::Failed(format!("failed writing to claude: {e}")))
+}
+
+// Claude's own name for the mode agentd calls "manual" is "default".
+fn set_mode_request(mode: &str, serial: u64) -> Value {
+    json!({
+        "type": "control_request",
+        "request_id": format!("agentd-mode-{serial}"),
+        "request": {
+            "subtype": "set_permission_mode",
+            "mode": if mode == "manual" { "default" } else { mode }
+        }
+    })
 }
 
 pub async fn run(
@@ -199,9 +213,18 @@ pub async fn run(
     let mut result_error = None;
     let mut stop = Stop::EndTurn;
     let mut used = 0u64;
+    let mut mode_changes = request.mode_changes;
+    mode_changes.mark_unchanged();
+    let mut mode_requests = 0u64;
 
     loop {
         let line = tokio::select! {
+            Ok(()) = mode_changes.changed() => {
+                let mode = mode_changes.borrow_and_update().clone();
+                mode_requests += 1;
+                write_message(&mut stdin, &set_mode_request(&mode, mode_requests)).await?;
+                continue;
+            }
             line = lines.next_line() => match line {
                 Ok(line) => line,
                 Err(e) => {

@@ -249,6 +249,49 @@ printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43
 }
 
 #[tokio::test]
+async fn a_mode_chosen_during_a_run_reaches_the_running_claude() {
+    let temp = tempfile::tempdir().unwrap();
+    let bin = temp.path().join("bin");
+    let project = temp.path().join("project");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    fake_claude(
+        &bin,
+        r#"
+read -r user
+printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"started"}]}}'
+while read -r line; do
+  mode=$(printf '%s' "$line" | sed -n 's/.*"subtype":"set_permission_mode","mode":"\([a-zA-Z]*\)".*/\1/p')
+  if [ -n "$mode" ]; then break; fi
+done
+printf '{"type":"assistant","message":{"content":[{"type":"text","text":"now %s"}]}}\n' "$mode"
+printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43a2","result":"done"}'
+"#,
+    );
+    let (mut child, mut reader) = start(&bin, &temp.path().join("store"));
+    initialize(&mut child, &mut reader).await;
+    send(&mut child, json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":project,"mcpServers":[]}})).await;
+    let (new, _) = response(&mut reader, 2).await;
+    let id = new["result"]["sessionId"].as_str().unwrap().to_owned();
+    send(&mut child, json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{"sessionId":id,"prompt":[{"type":"text","text":"work"}]}})).await;
+    loop {
+        let value = receive(&mut reader).await;
+        if value["params"]["update"]["content"]["text"] == "started" {
+            break;
+        }
+    }
+    send(&mut child, json!({"jsonrpc":"2.0","id":4,"method":"session/set_config_option","params":{"sessionId":id,"configId":"mode","value":"auto"}})).await;
+    let (_, before) = response(&mut reader, 4).await;
+    let (prompt, after) = response(&mut reader, 3).await;
+    assert_eq!(prompt["result"]["stopReason"], "end_turn", "{prompt}");
+    assert!(
+        before.iter().chain(&after).any(|update| update["params"]["update"]["content"]["text"] == "now auto"),
+        "claude never got the new mode: {after:?}"
+    );
+    child.kill().await.unwrap();
+}
+
+#[tokio::test]
 async fn cancellation_stops_an_active_prompt() {
     let temp = tempfile::tempdir().unwrap();
     let bin = temp.path().join("bin");
