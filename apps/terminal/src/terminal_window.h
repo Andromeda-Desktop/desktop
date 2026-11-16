@@ -6,6 +6,7 @@
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
 #include "agent_view.h"
+#include "split_trees.h"
 
 #include <array>
 #include <map>
@@ -180,24 +181,25 @@ namespace term {
       Label* name = nullptr;
       Label* state = nullptr;
       Flex* accessory = nullptr; // holds the find and agent bars while the pane is focused
+      bool topRight = false;     // holds the window buttons
     };
     std::vector<PaneCard> m_cards; // empty while one session shows
-    // Shares of a split's room: the left column's width, the top row's height. By the split's first session.
-    struct SplitRatios {
-      float x = 0.5F;
-      float y = 0.5F;
-    };
-    std::map<std::uint64_t, SplitRatios> m_ratios;
+    // Each split lays out on the compositor's dwindle tree; its leaves are session ids.
+    using TileNode = andromeda::tiling::DwindleTree::Node;
+    SplitTrees m_trees;
+    // The smallest pane: split_min_columns x split_min_rows cells of the font, with the grid's insets.
+    [[nodiscard]] std::pair<float, float> paneMinimum() const;
     struct Divider {
       bool vertical = true; // between columns
+      TileNode* split = nullptr;
       InputArea* area = nullptr;
       Box* grip = nullptr;
     };
     std::vector<Divider> m_dividers;
     std::optional<std::size_t> m_dragDivider; // the divider under a held button; views keep their size until release
-    [[nodiscard]] std::vector<PaneRect> paneRects(std::size_t panes) const;
+    [[nodiscard]] std::vector<PaneRect> paneRects(const std::vector<std::uint64_t>& panes);
     [[nodiscard]] float captionTextWidth(float width, bool topRight) const;
-    // Cards follow m_ratios in place; settle: the views take their new sizes (one PTY resize).
+    // Cards follow the tree in place; settle: the views take their new sizes (one PTY resize).
     void relayoutSplit(bool settle);
     void placeDividers();
     void dragDivider(std::size_t index, float sceneX, float sceneY);
@@ -205,6 +207,7 @@ namespace term {
     struct DropTarget {
       std::uint64_t target = 0;
       bool before = false; // the left or top half
+      std::uint32_t edge = 0; // the TileEdge of that half
       PaneRect rect;       // in the slot
     };
     [[nodiscard]] std::optional<DropTarget> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;

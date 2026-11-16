@@ -1,6 +1,7 @@
 #pragma once
 
 #include "layout/layout.h"
+#include "protocols/dwindle_tree.h"
 
 #include <cstdint>
 #include <memory>
@@ -16,23 +17,7 @@ namespace andromeda {
   public:
     [[nodiscard]] ColumnOps* columnOps() override { return this; }
 
-    struct Node {
-      // AutoSplit is a split whose axis follows its area on arrange unless preserve_split or an explicit directional
-      // drop locks it. The tree is built before any arrange (Workspace::applyConfig batch-inserts on a fresh layout),
-      // so the axis cannot be decided at insertion time without guessing the output's orientation.
-      enum Type : uint8_t { Leaf, AutoSplit, HSplit, VSplit };
-      Type type = Leaf;
-      std::unique_ptr<Node> left;
-      std::unique_ptr<Node> right;
-      Node* parent = nullptr;
-      double ratio = 0.5;
-      View* view = nullptr;
-      bool locked = false;
-      int areaX = 0;
-      int areaY = 0;
-      int areaW = 0;
-      int areaH = 0;
-    };
+    using Node = tiling::DwindleTree::Node;
 
     [[nodiscard]] LayoutMode mode() const override { return LayoutMode::Dwindle; }
 
@@ -104,34 +89,21 @@ namespace andromeda {
     bool setHeightFraction(View* view, double fraction) override;
 
   private:
-    struct Split {
-      Node* node = nullptr;
-      bool first = false;
-      double outerProduct = 1.0;
-    };
+    using Split = tiling::DwindleTree::Split;
 
-    [[nodiscard]] Node* findNode(const View* view) const;
-    [[nodiscard]] Node* nodeAtFlatIndex(int index) const;
-    [[nodiscard]] std::vector<Split> splits(Node* node, Node::Type type) const;
-    [[nodiscard]] static double splitShare(const Split& split);
-    static void setSplitShare(const Split& split, double share);
-    bool applyFraction(const std::vector<Split>& splits, double fraction);
-    void splitLeaf(Node* node, View* newView, Node::Type split, bool newFirst);
-    // Splits an arranged leaf as an AutoSplit, with the new view on the half facing (cx, cy).
-    void splitLeafToward(Node* target, View* view, double cx, double cy);
+    [[nodiscard]] static tiling::TileKey keyOf(const View* view) { return reinterpret_cast<tiling::TileKey>(view); }
+    [[nodiscard]] static View* viewOf(tiling::TileKey key) { return reinterpret_cast<View*>(key); }
+    [[nodiscard]] Node* findNode(const View* view) const { return m_tree.find(keyOf(view)); }
     [[nodiscard]] Node* boundaryNode(const View* view, uint32_t edge) const;
-    void arrangeNode(Node* node, const wlr_box& area);
     // Lays the tree out over `area`, the content area arrange() derives from the usable area.
     void arrangeArea(const wlr_box& area);
-    void collectColumns(const Node* node);
     bool swapLeafViews(Node* first, Node* second);
     // Refreshes the flat-column cache. Every operation that changes the tree or reassigns a leaf's view must call this
     // before returning: insertView reads the cache to locate its target leaf, so a caller that inserts twice with no
     // arrange() in between would otherwise silently drop the second view.
     void rebuildFlatColumns();
-    void detachNode(Node* node);
 
-    std::unique_ptr<Node> m_root;
+    tiling::DwindleTree m_tree;
     mutable std::vector<Column> m_flatColumns;
     mutable std::vector<LayoutTarget> m_targets;
   };

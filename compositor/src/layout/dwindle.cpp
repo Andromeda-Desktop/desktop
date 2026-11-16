@@ -36,266 +36,15 @@ namespace andromeda {
 
   } // namespace
 
-  DwindleLayout::Node* DwindleLayout::findNode(const View* view) const {
-    if (m_root == nullptr) {
-      return nullptr;
-    }
-    std::vector<Node*> stack;
-    stack.push_back(m_root.get());
-    while (!stack.empty()) {
-      Node* node = stack.back();
-      stack.pop_back();
-      if (node->type == Node::Leaf) {
-        if (node->view == view) {
-          return node;
-        }
-      } else {
-        if (node->right != nullptr) {
-          stack.push_back(node->right.get());
-        }
-        if (node->left != nullptr) {
-          stack.push_back(node->left.get());
-        }
-      }
-    }
-    return nullptr;
-  }
-
-  DwindleLayout::Node* DwindleLayout::nodeAtFlatIndex(int index) const {
-    if (m_root == nullptr || index < 0) {
-      return nullptr;
-    }
-    int count = 0;
-    std::vector<Node*> stack;
-    stack.push_back(m_root.get());
-    Node* node = nullptr;
-    while (!stack.empty()) {
-      node = stack.back();
-      stack.pop_back();
-      if (node->type == Node::Leaf) {
-        if (count == index) {
-          return node;
-        }
-        ++count;
-      } else {
-        if (node->right != nullptr) {
-          stack.push_back(node->right.get());
-        }
-        if (node->left != nullptr) {
-          stack.push_back(node->left.get());
-        }
-      }
-    }
-    return nullptr;
-  }
-
-  std::vector<DwindleLayout::Split> DwindleLayout::splits(Node* node, Node::Type type) const {
-    std::vector<Split> result;
-    Node* child = node;
-    while (child != nullptr && child->parent != nullptr) {
-      Node* parent = child->parent;
-      if (parent->type == type) {
-        result.push_back({.node = parent, .first = parent->left.get() == child});
-      }
-      child = parent;
-    }
-
-    double outerProduct = 1.0;
-    for (auto& split : std::views::reverse(result)) {
-      split.outerProduct = outerProduct;
-      outerProduct *= splitShare(split);
-    }
-    return result;
-  }
-
-  double DwindleLayout::splitShare(const Split& split) {
-    return split.first ? split.node->ratio : 1.0 - split.node->ratio;
-  }
-
-  void DwindleLayout::setSplitShare(const Split& split, double share) {
-    split.node->ratio = split.first ? share : 1.0 - share;
-  }
-
-  bool DwindleLayout::applyFraction(const std::vector<Split>& splits, double fraction) {
-    if (splits.empty()) {
-      return false;
-    }
-
-    const double used = std::clamp(fraction, 0.1, 1.0);
-    double innerProduct = 1.0;
-    for (const Split& split : splits) {
-      const double denominator = innerProduct * split.outerProduct;
-      const double desired = denominator > 0.0 ? used / denominator : std::numeric_limits<double>::infinity();
-      const double applied = std::clamp(desired, 0.1, 0.9);
-      setSplitShare(split, applied);
-      innerProduct *= applied;
-      if (applied == desired) {
-        break;
-      }
-    }
-    return true;
-  }
-
-  void DwindleLayout::splitLeaf(Node* node, View* newView, Node::Type split, bool newFirst) {
-    if (node == nullptr) {
-      return;
-    }
-    View* oldView = node->view;
-    node->view = nullptr;
-    node->type = split;
-    node->ratio = 0.5;
-
-    auto first = std::make_unique<Node>();
-    first->type = Node::Leaf;
-    first->parent = node;
-
-    auto second = std::make_unique<Node>();
-    second->type = Node::Leaf;
-    second->parent = node;
-
-    first->view = newFirst ? newView : oldView;
-    second->view = newFirst ? oldView : newView;
-
-    node->left = std::move(first);
-    node->right = std::move(second);
-  }
-
-  void DwindleLayout::detachNode(Node* node) {
-    if (node == nullptr) {
-      return;
-    }
-    Node* parent = node->parent;
-    if (parent == nullptr) {
-      m_root.reset();
-      return;
-    }
-    Node* grandparent = parent->parent;
-    Node* sibling = (parent->left.get() == node) ? parent->right.get() : parent->left.get();
-    if (sibling == nullptr) {
-      if (grandparent != nullptr) {
-        if (grandparent->left.get() == parent) {
-          grandparent->left.reset();
-        } else {
-          grandparent->right.reset();
-        }
-      } else {
-        m_root.reset();
-      }
-      return;
-    }
-    sibling->parent = nullptr;
-    std::unique_ptr<Node> ownedSibling;
-    if (parent->left.get() == node) {
-      ownedSibling = std::move(parent->right);
-    } else {
-      ownedSibling = std::move(parent->left);
-    }
-    parent->left.reset();
-    parent->right.reset();
-    ownedSibling->parent = grandparent;
-    if (grandparent != nullptr) {
-      if (grandparent->left.get() == parent) {
-        grandparent->left = std::move(ownedSibling);
-      } else {
-        grandparent->right = std::move(ownedSibling);
-      }
-    } else {
-      m_root = std::move(ownedSibling);
-    }
-  }
-
-  void DwindleLayout::arrangeNode(Node* node, const wlr_box& area) {
-    if (node == nullptr || area.width <= 0 || area.height <= 0) {
-      return;
-    }
-    node->areaX = area.x;
-    node->areaY = area.y;
-    node->areaW = area.width;
-    node->areaH = area.height;
-    if (node->type == Node::Leaf) {
-      if (node->view != nullptr) {
-        m_targets.push_back({
-            .view = node->view,
-            .x = area.x,
-            .y = area.y,
-            .width = area.width,
-            .height = area.height,
-        });
-      }
-      return;
-    }
-
-    if (node->type == Node::AutoSplit || (!node->locked && !m_config->dwindle.preserveSplit)) {
-      // AutoSplit and unlocked splits follow the longer edge. With preserve_split enabled, the first arrange resolves
-      // AutoSplit and then freezes it, while explicit directional drops remain fixed.
-      node->type = area.width >= area.height ? Node::HSplit : Node::VSplit;
-    }
-
-    const int gap = m_config->totalGap;
-    const double ratio = std::clamp(node->ratio, 0.1, 0.9);
-
-    if (node->type == Node::HSplit) {
-      const int totalWidth = area.width;
-      const int leftWidth = std::max(1, static_cast<int>(std::lround(ratio * totalWidth)) - gap / 2);
-      const int rightWidth = std::max(1, totalWidth - leftWidth - gap);
-
-      wlr_box leftArea = area;
-      leftArea.width = leftWidth;
-      wlr_box rightArea = area;
-      rightArea.x = area.x + leftWidth + gap;
-      rightArea.width = rightWidth;
-
-      if (node->left != nullptr) {
-        arrangeNode(node->left.get(), leftArea);
-      }
-      if (node->right != nullptr) {
-        arrangeNode(node->right.get(), rightArea);
-      }
-    } else {
-      const int totalHeight = area.height;
-      const int topHeight = std::max(1, static_cast<int>(std::lround(ratio * totalHeight)) - gap / 2);
-      const int bottomHeight = std::max(1, totalHeight - topHeight - gap);
-
-      wlr_box topArea = area;
-      topArea.height = topHeight;
-      wlr_box bottomArea = area;
-      bottomArea.y = area.y + topHeight + gap;
-      bottomArea.height = bottomHeight;
-
-      if (node->left != nullptr) {
-        arrangeNode(node->left.get(), topArea);
-      }
-      if (node->right != nullptr) {
-        arrangeNode(node->right.get(), bottomArea);
-      }
-    }
-  }
-
-  void DwindleLayout::collectColumns(const Node* node) {
-    if (node == nullptr) {
-      return;
-    }
-    if (node->type == Node::Leaf) {
-      if (node->view != nullptr) {
-        Column col;
-        col.views.push_back(node->view);
-        col.heightWeights.push_back(1.0);
-        col.widthFrac = 0.5;
-        m_flatColumns.push_back(std::move(col));
-      }
-      return;
-    }
-    if (node->left != nullptr) {
-      collectColumns(node->left.get());
-    }
-    if (node->right != nullptr) {
-      collectColumns(node->right.get());
-    }
-  }
-
   void DwindleLayout::rebuildFlatColumns() {
     m_flatColumns.clear();
-    collectColumns(m_root.get());
+    for (const tiling::TileKey key : m_tree.keys()) {
+      Column col;
+      col.views.push_back(viewOf(key));
+      col.heightWeights.push_back(1.0);
+      col.widthFrac = 0.5;
+      m_flatColumns.push_back(std::move(col));
+    }
   }
 
   bool DwindleLayout::swapLeafViews(Node* first, Node* second) {
@@ -306,9 +55,9 @@ namespace andromeda {
         || second->type != Node::Leaf) {
       return false;
     }
-    View* firstView = first->view;
-    View* secondView = second->view;
-    std::swap(first->view, second->view);
+    View* firstView = viewOf(first->key);
+    View* secondView = viewOf(second->key);
+    std::swap(first->key, second->key);
     for (LayoutTarget& target : m_targets) {
       if (target.view == firstView) {
         target.view = secondView;
@@ -345,7 +94,7 @@ namespace andromeda {
       saved->locked = node->locked;
       if (node->type == Node::Leaf) {
         const auto id = static_cast<LayoutMemberId>(capture.members.size());
-        capture.members.push_back({.id = id, .view = node->view});
+        capture.members.push_back({.id = id, .view = viewOf(node->key)});
         saved->member = id;
       } else {
         saved->left = self(self, node->left.get());
@@ -353,14 +102,14 @@ namespace andromeda {
       }
       return saved;
     };
-    snapshot->root = saveNode(saveNode, m_root.get());
+    snapshot->root = saveNode(saveNode, m_tree.root());
     snapshot->members = capture.members.size();
     return capture;
   }
 
   bool DwindleLayout::restoreState(const LayoutSnapshot& base, std::span<const LayoutMember> members) {
     const auto* snapshot = dynamic_cast<const DwindleSnapshot*>(&base);
-    if (snapshot == nullptr || m_root != nullptr) {
+    if (snapshot == nullptr || !m_tree.empty()) {
       return false;
     }
     const std::optional<std::vector<View*>> resolved = resolveLayoutMembers(snapshot->memberCount(), members);
@@ -381,7 +130,7 @@ namespace andromeda {
         auto node = std::make_unique<Node>();
         node->type = Node::Leaf;
         node->parent = parent;
-        node->view = view;
+        node->key = keyOf(view);
         return node;
       }
 
@@ -405,7 +154,7 @@ namespace andromeda {
       return node;
     };
 
-    m_root = restoreNode(restoreNode, snapshot->root.get(), nullptr);
+    m_tree.setRoot(restoreNode(restoreNode, snapshot->root.get(), nullptr));
     m_targets.clear();
     rebuildFlatColumns();
     return true;
@@ -415,59 +164,45 @@ namespace andromeda {
     if (view == nullptr || findNode(view) != nullptr) {
       return;
     }
-    if (m_root == nullptr) {
-      auto node = std::make_unique<Node>();
-      node->type = Node::Leaf;
-      node->view = view;
-      m_root = std::move(node);
+    if (m_tree.empty()) {
+      m_tree.addRoot(keyOf(view));
       rebuildFlatColumns();
       return;
     }
     const int count = static_cast<int>(m_flatColumns.size());
     const int gap = std::clamp(columnIndex, 0, count);
     if (gap == 0) {
-      splitLeaf(nodeAtFlatIndex(0), view, Node::AutoSplit, /*newFirst=*/true);
+      m_tree.splitLeaf(m_tree.leafAt(0), keyOf(view), Node::AutoSplit, /*newFirst=*/true);
     } else {
-      splitLeaf(nodeAtFlatIndex(gap - 1), view, Node::AutoSplit, /*newFirst=*/false);
+      m_tree.splitLeaf(m_tree.leafAt(gap - 1), keyOf(view), Node::AutoSplit, /*newFirst=*/false);
     }
     rebuildFlatColumns();
   }
 
   void DwindleLayout::insertViewToward(View* view, int columnIndex, double cx, double cy) {
     const int gap = std::clamp(columnIndex, 0, static_cast<int>(m_flatColumns.size()));
-    Node* target = gap > 0 ? nodeAtFlatIndex(gap - 1) : nullptr;
-    if (view == nullptr || findNode(view) != nullptr || target == nullptr || target->areaW <= 0 || target->areaH <= 0) {
+    Node* target = gap > 0 ? m_tree.leafAt(gap - 1) : nullptr;
+    if (view == nullptr || findNode(view) != nullptr || target == nullptr || target->area.width <= 0 || target->area.height <= 0) {
       insertView(view, columnIndex);
       return;
     }
-    splitLeafToward(target, view, cx, cy);
+    m_tree.splitLeafToward(target, keyOf(view), cx, cy);
     rebuildFlatColumns();
-  }
-
-  void DwindleLayout::splitLeafToward(Node* target, View* view, double cx, double cy) {
-    // Same rule arrangeNode applies when it resolves the AutoSplit below.
-    const bool horizontal = target->areaW >= target->areaH;
-    const bool newFirst =
-        horizontal ? cx < target->areaX + (target->areaW / 2.0) : cy < target->areaY + (target->areaH / 2.0);
-    splitLeaf(target, view, Node::AutoSplit, newFirst);
   }
 
   void DwindleLayout::insertViewIntoColumn(View* view, int columnIndex, int /*rowIndex*/) {
     if (view == nullptr || findNode(view) != nullptr) {
       return;
     }
-    if (m_root == nullptr) {
-      auto node = std::make_unique<Node>();
-      node->type = Node::Leaf;
-      node->view = view;
-      m_root = std::move(node);
+    if (m_tree.empty()) {
+      m_tree.addRoot(keyOf(view));
       rebuildFlatColumns();
       return;
     }
     const int count = static_cast<int>(m_flatColumns.size());
-    Node* target = nodeAtFlatIndex(std::clamp(columnIndex, 0, count - 1));
+    Node* target = m_tree.leafAt(std::clamp(columnIndex, 0, count - 1));
     if (target != nullptr && target->type == Node::Leaf) {
-      splitLeaf(target, view, Node::AutoSplit, /*newFirst=*/false);
+      m_tree.splitLeaf(target, keyOf(view), Node::AutoSplit, /*newFirst=*/false);
     }
     rebuildFlatColumns();
   }
@@ -485,38 +220,29 @@ namespace andromeda {
 
   bool DwindleLayout::moveViewVertical(View* view, int direction) { return moveView(view, false, direction); }
 
-  bool DwindleLayout::toggleSplit(View* view) {
-    Node* node = findNode(view);
-    if (node == nullptr || node->parent == nullptr) {
-      return false;
-    }
-    Node* parent = node->parent;
-    const bool horizontal =
-        parent->type == Node::AutoSplit ? parent->areaW >= parent->areaH : parent->type == Node::HSplit;
-    parent->type = horizontal ? Node::VSplit : Node::HSplit;
-    parent->locked = true;
-    return true;
-  }
+  bool DwindleLayout::toggleSplit(View* view) { return m_tree.toggleSplit(findNode(view)); }
 
   bool DwindleLayout::moveView(View* view, bool horizontal, int direction) {
     Node* node = findNode(view);
     if ((direction != -1 && direction != 1) || node == nullptr || node->parent == nullptr) {
       return false;
     }
-    const wlr_box content{.x = m_root->areaX, .y = m_root->areaY, .width = m_root->areaW, .height = m_root->areaH};
-    if (content.width <= 0 || content.height <= 0 || node->areaW <= 0 || node->areaH <= 0) {
+    const tiling::TileBox& root = m_tree.root()->area;
+    const wlr_box content{.x = root.x, .y = root.y, .width = root.width, .height = root.height};
+    const tiling::TileBox& box = node->area;
+    if (content.width <= 0 || content.height <= 0 || box.width <= 0 || box.height <= 0) {
       return false;
     }
 
     // The first pixel across the gap from the middle of the edge the view leaves through. Outside the content area
     // there is no tile to enter, and the caller falls back to its output or workspace action.
     const int gap = m_config->totalGap;
-    double focalX = node->areaX + (node->areaW / 2.0);
-    double focalY = node->areaY + (node->areaH / 2.0);
+    double focalX = box.x + (box.width / 2.0);
+    double focalY = box.y + (box.height / 2.0);
     if (horizontal) {
-      focalX = direction < 0 ? node->areaX - gap - 1 : node->areaX + node->areaW + gap;
+      focalX = direction < 0 ? box.x - gap - 1 : box.x + box.width + gap;
     } else {
-      focalY = direction < 0 ? node->areaY - gap - 1 : node->areaY + node->areaH + gap;
+      focalY = direction < 0 ? box.y - gap - 1 : box.y + box.height + gap;
     }
     if (focalX < content.x
         || focalX >= content.x + content.width
@@ -540,7 +266,7 @@ namespace andromeda {
     }
 
     // Otherwise the view leaves its split, which hands its area back to its sibling, and splits the tile it enters.
-    detachNode(node);
+    m_tree.detach(node);
     arrangeArea(content);
     const LayoutTarget* entered = nullptr;
     double nearest = std::numeric_limits<double>::infinity();
@@ -552,7 +278,7 @@ namespace andromeda {
         entered = &target;
       }
     }
-    splitLeafToward(findNode(entered->view), view, focalX, focalY);
+    m_tree.splitLeafToward(findNode(entered->view), keyOf(view), focalX, focalY);
     arrangeArea(content);
     return true;
   }
@@ -564,7 +290,7 @@ namespace andromeda {
     if (node == nullptr) {
       return;
     }
-    detachNode(node);
+    m_tree.detach(node);
     std::erase_if(m_targets, [view](const LayoutTarget& t) { return t.view == view; });
     rebuildFlatColumns();
   }
@@ -578,8 +304,8 @@ namespace andromeda {
     if (from == destination) {
       return;
     }
-    Node* a = nodeAtFlatIndex(from);
-    Node* b = nodeAtFlatIndex(destination);
+    Node* a = m_tree.leafAt(from);
+    Node* b = m_tree.leafAt(destination);
     swapLeafViews(a, b);
   }
 
@@ -595,8 +321,11 @@ namespace andromeda {
 
   void DwindleLayout::arrangeArea(const wlr_box& area) {
     m_targets.clear();
-    if (m_root != nullptr) {
-      arrangeNode(m_root.get(), area);
+    const tiling::TileBox box{.x = area.x, .y = area.y, .width = area.width, .height = area.height};
+    for (const tiling::Tile& tile : m_tree.arrange(box, m_config->totalGap, m_config->dwindle.preserveSplit)) {
+      m_targets.push_back(
+          {.view = viewOf(tile.key), .x = tile.box.x, .y = tile.box.y, .width = tile.box.width, .height = tile.box.height}
+      );
     }
     rebuildFlatColumns();
   }
@@ -613,10 +342,10 @@ namespace andromeda {
     // A focused insert splits the anchor leaf. Without a tiled anchor, the caller appends and splits the last leaf.
     const Node* target = findNode(splitAnchor);
     if (target == nullptr || target->type != Node::Leaf) {
-      target = nodeAtFlatIndex(static_cast<int>(m_flatColumns.size()) - 1);
+      target = m_tree.leafAt(static_cast<int>(m_flatColumns.size()) - 1);
     }
-    const int width = target != nullptr && target->areaW > 0 ? target->areaW : content.width;
-    const int height = target != nullptr && target->areaH > 0 ? target->areaH : content.height;
+    const int width = target != nullptr && target->area.width > 0 ? target->area.width : content.width;
+    const int height = target != nullptr && target->area.height > 0 ? target->area.height : content.height;
     const auto half = [gap = m_config->totalGap](int span) {
       return std::max(1, static_cast<int>(std::lround(0.5 * span)) - gap / 2);
     };
@@ -661,42 +390,9 @@ namespace andromeda {
   }
 
   std::vector<View*> DwindleLayout::focusPeers(const View* from, const View* target) const {
-    const Node* source = findNode(from);
-    const Node* destination = findNode(target);
-    if (source == nullptr || destination == nullptr || source == destination) {
-      return {};
-    }
-
-    // Ancestors of the source leaf, root included.
-    std::vector<const Node*> sourceChain;
-    for (const Node* node = source; node != nullptr; node = node->parent) {
-      sourceChain.push_back(node);
-    }
-
-    // Climb from the destination until its parent is the split the move
-    // crossed; that subtree is the group the move entered.
-    const Node* crossed = destination;
-    while (crossed->parent != nullptr && std::ranges::find(sourceChain, crossed->parent) == sourceChain.end()) {
-      crossed = crossed->parent;
-    }
-
     std::vector<View*> peers;
-    std::vector<const Node*> stack{crossed};
-    while (!stack.empty()) {
-      const Node* node = stack.back();
-      stack.pop_back();
-      if (node->type == Node::Leaf) {
-        if (node->view != nullptr) {
-          peers.push_back(node->view);
-        }
-        continue;
-      }
-      if (node->right != nullptr) {
-        stack.push_back(node->right.get());
-      }
-      if (node->left != nullptr) {
-        stack.push_back(node->left.get());
-      }
+    for (const tiling::TileKey key : m_tree.peers(findNode(from), findNode(target))) {
+      peers.push_back(viewOf(key));
     }
     return peers;
   }
@@ -711,71 +407,71 @@ namespace andromeda {
   }
 
   bool DwindleLayout::toggleFullWidth(int columnIndex) {
-    Node* node = nodeAtFlatIndex(columnIndex);
-    const std::vector<Split> axisSplits = splits(node, Node::HSplit);
+    Node* node = m_tree.leafAt(columnIndex);
+    const std::vector<Split> axisSplits = m_tree.splits(node, Node::HSplit);
     if (axisSplits.empty()) {
       return false;
     }
     double current = 1.0;
     double maximum = 1.0;
     for (const Split& split : axisSplits) {
-      current *= splitShare(split);
+      current *= tiling::DwindleTree::splitShare(split);
       maximum *= 0.9;
     }
     if (current >= maximum - kFractionEpsilon) {
-      applyFraction(axisSplits, 0.5);
+      tiling::DwindleTree::applyFraction(axisSplits, 0.5);
       return false;
     }
-    applyFraction(axisSplits, 1.0);
+    tiling::DwindleTree::applyFraction(axisSplits, 1.0);
     return true;
   }
 
   bool DwindleLayout::isFullWidth(int columnIndex) const {
-    const std::vector<Split> axisSplits = splits(nodeAtFlatIndex(columnIndex), Node::HSplit);
+    const std::vector<Split> axisSplits = m_tree.splits(m_tree.leafAt(columnIndex), Node::HSplit);
     if (axisSplits.empty()) {
       return false;
     }
     double current = 1.0;
     double maximum = 1.0;
     for (const Split& split : axisSplits) {
-      current *= splitShare(split);
+      current *= tiling::DwindleTree::splitShare(split);
       maximum *= 0.9;
     }
     return current >= maximum - kFractionEpsilon;
   }
 
   bool DwindleLayout::setWidthFraction(int columnIndex, double fraction) {
-    return applyFraction(splits(nodeAtFlatIndex(columnIndex), Node::HSplit), fraction);
+    return tiling::DwindleTree::applyFraction(m_tree.splits(m_tree.leafAt(columnIndex), Node::HSplit), fraction);
   }
 
   void DwindleLayout::clearFullWidthState(int /*columnIndex*/) {}
 
   double DwindleLayout::widthFraction(int columnIndex) const {
-    const std::vector<Split> axisSplits = splits(nodeAtFlatIndex(columnIndex), Node::HSplit);
+    const std::vector<Split> axisSplits = m_tree.splits(m_tree.leafAt(columnIndex), Node::HSplit);
     if (axisSplits.empty()) {
       return 1.0;
     }
     double fraction = 1.0;
     for (const Split& split : axisSplits) {
-      fraction *= splitShare(split);
+      fraction *= tiling::DwindleTree::splitShare(split);
     }
     return fraction;
   }
 
   double DwindleLayout::heightFraction(const View* view) const {
-    const std::vector<Split> axisSplits = splits(findNode(view), Node::VSplit);
+    const std::vector<Split> axisSplits = m_tree.splits(findNode(view), Node::VSplit);
     if (axisSplits.empty()) {
       return 1.0;
     }
     double fraction = 1.0;
     for (const Split& split : axisSplits) {
-      fraction *= splitShare(split);
+      fraction *= tiling::DwindleTree::splitShare(split);
     }
     return fraction;
   }
 
   bool DwindleLayout::setHeightFraction(View* view, double fraction) {
-    return applyFraction(splits(findNode(view), Node::VSplit), fraction);
+    return tiling::DwindleTree::applyFraction(m_tree.splits(findNode(view), Node::VSplit), fraction);
   }
 
   // Drag-and-drop directional insertion
@@ -787,41 +483,13 @@ namespace andromeda {
     if (target == nullptr || target->type != Node::Leaf) {
       return;
     }
-    if (edge == 0) {
-      splitLeaf(target, newView, Node::AutoSplit, /*newFirst=*/false);
-      rebuildFlatColumns();
-      return;
-    }
-    const bool horizontal = (edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0;
-    const bool newFirst = (edge & (WLR_EDGE_LEFT | WLR_EDGE_TOP)) != 0;
-    splitLeaf(target, newView, horizontal ? Node::HSplit : Node::VSplit, newFirst);
-    target->locked = true;
+    m_tree.splitOn(target, keyOf(newView), edge);
     rebuildFlatColumns();
   }
 
   // Interactive resize
   DwindleLayout::Node* DwindleLayout::boundaryNode(const View* view, uint32_t edge) const {
-    Node* node = findNode(view);
-    if (node == nullptr) {
-      return nullptr;
-    }
-    // LEFT/RIGHT edges ride a horizontal split; TOP/BOTTOM ride a vertical one.
-    // LEFT/TOP mean the view sits in the split's second (right/bottom) child.
-    const bool wantHorizontal = (edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT)) != 0;
-    const bool wantSecond = (edge & (WLR_EDGE_LEFT | WLR_EDGE_TOP)) != 0;
-    Node* current = node;
-    while (current->parent != nullptr) {
-      Node* parent = current->parent;
-      const bool horizontal = parent->type == Node::HSplit;
-      if (horizontal == wantHorizontal) {
-        const bool second = parent->right.get() == current;
-        if (second == wantSecond) {
-          return parent;
-        }
-      }
-      current = parent;
-    }
-    return nullptr;
+    return m_tree.boundary(findNode(view), edge);
   }
 
   uint32_t DwindleLayout::resizableEdges(const View* view) const {
@@ -840,7 +508,7 @@ namespace andromeda {
       return false;
     }
     const bool horizontal = parent->type == Node::HSplit;
-    const double span = horizontal ? parent->areaW : parent->areaH;
+    const double span = horizontal ? parent->area.width : parent->area.height;
     if (span <= 0) {
       return false;
     }

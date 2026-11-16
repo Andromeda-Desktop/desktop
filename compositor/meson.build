@@ -914,6 +914,7 @@ pure_sources = files(
   'src/layout/layout_motion.cpp',
   'src/layout/scrolling.cpp',
   'src/layout/dwindle.cpp',
+  'protocols/dwindle_tree.cpp',
   'src/layout/master.cpp',
   'src/layout/floating.cpp',
   'src/output/direction.cpp',
@@ -962,7 +963,7 @@ andromeda_pure = static_library(
 # the dependencies its headers pull in (andromedafx for the border ring's corner radii).
 andromeda_pure_dep = declare_dependency(
   link_with: andromeda_pure,
-  include_directories: include_directories('src'),
+  include_directories: include_directories('src', '.'),
   dependencies: andromeda_pure_deps,
 )
 
