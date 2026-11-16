@@ -479,6 +479,10 @@ void Node::markPaintDirty(const DamageRect& local) {
 }
 
 void Node::takePaintedBounds(Node* subtree, DamageRegion& out) {
+  if (!subtree->m_paintedSubtree) {
+    return;
+  }
+  subtree->m_paintedSubtree = false;
   if (subtree->m_paintedBounds) {
     out.add(*subtree->m_paintedBounds);
     subtree->m_paintedBounds.reset();

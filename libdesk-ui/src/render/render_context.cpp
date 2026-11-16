@@ -245,6 +245,7 @@ namespace {
     if (node->type() == NodeType::RenderProxy) {
       return false;
     }
+    node->markPaintedSubtree();
     const Mat3 world = parentTransform * nodeLocalTransform(node);
     const std::optional<DamageRect> bounds = paintBounds(node, world);
     const bool whole = subtreeChanged || node->selfPaintDirty();
