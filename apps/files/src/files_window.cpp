@@ -1562,7 +1562,11 @@ void FilesWindow::loadTrash() {
     std::error_code ec;
     if (fs::is_directory(pin, ec)) {
       places.push_back({.label = pin.filename().string(), .glyph = "folder", .path = pin, .id = "pin:" + pin.string(),
-                        .art = "folder", .group = FileBrowser::Place::Group::Favourites});
+                        .art = "folder", .group = FileBrowser::Place::Group::Favourites,
+                        .onReorder = [this, pin](const FileBrowser::Place& target, bool after) {
+                          m_app.pins().moveNear(pin, target.path, after);
+                          m_app.refreshPlaces();
+                        }});
     }
   }
   // Sidebar Locations (mockup §1): the root drive's usage on This PC, then each removable drive with eject.

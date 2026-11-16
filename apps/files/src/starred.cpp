@@ -66,6 +66,16 @@ void Starred::moved(const std::vector<std::pair<fs::path, fs::path>>& moves) {
   }
 }
 
+void Starred::moveNear(const fs::path& path, const fs::path& target, bool after) {
+  if (path == target || !contains(path) || !contains(target)) {
+    return;
+  }
+  std::erase(m_paths, path);
+  const auto at = std::ranges::find(m_paths, target);
+  m_paths.insert(after ? std::next(at) : at, path);
+  save();
+}
+
 void Starred::save() const {
   nlohmann::json list = nlohmann::json::array();
   for (const fs::path& p : m_paths) {

@@ -64,6 +64,8 @@ public:
     bool eject = false;         // an eject button that runs onEject
     std::function<void()> onEject;
     bool dropFiles = false;     // a host place that takes dropped files (a phone): DropTarget::place = id
+    // Set: a drag moves this row before or after another row of its group that also sets onReorder.
+    std::function<void(const Place& target, bool after)> onReorder;
   };
 
   struct Host {

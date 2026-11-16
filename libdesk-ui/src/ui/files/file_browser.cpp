@@ -42,6 +42,7 @@
 #include <cstdlib>
 #include <format>
 #include <glib.h>
+#include <linux/input-event-codes.h>
 #include <sys/statvfs.h>
 #include <thread>
 #include <unistd.h>
@@ -196,6 +197,17 @@ namespace {
   class SidebarRow final : public Flex {
   public:
     InputArea* area = nullptr;
+    Node* dropLine = nullptr; // the insertion line of a pin drag, at the top or bottom edge
+
+    void showDropLine(std::optional<bool> after) {
+      if (dropLine == nullptr) {
+        return;
+      }
+      dropLine->setVisible(after.has_value());
+      if (after.has_value()) {
+        dropLine->setPosition(0.0F, *after ? height() - dropLine->height() : 0.0F);
+      }
+    }
 
   protected:
     void doLayout(Renderer& renderer) override {
@@ -212,6 +224,9 @@ namespace {
       if (area != nullptr) {
         area->setPosition(0.0F, 0.0F);
         area->setSize(width(), height());
+      }
+      if (dropLine != nullptr) {
+        dropLine->setSize(width(), dropLine->height());
       }
     }
   };
@@ -1405,13 +1420,101 @@ void FileBrowser::refreshSidebar() {
         m_host.invalidate();
       }
     });
-    area->setOnPress([rowBody, current](const InputArea::PointerData&) {
-      if (!current) {
-        rowBody->setFill(colorSpecFromRole(ColorRole::Fill2));
+    // A reorderable row: a press, a move past the slop, then the release drops
+    // it next to the row under the pointer.
+    enum class Drag : std::uint8_t { Idle, Pressed, Moving, Dropped };
+    struct Reorder {
+      Drag phase = Drag::Idle;
+      float x = 0.0F;
+      float y = 0.0F;
+    };
+    auto drag = std::make_shared<Reorder>();
+    if (place.onReorder && !rail) {
+      Box *line = nullptr;
+      flex->addChild(ui::box({.out = &line,
+                              .fill = colorSpecFromRole(ColorRole::Accent),
+                              .radius = Style::focusRingWidth * s / 2.0F,
+                              .height = Style::focusRingWidth * s,
+                              .visible = false,
+                              .participatesInLayout = false}));
+      flex->dropLine = line;
+      // Marks the insertion line on the row under the pointer and returns it;
+      // nullopt clears every line.
+      const auto mark = [this,
+                         place](std::optional<std::pair<float, float>> scene) {
+        std::optional<std::pair<Place, bool>> hit;
+        for (const auto &[node, other] : m_ui->sidebarRows) {
+          if (!other.onReorder || other.group != place.group) {
+            continue;
+          }
+          std::optional<bool> after;
+          float lx = 0.0F;
+          float ly = 0.0F;
+          if (scene.has_value() && other.id != place.id &&
+              Node::mapFromScene(node, scene->first, scene->second, lx, ly) &&
+              ly >= 0.0F && ly < node->height()) {
+            after = ly >= node->height() / 2.0F;
+            hit = {other, *after};
+          }
+          static_cast<SidebarRow *>(node)->showDropLine(after);
+        }
+        if (m_host.invalidate) {
+          m_host.invalidate();
+        }
+        return hit;
+      };
+      area->setOnMotion([drag, mark, s](const InputArea::PointerData &d) {
+        if (drag->phase == Drag::Pressed &&
+            std::hypot(d.sceneX - drag->x, d.sceneY - drag->y) >
+                Style::dragStartThreshold * s) {
+          drag->phase = Drag::Moving;
+        }
+        if (drag->phase == Drag::Moving) {
+          (void)mark(std::pair{d.sceneX, d.sceneY});
+        }
+      });
+      area->setOnPress(
+          [this, rowBody, current, drag, mark,
+           onReorder = place.onReorder](const InputArea::PointerData &d) {
+            if (d.pressed) {
+              if (d.button == BTN_LEFT) {
+                *drag = {.phase = Drag::Pressed, .x = d.sceneX, .y = d.sceneY};
+              }
+              if (!current) {
+                rowBody->setFill(colorSpecFromRole(ColorRole::Fill2));
+              }
+              return;
+            }
+            if (drag->phase != Drag::Moving) {
+              drag->phase = Drag::Idle;
+              return;
+            }
+            drag->phase = Drag::Dropped;
+            const auto hit = mark(std::pair{d.sceneX, d.sceneY});
+            (void)mark(std::nullopt);
+            if (hit.has_value()) {
+              // The host rebuilds the sidebar, which destroys this row.
+              DeferredCall::callLater([onReorder, hit = *hit,
+                                       alive = std::weak_ptr<bool>(m_alive)] {
+                if (!alive.expired()) {
+                  onReorder(hit.first, hit.second);
+                }
+              });
+            }
+          });
+    } else {
+      area->setOnPress([rowBody, current](const InputArea::PointerData &) {
+        if (!current) {
+          rowBody->setFill(colorSpecFromRole(ColorRole::Fill2));
+        }
+      });
+    }
+    // The navigation rebuilds the sidebar, which destroys this row: run it
+    // after the click returns.
+    area->setOnClick([this, place, drag](const InputArea::PointerData &) {
+      if (std::exchange(drag->phase, Drag::Idle) == Drag::Dropped) {
+        return;
       }
-    });
-    // The navigation rebuilds the sidebar, which destroys this row: run it after the click returns.
-    area->setOnClick([this, place](const InputArea::PointerData&) {
       DeferredCall::callLater([this, place, alive = std::weak_ptr<bool>(m_alive)] {
         if (alive.expired()) {
           return;

@@ -19,6 +19,8 @@ public:
   // Follows the moves and renames of one finished job, all at once: a swap (a -> b, b -> a) maps each path through
   // the original names. Missing paths stay: they may be on a drive that is not mounted now.
   void moved(const std::vector<std::pair<std::filesystem::path, std::filesystem::path>>& moves);
+  // Moves path to just before (or after) target; hidden entries between them keep their slots.
+  void moveNear(const std::filesystem::path& path, const std::filesystem::path& target, bool after);
 
   [[nodiscard]] std::filesystem::path storePath() const;
 
