@@ -114,6 +114,9 @@ namespace term {
     [[nodiscard]] float backgroundAlpha() const;
     // The shell's working directory (OSC 7); empty until it reports one.
     [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
+    // One cell in logical px; 0 before the grid is built.
+    [[nodiscard]] float cellWidth() const noexcept;
+    [[nodiscard]] float cellHeight() const noexcept;
     // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.
     void sceneDestroyed() override {
       if (m_bellAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {

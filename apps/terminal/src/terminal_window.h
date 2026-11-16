@@ -8,6 +8,7 @@
 #include "agent_view.h"
 
 #include <array>
+#include <map>
 #include <cstdint>
 #include <optional>
 #include <functional>
@@ -23,6 +24,7 @@ class Box;
 class Button;
 class Flex;
 class Glyph;
+class InputArea;
 class Label;
 class Spinner;
 class Node;
@@ -166,6 +168,8 @@ namespace term {
     struct PaneCard {
       std::uint64_t id = 0;
       PaneRect rect;
+      Flex* cell = nullptr;
+      InputArea* captionArea = nullptr;
       float textWidth = 0.0F; // caption room for the name and the state
       Box* ring = nullptr;    // the card's stroke, or the focus ring
       Box* shadow = nullptr;
@@ -176,6 +180,25 @@ namespace term {
       Flex* accessory = nullptr; // holds the find and agent bars while the pane is focused
     };
     std::vector<PaneCard> m_cards; // empty while one session shows
+    // Shares of a split's room: the left column's width, the top row's height. By the split's first session.
+    struct SplitRatios {
+      float x = 0.5F;
+      float y = 0.5F;
+    };
+    std::map<std::uint64_t, SplitRatios> m_ratios;
+    struct Divider {
+      bool vertical = true; // between columns
+      InputArea* area = nullptr;
+      Box* grip = nullptr;
+    };
+    std::vector<Divider> m_dividers;
+    std::optional<std::size_t> m_dragDivider; // the divider under a held button; views keep their size until release
+    [[nodiscard]] std::vector<PaneRect> paneRects(std::size_t panes) const;
+    [[nodiscard]] float captionTextWidth(float width, bool topRight) const;
+    // Cards follow m_ratios in place; settle: the views take their new sizes (one PTY resize).
+    void relayoutSplit(bool settle);
+    void placeDividers();
+    void dragDivider(std::size_t index, float sceneX, float sceneY);
     std::uint64_t m_ringPane = 0;  // the card that draws the focus ring
     void buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes);
     // Ring, shadow, caption weight and the find and agent bars follow the shown session, in place.

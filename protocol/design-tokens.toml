@@ -518,6 +518,9 @@ glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the win
 scene_tint = 0.15  # the theme surface's alpha over a theme scene where no text needs it; text gets a measured backing
 focus_ring = 1.5  # accent ring on the focused split card (design-split handoff.yaml)
 group_row = 32.0  # a split member's row in the sidebar group block
+divider_hit = 24.0  # a split divider's drag area: the gap and 8 into each card
+split_min_columns = 20.0  # a divider stops where a pane would show fewer columns
+split_min_rows = 5.0  # and fewer rows
 
 [component.agent]  # agent session view (design-agent handoff.yaml)
 measure = 640.0  # prose max width, 70 ch of body 14

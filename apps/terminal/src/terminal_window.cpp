@@ -24,6 +24,8 @@
 #include "ui/style.h"
 #include "wayland/wayland_connection.h"
 
+#include "cursor-shape-v1-client-protocol.h"
+
 #include <gio/gio.h>
 #include <pwd.h>
 #include <unistd.h>
@@ -293,6 +295,9 @@ namespace term {
         }
         return;
       }
+      if (m_dragDivider) {
+        return;
+      }
       const float caption = Tokens::componentWindowCaption * m_window.uiScale();
       for (const PaneCard& card : m_cards) {
         if (const auto it = std::ranges::find(m_views, card.id, &Session::id); it != m_views.end()) {
@@ -300,6 +305,7 @@ namespace term {
         }
       }
     });
+    // A divider drag resizes the cards per frame; the views (and their PTYs) resize once, on release.
     // A click into a pane's view focuses its area: that pane becomes the shown session.
     m_window.input().setFocusChangeCallback([this](InputArea* /*old*/, InputArea* next) {
       for (const PaneCard& card : m_cards) {
@@ -1089,24 +1095,8 @@ namespace term {
     const float gap = Tokens::componentWindowCardGap * s;
     const float radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s);
     const float caption = Tokens::componentWindowCaption * s;
-    const float width = m_contentWidth;
-    const float height = m_contentHeight;
-    // 2: columns; 3: one tall left, two stacked right; 4: a 2x2 grid in reading order.
-    const float leftW = std::floor((width - gap) / 2.0F);
-    const float rightX = leftW + gap;
-    const float rightW = width - rightX;
-    const float topH = std::floor((height - gap) / 2.0F);
-    const float bottomY = topH + gap;
-    const float bottomH = height - bottomY;
-    std::vector<PaneRect> rects;
-    switch (panes.size()) {
-      case 2: rects = {{0.0F, 0.0F, leftW, height}, {rightX, 0.0F, rightW, height}}; break;
-      case 3: rects = {{0.0F, 0.0F, leftW, height}, {rightX, 0.0F, rightW, topH}, {rightX, bottomY, rightW, bottomH}}; break;
-      default:
-        rects = {{0.0F, 0.0F, leftW, topH}, {rightX, 0.0F, rightW, topH}, {0.0F, bottomY, leftW, bottomH},
-                 {rightX, bottomY, rightW, bottomH}};
-        break;
-    }
+    m_cards.reserve(panes.size()); // cells capture card pointers
+    const std::vector<PaneRect> rects = paneRects(panes.size());
     Surface* surface = m_window.surface();
     const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
     const ColorSpec clear = clearColorSpec();
@@ -1124,7 +1114,8 @@ namespace term {
       ContentView& view = *it->view;
       PaneCard& card = m_cards.emplace_back(PaneCard{.id = panes[i], .rect = rects[i]});
       const PaneRect& r = card.rect;
-      auto cell = ui::column({.align = FlexAlign::Stretch, .width = r.width, .height = r.height});
+      auto cell = ui::column({.out = &card.cell, .align = FlexAlign::Stretch, .minWidth = r.width, .minHeight = r.height,
+                              .maxWidth = r.width, .maxHeight = r.height, .width = r.width, .height = r.height});
       auto shadow = ui::box({.out = &card.shadow,
                              .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE2.keyLight
                                                                                                  : Tokens::elevationE2.keyDark),
@@ -1145,6 +1136,7 @@ namespace term {
       // A click focuses the pane; a drag moves the window, as the header does.
       auto area = ui::inputArea({.participatesInLayout = false});
       area->setSize(r.width, caption);
+      card.captionArea = area.get();
       struct Press {
         bool down = false;
         std::uint32_t serial = 0;
@@ -1174,9 +1166,7 @@ namespace term {
       cap->addChild(ui::spinner({.out = &card.spinner, .color = colorSpecFromRole(ColorRole::Label2),
                                  .spinnerSize = Tokens::sizeSymbol * s, .visible = false, .participatesInLayout = false}));
       const bool topRight = i == 1;
-      const float buttons = topRight ? 4.0F * Tokens::spaceP24 * s : 0.0F;
-      card.textWidth = std::max(0.0F, r.width - (Tokens::spaceP16 + Tokens::spaceP24 + 4.0F * Tokens::spaceP8 +
-                                                 Tokens::sizeSymbol) * s - buttons);
+      card.textWidth = captionTextWidth(r.width, topRight);
       cap->addChild(ui::label({.out = &card.name,
                                .fontSize = Tokens::typeBody.size * s,
                                .color = colorSpecFromRole(ColorRole::Label1),
@@ -1248,9 +1238,181 @@ namespace term {
       grid = std::move(columns);
     }
     m_contentSlot->addChild(std::move(grid));
+    // Over each gap between cards: drag to resize both sides.
+    m_dividers.clear();
+    const float grip = Tokens::spaceP32 * s;
+    for (const bool vertical : {true, false}) {
+      if (!vertical && panes.size() < 3) {
+        break;
+      }
+      const std::size_t index = m_dividers.size();
+      Divider& divider = m_dividers.emplace_back(Divider{.vertical = vertical});
+      auto area = ui::inputArea({.out = &divider.area,
+                                 .cursorShape = vertical ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE
+                                                         : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE,
+                                 .participatesInLayout = false});
+      // Mockup .grip: a 4 x 32 capsule centred in the gap while the pointer is over it or drags it.
+      auto handle = ui::box({.out = &divider.grip, .fill = colorSpecFromRole(ColorRole::Label3),
+                             .radius = Tokens::spaceP4 * s / 2.0F, .width = vertical ? Tokens::spaceP4 * s : grip,
+                             .height = vertical ? grip : Tokens::spaceP4 * s, .visible = false, .participatesInLayout = false});
+      area->addChild(std::move(handle));
+      area->setOnEnter([this, index](const InputArea::PointerData& /*data*/) {
+        m_dividers[index].grip->setVisible(true);
+        m_window.invalidate();
+      });
+      area->setOnLeave([this, index] {
+        m_dividers[index].grip->setVisible(m_dragDivider == index);
+        m_window.invalidate();
+      });
+      area->setOnPress([this, index](const InputArea::PointerData& data) {
+        if (data.button != BTN_LEFT) {
+          return;
+        }
+        if (data.pressed) {
+          m_dragDivider = index;
+          return;
+        }
+        m_dragDivider.reset();
+        m_dividers[index].grip->setVisible(m_dividers[index].area->hovered());
+        relayoutSplit(true);
+      });
+      area->setOnMotion([this, index](const InputArea::PointerData& data) {
+        if (m_dragDivider == index) {
+          dragDivider(index, data.sceneX, data.sceneY);
+        }
+      });
+      m_contentSlot->addChild(std::move(area));
+    }
+    placeDividers();
     refreshCards();
     fitCaptions(renderer);
     paintPaneFocus();
+  }
+
+  std::vector<TerminalWindow::PaneRect> TerminalWindow::paneRects(std::size_t panes) const {
+    const float s = m_window.uiScale();
+    const float gap = Tokens::componentWindowCardGap * s;
+    const float caption = Tokens::componentWindowCaption * s;
+    const float width = m_contentWidth;
+    const float height = m_contentHeight;
+    const auto split = m_sessions.visible();
+    const auto ratio = split.empty() ? m_ratios.end() : m_ratios.find(split.front());
+    const SplitRatios r = ratio != m_ratios.end() ? ratio->second : SplitRatios{};
+    // The smallest pane: split_min_columns x split_min_rows cells of the font, with the grid's insets.
+    float cellW = 0.0F;
+    float cellH = 0.0F;
+    for (const Session& session : m_views) {
+      if (const TerminalView* view = session.view->terminal(); view != nullptr && view->cellWidth() > 0.0F) {
+        cellW = view->cellWidth();
+        cellH = view->cellHeight();
+        break;
+      }
+    }
+    const float minW = Tokens::componentTerminalSplitMinColumns * cellW + 2.0F * Tokens::spaceP16 * s;
+    const float minH = Tokens::componentTerminalSplitMinRows * cellH + caption + (Tokens::spaceP16 + Tokens::spaceP12) * s;
+    // A share, kept where both sides hold their minimum; a window too small for two gets halves.
+    const auto share = [](float room, float ratio, float min) {
+      const float half = std::floor(room / 2.0F);
+      return room < 2.0F * min ? half : std::clamp(std::round(room * ratio), min, room - min);
+    };
+    const float leftW = share(width - gap, r.x, minW);
+    const float rightX = leftW + gap;
+    const float rightW = width - rightX;
+    const float topH = share(height - gap, r.y, minH);
+    const float bottomY = topH + gap;
+    const float bottomH = height - bottomY;
+    // 2: columns; 3: one tall left, two stacked right; 4: a 2x2 grid in reading order.
+    switch (panes) {
+      case 2: return {{0.0F, 0.0F, leftW, height}, {rightX, 0.0F, rightW, height}};
+      case 3: return {{0.0F, 0.0F, leftW, height}, {rightX, 0.0F, rightW, topH}, {rightX, bottomY, rightW, bottomH}};
+      default:
+        return {{0.0F, 0.0F, leftW, topH}, {rightX, 0.0F, rightW, topH}, {0.0F, bottomY, leftW, bottomH},
+                {rightX, bottomY, rightW, bottomH}};
+    }
+  }
+
+  // The caption's room for the name and the state: padding 16 + 8, the symbol, four gaps, the menu button, and the
+  // window buttons in the top-right card.
+  float TerminalWindow::captionTextWidth(float width, bool topRight) const {
+    const float s = m_window.uiScale();
+    const float buttons = topRight ? 4.0F * Tokens::spaceP24 * s : 0.0F;
+    return std::max(0.0F, width - (Tokens::spaceP16 + Tokens::spaceP24 + 4.0F * Tokens::spaceP8 + Tokens::sizeSymbol) * s -
+                              buttons);
+  }
+
+  void TerminalWindow::placeDividers() {
+    if (m_cards.size() < 2) {
+      return;
+    }
+    const float s = m_window.uiScale();
+    const float gap = Tokens::componentWindowCardGap * s;
+    const float hit = Tokens::componentTerminalDividerHit * s;
+    for (const Divider& divider : m_dividers) {
+      PaneRect r;
+      if (divider.vertical) {
+        r = {m_cards[0].rect.x + m_cards[0].rect.width + (gap - hit) / 2.0F, 0.0F, hit, m_contentHeight};
+      } else {
+        // 3: across the right column; 4: across both.
+        const PaneRect& top = m_cards[1].rect;
+        const float x = m_cards.size() == 3 ? top.x : 0.0F;
+        r = {x, top.y + top.height + (gap - hit) / 2.0F, m_contentWidth - x, hit};
+      }
+      divider.area->setPosition(r.x, r.y);
+      divider.area->setSize(r.width, r.height);
+      divider.grip->setPosition((r.width - divider.grip->width()) / 2.0F, (r.height - divider.grip->height()) / 2.0F);
+    }
+  }
+
+  void TerminalWindow::dragDivider(std::size_t index, float sceneX, float sceneY) {
+    const auto split = m_sessions.visible();
+    if (split.size() < 2 || m_contentSlot == nullptr) {
+      return;
+    }
+    const float gap = Tokens::componentWindowCardGap * m_window.uiScale();
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m_contentSlot, x, y);
+    SplitRatios& r = m_ratios[split.front()];
+    if (m_dividers[index].vertical) {
+      r.x = std::clamp((sceneX - x - gap / 2.0F) / std::max(1.0F, m_contentWidth - gap), 0.0F, 1.0F);
+    } else {
+      r.y = std::clamp((sceneY - y - gap / 2.0F) / std::max(1.0F, m_contentHeight - gap), 0.0F, 1.0F);
+    }
+    relayoutSplit(false);
+  }
+
+  void TerminalWindow::relayoutSplit(bool settle) {
+    if (m_cards.empty()) {
+      return;
+    }
+    const std::vector<PaneRect> rects = paneRects(m_cards.size());
+    const float caption = Tokens::componentWindowCaption * m_window.uiScale();
+    m_window.updateInPlace([this, &rects, caption](Renderer& renderer) {
+      for (std::size_t i = 0; i < m_cards.size() && i < rects.size(); ++i) {
+        PaneCard& card = m_cards[i];
+        const PaneRect& r = card.rect = rects[i];
+        card.cell->setMinWidth(r.width);
+        card.cell->setMaxWidth(r.width);
+        card.cell->setMinHeight(r.height);
+        card.cell->setMaxHeight(r.height);
+        card.cell->setSize(r.width, r.height);
+        card.shadow->setSize(r.width, r.height);
+        card.ring->setSize(r.width, r.height);
+        card.captionArea->setSize(r.width, caption);
+        card.textWidth = captionTextWidth(r.width, i == 1);
+      }
+      fitCaptions(renderer);
+      placeDividers();
+      m_contentSlot->markLayoutDirty();
+    });
+    if (!settle) {
+      return;
+    }
+    for (const PaneCard& card : m_cards) {
+      if (const auto it = std::ranges::find(m_views, card.id, &Session::id); it != m_views.end()) {
+        it->view->setSize(card.rect.width, card.rect.height - caption);
+      }
+    }
   }
 
   void TerminalWindow::paintPaneFocus() {

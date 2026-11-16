@@ -1887,4 +1887,8 @@ namespace term {
     }
   }
 
+  float TerminalView::cellWidth() const noexcept { return m_grid != nullptr ? m_grid->cellWidth() : 0.0F; }
+
+  float TerminalView::cellHeight() const noexcept { return m_grid != nullptr ? m_grid->cellHeight() : 0.0F; }
+
 } // namespace term
