@@ -9,6 +9,8 @@
 #include "ui/builders.h"
 #include "ui/controls/pinned.h"
 #include "ui/palette.h"
+#include "render/animation/animation_manager.h"
+#include "render/animation/motion_service.h"
 #include "ui/style.h"
 #include "wayland/wayland_seat.h"
 
@@ -18,11 +20,69 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <cmath>
+#include <map>
 #include <set>
 
 namespace term {
 
+  // A clipped slot whose children sit at their layout place plus a slide offset; a child out of the layout keeps the
+  // place it had in it. An outgoing page stays in the slot out of the layout until its spring ends.
+  class SlideSlot final : public Flex {
+  public:
+    void setSlide(Node* child, float x, float y) {
+      m_slide[child] = {x, y};
+      place();
+      markPaintDirty();
+    }
+    void forget(Node* child) {
+      m_slide.erase(child);
+      m_base.erase(child);
+    }
+
+  protected:
+    void doLayout(Renderer& renderer) override {
+      Flex::doLayout(renderer);
+      takeBase();
+    }
+    void doArrange(Renderer& renderer, const LayoutRect& rect) override {
+      Flex::doArrange(renderer, rect);
+      takeBase();
+    }
+
+  private:
+    void takeBase() {
+      for (const auto& child : children()) {
+        if (child->participatesInLayout()) {
+          m_base[child.get()] = {child->x(), child->y()};
+        }
+      }
+      place();
+    }
+    void place() {
+      for (const auto& [child, slide] : m_slide) {
+        const auto base = m_base.find(child);
+        const auto [bx, by] = base != m_base.end() ? base->second : std::pair{0.0F, 0.0F};
+        child->setPosition(bx + slide.first, by + slide.second);
+      }
+    }
+    std::map<Node*, std::pair<float, float>> m_slide;
+    std::map<Node*, std::pair<float, float>> m_base;
+  };
+
   namespace {
+
+    std::unique_ptr<SlideSlot> slideSlot(float width, float height) {
+      auto slot = std::make_unique<SlideSlot>();
+      slot->setDirection(FlexDirection::Vertical);
+      slot->setAlign(FlexAlign::Stretch);
+      slot->setClipChildren(true);
+      slot->setMinWidth(width);
+      slot->setMaxWidth(width);
+      slot->setMinHeight(height);
+      slot->setMaxHeight(height);
+      return slot;
+    }
 
     constexpr std::string_view kCursorHint = "Programs that choose their own cursor keep it";
 
@@ -126,10 +186,11 @@ namespace term {
       auto body = ui::row({.align = FlexAlign::Start, .width = width, .height = height});
       m_previewWidth = std::max(0.0F, width - columnW - gap);
       m_previewHeight = std::max(0.0F, height - gap);
-      auto previewSlot = ui::column({.align = FlexAlign::Stretch, .width = m_previewWidth, .height = m_previewHeight});
+      auto previewSlot = slideSlot(m_previewWidth, m_previewHeight);
       previewSlot->setPadding(0.0F, 0.0F, 0.0F, gap);
       m_previewWidth -= gap;
       m_previewSlot = previewSlot.get();
+      m_previewTheme = m_store.settings().theme;
       previewSlot->addChild(preview(s, m_previewWidth, m_previewHeight));
 
       const float padH = Tokens::spaceP16 * s;
@@ -147,7 +208,7 @@ namespace term {
       column->addChild(std::move(searchRow));
       m_slotWidth = columnW;
       m_slotHeight = std::max(0.0F, height - (Tokens::sizeControlL + Tokens::spaceP8) * s);
-      auto slot = ui::column({.align = FlexAlign::Stretch, .width = m_slotWidth, .height = m_slotHeight});
+      auto slot = slideSlot(m_slotWidth, m_slotHeight);
       m_slot = slot.get();
       slot->addChild(buildColumn(m_slotWidth, m_slotHeight));
       column->addChild(std::move(slot));
@@ -198,7 +259,7 @@ namespace term {
     // Called from a control in the column: rebuild after its callback returns, not under it.
     DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
       if (!alive.expired()) {
-        refill();
+        refill(m_pane == Pane::Keyboard ? Transition::Forward : Transition::Back);
       }
     });
   }
@@ -207,26 +268,106 @@ namespace term {
     m_query = std::move(query);
     m_pane = Pane::Main;
     m_scroll = {};
-    refill();
+    refill(Transition::Fade);
   }
 
-  void PrefsWindow::refill() {
+  void PrefsWindow::refill(Transition transition) {
     if (m_slot == nullptr) {
       return;
     }
-    m_window.updateInPlace([this](Renderer&) {
+    m_window.updateInPlace([this, transition](Renderer&) {
+      const bool reduced = MotionService::instance().reduced();
+      const bool themeChanged = m_store.settings().theme != m_previewTheme;
+      m_previewTheme = m_store.settings().theme;
+      // Takes every child out of the slot but the current one when it is to animate out.
       std::vector<std::unique_ptr<Node>> removed;
-      for (Flex* slot : {m_slot, m_previewSlot}) {
+      const auto clear = [&](SlideSlot* slot, bool keepLast) {
+        std::unique_ptr<Node> kept;
         while (!slot->children().empty()) {
-          removed.push_back(slot->removeChild(slot->children().back().get()));
+          Node* child = slot->children().back().get();
+          slot->forget(child);
+          auto node = slot->removeChild(child);
+          if (keepLast && !kept && node->participatesInLayout()) {
+            kept = std::move(node);
+          } else {
+            removed.push_back(std::move(node));
+          }
         }
-      }
+        return kept;
+      };
+      auto oldPreview = clear(m_previewSlot, themeChanged);
+      auto oldColumn = clear(m_slot, transition == Transition::Forward || transition == Transition::Back);
       m_window.input().forgetDetached(); // while the removed areas still live
       removed.clear();
+
+      // Removes an outgoing node when its spring ends; the node's end cancels the spring first.
+      const auto retire = [this](SlideSlot* slot, Node* node) {
+        return [this, slot, node] {
+          slot->forget(node);
+          auto gone = slot->removeChild(node);
+          m_window.input().forgetDetached();
+          m_window.invalidate();
+        };
+      };
+      AnimationManager& animations = m_window.animations();
+
       m_previewSlot->addChild(preview(m_window.uiScale(), m_previewWidth, m_previewHeight));
       m_previewSlot->markLayoutDirty();
-      m_slot->addChild(buildColumn(m_slotWidth, m_slotHeight));
+      if (oldPreview) {
+        // P14-style crossfade: the old theme's preview fades out over the new one.
+        Node* old = oldPreview.get();
+        old->setParticipatesInLayout(false);
+        m_previewSlot->addChild(std::move(oldPreview));
+        animations.drive(0, 1.0F, 0.0F, Style::spring(Tokens::springFade), [old](float v) { old->setOpacity(v); },
+                         retire(m_previewSlot, old), old);
+      }
+
+      auto fresh = buildColumn(m_slotWidth, m_slotHeight);
+      Node* now = fresh.get();
+      m_slot->addChild(std::move(fresh));
       m_slot->markLayoutDirty();
+      if (transition == Transition::Fade || (oldColumn && reduced)) {
+        // P13 content fade (and the reduced-motion form of a page change): the new content rises from 35 %.
+        oldColumn.reset();
+        m_window.input().forgetDetached();
+        now->setOpacity(0.35F);
+        animations.drive(0, 0.35F, 1.0F, Style::spring(Tokens::springFade), [now](float v) { now->setOpacity(v); }, {}, now);
+      } else if (oldColumn) {
+        // P12 page slide: the deeper page comes in from the trailing edge with a 32 gap; the shallower page moves 30 %
+        // and dims 10 %. Back reverses it, with the outgoing deeper page on top.
+        const bool forward = transition == Transition::Forward;
+        const float travel = m_slotWidth + Tokens::spaceP32 * m_window.uiScale();
+        const float parallax = m_slotWidth * 0.3F;
+        Node* old = oldColumn.get();
+        old->setParticipatesInLayout(false);
+        if (forward) {
+          m_slot->insertChildAt(0, std::move(oldColumn));
+        } else {
+          m_slot->addChild(std::move(oldColumn));
+        }
+        SlideSlot* slot = m_slot;
+        const auto step = [slot, now, old, forward, travel, parallax](float t) {
+          const float deep = forward ? 1.0F - t : t;    // the Keyboard page's way in: 0 = in place, 1 = off
+          const float shallow = forward ? t : 1.0F - t; // the main page's way out: 0 = in place, 1 = 30 % back
+          Node* keyboard = forward ? now : old;
+          Node* main = forward ? old : now;
+          slot->setSlide(keyboard, travel * deep, 0.0F);
+          slot->setSlide(main, -parallax * shallow, 0.0F);
+          main->setOpacity(1.0F - 0.1F * shallow);
+        };
+        step(0.0F);
+        animations.drive(0, 0.0F, 1.0F, Style::spring(Tokens::springPage),
+                         [this, step](float t) {
+                           step(t);
+                           m_window.invalidate();
+                         },
+                         [slot, old, now, retire] {
+                           slot->forget(now);
+                           now->setOpacity(1.0F);
+                           retire(slot, old)();
+                         },
+                         old);
+      }
     });
   }
 
@@ -475,6 +616,8 @@ namespace term {
                                   .viewportPaddingV = Tokens::spaceP8 * s,
                                   .width = width,
                                   .height = height});
+    // Opaque, so the page under it does not show through during a page slide.
+    scroll->setFill(colorSpecFromRole(ColorRole::SolidRegular));
     Flex* content = scroll->content();
     content->setGap(Tokens::spaceP8 * s);
     // A section heading: caption 600 label_2 on the card's text inset, 16 more above it than the card gap.
@@ -737,10 +880,11 @@ namespace term {
   }
 
   std::unique_ptr<Node> PrefsWindow::tile(std::unique_ptr<Flex> swatch, std::string_view name, bool on, float s,
-                                          float tileW, float tileH,
+                                          float tileW, float tileH, bool ownRing,
                                           std::function<void(const InputArea::PointerData&)> pick) {
-    swatch->setBorder(colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Separator),
-                      (on ? Style::focusRingWidth : Style::borderWidth) * s);
+    const bool ring = on && ownRing;
+    swatch->setBorder(colorSpecFromRole(ring ? ColorRole::Label1 : ColorRole::Separator),
+                      (ring ? Style::focusRingWidth : Style::borderWidth) * s);
     auto column = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .width = tileW});
     column->addChild(checked(std::move(swatch), on, s));
     column->addChild(ui::label({.text = std::string(name),
@@ -790,7 +934,7 @@ namespace term {
                                 .width = tileW,
                                 .height = tileH},
                                std::move(window));
-      row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH,
+      row->addChild(tile(std::move(swatch), name, on, s, tileW, tileH, true,
                          [this, material](const InputArea::PointerData&) {
                            change([material](Settings& x) { x.material = material; });
                          }));
@@ -839,7 +983,7 @@ namespace term {
                                     .height = Tokens::spaceP8 * s}));
       }
       swatch->addChild(std::move(range));
-      row->addChild(tile(std::move(swatch), choice.name, choice.id == current, s, tileW, tileH,
+      row->addChild(tile(std::move(swatch), choice.name, choice.id == current, s, tileW, tileH, false,
                          [this, id = choice.id](const InputArea::PointerData&) {
                            change([id](Settings& x) { x.theme = id; });
                          }));
@@ -857,7 +1001,7 @@ namespace term {
                           ui::glyph({.glyph = std::string("plus"),
                                      .glyphSize = Tokens::sizeSymbolInline * s,
                                      .color = colorSpecFromRole(ColorRole::Label2)}));
-    row->addChild(tile(std::move(add), "Add theme", false, s, tileW, tileH, [this](const InputArea::PointerData& at) {
+    row->addChild(tile(std::move(add), "Add theme", false, s, tileW, tileH, false, [this](const InputArea::PointerData& at) {
       enum : std::int32_t { kCreate = 1, kImport, kFolder };
       m_window.openContextMenu({{.id = kCreate, .label = "Create with Claude", .glyph = "robot"},
                                 {.id = kImport, .label = "Import…", .glyph = "file-import"},
@@ -872,7 +1016,43 @@ namespace term {
                                });
     }));
     grid->addChild(std::move(row));
-    return grid;
+
+    // The selection ring is one node over the grid, so a new pick moves it from the old tile (P1 lens travel).
+    const auto at = std::ranges::find(choices, current, &ThemeChoice::id);
+    if (at == choices.end()) {
+      m_ringAt.reset();
+      return grid;
+    }
+    const auto index = static_cast<std::size_t>(at - choices.begin());
+    const std::size_t rows = (choices.size() + kPerRow) / kPerRow; // the Add theme tile included
+    const float cellH = tileH + Tokens::spaceP8 * s + Tokens::typeFootnote.line * s;
+    const float rowGap = Tokens::spaceP12 * s;
+    const std::pair to{static_cast<float>(index % kPerRow) * (tileW + gap), static_cast<float>(index / kPerRow) * (cellH + rowGap)};
+    auto layers = slideSlot(width, static_cast<float>(rows) * cellH + static_cast<float>(rows - 1) * rowGap);
+    layers->setClipChildren(false);
+    layers->addChild(std::move(grid));
+    auto ring = ui::column({.radius = Style::scaledRadiusSm(s),
+                            .border = colorSpecFromRole(ColorRole::Label1),
+                            .borderWidth = Style::focusRingWidth * s,
+                            .width = tileW,
+                            .height = tileH});
+    ring->setParticipatesInLayout(false);
+    Node* ringNode = layers->addChild(std::move(ring));
+    SlideSlot* slot = layers.get();
+    const std::pair from = m_ringAt.value_or(to);
+    m_ringAt = to;
+    slot->setSlide(ringNode, from.first, from.second);
+    if (from != to && !MotionService::instance().reduced()) {
+      m_window.animations().drive(0, 0.0F, 1.0F, Style::spring(Tokens::springSnap),
+                                  [this, slot, ringNode, from, to](float t) {
+                                    slot->setSlide(ringNode, std::lerp(from.first, to.first, t), std::lerp(from.second, to.second, t));
+                                    m_window.invalidate();
+                                  },
+                                  {}, ringNode);
+    } else {
+      slot->setSlide(ringNode, to.first, to.second);
+    }
+    return layers;
   }
 
 } // namespace term

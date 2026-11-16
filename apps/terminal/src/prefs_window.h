@@ -20,6 +20,8 @@ class Renderer;
 
 namespace term {
 
+  class SlideSlot;
+
   // The Preferences window: a live preview of the current settings fills the window; every setting sits in one
   // searchable column beside it, with the shortcut list as its one sub-page. Every control writes the preferences
   // file at once; the file's changes (also hand edits) rebuild the preview and the column.
@@ -40,6 +42,8 @@ namespace term {
 
   private:
     enum class Pane : std::uint8_t { Main, Keyboard };
+    // How the column's new content replaces the old (rulebook P12 page slide, P13 content fade).
+    enum class Transition : std::uint8_t { None, Fade, Forward, Back };
     struct Row {
       std::string label;
       std::string detail; // a second line under the label; empty for none
@@ -63,13 +67,13 @@ namespace term {
     [[nodiscard]] static std::unique_ptr<Node> checked(std::unique_ptr<Node> swatch, bool on, float scale);
     // A clickable choice tile: the swatch (tileW x tileH, ringed and checked when on) over its name.
     [[nodiscard]] static std::unique_ptr<Node> tile(std::unique_ptr<Flex> swatch, std::string_view name, bool on, float scale,
-                                                    float tileW, float tileH,
+                                                    float tileW, float tileH, bool ownRing,
                                                     std::function<void(const InputArea::PointerData&)> pick);
     [[nodiscard]] std::unique_ptr<Flex> card(const Group& group, float scale, float width) const;
     void change(const std::function<void(Settings&)>& edit);
     void showPane(Pane pane);
     void setQuery(std::string query);
-    void refill();
+    void refill(Transition transition = Transition::None);
 
     AppWindow& m_window;
     SettingsStore& m_store;
@@ -84,8 +88,10 @@ namespace term {
     Input* m_search = nullptr;
     ScrollViewState m_scroll;
     // refill() swaps the content of both slots; the search field above the column keeps its focus.
-    Flex* m_previewSlot = nullptr;
-    Flex* m_slot = nullptr;
+    SlideSlot* m_previewSlot = nullptr;
+    SlideSlot* m_slot = nullptr;
+    std::string m_previewTheme; // the theme the preview shows: a change crossfades the preview
+    std::optional<std::pair<float, float>> m_ringAt; // the theme selection ring's last place in the tile grid
     float m_previewWidth = 0.0F;
     float m_previewHeight = 0.0F;
     float m_slotWidth = 0.0F;
