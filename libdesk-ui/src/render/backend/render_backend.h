@@ -185,6 +185,8 @@ public:
   virtual void drawImage(const RenderImageDraw& draw) = 0;
   virtual void drawGlyph(const RenderGlyphDraw& draw) = 0;
   virtual void drawGlyphRun(const RenderGlyphRun& run) = 0;
+  // Draws queued batches now: before a texture they read changes outside a draw call.
+  virtual void flushBatches() = 0;
   virtual void drawSpinner(
       float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style,
       const Mat3& transform

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <span>
+#include <vector>
 
 #include "render/core/mat3.h"
 #include "render/core/shader_program.h"
@@ -40,11 +41,15 @@ public:
       float u1, float v1, float opacity, const Color& tint, const Mat3& transform = Mat3::identity()
   ) const;
 
-  // Many alpha-tint quads in one draw: positions (surface pixels) and texcoords hold x, y per vertex, 6 per quad.
-  void drawTintedRun(
-      TextureId texture, float surfaceWidth, float surfaceHeight, std::span<const float> positions,
+  static constexpr std::size_t kBatchFloatsPerVertex = 8; // NDC x, y; u, v; premultiplied r, g, b, a
+  void ensureBatchInitialized();
+  // Appends alpha-tint quads (positions in surface pixels, x, y per vertex, 6 per quad) for drawTintedBatch().
+  static void appendTintedRun(
+      std::vector<float>& out, float surfaceWidth, float surfaceHeight, std::span<const float> positions,
       std::span<const float> texcoords, float opacity, const Color& tint
-  ) const;
+  );
+  // Draws appended quads of many labels from one texture in one call, with the current GL state.
+  void drawTintedBatch(TextureId texture, const std::vector<float>& vertices) const;
 
 private:
   void bindCommon(
@@ -62,4 +67,9 @@ private:
   GLint m_transformLocation = -1;
   GLint m_tintLocation = -1;
   GLint m_tintModeLocation = -1;
+  ShaderProgram m_batchProgram;
+  GLint m_batchPositionLocation = -1;
+  GLint m_batchTexCoordLocation = -1;
+  GLint m_batchColorLocation = -1;
+  GLint m_batchSamplerLocation = -1;
 };

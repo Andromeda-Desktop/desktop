@@ -332,6 +332,9 @@ void CairoTextRenderer::clearCaches() {
   m_fontMetricsCache.clear();
   dropShaped(m_shaped);
   dropShaped(m_shapedOld);
+  if (m_backend != nullptr) {
+    m_backend->flushBatches();
+  }
   m_atlas.clear(m_textureManager);
 }
 
@@ -346,6 +349,9 @@ void CairoTextRenderer::invalidateGlyphTextures() {
   wipeAndClear(m_cache);
   m_lru.clear();
   m_cacheBytes = 0;
+  if (m_backend != nullptr) {
+    m_backend->flushBatches();
+  }
   m_atlas.clear(m_textureManager);
 }
 
@@ -1092,6 +1098,8 @@ void CairoTextRenderer::touch(CacheMap::iterator it) {
 }
 
 bool CairoTextRenderer::buildAtlasQuads(PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry) {
+  // Queued runs read the atlas page, which the walk below can add to or reset.
+  m_backend->flushBatches();
   constexpr float kPage = TextGlyphAtlas::kSize;
   // A full page clears the atlas mid-walk and voids the quads made before it, so walk again once on the new page.
   for (int attempt = 0; attempt < 2; ++attempt) {

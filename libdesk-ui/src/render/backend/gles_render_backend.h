@@ -78,6 +78,7 @@ public:
   void drawImage(const RenderImageDraw& draw) override;
   void drawGlyph(const RenderGlyphDraw& draw) override;
   void drawGlyphRun(const RenderGlyphRun& run) override;
+  void flushBatches() override;
   void drawSpinner(
       float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style,
       const Mat3& transform
@@ -123,6 +124,7 @@ public:
 private:
   // Draws the queued batchable rects; every call that draws, changes GL state or ends the frame runs it first.
   void flushRectBatch();
+  void flushGlyphBatch();
   [[nodiscard]] BatchStats takeBatchStats() override { return std::exchange(m_batchStats, {}); }
   void drawFullscreenQuad(const ShaderProgram& program);
   void ensureFullscreenTextureProgram();
@@ -151,6 +153,10 @@ private:
   RectProgram m_rectProgram;
   // Vertices of queued batchable rects (RectProgram::appendBatched).
   std::vector<float> m_rectBatch;
+  // Vertices of queued atlas glyph runs (GlyphProgram::appendTintedRun), all from m_glyphBatchTexture. At most one of
+  // the two batches holds vertices, so draw order stays as issued.
+  std::vector<float> m_glyphBatch;
+  TextureId m_glyphBatchTexture;
   BatchStats m_batchStats;
   // ANDROMEDA_PROFILE only: GPU time per frame split into terminal grid phases and the rest.
   std::unique_ptr<GpuSplitTimer> m_gpuTimer;

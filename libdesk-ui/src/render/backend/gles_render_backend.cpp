@@ -388,7 +388,7 @@ void GlesRenderBackend::initialize(GlSharedContext& shared) {
 }
 
 bool GlesRenderBackend::makeCurrentNoSurface() {
-  flushRectBatch();
+  flushBatches();
   if (m_display == EGL_NO_DISPLAY || m_context == EGL_NO_CONTEXT) {
     return false;
   }
@@ -410,7 +410,7 @@ bool GlesRenderBackend::makeCurrentNoSurface() {
 }
 
 bool GlesRenderBackend::makeCurrent(RenderTarget& target) {
-  flushRectBatch();
+  flushBatches();
   if (auto* offscreen = glesOffscreenTarget(target); offscreen != nullptr) {
     return offscreen->isReady() && makeCurrentNoSurface() && offscreen->bind();
   }
@@ -566,7 +566,7 @@ void GlesRenderBackend::gpuMark(std::uint8_t kind) {
 
 bool GlesRenderBackend::beginFrame(RenderTarget& target) {
   g_frameBegin = std::chrono::steady_clock::now();
-  flushRectBatch();
+  flushBatches();
   if (!makeCurrent(target)) {
     return false;
   }
@@ -607,7 +607,7 @@ int GlesRenderBackend::bufferAge(RenderTarget& target) {
 }
 
 void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRect> damage) {
-  flushRectBatch();
+  flushBatches();
   if (auto* offscreen = glesOffscreenTarget(target); offscreen != nullptr) {
     offscreen->markFrame();
     // A window surface's makeCurrent keeps the binding when its EGL surface is already current.
@@ -664,7 +664,7 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
 RenderGraphicsResetStatus GlesRenderBackend::graphicsResetStatus() { return currentGlContextResetStatus(); }
 
 void GlesRenderBackend::invalidateGpuResources() {
-  flushRectBatch();
+  flushBatches();
   if (m_display == EGL_NO_DISPLAY || m_context == EGL_NO_CONTEXT) {
     return;
   }
@@ -678,6 +678,7 @@ void GlesRenderBackend::invalidateGpuResources() {
 
 void GlesRenderBackend::abandonAfterGraphicsReset() noexcept {
   m_rectBatch.clear();
+  m_glyphBatch.clear();
   // Every object in the dead share group is already invalid, and by the time the second
   // backend gets here the first one has left no context current. Forget the GL names
   // instead of issuing deletes that would run with no context bound.
@@ -706,7 +707,7 @@ std::unique_ptr<RenderSurfaceTarget> GlesRenderBackend::createOffscreenTarget() 
 }
 
 bool GlesRenderBackend::readPixels(RenderTarget& target, std::span<std::uint8_t> rgba) {
-  flushRectBatch();
+  flushBatches();
   auto* offscreen = glesOffscreenTarget(target);
   const std::size_t width = target.bufferWidth();
   const std::size_t height = target.bufferHeight();
@@ -730,7 +731,7 @@ bool GlesRenderBackend::readPixels(RenderTarget& target, std::span<std::uint8_t>
 }
 
 std::unique_ptr<RenderFramebuffer> GlesRenderBackend::createFramebuffer(std::uint32_t width, std::uint32_t height) {
-  flushRectBatch();
+  flushBatches();
   auto framebuffer = std::make_unique<GlesFramebuffer>();
   if (!framebuffer->create(m_textureManager, width, height)) {
     return nullptr;
@@ -739,7 +740,7 @@ std::unique_ptr<RenderFramebuffer> GlesRenderBackend::createFramebuffer(std::uin
 }
 
 void GlesRenderBackend::bindFramebuffer(const RenderFramebuffer& framebuffer) {
-  flushRectBatch();
+  flushBatches();
   const auto* glesFramebuffer = dynamic_cast<const GlesFramebuffer*>(&framebuffer);
   if (glesFramebuffer == nullptr || !glesFramebuffer->valid()) {
     throw std::runtime_error("GLES backend received an incompatible framebuffer");
@@ -748,12 +749,12 @@ void GlesRenderBackend::bindFramebuffer(const RenderFramebuffer& framebuffer) {
 }
 
 void GlesRenderBackend::bindDefaultFramebuffer() {
-  flushRectBatch();
+  flushBatches();
   GlesFramebuffer::bindDefault();
 }
 
 void GlesRenderBackend::setViewport(std::uint32_t width, std::uint32_t height) {
-  flushRectBatch();
+  flushBatches();
   if (m_viewportValid && m_viewportWidth == width && m_viewportHeight == height) {
     return;
   }
@@ -764,7 +765,7 @@ void GlesRenderBackend::setViewport(std::uint32_t width, std::uint32_t height) {
 }
 
 void GlesRenderBackend::clear(Color color) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kClear);
   glClearColor(color.r, color.g, color.b, color.a);
   glClear(GL_COLOR_BUFFER_BIT);
@@ -774,7 +775,7 @@ void GlesRenderBackend::setBlendMode(RenderBlendMode mode) {
   if (m_blendMode == mode) {
     return;
   }
-  flushRectBatch();
+  flushBatches();
   switch (mode) {
   case RenderBlendMode::Disabled:
     glDisable(GL_BLEND);
@@ -822,7 +823,7 @@ void GlesRenderBackend::drawFullscreenQuad(const ShaderProgram& program) {
 
 void GlesRenderBackend::setScissor(RenderScissor scissor) {
   if (!m_scissorEnabled) {
-    flushRectBatch();
+    flushBatches();
     glEnable(GL_SCISSOR_TEST);
     m_scissorEnabled = true;
   }
@@ -831,7 +832,7 @@ void GlesRenderBackend::setScissor(RenderScissor scissor) {
       || m_scissor.y != scissor.y
       || m_scissor.width != scissor.width
       || m_scissor.height != scissor.height) {
-    flushRectBatch();
+    flushBatches();
     glScissor(
         static_cast<GLint>(scissor.x), static_cast<GLint>(scissor.y), static_cast<GLsizei>(scissor.width),
         static_cast<GLsizei>(scissor.height)
@@ -845,7 +846,7 @@ void GlesRenderBackend::disableScissor() {
   if (!m_scissorEnabled) {
     return;
   }
-  flushRectBatch();
+  flushBatches();
   glDisable(GL_SCISSOR_TEST);
   m_scissorEnabled = false;
 }
@@ -855,7 +856,7 @@ void GlesRenderBackend::writeClipStencil(
     RenderScissor area, unsigned op, int ref
 ) {
   setScissor(area); // flushes rects queued under the previous clip state
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kStencil);
   if (ref == 0 && op == GL_INCR) {
     // An outermost clip starts from a clear stencil; it holds garbage after a swap. Draws stay inside area.
@@ -871,7 +872,7 @@ void GlesRenderBackend::writeClipStencil(
   shape.radius = radii;
   // The rect shader discards uncovered fragments, so only the rounded shape writes the stencil.
   drawRect(surfaceWidth, surfaceHeight, width, height, shape, transform);
-  flushRectBatch();
+  flushBatches();
   glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
   glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
 }
@@ -901,12 +902,13 @@ void GlesRenderBackend::drawRect(
     const Mat3& transform
 ) {
   if (RectProgram::batchable(style)) {
+    flushGlyphBatch();
     m_rectProgram.ensureBatchInitialized();
     RectProgram::appendBatched(m_rectBatch, surfaceWidth, surfaceHeight, width, height, style, transform);
     ++m_batchStats.rects;
     return;
   }
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kRects);
   m_rectProgram.ensureInitialized();
   m_rectProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
@@ -923,7 +925,7 @@ void GlesRenderBackend::flushRectBatch() {
 }
 
 void GlesRenderBackend::drawImage(const RenderImageDraw& draw) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kImage);
   m_imageProgram.ensureInitialized();
   m_imageProgram.draw(
@@ -934,7 +936,7 @@ void GlesRenderBackend::drawImage(const RenderImageDraw& draw) {
 }
 
 void GlesRenderBackend::drawGlyph(const RenderGlyphDraw& draw) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kGlyph);
   if (draw.texture == 0) {
     return;
@@ -957,20 +959,38 @@ void GlesRenderBackend::drawGlyph(const RenderGlyphDraw& draw) {
 
 void GlesRenderBackend::drawGlyphRun(const RenderGlyphRun& run) {
   flushRectBatch();
-  gpuMark(GpuSplitTimer::kGlyph);
   if (run.texture == 0 || run.positions.empty()) {
     return;
   }
-  m_glyphProgram.ensureInitialized();
-  m_glyphProgram.drawTintedRun(
-      run.texture, run.surfaceWidth, run.surfaceHeight, run.positions, run.texcoords, run.opacity, run.tint
+  if (run.texture != m_glyphBatchTexture) {
+    flushGlyphBatch();
+    m_glyphBatchTexture = run.texture;
+  }
+  m_glyphProgram.ensureBatchInitialized();
+  GlyphProgram::appendTintedRun(
+      m_glyphBatch, run.surfaceWidth, run.surfaceHeight, run.positions, run.texcoords, run.opacity, run.tint
   );
+}
+
+void GlesRenderBackend::flushGlyphBatch() {
+  if (m_glyphBatch.empty()) {
+    return;
+  }
+  gpuMark(GpuSplitTimer::kGlyph);
+  m_glyphProgram.drawTintedBatch(m_glyphBatchTexture, m_glyphBatch);
+  m_glyphBatch.clear();
+  ++m_batchStats.draws;
+}
+
+void GlesRenderBackend::flushBatches() {
+  flushRectBatch();
+  flushGlyphBatch();
 }
 
 void GlesRenderBackend::drawSpinner(
     float surfaceWidth, float surfaceHeight, float width, float height, const SpinnerStyle& style, const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kSpinner);
   m_spinnerProgram.ensureInitialized();
   m_spinnerProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
@@ -980,7 +1000,7 @@ void GlesRenderBackend::drawCountdownRing(
     float surfaceWidth, float surfaceHeight, float width, float height, const CountdownRingStyle& style,
     const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_countdownRingProgram.ensureInitialized();
   m_countdownRingProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
@@ -990,7 +1010,7 @@ void GlesRenderBackend::drawScreenCorner(
     float surfaceWidth, float surfaceHeight, float width, float height, const ScreenCornerStyle& style,
     const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_screenCornerProgram.ensureInitialized();
   m_screenCornerProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
@@ -1000,7 +1020,7 @@ void GlesRenderBackend::drawAudioSpectrum(
     float surfaceWidth, float surfaceHeight, float pixelScaleX, float pixelScaleY, float width, float height,
     const AudioSpectrumStyle& style, std::span<const float> values, const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_audioSpectrumProgram.ensureInitialized();
   m_audioSpectrumProgram.draw(
@@ -1012,7 +1032,7 @@ void GlesRenderBackend::drawFancyAudioVisualizer(
     TextureId audioTexture, int textureWidth, float surfaceWidth, float surfaceHeight, float width, float height,
     const FancyAudioVisualizerStyle& style, const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   (void)textureWidth;
   m_fancyAudioVisualizerProgram.ensureInitialized();
@@ -1022,7 +1042,7 @@ void GlesRenderBackend::drawFancyAudioVisualizer(
 void GlesRenderBackend::drawEffect(
     float surfaceWidth, float surfaceHeight, float width, float height, const EffectStyle& style, const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kEffect);
   m_effectProgram.ensureInitialized();
   m_effectProgram.draw(surfaceWidth, surfaceHeight, width, height, style, transform);
@@ -1032,48 +1052,48 @@ void GlesRenderBackend::drawGraph(
     TextureId dataTexture, int textureWidth, float surfaceWidth, float surfaceHeight, float width, float height,
     const GraphStyle& style, const Mat3& transform
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_graphProgram.ensureInitialized();
   m_graphProgram.draw(dataTexture, textureWidth, surfaceWidth, surfaceHeight, width, height, style, transform);
 }
 
 void GlesRenderBackend::drawShaderScene(const ShaderSceneDraw& scene) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kScene);
   m_shaderSceneProgram.draw(scene);
 }
 
 void GlesRenderBackend::drawTerminalGrid(const TerminalGridDraw& grid) {
-  flushRectBatch();
+  flushBatches();
   m_terminalGridProgram.ensureInitialized();
   gpuMark(GpuSplitTimer::gridKind(grid.phases));
   m_terminalGridProgram.draw(grid);
 }
 
 void GlesRenderBackend::drawWallpaper(const WallpaperDrawParams& params) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_wallpaperProgram.ensureInitialized(params.transition);
   m_wallpaperProgram.draw(params);
 }
 
 void GlesRenderBackend::drawWallpaperMask(const WallpaperMaskDrawParams& params) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_wallpaperMaskProgram.ensureInitialized();
   m_wallpaperMaskProgram.draw(params);
 }
 
 void GlesRenderBackend::drawLockscreenTransition(const LockscreenTransitionDrawParams& params) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kOtherDraw);
   m_lockscreenTransitionProgram.ensureInitialized();
   m_lockscreenTransitionProgram.draw(params);
 }
 
 void GlesRenderBackend::drawFullscreenTexture(TextureId texture, bool flipY) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kFullscreen);
   if (texture == 0) {
     return;
@@ -1092,7 +1112,7 @@ void GlesRenderBackend::drawFullscreenTexture(TextureId texture, bool flipY) {
 }
 
 void GlesRenderBackend::drawFullscreenTint(Color color) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kFullscreen);
   ensureFullscreenTintProgram();
   glUseProgram(m_fullscreenTintProgram.id());
@@ -1104,7 +1124,7 @@ void GlesRenderBackend::drawFullscreenTint(Color color) {
 void GlesRenderBackend::drawFramebufferBlur(
     TextureId sourceTexture, std::uint32_t width, std::uint32_t height, float directionX, float directionY, float radius
 ) {
-  flushRectBatch();
+  flushBatches();
   gpuMark(GpuSplitTimer::kBlur);
   if (sourceTexture == 0) {
     return;
