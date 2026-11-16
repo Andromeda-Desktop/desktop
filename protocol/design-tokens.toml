@@ -107,7 +107,7 @@ tracking = 0.0
 [type.mono]
 size = 13.0
 line = 18.0
-weight = 400
+weight = 450
 tracking = 0.0
 [type.hero]
 size = 80.0

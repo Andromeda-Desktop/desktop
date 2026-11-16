@@ -1,6 +1,8 @@
 #include "render/text/terminal_glyph_atlas.h"
 #include "render/text/terminal_sprites.h"
 
+#include "design_tokens.h"
+
 #include <fontconfig/fontconfig.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -171,7 +173,9 @@ TerminalGlyphAtlas::FontFace* TerminalGlyphAtlas::faceFor(Face face, char32_t ne
   if (needs == 0 && m_primary[static_cast<int>(face)] != nullptr) {
     return m_primary[static_cast<int>(face)];
   }
-  const int weight = bold ? FC_WEIGHT_SEMIBOLD : face == Face::Medium ? FC_WEIGHT_MEDIUM : FC_WEIGHT_REGULAR;
+  // Medium and bold sit 100 and 200 above the type.mono weight (CSS scale), so a theme moves all three together.
+  const int css = Tokens::typeMono.weight + (bold ? 200 : face == Face::Medium ? 100 : 0);
+  const int weight = FcWeightFromOpenType(css);
   const auto match = matchFont(m_family, weight, italic, needs, color);
   if (!match) {
     return nullptr;

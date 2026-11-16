@@ -14,7 +14,7 @@
 // their own and are scaled to fit two cells. Glyphs missing from the font come from a fontconfig fallback face.
 class TerminalGlyphAtlas {
 public:
-  enum class Face : std::uint8_t { Regular, Bold, Italic, BoldItalic, Medium }; // 400, 600, 400 italic, 600 italic, 500
+  enum class Face : std::uint8_t { Regular, Bold, Italic, BoldItalic, Medium }; // type.mono weight, +200, italic, +200 italic, +100
 
   // Device pixels. Bearings put the bitmap relative to the cell's left edge and baseline.
   struct Glyph {
