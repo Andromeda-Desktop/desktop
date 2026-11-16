@@ -24,6 +24,7 @@ class Image;
 class Label;
 class Box;
 class Flex;
+class Button;
 class Input;
 class Node;
 class Renderer;
@@ -85,6 +86,9 @@ namespace viewer {
     [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
     [[nodiscard]] std::string title() const { return m_path.filename().string(); }
     void setTitleChanged(std::function<void()> changed) { m_titleChanged = std::move(changed); }
+    // Rebuilds only this document's pages (zoom, fit, a new pane size); unset: the whole window rebuilds.
+    void setContentRebuild(std::function<void()> rebuild) { m_contentRebuild = std::move(rebuild); }
+    [[nodiscard]] float builtWidth() const { return m_areaWidth; }
     // Another tab shows: this one's scene nodes are about to go; its next build makes them again.
     void detach();
     // Sends queued render jobs while the window's budget has room.
@@ -193,6 +197,7 @@ namespace viewer {
     void updateSelect(float x, float y);
     void requestSelect();
     void rebuild();
+    void rebuildContent();
     [[nodiscard]] std::size_t currentPage() const;
     void onPagePress(std::size_t page, float x, float y, bool pressed, std::uint32_t time);
     void goToPage(std::size_t page);
@@ -312,6 +317,7 @@ namespace viewer {
     std::vector<Box*> m_thumbFrames;
     std::vector<Node*> m_markLayers;
     Input* m_pageInput = nullptr;
+    Button* m_zoomLabel = nullptr;
     Label* m_countLabel = nullptr;
     std::size_t m_shownPage = 0;
     float m_hOffset = 0.0F;
@@ -383,6 +389,7 @@ namespace viewer {
     };
     std::optional<StampFocus> m_stamp;
     std::function<void()> m_titleChanged;
+    std::function<void()> m_contentRebuild;
     std::string m_shownTitle;
     bool m_signing = false;
     std::vector<annot::Stroke> m_padStrokes;

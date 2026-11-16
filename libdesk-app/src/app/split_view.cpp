@@ -193,7 +193,7 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
     }
     card.captionArea->addChild(std::move(cap));
     box->addChild(std::move(area));
-    auto holder = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .flexGrow = 1.0F});
+    auto holder = ui::column({.out = &card.holder, .align = FlexAlign::Stretch, .clipChildren = true, .flexGrow = 1.0F});
     holder->addChild(m_callbacks.content(renderer, card.id, r.width, std::max(0.0F, r.height - caption)));
     box->addChild(std::move(holder));
     cell->addChild(std::move(box));
@@ -412,6 +412,23 @@ void SplitView::relayout(bool settle) {
       m_callbacks.settle(id, r.width, r.height);
     }
   }
+}
+
+bool SplitView::rebuildContent(std::uint64_t id) {
+  const auto it = std::ranges::find(m_cards, id, &Card::id);
+  if (it == m_cards.end()) {
+    return false;
+  }
+  const float caption = Tokens::componentWindowCaption * m_window.uiScale();
+  m_window.updateInPlace([this, &card = *it, caption](Renderer& renderer) {
+    while (!card.holder->children().empty()) {
+      (void)card.holder->removeChild(card.holder->children().back().get());
+    }
+    card.holder->addChild(
+        m_callbacks.content(renderer, card.id, card.rect.width, std::max(0.0F, card.rect.height - caption)));
+    card.cell->layout(renderer);
+  });
+  return true;
 }
 
 std::optional<SplitView::PaneRect> SplitView::rect(std::uint64_t id) const {

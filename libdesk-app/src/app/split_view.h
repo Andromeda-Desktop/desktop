@@ -81,6 +81,8 @@ public:
   void fitCaptions(Renderer& renderer);
   // The card nearest in direction (dx, dy) from the focused one.
   [[nodiscard]] std::optional<std::uint64_t> paneInDirection(float dx, float dy) const;
+  // `id`'s card builds its content again in place and lays it out; false when `id` has no card.
+  bool rebuildContent(std::uint64_t id);
   // The next fill fades a plate out where `id`'s card was.
   void noteClosing(std::uint64_t id);
 
@@ -99,6 +101,7 @@ private:
     Flex* cell = nullptr;
     InputArea* captionArea = nullptr;
     Flex* caption = nullptr; // the caption row inside captionArea
+    Flex* holder = nullptr;  // holds the content under the caption
     Box* stroke = nullptr; // the card's edge, over its content
     Box* ring = nullptr;   // the focus ring over the stroke
     std::uint32_t focusAnim = 0;

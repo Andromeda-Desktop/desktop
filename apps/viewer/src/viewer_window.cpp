@@ -201,7 +201,7 @@ namespace viewer {
     bool rebuilding = false;
     if (m_scroll != nullptr && m_model.fit() == DocumentModel::Fit::Page &&
         m_model.setViewportHeight(m_scroll->height() - 2.0F * kPagePadding * m_window.uiScale())) {
-      rebuild();
+      rebuildContent();
       rebuilding = true;
     }
     // The remembered page: its box is final once no rebuild for a new fit is pending.
@@ -381,6 +381,14 @@ namespace viewer {
   }
 
   void ViewerWindow::rebuild() { m_window.requestRebuild(); }
+
+  void ViewerWindow::rebuildContent() {
+    if (m_contentRebuild) {
+      m_contentRebuild();
+    } else {
+      rebuild();
+    }
+  }
 
   namespace {
     constexpr std::size_t kRememberedDocuments = 50;
@@ -1251,7 +1259,10 @@ namespace viewer {
       m_zoomAnchorY = m_scrollOffset + ay;
     }
     m_zoomFrom = animate ? 1.0F / f : 1.0F;
-    rebuild();
+    if (m_zoomLabel != nullptr) {
+      m_zoomLabel->setText(std::format("{}%", std::lround(after * 100.0F)));
+    }
+    rebuildContent();
   }
 
   void ViewerWindow::pinch(const InputArea::PinchData& data) {
@@ -1374,7 +1385,10 @@ namespace viewer {
     m_markLayers.assign(m_pages.size(), nullptr);
   }
 
-  void ViewerWindow::forgetCaption() { m_pageInput = nullptr; }
+  void ViewerWindow::forgetCaption() {
+    m_pageInput = nullptr;
+    m_zoomLabel = nullptr;
+  }
 
   void ViewerWindow::forgetSidebar() {
     m_searchInput = nullptr;
@@ -1479,7 +1493,7 @@ namespace viewer {
                                  .onClick = [this, run] { (this->*run)(); }}));
     };
     zoomButton("minus", "Zoom Out", &ViewerWindow::zoomOut);
-    zoom->addChild(ui::button({.text = std::format("{}%", std::lround(m_model.zoom() * 100.0F)),
+    zoom->addChild(ui::button({.out = &m_zoomLabel, .text = std::format("{}%", std::lround(m_model.zoom() * 100.0F)),
                                .variant = ButtonVariant::Ghost, .tooltip = std::string("Fit Width"),
                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = small,
                                .onClick = [this] { zoomFit(); }}));

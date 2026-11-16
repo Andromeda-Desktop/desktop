@@ -167,6 +167,7 @@ namespace viewer {
       m_window.setSidebarVisible(true);
     }
     const std::uint64_t id = m_nextId++;
+    tab->setContentRebuild([this, id] { rebuildPane(id); });
     m_docs.emplace(id, std::move(tab));
     m_set.apply(tab_event::Open{id});
     changed();
@@ -322,6 +323,14 @@ namespace viewer {
     }
   }
 
+  void ViewerTabs::rebuildPane(std::uint64_t id) {
+    if (m_split.rebuildContent(id)) {
+      m_docs.at(id)->onLayout();
+    } else {
+      m_window.requestRebuild();
+    }
+  }
+
   void ViewerTabs::focusPane(float dx, float dy) {
     if (const auto id = m_split.paneInDirection(dx, dy)) {
       select(*id);
@@ -376,7 +385,14 @@ namespace viewer {
               return std::pair{Tokens::componentViewerSplitMinWidth * s, Tokens::componentViewerSplitMinHeight * s};
             },
         // A pane's fit width follows its new size.
-        .settle = [this](std::uint64_t, float, float) { m_window.requestRebuild(); },
+        .settle =
+            [this](std::uint64_t id, float width, float) {
+              if (m_docs.at(id)->builtWidth() != width) {
+                rebuildPane(id);
+              } else {
+                m_docs.at(id)->onLayout();
+              }
+            },
         .ring = [] { return true; },
     };
   }

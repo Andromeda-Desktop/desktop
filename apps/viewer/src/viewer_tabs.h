@@ -64,6 +64,8 @@ namespace viewer {
     // `id` joins the focused document's split, or the half of a pane it was dropped on.
     void join(std::uint64_t id, const std::optional<ui::SplitDrop>& drop);
     void leave(std::uint64_t id);
+    // One pane's pages rebuild in place; the whole window when `id` shows alone.
+    void rebuildPane(std::uint64_t id);
     // A Documents row dragged to the scene point: the drop preview, and on drop the join.
     void rowDrag(std::uint64_t id, bool drop, float sceneX, float sceneY);
     void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
