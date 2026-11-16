@@ -579,8 +579,26 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
   return box;
 }
 
+void GetInfoSheet::apply(AdminChange change) {
+  if (m_adminSink) {
+    m_adminSink(change);
+    return;
+  }
+  auto done = [this, change](const std::string&, const std::string& error) {
+    if (!error.empty()) {
+      failed(error, change);
+    }
+  };
+  if (const auto* mode = std::get_if<ModeChange>(&change.what)) {
+    m_ops->setPermissions(change.paths, mode->mode, mode->mask, change.recursive, std::move(done));
+  } else {
+    const auto& owner = std::get<OwnerChange>(change.what);
+    m_ops->setOwner(change.paths, owner.uid, owner.gid, change.recursive, std::move(done));
+  }
+}
+
 void GetInfoSheet::setOwner(OwnerChange change) {
-  if (m_ops == nullptr) {
+  if (m_ops == nullptr && !m_adminSink) {
     return;
   }
   std::vector<fs::path> paths;
@@ -589,19 +607,13 @@ void GetInfoSheet::setOwner(OwnerChange change) {
     item.uid = change.uid.value_or(item.uid);
     item.gid = change.gid.value_or(item.gid);
   }
-  m_ops->setOwner(paths, change.uid, change.gid, m_recursive,
-                  [this, admin = AdminChange{.paths = paths, .what = change, .recursive = m_recursive}](
-                      const std::string&, const std::string& error) {
-                    if (!error.empty()) {
-                      failed(error, admin);
-                    }
-                  });
+  apply({.paths = std::move(paths), .what = change, .recursive = m_recursive});
   later(m_rebuild);
 }
 
 void GetInfoSheet::setAccess(int cls, int access) {
   const auto [mode, mask] = accessBits(static_cast<PermClass>(cls), static_cast<Access>(access));
-  if (m_ops == nullptr) {
+  if (m_ops == nullptr && !m_adminSink) {
     return;
   }
   std::vector<fs::path> paths;
@@ -609,32 +621,19 @@ void GetInfoSheet::setAccess(int cls, int access) {
     paths.push_back(item.path);
     item.mode = (item.mode & ~mask) | (mode & mask);
   }
-  m_ops->setPermissions(paths, mode, mask, m_recursive,
-                        [this, change = AdminChange{.paths = paths, .what = ModeChange{.mode = mode, .mask = mask},
-                                                    .recursive = m_recursive}](
-                            const std::string&, const std::string& error) {
-                          if (!error.empty()) {
-                            failed(error, change);
-                          }
-                        });
+  apply({.paths = std::move(paths), .what = ModeChange{.mode = mode, .mask = mask}, .recursive = m_recursive});
   later(m_rebuild);
 }
 
 void GetInfoSheet::setRun(bool allow) {
-  if (m_ops == nullptr) {
+  if (m_ops == nullptr && !m_adminSink) {
     return;
   }
   // Each file gets x where it reads: one job per distinct mode keeps the rule exact.
   for (Item& item : m_items) {
     const auto [mode, mask] = runBits(item.mode, allow);
     item.mode = (item.mode & ~mask) | (mode & mask);
-    m_ops->setPermissions({item.path}, mode, mask, false,
-                          [this, change = AdminChange{.paths = {item.path}, .what = ModeChange{.mode = mode, .mask = mask}}](
-                              const std::string&, const std::string& error) {
-                            if (!error.empty()) {
-                              failed(error, change);
-                            }
-                          });
+    apply({.paths = {item.path}, .what = ModeChange{.mode = mode, .mask = mask}});
   }
   later(m_rebuild);
 }

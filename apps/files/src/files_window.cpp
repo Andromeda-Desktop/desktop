@@ -2827,6 +2827,17 @@ void FilesWindow::getInfo(std::vector<fs::path> paths) {
   m_info = std::make_unique<GetInfoSheet>(
       paths, m_app.fileOps(), [this] { m_window.dismissSheet(); }, [this] { m_window.requestRebuild(); },
       [this] { m_window.invalidate(); });
+  if (adminHere() != nullptr) {
+    // The sheet is modal, so this tab and its helper stay until the sheet closes.
+    m_info->setAdmin([this](const GetInfoSheet::AdminChange& change) {
+      if (const auto* mode = std::get_if<GetInfoSheet::ModeChange>(&change.what)) {
+        m_admin->chmod(change.paths, mode->mode, mode->mask, change.recursive);
+      } else {
+        const auto& owner = std::get<GetInfoSheet::OwnerChange>(change.what);
+        m_admin->chown(change.paths, owner.uid, owner.gid, change.recursive);
+      }
+    });
+  }
   m_info->setRestore([this](const fs::path& version, const fs::path& folder) {
     // After the click returns: dismissing the sheet destroys the button that called this.
     DeferredCall::callLater([this, version, folder, alive = std::weak_ptr<bool>(m_alive)] {

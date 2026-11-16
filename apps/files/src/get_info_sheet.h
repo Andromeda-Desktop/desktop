@@ -33,6 +33,23 @@ public:
   }
   void setOpen(std::function<void(const std::filesystem::path& version)> open) { m_open = std::move(open); }
 
+  // A permission or owner change: FileOps1 makes it, else (another user's items, a new owner) the root helper.
+  struct ModeChange {
+    std::uint32_t mode = 0;
+    std::uint32_t mask = 0;
+  };
+  struct OwnerChange {
+    std::optional<std::uint32_t> uid;
+    std::optional<std::uint32_t> gid;
+  };
+  struct AdminChange {
+    std::vector<std::filesystem::path> paths;
+    std::variant<ModeChange, OwnerChange> what;
+    bool recursive = false;
+  };
+  // Set in an administrator tab: every change goes here, not to FileOps1.
+  void setAdmin(std::function<void(const AdminChange&)> admin) { m_adminSink = std::move(admin); }
+
   // Previous Versions (FB-INFO): the file in btrfs snapshots (snapper layout <dir>/.snapshots/<n>/snapshot/<rel>,
   // looked up in each ancestor on the same device), newest first, only versions that differ from the file.
   struct Version {
@@ -75,21 +92,8 @@ private:
   [[nodiscard]] std::unique_ptr<Node> buildChecksums(float s);
   [[nodiscard]] std::unique_ptr<Node> buildVersions(float s);
   void later(std::function<void()> fn);
-  // A change the daemon could not make (items of another user, or a new owner): the root helper through pkexec.
-  struct ModeChange {
-    std::uint32_t mode = 0;
-    std::uint32_t mask = 0;
-  };
-  struct OwnerChange {
-    std::optional<std::uint32_t> uid;
-    std::optional<std::uint32_t> gid;
-  };
-  struct AdminChange {
-    std::vector<std::filesystem::path> paths;
-    std::variant<ModeChange, OwnerChange> what;
-    bool recursive = false;
-  };
   void setOwner(OwnerChange change);
+  void apply(AdminChange change);
   void failed(const std::string& error, AdminChange change);
   void changeAsAdmin();
 
@@ -103,6 +107,7 @@ private:
   std::optional<AdminChange> m_admin; // set: the error offers "Change as Administrator…"
   std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_restore;
   std::function<void(const std::filesystem::path&)> m_open;
+  std::function<void(const AdminChange&)> m_adminSink;
   std::vector<Version> m_versions;
   Sum m_sha;
   Sum m_md5;
