@@ -77,8 +77,10 @@ term_start() {
       return 1
     fi
     echo "$TID did not map; threads (name wchan state):" >&2
-    local t
-    for t in /proc/$TPID/task/*; do echo "  $(< "$t/comm") $(< "$t/wchan") $(awk '{print $3}' "$t/stat")" >&2; done
+    local t p
+    # TPID is the subshell that runs `run`; the terminal is its child.
+    p=$(pgrep -P "$TPID" || echo "$TPID")
+    for t in /proc/$p/task/*; do echo "  $(< "$t/comm") $(< "$t/wchan") $(awk '{print $3}' "$t/stat")" >&2; done
     return 1
   fi
   # The launcher can exec or fork; take the newest process of that binary under our runtime.

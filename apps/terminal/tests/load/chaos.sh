@@ -74,12 +74,13 @@ for c in $CASES; do
       key -M ctrl c -m ctrl; sleep 0.5; term_type 'stty sane' ;;
     holder_kill)
       [[ ${HOLDER:-0} == 1 ]] || { echo "skip holder_kill (HOLDER=0)"; continue; }
-      term_do "echo \$\$ > $OUT/res/hk-shell" "$OUT/res/hk-shell" 10
+      gate "$c: shell answers" term_do "echo \$\$ > $OUT/res/hk-shell" "$OUT/res/hk-shell" 10
       term_type "yes"
       sleep 2
       kill -KILL "$HOLDER_PID"
+      HOLDER_PID=
       # The holder's end hangs up its shells: each held session ends, the last window closes, the app exits.
-      ended() { for _ in $(seq 50); do [[ -e /proc/$1 ]] || return 0; sleep 0.1; done; echo "still runs"; return 1; }
+      ended() { "$ROOTDIR/tools/wait.sh" --pid "$1" --timeout 5 > /dev/null || { echo "still runs"; return 1; }; }
       gate "$c: held shell ends" ended "$(cat "$OUT/res/hk-shell")"
       gate "$c: app exits after its last session" ended "$TPID"
       # Without a holder the next app runs its shells itself.
