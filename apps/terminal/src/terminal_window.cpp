@@ -117,7 +117,7 @@ namespace term {
                                  std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
       : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)), m_sessionsChanged(std::move(sessionsChanged)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
-        m_chooseSaveFile(std::move(chooseSaveFile)) {
+        m_chooseSaveFile(std::move(chooseSaveFile)), m_split(window, splitCallbacks()) {
     m_settingsChanged = m_settings.changed().connect([this] {
       m_window.setMaterial(m_settings.settings().material == WindowMaterial::Glass ? AppWindow::Material::Glass
                                                                                   : AppWindow::Material::Solid);
@@ -126,12 +126,7 @@ namespace term {
         m_window.setMainFill(view->surface());
       }
       m_window.requestRebuild();
-      if (!m_cards.empty()) {
-        m_window.updateInPlace([this](Renderer& /*renderer*/) {
-          paintPaneFocus(false);
-          m_contentSlot->markLayoutDirty();
-        });
-      }
+      m_split.repaintFocus();
     });
     m_window.setSceneSource([this] { return windowScene(m_settings); });
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
@@ -341,30 +336,29 @@ namespace term {
       }
     });
     m_window.setLayoutCallback([this] {
-      if (m_cards.empty()) {
+      if (!m_split.split()) {
         const AppWindow::Rect rect = m_window.contentRect();
         if (ContentView* view = shownView(); view != nullptr) {
           view->setSize(rect.width, rect.height);
         }
         return;
       }
-      if (m_dragDivider) {
+      if (m_split.dragging()) {
         return;
       }
-      const float caption = Tokens::componentWindowCaption * m_window.uiScale();
-      for (const PaneCard& card : m_cards) {
-        if (const auto it = std::ranges::find(m_views, card.id, &Session::id); it != m_views.end()) {
-          it->view->setSize(card.rect.width, card.rect.height - caption);
+      for (const auto& [id, r] : m_split.contentRects()) {
+        if (const auto it = std::ranges::find(m_views, id, &Session::id); it != m_views.end()) {
+          it->view->setSize(r.width, r.height);
         }
       }
     });
     // A divider drag resizes the cards per frame; the views (and their PTYs) resize once, on release.
     // A click into a pane's view focuses its area: that pane becomes the shown session.
     m_window.input().setFocusChangeCallback([this](InputArea* /*old*/, InputArea* next) {
-      for (const PaneCard& card : m_cards) {
-        const auto it = std::ranges::find(m_views, card.id, &Session::id);
-        if (next != nullptr && it != m_views.end() && it->view->focusArea() == next && m_sessions.shown() != card.id) {
-          DeferredCall::callLater([this, id = card.id, alive = std::weak_ptr<bool>(m_alive)] {
+      for (const auto& [card, rect] : m_split.contentRects()) {
+        const auto it = std::ranges::find(m_views, card, &Session::id);
+        if (next != nullptr && it != m_views.end() && it->view->focusArea() == next && m_sessions.shown() != card) {
+          DeferredCall::callLater([this, id = card, alive = std::weak_ptr<bool>(m_alive)] {
             if (!alive.expired()) {
               apply(session_event::Show{id});
             }
@@ -684,9 +678,7 @@ namespace term {
     if (const auto* close = std::get_if<session_event::Close>(&event)) {
       // A moved session left m_views before its Close: no fade, nothing to retire.
       if (const auto it = std::ranges::find(m_views, close->id, &Session::id); it != m_views.end()) {
-        if (const auto card = std::ranges::find(m_cards, close->id, &PaneCard::id); card != m_cards.end()) {
-          m_closedCard = ClosedCard{card->rect, it->view->surface()};
-        }
+        m_split.noteClosing(close->id);
         if (std::ranges::contains(m_builtPanes, close->id)) {
           m_retired.push_back(std::move(*it));
         }
@@ -734,10 +726,10 @@ namespace term {
   void TerminalWindow::show(std::uint64_t id) {
     const std::vector<std::uint64_t> panes = m_sessions.visible();
     const bool rebuild = panes != m_builtPanes;
-    if (m_findOpen && (rebuild || (!m_cards.empty() && m_ringPane != id))) {
+    if (m_findOpen && (rebuild || (m_split.split() && m_split.focusedPane() != id))) {
       closeFind();
     }
-    if (std::holds_alternative<PaletteOpen>(m_palette) && (rebuild || (!m_cards.empty() && m_ringPane != id))) {
+    if (std::holds_alternative<PaletteOpen>(m_palette) && (rebuild || (m_split.split() && m_split.focusedPane() != id))) {
       closePalette();
     }
     syncAgentBar();
@@ -746,7 +738,7 @@ namespace term {
     }
     syncTitle();
     if (!rebuild) {
-      applyPaneFocus();
+      m_split.setFocused(id, true);
       return;
     }
     // Split and single differ in the window's frame (header or not): the window rebuilds and fills the slot.
@@ -772,63 +764,24 @@ namespace term {
   }
 
   void TerminalWindow::fillSlot(Renderer& renderer) {
-    ++m_slotBuild;
     m_rebuildPending = false;
-    std::vector<std::pair<std::uint64_t, PaneRect>> from;
-    for (const PaneCard& card : m_cards) {
-      from.emplace_back(card.id, card.rect);
-    }
-    m_cards.clear();
-    m_dividers.clear();
-    m_dragDivider.reset();
-    m_dropPreview = nullptr;
-    m_ringPane = 0;
+    m_captionLeads.clear();
     ContentView* view = shownView();
     if (view == nullptr) {
       m_builtPanes.clear();
+      m_split.fill(renderer, m_contentSlot, m_contentWidth, m_contentHeight, {}, 0, false);
       return;
     }
     m_window.setMainFill(view->surface());
     m_window.setSceneContentBacked(dynamic_cast<TerminalView*>(view) != nullptr);
     // Before the window's frame follows (a rebuild is pending), the shown session fills the slot alone.
-    if (const auto panes = m_sessions.visible(); panes.size() > 1 && m_window.contentCards()) {
-      // The old single view counts as a card over the whole slot.
-      if (from.empty() && !m_builtPanes.empty()) {
-        from.emplace_back(m_builtPanes.front(), PaneRect{0.0F, 0.0F, m_contentWidth, m_contentHeight});
-      }
-      m_builtPanes = panes;
-      buildSplit(renderer, panes, from);
-    } else {
-      m_builtPanes = {*m_sessions.shown()};
-      Surface* surface = m_window.surface();
-      const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
-      m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
-    }
-    const float s = m_window.uiScale();
-    auto preview = ui::box({.out = &m_dropPreview,
-                            .fill = colorSpecFromRole(ColorRole::Accent, Tokens::componentTerminalDropFill),
-                            .border = focusRingColorSpec(),
-                            .borderWidth = Tokens::componentTerminalFocusRing * s,
-                            .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
-                            .visible = false,
-                            .participatesInLayout = false});
-    m_contentSlot->addChild(std::move(preview));
-    if (const auto closed = std::exchange(m_closedCard, std::nullopt); closed) {
-      const PaneRect& r = closed->rect;
-      Box* plate = nullptr;
-      auto box = ui::box({.out = &plate, .fill = closed->fill, .border = colorSpecFromRole(ColorRole::Stroke),
-                          .borderWidth = 0.5F * s, .radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s),
-                          .width = r.width, .height = r.height, .participatesInLayout = false});
-      box->setPosition(r.x, r.y);
-      m_contentSlot->insertChildAt(0, std::move(box));
-      whenAnimating([this, plate](AnimationManager& animations) {
-        animations.drive(0, 1.0F, 0.0F, Style::spring(Tokens::springFadeOut), [plate](float v) { plate->setOpacity(v); },
-                         [this, plate] {
-                           m_contentSlot->removeChild(plate);
-                           m_window.invalidate();
-                         },
-                         plate);
-      });
+    const auto panes = m_sessions.visible();
+    const bool cards = panes.size() > 1 && m_window.contentCards();
+    m_builtPanes = cards ? panes : std::vector<std::uint64_t>{*m_sessions.shown()};
+    m_split.fill(renderer, m_contentSlot, m_contentWidth, m_contentHeight, panes, *m_sessions.shown(), cards);
+    if (cards) {
+      refreshCards();
+      m_split.fitCaptions(renderer);
     }
     // After this build is in the scene: the dispatcher focuses only attached areas.
     DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
@@ -975,7 +928,7 @@ namespace term {
 
   void TerminalWindow::joinShown(std::uint64_t id) {
     const std::uint64_t shown = m_sessions.shown().value_or(0);
-    m_trees.pendJoin({.target = shown, .joining = id});
+    m_split.pendJoin({.target = shown, .joining = id});
     apply(session_event::Join{.target = shown, .joining = id});
     focusGrid();
   }
@@ -1484,7 +1437,7 @@ namespace term {
     m_window.setCaption({.symbol = data.symbol, .state = state, .danger = data.symbolDanger, .spinning = data.spinning});
     if (refreshCards()) {
       m_window.updateInPlace([this](Renderer& renderer) {
-        fitCaptions(renderer);
+        m_split.fitCaptions(renderer);
         m_contentSlot->markLayoutDirty();
       });
     }
@@ -1628,7 +1581,7 @@ namespace term {
       const bool focus = action == Action::FocusLeft || action == Action::FocusRight || action == Action::FocusUp ||
                          action == Action::FocusDown;
       std::string off;
-      if (focus && m_cards.empty()) {
+      if (focus && !m_split.split()) {
         off = "Not in a split";
       } else if (action == Action::Copy && (shownTerminal() == nullptr || !shownTerminal()->hasSelection())) {
         off = "No selection";
@@ -1757,9 +1710,9 @@ namespace term {
     const CommandPalette::Rect slot{0.0F, 0.0F, m_contentWidth, m_contentHeight};
     CommandPalette::Rect dim = slot;
     CommandPalette::Rect dock = slot;
-    const std::uint64_t pane = m_ringPane != 0 ? m_ringPane : m_sessions.shown().value_or(0);
-    if (const auto card = std::ranges::find(m_cards, pane, &PaneCard::id); card != m_cards.end()) {
-      const PaneRect& r = card->rect;
+    const std::uint64_t pane = m_split.focusedPane() != 0 ? m_split.focusedPane() : m_sessions.shown().value_or(0);
+    if (const auto card = m_split.rect(pane)) {
+      const PaneRect& r = *card;
       const float caption = Tokens::componentWindowCaption * s;
       dim = {r.x, r.y + caption, r.width, r.height - caption};
       if (r.width >= Tokens::componentTerminalPaletteNarrow * s) {
@@ -1892,262 +1845,71 @@ namespace term {
     }
   }
 
-  void TerminalWindow::buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes,
-                                  const std::vector<std::pair<std::uint64_t, PaneRect>>& from) {
-    const float s = m_window.uiScale();
-    const float radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s);
-    const float caption = Tokens::componentWindowCaption * s;
-    m_cards.reserve(panes.size()); // cells capture card pointers
-    const std::vector<PaneRect> rects = paneRects(panes);
-    float right = 0.0F;
-    for (const PaneRect& r : rects) {
-      right = std::max(right, r.x + r.width);
-    }
-    Surface* surface = m_window.surface();
-    const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
-    const ColorSpec clear = clearColorSpec();
-    Button::ButtonPalette ghost;
-    ghost.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(ColorRole::Label2)};
-    ghost.hover = {.bg = colorSpecFromRole(ColorRole::Fill1), .border = clear, .label = colorSpecFromRole(ColorRole::Label1)};
-    ghost.pressed = {.bg = colorSpecFromRole(ColorRole::Fill2), .border = clear, .label = ghost.hover.label};
-    ghost.disabled = ghost.normal;
-    std::vector<std::unique_ptr<Node>> cells;
-    for (std::size_t i = 0; i < panes.size() && i < rects.size(); ++i) {
-      const auto it = std::ranges::find(m_views, panes[i], &Session::id);
-      if (it == m_views.end()) {
-        continue;
-      }
-      ContentView& view = *it->view;
-      PaneCard& card = m_cards.emplace_back(PaneCard{.id = panes[i], .rect = rects[i]});
-      const PaneRect& r = card.rect;
-      auto cell = ui::column({.out = &card.cell, .align = FlexAlign::Stretch, .minWidth = r.width, .minHeight = r.height,
-                              .maxWidth = r.width, .maxHeight = r.height, .width = r.width, .height = r.height});
-      cell->setPosition(r.x, r.y);
-      auto shadow = ui::box({.out = &card.shadow,
-                             .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE2.keyLight
-                                                                                                 : Tokens::elevationE2.keyDark),
-                             .radius = radius,
-                             .softness = Tokens::elevationE2.keyBlur * s,
-                             .width = r.width,
-                             .height = r.height,
-                             .visible = false,
-                             .participatesInLayout = false});
-      shadow->setPosition(0.0F, Tokens::elevationE2.keyY * s);
-      cell->addChild(std::move(shadow));
-      auto box = ui::column({.align = FlexAlign::Stretch, .fill = view.surface(), .radius = radius, .flexGrow = 1.0F});
-      box->setClipRadii(Radii{radius, radius, radius, radius});
-      // The caption's ink follows the card's plane, not the desktop scheme (as the window header does).
-      box->setPaletteTone(toneOn(resolveColorSpec(view.surface())));
-
-      // Caption (split mockup .cap): h 40, p 0 8 0 16; symbol, name, state, the session menu, window buttons top right.
-      auto cap = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .minHeight = caption, .maxHeight = caption});
-      cap->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP16 * s);
-      // A click focuses the pane; a drag moves the window, as the header does.
-      auto area = ui::inputArea({.participatesInLayout = false});
-      area->setSize(r.width, caption);
-      card.captionArea = area.get();
-      struct Press {
-        bool down = false;
-        std::uint32_t serial = 0;
-        float x = 0.0F;
-        float y = 0.0F;
-      };
-      auto press = std::make_shared<Press>();
-      area->setOnPress([press](const InputArea::PointerData& data) {
-        if (data.button == BTN_LEFT) {
-          *press = {.down = data.pressed, .serial = data.serial, .x = data.localX, .y = data.localY};
-        }
-      });
-      area->setOnMotion([this, press, s](const InputArea::PointerData& data) {
-        if (press->down && std::hypot(data.localX - press->x, data.localY - press->y) > 4.0F * s) {
-          press->down = false;
-          m_window.beginMove(press->serial);
-        }
-      });
-      area->setOnClick([this, id = card.id](const InputArea::PointerData& data) {
-        if (data.button == BTN_LEFT) {
-          apply(session_event::Show{id});
-          focusGrid();
-        }
-      });
-      cap->addChild(std::move(area));
-      cap->addChild(ui::glyph({.out = &card.symbol, .glyphSize = Tokens::sizeSymbol * s}));
-      cap->addChild(ui::spinner({.out = &card.spinner, .color = colorSpecFromRole(ColorRole::Label2),
-                                 .spinnerSize = Tokens::sizeSymbol * s, .visible = false, .participatesInLayout = false}));
-      const bool topRight = r.y == 0.0F && r.x + r.width == right;
-      card.topRight = topRight;
-      card.textWidth = captionTextWidth(r.width, topRight);
-      cap->addChild(ui::label({.out = &card.name,
-                               .fontSize = Tokens::typeBody.size * s,
-                               .color = colorSpecFromRole(ColorRole::Label1),
-                               .minWidth = Tokens::spaceP24 * s,
-                               .maxLines = 1,
-                               .ellipsize = TextEllipsize::End}));
-      card.name->setLineHeight(Tokens::typeBody.line * s);
-      cap->addChild(ui::label({.out = &card.state,
-                               .fontSize = Tokens::typeFootnote.size * s,
-                               .maxLines = 1,
-                               .ellipsize = TextEllipsize::End}));
-      card.state->setLineHeight(Tokens::typeFootnote.line * s);
-      cap->addChild(ui::row({.out = &card.accessory, .align = FlexAlign::Center, .flexGrow = 1.0F}));
-      Button* menu = nullptr;
-      cap->addChild(ui::button({.out = &menu,
-                                .glyph = std::string("dots"),
-                                .glyphSize = Tokens::spaceP12 * s,
-                                .customPalette = ghost,
-                                .tooltip = std::string("Session menu"),
-                                .radius = Tokens::spaceP24 * s / 2.0F,
-                                .width = Tokens::spaceP24 * s,
-                                .height = Tokens::spaceP24 * s}));
-      menu->setOnClick([this, menu, id = card.id] {
-        float x = 0.0F;
-        float y = 0.0F;
-        Node::absolutePosition(menu, x, y);
-        openRowMenu(id, x, y + menu->height());
-      });
-      if (topRight) {
-        cap->addChild(m_window.buildWindowButtons());
-      }
-      box->addChild(std::move(cap));
-      auto holder = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .flexGrow = 1.0F});
-      holder->addChild(view.build(renderer, s, deviceScale, r.width, std::max(0.0F, r.height - caption)));
-      box->addChild(std::move(holder));
-      cell->addChild(std::move(box));
-      // Over the card: the views fill their whole rect and would cover a border of the card itself.
-      cell->addChild(ui::box({.out = &card.stroke, .fill = clear, .border = colorSpecFromRole(ColorRole::Stroke),
-                              .borderWidth = 0.5F * s, .radius = radius, .width = r.width, .height = r.height,
-                              .participatesInLayout = false}));
-      cell->addChild(ui::box({.out = &card.ring, .fill = clear, .border = focusRingColorSpec(),
-                              .borderWidth = Tokens::componentTerminalFocusRing * s, .radius = radius, .width = r.width,
-                              .height = r.height, .opacity = 0.0F, .participatesInLayout = false}));
-      cells.push_back(std::move(cell));
-    }
-    // A plain node lays its cards out where the tree put them.
-    auto tiles = std::make_unique<Node>();
-    for (std::unique_ptr<Node>& cell : cells) {
-      tiles->addChild(std::move(cell));
-    }
-    m_contentSlot->addChild(std::move(tiles));
-    // Over each gap between cards: drag to resize both sides.
-    m_dividers.clear();
-    const float grip = Tokens::spaceP32 * s;
-    std::vector<TileNode*> splits;
-    if (andromeda::tiling::DwindleTree* tree = m_trees.sync([this](std::uint64_t id) { return m_sessions.splitOf(id); }, panes, splitRoom()); tree != nullptr) {
-      std::vector<TileNode*> stack{tree->root()};
-      while (!stack.empty()) {
-        TileNode* node = stack.back();
-        stack.pop_back();
-        if (node != nullptr && node->type != TileNode::Leaf) {
-          splits.push_back(node);
-          stack.push_back(node->right.get());
-          stack.push_back(node->left.get());
-        }
-      }
-    }
-    for (TileNode* split : splits) {
-      const bool vertical = split->type == TileNode::HSplit;
-      const std::size_t index = m_dividers.size();
-      Divider& divider = m_dividers.emplace_back(Divider{.vertical = vertical, .split = split});
-      auto area = ui::inputArea({.out = &divider.area,
-                                 .cursorShape = vertical ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE
-                                                         : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE,
-                                 .participatesInLayout = false});
-      // Mockup .grip: a 4 x 32 capsule centred in the gap while the pointer is over it or drags it.
-      auto handle = ui::box({.out = &divider.grip, .fill = colorSpecFromRole(ColorRole::Label3),
-                             .radius = Tokens::spaceP4 * s / 2.0F, .width = vertical ? Tokens::spaceP4 * s : grip,
-                             .height = vertical ? grip : Tokens::spaceP4 * s, .visible = false, .participatesInLayout = false});
-      area->addChild(std::move(handle));
-      area->setOnEnter([this, index](const InputArea::PointerData& /*data*/) {
-        m_dividers[index].grip->setVisible(true);
-        m_window.invalidate();
-      });
-      area->setOnLeave([this, index] {
-        m_dividers[index].grip->setVisible(m_dragDivider == index);
-        m_window.invalidate();
-      });
-      area->setOnPress([this, index](const InputArea::PointerData& data) {
-        if (data.button != BTN_LEFT) {
-          return;
-        }
-        if (data.pressed) {
-          m_dragDivider = index;
-          return;
-        }
-        m_dragDivider.reset();
-        m_dividers[index].grip->setVisible(m_dividers[index].area->hovered());
-        relayoutSplit(true);
-      });
-      area->setOnMotion([this, index](const InputArea::PointerData& data) {
-        if (m_dragDivider == index) {
-          dragDivider(index, data.sceneX, data.sceneY);
-        }
-      });
-      m_contentSlot->addChild(std::move(area));
-    }
-    placeDividers();
-    refreshCards();
-    paintPaneFocus(false);
-    fitCaptions(renderer);
-    // Motion: each card from its old place; a new card from the drop preview, else it fades in.
-    std::vector<std::optional<PaneRect>> starts;
-    bool moves = false;
-    for (PaneCard& card : m_cards) {
-      std::optional<PaneRect> start;
-      if (m_dropFrom && m_dropFrom->first == card.id) {
-        start = m_dropFrom->second;
-      } else if (const auto it = std::ranges::find(from, card.id, &std::pair<std::uint64_t, PaneRect>::first); it != from.end()) {
-        start = it->second;
-      }
-      moves = moves || !start || start->x != card.rect.x || start->y != card.rect.y || start->width != card.rect.width ||
-              start->height != card.rect.height;
-      starts.push_back(start);
-    }
-    m_dropFrom.reset();
-    if (!moves || from.empty()) {
-      return;
-    }
-    const auto step = [this, starts](float t) {
-      std::vector<PaneRect> rects;
-      for (std::size_t i = 0; i < m_cards.size(); ++i) {
-        const PaneRect& to = m_cards[i].rect;
-        const PaneRect a = starts[i].value_or(to);
-        const auto mix = [t](float x, float y) { return x + (y - x) * t; };
-        rects.push_back({mix(a.x, to.x), mix(a.y, to.y), mix(a.width, to.width), mix(a.height, to.height)});
-        if (!starts[i]) {
-          // Content waits for content_gate of the travel, then fades in with it.
-          m_cards[i].cell->setOpacity(std::clamp((t - Tokens::motionContentGate) / (1.0F - Tokens::motionContentGate), 0.0F, 1.0F));
-        }
-      }
-      applyCellRects(rects);
-      m_contentSlot->markLayoutDirty();
+  SplitView::Callbacks TerminalWindow::splitCallbacks() {
+    return {
+        .splitOf = [this](std::uint64_t id) { return m_sessions.splitOf(id); },
+        .content =
+            [this](Renderer& renderer, std::uint64_t id, float width, float height) -> std::unique_ptr<Node> {
+              const auto it = std::ranges::find(m_views, id, &Session::id);
+              if (it == m_views.end()) {
+                return std::make_unique<Node>();
+              }
+              Surface* surface = m_window.surface();
+              const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
+              return it->view->build(renderer, m_window.uiScale(), deviceScale, width, height);
+            },
+        .caption =
+            [this](std::uint64_t id) {
+              const float s = m_window.uiScale();
+              CaptionLead& lead = m_captionLeads[id];
+              auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+              row->addChild(ui::glyph({.out = &lead.symbol, .glyphSize = Tokens::sizeSymbol * s}));
+              row->addChild(ui::spinner({.out = &lead.spinner, .color = colorSpecFromRole(ColorRole::Label2),
+                                         .spinnerSize = Tokens::sizeSymbol * s, .visible = false,
+                                         .participatesInLayout = false}));
+              const ColorSpec clear = clearColorSpec();
+              Button::ButtonPalette ghost;
+              ghost.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(ColorRole::Label2)};
+              ghost.hover = {.bg = colorSpecFromRole(ColorRole::Fill1), .border = clear,
+                             .label = colorSpecFromRole(ColorRole::Label1)};
+              ghost.pressed = {.bg = colorSpecFromRole(ColorRole::Fill2), .border = clear, .label = ghost.hover.label};
+              ghost.disabled = ghost.normal;
+              Button* menu = nullptr;
+              auto button = ui::button({.out = &menu,
+                                        .glyph = std::string("dots"),
+                                        .glyphSize = Tokens::spaceP12 * s,
+                                        .customPalette = ghost,
+                                        .tooltip = std::string("Session menu"),
+                                        .radius = Tokens::spaceP24 * s / 2.0F,
+                                        .width = Tokens::spaceP24 * s,
+                                        .height = Tokens::spaceP24 * s});
+              menu->setOnClick([this, menu, id] {
+                float x = 0.0F;
+                float y = 0.0F;
+                Node::absolutePosition(menu, x, y);
+                openRowMenu(id, x, y + menu->height());
+              });
+              return SplitView::Caption{.lead = std::move(row), .trail = std::move(button)};
+            },
+        .surface =
+            [this](std::uint64_t id) {
+              const auto it = std::ranges::find(m_views, id, &Session::id);
+              return it != m_views.end() ? it->view->surface() : ColorSpec{};
+            },
+        .focus =
+            [this](std::uint64_t id) {
+              apply(session_event::Show{id});
+              focusGrid();
+            },
+        .minimum = [this] { return paneMinimum(); },
+        .settle =
+            [this](std::uint64_t id, float width, float height) {
+              if (const auto it = std::ranges::find(m_views, id, &Session::id); it != m_views.end()) {
+                it->view->setSize(width, height);
+              }
+            },
+        .ring = [this] { return m_settings.settings().focusRing; },
     };
-    step(0.0F);
-    whenAnimating([this, step](AnimationManager& animations) {
-      m_layoutAnim = animations.drive(m_layoutAnim, 0.0F, 1.0F, Style::spring(Tokens::springMove), step,
-                                      [this] { m_window.invalidate(); }, m_cards.front().cell, 0.0F, Unit::Progress, true);
-    });
-  }
-
-  void TerminalWindow::whenAnimating(std::function<void(AnimationManager&)> start) {
-    if (AnimationManager* animations = m_contentSlot->animationManager(); animations != nullptr) {
-      start(*animations);
-      return;
-    }
-    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive), build = m_slotBuild, start = std::move(start)] {
-      if (alive.expired() || build != m_slotBuild || m_contentSlot == nullptr) {
-        return;
-      }
-      if (AnimationManager* animations = m_contentSlot->animationManager(); animations != nullptr) {
-        start(*animations);
-        m_window.invalidate();
-      }
-    });
-  }
-
-  ui::SplitTrees::Room TerminalWindow::splitRoom() const {
-    return {.area = {.width = static_cast<int>(std::lround(m_contentWidth)), .height = static_cast<int>(std::lround(m_contentHeight))},
-            .gap = static_cast<int>(std::lround(Tokens::componentWindowCardGap * m_window.uiScale())),
-            .minWidth = paneMinimum().first};
   }
 
   std::pair<float, float> TerminalWindow::paneMinimum() const {
@@ -2166,127 +1928,15 @@ namespace term {
                 (Tokens::spaceP16 + Tokens::spaceP12) * s};
   }
 
-  std::vector<TerminalWindow::PaneRect> TerminalWindow::paneRects(const std::vector<std::uint64_t>& panes) {
-    andromeda::tiling::DwindleTree* tree =
-        m_trees.sync([this](std::uint64_t id) { return m_sessions.splitOf(id); }, panes, splitRoom());
-    if (tree == nullptr) {
-      return std::vector<PaneRect>(panes.size());
-    }
-    return ui::arrangePanes(*tree, panes,
-                            {.width = static_cast<int>(std::lround(m_contentWidth)),
-                             .height = static_cast<int>(std::lround(m_contentHeight))},
-                            static_cast<int>(std::lround(Tokens::componentWindowCardGap * m_window.uiScale())));
-  }
-
-  // The caption's room for the name and the state: padding 16 + 8, the symbol, four gaps, the menu button, and the
-  // window buttons in the top-right card.
-  float TerminalWindow::captionTextWidth(float width, bool topRight) const {
-    const float s = m_window.uiScale();
-    const float buttons = topRight ? 4.0F * Tokens::spaceP24 * s : 0.0F;
-    return std::max(0.0F, width - (Tokens::spaceP16 + Tokens::spaceP24 + 4.0F * Tokens::spaceP8 + Tokens::sizeSymbol) * s -
-                              buttons);
-  }
-
-  void TerminalWindow::placeDividers() {
-    if (m_cards.size() < 2) {
-      return;
-    }
-    const float s = m_window.uiScale();
-    const float gap = Tokens::componentWindowCardGap * s;
-    const float hit = Tokens::componentTerminalDividerHit * s;
-    for (const Divider& divider : m_dividers) {
-      const PaneRect r = ui::dividerRect(*divider.split, divider.vertical, gap, hit);
-      divider.area->setPosition(r.x, r.y);
-      divider.area->setSize(r.width, r.height);
-      divider.grip->setPosition((r.width - divider.grip->width()) / 2.0F, (r.height - divider.grip->height()) / 2.0F);
-    }
-  }
-
-  void TerminalWindow::dragDivider(std::size_t index, float sceneX, float sceneY) {
-    if (m_contentSlot == nullptr || index >= m_dividers.size()) {
-      return;
-    }
-    TileNode* split = m_dividers[index].split;
-    const bool horizontal = m_dividers[index].vertical;
-    float x = 0.0F;
-    float y = 0.0F;
-    Node::absolutePosition(m_contentSlot, x, y);
-    const float at = horizontal ? sceneX - x - static_cast<float>(split->area.x) : sceneY - y - static_cast<float>(split->area.y);
-    const auto [minW, minH] = paneMinimum();
-    split->ratio = ui::dividerRatio(*split, horizontal, at, Tokens::componentWindowCardGap * m_window.uiScale(), minW, minH);
-    relayoutSplit(false);
-  }
-
-  void TerminalWindow::applyCellRects(const std::vector<PaneRect>& rects) {
-    const float caption = Tokens::componentWindowCaption * m_window.uiScale();
-    for (std::size_t i = 0; i < m_cards.size() && i < rects.size(); ++i) {
-      PaneCard& card = m_cards[i];
-      const PaneRect& r = rects[i];
-      card.cell->setMinWidth(r.width);
-      card.cell->setMaxWidth(r.width);
-      card.cell->setMinHeight(r.height);
-      card.cell->setMaxHeight(r.height);
-      card.cell->setPosition(r.x, r.y);
-      card.cell->setSize(r.width, r.height);
-      for (Box* box : {card.shadow, card.stroke, card.ring}) {
-        box->setSize(r.width, r.height);
-      }
-      card.captionArea->setSize(r.width, caption);
-    }
-  }
-
-  void TerminalWindow::relayoutSplit(bool settle) {
-    if (m_cards.empty()) {
-      return;
-    }
-    std::vector<std::uint64_t> panes;
-    for (const PaneCard& card : m_cards) {
-      panes.push_back(card.id);
-    }
-    const std::vector<PaneRect> rects = paneRects(panes);
-    const float caption = Tokens::componentWindowCaption * m_window.uiScale();
-    m_window.updateInPlace([this, &rects](Renderer& renderer) {
-      for (std::size_t i = 0; i < m_cards.size() && i < rects.size(); ++i) {
-        m_cards[i].rect = rects[i];
-        m_cards[i].textWidth = captionTextWidth(rects[i].width, m_cards[i].topRight);
-      }
-      applyCellRects(rects);
-      fitCaptions(renderer);
-      placeDividers();
-      m_contentSlot->markLayoutDirty();
-    });
-    if (!settle) {
-      return;
-    }
-    for (const PaneCard& card : m_cards) {
-      if (const auto it = std::ranges::find(m_views, card.id, &Session::id); it != m_views.end()) {
-        it->view->setSize(card.rect.width, card.rect.height - caption);
-      }
-    }
-  }
-
-  std::optional<TerminalWindow::DropTarget> TerminalWindow::dropTarget(std::uint64_t dragged, float sceneX,
-                                                                       float sceneY) const {
+  std::optional<ui::SplitDrop> TerminalWindow::dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const {
     const auto shown = m_sessions.shown();
-    if (!shown || m_contentSlot == nullptr || dragged == *shown || m_sessions.splitOf(dragged) != nullptr) {
+    if (!shown || dragged == *shown || m_sessions.splitOf(dragged) != nullptr) {
       return std::nullopt;
     }
     if (const auto* split = m_sessions.splitOf(*shown); split != nullptr && split->size() >= kMaxPanes) {
       return std::nullopt;
     }
-    float x = 0.0F;
-    float y = 0.0F;
-    Node::absolutePosition(m_contentSlot, x, y);
-    const float px = sceneX - x;
-    const float py = sceneY - y;
-    std::vector<std::pair<std::uint64_t, PaneRect>> panes;
-    if (m_cards.empty()) {
-      panes.emplace_back(*shown, PaneRect{0.0F, 0.0F, m_contentWidth, m_contentHeight});
-    }
-    for (const PaneCard& card : m_cards) {
-      panes.emplace_back(card.id, card.rect);
-    }
-    return ui::splitDrop(panes, px, py);
+    return m_split.dropAt(*shown, sceneX, sceneY);
   }
 
   void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
@@ -2312,144 +1962,51 @@ namespace term {
     } else if (std::exchange(m_dragGhost, false)) {
       m_window.clearDragGhost();
     }
-    if (m_dropPreview != nullptr) {
-      if (target && phase == StatusRow::DragPhase::Move) {
-        m_dropPreview->setPosition(target->rect.x, target->rect.y);
-        m_dropPreview->setSize(target->rect.width, target->rect.height);
-      }
-      m_dropPreview->setVisible(target && phase == StatusRow::DragPhase::Move);
-      m_window.invalidate();
-    }
+    m_split.showDropPreview(target && phase == StatusRow::DragPhase::Move ? std::optional(target->rect) : std::nullopt);
     if (target && phase == StatusRow::DragPhase::Drop) {
-      m_dropFrom = std::pair{id, target->rect};
-      m_trees.pendJoin({.target = target->target, .joining = id, .edge = target->edge});
+      m_split.pendJoin({.target = target->target, .joining = id, .edge = target->edge}, target->rect);
       apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
       focusGrid();
     }
   }
 
-  void TerminalWindow::paintPaneFocus(bool animate) {
-    m_ringPane = m_sessions.shown().value_or(0);
-    // The find and agent bars are the shown session's: they leave the old card before the new one builds them.
-    std::vector<std::unique_ptr<Node>> removed;
-    for (PaneCard& card : m_cards) {
-      while (!card.accessory->children().empty()) {
-        removed.push_back(card.accessory->removeChild(card.accessory->children().back().get()));
-      }
-    }
-    if (!removed.empty()) {
-      m_window.input().forgetDetached();
-    }
-    for (PaneCard& card : m_cards) {
-      const bool focused = card.id == m_ringPane;
-      AnimationManager* animations = card.ring->animationManager();
-      const float target = focused ? 1.0F : 0.0F;
-      const float ring = m_settings.settings().focusRing ? 1.0F : 0.0F;
-      // The shadow fills the card's rect: a see-through card (a theme scene, glass) would show it as a dark tint.
-      const auto view = std::ranges::find(m_views, card.id, &Session::id);
-      const ColorSpec fill = view != m_views.end() ? view->view->surface() : ColorSpec{};
-      const bool lift = (fill.role ? 1.0F : fill.fixed.a) * fill.alpha >= 1.0F;
-      const auto set = [&card, ring, lift](float v) {
-        card.ring->setOpacity(v * ring);
-        card.shadow->setOpacity(v);
-        card.shadow->setVisible(lift && v > 0.0F);
-      };
-      if (animate && animations != nullptr) {
-        card.focusAnim = animations->drive(card.focusAnim, card.shadow->opacity(), target,
-                                           Style::spring(focused ? Tokens::springFade : Tokens::springFadeOut),
-                                           [node = card.ring, shadow = card.shadow, ring, lift](float v) {
-                                             node->setOpacity(v * ring);
-                                             shadow->setOpacity(v);
-                                             shadow->setVisible(lift && v > 0.0F);
-                                           },
-                                           {}, card.ring);
-      } else {
-        set(target);
-      }
-      card.name->setFontWeight(focused ? FontWeight::SemiBold : FontWeight::Normal);
-      if (focused) {
-        if (auto accessory = m_window.buildHeaderAccessory()) {
-          card.accessory->addChild(std::move(accessory));
-        }
-      }
-    }
-  }
-
-  void TerminalWindow::applyPaneFocus() {
-    if (m_cards.empty() || m_sessions.shown() == m_ringPane) {
-      return;
-    }
-    m_window.updateInPlace([this](Renderer& renderer) {
-      paintPaneFocus(true);
-      fitCaptions(renderer);
-      m_contentSlot->markLayoutDirty();
-    });
-  }
-
-  // The state keeps its text (the name keeps its minimum); the name ellipsizes in what is left.
-  void TerminalWindow::fitCaptions(Renderer& renderer) {
-    const float gap = Tokens::spaceP8 * m_window.uiScale();
-    const float nameMin = Tokens::spaceP24 * m_window.uiScale();
-    for (PaneCard& card : m_cards) {
-      // The focused card's caption also holds the header accessory (the agent bar's state): the text gets the rest.
-      const float accessory = card.accessory->children().empty()
-          ? 0.0F
-          : static_cast<Node*>(card.accessory)->measure(renderer, LayoutConstraints{}).width + gap;
-      const float text = std::max(nameMin, card.textWidth - accessory);
-      card.state->setMaxWidth(std::max(nameMin, text - nameMin));
-      const float state = card.state->visible() ? static_cast<Node*>(card.state)->measure(renderer, LayoutConstraints{}).width + gap : 0.0F;
-      card.name->setMaxWidth(std::max(nameMin, text - state));
-    }
-  }
-
   bool TerminalWindow::refreshCards() {
     bool changed = false;
-    for (PaneCard& card : m_cards) {
-      const SessionInfo* session = m_sessions.find(card.id);
-      if (session == nullptr) {
+    for (const std::uint64_t id : m_builtPanes) {
+      const SessionInfo* session = m_sessions.find(id);
+      const auto lead = m_captionLeads.find(id);
+      if (session == nullptr || lead == m_captionLeads.end()) {
         continue;
       }
       StatusRow::Data data = rowData(*session);
       data.status = captionState(*session, data.status);
-      lockSymbol(card.id, data);
+      lockSymbol(id, data);
       const ColorSpec ink = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2);
-      changed = changed || card.name->text() != data.name || card.state->text() != data.status;
-      card.name->setText(data.name);
+      changed = m_split.setCaption(id, data.name, data.status, ink) || changed;
+      Glyph* symbolGlyph = lead->second.symbol;
+      Spinner* spinner = lead->second.spinner;
       const bool symbol = !data.spinning && GlyphRegistry::contains(data.symbol);
-      changed = changed || card.symbol->visible() != symbol;
-      if (symbol && card.symbol->setGlyph(data.symbol)) {
+      changed = changed || symbolGlyph->visible() != symbol;
+      if (symbol && symbolGlyph->setGlyph(data.symbol)) {
         changed = true;
       }
-      card.symbol->setColor(ink);
-      card.symbol->setVisible(symbol);
-      card.symbol->setParticipatesInLayout(symbol);
-      card.spinner->setVisible(data.spinning);
-      card.spinner->setParticipatesInLayout(data.spinning);
-      if (data.spinning != card.spinner->spinning()) {
-        data.spinning ? card.spinner->start() : card.spinner->stop();
+      symbolGlyph->setColor(ink);
+      symbolGlyph->setVisible(symbol);
+      symbolGlyph->setParticipatesInLayout(symbol);
+      spinner->setVisible(data.spinning);
+      spinner->setParticipatesInLayout(data.spinning);
+      if (data.spinning != spinner->spinning()) {
+        data.spinning ? spinner->start() : spinner->stop();
       }
-      card.state->setText(data.status);
-      card.state->setColor(ink);
-      card.state->setVisible(!data.status.empty());
-      card.state->setParticipatesInLayout(!data.status.empty());
     }
     return changed;
   }
 
   bool TerminalWindow::focusPane(float dx, float dy) {
-    if (m_cards.empty()) {
+    if (!m_split.split()) {
       return false;
     }
-    const auto from = std::ranges::find(m_cards, m_ringPane, &PaneCard::id);
-    if (from == m_cards.end()) {
-      return true;
-    }
-    ui::SplitPanes panes;
-    for (const PaneCard& card : m_cards) {
-      panes.emplace_back(card.id, card.rect);
-    }
-    const std::optional<std::uint64_t> best = ui::paneInDirection(panes, from->id, dx, dy);
-    if (best) {
+    if (const auto best = m_split.paneInDirection(dx, dy)) {
       apply(session_event::Show{*best});
       focusGrid();
     }

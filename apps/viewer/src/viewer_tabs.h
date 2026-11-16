@@ -6,6 +6,7 @@
 #include <optional>
 #include <unordered_map>
 
+#include "app/split_view.h"
 #include "tab_set.h"
 
 class AppLoop;
@@ -51,6 +52,11 @@ namespace viewer {
     [[nodiscard]] std::optional<std::uint64_t> idOf(const ViewerWindow* tab) const;
     void step(int direction);
     void updateTitle();
+    // After a tab event: title, the window's frame (cards while a split shows) and a rebuild.
+    void changed();
+    // Ctrl+click: a free row joins the shown document's split, a member leaves it; else the row shows.
+    void clickRow(std::uint64_t id);
+    [[nodiscard]] SplitView::Callbacks splitCallbacks();
     // Files dropped on the window open as tabs.
     void registerDropTarget();
 
@@ -60,6 +66,7 @@ namespace viewer {
     TabSet m_set;
     std::unordered_map<std::uint64_t, std::unique_ptr<ViewerWindow>> m_docs;
     std::uint64_t m_nextId = 1;
+    SplitView m_split;
     // A window with no tab shows this never-opened one: the toolbar and the open-or-drop message.
     std::unique_ptr<ViewerWindow> m_blank;
     Node* m_caption = nullptr; // the header accessory of the last build

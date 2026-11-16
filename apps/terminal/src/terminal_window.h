@@ -8,6 +8,7 @@
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
 #include "agent_view.h"
+#include "app/split_view.h"
 #include "ui/split_layout.h"
 
 #include <array>
@@ -260,79 +261,25 @@ namespace term {
     float m_contentWidth = 0.0F;
     float m_contentHeight = 0.0F;
     void fillSlot(Renderer& renderer);
-    // A split: one card per pane, each with its caption over the pane's view.
+    // One card per pane while a split shows, each with its caption over the pane's view.
     using PaneRect = ui::PaneRect;
-    struct PaneCard {
-      std::uint64_t id = 0;
-      PaneRect rect;
-      Flex* cell = nullptr;
-      InputArea* captionArea = nullptr;
-      float textWidth = 0.0F; // caption room for the name and the state
-      Box* stroke = nullptr;  // the card's edge, over its view (a view fills its whole rect)
-      Box* ring = nullptr;    // the focus ring over the stroke: opacity 1 on the focused card
-      std::uint32_t focusAnim = 0;
-      Box* shadow = nullptr;
+    [[nodiscard]] SplitView::Callbacks splitCallbacks();
+    SplitView m_split;
+    // A card's symbol and spinner (its caption lead), per session.
+    struct CaptionLead {
       Glyph* symbol = nullptr;
       Spinner* spinner = nullptr;
-      Label* name = nullptr;
-      Label* state = nullptr;
-      Flex* accessory = nullptr; // holds the find and agent bars while the pane is focused
-      bool topRight = false;     // holds the window buttons
     };
-    std::vector<PaneCard> m_cards; // empty while one session shows
-    // Each split lays out on the compositor's dwindle tree; its leaves are session ids.
-    using TileNode = andromeda::tiling::DwindleTree::Node;
-    ui::SplitTrees m_trees;
+    std::unordered_map<std::uint64_t, CaptionLead> m_captionLeads;
     // The smallest pane: split_min_columns x split_min_rows cells of the font, with the grid's insets.
     [[nodiscard]] std::pair<float, float> paneMinimum() const;
-    [[nodiscard]] ui::SplitTrees::Room splitRoom() const;
-    struct Divider {
-      bool vertical = true; // between columns
-      TileNode* split = nullptr;
-      InputArea* area = nullptr;
-      Box* grip = nullptr;
-    };
-    std::vector<Divider> m_dividers;
-    std::optional<std::size_t> m_dragDivider; // the divider under a held button; views keep their size until release
-    [[nodiscard]] std::vector<PaneRect> paneRects(const std::vector<std::uint64_t>& panes);
-    [[nodiscard]] float captionTextWidth(float width, bool topRight) const;
-    // Cards follow the tree in place; settle: the views take their new sizes (one PTY resize).
-    void relayoutSplit(bool settle);
-    void placeDividers();
-    void dragDivider(std::size_t index, float sceneX, float sceneY);
     // A sidebar row dragged onto a pane: the half under the pointer previews where it joins.
-    using DropTarget = ui::SplitDrop; // rect in the slot
-    [[nodiscard]] std::optional<DropTarget> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
+    [[nodiscard]] std::optional<ui::SplitDrop> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
-    Box* m_dropPreview = nullptr;
-    // A closed pane's place and fill: the next build fades a plate out there, under the cards that take its room.
-    struct ClosedCard {
-      PaneRect rect;
-      ColorSpec fill;
-    };
-    std::optional<ClosedCard> m_closedCard;
     bool m_dragGhost = false; // the dragged row's chip follows the pointer
-    std::uint64_t m_ringPane = 0;  // the card that draws the focus ring
-    // from: where cards were before this build (a pane's old card, the single view, the drop preview); they move to
-    // their new places on the move spring, a card with no old place fades in.
-    void buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes,
-                    const std::vector<std::pair<std::uint64_t, PaneRect>>& from);
-    // Cells, rings and caption areas at these rects; card.rect (the views' size) stays.
-    void applyCellRects(const std::vector<PaneRect>& rects);
-    std::uint32_t m_layoutAnim = 0;
-    std::uint64_t m_slotBuild = 0; // counts fillSlot calls
     bool m_rebuildPending = false; // a window rebuild fills the slot: show() leaves it alone
-    // Runs `start` with the slot's animation manager: now, or after a full rebuild puts the slot in the scene (if no
-    // other build came first).
-    void whenAnimating(std::function<void(AnimationManager&)> start);
-    std::optional<std::pair<std::uint64_t, PaneRect>> m_dropFrom; // the joining session's preview rect
-    // Ring, shadow, caption weight and the find and agent bars follow the shown session, in place.
-    void applyPaneFocus();
-    // animate: ring and shadow fade (in on fade, out on fade_out); else they jump.
-    void paintPaneFocus(bool animate);
     // Captions follow their sessions; true when a name or state text changed (the captions need a fit).
     bool refreshCards();
-    void fitCaptions(Renderer& renderer);
     // Focuses the nearest pane in direction (dx, dy); false without a split.
     bool focusPane(float dx, float dy);
     bool m_active = false;

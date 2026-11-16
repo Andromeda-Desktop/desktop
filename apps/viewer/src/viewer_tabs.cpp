@@ -3,6 +3,7 @@
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "core/deferred_call.h"
+#include "core/input/key_modifiers.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "render/scene/accessible.h"
 #include "render/scene/input_area.h"
@@ -23,7 +24,7 @@
 namespace viewer {
 
   ViewerTabs::ViewerTabs(AppLoop& loop, AppWindow& window, StateStore& state)
-      : m_loop(loop), m_window(window), m_state(state) {
+      : m_loop(loop), m_window(window), m_state(state), m_split(window, splitCallbacks()) {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       return build(renderer, width, height);
     });
@@ -64,8 +65,8 @@ namespace viewer {
       return tab != nullptr && tab->onKey(event);
     });
     m_window.setLayoutCallback([this] {
-      if (ViewerWindow* tab = active()) {
-        tab->onLayout();
+      for (const std::uint64_t id : m_set.visible()) {
+        m_docs.at(id)->onLayout();
       }
     });
     m_window.setCloseGuard([this] {
@@ -132,8 +133,7 @@ namespace viewer {
     const std::uint64_t id = m_nextId++;
     m_docs.emplace(id, std::move(tab));
     m_set.apply(tab_event::Open{id});
-    updateTitle();
-    m_window.requestRebuild();
+    changed();
   }
 
   ViewerWindow* ViewerTabs::active() const {
@@ -152,8 +152,7 @@ namespace viewer {
       return;
     }
     old->detach();
-    updateTitle();
-    m_window.requestRebuild();
+    changed();
   }
 
   void ViewerTabs::step(int direction) {
@@ -221,16 +220,71 @@ namespace viewer {
       m_window.finishClose();
       return;
     }
+    m_split.noteClosing(id);
     m_set.apply(tab_event::Close{id});
     m_docs.erase(id);
+    changed();
+  }
+
+  void ViewerTabs::changed() {
     updateTitle();
+    m_window.setContentCards(m_set.visible().size() > 1);
     m_window.requestRebuild();
+  }
+
+  void ViewerTabs::clickRow(std::uint64_t id) {
+    const auto focused = m_set.focused();
+    if ((m_loop.wayland().keyboardModifiers() & KeyMod::Ctrl) == 0U || !focused || id == *focused) {
+      select(id);
+      return;
+    }
+    if (m_set.splitOf(id) != nullptr && m_set.splitOf(id) == m_set.splitOf(*focused)) {
+      m_set.apply(tab_event::Leave{id});
+      changed();
+      return;
+    }
+    ViewerWindow* old = active();
+    if (m_set.splitOf(id) == nullptr && m_set.apply(tab_event::Join{.target = *focused, .joining = id})) {
+      m_split.pendJoin({.target = *focused, .joining = id});
+      old->detach();
+      changed();
+      return;
+    }
+    select(id);
+  }
+
+  SplitView::Callbacks ViewerTabs::splitCallbacks() {
+    return {
+        .splitOf = [this](std::uint64_t id) { return m_set.splitOf(id); },
+        .content = [this](Renderer& renderer, std::uint64_t id, float width,
+                          float height) { return m_docs.at(id)->build(renderer, width, height); },
+        .caption = [](std::uint64_t) { return SplitView::Caption{}; },
+        .surface = [](std::uint64_t) { return colorSpecFromRole(ColorRole::SolidRegular); },
+        .focus = [this](std::uint64_t id) { select(id); },
+        .minimum =
+            [this] {
+              const float s = m_window.uiScale();
+              return std::pair{Tokens::componentViewerSplitMinWidth * s, Tokens::componentViewerSplitMinHeight * s};
+            },
+        // A pane's fit width follows its new size.
+        .settle = [this](std::uint64_t, float, float) { m_window.requestRebuild(); },
+        .ring = [] { return true; },
+    };
   }
 
   void ViewerTabs::updateTitle() {
     if (const ViewerWindow* tab = active()) {
       m_window.setTitle(tab->title());
       m_window.setCaption({.state = tab->unsaved() ? "Edited" : ""});
+    }
+    bool texts = false;
+    for (const std::uint64_t id : m_set.visible()) {
+      const ViewerWindow& doc = *m_docs.at(id);
+      texts = m_split.setCaption(id, doc.title(), doc.unsaved() ? "Edited" : "", colorSpecFromRole(ColorRole::Label2)) ||
+              texts;
+    }
+    if (texts) {
+      m_window.updateInPlace([this](Renderer& renderer) { m_split.fitCaptions(renderer); });
     }
   }
 
@@ -256,14 +310,23 @@ namespace viewer {
   std::unique_ptr<Node> ViewerTabs::build(Renderer& renderer, float width, float height) {
     registerDropTarget();
     syncImmersive();
-    ViewerWindow* tab = active();
-    if (tab == nullptr) {
+    if (active() == nullptr) {
+      m_split.reset();
       if (!m_blank) {
         m_blank = std::make_unique<ViewerWindow>(m_loop, m_window, m_state);
       }
       return m_blank->build(renderer, width, height);
     }
-    return tab->build(renderer, width, height);
+    auto slot = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
+    m_split.fill(renderer, slot.get(), width, height, m_set.visible(), *m_set.focused(), m_window.contentCards());
+    if (m_split.split()) {
+      for (const std::uint64_t id : m_set.visible()) {
+        const ViewerWindow& doc = *m_docs.at(id);
+        m_split.setCaption(id, doc.title(), doc.unsaved() ? "Edited" : "", colorSpecFromRole(ColorRole::Label2));
+      }
+      m_split.fitCaptions(renderer);
+    }
+    return slot;
   }
 
   // Concept C (.agent/DESIGN-viewer.md "Chrome v2"): search, Documents, then the switch and its list. The order is fixed:
@@ -330,6 +393,7 @@ namespace viewer {
                              .color = colorSpecFromRole(ink), .maxLines = 1, .ellipsize = TextEllipsize::End,
                              .flexGrow = 1.0F}));
       auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+      area->setSize(width, Tokens::componentSidebarRow * s);
       area->setOnClick([later, run](const InputArea::PointerData&) { later(run); });
       Accessible& a = area->accessibleState();
       a.role = AccessibleRole::Tab;
@@ -340,7 +404,7 @@ namespace viewer {
     };
     for (const std::uint64_t id : rows) {
       const std::string title = m_docs.at(id)->title();
-      row("file", title, id == m_set.focused(), ColorRole::Label1, [id](ViewerTabs& t) { t.select(id); }, title);
+      row("file", title, id == m_set.focused(), ColorRole::Label1, [id](ViewerTabs& t) { t.clickRow(id); }, title);
     }
     if (tabs.size() > kShown + 1) {
       const std::string text = cut ? std::format("{} more", tabs.size() - rows.size()) : std::string("Show fewer");
