@@ -6,7 +6,9 @@
 #include "link_finder.h"
 #include "design_tokens.h"
 #include "render/animation/animation_manager.h"
+#include "render/core/render_styles.h"
 #include "render/scene/node.h"
+#include "render/scene/rect_node.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
 #include "ui/controls/flex.h"
@@ -77,6 +79,7 @@ namespace term {
       Node* jumpShadow = nullptr; // e2 key shadow under the jump pill
       Node* slash = nullptr;
       Node* dock = nullptr;
+      Node* fade = nullptr; // over the log's top edge, under the title band
       float scale = 1.0F;
 
     protected:
@@ -96,6 +99,9 @@ namespace term {
       void place(Renderer& renderer) {
         if (dock == nullptr) {
           return;
+        }
+        if (fade != nullptr) {
+          float_(renderer, *fade, 0.0F, 0.0F, width(), Tokens::spaceP16 * scale);
         }
         if (jump != nullptr && jump->visible()) {
           const LayoutSize size = jump->measure(renderer, {});
@@ -1433,6 +1439,21 @@ namespace term {
     auto dock = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP16 * s});
     dock->addChild(std::move(composer));
     root->dock = root->addChild(std::move(dock));
+    // The log fades out under the title band: the band has no edge of its own, it is the same plane.
+    auto fade = std::make_unique<RectNode>();
+    fade->setParticipatesInLayout(false);
+    const Color plane = resolveColorSpec(colorSpecFromRole(ColorRole::View), root.get());
+    const Color clear{plane.r, plane.g, plane.b, 0.0F};
+    fade->setStyle(RoundedRectStyle{.fill = plane,
+                                    .border = clearColor(),
+                                    .fillMode = FillMode::LinearGradient,
+                                    .gradientDirection = GradientDirection::Vertical,
+                                    .gradientStops = {GradientStop{0.0F, plane}, GradientStop{0.0F, plane},
+                                                      GradientStop{1.0F, clear}, GradientStop{1.0F, clear}},
+                                    .radius = 0.0F,
+                                    .softness = 0.0F,
+                                    .borderWidth = 0.0F});
+    root->fade = root->addChild(std::move(fade));
     auto shadow = ui::box({.out = &m_jumpShadow, .visible = false, .participatesInLayout = false});
     shadow->setSoftness(Tokens::elevationE2.keyBlur * s);
     root->jumpShadow = root->addChild(std::move(shadow));

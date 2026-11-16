@@ -64,6 +64,7 @@ namespace term {
     bool key(const KeyboardEvent& event) override;
     void setWindowActive(bool /*active*/) override {}
     [[nodiscard]] InputArea* focusArea() const noexcept override;
+    [[nodiscard]] ColorSpec surface() const override { return colorSpecFromRole(ColorRole::View); }
 
   private:
     [[nodiscard]] std::size_t itemCount() const override;

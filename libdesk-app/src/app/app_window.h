@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/controls/context_menu.h"
+#include "ui/palette.h"
 
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_dispatcher.h"
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -82,6 +84,9 @@ public:
   }
   // The accessory width the header never folds: past it the title ellipsizes instead.
   void setHeaderAccessoryFloor(std::function<float(Renderer&)> floor) { m_headerAccessoryFloor = std::move(floor); }
+  // The Solid main pane's plane, header included: the content's surface, so the header and the content read as one
+  // plane. nullopt = solid_regular. Glass keeps its sheet tint.
+  void setMainFill(std::optional<ColorSpec> fill);
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
   // Keys no command took and no text field owns (type-ahead, arrows in a list). True = handled.
   void setKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_keyHandler = std::move(handler); }
@@ -217,6 +222,8 @@ private:
   std::array<Button*, 2> m_navButtons{};
   Button* m_moreButton = nullptr;
   Flex* m_sidebarNode = nullptr;
+  Flex* m_mainNode = nullptr;
+  std::optional<ColorSpec> m_mainFill;
   float m_sidebarMix = 1.0F; // 0 = collapsed
   std::vector<InputRect> m_blur; // the blur region last sent; empty = none
   void syncBlur();

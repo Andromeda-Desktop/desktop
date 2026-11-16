@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/palette.h"
+
 #include <memory>
 
 class InputArea;
@@ -30,6 +32,8 @@ namespace term {
     virtual bool key(const KeyboardEvent& event) = 0;
     virtual void setWindowActive(bool active) = 0;
     [[nodiscard]] virtual InputArea* focusArea() const noexcept = 0;
+    // The plane the view paints: the window's main pane takes it, so the title band reads as part of the content.
+    [[nodiscard]] virtual ColorSpec surface() const = 0;
     // Non-null for a terminal session: find and reattach apply only to it.
     [[nodiscard]] virtual TerminalView* terminal() noexcept { return nullptr; }
     [[nodiscard]] virtual AgentView* agent() noexcept { return nullptr; }
