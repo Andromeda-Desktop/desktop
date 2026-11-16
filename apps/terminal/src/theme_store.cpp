@@ -89,13 +89,18 @@ namespace term {
       return entry;
     }
 
+    // A hidden folder belongs to a tool working in the themes folder (a theme agent's .claude), not to a theme.
+    bool isPackageFolder(const std::filesystem::directory_entry& item, std::error_code& ec) {
+      return item.is_directory(ec) && !item.path().filename().string().starts_with('.');
+    }
+
   } // namespace
 
   std::vector<ThemeEntry> scanThemes(const std::filesystem::path& dir, const std::vector<ThemeEntry>& previous) {
     std::vector<ThemeEntry> entries;
     std::error_code ec;
     for (const auto& item : std::filesystem::directory_iterator(dir, ec)) {
-      if (item.is_directory(ec)) {
+      if (isPackageFolder(item, ec)) {
         entries.push_back(readEntry(item.path(), previous));
       }
     }
@@ -193,7 +198,7 @@ namespace term {
     std::vector<std::filesystem::path> folders{m_dir};
     std::error_code ec;
     for (const auto& item : std::filesystem::directory_iterator(m_dir, ec)) {
-      if (item.is_directory(ec)) {
+      if (isPackageFolder(item, ec)) {
         folders.push_back(item.path());
       }
     }

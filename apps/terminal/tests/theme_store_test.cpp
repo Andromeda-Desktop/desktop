@@ -63,7 +63,8 @@ int main() {
     auto pick = [&](int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(rng); };
     const std::filesystem::path dir = std::filesystem::temp_directory_path() / std::format("theme-store-test-{}", getpid()) / std::format("themes-{}", s);
     std::filesystem::remove_all(dir);
-    std::filesystem::create_directories(dir);
+    std::filesystem::create_directories(dir / ".claude");
+    std::ofstream(dir / ".claude" / "settings.local.json") << "{}";
     std::map<std::string, Folder> model;
     std::map<std::string, ThemePackage> lastGood;
     std::vector<ThemeEntry> entries;
