@@ -18,7 +18,7 @@ public:
   WallpaperProgram(const WallpaperProgram&) = delete;
   WallpaperProgram& operator=(const WallpaperProgram&) = delete;
 
-  void ensureInitialized();
+  void ensureInitialized(WallpaperTransition transition);
   void destroy();
   void abandon() noexcept;
 

@@ -1042,7 +1042,7 @@ void GlesRenderBackend::drawTerminalGrid(const TerminalGridDraw& grid) {
 void GlesRenderBackend::drawWallpaper(const WallpaperDrawParams& params) {
   flushRectBatch();
   gpuMark(GpuSplitTimer::kOtherDraw);
-  m_wallpaperProgram.ensureInitialized();
+  m_wallpaperProgram.ensureInitialized(params.transition);
   m_wallpaperProgram.draw(params);
 }
 

@@ -362,7 +362,7 @@ int main() {
   try {
     EglContext egl;
     WallpaperProgram program;
-    program.ensureInitialized();
+    program.ensureInitialized(WallpaperTransition::Fade);
     requireGl("shader initialization");
     testTwoOutputSpan(program);
     testStaggeredSpanMatchesDesktopCover(program);

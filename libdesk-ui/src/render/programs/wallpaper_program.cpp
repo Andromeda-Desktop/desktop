@@ -437,22 +437,16 @@ void main() {
 
 } // namespace
 
-void WallpaperProgram::ensureInitialized() {
-  if (m_programs[0].program.isValid()) {
-    return;
+void WallpaperProgram::ensureInitialized(WallpaperTransition transition) {
+  static constexpr std::array<const char*, kTransitionCount> kFragments = {
+      kFadeFragment,      kWipeFragment,  kDiscFragment,  kStripesFragment, kZoomFragment, kHoneycombFragment,
+      kVortexFragment,    kPixelFragment, kDiamondFragment, kGoldenFragment, kMeltFragment,
+  };
+  const auto index = static_cast<std::size_t>(transition);
+  // Each transition compiles on its first draw: a linked program holds about 0.7 MiB of driver memory.
+  if (index < kTransitionCount && !m_programs[index].program.isValid()) {
+    initProgram(index, kFragments[index]);
   }
-
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Fade), kFadeFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Wipe), kWipeFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Disc), kDiscFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Stripes), kStripesFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Zoom), kZoomFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Honeycomb), kHoneycombFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Vortex), kVortexFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Pixel), kPixelFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Diamond), kDiamondFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Golden), kGoldenFragment);
-  initProgram(static_cast<std::size_t>(WallpaperTransition::Melt), kMeltFragment);
 }
 
 void WallpaperProgram::destroy() {
