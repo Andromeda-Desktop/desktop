@@ -361,6 +361,8 @@ enum Request {
     Compress(Vec<PathBuf>, PathBuf, archive::OutFormat, String, u64),
     /// Paths, mode, mask, recursive.
     SetPermissions(Vec<PathBuf>, u32, u32, bool),
+    /// Paths, uid and gid (`None` keeps it), recursive.
+    SetOwner(Vec<PathBuf>, Option<u32>, Option<u32>, bool),
     /// Path, algorithm.
     Checksum(PathBuf, String),
     /// Root, walk again even when a recent scan exists.
@@ -412,6 +414,7 @@ fn run(request: Request, shared: &Shared) {
         Request::SetPermissions(paths, mode, mask, recursive) => {
             info::set_permissions(&paths, mode, mask, recursive, shared)
         }
+        Request::SetOwner(paths, uid, gid, recursive) => info::set_owner(&paths, uid, gid, recursive, shared),
         Request::Checksum(path, algorithm) => match info::checksum(&path, &algorithm, shared) {
             Ok(hex) => {
                 lock(&shared.status).result = hex;
@@ -505,7 +508,7 @@ impl Manager {
             Request::RenameMany(items) => (items.len() as u64, 0),
             Request::Extract(..) => (0, 0),
             Request::Compress(sources, ..) => ops::measure(sources),
-            Request::SetPermissions(paths, ..) => (paths.len() as u64, 0),
+            Request::SetPermissions(paths, ..) | Request::SetOwner(paths, ..) => (paths.len() as u64, 0),
             Request::Checksum(path, _) => (1, std::fs::metadata(path).map_or(0, |m| m.len())),
             Request::StorageScan(..) => (0, 0),
             Request::SetTags(paths, ..) => (paths.len() as u64, 0),
@@ -746,6 +749,27 @@ impl Manager {
         }
         let job =
             self.start(conn, "permissions", Request::SetPermissions(paths, mode & 0o7777, mask, recursive)).await?;
+        self.jobs_changed(&emitter).await?;
+        Ok(job)
+    }
+
+    /// Sets the owner and the group; `u32::MAX` (chown's -1) keeps that one. `recursive` also changes everything
+    /// inside folders. Links are left alone. Undo puts the old owner and group back.
+    async fn set_owner(
+        &mut self,
+        targets: Vec<Vec<u8>>,
+        uid: u32,
+        gid: u32,
+        recursive: bool,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_emitter)] emitter: zbus::object_server::SignalEmitter<'_>,
+    ) -> zbus::fdo::Result<OwnedObjectPath> {
+        let paths = paths(targets)?;
+        let keep = |id: u32| (id != u32::MAX).then_some(id);
+        if paths.is_empty() || (uid == u32::MAX && gid == u32::MAX) {
+            return Err(zbus::fdo::Error::InvalidArgs("no paths, or neither an owner nor a group".into()));
+        }
+        let job = self.start(conn, "owner", Request::SetOwner(paths, keep(uid), keep(gid), recursive)).await?;
         self.jobs_changed(&emitter).await?;
         Ok(job)
     }

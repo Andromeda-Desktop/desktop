@@ -192,6 +192,14 @@ void FileOpsClient::setPermissions(const std::vector<std::filesystem::path>& tar
   start("SetPermissions", [&](auto& c) { c.withArguments(bytesList(targets), mode, mask, recursive); }, std::move(done));
 }
 
+void FileOpsClient::setOwner(const std::vector<std::filesystem::path>& targets, std::optional<std::uint32_t> uid,
+                             std::optional<std::uint32_t> gid, bool recursive, Started done) {
+  // The daemon reads UINT32_MAX (chown's -1) as "keep".
+  constexpr std::uint32_t keep = UINT32_MAX;
+  start("SetOwner", [&](auto& c) { c.withArguments(bytesList(targets), uid.value_or(keep), gid.value_or(keep), recursive); },
+        std::move(done));
+}
+
 void FileOpsClient::setTags(const std::vector<std::filesystem::path>& targets, const std::vector<std::string>& tags,
                             const std::string& mode, Started done) {
   start("SetTags", [&](auto& c) { c.withArguments(bytesList(targets), tags, mode); }, std::move(done));

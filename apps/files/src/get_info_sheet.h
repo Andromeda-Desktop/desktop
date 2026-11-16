@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <variant>
 #include <vector>
 
 class FileOpsClient;
@@ -74,13 +75,21 @@ private:
   [[nodiscard]] std::unique_ptr<Node> buildChecksums(float s);
   [[nodiscard]] std::unique_ptr<Node> buildVersions(float s);
   void later(std::function<void()> fn);
-  // A mode change the daemon could not make (items of another user): the root helper through pkexec.
-  struct AdminChange {
-    std::vector<std::filesystem::path> paths;
+  // A change the daemon could not make (items of another user, or a new owner): the root helper through pkexec.
+  struct ModeChange {
     std::uint32_t mode = 0;
     std::uint32_t mask = 0;
+  };
+  struct OwnerChange {
+    std::optional<std::uint32_t> uid;
+    std::optional<std::uint32_t> gid;
+  };
+  struct AdminChange {
+    std::vector<std::filesystem::path> paths;
+    std::variant<ModeChange, OwnerChange> what;
     bool recursive = false;
   };
+  void setOwner(OwnerChange change);
   void failed(const std::string& error, AdminChange change);
   void changeAsAdmin();
 

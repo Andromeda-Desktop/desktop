@@ -64,6 +64,47 @@ namespace {
     return gr != nullptr ? gr->gr_name : std::to_string(gid);
   }
 
+  // People who can own files: root, the current owner, and login accounts (uid 1000 up to nobody).
+  std::vector<std::pair<std::uint32_t, std::string>> ownerChoices(std::optional<std::uint32_t> now) {
+    std::vector<std::pair<std::uint32_t, std::string>> out;
+    ::setpwent();
+    while (const passwd* pw = ::getpwent()) {
+      if (pw->pw_uid == 0 || pw->pw_uid == now || (pw->pw_uid >= 1000 && pw->pw_uid < 65534)) {
+        out.emplace_back(pw->pw_uid, userName(pw->pw_uid));
+      }
+    }
+    ::endpwent();
+    if (now.has_value() && std::ranges::none_of(out, [&](const auto& e) { return e.first == *now; })) {
+      out.emplace_back(*now, userName(*now));
+    }
+    std::ranges::sort(out, {}, &std::pair<std::uint32_t, std::string>::second);
+    return out;
+  }
+
+  // The groups the user is in, user groups (gid 1000 up to nogroup), and the current group.
+  std::vector<std::pair<std::uint32_t, std::string>> groupChoices(std::optional<std::uint32_t> now) {
+    std::set<std::uint32_t> mine;
+    const int n = ::getgroups(0, nullptr);
+    std::vector<gid_t> groups(static_cast<std::size_t>(std::max(n, 0)));
+    if (n > 0 && ::getgroups(n, groups.data()) == n) {
+      mine.insert(groups.begin(), groups.end());
+    }
+    mine.insert(::getgid());
+    std::vector<std::pair<std::uint32_t, std::string>> out;
+    ::setgrent();
+    while (const group* gr = ::getgrent()) {
+      if (mine.contains(gr->gr_gid) || gr->gr_gid == now || (gr->gr_gid >= 1000 && gr->gr_gid < 65534)) {
+        out.emplace_back(gr->gr_gid, gr->gr_name);
+      }
+    }
+    ::endgrent();
+    if (now.has_value() && std::ranges::none_of(out, [&](const auto& e) { return e.first == *now; })) {
+      out.emplace_back(*now, groupName(*now));
+    }
+    std::ranges::sort(out, {}, &std::pair<std::uint32_t, std::string>::second);
+    return out;
+  }
+
   std::string defaultApp(const std::string& contentType) {
     GAppInfo* app = g_app_info_get_default_for_type(contentType.c_str(), FALSE);
     if (app == nullptr) {
@@ -345,8 +386,15 @@ void GetInfoSheet::changeAsAdmin() {
   }
   const char* override = std::getenv("ANDROMEDA_FILEOPS_ADMIN"); // tests point this at a stand-in
   const std::string helper = override != nullptr && *override != '\0' ? override : "/usr/lib/andromeda/andromeda-fileops-admin";
-  std::vector<std::string> args{"pkexec", helper, "chmod", std::format("{:o}", m_admin->mode),
-                                std::format("{:o}", m_admin->mask), m_admin->recursive ? "1" : "0"};
+  const auto id = [](std::optional<std::uint32_t> v) { return v.has_value() ? std::to_string(*v) : std::string("-"); };
+  std::vector<std::string> args{"pkexec", helper};
+  if (const auto* mode = std::get_if<ModeChange>(&m_admin->what)) {
+    args.insert(args.end(), {"chmod", std::format("{:o}", mode->mode), std::format("{:o}", mode->mask)});
+  } else {
+    const auto& owner = std::get<OwnerChange>(m_admin->what);
+    args.insert(args.end(), {"chown", id(owner.uid), id(owner.gid)});
+  }
+  args.emplace_back(m_admin->recursive ? "1" : "0");
   for (const auto& p : m_admin->paths) {
     args.push_back(p.string());
   }
@@ -465,6 +513,33 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
   const Item& first = m_items.front();
   const bool oneOwner = std::ranges::all_of(m_items, [&](const Item& i) { return i.uid == first.uid; });
   const bool oneGroup = std::ranges::all_of(m_items, [&](const Item& i) { return i.gid == first.gid; });
+  const auto picker = [&](const char* label, const std::vector<std::pair<std::uint32_t, std::string>>& ids,
+                          std::optional<std::uint32_t> now, std::function<void(std::uint32_t)> pick) {
+    std::vector<std::string> options;
+    std::optional<std::size_t> selected;
+    for (const auto& [n, name] : ids) {
+      if (now == n) {
+        selected = options.size();
+      }
+      options.push_back(name);
+    }
+    auto row = field(label, s);
+    row->addChild(ui::select({.options = std::move(options), .selectedIndex = selected,
+                              .placeholder = std::string("Mixed"), .fontSize = Style::fontSizeBody * s,
+                              .controlHeight = Style::controlHeight * s,
+                              .onSelectionChanged = [ids, pick = std::move(pick)](std::size_t i, std::string_view) {
+                                if (i < ids.size()) {
+                                  pick(ids[i].first);
+                                }
+                              }}));
+    box->addChild(std::move(row));
+  };
+  picker("Owner", ownerChoices(oneOwner ? std::optional(first.uid) : std::nullopt),
+         oneOwner ? std::optional(first.uid) : std::nullopt,
+         [this](std::uint32_t uid) { setOwner({.uid = uid, .gid = std::nullopt}); });
+  picker("Group", groupChoices(oneGroup ? std::optional(first.gid) : std::nullopt),
+         oneGroup ? std::optional(first.gid) : std::nullopt,
+         [this](std::uint32_t gid) { setOwner({.uid = std::nullopt, .gid = gid}); });
   const std::array<std::string, 3> names{oneOwner ? userName(first.uid) : std::string("Owner"),
                                          oneGroup ? groupName(first.gid) : std::string("Group"), std::string("Everyone")};
   for (int cls = 0; cls < 3; ++cls) {
@@ -504,6 +579,26 @@ std::unique_ptr<Node> GetInfoSheet::buildPermissions(float s) {
   return box;
 }
 
+void GetInfoSheet::setOwner(OwnerChange change) {
+  if (m_ops == nullptr) {
+    return;
+  }
+  std::vector<fs::path> paths;
+  for (Item& item : m_items) {
+    paths.push_back(item.path);
+    item.uid = change.uid.value_or(item.uid);
+    item.gid = change.gid.value_or(item.gid);
+  }
+  m_ops->setOwner(paths, change.uid, change.gid, m_recursive,
+                  [this, admin = AdminChange{.paths = paths, .what = change, .recursive = m_recursive}](
+                      const std::string&, const std::string& error) {
+                    if (!error.empty()) {
+                      failed(error, admin);
+                    }
+                  });
+  later(m_rebuild);
+}
+
 void GetInfoSheet::setAccess(int cls, int access) {
   const auto [mode, mask] = accessBits(static_cast<PermClass>(cls), static_cast<Access>(access));
   if (m_ops == nullptr) {
@@ -515,7 +610,8 @@ void GetInfoSheet::setAccess(int cls, int access) {
     item.mode = (item.mode & ~mask) | (mode & mask);
   }
   m_ops->setPermissions(paths, mode, mask, m_recursive,
-                        [this, change = AdminChange{.paths = paths, .mode = mode, .mask = mask, .recursive = m_recursive}](
+                        [this, change = AdminChange{.paths = paths, .what = ModeChange{.mode = mode, .mask = mask},
+                                                    .recursive = m_recursive}](
                             const std::string&, const std::string& error) {
                           if (!error.empty()) {
                             failed(error, change);
@@ -533,7 +629,7 @@ void GetInfoSheet::setRun(bool allow) {
     const auto [mode, mask] = runBits(item.mode, allow);
     item.mode = (item.mode & ~mask) | (mode & mask);
     m_ops->setPermissions({item.path}, mode, mask, false,
-                          [this, change = AdminChange{.paths = {item.path}, .mode = mode, .mask = mask}](
+                          [this, change = AdminChange{.paths = {item.path}, .what = ModeChange{.mode = mode, .mask = mask}}](
                               const std::string&, const std::string& error) {
                             if (!error.empty()) {
                               failed(error, change);

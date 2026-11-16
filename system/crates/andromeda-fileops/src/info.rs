@@ -1,4 +1,4 @@
-//! Get Info operations: permission changes (with undo) and checksums, both run as jobs.
+//! Get Info operations: permission and owner changes (with undo) and checksums, both run as jobs.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read};
@@ -29,19 +29,18 @@ pub fn new_mode(old: u32, mode: u32, mask: u32, is_dir: bool) -> u32 {
     out & 0o7777
 }
 
-/// Changes the permission bits of `paths` (and everything under them when `recursive`). Links are never changed
-/// or followed: chmod would change their target.
-pub fn set_permissions(
+/// Calls `change` on each of `paths` (and everything under them when `recursive`); it returns the undo step of a
+/// change it made. Links are never changed or followed.
+fn walk(
     paths: &[PathBuf],
-    mode: u32,
-    mask: u32,
     recursive: bool,
     ctl: &dyn Control,
+    mut change: impl FnMut(&Path, &fs::Metadata) -> io::Result<Option<UndoStep>>,
 ) -> (Vec<UndoStep>, OpResult<()>) {
     let mut undo = Vec::new();
     let mut done = 0u64;
-    let mut todo: Vec<(PathBuf, bool)> = paths.iter().rev().map(|p| (p.clone(), true)).collect();
-    while let Some((path, _)) = todo.pop() {
+    let mut todo: Vec<PathBuf> = paths.iter().rev().cloned().collect();
+    while let Some(path) = todo.pop() {
         if ctl.cancelled() {
             return (undo, Err(OpError::Cancelled));
         }
@@ -52,24 +51,59 @@ pub fn set_permissions(
         if meta.is_symlink() {
             continue;
         }
-        let old = meta.mode() & 0o7777;
-        let new = new_mode(old, mode, mask, meta.is_dir());
-        if new != old {
-            if let Err(e) = fs::set_permissions(&path, fs::Permissions::from_mode(new)) {
-                return (undo, Err(OpError::Io(path, e)));
-            }
-            undo.push(UndoStep::Mode { path: path.clone(), mode: old });
+        match change(&path, &meta) {
+            Ok(step) => undo.extend(step),
+            Err(e) => return (undo, Err(OpError::Io(path, e))),
         }
         done += 1;
         ctl.progress(done, 0, &path);
         if recursive && meta.is_dir() {
             match fs::read_dir(&path) {
-                Ok(entries) => todo.extend(entries.flatten().map(|e| (e.path(), false))),
+                Ok(entries) => todo.extend(entries.flatten().map(|e| e.path())),
                 Err(e) => return (undo, Err(OpError::Io(path, e))),
             }
         }
     }
     (undo, Ok(()))
+}
+
+/// Changes the permission bits of `paths` (and everything under them when `recursive`). Links are never changed
+/// or followed: chmod would change their target.
+pub fn set_permissions(
+    paths: &[PathBuf],
+    mode: u32,
+    mask: u32,
+    recursive: bool,
+    ctl: &dyn Control,
+) -> (Vec<UndoStep>, OpResult<()>) {
+    walk(paths, recursive, ctl, |path, meta| {
+        let old = meta.mode() & 0o7777;
+        let new = new_mode(old, mode, mask, meta.is_dir());
+        if new == old {
+            return Ok(None);
+        }
+        fs::set_permissions(path, fs::Permissions::from_mode(new))?;
+        Ok(Some(UndoStep::Mode { path: path.to_path_buf(), mode: old }))
+    })
+}
+
+/// Changes the owner and the group of `paths` (`None` keeps it), and everything under them when `recursive`.
+/// Links are left alone. Undo puts the old owner and group back.
+pub fn set_owner(
+    paths: &[PathBuf],
+    uid: Option<u32>,
+    gid: Option<u32>,
+    recursive: bool,
+    ctl: &dyn Control,
+) -> (Vec<UndoStep>, OpResult<()>) {
+    walk(paths, recursive, ctl, |path, meta| {
+        let (old_uid, old_gid) = (meta.uid(), meta.gid());
+        if uid.is_none_or(|u| u == old_uid) && gid.is_none_or(|g| g == old_gid) {
+            return Ok(None);
+        }
+        std::os::unix::fs::lchown(path, uid, gid)?;
+        Ok(Some(UndoStep::Owner { path: path.to_path_buf(), uid: old_uid, gid: old_gid }))
+    })
 }
 
 /// Opens `path` for reading only if it is a regular file. An `O_PATH` fd is checked first, so no FIFO or device driver sees an open.
@@ -165,6 +199,21 @@ mod tests {
         let (_, result, _) = ops::undo(&undo, &Quietly);
         result.expect("undo");
         assert_eq!((mode_of(&dir), mode_of(&dir.join("f"))), (0o755, 0o644));
+    }
+
+    #[test]
+    fn set_owner_to_the_same_group_changes_nothing_and_a_foreign_owner_fails() {
+        let root = tempfile::tempdir().expect("tmp");
+        let file = root.path().join("f");
+        fs::write(&file, "x").expect("write");
+        let gid = fs::metadata(&file).expect("meta").gid();
+        let (undo, result) = set_owner(&[file.clone()], None, Some(gid), false, &Quietly);
+        result.expect("same group");
+        assert!(undo.is_empty());
+        if !rustix::process::geteuid().is_root() {
+            let (undo, result) = set_owner(&[file.clone()], Some(0), None, false, &Quietly);
+            assert!(result.is_err() && undo.is_empty(), "a user cannot give a file to root");
+        }
     }
 
     #[test]

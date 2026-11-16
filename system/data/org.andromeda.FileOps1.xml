@@ -85,6 +85,15 @@
       <arg name="recursive" type="b" direction="in" />
       <arg name="job" type="o" direction="out" />
     </method>
+    <!-- Owner and group; 4294967295 (chown's -1) keeps that one. recursive: also everything inside folders.
+         Links are left alone. Undo puts the old owner and group back. -->
+    <method name="SetOwner">
+      <arg name="targets" type="aay" direction="in" />
+      <arg name="uid" type="u" direction="in" />
+      <arg name="gid" type="u" direction="in" />
+      <arg name="recursive" type="b" direction="in" />
+      <arg name="job" type="o" direction="out" />
+    </method>
     <!-- Tags in the xattr user.xdg.tags. mode: set (exactly these), add, remove, or rename (tags = [old, new]). A tag has no comma. Undo restores each old value. -->
     <method name="SetTags">
       <arg name="targets" type="aay" direction="in" />

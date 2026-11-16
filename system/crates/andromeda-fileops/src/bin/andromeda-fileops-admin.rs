@@ -3,9 +3,10 @@
 //! path is checked: absolute, no `.` or `..` parts, not under /proc, /sys or /dev; links are never changed or followed.
 //!
 //! andromeda-fileops-admin chmod <mode octal> <mask octal> <0|1 recursive> <path>...
+//! andromeda-fileops-admin chown <uid|-> <gid|-> <0|1 recursive> <path>...   ("-" keeps it)
 //! Prints "done <count>" and exits 0, or prints the error and exits 1.
 
-use rustix::fs::{AtFlags, CWD, Dir, FileType, Mode, OFlags, chmodat, fstat, openat};
+use rustix::fs::{AtFlags, CWD, Dir, FileType, Gid, Mode, OFlags, Uid, chmodat, chownat, fstat, openat};
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
@@ -14,9 +15,9 @@ use std::process::ExitCode;
 const READ_BITS: [u32; 3] = [0o400, 0o040, 0o004];
 const REFUSED_ROOTS: [&str; 3] = ["/proc", "/sys", "/dev"];
 
-struct Change {
-    mode: u32,
-    mask: u32,
+enum Change {
+    Mode { mode: u32, mask: u32 },
+    Owner { uid: Option<u32>, gid: Option<u32> },
 }
 
 /// The same rule as the daemon (info.rs new_mode): a folder's search bit follows its read bit.
@@ -86,12 +87,22 @@ fn apply_at(
         return Ok(());
     }
     let is_dir = kind == FileType::Directory;
-    let old = st.st_mode & 0o7777;
-    let new = new_mode(old, change.mode, change.mask, is_dir);
-    if new != old {
-        // fchmod refuses O_PATH fds; /proc/self/fd/N resolves to the pinned inode (glibc's fchmodat fallback does this).
-        let proc = format!("/proc/self/fd/{}", pinned.as_raw_fd());
-        chmodat(CWD, proc.as_str(), Mode::from_raw_mode(new), AtFlags::empty()).map_err(err)?;
+    match *change {
+        Change::Mode { mode, mask } => {
+            let old = st.st_mode & 0o7777;
+            let new = new_mode(old, mode, mask, is_dir);
+            if new != old {
+                // fchmod refuses O_PATH fds; /proc/self/fd/N resolves to the pinned inode (glibc's fchmodat fallback).
+                let proc = format!("/proc/self/fd/{}", pinned.as_raw_fd());
+                chmodat(CWD, proc.as_str(), Mode::from_raw_mode(new), AtFlags::empty()).map_err(err)?;
+            }
+        }
+        Change::Owner { uid, gid } => {
+            // AT_EMPTY_PATH changes the pinned inode itself; fchownat accepts an O_PATH fd with it.
+            let uid = uid.map(Uid::from_raw);
+            let gid = gid.map(Gid::from_raw);
+            chownat(&pinned, "", uid, gid, AtFlags::EMPTY_PATH).map_err(err)?;
+        }
     }
     *count += 1;
     if recursive && is_dir {
@@ -118,17 +129,27 @@ fn apply_at(
 
 fn run(args: &[String]) -> Result<u64, String> {
     let [verb, a, b, recursive, paths @ ..] = args else {
-        return Err("usage: chmod <mode> <mask> <0|1> <path>...".to_owned());
+        return Err("usage: chmod <mode> <mask> <0|1> <path>... | chown <uid|-> <gid|-> <0|1> <path>...".to_owned());
     };
     if paths.is_empty() {
         return Err("no paths".to_owned());
     }
-    if verb != "chmod" {
-        return Err(format!("unknown verb {verb}"));
-    }
-    let change = Change {
-        mode: u32::from_str_radix(a, 8).map_err(|_| "bad mode".to_owned())? & 0o7777,
-        mask: u32::from_str_radix(b, 8).map_err(|_| "bad mask".to_owned())? & 0o7777,
+    let id = |text: &str| -> Result<Option<u32>, String> {
+        match text {
+            "-" => Ok(None),
+            _ => text.parse::<u32>().ok().filter(|&n| n != u32::MAX).map(Some).ok_or_else(|| format!("bad id {text}")),
+        }
+    };
+    let change = match verb.as_str() {
+        "chmod" => Change::Mode {
+            mode: u32::from_str_radix(a, 8).map_err(|_| "bad mode".to_owned())? & 0o7777,
+            mask: u32::from_str_radix(b, 8).map_err(|_| "bad mask".to_owned())? & 0o7777,
+        },
+        "chown" => match (id(a)?, id(b)?) {
+            (None, None) => return Err("chown needs an owner or a group".to_owned()),
+            (uid, gid) => Change::Owner { uid, gid },
+        },
+        _ => return Err(format!("unknown verb {verb}")),
     };
     let recursive = match recursive.as_str() {
         "0" => false,
@@ -188,7 +209,7 @@ mod tests {
         fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).expect("chmod");
         std::os::unix::fs::symlink(&target, dir.join("link")).expect("link");
         let mut count = 0;
-        apply(&dir, &Change { mode: 0o044, mask: 0o044 }, true, &mut count).expect("apply");
+        apply(&dir, &Change::Mode { mode: 0o044, mask: 0o044 }, true, &mut count).expect("apply");
         assert_eq!(fs::metadata(dir.join("f")).expect("meta").mode() & 0o777, 0o644);
         assert_eq!(fs::metadata(&target).expect("meta").mode() & 0o777, 0o600, "the link target must not change");
     }

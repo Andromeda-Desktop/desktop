@@ -58,6 +58,8 @@ pub enum UndoStep {
     Trashed(Trashed),
     /// Permission bits before a change (`SetPermissions`).
     Mode { path: PathBuf, mode: u32 },
+    /// Owner and group before a change (`SetOwner`).
+    Owner { path: PathBuf, uid: u32, gid: u32 },
     /// The `user.xdg.tags` value before a change (`None`: there was none).
     Tags { path: PathBuf, raw: Option<Vec<u8>> },
 }
@@ -713,6 +715,13 @@ pub fn undo(steps: &[UndoStep], ctl: &dyn Control) -> (Vec<UndoStep>, OpResult<(
                 if !meta.is_symlink() {
                     fs::set_permissions(path, fs::Permissions::from_mode(*mode)).map_err(io_at(path))?;
                     run.undo.push(UndoStep::Mode { path: path.clone(), mode: meta.mode() & 0o7777 });
+                }
+            }
+            UndoStep::Owner { path, uid, gid } => {
+                let meta = fs::symlink_metadata(path).map_err(io_at(path))?;
+                if !meta.is_symlink() {
+                    std::os::unix::fs::lchown(path, Some(*uid), Some(*gid)).map_err(io_at(path))?;
+                    run.undo.push(UndoStep::Owner { path: path.clone(), uid: meta.uid(), gid: meta.gid() });
                 }
             }
         }

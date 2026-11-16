@@ -87,6 +87,9 @@ public:
   // Bits `mode` where `mask` is set; folders open where they read. recursive: also everything inside folders.
   void setPermissions(const std::vector<std::filesystem::path>& targets, std::uint32_t mode, std::uint32_t mask,
                       bool recursive, Started done = {});
+  // nullopt keeps the owner (or group). Links are left alone; recursive: also everything inside folders.
+  void setOwner(const std::vector<std::filesystem::path>& targets, std::optional<std::uint32_t> uid,
+                std::optional<std::uint32_t> gid, bool recursive, Started done = {});
   // mode "set" (exactly these), "add", "remove" or "rename" (tags = {old, new}); tags in user.xdg.tags, no comma in a tag.
   void setTags(const std::vector<std::filesystem::path>& targets, const std::vector<std::string>& tags,
                const std::string& mode, Started done = {});
