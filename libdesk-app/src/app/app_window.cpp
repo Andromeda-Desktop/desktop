@@ -1,5 +1,7 @@
 #include "app/app_window.h"
 
+#include "render/scene/shader_scene_node.h"
+
 #include "app/foreign_parent.h"
 
 #include "app/app_loop.h"
@@ -539,6 +541,8 @@ void AppWindow::close() {
   m_navButtons = {};
   m_moreButton = nullptr;
   m_sidebarNode = nullptr;
+  m_mainNode = nullptr;
+  m_sceneNode = nullptr;
   m_sheetCard = nullptr;
   m_sheetShade = nullptr;
   m_sheetScrim = nullptr;
@@ -601,6 +605,42 @@ void AppWindow::setMaterial(Material material) {
   if (material != m_config.material) {
     m_config.material = material;
     requestRebuild();
+  }
+}
+
+void AppWindow::setScene(std::optional<Scene> scene) {
+  if (scene == m_scene) {
+    return;
+  }
+  if (scene && !m_scene) {
+    m_sceneStepped = std::chrono::steady_clock::now();
+  }
+  m_scene = std::move(scene);
+  requestRebuild();
+}
+
+bool AppWindow::stepScene() {
+  if (m_sceneNode == nullptr) {
+    return m_scene.has_value();
+  }
+  constexpr float kStep = 1.0F / 30.0F; // seconds per scene frame
+  const auto now = std::chrono::steady_clock::now();
+  const float elapsed = std::chrono::duration<float>(now - m_sceneStepped).count();
+  if (elapsed >= kStep) {
+    // A long pause (inactive, hidden) resumes the motion where it stopped instead of jumping.
+    m_sceneSeconds += std::min(elapsed, 4.0F * kStep);
+    m_sceneNode->setTime(m_sceneSeconds);
+    m_sceneStepped = now;
+    invalidate();
+  }
+  return true;
+}
+
+void AppWindow::setMainFill(std::optional<ColorSpec> fill) {
+  m_mainFill = std::move(fill);
+  if (m_mainNode != nullptr && m_config.material == Material::Solid && !m_config.transparentContent && !m_scene) {
+    m_mainNode->setFill(m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
+    invalidate();
   }
 }
 
@@ -699,7 +739,7 @@ void AppWindow::prepareFrame(bool needsLayout) {
 
 void AppWindow::syncBlur() {
   std::vector<InputRect> rects;
-  if (m_config.material == Material::Glass && !Style::reduceTransparency() && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
+  if (m_config.material == Material::Glass && !m_scene && !Style::reduceTransparency() && m_contentRect.width > 0.0F && m_contentRect.height > 0.0F) {
     const auto margin = static_cast<float>(m_surface->margin());
     const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
     const float r = square ? 0.0F : Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
@@ -938,6 +978,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_maximizeButton = nullptr;
   m_navButtons = {};
   m_sidebarNode = nullptr;
+  m_mainNode = nullptr;
+  m_sceneNode = nullptr;
   const auto teardownStart = std::chrono::steady_clock::now();
   m_root.reset();
   const double teardownMs = since(teardownStart);
@@ -966,12 +1008,21 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   }
   // Concave edge: the main pane's left corners round into the sidebar, whose tint shows behind them.
   // Glass has no concave edge: a sidebar-tint strip under the translucent main pane would stack two tints.
-  const bool concave = sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid;
+  // A scene shows through both panes, so a strip under the main corners would show as a darker band.
+  const bool concave = sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
   const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint);
-  if (!m_config.transparentContent) {
-    main->setFill(m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidRegular));
+  const auto sceneFill = [this](float alpha) {
+    Color tint = m_scene->surface;
+    tint.a = alpha;
+    return fixedColorSpec(tint);
+  };
+  if (m_scene && !m_config.transparentContent) {
+    main->setFill(sceneFill(m_scene->tint));
+  } else if (!m_config.transparentContent) {
+    main->setFill(m_config.material == Material::Glass ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
   }
+  m_mainNode = main.get();
   if (concave) {
     const Radii corners{edgeRadius, 0.0F, 0.0F, edgeRadius};
     main->setRadii(corners);
@@ -990,7 +1041,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   auto body = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
   if (sidebarWidth > 0.0F) {
-    const ColorSpec sidebarFill = m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
+    const ColorSpec sidebarFill = m_scene ? sceneFill(m_scene->sidebarTint)
+                                  : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});
@@ -1019,6 +1071,21 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   const auto layoutStart = std::chrono::steady_clock::now();
   body->layout(renderer);
   layoutMs = since(layoutStart);
+  if (m_scene) {
+    const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
+    const float r = square ? 0.0F : edgeRadius;
+    auto clip = ui::node({});
+    clip->setSize(width, height);
+    clip->setPosition(margin, margin);
+    clip->setClipRadii(Radii{r, r, r, r});
+    auto scene = std::make_unique<ShaderSceneNode>();
+    scene->setSource(m_scene->source);
+    scene->setColors(m_scene->surface, m_scene->text, m_scene->accent, m_scene->dark);
+    scene->setTime(m_sceneSeconds);
+    scene->setFrameSize(width, height);
+    m_sceneNode = static_cast<ShaderSceneNode*>(clip->addChild(std::move(scene)));
+    m_root->addChild(std::move(clip));
+  }
   m_root->addChild(std::move(body));
   m_sheetCard = nullptr;
   m_sheetShade = nullptr;

@@ -21,10 +21,13 @@ float caustic(vec2 p, float t) {
 // Manta seen from above, swimming toward +x, in units of its width; > 0 inside.
 float manta(vec2 p, float flap) {
   float span = 0.5 * (0.85 + 0.15 * flap);
-  float sweep = p.x + 0.12 * abs(p.y) / span; // wings sweep back
-  float wings = 1.0 - abs(sweep) / 0.22 - abs(p.y) / span;
+  float s = abs(p.y) / span; // 0 on the spine, 1 at a wing tip
+  float lead = 0.2 - 0.35 * s * s;                     // convex leading edge, tips swept back
+  float trail = -0.18 + 0.03 * s + 0.25 * s * (1.0 - s); // crescent trailing edge
+  float wings = step(s, 1.0) * min(lead - p.x, p.x - trail);
+  float horns = step(0.2, p.x) * step(p.x, 0.27) * step(0.035, abs(p.y)) * step(abs(p.y), 0.07);
   float tail = step(-0.62, p.x) * step(p.x, -0.15) * step(abs(p.y), 0.025);
-  return max(wings, tail);
+  return max(wings, max(horns, tail));
 }
 
 vec4 scene(vec2 uv) {

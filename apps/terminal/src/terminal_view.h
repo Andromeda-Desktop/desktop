@@ -12,7 +12,6 @@
 #include "ui/theme_palette.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
-#include "render/scene/shader_scene_node.h"
 #include "render/scene/terminal_grid_node.h"
 #include "design_tokens.h"
 #include "ui/text_input_client.h"
@@ -54,6 +53,10 @@ namespace term {
   [[nodiscard]] ThemePalette themePalette(const ThemeSpec& theme);
   // The theme an id names; an unknown id falls back to System.
   [[nodiscard]] ThemeSpec resolveTheme(std::string_view id, const ThemeStore& themes);
+  [[nodiscard]] inline bool hasScene(const ThemeSpec& theme) {
+    const auto* package = std::get_if<ThemePackage>(&theme);
+    return package != nullptr && !package->scene.empty();
+  }
   // The grid font family list: the user's font, else the theme's, then the mono token.
   [[nodiscard]] std::string gridFont(const Settings& settings, const ThemeSpec& theme);
 
@@ -114,8 +117,6 @@ namespace term {
       }
       m_bellAnim = 0;
       m_bellFlash = nullptr;
-      m_scene = nullptr;
-      m_sceneTint = nullptr;
       m_grid = nullptr;
       m_area = nullptr;
       m_linkAnchor = nullptr;
@@ -254,8 +255,6 @@ namespace term {
     Settings m_settings = m_host.settings;
     ThemeSpec m_theme = m_host.theme;
     void applyTerminalSettings();
-    // Adds, updates or removes the theme scene under the grid.
-    void syncScene();
     [[nodiscard]] Color themed(ColorRole role) const;
     void setGridFont();
     // Hover preview of m_link: Armed waits the tooltip delay; Shown holds the content and, for an image, the
@@ -322,10 +321,6 @@ namespace term {
     Node* m_findLayer = nullptr; // moves with the grid origin
     RectNode* m_findRing = nullptr;
     RectNode* m_bellFlash = nullptr; // the bell line along the title band's bottom edge
-    ShaderSceneNode* m_scene = nullptr; // the theme's scene under the cells; null when the theme has none
-    RectNode* m_sceneTint = nullptr;    // the surface colour over the scene, so the text stays readable
-    float m_sceneSeconds = 0.0F;        // scene time: runs only while the view is focused
-    std::chrono::steady_clock::time_point m_sceneShown{}; // when the scene time last advanced
     AnimationManager::Id m_bellAnim = 0;
     std::chrono::steady_clock::time_point m_lastBell;
     void updateMarks();

@@ -9,6 +9,7 @@
 #include "wayland/toplevel_surface.h"
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,6 +24,7 @@ class CommandTable;
 class Flex;
 class Label;
 class Renderer;
+class ShaderSceneNode;
 class StateStore;
 struct KeyboardEvent;
 struct PinchEvent;
@@ -87,6 +89,21 @@ public:
   // The Solid main pane's plane, header included: the content's surface, so the header and the content read as one
   // plane. nullopt = solid_regular. Glass keeps its sheet tint.
   void setMainFill(std::optional<ColorSpec> fill);
+  // A theme scene behind the whole window: the sidebar and the main pane become surface tints over it, with no blur.
+  struct Scene {
+    std::string source; // the fragment shader body (ShaderSceneNode contract)
+    Color surface;
+    Color text;
+    Color accent;
+    bool dark = false;
+    float tint = 1.0F;        // the surface's alpha over the scene in the main pane, header included
+    float sidebarTint = 1.0F; // the same in the sidebar
+    bool operator==(const Scene&) const = default;
+  };
+  void setScene(std::optional<Scene> scene);
+  // Advances the scene clock at most 30 times a second. True while a scene shows: the caller keeps frames coming,
+  // and calls it only while the window is active, so an inactive window asks for no frames.
+  bool stepScene();
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
   // Keys no command took and no text field owns (type-ahead, arrows in a list). True = handled.
   void setKeyHandler(std::function<bool(const KeyboardEvent&)> handler) { m_keyHandler = std::move(handler); }
@@ -224,6 +241,10 @@ private:
   Flex* m_sidebarNode = nullptr;
   Flex* m_mainNode = nullptr;
   std::optional<ColorSpec> m_mainFill;
+  std::optional<Scene> m_scene;
+  ShaderSceneNode* m_sceneNode = nullptr;
+  float m_sceneSeconds = 0.0F;
+  std::chrono::steady_clock::time_point m_sceneStepped{}; // when the scene clock last advanced
   float m_sidebarMix = 1.0F; // 0 = collapsed
   std::vector<InputRect> m_blur; // the blur region last sent; empty = none
   void syncBlur();

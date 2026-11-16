@@ -33,6 +33,27 @@
 namespace term {
 
   namespace {
+    // The title band takes the content's plane when the band's ink, which follows the system scheme, reads on it;
+    // a light terminal theme on a dark desktop keeps the default plane.
+    std::optional<ColorSpec> titlePlane(const ContentView& view) {
+      const bool lightPlane = relativeLuminance(resolveColorSpec(view.surface())) > 0.5F;
+      const bool lightChrome = relativeLuminance(resolveColorSpec(colorSpecFromRole(ColorRole::View))) > 0.5F;
+      return lightPlane == lightChrome ? std::optional<ColorSpec>(view.surface()) : std::nullopt;
+    }
+
+    std::optional<AppWindow::Scene> windowScene(const SettingsStore& settings) {
+      const ThemeSpec theme = resolveTheme(settings.settings().theme, settings.themes());
+      if (!hasScene(theme)) {
+        return std::nullopt;
+      }
+      const ThemePalette colors = themePalette(theme);
+      return AppWindow::Scene{.source = std::get<ThemePackage>(theme).scene, .surface = colors.view, .text = colors.label1,
+                              .accent = colors.accent, .dark = !isResolvedLightTheme(),
+                              .tint = Tokens::componentTerminalSceneTint, .sidebarTint = Tokens::componentTerminalSceneSidebarTint};
+    }
+  } // namespace
+
+  namespace {
     constexpr Logger kLog("terminal");
 
     // The status comes first, so truncation removes the command, never the outcome.
@@ -68,7 +89,13 @@ namespace term {
           terminal->applySettings(m_settings.settings(), resolveTheme(m_settings.settings().theme, m_settings.themes()));
         }
       }
+      if (ContentView* view = shownView(); view != nullptr) {
+        m_window.setMainFill(titlePlane(*view));
+      }
+      m_window.setScene(windowScene(m_settings));
+      requestFrame();
     });
+    m_window.setScene(windowScene(m_settings));
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
@@ -227,6 +254,9 @@ namespace term {
       m_active = active;
       if (ContentView* view = shownView(); view != nullptr) {
         view->setWindowActive(active);
+      }
+      if (active) {
+        requestFrame(); // the scene moves again
       }
     });
     m_window.setLayoutCallback([this] {
@@ -417,6 +447,7 @@ namespace term {
     if (view == nullptr) {
       return;
     }
+    m_window.setMainFill(titlePlane(*view));
     Surface* surface = m_window.surface();
     const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
     m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
@@ -835,6 +866,10 @@ namespace term {
         // Hidden sessions run frame() too: it reports their exit; without a grid it draws nothing.
         for (std::size_t i = 0; i < m_views.size(); ++i) {
           m_views[i].view->frame();
+        }
+        // The scene moves only while the window is active: an inactive window asks for no frames for it.
+        if (m_active && m_window.stepScene()) {
+          requestFrame();
         }
       });
       surface->setScaleChangedCallback([this](float scale) {
