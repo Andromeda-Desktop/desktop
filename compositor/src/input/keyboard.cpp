@@ -11,6 +11,7 @@
 #include "input/shortcut_keysym.h"
 #include "input/text_input.h"
 #include "overview/overview.h"
+#include "view/view.h"
 #include "scene/quit_confirm.h"
 #include "server/desktop_settings_manager.h"
 #include "server/desktop_shell.h"
@@ -708,6 +709,11 @@ namespace andromeda {
       wlr_seat_keyboard_notify_key(
           seat, event.time_msec, event.keycode, static_cast<wl_keyboard_key_state>(event.state)
       );
+      if (event.state == WL_KEYBOARD_KEY_STATE_PRESSED && seat->keyboard_state.focused_surface != nullptr) {
+        if (View* focused = View::fromSurface(seat->keyboard_state.focused_surface); focused != nullptr) {
+          focused->ping();
+        }
+      }
     }
     return KeyResult::Consume;
   }

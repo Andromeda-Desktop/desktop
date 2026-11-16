@@ -9,6 +9,7 @@
 #include <deque>
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@ struct ActivityRow {
   std::string appId; // from the unit name, else from a window in the unit
   std::vector<std::string> units;
   bool hasWindow = false;
+  bool notResponding = false; // a window of the row missed the compositor's ping
   bool systemManager = false;
   UnitSlice slice = UnitSlice::Other;
   std::uint64_t startedUsec = 0; // earliest ActiveEnterTimestamp, CLOCK_REALTIME
@@ -47,7 +49,8 @@ public:
   // Running units from every manager; replaces the previous set.
   void setUnits(std::vector<SystemdUnit> units);
   // Unit name -> app_id of a window whose PID is in that unit (see unitForPid()).
-  void setWindowUnits(std::map<std::string, std::string> windowAppIdByUnit);
+  // notResponding: units with a window that missed the compositor's ping.
+  void setWindowUnits(std::map<std::string, std::string> windowAppIdByUnit, std::set<std::string> notResponding = {});
   // Unit name -> QoS tier ("T0".."T3") from org.andromeda.Compositor1.Apps.List.
   bool setUnitTiers(std::map<std::string, std::string> tierByUnit); // true when the tiers changed
   // Reads every unit's cgroup once and rebuilds rows().
@@ -78,6 +81,7 @@ private:
   int m_cpuCount;
   std::vector<SystemdUnit> m_units;
   std::map<std::string, std::string> m_windowAppIdByUnit;
+  std::set<std::string> m_notRespondingUnits;
   std::map<std::string, std::string> m_tierByUnit;
   std::map<std::string, std::deque<Timed>> m_history; // by unit name, oldest first
   bool m_sampled = false;

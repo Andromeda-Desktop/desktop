@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "core/log.h"
 #include "output/output.h"
 #include "overview/overview.h"
 #include "scene/surface_shape.h"
@@ -151,17 +152,33 @@ namespace andromeda {
     syncSsdFrame();
   }
 
-  void View::requestClose() {
-    // A client that misses this ping is "not responding" (session end blocker reason, windows --json).
+  namespace {
+    constexpr Logger kPingLog("view");
+  } // namespace
+
+  void View::ping() {
+    // wlroots keeps one ping in flight per client and drops the rest, so a ping per input event costs nothing more.
     if (m_toplevel != nullptr) {
-      m_notResponding = false;
       wlr_xdg_surface_ping(m_toplevel->base);
+    } else if (m_xsurface != nullptr && m_server->xwayland()->supportsPing(m_xsurface)) {
+      wlr_xwayland_surface_ping(m_xsurface);
+    }
+  }
+
+  void View::setNotResponding(bool notResponding) {
+    if (m_notResponding == notResponding) {
+      return;
+    }
+    m_notResponding = notResponding;
+    kPingLog.info("window {}", notResponding ? "not responding" : "responds again");
+    m_server->scheduleIpcWindowsEvent(false);
+  }
+
+  void View::requestClose() {
+    ping();
+    if (m_toplevel != nullptr) {
       wlr_xdg_toplevel_send_close(m_toplevel);
     } else {
-      if (m_server->xwayland()->supportsPing(m_xsurface)) {
-        m_notResponding = false;
-        wlr_xwayland_surface_ping(m_xsurface);
-      }
       wlr_xwayland_surface_close(m_xsurface);
     }
   }

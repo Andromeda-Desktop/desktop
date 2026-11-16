@@ -1,5 +1,6 @@
 #pragma once
 
+#include "compositors/workspace_backend.h"
 #include "dbus/systemd/systemd_units_service.h"
 #include "system/activity_service.h"
 #include "core/timer_manager.h"
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <memory>
 #include <string>
 #include <utility>
@@ -23,7 +25,7 @@ namespace sdbus {
 class ActivityMonitor {
 public:
   // PID and app_id of every mapped window.
-  using WindowPids = std::function<std::vector<std::pair<int, std::string>>()>;
+  using WindowPids = std::function<std::vector<WindowProcess>()>;
   using ChangeCallback = std::function<void()>;
 
   ActivityMonitor(SessionBus& bus, WindowPids windowPids, std::string cgroupRoot, ChangeCallback onChange = {});

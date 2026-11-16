@@ -336,6 +336,8 @@ namespace andromeda {
     // window shows it again.
     [[nodiscard]] bool minimized() const { return m_minimized; }
     [[nodiscard]] bool notResponding() const noexcept { return m_notResponding; }
+    // Pings the client; a missed ping marks the window not responding (windows IPC, Activity, session end).
+    void ping();
     // Only a mapped, unattached floating window on a workspace can be minimized; tiled, pinned, and scratchpad
     // windows cannot.
     [[nodiscard]] bool minimizable() const;
@@ -1164,8 +1166,9 @@ namespace andromeda {
     wl_listener m_setParent{};
     wl_listener m_setTitle{};
     wl_listener m_configure{};
+    void setNotResponding(bool notResponding);
     wl_listener m_pingTimeout{};
-    // The client missed the ping sent with a close request (xdg_wm_base ping timeout); a later close pings again.
+    // The client missed a ping (sent on a button or key press and on close); its next commit clears it.
     bool m_notResponding = false;
     wl_listener m_setAppId{};
     wl_listener m_foreignActivate{};

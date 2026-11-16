@@ -183,6 +183,7 @@ std::vector<WorkspaceWindow> AndromedaWorkspaceBackend::workspaceWindows(const s
             .outputName = {},
             .minimizeState = window.minimizeState,
             .pid = window.pid,
+            .notResponding = window.notResponding,
             .snapGroup = window.snapGroup,
             .snapZone = window.snapZone,
             .appMenu = window.appMenu,
@@ -276,6 +277,7 @@ void AndromedaWorkspaceBackend::handleEvent(std::string_view event, const nlohma
       window.x = entry.value("x", 0);
       window.y = entry.value("y", 0);
       window.pid = entry.value("pid", 0);
+      window.notResponding = entry.value("not_responding", false);
       window.minimizeState = parseMinimizeState(entry);
       if (const auto menu = entry.find("app_menu"); menu != entry.end() && menu->is_object()) {
         window.appMenu = WindowAppMenu{

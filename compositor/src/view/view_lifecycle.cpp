@@ -177,6 +177,7 @@ namespace andromeda {
 
   void View::onCommit(wl_listener* listener, void* /*data*/) {
     View* self = wl_container_of(listener, self, m_commit);
+    self->setNotResponding(false); // a hung client does not commit
     self->handleCommit();
     if (self->m_captureBlank != nullptr && self->m_captureBlank->node.enabled) {
       // The blank follows the window's size; map, unmap and the secure handler change what it hides.

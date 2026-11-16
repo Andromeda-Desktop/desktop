@@ -18,11 +18,14 @@ void ActivityService::setUnits(std::vector<SystemdUnit> units) {
   rebuild();
 }
 
-void ActivityService::setWindowUnits(std::map<std::string, std::string> windowAppIdByUnit) {
-  if (windowAppIdByUnit == m_windowAppIdByUnit) {
+void ActivityService::setWindowUnits(
+    std::map<std::string, std::string> windowAppIdByUnit, std::set<std::string> notResponding
+) {
+  if (windowAppIdByUnit == m_windowAppIdByUnit && notResponding == m_notRespondingUnits) {
     return;
   }
   m_windowAppIdByUnit = std::move(windowAppIdByUnit);
+  m_notRespondingUnits = std::move(notResponding);
   rebuild();
 }
 
@@ -117,6 +120,7 @@ void ActivityService::rebuild() {
     }
     row.units.push_back(unit.name);
     row.hasWindow = row.hasWindow || window != m_windowAppIdByUnit.end();
+    row.notResponding = row.notResponding || m_notRespondingUnits.contains(unit.name);
     if (const auto tier = m_tierByUnit.find(unit.name);
         tier != m_tierByUnit.end() && (row.qosTier.empty() || tier->second < row.qosTier)) {
       row.qosTier = tier->second;

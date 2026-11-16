@@ -1348,14 +1348,14 @@ std::optional<WindowAppMenu> CompositorPlatform::focusedWindowAppMenu() const {
   return std::nullopt;
 }
 
-std::vector<std::pair<int, std::string>> CompositorPlatform::windowPids() const {
-  std::vector<std::pair<int, std::string>> result;
+std::vector<WindowProcess> CompositorPlatform::windowPids() const {
+  std::vector<WindowProcess> result;
   if (m_workspaceMetadataBackend == nullptr) {
     return result;
   }
   for (const auto& window : m_workspaceMetadataBackend->workspaceWindows()) {
     if (window.pid > 0) {
-      result.emplace_back(window.pid, window.appId);
+      result.push_back({.pid = window.pid, .appId = window.appId, .notResponding = window.notResponding});
     }
   }
   return result;

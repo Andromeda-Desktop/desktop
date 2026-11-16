@@ -185,15 +185,19 @@ void ActivityMonitor::sampleNow() {
 
 void ActivityMonitor::windowsChanged() {
   std::map<std::string, std::string> byUnit;
-  for (const auto& [pid, appId] : m_windowPids()) {
-    if (pid <= 0) {
+  std::set<std::string> notResponding;
+  for (const auto& window : m_windowPids()) {
+    if (window.pid <= 0) {
       continue;
     }
-    if (std::string unit = unitForPid(pid); !unit.empty()) {
-      byUnit.try_emplace(std::move(unit), appId);
+    if (std::string unit = unitForPid(window.pid); !unit.empty()) {
+      if (window.notResponding) {
+        notResponding.insert(unit);
+      }
+      byUnit.try_emplace(std::move(unit), window.appId);
     }
   }
-  m_activity.setWindowUnits(std::move(byUnit));
+  m_activity.setWindowUnits(std::move(byUnit), std::move(notResponding));
 }
 
 std::string ActivityMonitor::dumpJson() const {
@@ -204,6 +208,7 @@ std::string ActivityMonitor::dumpJson() const {
         {"app_id", row.appId},
         {"units", row.units},
         {"has_window", row.hasWindow},
+        {"not_responding", row.notResponding},
         {"system", row.systemManager},
         {"slice", sliceName(row.slice)},
         {"started_usec", row.startedUsec},

@@ -95,6 +95,25 @@ with_noctalia '
   for _ in $(seq 15); do label_shown "Sample" && break; sleep 0.1; done
   label_shown "Sample" || { echo "FAIL: Done did not return to the Sample action"; exit 1; }
 
+  # A stopped client misses the ping a key press sends (foot may still slide in, so a click could miss it): its row is flagged; its first frame after SIGCONT clears it.
+  responding() { "$NOCTALIA" msg activity-dump | jq -e --argjson v "$1" '"'"'any(.rows[]; .app_id == "act-test" and .not_responding == $v)'"'"' > /dev/null; }
+  hung() { "$ANDROMEDA" windows --json | jq -e '"'"'any(.[]; .title == "act-test" and .not_responding)'"'"' > /dev/null; }
+  "$POINTER" 1280 720 mod control tap 17 mod none > /dev/null # Ctrl+W: the Activity window closes, foot shows
+  activity_gone() { "$ANDROMEDA" windows --json | jq -e '"'"'all(.[]; .app_id != "dev.andromeda.Activity")'"'"' > /dev/null; }
+  for _ in $(seq 50); do activity_gone && break; sleep 0.1; done
+  activity_gone || { echo "FAIL: Ctrl+W did not close the Activity window"; exit 1; }
+  wpid=$("$ANDROMEDA" windows --json | jq -r '"'"'.[] | select(.title == "act-test") | .pid'"'"')
+  kill -STOP "$wpid" # the window client itself; $foot_pid may be the systemd-run parent
+  "$POINTER" 1280 720 tap 42 > /dev/null # Shift: foot has keyboard focus once Activity closes
+  for _ in $(seq 80); do hung && break; sleep 0.1; done
+  hung || { kill -CONT "$wpid"; grim "$OUT/hang.png"; "$ANDROMEDA" windows --json > "$OUT/hang-windows.json"; "$ANDROMEDA" layers --json > "$OUT/hang-layers.json"; echo "FAIL: the compositor did not mark the stopped act-test window (pid $wpid $(ps -o stat= -p "$wpid"))"; exit 1; }
+  "$NOCTALIA" msg activity-open act-test > /dev/null
+  for _ in $(seq 50); do responding true && break; sleep 0.1; done
+  responding true || { kill -CONT "$wpid"; echo "FAIL: Activity does not mark the stopped act-test"; exit 1; }
+  kill -CONT "$wpid" # foot draws its unfocused state: a commit
+  for _ in $(seq 50); do responding false && break; sleep 0.1; done
+  responding false || { echo "FAIL: the not-responding mark stayed after act-test resumed"; exit 1; }
+
   "$POINTER" 1280 720 tap 111 > /dev/null # Delete: Quit… on the selected row asks first
   for _ in $(seq 10); do
     ! grep -qF "StopUnit $SCOPE" "$OUT/calls.txt" || { echo "FAIL: Delete quit the app without asking"; exit 1; }

@@ -1007,7 +1007,7 @@ namespace andromeda {
 
   void View::onPingTimeout(wl_listener* listener, void* /*data*/) {
     View* self = wl_container_of(listener, self, m_pingTimeout);
-    self->m_notResponding = true;
+    self->setNotResponding(true);
   }
 
   void View::onSetAppId(wl_listener* listener, void* /*data*/) {

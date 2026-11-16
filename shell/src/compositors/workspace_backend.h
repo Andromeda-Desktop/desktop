@@ -35,6 +35,13 @@ struct WindowAppMenu {
   bool operator==(const WindowAppMenu&) const = default;
 };
 
+// A window's process, for mapping windows to units (Activity).
+struct WindowProcess {
+  std::int32_t pid = 0;
+  std::string appId;
+  bool notResponding = false;
+};
+
 struct WorkspaceWindow {
   std::string windowId;
   std::string workspaceKey;
@@ -45,6 +52,7 @@ struct WorkspaceWindow {
   std::string outputName;
   std::optional<WindowMinimizeState> minimizeState;
   std::int32_t pid = 0; // 0 when the backend does not report it
+  bool notResponding = false; // the client missed the compositor's last ping
   std::optional<std::uint32_t> snapGroup;
   // The window's snap zone as fractions of the work area (x, y, w, h); set only with snapGroup.
   std::array<float, 4> snapZone{};

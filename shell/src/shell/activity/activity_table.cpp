@@ -705,7 +705,10 @@ void ActivityWindow::bindTableSlot(Renderer& renderer, TableSlot& slot, const Ta
   std::string glyph;
   ColorRole role = ColorRole::Label3;
   const Limits limits = m_limitedKeys.contains(row->key) ? limitsOf(*row) : Limits{};
-  if (needsAttention(*row)) {
+  if (row->notResponding) {
+    glyph = "alert-circle";
+    role = ColorRole::DangerText;
+  } else if (needsAttention(*row)) {
     glyph = "alert-triangle";
     role = ColorRole::Warning;
   } else if (m_limitedKeys.contains(row->key) && isFrozen(*row)) {

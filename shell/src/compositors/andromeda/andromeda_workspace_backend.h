@@ -68,6 +68,7 @@ private:
     std::int32_t x = 0;
     std::int32_t y = 0;
     std::int32_t pid = 0;
+    bool notResponding = false;
     std::optional<WindowMinimizeState> minimizeState;
     std::optional<std::uint32_t> snapGroup;
     std::array<float, 4> snapZone{};

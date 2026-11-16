@@ -183,7 +183,7 @@ public:
   assignTaskbarWindows(const std::vector<TaskbarWindowCandidate>& windows, wl_output* outputFilter = nullptr) const;
   [[nodiscard]] const char* workspaceBackendName() const noexcept;
   // PID and app_id of every window the compositor reports a PID for (Andromeda IPC).
-  [[nodiscard]] std::vector<std::pair<int, std::string>> windowPids() const;
+  [[nodiscard]] std::vector<WindowProcess> windowPids() const;
 
   [[nodiscard]] bool cycleKeyboardLayout() const;
   [[nodiscard]] bool hasKeyboardLayoutBackend() const noexcept;

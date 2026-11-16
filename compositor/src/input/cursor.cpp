@@ -1385,6 +1385,9 @@ namespace andromeda {
       m_clientPointerPress =
           ClientPointerPress{.button = button, .serial = serial, .timeMsec = timeMsec, .x = m_cursor->x, .y = m_cursor->y};
       m_lastClientPress = m_clientPointerPress;
+      if (view != nullptr) {
+        view->ping();
+      }
     }
     if (layer != nullptr) {
       if (!isXdgPopupSurface(surface)) {
