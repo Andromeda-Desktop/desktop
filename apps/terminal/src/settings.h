@@ -24,6 +24,7 @@ namespace term {
     CursorShape cursor = CursorShape::Block; // until the program sets its own (DECSCUSR)
     bool cursorBlink = false;                // until the program sets its own (DECSCUSR, mode 12)
     WindowMaterial material = WindowMaterial::Solid;
+    bool focusRing = false; // accent ring on the focused split pane
     std::string font;                        // empty: the type token's mono family
     int fontSize = 13;                       // px at ui_scale 1
     int scrollbackMb = 10;

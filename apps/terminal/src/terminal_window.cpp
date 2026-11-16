@@ -94,6 +94,12 @@ namespace term {
         m_window.setMainFill(view->surface());
       }
       m_window.setScene(windowScene(m_settings));
+      if (!m_cards.empty()) {
+        m_window.updateInPlace([this](Renderer& /*renderer*/) {
+          paintPaneFocus(false);
+          m_contentSlot->markLayoutDirty();
+        });
+      }
     });
     m_window.setScene(windowScene(m_settings));
     // The content is a slot: a session switch swaps the view inside it in place, so the sidebar keeps its nodes.
@@ -1569,16 +1575,17 @@ namespace term {
       const bool focused = card.id == m_ringPane;
       AnimationManager* animations = card.ring->animationManager();
       const float target = focused ? 1.0F : 0.0F;
-      const auto set = [&card](float v) {
-        card.ring->setOpacity(v);
+      const float ring = m_settings.settings().focusRing ? 1.0F : 0.0F;
+      const auto set = [&card, ring](float v) {
+        card.ring->setOpacity(v * ring);
         card.shadow->setOpacity(v);
         card.shadow->setVisible(v > 0.0F);
       };
       if (animate && animations != nullptr) {
-        card.focusAnim = animations->drive(card.focusAnim, card.ring->opacity(), target,
+        card.focusAnim = animations->drive(card.focusAnim, card.shadow->opacity(), target,
                                            Style::spring(focused ? Tokens::springFade : Tokens::springFadeOut),
-                                           [ring = card.ring, shadow = card.shadow](float v) {
-                                             ring->setOpacity(v);
+                                           [node = card.ring, shadow = card.shadow, ring](float v) {
+                                             node->setOpacity(v * ring);
                                              shadow->setOpacity(v);
                                              shadow->setVisible(v > 0.0F);
                                            },

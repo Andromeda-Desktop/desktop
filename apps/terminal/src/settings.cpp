@@ -233,6 +233,7 @@ namespace term {
     r.choice("appearance", "cursor", kCursors, s.cursor);
     r.boolean("appearance", "cursor_blink", s.cursorBlink);
     r.choice("appearance", "window", kMaterials, s.material);
+    r.boolean("appearance", "focus_ring", s.focusRing);
     r.string("text", "font", s.font);
     r.integer("text", "size", SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax, s.fontSize);
     r.integer("terminal", "scrollback_mb", SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax,
@@ -263,6 +264,7 @@ namespace term {
     appearance.insert_or_assign("cursor", std::string(nameOf(kCursors, s.cursor)));
     appearance.insert_or_assign("cursor_blink", s.cursorBlink);
     appearance.insert_or_assign("window", std::string(nameOf(kMaterials, s.material)));
+    appearance.insert_or_assign("focus_ring", s.focusRing);
     auto& text = tableIn(root, "text");
     text.insert_or_assign("font", s.font);
     text.insert_or_assign("size", s.fontSize);

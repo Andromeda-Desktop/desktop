@@ -272,6 +272,10 @@ namespace term {
                      segmented({"Block", "Bar", "Underline"}, static_cast<std::size_t>(now.cursor),
                                [](Settings& x, std::size_t i) { x.cursor = static_cast<CursorShape>(i); })},
                     {"Blinking cursor", "", toggle(now.cursorBlink, [](Settings& x, bool on) { x.cursorBlink = on; })}}});
+    out.push_back({Page::Appearance,
+                   "Split view",
+                   {{"Focus outline", "An accent ring around the focused pane",
+                     toggle(now.focusRing, [](Settings& x, bool on) { x.focusRing = on; })}}});
 
     // Text
     {
