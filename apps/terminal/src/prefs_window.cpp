@@ -137,6 +137,18 @@ namespace term {
     }
   }
 
+  void PrefsWindow::importTheme(const std::filesystem::path& folder) {
+    auto result = importThemeFolder(folder, m_store.themes().dir());
+    if (auto* error = std::get_if<SettingsError>(&result)) {
+      m_importError = ImportError{folder.filename().string(), std::move(*error)};
+      refill();
+      return;
+    }
+    m_importError.reset();
+    refill();
+    change([id = std::get<std::string>(result)](Settings& x) { x.theme = id; });
+  }
+
   void PrefsWindow::showPage(Page page) {
     m_page = page;
     m_query.clear();
@@ -439,6 +451,17 @@ namespace term {
                             }});
       content->addChild(card(error, s, cardWidth));
     }
+    if (m_page == Page::Appearance && m_importError) {
+      Group error{m_page, "", {}};
+      const std::string where = m_importError->error.line > 0 ? "Line " + std::to_string(m_importError->error.line) + ": " : "";
+      error.rows.push_back({"\"" + m_importError->folder + "\" was not imported", where + m_importError->error.message + ".",
+                            [](float sc, float) {
+                              return ui::glyph({.glyph = "alert-triangle",
+                                                .glyphSize = Tokens::sizeSymbol * sc,
+                                                .color = colorSpecFromRole(ColorRole::TermRed)});
+                            }});
+      content->addChild(card(error, s, cardWidth));
+    }
     if (m_page == Page::Appearance) {
       for (const ThemeEntry& entry : m_store.themes().entries()) {
         const auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state);
@@ -677,11 +700,14 @@ namespace term {
                                      .glyphSize = Tokens::sizeSymbolInline * s,
                                      .color = colorSpecFromRole(ColorRole::Label2)}));
     row->addChild(tile(std::move(add), "Add theme", false, s, tileW, tileH, [this](const InputArea::PointerData& at) {
-      enum : std::int32_t { kCreate = 1, kFolder };
+      enum : std::int32_t { kCreate = 1, kImport, kFolder };
       m_window.openContextMenu({{.id = kCreate, .label = "Create with Claude", .glyph = "robot"},
+                                {.id = kImport, .label = "Import…", .glyph = "file-import"},
                                 {.id = kFolder, .label = "Open themes folder", .glyph = "folder"}},
                                at.sceneX, at.sceneY, [this](std::int32_t item) {
-                                 const auto& action = item == kCreate ? m_actions.createWithAgent : m_actions.openFolder;
+                                 const auto& action = item == kCreate   ? m_actions.createWithAgent
+                                                      : item == kImport ? m_actions.importPackage
+                                                                        : m_actions.openFolder;
                                  if (action) {
                                    action();
                                  }

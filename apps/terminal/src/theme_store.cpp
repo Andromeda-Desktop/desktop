@@ -107,6 +107,63 @@ namespace term {
 
   ThemeEntry readThemeFolder(const std::filesystem::path& folder) { return readEntry(folder, {}); }
 
+  std::variant<std::string, SettingsError> importThemeFolder(const std::filesystem::path& source,
+                                                             const std::filesystem::path& dir) {
+    std::string base;
+    for (const char c : source.filename().string()) {
+      const char lower = static_cast<char>(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+      const bool alnum = (lower >= 'a' && lower <= 'z') || (lower >= '0' && lower <= '9');
+      if (alnum || ((lower == '_' || lower == '-') && !base.empty())) {
+        base += lower;
+      } else if (!base.empty() && base.back() != '-') {
+        base += '-';
+      }
+    }
+    base = base.substr(0, 60);
+    while (!base.empty() && (base.back() == '-' || base.back() == '_')) {
+      base.pop_back();
+    }
+    if (base.empty()) {
+      base = "theme";
+    }
+    std::error_code ec;
+    std::string id = base;
+    for (int n = 2; builtinTheme(id) || std::filesystem::exists(dir / id, ec); ++n) {
+      id = base + "-" + std::to_string(n);
+    }
+
+    // Staged beside the themes folder, not in it: the store lists every folder in it.
+    std::filesystem::create_directories(dir, ec);
+    std::string pattern = (dir.parent_path() / ".theme-import-XXXXXX").string();
+    if (g_mkdtemp(pattern.data()) == nullptr) {
+      return SettingsError{"cannot create a folder next to " + dir.string()};
+    }
+    const std::filesystem::path staging(pattern);
+    const std::filesystem::path package = staging / id;
+    std::filesystem::create_directory(package, ec);
+    for (const char* name : {"theme.toml", "scene.glsl", "background.png", "background.jpg", "background.jpeg",
+                             "background.webp", "background.jxl", "background.avif"}) {
+      if (std::filesystem::is_regular_file(source / name, ec)) {
+        std::filesystem::copy_file(source / name, package / name, ec);
+        if (ec) {
+          std::filesystem::remove_all(staging, ec);
+          return SettingsError{std::string("cannot copy ") + name};
+        }
+      }
+    }
+    std::variant<std::string, SettingsError> result = id;
+    if (auto entry = readThemeFolder(package); auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state)) {
+      result = invalid->error;
+    } else {
+      std::filesystem::rename(package, dir / id, ec);
+      if (ec) {
+        result = SettingsError{"cannot move the theme into " + dir.string() + ": " + ec.message()};
+      }
+    }
+    std::filesystem::remove_all(staging, ec);
+    return result;
+  }
+
   ThemeStore::ThemeStore() : m_dir(themesDir()) {
     std::error_code ec;
     std::filesystem::create_directories(m_dir, ec);

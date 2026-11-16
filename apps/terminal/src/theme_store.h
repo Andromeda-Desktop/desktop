@@ -34,6 +34,10 @@ namespace term {
   [[nodiscard]] std::filesystem::path themesDir();
   // One package folder, as the store reads it.
   [[nodiscard]] ThemeEntry readThemeFolder(const std::filesystem::path& folder);
+  // Copies the package files of `source` (any folder name) into a new <dir>/<id>, only when they form a valid package.
+  // The id comes from the folder name, made unique; it appears in `dir` in one rename, so a watcher sees it complete.
+  [[nodiscard]] std::variant<std::string, SettingsError> importThemeFolder(const std::filesystem::path& source,
+                                                                         const std::filesystem::path& dir);
 
   // Reads every <dir>/<id>/theme.toml, sorted by id; previous supplies the last good package of each id.
   [[nodiscard]] std::vector<ThemeEntry> scanThemes(const std::filesystem::path& dir,

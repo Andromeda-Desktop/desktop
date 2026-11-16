@@ -1,6 +1,8 @@
 #pragma once
 
 #include "app/desk_app.h"
+#include "app/file_chooser.h"
+#include "app/foreign_export.h"
 #include "render/core/thumbnail_service.h"
 #include "prefs_window.h"
 #include "terminal_window.h"
@@ -40,6 +42,8 @@ namespace term {
     SettingsStore m_settings;
     AppWindow* m_prefsWindow = nullptr;
     std::unique_ptr<PrefsWindow> m_prefs;
+    std::unique_ptr<desk::ForeignExport> m_prefsExport; // parents the import dialog to Preferences; lives with it
+    std::unique_ptr<desk::FileChooser> m_chooser;
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next

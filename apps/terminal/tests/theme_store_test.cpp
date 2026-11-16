@@ -51,7 +51,7 @@ int main() {
     seed = s;
     std::mt19937 rng(s);
     auto pick = [&](int lo, int hi) { return std::uniform_int_distribution<int>(lo, hi)(rng); };
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() / std::format("theme-store-test-{}-{}", getpid(), s);
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / std::format("theme-store-test-{}", getpid()) / std::format("themes-{}", s);
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     std::map<std::string, Folder> model;
@@ -60,7 +60,7 @@ int main() {
     for (step = 0; step < 400; ++step) {
       const std::string id = ids[pick(0, 5)];
       const std::filesystem::path folder = dir / id;
-      switch (pick(0, 3)) {
+      switch (pick(0, 4)) {
       case 0: { // write a valid package
         auto anchors = [&] {
           auto c = [&] { return static_cast<std::uint32_t>(pick(0, 0xffffff)); };
@@ -96,6 +96,31 @@ int main() {
           model[id].valid.reset();
         }
         break;
+      case 4: { // import a folder from elsewhere, good or bad, under any name
+        const char* names[] = {"My Theme", "nord", "dark", "--x--", "\xc3\x9cber"};
+        const std::filesystem::path source = dir.parent_path() / std::format("theme-src-{}-{}", getpid(), s) / names[pick(0, 4)];
+        std::filesystem::remove_all(source.parent_path());
+        std::filesystem::create_directories(source);
+        const bool good = pick(0, 1) != 0;
+        const ThemePackage p{.name = "Imported", .light = {0xffffff, 0x101010, 0x2060c0}, .dark = {0x101010, 0xf0f0f0, 0x60a0ff}};
+        std::ofstream(source / "theme.toml") << (good ? toml(p) : bad[pick(0, 4)]);
+        std::ofstream(source / "notes.txt") << "not part of a package";
+        const auto before = scanThemes(dir, entries);
+        const auto result = importThemeFolder(source, dir);
+        std::filesystem::remove_all(source.parent_path());
+        CHECK(std::holds_alternative<std::string>(result) == good);
+        for (const auto& item : std::filesystem::directory_iterator(dir.parent_path())) {
+          CHECK(!item.path().filename().string().starts_with(".theme-import-"));
+        }
+        if (const auto* newId = std::get_if<std::string>(&result)) {
+          CHECK(isThemeId(*newId) && !builtinTheme(*newId) && !model.contains(*newId));
+          CHECK(!std::filesystem::exists(dir / *newId / "notes.txt"));
+          model[*newId] = {p};
+        } else {
+          CHECK(scanThemes(dir, entries) == before);
+        }
+        break;
+      }
       default: // remove the folder
         std::filesystem::remove_all(folder);
         model.erase(id);
@@ -127,7 +152,7 @@ int main() {
         ++m;
       }
     }
-    std::filesystem::remove_all(dir);
+    std::filesystem::remove_all(dir.parent_path());
   }
   if (failures != 0) {
     std::fprintf(stderr, "%d failures\n", failures);

@@ -52,6 +52,7 @@ namespace term {
   void TerminalApp::windowClosed(AppWindow& window) {
     if (&window == m_prefsWindow) {
       m_prefs.reset();
+      m_prefsExport.reset();
       m_prefsWindow = nullptr;
     }
     m_windows.erase(&window);
@@ -93,6 +94,28 @@ namespace term {
                       kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
                       g_clear_error(&error);
                     }
+                  },
+              .importPackage =
+                  [this] {
+                    if (bus() == nullptr) {
+                      return;
+                    }
+                    if (m_chooser == nullptr) {
+                      m_chooser = std::make_unique<desk::FileChooser>(*bus());
+                    }
+                    if (m_prefsExport == nullptr) {
+                      m_prefsExport = std::make_unique<desk::ForeignExport>(loop().wayland().display());
+                    }
+                    m_prefsExport->handle(m_prefsWindow->wlSurface(), [this](const std::string& parent) {
+                      if (m_prefs == nullptr) {
+                        return;
+                      }
+                      m_chooser->chooseFolder(parent, "Import Theme", [this](std::optional<std::filesystem::path> folder) {
+                        if (folder && m_prefs != nullptr) {
+                          m_prefs->importTheme(*folder);
+                        }
+                      });
+                    });
                   }});
       if (!m_prefsWindow->open()) {
         return;

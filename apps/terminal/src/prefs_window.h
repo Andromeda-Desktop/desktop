@@ -5,8 +5,10 @@
 #include "ui/controls/scroll_view.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,8 +29,11 @@ namespace term {
     struct ThemeActions {
       std::function<void()> createWithAgent; // a new window with an agent session that makes a theme with the user
       std::function<void()> openFolder;      // the themes folder in the file manager
+      std::function<void()> importPackage;   // asks for a package folder, then calls importTheme with it
     };
     PrefsWindow(AppWindow& window, SettingsStore& store, ThemeActions actions);
+    // Copies the package into the themes folder and uses it; a bad package shows an error card instead.
+    void importTheme(const std::filesystem::path& folder);
     PrefsWindow(const PrefsWindow&) = delete;
     PrefsWindow& operator=(const PrefsWindow&) = delete;
 
@@ -68,6 +73,11 @@ namespace term {
     AppWindow& m_window;
     SettingsStore& m_store;
     ThemeActions m_actions;
+    struct ImportError {
+      std::string folder;
+      SettingsError error;
+    };
+    std::optional<ImportError> m_importError; // the last import, when it failed
     Page m_page = Page::Appearance;
     std::string m_query;
     Input* m_search = nullptr;
