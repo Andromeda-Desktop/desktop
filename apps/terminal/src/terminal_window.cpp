@@ -404,8 +404,25 @@ namespace term {
         .commandOutput = [this, id](CommandOutput output) { apply(session_event::Output{id, output}); },
         .cwdChanged =
             [this, id](const std::string& path) {
+              const SessionInfo* info = m_sessions.find(id);
+              // The first cwd of a new session is no change.
+              if (info != nullptr && !info->cwd.empty() && std::ranges::contains(m_sessions.visible(), id)) {
+                m_window.pulseScene(AppWindow::ScenePulse::Cwd);
+              }
               const std::string shown = shownPath(path);
               apply(session_event::Cwd{id, shown});
+            },
+        .hostChanged =
+            [this, id](bool remote) {
+              if (remote) {
+                m_remoteSessions.insert(id);
+              } else {
+                m_remoteSessions.erase(id);
+              }
+              if (std::ranges::contains(m_sessions.visible(), id)) {
+                m_window.pulseScene(AppWindow::ScenePulse::Host);
+              }
+              updateSceneState();
             },
         .openUri = [this](const std::string& uri) { openUri(uri); },
         .findChanged =
@@ -459,6 +476,8 @@ namespace term {
     const bool secret = std::ranges::any_of(visible, [this](std::uint64_t id) { return m_secretSessions.contains(id); });
     m_window.setSceneSecret(secret);
     m_window.setCaptureSecure(secret);
+    m_window.setSceneRemote(
+        std::ranges::any_of(visible, [this](std::uint64_t id) { return m_remoteSessions.contains(id); }));
     m_window.setSceneBusy(std::ranges::any_of(visible, [this](std::uint64_t id) {
       const SessionInfo* info = m_sessions.find(id);
       return info != nullptr && std::holds_alternative<CommandRunning>(info->command);
@@ -478,6 +497,7 @@ namespace term {
     }
     if (const auto* close = std::get_if<session_event::Close>(&event)) {
       m_secretSessions.erase(close->id);
+      m_remoteSessions.erase(close->id);
     }
     // Output is the frequent event and changes neither the visible panes nor their commands.
     if (!std::holds_alternative<session_event::Output>(event)) {

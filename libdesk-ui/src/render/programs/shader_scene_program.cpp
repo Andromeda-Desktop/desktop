@@ -40,6 +40,9 @@ uniform float scene_busy;
 uniform float scene_success;
 uniform float scene_failure;
 uniform float scene_bell;
+uniform float scene_cwd;
+uniform float scene_host;
+uniform float scene_remote;
 uniform float scene_secret;
 uniform float u_secret_dim;
 #line 1
@@ -120,6 +123,9 @@ ShaderSceneProgram::Entry& ShaderSceneProgram::entry(std::string_view source) {
   e.success = glGetUniformLocation(id, "scene_success");
   e.failure = glGetUniformLocation(id, "scene_failure");
   e.bell = glGetUniformLocation(id, "scene_bell");
+  e.cwd = glGetUniformLocation(id, "scene_cwd");
+  e.host = glGetUniformLocation(id, "scene_host");
+  e.remote = glGetUniformLocation(id, "scene_remote");
   e.secret = glGetUniformLocation(id, "scene_secret");
   e.secretDim = glGetUniformLocation(id, "u_secret_dim");
   return e;
@@ -159,6 +165,9 @@ void ShaderSceneProgram::draw(const ShaderSceneDraw& s) {
   glUniform1f(e.success, s.signals.success);
   glUniform1f(e.failure, s.signals.failure);
   glUniform1f(e.bell, s.signals.bell);
+  glUniform1f(e.cwd, s.signals.cwd);
+  glUniform1f(e.host, s.signals.host);
+  glUniform1f(e.remote, s.signals.remote);
   glUniform1f(e.secret, s.signals.secret);
   glUniform1f(e.secretDim, s.secretDim);
   drawQuad(e.position, s.width, s.height);

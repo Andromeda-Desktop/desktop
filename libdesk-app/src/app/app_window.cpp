@@ -727,6 +727,13 @@ void AppWindow::setSceneSecret(bool secret) {
   }
 }
 
+void AppWindow::setSceneRemote(bool remote) {
+  if (remote != m_sceneRemote) {
+    m_sceneRemote = remote;
+    noteSceneActivity();
+  }
+}
+
 void AppWindow::setCaptureSecure(bool secure) {
   if (secure == m_captureSecure || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
     return;
@@ -764,6 +771,7 @@ void AppWindow::sceneTick() {
   const float busyStep = elapsed * 1000.0F / static_cast<float>(Tokens::componentWindowSceneBusyMs);
   m_sceneBusyLevel = std::clamp(m_sceneBusyLevel + (m_sceneBusy ? busyStep : -busyStep), 0.0F, 1.0F);
   m_sceneSecretLevel = std::clamp(m_sceneSecretLevel + (m_sceneSecret ? busyStep : -busyStep), 0.0F, 1.0F);
+  m_sceneRemoteLevel = std::clamp(m_sceneRemoteLevel + (m_sceneRemote ? busyStep : -busyStep), 0.0F, 1.0F);
   const auto pulse = [&](ScenePulse kind, int durationMs) {
     auto& at = m_scenePulses[static_cast<std::size_t>(kind)];
     const float t = at ? std::chrono::duration<float, std::milli>(now - *at).count() / static_cast<float>(durationMs) : 1.0F;
@@ -778,6 +786,9 @@ void AppWindow::sceneTick() {
                            .success = pulse(ScenePulse::Success, Tokens::componentWindowScenePulseMs),
                            .failure = pulse(ScenePulse::Failure, Tokens::componentWindowSceneFailurePulseMs),
                            .bell = pulse(ScenePulse::Bell, Tokens::componentWindowScenePulseMs),
+                           .cwd = pulse(ScenePulse::Cwd, Tokens::componentWindowScenePulseMs),
+                           .host = pulse(ScenePulse::Host, Tokens::componentWindowScenePulseMs),
+                           .remote = m_sceneRemoteLevel,
                            .secret = m_sceneSecretLevel});
   m_sceneStepped = now;
   // The timer paces the scene, not frame ticks: a redraw re-arms a frame tick, which would step it at the output rate.
@@ -909,7 +920,9 @@ void AppWindow::measureScene() {
     auto* scene = static_cast<ShaderSceneNode*>(root.addChild(std::move(node)));
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
     // Rest and every reaction at its peak: text keeps its contrast through a pulse.
-    constexpr std::array<SceneSignals, 2> kSignals{SceneSignals{}, SceneSignals{.busy = 1.0F, .success = 1.0F, .failure = 1.0F, .bell = 1.0F}};
+    constexpr std::array<SceneSignals, 2> kSignals{
+      SceneSignals{},
+      SceneSignals{.busy = 1.0F, .success = 1.0F, .failure = 1.0F, .bell = 1.0F, .cwd = 1.0F, .host = 1.0F, .remote = 1.0F}};
     for (std::size_t n = 0; n < kTimes.size() * kSignals.size(); ++n) {
       scene->setTime(kTimes[n % kTimes.size()]);
       scene->setSignals(kSignals[n / kTimes.size()]);

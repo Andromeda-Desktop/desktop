@@ -132,11 +132,13 @@ public:
   void noteSceneActivity();
   // Reduced motion or battery saver: the scene stays on its current frame until this turns false.
   void setSceneHeld(bool held);
-  // Reactions the scene reads as scene_busy, scene_success, scene_failure and scene_bell; each wakes the scene.
-  enum class ScenePulse : std::uint8_t { Success, Failure, Bell };
+  // Reactions the scene reads as scene_busy, scene_success, scene_failure, scene_bell, scene_cwd, scene_host and
+  // scene_remote; each wakes the scene.
+  enum class ScenePulse : std::uint8_t { Success, Failure, Bell, Cwd, Host };
   void pulseScene(ScenePulse pulse);
   void setSceneBusy(bool busy);
   void setSceneSecret(bool secret); // a password prompt: the scene fades toward the surface
+  void setSceneRemote(bool remote); // a shell on another host (SSH, container)
   // Screenshots, screencopy and screencasts show the window as black while true (a password prompt).
   void setCaptureSecure(bool secure);
   // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
@@ -332,11 +334,13 @@ private:
   bool m_sceneHeld = false;
   bool m_sceneBusy = false;
   bool m_sceneSecret = false;
+  bool m_sceneRemote = false;
   bool m_captureSecure = false;
   std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure; goes with m_surface
   float m_sceneBusyLevel = 0.0F;
   float m_sceneSecretLevel = 0.0F;
-  std::array<std::optional<std::chrono::steady_clock::time_point>, 3> m_scenePulses{}; // by ScenePulse
+  float m_sceneRemoteLevel = 0.0F;
+  std::array<std::optional<std::chrono::steady_clock::time_point>, 5> m_scenePulses{}; // by ScenePulse
   bool m_sceneTicking = false; // a scene step waits on its present or the step timer
   Timer m_sceneTimer;
   // The scene draws on its own subsurface below the window at reduced resolution: its frames repaint only that layer,

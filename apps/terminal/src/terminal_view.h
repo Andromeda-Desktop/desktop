@@ -87,6 +87,8 @@ namespace term {
       std::function<void(CommandOutput output)> commandOutput;
       // The shell reported a new working directory (OSC 7); a local path.
       std::function<void(const std::string& cwd)> cwdChanged;
+      // The shell moved to another host (OSC 7 host, or an ssh / container command started) or back here.
+      std::function<void(bool remote)> hostChanged;
       // Ctrl+click on a link: an http(s), mailto or file URI.
       std::function<void(const std::string& uri)> openUri;
       // Find results changed: match count and the current match (1 = newest), while find is open.
@@ -162,6 +164,9 @@ namespace term {
       bool moved = false;
       std::optional<std::string> link; // URI under a single press; a release without a drag opens it
     };
+    struct Remote {
+      std::optional<std::string> host; // unknown while a command such as ssh runs; known from a remote OSC 7
+    };
     struct CommandIdle {};
     struct CommandRunning {
       std::chrono::steady_clock::time_point start;
@@ -186,6 +191,7 @@ namespace term {
     void armQuiet(std::chrono::milliseconds delay);
     void onBell();
     void updateCwd();
+    void setRemote(std::optional<Remote> remote);
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
     void pointerButton(std::uint32_t button, float localX, float localY, bool pressed, std::uint32_t time);
     void pointerMotion(float localX, float localY);
@@ -273,6 +279,7 @@ namespace term {
     Click m_lastClick;
     std::variant<CommandIdle, CommandRunning> m_command;
     std::string m_cwd;
+    std::optional<Remote> m_remote; // none = this machine
     std::optional<HoverLink> m_link;
     bool m_overPill = false; // the pointer is on a context-row pill
     struct LinkProbe {

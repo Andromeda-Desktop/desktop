@@ -1,6 +1,7 @@
 // Shallow water: a lit gradient, moving caustics, and a manta and bubbles built from glyph tiles.
 // Inputs: scene_time, scene_size, scene_scale, scene_dark, scene_surface/text/accent, and the reactions
-// scene_busy (0..1 while a command runs), scene_success, scene_failure, scene_bell (one 0 -> 1 -> 0 pulse each).
+// scene_busy (0..1 while a command runs), scene_remote (0..1 while on another host), scene_success, scene_failure,
+// scene_bell, scene_cwd, scene_host (one 0 -> 1 -> 0 pulse each).
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
 // A 3x5 glyph made from hash bits; 1 inside a lit stroke.
@@ -66,5 +67,8 @@ vec4 scene(vec2 uv) {
   col = mix(col, scene_accent, 0.18 * scene_success);
   col = mix(col, vec3(0.85, 0.32, 0.25), 0.22 * scene_failure);
   col += 0.08 * scene_bell;
+  // Another host is deeper water; arriving there, or in a new folder, lifts the light once.
+  col = mix(col, vec3(0.08, 0.12, 0.30), 0.35 * scene_remote);
+  col += 0.05 * scene_cwd + 0.12 * scene_host;
   return vec4(col, 1.0);
 }

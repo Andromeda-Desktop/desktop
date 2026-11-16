@@ -86,8 +86,9 @@ namespace term {
     void requestFrame();
     void openUri(const std::string& uri);
     void apply(const SessionListEvent& event);
-    void updateSceneState(); // scene busy and secret follow the visible panes
+    void updateSceneState(); // scene busy, secret and remote follow the visible panes
     std::unordered_set<std::uint64_t> m_secretSessions; // sessions at a password prompt
+    std::unordered_set<std::uint64_t> m_remoteSessions; // sessions on another host (SSH, container)
     void show(std::uint64_t id);
     // Session keys: Ctrl+Shift+T new, Ctrl+Shift+A new agent session, Ctrl+Shift+W close an agent session,
     // Ctrl+Shift+N new window, Ctrl+Tab / Ctrl+Shift+Tab recent, Ctrl+1..9 by position.

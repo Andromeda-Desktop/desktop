@@ -145,7 +145,7 @@ Use the terminal's theme CLI ({0} theme ...):
     palette = ["#rrggbb", ...]  # optional in [light] or [dark]: exactly 16 ANSI colours, 0-15
   Pick the anchors for mood: without a palette the terminal derives 16 ANSI colours at 7:1 from them, hues turned
   toward the accent. A palette entry below 4.5:1 (except 0) is lifted by lightness only. The accent colours the cursor.
-- Optional backdrop beside theme.toml, one of: scene.glsl (GLSL ES 1.0 that defines vec4 scene(vec2 uv); inputs scene_time, scene_size, scene_dark, scene_surface, scene_text, scene_accent, scene_busy, scene_success, scene_failure, scene_bell; at most 64 KiB) or background.png/jpg/webp (at most 64 MiB).
+- Optional backdrop beside theme.toml, one of: scene.glsl (GLSL ES 1.0 that defines vec4 scene(vec2 uv); inputs scene_time, scene_size, scene_dark, scene_surface, scene_text, scene_accent, scene_busy, scene_success, scene_failure, scene_bell, scene_cwd, scene_host (pulses 0..1), scene_remote (0..1 while on another host); at most 64 KiB) or background.png/jpg/webp (at most 64 MiB).
 - `{0} theme validate <id>` must pass; it prints file:line: message on an error.
 - `{0} theme preview <id>` prints the derived palettes and contrast ratios.
 - `{0} theme apply <id>` uses it; the window changes at once. Then ask me if I want changes.)",

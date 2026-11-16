@@ -12,6 +12,9 @@ struct SceneSignals {
   float success = 0.0F;
   float failure = 0.0F;
   float bell = 0.0F;
+  float cwd = 0.0F;
+  float host = 0.0F;
+  float remote = 0.0F;
   float secret = 0.0F;
   bool operator==(const SceneSignals&) const = default;
 };

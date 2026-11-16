@@ -36,6 +36,7 @@
 #include <format>
 #include <cstdlib>
 #include <optional>
+#include <ranges>
 #include <thread>
 #include <string>
 #include <string_view>
@@ -973,17 +974,60 @@ namespace term {
     scheduleRedraw(Redraw::Dirty);
   }
 
+  namespace {
+    // The host of a file:// URI when it is not this machine.
+    std::optional<std::string> remoteHost(std::string_view uri) {
+      if (!uri.starts_with("file://")) {
+        return std::nullopt;
+      }
+      uri.remove_prefix(7);
+      const std::string_view host = uri.substr(0, uri.find('/'));
+      std::array<char, 256> own{};
+      if (host.empty() || host == "localhost" || gethostname(own.data(), own.size() - 1) != 0) {
+        return std::nullopt;
+      }
+      // fish reports the short name of a dotted hostname.
+      const std::string_view self(own.data());
+      if (host == self || host == self.substr(0, self.find('.'))) {
+        return std::nullopt;
+      }
+      return std::string(host);
+    }
+
+    // A command line that opens a shell on another host or in a container.
+    bool opensRemoteShell(std::string_view command) {
+      std::vector<std::string_view> words;
+      for (const auto word : std::views::split(command, ' ')) {
+        if (!word.empty()) {
+          words.emplace_back(word.begin(), word.end());
+        }
+      }
+      if (words.empty()) {
+        return false;
+      }
+      std::string_view tool = words[0];
+      tool.remove_prefix(tool.rfind('/') == std::string_view::npos ? 0 : tool.rfind('/') + 1);
+      if (tool == "ssh" || tool == "autossh" || tool == "mosh" || tool == "et" || tool == "distrobox-enter") {
+        return true;
+      }
+      const auto has = [&](std::string_view w) { return std::ranges::contains(words, w); };
+      if (tool == "toolbox" || tool == "distrobox") {
+        return has("enter");
+      }
+      if (tool == "podman" || tool == "docker" || tool == "kubectl") {
+        return (has("exec") || has("run")) && (has("-it") || has("-ti"));
+      }
+      return false;
+    }
+  } // namespace
+
   std::string pathFromFileUri(std::string_view uri) {
     std::string_view rest = uri;
     if (rest.starts_with("file://")) {
       rest.remove_prefix(7);
       const auto slash = rest.find('/');
-      const std::string_view host = rest.substr(0, slash);
-      std::array<char, 256> own{};
-      const bool local = host.empty() || host == "localhost"
-          || (gethostname(own.data(), own.size() - 1) == 0 && host == std::string_view(own.data()));
       // A remote shell's cwd is not a local path: no Files, no branch.
-      if (!local || slash == std::string_view::npos) {
+      if (remoteHost(uri) || slash == std::string_view::npos) {
         return {};
       }
       rest = rest.substr(slash);
@@ -1069,6 +1113,9 @@ namespace term {
       if (m_host.commandStarted) {
         m_host.commandStarted(mark.command);
       }
+      if (opensRemoteShell(mark.command)) {
+        setRemote(Remote{});
+      }
       armQuiet(std::chrono::milliseconds(static_cast<int>(Tokens::componentTerminalCommandQuietMs)));
       break;
     case CommandMark::Kind::CommandEnd: {
@@ -1105,6 +1152,8 @@ namespace term {
       }
       return std::string(reinterpret_cast<const char*>(pwd.ptr), pwd.len);
     });
+    std::optional<std::string> host = remoteHost(uri);
+    setRemote(host ? std::optional<Remote>(Remote{std::move(host)}) : std::nullopt);
     const std::string path = pathFromFileUri(uri);
     if (path.empty() || path == m_cwd) {
       return;
@@ -1112,6 +1161,16 @@ namespace term {
     m_cwd = path;
     if (m_host.cwdChanged) {
       m_host.cwdChanged(m_cwd);
+    }
+  }
+
+  // A known host that names the one a command (ssh) opened is the same place: no second change.
+  void TerminalView::setRemote(std::optional<Remote> remote) {
+    const bool same = (!m_remote && !remote)
+        || (m_remote && remote && remote->host && (!m_remote->host || *m_remote->host == *remote->host));
+    m_remote = std::move(remote);
+    if (!same && m_host.hostChanged) {
+      m_host.hostChanged(m_remote.has_value());
     }
   }
 
