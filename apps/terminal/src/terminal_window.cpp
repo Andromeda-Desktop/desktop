@@ -397,13 +397,27 @@ namespace term {
             },
         .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
         .notify =
-            [this](const std::string& summary, const std::string& body) {
-              m_notifier.notify(summary, body, [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& token) {
-                if (!alive.expired()) {
-                  m_window.activate(token);
-                }
-              });
+            [this, id](const Notice& notice, std::function<void(int)> activated, std::function<void()> closed) {
+              if (notice.when == Notice::When::Invisible && m_active && std::ranges::contains(m_sessions.visible(), id)) {
+                return;
+              }
+              m_notifier.notify(
+                  notice, notice.key.empty() ? std::string{} : std::format("{}/{}", id, notice.key),
+                  [this, alive = std::weak_ptr<bool>(m_alive), focus = notice.focus,
+                   activated = std::move(activated)](const std::string& token, int button) {
+                    if (alive.expired()) {
+                      return;
+                    }
+                    if (focus) {
+                      m_window.activate(token);
+                    }
+                    if (activated) {
+                      activated(button);
+                    }
+                  },
+                  std::move(closed));
             },
+        .closeNotice = [this, id](const std::string& key) { m_notifier.close(std::format("{}/{}", id, key)); },
         .titleChanged = [this, id](std::string title) { apply(session_event::Title{id, std::move(title)}); },
         .commandStarted =
             [this, id](const std::string& command) {
@@ -1072,8 +1086,11 @@ namespace term {
     } else if (const auto* finished = std::get_if<CommandFinished>(&session.command)) {
       data.symbol = finished->failed() ? "alert-circle" : "circle-check";
       data.symbolDanger = finished->failed();
-      data.status =
-          withCommand(finished->failed() ? "exit " + std::to_string(*finished->exitCode) : "done", finished->command);
+      // A success the user has seen gives line 2 back to the program title; a failure stays until the next command.
+      if (finished->failed() || session.seen == Seen::Unseen || session.title.empty()) {
+        data.status =
+            withCommand(finished->failed() ? "exit " + std::to_string(*finished->exitCode) : "done", finished->command);
+      }
     } else {
       switch (session.kind) {
         case SessionKind::Shell: data.symbol = "prompt"; break;

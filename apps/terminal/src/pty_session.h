@@ -55,7 +55,8 @@ public:
   struct Effects {
     std::function<void(std::string title)> title;                 // OSC 0 / 2
     std::function<void(std::string text, bool primary)> clipboard; // OSC 52 write, text/plain only
-    std::function<void(std::string title, std::string body)> notify; // OSC 9 / 777 / 99
+    std::function<void(Notice notice)> notify;       // OSC 9 / 777 / 99
+    std::function<void(std::string key)> closeNotice; // OSC 99 p=close
   };
 
   PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {}, SecretFn onSecret = {}, Effects effects = {});

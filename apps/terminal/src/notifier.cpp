@@ -5,6 +5,7 @@
 
 #include <sdbus-c++/sdbus-c++.h>
 
+#include <charconv>
 #include <vector>
 
 namespace term {
@@ -22,23 +23,34 @@ namespace term {
       m_proxy = sdbus::createProxy(bus->connection(), sdbus::ServiceName{kInterface},
                                    sdbus::ObjectPath{"/org/freedesktop/Notifications"});
       m_proxy->uponSignal("ActivationToken").onInterface(kInterface).call([this](std::uint32_t id, const std::string& token) {
-        if (m_onClick.contains(id)) {
+        if (m_entries.contains(id)) {
           m_tokens[id] = token;
         }
       });
-      m_proxy->uponSignal("ActionInvoked").onInterface(kInterface).call([this](std::uint32_t id, const std::string& key) {
-        auto it = m_onClick.find(id);
-        if (it == m_onClick.end() || key != "default") {
+      m_proxy->uponSignal("ActionInvoked").onInterface(kInterface).call([this](std::uint32_t id, const std::string& action) {
+        const auto it = m_entries.find(id);
+        int button = 0;
+        if (it == m_entries.end()
+            || (action != "default" && std::from_chars(action.data(), action.data() + action.size(), button).ec != std::errc{})) {
           return;
         }
         const auto token = m_tokens.extract(id);
-        auto onClick = std::move(it->second);
-        m_onClick.erase(it);
-        onClick(token.empty() ? std::string{} : token.mapped());
+        if (it->second.onAction) {
+          it->second.onAction(token.empty() ? std::string{} : token.mapped(), button);
+        }
       });
       m_proxy->uponSignal("NotificationClosed").onInterface(kInterface).call([this](std::uint32_t id, std::uint32_t) {
-        m_onClick.erase(id);
+        auto entry = m_entries.extract(id);
         m_tokens.erase(id);
+        if (entry.empty()) {
+          return;
+        }
+        if (const auto key = m_byKey.find(entry.mapped().key); key != m_byKey.end() && key->second == id) {
+          m_byKey.erase(key);
+        }
+        if (entry.mapped().onClosed) {
+          entry.mapped().onClosed();
+        }
       });
     } catch (const sdbus::Error& e) {
       kLog.warn("notifications unavailable: {}", e.what());
@@ -48,31 +60,69 @@ namespace term {
 
   Notifier::~Notifier() { m_alive.reset(); }
 
-  void Notifier::notify(const std::string& summary, const std::string& body,
-                        std::function<void(const std::string&)> onClick) {
+  void Notifier::notify(const Notice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed) {
     if (m_proxy == nullptr) {
       return;
     }
-    const std::vector<std::string> actions{"default", "Show"};
-    const std::map<std::string, sdbus::Variant> hints{{"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Terminal"}}}};
+    std::vector<std::string> actions{"default", "Show"};
+    for (std::size_t i = 0; i < notice.buttons.size(); ++i) {
+      actions.insert(actions.end(), {std::to_string(i + 1), notice.buttons[i]});
+    }
+    const std::map<std::string, sdbus::Variant> hints{
+        {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Terminal"}}},
+        {"urgency", sdbus::Variant{notice.urgency}}};
+    const auto shown = key.empty() ? m_byKey.end() : m_byKey.find(key);
+    const std::uint32_t replaces = shown != m_byKey.end() ? shown->second : 0;
+    if (!key.empty()) {
+      m_inFlight[key] = false;
+    }
     try {
       m_proxy->callMethodAsync("Notify")
           .onInterface(kInterface)
-          .withArguments(std::string{"Terminal"}, std::uint32_t{0}, std::string{"dev.andromeda.Terminal"}, summary, body,
-                         actions, hints, std::int32_t{-1})
-          .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), onClick = std::move(onClick)](
-                               std::optional<sdbus::Error> error, std::uint32_t id) {
+          .withArguments(std::string{"Terminal"}, replaces, std::string{"dev.andromeda.Terminal"},
+                         notice.title.empty() ? std::string{"Terminal"} : notice.title, notice.body, actions, hints,
+                         std::int32_t{notice.urgency == 2 ? 0 : -1})
+          .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), key, onAction = std::move(onAction),
+                            onClosed = std::move(onClosed)](std::optional<sdbus::Error> error, std::uint32_t id) {
             if (alive.expired()) {
               return;
             }
+            const auto flight = m_inFlight.extract(key);
             if (error) {
               kLog.warn("notify: {}", error->what());
               return;
             }
-            m_onClick[id] = onClick;
+            m_entries[id] = Entry{.key = key, .onAction = onAction, .onClosed = onClosed};
+            if (!key.empty()) {
+              m_byKey[key] = id;
+              if (!flight.empty() && flight.mapped()) {
+                sendClose(id);
+              }
+            }
           });
     } catch (const sdbus::Error& e) {
       kLog.warn("notify: {}", e.what());
+    }
+  }
+
+  void Notifier::close(const std::string& key) {
+    if (const auto shown = m_byKey.find(key); shown != m_byKey.end()) {
+      sendClose(shown->second);
+    } else if (const auto flight = m_inFlight.find(key); flight != m_inFlight.end()) {
+      flight->second = true;
+    }
+  }
+
+  void Notifier::sendClose(std::uint32_t id) {
+    try {
+      m_proxy->callMethodAsync("CloseNotification").onInterface(kInterface).withArguments(id).uponReplyInvoke(
+          [](std::optional<sdbus::Error> error) {
+            if (error) {
+              kLog.warn("close notification: {}", error->what());
+            }
+          });
+    } catch (const sdbus::Error& e) {
+      kLog.warn("close notification: {}", e.what());
     }
   }
 

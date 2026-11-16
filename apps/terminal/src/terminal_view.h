@@ -86,8 +86,10 @@ namespace term {
       // Current keyboard modifiers (KeyMod bits): pointer events carry none.
       std::function<std::uint32_t()> modifiers;
       // Post a desktop notification: a long command finished while the grid had no focus (OSC 133), or the
-      // program asked (OSC 9 / 777).
-      std::function<void(const std::string& summary, const std::string& body)> notify;
+      // program asked (OSC 9 / 777 / 99). activated gets the clicked button (0: the body); either may be empty.
+      std::function<void(const Notice& notice, std::function<void(int button)> activated, std::function<void()> closed)>
+          notify;
+      std::function<void(const std::string& key)> closeNotice; // OSC 99 p=close for a Notice::key
       // The program set its title (OSC 0 / 2).
       std::function<void(std::string title)> titleChanged;
       // OSC 133: a command started running / ended (exit code when the shell reports one).
@@ -250,6 +252,7 @@ namespace term {
     void textInputResetPreedit() override;
     void textInputActivated(TextInputService& service) override;
     void textInputDeactivated(TextInputService& service) override;
+    void programNotice(const Notice& notice);
     std::string selectionText();
     void copySelection();
     void publishSelection();

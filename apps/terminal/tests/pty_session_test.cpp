@@ -1,3 +1,4 @@
+#include <format>
 #include "holder_client.h"
 #include "pty_session.h"
 
@@ -206,7 +207,7 @@ void programEffectsReachTheApp() {
   PtySession s([&] { w.wake(); }, {}, {}, {},
                {.title = [&](std::string t) { log("title:" + t); },
                 .clipboard = [&](std::string t, bool primary) { log((primary ? "primary:" : "clip:") + t); },
-                .notify = [&](std::string t, std::string b) { log("note:" + t + "/" + b); }});
+                .notify = [&](Notice n) { log("note:" + n.title + "/" + n.body); }});
   CHECK(s.spawn({.argv = {"/bin/bash", "-c", R"(stty -echo
 printf '\e]2;my title\a\e]52;c;aGk=\a\e]52;p;eW8=\a\e]9;built\a\e]777;notify;Tests;all pass\a\e[>q'
 IFS= read -rsd '\' r; printf '|%s|' "${r:4:18}"; exit 0)"}}));
@@ -222,21 +223,32 @@ IFS= read -rsd '\' r; printf '|%s|' "${r:4:18}"; exit 0)"}}));
 }
 
 void kittyNotificationsReachTheApp() {
-  // OSC 99: a title and a base64 body in two chunks of one id, then a capability query that gets a reply.
+  // OSC 99: title, buttons and a base64 body in chunks of one id with options, a close, and a query that gets a reply.
   Waker w;
   std::mutex m;
   std::vector<std::string> got;
-  PtySession s([&] { w.wake(); }, {}, {}, {}, {.notify = [&](std::string t, std::string b) {
-                 std::lock_guard lock(m);
-                 got.push_back(t + "/" + b);
-               }});
+  PtySession s([&] { w.wake(); }, {}, {}, {},
+               {.notify =
+                    [&](Notice n) {
+                      std::string buttons;
+                      for (const std::string& b : n.buttons) buttons += "[" + b + "]";
+                      std::lock_guard lock(m);
+                      got.push_back(std::format("{}:{}/{} u{} f{} r{} o{} {}", n.key, n.title, n.body, n.urgency, n.focus,
+                                                n.report, static_cast<int>(n.when), buttons));
+                    },
+                .closeNotice =
+                    [&](std::string key) {
+                      std::lock_guard lock(m);
+                      got.push_back("close:" + key);
+                    }});
   CHECK(s.spawn({.argv = {"/bin/bash", "-c", R"(stty -echo
-printf '\e]99;i=b1:d=0;Build\e\\'; printf '\e]99;i=b1:p=body:e=1;ZG9uZQ==\e\\'; printf '\e]99;i=q:p=?;\e\\'
+printf '\e]99;i=b1:d=0:u=2:a=report,-focus;Build\e\\'; printf '\e]99;i=b1:d=0:o=unfocused:p=buttons;Retry\xe2\x80\xa8Open\e\\'
+printf '\e]99;i=b1:p=body:e=1;ZG9uZQ==\e\\'; printf '\e]99;i=b1:p=close;\e\\'; printf '\e]99;i=q:p=?;\e\\'
 IFS= read -rsd '\' r; printf '|%s|' "${r:1:16}"; exit 0)"}}));
   CHECK(w.waitFor(s, [&] { return s.state() == SessionState::Exited; }));
   CHECK(screenText(s).find("|]99;i=q:p=?;a=fo|") != std::string::npos);
   std::lock_guard lock(m);
-  CHECK(got == std::vector<std::string>{"Build/done"});
+  CHECK((got == std::vector<std::string>{"b1:Build/done u2 ffalse rtrue o1 [Retry][Open]", "close:b1"}));
 }
 
 void runSessionTests() {

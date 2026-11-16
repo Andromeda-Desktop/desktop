@@ -165,10 +165,17 @@ namespace term {
                 }
               });
             },
-            .notify = [this, alive = std::weak_ptr<bool>(m_alive)](std::string title, std::string body) {
-              DeferredCall::callLater([this, alive, title = std::move(title), body = std::move(body)] {
-                if (!alive.expired() && m_host.notify) {
-                  m_host.notify(title.empty() ? std::string("Terminal") : title, body);
+            .notify = [this, alive = std::weak_ptr<bool>(m_alive)](Notice notice) {
+              DeferredCall::callLater([this, alive, notice = std::move(notice)] {
+                if (!alive.expired()) {
+                  programNotice(notice);
+                }
+              });
+            },
+            .closeNotice = [this, alive = std::weak_ptr<bool>(m_alive)](std::string key) {
+              DeferredCall::callLater([this, alive, key = std::move(key)] {
+                if (!alive.expired() && m_host.closeNotice) {
+                  m_host.closeNotice(key);
                 }
               });
             }}) {
@@ -1177,7 +1184,7 @@ namespace term {
         const bool failed = mark.exitCode.value_or(0) != 0;
         std::string body = running->text.empty() ? std::string{"A command"} : running->text;
         body += failed ? std::format(" exited with {} after {}", *mark.exitCode, took) : std::format(" took {}", took);
-        m_host.notify(failed ? "Command failed" : "Command finished", body);
+        m_host.notify(Notice{.title = failed ? "Command failed" : "Command finished", .body = std::move(body)}, {}, {});
       }
       if (running != nullptr && m_host.commandEnded) {
         m_host.commandEnded(mark.exitCode);
@@ -2029,6 +2036,27 @@ namespace term {
     if (moved) {
       scheduleRedraw(Redraw::All);
     }
+  }
+
+  // A program's notice: o=unfocused skips while the grid has focus; clicks and closes go back to the program on request.
+  void TerminalView::programNotice(const Notice& notice) {
+    if (!m_host.notify || (notice.when == Notice::When::Unfocused && m_focused)) {
+      return;
+    }
+    const auto reply = [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& bytes) {
+      if (!alive.expired()) {
+        m_session.write({reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()});
+      }
+    };
+    std::function<void(int)> activated;
+    std::function<void()> closed;
+    if (notice.report) {
+      activated = [reply, key = notice.key](int button) { reply(Osc99Scanner::activatedReply(key, button)); };
+    }
+    if (notice.reportClose) {
+      closed = [reply, key = notice.key] { reply(Osc99Scanner::closedReply(key)); };
+    }
+    m_host.notify(notice, std::move(activated), std::move(closed));
   }
 
   std::string TerminalView::selectionText() {

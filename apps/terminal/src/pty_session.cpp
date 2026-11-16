@@ -457,10 +457,12 @@ void PtySession::parseLoop() {
       }
       if (!replaying()) {
         m_osc99.feed({work.data() + at, len}, [this](Osc99Scanner::Event e) {
-          if (const auto* show = std::get_if<Osc99Scanner::Show>(&e); show != nullptr && m_effects.notify) {
-            m_effects.notify(show->title, show->body);
+          if (auto* show = std::get_if<Osc99Scanner::Show>(&e); show != nullptr && m_effects.notify) {
+            m_effects.notify(std::move(show->notice));
+          } else if (auto* close = std::get_if<Osc99Scanner::Close>(&e); close != nullptr && m_effects.closeNotice) {
+            m_effects.closeNotice(std::move(close->key));
           } else if (const auto* query = std::get_if<Osc99Scanner::Query>(&e)) {
-            const std::string reply = Osc99Scanner::queryReply(query->id);
+            const std::string reply = Osc99Scanner::queryReply(query->key);
             queueOutbound({reinterpret_cast<const std::uint8_t*>(reply.data()), reply.size()});
           }
         });
@@ -544,8 +546,8 @@ void PtySession::onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClip
 void PtySession::onNotification(GhosttyTerminal, void* self, const GhosttyTerminalDesktopNotification* note) {
   auto* s = static_cast<PtySession*>(self);
   if (!s->m_effects.notify || s->replaying()) return;
-  s->m_effects.notify(std::string(reinterpret_cast<const char*>(note->title.ptr), note->title.len),
-                      std::string(reinterpret_cast<const char*>(note->body.ptr), note->body.len));
+  s->m_effects.notify(Notice{.title = std::string(reinterpret_cast<const char*>(note->title.ptr), note->title.len),
+                             .body = std::string(reinterpret_cast<const char*>(note->body.ptr), note->body.len)});
 }
 
 void PtySession::onSemanticPrompt(GhosttyTerminal terminal, void* self, const GhosttyTerminalSemanticPrompt* e) {
