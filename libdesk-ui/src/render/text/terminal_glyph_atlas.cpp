@@ -116,6 +116,8 @@ bool TerminalGlyphAtlas::load(const std::string& family, float pixelSize, float 
   const int descender = fromFixed(face->size->metrics.descender);
   m_cellHeight = std::max(static_cast<int>(std::lround(lineHeight)), ascender - descender);
   m_baseline = (m_cellHeight - (ascender - descender)) / 2 + ascender;
+  m_glyphTop = m_baseline - ascender;
+  m_glyphBottom = m_baseline - descender;
   const FT_Fixed yScale = face->size->metrics.y_scale;
   m_strokeThickness = std::max(1, fromFixed(FT_MulFix(face->underline_thickness, yScale)));
   m_underlinePosition =

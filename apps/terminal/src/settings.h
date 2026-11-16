@@ -24,7 +24,7 @@ namespace term {
   // User preferences, from $XDG_CONFIG_HOME/andromeda/terminal.toml. The defaults are the built-in behaviour.
   struct Settings {
     std::string theme = "system"; // a built-in name or a theme package id
-    CursorShape cursor = CursorShape::Block; // until the program sets its own (DECSCUSR)
+    CursorShape cursor = CursorShape::Bar; // until the program sets its own (DECSCUSR)
     bool cursorBlink = false;                // until the program sets its own (DECSCUSR, mode 12)
     WindowMaterial material = WindowMaterial::Solid;
     bool focusRing = false; // accent ring on the focused split pane

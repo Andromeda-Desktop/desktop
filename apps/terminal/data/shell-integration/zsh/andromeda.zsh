@@ -30,9 +30,9 @@ __andromeda_precmd() {
   fi
   if (( ! ${+__andromeda_prompt_set} )); then
     __andromeda_prompt_set=1
-    # The first prompt runs after .zshrc: only a plain prompt becomes the blank row and `λ  `.
+    # The first prompt runs after .zshrc: only a plain prompt becomes the blank row and three blank cells.
     if [[ "${(k)functions}" != *starship* && "$PS1" != *'$('* && "$PS1" != *$'\e['* && "$PS1" != *'%F'* && "$PS1" != *'%{'* ]]; then
-      PS1=$'\n''λ  %{'$'\e]133;B\a''%}'
+      PS1=$'\n''   %{'$'\e]133;B\a''%}'
     fi
   fi
   __andromeda_urlencode "$PWD"

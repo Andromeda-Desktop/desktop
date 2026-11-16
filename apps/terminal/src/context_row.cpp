@@ -3,7 +3,9 @@
 #include "design_tokens.h"
 #include "render/scene/terminal_grid_node.h"
 #include "ui/builders.h"
+#include "core/files/resource_paths.h"
 #include "ui/controls/flex.h"
+#include "ui/controls/image.h"
 #include "ui/controls/label.h"
 #include "time/time_format.h"
 #include "ui/palette.h"
@@ -30,33 +32,46 @@ namespace {
   std::unique_ptr<Node> build(
       const ContextItem& item, float h, float width, float s, const ContextRow::Font& font, std::optional<Color> backing
   ) {
-    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
-                        .fill = colorSpecFromRole(ColorRole::TermCommandBand), .radius = Tokens::radiusR8 * s,
-                        .width = width, .height = h});
+    auto pill = [&] {
+      return ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingH = Tokens::spaceP8 * s,
+                      .fill = colorSpecFromRole(ColorRole::TermCommandBand), .radius = Tokens::radiusR8 * s,
+                      .height = h});
+    };
+    // Over a scene each pill backs its labels as the grid backs its text runs.
+    auto backed = [&](std::unique_ptr<Node> node) -> std::unique_ptr<Node> {
+      if (!backing) {
+        return node;
+      }
+      auto back = ui::row({.fill = fixedColorSpec(*backing), .radius = Tokens::radiusR8 * s, .height = h});
+      back->addChild(std::move(node));
+      return back;
+    };
+    auto band = pill();
     // A space cell between path and branch, as the shell would print it.
-    row->addChild(mono(item.branch.empty() ? item.cwd : item.cwd + " ", ColorRole::TermBlue, font));
+    band->addChild(mono(item.branch.empty() ? item.cwd : item.cwd + " ", ColorRole::TermBlue, font));
     if (!item.branch.empty()) {
-      row->addChild(mono(item.branch, ColorRole::Label2, font));
+      band->addChild(mono(item.branch, ColorRole::Label2, font));
     }
-    row->addChild(ui::box({.flexGrow = 1.0F}));
-    switch (item.caption) {
-    case ContextItem::Caption::None: break;
-    case ContextItem::Caption::Done:
-    case ContextItem::Caption::Running:
-      row->addChild(caption(item.time, FontWeight::Medium, ColorRole::Label2, s));
-      break;
-    case ContextItem::Caption::Failed:
-      row->addChild(caption(item.exit, FontWeight::SemiBold, ColorRole::Label1, s));
-      row->addChild(caption("· " + item.time, FontWeight::Medium, ColorRole::Label1, s));
-      break;
-    }
-    if (!backing) {
+    auto row = ui::row({.align = FlexAlign::Center, .width = width, .height = h});
+    row->addChild(backed(std::move(band)));
+    if (item.caption == ContextItem::Caption::None) {
       return row;
     }
-    // Over a scene the band backs its labels as the grid backs its text runs.
-    auto back = ui::box({.fill = fixedColorSpec(*backing), .radius = Tokens::radiusR8 * s, .width = width, .height = h});
-    back->addChild(std::move(row));
-    return back;
+    row->addChild(ui::box({.flexGrow = 1.0F}));
+    auto tail = pill();
+    if (item.caption == ContextItem::Caption::Failed) {
+      tail->addChild(caption(item.exit, FontWeight::SemiBold, ColorRole::Label1, s));
+      tail->addChild(caption("· " + item.time, FontWeight::Medium, ColorRole::Label1, s));
+    } else {
+      tail->addChild(caption(item.time, FontWeight::Medium, ColorRole::Label2, s));
+    }
+    row->addChild(backed(std::move(tail)));
+    return row;
+  }
+
+  Color rgb(std::uint32_t c) {
+    return Color{static_cast<float>((c >> 16) & 0xFF) / 255.0F, static_cast<float>((c >> 8) & 0xFF) / 255.0F,
+                 static_cast<float>(c & 0xFF) / 255.0F, 1.0F};
   }
 
 } // namespace
@@ -76,37 +91,64 @@ ContextRow::ContextRow(TerminalGridNode& grid) : m_grid(grid) {
 
 void ContextRow::setOrigin(float x, float y) { m_layer->setPosition(x, y); }
 
-void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font) {
+void ContextRow::sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font,
+                      std::uint32_t accent) {
+  m_pending = Input{std::move(placed), cellHeight, rowWidth, scale, std::move(font), accent};
+}
+
+void ContextRow::apply(Renderer& renderer) {
+  if (!m_pending) {
+    return;
+  }
+  auto [placed, cellHeight, rowWidth, scale, font, accent] = std::move(*std::exchange(m_pending, std::nullopt));
   const bool sameItems = placed.size() == m_placed.size()
       && std::equal(placed.begin(), placed.end(), m_placed.begin(),
                     [](const Placed& a, const Placed& b) { return a.item == b.item; });
-  const bool sameSize = cellHeight == m_cellHeight && rowWidth == m_rowWidth && scale == m_scale && font == m_font;
+  const bool sameSize = cellHeight == m_cellHeight && rowWidth == m_rowWidth && scale == m_scale && font == m_font
+      && accent == m_accent;
   const float backing = m_grid.textBacking();
   if (!sameItems || !sameSize || backing != m_backing) {
     m_backing = backing;
     std::optional<Color> back;
     if (backing > 0.0F) {
       const std::uint32_t bg = m_grid.background();
-      back = Color{static_cast<float>((bg >> 16) & 0xFF) / 255.0F, static_cast<float>((bg >> 8) & 0xFF) / 255.0F,
-                   static_cast<float>(bg & 0xFF) / 255.0F, backing};
+      back = rgb(bg);
+      back->a = backing;
     }
     for (Node* node : m_nodes) {
       m_layer->removeChild(node);
     }
+    for (Node* node : m_marks) {
+      m_layer->removeChild(node);
+    }
     m_nodes.clear();
+    m_marks.clear();
+    const int side = static_cast<int>(std::lround(font.size));
     for (const Placed& p : placed) {
-      m_nodes.push_back(m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font, back)));
+      // The grid does not arrange its children, and a layout request from the frame tick does not reach the window.
+      Node* row = m_layer->addChild(build(p.item, cellHeight, rowWidth, scale, font, back));
+      row->layout(renderer);
+      m_nodes.push_back(row);
+      auto mark = std::make_unique<Image>();
+      mark->setSize(static_cast<float>(side), static_cast<float>(side));
+      mark->setForegroundTint(fixedColorSpec(rgb(accent)));
+      (void)mark->setSourceFile(renderer, paths::assetPath("amark.svg").string(), side);
+      m_marks.push_back(m_layer->addChild(std::move(mark)));
     }
   }
   // The band padding sits left of column 0, so the path lines up with the text below.
+  // The brand mark fills the first of the prompt's blank cells, on the row under the band.
   for (std::size_t i = 0; i < placed.size(); ++i) {
-    m_nodes[i]->setPosition(-Tokens::spaceP8 * scale, static_cast<float>(placed[i].row) * cellHeight);
+    const float y = static_cast<float>(placed[i].row) * cellHeight;
+    m_nodes[i]->setPosition(-Tokens::spaceP8 * scale, y);
+    m_marks[i]->setPosition(0.0F, y + cellHeight + (cellHeight - m_marks[i]->height()) / 2.0F);
   }
   m_placed = std::move(placed);
   m_cellHeight = cellHeight;
   m_rowWidth = rowWidth;
   m_scale = scale;
   m_font = std::move(font);
+  m_accent = accent;
 }
 
 std::optional<ContextRow::Hit> ContextRow::hitTest(float x, float y) const {
@@ -118,11 +160,17 @@ std::optional<ContextRow::Hit> ContextRow::hitTest(float x, float y) const {
       continue;
     }
     const ContextItem& item = m_placed[i].item;
-    // Children: the path, then the branch when there is one.
+    // The first child is the band (inside its backing box over a scene): the path, then the branch.
+    const Node* band = row->children()[0].get();
+    float bx = row->x() + band->x();
+    if (m_backing > 0.0F) {
+      band = band->children()[0].get();
+      bx += band->x();
+    }
     const std::size_t pills = item.branch.empty() ? 1 : 2;
-    for (std::size_t c = 0; c < pills && c < row->children().size(); ++c) {
-      const Node* pill = row->children()[c].get();
-      const float px = row->x() + pill->x();
+    for (std::size_t c = 0; c < pills && c < band->children().size(); ++c) {
+      const Node* pill = band->children()[c].get();
+      const float px = bx + pill->x();
       if (lx >= px && lx < px + pill->width()) {
         return c == 0 ? Hit{Hit::Pill::Cwd, item.path} : Hit{Hit::Pill::Branch, item.branch};
       }

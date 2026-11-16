@@ -23,11 +23,11 @@ function __andromeda_prompt --on-event fish_prompt
     printf '\e]7;file://%s%s\a\e]133;A\a' (prompt_hostname) (__andromeda_urlencode "$PWD")
 end
 
-# Only the stock prompt becomes the blank row and `λ  `; a user prompt stays.
+# Only the stock prompt becomes the blank row and three blank cells; a user prompt stays.
 # Stock means fish's own prompt (its data dir, or embedded in the binary); a distro or user prompt stays.
 set -l __andromeda_source (functions --details fish_prompt)
 if string match -q -- "$__fish_data_dir/functions/fish_prompt.fish" $__andromeda_source; or string match -q -- 'embedded:*' $__andromeda_source
     function fish_prompt
-        printf '\nλ  \e]133;B\a'
+        printf '\n   \e]133;B\a'
     end
 end

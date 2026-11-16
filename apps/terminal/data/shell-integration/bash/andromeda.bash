@@ -59,11 +59,12 @@ if [[ $- == *i* && -z "${__andromeda_hooked-}" ]]; then
     return "$ret"
   }
 
-  # A plain prompt becomes a blank row (the terminal draws the context pills there) and `λ  `. A styled or generated
+  # A plain prompt becomes a blank row (the terminal draws the context pills there) and three blank cells (the terminal
+  # draws the brand mark in the first). A styled or generated
   # prompt (colours, command substitution, starship) stays: then the terminal draws no pills.
   # STARSHIP_SHELL is inherited from a parent shell, so starship counts only when its functions are here.
   if [[ "$(builtin compgen -A function)" != *starship* && "$PS1" != *'$('* && "$PS1" != *'`'* && "$PS1" != *'\e['* && "$PS1" != *'\033['* ]]; then
-    PS1='\n''λ  \[\e]133;B\a\]'
+    PS1='\n''   \[\e]133;B\a\]'
   fi
   PS0='$(__andromeda_preexec)'"${PS0-}"
   PROMPT_COMMAND="__andromeda_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"

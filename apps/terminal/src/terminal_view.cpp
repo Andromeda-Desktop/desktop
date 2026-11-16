@@ -389,6 +389,7 @@ namespace term {
     m_grid = grid.get();
     setGridFont();
     m_images = std::make_unique<KittyImages>(*m_grid);
+    m_renderer = &renderer;
     m_context = std::make_unique<ContextRow>(*m_grid);
     auto findLayer = std::make_unique<Node>();
     findLayer->setZIndex(TerminalGridNode::kBelowTextZ);
@@ -516,6 +517,14 @@ namespace term {
   }
 
   void TerminalView::frame() {
+    struct ApplyContext {
+      TerminalView& view;
+      ~ApplyContext() {
+        if (view.m_context != nullptr && view.m_renderer != nullptr) {
+          view.m_context->apply(*view.m_renderer);
+        }
+      }
+    } applyContext{*this};
     if (m_grid != nullptr) {
       commitAtlas();
       // The window measures the scene when it builds, after the settings reached this view.
@@ -1373,7 +1382,11 @@ namespace term {
     const float inset = kInset * m_uiScale;
     // The band reaches one space step past the grid on both sides.
     m_context->sync(std::move(placed), m_grid->cellHeight(), m_width - 2.0F * inset + 2.0F * Tokens::spaceP8 * m_uiScale,
-                    m_uiScale, {.family = gridFont(m_settings, m_theme), .size = static_cast<float>(m_settings.fontSize) * m_uiScale});
+                    m_uiScale, {.family = gridFont(m_settings, m_theme), .size = static_cast<float>(m_settings.fontSize) * m_uiScale},
+                    m_cursorColor);
+    if (m_host.requestFrame) {
+      m_host.requestFrame(); // frame() applies the rows
+    }
     if (running && printing && !m_contextTick.active()) {
       m_contextTick.startRepeating(std::chrono::seconds(1), [this] { syncContext(); });
     } else if (!running || !printing) {

@@ -7,6 +7,7 @@
 #include <vector>
 
 class Node;
+class Renderer;
 class TerminalGridNode;
 
 namespace term {
@@ -49,8 +50,11 @@ public:
 
   explicit ContextRow(TerminalGridNode& grid);
   void setOrigin(float x, float y);
-  // Moves the nodes when only rows changed; rebuilds them when an item or a size changed.
-  void sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font);
+  // Keeps the rows for apply(); the caller asks for a frame.
+  void sync(std::vector<Placed> placed, float cellHeight, float rowWidth, float scale, Font font, std::uint32_t accent);
+  // Moves the nodes when only rows changed; rebuilds them when an item or a size changed. Runs in the frame tick, before
+  // the window's layout pass and with GL current: rows added after that pass would draw unlaid.
+  void apply(Renderer& renderer);
   // The path or branch under (x, y) in grid coordinates.
   [[nodiscard]] std::optional<Hit> hitTest(float x, float y) const;
 
@@ -59,11 +63,22 @@ private:
   Node* m_layer = nullptr;
   float m_backing = 0.0F;
   std::vector<Placed> m_placed;
+  struct Input {
+    std::vector<Placed> placed;
+    float cellHeight = 0.0F;
+    float rowWidth = 0.0F;
+    float scale = 0.0F;
+    Font font;
+    std::uint32_t accent = 0; // 0xRRGGBB, the theme accent the cursor uses
+  };
+  std::optional<Input> m_pending; // set by sync(), taken by apply()
   std::vector<Node*> m_nodes;
+  std::vector<Node*> m_marks; // the brand mark per placed row
   float m_cellHeight = 0.0F;
   float m_rowWidth = 0.0F;
   float m_scale = 0.0F;
   Font m_font;
+  std::uint32_t m_accent = 0;
 };
 
 } // namespace term

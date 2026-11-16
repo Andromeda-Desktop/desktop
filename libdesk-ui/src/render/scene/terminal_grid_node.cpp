@@ -394,7 +394,7 @@ void TerminalGridNode::buildCursor() {
     rect(x1 - stroke, y0 + stroke, x1, y1 - stroke);
     break;
   case TerminalCursorStyle::Bar:
-    rect(x0, y0, x0 + stroke, y1);
+    rect(x0, y0 + m_atlas.glyphTop(), x0 + stroke, y0 + m_atlas.glyphBottom());
     break;
   case TerminalCursorStyle::Underline:
     rect(x0, y1 - stroke, x1, y1);

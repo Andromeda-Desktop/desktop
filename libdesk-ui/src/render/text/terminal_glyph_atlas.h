@@ -40,6 +40,9 @@ public:
   [[nodiscard]] int cellWidth() const noexcept { return m_cellWidth; }
   [[nodiscard]] int cellHeight() const noexcept { return m_cellHeight; }
   [[nodiscard]] int baseline() const noexcept { return m_baseline; }
+  // Font ascender and descender from the cell top, in pixels.
+  [[nodiscard]] int glyphTop() const noexcept { return m_glyphTop; }
+  [[nodiscard]] int glyphBottom() const noexcept { return m_glyphBottom; }
   [[nodiscard]] int underlinePosition() const noexcept { return m_underlinePosition; }
   [[nodiscard]] int strokeThickness() const noexcept { return m_strokeThickness; }
 
@@ -90,6 +93,8 @@ private:
   int m_cellWidth = 0;
   int m_cellHeight = 0;
   int m_baseline = 0;
+  int m_glyphTop = 0;
+  int m_glyphBottom = 0;
   int m_underlinePosition = 0;
   int m_strokeThickness = 1;
 
