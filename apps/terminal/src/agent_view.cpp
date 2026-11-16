@@ -20,6 +20,7 @@
 #include "ui/controls/spinner.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "util/string_utils.h"
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
@@ -1369,13 +1370,26 @@ namespace term {
     if (front) {
       auto options = ui::row({.wrap = true, .gap = Tokens::spaceP8 * s});
       for (std::size_t i = 0; i < request.options.size(); ++i) {
-        auto button = ui::button({.text = request.options[i].name,
+        const agent::Option& option = request.options[i];
+        // "Always allow <rule> here": the rule is mono and ellipsizes at its end, the words around it stay.
+        const std::size_t at = option.rule.empty() ? std::string::npos : option.name.find(option.rule);
+        auto button = ui::button({.text = at == std::string::npos ? option.name : StringUtils::trim(option.name.substr(0, at)),
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .variant = i == 0 ? ButtonVariant::Primary : ButtonVariant::Outline,
-                                  .gap = Tokens::spaceP8 * s,
+                                  .gap = (at == std::string::npos ? Tokens::spaceP8 : Tokens::spaceP4) * s,
                                   .radius = Tokens::componentButtonHeightM * s / 2.0F,
                                   .height = Tokens::componentButtonHeightM * s,
                                   .onClick = [this, i] { answer(i); }});
+        if (at != std::string::npos) {
+          button->addChild(ui::label({.text = option.rule,
+                                      .fontSize = Tokens::typeFootnote.size * s,
+                                      .fontFamily = mono(),
+                                      .color = colorSpecFromRole(ColorRole::Label1),
+                                      .maxWidth = Tokens::componentAgentOptionRule * s,
+                                      .maxLines = 1,
+                                      .ellipsize = TextEllipsize::End}));
+          button->addChild(kit.text(StringUtils::trim(option.name.substr(at + option.rule.size())), Tokens::typeFootnote, ColorRole::Label1));
+        }
         if (i < 4) {
           button->addChild(ui::keycap({.text = std::to_string(i + 1), .scale = s}));
         }

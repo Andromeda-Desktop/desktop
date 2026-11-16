@@ -412,7 +412,8 @@ printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43
             .as_array()
             .unwrap()
             .iter()
-            .any(|option| option["optionId"] == "allow_always")
+            .any(|option| option["optionId"] == "allow_always"
+                && option["name"].as_str().unwrap().contains("pwd"))
     );
     send(&mut child, json!({"jsonrpc":"2.0","id":first["id"],"result":{"outcome":{"outcome":"selected","optionId":"allow_always"}}})).await;
     let second = loop {

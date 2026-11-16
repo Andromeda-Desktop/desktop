@@ -526,6 +526,8 @@ block_indent = 48.0  # hunks, output tails and error wells
 tail_lines = 3  # live output lines under a running tool
 slash_width = 420.0  # slash command menu over the composer
 slash_name = 96.0  # its command column; descriptions start after it
+copy_button = 28.0  # round copy button at a code block's top-right; the code keeps p40 clear
+option_rule = 200.0  # permission rule inside an "Always allow" button; a longer rule ellipsizes at its end
 
 [component.files]  # Files v2 list columns (mockup files-v2-live.html section 2, FILES-UX 2.9)
 column_date = 112.0

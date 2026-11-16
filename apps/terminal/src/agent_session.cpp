@@ -335,7 +335,9 @@ namespace term::agent {
     const auto id = str(call, "toolCallId");
     Request request{.rpcId = std::move(rpcId), .toolCallId = id, .options = {}, .answer = std::nullopt};
     for (const auto& option : params.value("options", Json::array())) {
-      request.options.push_back({str(option, "optionId"), str(option, "name"), str(option, "kind")});
+      const auto meta = option.find("_meta");
+      request.options.push_back({str(option, "optionId"), str(option, "name"), str(option, "kind"),
+                                 meta != option.end() && meta->is_object() ? str(*meta, "rule") : std::string{}});
     }
     if (m_phase != Phase::Working || request.options.empty()) {
       // Outside a running turn nothing can show the request: it is cancelled, never approved.

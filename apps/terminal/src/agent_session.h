@@ -54,6 +54,7 @@ namespace term::agent {
     std::string id;
     std::string name;
     std::string kind; // allow_once, allow_always, reject_once, reject_always
+    std::string rule; // allow_always: the permission rule the name quotes, set apart by the view
   };
   struct Request {
     Json rpcId;

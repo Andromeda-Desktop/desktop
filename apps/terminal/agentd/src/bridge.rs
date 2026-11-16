@@ -434,15 +434,20 @@ impl Bridge {
                         .suggestions
                         .iter()
                         .any(|s| s["type"] == "setMode" && s["mode"] == "acceptEdits");
-                    options.push(PermissionOption::new(
-                        "allow_always",
-                        if edits {
-                            "Allow all edits this session"
-                        } else {
-                            "Allow always"
-                        },
-                        PermissionOptionKind::AllowAlways,
-                    ));
+                    let (label, rule) = if edits {
+                        ("Allow all edits this session".to_string(), None)
+                    } else {
+                        always_label(&permission.suggestions)
+                    };
+                    let mut option =
+                        PermissionOption::new("allow_always", label, PermissionOptionKind::AllowAlways);
+                    if let Some(rule) = rule {
+                        // The client sets the rule apart (mono) inside the label.
+                        let mut meta = serde_json::Map::new();
+                        meta.insert("rule".into(), Value::String(rule));
+                        option = option.meta(meta);
+                    }
+                    options.push(option);
                 }
                 options.push(PermissionOption::new(
                     "reject_once",
@@ -916,4 +921,20 @@ fn notify(connection: &ConnectionTo<Client>, id: &str, update: SessionUpdate) {
     {
         eprintln!("failed to send session update: {error}");
     }
+}
+
+/// "Always allow <rule> here" and the rule, from Claude's first addRules suggestion: the rule without its ":*"
+/// prefix marker, and where the grant is kept (session, this project, or the user's settings).
+fn always_label(suggestions: &[Value]) -> (String, Option<String>) {
+    let rule = suggestions.iter().find(|s| s["type"] == "addRules");
+    let Some((rule, content)) = rule.and_then(|r| Some((r, r["rules"][0]["ruleContent"].as_str()?))) else {
+        return ("Allow always".to_string(), None);
+    };
+    let scope = match rule["destination"].as_str() {
+        Some("session") => "this session",
+        Some("userSettings") => "everywhere",
+        _ => "here",
+    };
+    let content = content.trim_end_matches(":*").to_string();
+    (format!("Always allow {content} {scope}"), Some(content))
 }
