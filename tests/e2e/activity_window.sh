@@ -74,6 +74,16 @@ with_noctalia '
   alive || { echo "FAIL: foot exited while typing in search"; exit 1; }
   "$POINTER" 1280 720 tap 1 > /dev/null # Escape: leave the search field
 
+  # Shift turns Quit… into Force Quit… while held (one client: a closed virtual keyboard releases its keys).
+  label_shown() { "$NOCTALIA" msg activity-dump | jq -e --arg t "$1" '"'"'any(.buttons[]?; .text == $t)'"'"' > /dev/null; }
+  "$POINTER" 1280 720 key-press 42 pause 2000 key-release 42 > /dev/null &
+  for _ in $(seq 15); do label_shown "Force Quit…" && break; sleep 0.1; done
+  label_shown "Force Quit…" || { echo "FAIL: Shift did not show Force Quit…"; exit 1; }
+  ! label_shown "Quit…" || { echo "FAIL: Quit… still shown while Shift is held"; exit 1; }
+  wait $!
+  for _ in $(seq 15); do label_shown "Quit…" && break; sleep 0.1; done
+  label_shown "Quit…" || { echo "FAIL: Quit… did not return after Shift"; exit 1; }
+
   "$POINTER" 1280 720 tap 111 > /dev/null # Delete: Quit… on the selected row asks first
   for _ in $(seq 10); do
     ! grep -qF "StopUnit $SCOPE" "$OUT/calls.txt" || { echo "FAIL: Delete quit the app without asking"; exit 1; }

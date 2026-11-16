@@ -1,6 +1,8 @@
 #include "shell/activity/activity_ui.h"
 #include "shell/activity/activity_window.h"
 
+#include "compositors/shell_wayland_connection.h"
+#include "core/input/key_modifiers.h"
 #include "dbus/systemd/systemd_unit_name.h"
 #include "render/scene/accessible.h"
 #include "shell/settings/settings_content_common.h"
@@ -455,12 +457,12 @@ void ActivityWindow::addActions(Flex& inspector, const ActivityRow& row, float s
     return;
   }
   auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Style::spaceSm * scale});
-  buttons->addChild(actionButton(i18n::tr("activity.action-force-quit-ask"), scale, [this] {
-    m_confirm = Confirm::ForceQuit;
-    requestRebuild();
-  }));
-  buttons->addChild(actionButton(i18n::tr(row.hasWindow ? "activity.action-quit-ask" : "activity.action-stop-ask"), scale, [this] {
-    m_confirm = Confirm::Quit;
+  // Shift turns Quit… into Force Quit… (the label follows the key; activity_window.cpp onKeyboardEvent).
+  const char* quit = m_shiftHeld ? "activity.action-force-quit-ask"
+      : row.hasWindow            ? "activity.action-quit-ask"
+                                 : "activity.action-stop-ask";
+  buttons->addChild(actionButton(i18n::tr(quit), scale, [this] {
+    m_confirm = (m_wayland->keyboardModifiers() & KeyMod::Shift) != 0 ? Confirm::ForceQuit : Confirm::Quit;
     requestRebuild();
   }));
   inspector.addChild(std::move(buttons));

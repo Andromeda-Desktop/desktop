@@ -102,6 +102,7 @@ private:
   // Off: no window. Live: the window samples once per second. Paused: the window is open but suspended (hidden).
   enum class Sampling : std::uint8_t { Off, Live, Paused };
   void setSampling(Sampling next);
+  void setShiftHeld(bool held);
   void prepareFrame(bool needsUpdate, bool needsLayout);
   void buildScene(Renderer& renderer, float width, float height);
   // activity_table.cpp
@@ -273,6 +274,9 @@ private:
   InspectTab m_inspectTab = InspectTab::Overview; // inspector segment
   bool m_inspectorHidden = false;       // Space toggles it while a row is selected
   Confirm m_confirm = Confirm::None;
+  bool m_leftShiftHeld = false;
+  bool m_rightShiftHeld = false;
+  bool m_shiftHeld = false; // either Shift key down: Quit… reads Force Quit…
   std::string m_selectedKey;
   std::string m_query;
   std::vector<std::string> m_order; // visible row keys, by section then sort column

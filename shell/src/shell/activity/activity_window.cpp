@@ -976,6 +976,12 @@ bool ActivityWindow::onPointerEvent(const PointerEvent& event) {
     if (onThis) {
       m_pointerInside = true;
       m_inputDispatcher.pointerEnter(static_cast<float>(event.sx), static_cast<float>(event.sy), event.serial);
+      if ((m_wayland->keyboardModifiers() & KeyMod::Shift) == 0) {
+        // Shift released while another surface had the keyboard.
+        m_leftShiftHeld = false;
+        m_rightShiftHeld = false;
+        setShiftHeld(false);
+      }
       consumed = true;
     }
     break;
@@ -1025,9 +1031,24 @@ bool ActivityWindow::onPointerEvent(const PointerEvent& event) {
   return consumed;
 }
 
+void ActivityWindow::setShiftHeld(bool held) {
+  if (held == m_shiftHeld) {
+    return;
+  }
+  m_shiftHeld = held;
+  if (selectedRow() != nullptr && m_confirm == Confirm::None) {
+    requestRebuild();
+  }
+}
+
 void ActivityWindow::onKeyboardEvent(const KeyboardEvent& event) {
   if (!isOpen()) {
     return;
+  }
+  if (event.sym == XKB_KEY_Shift_L || event.sym == XKB_KEY_Shift_R) {
+    // The modifier mask lags the Shift key event by one transition: track the keys themselves.
+    (event.sym == XKB_KEY_Shift_L ? m_leftShiftHeld : m_rightShiftHeld) = event.pressed;
+    setShiftHeld(m_leftShiftHeld || m_rightShiftHeld);
   }
   const bool ctrl = (event.modifiers & KeyMod::Ctrl) != 0;
   const bool closeKey = event.pressed && ctrl && (event.sym == XKB_KEY_w || event.sym == XKB_KEY_q);
