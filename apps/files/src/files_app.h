@@ -54,6 +54,8 @@ public:
   [[nodiscard]] ThumbnailService& thumbnails() noexcept { return m_thumbnails; }
   // One undo stack for the app (D10): finished undoable jobs of every window, newest last.
   [[nodiscard]] std::vector<std::string>& undoStack() noexcept { return m_undo; }
+  // Finished undo jobs, newest last: Redo undoes one. A new undoable job clears it.
+  [[nodiscard]] std::vector<std::string>& redoStack() noexcept { return m_redo; }
 
   FilesWindow& openWindow(const std::filesystem::path& location);
   // The FilesWindow of the active AppWindow, or null.
@@ -110,6 +112,7 @@ private:
   std::unique_ptr<FileOpsClient> m_fileOps;
   Clipboard m_clipboard;
   std::vector<std::string> m_undo;
+  std::vector<std::string> m_redo;
   std::map<AppWindow*, std::unique_ptr<FilesWindow>> m_windows;
   std::filesystem::path m_nextLocation;
   bool m_picker = false;

@@ -3,7 +3,7 @@
 # The app and the daemon share a private session bus; the script drives the app through
 # org.freedesktop.Application.ActivateAction (the same command ids as the keyboard shortcuts). Fails when:
 #   - pasting a.txt into a folder that holds a.txt does not raise a conflict, or Keep Both does not add "a (copy).txt",
-#   - Undo does not remove the copy, or leaves the original changed,
+#   - Undo does not remove the copy, or leaves the original changed; Redo does not bring the copy back,
 #   - Move to Trash does not move a.txt into the home Trash, or Put Back does not return it with its content.
 # Writes the app and daemon logs to $OUT (default ./artifacts/files-ops).
 set -euo pipefail
@@ -93,14 +93,23 @@ wait_for "pasting a.txt into dst raised no conflict" in_conflict
 wait_for "the window did not show the conflict" grep -q "job copy conflict" "$OUT/files.log"
 action conflict.keep-both
 wait_for "Keep Both did not add 'a (copy).txt'" test -f "$DST/a (copy).txt"
+wait_for "the copy job did not finish as undoable" grep -q "job copy done undoable" "$OUT/files.log"
 [[ $(cat "$DST/a (copy).txt") == new && $(cat "$DST/a.txt") == old ]] || fail "Keep Both changed the wrong file"
 echo "PASS copy with conflict (Keep Both)"
 
-wait_for "the copy job did not finish as undoable" grep -q "job copy done undoable" "$OUT/files.log"
 action edit.undo
 wait_for "Undo did not remove 'a (copy).txt'" gone "$DST/a (copy).txt"
 [[ $(cat "$DST/a.txt") == old && $(count "$DST") -eq 1 ]] || fail "Undo left dst as: $(ls "$DST")"
 echo "PASS undo"
+
+wait_for "the undo job did not finish as undoable" grep -q "job undo done undoable" "$OUT/files.log"
+action edit.redo
+wait_for "Redo did not bring back 'a (copy).txt'" test -f "$DST/a (copy).txt"
+wait_for "the redo job did not finish as undoable" test "$(grep -c "job undo done undoable" "$OUT/files.log")" -ge 2
+[[ $(cat "$DST/a (copy).txt") == new && $(cat "$DST/a.txt") == old ]] || fail "Redo brought back the wrong content"
+action edit.undo
+wait_for "Undo after Redo did not remove 'a (copy).txt'" gone "$DST/a (copy).txt"
+echo "PASS redo"
 
 select_names "$DST" 1 "['a.txt']"
 action edit.trash

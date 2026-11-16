@@ -160,6 +160,8 @@ public:
   void restoreSelection();
   void undo();
   [[nodiscard]] bool canUndo() const noexcept;
+  void redo();
+  [[nodiscard]] bool canRedo() const noexcept;
   void newFolder();
   // One item: the inline field; 2 or more: the Batch Rename sheet.
   void renameSelection();
@@ -216,6 +218,7 @@ public:
   [[nodiscard]] bool canExtract() const;
   [[nodiscard]] bool renaming() const noexcept { return m_browser->renaming(); }
   void selectAll();
+  void invertSelection();
   // Selects the rows with these names (E2E).
   void selectNames(const std::vector<std::string>& names);
   void showInGallery(const std::string& name);
@@ -311,6 +314,9 @@ private:
   std::vector<service_menus::Action> m_serviceActions; // the last item menu's Actions rows
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // D-Bus replies skip a closed window
   std::set<std::string> m_jobs; // started by this window, not finished
+  enum class HistoryStep : std::uint8_t { Undo, Redo };
+  std::map<std::string, HistoryStep> m_historyJobs; // running undo jobs and the stack each one feeds when done
+  void runHistory(HistoryStep step);
   std::map<std::string, FileOpsClient::Job> m_phoneJobs; // Link transfers this window started, by "link:<id>"
   std::set<std::string> m_trashReloaded; // other windows' finished jobs the Trash view reloaded for
   std::map<std::string, std::function<void(const std::string&)>> m_renameDone; // rename job -> its inline field

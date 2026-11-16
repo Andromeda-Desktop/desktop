@@ -4,6 +4,7 @@
 # Fails when:
 #   - type-ahead "rep" does not put the cursor on report.pdf, or a repeated "r" does not cycle on from it,
 #   - Enter on a folder, Alt+Left or Backspace do not change the location, or a folder change animates the page,
+#   - Back does not select the folder it came from, or Ctrl+Shift+I does not select every other item,
 #   - Ctrl+2 does not trace the view crossfade, or an animation reports missed frames (DESK_FRAME_STATS),
 #   - Ctrl+F and typing do not filter the folder, or Escape does not clear it.
 # Shots of the icons and list views go to $OUT (default ./artifacts/files-browse).
@@ -72,6 +73,11 @@ grep -q "motion files.page" < <(tail -n +"$((m + 1))" "$OUT/files.log") && fail 
 m=$(mark); keys mod alt tap 105 mod none        # Alt+Left: back
 wait_log "$m" "location $SRC\$" || fail "Alt+Left did not go back"
 wait_log "$m" "cursor Andromeda |selected 1 of 1 in $SRC" || fail "going back did not select Andromeda"
+total=$(find "$SRC" -mindepth 1 -maxdepth 1 ! -name '.*' | wc -l)
+m=$(mark); keys mod control+shift tap 23 mod none # Ctrl+Shift+I: invert the selection
+wait_log "$m" "selected $((total - 1)) of $total\$" || fail "Invert Selection did not select the other $((total - 1)) items"
+m=$(mark); keys mod control+shift tap 23 mod none # again: only Andromeda
+wait_log "$m" "selected 1 of $total\$" || fail "a second Invert Selection did not leave only Andromeda"
 
 m=$(mark); keys tap 30 tap 28                   # into Andromeda again, then Backspace: parent
 wait_log "$m" "location $SRC/Andromeda\$" || fail "Enter did not open Andromeda the second time"

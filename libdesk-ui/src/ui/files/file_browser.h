@@ -258,6 +258,7 @@ public:
   // The same for a file of this folder that may not be listed yet: it opens once the listing lands.
   void showInGallery(const std::string& name);
   void selectAll();
+  void invertSelection();
   // Moves the cursor and the selection by `delta` items in view order (Quick Look walk, FILES-UX 3.6).
   void walk(int delta);
   [[nodiscard]] std::optional<std::filesystem::path> cursorPath() const;

@@ -3544,6 +3544,20 @@ void FileBrowser::selectAll() {
   notifyChanged();
 }
 
+void FileBrowser::invertSelection() {
+  std::set<std::string> next;
+  for (const auto& row : m_rows) {
+    if (rowEnabled(*row) && !m_selected.contains(row->name)) {
+      next.insert(row->name);
+    }
+  }
+  m_selected = std::move(next);
+  kLog.debug("selected {} of {}", m_selected.size(), m_rows.size());
+  rebindPages();
+  refreshChrome();
+  notifyChanged();
+}
+
 void FileBrowser::walk(int delta) {
   if (m_rows.empty()) {
     return;

@@ -3595,6 +3595,7 @@ void FilesWindow::back() { m_browser->back(); }
 void FilesWindow::forward() { m_browser->forward(); }
 void FilesWindow::up() { m_browser->up(); }
 void FilesWindow::selectAll() { m_browser->selectAll(); }
+void FilesWindow::invertSelection() { m_browser->invertSelection(); }
 void FilesWindow::selectNames(const std::vector<std::string>& names) { m_browser->selectNames(names); }
 void FilesWindow::showInGallery(const std::string& name) { m_browser->showInGallery(name); }
 void FilesWindow::setView(FileBrowser::View view) { m_browser->setView(view); }
@@ -3866,17 +3867,22 @@ void FilesWindow::restoreSelection() {
   startJob("Restoring", items.size(), [&](FileOpsClient& ops, auto done) { ops.restore(items, done); });
 }
 
-void FilesWindow::undo() {
+void FilesWindow::undo() { runHistory(HistoryStep::Undo); }
+void FilesWindow::redo() { runHistory(HistoryStep::Redo); }
+
+void FilesWindow::runHistory(HistoryStep step) {
   FileOpsClient* ops = m_app.fileOps();
-  auto& stack = m_app.undoStack();
+  auto& stack = step == HistoryStep::Undo ? m_app.undoStack() : m_app.redoStack();
   if (ops == nullptr || stack.empty()) {
     return;
   }
   const std::string job = stack.back();
   stack.pop_back();
-  kLog.debug("undo {}", job);
-  startJob("Undoing", 1, [&](FileOpsClient& c, auto done) { c.undo(job, done); },
-           [this, tagJob = m_app.tags().ownsJob(job)](const std::string& undoJob) {
+  kLog.debug("{} {}", step == HistoryStep::Undo ? "undo" : "redo", job);
+  // Redo is the undo of an undo job: the daemon keeps each undo's own inverse.
+  startJob(step == HistoryStep::Undo ? "Undoing" : "Redoing", 1, [&](FileOpsClient& c, auto done) { c.undo(job, done); },
+           [this, step, tagJob = m_app.tags().ownsJob(job)](const std::string& undoJob) {
+             m_historyJobs[undoJob] = step;
              if (tagJob) {
                m_renameDone[undoJob] = [this](const std::string&) { m_app.tags().refresh(true); };
              }
@@ -3884,6 +3890,7 @@ void FilesWindow::undo() {
 }
 
 bool FilesWindow::canUndo() const noexcept { return !m_app.undoStack().empty(); }
+bool FilesWindow::canRedo() const noexcept { return !m_app.redoStack().empty(); }
 
 void FilesWindow::showConflict(const FileOpsClient::Job& job) {
   const auto& [source, target] = *job.conflict;
@@ -4239,6 +4246,10 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
     return; // the job pill shows the progress
   }
   m_jobs.erase(job.path);
+  std::optional<HistoryStep> history;
+  if (auto node = m_historyJobs.extract(job.path)) {
+    history = node.mapped();
+  }
   if (auto it = m_renameDone.find(job.path); it != m_renameDone.end()) {
     auto done = std::move(it->second);
     m_renameDone.erase(it);
@@ -4249,9 +4260,15 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
     closeConflict();
   }
   if (job.state == "done") {
-    const bool undoable = job.undoable && job.kind != "undo";
-    if (undoable) {
+    // An undo feeds Redo; a redo or any new job feeds Undo, and a new job ends the redo history.
+    const bool undoable = job.undoable && history != HistoryStep::Undo;
+    if (job.undoable && history == HistoryStep::Undo) {
+      m_app.redoStack().push_back(job.path);
+    } else if (undoable) {
       m_app.undoStack().push_back(job.path);
+      if (!history.has_value()) {
+        m_app.redoStack().clear();
+      }
     }
     const std::string what = job.kind == "trash" ? "Moved to Trash"
         : job.kind == "copy"                    ? "Copied"
