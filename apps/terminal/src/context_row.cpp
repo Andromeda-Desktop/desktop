@@ -167,13 +167,17 @@ std::optional<ContextRow::Hit> ContextRow::hitTest(float x, float y) const {
       band = band->children()[0].get();
       bx += band->x();
     }
-    const std::size_t pills = item.branch.empty() ? 1 : 2;
-    for (std::size_t c = 0; c < pills && c < band->children().size(); ++c) {
-      const Node* pill = band->children()[c].get();
-      const float px = bx + pill->x();
-      if (lx >= px && lx < px + pill->width()) {
+    // The labels in order; the band's fill is a child too, outside layout.
+    std::size_t c = 0;
+    for (const auto& child : band->children()) {
+      if (dynamic_cast<const Label*>(child.get()) == nullptr) {
+        continue;
+      }
+      const float px = bx + child->x();
+      if (lx >= px && lx < px + child->width()) {
         return c == 0 ? Hit{Hit::Pill::Cwd, item.path} : Hit{Hit::Pill::Branch, item.branch};
       }
+      ++c;
     }
   }
   return std::nullopt;
