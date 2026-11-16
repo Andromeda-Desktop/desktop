@@ -3,6 +3,7 @@
 #include "render/core/texture_manager.h"
 
 #include <algorithm>
+#include <string_view>
 #include <cmath>
 
 namespace {
@@ -237,9 +238,47 @@ void TerminalGridNode::rebuildAll() {
   buildCursor();
 }
 
+namespace {
+
+  // Programming ligatures (->, =>, !=, <=, ::, /*) join only these characters.
+  bool ligatureSymbol(char32_t c) {
+    return c < 0x80 && std::string_view("!#$%&*+-./:;<=>?@\\^_|~").find(static_cast<char>(c)) != std::string_view::npos;
+  }
+
+} // namespace
+
+void TerminalGridNode::shapeRow(std::span<const TerminalCell> cells) {
+  m_shaped.assign(cells.size(), TerminalGlyphAtlas::kCodepoint);
+  const auto joins = [&](std::size_t a, std::size_t b) {
+    constexpr std::uint16_t kAlone = TerminalCell::Wide | TerminalCell::Sized;
+    return (cells[b].flags & kAlone) == 0 && ligatureSymbol(cells[b].codepoint) && cells[b].fg == cells[a].fg
+           && faceFor(cells[b].flags) == faceFor(cells[a].flags);
+  };
+  for (std::size_t start = 0; start < cells.size();) {
+    std::size_t end = start + 1;
+    if (joins(start, start)) {
+      while (end < cells.size() && joins(start, end)) {
+        ++end;
+      }
+    }
+    if (end - start >= 2) {
+      m_run.clear();
+      for (std::size_t i = start; i < end; ++i) {
+        m_run.push_back(cells[i].codepoint);
+      }
+      m_atlas.shape(m_run, faceFor(cells[start].flags), std::span(m_shaped).subspan(start, end - start));
+    }
+    start = end;
+  }
+}
+
 void TerminalGridNode::appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y,
                                    std::uint32_t rgb, float scale) {
-  const TerminalGlyphAtlas::Glyph* g = m_atlas.glyph(codepoint, faceFor(flags), scale);
+  appendGlyph(out, m_atlas.glyph(codepoint, faceFor(flags), scale), x, y, rgb, scale);
+}
+
+void TerminalGridNode::appendGlyph(std::vector<float>& out, const TerminalGlyphAtlas::Glyph* g, int x, int y,
+                                   std::uint32_t rgb, float scale) {
   if (g == nullptr) {
     return;
   }
@@ -384,10 +423,12 @@ void TerminalGridNode::buildRow(int row) {
     }
     flush();
   }
+  shapeRow(cells);
   for (int col = 0; col < static_cast<int>(cells.size()); ++col) {
     const TerminalCell& cell = cells[static_cast<std::size_t>(col)];
     const int x = col * cw;
     const int right = x + ((cell.flags & TerminalCell::Wide) != 0 ? 2 : 1) * cw;
+    const std::uint32_t shaped = m_shaped[static_cast<std::size_t>(col)];
     const bool sized = (cell.flags & TerminalCell::Sized) != 0;
     if ((cell.flags & TerminalCell::Background) != 0) {
       rect(x, top, right, top + ch * (sized ? cell.textScale : 1), cell.bg);
@@ -399,6 +440,10 @@ void TerminalGridNode::buildRow(int row) {
       }
       appendSizedRun(glyphs, std::span(cells).subspan(static_cast<std::size_t>(col), end - static_cast<std::size_t>(col)),
                      x, top);
+    } else if (shaped != TerminalGlyphAtlas::kCodepoint) {
+      if (shaped != TerminalGlyphAtlas::kCovered) {
+        appendGlyph(glyphs, m_atlas.shapedGlyph(shaped, faceFor(cell.flags)), x, top, cell.fg, 1.0F);
+      }
     } else if (!sized && cell.codepoint > U' ') {
       appendGlyph(glyphs, cell.codepoint, cell.flags, x, top, cell.fg);
     }

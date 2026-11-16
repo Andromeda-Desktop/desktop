@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -38,6 +39,14 @@ public:
   // 16) sizes the glyph and its bearings to a cell that many times larger.
   const Glyph* glyph(char32_t codepoint, Face face, float scale = 1.0F);
 
+  // Shapes `run` with the face's own font (its calt and liga features). out[i] is the font glyph to draw in cell i
+  // through shapedGlyph(), kCodepoint when cell i draws its codepoint with glyph(), or kCovered when a glyph of an
+  // earlier cell spans it. out.size() == run.size().
+  static constexpr std::uint32_t kCodepoint = 0;
+  static constexpr std::uint32_t kCovered = 0xFFFFFFFF;
+  void shape(std::span<const char32_t> run, Face face, std::span<std::uint32_t> out);
+  const Glyph* shapedGlyph(std::uint32_t glyphIndex, Face face, float scale = 1.0F);
+
   [[nodiscard]] int cellWidth() const noexcept { return m_cellWidth; }
   [[nodiscard]] int cellHeight() const noexcept { return m_cellHeight; }
   [[nodiscard]] int baseline() const noexcept { return m_baseline; }
@@ -64,6 +73,7 @@ private:
     void operator()(std::uint8_t* p) const noexcept { std::free(p); }
   };
   static constexpr std::uint16_t kScaleUnit = 64;
+  static constexpr char32_t kGlyphIndexBit = 0x80000000; // Key::codepoint holds a font glyph index (shapedGlyph)
   struct Key {
     char32_t codepoint;
     Face face;
@@ -82,6 +92,8 @@ private:
   FontFace* faceFor(Face face, char32_t needs, bool color = false);
   FontFace* openFace(const std::string& file, int index, bool embolden, bool oblique);
   bool place(int width, int height, int& x, int& y);
+  // Loads glyph `index` of `font` and places it; caches a miss.
+  const Glyph* rasterize(const Key& key, FontFace* font, unsigned index);
   const Glyph* sprite(const Key& key, const std::vector<std::uint8_t>& alpha, int width, int height, int baseline);
   static std::unique_ptr<std::uint8_t, FreeDeleter> allocatePixels(int height);
   void reset();

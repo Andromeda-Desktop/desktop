@@ -5,6 +5,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_SYNTHESIS_H
+#include <hb-ft.h>
 
 #include <algorithm>
 #include <cmath>
@@ -27,7 +28,11 @@ struct TerminalGlyphAtlas::FontFace {
   bool color = false; // bitmap colour font (CBDT/sbix): rendered as BGRA, scaled to the cell
   bool embolden = false;
   bool oblique = false;
+  hb_font_t* shaper = nullptr; // made on first shape()
   ~FontFace() {
+    if (shaper != nullptr) {
+      hb_font_destroy(shaper);
+    }
     if (face != nullptr) {
       FT_Done_Face(face);
     }
@@ -209,6 +214,63 @@ const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::glyph(char32_t codepoint, F
     font = faceFor(face, codepoint, color);
     index = font != nullptr ? FT_Get_Char_Index(font->face, codepoint) : 0;
   }
+  return rasterize(key, font, index);
+}
+
+const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::shapedGlyph(std::uint32_t glyphIndex, Face face, float scale) {
+  const auto units = static_cast<std::uint16_t>(std::clamp(std::lround(scale * kScaleUnit), 1L, 16L * kScaleUnit));
+  const Key key{kGlyphIndexBit | glyphIndex, face, units};
+  if (auto it = m_glyphs.find(key); it != m_glyphs.end()) {
+    return it->second.width == 0 ? nullptr : &it->second;
+  }
+  if (m_missing.contains(key)) {
+    return nullptr;
+  }
+  return rasterize(key, faceFor(face, 0), glyphIndex);
+}
+
+void TerminalGlyphAtlas::shape(std::span<const char32_t> run, Face face, std::span<std::uint32_t> out) {
+  std::ranges::fill(out, kCodepoint);
+  FontFace* font = faceFor(face, 0);
+  if (font == nullptr || font->color || run.size() < 2) {
+    return;
+  }
+  if (font->shaper == nullptr) {
+    font->shaper = hb_ft_font_create_referenced(font->face);
+  }
+  hb_buffer_t* buffer = hb_buffer_create();
+  hb_buffer_add_utf32(buffer, reinterpret_cast<const std::uint32_t*>(run.data()), static_cast<int>(run.size()), 0,
+                      static_cast<int>(run.size()));
+  hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
+  hb_buffer_set_script(buffer, HB_SCRIPT_LATIN);
+  hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+  hb_shape(font->shaper, buffer, nullptr, 0);
+  unsigned count = 0;
+  const hb_glyph_info_t* info = hb_buffer_get_glyph_infos(buffer, &count);
+  // Fira Code style: one glyph per cell (calt alternates). Classic ligatures: one glyph for several cells.
+  for (unsigned i = 0; i < count; ++i) {
+    const std::uint32_t cluster = info[i].cluster;
+    const std::uint32_t next = i + 1 < count ? info[i + 1].cluster : static_cast<std::uint32_t>(run.size());
+    if (cluster >= run.size() || next <= cluster) {
+      continue; // a cell with several glyphs (a mark): keep the plain codepoint
+    }
+    if (info[i].codepoint != FT_Get_Char_Index(font->face, run[cluster]) || next - cluster > 1) {
+      out[cluster] = info[i].codepoint;
+      for (std::uint32_t covered = cluster + 1; covered < next; ++covered) {
+        out[covered] = kCovered;
+      }
+    }
+  }
+  hb_buffer_destroy(buffer);
+}
+
+const TerminalGlyphAtlas::Glyph* TerminalGlyphAtlas::rasterize(const Key& key, FontFace* font, unsigned index) {
+  const float scale = static_cast<float>(key.scale) / kScaleUnit;
+  const auto scaled = [scale](int px) { return static_cast<int>(std::lround(static_cast<float>(px) * scale)); };
+  const int cellWidth = scaled(m_cellWidth);
+  const int cellHeight = scaled(m_cellHeight);
+  const int baseline = scaled(m_baseline);
+  const std::uint16_t units = key.scale;
   const FT_Int32 loadFlags = font != nullptr && font->color ? FT_LOAD_COLOR : FT_LOAD_TARGET_LIGHT;
   // Faces stay at the grid size; a scaled glyph sizes its face for this one load.
   const bool resize = font != nullptr && units != kScaleUnit && FT_IS_SCALABLE(font->face);

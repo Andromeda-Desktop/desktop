@@ -113,11 +113,17 @@ private:
   void appendSizedRun(std::vector<float>& out, std::span<const TerminalCell> run, int x, int y);
   void buildCursor();
   void rebuildAll();
+  // Sets m_shaped for one row: shaped glyphs for runs of ligature symbols of one face and colour.
+  void shapeRow(std::span<const TerminalCell> cells);
+  void appendGlyph(std::vector<float>& out, const TerminalGlyphAtlas::Glyph* glyph, int x, int y, std::uint32_t rgb,
+                   float scale);
   void appendGlyph(std::vector<float>& out, char32_t codepoint, std::uint16_t flags, int x, int y, std::uint32_t rgb,
                    float scale = 1.0F);
   [[nodiscard]] float logical(int devicePx) const noexcept;
 
   TerminalGlyphAtlas m_atlas;
+  std::vector<std::uint32_t> m_shaped; // buildRow scratch: TerminalGlyphAtlas::shape output per cell
+  std::vector<char32_t> m_run;          // buildRow scratch: one run of ligature symbols
   float m_scale = 1.0F;
   int m_columns = 0;
   float m_originX = 0.0F;
