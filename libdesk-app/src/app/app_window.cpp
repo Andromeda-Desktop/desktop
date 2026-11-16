@@ -846,7 +846,7 @@ void AppWindow::setMainFill(std::optional<ColorSpec> fill) {
 // Solid: the main pane takes the content's plane. Glass: the main pane keeps the glass and the header band takes the
 // plane, as the content draws it over the same glass, so band and content read as one plane.
 void AppWindow::applyMainFill() {
-  if (m_mainNode == nullptr || m_config.transparentContent || m_scene) {
+  if (m_mainNode == nullptr || m_config.transparentContent || m_scene || m_contentCards) {
     return;
   }
   if (m_config.material == Material::Solid) {
@@ -1006,6 +1006,44 @@ void AppWindow::refreshNavigation() {
   invalidate();
 }
 
+std::unique_ptr<Node> AppWindow::buildWindowButtons() {
+  const float s = m_uiScale;
+  auto buttons = ui::row({.align = FlexAlign::Center, .gap = kWindowButtonGap * s, .paddingH = (kWindowButtonInset - kNavInset) * s});
+  const bool maximized = m_surface != nullptr && m_surface->state().maximized;
+  const auto add = [&](const char* glyph, const char* command, bool close, Button** out) {
+    buttons->addChild(ui::button({
+        .out = out,
+        .glyph = std::string(glyph),
+        .glyphSize = (std::string_view(glyph) == "square" ? kMaximizeSymbol : kWindowButtonSymbol) * s,
+        .customPalette = windowButtonPalette(close),
+        .radius = kWindowButton * s / 2.0F,
+        .width = kWindowButton * s,
+        .height = kWindowButton * s,
+        .onClick = [this, id = std::string(command)] { m_commands.run(id); },
+        // Window commands have keys; Tab starts in the content.
+        .configure = [](Button& b) { b.setTabStop(false); },
+    }));
+  };
+  add("minus", "window.minimize", false, nullptr);
+  add(maximized ? "minimize" : "square", "window.maximize", false, &m_maximizeButton);
+  add("x", "window.close", true, nullptr);
+  return buttons;
+}
+
+void AppWindow::setContentCards(bool on) {
+  if (on == m_contentCards) {
+    return;
+  }
+  m_contentCards = on;
+  requestRebuild();
+}
+
+void AppWindow::beginMove(std::uint32_t serial) {
+  m_buttonDown = false;
+  m_buttonsHeld = 0;
+  m_surface->beginMove(serial);
+}
+
 std::unique_ptr<Flex> AppWindow::buildHeader() {
   const float s = m_uiScale;
   auto header = std::make_unique<HeaderRow>();
@@ -1154,25 +1192,6 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
     m_moreButton->addChild(std::move(dots));
   }
 
-  auto buttons = ui::row({.align = FlexAlign::Center, .gap = kWindowButtonGap * s, .paddingH = (kWindowButtonInset - kNavInset) * s});
-  const bool maximized = m_surface != nullptr && m_surface->state().maximized;
-  const auto add = [&](const char* glyph, const char* command, bool close, Button** out) {
-    buttons->addChild(ui::button({
-        .out = out,
-        .glyph = std::string(glyph),
-        .glyphSize = (std::string_view(glyph) == "square" ? kMaximizeSymbol : kWindowButtonSymbol) * s,
-        .customPalette = windowButtonPalette(close),
-        .radius = kWindowButton * s / 2.0F,
-        .width = kWindowButton * s,
-        .height = kWindowButton * s,
-        .onClick = [this, id = std::string(command)] { m_commands.run(id); },
-        // Window commands have keys; Tab starts in the content.
-        .configure = [](Button& b) { b.setTabStop(false); },
-    }));
-  };
-  add("minus", "window.minimize", false, nullptr);
-  add(maximized ? "minimize" : "square", "window.maximize", false, &m_maximizeButton);
-  add("x", "window.close", true, nullptr);
   if (m_config.contentCard && m_captionMenu) {
     Button* menu = nullptr;
     header->addChild(ui::button({
@@ -1192,7 +1211,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
       m_captionMenu(x, y + menu->height());
     });
   }
-  header->addChild(std::move(buttons));
+  header->addChild(buildWindowButtons());
   m_buildingHeader = false;
   applyHeaderSearchMode();
   return header;
@@ -1298,7 +1317,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   const float cardLeft = sidebarShown > 0.0F ? 0.0F : m_cardGap;
   const float mainWidth = std::max(0.0F, width - sidebarShown - cardLeft - m_cardGap);
   auto main = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-  const bool header = m_config.header && (m_config.headerWhenFullscreen || !fullscreen());
+  const bool header = m_config.header && !m_contentCards && (m_config.headerWhenFullscreen || !fullscreen());
   if (header) {
     const auto headerStart = std::chrono::steady_clock::now();
     auto bar = buildHeader();
@@ -1322,7 +1341,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     tint.a = alpha;
     return fixedColorSpec(tint);
   };
-  if (!m_scene && !m_config.transparentContent) {
+  if (!m_scene && !m_config.transparentContent && !m_contentCards) {
     main->setFill(m_config.material == Material::Glass ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
   }
   m_mainNode = main.get();
@@ -1333,7 +1352,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     main->setRadii(corners);
     main->setClipRadii(corners);
   }
-  if (card) {
+  if (card && !m_contentCards) {
     const float r = Style::scaledRadius(Tokens::componentWindowCardRadius, m_uiScale);
     main->setRadii(Radii{r, r, r, r});
     main->setClipRadii(Radii{r, r, r, r});
@@ -1553,7 +1572,9 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
     }
     m_input.pointerMotion(x, y, event.serial);
     const float windowY = y - static_cast<float>(m_surface->margin());
-    const bool inHeader = windowY >= 0.0F && windowY < headerHeight() && m_input.hoveredArea() == nullptr;
+    // Content cards start below a card gap; their captions are the header band.
+    const float band = headerHeight() + (m_contentCards ? m_cardGap : 0.0F);
+    const bool inHeader = windowY >= 0.0F && windowY < band && m_input.hoveredArea() == nullptr;
     if (event.pressed && inHeader && event.button == BTN_LEFT) {
       m_buttonDown = false;
       m_buttonsHeld = 0;

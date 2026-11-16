@@ -136,16 +136,19 @@ void StatusRow::endRename(std::optional<std::string> name) {
 
 void StatusRow::applyState() {
   const bool strong = m_data.unseen || m_data.selected;
-  if (!m_data.selected && m_area != nullptr && m_area->hovered()) {
+  if (m_data.chip) {
+    setFill(*m_data.chip);
+  } else if (!m_data.selected && m_area != nullptr && m_area->hovered()) {
     setFill(colorSpecFromRole(ColorRole::Fill1));
   } else {
     setFill(clearColorSpec());
   }
+  setBorder(m_data.chip ? colorSpecFromRole(ColorRole::Stroke) : clearColorSpec(), m_data.chip ? 0.5F * m_scale : 0.0F);
   const ColorSpec label1 = colorSpecFromRole(ColorRole::Label1);
   m_symbol->setColor(m_data.symbolDanger ? colorSpecFromRole(ColorRole::Danger)
                                          : (m_data.selected ? label1 : colorSpecFromRole(ColorRole::Label2)));
   m_name->setColor(label1);
-  m_name->setFontWeight(m_data.unseen ? FontWeight::SemiBold : FontWeight::Normal);
+  m_name->setFontWeight(m_data.unseen || m_data.chip ? FontWeight::SemiBold : FontWeight::Normal);
   m_status->setColor(colorSpecFromRole(m_data.selected ? ColorRole::Label1 : ColorRole::Label2));
   m_time->setColor(colorSpecFromRole(strong ? ColorRole::Label1 : ColorRole::Label2));
   m_time->setFontWeight(m_data.unseen ? FontWeight::SemiBold : FontWeight::Normal);

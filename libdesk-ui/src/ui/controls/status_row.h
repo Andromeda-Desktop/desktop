@@ -26,6 +26,7 @@ public:
     std::string time;          // tabular digits
     bool unseen = false;       // name and time 600, label_1
     bool selected = false;     // label_1 content; the tint behind it is the list's (SelectionList)
+    std::optional<ColorSpec> chip; // a raised chip of this fill with a stroke (the focused row of a group), name 600
   };
 
   explicit StatusRow(float scale);

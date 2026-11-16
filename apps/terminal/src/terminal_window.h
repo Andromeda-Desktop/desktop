@@ -19,8 +19,12 @@
 
 class AppLoop;
 class AppWindow;
+class Box;
 class Button;
+class Flex;
+class Glyph;
 class Label;
+class Spinner;
 class Node;
 class Input;
 class Renderer;
@@ -117,6 +121,9 @@ namespace term {
     std::uint64_t m_tintTarget = 0; // the row the tint moves to
     std::uint64_t m_rowSelected = 0; // the row with selected labels: it changes at half the tint's travel
     std::vector<std::pair<std::uint64_t, StatusRow*>> m_rows; // session id, its sidebar row
+    std::vector<std::pair<std::uint64_t, Flex*>> m_groups;    // a split's first session, its sidebar block
+    // Session ids as the sidebar lists them: a split's members together, in pane order.
+    [[nodiscard]] std::vector<std::uint64_t> sidebarOrder() const;
     Timer m_agentTick;             // 1 Hz while the shown agent session runs a turn
     Label* m_bandStatus = nullptr; // the shown agent's status pill label
     [[nodiscard]] StatusRow::Data rowData(const SessionInfo& session) const;
@@ -143,11 +150,42 @@ namespace term {
     std::uint64_t m_nextId = 1;
     // Agent session keys are unique in the app: all windows share one host.
     static inline std::uint64_t s_nextAgentKey = 0;
-    std::uint64_t m_builtId = 0;
-    Node* m_contentSlot = nullptr; // holds the shown view's nodes
+    // The panes whose views are in the slot, in layout order: the shown session alone, or its split.
+    std::vector<std::uint64_t> m_builtPanes;
+    Node* m_contentSlot = nullptr; // holds the visible views' nodes
     float m_contentWidth = 0.0F;
     float m_contentHeight = 0.0F;
     void fillSlot(Renderer& renderer);
+    // A split: one card per pane, each with its caption over the pane's view.
+    struct PaneRect {
+      float x = 0.0F;
+      float y = 0.0F;
+      float width = 0.0F;
+      float height = 0.0F;
+    };
+    struct PaneCard {
+      std::uint64_t id = 0;
+      PaneRect rect;
+      float textWidth = 0.0F; // caption room for the name and the state
+      Box* ring = nullptr;    // the card's stroke, or the focus ring
+      Box* shadow = nullptr;
+      Glyph* symbol = nullptr;
+      Spinner* spinner = nullptr;
+      Label* name = nullptr;
+      Label* state = nullptr;
+      Flex* accessory = nullptr; // holds the find and agent bars while the pane is focused
+    };
+    std::vector<PaneCard> m_cards; // empty while one session shows
+    std::uint64_t m_ringPane = 0;  // the card that draws the focus ring
+    void buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes);
+    // Ring, shadow, caption weight and the find and agent bars follow the shown session, in place.
+    void applyPaneFocus();
+    void paintPaneFocus();
+    // Captions follow their sessions; true when a name or state text changed (the captions need a fit).
+    bool refreshCards();
+    void fitCaptions(Renderer& renderer);
+    // Ctrl+Alt+arrow: the nearest pane in that direction; false when the key is not one.
+    bool focusPaneKey(const KeyboardEvent& event);
     bool m_active = false;
     Surface* m_tickSurface = nullptr;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);

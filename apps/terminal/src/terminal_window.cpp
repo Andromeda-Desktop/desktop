@@ -13,7 +13,10 @@
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
 #include "ui/controls/status_row.h"
+#include "ui/controls/box.h"
 #include "ui/controls/button.h"
+#include "ui/controls/glyph.h"
+#include "ui/controls/spinner.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
@@ -25,8 +28,11 @@
 #include <pwd.h>
 #include <unistd.h>
 
+#include <linux/input-event-codes.h>
+
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <string>
 
@@ -140,11 +146,31 @@ namespace term {
       auto list = std::make_unique<SelectionList>(s);
       list->setGap(Tokens::spaceP4 * s);
       m_rows.clear();
+      m_groups.clear();
       m_tintTarget = 0;
-      for (const SessionInfo& session : m_sessions.sessions()) {
-        auto row = makeRow(session.id);
-        m_rows.push_back({session.id, row.get()});
-        list->addChild(std::move(row));
+      // A split shows as one block of short rows in pane order, where its first session is in the list.
+      for (const std::uint64_t id : sidebarOrder()) {
+        const auto* split = m_sessions.splitOf(id);
+        if (split == nullptr) {
+          auto row = makeRow(id);
+          m_rows.push_back({id, row.get()});
+          list->addChild(std::move(row));
+          continue;
+        }
+        if (split->front() != id) {
+          continue;
+        }
+        auto group = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s,
+                                 .radius = Style::scaledRadius(Tokens::radiusR12, s)});
+        for (const std::uint64_t member : *split) {
+          auto row = makeRow(member);
+          row->setPadding(0.0F, Tokens::spaceP8 * s);
+          row->setMinHeight(Tokens::componentTerminalGroupRow * s);
+          m_rows.push_back({member, row.get()});
+          group->addChild(std::move(row));
+        }
+        m_groups.push_back({id, group.get()});
+        list->addChild(std::move(group));
       }
       m_rowList = list.get();
       side->addChild(std::move(list));
@@ -245,7 +271,7 @@ namespace term {
       if (view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == nullptr) {
         m_window.input().setFocus(view->focusArea());
       }
-      if (sessionKey(event)) {
+      if (focusPaneKey(event) || sessionKey(event)) {
         return true;
       }
       return view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == view->focusArea() &&
@@ -253,14 +279,38 @@ namespace term {
     });
     m_window.setActiveCallback([this](bool active) {
       m_active = active;
-      if (ContentView* view = shownView(); view != nullptr) {
-        view->setWindowActive(active);
+      for (Session& session : m_views) {
+        if (std::ranges::contains(m_builtPanes, session.id)) {
+          session.view->setWindowActive(active);
+        }
       }
     });
     m_window.setLayoutCallback([this] {
-      const AppWindow::Rect rect = m_window.contentRect();
-      if (ContentView* view = shownView(); view != nullptr) {
-        view->setSize(rect.width, rect.height);
+      if (m_cards.empty()) {
+        const AppWindow::Rect rect = m_window.contentRect();
+        if (ContentView* view = shownView(); view != nullptr) {
+          view->setSize(rect.width, rect.height);
+        }
+        return;
+      }
+      const float caption = Tokens::componentWindowCaption * m_window.uiScale();
+      for (const PaneCard& card : m_cards) {
+        if (const auto it = std::ranges::find(m_views, card.id, &Session::id); it != m_views.end()) {
+          it->view->setSize(card.rect.width, card.rect.height - caption);
+        }
+      }
+    });
+    // A click into a pane's view focuses its area: that pane becomes the shown session.
+    m_window.input().setFocusChangeCallback([this](InputArea* /*old*/, InputArea* next) {
+      for (const PaneCard& card : m_cards) {
+        const auto it = std::ranges::find(m_views, card.id, &Session::id);
+        if (next != nullptr && it != m_views.end() && it->view->focusArea() == next && m_sessions.shown() != card.id) {
+          DeferredCall::callLater([this, id = card.id, alive = std::weak_ptr<bool>(m_alive)] {
+            if (!alive.expired()) {
+              apply(session_event::Show{id});
+            }
+          });
+        }
       }
     });
     for (const WindowOrigin& origin : origins) {
@@ -369,13 +419,16 @@ namespace term {
 
   void TerminalWindow::apply(const SessionListEvent& event) {
     const auto before = m_sessions.shown();
+    const auto splitsBefore = m_sessions.splits();
     const ApplyResult result = m_sessions.apply(event);
     if (result == ApplyResult::Rejected) {
       return;
     }
+    // The sidebar's groups follow the splits: a rebuild regroups the rows (rare: a join, a leave, a member closed).
+    const bool regroup = m_sessions.splits() != splitsBefore;
     if (const auto* close = std::get_if<session_event::Close>(&event)) {
       const auto it = std::ranges::find(m_views, close->id, &Session::id);
-      if (close->id == m_builtId) {
+      if (std::ranges::contains(m_builtPanes, close->id)) {
         m_retired.push_back(std::move(*it));
       }
       m_views.erase(it);
@@ -384,16 +437,18 @@ namespace term {
       m_close();
       return;
     }
-    if (const auto* open = std::get_if<session_event::Open>(&event); open != nullptr && m_rowList != nullptr) {
-      const auto& sessions = m_sessions.sessions();
-      const auto index = static_cast<std::size_t>(std::ranges::find(sessions, open->id, &SessionInfo::id) - sessions.begin());
+    if (regroup) {
+      m_window.requestRebuild();
+    } else if (const auto* open = std::get_if<session_event::Open>(&event); open != nullptr && m_rowList != nullptr) {
+      // A new session joins no split: it is the list's last child.
+      const std::size_t index = m_rowList->children().size() - 1;
       m_window.updateInPlace([this, id = open->id, index](Renderer& /*renderer*/) {
         auto row = makeRow(id);
         m_rows.insert(m_rows.begin() + static_cast<std::ptrdiff_t>(index), {id, row.get()});
         m_rowList->insertAnimated(std::move(row), index, Tokens::sizeRowTwoCompact * m_window.uiScale());
       });
     }
-    if (const auto* close = std::get_if<session_event::Close>(&event); close != nullptr && m_rowList != nullptr) {
+    if (const auto* close = std::get_if<session_event::Close>(&event); close != nullptr && m_rowList != nullptr && !regroup) {
       if (const auto it = std::ranges::find(m_rows, close->id, &std::pair<std::uint64_t, StatusRow*>::first);
           it != m_rows.end()) {
         StatusRow* row = it->second;
@@ -401,7 +456,7 @@ namespace term {
         m_rowList->removeAnimated(row, [this] { m_window.input().forgetDetached(); });
       }
     }
-    if (m_sessions.shown() != before) {
+    if (m_sessions.shown() != before || m_sessions.visible() != m_builtPanes) {
       show(*m_sessions.shown());
     }
     refreshRows();
@@ -409,15 +464,26 @@ namespace term {
   }
 
   void TerminalWindow::show(std::uint64_t id) {
-    if (m_findOpen && m_builtId != id) {
+    const std::vector<std::uint64_t> panes = m_sessions.visible();
+    const bool rebuild = panes != m_builtPanes;
+    if (m_findOpen && (rebuild || (!m_cards.empty() && m_ringPane != id))) {
       closeFind();
     }
     syncAgentBar();
     for (Session& session : m_views) {
-      session.view->setWindowActive(session.id == id && m_active);
+      session.view->setWindowActive(std::ranges::contains(panes, session.id) && m_active);
     }
     syncTitle();
-    if (id != m_builtId && m_contentSlot != nullptr) {
+    if (!rebuild) {
+      applyPaneFocus();
+      return;
+    }
+    // Split and single differ in the window's frame (header or not): the window rebuilds and fills the slot.
+    if (const bool split = panes.size() > 1; split != m_window.contentCards()) {
+      m_window.setContentCards(split);
+      return;
+    }
+    if (m_contentSlot != nullptr) {
       m_window.updateInPlace([this](Renderer& renderer) {
         for (Session& session : m_views) {
           session.view->sceneDestroyed();
@@ -435,16 +501,25 @@ namespace term {
   }
 
   void TerminalWindow::fillSlot(Renderer& renderer) {
+    m_cards.clear();
+    m_ringPane = 0;
     ContentView* view = shownView();
-    m_builtId = view != nullptr ? *m_sessions.shown() : 0;
     if (view == nullptr) {
+      m_builtPanes.clear();
       return;
     }
     m_window.setMainFill(view->surface());
     m_window.setSceneContentBacked(dynamic_cast<TerminalView*>(view) != nullptr);
-    Surface* surface = m_window.surface();
-    const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
-    m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
+    // Before the window's frame follows (a rebuild is pending), the shown session fills the slot alone.
+    if (const auto panes = m_sessions.visible(); panes.size() > 1 && m_window.contentCards()) {
+      m_builtPanes = panes;
+      buildSplit(renderer, panes);
+    } else {
+      m_builtPanes = {*m_sessions.shown()};
+      Surface* surface = m_window.surface();
+      const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
+      m_contentSlot->addChild(view->build(renderer, m_window.uiScale(), deviceScale, m_contentWidth, m_contentHeight));
+    }
     // After this build is in the scene: the dispatcher focuses only attached areas.
     DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
       if (alive.expired()) {
@@ -503,12 +578,27 @@ namespace term {
     }
     if (!shift && event.unshifted >= '1' && event.unshifted <= '9') {
       const auto index = static_cast<std::size_t>(event.unshifted - '1');
-      if (index < m_sessions.sessions().size()) {
-        apply(session_event::Show{m_sessions.sessions()[index].id});
+      if (const auto order = sidebarOrder(); index < order.size()) {
+        apply(session_event::Show{order[index]});
       }
       return true;
     }
     return false;
+  }
+
+  std::vector<std::uint64_t> TerminalWindow::sidebarOrder() const {
+    std::vector<std::uint64_t> order;
+    for (const SessionInfo& session : m_sessions.sessions()) {
+      if (std::ranges::contains(order, session.id)) {
+        continue;
+      }
+      if (const auto* split = m_sessions.splitOf(session.id); split != nullptr) {
+        order.insert(order.end(), split->begin(), split->end());
+      } else {
+        order.push_back(session.id);
+      }
+    }
+    return order;
   }
 
   std::unique_ptr<StatusRow> TerminalWindow::makeRow(std::uint64_t id) {
@@ -523,15 +613,28 @@ namespace term {
   }
 
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
-    enum : std::int32_t { kRename = 1, kDuplicate, kCloseOthers, kClose };
+    enum : std::int32_t { kSplit = 1, kLeave, kRename, kDuplicate, kCloseOthers, kClose };
     const bool others = m_sessions.sessions().size() > 1;
-    m_window.openContextMenu({{.id = kRename, .label = "Rename", .enabled = !m_rail},
-                              {.id = kDuplicate, .label = "Duplicate"},
-                              {.separator = true},
-                              {.id = kCloseOthers, .label = "Close other sessions", .enabled = others},
-                              {.id = kClose, .label = "Close", .shortcut = "Ctrl+Shift+W", .danger = true}},
-                             sceneX, sceneY, [this, id](std::int32_t item) {
+    const std::uint64_t shown = m_sessions.shown().value_or(0);
+    const auto* shownSplit = m_sessions.splitOf(shown);
+    const bool member = m_sessions.splitOf(id) != nullptr;
+    const bool canSplit = id != shown && !member && (shownSplit == nullptr || shownSplit->size() < kMaxPanes);
+    std::vector<ContextMenuControlEntry> entries{{.id = kSplit, .label = "Split with current", .enabled = canSplit}};
+    if (member) {
+      entries.push_back({.id = kLeave, .label = "Leave split"});
+    }
+    entries.push_back({.id = kRename, .label = "Rename", .enabled = !m_rail});
+    entries.push_back({.id = kDuplicate, .label = "Duplicate"});
+    entries.push_back({.separator = true});
+    entries.push_back({.id = kCloseOthers, .label = "Close other sessions", .enabled = others});
+    entries.push_back({.id = kClose, .label = "Close", .shortcut = "Ctrl+Shift+W", .danger = true});
+    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, shown](std::int32_t item) {
                                switch (item) {
+                               case kSplit:
+                                 apply(session_event::Join{.target = shown, .joining = id});
+                                 focusGrid();
+                                 break;
+                               case kLeave: apply(session_event::Leave{id}); break;
                                case kRename: renameSession(id); break;
                                case kDuplicate: duplicateSession(id); break;
                                case kCloseOthers: {
@@ -819,21 +922,45 @@ namespace term {
     if (const std::uint64_t shown = m_sessions.shown().value_or(0); m_rowList != nullptr && shown != m_tintTarget) {
       m_tintTarget = shown;
       const auto it = std::ranges::find(m_rows, shown, &std::pair<std::uint64_t, StatusRow*>::first);
+      // A split member's tint is its group's block.
+      const auto* split = m_sessions.splitOf(shown);
+      const auto group = split != nullptr ? std::ranges::find(m_groups, split->front(), &std::pair<std::uint64_t, Flex*>::first)
+                                          : m_groups.end();
+      Node* target = group != m_groups.end() ? static_cast<Node*>(group->second)
+                     : it != m_rows.end()     ? static_cast<Node*>(it->second)
+                                              : nullptr;
       // The label weight moves to the new row at half the tint's travel.
-      m_rowList->setSelected(it != m_rows.end() ? it->second : nullptr, true, [this, shown] {
+      m_rowList->setSelected(target, true, [this, shown] {
         m_rowSelected = shown;
         refreshRows();
         m_window.invalidate();
       });
     }
+    const std::uint64_t focused = m_sessions.shown().value_or(0);
     for (const auto& [id, row] : m_rows) {
-      if (const SessionInfo* session = m_sessions.find(id); session != nullptr) {
-        row->setData(rowData(*session));
+      const SessionInfo* session = m_sessions.find(id);
+      if (session == nullptr) {
+        continue;
       }
+      StatusRow::Data data = rowData(*session);
+      // A split member's row is one line; the shown split's focused member is a raised chip on the group's tint.
+      if (m_sessions.splitOf(id) != nullptr) {
+        data.status.clear();
+        if (const auto view = std::ranges::find(m_views, id, &Session::id); id == focused && view != m_views.end()) {
+          data.chip = view->view->surface();
+        }
+      }
+      row->setData(data);
     }
     const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
     const StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
     m_window.setCaption({.symbol = data.symbol, .state = data.status, .danger = data.symbolDanger, .spinning = data.spinning});
+    if (refreshCards()) {
+      m_window.updateInPlace([this](Renderer& renderer) {
+        fitCaptions(renderer);
+        m_contentSlot->markLayoutDirty();
+      });
+    }
     syncTitle();
   }
 
@@ -955,6 +1082,297 @@ namespace term {
       kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
       g_clear_error(&error);
     }
+  }
+
+  void TerminalWindow::buildSplit(Renderer& renderer, const std::vector<std::uint64_t>& panes) {
+    const float s = m_window.uiScale();
+    const float gap = Tokens::componentWindowCardGap * s;
+    const float radius = Style::scaledRadius(Tokens::componentWindowCardRadius, s);
+    const float caption = Tokens::componentWindowCaption * s;
+    const float width = m_contentWidth;
+    const float height = m_contentHeight;
+    // 2: columns; 3: one tall left, two stacked right; 4: a 2x2 grid in reading order.
+    const float leftW = std::floor((width - gap) / 2.0F);
+    const float rightX = leftW + gap;
+    const float rightW = width - rightX;
+    const float topH = std::floor((height - gap) / 2.0F);
+    const float bottomY = topH + gap;
+    const float bottomH = height - bottomY;
+    std::vector<PaneRect> rects;
+    switch (panes.size()) {
+      case 2: rects = {{0.0F, 0.0F, leftW, height}, {rightX, 0.0F, rightW, height}}; break;
+      case 3: rects = {{0.0F, 0.0F, leftW, height}, {rightX, 0.0F, rightW, topH}, {rightX, bottomY, rightW, bottomH}}; break;
+      default:
+        rects = {{0.0F, 0.0F, leftW, topH}, {rightX, 0.0F, rightW, topH}, {0.0F, bottomY, leftW, bottomH},
+                 {rightX, bottomY, rightW, bottomH}};
+        break;
+    }
+    Surface* surface = m_window.surface();
+    const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
+    const ColorSpec clear = clearColorSpec();
+    Button::ButtonPalette ghost;
+    ghost.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(ColorRole::Label2)};
+    ghost.hover = {.bg = colorSpecFromRole(ColorRole::Fill1), .border = clear, .label = colorSpecFromRole(ColorRole::Label1)};
+    ghost.pressed = {.bg = colorSpecFromRole(ColorRole::Fill2), .border = clear, .label = ghost.hover.label};
+    ghost.disabled = ghost.normal;
+    std::vector<std::unique_ptr<Node>> cells;
+    for (std::size_t i = 0; i < panes.size() && i < rects.size(); ++i) {
+      const auto it = std::ranges::find(m_views, panes[i], &Session::id);
+      if (it == m_views.end()) {
+        continue;
+      }
+      ContentView& view = *it->view;
+      PaneCard& card = m_cards.emplace_back(PaneCard{.id = panes[i], .rect = rects[i]});
+      const PaneRect& r = card.rect;
+      auto cell = ui::column({.align = FlexAlign::Stretch, .width = r.width, .height = r.height});
+      auto shadow = ui::box({.out = &card.shadow,
+                             .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE2.keyLight
+                                                                                                 : Tokens::elevationE2.keyDark),
+                             .radius = radius,
+                             .softness = Tokens::elevationE2.keyBlur * s,
+                             .width = r.width,
+                             .height = r.height,
+                             .visible = false,
+                             .participatesInLayout = false});
+      shadow->setPosition(0.0F, Tokens::elevationE2.keyY * s);
+      cell->addChild(std::move(shadow));
+      auto box = ui::column({.align = FlexAlign::Stretch, .fill = view.surface(), .radius = radius, .flexGrow = 1.0F});
+      box->setClipRadii(Radii{radius, radius, radius, radius});
+
+      // Caption (split mockup .cap): h 40, p 0 8 0 16; symbol, name, state, the session menu, window buttons top right.
+      auto cap = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .minHeight = caption, .maxHeight = caption});
+      cap->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP16 * s);
+      // A click focuses the pane; a drag moves the window, as the header does.
+      auto area = ui::inputArea({.participatesInLayout = false});
+      area->setSize(r.width, caption);
+      struct Press {
+        bool down = false;
+        std::uint32_t serial = 0;
+        float x = 0.0F;
+        float y = 0.0F;
+      };
+      auto press = std::make_shared<Press>();
+      area->setOnPress([press](const InputArea::PointerData& data) {
+        if (data.button == BTN_LEFT) {
+          *press = {.down = data.pressed, .serial = data.serial, .x = data.localX, .y = data.localY};
+        }
+      });
+      area->setOnMotion([this, press, s](const InputArea::PointerData& data) {
+        if (press->down && std::hypot(data.localX - press->x, data.localY - press->y) > 4.0F * s) {
+          press->down = false;
+          m_window.beginMove(press->serial);
+        }
+      });
+      area->setOnClick([this, id = card.id](const InputArea::PointerData& data) {
+        if (data.button == BTN_LEFT) {
+          apply(session_event::Show{id});
+          focusGrid();
+        }
+      });
+      cap->addChild(std::move(area));
+      cap->addChild(ui::glyph({.out = &card.symbol, .glyphSize = Tokens::sizeSymbol * s}));
+      cap->addChild(ui::spinner({.out = &card.spinner, .color = colorSpecFromRole(ColorRole::Label2),
+                                 .spinnerSize = Tokens::sizeSymbol * s, .visible = false, .participatesInLayout = false}));
+      const bool topRight = i == 1;
+      const float buttons = topRight ? 4.0F * Tokens::spaceP24 * s : 0.0F;
+      card.textWidth = std::max(0.0F, r.width - (Tokens::spaceP16 + Tokens::spaceP24 + 4.0F * Tokens::spaceP8 +
+                                                 Tokens::sizeSymbol) * s - buttons);
+      cap->addChild(ui::label({.out = &card.name,
+                               .fontSize = Tokens::typeBody.size * s,
+                               .color = colorSpecFromRole(ColorRole::Label1),
+                               .minWidth = Tokens::spaceP24 * s,
+                               .maxLines = 1,
+                               .ellipsize = TextEllipsize::End}));
+      card.name->setLineHeight(Tokens::typeBody.line * s);
+      cap->addChild(ui::label({.out = &card.state,
+                               .fontSize = Tokens::typeFootnote.size * s,
+                               .maxLines = 1,
+                               .ellipsize = TextEllipsize::End}));
+      card.state->setLineHeight(Tokens::typeFootnote.line * s);
+      cap->addChild(ui::row({.out = &card.accessory, .align = FlexAlign::Center, .flexGrow = 1.0F}));
+      Button* menu = nullptr;
+      cap->addChild(ui::button({.out = &menu,
+                                .glyph = std::string("dots"),
+                                .glyphSize = Tokens::spaceP12 * s,
+                                .customPalette = ghost,
+                                .tooltip = std::string("Session menu"),
+                                .radius = Tokens::spaceP24 * s / 2.0F,
+                                .width = Tokens::spaceP24 * s,
+                                .height = Tokens::spaceP24 * s}));
+      menu->setOnClick([this, menu, id = card.id] {
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(menu, x, y);
+        openRowMenu(id, x, y + menu->height());
+      });
+      if (topRight) {
+        cap->addChild(m_window.buildWindowButtons());
+      }
+      box->addChild(std::move(cap));
+      auto holder = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .flexGrow = 1.0F});
+      holder->addChild(view.build(renderer, s, deviceScale, r.width, std::max(0.0F, r.height - caption)));
+      box->addChild(std::move(holder));
+      cell->addChild(std::move(box));
+      // Over the card: the views fill their whole rect and would cover a border of the card itself.
+      auto ring = ui::box({.out = &card.ring, .fill = clear, .radius = radius, .width = r.width, .height = r.height,
+                           .participatesInLayout = false});
+      cell->addChild(std::move(ring));
+      cells.push_back(std::move(cell));
+    }
+    const auto line = [gap](bool rowDirection) {
+      return rowDirection ? ui::row({.align = FlexAlign::Start, .gap = gap}) : ui::column({.align = FlexAlign::Start, .gap = gap});
+    };
+    std::unique_ptr<Node> grid;
+    if (cells.size() == 4) {
+      auto top = line(true);
+      auto bottom = line(true);
+      top->addChild(std::move(cells[0]));
+      top->addChild(std::move(cells[1]));
+      bottom->addChild(std::move(cells[2]));
+      bottom->addChild(std::move(cells[3]));
+      auto rows = line(false);
+      rows->addChild(std::move(top));
+      rows->addChild(std::move(bottom));
+      grid = std::move(rows);
+    } else {
+      auto columns = line(true);
+      columns->addChild(std::move(cells[0]));
+      if (cells.size() == 3) {
+        auto right = line(false);
+        right->addChild(std::move(cells[1]));
+        right->addChild(std::move(cells[2]));
+        columns->addChild(std::move(right));
+      } else if (cells.size() == 2) {
+        columns->addChild(std::move(cells[1]));
+      }
+      grid = std::move(columns);
+    }
+    m_contentSlot->addChild(std::move(grid));
+    refreshCards();
+    fitCaptions(renderer);
+    paintPaneFocus();
+  }
+
+  void TerminalWindow::paintPaneFocus() {
+    m_ringPane = m_sessions.shown().value_or(0);
+    const float s = m_window.uiScale();
+    // The find and agent bars are the shown session's: they leave the old card before the new one builds them.
+    std::vector<std::unique_ptr<Node>> removed;
+    for (PaneCard& card : m_cards) {
+      while (!card.accessory->children().empty()) {
+        removed.push_back(card.accessory->removeChild(card.accessory->children().back().get()));
+      }
+    }
+    if (!removed.empty()) {
+      m_window.input().forgetDetached();
+    }
+    for (PaneCard& card : m_cards) {
+      const bool focused = card.id == m_ringPane;
+      card.ring->setBorder(focused ? focusRingColorSpec() : colorSpecFromRole(ColorRole::Stroke),
+                           (focused ? Tokens::componentTerminalFocusRing : 0.5F) * s);
+      card.shadow->setVisible(focused);
+      card.name->setFontWeight(focused ? FontWeight::SemiBold : FontWeight::Normal);
+      if (focused) {
+        if (auto accessory = m_window.buildHeaderAccessory()) {
+          card.accessory->addChild(std::move(accessory));
+        }
+      }
+    }
+  }
+
+  void TerminalWindow::applyPaneFocus() {
+    if (m_cards.empty() || m_sessions.shown() == m_ringPane) {
+      return;
+    }
+    m_window.updateInPlace([this](Renderer& /*renderer*/) {
+      paintPaneFocus();
+      m_contentSlot->markLayoutDirty();
+    });
+  }
+
+  // The state keeps its text (the name keeps its minimum); the name ellipsizes in what is left.
+  void TerminalWindow::fitCaptions(Renderer& renderer) {
+    const float gap = Tokens::spaceP8 * m_window.uiScale();
+    const float nameMin = Tokens::spaceP24 * m_window.uiScale();
+    for (PaneCard& card : m_cards) {
+      card.state->setMaxWidth(std::max(nameMin, card.textWidth - nameMin));
+      const float state = card.state->visible() ? static_cast<Node*>(card.state)->measure(renderer, LayoutConstraints{}).width + gap : 0.0F;
+      card.name->setMaxWidth(std::max(nameMin, card.textWidth - state));
+    }
+  }
+
+  bool TerminalWindow::refreshCards() {
+    bool changed = false;
+    for (PaneCard& card : m_cards) {
+      const SessionInfo* session = m_sessions.find(card.id);
+      if (session == nullptr) {
+        continue;
+      }
+      const StatusRow::Data data = rowData(*session);
+      const ColorSpec ink = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2);
+      changed = changed || card.name->text() != data.name || card.state->text() != data.status;
+      card.name->setText(data.name);
+      const bool symbol = !data.spinning && !data.symbol.empty() && card.symbol->setGlyph(data.symbol);
+      card.symbol->setColor(ink);
+      card.symbol->setVisible(symbol);
+      card.symbol->setParticipatesInLayout(symbol);
+      card.spinner->setVisible(data.spinning);
+      card.spinner->setParticipatesInLayout(data.spinning);
+      if (data.spinning != card.spinner->spinning()) {
+        data.spinning ? card.spinner->start() : card.spinner->stop();
+      }
+      card.state->setText(data.status);
+      card.state->setColor(ink);
+      card.state->setVisible(!data.status.empty());
+      card.state->setParticipatesInLayout(!data.status.empty());
+    }
+    return changed;
+  }
+
+  bool TerminalWindow::focusPaneKey(const KeyboardEvent& event) {
+    constexpr std::uint32_t kLeft = 0xff51;
+    constexpr std::uint32_t kUp = 0xff52;
+    constexpr std::uint32_t kRight = 0xff53;
+    constexpr std::uint32_t kDown = 0xff54;
+    const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super);
+    if (!event.pressed || mods != (KeyMod::Ctrl | KeyMod::Alt) || m_cards.empty()) {
+      return false;
+    }
+    float dx = 0.0F;
+    float dy = 0.0F;
+    switch (event.sym) {
+      case kLeft: dx = -1.0F; break;
+      case kRight: dx = 1.0F; break;
+      case kUp: dy = -1.0F; break;
+      case kDown: dy = 1.0F; break;
+      default: return false;
+    }
+    const auto from = std::ranges::find(m_cards, m_ringPane, &PaneCard::id);
+    if (from == m_cards.end()) {
+      return true;
+    }
+    const auto centre = [](const PaneRect& r) { return std::pair{r.x + r.width / 2.0F, r.y + r.height / 2.0F}; };
+    const auto [fx, fy] = centre(from->rect);
+    std::optional<std::uint64_t> best;
+    float bestScore = 0.0F;
+    for (const PaneCard& card : m_cards) {
+      const auto [cx, cy] = centre(card.rect);
+      const float along = (cx - fx) * dx + (cy - fy) * dy;
+      if (card.id == from->id || along <= 0.0F) {
+        continue;
+      }
+      // The nearest pane ahead, with sideways offset weighted, so Right from a stacked pane picks its row.
+      const float score = along + 2.0F * std::abs(dx != 0.0F ? cy - fy : cx - fx);
+      if (!best || score < bestScore) {
+        best = card.id;
+        bestScore = score;
+      }
+    }
+    if (best) {
+      apply(session_event::Show{*best});
+      focusGrid();
+    }
+    return true;
   }
 
   void TerminalWindow::requestFrame() {

@@ -156,6 +156,14 @@ public:
   void setCaption(Caption caption);
   // contentCard: a menu button ends the caption; it calls `open` with the scene point below it. Set before the first build.
   void setCaptionMenu(std::function<void(float sceneX, float sceneY)> open) { m_captionMenu = std::move(open); }
+  // contentCard: the content draws its own cards (a split view), so the window draws no main card and no header. The
+  // content puts buildWindowButtons() and buildHeaderAccessory() in its captions. Rebuilds the window.
+  void setContentCards(bool on);
+  [[nodiscard]] bool contentCards() const noexcept { return m_contentCards; }
+  [[nodiscard]] std::unique_ptr<Node> buildWindowButtons();
+  [[nodiscard]] std::unique_ptr<Node> buildHeaderAccessory() { return m_headerAccessory ? m_headerAccessory() : nullptr; }
+  // An interactive move from a pointer press with this serial.
+  void beginMove(std::uint32_t serial);
   // The edit menu of a text field in this window; false when the field is not in it.
   bool openTextMenu(class Input& input, float sceneX, float sceneY);
   // A click on the header title (Files: type a location, as Dolphin's editable path). Applies from the next rebuild.
@@ -269,6 +277,7 @@ private:
   void swapSidebar(Renderer& renderer, float height);
   Node* m_titleRow = nullptr;
   bool m_headerSearch = false;
+  bool m_contentCards = false;
   bool m_buildingHeader = false;
   Button* m_maximizeButton = nullptr;
   std::array<Button*, 2> m_navButtons{};

@@ -53,7 +53,9 @@ void SelectionList::place() {
     m_tint->setVisible(false);
     return;
   }
-  m_tint->setRadius(Style::scaledRadius(Tokens::radiusR8, m_scale));
+  // The tint takes the selected child's corners (a block of rows is rounder than a row).
+  const auto* row = dynamic_cast<const Flex*>(m_selected);
+  m_tint->setRadius(row != nullptr && row->radius() > 0.0F ? row->radius() : Style::scaledRadius(Tokens::radiusR8, m_scale));
   const float top = m_selected->y();
   // A row that is still opening: the tint takes its rest height, so it does not shrink and grow with the opening.
   const float bottom = top + (m_selected == m_inserting ? std::max(m_insertHeight, m_selected->height())
