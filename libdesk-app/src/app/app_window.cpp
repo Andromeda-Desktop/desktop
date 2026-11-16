@@ -1286,6 +1286,19 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
       }));
     }
   }
+  if (m_config.contentCard && m_config.sidebarToggle && m_sidebarBuilder) {
+    header->addChild(ui::button({
+        .glyph = std::string("layout-sidebar"),
+        .glyphSize = Tokens::sizeSymbol * s,
+        .enabled = m_commands.isEnabled("view.toggle-sidebar"),
+        .variant = ButtonVariant::Ghost,
+        .tooltip = std::string("Sidebar"),
+        .radius = Style::scaledRadius(Tokens::radiusR8, s),
+        .width = Tokens::sizeControlM * s,
+        .height = Tokens::sizeControlM * s,
+        .onClick = [this] { m_commands.run("view.toggle-sidebar"); },
+    }));
+  }
   // Mockup .title: 600 17/24, 4 after the arrows; it ellipsizes at the end only when the header is full (rulebook 9.12).
   auto title = ui::row({.align = FlexAlign::Center, .clipChildren = true});
   header->titleRow = title.get();
@@ -1873,7 +1886,13 @@ void AppWindow::setSidebarVisible(bool visible) {
         m_contentRect.x = contentLeft(static_cast<float>(m_surface->margin()), w, m_cardGap);
         m_surface->requestLayout();
       },
-      [this] { m_sidebarAnim = 0; }, nullptr, 0.0F, Threshold::px((m_compact ? kRailWidth : m_config.sidebarWidth) * m_uiScale), true);
+      [this] {
+        m_sidebarAnim = 0;
+        if (m_sidebarSettled) {
+          m_sidebarSettled();
+        }
+      },
+      nullptr, 0.0F, Threshold::px((m_compact ? kRailWidth : m_config.sidebarWidth) * m_uiScale), true);
   m_surface->requestLayout(); // the spring ticks on frames; a key press alone asks for none
 }
 

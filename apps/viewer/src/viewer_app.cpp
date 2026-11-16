@@ -2,6 +2,7 @@
 
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "ui/style.h"
 #include "viewer_tabs.h"
 #include "viewer_window.h"
 #include "app/file_chooser.h"
@@ -59,7 +60,7 @@ namespace viewer {
     add("edit.undo", "Undo", "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
     add("edit.redo", "Redo", "Edit", XKB_KEY_z, KeyMod::Ctrl | KeyMod::Shift, &ViewerWindow::redo);
     add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
-    add("view.toggle-sidebar", "Show Sidebar", "View", 0, 0, &ViewerWindow::toggleSidebar);
+    add("view.toggle-sidebar", "Show Sidebar", "View", XKB_KEY_F9, 0, &ViewerWindow::toggleSidebar);
     const auto tabs = [this](const char* id, const char* label, std::optional<KeyChord> key, void (ViewerTabs::*run)(),
                              std::optional<KeyChord> alternate = std::nullopt) {
       commands().add({.id = id, .label = label, .group = "Window", .shortcut = key,
@@ -135,10 +136,15 @@ namespace viewer {
   }
 
   AppWindow& ViewerApp::createWindow() {
-    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 900, .height = 760,
-                                       // The PDF toolbar's buttons, zoom and search field fit from this width.
-                                       .minWidth = 720,
-                                       .headerWhenFullscreen = false});
+    AppWindow& window = addWindow({.appId = info().id, .title = info().name, .width = 1100, .height = 760,
+                                       // The caption's page field, zoom and tools fit beside a shown sidebar from this
+                                       // width, and the sidebar stays a full list (no icon rail).
+                                       .minWidth = 760,
+                                       .sidebarWidth = Tokens::componentSidebarWidth,
+                                       .material = AppWindow::Material::Glass,
+                                       .contentCard = true,
+                                       .headerWhenFullscreen = false,
+                                       .sidebarToggle = true});
     m_windows[&window] = std::make_unique<ViewerTabs>(loop(), window);
     return window;
   }

@@ -65,6 +65,7 @@ namespace viewer {
       std::size_t index = 0;
     };
     [[nodiscard]] std::optional<HitRef> currentHit() const noexcept { return m_current; }
+    void setCurrentHit(HitRef hit) { m_current = hit; }
     // Moves to the next (or previous) hit at or after `fromPage` on the first call; false when there is none.
     bool nextHit(std::size_t fromPage);
     bool previousHit(std::size_t fromPage);

@@ -16,8 +16,8 @@ namespace viewer {
 
   class ViewerWindow;
 
-  // The documents of one window as tabs. It alone installs the window's content, key, layout and close callbacks and
-  // shows the active tab; the strip appears with two or more tabs.
+  // The documents of one window as tabs. It alone installs the window's content, caption, sidebar, key, layout and close
+  // callbacks and shows the active tab; the sidebar lists the documents with two or more.
   class ViewerTabs {
   public:
     ViewerTabs(AppLoop& loop, AppWindow& window);
@@ -36,7 +36,10 @@ namespace viewer {
 
   private:
     [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float width, float height);
-    [[nodiscard]] std::unique_ptr<Node> buildStrip();
+    [[nodiscard]] std::unique_ptr<Node> buildSidebar(Renderer& renderer, float width);
+    [[nodiscard]] std::unique_ptr<Node> buildDocuments(float width);
+    // Full screen hides the sidebar; leaving it brings back the user's choice.
+    void syncImmersive();
     [[nodiscard]] std::optional<std::size_t> firstUnsaved() const;
     // Asks for each tab with unsaved edits in turn, then closes the window.
     void continueClose();
@@ -53,6 +56,9 @@ namespace viewer {
     // A window with no tab shows this never-opened one: the toolbar and the open-or-drop message.
     std::unique_ptr<ViewerWindow> m_blank;
     wl_surface* m_dropSurface = nullptr;
+    bool m_immersive = false;
+    bool m_allDocuments = false; // the Documents group shows every row, not the first 3
+    bool m_sidebarBeforeImmersive = true;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
   };
 

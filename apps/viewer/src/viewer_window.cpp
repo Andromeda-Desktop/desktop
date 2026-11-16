@@ -23,6 +23,7 @@
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cmath>
 #include <fcntl.h>
@@ -40,8 +41,7 @@ namespace viewer {
 
   namespace {
     constexpr Logger kLog("viewer");
-    constexpr float kToolbarHeight = 44.0F;
-    constexpr float kSidebarWidth = 148.0F;
+    constexpr std::size_t kMaxResultRows = 200;
     constexpr float kThumbWidth = 104.0F;
     constexpr float kPagePadding = 24.0F;
     constexpr std::uint32_t kMaxRenderWidth = 8192;
@@ -90,6 +90,32 @@ namespace viewer {
       std::vector<RectF> rects(count);
       std::memcpy(rects.data(), bytes, count * sizeof(RectF));
       return rects;
+    }
+
+    // One line of the hit's text: whitespace runs collapse, and a hit far into the line starts the text near it.
+    std::string snippetAround(const std::string& line, const std::string& query) {
+      std::string text;
+      for (const char c : line) {
+        const bool space = c == ' ' || c == '\n' || c == '\r' || c == '\t';
+        if (!space || (!text.empty() && text.back() != ' ')) {
+          text.push_back(space ? ' ' : c);
+        }
+      }
+      const auto lower = [](std::string v) {
+        std::ranges::transform(v, v.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return v;
+      };
+      constexpr std::size_t kLead = 24; // bytes of context before the hit
+      const std::size_t at = lower(text).find(lower(query));
+      if (at != std::string::npos && at > kLead) {
+        std::size_t from = text.find(' ', at - kLead);
+        from = from == std::string::npos || from >= at ? at - kLead : from + 1;
+        while (from > 0 && (static_cast<unsigned char>(text[from]) & 0xC0) == 0x80) {
+          --from; // a UTF-8 continuation byte: start at its lead byte
+        }
+        text = "…" + text.substr(from);
+      }
+      return text;
     }
 
     std::vector<std::uint8_t> areaPayload(float x0, float y0, float x1, float y1) {
@@ -718,9 +744,7 @@ namespace viewer {
     if (m_pageInput != nullptr && m_window.input().focusedArea() != m_pageInput->inputArea()) {
       m_pageInput->setValue(std::to_string(page + 1));
     }
-    if (m_countLabel != nullptr) {
-      (void)m_countLabel->setText(m_model.countText());
-    }
+    refreshResults();
     if (page != m_shownPage) {
       const float s = m_window.uiScale();
       for (const std::size_t i : {m_shownPage, page}) {
@@ -815,13 +839,31 @@ namespace viewer {
   }
 
   void ViewerWindow::search(const std::string& query) {
+    const bool wasOpen = !m_searchText.empty();
     m_searchText = capQuery(query);
+    // The old query's rows go in place; the list refills as the scan runs.
+    for (const ResultRow& r : m_resultRows) {
+      (void)m_resultList->removeChild(r.row);
+    }
+    m_resultRows.clear();
+    m_shownHit.reset();
+    m_snippets.clear();
+    if (wasOpen != !m_searchText.empty()) {
+      if (wasOpen) {
+        setSidebarView(m_sidebarView == SidebarView::Results ? m_viewBeforeSearch : m_sidebarView);
+      } else {
+        m_viewBeforeSearch = m_sidebarView;
+        setSidebarView(SidebarView::Results);
+      }
+      // The switch gains or loses its Results choice.
+      rebuild();
+    }
+    // Its own counter: a new search drops the old search's finds and snippets, not the edits, renders or saves in flight.
+    ++m_searchGeneration;
     if (m_searchText.empty()) {
       m_model.clearSearch();
     } else {
       m_model.startSearch(m_searchText);
-      // Its own counter: a new search drops the old search's finds, not the edits, renders or saves in flight.
-      ++m_searchGeneration;
       // With a find of the old search in flight, its reply starts the new scan.
       scanNext();
     }
@@ -979,6 +1021,7 @@ namespace viewer {
   }
 
   void ViewerWindow::focusSearch() {
+    m_window.setSidebarVisible(true);
     if (m_searchInput != nullptr) {
       m_window.input().setFocus(m_searchInput->inputArea());
     }
@@ -1095,10 +1138,7 @@ namespace viewer {
     return true;
   }
 
-  void ViewerWindow::toggleSidebar() {
-    m_sidebar = !m_sidebar;
-    rebuild();
-  }
+  void ViewerWindow::toggleSidebar() { m_window.setSidebarVisible(!m_window.sidebarVisible()); }
 
   bool ViewerWindow::onKey(const KeyboardEvent& event) {
     if (!event.pressed) {
@@ -1163,20 +1203,27 @@ namespace viewer {
     m_scroll = nullptr;
     m_hscroll = nullptr;
     m_column = nullptr;
-    m_thumbScroll = nullptr;
-    m_outlineRows.clear();
-    m_searchInput = nullptr;
     m_noteInput = nullptr;
-    m_pageInput = nullptr;
-    m_countLabel = nullptr;
     for (auto& [key, tile] : m_tiles) {
       tile.node = nullptr;
     }
     m_tileLayers.assign(m_pages.size(), nullptr);
     m_pageImages.assign(m_pages.size(), nullptr);
+    m_markLayers.assign(m_pages.size(), nullptr);
+  }
+
+  void ViewerWindow::forgetCaption() { m_pageInput = nullptr; }
+
+  void ViewerWindow::forgetSidebar() {
+    m_searchInput = nullptr;
+    m_thumbScroll = nullptr;
+    m_outlineRows.clear();
     m_thumbImages.assign(m_thumbs.size(), nullptr);
     m_thumbFrames.assign(m_thumbs.size(), nullptr);
-    m_markLayers.assign(m_pages.size(), nullptr);
+    m_resultRows.clear();
+    m_resultList = nullptr;
+    m_resultCount = nullptr;
+    m_shownHit.reset();
   }
 
   std::unique_ptr<Node> ViewerWindow::build(Renderer& renderer, float width, float height) {
@@ -1189,12 +1236,6 @@ namespace viewer {
     // Fit width uses the page area inside the padding; set it before the toolbar shows the zoom.
     m_model.setViewportWidth(std::max(100.0F, pageAreaWidth() - 2.0F * kPagePadding * s));
     auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
-    // Full screen is immersive: the page column alone.
-    const bool immersive = m_window.fullscreen() && m_mode == Mode::Pdf;
-    if (!immersive) {
-      root->addChild(buildToolbar(width));
-      root->addChild(ui::separator({}));
-    }
     switch (m_mode) {
     case Mode::Empty:
       root->addChild(buildMessage("Open a document or image", "or drop a file here"));
@@ -1217,13 +1258,7 @@ namespace viewer {
         root->addChild(buildSignaturePad());
         break;
       }
-      auto body = ui::row({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-      if (m_sidebar && !immersive) {
-        body->addChild(buildSidebar(renderer));
-        body->addChild(ui::separator({.orientation = SeparatorOrientation::VerticalRule}));
-      }
-      body->addChild(buildPages(renderer));
-      root->addChild(std::move(body));
+      root->addChild(buildPages(renderer));
       break;
     }
     }
@@ -1237,109 +1272,110 @@ namespace viewer {
     return root;
   }
 
-  std::unique_ptr<Node> ViewerWindow::buildToolbar(float width) {
+  std::unique_ptr<Node> ViewerWindow::buildCaption() {
+    forgetCaption();
     const float s = m_window.uiScale();
-    auto bar = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * s, .paddingH = Style::spaceMd * s,
-                        .height = kToolbarHeight * s});
-    if (m_mode == Mode::Pdf) {
-      bar->addChild(ui::button({.glyph = std::string("layout-sidebar"), .variant = ButtonVariant::Ghost,
-                                .tooltip = std::string("Sidebar"), .onClick = [this] { toggleSidebar(); }}));
+    auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+    const auto footnote = [s](std::string text) {
+      return ui::label({.text = std::move(text), .fontSize = Style::fontSizeCaption * s,
+                        .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1});
+    };
+    if (m_mode == Mode::Image && m_folder.size() > 1) {
+      bar->addChild(footnote(std::format("{} of {}", m_folderIndex + 1, m_folder.size())));
     }
-    bar->addChild(ui::label({.text = m_path.empty() ? std::string("Viewer") : m_path.filename().string(),
-                             .fontSize = Style::fontSizeBody * s, .color = colorSpecFromRole(ColorRole::Label1),
-                             .maxLines = 1, .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
-    std::string position;
-    if (m_mode == Mode::Pdf) {
-      auto page = ui::input({
-          .value = std::to_string(currentPage() + 1),
-          .fontSize = Style::fontSizeCaption * s,
-          .textAlign = TextAlign::Center,
-          .width = 56.0F * s,
-          .onSubmit =
-              [this](const std::string& text) {
-                std::size_t number = 0;
-                const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), number);
-                if (ec == std::errc{} && end == text.data() + text.size() && number > 0) {
-                  goToPage(number - 1);
-                }
-                m_pageInput->setValue(std::to_string(currentPage() + 1));
-              },
-          .onFocusLoss = [this] { m_pageInput->setValue(std::to_string(currentPage() + 1)); },
-      });
-      page->inputArea()->setTabFocusKey("page");
-      m_pageInput = page.get();
-      bar->addChild(std::move(page));
-      position = std::format("/ {}", m_model.pageCount());
-    } else if (m_mode == Mode::Image && m_folder.size() > 1) {
-      position = std::format("{} of {}", m_folderIndex + 1, m_folder.size());
+    if (m_mode != Mode::Pdf) {
+      return bar;
     }
-    if (!position.empty()) {
-      bar->addChild(ui::label({.text = position, .fontSize = Style::fontSizeCaption * s,
-                               .color = colorSpecFromRole(ColorRole::Label2)}));
-    }
-    if (m_mode == Mode::Pdf) {
-      bar->addChild(ui::button({.glyph = std::string("minus"), .variant = ButtonVariant::Ghost,
-                                .tooltip = std::string("Zoom Out"), .onClick = [this] { zoomOut(); }}));
-      bar->addChild(ui::button({.text = std::format("{}%", std::lround(m_model.zoom() * 100.0F)),
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string("Fit Width"),
-                                .onClick = [this] { zoomFit(); }}));
-      bar->addChild(ui::button({.glyph = std::string("plus"), .variant = ButtonVariant::Ghost,
-                                .tooltip = std::string("Zoom In"), .onClick = [this] { zoomIn(); }}));
-      const auto tool = [&](Tool t, const char* glyph, const char* tip) {
-        bar->addChild(ui::button({.glyph = std::string(glyph), .selected = m_tool == t,
-                                  .variant = m_tool == t ? ButtonVariant::TabActive : ButtonVariant::Ghost,
-                                  .tooltip = std::string(tip), .onClick = [this, t] { setTool(t); }}));
-      };
-      tool(Tool::Select, "cursor-text", "Select Text");
-      tool(Tool::Highlight, "highlight", "Highlight");
-      tool(Tool::Note, "note", "Note");
-      tool(Tool::Draw, "pencil", "Draw");
-      tool(Tool::Sign, "signature", "Sign");
-      if (m_notePoint) {
-        // The note field takes the search field's place, so the tools do not move.
-        auto note = ui::input({
-            .placeholder = std::string("Note"),
-            .width = std::min(240.0F * s, width / 3.0F),
-            .onSubmit =
-                [this](const std::string& text) {
-                  if (m_notePoint && !text.empty()) {
-                    addAnnotation(m_notePoint->first, preview::kAnnotNote, kNoteRgb,
-                                  annot::noteBody(m_notePoint->second, text));
-                  }
-                  m_notePoint.reset();
-                  rebuild();
-                },
-        });
-        m_noteInput = note.get();
-        bar->addChild(std::move(note));
-        return bar;
-      }
-      auto field = ui::input({
-          .value = m_searchText,
-          .placeholder = std::string("Search"),
-          .clearButtonEnabled = true,
-          .width = std::min(240.0F * s, width / 3.0F),
-          .onChange = [this](const std::string& text) { search(text); },
-          .onSubmit = [this](const std::string&) {
-            moveHit((m_loop.wayland().keyboardModifiers() & KeyMod::Shift) == 0);
-          },
-      });
-      // A rebuild hands the keyboard focus to the new field by this key.
-      field->inputArea()->setTabFocusKey("search");
-      m_searchInput = field.get();
-      bar->addChild(std::move(field));
-      auto count = ui::label({.text = m_model.countText(), .fontSize = Style::fontSizeCaption * s,
-                              .color = colorSpecFromRole(ColorRole::Label2)});
-      m_countLabel = count.get();
-      bar->addChild(std::move(count));
+    auto page = ui::input({
+        .value = std::to_string(currentPage() + 1),
+        .fontSize = Style::fontSizeCaption * s,
+        .textAlign = TextAlign::Center,
+        .width = 56.0F * s,
+        .onSubmit =
+            [this](const std::string& text) {
+              std::size_t number = 0;
+              const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), number);
+              if (ec == std::errc{} && end == text.data() + text.size() && number > 0) {
+                goToPage(number - 1);
+              }
+              m_pageInput->setValue(std::to_string(currentPage() + 1));
+            },
+        .onFocusLoss = [this] { m_pageInput->setValue(std::to_string(currentPage() + 1)); },
+    });
+    page->inputArea()->setTabFocusKey("page");
+    m_pageInput = page.get();
+    bar->addChild(std::move(page));
+    bar->addChild(footnote(std::format("/ {}", m_model.pageCount())));
+    const float small = Tokens::sizeControlS * s;
+    auto zoom = ui::row({.align = FlexAlign::Center, .fill = colorSpecFromRole(ColorRole::Fill1),
+                         .radius = Style::scaledRadius(Tokens::radiusR8, s)});
+    const auto zoomButton = [&](const char* glyph, const char* tip, void (ViewerWindow::*run)()) {
+      zoom->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbolInline * s,
+                                 .variant = ButtonVariant::Ghost, .tooltip = std::string(tip),
+                                 .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = small, .height = small,
+                                 .onClick = [this, run] { (this->*run)(); }}));
+    };
+    zoomButton("minus", "Zoom Out", &ViewerWindow::zoomOut);
+    zoom->addChild(ui::button({.text = std::format("{}%", std::lround(m_model.zoom() * 100.0F)),
+                               .variant = ButtonVariant::Ghost, .tooltip = std::string("Fit Width"),
+                               .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = small,
+                               .onClick = [this] { zoomFit(); }}));
+    zoomButton("plus", "Zoom In", &ViewerWindow::zoomIn);
+    bar->addChild(std::move(zoom));
+    bar->addChild(ui::row({.flexGrow = 1.0F}));
+    bar->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.glyph = "cursor-text", .tooltip = "Select Text"},
+                                                                             {.glyph = "highlight", .tooltip = "Highlight"},
+                                                                             {.glyph = "note", .tooltip = "Note"},
+                                                                             {.glyph = "pencil", .tooltip = "Draw"},
+                                                                             {.glyph = "signature", .tooltip = "Sign"}},
+                                 .selectedIndex = static_cast<std::size_t>(m_tool),
+                                 .compact = true,
+                                 .onChange = [this](std::size_t i) { setTool(static_cast<Tool>(i)); }}));
+    if (!m_window.sidebarVisible()) {
+      bar->addChild(ui::button({.glyph = std::string("search"), .glyphSize = Tokens::sizeSymbol * s,
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string("Find"),
+                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = Tokens::sizeControlM * s,
+                                .height = Tokens::sizeControlM * s, .onClick = [this] { focusSearch(); }}));
     }
     return bar;
   }
 
-  float ViewerWindow::pageAreaWidth() const {
-    const bool sidebar = m_sidebar && !m_window.fullscreen();
-    return m_window.contentRect().width - (sidebar ? kSidebarWidth * m_window.uiScale() : 0.0F);
+  // The note field floats beside its pin on the page, so the caption tools never move.
+  std::unique_ptr<Node> ViewerWindow::buildNoteField(std::size_t page, annot::Point at, float pageWidth) {
+    const float s = m_window.uiScale();
+    const float pad = Tokens::spaceP8 * s;
+    const float w = std::min(240.0F * s, pageWidth);
+    auto card = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s, .padding = pad,
+                            .fill = colorSpecFromRole(ColorRole::Popover),
+                            .radius = Style::scaledRadius(Tokens::radiusR12, s), .width = w});
+    card->setBorder(colorSpecFromRole(ColorRole::Stroke), 0.5F * s);
+    auto note = ui::input({
+        .placeholder = std::string("Note"),
+        .width = w - 2.0F * pad,
+        .onSubmit =
+            [this, page, at](const std::string& text) {
+              if (!text.empty()) {
+                addAnnotation(page, preview::kAnnotNote, kNoteRgb, annot::noteBody(at, text));
+              }
+              m_notePoint.reset();
+              rebuild();
+            },
+    });
+    m_noteInput = note.get();
+    card->addChild(std::move(note));
+    card->addChild(ui::label({.text = "Return adds · Esc cancels", .fontSize = Tokens::typeFootnote.size * s,
+                              .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
+    card->setParticipatesInLayout(false);
+    const float zoom = m_model.zoom();
+    float x = at.x * zoom - w - pad;
+    if (x < 0.0F) {
+      x = at.x * zoom + 2.0F * pad;
+    }
+    card->setPosition(std::clamp(x, 0.0F, std::max(0.0F, pageWidth - w)), std::max(0.0F, at.y * zoom - pad));
+    return card;
   }
+
+  float ViewerWindow::pageAreaWidth() const { return m_window.contentRect().width; }
 
   std::unique_ptr<Node> ViewerWindow::buildPages(Renderer& renderer) {
     const float s = m_window.uiScale();
@@ -1383,6 +1419,9 @@ namespace viewer {
       layer->setParticipatesInLayout(false);
       m_markLayers[i] = layer.get();
       sheet->addChild(std::move(layer));
+      if (m_notePoint && m_notePoint->first == i) {
+        sheet->addChild(buildNoteField(i, m_notePoint->second, w));
+      }
       sheet->setOnPress([this, i, zoom, sheetArea](const InputArea::PointerData& d) {
         if (d.button == BTN_LEFT) {
           onPagePress(i, d.localX / zoom, d.localY / zoom, d.pressed, d.time);
@@ -1460,28 +1499,187 @@ namespace viewer {
     return scroll;
   }
 
-  std::unique_ptr<Node> ViewerWindow::buildSidebar(Renderer& renderer) {
-    if (m_outline.empty()) {
-      return buildThumbs(renderer);
+  std::unique_ptr<Node> ViewerWindow::buildSearch() {
+    forgetSidebar();
+    if (m_mode != Mode::Pdf) {
+      return nullptr;
+    }
+    auto capsule = ui::searchCapsule({
+        .out = &m_searchInput,
+        .placeholder = "Search",
+        .height = Tokens::sizeControlL,
+        .scale = m_window.uiScale(),
+        .value = m_searchText,
+        .onChange = [this](const std::string& text) { search(text); },
+        .onSubmit = [this](const std::string&) { moveHit((m_loop.wayland().keyboardModifiers() & KeyMod::Shift) == 0); },
+        .onKeyEvent = [this](std::uint32_t sym, std::uint32_t) {
+          if (sym != XKB_KEY_Escape || m_searchText.empty()) {
+            return false;
+          }
+          m_searchInput->setValue("");
+          search("");
+          return true;
+        },
+    });
+    // A rebuild hands the keyboard focus to the new field by this key.
+    m_searchInput->inputArea()->setTabFocusKey("search");
+    return capsule;
+  }
+
+  void ViewerWindow::setSidebarView(SidebarView view) {
+    if (view != m_sidebarView) {
+      m_sidebarView = view;
+      rebuild();
+    }
+  }
+
+  std::unique_ptr<Node> ViewerWindow::buildSidebarList(Renderer& renderer, float width) {
+    if (m_mode != Mode::Pdf) {
+      return nullptr;
     }
     const float s = m_window.uiScale();
-    auto column = ui::column({.align = FlexAlign::Stretch, .width = kSidebarWidth * s});
-    auto top = ui::row({.justify = FlexJustify::Center, .paddingV = Style::spaceMd * s});
-    top->addChild(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "Pages"}, {.label = "Outline"}},
-                                 .selectedIndex = m_sidebarView == SidebarView::Outline ? 1U : 0U,
-                                 .compact = true,
-                                 .equalSegmentWidths = true,
-                                 .width = (kSidebarWidth - 2.0F * Style::spaceMd) * s,
-                                 .onChange =
-                                     [this](std::size_t i) {
-                                       m_sidebarView = i == 1 ? SidebarView::Outline : SidebarView::Pages;
-                                       rebuild();
-                                     }}));
-    column->addChild(std::move(top));
-    auto list = m_sidebarView == SidebarView::Outline ? buildOutline() : buildThumbs(renderer);
+    if (m_sidebarView == SidebarView::Outline && m_outline.empty()) {
+      m_sidebarView = SidebarView::Pages;
+    }
+    std::vector<SidebarView> views{SidebarView::Pages};
+    if (!m_outline.empty()) {
+      views.push_back(SidebarView::Outline);
+    }
+    if (!m_searchText.empty()) {
+      views.push_back(SidebarView::Results);
+    }
+    auto column = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .flexGrow = 1.0F});
+    if (views.size() > 1) {
+      std::vector<ui::SegmentedOption> options;
+      for (const SidebarView v : views) {
+        options.push_back({.label = v == SidebarView::Pages ? "Pages" : v == SidebarView::Outline ? "Outline" : "Results"});
+      }
+      column->addChild(ui::segmented({.options = std::move(options),
+                                      .selectedIndex = static_cast<std::size_t>(std::ranges::find(views, m_sidebarView) - views.begin()),
+                                      .compact = true,
+                                      .equalSegmentWidths = true,
+                                      .width = width,
+                                      .onChange = [this, views](std::size_t i) { setSidebarView(views.at(i)); }}));
+    }
+    auto list = m_sidebarView == SidebarView::Outline ? buildOutline(width)
+                : m_sidebarView == SidebarView::Results ? buildResults(width)
+                                                         : buildThumbs(renderer, width);
     list->setFlexGrow(1.0F);
     column->addChild(std::move(list));
     return column;
+  }
+
+  std::unique_ptr<Node> ViewerWindow::buildResults(float width) {
+    const float s = m_window.uiScale();
+    auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F});
+    scroll->content()->setGap(Tokens::spaceP4 * s);
+    scroll->content()->setAlign(FlexAlign::Stretch);
+    auto count = ui::label({.out = &m_resultCount, .text = m_model.countText(), .fontSize = Tokens::typeFootnote.size * s,
+                            .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
+                            .maxLines = 1});
+    auto head = ui::row({.align = FlexAlign::Center});
+    head->setPadding(0.0F, Tokens::spaceP8 * s);
+    head->addChild(std::move(count));
+    scroll->content()->addChild(std::move(head));
+    m_resultList = scroll->content();
+    m_resultWidth = width;
+    refreshResults();
+    return scroll;
+  }
+
+  // Rows follow the scan (pages in order) in place; the current hit is a raised lens row.
+  void ViewerWindow::refreshResults() {
+    if (m_resultCount != nullptr) {
+      (void)m_resultCount->setText(m_model.countText());
+    }
+    if (m_resultList == nullptr || m_searchText.empty()) {
+      return;
+    }
+    const float s = m_window.uiScale();
+    std::size_t page = m_resultRows.empty() ? 0 : m_resultRows.back().page;
+    std::size_t index = m_resultRows.empty() ? 0 : m_resultRows.back().index + 1;
+    for (; page < m_model.pageCount() && m_resultRows.size() < kMaxResultRows; ++page, index = 0) {
+      const std::size_t hits = m_model.hits(page).size();
+      for (; index < hits && m_resultRows.size() < kMaxResultRows; ++index) {
+        auto row = ui::column({.align = FlexAlign::Stretch, .gap = 0.0F,
+                               .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s), .width = m_resultWidth});
+        row->setPadding(Tokens::spaceP8 * s, Tokens::spaceP8 * s);
+        const auto snippet = m_snippets.find(page << 32 | index);
+        Label* text = nullptr;
+        row->addChild(ui::label({.out = &text, .text = snippet != m_snippets.end() ? snippet->second : std::string(" "),
+                                 .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label1),
+                                 .maxLines = 2, .ellipsize = TextEllipsize::End}));
+        row->addChild(ui::label({.text = std::format("Page {}", page + 1), .fontSize = Tokens::typeFootnote.size * s,
+                                 .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
+                                 .maxLines = 1}));
+        row->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false,
+                                     .onClick = [this, page, index](const InputArea::PointerData&) {
+                                       if (page < m_model.pageCount() && index < m_model.hits(page).size()) {
+                                         m_model.setCurrentHit({.page = page, .index = index});
+                                         showCurrentHit();
+                                         refreshMarks();
+                                       }
+                                     }}));
+        m_resultRows.push_back({.page = page, .index = index, .row = row.get(), .snippet = text});
+        m_resultList->addChild(std::move(row));
+      }
+    }
+    const auto hit = m_model.currentHit();
+    const auto now = hit ? std::optional<std::pair<std::size_t, std::size_t>>({hit->page, hit->index}) : std::nullopt;
+    if (now != m_shownHit) {
+      for (ResultRow& r : m_resultRows) {
+        const bool on = now && r.page == now->first && r.index == now->second;
+        r.row->setFill(on ? colorSpecFromRole(ColorRole::Lens) : clearColorSpec());
+        r.row->setBorder(on ? colorSpecFromRole(ColorRole::LensEdge) : clearColorSpec(), on ? 0.5F * s : 0.0F);
+      }
+      m_shownHit = now;
+    }
+    requestSnippet();
+  }
+
+  void ViewerWindow::requestSnippet() {
+    if (m_snippetPending || !m_helper) {
+      return;
+    }
+    for (const ResultRow& r : m_resultRows) {
+      const std::uint64_t key = static_cast<std::uint64_t>(r.page) << 32 | r.index;
+      if (m_snippets.contains(key) || r.index >= m_model.hits(r.page).size()) {
+        continue;
+      }
+      const RectF hit = m_model.hits(r.page)[r.index];
+      const float mid = (hit.y0 + hit.y1) / 2.0F;
+      m_snippetPending = true;
+      m_helper->request(
+          {.op = preview::op::Select, .a = static_cast<std::uint32_t>(r.page), .b = preview::kSelectLine},
+          areaPayload(hit.x0, mid, hit.x1, mid),
+          [this, key, generation = m_generation, search = m_searchGeneration](const preview::HelperReply& reply) {
+            if (generation != m_generation) {
+              return;
+            }
+            m_snippetPending = false;
+            if (search != m_searchGeneration) {
+              requestSnippet();
+              return;
+            }
+            std::string text;
+            if (reply.msg.op == preview::op::SelectReply && reply.data != nullptr) {
+              const auto bytes = reply.data->bytes();
+              const std::size_t at = static_cast<std::size_t>(reply.msg.b) * sizeof(RectF);
+              if (at + reply.msg.a <= bytes.size()) {
+                text = snippetAround(std::string(reinterpret_cast<const char*>(bytes.data()) + at, reply.msg.a), m_searchText);
+              }
+            }
+            for (const ResultRow& row : m_resultRows) {
+              if ((static_cast<std::uint64_t>(row.page) << 32 | row.index) == key && row.snippet != nullptr) {
+                (void)row.snippet->setText(text);
+              }
+            }
+            m_snippets[key] = std::move(text);
+            m_window.invalidate();
+            requestSnippet();
+          });
+      return;
+    }
   }
 
   std::optional<std::size_t> ViewerWindow::currentEntry() const {
@@ -1496,11 +1694,9 @@ namespace viewer {
     return best;
   }
 
-  std::unique_ptr<Node> ViewerWindow::buildOutline() {
+  std::unique_ptr<Node> ViewerWindow::buildOutline(float width) {
     const float s = m_window.uiScale();
-    const float pad = Style::spaceSm * s;
-    auto scroll = ui::scrollView({.viewportPaddingH = pad, .viewportPaddingV = 0.0F});
-    const float width = kSidebarWidth * s - 2.0F * pad;
+    auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = 0.0F});
     const float height = Tokens::componentSidebarRow * s;
     const auto current = currentEntry();
     m_shownEntry = current;
@@ -1564,10 +1760,10 @@ namespace viewer {
     });
   }
 
-  std::unique_ptr<Node> ViewerWindow::buildThumbs(Renderer& renderer) {
+  std::unique_ptr<Node> ViewerWindow::buildThumbs(Renderer& renderer, float width) {
     const float s = m_window.uiScale();
-    auto scroll = ui::scrollView({.viewportPaddingH = Style::spaceMd * s, .viewportPaddingV = Style::spaceMd * s});
-    scroll->setSize(kSidebarWidth * s, 0.0F);
+    auto scroll = ui::scrollView({.viewportPaddingH = 0.0F, .viewportPaddingV = Style::spaceMd * s});
+    scroll->setSize(width, 0.0F);
     scroll->content()->setGap(Style::spaceMd * s);
     scroll->content()->setAlign(FlexAlign::Center);
     const std::size_t current = currentPage();
@@ -1940,10 +2136,8 @@ namespace viewer {
     close(fd);
   }
 
-  std::string ViewerWindow::title() const { return (unsaved() ? "• " : "") + m_path.filename().string(); }
-
   void ViewerWindow::updateTitle() {
-    if (std::string now = title(); now != m_shownTitle) {
+    if (std::string now = (unsaved() ? "* " : "") + title(); now != m_shownTitle) {
       m_shownTitle = std::move(now);
       if (m_titleChanged) {
         m_titleChanged();
@@ -1953,6 +2147,8 @@ namespace viewer {
 
   void ViewerWindow::detach() {
     forgetNodes();
+    forgetCaption();
+    forgetSidebar();
     m_window.animations().cancel(m_zoomAnim);
     m_zoomAnim = 0;
     m_zoomFrom = 1.0F;

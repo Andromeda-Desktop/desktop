@@ -15,6 +15,7 @@
 #include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
 
+#include <format>
 #include <gio/gio.h>
 #include <sstream>
 
@@ -24,6 +25,16 @@ namespace viewer {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       return build(renderer, width, height);
     });
+    m_window.setHeaderAccessoryBuilder([this]() -> std::unique_ptr<Node> {
+      ViewerWindow* tab = active() != nullptr ? active() : m_blank.get();
+      return tab != nullptr ? tab->buildCaption() : ui::row({});
+    });
+    m_window.setSidebarBuilder([this](Renderer& renderer, float width, float /*height*/) {
+      return buildSidebar(renderer, width);
+    });
+    // The page column lays out once, at the sidebar's rest width; the caption shows Find while it is hidden.
+    m_window.setSidebarSettled([this] { m_window.requestRebuild(); });
+    m_window.setSidebarVisible(false);
     m_window.setKeyHandler([this](const KeyboardEvent& event) {
       ViewerWindow* tab = active();
       return tab != nullptr && tab->onKey(event);
@@ -90,6 +101,9 @@ namespace viewer {
     tab->open(path);
     if (ViewerWindow* old = active() != nullptr ? active() : m_blank.get()) {
       old->detach();
+    }
+    if (m_tabs.empty() && !m_immersive) {
+      m_window.setSidebarVisible(true);
     }
     const std::size_t at = m_tabs.empty() ? 0 : m_active + 1;
     m_tabs.insert(m_tabs.begin() + static_cast<std::ptrdiff_t>(at), std::move(tab));
@@ -187,15 +201,32 @@ namespace viewer {
   void ViewerTabs::updateTitle() {
     if (const ViewerWindow* tab = active()) {
       m_window.setTitle(tab->title());
+      m_window.setCaption({.state = tab->unsaved() ? "Edited" : ""});
     }
-    // The strip shows every tab's title and dirty mark.
-    if (m_tabs.size() >= 2) {
-      m_window.requestRebuild();
+  }
+
+  void ViewerTabs::syncImmersive() {
+    if (m_window.fullscreen() == m_immersive) {
+      return;
     }
+    m_immersive = m_window.fullscreen();
+    // Not inside the build that noticed it: the sidebar spring drives the nodes that build makes.
+    DeferredCall::callLater([this, immersive = m_immersive, alive = std::weak_ptr<bool>(m_alive)] {
+      if (alive.expired()) {
+        return;
+      }
+      if (immersive) {
+        m_sidebarBeforeImmersive = m_window.sidebarVisible();
+        m_window.setSidebarVisible(false);
+      } else {
+        m_window.setSidebarVisible(m_sidebarBeforeImmersive);
+      }
+    });
   }
 
   std::unique_ptr<Node> ViewerTabs::build(Renderer& renderer, float width, float height) {
     registerDropTarget();
+    syncImmersive();
     ViewerWindow* tab = active();
     if (tab == nullptr) {
       if (!m_blank) {
@@ -203,24 +234,45 @@ namespace viewer {
       }
       return m_blank->build(renderer, width, height);
     }
-    if (m_tabs.size() < 2 || m_window.fullscreen()) {
-      return tab->build(renderer, width, height);
-    }
-    const float s = m_window.uiScale();
-    const float strip = Tokens::spaceP40 * s;
-    auto root = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
-    root->addChild(buildStrip());
-    root->addChild(tab->build(renderer, width, height - strip));
-    return root;
+    return tab->build(renderer, width, height);
   }
 
-  // The Files tab strip (file_browser.cpp refreshTabs): 40 high, padding 4 8, gap 4; tab 32 high r8, padding 0 8, gap 8;
-  // off = fill_1 label_2, on = lens + 0.5 lens edge label_1.
-  std::unique_ptr<Node> ViewerTabs::buildStrip() {
+  // Concept C (.agent/DESIGN-viewer.md "Chrome v2"): search, Documents, then the switch and its list. The order is fixed:
+  // nothing above the switch moves when a search opens.
+  std::unique_ptr<Node> ViewerTabs::buildSidebar(Renderer& renderer, float width) {
     const float s = m_window.uiScale();
-    auto strip = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .minHeight = Tokens::spaceP40 * s,
-                          .maxHeight = Tokens::spaceP40 * s});
-    strip->setPadding(Tokens::spaceP4 * s, Tokens::spaceP8 * s);
+    const float pad = Tokens::spaceP8 * s;
+    auto side = ui::column({.align = FlexAlign::Stretch, .gap = pad, .padding = pad, .width = width});
+    ViewerWindow* tab = active();
+    if (tab == nullptr) {
+      return side;
+    }
+    if (auto search = tab->buildSearch()) {
+      side->addChild(std::move(search));
+    }
+    if (m_tabs.size() >= 2) {
+      side->addChild(buildDocuments(width - 2.0F * pad));
+    }
+    if (auto list = tab->buildSidebarList(renderer, width - 2.0F * pad)) {
+      side->addChild(std::move(list));
+    }
+    return side;
+  }
+
+  // One 32 row per document; past 4, the first 3 and a "N more" row that steps to the next one.
+  std::unique_ptr<Node> ViewerTabs::buildDocuments(float width) {
+    const float s = m_window.uiScale();
+    constexpr std::size_t kShown = 3;
+    const bool cut = m_tabs.size() > kShown + 1 && !m_allDocuments;
+    auto group = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
+    auto head = ui::row({.align = FlexAlign::Center});
+    head->setPadding(0.0F, Tokens::spaceP8 * s);
+    const ColorSpec footnote = colorSpecFromRole(ColorRole::Label2);
+    head->addChild(ui::label({.text = "Documents", .fontSize = Tokens::typeFootnote.size * s,
+                              .fontWeight = FontWeight::SemiBold, .color = footnote, .flexGrow = 1.0F}));
+    head->addChild(ui::label({.text = std::to_string(m_tabs.size()), .fontSize = Tokens::typeFootnote.size * s,
+                              .fontWeight = FontWeight::Medium, .color = footnote}));
+    group->addChild(std::move(head));
     const auto later = [this](auto fn) {
       DeferredCall::callLater([this, fn, alive = std::weak_ptr<bool>(m_alive)] {
         if (!alive.expired()) {
@@ -228,52 +280,49 @@ namespace viewer {
         }
       });
     };
-    for (std::size_t i = 0; i < m_tabs.size(); ++i) {
-      const bool on = i == m_active;
-      auto tab = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-      tab->setPadding(0.0F, Tokens::spaceP8 * s);
-      tab->setRadius(Style::scaledRadius(Tokens::radiusR8, s));
-      tab->setFill(colorSpecFromRole(on ? ColorRole::Lens : ColorRole::Fill1));
-      if (on) {
-        tab->setBorder(colorSpecFromRole(ColorRole::LensEdge), 0.5F * s);
-      }
-      tab->setMinHeight(Tokens::sizeControlM * s);
-      tab->setMaxHeight(Tokens::sizeControlM * s);
-      tab->setFlexGrow(1.0F);
-      tab->setClipChildren(true);
-      const ColorSpec ink = colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Label2);
-      const std::string title = m_tabs[i]->title();
-      tab->addChild(ui::glyph({.glyph = std::string("file"), .glyphSize = Tokens::sizeSymbolInline * s, .color = ink}));
-      tab->addChild(ui::label({.text = title, .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
-                               .color = ink, .maxLines = 1, .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
-      auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, .participatesInLayout = false});
-      area->setOnClick([later, i](const InputArea::PointerData&) { later([i](ViewerTabs& t) { t.select(i); }); });
+    // The active document always shows: past the cut it takes the last shown row.
+    std::vector<std::size_t> rows;
+    for (std::size_t i = 0; i < m_tabs.size() && (!cut || i < kShown); ++i) {
+      rows.push_back(i);
+    }
+    if (cut && m_active >= kShown) {
+      rows.back() = m_active;
+    }
+    const auto row = [&](std::string glyph, std::string text, bool on, ColorRole ink, std::function<void(ViewerTabs&)> run,
+                         std::string name) {
+      auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s,
+                        .fill = on ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
+                                   : clearColorSpec(),
+                        .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s),
+                        .width = width, .height = Tokens::componentSidebarRow * s});
+      r->setPadding(0.0F, Tokens::spaceP8 * s);
+      r->addChild(ui::glyph({.glyph = std::move(glyph), .glyphSize = Tokens::sizeSymbolInline * s,
+                             .color = colorSpecFromRole(ColorRole::Label2)}));
+      r->addChild(ui::label({.text = std::move(text), .fontSize = Style::fontSizeCaption * s,
+                             .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
+                             .color = colorSpecFromRole(ink), .maxLines = 1, .ellipsize = TextEllipsize::Middle,
+                             .flexGrow = 1.0F}));
+      auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+      area->setOnClick([later, run](const InputArea::PointerData&) { later(run); });
       Accessible& a = area->accessibleState();
       a.role = AccessibleRole::Tab;
-      a.name = title;
+      a.name = std::move(name);
       a.selected = on;
-      tab->addChild(std::move(area));
-      Button* close = nullptr;
-      tab->addChild(ui::button({
-          .out = &close,
-          .glyph = std::string("x"),
-          .glyphSize = Tokens::sizeSymbolInline * s,
-          .variant = ButtonVariant::Ghost,
-          .tooltip = std::string("Close Tab"),
-          .radius = Tokens::spaceP20 * s / 2.0F,
-          .width = Tokens::spaceP20 * s,
-          .height = Tokens::spaceP20 * s,
-          .onClick = [later, i] {
-            later([i](ViewerTabs& t) {
-              t.select(i);
-              t.closeActive();
-            });
-          },
-      }));
-      close->setZIndex(1); // above the tab's input area
-      strip->addChild(std::move(tab));
+      r->addChild(std::move(area));
+      group->addChild(std::move(r));
+    };
+    for (const std::size_t i : rows) {
+      const std::string title = m_tabs[i]->title();
+      row("file", title, i == m_active, ColorRole::Label1, [i](ViewerTabs& t) { t.select(i); }, title);
     }
-    return strip;
+    if (m_tabs.size() > kShown + 1) {
+      const std::string text = cut ? std::format("{} more", m_tabs.size() - rows.size()) : std::string("Show fewer");
+      row("dots", text, false, ColorRole::Label2, [](ViewerTabs& t) {
+        t.m_allDocuments = !t.m_allDocuments;
+        t.m_window.requestRebuild();
+      }, text);
+    }
+    return group;
   }
 
 } // namespace viewer

@@ -64,13 +64,18 @@ namespace viewer {
     void save() { saveThen({}); }
     void setTool(Tool tool);
 
-    // ViewerTabs drives these for the tab it shows.
+    // ViewerTabs drives these for the tab it shows. The window builds the caption, then the content, then the sidebar.
     [[nodiscard]] std::unique_ptr<Node> build(Renderer& renderer, float width, float height);
+    // The caption's tools: page, zoom, tool picker; a find button while the sidebar is hidden.
+    [[nodiscard]] std::unique_ptr<Node> buildCaption();
+    // The sidebar's search capsule; null when the document cannot be searched.
+    [[nodiscard]] std::unique_ptr<Node> buildSearch();
+    // The sidebar's switch (Pages, Outline, Results) and its list; null when there is no page list.
+    [[nodiscard]] std::unique_ptr<Node> buildSidebarList(Renderer& renderer, float width);
     [[nodiscard]] bool onKey(const KeyboardEvent& event);
     void onLayout();
     [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
-    // The file name, after a dirty mark when unsaved.
-    [[nodiscard]] std::string title() const;
+    [[nodiscard]] std::string title() const { return m_path.filename().string(); }
     void setTitleChanged(std::function<void()> changed) { m_titleChanged = std::move(changed); }
     // Another tab shows: this one's scene nodes are about to go; its next build makes them again.
     void detach();
@@ -124,13 +129,15 @@ namespace viewer {
       std::string text;
     };
 
-    [[nodiscard]] std::unique_ptr<Node> buildToolbar(float width);
     [[nodiscard]] std::unique_ptr<Node> buildPages(Renderer& renderer);
-    [[nodiscard]] std::unique_ptr<Node> buildSidebar(Renderer& renderer);
-    [[nodiscard]] std::unique_ptr<Node> buildThumbs(Renderer& renderer);
-    // The width left of the window for the page column: the window less the sidebar.
+    [[nodiscard]] std::unique_ptr<Node> buildThumbs(Renderer& renderer, float width);
+    [[nodiscard]] std::unique_ptr<Node> buildNoteField(std::size_t page, annot::Point at, float pageWidth);
     [[nodiscard]] float pageAreaWidth() const;
-    [[nodiscard]] std::unique_ptr<Node> buildOutline();
+    [[nodiscard]] std::unique_ptr<Node> buildOutline(float width);
+    [[nodiscard]] std::unique_ptr<Node> buildResults(float width);
+    // One SELECT_LINE at a time fills the snippet of the next built result row that has none.
+    void requestSnippet();
+    void refreshResults();
     void requestOutline();
     // The outline entry the current page belongs to: the last one that starts at or before it.
     [[nodiscard]] std::optional<std::size_t> currentEntry() const;
@@ -190,8 +197,10 @@ namespace viewer {
     void rerenderPage(std::size_t page);
     void placeSignature(std::size_t page, float x, float y);
     void updateTitle();
-    // Forgets every scene node: the tree they were in is gone.
+    // Forget the scene nodes of one build part: the tree they were in is gone.
     void forgetNodes();
+    void forgetCaption();
+    void forgetSidebar();
     // `then` runs once the file on disk holds every edit.
     void saveThen(std::function<void()> then);
     [[nodiscard]] std::unique_ptr<Node> buildSignaturePad();
@@ -225,8 +234,25 @@ namespace viewer {
       std::string title;
     };
     std::vector<OutlineEntry> m_outline;
-    enum class SidebarView : std::uint8_t { Pages, Outline };
+    // Results exists only while a search is open (m_searchText non-empty); closing it returns to m_viewBeforeSearch.
+    enum class SidebarView : std::uint8_t { Pages, Outline, Results };
     SidebarView m_sidebarView = SidebarView::Pages;
+    SidebarView m_viewBeforeSearch = SidebarView::Pages;
+    void setSidebarView(SidebarView view);
+    // Result rows of the last sidebar build, in page order: at most kMaxResultRows from the first hit.
+    struct ResultRow {
+      std::size_t page = 0;
+      std::size_t index = 0; // in m_model.hits(page)
+      Flex* row = nullptr;
+      Label* snippet = nullptr;
+    };
+    std::vector<ResultRow> m_resultRows;
+    Node* m_resultList = nullptr;
+    float m_resultWidth = 0.0F;
+    Label* m_resultCount = nullptr;
+    std::optional<std::pair<std::size_t, std::size_t>> m_shownHit;
+    std::unordered_map<std::uint64_t, std::string> m_snippets; // by page << 32 | index, for m_searchGeneration
+    bool m_snippetPending = false;
     std::vector<Flex*> m_outlineRows;
     std::optional<std::size_t> m_shownEntry;
     void requestLinks(std::size_t page);
@@ -241,7 +267,6 @@ namespace viewer {
     // Textures of evicted pages; build() unloads them, as only it has the renderer.
     std::vector<TextureHandle> m_dropped;
     ScrollView* m_thumbScroll = nullptr;
-    bool m_sidebar = true;
     ScrollView* m_scroll = nullptr;  // vertical; holds m_hscroll, which pans a zoomed page sideways
     ScrollView* m_hscroll = nullptr;
     Node* m_column = nullptr;         // the page column inside m_hscroll

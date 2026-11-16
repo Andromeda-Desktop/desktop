@@ -69,6 +69,7 @@ public:
     bool headerWhenFullscreen = true;
     bool header = true; // false: a chromeless window (picture in picture); the content is the whole window
     bool moreMenu = false; // a More (…) circle before the window buttons: the commands by group (File, Edit, View, Go)
+    bool sidebarToggle = false; // contentCard: a sidebar button before the caption title; it runs view.toggle-sidebar
   };
 
   // Builds the content under the header; called on open, on requestRebuild() and when the scale changes.
@@ -164,6 +165,8 @@ public:
   // Collapses or restores the sidebar on spring.page (the Files Gallery is full-bleed); the header stays in place.
   void setSidebarVisible(bool visible);
   [[nodiscard]] bool sidebarVisible() const noexcept { return m_sidebarVisible; }
+  // Runs once the sidebar spring of setSidebarVisible comes to rest.
+  void setSidebarSettled(std::function<void()> settled) { m_sidebarSettled = std::move(settled); }
   // Asks for a new window size (logical px before ui scale). False when the compositor sizes the window: then the
   // size becomes the minimum, so the compositor grows it.
   bool requestSize(std::uint32_t width, std::uint32_t height);
@@ -372,6 +375,7 @@ private:
   std::vector<InputRect> m_blur; // the blur region last sent; empty = none
   void syncBlur();
   bool m_sidebarVisible = true;
+  std::function<void()> m_sidebarSettled;
   std::uint32_t m_sidebarAnim = 0;
   std::unique_ptr<ContextMenuPopup> m_menu;
   std::unique_ptr<class SelectDropdownPopup> m_select;
