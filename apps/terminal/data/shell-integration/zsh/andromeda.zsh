@@ -91,4 +91,9 @@ __andromeda_precmd() {
 }
 
 add-zsh-hook preexec __andromeda_preexec
+# ssh copies the terminfo to a host that lacks it (andromeda-ssh.sh); a user's own ssh function stays.
+if (( ! $+functions[ssh] )); then
+  typeset -g __andromeda_ssh_script="${${(%):-%x}:A:h:h}/andromeda-ssh.sh"
+  function ssh { command sh "$__andromeda_ssh_script" "$@" }
+fi
 precmd_functions=(__andromeda_precmd ${precmd_functions:#__andromeda_precmd})

@@ -53,6 +53,14 @@ function __andromeda_prompt --on-event fish_prompt
     printf '\e]1337;SetUserVar=git_branch=%s\a' "$branch"
 end
 
+# ssh copies the terminfo to a host that lacks it (andromeda-ssh.sh); a user's own ssh function stays.
+if not functions -q ssh
+    set -g __andromeda_ssh_script (path resolve (status dirname)/../../andromeda-ssh.sh)
+    function ssh --wraps ssh
+        command sh $__andromeda_ssh_script $argv
+    end
+end
+
 # Only the stock prompt becomes the blank row and three blank cells; a user prompt stays.
 # Stock means fish's own prompt (its data dir, or embedded in the binary); a distro or user prompt stays.
 set -l __andromeda_source (functions --details fish_prompt)

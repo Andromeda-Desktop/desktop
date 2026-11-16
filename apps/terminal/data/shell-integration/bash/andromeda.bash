@@ -114,6 +114,11 @@ if [[ $- == *i* && -z "${__andromeda_hooked-}" ]]; then
   if [[ "$(builtin compgen -A function)" != *starship* && "$PS1" != *'$('* && "$PS1" != *'`'* && "$PS1" != *'\e['* && "$PS1" != *'\033['* ]]; then
     PS1='\n''   \[\e]133;B\a\]'
   fi
+  # ssh copies the terminfo to a host that lacks it (andromeda-ssh.sh); a user's own ssh function stays.
+  if ! builtin declare -F ssh > /dev/null; then
+    __andromeda_ssh_script="${BASH_SOURCE[0]%/*}/../andromeda-ssh.sh"
+    function ssh { command sh "$__andromeda_ssh_script" "$@"; }
+  fi
   PS0='$(__andromeda_preexec)'"${PS0-}"
   PROMPT_COMMAND="__andromeda_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 fi
