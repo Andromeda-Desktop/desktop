@@ -65,12 +65,14 @@ int main() {
       const auto edge = static_cast<std::uint32_t>(1U << std::uniform_int_distribution<int>(0, 3)(rng));
       const bool dropped = join != nullptr && std::uniform_int_distribution<int>(0, 1)(rng) == 0;
       // A drop joins the session the window shows.
-      if (dropped && list.shown()) {
-        trees.pendJoin({.target = join->target, .joining = join->joining, .edge = edge});
+      // A menu split (edge 0) lets the tree pick the side.
+      if (join != nullptr && list.shown()) {
+        trees.pendJoin({.target = join->target, .joining = join->joining, .edge = dropped ? edge : 0U});
       }
       const bool accepted = list.apply(event) != ApplyResult::Rejected;
       const auto split = list.visible();
-      DwindleTree* own = trees.sync(list, split);
+      const SplitTrees::Room room{.area = {.width = 1200, .height = 800}, .gap = 8, .minWidth = 200.0F};
+      DwindleTree* own = trees.sync(list, split, room);
       checkInvariants(list, trees, own, split);
       if (own == nullptr) {
         continue;
@@ -84,6 +86,18 @@ int main() {
           const auto& a = tiles[i].box;
           const auto& b = tiles[k].box;
           CHECK(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+        }
+      }
+      // A menu split goes beside its target when both halves keep the minimum width.
+      if (join != nullptr && !dropped && accepted) {
+        const auto at = [&tiles](std::uint64_t key) { return std::ranges::find(tiles, key, &Tile::key)->box; };
+        const auto t = at(join->target);
+        const auto j = at(join->joining);
+        const int whole = std::max(j.x + j.width - t.x, std::max(t.width, j.width));
+        if (static_cast<float>(whole - room.gap) / 2.0F >= room.minWidth) {
+          CHECK(j.y == t.y && j.x > t.x);
+        } else {
+          CHECK(j.x == t.x && j.y > t.y);
         }
       }
       // A dropped session lands on the edge of its target it was dropped on.

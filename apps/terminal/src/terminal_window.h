@@ -189,6 +189,7 @@ namespace term {
     SplitTrees m_trees;
     // The smallest pane: split_min_columns x split_min_rows cells of the font, with the grid's insets.
     [[nodiscard]] std::pair<float, float> paneMinimum() const;
+    [[nodiscard]] SplitTrees::Room splitRoom() const;
     struct Divider {
       bool vertical = true; // between columns
       TileNode* split = nullptr;

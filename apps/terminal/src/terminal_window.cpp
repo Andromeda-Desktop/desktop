@@ -689,6 +689,7 @@ namespace term {
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, shown](std::int32_t item) {
                                switch (item) {
                                case kSplit:
+                                 m_trees.pendJoin({.target = shown, .joining = id});
                                  apply(session_event::Join{.target = shown, .joining = id});
                                  focusGrid();
                                  break;
@@ -1283,7 +1284,7 @@ namespace term {
     m_dividers.clear();
     const float grip = Tokens::spaceP32 * s;
     std::vector<TileNode*> splits;
-    if (andromeda::tiling::DwindleTree* tree = m_trees.sync(m_sessions, panes); tree != nullptr) {
+    if (andromeda::tiling::DwindleTree* tree = m_trees.sync(m_sessions, panes, splitRoom()); tree != nullptr) {
       std::vector<TileNode*> stack{tree->root()};
       while (!stack.empty()) {
         TileNode* node = stack.back();
@@ -1395,6 +1396,12 @@ namespace term {
     });
   }
 
+  SplitTrees::Room TerminalWindow::splitRoom() const {
+    return {.area = {.width = static_cast<int>(std::lround(m_contentWidth)), .height = static_cast<int>(std::lround(m_contentHeight))},
+            .gap = static_cast<int>(std::lround(Tokens::componentWindowCardGap * m_window.uiScale())),
+            .minWidth = paneMinimum().first};
+  }
+
   std::pair<float, float> TerminalWindow::paneMinimum() const {
     const float s = m_window.uiScale();
     float cellW = 0.0F;
@@ -1413,7 +1420,7 @@ namespace term {
 
   std::vector<TerminalWindow::PaneRect> TerminalWindow::paneRects(const std::vector<std::uint64_t>& panes) {
     std::vector<PaneRect> out(panes.size());
-    andromeda::tiling::DwindleTree* tree = m_trees.sync(m_sessions, panes);
+    andromeda::tiling::DwindleTree* tree = m_trees.sync(m_sessions, panes, splitRoom());
     if (tree == nullptr) {
       return out;
     }

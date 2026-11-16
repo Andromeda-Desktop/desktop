@@ -5,7 +5,7 @@
 
 namespace term {
 
-  andromeda::tiling::DwindleTree* SplitTrees::sync(const SessionList& sessions, const std::vector<std::uint64_t>& split) {
+  andromeda::tiling::DwindleTree* SplitTrees::sync(const SessionList& sessions, const std::vector<std::uint64_t>& split, const Room& room) {
     using Tree = andromeda::tiling::DwindleTree;
     using Members = std::vector<std::uint64_t>;
     const auto join = std::exchange(m_pending, std::nullopt);
@@ -53,16 +53,19 @@ namespace term {
     if (own->empty()) {
       own->addRoot(join && inSplit(join->target) ? join->target : split.front());
     }
+    // The side a session joins on follows the areas as they are now, not before a session left.
+    own->arrange(room.area, room.gap, /*preserveSplit=*/true);
     for (std::size_t i = 0; i < split.size(); ++i) {
       if (own->find(split[i]) != nullptr) {
         continue;
       }
-      if (join && join->joining == split[i] && own->find(join->target) != nullptr) {
+      const bool joined = join && join->joining == split[i] && own->find(join->target) != nullptr;
+      if (joined && join->edge != 0) {
         own->splitOn(own->find(join->target), split[i], join->edge);
         continue;
       }
-      // Next to its neighbour in the split's order: the session it joined.
-      andromeda::tiling::DwindleTree::Node* next = nullptr;
+      // Next to the session it joined, else its neighbour in the split's order.
+      andromeda::tiling::DwindleTree::Node* next = joined ? own->find(join->target) : nullptr;
       for (std::size_t d = 1; next == nullptr && d < split.size(); ++d) {
         if (i >= d) {
           next = own->find(split[i - d]);
@@ -71,7 +74,10 @@ namespace term {
           next = own->find(split[i + d]);
         }
       }
-      own->splitOn(next, split[i], 0);
+      // A leaf not arranged yet is the whole area (the first split).
+      const andromeda::tiling::TileBox& at = next->area.width > 0 ? next->area : room.area;
+      const bool beside = static_cast<float>(at.width - room.gap) / 2.0F >= room.minWidth;
+      own->splitOn(next, split[i], beside ? andromeda::tiling::EdgeRight : andromeda::tiling::EdgeBottom);
     }
     return own;
   }
