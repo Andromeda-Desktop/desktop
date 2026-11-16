@@ -748,7 +748,7 @@ void AuthColumn::playAccepted(Node* alongside, std::function<void()> done) {
   );
 }
 
-// Glance: the sheet Grows from 60 % of its size at the centre while the column fades in; the glance layer recedes
+// Glance: the sheet and its column grow from 60 % of their size at the sheet centre while the column fades in; the glance layer recedes
 // to 40 % and its hint fades out. Other layouts: no sheet, everything at full opacity.
 void AuthColumn::applySheet() {
   // After an accepted login the Return owns the column's opacity and scale until the process exits.
@@ -760,18 +760,20 @@ void AuthColumn::applySheet() {
     m_sheet->setVisible(false);
     m_columnGroup->setVisible(true);
     m_columnGroup->setOpacity(1.0F);
+    m_columnGroup->setScale(1.0F);
     m_glanceGroup->setOpacity(1.0F);
     return;
   }
   const float t = std::clamp(m_sheetT, 0.0F, 1.0F);
   const float k = MotionService::instance().reduced() ? 1.0F : 0.6F + 0.4F * m_sheetT;
-  const float w = sheet.w * k;
-  const float h = sheet.h * k;
   m_sheet->setVisible(t > 0.0F);
   // The sheet fades in at twice the column's pace: it covers the glance layer before the column shows on it.
   m_sheet->setOpacity(std::min(1.0F, 2.0F * t));
-  m_sheet->setPosition(std::round(sheet.x + (sheet.w - w) * 0.5F), std::round(sheet.y + (sheet.h - h) * 0.5F));
-  m_sheet->setSize(std::round(w), std::round(h));
+  m_sheet->setPosition(std::round(sheet.x), std::round(sheet.y));
+  m_sheet->setSize(std::round(sheet.w), std::round(sheet.h));
+  // The sheet is in the column group: both grow together, so the content never overhangs the sheet.
+  m_columnGroup->setTransformOrigin(sheet.x + sheet.w * 0.5F, sheet.y + sheet.h * 0.5F);
+  m_columnGroup->setScale(k);
   const float s = sheet.w / 360.0F;
   m_sheet->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR28 * s, .borderWidth = 0.5F * s});
   m_columnGroup->setOpacity(t);
