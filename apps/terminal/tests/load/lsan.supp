@@ -1,0 +1,13 @@
+leak:libfontconfig
+leak:libgallium
+leak:libEGL
+leak:libGLX
+leak:libdrm
+leak:libglib-2.0
+leak:libgobject-2.0
+leak:libgio-2.0
+leak:libpango
+leak:libharfbuzz
+leak:libwayland-client
+leak:libLLVM
+leak:libdbus

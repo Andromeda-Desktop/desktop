@@ -180,3 +180,13 @@ dev-nested:
 # Rulebook lint: no float size literal, no duration easing in shell and libdesk-ui; only new violations fail. `just design-lint --update` rewrites the baseline.
 design-lint *args:
     python3 docs/design/design_lint.py {{args}}
+
+# Terminal load suites, headless, logs in ~/.cache/term-load: `just term-load throughput` (also latency, chaos, lifecycle, soak, all).
+# Env: TERMS="ours foot kitty ghostty", BIN, HOLDER=1, ASAN=1 with BIN=apps/terminal/build-asan/andromeda-terminal, MINUTES.
+term-load suite="all":
+    #!/usr/bin/env bash
+    set -uo pipefail
+    suites="{{suite}}"; [[ $suites == all ]] && suites="throughput latency chaos lifecycle soak"
+    rc=0; mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/term-load"
+    for s in $suites; do echo "== $s"; apps/terminal/tests/load/$s.sh 2>&1 | tee ${XDG_CACHE_HOME:-$HOME/.cache}/term-load/$s.log | grep -E '^(PASS|FAIL|FAILS|info|skip)|^[a-z]+ +[a-z_]+ +[0-9]' || true; [[ ${PIPESTATUS[0]} -eq 0 ]] || rc=1; done
+    exit $rc
