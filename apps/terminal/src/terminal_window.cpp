@@ -109,7 +109,7 @@ namespace term {
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
-                                 std::function<void(const std::string& token)> newWindow,
+                                 std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
                                  std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
       : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
@@ -376,24 +376,9 @@ namespace term {
     }
   }
 
-  void TerminalWindow::openSession(const WindowOrigin& origin) {
-    const std::uint64_t id = m_nextId++;
-    if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
-      const std::uint64_t key = s_nextAgentKey++;
-      const std::string cwd = fresh->cwd.empty() ? homeDir() : fresh->cwd;
-      agent::Host& host = m_agents(fresh->kind);
-      agent::Session& session = host.open(key, cwd);
-      if (!fresh->prompt.empty() && session.send(fresh->prompt)) {
-        host.flush(key);
-      }
-      auto agentView = std::make_unique<AgentView>(host, key);
-      agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
-      m_views.push_back({id, std::move(agentView)});
-      apply(session_event::Open{id, SessionKind::Agent, std::string(agent::info(fresh->kind).name), shownPath(cwd)});
-      return;
-    }
+  TerminalView::Host TerminalWindow::terminalHost(std::uint64_t id) {
     auto alive = std::weak_ptr<bool>(m_alive);
-    auto view = std::make_unique<TerminalView>(TerminalView::Host{
+    return TerminalView::Host{
         .requestFrame = [this] { requestFrame(); },
         .playBell = [this] { m_loop.wayland().ringBell(m_window.wlSurface()); },
         .bellRang =
@@ -505,7 +490,78 @@ namespace term {
             },
         .textBacking = [this] { return m_window.sceneTextBacking(); },
         .settings = m_settings.settings(),
-        .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())});
+        .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())};
+  }
+
+  void TerminalWindow::adoptSession(std::uint64_t id, MovedSession moved) {
+    if (TerminalView* terminal = moved.view->terminal(); terminal != nullptr) {
+      terminal->setHost(terminalHost(id));
+      terminal->setSecureInput(m_keysSecure, m_window.input());
+    } else if (AgentView* agent = moved.view->agent(); agent != nullptr) {
+      agent->setOpenUri([this](const std::string& uri) { openUri(uri); });
+    }
+    if (moved.secret) {
+      m_secretSessions.insert(id);
+    }
+    if (moved.remote) {
+      m_remoteSessions.insert(id);
+    }
+    m_views.push_back({id, std::move(moved.view)});
+    // The row keeps what the old window knew: name, place, host, title and its command.
+    const SessionInfo& info = moved.info;
+    apply(session_event::Open{id, info.kind, info.name, info.cwd});
+    if (!info.host.empty()) {
+      apply(session_event::Kind{id, info.kind, info.host});
+    }
+    if (!info.title.empty()) {
+      apply(session_event::Title{id, info.title});
+    }
+    if (const auto* running = std::get_if<CommandRunning>(&info.command)) {
+      apply(session_event::CommandStart{id, running->command, running->start});
+    } else if (const auto* done = std::get_if<CommandFinished>(&info.command)) {
+      const auto now = SessionClock::now();
+      apply(session_event::CommandStart{id, done->command, now - done->duration});
+      apply(session_event::CommandEnd{id, done->exitCode, now});
+    }
+  }
+
+  void TerminalWindow::moveToNewWindow(std::uint64_t id) {
+    const SessionInfo* info = m_sessions.find(id);
+    const auto it = std::ranges::find(m_views, id, &Session::id);
+    if (info == nullptr || it == m_views.end()) {
+      return;
+    }
+    auto moved = std::make_shared<MovedSession>(MovedSession{.view = std::move(it->view), .info = *info,
+                                                             .secret = m_secretSessions.contains(id),
+                                                             .remote = m_remoteSessions.contains(id)});
+    m_views.erase(it);
+    // Its nodes stay in this scene until the next build; the new window's build gives it new ones.
+    moved->view->sceneDestroyed();
+    apply(session_event::Close{id});
+    m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {Adopt{std::move(moved)}});
+  }
+
+  void TerminalWindow::openSession(const WindowOrigin& origin) {
+    const std::uint64_t id = m_nextId++;
+    if (const auto* adopt = std::get_if<Adopt>(&origin)) {
+      adoptSession(id, std::move(*adopt->session));
+      return;
+    }
+    if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
+      const std::uint64_t key = s_nextAgentKey++;
+      const std::string cwd = fresh->cwd.empty() ? homeDir() : fresh->cwd;
+      agent::Host& host = m_agents(fresh->kind);
+      agent::Session& session = host.open(key, cwd);
+      if (!fresh->prompt.empty() && session.send(fresh->prompt)) {
+        host.flush(key);
+      }
+      auto agentView = std::make_unique<AgentView>(host, key);
+      agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
+      m_views.push_back({id, std::move(agentView)});
+      apply(session_event::Open{id, SessionKind::Agent, std::string(agent::info(fresh->kind).name), shownPath(cwd)});
+      return;
+    }
+    auto view = std::make_unique<TerminalView>(terminalHost(id));
     TerminalView& ref = *view;
     ref.setSecureInput(m_keysSecure, m_window.input());
     m_views.push_back({id, std::move(view)});
@@ -609,14 +665,16 @@ namespace term {
     // The sidebar's groups follow the splits: a rebuild regroups the rows (rare: a join, a leave, a member closed).
     const bool regroup = m_sessions.splits() != splitsBefore;
     if (const auto* close = std::get_if<session_event::Close>(&event)) {
-      const auto it = std::ranges::find(m_views, close->id, &Session::id);
-      if (const auto card = std::ranges::find(m_cards, close->id, &PaneCard::id); card != m_cards.end()) {
-        m_closedCard = ClosedCard{card->rect, it->view->surface()};
+      // A moved session left m_views before its Close: no fade, nothing to retire.
+      if (const auto it = std::ranges::find(m_views, close->id, &Session::id); it != m_views.end()) {
+        if (const auto card = std::ranges::find(m_cards, close->id, &PaneCard::id); card != m_cards.end()) {
+          m_closedCard = ClosedCard{card->rect, it->view->surface()};
+        }
+        if (std::ranges::contains(m_builtPanes, close->id)) {
+          m_retired.push_back(std::move(*it));
+        }
+        m_views.erase(it);
       }
-      if (std::ranges::contains(m_builtPanes, close->id)) {
-        m_retired.push_back(std::move(*it));
-      }
-      m_views.erase(it);
     }
     if (result == ApplyResult::LastClosed) {
       m_close();
@@ -805,7 +863,7 @@ namespace term {
       // Closes the shown session, shell or agent; asks first while a command runs.
       case Action::CloseSession: askClose({*m_sessions.shown()}); return true;
       case Action::Preferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
-      case Action::NewWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
+      case Action::NewWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); return true;
       case Action::Find: openFind(); return true;
       case Action::Session1:
       case Action::Session2:
@@ -861,7 +919,7 @@ namespace term {
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
     const Keybindings& keys = m_settings.settings().keys;
     enum : std::int32_t {
-      kSplit = 1, kLeave, kRename, kDuplicate, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose
+      kSplit = 1, kLeave, kRename, kDuplicate, kMoveToWindow, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose
     };
     const bool others = m_sessions.sessions().size() > 1;
     const std::uint64_t shown = m_sessions.shown().value_or(0);
@@ -874,6 +932,7 @@ namespace term {
     }
     entries.push_back({.id = kRename, .label = "Rename", .enabled = !m_rail});
     entries.push_back({.id = kDuplicate, .label = "Duplicate"});
+    entries.push_back({.id = kMoveToWindow, .label = "Move to new window", .enabled = others});
     entries.push_back({.separator = true});
     const bool terminal = terminalOf(id) != nullptr;
     entries.push_back({.id = kShowScrollback, .label = "Show scrollback", .shortcut = keys.label(Action::ShowScrollback), .enabled = terminal});
@@ -894,6 +953,7 @@ namespace term {
                                case kLeave: apply(session_event::Leave{id}); break;
                                case kRename: renameSession(id); break;
                                case kDuplicate: duplicateSession(id); break;
+                               case kMoveToWindow: moveToNewWindow(id); break;
                                case kShowScrollback: showScrollback(id); break;
                                case kSaveScrollback: saveScrollback(id); break;
                                case kSecureEntry: toggleSecureEntry(); break;
@@ -1129,7 +1189,7 @@ namespace term {
                                }
                                switch (id) {
                                  case kShell: openSession(NewShell{}); break;
-                                 case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
+                                 case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); break;
                                  case kPreferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
                                  default:
                                    if (id >= kAgent && id < kAgent + static_cast<std::int32_t>(agent::kKindCount)) {

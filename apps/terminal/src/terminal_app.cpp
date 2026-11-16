@@ -51,7 +51,10 @@ namespace term {
     }
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, [this](agent::Kind kind) -> agent::Host& { return agentHost(kind); }, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
-                                                          [this](const std::string& token) { openWindow(token); },
+                                                          [this](const std::string& token, std::vector<WindowOrigin> origins) {
+                                                            m_nextOrigins = std::move(origins);
+                                                            openWindow(token);
+                                                          },
                                                           [this](const std::string& token) { openPreferences(token); },
                                                           [this, &window](const std::string& suggested, auto picked) {
                                                             chooseSaveFile(window, suggested, std::move(picked));

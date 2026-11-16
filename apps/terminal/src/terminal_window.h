@@ -61,7 +61,17 @@ namespace term {
     std::string cwd;
     std::string prompt; // sent as the first message; empty: none
   };
-  using WindowOrigin = std::variant<NewShell, Reattach, NewAgent>;
+  // A live session leaving its window ("Move to new window"): its view moves as is; nothing restarts.
+  struct MovedSession {
+    std::unique_ptr<ContentView> view;
+    SessionInfo info;
+    bool secret = false;
+    bool remote = false;
+  };
+  struct Adopt {
+    std::shared_ptr<MovedSession> session; // shared: WindowOrigin stays copyable; the adopting window takes the view
+  };
+  using WindowOrigin = std::variant<NewShell, Reattach, NewAgent, Adopt>;
   // The app's shared host for a kind; made on first use.
   using AgentHosts = std::function<agent::Host&(agent::Kind)>;
 
@@ -77,7 +87,7 @@ namespace term {
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
-                   std::function<void()> close, std::function<void(const std::string& token)> newWindow,
+                   std::function<void()> close, std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
                    std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile);
     ~TerminalWindow();
     // The surface and scene were destroyed (compositor reconnect): the next requestFrame hooks the new surface.
@@ -85,6 +95,9 @@ namespace term {
 
     // Opens a session and shows it.
     void openSession(const WindowOrigin& origin);
+    [[nodiscard]] TerminalView::Host terminalHost(std::uint64_t id);
+    void adoptSession(std::uint64_t id, MovedSession moved);
+    void moveToNewWindow(std::uint64_t id);
     // An agent session of any window changed: repaints its view and row when it is in this window.
     void agentChanged(std::uint64_t key);
 
@@ -132,7 +145,7 @@ namespace term {
     SettingsStore& m_settings;
     Signal<>::ScopedConnection m_settingsChanged;
     std::function<void()> m_close;
-    std::function<void(const std::string& token)> m_newWindow;
+    std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> m_newWindow;
     std::function<void(const std::string& token)> m_preferences;
     ChooseSaveFile m_chooseSaveFile;
     // A copy of a session's screen and scrollback: in a pager session (Ctrl+Shift+H), or to a file the user picks.

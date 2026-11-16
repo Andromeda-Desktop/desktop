@@ -171,6 +171,8 @@ namespace term {
     [[nodiscard]] std::string scrollbackText();
     // Secure keyboard entry: keys reach the program as raw keys, never through the input method.
     void setSecureInput(bool secure, InputDispatcher& input);
+    // Rebinds the view to another window (Move to new window); the session keeps running.
+    void setHost(Host host) { m_host = std::move(host); }
 
     [[nodiscard]] InputArea* focusArea() const noexcept override { return m_area; }
     [[nodiscard]] TerminalView* terminal() noexcept override { return this; }
