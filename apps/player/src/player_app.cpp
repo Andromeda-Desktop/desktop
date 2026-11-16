@@ -140,6 +140,13 @@ void PlayerApp::startup() {
                       m_window->toggleFullscreen();
                     }
                   }});
+  commands().add({.id = "view.leave-fullscreen", .label = "Leave Full Screen", .group = "View",
+                  .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
+                  .enabled = [this] { return m_window != nullptr && m_window->fullscreen(); },
+                  .run = [this] { m_window->toggleFullscreen(); }});
+  commands().add({.id = "player.mute", .label = "Mute", .group = "Playback",
+                  .shortcut = KeyChord{.sym = XKB_KEY_m, .modifiers = 0}, .enabled = {},
+                  .run = [this] { m_mpv.toggleMute(); }});
 }
 
 AppWindow& PlayerApp::createWindow() {

@@ -59,6 +59,7 @@ public:
   void stop();
   // Off -> each subtitle track -> off.
   void cycleSubtitles();
+  void toggleMute();
 
   [[nodiscard]] const State& state() const noexcept { return m_state; }
   // After any property change; `seeked` is true for a seek the user or MPRIS made (MPRIS Seeked).

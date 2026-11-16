@@ -252,6 +252,12 @@ void MpvPlayer::cycleSubtitles() {
   }
 }
 
+void MpvPlayer::toggleMute() {
+  if (m_mpv != nullptr) {
+    command({"cycle", "mute"});
+  }
+}
+
 void MpvPlayer::command(std::initializer_list<const char*> args) {
   std::vector<const char*> argv(args);
   argv.push_back(nullptr);
