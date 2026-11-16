@@ -147,6 +147,7 @@ namespace term {
       m_bellAnim = 0;
       m_bellFlash = nullptr;
       m_contextTick.stop(); // it reads the grid; the next build's syncContext starts it again
+      m_context.reset(); // it holds the freed grid; frame() applies its pending rows before the next build
       m_grid = nullptr;
       m_area = nullptr;
       m_linkAnchor = nullptr;
