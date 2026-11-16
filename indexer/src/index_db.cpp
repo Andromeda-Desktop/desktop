@@ -467,12 +467,17 @@ namespace andromeda::index {
     }
     m_folded.clear();
     m_entries.clear();
+    m_offsets.clear();
+    m_masks.clear();
     m_removed = 0;
     sqlite3_stmt* stmt = nullptr;
     // Exact sizes up front: growth by doubling would leave up to twice the memory in the heap.
     sqlite3_prepare_v2(m_db, "SELECT count(*), coalesce(sum(length(CAST(name AS BLOB))), 0) FROM files", -1, &stmt, nullptr);
     if (sqlite3_step(stmt) == SQLITE_ROW) {
-      m_entries.reserve(static_cast<std::size_t>(sqlite3_column_int64(stmt, 0)) + 64);
+      const auto names = static_cast<std::size_t>(sqlite3_column_int64(stmt, 0)) + 64;
+      m_entries.reserve(names);
+      m_offsets.reserve(names);
+      m_masks.reserve(names);
       m_folded.reserve(static_cast<std::size_t>(sqlite3_column_int64(stmt, 0) + sqlite3_column_int64(stmt, 1)) + 4096);
     }
     sqlite3_finalize(stmt);
@@ -488,9 +493,10 @@ namespace andromeda::index {
 
   void IndexDb::appendName(std::int64_t id, std::string_view name, std::int64_t mtime, bool isDir) const {
     const std::string folded = foldName(name);
-    m_entries.push_back({.id = static_cast<std::uint32_t>(id), .offset = static_cast<std::uint32_t>(m_folded.size()),
-                         .mtime = seconds(mtime), .kind = fileKind(name, isDir), .removed = false,
-                         .letters = letterMask(folded), .starts = startMask(folded)});
+    m_entries.push_back({.id = static_cast<std::uint32_t>(id), .mtime = seconds(mtime), .kind = fileKind(name, isDir),
+                         .removed = false});
+    m_offsets.push_back(static_cast<std::uint32_t>(m_folded.size()));
+    m_masks.push_back({.letters = letterMask(folded), .starts = startMask(folded)});
     m_folded += folded;
     m_folded += '\0';
   }
@@ -542,7 +548,7 @@ namespace andromeda::index {
     }
     const char* const begin = m_folded.data();
     const char* const end = begin + m_folded.size();
-    auto entry = m_entries.begin();
+    auto entry = m_offsets.begin();
     for (const char* at = needle.empty() ? end : begin; at < end;) {
       const char* found = shortNeedle ? findWordStart(begin, at, end, needle) : findIn(at, end, needle);
       if (found == nullptr) {
@@ -551,19 +557,20 @@ namespace andromeda::index {
       const auto offset = static_cast<std::uint32_t>(found - begin);
       // Hits come in offset order and `entry` only moves forward: a near hit is a few steps away, a far one is
       // found by binary search (a walk over sparse hits would read every entry).
-      for (int step = 0; step < 8 && entry + 1 != m_entries.end() && (entry + 1)->offset <= offset; ++step) {
+      for (int step = 0; step < 8 && entry + 1 != m_offsets.end() && *(entry + 1) <= offset; ++step) {
         ++entry;
       }
-      if (entry + 1 != m_entries.end() && (entry + 1)->offset <= offset) {
-        entry = std::ranges::upper_bound(entry, m_entries.end(), offset, {}, &NameEntry::offset) - 1;
+      if (entry + 1 != m_offsets.end() && *(entry + 1) <= offset) {
+        entry = std::upper_bound(entry, m_offsets.end(), offset) - 1;
       }
       const auto next = entry + 1;
-      at = next != m_entries.end() ? begin + next->offset : end;
-      if (entry->removed || (!anyKind && entry->kind != kind)) {
+      at = next != m_offsets.end() ? begin + *next : end;
+      const NameEntry& e = m_entries[static_cast<std::size_t>(entry - m_offsets.begin())];
+      if (e.removed || (!anyKind && e.kind != kind)) {
         continue;
       }
-      const std::size_t rank = offset != entry->offset ? 2 : (found[needle.size()] == '\0' ? 0 : 1);
-      offer({.rank = rank, .mtime = entry->mtime, .id = entry->id});
+      const std::size_t rank = offset != *entry ? 2 : (found[needle.size()] == '\0' ? 0 : 1);
+      offer({.rank = rank, .mtime = e.mtime, .id = e.id});
     }
     const auto seenIds = [&] {
       std::vector<std::int64_t> seen;
@@ -585,16 +592,24 @@ namespace andromeda::index {
       const std::size_t window = needle.size() + static_cast<std::size_t>(most);
       const ByteBits eq = byteBits(typos ? needle : std::string_view());
       const std::uint64_t first = letterBit(needle.front());
-      for (std::size_t i = 0; i < m_entries.size(); ++i) {
-        const NameEntry& e = m_entries[i];
-        const int missing = std::popcount(letters & ~e.letters);
-        if ((e.starts & first) == 0 || missing > most || e.removed || (!anyKind && e.kind != kind)) {
+      for (std::size_t i = 0; i < m_masks.size(); ++i) {
+        if ((m_masks[i].starts & first) == 0) {
           continue;
         }
-        const char* name = begin + e.offset;
-        const char* nameEnd = i + 1 < m_entries.size() ? begin + m_entries[i + 1].offset - 1 : end - 1;
+        // At most `most` (0-2) needle letters missing, counted by clearing low bits: popcount is a libcall here.
+        std::uint64_t absent = letters & ~m_masks[i].letters;
+        for (int k = 0; k < most && absent != 0; ++k) {
+          absent &= absent - 1;
+        }
+        const NameEntry& e = m_entries[i];
+        if (absent != 0 || e.removed || (!anyKind && e.kind != kind)) {
+          continue;
+        }
+        const bool missing = (letters & ~m_masks[i].letters) != 0;
+        const char* name = begin + m_offsets[i];
+        const char* nameEnd = i + 1 < m_offsets.size() ? begin + m_offsets[i + 1] - 1 : end - 1;
         std::size_t rank = SIZE_MAX;
-        if (missing == 0) {
+        if (!missing) {
           if (const std::size_t span = subsequenceSpan(begin, name, needle); span != 0) {
             rank = 3 + span - needle.size();
           }

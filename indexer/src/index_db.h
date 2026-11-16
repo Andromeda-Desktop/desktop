@@ -102,18 +102,18 @@ namespace andromeda::index {
     static constexpr std::int64_t kMaxContentFile = 50LL * 1024 * 1024;
 
   private:
-    // Entries sorted by id (add() never reuses an id held here, removed or not), so offsets grow too. 32 bytes:
-    // ids fit 32 bits, as each id is one more than the largest so far.
+    // Entries sorted by id (add() never reuses an id held here, removed or not), so offsets grow too. Ids fit 32
+    // bits, as each id is one more than the largest so far.
     struct NameEntry {
       std::uint32_t id;
-      std::uint32_t offset; // into m_folded
-      std::uint32_t mtime;  // seconds, for ranking only
+      std::uint32_t mtime; // seconds, for ranking only
       FileKind kind;
       bool removed;
+    };
+    struct NameMasks {
       std::uint64_t letters; // letterMask of the folded name: a name lacking a needle letter is skipped unread
       std::uint64_t starts;  // letterMask of the bytes that start a word in it
     };
-    static_assert(sizeof(NameEntry) == 32);
 
     [[nodiscard]] std::string pathOf(std::int64_t id) const;
     [[nodiscard]] NameEntry* entryOf(std::int64_t id) const;
@@ -126,7 +126,10 @@ namespace andromeda::index {
     sqlite3_stmt* m_child = nullptr;
     // Folded names (foldName), each followed by a NUL (names never hold one), so a match never spans two names.
     mutable std::string m_folded;
+    // m_entries, m_offsets and m_masks run in parallel: a query scans only the dense array it needs.
     mutable std::vector<NameEntry> m_entries;
+    mutable std::vector<std::uint32_t> m_offsets; // into m_folded
+    mutable std::vector<NameMasks> m_masks;
     mutable std::size_t m_removed = 0;
     mutable bool m_loaded = false;
   };
