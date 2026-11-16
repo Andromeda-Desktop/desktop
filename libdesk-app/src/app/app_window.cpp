@@ -1082,10 +1082,10 @@ void AppWindow::applyMainFill() {
   }
 }
 
-// A solid window takes the tone of its content plane, so the sidebar and controls read as one surface with it: a light
+// The window takes the tone of its content plane, so the sidebar, solid or glass, reads as one surface with it: a light
 // terminal theme under a dark system scheme gets a light sidebar, not a dark one with low-contrast ink beside it.
 std::optional<PaletteTone> AppWindow::chromeTone() const {
-  if (!m_mainFill || m_scene || m_config.transparentContent || m_config.material != Material::Solid) {
+  if (!m_mainFill || m_scene || m_config.transparentContent) {
     return std::nullopt;
   }
   return toneOn(resolveColorSpec(*m_mainFill));
