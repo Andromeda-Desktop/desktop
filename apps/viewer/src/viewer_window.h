@@ -49,6 +49,7 @@ namespace viewer {
     void focusSearch();
     void searchFor(const std::string& query);
     void copySelection();
+    void selectAll();
     void zoomIn();
     void zoomOut();
     void zoomFit();
@@ -114,6 +115,7 @@ namespace viewer {
       float y0 = 0.0F;
       float x1 = 0.0F;
       float y1 = 0.0F;
+      std::uint32_t unit = preview::kSelectGlyph; // a double click selects words, a triple click lines
       std::vector<RectF> rects;
       std::string text;
     };
@@ -157,7 +159,8 @@ namespace viewer {
     void requestSelect();
     void rebuild();
     [[nodiscard]] std::size_t currentPage() const;
-    void onPagePress(std::size_t page, float x, float y, bool pressed);
+    void onPagePress(std::size_t page, float x, float y, bool pressed, std::uint32_t time);
+    void goToPage(std::size_t page);
     void onPageMotion(float x, float y);
     struct Edit {
       std::uint32_t id = 0; // the helper's annotation id
@@ -212,7 +215,7 @@ namespace viewer {
     std::vector<Image*> m_thumbImages;
     std::vector<Box*> m_thumbFrames;
     std::vector<Node*> m_markLayers;
-    Label* m_positionLabel = nullptr;
+    Input* m_pageInput = nullptr;
     Label* m_countLabel = nullptr;
     std::size_t m_shownPage = 0;
     float m_hOffset = 0.0F;
@@ -239,6 +242,15 @@ namespace viewer {
     bool m_scanPending = false;
     std::optional<Selection> m_selection;
     bool m_selecting = false;
+    // The last left press on a page, to count double and triple clicks.
+    struct Click {
+      std::uint32_t time = 0; // ms
+      std::size_t page = 0;
+      float x = 0.0F;
+      float y = 0.0F;
+      int count = 0;
+    };
+    Click m_lastClick;
     bool m_selectPending = false;
     bool m_selectDirty = false;
 

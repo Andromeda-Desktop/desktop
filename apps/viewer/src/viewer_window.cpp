@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <charconv>
 #include <cstring>
 #include <format>
 #include <gio/gio.h>
@@ -272,6 +273,14 @@ namespace viewer {
   }
 
   void ViewerWindow::rebuild() { m_window.requestRebuild(); }
+
+  void ViewerWindow::goToPage(std::size_t page) {
+    if (m_mode != Mode::Pdf || m_scroll == nullptr || m_model.pageCount() == 0) {
+      return;
+    }
+    m_scroll->setScrollOffset(m_model.pageBox(std::min(page, m_model.pageCount() - 1)).y0);
+    onScroll();
+  }
 
   std::size_t ViewerWindow::currentPage() const {
     return m_scroll != nullptr ? m_model.pageAt(m_scroll->scrollOffset() + 1.0F) : 0;
@@ -618,8 +627,9 @@ namespace viewer {
       return;
     }
     const std::size_t page = currentPage();
-    if (m_positionLabel != nullptr) {
-      (void)m_positionLabel->setText(std::format("{} / {}", page + 1, m_model.pageCount()));
+    // Scrolling does not overwrite a page number the user is typing.
+    if (m_pageInput != nullptr && m_window.input().focusedArea() != m_pageInput->inputArea()) {
+      m_pageInput->setValue(std::to_string(page + 1));
     }
     if (m_countLabel != nullptr) {
       (void)m_countLabel->setText(m_model.countText());
@@ -811,7 +821,7 @@ namespace viewer {
     m_selectDirty = false;
     const Selection& s = *m_selection;
     m_helper->request(
-        {.op = preview::op::Select, .a = static_cast<std::uint32_t>(s.page), .b = preview::kSelectGlyph},
+        {.op = preview::op::Select, .a = static_cast<std::uint32_t>(s.page), .b = s.unit},
         areaPayload(s.x0, s.y0, s.x1, s.y1),
         [this, generation = m_generation](const preview::HelperReply& reply) {
           if (generation != m_generation) {
@@ -843,6 +853,18 @@ namespace viewer {
           }
         }
     );
+  }
+
+  void ViewerWindow::selectAll() {
+    if (m_mode != Mode::Pdf || m_model.pageCount() == 0) {
+      return;
+    }
+    const std::size_t page = currentPage();
+    const RectF box = m_model.pageBox(page);
+    const float zoom = m_model.zoom();
+    m_selecting = false;
+    m_selection = Selection{.page = page, .x1 = (box.x1 - box.x0) / zoom, .y1 = (box.y1 - box.y0) / zoom};
+    requestSelect();
   }
 
   void ViewerWindow::copySelection() {
@@ -1028,7 +1050,7 @@ namespace viewer {
     m_thumbScroll = nullptr;
     m_searchInput = nullptr;
     m_noteInput = nullptr;
-    m_positionLabel = nullptr;
+    m_pageInput = nullptr;
     m_countLabel = nullptr;
     for (auto& [key, tile] : m_tiles) {
       tile.node = nullptr;
@@ -1109,17 +1131,32 @@ namespace viewer {
                              .maxLines = 1, .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
     std::string position;
     if (m_mode == Mode::Pdf) {
-      position = std::format("{} / {}", currentPage() + 1, m_model.pageCount());
+      auto page = ui::input({
+          .value = std::to_string(currentPage() + 1),
+          .fontSize = Style::fontSizeCaption * s,
+          .textAlign = TextAlign::Center,
+          .width = 56.0F * s,
+          .onSubmit =
+              [this](const std::string& text) {
+                std::size_t number = 0;
+                const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), number);
+                if (ec == std::errc{} && end == text.data() + text.size() && number > 0) {
+                  goToPage(number - 1);
+                }
+                m_pageInput->setValue(std::to_string(currentPage() + 1));
+              },
+          .onFocusLoss = [this] { m_pageInput->setValue(std::to_string(currentPage() + 1)); },
+      });
+      page->inputArea()->setTabFocusKey("page");
+      m_pageInput = page.get();
+      bar->addChild(std::move(page));
+      position = std::format("/ {}", m_model.pageCount());
     } else if (m_mode == Mode::Image && m_folder.size() > 1) {
       position = std::format("{} of {}", m_folderIndex + 1, m_folder.size());
     }
     if (!position.empty()) {
-      auto label = ui::label({.text = position, .fontSize = Style::fontSizeCaption * s,
-                              .color = colorSpecFromRole(ColorRole::Label2)});
-      if (m_mode == Mode::Pdf) {
-        m_positionLabel = label.get();
-      }
-      bar->addChild(std::move(label));
+      bar->addChild(ui::label({.text = position, .fontSize = Style::fontSizeCaption * s,
+                               .color = colorSpecFromRole(ColorRole::Label2)}));
     }
     if (m_mode == Mode::Pdf) {
       bar->addChild(ui::button({.glyph = std::string("minus"), .variant = ButtonVariant::Ghost,
@@ -1164,7 +1201,9 @@ namespace viewer {
           .clearButtonEnabled = true,
           .width = std::min(240.0F * s, width / 3.0F),
           .onChange = [this](const std::string& text) { search(text); },
-          .onSubmit = [this](const std::string&) { moveHit(true); },
+          .onSubmit = [this](const std::string&) {
+            moveHit((m_loop.wayland().keyboardModifiers() & KeyMod::Shift) == 0);
+          },
       });
       // A rebuild hands the keyboard focus to the new field by this key.
       field->inputArea()->setTabFocusKey("search");
@@ -1224,7 +1263,7 @@ namespace viewer {
       sheet->addChild(std::move(layer));
       sheet->setOnPress([this, i, zoom](const InputArea::PointerData& d) {
         if (d.button == BTN_LEFT) {
-          onPagePress(i, d.localX / zoom, d.localY / zoom, d.pressed);
+          onPagePress(i, d.localX / zoom, d.localY / zoom, d.pressed, d.time);
         }
       });
       sheet->setOnMotion([this, zoom](const InputArea::PointerData& d) { onPageMotion(d.localX / zoom, d.localY / zoom); });
@@ -1330,7 +1369,7 @@ namespace viewer {
     rebuild();
   }
 
-  void ViewerWindow::onPagePress(std::size_t page, float x, float y, bool pressed) {
+  void ViewerWindow::onPagePress(std::size_t page, float x, float y, bool pressed, std::uint32_t time) {
     if (m_stamp && stampPress(page, x, y, pressed)) {
       return;
     }
@@ -1338,7 +1377,15 @@ namespace viewer {
     case Tool::Select:
     case Tool::Highlight:
       if (pressed) {
+        // Presses within 400 ms and 4 points of the last one count up: glyphs, words, lines, then glyphs again.
+        const bool again = m_lastClick.count > 0 && time - m_lastClick.time <= 400 && page == m_lastClick.page &&
+                           std::abs(x - m_lastClick.x) <= 4.0F && std::abs(y - m_lastClick.y) <= 4.0F;
+        m_lastClick = {.time = time, .page = page, .x = x, .y = y, .count = again ? m_lastClick.count % 3 + 1 : 1};
         beginSelect(page, x, y);
+        if (m_lastClick.count > 1) {
+          m_selection->unit = m_lastClick.count == 2 ? preview::kSelectWord : preview::kSelectLine;
+          requestSelect();
+        }
       } else if (m_selecting) {
         m_selecting = false;
         m_highlightOnSelect = m_tool == Tool::Highlight;

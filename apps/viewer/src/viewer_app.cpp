@@ -50,6 +50,7 @@ namespace viewer {
     };
     add("edit.find", "Find", "Edit", XKB_KEY_f, KeyMod::Ctrl, &ViewerWindow::focusSearch);
     add("edit.copy", "Copy", "Edit", XKB_KEY_c, KeyMod::Ctrl, &ViewerWindow::copySelection);
+    add("edit.select-all", "Select All", "Edit", XKB_KEY_a, KeyMod::Ctrl, &ViewerWindow::selectAll);
     add("view.zoom-in", "Zoom In", "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn, XKB_KEY_equal);
     add("view.zoom-out", "Zoom Out", "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);
     add("view.zoom-fit", "Fit Width", "View", XKB_KEY_0, KeyMod::Ctrl, &ViewerWindow::zoomFit);
