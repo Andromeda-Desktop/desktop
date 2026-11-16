@@ -124,6 +124,8 @@ fn refuse_system_upgrades(alpm: &Alpm) -> Result<()> {
     Err(anyhow!("{NEEDS_SYSTEM}: {}", system.join(", ")))
 }
 
+/// pacman's built-in `SYSHOOKDIR`, ahead of the configured `HookDir`s so those override it by name.
+const SYSTEM_HOOK_DIR: &str = "/usr/share/libalpm/hooks/";
 /// The end of the question text for a package libalpm would drop for unmet dependencies.
 const UNMET: &str = "(their dependencies cannot be met)";
 
@@ -147,6 +149,10 @@ pub fn upgrade(
     let mut alpm = alpm_utils::alpm_with_conf(&conf).context("libalpm")?;
     // alpm_with_conf sets IgnorePkg but not IgnoreGroup.
     alpm.set_ignoregroups(conf.ignore_group.iter()).context("IgnoreGroup")?;
+    // pacman-conf omits the system hook dir that pacman adds itself; without it no kernel, initramfs or depmod hook runs.
+    let hook_dirs: Vec<&str> =
+        std::iter::once(SYSTEM_HOOK_DIR).chain(conf.hook_dir.iter().map(String::as_str)).collect();
+    alpm.set_hookdirs(hook_dirs.iter()).context("HookDir")?;
     let asked = Rc::new(RefCell::new(Vec::new()));
     record_questions(&alpm, &asked, accepted);
     if !dry_run {
