@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "core/process/process_phase.h"
 
 #include <algorithm>
 #include <atomic>
@@ -46,6 +47,14 @@ namespace {
     std::string out = f != nullptr ? f : "";
     g_free(f);
     return out;
+  }
+
+  // At exit the OS takes the rows back at once: freeing 100k rows one by one cost ~50 ms of the quit.
+  void releaseRows(std::vector<std::shared_ptr<const FileInfo>>& rows) {
+    if (processExiting()) {
+      static auto* kept = new std::vector<std::vector<std::shared_ptr<const FileInfo>>>();
+      kept->push_back(std::move(rows));
+    }
   }
 } // namespace
 
@@ -275,6 +284,7 @@ std::shared_ptr<FileModel> FileModel::open(const std::filesystem::path& dir, Dir
 FileModel::FileModel(std::filesystem::path dir, DirectoryWatcher& watcher) : m_dir(std::move(dir)), m_watcher(watcher) {}
 
 FileModel::~FileModel() {
+  releaseRows(m_entries);
   if (m_statJob != nullptr) {
     m_statJob->cancelled = true;
   }
@@ -527,6 +537,8 @@ FileModelView::FileModelView(std::shared_ptr<FileModel> model) : m_model(std::mo
   });
   rebuild();
 }
+
+FileModelView::~FileModelView() { releaseRows(m_rows); }
 
 void FileModelView::setSort(FileSort sort) {
   m_sort = sort;

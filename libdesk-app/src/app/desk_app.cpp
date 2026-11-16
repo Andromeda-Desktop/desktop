@@ -9,6 +9,7 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "core/process/process_phase.h"
 #include "dbus/session_bus.h"
 #include "dbus/session_bus_poll_source.h"
 #include "ui/controls/input.h"
@@ -124,6 +125,7 @@ int DeskApp::run(int argc, char* argv[]) {
     exit = m_loop.run();
     shutdown();
   }
+  beginProcessExit();
   // Window content can call into subclass members, which die before ~DeskApp: close while they live.
   for (const auto& w : m_windows) {
     w->close();

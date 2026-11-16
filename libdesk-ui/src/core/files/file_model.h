@@ -101,6 +101,9 @@ private:
 class FileModelView {
 public:
   explicit FileModelView(std::shared_ptr<FileModel> model);
+  ~FileModelView();
+  FileModelView(const FileModelView&) = delete;
+  FileModelView& operator=(const FileModelView&) = delete;
 
   void setSort(FileSort sort);
   void setShowHidden(bool show);
