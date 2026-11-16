@@ -203,18 +203,6 @@ namespace term {
               .added = {after.begin() + static_cast<std::ptrdiff_t>(head), after.end() - static_cast<std::ptrdiff_t>(tail)}};
     }
 
-    std::string countCaption(const agent::Action& action) {
-      std::size_t added = 0;
-      std::size_t removed = 0;
-      for (const auto& diff : action.diffs) {
-        const Hunk hunk = firstHunk(diff);
-        added += hunk.added.size();
-        removed += hunk.removed.size();
-      }
-      const std::string counts = std::format("+{} −{}", added, removed);
-      return action.diffs.size() > 1 ? std::format("{} \u00b7 {} hunks", counts, action.diffs.size()) : counts;
-    }
-
     // A finished action's run time: "0.3 s", "41 s", then "1:05".
     std::string durationText(const agent::Action& action) {
       const double seconds = std::chrono::duration<double>(action.ended - action.started).count();
@@ -425,7 +413,7 @@ namespace term {
     constexpr float kPlanRowGap = 4.0F;
 
     // The title band: the status pill never shrinks; the plan pill reads "Plan N of M · current" when it fits, else
-    // "N of M", else hides; the agent pill shows only in the room left. It measures at its minimum so the header
+    // "N of M", else hides; the agent pill comes before the plan. It measures at its minimum so the header
     // ellipsizes the title before it folds the band.
     class BandRow final : public Flex {
     public:
@@ -438,6 +426,9 @@ namespace term {
       LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override {
         const LayoutSize size = Flex::doMeasure(renderer, constraints);
         float w = status->measure(renderer, {}).width;
+        if (agent != nullptr) {
+          w += gap() + agent->measure(renderer, {}).width;
+        }
         if (compact != nullptr) {
           w += gap() + compact->measure(renderer, {}).width;
         }
@@ -455,17 +446,15 @@ namespace term {
     private:
       void choose(Renderer& renderer, float w) {
         float room = w - status->measure(renderer, {}).width;
-        if (full != nullptr) {
-          const float fullW = full->measure(renderer, {}).width + gap();
-          const float compactW = compact->measure(renderer, {}).width + gap();
-          const bool showFull = fullW <= room;
-          const bool showCompact = !showFull && compactW <= room;
-          show(full, showFull);
-          show(compact, showCompact);
-          room -= showFull ? fullW : showCompact ? compactW : 0.0F;
-        }
         if (agent != nullptr) {
-          show(agent, agent->measure(renderer, {}).width + gap() <= room);
+          const float agentW = agent->measure(renderer, {}).width + gap();
+          show(agent, agentW <= room);
+          room -= agentW <= room ? agentW : 0.0F;
+        }
+        if (full != nullptr) {
+          const bool showFull = full->measure(renderer, {}).width + gap() <= room;
+          show(full, showFull);
+          show(compact, !showFull && compact->measure(renderer, {}).width + gap() <= room);
         }
       }
       static void show(Node* node, bool on) {
