@@ -1779,8 +1779,10 @@ namespace term {
       return;
     }
     drag->moved = true;
+    // Alt+drag selects a block (columns), as in kitty, foot and ghostty.
+    const bool block = (modifiers() & KeyMod::Alt) != 0;
     const bool set = m_session.withTerminal([&](GhosttyTerminal t) {
-      GhosttySelection selection{};
+      GhosttySelection selection{.rectangle = block};
       return t != nullptr
              && ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = drag->anchor}},
                                           &selection.start)
@@ -2203,6 +2205,19 @@ namespace term {
       GhosttyTerminalModeConfig mode{.mode = GHOSTTY_MODE_BRACKETED_PASTE, .value = false};
       return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_MODE, &mode) == GHOSTTY_SUCCESS && mode.value;
     });
+    // Without bracketed paste a newline runs what came before it: the user confirms such a paste first.
+    if (!bracketed && text.find_first_of("\r\n") != std::string::npos && m_host.confirmPaste) {
+      m_host.confirmPaste(text, [this, alive = std::weak_ptr<bool>(m_alive), text] {
+        if (!alive.expired()) {
+          writePaste(text, false);
+        }
+      });
+      return;
+    }
+    writePaste(std::move(text), bracketed);
+  }
+
+  void TerminalView::writePaste(std::string text, bool bracketed) {
     std::size_t needed = 0;
     ghostty_paste_encode(text.data(), text.size(), bracketed, nullptr, 0, &needed);
     std::vector<std::uint8_t> buf(needed);

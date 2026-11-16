@@ -418,6 +418,7 @@ namespace term {
                   std::move(closed));
             },
         .closeNotice = [this, id](const std::string& key) { m_notifier.close(std::format("{}/{}", id, key)); },
+        .confirmPaste = [this](const std::string& text, std::function<void()> paste) { askPaste(text, std::move(paste)); },
         .titleChanged = [this, id](std::string title) { apply(session_event::Title{id, std::move(title)}); },
         .commandStarted =
             [this, id](const std::string& command) {
@@ -899,6 +900,36 @@ namespace term {
                                         .variant = ButtonVariant::Destructive, .onClick = [this, ids, close] {
                                           m_window.dismissSheet();
                                           close(ids);
+                                        }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] { m_window.dismissSheet(); });
+  }
+
+  void TerminalWindow::askPaste(const std::string& text, std::function<void()> paste) {
+    const auto lines = std::ranges::count(text, '\n') + (text.ends_with('\n') ? 0 : 1);
+    std::string preview = text.substr(0, 400);
+    m_window.presentSheet(
+        [this, lines, preview, paste](float s) {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
+                                 .width = Tokens::componentTerminalFindWidth * s});
+          box->addChild(ui::label({.text = lines == 1 ? std::string("Paste and run this line?")
+                                                      : std::format("Paste {} lines?", lines),
+                                   .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1)}));
+          box->addChild(ui::label({.text = std::string("The program does not guard pastes, so each line runs as a command."),
+                                   .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
+                                   .maxLines = 3}));
+          box->addChild(ui::label({.text = preview, .fontSize = Tokens::typeFootnote.size * s, .fontFamily = std::string(Tokens::fontMono),
+                                   .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 6}));
+          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
+          buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
+          buttons->addChild(ui::button({.text = std::string("Paste"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Destructive, .onClick = [this, paste] {
+                                          m_window.dismissSheet();
+                                          paste();
                                         }}));
           box->addChild(std::move(buttons));
           return box;

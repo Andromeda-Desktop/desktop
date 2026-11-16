@@ -90,6 +90,8 @@ namespace term {
       std::function<void(const Notice& notice, std::function<void(int button)> activated, std::function<void()> closed)>
           notify;
       std::function<void(const std::string& key)> closeNotice; // OSC 99 p=close for a Notice::key
+      // A paste with a newline into a program without bracketed paste: run paste after the user agrees.
+      std::function<void(const std::string& text, std::function<void()> paste)> confirmPaste;
       // The program set its title (OSC 0 / 2).
       std::function<void(std::string title)> titleChanged;
       // OSC 133: a command started running / ended (exit code when the shell reports one).
@@ -261,6 +263,7 @@ namespace term {
     void publishSelection();
     void paste();
     void pasteText(std::string text);
+    void writePaste(std::string text, bool bracketed);
 
     Host m_host;
     void commitAtlas();
