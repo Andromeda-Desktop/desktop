@@ -26,18 +26,6 @@ namespace term {
 
     constexpr std::string_view kCursorHint = "Programs that choose their own cursor keep it";
 
-    struct PageInfo {
-      std::string_view title;
-      std::string_view glyph;
-    };
-
-    constexpr std::array<PageInfo, 6> kPages{{{"Appearance", "contrast"},
-                                             {"Text", "typography"},
-                                             {"Terminal", "terminal-2"},
-                                             {"Sessions", "list-details"},
-                                             {"Notifications", "bell"},
-                                             {"Keyboard", "keyboard"}}};
-
     std::string lower(std::string_view text) {
       std::string out(text);
       std::ranges::transform(out, out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -91,7 +79,27 @@ namespace term {
       return text;
     }
 
-    std::unique_ptr<Node> keys(std::string text, float s) {
+    struct ThemeChoice {
+      std::string id;
+      std::string name;
+      ThemeSpec spec;
+    };
+
+    // The built-in themes, then the valid packages, in tile order.
+    std::vector<ThemeChoice> themeChoices(const ThemeStore& store) {
+      std::vector<ThemeChoice> out{{"system", "Andromeda", Theme::System},
+                                   {"light", "Light", Theme::Light},
+                                   {"dark", "Dark", Theme::Dark},
+                                   {"amoled", "AMOLED", Theme::Amoled}};
+      for (const ThemeEntry& entry : store.entries()) {
+        if (const ThemePackage* package = store.find(entry.id)) {
+          out.push_back({entry.id, package->name, *package});
+        }
+      }
+      return out;
+    }
+
+    std::unique_ptr<Node> keysLabel(std::string text, float s) {
       return ui::label({.text = std::move(text),
                         .fontSize = Tokens::typeBody.size * s,
                         .color = colorSpecFromRole(ColorRole::Label2)});
@@ -101,7 +109,6 @@ namespace term {
 
   PrefsWindow::PrefsWindow(AppWindow& window, SettingsStore& store, ThemeActions actions)
       : m_window(window), m_store(store), m_actions(std::move(actions)), m_monoFonts(monoFamilies()), m_shells(installedShells()) {
-    m_window.setTitle(std::string(kPages[0].title));
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
       const bool ctrlOnly = (event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt)) == KeyMod::Ctrl;
       if (!event.pressed || !ctrlOnly || (event.unshifted != 'f' && event.unshifted != 'F') || m_search == nullptr) {
@@ -110,14 +117,44 @@ namespace term {
       m_window.input().setFocus(m_search->inputArea());
       return true;
     });
-    m_window.setSidebarBuilder([this](Renderer&, float width, float) { return buildSidebar(width); });
     m_window.setContentBuilder([this](Renderer&, float width, float height) -> std::unique_ptr<Node> {
-      auto slot = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
+      const float s = m_window.uiScale();
+      const float gap = Tokens::componentWindowCardGap * s;
+      const float columnW = std::round((width / s >= Tokens::componentTerminalPrefsWideFrom ? Tokens::componentTerminalPrefsColumnWide
+                                                                                           : Tokens::componentTerminalPrefsColumn)
+                                       * s);
+      auto body = ui::row({.align = FlexAlign::Start, .width = width, .height = height});
+      m_previewWidth = std::max(0.0F, width - columnW - gap);
+      m_previewHeight = std::max(0.0F, height - gap);
+      auto previewSlot = ui::column({.align = FlexAlign::Stretch, .width = m_previewWidth, .height = m_previewHeight});
+      previewSlot->setPadding(0.0F, 0.0F, 0.0F, gap);
+      m_previewWidth -= gap;
+      m_previewSlot = previewSlot.get();
+      previewSlot->addChild(preview(s, m_previewWidth, m_previewHeight));
+
+      const float padH = Tokens::spaceP16 * s;
+      auto column = ui::column({.align = FlexAlign::Stretch, .width = columnW, .height = height});
+      auto search = ui::searchCapsule({
+          .out = &m_search,
+          .placeholder = "Search preferences",
+          .height = Tokens::sizeControlL,
+          .scale = s,
+          .value = m_query,
+          .onChange = [this](const std::string& text) { setQuery(text); },
+      });
+      auto searchRow = ui::column({.align = FlexAlign::Stretch, .paddingH = padH}, std::move(search));
+      searchRow->setPadding(0.0F, padH, Tokens::spaceP8 * s, padH);
+      column->addChild(std::move(searchRow));
+      m_slotWidth = columnW;
+      m_slotHeight = std::max(0.0F, height - (Tokens::sizeControlL + Tokens::spaceP8) * s);
+      auto slot = ui::column({.align = FlexAlign::Stretch, .width = m_slotWidth, .height = m_slotHeight});
       m_slot = slot.get();
-      m_slotWidth = width;
-      m_slotHeight = height;
-      slot->addChild(buildPage(width, height));
-      return slot;
+      slot->addChild(buildColumn(m_slotWidth, m_slotHeight));
+      column->addChild(std::move(slot));
+
+      body->addChild(std::move(previewSlot));
+      body->addChild(std::move(column));
+      return body;
     });
     // A control's own callback writes the file: rebuild after it returns, not under it.
     m_storeChanged = m_store.changed().connect([this, alive = std::weak_ptr<bool>(m_alive)] {
@@ -149,28 +186,28 @@ namespace term {
     change([id = std::get<std::string>(result)](Settings& x) { x.theme = id; });
   }
 
-  void PrefsWindow::showPage(Page page) {
-    m_page = page;
-    m_query.clear();
+  void PrefsWindow::showPane(Pane pane) {
+    if (!m_query.empty()) {
+      m_query.clear();
+      if (m_search != nullptr) {
+        m_search->setValue("");
+      }
+    }
+    m_pane = pane;
     m_scroll = {};
-    markPages();
-    m_window.requestRebuild();
+    // Called from a control in the column: rebuild after its callback returns, not under it.
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+      if (!alive.expired()) {
+        refill();
+      }
+    });
   }
 
   void PrefsWindow::setQuery(std::string query) {
     m_query = std::move(query);
+    m_pane = Pane::Main;
     m_scroll = {};
-    markPages();
     refill();
-  }
-
-  void PrefsWindow::markPages() {
-    m_window.setTitle(m_query.empty() ? std::string(kPages[static_cast<std::size_t>(m_page)].title) : "Results");
-    for (std::size_t i = 0; i < m_pageButtons.size(); ++i) {
-      const bool current = m_query.empty() && static_cast<Page>(i) == m_page;
-      m_pageButtons[i]->setSelected(current);
-      m_pageButtons[i]->setVariant(current ? ButtonVariant::TabActive : ButtonVariant::Ghost);
-    }
   }
 
   void PrefsWindow::refill() {
@@ -179,48 +216,18 @@ namespace term {
     }
     m_window.updateInPlace([this](Renderer&) {
       std::vector<std::unique_ptr<Node>> removed;
-      while (!m_slot->children().empty()) {
-        removed.push_back(m_slot->removeChild(m_slot->children().back().get()));
+      for (Flex* slot : {m_slot, m_previewSlot}) {
+        while (!slot->children().empty()) {
+          removed.push_back(slot->removeChild(slot->children().back().get()));
+        }
       }
       m_window.input().forgetDetached(); // while the removed areas still live
       removed.clear();
-      m_slot->addChild(buildPage(m_slotWidth, m_slotHeight));
+      m_previewSlot->addChild(preview(m_window.uiScale(), m_previewWidth, m_previewHeight));
+      m_previewSlot->markLayoutDirty();
+      m_slot->addChild(buildColumn(m_slotWidth, m_slotHeight));
       m_slot->markLayoutDirty();
     });
-  }
-
-  std::unique_ptr<Node> PrefsWindow::buildSidebar(float width) {
-    const float s = m_window.uiScale();
-    auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .padding = Tokens::spaceP8 * s,
-                            .width = width});
-    auto search = ui::searchCapsule({
-        .out = &m_search,
-        .placeholder = "Search settings",
-        .keycap = "Ctrl F",
-        .height = Tokens::sizeControlL,
-        .scale = s,
-        .value = m_query,
-        .onChange = [this](const std::string& text) { setQuery(text); },
-    });
-    side->addChild(ui::column({.align = FlexAlign::Stretch, .paddingV = Tokens::spaceP4 * s}, std::move(search)));
-    m_pageButtons.assign(kPages.size(), nullptr);
-    for (std::size_t i = 0; i < kPages.size(); ++i) {
-      const auto page = static_cast<Page>(i);
-      const bool current = m_query.empty() && page == m_page;
-      side->addChild(ui::button({
-          .out = &m_pageButtons[i],
-          .text = std::string(kPages[i].title),
-          .glyph = std::string(kPages[i].glyph),
-          .glyphSize = Tokens::sizeSymbol * s,
-          .selected = current,
-          .contentAlign = ButtonContentAlign::Start,
-          .variant = current ? ButtonVariant::TabActive : ButtonVariant::Ghost,
-          .radius = Style::scaledRadiusSm(s),
-          .height = Tokens::sizeControlM * s,
-          .onClick = [this, page] { showPage(page); },
-      }));
-    }
-    return side;
   }
 
   std::vector<PrefsWindow::Group> PrefsWindow::groups() const {
@@ -274,21 +281,15 @@ namespace term {
       };
     };
 
-    // Appearance
-    out.push_back({Page::Appearance, "", {{"Preview", "", [this](float s, float w) { return preview(s, w); }, true}}});
-    out.push_back({Page::Appearance, "Theme", {{"", "", [self](float s, float w) { return self->themeTiles(s, w); }, true}}});
-    out.push_back({Page::Appearance, "Window", {{"", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}}});
-    out.push_back({Page::Appearance,
-                   "",
-                   {{"Cursor", std::string(kCursorHint),
-                     segmented({"Block", "Bar", "Underline"}, static_cast<std::size_t>(now.cursor),
-                               [](Settings& x, std::size_t i) { x.cursor = static_cast<CursorShape>(i); })},
-                    {"Blinking cursor", "", toggle(now.cursorBlink, [](Settings& x, bool on) { x.cursorBlink = on; })}}});
-    out.push_back({Page::Appearance,
-                   "Split view",
-                   {{"Focus outline", "An accent ring around the focused pane",
-                     toggle(now.focusRing, [](Settings& x, bool on) { x.focusRing = on; })}}});
-
+    out.push_back({.pane = Pane::Main,
+                   .title = "Theme",
+                   .rows = {{"Theme", "", [self](float s, float w) { return self->themeTiles(s, w); }, true}},
+                   .bare = true,
+                   .themeErrors = true});
+    out.push_back({.pane = Pane::Main,
+                   .title = "Window",
+                   .rows = {{"Window", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}},
+                   .bare = true});
     // Text
     {
       std::vector<std::string> fonts{"Default (" + std::string(Tokens::fontMono).substr(0, std::string(Tokens::fontMono).find(',')) + ")"};
@@ -303,8 +304,8 @@ namespace term {
         selected = fonts.size();
         fonts.push_back(now.font); // set by hand to a font fontconfig does not list as mono
       }
-      out.push_back({Page::Text,
-                     "",
+      out.push_back({Pane::Main,
+                     "Text",
                      {{"Font", "", select(fonts, selected, [fonts](Settings& x, std::size_t i) {
                          x.font = i == 0 ? std::string() : fonts[i];
                        })},
@@ -313,9 +314,18 @@ namespace term {
                                [](Settings& x, int v) { x.fontSize = v; })}}});
     }
 
+    out.push_back({Pane::Main,
+                   "Cursor",
+                   {{"Shape", std::string(kCursorHint),
+                     segmented({"Block", "Bar", "Underline"}, static_cast<std::size_t>(now.cursor),
+                               [](Settings& x, std::size_t i) { x.cursor = static_cast<CursorShape>(i); })},
+                    {"Blink", "", toggle(now.cursorBlink, [](Settings& x, bool on) { x.cursorBlink = on; })},
+                    {"Focus outline", "An accent ring around the focused pane",
+                     toggle(now.focusRing, [](Settings& x, bool on) { x.focusRing = on; })}}});
+
     // Terminal
-    out.push_back({Page::Terminal,
-                   "",
+    out.push_back({Pane::Main,
+                   "Terminal",
                    {{"Scrollback", "Kept per session; lowering it drops the oldest lines",
                      stepper(now.scrollbackMb, SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax, " MB",
                              [](Settings& x, int v) { x.scrollbackMb = v; })},
@@ -341,8 +351,8 @@ namespace term {
         selected = shells.size();
         shells.push_back(now.shell);
       }
-      out.push_back({Page::Sessions,
-                     "",
+      out.push_back({Pane::Main,
+                     "Sessions",
                      {{"Shell", "New sessions", select(shells, selected, [shells](Settings& x, std::size_t i) {
                          x.shell = i == 0 ? std::string() : shells[i];
                        })},
@@ -352,8 +362,8 @@ namespace term {
     }
 
     // Notifications
-    out.push_back({Page::Notifications,
-                   "",
+    out.push_back({Pane::Main,
+                   "Notifications",
                    {{"Notify when a long command finishes", "",
                      toggle(now.notifyLong, [](Settings& x, bool on) { x.notifyLong = on; })},
                     {"Long means at least", "",
@@ -365,21 +375,56 @@ namespace term {
 
     // Keyboard
     {
-      constexpr std::array<std::pair<std::string_view, std::string_view>, 10> kKeys{{
+      constexpr std::array<std::pair<std::string_view, std::string_view>, 17> kKeys{{
           {"New session", "Ctrl Shift T"},
           {"New window", "Ctrl Shift N"},
           {"New agent session", "Ctrl Shift A"},
           {"Close session", "Ctrl Shift W"},
           {"Next session", "Ctrl Tab"},
-          {"Search sessions", "Ctrl K"},
+          {"Previous session", "Ctrl PgUp"},
+          {"Next session in the list", "Ctrl PgDn"},
+          {"Search sessions", "Ctrl Shift K"},
           {"Find", "Ctrl Shift F"},
           {"Copy", "Ctrl Shift C"},
           {"Paste", "Ctrl Shift V"},
+          {"Scroll up a page", "Shift PgUp"},
+          {"Scroll down a page", "Shift PgDn"},
+          {"Larger text", "Ctrl Shift ="},
+          {"Smaller text", "Ctrl Shift -"},
+          {"Default text size", "Ctrl Shift 0"},
           {"Preferences", "Ctrl ,"},
       }};
-      Group group{Page::Keyboard, "", {}};
+      out.push_back({Pane::Main,
+                     "Keyboard",
+                     {{"Shortcuts", "", [self, n = kKeys.size()](float s, float) -> std::unique_ptr<Node> {
+                         const float w = Tokens::sizeControlL * s;
+                         const float h = Tokens::sizeControlS * s;
+                         auto link = ui::row({.align = FlexAlign::Center,
+                                              .justify = FlexJustify::End,
+                                              .gap = Tokens::spaceP4 * s,
+                                              .width = w,
+                                              .height = h});
+                         link->addChild(keysLabel(std::to_string(n), s));
+                         link->addChild(ui::glyph({.glyph = "chevron-right",
+                                                   .glyphSize = Tokens::sizeSymbolInline * s,
+                                                   .color = colorSpecFromRole(ColorRole::Label3)}));
+                         return ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+                                               .width = w,
+                                               .height = h,
+                                               .onClick = [self](const InputArea::PointerData&) { self->showPane(Pane::Keyboard); }},
+                                              std::move(link));
+                       }}}});
+      Group group{Pane::Keyboard, "", {}};
       for (const auto& [label, combo] : kKeys) {
-        group.rows.push_back({std::string(label), "", [combo](float s, float) { return keys(std::string(combo), s); }});
+        group.rows.push_back({std::string(label), "", [combo](float s, float) -> std::unique_ptr<Node> {
+                                auto caps = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
+                                for (std::string_view rest = combo; !rest.empty();) {
+                                  const auto space = rest.find(' ');
+                                  caps->addChild(ui::keycap({.text = std::string(rest.substr(0, space)), .scale = s}));
+                                  rest = space == std::string_view::npos ? std::string_view() : rest.substr(space + 1);
+                                }
+                                return caps;
+                              }});
       }
       out.push_back(std::move(group));
     }
@@ -419,131 +464,168 @@ namespace term {
     return box;
   }
 
-  std::unique_ptr<Node> PrefsWindow::buildPage(float width, float height) {
+  std::unique_ptr<Node> PrefsWindow::buildColumn(float width, float height) {
     const float s = m_window.uiScale();
-    const float padH = Tokens::spaceP24 * s;
+    const float padH = Tokens::spaceP16 * s;
     const float cardWidth = std::max(0.0F, width - padH * 2.0F);
     auto scroll = ui::scrollView({.state = &m_scroll,
                                   .contentScale = s,
                                   .scrollbarAutoHide = true,
                                   .viewportPaddingH = padH,
-                                  .viewportPaddingV = Tokens::spaceP16 * s,
+                                  .viewportPaddingV = Tokens::spaceP8 * s,
                                   .width = width,
                                   .height = height});
     Flex* content = scroll->content();
     content->setGap(Tokens::spaceP8 * s);
-    const auto heading = [&](std::string text) {
-      content->addChild(ui::label({.text = std::move(text),
-                                   .fontSize = Tokens::typeHeadline.size * s,
-                                   .fontWeight = FontWeight::SemiBold,
-                                   .color = colorSpecFromRole(ColorRole::Label2)}));
+    // A section heading: caption 600 label_2 on the card's text inset, 16 more above it than the card gap.
+    const auto heading = [&](std::string text, bool first) {
+      auto box = ui::column({.align = FlexAlign::Start});
+      box->setPadding(first ? 0.0F : Tokens::spaceP16 * s, 0.0F, 0.0F, Tokens::spaceP16 * s);
+      box->addChild(ui::label({.text = std::move(text),
+                               .fontSize = Tokens::typeFootnote.size * s,
+                               .fontWeight = FontWeight::SemiBold,
+                               .color = colorSpecFromRole(ColorRole::Label2)}));
+      content->addChild(std::move(box));
     };
+    // An error: the alert symbol, then the title and the detail, in a card.
+    const auto errorCard = [&](std::string title, std::string detail) {
+      const float pad = Tokens::spaceP12 * s;
+      auto text = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
+      text->addChild(ui::label({.text = std::move(title),
+                                .fontSize = Tokens::typeBody.size * s,
+                                .color = colorSpecFromRole(ColorRole::Label1)}));
+      text->addChild(ui::label({.text = std::move(detail),
+                                .fontSize = Tokens::typeFootnote.size * s,
+                                .color = colorSpecFromRole(ColorRole::Label2),
+                                .maxWidth = cardWidth - Tokens::sizeSymbol * s - pad * 3.0F}));
+      auto row = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP8 * s, .padding = pad, .width = cardWidth},
+                         ui::glyph({.glyph = "alert-triangle",
+                                    .glyphSize = Tokens::sizeSymbol * s,
+                                    .color = colorSpecFromRole(ColorRole::DangerText)}),
+                         std::move(text));
+      row->setCardStyle(s);
+      content->addChild(std::move(row));
+    };
+    const auto lineOf = [](int line) { return line > 0 ? "Line " + std::to_string(line) + ": " : std::string(); };
 
     if (const auto* invalid = std::get_if<SettingsStore::Invalid>(&m_store.fileState())) {
-      Group error{m_page, "", {}};
-      error.rows.push_back({"The preferences file has an error",
-                            "Line " + std::to_string(invalid->error.line) + ": " + invalid->error.message
-                                + ". The last good settings stay in use.",
-                            [](float sc, float) {
-                              return ui::glyph({.glyph = "alert-triangle",
-                                                .glyphSize = Tokens::sizeSymbol * sc,
-                                                .color = colorSpecFromRole(ColorRole::TermRed)});
-                            }});
-      content->addChild(card(error, s, cardWidth));
-    }
-    if (m_page == Page::Appearance && m_importError) {
-      Group error{m_page, "", {}};
-      const std::string where = m_importError->error.line > 0 ? "Line " + std::to_string(m_importError->error.line) + ": " : "";
-      error.rows.push_back({"\"" + m_importError->folder + "\" was not imported", where + m_importError->error.message + ".",
-                            [](float sc, float) {
-                              return ui::glyph({.glyph = "alert-triangle",
-                                                .glyphSize = Tokens::sizeSymbol * sc,
-                                                .color = colorSpecFromRole(ColorRole::TermRed)});
-                            }});
-      content->addChild(card(error, s, cardWidth));
-    }
-    if (m_page == Page::Appearance) {
-      for (const ThemeEntry& entry : m_store.themes().entries()) {
-        const auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state);
-        if (invalid == nullptr) {
-          continue;
-        }
-        Group error{m_page, "", {}};
-        const std::string where = invalid->error.line > 0 ? "Line " + std::to_string(invalid->error.line) + ": " : "";
-        error.rows.push_back({"Theme \"" + entry.id + "\" has an error",
-                              where + invalid->error.message
-                                  + (invalid->lastGood ? ". The last good version stays in use." : "."),
-                              [](float sc, float) {
-                                return ui::glyph({.glyph = "alert-triangle",
-                                                  .glyphSize = Tokens::sizeSymbol * sc,
-                                                  .color = colorSpecFromRole(ColorRole::TermRed)});
-                              }});
-        content->addChild(card(error, s, cardWidth));
-      }
+      errorCard(m_store.path().filename().string() + " has an error",
+                lineOf(invalid->error.line) + invalid->error.message + ". The last good settings stay in use.");
     }
 
     const std::vector<Group> all = groups();
-    if (m_query.empty()) {
-      for (const Group& group : all) {
-        if (group.page != m_page) {
-          continue;
+    const auto themeErrors = [&] {
+      if (m_importError) {
+        errorCard("\"" + m_importError->folder + "\" was not imported",
+                  lineOf(m_importError->error.line) + m_importError->error.message + ".");
+      }
+      for (const ThemeEntry& entry : m_store.themes().entries()) {
+        if (const auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state)) {
+          errorCard("Theme \"" + entry.id + "\" has an error",
+                    lineOf(invalid->error.line) + invalid->error.message
+                        + (invalid->lastGood ? ". The last good version stays in use." : "."));
         }
-        if (!group.title.empty()) {
-          heading(group.title);
+      }
+    };
+    const auto addGroup = [&](const Group& group, bool first) {
+      if (!group.title.empty()) {
+        heading(group.title, first);
+      }
+      if (group.bare) {
+        for (const Row& row : group.rows) {
+          content->addChild(row.control(s, cardWidth));
         }
+      } else {
         content->addChild(card(group, s, cardWidth));
       }
-    } else {
+      if (group.themeErrors) {
+        themeErrors();
+      }
+    };
+
+    if (!m_query.empty()) {
       const std::string q = lower(m_query);
       bool any = false;
-      for (std::size_t p = 0; p < kPages.size(); ++p) {
-        Group hits{static_cast<Page>(p), "", {}};
-        for (const Group& group : all) {
-          if (group.page != hits.page) {
-            continue;
-          }
-          const bool titleHit = !group.title.empty() && lower(group.title).contains(q);
-          for (const Row& row : group.rows) {
-            const std::string name = row.label.empty() ? group.title : row.label;
-            if (titleHit || lower(name).contains(q) || lower(row.detail).contains(q)) {
-              hits.rows.push_back(row.label.empty() ? Row{group.title, "", row.control, row.wide} : row);
-            }
+      for (const Group& group : all) {
+        const bool titleHit = !group.title.empty() && lower(group.title).contains(q);
+        Group hits{group.pane, group.title, {}, group.bare, false};
+        for (const Row& row : group.rows) {
+          if (titleHit || lower(row.label).contains(q) || lower(row.detail).contains(q)) {
+            hits.rows.push_back(row);
           }
         }
+        if (group.pane == Pane::Keyboard && !hits.rows.empty()) {
+          hits.title = "Keyboard";
+        }
         if (!hits.rows.empty()) {
-          heading(std::string(kPages[p].title));
-          content->addChild(card(hits, s, cardWidth));
+          addGroup(hits, !any);
           any = true;
         }
       }
       if (!any) {
-        content->addChild(ui::label({.text = "No settings match “" + m_query + "”",
-                                     .fontSize = Tokens::typeBody.size * s,
-                                     .color = colorSpecFromRole(ColorRole::Label2)}));
+        auto empty = ui::column({.align = FlexAlign::Center, .paddingV = Tokens::spaceP48 * s, .width = cardWidth});
+        empty->addChild(ui::label({.text = "No settings for “" + m_query + "”",
+                                   .fontSize = Tokens::typeHeadline.size * s,
+                                   .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1)}));
+        content->addChild(std::move(empty));
+      }
+    } else if (m_pane == Pane::Keyboard) {
+      auto back = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = cardWidth, .height = Tokens::sizeRow * s});
+      back->addChild(ui::glyph({.glyph = "chevron-left",
+                                .glyphSize = Tokens::sizeSymbolInline * s,
+                                .color = colorSpecFromRole(ColorRole::AccentText)}));
+      back->addChild(ui::label({.text = "Preferences",
+                                .fontSize = Tokens::typeBody.size * s,
+                                .fontWeight = FontWeight::Medium,
+                                .color = colorSpecFromRole(ColorRole::AccentText)}));
+      content->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+                                       .width = cardWidth,
+                                       .height = Tokens::sizeRow * s,
+                                       .onClick = [this](const InputArea::PointerData&) { showPane(Pane::Main); }},
+                                      std::move(back)));
+      auto title = ui::column({.align = FlexAlign::Start, .paddingH = Tokens::spaceP12 * s});
+      title->addChild(ui::label({.text = "Keyboard",
+                                 .fontSize = Tokens::typeTitle3.size * s,
+                                 .fontWeight = FontWeight::SemiBold,
+                                 .color = colorSpecFromRole(ColorRole::Label1)}));
+      content->addChild(std::move(title));
+      for (const Group& group : all) {
+        if (group.pane == Pane::Keyboard) {
+          content->addChild(card(group, s, cardWidth));
+        }
+      }
+    } else {
+      bool first = true;
+      for (const Group& group : all) {
+        if (group.pane == Pane::Main) {
+          addGroup(group, first);
+          first = false;
+        }
       }
     }
-
-    content->addChild(ui::label({.text = "Saved in " + tildePath(m_store.path()) + "; edits there apply at once",
-                                 .fontSize = Tokens::typeFootnote.size * s,
-                                 .color = colorSpecFromRole(ColorRole::Label3)}));
     return scroll;
   }
 
-  std::unique_ptr<Node> PrefsWindow::preview(float s, float width) const {
+  std::unique_ptr<Node> PrefsWindow::preview(float s, float width, float height) const {
     const Settings& now = m_store.settings();
     const ThemeSpec theme = resolveTheme(now.theme, m_store.themes());
     const std::string family = gridFont(now, theme);
     const float size = static_cast<float>(now.fontSize) * s;
     const ThemePalette colors = themePalette(theme);
-    auto box = ui::column({.align = FlexAlign::Start,
-                           .gap = Tokens::spaceP2 * s,
-                           .padding = Tokens::spaceP12 * s,
+    auto box = ui::column({.align = FlexAlign::Stretch,
                            .fill = fixedColorSpec(colors.view),
-                           .radius = Style::scaledRadiusSm(s),
-                           .width = width});
-    // A prompt and test output, coloured run by run: path, branch, the accent ❯, the command.
+                           .radius = Tokens::componentWindowCardRadius * s,
+                           .border = colorSpecFromRole(ColorRole::Separator),
+                           .borderWidth = Style::borderWidth * s,
+                           .width = width,
+                           .height = height});
+    box->setPadding(Tokens::spaceP16 * s, Tokens::spaceP24 * s);
+    const float meta = Tokens::typeFootnote.size * s;
+    const float inner = std::max(0.0F, width - Tokens::spaceP24 * s * 2.0F);
+    // A line longer than the card is cut at the text edge, as the terminal cuts it.
     const auto line = [&](std::vector<std::pair<std::string, Color>> runs) {
-      auto row = ui::row({.gap = 0.0F});
+      auto row = ui::row({.gap = 0.0F, .clipChildren = true, .width = inner});
       for (auto& [text, color] : runs) {
         row->addChild(ui::label({.text = std::move(text),
                                  .fontSize = size,
@@ -553,12 +635,66 @@ namespace term {
       }
       box->addChild(std::move(row));
     };
+    // The prompt's context line: folder and branch pills, the last command's result at the end.
+    const auto context = [&](std::string result, bool first) {
+      auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
+      if (!first) {
+        row->setPadding(size * 1.4F, 0.0F, 0.0F, 0.0F);
+      }
+      const auto pill = [&](std::string glyph, std::string text, Color fg, Color bg) {
+        auto p = ui::row({.align = FlexAlign::Center,
+                          .gap = Tokens::spaceP4 * s,
+                          .paddingH = Tokens::spaceP8 * s,
+                          .fill = fixedColorSpec(bg),
+                          .radius = Tokens::typeFootnote.line * s / 2.0F,
+                          .minHeight = Tokens::typeFootnote.line * s});
+        p->addChild(ui::glyph({.glyph = std::move(glyph), .glyphSize = Tokens::sizeSymbolInline * s, .color = fixedColorSpec(fg)}));
+        p->addChild(ui::label({.text = std::move(text), .fontSize = meta, .fontWeight = FontWeight::Medium, .color = fixedColorSpec(fg)}));
+        row->addChild(std::move(p));
+      };
+      pill("folder", "~/src/desktop", colors.ansi[4], lerpColor(colors.view, colors.ansi[4], 0.14F));
+      pill("git-branch", "main", colors.label2, lerpColor(colors.view, colors.label1, 0.10F));
+      row->addChild(ui::column({.flexGrow = 1.0F}));
+      if (!result.empty()) {
+        row->addChild(ui::label({.text = std::move(result), .fontSize = meta, .color = fixedColorSpec(colors.label2)}));
+      }
+      box->addChild(std::move(row));
+    };
     const char* cursor = now.cursor == CursorShape::Bar ? "▏" : now.cursor == CursorShape::Underline ? "▁" : "█";
-    line({{"~/src/desktop ", colors.ansi[4]}, {"main ", colors.ansi[5]}, {"❯ ", colors.accent}, {"cargo test", colors.label1}});
-    line({{"test service::accepts_signed_index ... ", colors.label2}, {"ok", colors.ansi[2]}});
-    line({{"warning: ", colors.ansi[3]}, {"unused import ", colors.label1}, {"`std::io`", colors.ansi[6]}});
-    line({{"test service::resumes_partial ... ", colors.label2}, {"FAILED", colors.ansi[1]}});
-    line({{"~/src/desktop ", colors.ansi[4]}, {"main ", colors.ansi[5]}, {"❯ ", colors.accent}, {cursor, colors.accent}});
+    context("2.4 s", true);
+    line({{"λ  ", colors.accent}, {"cargo test -p service", colors.label1}});
+    line({{"   Compiling service v0.4.1 (/src/desktop/service)", colors.label2}});
+    line({{"test service::accepts_signed_index ... ", colors.label1}, {"ok", colors.ansi[2]}});
+    line({{"warning", colors.ansi[3]}, {": unused import ", colors.label1}, {"`std::io`", colors.ansi[6]}});
+    line({{"test service::resumes_partial ... ", colors.label1}, {"FAILED", colors.ansi[1]}});
+    context("exit 101 · 0.8 s", false);
+    line({{"λ  ", colors.accent}, {"git log --oneline -2", colors.label1}});
+    line({{"e1e5790", colors.ansi[3]}, {" Terminal themes show their own colours", colors.label1}});
+    line({{"4873f2d", colors.ansi[3]}, {" Terminal theme Import…", colors.label1}});
+    context("", false);
+    line({{"λ  ", colors.accent}, {cursor, colors.accent}});
+
+    box->addChild(ui::column({.flexGrow = 1.0F}));
+    std::string name = now.theme;
+    for (const ThemeChoice& choice : themeChoices(m_store.themes())) {
+      if (choice.id == now.theme) {
+        name = choice.name;
+      }
+    }
+    const std::string fontName = now.font.empty() ? std::string(Tokens::fontMono).substr(0, std::string(Tokens::fontMono).find(',')) : now.font;
+    auto status = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+    const float dot = Tokens::spaceP8 * s;
+    status->addChild(ui::column({.fill = fixedColorSpec(colors.accent), .radius = dot / 2.0F, .width = dot, .height = dot}));
+    status->addChild(ui::label({.text = name, .fontSize = meta, .fontWeight = FontWeight::SemiBold, .color = fixedColorSpec(colors.label1)}));
+    status->addChild(ui::label({.text = "·  " + fontName + " " + std::to_string(now.fontSize) + "  ·  "
+                                    + (now.material == WindowMaterial::Glass ? "Glass" : "Solid"),
+                                .fontSize = meta,
+                                .fontWeight = FontWeight::Medium,
+                                .color = fixedColorSpec(colors.label2),
+                                .maxLines = 1,
+                                .ellipsize = TextEllipsize::End,
+                                .flexGrow = 1.0F}));
+    box->addChild(std::move(status));
     return box;
   }
 
@@ -586,15 +722,17 @@ namespace term {
                                           std::function<void(const InputArea::PointerData&)> pick) {
     swatch->setBorder(colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Separator),
                       (on ? Style::focusRingWidth : Style::borderWidth) * s);
-    auto column = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .width = tileW});
+    auto column = ui::column({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .width = tileW});
     column->addChild(checked(std::move(swatch), on, s));
     column->addChild(ui::label({.text = std::string(name),
-                                .fontSize = Tokens::typeBody.size * s,
+                                .fontSize = Tokens::typeFootnote.size * s,
                                 .fontWeight = on ? FontWeight::SemiBold : FontWeight::Normal,
-                                .color = colorSpecFromRole(ColorRole::Label1)}));
+                                .color = colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Label2),
+                                .maxWidth = tileW,
+                                .maxLines = 1}));
     return ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
                           .width = tileW,
-                          .height = tileH + Tokens::spaceP4 * s + Tokens::typeBody.line * s,
+                          .height = tileH + Tokens::spaceP8 * s + Tokens::typeFootnote.line * s,
                           .onClick = [pick = std::move(pick)](const InputArea::PointerData& data) { pick(data); }},
                          std::move(column));
   }
@@ -642,26 +780,13 @@ namespace term {
   }
 
   std::unique_ptr<Node> PrefsWindow::themeTiles(float s, float width) {
-    struct Choice {
-      std::string id;
-      std::string name;
-      ThemeSpec spec;
-    };
-    std::vector<Choice> choices{{"system", "Andromeda", Theme::System},
-                                {"light", "Light", Theme::Light},
-                                {"dark", "Dark", Theme::Dark},
-                                {"amoled", "AMOLED", Theme::Amoled}};
-    for (const ThemeEntry& entry : m_store.themes().entries()) {
-      if (const ThemePackage* package = m_store.themes().find(entry.id)) {
-        choices.push_back({entry.id, package->name, *package});
-      }
-    }
-    constexpr std::size_t kPerRow = 4;
-    const float gap = Tokens::spaceP12 * s;
+    const std::vector<ThemeChoice> choices = themeChoices(m_store.themes());
+    const std::size_t kPerRow = width / s >= Tokens::componentTerminalPrefsColumnWide - Tokens::spaceP32 ? 4 : 3;
+    const float gap = Tokens::spaceP8 * s;
     const float tileW = std::floor((width - gap * static_cast<float>(kPerRow - 1)) / static_cast<float>(kPerRow));
     const float tileH = std::round(tileW * Tokens::componentTerminalThemeTileAspect);
     const std::string& current = m_store.settings().theme;
-    auto grid = ui::column({.align = FlexAlign::Start, .gap = gap, .width = width});
+    auto grid = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s, .width = width});
     std::unique_ptr<Flex> row;
     for (std::size_t i = 0; i < choices.size(); ++i) {
       if (i % kPerRow == 0) {
@@ -670,7 +795,7 @@ namespace term {
         }
         row = ui::row({.gap = gap, .width = width});
       }
-      const Choice& choice = choices[i];
+      const ThemeChoice& choice = choices[i];
       const ThemePalette colors = themePalette(choice.spec);
       auto swatch = ui::column({.align = FlexAlign::Start,
                                 .gap = Tokens::spaceP2 * s,
@@ -706,6 +831,7 @@ namespace term {
     }
     auto add = ui::column({.align = FlexAlign::Center,
                            .justify = FlexJustify::Center,
+                           .fill = colorSpecFromRole(ColorRole::Fill1),
                            .radius = Style::scaledRadiusSm(s),
                            .width = tileW,
                            .height = tileH},

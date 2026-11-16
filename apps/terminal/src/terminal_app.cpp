@@ -68,7 +68,7 @@ namespace term {
   void TerminalApp::openPreferences(const std::string& activationToken) {
     if (m_prefsWindow == nullptr) {
       m_prefsWindow = &addWindow({.appId = info().id, .title = "Preferences", .stateKey = "preferences", .width = 760,
-                                  .height = 560, .minWidth = 560, .minHeight = 400, .sidebarWidth = 200.0F});
+                                  .height = 560, .minWidth = 560, .minHeight = 400});
       m_prefs = std::make_unique<PrefsWindow>(
           *m_prefsWindow, m_settings,
           PrefsWindow::ThemeActions{

@@ -13,7 +13,6 @@
 #include <vector>
 
 class AppWindow;
-class Button;
 class Flex;
 class Input;
 class Node;
@@ -21,8 +20,9 @@ class Renderer;
 
 namespace term {
 
-  // The Preferences window: a page list with search on the side, grouped cards of rows in the content. Every
-  // control writes the preferences file at once; the file's changes (also hand edits) rebuild the content.
+  // The Preferences window: a live preview of the current settings fills the window; every setting sits in one
+  // searchable column beside it, with the shortcut list as its one sub-page. Every control writes the preferences
+  // file at once; the file's changes (also hand edits) rebuild the preview and the column.
   class PrefsWindow {
   public:
     // The Add theme tile's menu.
@@ -38,7 +38,7 @@ namespace term {
     PrefsWindow& operator=(const PrefsWindow&) = delete;
 
   private:
-    enum class Page : std::uint8_t { Appearance, Text, Terminal, Sessions, Notifications, Keyboard };
+    enum class Pane : std::uint8_t { Main, Keyboard };
     struct Row {
       std::string label;
       std::string detail; // a second line under the label; empty for none
@@ -46,15 +46,16 @@ namespace term {
       bool wide = false; // the control fills the card; no label column
     };
     struct Group {
-      Page page;
+      Pane pane;
       std::string title; // empty: no heading
       std::vector<Row> rows;
+      bool bare = false;        // the rows sit on the window, not in a card (tile grids)
+      bool themeErrors = false; // the theme and import error cards follow this group
     };
 
     [[nodiscard]] std::vector<Group> groups() const;
-    [[nodiscard]] std::unique_ptr<Node> buildPage(float width, float height);
-    [[nodiscard]] std::unique_ptr<Node> buildSidebar(float width);
-    [[nodiscard]] std::unique_ptr<Node> preview(float scale, float width) const;
+    [[nodiscard]] std::unique_ptr<Node> buildColumn(float width, float height);
+    [[nodiscard]] std::unique_ptr<Node> preview(float scale, float width, float height) const;
     [[nodiscard]] std::unique_ptr<Node> themeTiles(float scale, float width);
     [[nodiscard]] std::unique_ptr<Node> materialTiles(float scale, float width);
     // The selected tile's swatch with the accent check badge at its bottom-right corner.
@@ -65,10 +66,9 @@ namespace term {
                                                     std::function<void(const InputArea::PointerData&)> pick);
     [[nodiscard]] std::unique_ptr<Flex> card(const Group& group, float scale, float width) const;
     void change(const std::function<void(Settings&)>& edit);
-    void showPage(Page page);
+    void showPane(Pane pane);
     void setQuery(std::string query);
     void refill();
-    void markPages(); // title and selected row: the page, or none while a search shows results
 
     AppWindow& m_window;
     SettingsStore& m_store;
@@ -78,12 +78,15 @@ namespace term {
       SettingsError error;
     };
     std::optional<ImportError> m_importError; // the last import, when it failed
-    Page m_page = Page::Appearance;
+    Pane m_pane = Pane::Main;
     std::string m_query;
     Input* m_search = nullptr;
-    std::vector<Button*> m_pageButtons; // in Page order, from the last sidebar build
     ScrollViewState m_scroll;
-    Flex* m_slot = nullptr; // the content column refill() swaps
+    // refill() swaps the content of both slots; the search field above the column keeps its focus.
+    Flex* m_previewSlot = nullptr;
+    Flex* m_slot = nullptr;
+    float m_previewWidth = 0.0F;
+    float m_previewHeight = 0.0F;
     float m_slotWidth = 0.0F;
     float m_slotHeight = 0.0F;
     std::vector<std::string> m_monoFonts; // families with fixed-width faces, sorted
