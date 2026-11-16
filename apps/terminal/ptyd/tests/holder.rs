@@ -188,6 +188,28 @@ fn spawn_streams_output_then_exit_status() {
 }
 
 #[test]
+fn child_gets_default_signals_when_the_holder_ignores_them() {
+    // SAFETY: setting a disposition touches no memory; the in-process holder inherits it as one started from a script.
+    #[allow(unsafe_code)]
+    unsafe {
+        libc::signal(libc::SIGINT, libc::SIG_IGN);
+    }
+    let (_dir, path) = start(Config::default());
+    let mut c = TestClient::connect(&path);
+    let (id, _fd) = c.spawn(&["sh", "-c", "kill -INT $$; echo ALIVE"]);
+    let mut seen = Vec::new();
+    let status = loop {
+        match c.recv().0 {
+            HolderMsg::Output { bytes, .. } => seen.extend_from_slice(&bytes),
+            HolderMsg::Exited { id: i, status } if i == id => break status,
+            _ => {}
+        }
+    };
+    assert!(!contains(&seen, "ALIVE"));
+    assert_eq!(status, libc::SIGINT);
+}
+
+#[test]
 fn orphaned_session_replays_and_takes_input_after_reattach() {
     let (_dir, path) = start(Config::default());
     let mut first = TestClient::connect(&path);

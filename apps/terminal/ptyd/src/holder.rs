@@ -578,10 +578,14 @@ impl Holder {
         if !cwd.is_empty() {
             cmd.current_dir(cwd);
         }
-        // SAFETY: setsid and ioctl are async-signal-safe and touch no memory of the parent.
+        // SAFETY: signal, setsid and ioctl are async-signal-safe and touch no memory of the parent.
         #[allow(unsafe_code)]
         unsafe {
             cmd.pre_exec(|| {
+                // A holder started from a script inherits ignored SIGINT/SIGQUIT; the shell must start with defaults.
+                for sig in 1..=libc::SIGRTMAX() {
+                    libc::signal(sig, libc::SIG_DFL);
+                }
                 rustix::process::setsid()?;
                 rustix::process::ioctl_tiocsctty(std::os::fd::BorrowedFd::borrow_raw(0))?;
                 Ok(())
