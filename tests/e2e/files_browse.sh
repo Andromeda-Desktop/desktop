@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Files v2 FB0 (FILES-UX.md §6): the FileBrowser in the Files window. Keys open a folder (Slide on spring.page),
-# go back and to the parent, switch the view (fade) and type-ahead select; every step waits on the app log.
+# go back and to the parent, switch the view (at once) and type-ahead select; every step waits on the app log.
 # Fails when:
 #   - type-ahead "rep" does not put the cursor on report.pdf, or a repeated "r" does not cycle on from it,
 #   - Enter on a folder, Alt+Left or Backspace do not change the location, or a folder change animates the page,
 #   - Back does not select the folder it came from, or Ctrl+Shift+I does not select every other item,
-#   - Ctrl+2 does not trace the view crossfade, or an animation reports missed frames (DESK_FRAME_STATS),
+#   - Ctrl+2 animates the view switch (it switches at once), or an animation reports missed frames (DESK_FRAME_STATS),
 #   - Ctrl+F and typing do not filter the folder, or Escape does not clear it.
 # Shots of the icons and list views go to $OUT (default ./artifacts/files-browse).
 set -euo pipefail

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # P7 (docs/apps.md): in an Andromeda session with a clean HOME, the package's own apps are the defaults:
-# Files for folders, Viewer for images and PDFs, Player for audio and video. Installs the three app build dirs
+# Files for folders, Photos (in the Files build) for images, Viewer for PDFs, Player for audio and video. Installs the three app build dirs
 # (no rebuild) and session/applications/andromeda-mimeapps.list into a staging prefix, as pkg/PKGBUILD does.
 # Fails when `xdg-mime query default` gives another app for a type, or when a default names a .desktop file that
 # is not installed. A session that is not Andromeda (XDG_CURRENT_DESKTOP=GNOME) must keep its own defaults.
