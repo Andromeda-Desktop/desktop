@@ -26,6 +26,7 @@
 
 #include "cursor-shape-v1-client-protocol.h"
 
+#include <glib.h>
 #include <unistd.h>
 #include <linux/input-event-codes.h>
 
@@ -2223,7 +2224,13 @@ namespace term {
       if (count == 2) {
         auto options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
         options.ref = ref;
+        // An empty list selects with libghostty's own separators.
+        glong separatorCount = 0;
+        gunichar* separators = g_utf8_to_ucs4_fast(m_settings.wordSeparators.c_str(), -1, &separatorCount);
+        options.boundary_codepoints = separators;
+        options.boundary_codepoints_len = static_cast<std::size_t>(separatorCount);
         result = ghostty_terminal_select_word(t, &options, &selection);
+        g_free(separators);
       } else {
         auto options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectLineOptions);
         options.ref = ref;

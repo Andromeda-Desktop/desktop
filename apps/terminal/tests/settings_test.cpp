@@ -30,6 +30,8 @@ Settings randomSettings(std::mt19937& rng) {
   s.scrollback = static_cast<Scrollback>(pick(0, 1));
   s.scrollbackMb = pick(SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax);
   s.copyOnSelect = pick(0, 1) != 0;
+  const char* separators[] = {" ", " -/\\", "\t\u2502()", "\"'"};
+  s.wordSeparators = separators[pick(0, 3)];
   s.boldIsBright = pick(0, 1) != 0;
   s.padding = pick(SettingsLimits::kPaddingMin, SettingsLimits::kPaddingMax);
   s.scrollRows = pick(SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax);
