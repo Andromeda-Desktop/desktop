@@ -13,6 +13,7 @@
 #include "system/battery_impact.h"
 #include "system/icon_resolver.h"
 #include "ui/controls/scroll_view.h"
+#include "ui/controls/virtual_list_view.h"
 #include "wayland/toplevel_surface.h"
 
 #include <chrono>
@@ -30,7 +31,9 @@ class ActivityActions;
 class Button;
 class ConfigService;
 class Flex;
+class Glyph;
 class Graph;
+class Image;
 class Input;
 class Label;
 class RenderContext;
@@ -105,10 +108,47 @@ private:
   [[nodiscard]] std::unique_ptr<Flex> buildToolbar(float scale);
   [[nodiscard]] std::unique_ptr<Flex> buildProblemCard(float scale);
   [[nodiscard]] std::unique_ptr<Flex> buildTable(Renderer& renderer, float width, float scale);
-  [[nodiscard]] std::unique_ptr<Button> buildRow(
-      Renderer& renderer, const ActivityRow& row, const std::vector<Column>& columns, float nameWidth, float scale
-  );
-  void addChildRows(Flex& list, const ActivityRow& row, const std::vector<Column>& columns, float nameWidth, float scale);
+  // One list entry: a section caption, an app row or one process group under an expanded row.
+  struct TableItem {
+    enum class Kind : std::uint8_t { Section, Row, Child };
+    Kind kind = Kind::Row;
+    std::size_t section = 0;
+    std::string key; // row key (Row, Child)
+    std::size_t group = 0; // index in the row's groups (Child)
+  };
+  // The pooled nodes of one list slot; rebuilt only when the slot changes kind.
+  struct TableSlot {
+    TableItem::Kind kind = TableItem::Kind::Row;
+    bool built = false;
+    std::string key;
+    Flex* root = nullptr;
+    Glyph* disclosure = nullptr;
+    Image* icon = nullptr;
+    std::string iconPath;
+    Label* name = nullptr;
+    Label* count = nullptr;
+    std::vector<Flex*> cells;
+    std::vector<Label*> values;
+    Glyph* status = nullptr;
+  };
+  class TableAdapter final : public VirtualListAdapter {
+  public:
+    explicit TableAdapter(ActivityWindow& window) : m_window(window) {}
+    [[nodiscard]] std::size_t itemCount() const override { return m_window.m_tableItems.size(); }
+    [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
+    [[nodiscard]] std::uint64_t itemRevision(std::size_t /*index*/) const override { return m_window.m_tableRevision; }
+    [[nodiscard]] bool itemInteractive(std::size_t index) const override;
+    [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
+    [[nodiscard]] std::unique_ptr<Node> createItem() override;
+    void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
+    void onActivate(std::size_t index) override;
+
+  private:
+    ActivityWindow& m_window;
+  };
+  void rebuildTableItems();
+  void buildTableSlot(TableSlot& slot, TableItem::Kind kind);
+  void bindTableSlot(Renderer& renderer, TableSlot& slot, const TableItem& item, bool hovered);
   [[nodiscard]] std::unique_ptr<Flex> buildStrip(float width, float scale);
   [[nodiscard]] std::vector<Column> columnsFor(Pane pane) const;
   [[nodiscard]] std::size_t sortColumn() const;
@@ -217,6 +257,7 @@ private:
   std::optional<PendingLimits> m_pendingLimits; // picks sent from this window, until the selection changes
 
   std::unique_ptr<ToplevelSurface> m_surface;
+  TableAdapter m_tableAdapter{*this}; // outlives m_sceneRoot, which holds the list
   std::unique_ptr<Node> m_sceneRoot;
   Node* m_body = nullptr;
   AnimationManager m_animations;
@@ -268,6 +309,12 @@ private:
   std::vector<LiveHeat> m_liveHeat;
   std::vector<std::function<void()>> m_liveCalls; // other per-sample updates (accessible descriptions)
   double m_heatTop = 0.0; // largest sort-column value among the visible rows
+  std::vector<TableItem> m_tableItems;      // what the list shows, rebuilt per sample
+  std::vector<Column> m_tableColumns;       // the columns that fit the current table width
+  float m_nameWidth = 0.0F;                 // name column width of the current table, in surface px
+  VirtualListView* m_tableList = nullptr;   // in m_sceneRoot; null without a row list
+  std::uint64_t m_tableRevision = 0;        // bumps per sample: the bound rows refresh in place
+  std::unordered_map<const Node*, TableSlot> m_tableSlots; // by pooled item; cleared with the scene
   float m_columnWidth = 0.0F; // value column width of the current table, in surface px
   std::string m_structure; // structureKey() of the current scene
   std::unordered_map<std::string, CgroupControls> m_controls; // by unit cgroup path

@@ -313,6 +313,8 @@ void ActivityWindow::destroyWindow() {
   m_liveText.clear();
   m_liveGraphs.clear();
   m_liveHeat.clear();
+  m_tableList = nullptr;
+  m_tableSlots.clear();
   m_sceneRoot.reset();
   m_surface.reset();
   m_output = nullptr;
@@ -462,6 +464,8 @@ void ActivityWindow::buildScene(Renderer& renderer, float width, float height) {
   m_liveGraphs.clear();
   m_liveHeat.clear();
   m_liveCalls.clear();
+  m_tableList = nullptr;
+  m_tableSlots.clear();
   indexRows();
   if (Node* field = m_searchInput != nullptr ? m_searchInput->parent() : nullptr;
       field != nullptr && field->parent() != nullptr) {
@@ -770,36 +774,8 @@ std::string ActivityWindow::structureKey() const {
   }
   std::string problemKey;
   key += std::format("|p{}:{}", static_cast<int>(problem(&problemKey)), problemKey);
-  for (const auto& rowKey : m_order) {
-    const ActivityRow* row = findRow(rowKey);
-    if (row == nullptr) {
-      key += "\n-";
-      continue;
-    }
-    const auto* state = rowState(row->key);
-    key += std::format(
-        "\n{}|{}|{}|{}|{}", row->key, row->hasWindow, row->units.size(), state != nullptr && state->atLogin,
-        needsAttention(*row)
-    );
-    if (m_limitedKeys.contains(row->key)) {
-      const Limits limits = limitsOf(*row);
-      key += std::format("|L{}{}{}", limits.cpu, limits.memory, isFrozen(*row));
-    }
-    if (m_details != nullptr && m_details->expanded(row->key)) {
-      key += "|+";
-      if (const auto* groups = m_details->groups(row->key); groups != nullptr) {
-        for (const auto& group : *groups) {
-          key += std::format(",{}:{}", group.command, group.count);
-        }
-      }
-    }
-  }
-  // A row that joins or leaves the visible set must rebuild before the next re-sort.
-  std::size_t visible = 0;
-  for (const auto& row : m_monitor->activity().rows()) {
-    visible += matchesQuery(row) ? 1 : 0;
-  }
-  key += std::format("|v{}", visible);
+  // Rows live in the virtual list and refresh in place; only an empty table shows other nodes.
+  key += m_order.empty() ? "|empty" : "|rows";
   if (const ActivityRow* row = selectedRow(); row != nullptr) {
     const auto* history = m_details != nullptr ? m_details->history(row->key) : nullptr;
     key += history != nullptr && history->cpuPercent.size() > 1 ? "|graph" : "|nograph";
@@ -855,6 +831,11 @@ void ActivityWindow::updateLive() {
     if (cell != nullptr) {
       cell->setFill(colorSpecFromRole(ColorRole::Accent, value * kHeatAlpha));
     }
+  }
+  if (m_tableList != nullptr) {
+    rebuildTableItems();
+    ++m_tableRevision;
+    m_tableList->notifyDataChanged();
   }
   invalidate();
   kLog.debug(

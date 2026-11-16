@@ -467,207 +467,261 @@ std::unique_ptr<Flex> ActivityWindow::buildProblemCard(float scale) {
   return wrap;
 }
 
-std::unique_ptr<Button> ActivityWindow::buildRow(
-    Renderer& renderer, const ActivityRow& row, const std::vector<Column>& columns, float nameWidth, float scale
-) {
-  const RowIdentity id = identity(row);
-  const bool selected = row.key == m_selectedKey;
-  const int iconPx = static_cast<int>(std::round(Tokens::sizeSymbol * scale));
-  Image* icon = nullptr;
-  auto image = ui::image({.out = &icon, .width = Tokens::sizeSymbol * scale, .height = Tokens::sizeSymbol * scale});
-  if (const std::string path = iconPath(id.icon, iconPx); !path.empty()) {
-    icon->setSourceFile(renderer, path, iconPx);
-  }
-  const std::size_t sortIndex = sortColumn();
-  return ui::button({
-      .contentAlign = ButtonContentAlign::Start,
-      .variant = ButtonVariant::Tab,
-      .customPalette = selected ? std::optional{settings::selectedRowPalette(
-                                      settings::selectionStyle().rowFill, settings::selectionStyle().rowLabel
-                                  )}
-                                : std::nullopt,
-      .minHeight = kRowHeight * scale,
-      .padding = 0.0F,
-      .gap = 0.0F,
-      .radius = Tokens::radiusR4 * scale,
-      .onClick = [this, key = row.key] { select(key); },
-      .configure =
-          [&](Button& button) {
-            button.setTabStop(false);
-            button.accessibleState().name = id.name;
-            button.accessibleState().description = captionFor(row);
-            m_liveCalls.push_back([this, key = row.key, target = &button] {
-              if (const ActivityRow* live = findRow(key); live != nullptr) {
-                target->accessibleState().description = captionFor(*live);
-              }
-            });
-            auto name = ui::row({
-                .align = FlexAlign::Center,
-                .gap = Style::spaceSm * scale,
-                .paddingH = Style::spaceMd * scale,
-                .width = nameWidth,
-                .height = kRowHeight * scale,
-            });
-            if (m_details != nullptr) {
-              const bool open = m_details->expanded(row.key);
-              name->addChild(ui::button({
-                  .glyph = open ? "chevron-down" : "chevron-right",
-                  .glyphSize = Tokens::sizeSymbolInline * scale,
-                  .variant = ButtonVariant::Ghost,
-                  .padding = 0.0F,
-                  .width = Tokens::sizeSymbol * scale,
-                  .height = Tokens::sizeSymbol * scale,
-                  .onClick = [this, key = row.key, open] {
-                    m_details->setExpanded(key, !open); // groups fill in on the next sample
-                    requestRebuild();
-                  },
-                  .configure = [](Button& disclosure) { disclosure.setTabStop(false); },
-              }));
-            }
-            name->addChild(std::move(image));
-            name->addChild(ui::label({
-                .text = id.name,
-                .fontSize = Style::fontSizeBody * scale,
-                .color = colorSpecFromRole(ColorRole::Label1),
-                .maxLines = 1,
-                .ellipsize = TextEllipsize::Middle,
-                .flexGrow = 1.0F,
-            }));
-            if (const auto* groups = m_details != nullptr && m_details->expanded(row.key) ? m_details->groups(row.key)
-                                                                                          : nullptr;
-                groups != nullptr) {
-              int processes = 0;
-              for (const auto& group : *groups) {
-                processes += group.count;
-              }
-              name->addChild(text(std::to_string(processes), Style::fontSizeCaption * scale, ColorRole::Label3));
-            }
-            button.addChild(std::move(name));
-            for (std::size_t i = 0; i < columns.size(); ++i) {
-              const Column& column = columns[i];
-              Flex* cellRaw = nullptr;
-              Label* label = nullptr;
-              button.addChild(ui::row(
-                  {.out = &cellRaw,
-                   .align = FlexAlign::Center,
-                   .justify = FlexJustify::End,
-                   .paddingH = Style::spaceMd * scale,
-                   .width = m_columnWidth,
-                   .height = kRowHeight * scale},
-                  ui::label({
-                      .out = &label,
-                      .text = column.text(row),
-                      .fontSize = Style::fontSizeBody * scale,
-                      .fontFeatures = std::string("tnum"),
-                      .color = colorSpecFromRole(column.muted && i != sortIndex ? ColorRole::Label2 : ColorRole::Label1),
-                      .maxLines = 1,
-                      .textAlign = TextAlign::End,
-                  })
-              ));
-              m_liveText.push_back({label, [this, key = row.key, text = column.text] {
-                                      const ActivityRow* live = findRow(key);
-                                      return live != nullptr ? text(*live) : std::string();
-                                    }});
-              if (i == sortIndex) {
-                m_liveHeat.push_back({cellRaw, [this, key = row.key, value = column.value] {
-                                        const ActivityRow* live = findRow(key);
-                                        return live != nullptr && m_heatTop > 0.0
-                                            ? static_cast<float>(std::clamp(value(*live) / m_heatTop, 0.0, 1.0))
-                                            : 0.0F;
-                                      }});
-                cellRaw->setFill(colorSpecFromRole(ColorRole::Accent, m_liveHeat.back().share() * kHeatAlpha));
-              }
-            }
-            std::string glyph;
-            ColorRole role = ColorRole::Label3;
-            const Limits limits = m_limitedKeys.contains(row.key) ? limitsOf(row) : Limits{};
-            if (needsAttention(row)) {
-              glyph = "alert-triangle";
-              role = ColorRole::Warning;
-            } else if (m_limitedKeys.contains(row.key) && isFrozen(row)) {
-              glyph = "player-pause";
-            } else if (limits.cpu != 0 || limits.memory != 0
-                       || rowEfficiency(row) == ActivityMonitor::Efficiency::On) {
-              glyph = "leaf";
-              role = ColorRole::Success;
-            }
-            auto status = ui::row(
-                {.align = FlexAlign::Center,
-                 .justify = FlexJustify::End,
-                 .paddingH = Style::spaceSm * scale,
-                 .width = kStatusWidth * scale,
-                 .height = kRowHeight * scale}
-            );
-            if (!glyph.empty()) {
-              status->addChild(ui::glyph({
-                  .glyph = glyph,
-                  .glyphSize = Tokens::sizeSymbolInline * scale,
-                  .color = colorSpecFromRole(role),
-              }));
-            }
-            button.addChild(std::move(status));
-          },
-  });
+std::uint64_t ActivityWindow::TableAdapter::itemKey(std::size_t index) const {
+  const TableItem& item = m_window.m_tableItems[index];
+  return std::hash<std::string>{}(std::format("{}|{}|{}|{}", static_cast<int>(item.kind), item.section, item.key, item.group));
 }
 
-void ActivityWindow::addChildRows(
-    Flex& list, const ActivityRow& row, const std::vector<Column>& columns, float nameWidth, float scale
+bool ActivityWindow::TableAdapter::itemInteractive(std::size_t index) const {
+  return m_window.m_tableItems[index].kind == TableItem::Kind::Row;
+}
+
+float ActivityWindow::TableAdapter::measureItem(Renderer& /*renderer*/, std::size_t /*index*/, float /*width*/) {
+  return kRowHeight * m_window.uiScale();
+}
+
+std::unique_ptr<Node> ActivityWindow::TableAdapter::createItem() {
+  auto root = ui::row({.align = FlexAlign::Center, .radius = Tokens::radiusR4 * m_window.uiScale()});
+  m_window.m_tableSlots[root.get()].root = root.get();
+  return root;
+}
+
+void ActivityWindow::TableAdapter::bindItem(
+    Renderer& renderer, Node& item, std::size_t index, float /*width*/, bool hovered
 ) {
-  const auto* groups = m_details != nullptr && m_details->expanded(row.key) ? m_details->groups(row.key) : nullptr;
-  if (groups == nullptr) {
-    return;
+  m_window.bindTableSlot(renderer, m_window.m_tableSlots.at(&item), m_window.m_tableItems[index], hovered);
+}
+
+void ActivityWindow::TableAdapter::onActivate(std::size_t index) { m_window.select(m_window.m_tableItems[index].key); }
+
+void ActivityWindow::rebuildTableItems() {
+  m_tableItems.clear();
+  std::size_t section = SIZE_MAX;
+  for (const auto& key : m_order) {
+    const ActivityRow* row = findRow(key);
+    if (row == nullptr) {
+      continue;
+    }
+    const std::size_t rowSection = row->systemManager ? 2 : row->hasWindow ? 0 : 1;
+    if (rowSection != section) {
+      section = rowSection;
+      m_tableItems.push_back({.kind = TableItem::Kind::Section, .section = section});
+    }
+    m_tableItems.push_back({.kind = TableItem::Kind::Row, .section = section, .key = key});
+    const auto* groups = m_details != nullptr && m_details->expanded(key) ? m_details->groups(key) : nullptr;
+    for (std::size_t i = 0; groups != nullptr && i < groups->size(); ++i) {
+      m_tableItems.push_back({.kind = TableItem::Kind::Child, .section = section, .key = key, .group = i});
+    }
   }
-  for (const auto& group : *groups) {
-    auto child = ui::row({.align = FlexAlign::Center, .height = kRowHeight * scale});
-    auto name = ui::row({.align = FlexAlign::Center, .width = nameWidth, .height = kRowHeight * scale});
-    name->setPadding(0.0F, Style::spaceMd * scale, 0.0F, kChildIndent * scale);
-    name->addChild(ui::label({
-        .text = group.count > 1 ? std::format("{} ({})", group.command, group.count) : group.command,
+}
+
+void ActivityWindow::buildTableSlot(TableSlot& slot, TableItem::Kind kind) {
+  const float scale = uiScale();
+  Flex& root = *slot.root;
+  while (!root.children().empty()) {
+    root.removeChild(root.children().back().get());
+  }
+  slot = TableSlot{.kind = kind, .built = true, .root = &root};
+  const auto label = [&](Label** out, ColorRole role, TextAlign align, bool numeric) {
+    return ui::label({
+        .out = out,
         .fontSize = Style::fontSizeBody * scale,
+        .fontFeatures = numeric ? std::optional<std::string>("tnum") : std::nullopt,
+        .color = colorSpecFromRole(role),
+        .maxLines = 1,
+        .textAlign = align,
+        .ellipsize = numeric ? std::nullopt : std::optional(TextEllipsize::Middle),
+        .flexGrow = numeric ? 0.0F : 1.0F,
+    });
+  };
+  if (kind == TableItem::Kind::Section) {
+    root.setAlign(FlexAlign::End);
+    root.setPadding(0.0F, Style::spaceMd * scale);
+    root.addChild(ui::label({
+        .out = &slot.name,
+        .fontSize = Style::fontSizeCaption * scale,
+        .fontWeight = FontWeight::SemiBold,
         .color = colorSpecFromRole(ColorRole::Label2),
         .maxLines = 1,
-        .ellipsize = TextEllipsize::Middle,
-        .flexGrow = 1.0F,
     }));
-    child->addChild(std::move(name));
-    for (const Column& column : columns) {
-      Label* label = nullptr;
-      const auto value = [kind = column.group](const ProcessGroupUsage& g) {
-        return kind == 'c' ? cpuText(g.cpuPercent) : kind == 'm' ? memoryText(g.residentBytes) : std::string();
-      };
-      child->addChild(ui::row(
-          {.align = FlexAlign::Center,
-           .justify = FlexJustify::End,
-           .paddingH = Style::spaceMd * scale,
-           .width = m_columnWidth,
-           .height = kRowHeight * scale},
-          ui::label({
-              .out = &label,
-              .text = value(group),
-              .fontSize = Style::fontSizeBody * scale,
-              .fontFeatures = std::string("tnum"),
-              .color = colorSpecFromRole(ColorRole::Label2),
-              .maxLines = 1,
-              .textAlign = TextAlign::End,
-          })
-      ));
-      if (column.group != 0) {
-        m_liveText.push_back({label, [this, key = row.key, command = group.command, value] {
-                                const auto* live = m_details != nullptr ? m_details->groups(key) : nullptr;
-                                if (live == nullptr) {
-                                  return std::string();
-                                }
-                                const auto it = std::ranges::find(*live, command, &ProcessGroupUsage::command);
-                                return it != live->end() ? value(*it) : std::string();
-                              }});
-      }
+    return;
+  }
+  root.setAlign(FlexAlign::Center);
+  root.setPadding(0.0F);
+  auto name = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .width = m_nameWidth,
+                       .height = kRowHeight * scale});
+  if (kind == TableItem::Kind::Child) {
+    name->setPadding(0.0F, Style::spaceMd * scale, 0.0F, kChildIndent * scale);
+    name->addChild(label(&slot.name, ColorRole::Label2, TextAlign::Start, false));
+  } else {
+    name->setPadding(0.0F, Style::spaceMd * scale);
+    if (m_details != nullptr) {
+      name->addChild(ui::button({
+          .variant = ButtonVariant::Ghost,
+          .padding = 0.0F,
+          .width = Tokens::sizeSymbol * scale,
+          .height = Tokens::sizeSymbol * scale,
+          .onClick = [this, root = &root] {
+            const std::string& key = m_tableSlots.at(root).key;
+            m_details->setExpanded(key, !m_details->expanded(key)); // groups fill in on the next sample
+            rebuildTableItems();
+            if (m_tableList != nullptr) {
+              m_tableList->notifyDataChanged();
+            }
+            invalidate();
+          },
+          .configure =
+              [&](Button& disclosure) {
+                disclosure.setTabStop(false);
+                disclosure.addChild(ui::glyph({
+                    .out = &slot.disclosure,
+                    .glyph = "chevron-right",
+                    .glyphSize = Tokens::sizeSymbolInline * scale,
+                    .color = colorSpecFromRole(ColorRole::Label2),
+                }));
+              },
+      }));
     }
-    child->addChild(ui::node({.width = kStatusWidth * scale}));
-    list.addChild(std::move(child));
+    name->addChild(ui::image({.out = &slot.icon, .width = Tokens::sizeSymbol * scale,
+                              .height = Tokens::sizeSymbol * scale}));
+    name->addChild(label(&slot.name, ColorRole::Label1, TextAlign::Start, false));
+    name->addChild(ui::label({
+        .out = &slot.count,
+        .fontSize = Style::fontSizeCaption * scale,
+        .color = colorSpecFromRole(ColorRole::Label3),
+        .maxLines = 1,
+    }));
+  }
+  root.addChild(std::move(name));
+  for (std::size_t i = 0; i < m_tableColumns.size(); ++i) {
+    Flex* cell = nullptr;
+    Label* value = nullptr;
+    root.addChild(ui::row(
+        {.out = &cell,
+         .align = FlexAlign::Center,
+         .justify = FlexJustify::End,
+         .paddingH = Style::spaceMd * scale,
+         .width = m_columnWidth,
+         .height = kRowHeight * scale},
+        label(&value, ColorRole::Label1, TextAlign::End, true)
+    ));
+    slot.cells.push_back(cell);
+    slot.values.push_back(value);
+  }
+  auto status = ui::row(
+      {.align = FlexAlign::Center,
+       .justify = FlexJustify::End,
+       .paddingH = Style::spaceSm * scale,
+       .width = kStatusWidth * scale,
+       .height = kRowHeight * scale}
+  );
+  if (kind == TableItem::Kind::Row) {
+    status->addChild(ui::glyph({.out = &slot.status, .glyphSize = Tokens::sizeSymbolInline * scale}));
+  }
+  root.addChild(std::move(status));
+}
+
+void ActivityWindow::bindTableSlot(Renderer& renderer, TableSlot& slot, const TableItem& item, bool hovered) {
+  static constexpr std::array<const char*, 3> kSections{"activity.group-apps", "activity.tab-background",
+                                                        "activity.group-system"};
+  if (!slot.built || slot.kind != item.kind) {
+    buildTableSlot(slot, item.kind);
+  }
+  slot.key = item.key;
+  if (item.kind == TableItem::Kind::Section) {
+    slot.name->setText(i18n::tr(kSections[item.section]));
+    return;
+  }
+  const ActivityRow* row = findRow(item.key);
+  if (item.kind == TableItem::Kind::Child) {
+    const auto* groups = m_details != nullptr ? m_details->groups(item.key) : nullptr;
+    const ProcessGroupUsage* group = groups != nullptr && item.group < groups->size() ? &(*groups)[item.group] : nullptr;
+    slot.name->setText(
+        group == nullptr       ? std::string()
+            : group->count > 1 ? std::format("{} ({})", group->command, group->count)
+                               : group->command
+    );
+    for (std::size_t i = 0; i < m_tableColumns.size(); ++i) {
+      const char kind = m_tableColumns[i].group;
+      slot.values[i]->setText(
+          group == nullptr ? std::string()
+              : kind == 'c' ? cpuText(group->cpuPercent)
+              : kind == 'm' ? memoryText(group->residentBytes)
+                            : std::string()
+      );
+    }
+    slot.root->setFill(clearColorSpec());
+    return;
+  }
+  if (row == nullptr) {
+    return;
+  }
+  const float scale = uiScale();
+  const bool selected = row->key == m_selectedKey;
+  const auto& selection = settings::selectionStyle();
+  slot.root->setFill(
+      selected ? selection.rowFill : hovered ? colorSpecFromRole(ColorRole::Fill3) : clearColorSpec()
+  );
+  const RowIdentity id = identity(*row);
+  Accessible& accessible = slot.root->accessibleState();
+  accessible.role = AccessibleRole::ListItem;
+  accessible.name = id.name;
+  accessible.description = captionFor(*row);
+  accessible.selected = selected;
+  const int iconPx = static_cast<int>(std::round(Tokens::sizeSymbol * scale));
+  if (std::string path = iconPath(id.icon, iconPx); path != slot.iconPath) {
+    slot.icon->setSourceFile(renderer, path, iconPx);
+    slot.iconPath = std::move(path);
+  }
+  slot.name->setText(id.name);
+  slot.name->setColor(selected ? selection.rowLabel : colorSpecFromRole(ColorRole::Label1));
+  const bool open = m_details != nullptr && m_details->expanded(row->key);
+  if (slot.disclosure != nullptr) {
+    slot.disclosure->setGlyph(open ? "chevron-down" : "chevron-right");
+  }
+  int processes = 0;
+  if (const auto* groups = open ? m_details->groups(row->key) : nullptr; groups != nullptr) {
+    for (const auto& group : *groups) {
+      processes += group.count;
+    }
+  }
+  slot.count->setText(processes > 0 ? std::to_string(processes) : std::string());
+  slot.count->setVisible(processes > 0);
+  slot.count->setParticipatesInLayout(processes > 0);
+  const std::size_t sortIndex = sortColumn();
+  for (std::size_t i = 0; i < m_tableColumns.size(); ++i) {
+    const Column& column = m_tableColumns[i];
+    slot.values[i]->setText(column.text(*row));
+    slot.values[i]->setColor(
+        selected                          ? selection.rowLabel
+            : column.muted && i != sortIndex ? colorSpecFromRole(ColorRole::Label2)
+                                             : colorSpecFromRole(ColorRole::Label1)
+    );
+    const float share = i == sortIndex && m_heatTop > 0.0
+        ? static_cast<float>(std::clamp(column.value(*row) / m_heatTop, 0.0, 1.0))
+        : 0.0F;
+    slot.cells[i]->setFill(colorSpecFromRole(ColorRole::Accent, share * kHeatAlpha));
+  }
+  std::string glyph;
+  ColorRole role = ColorRole::Label3;
+  const Limits limits = m_limitedKeys.contains(row->key) ? limitsOf(*row) : Limits{};
+  if (needsAttention(*row)) {
+    glyph = "alert-triangle";
+    role = ColorRole::Warning;
+  } else if (m_limitedKeys.contains(row->key) && isFrozen(*row)) {
+    glyph = "player-pause";
+  } else if (limits.cpu != 0 || limits.memory != 0 || rowEfficiency(*row) == ActivityMonitor::Efficiency::On) {
+    glyph = "leaf";
+    role = ColorRole::Success;
+  }
+  slot.status->setVisible(!glyph.empty());
+  if (!glyph.empty()) {
+    slot.status->setGlyph(glyph);
+    slot.status->setColor(colorSpecFromRole(role));
   }
 }
 
-std::unique_ptr<Flex> ActivityWindow::buildTable(Renderer& renderer, float width, float scale) {
+std::unique_ptr<Flex> ActivityWindow::buildTable(Renderer& /*renderer*/, float width, float scale) {
   auto table = ui::column({.align = FlexAlign::Stretch, .paddingH = Style::spaceSm * scale, .flexGrow = 1.0F});
   auto columns = columnsFor(m_pane);
   // Columns drop from the right until the name keeps its minimum width.
@@ -772,16 +826,6 @@ std::unique_ptr<Flex> ActivityWindow::buildTable(Renderer& renderer, float width
     return table;
   }
 
-  ScrollView* scroll = nullptr;
-  table->addChild(ui::scrollView({
-      .out = &scroll,
-      .state = &m_listScroll,
-      .scrollbarAutoHide = true,
-      .flexGrow = 1.0F,
-  }));
-  Flex& list = *scroll->content();
-  list.setAlign(FlexAlign::Stretch);
-  list.setGap(0.0F);
   if (sortIndex < columns.size()) {
     m_liveHeat.push_back({nullptr, [this, value = columns[sortIndex].value] {
                             m_heatTop = 0.0;
@@ -794,26 +838,16 @@ std::unique_ptr<Flex> ActivityWindow::buildTable(Renderer& renderer, float width
                           }});
     m_liveHeat.front().share();
   }
-  static constexpr std::array<const char*, 3> kSections{"activity.group-apps", "activity.tab-background",
-                                                        "activity.group-system"};
-  int section = -1;
-  for (const auto& key : m_order) {
-    const ActivityRow* row = findRow(key);
-    if (row == nullptr) {
-      continue;
-    }
-    const int rowSection = row->systemManager ? 2 : row->hasWindow ? 0 : 1;
-    if (rowSection != section) {
-      section = rowSection;
-      list.addChild(ui::row(
-          {.align = FlexAlign::End, .paddingH = Style::spaceMd * scale, .height = kRowHeight * scale},
-          text(i18n::tr(kSections[static_cast<std::size_t>(section)]), Style::fontSizeCaption * scale, ColorRole::Label2,
-               FontWeight::SemiBold)
-      ));
-    }
-    list.addChild(buildRow(renderer, *row, columns, nameWidth, scale));
-    addChildRows(list, *row, columns, nameWidth, scale);
-  }
+  m_tableColumns = std::move(columns);
+  m_nameWidth = nameWidth;
+  rebuildTableItems();
+  auto list = std::make_unique<VirtualListView>();
+  list->setFlexGrow(1.0F);
+  list->setContentScale(scale);
+  list->bindScrollState(&m_listScroll);
+  list->setAdapter(&m_tableAdapter);
+  m_tableList = list.get();
+  table->addChild(std::move(list));
   return table;
 }
 
