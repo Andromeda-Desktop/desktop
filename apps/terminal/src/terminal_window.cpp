@@ -1013,7 +1013,7 @@ namespace term {
   }
 
   StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {
-    const std::string& place = !session.title.empty() ? session.title : session.host.empty() ? session.cwd : session.host;
+    const std::string& place = session.host.empty() ? session.cwd : session.host;
     StatusRow::Data data{.name = session.name.empty() ? place : session.name,
                          .unseen = session.seen == Seen::Unseen,
                          .selected = session.id == m_rowSelected};
@@ -1085,6 +1085,10 @@ namespace term {
     }
     if (session.kind == SessionKind::App) {
       data.symbol = "app-window";
+    }
+    // Line 2 is status first (rulebook); a program title fills it only when no status shows.
+    if (data.status.empty() && session.title != data.name) {
+      data.status = session.title;
     }
     return data;
   }

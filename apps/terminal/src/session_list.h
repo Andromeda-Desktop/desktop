@@ -42,7 +42,7 @@ namespace term {
     std::string name;
     std::string cwd;
     std::string host; // Ssh or Container: the host or container name, when known
-    std::string title; // set by the program (OSC 0 / 2); shown when name is empty
+    std::string title; // set by the program (OSC 0 / 2); the row's line 2 when no status shows, the window title when name is empty
     CommandState command;
     Seen seen = Seen::Seen;
     bool operator==(const SessionInfo&) const = default;
