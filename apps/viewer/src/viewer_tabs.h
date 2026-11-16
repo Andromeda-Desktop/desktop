@@ -12,6 +12,8 @@ class Node;
 class Renderer;
 struct wl_surface;
 
+class StateStore;
+
 namespace viewer {
 
   class ViewerWindow;
@@ -20,7 +22,7 @@ namespace viewer {
   // callbacks and shows the active tab; the sidebar lists the documents with two or more.
   class ViewerTabs {
   public:
-    ViewerTabs(AppLoop& loop, AppWindow& window);
+    ViewerTabs(AppLoop& loop, AppWindow& window, StateStore& state);
     ~ViewerTabs();
     ViewerTabs(const ViewerTabs&) = delete;
     ViewerTabs& operator=(const ViewerTabs&) = delete;
@@ -51,6 +53,7 @@ namespace viewer {
 
     AppLoop& m_loop;
     AppWindow& m_window;
+    StateStore& m_state;
     std::vector<std::unique_ptr<ViewerWindow>> m_tabs;
     std::size_t m_active = 0;
     // A window with no tab shows this never-opened one: the toolbar and the open-or-drop message.

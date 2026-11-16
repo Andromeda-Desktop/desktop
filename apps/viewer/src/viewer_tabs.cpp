@@ -21,7 +21,8 @@
 
 namespace viewer {
 
-  ViewerTabs::ViewerTabs(AppLoop& loop, AppWindow& window) : m_loop(loop), m_window(window) {
+  ViewerTabs::ViewerTabs(AppLoop& loop, AppWindow& window, StateStore& state)
+      : m_loop(loop), m_window(window), m_state(state) {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) {
       return build(renderer, width, height);
     });
@@ -118,7 +119,7 @@ namespace viewer {
   }
 
   void ViewerTabs::add(const std::filesystem::path& path) {
-    auto tab = std::make_unique<ViewerWindow>(m_loop, m_window);
+    auto tab = std::make_unique<ViewerWindow>(m_loop, m_window, m_state);
     tab->setTitleChanged([this] { updateTitle(); });
     tab->open(path);
     if (ViewerWindow* old = active() != nullptr ? active() : m_blank.get()) {
@@ -252,7 +253,7 @@ namespace viewer {
     ViewerWindow* tab = active();
     if (tab == nullptr) {
       if (!m_blank) {
-        m_blank = std::make_unique<ViewerWindow>(m_loop, m_window);
+        m_blank = std::make_unique<ViewerWindow>(m_loop, m_window, m_state);
       }
       return m_blank->build(renderer, width, height);
     }

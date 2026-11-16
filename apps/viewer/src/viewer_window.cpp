@@ -3,6 +3,7 @@
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "app/command_table.h"
+#include "app/state_store.h"
 #include "core/text_clipboard.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "ui/controls/input.h"
@@ -27,9 +28,12 @@
 #include <cctype>
 #include <cerrno>
 #include <cmath>
+#include <ctime>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <glib.h>
 #include <charconv>
 #include <cstring>
 #include <format>
@@ -160,7 +164,8 @@ namespace viewer {
     }
   } // namespace
 
-  ViewerWindow::ViewerWindow(AppLoop& loop, AppWindow& window) : m_loop(loop), m_window(window) {}
+  ViewerWindow::ViewerWindow(AppLoop& loop, AppWindow& window, StateStore& state)
+      : m_loop(loop), m_window(window), m_state(state) {}
 
   // A rebuilt ScrollView clamps its offset to its content, which is empty until the first layout: restore after it.
   void ViewerWindow::onLayout() {
@@ -171,9 +176,17 @@ namespace viewer {
       m_window.input().setFocus(m_noteInput->inputArea());
     }
     // Fit page follows the view height, known only after layout.
+    bool rebuilding = false;
     if (m_scroll != nullptr && m_model.fit() == DocumentModel::Fit::Page &&
         m_model.setViewportHeight(m_scroll->height() - 2.0F * kPagePadding * m_window.uiScale())) {
       rebuild();
+      rebuilding = true;
+    }
+    // The remembered page: its box is final once no rebuild for a new fit is pending.
+    if (m_restorePage && m_scroll != nullptr && !rebuilding) {
+      m_scrollOffset = m_model.pageBox(*m_restorePage).y0;
+      m_restorePage.reset();
+      m_restoreScroll = true;
     }
     if (m_restoreScroll && m_scroll != nullptr) {
       m_restoreScroll = false;
@@ -231,6 +244,8 @@ namespace viewer {
     m_searchText.clear();
     m_model.clearSearch();
     m_scrollOffset = 0.0F;
+    m_restorePage.reset();
+    m_savedView.reset();
     m_hOffset = 0.0F;
     m_error.clear();
     updateTitle();
@@ -280,6 +295,7 @@ namespace viewer {
       m_links.assign(m_model.pageCount(), {});
       m_outline.clear();
       m_mode = Mode::Pdf;
+      restoreViewState();
       requestOutline();
       kLog.info("opened pdf {} pages", m_model.pageCount());
       rebuild();
@@ -343,6 +359,86 @@ namespace viewer {
 
   void ViewerWindow::rebuild() { m_window.requestRebuild(); }
 
+  namespace {
+    constexpr std::size_t kRememberedDocuments = 50;
+
+    std::string documentKey(const std::filesystem::path& path) {
+      std::error_code ec;
+      const std::string full = std::filesystem::weakly_canonical(path, ec).string();
+      gchar* sum = g_compute_checksum_for_string(G_CHECKSUM_SHA1, ec ? path.c_str() : full.c_str(), -1);
+      std::string key(sum);
+      g_free(sum);
+      return key;
+    }
+
+    const char* fitName(DocumentModel::Fit fit) {
+      switch (fit) {
+      case DocumentModel::Fit::None:
+        return "none";
+      case DocumentModel::Fit::Page:
+        return "page";
+      case DocumentModel::Fit::Width:
+        break;
+      }
+      return "width";
+    }
+  } // namespace
+
+  void ViewerWindow::restoreViewState() {
+    const auto docs = m_state.get<nlohmann::json>("/viewer/documents", nlohmann::json::object());
+    if (!docs.is_object()) {
+      return;
+    }
+    const auto it = docs.find(documentKey(m_path));
+    if (it == docs.end() || !it->is_object()) {
+      return;
+    }
+    try {
+      const std::string fit = it->value("fit", std::string("width"));
+      if (fit == "page") {
+        m_model.fitPage();
+      } else if (fit == "none") {
+        m_model.setZoom(it->value("zoom", 1.0F));
+      }
+      const auto page = it->value("page", std::size_t{0});
+      if (page > 0 && page < m_model.pageCount()) {
+        m_restorePage = page;
+      }
+    } catch (const nlohmann::json::exception&) {
+      kLog.warn("bad view state for {}", m_path.string());
+    }
+  }
+
+  void ViewerWindow::saveViewState() {
+    if (m_mode != Mode::Pdf || m_scroll == nullptr || m_restorePage) {
+      return;
+    }
+    const ViewState view{.page = currentPage(), .fit = m_model.fit(), .zoom = m_model.zoom()};
+    if (m_savedView == view) {
+      return;
+    }
+    m_savedView = view;
+    auto docs = m_state.get<nlohmann::json>("/viewer/documents", nlohmann::json::object());
+    if (!docs.is_object()) {
+      docs = nlohmann::json::object();
+    }
+    docs[documentKey(m_path)] = {{"page", view.page}, {"fit", fitName(view.fit)}, {"zoom", view.zoom},
+                                 {"time", static_cast<std::int64_t>(std::time(nullptr))}};
+    while (docs.size() > kRememberedDocuments) {
+      const auto time = [](const nlohmann::json& entry) {
+        return entry.is_object() ? entry.value("time", std::int64_t{0}) : std::int64_t{0};
+      };
+      auto oldest = docs.begin();
+      for (auto entry = docs.begin(); entry != docs.end(); ++entry) {
+        if (time(*entry) < time(*oldest)) {
+          oldest = entry;
+        }
+      }
+      docs.erase(oldest);
+    }
+    m_state.set("/viewer/documents", std::move(docs));
+  }
+
   void ViewerWindow::goToPage(std::size_t page) {
     if (m_mode != Mode::Pdf || m_scroll == nullptr || m_model.pageCount() == 0) {
       return;
@@ -359,6 +455,7 @@ namespace viewer {
     if (m_scroll != nullptr) {
       m_scrollOffset = m_scroll->scrollOffset();
     }
+    saveViewState();
     requestVisiblePages();
     refreshLabels();
   }
@@ -1102,6 +1199,7 @@ namespace viewer {
     const float before = m_model.zoom();
     const float w0 = widestPage();
     apply();
+    saveViewState(); // also a fit change at the same zoom, which returns below
     const float after = m_model.zoom();
     if (after <= 0.0F || before == after) {
       return;

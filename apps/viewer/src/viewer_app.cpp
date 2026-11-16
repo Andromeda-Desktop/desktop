@@ -145,7 +145,7 @@ namespace viewer {
                                        .contentCard = true,
                                        .headerWhenFullscreen = false,
                                        .sidebarToggle = true});
-    m_windows[&window] = std::make_unique<ViewerTabs>(loop(), window);
+    m_windows[&window] = std::make_unique<ViewerTabs>(loop(), window, state());
     return window;
   }
 

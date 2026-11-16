@@ -28,6 +28,7 @@ class Input;
 class Node;
 class Renderer;
 class ScrollView;
+class StateStore;
 struct KeyboardEvent;
 
 namespace viewer {
@@ -39,7 +40,7 @@ namespace viewer {
   public:
     enum class Tool : std::uint8_t { Select, Highlight, Note, Draw, Sign };
 
-    ViewerWindow(AppLoop& loop, AppWindow& window);
+    ViewerWindow(AppLoop& loop, AppWindow& window, StateStore& state);
     ~ViewerWindow();
     ViewerWindow(const ViewerWindow&) = delete;
     ViewerWindow& operator=(const ViewerWindow&) = delete;
@@ -207,8 +208,21 @@ namespace viewer {
     void saveThen(std::function<void()> then);
     [[nodiscard]] std::unique_ptr<Node> buildSignaturePad();
 
+    // Per document (key: SHA-1 of the path): page, fit and zoom, for the 50 documents changed last.
+    struct ViewState {
+      std::size_t page = 0;
+      DocumentModel::Fit fit = DocumentModel::Fit::Width;
+      float zoom = 1.0F;
+      bool operator==(const ViewState&) const = default;
+    };
+    void restoreViewState();
+    void saveViewState();
+
     AppLoop& m_loop;
     AppWindow& m_window;
+    StateStore& m_state;
+    std::optional<std::size_t> m_restorePage; // applied at the first layout that keeps the scene
+    std::optional<ViewState> m_savedView;
     Mode m_mode = Mode::Empty;
     std::filesystem::path m_path;
     std::string m_error;
