@@ -6,6 +6,8 @@
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 #include <utility>
 
 namespace {
@@ -23,6 +25,34 @@ namespace {
       .wm_capabilities = &ToplevelSurface::handleToplevelWmCapabilities,
   };
 
+  // xdg_toplevel.set_title must be UTF-8 or the compositor ends the client; a title can come from untrusted bytes (a
+  // terminal program, a file name). Each invalid sequence becomes U+FFFD.
+  std::string validUtf8(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    const auto* p = reinterpret_cast<const unsigned char*>(in.data());
+    const std::size_t n = in.size();
+    for (std::size_t i = 0; i < n;) {
+      const unsigned char c = p[i];
+      std::size_t len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 0;
+      bool ok = len > 0 && i + len <= n;
+      for (std::size_t k = 1; ok && k < len; ++k) ok = (p[i + k] & 0xC0) == 0x80;
+      if (ok && len > 1) {
+        std::uint32_t cp = c & (0x7F >> len);
+        for (std::size_t k = 1; k < len; ++k) cp = (cp << 6) | (p[i + k] & 0x3F);
+        constexpr std::uint32_t kMin[] = {0, 0, 0x80, 0x800, 0x10000};
+        ok = cp >= kMin[len] && cp <= 0x10FFFF && (cp < 0xD800 || cp > 0xDFFF);
+      }
+      if (ok) {
+        out.append(in, i, len);
+        i += len;
+      } else {
+        out += "\xEF\xBF\xBD";
+        ++i;
+      }
+    }
+    return out;
+  }
 } // namespace
 
 ToplevelSurface::ToplevelSurface(WaylandConnection& connection) : Surface(connection) {}
@@ -79,7 +109,7 @@ bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig&
     m_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(manager, m_toplevel);
     zxdg_toplevel_decoration_v1_set_mode(m_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE);
   }
-  xdg_toplevel_set_title(m_toplevel, config.title.empty() ? "Noctalia" : config.title.c_str());
+  xdg_toplevel_set_title(m_toplevel, config.title.empty() ? "Noctalia" : validUtf8(config.title).c_str());
   setAccessibleTitle(config.title);
   xdg_toplevel_set_app_id(m_toplevel, config.appId != nullptr ? config.appId : "dev.noctalia.Noctalia");
   m_minWidth = config.minWidth;
@@ -131,7 +161,7 @@ void ToplevelSurface::sendMinSize() {
 
 void ToplevelSurface::setTitle(const std::string& title) {
   if (m_toplevel != nullptr) {
-    xdg_toplevel_set_title(m_toplevel, title.c_str());
+    xdg_toplevel_set_title(m_toplevel, validUtf8(title).c_str());
   }
 }
 
