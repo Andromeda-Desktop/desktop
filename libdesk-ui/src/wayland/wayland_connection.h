@@ -239,6 +239,9 @@ public:
       wl_surface* surface, const std::string& appId, std::function<void(std::string token)> done
   ) const;
   void activateSurface(wl_surface* surface);
+  // A token with no input serial: activating with it is untrusted, so the compositor marks the window as needing
+  // attention instead of focusing it (unless the user lets every activation focus). `done` as above.
+  void requestAttentionTokenAsync(wl_surface* surface, std::function<void(std::string token)> done) const;
 
   [[nodiscard]] wl_output* lastPointerOutput() const noexcept;
   [[nodiscard]] wl_surface* lastPointerSurface() const noexcept;
@@ -306,6 +309,8 @@ protected:
   [[nodiscard]] Purpose purpose() const noexcept { return m_purpose; }
 
 private:
+  void requestTokenAsync(wl_surface* surface, const std::string& appId, bool inputBacked,
+                         std::function<void(std::string token)> done) const;
   void bindGlobal(wl_registry* registry, std::uint32_t name, const char* interface, std::uint32_t version);
   void bindTextInputService();
   void cleanup();

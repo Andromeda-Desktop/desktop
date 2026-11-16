@@ -1030,8 +1030,8 @@ std::string WaylandConnection::requestActivationToken(wl_surface* surface, const
   return tokenData.token;
 }
 
-void WaylandConnection::requestActivationTokenAsync(
-    wl_surface* surface, const std::string& appId, std::function<void(std::string token)> done
+void WaylandConnection::requestTokenAsync(
+    wl_surface* surface, const std::string& appId, bool inputBacked, std::function<void(std::string token)> done
 ) const {
   if (m_xdgActivation == nullptr || m_display == nullptr) {
     done({});
@@ -1047,7 +1047,9 @@ void WaylandConnection::requestActivationTokenAsync(
       },
   };
   xdg_activation_token_v1_add_listener(token, &tokenListener, new Done(std::move(done)));
-  xdg_activation_token_v1_set_serial(token, m_seatHandler.lastSerial(), m_seatHandler.seat());
+  if (inputBacked) {
+    xdg_activation_token_v1_set_serial(token, m_seatHandler.lastSerial(), m_seatHandler.seat());
+  }
   if (surface != nullptr) {
     xdg_activation_token_v1_set_surface(token, surface);
   }
@@ -1056,6 +1058,16 @@ void WaylandConnection::requestActivationTokenAsync(
   }
   xdg_activation_token_v1_commit(token);
   wl_display_flush(m_display);
+}
+
+void WaylandConnection::requestActivationTokenAsync(
+    wl_surface* surface, const std::string& appId, std::function<void(std::string token)> done
+) const {
+  requestTokenAsync(surface, appId, true, std::move(done));
+}
+
+void WaylandConnection::requestAttentionTokenAsync(wl_surface* surface, std::function<void(std::string token)> done) const {
+  requestTokenAsync(surface, {}, false, std::move(done));
 }
 
 void WaylandConnection::activateSurface(wl_surface* surface) {
