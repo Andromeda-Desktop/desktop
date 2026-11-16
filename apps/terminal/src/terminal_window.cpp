@@ -352,6 +352,12 @@ namespace term {
     auto view = std::make_unique<TerminalView>(TerminalView::Host{
         .requestFrame = [this] { requestFrame(); },
         .playBell = [this] { m_loop.wayland().ringBell(m_window.wlSurface()); },
+        .bellRang =
+            [this, id] {
+              if (std::ranges::contains(m_sessions.visible(), id)) {
+                m_window.pulseScene(AppWindow::ScenePulse::Bell);
+              }
+            },
         .textures = [this]() -> TextureManager* {
           RenderContext& render = m_loop.renderContext();
           return render.glReady() ? &render.textureManager() : nullptr;
@@ -436,12 +442,28 @@ namespace term {
     return view != nullptr ? view->terminal() : nullptr;
   }
 
+  void TerminalWindow::updateSceneSignals(const SessionListEvent& event) {
+    const std::vector<std::uint64_t> visible = m_sessions.visible();
+    if (const auto* end = std::get_if<session_event::CommandEnd>(&event);
+        end != nullptr && end->exitCode && std::ranges::contains(visible, end->id)) {
+      m_window.pulseScene(*end->exitCode == 0 ? AppWindow::ScenePulse::Success : AppWindow::ScenePulse::Failure);
+    }
+    m_window.setSceneBusy(std::ranges::any_of(visible, [this](std::uint64_t id) {
+      const SessionInfo* info = m_sessions.find(id);
+      return info != nullptr && std::holds_alternative<CommandRunning>(info->command);
+    }));
+  }
+
   void TerminalWindow::apply(const SessionListEvent& event) {
     const auto before = m_sessions.shown();
     const auto splitsBefore = m_sessions.splits();
     const ApplyResult result = m_sessions.apply(event);
     if (result == ApplyResult::Rejected) {
       return;
+    }
+    // Output is the frequent event and changes neither the visible panes nor their commands.
+    if (!std::holds_alternative<session_event::Output>(event)) {
+      updateSceneSignals(event);
     }
     // The sidebar's groups follow the splits: a rebuild regroups the rows (rare: a join, a leave, a member closed).
     const bool regroup = m_sessions.splits() != splitsBefore;

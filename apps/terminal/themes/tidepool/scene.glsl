@@ -1,4 +1,6 @@
 // Shallow water: a lit gradient, moving caustics, and a manta and bubbles built from glyph tiles.
+// Inputs: scene_time, scene_size, scene_scale, scene_dark, scene_surface/text/accent, and the reactions
+// scene_busy (0..1 while a command runs), scene_success, scene_failure, scene_bell (one 0 -> 1 -> 0 pulse each).
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
 // A 3x5 glyph made from hash bits; 1 inside a lit stroke.
@@ -36,7 +38,7 @@ vec4 scene(vec2 uv) {
   vec3 deep = mix(scene_surface * 0.55, scene_surface, 0.4 + 0.6 * (1.0 - uv.y));
   vec3 shallow = mix(scene_surface, vec3(1.0), scene_dark > 0.5 ? 0.06 : 0.35);
   vec3 col = mix(deep, shallow, smoothstep(1.0, 0.0, uv.y + 0.3 * uv.x));
-  col += (scene_dark > 0.5 ? 0.16 : 0.22) * caustic(px / 90.0, t) * mix(vec3(1.0), scene_accent * 0.4 + 0.6, 0.3);
+  col += (scene_dark > 0.5 ? 0.16 : 0.22) * (1.0 + 0.5 * scene_busy) * caustic(px / 90.0, t) * mix(vec3(1.0), scene_accent * 0.4 + 0.6, 0.3);
 
   float tile = 12.0;
   vec2 cell = floor(px / tile);
@@ -60,5 +62,9 @@ vec4 scene(vec2 uv) {
   float rise = mod(cell.y * tile + t * speed + hash(vec2(column, 9.0)) * scene_size.y, scene_size.y * 0.7);
   float bubble = step(mod(cell.x, 5.0), 0.5) * step(rise, tile * 2.0) * step(0.35, hash(vec2(column, 1.0)));
   col = mix(col, mix(col, vec3(1.0, 0.85, 0.35), 0.45 + 0.4 * glyph(cell + 3.0, f)), bubble * inset);
+  // Reactions: success lifts the water toward the accent, a failure warms it once, the bell glints.
+  col = mix(col, scene_accent, 0.18 * scene_success);
+  col = mix(col, vec3(0.85, 0.32, 0.25), 0.22 * scene_failure);
+  col += 0.08 * scene_bell;
   return vec4(col, 1.0);
 }

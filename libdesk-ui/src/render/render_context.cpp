@@ -1117,6 +1117,7 @@ void RenderContext::drawNodeSelf(
                                                .surface = rgb(scene->surface()),
                                                .text = rgb(scene->text()),
                                                .accent = rgb(scene->accent()),
+                                               .signals = scene->signals(),
                                                .transform = worldTransform,
                                                .opacity = effectiveOpacity});
     break;

@@ -36,6 +36,10 @@ uniform float scene_dark;
 uniform vec3 scene_surface;
 uniform vec3 scene_text;
 uniform vec3 scene_accent;
+uniform float scene_busy;
+uniform float scene_success;
+uniform float scene_failure;
+uniform float scene_bell;
 #line 1
 )";
 
@@ -108,6 +112,10 @@ ShaderSceneProgram::Entry& ShaderSceneProgram::entry(std::string_view source) {
   e.surface = glGetUniformLocation(id, "scene_surface");
   e.text = glGetUniformLocation(id, "scene_text");
   e.accent = glGetUniformLocation(id, "scene_accent");
+  e.busy = glGetUniformLocation(id, "scene_busy");
+  e.success = glGetUniformLocation(id, "scene_success");
+  e.failure = glGetUniformLocation(id, "scene_failure");
+  e.bell = glGetUniformLocation(id, "scene_bell");
   return e;
 }
 
@@ -141,6 +149,10 @@ void ShaderSceneProgram::draw(const ShaderSceneDraw& s) {
   glUniform3f(e.surface, s.surface[0], s.surface[1], s.surface[2]);
   glUniform3f(e.text, s.text[0], s.text[1], s.text[2]);
   glUniform3f(e.accent, s.accent[0], s.accent[1], s.accent[2]);
+  glUniform1f(e.busy, s.signals.busy);
+  glUniform1f(e.success, s.signals.success);
+  glUniform1f(e.failure, s.signals.failure);
+  glUniform1f(e.bell, s.signals.bell);
   drawQuad(e.position, s.width, s.height);
 }
 

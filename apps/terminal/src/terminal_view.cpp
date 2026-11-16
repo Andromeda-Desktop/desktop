@@ -852,6 +852,9 @@ namespace term {
       return;
     }
     m_lastBell = now;
+    if (m_settings.bell != Bell::Off && m_host.bellRang) {
+      m_host.bellRang();
+    }
     switch (m_settings.bell) {
     case Bell::Off: return;
     case Bell::Sound:

@@ -31,7 +31,15 @@ public:
     markPaintDirty();
   }
 
+  void setSignals(const SceneSignals& signals) {
+    if (signals != m_signals) {
+      m_signals = signals;
+      markPaintDirty();
+    }
+  }
+
   [[nodiscard]] const std::string& source() const noexcept { return m_source; }
+  [[nodiscard]] const SceneSignals& signals() const noexcept { return m_signals; }
   [[nodiscard]] float time() const noexcept { return m_time; }
   [[nodiscard]] const Color& surface() const noexcept { return m_surface; }
   [[nodiscard]] const Color& text() const noexcept { return m_text; }
@@ -41,6 +49,7 @@ public:
 private:
   std::string m_source;
   float m_time = 0.0F;
+  SceneSignals m_signals;
   Color m_surface;
   Color m_text;
   Color m_accent;

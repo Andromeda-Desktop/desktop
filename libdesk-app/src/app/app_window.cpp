@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <numbers>
 #include <cmath>
 #include <cstdlib>
 #include <format>
@@ -704,6 +705,18 @@ void AppWindow::setSceneHeld(bool held) {
   }
 }
 
+void AppWindow::pulseScene(ScenePulse pulse) {
+  m_scenePulses[static_cast<std::size_t>(pulse)] = std::chrono::steady_clock::now();
+  noteSceneActivity();
+}
+
+void AppWindow::setSceneBusy(bool busy) {
+  if (busy != m_sceneBusy) {
+    m_sceneBusy = busy;
+    noteSceneActivity();
+  }
+}
+
 void AppWindow::wakeScene() {
   if (m_sceneNode != nullptr && m_activated && !m_sceneHeld && !m_sceneTicking) {
     m_sceneTicking = true;
@@ -721,6 +734,22 @@ void AppWindow::sceneTick() {
   const float elapsed = std::chrono::duration<float>(now - m_sceneStepped).count();
   m_sceneSeconds += std::min(elapsed, 0.133F); // a stall resumes the motion instead of jumping
   m_sceneNode->setTime(m_sceneSeconds);
+  const float busyStep = elapsed * 1000.0F / static_cast<float>(Tokens::componentWindowSceneBusyMs);
+  m_sceneBusyLevel = std::clamp(m_sceneBusyLevel + (m_sceneBusy ? busyStep : -busyStep), 0.0F, 1.0F);
+  const auto pulse = [&](ScenePulse kind, int durationMs) {
+    auto& at = m_scenePulses[static_cast<std::size_t>(kind)];
+    const float t = at ? std::chrono::duration<float, std::milli>(now - *at).count() / static_cast<float>(durationMs) : 1.0F;
+    if (t >= 1.0F) {
+      at.reset();
+      return 0.0F;
+    }
+    const float s = std::sin(std::numbers::pi_v<float> * t);
+    return s * s;
+  };
+  m_sceneNode->setSignals({.busy = m_sceneBusyLevel,
+                           .success = pulse(ScenePulse::Success, Tokens::componentWindowScenePulseMs),
+                           .failure = pulse(ScenePulse::Failure, Tokens::componentWindowSceneFailurePulseMs),
+                           .bell = pulse(ScenePulse::Bell, Tokens::componentWindowScenePulseMs)});
   m_sceneStepped = now;
   // The timer paces the scene, not frame ticks: a redraw re-arms a frame tick, which would step it at the output rate.
   // The next step waits until this one is presented, so a hidden window stops stepping.
@@ -849,8 +878,11 @@ void AppWindow::measureScene() {
     node->setFrameSize(kWidth, kHeight);
     auto* scene = static_cast<ShaderSceneNode*>(root.addChild(std::move(node)));
     std::vector<std::uint8_t> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
-    for (const float time : kTimes) {
-      scene->setTime(time);
+    // Rest and every reaction at its peak: text keeps its contrast through a pulse.
+    constexpr std::array<SceneSignals, 2> kSignals{SceneSignals{}, SceneSignals{.busy = 1.0F, .success = 1.0F, .failure = 1.0F, .bell = 1.0F}};
+    for (std::size_t n = 0; n < kTimes.size() * kSignals.size(); ++n) {
+      scene->setTime(kTimes[n % kTimes.size()]);
+      scene->setSignals(kSignals[n / kTimes.size()]);
       if (!context.renderScene(target, &root) || !context.readPixels(target, pixels)) {
         break;
       }

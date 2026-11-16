@@ -29,6 +29,10 @@ private:
     GLint surface = -1;
     GLint text = -1;
     GLint accent = -1;
+    GLint busy = -1;
+    GLint success = -1;
+    GLint failure = -1;
+    GLint bell = -1;
   };
 
   Entry& entry(std::string_view source);

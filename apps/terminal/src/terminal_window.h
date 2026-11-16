@@ -84,6 +84,7 @@ namespace term {
     void requestFrame();
     void openUri(const std::string& uri);
     void apply(const SessionListEvent& event);
+    void updateSceneSignals(const SessionListEvent& event); // scene_busy and the command pulses follow the visible panes
     void show(std::uint64_t id);
     // Session keys: Ctrl+Shift+T new, Ctrl+Shift+A new agent session, Ctrl+Shift+W close an agent session,
     // Ctrl+Shift+N new window, Ctrl+Tab / Ctrl+Shift+Tab recent, Ctrl+1..9 by position.

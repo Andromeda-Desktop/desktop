@@ -69,6 +69,7 @@ namespace term {
       // New terminal state is ready: ask for a frame tick that calls frame().
       std::function<void()> requestFrame;
       std::function<void()> playBell; // the bell setting is Sound
+      std::function<void()> bellRang; // any bell setting but Off, once per bell interval
       // Null until GL is attached: the scene builds before EGL is up.
       std::function<TextureManager*()> textures;
       // Image thumbnails for the link hover preview; null shows text only.

@@ -131,6 +131,10 @@ public:
   void noteSceneActivity();
   // Reduced motion or battery saver: the scene stays on its current frame until this turns false.
   void setSceneHeld(bool held);
+  // Reactions the scene reads as scene_busy, scene_success, scene_failure and scene_bell; each wakes the scene.
+  enum class ScenePulse : std::uint8_t { Success, Failure, Bell };
+  void pulseScene(ScenePulse pulse);
+  void setSceneBusy(bool busy);
   // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
   void setSceneContentBacked(bool backed);
   // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
@@ -322,6 +326,9 @@ private:
   std::chrono::steady_clock::time_point m_sceneAwakeUntil{};
   bool m_activated = false;
   bool m_sceneHeld = false;
+  bool m_sceneBusy = false;
+  float m_sceneBusyLevel = 0.0F;
+  std::array<std::optional<std::chrono::steady_clock::time_point>, 3> m_scenePulses{}; // by ScenePulse
   bool m_sceneTicking = false; // a scene step waits on its present or the step timer
   Timer m_sceneTimer;
   // The scene draws on its own subsurface below the window at reduced resolution: its frames repaint only that layer,
