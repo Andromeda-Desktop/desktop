@@ -83,7 +83,7 @@ namespace i18n {
     }
 
     if (candidate.empty() || candidate == "en") {
-      m_active = m_fallback;
+      m_active.clear();
       m_language = "en";
       m_rtl = false;
       kLog.info("language: en");
@@ -91,7 +91,11 @@ namespace i18n {
     }
 
     for (const std::string& lang : detail::catalogLanguageCandidates(candidate)) {
-      if (loadCatalog(lang, m_active)) {
+      // lookup() falls back to m_fallback, so English keeps one copy of the catalog.
+      if (lang == "en") {
+        m_active.clear();
+      }
+      if (lang == "en" || loadCatalog(lang, m_active)) {
         m_language = lang;
         m_rtl = detail::isRtlLanguage(m_language);
         if (lang == candidate) {
@@ -104,7 +108,7 @@ namespace i18n {
     }
 
     kLog.warn("no catalog for '{}', falling back to English", candidate);
-    m_active = m_fallback;
+    m_active.clear();
     m_language = "en";
     m_rtl = false;
   }
