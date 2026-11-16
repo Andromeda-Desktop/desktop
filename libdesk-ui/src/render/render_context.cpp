@@ -511,12 +511,15 @@ bool RenderContext::renderScene(RenderTarget& target, Node* sceneRoot, const Wal
         m_passes[m_passCount++] = {.scissor = scissor, .logical = logical};
         bounds = uniteRects(bounds, logical);
       }
-      for (std::size_t i = 0; i < m_passCount; ++i) {
-        m_backend->setScissor(m_passes[i].scissor);
-        m_backend->clear(rgba(0.0F, 0.0F, 0.0F, 0.0F));
-      }
       if (sceneRoot != nullptr) {
         findOccluders(sceneRoot, Mat3::identity(), 1.0F, bounds, 0);
+      }
+      // An occluder paints every pixel of its pass opaque; a pass whose occluder does not draw is cleared below.
+      for (std::size_t i = 0; i < m_passCount; ++i) {
+        if (m_passes[i].occluder == nullptr) {
+          m_backend->setScissor(m_passes[i].scissor);
+          m_backend->clear(rgba(0.0F, 0.0F, 0.0F, 0.0F));
+        }
       }
       renderNode(
           renderScale, sceneRoot, Mat3::identity(), 1.0F, sw, sh, bw, bh, bounds.x0, bounds.y0, bounds.x1, bounds.y1,
