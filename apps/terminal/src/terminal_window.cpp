@@ -758,7 +758,7 @@ namespace term {
         case agent::RowStatus::Starting: data.status = "starting"; break;
         case agent::RowStatus::Ready: data.status = "ready"; break;
         case agent::RowStatus::Working:
-          data.symbol = "loader-2";
+          data.spinning = true;
           data.status = it->view->agent()->activity();
           break;
         case agent::RowStatus::NeedsPermission:
@@ -792,7 +792,7 @@ namespace term {
       return data;
     }
     if (const auto* running = std::get_if<CommandRunning>(&session.command)) {
-      data.symbol = "loader-2";
+      data.spinning = true;
       data.status = withCommand("running", running->command);
     } else if (const auto* finished = std::get_if<CommandFinished>(&session.command)) {
       data.symbol = finished->failed() ? "alert-circle" : "circle-check";
@@ -833,7 +833,7 @@ namespace term {
     }
     const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
     const StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
-    m_window.setCaption({.symbol = data.symbol, .state = data.status, .danger = data.symbolDanger});
+    m_window.setCaption({.symbol = data.symbol, .state = data.status, .danger = data.symbolDanger, .spinning = data.spinning});
     syncTitle();
   }
 

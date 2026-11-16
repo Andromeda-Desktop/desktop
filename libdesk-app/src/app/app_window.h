@@ -150,6 +150,7 @@ public:
     std::string symbol;
     std::string state;
     bool danger = false; // a failure: symbol and state in Danger
+    bool spinning = false; // a spinner replaces the symbol: work runs
     bool operator==(const Caption&) const = default;
   };
   void setCaption(Caption caption);
@@ -258,6 +259,7 @@ private:
   std::unique_ptr<Node> m_root;
   Label* m_titleLabel = nullptr;
   Glyph* m_captionSymbol = nullptr;
+  class Spinner* m_captionSpinner = nullptr;
   Label* m_captionState = nullptr;
   Caption m_caption;
   std::function<void(float, float)> m_captionMenu;

@@ -18,6 +18,7 @@
 #include "render/render_context.h"
 #include "ui/builders.h"
 #include "ui/controls/glyph.h"
+#include "ui/controls/spinner.h"
 #include "ui/controls/box.h"
 #include "core/input/key_chord.h"
 #include "ui/controls/button.h"
@@ -556,6 +557,7 @@ void AppWindow::close() {
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
   m_captionSymbol = nullptr;
+  m_captionSpinner = nullptr;
   m_captionState = nullptr;
   m_navButtons = {};
   m_moreButton = nullptr;
@@ -1098,6 +1100,8 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   // A card caption: status symbol, title, state footnote (split mockup .cap); siblings, so fit() measures them.
   if (m_config.contentCard) {
     header->addChild(ui::glyph({.out = &m_captionSymbol, .glyphSize = Tokens::sizeSymbol * s}));
+    header->addChild(ui::spinner({.out = &m_captionSpinner, .color = colorSpecFromRole(ColorRole::Label2),
+                                  .spinnerSize = Tokens::sizeSymbol * s, .visible = false, .participatesInLayout = false}));
   }
   header->addChild(std::move(title));
   if (m_config.contentCard) {
@@ -1226,10 +1230,18 @@ void AppWindow::setCaption(Caption caption) {
 void AppWindow::applyCaption() {
   const ColorSpec ink = colorSpecFromRole(m_caption.danger ? ColorRole::Danger : ColorRole::Label2);
   if (m_captionSymbol != nullptr) {
-    const bool shown = !m_headerSearch && !m_caption.symbol.empty() && m_captionSymbol->setGlyph(m_caption.symbol);
+    const bool shown = !m_headerSearch && !m_caption.spinning && !m_caption.symbol.empty() && m_captionSymbol->setGlyph(m_caption.symbol);
     m_captionSymbol->setColor(ink);
     m_captionSymbol->setVisible(shown);
     m_captionSymbol->setParticipatesInLayout(shown);
+  }
+  if (m_captionSpinner != nullptr) {
+    const bool shown = !m_headerSearch && m_caption.spinning;
+    m_captionSpinner->setVisible(shown);
+    m_captionSpinner->setParticipatesInLayout(shown);
+    if (shown != m_captionSpinner->spinning()) {
+      shown ? m_captionSpinner->start() : m_captionSpinner->stop();
+    }
   }
   if (m_captionState != nullptr) {
     const bool shown = !m_headerSearch && !m_caption.state.empty();
@@ -1259,6 +1271,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
   m_captionSymbol = nullptr;
+  m_captionSpinner = nullptr;
   m_captionState = nullptr;
   m_maximizeButton = nullptr;
   m_navButtons = {};

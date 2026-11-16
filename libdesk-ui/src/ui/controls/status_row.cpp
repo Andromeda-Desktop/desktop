@@ -5,6 +5,7 @@
 #include "ui/controls/glyph.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
+#include "ui/controls/spinner.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
@@ -20,6 +21,8 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   setRadius(Style::scaledRadius(Tokens::radiusR8, s));
   setMinHeight(Tokens::sizeRowTwoCompact * s);
   addChild(ui::glyph({.out = &m_symbol, .glyphSize = Tokens::sizeSymbol * s}));
+  addChild(ui::spinner({.out = &m_spinner, .color = colorSpecFromRole(ColorRole::Label2), .spinnerSize = Tokens::sizeSymbol * s,
+                        .visible = false, .participatesInLayout = false}));
   auto text = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
   text->addChild(ui::label({.out = &m_name, .fontSize = Tokens::typeBody.size * s, .maxLines = 1,
                             .ellipsize = TextEllipsize::End}));
@@ -61,6 +64,13 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
 void StatusRow::setData(const Data& data) {
   m_data = data;
   m_symbol->setGlyph(data.symbol);
+  m_symbol->setVisible(!data.spinning);
+  m_symbol->setParticipatesInLayout(!data.spinning);
+  m_spinner->setVisible(data.spinning);
+  m_spinner->setParticipatesInLayout(data.spinning);
+  if (data.spinning != m_spinner->spinning()) {
+    data.spinning ? m_spinner->start() : m_spinner->stop();
+  }
   m_name->setText(data.name);
   m_status->setText(data.status);
   m_status->setVisible(!data.status.empty());

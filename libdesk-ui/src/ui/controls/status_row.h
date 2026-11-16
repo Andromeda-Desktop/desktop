@@ -11,6 +11,7 @@ class Glyph;
 class Input;
 class InputArea;
 class Label;
+class Spinner;
 
 // A two-line sidebar row (rulebook §9.7 session row): symbol 16, name over a status line, trailing time.
 // It grows with the text and never clips; with no status line the name centres on the symbol.
@@ -19,6 +20,7 @@ public:
   struct Data {
     std::string symbol;
     bool symbolDanger = false; // palette red: the only colour in the row
+    bool spinning = false;     // a spinner replaces the symbol: work runs
     std::string name;
     std::string status;        // empty: one line
     std::string time;          // tabular digits
@@ -53,6 +55,7 @@ private:
   float m_scale;
   Data m_data;
   Glyph* m_symbol = nullptr;
+  Spinner* m_spinner = nullptr;
   Label* m_name = nullptr;
   Input* m_field = nullptr;
   Mode m_mode = Mode::Display;
