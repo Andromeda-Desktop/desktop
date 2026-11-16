@@ -11,7 +11,10 @@ PROBE="python3 -I $HERE/probe.py"
 source "$ROOTDIR/tests/e2e/lib.sh"
 mkdir -p "$OUT/res"
 OURS="$OUT/andromeda-terminal"
-install -m 755 "${BIN:-$ROOTDIR/apps/terminal/build/andromeda-terminal}" "$OURS"
+# Other sessions relink the shared build: copy under tools/build.sh's dir lock, or a copy taken mid-link is empty.
+BUILD_LOCK=/tmp/desktop-build-dir.$(printf '%s' "$ROOTDIR/apps/terminal/build" | md5sum | cut -c1-16).lock
+flock -w 600 "$BUILD_LOCK" install -m 755 "${BIN:-$ROOTDIR/apps/terminal/build/andromeda-terminal}" "$OURS"
+[[ $(head -c 4 "$OURS") == $'\x7fELF' ]] || { echo "$OURS is not an ELF binary (BIN copied mid-link?)" >&2; exit 1; }
 TCK=$(getconf CLK_TCK)
 CRASH='AddressSanitizer|LeakSanitizer|runtime error:|Segmentation fault|Aborted|terminate called|panicked|assertion .* failed|SIGSEGV|SIGABRT'
 
@@ -66,6 +69,12 @@ term_start() {
   for _ in $(seq 500); do mapped "$(app_id "$TID")" && break; sleep 0.02; done
   START_MS=$((($(date +%s%N) - t0) / 1000000))
   if ! mapped "$(app_id "$TID")"; then
+    if [[ ! -e /proc/$TPID ]]; then
+      local rc=0
+      wait "$TPID" || rc=$?
+      echo "$TID did not map: it exited with status $rc" >&2
+      return 1
+    fi
     echo "$TID did not map; threads (name wchan state):" >&2
     local t
     for t in /proc/$TPID/task/*; do echo "  $(< "$t/comm") $(< "$t/wchan") $(awk '{print $3}' "$t/stat")" >&2; done
