@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/poll_source.h"
+#include "core/timer_manager.h"
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -27,6 +29,9 @@ public:
   [[nodiscard]] static bool available(); // the daemon's socket exists
   // Empty text with a kind = the newest entries of that kind.
   void query(const std::string& text, std::string_view kind, Answer done);
+  // A typed search: sent kSearchDebounce after the last call, and it supersedes every earlier search, whose
+  // answers are then read without a stat and reach no callback.
+  void search(const std::string& text, std::string_view kind, Answer done);
 
   void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) override;
 
@@ -38,8 +43,17 @@ private:
   void disconnect();
   void flush();
 
+  enum class Request : std::uint8_t { Query, Search, SupersededSearch };
+  struct Asked {
+    std::string text;
+    Answer done;
+    Request request;
+  };
+  void send(const std::string& text, std::string_view kind, Answer done, Request request);
+
   int m_fd = -1;
-  std::deque<std::pair<std::string, Answer>> m_asked; // the unanswered requests, oldest first
+  std::deque<Asked> m_asked; // the unanswered requests, oldest first
+  Timer m_debounce;
   std::string m_out;
   std::string m_in;
   std::vector<std::shared_ptr<const FileInfo>> m_rows; // the answer being read

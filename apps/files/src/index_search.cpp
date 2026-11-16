@@ -17,6 +17,7 @@ namespace {
 
   constexpr Logger kLog("files");
   constexpr int kLimit = 200;
+  constexpr std::chrono::milliseconds kSearchDebounce{60}; // typing faster than this sends one query
 
   std::string socketPath() {
     const char* runtime = std::getenv("XDG_RUNTIME_DIR");
@@ -69,6 +70,21 @@ void IndexSearch::disconnect() {
 }
 
 void IndexSearch::query(const std::string& text, std::string_view kind, Answer done) {
+  send(text, kind, std::move(done), Request::Query);
+}
+
+void IndexSearch::search(const std::string& text, std::string_view kind, Answer done) {
+  m_debounce.start(kSearchDebounce, [this, text, kind = std::string(kind), done = std::move(done)]() mutable {
+    for (Asked& asked : m_asked) {
+      if (asked.request == Request::Search) {
+        asked.request = Request::SupersededSearch;
+      }
+    }
+    send(text, kind, std::move(done), Request::Search);
+  });
+}
+
+void IndexSearch::send(const std::string& text, std::string_view kind, Answer done, Request request) {
   if (!connect()) {
     done(text, {});
     return;
@@ -77,7 +93,7 @@ void IndexSearch::query(const std::string& text, std::string_view kind, Answer d
   std::string words = text;
   std::ranges::replace(words, '\n', ' ');
   m_out += std::format("query {} {}{}{}\n", kLimit, words, kind.empty() ? "" : " kind:", kind);
-  m_asked.emplace_back(text, std::move(done));
+  m_asked.push_back({.text = text, .done = std::move(done), .request = request});
   flush();
 }
 
@@ -117,8 +133,10 @@ void IndexSearch::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx)
     if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
       auto asked = std::move(m_asked);
       disconnect();
-      for (auto& [text, done] : asked) {
-        done(text, {});
+      for (Asked& a : asked) {
+        if (a.request != Request::SupersededSearch) {
+          a.done(a.text, {});
+        }
       }
       return;
     }
@@ -130,11 +148,16 @@ void IndexSearch::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx)
     start = nl + 1;
     if (line.empty()) { // the end of one answer
       if (!m_asked.empty()) {
-        auto [text, done] = std::move(m_asked.front());
+        Asked asked = std::move(m_asked.front());
         m_asked.pop_front();
-        done(text, std::move(m_rows));
+        if (asked.request != Request::SupersededSearch) {
+          asked.done(asked.text, std::move(m_rows));
+        }
       }
       m_rows.clear();
+      continue;
+    }
+    if (!m_asked.empty() && m_asked.front().request == Request::SupersededSearch) {
       continue;
     }
     // "path\tmtime_ns\tsize\tkind\tmatch"

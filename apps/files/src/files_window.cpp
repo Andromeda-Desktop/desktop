@@ -1342,7 +1342,7 @@ void FilesWindow::makePane(std::size_t index) {
   auto self = std::make_shared<FileBrowser*>(nullptr);
   if (!m_picker.has_value() && IndexSearch::available()) {
     host.search = [this](const std::string& text, std::string_view kind) {
-      m_app.index().query(text, kind, [app = &m_app](const std::string& t, std::vector<std::shared_ptr<const FileInfo>> rows) {
+      m_app.index().search(text, kind, [app = &m_app](const std::string& t, std::vector<std::shared_ptr<const FileInfo>> rows) {
         app->searchAnswered(t, std::move(rows));
       });
     };
