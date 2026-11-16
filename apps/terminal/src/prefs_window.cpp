@@ -487,8 +487,8 @@ namespace term {
                                .color = colorSpecFromRole(ColorRole::Label2)}));
       content->addChild(std::move(box));
     };
-    // An error: the alert symbol, then the title and the detail, in a card.
-    const auto errorCard = [&](std::string title, std::string detail) {
+    // An error: the alert symbol, the title and the detail, and the way out at the end.
+    const auto errorCard = [&](std::string title, std::string detail, std::string action, std::function<void()> onAction) {
       const float pad = Tokens::spaceP12 * s;
       auto text = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
       text->addChild(ui::label({.text = std::move(title),
@@ -497,33 +497,52 @@ namespace term {
       text->addChild(ui::label({.text = std::move(detail),
                                 .fontSize = Tokens::typeFootnote.size * s,
                                 .color = colorSpecFromRole(ColorRole::Label2),
-                                .maxWidth = cardWidth - Tokens::sizeSymbol * s - pad * 3.0F}));
+                                .maxWidth = cardWidth - Tokens::sizeSymbol * s - pad * 3.0F
+                                            - (onAction ? (Tokens::spaceP64 + Tokens::spaceP8) * s : 0.0F)}));
       auto row = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP8 * s, .padding = pad, .width = cardWidth},
                          ui::glyph({.glyph = "alert-triangle",
                                     .glyphSize = Tokens::sizeSymbol * s,
                                     .color = colorSpecFromRole(ColorRole::DangerText)}),
                          std::move(text));
+      if (onAction) {
+        row->addChild(ui::button({.text = std::move(action),
+                                  .fontSize = Tokens::typeFootnote.size * s,
+                                  .variant = ButtonVariant::Ghost,
+                                  .radius = Style::scaledRadiusSm(s),
+                                  .height = Tokens::sizeControlS * s,
+                                  .onClick = std::move(onAction)}));
+      }
       row->setCardStyle(s);
       content->addChild(std::move(row));
+    };
+    const auto open = [this](std::filesystem::path path) -> std::function<void()> {
+      if (!m_actions.openPath) {
+        return nullptr;
+      }
+      return [this, path = std::move(path)] { m_actions.openPath(path); };
     };
     const auto lineOf = [](int line) { return line > 0 ? "Line " + std::to_string(line) + ": " : std::string(); };
 
     if (const auto* invalid = std::get_if<SettingsStore::Invalid>(&m_store.fileState())) {
       errorCard(m_store.path().filename().string() + " has an error",
-                lineOf(invalid->error.line) + invalid->error.message + ". The last good settings stay in use.");
+                lineOf(invalid->error.line) + invalid->error.message + ". The last good settings stay in use.", "Show file",
+                open(m_store.path()));
     }
 
     const std::vector<Group> all = groups();
     const auto themeErrors = [&] {
       if (m_importError) {
         errorCard("\"" + m_importError->folder + "\" was not imported",
-                  lineOf(m_importError->error.line) + m_importError->error.message + ".");
+                  lineOf(m_importError->error.line) + m_importError->error.message + ".", "Try again",
+                  m_actions.importPackage);
       }
       for (const ThemeEntry& entry : m_store.themes().entries()) {
         if (const auto* invalid = std::get_if<ThemeEntry::Invalid>(&entry.state)) {
           errorCard("Theme \"" + entry.id + "\" has an error",
                     lineOf(invalid->error.line) + invalid->error.message
-                        + (invalid->lastGood ? ". The last good version stays in use." : "."));
+                        + (invalid->lastGood ? ". The last good version stays in use." : "."),
+                    invalid->error.line > 0 ? "Show file" : "Show folder",
+                    open(invalid->error.line > 0 ? m_store.themes().dir() / entry.id / "theme.toml" : m_store.themes().dir() / entry.id));
         }
       }
     };

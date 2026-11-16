@@ -64,6 +64,21 @@ namespace term {
     }
   }
 
+  void TerminalApp::openPath(const std::filesystem::path& path) {
+    std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
+    if (m_prefsWindow != nullptr) {
+      if (const std::string token = loop().wayland().requestActivationToken(m_prefsWindow->wlSurface()); !token.empty()) {
+        g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
+      }
+    }
+    GError* error = nullptr;
+    const std::string uri = "file://" + path.string();
+    if (!g_app_info_launch_default_for_uri(uri.c_str(), context.get(), &error)) {
+      kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
+      g_clear_error(&error);
+    }
+  }
+
   // One Preferences window per app: a second Ctrl+, raises it.
   void TerminalApp::openPreferences(const std::string& activationToken) {
     if (m_prefsWindow == nullptr) {
@@ -83,17 +98,7 @@ namespace term {
                   [this] {
                     std::error_code ec;
                     std::filesystem::create_directories(themesDir(), ec);
-                    std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
-                    if (const std::string token = loop().wayland().requestActivationToken(m_prefsWindow->wlSurface());
-                        !token.empty()) {
-                      g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
-                    }
-                    GError* error = nullptr;
-                    const std::string uri = "file://" + themesDir().string();
-                    if (!g_app_info_launch_default_for_uri(uri.c_str(), context.get(), &error)) {
-                      kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
-                      g_clear_error(&error);
-                    }
+                    openPath(themesDir());
                   },
               .importPackage =
                   [this] {
@@ -116,7 +121,8 @@ namespace term {
                         }
                       });
                     });
-                  }});
+                  },
+              .openPath = [this](const std::filesystem::path& path) { openPath(path); }});
       if (!m_prefsWindow->open()) {
         return;
       }

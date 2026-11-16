@@ -32,6 +32,7 @@ namespace term {
     void activate(const std::string& activationToken) override;
     void openWindow(const std::string& activationToken);
     void openPreferences(const std::string& activationToken);
+    void openPath(const std::filesystem::path& path); // in its default app, activated from the Preferences window
     void startup() override;
     void gpuLost() override;
 

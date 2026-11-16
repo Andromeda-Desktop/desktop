@@ -30,6 +30,7 @@ namespace term {
       std::function<void()> createWithAgent; // a new window with an agent session that makes a theme with the user
       std::function<void()> openFolder;      // the themes folder in the file manager
       std::function<void()> importPackage;   // asks for a package folder, then calls importTheme with it
+      std::function<void(const std::filesystem::path&)> openPath; // a file or folder in its default app
     };
     PrefsWindow(AppWindow& window, SettingsStore& store, ThemeActions actions);
     // Copies the package into the themes folder and uses it; a bad package shows an error card instead.
