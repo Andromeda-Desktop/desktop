@@ -25,6 +25,7 @@ pub struct Config {
     /// Ask the attached client for a snapshot when the unsnapshotted tail reaches this size.
     pub snapshot_at: usize,
     /// Stop reading a pty while its tail is this large: the child blocks, and no output is lost.
+    /// An attached session never blocks: its tail is cut back to this size each time it passes 1.25 times it.
     pub tail_cap: usize,
     /// Stop reading a pty while its client has this much unsent output queued.
     pub client_queue_cap: usize,
@@ -685,7 +686,8 @@ impl Holder {
                 buf.truncate(n);
                 let offset = s.read_offset();
                 s.tail.extend_from_slice(&buf);
-                if s.tail.len() > cap {
+                // Cut in steps of a quarter cap: each cut moves the whole tail.
+                if s.tail.len() > cap + cap / 4 {
                     // A reattach replays the tail on a fresh terminal with no snapshot: start it at an ESC or after
                     // a BEL (each ends a string sequence), else at a UTF-8 lead byte.
                     let min = s.tail.len() - cap;
