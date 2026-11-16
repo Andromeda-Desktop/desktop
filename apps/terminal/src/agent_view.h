@@ -1,5 +1,6 @@
 #pragma once
 
+#include "agent_host.h"
 #include "agent_session.h"
 #include "content_view.h"
 #include "ui/controls/virtual_list_view.h"
@@ -16,10 +17,6 @@ class Flex;
 class Input;
 class Label;
 
-namespace term::agent {
-  class Host;
-}
-
 namespace term {
 
   // The content plane of an agent session: the log of turns, replies, tool calls and requests above a composer.
@@ -35,6 +32,9 @@ namespace term {
     // The session model changed: rebinds the log and the composer.
     void changed();
     [[nodiscard]] std::uint64_t key() const noexcept { return m_key; }
+    [[nodiscard]] agent::Kind kind() const { return m_host.kind(); }
+    // Shown wherever the view names the agent.
+    [[nodiscard]] std::string agentName() const { return std::string(agent::info(kind()).name); }
     // Null after the agent session closed.
     [[nodiscard]] const agent::Session* session() const;
     [[nodiscard]] AgentView* agent() noexcept override { return this; }

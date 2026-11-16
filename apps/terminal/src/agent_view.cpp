@@ -562,7 +562,7 @@ namespace term {
       pill->addChild(ui::glyph({.glyph = std::string("sparkles"),
                                 .glyphSize = Tokens::spaceP12 * s,
                                 .color = colorSpecFromRole(ColorRole::Label2)}));
-      pill->addChild(kit.text("Claude \u00b7 " + model->model(), Tokens::typeFootnote, ColorRole::Label1));
+      pill->addChild(kit.text(agentName() + " \u00b7 " + model->model(), Tokens::typeFootnote, ColorRole::Label1));
       row->agent = row->addChild(std::move(pill));
     }
     const auto& plan = model->plan();
@@ -974,7 +974,7 @@ namespace term {
     }
     if (index == 0) {
       auto banner = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP16 * s});
-      const std::string agent = model->model().empty() ? "Claude" : "Claude \u00b7 " + model->model();
+      const std::string agent = model->model().empty() ? agentName() : agentName() + " \u00b7 " + model->model();
       banner->addChild(kit.text(agent + " in " + model->cwd(), Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
       if (const agent::Session::Mode* mode = model->currentMode(); mode != nullptr) {
         banner->addChild(kit.text(std::format("{} mode: {}.", mode->name, mode->description), Tokens::typeCaption,
@@ -1214,7 +1214,7 @@ namespace term {
             switch (e.kind) {
               case agent::StopKind::Refusal:
                 glyph = "ban";
-                sentence = "Claude declined this request.";
+                sentence = agentName() + " declined this request.";
                 break;
               case agent::StopKind::Cancelled:
                 glyph = "player-stop-filled";
@@ -1231,7 +1231,7 @@ namespace term {
                 break;
               case agent::StopKind::MaxTokens: sentence = "The reply reached its token limit."; break;
               case agent::StopKind::MaxTurns: sentence = "The turn reached its request limit."; break;
-              case agent::StopKind::Failed: sentence = cause.empty() ? "Claude stopped." : "Claude stopped: " + cause; break;
+              case agent::StopKind::Failed: sentence = cause.empty() ? agentName() + " stopped." : agentName() + " stopped: " + cause; break;
             }
             auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s});
             row->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s, indent);
@@ -1324,7 +1324,7 @@ namespace term {
     auto heading = kit.text(title, Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold);
     heading->setFlexGrow(1.0F);
     header->addChild(std::move(heading));
-    header->addChild(kit.text(std::format("Claude asks · {} of {}", (at - pending.begin()) + 1, pending.size()),
+    header->addChild(kit.text(std::format("{} asks · {} of {}", agentName(), (at - pending.begin()) + 1, pending.size()),
                               Tokens::typeCaption, ColorRole::Label2));
     card->addChild(std::move(header));
     if (action != nullptr && kind == "execute" && !action->command.empty()) {
@@ -1621,7 +1621,7 @@ namespace term {
             target = !action->command.empty() ? action->command : action->title;
           }
         }
-        text = target.empty() ? std::string("Claude asks you") : std::string("Claude asks to run");
+        text = agentName() + (target.empty() ? " asks you" : " asks to run");
         command = target;
       }
       while (!m_jump->children().empty()) {
@@ -1761,10 +1761,10 @@ namespace term {
     const bool below = m_jump != nullptr && m_jump->visible();
     m_input->setPlaceholder(!model->pending().empty()    ? (below ? "1–4 answers the request below" : "1–4 answers the request above")
                             : running                    ? "Queue a follow-up · Esc stops"
-                            : phase == agent::Phase::Starting ? "Starting Claude…"
-                            : phase == agent::Phase::Failed   ? "Reply to restart Claude in this session"
-                            : model->rowStatus() == agent::RowStatus::Ready ? "Ask Claude, or / for commands"
-                                                                            : "Reply, or / for commands");
+                            : phase == agent::Phase::Starting ? "Starting " + agentName() + "…"
+                            : phase == agent::Phase::Failed   ? "Reply to restart " + agentName() + " in this session"
+                            : model->rowStatus() == agent::RowStatus::Ready ? "Ask " + agentName() + ", or / for commands"
+                                                                            : std::string("Reply, or / for commands"));
     const agent::Session::Mode* mode = model->currentMode();
     std::string meta = mode != nullptr ? mode->name : model->mode();
     bool full = false;

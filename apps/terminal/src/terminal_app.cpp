@@ -24,11 +24,18 @@ namespace term {
 
   TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
     KittyImages::installPngDecoder();
-    m_agents = std::make_unique<agent::Host>(agent::Kind::Claude, [this](std::uint64_t key) {
-      for (auto& [window, terminal] : m_windows) {
-        terminal->agentChanged(key);
-      }
-    });
+  }
+
+  agent::Host& TerminalApp::agentHost(agent::Kind kind) {
+    std::unique_ptr<agent::Host>& host = m_agents.at(static_cast<std::size_t>(kind));
+    if (host == nullptr) {
+      host = std::make_unique<agent::Host>(kind, [this](std::uint64_t key) {
+        for (auto& [window, terminal] : m_windows) {
+          terminal->agentChanged(key);
+        }
+      });
+    }
+    return *host;
   }
 
   TerminalApp::~TerminalApp() = default;
@@ -42,7 +49,7 @@ namespace term {
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
-    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, *m_agents, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
+    m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, [this](agent::Kind kind) -> agent::Host& { return agentHost(kind); }, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
                                                           [this](const std::string& token) { openWindow(token); },
                                                           [this](const std::string& token) { openPreferences(token); },
@@ -110,7 +117,7 @@ namespace term {
                   [this] {
                     std::error_code ec;
                     std::filesystem::create_directories(themesDir(), ec);
-                    m_nextOrigins = {NewAgent{.cwd = themesDir().string(), .prompt = themeAgentPrompt()}};
+                    m_nextOrigins = {NewAgent{.kind = agent::Kind::Claude, .cwd = themesDir().string(), .prompt = themeAgentPrompt()}};
                     openWindow(loop().wayland().requestActivationToken(m_prefsWindow->wlSurface()));
                   },
               .openFolder =

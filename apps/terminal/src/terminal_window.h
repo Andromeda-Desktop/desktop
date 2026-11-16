@@ -57,10 +57,13 @@ namespace term {
   };
   // An agent session (ACP) in cwd; empty starts in $HOME.
   struct NewAgent {
+    agent::Kind kind;
     std::string cwd;
     std::string prompt; // sent as the first message; empty: none
   };
   using WindowOrigin = std::variant<NewShell, Reattach, NewAgent>;
+  // The app's shared host for a kind; made on first use.
+  using AgentHosts = std::function<agent::Host&(agent::Kind)>;
 
   // Asks where to save a file named like suggested (the portal dialog, parented to this window); nullopt = cancelled.
   using ChooseSaveFile = std::function<void(const std::string& suggested,
@@ -71,7 +74,7 @@ namespace term {
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
     // activation token.
-    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents, ThumbnailService& thumbnails,
+    TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
                    std::function<void()> close, std::function<void(const std::string& token)> newWindow,
@@ -105,7 +108,9 @@ namespace term {
     void show(std::uint64_t id);
     // Runs the window action bound to the key ([keybindings]); false for other keys and the grid's actions.
     bool sessionKey(const KeyboardEvent& event);
-    void openAgentHere();
+    void openAgentHere(agent::Kind kind);
+    // The shown agent session's kind, else the first installed kind.
+    agent::Kind defaultAgentKind();
     void openNewMenu();
     // The session menu of row `id` (sidebar secondary click, caption menu button) at a scene point.
     void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
@@ -122,7 +127,7 @@ namespace term {
     AppLoop& m_loop;
     AppWindow& m_window;
     Notifier& m_notifier;
-    agent::Host& m_agents;
+    AgentHosts m_agents;
     ThumbnailService& m_thumbnails;
     SettingsStore& m_settings;
     Signal<>::ScopedConnection m_settingsChanged;

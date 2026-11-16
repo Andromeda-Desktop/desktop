@@ -106,12 +106,12 @@ namespace term {
     }
   } // namespace
 
-  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, agent::Host& agents,
+  TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
                                  ThumbnailService& thumbnails, SettingsStore& settings,
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
                                  std::function<void(const std::string& token)> newWindow,
                                  std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
-      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(agents), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
+      : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
         m_chooseSaveFile(std::move(chooseSaveFile)) {
     m_settingsChanged = m_settings.changed().connect([this] {
@@ -381,14 +381,15 @@ namespace term {
     if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
       const std::uint64_t key = s_nextAgentKey++;
       const std::string cwd = fresh->cwd.empty() ? homeDir() : fresh->cwd;
-      agent::Session& session = m_agents.open(key, cwd);
+      agent::Host& host = m_agents(fresh->kind);
+      agent::Session& session = host.open(key, cwd);
       if (!fresh->prompt.empty() && session.send(fresh->prompt)) {
-        m_agents.flush(key);
+        host.flush(key);
       }
-      auto agentView = std::make_unique<AgentView>(m_agents, key);
+      auto agentView = std::make_unique<AgentView>(host, key);
       agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
       m_views.push_back({id, std::move(agentView)});
-      apply(session_event::Open{id, SessionKind::Agent, "Claude", shownPath(cwd)});
+      apply(session_event::Open{id, SessionKind::Agent, std::string(agent::info(fresh->kind).name), shownPath(cwd)});
       return;
     }
     auto alive = std::weak_ptr<bool>(m_alive);
@@ -800,7 +801,7 @@ namespace term {
           showScrollback(*shown);
         }
         return true;
-      case Action::NewAgent: openAgentHere(); return true;
+      case Action::NewAgent: openAgentHere(defaultAgentKind()); return true;
       // Closes the shown session, shell or agent; asks first while a command runs.
       case Action::CloseSession: askClose({*m_sessions.shown()}); return true;
       case Action::Preferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
@@ -986,7 +987,9 @@ namespace term {
       return;
     }
     if (session->kind == SessionKind::Agent) {
-      openSession(NewAgent{session->cwd});
+      const auto it = std::ranges::find(m_views, id, &Session::id);
+      const AgentView* agent = it != m_views.end() ? it->view->agent() : nullptr;
+      openSession(NewAgent{.kind = agent != nullptr ? agent->kind() : defaultAgentKind(), .cwd = session->cwd});
     } else {
       const TerminalView* view = terminalOf(id); // the row's cwd is the shown form (~/…), not a path
       openSession(NewShell{view != nullptr ? view->cwd() : std::string()});
@@ -1081,13 +1084,22 @@ namespace term {
   }
 
   // The agent works in the shown session's directory; the sidebar keeps it with ~ for $HOME.
-  void TerminalWindow::openAgentHere() {
+  agent::Kind TerminalWindow::defaultAgentKind() {
+    if (ContentView* shown = shownView(); shown != nullptr && shown->agent() != nullptr) {
+      return shown->agent()->kind();
+    }
+    const auto kinds = agent::kinds();
+    const auto it = std::ranges::find_if(kinds, [](const agent::KindInfo& k) { return agent::installed(k.kind); });
+    return it != kinds.end() ? it->kind : agent::Kind::Claude;
+  }
+
+  void TerminalWindow::openAgentHere(agent::Kind kind) {
     const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
     std::string cwd = shown != nullptr ? shown->cwd : std::string();
     if (cwd.starts_with("~")) {
       cwd = homeDir() + cwd.substr(1);
     }
-    openSession(NewAgent{cwd});
+    openSession(NewAgent{.kind = kind, .cwd = cwd});
   }
 
   void TerminalWindow::openNewMenu() {
@@ -1095,14 +1107,21 @@ namespace term {
       return;
     }
     const Keybindings& keys = m_settings.settings().keys;
-    enum : std::int32_t { kShell = 1, kAgent, kWindow, kPreferences };
+    enum : std::int32_t { kShell = 1, kWindow, kPreferences, kAgent }; // kAgent + Kind: one item per installed kind
     float x = 0.0F;
     float y = 0.0F;
     Node::absolutePosition(m_newButton, x, y);
-    m_window.openContextMenu({{.id = kShell, .label = "New session", .shortcut = keys.label(Action::NewSession), .glyph = "prompt"},
-                              {.id = kAgent, .label = "New agent", .shortcut = keys.label(Action::NewAgent), .glyph = "robot"},
-                              {.id = kWindow, .label = "New window", .shortcut = keys.label(Action::NewWindow), .glyph = "app-window"},
-                              {.id = kPreferences, .label = "Preferences", .shortcut = keys.label(Action::Preferences), .glyph = "settings"}},
+    const agent::Kind shortcutKind = defaultAgentKind();
+    std::vector<ContextMenuControlEntry> items{{.id = kShell, .label = "New session", .shortcut = keys.label(Action::NewSession), .glyph = "prompt"}};
+    for (const agent::KindInfo& kind : agent::kinds()) {
+      if (agent::installed(kind.kind) || kind.kind == shortcutKind) {
+        items.push_back({.id = kAgent + static_cast<std::int32_t>(kind.kind), .label = "New " + std::string(kind.name) + " session",
+                         .shortcut = kind.kind == shortcutKind ? keys.label(Action::NewAgent) : std::string(), .glyph = "robot"});
+      }
+    }
+    items.push_back({.id = kWindow, .label = "New window", .shortcut = keys.label(Action::NewWindow), .glyph = "app-window"});
+    items.push_back({.id = kPreferences, .label = "Preferences", .shortcut = keys.label(Action::Preferences), .glyph = "settings"});
+    m_window.openContextMenu(std::move(items),
                              x, y + m_newButton->height(),
                              [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
                                if (alive.expired()) {
@@ -1110,10 +1129,13 @@ namespace term {
                                }
                                switch (id) {
                                  case kShell: openSession(NewShell{}); break;
-                                 case kAgent: openAgentHere(); break;
                                  case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
                                  case kPreferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
-                                 default: break;
+                                 default:
+                                   if (id >= kAgent && id < kAgent + static_cast<std::int32_t>(agent::kKindCount)) {
+                                     openAgentHere(static_cast<agent::Kind>(id - kAgent));
+                                   }
+                                   break;
                                }
                              });
   }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -10,6 +11,7 @@ namespace term::agent {
 
   // The coding agents a session can run. Each speaks ACP on stdio, directly or through an adapter.
   enum class Kind : std::uint8_t { Claude, Copilot, Gemini, Codex };
+  inline constexpr std::size_t kKindCount = 4;
 
   struct KindInfo {
     Kind kind;

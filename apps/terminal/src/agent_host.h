@@ -38,6 +38,8 @@ namespace term::agent {
     // Call after a user action on a session model: sends its outbox.
     void flush(std::uint64_t key);
 
+    [[nodiscard]] Kind kind() const { return m_kind; }
+
     // The agentd path: $ANDROMEDA_AGENTD, else the installed helper.
     [[nodiscard]] static std::string program();
 

@@ -7,6 +7,7 @@
 #include "prefs_window.h"
 #include "terminal_window.h"
 
+#include <array>
 #include <map>
 #include <memory>
 #include <string>
@@ -41,7 +42,8 @@ namespace term {
 
   private:
     // Before the windows: their agent views close their sessions in it.
-    std::unique_ptr<agent::Host> m_agents;
+    std::array<std::unique_ptr<agent::Host>, agent::kKindCount> m_agents; // made on first use
+    agent::Host& agentHost(agent::Kind kind);
     ThumbnailService m_thumbnails; // outlives the windows: their views release thumbnails
     SettingsStore m_settings;
     AppWindow* m_prefsWindow = nullptr;
