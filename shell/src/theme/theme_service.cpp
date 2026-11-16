@@ -221,6 +221,7 @@ namespace noctalia::theme {
     };
     resolved->palette = paletteFor(resolved->shellMode == "light");
     setDarkPalette(resolved->shellMode == "light" ? paletteFor(false) : resolved->palette);
+    setLightPalette(resolved->shellMode == "light" ? resolved->palette : paletteFor(true));
     const ::Palette appPalette = resolved->mode == resolved->shellMode ? resolved->palette : paletteFor(resolved->mode == "light");
     m_toolkitColors = {.accent = appPalette.accent, .accentText = appPalette.accentText, .onAccent = appPalette.onAccent};
 
