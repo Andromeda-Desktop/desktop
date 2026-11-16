@@ -28,6 +28,12 @@ struct FileInfo {
 [[nodiscard]] std::optional<FileInfo> statFile(int dirFd, std::string_view name);
 [[nodiscard]] std::optional<FileInfo> statFile(const std::filesystem::path& path);
 // An entry from its directory record: no stat when dType names a file or directory (pendingStat), else statFile.
-[[nodiscard]] std::optional<FileInfo> fileFromDirent(int dirFd, std::string_view name, unsigned char dType);
+// With describe false, such an entry leaves its name fields to describeText and describeType.
+[[nodiscard]] std::optional<FileInfo> fileFromDirent(int dirFd, std::string_view name, unsigned char dType,
+                                                     bool describe = true);
+// The fields that come from the name and kind alone, in two parts that touch different fields, so two threads may fill
+// one entry: hidden, displayName and collateKey; and contentType (GLib guesses types under one global lock).
+void describeText(FileInfo& info);
+void describeType(FileInfo& info);
 // Reads the stat fields of info.name and clears pendingStat. False when it no longer exists.
 bool fillStat(int dirFd, FileInfo& info);

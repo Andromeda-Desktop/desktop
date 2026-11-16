@@ -27,6 +27,8 @@ namespace {
   constexpr std::size_t kInlineStatLimit = 1000;
   constexpr std::size_t kStatBatch = 2048;
   constexpr std::size_t kMaxStatWorkers = 4;
+  constexpr std::size_t kParallelPart = 2048; // fewer entries per thread cost more to start a thread than to process
+  constexpr unsigned kMaxListThreads = 4;
   constexpr std::size_t kDirentBuffer = 256 * 1024;
 
   bool nameBefore(const FileInfo& a, const FileInfo& b) {
@@ -129,6 +131,15 @@ namespace {
     int statFd = -1; // open when some entries still need their stat
   };
 
+  // Runs fn(begin, end) over threads contiguous parts of [0, n); the calling thread takes the last part.
+  template <typename F> void parallelParts(std::size_t threads, std::size_t n, const F& fn) {
+    std::vector<std::jthread> helpers;
+    for (std::size_t part = 0; part + 1 < threads; ++part) {
+      helpers.emplace_back([&fn, part, threads, n] { fn(part * n / threads, (part + 1) * n / threads); });
+    }
+    fn((threads - 1) * n / threads, n);
+  }
+
   // Phase 1, on a worker thread (a slow or hung mount must not stall the UI): names and d_type from getdents64,
   // sorted by collate key.
   Listing listNames(const std::filesystem::path& dir) {
@@ -142,6 +153,7 @@ namespace {
       return out;
     }
     std::vector<FileInfo> infos;
+    std::vector<std::uint32_t> undescribed;
     std::vector<char> buffer(kDirentBuffer);
     while (true) {
       const long n = ::syscall(SYS_getdents64, fd, buffer.data(), buffer.size());
@@ -164,10 +176,36 @@ namespace {
         if (name == "." || name == "..") {
           continue;
         }
-        if (auto info = fileFromDirent(fd, name, type)) {
+        if (auto info = fileFromDirent(fd, name, type, false)) {
+          if (info->pendingStat) { // a file or directory record: fileFromDirent left its name fields
+            undescribed.push_back(static_cast<std::uint32_t>(infos.size()));
+          }
           infos.push_back(std::move(*info));
         }
       }
+    }
+    // Collate keys, the sort and the row allocations are most of a big listing's time and scale with threads. Type
+    // guesses share one GLib lock, so one thread guesses every type while the others build the keys.
+    const std::size_t threads = infos.size() < kParallelPart ? 1
+        : std::min<std::size_t>(std::clamp(std::thread::hardware_concurrency() / 2, 1U, kMaxListThreads),
+                                infos.size() / kParallelPart);
+    {
+      std::jthread types;
+      if (threads > 1) {
+        types = std::jthread([&] {
+          for (const std::uint32_t i : undescribed) {
+            describeType(infos[i]);
+          }
+        });
+      }
+      parallelParts(threads, undescribed.size(), [&](std::size_t begin, std::size_t end) {
+        for (std::size_t i = begin; i < end; ++i) {
+          describeText(infos[undescribed[i]]);
+          if (threads == 1) {
+            describeType(infos[undescribed[i]]);
+          }
+        }
+      });
     }
     bool pending = false;
     for (FileInfo& info : infos) {
@@ -178,11 +216,24 @@ namespace {
     }
     std::vector<std::uint32_t> order(infos.size());
     std::iota(order.begin(), order.end(), 0U);
-    std::ranges::sort(order, [&](std::uint32_t x, std::uint32_t y) { return nameBefore(infos[x], infos[y]); });
-    out.entries.reserve(infos.size());
-    for (const std::uint32_t i : order) {
-      out.entries.push_back(std::make_shared<const FileInfo>(std::move(infos[i])));
+    const auto byName = [&](std::uint32_t x, std::uint32_t y) { return nameBefore(infos[x], infos[y]); };
+    parallelParts(threads, order.size(), [&](std::size_t begin, std::size_t end) {
+      std::sort(order.begin() + static_cast<std::ptrdiff_t>(begin), order.begin() + static_cast<std::ptrdiff_t>(end), byName);
+    });
+    for (std::size_t width = 1; width < threads; width *= 2) {
+      for (std::size_t part = 0; part + width < threads; part += 2 * width) {
+        const auto at = [&](std::size_t p) {
+          return order.begin() + static_cast<std::ptrdiff_t>(std::min(p, threads) * order.size() / threads);
+        };
+        std::inplace_merge(at(part), at(part + width), at(part + 2 * width), byName);
+      }
     }
+    out.entries.resize(infos.size());
+    parallelParts(threads, order.size(), [&](std::size_t begin, std::size_t end) {
+      for (std::size_t k = begin; k < end; ++k) {
+        out.entries[k] = std::make_shared<const FileInfo>(std::move(infos[order[k]]));
+      }
+    });
     if (pending) {
       out.statFd = fd;
     } else {

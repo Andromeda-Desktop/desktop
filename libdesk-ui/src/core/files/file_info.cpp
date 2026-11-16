@@ -17,27 +17,29 @@ namespace {
     static const bool utf8 = g_get_filename_charsets(nullptr) != FALSE;
     return utf8;
   }
-
-  // The fields that come from the name and kind alone.
-  void describeName(FileInfo& info) {
-    info.hidden = !info.name.empty() && info.name.front() == '.';
-    if (filenamesAreUtf8() && g_utf8_validate(info.name.data(), static_cast<gssize>(info.name.size()), nullptr)) {
-      info.displayName = info.name;
-    } else {
-      info.displayName = ownedString(g_filename_display_name(info.name.c_str()));
-    }
-    info.collateKey = ownedString(g_utf8_collate_key_for_filename(info.displayName.c_str(), -1));
-    if (info.isDir) {
-      info.contentType = "inode/directory";
-    } else {
-      gboolean uncertain = FALSE;
-      gchar* type = g_content_type_guess(info.name.c_str(), nullptr, 0, &uncertain);
-      gchar* mime = type != nullptr ? g_content_type_get_mime_type(type) : nullptr;
-      g_free(type);
-      info.contentType = mime != nullptr ? ownedString(mime) : "application/octet-stream";
-    }
-  }
 } // namespace
+
+void describeText(FileInfo& info) {
+  info.hidden = !info.name.empty() && info.name.front() == '.';
+  if (filenamesAreUtf8() && g_utf8_validate(info.name.data(), static_cast<gssize>(info.name.size()), nullptr)) {
+    info.displayName = info.name;
+  } else {
+    info.displayName = ownedString(g_filename_display_name(info.name.c_str()));
+  }
+  info.collateKey = ownedString(g_utf8_collate_key_for_filename(info.displayName.c_str(), -1));
+}
+
+void describeType(FileInfo& info) {
+  if (info.isDir) {
+    info.contentType = "inode/directory";
+  } else {
+    gboolean uncertain = FALSE;
+    gchar* type = g_content_type_guess(info.name.c_str(), nullptr, 0, &uncertain);
+    gchar* mime = type != nullptr ? g_content_type_get_mime_type(type) : nullptr;
+    g_free(type);
+    info.contentType = mime != nullptr ? ownedString(mime) : "application/octet-stream";
+  }
+}
 
 bool fillStat(int dirFd, FileInfo& info) {
   // statx for the birth time (Date Added); the same cost as fstatat.
@@ -80,11 +82,12 @@ std::optional<FileInfo> statFile(int dirFd, std::string_view name) {
   if (!fillStat(dirFd, info)) {
     return std::nullopt;
   }
-  describeName(info);
+  describeText(info);
+  describeType(info);
   return info;
 }
 
-std::optional<FileInfo> fileFromDirent(int dirFd, std::string_view name, unsigned char dType) {
+std::optional<FileInfo> fileFromDirent(int dirFd, std::string_view name, unsigned char dType, bool describe) {
   if (dType != DT_REG && dType != DT_DIR) {
     return statFile(dirFd, name);
   }
@@ -93,7 +96,10 @@ std::optional<FileInfo> fileFromDirent(int dirFd, std::string_view name, unsigne
   info.isDir = dType == DT_DIR;
   info.kind = info.isDir ? FileKind::Directory : FileKind::File;
   info.pendingStat = true;
-  describeName(info);
+  if (describe) {
+    describeText(info);
+    describeType(info);
+  }
   return info;
 }
 

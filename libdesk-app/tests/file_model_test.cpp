@@ -157,6 +157,26 @@ int main() {
   expect(std::ranges::none_of(again->entries(), [](const auto& e) { return e->pendingStat; }), "every entry has its stat");
   again.reset();
 
+  // A listing big enough to split across threads still comes in name order with every name field.
+  {
+    const fs::path many = root / "many";
+    fs::create_directories(many);
+    for (int i = 0; i < 9000; ++i) {
+      std::ofstream(many / std::format("{}{}{}", i % 3 == 0 ? "Ä" : i % 3 == 1 ? "b" : "A", 9000 - i, i % 2 ? ".jpg" : ""));
+    }
+    auto manyModel = FileModel::open(many, watcher);
+    expect(pump(watcher, [&] { return manyModel->status() == FileModel::Status::Ready; }), "the threaded listing finishes");
+    const auto& e = manyModel->entries();
+    expect(e.size() == 9000, "the threaded listing has every file");
+    const FileSort byName{.foldersFirst = false};
+    expect(std::ranges::is_sorted(e, [&](const auto& a, const auto& b) { return FileModelView::before(*a, *b, byName); }),
+           "the threaded listing is in name order");
+    expect(std::ranges::all_of(e, [](const auto& f) { return !f->collateKey.empty() && !f->contentType.empty(); }),
+           "every entry of the threaded listing has its key and type");
+    expect(std::ranges::count_if(e, [](const auto& f) { return f->contentType == "image/jpeg"; }) == 4500,
+           "types are guessed from the names");
+  }
+
   // Model-based: after any sequence of sort, filter, hidden, file and reload events, every callback (a rebuild or an
   // in-place stat patch) leaves the view equal to a fresh view of the same model and settings.
   {
@@ -166,7 +186,7 @@ int main() {
       if (i % 50 == 0) {
         fs::create_directories(mixed / ("d" + std::to_string(i)));
       } else {
-        write(mixed / ((i % 7 == 0 ? ".h" : "f") + std::to_string(i) + (i % 3 == 0 ? ".txt" : ".png")), i % 13);
+        write(mixed / ((i % 7 == 0 ? ".h" : "f") + std::to_string(i) + (i % 3 == 0 ? ".txt" : ".png")), static_cast<std::size_t>(i % 13));
       }
     }
     auto mixedModel = FileModel::open(mixed, watcher);
