@@ -146,6 +146,7 @@ namespace viewer {
     m_decoder.cancel();
     dropHelper();
     m_edits.clear();
+    m_undone.clear();
     m_savedDepth = 0;
     m_notePoint.reset();
     m_signing = false;
@@ -1379,18 +1380,25 @@ namespace viewer {
   }
 
   void ViewerWindow::addAnnotation(std::size_t page, std::uint32_t kind, std::uint32_t rgb,
-                                   const std::vector<std::uint8_t>& body) {
+                                   std::vector<std::uint8_t> body) {
+    m_undone.clear();
+    sendAnnotation({.page = page, .kind = kind, .rgb = rgb, .body = std::move(body)});
+  }
+
+  void ViewerWindow::sendAnnotation(Edit edit) {
     if (!m_helper) {
       return;
     }
-    const int fd = annot::sealedMemfd(body);
+    const std::size_t page = edit.page;
+    const std::uint32_t kind = edit.kind;
+    const int fd = annot::sealedMemfd(edit.body);
     if (fd < 0) {
       kLog.warn("cannot pass the annotation to the helper");
       return;
     }
     m_helper->request(
-        {.op = preview::op::AnnotAdd, .a = static_cast<std::uint32_t>(page), .b = kind, .c = rgb}, fd,
-        [this, page, kind, generation = m_generation](const preview::HelperReply& reply) {
+        {.op = preview::op::AnnotAdd, .a = static_cast<std::uint32_t>(page), .b = kind, .c = edit.rgb}, fd,
+        [this, page, kind, edit = std::move(edit), generation = m_generation](const preview::HelperReply& reply) mutable {
           if (generation != m_generation) {
             return;
           }
@@ -1403,7 +1411,8 @@ namespace viewer {
             }
             return;
           }
-          m_edits.push_back(reply.msg.b);
+          edit.id = reply.msg.b;
+          m_edits.push_back(std::move(edit));
           for (PendingInk& ink : m_pendingInk) {
             if (ink.page == page && !ink.shownAfter) {
               ink.shownAfter = m_renderSeq; // a render sent after this one shows the stroke
@@ -1435,7 +1444,8 @@ namespace viewer {
     if (m_edits.empty() || m_saving || !m_helper) {
       return;
     }
-    const std::uint32_t id = m_edits.back();
+    const std::uint32_t id = m_edits.back().id;
+    m_undone.push_back(std::move(m_edits.back()));
     m_edits.pop_back();
     if (m_savedDepth > m_edits.size()) {
       m_savedDepth.reset();
@@ -1448,6 +1458,15 @@ namespace viewer {
                         }
                         rerenderPage(reply.msg.a);
                       });
+  }
+
+  void ViewerWindow::redo() {
+    if (m_undone.empty() || m_saving || !m_helper) {
+      return;
+    }
+    Edit edit = std::move(m_undone.back());
+    m_undone.pop_back();
+    sendAnnotation(std::move(edit));
   }
 
   void ViewerWindow::saveThen(std::function<void()> then) {

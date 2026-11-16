@@ -50,6 +50,7 @@ namespace viewer {
     add("view.zoom-out", "Zoom Out", "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);
     add("view.zoom-fit", "Fit Width", "View", XKB_KEY_0, KeyMod::Ctrl, &ViewerWindow::zoomFit);
     add("edit.undo", "Undo", "Edit", XKB_KEY_z, KeyMod::Ctrl, &ViewerWindow::undo);
+    add("edit.redo", "Redo", "Edit", XKB_KEY_z, KeyMod::Ctrl | KeyMod::Shift, &ViewerWindow::redo);
     add("file.save", "Save", "File", XKB_KEY_s, KeyMod::Ctrl, &ViewerWindow::save);
     add("view.toggle-sidebar", "Show Sidebar", "View", 0, 0, &ViewerWindow::toggleSidebar);
     commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",

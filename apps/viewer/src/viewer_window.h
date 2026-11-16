@@ -55,6 +55,7 @@ namespace viewer {
     void toggleSidebar();
     void step(int direction);
     void undo();
+    void redo();
     void save() { saveThen({}); }
     void setTool(Tool tool);
 
@@ -147,7 +148,16 @@ namespace viewer {
     [[nodiscard]] std::size_t currentPage() const;
     void onPagePress(std::size_t page, float x, float y, bool pressed);
     void onPageMotion(float x, float y);
-    void addAnnotation(std::size_t page, std::uint32_t kind, std::uint32_t rgb, const std::vector<std::uint8_t>& body);
+    struct Edit {
+      std::uint32_t id = 0; // the helper's annotation id
+      std::size_t page = 0;
+      std::uint32_t kind = 0;
+      std::uint32_t rgb = 0;
+      std::vector<std::uint8_t> body;
+    };
+    // A new edit by the user: it ends the redo history.
+    void addAnnotation(std::size_t page, std::uint32_t kind, std::uint32_t rgb, std::vector<std::uint8_t> body);
+    void sendAnnotation(Edit edit);
     void rerenderPage(std::size_t page);
     void placeSignature(std::size_t page, float x, float y);
     [[nodiscard]] bool unsaved() const { return m_savedDepth != m_edits.size(); }
@@ -218,9 +228,11 @@ namespace viewer {
     bool m_selectDirty = false;
 
     Tool m_tool = Tool::Select;
-    // Helper annotation ids in the order they were made (Ctrl+Z removes the last).
-    std::vector<std::uint32_t> m_edits;
-    // m_edits.size() when the file on disk last matched; empty once undo went below it (there is no redo).
+    // Annotations in the order they were made (Ctrl+Z removes the last); m_undone holds what Ctrl+Shift+Z adds again.
+    std::vector<Edit> m_edits;
+    std::vector<Edit> m_undone;
+    // m_edits.size() when the file on disk last matched; empty once undo went below it (a redo adds a new
+    // annotation with a new id, so the file never matches again).
     std::optional<std::size_t> m_savedDepth = 0;
     bool m_saving = false;
     std::optional<std::pair<std::size_t, annot::Point>> m_notePoint;
