@@ -62,7 +62,7 @@ namespace term::agent {
   enum class StopKind : std::uint8_t { MaxTokens, MaxTurns, Refusal, Cancelled, Failed };
   struct Stop {
     StopKind kind;
-    std::string message;
+    std::string message; // Failed: the cause in its first line, then the agent's log tail
   };
   using Entry = std::variant<Turn, Prose, Note, Action, Request, Stop>;
 

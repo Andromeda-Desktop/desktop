@@ -28,8 +28,8 @@ namespace term::agent {
         return ActionStatus::Done;
       }
       if (acp == "failed") {
-        // A rejected call reports failed; it stays Rejected.
-        return current == ActionStatus::Rejected ? ActionStatus::Rejected : ActionStatus::Failed;
+        // A rejected or cancelled call reports failed; it keeps that status.
+        return current == ActionStatus::Rejected || current == ActionStatus::Cancelled ? current : ActionStatus::Failed;
       }
       return current;
     }
@@ -425,7 +425,7 @@ namespace term::agent {
       }
     }
     if (inTurn || m_phase == Phase::Starting || status != 0) {
-      m_entries.emplace_back(Stop{StopKind::Failed, "The agent exited with status " + std::to_string(status) + ".\n" + stderrTail});
+      m_entries.emplace_back(Stop{StopKind::Failed, "the agent process exited with code " + std::to_string(status) + ".\n" + stderrTail});
     }
     m_lastStop = StopKind::Failed;
     m_outbox.clear();

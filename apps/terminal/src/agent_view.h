@@ -85,6 +85,7 @@ namespace term {
     [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width, Clock* clock);
     // A pending request asks about this action: the card replaces its row.
     [[nodiscard]] bool asked(const agent::Action& action) const;
+    [[nodiscard]] const agent::Request* requestFor(const agent::Action& action) const;
     void arrive(Renderer& renderer, Flex& holder, float width);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
     void answer(std::size_t option);

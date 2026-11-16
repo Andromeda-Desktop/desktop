@@ -668,6 +668,15 @@ namespace term {
 
   std::unique_ptr<Node> AgentView::createItem() { return ui::column({.align = FlexAlign::Stretch}); }
 
+  const agent::Request* AgentView::requestFor(const agent::Action& action) const {
+    for (const auto& entry : session()->entries()) {
+      if (const auto* request = std::get_if<agent::Request>(&entry); request != nullptr && request->toolCallId == action.id) {
+        return request;
+      }
+    }
+    return nullptr;
+  }
+
   bool AgentView::asked(const agent::Action& action) const {
     const agent::Session& model = *session();
     return std::ranges::any_of(model.pending(), [&](std::size_t entry) {
@@ -875,14 +884,22 @@ namespace term {
             auto targetLabel = kit.code(target, failed ? ColorRole::TermRed : muted ? ColorRole::Label2 : ColorRole::Label1, 1);
             targetLabel->setFlexGrow(1.0F);
             row->addChild(std::move(targetLabel));
+            // An answered request folds into its row: "allowed once · 41 s".
+            std::string allowed;
+            if (const agent::Request* asked = requestFor(e); asked != nullptr && asked->answer) {
+              if (std::string word = optionWord(*asked); word != "rejected" && word != "cancelled") {
+                allowed = std::move(word) + " \u00b7 ";
+              }
+            }
             std::string end;
             ColorRole endRole = ColorRole::Label2;
             switch (e.status) {
               case agent::ActionStatus::Pending: end = "waiting for you"; break;
-              case agent::ActionStatus::Running: end = elapsedText(e.started); break;
+              case agent::ActionStatus::Running: end = allowed + elapsedText(e.started); break;
               case agent::ActionStatus::Done:
-                if (!e.diffs.empty()) {
-                  end = countCaption(e);
+                end = allowed + (e.diffs.empty() ? std::string() : countCaption(e));
+                if (end.ends_with(" \u00b7 ")) {
+                  end.resize(end.size() - std::string_view(" \u00b7 ").size());
                 }
                 break;
               case agent::ActionStatus::Failed:
@@ -895,7 +912,7 @@ namespace term {
             if (!end.empty()) {
               auto endLabel = kit.text(end, Tokens::typeFootnote, endRole, failed ? FontWeight::SemiBold : FontWeight::Normal);
               if (e.status == agent::ActionStatus::Running && clock != nullptr) {
-                *clock = {.label = endLabel.get(), .started = e.started};
+                *clock = {.label = endLabel.get(), .started = e.started, .prefix = allowed};
               }
               row->addChild(std::move(endLabel));
             }
@@ -932,6 +949,9 @@ namespace term {
             item->addChild(buildRequest(e, entry));
           } else if constexpr (std::is_same_v<T, agent::Stop>) {
             const bool failure = e.kind == agent::StopKind::Failed;
+            const auto split = e.message.find('\n');
+            const std::string cause = e.message.substr(0, split);
+            const std::string log = split == std::string::npos ? std::string() : e.message.substr(split + 1);
             std::string_view glyph = "alert-circle";
             std::string sentence;
             switch (e.kind) {
@@ -942,19 +962,29 @@ namespace term {
               case agent::StopKind::Cancelled:
                 glyph = "player-stop-filled";
                 sentence = "You stopped the turn.";
+                for (std::size_t i = entry; i-- > 0;) {
+                  if (const auto* turn = std::get_if<agent::Turn>(&entries[i])) {
+                    if (turn->ended) {
+                      sentence = "You stopped the turn at "
+                                 + clockText(std::chrono::duration_cast<std::chrono::seconds>(*turn->ended - turn->started)) + ".";
+                    }
+                    break;
+                  }
+                }
                 break;
               case agent::StopKind::MaxTokens: sentence = "The reply reached its token limit."; break;
               case agent::StopKind::MaxTurns: sentence = "The turn reached its request limit."; break;
-              case agent::StopKind::Failed: sentence = "Claude stopped."; break;
+              case agent::StopKind::Failed: sentence = cause.empty() ? "Claude stopped." : "Claude stopped: " + cause; break;
             }
             auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s});
             row->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s, indent);
-            const ColorRole role = failure ? ColorRole::TermRed : ColorRole::Label2;
+            const ColorRole role = failure ? ColorRole::TermRed : ColorRole::Label1;
             row->addChild(kit.glyph(glyph, role));
-            row->addChild(kit.text(sentence, Tokens::typeParagraph, role));
+            auto said = kit.text(sentence, Tokens::typeParagraph, role, FontWeight::SemiBold, measure);
+            row->addChild(std::move(said));
             item->addChild(std::move(row));
-            if (failure && !e.message.empty()) {
-              auto rows = lines(e.message);
+            if (failure && !log.empty()) {
+              auto rows = lines(log);
               const auto keep = static_cast<std::size_t>(Tokens::componentAgentTailLines);
               rows.erase(rows.begin(), rows.end() - static_cast<std::ptrdiff_t>(std::min(keep, rows.size())));
               auto well = ui::column({.align = FlexAlign::Stretch});
@@ -987,6 +1017,9 @@ namespace term {
                                                                             : std::string("Use a tool");
     const auto& pending = model.pending();
     const auto at = std::ranges::find(pending, entry);
+    if (at == pending.end() && action != nullptr) {
+      return ui::column({}); // its action row carries the answer
+    }
     if (at == pending.end()) {
       auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .height = Tokens::componentAgentActionRow * s});
       row->setPadding(0.0F, 0.0F, 0.0F, Tokens::componentAgentIndent * s);
