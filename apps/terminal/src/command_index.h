@@ -51,6 +51,8 @@ public:
   void prune();
   const std::vector<CommandEntry>& entries() const { return m_entries; }
   std::vector<CommandEntry>& entries() { return m_entries; }
+  // Changes with every mark and every pruned entry.
+  std::uint64_t generation() const { return m_generation; }
 
   // The ref's row in `tag` space, or nullopt when it has no value there.
   static std::optional<std::uint32_t> row(GhosttyTrackedGridRef ref, GhosttyPointTag tag);
@@ -59,6 +61,7 @@ private:
   CommandEntry* start(GhosttyTerminal terminal);
 
   std::vector<CommandEntry> m_entries;
+  std::uint64_t m_generation = 0;
 };
 
 } // namespace term

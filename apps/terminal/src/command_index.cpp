@@ -52,6 +52,7 @@ CommandEntry* CommandIndex::start(GhosttyTerminal terminal) {
 
 void CommandIndex::onMark(GhosttyTerminal terminal, const CommandMark& mark,
                           std::chrono::steady_clock::time_point now) {
+  ++m_generation;
   CommandEntry* open = !m_entries.empty() && m_entries.back().phase != CommandEntry::Phase::Done ? &m_entries.back()
                                                                                                  : nullptr;
   switch (mark.kind) {
@@ -90,6 +91,7 @@ void CommandIndex::prune() {
     const auto p = row(it->prompt.get(), GHOSTTY_POINT_TAG_SCREEN);
     if (!p || (below && *p >= *below)) {
       it = std::make_reverse_iterator(m_entries.erase(std::next(it).base()));
+      ++m_generation;
     } else {
       below = p;
       ++it;

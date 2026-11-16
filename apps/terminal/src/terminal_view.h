@@ -176,6 +176,15 @@ namespace term {
     void pointerMotion(float localX, float localY);
     bool wheel(const InputArea::PointerData& d);
     [[nodiscard]] bool mouseTracking();
+    struct ContextKey {
+      std::uint64_t generation = 0;
+      std::uint64_t top = 0;
+      int rows = 0;
+      GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
+      std::uint16_t cols = 0;
+      bool operator==(const ContextKey&) const = default;
+    };
+    ContextKey contextKey();
     void syncContext();
     void readBranch(const void* prompt, std::string cwdUri, std::string path);
     // Rows of the viewport; the grid holds one more, the overscan row a pixel scroll shows below them.
@@ -295,6 +304,8 @@ namespace term {
     std::unique_ptr<KittyImages> m_images;
     std::unique_ptr<ContextRow> m_context;
     Timer m_contextTick; // 1 Hz, only while a shown prompt's command runs
+    std::optional<ContextKey> m_contextKey; // what the shown pills were placed for
+    std::vector<std::uint16_t> m_contextRows; // viewport rows of the prompts in view at that time
     // Steady and Expired: the cursor shows and no timer runs; Expired = blinking timed out, a key restarts it.
     enum class Blink : std::uint8_t { Steady, Shown, Hidden, Expired };
     Blink m_blink = Blink::Steady;

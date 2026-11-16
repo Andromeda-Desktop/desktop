@@ -590,7 +590,8 @@ namespace term {
     if (std::exchange(m_marksDirty, false)) {
       updateMarks();
     }
-    syncContext();
+    // The context pills change with the commands, the viewport, or the text of a prompt row in view.
+    bool contextStale = all || contextKey() != m_contextKey;
     GhosttyRenderStateColors colors{};
     colors.size = sizeof(colors);
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
@@ -631,6 +632,7 @@ namespace term {
     };
     const bool clean = false;
     while (nextRow()) {
+      contextStale = contextStale || std::ranges::contains(m_contextRows, y);
       ghostty_render_state_row_get(m_rows, GHOSTTY_RENDER_STATE_ROW_DATA_CELLS, &m_cells);
       auto selected = GHOSTTY_INIT_SIZED(GhosttyRenderStateRowSelection);
       const bool rowSelected =
@@ -711,6 +713,9 @@ namespace term {
     }
     const GhosttyRenderStateDirty none = GHOSTTY_RENDER_STATE_DIRTY_FALSE;
     ghostty_render_state_set(m_state, GHOSTTY_RENDER_STATE_OPT_DIRTY, &none);
+    if (contextStale) {
+      syncContext();
+    }
     GhosttyRenderStateOverscan captured{};
     ghostty_render_state_get(m_state, GHOSTTY_RENDER_STATE_DATA_OVERSCAN, &captured);
     if (captured.below == 0) {
@@ -1041,8 +1046,21 @@ namespace term {
     m_findLayer->setPosition(x, y);
   }
 
+  TerminalView::ContextKey TerminalView::contextKey() {
+    return m_session.withCommands([this](GhosttyTerminal t, const CommandIndex& index) {
+      ContextKey key{.generation = index.generation(), .top = m_viewRow, .rows = viewRows()};
+      if (t != nullptr) {
+        ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &key.screen);
+        ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_COLS, &key.cols);
+      }
+      return key;
+    });
+  }
+
   void TerminalView::syncContext() {
     using Caption = ContextItem::Caption;
+    m_contextKey = contextKey();
+    m_contextRows.clear();
     const auto now = std::chrono::steady_clock::now();
     const std::uint64_t top = m_viewRow;
     const std::uint64_t bottom = top + static_cast<std::uint64_t>(std::max(0, viewRows())) + 1;
@@ -1079,6 +1097,9 @@ namespace term {
         const auto row = CommandIndex::row(it->prompt.get(), GHOSTTY_POINT_TAG_SCREEN);
         if (!row || *row < top) {
           break;
+        }
+        if (*row < bottom) {
+          m_contextRows.push_back(static_cast<std::uint16_t>(*row - top));
         }
         // A user prompt (starship, a styled PS1) keeps its own row: the pills go only in our blank row.
         if (*row >= bottom || !blank(*row)) {
