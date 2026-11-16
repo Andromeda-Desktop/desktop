@@ -112,6 +112,8 @@ int main() {
   // Keys arrive as the layout gives them: shifted keysym plus the unshifted character.
   CHECK(defaults.match(XKB_KEY_T, 't', kCtrl | kShift) == Action::NewSession);
   CHECK(defaults.match(XKB_KEY_plus, '=', kCtrl | kShift) == Action::FontBigger);
+  CHECK(defaults.match(XKB_KEY_equal, '=', kCtrl) == Action::FontBigger);
+  CHECK(defaults.match(XKB_KEY_minus, '-', kCtrl) == Action::FontSmaller);
   CHECK(defaults.match(XKB_KEY_ISO_Left_Tab, 0, kCtrl | kShift) == Action::PreviousRecent);
   CHECK(defaults.match(XKB_KEY_t, 't', kCtrl) == std::nullopt);
 

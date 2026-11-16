@@ -64,7 +64,7 @@ namespace term {
     Action action;
     std::string_view name;  // the key in [keybindings]
     std::string_view label; // Preferences > Keyboard
-    std::string_view chord; // default; empty: none
+    std::string_view chord; // default chords, space-separated; empty: none
   };
   [[nodiscard]] std::span<const ActionInfo> actionTable();
   [[nodiscard]] std::optional<Action> actionNamed(std::string_view name);

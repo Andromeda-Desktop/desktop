@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <ranges>
+#include <string_view>
 #include <utility>
 
 namespace term {
@@ -27,9 +29,9 @@ namespace term {
         {Action::SearchSessions, "search_sessions", "Search sessions", "ctrl+shift+k"},
         {Action::SecureEntry, "secure_keyboard_entry", "Secure keyboard entry", "ctrl+shift+s"},
         {Action::ShowScrollback, "show_scrollback", "Show scrollback", "ctrl+shift+h"},
-        {Action::FontBigger, "font_bigger", "Larger text", "ctrl+shift+equal"},
-        {Action::FontSmaller, "font_smaller", "Smaller text", "ctrl+shift+minus"},
-        {Action::FontReset, "font_reset", "Default text size", "ctrl+shift+0"},
+        {Action::FontBigger, "font_bigger", "Larger text", "ctrl+equal ctrl+shift+equal"},
+        {Action::FontSmaller, "font_smaller", "Smaller text", "ctrl+minus ctrl+shift+minus"},
+        {Action::FontReset, "font_reset", "Default text size", "ctrl+0 ctrl+shift+0"},
         {Action::NextRecent, "next_recent", "Next recent session", "ctrl+tab"},
         {Action::PreviousRecent, "previous_recent", "Previous recent session", "ctrl+shift+tab"},
         {Action::PreviousSession, "previous_session", "Previous session in the list", "ctrl+page_up"},
@@ -141,8 +143,10 @@ namespace term {
 
   Keybindings::Keybindings() {
     for (const ActionInfo& info : kActions) {
-      if (const auto chord = parseChord(info.chord)) {
-        m_chords[static_cast<std::size_t>(info.action)].push_back(*chord);
+      for (const auto part : std::views::split(info.chord, ' ')) {
+        if (const auto chord = parseChord(std::string_view(part))) {
+          m_chords[static_cast<std::size_t>(info.action)].push_back(*chord);
+        }
       }
     }
   }
