@@ -1,6 +1,8 @@
 #include "trash.h"
 
 #include <algorithm>
+#include <array>
+#include <string_view>
 
 #include <cstdlib>
 #include <fstream>
@@ -29,6 +31,16 @@ namespace {
     struct stat st{};
     return ::lstat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && (st.st_mode & S_ISVTX) != 0;
   }
+
+  // Mount types that never hold a volume trash (GIO's system-internal types, which g_file_trash skips). A stat on
+  // a FUSE frontend is a round trip to its daemon.
+  bool canHoldTrash(std::string_view type) {
+    static constexpr std::array<std::string_view, 24> kSystem{
+        "autofs",  "binfmt_misc", "bpf",    "cgroup", "cgroup2",    "configfs",  "debugfs",   "devpts",
+        "devtmpfs", "efivarfs",   "fuse.gvfsd-fuse", "fuse.portal", "fusectl", "hugetlbfs", "mqueue", "nsfs",
+        "proc",    "pstore",      "ramfs",  "rpc_pipefs", "securityfs", "selinuxfs", "sysfs",     "tracefs"};
+    return !std::ranges::contains(kSystem, type);
+  }
 } // namespace
 
 fs::path homeTrashDir() {
@@ -48,6 +60,9 @@ std::vector<fs::path> trashDirs() {
   }
   std::error_code ec;
   while (const mntent* m = ::getmntent(mounts)) {
+    if (!canHoldTrash(m->mnt_type)) {
+      continue;
+    }
     const fs::path top = m->mnt_dir;
     if (top.string().starts_with("/proc") || top.string().starts_with("/sys")
         || top.string().starts_with("/dev") || top.string().starts_with("/run/user")) {
