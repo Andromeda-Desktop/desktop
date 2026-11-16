@@ -686,29 +686,29 @@ namespace term {
 
   void AgentView::bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool /*hovered*/) {
     auto& holder = static_cast<Flex&>(item);
-    std::erase_if(m_clocks, [&](const ActionClock& clock) { return clock.holder == &item; });
+    std::erase_if(m_clocks, [&](const Clock& clock) { return clock.holder == &item; });
     while (!holder.children().empty()) {
       holder.removeChild(holder.children().back().get());
     }
-    Label* elapsed = nullptr;
-    holder.addChild(buildItem(index, width, &elapsed));
+    Clock clock;
+    holder.addChild(buildItem(index, width, &clock));
     const auto& pending = session()->pending();
     if (index >= 1 && std::ranges::find(pending, index - 1) != pending.end() && m_arrived.insert(index - 1).second) {
       arrive(renderer, holder, width);
     }
-    if (elapsed != nullptr) {
-      const auto& action = std::get<agent::Action>(session()->entries()[index - 1]);
-      m_clocks.push_back({.holder = &item, .label = elapsed, .started = action.started});
+    if (clock.label != nullptr) {
+      clock.holder = &item;
+      m_clocks.push_back(std::move(clock));
     }
   }
 
   void AgentView::tick() {
-    for (const ActionClock& clock : m_clocks) {
-      clock.label->setText(elapsedText(clock.started));
+    for (const Clock& clock : m_clocks) {
+      clock.label->setText(clock.prefix + elapsedText(clock.started) + clock.suffix);
     }
   }
 
-  std::unique_ptr<Node> AgentView::buildItem(std::size_t index, float width, Label** elapsed) {
+  std::unique_ptr<Node> AgentView::buildItem(std::size_t index, float width, Clock* clock) {
     m_lastWidth = width;
     const Kit kit{m_scale};
     const float s = m_scale;
@@ -730,19 +730,19 @@ namespace term {
       } else if (!model->mode().empty()) {
         banner->addChild(kit.text("Mode: " + model->mode(), Tokens::typeCaption, ColorRole::Label2));
       }
-      if (model->modes().size() > 1) {
-        banner->addChild(kit.text("Shift+Tab changes the mode", Tokens::typeCaption, ColorRole::Label2));
+      auto chips = ui::row({.align = FlexAlign::Center, .wrap = true, .gap = Tokens::spaceP8 * s, .maxWidth = measure});
+      for (const auto& command : model->commands()) {
+        auto chip = ui::row({.paddingV = Tokens::spaceP2 * s,
+                             .paddingH = Tokens::spaceP8 * s,
+                             .fill = colorSpecFromRole(ColorRole::Fill1),
+                             .radius = Style::scaledRadius(Tokens::radiusR4, s)});
+        chip->addChild(kit.code("/" + command, ColorRole::Label2, 1));
+        chips->addChild(std::move(chip));
       }
-      if (!model->commands().empty()) {
-        auto chips = ui::row({.wrap = true, .gap = Tokens::spaceP8 * s, .maxWidth = measure});
-        for (const auto& command : model->commands()) {
-          auto chip = ui::row({.paddingV = Tokens::spaceP2 * s,
-                               .paddingH = Tokens::spaceP8 * s,
-                               .fill = colorSpecFromRole(ColorRole::Fill1),
-                               .radius = Style::scaledRadius(Tokens::radiusR4, s)});
-          chip->addChild(kit.code("/" + command, ColorRole::Label2, 1));
-          chips->addChild(std::move(chip));
-        }
+      if (model->modes().size() > 1) {
+        chips->addChild(kit.text("Shift+Tab changes the mode", Tokens::typeCaption, ColorRole::Label2));
+      }
+      if (!chips->children().empty()) {
         banner->addChild(std::move(chips));
       }
       item->addChild(std::move(banner));
@@ -752,10 +752,19 @@ namespace term {
     if (index - 1 >= entries.size()) {
       auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s, .paddingH = indent});
       row->addChild(kit.spinner());
-      row->addChild(ui::label({.text = "<i>Thinking</i>",
-                               .fontSize = Tokens::typeParagraph.size * s,
-                               .color = colorSpecFromRole(ColorRole::Label2),
-                               .configure = [](Label& label) { label.setUseMarkup(true); }}));
+      const agent::Turn* turn = lastTurn(*model);
+      const Clock thinking{.started = turn != nullptr ? turn->started : std::chrono::system_clock::now(),
+                           .prefix = "<i>Thinking \u00b7 ",
+                           .suffix = "</i>"};
+      auto label = ui::label({.text = thinking.prefix + elapsedText(thinking.started) + thinking.suffix,
+                              .fontSize = Tokens::typeParagraph.size * s,
+                              .color = colorSpecFromRole(ColorRole::Label2),
+                              .configure = [](Label& label) { label.setUseMarkup(true); }});
+      if (clock != nullptr) {
+        *clock = thinking;
+        clock->label = label.get();
+      }
+      row->addChild(std::move(label));
       item->addChild(std::move(row));
       return item;
     }
@@ -853,8 +862,8 @@ namespace term {
             }
             if (!end.empty()) {
               auto endLabel = kit.text(end, Tokens::typeFootnote, endRole, failed ? FontWeight::SemiBold : FontWeight::Normal);
-              if (e.status == agent::ActionStatus::Running && elapsed != nullptr) {
-                *elapsed = endLabel.get();
+              if (e.status == agent::ActionStatus::Running && clock != nullptr) {
+                *clock = {.label = endLabel.get(), .started = e.started};
               }
               row->addChild(std::move(endLabel));
             }

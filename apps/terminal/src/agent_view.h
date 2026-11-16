@@ -70,8 +70,17 @@ namespace term {
 
     [[nodiscard]] bool thinking() const;
     [[nodiscard]] bool streamingAt(std::size_t entry) const;
-    // elapsed receives a running action's elapsed-time label.
-    [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width, Label** elapsed);
+    // An elapsed-time label in a log slot (a running action, the thinking row): tick() rewrites it in place as
+    // prefix + time + suffix; a slot rebind drops its entry.
+    struct Clock {
+      const Node* holder = nullptr;
+      Label* label = nullptr;
+      agent::WallTime started;
+      std::string prefix;
+      std::string suffix;
+    };
+    // clock receives the item's elapsed-time label, if it has one.
+    [[nodiscard]] std::unique_ptr<Node> buildItem(std::size_t index, float width, Clock* clock);
     // A pending request asks about this action: the card replaces its row.
     [[nodiscard]] bool asked(const agent::Action& action) const;
     void arrive(Renderer& renderer, Flex& holder, float width);
@@ -99,13 +108,7 @@ namespace term {
     std::size_t m_slashSelected = 0;
     std::string m_slashDismissed; // the composer text Esc closed the menu at
     VirtualListView* m_log = nullptr;
-    // Elapsed-time labels of the running actions bound into log slots; a slot rebind drops its entry.
-    struct ActionClock {
-      const Node* holder;
-      Label* label;
-      agent::WallTime started;
-    };
-    std::vector<ActionClock> m_clocks;
+    std::vector<Clock> m_clocks;
     std::set<std::size_t> m_arrived; // request entries whose card has played its arrival
     Input* m_input = nullptr;
     Label* m_meta = nullptr;
