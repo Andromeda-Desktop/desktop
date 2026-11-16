@@ -21,7 +21,7 @@ CRASH='AddressSanitizer|LeakSanitizer|runtime error:|Segmentation fault|Aborted|
 load_boot() {
   $PROBE gen "$CORPUS" "$MIB"
   boot_headless 1
-  trap 'term_stop; [[ -n ${HOLDER_PID:-} ]] && kill "$HOLDER_PID"; pkill -P "${KBD_PID:-0}" wtype || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
+  trap 'term_stop; [[ -z ${HOLDER_PID:-} ]] || kill "$HOLDER_PID" 2> /dev/null || true; pkill -P "${KBD_PID:-0}" wtype || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
   # Headless has no real keyboard: each wtype would add and remove the seat keyboard, and keys sent before the app
   # binds it are lost. One idle virtual keyboard keeps it, as a physical keyboard does.
   # An idle wtype never sees the compositor go: the trap stops it (KBD_PID is the subshell that runs it).
