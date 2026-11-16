@@ -1114,6 +1114,9 @@ namespace term {
   }
 
   void TerminalView::syncContext() {
+    if (m_grid == nullptr) {
+      return; // a hidden view has no scene: the next build syncs it
+    }
     using Caption = ContextItem::Caption;
     m_contextKey = contextKey();
     m_contextRows.clear();
