@@ -30,6 +30,22 @@ void checkInvariants(const SessionList& list) {
   CHECK(ids.size() == s.size());
   CHECK(std::set<std::uint64_t>(list.recent().begin(), list.recent().end()) == ids);
   CHECK(list.recent().size() == s.size());
+  std::set<std::uint64_t> inSplit;
+  for (const auto& split : list.splits()) {
+    CHECK(split.size() >= 2 && split.size() <= kMaxPanes);
+    for (const auto id : split) {
+      CHECK(list.find(id) != nullptr);
+      CHECK(inSplit.insert(id).second);
+    }
+  }
+  const auto visible = list.visible();
+  CHECK(visible.empty() == !list.shown().has_value());
+  if (list.shown()) {
+    CHECK(std::ranges::contains(visible, *list.shown()));
+  }
+  for (const auto id : visible) {
+    CHECK(list.find(id)->seen == Seen::Seen);
+  }
   if (list.shown()) {
     CHECK(list.find(*list.shown()) != nullptr);
     CHECK(list.find(*list.shown())->seen == Seen::Seen);
@@ -38,7 +54,8 @@ void checkInvariants(const SessionList& list) {
 
 SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
-  switch (std::uniform_int_distribution<int>(0, 7)(rng)) {
+  const std::uint64_t other = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
+  switch (std::uniform_int_distribution<int>(0, 11)(rng)) {
   case 0: return Open{id, SessionKind::Shell, "s", "~"};
   case 1: return Close{id};
   case 2: return Show{id};
@@ -46,7 +63,10 @@ SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   case 4: return CommandEnd{id, std::uniform_int_distribution<int>(0, 2)(rng) == 0 ? std::optional<int>(2) : std::optional<int>(0), now};
   case 5: return Rename{id, "r"};
   case 6: return Cwd{id, "/tmp"};
-  default: return Kind{id, SessionKind::Ssh};
+  case 7: return Kind{id, SessionKind::Ssh};
+  case 8:
+  case 9: return Join{id, other};
+  default: return Leave{id};
   }
 }
 
@@ -74,8 +94,28 @@ int main() {
         if (const auto* e = std::get_if<Close>(&event); e && e->id == shownBefore && !list.sessions().empty()) {
           CHECK(list.shown() == before.recent()[1]);
         }
+        if (const auto* e = std::get_if<Join>(&event)) {
+          CHECK(list.splitOf(e->target) != nullptr && list.splitOf(e->target) == list.splitOf(e->joining));
+          CHECK(list.shown() == e->joining);
+          const auto* was = before.splitOf(e->target);
+          CHECK(list.splitOf(e->target)->size() == (was ? was->size() + 1 : 2));
+        }
+        if (const auto* e = std::get_if<Leave>(&event)) {
+          CHECK(list.splitOf(e->id) == nullptr);
+          CHECK(list.shown() == shownBefore);
+        }
+        if (const auto* e = std::get_if<Join>(&event)) {
+          CHECK(list.splitOf(e->target) != nullptr && list.splitOf(e->target) == list.splitOf(e->joining));
+          CHECK(list.shown() == e->joining);
+          const auto* was = before.splitOf(e->target);
+          CHECK(list.splitOf(e->target)->size() == (was ? was->size() + 1 : 2));
+        }
+        if (const auto* e = std::get_if<Leave>(&event)) {
+          CHECK(list.splitOf(e->id) == nullptr);
+          CHECK(list.shown() == shownBefore);
+        }
         if (const auto* e = std::get_if<CommandEnd>(&event)) {
-          CHECK((list.find(e->id)->seen == Seen::Unseen) == (shownBefore != e->id));
+          CHECK((list.find(e->id)->seen == Seen::Unseen) == !std::ranges::contains(before.visible(), e->id));
         }
       }
       checkInvariants(list);

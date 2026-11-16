@@ -78,16 +78,29 @@ namespace term {
       std::uint64_t id;
       SessionKind kind;
     };
+    // Puts `joining` beside `target` (in target's split, or a new one) and focuses it.
+    struct Join {
+      std::uint64_t target;
+      std::uint64_t joining;
+    };
+    struct Leave {
+      std::uint64_t id;
+    };
   } // namespace session_event
 
   using SessionListEvent = std::variant<session_event::Open, session_event::Close, session_event::Show,
                                         session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
-                                        session_event::Cwd, session_event::Kind>;
+                                        session_event::Cwd, session_event::Kind, session_event::Join,
+                                        session_event::Leave>;
 
   enum class ApplyResult : std::uint8_t { Applied, Rejected, LastClosed };
 
-  // The sessions of one window. Invariants: exactly one session is shown while the list is non-empty; the shown
+  inline constexpr std::size_t kMaxPanes = 4;
+
+  // The sessions of one window. Invariants: exactly one session is shown while the list is non-empty; every visible
   // session is Seen; only a finished command can leave a session Unseen; recent() orders ids most recent first.
+  // A split holds 2..kMaxPanes distinct sessions in layout order; a session is in at most one split. Showing a member
+  // shows its whole split with that member focused (the shown session is the focused pane).
   class SessionList {
   public:
     // The only transition function. A rejected event leaves the list unchanged.
@@ -97,15 +110,21 @@ namespace term {
     [[nodiscard]] const std::vector<std::uint64_t>& recent() const noexcept { return m_recent; }
     [[nodiscard]] std::optional<std::uint64_t> shown() const noexcept;
     [[nodiscard]] const SessionInfo* find(std::uint64_t id) const noexcept;
+    [[nodiscard]] const std::vector<std::vector<std::uint64_t>>& splits() const noexcept { return m_splits; }
+    [[nodiscard]] const std::vector<std::uint64_t>* splitOf(std::uint64_t id) const noexcept;
+    // The panes on screen in layout order: the shown session's split, or the shown session alone.
+    [[nodiscard]] std::vector<std::uint64_t> visible() const;
 
     bool operator==(const SessionList&) const = default;
 
   private:
     SessionInfo* get(std::uint64_t id) noexcept;
     void show(std::uint64_t id);
+    void removeFromSplit(std::uint64_t id);
 
     std::vector<SessionInfo> m_sessions;
     std::vector<std::uint64_t> m_recent;
+    std::vector<std::vector<std::uint64_t>> m_splits;
   };
 
 } // namespace term

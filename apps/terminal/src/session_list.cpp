@@ -24,10 +24,33 @@ namespace term {
 
   SessionInfo* SessionList::get(std::uint64_t id) noexcept { return const_cast<SessionInfo*>(find(id)); }
 
+  const std::vector<std::uint64_t>* SessionList::splitOf(std::uint64_t id) const noexcept {
+    const auto it = std::ranges::find_if(m_splits, [&](const auto& s) { return std::ranges::contains(s, id); });
+    return it == m_splits.end() ? nullptr : &*it;
+  }
+
+  std::vector<std::uint64_t> SessionList::visible() const {
+    const auto id = shown();
+    if (!id) {
+      return {};
+    }
+    const auto* split = splitOf(*id);
+    return split != nullptr ? *split : std::vector<std::uint64_t>{*id};
+  }
+
   void SessionList::show(std::uint64_t id) {
     std::erase(m_recent, id);
     m_recent.insert(m_recent.begin(), id);
-    get(id)->seen = Seen::Seen;
+    for (const auto pane : visible()) {
+      get(pane)->seen = Seen::Seen;
+    }
+  }
+
+  void SessionList::removeFromSplit(std::uint64_t id) {
+    for (auto& split : m_splits) {
+      std::erase(split, id);
+    }
+    std::erase_if(m_splits, [](const auto& s) { return s.size() < 2; });
   }
 
   ApplyResult SessionList::apply(const SessionListEvent& event) {
@@ -48,6 +71,7 @@ namespace term {
               }
               std::erase_if(m_sessions, [&](const SessionInfo& s) { return s.id == e.id; });
               std::erase(m_recent, e.id);
+              removeFromSplit(e.id);
               if (!m_recent.empty()) {
                 show(m_recent.front());
               }
@@ -78,7 +102,7 @@ namespace term {
               }
               s->command = CommandFinished{
                   .command = running->command, .exitCode = e.exitCode, .duration = e.at - running->start};
-              if (shown() != e.id) {
+              if (!std::ranges::contains(visible(), e.id)) {
                 s->seen = Seen::Unseen;
               }
               return true;
@@ -105,6 +129,29 @@ namespace term {
                 return false;
               }
               s->kind = e.kind;
+              return true;
+            },
+            [&](const Join& e) {
+              if (e.target == e.joining || find(e.target) == nullptr || find(e.joining) == nullptr ||
+                  splitOf(e.joining) != nullptr) {
+                return false;
+              }
+              const auto* existing = splitOf(e.target);
+              if (existing == nullptr) {
+                m_splits.push_back({e.target, e.joining});
+              } else if (existing->size() >= kMaxPanes) {
+                return false;
+              } else {
+                const_cast<std::vector<std::uint64_t>*>(existing)->push_back(e.joining);
+              }
+              show(e.joining);
+              return true;
+            },
+            [&](const Leave& e) {
+              if (splitOf(e.id) == nullptr) {
+                return false;
+              }
+              removeFromSplit(e.id);
               return true;
             },
         },
