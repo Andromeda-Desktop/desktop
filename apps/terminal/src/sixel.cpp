@@ -187,6 +187,18 @@ namespace term {
     return out;
   }
 
+  void appendKittyImage(std::span<const std::uint8_t> rgba, int width, int height, std::vector<std::uint8_t>& out) {
+    std::string data;
+    base64(rgba, data);
+    for (std::size_t at = 0; at < data.size(); at += kChunk) {
+      const bool more = at + kChunk < data.size();
+      append(out, at == 0 ? "\x1b_Ga=T,f=32,q=2,s=" + std::to_string(width) + ",v=" + std::to_string(height) + ",m=" : "\x1b_Gm=");
+      append(out, more ? "1;" : "0;");
+      append(out, std::string_view(data).substr(at, kChunk));
+      append(out, "\x1b\\");
+    }
+  }
+
   void SixelFilter::flush(std::vector<std::uint8_t>& out) {
     append(out, m_held);
     m_held.clear();
@@ -198,16 +210,7 @@ namespace term {
     const int w = image.width();
     const int h = image.height();
     if (w > 0 && h > 0) {
-      std::string data;
-      base64(image.rgba(), data);
-      // C=0 leaves the cursor right of the image on its last row; CR LF starts the line below.
-      for (std::size_t at = 0; at < data.size(); at += kChunk) {
-        const bool more = at + kChunk < data.size();
-        append(out, at == 0 ? "\x1b_Ga=T,f=32,q=2,s=" + std::to_string(w) + ",v=" + std::to_string(h) + ",m=" : "\x1b_Gm=");
-        append(out, more ? "1;" : "0;");
-        append(out, std::string_view(data).substr(at, kChunk));
-        append(out, "\x1b\\");
-      }
+      appendKittyImage(image.rgba(), w, h, out);
       append(out, "\r\n");
     }
     m_decoder.reset();

@@ -39,6 +39,10 @@ namespace term {
     std::size_t m_paramCount = 0;
   };
 
+  // Appends a kitty graphics image (RGBA, direct, chunked, no reply) at the cursor; the cursor ends right of it on its
+  // last row.
+  void appendKittyImage(std::span<const std::uint8_t> rgba, int width, int height, std::vector<std::uint8_t>& out);
+
   // Rewrites each sixel sequence (DCS [params] q ... ST) before libghostty, which has no sixel support, into a kitty
   // graphics image (RGBA, direct, chunked) placed at the cursor; the cursor ends at the start of the line below it.
   // Other DCS sequences pass unchanged.

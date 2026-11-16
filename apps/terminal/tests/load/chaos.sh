@@ -3,7 +3,7 @@
 # answers within 2 s. At the end: 0 idle CPU. Env: CASES (all below), BIN (build-asan binary works), HOLDER=1 adds
 # the holder-kill case.
 source "$(dirname "$0")/lib.sh"
-CASES=${CASES:-vtfuzz urandom osc52 titles links kitty_images alt_screen single_line resize_storm session_churn many_floods paste holder_kill}
+CASES=${CASES:-vtfuzz urandom osc52 titles links kitty_images iterm2_images alt_screen single_line resize_storm session_churn many_floods paste holder_kill}
 load_boot
 key() { run wtype -k Shift_L "$@"; }
 term_start ours
@@ -37,7 +37,7 @@ churn_step() {
 }
 for c in $CASES; do
   case $c in
-    vtfuzz | urandom | osc52 | titles | links | kitty_images | alt_screen)
+    vtfuzz | urandom | osc52 | titles | links | kitty_images | iterm2_images | alt_screen)
       gate "$c finishes" run_corpus "$c" ;;
     single_line)
       gate "100 MB single line" term_do "$PROBE stream single_line 100; $PROBE dsr $OUT/res/sl" "$OUT/res/sl" 300 ;;

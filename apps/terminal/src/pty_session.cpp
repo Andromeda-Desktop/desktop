@@ -120,9 +120,14 @@ void PtySession::apply(SessionEvent event) {
 
 bool PtySession::newTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
   if (ghostty_terminal_new(nullptr, &m_terminal, cols, rows) != GHOSTTY_SUCCESS) return false;
-  ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
+  resizeTerminal(cols, rows, cw, ch);
   configureTerminal();
   return true;
+}
+
+void PtySession::resizeTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
+  ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
+  m_grid = std::uint64_t{cols} | std::uint64_t{rows} << 16 | std::uint64_t{cw} << 32 | std::uint64_t{ch} << 48;
 }
 
 void PtySession::configureTerminal() {
@@ -235,7 +240,7 @@ bool PtySession::attach(std::uint64_t id, std::uint16_t cols, std::uint16_t rows
     }
   }
   if (restored) {
-    ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
+    resizeTerminal(cols, rows, cw, ch);
     configureTerminal();
   } else if (!newTerminal(cols, rows, cw, ch)) {
     if (fd >= 0) ::close(fd);
@@ -287,7 +292,7 @@ void PtySession::queueOutbound(std::span<const std::uint8_t> bytes) {
 void PtySession::resize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch) {
   {
     UiLock lock(*this);
-    if (m_terminal != nullptr) ghostty_terminal_resize(m_terminal, cols, rows, cw, ch);
+    if (m_terminal != nullptr) resizeTerminal(cols, rows, cw, ch);
   }
   if (m_master >= 0) {
     winsize ws = makeWinsize(cols, rows, cw, ch);
@@ -483,12 +488,18 @@ void PtySession::parseLoop() {
       if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
       for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
       const std::span<const std::uint8_t> chunk{work.data() + at, len};
-      const bool plain = m_sixel.idle() && m_textSize.idle() && m_osc99.idle() && m_userVar.idle() && plainChunk(chunk);
+      const bool plain = m_sixel.idle() && m_image.idle() && m_textSize.idle() && m_osc99.idle() && m_userVar.idle()
+                         && plainChunk(chunk);
       if (!plain) {
         m_unsixeled.clear();
         m_sixel.feed(chunk, m_unsixeled);
+        const std::uint64_t g = m_grid.load();
+        m_unimaged.clear();
+        m_image.feed(m_unsixeled, m_unimaged,
+                     {static_cast<int>(g & 0xffff), static_cast<int>(g >> 16 & 0xffff), static_cast<int>(g >> 32 & 0xffff),
+                      static_cast<int>(g >> 48)});
         m_filtered.clear();
-        m_textSize.feed(m_unsixeled, m_filtered);
+        m_textSize.feed(m_unimaged, m_filtered);
       }
       {
         std::lock_guard lock(m_termMutex);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "command_index.h"
+#include "osc1337.h"
 #include "osc66.h"
 #include "sixel.h"
 #include "osc99.h"
@@ -133,6 +134,7 @@ private:
   static void onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClipboardWrite* write);
   static void onNotification(GhosttyTerminal, void* self, const GhosttyTerminalDesktopNotification* note);
   bool replaying() const { return m_parsed < m_replayEnd; }
+  void resizeTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch);
 
   WakeFn m_wake;
   MarkFn m_onMark;
@@ -172,8 +174,11 @@ private:
   OscFrame m_userVar{"1337;SetUserVar=", 1024}; // parse thread; git_branch=<base64> from the shell integration
   SixelFilter m_sixel;                 // parse thread
   std::vector<std::uint8_t> m_unsixeled; // parse thread: one chunk after m_sixel
+  ImageFilter m_image;                 // parse thread
+  std::vector<std::uint8_t> m_unimaged; // parse thread: one chunk after m_sixel and m_image
   TextSizeFilter m_textSize;           // parse thread
-  std::vector<std::uint8_t> m_filtered; // parse thread: one chunk after m_sixel and m_textSize
+  std::vector<std::uint8_t> m_filtered; // parse thread: one chunk after all three filters
+  std::atomic<std::uint64_t> m_grid{0}; // cols, rows, cell width, cell height: 16 bits each, from the last resize
   std::mutex m_sockMutex;
   std::thread m_io;
   std::thread m_parser;

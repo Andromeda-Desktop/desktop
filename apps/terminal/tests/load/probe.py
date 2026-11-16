@@ -14,6 +14,7 @@ import os
 import random
 import re
 import select
+import struct
 import sys
 import termios
 import threading
@@ -187,13 +188,31 @@ def gen_chaos(kind, rng):
                 out.append(f"\x1b_G{head}m={more};".encode() + data[off:off + 4096] + b"\x1b\\")
             out.append(b"\n")
         return b"".join(out)
+    if kind == "iterm2_images":
+        def png(w, h):
+            raw = b"".join(b"\x00" + os.urandom(w * 4) for _ in range(h))
+            chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d))
+            return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+                    + chunk(b"IDAT", zlib.compress(raw, 0)) + chunk(b"IEND", b""))
+        sizes = ["auto", "4", "200px", "150%", "x", "-1"]
+        out = []
+        for i in range(400):
+            data = base64.b64encode(png(64, 64) if i % 4 else os.urandom(4096))
+            args = f"inline={i % 7 != 0:d};width={sizes[i % 6]};height={sizes[(i // 6) % 6]}"
+            if i % 5 == 0:
+                out.append(f"\x1b]1337;MultipartFile={args}\x07".encode())
+                out += [b"\x1b]1337;FilePart=" + data[o:o + 1000] + b"\x07" for o in range(0, len(data), 1000)]
+                out.append(b"\x1b]1337;FileEnd\x07\n")
+            else:
+                out.append(f"\x1b]1337;File={args}:".encode() + data + (b"\x07\n" if i % 9 else b"\x18\n"))
+        return b"".join(out)
     if kind == "urandom":
         return os.urandom(64 << 20)
     raise SystemExit(f"unknown chaos corpus {kind}")
 
 
 THROUGHPUT = ["ascii", "sgr", "unicode", "scroll_region", "cursor", "long_lines", "alt_screen", "dense_cells"]
-CHAOS = ["vtfuzz", "osc52", "titles", "links", "kitty_images", "urandom"]
+CHAOS = ["vtfuzz", "osc52", "titles", "links", "kitty_images", "iterm2_images", "urandom"]
 
 
 def gen(directory, mib):
