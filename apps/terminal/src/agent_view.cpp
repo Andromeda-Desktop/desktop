@@ -434,6 +434,13 @@ namespace term {
     constexpr float kPlanPillWidth = 280.0F; // mockup .pill max-width
     constexpr float kPlanRowGap = 4.0F;
 
+    // "N of M": N is the step in progress (done steps + 1), or the done count when none runs.
+    std::string planCount(const std::vector<agent::PlanEntry>& plan) {
+      const auto done = std::ranges::count(plan, std::string("completed"), &agent::PlanEntry::status);
+      const bool running = std::ranges::contains(plan, std::string("in_progress"), &agent::PlanEntry::status);
+      return std::format("{} of {}", done + (running ? 1 : 0), plan.size());
+    }
+
     // The title band: the status pill never shrinks; the agent pill hides first, then the plan pill reads "N of M"
     // instead of "Plan N of M · current", then hides. It measures at its floor (status and "N of M"); keep() is
     // status and the full plan, which the header holds while the title ellipsizes.
@@ -559,9 +566,8 @@ namespace term {
     }
     const auto& plan = model->plan();
     if (!plan.empty()) {
-      const auto done = std::ranges::count(plan, std::string("completed"), &agent::PlanEntry::status);
       const auto current = std::ranges::find(plan, std::string("in_progress"), &agent::PlanEntry::status);
-      std::string text = std::format("Plan {} of {}", done, plan.size());
+      std::string text = "Plan " + planCount(plan);
       if (current != plan.end()) {
         text += " \u00b7 " + current->content;
       }
@@ -581,7 +587,7 @@ namespace term {
         return row->addChild(std::move(button));
       };
       row->full = pill(std::move(text));
-      row->compact = pill(std::format("{} of {}", done, plan.size()));
+      row->compact = pill(planCount(plan));
     }
     std::string_view glyph = "circle";
     ColorRole ink = ColorRole::Label2;
@@ -641,7 +647,8 @@ namespace term {
   float AgentView::planHeight() const {
     const agent::Session* model = session();
     const std::size_t rows = model != nullptr ? model->plan().size() : 0;
-    return 2.0F * Tokens::spaceP8 + static_cast<float>(rows) * (Tokens::typeParagraph.line + kPlanRowGap + Tokens::spaceP8);
+    const float header = Tokens::typeFootnote.line + Tokens::spaceP4 + Tokens::spaceP8 + kPlanRowGap;
+    return 2.0F * Tokens::spaceP8 + header + static_cast<float>(rows) * (Tokens::typeParagraph.line + kPlanRowGap + Tokens::spaceP8);
   }
 
   std::unique_ptr<Node> AgentView::planList(float s) const {
@@ -651,6 +658,12 @@ namespace term {
     if (model == nullptr) {
       return list;
     }
+    // Mockup .planpop h2: "Plan" 600 13/18, the count 12/18 label_2 at the end, padding 6 8 8 (top on the 4 grid).
+    auto header = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween});
+    header->setPadding(Tokens::spaceP4 * s, Tokens::spaceP8 * s, Tokens::spaceP8 * s, Tokens::spaceP8 * s);
+    header->addChild(kit.text("Plan", Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
+    header->addChild(kit.text(planCount(model->plan()), Tokens::typeCaption, ColorRole::Label2));
+    list->addChild(std::move(header));
     for (const auto& step : model->plan()) {
       const bool done = step.status == "completed";
       const bool current = step.status == "in_progress";
