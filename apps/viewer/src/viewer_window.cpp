@@ -976,6 +976,15 @@ namespace viewer {
     case XKB_KEY_Page_Down:
       step(1);
       return true;
+    case XKB_KEY_Home:
+    case XKB_KEY_End:
+      if (m_mode == Mode::Pdf && m_scroll != nullptr && m_model.pageCount() > 0) {
+        m_scroll->setScrollOffset(event.sym == XKB_KEY_Home ? 0.0F : m_model.pageBox(m_model.pageCount() - 1).y0);
+        onScroll();
+        return true;
+      }
+      return false;
+    case XKB_KEY_F3:
     case XKB_KEY_Return:
       if (!m_searchText.empty()) {
         moveHit(!shift);
