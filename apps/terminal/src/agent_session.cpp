@@ -266,7 +266,20 @@ namespace term::agent {
       return;
     }
     for (const Json& option : options) {
-      if (!option.is_object() || (str(option, "category") != "model" && str(option, "id") != "model")) {
+      if (!option.is_object()) {
+        continue;
+      }
+      if (str(option, "id") == "mode") {
+        m_mode = str(option, "currentValue");
+        m_modes.clear();
+        for (const Json& choice : option.value("options", Json::array())) {
+          if (choice.is_object() && !str(choice, "value").empty()) {
+            m_modes.push_back({str(choice, "value"), str(choice, "name"), str(choice, "description")});
+          }
+        }
+        continue;
+      }
+      if (str(option, "category") != "model" && str(option, "id") != "model") {
         continue;
       }
       const std::string current = str(option, "currentValue");
@@ -277,6 +290,23 @@ namespace term::agent {
         }
       }
     }
+  }
+
+  const Session::Mode* Session::currentMode() const {
+    const auto it = std::ranges::find(m_modes, m_mode, &Mode::value);
+    return it != m_modes.end() ? &*it : nullptr;
+  }
+
+  void Session::cycleMode() {
+    if (m_modes.size() < 2 || m_sessionId.empty()) {
+      return;
+    }
+    const auto it = std::ranges::find(m_modes, m_mode, &Mode::value);
+    const Mode& next = it == m_modes.end() || it + 1 == m_modes.end() ? m_modes.front() : *(it + 1);
+    m_outbox.push_back({{"jsonrpc", "2.0"},
+                        {"id", m_nextId++},
+                        {"method", "session/set_config_option"},
+                        {"params", {{"sessionId", m_sessionId}, {"configId", "mode"}, {"value", next.value}}}});
   }
 
   void Session::permission(Json rpcId, const Json& params) {

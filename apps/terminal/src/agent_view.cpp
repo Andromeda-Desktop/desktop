@@ -61,6 +61,7 @@ namespace term {
     constexpr std::uint32_t kEscape = 0xff1b;
     constexpr std::uint32_t kEnd = 0xff57;
     constexpr std::uint32_t kTab = 0xff09;
+    constexpr std::uint32_t kShiftTab = 0xfe20; // ISO_Left_Tab
     constexpr std::uint32_t kReturn = 0xff0d;
     constexpr std::uint32_t kUp = 0xff52;
     constexpr std::uint32_t kDown = 0xff54;
@@ -584,7 +585,8 @@ namespace term {
       return 0;
     }
     if (index == 0) {
-      return std::hash<std::string>{}(model->mode()) ^ model->commands().size();
+      return std::hash<std::string>{}(model->mode() + '\n' + model->model()) ^ model->commands().size()
+             ^ (model->modes().size() << 16);
     }
     if (index - 1 >= model->entries().size()) {
       return 0;
@@ -720,9 +722,16 @@ namespace term {
     }
     if (index == 0) {
       auto banner = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP16 * s});
-      banner->addChild(kit.text("Claude in " + model->cwd(), Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
-      if (!model->mode().empty()) {
+      const std::string agent = model->model().empty() ? "Claude" : "Claude \u00b7 " + model->model();
+      banner->addChild(kit.text(agent + " in " + model->cwd(), Tokens::typeFootnote, ColorRole::Label1, FontWeight::SemiBold));
+      if (const agent::Session::Mode* mode = model->currentMode(); mode != nullptr) {
+        banner->addChild(kit.text(std::format("{} mode: {}.", mode->name, mode->description), Tokens::typeCaption,
+                                  ColorRole::Label2));
+      } else if (!model->mode().empty()) {
         banner->addChild(kit.text("Mode: " + model->mode(), Tokens::typeCaption, ColorRole::Label2));
+      }
+      if (model->modes().size() > 1) {
+        banner->addChild(kit.text("Shift+Tab changes the mode", Tokens::typeCaption, ColorRole::Label2));
       }
       if (!model->commands().empty()) {
         auto chips = ui::row({.wrap = true, .gap = Tokens::spaceP8 * s, .maxWidth = measure});
@@ -1329,6 +1338,11 @@ namespace term {
     agent::Session* model = m_host.session(m_key);
     if (!event.pressed || model == nullptr) {
       return false;
+    }
+    if (event.sym == kShiftTab || (event.sym == kTab && (event.modifiers & KeyMod::Shift) != 0)) {
+      model->cycleMode();
+      m_host.flush(m_key);
+      return true;
     }
     if (const auto matches = slashMatches(); m_slash != nullptr && m_slash->visible() && !matches.empty()) {
       if (event.sym == kUp || event.sym == kDown) {

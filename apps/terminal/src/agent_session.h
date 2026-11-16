@@ -84,7 +84,9 @@ namespace term::agent {
     // Agent side.
     void started(std::string sessionId);
     void update(const Json& params);           // session/update notification params
-    void configure(const Json& options);       // ACP configOptions: picks the model's display name
+    void configure(const Json& options);       // ACP configOptions: the model's display name and the modes
+    // Shift+Tab: asks the agent for the next mode; the agent's config_option_update confirms it.
+    void cycleMode();
     void permission(Json rpcId, const Json& params); // session/request_permission request
     void promptDone(const std::string& stopReason);
     void promptFailed(const std::string& message);
@@ -113,6 +115,14 @@ namespace term::agent {
     [[nodiscard]] const std::string& title() const noexcept { return m_title; }
     // "Opus 5.5"; empty until the agent reports its config options.
     [[nodiscard]] const std::string& model() const noexcept { return m_model; }
+    struct Mode {
+      std::string value;
+      std::string name;        // "Manual"
+      std::string description; // "Ask before edits and commands"
+    };
+    [[nodiscard]] const std::vector<Mode>& modes() const noexcept { return m_modes; }
+    // The current mode's entry in modes(), or null when the agent sent none.
+    [[nodiscard]] const Mode* currentMode() const;
 
     // Outgoing JSON-RPC messages since the last call, oldest first.
     std::vector<Json> takeOutbox();
@@ -131,6 +141,7 @@ namespace term::agent {
     std::string m_sessionId;
     std::string m_title;
     std::string m_model;
+    std::vector<Mode> m_modes;
     Phase m_phase = Phase::Starting;
     std::optional<StopKind> m_lastStop;
     std::vector<Entry> m_entries;
