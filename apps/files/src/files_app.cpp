@@ -1019,9 +1019,21 @@ void FilesApp::addCommands() {
         },
         .alternate = spec.alternate,
     });
-  }  // Ctrl+W closes the current tab first, the window only with one tab left (Finder, Dolphin).
+  }
+  // The header × closes the window with all its tabs; Ctrl+W closes the current tab first, the window only with one
+  // tab left (Finder, Dolphin). Close Window gives up Ctrl+W first: a held shortcut cannot be taken.
   commands().add({
       .id = "window.close",
+      .label = "Close Window",
+      .group = "Window",
+      .run = [this] {
+        if (AppWindow* window = activeWindow()) {
+          closeWindow(*window);
+        }
+      },
+  });
+  commands().add({
+      .id = "window.close-tab",
       .label = "Close Tab",
       .group = "Window",
       .shortcut = KeyChord{.sym = XKB_KEY_w, .modifiers = KeyMod::Ctrl},

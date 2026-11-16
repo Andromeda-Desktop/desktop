@@ -271,6 +271,10 @@ private:
   enum class DropOp : std::uint8_t { Move, Copy, Link, Trash };
   [[nodiscard]] static DropOp dropOp(const FileBrowser::DropTarget& target,
                                      const std::vector<std::filesystem::path>& sources, std::uint32_t modifiers);
+  // A drop into an admin folder goes to the helper (Link becomes Copy); items of an admin folder dropped elsewhere
+  // copy as the user, so FileOps1 never changes the admin folder. nullopt: no drop.
+  [[nodiscard]] std::optional<DropOp> adminDropOp(const FileBrowser::DropTarget& target,
+                                                  const std::vector<std::filesystem::path>& sources, DropOp op) const;
   void drop(const FileBrowser::DropTarget& target, const std::string& uriList, std::uint32_t action);
   void dropData(const std::filesystem::path& folder, const std::string& mime, const std::string& data);
 

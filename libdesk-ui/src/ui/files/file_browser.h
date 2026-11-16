@@ -146,6 +146,8 @@ public:
     std::vector<std::shared_ptr<const FileInfo>> rows;
     bool activatable = true; // false: Enter and double-click do nothing (Trash items open only after Put Back)
     bool renamable = false;  // true: F2 renames a row in place through Host::rename (the administrator view)
+    // Set: drops land in this folder (or a folder row) with DropTarget::listing; the host makes the change.
+    std::filesystem::path dropFolder;
     // Set: the listing draws this page instead of rows (This PC); built again on each content build.
     std::function<std::unique_ptr<Node>(float scale)> page;
     // Set: activating a row runs this first (folders inside an archive); true = handled.
@@ -281,6 +283,7 @@ public:
     std::filesystem::path folder; // empty for the Trash and a host place
     bool trash = false;
     std::string place;            // a Place::dropFiles row's id
+    bool listing = false;         // into a Listing::dropFolder or a folder row of that listing
     bool operator==(const DropTarget&) const = default;
   };
   std::optional<DropTarget> dragOver(float sceneX, float sceneY);

@@ -150,7 +150,8 @@ void AdminView::show() {
                                .title = m_dir == "/" ? std::string("/") : m_dir.filename().string(),
                                .rows = listed && m_error.empty() ? m_rows : std::vector<std::shared_ptr<const FileInfo>>{},
                                .activatable = true,
-                               .renamable = true};
+                               .renamable = true,
+                               .dropFolder = m_dir};
   if (!listed || !m_error.empty()) {
     listing.page = [this](float s) { return statusPage(s); };
   }

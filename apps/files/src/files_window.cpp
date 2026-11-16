@@ -648,7 +648,11 @@ void FilesWindow::registerDropTarget() {
             }
             // The drop reads its data after the release, when the keys may be up: keep what the cue showed.
             m_dragMods = m_app.loop().wayland().keyboardModifiers();
-            switch (dropOp(*target, draggedPaths(), m_dragMods)) {
+            const auto op = adminDropOp(*target, draggedPaths(), dropOp(*target, draggedPaths(), m_dragMods));
+            if (!op.has_value()) {
+              return DragAndDrop::None;
+            }
+            switch (*op) {
             case DropOp::Copy:
               return DragAndDrop::Copy;
             case DropOp::Link:
@@ -672,7 +676,7 @@ void FilesWindow::registerDropTarget() {
             const auto target = dragOver(x, y);
             if (target.has_value() && mime == "text/uri-list") {
               drop(*target, data, action);
-            } else if (target.has_value() && !target->trash && target->place.empty()) {
+            } else if (target.has_value() && !target->trash && target->place.empty() && !target->listing) {
               dropData(target->folder, mime, data);
             }
             for (const auto& pane : m_panes) {
@@ -704,6 +708,20 @@ FilesWindow::DropOp FilesWindow::dropOp(const FileBrowser::DropTarget& target, c
   }
   // Other apps' drags show their sources only on drop: copy is the safe guess until then.
   return !sources.empty() && sameDevice(sources.front(), target.folder) ? DropOp::Move : DropOp::Copy;
+}
+
+std::optional<FilesWindow::DropOp> FilesWindow::adminDropOp(const FileBrowser::DropTarget& target,
+                                                             const std::vector<fs::path>& sources, DropOp op) const {
+  if (target.listing) {
+    return op == DropOp::Link ? DropOp::Copy : op;
+  }
+  const bool fromAdmin = m_admin != nullptr && std::ranges::any_of(sources, [&](const fs::path& p) {
+    return p.parent_path() == m_admin->dir();
+  });
+  if (!fromAdmin || op == DropOp::Copy || op == DropOp::Link) {
+    return op;
+  }
+  return op == DropOp::Move ? std::optional(DropOp::Copy) : std::nullopt; // root's files get no Trash
 }
 
 std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>& dragged) {
@@ -772,11 +790,21 @@ void FilesWindow::drop(const FileBrowser::DropTarget& target, const std::string&
     return;
   }
   // The negotiated action is what the cursor showed; recomputing with the now-known sources could turn Copy into Move.
-  const DropOp op = target.trash                       ? DropOp::Trash
-      : action == DragAndDrop::Move                     ? DropOp::Move
-      : action == DragAndDrop::Copy                     ? DropOp::Copy
-      : action == DragAndDrop::Ask                      ? DropOp::Link
-                                                        : dropOp(target, sources, m_dragMods);
+  const auto adminOp = adminDropOp(target, sources,
+                                   target.trash                     ? DropOp::Trash
+                                   : action == DragAndDrop::Move    ? DropOp::Move
+                                   : action == DragAndDrop::Copy    ? DropOp::Copy
+                                   : action == DragAndDrop::Ask     ? DropOp::Link
+                                                                    : dropOp(target, sources, m_dragMods));
+  if (!adminOp.has_value()) {
+    return;
+  }
+  const DropOp op = *adminOp;
+  if (target.listing) {
+    kLog.debug("drop {} items op {} into admin {}", sources.size(), static_cast<int>(op), target.folder.string());
+    m_admin->transfer(sources, target.folder, op == DropOp::Move);
+    return;
+  }
   kLog.debug("drop {} items op {} into {}", sources.size(), static_cast<int>(op),
              target.trash ? std::string("trash") : target.folder.string());
   switch (op) {

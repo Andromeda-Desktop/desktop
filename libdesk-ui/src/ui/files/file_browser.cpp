@@ -4493,15 +4493,17 @@ namespace {
 } // namespace
 
 std::optional<FileBrowser::DropTarget> FileBrowser::dragOver(float sceneX, float sceneY) {
-  const auto accept = [this](const fs::path& folder) -> std::optional<DropTarget> {
-    if (folder.empty() || insideDragged(folder, m_dragPaths) || !writable(folder)) {
+  // A listing that takes drops writes through its host (as root), so the user's write access does not matter.
+  const bool listingDrops = m_listing.has_value() && !m_listing->dropFolder.empty();
+  const auto accept = [this](const fs::path& folder, bool listing = false) -> std::optional<DropTarget> {
+    if (folder.empty() || insideDragged(folder, m_dragPaths) || (!listing && !writable(folder))) {
       return std::nullopt;
     }
     // Dropping items back into the folder they come from does nothing.
     if (!m_dragPaths.empty() && std::ranges::all_of(m_dragPaths, [&](const fs::path& p) { return p.parent_path() == folder; })) {
       return std::nullopt;
     }
-    return DropTarget{.folder = folder};
+    return DropTarget{.folder = folder, .listing = listing};
   };
   std::optional<DropTarget> target;
   std::optional<std::string> item;
@@ -4540,17 +4542,21 @@ std::optional<FileBrowser::DropTarget> FileBrowser::dragOver(float sceneX, float
         const FileInfo& info = *m_rows[*index];
         const fs::path path = pathOf(info);
         if (info.isDir && !std::ranges::contains(m_dragPaths, path)) {
-          target = accept(path);
+          target = accept(path, listingDrops);
           if (target.has_value()) {
             item = info.name;
-            spring = Spring{.target = *target};
+            if (!listingDrops) { // spring-loading goes to the folder as the user
+              spring = Spring{.target = *target};
+            }
           }
           goto found;
         }
       }
-      // Empty space or a file: the view's folder. Listings (Trash, Recents) take no drops.
+      // Empty space or a file: the view's folder. Listings (Trash, Recents) take no drops, unless they name a folder.
       if (!m_listing.has_value()) {
         target = accept(m_location);
+      } else if (listingDrops) {
+        target = accept(m_listing->dropFolder, true);
       }
     }
   }
@@ -4823,6 +4829,9 @@ void FileBrowser::cancelRename() {
   }
   if (m_host.focus) {
     m_host.focus(m_ui->focus);
+  }
+  if (m_host.changed) {
+    m_host.changed(); // the host's edit commands, off while the field types, come back
   }
   if (m_host.invalidate) {
     m_host.invalidate();
