@@ -480,10 +480,16 @@ namespace term {
           }
         }
       }
-      const std::string shell = m_settings.settings().shell.empty() ? defaultShell() : m_settings.settings().shell;
-      const ShellLaunch launch = shellLaunch(shell, shellIntegrationDir(), [](const char* name) { return std::getenv(name); });
-      if (!ref.start(launch.argv, cwd.empty() ? homeDir() : cwd, launch.env)) {
-        kLog.warn("cannot start {}", shell);
+      if (fresh != nullptr && !fresh->argv.empty()) {
+        if (!ref.start(fresh->argv, cwd.empty() ? homeDir() : cwd, {})) {
+          kLog.warn("cannot start {}", fresh->argv.front());
+        }
+      } else {
+        const std::string shell = m_settings.settings().shell.empty() ? defaultShell() : m_settings.settings().shell;
+        const ShellLaunch launch = shellLaunch(shell, shellIntegrationDir(), [](const char* name) { return std::getenv(name); });
+        if (!ref.start(launch.argv, cwd.empty() ? homeDir() : cwd, launch.env)) {
+          kLog.warn("cannot start {}", shell);
+        }
       }
     }
     apply(session_event::Open{id, SessionKind::Shell, "", ""});

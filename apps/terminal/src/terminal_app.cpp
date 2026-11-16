@@ -150,6 +150,18 @@ namespace term {
     }
   }
 
+  void TerminalApp::action(const std::string& name, const std::vector<std::string>& parameter,
+                           const std::string& activationToken) {
+    if (name != "exec" || parameter.size() < 2) {
+      DeskApp::action(name, parameter, activationToken);
+      return;
+    }
+    m_nextOrigins = {NewShell{.cwd = parameter.front(), .argv = {parameter.begin() + 1, parameter.end()}}};
+    if (AppWindow& window = createWindow(); window.open()) {
+      window.activate(activationToken);
+    }
+  }
+
   void TerminalApp::openWindow(const std::string& activationToken) {
     AppWindow& window = createWindow();
     if (window.open()) {

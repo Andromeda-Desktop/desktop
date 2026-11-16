@@ -8,3 +8,6 @@ Terminal=false
 Categories=System;TerminalEmulator;
 Keywords=shell;prompt;command;commandline;cmd;
 StartupNotify=true
+X-ExecArg=-e
+X-TerminalArgExec=-e
+X-TerminalArgDir=--working-directory=

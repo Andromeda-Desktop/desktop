@@ -46,6 +46,7 @@ namespace term {
   // cwd: the shell's start directory; empty starts in $HOME.
   struct NewShell {
     std::string cwd;
+    std::vector<std::string> argv; // a command to run instead of the user's shell; empty: the shell
   };
   // A session in andromeda-ptyd that lost its terminal process.
   struct Reattach {

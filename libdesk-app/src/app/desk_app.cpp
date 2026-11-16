@@ -139,6 +139,11 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   bool serviceStart = false; // D-Bus activation: the Activate or Open call that started us makes the window
   std::string startAction;   // --action=<name>: the files go to action(name, uris) instead of open()
   for (int i = 1; i < argc; ++i) {
+    // After "--" every argument is a verbatim action parameter: a command line, not a file.
+    if (std::string_view(argv[i]) == "--") {
+      uris.insert(uris.end(), argv + i + 1, argv + argc);
+      break;
+    }
     serviceStart = serviceStart || std::string_view(argv[i]) == "--gapplication-service";
     if (const std::string_view arg = argv[i]; arg.starts_with("--action=")) {
       startAction = arg.substr(std::string_view("--action=").size());
