@@ -24,6 +24,9 @@ Settings randomSettings(std::mt19937& rng) {
   s.cursor = static_cast<CursorShape>(pick(0, 2));
   s.cursorBlink = pick(0, 1) != 0;
   s.material = static_cast<WindowMaterial>(pick(0, 1));
+  if (pick(0, 1) != 0) {
+    s.glassOpacity = pick(SettingsLimits::kGlassOpacityMin, SettingsLimits::kGlassOpacityMax);
+  }
   s.bell = static_cast<Bell>(pick(0, 2));
   s.font = fonts[pick(0, 4)];
   s.fontSize = pick(SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax);
@@ -47,6 +50,7 @@ Settings randomSettings(std::mt19937& rng) {
 const char* kBad[] = {
     "[appearance]\ntheme = \"Neon Theme\"\n",
     "[text]\nsize = 200\n",
+    "[appearance]\nglass_opacity = 5\n",
     "[text]\nsize = \"13\"\n",
     "[terminal]\ncopy_on_select = 1\n",
     "[notifications]\nlong_command_seconds = 0\n",

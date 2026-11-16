@@ -266,7 +266,10 @@ namespace term {
     if (hasScene(m_theme)) {
       return 0.0F;
     }
-    return m_settings.material == WindowMaterial::Glass && !Style::reduceTransparency() ? Tokens::componentTerminalGlassAlpha : 1.0F;
+    if (m_settings.material != WindowMaterial::Glass || Style::reduceTransparency()) {
+      return 1.0F;
+    }
+    return m_settings.glassOpacity ? static_cast<float>(*m_settings.glassOpacity) / 100.0F : Tokens::componentTerminalGlassAlpha;
   }
 
   ColorSpec TerminalView::surface() const {
@@ -316,7 +319,7 @@ namespace term {
     const bool terminal = theme != m_theme || settings.cursor != m_settings.cursor
                           || settings.cursorBlink != m_settings.cursorBlink
                           || settings.scrollback != m_settings.scrollback || settings.scrollbackMb != m_settings.scrollbackMb;
-    const bool material = settings.material != m_settings.material;
+    const bool material = settings.material != m_settings.material || settings.glassOpacity != m_settings.glassOpacity;
     const bool pad = settings.padding != m_settings.padding;
     const bool bold = settings.boldIsBright != m_settings.boldIsBright;
     m_settings = settings;

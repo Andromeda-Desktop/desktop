@@ -28,6 +28,7 @@ namespace term {
     CursorShape cursor = CursorShape::Bar; // until the program sets its own (DECSCUSR)
     bool cursorBlink = false;                // until the program sets its own (DECSCUSR, mode 12)
     WindowMaterial material = WindowMaterial::Solid;
+    std::optional<int> glassOpacity; // percent of the text background over Glass; nullopt: the design token
     bool focusRing = false; // accent ring on the focused split pane
     std::string font;                        // empty: the type token's mono family
     int fontSize = 13;                       // px at ui_scale 1
@@ -55,6 +56,7 @@ namespace term {
     static constexpr int kFontSizeMin = 8, kFontSizeMax = 32;
     static constexpr int kScrollbackMin = 1, kScrollbackMax = 1000;
     static constexpr int kPaddingMin = 0, kPaddingMax = 64;
+    static constexpr int kGlassOpacityMin = 20, kGlassOpacityMax = 100;
     static constexpr int kScrollRowsMin = 1, kScrollRowsMax = 20;
     static constexpr int kNotifyMin = 1, kNotifyMax = 3600;
   };
