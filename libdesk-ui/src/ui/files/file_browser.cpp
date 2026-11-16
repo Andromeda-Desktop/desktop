@@ -2039,6 +2039,16 @@ std::vector<fs::path> FileBrowser::tabFolders() const {
   return out;
 }
 
+std::vector<std::string> FileBrowser::tabListingIds() const {
+  std::vector<std::string> out;
+  out.reserve(m_tabs.size());
+  for (std::size_t i = 0; i < m_tabs.size(); ++i) {
+    const HistoryEntry& entry = i == m_tab ? current() : m_tabs[i].entry;
+    out.push_back(entry.listing.has_value() ? entry.listing->id : std::string());
+  }
+  return out;
+}
+
 void FileBrowser::restoreTabs(const std::vector<fs::path>& folders, std::size_t current) {
   std::error_code ec;
   std::size_t shown = 0;
@@ -4714,7 +4724,7 @@ std::unique_ptr<Node> FileBrowser::buildDragImage(Renderer& renderer) const {
 // ---- inline rename ------------------------------------------------------------------------------------------------
 
 void FileBrowser::beginRename() {
-  if (m_waiting || m_listing.has_value() || m_selected.size() != 1 || !m_host.rename) {
+  if (m_waiting || (m_listing.has_value() && !m_listing->renamable) || m_selected.size() != 1 || !m_host.rename) {
     return;
   }
   if (const auto index = indexOf(*m_selected.begin())) {

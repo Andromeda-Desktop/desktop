@@ -145,6 +145,7 @@ public:
     std::string title;
     std::vector<std::shared_ptr<const FileInfo>> rows;
     bool activatable = true; // false: Enter and double-click do nothing (Trash items open only after Put Back)
+    bool renamable = false;  // true: F2 renames a row in place through Host::rename (the administrator view)
     // Set: the listing draws this page instead of rows (This PC); built again on each content build.
     std::function<std::unique_ptr<Node>(float scale)> page;
     // Set: activating a row runs this first (folders inside an archive); true = handled.
@@ -191,6 +192,8 @@ public:
   void stepTab(int delta); // Ctrl+Tab, Ctrl+Shift+Tab
   [[nodiscard]] std::size_t tabCount() const noexcept { return m_tabs.size(); }
   [[nodiscard]] std::size_t currentTab() const noexcept { return m_tab; }
+  // Each tab's listing id (empty for a folder tab).
+  [[nodiscard]] std::vector<std::string> tabListingIds() const;
   // Each tab's folder (empty for a listing tab such as Recents), for restore at the next launch.
   [[nodiscard]] std::vector<std::filesystem::path> tabFolders() const;
   // Opens one tab per folder after the current one (missing folders are skipped), then shows tab `current`.

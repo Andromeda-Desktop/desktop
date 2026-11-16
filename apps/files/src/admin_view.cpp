@@ -102,7 +102,7 @@ void AdminView::change(nlohmann::json op, std::string done) {
     }
     const bool ok = reply.value("ok", false);
     kLog.debug("admin {} {}", done, ok ? "ok" : reply.value("error", std::string()));
-    m_host.toast(ok ? done : reply.value("error", std::string("The change failed.")), ok);
+    m_host.toast(ok ? done : reply.value("error", std::string("The change failed.")));
     refresh();
   });
 }
@@ -122,7 +122,8 @@ void AdminView::remove(const std::vector<fs::path>& paths) {
 
 void AdminView::transfer(const std::vector<fs::path>& sources, const fs::path& dest, bool move) {
   change({{"op", move ? "move" : "copy"}, {"sources", pathList(sources)}, {"dest", dest.string()}},
-         std::format("{} {} items as the administrator", move ? "Moved" : "Copied", sources.size()));
+         std::format("{} {} as the administrator", move ? "Moved" : "Copied",
+                     sources.size() == 1 ? sources.front().filename().string() : std::format("{} items", sources.size())));
 }
 
 void AdminView::chmod(const std::vector<fs::path>& paths, std::uint32_t mode, std::uint32_t mask, bool recursive) {
@@ -148,7 +149,8 @@ void AdminView::show() {
   FileBrowser::Listing listing{.id = std::string(kPrefix) + m_dir.string(),
                                .title = m_dir == "/" ? std::string("/") : m_dir.filename().string(),
                                .rows = listed && m_error.empty() ? m_rows : std::vector<std::shared_ptr<const FileInfo>>{},
-                               .activatable = true};
+                               .activatable = true,
+                               .renamable = true};
   if (!listed || !m_error.empty()) {
     listing.page = [this](float s) { return statusPage(s); };
   }

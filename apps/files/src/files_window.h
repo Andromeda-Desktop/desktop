@@ -152,6 +152,8 @@ public:
   void restoreTabs(const nlohmann::json& saved); // the tabs rememberPlace saved
   // A real folder, not a listing (Trash, Recents, Search, Tag, Starred, archive): paste and new items land in it.
   [[nodiscard]] bool inFolder() const;
+  // A real folder or an administrator listing: new items and pastes can land here.
+  [[nodiscard]] bool canAddHere() const;
   [[nodiscard]] const std::filesystem::path& location() const noexcept;
   [[nodiscard]] float scale() const noexcept;
   [[nodiscard]] FileBrowser& browser() noexcept { return *m_browser; }
@@ -260,6 +262,8 @@ private:
                 std::function<void(const std::string& job)> started = {});
   void showToast(std::string text, bool undo);
   void onBrowserChanged();
+  void syncAdmin(); // the helper serves the admin folder shown; it ends when no tab shows one
+  void openAdmin(const std::filesystem::path& dir);
   [[nodiscard]] std::vector<std::filesystem::path> selectedPaths() const;
   [[nodiscard]] std::unique_ptr<Node> buildContent(Renderer& renderer, float width, float height);
   void registerDropTarget();
@@ -333,7 +337,7 @@ private:
   std::uint32_t m_dragMods = 0; // modifiers at the last drag motion
   std::unique_ptr<BatchRenameSheet> m_batchRename;
   std::unique_ptr<ArchiveListing> m_archive; // the archive open as a listing
-  std::unique_ptr<AdminView> m_admin;         // set once a folder opened as the administrator in this window
+  std::unique_ptr<AdminView> m_admin;         // set while a tab shows an administrator folder
   // The administrator view while it shows in the current tab; changes then go to its helper, not FileOps1.
   [[nodiscard]] AdminView* adminHere() const;
   std::unique_ptr<CompressSheet> m_compress;

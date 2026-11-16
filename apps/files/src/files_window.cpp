@@ -913,6 +913,7 @@ void FilesWindow::newFolder() {
       name = std::format("New Folder {}", n);
     }
     admin->newFolder(name);
+    m_browser->renameWhenListed((admin->dir() / name).string());
     return;
   }
   if (!inFolder()) {
@@ -1085,6 +1086,8 @@ bool FilesWindow::canBack() const noexcept { return m_browser->canBack(); }
 bool FilesWindow::canForward() const noexcept { return m_browser->canForward(); }
 bool FilesWindow::inTrash() const noexcept { return m_browser->listingId() == "trash"; }
 bool FilesWindow::inFolder() const { return m_browser->listingId().empty() && !location().empty(); }
+
+bool FilesWindow::canAddHere() const { return inFolder() || adminHere() != nullptr; }
 const fs::path& FilesWindow::location() const noexcept { return m_browser->location(); }
 bool FilesWindow::hasSelection() const noexcept { return m_browser->selectionCount() > 0; }
 
@@ -1182,7 +1185,7 @@ void FilesWindow::fillCommandBar(Flex& row, float s) {
         Node::mapToScene(share, 0.0F, 0.0F, x, y); // the menu opens over the bar, above the button
         showShareMenu(x, y);
       });
-      button("edit.trash", "trash", "Move to Trash", ButtonVariant::Ghost, true, !narrow);
+      button("edit.trash", "trash", adminHere() != nullptr ? "Delete…" : "Move to Trash", ButtonVariant::Ghost, true, !narrow);
     }
   }
   row.addChild(ui::box({.width = Tokens::spaceP8 * s, .height = Tokens::spaceP8 * s}));
@@ -1192,6 +1195,11 @@ void FilesWindow::fillCommandBar(Flex& row, float s) {
 
 void FilesWindow::onBrowserChanged() {
   refreshCommandBar();
+  DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+    if (!alive.expired()) {
+      syncAdmin();
+    }
+  });
   if (m_picker.has_value() && m_pickerPrimary != nullptr && m_picker->confirmReplace.empty()) {
     m_pickerPrimary->setText(pickerPrimaryLabel());
   }
@@ -2049,7 +2057,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
       entries.push_back(std::move(tags));
     }
     separator();
-    add("edit.trash", {}, "trash");
+    add("edit.trash", adminHere() != nullptr ? std::string("Delete…") : std::string(), "trash");
     entries.back().danger = !ids.empty() && ids.back() == "edit.trash";
   }
   m_window.openContextMenu(std::move(entries), sceneX, sceneY,
@@ -2658,14 +2666,35 @@ void FilesWindow::openAsAdmin() {
   const fs::path dir = paths.size() == 1 && isDir(paths.front()) ? paths.front()
                        : adminHere() != nullptr                   ? m_admin->dir()
                                                                   : location();
+  if (adminHere() == nullptr) {
+    m_browser->newTab();
+  }
+  kLog.info("open as administrator {}", dir.string());
+  openAdmin(dir);
+}
+
+void FilesWindow::syncAdmin() {
+  const std::string& id = m_browser->listingId();
+  if (AdminView::isAdminListing(id)) {
+    if (m_admin == nullptr || m_admin->dir() != AdminView::dirOf(id)) {
+      openAdmin(AdminView::dirOf(id));
+    }
+    return;
+  }
+  if (m_admin != nullptr && std::ranges::none_of(m_browser->tabListingIds(), AdminView::isAdminListing)) {
+    kLog.info("admin helper closed: no tab shows an administrator folder");
+    m_admin.reset();
+  }
+}
+
+void FilesWindow::openAdmin(const fs::path& dir) {
   if (m_admin == nullptr) {
     m_admin = std::make_unique<AdminView>(AdminView::Host{
         .show = [this](FileBrowser::Listing listing) { m_browser->showListing(std::move(listing)); },
-        .toast = [this](const std::string& text, bool ok) { showToast(text, ok); },
+        .toast = [this](const std::string& text) { showToast(text, false); },
         .leave = [this](const fs::path& folder) { m_browser->go(folder); },
     });
   }
-  kLog.info("open as administrator {}", dir.string());
   m_admin->open(dir);
 }
 
@@ -3956,7 +3985,7 @@ void FilesWindow::startJob(const char* verb, std::size_t count, std::function<vo
 }
 
 void FilesWindow::paste() {
-  if (!inFolder()) {
+  if (!canAddHere()) {
     return;
   }
   // Files another app copied come from the system clipboard; our own copy stays in m_app.clipboard().
@@ -4072,8 +4101,9 @@ void FilesWindow::runHistory(HistoryStep step) {
            });
 }
 
-bool FilesWindow::canUndo() const noexcept { return !m_app.undoStack().empty(); }
-bool FilesWindow::canRedo() const noexcept { return !m_app.redoStack().empty(); }
+// An admin tab hides Undo: its changes have no undo, and undoing another tab's change from here confuses.
+bool FilesWindow::canUndo() const noexcept { return adminHere() == nullptr && !m_app.undoStack().empty(); }
+bool FilesWindow::canRedo() const noexcept { return adminHere() == nullptr && !m_app.redoStack().empty(); }
 
 void FilesWindow::showConflict(const FileOpsClient::Job& job) {
   const auto& [source, target] = *job.conflict;

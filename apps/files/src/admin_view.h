@@ -10,17 +10,20 @@
 #include <vector>
 
 // The administrator view of one Files window: folders listed by the root helper, shown as a FileBrowser listing
-// with a red bar, and changes sent to the same helper. One helper (one password) serves the whole window.
+// with a red bar, and changes sent to the same helper. One helper (one password) serves all admin tabs of a window.
 class AdminView {
 public:
   struct Host {
     std::function<void(FileBrowser::Listing)> show;              // show this listing in the current tab
-    std::function<void(const std::string& text, bool ok)> toast; // a result or an error
+    std::function<void(const std::string& text)> toast; // a result or an error; never offers Undo
     std::function<void(const std::filesystem::path& dir)> leave; // the bar's Close: the folder as the user
   };
   explicit AdminView(Host host);
 
   [[nodiscard]] static bool isAdminListing(const std::string& listingId) { return listingId.starts_with(kPrefix); }
+  [[nodiscard]] static std::filesystem::path dirOf(const std::string& listingId) {
+    return listingId.substr(std::string_view(kPrefix).size());
+  }
   [[nodiscard]] const std::filesystem::path& dir() const noexcept { return m_dir; }
 
   void open(const std::filesystem::path& dir);
