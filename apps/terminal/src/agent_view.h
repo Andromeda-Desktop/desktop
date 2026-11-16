@@ -26,6 +26,8 @@ namespace term {
   public:
     AgentView(agent::Host& host, std::uint64_t key);
     ~AgentView() override;
+    // Opens a file: URI (the edit card's Open link).
+    void setOpenUri(std::function<void(const std::string& uri)> open) { m_openUri = std::move(open); }
     AgentView(const AgentView&) = delete;
     AgentView& operator=(const AgentView&) = delete;
 
@@ -87,6 +89,7 @@ namespace term {
     [[nodiscard]] bool asked(const agent::Action& action) const;
     // The entry is the crash that ended the session, which is still Failed: its row offers Restart.
     [[nodiscard]] bool restartable(std::size_t entry) const;
+    void toggleDetail(const std::string& id); // an action row click opens or closes its diff or output
     [[nodiscard]] const agent::Request* requestFor(const agent::Action& action) const;
     void arrive(Renderer& renderer, Flex& holder, float width);
     [[nodiscard]] std::unique_ptr<Node> buildRequest(const agent::Request& request, std::size_t entry);
@@ -115,6 +118,8 @@ namespace term {
     VirtualListView* m_log = nullptr;
     std::vector<Clock> m_clocks;
     std::set<std::size_t> m_arrived; // request entries whose card has played its arrival
+    std::function<void(const std::string& uri)> m_openUri;
+    std::set<std::string> m_expanded; // action ids whose detail the user opened
     Input* m_input = nullptr;
     Label* m_meta = nullptr;
     Button* m_send = nullptr;

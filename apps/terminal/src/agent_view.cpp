@@ -2,6 +2,8 @@
 
 #include "agent_host.h"
 #include "agent_markup.h"
+#include "cursor-shape-v1-client-protocol.h"
+#include "link_finder.h"
 #include "design_tokens.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/node.h"
@@ -135,6 +137,15 @@ namespace term {
       if (!action.command.empty()) {
         return action.command;
       }
+      if (action.kind == "search" && !action.title.empty()) {
+        // "pattern in /abs/dir": the folder reads relative to the session folder.
+        std::string title = action.title;
+        const std::string prefix = std::string(cwd) + "/";
+        for (auto at = title.find(prefix); !cwd.empty() && at != std::string::npos; at = title.find(prefix, at)) {
+          title.erase(at, prefix.size());
+        }
+        return title;
+      }
       if (action.paths.empty()) {
         return action.title;
       }
@@ -174,7 +185,8 @@ namespace term {
       std::vector<std::string_view> added;
     };
 
-    Hunk firstHunk(const agent::DiffHunk& diff) {
+    // start: the 1-based file line where the diff's old text begins.
+    Hunk firstHunk(const agent::DiffHunk& diff, std::size_t start = 1) {
       const auto before = diff.oldText ? lines(*diff.oldText) : std::vector<std::string_view>{};
       const auto after = lines(diff.newText);
       std::size_t head = 0;
@@ -186,7 +198,7 @@ namespace term {
              && before[before.size() - 1 - tail] == after[after.size() - 1 - tail]) {
         ++tail;
       }
-      return {.firstLine = head + 1,
+      return {.firstLine = start + head,
               .removed = {before.begin() + static_cast<std::ptrdiff_t>(head), before.end() - static_cast<std::ptrdiff_t>(tail)},
               .added = {after.begin() + static_cast<std::ptrdiff_t>(head), after.end() - static_cast<std::ptrdiff_t>(tail)}};
     }
@@ -199,7 +211,51 @@ namespace term {
         added += hunk.added.size();
         removed += hunk.removed.size();
       }
-      return std::format("+{} −{}", added, removed);
+      const std::string counts = std::format("+{} −{}", added, removed);
+      return action.diffs.size() > 1 ? std::format("{} \u00b7 {} hunks", counts, action.diffs.size()) : counts;
+    }
+
+    // A finished action's run time: "0.3 s", "41 s", then "1:05".
+    std::string durationText(const agent::Action& action) {
+      const double seconds = std::chrono::duration<double>(action.ended - action.started).count();
+      if (seconds < 10.0) {
+        return std::format("{:.1f} s", std::max(0.0, seconds));
+      }
+      return seconds < 60.0 ? std::format("{} s", static_cast<int>(seconds))
+                            : clockText(std::chrono::seconds(static_cast<std::int64_t>(seconds)));
+    }
+
+    // The first number after `word` in a tool's output ("Exit code 1", "Found 38 files").
+    std::optional<std::string> numberAfter(std::string_view output, std::string_view word) {
+      const auto at = output.find(word);
+      if (at == std::string_view::npos) {
+        return std::nullopt;
+      }
+      std::size_t i = at + word.size();
+      const std::size_t from = i;
+      while (i < output.size() && std::isdigit(static_cast<unsigned char>(output[i])) != 0) {
+        ++i;
+      }
+      return i > from ? std::optional<std::string>(output.substr(from, i - from)) : std::nullopt;
+    }
+
+    // What a finished action's row ends with, before any answer prefix: counts, hits or run time.
+    std::string doneCaption(const agent::Action& action) {
+      if (action.kind == "execute") {
+        return durationText(action);
+      }
+      if (action.kind == "search") {
+        if (auto found = numberAfter(action.output, "Found "); found) {
+          return *found + " hits";
+        }
+      }
+      return {};
+    }
+
+    // An action whose row opens a detail on click: its diff or its output.
+    bool hasDetail(const agent::Action& action) {
+      return (action.status == agent::ActionStatus::Done && !action.diffs.empty())
+             || ((action.status == agent::ActionStatus::Done || action.status == agent::ActionStatus::Failed) && !action.output.empty());
     }
 
     // Builders share one scale: every value is a token times the window's ui scale.
@@ -295,6 +351,28 @@ namespace term {
                                       .configure = [](ScrollView& view) { view.setOrientation(ScrollOrientation::Horizontal); }});
         scroll->content()->addChild(std::move(content));
         return scroll;
+      }
+
+      // "+n −m · N hunks": additions term_green, removals term_red; a zero side is left out.
+      std::unique_ptr<Flex> counts(const agent::Action& action) const {
+        std::size_t added = 0;
+        std::size_t removed = 0;
+        for (const auto& d : action.diffs) {
+          const Hunk hunk = firstHunk(d);
+          added += hunk.added.size();
+          removed += hunk.removed.size();
+        }
+        auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
+        if (added > 0 || removed == 0) {
+          row->addChild(text(std::format("+{}", added), Tokens::typeFootnote, ColorRole::TermGreen));
+        }
+        if (removed > 0) {
+          row->addChild(text(std::format("\u2212{}", removed), Tokens::typeFootnote, ColorRole::TermRed));
+        }
+        if (action.diffs.size() > 1) {
+          row->addChild(text(std::format("\u00b7 {} hunks", action.diffs.size()), Tokens::typeFootnote, ColorRole::Label2));
+        }
+        return row;
       }
 
       // width: the box width; lines ellipsize inside it.
@@ -633,7 +711,8 @@ namespace term {
           } else if constexpr (std::is_same_v<T, agent::Note>) {
             return e.text.size();
           } else if constexpr (std::is_same_v<T, agent::Action>) {
-            return (e.output.size() << 8) ^ (e.diffs.size() << 4) ^ static_cast<std::uint64_t>(e.status) ^ (asked(e) ? 1U << 7 : 0U);
+            return (e.output.size() << 8) ^ (e.diffs.size() << 4) ^ static_cast<std::uint64_t>(e.status) ^ (asked(e) ? 1U << 7 : 0U)
+                   ^ (m_expanded.contains(e.id) ? 1U << 6 : 0U);
           } else if constexpr (std::is_same_v<T, agent::Turn>) {
             return std::hash<std::string>{}(agoText(e.started));
           } else if constexpr (std::is_same_v<T, agent::Request>) {
@@ -650,6 +729,13 @@ namespace term {
         model->entries()[entry]);
   }
 
+  void AgentView::toggleDetail(const std::string& id) {
+    if (!m_expanded.erase(id)) {
+      m_expanded.insert(id);
+    }
+    changed();
+  }
+
   bool AgentView::restartable(std::size_t entry) const {
     const agent::Session* model = session();
     return model != nullptr && model->phase() == agent::Phase::Failed && entry + 1 == model->entries().size()
@@ -664,7 +750,8 @@ namespace term {
     const auto& entry = model->entries()[index - 1];
     const auto* prose = std::get_if<agent::Prose>(&entry);
     // A reply with a table or code block takes input: they scroll sideways.
-    return std::holds_alternative<agent::Request>(entry) || restartable(index - 1)
+    const auto* action = std::get_if<agent::Action>(&entry);
+    return std::holds_alternative<agent::Request>(entry) || restartable(index - 1) || (action != nullptr && hasDetail(*action))
            || (prose != nullptr && std::ranges::any_of(agent::markdownBlocks(prose->text), [](const agent::Block& block) {
                 return block.kind == agent::Block::Kind::Table || block.kind == agent::Block::Kind::Code;
               }));
@@ -875,10 +962,12 @@ namespace term {
             if (asked(e)) {
               return; // its request card stands in its place
             }
-            const Verb verb = verbFor(e.kind);
+            const bool created = e.kind == "edit" && !e.diffs.empty()
+                                 && std::ranges::none_of(e.diffs, [](const agent::DiffHunk& d) { return d.oldText.has_value(); });
+            const Verb verb = created ? Verb{"file-plus", "Create"} : verbFor(e.kind);
             const bool failed = e.status == agent::ActionStatus::Failed;
             const bool muted = e.status == agent::ActionStatus::Cancelled || e.status == agent::ActionStatus::Rejected;
-            auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .height = Tokens::componentAgentActionRow * s});
+            auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .width = width - 2.0F * inset, .height = Tokens::componentAgentActionRow * s});
             row->setPadding(0.0F, 0.0F, 0.0F, indent);
             if (e.status == agent::ActionStatus::Running) {
               row->addChild(kit.spinner());
@@ -888,7 +977,8 @@ namespace term {
             row->addChild(ui::label({.text = std::string(verb.word),
                                      .fontSize = Tokens::typeFootnote.size * s,
                                      .color = colorSpecFromRole(failed ? ColorRole::TermRed : ColorRole::Label2),
-                                     .width = Tokens::componentAgentVerbWidth * s}));
+                                     .minWidth = Tokens::componentAgentVerbWidth * s,
+                                     .maxWidth = Tokens::componentAgentVerbWidth * s}));
             const std::string target = actionTarget(e, model->cwd());
             auto targetLabel = kit.code(target, failed ? ColorRole::TermRed : muted ? ColorRole::Label2 : ColorRole::Label1, 1);
             targetLabel->setFlexGrow(1.0F);
@@ -906,13 +996,17 @@ namespace term {
               case agent::ActionStatus::Pending: end = "waiting for you"; break;
               case agent::ActionStatus::Running: end = allowed + elapsedText(e.started); break;
               case agent::ActionStatus::Done:
-                end = allowed + (e.diffs.empty() ? std::string() : countCaption(e));
-                if (end.ends_with(" \u00b7 ")) {
+                end = allowed + doneCaption(e);
+                if (end.ends_with(" \u00b7 ") && e.diffs.empty()) {
                   end.resize(end.size() - std::string_view(" \u00b7 ").size());
                 }
                 break;
               case agent::ActionStatus::Failed:
-                end = "failed";
+                if (auto code = numberAfter(e.output, "Exit code "); code && e.kind == "execute") {
+                  end = "exit " + *code + " \u00b7 " + durationText(e);
+                } else {
+                  end = "failed \u00b7 " + durationText(e);
+                }
                 endRole = ColorRole::TermRed;
                 break;
               case agent::ActionStatus::Rejected: end = "rejected"; break;
@@ -927,12 +1021,24 @@ namespace term {
               }
               row->addChild(std::move(endLabel));
             }
+            if (e.status == agent::ActionStatus::Done && !e.diffs.empty()) {
+              row->addChild(kit.counts(e));
+            }
             if (e.status == agent::ActionStatus::Done) {
               row->addChild(kit.glyph("check", ColorRole::Label2));
             } else if (e.status == agent::ActionStatus::Running) {
               row->addChild(ui::keycap({.text = "Esc", .scale = s}));
             }
-            item->addChild(std::move(row));
+            const bool open = m_expanded.contains(e.id);
+            if (hasDetail(e)) {
+              item->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+                                            .width = width - 2.0F * inset,
+                                            .height = Tokens::componentAgentActionRow * s,
+                                            .onClick = [this, id = e.id](const InputArea::PointerData&) { toggleDetail(id); }},
+                                           std::move(row)));
+            } else {
+              item->addChild(std::move(row));
+            }
             const float block = Tokens::componentAgentBlockIndent * s;
             if (e.status == agent::ActionStatus::Running && !e.output.empty()) {
               auto rows = lines(e.output);
@@ -942,12 +1048,12 @@ namespace term {
               tail->setPadding(Tokens::spaceP4 * s, 0.0F, Tokens::spaceP4 * s, block);
               tail->addChild(kit.well(rows, ColorRole::Label2, true));
               item->addChild(std::move(tail));
-            } else if (e.status == agent::ActionStatus::Done && !e.diffs.empty()) {
+            } else if (open && e.status == agent::ActionStatus::Done && !e.diffs.empty()) {
               auto hunk = ui::column({.align = FlexAlign::Stretch, .maxWidth = block + 720.0F * s});
               hunk->setPadding(Tokens::spaceP4 * s, 0.0F, Tokens::spaceP4 * s, block);
-              hunk->addChild(kit.diff(firstHunk(e.diffs.front()), std::min(720.0F * s, width - 2.0F * inset - block)));
+              hunk->addChild(kit.diff(firstHunk(e.diffs.front(), e.line.value_or(1)), std::min(720.0F * s, width - 2.0F * inset - block)));
               item->addChild(std::move(hunk));
-            } else if (failed && !e.output.empty()) {
+            } else if (open && !e.output.empty()) {
               auto rows = lines(e.output);
               const auto keep = static_cast<std::size_t>(Tokens::componentAgentTailLines);
               rows.erase(rows.begin(), rows.end() - static_cast<std::ptrdiff_t>(std::min(keep, rows.size())));
@@ -1085,9 +1191,39 @@ namespace term {
       card->addChild(kit.well(lines(action->command), ColorRole::Label1, false));
       card->addChild(kit.text("in " + model.cwd(), Tokens::typeCaption, ColorRole::Label2));
     } else if (action != nullptr && !action->diffs.empty()) {
-      card->addChild(kit.code(action->diffs.front().path + "  " + countCaption(*action), ColorRole::Label2, 1));
-      card->addChild(kit.diff(firstHunk(action->diffs.front()), m_lastWidth - 2.0F * Tokens::spaceP24 * s - Tokens::spaceP16 * s - Tokens::spaceP12 * s - Tokens::spaceP16 * s));
-      card->addChild(kit.text("Shows the first hunk", Tokens::typeCaption, ColorRole::Label2));
+      // Path bar (fill_1, top corners) over the first hunk (bottom corners): one block.
+      const float r = Style::scaledRadius(Tokens::radiusR8, s);
+      const float boxWidth = m_lastWidth - 2.0F * Tokens::spaceP24 * s - Tokens::spaceP16 * s - Tokens::spaceP12 * s - Tokens::spaceP16 * s;
+      auto bar = ui::row({.align = FlexAlign::Center,
+                          .gap = Tokens::spaceP8 * s,
+                          .paddingV = Tokens::spaceP4 * s,
+                          .paddingH = Tokens::spaceP8 * s,
+                          .fill = colorSpecFromRole(ColorRole::Fill1),
+                          .width = boxWidth});
+      bar->setRadii(Radii{r, r, 0.0F, 0.0F});
+      const std::string path = action->diffs.front().path;
+      auto name = kit.code(actionTarget(*action, model.cwd()), ColorRole::Label1, 1);
+      name->setFontWeight(FontWeight::SemiBold);
+      name->setFlexGrow(1.0F);
+      bar->addChild(std::move(name));
+      bar->addChild(kit.counts(*action));
+      auto open = kit.text("Open", Tokens::typeFootnote, ColorRole::AccentText);
+      open->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      open->setOnClick([this, path](const InputArea::PointerData&) {
+        if (m_openUri) {
+          m_openUri(fileUri(path));
+        }
+      });
+      bar->addChild(std::move(open));
+      auto block = ui::column({.align = FlexAlign::Stretch});
+      block->addChild(std::move(bar));
+      auto hunk = kit.diff(firstHunk(action->diffs.front(), action->line.value_or(1)), boxWidth);
+      hunk->setRadii(Radii{0.0F, 0.0F, r, r});
+      block->addChild(std::move(hunk));
+      card->addChild(std::move(block));
+      card->addChild(kit.text(action->diffs.size() > 1 ? std::format("Shows the first of {} hunks \u00b7 the full diff opens in the editor", action->diffs.size())
+                                                        : "Shows the first hunk \u00b7 the full diff opens in the editor",
+                              Tokens::typeCaption, ColorRole::Label2));
     } else if (action != nullptr && !action->paths.empty()) {
       card->addChild(kit.code(action->paths.front(), ColorRole::Label1, 1));
     }

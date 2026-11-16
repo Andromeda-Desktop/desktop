@@ -43,6 +43,7 @@ namespace term::agent {
     std::string title;
     std::string command; // execute: rawInput.command
     std::vector<std::string> paths;
+    std::optional<std::uint32_t> line; // 1-based line of the first location, when the agent sent one
     std::vector<DiffHunk> diffs;
     std::string output; // tail of the tool output
     ActionStatus status = ActionStatus::Running;

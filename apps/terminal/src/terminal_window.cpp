@@ -246,7 +246,9 @@ namespace term {
       const std::uint64_t key = s_nextAgentKey++;
       const std::string cwd = fresh->cwd.empty() ? homeDir() : fresh->cwd;
       m_agents.open(key, cwd);
-      m_views.push_back({id, std::make_unique<AgentView>(m_agents, key)});
+      auto agentView = std::make_unique<AgentView>(m_agents, key);
+      agentView->setOpenUri([this](const std::string& uri) { openUri(uri); });
+      m_views.push_back({id, std::move(agentView)});
       apply(session_event::Open{id, SessionKind::Agent, "Claude", shownPath(cwd)});
       return;
     }

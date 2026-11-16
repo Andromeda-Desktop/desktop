@@ -431,9 +431,18 @@ impl Bridge {
                     PermissionOptionKind::AllowOnce,
                 )];
                 if !permission.suggestions.is_empty() && !permission.suppress_always_allow_rule {
+                    // Claude suggests the acceptEdits mode for edits: the grant covers every edit of this session.
+                    let edits = permission
+                        .suggestions
+                        .iter()
+                        .any(|s| s["type"] == "setMode" && s["mode"] == "acceptEdits");
                     options.push(PermissionOption::new(
                         "allow_always",
-                        "Allow always",
+                        if edits {
+                            "Allow all edits this session"
+                        } else {
+                            "Allow always"
+                        },
                         PermissionOptionKind::AllowAlways,
                     ));
                 }
@@ -722,6 +731,13 @@ struct ToolView {
     content: Vec<ToolCallContent>,
 }
 
+/// The 1-based line where `needle` starts in the file at `path`, read before the edit applies.
+fn line_of(path: &str, needle: &str) -> Option<u64> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let at = text.find(needle).filter(|_| !needle.is_empty())?;
+    Some(text[..at].matches('\n').count() as u64 + 1)
+}
+
 /// How a Claude Code tool call reads in the client: its kind, the files it touches and,
 /// for edits, the diff (old_string/new_string hunks; a Write is a new-file diff).
 fn tool_view(name: &str, input: &Value) -> ToolView {
@@ -753,7 +769,7 @@ fn tool_view(name: &str, input: &Value) -> ToolView {
         ),
         "Edit" => (
             ToolKind::Edit,
-            location(None),
+            location(path.and_then(|p| line_of(p, text("old_string")?))),
             vec![diff(
                 Some(text("old_string").unwrap_or("")),
                 text("new_string").unwrap_or(""),

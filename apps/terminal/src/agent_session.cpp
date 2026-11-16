@@ -185,7 +185,11 @@ namespace term::agent {
     }
     if (const auto it = fields.find("locations"); it != fields.end() && it->is_array()) {
       action.paths.clear();
+      action.line.reset();
       for (const auto& location : *it) {
+        if (const auto line = location.find("line"); action.paths.empty() && line != location.end() && line->is_number_unsigned()) {
+          action.line = line->get<std::uint32_t>();
+        }
         if (auto path = str(location, "path"); !path.empty()) {
           action.paths.push_back(std::move(path));
         }
