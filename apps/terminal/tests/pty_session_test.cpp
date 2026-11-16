@@ -12,7 +12,9 @@
 #include <condition_variable>
 #include <cstdio>
 #include <random>
+#include <mutex>
 #include <string>
+#include <vector>
 
 using namespace term;
 
@@ -192,8 +194,36 @@ void reattachRestoresScreenMidEscape(bool snapshotted) {
   ghostty_terminal_free(reference);
 }
 
+void programEffectsReachTheApp() {
+  // Title, OSC 52 copy (clipboard and primary), OSC 9 and 777 notifications, and XTVERSION naming the app.
+  Waker w;
+  std::mutex m;
+  std::vector<std::string> got;
+  const auto log = [&](std::string line) {
+    std::lock_guard lock(m);
+    got.push_back(std::move(line));
+  };
+  PtySession s([&] { w.wake(); }, {}, {}, {},
+               {.title = [&](std::string t) { log("title:" + t); },
+                .clipboard = [&](std::string t, bool primary) { log((primary ? "primary:" : "clip:") + t); },
+                .notify = [&](std::string t, std::string b) { log("note:" + t + "/" + b); }});
+  CHECK(s.spawn({.argv = {"/bin/bash", "-c", R"(stty -echo
+printf '\e]2;my title\a\e]52;c;aGk=\a\e]52;p;eW8=\a\e]9;built\a\e]777;notify;Tests;all pass\a\e[>q'
+IFS= read -rsd '\' r; printf '|%s|' "${r:4:18}"; exit 0)"}}));
+  CHECK(w.waitFor(s, [&] { return s.state() == SessionState::Exited; }));
+  CHECK(screenText(s).find("|Andromeda Terminal|") != std::string::npos);
+  std::lock_guard lock(m);
+  for (const char* want : {"title:my title", "clip:hi", "primary:yo", "note:/built", "note:Tests/all pass"}) {
+    if (!std::ranges::contains(got, std::string(want))) {
+      std::fprintf(stderr, "FAIL missing effect %s\n", want);
+      CHECK(false);
+    }
+  }
+}
+
 void runSessionTests() {
   runsCommandAndReportsExit();
+  programEffectsReachTheApp();
   answersDeviceStatusReport();
   keyInputReachesProgram();
 }

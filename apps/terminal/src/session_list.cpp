@@ -132,6 +132,14 @@ namespace term {
               s->cwd = e.cwd;
               return true;
             },
+            [&](const Title& e) {
+              SessionInfo* s = get(e.id);
+              if (s == nullptr || s->title == e.title) {
+                return false;
+              }
+              s->title = e.title;
+              return true;
+            },
             [&](const Kind& e) {
               SessionInfo* s = get(e.id);
               if (s == nullptr) {

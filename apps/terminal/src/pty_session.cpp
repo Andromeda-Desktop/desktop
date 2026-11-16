@@ -4,6 +4,8 @@
 #include <termios.h>
 #include <algorithm>
 #include <chrono>
+#include <span>
+#include <string_view>
 
 #include <cerrno>
 #include <csignal>
@@ -57,8 +59,9 @@ winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, st
 
 } // namespace
 
-PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell, SecretFn onSecret)
-    : m_wake(std::move(wake)), m_onMark(std::move(onMark)), m_onBell(std::move(onBell)), m_onSecret(std::move(onSecret)) {}
+PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell, SecretFn onSecret, Effects effects)
+    : m_wake(std::move(wake)), m_onMark(std::move(onMark)), m_onBell(std::move(onBell)), m_onSecret(std::move(onSecret)),
+      m_effects(std::move(effects)) {}
 
 PtySession::~PtySession() {
   m_stopping = true;
@@ -107,6 +110,12 @@ void PtySession::configureTerminal() {
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT,
                        reinterpret_cast<const void*>(&onSemanticPrompt));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_BELL, reinterpret_cast<const void*>(&onBellRung));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_XTVERSION, reinterpret_cast<const void*>(&onXtversion));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, reinterpret_cast<const void*>(&onTitleChanged));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
+                       reinterpret_cast<const void*>(&onClipboardWrite));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION,
+                       reinterpret_cast<const void*>(&onNotification));
 }
 
 bool PtySession::spawn(const SpawnOptions& o) {
@@ -490,6 +499,43 @@ void PtySession::onRenderHold(GhosttyTerminal, void* self, bool held) {
 void PtySession::onBellRung(GhosttyTerminal /*terminal*/, void* self) {
   auto* s = static_cast<PtySession*>(self);
   if (s->m_onBell && !s->m_bellPending.exchange(true)) s->m_onBell();
+}
+
+GhosttyString PtySession::onXtversion(GhosttyTerminal, void*) {
+  static constexpr std::string_view kVersion = "Andromeda Terminal " ANDROMEDA_TERMINAL_VERSION;
+  return {reinterpret_cast<const std::uint8_t*>(kVersion.data()), kVersion.size()};
+}
+
+void PtySession::onTitleChanged(GhosttyTerminal terminal, void* self) {
+  auto* s = static_cast<PtySession*>(self);
+  GhosttyString title{};
+  if (!s->m_effects.title || ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_TITLE, &title) != GHOSTTY_SUCCESS) return;
+  s->m_effects.title(std::string(reinterpret_cast<const char*>(title.ptr), title.len));
+}
+
+void PtySession::onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClipboardWrite* write) {
+  auto* s = static_cast<PtySession*>(self);
+  const std::span contents(write->contents, write->contents_len);
+  const auto text = std::ranges::find_if(contents, [](const GhosttyClipboardContent& c) {
+    const std::string_view mime(reinterpret_cast<const char*>(c.mime.ptr), c.mime.len);
+    return mime == "text/plain" || mime.starts_with("text/plain;");
+  });
+  GhosttyClipboardWriteReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardWriteReply);
+  reply.result = !s->m_effects.clipboard || s->replaying() ? GHOSTTY_CLIPBOARD_WRITE_RESULT_DENIED
+      : text == contents.end()                              ? GHOSTTY_CLIPBOARD_WRITE_RESULT_UNSUPPORTED
+                                                            : GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS;
+  if (reply.result == GHOSTTY_CLIPBOARD_WRITE_RESULT_SUCCESS) {
+    s->m_effects.clipboard(std::string(reinterpret_cast<const char*>(text->data.ptr), text->data.len),
+                           write->location != GHOSTTY_CLIPBOARD_LOCATION_STANDARD);
+  }
+  write->reply(write, &reply);
+}
+
+void PtySession::onNotification(GhosttyTerminal, void* self, const GhosttyTerminalDesktopNotification* note) {
+  auto* s = static_cast<PtySession*>(self);
+  if (!s->m_effects.notify || s->replaying()) return;
+  s->m_effects.notify(std::string(reinterpret_cast<const char*>(note->title.ptr), note->title.len),
+                      std::string(reinterpret_cast<const char*>(note->body.ptr), note->body.len));
 }
 
 void PtySession::onSemanticPrompt(GhosttyTerminal terminal, void* self, const GhosttyTerminalSemanticPrompt* e) {

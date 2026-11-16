@@ -85,8 +85,11 @@ namespace term {
       std::function<void(int status)> exited;
       // Current keyboard modifiers (KeyMod bits): pointer events carry none.
       std::function<std::uint32_t()> modifiers;
-      // A long command finished while the grid had no focus (OSC 133): post a notification.
-      std::function<void(const std::string& summary, const std::string& body)> commandFinished;
+      // Post a desktop notification: a long command finished while the grid had no focus (OSC 133), or the
+      // program asked (OSC 9 / 777).
+      std::function<void(const std::string& summary, const std::string& body)> notify;
+      // The program set its title (OSC 0 / 2).
+      std::function<void(std::string title)> titleChanged;
       // OSC 133: a command started running / ended (exit code when the shell reports one).
       std::function<void(const std::string& command)> commandStarted;
       std::function<void(std::optional<int> exitCode)> commandEnded;

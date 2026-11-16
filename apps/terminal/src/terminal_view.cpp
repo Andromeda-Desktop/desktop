@@ -145,7 +145,28 @@ namespace term {
               m_host.secretInput(secret);
             }
           });
-        }) {
+        }, {.title = [this, alive = std::weak_ptr<bool>(m_alive)](std::string title) {
+              DeferredCall::callLater([this, alive, title = std::move(title)]() mutable {
+                if (!alive.expired() && m_host.titleChanged) {
+                  m_host.titleChanged(std::move(title));
+                }
+              });
+            },
+            .clipboard = [alive = std::weak_ptr<bool>(m_alive)](std::string text, bool primary) {
+              DeferredCall::callLater([alive, text = std::move(text), primary]() mutable {
+                TextClipboard* clipboard = Input::textClipboard();
+                if (!alive.expired() && !primary && clipboard != nullptr) {
+                  clipboard->setClipboardText(std::move(text));
+                }
+              });
+            },
+            .notify = [this, alive = std::weak_ptr<bool>(m_alive)](std::string title, std::string body) {
+              DeferredCall::callLater([this, alive, title = std::move(title), body = std::move(body)] {
+                if (!alive.expired() && m_host.notify) {
+                  m_host.notify(title.empty() ? std::string("Terminal") : title, body);
+                }
+              });
+            }}) {
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);
     ghostty_render_state_row_cells_new(nullptr, &m_cells);
@@ -1142,14 +1163,14 @@ namespace term {
       const auto elapsed = running != nullptr ? std::chrono::steady_clock::now() - running->start
                                               : std::chrono::steady_clock::duration{};
       if (running != nullptr && m_settings.notifyLong && elapsed >= std::chrono::seconds(m_settings.notifySeconds)
-          && (!m_focused || !m_settings.notifyUnfocusedOnly) && m_host.commandFinished) {
+          && (!m_focused || !m_settings.notifyUnfocusedOnly) && m_host.notify) {
         const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
         const std::string took =
             seconds >= 60 ? std::format("{} min {} s", seconds / 60, seconds % 60) : std::format("{} s", seconds);
         const bool failed = mark.exitCode.value_or(0) != 0;
         std::string body = running->text.empty() ? std::string{"A command"} : running->text;
         body += failed ? std::format(" exited with {} after {}", *mark.exitCode, took) : std::format(" took {}", took);
-        m_host.commandFinished(failed ? "Command failed" : "Command finished", body);
+        m_host.notify(failed ? "Command failed" : "Command finished", body);
       }
       if (running != nullptr && m_host.commandEnded) {
         m_host.commandEnded(mark.exitCode);

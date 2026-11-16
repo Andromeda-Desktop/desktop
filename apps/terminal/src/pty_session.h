@@ -49,8 +49,15 @@ public:
   using BellFn = std::function<void()>;
   // IO thread, when the program starts or stops reading a secret: canonical input with echo off (a password prompt).
   using SecretFn = std::function<void(bool)>;
+  // Program requests from the output stream, on the IO thread under the terminal lock. Replayed output (reattach)
+  // sets the title again but never writes the clipboard or notifies.
+  struct Effects {
+    std::function<void(std::string title)> title;                 // OSC 0 / 2
+    std::function<void(std::string text, bool primary)> clipboard; // OSC 52 write, text/plain only
+    std::function<void(std::string title, std::string body)> notify; // OSC 9 / 777
+  };
 
-  PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {}, SecretFn onSecret = {});
+  PtySession(WakeFn wake, MarkFn onMark = {}, BellFn onBell = {}, SecretFn onSecret = {}, Effects effects = {});
   void bellHandled() { m_bellPending = false; } // UI thread: the next BEL calls onBell again
   ~PtySession();
   PtySession(const PtySession&) = delete;
@@ -115,11 +122,17 @@ private:
   static void onRenderHold(GhosttyTerminal, void* self, bool held);
   static void onSemanticPrompt(GhosttyTerminal, void* self, const GhosttyTerminalSemanticPrompt* event);
   static void onBellRung(GhosttyTerminal, void* self);
+  static GhosttyString onXtversion(GhosttyTerminal, void* self);
+  static void onTitleChanged(GhosttyTerminal, void* self);
+  static void onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClipboardWrite* write);
+  static void onNotification(GhosttyTerminal, void* self, const GhosttyTerminalDesktopNotification* note);
+  bool replaying() const { return m_parsed < m_replayEnd; }
 
   WakeFn m_wake;
   MarkFn m_onMark;
   BellFn m_onBell;
   SecretFn m_onSecret;
+  Effects m_effects;
   bool m_secret = false; // IO thread
   std::atomic<bool> m_bellPending{false};
   GhosttyTerminal m_terminal = nullptr;

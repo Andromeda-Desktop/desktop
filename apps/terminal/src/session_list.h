@@ -42,6 +42,7 @@ namespace term {
     std::string name;
     std::string cwd;
     std::string host; // Ssh or Container: the host or container name, when known
+    std::string title; // set by the program (OSC 0 / 2); shown when name is empty
     CommandState command;
     Seen seen = Seen::Seen;
     bool operator==(const SessionInfo&) const = default;
@@ -82,6 +83,10 @@ namespace term {
       std::uint64_t id;
       std::string cwd;
     };
+    struct Title {
+      std::uint64_t id;
+      std::string title;
+    };
     struct Kind {
       std::uint64_t id;
       SessionKind kind;
@@ -102,7 +107,7 @@ namespace term {
   using SessionListEvent = std::variant<session_event::Open, session_event::Close, session_event::Show,
                                         session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
                                         session_event::Cwd, session_event::Kind, session_event::Join,
-                                        session_event::Leave, session_event::Output>;
+                                        session_event::Leave, session_event::Output, session_event::Title>;
 
   enum class ApplyResult : std::uint8_t { Applied, Rejected, LastClosed };
 

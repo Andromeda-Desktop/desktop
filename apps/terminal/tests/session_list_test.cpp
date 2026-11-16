@@ -55,7 +55,7 @@ void checkInvariants(const SessionList& list) {
 SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
   const std::uint64_t other = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
-  switch (std::uniform_int_distribution<int>(0, 12)(rng)) {
+  switch (std::uniform_int_distribution<int>(0, 13)(rng)) {
   case 0: return Open{id, SessionKind::Shell, "s", "~"};
   case 1: return Close{id};
   case 2: return Show{id};
@@ -67,6 +67,7 @@ SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   case 8:
   case 9: return Join{id, other, std::uniform_int_distribution<int>(0, 1)(rng) == 0};
   case 10: return Output{id, std::uniform_int_distribution<int>(0, 1)(rng) == 0 ? CommandOutput::Active : CommandOutput::Quiet};
+  case 11: return Title{id, "t"};
   default: return Leave{id};
   }
 }

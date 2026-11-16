@@ -396,7 +396,7 @@ namespace term {
               });
             },
         .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
-        .commandFinished =
+        .notify =
             [this](const std::string& summary, const std::string& body) {
               m_notifier.notify(summary, body, [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& token) {
                 if (!alive.expired()) {
@@ -404,6 +404,7 @@ namespace term {
                 }
               });
             },
+        .titleChanged = [this, id](std::string title) { apply(session_event::Title{id, std::move(title)}); },
         .commandStarted =
             [this, id](const std::string& command) {
               apply(session_event::CommandStart{id, command, SessionClock::now()});
@@ -891,8 +892,8 @@ namespace term {
     if (session == nullptr) {
       return;
     }
-    if (!session->name.empty()) {
-      m_window.setTitle(session->name);
+    if (!session->name.empty() || !session->title.empty()) {
+      m_window.setTitle(session->name.empty() ? session->title : session->name);
     } else if (session->kind == SessionKind::Agent) {
       ContentView* view = shownView();
       const agent::Session* model = view != nullptr && view->agent() != nullptr ? view->agent()->session() : nullptr;
@@ -1012,7 +1013,7 @@ namespace term {
   }
 
   StatusRow::Data TerminalWindow::rowData(const SessionInfo& session) const {
-    const std::string& place = session.host.empty() ? session.cwd : session.host;
+    const std::string& place = !session.title.empty() ? session.title : session.host.empty() ? session.cwd : session.host;
     StatusRow::Data data{.name = session.name.empty() ? place : session.name,
                          .unseen = session.seen == Seen::Unseen,
                          .selected = session.id == m_rowSelected};
