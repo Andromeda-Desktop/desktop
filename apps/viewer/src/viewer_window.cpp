@@ -217,6 +217,7 @@ namespace viewer {
                     static_cast<float>(reply.msg.d) / 100.0F);
       m_pages.assign(m_model.pageCount(), {});
       m_thumbs.assign(m_model.pageCount(), {});
+      m_links.assign(m_model.pageCount(), {});
       m_mode = Mode::Pdf;
       kLog.info("opened pdf {} pages", m_model.pageCount());
       rebuild();
@@ -300,6 +301,83 @@ namespace viewer {
     refreshLabels();
   }
 
+  void ViewerWindow::requestLinks(std::size_t page) {
+    if (page >= m_links.size() || m_links[page].state != PageLinks::State::Unasked) {
+      return;
+    }
+    m_links[page].state = PageLinks::State::Asked;
+    m_helper->request({.op = preview::op::Links, .a = static_cast<std::uint32_t>(page)}, {},
+                      [this, page, generation = m_generation](const preview::HelperReply& reply) {
+                        if (generation != m_generation || page >= m_links.size()) {
+                          return;
+                        }
+                        PageLinks& out = m_links[page];
+                        out.state = PageLinks::State::Known;
+                        if (reply.msg.op != preview::op::LinksReply || reply.data == nullptr) {
+                          return;
+                        }
+                        const auto bytes = reply.data->bytes();
+                        constexpr std::size_t kRecord = sizeof(RectF) + 2 * sizeof(std::uint32_t);
+                        const std::size_t count = reply.msg.b;
+                        std::size_t text = count * kRecord;
+                        if (text > bytes.size()) {
+                          return;
+                        }
+                        for (std::size_t r = 0; r < count; ++r) {
+                          const std::uint8_t* at = bytes.data() + r * kRecord;
+                          Link link;
+                          std::uint32_t kind = 0;
+                          std::uint32_t value = 0;
+                          std::memcpy(&link.area, at, sizeof(RectF));
+                          std::memcpy(&kind, at + sizeof(RectF), sizeof(kind));
+                          std::memcpy(&value, at + sizeof(RectF) + sizeof(kind), sizeof(value));
+                          if (kind == preview::kLinkPage) {
+                            link.target = static_cast<std::size_t>(value);
+                          } else if (kind == preview::kLinkUri && value <= bytes.size() - text) {
+                            link.target = std::string(reinterpret_cast<const char*>(bytes.data()) + text, value);
+                            text += value;
+                          } else {
+                            continue;
+                          }
+                          out.links.push_back(std::move(link));
+                        }
+                      });
+  }
+
+  const ViewerWindow::Link* ViewerWindow::linkAt(std::size_t page, float x, float y) const {
+    if (page >= m_links.size()) {
+      return nullptr;
+    }
+    for (const Link& link : m_links[page].links) {
+      if (x >= link.area.x0 && x <= link.area.x1 && y >= link.area.y0 && y <= link.area.y1) {
+        return &link;
+      }
+    }
+    return nullptr;
+  }
+
+  void ViewerWindow::follow(const Link& link) {
+    if (const auto* page = std::get_if<std::size_t>(&link.target)) {
+      goToPage(*page);
+      return;
+    }
+    // The URI comes from the file: open only web and mail links, never a local file or a program.
+    const std::string& uri = std::get<std::string>(link.target);
+    if (!uri.starts_with("https://") && !uri.starts_with("http://") && !uri.starts_with("mailto:")) {
+      kLog.info("link not opened: {}", uri);
+      return;
+    }
+    std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
+    if (const std::string token = m_loop.wayland().requestActivationToken(m_window.wlSurface()); !token.empty()) {
+      g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
+    }
+    GError* error = nullptr;
+    if (!g_app_info_launch_default_for_uri(uri.c_str(), context.get(), &error)) {
+      kLog.warn("open {}: {}", uri, error != nullptr ? error->message : "?");
+      g_clear_error(&error);
+    }
+  }
+
   void ViewerWindow::requestVisiblePages() {
     if (m_mode != Mode::Pdf || !m_helper || m_scroll == nullptr) {
       return;
@@ -320,6 +398,7 @@ namespace viewer {
       }
     }
     for (std::size_t i = first; i <= last && i < m_pages.size(); ++i) {
+      requestLinks(i);
       const RectF box = m_model.pageBox(i);
       // Past kBaseWidth the whole page stays at that width and tiles carry the detail in view.
       const auto width = std::min(kBaseWidth, static_cast<std::uint32_t>(std::lround((box.x1 - box.x0) * scale)));
@@ -1300,12 +1379,14 @@ namespace viewer {
                                                 : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
         }
       });
-      sheet->setOnMotion([this, zoom](const InputArea::PointerData& d) {
+      sheet->setOnMotion([this, i, zoom, sheetArea](const InputArea::PointerData& d) {
         if (m_pan && m_scroll != nullptr && m_hscroll != nullptr) {
           m_hscroll->setScrollOffset(m_pan->left - (d.sceneX - m_pan->x));
           m_scroll->setScrollOffset(m_pan->top - (d.sceneY - m_pan->y));
           return;
         }
+        const bool onLink = m_tool == Tool::Select && !m_selecting && linkAt(i, d.localX / zoom, d.localY / zoom) != nullptr;
+        sheetArea->setCursorShape(onLink ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
         onPageMotion(d.localX / zoom, d.localY / zoom);
       });
       column->addChild(std::move(sheet));
@@ -1429,6 +1510,17 @@ namespace viewer {
         }
       } else if (m_selecting) {
         m_selecting = false;
+        // A click with no drag on a link follows it.
+        const Link* link = m_tool == Tool::Select && m_selection && m_lastClick.count == 1 &&
+                                   std::abs(x - m_selection->x0) <= 2.0F && std::abs(y - m_selection->y0) <= 2.0F
+                               ? linkAt(page, m_selection->x0, m_selection->y0)
+                               : nullptr;
+        if (link != nullptr) {
+          m_selection.reset();
+          fillMarks(page);
+          follow(*link);
+          return;
+        }
         m_highlightOnSelect = m_tool == Tool::Highlight;
         updateSelect(x, y);
       }

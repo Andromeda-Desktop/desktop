@@ -52,6 +52,8 @@ namespace preview {
     inline constexpr std::uint32_t Cover = 13;
     // a = bucket count (<= 1024): a full decode with no clock -> PeaksReply, data = one u8 per bucket.
     inline constexpr std::uint32_t Peaks = 14;
+    // a = page -> LinksReply.
+    inline constexpr std::uint32_t Links = 16;
     inline constexpr std::uint32_t InfoReply = 0x81;
     inline constexpr std::uint32_t Page = 0x82;
     inline constexpr std::uint32_t TextReply = 0x83;
@@ -70,12 +72,17 @@ namespace preview {
     inline constexpr std::uint32_t AudioReply = 0x8a;
     inline constexpr std::uint32_t CoverReply = 0x8b;
     inline constexpr std::uint32_t PeaksReply = 0x8c;
+    // a = page, b = links; data (b > 0) = b records of 4 f32 in points, u32 kLink*, u32 target page or URI bytes;
+    // then the URIs in order.
+    inline constexpr std::uint32_t LinksReply = 0x8d;
     inline constexpr std::uint32_t Error = 0xff;
   } // namespace op
 
   inline constexpr std::uint32_t kSelectGlyph = 0;
   inline constexpr std::uint32_t kSelectWord = 1;
   inline constexpr std::uint32_t kSelectLine = 2;
+  inline constexpr std::uint32_t kLinkPage = 0;
+  inline constexpr std::uint32_t kLinkUri = 1;
   inline constexpr std::uint32_t kAnnotHighlight = 1;
   inline constexpr std::uint32_t kAnnotNote = 2;
   inline constexpr std::uint32_t kAnnotInk = 3;

@@ -222,3 +222,44 @@ fn select_over_the_line_returns_its_text_and_rects() {
     assert!(rects(&bytes, count).iter().all(|[x0, y0, x1, y1]| x1 > x0 && y1 > y0 && *y0 < 50.0));
 }
 
+
+/// Two 200 x 100 pt pages; page 1 links to page 2 at (10, 10, 60, 30), to a URI at (100, 50, 180, 70) and to the
+/// named dest on page 2 at (10, 50, 60, 70).
+fn linked_pdf() -> tempfile::NamedTempFile {
+    let file = tempfile::Builder::new().suffix(".pdf").tempfile().unwrap();
+    let surface = cairo::PdfSurface::new(200.0, 100.0, file.path()).unwrap();
+    let cr = cairo::Context::new(&surface).unwrap();
+    cr.tag_begin("Link", "page=2 rect=[10 10 50 20]");
+    cr.tag_end("Link");
+    cr.tag_begin("Link", "uri='https://example.org/a' rect=[100 50 80 20]");
+    cr.tag_end("Link");
+    cr.tag_begin("Link", "dest='two' rect=[10 50 50 20]");
+    cr.tag_end("Link");
+    cr.show_page().unwrap();
+    cr.tag_begin("cairo.dest", "name='two' x=0 y=0");
+    cr.tag_end("cairo.dest");
+    cr.show_page().unwrap();
+    drop(cr);
+    surface.finish();
+    file
+}
+
+#[test]
+fn pdf_links_give_their_area_and_target() {
+    let file = linked_pdf();
+    let helper = Helper::start("pdf", file.path());
+    let (reply, fd) = helper.ask(Msg::new(proto::OP_LINKS, 0, 0, 0, 0));
+    assert_eq!((reply.op, reply.a, reply.b), (proto::OP_LINKS_REPLY, 0, 3));
+    let bytes = read_fd(fd.unwrap());
+    let f = |i: usize| f32::from_le_bytes(bytes[i * 4..][..4].try_into().unwrap()).round();
+    let u = |i: usize| u32::from_le_bytes(bytes[i * 4..][..4].try_into().unwrap());
+    let mut links: Vec<_> = (0..3).map(|r| ([f(r * 6), f(r * 6 + 1), f(r * 6 + 2), f(r * 6 + 3)], u(r * 6 + 4), u(r * 6 + 5))).collect();
+    links.sort_by(|a, b| (a.1, a.0[1]).partial_cmp(&(b.1, b.0[1])).unwrap());
+    assert_eq!(links[0], ([10.0, 10.0, 60.0, 30.0], proto::LINK_PAGE, 1));
+    assert_eq!(links[1], ([10.0, 50.0, 60.0, 70.0], proto::LINK_PAGE, 1));
+    assert_eq!(links[2], ([100.0, 50.0, 180.0, 70.0], proto::LINK_URI, 21));
+    assert_eq!(&bytes[72..], b"https://example.org/a");
+    let (none, fd) = helper.ask(Msg::new(proto::OP_LINKS, 1, 0, 0, 0));
+    assert_eq!((none.op, none.b), (proto::OP_LINKS_REPLY, 0));
+    assert!(fd.is_none());
+}

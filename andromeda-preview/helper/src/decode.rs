@@ -1,7 +1,7 @@
 //! Decoders the helper runs inside its sandbox. Each returns a sealed memfd the window maps read-only.
 
 use crate::proto::{
-    ERR_BAD_REQUEST, ERR_BINARY, ERR_DECODE, ERR_RANGE, ERR_TOO_LARGE, KIND_PDF, Msg, OP_FIND_REPLY, OP_INFO_REPLY,
+    ERR_BAD_REQUEST, ERR_BINARY, ERR_DECODE, ERR_RANGE, ERR_TOO_LARGE, KIND_PDF, LINK_PAGE, LINK_URI, Msg, OP_FIND_REPLY, OP_INFO_REPLY, OP_LINKS_REPLY,
     OP_PAGE, OP_SELECT_REPLY, OP_TEXT_REPLY, SELECT_GLYPH, SELECT_LINE, SELECT_WORD,
 };
 use rustix::fd::OwnedFd;
@@ -115,6 +115,37 @@ fn centi_points(v: f64) -> u32 {
 }
 
 #[allow(clippy::cast_possible_truncation)]
+/// The 0-based page a link dest names, looking a named dest up in `doc`.
+///
+/// # Safety
+/// `doc` is a live document and `dest` null or a dest of it.
+#[allow(unsafe_code)]
+unsafe fn dest_page(doc: *mut poppler::ffi::PopplerDocument, dest: *mut poppler::ffi::PopplerDest) -> Option<u32> {
+    use poppler::ffi;
+    if dest.is_null() {
+        return None;
+    }
+    // SAFETY: the caller's contract; a dest found by name is ours to free.
+    let page_num = unsafe {
+        if (*dest).type_ == ffi::POPPLER_DEST_NAMED {
+            if (*dest).named_dest.is_null() {
+                return None;
+            }
+            let found = ffi::poppler_document_find_dest(doc, (*dest).named_dest);
+            if found.is_null() {
+                return None;
+            }
+            let n = (*found).page_num;
+            ffi::poppler_dest_free(found);
+            n
+        } else {
+            (*dest).page_num
+        }
+    };
+    // poppler numbers pages from 1.
+    u32::try_from(page_num).ok().and_then(|n| n.checked_sub(1))
+}
+
 fn push_rect(out: &mut Vec<u8>, x0: f64, y0: f64, x1: f64, y1: f64) {
     for v in [x0, y0, x1, y1] {
         out.extend_from_slice(&(v as f32).to_le_bytes());
@@ -141,6 +172,52 @@ impl Pdf {
             .filter(|&i| i < self.doc.n_pages())
             .and_then(|i| self.doc.page(i))
             .ok_or(ERR_RANGE)
+    }
+
+    /// The links of page `index` that go to a page of this document or to a URI; no fd when there is none.
+    ///
+    /// # Errors
+    /// `ERR_RANGE` for a page past the end.
+    #[allow(unsafe_code)]
+    pub fn links(&self, index: u32) -> Result<(Msg, Option<OwnedFd>), u32> {
+        use glib::translate::ToGlibPtr;
+        use poppler::ffi;
+        let page = self.page(index)?;
+        let (_, height) = page.size();
+        let doc: *mut ffi::PopplerDocument = self.doc.to_glib_none().0;
+        let mut records = Vec::new();
+        let mut uris = Vec::new();
+        for mapping in page.link_mapping().iter().take(MAX_RECTS) {
+            let raw: *const ffi::PopplerLinkMapping = mapping.to_glib_none().0;
+            // SAFETY: `mapping` owns a valid PopplerLinkMapping; its action, when set, is a PopplerAction whose
+            // `type_` names the union member, and the dest and URI pointers it holds live as long as it.
+            let target = unsafe {
+                let action = (*raw).action;
+                if action.is_null() {
+                    continue;
+                }
+                match (*action).type_ {
+                    ffi::POPPLER_ACTION_GOTO_DEST => dest_page(doc, (*action).goto_dest.dest).map(|p| (LINK_PAGE, p, None)),
+                    ffi::POPPLER_ACTION_URI if !(*action).uri.uri.is_null() => {
+                        let uri = std::ffi::CStr::from_ptr((*action).uri.uri).to_bytes().to_vec();
+                        u32::try_from(uri.len()).ok().map(|n| (LINK_URI, n, Some(uri)))
+                    }
+                    _ => None,
+                }
+            };
+            let Some((kind, value, uri)) = target else { continue };
+            // SAFETY: as above.
+            let area = unsafe { (*raw).area };
+            // poppler reports areas with the origin at the bottom left of the page.
+            push_rect(&mut records, area.x1, height - area.y2, area.x2, height - area.y1);
+            records.extend_from_slice(&kind.to_le_bytes());
+            records.extend_from_slice(&value.to_le_bytes());
+            uris.extend(uri.unwrap_or_default());
+        }
+        let count = u32::try_from(records.len() / 24).unwrap_or(0);
+        records.extend(uris);
+        let fd = if count > 0 { Some(sealed("preview-links", &records)?) } else { None };
+        Ok((Msg::new(OP_LINKS_REPLY, index, count, 0, 0), fd))
     }
 
     /// The places of `query` on page `index`, top left origin; no fd when there is none.

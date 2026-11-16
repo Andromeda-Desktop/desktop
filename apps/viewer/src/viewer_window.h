@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 class AppLoop;
@@ -199,6 +200,20 @@ namespace viewer {
     DocumentModel m_model;
     std::vector<Page> m_pages;
     std::vector<Page> m_thumbs;
+    // A link area in points and where it goes: a page index or a URI.
+    struct Link {
+      RectF area;
+      std::variant<std::size_t, std::string> target;
+    };
+    struct PageLinks {
+      enum class State : std::uint8_t { Unasked, Asked, Known };
+      State state = State::Unasked;
+      std::vector<Link> links;
+    };
+    std::vector<PageLinks> m_links;
+    void requestLinks(std::size_t page);
+    [[nodiscard]] const Link* linkAt(std::size_t page, float x, float y) const;
+    void follow(const Link& link);
     std::unordered_map<std::uint64_t, Tile> m_tiles; // by tileKey
     std::vector<Job> m_jobs;
     int m_inFlight = 0;

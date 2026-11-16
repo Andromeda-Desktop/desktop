@@ -39,6 +39,10 @@ pub const OP_COVER: u32 = 13;
 /// a = bucket count (1..=`MAX_PEAKS`): decodes the whole audio stream as fast as it can. Reply `OP_PEAKS_REPLY`.
 /// The window asks a helper of its own for it, so playback in the other helper never waits on it.
 pub const OP_PEAKS: u32 = 14;
+/// a = page index. Reply `OP_LINKS_REPLY`.
+pub const OP_LINKS: u32 = 16;
+pub const LINK_PAGE: u32 = 0;
+pub const LINK_URI: u32 = 1;
 pub const MAX_PEAKS: u32 = 1024;
 pub const SELECT_GLYPH: u32 = 0;
 pub const SELECT_WORD: u32 = 1;
@@ -68,6 +72,9 @@ pub const OP_AUDIO_REPLY: u32 = 0x8a;
 pub const OP_COVER_REPLY: u32 = 0x8b;
 /// a = bucket count; fd = one u8 per bucket, the loudest absolute sample in it scaled to 0..=255.
 pub const OP_PEAKS_REPLY: u32 = 0x8c;
+/// a = page, b = link count; fd (when b > 0) = b records of 4 f32 (x0, y0, x1, y1) in points, origin top left,
+/// u32 `LINK_*`, u32 target page index or URI byte length; then the URIs of the `LINK_URI` records in order.
+pub const OP_LINKS_REPLY: u32 = 0x8d;
 /// a = ERR_*.
 pub const OP_ERROR: u32 = 0xff;
 
