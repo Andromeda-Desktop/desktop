@@ -46,6 +46,7 @@ namespace term {
   public:
     // Appends `in`, rewritten, to `out`. Bytes may split a sequence anywhere; state carries over.
     void feed(std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out);
+    bool idle() const { return m_state == State::Ground; }
 
   private:
     enum class State : std::uint8_t { Ground, Introducer, Params, Data, DataEscape };

@@ -4,6 +4,8 @@
 #include <termios.h>
 #include <algorithm>
 #include <chrono>
+#include <thread>
+#include <utility>
 #include <span>
 #include <string_view>
 
@@ -59,6 +61,16 @@ winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, st
   return ws;
 }
 
+// True when no ESC in `bytes` starts a DCS or an OSC and none ends it: the sixel and OSC 66 filters and the OSC scanners pass such bytes unchanged and stay idle.
+bool plainChunk(std::span<const std::uint8_t> bytes) {
+  const std::uint8_t* p = bytes.data();
+  const std::uint8_t* const end = p + bytes.size();
+  while ((p = static_cast<const std::uint8_t*>(std::memchr(p, 0x1b, static_cast<std::size_t>(end - p)))) != nullptr) {
+    if (++p == end || *p == 'P' || *p == ']') return false;
+  }
+  return true;
+}
+
 } // namespace
 
 PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell, SecretFn onSecret, Effects effects)
@@ -79,8 +91,18 @@ PtySession::~PtySession() {
   if (m_io.joinable()) m_io.join();
   if (m_parser.joinable()) m_parser.join();
   if (auto* local = std::get_if<LocalChild>(&m_link); local && m_state.load() == SessionState::Running) {
+    // Closing the master hangs up the whole foreground job: a shell that traps SIGHUP still waits for it.
+    ::close(std::exchange(m_master, -1));
     ::kill(local->pid, SIGHUP);
-    ::waitpid(local->pid, nullptr, 0);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (::waitpid(local->pid, nullptr, WNOHANG) == 0) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        ::kill(local->pid, SIGKILL);
+        ::waitpid(local->pid, nullptr, 0);
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
   }
   if (auto* held = std::get_if<HeldSession>(&m_link)) {
     (void)holder::sendAll(held->socket, holder::encodeClose(held->id));
@@ -460,16 +482,24 @@ void PtySession::parseLoop() {
       len = std::min(kReadChunk, work.size() - at);
       if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
       for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
-      m_unsixeled.clear();
-      m_sixel.feed({work.data() + at, len}, m_unsixeled);
-      m_filtered.clear();
-      m_textSize.feed(m_unsixeled, m_filtered);
+      const std::span<const std::uint8_t> chunk{work.data() + at, len};
+      const bool plain = m_sixel.idle() && m_textSize.idle() && m_osc99.idle() && m_userVar.idle() && plainChunk(chunk);
+      if (!plain) {
+        m_unsixeled.clear();
+        m_sixel.feed(chunk, m_unsixeled);
+        m_filtered.clear();
+        m_textSize.feed(m_unsixeled, m_filtered);
+      }
       {
         std::lock_guard lock(m_termMutex);
-        ghostty_terminal_vt_write(m_terminal, m_filtered.data(), m_filtered.size());
+        if (plain) {
+          ghostty_terminal_vt_write(m_terminal, chunk.data(), chunk.size());
+        } else {
+          ghostty_terminal_vt_write(m_terminal, m_filtered.data(), m_filtered.size());
+        }
       }
-      if (!replaying()) {
-        m_osc99.feed({work.data() + at, len}, [this](Osc99Scanner::Event e) {
+      if (!plain && !replaying()) {
+        m_osc99.feed(chunk, [this](Osc99Scanner::Event e) {
           if (auto* show = std::get_if<Osc99Scanner::Show>(&e); show != nullptr && m_effects.notify) {
             m_effects.notify(std::move(show->notice));
           } else if (auto* close = std::get_if<Osc99Scanner::Close>(&e); close != nullptr && m_effects.closeNotice) {
@@ -480,7 +510,7 @@ void PtySession::parseLoop() {
           }
         });
       }
-      m_userVar.feed({work.data() + at, len}, [this](std::string_view payload) {
+      if (!plain) m_userVar.feed(chunk, [this](std::string_view payload) {
         constexpr std::string_view kBranch = "git_branch=";
         if (!payload.starts_with(kBranch)) return;
         std::lock_guard lock(m_termMutex);

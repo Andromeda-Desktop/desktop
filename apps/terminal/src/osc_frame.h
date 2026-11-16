@@ -15,6 +15,7 @@ namespace term {
     OscFrame(std::string_view prefix, std::size_t maxPayload) : m_prefix(prefix), m_maxPayload(maxPayload) {}
 
     void feed(std::span<const std::uint8_t> bytes, const std::function<void(std::string_view payload)>& done);
+    bool idle() const { return m_state == State::Ground; }
 
   private:
     enum class State : std::uint8_t { Ground, Escape, Prefix, Payload, PayloadEscape, Skip, SkipEscape };

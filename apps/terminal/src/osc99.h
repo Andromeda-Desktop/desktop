@@ -43,6 +43,7 @@ namespace term {
 
     // Bytes may split a sequence anywhere; state carries over to the next call.
     void feed(std::span<const std::uint8_t> bytes, const std::function<void(Event)>& emit);
+    bool idle() const { return m_frame.idle(); }
 
     // Replies written back to the program.
     static std::string queryReply(const std::string& key);
