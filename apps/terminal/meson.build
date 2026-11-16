@@ -24,7 +24,7 @@ if not _ghostty.found()
 endif
 
 _desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
-_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
+_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp',
   dependencies: [_ghostty, dependency('threads'), _desk_ui_dep], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + meson.project_version() + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
@@ -81,6 +81,9 @@ test('settings', executable('settings_test', 'tests/settings_test.cpp',
   dependencies: _settings_dep, cpp_args: _warnings))
 
 test('osc66', executable('osc66_test', 'tests/osc66_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings))
+
+test('sixel', executable('sixel_test', 'tests/sixel_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
 test('link_finder', executable('link_finder_test', 'tests/link_finder_test.cpp',

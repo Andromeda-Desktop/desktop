@@ -43,6 +43,8 @@ constexpr std::size_t kInboundMax = 128 * 1024;
 constexpr std::size_t kScrollbackBytes = 10'000'000;
 // An unfinished escape sequence up to this size survives a holder snapshot.
 constexpr std::size_t kContinuationBytes = 1u << 20;
+// Kitty and sixel images, per screen; libghostty keeps 10 MB, less than one full-window sixel.
+constexpr std::uint64_t kImageStorageBytes = 320ull << 20;
 // A program killed by the loss of its holder reports as killed by SIGHUP.
 constexpr int kHolderLostStatus = 128 + SIGHUP;
 
@@ -105,12 +107,15 @@ void PtySession::configureTerminal() {
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_USERDATA, this);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SCROLLBACK_MAX_BYTES, &kScrollbackBytes);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CONTINUATION_MAX_BYTES, &kContinuationBytes);
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_KITTY_IMAGE_STORAGE_LIMIT, &kImageStorageBytes);
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, reinterpret_cast<const void*>(&onWritePty));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_RENDER_HOLD, reinterpret_cast<const void*>(&onRenderHold));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_SEMANTIC_PROMPT,
                        reinterpret_cast<const void*>(&onSemanticPrompt));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_BELL, reinterpret_cast<const void*>(&onBellRung));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_XTVERSION, reinterpret_cast<const void*>(&onXtversion));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DEVICE_ATTRIBUTES,
+                       reinterpret_cast<const void*>(&onDeviceAttributes));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, reinterpret_cast<const void*>(&onTitleChanged));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
                        reinterpret_cast<const void*>(&onClipboardWrite));
@@ -453,8 +458,10 @@ void PtySession::parseLoop() {
       len = std::min(kReadChunk, work.size() - at);
       if (m_parsed < m_replayEnd) len = std::min<std::size_t>(len, m_replayEnd - m_parsed);
       for (int waiting; (waiting = m_uiWaiting.load()) > 0;) m_uiWaiting.wait(waiting);
+      m_unsixeled.clear();
+      m_sixel.feed({work.data() + at, len}, m_unsixeled);
       m_filtered.clear();
-      m_textSize.feed({work.data() + at, len}, m_filtered);
+      m_textSize.feed(m_unsixeled, m_filtered);
       {
         std::lock_guard lock(m_termMutex);
         ghostty_terminal_vt_write(m_terminal, m_filtered.data(), m_filtered.size());
@@ -527,6 +534,16 @@ void PtySession::onBellRung(GhosttyTerminal /*terminal*/, void* self) {
 GhosttyString PtySession::onXtversion(GhosttyTerminal, void*) {
   static constexpr std::string_view kVersion = "Andromeda Terminal " ANDROMEDA_TERMINAL_VERSION;
   return {reinterpret_cast<const std::uint8_t*>(kVersion.data()), kVersion.size()};
+}
+
+// libghostty's default reply (VT220, ANSI colour) plus sixel graphics.
+bool PtySession::onDeviceAttributes(GhosttyTerminal, void*, GhosttyDeviceAttributes* out) {
+  out->primary.conformance_level = GHOSTTY_DA_CONFORMANCE_VT220;
+  out->primary.features[0] = GHOSTTY_DA_FEATURE_SIXEL;
+  out->primary.features[1] = GHOSTTY_DA_FEATURE_ANSI_COLOR;
+  out->primary.num_features = 2;
+  out->secondary.device_type = GHOSTTY_DA_DEVICE_TYPE_VT220;
+  return true;
 }
 
 void PtySession::onTitleChanged(GhosttyTerminal terminal, void* self) {

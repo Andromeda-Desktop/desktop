@@ -2,6 +2,7 @@
 
 #include "command_index.h"
 #include "osc66.h"
+#include "sixel.h"
 #include "osc99.h"
 
 #include <ghostty/vt.h>
@@ -127,6 +128,7 @@ private:
   static void onSemanticPrompt(GhosttyTerminal, void* self, const GhosttyTerminalSemanticPrompt* event);
   static void onBellRung(GhosttyTerminal, void* self);
   static GhosttyString onXtversion(GhosttyTerminal, void* self);
+  static bool onDeviceAttributes(GhosttyTerminal, void* self, GhosttyDeviceAttributes* out);
   static void onTitleChanged(GhosttyTerminal, void* self);
   static void onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClipboardWrite* write);
   static void onNotification(GhosttyTerminal, void* self, const GhosttyTerminalDesktopNotification* note);
@@ -168,8 +170,10 @@ private:
   std::uint64_t m_replayEnd = 0;
   Osc99Scanner m_osc99;
   OscFrame m_userVar{"1337;SetUserVar=", 1024}; // parse thread; git_branch=<base64> from the shell integration
+  SixelFilter m_sixel;                 // parse thread
+  std::vector<std::uint8_t> m_unsixeled; // parse thread: one chunk after m_sixel
   TextSizeFilter m_textSize;           // parse thread
-  std::vector<std::uint8_t> m_filtered; // parse thread: one chunk after m_textSize
+  std::vector<std::uint8_t> m_filtered; // parse thread: one chunk after m_sixel and m_textSize
   std::mutex m_sockMutex;
   std::thread m_io;
   std::thread m_parser;
