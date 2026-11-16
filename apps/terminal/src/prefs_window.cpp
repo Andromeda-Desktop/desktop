@@ -516,7 +516,7 @@ namespace term {
 
     // Keyboard
     {
-      constexpr std::array<std::pair<std::string_view, std::string_view>, 17> kKeys{{
+      constexpr std::array<std::pair<std::string_view, std::string_view>, 20> kKeys{{
           {"New session", "Ctrl Shift T"},
           {"New window", "Ctrl Shift N"},
           {"New agent session", "Ctrl Shift A"},
@@ -530,6 +530,9 @@ namespace term {
           {"Paste", "Ctrl Shift V"},
           {"Scroll up a page", "Shift PgUp"},
           {"Scroll down a page", "Shift PgDn"},
+          {"Previous prompt", "Ctrl Shift Up"},
+          {"Next prompt", "Ctrl Shift Down"},
+          {"Copy last command output", "Ctrl Shift X"},
           {"Larger text", "Ctrl Shift ="},
           {"Smaller text", "Ctrl Shift -"},
           {"Default text size", "Ctrl Shift 0"},

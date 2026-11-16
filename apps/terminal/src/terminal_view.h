@@ -254,6 +254,9 @@ namespace term {
     void textInputDeactivated(TextInputService& service) override;
     void programNotice(const Notice& notice);
     std::string selectionText();
+    static std::string formatText(GhosttyTerminal t, const GhosttySelection& selection);
+    void jumpPrompt(int direction);
+    void copyLastOutput();
     void copySelection();
     void publishSelection();
     void paste();

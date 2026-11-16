@@ -864,6 +864,16 @@ namespace term {
         scrollPage(event.sym == kPageUp ? -1 : 1);
         return true;
       }
+      constexpr std::uint32_t kUp = 0xff52;
+      constexpr std::uint32_t kDown = 0xff54;
+      if (mods == (KeyMod::Ctrl | KeyMod::Shift) && (event.sym == kUp || event.sym == kDown)) {
+        jumpPrompt(event.sym == kUp ? -1 : 1);
+        return true;
+      }
+      if (mods == (KeyMod::Ctrl | KeyMod::Shift) && event.unshifted == 'x') {
+        copyLastOutput();
+        return true;
+      }
       if (windowChord) {
         if (mods == (KeyMod::Ctrl | KeyMod::Shift) && (event.unshifted == 'c' || event.unshifted == 'v')) {
           event.unshifted == 'c' ? copySelection() : paste();
@@ -2073,27 +2083,86 @@ namespace term {
   }
 
   std::string TerminalView::selectionText() {
-    std::string text;
-    m_session.withTerminal([&](GhosttyTerminal t) {
+    return m_session.withTerminal([&](GhosttyTerminal t) {
       GhosttySelection selection{};
-      GhosttyFormatter formatter = nullptr;
-      if (t == nullptr || ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SELECTION, &selection) != GHOSTTY_SUCCESS
-          || ghostty_formatter_terminal_new(nullptr, &formatter, t) != GHOSTTY_SUCCESS) {
-        return;
-      }
-      const bool on = true;
-      ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
-      ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &on);
-      ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &on);
-      std::uint8_t* ptr = nullptr;
-      std::size_t len = 0;
-      if (ghostty_formatter_format_alloc(formatter, nullptr, &ptr, &len) == GHOSTTY_SUCCESS) {
-        text.assign(reinterpret_cast<const char*>(ptr), len);
-        ghostty_free(nullptr, ptr, len);
-      }
-      ghostty_formatter_free(formatter);
+      return t != nullptr && ghostty_terminal_get(t, GHOSTTY_TERMINAL_DATA_SELECTION, &selection) == GHOSTTY_SUCCESS
+                 ? formatText(t, selection)
+                 : std::string{};
     });
+  }
+
+  std::string TerminalView::formatText(GhosttyTerminal t, const GhosttySelection& selection) {
+    std::string text;
+    GhosttyFormatter formatter = nullptr;
+    if (ghostty_formatter_terminal_new(nullptr, &formatter, t) != GHOSTTY_SUCCESS) {
+      return text;
+    }
+    const bool on = true;
+    ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_SELECTION, &selection);
+    ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_UNWRAP, &on);
+    ghostty_formatter_set(formatter, GHOSTTY_FORMATTER_OPT_TRIM, &on);
+    std::uint8_t* ptr = nullptr;
+    std::size_t len = 0;
+    if (ghostty_formatter_format_alloc(formatter, nullptr, &ptr, &len) == GHOSTTY_SUCCESS) {
+      text.assign(reinterpret_cast<const char*>(ptr), len);
+      ghostty_free(nullptr, ptr, len);
+    }
+    ghostty_formatter_free(formatter);
     return text;
+  }
+
+  // Scrolls so the previous (-1) or next (+1) prompt is the top row; past the last prompt it goes to the bottom.
+  void TerminalView::jumpPrompt(int direction) {
+    const float cellH = m_grid->cellHeight();
+    const float from = m_scrollMotion == ScrollMotion::Settling ? m_scrollTarget : std::round(m_scrollPx / cellH) * cellH;
+    const auto top = static_cast<std::uint32_t>(std::lround(from / cellH));
+    const std::optional<std::uint32_t> target = m_session.withCommands([&](GhosttyTerminal, const CommandIndex& index) {
+      std::optional<std::uint32_t> best;
+      for (const auto& entry : index.entries()) {
+        const auto row = CommandIndex::row(entry.prompt.get(), GHOSTTY_POINT_TAG_SCREEN);
+        if (row && (direction < 0 ? *row < top : *row > top) && (direction < 0 || !best)) {
+          best = row;
+        }
+      }
+      return best;
+    });
+    const float bottom = static_cast<float>(m_scrollState.total - m_scrollState.len) * cellH;
+    if (target || direction > 0) {
+      animateScroll(target ? static_cast<float>(*target) * cellH : bottom, Tokens::springMove, 0.0F, true);
+    }
+  }
+
+  // The output of the last finished command (OSC 133 C up to the next prompt) goes on the clipboard.
+  void TerminalView::copyLastOutput() {
+    const auto columns = static_cast<std::uint16_t>(std::max(1, m_grid->columns()));
+    const auto total = static_cast<std::uint32_t>(m_scrollState.total);
+    std::string text = m_session.withCommands([&](GhosttyTerminal t, const CommandIndex& index) -> std::string {
+      const auto& entries = index.entries();
+      for (std::size_t i = entries.size(); i-- > 0;) {
+        const CommandEntry& entry = entries[i];
+        if (entry.phase != CommandEntry::Phase::Done || entry.output == nullptr) {
+          continue;
+        }
+        const auto first = CommandIndex::row(entry.output.get(), GHOSTTY_POINT_TAG_SCREEN);
+        const auto next =
+            i + 1 < entries.size() ? CommandIndex::row(entries[i + 1].prompt.get(), GHOSTTY_POINT_TAG_SCREEN) : std::nullopt;
+        const std::uint32_t end = next ? *next : total;
+        GhosttySelection selection{};
+        const GhosttyPoint last{.tag = GHOSTTY_POINT_TAG_SCREEN,
+                                .value = {.coordinate = {.x = static_cast<std::uint16_t>(columns - 1), .y = end - 1}}};
+        if (!first || end == 0 || end - 1 < *first
+            || ghostty_tracked_grid_ref_snapshot(entry.output.get(), &selection.start) != GHOSTTY_SUCCESS
+            || ghostty_terminal_grid_ref(t, last, &selection.end) != GHOSTTY_SUCCESS) {
+          return {};
+        }
+        return formatText(t, selection);
+      }
+      return {};
+    });
+    TextClipboard* clipboard = Input::textClipboard();
+    if (!text.empty() && clipboard != nullptr) {
+      clipboard->setClipboardText(std::move(text));
+    }
   }
 
   void TerminalView::copySelection() {
