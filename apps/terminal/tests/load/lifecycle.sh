@@ -27,6 +27,7 @@ descendants() {
 # gone PIDS...: within 2 s every pid has exited and was reaped (no zombie).
 gone() {
   local left
+  (( $# )) || { echo "no pids: the jobs never started"; return 1; }
   for _ in $(seq 40); do
     left=
     for p in "$@"; do [[ -e /proc/$p ]] && left+="$p($(awk '{print $3}' /proc/$p/stat 2> /dev/null)) "; done
