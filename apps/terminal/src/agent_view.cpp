@@ -1299,8 +1299,9 @@ namespace term {
                             : running                    ? "Queue a follow-up · Esc stops"
                             : phase == agent::Phase::Starting ? "Starting Claude…"
                             : phase == agent::Phase::Failed   ? "Claude stopped"
-                                                              : "Ask Claude");
-    std::string meta = model->mode();
+                                                              : "Ask Claude, or / for commands");
+    const agent::Session::Mode* mode = model->currentMode();
+    std::string meta = mode != nullptr ? mode->name : model->mode();
     bool full = false;
     if (model->contextSize() > 0) {
       const auto percent = model->contextUsed() * 100 / model->contextSize();
