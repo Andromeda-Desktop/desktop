@@ -194,6 +194,20 @@ namespace term {
     return font.empty() ? std::string(Tokens::fontMono) : font + ", " + std::string(Tokens::fontMono);
   }
 
+  float TerminalView::backgroundAlpha() const {
+    // A theme scene: the window's tinted main pane is the grid background.
+    if (hasScene(m_theme)) {
+      return 0.0F;
+    }
+    return m_settings.material == WindowMaterial::Glass && !Style::reduceTransparency() ? Tokens::componentTerminalGlassAlpha : 1.0F;
+  }
+
+  ColorSpec TerminalView::surface() const {
+    Color color = rgbHex(m_background);
+    color.a = backgroundAlpha();
+    return fixedColorSpec(color);
+  }
+
   void TerminalView::setGridFont() {
     const std::string family = gridFont(m_settings, m_theme);
     const auto size = static_cast<float>(m_settings.fontSize);
@@ -599,9 +613,7 @@ namespace term {
     const std::uint32_t defaultBg = pack(colors.background);
     m_grid->setBackground(defaultBg);
     // A theme scene: the window's tinted main pane is the grid background.
-    m_grid->setBackgroundAlpha(hasScene(m_theme) ? 0.0F
-                               : m_settings.material == WindowMaterial::Glass && !Style::reduceTransparency() ? Tokens::componentTerminalGlassAlpha
-                                                                                                             : 1.0F);
+    m_grid->setBackgroundAlpha(backgroundAlpha());
 
     bool visible = false;
     bool inViewport = false;

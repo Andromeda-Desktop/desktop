@@ -621,6 +621,8 @@ stack_scale = 0.96
 
 [component.window]  # 9.12
 radius = 12.0  # radius set B (user, 2026-11-08)
+card_gap = 8.0  # contentCard windows: the sidebar material shows this wide around the content card (terminal split design A)
+card_radius = 16.0  # the content card corner, as the split mockup (user, 2026-11-16)
 title_bar = 40.0
 header = 48.0
 button = 24.0

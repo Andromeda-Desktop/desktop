@@ -109,7 +109,9 @@ namespace term {
     void frame() override;
     // Preferences changed: font, theme, cursor, scrolling and notifications apply at once.
     void applySettings(const Settings& settings, const ThemeSpec& theme);
-    [[nodiscard]] ColorSpec surface() const override { return fixedColorSpec(rgbHex(m_background)); }
+    // The background as the grid draws it, with its alpha.
+    [[nodiscard]] ColorSpec surface() const override;
+    [[nodiscard]] float backgroundAlpha() const;
     // The shell's working directory (OSC 7); empty until it reports one.
     [[nodiscard]] const std::string& cwd() const noexcept { return m_cwd; }
     // Its nodes were freed with the window's scene: until the next build the view has none, as before the first.

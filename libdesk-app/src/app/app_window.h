@@ -60,6 +60,7 @@ public:
     Material material = Material::Solid;
     std::string parentWindow;  // portal form "wayland:<xdg-foreign handle>": a dialog of another app's window
     bool transparentContent = false; // the content area shows what lies below the window surface (a video subsurface)
+    bool contentCard = false; // the content is a rounded card inset card_gap on the sidebar material
     bool headerWhenFullscreen = true;
     bool header = true; // false: a chromeless window (picture in picture); the content is the whole window
     bool moreMenu = false; // a More (…) circle before the window buttons: the commands by group (File, Edit, View, Go)
@@ -265,6 +266,7 @@ private:
   Flex* m_headerNode = nullptr;
   void measureScene();
   void applySceneFills();
+  void applyMainFill();
   std::chrono::steady_clock::time_point m_sceneStepped{}; // when the scene clock last advanced
   std::chrono::steady_clock::time_point m_sceneAwakeUntil{};
   bool m_activated = false;
@@ -279,6 +281,7 @@ private:
   void sceneTick();
   void wakeScene();
   float m_sidebarMix = 1.0F; // 0 = collapsed
+  float m_cardGap = 0.0F; // contentCard: the inset around the main pane, in surface px
   std::vector<InputRect> m_blur; // the blur region last sent; empty = none
   void syncBlur();
   bool m_sidebarVisible = true;

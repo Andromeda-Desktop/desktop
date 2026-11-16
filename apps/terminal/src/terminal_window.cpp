@@ -33,14 +33,6 @@
 namespace term {
 
   namespace {
-    // The title band takes the content's plane when the band's ink, which follows the system scheme, reads on it;
-    // a light terminal theme on a dark desktop keeps the default plane.
-    std::optional<ColorSpec> titlePlane(const ContentView& view) {
-      const bool lightPlane = relativeLuminance(resolveColorSpec(view.surface())) > 0.5F;
-      const bool lightChrome = relativeLuminance(resolveColorSpec(colorSpecFromRole(ColorRole::View))) > 0.5F;
-      return lightPlane == lightChrome ? std::optional<ColorSpec>(view.surface()) : std::nullopt;
-    }
-
     std::optional<AppWindow::Scene> windowScene(const SettingsStore& settings) {
       const ThemeSpec theme = resolveTheme(settings.settings().theme, settings.themes());
       if (!hasScene(theme)) {
@@ -90,7 +82,7 @@ namespace term {
         }
       }
       if (ContentView* view = shownView(); view != nullptr) {
-        m_window.setMainFill(titlePlane(*view));
+        m_window.setMainFill(view->surface());
       }
       m_window.setScene(windowScene(m_settings));
     });
@@ -449,7 +441,7 @@ namespace term {
     if (view == nullptr) {
       return;
     }
-    m_window.setMainFill(titlePlane(*view));
+    m_window.setMainFill(view->surface());
     m_window.setSceneContentBacked(dynamic_cast<TerminalView*>(view) != nullptr);
     Surface* surface = m_window.surface();
     const float deviceScale = surface != nullptr ? surface->effectiveBufferScale() : 1.0F;
@@ -675,8 +667,6 @@ namespace term {
           data.symbol = "alert-circle";
           data.symbolDanger = true;
           data.status = "failed";
-          break;
-      }
           if (model != nullptr) {
             const auto& entries = model->entries();
             const auto stop = std::find_if(entries.rbegin(), entries.rend(),
@@ -685,6 +675,8 @@ namespace term {
               data.status += " \u00b7 agent exited " + std::to_string(*std::get<agent::Stop>(*stop).exitCode);
             }
           }
+          break;
+      }
       if (model != nullptr && !model->title().empty()) {
         data.name = model->title();
       }

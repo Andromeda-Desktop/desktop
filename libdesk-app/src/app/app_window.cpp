@@ -56,7 +56,6 @@ namespace {
   constexpr float kHeaderGap = 8.0F;
   constexpr float kTitleExtra = 4.0F; // mockup .title margin-left
   constexpr float kWindowButton = 24.0F;
-  constexpr float kTitleBackingInset = 8.0F; // title text inside its scene backing capsule (R5)
   constexpr float kWindowButtonInset = 12.0F;
   constexpr float kWindowButtonGap = 8.0F;
   constexpr float kWindowButtonSymbol = 12.0F;
@@ -791,7 +790,8 @@ void AppWindow::setSceneContentBacked(bool backed) {
 }
 
 float AppWindow::sceneTextBacking() const noexcept {
-  if (!m_scene || m_scene->tint >= 1.0F) {
+  // On a card the frame under it already gives the text tint.
+  if (!m_scene || m_scene->tint >= 1.0F || m_config.contentCard) {
     return 0.0F;
   }
   // Two layers of alpha a and b cover 1 - (1 - a)(1 - b).
@@ -807,28 +807,34 @@ void AppWindow::applySceneFills() {
     tint.a = alpha;
     return fixedColorSpec(tint);
   };
-  m_mainNode->setFill(fill(m_sceneContentBacked ? m_scene->tint : m_sceneTextTint));
-  // Backed content keeps the band on the content's light plane: like the grid's text, only the title and the window
-  // buttons take the backing, as capsules.
-  const ColorSpec backing = m_sceneContentBacked ? fill(sceneTextBacking()) : clearColorSpec();
-  const float s = m_uiScale;
-  if (auto* title = static_cast<Flex*>(m_titleRow); title != nullptr) {
-    const float inset = m_sceneContentBacked ? kTitleBackingInset * s : 0.0F;
-    title->setFill(backing);
-    title->setRadii(Radii{kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F});
-    title->setPadding(0.0F, inset, 0.0F, inset + (m_config.navigation ? kTitleExtra * s : 0.0F));
-  }
-  if (m_windowButtons != nullptr) {
-    m_windowButtons->setFill(backing);
-    m_windowButtons->setRadii(Radii{kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F, kWindowButton * s / 2.0F});
+  // A card lies on the frame, which already has the text tint: more tint would only hide the scene.
+  m_mainNode->setFill(m_config.contentCard ? clearColorSpec() : fill(m_sceneContentBacked ? m_scene->tint : m_sceneTextTint));
+  if (m_headerNode != nullptr) {
+    // On a card the band sits on the content plane; without one it backs its own text.
+    m_headerNode->setFill(m_sceneContentBacked && !m_config.contentCard ? fill(sceneTextBacking()) : clearColorSpec());
   }
 }
 
 void AppWindow::setMainFill(std::optional<ColorSpec> fill) {
   m_mainFill = std::move(fill);
-  if (m_mainNode != nullptr && m_config.material == Material::Solid && !m_config.transparentContent && !m_scene) {
+  applyMainFill();
+  invalidate();
+}
+
+// Solid: the main pane takes the content's plane. Glass: the main pane keeps the glass and the header band takes the
+// plane, as the content draws it over the same glass, so band and content read as one plane.
+void AppWindow::applyMainFill() {
+  if (m_mainNode == nullptr || m_config.transparentContent || m_scene) {
+    return;
+  }
+  if (m_config.material == Material::Solid) {
     m_mainNode->setFill(m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
-    invalidate();
+  } else if (m_headerNode != nullptr) {
+    m_headerNode->setFill(m_mainFill.value_or(clearColorSpec()));
+  }
+  // The band's ink follows the plane it sits on, not the system scheme.
+  if (m_headerNode != nullptr) {
+    m_headerNode->setPaletteTone(m_mainFill ? std::optional(toneOn(resolveColorSpec(*m_mainFill))) : std::nullopt);
   }
 }
 
@@ -916,8 +922,8 @@ void AppWindow::prepareFrame(bool needsLayout) {
       child->setSize(width - 2.0F * margin, height - 2.0F * margin);
     }
     m_root->layout(renderer);
-    m_contentRect.width = std::max(0.0F, width - margin - m_contentRect.x);
-    m_contentRect.height = std::max(0.0F, height - margin - m_contentRect.y);
+    m_contentRect.width = std::max(0.0F, width - margin - m_cardGap - m_contentRect.x);
+    m_contentRect.height = std::max(0.0F, height - margin - m_cardGap - m_contentRect.y);
     const bool square = m_surface->state().maximized || m_surface->state().fullscreen;
     syncSceneLayer(width - 2.0F * margin, height - 2.0F * margin, margin,
                    square ? 0.0F : Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale));
@@ -1123,7 +1129,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   add("minus", "window.minimize", false, nullptr);
   add(maximized ? "minimize" : "square", "window.maximize", false, &m_maximizeButton);
   add("x", "window.close", true, nullptr);
-  m_windowButtons = static_cast<Flex*>(header->addChild(std::move(buttons)));
+  header->addChild(std::move(buttons));
   m_buildingHeader = false;
   applyHeaderSearchMode();
   return header;
@@ -1185,7 +1191,11 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   // Responsive (user, 2026-11-08): narrow windows show the sidebar as an icon rail.
   const float sidebarWidth = !m_sidebarBuilder ? 0.0F : (m_compact ? kRailWidth : m_config.sidebarWidth) * m_uiScale;
   const float sidebarShown = sidebarWidth * m_sidebarMix;
-  const float mainWidth = std::max(0.0F, width - sidebarShown);
+  const bool card = m_config.contentCard && !m_config.transparentContent;
+  m_cardGap = card ? Tokens::componentWindowCardGap * m_uiScale : 0.0F;
+  // The sidebar's own padding separates it from the card, so the card has no left gap beside a shown sidebar.
+  const float cardLeft = sidebarShown > 0.0F ? 0.0F : m_cardGap;
+  const float mainWidth = std::max(0.0F, width - sidebarShown - cardLeft - m_cardGap);
   auto main = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
   const bool header = m_config.header && (m_config.headerWhenFullscreen || !fullscreen());
   if (header) {
@@ -1200,7 +1210,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   // Concave edge: the main pane's left corners round into the sidebar, whose tint shows behind them.
   // Glass has no concave edge: a sidebar-tint strip under the translucent main pane would stack two tints.
   // A scene shows through both panes, so a strip under the main corners would show as a darker band.
-  const bool concave = sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
+  const bool concave = !card && sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
   const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint);
   if (m_scene && m_sceneMeasured != m_scene) {
@@ -1215,15 +1225,22 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     main->setFill(m_config.material == Material::Glass ? glassFill : m_mainFill.value_or(colorSpecFromRole(ColorRole::SolidRegular)));
   }
   m_mainNode = main.get();
+  applyMainFill();
   applySceneFills();
   if (concave) {
     const Radii corners{edgeRadius, 0.0F, 0.0F, edgeRadius};
     main->setRadii(corners);
     main->setClipRadii(corners);
   }
+  if (card) {
+    const float r = Style::scaledRadius(Tokens::componentWindowCardRadius, m_uiScale);
+    main->setRadii(Radii{r, r, r, r});
+    main->setClipRadii(Radii{r, r, r, r});
+    main->setBorder(colorSpecFromRole(ColorRole::Stroke), 0.5F * m_uiScale);
+  }
   const float headerHeight = header ? kHeaderHeight * m_uiScale : 0.0F;
-  const float contentHeight = std::max(0.0F, height - headerHeight);
-  m_contentRect = {.x = margin + sidebarShown, .y = margin + headerHeight,
+  const float contentHeight = std::max(0.0F, height - headerHeight - 2.0F * m_cardGap);
+  m_contentRect = {.x = margin + sidebarShown + cardLeft, .y = margin + m_cardGap + headerHeight,
                    .width = mainWidth, .height = contentHeight};
   auto partStart = std::chrono::steady_clock::now();
   std::unique_ptr<Node> content = m_builder ? m_builder(renderer, mainWidth, contentHeight) : ui::node({});
@@ -1258,7 +1275,17 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
       body->addChild(std::move(under));
     }
   }
-  body->addChild(std::move(main));
+  if (card) {
+    // The material under the card is the sidebar's, so the window reads as one surface with the card on it.
+    auto frame = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+    frame->setPadding(m_cardGap, m_cardGap, m_cardGap, cardLeft);
+    frame->setFill(m_scene ? sceneFill(m_sceneTextTint)
+                           : m_config.material == Material::Glass ? glassFill : colorSpecFromRole(ColorRole::SolidThin));
+    frame->addChild(std::move(main));
+    body->addChild(std::move(frame));
+  } else {
+    body->addChild(std::move(main));
+  }
   body->setSize(width, height);
   body->setPosition(margin, margin);
   const auto layoutStart = std::chrono::steady_clock::now();
