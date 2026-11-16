@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
 #include "core/files/resource_paths.h"
+#include "core/log.h"
 #include "render/core/color.h"
 #include "render/core/image_file_loader.h"
 #include "render/core/renderer.h"
@@ -17,6 +18,12 @@
 #include "ui/style.h"
 
 #include <algorithm>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <optional>
+#include <fstream>
+#include <format>
+#include <cstdlib>
 #include <array>
 #include <cmath>
 #include <atomic>
@@ -96,6 +103,77 @@ namespace {
     return nullptr;
   }
 
+  // Rasterised icons on disk, so a start parses no SVG: <cache>/andromeda/files-icons/<asset>-<px>.rgba holds this
+  // header and the RGBA rows; valid while the SVG's mtime and size match.
+  struct IconRasterHeader {
+    std::array<char, 8> magic{'A', 'N', 'D', 'I', 'C', 'O', 'N', '1'};
+    std::int64_t mtimeNs = 0;
+    std::int64_t size = 0;
+    std::int32_t width = 0;
+    std::int32_t height = 0;
+    bool operator==(const IconRasterHeader&) const = default;
+  };
+
+  fs::path iconRasterPath(const std::string& asset, int px) {
+    const char* xdg = std::getenv("XDG_CACHE_HOME");
+    const char* home = std::getenv("HOME");
+    const fs::path root = xdg != nullptr && xdg[0] == '/' ? fs::path(xdg) : fs::path(home != nullptr ? home : "/tmp") / ".cache";
+    std::string name = asset;
+    std::ranges::replace(name, '/', '_');
+    return root / "andromeda" / "files-icons" / std::format("{}-{}.rgba", name, px);
+  }
+
+  std::optional<LoadedImageFile> readIconRaster(const fs::path& file, const IconRasterHeader& source) {
+    std::ifstream in(file, std::ios::binary);
+    IconRasterHeader header;
+    if (!in.read(reinterpret_cast<char*>(&header), sizeof header)) {
+      return std::nullopt;
+    }
+    IconRasterHeader expected = source;
+    expected.width = header.width;
+    expected.height = header.height;
+    if (header != expected || header.width <= 0 || header.height <= 0 || header.width > 4096 || header.height > 4096) {
+      return std::nullopt;
+    }
+    LoadedImageFile image{.rgba = std::vector<std::uint8_t>(static_cast<std::size_t>(header.width) * header.height * 4),
+                          .width = header.width, .height = header.height};
+    if (!in.read(reinterpret_cast<char*>(image.rgba.data()), static_cast<std::streamsize>(image.rgba.size()))) {
+      return std::nullopt;
+    }
+    return image;
+  }
+
+  void writeIconRaster(const fs::path& file, IconRasterHeader header, const LoadedImageFile& image) {
+    std::error_code ec;
+    fs::create_directories(file.parent_path(), ec);
+    header.width = image.width;
+    header.height = image.height;
+    const fs::path tmp = fs::path(file).concat(std::format(".{}", ::getpid()));
+    {
+      std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+      out.write(reinterpret_cast<const char*>(&header), sizeof header);
+      out.write(reinterpret_cast<const char*>(image.rgba.data()), static_cast<std::streamsize>(image.rgba.size()));
+      if (!out) {
+        fs::remove(tmp, ec);
+        return;
+      }
+    }
+    fs::rename(tmp, file, ec);
+  }
+
+  TextureHandle uploadIcon(TextureManager& tm, const LoadedImageFile& image) {
+    TextureHandle handle = tm.loadFromRgba(image.rgba.data(), image.width, image.height);
+    bool opaque = true;
+    for (std::size_t i = 3; i < image.rgba.size(); i += 4) {
+      if (image.rgba[i] != 0xFF) {
+        opaque = false;
+        break;
+      }
+    }
+    handle.opaque = handle.valid() && opaque;
+    return handle;
+  }
+
   // One texture per (asset, pixel size) for every icon on screen: SVG rasterising stays off the scroll path.
   TextureHandle iconTexture(Renderer& renderer, const std::string& asset, int px) {
     static std::map<std::pair<std::string, int>, TextureHandle> cache;
@@ -110,7 +188,28 @@ namespace {
     if (auto it = cache.find(key); it != cache.end()) {
       return it->second;
     }
-    const TextureHandle handle = loadTextureFile(*tm, paths::assetPath("files-icons/" + asset + ".svg").string(), px);
+    const fs::path svg = paths::assetPath("files-icons/" + asset + ".svg");
+    struct stat st{};
+    if (::stat(svg.c_str(), &st) != 0) {
+      cache.emplace(key, TextureHandle{});
+      return {};
+    }
+    const IconRasterHeader source{.mtimeNs = static_cast<std::int64_t>(st.st_mtim.tv_sec) * 1'000'000'000 + st.st_mtim.tv_nsec,
+                                  .size = static_cast<std::int64_t>(st.st_size)};
+    const fs::path raster = iconRasterPath(asset, px);
+    std::optional<LoadedImageFile> image = readIconRaster(raster, source);
+    if (!image.has_value()) {
+      auto loaded = loadImageFile(svg.string(), px);
+      if (!loaded) {
+        static constexpr Logger kLog("file-icon");
+        kLog.warn("failed to load icon {}: {}", svg.string(), loaded.error());
+        cache.emplace(key, TextureHandle{});
+        return {};
+      }
+      image = std::move(*loaded);
+      writeIconRaster(raster, source, *image);
+    }
+    const TextureHandle handle = uploadIcon(*tm, *image);
     cache.emplace(key, handle);
     return handle;
   }
