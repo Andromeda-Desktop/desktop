@@ -671,7 +671,25 @@ void AppWindow::sceneTick() {
   m_sceneLayer->callOnNextPresent([this] { m_sceneTimer.start(kSceneStep, [this] { sceneTick(); }); });
 }
 
+namespace {
+  // A w x h rect at (x, y) without its rounded corners, as opaque-region rects.
+  std::vector<InputRect> cornerlessRect(int x, int y, int w, int h, float radius) {
+    const int r = std::min(static_cast<int>(std::ceil(radius)), std::min(w, h) / 2);
+    return {{.x = x, .y = y + r, .width = w, .height = h - 2 * r},
+            {.x = x + r, .y = y, .width = w - 2 * r, .height = r},
+            {.x = x + r, .y = y + h - r, .width = w - 2 * r, .height = r}};
+  }
+} // namespace
+
 void AppWindow::syncSceneLayer(float width, float height, float margin, float radius) {
+  if (m_surface != nullptr && m_surface->wlSurface() != nullptr) {
+    // Solid without a scene paints every pixel of the frame but its corners, so the compositor draws nothing below it.
+    const bool opaque = !m_scene && m_config.material == Material::Solid && !m_config.transparentContent;
+    const int m = static_cast<int>(std::lround(margin));
+    m_surface->setOpaqueRegion(opaque ? cornerlessRect(m, m, static_cast<int>(std::lround(width)),
+                                                       static_cast<int>(std::lround(height)), radius)
+                                      : std::vector<InputRect>{});
+  }
   if (!m_scene || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
     m_sceneNode = nullptr;
     m_sceneClip = nullptr;
@@ -710,12 +728,7 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
   m_sceneLayer->setPosition(static_cast<std::int32_t>(margin), static_cast<std::int32_t>(margin));
   m_sceneLayer->resize(w, h);
   // Opaque but the rounded corners, so the compositor draws nothing below the scene.
-  const int r = std::min(static_cast<int>(std::ceil(radius)), static_cast<int>(std::min(w, h) / 2));
-  const int iw = static_cast<int>(w);
-  const int ih = static_cast<int>(h);
-  m_sceneLayer->setOpaqueRegion({{.x = 0, .y = r, .width = iw, .height = ih - 2 * r},
-                                 {.x = r, .y = 0, .width = iw - 2 * r, .height = r},
-                                 {.x = r, .y = ih - r, .width = iw - 2 * r, .height = r}});
+  m_sceneLayer->setOpaqueRegion(cornerlessRect(0, 0, static_cast<int>(w), static_cast<int>(h), radius));
   m_sceneRoot->setSize(width, height);
   m_sceneClip->setSize(width, height);
   m_sceneClip->setClipRadii(Radii{radius, radius, radius, radius});
