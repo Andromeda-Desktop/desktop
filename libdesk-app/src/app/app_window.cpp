@@ -1169,6 +1169,25 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   add("minus", "window.minimize", false, nullptr);
   add(maximized ? "minimize" : "square", "window.maximize", false, &m_maximizeButton);
   add("x", "window.close", true, nullptr);
+  if (m_config.contentCard && m_captionMenu) {
+    Button* menu = nullptr;
+    header->addChild(ui::button({
+        .out = &menu,
+        .glyph = std::string("dots"),
+        .glyphSize = kWindowButtonSymbol * s,
+        .customPalette = windowButtonPalette(false),
+        .tooltip = std::string("Session menu"),
+        .radius = kWindowButton * s / 2.0F,
+        .width = kWindowButton * s,
+        .height = kWindowButton * s,
+    }));
+    menu->setOnClick([this, menu] {
+      float x = 0.0F;
+      float y = 0.0F;
+      Node::absolutePosition(menu, x, y);
+      m_captionMenu(x, y + menu->height());
+    });
+  }
   header->addChild(std::move(buttons));
   m_buildingHeader = false;
   applyHeaderSearchMode();

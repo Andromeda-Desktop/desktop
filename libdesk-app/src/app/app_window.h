@@ -153,6 +153,8 @@ public:
     bool operator==(const Caption&) const = default;
   };
   void setCaption(Caption caption);
+  // contentCard: a menu button ends the caption; it calls `open` with the scene point below it. Set before the first build.
+  void setCaptionMenu(std::function<void(float sceneX, float sceneY)> open) { m_captionMenu = std::move(open); }
   // The edit menu of a text field in this window; false when the field is not in it.
   bool openTextMenu(class Input& input, float sceneX, float sceneY);
   // A click on the header title (Files: type a location, as Dolphin's editable path). Applies from the next rebuild.
@@ -258,6 +260,7 @@ private:
   Glyph* m_captionSymbol = nullptr;
   Label* m_captionState = nullptr;
   Caption m_caption;
+  std::function<void(float, float)> m_captionMenu;
   void applyCaption();
   std::function<void()> m_titleClick;
   bool m_compact = false; // narrow window: icon-rail sidebar

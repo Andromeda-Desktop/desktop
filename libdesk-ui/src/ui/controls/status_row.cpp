@@ -3,10 +3,12 @@
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
 #include "ui/controls/glyph.h"
+#include "ui/controls/input.h"
 #include "ui/controls/label.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
+#include <linux/input-event-codes.h>
 #include <utility>
 
 StatusRow::StatusRow(float scale) : m_scale(scale) {
@@ -21,6 +23,18 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   auto text = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
   text->addChild(ui::label({.out = &m_name, .fontSize = Tokens::typeBody.size * s, .maxLines = 1,
                             .ellipsize = TextEllipsize::End}));
+  text->addChild(ui::input({.out = &m_field, .fontSize = Tokens::typeBody.size * s, .visible = false,
+                            .participatesInLayout = false,
+                            .onSubmit = [this](const std::string& text) { endRename(text); },
+                            .onKeyEvent = [this](std::uint32_t sym, std::uint32_t /*mods*/) {
+                              constexpr std::uint32_t kEscape = 0xff1b;
+                              if (sym != kEscape) {
+                                return false;
+                              }
+                              endRename(std::nullopt);
+                              return true;
+                            },
+                            .submitOnFocusLoss = true}));
   text->addChild(ui::label({.out = &m_status, .fontSize = Tokens::typeFootnote.size * s,
                             .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1,
                             .ellipsize = TextEllipsize::End}));
@@ -30,8 +44,13 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   auto area = ui::inputArea({.participatesInLayout = false});
   area->setOnEnter([this](const InputArea::PointerData& /*data*/) { applyState(); });
   area->setOnLeave([this] { applyState(); });
-  area->setOnClick([this](const InputArea::PointerData& /*data*/) {
-    if (m_onClick) {
+  area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+  area->setOnClick([this](const InputArea::PointerData& data) {
+    if (data.button == BTN_RIGHT) {
+      if (m_onSecondaryClick) {
+        m_onSecondaryClick(data.sceneX, data.sceneY);
+      }
+    } else if (m_onClick) {
       m_onClick();
     }
   });
@@ -73,6 +92,37 @@ void StatusRow::setRail(bool rail) {
 }
 
 void StatusRow::setOnClick(std::function<void()> callback) { m_onClick = std::move(callback); }
+
+void StatusRow::setOnSecondaryClick(std::function<void(float, float)> callback) { m_onSecondaryClick = std::move(callback); }
+
+void StatusRow::beginRename(const std::string& name, std::function<void(std::optional<std::string>)> done) {
+  m_mode = Mode::Renaming;
+  m_renameDone = std::move(done);
+  m_field->setValue(name);
+  m_field->selectAll();
+  for (const auto& [node, shown] : {std::pair<Node*, bool>{m_name, false}, {m_field, true}}) {
+    node->setVisible(shown);
+    node->setParticipatesInLayout(shown);
+  }
+  markLayoutDirty();
+}
+
+InputArea* StatusRow::renameArea() const noexcept { return m_field->inputArea(); }
+
+void StatusRow::endRename(std::optional<std::string> name) {
+  if (m_mode != Mode::Renaming) {
+    return; // Return already ended it; the focus loss that follows is not a second answer
+  }
+  m_mode = Mode::Display;
+  for (const auto& [node, shown] : {std::pair<Node*, bool>{m_name, true}, {m_field, false}}) {
+    node->setVisible(shown);
+    node->setParticipatesInLayout(shown);
+  }
+  markLayoutDirty();
+  if (auto done = std::exchange(m_renameDone, nullptr)) {
+    done(std::move(name));
+  }
+}
 
 void StatusRow::applyState() {
   const bool strong = m_data.unseen || m_data.selected;

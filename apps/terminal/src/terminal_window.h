@@ -83,6 +83,14 @@ namespace term {
     bool sessionKey(const KeyboardEvent& event);
     void openAgentHere();
     void openNewMenu();
+    // The session menu of row `id` (sidebar secondary click, caption menu button) at a scene point.
+    void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
+    void renameSession(std::uint64_t id);
+    void duplicateSession(std::uint64_t id);
+    // Closes `ids`; asks once first when a command runs in any of them.
+    void askClose(std::vector<std::uint64_t> ids);
+    // The window title: the session's own name, else the agent's title or the cwd.
+    void syncTitle();
     ContentView* shownView();
     TerminalView* shownTerminal();
 

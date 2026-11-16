@@ -152,6 +152,11 @@ namespace term {
       applyFilter();
       return side;
     });
+    m_window.setCaptionMenu([this](float x, float y) {
+      if (const auto id = m_sessions.shown()) {
+        openRowMenu(*id, x, y);
+      }
+    });
     m_window.setHeaderAccessoryBuilder([this]() -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
       const float button = Tokens::spaceP24 * s;
@@ -314,9 +319,6 @@ namespace term {
             [this, id](const std::string& path) {
               const std::string shown = shownPath(path);
               apply(session_event::Cwd{id, shown});
-              if (m_sessions.shown() == id) {
-                m_window.setTitle(shown);
-              }
             },
         .openUri = [this](const std::string& uri) { openUri(uri); },
         .findChanged =
@@ -414,10 +416,7 @@ namespace term {
     for (Session& session : m_views) {
       session.view->setWindowActive(session.id == id && m_active);
     }
-    if (const SessionInfo* info = m_sessions.find(id);
-        info != nullptr && info->kind != SessionKind::Agent && !info->cwd.empty()) {
-      m_window.setTitle(info->cwd);
-    }
+    syncTitle();
     if (id != m_builtId && m_contentSlot != nullptr) {
       m_window.updateInPlace([this](Renderer& renderer) {
         for (Session& session : m_views) {
@@ -485,11 +484,9 @@ namespace term {
       openAgentHere();
       return true;
     }
-    // A shell session ends with its shell; an agent session ends here.
+    // Closes the shown session, shell or agent; asks first while a command runs.
     if (shift && (event.unshifted == 'w' || event.unshifted == 'W')) {
-      if (ContentView* view = shownView(); view != nullptr && view->agent() != nullptr) {
-        apply(session_event::Close{*m_sessions.shown()});
-      }
+      askClose({*m_sessions.shown()});
       return true;
     }
     if (!shift && event.unshifted == ',') {
@@ -521,7 +518,122 @@ namespace term {
       apply(session_event::Show{id});
       focusGrid();
     });
+    row->setOnSecondaryClick([this, id](float x, float y) { openRowMenu(id, x, y); });
     return row;
+  }
+
+  void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
+    enum : std::int32_t { kRename = 1, kDuplicate, kCloseOthers, kClose };
+    const bool others = m_sessions.sessions().size() > 1;
+    m_window.openContextMenu({{.id = kRename, .label = "Rename", .enabled = !m_rail},
+                              {.id = kDuplicate, .label = "Duplicate"},
+                              {.separator = true},
+                              {.id = kCloseOthers, .label = "Close other sessions", .enabled = others},
+                              {.id = kClose, .label = "Close", .shortcut = "Ctrl+Shift+W", .danger = true}},
+                             sceneX, sceneY, [this, id](std::int32_t item) {
+                               switch (item) {
+                               case kRename: renameSession(id); break;
+                               case kDuplicate: duplicateSession(id); break;
+                               case kCloseOthers: {
+                                 std::vector<std::uint64_t> ids;
+                                 for (const SessionInfo& session : m_sessions.sessions()) {
+                                   if (session.id != id) {
+                                     ids.push_back(session.id);
+                                   }
+                                 }
+                                 askClose(std::move(ids));
+                                 break;
+                               }
+                               case kClose: askClose({id}); break;
+                               default: break;
+                               }
+                             });
+  }
+
+  void TerminalWindow::renameSession(std::uint64_t id) {
+    const auto it = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
+    const SessionInfo* session = m_sessions.find(id);
+    if (it == m_rows.end() || session == nullptr) {
+      return;
+    }
+    // An empty name gives the row its automatic name (cwd or agent title) back.
+    it->second->beginRename(rowData(*session).name, [this, id](std::optional<std::string> name) {
+      if (name) {
+        apply(session_event::Rename{id, std::move(*name)});
+      }
+      focusGrid();
+    });
+    m_window.input().setFocus(it->second->renameArea());
+    m_window.invalidate();
+  }
+
+  void TerminalWindow::duplicateSession(std::uint64_t id) {
+    const SessionInfo* session = m_sessions.find(id);
+    if (session == nullptr) {
+      return;
+    }
+    if (session->kind == SessionKind::Agent) {
+      openSession(NewAgent{session->cwd});
+    } else {
+      openSession(NewShell{session->cwd});
+    }
+  }
+
+  void TerminalWindow::askClose(std::vector<std::uint64_t> ids) {
+    const auto close = [this](const std::vector<std::uint64_t>& targets) {
+      for (const std::uint64_t target : targets) {
+        apply(session_event::Close{target});
+      }
+    };
+    const auto running = std::ranges::count_if(ids, [this](std::uint64_t target) {
+      const SessionInfo* session = m_sessions.find(target);
+      return session != nullptr && std::holds_alternative<CommandRunning>(session->command);
+    });
+    if (running == 0) {
+      close(ids);
+      return;
+    }
+    m_window.presentSheet(
+        [this, ids, running, close](float s) {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
+                                 .width = Tokens::componentTerminalFindWidth * s});
+          const bool one = ids.size() == 1;
+          box->addChild(ui::label({.text = one ? std::string("Close this session?") : std::format("Close {} sessions?", ids.size()),
+                                   .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1)}));
+          box->addChild(ui::label({.text = running == 1 ? std::string("A command is still running. Closing stops it.")
+                                                        : std::format("Commands still run in {} sessions. Closing stops them.", running),
+                                   .fontSize = Tokens::typeBody.size * s, .color = colorSpecFromRole(ColorRole::Label2),
+                                   .maxLines = 3}));
+          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
+          buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
+          buttons->addChild(ui::button({.text = std::string("Close"), .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Destructive, .onClick = [this, ids, close] {
+                                          m_window.dismissSheet();
+                                          close(ids);
+                                        }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] { m_window.dismissSheet(); });
+  }
+
+  void TerminalWindow::syncTitle() {
+    const auto id = m_sessions.shown();
+    const SessionInfo* session = id ? m_sessions.find(*id) : nullptr;
+    if (session == nullptr) {
+      return;
+    }
+    if (!session->name.empty()) {
+      m_window.setTitle(session->name);
+    } else if (session->kind == SessionKind::Agent) {
+      ContentView* view = shownView();
+      const agent::Session* model = view != nullptr && view->agent() != nullptr ? view->agent()->session() : nullptr;
+      m_window.setTitle(model != nullptr && !model->title().empty() ? model->title() : std::string("New session"));
+    } else if (!session->cwd.empty()) {
+      m_window.setTitle(session->cwd);
+    }
   }
 
   // The agent works in the shown session's directory; the sidebar keeps it with ~ for $HOME.
@@ -567,10 +679,7 @@ namespace term {
       return;
     }
     // An agent session's title is its first prompt (or the agent's session title).
-    if (ContentView* shown = shownView(); shown != nullptr && shown->agent() != nullptr) {
-      const agent::Session* model = shown->agent()->session();
-      m_window.setTitle(model != nullptr && !model->title().empty() ? model->title() : std::string("New session"));
-    }
+    syncTitle();
     m_window.updateInPlace([this](Renderer& /*renderer*/) {
       fillAgentBar();
       m_agentBar->markLayoutDirty();
@@ -725,6 +834,7 @@ namespace term {
     const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
     const StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
     m_window.setCaption({.symbol = data.symbol, .state = data.status, .danger = data.symbolDanger});
+    syncTitle();
   }
 
   bool TerminalWindow::matches(const SessionInfo& session) const {
