@@ -738,6 +738,20 @@ void InputDispatcher::clearTextInputFocus(InputArea* area) {
   }
 }
 
+void InputDispatcher::setTextInputClient(InputArea& area, TextInputClient* client) {
+  if (area.textInputClient() == client) {
+    return;
+  }
+  const bool focused = m_focusedArea == &area;
+  if (focused) {
+    clearTextInputFocus(&area);
+  }
+  area.setTextInputClient(client);
+  if (focused) {
+    syncTextInputFocus();
+  }
+}
+
 void InputDispatcher::syncTextInputFocus() {
   if (m_textInputService == nullptr || m_textInputSurface == nullptr || m_focusedArea == nullptr) {
     return;

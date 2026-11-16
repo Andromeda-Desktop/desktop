@@ -13,6 +13,7 @@
 #include "ui/theme_palette.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
+#include "render/scene/input_dispatcher.h"
 #include "render/scene/terminal_grid_node.h"
 #include "design_tokens.h"
 #include "ui/text_input_client.h"
@@ -168,6 +169,8 @@ namespace term {
     void pasteDrop(const std::string& mime, const std::string& data);
     // Screen and scrollback as plain text, soft wraps joined.
     [[nodiscard]] std::string scrollbackText();
+    // Secure keyboard entry: keys reach the program as raw keys, never through the input method.
+    void setSecureInput(bool secure, InputDispatcher& input);
 
     [[nodiscard]] InputArea* focusArea() const noexcept override { return m_area; }
     [[nodiscard]] TerminalView* terminal() noexcept override { return this; }
@@ -350,6 +353,7 @@ namespace term {
     std::variant<DragIdle, DragSelecting> m_drag;
 
     InputArea* m_area = nullptr;
+    bool m_secureInput = false;
     TerminalGridNode* m_grid = nullptr;
     std::unique_ptr<KittyImages> m_images;
     std::unique_ptr<ContextRow> m_context;

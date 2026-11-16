@@ -424,7 +424,7 @@ namespace term {
                                      a.setCapturesAllKeys(true);
                                      a.setCapturesTab(true);
                                      a.setRetainsFocusOnPointerRelease(true);
-                                     a.setTextInputClient(this);
+                                     a.setTextInputClient(m_secureInput ? nullptr : this);
                                      a.setOnFocusGain([this] {
                                        m_areaFocused = true;
                                        updateFocus();
@@ -1456,6 +1456,16 @@ namespace term {
     if (edit.hasCommitText && !edit.commitText.empty()) {
       scrollToBottom();
       m_session.write({reinterpret_cast<const std::uint8_t*>(edit.commitText.data()), edit.commitText.size()});
+    }
+  }
+
+  void TerminalView::setSecureInput(bool secure, InputDispatcher& input) {
+    m_secureInput = secure;
+    if (secure) {
+      textInputResetPreedit();
+    }
+    if (m_area != nullptr) {
+      input.setTextInputClient(*m_area, secure ? nullptr : this);
     }
   }
 

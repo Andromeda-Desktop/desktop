@@ -70,6 +70,8 @@ public:
 
   // Focus management
   void setFocus(InputArea* area);
+  // Swaps the text-input (IME) client of `area`; a focused area moves the input method to the new client at once.
+  void setTextInputClient(InputArea& area, TextInputClient* client);
   void stashTabFocus();
   void restoreStashedTabFocus();
   [[nodiscard]] TabFocusSnapshot captureTabFocus() const;

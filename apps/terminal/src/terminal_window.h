@@ -96,10 +96,15 @@ namespace term {
     void apply(const SessionListEvent& event);
     void updateSceneState(); // scene busy, secret and remote follow the visible panes
     std::unordered_set<std::uint64_t> m_secretSessions; // sessions at a password prompt
+    void toggleSecureEntry();
+    // A caption shows a lock in place of its symbol while keys to session `id` are secure.
+    void lockSymbol(std::uint64_t id, StatusRow::Data& data) const;
+    bool m_secureEntry = false; // the user's secure keyboard entry toggle (Ctrl+Shift+S)
+    bool m_keysSecure = false; // m_secureEntry or a visible password prompt: no IME, no compositor shortcuts, no capture
     std::unordered_set<std::uint64_t> m_remoteSessions; // sessions on another host (SSH, container)
     void show(std::uint64_t id);
     // Session keys: Ctrl+Shift+T new, Ctrl+Shift+A new agent session, Ctrl+Shift+W close an agent session,
-    // Ctrl+Shift+N new window, Ctrl+Tab / Ctrl+Shift+Tab recent, Ctrl+1..9 by position.
+    // Ctrl+Shift+N new window, Ctrl+Shift+S secure keyboard entry, Ctrl+Tab / Ctrl+Shift+Tab recent, Ctrl+1..9 by position.
     bool sessionKey(const KeyboardEvent& event);
     void openAgentHere();
     void openNewMenu();

@@ -26,6 +26,7 @@ class CommandTable;
 class Flex;
 class Glyph;
 class DskSurfaceClient;
+struct zwp_keyboard_shortcuts_inhibitor_v1;
 class Image;
 class Label;
 class Renderer;
@@ -141,6 +142,9 @@ public:
   void setSceneRemote(bool remote); // a shell on another host (SSH, container)
   // Screenshots, screencopy and screencasts show the window as black while true (a password prompt).
   void setCaptureSecure(bool secure);
+  // Compositor shortcuts reach the window as plain keys while true (secure keyboard entry); the compositor's
+  // window rules can still refuse.
+  void setShortcutsInhibited(bool inhibited);
   // The content draws a backing under its own text (sceneTextBacking), so the main pane can stay light.
   void setSceneContentBacked(bool backed);
   // The surface alpha that, over the main pane's light tint, gives text the text tint; 0 without a scene.
@@ -338,6 +342,7 @@ private:
   bool m_sceneRemote = false;
   bool m_captureSecure = false;
   std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure; goes with m_surface
+  zwp_keyboard_shortcuts_inhibitor_v1* m_shortcutsInhibitor = nullptr; // goes with m_surface
   float m_sceneBusyLevel = 0.0F;
   float m_sceneSecretLevel = 0.0F;
   float m_sceneRemoteLevel = 0.0F;

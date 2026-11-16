@@ -407,6 +407,7 @@ namespace term {
                 m_secretSessions.erase(id);
               }
               updateSceneState();
+              refreshRows();
             },
         .textures = [this]() -> TextureManager* {
           RenderContext& render = m_loop.renderContext();
@@ -495,6 +496,7 @@ namespace term {
         .settings = m_settings.settings(),
         .theme = resolveTheme(m_settings.settings().theme, m_settings.themes())});
     TerminalView& ref = *view;
+    ref.setSecureInput(m_keysSecure, m_window.input());
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);
     if (reattach == nullptr || !ref.reattach(reattach->heldId)) {
@@ -537,11 +539,35 @@ namespace term {
     return view != nullptr ? view->terminal() : nullptr;
   }
 
+  void TerminalWindow::lockSymbol(std::uint64_t id, StatusRow::Data& data) const {
+    if (m_secureEntry || m_secretSessions.contains(id)) {
+      data.symbol = "lock";
+      data.symbolDanger = false;
+      data.spinning = false;
+    }
+  }
+
+  void TerminalWindow::toggleSecureEntry() {
+    m_secureEntry = !m_secureEntry;
+    updateSceneState();
+    refreshRows();
+  }
+
   void TerminalWindow::updateSceneState() {
     const std::vector<std::uint64_t> visible = m_sessions.visible();
     const bool secret = std::ranges::any_of(visible, [this](std::uint64_t id) { return m_secretSessions.contains(id); });
     m_window.setSceneSecret(secret);
-    m_window.setCaptureSecure(secret);
+    const bool secure = m_secureEntry || secret;
+    m_window.setCaptureSecure(secure);
+    m_window.setShortcutsInhibited(secure);
+    if (secure != m_keysSecure) {
+      m_keysSecure = secure;
+      for (const Session& session : m_views) {
+        if (TerminalView* terminal = session.view->terminal(); terminal != nullptr) {
+          terminal->setSecureInput(secure, m_window.input());
+        }
+      }
+    }
     m_window.setSceneRemote(
         std::ranges::any_of(visible, [this](std::uint64_t id) { return m_remoteSessions.contains(id); }));
     m_window.setSceneBusy(std::ranges::any_of(visible, [this](std::uint64_t id) {
@@ -765,6 +791,10 @@ namespace term {
       openSession(NewShell{});
       return true;
     }
+    if (shift && (event.unshifted == 's' || event.unshifted == 'S')) {
+      toggleSecureEntry();
+      return true;
+    }
     if (shift && (event.unshifted == 'h' || event.unshifted == 'H')) {
       if (const auto shown = m_sessions.shown()) {
         showScrollback(*shown);
@@ -830,7 +860,9 @@ namespace term {
   }
 
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {
-    enum : std::int32_t { kSplit = 1, kLeave, kRename, kDuplicate, kShowScrollback, kSaveScrollback, kCloseOthers, kClose };
+    enum : std::int32_t {
+      kSplit = 1, kLeave, kRename, kDuplicate, kShowScrollback, kSaveScrollback, kSecureEntry, kCloseOthers, kClose
+    };
     const bool others = m_sessions.sessions().size() > 1;
     const std::uint64_t shown = m_sessions.shown().value_or(0);
     const auto* shownSplit = m_sessions.splitOf(shown);
@@ -847,6 +879,9 @@ namespace term {
     entries.push_back({.id = kShowScrollback, .label = "Show scrollback", .shortcut = "Ctrl+Shift+H", .enabled = terminal});
     entries.push_back({.id = kSaveScrollback, .label = "Save scrollback…", .enabled = terminal});
     entries.push_back({.separator = true});
+    entries.push_back({.id = kSecureEntry, .label = "Secure keyboard entry", .shortcut = "Ctrl+Shift+S",
+                       .checkmark = true, .toggleState = m_secureEntry ? 1 : 0});
+    entries.push_back({.separator = true});
     entries.push_back({.id = kCloseOthers, .label = "Close other sessions", .enabled = others});
     entries.push_back({.id = kClose, .label = "Close", .shortcut = "Ctrl+Shift+W", .danger = true});
     m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id, shown](std::int32_t item) {
@@ -861,6 +896,7 @@ namespace term {
                                case kDuplicate: duplicateSession(id); break;
                                case kShowScrollback: showScrollback(id); break;
                                case kSaveScrollback: saveScrollback(id); break;
+                               case kSecureEntry: toggleSecureEntry(); break;
                                case kCloseOthers: {
                                  std::vector<std::uint64_t> ids;
                                  for (const SessionInfo& session : m_sessions.sessions()) {
@@ -1275,8 +1311,11 @@ namespace term {
       row->setData(data);
     }
     const SessionInfo* shown = m_sessions.shown() ? m_sessions.find(*m_sessions.shown()) : nullptr;
-    const StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
+    StatusRow::Data data = shown != nullptr ? rowData(*shown) : StatusRow::Data{};
     const std::string state = shown != nullptr ? captionState(*shown, data.status) : std::string{};
+    if (shown != nullptr) {
+      lockSymbol(shown->id, data);
+    }
     m_window.setCaption({.symbol = data.symbol, .state = state, .danger = data.symbolDanger, .spinning = data.spinning});
     if (refreshCards()) {
       m_window.updateInPlace([this](Renderer& renderer) {
@@ -2024,10 +2063,15 @@ namespace term {
       }
       StatusRow::Data data = rowData(*session);
       data.status = captionState(*session, data.status);
+      lockSymbol(card.id, data);
       const ColorSpec ink = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2);
       changed = changed || card.name->text() != data.name || card.state->text() != data.status;
       card.name->setText(data.name);
-      const bool symbol = !data.spinning && !data.symbol.empty() && card.symbol->setGlyph(data.symbol);
+      const bool symbol = !data.spinning && !data.symbol.empty();
+      changed = changed || card.symbol->visible() != symbol;
+      if (symbol && card.symbol->setGlyph(data.symbol)) {
+        changed = true;
+      }
       card.symbol->setColor(ink);
       card.symbol->setVisible(symbol);
       card.symbol->setParticipatesInLayout(symbol);
