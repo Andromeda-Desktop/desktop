@@ -579,11 +579,28 @@ static void handle_scene_surface_surface_commit(struct wl_listener* listener, vo
 static bool scene_buffer_point_accepts_input(struct wlr_scene_buffer* scene_buffer, double* sx, double* sy) {
   struct wlr_scene_surface* scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
 
-  // The hit test works in scene units; the client expects surface-local ones.
-  *sx = (*sx + scene_surface->clip.x) * scene_surface->scale;
-  *sy = (*sy + scene_surface->clip.y) * scene_surface->scale;
+  struct wlr_surface* surface = scene_surface->surface;
+  const struct wlr_surface_state* state = &surface->current;
+  struct wlr_fbox src = scene_buffer->src_box;
+  struct wlr_fbox base;
+  wlr_surface_get_buffer_source_box(surface, &base);
+  if (wlr_fbox_empty(&src) || wlr_fbox_empty(&base) || scene_buffer->dst_width <= 0 || scene_buffer->dst_height <= 0
+      || state->width <= 0 || state->height <= 0) {
+    // The hit test works in scene units; the client expects surface-local ones.
+    *sx = (*sx + scene_surface->clip.x) * scene_surface->scale;
+    *sy = (*sy + scene_surface->clip.y) * scene_surface->scale;
+  } else {
+    // Map through the source box drawn into the dest size, so a presentation that scales the buffer (an opening or
+    // resizing window) reports the surface point drawn under the cursor.
+    int buffer_width = state->buffer_width;
+    int buffer_height = state->buffer_height;
+    wlr_fbox_transform(&src, &src, state->transform, buffer_width, buffer_height);
+    wlr_fbox_transform(&base, &base, state->transform, buffer_width, buffer_height);
+    *sx = (src.x - base.x + *sx * src.width / scene_buffer->dst_width) * state->width / base.width;
+    *sy = (src.y - base.y + *sy * src.height / scene_buffer->dst_height) * state->height / base.height;
+  }
 
-  return wlr_surface_point_accepts_input(scene_surface->surface, *sx, *sy);
+  return wlr_surface_point_accepts_input(surface, *sx, *sy);
 }
 
 static void surface_addon_destroy(struct wlr_addon* addon) {
