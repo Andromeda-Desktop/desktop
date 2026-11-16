@@ -1848,6 +1848,7 @@ void FilesWindow::unmounted(const fs::path& mount, const std::string& error) {
 void FilesWindow::go(const fs::path& location) { m_browser->go(location); }
 
 void FilesWindow::goTrash() {
+  forgetTrashDirs(); // another app may have made a volume trash
   loadTrash();
   if (!inTrash()) {
     m_browser->showListing(std::move(m_trashListing));
@@ -2920,6 +2921,7 @@ void FilesWindow::showStorage() {
 }
 
 void FilesWindow::askEmptyTrash() {
+  forgetTrashDirs();
   loadTrash(); // other apps may have trashed or restored items since the last read
   const std::size_t count = m_trash.size();
   if (count == 0) {
@@ -4500,6 +4502,7 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
     const bool touchesTrash = job.kind == "trash" || job.kind == "restore" || job.kind == "undo" || job.kind == "delete";
     // The Trash listing and its sidebar count follow it.
     if (touchesTrash && job.finished() && m_trashReloaded.insert(job.path).second) {
+      forgetTrashDirs();
       loadTrash();
     }
     return;
@@ -4578,6 +4581,7 @@ void FilesWindow::onJobChanged(const FileOpsClient::Job& job) {
     }
   }
   if (job.kind == "trash" || job.kind == "restore" || job.kind == "undo" || job.kind == "delete") {
+    forgetTrashDirs();
     loadTrash();
   }
 }

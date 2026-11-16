@@ -17,8 +17,10 @@ struct TrashItem {
 };
 
 [[nodiscard]] std::filesystem::path homeTrashDir();
-// The home trash first, then one per mounted volume that has a trash of this user.
+// The home trash first, then one per mounted volume that has a trash of this user. Kept until the mount table
+// changes; call forgetTrashDirs() when a volume trash may have appeared (a trash job ended, another app trashed).
 [[nodiscard]] std::vector<std::filesystem::path> trashDirs();
+void forgetTrashDirs();
 // Items with a readable info file; an orphan in files/ without info is skipped.
 [[nodiscard]] std::vector<TrashItem> listTrash(const std::filesystem::path& trashDir);
 // Path= value: percent-decoded; relative paths are relative to the volume that holds a volume trash.

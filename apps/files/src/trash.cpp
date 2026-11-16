@@ -4,8 +4,11 @@
 #include <array>
 #include <string_view>
 
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
+#include <optional>
 #include <mntent.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -51,47 +54,68 @@ fs::path homeTrashDir() {
   return fs::path(home != nullptr ? home : "/") / ".local/share/Trash";
 }
 
-std::vector<fs::path> trashDirs() {
-  std::vector<fs::path> dirs{homeTrashDir()};
-  const std::string uid = std::to_string(::getuid());
-  FILE* mounts = ::setmntent("/proc/self/mounts", "r");
-  if (mounts == nullptr) {
-    return dirs;
-  }
-  std::error_code ec;
-  while (const mntent* m = ::getmntent(mounts)) {
-    if (!canHoldTrash(m->mnt_type)) {
-      continue;
+namespace {
+  struct TrashDirsCache {
+    std::string key; // the home trash and the mount table the dirs were found under
+    std::vector<fs::path> dirs;
+  };
+  std::optional<TrashDirsCache> g_trashDirs;
+
+  std::vector<fs::path> scanTrashDirs(const fs::path& home, std::string& mountTable) {
+    std::vector<fs::path> dirs{home};
+    const std::string uid = std::to_string(::getuid());
+    FILE* mounts = ::fmemopen(mountTable.data(), mountTable.size(), "r");
+    if (mounts == nullptr) {
+      return dirs;
     }
-    const fs::path top = m->mnt_dir;
-    if (top.string().starts_with("/proc") || top.string().starts_with("/sys")
-        || top.string().starts_with("/dev") || top.string().starts_with("/run/user")) {
-      continue;
-    }
-    if (const fs::path shared = top / ".Trash"; validSharedTrash(shared) && fs::is_directory(shared / uid, ec)) {
-      dirs.push_back(shared / uid);
-    }
-    if (const fs::path own = top / (".Trash-" + uid); fs::is_directory(own, ec)) {
-      dirs.push_back(own);
-    }
-  }
-  ::endmntent(mounts);
-  // Bind and stacked mounts show one trash directory under several paths.
-  std::vector<fs::path> unique;
-  std::vector<std::pair<dev_t, ino_t>> seen;
-  for (fs::path& dir : dirs) {
-    struct stat st {};
-    if (::stat(dir.c_str(), &st) == 0) {
-      const std::pair id{st.st_dev, st.st_ino};
-      if (std::ranges::contains(seen, id)) {
+    std::error_code ec;
+    while (const mntent* m = ::getmntent(mounts)) {
+      if (!canHoldTrash(m->mnt_type)) {
         continue;
       }
-      seen.push_back(id);
+      const fs::path top = m->mnt_dir;
+      if (top.string().starts_with("/proc") || top.string().starts_with("/sys")
+          || top.string().starts_with("/dev") || top.string().starts_with("/run/user")) {
+        continue;
+      }
+      if (const fs::path shared = top / ".Trash"; validSharedTrash(shared) && fs::is_directory(shared / uid, ec)) {
+        dirs.push_back(shared / uid);
+      }
+      if (const fs::path own = top / (".Trash-" + uid); fs::is_directory(own, ec)) {
+        dirs.push_back(own);
+      }
     }
-    unique.push_back(std::move(dir));
+    ::fclose(mounts);
+    // Bind and stacked mounts show one trash directory under several paths.
+    std::vector<fs::path> unique;
+    std::vector<std::pair<dev_t, ino_t>> seen;
+    for (fs::path& dir : dirs) {
+      struct stat st {};
+      if (::stat(dir.c_str(), &st) == 0) {
+        const std::pair id{st.st_dev, st.st_ino};
+        if (std::ranges::contains(seen, id)) {
+          continue;
+        }
+        seen.push_back(id);
+      }
+      unique.push_back(std::move(dir));
+    }
+    return unique;
   }
-  return unique;
+} // namespace
+
+std::vector<fs::path> trashDirs() {
+  const fs::path home = homeTrashDir();
+  std::ifstream in("/proc/self/mounts");
+  std::string mountTable{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+  std::string key = home.string() + '\n' + mountTable;
+  if (!g_trashDirs.has_value() || g_trashDirs->key != key) {
+    g_trashDirs = TrashDirsCache{.key = std::move(key), .dirs = scanTrashDirs(home, mountTable)};
+  }
+  return g_trashDirs->dirs;
 }
+
+void forgetTrashDirs() { g_trashDirs.reset(); }
 
 fs::path decodeTrashPath(const std::string& value, const fs::path& trashDir) {
   std::string out;
