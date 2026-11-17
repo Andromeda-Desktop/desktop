@@ -90,6 +90,7 @@ void TaskbarPreview::open(Request request) {
     closeNow();
   }
   std::vector<Card> previous = std::move(m_cards);
+  const bool switched = reuse && !m_closing && request.key != m_request.key;
   m_request = std::move(request);
   m_cards.clear();
   m_group.clear();
@@ -122,6 +123,11 @@ void TaskbarPreview::open(Request request) {
     m_surface->repositionAnchor(config);
     popup_chrome::setContentInputRegion(*m_surface, m_chrome);
     requestRebuild();
+    if (switched) {
+      // Another app: the moved card settles in with a short grow instead of a hard cut.
+      m_scale = std::min(m_scale, 0.97F);
+      m_opacity = std::min(m_opacity, 0.6F);
+    }
   } else {
     m_surface = std::make_unique<PopupSurface>(m_platform.wayland());
     m_surface->setRenderContext(&m_renderContext);
@@ -458,6 +464,7 @@ void TaskbarPreview::build() {
       return false;
     }
     icon->setPosition(x, std::round(headerY + (kHeader - kIcon) * 0.5F * s));
+    icon->setHitTestVisible(false);
     m_sceneRoot->addChild(std::move(icon));
     return true;
   };
@@ -486,6 +493,8 @@ void TaskbarPreview::build() {
         .participatesInLayout = false,
     });
     thumbBox->setPosition(x, y);
+    // Decoration: a hit on it must fall through to the card's InputArea below.
+    thumbBox->setHitTestVisible(false);
     if (card.snapshot != nullptr && card.snapshot->width > 0 && !card.snapshot->rgba.empty()) {
       auto image = ui::image({
           .fit = ImageFit::Cover,
@@ -515,6 +524,7 @@ void TaskbarPreview::build() {
         .participatesInLayout = false,
     });
     edge->setPosition(x, y);
+    edge->setHitTestVisible(false);
     m_sceneRoot->addChild(std::move(edge));
   };
   const auto addArea = [&](std::size_t slot, const ToplevelInfo& target) {
@@ -562,6 +572,7 @@ void TaskbarPreview::build() {
       auto board = std::make_unique<RectNode>();
       board->setParticipatesInLayout(false);
       board->setPosition(boxX, thumbY);
+      board->setHitTestVisible(false);
       board->setFrameSize(m_thumbW * s, m_thumbH * s);
       board->setStyle(RoundedRectStyle{
           .fill = night,
@@ -595,6 +606,7 @@ void TaskbarPreview::build() {
             .participatesInLayout = false,
         });
         line->setPosition(std::round(x + (cardW() + kGap + kSepMargin) * s), originY);
+        line->setHitTestVisible(false);
         return line;
       }());
     }
