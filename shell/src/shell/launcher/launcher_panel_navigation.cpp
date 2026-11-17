@@ -322,7 +322,8 @@ void LauncherPanel::onPanelCardOpacityChanged(float opacity) {
 
 bool LauncherPanel::isContextActive(std::string_view context) const {
   if (m_modeProviderId.empty()) {
-    return false;
+    // A plain context opens as the field text ("apps" shows the grid); it stays active until the user edits the field.
+    return !context.starts_with(kModeContextPrefix) && m_query == context;
   }
   if (context.starts_with(kModeContextPrefix)) {
     return context.substr(kModeContextPrefix.size()) == m_modeProviderId;
