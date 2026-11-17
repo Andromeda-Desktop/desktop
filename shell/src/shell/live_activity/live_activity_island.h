@@ -192,6 +192,7 @@ private:
     Box* cameraDot = nullptr;
     Box* screenDot = nullptr;
     Node* mediaGroup = nullptr;
+    Node* unreadGroup = nullptr;
     Label* mediaTitle = nullptr;
     Node* artPlaceholder = nullptr;
     Image* art = nullptr;

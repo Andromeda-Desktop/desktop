@@ -1307,14 +1307,22 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   restContent->addChild(dot(&inst.micDot, colorSpecFromRole(ColorRole::Accent)));
   restContent->addChild(dot(&inst.cameraDot, colorSpecFromRole(ColorRole::Accent)));
   restContent->addChild(dot(&inst.screenDot, colorSpecFromRole(ColorRole::Danger)));
-  restContent->addChild(ui::label({
+  // A bare number reads as a workspace; the bell says it counts unread notifications.
+  auto unreadGroup = ui::flex(restDirection, {.align = FlexAlign::Center, .gap = Style::spaceXs, .visible = false});
+  unreadGroup->addChild(ui::glyph({
+      .glyph = "bell",
+      .glyphSize = lane ? Tokens::typeCaption.size : Tokens::componentIslandIcon,
+      .color = colorSpecFromRole(ColorRole::Label2),
+  }));
+  unreadGroup->addChild(ui::label({
       .out = &inst.count,
       .fontSize = lane ? Tokens::typeCaption.size : restFont,
       .fontWeight = restWeight,
       .color = colorSpecFromRole(ColorRole::Label1),
       .maxLines = 1,
-      .visible = false,
   }));
+  inst.unreadGroup = unreadGroup.get();
+  restContent->addChild(std::move(unreadGroup));
   inst.mediaTitle->setLineHeight(Tokens::typeFootnote.line);
   inst.weekday->setLineHeight(Tokens::typeCaption.line);
   inst.count->setLineHeight(lane ? Tokens::typeCaption.line : Tokens::typeBody.line);
@@ -1838,7 +1846,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   inst.micDot->setVisible(mic);
   inst.cameraDot->setVisible(camera);
   inst.screenDot->setVisible(screen);
-  inst.count->setVisible(unread > 0);
+  inst.unreadGroup->setVisible(unread > 0);
   if (unread > 0) {
     inst.count->setText(std::to_string(unread));
   }
