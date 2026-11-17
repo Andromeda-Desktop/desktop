@@ -58,6 +58,7 @@ namespace andromeda {
     // Clamps the offset into [0, maxScroll]. A centered rest may lie outside that range, but only as far as centering
     // the first or last column does.
     void clampScroll(int viewportPrimary);
+    [[nodiscard]] std::array<double, 2> scrollBounds(int viewportPrimary) const;
     void reconcileFocusedColumn(int columnIndex, int viewportPrimary);
     [[nodiscard]] bool centeredRest() const { return m_centeredRest; }
     // How much to subtract from the scroll offset when `columnIndex` is about

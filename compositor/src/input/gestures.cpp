@@ -235,6 +235,9 @@ namespace andromeda {
     m_scrollWorkspace = workspace;
     m_viewportPrimary = workspace->scrollViewportExtent();
     m_scrollStart = scrolling->scroll();
+    const auto bounds = scrolling->scrollBounds(m_viewportPrimary);
+    m_scrollLow = bounds[0];
+    m_scrollHigh = bounds[1];
     m_scrollTracker.reset();
     m_scrollStartCentered = scrolling->centeredRest();
     m_scrollScale = scale;
@@ -261,7 +264,8 @@ namespace andromeda {
       return;
     }
     m_scrollTracker.push(delta, timeMsec);
-    scrolling->setScroll(m_scrollStart - m_scrollTracker.pos() * m_scrollScale);
+    const double raw = m_scrollStart - m_scrollTracker.pos() * m_scrollScale;
+    scrolling->setScroll(GesturePhysics::rubberBand(raw, m_scrollLow, m_scrollHigh, scrollOverscrollLimit()));
     m_scrollWorkspace->markArrange(false);
   }
 
@@ -522,8 +526,8 @@ namespace andromeda {
     }
 
     case State::Scroll: {
-      // Natural: fingers move against the strip axis → content follows them. The strip runs
-      // unclamped, past its edges included; the release resolves the overscroll.
+      // Natural: fingers move against the strip axis → content follows them. Past either
+      // edge the strip is rubber-banded; the release resolves the overscroll.
       updateScroll(m_scrollVertical ? event->dy : event->dx, event->time_msec);
       return;
     }
@@ -742,8 +746,9 @@ namespace andromeda {
     m_scrollTracker.push(0.0, timeMsec);
 
     const double currentScroll = scrolling->scroll();
-    // Where the swipe would coast to a stop under deceleration.
-    const double projected = m_scrollStart - m_scrollTracker.projectedEndPos() * m_scrollScale;
+    // Damped like the travel, so a release past the strip end settles on the end column.
+    const double projected = GesturePhysics::rubberBand(m_scrollStart - m_scrollTracker.projectedEndPos() * m_scrollScale,
+                                                        m_scrollLow, m_scrollHigh, scrollOverscrollLimit());
 
     const auto columnCount = static_cast<int>(scrolling->columns().size());
 

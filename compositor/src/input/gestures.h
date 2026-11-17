@@ -3,6 +3,7 @@
 #include "input/gesture_physics.h"
 #include "input/swipe_tracker.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <wayland-server-core.h>
 
@@ -112,7 +113,12 @@ namespace andromeda {
     Workspace* m_scrollWorkspace = nullptr;
     double m_scrollStart = 0;
     bool m_scrollStartCentered = false;
+    double m_scrollLow = 0;
+    double m_scrollHigh = 0;
     int m_viewportPrimary = 0;
+    [[nodiscard]] double scrollOverscrollLimit() const {
+      return GesturePhysics::kOverscrollLimit * std::max(1, m_viewportPrimary);
+    }
     double m_scrollScale = 1.0;
     bool m_scrollVertical = false;
     ScrollSource m_scrollSource = ScrollSource::None;
