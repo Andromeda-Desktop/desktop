@@ -1556,6 +1556,19 @@ namespace andromeda {
     return nlohmann::json{{"ok", nullptr}};
   }
 
+  nlohmann::json
+  IpcCommands::outputFailNextCommit([[maybe_unused]] Server& server, [[maybe_unused]] std::string_view arg) {
+#ifdef ANDROMEDA_TEST_IPC
+    int ms = 0;
+    std::from_chars(arg.data(), arg.data() + arg.size(), ms);
+    if (ms <= 0) {
+      return nlohmann::json{{"error", "output-fail-next-commit needs a stall in ms"}};
+    }
+    server.failNextOutputCommit(ms);
+#endif
+    return nlohmann::json{{"ok", nullptr}};
+  }
+
   nlohmann::json IpcCommands::clockAdvance(Server& /*server*/, std::string_view /*arg*/) {
     return nlohmann::json{{"ok", nullptr}};
   }
@@ -1894,6 +1907,9 @@ namespace andromeda {
        IpcCommandGroup::Harness, false, &IpcCommands::settle, nullptr, 35},
       {"stall-frame", "<ms>", "block the main thread for <ms> in the next frame (stall report check)",
        IpcCommandGroup::Harness, true, &IpcCommands::stallFrame, nullptr},
+      {"output-fail-next-commit", "<ms>",
+       "fail the next output-management commit and stall the GPU submit after it <ms> (rollback check)",
+       IpcCommandGroup::Harness, true, &IpcCommands::outputFailNextCommit, nullptr},
       {"stall-submit", "<ms>", "make the next render-thread GPU submit sleep <ms> (render thread check)",
        IpcCommandGroup::Harness, true, &IpcCommands::stallSubmit, nullptr},
       {"clock-freeze", "", "stop animation time", IpcCommandGroup::Harness, false, &IpcCommands::clockFreeze, nullptr},
@@ -1901,13 +1917,15 @@ namespace andromeda {
        IpcCommandGroup::Harness, true, &IpcCommands::clockAdvance, nullptr, 35},
       {"clock-resume", "", "let animation time follow the monotonic clock again, from where it stopped",
        IpcCommandGroup::Harness, false, &IpcCommands::clockResume, nullptr},
-      {"swipe-test", "<begin|update|end> <ms> [fingers|dx dy|cancelled]", "inject swipe events, 3 fingers unless begin names 4 or 5 (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::swipeForTest, nullptr},
+      {"swipe-test", "<begin|update|end> <ms> [fingers|dx dy|cancelled]",
+       "inject swipe events, 3 fingers unless begin names 4 or 5 (harness only)", IpcCommandGroup::Harness, true,
+       &IpcCommands::swipeForTest, nullptr},
       {"pinch-test", "<begin|update|end> <ms> <fingers|scale|cancelled>", "inject pinch events (harness only)",
        IpcCommandGroup::Harness, true, &IpcCommands::pinchForTest, nullptr},
       {"animation-capture-fail", "<on|off>", "inject animation capture failure (harness only)",
        IpcCommandGroup::Harness, true, &IpcCommands::animationCaptureFail, nullptr},
-      {"lock-keys-test", "<caps|none>", "set the lock-key state sent to the shell, as a physical keyboard would (harness only)",
+      {"lock-keys-test", "<caps|none>",
+       "set the lock-key state sent to the shell, as a physical keyboard would (harness only)",
        IpcCommandGroup::Harness, true, &IpcCommands::lockKeysForTest, nullptr},
       {"blur-composite-split", "<on|off>",
        "composite backdrop blur through an effect buffer and wait until every output has drawn it (harness only)",
@@ -1919,12 +1937,14 @@ namespace andromeda {
        &IpcCommands::planeCursor, nullptr},
       {"effect-frames", "", "count frames drawn for persistent effects per output", IpcCommandGroup::Harness, false,
        &IpcCommands::effectFrames, nullptr},
-      {"blur-cache-pixels", "", "pixels the optimized blur cache re-rendered and background nodes tracked, per output (harness only)",
+      {"blur-cache-pixels", "",
+       "pixels the optimized blur cache re-rendered and background nodes tracked, per output (harness only)",
        IpcCommandGroup::Harness, false, &IpcCommands::blurCachePixels, nullptr},
       {"output-commits", "", "committed frame count per output", IpcCommandGroup::Harness, false,
        &IpcCommands::outputCommits, nullptr},
-      {"output-test-modes", "<output> <mode>...", "give a headless output advertised modes, the first preferred (harness only)",
-       IpcCommandGroup::Harness, true, &IpcCommands::outputTestModes, nullptr, kConfiguredReplyTimeoutSec},
+      {"output-test-modes", "<output> <mode>...",
+       "give a headless output advertised modes, the first preferred (harness only)", IpcCommandGroup::Harness, true,
+       &IpcCommands::outputTestModes, nullptr, kConfiguredReplyTimeoutSec},
       {"cursor-state", "", "inspect the current client cursor source (harness only)", IpcCommandGroup::Harness, false,
        &IpcCommands::cursorState, nullptr},
 #endif

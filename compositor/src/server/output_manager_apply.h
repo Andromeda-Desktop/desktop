@@ -52,8 +52,25 @@ namespace andromeda {
     std::vector<BackendSnapshot> snapshots;
     std::vector<wlr_backend_output_state> rollbackStates;
     FrameMasks configuredFrameMasks;
-    // The states are built and their draw was submitted: the commit is due.
-    bool built = false;
+    // Each step draws on the render thread and commits from its kick. Apply commits the new configuration; after a
+    // failed commit, RestoreGroup commits the snapshots together, then RestoreDormant restores each output that was
+    // off alone (and turns it off again), then, when the group restore failed, RestoreEnabled restores each lit one.
+    enum class Step : uint8_t { Apply, RestoreGroup, RestoreDormant, RestoreEnabled };
+    // WaitingContext: the step's draw waits for the render thread to return the GL context. Drawing: its draw was
+    // submitted and its commit is due.
+    enum class Phase : uint8_t { WaitingContext, Drawing };
+    Step step = Step::Apply;
+    Phase phase = Phase::Drawing;
+    // The snapshot RestoreDormant or RestoreEnabled works on.
+    size_t restoreIndex = 0;
+    // The draw of a RestoreGroup, RestoreDormant or RestoreEnabled step.
+    wlr_output_swapchain_manager stepManager{};
+    bool stepManagerLive = false;
+    wlr_backend_output_state restore{};
+    bool restoreLive = false;
+    bool commitAttempted = false;
+    bool restoredAsGroup = false;
+    bool restoredIndividually = true;
     bool ok = false;
   };
 

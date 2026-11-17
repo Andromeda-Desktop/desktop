@@ -787,8 +787,15 @@ namespace andromeda {
     [[nodiscard]] Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
     // False when the configuration fails before its draw; the commit and the client's reply follow the draw's kick.
     bool applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
-    bool finishOutputManagerApply(OutputManagerApply& apply, bool drawn);
-    static void onOutputManagerApplyDrawn(void* data, bool drawn);
+    // The apply in flight: draws its current step once the GL context is home; false when the states fail to build.
+    bool drawOutputApplyStep();
+    static void onOutputApplyKick(void* data, bool drawn);
+    // Commits the current step's draw and moves to the next step (OutputManagerApply::Step).
+    void outputApplyStepDone(bool drawn);
+    void continueOutputRestore();
+    void finishOutputApply();
+    // Sends the result, makes the configuration live when it applied, and frees the apply.
+    void completeOutputManagerApply(OutputManagerApply& apply);
     static void onOutputManagerContextHome(void* data, bool ok);
     // Starts the oldest queued apply once the GL context is home. Queued applies wait for the one in flight, or for
     // the context (then an onOutputManagerContextHome kick is armed).
@@ -910,6 +917,13 @@ namespace andromeda {
     uint64_t m_configuredRequests = 0;
     std::unique_ptr<OutputManagerApply> m_outputApplyInFlight;
     std::deque<wlr_output_configuration_v1*> m_queuedOutputConfigs;
+    // Test IPC: the next output-management commit fails, and the next GPU submit after it stalls this long (ms).
+    int m_failNextOutputCommitStallMs = 0;
+
+  public:
+    void failNextOutputCommit(int stallMs) { m_failNextOutputCommitStallMs = stallMs; }
+
+  private:
     wlr_scene_tree* m_shellLayerTrees[kLayerCount]{};
     wlr_scene_tree* m_xdgTree = nullptr;
     wlr_scene_tree* m_scratchpadTree = nullptr;

@@ -1197,25 +1197,221 @@ namespace andromeda {
       }
 
       // The draw runs on the render thread; the commit follows from its kick, so main never waits for the GPU.
-      fx_renderer_defer_submits(m_renderer, true);
-      apply->ok = buildOutputManagerSceneStates(apply->configuredFrameMasks, swapchainManager, states, statesLen);
-      fx_renderer_defer_submits(m_renderer, false);
-      if (apply->ok) {
-        apply->built = true;
-        m_outputApplyInFlight = std::move(apply);
-        fx_renderer_kick(m_renderer, onOutputManagerApplyDrawn, this);
+      m_outputApplyInFlight = std::move(apply);
+      if (drawOutputApplyStep()) {
         return true;
       }
+      apply = std::move(m_outputApplyInFlight);
+      apply->ok = false;
     }
-    return finishOutputManagerApply(*apply, false);
+    completeOutputManagerApply(*apply);
+    return apply->ok;
   }
 
-  void Server::onOutputManagerApplyDrawn(void* data, bool drawn) {
+  bool Server::drawOutputApplyStep() {
+    OutputManagerApply& apply = *m_outputApplyInFlight;
+    if (!fx_renderer_context_home(m_renderer)) {
+      apply.phase = OutputManagerApply::Phase::WaitingContext;
+      fx_renderer_kick(m_renderer, onOutputApplyKick, this);
+      return true;
+    }
+    wlr_output_swapchain_manager* manager = &apply.stepManager;
+    wlr_backend_output_state* pending = &apply.restore;
+    size_t pendingLen = 1;
+    if (apply.step == OutputManagerApply::Step::Apply) {
+      manager = &apply.swapchainManager;
+      pending = apply.states;
+      pendingLen = apply.statesLen;
+    } else if (apply.step == OutputManagerApply::Step::RestoreGroup) {
+      pending = apply.rollbackStates.data();
+      pendingLen = apply.rollbackStates.size();
+    }
+    fx_renderer_defer_submits(m_renderer, true);
+    const bool built = buildOutputManagerSceneStates(apply.configuredFrameMasks, *manager, pending, pendingLen);
+    fx_renderer_defer_submits(m_renderer, false);
+    if (!built) {
+      return false;
+    }
+    apply.phase = OutputManagerApply::Phase::Drawing;
+    fx_renderer_kick(m_renderer, onOutputApplyKick, this);
+    return true;
+  }
+
+  void Server::onOutputApplyKick(void* data, bool drawn) {
     auto* self = static_cast<Server*>(data);
-    const std::unique_ptr<OutputManagerApply> apply = std::move(self->m_outputApplyInFlight);
-    // A failed submit leaves the buffers unfinished: nothing is committed.
-    (void)self->finishOutputManagerApply(*apply, drawn);
-    self->startQueuedOutputConfig();
+    if (self->m_outputApplyInFlight->phase == OutputManagerApply::Phase::WaitingContext) {
+      if (!self->drawOutputApplyStep()) {
+        self->outputApplyStepDone(false);
+      }
+      return;
+    }
+    // A failed submit leaves the buffers unfinished: the step commits nothing.
+    self->outputApplyStepDone(drawn);
+  }
+
+  namespace {
+    void endStepDraw(OutputManagerApply& apply) {
+      if (apply.stepManagerLive) {
+        wlr_output_swapchain_manager_finish(&apply.stepManager);
+        apply.stepManagerLive = false;
+      }
+      if (apply.restoreLive) {
+        wlr_output_state_finish(&apply.restore.base);
+        apply.restoreLive = false;
+      }
+    }
+
+    // A dormant output's restore enables it to put its mode back; it goes off again at once.
+    bool disableDormant(const OutputManagerApply::BackendSnapshot& snapshot) {
+      if (!snapshot.output->enabled) {
+        return true;
+      }
+      wlr_output_state disabled{};
+      wlr_output_state_init(&disabled);
+      wlr_output_state_set_enabled(&disabled, false);
+      const bool committed = wlr_output_commit_state(snapshot.output, &disabled);
+      wlr_output_state_finish(&disabled);
+      return committed;
+    }
+  } // namespace
+
+  void Server::outputApplyStepDone(bool drawn) {
+    using Step = OutputManagerApply::Step;
+    OutputManagerApply& apply = *m_outputApplyInFlight;
+    bool committed = false;
+    switch (apply.step) {
+    case Step::Apply:
+      if (drawn) {
+        // Commits can synchronously emit layout changes for mode, scale, and
+        // transform updates. Suppress those partial configurations until the
+        // logical layout transaction is complete.
+        m_deferOutputManagerConfig = true;
+        apply.commitAttempted = true;
+        committed = commitOutputManagerSceneStates(apply.states, apply.statesLen);
+        if (committed) {
+          wlr_output_swapchain_manager_apply(&apply.swapchainManager);
+        }
+      }
+      apply.ok = committed;
+      if (committed || !apply.commitAttempted) {
+        finishOutputApply();
+        return;
+      }
+      wlr_output_swapchain_manager_finish(&apply.swapchainManager);
+      apply.swapchainManagerFinished = true;
+      for (size_t i = 0; i < apply.statesLen; ++i) {
+        wlr_output_state_finish(&apply.states[i].base);
+        wlr_output_state_init(&apply.states[i].base);
+      }
+      apply.step = Step::RestoreGroup;
+      wlr_output_swapchain_manager_init(&apply.stepManager, m_backend);
+      apply.stepManagerLive = true;
+      if (wlr_output_swapchain_manager_prepare(
+              &apply.stepManager, apply.rollbackStates.data(), apply.rollbackStates.size()
+          )
+          && drawOutputApplyStep()) {
+        return;
+      }
+      outputApplyStepDone(false);
+      return;
+    case Step::RestoreGroup:
+      apply.restoredAsGroup =
+          drawn && commitOutputManagerSceneStates(apply.rollbackStates.data(), apply.rollbackStates.size());
+      if (apply.restoredAsGroup) {
+        wlr_output_swapchain_manager_apply(&apply.stepManager);
+      }
+      endStepDraw(apply);
+      // Release any buffers built from the grouped rollback swapchains before a one-output recovery.
+      for (wlr_backend_output_state& rollback : apply.rollbackStates) {
+        wlr_output_state_finish(&rollback.base);
+      }
+      apply.rollbackStates.clear();
+      apply.step = Step::RestoreDormant;
+      apply.restoreIndex = 0;
+      continueOutputRestore();
+      return;
+    case Step::RestoreDormant:
+    case Step::RestoreEnabled: {
+      committed = drawn && commitOutputManagerSceneStates(&apply.restore, 1);
+      if (committed) {
+        wlr_output_swapchain_manager_apply(&apply.stepManager);
+      }
+      endStepDraw(apply);
+      if (apply.step == Step::RestoreDormant) {
+        committed = disableDormant(apply.snapshots[apply.restoreIndex]) && committed;
+      }
+      apply.restoredIndividually = apply.restoredIndividually && committed;
+      ++apply.restoreIndex;
+      continueOutputRestore();
+      return;
+    }
+    }
+  }
+
+  void Server::continueOutputRestore() {
+    using Step = OutputManagerApply::Step;
+    OutputManagerApply& apply = *m_outputApplyInFlight;
+    while (true) {
+      if (apply.restoreIndex >= apply.snapshots.size()) {
+        if (apply.step == Step::RestoreDormant && !apply.restoredAsGroup) {
+          apply.step = Step::RestoreEnabled;
+          apply.restoreIndex = 0;
+          continue;
+        }
+        finishOutputApply();
+        return;
+      }
+      const OutputManagerApply::BackendSnapshot& snapshot = apply.snapshots[apply.restoreIndex];
+      const bool dormant = apply.step == Step::RestoreDormant;
+      if (snapshot.enabled == dormant) {
+        ++apply.restoreIndex;
+        continue;
+      }
+      if (dormant) {
+        // A successful child-backend commit can change the remembered mode of an output that was off before the
+        // transaction: restore each such head alone, avoiding resource pressure from enabling several at once.
+        wlr_output_state expected{};
+        wlr_output_state_init(&expected);
+        stageOutputSnapshot(expected, snapshot, true);
+        const bool unchanged = (snapshot.mode == nullptr && (snapshot.width <= 0 || snapshot.height <= 0))
+            || outputStateMatchesCurrentBackend(expected, *snapshot.output);
+        wlr_output_state_finish(&expected);
+        if (unchanged) {
+          apply.restoredIndividually = disableDormant(snapshot) && apply.restoredIndividually;
+          ++apply.restoreIndex;
+          continue;
+        }
+      }
+      apply.restore = {};
+      apply.restore.output = snapshot.output;
+      wlr_output_state_init(&apply.restore.base);
+      apply.restoreLive = true;
+      stageOutputSnapshot(apply.restore.base, snapshot, true);
+      wlr_output_swapchain_manager_init(&apply.stepManager, m_backend);
+      apply.stepManagerLive = true;
+      if (wlr_output_swapchain_manager_prepare(&apply.stepManager, &apply.restore, 1) && drawOutputApplyStep()) {
+        return;
+      }
+      endStepDraw(apply);
+      if (dormant) {
+        (void)disableDormant(snapshot);
+      }
+      apply.restoredIndividually = false;
+      ++apply.restoreIndex;
+    }
+  }
+
+  void Server::finishOutputApply() {
+    const std::unique_ptr<OutputManagerApply> apply = std::move(m_outputApplyInFlight);
+    if (apply->commitAttempted && !apply->ok) {
+      if (!apply->restoredIndividually) {
+        kLog.error("failed to restore all outputs after a partial output-management commit");
+      } else if (!apply->restoredAsGroup) {
+        kLog.warn("restored a partial output-management commit one output at a time");
+      }
+    }
+    completeOutputManagerApply(*apply);
+    startQueuedOutputConfig();
   }
 
   void Server::onOutputManagerContextHome(void* data, bool /*ok*/) {
@@ -1240,9 +1436,11 @@ namespace andromeda {
   void Server::abortOutputManagerApply() {
     fx_renderer_cancel_kick(m_renderer, onOutputManagerContextHome, this);
     if (m_outputApplyInFlight != nullptr) {
-      fx_renderer_cancel_kick(m_renderer, onOutputManagerApplyDrawn, this);
+      fx_renderer_cancel_kick(m_renderer, onOutputApplyKick, this);
       const std::unique_ptr<OutputManagerApply> apply = std::move(m_outputApplyInFlight);
-      (void)finishOutputManagerApply(*apply, false);
+      endStepDraw(*apply);
+      apply->ok = false;
+      completeOutputManagerApply(*apply);
     }
     // Queued configurations name heads of the configuration that changed: their clients retry.
     for (wlr_output_configuration_v1* queued : m_queuedOutputConfigs) {
@@ -1252,8 +1450,7 @@ namespace andromeda {
     m_queuedOutputConfigs.clear();
   }
 
-  bool Server::finishOutputManagerApply(OutputManagerApply& apply, bool drawn) {
-    using BackendSnapshot = OutputManagerApply::BackendSnapshot;
+  void Server::completeOutputManagerApply(OutputManagerApply& apply) {
     using RequestedHead = OutputManagerApply::RequestedHead;
     wlr_output_configuration_v1* config = apply.config;
     const bool testOnly = apply.testOnly;
@@ -1261,136 +1458,10 @@ namespace andromeda {
     const size_t statesLen = apply.statesLen;
     const std::vector<RequestedHead>& requested = apply.requested;
     wlr_output_swapchain_manager& swapchainManager = apply.swapchainManager;
-    bool& swapchainManagerFinished = apply.swapchainManagerFinished;
-    std::vector<BackendSnapshot>& snapshots = apply.snapshots;
+    const bool swapchainManagerFinished = apply.swapchainManagerFinished;
     std::vector<wlr_backend_output_state>& rollbackStates = apply.rollbackStates;
-    bool& ok = apply.ok;
-    bool commitAttempted = false;
-    const auto buildSceneStates =
-        [this, &apply](wlr_output_swapchain_manager& manager, wlr_backend_output_state* pending, size_t pendingLen) {
-          return buildOutputManagerSceneStates(apply.configuredFrameMasks, manager, pending, pendingLen);
-        };
-    const auto commitSceneStates = [this](wlr_backend_output_state* pending, size_t pendingLen) {
-      return commitOutputManagerSceneStates(pending, pendingLen);
-    };
-    const auto stageSnapshot = stageOutputSnapshot;
-    if (apply.built) {
-      ok = drawn;
-      if (ok) {
-        // Commits can synchronously emit layout changes for mode, scale, and
-        // transform updates. Suppress those partial configurations until the
-        // logical layout transaction is complete.
-        m_deferOutputManagerConfig = true;
-        commitAttempted = true;
-        ok = commitSceneStates(states, statesLen);
-        if (ok) {
-          wlr_output_swapchain_manager_apply(&swapchainManager);
-        }
-      }
-
-      if (!ok && commitAttempted) {
-        wlr_output_swapchain_manager_finish(&swapchainManager);
-        swapchainManagerFinished = true;
-        for (size_t i = 0; i < statesLen; ++i) {
-          wlr_output_state_finish(&states[i].base);
-          wlr_output_state_init(&states[i].base);
-        }
-
-        wlr_output_swapchain_manager rollbackManager{};
-        wlr_output_swapchain_manager_init(&rollbackManager, m_backend);
-        bool restoredAsGroup =
-            wlr_output_swapchain_manager_prepare(&rollbackManager, rollbackStates.data(), rollbackStates.size());
-        if (restoredAsGroup) {
-          restoredAsGroup = buildSceneStates(rollbackManager, rollbackStates.data(), rollbackStates.size())
-              && commitSceneStates(rollbackStates.data(), rollbackStates.size());
-        }
-        if (restoredAsGroup) {
-          wlr_output_swapchain_manager_apply(&rollbackManager);
-        }
-        wlr_output_swapchain_manager_finish(&rollbackManager);
-
-        // Release any buffers built from the grouped rollback swapchains
-        // before trying a one-output recovery path.
-        for (wlr_backend_output_state& rollback : rollbackStates) {
-          wlr_output_state_finish(&rollback.base);
-        }
-        rollbackStates.clear();
-
-        const auto restoreEnabled = [this, &buildSceneStates, &commitSceneStates,
-                                     &stageSnapshot](const BackendSnapshot& snapshot) {
-          wlr_backend_output_state restore{};
-          restore.output = snapshot.output;
-          wlr_output_state_init(&restore.base);
-          stageSnapshot(restore.base, snapshot, true);
-
-          wlr_output_swapchain_manager manager{};
-          wlr_output_swapchain_manager_init(&manager, m_backend);
-          bool restored = wlr_output_swapchain_manager_prepare(&manager, &restore, 1);
-          if (restored) {
-            restored = buildSceneStates(manager, &restore, 1) && commitSceneStates(&restore, 1);
-          }
-          if (restored) {
-            wlr_output_swapchain_manager_apply(&manager);
-          }
-          wlr_output_swapchain_manager_finish(&manager);
-          wlr_output_state_finish(&restore.base);
-          return restored;
-        };
-
-        // A successful child-backend commit can change the remembered mode of
-        // an output which was disabled before the transaction. Restore each
-        // such head alone and disable it immediately, avoiding resource
-        // pressure from temporarily enabling several dormant heads at once.
-        const auto restoreDormant = [&restoreEnabled, &stageSnapshot](const BackendSnapshot& snapshot) {
-          wlr_output_state expected{};
-          wlr_output_state_init(&expected);
-          stageSnapshot(expected, snapshot, true);
-          bool restored = (snapshot.mode == nullptr && (snapshot.width <= 0 || snapshot.height <= 0))
-              || outputStateMatchesCurrentBackend(expected, *snapshot.output)
-              || restoreEnabled(snapshot);
-          wlr_output_state_finish(&expected);
-
-          if (snapshot.output->enabled) {
-            wlr_output_state disabled{};
-            wlr_output_state_init(&disabled);
-            wlr_output_state_set_enabled(&disabled, false);
-            restored = wlr_output_commit_state(snapshot.output, &disabled) && restored;
-            wlr_output_state_finish(&disabled);
-          }
-          return restored;
-        };
-
-        bool restoredIndividually = restoredAsGroup;
-        if (restoredAsGroup) {
-          for (const BackendSnapshot& snapshot : snapshots) {
-            if (!snapshot.enabled && !restoreDormant(snapshot)) {
-              restoredIndividually = false;
-            }
-          }
-        } else {
-          restoredIndividually = true;
-          for (const BackendSnapshot& snapshot : snapshots) {
-            if (!snapshot.enabled && !restoreDormant(snapshot)) {
-              restoredIndividually = false;
-            }
-          }
-          for (const BackendSnapshot& snapshot : snapshots) {
-            if (snapshot.enabled && !restoreEnabled(snapshot)) {
-              restoredIndividually = false;
-            }
-          }
-        }
-
-        if (restoredIndividually) {
-          if (!restoredAsGroup) {
-            kLog.warn("restored a partial output-management commit one output at a time");
-          }
-        } else {
-          kLog.error("failed to restore all outputs after a partial output-management commit");
-        }
-      }
-    }
-
+    const bool ok = apply.ok;
+    const bool commitAttempted = apply.commitAttempted;
     if (ok && !testOnly) {
       // Make logical enablement authoritative before any callback can refresh
       // configured output policy and accidentally revive a disabled head.
@@ -1512,7 +1583,6 @@ namespace andromeda {
     if (commitAttempted) {
       updateOutputManagerConfig();
     }
-    return ok;
   }
 
   bool Server::buildOutputManagerSceneStates(
@@ -1552,6 +1622,13 @@ namespace andromeda {
   }
 
   bool Server::commitOutputManagerSceneStates(wlr_backend_output_state* pending, size_t pendingLen) {
+#ifdef ANDROMEDA_TEST_IPC
+    if (m_failNextOutputCommitStallMs > 0) {
+      (void)fx_renderer_inject_submit_stall(m_renderer, m_failNextOutputCommitStallMs);
+      m_failNextOutputCommitStallMs = 0;
+      return false;
+    }
+#endif
     std::vector<std::unique_ptr<Output::SceneCommit>> observations;
     observations.reserve(pendingLen);
     for (size_t i = 0; i < pendingLen; ++i) {

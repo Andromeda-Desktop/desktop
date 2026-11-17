@@ -1145,7 +1145,7 @@ namespace andromeda {
 
   Server::~Server() {
     m_stopping = true;
-    fx_renderer_cancel_kick(m_renderer, onOutputManagerApplyDrawn, this);
+    fx_renderer_cancel_kick(m_renderer, onOutputApplyKick, this);
     fx_renderer_cancel_kick(m_renderer, onOutputManagerContextHome, this);
     xkb_keymap_unref(m_compiledKeymap);
     if (m_lockFileManaged) {
