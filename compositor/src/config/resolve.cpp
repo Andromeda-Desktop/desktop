@@ -352,6 +352,9 @@ namespace andromeda {
       if (rule.confinePointer) {
         resolved.confinePointer = rule.confinePointer;
       }
+      if (rule.touchpadScrollFactor) {
+        resolved.touchpadScrollFactor = rule.touchpadScrollFactor;
+      }
       if (rule.allowShortcutsInhibit) {
         resolved.allowShortcutsInhibit = rule.allowShortcutsInhibit;
       }

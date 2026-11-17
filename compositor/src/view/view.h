@@ -172,6 +172,7 @@ namespace andromeda {
     // Effective optional window-rule override used by tearing diagnostics.
     [[nodiscard]] std::optional<bool> tearingRuleOverride();
     [[nodiscard]] bool confinePointer();
+    [[nodiscard]] double touchpadScrollFactor();
     [[nodiscard]] bool allowsShortcutsInhibit();
     // A `background_render` rule applies, or the window declares the `game` content type: while hidden, the window
     // stays unsuspended and gets frame callbacks at its output's refresh rate.

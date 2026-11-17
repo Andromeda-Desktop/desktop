@@ -4980,3 +4980,19 @@ ANDROMEDA_TEST(wideScrollingExtentsLoadUpToTheWideCeiling) {
 }
 
 int main() { return RUN_TESTS(); }
+
+ANDROMEDA_TEST(windowRuleTouchpadScrollFactorLoadsInRange) {
+  const TempConfig file;
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+
+  file.write("[[window_rule]]\ntouchpad_scroll_factor = 2.5\n");
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().windowRules.size(), size_t{1});
+  CHECK(store.config().windowRules[0].touchpadScrollFactor == 2.5);
+
+  file.write("[[window_rule]]\ntouchpad_scroll_factor = 20.0\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules[0].touchpadScrollFactor == 10.0);
+  CHECK(containsDiagnostic(store, "out of range"));
+}
