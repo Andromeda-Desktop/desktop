@@ -1769,7 +1769,9 @@ constexpr EnumOption<ShellThemeMode> kShellThemeModes[] = {
 };
 
 struct WallpaperFavorite {
-  std::string path;
+  std::string path; // Expanded and normalized; the identity used for matching.
+  // Path as written in config (may hold ~ or $VAR), written back on save; empty for favorites added at runtime.
+  std::string configuredPath;
   std::optional<ThemeMode> themeMode;
 
   bool operator==(const WallpaperFavorite&) const = default;
