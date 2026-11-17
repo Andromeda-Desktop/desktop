@@ -191,6 +191,11 @@ namespace andromeda {
   }
 
   void Xwayland::forget(XwaylandWindow* window) {
+    if (m_focusRecord == window->xsurface()) {
+      // wlroots retires the focus record of a destroyed surface itself.
+      m_focusRecord = nullptr;
+      scheduleFocusClear();
+    }
     m_shapes->remove(window->xsurface());
     std::erase_if(m_windows, [window](const std::unique_ptr<XwaylandWindow>& entry) { return entry.get() == window; });
   }
@@ -232,6 +237,21 @@ namespace andromeda {
       window->syncGeometry();
     }
     publishXsettings();
+  }
+
+  void Xwayland::activateSurface(wlr_xwayland_surface* xsurface, bool activated) {
+    wlr_xwayland_surface_activate(xsurface, activated);
+    if (activated) {
+      // wlroots never records an override-redirect window.
+      if (!xsurface->override_redirect) {
+        m_focusRecord = xsurface;
+      }
+    } else if (m_focusRecord == xsurface) {
+      m_focusRecord = nullptr;
+      // Retiring the record moved X core focus to PointerRoot. No native enter follows when nothing takes the
+      // keyboard, so this is the only point that sees X11 lose it.
+      scheduleFocusClear();
+    }
   }
 
   void Xwayland::scheduleFocusClear() {
@@ -304,7 +324,11 @@ namespace andromeda {
   int Xwayland::onFocusClearTimer(void* data) {
     auto* self = static_cast<Xwayland*>(data);
     wlr_surface* focused = self->m_server.seat()->wlr()->keyboard_state.focused_surface;
-    if (focused != nullptr && wlr_xwayland_surface_try_from_wlr_surface(focused) == nullptr) {
+    // An empty seat has left X11 too once the XWM has retired its focus record: PointerRoot would keep X11 clients
+    // believing they still own input. While the record stands, a window is only between two roles.
+    const bool leftXwayland = focused != nullptr ? wlr_xwayland_surface_try_from_wlr_surface(focused) == nullptr
+                                                 : self->m_focusRecord == nullptr;
+    if (leftXwayland) {
       self->clearFocus();
     }
     return 0;

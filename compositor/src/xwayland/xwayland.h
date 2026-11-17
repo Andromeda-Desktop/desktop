@@ -68,9 +68,12 @@ namespace andromeda {
     [[nodiscard]] bool advertiseOutputManager(const wl_client* client, const wl_global* global) const;
     // Republishes the X screen and moves every X11 window to match it.
     void handleOutputLayoutChange();
-    // An Xwayland surface just yielded the keyboard to a native Wayland client. Clear both X focus channels after the
-    // Wayland enter has reached the client, so the native client holds keyboard focus before X11 loses it.
+    // An Xwayland surface just yielded the keyboard, to a native Wayland client or to nothing. Clear both X focus
+    // channels after the Wayland enter has reached the client, so a native client holds keyboard focus first.
     void scheduleFocusClear();
+    // Every wlr_xwayland_surface_activate call goes through here so the XWM focus record can be mirrored: wlroots
+    // parks X core focus at PointerRoot when the record is retired, and keeps the record private.
+    void activateSurface(wlr_xwayland_surface* xsurface, bool activated);
     // Whether the window lists _NET_WM_PING in WM_PROTOCOLS; EWMH allows a ping only then.
     [[nodiscard]] bool supportsPing(const wlr_xwayland_surface* xsurface) const;
 
@@ -113,6 +116,8 @@ namespace andromeda {
     uint32_t m_xsettingsSerial = 0;
     XsettingsValues m_xsettings;
     wl_event_source* m_focusClearTimer = nullptr;
+    // The surface the XWM holds as focused, as wlr_xwayland_surface_activate maintains it.
+    const wlr_xwayland_surface* m_focusRecord = nullptr;
     wl_event_source* m_selectionRefreshTimer = nullptr;
     wl_listener m_serverStart{};
     wl_listener m_clientDestroy{};
