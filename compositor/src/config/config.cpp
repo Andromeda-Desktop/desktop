@@ -7,6 +7,7 @@
 #include "config/fields.h"
 #include "config/keybind_parse.h"
 #include "config/managed_settings.h"
+#include "config/overrides.h"
 #include "config/section.h"
 #include "config/store.h"
 
@@ -116,21 +117,65 @@ namespace andromeda {
       }
     }
 
+
+    // The effect readers read only declared names. Names a runtime override introduces are declared after the file's,
+    // and a name the file already declares as the other kind is dropped, as the include merge drops a pool shadowed by
+    // a preset.
+    void declareOverrideEffects(configmerge::MergeResult& result, const toml::table& overrides) {
+      const auto* effects = overrides.get_as<toml::table>("effects");
+      if (effects == nullptr) {
+        return;
+      }
+      const auto declared = [](const std::vector<configmerge::EffectDeclaration>& declarations, std::string_view name) {
+        return std::ranges::find(declarations, name, &configmerge::EffectDeclaration::name) != declarations.end();
+      };
+      const auto declare = [&](std::string_view kind, std::vector<configmerge::EffectDeclaration>& own,
+                               const std::vector<configmerge::EffectDeclaration>& other, std::string_view otherKind) {
+        const auto* names = effects->get_as<toml::table>(kind);
+        if (names == nullptr) {
+          return;
+        }
+        for (const auto& [name, value] : *names) {
+          if (declared(other, name.str())) {
+            emitDiag(
+                ConfigDiagnostic::Severity::Warning, nullptr,
+                std::format("ignoring effects.{}.{} ({} with this name is declared)", kind, name.str(), otherKind)
+            );
+            if (auto* merged = result.merged["effects"][kind].as_table()) {
+              merged->erase(name.str());
+            }
+            continue;
+          }
+          if (!declared(own, name.str())) {
+            own.push_back({.name = std::string(name.str()), .source = {}});
+          }
+        }
+      };
+      declare("preset", result.presets, result.pools, "pool");
+      declare("pool", result.pools, result.presets, "preset");
+    }
+
   } // namespace
 
-  ConfigParseOutcome parseConfig(Config& out, const std::filesystem::path& rootPath) {
+  ConfigParseOutcome parseConfig(Config& out, toml::table& effective, const std::filesystem::path* rootPath) {
     ConfigStore& store = configStore();
     try {
       // With only a settings file, the settings app's values load over the defaults.
-      std::error_code rootError;
-      auto result = std::filesystem::exists(rootPath, rootError) ? configmerge::mergeWithIncludes(rootPath)
-                                                                 : configmerge::MergeResult{};
-      if (!overlayManagedSettings(result.merged, managedSettingsFile(rootPath))) {
-        result.hadError = true;
+      configmerge::MergeResult result;
+      if (rootPath != nullptr) {
+        std::error_code rootError;
+        if (std::filesystem::exists(*rootPath, rootError)) {
+          result = configmerge::mergeWithIncludes(*rootPath);
+        }
+        if (!overlayManagedSettings(result.merged, managedSettingsFile(*rootPath))) {
+          result.hadError = true;
+        }
       }
       if (const std::string& layers = managedRuntimeOverlay(); !layers.empty()) {
         configmerge::deepMerge(result.merged, toml::parse(layers));
       }
+      configoverrides::overlay(result.merged, store.overrides());
+      declareOverrideEffects(result, store.overrides());
       store.setMissingIncludes(result.missingIncludes);
       for (auto& diagnostic : result.diagnostics) {
         store.addDiagnostic(std::move(diagnostic));
@@ -185,6 +230,7 @@ namespace andromeda {
       }
 
       out = std::move(loaded);
+      effective = std::move(result.merged);
       return ConfigParseOutcome::Loaded;
     } catch (const std::exception& exception) {
       emitDiag(ConfigDiagnostic::Severity::Error, nullptr, std::format("config load error: {}", exception.what()));

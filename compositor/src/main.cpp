@@ -102,7 +102,7 @@ namespace {
         if (spec.group != group) {
           continue;
         }
-        std::string cmd{spec.name};
+        std::string cmd = andromeda::cliName(spec);
         if (!spec.argSpec.empty()) {
           cmd += ' ';
           cmd += spec.argSpec;
@@ -122,6 +122,7 @@ namespace {
 
     heading("Control the running compositor");
     specRows(andromeda::IpcCommandGroup::Control);
+    specRows(andromeda::IpcCommandGroup::Config);
 
     heading("Inspect the running compositor");
     specRows(andromeda::IpcCommandGroup::Inspect);
@@ -256,6 +257,30 @@ int main(int argc, char** argv) {
         }
         return printConfigSchema(json);
       }
+      if (argc >= 3) {
+        const auto* spec = andromeda::findIpcCommand(std::format("config-{}", argv[2]));
+        if (spec != nullptr && spec->group == andromeda::IpcCommandGroup::Config) {
+          if (argc == 4 && isHelpFlag(argv[3])) {
+            std::println("Usage: andromeda {} {}\n\n{}", andromeda::cliName(*spec), spec->argSpec, spec->description);
+            return EXIT_SUCCESS;
+          }
+          std::string arg;
+          bool jf = false;
+          for (int i = 3; i < argc; ++i) {
+            if (isJsonFlag(argv[i])) {
+              jf = true;
+              continue;
+            }
+            arg += arg.empty() ? "" : " ";
+            arg += argv[i];
+          }
+          if (arg.empty()) {
+            printHelp(stderr);
+            return EXIT_FAILURE;
+          }
+          return andromeda::runIpcCommand(*spec, arg, jf);
+        }
+      }
       const bool help = argc >= 3 && isHelpFlag(argv[2]);
       printHelp(help ? stdout : stderr);
       return help ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -321,7 +346,7 @@ int main(int argc, char** argv) {
       return andromeda::runIpcSubscribe(events);
     }
 
-    if (const auto* spec = andromeda::findIpcCommand(argv[1])) {
+    if (const auto* spec = andromeda::findIpcCommand(argv[1]); spec != nullptr && spec->group != andromeda::IpcCommandGroup::Config) {
       if (!spec->takesArg) {
         bool jf = false;
         for (int i = 2; i < argc; ++i) {

@@ -32,6 +32,9 @@ namespace andromeda {
     static nlohmann::json outputCreate(Server& server, std::string_view arg);
     static nlohmann::json outputDestroy(Server& server, std::string_view arg);
     static nlohmann::json configReplace(Server& server, std::string_view arg);
+    static nlohmann::json configSet(Server& server, std::string_view arg);
+    static nlohmann::json configGet(Server& server, std::string_view arg);
+    static nlohmann::json configUnset(Server& server, std::string_view arg);
     // The reply to a settle request. The IPC server holds the request until the compositor is settled.
     static nlohmann::json settle(Server& server, std::string_view arg);
     static nlohmann::json clockFreeze(Server& server, std::string_view arg);
@@ -60,6 +63,8 @@ namespace andromeda {
   // The `andromeda --help` section that lists a command.
   enum class IpcCommandGroup {
     Control,
+    // Spelled `andromeda config <verb>` on the command line; the request names it `config-<verb>`.
+    Config,
     Inspect,
     Harness,
   };
@@ -78,6 +83,8 @@ namespace andromeda {
 
   std::span<const IpcCommandSpec> ipcCommands();
   const IpcCommandSpec* findIpcCommand(std::string_view name);
+  // How the command line spells a command: `config set` for `config-set`, the request name otherwise.
+  std::string cliName(const IpcCommandSpec& spec);
 
   // Splits an output-create argument into the output name and its optional mode, in the config `mode` format
   // ("WIDTHxHEIGHT[@HZ]"). Returns false with `error` set on anything else.

@@ -171,9 +171,11 @@ namespace andromeda {
       return base.keybinds;
     }
 
-    // Reset the store for a load of `rootPath`, then read it if it is a file.
+    // Reset the store for a load of `rootPath`, then read it if it is a file. Without one, runtime overrides are still
+    // read over the defaults, and the outcome stays Missing so the session keeps reporting that no file was found.
     ConfigParseOutcome parseInto(
-        Config& out, const std::filesystem::path& rootPath, const std::vector<std::filesystem::path>& watchPaths
+        Config& out, toml::table& effective, const std::filesystem::path& rootPath,
+        const std::vector<std::filesystem::path>& watchPaths
     ) {
       configStore().beginLoad(watchPaths);
       const std::filesystem::path settingsFile = managedSettingsFile(rootPath);
@@ -181,7 +183,11 @@ namespace andromeda {
       const ConfigPathProbe root = probeConfigPath(rootPath);
       std::error_code settingsError;
       if (root.kind == ConfigPathKind::Missing && !std::filesystem::exists(settingsFile, settingsError)) {
-        return ConfigParseOutcome::Missing;
+        if (configStore().overrides().empty()) {
+          return ConfigParseOutcome::Missing;
+        }
+        return parseConfig(out, effective, nullptr) == ConfigParseOutcome::Loaded ? ConfigParseOutcome::Missing
+                                                                                  : ConfigParseOutcome::Failed;
       }
       if (root.kind == ConfigPathKind::Unavailable) {
         const std::string reason = root.error ? root.error.message() : "not a regular file";
@@ -191,7 +197,28 @@ namespace andromeda {
         );
         return ConfigParseOutcome::Failed;
       }
-      return parseConfig(out, rootPath);
+      return parseConfig(out, effective, &rootPath);
+    }
+
+    std::string
+    errorLines(const std::vector<ConfigDiagnostic>& diagnostics, bool (*selected)(const ConfigDiagnostic&)) {
+      std::string lines;
+      for (const ConfigDiagnostic& diagnostic : diagnostics) {
+        if (!selected(diagnostic)) {
+          continue;
+        }
+        if (!lines.empty()) {
+          lines += '\n';
+        }
+        const std::string location = diagnostic.location();
+        lines += location.empty() ? diagnostic.message : location + ": " + diagnostic.message;
+      }
+      return lines;
+    }
+
+    bool sameDiagnostic(const ConfigDiagnostic& a, const ConfigDiagnostic& b) {
+      return std::tie(a.severity, a.message, a.file, a.line, a.column)
+          == std::tie(b.severity, b.message, b.file, b.line, b.column);
     }
 
   } // namespace
@@ -256,7 +283,8 @@ namespace andromeda {
     animation.scratchpad.enabled = false;
   }
 
-  ConfigReloadResult ConfigStore::commit(Config&& config, std::filesystem::path rootPath, bool fileMissing) {
+  ConfigReloadResult
+  ConfigStore::commit(Config&& config, toml::table&& effective, std::filesystem::path rootPath, bool fileMissing) {
     applyLiveAppearance(config);
     applyAnimationSpeed(config.animation);
     // Computed before the move, and only after the first load: everything is new
@@ -267,6 +295,7 @@ namespace andromeda {
         .effects = m_generation == 0 ? ConfigEffects::everything() : ConfigEffects::between(m_config, config),
     };
     m_config = std::move(config);
+    m_effective = std::move(effective);
     m_rootPath = std::move(rootPath);
     m_fileMissing = fileMissing;
     ++m_generation;
@@ -292,6 +321,7 @@ namespace andromeda {
   bool configHasMissingIncludes() { return configStore().missingIncludes(); }
 
   void ConfigStore::load(const char* explicitPath) {
+    m_overrides.clear();
     ConfigSelection selection;
     if (explicitPath != nullptr) {
       m_implicitCandidates.clear();
@@ -306,7 +336,8 @@ namespace andromeda {
 
     Config loaded;
     loaded.keybinds = baseKeybinds(selection.root, explicitPath == nullptr);
-    const ConfigParseOutcome outcome = parseInto(loaded, selection.root, selection.watchPaths);
+    toml::table effective;
+    const ConfigParseOutcome outcome = parseInto(loaded, effective, selection.root, selection.watchPaths);
     const bool missing = outcome == ConfigParseOutcome::Missing;
     if (missing) {
       if (m_explicitPath) {
@@ -319,7 +350,7 @@ namespace andromeda {
       }
     }
     sortDiagnostics();
-    (void)commit(std::move(loaded), selection.root, missing);
+    (void)commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
   ConfigReloadResult ConfigStore::replace(const std::filesystem::path& explicitPath, std::string& errors) {
@@ -335,7 +366,8 @@ namespace andromeda {
 
     Config loaded;
     loaded.keybinds = baseKeybinds(selection.root, false);
-    const ConfigParseOutcome outcome = parseInto(loaded, selection.root, selection.watchPaths);
+    toml::table effective;
+    const ConfigParseOutcome outcome = parseInto(loaded, effective, selection.root, selection.watchPaths);
 
     const bool missing = outcome == ConfigParseOutcome::Missing;
 
@@ -365,7 +397,7 @@ namespace andromeda {
     m_implicitCandidates.clear();
     setRootPath(selection.root, true);
 
-    return commit(std::move(loaded), selection.root, missing);
+    return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
   ConfigReloadResult ConfigStore::reload() {
@@ -379,7 +411,8 @@ namespace andromeda {
 
     Config loaded;
     loaded.keybinds = baseKeybinds(selection.root, !m_explicitPath);
-    const ConfigParseOutcome outcome = parseInto(loaded, selection.root, selection.watchPaths);
+    toml::table effective;
+    const ConfigParseOutcome outcome = parseInto(loaded, effective, selection.root, selection.watchPaths);
     const bool missing = outcome == ConfigParseOutcome::Missing;
     if (m_explicitPath && missing) {
       emitDiag(
@@ -390,12 +423,75 @@ namespace andromeda {
     if (outcome != ConfigParseOutcome::Loaded) {
       if (!m_explicitPath && !selection.found && missing) {
         kLog.info("no config file found: {}, using defaults", selection.root.string());
-        return commit(std::move(loaded), selection.root, true);
+        return commit(std::move(loaded), std::move(effective), selection.root, true);
       }
       kLog.warn("config reload failed; keeping previous configuration");
       return {};
     }
-    return commit(std::move(loaded), selection.root, false);
+    return commit(std::move(loaded), std::move(effective), selection.root, false);
+  }
+
+  ConfigReloadResult
+  ConfigStore::applyOverrides(toml::table overrides, bool rejectNewDiagnostics, std::string& errors) {
+    // Restored when the overrides are refused, so the active configuration stays exactly as it was.
+    const bool missingIncludes = m_missingIncludes;
+    std::vector<ConfigDiagnostic> diagnostics = m_diagnostics;
+    std::vector<std::filesystem::path> watchPaths = m_watchPaths;
+    toml::table previous = std::exchange(m_overrides, std::move(overrides));
+
+    ConfigSelection selection;
+    if (m_explicitPath) {
+      selection.root = m_rootPath;
+      selection.watchPaths.push_back(selection.root);
+    } else {
+      selection = selectDefaultConfig(m_implicitCandidates);
+    }
+
+    Config loaded;
+    loaded.keybinds = baseKeybinds(selection.root, !m_explicitPath);
+    toml::table effective;
+    const ConfigParseOutcome outcome = parseInto(loaded, effective, selection.root, selection.watchPaths);
+    const bool missing = outcome == ConfigParseOutcome::Missing;
+    if (m_explicitPath && missing) {
+      emitDiag(
+          ConfigDiagnostic::Severity::Error, nullptr, std::format("config file not found: {}", selection.root.string())
+      );
+    }
+    sortDiagnostics();
+
+    bool refused = outcome == ConfigParseOutcome::Failed || (missing && (m_explicitPath || selection.found));
+    if (refused) {
+      errors = errorLines(m_diagnostics, [](const ConfigDiagnostic& diagnostic) {
+        return diagnostic.severity == ConfigDiagnostic::Severity::Error;
+      });
+    } else if (rejectNewDiagnostics) {
+      // Each active diagnostic excuses one identical new one; whatever is left was introduced by the overrides.
+      std::vector<ConfigDiagnostic> active = diagnostics;
+      std::vector<ConfigDiagnostic> introduced;
+      for (const ConfigDiagnostic& diagnostic : m_diagnostics) {
+        const auto match = std::ranges::find_if(active, [&](const ConfigDiagnostic& existing) {
+          return sameDiagnostic(existing, diagnostic);
+        });
+        if (match == active.end()) {
+          introduced.push_back(diagnostic);
+        } else {
+          active.erase(match);
+        }
+      }
+      refused = !introduced.empty();
+      errors = errorLines(introduced, [](const ConfigDiagnostic&) { return true; });
+    }
+    if (refused) {
+      if (errors.empty()) {
+        errors = "config load failed";
+      }
+      m_overrides = std::move(previous);
+      m_diagnostics = std::move(diagnostics);
+      m_missingIncludes = missingIncludes;
+      m_watchPaths = std::move(watchPaths);
+      return {};
+    }
+    return commit(std::move(loaded), std::move(effective), selection.root, missing);
   }
 
   void loadConfig(const char* explicitPath) { configStore().load(explicitPath); }

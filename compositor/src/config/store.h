@@ -2,6 +2,7 @@
 
 #include "config/change.h"
 #include "config/config.h"
+#include "core/toml.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -27,8 +28,16 @@ namespace andromeda {
     // Re-parse. On failure the previous configuration is kept and the generation
     // does not move: a config with a syntax error must not take the session down.
     [[nodiscard]] ConfigReloadResult reload();
+    // Re-reads the current config file with `overrides` in place of the active runtime overrides and commits the
+    // result. A load that fails, or, when `rejectNewDiagnostics`, reports a diagnostic the active configuration did
+    // not, changes nothing and lists why in `errors`, one diagnostic per line.
+    [[nodiscard]] ConfigReloadResult applyOverrides(toml::table overrides, bool rejectNewDiagnostics, std::string& errors);
 
     [[nodiscard]] const Config& config() const { return m_config; }
+    // Values set by `andromeda config set`. Every load lays them over the file and its includes; `load` starts without.
+    [[nodiscard]] const toml::table& overrides() const { return m_overrides; }
+    // The document the active configuration was read from: file, includes, and overrides merged.
+    [[nodiscard]] const toml::table& effective() const { return m_effective; }
     [[nodiscard]] const std::vector<ConfigDiagnostic>& diagnostics() const { return m_diagnostics; }
     // Every path whose change can affect the next reload: implicit lookup
     // candidates, the attempted root, and its includes.
@@ -55,8 +64,9 @@ namespace andromeda {
     // Put diagnostics back into source order. Readers emit in whatever order they run, and unknown-key reports come
     // last (after a section has finished), so without this the list jumps around the file.
     void sortDiagnostics();
-    // Adopt a successfully parsed config and bump the generation.
-    [[nodiscard]] ConfigReloadResult commit(Config&& config, std::filesystem::path rootPath, bool fileMissing);
+    // Adopt a successfully parsed config and the document it was read from, and bump the generation.
+    [[nodiscard]] ConfigReloadResult
+    commit(Config&& config, toml::table&& effective, std::filesystem::path rootPath, bool fileMissing);
     void setMissingIncludes(bool missing) { m_missingIncludes = missing; }
     void setRootPath(std::filesystem::path path, bool explicitPath);
     // True while the packaged config's shortcuts sit under the user's file, which then drops retired shipped lines.
@@ -65,6 +75,8 @@ namespace andromeda {
 
   private:
     Config m_config;
+    toml::table m_overrides;
+    toml::table m_effective;
     std::vector<ConfigDiagnostic> m_diagnostics;
     std::vector<std::filesystem::path> m_watchPaths;
     // Captured before configured environment variables are applied. Reloads
