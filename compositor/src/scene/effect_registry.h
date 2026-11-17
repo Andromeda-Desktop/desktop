@@ -96,6 +96,7 @@ namespace andromeda {
       std::shared_ptr<fx_effect_shader> shader; // null once compilation failed
     };
     void compile(const EffectPreset& preset);
+    static void onRendererHome(void* data, bool ok);
     void referencedNames(std::vector<std::string>& names) const;
     void updateCursorActive();
     // Forgets the deformation program so the next prepare() that needs it compiles afresh.
@@ -103,6 +104,8 @@ namespace andromeda {
 
     Server* m_server = nullptr;
     wlr_renderer* m_renderer = nullptr;
+    // The renderer a prepare() waits on while a render job holds the GL context; null when none waits.
+    wlr_renderer* m_prepareWaiting = nullptr;
     std::map<std::string, Entry, std::less<>> m_programs;
     std::shared_ptr<fx_effect_shader> m_builtinFade;
     std::shared_ptr<fx_effect_shader> m_deformation; // null once compilation failed

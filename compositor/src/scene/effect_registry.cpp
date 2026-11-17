@@ -228,7 +228,22 @@ vec4 animation(vec2 uv) {
     }
   }
 
+  void EffectRegistry::onRendererHome(void* data, bool /*ok*/) {
+    auto* self = static_cast<EffectRegistry*>(data);
+    self->m_prepareWaiting = nullptr;
+    self->prepare(self->m_server->renderer());
+  }
+
   void EffectRegistry::prepare(wlr_renderer* renderer) {
+    // Compiling needs the GL context: while a render job holds it, compile when it returns instead of waiting for it.
+    if (!fx_renderer_context_home(renderer)) {
+      if (m_prepareWaiting != renderer) {
+        m_prepareWaiting = renderer;
+        fx_renderer_kick(renderer, onRendererHome, this);
+      }
+      return;
+    }
+    m_prepareWaiting = nullptr;
     if (renderer != m_renderer) {
       // Programs belong to one GL context. A new renderer starts from nothing.
       m_programs.clear();
