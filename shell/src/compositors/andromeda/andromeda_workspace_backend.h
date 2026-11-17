@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -16,12 +17,11 @@ namespace compositors::andromeda {
   class AndromedaRuntime;
 } // namespace compositors::andromeda
 
-// Workspace metadata from the Andromeda IPC windows event, joined to the ext
-// protocol lists the platform already owns. Workspace order and names come from
-// the ext-workspace list (apply refreshes the per-output cache); window rows
-// come from the IPC stream. Andromeda workspace ids are "<output>:<serial>", the
-// same string in both surfaces, so the cache can key windows to workspaces
-// without a workspace IPC event family.
+// Workspace metadata from the Andromeda IPC windows and workspaces events, joined
+// to the ext protocol lists the platform already owns. Workspace order and names
+// come from the ext-workspace list (apply refreshes the per-output cache); window
+// rows and occupancy come from the IPC stream. Andromeda workspace ids are
+// "<output>:<serial>", the same string in both surfaces.
 class AndromedaWorkspaceBackend final : public compositors::WorkspaceMetadataBackend,
                                         public compositors::andromeda::AndromedaEventHandler {
 public:
@@ -83,6 +83,7 @@ private:
   // refreshes this cache.
   using WorkspaceList = std::vector<std::pair<std::string, std::string>>;
   mutable std::vector<std::pair<std::string, WorkspaceList>> m_workspacesByOutput;
+  std::unordered_set<std::string> m_occupiedWorkspaceIds;
   // IPC window snapshot in wire order: (window id, window).
   std::vector<std::pair<std::string, Window>> m_windows;
   std::optional<std::string> m_focusedWindowId;
