@@ -916,9 +916,13 @@ namespace andromeda {
     aloneRuleDiff(const ResolvedWindowRule& alone, const ResolvedWindowRule& other) const;
     bool applyAloneRuleEffects(const ResolvedWindowRule& delta);
     void revertAloneRuleEffects();
+    // Releases a maximize or scrolling extent this window owns on a shared column before it leaves the layout.
+    void releaseColumnWideAloneEffect();
     // Hands the state the opening configure seeded from the alone rules to the alone effect, or drops it when the
     // window did not open alone after all.
     void settleOpeningAloneState();
+    // Adopts a named scrolling column that only the alone rules select, before the opening attach looks for it.
+    void registerOpeningAloneColumn();
     // Re-applies dynamic effects after a float, pin, scratchpad, or alone transition, because those states select
     // rules. A transition that also moved focus has already refreshed them, so this is a no-op there. Also keeps the
     // minimized state and the client's minimize capability in line with the new state.
@@ -960,6 +964,7 @@ namespace andromeda {
     enum class AloneSeed : uint8_t {
       None,
       Fullscreen,
+      MaximizeToEdges,
       Maximize,
     };
     AloneSeed m_aloneOpeningSeed = AloneSeed::None;

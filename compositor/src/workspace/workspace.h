@@ -149,6 +149,14 @@ namespace andromeda {
     // True when no tiled window other than `view` is in the layout: `view` is the only tiled window, or would be the
     // only one once it attaches. The opening path needs that second form, before the view is in the layout.
     [[nodiscard]] bool isOnlyTiledView(const View* view) const;
+    // True when `view` is alone in its layout: a member of the sole scrolling column, or the only tiled window in
+    // master and dwindle. A floating window never is.
+    [[nodiscard]] bool isAloneInLayout(const View* view) const;
+    // The opening form of isAloneInLayout. An empty layout leaves the view in its own new column; otherwise only a
+    // named scrolling column can join the existing one.
+    [[nodiscard]] bool wouldBeAloneInLayout(
+        const View* view, std::string_view namedScrollingColumn, std::optional<int> order
+    ) const;
     // True when `view` is the only window sharing this workspace: no other tile and no other float. A pinned or
     // scratchpad window neither holds the workspace nor takes it.
     [[nodiscard]] bool isOnlyVisibleView(const View* view) const;
@@ -358,8 +366,7 @@ namespace andromeda {
     // Remembers the last state each occupancy question was answered in, so the answers are only recomputed when they
     // changed.
     bool m_refreshingAloneRules = false;
-    size_t m_lastAloneViewCount = 0;
-    View* m_lastAloneSoleView = nullptr;
+    std::vector<View*> m_lastAloneViews;
     size_t m_lastOnlyWindowCount = 0;
     View* m_lastOnlyWindowView = nullptr;
     uint64_t m_lastAloneGeneration = 0;

@@ -475,6 +475,7 @@ namespace andromeda {
     if (m_workspace != nullptr) {
       Workspace* previous = m_workspace;
       const bool sameGroup = workspace != nullptr && workspace->group() == previous->group();
+      releaseColumnWideAloneEffect();
       m_workspace = nullptr;
       // Keep an empty destination alive until this view has been attached.
       // addView() reconciles the group after the transfer is complete.
@@ -572,6 +573,9 @@ namespace andromeda {
     setWorkspace(target, false, origin);
     if (m_workspace != target) {
       return false;
+    }
+    if (origin == LayoutAttachOrigin::OpeningView && !rule.defaultScratchpad) {
+      registerOpeningAloneColumn();
     }
     target->layoutAttach(this, rule.defaultScrollingExtent, rule.defaultScrollingExtentPx, origin);
     return true;
