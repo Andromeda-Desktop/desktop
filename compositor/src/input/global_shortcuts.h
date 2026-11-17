@@ -99,6 +99,9 @@ namespace andromeda {
       bool operator==(const Binding&) const = default;
     };
     [[nodiscard]] const Binding* match(const ShortcutChord& chord) const;
+    // The app whose live, overridden or granted shortcut other than (app, id) uses the chord.
+    [[nodiscard]] std::optional<std::string>
+    holder(const ShortcutChord& chord, std::string_view app, std::string_view id) const;
     [[nodiscard]] bool live(const Binding& binding) const;
     // Bumps on every change to the live table or to a bound session's shortcut states.
     [[nodiscard]] uint64_t generation() const { return m_generation; }

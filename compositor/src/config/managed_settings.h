@@ -59,6 +59,11 @@ namespace andromeda {
   // config.toml or the built-in set applies again. kUnboundAction ("none") unbinds the chord. Returns false on I/O error.
   bool saveManagedKeybind(const std::filesystem::path& file, std::string_view chord, std::string_view action);
 
+  // Sets [global_shortcuts."<app>"] <id> in the settings file; an empty chord turns the shortcut off. False on I/O error.
+  bool saveManagedGlobalShortcut(
+      const std::filesystem::path& file, std::string_view app, std::string_view id, std::string_view chord
+  );
+
   // The [keybinds] entries of a settings document as written, chord text to action text; table-form entries report
   // their `action`.
   [[nodiscard]] std::vector<std::pair<std::string, std::string>> documentKeybinds(std::string_view document);

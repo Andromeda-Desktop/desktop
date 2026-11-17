@@ -372,6 +372,36 @@ namespace andromeda {
     return found == m_live.end() ? nullptr : &found->second;
   }
 
+  std::optional<std::string>
+  ShortcutRegistry::holder(const ShortcutChord& chord, std::string_view app, std::string_view id) const {
+    const auto other = [&](const std::string& ownerApp, const std::string& ownerId) {
+      return ownerApp != app || ownerId != id;
+    };
+    if (const auto found = m_live.find(chord); found != m_live.end()) {
+      const std::string& owner = m_sessions.at(found->second.session).app;
+      if (other(owner, found->second.id)) {
+        return owner;
+      }
+    }
+    for (const auto& [ownerApp, overrides] : m_overrides) {
+      for (const auto& [ownerId, overridden] : overrides) {
+        if (overridden == chord && other(ownerApp, ownerId)) {
+          return ownerApp;
+        }
+      }
+    }
+    for (const auto& [ownerApp, grants] : m_grants) {
+      const auto overrides = m_overrides.find(ownerApp);
+      for (const auto& [ownerId, granted] : grants) {
+        const bool overridden = overrides != m_overrides.end() && overrides->second.contains(ownerId);
+        if (granted == chord && !overridden && other(ownerApp, ownerId)) {
+          return ownerApp;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
   bool ShortcutRegistry::live(const Binding& binding) const {
     return std::ranges::any_of(m_live, [&](const auto& entry) { return entry.second == binding; });
   }

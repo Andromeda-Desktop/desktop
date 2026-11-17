@@ -1,6 +1,8 @@
 #include "server/global_shortcut_service.h"
 
 #include "config/config.h"
+#include "config/keybind_parse.h"
+#include "config/managed_settings.h"
 #include "core/log.h"
 #include "desktop-unstable-v1-protocol.h"
 #include "input/event_time.h"
@@ -242,6 +244,34 @@ namespace andromeda {
     m_registry.setGrants(*merged);
     sync(monotonicMsec());
     return true;
+  }
+
+  GlobalShortcutService::Assigned
+  GlobalShortcutService::assign(std::string_view app, std::string_view id, std::string_view chordText) {
+    using enum Assigned::Result;
+    std::string text;
+    if (!chordText.empty()) {
+      Keybind bind;
+      if (!parseChord(chordText, bind) || !bind.submap.empty() || bind.modifierOnly
+          || bind.wheel != WheelDirection::None || bind.mouseButton != 0) {
+        return {.result = BadChord, .holder = {}};
+      }
+      const ShortcutChord chord{
+          .modifiers = bind.modifiers | (bind.useMod ? m_server.modKey() : 0U), .keysym = bind.keysym
+      };
+      if (reserved(chord)) {
+        return {.result = Reserved, .holder = {}};
+      }
+      if (auto owner = m_registry.holder(chord, app, id)) {
+        return {.result = InUse, .holder = std::move(*owner)};
+      }
+      text = formatChord(bind);
+    }
+    if (!saveManagedGlobalShortcut(managedSettingsFile(configRootPath()), app, id, text)) {
+      return {.result = WriteFailed, .holder = {}};
+    }
+    m_server.handleConfigReload(reloadConfig());
+    return {.result = Ok, .holder = {}};
   }
 
   void GlobalShortcutService::persist(const std::string& app) {

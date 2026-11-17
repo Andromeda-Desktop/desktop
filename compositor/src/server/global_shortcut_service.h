@@ -41,6 +41,13 @@ namespace andromeda {
     void applyConfig();
     // Forgets the app's grants (all apps when empty) and unbinds its sessions. False when the store write fails.
     bool revoke(std::string_view app);
+    struct Assigned {
+      enum class Result : uint8_t { Ok, BadChord, Reserved, InUse, WriteFailed } result;
+      std::string holder;  // the app that holds the chord, for InUse
+    };
+    // Sets one shortcut's chord (keybind syntax, "" turns it off) in the settings file and reloads. Writes nothing
+    // when the chord is bad, a compositor keybind, or another app's shortcut.
+    Assigned assign(std::string_view app, std::string_view id, std::string_view chord);
     [[nodiscard]] const ShortcutRegistry& registry() const { return m_registry; }
 
     // The approval page: Enter on the last page approves, Enter on another page turns it, anything else denies.

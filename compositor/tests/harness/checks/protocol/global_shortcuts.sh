@@ -2,7 +2,8 @@
 # A global shortcut bound from [global_shortcuts] goes live without a dialog. Its press sends activated and its release
 # deactivated, and neither key event reaches the focused window. A config reload that disables it while the key is held
 # sends deactivated at once, and the later release still stays away from the window. `global-shortcuts --json` shows
-# the disabled shortcut, and `global-shortcuts-revoke` sends revoked to the bound session.
+# the disabled shortcut, `global-shortcuts-assign` rebinds it, refuses another app's chord and turns it off, and
+# `global-shortcuts-revoke` sends revoked to the bound session.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -58,6 +59,19 @@ if ! kill -0 "$pointer" 2> /dev/null; then
 fi
 await_events "$SHELL_LOG" "shortcut talk - 2" 1 "the disabled state"
 wait "$pointer"
+
+# Settings changes keys through global-shortcuts-assign: it writes settings.toml over config.toml and rebinds live.
+"$ANDROMEDA" global-shortcuts-assign "$APP talk Ctrl+F10" > /dev/null
+await_events "$SHELL_LOG" "shortcut talk Ctrl+F10 0" 1 "the assigned chord, live without a reload by hand"
+"$ANDROMEDA" global-shortcuts-assign "org.test.Other$$ talk Ctrl+F11" > /dev/null
+refused=$("$ANDROMEDA" global-shortcuts-assign "$APP talk Ctrl+F11" --json)
+if ! jq -e --arg other "org.test.Other$$" '.assigned == false and .reason == "in_use" and .holder == $other' \
+    <<< "$refused" > /dev/null; then
+  echo "assigning another app's chord was not refused with its holder: $refused"
+  exit 1
+fi
+"$ANDROMEDA" global-shortcuts-assign "$APP talk off" > /dev/null
+await_events "$SHELL_LOG" "shortcut talk - 2" 2 "the shortcut turned off by assign"
 
 "$ANDROMEDA" global-shortcuts --json > "$ANDROMEDA_RUNTIME_DIR/inspect.json"
 if ! jq -e --arg app "$APP" '[.sessions[] | select(.app == $app and .phase == "bound") | .shortcuts[]
