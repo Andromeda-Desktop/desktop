@@ -21,6 +21,9 @@ use crate::proto::{ClientMsg, HolderMsg, WinSize, split_frame};
 pub struct Config {
     /// Run when a client disconnects and leaves running sessions with no owner.
     pub relaunch: Option<Vec<String>>,
+    /// Start each session's program in its own systemd user scope `<scope>-<pid>s<session>.scope`: its memory then
+    /// counts for the app the prefix names, and the OOM killer takes one session, not all of them.
+    pub scope: Option<String>,
     pub relaunch_delay: Duration,
     /// Ask the attached client for a snapshot when the unsnapshotted tail reaches this size.
     pub snapshot_at: usize,
@@ -42,6 +45,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             relaunch: None,
+            scope: None,
             relaunch_delay: Duration::from_secs(1),
             snapshot_at: 4 << 20,
             tail_cap: 8 << 20,
@@ -567,9 +571,34 @@ impl Holder {
         rustix::io::fcntl_setfd(&master, rustix::io::FdFlags::CLOEXEC)?;
         rustix::fs::fcntl_setfl(&master, OFlags::NONBLOCK)?;
 
-        let mut cmd = Command::new(program);
-        cmd.args(&argv[1..])
-            .env_clear()
+        // systemd-run --scope execs the program in this process, so the child pid, session and tty stay the same.
+        let mut cmd = match &self.config.scope {
+            Some(prefix) => {
+                let mut cmd = Command::new("systemd-run");
+                cmd.args([
+                    "--user",
+                    "--scope",
+                    "--quiet",
+                    "--collect",
+                    "--expand-environment=no",
+                    "--slice=app.slice",
+                ])
+                .arg(format!(
+                    "--unit={prefix}-{}s{}.scope",
+                    std::process::id(),
+                    self.next_session
+                ))
+                .arg("--")
+                .args(argv);
+                cmd
+            }
+            None => {
+                let mut cmd = Command::new(program);
+                cmd.args(&argv[1..]);
+                cmd
+            }
+        };
+        cmd.env_clear()
             .envs(
                 env.iter()
                     .filter_map(|kv| kv.split_once('='))
@@ -696,7 +725,10 @@ impl Holder {
                         Some(i) => from + i + usize::from(s.tail[from + i] == 0x07),
                         None => {
                             s.plain_to = s.read_offset();
-                            min + s.tail[min..].iter().position(|&b| b & 0xc0 != 0x80).unwrap_or(0)
+                            min + s.tail[min..]
+                                .iter()
+                                .position(|&b| b & 0xc0 != 0x80)
+                                .unwrap_or(0)
                         }
                     };
                     s.tail.drain(..cut);
@@ -829,7 +861,11 @@ fn hang_up_session(sid: u32) {
         return;
     };
     for entry in dir.flatten() {
-        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
             continue;
         };
         if pid == sid {

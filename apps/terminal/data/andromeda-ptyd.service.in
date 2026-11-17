@@ -4,7 +4,7 @@ Requires=andromeda-ptyd.socket
 PartOf=graphical-session.target
 
 [Service]
-# Shells run in this unit's cgroup; stopping it at log-out hangs them up.
+# Each shell runs in its own Terminal scope; stopping this unit at log-out closes the ptys and hangs them up.
 Slice=app.slice
-ExecStart=@libexecdir@/andromeda/andromeda-ptyd --relaunch systemd-run --user --collect --quiet --slice=app.slice @bindir@/andromeda-terminal
+ExecStart=@libexecdir@/andromeda/andromeda-ptyd --scope app-andromeda-dev.andromeda.Terminal --relaunch systemd-run --user --collect --quiet --slice=app.slice @bindir@/andromeda-terminal
 Restart=no
