@@ -24,6 +24,7 @@ namespace {
     if (placement.arrangement == Arrangement::Tiled) {
       CHECK(placement.fit == Fit::Free || placement.fit == Fit::EdgeMaximized);
       CHECK(!restoresPin(placement.restoreTo));
+      CHECK(placement.restoreTo != RestoreTo::FullWidth);
       CHECK(!placement.snap);
     }
     CHECK(placement.unpinTo != Arrangement::Pinned);

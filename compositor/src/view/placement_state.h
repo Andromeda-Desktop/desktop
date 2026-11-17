@@ -16,8 +16,10 @@ namespace andromeda {
   enum class Fit : uint8_t { Free, FloatMaximized, EdgeMaximized };
 
   // What a later transition brings back. Fullscreen: a float toggle dropped the tile's fullscreen, so re-tiling restores
-  // it. Pinned, EdgeMaximized, PinnedEdgeMaximized: fullscreen covers that state, so leaving fullscreen restores it.
-  enum class RestoreTo : uint8_t { None, Fullscreen, Pinned, EdgeMaximized, PinnedEdgeMaximized };
+  // it. FullWidth: the window left the layout as a full-width tile, or was maximized while floating, so re-tiling makes
+  // its column full width again. Pinned, EdgeMaximized, PinnedEdgeMaximized: fullscreen covers that state, so leaving
+  // fullscreen restores it.
+  enum class RestoreTo : uint8_t { None, Fullscreen, FullWidth, Pinned, EdgeMaximized, PinnedEdgeMaximized };
 
   struct Placement {
     Arrangement arrangement = Arrangement::Floating;
@@ -75,7 +77,8 @@ namespace andromeda {
 
   struct PlacementInput {
     PlacementEvent event;
-    // Map: maps as a tile. EnterFullscreen: fullscreen covers an edge maximize.
+    // Map: maps as a tile. Float: the tile leaves a full-width column. EnterFullscreen: fullscreen covers an edge
+    // maximize.
     bool flag = false;
     // Snap: the spot.
     SnapSpot spot{};
@@ -120,6 +123,9 @@ namespace andromeda {
           return std::nullopt;
         }
         next.arrangement = Arrangement::Floating;
+        if (input.flag && state.restoreTo == RestoreTo::None) {
+          next.restoreTo = RestoreTo::FullWidth;
+        }
         return next;
       case PlacementEvent::Tile:
         if (state.arrangement != Arrangement::Floating && state.arrangement != Arrangement::LayoutFloated) {
@@ -129,7 +135,10 @@ namespace andromeda {
         next.snap.reset();
         next.arrangement = Arrangement::Tiled;
         next.unpinTo = Arrangement::Floating;
-        next.restoreTo = withoutPin(state.restoreTo == RestoreTo::Fullscreen ? RestoreTo::None : state.restoreTo);
+        next.restoreTo = withoutPin(
+            state.restoreTo == RestoreTo::Fullscreen || state.restoreTo == RestoreTo::FullWidth ? RestoreTo::None
+                                                                                                 : state.restoreTo
+        );
         return next;
       case PlacementEvent::RememberFullscreen:
         if (floating) {
@@ -179,8 +188,9 @@ namespace andromeda {
           next.arrangement =
               state.unpinTo == Arrangement::LayoutFloated ? Arrangement::LayoutFloated : Arrangement::Floating;
         }
+        const RestoreTo plain = state.restoreTo == RestoreTo::FullWidth ? RestoreTo::FullWidth : RestoreTo::None;
         next.restoreTo = pin ? (edges ? RestoreTo::PinnedEdgeMaximized : RestoreTo::Pinned)
-                             : (edges ? RestoreTo::EdgeMaximized : RestoreTo::None);
+                             : (edges ? RestoreTo::EdgeMaximized : plain);
         return next;
       }
       case PlacementEvent::ExitFullscreen:
@@ -205,12 +215,18 @@ namespace andromeda {
         if (state.fit == Fit::Free) {
           next.fit = Fit::FloatMaximized;
         }
+        if (state.restoreTo == RestoreTo::None) {
+          next.restoreTo = RestoreTo::FullWidth;
+        }
         return next;
       case PlacementEvent::FloatUnmaximize:
         if (!floating || state.fit == Fit::EdgeMaximized) {
           return std::nullopt;
         }
         next.fit = Fit::Free;
+        if (state.restoreTo == RestoreTo::FullWidth) {
+          next.restoreTo = RestoreTo::None;
+        }
         return next;
       case PlacementEvent::EdgeMaximize:
         next.fit = Fit::EdgeMaximized;
@@ -218,7 +234,8 @@ namespace andromeda {
       case PlacementEvent::EdgeUnmaximize:
       case PlacementEvent::DropMaximize:
         if (input.event == PlacementEvent::DropMaximize) {
-          next.restoreTo = withoutEdges(state.restoreTo);
+          next.restoreTo =
+              withoutEdges(state.restoreTo == RestoreTo::FullWidth ? RestoreTo::None : state.restoreTo);
         } else if (state.fit != Fit::EdgeMaximized) {
           return next;
         }

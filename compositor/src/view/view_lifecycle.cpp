@@ -472,8 +472,8 @@ namespace andromeda {
     const bool ruleMaximized = !openingParented() && rule.defaultMaximize && *rule.defaultMaximize;
     const bool restoredMaximized = honorsRestoredMaximize() && requestedMaximized();
     const bool restoreToEdges = restoredMaximized
-        && tiled()
         && m_workspace != nullptr
+        && (tiled() || m_workspace->layoutMode() == LayoutMode::Floating)
         && m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges;
     if (placed && !assignedScratchpad && (ruleMaximized || (restoredMaximized && !restoreToEdges))) {
       setMaximized(true);

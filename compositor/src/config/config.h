@@ -54,7 +54,7 @@ namespace andromeda {
     All = Tiled | Floating | Pinned,
   };
 
-  // Which maximize state a tiled window's own maximize request enters (client_maximize).
+  // Which maximize state a tiled or floating-layout window's own maximize request enters (client_maximize).
   enum class ClientMaximize : uint8_t {
     Column,
     Edges,

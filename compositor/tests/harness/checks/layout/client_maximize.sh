@@ -205,4 +205,77 @@ wait_for_field client-maximize-override w 1264
 wait_for_field client-maximize-override h 704
 stop_client
 
+
+# A floating layout places windows as floats, but their client maximize follows the workspace policy too.
+cat >> "$ANDROMEDA_CONFIG" <<'EOF'
+layout.mode = "floating"
+EOF
+"$ANDROMEDA" msg config-reload > /dev/null
+readonly STACKING_LOG="$ANDROMEDA_RUNTIME_DIR/client-maximize-floating-layout.log"
+request_maximize client-maximize-floating-layout "$STACKING_LOG"
+wait_for_field client-maximize-floating-layout floating true
+wait_for_field client-maximize-floating-layout maximized_to_edges false
+wait_for_field client-maximize-floating-layout w 1264
+wait_for_field client-maximize-floating-layout h 664
+send_command M "$STACKING_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-floating-layout maximized false
+"$ANDROMEDA" settle > /dev/null
+floating-layout_box() {
+  "$ANDROMEDA" windows --json | jq -r '.[] | select(.title == "client-maximize-floating-layout") | "\(.w)x\(.h)+\(.x)+\(.y)"'
+}
+readonly STACKING_RESTORE=$(floating-layout_box)
+
+sed -i 's/layout.client_maximize = "column"/layout.client_maximize = "edges"/' "$ANDROMEDA_CONFIG"
+"$ANDROMEDA" msg config-reload > /dev/null
+send_command m "$STACKING_LOG" 'maximize-requested$'
+wait_for_field client-maximize-floating-layout maximized_to_edges true
+wait_for_field client-maximize-floating-layout w 1280
+wait_for_field client-maximize-floating-layout h 680
+wait_for_field client-maximize-floating-layout x 0
+wait_for_field client-maximize-floating-layout y 40
+
+# Reloading the policy must still let the client leave its active edges state and restore its original box.
+sed -i 's/layout.client_maximize = "edges"/layout.client_maximize = "column"/' "$ANDROMEDA_CONFIG"
+"$ANDROMEDA" msg config-reload > /dev/null
+send_command M "$STACKING_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-floating-layout maximized_to_edges false
+wait_for_field client-maximize-floating-layout maximized false
+"$ANDROMEDA" settle > /dev/null
+if [[ $(floating-layout_box) != "$STACKING_RESTORE" ]]; then
+  echo "floating-layout unmaximize did not restore $STACKING_RESTORE: $(floating-layout_box)"
+  exit 1
+fi
+
+sed -i 's/layout.client_maximize = "column"/layout.client_maximize = "edges"/' "$ANDROMEDA_CONFIG"
+"$ANDROMEDA" msg config-reload > /dev/null
+# The normal maximize action retains its margin even when the client policy selects the edges.
+"$ANDROMEDA" msg window-toggle-maximize > /dev/null
+wait_for_field client-maximize-floating-layout maximized true
+wait_for_field client-maximize-floating-layout maximized_to_edges false
+wait_for_field client-maximize-floating-layout w 1264
+send_command M "$STACKING_LOG" 'unmaximize-requested$'
+wait_for_field client-maximize-floating-layout maximized false
+stop_client
+
+for restored in REQUEST_MAXIMIZED REQUEST_MAXIMIZED_AFTER_MAP; do
+  title="client-maximize-floating-layout-$restored"
+  log="$ANDROMEDA_RUNTIME_DIR/$title.log"
+  env LOG_CONFIGURES=1 MAXIMIZE_ON_STDIN=1 "$restored=1" RESIZE_FILL_COLOR=0xFF5577AA \
+    "$CLIENT" "$title" 640 480 <&"$control_fd" > "$log" 2>&1 &
+  CLIENT_PID=$!
+  await_lines "$log" mapped 1
+  wait_for_field "$title" maximized_to_edges true
+  wait_for_field "$title" w 1280
+  wait_for_field "$title" h 680
+  if [[ $restored == REQUEST_MAXIMIZED && $(grep -m1 '^configured-size=' "$log") != configured-size=1280x720 ]]; then
+    echo "floating-layout restored maximize did not configure the edges before map: $(cat "$log")"
+    exit 1
+  fi
+  send_command M "$log" 'unmaximize-requested$'
+  wait_for_field "$title" maximized_to_edges false
+  wait_for_field "$title" maximized false
+  stop_client
+done
+
+
 echo "client maximize targets column width by default (1264x704), edges when configured (1280x720) for post-map, restored, and default_maximize-ruled requests, column under a workspace override; unmaximize restores the tile (628x704)"

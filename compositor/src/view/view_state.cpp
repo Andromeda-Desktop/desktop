@@ -426,11 +426,11 @@ namespace andromeda {
       return;
     }
     // The one implementation of the client-request target policy, shared by
-    // handleRequestMaximize and the pointer gesture: a tiled window honors the
-    // workspace's client_maximize, a floating window keeps the default behavior
-    // whatever it says. The gesture passes the direction explicitly because it
+    // handleRequestMaximize and the pointer gesture: tiled windows and windows of
+    // a floating layout honor the workspace's client_maximize; other floats keep
+    // the default behavior. The gesture passes the direction explicitly because it
     // computes the opposite of the current state at its second press.
-    if (tiled() && m_workspace != nullptr) {
+    if (m_workspace != nullptr && (tiled() || m_workspace->layoutMode() == LayoutMode::Floating)) {
       if (maximizeRequestTargetsEdges(
               maximized, maximizedToEdges(), m_workspace->layoutConfig().clientMaximize == ClientMaximize::Edges
           )) {
@@ -775,6 +775,8 @@ namespace andromeda {
     if (maximizedToEdges()) {
       setMaximizedToEdges(false, false);
     }
+    // Read before the re-tile transitions below consume it.
+    const bool refullWidth = !floating && m_placement.restoreTo == RestoreTo::FullWidth;
     const bool unpinning = !floating && placedPinned();
     if (!floating) {
       transitionPlacement({.event = PlacementEvent::Unpin});
@@ -812,14 +814,17 @@ namespace andromeda {
       }
       const wlr_box slot = inLayout ? m_workspace->layout().targetBox(this)
                                     : wlr_box{.x = layoutTargetX(), .y = layoutTargetY(), .width = 0, .height = 0};
+      bool leftFullWidth = false;
       if (m_workspace != nullptr) {
         const int column = m_workspace->layout().columnOf(this);
         if (m_workspace->scrollingLayout() != nullptr && column >= 0) {
-          ScrollingLayout* scrolling = m_workspace->scrollingLayout();
+          // A full-width column keeps its normal width in savedWidthFrac; re-tiling restores that width.
+          const Column& tile = m_workspace->scrollingLayout()->columns()[static_cast<size_t>(column)];
           m_savedScrollingExtentPx.reset();
-          m_savedScrollingExtent = scrolling->widthFraction(column);
+          m_savedScrollingExtent = tile.savedWidthFrac > 0 ? tile.savedWidthFrac : tile.widthFrac;
         }
         if (ColumnOps* ops = m_workspace->layout().columnOps(); column >= 0 && ops != nullptr && ops->isFullWidth(column)) {
+          leftFullWidth = true;
           ops->clearFullWidthState(column);
           setMaximizedState(false);
         }
@@ -827,7 +832,7 @@ namespace andromeda {
       }
       const int keepX = slot.x;
       const int keepY = slot.y;
-      transitionPlacement({.event = PlacementEvent::Float});
+      transitionPlacement({.event = PlacementEvent::Float, .flag = leftFullWidth});
       m_presentedTiledBox = {};
       if (m_workspace != nullptr) {
         setSceneParent(m_workspace->viewLayer(tiled()));
@@ -966,6 +971,9 @@ namespace andromeda {
         m_savedScrollingExtentPx.reset();
         m_savedScrollingExtent.reset();
       }
+    }
+    if (refullWidth && !wantFullscreen && m_workspace != nullptr && placement == TilePlacement::Layout) {
+      setMaximized(true);
     }
     updateForeignState();
     if (Overview* overview = m_server->overview(); overview != nullptr && overview->active()) {
