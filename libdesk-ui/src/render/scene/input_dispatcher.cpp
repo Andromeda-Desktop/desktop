@@ -71,7 +71,10 @@ namespace {
   }
 } // namespace
 
-InputDispatcher::~InputDispatcher() { std::erase(liveDispatchers(), this); }
+InputDispatcher::~InputDispatcher() {
+  m_lifetime.reset();
+  std::erase(liveDispatchers(), this);
+}
 
 InputDispatcher* InputDispatcher::owning(const Node* node) {
   for (; node != nullptr; node = node->parent()) {
@@ -707,7 +710,7 @@ void InputDispatcher::pruneDetachedAreas() {
 }
 
 void InputDispatcher::trackArea(InputArea* area) {
-  area->setDestroyCallback([this](InputArea* a) {
+  area->observeDestruction(m_lifetime, [this](InputArea* a) {
     const bool ownedCursor = m_hoveredArea == a || m_capturedArea == a;
     if (m_capturedArea == a) {
       m_capturedArea = nullptr;

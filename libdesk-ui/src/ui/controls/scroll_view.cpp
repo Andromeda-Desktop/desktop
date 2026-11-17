@@ -546,9 +546,11 @@ void ScrollView::doLayout(Renderer& renderer) {
 
     m_maxScrollOffset = std::max(0.0F, contentWidth - availableW);
     updateTouchScrollAxis();
-    m_scrollbar->setPosition(insetH, insetV + viewportH + Style::scrollbarGap * m_contentScale);
-    m_scrollbar->setVisible(m_showScrollbar);
-    m_scrollbar->update(availableW, contentWidth, m_scrollOffset);
+    if (!m_measuring) {
+      m_scrollbar->setPosition(insetH, insetV + viewportH + Style::scrollbarGap * m_contentScale);
+      m_scrollbar->setVisible(m_showScrollbar);
+      m_scrollbar->update(availableW, contentWidth, m_scrollOffset);
+    }
   } else {
     LayoutConstraints contentConstraints;
     contentConstraints.setExactWidth(availableW);
@@ -586,12 +588,14 @@ void ScrollView::doLayout(Renderer& renderer) {
     const float contentHeight = m_content->height();
     m_maxScrollOffset = std::max(0.0F, contentHeight - viewportH);
     updateTouchScrollAxis();
-    // An overlay bar takes no room and sits at the view's edge, outside a capped content column.
-    const float edgeInset = m_scrollbar->autoHide() ? clipInset : insetH;
-    const float scrollbarX = Style::rtl() ? edgeInset : w - edgeInset - m_scrollbar->reservedThickness();
-    m_scrollbar->setPosition(scrollbarX, insetV);
-    m_scrollbar->setVisible(m_showScrollbar);
-    m_scrollbar->update(viewportH, contentHeight, m_scrollOffset);
+    if (!m_measuring) {
+      // An overlay bar takes no room and sits at the view's edge, outside a capped content column.
+      const float edgeInset = m_scrollbar->autoHide() ? clipInset : insetH;
+      const float scrollbarX = Style::rtl() ? edgeInset : w - edgeInset - m_scrollbar->reservedThickness();
+      m_scrollbar->setPosition(scrollbarX, insetV);
+      m_scrollbar->setVisible(m_showScrollbar);
+      m_scrollbar->update(viewportH, contentHeight, m_scrollOffset);
+    }
   }
 
   if (m_boundState != nullptr) {
@@ -635,7 +639,13 @@ void ScrollView::doLayout(Renderer& renderer) {
 }
 
 LayoutSize ScrollView::doMeasure(Renderer& renderer, const LayoutConstraints& constraints) {
-  return measureByLayout(renderer, constraints);
+  // A measure pass lays out the content but must leave the scrollbar and scroll range of the last arrange alone.
+  const float maxScrollOffset = m_maxScrollOffset;
+  m_measuring = true;
+  const LayoutSize measured = measureByLayout(renderer, constraints);
+  m_measuring = false;
+  m_maxScrollOffset = maxScrollOffset;
+  return measured;
 }
 
 void ScrollView::doArrange(Renderer& renderer, const LayoutRect& rect) { arrangeByLayout(renderer, rect); }

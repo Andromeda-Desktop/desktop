@@ -144,6 +144,7 @@ private:
   float m_scrollOffset = 0.0F;
   float m_targetScrollOffset = 0.0F;
   float m_maxScrollOffset = 0.0F;
+  bool m_measuring = false;
   float m_contentScale = 1.0F;
   float m_scrollWheelStep = Style::scrollWheelStep;
   float m_dragStartPosition = 0.0F;
