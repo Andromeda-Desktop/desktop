@@ -7,6 +7,19 @@
 #include "server/server.h"
 #include "wlr.h"
 
+namespace {
+  wlr_drag* pointerDrag(wlr_seat* seat) {
+    wlr_drag* drag = seat->drag;
+    return drag != nullptr
+            && drag->started
+            && !drag->dropped
+            && !drag->cancelling
+            && drag->grab_type == WLR_DRAG_GRAB_KEYBOARD_POINTER
+        ? drag
+        : nullptr;
+  }
+} // namespace
+
 namespace andromeda {
 
   Seat::Seat(Server& server) : m_server(&server) {
@@ -39,6 +52,11 @@ namespace andromeda {
 
   Seat::~Seat() {
     m_toplevelDrags.reset();
+    for (auto* listener : {&m_dragFocus, &m_dragDrop, &m_dragModifierClientDestroy}) {
+      if (listener->link.next != nullptr) {
+        wl_list_remove(&listener->link);
+      }
+    }
     wl_list_remove(&m_requestCursor.link);
     wl_list_remove(&m_requestSetShape.link);
     wl_list_remove(&m_pointerFocusChange.link);
@@ -48,6 +66,51 @@ namespace andromeda {
     wl_list_remove(&m_startDrag.link);
     if (m_dragDestroy.link.next != nullptr) {
       wl_list_remove(&m_dragDestroy.link);
+    }
+  }
+
+  void Seat::onDragFocus(wl_listener* listener, void* /*data*/) {
+    Seat* self = wl_container_of(listener, self, m_dragFocus);
+    self->handleDragFocus();
+  }
+
+  void Seat::onDragDrop(wl_listener* listener, void* /*data*/) {
+    Seat* self = wl_container_of(listener, self, m_dragDrop);
+    self->handleDragDrop();
+  }
+
+  void Seat::onDragModifierClientDestroy(wl_listener* listener, void* /*data*/) {
+    Seat* self = wl_container_of(listener, self, m_dragModifierClientDestroy);
+    self->handleDragModifierClientDestroy();
+  }
+
+  void Seat::handleDragFocus() {
+    const auto* drag = pointerDrag(m_seat);
+    updateDragModifierClient(drag != nullptr ? drag->focus_client : nullptr);
+    notifyPointerModifiers();
+  }
+
+  void Seat::handleDragDrop() { updateDragModifierClient(nullptr); }
+
+  void Seat::handleDragModifierClientDestroy() {
+    wl_list_remove(&m_dragModifierClientDestroy.link);
+    m_dragModifierClientDestroy.link = {};
+    m_dragModifierClient = nullptr;
+  }
+
+  void Seat::updateDragModifierClient(wlr_seat_client* client) {
+    if (m_dragModifierClient == client) {
+      return;
+    }
+    if (m_dragModifierClient != nullptr) {
+      wl_list_remove(&m_dragModifierClientDestroy.link);
+      m_dragModifierClientDestroy.link = {};
+      sendPointerModifiers(m_dragModifierClient, true);
+    }
+    m_dragModifierClient = client;
+    if (client != nullptr) {
+      m_dragModifierClientDestroy.notify = onDragModifierClientDestroy;
+      wl_signal_add(&client->events.destroy, &m_dragModifierClientDestroy);
     }
   }
 
@@ -122,13 +185,8 @@ namespace andromeda {
       return true;
     }
     // A native pointer drag clears ordinary pointer focus.
-    const auto* drag = m_seat->drag;
-    return drag != nullptr
-        && drag->started
-        && !drag->dropped
-        && !drag->cancelling
-        && drag->grab_type == WLR_DRAG_GRAB_KEYBOARD_POINTER
-        && drag->seat_client == client;
+    const auto* drag = pointerDrag(m_seat);
+    return drag != nullptr && drag->seat_client == client;
   }
 
   void Seat::handleRequestCursor(void* data) {
@@ -187,15 +245,17 @@ namespace andromeda {
   }
 
   void Seat::notifyPointerModifiers(bool clear) {
-    // Pointer focus includes the implicit button grab, not just the hit-tested
-    // surface. Never grant keyboard focus or deliver keys to a hovered panel.
+    // Data drags clear ordinary pointer focus. Their current destination still
+    // needs modifiers, without receiving keyboard focus or key events.
+    const auto* drag = pointerDrag(m_seat);
+    wlr_seat_client* client = drag != nullptr ? drag->focus_client : m_seat->pointer_state.focused_client;
     if (!clear && m_server->sessionLocked()) {
-      wlr_surface* surface = m_seat->pointer_state.focused_surface;
+      wlr_surface* surface = drag != nullptr ? drag->focus : m_seat->pointer_state.focused_surface;
       if (surface == nullptr || wlr_session_lock_surface_v1_try_from_wlr_surface(surface) == nullptr) {
         return;
       }
     }
-    sendPointerModifiers(m_seat->pointer_state.focused_client, clear);
+    sendPointerModifiers(client, clear);
   }
 
   void Seat::sendPointerModifiers(wlr_seat_client* client, bool clear) {
@@ -257,11 +317,24 @@ namespace andromeda {
 
   void Seat::handleStartDrag(void* data) {
     auto* drag = static_cast<wlr_drag*>(data);
+    updateDragModifierClient(nullptr);
+    for (auto* listener : {&m_dragFocus, &m_dragDrop}) {
+      if (listener->link.next != nullptr) {
+        wl_list_remove(&listener->link);
+        listener->link = {};
+      }
+    }
     if (m_dragDestroy.link.next != nullptr) {
       wl_list_remove(&m_dragDestroy.link);
     }
     m_dragDestroy.notify = onDragDestroy;
     wl_signal_add(&drag->events.destroy, &m_dragDestroy);
+    m_dragFocus.notify = onDragFocus;
+    wl_signal_add(&drag->events.focus, &m_dragFocus);
+    m_dragDrop.notify = onDragDrop;
+    wl_signal_add(&drag->events.drop, &m_dragDrop);
+    updateDragModifierClient(pointerDrag(m_seat) != nullptr ? drag->focus_client : nullptr);
+    notifyPointerModifiers();
     m_server->cursor()->handleDataDragStarted();
     m_toplevelDrags->start(drag);
     if (drag->icon == nullptr) {
@@ -276,6 +349,11 @@ namespace andromeda {
   }
 
   void Seat::handleDragDestroy() {
+    updateDragModifierClient(nullptr);
+    wl_list_remove(&m_dragFocus.link);
+    m_dragFocus.link = {};
+    wl_list_remove(&m_dragDrop.link);
+    m_dragDrop.link = {};
     wl_list_remove(&m_dragDestroy.link);
     m_dragDestroy.link.next = nullptr;
     m_dragDestroy.link.prev = nullptr;
