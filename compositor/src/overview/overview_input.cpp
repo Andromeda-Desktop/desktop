@@ -353,6 +353,7 @@ namespace andromeda {
     if (Output* output = m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), lx, ly));
         output != m_pointerOutput) {
       m_pointerOutput = output;
+      activateLiveTarget();
       applyProgress();
     }
     if (m_middlePressed && from == ov::HoldSource::pointer()) {

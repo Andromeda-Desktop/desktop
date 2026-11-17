@@ -450,6 +450,8 @@ namespace andromeda {
     // The window a focus or close action would act on right now: the focused view of the active workspace on the
     // output holding the cursor. Null when that workspace is empty, which is also when those actions do nothing.
     [[nodiscard]] View* liveTargetView() const;
+    // The overview holds the keyboard, but the live target keeps its focus chrome and active state.
+    void activateLiveTarget();
     [[nodiscard]] std::array<float, 4> cardBorderColor(const Card& card, const View* liveTarget) const;
     // Type-to-filter: `m_filter` dims the cards whose title and app id miss it and moves the selection onto a match.
     [[nodiscard]] bool cardMatches(const Card& card) const;

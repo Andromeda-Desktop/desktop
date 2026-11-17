@@ -865,6 +865,14 @@ namespace andromeda {
     }
   }
 
+  void Overview::activateLiveTarget() {
+    if (View* target = liveTargetView()) {
+      target->placementRoot()->inputDelegate()->applySeatFocus(false, false);
+    } else {
+      m_server->deactivateViews();
+    }
+  }
+
   View* Overview::liveTargetView() const {
     const Workspace* workspace = preferredWorkspace();
     return workspace != nullptr ? workspace->focusedView() : nullptr;
@@ -1041,6 +1049,7 @@ namespace andromeda {
     }
 
     m_server->clearKeyboardFocus();
+    activateLiveTarget();
     m_server->cursor()->clearPointerFocus();
     m_server->cursor()->clearConstraint();
 
