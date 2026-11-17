@@ -1,0 +1,4 @@
+{
+  global: noctalia_shell_main_v1;
+  local: *;
+};

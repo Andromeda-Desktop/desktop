@@ -1031,14 +1031,15 @@ noctalia_core_dep = declare_dependency(
 
 # The shell and its library tree; `andromeda-shell` loads it with dlopen except in greeter mode. -Bsymbolic binds the
 # module to its own libdesk-ui copy, never the launcher's; -z defs keeps an undefined symbol a link error, as it was
-# for the executable, instead of a dlopen failure at start.
+# for the executable, instead of a dlopen failure at start. The version script exports only the entry point.
 noctalia_shell_module = shared_module('andromeda-shell',
   sources: files('src/app/shell_main.cpp') + _protocol_headers,
   dependencies: _noctalia_dependencies,
   include_directories: _noctalia_inc,
   cpp_args: _noctalia_cpp_args,
   objects: noctalia_core_lib.extract_all_objects(recursive: false),
-  link_args: ['-Wl,-Bsymbolic', '-Wl,-z,defs'],
+  link_args: ['-Wl,-Bsymbolic', '-Wl,-z,defs', '-Wl,--version-script=' + meson.current_source_dir() / 'src/app/shell_module.map'],
+  link_depends: files('src/app/shell_module.map'),
   name_prefix: '',
   install: true,
   install_dir: get_option('libdir') / 'noctalia',
