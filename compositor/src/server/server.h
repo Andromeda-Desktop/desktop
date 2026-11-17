@@ -208,6 +208,9 @@ namespace andromeda {
     [[nodiscard]] wlr_compositor* compositor() const { return m_compositor; }
     // Null when general.xwayland is off or the Xwayland server could not be created.
     [[nodiscard]] Xwayland* xwayland() const { return m_xwayland.get(); }
+    // The keymap compiled from `names`, shared by every keyboard that resolves to the same names: each keyboard device
+    // otherwise compiles and keeps its own copy. Returns a new reference the caller unrefs, or null on failure.
+    xkb_keymap* compileKeymap(const XkbNames& names);
     [[nodiscard]] EisInput* eisInput() const { return m_eisInput.get(); }
     [[nodiscard]] InputCapture* inputCapture() const { return m_inputCapture.get(); }
     [[nodiscard]] bool physicalInputDevice(const wlr_input_device* device) const;
@@ -999,6 +1002,9 @@ namespace andromeda {
     wlr_scene_tree* m_snapAssistTree = nullptr;
 
     bool m_nested = false;
+    // Last keymap compileKeymap built and the names it came from.
+    XkbNames m_compiledKeymapNames;
+    xkb_keymap* m_compiledKeymap = nullptr;
     bool m_stopping = false;
     bool m_applicationScopesRequired = false;
     bool m_sessionShutdownAvailable = false;

@@ -1115,6 +1115,7 @@ namespace andromeda {
 
   Server::~Server() {
     m_stopping = true;
+    xkb_keymap_unref(m_compiledKeymap);
     if (m_lockFileManaged) {
       unlink((std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/running").c_str());
     }
