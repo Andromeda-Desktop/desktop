@@ -1318,7 +1318,10 @@ void SettingsWindow::onKeyboardEvent(const KeyboardEvent& event) {
       && (m_actionsMenuPopup == nullptr || !m_actionsMenuPopup->isOpen())
       && isSettingsSearchTypingKey(event)) {
     m_inputDispatcher.setFocus(m_settingsSearchInput->inputArea());
-    m_inputDispatcher.keyEvent(event.sym, event.utf32, event.modifiers, event.pressed, event.preedit);
+    // "/" is the field's keycap hint: it only focuses, every other key also types.
+    if (event.sym != XKB_KEY_slash || event.modifiers != 0) {
+      m_inputDispatcher.keyEvent(event.sym, event.utf32, event.modifiers, event.pressed, event.preedit);
+    }
     requestSceneInvalidation(m_sceneRoot.get(), m_surface.get());
     return;
   }
