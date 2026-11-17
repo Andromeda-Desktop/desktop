@@ -171,6 +171,34 @@ namespace andromeda {
           strict(regexField("title", &W::titlePatterns)),
           strict(regexField("xdg_tag", &W::xdgTagPatterns)),
           strict(registry::choice("content_type", &W::matchContentType, contentTypes())),
+          registry::checked<W>(
+              "layout", KeyDescription("enum_or_array").withValues(registry::choiceNames(layoutModes())),
+              [](const toml::node& node, const std::string& path, W& target, registry::ReadContext&) {
+                const auto read = [&](const toml::node& entry) {
+                  const auto name = entry.value<std::string_view>();
+                  const auto& modes = layoutModes();
+                  const auto mode = name ? std::ranges::find(modes, *name, &registry::Choice<LayoutMode>::name)
+                                         : modes.end();
+                  if (mode == modes.end()) {
+                    warnAt(
+                        entry.source(), "ignoring {} (expected {})", path,
+                        registry::quotedList(registry::choiceNames(modes))
+                    );
+                    return false;
+                  }
+                  target.matchLayouts.push_back(mode->value);
+                  return true;
+                };
+                if (const auto* array = node.as_array()) {
+                  bool accepted = true;
+                  for (const auto& entry : *array) {
+                    accepted = read(entry) && accepted;
+                  }
+                  return accepted;
+                }
+                return read(node);
+              }
+          ),
           strict(boolean("is_focused", &W::matchFocused)),
           strict(boolean("is_floating", &W::matchFloating)),
           strict(boolean("is_maximized_to_edges", &W::matchMaximizedToEdges)),

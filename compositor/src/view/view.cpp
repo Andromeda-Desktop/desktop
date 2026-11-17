@@ -491,6 +491,7 @@ namespace andromeda {
         setSceneParent(m_server->pinnedTree());
       }
       setOnActiveWorkspace(true);
+      refreshStateRuleEffects();
     }
     notifyOutputScale();
     if (mapped()

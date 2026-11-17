@@ -4819,6 +4819,58 @@ ANDROMEDA_TEST(titleBarModesUseStrictVocabulary) {
   CHECK(containsDiagnostic(store, "unknown key appearance.title_bar.enabled"));
 }
 
+ANDROMEDA_TEST(windowRuleLayoutAcceptsNamesAndArraysAndRejectsInvalidSelectors) {
+  const TempConfig file;
+  file.write(R"(
+[[window_rule]]
+match.layout = "floating"
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["scrolling", "dwindle", "master"]
+title_bar = "off"
+[[window_rule]]
+match.layout = []
+opacity = 0.5
+)");
+  auto& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK(store.diagnostics().empty());
+  CHECK_EQ(store.config().windowRules.size(), size_t{3});
+  CHECK(store.config().windowRules[0].matchLayouts == std::vector{LayoutMode::Floating});
+  CHECK(
+      store.config().windowRules[1].matchLayouts
+      == (std::vector{LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master})
+  );
+  CHECK(store.config().windowRules[2].matchLayouts.empty());
+  file.write(R"(
+[[window_rule]]
+match.layout = "unknown"
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["floating", "invalid"]
+title_bar = "forced"
+[[window_rule]]
+match.layout = ["floating", true]
+title_bar = "forced"
+[[window_rule]]
+match.layout = 1
+title_bar = "forced"
+[[window_rule]]
+match.layout = { mode = "floating" }
+title_bar = "forced"
+[[window_rule]]
+match.layout = "Stacking"
+title_bar = "forced"
+)");
+  CHECK(store.reload().success);
+  CHECK(store.config().windowRules.empty());
+  for (int index = 0; index < 6; ++index) {
+    CHECK(containsDiagnostic(store, "window_rule[" + std::to_string(index) + "].match.layout"));
+  }
+  CHECK(!containsDiagnostic(store, "unknown key"));
+}
+
 ANDROMEDA_TEST(titleBarRuleChoicesAreStrict) {
   const TempConfig file;
   file.write(R"(

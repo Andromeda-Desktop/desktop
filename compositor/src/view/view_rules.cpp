@@ -590,6 +590,7 @@ namespace andromeda {
         .onlyWindow = isOnlyWindowOnWorkspace(),
         .dialog = shellParent() != nullptr,
         .castTarget = m_server->viewCaptured(*this),
+        .layout = m_workspace != nullptr ? std::optional{m_workspace->layoutMode()} : std::nullopt,
     };
   }
 

@@ -139,6 +139,7 @@ namespace andromeda {
             || lhs.matchPinned != rhs.matchPinned
             || lhs.matchScratchpad != rhs.matchScratchpad
             || lhs.matchAlone != rhs.matchAlone
+            || lhs.matchLayouts != rhs.matchLayouts
             || lhs.matchOnlyWindow != rhs.matchOnlyWindow
             || lhs.matchDialog != rhs.matchDialog
             || lhs.matchCastTarget != rhs.matchCastTarget

@@ -395,6 +395,7 @@ namespace andromeda {
     // A float joins no layout, so nothing below would mark the workspace for a pass; occupancy questions need one.
     markArrange();
     m_group->reconcileDynamic();
+    view->refreshStateRuleEffects();
   }
 
   View* Workspace::removeView(View* view, bool reconcile) {
@@ -2766,6 +2767,9 @@ namespace andromeda {
       if (m_focusedView != nullptr) {
         scrolling->ensureVisible(scrolling->columnOf(m_focusedView), scrollViewportExtent());
       }
+    }
+    for (View* view : m_views) {
+      view->refreshStateRuleEffects();
     }
     markArrange();
   }

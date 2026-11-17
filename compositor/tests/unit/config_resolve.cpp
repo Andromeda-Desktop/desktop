@@ -1090,6 +1090,44 @@ ANDROMEDA_TEST(windowRulesMatchEmptyIdentityOnlyWhenTheClientSetIt) {
   CHECK(!emptyTitleOnly.defaultMaximize);
 }
 
+ANDROMEDA_TEST(windowRulesMatchLayout) {
+  Config config;
+  WindowRule all;
+  all.opacity = 0.8;
+  config.windowRules.push_back(all);
+  WindowRule floating;
+  floating.matchLayouts = {LayoutMode::Floating};
+  floating.titleBar = andromeda::TitleBarMode::Forced;
+  floating.opacity = 0.5;
+  config.windowRules.push_back(floating);
+  WindowRule tiled;
+  tiled.matchLayouts = {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master};
+  tiled.titleBar = andromeda::TitleBarMode::Off;
+  config.windowRules.push_back(tiled);
+
+  const auto resolve = [&](std::optional<LayoutMode> layout, bool floating) {
+    return andromeda::resolveWindowRules(
+        config, "app", std::nullopt, std::nullopt, ContentType::None, {.floating = floating, .layout = layout}, 0
+    );
+  };
+  for (const bool floating : {false, true}) {
+    for (const auto mode : {LayoutMode::Scrolling, LayoutMode::Dwindle, LayoutMode::Master}) {
+      const auto rule = resolve(mode, floating);
+      CHECK_EQ(rule.titleBar, andromeda::TitleBarMode::Off);
+      CHECK_EQ(rule.opacity, 0.8);
+    }
+    const auto rule = resolve(LayoutMode::Floating, floating);
+    CHECK_EQ(rule.titleBar, andromeda::TitleBarMode::Forced);
+    CHECK_EQ(rule.opacity, 0.5);
+  }
+  const auto unassigned = resolve(std::nullopt, false);
+  CHECK(!unassigned.titleBar);
+  CHECK_EQ(unassigned.opacity, 0.8);
+
+  config.windowRules.back().matchLayouts.clear();
+  CHECK_EQ(resolve(LayoutMode::Floating, true).titleBar, andromeda::TitleBarMode::Off);
+}
+
 ANDROMEDA_TEST(windowRulesMatchIsAlone) {
   Config config;
 

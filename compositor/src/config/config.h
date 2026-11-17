@@ -404,6 +404,8 @@ namespace andromeda {
     bool dialog = false;
     // A live image-copy session reads this window's capture source: a window screencast or screenshot.
     bool castTarget = false;
+    // The layout of the window's workspace; none while it has no workspace.
+    std::optional<LayoutMode> layout = std::nullopt;
 
     [[nodiscard]] bool operator==(const WindowRuleState& other) const = default;
   };
@@ -432,6 +434,7 @@ namespace andromeda {
     RegexPatterns titlePatterns;
     RegexPatterns xdgTagPatterns;
     std::optional<ContentType> matchContentType;
+    std::vector<LayoutMode> matchLayouts;
     std::optional<bool> matchFocused;
     std::optional<bool> matchFloating;
     std::optional<bool> matchMaximizedToEdges;
@@ -509,6 +512,7 @@ namespace andromeda {
           && titlePatterns == other.titlePatterns
           && xdgTagPatterns == other.xdgTagPatterns
           && matchContentType == other.matchContentType
+          && matchLayouts == other.matchLayouts
           && matchFocused == other.matchFocused
           && matchFloating == other.matchFloating
           && matchMaximizedToEdges == other.matchMaximizedToEdges

@@ -267,6 +267,10 @@ namespace andromeda {
       if (rule.matchContentType && *rule.matchContentType != contentType) {
         continue;
       }
+      if (!rule.matchLayouts.empty()
+          && (!state.layout || std::ranges::find(rule.matchLayouts, *state.layout) == rule.matchLayouts.end())) {
+        continue;
+      }
       if (rule.matchFocused && *rule.matchFocused != state.focused) {
         continue;
       }
