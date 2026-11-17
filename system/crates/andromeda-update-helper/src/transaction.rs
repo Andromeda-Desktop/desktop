@@ -217,6 +217,23 @@ pub fn upgrade(
                 let deps: Vec<String> = missing.iter().map(|m| m.depend().to_string()).collect();
                 anyhow!("{NEEDS_SYSTEM}: {}", deps.join(", "))
             }
+            (_, Some(PrepareData::UnsatisfiedDeps(missing))) => {
+                let deps: Vec<String> = missing
+                    .iter()
+                    .map(|m| match m.causing_pkg() {
+                        Some(by) => format!("{by} breaks {} needed by {}", m.depend(), m.target()),
+                        None => format!("{} needs {}", m.target(), m.depend()),
+                    })
+                    .collect();
+                anyhow!("unmet dependencies: {}", deps.join("; "))
+            }
+            (_, Some(PrepareData::ConflictingDeps(conflicts))) => {
+                let pairs: Vec<String> = conflicts
+                    .iter()
+                    .map(|c| format!("{} conflicts with {}", c.package1().name(), c.package2().name()))
+                    .collect();
+                anyhow!("conflicting packages: {}", pairs.join("; "))
+            }
             _ => anyhow!("prepare: {e}"),
         })?;
         if scope == Scope::Andromeda {
