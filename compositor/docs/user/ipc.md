@@ -220,7 +220,9 @@ Disconnect, malformed or oversized input, or 250 ms without a snapshot closes th
 
 `andromeda config validate` checks a configuration and `andromeda config schema` lists the keys it accepts, both without a running compositor.
 
-`andromeda config-replace <path>` loads and watches a different configuration file in the running compositor. The path must be absolute. On success, the new file and its includes replace the previous watch set, and later reloads use the new file. A missing, unreadable, or invalid file returns an error and leaves the active configuration and watch set unchanged. Warnings do not reject a replacement.
+`andromeda config-replace <path>` loads and watches a different configuration file in the running compositor. The path must be absolute. On success, the new file and its includes replace the previous watch set, and later reloads use the new file. A missing, unreadable, or invalid file returns an error and leaves the active configuration and watch set unchanged. Warnings do not reject a replacement. [Runtime overrides](configuration.md#runtime-overrides) stay applied over the new file.
+
+`andromeda config set`, `config get`, and `config unset` manage [runtime overrides](configuration.md#runtime-overrides). Their requests are `{"cmd":"config-set","arg":"<key> <value>"}`, `{"cmd":"config-get","arg":"<key>"}`, and `{"cmd":"config-unset","arg":"<key>"}` (or `"--all"`). The key ends at the first space.
 
 ## Virtual outputs
 
