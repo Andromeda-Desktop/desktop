@@ -59,7 +59,6 @@ namespace {
   // Write guard: keep optimistic local volume briefly and ignore echoes within epsilon.
   constexpr auto kVolumeWriteGuardDuration = std::chrono::milliseconds(400);
   constexpr auto kVolumeWriteGuardEpsilon = 0.02F;
-  constexpr auto kInitialSyncTimeout = std::chrono::seconds(1);
   constexpr auto kReconnectInitialDelay = std::chrono::milliseconds(250);
   constexpr auto kReconnectMaxDelay = std::chrono::seconds(5);
 
@@ -812,7 +811,7 @@ PipeWireService::PipeWireService() {
   }
 
   pw_loop_enter(m_loop);
-  if (!connectRemote(true)) {
+  if (!connectRemote()) {
     kLog.warn("PipeWire daemon unavailable at startup; retrying in the background");
     scheduleReconnect();
   }
@@ -831,7 +830,7 @@ PipeWireService::~PipeWireService() {
   pw_deinit();
 }
 
-bool PipeWireService::connectRemote(bool waitForSync) {
+bool PipeWireService::connectRemote() {
   if (m_core != nullptr || m_context == nullptr || m_loop == nullptr) {
     return m_core != nullptr;
   }
@@ -864,32 +863,6 @@ bool PipeWireService::connectRemote(bool waitForSync) {
     setConnection(Lost{});
   }
 
-  if (waitForSync && syncing()) {
-    const auto syncDeadline = std::chrono::steady_clock::now() + kInitialSyncTimeout;
-    while (syncing()) {
-      const auto remaining =
-          std::chrono::duration_cast<std::chrono::milliseconds>(syncDeadline - std::chrono::steady_clock::now());
-      if (remaining <= std::chrono::milliseconds::zero()) {
-        break;
-      }
-      const int result = pw_loop_iterate(m_loop, static_cast<int>(remaining.count()));
-      if (result == -EINTR) {
-        continue;
-      }
-      if (result < 0) {
-        kLog.warn("initial daemon sync failed: {}", spa_strerror(result));
-        setConnection(Lost{});
-        break;
-      }
-    }
-    if (syncing()) {
-      kLog.warn(
-          "initial daemon sync did not complete within {}ms",
-          std::chrono::duration_cast<std::chrono::milliseconds>(kInitialSyncTimeout).count()
-      );
-    }
-  }
-
   if (connectionLost()) {
     disconnectRemote(true);
     return false;
@@ -897,12 +870,6 @@ bool PipeWireService::connectRemote(bool waitForSync) {
 
   m_reconnectDelay = kReconnectInitialDelay;
 
-  if (auto* sync = std::get_if<Syncing>(&m_connection); sync == nullptr) {
-    enumDefaultAudioDeviceParams();
-  } else if (waitForSync) {
-    sync->announced = true;
-    announceConnection();
-  }
   while (pw_loop_iterate(m_loop, 0) > 0) {
   }
   if (connectionLost()) {
@@ -910,11 +877,6 @@ bool PipeWireService::connectRemote(bool waitForSync) {
     return false;
   }
   rebuildState();
-
-  const auto* sink = defaultSink();
-  if (sink != nullptr) {
-    kLog.info("default sink \"{}\" vol={:.0F}%", sink->description, sink->volume * 100.0F);
-  }
   return true;
 }
 
@@ -1033,12 +995,9 @@ void PipeWireService::onCoreInfo(const pw_core_info* info) {
 void PipeWireService::onCoreDone(std::uint32_t id, int sequence) {
   const auto* sync = std::get_if<Syncing>(&m_connection);
   if (id == PW_ID_CORE && sync != nullptr && sequence == sync->sequence) {
-    const bool announced = sync->announced;
     setConnection(Connected{});
     enumDefaultAudioDeviceParams();
-    if (!announced) {
-      announceConnection();
-    }
+    announceConnection();
   }
 }
 
@@ -1053,6 +1012,8 @@ void PipeWireService::announceConnection() {
   } else {
     kLog.info("connected to daemon {} (client library {})", m_serverVersion, pw_get_library_version());
   }
+  // hasConnected() turns true here even when no node changed.
+  emitChanged();
 }
 
 void PipeWireService::onCoreError(std::uint32_t id, int sequence, int result, const char* message) {
@@ -1104,7 +1065,7 @@ void PipeWireService::dispatch() {
     if (disconnected != nullptr
         && disconnected->retryAt.has_value()
         && std::chrono::steady_clock::now() >= *disconnected->retryAt
-        && !connectRemote(false)) {
+        && !connectRemote()) {
       scheduleReconnect();
     }
 

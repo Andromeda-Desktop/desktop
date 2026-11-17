@@ -11,8 +11,6 @@ class AudioOsd {
 public:
   void bindOverlay(OsdOverlay& overlay);
   void setSoundPlayer(class SoundPlayer* soundPlayer);
-  void primeFromService(const PipeWireService& service);
-  void suppressFor(std::chrono::milliseconds duration);
 
   void showOutput(std::uint32_t sinkId, float volume, bool muted, bool playFeedback = true);
   void showOutputName(std::string name, bool muted);
@@ -28,7 +26,10 @@ public:
   void onAudioStateChanged(const PipeWireService& service);
 
 private:
+  void suppressFor(std::chrono::milliseconds duration);
+
   OsdOverlay* m_overlay = nullptr;
+  bool m_hasConnected = false;
   OsdKind m_currentKind = OsdKind::Volume; // what the visible OSD is showing, for live mute correction
   std::uint32_t m_lastSinkId = 0;
   float m_lastSinkVolume = -1.0F;

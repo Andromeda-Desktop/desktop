@@ -1070,9 +1070,6 @@ void Application::initNotificationAndOsd() {
   m_audioOsd.bindOverlay(m_osdOverlay);
   m_audioOsd.setSoundPlayer(m_soundPlayer.get());
   m_screenshotService.setSoundPlayer(m_soundPlayer.get());
-  if (pipewire() != nullptr) {
-    m_audioOsd.primeFromService(*pipewire());
-  }
   m_brightnessOsd.bindOverlay(m_osdOverlay);
   if (m_brightnessService != nullptr) {
     m_brightnessOsd.primeFromService(*m_brightnessService);
@@ -1377,7 +1374,6 @@ void Application::initWidgetControllersAndCallbacks() {
   m_timeService.setDeadlineProvider([this] { return m_wallpaper.nextAutomationDeadline(); });
 
   if (pipewire() != nullptr) {
-    m_audioOsd.suppressFor(std::chrono::milliseconds(2000));
     pipewire()->setChangeCallback([this, shouldRefreshControlCenter] {
       if (m_pipewireSpectrum != nullptr) {
         m_pipewireSpectrum->handleAudioStateChanged();
@@ -1397,6 +1393,8 @@ void Application::initWidgetControllersAndCallbacks() {
         m_privacyOsd.onPrivacyStateChanged(*pipewire());
       }
     });
+    // The first sync can already have completed while the service was created, before this callback existed.
+    m_audioOsd.onAudioStateChanged(*pipewire());
     // Headphones out of the jack: the music stops instead of moving to the speakers (docs/system-health.md §12.2).
     pipewire()->setHeadphonesUnpluggedCallback([this] {
       if (mpris() != nullptr) {
