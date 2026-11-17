@@ -16,6 +16,16 @@
 
 int main() {
   try {
+    // Library worker threads must inherit the termination signal mask.
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGTERM);
+    if (sigprocmask(SIG_BLOCK, &mask, nullptr) < 0) {
+      std::fprintf(stderr, "main: sigprocmask failed: %s\n", std::strerror(errno));
+      return 1;
+    }
+
     xdpu::Loop loop;
     auto config = xdpu::loadConfig();
 
@@ -37,15 +47,6 @@ int main() {
       config = newCfg;
       portal.onConfigChanged(oldCfg, newCfg);
     });
-
-    sigset_t mask;
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGINT);
-    sigaddset(&mask, SIGTERM);
-    if (sigprocmask(SIG_BLOCK, &mask, nullptr) < 0) {
-      std::fprintf(stderr, "main: sigprocmask failed: %s\n", std::strerror(errno));
-      return 1;
-    }
 
     const int sigFd = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
     if (sigFd < 0) {
