@@ -412,6 +412,7 @@ namespace andromeda {
           .finish_state = nullptr,
           .move_state = nullptr,
           .commit = nullptr,
+          .merge_state = nullptr,
       };
       if (!wlr_surface_synced_init(
               &managed->synced, surface, &syncedImplementation, &managed->pending, &managed->current

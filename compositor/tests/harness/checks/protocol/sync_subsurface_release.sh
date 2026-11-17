@@ -8,5 +8,5 @@ readonly LOG="$ANDROMEDA_RUNTIME_DIR/sync-subsurface.log"
 
 "$ANDROMEDA_SYNC_SUBSURFACE_CLIENT" > "$LOG" 2>&1 &
 await_lines "$LOG" 'applied ' 1
-grep -qx 'queued middle=released' "$LOG" || { cat "$LOG"; fail "superseded queued buffer was held until the parent commit"; }
-grep -qx 'applied first=released middle=released' "$LOG" || { cat "$LOG"; fail "applied commit did not release the earlier buffers"; }
+grep -qx 'queued middle=released' "$LOG" || { cat "$LOG"; echo "superseded queued buffer was held until the parent commit"; exit 1; }
+grep -qx 'applied first=released middle=released' "$LOG" || { cat "$LOG"; echo "applied commit did not release the earlier buffers"; exit 1; }

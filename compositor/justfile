@@ -33,7 +33,10 @@ configure m=mode install_prefix=prefix:
         args+=(-Dpkg_config_path="$HOME/.local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}")
         ;;
       debug)
-        args+=(--buildtype=debug -Dwerror=true)
+        # The harness tests the wlroots and libliftoff the package ships: the wraps with our patches, as pkg/PKGBUILD.
+        args+=(--buildtype=debug -Dwerror=true --wrap-mode=default --force-fallback-for=wlroots-0.20,libliftoff)
+        args+=(-Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false)
+        args+=(-Dwlroots:renderers=gles2)
         ;;
       *)
         # Recipes that build take the mode as their first argument, so a stray
@@ -44,11 +47,19 @@ configure m=mode install_prefix=prefix:
         exit 2
         ;;
     esac
+    # Meson applies a wrap's diff_files only on download: drop the patched checkouts when a wrap or patch changes.
+    stamp=$(cat subprojects/*.wrap subprojects/packagefiles/* | sha256sum)
+    if [[ ! -f subprojects/.patches.stamp || $(<subprojects/.patches.stamp) != "$stamp" ]]; then
+        rm -rf subprojects/wlroots subprojects/libliftoff
+        echo "$stamp" > subprojects/.patches.stamp
+    fi
     if [[ -d "build-{{m}}" ]]; then
         # A build directory rejects an option added since it was configured
         # until Meson re-reads the option file, so regenerate and try again.
+        # Subproject options are accepted only by a fresh setup, so a newly forced wrap regenerates the directory.
         meson setup "build-{{m}}" "${args[@]}" --reconfigure \
-          || { meson setup "build-{{m}}" --reconfigure && meson setup "build-{{m}}" "${args[@]}" --reconfigure; }
+          || { meson setup "build-{{m}}" --reconfigure && meson setup "build-{{m}}" "${args[@]}" --reconfigure; } \
+          || meson setup "build-{{m}}" "${args[@]}" --wipe
     else
         meson setup "build-{{m}}" "${args[@]}"
     fi

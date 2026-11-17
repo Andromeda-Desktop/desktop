@@ -140,6 +140,53 @@ index 75faed1..96fc2a8 100644
  	struct wlr_surface_state *cached = calloc(1, sizeof(*cached));
  	if (!cached) {
  		goto error;
+diff --git a/types/wlr_layer_shell_v1.c b/types/wlr_layer_shell_v1.c
+index 2d83849..823f594 100644
+--- a/types/wlr_layer_shell_v1.c
++++ b/types/wlr_layer_shell_v1.c
+@@ -428,9 +428,18 @@ static void surface_synced_move_state(void *_dst, void *_src) {
+ 	src->committed = 0;
+ }
+ 
++static void surface_synced_merge_state(void *_dst, void *_src) {
++	struct wlr_layer_surface_v1_state *dst = _dst, *src = _src;
++	uint32_t committed = dst->committed | src->committed;
++	*dst = *src;
++	dst->committed = committed;
++	src->committed = 0;
++}
++
+ static const struct wlr_surface_synced_impl surface_synced_impl = {
+ 	.state_size = sizeof(struct wlr_layer_surface_v1_state),
+ 	.move_state = surface_synced_move_state,
++	.merge_state = surface_synced_merge_state,
+ };
+ 
+ static void layer_shell_handle_get_layer_surface(struct wl_client *wl_client,
+diff --git a/types/wlr_pointer_constraints_v1.c b/types/wlr_pointer_constraints_v1.c
+index 51a2304..6df4c61 100644
+--- a/types/wlr_pointer_constraints_v1.c
++++ b/types/wlr_pointer_constraints_v1.c
+@@ -184,11 +184,19 @@ static void surface_synced_commit(struct wlr_surface_synced *synced) {
+ 	}
+ }
+ 
++static void surface_synced_merge_state(void *_dst, void *_src) {
++	struct wlr_pointer_constraint_v1_state *dst = _dst;
++	uint32_t committed = dst->committed;
++	surface_synced_move_state(_dst, _src);
++	dst->committed |= committed;
++}
++
+ static const struct wlr_surface_synced_impl surface_synced_impl = {
+ 	.state_size = sizeof(struct wlr_pointer_constraint_v1_state),
+ 	.init_state = surface_synced_init_state,
+ 	.finish_state = surface_synced_finish_state,
+ 	.move_state = surface_synced_move_state,
++	.merge_state = surface_synced_merge_state,
+ 	.commit = surface_synced_commit,
+ };
+ 
 diff --git a/types/wlr_presentation_time.c b/types/wlr_presentation_time.c
 index c4366f0..48c5673 100644
 --- a/types/wlr_presentation_time.c
@@ -175,3 +222,26 @@ index 062fa69..a4fd1e4 100644
  };
  
  static void subsurface_handle_parent_destroy(struct wl_listener *listener,
+diff --git a/types/xdg_shell/wlr_xdg_surface.c b/types/xdg_shell/wlr_xdg_surface.c
+index 8a252d2..2a248e3 100644
+--- a/types/xdg_shell/wlr_xdg_surface.c
++++ b/types/xdg_shell/wlr_xdg_surface.c
+@@ -381,9 +381,18 @@ static void surface_synced_move_state(void *_dst, void *_src) {
+ 	src->committed = 0;
+ }
+ 
++static void surface_synced_merge_state(void *_dst, void *_src) {
++	struct wlr_xdg_surface_state *dst = _dst, *src = _src;
++	uint32_t committed = dst->committed | src->committed;
++	*dst = *src;
++	dst->committed = committed;
++	src->committed = 0;
++}
++
+ static const struct wlr_surface_synced_impl surface_synced_impl = {
+ 	.state_size = sizeof(struct wlr_xdg_surface_state),
+ 	.move_state = surface_synced_move_state,
++	.merge_state = surface_synced_merge_state,
+ };
+ 
+ struct wlr_xdg_surface *wlr_xdg_surface_try_from_wlr_surface(
