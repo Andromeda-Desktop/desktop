@@ -1881,11 +1881,14 @@ namespace andromeda {
     updateOptimizedBlur(outputArea);
 
     // Layer trees are output-local; pin them to the scene-output origin.
+    // The clip keeps a layer surface or its popup that overflows this output off the neighbouring output.
     for (auto& m_layerTree : m_layerTrees) {
       wlr_scene_node_set_position(&m_layerTree->node, m_sceneOutput->x, m_sceneOutput->y);
+      wlr_scene_tree_set_clip(m_layerTree, &layerArea);
     }
     for (auto* popupTree : m_layerPopupTrees) {
       wlr_scene_node_set_position(&popupTree->node, m_sceneOutput->x, m_sceneOutput->y);
+      wlr_scene_tree_set_clip(popupTree, &layerArea);
     }
 
     // Content roots are clipped to this output's layout box, not repositioned: views are laid out in layout

@@ -38,6 +38,7 @@ namespace andromeda {
     static void onStartDrag(wl_listener* listener, void* data);
     static void onDragDestroy(wl_listener* listener, void* data);
 
+    bool ownsPointerCursor(const wlr_seat_client* client) const;
     void handleRequestCursor(void* data);
     void handleRequestSetShape(void* data);
     void handlePointerFocusChange(void* data);

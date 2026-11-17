@@ -726,8 +726,6 @@ namespace andromeda {
     wlr_seat_pointer_notify_clear_focus(m_server->seat()->wlr());
   }
 
-  void Cursor::warpTo(double lx, double ly) { warpTo(lx, ly, true); }
-
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
   bool Cursor::warpToView(View& view) {
@@ -770,7 +768,10 @@ namespace andromeda {
   }
 
   void Cursor::warpTo(double lx, double ly, bool allowFocusChange) {
-    noteActivity();
+    // A compositor warp is not pointer activity: a cursor hidden by typing or inactivity stays hidden.
+    if (!m_cursorHidden) {
+      noteActivity();
+    }
     const double oldX = m_cursor->x;
     const double oldY = m_cursor->y;
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
@@ -1263,11 +1264,16 @@ namespace andromeda {
       return;
     }
 
-    // Scene hit testing lets covered chrome stay covered by windows and panels.
+    // Scene hit testing lets covered chrome stay covered by windows and panels. Mod+left and Mod+right on the frame
+    // grab the window as they do on its content.
+    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
+    const bool modGrab = modHeld && (button == BTN_LEFT || button == BTN_RIGHT);
     if (m_server->exclusiveKeyboardLayer() == nullptr
         && isPassthrough()
         && !wlr_seat_pointer_has_grab(m_server->seat()->wlr())) {
-      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y)) {
+      if (const auto hit = m_server->ssdFrameAt(m_cursor->x, m_cursor->y); hit && modGrab) {
+        view = hit->view;
+      } else if (hit) {
         View* target = hit->view;
         clearPointerFocus();
         if (button == BTN_LEFT && hit->part == SsdFramePart::Resize) {
@@ -1320,7 +1326,6 @@ namespace andromeda {
       return;
     }
 
-    const bool modHeld = (m_server->keyboardModifiers() & m_server->modKey()) != 0;
     if (button == BTN_LEFT && modHeld && view != nullptr) {
       m_server->focusView(view, FocusReason::Grab);
       beginMove(view, button);

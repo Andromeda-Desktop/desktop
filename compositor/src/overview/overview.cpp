@@ -1423,9 +1423,8 @@ namespace andromeda {
       m_overviewEventPending = false;
       m_server->notifyOverviewChanged();
     }
-    // Card layout runs only while the overview moves; effects sync every tick and their time moves only on the card
-    // output's effect frames.
-    if (m_active && effectRegistry().active()) {
+    // Cards mirror their views' animation slots, whose timelines keep running after card layout settles.
+    if (m_active) {
       syncCardEffects();
     }
     for (const auto& state : m_outputs) {

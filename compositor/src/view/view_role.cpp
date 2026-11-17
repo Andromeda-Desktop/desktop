@@ -405,7 +405,11 @@ namespace andromeda {
     lx = std::clamp(lx, kMinCoordinate, kMaxCoordinate);
     ly = std::clamp(ly, kMinCoordinate, kMaxCoordinate);
     const bool moving = m_posX.animating() || m_posY.animating() || m_layoutMotion || openingInsetActive();
-    if (moving && m_xConfigured.x != INT_MIN) {
+    if (scheduledFullscreen()) {
+      // Wine leaves fullscreen when the fullscreen size arrives with the pre-fullscreen position of a moving window.
+      lx = std::clamp(region.toX(layoutTargetX()), kMinCoordinate, kMaxCoordinate);
+      ly = std::clamp(region.toY(layoutTargetY()), kMinCoordinate, kMaxCoordinate);
+    } else if (moving && m_xConfigured.x != INT_MIN) {
       lx = m_xConfigured.x;
       ly = m_xConfigured.y;
     }
