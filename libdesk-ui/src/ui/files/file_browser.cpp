@@ -687,7 +687,10 @@ namespace {
       };
       if (searchMode()) {
         setCollapsed(false);
-        show(t, false);
+        show(t, true);
+        for (std::size_t i = 0; i < kids.size(); ++i) {
+          show(kids[i].get(), i == 0); // only the view switch stays beside the open search
+        }
         if (search != nullptr && *search != nullptr) {
           show(*search, true);
         }
@@ -991,7 +994,6 @@ void FileBrowser::syncSearchMode() {
       node->setParticipatesInLayout(visible);
     }
   };
-  show(m_ui->tools, !on);
   show(m_ui->searchBack, on);
   show(m_ui->searchClear, on);
   if (m_ui->searchField != nullptr) {
