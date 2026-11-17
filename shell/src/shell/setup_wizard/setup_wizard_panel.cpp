@@ -1739,7 +1739,10 @@ bool SetupWizardPanel::handleGlobalKey(std::uint32_t sym, std::uint32_t modifier
     return true;
   }
   if ((sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter) && modifiers == 0) {
-    if (m_primaryButton != nullptr && m_primaryButton->enabled()) {
+    // A disabled Continue hands Enter to Set Up Later, so the keyboard never stalls on an optional page.
+    const bool primaryOn = m_primaryButton != nullptr && m_primaryButton->enabled();
+    const bool laterOn = m_laterButton != nullptr && m_laterButton->visible();
+    if (primaryOn || laterOn) {
       advance(1);
     }
     return true;
