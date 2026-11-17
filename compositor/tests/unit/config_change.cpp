@@ -893,6 +893,8 @@ ANDROMEDA_TEST(vrrPolicyTracksFullscreenOnlyWhenRequested) {
   CHECK(andromeda::vrrEnabled(andromeda::VrrMode::Always, true));
   CHECK(!andromeda::vrrEnabled(andromeda::VrrMode::Fullscreen, false));
   CHECK(andromeda::vrrEnabled(andromeda::VrrMode::Fullscreen, true));
+  CHECK(!andromeda::vrrEnabled(andromeda::VrrMode::FullscreenAny, false));
+  CHECK(andromeda::vrrEnabled(andromeda::VrrMode::FullscreenAny, true));
 }
 
 ANDROMEDA_TEST(hdrPolicyTracksEligibilityForEachMode) {

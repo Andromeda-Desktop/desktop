@@ -62,6 +62,8 @@ namespace andromeda {
 
   // Vocabularies outputs and window rules share.
   [[nodiscard]] const registry::Choices<VrrMode>& vrrModes();
+  // Outputs only: vrrModes() plus "fullscreen_any", which looks at every workspace of the output.
+  [[nodiscard]] const registry::Choices<VrrMode>& outputVrrModes();
   [[nodiscard]] const registry::Choices<HdrMode>& hdrModes();
   [[nodiscard]] const registry::Choices<ContentType>& contentTypes();
   // Shared by [layout.tabs] and window rules.

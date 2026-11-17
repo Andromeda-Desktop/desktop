@@ -223,6 +223,8 @@ namespace andromeda {
     Disabled,
     Always,
     Fullscreen,
+    // Like Fullscreen, but counts fullscreen windows on every workspace of the output, not only the active one.
+    FullscreenAny,
   };
 
   // Whether a keyboard layout change applies to the whole session or only to the
@@ -296,7 +298,7 @@ namespace andromeda {
     return "off";
   }
   [[nodiscard]] constexpr bool vrrEnabled(VrrMode mode, bool fullscreen) {
-    return mode == VrrMode::Always || (mode == VrrMode::Fullscreen && fullscreen);
+    return mode == VrrMode::Always || ((mode == VrrMode::Fullscreen || mode == VrrMode::FullscreenAny) && fullscreen);
   }
   [[nodiscard]] constexpr bool hdrEnabled(HdrMode mode, bool fullscreen, bool autoEligible) {
     return mode == HdrMode::On

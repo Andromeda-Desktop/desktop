@@ -95,6 +95,8 @@ namespace andromeda {
     // has committed the exit. Output-wide fullscreen policies such as HDR and
     // VRR must cover both transitions.
     [[nodiscard]] bool hasFullscreenView(const View* ignored = nullptr) const;
+    // Like hasFullscreenView, but across every workspace of this output, active or not.
+    [[nodiscard]] bool hasFullscreenViewOnAnyWorkspace() const;
 
     void arrangeLayers();
     // Record that something on this output became stale; flushed at the top of the next frame. Schedules that frame, so
