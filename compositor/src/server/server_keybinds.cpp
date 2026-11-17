@@ -1,4 +1,5 @@
 #include "config/config.h"
+#include "core/log.h"
 #include "input/cursor.h"
 #include "input/input_capture.h"
 #include "input/keyboard.h"
@@ -463,6 +464,36 @@ namespace andromeda {
       m_activeSubmaps.pop_back();
       notifySubmapChanged();
     }
+  }
+
+  static_assert(shortcut_mod::kShift == WLR_MODIFIER_SHIFT && shortcut_mod::kCtrl == WLR_MODIFIER_CTRL
+                && shortcut_mod::kAlt == WLR_MODIFIER_ALT && shortcut_mod::kLogo == WLR_MODIFIER_LOGO);
+
+  void Server::loadGlobalShortcuts() {
+    if (auto grants = m_globalShortcutStore.load()) {
+      m_globalShortcuts.setGrants(std::move(*grants));
+    } else {
+      constexpr Logger kLog("global-shortcuts");
+      kLog.warn(
+          "{} is unsafe or malformed; approvals this session are not saved and the file is left as is",
+          m_globalShortcutStore.path().string()
+      );
+    }
+    applyGlobalShortcutConfig();
+  }
+
+  void Server::applyGlobalShortcutConfig() {
+    ShortcutOverrides overrides;
+    for (const auto& [app, shortcuts] : config().globalShortcuts) {
+      auto& target = overrides[app];
+      for (const auto& [id, chord] : shortcuts) {
+        target[id] = chord ? std::optional<ShortcutChord>(ShortcutChord{
+                                 .modifiers = chord->modifiers | (chord->useMod ? modKey() : 0U), .keysym = chord->keysym
+                             })
+                           : std::nullopt;
+      }
+    }
+    m_globalShortcuts.setOverrides(std::move(overrides));
   }
 
 } // namespace andromeda

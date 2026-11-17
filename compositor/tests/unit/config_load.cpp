@@ -5298,3 +5298,36 @@ ANDROMEDA_TEST(activeDocumentReportsDefaultsAndOverrides) {
   CHECK(store.applyOverrides({}, false, errors).success);
 }
 
+
+ANDROMEDA_TEST(globalShortcutsTableReadsChordsAndReportsReload) {
+  const TempConfig file;
+  file.write(R"(
+[global_shortcuts."org.example.Player"]
+play = "Mod+Shift+P"
+next = ""
+broken = "Mod+Nonsense"
+wheel = "Mod+WheelUp"
+)");
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  const auto& player = store.config().globalShortcuts.at("org.example.Player");
+  CHECK_EQ(player.size(), size_t{2});
+  CHECK(player.at("play").has_value());
+  CHECK(player.at("play")->useMod);
+  CHECK(player.at("play")->modifiers != 0);
+  CHECK_EQ(player.at("play")->keysym, uint32_t{XKB_KEY_p});
+  CHECK(!player.at("next").has_value());
+  CHECK(containsDiagnostic(store, "ignoring global_shortcuts.'org.example.Player'.'broken' (bad chord 'Mod+Nonsense')"));
+  CHECK(containsDiagnostic(store, "ignoring global_shortcuts.'org.example.Player'.'wheel' (bad chord 'Mod+WheelUp')"));
+
+  file.write(R"(
+[global_shortcuts."org.example.Player"]
+play = "Ctrl+Alt+P"
+)");
+  const andromeda::ConfigReloadResult changed = store.reload();
+  CHECK(changed.success);
+  CHECK(changed.change.globalShortcuts);
+  CHECK(!store.config().globalShortcuts.at("org.example.Player").at("play")->useMod);
+  CHECK(!store.reload().change.globalShortcuts);
+}

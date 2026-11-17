@@ -293,6 +293,7 @@ namespace andromeda {
         .events = true,
         .input = true,
         .keybinds = true,
+        .globalShortcuts = true,
         .outputs = true,
         .windowRules = true,
         .layerRules = true,
@@ -318,6 +319,7 @@ namespace andromeda {
         .events = before.events != after.events,
         .input = before.input != after.input,
         .keybinds = before.keybinds != after.keybinds,
+        .globalShortcuts = before.globalShortcuts != after.globalShortcuts,
         .outputs = before.outputs != after.outputs,
         .windowRules = before.windowRules != after.windowRules,
         .layerRules = before.layerRules != after.layerRules,
@@ -352,6 +354,7 @@ namespace andromeda {
     add(events, "events");
     add(input, "input");
     add(keybinds, "keybinds");
+    add(globalShortcuts, "global shortcuts");
     add(outputs, "outputs");
     add(windowRules, "window rules");
     add(layerRules, "layer rules");

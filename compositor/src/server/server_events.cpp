@@ -345,6 +345,9 @@ namespace andromeda {
       if (result.change.keybinds) {
         m_bindCooldowns.clear();
       }
+      if (result.change.globalShortcuts || result.change.general) {
+        applyGlobalShortcutConfig();
+      }
       if (result.change.scratchpads && m_scratchpadManager != nullptr) {
         m_scratchpadManager->reconcileConfig();
       }

@@ -1,0 +1,106 @@
+#include "input/global_shortcut_store.h"
+
+#include "util/private_state_file.h"
+
+#include <cstdlib>
+#include <nlohmann/json.hpp>
+
+namespace andromeda {
+
+  namespace {
+    constexpr size_t kMaxApps = 128;
+    constexpr size_t kMaxIdsPerApp = 64;
+    constexpr size_t kMaxNameBytes = 256;
+    constexpr size_t kMaxStoreBytes = 256 * 1024;
+    constexpr std::string_view kLockName = ".global-shortcuts.lock";
+
+    bool validName(std::string_view name) { return !name.empty() && name.size() <= kMaxNameBytes; }
+
+    std::optional<ShortcutGrants> parse(const std::string& bytes) {
+      const auto data = nlohmann::json::parse(bytes, nullptr, false);
+      if (!data.is_object() || data.size() != 2 || !data.contains("version") || !data["version"].is_number_unsigned()
+          || data["version"] != 1 || !data.contains("grants") || !data["grants"].is_object()
+          || data["grants"].size() > kMaxApps) {
+        return std::nullopt;
+      }
+      ShortcutGrants grants;
+      for (const auto& [app, shortcuts] : data["grants"].items()) {
+        if (!validName(app) || !shortcuts.is_object() || shortcuts.empty() || shortcuts.size() > kMaxIdsPerApp) {
+          return std::nullopt;
+        }
+        auto& target = grants[app];
+        for (const auto& [id, text] : shortcuts.items()) {
+          if (!validName(id) || !text.is_string()) {
+            return std::nullopt;
+          }
+          // describeChord writes the portal trigger syntax, so the portal parser reads it back.
+          const auto chord = parsePortalTrigger(text.get<std::string>());
+          if (!chord) {
+            return std::nullopt;
+          }
+          target[id] = *chord;
+        }
+      }
+      return grants;
+    }
+  } // namespace
+
+  GlobalShortcutStore::GlobalShortcutStore(std::filesystem::path path) : m_path(std::move(path)) {}
+
+  std::filesystem::path GlobalShortcutStore::defaultPath() {
+    if (const char* state = std::getenv("XDG_STATE_HOME"); state != nullptr && *state != '\0') {
+      return std::filesystem::path(state) / "andromeda/global-shortcuts.json";
+    }
+    if (const char* home = std::getenv("HOME"); home != nullptr && *home != '\0') {
+      return std::filesystem::path(home) / ".local/state/andromeda/global-shortcuts.json";
+    }
+    return {};
+  }
+
+  std::optional<ShortcutGrants> GlobalShortcutStore::load() {
+    const auto file = private_state::read(m_path, kMaxStoreBytes);
+    std::optional<ShortcutGrants> grants;
+    if (std::holds_alternative<private_state::Missing>(file)) {
+      grants.emplace();
+    } else if (const auto* bytes = std::get_if<std::string>(&file)) {
+      grants = parse(*bytes);
+    }
+    m_status = grants ? Status::Loaded : Status::Unreadable;
+    return grants;
+  }
+
+  bool GlobalShortcutStore::save(const ShortcutGrants& grants) {
+    if (m_status != Status::Loaded || grants.size() > kMaxApps) {
+      return false;
+    }
+    auto data = nlohmann::json{{"version", 1}, {"grants", nlohmann::json::object()}};
+    for (const auto& [app, shortcuts] : grants) {
+      if (shortcuts.empty()) {
+        continue;
+      }
+      if (!validName(app) || shortcuts.size() > kMaxIdsPerApp) {
+        return false;
+      }
+      auto& entry = data["grants"][app];
+      for (const auto& [id, chord] : shortcuts) {
+        const std::string text = describeChord(chord);
+        if (!validName(id) || parsePortalTrigger(text) != chord) {
+          return false;
+        }
+        entry[id] = text;
+      }
+    }
+    std::string bytes;
+    try {
+      bytes = data.dump() + '\n';
+    } catch (const nlohmann::json::exception&) {
+      return false;
+    }
+    if (bytes.size() > kMaxStoreBytes) {
+      return false;
+    }
+    const private_state::Lock lock(m_path, kLockName);
+    return lock && private_state::writeAtomic(m_path, bytes);
+  }
+
+} // namespace andromeda

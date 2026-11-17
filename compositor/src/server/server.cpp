@@ -1763,6 +1763,7 @@ namespace andromeda {
       setenv("XCURSOR_THEME", cursorCfg.theme.c_str(), 1);
     }
 
+    loadGlobalShortcuts();
     m_inputCapture = std::make_unique<InputCapture>(*this);
     m_inputCapture->setAuthorize([this](uint64_t id, std::string_view name, uint32_t persistMode) {
       requestInputCapture(id, name, persistMode);

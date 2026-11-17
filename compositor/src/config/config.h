@@ -1341,6 +1341,15 @@ namespace andromeda {
     } input;
 
     std::vector<Keybind> keybinds;
+    // A [global_shortcuts] chord; `useMod` resolves to general.modKey when matched, as in keybinds.
+    struct GlobalShortcutChord {
+      uint32_t modifiers = 0;
+      bool useMod = false;
+      uint32_t keysym = 0;
+      bool operator==(const GlobalShortcutChord&) const = default;
+    };
+    // By app id, then shortcut id; nullopt disables the shortcut.
+    std::map<std::string, std::map<std::string, std::optional<GlobalShortcutChord>>> globalShortcuts;
     std::vector<OutputRule> outputs;
     std::vector<WindowRule> windowRules;
     std::vector<LayerRule> layerRules;

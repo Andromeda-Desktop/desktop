@@ -266,4 +266,45 @@ namespace andromeda {
     }
   }
 
+  registry::Field<Config> globalShortcutsTable() {
+    return registry::map<Config>(
+        "global_shortcuts", registry::KeyDescription("table").withFormat("app_id"),
+        [](Section& section, Config& loaded, registry::ReadContext&) {
+          for (const auto& [appKey, appNode] : section.table()) {
+            const std::string app(appKey.str());
+            const auto* shortcuts = appNode.as_table();
+            if (shortcuts == nullptr) {
+              warnAt(appKey.source(), "ignoring global_shortcuts.'{}' (not a table)", app);
+              continue;
+            }
+            auto& target = loaded.globalShortcuts[app];
+            for (const auto& [idKey, chordNode] : *shortcuts) {
+              const std::string id(idKey.str());
+              const auto text = chordNode.value<std::string>();
+              if (!text) {
+                warnAt(idKey.source(), "ignoring global_shortcuts.'{}'.'{}' (not a string)", app, id);
+                continue;
+              }
+              if (text->empty()) {
+                target[id] = std::nullopt;
+                continue;
+              }
+              Keybind bind;
+              if (!parseChord(*text, bind) || !bind.submap.empty() || bind.modifierOnly
+                  || bind.wheel != WheelDirection::None || bind.mouseButton != 0) {
+                warnAt(idKey.source(), "ignoring global_shortcuts.'{}'.'{}' (bad chord '{}')", app, id, *text);
+                continue;
+              }
+              target[id] = Config::GlobalShortcutChord{
+                  .modifiers = bind.modifiers, .useMod = bind.useMod, .keysym = bind.keysym
+              };
+            }
+            if (target.empty()) {
+              loaded.globalShortcuts.erase(app);
+            }
+          }
+        }
+    );
+  }
+
 } // namespace andromeda

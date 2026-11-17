@@ -153,6 +153,7 @@ namespace andromeda {
   [[nodiscard]] registry::Field<Config> inputTable();
   [[nodiscard]] registry::Field<Config> outputTable();
   [[nodiscard]] registry::Field<Config> keybindsTable();
+  [[nodiscard]] registry::Field<Config> globalShortcutsTable();
   // Read the [keybinds] of the packaged config over the built-in set in `loaded`.
   void readShippedKeybinds(const toml::table& root, Config& loaded);
 

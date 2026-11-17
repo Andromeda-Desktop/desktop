@@ -4,6 +4,8 @@
 #include "core/animation.h"
 #include "core/application_scope.h"
 #include "core/dirty.h"
+#include "input/global_shortcut_store.h"
+#include "input/global_shortcuts.h"
 #include "input/keyboard_layout.h"
 #include "input/lid_state.h"
 #include "input/modifier_tap.h"
@@ -366,6 +368,10 @@ namespace andromeda {
     [[nodiscard]] Gestures* gestures() const { return m_gestures.get(); }
     [[nodiscard]] bool nested() const { return m_nested; }
     [[nodiscard]] uint32_t modKey() const;
+    // Loads the saved approvals; an unsafe or malformed file is reported and left untouched.
+    void loadGlobalShortcuts();
+    // Resolves [global_shortcuts] with the current Mod key into registry overrides.
+    void applyGlobalShortcutConfig();
     [[nodiscard]] std::string_view modKeyName() const;
 
     // Read-only iteration over the registries. These replace the friend list: callers can walk the registry without
@@ -917,6 +923,8 @@ namespace andromeda {
       std::chrono::steady_clock::time_point lastTriggered;
     };
     std::vector<BindCooldown> m_bindCooldowns;
+    ShortcutRegistry m_globalShortcuts;
+    GlobalShortcutStore m_globalShortcutStore{GlobalShortcutStore::defaultPath()};
     std::vector<std::string> m_activeSubmaps;
     // The last tick's instant: an output's earlier one is skipped, and several outputs can tick per vblank.
     double m_lastAnimTickMsec = 0;
