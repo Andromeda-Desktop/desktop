@@ -258,6 +258,10 @@ namespace andromeda {
     }
     m_consumeRestoredMaximizeRequest = false;
     setMaximizedLikeClientRequest(requestedMaximized());
+    // Arrange now, so the new size joins the queued state configure instead of following it as a second one.
+    if (m_workspace != nullptr) {
+      m_workspace->flushArrange();
+    }
   }
 
   void View::handleRequestMinimize(void* data) {
