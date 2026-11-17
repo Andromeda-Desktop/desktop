@@ -721,7 +721,15 @@ namespace andromeda {
     return true;
   }
 
-  bool View::transitionPlacement(PlacementInput input) { return applyPlacementEvent(m_placement, input); }
+  bool View::transitionPlacement(PlacementInput input) {
+    const bool wasTiled = tiled();
+    const bool applied = applyPlacementEvent(m_placement, input);
+    // A layout size request belongs to the tile; a float answers its own configures.
+    if (wasTiled && !tiled()) {
+      m_tiledSizeRequest.reset();
+    }
+    return applied;
+  }
 
   void View::syncShown() {
     if (m_sceneTree == nullptr) {

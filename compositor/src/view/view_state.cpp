@@ -146,7 +146,7 @@ namespace andromeda {
       // mid-flight from the fullscreen origin. Restoring from either would
       // strand the float at output size with no way back.
       const auto [restoreWidth, restoreHeight] = floatingSize();
-      m_floating.clearSizeRequest();
+      clearFloatingSizeRequest();
       m_maximizeRestoreBox = {
           .x = layoutTargetX(),
           .y = layoutTargetY(),
@@ -924,7 +924,7 @@ namespace andromeda {
     }
     m_floating.rememberPositionFraction({.x = layoutTargetX(), .y = layoutTargetY()}, usable);
 
-    m_floating.clearSizeRequest();
+    clearFloatingSizeRequest();
     transitionPlacement({.event = PlacementEvent::Tile});
     // Restore the fullscreen the float toggle dropped BEFORE the layout attach: arrange then sizes the column to the
     // full output instead of a regular column width, and the client sees no transient windowed configure. setFullscreen
@@ -1025,13 +1025,14 @@ namespace andromeda {
           setOnActiveWorkspace(m_workspace->active());
         }
       }
-      m_floating.clearSizeRequest();
+      clearFloatingSizeRequest();
     }
     // Entering fullscreen during a size animation grows from the size on screen, not from the committed one.
     const bool continuePresentation = fullscreen && sizeAnimating();
     const int presentedWidth = m_presentation.width();
     const int presentedHeight = m_presentation.height();
     cancelSizeAnimation();
+    m_tiledSizeRequest.reset();
     if (continuePresentation) {
       m_presentation.setSize(presentedWidth, presentedHeight);
     }

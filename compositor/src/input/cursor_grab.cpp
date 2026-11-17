@@ -150,15 +150,16 @@ namespace andromeda {
       view->setMaximizedToEdges(false, false);
     }
 
-    const wlr_box& geometry = view->geometryBox();
-    const double borderX = (view->layoutX() + geometry.x) + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
-    const double borderY = (view->layoutY() + geometry.y) + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
+    const wlr_box& presented = view->presentedBox();
+    const wlr_box geometry{view->layoutX(), view->layoutY(), presented.width, presented.height};
+    const double borderX = geometry.x + ((edges & WLR_EDGE_RIGHT) != 0 ? geometry.width : 0);
+    const double borderY = geometry.y + ((edges & WLR_EDGE_BOTTOM) != 0 ? geometry.height : 0);
     m_grab = FloatingResizeGrab{
         .view = view,
         .offsetX = m_cursor->x - borderX,
         .offsetY = m_cursor->y - borderY,
-        .geometryX = geometry.x + view->layoutX(),
-        .geometryY = geometry.y + view->layoutY(),
+        .geometryX = geometry.x,
+        .geometryY = geometry.y,
         .geometryWidth = geometry.width,
         .geometryHeight = geometry.height,
         .edges = edges,
@@ -211,6 +212,7 @@ namespace andromeda {
       }
     } else if (restoreResizePresentation && view != nullptr && view->mapped()) {
       view->resetPresentedSurface();
+      view->adoptFloatingClientSize();
       view->syncOwnedPresentation();
     }
     refreshInteractiveCursor();
@@ -414,7 +416,7 @@ namespace andromeda {
       }
     }
 
-    grab->view->resizeFloating(newRight - newLeft, newBottom - newTop);
+    grab->view->resizeFloating({newLeft, newTop, newRight - newLeft, newBottom - newTop});
   }
 
   uint32_t Cursor::hoverResizeEdges(View* view) const {

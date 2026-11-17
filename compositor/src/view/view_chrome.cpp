@@ -244,6 +244,14 @@ namespace andromeda {
     m_server->scheduleIpcWindowsEvent();
   }
 
+  View::ClientSize View::chromeContentSize() const {
+    if (mapped() && m_presentation.width() > 0 && m_presentation.height() > 0) {
+      return {.width = m_presentation.width(), .height = m_presentation.height()};
+    }
+    const wlr_box content = committedContentBox();
+    return {.width = content.width, .height = content.height};
+  }
+
   void View::applyCornerRadius() {
     // Every buffer under the toplevel's surface tree is rounded against one box, the window's content box, so the arc
     // lands on the window's corners whichever surface (main or subsurface) draws them. Popups are excluded: their
@@ -251,11 +259,7 @@ namespace andromeda {
     const int radius = surfaceRadius();
     // Layout targets, resize animations, and pending floating restores can lead committed geometry. Round the
     // presented frame while the client redraws.
-    const wlr_box& geometry = geometryBox();
-    const bool usePresentedSize =
-        (tiled() || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
+    const ClientSize size = chromeContentSize();
     struct Ctx {
       View* view;
       int radius;
@@ -264,12 +268,7 @@ namespace andromeda {
       int treeX;
       int treeY;
     } ctx{
-        this,
-        radius,
-        usePresentedSize ? m_presentation.width() : geometry.width,
-        usePresentedSize ? m_presentation.height() : geometry.height,
-        m_contentTree->node.x,
-        m_contentTree->node.y,
+        this, radius, size.width, size.height, m_contentTree->node.x, m_contentTree->node.y,
     };
     wlr_scene_node_for_each_buffer(
         &m_contentTree->node,
@@ -303,8 +302,8 @@ namespace andromeda {
   }
 
   void View::updateBlur() {
-    const wlr_box content = committedContentBox();
-    updateBlur(content.width, content.height);
+    const ClientSize size = chromeContentSize();
+    updateBlur(size.width, size.height);
   }
 
   void View::updateBlur(int contentWidth, int contentHeight) {
@@ -343,15 +342,8 @@ namespace andromeda {
       return;
     }
     // Shadows follow the presented frame through layout changes, animations, and pending floating restores.
-    const wlr_box& geometry = geometryBox();
-    const bool usePresentedSize =
-        (tiled() || sizeAnimating() || sizeGrabActive() || m_floating.pendingSize().has_value())
-        && m_presentation.width() > 0
-        && m_presentation.height() > 0;
-    updateShadow(
-        usePresentedSize ? m_presentation.width() : geometry.width,
-        usePresentedSize ? m_presentation.height() : geometry.height
-    );
+    const ClientSize size = chromeContentSize();
+    updateShadow(size.width, size.height);
   }
 
   void View::updateShadow(int contentWidth, int contentHeight) {
@@ -373,8 +365,8 @@ namespace andromeda {
   }
 
   void View::updateBorderGeometry() {
-    const wlr_box content = committedContentBox();
-    updateBorderGeometry(content.width, content.height);
+    const ClientSize size = chromeContentSize();
+    updateBorderGeometry(size.width, size.height);
   }
 
   void View::updateBorderGeometry(int contentWidth, int contentHeight) {

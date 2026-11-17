@@ -128,6 +128,52 @@ ANDROMEDA_TEST(endResizeDropsTheAnchorWhenNothingIsInFlight) {
   CHECK(!floating.anchor().has_value());
 }
 
+ANDROMEDA_TEST(aResizeAckNeedsUsableContentBeforeHandoff) {
+  andromeda::FloatingSizeConfigure sent{.size = {600, 450}, .base = {400, 300}, .serial = 10};
+  CHECK(!sent.settled(9, sent.size, {600, 450}, false));
+  CHECK(!sent.settled(10, sent.size, sent.base, false));
+  CHECK(sent.settled(10, sent.size, {600, 450}, false));
+  CHECK(!sent.settled(10, sent.size, {590, 440}, true));
+  CHECK(sent.settled(10, sent.size, {590, 440}, false));
+  sent.supplied = true;
+  CHECK(!sent.settled(10, sent.size, sent.base, true));
+  CHECK(sent.settled(10, sent.size, sent.base, false));
+  CHECK(!sent.settled(10, sent.size, {0, 450}, false));
+}
+
+ANDROMEDA_TEST(queuedPointerTargetsRetainTheSentConfigureAndAnchor) {
+  FloatingGeometry floating;
+  floating.beginResize({200, 200, 400, 300}, WLR_EDGE_LEFT | WLR_EDGE_TOP);
+  floating.recordSizeRequest(440, 340, 20);
+  const andromeda::FloatingSizeConfigure sent{.size = {440, 340}, .base = {400, 300}, .serial = 20, .supplied = true};
+  floating.setPendingSize(520, 420);
+  floating.endResize();
+  CHECK_EQ((*floating.pendingSize())[0], 520);
+  CHECK_EQ((*floating.pendingSize())[1], 420);
+  CHECK(!sent.settled(20, floating.pendingSize(), sent.size, false));
+  CHECK(floating.anchor().has_value());
+  const auto origin = anchoredContentOrigin(*floating.anchor(), floating.edges(), {12, 12, 520, 420});
+  CHECK_EQ(origin.x + 520, 600);
+  CHECK_EQ(origin.y + 420, 500);
+}
+
+ANDROMEDA_TEST(sameSizedBuffersCanAdvanceResizeBackpressure) {
+  CHECK(!andromeda::floatingSizeResponseUsable({400, 300}, {400, 300}, false));
+  CHECK(andromeda::floatingSizeResponseUsable({400, 300}, {400, 300}, true));
+  CHECK(andromeda::floatingSizeResponseUsable({500, 300}, {400, 300}, false));
+  CHECK(!andromeda::floatingSizeResponseUsable({0, 300}, {400, 300}, true));
+}
+
+ANDROMEDA_TEST(contentHandoffSupportsXwaylandAndSerialWraparound) {
+  andromeda::FloatingSizeConfigure sent{.size = {600, 450}, .base = {400, 300}};
+  CHECK(!sent.settled(0, sent.size, sent.base, false));
+  CHECK(sent.settled(0, sent.size, {590, 440}, false));
+  sent.serial = 0xFFFFFFF0;
+  CHECK(!sent.settled(4, sent.size, sent.base, false));
+  CHECK(sent.settled(4, sent.size, {600, 450}, false));
+  CHECK(sent.settled(4, std::nullopt, {600, 450}, false));
+}
+
 // Clamp arithmetic
 ANDROMEDA_TEST(keepVisibleIsAQuarterWithinBounds) {
   CHECK_EQ(floatingKeepVisible(200), 50);

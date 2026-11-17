@@ -291,8 +291,7 @@ namespace andromeda {
     void syncFloatingLayer();
     friend class WorkspaceGroup;
 
-    // `resized` lists the members whose assigned size this arrange changed.
-    void applyPositions(bool animate, std::span<View* const> resized);
+    void applyPositions(bool animate);
     [[nodiscard]] wlr_box tiledTargetBox(const View* view, const wlr_box& usable, const Layout* layout = nullptr) const;
     [[nodiscard]] std::unique_ptr<Layout> previewLayout() const;
     [[nodiscard]] int layoutAttachIndex(const View* view) const;
@@ -317,7 +316,7 @@ namespace andromeda {
     // Take `view` out of the layout while holding visible lanes still.
     void detachFromLayout(View* view);
     // Snap or animate every tiled member of the layout into its slot from wherever it is presented now.
-    void applyTiledMotion(const wlr_box& usable, bool animate, std::span<View* const> resized);
+    void applyTiledMotion(const wlr_box& usable, bool animate);
     void startLayoutTimelines(double positionSpeed, double sizeSpeed);
     // Advances a motion held by windows_resize.wait_for_redraw; true while it still holds.
     bool tickLayoutMotionWait(double nowMsec);

@@ -134,8 +134,27 @@ namespace andromeda {
 
   void View::cancelFadeAnimation() {
     m_fade.snap(1.0);
-    dropOpeningInset();
     setFadeAlpha(1.0F);
+    releaseOpeningPresentation();
+  }
+
+  bool View::openingAnimationActive() const {
+    return mapped() && !m_inScratchpad && m_fade.animating() && m_fade.target() > m_fade.from() && !sizeGrabActive();
+  }
+
+  void View::releaseOpeningPresentation(bool completed, bool pointerTakeover) {
+    if (!completed) {
+      m_openingFloatingSize.reset();
+    }
+    if (!pointerTakeover) {
+      dropOpeningInset();
+    }
+    if (completed) {
+      adoptFloatingClientSize();
+      if (mapped()) {
+        syncOwnedPresentation();
+      }
+    }
   }
 
   bool View::tiledOpeningActive() const {
@@ -235,7 +254,10 @@ namespace andromeda {
     if (layoutPresentationOwned()) {
       return m_presentation.width();
     }
-    if (currentFullscreen()) {
+    if (currentFullscreen()
+        || tiled()
+        || m_floating.pendingSize()
+        || (openingAnimationActive() && m_openingFloatingSize)) {
       return target.width;
     }
     return std::min(committedContentBox().width, target.width);
@@ -250,7 +272,10 @@ namespace andromeda {
     if (layoutPresentationOwned()) {
       return m_presentation.height();
     }
-    if (currentFullscreen()) {
+    if (currentFullscreen()
+        || tiled()
+        || m_floating.pendingSize()
+        || (openingAnimationActive() && m_openingFloatingSize)) {
       return target.height;
     }
     return std::min(committedContentBox().height, target.height);
@@ -329,6 +354,11 @@ namespace andromeda {
   }
 
   void View::finishSizeAnimation() {
+    if ((!currentFullscreen() && tiled()) || m_floating.pendingSize() || m_openingFloatingSize) {
+      resetPresentedSurface();
+      applyPresentedSize();
+      return;
+    }
     const wlr_box content = committedContentBox();
     m_presentation.setSize(content.width, content.height);
     resetPresentedSurface();
@@ -343,7 +373,6 @@ namespace andromeda {
       return;
     }
     m_layoutPresentationHeld = false;
-    m_tiledSizeRequest.reset();
     if (m_layoutMotion) {
       m_workspace->releaseLayoutMotion(this);
       m_layoutMotion = false;
@@ -542,7 +571,8 @@ namespace andromeda {
     if (m_presentation.width() <= 0 || m_presentation.height() <= 0) {
       return;
     }
-    if (sizeGrabTracksPointer() || (width == m_presentation.width() && height == m_presentation.height())) {
+    if (sizeGrabTracksPointer()
+        || (!m_presentation.animating() && width == m_presentation.width() && height == m_presentation.height())) {
       return;
     }
     if (m_presentation.targeting(width, height)) {
@@ -692,8 +722,6 @@ namespace andromeda {
     m_tiledSizeRequest.reset();
     if (m_layoutPresentationHeld) {
       m_layoutPresentationHeld = false;
-      m_presentation.setSize(content.width, content.height);
-      m_presentation.snapTo(content.width, content.height);
       resetPresentedSurface();
     }
     return true;
@@ -705,9 +733,8 @@ namespace andromeda {
     }
     m_layoutMotion = false;
     m_layoutPresentationHeld = !settleTiledSizeRequest();
-    if (m_layoutPresentationHeld) {
-      presentTiledBox(target);
-    } else {
+    presentTiledBox(target);
+    if (!m_layoutPresentationHeld) {
       finishSizeAnimation();
     }
     syncAnimationEffects();
@@ -715,12 +742,10 @@ namespace andromeda {
 
   void View::endLayoutMotion() {
     if (!m_layoutMotion && !m_layoutPresentationHeld) {
-      m_tiledSizeRequest.reset();
       return;
     }
     m_layoutMotion = false;
     m_layoutPresentationHeld = false;
-    m_tiledSizeRequest.reset();
     if (tiledOpeningActive() && m_workspace != nullptr) {
       presentTiledBox(m_workspace->presentedTiledBox(this));
     } else {
@@ -891,6 +916,7 @@ namespace andromeda {
 
   bool View::tickAnimations(double nowMsec) {
     bool active = false;
+    bool openingFinished = false;
 
     // Disable sibling size animations during a tiled resize, so they do not
     // trail the pointer while clients acknowledge successive configures.
@@ -979,6 +1005,7 @@ namespace andromeda {
         }
       }
       active = active || m_fade.animating();
+      openingFinished = mapped() && !m_inScratchpad && !m_fade.animating() && m_fade.target() > m_fade.from();
     }
     if (m_focusDim.tick(nowMsec)) {
       setFadeAlpha(m_fadeAlpha);
@@ -1008,6 +1035,10 @@ namespace andromeda {
         const double cadenceS = refreshMhz > 0 ? 1000.0 / refreshMhz : 0.0;
         active = m_dragPhysics.tick(elapsed / 1000.0, cadenceS) || active;
       }
+    }
+    if (openingFinished) {
+      releaseOpeningPresentation(true);
+      active = hasActiveAnimations() || active;
     }
     syncAnimationEffects();
     if (!active && mapped() && m_xsurface != nullptr) {
@@ -1280,7 +1311,10 @@ namespace andromeda {
     };
     setSurfaceTreeClip(&surfaceClip);
     applyCornerRadius();
-    if (layoutPresentationOwned() || sizeGrabActive()) {
+    if (layoutPresentationOwned()
+        || sizeGrabActive()
+        || m_floating.pendingSize()
+        || (openingAnimationActive() && m_openingFloatingSize)) {
       // The clip crops 1:1 in surface coordinates and caps the destination at the committed surface size, so it cannot
       // express an animated or interactive presented size. Program the buffer directly; the clip above keeps the buffer
       // node positioned at the visible box origin.

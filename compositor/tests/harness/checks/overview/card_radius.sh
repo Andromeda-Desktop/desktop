@@ -33,7 +33,7 @@ EOF
 }
 configure floating spaces 0
 
-FILL_COLOR=0xFFFF0000 "$ANDROMEDA_UNMAP_CLIENT" radius-card 800 500 > /dev/null 2>&1 &
+FILL_COLOR=0xFFFF0000 FOLLOW_CONFIGURES=1 "$ANDROMEDA_UNMAP_CLIENT" radius-card 800 500 > /dev/null 2>&1 &
 for _ in $(seq 60); do
   [[ $("$ANDROMEDA" windows --json | jq 'length') -eq 1 ]] && break
   sleep 0.05

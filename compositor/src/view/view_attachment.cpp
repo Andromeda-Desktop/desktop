@@ -258,8 +258,8 @@ namespace andromeda {
     const int restX = layoutTargetX();
     const int restY = layoutTargetY();
     for (View* attachment : m_attachments) {
-      const wlr_box& geometry = attachment->geometryBox();
-      const wlr_box sized{.x = 0, .y = 0, .width = geometry.width, .height = geometry.height};
+      const auto [width, height] = attachment->floatingSize();
+      const wlr_box sized{.x = 0, .y = 0, .width = width, .height = height};
       const int inset = attachment->borderInset();
       const int x =
           attachmentOffset(restX, m_presentedBox.width, attachment->presentedWidth(sized), area.x, area.width, inset);
@@ -270,8 +270,8 @@ namespace andromeda {
       attachment->applyPresentation({
           .x = m_presentedBox.x + x,
           .y = m_presentedBox.y + y,
-          .width = geometry.width,
-          .height = geometry.height,
+          .width = width,
+          .height = height,
       });
     }
   }
