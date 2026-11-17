@@ -170,16 +170,6 @@ enable_daemon      = true
 show_app_name      = true
 show_actions       = true           # show action buttons; when false, clicking a toast triggers its default action
 keep_dismissed_in_history = true    # set false to remove history entries when their toasts are dismissed
-layer              = "top"          # top | overlay
-scale              = 1.0            # notification size multiplier applied on top of accessibility.ui_scale
-background_opacity = 0.97
-border             = true           # outline around toast cards; set false for a borderless look
-border_color       = "outline_variant"      # outline color: theme color role (e.g. "primary") or hex (e.g. "#a8b185")
-border_width       = 1              # outline stroke width in px; raise for a thicker outline
-follow_focused_output = false       # show new toasts on the focused output; visible toasts stay pinned there
-# monitors          = ["DP-1"]      # connector names; omit or leave empty for all monitors
-offset_x           = 20             # absolute horizontal margin from the screen edge
-offset_y           = 8              # absolute vertical margin from the screen edge
 # [notification.filter.rhythmbox]
 # enabled         = true
 # match           = "rhythmbox"
