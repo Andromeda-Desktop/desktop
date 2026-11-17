@@ -571,7 +571,11 @@ void SettingsWindow::open(std::string context) {
     std::tie(minWidthF, minHeightF) = settingsWindowMinSize(outputW, outputH, scale);
     if (outputW >= outputH) {
       desiredHeight = util::clampOrdered(outputH * kWindowOutputFraction, std::min(minHeightF, outputH), outputH);
-      desiredWidth = util::clampOrdered(desiredHeight * kGoldenRatio, std::min(minWidthF, outputW), outputW);
+      // Open wide enough for the full sidebar when the output has room; short outputs give a rail-width golden rect.
+      const float fullSidebarWidth = settings::metrics::kRailBreak * scale;
+      desiredWidth = util::clampOrdered(
+          std::max(desiredHeight * kGoldenRatio, fullSidebarWidth), std::min(minWidthF, outputW), outputW
+      );
     } else {
       desiredWidth = util::clampOrdered(outputW * kWindowOutputFraction, std::min(minWidthF, outputW), outputW);
       desiredHeight = util::clampOrdered(desiredWidth * kGoldenRatio, std::min(minHeightF, outputH), outputH);
