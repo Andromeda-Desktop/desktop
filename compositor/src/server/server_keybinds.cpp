@@ -7,6 +7,7 @@
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "overview/overview.h"
+#include "scene/quit_confirm.h"
 #include "server/actions.h"
 #include "server/greeter_mode.h"
 #include "server/server.h"
@@ -130,7 +131,7 @@ namespace andromeda {
       *cooldownBlocked = false;
     }
     if (bind.action == KeybindAction::None) {
-      return false;
+      return !bind.releaseAction.empty();
     }
     if (bind.cooldownMs > 0 && !cooldownAllows(bind)) {
       if (cooldownBlocked != nullptr) {
@@ -376,6 +377,42 @@ namespace andromeda {
     }
 
     return false;
+  }
+
+  std::optional<Keybind> Server::releasePhase(const Keybind& press) const {
+    if (press.releaseAction.empty()) {
+      return std::nullopt;
+    }
+    Keybind release;
+    release.allowWhenLocked = press.allowWhenLocked;
+    release.allowWhenInhibited = press.allowWhenInhibited;
+    if (!parseAction(press.releaseAction, release)) {
+      return std::nullopt;
+    }
+    return release;
+  }
+
+  void Server::runReleasePhase(const Keybind& release) {
+    // Only a press confirms the visible dialog; a release that would confirm it does nothing.
+    if (confirmsVisibleDialog(release.action)) {
+      return;
+    }
+    executeKeybindAction(release);
+  }
+
+  bool Server::confirmsVisibleDialog(KeybindAction action) const {
+    const QuitConfirm* confirm = quitConfirm();
+    if (confirm == nullptr || !confirm->visible()) {
+      return false;
+    }
+    if (confirm->kind() == QuitConfirm::Kind::SessionQuit) {
+      return action == KeybindAction::SessionQuit;
+    }
+    return confirm->kind() == QuitConfirm::Kind::ScreenCastDynamic
+        && (action == KeybindAction::ScreenCastSetOutput
+            || action == KeybindAction::ScreenCastSetWindow
+            || action == KeybindAction::ScreenCastFollowWindow
+            || action == KeybindAction::ScreenCastFollowOutput);
   }
 
   std::optional<Keybind> Server::handleMouseBind(uint32_t button, uint32_t modifiers, bool* actionExecuted) {

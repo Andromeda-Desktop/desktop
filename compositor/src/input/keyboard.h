@@ -117,6 +117,7 @@ namespace andromeda {
     // Release actions of binds whose key is still down, by keycode.
     std::unordered_map<uint32_t, Keybind> m_releaseBinds;
     void runReleaseBind(uint32_t keycode);
+    void endReleaseBinds();
   };
 
 } // namespace andromeda

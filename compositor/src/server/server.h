@@ -487,6 +487,11 @@ namespace andromeda {
     bool handleVtSwitch(uint32_t keysym, uint32_t modifiers);
     void armModifierTap(const void* source, uint32_t keycode, std::span<const uint32_t> keysyms, uint32_t modifiers);
     [[nodiscard]] std::optional<Keybind> releaseModifierTap(const void* source, uint32_t keycode);
+    // The release action of a press bind, ready to run when its key or button comes up.
+    [[nodiscard]] std::optional<Keybind> releasePhase(const Keybind& press) const;
+    void runReleasePhase(const Keybind& release);
+    // Whether `action` confirms the visible confirmation dialog.
+    [[nodiscard]] bool confirmsVisibleDialog(KeybindAction action) const;
     void cancelModifierTap() { m_modifierTap.cancel(); }
     void arrangeLayers(wlr_output* output);
     // Re-send every surface's output scale (views, layer surfaces, popups). Run after anything that changes an output's

@@ -230,6 +230,8 @@ namespace andromeda {
 
   void Keyboard::prepareInputCapture(bool ending) {
     cancelRepeat();
+    // The capture client receives the releases, so held release actions end now.
+    endReleaseBinds();
     if (ending) {
       for (size_t index = 0; index < m_keyboard->num_keycodes; ++index) {
         m_consumedKeycodes.insert(m_keyboard->keycodes[index]);
@@ -625,13 +627,8 @@ namespace andromeda {
       }
       if (matched.has_value()) {
         armRepeat(*matched, event->keycode);
-        if (!matched->releaseAction.empty()) {
-          Keybind release;
-          release.allowWhenLocked = matched->allowWhenLocked;
-          release.allowWhenInhibited = matched->allowWhenInhibited;
-          if (parseAction(matched->releaseAction, release)) {
-            m_releaseBinds.insert_or_assign(event->keycode, std::move(release));
-          }
+        if (std::optional<Keybind> release = m_server->releasePhase(*matched)) {
+          m_releaseBinds.insert_or_assign(event->keycode, std::move(*release));
         }
       }
       // Unbound plain keys drive overview navigation instead of reaching clients, unless a layer surface (launcher,
@@ -719,15 +716,17 @@ namespace andromeda {
     m_destroy.link.next = nullptr;
     m_server->cancelModifierTap();
     // An unplugged device never sends the release: end each held action now.
-    while (!m_releaseBinds.empty()) {
-      runReleaseBind(m_releaseBinds.begin()->first);
-    }
+    endReleaseBinds();
     m_server->removeKeyboard(this);
   }
 
   void Keyboard::forgetConsumedKeycodes() {
     m_consumedKeycodes.clear();
     // A power-key hold must not shut down after its release went to another VT.
+    endReleaseBinds();
+  }
+
+  void Keyboard::endReleaseBinds() {
     while (!m_releaseBinds.empty()) {
       runReleaseBind(m_releaseBinds.begin()->first);
     }
@@ -740,7 +739,7 @@ namespace andromeda {
     }
     const Keybind bind = std::move(it->second);
     m_releaseBinds.erase(it);
-    m_server->executeKeybindAction(bind);
+    m_server->runReleasePhase(bind);
   }
 
   void Keyboard::armRepeat(const Keybind& bind, uint32_t keycode) {

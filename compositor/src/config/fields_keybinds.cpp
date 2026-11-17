@@ -30,6 +30,7 @@ namespace andromeda {
       bool allowWhenInhibited = false;
       int cooldownMs = 0;
       std::string submap;
+      std::string release;
       std::string releaseAction;
     };
 
@@ -48,6 +49,7 @@ namespace andromeda {
           registry::boolean("allow_when_inhibited", &K::allowWhenInhibited),
           registry::integer("cooldown_ms", 0, 3600000, &K::cooldownMs),
           registry::text("submap", &K::submap),
+          registry::text("release", &K::release),
           registry::text("release_action", &K::releaseAction),
       };
       return fields;
@@ -119,8 +121,15 @@ namespace andromeda {
           registry::readFields(bind, keybindFields(), options, context);
           const toml::node* submapNode = bind.node("submap");
           hasSubmapAfter = submapNode != nullptr && submapNode->is_string();
-          if (!options.action) {
-            warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' string)", chord);
+          if (!options.release.empty() && !options.releaseAction.empty()) {
+            warnAt(entry.source(), "ignoring keybind '{}' (set 'release' or 'release_action', not both)", chord);
+            continue;
+          }
+          if (options.release.empty()) {
+            options.release = std::move(options.releaseAction);
+          }
+          if (!options.action && options.release.empty()) {
+            warnAt(entry.source(), "ignoring keybind '{}' (table needs an 'action' or 'release' string)", chord);
             continue;
           }
         } else {
@@ -155,27 +164,42 @@ namespace andromeda {
         binding.allowWhenLocked = options.allowWhenLocked;
         binding.allowWhenInhibited = options.allowWhenInhibited;
         binding.cooldownMs = options.cooldownMs;
+        if (!options.release.empty() && (binding.wheel != WheelDirection::None || binding.modifierOnly)) {
+          warnAt(key.source(), "ignoring keybind '{}' (release requires a keyboard key or mouse button)", chord);
+          continue;
+        }
         // "none" removes whatever an earlier file or the built-in set binds to this chord.
-        if (*options.action == kUnboundAction) {
+        if (options.action && *options.action == kUnboundAction) {
           std::erase_if(configured, [&](const Keybind& existing) { return sameChord(existing, binding); });
           std::erase_if(loaded.keybinds, [&](const Keybind& existing) { return sameChord(existing, binding); });
           continue;
         }
         if (configStore().layeredKeybinds() && key.source().path != nullptr
-            && *key.source().path == configStore().rootPath().string() && retiredDefault(binding, *options.action)) {
+            && *key.source().path == configStore().rootPath().string() && options.action
+            && retiredDefault(binding, *options.action)) {
           kLog.info("keybind {} = '{}' is a retired default; the current shipped binding applies", chord, *options.action);
           continue;
         }
-        if (!parseAction(*options.action, binding)) {
+        if (options.action && !parseAction(*options.action, binding)) {
           warnAt(key.source(), "ignoring keybind '{}' (unknown action '{}')", chord, *options.action);
           continue;
         }
-        if (!options.releaseAction.empty()) {
-          if (Keybind probe; !parseAction(options.releaseAction, probe)) {
-            warnAt(key.source(), "ignoring keybind '{}' (unknown release_action '{}')", chord, options.releaseAction);
+        if (!options.release.empty()) {
+          Keybind probe;
+          if (!parseAction(options.release, probe)) {
+            warnAt(key.source(), "ignoring keybind '{}' (unknown release action '{}')", chord, options.release);
             continue;
           }
-          binding.releaseAction = std::move(options.releaseAction);
+          if (probe.action == KeybindAction::LayoutScrollDrag) {
+            warnAt(key.source(), "ignoring keybind '{}' (layout-scroll-drag requires a press binding)", chord);
+            continue;
+          }
+          if (const auto invalid =
+                  scratchpadSelectorError(loaded, probe).or_else([&] { return effectActionError(loaded, probe); })) {
+            warnAt(key.source(), "ignoring keybind '{}' ({})", chord, *invalid);
+            continue;
+          }
+          binding.releaseAction = std::move(options.release);
         }
 
         if (const auto invalid =

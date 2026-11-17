@@ -3,6 +3,7 @@
 #include "config/resolve.h"
 #include "config/store.h"
 
+#include <xkbcommon/xkbcommon-keysyms.h>
 #include <algorithm>
 #include <array>
 #include <cstdlib>
@@ -5080,4 +5081,43 @@ hide_when_empty = "true"
   CHECK(!store.config().scratchpads[1].hideWhenEmpty);
   CHECK(!store.config().scratchpads[2].hideWhenEmpty);
   CHECK(containsDiagnostic(store, "ignoring scratchpad[2].hide_when_empty (expected boolean)"));
+}
+
+ANDROMEDA_TEST(keybindReleaseActionsLoadAndRejectInvalidPlacements) {
+  const TempConfig file;
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  const auto bindFor = [&](uint32_t keysym) -> const andromeda::Keybind* {
+    const auto it = std::ranges::find(store.config().keybinds, keysym, &andromeda::Keybind::keysym);
+    return it != store.config().keybinds.end() ? &*it : nullptr;
+  };
+
+  file.write(R"([keybinds]
+"Mod+F7" = { action = "window-close", release = "window-kill", repeat = false }
+"Mod+F8" = { release = "window-kill" }
+"Mod+F9" = { action = "window-close", release_action = "window-kill" }
+)");
+  CHECK(store.reload().success);
+  const andromeda::Keybind* both = bindFor(XKB_KEY_F7);
+  CHECK(both != nullptr && both->action == andromeda::KeybindAction::WindowClose && both->releaseAction == "window-kill");
+  const andromeda::Keybind* releaseOnly = bindFor(XKB_KEY_F8);
+  CHECK(releaseOnly != nullptr && releaseOnly->action == andromeda::KeybindAction::None && releaseOnly->releaseAction == "window-kill");
+  const andromeda::Keybind* older = bindFor(XKB_KEY_F9);
+  CHECK(older != nullptr && older->releaseAction == "window-kill");
+
+  file.write(R"([keybinds]
+"Mod+F7" = { action = "window-close", release = "window-kill", release_action = "window-kill" }
+"Mod+WheelDown" = { action = "window-close", release = "window-kill" }
+"Mod" = { action = "window-close", release = "window-kill" }
+"Mod+F8" = { release = "layout-scroll-drag" }
+"Mod+F9" = { release = "no-such-action" }
+"Mod+F10" = { repeat = false }
+)");
+  CHECK(store.reload().success);
+  CHECK(bindFor(XKB_KEY_F7) == nullptr || bindFor(XKB_KEY_F7)->releaseAction.empty());
+  CHECK(containsDiagnostic(store, "not both"));
+  CHECK(containsDiagnostic(store, "release requires a keyboard key or mouse button"));
+  CHECK(containsDiagnostic(store, "layout-scroll-drag requires a press binding"));
+  CHECK(containsDiagnostic(store, "unknown release action 'no-such-action'"));
+  CHECK(containsDiagnostic(store, "table needs an 'action' or 'release' string"));
 }

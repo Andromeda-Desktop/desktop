@@ -949,10 +949,20 @@ namespace andromeda {
         && (m_server->overview() == nullptr || !m_server->overview()->active());
   }
 
+  void Cursor::endReleaseBinds() {
+    while (!m_releaseBinds.empty()) {
+      const Keybind release = std::move(m_releaseBinds.begin()->second);
+      m_releaseBinds.erase(m_releaseBinds.begin());
+      m_server->runReleasePhase(release);
+    }
+  }
+
   void Cursor::setInputCaptured(bool captured) {
     if (captured) {
       cancelHotCorner();
       m_server->cancelModifierTap();
+      // The capture client receives the releases, so held release actions end now.
+      endReleaseBinds();
       clearPointerFocus();
       hideCursor();
     } else {
@@ -992,6 +1002,21 @@ namespace andromeda {
   }
 
   void Cursor::processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
+    std::optional<Keybind> release;
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) {
+      if (const auto it = m_releaseBinds.find(button); it != m_releaseBinds.end()) {
+        release = std::move(it->second);
+        m_releaseBinds.erase(it);
+      }
+    }
+    dispatchButton(timeMsec, button, state);
+    // A mouse bind's release action runs after the release has ended any grab it held.
+    if (release) {
+      m_server->runReleasePhase(*release);
+    }
+  }
+
+  void Cursor::dispatchButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state) {
     if (m_trackerDrag && m_trackerDrag->claimed) {
       // The claimed drag swallows every button until the left one comes up.
       if (state == WL_POINTER_BUTTON_STATE_RELEASED && button == BTN_LEFT) {
@@ -1063,6 +1088,9 @@ namespace andromeda {
           setCompositorCursor("grabbing");
           clearPointerFocus();
           return;
+        }
+        if (std::optional<Keybind> phase = m_server->releasePhase(*bound)) {
+          m_releaseBinds.insert_or_assign(button, std::move(*phase));
         }
         m_swallowedButtons.push_back(button);
         return;

@@ -1,4 +1,5 @@
 #pragma once
+#include "config/keybind_parse.h"
 #include "layout/drop_target.h"
 #include "scene/ssd_frame_geometry.h"
 #include "util/listener.h"
@@ -317,6 +318,7 @@ namespace andromeda {
     void warpTo(double lx, double ly, bool allowFocusChange);
     void processMotion(uint32_t timeMsec, double oldX, double oldY, bool allowFocusChange = true);
     void processButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
+    void dispatchButton(uint32_t timeMsec, uint32_t button, wl_pointer_button_state state);
     void updatePointerOutput(bool allowFocusChange = true);
     View* hoverFocus(
         View* view, wlr_surface** surface, double* sx, double* sy, LayerSurface** layer, double oldX, double oldY
@@ -487,6 +489,9 @@ namespace andromeda {
     // Presses consumed by config binds or ignored during an interactive move;
     // their release is swallowed too, even if the grab ended first.
     std::vector<uint32_t> m_swallowedButtons;
+    // Release actions of mouse binds whose button is still down, by button code.
+    std::unordered_map<uint32_t, Keybind> m_releaseBinds;
+    void endReleaseBinds();
     // Previous Mod+right-click, for the double-click that toggles maximize.
     struct ModRightClick {
       uint32_t timeMsec = 0;

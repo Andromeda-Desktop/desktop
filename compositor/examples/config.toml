@@ -180,7 +180,7 @@ numlock_toggle = true
 "Alt+F4" = { action = "window-close-or-power-overlay", repeat = false }
 # The shell holds logind's handle-power-key block: a press opens the power menu (or the Settings › Power choice),
 # holding fills the shut-down ring, the release cancels it.
-"XF86PowerOff" = { action = "shell:power-overlay key-down", release_action = "shell:power-overlay key-up", repeat = false, allow_when_locked = true }
+"XF86PowerOff" = { action = "shell:power-overlay key-down", release = "shell:power-overlay key-up", repeat = false, allow_when_locked = true }
 "Mod+Shift+Escape" = { action = "shortcuts-inhibit-toggle", allow_when_inhibited = true, repeat = false }
 
 # Media, volume and brightness keys from any input device, routed through the

@@ -131,10 +131,10 @@ When the client already has an allowed shortcuts inhibitor, the toggle activates
 
 ## Release action
 
-`release_action` runs a second action when the key whose press fired the bind comes up. It is skipped for mouse and wheel binds. A VT switch while the key is down runs it at once.
+`release` runs an action when the key or mouse button whose press fired the bind comes up. A bind may set only `release`: its press then runs nothing and reaches no application. Wheel and modifier-only binds reject `release`. A release never confirms a visible confirmation dialog; only a press does. Unplugging the device, a VT switch or an input capture while the key is down runs the release action at once. The older name `release_action` still works; set one of the two, not both.
 
 ```toml
-"XF86PowerOff" = { action = "shell:power-overlay key-down", release_action = "shell:power-overlay key-up", repeat = false }
+"XF86PowerOff" = { action = "shell:power-overlay key-down", release = "shell:power-overlay key-up", repeat = false }
 ```
 
 ## Submaps
