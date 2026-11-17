@@ -232,6 +232,7 @@ namespace term {
     [[nodiscard]] AgentView* agentView(std::uint64_t key);
     Button* m_newButton = nullptr; // the sidebar "+": its menu opens new sessions and windows
     SelectionList* m_rowList = nullptr;
+    Box* m_dropLine = nullptr; // where a dragged row lands in the sidebar order
     std::uint64_t m_tintTarget = 0; // the row the tint moves to
     std::uint64_t m_rowSelected = 0; // the row with selected labels: it changes at half the tint's travel
     std::vector<std::pair<std::uint64_t, StatusRow*>> m_rows; // session id, its sidebar row
@@ -292,6 +293,10 @@ namespace term {
     [[nodiscard]] std::optional<ui::SplitDrop> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
     [[nodiscard]] bool leavesGroup(std::uint64_t id, float sceneX, float sceneY) const;
+    // The session a row dropped at sceneY lands before in sidebar order (0: the end); nullopt off the list.
+    [[nodiscard]] std::optional<std::uint64_t> dropBefore(std::uint64_t dragged, float sceneX, float sceneY) const;
+    void showDropLine(std::optional<std::uint64_t> before);
+    [[nodiscard]] std::optional<std::uint64_t> blockOf(const Node* child) const; // a sidebar block's session
     bool m_dragGhost = false; // the dragged row's chip follows the pointer
     bool m_rebuildPending = false; // a window rebuild fills the slot: show() leaves it alone
     // Captions follow their sessions; true when a name or state text changed (the captions need a fit).

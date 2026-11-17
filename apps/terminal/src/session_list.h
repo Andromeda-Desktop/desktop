@@ -102,6 +102,11 @@ namespace term {
     struct Leave {
       std::uint64_t id;
     };
+    // `id` moves in list order to just before `before`, or to the end when `before` is 0.
+    struct Move {
+      std::uint64_t id;
+      std::uint64_t before = 0;
+    };
     // Two panes of one split trade places in pane order.
     struct Swap {
       std::uint64_t a;
@@ -113,7 +118,7 @@ namespace term {
                                         session_event::CommandStart, session_event::CommandEnd, session_event::Rename,
                                         session_event::Cwd, session_event::Kind, session_event::Join,
                                         session_event::Leave, session_event::Swap, session_event::Output,
-                                        session_event::Title>;
+                                        session_event::Title, session_event::Move>;
 
   enum class ApplyResult : std::uint8_t { Applied, Rejected, LastClosed };
 

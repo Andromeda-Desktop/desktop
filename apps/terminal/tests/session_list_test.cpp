@@ -85,7 +85,7 @@ void checkRestore(const SessionList& list) {
 SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   const std::uint64_t id = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
   const std::uint64_t other = std::uniform_int_distribution<std::uint64_t>(1, 6)(rng);
-  switch (std::uniform_int_distribution<int>(0, 13)(rng)) {
+  switch (std::uniform_int_distribution<int>(0, 14)(rng)) {
   case 0: return Open{id, SessionKind::Shell, "s", "~"};
   case 1: return Close{id};
   case 2: return Show{id};
@@ -98,6 +98,7 @@ SessionListEvent randomEvent(std::mt19937& rng, SessionClock::time_point now) {
   case 9: return Join{id, other, std::uniform_int_distribution<int>(0, 1)(rng) == 0};
   case 10: return Output{id, std::uniform_int_distribution<int>(0, 1)(rng) == 0 ? CommandOutput::Active : CommandOutput::Quiet};
   case 11: return Title{id, "t"};
+  case 12: return Move{id, std::uniform_int_distribution<int>(0, 2)(rng) == 0 ? 0 : other};
   default: return Leave{id};
   }
 }
@@ -131,6 +132,21 @@ int main() {
           CHECK(list.shown() == e->joining);
           const auto* was = before.splitOf(e->target);
           CHECK(list.splitOf(e->target)->size() == (was ? was->size() + 1 : 2));
+        }
+        if (const auto* e = std::get_if<Move>(&event)) {
+          const auto ids = [](const SessionList& l) {
+            std::vector<std::uint64_t> v;
+            for (const auto& info : l.sessions()) {
+              v.push_back(info.id);
+            }
+            return v;
+          };
+          auto expected = ids(before);
+          std::erase(expected, e->id);
+          expected.insert(e->before == 0 ? expected.end() : std::ranges::find(expected, e->before), e->id);
+          CHECK(ids(list) == expected);
+          CHECK(list.splits() == before.splits());
+          CHECK(list.shown() == shownBefore);
         }
         if (const auto* e = std::get_if<Leave>(&event)) {
           CHECK(list.splitOf(e->id) == nullptr);

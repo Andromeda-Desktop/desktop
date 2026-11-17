@@ -80,6 +80,7 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
     if (m_drag == Drag::Pressed && std::hypot(data.sceneX - m_pressX, data.sceneY - m_pressY) > Tokens::spaceP4 * m_scale) {
       m_drag = Drag::Dragging;
       setOpacity(Tokens::componentSplitDragSourceOpacity);
+      applyState();
     }
     if (m_drag == Drag::Dragging) {
       m_onDrag(DragPhase::Move, data.sceneX, data.sceneY);
@@ -222,7 +223,7 @@ void StatusRow::applyState() {
   m_status->setColor(colorSpecFromRole(m_data.selected ? ColorRole::Label1 : ColorRole::Label2));
   m_time->setColor(colorSpecFromRole(strong ? ColorRole::Label1 : ColorRole::Label2));
   m_time->setFontWeight(m_data.unseen ? FontWeight::SemiBold : FontWeight::Normal);
-  const bool actions = !m_rail && !m_actionButtons.empty() && hot();
+  const bool actions = !m_rail && !m_actionButtons.empty() && m_drag != Drag::Dragging && hot();
   if (m_actions != nullptr && m_actions->visible() != actions) {
     m_actions->setVisible(actions);
     m_actions->setParticipatesInLayout(actions);

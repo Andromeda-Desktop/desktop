@@ -174,6 +174,17 @@ namespace term {
               removeFromSplit(e.id);
               return true;
             },
+            [&](const Move& e) {
+              const auto from = std::ranges::find(m_sessions, e.id, &SessionInfo::id);
+              if (from == m_sessions.end() || e.id == e.before || (e.before != 0 && get(e.before) == nullptr)) {
+                return false;
+              }
+              SessionInfo moved = std::move(*from);
+              m_sessions.erase(from);
+              const auto to = e.before == 0 ? m_sessions.end() : std::ranges::find(m_sessions, e.before, &SessionInfo::id);
+              m_sessions.insert(to, std::move(moved));
+              return true;
+            },
             [&](const Swap& e) {
               const auto* split = splitOf(e.a);
               if (e.a == e.b || split == nullptr || split != splitOf(e.b)) {

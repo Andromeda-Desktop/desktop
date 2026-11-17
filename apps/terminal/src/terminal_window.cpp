@@ -218,6 +218,9 @@ namespace term {
       }
       m_rowList = list.get();
       side->addChild(std::move(list));
+      side->addChild(ui::box({.out = &m_dropLine, .fill = colorSpecFromRole(ColorRole::Accent),
+                              .radius = Tokens::componentTerminalSidebarDropLine * s / 2.0F, .visible = false,
+                              .participatesInLayout = false}));
       refreshRows();
       applyFilter();
       return side;
@@ -681,7 +684,7 @@ namespace term {
       updateSceneState();
     }
     // The sidebar's groups follow the splits: a rebuild regroups the rows (rare: a join, a leave, a member closed).
-    const bool regroup = m_sessions.splits() != splitsBefore;
+    const bool regroup = m_sessions.splits() != splitsBefore || std::holds_alternative<session_event::Move>(event);
     if (const auto* close = std::get_if<session_event::Close>(&event)) {
       // A moved session left m_views before its Close: no fade, nothing to retire.
       if (const auto it = std::ranges::find(m_views, close->id, &Session::id); it != m_views.end()) {
@@ -696,7 +699,7 @@ namespace term {
         std::holds_alternative<session_event::Show>(event) || std::holds_alternative<session_event::Rename>(event) ||
         std::holds_alternative<session_event::Cwd>(event) || std::holds_alternative<session_event::Kind>(event) ||
         std::holds_alternative<session_event::Join>(event) || std::holds_alternative<session_event::Leave>(event) ||
-        std::holds_alternative<session_event::Swap>(event)) {
+        std::holds_alternative<session_event::Swap>(event) || std::holds_alternative<session_event::Move>(event)) {
       m_sessionsChanged(save);
     }
     if (result == ApplyResult::LastClosed) {
@@ -1970,6 +1973,79 @@ namespace term {
     return group != m_groups.end() && !group->second->containsScenePoint(sceneX, sceneY);
   }
 
+  std::optional<std::uint64_t> TerminalWindow::blockOf(const Node* child) const {
+    if (!child->visible()) {
+      return std::nullopt;
+    }
+    const auto node = [](const auto& entry) { return static_cast<const Node*>(entry.second); };
+    if (const auto row = std::ranges::find(m_rows, child, node); row != m_rows.end()) {
+      return row->first;
+    }
+    if (const auto group = std::ranges::find(m_groups, child, node); group != m_groups.end()) {
+      return group->first;
+    }
+    return std::nullopt;
+  }
+
+  std::optional<std::uint64_t> TerminalWindow::dropBefore(std::uint64_t dragged, float sceneX, float sceneY) const {
+    if (m_rowList == nullptr || m_rail) {
+      return std::nullopt;
+    }
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m_rowList, x, y);
+    if (sceneX < x || sceneX > x + m_rowList->width()) {
+      return std::nullopt;
+    }
+    for (const auto& child : m_rowList->children()) {
+      const auto block = blockOf(child.get());
+      if (!block) {
+        continue;
+      }
+      Node::absolutePosition(child.get(), x, y);
+      if (sceneY >= y + child->height() / 2.0F) {
+        continue;
+      }
+      // A group sits in list order where its earliest member is.
+      const auto* split = m_sessions.splitOf(*block);
+      const auto lead = std::ranges::find_if(m_sessions.sessions(), [&](const SessionInfo& session) {
+        return session.id == *block || (split != nullptr && std::ranges::contains(*split, session.id));
+      });
+      return lead->id == dragged ? std::nullopt : std::optional(lead->id);
+    }
+    return std::uint64_t{0};
+  }
+
+  void TerminalWindow::showDropLine(std::optional<std::uint64_t> before) {
+    if (m_dropLine == nullptr || m_rowList == nullptr) {
+      return;
+    }
+    m_dropLine->setVisible(before.has_value());
+    if (!before) {
+      return;
+    }
+    const float s = m_window.uiScale();
+    const float line = Tokens::componentTerminalSidebarDropLine * s;
+    // In the gap above the block it lands before, or under the last block.
+    float y = m_rowList->height();
+    for (const auto& child : m_rowList->children()) {
+      const auto block = blockOf(child.get());
+      const auto* split = block ? m_sessions.splitOf(*block) : nullptr;
+      if (block && (*block == *before || (split != nullptr && std::ranges::contains(*split, *before)))) {
+        y = child->y() - Tokens::spaceP4 * s / 2.0F;
+        break;
+      }
+    }
+    float sceneX = 0.0F;
+    float sceneY = 0.0F;
+    Node::mapToScene(m_rowList, 0.0F, y, sceneX, sceneY);
+    float localX = 0.0F;
+    float localY = 0.0F;
+    (void)Node::mapFromScene(m_dropLine->parent(), sceneX, sceneY, localX, localY);
+    m_dropLine->setPosition(localX, localY - line / 2.0F);
+    m_dropLine->setSize(m_rowList->width(), line);
+  }
+
   void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
     const auto target = dropTarget(id, sceneX, sceneY);
     // A raised chip of the row under the pointer, its symbol where the pointer holds it.
@@ -1994,12 +2070,21 @@ namespace term {
       m_window.clearDragGhost();
     }
     m_split.showDropPreview(target && phase == StatusRow::DragPhase::Move ? std::optional(target->rect) : std::nullopt);
+    // Off a pane, the row lands in the sidebar order; a split member only once it leaves its block.
+    const bool leaves = !target && leavesGroup(id, sceneX, sceneY);
+    const auto lands = target || (m_sessions.splitOf(id) != nullptr && !leaves) ? std::nullopt : dropBefore(id, sceneX, sceneY);
+    showDropLine(phase == StatusRow::DragPhase::Move ? lands : std::nullopt);
     if (target && phase == StatusRow::DragPhase::Drop) {
       m_split.pendJoin({.target = target->target, .joining = id, .edge = target->edge}, target->rect);
       apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
       focusGrid();
-    } else if (phase == StatusRow::DragPhase::Drop && leavesGroup(id, sceneX, sceneY)) {
-      apply(session_event::Leave{id});
+    } else if (phase == StatusRow::DragPhase::Drop) {
+      if (leaves) {
+        apply(session_event::Leave{id});
+      }
+      if (lands) {
+        apply(session_event::Move{.id = id, .before = *lands});
+      }
     }
   }
 

@@ -524,6 +524,7 @@ glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the win
 scene_selection = 0.12  # label_1 wash of the sidebar selection over a theme scene (an accent tint turns muddy over the scene's hues)
 scene_tint = 0.15  # the theme surface's alpha over a theme scene where no text needs it; text gets a measured backing
 group_row = 32.0  # a split member's row in the sidebar group block
+sidebar_drop_line = 2.0  # accent line where a dragged row lands in the sidebar order
 split_min_columns = 20.0  # a divider stops where a pane would show fewer columns
 split_min_rows = 5.0  # and fewer rows
 palette_dim = 0.55  # shadow alpha over the pane the command palette acts on (design-palette B)
