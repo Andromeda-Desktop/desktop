@@ -4996,3 +4996,28 @@ ANDROMEDA_TEST(windowRuleTouchpadScrollFactorLoadsInRange) {
   CHECK(store.config().windowRules[0].touchpadScrollFactor == 10.0);
   CHECK(containsDiagnostic(store, "out of range"));
 }
+
+ANDROMEDA_TEST(scratchpadHideWhenEmptyIsAnOptionalBoolean) {
+  const TempConfig file;
+  file.write(R"(
+[[scratchpad]]
+name = "term"
+hide_when_empty = true
+
+[[scratchpad]]
+name = "music"
+
+[[scratchpad]]
+name = "invalid"
+hide_when_empty = "true"
+)");
+
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  CHECK(store.reload().success);
+  CHECK_EQ(store.config().scratchpads.size(), size_t{3});
+  CHECK(store.config().scratchpads[0].hideWhenEmpty);
+  CHECK(!store.config().scratchpads[1].hideWhenEmpty);
+  CHECK(!store.config().scratchpads[2].hideWhenEmpty);
+  CHECK(containsDiagnostic(store, "ignoring scratchpad[2].hide_when_empty (expected boolean)"));
+}

@@ -150,6 +150,7 @@ namespace andromeda {
   struct ScratchpadConfig {
     std::string name;
     std::string spawnWhenEmpty;
+    bool hideWhenEmpty = false;
     bool operator==(const ScratchpadConfig&) const = default;
   };
 

@@ -38,6 +38,7 @@ namespace andromeda {
               }
           ),
           registry::text("spawn_when_empty", &ScratchpadConfig::spawnWhenEmpty),
+          registry::boolean("hide_when_empty", &ScratchpadConfig::hideWhenEmpty),
       };
       return fields;
     }

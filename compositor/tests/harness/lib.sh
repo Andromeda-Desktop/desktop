@@ -84,6 +84,13 @@ await_window() {
   done
   echo "missing window: $1"; return 1
 }
+await_window_closed() {
+  for _ in $(seq 100); do
+    window_by_title "$1" > /dev/null || return 0
+    sleep 0.025
+  done
+  echo "window still open: $1"; return 1
+}
 
 # Shared fixture for live workspace reveal checks.
 workspace_reveal_config() {
