@@ -9,6 +9,7 @@
 #include "input/modifier_tap.h"
 #include "input/shortcuts_inhibit.h"
 #include "input/surface_layouts.h"
+#include "output/connector_hdr_state.h"
 #include "output/enable_overrides.h"
 #include "scene/border_rect.h"
 #include "scene/effect_registry.h"
@@ -337,6 +338,7 @@ namespace andromeda {
     void hideInsertHint();
     [[nodiscard]] uint64_t uptimeMs() const;
     [[nodiscard]] SessionLock* sessionLock() const { return m_sessionLock.get(); }
+    ConnectorHdrState& connectorHdrState() { return m_connectorHdrState; }
     [[nodiscard]] bool sessionLocked() const { return m_lockState != LockState::Unlocked; }
     [[nodiscard]] const std::string& activeSubmap() const {
       static const std::string empty;
@@ -1177,6 +1179,7 @@ namespace andromeda {
     // different identified monitors. An output-policy config reload clears
     // them.
     OutputEnableOverrides m_outputEnableOverrides;
+    ConnectorHdrState m_connectorHdrState;
     Dirty m_dirty = Dirty::None;
     FocusManager m_focus{*this};
 
