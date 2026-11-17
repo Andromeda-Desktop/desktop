@@ -20,6 +20,9 @@ namespace {
   constexpr auto kAccentColor = "accent-color";
   constexpr auto kContrast = "contrast";
   constexpr auto kReducedMotion = "reduced-motion";
+  constexpr auto kAndromeda = "org.andromeda.appearance";
+  constexpr auto kUiScale = "ui-scale";
+  constexpr auto kTextScale = "text-scale";
   constexpr std::uint32_t kVersion = 2;
 
   // A namespace pattern matches exactly, or as a prefix when it ends in '*'; no patterns means every namespace.
@@ -52,6 +55,10 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                   all[kAppearance][kContrast] = sdbus::Variant{m_contrast};
                   all[kAppearance][kReducedMotion] = sdbus::Variant{m_reducedMotion};
                 }
+                if (wanted(namespaces, kAndromeda)) {
+                  all[kAndromeda][kUiScale] = sdbus::Variant{m_uiScale};
+                  all[kAndromeda][kTextScale] = sdbus::Variant{m_textScale};
+                }
                 return all;
               }),
           sdbus::registerMethod("Read")
@@ -69,6 +76,12 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 }
                 if (ns == kAppearance && key == kReducedMotion) {
                   return sdbus::Variant{m_reducedMotion};
+                }
+                if (ns == kAndromeda && key == kUiScale) {
+                  return sdbus::Variant{m_uiScale};
+                }
+                if (ns == kAndromeda && key == kTextScale) {
+                  return sdbus::Variant{m_textScale};
                 }
                 throw sdbus::Error(
                     sdbus::Error::Name{"org.freedesktop.portal.Error.NotFound"}, "Requested setting not found"
@@ -97,7 +110,7 @@ void SettingsPortal::setDark(bool dark) {
     return;
   }
   m_colorScheme = scheme;
-  emitChanged(kColorScheme, sdbus::Variant{scheme});
+  emitChanged(kAppearance, kColorScheme, sdbus::Variant{scheme});
 }
 
 void SettingsPortal::setAccent(double r, double g, double b) {
@@ -106,7 +119,7 @@ void SettingsPortal::setAccent(double r, double g, double b) {
     return;
   }
   m_accent = accent;
-  emitChanged(kAccentColor, accentVariant());
+  emitChanged(kAppearance, kAccentColor, accentVariant());
 }
 
 void SettingsPortal::setHighContrast(bool high) {
@@ -115,7 +128,7 @@ void SettingsPortal::setHighContrast(bool high) {
     return;
   }
   m_contrast = contrast;
-  emitChanged(kContrast, sdbus::Variant{contrast});
+  emitChanged(kAppearance, kContrast, sdbus::Variant{contrast});
 }
 
 void SettingsPortal::setReducedMotion(bool reduce) {
@@ -124,15 +137,24 @@ void SettingsPortal::setReducedMotion(bool reduce) {
     return;
   }
   m_reducedMotion = reduced;
-  emitChanged(kReducedMotion, sdbus::Variant{reduced});
+  emitChanged(kAppearance, kReducedMotion, sdbus::Variant{reduced});
+}
+
+void SettingsPortal::setScales(double uiScale, double textScale) {
+  if (uiScale != m_uiScale) {
+    m_uiScale = uiScale;
+    emitChanged(kAndromeda, kUiScale, sdbus::Variant{uiScale});
+  }
+  if (textScale != m_textScale) {
+    m_textScale = textScale;
+    emitChanged(kAndromeda, kTextScale, sdbus::Variant{textScale});
+  }
 }
 
 sdbus::Variant SettingsPortal::accentVariant() const {
   return sdbus::Variant{sdbus::Struct<double, double, double>{m_accent[0], m_accent[1], m_accent[2]}};
 }
 
-void SettingsPortal::emitChanged(const char* key, const sdbus::Variant& value) {
-  m_object->emitSignal("SettingChanged")
-      .onInterface(kInterface)
-      .withArguments(std::string(kAppearance), std::string(key), value);
+void SettingsPortal::emitChanged(const char* ns, const char* key, const sdbus::Variant& value) {
+  m_object->emitSignal("SettingChanged").onInterface(kInterface).withArguments(std::string(ns), std::string(key), value);
 }

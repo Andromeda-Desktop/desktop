@@ -189,8 +189,10 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     m_busSource = std::make_unique<SessionBusPollSource>(*m_bus);
     m_loop.addSource(m_busSource.get());
     m_appearance = std::make_unique<Appearance>(*m_bus, [this] {
+      m_loop.renderContext().setTextScale(m_appearance->textScale());
       for (const auto& w : m_windows) {
-        w->requestRebuild(); // colours resolve at build time in places, so every node gets the new scheme
+        w->setUiScale(m_appearance->uiScale());
+        w->requestRebuild(); // colours and sizes resolve at build time in places, so every node gets the new values
         w->setSceneHeld(m_appearance->holdMotion());
       }
     });
@@ -278,6 +280,7 @@ AppWindow& DeskApp::addWindow(AppWindow::Config config) {
   auto& window = *m_windows.emplace_back(std::make_unique<AppWindow>(m_loop, m_commands, m_state, std::move(config)));
   window.setClosedCallback([this] { reapClosed(); });
   if (m_appearance != nullptr) {
+    window.setUiScale(m_appearance->uiScale());
     window.setSceneHeld(m_appearance->holdMotion());
   }
   return window;

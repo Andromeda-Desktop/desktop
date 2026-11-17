@@ -1043,6 +1043,12 @@ void Application::initStyleThemeAndWayland() {
     m_settingsPortal->setDark(!m_themeService.isLightMode());
     const Color accent = colorForRole(ColorRole::Accent, 1.0F);
     m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
+    const auto publishScales = [this] {
+      const auto& a11y = m_configService.config().accessibility;
+      m_settingsPortal->setScales(a11y.uiScale, a11y.textScale);
+    };
+    publishScales();
+    m_configService.addReloadCallback(publishScales);
   }
   if (m_configService.config().theme.toolkitThemes) {
     const auto& toolkit = m_themeService.toolkitColors();

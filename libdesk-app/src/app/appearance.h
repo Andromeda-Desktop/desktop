@@ -3,27 +3,35 @@
 #include <array>
 #include <functional>
 #include <memory>
+#include <string>
 
 class SessionBus;
 namespace sdbus {
   class IProxy;
+  class Variant;
 }
 
 // Follows the desktop's light/dark choice, accent and reduced motion for an app process: org.freedesktop.appearance
 // color-scheme, accent-color and reduced-motion from the Settings portal (the public frontend, else the Andromeda shell
 // backend directly), and battery saver from the PowerProfileMonitor portal. Applies them to the libdesk-ui palette and
-// MotionService; `changed` runs after each change so windows repaint.
+// MotionService. Also org.andromeda.appearance ui-scale and text-scale for the windows and text. `changed` runs
+// after each change so windows rebuild.
 class Appearance {
 public:
   Appearance(SessionBus& bus, std::function<void()> changed);
   ~Appearance();
   // Reduced motion or battery saver: decorative motion (theme scenes) stays still.
   [[nodiscard]] bool holdMotion() const noexcept { return m_reducedMotion || m_powerSaver; }
+  // org.andromeda.appearance ui-scale and text-scale from the shell; 1 until it publishes them.
+  [[nodiscard]] float uiScale() const noexcept { return static_cast<float>(m_uiScale); }
+  [[nodiscard]] float textScale() const noexcept { return static_cast<float>(m_textScale); }
   Appearance(const Appearance&) = delete;
   Appearance& operator=(const Appearance&) = delete;
 
 private:
   void read(bool backend);
+  // Stores one setting; false for a namespace, key or type this class does not follow.
+  bool take(const std::string& ns, const std::string& key, const sdbus::Variant& value);
   void apply();
 
   SessionBus& m_bus;
@@ -36,12 +44,16 @@ private:
   bool m_reducedMotion = false;
   bool m_powerSaver = false;
   double m_accent[3] = {0.0, 0.0, 0.0};
+  double m_uiScale = 1.0;
+  double m_textScale = 1.0;
   struct Applied {
     bool light = false;
     bool hasAccent = false;
     bool reducedMotion = false;
     bool powerSaver = false;
     std::array<double, 3> accent{};
+    double uiScale = 1.0;
+    double textScale = 1.0;
     bool operator==(const Applied&) const = default;
   };
   Applied m_applied; // what windows last built with; the defaults match the startup palette

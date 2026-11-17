@@ -27,6 +27,8 @@ public:
   void setAccent(double r, double g, double b);
   void setHighContrast(bool high);
   void setReducedMotion(bool reduce);
+  // org.andromeda.appearance ui-scale and text-scale (factors, 1 = default): apps scale their windows and text.
+  void setScales(double uiScale, double textScale);
 
 private:
   SessionBus& m_bus;
@@ -37,7 +39,9 @@ private:
   std::array<double, 3> m_accent{-1.0, -1.0, -1.0};
   std::uint32_t m_contrast = 0;
   std::uint32_t m_reducedMotion = 0;
+  double m_uiScale = 1.0;
+  double m_textScale = 1.0;
 
-  void emitChanged(const char* key, const sdbus::Variant& value);
+  void emitChanged(const char* ns, const char* key, const sdbus::Variant& value);
   [[nodiscard]] sdbus::Variant accentVariant() const;
 };

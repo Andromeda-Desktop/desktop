@@ -262,6 +262,8 @@ public:
   // This window's surface or its open menu popup: the app routes that surface's events here.
   [[nodiscard]] bool ownsSurface(wl_surface* surface) const noexcept;
   [[nodiscard]] float uiScale() const noexcept { return m_uiScale; }
+  // The desktop's ui scale; the caller rebuilds the window after a change.
+  void setUiScale(float scale) noexcept { m_uiScale = scale; }
   [[nodiscard]] InputDispatcher& input() noexcept { return m_input; }
   [[nodiscard]] ToplevelSurface* surface() noexcept { return m_surface.get(); }
 

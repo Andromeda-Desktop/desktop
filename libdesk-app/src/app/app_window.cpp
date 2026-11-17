@@ -96,16 +96,6 @@ namespace {
     }
   }
 
-  float envUiScale() {
-    if (const char* value = std::getenv("ANDROMEDA_UI_SCALE"); value != nullptr) {
-      const float scale = std::strtof(value, nullptr);
-      if (scale >= 0.5F && scale <= 4.0F) {
-        return scale;
-      }
-    }
-    return 1.0F;
-  }
-
   // The header row (rulebook 9.12): the title keeps its natural width while the accessory (search) shrinks to its
   // minWidth; only past that does the title ellipsize.
   class HeaderRow final : public Flex {
@@ -251,7 +241,7 @@ float contentLeft(float margin, float sidebarShown, float cardGap) {
 } // namespace
 
 AppWindow::AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, Config config)
-    : m_loop(loop), m_commands(commands), m_state(state), m_config(std::move(config)), m_uiScale(envUiScale()) {}
+    : m_loop(loop), m_commands(commands), m_state(state), m_config(std::move(config)) {}
 
 AppWindow::~AppWindow() { close(); }
 

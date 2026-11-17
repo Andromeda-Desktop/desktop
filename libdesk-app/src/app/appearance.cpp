@@ -15,6 +15,7 @@ namespace {
   constexpr auto kPortalSettings = "org.freedesktop.portal.Settings";
   constexpr auto kBackendSettings = "org.freedesktop.impl.portal.Settings";
   constexpr auto kNamespace = "org.freedesktop.appearance";
+  constexpr auto kAndromeda = "org.andromeda.appearance";
   constexpr auto kPowerMonitor = "org.freedesktop.portal.PowerProfileMonitor";
   constexpr auto kPowerSaverProperty = "power-saver-enabled";
   constexpr std::uint32_t kPreferLight = 2; // color-scheme: 0 no preference, 1 dark, 2 light
@@ -30,24 +31,9 @@ namespace {
 
 Appearance::Appearance(SessionBus& bus, std::function<void()> changed) : m_bus(bus), m_changed(std::move(changed)) {
   const auto onChanged = [this](const std::string& ns, const std::string& key, const sdbus::Variant& raw) {
-    if (ns != kNamespace) {
-      return;
+    if (take(ns, key, unwrap(raw))) {
+      apply();
     }
-    const sdbus::Variant value = unwrap(raw);
-    if (key == "color-scheme" && value.containsValueOfType<std::uint32_t>()) {
-      m_light = value.get<std::uint32_t>() == kPreferLight;
-    } else if (key == "accent-color" && value.containsValueOfType<sdbus::Struct<double, double, double>>()) {
-      const auto [r, g, b] = value.get<sdbus::Struct<double, double, double>>();
-      m_hasAccent = r >= 0.0 && r <= 1.0 && g >= 0.0 && g <= 1.0 && b >= 0.0 && b <= 1.0;
-      m_accent[0] = r;
-      m_accent[1] = g;
-      m_accent[2] = b;
-    } else if (key == "reduced-motion" && value.containsValueOfType<std::uint32_t>()) {
-      m_reducedMotion = value.get<std::uint32_t>() == 1;
-    } else {
-      return;
-    }
-    apply();
   };
   try {
     m_portal = sdbus::createProxy(m_bus.connection(), kPortal, kPath);
@@ -85,11 +71,15 @@ Appearance::~Appearance() = default;
 
 void Appearance::read(bool backend) {
   sdbus::IProxy* proxy = backend ? m_backend.get() : m_portal.get();
-  for (const char* key : {"color-scheme", "accent-color", "reduced-motion"}) {
+  const std::pair<const char*, const char*> keys[] = {
+      {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"},
+      {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},
+  };
+  for (const auto& [ns, key] : keys) {
     proxy->callMethodAsync("Read")
         .onInterface(backend ? kBackendSettings : kPortalSettings)
-        .withArguments(std::string(kNamespace), std::string(key))
-        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), backend, key = std::string(key)](
+        .withArguments(std::string(ns), std::string(key))
+        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), backend, ns = std::string(ns), key = std::string(key)](
                              std::optional<sdbus::Error> error, sdbus::Variant raw) {
           if (alive.expired()) {
             return;
@@ -101,21 +91,48 @@ void Appearance::read(bool backend) {
             }
             return;
           }
-          const sdbus::Variant value = unwrap(std::move(raw));
-          if (key == "color-scheme" && value.containsValueOfType<std::uint32_t>()) {
-            m_light = value.get<std::uint32_t>() == kPreferLight;
-          } else if (key == "accent-color" && value.containsValueOfType<sdbus::Struct<double, double, double>>()) {
-            const auto [r, g, b] = value.get<sdbus::Struct<double, double, double>>();
-            m_hasAccent = r >= 0.0 && r <= 1.0 && g >= 0.0 && g <= 1.0 && b >= 0.0 && b <= 1.0;
-            m_accent[0] = r;
-            m_accent[1] = g;
-            m_accent[2] = b;
-          } else if (key == "reduced-motion" && value.containsValueOfType<std::uint32_t>()) {
-            m_reducedMotion = value.get<std::uint32_t>() == 1;
+          if (take(ns, key, unwrap(std::move(raw)))) {
+            apply();
           }
-          apply();
         });
   }
+}
+
+bool Appearance::take(const std::string& ns, const std::string& key, const sdbus::Variant& value) {
+  if (ns == kAndromeda) {
+    if (!value.containsValueOfType<double>()) {
+      return false;
+    }
+    const double scale = value.get<double>();
+    if (scale < 0.5 || scale > 4.0) {
+      return false;
+    }
+    if (key == "ui-scale") {
+      m_uiScale = scale;
+    } else if (key == "text-scale") {
+      m_textScale = scale;
+    } else {
+      return false;
+    }
+    return true;
+  }
+  if (ns != kNamespace) {
+    return false;
+  }
+  if (key == "color-scheme" && value.containsValueOfType<std::uint32_t>()) {
+    m_light = value.get<std::uint32_t>() == kPreferLight;
+  } else if (key == "accent-color" && value.containsValueOfType<sdbus::Struct<double, double, double>>()) {
+    const auto [r, g, b] = value.get<sdbus::Struct<double, double, double>>();
+    m_hasAccent = r >= 0.0 && r <= 1.0 && g >= 0.0 && g <= 1.0 && b >= 0.0 && b <= 1.0;
+    m_accent[0] = r;
+    m_accent[1] = g;
+    m_accent[2] = b;
+  } else if (key == "reduced-motion" && value.containsValueOfType<std::uint32_t>()) {
+    m_reducedMotion = value.get<std::uint32_t>() == 1;
+  } else {
+    return false;
+  }
+  return true;
 }
 
 void Appearance::apply() {
@@ -132,7 +149,9 @@ void Appearance::apply() {
   setPalette(paletteFor(m_light));
   MotionService::instance().setReduced(m_reducedMotion);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
-  const Applied now{m_light, m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]}};
+  const Applied now{
+      m_light, m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]}, m_uiScale, m_textScale
+  };
   if (now == m_applied) {
     return;
   }
