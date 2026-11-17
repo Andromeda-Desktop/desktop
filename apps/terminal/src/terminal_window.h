@@ -5,6 +5,7 @@
 #include "core/timer_manager.h"
 #include "session_layout.h"
 #include "session_list.h"
+#include "ui/controls/scroll_view.h"
 #include "ui/controls/status_row.h"
 #include "terminal_view.h"
 #include "agent_view.h"
@@ -233,6 +234,7 @@ namespace term {
     Button* m_newButton = nullptr; // the sidebar "+": its menu opens new sessions and windows
     SelectionList* m_rowList = nullptr;
     Box* m_dropLine = nullptr; // where a dragged row lands in the sidebar order
+    ScrollViewState m_sidebarScroll; // the row list's offset across sidebar rebuilds
     std::uint64_t m_tintTarget = 0; // the row the tint moves to
     std::uint64_t m_rowSelected = 0; // the row with selected labels: it changes at half the tint's travel
     std::vector<std::pair<std::uint64_t, StatusRow*>> m_rows; // session id, its sidebar row

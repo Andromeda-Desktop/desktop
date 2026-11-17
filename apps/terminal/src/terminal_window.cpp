@@ -146,11 +146,11 @@ namespace term {
       registerDropTarget();
       return slot;
     });
-    m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float /*height*/) -> std::unique_ptr<Node> {
+    m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float height) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
       const float button = Tokens::sizeControlM * s;
       auto side = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s,
-                              .width = width});
+                              .width = width, .height = height});
       // Under the window's compact width the sidebar is an icon rail (as in Files): "+" and session symbols only.
       m_rail = width < 120.0F * s;
       auto top = ui::row({.align = FlexAlign::Center, .justify = m_rail ? FlexJustify::Center : FlexJustify::Start,
@@ -177,10 +177,12 @@ namespace term {
             },
         }));
       }
+      // A click opens a shell session; a right-click offers the other kinds.
       top->addChild(ui::button({.out = &m_newButton, .glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s,
-                                .variant = ButtonVariant::Ghost, .tooltip = std::string("New"),
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string("New session"),
                                 .radius = button / 2.0F, .height = button,
-                                .onClick = [this] { openNewMenu(); }}));
+                                .onClick = [this] { openSession(NewShell{}); }}));
+      m_newButton->setOnRightClick([this] { openNewMenu(); });
       side->addChild(std::move(top));
       auto list = std::make_unique<SelectionList>(s);
       if (const ThemeSpec theme = resolveTheme(m_settings.settings().theme, m_settings.themes()); hasScene(theme)) {
@@ -217,10 +219,21 @@ namespace term {
         list->addChild(std::move(group));
       }
       m_rowList = list.get();
-      side->addChild(std::move(list));
+      // The rows scroll under the fixed search bar; the gear stays at the bottom.
+      auto scroll = ui::scrollView({.state = &m_sidebarScroll, .contentScale = s, .viewportPaddingH = 0.0F,
+                                    .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
+      scroll->content()->setAlign(FlexAlign::Stretch);
+      scroll->content()->addChild(std::move(list));
+      side->addChild(std::move(scroll));
       side->addChild(ui::box({.out = &m_dropLine, .fill = colorSpecFromRole(ColorRole::Accent),
                               .radius = Tokens::componentTerminalSidebarDropLine * s / 2.0F, .visible = false,
                               .participatesInLayout = false}));
+      auto bottom = ui::row({.align = FlexAlign::Center, .justify = m_rail ? FlexJustify::Center : FlexJustify::Start});
+      bottom->addChild(ui::button({.glyph = std::string("settings"), .glyphSize = Tokens::sizeSymbol * s,
+                                   .variant = ButtonVariant::Ghost, .tooltip = std::string("Preferences"),
+                                   .radius = button / 2.0F, .height = button,
+                                   .onClick = [this] { m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); }}));
+      side->addChild(std::move(bottom));
       refreshRows();
       applyFilter();
       return side;
@@ -1227,7 +1240,7 @@ namespace term {
       return;
     }
     const Keybindings& keys = m_settings.settings().keys;
-    enum : std::int32_t { kShell = 1, kWindow, kPreferences, kAgent }; // kAgent + Kind: one item per installed kind
+    enum : std::int32_t { kShell = 1, kWindow, kAgent }; // kAgent + Kind: one item per installed kind
     float x = 0.0F;
     float y = 0.0F;
     Node::absolutePosition(m_newButton, x, y);
@@ -1240,7 +1253,6 @@ namespace term {
       }
     }
     items.push_back({.id = kWindow, .label = "New window", .shortcut = keys.label(Action::NewWindow), .glyph = "app-window"});
-    items.push_back({.id = kPreferences, .label = "Preferences", .shortcut = keys.label(Action::Preferences), .glyph = "settings"});
     m_window.openContextMenu(std::move(items),
                              x, y + m_newButton->height(),
                              [this, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
@@ -1250,7 +1262,6 @@ namespace term {
                                switch (id) {
                                  case kShell: openSession(NewShell{}); break;
                                  case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); break;
-                                 case kPreferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); break;
                                  default:
                                    if (id >= kAgent && id < kAgent + static_cast<std::int32_t>(agent::kKindCount)) {
                                      openAgentHere(static_cast<agent::Kind>(id - kAgent));
