@@ -35,7 +35,7 @@ jobs:
           key: ccache-deb-testing-${{ github.run_id }}
           restore-keys: ccache-deb-testing-
       - name: Packages
-        run: DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean testing
+        run: ANDROMEDA_CORE=1 DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean testing
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always()
         with:
@@ -58,6 +58,8 @@ jobs:
           mkdir apt
           for deb in "$out"/deb-testing/*.deb "$out"/xwayland-satellite-testing/*.deb "$RUNNER_TEMP"/link/*.deb; do
             name=$(basename "$deb")
+            # Core release: the apps publish on their own tags (release-apps).
+            [[ ! $name =~ ^andromeda-(files|player|viewer|terminal)_ ]] || continue
             cp "$deb" "apt/${name//:/.}"
           done
           cd apt

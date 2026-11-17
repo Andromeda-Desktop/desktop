@@ -24,6 +24,9 @@ cd "$srcdir"
 
 # ANDROMEDA_APP=files|player|viewer|terminal (app release CI): build and stage only that app and, for Files and Viewer, the
 # preview. dpkg-buildpackage still writes every package of debian/control; the other debs stay empty and unpublished.
+# ANDROMEDA_CORE=1 (core release CI): no apps; they release on their own tags. Their debs stay empty and unpublished.
+apps=(files viewer player terminal)
+[[ -z ${ANDROMEDA_CORE:-} ]] || apps=()
 app_dirs=()
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
   [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || app_dirs=(preview)
@@ -33,7 +36,7 @@ fi
 case ${1:-} in
   build)
     # Ubuntu has no zig 0.17: the script fetches the pinned one.
-    [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != terminal ]] || desktop/tools/build-libghostty.sh
+    [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != terminal || -n ${ANDROMEDA_CORE:-} ]] || desktop/tools/build-libghostty.sh
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
       [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] ||
         arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
@@ -50,10 +53,10 @@ case ${1:-} in
     arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     arch-meson desktop/indexer build-indexer -Db_lto=true
     arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-    for app in files viewer player terminal; do
+    for app in "${apps[@]}"; do
       arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     done
-    for dir in compositor shell portal greeter indexer preview files viewer player terminal; do meson compile -C build-$dir; done
+    for dir in compositor shell portal greeter indexer preview "${apps[@]}"; do meson compile -C build-$dir; done
     cargo build --locked --release --manifest-path desktop/system/Cargo.toml --workspace \
       --exclude andromeda-update --exclude andromeda-update-helper
     cargo build --locked --release --manifest-path desktop/system/Cargo.toml -p andromeda-update \
@@ -86,6 +89,7 @@ case ${1:-} in
       declare -A debs=([andromeda-$ANDROMEDA_APP-git]=andromeda-$ANDROMEDA_APP)
       [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || debs[andromeda-preview-git]=andromeda-preview
     fi
+    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]'
     for fn in "${!debs[@]}"; do
       pkgname=${debs[$fn]}
       pkgdir=$root/debian/$pkgname

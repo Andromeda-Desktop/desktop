@@ -57,7 +57,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_NO_LINK="${ANDROMEDA_NO_LINK:-}" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
+          ANDROMEDA_CORE=1 ANDROMEDA_NO_LINK="${ANDROMEDA_NO_LINK:-}" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
           makepkg --syncdeps --noconfirm --force
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && !inputs.prebuilt

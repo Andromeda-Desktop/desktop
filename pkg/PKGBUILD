@@ -10,6 +10,12 @@ if [[ -n ${ANDROMEDA_APP:-} ]]; then
   pkgname=(andromeda-$ANDROMEDA_APP-git)
   [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || pkgname+=(andromeda-preview-git)
 fi
+# ANDROMEDA_CORE=1 (core release CI): no app packages; the apps release on their own tags (release-apps).
+if [[ -n ${ANDROMEDA_CORE:-} ]]; then
+  for _app in files player viewer terminal; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
+fi
+_apps=(files viewer player terminal)
+[[ -z ${ANDROMEDA_CORE:-} ]] || _apps=()
 # Epoch keeps the monorepo revision newer than the per-fork versions it replaces.
 epoch=1
 pkgver=r15702.g1bc0efe54
@@ -92,7 +98,7 @@ build() {
   arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   arch-meson desktop/indexer build-indexer -Db_lto=true
   arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-  for app in files viewer player terminal; do
+  for app in "${_apps[@]}"; do
     arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   done
   meson compile -C build-compositor
@@ -101,7 +107,7 @@ build() {
   meson compile -C build-greeter
   meson compile -C build-indexer
   meson compile -C build-preview
-  for app in files viewer player terminal; do meson compile -C build-$app; done
+  for app in "${_apps[@]}"; do meson compile -C build-$app; done
   echo "$stamp" > meson.stamp
   # makepkg's -flto=auto turns ring's C and cxx-qt's C++ objects into GCC LTO bitcode, which the Rust linker cannot read.
   # The Link target dir lives outside srcdir, so makepkg -C keeps it: a full Link build compiles silently for over 15 min.

@@ -47,7 +47,7 @@ jobs:
           restore-keys: ccache-deb-${{ matrix.base }}-
       - name: Packages
         if: ${{ !inputs.prebuilt }}
-        run: DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean ${{ matrix.base }}
+        run: ANDROMEDA_CORE=1 DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean ${{ matrix.base }}
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && !inputs.prebuilt
         with:
@@ -79,6 +79,8 @@ jobs:
           # GitHub rewrites ':' in asset names; Packages must list the names the assets really get.
           for deb in "$out"/deb-$BASE/*.deb "$out"/xwayland-satellite-$BASE/*.deb "$RUNNER_TEMP"/link/*.deb; do
             name=$(basename "$deb")
+            # Core release: the apps publish on their own tags (release-apps).
+            [[ ! $name =~ ^andromeda-(files|player|viewer|terminal)_ ]] || continue
             cp "$deb" "apt/${name//:/.}"
           done
           cd apt
