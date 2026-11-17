@@ -1211,6 +1211,7 @@ if build_tests
     'ical_parser',
     'ico_decoder',
     'icon_resolver',
+    'icon_resolver_cache',
     'image_file_loader_data_uri',
     'image_orientation',
     'image_source_log',

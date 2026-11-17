@@ -2,7 +2,9 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -17,6 +19,10 @@ struct IconSearchDir {
   int minSize = 0;
   int maxSize = 0;
 };
+
+struct IconDirIndex;
+
+struct IconDirIndex;
 
 struct IconThemeWatchPaths {
   std::vector<std::string> baseDirs;
@@ -63,10 +69,14 @@ private:
   void rebuild();
   void ensureFresh();
   std::string findIcon(const std::string& name, int targetSize) const;
+  const IconDirIndex& dirIndex(std::size_t searchDir) const;
+  bool dirHasIcon(std::size_t searchDir, const std::string& name, std::string_view extension) const;
 
   std::unordered_map<std::string, std::string> m_cache;
   std::unordered_map<std::string, ResolvedIcon> m_symbolicPreferredCache;
   std::unordered_set<std::string> m_missingCache;
+  // This resolver's references to the shared indexes, parallel to m_searchDirs.
+  mutable std::vector<std::shared_ptr<const IconDirIndex>> m_dirIndexes;
   std::vector<std::string> m_baseDirs;     // XDG icon theme roots
   std::vector<IconSearchDir> m_searchDirs; // Ordered list of concrete theme dirs to search
   std::vector<std::string> m_pixmapDirs;   // XDG pixmap fallback roots
