@@ -77,7 +77,7 @@ void Appearance::read(bool backend) {
   const std::pair<const char*, const char*> keys[] = {
       {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"},
       {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "glass"},
-      {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
+      {kAndromeda, "frost"},        {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
   };
   for (const auto& [ns, key] : keys) {
     proxy->callMethodAsync("Read")
@@ -103,11 +103,11 @@ void Appearance::read(bool backend) {
 }
 
 bool Appearance::take(const std::string& ns, const std::string& key, const sdbus::Variant& value) {
-  if (ns == kAndromeda && (key == "glass" || key == "liquid")) {
+  if (ns == kAndromeda && (key == "glass" || key == "frost" || key == "liquid")) {
     if (!value.containsValueOfType<double>()) {
       return false;
     }
-    (key == "glass" ? m_glass : m_liquid) = std::clamp(value.get<double>(), 0.0, 1.0);
+    (key == "glass" ? m_glass : key == "frost" ? m_frost : m_liquid) = std::clamp(value.get<double>(), 0.0, 1.0);
     return true;
   }
   if (ns == kAndromeda && (key == "reduce-transparency" || key == "compositor-blur")) {
@@ -166,11 +166,15 @@ void Appearance::apply() {
   setResolvedThemeLight(m_light);
   setPalette(paletteFor(m_light));
   MotionService::instance().setReduced(m_reducedMotion);
-  Style::setGlass(static_cast<float>(m_glass), static_cast<float>(m_liquid), m_reduceTransparency, m_compositorBlur);
+  Style::setGlass(
+      static_cast<float>(m_glass), static_cast<float>(m_frost), static_cast<float>(m_liquid), m_reduceTransparency,
+      m_compositorBlur
+  );
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
       m_light,   m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
-      m_uiScale, m_textScale, m_glass,         m_liquid,     m_reduceTransparency, m_compositorBlur
+      m_uiScale, m_textScale, m_glass,         m_frost,      m_liquid,             m_reduceTransparency,
+      m_compositorBlur
   };
   if (now == m_applied) {
     return;

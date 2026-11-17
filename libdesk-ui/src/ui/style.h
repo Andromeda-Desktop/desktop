@@ -126,10 +126,11 @@ namespace Style {
   [[nodiscard]] bool popupShadowsEnabled() noexcept;
   void setPopupShadowsEnabled(bool enabled);
 
-  // The glass slider (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted; the liquid slider
-  // (appearance.liquid): 0 Off, 0.5 the design values, 1 Strong; reduce transparency makes every glass surface solid.
+  // The tint slider (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted; the blur slider
+  // (appearance.frost) and the liquid slider (appearance.liquid): 0 to 1, 0.5 the design values; reduce transparency
+  // makes every glass surface solid.
   // compositorBlur: the compositor blurs and draws glass tints (Andromeda appearance.blur.enabled).
-  void setGlass(float glass, float liquid, bool reduceTransparency, bool compositorBlur = false);
+  void setGlass(float glass, float frost, float liquid, bool reduceTransparency, bool compositorBlur = false);
   // Emitted by setGlass when the slider or reduce transparency changes, before the palette change that follows it:
   // surfaces set their glass::tone here so no paletteChanged handler reads a stale tone.
   Signal<>& glassChanged();

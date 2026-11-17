@@ -22,7 +22,7 @@ namespace glass {
     float rim = 0.0F;
     // dsk_surface_v1 liquid [2] (v9): the sharp backdrop through the rim band; costs a backdrop copy.
     float lens = 0.0F;
-    // dsk_surface_v1 blur [0] (v15): how much lighter the blur is, 0 full size to 1 the lightest (the Glass slider).
+    // dsk_surface_v1 blur [0] (v15): how much lighter the blur is, 0 full size to 1 the lightest (the Blur slider).
     float clarity = 0.0F;
     // Blur size, 0 to 1: blurStrength(clarity).
     float blurStrength = 1.0F;
@@ -58,11 +58,11 @@ namespace glass {
     return kind == Kind::Shape ? 0.70F : light ? 0.88F : 0.92F;
   }
 
-  // slider (Glass: blur and tint): 0 Clear, 0.5 Tinted (the design values), 1 Frosted. liquid (refraction, lens, rim):
-  // 0 Off, 0.5 the design values, 1 Strong. light: the glass takes the light curve (a light scheme surface whose tone
-  // is Scheme).
+  // slider (Tint): 0 Clear, 0.5 Tinted (the design values), 1 Frosted. frost (Blur): 0 the lightest blur, 0.5 the design
+  // values, 1 full size. liquid (refraction, lens, rim): 0 Off, 0.5 the design values, 1 Strong. light: the glass takes
+  // the light curve (a light scheme surface whose tone is Scheme).
   [[nodiscard]] inline Material
-  material(Kind kind, float slider, float liquid, bool reduceTransparency, bool light) noexcept {
+  material(Kind kind, float slider, float frost, float liquid, bool reduceTransparency, bool light) noexcept {
     if (reduceTransparency) {
       return {};
     }
@@ -87,7 +87,7 @@ namespace glass {
     }
     // Sheets blur and bend a step less than shapes at the middle and match them at both ends.
     const bool shape = kind == Kind::Shape;
-    const float clarity = shape ? curve(1.0F, 0.5F, 0.0F) : curve(1.0F, 0.25F, 0.0F);
+    const float clarity = shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F);
     const float level = shape ? at(liquid, 0.0F, 0.5F, 1.0F) : at(liquid, 0.0F, 0.25F, 1.0F);
     // The rim keeps a faint glint at Liquid off: glass still reads as glass, and the backdrop density keeps sampling.
     const float rim = at(liquid, 0.4F, 1.0F, 1.0F);

@@ -18,6 +18,7 @@ namespace {
   bool g_cardBordersEnabled = true;
   bool g_closeButtonsEnabled = true;
   float g_glass = 0.5F;
+  float g_frost = 0.5F;
   float g_liquid = 0.5F;
   bool g_reduceTransparency = false;
   bool g_compositorBlur = false;
@@ -71,12 +72,14 @@ namespace Style {
   bool popupShadowsEnabled() noexcept { return g_popupShadowsEnabled; }
   void setPopupShadowsEnabled(bool enabled) { g_popupShadowsEnabled = enabled; }
 
-  void setGlass(float glass, float liquid, bool reduceTransparency, bool compositorBlur) {
+  void setGlass(float glass, float frost, float liquid, bool reduceTransparency, bool compositorBlur) {
     const float clamped = std::clamp(glass, 0.0F, 1.0F);
+    const float frostClamped = std::clamp(frost, 0.0F, 1.0F);
     const float liquidClamped = std::clamp(liquid, 0.0F, 1.0F);
-    const bool changed =
-        clamped != g_glass || liquidClamped != g_liquid || reduceTransparency != g_reduceTransparency;
+    const bool changed = clamped != g_glass || frostClamped != g_frost || liquidClamped != g_liquid
+                      || reduceTransparency != g_reduceTransparency;
     g_glass = clamped;
+    g_frost = frostClamped;
     g_liquid = liquidClamped;
     g_reduceTransparency = reduceTransparency;
     g_compositorBlur = compositorBlur;
@@ -100,11 +103,11 @@ namespace Style {
 
   glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept {
     const bool light = tone == PaletteTone::Light || (isLightPalette() && tone == PaletteTone::Scheme);
-    return glass::material(kind, g_glass, g_liquid, g_reduceTransparency, light);
+    return glass::material(kind, g_glass, g_frost, g_liquid, g_reduceTransparency, light);
   }
 
   float windowGlassTint() noexcept {
-    const float tinted = glass::material(glass::Kind::Sheet, 0.5F, 0.5F, g_reduceTransparency, isLightPalette()).tint;
+    const float tinted = glass::material(glass::Kind::Sheet, 0.5F, 0.5F, 0.5F, g_reduceTransparency, isLightPalette()).tint;
     return std::max(glassMaterial(glass::Kind::Sheet, PaletteTone::Scheme).tint, tinted);
   }
 

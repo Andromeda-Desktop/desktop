@@ -23,6 +23,7 @@ namespace {
   constexpr auto kAndromeda = "org.andromeda.appearance";
   constexpr auto kUiScale = "ui-scale";
   constexpr auto kGlass = "glass";
+  constexpr auto kFrost = "frost";
   constexpr auto kLiquid = "liquid";
   constexpr auto kReduceTransparency = "reduce-transparency";
   constexpr auto kCompositorBlur = "compositor-blur";
@@ -63,6 +64,7 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                   all[kAndromeda][kUiScale] = sdbus::Variant{m_uiScale};
                   all[kAndromeda][kTextScale] = sdbus::Variant{m_textScale};
                   all[kAndromeda][kGlass] = sdbus::Variant{m_glass};
+                  all[kAndromeda][kFrost] = sdbus::Variant{m_frost};
                   all[kAndromeda][kLiquid] = sdbus::Variant{m_liquid};
                   all[kAndromeda][kReduceTransparency] = sdbus::Variant{m_reduceTransparency};
                   all[kAndromeda][kCompositorBlur] = sdbus::Variant{m_compositorBlur};
@@ -93,6 +95,9 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 }
                 if (ns == kAndromeda && key == kGlass) {
                   return sdbus::Variant{m_glass};
+                }
+                if (ns == kAndromeda && key == kFrost) {
+                  return sdbus::Variant{m_frost};
                 }
                 if (ns == kAndromeda && key == kLiquid) {
                   return sdbus::Variant{m_liquid};
@@ -171,10 +176,14 @@ void SettingsPortal::setScales(double uiScale, double textScale) {
   }
 }
 
-void SettingsPortal::setGlass(double glass, double liquid, bool reduceTransparency, bool compositorBlur) {
+void SettingsPortal::setGlass(double glass, double frost, double liquid, bool reduceTransparency, bool compositorBlur) {
   if (glass != m_glass) {
     m_glass = glass;
     emitChanged(kAndromeda, kGlass, sdbus::Variant{glass});
+  }
+  if (frost != m_frost) {
+    m_frost = frost;
+    emitChanged(kAndromeda, kFrost, sdbus::Variant{frost});
   }
   if (liquid != m_liquid) {
     m_liquid = liquid;

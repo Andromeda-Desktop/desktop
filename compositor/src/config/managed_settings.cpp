@@ -395,6 +395,7 @@ namespace andromeda {
         Spec{"appearance.scheme", Kind::Choice, 0, 0, kScheme, [](const Config& c) { return text(c.appearance.scheme); }},
         Spec{"appearance.accent", Kind::Color, 0, 0, {}, [](const Config& c) { return text(c.appearance.accent); }},
         Spec{"appearance.glass", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.glass); }},
+        Spec{"appearance.frost", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.frost); }},
         Spec{"appearance.liquid", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquid); }},
         Spec{"appearance.reduce_transparency", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.reduceTransparency); }},
         Spec{"appearance.increase_contrast", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.increaseContrast); }},
@@ -776,6 +777,14 @@ namespace andromeda {
       if (keybinds.empty()) {
         root.erase("keybinds");
       }
+    });
+  }
+
+  bool saveManagedGlobalShortcut(
+      const std::filesystem::path& file, std::string_view app, std::string_view id, std::string_view chord
+  ) {
+    return rewriteGeneratedToml(file, kHeader, [&](toml::table& root) {
+      generatedTable(root, {"global_shortcuts", app}).insert_or_assign(id, std::string(chord));
     });
   }
 

@@ -45,6 +45,7 @@ LiveAppearance readLiveAppearance(const std::function<std::string(std::string_vi
       .scheme = value("appearance.scheme"),
       .accent = normalizeColor(value("appearance.accent")),
       .glass = parseUnit(value("appearance.glass"), 0.5F),
+      .frost = parseUnit(value("appearance.frost"), 0.5F),
       .liquid = parseUnit(value("appearance.liquid"), 0.5F),
       .reduceTransparency = value("appearance.reduce_transparency") == "true",
       .increaseContrast = value("appearance.increase_contrast") == "true",

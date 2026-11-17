@@ -48,6 +48,7 @@ private:
   double m_textScale = 1.0;
   // Style::setGlass inputs; the defaults match Style's.
   double m_glass = 0.5;
+  double m_frost = 0.5;
   double m_liquid = 0.5;
   bool m_reduceTransparency = false;
   bool m_compositorBlur = false;
@@ -60,6 +61,7 @@ private:
     double uiScale = 1.0;
     double textScale = 1.0;
     double glass = 0.5;
+    double frost = 0.5;
     double liquid = 0.5;
     bool reduceTransparency = false;
     bool compositorBlur = false;

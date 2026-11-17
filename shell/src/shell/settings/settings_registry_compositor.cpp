@@ -164,7 +164,11 @@ namespace settings {
       if (!isOn("appearance.reduce_transparency")) {
         slider(
             Appearance, "surfaces", "appearance.glass", 0.0, 1.0, 0.05, false,
-            "glass clear tinted frosted transparency material blur"
+            "glass tint clear tinted frosted transparency material opacity"
+        );
+        slider(
+            Appearance, "surfaces", "appearance.frost", 0.0, 1.0, 0.05, false,
+            "glass blur frost frosted backdrop"
         );
         slider(
             Appearance, "surfaces", "appearance.liquid", 0.0, 1.0, 0.05, false,
