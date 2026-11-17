@@ -231,6 +231,7 @@ if build_tests
     build_by_default: false,
   )
   foreach case_name : [
+    'client-import-trim',
     'implicit-srgb-target',
     'scene-unset-primaries',
     'scene-custom-color',

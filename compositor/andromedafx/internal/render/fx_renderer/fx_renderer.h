@@ -93,6 +93,10 @@ struct fx_framebuffer {
   bool effect_capture_valid;
   const void* effect_capture_owner;
 
+  // A buffer we only sample (not owned, no fbo) loses its import after FX_CLIENT_IMPORT_IDLE_MS unused: image is
+  // then EGL_NO_IMAGE_KHR and tex 0, and the next use imports it again.
+  int64_t used_ms;
+
   EGLImageKHR image;
   GLuint rbo;
   GLuint fbo;
@@ -135,6 +139,11 @@ bool fx_renderer_take_context(struct fx_renderer* renderer);
 void fx_renderer_upload_pending_textures(struct fx_renderer* renderer);
 // Frees the spare slots of each texture no client wrote for `idle_ms`. Returns true while a texture keeps a spare.
 bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms);
+// On xe each GPU submit locks every imported dma-buf of the context, so a client that holds its buffer lock stalls
+// our frames. This drops the import of each client buffer unused for `idle_ms` (hidden windows, idle swapchain
+// buffers); the buffer itself stays locked, so its content is kept. Returns true while an import is still in use.
+bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms);
+#define FX_CLIENT_IMPORT_IDLE_MS 2000
 
 // Drops the buffer's effect capture and clears its owner.
 void fx_framebuffer_release_effect_capture(struct fx_framebuffer* buffer);

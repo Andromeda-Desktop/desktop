@@ -7,6 +7,7 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/interface.h>
 #include <wlr/util/log.h>
+#include "util/time.h"
 
 static void handle_buffer_destroy(struct wlr_addon* addon) {
   struct fx_framebuffer* buffer = wl_container_of(addon, buffer, addon);
@@ -24,9 +25,25 @@ static bool framebuffer_uses_texture(const struct fx_framebuffer* buffer) {
   return buffer->owned && buffer->drm_format != DRM_FORMAT_XRGB2101010 && buffer->drm_format != DRM_FORMAT_XBGR2101010;
 }
 
+static bool framebuffer_import(struct fx_framebuffer* buffer) {
+  if (buffer->image != EGL_NO_IMAGE_KHR) {
+    return true;
+  }
+  struct wlr_dmabuf_attributes dmabuf = {0};
+  if (!wlr_buffer_get_dmabuf(buffer->buffer, &dmabuf)) {
+    return false;
+  }
+  buffer->image = wlr_egl_create_image_from_dmabuf(buffer->renderer->egl, &dmabuf, &buffer->external_only);
+  return buffer->image != EGL_NO_IMAGE_KHR;
+}
+
 GLuint fx_framebuffer_get_texture(struct fx_framebuffer* buffer) {
   struct fx_renderer* renderer = buffer->renderer;
   if (!renderer->procs.glEGLImageTargetTexture2DOES) {
+    return 0;
+  }
+  buffer->used_ms = get_current_time_msec();
+  if (!framebuffer_import(buffer)) {
     return 0;
   }
 
@@ -60,8 +77,12 @@ GLuint fx_framebuffer_get_fbo(struct fx_framebuffer* buffer) {
     return 0;
   }
 
+  buffer->used_ms = get_current_time_msec();
   if (buffer->fbo) {
     return buffer->fbo;
+  }
+  if (!framebuffer_import(buffer)) {
+    return 0;
   }
 
   push_fx_debug(buffer->renderer);
@@ -236,6 +257,7 @@ struct fx_framebuffer* fx_framebuffer_get_or_create(struct fx_renderer* renderer
     goto error_buffer;
   }
   buffer->drm_format = dmabuf.format;
+  buffer->used_ms = get_current_time_msec();
 
   buffer->image = wlr_egl_create_image_from_dmabuf(renderer->egl, &dmabuf, &buffer->external_only);
   if (buffer->image == EGL_NO_IMAGE_KHR) {
@@ -253,6 +275,35 @@ struct fx_framebuffer* fx_framebuffer_get_or_create(struct fx_renderer* renderer
 error_buffer:
   free(buffer);
   return NULL;
+}
+
+bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms) {
+  bool in_use = false;
+  bool dropped = false;
+  struct fx_framebuffer* buffer;
+  wl_list_for_each(buffer, &renderer->buffers, link) {
+    if (buffer->owned || buffer->fbo != 0 || buffer->image == EGL_NO_IMAGE_KHR) {
+      continue;
+    }
+    if (now_ms - buffer->used_ms < idle_ms) {
+      in_use = true;
+      continue;
+    }
+    fx_renderer_delete_gl(renderer, FX_GL_TEXTURE, buffer->tex);
+    fx_renderer_delete_egl_image(renderer, buffer->image);
+    buffer->tex = 0;
+    buffer->image = EGL_NO_IMAGE_KHR;
+    dropped = true;
+  }
+  if (dropped) {
+    struct fx_texture* texture;
+    wl_list_for_each(texture, &renderer->textures, link) {
+      if (texture->buffer != NULL && texture->buffer->image == EGL_NO_IMAGE_KHR) {
+        texture->tex = 0;
+      }
+    }
+  }
+  return in_use;
 }
 
 void fx_framebuffer_bind(struct fx_framebuffer* fx_buffer) {

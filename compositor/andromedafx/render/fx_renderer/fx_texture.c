@@ -37,6 +37,26 @@ bool wlr_texture_is_fx(struct wlr_texture* wlr_texture) { return wlr_texture->im
 struct fx_texture* fx_get_texture(struct wlr_texture* wlr_texture) {
   assert(wlr_texture_is_fx(wlr_texture));
   struct fx_texture* texture = wl_container_of(wlr_texture, texture, wlr_texture);
+  struct fx_framebuffer* buffer = texture->buffer;
+  if (buffer == NULL || buffer->owned) {
+    return texture;
+  }
+  if (texture->tex != 0) {
+    buffer->used_ms = get_current_time_msec();
+    return texture;
+  }
+  // fx_renderer_trim_client_imports dropped the import: make it again in the context, keeping the caller's binding.
+  struct wlr_egl_context prev_ctx;
+  if (!fx_renderer_take_context(texture->fx_renderer) || !wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
+    return texture;
+  }
+  GLint bound = 0;
+  glGetIntegerv(
+      texture->target == GL_TEXTURE_EXTERNAL_OES ? GL_TEXTURE_BINDING_EXTERNAL_OES : GL_TEXTURE_BINDING_2D, &bound
+  );
+  texture->tex = fx_framebuffer_get_texture(buffer);
+  glBindTexture(texture->target, bound);
+  wlr_egl_restore_context(&prev_ctx);
   return texture;
 }
 

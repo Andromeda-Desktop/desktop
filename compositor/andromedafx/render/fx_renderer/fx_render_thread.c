@@ -283,8 +283,13 @@ static void start_job(struct fx_render_thread* thread) {
 static int trim_slots(void* data) {
   struct fx_render_thread* thread = data;
   // Away: the job's finish arms the timer again.
-  if (thread->location == FX_CONTEXT_HOME
-      && fx_renderer_trim_shm_slots(thread->renderer, get_current_time_msec(), FX_SHM_SLOT_IDLE_MS)) {
+  if (thread->location != FX_CONTEXT_HOME) {
+    return 0;
+  }
+  const int64_t now = get_current_time_msec();
+  const bool slots = fx_renderer_trim_shm_slots(thread->renderer, now, FX_SHM_SLOT_IDLE_MS);
+  const bool imports = fx_renderer_trim_client_imports(thread->renderer, now, FX_CLIENT_IMPORT_IDLE_MS);
+  if (slots || imports) {
     wl_event_source_timer_update(thread->slot_trim, FX_SHM_SLOT_IDLE_MS);
   }
   return 0;

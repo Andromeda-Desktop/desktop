@@ -1,5 +1,6 @@
 #include "render/fx_renderer/effect.h"
 #include "render_fixture.h"
+#include "util/time.h"
 
 #include <wlr/interfaces/wlr_buffer.h>
 
@@ -911,6 +912,101 @@ out:
   }
   if (fill != NULL) {
     wlr_texture_destroy(fill);
+  }
+  return ok;
+}
+
+struct client_view_buffer {
+  struct wlr_buffer base;
+  struct wlr_buffer* source;
+};
+
+static void client_view_destroy(struct wlr_buffer* base) {
+  struct client_view_buffer* buffer = wl_container_of(base, buffer, base);
+  free(buffer);
+}
+
+static bool client_view_get_dmabuf(struct wlr_buffer* base, struct wlr_dmabuf_attributes* attribs) {
+  struct client_view_buffer* buffer = wl_container_of(base, buffer, base);
+  return wlr_buffer_get_dmabuf(buffer->source, attribs);
+}
+
+static const struct wlr_buffer_impl client_view_impl = {
+    .destroy = client_view_destroy,
+    .get_dmabuf = client_view_get_dmabuf,
+};
+
+static bool fill_red(struct fixture* fixture, struct wlr_buffer* target) {
+  struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL);
+  if (pass == NULL) {
+    return false;
+  }
+  wlr_render_pass_add_rect(
+      pass,
+      &(struct wlr_render_rect_options){
+          .box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
+          .color = {.r = 1.0f, .a = 1.0f},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  return wlr_render_pass_submit(pass);
+}
+
+// A sampled-only dma-buf whose import was dropped while idle draws its content again on the next use.
+static bool test_client_import_trim(struct fixture* fixture) {
+  struct wlr_buffer* source = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  struct client_view_buffer* client = calloc(1, sizeof(*client));
+  bool ok = check(source != NULL && output != NULL && client != NULL, "allocate buffers")
+      && check(fill_red(fixture, source), "fill the client buffer");
+  struct wlr_texture* texture = NULL;
+  if (ok) {
+    client->source = source;
+    wlr_buffer_init(&client->base, &client_view_impl, TEST_WIDTH, TEST_HEIGHT);
+    texture = wlr_texture_from_buffer(fixture->renderer, &client->base);
+    ok = check(texture != NULL, "import the client buffer");
+  }
+  struct fx_renderer* renderer = fx_get_renderer(fixture->renderer);
+  struct fx_framebuffer* framebuffer = ok ? fx_framebuffer_get_or_create(renderer, &client->base) : NULL;
+  if (ok) {
+    fx_renderer_trim_client_imports(
+        renderer, get_current_time_msec() + 2 * FX_CLIENT_IMPORT_IDLE_MS, FX_CLIENT_IMPORT_IDLE_MS
+    );
+    ok = check(framebuffer->image == EGL_NO_IMAGE_KHR, "idle import is dropped");
+  }
+  uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
+  if (ok) {
+    struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, output, NULL);
+    ok = check(pass != NULL, "begin render pass");
+    if (ok) {
+      wlr_render_pass_add_texture(
+          pass,
+          &(struct wlr_render_texture_options){
+              .texture = texture,
+              .dst_box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
+              .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+          }
+      );
+      ok = check(wlr_render_pass_submit(pass), "draw the dropped texture")
+          && check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, TEST_WIDTH * 4, pixels), "read output");
+    }
+  }
+  const uint8_t red[4] = {255, 0, 0, 255};
+  const int center = (TEST_HEIGHT / 2 * TEST_WIDTH + TEST_WIDTH / 2) * 4;
+  ok = ok && check(codes_close(&pixels[center], red, 1), "the imported-again texture shows the client content");
+  if (texture != NULL) {
+    wlr_texture_destroy(texture);
+  }
+  if (client != NULL && client->source != NULL) {
+    wlr_buffer_drop(&client->base);
+  } else {
+    free(client);
+  }
+  if (output != NULL) {
+    wlr_buffer_drop(output);
+  }
+  if (source != NULL) {
+    wlr_buffer_drop(source);
   }
   return ok;
 }
@@ -3236,7 +3332,9 @@ int main(int argc, char* argv[]) {
   }
 
   bool ok;
-  if (strcmp(argv[1], "implicit-srgb-target") == 0) {
+  if (strcmp(argv[1], "client-import-trim") == 0) {
+    ok = test_client_import_trim(&fixture);
+  } else if (strcmp(argv[1], "implicit-srgb-target") == 0) {
     ok = test_implicit_srgb_target(&fixture);
   } else if (strcmp(argv[1], "scene-unset-primaries") == 0) {
     ok = test_scene_unset_primaries(&fixture);
