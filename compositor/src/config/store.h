@@ -31,7 +31,8 @@ namespace andromeda {
     // Re-reads the current config file with `overrides` in place of the active runtime overrides and commits the
     // result. A load that fails, or, when `rejectNewDiagnostics`, reports a diagnostic the active configuration did
     // not, changes nothing and lists why in `errors`, one diagnostic per line.
-    [[nodiscard]] ConfigReloadResult applyOverrides(toml::table overrides, bool rejectNewDiagnostics, std::string& errors);
+    [[nodiscard]] ConfigReloadResult
+    applyOverrides(toml::table overrides, bool rejectNewDiagnostics, std::string& errors);
 
     [[nodiscard]] const Config& config() const { return m_config; }
     // Values set by `andromeda config set`. Every load lays them over the file and its includes; `load` starts without.

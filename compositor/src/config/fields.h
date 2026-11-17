@@ -170,6 +170,7 @@ namespace andromeda {
   // Merge `rootPath` with its includes, lay the store's runtime overrides over the result, and read every table into
   // `out`. A null `rootPath` reads the overrides alone. `out` and `effective` (the merged document) are left alone
   // unless the result is Loaded. The caller has already found the file and reset the store for this load.
-  [[nodiscard]] ConfigParseOutcome parseConfig(Config& out, toml::table& effective, const std::filesystem::path* rootPath);
+  [[nodiscard]] ConfigParseOutcome
+  parseConfig(Config& out, toml::table& effective, const std::filesystem::path* rootPath);
 
 } // namespace andromeda

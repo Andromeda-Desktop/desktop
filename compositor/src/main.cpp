@@ -346,7 +346,8 @@ int main(int argc, char** argv) {
       return andromeda::runIpcSubscribe(events);
     }
 
-    if (const auto* spec = andromeda::findIpcCommand(argv[1]); spec != nullptr && spec->group != andromeda::IpcCommandGroup::Config) {
+    if (const auto* spec = andromeda::findIpcCommand(argv[1]);
+        spec != nullptr && spec->group != andromeda::IpcCommandGroup::Config) {
       if (!spec->takesArg) {
         bool jf = false;
         for (int i = 2; i < argc; ++i) {
