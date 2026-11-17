@@ -233,11 +233,7 @@ void WallpaperWindow::buildScene(float width, float height) {
         if (!glass) {
           box.setFill(colorSpecFromRole(ColorRole::SolidRegular));
         } else {
-          // Same window glass as Settings: never thinner than the Tinted recipe.
-          const float tinted = glass::material(glass::Kind::Sheet, 0.5F, false, isLightPalette()).tint;
-          box.setFill(
-              colorSpecFromRole(panelMaterialRole(), std::max(Style::glassMaterial(glass::Kind::Sheet, PaletteTone::Scheme).tint, tinted))
-          );
+          box.setFill(colorSpecFromRole(panelMaterialRole(), Style::windowGlassTint()));
         }
       },
   });

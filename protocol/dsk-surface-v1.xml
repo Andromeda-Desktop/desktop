@@ -17,7 +17,7 @@
     Only unsandboxed clients see this global.
   </description>
 
-  <interface name="dsk_surface_manager_v1" version="14">
+  <interface name="dsk_surface_manager_v1" version="15">
     <request name="destroy" type="destructor"/>
 
     <request name="get_surface">
@@ -44,7 +44,7 @@
     </enum>
   </interface>
 
-  <interface name="dsk_surface_v1" version="14">
+  <interface name="dsk_surface_v1" version="15">
     <description summary="shape, elevation and animations of one surface">
       All requests are double-buffered and apply on the next wl_surface.commit,
       so new pixels and the motion that shows them start in the same frame.
@@ -74,12 +74,13 @@
       <entry name="clip" value="3" summary="a, b, c, d = x, y, width, height, surface-local px"/>
       <entry name="radius" value="4" summary="a = corner radius, px"/>
       <entry name="elevation" value="5" since="4" summary="a = level 0..2: 0 none, 1 float (elevation.e2), 2 over (elevation.e3)"/>
-      <entry name="liquid" value="6" since="5" summary="a = refraction 0..1 at the rim (the blur gets lighter with it); b = specular rim 0..1; c (since 9) = lens 0..1: the sharp backdrop through the rim band; before 9 the lens follows a; d = 0..1 how far a full glass density raises the tint alpha toward 0.84: 0 halfway, 1 all the way"/>
+      <entry name="liquid" value="6" since="5" summary="a = refraction 0..1 at the rim (before 15 the blur also gets lighter with it); b = specular rim 0..1; c (since 9) = lens 0..1: the sharp backdrop through the rim band; before 9 the lens follows a; d = 0..1 how far a full glass density raises the tint alpha toward 0.84: 0 halfway, 1 all the way"/>
       <entry name="stroke" value="7" since="7" summary="a, b, c, d = r, g, b, alpha 0..1 of a 1 px hairline inside the clip shape; drawn only while a clip is set"/>
       <entry name="tint" value="8" since="9" summary="a, b, c, d = r, g, b, alpha 0..1 of the material tint the compositor draws over the blur, under the surface; it raises alpha over a same-tone backdrop; a client that sends alpha &gt; 0 paints no tint of its own"/>
       <entry name="join" value="9" since="10" summary="a = the clip edge that joins another shape: 0 none, 1 top, 2 right, 3 bottom, 4 left; b = flare radius, px: the two corners on that edge curve outward (concave) along the edge, outside the clip"/>
       <entry name="fill" value="10" since="10" summary="a, b, c, d = r, g, b, alpha 0..1 of a flat fill the compositor draws in the clip shape, over the surface glass and under its content, with no blur; on a dsk_shape_v1 a fill makes a flat shape: it draws no glass and does not replace the surface glass"/>
       <entry name="fill_dense" value="11" since="10" summary="a = fill alpha at full glass density; the fill alpha follows the density of the glass under it from the fill alpha to this one"/>
+      <entry name="blur" value="12" since="15" summary="a = blur size 0..1 of the surface glass; without it the blur follows liquid a"/>
     </enum>
 
     <enum name="curve">

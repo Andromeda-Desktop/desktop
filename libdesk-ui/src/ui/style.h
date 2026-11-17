@@ -126,10 +126,10 @@ namespace Style {
   [[nodiscard]] bool popupShadowsEnabled() noexcept;
   void setPopupShadowsEnabled(bool enabled);
 
-  // The glass slider (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted; reduce transparency
-  // makes every glass surface solid.
+  // The glass slider (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted; the liquid slider
+  // (appearance.liquid): 0 Off, 0.5 the design values, 1 Strong; reduce transparency makes every glass surface solid.
   // compositorBlur: the compositor blurs and draws glass tints (Andromeda appearance.blur.enabled).
-  void setGlass(float glass, bool reduceTransparency, bool compositorBlur = false);
+  void setGlass(float glass, float liquid, bool reduceTransparency, bool compositorBlur = false);
   // Emitted by setGlass when the slider or reduce transparency changes, before the palette change that follows it:
   // surfaces set their glass::tone here so no paletteChanged handler reads a stale tone.
   Signal<>& glassChanged();
@@ -143,6 +143,9 @@ namespace Style {
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept;
   // Tint alpha for a configured `opacity` relative to glass::referenceOpacity (1 = solid).
   [[nodiscard]] float glassTint(glass::Kind kind, float opacity) noexcept;
+  // The tint of a glass app window (scheme tone): the sheet tint, never thinner than Tinted, so a window of text at
+  // Clear still reads over a busy wallpaper.
+  [[nodiscard]] float windowGlassTint() noexcept;
   [[nodiscard]] bool reduceTransparency() noexcept;
 
   [[nodiscard]] bool closeButtonsEnabled() noexcept;

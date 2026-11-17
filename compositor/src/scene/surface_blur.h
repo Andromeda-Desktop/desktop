@@ -49,8 +49,10 @@ namespace andromeda {
     // Opacity of the blur effect itself. Keep this independent from surface
     // opacity so compositor opacity matches equivalent client alpha.
     void setAlpha(float alpha);
-    // Liquid glass strength, 0 to 1 (dsk_surface_v1 property liquid).
+    // Rim refraction strength, 0 to 1 (dsk_surface_v1 liquid [0]).
     void setLiquid(float liquid);
+    // How much lighter the blur is, 0 to 1 (glass::Material::clarity, dsk_surface_v1 blur [0]).
+    void setClarity(float clarity);
     // Specular rim alone (frosted sheets): no refraction, no lighter blur.
     void setRim(float rim);
     // Liquid, rim and lens of a glass material.
@@ -84,6 +86,7 @@ namespace andromeda {
     bool m_live = false;
     float m_alpha = 1.0F;
     float m_liquid = 0.0F;
+    float m_clarity = 0.0F;
     float m_rim = 0.0F;
     float m_lens = 0.0F;
     std::array<float, 3> m_tintRgb{};

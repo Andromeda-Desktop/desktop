@@ -847,6 +847,8 @@ namespace andromeda {
       // Glass slider: 0 Clear, 0.5 Tinted (the design values), 1 Frosted; reduceTransparency replaces glass with
       // solids.
       double glass = 0.5;
+      // Liquid slider: 0 Off, 0.5 the design values, 1 Strong (rim refraction, lens and specular rim).
+      double liquid = 0.5;
       bool reduceTransparency = false;
       bool increaseContrast = false;
       bool reduceMotion = false;

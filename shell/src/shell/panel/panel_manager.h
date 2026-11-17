@@ -263,7 +263,7 @@ private:
   // The detached fill: the material role; m_glassDark (low-contrast backdrop) makes the tint denser.
   [[nodiscard]] ColorSpec detachedFill() const;
   [[nodiscard]] ColorSpec detachedBorder(float backgroundOpacity) const;
-  [[nodiscard]] static DskSurfaceClient::Value sheetLiquid(float liquid);
+  [[nodiscard]] static glass::Material sheetGlass(float liquid);
   // Adaptive glass: listens for dsk_surface_v1.backdrop on the current m_dsk.
   void bindBackdrop();
   // Low-contrast backdrop (light glass on dark, dark glass on bright): m_glassDark -> 1; instant skips the cross-fade.

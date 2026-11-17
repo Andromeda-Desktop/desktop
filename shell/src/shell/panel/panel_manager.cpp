@@ -425,7 +425,8 @@ void PanelManager::initialize(CompositorPlatform& platform, ConfigService* confi
     if (isOpen()) {
       updateGlassTone();
       if (m_dsk != nullptr && m_dsk->hasLiquidProperty()) {
-        m_dsk->set(DskSurfaceClient::Property::Liquid, sheetLiquid(m_panelLiquid));
+        const glass::Material material = sheetGlass(m_panelLiquid);
+        setGlassMaterial(*m_dsk, *m_dsk, &material);
       }
       sendSheetTint();
     }
@@ -2563,7 +2564,8 @@ void PanelManager::bindBackdrop() {
   });
   // One glass system: every sheet, detached or bar-attached, carries the slider's material.
   if (m_dsk->hasLiquidProperty()) {
-    m_dsk->set(DskSurfaceClient::Property::Liquid, sheetLiquid(m_liquidTarget));
+    const glass::Material material = sheetGlass(m_liquidTarget);
+    setGlassMaterial(*m_dsk, *m_dsk, &material);
   }
   sendSheetTint();
 }
@@ -2596,9 +2598,9 @@ void PanelManager::sendSheetTint(bool animate) {
   }
 }
 
-// The liquid value for a sheet `liquid` (0 to 1) of the way to a shape (the launcher pill).
-DskSurfaceClient::Value PanelManager::sheetLiquid(float liquid) {
-  return glassLiquid(glass::mix(Style::glassMaterial(glass::Kind::Sheet), Style::glassMaterial(glass::Kind::Shape), liquid));
+// The material of a sheet `liquid` (0 to 1) of the way to a shape (the launcher pill).
+glass::Material PanelManager::sheetGlass(float liquid) {
+  return glass::mix(Style::glassMaterial(glass::Kind::Sheet), Style::glassMaterial(glass::Kind::Shape), liquid);
 }
 
 float PanelManager::densityCardOpacity(float opacity) const {
@@ -2814,10 +2816,11 @@ void PanelManager::setPanelLiquid(float liquid, bool animate) {
   if (m_dsk == nullptr || !m_dsk->hasLiquidProperty()) {
     return;
   }
+  const glass::Material material = sheetGlass(liquid);
   if (animate) {
-    m_dsk->animate(DskSurfaceClient::Property::Liquid, openCurve(), sheetLiquid(liquid));
+    animateGlassMaterial(*m_dsk, *m_dsk, openCurve(), material);
   } else {
-    m_dsk->set(DskSurfaceClient::Property::Liquid, sheetLiquid(liquid));
+    setGlassMaterial(*m_dsk, *m_dsk, &material);
   }
   // One clock: the compositor runs the tint cross-fade on the liquid value's spring.
   sendSheetTint(animate);

@@ -119,6 +119,8 @@ namespace andromeda {
     // Blur nodes for the 2nd and later shapes of a client blur region (bar islands in one surface).
     std::vector<SurfaceBlur> m_shapeBlurs;
     float m_liquid = 0.0F;
+    // glass::Material::clarity: how much lighter the blur is.
+    float m_clarity = 0.0F;
     float m_rim = 0.0F;
     float m_lens = 0.0F;
     // Liquid value [3]: glass::Material::dense.
@@ -132,6 +134,7 @@ namespace andromeda {
       float rim = 0.0F;
       float lens = 0.0F;
       float dense = 0.0F;
+      float clarity = 0.0F;
       std::array<float, 4> tint{};
     };
     std::vector<ShapeMaterial> m_shapeMaterials;

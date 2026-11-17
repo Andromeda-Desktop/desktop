@@ -993,8 +993,8 @@ namespace settings {
     }
 
     const std::string joined = joinSettingPath(path);
-    // The glass slider has a detent at Tinted (0.5, the design values), as Apple's Clear / Tinted choice.
-    const bool glassDetent = joined == "appearance.glass";
+    // The glass and liquid sliders have a detent at 0.5, the design values.
+    const bool glassDetent = joined == "appearance.glass" || joined == "appearance.liquid";
     slider->setOnDragEnd([commitValue, sliderPtr, glassDetent] {
       if (glassDetent && std::abs(sliderPtr->value() - 0.5) < 0.08) {
         sliderPtr->setValue(0.5);

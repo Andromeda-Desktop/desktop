@@ -1480,9 +1480,7 @@ void SettingsWindow::applyBackgroundFill(Box& box) const {
     box.setFill(colorSpecFromRole(ColorRole::SolidRegular));
     return;
   }
-  // A full window of text: never thinner than the Tinted recipe, so Clear still reads over a busy wallpaper.
-  const float tinted = glass::material(glass::Kind::Sheet, 0.5F, false, isLightPalette()).tint;
-  box.setFill(colorSpecFromRole(panelMaterialRole(), std::max(Style::glassMaterial(glass::Kind::Sheet, PaletteTone::Scheme).tint, tinted)));
+  box.setFill(colorSpecFromRole(panelMaterialRole(), Style::windowGlassTint()));
 }
 
 void SettingsWindow::onGlassChanged() {

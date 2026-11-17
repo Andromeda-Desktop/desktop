@@ -4,8 +4,11 @@
 #include "render/animation/motion_service.h"
 #include "dbus/session_bus.h"
 #include "ui/palette.h"
+#include "ui/style.h"
 
 #include <sdbus-c++/sdbus-c++.h>
+
+#include <algorithm>
 
 namespace {
   constexpr Logger kLog("appearance");
@@ -73,7 +76,8 @@ void Appearance::read(bool backend) {
   sdbus::IProxy* proxy = backend ? m_backend.get() : m_portal.get();
   const std::pair<const char*, const char*> keys[] = {
       {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"},
-      {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},
+      {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "glass"},
+      {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
   };
   for (const auto& [ns, key] : keys) {
     proxy->callMethodAsync("Read")
@@ -99,6 +103,20 @@ void Appearance::read(bool backend) {
 }
 
 bool Appearance::take(const std::string& ns, const std::string& key, const sdbus::Variant& value) {
+  if (ns == kAndromeda && (key == "glass" || key == "liquid")) {
+    if (!value.containsValueOfType<double>()) {
+      return false;
+    }
+    (key == "glass" ? m_glass : m_liquid) = std::clamp(value.get<double>(), 0.0, 1.0);
+    return true;
+  }
+  if (ns == kAndromeda && (key == "reduce-transparency" || key == "compositor-blur")) {
+    if (!value.containsValueOfType<std::uint32_t>()) {
+      return false;
+    }
+    (key == "reduce-transparency" ? m_reduceTransparency : m_compositorBlur) = value.get<std::uint32_t>() == 1;
+    return true;
+  }
   if (ns == kAndromeda) {
     if (!value.containsValueOfType<double>()) {
       return false;
@@ -148,9 +166,11 @@ void Appearance::apply() {
   setResolvedThemeLight(m_light);
   setPalette(paletteFor(m_light));
   MotionService::instance().setReduced(m_reducedMotion);
+  Style::setGlass(static_cast<float>(m_glass), static_cast<float>(m_liquid), m_reduceTransparency, m_compositorBlur);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
-      m_light, m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]}, m_uiScale, m_textScale
+      m_light,   m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
+      m_uiScale, m_textScale, m_glass,         m_liquid,     m_reduceTransparency, m_compositorBlur
   };
   if (now == m_applied) {
     return;

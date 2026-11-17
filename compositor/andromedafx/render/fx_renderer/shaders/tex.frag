@@ -213,8 +213,9 @@ void main() {
   vec2 lens_uv = uv;
   float shine = max(liquid, rim);
   if (shine > 0.0) {
-    // Rim band: a quarter of the short side, at most 16 px. t = 1 at the edge, 0 at the band's inner end.
-    float band = min(min(liquid_size.x, liquid_size.y) * 0.25, 16.0);
+    // Rim band: a quarter of the short side, at most 16 px up to refraction 0.5 and 40 px at 1, so a strong Liquid
+    // bends a large sheet too. t = 1 at the edge, 0 at the band's inner end.
+    float band = min(min(liquid_size.x, liquid_size.y) * 0.25, 16.0 + 48.0 * max(liquid - 0.5, 0.0));
     vec2 p = gl_FragCoord.xy;
     float d = liquid_distance(p);
     // Past the rim band there is no refraction and no rim: skip the four extra distance evaluations.

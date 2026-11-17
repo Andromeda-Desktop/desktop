@@ -37,7 +37,7 @@ namespace andromeda {
 
   glass::Material configGlass(glass::Kind kind) {
     const Config::Appearance& a = config().appearance;
-    return glass::material(kind, static_cast<float>(a.glass), a.reduceTransparency, false);
+    return glass::material(kind, static_cast<float>(a.glass), static_cast<float>(a.liquid), a.reduceTransparency, false);
   }
 
   bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox) {
@@ -129,7 +129,7 @@ namespace andromeda {
     wlr_scene_blur_set_lens(m_node, m_lens);
     wlr_scene_blur_set_tint_mix(m_node, m_tintRgb.data(), m_tintAmount);
     wlr_scene_blur_set_backdrop_sampling(m_node, m_backdropSampling);
-    wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_liquid) * m_fade);
+    wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_clarity) * m_fade);
     // The rim follows the client's blur region (the drawn shape), not the node box: a panel surface is larger than
     // its sheet. The radius is where the staircase first reaches the full width (a rectangle, e.g. a settings
     // sidebar: 0; the launcher pill: half its height).
@@ -205,7 +205,13 @@ namespace andromeda {
     m_liquid = liquid;
     if (m_node != nullptr) {
       wlr_scene_blur_set_liquid(m_node, liquid);
-      wlr_scene_blur_set_strength(m_node, glass::blurStrength(liquid) * m_fade);
+    }
+  }
+
+  void SurfaceBlur::setClarity(float clarity) {
+    m_clarity = clarity;
+    if (m_node != nullptr) {
+      wlr_scene_blur_set_strength(m_node, glass::blurStrength(clarity) * m_fade);
     }
   }
 
@@ -218,6 +224,7 @@ namespace andromeda {
 
   void SurfaceBlur::setMaterial(const glass::Material& material) {
     setLiquid(material.level);
+    setClarity(material.clarity);
     setRim(material.rim);
     setLens(material.lens);
   }
@@ -240,7 +247,7 @@ namespace andromeda {
   void SurfaceBlur::setFade(float fade) {
     m_fade = fade;
     if (m_node != nullptr) {
-      wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_liquid) * fade);
+      wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_clarity) * fade);
     }
   }
 

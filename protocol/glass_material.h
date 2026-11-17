@@ -1,7 +1,7 @@
 #pragma once
 
-// The glass slider mapping (CLAUDE.md Decisions "Glass slider", "One glass system"), header-only so the shell
-// (through libdesk-ui Style::glassMaterial) and the compositor use the same values. No other code maps the slider.
+// The Glass and Liquid slider mapping (CLAUDE.md Decisions "Glass slider", "One glass system"), header-only so the
+// shell (through libdesk-ui Style::glassMaterial) and the compositor use the same values. No other code maps them.
 
 #include <algorithm>
 #include <cmath>
@@ -16,13 +16,15 @@ namespace glass {
   struct Material {
     // Tint alpha over the blur at the kind's reference opacity; 1 = solid (Reduce Transparency).
     float tint = 1.0F;
-    // dsk_surface_v1 liquid [0]: rim refraction strength; blur strength follows it.
+    // dsk_surface_v1 liquid [0]: rim refraction strength (the Liquid slider).
     float level = 0.0F;
     // dsk_surface_v1 liquid [1]: the specular rim.
     float rim = 0.0F;
     // dsk_surface_v1 liquid [2] (v9): the sharp backdrop through the rim band; costs a backdrop copy.
     float lens = 0.0F;
-    // Blur size, 0 to 1.
+    // dsk_surface_v1 blur [0] (v15): how much lighter the blur is, 0 full size to 1 the lightest (the Glass slider).
+    float clarity = 0.0F;
+    // Blur size, 0 to 1: blurStrength(clarity).
     float blurStrength = 1.0F;
     // dsk_surface_v1 liquid [3]: how far a full density raises the tint to kDenseTint, 0 halfway, 1 all the way.
     float dense = 0.0F;
@@ -48,24 +50,28 @@ namespace glass {
   // text on a Clear sheet over white keeps 4.5:1 (halfway gives 4.2:1).
   [[nodiscard]] constexpr float denseTarget(Kind kind) noexcept { return kind == Kind::Tooltip ? 0.0F : 1.0F; }
 
-  // Clear blurs at 30 %, Tinted at 65 %, so the rim refraction bends shapes, not a smear.
-  [[nodiscard]] constexpr float blurStrength(float level) noexcept { return 1.0F - 0.7F * level; }
+  // Clarity 1 blurs at 30 %, so the rim refraction bends shapes, not a smear.
+  [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - 0.7F * clarity; }
 
   // Opacity a configured `opacity` of `kind` is relative to: tint_regular (0.70) for shapes, tint_thick otherwise.
   [[nodiscard]] constexpr float referenceOpacity(Kind kind, bool light) noexcept {
     return kind == Kind::Shape ? 0.70F : light ? 0.88F : 0.92F;
   }
 
-  // slider: 0 Clear, 0.5 Tinted (the design values), 1 Frosted. light: the glass takes the light curve (a light
-  // scheme surface whose tone is Scheme).
-  [[nodiscard]] inline Material material(Kind kind, float slider, bool reduceTransparency, bool light) noexcept {
+  // slider (Glass: blur and tint): 0 Clear, 0.5 Tinted (the design values), 1 Frosted. liquid (refraction, lens, rim):
+  // 0 Off, 0.5 the design values, 1 Strong. light: the glass takes the light curve (a light scheme surface whose tone
+  // is Scheme).
+  [[nodiscard]] inline Material
+  material(Kind kind, float slider, float liquid, bool reduceTransparency, bool light) noexcept {
     if (reduceTransparency) {
       return {};
     }
-    const float g = std::clamp(slider, 0.0F, 1.0F);
-    const auto curve = [g](float clear, float tinted, float frosted) {
-      return g < 0.5F ? std::lerp(clear, tinted, g * 2.0F) : std::lerp(tinted, frosted, g * 2.0F - 1.0F);
+    const auto at = [](float v, float low, float mid, float high) {
+      v = std::clamp(v, 0.0F, 1.0F);
+      return v < 0.5F ? std::lerp(low, mid, v * 2.0F) : std::lerp(mid, high, v * 2.0F - 1.0F);
     };
+    const float g = std::clamp(slider, 0.0F, 1.0F);
+    const auto curve = [&](float clear, float tinted, float frosted) { return at(g, clear, tinted, frosted); };
     float tint = 0.0F;
     switch (kind) {
     case Kind::Shape:
@@ -79,21 +85,26 @@ namespace glass {
       tint = light ? curve(0.70F, 0.84F, 0.95F) : curve(0.80F, 0.88F, 0.99F);
       break;
     }
-    // Sheets blur a step denser than shapes: half the shapes' clarity.
-    const float level = (kind == Kind::Shape ? 1.0F : 0.5F) * (1.0F - g);
+    // Sheets blur and bend a step less than shapes at the middle and match them at both ends.
+    const bool shape = kind == Kind::Shape;
+    const float clarity = shape ? curve(1.0F, 0.5F, 0.0F) : curve(1.0F, 0.25F, 0.0F);
+    const float level = shape ? at(liquid, 0.0F, 0.5F, 1.0F) : at(liquid, 0.0F, 0.25F, 1.0F);
+    // The rim keeps a faint glint at Liquid off: glass still reads as glass, and the backdrop density keeps sampling.
+    const float rim = at(liquid, 0.4F, 1.0F, 1.0F);
     return {
-        .tint = tint, .level = level, .rim = 1.0F, .lens = level, .blurStrength = blurStrength(level),
-        .dense = denseTarget(kind)
+        .tint = tint, .level = level, .rim = rim, .lens = level, .clarity = clarity,
+        .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
     };
   }
 
   // `t` of the way from a to b (a sheet that morphs from a shape).
   [[nodiscard]] inline Material mix(const Material& a, const Material& b, float t) noexcept {
     t = std::clamp(t, 0.0F, 1.0F);
-    const float level = std::lerp(a.level, b.level, t);
+    const float clarity = std::lerp(a.clarity, b.clarity, t);
     return {
-        .tint = std::lerp(a.tint, b.tint, t), .level = level, .rim = std::lerp(a.rim, b.rim, t),
-        .lens = std::lerp(a.lens, b.lens, t), .blurStrength = blurStrength(level), .dense = std::lerp(a.dense, b.dense, t)
+        .tint = std::lerp(a.tint, b.tint, t), .level = std::lerp(a.level, b.level, t), .rim = std::lerp(a.rim, b.rim, t),
+        .lens = std::lerp(a.lens, b.lens, t), .clarity = clarity, .blurStrength = blurStrength(clarity),
+        .dense = std::lerp(a.dense, b.dense, t)
     };
   }
 

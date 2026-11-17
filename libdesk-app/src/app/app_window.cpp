@@ -1595,7 +1595,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   // A scene shows through both panes, so a strip under the main corners would show as a darker band.
   const bool concave = !card && sidebarShown > 0.0F && !m_config.transparentContent && m_config.material == Material::Solid && !m_scene;
   const float edgeRadius = Style::scaledRadius(Tokens::componentWindowRadius, m_uiScale);
-  const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), m_config.glassAlpha.value_or(Style::glassMaterial(glass::Kind::Sheet).tint));
+  const ColorSpec glassFill = colorSpecFromRole(panelMaterialRole(), m_config.glassAlpha.value_or(Style::windowGlassTint()));
   if (m_scene && m_sceneMeasured != m_scene) {
     measureScene();
   }

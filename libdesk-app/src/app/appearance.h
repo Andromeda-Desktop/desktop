@@ -46,6 +46,11 @@ private:
   double m_accent[3] = {0.0, 0.0, 0.0};
   double m_uiScale = 1.0;
   double m_textScale = 1.0;
+  // Style::setGlass inputs; the defaults match Style's.
+  double m_glass = 0.5;
+  double m_liquid = 0.5;
+  bool m_reduceTransparency = false;
+  bool m_compositorBlur = false;
   struct Applied {
     bool light = false;
     bool hasAccent = false;
@@ -54,6 +59,10 @@ private:
     std::array<double, 3> accent{};
     double uiScale = 1.0;
     double textScale = 1.0;
+    double glass = 0.5;
+    double liquid = 0.5;
+    bool reduceTransparency = false;
+    bool compositorBlur = false;
     bool operator==(const Applied&) const = default;
   };
   Applied m_applied; // what windows last built with; the defaults match the startup palette

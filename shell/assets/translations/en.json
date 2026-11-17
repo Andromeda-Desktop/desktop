@@ -5316,7 +5316,11 @@
         },
         "appearance-glass": {
           "label": "Glass",
-          "description": "From Clear to Frosted for every glass surface; the middle is Tinted"
+          "description": "Blur and tint of every glass surface, from Clear to Frosted; the middle is Tinted"
+        },
+        "appearance-liquid": {
+          "label": "Liquid",
+          "description": "How strongly glass edges bend and reflect the background, from Off to Strong"
         },
         "appearance-reduce-motion": {
           "label": "Reduce Motion",

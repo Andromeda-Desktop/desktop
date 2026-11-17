@@ -22,6 +22,10 @@ namespace {
   constexpr auto kReducedMotion = "reduced-motion";
   constexpr auto kAndromeda = "org.andromeda.appearance";
   constexpr auto kUiScale = "ui-scale";
+  constexpr auto kGlass = "glass";
+  constexpr auto kLiquid = "liquid";
+  constexpr auto kReduceTransparency = "reduce-transparency";
+  constexpr auto kCompositorBlur = "compositor-blur";
   constexpr auto kTextScale = "text-scale";
   constexpr std::uint32_t kVersion = 2;
 
@@ -58,6 +62,10 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 if (wanted(namespaces, kAndromeda)) {
                   all[kAndromeda][kUiScale] = sdbus::Variant{m_uiScale};
                   all[kAndromeda][kTextScale] = sdbus::Variant{m_textScale};
+                  all[kAndromeda][kGlass] = sdbus::Variant{m_glass};
+                  all[kAndromeda][kLiquid] = sdbus::Variant{m_liquid};
+                  all[kAndromeda][kReduceTransparency] = sdbus::Variant{m_reduceTransparency};
+                  all[kAndromeda][kCompositorBlur] = sdbus::Variant{m_compositorBlur};
                 }
                 return all;
               }),
@@ -82,6 +90,18 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 }
                 if (ns == kAndromeda && key == kTextScale) {
                   return sdbus::Variant{m_textScale};
+                }
+                if (ns == kAndromeda && key == kGlass) {
+                  return sdbus::Variant{m_glass};
+                }
+                if (ns == kAndromeda && key == kLiquid) {
+                  return sdbus::Variant{m_liquid};
+                }
+                if (ns == kAndromeda && key == kReduceTransparency) {
+                  return sdbus::Variant{m_reduceTransparency};
+                }
+                if (ns == kAndromeda && key == kCompositorBlur) {
+                  return sdbus::Variant{m_compositorBlur};
                 }
                 throw sdbus::Error(
                     sdbus::Error::Name{"org.freedesktop.portal.Error.NotFound"}, "Requested setting not found"
@@ -148,6 +168,27 @@ void SettingsPortal::setScales(double uiScale, double textScale) {
   if (textScale != m_textScale) {
     m_textScale = textScale;
     emitChanged(kAndromeda, kTextScale, sdbus::Variant{textScale});
+  }
+}
+
+void SettingsPortal::setGlass(double glass, double liquid, bool reduceTransparency, bool compositorBlur) {
+  if (glass != m_glass) {
+    m_glass = glass;
+    emitChanged(kAndromeda, kGlass, sdbus::Variant{glass});
+  }
+  if (liquid != m_liquid) {
+    m_liquid = liquid;
+    emitChanged(kAndromeda, kLiquid, sdbus::Variant{liquid});
+  }
+  const std::uint32_t reduce = reduceTransparency ? 1 : 0;
+  if (reduce != m_reduceTransparency) {
+    m_reduceTransparency = reduce;
+    emitChanged(kAndromeda, kReduceTransparency, sdbus::Variant{reduce});
+  }
+  const std::uint32_t blur = compositorBlur ? 1 : 0;
+  if (blur != m_compositorBlur) {
+    m_compositorBlur = blur;
+    emitChanged(kAndromeda, kCompositorBlur, sdbus::Variant{blur});
   }
 }
 

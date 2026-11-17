@@ -29,6 +29,9 @@ public:
   void setReducedMotion(bool reduce);
   // org.andromeda.appearance ui-scale and text-scale (factors, 1 = default): apps scale their windows and text.
   void setScales(double uiScale, double textScale);
+  // org.andromeda.appearance glass and liquid (0..1), reduce-transparency and compositor-blur (1 = on): apps take the
+  // same glass material as the shell.
+  void setGlass(double glass, double liquid, bool reduceTransparency, bool compositorBlur);
 
 private:
   SessionBus& m_bus;
@@ -41,6 +44,10 @@ private:
   std::uint32_t m_reducedMotion = 0;
   double m_uiScale = 1.0;
   double m_textScale = 1.0;
+  double m_glass = 0.5;
+  double m_liquid = 0.5;
+  std::uint32_t m_reduceTransparency = 0;
+  std::uint32_t m_compositorBlur = 0;
 
   void emitChanged(const char* ns, const char* key, const sdbus::Variant& value);
   [[nodiscard]] sdbus::Variant accentVariant() const;

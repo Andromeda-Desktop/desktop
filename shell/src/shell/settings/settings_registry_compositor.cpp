@@ -164,7 +164,11 @@ namespace settings {
       if (!isOn("appearance.reduce_transparency")) {
         slider(
             Appearance, "surfaces", "appearance.glass", 0.0, 1.0, 0.05, false,
-            "glass clear tinted frosted liquid transparency material blur"
+            "glass clear tinted frosted transparency material blur"
+        );
+        slider(
+            Appearance, "surfaces", "appearance.liquid", 0.0, 1.0, 0.05, false,
+            "liquid glass refraction lens highlight rim shine"
         );
       }
       toggle(Motion, "motion", "appearance.reduce_motion", "accessibility reduce motion animations");

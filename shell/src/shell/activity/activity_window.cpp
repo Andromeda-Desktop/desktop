@@ -482,9 +482,7 @@ void ActivityWindow::buildScene(Renderer& renderer, float width, float height) {
   m_glass = m_config != nullptr && m_config->config().shell.settingsWindowTranslucent && !Style::reduceTransparency();
   ColorSpec fill = colorSpecFromRole(ColorRole::SolidRegular);
   if (m_glass) {
-    // The Settings window glass: never thinner than the Tinted recipe.
-    const float tinted = glass::material(glass::Kind::Sheet, 0.5F, false, isLightPalette()).tint;
-    fill = colorSpecFromRole(panelMaterialRole(), std::max(Style::glassMaterial(glass::Kind::Sheet, PaletteTone::Scheme).tint, tinted));
+    fill = colorSpecFromRole(panelMaterialRole(), Style::windowGlassTint());
   }
   auto body = ui::column({.align = FlexAlign::Stretch, .fill = fill, .width = width, .height = height});
   body->addChild(buildToolbar(scale));

@@ -5,15 +5,42 @@
 #include "ui/style.h"
 #include "wayland/dsk_surface_client.h"
 
+#include <array>
 #include <memory>
 #include <optional>
 
 struct dsk_surface_manager_v1;
 struct wl_surface;
 
-// The dsk_surface_v1 liquid value of a material: {level, rim, lens}.
+// The dsk_surface_v1 liquid value of a material: {level, rim, lens, dense}.
 [[nodiscard]] inline DskSurfaceClient::Value glassLiquid(const glass::Material& material) noexcept {
   return {material.level, material.rim, material.lens, material.dense};
+}
+
+// The dsk_surface_v1 blur value (v15) of a material: {clarity}.
+[[nodiscard]] inline DskSurfaceClient::Value glassBlur(const glass::Material& material) noexcept {
+  return {material.clarity, 0.0, 0.0, 0.0};
+}
+
+// Sets a material's liquid and blur on `target` (`surface` or one of its shapes); nullptr turns the glass off. Before
+// v15 the compositor takes the blur from the liquid value.
+template <typename Target>
+void setGlassMaterial(Target& target, const DskSurfaceClient& surface, const glass::Material* material) {
+  target.set(DskSurfaceClient::Property::Liquid, material != nullptr ? glassLiquid(*material) : DskSurfaceClient::Value{});
+  if (surface.hasBlurProperty()) {
+    target.set(DskSurfaceClient::Property::Blur, material != nullptr ? glassBlur(*material) : DskSurfaceClient::Value{});
+  }
+}
+
+// setGlassMaterial on a compositor curve.
+template <typename Target>
+void animateGlassMaterial(
+    Target& target, const DskSurfaceClient& surface, DskSurfaceClient::Curve curve, const glass::Material& material
+) {
+  target.animate(DskSurfaceClient::Property::Liquid, curve, glassLiquid(material));
+  if (surface.hasBlurProperty()) {
+    target.animate(DskSurfaceClient::Property::Blur, curve, glassBlur(material));
+  }
 }
 
 // The dsk_surface_v1 tint value (v9): the tint the compositor draws over the blur, `role` at `alpha`; 0 with reduce
@@ -74,17 +101,18 @@ private:
       return;
     }
     // A light/dark fade emits paletteChanged every frame; the values only change with the glass settings.
-    const DskSurfaceClient::Value next = glassLiquid(Style::glassMaterial(m_kind));
+    const glass::Material material = Style::glassMaterial(m_kind);
+    const std::array<DskSurfaceClient::Value, 2> next{glassLiquid(material), glassBlur(material)};
     if (next == m_sent) {
       return;
     }
     m_sent = next;
-    m_dsk->set(DskSurfaceClient::Property::Liquid, next);
+    setGlassMaterial(*m_dsk, *m_dsk, &material);
   }
 
   std::unique_ptr<DskSurfaceClient> m_dsk;
   wl_surface* m_surface = nullptr;
   Kind m_kind = Kind::Sheet;
-  std::optional<DskSurfaceClient::Value> m_sent;
+  std::optional<std::array<DskSurfaceClient::Value, 2>> m_sent;
   Signal<>::ScopedConnection m_paletteConn;
 };

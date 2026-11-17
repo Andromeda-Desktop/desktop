@@ -323,7 +323,7 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
     return false;
   }
   const glass::Material material = Style::glassMaterial(glass::Kind::Shape);
-  instance.dsk->set(DskSurfaceClient::Property::Liquid, want ? glassLiquid(material) : DskSurfaceClient::Value{});
+  setGlassMaterial(*instance.dsk, *instance.dsk, want ? &material : nullptr);
   if (instance.dsk->hasTintProperty()) {
     instance.compositorTint = want && instance.barConfig.compositorBlur && Style::compositorDrawsTint();
     instance.dsk->set(
@@ -375,7 +375,7 @@ bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
           DskSurfaceClient::Property::Elevation,
           {instance.islandShadowStyle.has_value() ? 1.0 : 0.0, 0.0, 0.0, 0.0}
       );
-      shape.set(DskSurfaceClient::Property::Liquid, want ? glassLiquid(shapeGlass) : DskSurfaceClient::Value{});
+      setGlassMaterial(shape, *instance.dsk, want ? &shapeGlass : nullptr);
       shape.set(
           DskSurfaceClient::Property::Tint,
           glassTintValue(materialRole(), instance.compositorTint ? shapeGlass.tint : 0.0F, instance.sceneRoot.get())

@@ -241,6 +241,13 @@ namespace andromeda {
         return LayerShellLayer::Top;
       }
     }
+
+    // dsk_surface_v1 blur [0] (v15); an older client's blur gets lighter with its refraction, liquid [0].
+    float blurClarity(const DskSurfaceManager::State& state, const SurfaceMotion& motion) {
+      const auto& value = motion.value(state.version >= 15 ? SurfaceMotion::Property::Blur : SurfaceMotion::Property::Liquid);
+      return static_cast<float>(std::clamp(value[0], 0.0, 1.0));
+    }
+
   } // namespace
 
   LayerSurface* LayerSurface::fromSurface(wlr_surface* surface) {
@@ -973,12 +980,14 @@ namespace andromeda {
     m_dense = state != nullptr
         ? static_cast<float>(std::clamp(state->motion.value(SurfaceMotion::Property::Liquid)[3], 0.0, 1.0))
         : 0.0F;
+    m_clarity = state != nullptr ? blurClarity(*state, state->motion) : 0.0F;
     if (state != nullptr) {
       const auto& tint = state->motion.value(SurfaceMotion::Property::Tint);
       m_tint = {static_cast<float>(tint[0]), static_cast<float>(tint[1]), static_cast<float>(tint[2]),
                 static_cast<float>(std::clamp(tint[3], 0.0, 1.0))};
     }
     m_blur.setLiquid(m_liquid);
+    m_blur.setClarity(m_clarity);
     m_blur.setRim(m_rim);
     m_blur.setLens(m_lens);
     // Density follows the backdrop at every glass level, Frosted too (rim > 0 = glass on).
@@ -1058,6 +1067,7 @@ namespace andromeda {
             .rim = static_cast<float>(std::clamp(liquid[1], 0.0, 1.0)),
             .lens = static_cast<float>(std::clamp(liquid[2], 0.0, 1.0)),
             .dense = static_cast<float>(std::clamp(liquid[3], 0.0, 1.0)),
+            .clarity = blurClarity(*state, *shape),
             .tint = {static_cast<float>(tint[0]), static_cast<float>(tint[1]), static_cast<float>(tint[2]),
                      static_cast<float>(std::clamp(tint[3], 0.0, 1.0))},
         });
@@ -1087,8 +1097,10 @@ namespace andromeda {
       m_rim = first.rim;
       m_lens = first.lens;
       m_dense = first.dense;
+      m_clarity = first.clarity;
       m_tint = first.tint;
       m_blur.setLiquid(m_liquid);
+      m_blur.setClarity(m_clarity);
       m_blur.setRim(m_rim);
       m_blur.setLens(m_lens);
       m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F);
@@ -1187,6 +1199,7 @@ namespace andromeda {
       }
       const bool own = shape < m_shapeMaterials.size();
       blur.setLiquid(own ? m_shapeMaterials[shape].liquid : m_liquid);
+      blur.setClarity(own ? m_shapeMaterials[shape].clarity : m_clarity);
       blur.setRim(own ? m_shapeMaterials[shape].rim : m_rim);
       blur.setLens(own ? m_shapeMaterials[shape].lens : m_lens);
       blur.setFade(m_blurFade);

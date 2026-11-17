@@ -1765,14 +1765,14 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   inst.tint->setPaletteTone(glassTone(glass::Kind::Sheet));
   if (inst.dsk != nullptr && inst.dsk->hasLiquidProperty()) {
     const glass::Material material = Style::glassMaterial(glass::Kind::Shape);
-    inst.dsk->set(DskSurfaceClient::Property::Liquid, liquid ? glassLiquid(material) : DskSurfaceClient::Value{});
+    setGlassMaterial(*inst.dsk, *inst.dsk, liquid ? &material : nullptr);
     inst.compositorTint = liquid && inst.dsk->hasTintProperty() && Style::compositorDrawsTint();
     if (inst.dsk->hasTintProperty()) {
       inst.dsk->set(DskSurfaceClient::Property::Tint, islandTint(inst, inst.morph.shown()));
     }
     if (laneGlass(inst)) {
       for (DskShapeClient* shape : {inst.pillShape.get(), inst.cardShape.get()}) {
-        shape->set(DskSurfaceClient::Property::Liquid, liquid ? glassLiquid(material) : DskSurfaceClient::Value{});
+        setGlassMaterial(*shape, *inst.dsk, liquid ? &material : nullptr);
       }
       if (inst.dsk->hasTintProperty()) {
         inst.pillShape->set(DskSurfaceClient::Property::Tint, islandTint(inst, Face::Rest));

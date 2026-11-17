@@ -14,6 +14,7 @@ struct LiveAppearance {
   std::string scheme;
   std::string accent; // "#rrggbb"; empty when unset
   float glass = 0.5F; // appearance.glass: 0 Clear, 0.5 Tinted, 1 Frosted
+  float liquid = 0.5F; // appearance.liquid: 0 Off, 0.5 the design values, 1 Strong
   bool reduceTransparency = false;
   bool increaseContrast = false;
   bool reduceMotion = false;
