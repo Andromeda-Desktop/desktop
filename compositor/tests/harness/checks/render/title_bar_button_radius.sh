@@ -37,11 +37,11 @@ EOF
 title_bar_wait_box ssd-button-radius 240x140+100+100
 image=$ANDROMEDA_RUNTIME_DIR/button-radius.png
 
-# Green buttons; `$1` overrides the expression (overview buttons are unfocused: dark fill_3 over magenta).
+# Green buttons; the overview card is the live target and keeps its focused lights.
 area() {
   "$ANDROMEDA" settle >/dev/null
   grim -o HEADLESS-1 "$image"
-  "$ANDROMEDA_PIXEL_PROBE" "$image" count "${1:-g > 0.8 && r < 0.2 && b < 0.2}"
+  "$ANDROMEDA_PIXEL_PROBE" "$image" count 'g > 0.8 && r < 0.2 && b < 0.2'
 }
 radius() {
   sed -i "s/^button_corner_radius = .*/button_corner_radius = $1/" "$ANDROMEDA_CONFIG"
@@ -51,7 +51,7 @@ radius() {
 overview_area() {
   radius "$1" >/dev/null
   "$ANDROMEDA" msg overview-open >/dev/null
-  area 'r > 0.95 && b > 0.95 && g > 0.1 && g < 0.25'
+  area
   "$ANDROMEDA" msg overview-close >/dev/null
 }
 
