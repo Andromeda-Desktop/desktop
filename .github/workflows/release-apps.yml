@@ -18,9 +18,10 @@ on:
 permissions:
   contents: write
 
-# Each run rewrites the shared repository indexes: runs wait for each other.
+# tools/repo-publish.sh locks each shared index, so runs of different apps build and publish side by side; one group
+# per tag only stops a second run of the same tag. (A shared group keeps one pending run and cancels the rest.)
 concurrency:
-  group: app-repositories
+  group: release-apps-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -86,7 +87,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
-        # One pacman index: runs that merge into it wait for each other (tools/repo-publish.sh also re-checks).
         run: tools/repo-publish.sh arch "$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)" pkg
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

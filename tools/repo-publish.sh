@@ -71,6 +71,37 @@ listed() {
   rm -rf "$index"
 }
 
+# One run at a time per index: an atomic ref create is the lock; a lock older than 30 min is a dead run's and is taken.
+lock=locks/repo-$kind-$release
+lock_sha=
+unlock() {
+  [[ -n $lock_sha && $(gh api "repos/$repo/git/ref/$lock" -q .object.sha 2> /dev/null) == "$lock_sha" ]] \
+    && gh api -X DELETE "repos/$repo/git/refs/$lock" > /dev/null || true
+}
+acquire() {
+  local tree held born
+  tree=$(gh api "repos/$repo/git/commits/${GITHUB_SHA:?}" -q .tree.sha)
+  lock_sha=$(gh api "repos/$repo/git/commits" -f message="repo-publish lock, run ${GITHUB_RUN_ID:-local}" -f tree="$tree" -q .sha)
+  for _ in $(seq 120); do
+    if gh api "repos/$repo/git/refs" -f ref="refs/$lock" -f sha="$lock_sha" > /dev/null 2>&1; then
+      trap unlock EXIT
+      return 0
+    fi
+    held=$(gh api "repos/$repo/git/ref/$lock" -q .object.sha 2> /dev/null) || continue
+    born=$(gh api "repos/$repo/git/commits/$held" -q .committer.date)
+    if (($(date +%s) - $(date -d "$born" +%s) > 1800)); then
+      echo "repo-publish: taking the stale lock $lock from $born" >&2
+      gh api -X DELETE "repos/$repo/git/refs/$lock" > /dev/null || true
+      continue
+    fi
+    echo "repo-publish: $lock is held, waiting" >&2
+    sleep 15
+  done
+  echo "::error::repo-publish: $lock still held after 30 min" >&2
+  exit 1
+}
+[[ ${PUBLISH:-true} != true ]] || acquire
+
 for attempt in 1 2 3; do
   rm -rf "$out"
   mkdir -p "$out"
