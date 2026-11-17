@@ -289,15 +289,18 @@ static struct wlr_render_timer* fx_render_timer_create(struct wlr_renderer* wlr_
     return NULL;
   }
 
+  struct wlr_egl_context prev_ctx;
+  if (!fx_renderer_context_home(wlr_renderer) || !wlr_egl_make_current(renderer->egl, &prev_ctx)) {
+    return NULL;
+  }
   struct fx_render_timer* timer = calloc(1, sizeof(*timer));
   if (!timer) {
+    wlr_egl_restore_context(&prev_ctx);
     return NULL;
   }
   timer->base.impl = &render_timer_impl;
   timer->renderer = renderer;
 
-  struct wlr_egl_context prev_ctx;
-  wlr_egl_make_current(renderer->egl, &prev_ctx);
   renderer->procs.glGenQueriesEXT(1, &timer->id);
   renderer->procs.glGenQueriesEXT(1, &timer->begin_id);
   wlr_egl_restore_context(&prev_ctx);
@@ -310,7 +313,9 @@ static int fx_get_render_time(struct wlr_render_timer* wlr_timer) {
   struct fx_renderer* renderer = timer->renderer;
 
   struct wlr_egl_context prev_ctx;
-  wlr_egl_make_current(renderer->egl, &prev_ctx);
+  if (!fx_renderer_context_home(&renderer->wlr_renderer) || !wlr_egl_make_current(renderer->egl, &prev_ctx)) {
+    return -1;
+  }
 
   GLint64 disjoint;
   renderer->procs.glGetInteger64vEXT(GL_GPU_DISJOINT_EXT, &disjoint);
@@ -352,13 +357,8 @@ bool fx_render_timer_split(struct wlr_render_timer* wlr_timer, int64_t* cpu_ns, 
 
 static void fx_render_timer_destroy(struct wlr_render_timer* wlr_timer) {
   struct fx_render_timer* timer = wl_container_of(wlr_timer, timer, base);
-  struct fx_renderer* renderer = timer->renderer;
-
-  struct wlr_egl_context prev_ctx;
-  wlr_egl_make_current(renderer->egl, &prev_ctx);
-  renderer->procs.glDeleteQueriesEXT(1, &timer->id);
-  renderer->procs.glDeleteQueriesEXT(1, &timer->begin_id);
-  wlr_egl_restore_context(&prev_ctx);
+  fx_renderer_delete_gl(timer->renderer, FX_GL_QUERY, timer->id);
+  fx_renderer_delete_gl(timer->renderer, FX_GL_QUERY, timer->begin_id);
   free(timer);
 }
 
