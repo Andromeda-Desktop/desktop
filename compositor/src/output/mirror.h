@@ -43,11 +43,11 @@ namespace andromeda {
       int targetWidth, int targetHeight, wl_output_transform targetTransform
   );
 
-  // Renders `frame` onto `target` letterboxed on black and hands the state to `commit`. Returns false when rendering or
-  // the commit fails.
+  // Renders `frame` onto `target` letterboxed on black into `state`, which the caller initialized and later finishes.
+  // Returns false when rendering fails.
   bool renderMirrorFrame(
       wlr_output* target, wlr_renderer* renderer, wlr_buffer* frame, wl_output_transform sourceTransform,
-      const std::function<bool(const wlr_output_state&)>& commit
+      wlr_output_state& state
   );
 
 } // namespace andromeda

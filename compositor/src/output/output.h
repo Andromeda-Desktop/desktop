@@ -288,6 +288,7 @@ namespace andromeda {
     // Commits the frame handleFrame built, once the render thread ran its GPU submits (`submitted` false when one
     // failed), then does the post-commit work.
     void completeFrame(bool submitted);
+    void completeMirrorFrame(bool submitted);
     static void onFrameSubmitted(void* data, bool ok);
     static void onRendererHome(void* data, bool ok);
     void handleRequestState(void* data);
@@ -386,6 +387,8 @@ namespace andromeda {
       bool gammaPending = false;
       bool commitFailed = false;
       bool busyRetry = false;
+      // A mirror frame: completeMirrorFrame commits it.
+      bool mirror = false;
       wlr_output_state state{};
       std::optional<wlr_fbox> zoom;
     };

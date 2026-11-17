@@ -34,9 +34,15 @@ static const struct wlr_texture_impl texture_impl;
 
 bool wlr_texture_is_fx(struct wlr_texture* wlr_texture) { return wlr_texture->impl == &texture_impl; }
 
-struct fx_texture* fx_get_texture(struct wlr_texture* wlr_texture) {
+// Never imports, so it never waits for the render thread: for callers outside a draw.
+static struct fx_texture* texture_from_wlr(struct wlr_texture* wlr_texture) {
   assert(wlr_texture_is_fx(wlr_texture));
   struct fx_texture* texture = wl_container_of(wlr_texture, texture, wlr_texture);
+  return texture;
+}
+
+struct fx_texture* fx_get_texture(struct wlr_texture* wlr_texture) {
+  struct fx_texture* texture = texture_from_wlr(wlr_texture);
   struct fx_framebuffer* buffer = texture->buffer;
   if (buffer == NULL || buffer->owned) {
     return texture;
@@ -275,7 +281,7 @@ static void slot_stats_log(void) {
 static bool fx_texture_update_from_buffer(
     struct wlr_texture* wlr_texture, struct wlr_buffer* buffer, const pixman_region32_t* damage
 ) {
-  struct fx_texture* texture = fx_get_texture(wlr_texture);
+  struct fx_texture* texture = texture_from_wlr(wlr_texture);
 
   // false makes wlr_client_buffer create a new texture, which defers its upload while the context is lent.
   if (texture->drm_format == DRM_FORMAT_INVALID || texture->pending_upload != NULL
@@ -540,7 +546,7 @@ out:
 }
 
 static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture) {
-  struct fx_texture* texture = fx_get_texture(wlr_texture);
+  struct fx_texture* texture = texture_from_wlr(wlr_texture);
 
   // GLES2 can always read a framebuffer back as GL_RGBA/GL_UNSIGNED_BYTE, and
   // as GL_BGRA_EXT with EXT_read_format_bgra. Capture clients are commonly
@@ -565,10 +571,11 @@ static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture
     }
   }
 
-  // A capture asks at request time, so this never waits for the render thread; wlroots keeps an output capture
-  // source's first answer until the next mode change, so it is never INVALID either: while the context is away it
-  // answers what the GL query gives for 8-bit targets on Mesa.
-  if (!fx_renderer_context_home(&texture->fx_renderer->wlr_renderer)) {
+  // A capture asks at request time, so this never waits for the render thread or re-imports a trimmed buffer; wlroots
+  // keeps an output capture source's first answer until the next mode change, so it is never INVALID either: while the
+  // context is away it answers what the GL query gives for 8-bit targets on Mesa.
+  const bool trimmed = texture->buffer != NULL && !texture->buffer->owned && texture->tex == 0;
+  if (trimmed || !fx_renderer_context_home(&texture->fx_renderer->wlr_renderer)) {
     const bool alpha = texture->buffer != NULL && pixel_format_has_alpha(texture->buffer->drm_format);
     return alpha ? (bgra ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_ABGR8888)
                  : (bgra ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_XBGR8888);
@@ -615,7 +622,7 @@ out:
 }
 
 static void texture_handle_buffer_destroy(struct wlr_texture* wlr_texture) {
-  fx_texture_destroy(fx_get_texture(wlr_texture));
+  fx_texture_destroy(texture_from_wlr(wlr_texture));
 }
 
 static const struct wlr_texture_impl texture_impl = {

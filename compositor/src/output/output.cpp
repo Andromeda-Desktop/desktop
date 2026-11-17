@@ -2782,16 +2782,24 @@ namespace andromeda {
           m_server->updateOutputManagerConfig();
         }
       } else if (m_mirrorDirty && m_mirrorSource->m_lastFrame != nullptr) {
-        m_mirrorDirty = !renderMirrorFrame(
+        PendingFrame& frame = m_pendingFrame.emplace();
+        frame.mirror = true;
+        frame.rendered = true;
+        wlr_output_state_init(&frame.state);
+        // The commit waits for the flush in completeMirrorFrame, so main never waits for the GPU.
+        fx_renderer_defer_submits(m_server->renderer(), true);
+        const bool drawn = renderMirrorFrame(
             m_output, m_server->renderer(), m_mirrorSource->m_lastFrame, m_mirrorSource->m_output->transform,
-            [this](const wlr_output_state& state) {
-              CaptureRedaction redaction(*this, state);
-              return wlr_output_commit_state(m_output, &state);
-            }
+            frame.state
         );
-        if (m_mirrorDirty) {
-          armFrameRetry(kFrameRetryDelayMs);
+        fx_renderer_defer_submits(m_server->renderer(), false);
+        m_frameState = FrameState::Submitting;
+        if (drawn) {
+          fx_renderer_kick(m_server->renderer(), onFrameSubmitted, this);
+        } else {
+          completeMirrorFrame(false);
         }
+        return;
       }
       if (Ipc* ipc = m_server->ipc()) {
         ipc->notifyOutputFrame(*this);
@@ -2883,6 +2891,10 @@ namespace andromeda {
         m_stallProbe.mark(StallProbe::Mark::BuildStart);
         fx_renderer_defer_submits(m_server->renderer(), true);
         built = wlr_scene_output_build_state(m_sceneOutput, &state, &sceneOptions);
+        // Inside the deferral: its submit queues behind the scene's, so main never waits for the frame's flush.
+        if (built && m_zoom > 1.0) {
+          frame.zoom = applyZoom(state);
+        }
         fx_renderer_defer_submits(m_server->renderer(), false);
         m_stallProbe.mark(StallProbe::Mark::BuildEnd);
       }
@@ -2915,11 +2927,6 @@ namespace andromeda {
             m_gammaDirty = false;
           }
         }
-
-        std::optional<wlr_fbox>& zoom = frame.zoom;
-        if (m_zoom > 1.0) {
-          zoom = applyZoom(state);
-        }
       }
     }
 
@@ -2936,7 +2943,41 @@ namespace andromeda {
     }
   }
 
-  void Output::onFrameSubmitted(void* data, bool ok) { static_cast<Output*>(data)->completeFrame(ok); }
+  void Output::onFrameSubmitted(void* data, bool ok) {
+    auto* self = static_cast<Output*>(data);
+    if (self->m_pendingFrame->mirror) {
+      self->completeMirrorFrame(ok);
+    } else {
+      self->completeFrame(ok);
+    }
+  }
+
+  void Output::completeMirrorFrame(bool submitted) {
+    wlr_output_state& state = m_pendingFrame->state;
+    bool committed = false;
+    if (submitted) {
+      CaptureRedaction redaction(*this, state);
+      committed = wlr_output_commit_state(m_output, &state);
+    }
+    m_mirrorDirty = !committed;
+    if (m_mirrorDirty) {
+      armFrameRetry(kFrameRetryDelayMs);
+    }
+    m_handlingFrame = false;
+    if (Ipc* ipc = m_server->ipc()) {
+      ipc->notifyOutputFrame(*this);
+    }
+    const bool dirty = m_frameState == FrameState::SubmittingDirty;
+    m_frameState = FrameState::Idle;
+    wlr_output_state_finish(&state);
+    m_pendingFrame.reset();
+    if (const std::optional<RequestedMode> mode = m_configuredCommit.endFrame()) {
+      applyMode(mode->width, mode->height, mode->refreshMHz);
+    }
+    if (dirty) {
+      wlr_output_schedule_frame(m_output);
+    }
+  }
 
   void Output::onRendererHome(void* data, bool /*ok*/) {
     auto* self = static_cast<Output*>(data);

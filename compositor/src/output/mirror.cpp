@@ -98,23 +98,18 @@ namespace andromeda {
 
   bool renderMirrorFrame(
       wlr_output* target, wlr_renderer* renderer, wlr_buffer* frame, wl_output_transform sourceTransform,
-      const std::function<bool(const wlr_output_state&)>& commit
+      wlr_output_state& state
   ) {
-    wlr_output_state state{};
-    wlr_output_state_init(&state);
     wlr_render_pass* pass = wlr_output_begin_render_pass(target, &state, nullptr);
     if (pass == nullptr) {
-      wlr_output_state_finish(&state);
       return false;
     }
     wlr_texture* texture =
         drawMirrorFrame(pass, renderer, frame, sourceTransform, target->width, target->height, target->transform);
-    bool ok = wlr_render_pass_submit(pass);
+    const bool ok = wlr_render_pass_submit(pass);
     if (texture != nullptr) {
       wlr_texture_destroy(texture);
     }
-    ok = ok && commit(state);
-    wlr_output_state_finish(&state);
     return ok;
   }
 
