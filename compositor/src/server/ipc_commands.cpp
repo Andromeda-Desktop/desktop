@@ -746,6 +746,7 @@ namespace andromeda {
       // Tiled windows report their layout slot, which the layout computes even for hidden workspaces; floats report
       // their own position. Ordering a listing by these positions then matches the strip (scrolling) or tile tree
       // (dwindle) regardless of visibility or in-flight animations.
+      wlr_box content = view.committedContentBox();
       if (Workspace* workspace = view.workspace(); workspace != nullptr && workspace->layout().columnOf(&view) >= 0) {
         // Preview stale targets without applying client configures, rules, or bindings.
         const Layout* layout = &workspace->layout();
@@ -763,6 +764,9 @@ namespace andromeda {
                                                     : workspace->presentedTiledBox(&view, layout);
         entry["x"] = box.x;
         entry["y"] = box.y;
+        // The tile clips a client that has not shrunk to it yet.
+        content.width = std::min(content.width, box.width);
+        content.height = std::min(content.height, box.height);
       } else if (
           (view.floating() && server.cursor()->isDraggingView(&view)) || server.cursor()->toplevelDragView() == &view
       ) {
@@ -776,7 +780,6 @@ namespace andromeda {
       }
       // The size the window covers, which is its committed window geometry unless the client left that box behind a
       // configure it already redrew for. Reporting the stale box would disagree with what is on screen.
-      const wlr_box content = view.committedContentBox();
       entry["w"] = content.width;
       entry["h"] = content.height;
       return entry;

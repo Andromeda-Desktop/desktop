@@ -2368,7 +2368,9 @@ namespace andromeda {
     const bool fullWidth = ops->toggleFullWidth(column);
     m_focusedView->setMaximizedState(fullWidth);
     reevaluateFocusedColumn();
+    // Arrange now, so the new size joins the queued state configure instead of following it as a second one.
     markArrange();
+    flushArrange();
     return true;
   }
 
