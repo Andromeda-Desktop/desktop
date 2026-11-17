@@ -1114,6 +1114,7 @@ core_sources = files(
   'src/cli/ipc_client.cpp',
   'src/cli/update.cpp',
   'src/cli/debug.cpp',
+  'src/server/event_pacer.cpp',
   'src/server/ipc.cpp',
   'src/server/ipc_commands.cpp',
   'src/provider/provider.cpp',

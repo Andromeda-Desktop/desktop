@@ -3,6 +3,7 @@
 #include "core/scanout_keeper.h"
 #include "qos/controller.h"
 #include "server/server.h"
+#include "server/event_pacer.h"
 #include "scene/text_buffer.h"
 #include "server/apps_bus.h"
 
@@ -1336,6 +1337,10 @@ namespace andromeda {
 
   // Last step: wl_display_destroy frees every global, so every member above must already be gone.
   void Server::destroyDisplay() {
+    m_ipcWindowsPacer.reset();
+    m_ipcWorkspacesPacer.reset();
+    m_ipcLayersPacer.reset();
+    m_ipcOutputsPacer.reset();
     m_backend = nullptr;
     m_session = nullptr;
     if (m_display != nullptr) {
@@ -1723,6 +1728,14 @@ namespace andromeda {
     if (!greeterMode()) {
       m_ipc = std::make_unique<Ipc>(*this, m_socketName);
       m_provider = std::make_unique<Provider>(*this, m_socketName);
+      // A pointer or animation can change a snapshot every frame; subscribers hear about it at most once per 16 ms.
+      constexpr int kIpcSnapshotIntervalMs = 16;
+      wl_event_loop* loop = wl_display_get_event_loop(m_display);
+      m_ipcWindowsPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcWindowsEvent(); });
+      m_ipcWorkspacesPacer =
+          std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcWorkspacesEvent(); });
+      m_ipcLayersPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcLayersEvent(); });
+      m_ipcOutputsPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcOutputsEvent(); });
     }
     setenv("XDG_CURRENT_DESKTOP", "andromeda", 1);
     setenv("XDG_SESSION_DESKTOP", "andromeda", 1);

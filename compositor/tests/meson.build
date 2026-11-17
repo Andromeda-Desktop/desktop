@@ -37,6 +37,17 @@ unit_tests = [
   ['modifier-tap', ['unit/modifier_tap.cpp'], []],
   ['key-pipeline', ['unit/key_pipeline.cpp'], []],
   ['keyboard-layout', ['unit/keyboard_layout.cpp'], []],
+  [
+    'event-pacer',
+    ['unit/event_pacer.cpp'],
+    [andromeda_core_dep],
+    [],
+    [
+      '-Wl,--wrap=wl_event_loop_add_timer',
+      '-Wl,--wrap=wl_event_loop_add_idle',
+      '-Wl,--wrap=wl_event_source_timer_update',
+    ],
+  ],
   ['keyboard-leds', ['unit/keyboard_leds.cpp'], [wayland_server_dep]],
   ['keyboard-state', ['unit/keyboard_state.cpp'], [wayland_server_dep]],
   ['input-capture-geometry', ['unit/input_capture_geometry.cpp'], []],

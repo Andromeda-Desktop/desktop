@@ -84,4 +84,16 @@ pointer_release
 "$ANDROMEDA" settle > /dev/null
 await_box keyboard-resize 313 169 640 440
 
-echo 'floating moves, anchored resizes, and keyboard resizes reached windows subscribers'
+# A burst of motions merges into paced snapshots, and the last one still carries the final position.
+sweep=()
+for x in $(seq 414 713); do
+  sweep+=(move "$x" 259)
+done
+before_burst=$(wc -l < "$EVENTS")
+pointer_hold 1280 720 move 413 259 mod logo press 272 -- "${sweep[@]}" mark swept hold release 272 mod none
+pointer_step swept
+await_box swept-move 613 169 640 440
+burst_events=$(($(wc -l < "$EVENTS") - before_burst))
+pointer_release
+
+echo "floating moves, anchored resizes, keyboard resizes, and a 300-motion burst ($burst_events windows events) reached windows subscribers"

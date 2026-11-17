@@ -98,6 +98,7 @@ struct wlr_virtual_pointer_v1;
 
 namespace andromeda {
 
+  class EventPacer;
   class ScreenActivityRecorder;
   class MainLoopWorker;
   class CpuBoost;
@@ -673,10 +674,10 @@ namespace andromeda {
     void armBackgroundRenderTimer();
     static int onStartupRulesTimer(void* data);
     static int onTerminateSignal(int signal, void* data);
-    static void onIpcWindowsIdle(void* data);
-    static void onIpcWorkspacesIdle(void* data);
-    static void onIpcLayersIdle(void* data);
-    static void onIpcOutputsIdle(void* data);
+    void emitIpcWindowsEvent();
+    void emitIpcWorkspacesEvent();
+    void emitIpcLayersEvent();
+    void emitIpcOutputsEvent();
     static void onLayerKeyboardFocusChange(wl_listener* listener, void* data);
     static void onDisplacedRestoreIdle(void* data);
     static void onSuspensionSyncIdle(void* data);
@@ -1097,12 +1098,12 @@ namespace andromeda {
     std::unique_ptr<SleepWatch> m_sleepWatch;
     int m_watchdogIntervalMs = 0;
     std::string m_notifySocket;
-    // Non-null while a windows-event idle callback is pending. The idle source
-    // removes itself when it runs, so a non-null pointer means "already queued".
-    wl_event_source* m_ipcWindowsIdle = nullptr;
-    wl_event_source* m_ipcWorkspacesIdle = nullptr;
-    wl_event_source* m_ipcLayersIdle = nullptr;
-    wl_event_source* m_ipcOutputsIdle = nullptr;
+    // Snapshot events to IPC subscribers and the provider, at most one per kIpcSnapshotIntervalMs per family. Null in
+    // greeter mode, which has no control socket.
+    std::unique_ptr<EventPacer> m_ipcWindowsPacer;
+    std::unique_ptr<EventPacer> m_ipcWorkspacesPacer;
+    std::unique_ptr<EventPacer> m_ipcLayersPacer;
+    std::unique_ptr<EventPacer> m_ipcOutputsPacer;
     wl_event_source* m_lidStateReconcileIdle = nullptr;
     wl_event_source* m_displacedRestoreIdle = nullptr;
     wl_event_source* m_suspensionSyncIdle = nullptr;

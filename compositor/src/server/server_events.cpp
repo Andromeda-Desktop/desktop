@@ -39,6 +39,7 @@
 
 #include <nlohmann/json.hpp>
 #include "server/server.h"
+#include "server/event_pacer.h"
 #include "util/driver_threads.h"
 #include "core/async_file_writer.h"
 #include "core/screen_activity_recorder.h"
@@ -935,12 +936,8 @@ namespace andromeda {
     if (sessionChanged) {
       scheduleSessionSave();
     }
-    if (m_ipc == nullptr || m_ipcWindowsIdle != nullptr) {
-      return;
-    }
-    m_ipcWindowsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcWindowsIdle, this);
-    if (m_ipcWindowsIdle == nullptr) {
-      kLog.error("failed to register IPC windows idle source");
+    if (m_ipcWindowsPacer != nullptr) {
+      m_ipcWindowsPacer->schedule();
     }
   }
 
@@ -1004,77 +1001,41 @@ namespace andromeda {
     writeFileAsync(dir / "session.json", nlohmann::json{{"version", 1}, {"windows", windows}}.dump());
   }
 
-  void Server::onIpcWindowsIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcWindowsIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyWindowsChanged();
-    }
-    if (server->m_provider != nullptr) {
-      server->m_provider->notifyChanged(Provider::Family::Windows);
-    }
+  void Server::emitIpcWindowsEvent() {
+    m_ipc->notifyWindowsChanged();
+    m_provider->notifyChanged(Provider::Family::Windows);
   }
 
   void Server::scheduleIpcWorkspacesEvent() {
     // Outputs report their active workspace and focus, which move with the workspace list.
     scheduleIpcOutputsEvent();
-    if (m_ipc == nullptr || m_ipcWorkspacesIdle != nullptr) {
-      return;
-    }
-    m_ipcWorkspacesIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcWorkspacesIdle, this);
-    if (m_ipcWorkspacesIdle == nullptr) {
-      kLog.error("failed to register IPC workspaces idle source");
+    if (m_ipcWorkspacesPacer != nullptr) {
+      m_ipcWorkspacesPacer->schedule();
     }
   }
 
-  void Server::onIpcWorkspacesIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcWorkspacesIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyWorkspacesChanged();
-    }
-    if (server->m_provider != nullptr) {
-      server->m_provider->notifyChanged(Provider::Family::Workspaces);
-    }
+  void Server::emitIpcWorkspacesEvent() {
+    m_ipc->notifyWorkspacesChanged();
+    m_provider->notifyChanged(Provider::Family::Workspaces);
   }
 
   void Server::scheduleIpcLayersEvent() {
-    if (m_ipc == nullptr || m_ipcLayersIdle != nullptr) {
-      return;
-    }
-    m_ipcLayersIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcLayersIdle, this);
-    if (m_ipcLayersIdle == nullptr) {
-      kLog.error("failed to register IPC layers idle source");
+    if (m_ipcLayersPacer != nullptr) {
+      m_ipcLayersPacer->schedule();
     }
   }
 
-  void Server::onIpcLayersIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcLayersIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyLayersChanged();
-    }
-  }
+  void Server::emitIpcLayersEvent() { m_ipc->notifyLayersChanged(); }
 
   void Server::scheduleIpcOutputsEvent() {
-    if (m_ipc == nullptr || m_ipcOutputsIdle != nullptr) {
-      return;
-    }
-    m_ipcOutputsIdle = wl_event_loop_add_idle(wl_display_get_event_loop(m_display), onIpcOutputsIdle, this);
-    if (m_ipcOutputsIdle == nullptr) {
-      kLog.error("failed to register IPC outputs idle source");
+    if (m_ipcOutputsPacer != nullptr) {
+      m_ipcOutputsPacer->schedule();
     }
   }
 
-  void Server::onIpcOutputsIdle(void* data) {
-    auto* server = static_cast<Server*>(data);
-    server->m_ipcOutputsIdle = nullptr;
-    if (server->m_ipc != nullptr) {
-      server->m_ipc->notifyOutputsChanged();
-    }
-    if (server->m_provider != nullptr) {
-      server->m_provider->notifyChanged(Provider::Family::Outputs);
-    }
+  void Server::emitIpcOutputsEvent() {
+    m_ipc->notifyOutputsChanged();
+    m_provider->notifyChanged(Provider::Family::Outputs);
   }
 
 } // namespace andromeda
