@@ -98,7 +98,9 @@ static bool fixture_init(struct fixture* fixture) {
   drmDevicePtr devices[64] = {0};
   int devices_len = drmGetDevices2(0, devices, 64);
   for (int i = 0; i < devices_len && fixture->renderer == NULL; i++) {
-    if (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER))) {
+    // vgem (faux bus) has no GPU: Mesa falls back to kms_swrast there.
+    if (!(devices[i]->available_nodes & (1 << DRM_NODE_RENDER))
+        || (devices[i]->bustype != DRM_BUS_PCI && devices[i]->bustype != DRM_BUS_PLATFORM)) {
       continue;
     }
     fixture_try_device(fixture, devices[i]->nodes[DRM_NODE_RENDER]);

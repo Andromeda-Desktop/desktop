@@ -14,6 +14,7 @@
 #include <i915_drm.h>
 #include <linux/dma-buf.h>
 #include <linux/udmabuf.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <stdlib.h>
 #include <string.h>
@@ -217,8 +218,14 @@ static struct wlr_buffer* shm_slot_create(struct fx_renderer* renderer, uint32_t
   return &staging->base;
 }
 
-// Copies `region` of the client pixels into a staging slot. The sync ioctl
-// waits until the GPU no longer reads the slot.
+// True while a GPU job still reads or writes the slot; writing it then would block in the sync ioctl.
+static bool shm_slot_busy(struct wlr_buffer* slot) {
+  struct shm_staging* staging = wl_container_of(slot, staging, base);
+  struct pollfd pfd = {.fd = staging->dmabuf.fd[0], .events = POLLOUT};
+  return poll(&pfd, 1, 0) != 1 || !(pfd.revents & POLLOUT);
+}
+
+// Copies `region` of the client pixels into a staging slot the GPU no longer uses.
 static void shm_slot_write(struct wlr_buffer* slot, const pixman_region32_t* region, const uint8_t* data,
                            size_t src_stride) {
   struct shm_staging* staging = wl_container_of(slot, staging, base);
@@ -327,12 +334,13 @@ static bool fx_texture_update_from_buffer(
     int next = -1;
     for (int i = 1; i < count && next < 0; ++i) {
       const int candidate = (texture->slot + i) % count;
-      if (texture->slots[candidate]->n_locks == 0) {
+      if (texture->slots[candidate]->n_locks == 0 && !shm_slot_busy(texture->slots[candidate])) {
         next = candidate;
       }
     }
     const bool idle = count == 1 && texture->slots[0]->n_locks == 0
-        && get_current_time_msec() - texture->slot_written_ms >= FX_SHM_SLOT_IDLE_MS;
+        && get_current_time_msec() - texture->slot_written_ms >= FX_SHM_SLOT_IDLE_MS
+        && !shm_slot_busy(texture->slots[0]);
     if (next < 0 && !idle && count < FX_SHM_SLOTS && !texture->slot_failed) {
       struct wlr_egl_context prev_ctx;
       wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx);
@@ -348,6 +356,10 @@ static bool fx_texture_update_from_buffer(
       }
     }
     if (next < 0) {
+      if (shm_slot_busy(texture->slots[texture->slot])) {
+        wlr_buffer_end_data_ptr_access(buffer);
+        return false;
+      }
       ++slot_stats.in_place;
     }
     slot_stats_log();

@@ -232,6 +232,7 @@ if build_tests
   )
   foreach case_name : [
     'client-import-trim',
+    'shm-slot-busy',
     'implicit-srgb-target',
     'scene-unset-primaries',
     'scene-custom-color',

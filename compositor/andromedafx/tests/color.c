@@ -3,6 +3,9 @@
 #include "util/time.h"
 
 #include <wlr/interfaces/wlr_buffer.h>
+#include <drm/vgem_drm.h>
+#include <fcntl.h>
+#include <xf86drm.h>
 
 static bool submit_solid_frame(struct wlr_render_pass* pass, int width, int height, float red) {
   wlr_render_pass_add_rect(
@@ -953,6 +956,119 @@ static bool fill_red(struct fixture* fixture, struct wlr_buffer* target) {
 }
 
 // A sampled-only dma-buf whose import was dropped while idle draws its content again on the next use.
+#define SLOT_TEST_SIZE 512
+
+struct shm_test_buffer {
+  struct wlr_buffer base;
+  uint32_t pixels[SLOT_TEST_SIZE * SLOT_TEST_SIZE];
+};
+
+static void shm_test_buffer_destroy(struct wlr_buffer* base) {
+  struct shm_test_buffer* buffer = wl_container_of(base, buffer, base);
+  free(buffer);
+}
+
+static bool
+shm_test_buffer_begin_access(struct wlr_buffer* base, uint32_t flags, void** data, uint32_t* format, size_t* stride) {
+  if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE) {
+    return false;
+  }
+  struct shm_test_buffer* buffer = wl_container_of(base, buffer, base);
+  *data = buffer->pixels;
+  *format = DRM_FORMAT_XRGB8888;
+  *stride = SLOT_TEST_SIZE * 4;
+  return true;
+}
+
+static void shm_test_buffer_end_access(struct wlr_buffer* base) { (void)base; }
+
+static const struct wlr_buffer_impl shm_test_buffer_impl = {
+    .destroy = shm_test_buffer_destroy,
+    .begin_data_ptr_access = shm_test_buffer_begin_access,
+    .end_data_ptr_access = shm_test_buffer_end_access,
+};
+
+static int open_vgem(void) {
+  for (int minor = 128; minor < 136; ++minor) {
+    char path[32];
+    snprintf(path, sizeof(path), "/dev/dri/renderD%d", minor);
+    const int fd = open(path, O_RDWR | O_CLOEXEC);
+    if (fd < 0) {
+      continue;
+    }
+    drmVersionPtr version = drmGetVersion(fd);
+    const bool vgem = version != NULL && strcmp(version->name, "vgem") == 0;
+    drmFreeVersion(version);
+    if (vgem) {
+      return fd;
+    }
+    close(fd);
+  }
+  return -1;
+}
+
+// A client commit while every staging slot is still in GPU use must not wait for the GPU on the main thread.
+static int test_shm_slot_busy(struct fixture* fixture) {
+  const int vgem = open_vgem();
+  if (vgem < 0) {
+    fprintf(stderr, "SKIP: no vgem render node (modprobe vgem)\n");
+    return 77;
+  }
+  struct shm_test_buffer* client = calloc(1, sizeof(*client));
+  wlr_buffer_init(&client->base, &shm_test_buffer_impl, SLOT_TEST_SIZE, SLOT_TEST_SIZE);
+  struct wlr_texture* texture = wlr_texture_from_buffer(fixture->renderer, &client->base);
+  struct fx_texture* fx = texture != NULL ? wl_container_of(texture, fx, wlr_texture) : NULL;
+  if (fx == NULL || fx->slots[0] == NULL) {
+    fprintf(stderr, "SKIP: the renderer does not stage shm buffers in slots\n");
+    if (texture != NULL) {
+      wlr_texture_destroy(texture);
+    }
+    wlr_buffer_drop(&client->base);
+    close(vgem);
+    return 77;
+  }
+  pixman_region32_t damage;
+  pixman_region32_init_rect(&damage, 0, 0, SLOT_TEST_SIZE, SLOT_TEST_SIZE);
+  bool ok = true;
+  for (int i = 1; ok && i < FX_SHM_SLOTS; ++i) {
+    // A locked slot is scanned out, so the update must add a slot.
+    wlr_buffer_lock(fx->slots[i - 1]);
+    ok = check(wlr_texture_update_from_buffer(texture, &client->base, &damage), "update into a new slot")
+        && check(fx->slots[i] != NULL, "the update adds a slot");
+  }
+  uint32_t fences[FX_SHM_SLOTS] = {0};
+  for (int i = 0; ok && i < FX_SHM_SLOTS; ++i) {
+    if (i < FX_SHM_SLOTS - 1) {
+      wlr_buffer_unlock(fx->slots[i]);
+    }
+    struct wlr_dmabuf_attributes dmabuf;
+    uint32_t handle = 0;
+    ok = check(wlr_buffer_get_dmabuf(fx->slots[i], &dmabuf), "slot dmabuf")
+        && check(drmPrimeFDToHandle(vgem, dmabuf.fd[0], &handle) == 0, "import the slot into vgem");
+    struct drm_vgem_fence_attach attach = {.handle = handle, .flags = VGEM_FENCE_WRITE};
+    ok = ok && check(drmIoctl(vgem, DRM_IOCTL_VGEM_FENCE_ATTACH, &attach) == 0, "attach a GPU fence to the slot");
+    fences[i] = attach.out_fence;
+  }
+  if (ok) {
+    const int64_t start = get_current_time_msec();
+    wlr_texture_update_from_buffer(texture, &client->base, &damage);
+    const int64_t waited = get_current_time_msec() - start;
+    fprintf(stderr, "update with every slot busy took %lld ms\n", (long long)waited);
+    ok = check(waited < 50, "the update does not wait for the GPU");
+  }
+  for (int i = 0; i < FX_SHM_SLOTS; ++i) {
+    if (fences[i] != 0) {
+      struct drm_vgem_fence_signal signal = {.fence = fences[i]};
+      drmIoctl(vgem, DRM_IOCTL_VGEM_FENCE_SIGNAL, &signal);
+    }
+  }
+  pixman_region32_fini(&damage);
+  wlr_texture_destroy(texture);
+  wlr_buffer_drop(&client->base);
+  close(vgem);
+  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 static bool test_client_import_trim(struct fixture* fixture) {
   struct wlr_buffer* source = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
   struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
@@ -3334,6 +3450,12 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "SKIP: no FP16-capable DRM render node\n");
     fixture_finish(&fixture);
     return 77;
+  }
+
+  if (strcmp(argv[1], "shm-slot-busy") == 0) {
+    const int result = test_shm_slot_busy(&fixture);
+    fixture_finish(&fixture);
+    return result;
   }
 
   bool ok;
