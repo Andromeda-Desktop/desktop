@@ -790,7 +790,8 @@ struct DockConfig {
   std::string launcherIcon = "grid-dots";   // Tabler glyph name
   std::string launcherCustomImage;          // image path; overrides launcherIcon glyph when set
   bool launcherCustomImageColorize = false; // tint the custom image with the icon color role
-  std::vector<std::string> pinned;          // desktop entry IDs to always show
+  // The desktop's own apps: Settings ships with the shell; Files and Terminal with the andromeda package.
+  std::vector<std::string> pinned = {"dev.andromeda.Files", "dev.andromeda.Terminal", "dev.noctalia.Noctalia"};
   std::vector<DockMonitorOverride> monitorOverrides;
   bool operator==(const DockConfig&) const = default;
 };

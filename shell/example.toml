@@ -461,7 +461,7 @@ show_instance_count = true
 launcher_position   = "start"      # none | start | end
 launcher_icon       = "grid-dots"  # Tabler glyph name
 active_monitor_only = false
-pinned              = []            # e.g. ["firefox", "code", "kitty"]
+pinned              = ["dev.andromeda.Files", "dev.andromeda.Terminal", "dev.noctalia.Noctalia"]
 
 # Per-monitor override example; first match wins and omitted fields inherit [dock]:
 # [dock.monitor.laptop]
