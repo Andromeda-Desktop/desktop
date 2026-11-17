@@ -9,6 +9,7 @@
 
 class Button;
 class CalendarService;
+class CompositorPlatform;
 class ConfigService;
 class Flex;
 class InputArea;
@@ -23,7 +24,7 @@ public:
     bool showWeekNumbers = false;
   };
 
-  DesktopCalendarWidget(ConfigService* config, CalendarService* calendar, Options options);
+  DesktopCalendarWidget(ConfigService* config, CalendarService* calendar, CompositorPlatform* platform, Options options);
   ~DesktopCalendarWidget() override;
 
   void create() override;
@@ -44,6 +45,7 @@ private:
 
   ConfigService* m_config = nullptr;
   CalendarService* m_calendar = nullptr;
+  CompositorPlatform* m_platform = nullptr;
   bool m_showEvents = true;
   bool m_showWeekNumbers = false;
   bool m_dirty = true;

@@ -62,7 +62,9 @@ ControlCenterPanel::ControlCenterPanel(const ControlCenterServices& services) {
   });
   m_tabs[tabIndex(TabId::Weather)] = std::make_unique<WeatherPage>(services.weather, services.config);
   m_tabs[tabIndex(TabId::Session)] = std::make_unique<PowerMenuPage>(services);
-  m_tabs[tabIndex(TabId::Calendar)] = std::make_unique<CalendarPage>(services.config, services.calendar, services.weather);
+  m_tabs[tabIndex(TabId::Calendar)] = std::make_unique<CalendarPage>(
+      services.config, services.calendar, services.weather, services.platform
+  );
   // A page opened straight from a bar icon closes on back (Esc), as a macOS / Windows flyout; one reached from the
   // quick sheet goes back to it.
   const auto back = [this] {

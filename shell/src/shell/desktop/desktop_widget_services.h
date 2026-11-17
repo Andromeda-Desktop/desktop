@@ -7,6 +7,7 @@
 
 class ClipboardService;
 class CalendarService;
+class CompositorPlatform;
 class ConfigService;
 class FileWatcher;
 class HttpClient;
@@ -38,6 +39,7 @@ class AsyncTextureCache;
 
 struct DesktopWidgetRuntimeServices {
   CalendarService* calendar = nullptr;
+  CompositorPlatform* platform = nullptr;
   PipeWireService* pipewire = nullptr;
   PipeWireSpectrum* pipewireSpectrum = nullptr;
   const WeatherService* weather = nullptr;

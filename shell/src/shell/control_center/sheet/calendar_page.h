@@ -10,6 +10,7 @@
 
 class Button;
 class CalendarService;
+class CompositorPlatform;
 class ConfigService;
 class Glyph;
 class InputArea;
@@ -19,7 +20,10 @@ class WeatherService;
 
 class CalendarPage : public SheetPage {
 public:
-  explicit CalendarPage(ConfigService* config = nullptr, CalendarService* calendar = nullptr, WeatherService* weather = nullptr);
+  explicit CalendarPage(
+      ConfigService* config = nullptr, CalendarService* calendar = nullptr, WeatherService* weather = nullptr,
+      CompositorPlatform* platform = nullptr
+  );
 
   // Height of the one-column clock sheet at this width (the panel fits the sheet to it).
   [[nodiscard]] float measureHeight(Renderer& renderer, float width);
@@ -51,6 +55,7 @@ private:
   ConfigService* m_config = nullptr;
   CalendarService* m_calendar = nullptr;
   WeatherService* m_weather = nullptr;
+  CompositorPlatform* m_platform = nullptr;
   Flex* m_eventsHeader = nullptr;
   Label* m_weekdayLabel = nullptr;
   Button* m_todayButton = nullptr;

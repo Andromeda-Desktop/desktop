@@ -47,8 +47,10 @@ namespace {
 
 } // namespace
 
-CalendarPage::CalendarPage(ConfigService* config, CalendarService* calendar, WeatherService* weather)
-    : m_config(config), m_calendar(calendar), m_weather(weather) {}
+CalendarPage::CalendarPage(
+    ConfigService* config, CalendarService* calendar, WeatherService* weather, CompositorPlatform* platform
+)
+    : m_config(config), m_calendar(calendar), m_weather(weather), m_platform(platform) {}
 
 std::unique_ptr<Flex> CalendarPage::create() {
   const float scale = contentScale();
@@ -816,6 +818,7 @@ void CalendarPage::rebuildEventList(float scale) {
       .dateFormat = calendarConfig.eventDateFormat,
       .timeFormat = calendarConfig.eventTimeFormat,
       .state = &m_eventListState,
+      .platform = m_platform,
       .hidePastEvents = tabConfig.hidePastEvents,
       .pastEventsThresholdMinutes = tabConfig.pastEventsThresholdMinutes,
       .onToggleHiddenPast =

@@ -183,7 +183,7 @@ namespace {
 } // namespace
 
 DesktopWidgetFactory::DesktopWidgetFactory(DesktopWidgetRuntimeServices services)
-    : m_calendar(services.calendar), m_pipewire(services.pipewire), m_pipewireSpectrum(services.pipewireSpectrum),
+    : m_calendar(services.calendar), m_platform(services.platform), m_pipewire(services.pipewire), m_pipewireSpectrum(services.pipewireSpectrum),
       m_weather(services.weather), m_mpris(services.mpris), m_httpClient(services.httpClient),
       m_sysmon(services.sysmon), m_asyncTextures(services.asyncTextures), m_scriptDeps(services.scriptDeps) {}
 
@@ -192,7 +192,7 @@ std::unique_ptr<DesktopWidget> DesktopWidgetFactory::create(
 ) const {
   if (type == "calendar") {
     auto widget = std::make_unique<DesktopCalendarWidget>(
-        m_scriptDeps.configService, m_calendar,
+        m_scriptDeps.configService, m_calendar, m_platform,
         DesktopCalendarWidget::Options{
             .showEvents = getBoolSetting(settings, "show_events", true),
             .showWeekNumbers = getBoolSetting(settings, "show_week_numbers", false),
