@@ -105,6 +105,7 @@ namespace andromeda {
     void applyFadeAlpha();
     // Applies dsk_surface_v1 translate, scale, clip and radius to the surface tree.
     void applySurfaceMotion();
+    [[nodiscard]] bool showsOnOutput(double opacity) const;
     void applyStroke(wlr_scene_tree* tree, const wlr_box* clip, int radius);
     [[nodiscard]] wlr_scene_tree* surfaceTree() const;
     void beginCloseAnimation(wlr_scene_tree* tree);

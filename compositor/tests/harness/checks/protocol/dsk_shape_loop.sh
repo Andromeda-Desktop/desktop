@@ -65,7 +65,7 @@ fi
 
 # Fully transparent: no frames, so no commits.
 send "dsk-set hide 2 0 0 0 0"
-sleep 0.2 # real time: frames in flight finish
+"$ANDROMEDA" settle > /dev/null
 before=$(commits)
 sleep 1 # real time: nothing may commit within the window
 idle=$(($(commits) - before))

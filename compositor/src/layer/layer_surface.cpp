@@ -361,12 +361,7 @@ namespace andromeda {
       return dsk->driven(m_layerSurface->surface);
     }
     // Loops never settle: they get frames only while someone can see them (dsk_shape_v1.loop).
-    const Output* out = output();
-    int sceneX = 0;
-    int sceneY = 0;
-    // wlr_scene_node_coords is false when the node or a parent is disabled.
-    const bool shows = m_mapped && m_scene != nullptr && wlr_scene_node_coords(&m_scene->tree->node, &sceneX, &sceneY) && out != nullptr
-        && out->wlr()->enabled && state->motion.value(SurfaceMotion::Property::Opacity)[0] > 0.0;
+    const bool shows = showsOnOutput(state->motion.value(SurfaceMotion::Property::Opacity)[0]);
     const auto needsFrames = [shows](const SurfaceMotion& motion) {
       return motion.settling() || (shows && motion.looping());
     };
@@ -376,12 +371,27 @@ namespace andromeda {
     return needsFrames(state->motion) || dsk->driven(m_layerSurface->surface);
   }
 
+  bool LayerSurface::showsOnOutput(double opacity) const {
+    const Output* out = output();
+    int sceneX = 0;
+    int sceneY = 0;
+    // wlr_scene_node_coords is false when the node or a parent is disabled.
+    return m_mapped && m_scene != nullptr && wlr_scene_node_coords(&m_scene->tree->node, &sceneX, &sceneY) && out != nullptr
+        && out->wlr()->enabled && opacity > 0.0;
+  }
+
   bool LayerSurface::tickAnimations(double nowMsec) {
     // A tracker in its interacting phase moves values from input, between ticks.
-    if (const DskSurfaceManager* dsk = m_server->dskSurfaces(); dsk != nullptr
-        && (dsk->tick(m_layerSurface->surface, static_cast<uint32_t>(nowMsec)) || dsk->driven(m_layerSurface->surface))) {
-      applySurfaceMotion();
-      applyFadeAlpha();
+    // A surface hidden before and after the tick keeps its motion clock but skips scene updates: they damage the output.
+    if (const DskSurfaceManager* dsk = m_server->dskSurfaces(); dsk != nullptr) {
+      const DskSurfaceManager::State* state = dsk->state(m_layerSurface->surface);
+      const auto shows = [&] { return state == nullptr || showsOnOutput(state->motion.value(SurfaceMotion::Property::Opacity)[0]); };
+      const bool showedBefore = shows();
+      const bool ticked = dsk->tick(m_layerSurface->surface, static_cast<uint32_t>(nowMsec));
+      if ((ticked && (showedBefore || shows())) || dsk->driven(m_layerSurface->surface)) {
+        applySurfaceMotion();
+        applyFadeAlpha();
+      }
     }
     const bool densityTicked = m_density.tick(nowMsec);
     if (densityTicked) {
