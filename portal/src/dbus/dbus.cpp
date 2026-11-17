@@ -63,6 +63,11 @@ namespace xdpu {
         : loop(loop), config(config), wayland(wayland), pipewire(pipewire) {
       std::signal(SIGPIPE, SIG_IGN);
       connection = sdbus::createSessionBusConnection(sdbus::ServiceName{kBusName});
+      // A portal without its bus serves nothing; the Wayland and PipeWire fds would keep the loop alive forever.
+      connection->addMatch(
+          "type='signal',interface='org.freedesktop.DBus.Local',member='Disconnected'",
+          [&loop](sdbus::Message) { loop.quit(); }
+      );
       desktopObject = sdbus::createObject(*connection, sdbus::ObjectPath{kDesktopPath});
 
       screenshot = std::make_unique<ScreenshotPortal>(loop, *connection, *desktopObject, this->config, wayland);
