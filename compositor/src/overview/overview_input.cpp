@@ -216,6 +216,14 @@ namespace andromeda {
         }
         return true;
       }
+      if (Card* tab = m_pointer.tabPressed()) {
+        m_pointer.release();
+        // Sliding off the slot before letting go cancels, like the close button.
+        if (tab->view != nullptr && tab->view->mapped() && tabBarTabAt(lx, ly) == tab->view) {
+          closeToWorkspace(tab->view->workspace(), tab->view);
+        }
+        return true;
+      }
       if (dragCard() != nullptr) {
         endDrag(true, timeMsec);
         return true;
@@ -323,6 +331,11 @@ namespace andromeda {
     }
     if (const View* close = closeButtonAt(lx, ly)) {
       m_pointer.press(from, findCard(close), ov::PressTarget::CloseButton);
+      m_pressWorkspace = nullptr;
+      return true;
+    }
+    if (const View* tab = tabBarTabAt(lx, ly)) {
+      m_pointer.press(from, findCard(tab), ov::PressTarget::Tab);
       m_pressWorkspace = nullptr;
       return true;
     }
@@ -468,6 +481,27 @@ namespace andromeda {
     // workspace, so the caller does not have to arrange anything.
     group->select(group->workspaceAt(static_cast<size_t>(index)));
     return true;
+  }
+
+  View* Overview::tabBarTabAt(double lx, double ly) const {
+    for (const auto& state : std::views::reverse(m_outputs)) {
+      for (const auto& card : std::views::reverse(state->cards)) {
+        if (card->tree == nullptr
+            || !card->tree->node.enabled
+            || card->view == nullptr
+            || card->view->workspace() == nullptr
+            || card->scale <= 0.0
+            || cardInThumb(*card)) {
+          continue;
+        }
+        const double localX = (lx - card->box.x) / card->scale;
+        const double localY = (ly - card->box.y) / card->scale;
+        if (View* tab = card->view->workspace()->tabs().tabAtBarOf(card->view, localX, localY)) {
+          return tab;
+        }
+      }
+    }
+    return nullptr;
   }
 
   const View* Overview::closeButtonAt(double lx, double ly) const {

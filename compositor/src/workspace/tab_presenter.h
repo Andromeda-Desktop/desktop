@@ -61,6 +61,9 @@ namespace andromeda {
 
     // The tab whose bar slot lies under the layout point.
     [[nodiscard]] std::optional<TabHit> tabAt(double lx, double ly) const;
+    // The tab whose slot lies under a point relative to `shown`'s content origin, in the bar `shown` carries for its
+    // group. The overview draws that bar on a scaled card while the window tree is hidden.
+    [[nodiscard]] View* tabAtBarOf(const View* shown, double localX, double localY) const;
     // Where a window dropped at the layout point onto column `column` joins one of its tab groups, or nullopt when the
     // point is on none of them. Over a bar it lands beside the slot under the point; over the middle of a group it
     // lands where new tabs go. Near a group's ends it joins nothing, so the drop can land beside the group instead.

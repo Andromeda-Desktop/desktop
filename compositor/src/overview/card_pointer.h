@@ -18,8 +18,9 @@ namespace andromeda::ov {
     bool operator==(const HoldSource&) const = default;
   };
 
-  // What a press landed on: a card's body (it can drag) or a card's close button (a release on it closes the window).
-  enum class PressTarget : uint8_t { Card, CloseButton };
+  // What a press landed on: a card's body (it can drag), a card's close button (a release on it closes the window) or a
+  // tab's slot in a group's bar (a release on it opens that tab).
+  enum class PressTarget : uint8_t { Card, CloseButton, Tab };
 
   // The left button's hold in the overview: idle, pressed (on a card, its close button or nothing), or dragging a card.
   // One device owns
@@ -36,6 +37,11 @@ namespace andromeda::ov {
     [[nodiscard]] Card* closePressed() const {
       const auto* state = std::get_if<Pressed>(&m_state);
       return state != nullptr && state->target == PressTarget::CloseButton ? state->card.get() : nullptr;
+    }
+    // The card of the tab whose bar slot is held, null for any other hold.
+    [[nodiscard]] Card* tabPressed() const {
+      const auto* state = std::get_if<Pressed>(&m_state);
+      return state != nullptr && state->target == PressTarget::Tab ? state->card.get() : nullptr;
     }
     [[nodiscard]] Card* dragged() const {
       const auto* state = std::get_if<Dragging>(&m_state);

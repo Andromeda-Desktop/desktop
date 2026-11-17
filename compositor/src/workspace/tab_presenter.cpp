@@ -213,6 +213,27 @@ namespace andromeda {
     return view != nullptr ? dynamic_cast<TabBar*>(view->chromeAttachment()) : nullptr;
   }
 
+  View* TabPresenter::tabAtBarOf(const View* shown, double localX, double localY) const {
+    const TabBar* bar = barOf(shown);
+    if (bar == nullptr) {
+      return nullptr;
+    }
+    const wlr_box box = bar->localBox();
+    if (!contains(box, localX, localY)) {
+      return nullptr;
+    }
+    for (const Column& column : m_workspace.layout().columns()) {
+      for (const TabGroup& group : column.tabs.groups()) {
+        if (group.active >= column.views.size() || column.views[group.active] != shown) {
+          continue;
+        }
+        const TabBarPoint point = bar->pointAt(localX - box.x, localY - box.y);
+        return point.part == TabBarPart::Tab ? column.views[group.first + point.index] : nullptr;
+      }
+    }
+    return nullptr;
+  }
+
   std::optional<TabHit> TabPresenter::tabAt(double lx, double ly) const {
     for (const Column& column : m_workspace.layout().columns()) {
       for (const TabGroup& group : column.tabs.groups()) {

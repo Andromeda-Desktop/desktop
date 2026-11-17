@@ -383,6 +383,8 @@ namespace andromeda {
     [[nodiscard]] Card* findCard(const View* view);
     void updateHover(double lx, double ly);
     [[nodiscard]] const View* closeButtonAt(double lx, double ly) const;
+    // The tab under a point on the group tab bar a live window card draws outside its content box.
+    [[nodiscard]] View* tabBarTabAt(double lx, double ly) const;
     // The arrangement menu, open under a workspace's chip on one output. Compared, never dereferenced.
     struct ArrangementMenu {
       const Output* output = nullptr;

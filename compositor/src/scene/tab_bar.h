@@ -62,6 +62,8 @@ namespace andromeda {
     void setModel(TabBarModel model);
     [[nodiscard]] const TabBarModel& model() const { return m_model; }
     [[nodiscard]] const TabBarStyle& style() const { return m_style; }
+    // The bar relative to the frame of the window carrying it; it holds while the window tree is hidden.
+    [[nodiscard]] wlr_box localBox() const;
     // The drawn bar in layout coordinates; empty while nothing is drawn.
     [[nodiscard]] wlr_box layoutBox() const;
     // The tabs the bar shows, its model's strip kept inside its tabs.
@@ -89,8 +91,6 @@ namespace andromeda {
     [[nodiscard]] bool drawn() const;
     // Whether the bar runs across the column, top or bottom, rather than down it.
     [[nodiscard]] bool across() const { return tabBarAcross(m_style.position); }
-    // The bar relative to the frame of the window carrying it.
-    [[nodiscard]] wlr_box localBox() const;
     // The bar's extent along its slots, and across them.
     [[nodiscard]] int length() const;
     [[nodiscard]] int thickness() const;
