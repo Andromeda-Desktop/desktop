@@ -138,6 +138,15 @@ std::unique_ptr<Widget> WidgetFactory::create(
     bool verticalBar;
   };
 
+  // A clock without its own format follows the Date & Time settings.
+  static constexpr auto clockOptions = [](const ShellConfig& shell, const BuiltinWidgetContext& context) {
+    auto options = clockWidgetDefinition().resolve(context.config, context.settingContext);
+    if (options.format.empty()) {
+      options.format = options.shows == ClockWidget::Shows::Date ? shell.dateFormat : shell.timeFormat;
+    }
+    return options;
+  };
+
   using BuiltinWidgetCreator =
       std::unique_ptr<Widget> (*)(const WidgetFactory& factory, const BuiltinWidgetContext& context);
   struct BuiltinWidget {
@@ -192,10 +201,9 @@ std::unique_ptr<Widget> WidgetFactory::create(
             options.islandStyle = true;
             return createWidget<BatteryWidget>(context.contentScale, f.m_upower, options);
           }},
-      {"island_clock", [](const WidgetFactory&, const BuiltinWidgetContext& context) {
+      {"island_clock", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
             return createWidget<ClockWidget>(
-                context.contentScale, context.output,
-                clockWidgetDefinition().resolve(context.config, context.settingContext)
+                context.contentScale, context.output, clockOptions(f.m_config.shell, context)
             );
           }},
       {"island_network", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
@@ -264,10 +272,9 @@ std::unique_ptr<Widget> WidgetFactory::create(
                 clipboardWidgetDefinition().resolve(context.config, context.settingContext)
             );
           }},
-      {"clock", [](const WidgetFactory&, const BuiltinWidgetContext& context) {
+      {"clock", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
             return createWidget<ClockWidget>(
-                context.contentScale, context.output,
-                clockWidgetDefinition().resolve(context.config, context.settingContext)
+                context.contentScale, context.output, clockOptions(f.m_config.shell, context)
             );
           }},
       {"control-center", [](const WidgetFactory&, const BuiltinWidgetContext& context) {

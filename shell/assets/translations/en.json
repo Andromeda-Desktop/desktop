@@ -6232,6 +6232,7 @@
         "both": "Both",
         "compact": "Compact",
         "count": "Count",
+        "date": "Date",
         "dots": "Dots",
         "focus-hint": "Focus Hint",
         "full": "Full",
@@ -6445,7 +6446,7 @@
           "label": "Font Weight"
         },
         "format": {
-          "description": "Time format string",
+          "description": "Format string; empty follows Settings > Date & Time",
           "label": "Format"
         },
         "glyph": {

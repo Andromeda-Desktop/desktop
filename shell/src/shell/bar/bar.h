@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -244,6 +245,7 @@ private:
   std::vector<BarConfig> m_lastBars;
   std::unordered_map<std::string, WidgetConfig> m_lastWidgets;
   ShellConfig::ShadowConfig m_lastShadow;
+  std::pair<std::string, std::string> m_lastClockFormats; // shell time and date format: clocks without their own
   // Plugin enable/disable changes which widget types resolve, so a plugins-only
   // config change must also rebuild widgets.
   PluginsConfig m_lastPlugins;

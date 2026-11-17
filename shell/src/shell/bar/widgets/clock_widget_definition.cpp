@@ -7,6 +7,25 @@ const noctalia::bar::WidgetDefinition<ClockWidget::Options>& clockWidgetDefiniti
   static const noctalia::bar::WidgetDefinition<Options> definition{
       .type = "clock",
       .fields = {
+          field<&Options::shows>({
+              .key = "display",
+              .choices =
+                  {
+                      {
+                          .value = ClockWidget::Shows::Time,
+                          .configValue = "time",
+                          .labelKey = "settings.widgets.options.time",
+                      },
+                      {
+                          .value = ClockWidget::Shows::Date,
+                          .configValue = "date",
+                          .labelKey = "settings.widgets.options.date",
+                      },
+                  },
+              .presentation = settings::WidgetSettingPresentation{
+                  .segmented = true,
+              },
+          }),
           field<&Options::format>({
               .key = "format",
           }),

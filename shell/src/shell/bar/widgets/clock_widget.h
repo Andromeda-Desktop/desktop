@@ -10,8 +10,11 @@ struct wl_output;
 
 class ClockWidget : public Widget {
 public:
+  enum class Shows : std::uint8_t { Time, Date };
+
   struct Options {
-    std::string format = "{:%H:%M}";
+    Shows shows = Shows::Time;
+    std::string format; // empty: shell.time_format or shell.date_format, by `shows`
     std::string verticalFormat;
     std::string tooltipFormat;
     std::string timezone;

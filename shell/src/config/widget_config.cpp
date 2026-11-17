@@ -70,7 +70,7 @@ namespace noctalia::config {
 
     WidgetConfig date;
     date.type = "clock";
-    date.settings["format"] = std::string("{:%a %d %b}");
+    date.settings["display"] = std::string("date");
     seed("date", std::move(date));
 
     // Desktop Layouts, Windows: the Start button (the amark line glyph, board section 1) opens the launcher's apps grid;
