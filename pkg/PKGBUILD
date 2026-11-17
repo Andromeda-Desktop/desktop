@@ -132,6 +132,8 @@ _pin_depends() {
     version=${version%-*}
     # No epoch: CachyOS repackages with a higher epoch (mesa 3:x) than Arch (1:x) for the same upstream version.
     version=${version#*:}
+    # No git snapshot (glibc 2.44+r78+g…): CachyOS builds the same upstream release from an older snapshot (+r50).
+    version=${version%%+r*}
     pinned+=("$dep${version:+>=$version}")
   done
   depends=("${pinned[@]}")
