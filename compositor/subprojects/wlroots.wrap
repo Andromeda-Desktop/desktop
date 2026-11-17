@@ -14,7 +14,7 @@ depth = 1
 # refresh-only change or reject it; legacy KMS rejects such a commit.
 # Sends surface dma-buf feedback only when it changes: Mesa reallocates every window buffer on each feedback, and
 # the scene sent a copy of the default at each new window's first output commit.
-diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch
+diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch, wlroots-merge-queued-commits.patch
 
 [provide]
 dependency_names = wlroots-0.20

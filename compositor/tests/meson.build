@@ -360,6 +360,13 @@ subsurface_client = executable(
   dependencies: [wayland_client_dep],
 )
 
+# Harness helper that queues three buffers on a synchronized subsurface before its parent commits.
+sync_subsurface_client = executable(
+  'sync-subsurface-client',
+  ['harness/clients/sync_subsurface_client.cpp', xdg_shell_client_h, xdg_shell_client_c],
+  dependencies: [wayland_client_dep],
+)
+
 # Harness helper that renders one buffer at the preferred fractional scale and
 # publishes its logical size through wp_viewporter, the way a fractional-scale
 # aware toolkit does.
@@ -695,6 +702,7 @@ harness_client_targets = [
   unmap_client,
   popup_client,
   subsurface_client,
+  sync_subsurface_client,
   fractional_client,
   syncobj_client,
   idle_inhibit_client,

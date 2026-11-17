@@ -174,6 +174,7 @@ export ANDROMEDA_POPUP_CLIENT="$CLIENT_DIR/popup-client"
 export ANDROMEDA_IDLE_INHIBIT_CLIENT="$CLIENT_DIR/idle-inhibit-client"
 export ANDROMEDA_LOCK_CLIENT="$CLIENT_DIR/lock-client"
 export ANDROMEDA_SUBSURFACE_CLIENT="$CLIENT_DIR/subsurface-client"
+export ANDROMEDA_SYNC_SUBSURFACE_CLIENT="$CLIENT_DIR/sync-subsurface-client"
 export ANDROMEDA_FRACTIONAL_CLIENT="$CLIENT_DIR/fractional-client"
 export ANDROMEDA_SYNCOBJ_CLIENT="$CLIENT_DIR/syncobj-client"
 # With vgem loaded (protocol/stalled_buffer_held), headless can pick its render node and fall back to llvmpipe, which
