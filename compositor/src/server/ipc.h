@@ -113,6 +113,10 @@ namespace andromeda {
     // False clears the family's last payload: a later subscriber's initial line is not what `last` holds.
     bool hasSubscriber(uint16_t event);
     void refreshScreenCastActive();
+    // Settled also needs the render thread idle: a capture copy in flight sends its ready after the frame. False
+    // starts one kick that rechecks the waiters.
+    bool renderSettled();
+    static void onRenderSettleKick(void* data, bool ok);
     void dropAudioOwner();
 
     Server* m_server;
@@ -121,6 +125,7 @@ namespace andromeda {
     int m_listenFd = -1;
     wl_event_source* m_eventSource = nullptr;
     wl_event_source* m_settleRecheck = nullptr;
+    bool m_renderSettleKick = false;
     std::vector<std::unique_ptr<Connection>> m_connections;
     // Last payload broadcast per family, indexed by the bit position of the event. A family that recomputes to the
     // same JSON is dropped rather than woken through to every subscriber; a fresh subscriber gets its own initial

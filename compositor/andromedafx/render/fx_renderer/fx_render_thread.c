@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <time.h>
@@ -69,6 +70,7 @@ struct fx_render_thread {
   struct waiter_list current;   // run after the job in flight
   struct waiter_list ready;     // job done, run from `ready_idle` (a blocking sync never runs waiters nested)
   struct wl_event_source* ready_idle;
+  bool running_ready;           // in run_ready: a kick starts no job, so every waiter of the list runs Home
   struct op_list in_flight;     // owned by the render thread while Away
 
   pthread_mutex_t mutex;
@@ -112,7 +114,7 @@ static void add_waiter(struct waiter_list* list, fx_submit_done_fn fn, void* dat
 static void remove_waiter(struct waiter_list* list, fx_submit_done_fn fn, void* data) {
   for (size_t i = 0; i < list->len; i++) {
     if (list->items[i].fn == fn && list->items[i].data == data) {
-      list->items[i] = list->items[--list->len];
+      memmove(list->items + i, list->items + i + 1, (--list->len - i) * sizeof(*list->items));
       return;
     }
   }
@@ -151,6 +153,9 @@ static bool run_op(struct fx_renderer* renderer, struct queued_op* queued) {
     return true;
   case FX_SUBMIT_FLUSH:
     glFlush();
+    return true;
+  case FX_SUBMIT_FINISH:
+    glFinish();
     return true;
   case FX_SUBMIT_TIMELINE: {
     EGLSyncKHR sync = wlr_egl_create_sync(egl, -1);
@@ -339,13 +344,15 @@ static void run_ready(struct fx_render_thread* thread) {
     wl_event_source_remove(thread->ready_idle);
     thread->ready_idle = NULL;
   }
-  // A waiter can queue and kick again; it then lands in `next`, not in the list run here.
-  struct waiter_list ready = thread->ready;
-  thread->ready = (struct waiter_list){0};
-  for (size_t i = 0; i < ready.len; i++) {
-    ready.items[i].fn(ready.items[i].data, ready.items[i].ok);
+  // Waiters run only Home, because one may record GL for the next job. A waiter that leaves the context Away (a
+  // sync that timed out) leaves the rest for the next finish_job. A waiter that kicks again lands in `next`.
+  thread->running_ready = true;
+  while (thread->location == FX_CONTEXT_HOME && thread->ready.len > 0) {
+    struct waiter waiter = thread->ready.items[0];
+    memmove(thread->ready.items, thread->ready.items + 1, --thread->ready.len * sizeof(*thread->ready.items));
+    waiter.fn(waiter.data, waiter.ok);
   }
-  free(ready.items);
+  thread->running_ready = false;
   if (thread->location == FX_CONTEXT_HOME && (thread->queued.len > 0 || thread->next.len > 0)) {
     start_job(thread);
   }
@@ -490,7 +497,7 @@ void fx_render_thread_kick(struct fx_render_thread* thread, fx_submit_done_fn do
     return;
   }
   add_waiter(&thread->next, done, data);
-  if (thread->location == FX_CONTEXT_HOME) {
+  if (thread->location == FX_CONTEXT_HOME && !thread->running_ready) {
     start_job(thread);
   }
 }
@@ -552,6 +559,11 @@ void fx_render_thread_cancel(struct fx_render_thread* thread, fx_submit_done_fn 
   remove_waiter(&thread->current, done, data);
   remove_waiter(&thread->next, done, data);
   remove_waiter(&thread->ready, done, data);
+}
+
+bool fx_render_thread_work_pending(const struct fx_render_thread* thread) {
+  return thread->location == FX_CONTEXT_AWAY || thread->queued.len > 0 || thread->next.len > 0 || thread->current.len > 0
+         || thread->ready.len > 0;
 }
 
 int64_t fx_render_thread_busy_since_ns(const struct fx_render_thread* thread) {

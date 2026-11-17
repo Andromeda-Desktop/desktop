@@ -668,8 +668,10 @@ capture_client = executable(
     ext_image_copy_capture_client_c,
     ext_foreign_toplevel_list_client_h,
     ext_foreign_toplevel_list_client_c,
+    linux_dmabuf_client_h,
+    linux_dmabuf_client_c,
   ],
-  dependencies: [wayland_client_dep],
+  dependencies: [wayland_client_dep, libdrm_dep, dependency('gbm')],
 )
 
 # Uses real backend devices in an isolated compositor to verify physical consent.

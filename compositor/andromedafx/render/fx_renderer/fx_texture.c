@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "render/egl.h"
 #include "render/fx_renderer/fx_renderer.h"
+#include "render/fx_renderer/fx_render_thread.h"
 #include "render/pass.h"
 #include "render/pixel_format.h"
 #include "andromedafx/render/fx_renderer/fx_offscreen_buffers.h"
@@ -8,6 +9,7 @@
 
 #include "util/time.h"
 #include <assert.h>
+#include <GLES3/gl3.h>
 #include <drm_fourcc.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -478,9 +480,11 @@ static bool fx_texture_bind(struct fx_texture* texture) {
   return true;
 }
 
+// pack_buffer 0: reads into options->data after the GPU finished. Otherwise records a read into pack_buffer at offset
+// 0 with options->stride the tight row size; the context must be Home.
 static bool
-fx_texture_read_pixels(struct wlr_texture* wlr_texture, const struct wlr_texture_read_pixels_options* options) {
-  struct fx_texture* texture = fx_get_texture(wlr_texture);
+read_pixels(struct fx_texture* texture, const struct wlr_texture_read_pixels_options* options, GLuint pack_buffer) {
+  struct wlr_texture* wlr_texture = &texture->wlr_texture;
 
   struct wlr_box src;
   wlr_texture_read_pixels_options_get_src_box(options, wlr_texture, &src);
@@ -503,8 +507,10 @@ fx_texture_read_pixels(struct wlr_texture* wlr_texture, const struct wlr_texture
     return false;
   }
 
+  const bool ready = pack_buffer != 0 ? fx_renderer_context_home(&texture->fx_renderer->wlr_renderer)
+                                      : fx_renderer_take_context(texture->fx_renderer);
   struct wlr_egl_context prev_ctx;
-  if (!fx_renderer_take_context(texture->fx_renderer) || !wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
+  if (!ready || !wlr_egl_make_current(texture->fx_renderer->egl, &prev_ctx)) {
     return false;
   }
   push_fx_debug(texture->fx_renderer);
@@ -527,16 +533,22 @@ fx_texture_read_pixels(struct wlr_texture* wlr_texture, const struct wlr_texture
     }
   }
 
-  // Make sure any pending drawing is finished before we try to read it
-  glFinish();
+  if (pack_buffer == 0) {
+    // Make sure any pending drawing is finished before we try to read it
+    glFinish();
+  }
 
   glGetError(); // Clear the error flag
 
-  unsigned char* p = wlr_texture_read_pixel_options_get_data(options);
+  unsigned char* p = pack_buffer != 0 ? NULL : wlr_texture_read_pixel_options_get_data(options);
 
   glPixelStorei(GL_PACK_ALIGNMENT, 1);
   uint32_t pack_stride = pixel_format_info_min_stride(drm_fmt, src.width);
-  if (pack_stride == options->stride && options->dst_x == 0) {
+  if (pack_buffer != 0) {
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pack_buffer);
+    glReadPixels(src.x, src.y, src.width, src.height, fmt->gl_format, read_gl_type, NULL);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+  } else if (pack_stride == options->stride && options->dst_x == 0) {
     // Under these particular conditions, we can read the pixels with only
     // one glReadPixels call
 
@@ -555,6 +567,104 @@ out:
   pop_fx_debug(texture->fx_renderer);
   wlr_egl_restore_context(&prev_ctx);
   return ok;
+}
+
+static bool
+fx_texture_read_pixels(struct wlr_texture* wlr_texture, const struct wlr_texture_read_pixels_options* options) {
+  return read_pixels(fx_get_texture(wlr_texture), options, 0);
+}
+
+// Pixels read into a pack buffer by GPU work that runs with the next render-thread job.
+struct fx_readback {
+  struct wlr_texture_readback base;
+  struct fx_renderer* renderer;
+  GLuint pack_buffer;
+  int width, height;
+  uint32_t row_bytes;
+};
+
+static bool fx_readback_finish(struct wlr_texture_readback* base, const struct wlr_texture_read_pixels_options* options) {
+  struct fx_readback* readback = wl_container_of(base, readback, base);
+  struct wlr_egl_context prev_ctx;
+  if (!fx_renderer_context_home(&readback->renderer->wlr_renderer)
+      || !wlr_egl_make_current(readback->renderer->egl, &prev_ctx)) {
+    return false;
+  }
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, readback->pack_buffer);
+  const uint8_t* src = glMapBufferRange(
+      GL_PIXEL_PACK_BUFFER, 0, (GLsizeiptr)readback->row_bytes * readback->height, GL_MAP_READ_BIT
+  );
+  if (src != NULL) {
+    uint8_t* dst = wlr_texture_read_pixel_options_get_data(options);
+    for (int y = 0; y < readback->height; ++y) {
+      memcpy(dst + (size_t)y * options->stride, src + (size_t)y * readback->row_bytes, readback->row_bytes);
+    }
+    glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+  }
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+  wlr_egl_restore_context(&prev_ctx);
+  return src != NULL;
+}
+
+static void fx_readback_destroy(struct wlr_texture_readback* base) {
+  struct fx_readback* readback = wl_container_of(base, readback, base);
+  fx_renderer_delete_gl(readback->renderer, FX_GL_BUFFER, readback->pack_buffer);
+  free(readback);
+}
+
+static const struct wlr_texture_readback_impl readback_impl = {
+    .finish = fx_readback_finish,
+    .destroy = fx_readback_destroy,
+};
+
+static struct wlr_texture_readback*
+fx_texture_readback_begin(struct wlr_texture* wlr_texture, const struct wlr_box* src_box, uint32_t format) {
+  struct fx_texture* texture = fx_get_texture(wlr_texture);
+  struct fx_renderer* renderer = texture->fx_renderer;
+  const struct wlr_pixel_format_info* drm_fmt = drm_get_pixel_format_info(format);
+  if (drm_fmt == NULL || !fx_renderer_context_home(&renderer->wlr_renderer)) {
+    return NULL;
+  }
+  struct wlr_box src = {0};
+  if (src_box != NULL && !wlr_box_empty(src_box)) {
+    src = *src_box;
+  } else {
+    src = (struct wlr_box){.width = wlr_texture->width, .height = wlr_texture->height};
+  }
+  struct fx_readback* readback = calloc(1, sizeof(*readback));
+  if (readback == NULL) {
+    return NULL;
+  }
+  readback->base.impl = &readback_impl;
+  readback->renderer = renderer;
+  readback->width = src.width;
+  readback->height = src.height;
+  readback->row_bytes = pixel_format_info_min_stride(drm_fmt, src.width);
+
+  struct wlr_egl_context prev_ctx;
+  if (!wlr_egl_make_current(renderer->egl, &prev_ctx)) {
+    free(readback);
+    return NULL;
+  }
+  glGenBuffers(1, &readback->pack_buffer);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, readback->pack_buffer);
+  glBufferData(GL_PIXEL_PACK_BUFFER, (GLsizeiptr)readback->row_bytes * src.height, NULL, GL_STREAM_READ);
+  glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+  wlr_egl_restore_context(&prev_ctx);
+
+  const struct wlr_texture_read_pixels_options options = {
+      .format = format,
+      .stride = readback->row_bytes,
+      .src_box = src,
+  };
+  if (!read_pixels(texture, &options, readback->pack_buffer)) {
+    fx_readback_destroy(&readback->base);
+    return NULL;
+  }
+  if (renderer->render_thread != NULL) {
+    fx_render_thread_queue(renderer->render_thread, &(struct fx_submit_op){.kind = FX_SUBMIT_FINISH});
+  }
+  return &readback->base;
 }
 
 static uint32_t fx_texture_preferred_read_format(struct wlr_texture* wlr_texture) {
@@ -641,6 +751,7 @@ static const struct wlr_texture_impl texture_impl = {
     .update_from_buffer = fx_texture_update_from_buffer,
     .read_pixels = fx_texture_read_pixels,
     .preferred_read_format = fx_texture_preferred_read_format,
+    .readback_begin = fx_texture_readback_begin,
     .destroy = texture_handle_buffer_destroy,
 };
 

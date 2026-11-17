@@ -29,6 +29,8 @@ void fx_renderer_kick(struct wlr_renderer* renderer, void (*done)(void* data, bo
 void fx_renderer_defer_submits(struct wlr_renderer* renderer, bool defer);
 // Drops a `done` not yet run, for an owner that goes away.
 void fx_renderer_cancel_kick(struct wlr_renderer* renderer, void (*done)(void* data, bool ok), void* data);
+// True while the render thread runs a job, holds queued work or has a `done` not yet run (a capture copy in flight).
+bool fx_renderer_work_pending(struct wlr_renderer* renderer);
 // CLOCK_MONOTONIC ns at which the render thread's running job started; 0 when it is idle or there is none.
 int64_t fx_renderer_busy_since_ns(struct wlr_renderer* renderer);
 // False while the render thread holds the GL context: no GL call may start on the caller's thread until a kick's done.

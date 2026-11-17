@@ -26,6 +26,8 @@ enum fx_submit_kind {
   FX_SUBMIT_FLUSH,
   // The fence the backdrop probes captured this pass wait on (backdrop_probe.c).
   FX_SUBMIT_PROBE_FENCE,
+  // Flush, then wait until the GPU ran every recorded command, for a readback the main thread maps after the job.
+  FX_SUBMIT_FINISH,
 };
 
 struct fx_submit_op {
@@ -67,6 +69,7 @@ void fx_render_thread_cancel(struct fx_render_thread* thread, fx_submit_done_fn 
 
 // CLOCK_MONOTONIC ns at which the running job started, 0 when idle. Any thread.
 int64_t fx_render_thread_busy_since_ns(const struct fx_render_thread* thread);
+bool fx_render_thread_work_pending(const struct fx_render_thread* thread);
 
 // Test hook: the next job sleeps `ms` before its ops, as a submit stuck on another process's buffer lock does.
 void fx_render_thread_inject_stall(struct fx_render_thread* thread, int ms);

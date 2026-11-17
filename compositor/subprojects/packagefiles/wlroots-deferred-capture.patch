@@ -1,0 +1,857 @@
+diff --git include/wlr/render/interface.h include/wlr/render/interface.h
+index 89f6de9..4f39d01 100644
+--- a/include/wlr/render/interface.h
++++ b/include/wlr/render/interface.h
+@@ -31,6 +31,11 @@ struct wlr_renderer_impl {
+ 	struct wlr_render_pass *(*begin_buffer_pass)(struct wlr_renderer *renderer,
+ 		struct wlr_buffer *buffer, const struct wlr_buffer_pass_options *options);
+ 	struct wlr_render_timer *(*render_timer_create)(struct wlr_renderer *renderer);
++	void (*defer_submits)(struct wlr_renderer *renderer, bool defer);
++	void (*kick)(struct wlr_renderer *renderer,
++		void (*done)(void *data, bool ok), void *data);
++	void (*cancel_kick)(struct wlr_renderer *renderer,
++		void (*done)(void *data, bool ok), void *data);
+ };
+ 
+ void wlr_renderer_init(struct wlr_renderer *renderer,
+@@ -43,6 +48,18 @@ struct wlr_texture_impl {
+ 		const struct wlr_texture_read_pixels_options *options);
+ 	uint32_t (*preferred_read_format)(struct wlr_texture *texture);
+ 	void (*destroy)(struct wlr_texture *texture);
++	struct wlr_texture_readback *(*readback_begin)(struct wlr_texture *texture,
++		const struct wlr_box *src_box, uint32_t format);
++};
++
++struct wlr_texture_readback_impl {
++	bool (*finish)(struct wlr_texture_readback *readback,
++		const struct wlr_texture_read_pixels_options *options);
++	void (*destroy)(struct wlr_texture_readback *readback);
++};
++
++struct wlr_texture_readback {
++	const struct wlr_texture_readback_impl *impl;
+ };
+ 
+ void wlr_texture_init(struct wlr_texture *texture, struct wlr_renderer *rendener,
+diff --git include/wlr/render/wlr_renderer.h include/wlr/render/wlr_renderer.h
+index 902d756..a128721 100644
+--- a/include/wlr/render/wlr_renderer.h
++++ b/include/wlr/render/wlr_renderer.h
+@@ -111,6 +111,26 @@ int wlr_renderer_get_drm_fd(struct wlr_renderer *r);
+  */
+ void wlr_renderer_destroy(struct wlr_renderer *renderer);
+ 
++/**
++ * While deferred, a render pass submit queues its GPU work and returns at
++ * once; wlr_renderer_kick() runs it. A renderer without deferral submits at
++ * once.
++ */
++void wlr_renderer_defer_submits(struct wlr_renderer *renderer, bool defer);
++
++/**
++ * Runs the deferred submits. done runs once they ran and the renderer accepts
++ * new work, possibly inside this call. ok is false when they failed.
++ */
++void wlr_renderer_kick(struct wlr_renderer *renderer,
++	void (*done)(void *data, bool ok), void *data);
++
++/**
++ * Removes a pending done callback of wlr_renderer_kick().
++ */
++void wlr_renderer_cancel_kick(struct wlr_renderer *renderer,
++	void (*done)(void *data, bool ok), void *data);
++
+ /**
+  * Allocate and initialise a new render timer.
+  */
+diff --git include/wlr/render/wlr_texture.h include/wlr/render/wlr_texture.h
+index 1e352c6..4a43181 100644
+--- a/include/wlr/render/wlr_texture.h
++++ b/include/wlr/render/wlr_texture.h
+@@ -44,6 +44,26 @@ bool wlr_texture_read_pixels(struct wlr_texture *texture,
+ 
+ uint32_t wlr_texture_preferred_read_format(struct wlr_texture *texture);
+ 
++struct wlr_texture_readback;
++
++/**
++ * Records a read of src_box (the whole texture when NULL or empty) in format.
++ * The pixels are available once the next wlr_renderer_kick() completes.
++ * Returns NULL when the renderer has no readback: use
++ * wlr_texture_read_pixels() then. The readback does not need the texture.
++ */
++struct wlr_texture_readback *wlr_texture_readback_begin(struct wlr_texture *texture,
++	const struct wlr_box *src_box, uint32_t format);
++
++/**
++ * Writes the recorded pixels to options->data; options->format and
++ * options->src_box are ignored.
++ */
++bool wlr_texture_readback_finish(struct wlr_texture_readback *readback,
++	const struct wlr_texture_read_pixels_options *options);
++
++void wlr_texture_readback_destroy(struct wlr_texture_readback *readback);
++
+ /**
+  * Create a new texture from raw pixel data. `stride` is in bytes. The returned
+  * texture is mutable.
+diff --git include/wlr/types/wlr_ext_image_copy_capture_v1.h include/wlr/types/wlr_ext_image_copy_capture_v1.h
+index 0b02b98..74c26e1 100644
+--- a/include/wlr/types/wlr_ext_image_copy_capture_v1.h
++++ b/include/wlr/types/wlr_ext_image_copy_capture_v1.h
+@@ -46,6 +46,8 @@ struct wlr_ext_image_copy_capture_session_v1 {
+ 	} WLR_PRIVATE;
+ };
+ 
++struct wlr_ext_image_copy_capture_frame_copy;
++
+ struct wlr_ext_image_copy_capture_frame_v1 {
+ 	struct wl_resource *resource;
+ 	bool capturing;
+@@ -58,6 +60,7 @@ struct wlr_ext_image_copy_capture_frame_v1 {
+ 
+ 	struct {
+ 		struct wlr_ext_image_copy_capture_session_v1 *session;
++		struct wlr_ext_image_copy_capture_frame_copy *copy; // non-NULL from the copy until ready
+ 	} WLR_PRIVATE;
+ };
+ 
+@@ -83,5 +86,14 @@ void wlr_ext_image_copy_capture_frame_v1_fail(struct wlr_ext_image_copy_capture_
+  */
+ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_capture_frame_v1 *frame,
+ 	struct wlr_buffer *src, struct wlr_renderer *renderer);
++/**
++ * Copy src into the client-provided buffer, then notify the client that the
++ * frame is ready or has failed once the GPU ran the copy. The caller never
++ * waits for the GPU. This function destroys the frame, possibly before it
++ * returns.
++ */
++void wlr_ext_image_copy_capture_frame_v1_copy_and_ready(struct wlr_ext_image_copy_capture_frame_v1 *frame,
++	struct wlr_buffer *src, struct wlr_renderer *renderer,
++	enum wl_output_transform transform, const struct timespec *presentation_time);
+ 
+ #endif
+diff --git include/wlr/types/wlr_screencopy_v1.h include/wlr/types/wlr_screencopy_v1.h
+index 4f53a60..264d8d6 100644
+--- a/include/wlr/types/wlr_screencopy_v1.h
++++ b/include/wlr/types/wlr_screencopy_v1.h
+@@ -42,6 +42,8 @@ struct wlr_screencopy_v1_client {
+ 	struct wl_list damages;
+ };
+ 
++struct wlr_screencopy_frame_copy;
++
+ struct wlr_screencopy_frame_v1 {
+ 	struct wl_resource *resource;
+ 	struct wlr_screencopy_v1_client *client;
+@@ -65,6 +67,7 @@ struct wlr_screencopy_frame_v1 {
+ 	struct {
+ 		struct wl_listener output_commit;
+ 		struct wl_listener output_destroy;
++		struct wlr_screencopy_frame_copy *copy; // non-NULL from the captured commit until ready
+ 	} WLR_PRIVATE;
+ };
+ 
+diff --git render/wlr_renderer.c render/wlr_renderer.c
+index e65314c..e05086a 100644
+--- a/render/wlr_renderer.c
++++ b/render/wlr_renderer.c
+@@ -314,6 +314,28 @@ struct wlr_render_pass *wlr_renderer_begin_buffer_pass(struct wlr_renderer *rend
+ 	return renderer->impl->begin_buffer_pass(renderer, buffer, options);
+ }
+ 
++void wlr_renderer_defer_submits(struct wlr_renderer *renderer, bool defer) {
++	if (renderer->impl->defer_submits) {
++		renderer->impl->defer_submits(renderer, defer);
++	}
++}
++
++void wlr_renderer_kick(struct wlr_renderer *renderer,
++		void (*done)(void *data, bool ok), void *data) {
++	if (!renderer->impl->kick) {
++		done(data, true);
++		return;
++	}
++	renderer->impl->kick(renderer, done, data);
++}
++
++void wlr_renderer_cancel_kick(struct wlr_renderer *renderer,
++		void (*done)(void *data, bool ok), void *data) {
++	if (renderer->impl->cancel_kick) {
++		renderer->impl->cancel_kick(renderer, done, data);
++	}
++}
++
+ struct wlr_render_timer *wlr_render_timer_create(struct wlr_renderer *renderer) {
+ 	if (!renderer->impl->render_timer_create) {
+ 		return NULL;
+diff --git render/wlr_texture.c render/wlr_texture.c
+index 3526ee1..e0eeec9 100644
+--- a/render/wlr_texture.c
++++ b/render/wlr_texture.c
+@@ -62,6 +62,25 @@ bool wlr_texture_read_pixels(struct wlr_texture *texture,
+ 	return texture->impl->read_pixels(texture, options);
+ }
+ 
++struct wlr_texture_readback *wlr_texture_readback_begin(struct wlr_texture *texture,
++		const struct wlr_box *src_box, uint32_t format) {
++	if (!texture->impl->readback_begin) {
++		return NULL;
++	}
++	return texture->impl->readback_begin(texture, src_box, format);
++}
++
++bool wlr_texture_readback_finish(struct wlr_texture_readback *readback,
++		const struct wlr_texture_read_pixels_options *options) {
++	return readback->impl->finish(readback, options);
++}
++
++void wlr_texture_readback_destroy(struct wlr_texture_readback *readback) {
++	if (readback != NULL) {
++		readback->impl->destroy(readback);
++	}
++}
++
+ uint32_t wlr_texture_preferred_read_format(struct wlr_texture *texture) {
+ 	if (!texture->impl->preferred_read_format) {
+ 		return DRM_FORMAT_INVALID;
+diff --git types/ext_image_capture_source_v1/output.c types/ext_image_capture_source_v1/output.c
+index 0e3a578..752b372 100644
+--- a/types/ext_image_capture_source_v1/output.c
++++ b/types/ext_image_capture_source_v1/output.c
+@@ -85,11 +85,8 @@ static void output_source_copy_frame(struct wlr_ext_image_capture_source_v1 *bas
+ 	struct wlr_ext_output_image_capture_source_v1_frame_event *event =
+ 		wl_container_of(base_event, event, base);
+ 
+-	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
+-			event->buffer, source->output->renderer)) {
+-		wlr_ext_image_copy_capture_frame_v1_ready(frame,
+-			source->output->transform, &event->when);
+-	}
++	wlr_ext_image_copy_capture_frame_v1_copy_and_ready(frame, event->buffer,
++		source->output->renderer, source->output->transform, &event->when);
+ }
+ 
+ static struct wlr_ext_image_capture_source_v1_cursor *output_source_get_pointer_cursor(
+@@ -286,16 +283,11 @@ static void output_cursor_source_copy_frame(struct wlr_ext_image_capture_source_
+ 		return;
+ 	}
+ 
+-	if (!wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
+-			src_buffer, cursor_source->output->renderer)) {
+-		return;
+-	}
+-
+ 	struct timespec now;
+ 	clock_gettime(CLOCK_MONOTONIC, &now);
+ 
+-	wlr_ext_image_copy_capture_frame_v1_ready(frame,
+-			cursor_source->output->transform, &now);
++	wlr_ext_image_copy_capture_frame_v1_copy_and_ready(frame, src_buffer,
++		cursor_source->output->renderer, cursor_source->output->transform, &now);
+ }
+ 
+ static const struct wlr_ext_image_capture_source_v1_interface output_cursor_source_impl = {
+diff --git types/ext_image_capture_source_v1/scene.c types/ext_image_capture_source_v1/scene.c
+index 7d4b892..dde5494 100644
+--- a/types/ext_image_capture_source_v1/scene.c
++++ b/types/ext_image_capture_source_v1/scene.c
+@@ -4,6 +4,7 @@
+ #include <wlr/backend/interface.h>
+ #include <wlr/interfaces/wlr_ext_image_capture_source_v1.h>
+ #include <wlr/interfaces/wlr_output.h>
++#include <wlr/render/wlr_renderer.h>
+ #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
+ #include <wlr/util/log.h>
+ 
+@@ -20,6 +21,7 @@ struct scene_node_source {
+ 	struct wlr_scene_output *scene_output;
+ 
+ 	size_t num_started;
++	bool render_waiting; // a render waits until the renderer accepts new work
+ 
+ 	struct wl_listener node_destroy;
+ 	struct wl_listener scene_output_destroy;
+@@ -75,7 +77,7 @@ static void get_scene_node_extents(struct wlr_scene_node *node, struct wlr_box *
+ 	box->height = y_max - box->y;
+ }
+ 
+-static void source_render(struct scene_node_source *source) {
++static void source_render_now(struct scene_node_source *source) {
+ 	struct wlr_scene_output *scene_output = source->scene_output;
+ 
+ 	struct wlr_box extents;
+@@ -91,8 +93,11 @@ static void source_render(struct scene_node_source *source) {
+ 	wlr_output_state_init(&state);
+ 	wlr_output_state_set_enabled(&state, true);
+ 	wlr_output_state_set_custom_mode(&state, extents.width, extents.height, 0);
+-	bool ok = wlr_scene_output_build_state(scene_output, &state, NULL) &&
+-		wlr_output_commit_state(scene_output->output, &state);
++	// The copy that reads this buffer runs after the deferred render on the GPU.
++	wlr_renderer_defer_submits(source->output.renderer, true);
++	bool ok = wlr_scene_output_build_state(scene_output, &state, NULL);
++	wlr_renderer_defer_submits(source->output.renderer, false);
++	ok = ok && wlr_output_commit_state(scene_output->output, &state);
+ 	wlr_output_state_finish(&state);
+ 
+ 	if (!ok) {
+@@ -101,6 +106,22 @@ static void source_render(struct scene_node_source *source) {
+ 	}
+ }
+ 
++static void source_handle_renderer_ready(void *data, bool ok) {
++	struct scene_node_source *source = data;
++	source->render_waiting = false;
++	if (ok && source->scene_output != NULL) {
++		source_render_now(source);
++	}
++}
++
++static void source_render(struct scene_node_source *source) {
++	if (source->render_waiting) {
++		return;
++	}
++	source->render_waiting = true;
++	wlr_renderer_kick(source->output.renderer, source_handle_renderer_ready, source);
++}
++
+ static void source_start(struct wlr_ext_image_capture_source_v1 *base, bool with_cursors) {
+ 	struct scene_node_source *source = wl_container_of(base, source, base);
+ 
+@@ -148,11 +169,8 @@ static void source_copy_frame(struct wlr_ext_image_capture_source_v1 *base,
+ 	struct scene_node_source *source = wl_container_of(base, source, base);
+ 	struct scene_node_source_frame_event *event = wl_container_of(base_event, event, base);
+ 
+-	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
+-			event->buffer, source->output.renderer)) {
+-		wlr_ext_image_copy_capture_frame_v1_ready(frame,
+-			source->output.transform, &event->when);
+-	}
++	wlr_ext_image_copy_capture_frame_v1_copy_and_ready(frame, event->buffer,
++		source->output.renderer, source->output.transform, &event->when);
+ }
+ 
+ static const struct wlr_ext_image_capture_source_v1_interface source_impl = {
+@@ -255,6 +273,9 @@ static const struct wlr_output_impl output_impl = {
+ };
+ 
+ static void source_destroy(struct scene_node_source *source) {
++	if (source->render_waiting) {
++		wlr_renderer_cancel_kick(source->output.renderer, source_handle_renderer_ready, source);
++	}
+ 	wl_list_remove(&source->node_destroy.link);
+ 	wl_list_remove(&source->scene_output_destroy.link);
+ 	wl_list_remove(&source->output_frame.link);
+diff --git types/wlr_ext_image_copy_capture_v1.c types/wlr_ext_image_copy_capture_v1.c
+index 2e969b4..99661bb 100644
+--- a/types/wlr_ext_image_copy_capture_v1.c
++++ b/types/wlr_ext_image_copy_capture_v1.c
+@@ -8,6 +8,7 @@
+ #include <wlr/render/wlr_renderer.h>
+ #include "ext-image-copy-capture-v1-protocol.h"
+ #include "render/pixel_format.h"
++#include "types/capture_copy.h"
+ 
+ #define IMAGE_COPY_CAPTURE_MANAGER_V1_VERSION 1
+ 
+@@ -62,10 +63,22 @@ static struct wlr_ext_image_copy_capture_cursor_session_v1 *cursor_session_from_
+ 	return wl_resource_get_user_data(resource);
+ }
+ 
++struct wlr_ext_image_copy_capture_frame_copy {
++	struct capture_copy copy;
++	pixman_region32_t damage; // the session damage up to the copied buffer
++	enum wl_output_transform transform;
++	struct timespec presentation_time;
++};
++
+ static void frame_destroy(struct wlr_ext_image_copy_capture_frame_v1 *frame) {
+ 	if (frame == NULL) {
+ 		return;
+ 	}
++	if (frame->copy != NULL) {
++		capture_copy_cancel(&frame->copy->copy);
++		pixman_region32_fini(&frame->copy->damage);
++		free(frame->copy);
++	}
+ 	wl_signal_emit_mutable(&frame->events.destroy, NULL);
+ 	assert(wl_list_empty(&frame->events.destroy.listener_list));
+ 	wl_resource_set_user_data(frame->resource, NULL);
+@@ -81,22 +94,19 @@ static void frame_handle_resource_destroy(struct wl_resource *resource) {
+ 	frame_destroy(wl_resource_get_user_data(resource));
+ }
+ 
+-void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture_frame_v1 *frame,
+-		enum wl_output_transform transform,
++static void frame_send_ready(struct wlr_ext_image_copy_capture_frame_v1 *frame,
++		const pixman_region32_t *damage, enum wl_output_transform transform,
+ 		const struct timespec *presentation_time) {
+ 	assert(frame->capturing);
+ 
+ 	int rects_len = 0;
+-	const pixman_box32_t *rects =
+-		pixman_region32_rectangles(&frame->session->damage, &rects_len);
++	const pixman_box32_t *rects = pixman_region32_rectangles(damage, &rects_len);
+ 	for (int i = 0; i < rects_len; i++) {
+ 		const pixman_box32_t *rect = &rects[i];
+ 		ext_image_copy_capture_frame_v1_send_damage(frame->resource,
+ 			rect->x1, rect->y1, rect->x2 - rect->x1, rect->y2 - rect->y1);
+ 	}
+ 
+-	pixman_region32_clear(&frame->session->damage);
+-
+ 	uint64_t pres_time_sec = (uint64_t)presentation_time->tv_sec;
+ 	ext_image_copy_capture_frame_v1_send_transform(frame->resource, transform);
+ 	ext_image_copy_capture_frame_v1_send_presentation_time(frame->resource,
+@@ -105,6 +115,17 @@ void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture
+ 	frame_destroy(frame);
+ }
+ 
++void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture_frame_v1 *frame,
++		enum wl_output_transform transform,
++		const struct timespec *presentation_time) {
++	pixman_region32_t damage;
++	pixman_region32_init(&damage);
++	pixman_region32_copy(&damage, &frame->session->damage);
++	pixman_region32_clear(&frame->session->damage);
++	frame_send_ready(frame, &damage, transform, presentation_time);
++	pixman_region32_fini(&damage);
++}
++
+ static bool copy_dmabuf(struct wlr_buffer *dst,
+ 		struct wlr_buffer *src, struct wlr_renderer *renderer,
+ 		const pixman_region32_t *clip) {
+@@ -194,6 +215,52 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
+ 	return true;
+ }
+ 
++static bool frame_record_dmabuf(void *data, struct wlr_buffer *src) {
++	struct wlr_ext_image_copy_capture_frame_v1 *frame = data;
++	return copy_dmabuf(frame->buffer, src, frame->copy->copy.renderer, &frame->buffer_damage);
++}
++
++static void frame_handle_copied(void *data, bool ok) {
++	struct wlr_ext_image_copy_capture_frame_v1 *frame = data;
++	if (!ok) {
++		wlr_ext_image_copy_capture_frame_v1_fail(frame,
++			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
++		return;
++	}
++	frame_send_ready(frame, &frame->copy->damage, frame->copy->transform,
++		&frame->copy->presentation_time);
++}
++
++void wlr_ext_image_copy_capture_frame_v1_copy_and_ready(struct wlr_ext_image_copy_capture_frame_v1 *frame,
++		struct wlr_buffer *src, struct wlr_renderer *renderer,
++		enum wl_output_transform transform, const struct timespec *presentation_time) {
++	assert(frame->capturing && frame->copy == NULL);
++	struct wlr_buffer *dst = frame->buffer;
++	struct wlr_dmabuf_attributes dmabuf;
++	const bool shm = !wlr_buffer_get_dmabuf(dst, &dmabuf);
++	const bool supported = shm ? frame->session->source->shm_formats_len > 0 :
++		frame->session->source->dmabuf_formats.len > 0;
++	if (src->width != dst->width || src->height != dst->height || !supported) {
++		wlr_ext_image_copy_capture_frame_v1_fail(frame,
++			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS);
++		return;
++	}
++	struct wlr_ext_image_copy_capture_frame_copy *copy = calloc(1, sizeof(*copy));
++	if (copy == NULL) {
++		wlr_ext_image_copy_capture_frame_v1_fail(frame,
++			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
++		return;
++	}
++	pixman_region32_init(&copy->damage);
++	pixman_region32_copy(&copy->damage, &frame->session->damage);
++	pixman_region32_clear(&frame->session->damage);
++	copy->transform = transform;
++	copy->presentation_time = *presentation_time;
++	frame->copy = copy;
++	capture_copy_start(&copy->copy, renderer, src, dst, NULL, shm,
++		frame_record_dmabuf, frame_handle_copied, frame);
++}
++
+ void wlr_ext_image_copy_capture_frame_v1_fail(struct wlr_ext_image_copy_capture_frame_v1 *frame,
+ 		enum ext_image_copy_capture_frame_v1_failure_reason reason) {
+ 	ext_image_copy_capture_frame_v1_send_failed(frame->resource, reason);
+@@ -425,7 +492,8 @@ static void session_handle_source_frame(struct wl_listener *listener, void *data
+ 	pixman_region32_union(&session->damage, &session->damage, event->damage);
+ 
+ 	struct wlr_ext_image_copy_capture_frame_v1 *frame = session->frame;
+-	if (frame != NULL && frame->capturing &&
++	// A frame whose copy is in flight takes this damage with its next capture.
++	if (frame != NULL && frame->capturing && frame->copy == NULL &&
+ 			!pixman_region32_empty(&session->damage)) {
+ 		pixman_region32_union(&frame->buffer_damage,
+ 			&frame->buffer_damage, &session->damage);
+diff --git types/wlr_screencopy_v1.c types/wlr_screencopy_v1.c
+index 9916a60..9ac06e8 100644
+--- a/types/wlr_screencopy_v1.c
++++ b/types/wlr_screencopy_v1.c
+@@ -13,6 +13,7 @@
+ #include "wlr-screencopy-unstable-v1-protocol.h"
+ #include "render/pixel_format.h"
+ #include "render/wlr_renderer.h"
++#include "types/capture_copy.h"
+ 
+ #define SCREENCOPY_MANAGER_VERSION 3
+ 
+@@ -133,10 +134,21 @@ static struct wlr_screencopy_frame_v1 *frame_from_resource(
+ 	return wl_resource_get_user_data(resource);
+ }
+ 
++struct wlr_screencopy_frame_copy {
++	struct capture_copy copy;
++	pixman_region32_t damage; // the client's damage up to the captured commit
++	struct timespec when;
++};
++
+ static void frame_destroy(struct wlr_screencopy_frame_v1 *frame) {
+ 	if (frame == NULL) {
+ 		return;
+ 	}
++	if (frame->copy != NULL) {
++		capture_copy_cancel(&frame->copy->copy);
++		pixman_region32_fini(&frame->copy->damage);
++		free(frame->copy);
++	}
+ 	if (frame->output != NULL && frame->buffer != NULL) {
+ 		wlr_output_lock_attach_render(frame->output, false);
+ 		if (frame->cursor_locked) {
+@@ -153,7 +165,8 @@ static void frame_destroy(struct wlr_screencopy_frame_v1 *frame) {
+ 	free(frame);
+ }
+ 
+-static void frame_send_damage(struct wlr_screencopy_frame_v1 *frame) {
++static void frame_take_damage(struct wlr_screencopy_frame_v1 *frame,
++		pixman_region32_t *taken) {
+ 	if (!frame->with_damage) {
+ 		return;
+ 	}
+@@ -164,8 +177,14 @@ static void frame_send_damage(struct wlr_screencopy_frame_v1 *frame) {
+ 		return;
+ 	}
+ 
++	pixman_region32_copy(taken, &damage->damage);
++	pixman_region32_clear(&damage->damage);
++}
++
++static void frame_send_damage(struct wlr_screencopy_frame_v1 *frame,
++		const pixman_region32_t *damage) {
+ 	int n_boxes;
+-	const pixman_box32_t *boxes = pixman_region32_rectangles(&damage->damage, &n_boxes);
++	const pixman_box32_t *boxes = pixman_region32_rectangles(damage, &n_boxes);
+ 	for (int i = 0; i < n_boxes; i++) {
+ 		const pixman_box32_t *box = &boxes[i];
+ 
+@@ -177,8 +196,6 @@ static void frame_send_damage(struct wlr_screencopy_frame_v1 *frame) {
+ 		zwlr_screencopy_frame_v1_send_damage(frame->resource,
+ 			damage_x, damage_y, damage_width, damage_height);
+ 	}
+-
+-	pixman_region32_clear(&damage->damage);
+ }
+ 
+ static void frame_send_ready(struct wlr_screencopy_frame_v1 *frame,
+@@ -190,49 +207,8 @@ static void frame_send_ready(struct wlr_screencopy_frame_v1 *frame,
+ 		tv_sec_hi, tv_sec_lo, when->tv_nsec);
+ }
+ 
+-static bool frame_shm_copy(struct wlr_screencopy_frame_v1 *frame,
+-		struct wlr_buffer *src_buffer) {
+-	struct wlr_output *output = frame->output;
+-	struct wlr_renderer *renderer = output->renderer;
+-	assert(renderer);
+-
+-	void *data;
+-	uint32_t format;
+-	size_t stride;
+-	if (!wlr_buffer_begin_data_ptr_access(frame->buffer,
+-			WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride)) {
+-		return false;
+-	}
+-
+-	bool ok = false;
+-
+-	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src_buffer);
+-	if (!texture) {
+-		wlr_log(WLR_DEBUG, "Failed to grab a texture from a buffer during shm screencopy");
+-		goto out;
+-	}
+-
+-	ok = wlr_texture_read_pixels(texture, &(struct wlr_texture_read_pixels_options) {
+-		.data = data,
+-		.format = format,
+-		.stride = stride,
+-		.src_box = frame->box,
+-	});
+-
+-	wlr_texture_destroy(texture);
+-
+-out:
+-	wlr_buffer_end_data_ptr_access(frame->buffer);
+-
+-	if (!ok) {
+-		wlr_log(WLR_DEBUG, "Failed to copy to destination during shm screencopy");
+-	}
+-
+-	return ok;
+-}
+-
+-static bool frame_dma_copy(struct wlr_screencopy_frame_v1 *frame,
+-		struct wlr_buffer *src_buffer) {
++static bool frame_dma_copy(void *data, struct wlr_buffer *src_buffer) {
++	struct wlr_screencopy_frame_v1 *frame = data;
+ 	struct wlr_buffer *dst_buffer = frame->buffer;
+ 	struct wlr_output *output = frame->output;
+ 	struct wlr_renderer *renderer = output->renderer;
+@@ -280,6 +256,20 @@ out:
+ 	return ok;
+ }
+ 
++static void frame_handle_copied(void *data, bool ok) {
++	struct wlr_screencopy_frame_v1 *frame = data;
++	if (!ok) {
++		wlr_log(WLR_DEBUG, "Failed to copy the output during screencopy");
++		zwlr_screencopy_frame_v1_send_failed(frame->resource);
++		frame_destroy(frame);
++		return;
++	}
++	zwlr_screencopy_frame_v1_send_flags(frame->resource, 0);
++	frame_send_damage(frame, &frame->copy->damage);
++	frame_send_ready(frame, &frame->copy->when);
++	frame_destroy(frame);
++}
++
+ static void frame_handle_output_commit(struct wl_listener *listener,
+ 		void *data) {
+ 	struct wlr_screencopy_frame_v1 *frame =
+@@ -317,25 +307,19 @@ static void frame_handle_output_commit(struct wl_listener *listener,
+ 		goto err;
+ 	}
+ 
+-	switch (frame->buffer_cap) {
+-	case WLR_BUFFER_CAP_DMABUF:
+-		if (!frame_dma_copy(frame, src_buffer)) {
+-			goto err;
+-		}
+-		break;
+-	case WLR_BUFFER_CAP_DATA_PTR:
+-		if (!frame_shm_copy(frame, src_buffer)) {
+-			goto err;
+-		}
+-		break;
+-	default:
+-		abort(); // unreachable
++	assert(frame->buffer_cap == WLR_BUFFER_CAP_DMABUF ||
++		frame->buffer_cap == WLR_BUFFER_CAP_DATA_PTR);
++	struct wlr_screencopy_frame_copy *copy = calloc(1, sizeof(*copy));
++	if (copy == NULL) {
++		goto err;
+ 	}
+-
+-	zwlr_screencopy_frame_v1_send_flags(frame->resource, 0);
+-	frame_send_damage(frame);
+-	frame_send_ready(frame, &event->when);
+-	frame_destroy(frame);
++	pixman_region32_init(&copy->damage);
++	frame_take_damage(frame, &copy->damage);
++	copy->when = event->when;
++	frame->copy = copy;
++	// May destroy the frame before it returns.
++	capture_copy_start(&copy->copy, output->renderer, src_buffer, frame->buffer, &frame->box,
++		frame->buffer_cap == WLR_BUFFER_CAP_DATA_PTR, frame_dma_copy, frame_handle_copied, frame);
+ 	return;
+ 
+ err:
+diff --git a/include/types/capture_copy.h b/include/types/capture_copy.h
+new file mode 100644
+index 0000000..f30455f
+--- /dev/null
++++ b/include/types/capture_copy.h
+@@ -0,0 +1,46 @@
++#ifndef TYPES_CAPTURE_COPY_H
++#define TYPES_CAPTURE_COPY_H
++
++#include <stdbool.h>
++#include <wlr/util/box.h>
++
++struct wlr_buffer;
++struct wlr_renderer;
++struct wlr_texture;
++struct wlr_texture_readback;
++
++enum capture_copy_state {
++	CAPTURE_COPY_IDLE,
++	// Waits until the renderer accepts new work.
++	CAPTURE_COPY_WAITING_RENDERER,
++	// The recorded copy runs on the GPU.
++	CAPTURE_COPY_IN_FLIGHT,
++};
++
++// Records a capture copy of src into dst only when the renderer accepts new
++// work, and reports it once the GPU ran it, so the caller never waits for the
++// GPU. dmabuf copies run record_dmabuf; shm copies read src_box of src.
++struct capture_copy {
++	enum capture_copy_state state;
++	struct wlr_renderer *renderer;
++	struct wlr_buffer *src; // locked while not idle
++	struct wlr_buffer *dst; // held by the owner
++	struct wlr_box src_box;
++	bool shm;
++	struct wlr_texture *texture; // shm without renderer readback: read when done
++	struct wlr_texture_readback *readback;
++	bool (*record_dmabuf)(void *data, struct wlr_buffer *src);
++	void (*done)(void *data, bool ok);
++	void *data;
++};
++
++// done runs once, possibly inside this call; the copy is idle again then.
++void capture_copy_start(struct capture_copy *copy, struct wlr_renderer *renderer,
++	struct wlr_buffer *src, struct wlr_buffer *dst, const struct wlr_box *src_box, bool shm,
++	bool (*record_dmabuf)(void *data, struct wlr_buffer *src),
++	void (*done)(void *data, bool ok), void *data);
++
++// Drops a copy in progress without calling done. No-op when idle.
++void capture_copy_cancel(struct capture_copy *copy);
++
++#endif
+diff --git a/types/capture_copy.c b/types/capture_copy.c
+new file mode 100644
+index 0000000..34b5bb9
+--- /dev/null
++++ b/types/capture_copy.c
+@@ -0,0 +1,121 @@
++#include <assert.h>
++#include <wlr/render/wlr_renderer.h>
++#include <wlr/render/wlr_texture.h>
++#include <wlr/types/wlr_buffer.h>
++#include "types/capture_copy.h"
++
++static void handle_renderer_ready(void *data, bool ok);
++static void handle_copied(void *data, bool ok);
++
++static void reset(struct capture_copy *copy) {
++	wlr_texture_readback_destroy(copy->readback);
++	if (copy->texture != NULL) {
++		wlr_texture_destroy(copy->texture);
++	}
++	wlr_buffer_unlock(copy->src);
++	*copy = (struct capture_copy){0};
++}
++
++static void finish(struct capture_copy *copy, bool ok) {
++	void (*done)(void *data, bool ok) = copy->done;
++	void *data = copy->data;
++	reset(copy);
++	done(data, ok);
++}
++
++static bool record_shm(struct capture_copy *copy) {
++	void *data;
++	uint32_t format;
++	size_t stride;
++	if (!wlr_buffer_begin_data_ptr_access(copy->dst,
++			WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride)) {
++		return false;
++	}
++	wlr_buffer_end_data_ptr_access(copy->dst);
++	copy->texture = wlr_texture_from_buffer(copy->renderer, copy->src);
++	if (copy->texture == NULL) {
++		return false;
++	}
++	copy->readback = wlr_texture_readback_begin(copy->texture, &copy->src_box, format);
++	if (copy->readback != NULL) {
++		wlr_texture_destroy(copy->texture);
++		copy->texture = NULL;
++	}
++	return true;
++}
++
++static bool read_shm(struct capture_copy *copy) {
++	void *data;
++	uint32_t format;
++	size_t stride;
++	if (!wlr_buffer_begin_data_ptr_access(copy->dst,
++			WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride)) {
++		return false;
++	}
++	const struct wlr_texture_read_pixels_options options = {
++		.data = data,
++		.format = format,
++		.stride = stride,
++		.src_box = copy->src_box,
++	};
++	bool ok = copy->readback != NULL ?
++		wlr_texture_readback_finish(copy->readback, &options) :
++		wlr_texture_read_pixels(copy->texture, &options);
++	wlr_buffer_end_data_ptr_access(copy->dst);
++	return ok;
++}
++
++static void handle_renderer_ready(void *data, bool ok) {
++	struct capture_copy *copy = data;
++	assert(copy->state == CAPTURE_COPY_WAITING_RENDERER);
++	if (ok) {
++		wlr_renderer_defer_submits(copy->renderer, true);
++		ok = copy->shm ? record_shm(copy) : copy->record_dmabuf(copy->data, copy->src);
++		wlr_renderer_defer_submits(copy->renderer, false);
++	}
++	if (!ok) {
++		finish(copy, false);
++		return;
++	}
++	copy->state = CAPTURE_COPY_IN_FLIGHT;
++	wlr_renderer_kick(copy->renderer, handle_copied, copy);
++}
++
++static void handle_copied(void *data, bool ok) {
++	struct capture_copy *copy = data;
++	assert(copy->state == CAPTURE_COPY_IN_FLIGHT);
++	finish(copy, ok && (!copy->shm || read_shm(copy)));
++}
++
++void capture_copy_start(struct capture_copy *copy, struct wlr_renderer *renderer,
++		struct wlr_buffer *src, struct wlr_buffer *dst, const struct wlr_box *src_box, bool shm,
++		bool (*record_dmabuf)(void *data, struct wlr_buffer *src),
++		void (*done)(void *data, bool ok), void *data) {
++	assert(copy->state == CAPTURE_COPY_IDLE);
++	*copy = (struct capture_copy){
++		.state = CAPTURE_COPY_WAITING_RENDERER,
++		.renderer = renderer,
++		.src = wlr_buffer_lock(src),
++		.dst = dst,
++		.src_box = src_box != NULL ? *src_box : (struct wlr_box){0},
++		.shm = shm,
++		.record_dmabuf = record_dmabuf,
++		.done = done,
++		.data = data,
++	};
++	wlr_renderer_kick(renderer, handle_renderer_ready, copy);
++}
++
++void capture_copy_cancel(struct capture_copy *copy) {
++	switch (copy->state) {
++	case CAPTURE_COPY_IDLE:
++		return;
++	case CAPTURE_COPY_WAITING_RENDERER:
++		wlr_renderer_cancel_kick(copy->renderer, handle_renderer_ready, copy);
++		break;
++	case CAPTURE_COPY_IN_FLIGHT:
++		wlr_renderer_cancel_kick(copy->renderer, handle_copied, copy);
++		break;
++	}
++	reset(copy);
++}
+diff --git types/meson.build types/meson.build
+index 26958f0..80c094e 100644
+--- a/types/meson.build
++++ b/types/meson.build
+@@ -50,6 +50,7 @@ wlr_files += files(
+ 	'wlr_export_dmabuf_v1.c',
+ 	'wlr_ext_data_control_v1.c',
+ 	'wlr_ext_foreign_toplevel_list_v1.c',
++	'capture_copy.c',
+ 	'wlr_ext_image_copy_capture_v1.c',
+ 	'wlr_ext_workspace_v1.c',
+ 	'wlr_fixes.c',

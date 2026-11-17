@@ -2248,7 +2248,13 @@ namespace andromeda {
         || self->m_redacted != nullptr) {
       return;
     }
+    // The capture copies read the redacted buffer after this draw on the GPU, so main never waits for it. Away, a
+    // deferred draw would record GL while the render thread holds the context.
+    wlr_renderer* renderer = self->m_output.m_server->renderer();
+    const bool defer = fx_renderer_context_home(renderer);
+    fx_renderer_defer_submits(renderer, defer);
     self->m_redacted = self->m_output.redactedCaptureFrame(state->buffer, self->m_zoom);
+    fx_renderer_defer_submits(renderer, false);
     if (self->m_redacted != nullptr) {
       state->buffer = self->m_redacted;
     }
@@ -2781,7 +2787,8 @@ namespace andromeda {
         if (runConfiguredState(*dueApply) == CommitResult::Applied) {
           m_server->updateOutputManagerConfig();
         }
-      } else if (m_mirrorDirty && m_mirrorSource->m_lastFrame != nullptr) {
+      } else if ((m_mirrorDirty || m_output->needs_frame) && m_mirrorSource->m_lastFrame != nullptr) {
+        // needs_frame: a capture that missed the last mirror commit asks for that frame again.
         PendingFrame& frame = m_pendingFrame.emplace();
         frame.mirror = true;
         frame.rendered = true;
@@ -2982,7 +2989,9 @@ namespace andromeda {
   void Output::onRendererHome(void* data, bool /*ok*/) {
     auto* self = static_cast<Output*>(data);
     self->m_frameState = FrameState::Idle;
-    wlr_output_schedule_frame(self->m_output);
+    // Replays the frame event that found the context Away. wlr_output_schedule_frame would set needs_frame and force
+    // a commit without damage; with a mirror, that commit makes the next frame find the context Away again.
+    self->handleFrame();
   }
 
   void Output::completeFrame(bool submitted) {

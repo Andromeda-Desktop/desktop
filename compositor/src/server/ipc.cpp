@@ -243,6 +243,9 @@ namespace andromeda {
   }
 
   Ipc::~Ipc() {
+    if (m_renderSettleKick) {
+      fx_renderer_cancel_kick(m_server->renderer(), onRenderSettleKick, this);
+    }
     if (m_settleRecheck != nullptr) {
       wl_event_source_remove(m_settleRecheck);
       m_settleRecheck = nullptr;
@@ -453,7 +456,7 @@ namespace andromeda {
         wlr_output_schedule_frame(output->wlr());
       }
     }
-    if (connection.waitOutputs.empty() && (wait == FrameWait::Drawn || m_server->settled())) {
+    if (connection.waitOutputs.empty() && (wait == FrameWait::Drawn || (m_server->settled() && renderSettled()))) {
       finishFrameWait(connection, std::move(connection.waitReply));
     }
   }
@@ -489,7 +492,8 @@ namespace andromeda {
         continue;
       }
 #endif
-      if (connection->waitOutputs.empty() && (connection->frameWait == FrameWait::Drawn || m_server->settled())) {
+      if (connection->waitOutputs.empty()
+          && (connection->frameWait == FrameWait::Drawn || (m_server->settled() && renderSettled()))) {
         ready.push_back(connection.get());
       }
     }
@@ -510,7 +514,7 @@ namespace andromeda {
         ready.push_back(connection.get());
       }
     }
-    if (ready.empty() || !m_server->settled()) {
+    if (ready.empty() || !m_server->settled() || !renderSettled()) {
       return;
     }
     for (Connection* connection : ready) {
@@ -525,6 +529,24 @@ namespace andromeda {
       return;
     }
     m_settleRecheck = wl_event_loop_add_idle(wl_display_get_event_loop(m_server->display()), onSettleRecheck, this);
+  }
+
+  bool Ipc::renderSettled() {
+    wlr_renderer* renderer = m_server->renderer();
+    if (!fx_renderer_work_pending(renderer)) {
+      return true;
+    }
+    if (!m_renderSettleKick) {
+      m_renderSettleKick = true;
+      fx_renderer_kick(renderer, onRenderSettleKick, this);
+    }
+    return false;
+  }
+
+  void Ipc::onRenderSettleKick(void* data, bool /*ok*/) {
+    auto* ipc = static_cast<Ipc*>(data);
+    ipc->m_renderSettleKick = false;
+    ipc->notifySettleInputCleared();
   }
 
   void Ipc::onSettleRecheck(void* data) {

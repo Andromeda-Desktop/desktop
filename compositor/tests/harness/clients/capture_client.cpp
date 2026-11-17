@@ -11,6 +11,11 @@
 #include "ext-foreign-toplevel-list-v1-client-protocol.h"
 #include "ext-image-capture-source-v1-client-protocol.h"
 #include "ext-image-copy-capture-v1-client-protocol.h"
+#include "linux-dmabuf-v1-client-protocol.h"
+#include <cstring>
+#include <fcntl.h>
+#include <gbm.h>
+#include <xf86drm.h>
 
 #include <algorithm>
 #include <cerrno>
@@ -58,6 +63,11 @@ namespace {
   struct State {
     wl_display* display = nullptr;
     wl_shm* shm = nullptr;
+    // --dmabuf: GPU buffers on the device the session names, so the compositor copies with a render pass.
+    bool dmabuf = false;
+    zwp_linux_dmabuf_v1* linuxDmabuf = nullptr;
+    dev_t dmabufDevice = 0;
+    gbm_device* gbm = nullptr;
     wl_pointer* pointer = nullptr;
     ext_output_image_capture_source_manager_v1* sourceManager = nullptr;
     ext_foreign_toplevel_image_capture_source_manager_v1* windowSourceManager = nullptr;
@@ -158,8 +168,59 @@ namespace {
       .failed = frameFailed,
   };
 
+  gbm_device* openGbm() {
+    if (state.gbm != nullptr || state.dmabufDevice == 0) {
+      return state.gbm;
+    }
+    drmDevice* drm = nullptr;
+    if (drmGetDeviceFromDevId(state.dmabufDevice, 0, &drm) != 0) {
+      return nullptr;
+    }
+    const int fd = (drm->available_nodes & (1 << DRM_NODE_RENDER)) != 0
+        ? open(drm->nodes[DRM_NODE_RENDER], O_RDWR | O_CLOEXEC)
+        : -1;
+    drmFreeDevice(&drm);
+    state.gbm = fd >= 0 ? gbm_create_device(fd) : nullptr;
+    return state.gbm;
+  }
+
+  wl_buffer* createDmabuf(const Target& target) {
+    gbm_device* gbm = openGbm();
+    gbm_bo* bo = gbm != nullptr ? gbm_bo_create(
+                                      gbm, target.width, target.height, GBM_FORMAT_XRGB8888,
+                                      GBM_BO_USE_LINEAR | GBM_BO_USE_RENDERING
+                                  )
+                                : nullptr;
+    if (bo == nullptr || state.linuxDmabuf == nullptr) {
+      return nullptr;
+    }
+    const uint64_t modifier = gbm_bo_get_modifier(bo);
+    const int fd = gbm_bo_get_fd(bo);
+    zwp_linux_buffer_params_v1* params = zwp_linux_dmabuf_v1_create_params(state.linuxDmabuf);
+    zwp_linux_buffer_params_v1_add(
+        params, fd, 0, gbm_bo_get_offset(bo, 0), gbm_bo_get_stride(bo), static_cast<uint32_t>(modifier >> 32),
+        static_cast<uint32_t>(modifier & 0xFFFFFFFFU)
+    );
+    wl_buffer* buffer = zwp_linux_buffer_params_v1_create_immed(
+        params, static_cast<int32_t>(target.width), static_cast<int32_t>(target.height), GBM_FORMAT_XRGB8888, 0
+    );
+    zwp_linux_buffer_params_v1_destroy(params);
+    close(fd);
+    return buffer;
+  }
+
   void createBuffer(Target& target) {
-    if (state.shm == nullptr
+    if (state.dmabuf && target.width != 0 && target.height != 0 && target.buffer == nullptr) {
+      target.buffer = createDmabuf(target);
+      if (target.buffer == nullptr) {
+        printTarget(target, "buffer-failed");
+        std::exit(1);
+      }
+      target.bufferWidth = target.width;
+      target.bufferHeight = target.height;
+      return;
+    }
+    if (state.shm == nullptr || state.dmabuf
         || target.width == 0
         || target.height == 0
         || (target.buffer != nullptr && target.bufferWidth == target.width && target.bufferHeight == target.height)) {
@@ -217,7 +278,11 @@ namespace {
     }
   }
 
-  void sessionDmabufDevice(void*, ext_image_copy_capture_session_v1*, wl_array*) {}
+  void sessionDmabufDevice(void*, ext_image_copy_capture_session_v1*, wl_array* device) {
+    if (device->size == sizeof(dev_t)) {
+      std::memcpy(&state.dmabufDevice, device->data, sizeof(dev_t));
+    }
+  }
   void sessionDmabufFormat(void*, ext_image_copy_capture_session_v1*, uint32_t, wl_array*) {}
   void sessionDone(void* data, ext_image_copy_capture_session_v1*) {
     auto& target = *static_cast<Target*>(data);
@@ -300,6 +365,9 @@ namespace {
     const std::string_view iface(interface);
     if (iface == wl_shm_interface.name) {
       state.shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
+    } else if (iface == zwp_linux_dmabuf_v1_interface.name && version >= 3) {
+      state.linuxDmabuf =
+          static_cast<zwp_linux_dmabuf_v1*>(wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 3));
     } else if (iface == wl_seat_interface.name) {
       auto* seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
       wl_seat_add_listener(seat, &kSeatListener, nullptr);
@@ -363,6 +431,8 @@ int main(int argc, char** argv) {
     const std::string_view arg(argv[i]);
     if (arg == "--cursor") {
       state.primary.wantCursor = true;
+    } else if (arg == "--dmabuf") {
+      state.dmabuf = true;
     } else if (arg == "--output" && i + 1 < argc) {
       state.primary.wantedOutput = argv[++i];
     } else if (arg == "--pixel-output" && i + 1 < argc) {
@@ -370,7 +440,7 @@ int main(int argc, char** argv) {
     } else if (arg == "--window" && i + 1 < argc) {
       state.primary.wantedWindow = argv[++i];
     } else {
-      printLine("usage: capture-client [--cursor] [--output NAME | --window ID] [--pixel-output NAME]");
+      printLine("usage: capture-client [--cursor] [--dmabuf] [--output NAME | --window ID] [--pixel-output NAME]");
       return 2;
     }
   }

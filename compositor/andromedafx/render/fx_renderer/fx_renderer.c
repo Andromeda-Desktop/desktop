@@ -370,6 +370,9 @@ static const struct wlr_renderer_impl renderer_impl = {
     .texture_from_buffer = fx_texture_from_buffer,
     .begin_buffer_pass = begin_buffer_pass,
     .render_timer_create = fx_render_timer_create,
+    .defer_submits = fx_renderer_defer_submits,
+    .kick = fx_renderer_kick,
+    .cancel_kick = fx_renderer_cancel_kick,
 };
 
 static const struct wlr_render_timer_impl render_timer_impl = {
@@ -487,6 +490,11 @@ bool fx_renderer_take_context(struct fx_renderer* renderer) {
 
 void fx_renderer_defer_submits(struct wlr_renderer* wlr_renderer, bool defer) {
   fx_get_renderer(wlr_renderer)->defer_submits = defer;
+}
+
+bool fx_renderer_work_pending(struct wlr_renderer* wlr_renderer) {
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  return renderer->render_thread != NULL && fx_render_thread_work_pending(renderer->render_thread);
 }
 
 void fx_renderer_cancel_kick(struct wlr_renderer* wlr_renderer, void (*done)(void* data, bool ok), void* data) {
