@@ -109,8 +109,8 @@ namespace viewer {
     };
     open("file.open", "Open…", XKB_KEY_o);
     open("file.new-tab", "New Tab", XKB_KEY_t);
+    // F11 belongs to the shared window.fullscreen command.
     commands().add({.id = "view.fullscreen", .label = "Full Screen", .group = "View",
-                    .shortcut = KeyChord{.sym = XKB_KEY_F11, .modifiers = 0},
                     .enabled = [this] { return activeWindow() != nullptr; },
                     .run = [this] {
                       if (AppWindow* w = activeWindow(); w != nullptr) {

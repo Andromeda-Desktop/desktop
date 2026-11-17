@@ -33,7 +33,10 @@ void CommandTable::add(AppCommand command) {
       continue;
     }
     const KeyChord chord = **slot;
-    const auto owner = std::ranges::find_if(m_commands, [&](const AppCommand& c) { return holds(c, chord.sym, chord.modifiers); });
+    // An owner with an enabled predicate shares the chord: match() runs the first enabled one.
+    const auto owner = std::ranges::find_if(m_commands, [&](const AppCommand& c) {
+      return !c.enabled && holds(c, chord.sym, chord.modifiers);
+    });
     if (owner != m_commands.end()) {
       kLog.warn("shortcut {} of {} is held by {}; dropped", keyChordToString(chord), command.id, owner->id);
       slot->reset();
