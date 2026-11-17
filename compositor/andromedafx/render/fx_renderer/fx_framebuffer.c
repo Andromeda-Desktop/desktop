@@ -279,7 +279,7 @@ error_buffer:
 
 bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms) {
   bool in_use = false;
-  bool dropped = false;
+  int dropped = 0;
   struct fx_framebuffer* buffer;
   wl_list_for_each(buffer, &renderer->buffers, link) {
     if (buffer->owned || buffer->fbo != 0 || buffer->image == EGL_NO_IMAGE_KHR) {
@@ -293,9 +293,10 @@ bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_m
     fx_renderer_delete_egl_image(renderer, buffer->image);
     buffer->tex = 0;
     buffer->image = EGL_NO_IMAGE_KHR;
-    dropped = true;
+    dropped++;
   }
-  if (dropped) {
+  if (dropped > 0) {
+    wlr_log(WLR_DEBUG, "Dropped %d idle client buffer imports", dropped);
     struct fx_texture* texture;
     wl_list_for_each(texture, &renderer->textures, link) {
       if (texture->buffer != NULL && texture->buffer->image == EGL_NO_IMAGE_KHR) {
