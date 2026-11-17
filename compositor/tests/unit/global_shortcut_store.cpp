@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <sys/stat.h>
@@ -50,6 +51,15 @@ namespace {
     std::filesystem::path path;
   };
 
+  bool saveAll(GlobalShortcutStore& store, const ShortcutGrants& grants) {
+    for (const auto& [app, shortcuts] : grants) {
+      if (!store.update(app, shortcuts)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   ShortcutGrants sample() {
     return {
         {"org.example.Player",
@@ -65,7 +75,7 @@ ANDROMEDA_TEST(grantsSurviveRestart) {
   const Fixture fixture;
   GlobalShortcutStore first(fixture.path);
   CHECK(first.load().has_value());
-  CHECK(first.save(sample()));
+  CHECK(saveAll(first, sample()));
 
   GlobalShortcutStore second(fixture.path);
   const auto loaded = second.load();
@@ -98,7 +108,7 @@ ANDROMEDA_TEST(unreadableFileIsReportedAndNeverOverwritten) {
     GlobalShortcutStore store(fixture.path);
     CHECK(!store.load().has_value());
     CHECK(store.status() == GlobalShortcutStore::Status::Unreadable);
-    CHECK(!store.save(sample()));
+    CHECK(!saveAll(store, sample()));
     CHECK(fixture.contents() == bytes);
   }
 }
@@ -112,7 +122,7 @@ ANDROMEDA_TEST(symlinkIsUnreadable) {
   std::filesystem::create_symlink(target, fixture.path);
   GlobalShortcutStore store(fixture.path);
   CHECK(!store.load().has_value());
-  CHECK(!store.save(sample()));
+  CHECK(!saveAll(store, sample()));
   CHECK(std::filesystem::is_symlink(fixture.path));
 }
 
@@ -120,15 +130,37 @@ ANDROMEDA_TEST(overCapsKeepsTheLastSavedFile) {
   const Fixture fixture;
   GlobalShortcutStore store(fixture.path);
   CHECK(store.load().has_value());
-  CHECK(store.save(sample()));
+  CHECK(saveAll(store, sample()));
   const std::string saved = fixture.contents();
 
-  ShortcutGrants tooMany = sample();
+  std::map<std::string, ShortcutChord> tooMany;
   for (int index = 0; index < 65; ++index) {
-    tooMany["org.example.Many"]["id" + std::to_string(index)] = {.modifiers = mod::kCtrl, .keysym = XKB_KEY_a};
+    tooMany["id" + std::to_string(index)] = {.modifiers = mod::kCtrl, .keysym = XKB_KEY_a};
   }
-  CHECK(!store.save(tooMany));
+  CHECK(!store.update("org.example.Many", tooMany));
   CHECK(fixture.contents() == saved);
+}
+
+ANDROMEDA_TEST(twoInstancesKeepEachOthersGrants) {
+  const Fixture fixture;
+  const auto grants = sample();
+  GlobalShortcutStore session(fixture.path);
+  GlobalShortcutStore nested(fixture.path);
+  CHECK(session.load().has_value());
+  CHECK(nested.load().has_value());
+
+  CHECK(session.update("org.example.Player", grants.at("org.example.Player")).has_value());
+  const auto merged = nested.update("org.example.Notes", grants.at("org.example.Notes"));
+  CHECK(merged.has_value() && *merged == grants);
+
+  const auto afterRevoke = session.update("org.example.Player", {});
+  CHECK(afterRevoke.has_value() && afterRevoke->size() == 1 && afterRevoke->contains("org.example.Notes"));
+  GlobalShortcutStore restarted(fixture.path);
+  CHECK(restarted.load() == afterRevoke);
+
+  CHECK(nested.update("", {}).has_value());
+  const auto cleared = restarted.load();
+  CHECK(cleared.has_value() && cleared->empty());
 }
 
 int main() { return RUN_TESTS(); }

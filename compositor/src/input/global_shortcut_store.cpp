@@ -69,23 +69,40 @@ namespace andromeda {
     return grants;
   }
 
-  bool GlobalShortcutStore::save(const ShortcutGrants& grants) {
-    if (m_status != Status::Loaded || grants.size() > kMaxApps) {
-      return false;
+  std::optional<ShortcutGrants> GlobalShortcutStore::update(
+      std::string_view app, const std::map<std::string, ShortcutChord>& shortcuts
+  ) {
+    if (m_status != Status::Loaded || (app.empty() && !shortcuts.empty())) {
+      return std::nullopt;
+    }
+    const private_state::Lock lock(m_path, kLockName);
+    if (!lock) {
+      return std::nullopt;
+    }
+    auto grants = load();
+    if (!grants) {
+      return std::nullopt;
+    }
+    if (app.empty()) {
+      grants->clear();
+    } else if (shortcuts.empty()) {
+      grants->erase(std::string(app));
+    } else {
+      (*grants)[std::string(app)] = shortcuts;
+    }
+    if (grants->size() > kMaxApps) {
+      return std::nullopt;
     }
     auto data = nlohmann::json{{"version", 1}, {"grants", nlohmann::json::object()}};
-    for (const auto& [app, shortcuts] : grants) {
-      if (shortcuts.empty()) {
-        continue;
+    for (const auto& [name, entries] : *grants) {
+      if (!validName(name) || entries.size() > kMaxIdsPerApp) {
+        return std::nullopt;
       }
-      if (!validName(app) || shortcuts.size() > kMaxIdsPerApp) {
-        return false;
-      }
-      auto& entry = data["grants"][app];
-      for (const auto& [id, chord] : shortcuts) {
+      auto& entry = data["grants"][name];
+      for (const auto& [id, chord] : entries) {
         const std::string text = describeChord(chord);
         if (!validName(id) || parsePortalTrigger(text) != chord) {
-          return false;
+          return std::nullopt;
         }
         entry[id] = text;
       }
@@ -94,13 +111,12 @@ namespace andromeda {
     try {
       bytes = data.dump() + '\n';
     } catch (const nlohmann::json::exception&) {
-      return false;
+      return std::nullopt;
     }
-    if (bytes.size() > kMaxStoreBytes) {
-      return false;
+    if (bytes.size() > kMaxStoreBytes || !private_state::writeAtomic(m_path, bytes)) {
+      return std::nullopt;
     }
-    const private_state::Lock lock(m_path, kLockName);
-    return lock && private_state::writeAtomic(m_path, bytes);
+    return grants;
   }
 
 } // namespace andromeda
