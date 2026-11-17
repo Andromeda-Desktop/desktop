@@ -73,9 +73,8 @@ void NotificationWidget::doLayout(Renderer& renderer, float /*containerWidth*/, 
 
   if (m_dot != nullptr) {
     const float dotSize = kDotBaseSize * m_contentScale;
-    // Badge overhang per rulebook §9.4: 4 up and right of the symbol; the bell itself stays on the island axis.
-    const float overhang = 4.0F * m_contentScale;
-    m_dot->setPosition(m_glyph->width() + overhang - dotSize, -overhang);
+    // Inside the symbol box, not the §9.4 overhang: bar slots clip to the widget bounds (deviations.md).
+    m_dot->setPosition(m_glyph->width() - dotSize, 0.0F);
   }
 }
 
