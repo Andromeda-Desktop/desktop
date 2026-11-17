@@ -125,6 +125,8 @@ namespace andromeda {
     [[nodiscard]] wlr_scene_tree* tileShadowLayer() const { return m_tileShadowLayer; }
     [[nodiscard]] wlr_scene_tree* fullscreenTree() const { return m_fullscreenTree; }
     [[nodiscard]] bool floatingLayerRaised() const;
+    // The focused tile is drawn above floating fullscreen windows and, in scrolling, fullscreen in its column.
+    [[nodiscard]] bool liftedAboveFullscreen(const View* view) const;
     [[nodiscard]] bool switchTransitionActive() const { return m_inSwitchTransition; }
     [[nodiscard]] bool isSwitchTransitionView(const View* view) const;
 

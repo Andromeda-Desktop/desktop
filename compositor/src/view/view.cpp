@@ -1149,7 +1149,8 @@ namespace andromeda {
     }
     const bool fs = scheduledFullscreen();
     if (m_workspace != nullptr) {
-      return fs ? m_workspace->fullscreenTree() : m_workspace->viewLayer(tiled());
+      return fs || m_workspace->liftedAboveFullscreen(this) ? m_workspace->fullscreenTree()
+                                                            : m_workspace->viewLayer(tiled());
     }
     if (m_inScratchpad) {
       return fs ? m_server->fullscreenTree() : m_server->scratchpadTree();
