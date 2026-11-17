@@ -1,5 +1,6 @@
 #include "render/egl.h"
 #include "render/fx_renderer/fx_renderer.h"
+#include "render/fx_renderer/fx_render_thread.h"
 
 #include <drm_fourcc.h>
 #include <stdlib.h>
@@ -39,10 +40,13 @@ static bool framebuffer_import(struct fx_framebuffer* buffer) {
 
 GLuint fx_framebuffer_get_texture(struct fx_framebuffer* buffer) {
   struct fx_renderer* renderer = buffer->renderer;
+  buffer->used_ms = get_current_time_msec();
+  if (buffer->import_mode == FX_IMPORT_SHADOW) {
+    return buffer->shadow_tex;
+  }
   if (!renderer->procs.glEGLImageTargetTexture2DOES) {
     return 0;
   }
-  buffer->used_ms = get_current_time_msec();
   if (!framebuffer_import(buffer)) {
     return 0;
   }
@@ -277,34 +281,126 @@ error_buffer:
   return NULL;
 }
 
+static bool shadow_copyable(const struct fx_framebuffer* buffer) {
+  struct wlr_dmabuf_attributes dmabuf = {0};
+  if (buffer->external_only || buffer->tex == 0 || !wlr_buffer_get_dmabuf(buffer->buffer, &dmabuf)) {
+    return false;
+  }
+  // 8-bit RGB only: glCopyTexImage2D into GL_RGBA keeps these exact; deeper formats would lose bits.
+  switch (dmabuf.format) {
+  case DRM_FORMAT_ARGB8888:
+  case DRM_FORMAT_XRGB8888:
+  case DRM_FORMAT_ABGR8888:
+  case DRM_FORMAT_XBGR8888:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// Records the copy of the import into a new shadow texture. Runs at Home with the context current; the render thread
+// submits it.
+static bool shadow_record_copy(struct fx_framebuffer* buffer) {
+  const int width = buffer->buffer->width;
+  const int height = buffer->buffer->height;
+  GLuint fbo = 0;
+  GLuint shadow = 0;
+  glGenFramebuffers(1, &fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, buffer->tex, 0);
+  const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+  if (complete) {
+    glGenTextures(1, &shadow);
+    glBindTexture(GL_TEXTURE_2D, shadow);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 0, 0, width, height, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &fbo);
+  if (!complete || glGetError() != GL_NO_ERROR) {
+    glDeleteTextures(1, &shadow);
+    return false;
+  }
+  buffer->shadow_tex = shadow;
+  buffer->shadow_bytes = (size_t)width * (size_t)height * 4;
+  buffer->renderer->shadow_bytes += buffer->shadow_bytes;
+  return true;
+}
+
+static void shadow_copy_done(void* data, bool ok) {
+  (void)data;
+  (void)ok;
+}
+
+static void drop_import(struct fx_renderer* renderer, struct fx_framebuffer* buffer) {
+  fx_renderer_delete_gl(renderer, FX_GL_TEXTURE, buffer->tex);
+  fx_renderer_delete_egl_image(renderer, buffer->image);
+  buffer->tex = 0;
+  buffer->image = EGL_NO_IMAGE_KHR;
+}
+
 bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms) {
-  bool in_use = false;
+  bool busy = false;
+  bool copied = false;
   int dropped = 0;
+  struct wlr_egl_context prev_ctx;
+  bool current = false;
   struct fx_framebuffer* buffer;
   wl_list_for_each(buffer, &renderer->buffers, link) {
     if (buffer->owned || buffer->fbo != 0 || buffer->image == EGL_NO_IMAGE_KHR) {
       continue;
     }
-    if (now_ms - buffer->used_ms < idle_ms) {
-      in_use = true;
+    if (buffer->import_mode == FX_IMPORT_COPYING) {
+      // Trim runs only at Home, and the copy's job started when it was recorded, so that job has finished.
+      drop_import(renderer, buffer);
+      buffer->import_mode = FX_IMPORT_SHADOW;
+      dropped++;
       continue;
     }
-    fx_renderer_delete_gl(renderer, FX_GL_TEXTURE, buffer->tex);
-    fx_renderer_delete_egl_image(renderer, buffer->image);
-    buffer->tex = 0;
-    buffer->image = EGL_NO_IMAGE_KHR;
+    if (now_ms - buffer->used_ms < idle_ms) {
+      busy = true;
+      continue;
+    }
+    if (renderer->shadow_bytes + (size_t)buffer->buffer->width * (size_t)buffer->buffer->height * 4
+            <= FX_SHADOW_BUDGET_BYTES
+        && shadow_copyable(buffer)) {
+      if (!current) {
+        current = wlr_egl_make_current(renderer->egl, &prev_ctx);
+      }
+      if (current && shadow_record_copy(buffer)) {
+        buffer->import_mode = FX_IMPORT_COPYING;
+        busy = true;
+        copied = true;
+        continue;
+      }
+    }
+    drop_import(renderer, buffer);
     dropped++;
+  }
+  if (current) {
+    wlr_egl_restore_context(&prev_ctx);
+  }
+  if (copied) {
+    if (renderer->render_thread != NULL) {
+      fx_render_thread_queue(renderer->render_thread, &(struct fx_submit_op){.kind = FX_SUBMIT_FLUSH});
+      fx_render_thread_kick(renderer->render_thread, shadow_copy_done, NULL);
+    } else if (wlr_egl_make_current(renderer->egl, &prev_ctx)) {
+      glFlush();
+      wlr_egl_restore_context(&prev_ctx);
+    }
   }
   if (dropped > 0) {
     wlr_log(WLR_DEBUG, "Dropped %d idle client buffer imports", dropped);
     struct fx_texture* texture;
     wl_list_for_each(texture, &renderer->textures, link) {
       if (texture->buffer != NULL && texture->buffer->image == EGL_NO_IMAGE_KHR) {
-        texture->tex = 0;
+        texture->tex = texture->buffer->import_mode == FX_IMPORT_SHADOW ? texture->buffer->shadow_tex : 0;
       }
     }
   }
-  return in_use;
+  return busy;
 }
 
 void fx_framebuffer_bind(struct fx_framebuffer* fx_buffer) {
@@ -366,6 +462,8 @@ void fx_framebuffer_destroy(struct fx_framebuffer* fx_buffer) {
   fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_TEXTURE, fx_buffer->tex);
   fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_RENDERBUFFER, fx_buffer->sb);
   fx_renderer_delete_egl_image(fx_buffer->renderer, fx_buffer->image);
+  fx_renderer_delete_gl(fx_buffer->renderer, FX_GL_TEXTURE, fx_buffer->shadow_tex);
+  fx_buffer->renderer->shadow_bytes -= fx_buffer->shadow_bytes;
 
   free(fx_buffer);
 }

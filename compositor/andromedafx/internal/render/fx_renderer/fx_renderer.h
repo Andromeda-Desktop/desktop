@@ -68,6 +68,15 @@ bool fx_framebuffer_ensure_stencil(struct fx_framebuffer* buffer);
 /// fx_framebuffer
 ///
 
+// How a sampled client buffer reaches the GPU. Live: its dma-buf import. Copying: the import plus a queued copy into
+// shadow_tex. Shadow: only shadow_tex; a committed buffer we hold cannot change, so the copy stays exact and the
+// buffer is never imported again.
+enum fx_import_mode {
+  FX_IMPORT_LIVE,
+  FX_IMPORT_COPYING,
+  FX_IMPORT_SHADOW,
+};
+
 struct fx_framebuffer {
   struct wlr_buffer* buffer;
   struct fx_renderer* renderer;
@@ -96,6 +105,9 @@ struct fx_framebuffer {
   // A buffer we only sample (not owned, no fbo) loses its import after FX_CLIENT_IMPORT_IDLE_MS unused: image is
   // then EGL_NO_IMAGE_KHR and tex 0, and the next use imports it again.
   int64_t used_ms;
+  enum fx_import_mode import_mode;
+  GLuint shadow_tex;
+  size_t shadow_bytes;
 
   EGLImageKHR image;
   GLuint rbo;
@@ -140,10 +152,14 @@ void fx_renderer_upload_pending_textures(struct fx_renderer* renderer);
 // Frees the spare slots of each texture no client wrote for `idle_ms`. Returns true while a texture keeps a spare.
 bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms);
 // On xe each GPU submit locks every imported dma-buf of the context, so a client that holds its buffer lock stalls
-// our frames. This drops the import of each client buffer unused for `idle_ms` (hidden windows, idle swapchain
-// buffers); the buffer itself stays locked, so its content is kept. Returns true while an import is still in use.
+// our frames. Each client buffer unused for `idle_ms` (hidden windows, idle swapchain buffers) is copied into a shadow
+// texture and then loses its import, so drawing it again never locks the client's buffer. Without budget room the
+// import is dropped with no shadow and made again on the next draw. Returns true while an import is in use or a copy
+// is in flight.
 bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms);
 #define FX_CLIENT_IMPORT_IDLE_MS 2000
+// A full-screen 2880x1800 window is 20.7 MB; over the budget an idle import is dropped without a shadow.
+#define FX_SHADOW_BUDGET_BYTES ((size_t)512 << 20)
 
 // Drops the buffer's effect capture and clears its owner.
 void fx_framebuffer_release_effect_capture(struct fx_framebuffer* buffer);
@@ -267,6 +283,8 @@ struct fx_renderer {
 
   // Null until fx_renderer_start_render_thread; submits then flush on the calling thread.
   struct fx_render_thread* render_thread;
+  // Sum of fx_framebuffer.shadow_bytes, at most FX_SHADOW_BUDGET_BYTES.
+  size_t shadow_bytes;
   // Set around an output frame's build: its submits wait for fx_renderer_kick. Other passes submit before returning.
   bool defer_submits;
   // GL objects released while the render thread held the context, deleted when it returns.

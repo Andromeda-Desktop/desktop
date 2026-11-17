@@ -969,10 +969,14 @@ static bool test_client_import_trim(struct fixture* fixture) {
   struct fx_renderer* renderer = fx_get_renderer(fixture->renderer);
   struct fx_framebuffer* framebuffer = ok ? fx_framebuffer_get_or_create(renderer, &client->base) : NULL;
   if (ok) {
-    fx_renderer_trim_client_imports(
-        renderer, get_current_time_msec() + 2 * FX_CLIENT_IMPORT_IDLE_MS, FX_CLIENT_IMPORT_IDLE_MS
-    );
-    ok = check(framebuffer->image == EGL_NO_IMAGE_KHR, "idle import is dropped");
+    const int64_t idle = get_current_time_msec() + 2 * FX_CLIENT_IMPORT_IDLE_MS;
+    fx_renderer_trim_client_imports(renderer, idle, FX_CLIENT_IMPORT_IDLE_MS);
+    ok = check(framebuffer->import_mode == FX_IMPORT_COPYING && framebuffer->image != EGL_NO_IMAGE_KHR,
+             "an idle import is kept while its shadow copy is in flight");
+    fx_renderer_trim_client_imports(renderer, idle, FX_CLIENT_IMPORT_IDLE_MS);
+    ok = ok && check(framebuffer->import_mode == FX_IMPORT_SHADOW && framebuffer->image == EGL_NO_IMAGE_KHR
+                         && framebuffer->shadow_tex != 0,
+                     "the next trim drops the import and keeps the shadow");
   }
   uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
   if (ok) {
@@ -993,7 +997,8 @@ static bool test_client_import_trim(struct fixture* fixture) {
   }
   const uint8_t red[4] = {255, 0, 0, 255};
   const int center = (TEST_HEIGHT / 2 * TEST_WIDTH + TEST_WIDTH / 2) * 4;
-  ok = ok && check(codes_close(&pixels[center], red, 1), "the imported-again texture shows the client content");
+  ok = ok && check(codes_close(&pixels[center], red, 1), "the shadow shows the client content")
+      && check(framebuffer->image == EGL_NO_IMAGE_KHR, "drawing a shadowed buffer does not import it again");
   if (texture != NULL) {
     wlr_texture_destroy(texture);
   }
