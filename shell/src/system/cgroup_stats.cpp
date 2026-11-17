@@ -26,6 +26,26 @@ namespace {
     return value;
   }
 
+  // Memory the cgroup holds that the kernel cannot reclaim: memory.current also counts page cache and reclaimable slab.
+  std::uint64_t parseMemoryStatInUse(std::string_view stat) {
+    std::uint64_t used = 0;
+    std::uint64_t reclaimableSlab = 0;
+    while (!stat.empty()) {
+      const std::size_t end = stat.find('\n');
+      const std::string_view line = stat.substr(0, end);
+      const std::size_t space = line.find(' ');
+      const std::string_view key = line.substr(0, space);
+      const std::uint64_t value = space == std::string_view::npos ? 0 : toU64(line.substr(space + 1));
+      if (key == "anon" || key == "shmem" || key == "kernel") {
+        used += value;
+      } else if (key == "slab_reclaimable") {
+        reclaimableSlab = value;
+      }
+      stat.remove_prefix(end == std::string_view::npos ? stat.size() : end + 1);
+    }
+    return used > reclaimableSlab ? used - reclaimableSlab : 0;
+  }
+
   // Value of "key=value" or "key value" tokens inside one line.
   std::string_view field(std::string_view line, std::string_view key) {
     std::size_t pos = 0;
@@ -119,12 +139,24 @@ CgroupSample readCgroupSample(const std::string& cgroupRoot, const std::string& 
   }
   sample.valid = true;
   sample.cpuUsageUsec = parseCpuStatUsageUsec(cpu);
-  sample.memoryBytes = toU64(readFile(dir / "memory.current"));
+  sample.memoryBytes = parseMemoryStatInUse(readFile(dir / "memory.stat"));
   sample.threads = toU64(readFile(dir / "pids.current"));
   parseIoStat(readFile(dir / "io.stat"), sample.ioReadBytes, sample.ioWriteBytes);
   sample.memoryPressureAvg10 = parsePressureSomeAvg10(readFile(dir / "memory.pressure"));
   sample.cpuPressureAvg10 = parsePressureSomeAvg10(readFile(dir / "cpu.pressure"));
   sample.ioPressureAvg10 = parsePressureSomeAvg10(readFile(dir / "io.pressure"));
+  const std::string own = dir.filename().string();
+  int pid = static_cast<int>(toU64(readFile(dir / "cgroup.procs")));
+  for (int depth = 0; pid > 1 && depth < 16; ++depth) {
+    const std::string stat = readFile(std::format("/proc/{}/stat", pid));
+    const std::size_t paren = stat.rfind(')');
+    // Fields after the command name: state, ppid.
+    pid = paren == std::string::npos || paren + 4 >= stat.size() ? 0 : static_cast<int>(toU64(std::string_view(stat).substr(paren + 4)));
+    if (const std::string unit = pid > 1 ? unitForPid(pid) : ""; unit != own) {
+      sample.launcherUnit = unit;
+      break;
+    }
+  }
   return sample;
 }
 

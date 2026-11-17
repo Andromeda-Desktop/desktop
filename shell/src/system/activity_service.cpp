@@ -105,8 +105,13 @@ void ActivityService::apply(std::chrono::steady_clock::time_point now, Readings 
 void ActivityService::rebuild() {
   std::map<std::string, ActivityRow> byKey;
   for (const auto& unit : m_units) {
-    const auto window = m_windowAppIdByUnit.find(unit.name);
-    const std::string appId = !unit.appId.empty() ? unit.appId : window != m_windowAppIdByUnit.end() ? window->second : "";
+    const auto history = m_history.find(unit.name);
+    auto window = m_windowAppIdByUnit.find(unit.name);
+    if (window == m_windowAppIdByUnit.end() && history != m_history.end() && !history->second.empty()) {
+      window = m_windowAppIdByUnit.find(history->second.back().sample.launcherUnit);
+    }
+    // A unit name holds the launched command, often a wrapper script; the window's app_id names the real app.
+    const std::string appId = window != m_windowAppIdByUnit.end() && !window->second.empty() ? window->second : unit.appId;
     const std::string key = appId.empty() ? unit.name : appId;
     ActivityRow& row = byKey[key];
     if (row.units.empty()) {
@@ -126,7 +131,6 @@ void ActivityService::rebuild() {
       row.qosTier = tier->second;
     }
 
-    const auto history = m_history.find(unit.name);
     if (history == m_history.end() || history->second.empty() || !history->second.back().sample.valid) {
       continue;
     }

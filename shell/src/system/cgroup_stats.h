@@ -16,6 +16,9 @@ struct CgroupSample {
   double memoryPressureAvg10 = 0.0; // "some" share of time stalled on memory, percent
   double cpuPressureAvg10 = 0.0;
   double ioPressureAvg10 = 0.0;
+  // Unit of the process that started the cgroup's first process, when that is another unit: a browser that moves itself
+  // to its own scope leaves its zygote's children in the launcher's scope.
+  std::string launcherUnit;
 };
 
 [[nodiscard]] std::uint64_t parseCpuStatUsageUsec(std::string_view cpuStat);
