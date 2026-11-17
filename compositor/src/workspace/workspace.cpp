@@ -756,6 +756,8 @@ namespace andromeda {
     // Outside the layout a window is never a tab; whatever presents it next finds it showing.
     m_tabs.released(view);
     releaseLayoutMotion(view);
+    std::erase_if(m_motion.openers, [view](const LayoutMotion::Opener& opener) { return opener.view == view; });
+    std::erase(m_motion.frozen, view);
     view->endLayoutMotion();
     if (scrolling != nullptr && shift != 0.0) {
       scrolling->setScroll(scrolling->scroll() - shift);
@@ -770,6 +772,21 @@ namespace andromeda {
   void Workspace::clampScrollToRange() {
     if (ScrollingLayout* scrolling = scrollingLayout()) {
       scrolling->clampScroll(scrollViewportExtent());
+    }
+  }
+
+  void Workspace::holdCloseSnapshot(CloseSnapshotId snapshot) {
+    if (snapshot != kInvalidCloseSnapshot && config().animation.holdsClosedTile()) {
+      m_heldCloseSnapshots.push_back(snapshot);
+    }
+  }
+
+  void Workspace::releaseHeldCloseSnapshots() {
+    if (m_heldCloseSnapshots.empty() || m_group == nullptr) {
+      return;
+    }
+    for (const CloseSnapshotId id : std::exchange(m_heldCloseSnapshots, {})) {
+      m_group->server()->releaseCloseSnapshot(id);
     }
   }
 
@@ -873,6 +890,18 @@ namespace andromeda {
     // Clearing here, rather than only in flushArrange, is what makes mixing the two safe: a direct arrange() satisfies
     // whatever was marked earlier in the frame, so the flush does not repeat it.
     m_arrangePending = false;
+    // Held close snapshots outlive this arrange only while its tiles wait for their clients.
+    struct HeldRelease {
+      Workspace& workspace;
+      explicit HeldRelease(Workspace& owner) : workspace(owner) {}
+      HeldRelease(const HeldRelease&) = delete;
+      HeldRelease& operator=(const HeldRelease&) = delete;
+      ~HeldRelease() {
+        if (workspace.m_motion.wait == LayoutMotion::Wait::None) {
+          workspace.releaseHeldCloseSnapshots();
+        }
+      }
+    } heldRelease{*this};
     refreshAloneRuleStates();
     // Column membership and floating fullscreen windows determine whether the focused tile is lifted.
     if (m_focusedView != nullptr) {
@@ -1261,7 +1290,10 @@ namespace andromeda {
 
     const auto& animation = config().animation;
     const auto& move = animation.windowsMove;
-    const bool animateMove = animate && animation.enabled && move.enabled && move.durationMs > 0;
+    // An interactive resize steps with the pointer: it may hold a step for its clients, but never slides into one.
+    const Cursor* cursor = m_group->server()->cursor();
+    const bool pointerResize = cursor != nullptr && cursor->isResizingWorkspace(this);
+    const bool animateMove = animate && !pointerResize && animation.enabled && move.enabled && move.durationMs > 0;
     std::vector<LayoutMotion::ViewEntry> views;
     std::vector<Member> stableViews;
     for (const Member& member : members) {
@@ -1280,6 +1312,14 @@ namespace andromeda {
       });
     }
 
+    // windows_resize.wait_for_redraw turns a reflow that resizes established members into one switch: their frames are
+    // frozen and openers stay hidden until every resized client has redrawn, then all land in the same frame.
+    const bool wait = animate
+        && animation.windowsResize.waitsForClient(animation.enabled)
+        && std::ranges::any_of(views, [](const LayoutMotion::ViewEntry& entry) {
+             return entry.from.width != entry.to.width || entry.from.height != entry.to.height;
+           });
+
     // A fresh map starts windows_in in its final slot on the same tick established members begin windows_move. The
     // opener never joins the geometry motion, so its box is never interpolated, and the reflow it causes does not run
     // ahead of it. View::handleMap only hides it until this arrange places it. A member that merely rejoins the layout,
@@ -1287,6 +1327,11 @@ namespace andromeda {
     std::vector<View*> openingViews;
     for (const Member& member : members) {
       if (!member.opening) {
+        continue;
+      }
+      if (wait && member.view->tiledOpeningDeferred()) {
+        std::erase_if(m_motion.openers, [&](const LayoutMotion::Opener& held) { return held.view == member.view; });
+        m_motion.openers.push_back({.view = member.view, .box = member.to});
         continue;
       }
       member.view->resumeTiledOpening();
@@ -1305,8 +1350,10 @@ namespace andromeda {
       syncViewPresentation(member.view);
     }
 
-    // A running motion heading for the same layout keeps going; anything else restarts from the current boxes.
-    if ((m_motion.progress.animating() || m_motion.size.animating()) && views.size() == m_motion.views.size()) {
+    // A running or held motion heading for the same layout keeps going; anything else restarts from the current boxes.
+    if ((m_motion.progress.animating() || m_motion.size.animating() || m_motion.wait != LayoutMotion::Wait::None)
+        && !views.empty()
+        && views.size() == m_motion.views.size()) {
       bool same = true;
       for (size_t i = 0; i < views.size() && same; ++i) {
         same = views[i].view == m_motion.views[i].view && sameBox(views[i].to, m_motion.views[i].to);
@@ -1345,7 +1392,11 @@ namespace andromeda {
       endLayoutMotion();
       return;
     }
-    if (!animateMove) {
+    if (!wait) {
+      // Openers held by an earlier wait were resumed with the others above.
+      m_motion.openers.clear();
+    }
+    if (!animateMove && !wait) {
       endLayoutMotion();
       for (const Member& member : members) {
         member.view->presentTiledBox(member.to);
@@ -1353,30 +1404,40 @@ namespace andromeda {
       return;
     }
 
-    // An interrupted motion hands its speed to the next one, so repeated actions bend the motion instead of stopping
-    // it and starting again from rest.
-    const auto& resize = animation.windowsResize;
-    const double positionSpeed = m_motion.progress.animating()
-        ? carriedProgressSpeed(m_motion.views, views, m_motion.progress.velocity(), false)
-        : 0.0;
-    const double sizeSpeed =
-        m_motion.size.animating() ? carriedProgressSpeed(m_motion.views, views, m_motion.size.velocity(), true) : 0.0;
-    m_motion.views = std::move(views);
-    startTimeline(m_motion.progress, m_motion.progressPhysics, move.durationMs, move.curve, positionSpeed);
-    m_motion.geometryCurve.reset(move.curve);
-    // Without windows_resize the size lands at once while the position still moves.
-    if (resize.enabled) {
-      startTimeline(m_motion.size, m_motion.sizePhysics, resize.durationMs, resize.curve, sizeSpeed);
-      m_motion.sizeCurve.reset(resize.curve);
-    } else {
-      m_motion.size.snap(1.0);
+    if (wait) {
+      m_motion.views = std::move(views);
+      m_motion.progress.snap(0.0);
+      m_motion.size.snap(0.0);
+      m_motion.progressPhysics = false;
       m_motion.sizePhysics = false;
+      m_motion.wait = LayoutMotion::Wait::Armed;
+    } else {
+      // An interrupted motion hands its speed to the next one, so repeated actions bend the motion instead of stopping
+      // it and starting again from rest.
+      const double positionSpeed = m_motion.progress.animating()
+          ? carriedProgressSpeed(m_motion.views, views, m_motion.progress.velocity(), false)
+          : 0.0;
+      const double sizeSpeed =
+          m_motion.size.animating() ? carriedProgressSpeed(m_motion.views, views, m_motion.size.velocity(), true) : 0.0;
+      m_motion.views = std::move(views);
+      m_motion.wait = LayoutMotion::Wait::None;
+      startLayoutTimelines(positionSpeed, sizeSpeed);
     }
 
     for (size_t i = 0; i < m_motion.views.size(); ++i) {
       const LayoutMotion::ViewEntry& entry = m_motion.views[i];
       entry.view->beginLayoutMotion(entry.direction);
       entry.view->presentTiledBox(entry.from);
+      // Freeze what a resized member shows, so its client's redraw stays out of sight until the switch.
+      if (wait
+          && (entry.from.width != entry.to.width || entry.from.height != entry.to.height)
+          && !std::ranges::contains(m_motion.frozen, entry.view)) {
+        if (const CloseSnapshotId id = entry.view->captureHeldSnapshot(); id != kInvalidCloseSnapshot) {
+          trackCloseSnapshot(id, entry.view->presentedBox());
+          m_heldCloseSnapshots.push_back(id);
+          m_motion.frozen.push_back(entry.view);
+        }
+      }
       if (raise[i] && entry.view != m_focusedView) {
         entry.view->raiseToTop();
       }
@@ -1393,7 +1454,70 @@ namespace andromeda {
     wlr_output_schedule_frame(m_group->output()->wlr());
   }
 
+  void Workspace::startLayoutTimelines(double positionSpeed, double sizeSpeed) {
+    const auto& animation = config().animation;
+    const auto& move = animation.windowsMove;
+    const auto& resize = animation.windowsResize;
+    startTimeline(m_motion.progress, m_motion.progressPhysics, move.durationMs, move.curve, positionSpeed);
+    m_motion.geometryCurve.reset(move.curve);
+    // Without windows_resize the size lands at once while the position still moves.
+    if (resize.enabled) {
+      startTimeline(m_motion.size, m_motion.sizePhysics, resize.durationMs, resize.curve, sizeSpeed);
+      m_motion.sizeCurve.reset(resize.curve);
+    } else {
+      m_motion.size.snap(1.0);
+      m_motion.sizePhysics = false;
+    }
+  }
+
+  bool Workspace::tickLayoutMotionWait(double nowMsec) {
+    if (m_motion.wait == LayoutMotion::Wait::Armed) {
+      m_motion.wait = LayoutMotion::Wait::Timing;
+      m_motion.waitStartMsec = nowMsec;
+    }
+    const auto answered = [](const View* view) { return !view->tiledSizeRequestPending(); };
+    bool ready =
+        std::ranges::all_of(m_motion.views, [&](const LayoutMotion::ViewEntry& entry) { return answered(entry.view); });
+    for (const LayoutMotion::Opener& opener : m_motion.openers) {
+      ready = ready && (!heldOpenerAlive(opener.view) || answered(opener.view));
+    }
+    if (!ready && nowMsec - m_motion.waitStartMsec < kRedrawWaitMs) {
+      return true;
+    }
+
+    // One switch: the frozen frames go, the openers appear, and every member lands at its target in this tick.
+    m_motion.wait = LayoutMotion::Wait::None;
+    releaseHeldCloseSnapshots();
+    resumeHeldOpeners();
+    m_motion.progress.snap(1.0);
+    m_motion.size.snap(1.0);
+    if (Cursor* cursor = m_group != nullptr ? m_group->server()->cursor() : nullptr; cursor != nullptr) {
+      cursor->resumeTiledResize(this);
+    }
+    return false;
+  }
+
+  bool Workspace::heldOpenerAlive(const View* view) const {
+    return std::ranges::contains(m_views, view) && view->mapped() && m_layout->columnOf(view) >= 0;
+  }
+
+  void Workspace::resumeHeldOpeners() {
+    m_motion.frozen.clear();
+    for (const LayoutMotion::Opener& opener : std::exchange(m_motion.openers, {})) {
+      if (!heldOpenerAlive(opener.view)) {
+        continue;
+      }
+      opener.view->resumeTiledOpening();
+      opener.view->endLayoutMotion();
+      opener.view->presentTiledBox(opener.box);
+      opener.view->raiseToTop();
+    }
+  }
+
   bool Workspace::tickLayoutMotion(double nowMsec) {
+    if (m_motion.wait != LayoutMotion::Wait::None && tickLayoutMotionWait(nowMsec)) {
+      return true;
+    }
     const bool positionTicked = m_motion.progress.tick(nowMsec);
     const bool sizeTicked = m_motion.size.tick(nowMsec);
     // A carried-speed spring settles on its own solver; stop it once no member's pixel can change. One progress unit
@@ -1444,6 +1568,9 @@ namespace andromeda {
   }
 
   void Workspace::endLayoutMotion() {
+    m_motion.wait = LayoutMotion::Wait::None;
+    releaseHeldCloseSnapshots();
+    resumeHeldOpeners();
     m_motion.progress.snap(1.0);
     m_motion.size.snap(1.0);
     std::vector<LayoutMotion::ViewEntry> views = std::move(m_motion.views);

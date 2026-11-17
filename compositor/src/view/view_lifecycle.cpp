@@ -752,6 +752,9 @@ namespace andromeda {
     m_positioned = false;
     m_presentedTiledBox = {};
     if (m_workspace != nullptr) {
+      if (tiled()) {
+        m_workspace->holdCloseSnapshot(snapshot);
+      }
       m_workspace->layoutDetach(this, tiled());
       if (focusRevealedTile) {
         // The scene may still be animating from its old geometry. Arrange now, then read the authoritative layout

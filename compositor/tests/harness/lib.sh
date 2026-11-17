@@ -75,6 +75,16 @@ await_lines() {
   return 1
 }
 
+# Query a mapped window by its exact title; wait for it before reading its state.
+window_by_title() { "$ANDROMEDA" windows --json | jq -ce --arg title "$1" '.[] | select(.title == $title)'; }
+await_window() {
+  for _ in $(seq 100); do
+    window_by_title "$1" > /dev/null && return
+    sleep 0.025
+  done
+  echo "missing window: $1"; return 1
+}
+
 # Shared fixture for live workspace reveal checks.
 workspace_reveal_config() {
   cp "$ANDROMEDA_REPO/examples/effects/animation/workspace_wipe/shader.glsl" "$ANDROMEDA_RUNTIME_DIR/wipe.glsl"

@@ -1200,6 +1200,11 @@ namespace andromeda {
         return;
       }
       if (auto* grab = std::get_if<TiledResizeGrab>(&m_grab)) {
+        if (grab->deferred && grab->session != nullptr && grab->workspace != nullptr) {
+          grab->session->applyDelta(
+              m_cursor->x - grab->startX, m_cursor->y - grab->startY, grab->workspace->tiledArea()
+          );
+        }
         if (grab->workspace != nullptr) {
           if (grab->workspace->focusedView() == grab->view) {
             grab->workspace->reevaluateFocusedColumn();
@@ -2554,10 +2559,27 @@ namespace andromeda {
       resetMode();
       return;
     }
+    // With windows_resize.wait_for_redraw each step is a held switch, like any other resizing reflow: the next step
+    // waits until the clients have redrawn at the last one, so no frame shows a buffer stretched to a box it was not
+    // drawn for.
+    const auto& animation = config().animation;
+    const bool lockstep = animation.windowsResize.waitsForClient(animation.enabled);
+    if (lockstep && grab->workspace->layoutMotionWaiting()) {
+      grab->deferred = true;
+      return;
+    }
+    grab->deferred = false;
     const wlr_box usable = grab->workspace->tiledArea();
     grab->session->applyDelta(m_cursor->x - grab->startX, m_cursor->y - grab->startY, usable);
     grab->view->setMaximizedState(false);
-    grab->workspace->markArrange(false);
+    grab->workspace->markArrange(lockstep);
+  }
+
+  void Cursor::resumeTiledResize(const Workspace* workspace) {
+    const auto* grab = std::get_if<TiledResizeGrab>(&m_grab);
+    if (grab != nullptr && grab->workspace == workspace && grab->deferred) {
+      processResizeTile();
+    }
   }
 
 } // namespace andromeda

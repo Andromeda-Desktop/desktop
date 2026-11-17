@@ -133,6 +133,10 @@ namespace andromeda {
   // game/network loop on the frame callback stalls. A suspended view gets none: clients such as Firefox detect
   // occlusion only from a long callback gap, and a slow tick reads as a slow display that drops video frames.
   inline constexpr int kBackgroundFrameIntervalMs = 100;
+  // Longest windows_resize.wait_for_redraw holds a reflow for its clients before it switches without them.
+  inline constexpr double kRedrawWaitMs = 150.0;
+  // Longest a held close snapshot stays: a safety net well past kRedrawWaitMs, released by the switch before then.
+  inline constexpr double kMaxCloseHoldMs = 1000.0;
   inline constexpr std::string_view kLaunchTokenEnvironment = "ANDROMEDA_LAUNCH_TOKEN";
 
   // The pid of the process owning a surface's Wayland connection, or -1 when the surface has no client or the kernel
@@ -587,6 +591,8 @@ namespace andromeda {
       std::string style = "fade";
       double scale = 0.8;
       AnimationEvent event = AnimationEvent::WindowsOut;
+      // Show the captured frame unchanged, without any lifecycle, until releaseCloseSnapshot or kMaxCloseHoldMs.
+      bool held = false;
     };
     // `content` is the subtree holding the copied buffers (pass `tree` when there is no separate content tree). A
     // positive `box` clips that subtree to the captured content extent. Returns kInvalidCloseSnapshot when the snapshot
@@ -601,6 +607,8 @@ namespace andromeda {
     void presentCloseSnapshot(CloseSnapshotId id, int canvasX, int canvasY, bool visible);
     // False once the snapshot has been reaped.
     [[nodiscard]] bool closeSnapshotAlive(CloseSnapshotId id) const;
+    // End a held snapshot; it is reaped at the end of the current animation tick.
+    void releaseCloseSnapshot(CloseSnapshotId id);
 
     // Busy cursor of a pending launch (rulebook §10): ends when the window maps, or after 5 s.
     void endLaunchBusy(const std::optional<std::string>& token);
@@ -914,18 +922,21 @@ namespace andromeda {
       CloseSnapshot(
           Server& server, CloseSnapshotId id, Output* output, wlr_scene_tree* tree, wlr_scene_tree* content,
           std::vector<BorderSnapshot> borders, const wlr_box& box, int durationMs, const AnimationCurve& curve,
-          std::string_view style, double scale, AnimationEvent event, ShadowSnapshot shadow, int topExtension
+          std::string_view style, double scale, AnimationEvent event, ShadowSnapshot shadow, int topExtension, bool held
       );
       ~CloseSnapshot() override;
 
       [[nodiscard]] CloseSnapshotId id() const { return m_id; }
+      void release() { m_hold = Hold::None; }
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
 
       [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
       bool tickAnimations(double nowMsec) override;
-      [[nodiscard]] bool hasActiveAnimations() const override { return m_alpha.animating() || m_slide.animating(); }
+      [[nodiscard]] bool hasActiveAnimations() const override {
+        return m_hold != Hold::None || m_alpha.animating() || m_slide.animating();
+      }
       [[nodiscard]] bool animatesOn(const Output* output) const override { return m_output == output; }
 
     private:
@@ -974,6 +985,10 @@ namespace andromeda {
       };
       std::vector<Blur> m_blurs;
       int m_topExtension = 0;
+      // A held snapshot stays as captured until released, or until kMaxCloseHoldMs after its first tick (Timing).
+      enum class Hold : uint8_t { None, Armed, Timing };
+      Hold m_hold = Hold::None;
+      double m_heldSinceMsec = 0.0;
       std::vector<BorderSnapshot> m_borders;
       ShadowSnapshot m_shadow;
       bool m_retainedPersistent = false;

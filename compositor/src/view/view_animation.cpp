@@ -364,7 +364,14 @@ namespace andromeda {
 
   bool View::sizeGrabTracksPointer() const {
     const Cursor* cursor = m_server->cursor();
-    return cursor != nullptr && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace));
+    return cursor != nullptr
+        && (cursor->isResizingView(this) || cursor->isResizingWorkspace(m_workspace))
+        && !tiledResizeWaitsForClient();
+  }
+
+  bool View::tiledResizeWaitsForClient() const {
+    const auto& animation = config().animation;
+    return tiled() && animation.windowsResize.waitsForClient(animation.enabled);
   }
 
   void View::enterDragPresentation() {
@@ -647,11 +654,16 @@ namespace andromeda {
   }
 
   void View::requestTiledSize(int width, int height) {
+    const wlr_box content = committedContentBox();
+    const wlr_surface* surface = rootSurface();
     m_tiledSizeRequest = TiledSizeRequest{
         .serial = configureSize(width, height),
         .width = width,
         .height = height,
-        .base = currentSize(),
+        .base = {.width = content.width, .height = content.height},
+        .baseBuffer = surface != nullptr
+            ? ClientSize{.width = surface->current.width, .height = surface->current.height}
+            : ClientSize{},
     };
   }
 
@@ -665,10 +677,16 @@ namespace andromeda {
     }
     const wlr_box content = committedContentBox();
     const bool exact = content.width == request.width && content.height == request.height;
-    // An X11 client with resize increments answers with the nearest size it accepts.
-    const bool answered =
-        m_xsurface != nullptr && (content.width != request.base.width || content.height != request.base.height);
-    if (!exact && !answered) {
+    // A client may settle on a size of its own inside the request (cell-sized terminals, resize increments, rounding).
+    const bool changed = content.width != request.base.width || content.height != request.base.height;
+    // A new window geometry over the buffer drawn for the old size is not a redraw.
+    const wlr_surface* surface = rootSurface();
+    const bool unchanged = request.width == request.base.width && request.height == request.base.height;
+    const bool redrawn = unchanged
+        || surface == nullptr
+        || surface->current.width != request.baseBuffer.width
+        || surface->current.height != request.baseBuffer.height;
+    if (!redrawn || (!exact && !changed)) {
       return false;
     }
     m_tiledSizeRequest.reset();
@@ -877,7 +895,10 @@ namespace andromeda {
     // Disable sibling size animations during a tiled resize, so they do not
     // trail the pointer while clients acknowledge successive configures.
     const Cursor* cursor = m_server->cursor();
-    if (cursor != nullptr && cursor->isResizingWorkspace(m_workspace) && sizeAnimating()) {
+    if (cursor != nullptr
+        && cursor->isResizingWorkspace(m_workspace)
+        && !tiledResizeWaitsForClient()
+        && sizeAnimating()) {
       cancelSizeAnimation();
     }
 
@@ -1035,15 +1056,30 @@ namespace andromeda {
 
   CloseSnapshotId View::beginCloseAnimation() {
     const auto& animation = config().animation;
+    const bool held = tiled() && m_workspace != nullptr && animation.holdsClosedTile();
     if (!mapped()
         || presentationSuppressed()
         || !m_onActiveWorkspace
-        || !animation.enabled
-        || !animation.windowsOut.enabled
+        || (!held && (!animation.enabled || !animation.windowsOut.enabled))
         || m_server->sessionLocked()
         || (m_server->overview() != nullptr && m_server->overview()->active())) {
       return kInvalidCloseSnapshot;
     }
+    return captureSnapshot(held);
+  }
+
+  CloseSnapshotId View::captureHeldSnapshot() {
+    if (!mapped()
+        || presentationSuppressed()
+        || !m_onActiveWorkspace
+        || m_server->sessionLocked()
+        || (m_server->overview() != nullptr && m_server->overview()->active())) {
+      return kInvalidCloseSnapshot;
+    }
+    return captureSnapshot(true);
+  }
+
+  CloseSnapshotId View::captureSnapshot(bool held) {
 
     Output* output =
         m_workspace != nullptr && m_workspace->group() != nullptr ? m_workspace->group()->output() : currentOutput();
@@ -1140,7 +1176,8 @@ namespace andromeda {
     wlr_scene_node_set_animation(&snap->node, static_cast<unsigned>(AnimationEvent::WindowsMove), nullptr, nullptr);
     const auto shadow = m_decoration.snapshotShadow(output->viewRoot(), &snap->node, m_decoration.shadowPooled());
     const CloseSnapshotId id = m_server->animateCloseSnapshot(
-        output, snap, content, std::move(snapBorders), m_presentedBox, std::nullopt, shadow, titleBarHeight()
+        output, snap, content, std::move(snapBorders), m_presentedBox,
+        held ? std::optional{Server::CloseSnapshotOverrides{.held = true}} : std::nullopt, shadow, titleBarHeight()
     );
     wlr_output_schedule_frame(output->wlr());
     return id;
