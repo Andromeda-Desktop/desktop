@@ -43,8 +43,8 @@ if [ -n "${DESKTOP_BUILD_DIR_HELD:-}" ]; then
     for s in 0 1; do
       started=$(date +%s%N)
       flock -n -E 75 --close "/tmp/desktop-build.$s.lock" \
-        systemd-run --user --scope --quiet --collect -p MemoryHigh=6G -p MemoryMax=8G -p MemorySwapMax=4G \
-        --setenv=DESKTOP_BUILD_LOCKED=1 taskset -c "${cores[$s]}" nice -n 10 "$@"
+        systemd-run --user --scope --quiet --collect -p CPUWeight=idle -p IOWeight=1 -p MemoryHigh=6G -p MemoryMax=8G -p MemorySwapMax=4G \
+        --setenv=DESKTOP_BUILD_LOCKED=1 taskset -c "${cores[$s]}" nice -n 19 "$@"
       rc=$?
       if [ "$rc" -ne 75 ]; then
         echo "$started $rc" > "$state/$key"
