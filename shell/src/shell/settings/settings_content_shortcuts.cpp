@@ -295,69 +295,22 @@ namespace settings {
       });
     }
 
-    // The chord control: one keycap per key; while recording it asks for the keys and is outlined in accent.
-    // Clicking it again cancels.
+    // Clicking the chord control while it records cancels.
     std::unique_ptr<Button> makeChordButton(
         const SettingsShortcutsContext& ctx, std::string row, std::string_view shown,
         std::function<void(std::string)> onCaptured
     ) {
       const bool recording = ctx.recordingRow == row;
-      const float scale = ctx.scale;
-      const ColorSpec none = clearColorSpec();
-      const Button::ButtonStateColors state{
-          .bg = none, .border = recording ? colorSpecFromRole(ColorRole::Accent) : none,
-          .label = colorSpecFromRole(ColorRole::Label2)
-      };
-      auto button = ui::button({
-          .variant = ButtonVariant::Ghost,
-          .customPalette = Button::ButtonPalette{
-              .borderWidth = Style::focusRingWidth * scale, .normal = state, .hover = state, .pressed = state,
-              .disabled = state
-          },
-          .minHeight = (metrics::kKeycapHeight + 2.0F * Style::spaceSm) * scale,
-          .paddingV = Style::spaceXs * scale,
-          .paddingH = Style::spaceSm * scale,
-          .gap = Style::spaceXs * scale,
-          .radius = Style::spaceSm * scale,
-          .onClick = [record = ctx.record, cancel = ctx.cancelRecording, recording, row,
-                      onCaptured = std::move(onCaptured)]() {
+      return settings::makeChordButton(
+          recording ? std::string_view{} : shown, recording, ColorRole::Label2, ctx.scale,
+          [record = ctx.record, cancel = ctx.cancelRecording, recording, row, onCaptured = std::move(onCaptured)]() {
             if (recording) {
               cancel();
             } else {
               record(row, onCaptured);
             }
-          },
-          .configure = [](Button& chord) { chord.setTabStop(false); },
-      });
-      if (recording || shown.empty()) {
-        button->addChild(makeLabel(
-            i18n::tr(recording ? "settings.shortcuts.press-keys" : "settings.shortcuts.set-keys"),
-            Style::fontSizeCaption * scale,
-            colorSpecFromRole(recording ? ColorRole::AccentText : ColorRole::Label2), FontWeight::Medium
-        ));
-        return button;
-      }
-      for (std::size_t start = 0; start <= shown.size();) {
-        const std::size_t plus = shown.find('+', start);
-        const std::string_view part = shown.substr(start, plus == std::string_view::npos ? plus : plus - start);
-        if (!part.empty()) {
-          button->addChild(ui::row(
-              {.align = FlexAlign::Center,
-               .justify = FlexJustify::Center,
-               .paddingH = Style::spaceXs * scale,
-               .radius = Style::spaceXs * scale,
-               .border = colorSpecFromRole(ColorRole::Separator),
-               .minWidth = metrics::kKeycapHeight * scale,
-               .minHeight = metrics::kKeycapHeight * scale},
-              makeLabel(std::string(part), Style::fontSizeCaption * scale, colorSpecFromRole(ColorRole::Label2), FontWeight::Medium)
-          ));
-        }
-        if (plus == std::string_view::npos) {
-          break;
-        }
-        start = plus + 1;
-      }
-      return button;
+          }
+      );
     }
 
     void addRow(Flex& body, const SettingsShortcutsContext& ctx, const Row& row) {

@@ -490,6 +490,7 @@ header_gap = 8.0
 group_gap = 24.0
 table_header = 32.0
 status_dot = 6.0     # state dot beside a row subtitle (printer status)
+app_icon = 32.0      # app icon leading a two-line group header (Global Shortcuts cards)
 
 [component.sidebar]
 width = 240.0

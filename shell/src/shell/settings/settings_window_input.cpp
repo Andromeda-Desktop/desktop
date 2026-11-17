@@ -65,6 +65,25 @@ void SettingsWindow::addInputContent(float scale) {
   );
 }
 
+std::unique_ptr<Node> SettingsWindow::appIcon(const DesktopEntry& entry, float size) {
+  // Function-local: the icon-theme walk must not run before main().
+  static IconResolver resolver;
+  if (m_surface == nullptr || entry.icon.empty()) {
+    return nullptr;
+  }
+  const std::string& path = resolver.resolve(entry.icon, static_cast<int>(size));
+  if (path.empty()) {
+    return nullptr;
+  }
+  Image* image = nullptr;
+  auto node = ui::image({.out = &image, .fit = ImageFit::Contain, .width = size, .height = size});
+  if (image == nullptr
+      || !image->setSourceFile(m_surface->renderTarget().renderer(), path, static_cast<int>(size), true)) {
+    return nullptr;
+  }
+  return node;
+}
+
 void SettingsWindow::addShortcutsContent(float scale) {
   if (!settings::selectedPageShows(m_selectedSection, "shortcuts")) {
     if (m_compositorSettings != nullptr && m_compositorSettings->capturing()) {
@@ -82,24 +101,7 @@ void SettingsWindow::addShortcutsContent(float scale) {
           .draft = m_shortcutDraft,
           .recordingRow = m_recordingShortcutRow,
           .entries = *entries,
-          .appIcon = [this](const DesktopEntry& entry, float size) -> std::unique_ptr<Node> {
-            // Function-local: the icon-theme walk must not run before main().
-            static IconResolver resolver;
-            if (m_surface == nullptr || entry.icon.empty()) {
-              return nullptr;
-            }
-            const std::string& path = resolver.resolve(entry.icon, static_cast<int>(size));
-            if (path.empty()) {
-              return nullptr;
-            }
-            Image* image = nullptr;
-            auto node = ui::image({.out = &image, .fit = ImageFit::Contain, .width = size, .height = size});
-            if (image == nullptr
-                || !image->setSourceFile(m_surface->renderTarget().renderer(), path, static_cast<int>(size), true)) {
-              return nullptr;
-            }
-            return node;
-          },
+          .appIcon = [this](const DesktopEntry& entry, float size) { return appIcon(entry, size); },
           .bind =
               [this](std::string chord, std::string action) {
                 if (m_compositorSettings != nullptr) {

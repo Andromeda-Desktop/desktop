@@ -24,6 +24,8 @@ namespace settings {
     std::vector<SettingsAlertButton> buttons;
     std::size_t defaultIndex = 0;
     float scale = 1.0F;
+    // Runs when the alert closes without a button: Escape, or the window closing.
+    std::function<void()> onDismissed;
   };
 
   void showSettingsAlert(SettingsModalHost& host, SettingsAlertRequest request);

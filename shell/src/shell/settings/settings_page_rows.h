@@ -25,7 +25,9 @@ namespace settings::page_rows {
   void addHeader(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale);
   [[nodiscard]] Flex* addCard(Flex& content, float scale);
   void addValueRow(Flex& card, std::string_view label, std::string_view value, float scale);
-  void addEmptyState(Flex& content, std::string_view glyph, std::string_view text, float scale);
+  // Rulebook 9.13: symbol 48, title-3, then an optional 2-line body and one button.
+  void addEmptyState(Flex& content, std::string_view glyph, std::string_view text, float scale,
+                     std::string_view body = {}, std::unique_ptr<Node> action = nullptr);
 
   // D6 rows (.agent/mockups/settings-d6.html): grey leading symbol (none when empty), label_1 title, label_2 value.
   [[nodiscard]] std::unique_ptr<Node> valueText(std::string text, float scale);

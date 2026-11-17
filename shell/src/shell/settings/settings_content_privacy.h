@@ -1,10 +1,15 @@
 #pragma once
 
+#include "shell/settings/global_shortcuts_page_state.h"
+
 #include <functional>
+#include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
 class Flex;
+class Node;
 
 namespace settings {
 
@@ -77,6 +82,15 @@ namespace settings {
     // Empty without a session bus: no App Access card.
     std::vector<AccessKindView> access;
     std::function<void(std::string table, std::string app, bool allowed)> setAccess;
+    // Null when the compositor has no global-shortcuts IPC: no row, no page.
+    const global_shortcuts::State* shortcuts = nullptr;
+    std::function<void(global_shortcuts::Event)> shortcutEvent;
+    // Apps whose card the user opened or closed against its default.
+    const std::set<std::string>* toggledShortcutApps = nullptr;
+    std::function<void(std::string app)> toggleShortcutApp;
+    std::function<std::string(const std::string& app)> appName;
+    std::function<std::unique_ptr<Node>(const std::string& app, float size)> appIcon;
+    std::function<void()> openKeyboardShortcuts;
     std::function<void()> changePassword;
   };
 

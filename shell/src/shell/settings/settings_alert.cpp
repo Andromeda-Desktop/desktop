@@ -22,6 +22,7 @@ namespace settings {
       std::optional<SettingsModalHost::ModalId> id;
       Node* root = nullptr;
       Button* defaultButton = nullptr;
+      bool answered = false;
     };
 
     std::unique_ptr<Node> alertButton(SettingsModalHost& host, const std::shared_ptr<AlertState>& state, std::size_t index) {
@@ -48,6 +49,7 @@ namespace settings {
                     return;
                   }
                   auto action = alive->request.buttons[index].onClick;
+                  alive->answered = true;
                   (void)host.pop(*alive->id);
                   if (action) {
                     action();
@@ -129,7 +131,13 @@ namespace settings {
                     (void)host.pop(*alive->id);
                   }
                 },
-            .onClosed = [state] { state->root = nullptr; },
+            .onClosed =
+                [state] {
+                  state->root = nullptr;
+                  if (!state->answered && state->request.onDismissed) {
+                    state->request.onDismissed();
+                  }
+                },
             .contentPadding = Tokens::componentDialogPadding * scale,
             .windowMargin = Tokens::componentDialogPadding * scale,
             .scale = scale,

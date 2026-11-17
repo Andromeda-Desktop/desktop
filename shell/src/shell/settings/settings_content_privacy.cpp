@@ -5,11 +5,14 @@
 #include "shell/settings/settings_content_common.h"
 #include "shell/settings/settings_page_rows.h"
 #include "ui/builders.h"
+#include "ui/controls/button.h"
 #include "ui/controls/flex.h"
 #include "ui/style.h"
 
 #include <algorithm>
 #include <memory>
+#include <set>
+#include <variant>
 #include <utility>
 #include <string>
 
@@ -255,6 +258,203 @@ namespace settings {
     std::string countText(std::size_t n, std::string_view one, std::string_view many) {
       return n == 1 ? i18n::tr(one) : i18n::tr(many, "count", std::to_string(n));
     }
+
+    namespace gs = global_shortcuts;
+
+    // Rulebook 9.10 destructive text action: danger_text label, fill_1 hover, fill_2 pressed.
+    std::unique_ptr<Node> dangerTextButton(std::string text, float scale, std::function<void()> onClick) {
+      const ColorSpec none = clearColorSpec();
+      const ColorSpec label = colorSpecFromRole(ColorRole::DangerText);
+      const Button::ButtonStateColors rest{.bg = none, .border = none, .label = label};
+      const Button::ButtonStateColors hover{.bg = colorSpecFromRole(ColorRole::Fill1), .border = none, .label = label};
+      const Button::ButtonStateColors pressed{.bg = colorSpecFromRole(ColorRole::Fill2), .border = none, .label = label};
+      return ui::button({
+          .text = std::move(text),
+          .fontSize = Style::fontSizeBody * scale,
+          .variant = ButtonVariant::Ghost,
+          .customPalette = Button::ButtonPalette{
+              .borderWidth = 0.0F, .normal = rest, .hover = hover, .pressed = pressed, .disabled = rest
+          },
+          .minHeight = Tokens::sizeControlS * scale,
+          .paddingV = 0.0F,
+          .paddingH = Style::spaceSm * scale,
+          .radius = Style::scaledRadiusMd(scale),
+          .onClick = std::move(onClick),
+      });
+    }
+
+    std::string shortcutTitle(const gs::Shortcut& shortcut) {
+      return shortcut.description.empty() ? shortcut.id : shortcut.description;
+    }
+
+    // One shortcut row: what it does, why it does not fire, and its keys or the button that fixes it.
+    void addShortcutRow(Flex& card, const SettingsPrivacyContext& ctx, const gs::App& app, const gs::Shortcut& shortcut) {
+      const float scale = ctx.scale;
+      const auto* recording = std::get_if<gs::Recording>(&ctx.shortcuts->edit);
+      const bool here = recording != nullptr && recording->app == app.id && recording->id == shortcut.id;
+      using enum gs::Shortcut::Conflict;
+      std::string note;
+      bool bad = true;
+      if (here && !recording->refused.empty()) {
+        note = recording->holder.empty()
+                   ? i18n::tr("settings.privacy.shortcuts-refused-reserved", "keys", recording->refused)
+                   : i18n::tr("settings.privacy.shortcuts-refused-in-use", "keys", recording->refused, "app",
+                              ctx.appName(recording->holder));
+      } else if (here) {
+        note = i18n::tr("settings.privacy.shortcuts-recording");
+        bad = false;
+      } else if (shortcut.conflict == Unassigned) {
+        note = i18n::tr("settings.privacy.shortcuts-unassigned");
+      } else if (shortcut.conflict == Disabled) {
+        note = i18n::tr("settings.privacy.shortcuts-disabled");
+      } else if (shortcut.conflict == Reserved) {
+        note = i18n::tr("settings.privacy.shortcuts-reserved", "keys", shortcut.trigger);
+      } else if (shortcut.conflict == InUse) {
+        note = i18n::tr("settings.privacy.shortcuts-in-use", "keys", shortcut.trigger, "app",
+                        shortcut.holder.empty() ? i18n::tr("settings.privacy.shortcuts-another-app")
+                                                : ctx.appName(shortcut.holder));
+      } else if (shortcut.source == gs::Shortcut::Source::Config) {
+        note = i18n::tr("settings.privacy.shortcuts-set-by-you");
+        bad = false;
+      }
+
+      auto r = row(scale);
+      r->setGap(Style::spaceMd * scale);
+      r->setMinHeight((note.empty() ? Tokens::sizeRow : Tokens::sizeRowTwo) * scale);
+      r->addChild(ui::row({.width = Tokens::sizeSymbol * scale}));
+      auto text = ui::column({.align = FlexAlign::Start, .flexGrow = 1.0F});
+      text->addChild(ui::label({.text = shortcutTitle(shortcut), .fontSize = Style::fontSizeBody * scale,
+                                .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1}));
+      if (!note.empty()) {
+        text->addChild(ui::label({.text = std::move(note), .fontSize = Tokens::typeFootnote.size * scale,
+                                  .color = colorSpecFromRole(bad ? ColorRole::DangerText : ColorRole::Label2),
+                                  .maxLines = 1}));
+      }
+      r->addChild(std::move(text));
+      auto record = [event = ctx.shortcutEvent, app = app.id, id = shortcut.id] {
+        event(gs::Record{.app = app, .id = id});
+      };
+      const bool keysShown = here || shortcut.conflict == None || shortcut.source == gs::Shortcut::Source::Config;
+      if (keysShown && (here || !shortcut.trigger.empty())) {
+        const bool refused = here && !recording->refused.empty();
+        r->addChild(makeChordButton(refused ? recording->refused : shortcut.trigger, here,
+                                    refused ? ColorRole::DangerText : here ? ColorRole::AccentText : ColorRole::Label2,
+                                    scale, std::move(record)));
+      } else {
+        const bool unset = shortcut.conflict == Unassigned || shortcut.conflict == Disabled;
+        r->addChild(plainButton(i18n::tr(unset ? "settings.privacy.shortcuts-set-keys"
+                                               : "settings.privacy.shortcuts-choose-keys"),
+                                ButtonVariant::Secondary, scale, std::move(record)));
+      }
+      card.addChild(std::move(r));
+    }
+
+    void addFailureRow(Flex& parent, const SettingsPrivacyContext& ctx, std::string text, std::string retryApp) {
+      const float scale = ctx.scale;
+      auto r = row(scale);
+      r->setGap(Style::spaceSm * scale);
+      r->addChild(symbol("alert-circle", Tokens::sizeSymbol * scale, ColorRole::DangerText));
+      r->addChild(ui::label({.text = std::move(text), .fontSize = Tokens::typeFootnote.size * scale,
+                             .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 2, .flexGrow = 1.0F}));
+      r->addChild(plainButton(i18n::tr("settings.privacy.shortcuts-try-again"), ButtonVariant::Ghost, scale,
+                              [event = ctx.shortcutEvent, app = std::move(retryApp)] {
+                                event(gs::AskRemove{.app = app});
+                              }));
+      parent.addChild(std::move(r));
+    }
+
+    void addShortcutsPage(Flex& content, const SettingsPrivacyContext& ctx) {
+      const float scale = ctx.scale;
+      const gs::State& state = *ctx.shortcuts;
+      if (state.load != gs::Load::Ready) {
+        return;
+      }
+      using Kind = gs::State::Failure::Kind;
+      if (state.apps.empty()) {
+        addEmptyState(content, "keyboard", i18n::tr("settings.privacy.shortcuts-empty"), scale,
+                      i18n::tr("settings.privacy.shortcuts-empty-body"),
+                      plainButton(i18n::tr("settings.privacy.shortcuts-open-keyboard"), ButtonVariant::Secondary,
+                                  scale, ctx.openKeyboardShortcuts));
+        if (state.failure && state.failure->kind == Kind::RemoveAll) {
+          addFailureRow(content, ctx, i18n::tr("settings.privacy.shortcuts-remove-all-failed"), {});
+        }
+        return;
+      }
+      content.addChild(ui::label({.text = i18n::tr("settings.privacy.shortcuts-intro"),
+                                  .fontSize = Tokens::typeFootnote.size * scale,
+                                  .color = colorSpecFromRole(ColorRole::Label2), .maxWidth = 620.0F * scale,
+                                  .maxLines = 3}));
+
+      // Cards start open up to 6 apps, and always while a shortcut does not work; a click flips the default.
+      const bool manyApps = state.apps.size() > 6;
+      for (const gs::App& app : state.apps) {
+        const std::size_t bad = app.notWorking();
+        const bool toggled = ctx.toggledShortcutApps != nullptr && ctx.toggledShortcutApps->contains(app.id);
+        const bool open = (!manyApps || bad > 0) != toggled;
+        Flex* card = addCard(content, scale);
+
+        auto header = row(scale);
+        header->setGap(Style::spaceMd * scale);
+        header->setMinHeight(Tokens::sizeRowTwo * scale);
+        const std::string name = ctx.appName(app.id);
+        header->addChild(iconButton(open ? "chevron-down" : "chevron-right", name, scale,
+                                    [toggle = ctx.toggleShortcutApp, id = app.id] { toggle(id); }));
+        if (auto icon = ctx.appIcon(app.id, Tokens::componentListAppIcon * scale); icon != nullptr) {
+          header->addChild(std::move(icon));
+        }
+        auto text = ui::column({.align = FlexAlign::Start, .flexGrow = 1.0F});
+        text->addChild(ui::label({.text = name, .fontSize = Tokens::typeHeadline.size * scale,
+                                  .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1),
+                                  .maxLines = 1}));
+        auto meta = ui::row({.align = FlexAlign::Center, .gap = Style::spaceXs * scale});
+        meta->addChild(ui::row({.fill = colorSpecFromRole(app.running ? ColorRole::Accent : ColorRole::Label3),
+                                .radius = Tokens::componentListStatusDot * 0.5F * scale,
+                                .width = Tokens::componentListStatusDot * scale,
+                                .height = Tokens::componentListStatusDot * scale}));
+        meta->addChild(makeLabel(
+            i18n::tr(app.running ? "settings.privacy.shortcuts-running" : "settings.privacy.shortcuts-not-running")
+                + " · "
+                + countText(app.shortcuts.size(), "settings.privacy.shortcuts-one", "settings.privacy.shortcuts-many"),
+            Tokens::typeFootnote.size * scale, colorSpecFromRole(ColorRole::Label2)
+        ));
+        if (bad > 0) {
+          meta->addChild(makeLabel("· " + i18n::tr("settings.privacy.shortcuts-not-working", "count",
+                                                   std::to_string(bad)),
+                                   Tokens::typeFootnote.size * scale, colorSpecFromRole(ColorRole::DangerText)));
+        }
+        text->addChild(std::move(meta));
+        header->addChild(std::move(text));
+        header->addChild(dangerTextButton(i18n::tr("settings.privacy.shortcuts-remove"), scale,
+                                          [event = ctx.shortcutEvent, id = app.id] { event(gs::AskRemove{.app = id}); }));
+        card->addChild(std::move(header));
+
+        if (open) {
+          for (const gs::Shortcut& shortcut : app.shortcuts) {
+            addShortcutRow(*card, ctx, app, shortcut);
+          }
+        }
+        if (state.failure && state.failure->app == app.id) {
+          if (state.failure->kind == Kind::Remove) {
+            addFailureRow(*card, ctx, i18n::tr("settings.privacy.shortcuts-remove-failed", "app", name), app.id);
+          } else {
+            auto r = row(scale);
+            r->addChild(ui::label({.text = i18n::tr("settings.privacy.shortcuts-save-failed"),
+                                   .fontSize = Tokens::typeFootnote.size * scale,
+                                   .color = colorSpecFromRole(ColorRole::DangerText), .maxLines = 2}));
+            card->addChild(std::move(r));
+          }
+        }
+        addSettingsRowSeparators(*card, scale);
+      }
+
+      if (state.failure && state.failure->kind == Kind::RemoveAll) {
+        addFailureRow(content, ctx, i18n::tr("settings.privacy.shortcuts-remove-all-failed"), {});
+      }
+      auto end = ui::row({.justify = FlexJustify::End, .fillWidth = true});
+      end->addChild(dangerTextButton(i18n::tr("settings.privacy.shortcuts-remove-all"), scale,
+                                     [event = ctx.shortcutEvent] { event(gs::AskRemove{.app = {}}); }));
+      content.addChild(std::move(end));
+    }
   } // namespace
 
   void addSettingsPrivacy(Flex& content, const SettingsPrivacyContext& ctx) {
@@ -273,6 +473,8 @@ namespace settings {
         if (const auto it = std::ranges::find(ctx.access, table, &AccessKindView::table); it != ctx.access.end()) {
           addAccessPage(content, ctx, *it);
         }
+      } else if (kind == "global-shortcuts" && ctx.shortcuts != nullptr) {
+        addShortcutsPage(content, ctx);
       } else if (kind == "rename") {
         addRenamePage(content, ctx, ctx.detail.substr(8, tab - 8));
       }
@@ -307,9 +509,18 @@ namespace settings {
     addLinkRow(*card, "fingerprint", fingerTitle, std::move(finger), "privacy:" + fingerTitle + "\tfinger",
                ctx.biometricsKnown, ctx);
 
-    if (!ctx.access.empty()) {
+    const bool shortcutsRow = ctx.shortcuts != nullptr && ctx.shortcuts->load == global_shortcuts::Load::Ready;
+    if (!ctx.access.empty() || shortcutsRow) {
       addHeader(content, i18n::tr("settings.privacy.app-access"), nullptr, scale);
       Flex* access = addCard(content, scale);
+      if (shortcutsRow) {
+        const std::size_t apps = ctx.shortcuts->apps.size();
+        const std::string shortcutsTitle = i18n::tr("settings.privacy.global-shortcuts");
+        addLinkRow(*access, "keyboard", shortcutsTitle,
+                   apps == 0 ? i18n::tr("settings.privacy.access-no-apps")
+                             : countText(apps, "settings.privacy.apps-one", "settings.privacy.apps-many"),
+                   "privacy:" + shortcutsTitle + "\tglobal-shortcuts", true, ctx);
+      }
       for (const auto& kind : ctx.access) {
         const auto allowed = std::ranges::count_if(kind.apps, [](const auto& app) { return app.allowed; });
         std::string value = !kind.loaded ? std::string{}

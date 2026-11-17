@@ -8,7 +8,12 @@
 #include "shell/settings/settings_alert.h"
 #include "shell/settings/settings_content_privacy.h"
 #include "shell/settings/settings_window.h"
+#include "compositors/andromeda/andromeda_runtime.h"
+#include "compositors/compositor_platform.h"
 #include "system/app_permissions.h"
+#include "system/desktop_entry.h"
+
+#include <nlohmann/json.hpp>
 #include "util/parse_number.h"
 
 #include <systemd/sd-bus.h>
@@ -20,7 +25,26 @@
 #include <optional>
 #include <sstream>
 
+namespace gs = settings::global_shortcuts;
+
 namespace {
+
+  template <class... F> struct Overload : F... {
+    using F::operator()...;
+  };
+
+  const DesktopEntry* findAppEntry(const std::vector<DesktopEntry>& entries, const std::string& app) {
+    const auto found = std::ranges::find_if(entries, [&](const DesktopEntry& entry) {
+      return entry.id == app || entry.id == app + ".desktop";
+    });
+    return found != entries.end() ? &*found : nullptr;
+  }
+
+  std::string appEntryName(const std::string& app) {
+    const auto entries = desktopEntriesSnapshot();
+    const DesktopEntry* entry = findAppEntry(*entries, app);
+    return entry != nullptr && !entry->name.empty() ? entry->name : app;
+  }
 
   constexpr auto kBiometricsAction = "org.andromeda.biometrics.manage";
   constexpr auto kFaceAdminHelper = "/usr/lib/andromeda/andromeda-face-admin";
@@ -191,6 +215,12 @@ void SettingsWindow::loadAppAccess() {
 }
 
 void SettingsWindow::leavePrivacy() {
+  // Runs on every rebuild of another page, so it must not request a rebuild itself.
+  for (const gs::Action& action : m_globalShortcuts.handle(gs::Leave{})) {
+    if (std::holds_alternative<gs::CancelCapture>(action) && m_compositorSettings != nullptr) {
+      m_compositorSettings->cancelCapture();
+    }
+  }
   if (m_enroll != nullptr && m_enroll->enrolling() != BiometricEnrollment::Method::None) {
     m_enroll->stop();
   }
@@ -211,6 +241,9 @@ void SettingsWindow::addPrivacyContent(float scale) {
   if (m_permissions == nullptr && m_sessionBus != nullptr) {
     m_permissions = std::make_unique<AppPermissions>(*m_sessionBus);
     loadAppAccess();
+  }
+  if (m_globalShortcuts.load == gs::Load::Loading) {
+    (void)m_globalShortcuts.handle(gs::Loaded{.apps = fetchGlobalShortcuts()});
   }
   if (m_enroll == nullptr && m_systemBus != nullptr) {
     m_enroll = std::make_unique<BiometricEnrollment>(m_systemBus, currentUser());
@@ -388,7 +421,111 @@ void SettingsWindow::addPrivacyContent(float scale) {
                   });
                 });
               },
+          .shortcuts = &m_globalShortcuts,
+          .shortcutEvent = [this, scale](gs::Event event) { globalShortcutsEvent(std::move(event), scale); },
+          .toggledShortcutApps = &m_toggledShortcutApps,
+          .toggleShortcutApp =
+              [this](std::string app) {
+                if (!m_toggledShortcutApps.erase(app)) {
+                  m_toggledShortcutApps.insert(std::move(app));
+                }
+                requestContentRebuild();
+              },
+          .appName = [](const std::string& app) { return appEntryName(app); },
+          .appIcon =
+              [this](const std::string& app, float size) -> std::unique_ptr<Node> {
+                const auto entries = desktopEntriesSnapshot();
+                const DesktopEntry* entry = findAppEntry(*entries, app);
+                return entry != nullptr ? appIcon(*entry, size) : nullptr;
+              },
+          .openKeyboardShortcuts = [this] { navigateTo("shortcuts"); },
           .changePassword = [this] { changePassword(); },
       }
   );
+}
+
+void SettingsWindow::globalShortcutsEvent(gs::Event event, float scale) {
+  const bool wasConfirm = std::holds_alternative<gs::Confirm>(m_globalShortcuts.edit);
+  for (gs::Action& action : m_globalShortcuts.handle(std::move(event))) {
+    std::visit(
+        Overload{
+            [this, scale](gs::Capture&) {
+              if (m_compositorSettings == nullptr) {
+                globalShortcutsEvent(gs::Captured{.chord = {}}, scale);
+                return;
+              }
+              m_compositorSettings->captureChord([this, scale](std::string chord) {
+                globalShortcutsEvent(gs::Captured{.chord = std::move(chord)}, scale);
+              });
+            },
+            [this](gs::CancelCapture&) {
+              if (m_compositorSettings != nullptr) {
+                m_compositorSettings->cancelCapture();
+              }
+            },
+            [this, scale](gs::Assign& assign) {
+              const std::string arg =
+                  assign.app + " " + assign.id + " " + (assign.chord.empty() ? std::string("off") : assign.chord);
+              const auto reply = m_platform == nullptr
+                                     ? std::nullopt
+                                     : m_platform->andromedaRuntime().requestCommand("global-shortcuts-assign", arg);
+              gs::Assigned result{.result = gs::Assigned::Result::Failed, .holder = {}};
+              if (reply.has_value()) {
+                const nlohmann::json& ok = (*reply)["ok"];
+                const std::string reason = ok.value("reason", "");
+                result.result = ok.value("assigned", false) ? gs::Assigned::Result::Ok
+                                : reason == "in_use"        ? gs::Assigned::Result::InUse
+                                                            : gs::Assigned::Result::Reserved;
+                result.holder = ok.value("holder", "");
+              }
+              globalShortcutsEvent(std::move(result), scale);
+            },
+            [this, scale](gs::Revoke& revoke) {
+              const bool ok = m_platform != nullptr
+                              && m_platform->andromedaRuntime()
+                                     .requestCommand("global-shortcuts-revoke", revoke.app.empty() ? "all" : revoke.app)
+                                     .has_value();
+              globalShortcutsEvent(gs::Removed{.ok = ok}, scale);
+            },
+            [this, scale](gs::Reload&) { globalShortcutsEvent(gs::Loaded{.apps = fetchGlobalShortcuts()}, scale); },
+        },
+        action
+    );
+  }
+  if (const auto* confirm = std::get_if<gs::Confirm>(&m_globalShortcuts.edit); confirm != nullptr && !wasConfirm) {
+    const bool all = confirm->app.empty();
+    const std::string name = all ? std::string{} : appEntryName(confirm->app);
+    const auto answer = [this, scale](bool remove) { globalShortcutsEvent(gs::Answer{.remove = remove}, scale); };
+    settings::showSettingsAlert(
+        m_modalHost,
+        settings::SettingsAlertRequest{
+            .title = all ? i18n::tr("settings.privacy.shortcuts-remove-all-title")
+                         : i18n::tr("settings.privacy.shortcuts-remove-title", "app", name),
+            .body = all ? i18n::tr("settings.privacy.shortcuts-remove-all-body", "count",
+                                   std::to_string(m_globalShortcuts.apps.size()))
+                        : i18n::tr("settings.privacy.shortcuts-remove-body", "app", name),
+            .buttons = {
+                {.text = i18n::tr("common.actions.cancel"), .onClick = [answer] { answer(false); }},
+                {.text = i18n::tr(all ? "settings.privacy.shortcuts-remove-all-button" : "settings.privacy.remove"),
+                 .variant = ButtonVariant::Destructive,
+                 .onClick = [answer] { answer(true); }},
+            },
+            // Cancel is the default for a destructive action, so Enter never removes.
+            .defaultIndex = 0,
+            .scale = scale,
+            .onDismissed = [answer] { answer(false); },
+        }
+    );
+  }
+  if (isOpen()) {
+    requestContentRebuild();
+  }
+}
+
+std::optional<std::vector<gs::App>> SettingsWindow::fetchGlobalShortcuts() const {
+  if (m_platform == nullptr) {
+    return std::nullopt;
+  }
+  const auto reply = m_platform->andromedaRuntime().requestCommand("global-shortcuts");
+  return reply.has_value() ? gs::parseApps((*reply)["ok"]) : std::nullopt;
 }

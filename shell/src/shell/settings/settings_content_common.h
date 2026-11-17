@@ -33,6 +33,11 @@ namespace settings {
   [[nodiscard]] std::unique_ptr<Label>
   makeLabel(std::string_view text, float fontSize, const ColorSpec& color, FontWeight fontWeight = FontWeight::Normal);
   [[nodiscard]] std::unique_ptr<Flex> makeSettingsStatusBanner(SettingsStatusBannerProps props);
+  // A chord control: one keycap per "+"-separated key in `shown`, in `keyRole`; while recording it is outlined in
+  // accent and shows "Press keys" unless `shown` holds the refused keys. Empty and idle: "Set Keys".
+  [[nodiscard]] std::unique_ptr<Button> makeChordButton(
+      std::string_view shown, bool recording, ColorRole keyRole, float scale, std::function<void()> onClick
+  );
   void updateSettingsStatusBanner(Flex& banner, Label& message, std::string_view text, bool error);
 
   // Non-dismissible callout for settings pages/sheets that need HTTP while offline_mode is on.

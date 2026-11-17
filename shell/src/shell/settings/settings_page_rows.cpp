@@ -79,13 +79,22 @@ namespace settings::page_rows {
     card.addChild(std::move(r));
   }
 
-  void addEmptyState(Flex& content, std::string_view glyph, std::string_view text, float scale) {
+  void addEmptyState(Flex& content, std::string_view glyph, std::string_view text, float scale, std::string_view body,
+                     std::unique_ptr<Node> action) {
     auto empty = ui::column(
         {.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .padding = Tokens::spaceP48 * scale, .fillWidth = true}
     );
     empty->addChild(symbol(glyph, 48.0F * scale, ColorRole::Label3));
     empty->addChild(makeLabel(text, Tokens::typeTitle3.size * scale, colorSpecFromRole(ColorRole::Label1),
                               FontWeight::SemiBold));
+    if (!body.empty()) {
+      empty->addChild(ui::label({.text = std::string(body), .fontSize = Style::fontSizeBody * scale,
+                                 .color = colorSpecFromRole(ColorRole::Label2), .maxWidth = 320.0F * scale,
+                                 .maxLines = 2, .textAlign = TextAlign::Center}));
+    }
+    if (action != nullptr) {
+      empty->addChild(std::move(action));
+    }
     content.addChild(std::move(empty));
   }
 
