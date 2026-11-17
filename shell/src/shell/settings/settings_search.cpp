@@ -68,7 +68,7 @@ namespace settings {
           caption += (i == 0 ? "" : ", ") + hit.bars[i];
         }
       }
-      if (!entry.group.empty()) {
+      if (!entry.group.empty() && !entry.group.starts_with('~')) {
         caption += " / " + i18n::tr("settings.navigation.groups." + entry.group);
       }
       return caption;
