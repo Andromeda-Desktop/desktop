@@ -445,6 +445,7 @@ ANDROMEDA_TEST(systemdRunReceivesExactScopeArguments) {
           + "--expand-environment=no\n"
           + "--slice=app.slice\n"
           + "--description=Andromeda application\n"
+          + "--property=TimeoutStopSec=5s\n"
           + "--unit=app-andromeda-arguments.scope\n"
           + "--property=PartOf=andromeda-session.target\n"
           + "--property=After=andromeda.service\n"
@@ -592,6 +593,7 @@ ANDROMEDA_TEST(systemdRunMovesTheCommandIntoAnApplicationScope) {
   CHECK_EQ(systemctlProperty(systemctl, unit, "Slice"), "app.slice");
   CHECK_EQ(systemctlProperty(systemctl, unit, "CollectMode"), "inactive-or-failed");
   CHECK_EQ(systemctlProperty(systemctl, unit, "Description"), "Andromeda application");
+  CHECK_EQ(systemctlProperty(systemctl, unit, "TimeoutStopUSec"), "5s");
   const std::string partOf = systemctlProperty(systemctl, unit, "PartOf");
   CHECK(containsWord(partOf, "andromeda-session.target"));
   // A compositor restart must not stop apps (docs/resilience.md R2): only log out does, through PartOf.

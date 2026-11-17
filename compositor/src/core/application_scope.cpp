@@ -128,6 +128,7 @@ namespace andromeda {
     append("--expand-environment=no");
     append("--slice=app.slice");
     append("--description=Andromeda application");
+    append("--property=TimeoutStopSec=5s");
     append(unitArgument);
     append(partOfProperty);
     append(afterProperty);
