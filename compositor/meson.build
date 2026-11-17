@@ -909,6 +909,7 @@ pure_sources = files(
   'src/input/shortcuts_inhibit.cpp',
   'src/input/shortcut_keysym.cpp',
   'src/input/global_shortcuts.cpp',
+  'src/util/private_state_file.cpp',
   'src/input/xcursor_matcher.cpp',
   'src/layout/layout.cpp',
   'src/scene/ssd_frame_geometry.cpp',
