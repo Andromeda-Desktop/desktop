@@ -69,9 +69,12 @@ namespace andromeda {
     // configure state such as suspended): recheck once the loop is idle,
     // so a waiter is not answered in the middle of the change that cleared it.
     void notifySettleInputCleared();
+    // Configured output work ended on an output: answers the replies held until no output has any left.
+    void notifyConfiguredWork();
 
   private:
-    enum class FrameWait : uint8_t { None, Drawn, Settled };
+    // Configured: the reply waits until no output has configured work left (its request started some).
+    enum class FrameWait : uint8_t { None, Drawn, Settled, Configured };
 
     struct Connection {
       Ipc* owner = nullptr;
@@ -109,6 +112,7 @@ namespace andromeda {
     dispatchRequest(Connection& connection, const nlohmann::json& request, size_t requestSize);
     void beginFrameWait(Connection& connection, FrameWait wait, std::string reply);
     void finishFrameWait(Connection& connection, std::string response);
+    void answerRequest(Connection& connection, const std::string& line);
     void broadcastEvent(uint16_t event, const nlohmann::json& payload);
     // False clears the family's last payload: a later subscriber's initial line is not what `last` holds.
     bool hasSubscriber(uint16_t event);

@@ -2792,7 +2792,14 @@ namespace andromeda {
   }
 #endif
 
+  bool Server::configuredWorkPending() const {
+    return std::ranges::any_of(m_outputs, [](const auto& output) { return output->configuredWorkPending(); });
+  }
+
   bool Server::settled() const {
+    if (configuredWorkPending()) {
+      return false;
+    }
     if (std::ranges::any_of(m_animatables, [](const Animatable* owner) { return owner->hasActiveAnimations(); })) {
       return false;
     }

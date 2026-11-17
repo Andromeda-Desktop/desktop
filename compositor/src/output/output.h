@@ -5,6 +5,7 @@
 
 #include <chrono>
 
+#include "config/value_parse.h"
 #include "core/dirty.h"
 #include "output/configured_commit.h"
 #include "output/cursor_plane_pace.h"
@@ -56,6 +57,7 @@ namespace andromeda {
   class View;
   class WorkspaceGroup;
   struct OutputIdentity;
+  struct OutputRule;
 
   class Output : public Trackable {
   public:
@@ -138,6 +140,8 @@ namespace andromeda {
     [[nodiscard]] bool dpmsOff() const { return m_dpmsOff; }
     [[nodiscard]] bool configuredEnabled() const;
     [[nodiscard]] bool desktopEnabled() const { return m_desktopEnabled; }
+    // A configured-state run is queued or waits for its render-thread submit.
+    [[nodiscard]] bool configuredWorkPending() const;
     // Part of the desktop and powered: a target for windows, focus, and rules.
     [[nodiscard]] bool onDesktop() const;
     // A mirroring output leaves the desktop and follows `source`'s power, showing its frames letterboxed.
@@ -297,9 +301,53 @@ namespace andromeda {
     // Full configuration stages geometry. Frame-bound HDR transitions reuse
     // the live geometry and carry a freshly rendered scene buffer.
     // `restore` is the power state a failed commit returns to.
-    [[nodiscard]] CommitResult applyConfiguredState(PowerState restore, bool stageGeometry = true);
-    [[nodiscard]] CommitResult runConfiguredState(const ConfiguredRun& run);
-    [[nodiscard]] CommitOutcome commitConfiguredState(bool stageGeometry, std::string_view& failure);
+    // Where a configured-state run started: its submit completes what that caller did after it.
+    enum class ConfiguredOrigin : uint8_t { Request, SceneFrame, MirrorFrame };
+    // What finishConfiguredState records once the configured state committed or failed.
+    struct ConfiguredFinishData {
+      bool enabled = false;
+      bool hdrRequested = false;
+      bool stageGeometry = false;
+      bool usedModeFallback = false;
+      bool scaleStaged = false;
+      bool hdrRejected = false;
+      std::optional<double> configuredScale;
+      float previousScale = 0.0F;
+      int bitDepth = 0;
+      std::string pendingHdrFail;
+      std::string pendingSdr10Fail;
+    };
+    // A configured state built under deferred submits; completeConfiguredSubmit commits it after the kick.
+    struct ConfiguredSubmit {
+      ConfiguredRun run{};
+      ConfiguredOrigin origin = ConfiguredOrigin::Request;
+      ConfiguredFinishData finish;
+      wlr_output_state state{};
+      wlr_scene_rect* secureMask = nullptr;
+    };
+    // Pending also when the run waits for the render thread; m_configuredSubmit then holds it.
+    [[nodiscard]] CommitResult applyConfiguredState(
+        PowerState restore, bool stageGeometry = true, ConfiguredOrigin origin = ConfiguredOrigin::Request
+    );
+    [[nodiscard]] CommitResult runConfiguredState(const ConfiguredRun& run, ConfiguredOrigin origin);
+    // Nothing when the chosen state was built and waits for the render thread (m_configuredSubmit).
+    [[nodiscard]] std::optional<CommitOutcome>
+    commitConfiguredState(const ConfiguredRun& run, ConfiguredOrigin origin, std::string_view& failure);
+    [[nodiscard]] bool submitConfiguredState(ConfiguredSubmit&& submit);
+    [[nodiscard]] CommitOutcome finishConfiguredState(
+        const ConfiguredFinishData& data, wlr_output_state& state, bool committed, bool busy, std::string_view& failure
+    );
+    [[nodiscard]] CommitResult finishConfiguredRun(const ConfiguredRun& run, CommitOutcome outcome, std::string_view failure);
+    static void onConfiguredSubmitted(void* data, bool ok);
+    // Runs the configured run that waited for the render thread (ConfiguredWait::Render).
+    static void onConfiguredRenderReady(void* data, bool ok);
+    // Runs a run that waits for the render thread once no frame is in flight and the GL context is home.
+    void resumeConfiguredRun();
+    // The mode output-create asked for wins over the output section's; nothing when neither sets one.
+    [[nodiscard]] const OutputMode* requestedMode(const OutputRule* rule) const;
+    // No frame or configured state is in flight and the render thread does not hold the GL context.
+    [[nodiscard]] bool renderIdle() const;
+    void completeConfiguredSubmit(bool submitted);
     [[nodiscard]] PowerState powerState() const { return {.desktopEnabled = m_desktopEnabled, .dpmsOff = m_dpmsOff}; }
     [[nodiscard]] bool configuredPowered() const;
     [[nodiscard]] bool autoHdrEligible(const View* view) const;
@@ -382,6 +430,8 @@ namespace andromeda {
       bool requestTearing = false;
       bool effectsEligible = false;
       bool animationsActive = false;
+      // Counts in m_effectFrames once a configured state this frame submitted is applied.
+      bool effectFrame = false;
       bool rendered = false;
       bool built = false;
       bool gammaPending = false;
@@ -393,6 +443,9 @@ namespace andromeda {
       std::optional<wlr_fbox> zoom;
     };
     std::optional<PendingFrame> m_pendingFrame;
+    std::optional<ConfiguredSubmit> m_configuredSubmit;
+    // output-create's mode (refresh included, which paces frames); a virtual output keeps it.
+    std::optional<OutputMode> m_createdMode;
     StallProbe m_stallProbe;
     ConfiguredCommit m_configuredCommit;
     bool m_gammaDirty = false;

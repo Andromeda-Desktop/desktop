@@ -9,6 +9,7 @@ using andromeda::CommitOutcome;
 using andromeda::CommitResult;
 using andromeda::ConfiguredCommit;
 using andromeda::ConfiguredRun;
+using andromeda::ConfiguredWait;
 using andromeda::HeldFrameEvent;
 using andromeda::HeldFramePhase;
 using andromeda::HeldFrameTimer;
@@ -26,13 +27,13 @@ namespace {
     std::optional<PowerState> oldest;
     bool deferredFailed = false;
 
-    std::optional<ConfiguredRun> request(PowerState next, bool stageGeometry, bool flipPending) {
+    std::optional<ConfiguredRun> request(PowerState next, bool stageGeometry, std::optional<ConfiguredWait> wait) {
       if (!oldest.has_value()) {
         oldest = logical;
       }
       const PowerState previous = logical;
       logical = next;
-      return commit.request(stageGeometry, previous, flipPending);
+      return commit.request(stageGeometry, previous, wait);
     }
 
     void run(const ConfiguredRun& run, CommitOutcome outcome) {
@@ -72,7 +73,7 @@ namespace {
 
 ANDROMEDA_TEST(deferredApplyIsPendingNotApplied) {
   ConfiguredCommit commit;
-  CHECK(!commit.request(true, {.desktopEnabled = true}, true).has_value());
+  CHECK(!commit.request(true, {.desktopEnabled = true}, ConfiguredWait::Flip).has_value());
   CHECK(std::holds_alternative<ConfiguredCommit::Queued>(commit.state()));
   CHECK(commit.beginFrame());
   const std::optional<ConfiguredRun> due = commit.takeDue();
@@ -84,9 +85,9 @@ ANDROMEDA_TEST(deferredApplyIsPendingNotApplied) {
 
 ANDROMEDA_TEST(deferredFailureKeepsTheRequestedState) {
   OutputModel output;
-  CHECK(!output.request({.desktopEnabled = true, .dpmsOff = true}, false, true).has_value());
+  CHECK(!output.request({.desktopEnabled = true, .dpmsOff = true}, false, ConfiguredWait::Flip).has_value());
   const PowerState requested{.desktopEnabled = true, .dpmsOff = false};
-  CHECK(!output.request(requested, true, true).has_value());
+  CHECK(!output.request(requested, true, ConfiguredWait::Flip).has_value());
   CHECK(output.commit.beginFrame());
   const std::optional<ConfiguredRun> due = output.commit.takeDue();
   CHECK(due.has_value() && due->stageGeometry && due->deferred);
@@ -100,7 +101,7 @@ ANDROMEDA_TEST(deferredFailureKeepsTheRequestedState) {
 ANDROMEDA_TEST(synchronousFailureRestoresTheLastAppliedState) {
   OutputModel output;
   const PowerState applied = output.live;
-  const std::optional<ConfiguredRun> run = output.request({.desktopEnabled = false}, true, false);
+  const std::optional<ConfiguredRun> run = output.request({.desktopEnabled = false}, true, std::nullopt);
   CHECK(run.has_value());
   if (run.has_value()) {
     output.run(*run, CommitOutcome::Failed);
@@ -110,7 +111,7 @@ ANDROMEDA_TEST(synchronousFailureRestoresTheLastAppliedState) {
 
 ANDROMEDA_TEST(busyCommitRetriesUntilItCommits) {
   OutputModel output;
-  std::optional<ConfiguredRun> run = output.request(output.logical, true, false);
+  std::optional<ConfiguredRun> run = output.request(output.logical, true, std::nullopt);
   for (int attempt = 0; attempt < 100 && run.has_value(); ++attempt) {
     output.run(*run, CommitOutcome::Busy);
     CHECK(std::holds_alternative<ConfiguredCommit::Queued>(output.commit.state()));
@@ -145,15 +146,20 @@ ANDROMEDA_TEST(randomCommitSequencesKeepLogicalStateOnTheLiveState) {
     OutputModel output;
     std::optional<RequestedMode> lastMode;
     for (int step = 0; step < 200; ++step) {
-      switch (rng() % 5) {
+      switch (rng() % 6) {
       case 0:
       case 1: {
         const PowerState next{.desktopEnabled = rng() % 4 != 0, .dpmsOff = rng() % 3 == 0};
-        const bool flipPending = rng() % 2 == 0;
+        const unsigned waitPick = rng() % 3;
+        const std::optional<ConfiguredWait> wait = waitPick == 0 ? std::nullopt
+            : waitPick == 1                                      ? std::optional{ConfiguredWait::Flip}
+                                                                 : std::optional{ConfiguredWait::Render};
         const bool stageGeometry = rng() % 2 == 0;
         const ConfiguredCommit::State before = output.commit.state();
-        const std::optional<ConfiguredRun> run = output.request(next, stageGeometry, flipPending);
-        CHECK_EQ(run.has_value(), !flipPending);
+        const std::optional<ConfiguredRun> run = output.request(next, stageGeometry, wait);
+        CHECK_EQ(run.has_value(), !wait.has_value());
+        // In the frame handler every wait ends with the frame; outside it the queued run keeps the latest reason.
+        CHECK_EQ(output.commit.waitsForRender(), wait == ConfiguredWait::Render && !output.commit.inFrame());
         CHECK(output.commit.inFrame() == std::holds_alternative<ConfiguredCommit::InFrame>(before));
         if (run.has_value()) {
           output.run(*run, randomOutcome(rng));
@@ -174,6 +180,21 @@ ANDROMEDA_TEST(randomCommitSequencesKeepLogicalStateOnTheLiveState) {
         lastMode.reset();
         break;
       }
+      case 5: {
+        // The render-thread kick fires: it takes the run only when that run waits for the render thread.
+        const bool waited = output.commit.waitsForRender();
+        const ConfiguredCommit::State before = output.commit.state();
+        const std::optional<ConfiguredRun> ready = output.commit.takeRenderReady();
+        CHECK_EQ(ready.has_value(), waited);
+        if (ready.has_value()) {
+          CHECK(ready->deferred);
+          CHECK(std::holds_alternative<ConfiguredCommit::Idle>(output.commit.state()));
+          output.run(*ready, randomOutcome(rng));
+        } else {
+          CHECK(output.commit.state() == before);
+        }
+        break;
+      }
       case 3: {
         const RequestedMode mode{.width = static_cast<int>(rng() % 4000), .height = 600};
         const bool waits = output.commit.requestMode(mode);
@@ -186,8 +207,13 @@ ANDROMEDA_TEST(randomCommitSequencesKeepLogicalStateOnTheLiveState) {
       default: {
         const bool wasInFrame = output.commit.inFrame();
         const ConfiguredCommit::State before = output.commit.state();
-        const std::optional<RequestedMode> mode = output.commit.endFrame();
+        const bool queuedInFrame = wasInFrame && std::get<ConfiguredCommit::InFrame>(before).queued.has_value();
+        const ConfiguredWait next = rng() % 2 == 0 ? ConfiguredWait::Flip : ConfiguredWait::Render;
+        const std::optional<RequestedMode> mode = output.commit.endFrame(next);
         CHECK(!output.commit.inFrame());
+        const auto* queuedBefore = std::get_if<ConfiguredCommit::Queued>(&before);
+        const bool renderBefore = queuedBefore != nullptr && queuedBefore->wait == ConfiguredWait::Render;
+        CHECK_EQ(output.commit.waitsForRender(), queuedInFrame ? next == ConfiguredWait::Render : renderBefore);
         if (!wasInFrame) {
           CHECK(output.commit.state() == before);
           CHECK(!mode.has_value());
@@ -198,6 +224,10 @@ ANDROMEDA_TEST(randomCommitSequencesKeepLogicalStateOnTheLiveState) {
         break;
       }
       }
+      // Observers wait exactly while a run is queued, and only a queued run outside the frame handler waits for the
+      // render thread.
+      CHECK_EQ(output.commit.pending(), output.oldest.has_value());
+      CHECK(!output.commit.waitsForRender() || std::holds_alternative<ConfiguredCommit::Queued>(output.commit.state()));
       if (std::holds_alternative<ConfiguredCommit::Idle>(output.commit.state()) && !output.deferredFailed) {
         CHECK(output.logical == output.live);
       }

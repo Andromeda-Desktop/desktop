@@ -67,18 +67,13 @@ namespace andromeda {
     const unsigned int width = mode.has_value() ? static_cast<unsigned int>(mode->width) : kHeadlessWidth;
     const unsigned int height = mode.has_value() ? static_cast<unsigned int>(mode->height) : kHeadlessHeight;
     m_pendingOutputName = name;
+    m_pendingOutputMode = mode;
     wlr_output* output = wlr_headless_add_output(headless, width, height);
     m_pendingOutputName.clear();
+    m_pendingOutputMode.reset();
     if (output == nullptr) {
       *error = "failed to create a headless output";
       return {};
-    }
-    if (mode.has_value()) {
-      // add_output only sets the size. This also supplies the requested refresh, which paces frames, and wins over
-      // the mode an output section applied while the output came up.
-      if (Output* created = outputFromWlr(output)) {
-        created->applyMode(mode->width, mode->height, mode->refreshMHz);
-      }
     }
     return output->name != nullptr ? output->name : "";
   }

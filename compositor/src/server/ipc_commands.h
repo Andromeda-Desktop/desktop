@@ -72,6 +72,12 @@ namespace andromeda {
     Harness,
   };
 
+  // The CLI wait for a command that can change an output: its reply waits for the configured commit, which can wait
+  // for a stalled GPU submit (2.5 s seen on xe).
+  inline constexpr int kConfiguredReplyTimeoutSec = 10;
+  // The compositor answers a configured wait with an error before the CLI gives up.
+  inline constexpr int kConfiguredWaitTimeoutMs = (kConfiguredReplyTimeoutSec - 2) * 1000;
+
   struct IpcCommandSpec {
     std::string_view name;
     std::string_view argSpec;

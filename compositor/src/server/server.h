@@ -307,6 +307,11 @@ namespace andromeda {
     // No animation is running, no workspace has an arrange waiting for the next frame, and every mapped window has
     // committed its latest configure.
     [[nodiscard]] bool settled() const;
+    // Counts configured-state requests: an IPC reply waits for the configured work its request started.
+    void noteConfiguredRequest() { ++m_configuredRequests; }
+    [[nodiscard]] uint64_t configuredRequests() const { return m_configuredRequests; }
+    [[nodiscard]] bool configuredWorkPending() const;
+    [[nodiscard]] const std::optional<OutputMode>& pendingOutputMode() const { return m_pendingOutputMode; }
     // Whole milliseconds on the clock every animation ticks from, for timers and effect time. It follows the monotonic
     // clock unless a test build froze it.
     [[nodiscard]] uint64_t animationClockMsec() const;
@@ -886,6 +891,7 @@ namespace andromeda {
     // Layout mutations emit synchronously. Hold manager publication until a
     // multi-output transaction has reached its final logical state.
     bool m_deferOutputManagerConfig = false;
+    uint64_t m_configuredRequests = 0;
     wlr_scene_tree* m_shellLayerTrees[kLayerCount]{};
     wlr_scene_tree* m_xdgTree = nullptr;
     wlr_scene_tree* m_scratchpadTree = nullptr;
@@ -1151,6 +1157,8 @@ namespace andromeda {
     std::vector<DisplacedWorkspaceSelection> m_displacedWorkspaceSelections;
     // Name to give the next output the backend hands over, set while createHeadlessOutput is adding one.
     std::string m_pendingOutputName;
+    // The mode output-create asked for: the new output's first configured state stages it.
+    std::optional<OutputMode> m_pendingOutputMode;
     // SIGINT / SIGTERM, delivered on the event loop rather than in a signal
     // handler, so shutdown runs ordinary code instead of async-signal-safe code.
     wl_event_source* m_signalSources[2]{};

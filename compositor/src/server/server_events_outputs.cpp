@@ -202,6 +202,9 @@ namespace andromeda {
       m_sessionLock->forgetOutput(output->wlr());
     }
     std::erase_if(m_outputs, [output](const std::unique_ptr<Output>& entry) { return entry.get() == output; });
+    if (m_ipc != nullptr) {
+      m_ipc->notifyConfiguredWork();
+    }
     updatePresenting();
     if (hadRuntimeEffect && !m_stopping) {
       m_effects.prepare(m_renderer);

@@ -358,9 +358,7 @@ namespace andromeda {
         const size_t newline = connection.input.find('\n');
         const std::string line = connection.input.substr(0, newline);
         connection.input.erase(0, newline + 1);
-        if (auto response = handleRequest(connection, line)) {
-          prepareResponse(connection, std::move(*response));
-        }
+        answerRequest(connection, line);
         return true;
       }
       const ssize_t size = recv(connection.fd, chunk, sizeof(chunk), 0);
@@ -381,9 +379,7 @@ namespace andromeda {
         }
         const std::string line = std::move(connection.input);
         connection.input.clear();
-        if (auto response = handleRequest(connection, line)) {
-          prepareResponse(connection, std::move(*response));
-        }
+        answerRequest(connection, line);
         return true;
       }
       if (errno == EINTR) {
@@ -391,6 +387,20 @@ namespace andromeda {
       }
       return errno == EAGAIN || errno == EWOULDBLOCK;
     }
+  }
+
+  void Ipc::answerRequest(Connection& connection, const std::string& line) {
+    const uint64_t configuredBefore = m_server->configuredRequests();
+    std::optional<std::string> response = handleRequest(connection, line);
+    if (!response.has_value()) {
+      return;
+    }
+    // A reply to a request that changed an output reports the applied state: it waits for the configured commit.
+    if (m_server->configuredRequests() != configuredBefore && m_server->configuredWorkPending()) {
+      beginFrameWait(connection, FrameWait::Configured, std::move(*response));
+      return;
+    }
+    prepareResponse(connection, std::move(*response));
   }
 
   void Ipc::prepareResponse(Connection& connection, std::string response) {
@@ -429,10 +439,13 @@ namespace andromeda {
   int Ipc::onConnectionTimeout(void* data) {
     auto* connection = static_cast<Connection*>(data);
     if (connection->frameWait != FrameWait::None) {
-      const std::string what = connection->frameWait == FrameWait::Settled ? "not settled" : "no frame drawn";
+      const bool configured = connection->frameWait == FrameWait::Configured;
+      const std::string what = connection->frameWait == FrameWait::Settled ? "not settled"
+          : configured                                                     ? "output configuration not applied"
+                                                                           : "no frame drawn";
+      const int timeoutMs = configured ? kConfiguredWaitTimeoutMs : kFrameWaitTimeoutMs;
       connection->owner->finishFrameWait(
-          *connection,
-          nlohmann::json{{"err", what + " within " + std::to_string(kFrameWaitTimeoutMs / 1000) + "s"}}.dump()
+          *connection, nlohmann::json{{"err", what + " within " + std::to_string(timeoutMs / 1000) + "s"}}.dump()
       );
       return 0;
     }
@@ -447,7 +460,12 @@ namespace andromeda {
     // Nothing more is read from a waiting connection, and a client that half-closes must not end the wait.
     wl_event_source_fd_update(connection.fdSource, 0);
     if (connection.deadline != nullptr) {
-      wl_event_source_timer_update(connection.deadline, kFrameWaitTimeoutMs);
+      wl_event_source_timer_update(
+          connection.deadline, wait == FrameWait::Configured ? kConfiguredWaitTimeoutMs : kFrameWaitTimeoutMs
+      );
+    }
+    if (wait == FrameWait::Configured) {
+      return;
     }
     for (const auto& output : m_server->outputs()) {
       if (output->wlr()->enabled) {
@@ -474,7 +492,7 @@ namespace andromeda {
     std::vector<Connection*> ready;
     std::vector<Connection*> stuck;
     for (const auto& connection : m_connections) {
-      if (connection->frameWait == FrameWait::None) {
+      if (connection->frameWait != FrameWait::Drawn && connection->frameWait != FrameWait::Settled) {
         continue;
       }
       // Outputs destroyed during the wait never draw again.
@@ -505,6 +523,23 @@ namespace andromeda {
           *connection, R"({"err":"an animation is running on the frozen animation clock; clock-advance past it first"})"
       );
     }
+  }
+
+  void Ipc::notifyConfiguredWork() {
+    if (m_server->configuredWorkPending()) {
+      return;
+    }
+    std::vector<Connection*> ready;
+    for (const auto& connection : m_connections) {
+      if (connection->frameWait == FrameWait::Configured) {
+        ready.push_back(connection.get());
+      }
+    }
+    for (Connection* connection : ready) {
+      finishFrameWait(*connection, std::move(connection->waitReply));
+    }
+    // Settle waits for configured work as well.
+    notifySettleInputCleared();
   }
 
   void Ipc::notifyViewCommitted() {
