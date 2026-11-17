@@ -178,6 +178,25 @@ namespace shell::dock {
     return static_cast<std::int32_t>(std::ceil(extra + static_cast<float>(kCellPad)));
   }
 
+  std::vector<float> hoverSpreadOffsets(const std::vector<float>& scales, float iconSize) {
+    std::vector<float> offsets(scales.size(), 0.0F);
+    std::size_t peak = 0;
+    float before = 0.0F;
+    for (std::size_t index = 0; index < scales.size(); ++index) {
+      const float extra = iconSize * std::max(0.0F, scales[index] - 1.0F);
+      offsets[index] = before + extra * 0.5F;
+      before += extra;
+      if (scales[index] > scales[peak]) {
+        peak = index;
+      }
+    }
+    const float anchor = offsets.empty() ? 0.0F : offsets[peak];
+    for (float& offset : offsets) {
+      offset -= anchor;
+    }
+    return offsets;
+  }
+
   std::int32_t dockHoverZoomMainPad(const DockConfig& cfg) {
     const float peak = dockHoverZoomPeakScale(cfg);
     if (peak <= 1.0F) {

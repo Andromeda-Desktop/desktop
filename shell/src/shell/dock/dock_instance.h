@@ -5,6 +5,7 @@
 #include "design_tokens.h"
 #include "motion/desk_motion.h"
 #include "shell/bar/lens_track.h"
+#include "shell/dock/dock_geometry.h"
 #include "render/scene/input_dispatcher.h"
 #include "shell/dock/dock_items.h"
 #include "shell/dock/dock_model.h"
@@ -85,6 +86,9 @@ namespace shell::dock {
     std::size_t lensActiveIndex = static_cast<std::size_t>(-1);
     float scrollOffset = 0.0F;
     float maxScrollOffset = 0.0F;
+    // The pill at rest, and how far hover magnification grows it past each main-axis end (start, end), px.
+    shell::dock::DockPanelGeometry restPanel;
+    std::array<float, 2> zoomGrow{};
     InputDispatcher inputDispatcher;
     std::vector<shell::dock::DockItemView> items;
     DockSnapshot snapshot;
@@ -162,6 +166,8 @@ namespace shell::dock {
   void applyPanelPalette(DockInstance& instance, const DockConfig& cfg);
   void syncDockSlideLayerTransform(DockInstance& instance, const DockConfig& cfg);
   void applyDockCompositorBlur(DockInstance& instance, const DockConfig& cfg);
+  // Grows the pill, its glass, viewport and input region `start` and `end` px past its rest ends on the main axis.
+  void applyDockZoomGrow(DockInstance& instance, const DockConfig& cfg, float start, float end);
   // Slides the dock toward `target` (0 hidden, 1 shown); a running slide keeps its velocity. The value stays in 0..1.
   void animateDockHide(DockInstance& instance, float target);
   void startHideFadeOut(DockInstance& instance);

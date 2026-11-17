@@ -90,10 +90,12 @@ namespace shell::dock {
         return;
       }
       instance.scrollOffset = std::clamp(instance.scrollOffset, 0.0F, instance.maxScrollOffset);
+      // The viewport grows past the pill start with magnification; the row stays put on screen.
+      const float main = instance.zoomGrow[0] - instance.scrollOffset;
       if (shell::dock::isVerticalEdge(cfg.position)) {
-        instance.row->setPosition(instance.row->x(), -instance.scrollOffset);
+        instance.row->setPosition(instance.row->x(), main);
       } else {
-        instance.row->setPosition(-instance.scrollOffset, instance.row->y());
+        instance.row->setPosition(main, instance.row->y());
       }
     }
 
@@ -153,9 +155,17 @@ namespace shell::dock {
   // Never hit-test the slide-translated panel — that goes off-surface when smart_auto_hide
   // flips to pinned before hideOpacity recovers (dock rebuild on a new window).
   void
-  syncDockAutoHideInputRegion(DockInstance& instance, const DockConfig& cfg, const DockPanelGeometry& panelGeometry) {
+  syncDockAutoHideInputRegion(DockInstance& instance, const DockConfig& cfg, DockPanelGeometry panelGeometry) {
     if (instance.surface == nullptr) {
       return;
+    }
+    // A pill grown by magnification keeps the pointer inside its grown ends.
+    if (shell::dock::isVerticalEdge(cfg.position)) {
+      panelGeometry.panelY -= instance.zoomGrow[0];
+      panelGeometry.panelH += instance.zoomGrow[0] + instance.zoomGrow[1];
+    } else {
+      panelGeometry.panelX -= instance.zoomGrow[0];
+      panelGeometry.panelW += instance.zoomGrow[0] + instance.zoomGrow[1];
     }
     const int surfW = static_cast<int>(instance.surface->width());
     const int surfH = static_cast<int>(instance.surface->height());
@@ -227,6 +237,45 @@ namespace shell::dock {
     }
     instance.shape->set(DskSurfaceClient::Property::Radius, {std::min({radius, clip[2] * 0.5, clip[3] * 0.5}), 0.0, 0.0, 0.0});
     instance.shape->set(DskSurfaceClient::Property::Join, {static_cast<double>(edge), flare, 0.0, 0.0});
+  }
+
+  void applyDockZoomGrow(DockInstance& instance, const DockConfig& cfg, float start, float end) {
+    if (instance.panel == nullptr || instance.viewport == nullptr
+        || (start == instance.zoomGrow[0] && end == instance.zoomGrow[1])) {
+      return;
+    }
+    const float shiftStart = start - instance.zoomGrow[0];
+    instance.zoomGrow = {start, end};
+    const bool vert = shell::dock::isVerticalEdge(cfg.position);
+    const auto concave = dockConcaveShape(cfg);
+    DockPanelGeometry grown = instance.restPanel;
+    if (vert) {
+      grown.panelY -= start;
+      grown.panelH += start + end;
+    } else {
+      grown.panelX -= start;
+      grown.panelW += start + end;
+    }
+    const float panelW = grown.panelW + concave.logicalInset.left + concave.logicalInset.right;
+    const float panelH = grown.panelH + concave.logicalInset.top + concave.logicalInset.bottom;
+    instance.panel->setPosition(grown.panelX - concave.logicalInset.left, grown.panelY - concave.logicalInset.top);
+    instance.panel->setSize(panelW, panelH);
+    if (instance.shadow != nullptr) {
+      instance.shadow->setPosition(
+          instance.shadow->x() - (vert ? 0.0F : shiftStart), instance.shadow->y() - (vert ? shiftStart : 0.0F)
+      );
+      instance.shadow->setSize(panelW, panelH);
+    }
+    if (vert) {
+      instance.viewport->setPosition(instance.viewport->x(), grown.panelY);
+      instance.viewport->setSize(instance.viewport->width(), grown.panelH);
+    } else {
+      instance.viewport->setPosition(grown.panelX, instance.viewport->y());
+      instance.viewport->setSize(grown.panelW, instance.viewport->height());
+    }
+    applyDockScrollOffset(instance, cfg);
+    syncDockAutoHideInputRegion(instance, cfg, instance.restPanel);
+    applyDockCompositorBlur(instance, cfg);
   }
 
   void applyDockCompositorBlur(DockInstance& instance, const DockConfig& cfg) {
@@ -443,6 +492,8 @@ namespace shell::dock {
     }
 
     // Panel
+    instance.restPanel = panelGeometry;
+    instance.zoomGrow = {};
     applyPanelPalette(instance, cfg);
     instance.panel->setPosition(
         panelGeometry.panelX - concave.logicalInset.left, panelGeometry.panelY - concave.logicalInset.top
@@ -514,13 +565,13 @@ namespace shell::dock {
       // A surface with shapes draws no surface glass: the material goes on the shape.
       const glass::Material material = Style::glassMaterial(glass::Kind::Shape);
       compositorTint = liquid && cfg.compositorBlur && Style::compositorDrawsTint();
-      instance.shape->set(DskSurfaceClient::Property::Liquid, liquid ? glassLiquid(material) : DskSurfaceClient::Value{});
+      setGlassMaterial(*instance.shape, *instance.dsk, liquid ? &material : nullptr);
       instance.shape->set(
           DskSurfaceClient::Property::Tint, glassTintValue(materialRole(), compositorTint ? material.tint : 0.0F, instance.sceneRoot.get())
       );
     } else if (instance.dsk != nullptr && instance.dsk->hasLiquidProperty()) {
       const glass::Material material = Style::glassMaterial(glass::Kind::Shape);
-      instance.dsk->set(DskSurfaceClient::Property::Liquid, liquid ? glassLiquid(material) : DskSurfaceClient::Value{});
+      setGlassMaterial(*instance.dsk, *instance.dsk, liquid ? &material : nullptr);
       if (instance.dsk->hasTintProperty()) {
         compositorTint = liquid && cfg.compositorBlur && Style::compositorDrawsTint();
         instance.dsk->set(
@@ -587,13 +638,13 @@ namespace shell::dock {
     constexpr float kSettledThreshold = 0.999F;
     const float current = inst.hideOpacity;
     if (current >= kSettledThreshold && !inst.visibility.slideAnim().has_value()) {
-      syncDockAutoHideInputRegion(inst, cfg, DockPanelGeometry{});
+      syncDockAutoHideInputRegion(inst, cfg, inst.restPanel);
       inst.surface->requestRedraw();
       return;
     }
 
     animateDockHide(inst, 1.0F);
-    syncDockAutoHideInputRegion(inst, cfg, DockPanelGeometry{});
+    syncDockAutoHideInputRegion(inst, cfg, inst.restPanel);
     inst.surface->requestRedraw();
   }
 
@@ -602,7 +653,7 @@ namespace shell::dock {
     // so they cannot remain pinned after auto-hide starts (#4177).
     TooltipManager::instance().forceDestroy();
     animateDockHide(inst, 0.0F);
-    syncDockAutoHideInputRegion(inst, inst.config, DockPanelGeometry{});
+    syncDockAutoHideInputRegion(inst, inst.config, inst.restPanel);
     if (inst.surface) {
       inst.surface->requestRedraw();
     }
@@ -618,7 +669,7 @@ namespace shell::dock {
       if (const auto running = inst.visibility.apply(DockVisibility::FollowBegan{.rest = rest}).cancel) {
         inst.animations.cancel(*running);
       }
-      syncDockAutoHideInputRegion(inst, inst.config, DockPanelGeometry{});
+      syncDockAutoHideInputRegion(inst, inst.config, inst.restPanel);
     }
     inst.hideOpacity = *inst.visibility.followRest() * (1.0F - std::clamp(progress, 0.0F, 1.0F));
     syncDockSlideLayerTransform(inst, inst.config);
@@ -637,7 +688,7 @@ namespace shell::dock {
       return;
     }
     // Back to the auto-hide state: an auto-hide dock stays away until hovered or smart auto-hide pins it.
-    syncDockAutoHideInputRegion(inst, inst.config, DockPanelGeometry{});
+    syncDockAutoHideInputRegion(inst, inst.config, inst.restPanel);
     if (!dockUsesAnyAutoHide(inst.config)) {
       animateDockHide(inst, 1.0F);
     }

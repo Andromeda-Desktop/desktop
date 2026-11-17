@@ -171,23 +171,6 @@ namespace {
     return true;
   }
 
-  void computeSymmetricSpreadOffsets(const std::vector<float>& scales, float iconSize, std::vector<float>& outOffsets) {
-    const std::size_t count = scales.size();
-    outOffsets.assign(count, 0.0F);
-    if (count <= 1U) {
-      return;
-    }
-    for (std::size_t index = 1; index < count; ++index) {
-      const float pairExtra = iconSize * (scales[index - 1U] + scales[index] - 2.0F) * 0.5F;
-      if (pairExtra <= 0.0F) {
-        continue;
-      }
-      const float halfExtra = pairExtra * 0.5F;
-      outOffsets[index - 1U] -= halfExtra;
-      outOffsets[index] += halfExtra;
-    }
-  }
-
   void clampSpreadOffsetsToBounds(
       const std::vector<float>& restMainPos, const std::vector<float>& scales, float cellMain, float iconSize,
       float boundsMin, float boundsMax, std::vector<float>& offsets
@@ -1267,7 +1250,7 @@ namespace shell::dock {
 
     std::vector<float> targetOffsets;
     if (pointerActive) {
-      computeSymmetricSpreadOffsets(slotScales, iSize, targetOffsets);
+      targetOffsets = shell::dock::hoverSpreadOffsets(slotScales, iSize);
       std::vector<float> restMainPos;
       restMainPos.reserve(slots.size());
       for (const HoverSlot& slot : slots) {
@@ -1275,8 +1258,11 @@ namespace shell::dock {
       }
       const float rowMainSize = vertical ? instance.row->height() : instance.row->width();
       const auto mainPad = static_cast<float>(cfg.mainAxisPadding);
+      // A dock that fits grows its pill into the surface's zoom room; a scrolling dock spreads inside its row.
+      const float growRoom =
+          instance.maxScrollOffset > 0.0F ? 0.0F : static_cast<float>(shell::dock::dockHoverZoomMainPad(cfg));
       clampSpreadOffsetsToBounds(
-          restMainPos, slotScales, cellMain, iSize, mainPad, rowMainSize - mainPad, targetOffsets
+          restMainPos, slotScales, cellMain, iSize, mainPad - growRoom, rowMainSize - mainPad + growRoom, targetOffsets
       );
     } else {
       targetOffsets.assign(slots.size(), 0.0F);
@@ -1304,6 +1290,23 @@ namespace shell::dock {
       if (!instance.drag.active()) {
         syncHoveredTooltipAnchor(slot.area, cfg, iSize, paintScale);
       }
+    }
+
+    // The pill follows the drawn icons past its rest ends, so a magnified end icon never leaves the glass.
+    if (instance.maxScrollOffset <= 0.0F) {
+      const float rowMainSize = vertical ? instance.row->height() : instance.row->width();
+      const auto mainPad = static_cast<float>(cfg.mainAxisPadding);
+      float low = mainPad;
+      float high = rowMainSize - mainPad;
+      for (const HoverSlot& slot : slots) {
+        const float scale = *slot.visualScale > 0.0F ? *slot.visualScale : slot.targetScale;
+        const float center = slot.restMainPos + cellMain * 0.5F + *slot.hoverMainOffset;
+        low = std::min(low, center - iSize * scale * 0.5F);
+        high = std::max(high, center + iSize * scale * 0.5F);
+      }
+      shell::dock::applyDockZoomGrow(
+          instance, cfg, std::round(mainPad - low), std::round(high - (rowMainSize - mainPad))
+      );
     }
 
     // The lens grows with the magnified focused icon: the icon's drawn rect plus the lens inset.

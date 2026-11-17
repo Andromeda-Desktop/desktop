@@ -7,7 +7,10 @@
 #include "tests/test_check.h"
 #include "wayland/surface.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <random>
+#include <vector>
 
 namespace {
 
@@ -58,7 +61,34 @@ namespace {
 
 } // namespace
 
+namespace {
+
+  // Random hover scales (1 to 2.5, any shape): no two drawn icons come closer than at rest, and the largest stays put.
+  void checkHoverSpreadNeverOverlaps() {
+    constexpr float kIcon = 48.0F;
+    std::mt19937 rng(7);
+    std::uniform_real_distribution<float> scale(1.0F, 2.5F);
+    std::uniform_int_distribution<std::size_t> count(1, 12);
+    for (int run = 0; run < 2000; ++run) {
+      std::vector<float> scales(count(rng));
+      for (float& s : scales) {
+        s = scale(rng);
+      }
+      const std::vector<float> offsets = shell::dock::hoverSpreadOffsets(scales, kIcon);
+      TEST_CHECK(offsets.size() == scales.size());
+      const auto peak = static_cast<std::size_t>(std::ranges::max_element(scales) - scales.begin());
+      TEST_CHECK(offsets[peak] == 0.0F);
+      for (std::size_t i = 1; i < scales.size(); ++i) {
+        const float shrink = offsets[i] - offsets[i - 1] - kIcon * (scales[i - 1] + scales[i] - 2.0F) * 0.5F;
+        TEST_CHECK(shrink >= -0.01F);
+      }
+    }
+  }
+
+} // namespace
+
 int main() {
+  checkHoverSpreadNeverOverlaps();
   constexpr DockEdge kEdges[] = {DockEdge::Bottom, DockEdge::Top, DockEdge::Left, DockEdge::Right};
 
   for (const DockEdge edge : kEdges) {
