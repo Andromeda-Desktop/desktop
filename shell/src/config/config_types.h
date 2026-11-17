@@ -786,7 +786,7 @@ struct DockConfig {
   bool showDots = false;            // show optional running window dots below app icons
   bool runningBar = true;           // short bar under running apps; hidden while show_dots is on
   bool showInstanceCount = true;    // show a badge with count when app has >1 window
-  DockLauncherPosition launcherPosition = DockLauncherPosition::None;
+  DockLauncherPosition launcherPosition = DockLauncherPosition::Start;
   std::string launcherIcon = "grid-dots";   // Tabler glyph name
   std::string launcherCustomImage;          // image path; overrides launcherIcon glyph when set
   bool launcherCustomImageColorize = false; // tint the custom image with the icon color role
