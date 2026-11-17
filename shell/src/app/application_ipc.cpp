@@ -160,19 +160,6 @@ void Application::initIpc() {
     const RfkillSwitchResult result = setAllRadiosSoftBlocked(!areAllRadiosSoftBlocked());
     return result.success ? "ok\n" : "error: " + result.detail + "\n";
   });
-  m_ipcService.bind(noctalia::cli::msg::globalShortcut, [this](const std::string& args) -> std::string {
-    std::istringstream words(args);
-    std::string appId;
-    std::string shortcutId;
-    words >> appId >> shortcutId;
-    if (shortcutId.empty()) {
-      return "error: usage: global-shortcut <app-id> <shortcut-id>\n";
-    }
-    if (m_globalShortcutsPortal == nullptr || !m_globalShortcutsPortal->activate(appId, shortcutId)) {
-      return "error: " + appId + " has not bound " + shortcutId + "\n";
-    }
-    return "ok\n";
-  });
   m_ipcService.bind(noctalia::cli::msg::globalShortcuts, [this](const std::string&) -> std::string {
     return m_globalShortcutsPortal != nullptr ? m_globalShortcutsPortal->list() : std::string{};
   });

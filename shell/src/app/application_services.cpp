@@ -2236,7 +2236,7 @@ void Application::initSessionBusServices() {
             }
           }
       );
-      m_globalShortcutsPortal = std::make_unique<GlobalShortcutsPortal>(*m_bus);
+      m_globalShortcutsPortal = std::make_unique<GlobalShortcutsPortal>(*m_bus, m_wayland);
       m_screenRecorder = std::make_unique<ScreenRecorder>(*m_bus, m_notificationManager);
       m_screenRecorder->setActiveCallback([this]() { syncLiveActivity(); });
       if (m_systemBus != nullptr) {

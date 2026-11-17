@@ -176,10 +176,6 @@ namespace noctalia::cli {
       Positional{"id", {}, {}, true, false, false},
       Positional{"context", {}, {}, false, false, false},
   };
-  inline constexpr std::array kMsgGlobalShortcutPositionals{
-      Positional{"app-id", {}, {}, true, false, false},
-      Positional{"shortcut-id", {}, {}, true, false, false},
-  };
   inline constexpr std::array kMsgScreenRecordRegionPositionals{
       Positional{"geometry", "X,Y WxH in global logical pixels", {}, false, false, true},
   };
@@ -980,18 +976,8 @@ namespace noctalia::cli {
     inline constexpr Command airplaneToggle{
         "airplane-toggle", "Toggle airplane mode (every radio)", {}, {}, {}, {}, {}, false
     };
-    inline constexpr Command globalShortcut{
-        "global-shortcut",
-        "Activate a shortcut an app registered through the GlobalShortcuts portal",
-        {},
-        {},
-        {},
-        kMsgGlobalShortcutPositionals,
-        {},
-        false
-    };
     inline constexpr Command globalShortcuts{"global-shortcuts",
-                                             "List shortcuts apps registered through the GlobalShortcuts portal",
+                                             "List shortcuts apps bound through the GlobalShortcuts portal",
                                              {},
                                              {},
                                              {},
@@ -1189,7 +1175,6 @@ namespace noctalia::cli {
       msg::dpmsOff,
       msg::dpmsOn,
       msg::effectsProfileSet,
-      msg::globalShortcut,
       msg::globalShortcuts,
       msg::greeterSync,
       msg::hotspotStatus,

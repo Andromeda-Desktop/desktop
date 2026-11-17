@@ -79,6 +79,7 @@ _sources = files(
   'src/dbus/tray/tray_service.cpp',
   'src/dbus/upower/upower_charge_limit_support.cpp',
   'src/dbus/portal/global_shortcuts_portal.cpp',
+  'src/dbus/portal/global_shortcuts_session_state.cpp',
   'src/dbus/portal/background_portal.cpp',
   'src/dbus/portal/inhibit_portal.cpp',
   'src/dbus/portal/settings_portal.cpp',

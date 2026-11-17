@@ -1126,6 +1126,7 @@ if build_tests
     'update_run',
     'dconf_read',
     'accent_pick',
+    'global_shortcuts_session_state',
     'accessible_tree',
     'annotation_document',
     'annotation_raster',

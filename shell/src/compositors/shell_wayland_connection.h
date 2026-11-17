@@ -2,10 +2,12 @@
 
 #include "compositors/ext_foreign_toplevels.h"
 #include "compositors/wayland_toplevels.h"
+#include "dbus/portal/global_shortcuts_backend.h"
 #include "wayland/wayland_connection.h"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,10 +28,11 @@ struct zwp_virtual_keyboard_manager_v1;
 class ClipboardService;
 struct DataControlOps;
 class VirtualKeyboardService;
+class WaylandGlobalShortcutsSession;
 
 // The shell's Wayland connection: the toolkit connection plus desktop-shell protocols (workspaces, toplevel
 // lists, session lock, clipboard, capture, gamma, output power, dsk_shell_v1).
-class ShellWaylandConnection : public WaylandConnection {
+class ShellWaylandConnection : public WaylandConnection, public GlobalShortcutsBackend {
 public:
   explicit ShellWaylandConnection(Purpose purpose = Purpose::Shell);
   ~ShellWaylandConnection() override;
@@ -41,6 +44,8 @@ public:
   // dsk_shell_v1: keybind actions, lock-key state, and system bells from the compositor.
   void setShellActionCallback(std::function<void(const std::string& command)> callback);
   void setShellBellCallback(std::function<void(const std::string& appId)> callback);
+  // nullptr unless the compositor serves dsk_shell_v1 version 5.
+  std::unique_ptr<GlobalShortcutsSession> open(const std::string& appId, GlobalShortcutsEvents events) override;
   void setCompositorLockKeysCallback(ChangeCallback callback);
   // dsk_shell_v1 version 3. Each request returns false on a compositor that bound a lower version.
   struct TextInputState {
@@ -148,7 +153,10 @@ private:
   ext_session_lock_manager_v1* m_sessionLockManager = nullptr;
   zwlr_gamma_control_manager_v1* m_gammaControlManager = nullptr;
   zwlr_output_power_manager_v1* m_outputPowerManager = nullptr;
+  friend class WaylandGlobalShortcutsSession;
+
   dsk_shell_v1* m_desktopShell = nullptr;
+  std::vector<WaylandGlobalShortcutsSession*> m_globalShortcutsSessions;
   std::function<void(const std::string&)> m_shellActionCallback;
   std::function<void(const std::string&)> m_shellBellCallback;
   std::function<void(const TextInputState&)> m_textInputStateCallback;

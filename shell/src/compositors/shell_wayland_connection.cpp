@@ -29,7 +29,7 @@ namespace {
   constexpr std::uint32_t kExtSessionLockManagerVersion = 1;
   constexpr std::uint32_t kVirtualKeyboardManagerVersion = 1;
   constexpr std::uint32_t kGammaControlManagerVersion = 1;
-  constexpr std::uint32_t kDesktopShellVersion = 4;
+  constexpr std::uint32_t kDesktopShellVersion = 5;
   constexpr std::uint32_t kScreencopyManagerVersion = 3;
   constexpr std::uint32_t kImageCopyCaptureManagerVersion = 1;
   constexpr std::uint32_t kOutputImageCaptureSourceManagerVersion = 1;
@@ -87,6 +87,134 @@ namespace {
   }
 
 } // namespace
+
+// One dsk_global_shortcuts_session_v1. A bind is fenced by a wl_display.sync sent before it: the compositor handles
+// both in one batch, so done, cancelled and revoked that arrive before the fence describe the earlier binding.
+class WaylandGlobalShortcutsSession final : public GlobalShortcutsSession {
+public:
+  WaylandGlobalShortcutsSession(
+      ShellWaylandConnection& owner, dsk_global_shortcuts_session_v1* proxy, GlobalShortcutsEvents events
+  )
+      : m_owner(owner), m_proxy(proxy), m_events(std::move(events)) {
+    dsk_global_shortcuts_session_v1_add_listener(m_proxy, &kListener, this);
+    m_owner.m_globalShortcutsSessions.push_back(this);
+  }
+
+  ~WaylandGlobalShortcutsSession() override {
+    detach();
+    std::erase(m_owner.m_globalShortcutsSessions, this);
+  }
+
+  WaylandGlobalShortcutsSession(const WaylandGlobalShortcutsSession&) = delete;
+  WaylandGlobalShortcutsSession& operator=(const WaylandGlobalShortcutsSession&) = delete;
+
+  void bind(const std::vector<GlobalShortcut>& shortcuts) override {
+    if (m_proxy == nullptr) {
+      return;
+    }
+    if (m_fence != nullptr) {
+      wl_callback_destroy(m_fence);
+    }
+    m_fence = wl_display_sync(m_owner.display());
+    wl_callback_add_listener(m_fence, &kFenceListener, this);
+    for (const GlobalShortcut& shortcut : shortcuts) {
+      dsk_global_shortcuts_session_v1_add_shortcut(
+          m_proxy, shortcut.id.c_str(), shortcut.description.c_str(), shortcut.trigger.c_str()
+      );
+    }
+    dsk_global_shortcuts_session_v1_bind(m_proxy);
+    m_list.clear();
+  }
+
+  // Runs before the display goes away; the session then stays inert.
+  void detach() {
+    if (m_fence != nullptr) {
+      wl_callback_destroy(m_fence);
+      m_fence = nullptr;
+    }
+    if (m_proxy != nullptr) {
+      dsk_global_shortcuts_session_v1_destroy(m_proxy);
+      m_proxy = nullptr;
+    }
+  }
+
+private:
+  static WaylandGlobalShortcutsSession& self(void* data) { return *static_cast<WaylandGlobalShortcutsSession*>(data); }
+
+  static void onShortcut(
+      void* data, dsk_global_shortcuts_session_v1* /*proxy*/, const char* id, const char* description,
+      const char* trigger, std::uint32_t conflict
+  ) {
+    auto& session = self(data);
+    if (session.m_fence == nullptr) {
+      session.m_list.push_back({.id = id, .description = description, .trigger = trigger, .conflict = conflict});
+    }
+  }
+
+  static void onDone(void* data, dsk_global_shortcuts_session_v1* /*proxy*/) {
+    auto& session = self(data);
+    if (session.m_fence == nullptr) {
+      session.m_events.done(std::exchange(session.m_list, {}));
+    }
+  }
+
+  static void onCancelled(void* data, dsk_global_shortcuts_session_v1* /*proxy*/) {
+    auto& session = self(data);
+    if (session.m_fence == nullptr) {
+      session.m_events.cancelled();
+    }
+  }
+
+  static void onRevoked(void* data, dsk_global_shortcuts_session_v1* /*proxy*/) {
+    auto& session = self(data);
+    if (session.m_fence == nullptr) {
+      session.m_events.revoked();
+    }
+  }
+
+  static void onActivated(void* data, dsk_global_shortcuts_session_v1* /*proxy*/, const char* id, std::uint32_t time) {
+    self(data).m_events.activated(id, time);
+  }
+
+  static void
+  onDeactivated(void* data, dsk_global_shortcuts_session_v1* /*proxy*/, const char* id, std::uint32_t time) {
+    self(data).m_events.deactivated(id, time);
+  }
+
+  static void onFence(void* data, wl_callback* callback, std::uint32_t /*serial*/) {
+    auto& session = self(data);
+    wl_callback_destroy(callback);
+    session.m_fence = nullptr;
+    session.m_list.clear();
+  }
+
+  static constexpr dsk_global_shortcuts_session_v1_listener kListener = {
+      .shortcut = onShortcut,
+      .done = onDone,
+      .cancelled = onCancelled,
+      .revoked = onRevoked,
+      .activated = onActivated,
+      .deactivated = onDeactivated,
+  };
+  static constexpr wl_callback_listener kFenceListener = {.done = onFence};
+
+  ShellWaylandConnection& m_owner;
+  dsk_global_shortcuts_session_v1* m_proxy;
+  wl_callback* m_fence = nullptr;
+  GlobalShortcutsEvents m_events;
+  std::vector<GlobalShortcut> m_list;
+};
+
+std::unique_ptr<GlobalShortcutsSession>
+ShellWaylandConnection::open(const std::string& appId, GlobalShortcutsEvents events) {
+  if (m_desktopShell == nullptr
+      || dsk_shell_v1_get_version(m_desktopShell) < DSK_SHELL_V1_GET_GLOBAL_SHORTCUTS_SESSION_SINCE_VERSION) {
+    return nullptr;
+  }
+  return std::make_unique<WaylandGlobalShortcutsSession>(
+      *this, dsk_shell_v1_get_global_shortcuts_session(m_desktopShell, appId.c_str()), std::move(events)
+  );
+}
 
 ShellWaylandConnection::ShellWaylandConnection(Purpose purpose) : WaylandConnection(purpose) {}
 
@@ -501,6 +629,9 @@ void ShellWaylandConnection::cleanupExtensions() {
   destroy(m_sessionLockManager, ext_session_lock_manager_v1_destroy);
   destroy(m_gammaControlManager, zwlr_gamma_control_manager_v1_destroy);
   destroy(m_outputPowerManager, zwlr_output_power_manager_v1_destroy);
+  for (WaylandGlobalShortcutsSession* session : m_globalShortcutsSessions) {
+    session->detach();
+  }
   destroy(m_desktopShell, dsk_shell_v1_destroy);
   destroy(m_screencopyManager, zwlr_screencopy_manager_v1_destroy);
   destroy(m_imageCopyCaptureManager, ext_image_copy_capture_manager_v1_destroy);
