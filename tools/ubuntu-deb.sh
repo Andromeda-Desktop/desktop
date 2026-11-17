@@ -63,7 +63,7 @@ status=0
 # -nc: no pre-clean, so debian/build (meson dirs) and system/target (cargo) survive; dh_prep still clears each
 # package's staging dir before the install step.
 # Host network: on the default bridge, DNS inside the container failed mid-build in three runs.
-docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" -e CCACHE_DIR=/ccache -e CARGO_HOME=/cargo -e CARGO_NET_RETRY=10 -e ANDROMEDA_APP="${ANDROMEDA_APP:-}" -w /o/src "$IMAGE" bash -c '
+docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" -e CCACHE_DIR=/ccache -e CARGO_HOME=/cargo -e CARGO_NET_RETRY=10 -e ANDROMEDA_APP="${ANDROMEDA_APP:-}" -e ANDROMEDA_VERSION="${DEB_VERSION:-}" -w /o/src "$IMAGE" bash -c '
   # A kept build stamp would make dh skip the build step, and cargo with it.
   rm -f debian/debhelper-build-stamp
   set -o pipefail

@@ -1,5 +1,4 @@
 project('andromeda-terminal', ['c', 'cpp'],
-  version: '0.1.1',
   meson_version: '>=1.1',
   default_options: [
     'cpp_std=c++23',
@@ -8,6 +7,9 @@ project('andromeda-terminal', ['c', 'cpp'],
     'b_ndebug=if-release',
   ],
 )
+
+# The release version comes from the unit's tags (tools/unit-version.sh), never from this file.
+_unit_version = run_command(meson.project_source_root() / '..' / '..' / 'tools' / 'unit-version.sh', 'terminal', check: true).stdout().strip()
 
 # Terminal (.agent/TASK-terminal.md): libghostty-vt core; the system package first, else the pinned build
 # from tools/build-libghostty.sh, linked statically so the binary needs no private library path.
@@ -27,7 +29,7 @@ _desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
   dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')], link_args: ['-lutil'],
-  cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + meson.project_version() + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
+  cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
 

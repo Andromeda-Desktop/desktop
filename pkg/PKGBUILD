@@ -30,9 +30,9 @@ source=("desktop::git+${ANDROMEDA_SOURCE:-$url.git}"
   "greetd::git+https://git.sr.ht/~kennylevinsen/greetd#commit=d5f27c3a8b1758da9e45608d2cff20303f21c2ff")
 sha256sums=(SKIP SKIP)
 
+# The unit's computed version (ANDROMEDA_VERSION from a release tag, else its last tag plus the commit count).
 pkgver() {
-  cd desktop
-  printf 'r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  desktop/tools/unit-version.sh "${ANDROMEDA_APP:-core}"
 }
 
 prepare() {

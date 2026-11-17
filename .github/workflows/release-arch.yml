@@ -1,7 +1,7 @@
-# A tag v* builds and signs the Arch packages and their pacman repository.
-# Each release workflow runs on its own and adds its assets to the GitHub release of the tag, which the first one to
-# finish creates. Run it by hand with a tag to rebuild only that part. The assets also serve as a pacman and an apt
-# repository at releases/latest/download (see README.md).
+# A tag vYYYY.M.N (tools/unit-version.sh core next) builds the core packages (everything but the apps, which release
+# on their own tags) and merges them into the pacman repository of the rolling release `repo`, which stays Latest so
+# users keep releases/latest/download (see README.md). The tag's own release holds the notes and its packages.
+# Run it by hand with a tag to rebuild only that part.
 name: release-arch
 
 on:
@@ -57,7 +57,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_NO_LINK="${ANDROMEDA_NO_LINK:-}" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          ANDROMEDA_NO_LINK="${ANDROMEDA_NO_LINK:-}" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
           makepkg --syncdeps --noconfirm --force
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && !inputs.prebuilt
@@ -72,25 +72,19 @@ jobs:
         run: gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p '*.pkg.tar.zst' -D pkg
       - name: Repository
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
         run: |
-          mkdir repo
-          # GitHub rewrites ':' in asset names, which would break the epoch's filenames; pacman reads the version
-          # from inside the package, not its name.
+          # The apps release on their own tags: a core build would put its version on their packages.
+          mkdir core
           for package in pkg/*.pkg.tar.zst; do
-            name=$(basename "$package")
-            cp "$package" "repo/${name//:/.}"
+            [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal)-git- ]] || cp "$package" core/
           done
-          echo "$RELEASE_GPG_KEY" | gpg --batch --import
-          key=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
-          for package in repo/*.pkg.tar.zst; do gpg --batch --detach-sign --no-armor -u "$key" "$package"; done
-          repo-add --sign --key "$key" repo/andromeda.db.tar.gz repo/*.pkg.tar.zst
-          # Release assets cannot be symlinks.
-          for link in andromeda.db andromeda.db.sig andromeda.files andromeda.files.sig; do cp --remove-destination "$(readlink -f "repo/$link")" "repo/$link"; done
+          tools/repo-publish.sh arch repo core
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: repo
-          path: repo/
+          name: core
+          path: core/
 
   publish:
     needs: [packages]
@@ -105,16 +99,11 @@ jobs:
           sparse-checkout-cone-mode: false
           path: src
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with: { name: repo, path: repo }
+        with: { name: core, path: core }
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber repo/* src/install.sh src/andromeda-release.asc
-          # Users read releases/latest: it moves here only when both repositories are on the newest tag.
-          names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
-          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --json tagName -q '.[].tagName' | grep -E '^v[0-9]' | sort -V | tail -n 1)
-          if [[ $TAG == "$newest" ]] && grep -qx andromeda.db <<< "$names" && grep -qx InRelease <<< "$names"; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
-          fi
+          for package in core/*.pkg.tar.zst; do name=$(basename "$package"); mv "$package" "core/${name//:/.}"; done
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber core/* src/install.sh src/andromeda-release.asc

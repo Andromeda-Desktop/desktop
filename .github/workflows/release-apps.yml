@@ -1,7 +1,7 @@
 # A tag files-v*, player-v*, viewer-v* or terminal-v* builds only that app (Files and Viewer also the preview) and adds
 # its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the latest v* release
 # (releases/latest/download) and the Debian apt repository (releases/download/debian). The app's own release holds
-# its Arch packages and is never marked latest. The tag version must match the app's meson project version.
+# its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
 # A v* release with the app package split must exist first: andromeda 0.2.8 and older own the app files.
 # Dry run: run by hand with publish off; the packages stay as workflow artifacts.
 name: release-apps
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       app: ${{ steps.version.outputs.app }}
-      deb: ${{ steps.version.outputs.deb }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,16 +41,11 @@ jobs:
           ref: ${{ env.REF }}
       - id: version
         run: |
+          # The tag holds the computed version (tools/unit-version.sh next); packages and binaries take it from here.
           app=${TAG%%-v*} version=${TAG#*-v}
-          declared=$(sed -n "s/^ *version: *'\([^']*\)'.*/\1/p" "apps/$app/meson.build" | head -n 1)
-          if [[ $declared != "$version" ]]; then
-            echo "::error::$TAG does not match apps/$app/meson.build version '$declared'"
-            exit 1
-          fi
-          # Above the last v* release and below the next one, so apt upgrades in both directions of the cycle.
-          base=$(git describe --tags --match 'v[0-9]*' --abbrev=0)
+          [[ $version =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "::error::$TAG is not <app>-vYYYY.M.N"; exit 1; }
           echo "app=$app" >> "$GITHUB_OUTPUT"
-          echo "deb=${base#v}+r$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   arch:
     needs: [version]
@@ -58,6 +53,7 @@ jobs:
     container: archlinux:base-devel
     env:
       ANDROMEDA_APP: ${{ needs.version.outputs.app }}
+      ANDROMEDA_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - name: Tools
         run: pacman -Syu --noconfirm --needed git zstd github-cli
@@ -75,7 +71,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_APP="$ANDROMEDA_APP" makepkg --syncdeps --noconfirm --force
+          ANDROMEDA_APP="$ANDROMEDA_APP" ANDROMEDA_VERSION="$ANDROMEDA_VERSION" makepkg --syncdeps --noconfirm --force
       - name: Release
         if: env.PUBLISH == 'true'
         env:
@@ -106,7 +102,7 @@ jobs:
         base: ["26.04", testing]
     env:
       ANDROMEDA_APP: ${{ needs.version.outputs.app }}
-      DEB_VERSION: ${{ needs.version.outputs.deb }}
+      DEB_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - run: echo "UBUNTU_BUILD_CPUS=$(nproc)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
