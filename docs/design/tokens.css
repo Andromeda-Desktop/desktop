@@ -79,7 +79,7 @@
   --type-display-tracking: 0.0em;
   --type-mono-size: 13.0px;
   --type-mono-line: 18.0px;
-  --type-mono-weight: 400;
+  --type-mono-weight: 450;
   --type-mono-tracking: 0.0em;
   --type-hero-size: 80.0px;
   --type-hero-line: 80.0px;
@@ -279,6 +279,7 @@
   --component-list-header-gap: 8.0px;
   --component-list-group-gap: 24.0px;
   --component-list-table-header: 32.0px;
+  --component-list-status-dot: 6.0px;
   --component-sidebar-width: 240.0px;
   --component-sidebar-padding: 8.0px;
   --component-sidebar-row: 32.0px;
@@ -304,19 +305,23 @@
   --component-terminal-scene-ink-contrast: 4.5px;
   --component-terminal-command-quiet-ms: 1500ms;
   --component-terminal-glass-alpha: 0.6px;
+  --component-terminal-scene-selection: 0.12px;
   --component-terminal-scene-tint: 0.15px;
   --component-terminal-group-row: 32.0px;
+  --component-terminal-sidebar-drop-line: 2.0px;
   --component-terminal-split-min-columns: 20.0px;
   --component-terminal-split-min-rows: 5.0px;
-  --component-terminal-drag-source-opacity: 0.38px;
   --component-terminal-palette-dim: 0.55px;
   --component-terminal-palette-header: 24.0px;
   --component-terminal-palette-rows: 8px;
   --component-terminal-palette-narrow: 400.0px;
   --component-terminal-palette-off-opacity: 0.38px;
   --component-split-focus-ring: 1.5px;
+  --component-split-stroke: 0.5px;
+  --component-split-rest-shadow: 0.5px;
   --component-split-divider-hit: 24.0px;
   --component-split-drop-fill: 0.14px;
+  --component-split-drag-source-opacity: 0.38px;
   --component-viewer-split-min-width: 400.0px;
   --component-viewer-split-min-height: 280.0px;
   --component-agent-measure: 640.0px;
@@ -380,6 +385,7 @@
   --component-menu-radius: 12.0px;
   --component-menu-padding: 4.0px;
   --component-menu-item: 28.0px;
+  --component-menu-item-two-line: 44.0px;
   --component-menu-item-radius: 8.0px;
   --component-menu-item-inset: 8.0px;
   --component-menu-header: 24.0px;
@@ -460,7 +466,7 @@
   --type-title1: 600 22.0px/28.0px var(--font-family);
   --type-large: 600 28.0px/36.0px var(--font-family);
   --type-display: 500 34.0px/40.0px var(--font-family);
-  --type-mono: 400 13.0px/18.0px var(--font-mono);
+  --type-mono: 450 13.0px/18.0px var(--font-mono);
   --type-hero: 300 80.0px/80.0px var(--font-family);
   --corner-extent: 1.528;
   --corner-k: 2.3219;
@@ -485,7 +491,7 @@
   --accent-text: rgba(81, 71, 229, 1.0);
   --on-accent: rgba(255, 255, 255, 1.0);
   --danger: rgba(217, 48, 37, 1.0);
-  --danger-text: rgba(217, 48, 37, 1.0);
+  --danger-text: rgba(197, 34, 31, 1.0);
   --warning: rgba(180, 83, 9, 1.0);
   --success: rgba(26, 127, 55, 1.0);
   --slider-fill: rgba(255, 255, 255, 0.922);

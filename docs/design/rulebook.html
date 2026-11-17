@@ -14,7 +14,7 @@
   --l1: rgba(20,20,24,.92); --l2: rgba(20,20,24,.62); --l3: rgba(20,20,24,.38);
   --f1: rgba(0,0,0,.04); --f2: rgba(0,0,0,.08); --f3: rgba(0,0,0,.12);
   --sep: rgba(0,0,0,.08); --stroke: rgba(0,0,0,.07); --edge: rgba(255,255,255,.75);
-  --acc: #5147e5; --acct: #5147e5; --danger: #d93025; --dangert: #d93025; --warn: #b45309; --ok: #1a7f37;
+  --acc: #5147e5; --acct: #5147e5; --danger: #d93025; --dangert: #c5221f; --warn: #b45309; --ok: #1a7f37;
   --reg: rgba(255,255,255,.62); --thick: rgba(255,255,255,.76);
   --lens: rgba(255,255,255,.92); --lens-edge: 0 0 0 transparent;
   --plane: #f2f2f6; --card: #fff; --view: #fff; --header: #ececf1; --popover: #f8f8fa; --sidebar: #ececf1;
@@ -402,7 +402,8 @@ canvas.plot { width: 100%; height: 120px; display: block; }
 <a class="sub" href="#ch-D-shape-glass-tone-2026-11-11" data-ch="D">Shape glass tone (2026-11-11)</a>
 <a class="sub" href="#ch-D-lock-screen-own-image-blur-2026-11-11" data-ch="D">Lock screen own image blur (2026-11-11)</a>
 <a class="sub" href="#ch-D-theme-transition-clock-2026-11-12" data-ch="D">Theme transition clock (2026-11-12)</a>
-<a class="sub" href="#ch-D-share-picker-2026-11-15" data-ch="D">Share picker (2026-11-15)</a></div>
+<a class="sub" href="#ch-D-share-picker-2026-11-15" data-ch="D">Share picker (2026-11-15)</a>
+<a class="sub" href="#ch-D-terminal-split-cards-2026-11-17" data-ch="D">Terminal split cards (2026-11-17)</a></div>
 </nav>
 <main>
 <section class="doc cover" id="ch-cover"><h1>Andromeda design rulebook</h1>
@@ -847,9 +848,9 @@ Inter docs, WCAG), checked 2026-11-02.</p>
 </tr>
 <tr>
 <td>danger_text</td>
-<td>#d93025</td>
+<td>#c5221f</td>
 <td>#ff6b5e</td>
-<td>error symbols and text, destructive menu items (4.8:1 / 6.3:1)</td>
+<td>error symbols and text, destructive menu items (4.75:1 or more on every light solid / 6.3:1)</td>
 </tr>
 <tr>
 <td>warning</td>
@@ -1758,7 +1759,7 @@ row says so.</p>
 </tr>
 <tr>
 <td>center rest</td>
-<td>160 to 280 x 32 capsule, p 8, g 8, width hugs content; date state: date (footnote 500); media state: art 20 circle at the leading edge, song title (footnote, label_1, one line, ellipsis) in the middle, waveform at the trailing edge; then divider 1 x 12 separator, privacy dots 6 (camera success, mic warning), unread count caption; a change between states morphs the width on morph / collapse</td>
+<td>160 to 280 x 32 capsule, p 8, g 8, width hugs content; date state: date (footnote 500); media state: art 20 circle at the leading edge, song title (footnote, label_1, one line, ellipsis) in the middle, waveform at the trailing edge; then divider 1 x 12 separator, privacy dots 6 (camera success, mic warning), unread count caption after a bell symbol (label_2, gap 4: a bare number reads as a workspace); a change between states morphs the width on morph / collapse</td>
 </tr>
 </tbody>
 </table>
@@ -3187,7 +3188,7 @@ rulebook yet, full restyle.</p>
 <tr>
 <td>Bar islands</td>
 <td>N</td>
-<td>height 34 -&gt; 32; padding 16 -&gt; R5 (12 text, 8 symbol); gap 12 -&gt; 8 in a group, 12 between; logo 18 -&gt; 16; workspace dots (7, active 20 x 7 r4, gap 5) -&gt; lens cells 24 capsule with P1 travel</td>
+<td>height 34 -&gt; 32; padding 16 -&gt; R5 (12 text, 8 symbol); gap 12 -&gt; 8 in a group, 12 between; logo 18 -&gt; 16; workspace dots (7, active 20 x 7 r4, gap 5) -&gt; lens cells 24 capsule with P1 travel; bell unread dot sits inside the symbol box (top right), no §9.4 overhang: bar slots clip to widget bounds</td>
 </tr>
 <tr>
 <td>Center island rest</td>
@@ -3356,6 +3357,14 @@ rulebook yet, full restyle.</p>
   ratio, and a crop hides part of what the user is about to share.</li>
 <li>Tile padding 4 and caption gap 8, not the mockup's 6 and 6: 6 is off the 4 grid. The 4 px band around a thumbnail
   holds the selection ring (2 px gap, 2 px accent), as the mockup's double shadow does.</li>
+</ul>
+<h3 id="ch-D-terminal-split-cards-2026-11-17">Terminal split cards (2026-11-17)</h3>
+<ul>
+<li>Every split card has the E2 key shadow, not E0: the user asked for depth between panes. An unfocused card shows it
+  at <code>component.split.rest_shadow</code>, the focused card at full strength. The shadow is cut out under the card, so a
+  glass or scene card shows no dark tint.</li>
+<li>Over a theme scene the sidebar selection is a label_1 wash (<code>component.terminal.scene_selection</code>), not the accent
+  tint: an accent tint over the scene's hues turns muddy (Tidepool pink over teal).</li>
 </ul>
 </section>
 </main>
