@@ -59,6 +59,8 @@ namespace shell::dock {
   );
   [[nodiscard]] DockSnapshot buildDockSnapshot(DockModelDependencies deps);
   [[nodiscard]] bool sameDockItemSet(const DockSnapshot& a, const DockSnapshot& b);
+  // Keeps unpinned running items in their previous order and appends new ones; pinned items stay in config order.
+  void keepRunningItemOrder(const DockSnapshot& previous, DockSnapshot& next);
   [[nodiscard]] std::vector<ToplevelInfo>
   windowsForDockItem(CompositorPlatform& platform, const DockItemModel& item, wl_output* outputFilter);
   [[nodiscard]] std::vector<ToplevelInfo> windowsForDockItem(

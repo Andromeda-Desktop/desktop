@@ -36,6 +36,7 @@
 #include <functional>
 #include <format>
 #include <optional>
+#include <unordered_map>
 #include <wayland-client-core.h>
 
 namespace {
@@ -443,6 +444,11 @@ void Dock::reload() {
     return;
   }
 
+  // Recreated surfaces keep the model's item order.
+  std::unordered_map<std::uint32_t, std::vector<shell::dock::DockItemModel>> previousItems;
+  for (auto& instance : m_instances) {
+    previousItems.emplace(instance->outputName, std::move(instance->snapshot.items));
+  }
   closeAllInstances();
 
   if (wl_display_roundtrip(m_platform->display()) < 0) {
@@ -453,6 +459,11 @@ void Dock::reload() {
     );
   }
   syncInstances();
+  for (auto& instance : m_instances) {
+    if (const auto it = previousItems.find(instance->outputName); it != previousItems.end()) {
+      instance->snapshot.items = std::move(it->second);
+    }
+  }
 }
 
 void Dock::show() {
@@ -1042,6 +1053,7 @@ bool Dock::syncInstanceModel(shell::dock::DockInstance& instance) {
       .sourceSerial = instance.modelSerial,
       .notifications = m_notifications,
   });
+  shell::dock::keepRunningItemOrder(instance.snapshot, next);
 
   const bool needRebuild = instance.snapshot.sourceSerial != next.sourceSerial
       || instance.snapshot.filterOutput != next.filterOutput

@@ -10,6 +10,8 @@
 #include "compositors/wayland_toplevels.h"
 
 #include <algorithm>
+#include <span>
+#include <string_view>
 #include <unordered_map>
 
 namespace {
@@ -185,6 +187,20 @@ namespace shell::dock {
       }
     }
     return true;
+  }
+
+  void keepRunningItemOrder(const DockSnapshot& previous, DockSnapshot& next) {
+    std::unordered_map<std::string_view, std::size_t> previousPositions;
+    previousPositions.reserve(previous.items.size());
+    for (std::size_t i = 0; i < previous.items.size(); ++i) {
+      previousPositions.emplace(previous.items[i].idLower, i);
+    }
+    const auto position = [&](const DockItemModel& item) {
+      const auto it = previousPositions.find(item.idLower);
+      return it != previousPositions.end() ? it->second : previous.items.size();
+    };
+    auto runningItems = std::span(next.items).subspan(std::min(next.pinnedCount, next.items.size()));
+    std::ranges::stable_sort(runningItems, [&](const auto& a, const auto& b) { return position(a) < position(b); });
   }
 
 } // namespace shell::dock
