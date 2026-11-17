@@ -30,6 +30,8 @@
 // FULLSCREEN_ON_STDIN makes `f` request fullscreen and `u` request windowed state.
 // REPAINT_ON_STDIN makes R/G/B request a frame callback, then commit a fresh red/green/blue buffer.
 // FILL_COLOR=<ARGB> paints the buffer that colour (default 0xFF5577AA), so screenshots can tell windows apart.
+// PAGEOUT pushes the first buffer out to swap (MADV_PAGEOUT) before the map commit and prints "paged-out <pages>
+// <total>" and "compositor-pid <pid>", so a check can count the compositor's major faults while it reads the buffer.
 // OPAQUE uses an XRGB buffer, which the compositor knows covers what lies under it, as most real windows do.
 // RESIZE_FILL_COLOR=<ARGB> maps at the first configured size, then redraws at every later configured size in that
 // colour, the way a real client follows its tile.
@@ -62,6 +64,8 @@
 #include <poll.h>
 #include <print>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <vector>
 #include <unistd.h>
 #include <utility>
 #include <wayland-client.h>
@@ -332,6 +336,35 @@ namespace {
 
   void destroyBuffer(Buffer& buffer);
 
+  void pageOut(State& state) {
+    const Buffer& buffer = state.buffer;
+    madvise(buffer.pixels, buffer.size, MADV_PAGEOUT);
+    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    std::vector<unsigned char> pages((buffer.size + page - 1) / page);
+    size_t out = 0;
+    if (mincore(buffer.pixels, buffer.size, pages.data()) == 0) {
+      out = static_cast<size_t>(std::count_if(pages.begin(), pages.end(), [](unsigned char p) { return (p & 1) == 0; }));
+    }
+    ucred peer{};
+    socklen_t len = sizeof(peer);
+    getsockopt(wl_display_get_fd(state.display), SOL_SOCKET, SO_PEERCRED, &peer, &len);
+    std::println("paged-out {} {}", out, pages.size());
+    std::println("compositor-pid {}", peer.pid);
+    // The main thread's major faults so far: field 12 of its stat line, the 10th after the ") " closing the name.
+    if (std::FILE* stat = std::fopen(std::format("/proc/{}/task/{}/stat", peer.pid, peer.pid).c_str(), "r")) {
+      char line[1024] = {};
+      const bool ok = std::fgets(line, sizeof(line), stat) != nullptr;
+      std::fclose(stat);
+      const char* rest = ok ? std::strrchr(line, ')') : nullptr;
+      unsigned long long majflt = 0;
+      if (rest != nullptr
+          && std::sscanf(rest, ") %*c %*d %*d %*d %*d %*d %*u %*u %*u %llu", &majflt) == 1) {
+        std::println("compositor-majflt {}", majflt);
+      }
+    }
+    std::fflush(stdout);
+  }
+
   void repaintFrameDone(void* data, wl_callback* callback, uint32_t /*time*/) {
     auto& state = *static_cast<State*>(data);
     wl_callback_destroy(callback);
@@ -523,6 +556,9 @@ namespace {
       xdg_toplevel_set_parent(state.toplevel, state.parentOnFirstConfigure);
     }
     state.mapped = true;
+    if (std::getenv("PAGEOUT") != nullptr) {
+      pageOut(state);
+    }
     wl_surface_attach(state.surface, state.buffer.resource, 0, 0);
     wl_surface_damage_buffer(state.surface, 0, 0, state.width, state.height);
     wl_surface_commit(state.surface);

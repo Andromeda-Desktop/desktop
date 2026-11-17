@@ -169,6 +169,7 @@ namespace andromeda {
   class Gestures;
   class ColorManager;
   class SyncobjAcquireBarrier;
+  class ShmResidencyBarrier;
   class SyncobjSupersededRelease;
   class SyncobjUnmapRelease;
   class HintRect;
@@ -1263,6 +1264,7 @@ namespace andromeda {
     std::unique_ptr<SyncobjSupersededRelease> m_syncobjSupersededRelease;
     std::unique_ptr<SyncobjUnmapRelease> m_syncobjUnmapRelease;
     std::unique_ptr<SyncobjAcquireBarrier> m_syncobjAcquireBarrier;
+    std::unique_ptr<ShmResidencyBarrier> m_shmResidencyBarrier;
     std::unique_ptr<ColorManager> m_colorManager;
     std::unique_ptr<CommitTimingManager> m_commitTimingManager;
     std::unique_ptr<DskSurfaceManager> m_dskSurfaces;

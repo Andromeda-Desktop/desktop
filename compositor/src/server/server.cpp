@@ -57,6 +57,7 @@
 #include "server/xdg_session.h"
 #include "server/ipc.h"
 #include "provider/provider.h"
+#include "server/shm_residency_barrier.h"
 #include "server/syncobj_acquire_barrier.h"
 #include "server/syncobj_superseded_release.h"
 #include "server/syncobj_unmap_release.h"
@@ -743,6 +744,7 @@ namespace andromeda {
     resolveEffectSlot(m_cursorEffectSlot, EffectKind::Cursor);
     effectRegistry().prepare(m_renderer);
     m_compositor = wlr_compositor_create(m_display, 5, m_renderer);
+    m_shmResidencyBarrier = std::make_unique<ShmResidencyBarrier>(m_display, m_compositor);
     if (explicitSync) {
       m_syncobjAcquireBarrier = std::make_unique<SyncobjAcquireBarrier>(m_compositor, [this](wlr_surface* surface) {
         for (const auto& output : m_outputs) {
