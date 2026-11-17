@@ -20,6 +20,7 @@
 #include <climits>
 #include <cstdint>
 #include <cmath>
+#include <expected>
 #include <memory>
 #include <optional>
 #include <string>
@@ -118,6 +119,7 @@ namespace andromeda {
     void setFullscreenState(bool fullscreen);
     void setMaximizedState(bool maximized);
     void requestClose();
+    [[nodiscard]] std::expected<void, std::string> killClient();
     // The client's window geometry in surface-local coordinates.
     [[nodiscard]] wlr_box geometryBox() const;
     [[nodiscard]] SizeHints sizeHints() const;
