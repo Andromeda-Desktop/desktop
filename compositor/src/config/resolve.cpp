@@ -532,6 +532,9 @@ namespace andromeda {
       ResolvedLayoutConfig resolved = resolveGlobalLayout(config);
       const OutputRule* output = matchingOutputRule(config, identity);
       if (output != nullptr) {
+        if (output->layout.mode) {
+          resolved.mode = *output->layout.mode;
+        }
         if (output->layout.scrolling.defaultExtentFraction) {
           resolved.scrolling.defaultExtentFraction = output->layout.scrolling.defaultExtentFraction;
         }
