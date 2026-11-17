@@ -27,6 +27,7 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 | `{"cmd":"input-capture-revoke","arg":"<id>"}` | `andromeda input-capture-revoke <id>`        |
 | `{"cmd":"global-shortcuts"}`                  | `andromeda global-shortcuts --json`          |
 | `{"cmd":"global-shortcuts-revoke","arg":"<app>"}` | `andromeda global-shortcuts-revoke <app>` |
+| `{"cmd":"global-shortcuts-assign","arg":"<app> <id> <chord\|off>"}` | `andromeda global-shortcuts-assign <app> <id> <chord\|off>` |
 | `{"cmd":"msg","arg":"<action>"}`              | `andromeda msg <action>`                     |
 
 Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
@@ -91,6 +92,8 @@ Inspection never picks, compiles, or binds an effect. Use `effects`, not `output
 `global-shortcuts` returns `grants` (approved triggers by app id and shortcut id) and `sessions`. Each session has `app`, `phase` (`unbound`, `approving`, `bound`) and `shortcuts`. Each shortcut has `id`, `description`, `trigger` (`null` when none is assigned), `source` (`config`, `stored` or `none`) and `conflict` (`none`, `unassigned`, `disabled`, `reserved`, `in_use`). Only a shortcut with conflict `none` fires.
 
 `global-shortcuts-revoke <app>` forgets the app's approvals and unbinds its sessions; the app must ask again. `global-shortcuts-revoke all` forgets every app. A pending approval page stays. When the grant file cannot be written, nothing changes and the command fails. See [Global shortcuts](security.md#global-shortcuts).
+
+`global-shortcuts-assign <app> <id> <chord|off>` sets one shortcut's keys in `settings.toml` (`[global_shortcuts."<app>"]`, over `config.toml`) and rebinds at once; `off` turns it off. A chord that a compositor keybind or another app's shortcut uses is refused: the reply is `{"assigned": false, "reason": "reserved" | "in_use", "holder": "<app>"}` and nothing is written. Settings > Privacy > Global Shortcuts uses this command.
 
 ## Event stream
 
