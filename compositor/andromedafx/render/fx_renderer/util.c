@@ -3,6 +3,7 @@
 #include "util/env.h"
 
 #include <fcntl.h>
+#include <string.h>
 #include <unistd.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/log.h>
@@ -37,6 +38,16 @@ static int open_drm_render_node(void) {
       if (fd < 0) {
         wlr_log_errno(WLR_ERROR, "Failed to open '%s'", name);
         goto out;
+      }
+      // vgem has no GPU: Mesa falls back to llvmpipe on it, and its render node refuses the dumb buffers GBM needs.
+      drmVersion* version = drmGetVersion(fd);
+      bool is_vgem = version != NULL && strcmp(version->name, "vgem") == 0;
+      drmFreeVersion(version);
+      if (is_vgem) {
+        wlr_log(WLR_DEBUG, "Skipping vgem render node '%s'", name);
+        close(fd);
+        fd = -1;
+        continue;
       }
       break;
     }
