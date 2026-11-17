@@ -4,6 +4,7 @@
 #include "desktop-unstable-v1-protocol.h"
 #include "input/keyboard.h"
 #include "input/text_input.h"
+#include "server/global_shortcut_service.h"
 #include "server/server.h"
 
 #include <algorithm>
@@ -19,7 +20,7 @@ namespace andromeda {
   namespace {
 
     constexpr Logger kLog("desktop-shell");
-    constexpr uint32_t kVersion = 4;
+    constexpr uint32_t kVersion = 5;
     constexpr size_t kMaxAppActivity = 256;
 
     DesktopShell* shellFrom(wl_resource* resource) {
@@ -306,7 +307,16 @@ namespace andromeda {
       .app_activity = DesktopShell::handleAppActivity,
       .insert_text = DesktopShell::handleInsertText,
       .key = DesktopShell::handleKey,
+      .get_global_shortcuts_session = DesktopShell::handleGetGlobalShortcutsSession,
   };
+
+  void DesktopShell::handleGetGlobalShortcutsSession(wl_client* client, wl_resource* resource, uint32_t id, const char* appId) {
+    DesktopShell* self = shellFrom(resource);
+    if (self == nullptr || self->m_server.globalShortcuts() == nullptr) {
+      return;
+    }
+    self->m_server.globalShortcuts()->createSession(client, id, appId);
+  }
 
   bool DesktopShell::boundBy(const wl_client* client) const {
     return std::ranges::any_of(m_resources, [client](wl_resource* resource) {

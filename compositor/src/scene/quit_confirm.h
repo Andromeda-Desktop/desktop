@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct wlr_scene_tree;
 
@@ -20,10 +21,11 @@ namespace andromeda {
       ScreenCastDynamic,
       InputEmulation,
       InputCapture,
+      GlobalShortcuts,
     };
 
     QuitConfirm(Server& server, wlr_scene_tree* parent);
-    ~QuitConfirm(); // calls hide()
+    ~QuitConfirm();
 
     QuitConfirm(const QuitConfirm&) = delete;
     QuitConfirm& operator=(const QuitConfirm&) = delete;
@@ -31,6 +33,8 @@ namespace andromeda {
     void show(Kind kind);
     void showInputEmulation(std::string_view application);
     void showInputCapture(std::string_view application, uint32_t persistMode);
+    // One page of "name  key" rows; page is 0-based.
+    void showGlobalShortcuts(std::string_view application, std::vector<std::string> rows, size_t page, size_t pages);
     void hide();
     [[nodiscard]] bool visible() const { return m_tree != nullptr; }
     [[nodiscard]] Kind kind() const { return m_kind; }
@@ -41,6 +45,7 @@ namespace andromeda {
 
   private:
     void render();
+    void destroyTree();
 
     Server& m_server;
     wlr_scene_tree* m_parent;
@@ -48,6 +53,9 @@ namespace andromeda {
     Kind m_kind = Kind::SessionQuit;
     std::string m_application;
     uint32_t m_inputCapturePersistMode = 0;
+    std::vector<std::string> m_rows;
+    size_t m_page = 0;
+    size_t m_pages = 1;
     SurfaceShadow m_shadow;
   };
 

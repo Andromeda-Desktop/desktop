@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "input/input_capture.h"
+#include "server/global_shortcut_service.h"
 #include "scene/border_rect.h"
 #include "scene/color.h"
 #include "scene/text_buffer.h"
@@ -28,11 +29,18 @@ namespace andromeda {
 
   QuitConfirm::QuitConfirm(Server& server, wlr_scene_tree* parent) : m_server(server), m_parent(parent) {}
 
-  QuitConfirm::~QuitConfirm() { hide(); }
+  QuitConfirm::~QuitConfirm() { destroyTree(); }
 
   void QuitConfirm::show(Kind kind) {
     if (InputCapture* capture = m_server.inputCapture(); capture != nullptr && capture->active()) {
       capture->suspend();
+    }
+    if (GlobalShortcutService* shortcuts = m_server.globalShortcuts(); shortcuts != nullptr) {
+      // Another page replacing an approval refuses that approval.
+      if (visible() && m_kind == Kind::GlobalShortcuts && kind != Kind::GlobalShortcuts) {
+        shortcuts->denyApproval();
+      }
+      shortcuts->suspend();
     }
     m_kind = kind;
     render();
@@ -49,12 +57,30 @@ namespace andromeda {
     show(Kind::InputCapture);
   }
 
-  void QuitConfirm::hide() {
+  void QuitConfirm::showGlobalShortcuts(
+      std::string_view application, std::vector<std::string> rows, size_t page, size_t pages
+  ) {
+    m_application = application;
+    m_rows = std::move(rows);
+    m_page = page;
+    m_pages = pages;
+    show(Kind::GlobalShortcuts);
+  }
+
+  void QuitConfirm::destroyTree() {
     if (m_tree != nullptr) {
       m_shadow.reset();
       wlr_scene_node_destroy(&m_tree->node);
       m_tree = nullptr;
     }
+  }
+
+  void QuitConfirm::hide() {
+    if (m_tree == nullptr) {
+      return;
+    }
+    destroyTree();
+    m_server.confirmationHidden(m_kind == Kind::GlobalShortcuts);
   }
 
   void QuitConfirm::relayout() {
@@ -64,12 +90,7 @@ namespace andromeda {
   }
 
   void QuitConfirm::render() {
-    // Destroy previous subtree.
-    if (m_tree != nullptr) {
-      m_shadow.reset();
-      wlr_scene_node_destroy(&m_tree->node);
-      m_tree = nullptr;
-    }
+    destroyTree();
 
     // Determine output scale and dimensions.
     wlr_output* output = m_server.preferredOutput();
@@ -95,7 +116,8 @@ namespace andromeda {
     const std::string headingColor = rgbaHex(accent);
     const std::string textColor = rgbaHex(colors.textPrimary);
 
-    const std::string_view heading = m_kind == Kind::InputCapture ? "Allow input capture?"
+    const std::string_view heading = m_kind == Kind::GlobalShortcuts ? "Allow global shortcuts?"
+        : m_kind == Kind::InputCapture                            ? "Allow input capture?"
         : m_kind == Kind::InputEmulation                          ? "Allow desktop control?"
         : m_kind == Kind::SessionQuit                             ? "Quit Andromeda?"
                                                                   : "Allow screencast target changes?";
@@ -110,7 +132,22 @@ namespace andromeda {
                        "R remembers approval until you revoke it.\n"
                        "Any other key or click denies it.";
     }
-    const std::string detail = m_kind == Kind::InputCapture
+    std::string shortcutRows;
+    for (const std::string& row : m_rows) {
+      shortcutRows += "  " + row + "\n";
+    }
+    const bool lastPage = m_page + 1 >= m_pages;
+    const std::string detail = m_kind == Kind::GlobalShortcuts
+        ? std::format(
+              "'{}' wants keys that work while other apps have focus.\n"
+              "The application name is supplied by the requester.\n\n"
+              "{}{}\n"
+              "{}\n"
+              "Any other key or click denies it.",
+              m_application, shortcutRows, m_pages > 1 ? std::format("\nPage {} of {}\n", m_page + 1, m_pages) : "",
+              lastPage ? "Enter allows these shortcuts." : "Enter shows the next page."
+          )
+        : m_kind == Kind::InputCapture
         ? std::format(
               "A client requesting capture for '{}' wants to send your input to another application.\n"
               "The application label is supplied by the requester.\n\n"
@@ -130,7 +167,8 @@ namespace andromeda {
     std::string markup =
         std::format("<span size='14pt' weight='bold' foreground='{}'>{}</span>", headingColor, heading);
     markup += std::format(
-        "{}<span foreground='{}'>{}</span>", m_kind == Kind::InputCapture ? "\n\n" : "\n", textColor,
+        "{}<span foreground='{}'>{}</span>",
+        m_kind == Kind::InputCapture || m_kind == Kind::GlobalShortcuts ? "\n\n" : "\n", textColor,
         escapeMarkup(detail)
     );
     TextBufferResult rendered = renderTextBuffer({

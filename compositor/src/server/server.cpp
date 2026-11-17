@@ -4,6 +4,7 @@
 #include "qos/controller.h"
 #include "server/server.h"
 #include "server/event_pacer.h"
+#include "server/global_shortcut_service.h"
 #include "scene/text_buffer.h"
 #include "server/apps_bus.h"
 
@@ -517,6 +518,19 @@ namespace andromeda {
     }
   }
 
+  bool Server::sessionActive() const { return m_session == nullptr || m_session->active; }
+
+  void Server::confirmationHidden(bool globalShortcuts) {
+    if (m_stopping || m_globalShortcutService == nullptr) {
+      return;
+    }
+    if (globalShortcuts) {
+      m_globalShortcutService->denyApproval();
+    }
+    // Deferred: a lock hides the panel before it sets the lock state.
+    m_globalShortcutService->scheduleRefresh();
+  }
+
   void Server::requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode) {
     if (m_stopping
         || m_sessionLock != nullptr
@@ -572,6 +586,9 @@ namespace andromeda {
     const uint32_t capabilities = active ? m_inputCapture->capabilities() : m_inputCaptureCapabilities;
     m_inputCaptureCapabilities = active ? capabilities : 0;
     cancelModifierTap();
+    if (active && m_globalShortcutService != nullptr) {
+      m_globalShortcutService->suspend();
+    }
     if ((capabilities & 1U) != 0) {
       for (const auto& keyboard : m_keyboards) {
         keyboard->prepareInputCapture(!active);
@@ -614,6 +631,13 @@ namespace andromeda {
       wl_event_source_remove(std::exchange(self->m_logoutHandoffTimer, nullptr));
       kLog.info("the greeter took the display; ending the session");
       self->startSessionShutdown();
+    }
+    if (self->m_globalShortcutService != nullptr) {
+      if (self->m_session->active) {
+        self->m_globalShortcutService->scheduleRefresh();
+      } else {
+        self->m_globalShortcutService->suspend();
+      }
     }
     if (!self->m_session->active) {
       self->forgetConsumedKeycodes();
@@ -1126,6 +1150,7 @@ namespace andromeda {
       unlink((std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/running").c_str());
     }
     m_inputCapture.reset();
+    m_globalShortcutService.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);
     }
@@ -1763,7 +1788,7 @@ namespace andromeda {
       setenv("XCURSOR_THEME", cursorCfg.theme.c_str(), 1);
     }
 
-    loadGlobalShortcuts();
+    m_globalShortcutService = std::make_unique<GlobalShortcutService>(*this);
     m_inputCapture = std::make_unique<InputCapture>(*this);
     m_inputCapture->setAuthorize([this](uint64_t id, std::string_view name, uint32_t persistMode) {
       requestInputCapture(id, name, persistMode);

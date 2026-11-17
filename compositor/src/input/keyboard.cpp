@@ -15,6 +15,7 @@
 #include "scene/quit_confirm.h"
 #include "server/desktop_settings_manager.h"
 #include "server/desktop_shell.h"
+#include "server/global_shortcut_service.h"
 #include "server/server.h"
 #include "view/snap_assist.h"
 #include "view/snap_flyout.h"
@@ -311,6 +312,12 @@ namespace andromeda {
 
   void Keyboard::handleKey(void* data) {
     auto* event = static_cast<wlr_keyboard_key_event*>(data);
+    // Before any path that returns early, so a held global shortcut always ends. The press is in
+    // m_consumedKeycodes, which keeps this release from the client on every path.
+    if (GlobalShortcutService* shortcuts = m_server->globalShortcuts();
+        shortcuts != nullptr && event->state == WL_KEYBOARD_KEY_STATE_RELEASED) {
+      shortcuts->release(reinterpret_cast<uintptr_t>(this), event->keycode, event->time_msec);
+    }
     if (InputCapture* capture = m_server->inputCapture();
         capture != nullptr && (capture->capabilities() & 1U) != 0 && m_virtual) {
       if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
@@ -339,7 +346,8 @@ namespace andromeda {
     // against the combined seat-wide state so those chords behave like keys on one device.
     uint32_t modifiers = m_server->keyboardModifiers(true);
     if (QuitConfirm* confirm = m_server->quitConfirm();
-        confirm != nullptr && confirm->visible() && confirm->kind() == QuitConfirm::Kind::InputCapture && m_virtual) {
+        confirm != nullptr && confirm->visible() && m_virtual
+        && (confirm->kind() == QuitConfirm::Kind::InputCapture || confirm->kind() == QuitConfirm::Kind::GlobalShortcuts)) {
       if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
         m_consumedKeycodes.insert(event->keycode);
       } else {
@@ -570,6 +578,8 @@ namespace andromeda {
               m_server->confirmInputEmulation();
             } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
               m_server->confirmInputCapture(rememberCapture);
+            } else if (confirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
+              m_server->globalShortcuts()->approvalEnter();
             } else {
               m_server->confirmScreenCastDynamic();
             }
@@ -624,6 +634,13 @@ namespace andromeda {
           }
           m_consumedKeycodes.erase(event->keycode);
         }
+      }
+      // A global shortcut comes after every compositor bind and modal; its press and release never reach a client.
+      if (!handled && !confirmationConsumed && !captured && !modifierOnly && nsyms > 0
+          && m_server->globalShortcuts() != nullptr) {
+        handled = m_server->globalShortcuts()->press(
+            reinterpret_cast<uintptr_t>(this), event->keycode, syms[0], rawSym, modifiers, event->time_msec
+        );
       }
       if (matched.has_value()) {
         armRepeat(*matched, event->keycode);

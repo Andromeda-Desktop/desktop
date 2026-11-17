@@ -1015,6 +1015,7 @@ core_sources = files(
   'src/server/desktop_settings_manager.cpp',
   'src/server/desktop_output_manager.cpp',
   'src/server/desktop_shell.cpp',
+  'src/server/global_shortcut_service.cpp',
   'src/server/background_effect.cpp',
   'src/server/surface_motion.cpp',
   'src/server/dsk_surface.cpp',

@@ -19,6 +19,10 @@
 //                                            send requests: "insert TEXT" (a backslash and n sends a newline), "key KEYSYM STATE" (decimal), "activity PID
 //                                            FLAGS", and "mark LABEL" prints "mark LABEL" after the compositor handled
 //                                            every earlier request. DESKTOP_CLIENT_SHELL_VERSION=2 binds version 2.
+//                                            With version 5: "shortcuts-open APP", "shortcut-add ID DESCRIPTION TRIGGER"
+//                                            ("-" for no trigger), "shortcuts-bind" and "shortcuts-close" drive one global
+//                                            shortcuts session, which prints "shortcut ID TRIGGER CONFLICT", "shortcuts-done",
+//                                            "shortcuts-cancelled", "shortcuts-revoked", "activated ID" and "deactivated ID".
 #include "desktop-unstable-v1-client-protocol.h"
 
 #include <algorithm>
@@ -32,6 +36,7 @@
 #include <string>
 #include <string_view>
 #include <unistd.h>
+#include <utility>
 #include <wayland-client.h>
 
 namespace {
@@ -127,6 +132,34 @@ namespace {
     std::println("restarted");
     std::fflush(stdout);
   }
+  void onShortcut(void*, dsk_global_shortcuts_session_v1*, const char* id, const char*, const char* trigger, uint32_t conflict) {
+    std::println("shortcut {} {} {}", id, *trigger != '\0' ? trigger : "-", conflict);
+    std::fflush(stdout);
+  }
+  void printLine(const char* text) {
+    std::println("{}", text);
+    std::fflush(stdout);
+  }
+  void onShortcutsDone(void*, dsk_global_shortcuts_session_v1*) { printLine("shortcuts-done"); }
+  void onShortcutsCancelled(void*, dsk_global_shortcuts_session_v1*) { printLine("shortcuts-cancelled"); }
+  void onShortcutsRevoked(void*, dsk_global_shortcuts_session_v1*) { printLine("shortcuts-revoked"); }
+  void onShortcutActivated(void*, dsk_global_shortcuts_session_v1*, const char* id, uint32_t) {
+    std::println("activated {}", id);
+    std::fflush(stdout);
+  }
+  void onShortcutDeactivated(void*, dsk_global_shortcuts_session_v1*, const char* id, uint32_t) {
+    std::println("deactivated {}", id);
+    std::fflush(stdout);
+  }
+  const dsk_global_shortcuts_session_v1_listener kShortcuts = {
+      .shortcut = onShortcut,
+      .done = onShortcutsDone,
+      .cancelled = onShortcutsCancelled,
+      .revoked = onShortcutsRevoked,
+      .activated = onShortcutActivated,
+      .deactivated = onShortcutDeactivated,
+  };
+
   const dsk_shell_v1_listener kShell = {
       .action = onShellAction,
       .lock_keys = onShellLockKeys,
@@ -218,6 +251,7 @@ int main(int argc, char** argv) {
     std::fflush(stdout);
     bool stdinOpen = true;
     std::string pending;
+    dsk_global_shortcuts_session_v1* shortcuts = nullptr;
     while (wl_display_flush(display) >= 0) {
       while (wl_display_prepare_read(display) != 0) {
         wl_display_dispatch_pending(display);
@@ -262,6 +296,21 @@ int main(int argc, char** argv) {
           unsigned long flags = 0;
           std::sscanf(line.c_str() + 9, "%lu %lu", &pid, &flags);
           dsk_shell_v1_app_activity(state.shell, static_cast<uint32_t>(pid), static_cast<uint32_t>(flags));
+        } else if (text.starts_with("shortcuts-open ")) {
+          shortcuts = dsk_shell_v1_get_global_shortcuts_session(state.shell, line.c_str() + 15);
+          dsk_global_shortcuts_session_v1_add_listener(shortcuts, &kShortcuts, nullptr);
+        } else if (text.starts_with("shortcut-add ") && shortcuts != nullptr) {
+          char id[128] = {};
+          char description[128] = {};
+          char trigger[128] = {};
+          std::sscanf(line.c_str() + 13, "%127s %127s %127s", id, description, trigger);
+          dsk_global_shortcuts_session_v1_add_shortcut(
+              shortcuts, id, description, std::string_view(trigger) == "-" ? "" : trigger
+          );
+        } else if (text == "shortcuts-bind" && shortcuts != nullptr) {
+          dsk_global_shortcuts_session_v1_bind(shortcuts);
+        } else if (text == "shortcuts-close" && shortcuts != nullptr) {
+          dsk_global_shortcuts_session_v1_destroy(std::exchange(shortcuts, nullptr));
         } else if (text.starts_with("mark ")) {
           wl_display_roundtrip(display);
           std::println("mark {}", line.c_str() + 5);

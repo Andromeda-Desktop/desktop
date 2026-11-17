@@ -30,6 +30,7 @@
 #include "server/desktop_settings_manager.h"
 #include "server/desktop_shell.h"
 #include "server/ipc.h"
+#include "server/global_shortcut_service.h"
 #include "server/server.h"
 #include "server/server_events_internal.h"
 #include "view/popup.h"
@@ -219,6 +220,14 @@ namespace andromeda {
       // ANDROMEDA_LOCK_ESCAPE_MS shortens the 10 s for the harness check.
       const char* escape = std::getenv("ANDROMEDA_LOCK_ESCAPE_MS");
       wl_event_source_timer_update(m_restartLockEscape, escape != nullptr ? std::atoi(escape) : 10000);
+    }
+    // Lock ends held global shortcuts; unlock shows an approval that waited.
+    if (m_globalShortcutService != nullptr) {
+      if (sessionLocked()) {
+        m_globalShortcutService->suspend();
+      } else {
+        m_globalShortcutService->scheduleRefresh();
+      }
     }
   }
 

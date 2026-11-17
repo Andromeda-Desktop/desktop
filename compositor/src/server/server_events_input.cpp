@@ -31,6 +31,7 @@
 #include "server/desktop_settings_manager.h"
 #include "server/desktop_shell.h"
 #include "server/ipc.h"
+#include "server/global_shortcut_service.h"
 #include "server/server.h"
 #include "server/server_events_internal.h"
 #include "view/popup.h"
@@ -1364,6 +1365,9 @@ namespace andromeda {
   void Server::forgetConsumedKeycodes() {
     for (const std::unique_ptr<Keyboard>& entry : m_keyboards) {
       entry->forgetConsumedKeycodes();
+      if (m_globalShortcutService != nullptr) {
+        m_globalShortcutService->removeKeyboard(reinterpret_cast<uintptr_t>(entry.get()));
+      }
     }
   }
 
@@ -1406,6 +1410,9 @@ namespace andromeda {
   void Server::removeKeyboard(Keyboard* keyboard) {
     if (m_inputCapture != nullptr) {
       m_inputCapture->removeKeyboard(keyboard->wlr());
+    }
+    if (m_globalShortcutService != nullptr) {
+      m_globalShortcutService->removeKeyboard(reinterpret_cast<uintptr_t>(keyboard));
     }
     wlr_seat* seat = m_seat->wlr();
     const bool seatKeyboardRemoved = wlr_seat_get_keyboard(seat) == keyboard->wlr();

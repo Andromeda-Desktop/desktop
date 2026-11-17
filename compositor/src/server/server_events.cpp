@@ -38,6 +38,7 @@
 #include "server/ipc_commands.h"
 
 #include <nlohmann/json.hpp>
+#include "server/global_shortcut_service.h"
 #include "server/server.h"
 #include "server/event_pacer.h"
 #include "util/driver_threads.h"
@@ -345,8 +346,9 @@ namespace andromeda {
       if (result.change.keybinds) {
         m_bindCooldowns.clear();
       }
-      if (result.change.globalShortcuts || result.change.general) {
-        applyGlobalShortcutConfig();
+      if ((result.change.globalShortcuts || result.change.general || result.change.keybinds)
+          && m_globalShortcutService != nullptr) {
+        m_globalShortcutService->applyConfig();
       }
       if (result.change.scratchpads && m_scratchpadManager != nullptr) {
         m_scratchpadManager->reconcileConfig();

@@ -249,7 +249,7 @@
     </event>
   </interface>
 
-  <interface name="dsk_shell_v1" version="4">
+  <interface name="dsk_shell_v1" version="5">
     <description summary="compositor-to-shell events">
       Bound by the desktop shell. Keybinds that drive the shell arrive as
       action events on the connection the shell already holds, so no process
@@ -310,6 +310,16 @@
       </description>
       <arg name="keysym" type="uint"/>
       <arg name="state" type="uint"/>
+    </request>
+
+    <request name="get_global_shortcuts_session" since="5">
+      <description summary="open a global shortcuts session for an app">
+        Creates a session through which the shell binds an app's global
+        shortcuts. app_id is the app id the portal frontend gives; the
+        compositor keys approvals and [global_shortcuts] config by it.
+      </description>
+      <arg name="id" type="new_id" interface="dsk_global_shortcuts_session_v1"/>
+      <arg name="app_id" type="string"/>
     </request>
 
     <event name="action">
@@ -376,6 +386,102 @@
         The previous compositor of this session stopped without a clean exit. Sent once, to the first shell that
         binds after the restart.
       </description>
+    </event>
+  </interface>
+
+  <interface name="dsk_global_shortcuts_session_v1" version="1">
+    <description summary="one app's global shortcuts">
+      A shortcut is live while the session is bound and its trigger has no
+      conflict. A press of a live trigger goes to this session as activated,
+      never to the focused client; its release sends deactivated. Each
+      activated is followed by exactly one deactivated, also when the
+      binding ends early (lock, keyboard shortcuts inhibitor, input capture,
+      the approval dialog, revoke, config reload, destroy).
+      Trigger text uses the XDG shortcuts syntax, for example "CTRL+ALT+m".
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="close the session">
+        Removes the session's bindings. An approval still pending is
+        cancelled without a cancelled event.
+      </description>
+    </request>
+
+    <enum name="error">
+      <entry name="invalid_shortcut" value="0" summary="empty or duplicate id, too long text, or more than 64 shortcuts"/>
+      <entry name="bind_in_progress" value="1" summary="bind while an approval is pending"/>
+    </enum>
+
+    <enum name="conflict">
+      <entry name="none" value="0" summary="the shortcut is live"/>
+      <entry name="unassigned" value="1" summary="no trigger is assigned"/>
+      <entry name="disabled" value="2" summary="the user config disables it"/>
+      <entry name="reserved" value="3" summary="a compositor keybind owns the trigger"/>
+      <entry name="in_use" value="4" summary="another app's shortcut owns the trigger"/>
+    </enum>
+
+    <request name="add_shortcut">
+      <description summary="stage one shortcut for the next bind">
+        preferred_trigger is the app's suggestion, or empty. A malformed
+        suggestion, or one that could steal typing (no Ctrl, Alt or Super on
+        a typing key), is ignored. id and description are at most 256
+        bytes; at most 64 shortcuts per bind.
+      </description>
+      <arg name="id" type="string"/>
+      <arg name="description" type="string"/>
+      <arg name="preferred_trigger" type="string"/>
+    </request>
+
+    <request name="bind">
+      <description summary="bind the staged shortcuts">
+        Replaces the session's shortcuts with the staged ones and clears the
+        stage. When every shortcut has an approval or a config entry, the
+        session is bound at once and the compositor sends the states and
+        done. Otherwise the compositor asks the user; approval sends the
+        states and done, refusal sends cancelled.
+      </description>
+    </request>
+
+    <event name="shortcut">
+      <description summary="one shortcut's state">
+        trigger is the assigned trigger, or empty when none is assigned.
+        Sent for every shortcut of the session, then done.
+      </description>
+      <arg name="id" type="string"/>
+      <arg name="description" type="string"/>
+      <arg name="trigger" type="string"/>
+      <arg name="conflict" type="uint" enum="conflict"/>
+    </event>
+
+    <event name="done">
+      <description summary="the shortcut list is complete">
+        Ends a list of shortcut events. Sent when a bind succeeds and
+        whenever a bound session's shortcuts change.
+      </description>
+    </event>
+
+    <event name="cancelled">
+      <description summary="the user refused the bind">
+        The session is unbound again and may bind once more.
+      </description>
+    </event>
+
+    <event name="revoked">
+      <description summary="the user revoked the app's approvals">
+        The session is unbound; its shortcuts no longer fire.
+      </description>
+    </event>
+
+    <event name="activated">
+      <description summary="a shortcut was pressed"/>
+      <arg name="id" type="string"/>
+      <arg name="time" type="uint" summary="timestamp with millisecond granularity"/>
+    </event>
+
+    <event name="deactivated">
+      <description summary="a shortcut was released or ended"/>
+      <arg name="id" type="string"/>
+      <arg name="time" type="uint" summary="timestamp with millisecond granularity"/>
     </event>
   </interface>
 </protocol>
