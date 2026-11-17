@@ -39,7 +39,9 @@ namespace andromeda {
     void removeKeyboard(ShortcutKeyTracker::Keyboard keyboard);
     // [global_shortcuts], keybinds or the Mod key changed.
     void applyConfig();
-    void revoke(std::string_view app);
+    // Forgets the app's grants (all apps when empty) and unbinds its sessions. False when the store write fails.
+    bool revoke(std::string_view app);
+    [[nodiscard]] const ShortcutRegistry& registry() const { return m_registry; }
 
     // The approval page: Enter on the last page approves, Enter on another page turns it, anything else denies.
     void approvalEnter();

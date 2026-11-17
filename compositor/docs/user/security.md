@@ -54,6 +54,29 @@ Install matching versions of Andromeda and the portal backend. The portal fronte
 
 For Deskflow with multiple monitors, use version 1.27 or newer. Deskflow 1.26 can submit duplicate barrier IDs and fail to arm capture.
 
+## Global shortcuts
+
+Apps get keys that work while another window has focus (push-to-talk, recorder controls) through the GlobalShortcuts portal. A key reaches an app this way only after one of these:
+
+- You approve the app's shortcuts on the compositor page. Only Enter on a physical keyboard approves; any other key, a click or a virtual keyboard denies. Long lists span several pages.
+- Your config assigns the shortcut:
+
+```toml
+[global_shortcuts."com.obsproject.Studio"]
+"start-recording" = "Mod+Shift+R"
+"pause" = ""        # disables the shortcut
+```
+
+Compositor keybinds always win over a global shortcut, and two apps never share a trigger: the app approved first keeps it. A pressed shortcut and its release never reach the focused window. Lock, a keyboard shortcuts inhibitor, input capture and the approval page end held shortcuts at once.
+
+Approvals are stored privately in `$XDG_STATE_HOME/andromeda/global-shortcuts.json` (default `~/.local/state/andromeda/global-shortcuts.json`). A file that cannot be read is reported and never overwritten. Inspect and revoke with:
+
+```sh
+andromeda global-shortcuts
+andromeda global-shortcuts-revoke <app-id>
+andromeda global-shortcuts-revoke all
+```
+
 ## Sandboxed Wayland clients
 
 Andromeda supports version 1 of the [Wayland security-context protocol](https://wayland.app/protocols/security-context-v1). It is always enabled.

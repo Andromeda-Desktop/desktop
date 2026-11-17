@@ -17,6 +17,7 @@
 #include "scene/effect_selection.h"
 #include "server/desktop_shell.h"
 #include "server/focus.h"
+#include "server/global_shortcut_service.h"
 #include "server/server.h"
 #include "view/view.h"
 #include "view/snap.h"
@@ -27,6 +28,7 @@
 #include "workspace/workspace.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -35,6 +37,7 @@
 #include <nlohmann/json.hpp>
 #include <print>
 #include <ranges>
+#include <set>
 #include <span>
 #include <sstream>
 #include <string>
@@ -68,6 +71,53 @@ namespace andromeda {
     auto* capture = server.inputCapture();
     if (capture == nullptr || !capture->revokePermission(arg)) {
       return nlohmann::json{{"err", "unable to revoke input capture permission (invalid id or state write failed)"}};
+    }
+    return nlohmann::json{{"ok", true}};
+  }
+
+  nlohmann::json IpcCommands::globalShortcuts(Server& server, std::string_view) {
+    auto grants = nlohmann::json::object();
+    auto sessions = nlohmann::json::array();
+    if (const auto* service = server.globalShortcuts()) {
+      const ShortcutRegistry& registry = service->registry();
+      for (const auto& [app, chords] : registry.grants()) {
+        auto& entry = grants[app] = nlohmann::json::object();
+        for (const auto& [id, chord] : chords) {
+          entry[id] = describeChord(chord);
+        }
+      }
+      constexpr std::array kPhases{"unbound", "approving", "bound", "closed"};
+      constexpr std::array kSources{"none", "config", "stored"};
+      constexpr std::array kConflicts{"none", "unassigned", "disabled", "reserved", "in_use"};
+      for (const ShortcutSessionId id : registry.sessions()) {
+        auto shortcuts = nlohmann::json::array();
+        for (const ShortcutState& state : registry.shortcuts(id)) {
+          shortcuts.push_back(
+              {{"id", state.id},
+               {"description", state.description},
+               {"trigger", state.chord ? nlohmann::json(describeChord(*state.chord)) : nlohmann::json(nullptr)},
+               {"source", kSources.at(static_cast<size_t>(state.source))},
+               {"conflict", kConflicts.at(static_cast<size_t>(state.conflict))}}
+          );
+        }
+        const std::string* app = registry.app(id);
+        sessions.push_back(
+            {{"app", app != nullptr ? *app : std::string{}},
+             {"phase", kPhases.at(static_cast<size_t>(registry.phase(id)))},
+             {"shortcuts", std::move(shortcuts)}}
+        );
+      }
+    }
+    return nlohmann::json{{"ok", {{"grants", std::move(grants)}, {"sessions", std::move(sessions)}}}};
+  }
+
+  nlohmann::json IpcCommands::globalShortcutsRevoke(Server& server, std::string_view arg) {
+    if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
+      return nlohmann::json{{"err", "usage: global-shortcuts-revoke <app-id|all>"}};
+    }
+    auto* service = server.globalShortcuts();
+    if (service == nullptr || !service->revoke(arg == "all" ? std::string_view{} : arg)) {
+      return nlohmann::json{{"err", "unable to revoke global shortcuts (the grant file could not be written)"}};
     }
     return nlohmann::json{{"ok", true}};
   }
@@ -260,6 +310,32 @@ namespace andromeda {
       for (size_t index = 0; index < names.size(); ++index) {
         const std::string name = names.at(index).get<std::string>();
         std::println("{} {}", index == currentIndex ? "*" : " ", name.empty() ? "-" : name);
+      }
+    }
+
+    // One line per session shortcut (app, phase, id, trigger, source, conflict), then stored grants of apps without a
+    // session.
+    void printGlobalShortcuts(const nlohmann::json& ok) {
+      std::set<std::string> shown;
+      for (const auto& session : ok.at("sessions")) {
+        const std::string app = session.value("app", "");
+        shown.insert(app);
+        for (const auto& shortcut : session.at("shortcuts")) {
+          const auto& trigger = shortcut.at("trigger");
+          std::println(
+              "{}\t{}\t{}\t{}\t{}\t{}", app, session.value("phase", ""), shortcut.value("id", ""),
+              trigger.is_string() ? trigger.get<std::string>() : "-", shortcut.value("source", ""),
+              shortcut.value("conflict", "")
+          );
+        }
+      }
+      for (const auto& [app, ids] : ok.at("grants").items()) {
+        if (shown.contains(app)) {
+          continue;
+        }
+        for (const auto& [id, trigger] : ids.items()) {
+          std::println("{}\tstored\t{}\t{}", app, id, trigger.get<std::string>());
+        }
       }
     }
 
@@ -1729,6 +1805,10 @@ namespace andromeda {
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
        IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+      {"global-shortcuts", "", "list global shortcut grants and app sessions", IpcCommandGroup::Inspect, false,
+       &IpcCommands::globalShortcuts, &printGlobalShortcuts},
+      {"global-shortcuts-revoke", "<app-id|all>", "forget an app's global shortcut approvals and unbind it",
+       IpcCommandGroup::Control, true, &IpcCommands::globalShortcutsRevoke, nullptr},
       {"msg", "<action> [args...]", "send an action to the compositor", IpcCommandGroup::Control, true,
        &IpcCommands::msg, nullptr},
       {"output-create", "<name> [mode]", "create a virtual output (optional mode, as 1920x1080@60)",

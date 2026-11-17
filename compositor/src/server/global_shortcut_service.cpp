@@ -232,14 +232,16 @@ namespace andromeda {
     sync(monotonicMsec());
   }
 
-  void GlobalShortcutService::revoke(std::string_view app) {
-    m_registry.revoke(app);
-    if (const auto merged = m_store.update(app, {})) {
-      m_registry.setGrants(*merged);
-    } else {
+  bool GlobalShortcutService::revoke(std::string_view app) {
+    const auto merged = m_store.update(app, {});
+    if (!merged) {
       kLog.warn("could not save the revoke of '{}' to {}", app, m_store.path().string());
+      return false;
     }
+    m_registry.revoke(app);
+    m_registry.setGrants(*merged);
     sync(monotonicMsec());
+    return true;
   }
 
   void GlobalShortcutService::persist(const std::string& app) {

@@ -25,6 +25,8 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 | `{"cmd":"outputs"}`                           | `andromeda outputs --json`                   |
 | `{"cmd":"input-capture-permissions"}`         | `andromeda input-capture-permissions --json` |
 | `{"cmd":"input-capture-revoke","arg":"<id>"}` | `andromeda input-capture-revoke <id>`        |
+| `{"cmd":"global-shortcuts"}`                  | `andromeda global-shortcuts --json`          |
+| `{"cmd":"global-shortcuts-revoke","arg":"<app>"}` | `andromeda global-shortcuts-revoke <app>` |
 | `{"cmd":"msg","arg":"<action>"}`              | `andromeda msg <action>`                     |
 
 Window entries include IDs, application identity, process ID, geometry, output, workspace, and scratchpad membership. X11 windows report the process ID they publish as `_NET_WM_PID`, or `-1` when they publish none. A member of a [tab group](layout.md#tab-groups) reports `tabbed`, its place among the group's tabs as `tab_index` (from 0, `-1` outside a group), and `tab_hidden` while its group shows another tab; the plain listing marks it `tab` instead of `tile`.
@@ -83,6 +85,12 @@ Inspection never picks, compiles, or binds an effect. Use `effects`, not `output
 `input-capture-permissions` lists remembered grants with `id`, `application`, `capabilities`, and `persist_mode`. Application identifiers can be empty and are not verified display names. The reply never contains restore credentials.
 
 `input-capture-revoke <id>` forgets a grant and stops its live capture sessions. `input-capture-revoke all` forgets every grant. Revoking an already forgotten valid ID succeeds. A state-write error is reported even though matching live capture sessions are stopped. See [Input capture](security.md#input-capture) for approval lifetimes and the state file location.
+
+## Global shortcuts
+
+`global-shortcuts` returns `grants` (approved triggers by app id and shortcut id) and `sessions`. Each session has `app`, `phase` (`unbound`, `approving`, `bound`) and `shortcuts`. Each shortcut has `id`, `description`, `trigger` (`null` when none is assigned), `source` (`config`, `stored` or `none`) and `conflict` (`none`, `unassigned`, `disabled`, `reserved`, `in_use`). Only a shortcut with conflict `none` fires.
+
+`global-shortcuts-revoke <app>` forgets the app's approvals and unbinds its sessions; the app must ask again. `global-shortcuts-revoke all` forgets every app. A pending approval page stays. When the grant file cannot be written, nothing changes and the command fails. See [Global shortcuts](security.md#global-shortcuts).
 
 ## Event stream
 

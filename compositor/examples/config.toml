@@ -279,6 +279,15 @@ numlock_toggle = true
 "Mod+Ctrl+S" = "scratchpad-focus-next"
 
 # ==============================================================================
+# Global shortcuts
+# ==============================================================================
+# Keys for apps that use the GlobalShortcuts portal. An entry binds without the
+# approval page; "" disables the shortcut. `andromeda global-shortcuts` lists
+# app ids and shortcut ids.
+# [global_shortcuts."com.obsproject.Studio"]
+# "start-recording" = "Mod+Shift+R"
+
+# ==============================================================================
 # Layout
 # New scrolling-layout windows start at half the output width. Without this
 # setting, each application chooses its starting width. Stacked columns retain

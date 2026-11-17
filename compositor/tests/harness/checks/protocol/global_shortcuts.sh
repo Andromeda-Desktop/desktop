@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # A global shortcut bound from [global_shortcuts] goes live without a dialog. Its press sends activated and its release
 # deactivated, and neither key event reaches the focused window. A config reload that disables it while the key is held
-# sends deactivated at once, and the later release still stays away from the window.
+# sends deactivated at once, and the later release still stays away from the window. `global-shortcuts --json` shows
+# the disabled shortcut, and `global-shortcuts-revoke` sends revoked to the bound session.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -58,10 +59,20 @@ fi
 await_events "$SHELL_LOG" "shortcut talk - 2" 1 "the disabled state"
 wait "$pointer"
 
+"$ANDROMEDA" global-shortcuts --json > "$ANDROMEDA_RUNTIME_DIR/inspect.json"
+if ! jq -e --arg app "$APP" '[.sessions[] | select(.app == $app and .phase == "bound") | .shortcuts[]
+    | select(.id == "talk" and .conflict == "disabled" and .trigger == null)] | length == 1' \
+    "$ANDROMEDA_RUNTIME_DIR/inspect.json" > /dev/null; then
+  echo "global-shortcuts does not show the disabled shortcut: $(cat "$ANDROMEDA_RUNTIME_DIR/inspect.json")"
+  exit 1
+fi
+"$ANDROMEDA" global-shortcuts-revoke "$APP" > /dev/null
+await_events "$SHELL_LOG" shortcuts-revoked 1 "revoked after global-shortcuts-revoke"
+
 printf 'mark done\n' >&"$shell_fd"
 await_events "$SHELL_LOG" "mark done" 1 "the shell's round trip"
 if [[ $(events "$SHELL_LOG" "deactivated talk") != 2 ]] || grep -q "keyboard-key code=$KEY_F9" "$WINDOW_LOG"; then
   echo "a shortcut key leaked or ended twice: shell=$(tr '\n' '|' < "$SHELL_LOG") window=$(tr '\n' '|' < "$WINDOW_LOG")"
   exit 1
 fi
-echo "a config shortcut fired activated/deactivated without reaching the window, and a reload mid-press ended it once"
+echo "a config shortcut fired activated/deactivated without reaching the window, a reload mid-press ended it once, and revoke unbound it"
