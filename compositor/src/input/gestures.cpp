@@ -839,6 +839,7 @@ namespace andromeda {
     if (delta != 0) {
       m_server->cursor()->clearConstraint();
       m_server->refocus(m_output);
+      m_server->cursor()->refocusAfterSceneChange();
     }
     m_switchGroup = nullptr;
     m_output = nullptr;

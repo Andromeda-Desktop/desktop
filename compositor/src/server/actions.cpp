@@ -801,6 +801,44 @@ namespace andromeda {
       maybeWarpCursorToWindow(server, view);
     }
 
+    // The focused window as an action is about to move it, with where it rests, to tell whether the action moved it.
+    struct FocusedMove {
+      View* view = nullptr;
+      wlr_box target{};
+    };
+
+    FocusedMove beginFocusedMove(Server& server) {
+      View* focused = seatFocusedWindow(server);
+      if ((!config().input.cursor.followsFocus && !config().input.focus.followsMouseEnabled()) || focused == nullptr) {
+        return {};
+      }
+      View* view = focused->placementRoot();
+      if (!view->mapped()) {
+        return {};
+      }
+      return {.view = view, .target = server.cursor()->viewTargetBox(*view)};
+    }
+
+    // A moved window leaves another window under a stationary pointer unless the cursor follows it.
+    void finishFocusedMove(Server& server, const FocusedMove& move) {
+      if (move.view == nullptr || !move.view->mapped()) {
+        return;
+      }
+      const View* focused = seatFocusedWindow(server);
+      if (focused == nullptr || focused->placementRoot() != move.view) {
+        return;
+      }
+      const wlr_box target = server.cursor()->viewTargetBox(*move.view);
+      if (wlr_box_equal(&target, &move.target)) {
+        return;
+      }
+      if (config().input.focus.followsMouseEnabled()) {
+        server.cursor()->invalidateHoverFocus();
+        server.cursor()->refocusAfterSceneChange();
+      }
+      maybeWarpCursorToWindow(server, move.view);
+    }
+
     bool actionWindowClose(Server& server, const Keybind& bind, std::string* error) {
       const auto target = clientTarget(server, windowIdArg(bind));
       if (!target.has_value()) {
@@ -896,8 +934,9 @@ namespace andromeda {
     }
 
     void invalidateHoverFocusAfterSceneChange(Server& server, bool changed) {
-      if (changed && config().input.focus.followsMouse) {
+      if (changed && config().input.focus.followsMouseEnabled()) {
         server.cursor()->invalidateHoverFocus();
+        server.cursor()->refocusAfterSceneChange();
       }
     }
 
@@ -917,8 +956,9 @@ namespace andromeda {
       }
       scrolling->setScroll(newScroll);
       workspace->markArrange();
-      if (config().input.focus.followsMouse) {
+      if (config().input.focus.followsMouseEnabled()) {
         workspace->deferScrollHoverFocus();
+        server.cursor()->refocusAfterSceneChange();
       }
     }
 
@@ -1064,7 +1104,9 @@ namespace andromeda {
 
     template <int Direction> bool actionMoveColumn(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         invalidateHoverFocusAfterSceneChange(server, workspace->moveFocusedColumn(Direction));
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1072,7 +1114,9 @@ namespace andromeda {
     template <int Direction>
     bool actionMoveHorizontal(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         invalidateHoverFocusAfterSceneChange(server, workspace->moveFocusedHorizontal(Direction));
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1097,14 +1141,18 @@ namespace andromeda {
 
     bool actionMoveColumnFirst(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         workspace->moveFocusedColumnFirst();
+        finishFocusedMove(server, move);
       }
       return true;
     }
 
     bool actionMoveColumnLast(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         workspace->moveFocusedColumnLast();
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1115,11 +1163,12 @@ namespace andromeda {
         return true;
       }
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         const View* focused = workspace->focusedView();
         const bool moved = focused != nullptr && focused->floating() ? workspace->moveFocusedHorizontal(Direction)
                                                                      : workspace->moveFocusedColumn(Direction);
         if (moved) {
-          maybeWarpCursorToWindow(server, workspace->focusedView());
+          finishFocusedMove(server, move);
           return true;
         }
       }
@@ -1131,9 +1180,10 @@ namespace andromeda {
       if (scratchpadHoldsFocus(server)) {
         return true;
       }
+      const FocusedMove move = beginFocusedMove(server);
       if (Workspace* workspace = windowActionWorkspace(server)) {
         if (workspace->moveFocusedVertical(Direction)) {
-          maybeWarpCursorToWindow(server, workspace->focusedView());
+          finishFocusedMove(server, move);
           return true;
         }
       }
@@ -1142,7 +1192,9 @@ namespace andromeda {
 
     template <int Direction> bool actionMoveVertical(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         workspace->moveFocusedVertical(Direction);
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1168,8 +1220,11 @@ namespace andromeda {
 
     template <int Direction>
     bool actionMoveVerticalOrWorkspace(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      const FocusedMove move = beginFocusedMove(server);
       if (Workspace* workspace = windowActionWorkspace(server)) {
-        if (!workspace->moveFocusedVertical(Direction)) {
+        if (workspace->moveFocusedVertical(Direction)) {
+          finishFocusedMove(server, move);
+        } else {
           Workspace* source = workspace;
           if (source->group() == nullptr) {
             return true;
@@ -1188,7 +1243,9 @@ namespace andromeda {
 
     template <int Direction> bool actionConsume(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         invalidateHoverFocusAfterSceneChange(server, workspace->consumeFocused(Direction));
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1196,8 +1253,10 @@ namespace andromeda {
     template <int Direction>
     bool actionConsumeOrExpel(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         const bool changed = workspace->expelFocused(Direction) || workspace->consumeFocused(Direction);
         invalidateHoverFocusAfterSceneChange(server, changed);
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1424,13 +1483,13 @@ namespace andromeda {
     }
 
     bool actionWindowCenter(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
+      const FocusedMove move = beginFocusedMove(server);
       if (View* view = placementTarget(server, {}, FocusSource::Scratchpad).value_or(nullptr)) {
         view->centerFloating();
-        return true;
-      }
-      if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
+      } else if (View* view = placementTarget(server, {}, FocusSource::Layout).value_or(nullptr)) {
         view->centerFloating();
       }
+      finishFocusedMove(server, move);
       return true;
     }
 
@@ -1443,7 +1502,9 @@ namespace andromeda {
         if (*target == nullptr) {
           return reject(error, "no focused window");
         }
+        const FocusedMove move = beginFocusedMove(server);
         (*target)->moveFloatingTo(arg->position);
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1457,7 +1518,9 @@ namespace andromeda {
         if (*target == nullptr) {
           return reject(error, "no focused window");
         }
+        const FocusedMove move = beginFocusedMove(server);
         (*target)->moveFloatingBy(arg->deltaX, arg->deltaY);
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1486,7 +1549,9 @@ namespace andromeda {
 
     template <int Direction> bool actionSwapCycle(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         workspace->swapFocusedInCycle(Direction);
+        finishFocusedMove(server, move);
       }
       return true;
     }
@@ -1494,7 +1559,9 @@ namespace andromeda {
     template <bool Horizontal, int Direction>
     bool actionSwapDirectional(Server& server, const Keybind& /*bind*/, std::string* /*error*/) {
       if (Workspace* workspace = windowActionWorkspace(server)) {
+        const FocusedMove move = beginFocusedMove(server);
         workspace->swapFocusedInDirection(Horizontal, Direction);
+        finishFocusedMove(server, move);
       }
       return true;
     }

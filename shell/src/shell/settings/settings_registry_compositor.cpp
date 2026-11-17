@@ -272,7 +272,7 @@ namespace settings {
       toggle(Overview, "overview", "overview.background_blur", "overview blur wallpaper");
       toggle(Overview, "overview", "overview.workspace_wallpaper", "overview wallpaper preview");
 
-      toggle(Windows, "focus", "input.focus.follows_mouse", "focus follows mouse hover pointer");
+      choice(Windows, "focus", "input.focus.follows_mouse", {"off", "sloppy", "always"}, true, "focus follows mouse hover pointer");
       toggle(Windows, "focus", "input.cursor.follows_focus", "cursor warp follows focus");
       toggle(Windows, "focus", "general.focus_on_activate", "focus activation request urgent");
       toggle(Power, "background-apps", "general.optimize_background_apps", "optimize background apps priority efficiency cores battery");

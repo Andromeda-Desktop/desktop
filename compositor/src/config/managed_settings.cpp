@@ -347,11 +347,13 @@ namespace andromeda {
         },
         Spec{
             "input.focus.follows_mouse",
-            Kind::Bool,
+            Kind::Choice,
             0,
             0,
-            {},
-            [](const Config& c) { return text(c.input.focus.followsMouse); }
+            kFollowsMouseNames,
+            [](const Config& c) {
+              return std::string(kFollowsMouseNames[static_cast<size_t>(c.input.focus.followsMouse)]);
+            }
         },
         Spec{
             "input.focus.follows_mouse_max_scroll",

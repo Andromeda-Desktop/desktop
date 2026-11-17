@@ -163,11 +163,11 @@ control l
 await_events "$LOG" pointer-locked "$((locked + 1))"
 assert_focus "$other"
 control u
-# Ordinary keyboard focus invalidation must now allow hover refocus without re-entry.
+# Without the rule, keyboard focus is an ordinary sloppy choice: motion within the game keeps it elsewhere.
 "$ANDROMEDA" msg "window-focus:$game" > /dev/null
 "$ANDROMEDA" msg "window-focus:$other" > /dev/null
 move relative 1 0
-assert_focus "$game"
+assert_focus "$other"
 move move "$ox" "$oy"
 assert_focus "$other"
 cat >> "$ANDROMEDA_CONFIG" <<'CONFIG'

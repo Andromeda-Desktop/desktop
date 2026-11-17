@@ -140,7 +140,7 @@ numlock_toggle = true
 # Focus can follow the pointer across tiled, floating, and pinned windows.
 #
 # [input.focus]
-# follows_mouse = true
+# follows_mouse = "sloppy"  # "off", "sloppy" (focus the window the pointer enters), or "always" (also after a scene change)
 # hover_raises = false # Hover focuses only; clicks and keybinds raise.
 
 # Confine touch input to one display.

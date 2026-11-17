@@ -155,19 +155,17 @@ pointer_held=false
 "$ANDROMEDA" settle > /dev/null
 assert_active "$CHILD" 'completed dialog reveal'
 
-# An explicit strip scroll intentionally refreshes hover after it settles.
-# The pointer stays inside the same parent while the child owns the seat,
-# so this also distinguishes that refresh from map-time invalidation.
+# An explicit strip scroll that leaves the same parent under the pointer gives sloppy hover nothing new to focus:
+# motion inside that parent keeps the child's keyboard focus.
 "$ANDROMEDA" msg layout-scroll-left > /dev/null
 assert_active "$CHILD" 'pending explicit strip scroll'
 "$ANDROMEDA" clock-advance 2000 > /dev/null
 "$ANDROMEDA" settle > /dev/null
 assert_pixel scrolled-parent 129 360 '48 96 144'
 "$ANDROMEDA_POINTER_CLIENT" 1280 720 move 130 360 > /dev/null
-wait_active "$PARENT" 'hover refresh after explicit strip scroll'
-expect_x_focus "$PARENT" scrolled
-"$ANDROMEDA" msg "window-focus:$child_id" > /dev/null
-wait_active "$CHILD" 'child focus after explicit scroll control'
+"$ANDROMEDA" settle > /dev/null
+assert_active "$CHILD" 'motion inside the same parent after explicit strip scroll'
+expect_x_focus "$CHILD" scrolled
 "$ANDROMEDA" clock-advance 2000 > /dev/null
 "$ANDROMEDA" settle > /dev/null
 

@@ -353,6 +353,7 @@ namespace andromeda {
         m_server->refocus(workspace->group() != nullptr ? workspace->group()->output() : nullptr);
       }
     }
+    m_server->cursor()->refocusAfterSceneChange();
   }
 
   void View::syncMinimizeEligibility() {
@@ -997,7 +998,7 @@ namespace andromeda {
         && mapped()
         && m_onActiveWorkspace
         && (scheduledFullscreen() || currentFullscreen())
-        && config().input.focus.followsMouse;
+        && config().input.focus.followsMouseEnabled();
     kLog.debug(
         "set_fullscreen '{}' [{}] -> {} (tiled={}, ws_active={})", appId() != nullptr ? appId() : "?",
         static_cast<const void*>(this), fullscreen, tiled(), m_workspace != nullptr && m_workspace->active()
@@ -1132,6 +1133,7 @@ namespace andromeda {
       // invalidates hover focus. The restored scene may put another tile beneath a stationary pointer, so its next
       // eligible motion must re-run focus selection even without crossing a border.
       m_server->cursor()->invalidateHoverFocus();
+      m_server->cursor()->refocusAfterSceneChange();
     }
     refreshStateRuleEffects();
   }

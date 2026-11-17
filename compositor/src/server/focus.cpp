@@ -33,6 +33,8 @@ namespace andromeda {
         return "pointer-press";
       case FocusReason::PointerHover:
         return "pointer-hover";
+      case FocusReason::PointerScene:
+        return "pointer-scene";
       case FocusReason::Grab:
         return "grab";
       case FocusReason::DragDrop:
@@ -110,10 +112,15 @@ namespace andromeda {
       view->applyDeferredUnfullscreen();
     }
 
-    // Raise is decided once: only a hover under follows_mouse may focus without lifting the window. Every other
-    // reason (clicks, keybinds, activation, workspace switches, mapping) raises.
-    const bool raise = !(reason == FocusReason::PointerHover && !config().input.focus.hoverRaises);
+    // Raise is decided once: only follows_mouse may focus without lifting the window. Every other reason (clicks,
+    // keybinds, activation, workspace switches, mapping) raises.
+    const bool followsPointer = reason == FocusReason::PointerHover || reason == FocusReason::PointerScene;
+    const bool raise = !followsPointer || config().input.focus.hoverRaises;
     m_lastRaise = raise;
+    // A focus choice made after a scene change outranks the pending refocus of the window under the pointer.
+    if (reason != FocusReason::PointerScene) {
+      m_server.cursor()->cancelSceneRefocus();
+    }
     // Keep workspace focus while exclusive layer-shell holds the seat; refocus applies it later. focus() also returns
     // the seat to a layer that was uncovered by a fullscreen window leaving. Overview owns the seat the same way, but
     // keeps the chrome so card borders track the focused window; the keyboard enter replays when it closes.
@@ -125,7 +132,7 @@ namespace andromeda {
     }
     Workspace* workspace = view->workspace();
     if (workspace != nullptr && (!view->pinned() || workspace->active())) {
-      workspace->setFocusedView(view, raise, reason != FocusReason::PointerHover);
+      workspace->setFocusedView(view, raise, !followsPointer);
     }
     m_server.refreshOutputPolicies();
     if (overviewActive) {
@@ -134,7 +141,7 @@ namespace andromeda {
     // Pointer presses, compositor grabs, and completed gestures already align focus with their target. Keyboard and
     // activation-driven focus can instead replace the scene beneath a stationary pointer, so let the next eligible
     // hover refresh it once.
-    if (reason != FocusReason::PointerHover
+    if (!followsPointer
         && reason != FocusReason::PointerPress
         && reason != FocusReason::Grab
         && reason != FocusReason::DragDrop
@@ -168,6 +175,9 @@ namespace andromeda {
     case FocusReason::Gesture:
       // No reveal: the finger already chose where the strip rests, and a reveal
       // would drag it somewhere else on release.
+      break;
+    case FocusReason::PointerScene:
+      // No reveal: scrolling the strip would put another window under the stationary pointer and focus that one next.
       break;
     }
   }

@@ -107,6 +107,7 @@ namespace andromeda {
     if (m_hideTimer != nullptr) {
       wl_event_source_remove(m_hideTimer);
     }
+    setSceneRefocus(SceneRefocus::Idle);
     // These listen on m_cursor, which wlr_cursor_destroy frees before the members die.
     for (Listener* listener : {&m_motion, &m_motionAbsolute, &m_button, &m_axis, &m_frame, &m_touchDown, &m_touchUp,
                                &m_touchMotion, &m_touchCancel, &m_touchFrame, &m_tabletToolAxis, &m_tabletToolProximity,
@@ -729,16 +730,15 @@ namespace andromeda {
 
   void Cursor::warpToPreservingFocus(double lx, double ly) { warpTo(lx, ly, false); }
 
-  bool Cursor::warpToView(View& view) {
+  wlr_box Cursor::viewTargetBox(View& view) {
     Output* output = view.currentOutput();
     if (output == nullptr) {
-      return false;
+      return {};
     }
-
     wlr_box outputBox{};
     wlr_output_layout_get_box(m_server->outputLayout(), output->wlr(), &outputBox);
     if (outputBox.width <= 0 || outputBox.height <= 0) {
-      return false;
+      return {};
     }
 
     wlr_box target = view.presentedBox();
@@ -756,14 +756,33 @@ namespace andromeda {
       target.x = view.layoutTargetX();
       target.y = view.layoutTargetY();
     }
-
     if (target.width <= 0 || target.height <= 0) {
       target = outputBox;
     }
-    wlr_box visible{};
-    if (!wlr_box_intersection(&visible, &target, &outputBox)) {
-      visible = outputBox;
+    return target;
+  }
+
+  namespace {
+    // The part of `target` on the view's output, where the cursor can land; the whole output when none of it is.
+    wlr_box visibleWarpBox(wlr_output_layout* layout, View& view, const wlr_box& target) {
+      wlr_box outputBox{};
+      if (const Output* output = view.currentOutput(); output != nullptr) {
+        wlr_output_layout_get_box(layout, output->wlr(), &outputBox);
+      }
+      wlr_box visible{};
+      if (!wlr_box_intersection(&visible, &target, &outputBox)) {
+        return outputBox;
+      }
+      return visible;
     }
+  } // namespace
+
+  bool Cursor::warpToView(View& view) {
+    const wlr_box target = viewTargetBox(view);
+    if (wlr_box_empty(&target)) {
+      return false;
+    }
+    const wlr_box visible = visibleWarpBox(m_server->outputLayout(), view, target);
     warpToPreservingFocus(visible.x + visible.width / 2.0, visible.y + visible.height / 2.0);
     return true;
   }
@@ -778,6 +797,17 @@ namespace andromeda {
     wlr_cursor_warp(m_cursor, nullptr, lx, ly);
     m_server->notifyIdleActivity();
     processMotion(monotonicMsec(), oldX, oldY, allowFocusChange);
+    if (!allowFocusChange) {
+      // The cursor was carried to a window rather than moved onto it, so the window it lands on counts as already seen.
+      wlr_surface* surface = nullptr;
+      double sx = 0;
+      double sy = 0;
+      LayerSurface* layer = nullptr;
+      View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
+      if (layer == nullptr && view != nullptr) {
+        m_hoverView = view;
+      }
+    }
   }
 
   void Cursor::cancelStaleTiledResize() {
@@ -1741,7 +1771,7 @@ namespace andromeda {
     View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
 
     if (allowFocusChange
-        && config().input.focus.followsMouse
+        && config().input.focus.followsMouseEnabled()
         && layer == nullptr
         && view != nullptr
         && view->mapped()) {
@@ -1789,7 +1819,7 @@ namespace andromeda {
       m_server->scheduleIpcWorkspacesEvent();
       wlr_seat* seat = m_server->seat()->wlr();
       if (allowFocusChange
-          && config().input.focus.followsMouse
+          && config().input.focus.followsMouseEnabled()
           && !wlr_seat_pointer_has_grab(seat)
           && !wlr_seat_keyboard_has_grab(seat)
           && !m_server->sessionLocked()
@@ -1826,29 +1856,21 @@ namespace andromeda {
       }
       workspace->resumeScrollHoverFocus();
     }
+    const bool always = config().input.focus.followsMouse == FollowsMouse::Always;
+    const bool layoutMoving =
+        (workspace != nullptr && workspace->layoutMotionActive()) || m_server->gestures()->movingContent();
     // Consume the invalidation only after every hover-focus eligibility gate. PointerHover never arms it, so layout
-    // motion caused by this focus cannot turn into another focus on the next input event.
-    const bool refocus = scrollRefocus || m_hoverFocusInvalidated;
-    m_hoverFocusInvalidated = false;
+    // motion caused by this focus cannot turn into another focus on the next input event. Sloppy hover refreshes only
+    // when the scene put another window under the pointer; always hover refocuses on any motion while the layout rests.
+    const bool invalidated = std::exchange(m_hoverFocusInvalidated, false);
+    const View* lastHovered = m_hoverView.get();
+    m_hoverView = view;
+    const bool refocus = always ? !layoutMoving : (scrollRefocus || invalidated) && view != lastHovered;
     wlr_surface* oldSurface = nullptr;
     double oldSx = 0;
     double oldSy = 0;
     View* oldView = m_server->viewAt(oldX, oldY, &oldSurface, &oldSx, &oldSy);
-    // A transient can open while the pointer remains over its parent. Refreshing hover within that ancestor must
-    // leave the child focused so the pointer can reach it; crossing back into the ancestor still transfers focus.
-    bool hoveredAncestor = false;
-    const View* focused = View::fromSurface(seat->keyboard_state.focused_surface);
-    if (!scrollRefocus && refocus && view == oldView && focused != nullptr && focused->workspace() == workspace) {
-      for (const View* parent = focused->transientParent(); parent != nullptr; parent = parent->transientParent()) {
-        if (parent == view) {
-          hoveredAncestor = true;
-          break;
-        }
-      }
-    }
-    // Keyboard focus is an escape from rule confinement. While the pointer remains inside that window, an
-    // invalidated hover must not immediately focus it again. A real re-entry (or a click) can still focus it.
-    const bool entered = view != oldView || (refocus && !hoveredAncestor && !ruleConstraintApplies(*view));
+    const bool entered = view != oldView || (refocus && !hoverKeepsFocus(*view, scrollRefocus));
     // Workspace focus is remembered independently from the seat. A pinned window from another workspace can own the
     // seat while this view remains its active workspace's remembered focus, so only seat-global activation of the
     // window that would take the keyboard (a dialog attached to this one) makes this handoff redundant.
@@ -1860,6 +1882,102 @@ namespace andromeda {
       view = m_server->viewAt(m_cursor->x, m_cursor->y, surface, sx, sy, layer);
     }
     return view;
+  }
+
+  bool Cursor::hoverKeepsFocus(View& view, bool afterStripScroll) const {
+    // Keyboard focus is an escape from rule confinement. While the pointer remains inside that window, hover must not
+    // immediately focus it again. A real re-entry (or a click) can still focus it.
+    if (ruleConstraintApplies(view)) {
+      return true;
+    }
+    if (afterStripScroll) {
+      return false;
+    }
+    // A transient can open while the pointer remains over its parent. Hover within that ancestor must leave the child
+    // focused so the pointer can reach it; crossing back into the ancestor still transfers focus.
+    const View* focused = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
+    if (focused == nullptr || focused->workspace() != view.workspace()) {
+      return false;
+    }
+    for (const View* parent = focused->transientParent(); parent != nullptr; parent = parent->transientParent()) {
+      if (parent == &view) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void Cursor::setSceneRefocus(SceneRefocus next) {
+    if (next == m_sceneRefocus) {
+      return;
+    }
+    if (m_sceneRefocus == SceneRefocus::Queued) {
+      wl_event_source_remove(m_sceneRefocusIdle);
+      m_sceneRefocusIdle = nullptr;
+    }
+    if (next == SceneRefocus::Queued) {
+      m_sceneRefocusIdle =
+          wl_event_loop_add_idle(wl_display_get_event_loop(m_server->display()), onSceneRefocusIdle, this);
+    }
+    m_sceneRefocus = next;
+  }
+
+  void Cursor::refocusAfterSceneChange() {
+    if (config().input.focus.followsMouse == FollowsMouse::Always) {
+      setSceneRefocus(SceneRefocus::Queued);
+    }
+  }
+
+  void Cursor::onSceneRefocusIdle(void* data) {
+    auto* self = static_cast<Cursor*>(data);
+    // wayland frees an idle source after it fires.
+    self->m_sceneRefocusIdle = nullptr;
+    self->m_sceneRefocus = SceneRefocus::Waiting;
+    self->applySceneRefocus();
+  }
+
+  void Cursor::applySceneRefocus() {
+    const Output* output =
+        m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
+    if (config().input.focus.followsMouse != FollowsMouse::Always || output == nullptr) {
+      setSceneRefocus(SceneRefocus::Idle);
+      return;
+    }
+    // Content still moving keeps the request Waiting: the frame that settles it queues this again.
+    if (m_server->animationsActiveFor(output)
+        || (m_server->gestures() != nullptr && m_server->gestures()->movingContent())) {
+      return;
+    }
+    wlr_surface* surface = nullptr;
+    double sx = 0;
+    double sy = 0;
+    LayerSurface* layer = nullptr;
+    View* view = m_server->viewAt(m_cursor->x, m_cursor->y, &surface, &sx, &sy, &layer);
+    if (Workspace* workspace = view != nullptr ? view->workspace() : nullptr;
+        workspace != nullptr && (workspace->arrangePending() || workspace->layoutMotionActive())) {
+      return;
+    }
+    setSceneRefocus(SceneRefocus::Idle);
+    // The same gates as hover: grabs, lock, exclusive layers, and the overview keep their focus.
+    wlr_seat* seat = m_server->seat()->wlr();
+    if (!isPassthrough()
+        || seat->drag != nullptr
+        || seat->pointer_state.button_count != 0
+        || wlr_seat_pointer_has_grab(seat)
+        || wlr_seat_keyboard_has_grab(seat)
+        || m_server->sessionLocked()
+        || m_server->exclusiveKeyboardLayer() != nullptr
+        || (m_server->overview() != nullptr && m_server->overview()->active())
+        || std::ranges::any_of(m_tools, [](const auto& tool) { return tool->inProximity; })
+        || layer != nullptr
+        || view == nullptr
+        || !view->mapped()) {
+      return;
+    }
+    m_hoverView = view;
+    if (!view->placementRoot()->inputDelegate()->activated() && !hoverKeepsFocus(*view, false)) {
+      m_server->focusView(view, FocusReason::PointerScene);
+    }
   }
 
   void Cursor::onTabletToolAxis(Cursor* self, void* data) {
@@ -1961,7 +2079,7 @@ namespace andromeda {
     // Native hover.
     setToolEmulating(state, false);
     updatePointerOutput();
-    if (config().input.focus.followsMouse && layer == nullptr && view != nullptr && view->mapped()) {
+    if (config().input.focus.followsMouseEnabled() && layer == nullptr && view != nullptr && view->mapped()) {
       view = hoverFocus(view, &surface, &sx, &sy, &layer, oldX, oldY);
       if (surface == nullptr) {
         setToolEmulating(state, true);
@@ -2432,6 +2550,10 @@ namespace andromeda {
   }
 
   bool Cursor::refreshPointerContents(const Output* output) {
+    // A waiting scene refocus checks for itself whether the content under the pointer has settled.
+    if (m_sceneRefocus == SceneRefocus::Waiting) {
+      setSceneRefocus(SceneRefocus::Queued);
+    }
     wlr_seat* seat = m_server->seat()->wlr();
     if (output == nullptr
         || m_cursorHidden

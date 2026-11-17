@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdlib>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <linux/input-event-codes.h>
 #include <optional>
@@ -1553,6 +1554,30 @@ ANDROMEDA_TEST(hoverRaisesLoadsAndDefaultsEnabled) {
   file.write("[input.focus]\n");
   CHECK(store.reload().success);
   CHECK(store.config().input.focus.hoverRaises);
+}
+
+ANDROMEDA_TEST(followsMouseLoadsModesAndKeepsBooleans) {
+  const TempConfig file;
+  ConfigStore& store = andromeda::configStore();
+  store.setRootPath(file.path(), true);
+  using andromeda::FollowsMouse;
+
+  file.write("[input.focus]\n");
+  CHECK(store.reload().success);
+  CHECK(store.config().input.focus.followsMouse == FollowsMouse::Off);
+
+  for (const auto& [text, mode] : {std::pair{"\"off\"", FollowsMouse::Off}, std::pair{"\"sloppy\"", FollowsMouse::Sloppy},
+                                   std::pair{"\"always\"", FollowsMouse::Always}, std::pair{"true", FollowsMouse::Sloppy},
+                                   std::pair{"false", FollowsMouse::Off}}) {
+    file.write(std::format("[input.focus]\nfollows_mouse = {}\n", text));
+    CHECK(store.reload().success);
+    CHECK(store.config().input.focus.followsMouse == mode);
+    CHECK(!containsDiagnostic(store, "follows_mouse"));
+  }
+
+  file.write("[input.focus]\nfollows_mouse = \"everywhere\"\n");
+  CHECK(store.reload().success);
+  CHECK(containsDiagnostic(store, "follows_mouse"));
 }
 
 ANDROMEDA_TEST(outputNamesDifferingOnlyByCaseAreRejectedAsDuplicates) {

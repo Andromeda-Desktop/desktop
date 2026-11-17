@@ -5536,7 +5536,12 @@
         },
         "input-focus-follows-mouse": {
           "label": "Focus Follows Mouse",
-          "description": "Focus the window under the pointer"
+          "description": "Focus the window under the pointer; Always also does so when windows move under a still pointer",
+          "options": {
+            "off": "Off",
+            "sloppy": "On Enter",
+            "always": "Always"
+          }
         },
         "input-window-snapping": {
           "label": "Window Snapping",

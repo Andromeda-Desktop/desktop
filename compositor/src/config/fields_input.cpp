@@ -354,7 +354,26 @@ namespace andromeda {
       // column three screens away is 3.0. The upper bound here is a nonsense-catcher, not a ceiling. Below zero would
       // refuse focus even for a window already fully visible, which disables hover focus rather than limiting it.
       static const Fields<In::Focus> focus{
-          boolean("follows_mouse", &In::Focus::followsMouse),
+          custom<In::Focus>(
+              "follows_mouse",
+              registry::KeyDescription("enum").withValues({kFollowsMouseNames.begin(), kFollowsMouseNames.end()}),
+              [](const toml::node& node, const std::string& path, In::Focus& target, registry::ReadContext&) {
+                // true and false predate the modes; they keep their old meaning.
+                if (const auto flag = node.value_exact<bool>()) {
+                  target.followsMouse = *flag ? FollowsMouse::Sloppy : FollowsMouse::Off;
+                  return;
+                }
+                const auto name = node.value<std::string_view>();
+                if (const auto* found = std::ranges::find(kFollowsMouseNames, name); found != kFollowsMouseNames.end()) {
+                  target.followsMouse = static_cast<FollowsMouse>(found - kFollowsMouseNames.begin());
+                } else {
+                  warnAt(node.source(), "ignoring {} (expected \"off\", \"sloppy\", \"always\", or a boolean)", path);
+                }
+              },
+              [](const In::Focus& focus) -> nlohmann::ordered_json {
+                return kFollowsMouseNames[static_cast<size_t>(focus.followsMouse)];
+              }
+          ),
           real("follows_mouse_max_scroll", 0.0, kMaxFollowsMouseScroll, &In::Focus::followsMouseMaxScroll),
           boolean("hover_raises", &In::Focus::hoverRaises),
       };

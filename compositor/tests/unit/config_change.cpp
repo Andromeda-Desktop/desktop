@@ -4,6 +4,7 @@
 
 using andromeda::AccelProfile;
 using andromeda::Config;
+using andromeda::FollowsMouse;
 using andromeda::ConfigChange;
 using andromeda::ConfigEffects;
 using andromeda::ContentType;
@@ -221,7 +222,7 @@ ANDROMEDA_TEST(nestedAppearanceChangesAreCaught) {
   CHECK(ConfigChange::between(before, scrolled).layout);
 
   Config focused;
-  focused.input.focus.followsMouse = !focused.input.focus.followsMouse;
+  focused.input.focus.followsMouse = FollowsMouse::Sloppy;
   CHECK(ConfigChange::between(before, focused).input);
 }
 
