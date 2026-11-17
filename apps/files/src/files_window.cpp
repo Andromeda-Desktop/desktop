@@ -1628,6 +1628,9 @@ void FilesWindow::loadTrash() {
     } else if (v.removable) {
       places.push_back({.label = v.name, .glyph = "usb", .path = v.mountPoint, .art = "usb", .eject = true,
                         .onEject = [this, mount = v.mountPoint] { eject(mount); }});
+    } else if (v.mountPoint != "/home") {
+      // Internal drives mounted by fstab or root (/mnt) stay listed; Drives hides every mounted device.
+      places.push_back({.label = v.name, .glyph = "usb", .path = v.mountPoint, .art = "drive"});
     }
   }
   // Vaults (mockup §17): a locked one opens the Unlock sheet; an unlocked one opens its folder and locks by eject.
