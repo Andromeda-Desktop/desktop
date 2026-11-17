@@ -427,25 +427,6 @@ namespace term {
                    .title = "Window",
                    .rows = {{"Window", "", [self](float s, float w) { return self->materialTiles(s, w); }, true}},
                    .bare = true});
-    const int glassOpacity = now.glassOpacity.value_or(static_cast<int>(std::lround(Tokens::componentTerminalGlassAlpha * 100.0F)));
-    const bool glass = now.material != WindowMaterial::Solid && !Style::reduceTransparency();
-    out.push_back({Pane::Main,
-                   "",
-                   {{"Glass opacity", glass ? "" : "Glass windows only",
-                     [self, glassOpacity, glass](float s, float) -> std::unique_ptr<Node> {
-                       // The store rebuilds this column on each change: commit on release, not during a drag.
-                       auto picked = std::make_shared<double>(glassOpacity);
-                       return ui::slider({.minValue = SettingsLimits::kGlassOpacityMin,
-                                          .maxValue = SettingsLimits::kGlassOpacityMax,
-                                          .step = 5,
-                                          .value = glassOpacity,
-                                          .enabled = glass,
-                                          .controlHeight = Tokens::sizeControlS * s,
-                                          .onValueChanged = [picked](double v) { *picked = v; },
-                                          .onDragEnd = [self, picked] {
-                                            self->change([&](Settings& x) { x.glassOpacity = static_cast<int>(std::lround(*picked)); });
-                                          }});
-                     }}}});
     // Text
     {
       std::vector<std::string> fonts{"Default (" + std::string(Tokens::fontMono).substr(0, std::string(Tokens::fontMono).find(',')) + ")"};

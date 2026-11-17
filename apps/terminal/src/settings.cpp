@@ -299,11 +299,6 @@ namespace term {
     r.boolean("appearance", "bold_is_bright", s.boldIsBright);
     r.integer("appearance", "padding", SettingsLimits::kPaddingMin, SettingsLimits::kPaddingMax, s.padding);
     r.choice("appearance", "window", kMaterials, s.material);
-    if (r.find("appearance", "glass_opacity") != nullptr) {
-      int opacity = 0;
-      r.integer("appearance", "glass_opacity", SettingsLimits::kGlassOpacityMin, SettingsLimits::kGlassOpacityMax, opacity);
-      s.glassOpacity = opacity;
-    }
     r.boolean("appearance", "focus_ring", s.focusRing);
     r.string("text", "font", s.font);
     r.integer("text", "size", SettingsLimits::kFontSizeMin, SettingsLimits::kFontSizeMax, s.fontSize);
@@ -341,11 +336,7 @@ namespace term {
     appearance.insert_or_assign("bold_is_bright", s.boldIsBright);
     appearance.insert_or_assign("padding", s.padding);
     appearance.insert_or_assign("window", std::string(nameOf(kMaterials, s.material)));
-    if (s.glassOpacity) {
-      appearance.insert_or_assign("glass_opacity", *s.glassOpacity);
-    } else {
-      appearance.erase("glass_opacity");
-    }
+    appearance.erase("glass_opacity"); // an old per-app override; the desktop glass sliders drive the terminal
     appearance.insert_or_assign("focus_ring", s.focusRing);
     auto& text = tableIn(root, "text");
     text.insert_or_assign("font", s.font);

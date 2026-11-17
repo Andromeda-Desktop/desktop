@@ -120,7 +120,6 @@ namespace term {
         m_chooseSaveFile(std::move(chooseSaveFile)), m_split(window, splitCallbacks()) {
     m_settingsChanged = m_settings.changed().connect([this] {
       m_window.setMaterial(appMaterial(m_settings.settings().material));
-      m_window.setGlassAlpha(glassAlpha(m_settings.settings()));
       applyViewSettings();
       if (ContentView* view = shownView(); view != nullptr) {
         m_window.setMainFill(view->surface());

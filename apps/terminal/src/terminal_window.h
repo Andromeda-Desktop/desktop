@@ -56,10 +56,6 @@ namespace term {
     }
     return AppWindow::Material::Solid;
   }
-  // The Glass opacity setting drives the window's glass parts; unset, they follow the desktop glass slider.
-  [[nodiscard]] inline std::optional<float> glassAlpha(const Settings& s) {
-    return s.glassOpacity ? std::optional(static_cast<float>(*s.glassOpacity) / 100.0F) : std::nullopt;
-  }
 
   class Notifier;
   namespace agent {
