@@ -1,0 +1,85 @@
+--- a/backend/drm/drm.c
++++ b/backend/drm/drm.c
+@@ -959,8 +959,11 @@
+ 		// non-modesets commits without a new buffer without waiting for the
+ 		// frame event. In that case we need to make the KMS commit blocking,
+ 		// otherwise the kernel will error out with EBUSY.
+-		.nonblock = !state->allow_reconfiguration &&
+-			(state->committed & WLR_OUTPUT_STATE_BUFFER),
++		.nonblock = state->allow_reconfiguration ?
++			// A modeset sends a page-flip event when the kernel finishes it, so the caller never waits for link
++			// training or panel power sequencing. With a flip pending the kernel would refuse it: block instead.
++			!test_only && conn->pending_page_flip == NULL :
++			(state->committed & WLR_OUTPUT_STATE_BUFFER) != 0,
+ 		.connectors = &pending,
+ 		.connectors_len = 1,
+ 	};
+@@ -992,10 +995,8 @@
+ 		}
+ 	}
+ 
+-	// wlr_drm_interface.crtc_commit will perform either a non-blocking
+-	// page-flip, either a blocking modeset. When performing a blocking modeset
+-	// we'll wait for all queued page-flips to complete, so we don't need this
+-	// safeguard.
++	// A blocking commit waits for all queued page-flips to complete, so only a
++	// nonblocking one needs this safeguard.
+ 	if (!test_only && pending_dev.nonblock && conn->pending_page_flip != NULL) {
+ 		wlr_drm_conn_log(conn, WLR_ERROR, "Failed to page-flip output: "
+ 			"a page-flip is already pending");
+@@ -1994,8 +1995,13 @@
+ 	if (!test_only) {
+ 		flags |= DRM_MODE_PAGE_FLIP_EVENT;
+ 	}
++	bool flip_pending = false;
++	for (size_t i = 0; i < conn_states_len; i++) {
++		flip_pending |= conn_states[i].connector->pending_page_flip != NULL;
++	}
+ 	struct wlr_drm_device_state dev_state = {
+ 		.modeset = modeset,
++		.nonblock = modeset && !test_only && !flip_pending,
+ 		.connectors = conn_states,
+ 		.connectors_len = conn_states_len,
+ 	};
+--- a/backend/drm/atomic.c
++++ b/backend/drm/atomic.c
+@@ -1,4 +1,5 @@
+ #include <drm_fourcc.h>
++#include <errno.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <unistd.h>
+@@ -71,6 +72,11 @@
+ 	}
+ 
+ 	int ret = drmModeAtomicCommit(drm->fd, atom->req, flags, page_flip);
++	if (ret == -EBUSY && (flags & DRM_MODE_ATOMIC_ALLOW_MODESET) && (flags & DRM_MODE_ATOMIC_NONBLOCK)) {
++		// The modeset pulls in a CRTC whose last commit is still in flight: wait for it.
++		wlr_log(WLR_DEBUG, "Nonblocking modeset busy, retrying blocking");
++		ret = drmModeAtomicCommit(drm->fd, atom->req, flags & ~DRM_MODE_ATOMIC_NONBLOCK, page_flip);
++	}
+ 	if (ret != 0) {
+ 		enum wlr_log_importance log_level = WLR_ERROR;
+ 		if (flags & DRM_MODE_ATOMIC_TEST_ONLY) {
+--- a/backend/drm/libliftoff.c
++++ b/backend/drm/libliftoff.c
+@@ -1,3 +1,4 @@
++#include <errno.h>
+ #include <fcntl.h>
+ #include <libliftoff.h>
+ #include <stdio.h>
+@@ -500,7 +501,13 @@
+ 		}
+ 	}
+ 
+-	ok = drmModeAtomicCommit(drm->fd, req, flags, page_flip) == 0;
++	int ret = drmModeAtomicCommit(drm->fd, req, flags, page_flip);
++	if (ret == -EBUSY && (flags & DRM_MODE_ATOMIC_ALLOW_MODESET) && (flags & DRM_MODE_ATOMIC_NONBLOCK)) {
++		// The modeset pulls in a CRTC whose last commit is still in flight: wait for it.
++		wlr_log(WLR_DEBUG, "Nonblocking modeset busy, retrying blocking");
++		ret = drmModeAtomicCommit(drm->fd, req, flags & ~DRM_MODE_ATOMIC_NONBLOCK, page_flip);
++	}
++	ok = ret == 0;
+ 	if (!ok) {
+ 		wlr_log_errno(test_only ? WLR_DEBUG : WLR_ERROR,
+ 			"Atomic commit failed");
