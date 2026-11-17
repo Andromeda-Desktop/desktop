@@ -295,7 +295,12 @@ void FileOpsClient::undo(const std::string& jobPath, Started done) {
 
 void FileOpsClient::cancel(const std::string& jobPath) {
   if (const auto it = m_jobProxies.find(jobPath); it != m_jobProxies.end()) {
-    it->second->callMethodAsync("Cancel").onInterface(kJobInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+    // Window destructors cancel their jobs, so this must not throw when the bus is already gone.
+    try {
+      it->second->callMethodAsync("Cancel").onInterface(kJobInterface).uponReplyInvoke([](std::optional<sdbus::Error>) {});
+    } catch (const sdbus::Error& e) {
+      kLog.debug("cancel {}: {}", jobPath, e.getMessage());
+    }
   }
 }
 
