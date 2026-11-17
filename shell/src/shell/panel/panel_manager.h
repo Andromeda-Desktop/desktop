@@ -143,7 +143,7 @@ public:
   void togglePanel(const std::string& panelId);
 
   bool onPointerEvent(const PointerEvent& event);
-  void onKeyboardEvent(const KeyboardEvent& event);
+  bool onKeyboardEvent(const KeyboardEvent& event);
 
   [[nodiscard]] bool isOpen() const noexcept;
   // Time the open spring needs to travel 35 % of its way: the content fades in from then on.

@@ -1,5 +1,6 @@
 #include "ui/controls/stepper.h"
 
+#include "core/input/key_modifiers.h"
 #include "core/input/key_symbols.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "render/core/render_styles.h"
@@ -393,7 +394,9 @@ void Stepper::commitValueField() {
 }
 
 bool Stepper::swallowNonNumericKey(std::uint32_t sym, std::uint32_t modifiers) {
-  (void)modifiers;
+  if ((modifiers & (KeyMod::Ctrl | KeyMod::Alt | KeyMod::Super)) != 0) {
+    return false;
+  }
   if (sym >= XKB_KEY_0 && sym <= XKB_KEY_9) {
     return false;
   }

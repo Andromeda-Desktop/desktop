@@ -25,6 +25,7 @@
 #include "core/scoped_timer.h"
 #include "core/ui_phase.h"
 #include "i18n/i18n.h"
+#include "net/url_open.h"
 #include "idle/idle_manager.h"
 #include "render/core/async_texture_cache.h"
 #include "render/render_context.h"
@@ -662,6 +663,16 @@ void SettingsWindow::dismissOpenSelectDropdown() {
   if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
     m_selectPopup->closeSelectDropdown();
   }
+}
+
+// By value: the token request dispatches Wayland events, which can destroy the button owning the caller's string.
+// NOLINTNEXTLINE(performance-unnecessary-value-param)
+void SettingsWindow::openBrowserUrl(std::string url) {
+  if (m_platform == nullptr || m_surface == nullptr) {
+    return;
+  }
+  const auto token = m_platform->requestActivationToken(m_surface->wlSurface());
+  (void)net::openInBrowser(url, token);
 }
 
 void SettingsWindow::destroyWindow() {

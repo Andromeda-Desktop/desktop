@@ -492,6 +492,9 @@ void Dock::show() {
 }
 
 void Dock::closeAllInstances() {
+  for (auto& inst : m_instances) {
+    detachInstanceState(*inst);
+  }
   m_previewOpenTimer.stop();
   m_previewCloseTimer.stop();
   if (m_preview != nullptr) {
@@ -543,6 +546,9 @@ void Dock::pruneCachedToplevelHandles() {
 }
 
 void Dock::detachInstanceState(shell::dock::DockInstance& inst) {
+  // The instance's InputDispatcher dies before its scene, so it cannot report the hovered item's destruction; the
+  // tooltip popup is also parented to this layer surface and must die before it.
+  TooltipManager::instance().forceDestroy();
   if (inst.surface != nullptr) {
     if (wl_surface* const wls = inst.surface->wlSurface()) {
       if (DragAndDrop* dnd = m_platform != nullptr ? m_platform->wayland().dragAndDrop() : nullptr) {

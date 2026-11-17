@@ -597,10 +597,10 @@ void Application::initInputDispatch() {
       m_wallpaperWindow.onKeyboardEvent(event);
       return;
     }
-    if (m_windowSwitcher.onKeyboardEvent(event)) {
+    if (m_panelManager.onKeyboardEvent(event)) {
       return;
     }
-    m_panelManager.onKeyboardEvent(event);
+    (void)m_windowSwitcher.onKeyboardEvent(event);
   });
 }
 
