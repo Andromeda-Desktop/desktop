@@ -1309,6 +1309,7 @@ if build_tests
     'taskbar_widget',
     'theme_shell_mode',
     'time_format',
+    'time_locale',
     'toplevel_thumbnail_capture',
     'tray_identifier',
     'tray_theme_path_index',

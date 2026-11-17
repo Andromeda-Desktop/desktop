@@ -247,6 +247,7 @@ _desk_ui_sources = files(
   'src/render/text/glyph_registry.cpp',
   'src/render/wallpaper_renderer.cpp',
   'src/time/time_format.cpp',
+  'src/time/time_locale.cpp',
   'src/ui/app_icon_colorization.cpp',
   'src/ui/builders.cpp',
   'src/ui/auth/auth_chrome.cpp',

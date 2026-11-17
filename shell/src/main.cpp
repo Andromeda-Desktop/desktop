@@ -1,4 +1,5 @@
 #include "greeter/greeter_host.h"
+#include "time/time_locale.h"
 
 #include <cerrno>
 #include <clocale>
@@ -112,6 +113,10 @@ int main(int argc, char* argv[]) {
   std::setlocale(LC_NUMERIC, "C");
 
   if (argc >= 2 && std::strcmp(argv[1], "greeter") == 0) {
+    // greetd starts the greeter without the system locale environment.
+    if (!initializeTimeLocale()) {
+      std::println(stderr, "greeter: could not initialize LC_TIME; check that the locale is installed");
+    }
     return runGreeterHost(argc, argv);
   }
   const ShellMain shell = loadShell();

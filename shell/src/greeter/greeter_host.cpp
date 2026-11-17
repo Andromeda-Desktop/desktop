@@ -839,8 +839,9 @@ namespace {
     }
 
     // greetd is strictly one request, one reply: Creating -> (Waiting) -> Posting -> Starting, or Cancelling -> Creating
-    // after a wrong password.
-    enum class Phase : std::uint8_t { Idle, Creating, Waiting, Posting, Starting, Cancelling };
+    // after a wrong password. Superseded: the user changed while create_session is unanswered; its reply is dropped and
+    // the session it opened is cancelled.
+    enum class Phase : std::uint8_t { Idle, Creating, Waiting, Posting, Starting, Cancelling, Superseded };
 
     void createSession() {
       if (m_user.empty()) {
@@ -1065,7 +1066,9 @@ namespace {
       m_submitQueued = false;
       m_hint.clear();
       m_hintError = false;
-      if (m_phase == Phase::Creating || m_phase == Phase::Waiting) {
+      if (m_phase == Phase::Creating) {
+        m_phase = Phase::Superseded;
+      } else if (m_phase == Phase::Waiting) {
         m_phase = m_greetd.requestCancelSession() ? Phase::Cancelling : Phase::Idle;
       } else if (m_phase == Phase::Idle && m_greetd.isConnected()) {
         createSession();
@@ -1086,6 +1089,14 @@ namespace {
     }
 
     void onGreetdResponse(const GreetdResponse& response) {
+      if (m_phase == Phase::Superseded) {
+        if (response.type == GreetdResponseType::Error) {
+          createSession();
+        } else {
+          m_phase = m_greetd.requestCancelSession() ? Phase::Cancelling : Phase::Idle;
+        }
+        return;
+      }
       switch (response.type) {
       case GreetdResponseType::AuthMessage:
         if (response.authMessage.type == GreetdAuthMessageType::Secret
