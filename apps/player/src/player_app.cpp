@@ -194,6 +194,15 @@ void PlayerApp::windowClosed(AppWindow& window) {
   updateInhibit();
 }
 
+// The inhibitor and the video subsurface are Wayland objects that die with the connection: drop them while it lives.
+// A reconnect creates them again on the next frame.
+void PlayerApp::windowSurfaceLost(AppWindow& window) {
+  if (&window == videoHost()) {
+    releaseInhibitor();
+    m_video.reset();
+  }
+}
+
 AppWindow* PlayerApp::videoHost() const { return m_pip != nullptr ? m_pip : m_window; }
 
 void PlayerApp::releaseInhibitor() {

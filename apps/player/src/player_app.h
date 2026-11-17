@@ -32,6 +32,7 @@ protected:
   void action(const std::string& name, const std::vector<std::string>& parameter, const std::string& activationToken) override;
   AppWindow& createWindow() override;
   void windowClosed(AppWindow& window) override;
+  void windowSurfaceLost(AppWindow& window) override;
   void shutdown() override { saveResume(); }
 
 private:
