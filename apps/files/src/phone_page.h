@@ -40,8 +40,8 @@ public:
   void pick(std::size_t index);
   [[nodiscard]] std::size_t photoCount() const noexcept { return m_photos.size(); }
 
-  // "Pixel 9" -> ~/Phone/Pixel 9 when the browse mount shows it.
-  [[nodiscard]] std::filesystem::path browseRoot() const;
+  // Lists the top folders of ~/Phone/<name> off the GUI thread, then rebuilds.
+  void listFolders();
   // Files in Downloads (one level) whose user.xdg.origin.url is link://<id>, newest first.
   [[nodiscard]] static std::vector<std::filesystem::path> received(const std::string& deviceId, std::size_t limit);
 
@@ -75,6 +75,11 @@ private:
   std::string m_photoError; // "denied": Photos Off; other: no answer
   bool m_loading = false;
   bool m_loaded = false; // an answer came while connected; cleared while away so a reconnect loads again
+  // ~/Phone/<name> is a FUSE mount that can stall for the phone's answer timeout, so a worker thread lists it.
+  enum class Folders { Unknown, Listing, Listed };
+  Folders m_foldersState = Folders::Unknown;
+  std::filesystem::path m_root; // empty when the browse mount does not show the phone
+  std::vector<std::filesystem::path> m_folders;
   std::set<std::string> m_imported; // phone paths already imported
   std::set<std::size_t> m_picked;   // indexes into m_photos (Import view)
   bool m_showAll = false;           // Import view: All instead of Not Imported

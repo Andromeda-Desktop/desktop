@@ -29,6 +29,7 @@
 #include <map>
 #include <nlohmann/json.hpp>
 #include <sys/xattr.h>
+#include <thread>
 
 namespace fs = std::filesystem;
 
@@ -214,6 +215,9 @@ void PhonePage::load() {
     return;
   }
   m_loading = true;
+  m_photoError.clear();
+  listFolders();
+  m_actions.rebuild();
   m_link.recentPhotos(m_deviceId, kImportAll, [weak = weak_from_this()](std::vector<LinkShare::Photo> photos,
                                                                          const std::string& error) {
     auto self = weak.lock();
@@ -254,14 +258,35 @@ void PhonePage::load() {
   });
 }
 
-fs::path PhonePage::browseRoot() const {
+void PhonePage::listFolders() {
   const LinkShare::Device* d = device();
-  if (d == nullptr) {
-    return {};
+  if (d == nullptr || m_foldersState == Folders::Listing) {
+    return;
   }
-  std::error_code ec;
-  const fs::path root = fs::path(g_get_home_dir()) / "Phone" / d->name;
-  return fs::is_directory(root, ec) ? root : fs::path();
+  m_foldersState = Folders::Listing;
+  std::thread([weak = weak_from_this(), root = fs::path(g_get_home_dir()) / "Phone" / d->name] {
+    std::vector<fs::path> dirs;
+    std::error_code ec;
+    const bool shown = fs::is_directory(root, ec);
+    if (shown) {
+      for (const auto& entry : fs::directory_iterator(root, fs::directory_options::skip_permission_denied, ec)) {
+        if (entry.is_directory(ec) && !entry.path().filename().string().starts_with(".")) {
+          dirs.push_back(entry.path());
+        }
+      }
+      std::ranges::sort(dirs);
+    }
+    DeferredCall::callLater([weak, root = shown ? root : fs::path(), dirs = std::move(dirs)]() mutable {
+      auto self = weak.lock();
+      if (self == nullptr) {
+        return;
+      }
+      self->m_foldersState = Folders::Listed;
+      self->m_root = std::move(root);
+      self->m_folders = std::move(dirs);
+      self->m_actions.rebuild();
+    });
+  }).detach();
 }
 
 std::vector<fs::path> PhonePage::received(const std::string& deviceId, std::size_t limit) {
@@ -549,14 +574,13 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
   page->addChild(std::move(photos));
 
   // On the Phone: the browse mount's top folders.
-  const fs::path root = browseRoot();
-  std::error_code ec0;
+  const fs::path root = m_root;
   auto folders = ui::column({.align = FlexAlign::Stretch, .opacity = away ? 0.5F : 1.0F});
   folders->addChild(buildSection(s, "On the Phone", "",
                                  root.empty() ? std::vector<std::pair<std::string, std::function<void()>>>{}
                                               : std::vector<std::pair<std::string, std::function<void()>>>{
                                                     {"Show All", [this, root] { later([this, root] { m_actions.open(root); }); }}}));
-  if (root.empty() && !away) {
+  if (root.empty() && !away && m_foldersState == Folders::Listed) {
     auto box = ui::column({.align = FlexAlign::Stretch, .paddingH = 16.0F * s});
     box->addChild(buildState(s, "Browsing Is Off",
                              std::format("Turn on Browse in Andromeda Link on {} to see its folders here.", d->name),
@@ -564,15 +588,7 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
     folders->addChild(std::move(box));
   } else if (!root.empty()) {
     auto grid = ui::row({.align = FlexAlign::Start, .wrap = true, .gap = 8.0F * s, .paddingH = 16.0F * s});
-    std::vector<fs::path> dirs;
-    std::error_code ec;
-    for (const auto& entry : fs::directory_iterator(root, fs::directory_options::skip_permission_denied, ec)) {
-      if (entry.is_directory(ec) && !entry.path().filename().string().starts_with(".")) {
-        dirs.push_back(entry.path());
-      }
-    }
-    std::ranges::sort(dirs);
-    for (const fs::path& dir : dirs) {
+    for (const fs::path& dir : m_folders) {
       const std::string name = dir.filename() == "DCIM" ? "Camera" : dir.filename().string();
       auto col = ui::column({.align = FlexAlign::Center, .gap = 4.0F * s, .padding = 8.0F * s, .width = 120.0F * s});
       col->addChild(std::make_unique<PlaceIcon>("folder", 64.0F * s));
@@ -587,7 +603,7 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
   // Received from the phone.
   const auto files = received(m_deviceId, 8);
   kLog.debug("phone page {} strip {} folders {} received {}{}", m_deviceId, std::min<std::size_t>(m_photos.size(), kRecent),
-             root.empty() ? 0 : std::distance(fs::directory_iterator(root, ec0), fs::directory_iterator()), files.size(),
+             m_folders.size(), files.size(),
              m_photoError == "denied" ? " photos-off" : "");
   if (!files.empty()) {
     const char* dl = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
