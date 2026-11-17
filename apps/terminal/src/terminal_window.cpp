@@ -932,6 +932,12 @@ namespace term {
     });
     row->setOnSecondaryClick([this, id](float x, float y) { openRowMenu(id, x, y); });
     row->setOnDrag([this, id](StatusRow::DragPhase phase, float x, float y) { rowDrag(id, phase, x, y); });
+    std::vector<StatusRow::Action> actions;
+    if (m_sessions.splitOf(id) != nullptr) {
+      actions.push_back({.glyph = "arrow-up-right", .tooltip = "Leave split", .onClick = [this, id] { apply(session_event::Leave{id}); }});
+    }
+    actions.push_back({.glyph = "close", .tooltip = "Close", .onClick = [this, id] { askClose({id}); }});
+    row->setActions(std::move(actions));
     return row;
   }
 
@@ -1954,6 +1960,16 @@ namespace term {
     return m_split.dropAt(*shown, sceneX, sceneY);
   }
 
+  // A member dropped outside its sidebar block leaves the split.
+  bool TerminalWindow::leavesGroup(std::uint64_t id, float sceneX, float sceneY) const {
+    const auto* split = m_sessions.splitOf(id);
+    if (split == nullptr) {
+      return false;
+    }
+    const auto group = std::ranges::find(m_groups, split->front(), &std::pair<std::uint64_t, Flex*>::first);
+    return group != m_groups.end() && !group->second->containsScenePoint(sceneX, sceneY);
+  }
+
   void TerminalWindow::rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY) {
     const auto target = dropTarget(id, sceneX, sceneY);
     // A raised chip of the row under the pointer, its symbol where the pointer holds it.
@@ -1982,6 +1998,8 @@ namespace term {
       m_split.pendJoin({.target = target->target, .joining = id, .edge = target->edge}, target->rect);
       apply(session_event::Join{.target = target->target, .joining = id, .before = target->before});
       focusGrid();
+    } else if (phase == StatusRow::DragPhase::Drop && leavesGroup(id, sceneX, sceneY)) {
+      apply(session_event::Leave{id});
     }
   }
 

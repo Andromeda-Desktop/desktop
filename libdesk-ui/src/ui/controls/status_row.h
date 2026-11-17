@@ -6,8 +6,10 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 class Box;
+class Button;
 class Glyph;
 class Input;
 class InputArea;
@@ -44,6 +46,13 @@ public:
   // Focus renameArea() after this call.
   void beginRename(const std::string& name, std::function<void(std::optional<std::string>)> done);
   [[nodiscard]] InputArea* renameArea() const noexcept;
+  // Trailing icon buttons in place of the time while the pointer is over the row; none in the rail.
+  struct Action {
+    std::string glyph;
+    std::string tooltip;
+    std::function<void()> onClick;
+  };
+  void setActions(std::vector<Action> actions);
   // An icon rail (narrow window): the symbol alone, centred; the name becomes its tooltip.
   void setRail(bool rail);
 
@@ -53,6 +62,7 @@ protected:
 
 private:
   void applyState();
+  [[nodiscard]] bool hot() const;
   void placeArea();
   void endRename(std::optional<std::string> name);
   enum class Mode : std::uint8_t { Display, Renaming };
@@ -78,5 +88,7 @@ private:
   Node* m_text = nullptr;
   bool m_rail = false;
   InputArea* m_area = nullptr;
+  Flex* m_actions = nullptr;
+  std::vector<Button*> m_actionButtons;
   std::function<void()> m_onClick;
 };

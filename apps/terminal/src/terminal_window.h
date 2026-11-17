@@ -291,6 +291,7 @@ namespace term {
     // A sidebar row dragged onto a pane: the half under the pointer previews where it joins.
     [[nodiscard]] std::optional<ui::SplitDrop> dropTarget(std::uint64_t dragged, float sceneX, float sceneY) const;
     void rowDrag(std::uint64_t id, StatusRow::DragPhase phase, float sceneX, float sceneY);
+    [[nodiscard]] bool leavesGroup(std::uint64_t id, float sceneX, float sceneY) const;
     bool m_dragGhost = false; // the dragged row's chip follows the pointer
     bool m_rebuildPending = false; // a window rebuild fills the slot: show() leaves it alone
     // Captions follow their sessions; true when a name or state text changed (the captions need a fit).

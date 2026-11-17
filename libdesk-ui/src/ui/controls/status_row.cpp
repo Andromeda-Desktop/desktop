@@ -2,6 +2,7 @@
 
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
+#include "ui/controls/button.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/input.h"
 #include "ui/controls/label.h"
@@ -10,6 +11,7 @@
 #include "ui/style.h"
 
 #include <linux/input-event-codes.h>
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -97,6 +99,9 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
     }
   });
   m_area = static_cast<InputArea*>(addChild(std::move(area)));
+  // After the area, so the buttons take the hit; last in the flex, so they trail.
+  m_actions = static_cast<Flex*>(addChild(ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .visible = false,
+                                                   .participatesInLayout = false})));
   applyState();
 }
 
@@ -132,12 +137,35 @@ void StatusRow::setTime(const std::string& time) {
 void StatusRow::setRail(bool rail) {
   m_rail = rail;
   setJustify(rail ? FlexJustify::Center : FlexJustify::Start);
-  for (Node* node : {m_text, static_cast<Node*>(m_time)}) {
-    node->setVisible(!rail);
-    node->setParticipatesInLayout(!rail);
-  }
+  m_text->setVisible(!rail);
+  m_text->setParticipatesInLayout(!rail);
   m_area->setTooltip(rail ? m_data.name : std::string());
+  applyState();
   markLayoutDirty();
+}
+
+void StatusRow::setActions(std::vector<Action> actions) {
+  for (Action& action : actions) {
+    Button* button = nullptr;
+    m_actions->addChild(ui::button({.out = &button,
+                                    .glyph = std::move(action.glyph),
+                                    .glyphSize = Tokens::sizeSymbolInline * m_scale,
+                                    .variant = ButtonVariant::Ghost,
+                                    .tooltip = std::move(action.tooltip),
+                                    .minWidth = Tokens::sizeControlS * m_scale,
+                                    .minHeight = Tokens::sizeControlS * m_scale,
+                                    .padding = 0.0F,
+                                    .radius = Style::scaledRadiusMd(m_scale),
+                                    .onClick = std::move(action.onClick)}));
+    button->setOnEnter([this] { applyState(); });
+    button->setOnLeave([this] { applyState(); });
+    m_actionButtons.push_back(button);
+  }
+  applyState();
+}
+
+bool StatusRow::hot() const {
+  return (m_area != nullptr && m_area->hovered()) || std::ranges::any_of(m_actionButtons, &Button::hovered);
 }
 
 void StatusRow::setOnClick(std::function<void()> callback) { m_onClick = std::move(callback); }
@@ -177,7 +205,7 @@ void StatusRow::applyState() {
   const bool strong = m_data.unseen || m_data.selected;
   if (m_data.chip) {
     setFill(*m_data.chip);
-  } else if (!m_data.selected && m_area != nullptr && m_area->hovered()) {
+  } else if (!m_data.selected && hot()) {
     setFill(colorSpecFromRole(ColorRole::Fill1));
   } else {
     setFill(clearColorSpec());
@@ -194,6 +222,14 @@ void StatusRow::applyState() {
   m_status->setColor(colorSpecFromRole(m_data.selected ? ColorRole::Label1 : ColorRole::Label2));
   m_time->setColor(colorSpecFromRole(strong ? ColorRole::Label1 : ColorRole::Label2));
   m_time->setFontWeight(m_data.unseen ? FontWeight::SemiBold : FontWeight::Normal);
+  const bool actions = !m_rail && !m_actionButtons.empty() && hot();
+  if (m_actions != nullptr && m_actions->visible() != actions) {
+    m_actions->setVisible(actions);
+    m_actions->setParticipatesInLayout(actions);
+    markLayoutDirty();
+  }
+  m_time->setVisible(!m_rail && !actions);
+  m_time->setParticipatesInLayout(!m_rail && !actions);
 }
 
 void StatusRow::doLayout(Renderer& renderer) {
