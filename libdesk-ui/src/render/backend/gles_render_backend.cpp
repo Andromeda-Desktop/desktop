@@ -414,6 +414,10 @@ bool GlesRenderBackend::makeCurrent(RenderTarget& target) {
   if (auto* offscreen = glesOffscreenTarget(target); offscreen != nullptr) {
     return offscreen->isReady() && makeCurrentNoSurface() && offscreen->bind();
   }
+  // Before the first frame or after teardown the window has no EGL surface: nothing to bind, like a failed make-current.
+  if (!target.isReady()) {
+    return false;
+  }
   auto& surface = glesSurfaceTarget(target);
   if (eglGetCurrentDisplay() == m_display
       && eglGetCurrentContext() == m_context
