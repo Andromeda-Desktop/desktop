@@ -236,6 +236,8 @@ namespace andromeda {
     [[nodiscard]] bool needsCursorCapturePacing() const;
     // Re-evaluate fullscreen-controlled VRR after a view or workspace changes.
     void updateVrr();
+    // Adds the wanted VRR value to a frame commit when the backend accepts it; the value it adds, if any.
+    std::optional<bool> addVrrChange(wlr_output_state& state);
     // Re-evaluate automatic HDR after surface color, fullscreen, visibility,
     // or output membership changes.
     void updateHdr();
@@ -415,6 +417,7 @@ namespace andromeda {
     bool m_hdrAvailable = false;
     // VRR value the backend refused even with a modeset; not retried until the wanted value changes.
     std::optional<bool> m_vrrRejected;
+    bool m_vrrPending = false; // a VRR change waiting for the next frame commit
     bool m_lastCommitTearing = false;
     bool m_trackingPresentation = false;
     // Cadence of the last presented frame, which places this output's animation samples on its vblanks. 0 while

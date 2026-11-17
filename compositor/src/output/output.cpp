@@ -1271,14 +1271,14 @@ namespace andromeda {
   }
 
   void Output::updateVrr() {
-    // wlroots rejects adaptive-sync commits on disabled outputs; nothing to
-    // update while the monitor is off.
+    // A disabled output picks up VRR from its configured state when it is enabled again.
     if (!m_output->adaptive_sync_supported || !m_output->enabled) {
       return;
     }
     const bool enabled = configuredVrrEnabled();
     const bool currentlyEnabled = m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
     if (enabled == currentlyEnabled) {
+      m_vrrPending = false;
       m_vrrRejected.reset();
       return;
     }
@@ -1286,29 +1286,37 @@ namespace andromeda {
       return;
     }
 
-    const auto commitVrr = [this, enabled](bool withModeset) {
-      wlr_output_state state{};
-      wlr_output_state_init(&state);
-      wlr_output_state_set_adaptive_sync_enabled(&state, enabled);
-      // Some drivers (i915 on eDP) only accept a VRR_ENABLED change as part of a modeset.
-      if (withModeset && m_output->current_mode != nullptr) {
-        wlr_output_state_set_mode(&state, m_output->current_mode);
-      }
-      const bool committed = wlr_output_commit_state(m_output, &state);
-      wlr_output_state_finish(&state);
-      return committed;
-    };
-    if (commitVrr(false) || commitVrr(true)) {
-      kLog.info("output '{}': VRR {}", m_output->name, enabled ? "enabled" : "disabled");
-      m_vrrRejected.reset();
-      m_server->updateOutputManagerConfig();
-      return;
+    // Apply with the next frame commit: a separate commit supersedes the pending page flip, and wlroots then never
+    // resolves that frame's presentation feedback, stalling clients that pace on it.
+    m_vrrPending = true;
+    wlr_output_schedule_frame(m_output);
+  }
+
+  std::optional<bool> Output::addVrrChange(wlr_output_state& state) {
+    const bool enabled = configuredVrrEnabled();
+    if (enabled == (m_output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) || m_vrrRejected == enabled) {
+      return std::nullopt;
     }
+    wlr_output_state_set_adaptive_sync_enabled(&state, enabled);
+    if (wlr_output_test_state(m_output, &state)) {
+      return enabled;
+    }
+    // Some drivers (i915 on eDP) only accept a VRR_ENABLED change as part of a modeset.
+    const bool hadMode = (state.committed & WLR_OUTPUT_STATE_MODE) != 0;
+    if (!hadMode && m_output->current_mode != nullptr) {
+      wlr_output_state_set_mode(&state, m_output->current_mode);
+      if (wlr_output_test_state(m_output, &state)) {
+        return enabled;
+      }
+      state.committed &= ~WLR_OUTPUT_STATE_MODE;
+    }
+    state.committed &= ~WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED;
     kLog.warn(
         "output '{}': failed to {} VRR; not retrying until the setting changes", m_output->name,
         enabled ? "enable" : "disable"
     );
     m_vrrRejected = enabled;
+    return std::nullopt;
   }
 
   wlr_output_layout_output* Output::addToLayout() {
@@ -2819,7 +2827,7 @@ namespace andromeda {
         m_server->updateOutputManagerConfig();
       }
     }
-    if (!hdrTransitionPending && (sceneChanged || m_gammaDirty)) {
+    if (!hdrTransitionPending && (sceneChanged || m_gammaDirty || m_vrrPending)) {
       if (effectFrame) {
         ++m_effectFrames;
       }
@@ -2934,7 +2942,13 @@ namespace andromeda {
       // A failed submit leaves the buffer unfinished: no commit, and the retry redraws it.
       if (frame.built && submitted) {
         const bool hasBuffer = (state.committed & WLR_OUTPUT_STATE_BUFFER) != 0;
-        bool commitTearing = requestTearing && hasBuffer;
+        std::optional<bool> vrrChange;
+        if (m_vrrPending && hasBuffer) {
+          m_vrrPending = false;
+          vrrChange = addVrrChange(state);
+        }
+        // Async page flips cannot change VRR_ENABLED.
+        bool commitTearing = requestTearing && hasBuffer && !vrrChange;
         const bool recoveringFromFailedCommit = m_tearingRecovery.regularCommitPending();
         bool backendRejectedTearing = false;
         if (commitTearing) {
@@ -3000,6 +3014,15 @@ namespace andromeda {
         }
         if (hasBuffer) {
           m_tearingRecovery.recordCommit(commitTearing, commitOk);
+        }
+        if (vrrChange) {
+          if (commitOk) {
+            kLog.info("output '{}': VRR {}", m_output->name, *vrrChange ? "enabled" : "disabled");
+            m_vrrRejected.reset();
+            m_server->updateOutputManagerConfig();
+          } else {
+            m_vrrPending = true;
+          }
         }
         if (commitOk && gammaPending) {
           m_gammaDirty = false;
