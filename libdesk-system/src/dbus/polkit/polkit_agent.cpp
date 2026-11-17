@@ -442,6 +442,7 @@ struct PolkitAgent::Impl {
   ReadyCallback readyCallback;
   std::unique_ptr<sdbus::IObject> object;
   std::unique_ptr<sdbus::IProxy> authority;
+  std::unique_ptr<sdbus::IProxy> busWatch;
   Subject subject;
   Registration registration = Registration::Idle;
   bool m_nextInternal = false;
@@ -521,6 +522,34 @@ struct PolkitAgent::Impl {
           )
           .forInterface(kAgentInterface);
       authority = sdbus::createProxy(bus.connection(), kAuthorityName, kAuthorityPath);
+      // polkitd forgets its agents when it restarts (a package upgrade), so a new owner gets the registration again.
+      busWatch = sdbus::createProxy(
+          bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      );
+      busWatch->uponSignal("NameOwnerChanged")
+          .onInterface("org.freedesktop.DBus")
+          .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+            guard("NameOwnerChanged", [&] {
+              if (name != kAuthorityName) {
+                return;
+              }
+              clearPending(kErrorCancelled, "polkitd restarted");
+              registration = Registration::Idle;
+              if (!newOwner.empty()) {
+                kLog.info("polkitd restarted; registering the agent again");
+                registerWithAuthority();
+              }
+            });
+          });
+      registerWithAuthority();
+    } catch (const sdbus::Error& e) {
+      registration = Registration::Idle;
+      ready(false, e.getMessage());
+    }
+  }
+
+  void registerWithAuthority() {
+    try {
       registration = Registration::Registering;
       authority->callMethodAsync("RegisterAuthenticationAgent")
           .onInterface(kAuthorityInterface)
