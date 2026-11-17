@@ -16,15 +16,17 @@
 #include "scene/effect_selection.h"
 #include "scene/surface_shadow.h"
 #include "server/focus.h"
+#include "server/output_manager_apply.h"
 #include "server/sleep_watch.h"
 #include "server/xdg_session_state.h"
 #include "view/registry.h"
 
-#include <filesystem>
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <expected>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <span>
@@ -783,7 +785,21 @@ namespace andromeda {
     void setLockBlankEnabled(bool enabled);
     void handleWorkspaceCommit(void* data);
     [[nodiscard]] Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
+    // False when the configuration fails before its draw; the commit and the client's reply follow the draw's kick.
     bool applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
+    bool finishOutputManagerApply(OutputManagerApply& apply, bool drawn);
+    static void onOutputManagerApplyDrawn(void* data, bool drawn);
+    static void onOutputManagerContextHome(void* data, bool ok);
+    // Starts the oldest queued apply once the GL context is home. Queued applies wait for the one in flight, or for
+    // the context (then an onOutputManagerContextHome kick is armed).
+    void startQueuedOutputConfig();
+    // Fails the apply in flight and the queued ones: an output they name goes away.
+    void abortOutputManagerApply();
+    bool buildOutputManagerSceneStates(
+        OutputManagerApply::FrameMasks& masks, wlr_output_swapchain_manager& manager, wlr_backend_output_state* pending,
+        size_t pendingLen
+    );
+    bool commitOutputManagerSceneStates(wlr_backend_output_state* pending, size_t pendingLen);
     bool commitOutputEnabled(Output& output, bool enabled);
     [[nodiscard]] bool initialOutputEnabled(const Output& output);
     void rememberOutputEnableOverride(const Output& output, bool enabled);
@@ -892,6 +908,8 @@ namespace andromeda {
     // multi-output transaction has reached its final logical state.
     bool m_deferOutputManagerConfig = false;
     uint64_t m_configuredRequests = 0;
+    std::unique_ptr<OutputManagerApply> m_outputApplyInFlight;
+    std::deque<wlr_output_configuration_v1*> m_queuedOutputConfigs;
     wlr_scene_tree* m_shellLayerTrees[kLayerCount]{};
     wlr_scene_tree* m_xdgTree = nullptr;
     wlr_scene_tree* m_scratchpadTree = nullptr;

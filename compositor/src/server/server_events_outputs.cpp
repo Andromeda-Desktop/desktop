@@ -3,6 +3,7 @@
 #include "config/config_watcher.h"
 #include "config/store.h"
 #include "core/log.h"
+#include "core/screen_activity_recorder.h"
 #include "desktop-unstable-v1-protocol.h"
 #include "input/cursor.h"
 #include "input/eis.h"
@@ -30,8 +31,8 @@
 #include "server/desktop_settings_manager.h"
 #include "server/desktop_shell.h"
 #include "server/ipc.h"
+#include "server/output_manager_apply.h"
 #include "server/server.h"
-#include "core/screen_activity_recorder.h"
 #include "server/server_events_internal.h"
 #include "view/popup.h"
 #include "view/view.h"
@@ -154,6 +155,7 @@ namespace andromeda {
   }
 
   void Server::removeOutput(Output* output) {
+    abortOutputManagerApply();
     dismissSnapChrome();
     for (const auto& entry : m_outputs) {
       if (entry->mirrorSource() == output) {
@@ -1064,6 +1066,28 @@ namespace andromeda {
     m_outputEnableOverrides.remember(output.identity(), enabled);
   }
 
+  namespace {
+
+    void
+    stageOutputSnapshot(wlr_output_state& state, const OutputManagerApply::BackendSnapshot& snapshot, bool enabled) {
+      wlr_output_state_set_enabled(&state, enabled);
+      if (!enabled) {
+        return;
+      }
+      if (snapshot.mode != nullptr) {
+        wlr_output_state_set_mode(&state, snapshot.mode);
+      } else {
+        wlr_output_state_set_custom_mode(&state, snapshot.width, snapshot.height, snapshot.refresh);
+      }
+      wlr_output_state_set_scale(&state, snapshot.scale);
+      wlr_output_state_set_transform(&state, snapshot.transform);
+      if (snapshot.adaptiveSyncSupported) {
+        wlr_output_state_set_adaptive_sync_enabled(&state, snapshot.adaptiveSyncEnabled);
+      }
+    }
+
+  } // namespace
+
   bool Server::commitOutputEnabled(Output& target, bool enabled) {
     wlr_output_configuration_v1* config = wlr_output_configuration_v1_create();
     for (const auto& output : m_outputs) {
@@ -1081,6 +1105,18 @@ namespace andromeda {
   }
 
   bool Server::applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
+    noteConfiguredRequest();
+    if (!testOnly && (m_outputApplyInFlight != nullptr || !m_queuedOutputConfigs.empty())) {
+      // One apply at a time: the next one starts from the state this one commits.
+      m_queuedOutputConfigs.push_back(config);
+      return true;
+    }
+    if (!testOnly && !fx_renderer_context_home(m_renderer)) {
+      // The draw needs the GL context: the apply starts once the render thread returns it.
+      m_queuedOutputConfigs.push_back(config);
+      fx_renderer_kick(m_renderer, onOutputManagerContextHome, this);
+      return true;
+    }
     size_t statesLen = 0;
     wlr_backend_output_state* states = wlr_output_configuration_v1_build_state(config, &statesLen);
     if (states == nullptr) {
@@ -1089,14 +1125,7 @@ namespace andromeda {
       return false;
     }
 
-    struct RequestedHead {
-      wlr_output_configuration_head_v1* head = nullptr;
-      Output* output = nullptr;
-      bool wasDesktopEnabled = false;
-      bool wasMirror = false;
-      SavedOutput live;
-    };
-    std::vector<RequestedHead> requested;
+    std::vector<OutputManagerApply::RequestedHead> requested;
     wlr_output_configuration_head_v1* head = nullptr;
     wl_list_for_each(head, &config->heads, link) {
       if (Output* output = outputFromWlr(head->state.output)) {
@@ -1130,99 +1159,20 @@ namespace andromeda {
       wlr_output_state_set_enabled(&states[i].base, false);
     }
 
-    struct SceneRectDestroy {
-      void operator()(wlr_scene_rect* rect) const {
-        if (rect != nullptr) {
-          wlr_scene_node_destroy(&rect->node);
-        }
-      }
-    };
-    std::vector<std::unique_ptr<wlr_scene_rect, SceneRectDestroy>> configuredFrameMasks;
-    const auto buildSceneStates = [this, &configuredFrameMasks](
-                                      wlr_output_swapchain_manager& manager, wlr_backend_output_state* pending,
-                                      size_t pendingLen
-                                  ) {
-      configuredFrameMasks.clear();
-      for (size_t i = 0; i < pendingLen; ++i) {
-        Output* output = outputFromWlr(pending[i].output);
-        if (output == nullptr) {
-          return false;
-        }
-        const bool enabled = (pending[i].base.committed & WLR_OUTPUT_STATE_ENABLED) != 0 ? pending[i].base.enabled
-                                                                                         : pending[i].output->enabled;
-        const bool unbound = wlr_output_layout_get(m_outputLayout, pending[i].output) == nullptr;
-        if (enabled && (sessionLocked() || unbound)) {
-          wlr_scene_rect* mask = output->createConfiguredFrameMask(pending[i].base);
-          if (mask == nullptr) {
-            return false;
-          }
-          configuredFrameMasks.emplace_back(mask);
-        }
-        // This frame is built without the reveal pair, so resume native slide first.
-        if (WorkspaceGroup* group = output->workspaceGroup()) {
-          group->abandonReveal();
-        }
-        // The pending mode, scale or transform may resize the optimized blur cache.
-        output->markBlurBackgroundDirty();
-        wlr_scene_output_state_options options{};
-        options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
-        if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {
-          kLog.error("failed to build output-management scene state for '{}'", pending[i].output->name);
-          return false;
-        }
-      }
-      return true;
-    };
-
-    const auto commitSceneStates = [this](wlr_backend_output_state* pending, size_t pendingLen) {
-      std::vector<std::unique_ptr<Output::SceneCommit>> observations;
-      observations.reserve(pendingLen);
-      for (size_t i = 0; i < pendingLen; ++i) {
-        if (Output* output = outputFromWlr(pending[i].output)) {
-          observations.push_back(std::make_unique<Output::SceneCommit>(*output, pending[i].base, true));
-        }
-      }
-      // Each output's successful commit event is authoritative even if a later child backend fails the group.
-      return wlr_backend_commit(m_backend, pending, pendingLen);
-    };
-
-    struct BackendSnapshot {
-      wlr_output* output = nullptr;
-      bool enabled = false;
-      wlr_output_mode* mode = nullptr;
-      int width = 0;
-      int height = 0;
-      int refresh = 0;
-      float scale = 1.0F;
-      wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
-      bool adaptiveSyncSupported = false;
-      bool adaptiveSyncEnabled = false;
-    };
-    const auto stageSnapshot = [](wlr_output_state& state, const BackendSnapshot& snapshot, bool enabled) {
-      wlr_output_state_set_enabled(&state, enabled);
-      if (!enabled) {
-        return;
-      }
-      if (snapshot.mode != nullptr) {
-        wlr_output_state_set_mode(&state, snapshot.mode);
-      } else {
-        wlr_output_state_set_custom_mode(&state, snapshot.width, snapshot.height, snapshot.refresh);
-      }
-      wlr_output_state_set_scale(&state, snapshot.scale);
-      wlr_output_state_set_transform(&state, snapshot.transform);
-      if (snapshot.adaptiveSyncSupported) {
-        wlr_output_state_set_adaptive_sync_enabled(&state, snapshot.adaptiveSyncEnabled);
-      }
-    };
-
-    wlr_output_swapchain_manager swapchainManager{};
+    auto apply = std::make_unique<OutputManagerApply>();
+    apply->config = config;
+    apply->testOnly = testOnly;
+    apply->states = states;
+    apply->statesLen = statesLen;
+    apply->requested = std::move(requested);
+    wlr_output_swapchain_manager& swapchainManager = apply->swapchainManager;
     wlr_output_swapchain_manager_init(&swapchainManager, m_backend);
-    bool swapchainManagerFinished = false;
-    bool ok = sleepingStateValid && wlr_output_swapchain_manager_prepare(&swapchainManager, states, statesLen);
-    bool commitAttempted = false;
-    std::vector<BackendSnapshot> snapshots;
-    std::vector<wlr_backend_output_state> rollbackStates;
-    if (ok && !testOnly) {
+    apply->ok = sleepingStateValid && wlr_output_swapchain_manager_prepare(&swapchainManager, states, statesLen);
+    if (apply->ok && !testOnly) {
+      using BackendSnapshot = OutputManagerApply::BackendSnapshot;
+      std::vector<BackendSnapshot>& snapshots = apply->snapshots;
+      std::vector<wlr_backend_output_state>& rollbackStates = apply->rollbackStates;
+      const auto stageSnapshot = stageOutputSnapshot;
       snapshots.resize(statesLen);
       rollbackStates.resize(statesLen);
       for (size_t i = 0; i < statesLen; ++i) {
@@ -1246,7 +1196,86 @@ namespace andromeda {
         stageSnapshot(rollback.base, snapshot, snapshot.enabled);
       }
 
-      ok = buildSceneStates(swapchainManager, states, statesLen);
+      // The draw runs on the render thread; the commit follows from its kick, so main never waits for the GPU.
+      fx_renderer_defer_submits(m_renderer, true);
+      apply->ok = buildOutputManagerSceneStates(apply->configuredFrameMasks, swapchainManager, states, statesLen);
+      fx_renderer_defer_submits(m_renderer, false);
+      if (apply->ok) {
+        apply->built = true;
+        m_outputApplyInFlight = std::move(apply);
+        fx_renderer_kick(m_renderer, onOutputManagerApplyDrawn, this);
+        return true;
+      }
+    }
+    return finishOutputManagerApply(*apply, false);
+  }
+
+  void Server::onOutputManagerApplyDrawn(void* data, bool drawn) {
+    auto* self = static_cast<Server*>(data);
+    const std::unique_ptr<OutputManagerApply> apply = std::move(self->m_outputApplyInFlight);
+    // A failed submit leaves the buffers unfinished: nothing is committed.
+    (void)self->finishOutputManagerApply(*apply, drawn);
+    self->startQueuedOutputConfig();
+  }
+
+  void Server::onOutputManagerContextHome(void* data, bool /*ok*/) {
+    static_cast<Server*>(data)->startQueuedOutputConfig();
+  }
+
+  void Server::startQueuedOutputConfig() {
+    if (!m_queuedOutputConfigs.empty()) {
+      if (!fx_renderer_context_home(m_renderer)) {
+        fx_renderer_kick(m_renderer, onOutputManagerContextHome, this);
+        return;
+      }
+      wlr_output_configuration_v1* next = m_queuedOutputConfigs.front();
+      m_queuedOutputConfigs.pop_front();
+      (void)applyOutputManagerConfig(next, false);
+    }
+    if (Ipc* ipc = this->ipc()) {
+      ipc->notifyConfiguredWork();
+    }
+  }
+
+  void Server::abortOutputManagerApply() {
+    fx_renderer_cancel_kick(m_renderer, onOutputManagerContextHome, this);
+    if (m_outputApplyInFlight != nullptr) {
+      fx_renderer_cancel_kick(m_renderer, onOutputManagerApplyDrawn, this);
+      const std::unique_ptr<OutputManagerApply> apply = std::move(m_outputApplyInFlight);
+      (void)finishOutputManagerApply(*apply, false);
+    }
+    // Queued configurations name heads of the configuration that changed: their clients retry.
+    for (wlr_output_configuration_v1* queued : m_queuedOutputConfigs) {
+      wlr_output_configuration_v1_send_failed(queued);
+      wlr_output_configuration_v1_destroy(queued);
+    }
+    m_queuedOutputConfigs.clear();
+  }
+
+  bool Server::finishOutputManagerApply(OutputManagerApply& apply, bool drawn) {
+    using BackendSnapshot = OutputManagerApply::BackendSnapshot;
+    using RequestedHead = OutputManagerApply::RequestedHead;
+    wlr_output_configuration_v1* config = apply.config;
+    const bool testOnly = apply.testOnly;
+    wlr_backend_output_state* states = apply.states;
+    const size_t statesLen = apply.statesLen;
+    const std::vector<RequestedHead>& requested = apply.requested;
+    wlr_output_swapchain_manager& swapchainManager = apply.swapchainManager;
+    bool& swapchainManagerFinished = apply.swapchainManagerFinished;
+    std::vector<BackendSnapshot>& snapshots = apply.snapshots;
+    std::vector<wlr_backend_output_state>& rollbackStates = apply.rollbackStates;
+    bool& ok = apply.ok;
+    bool commitAttempted = false;
+    const auto buildSceneStates =
+        [this, &apply](wlr_output_swapchain_manager& manager, wlr_backend_output_state* pending, size_t pendingLen) {
+          return buildOutputManagerSceneStates(apply.configuredFrameMasks, manager, pending, pendingLen);
+        };
+    const auto commitSceneStates = [this](wlr_backend_output_state* pending, size_t pendingLen) {
+      return commitOutputManagerSceneStates(pending, pendingLen);
+    };
+    const auto stageSnapshot = stageOutputSnapshot;
+    if (apply.built) {
+      ok = drawn;
       if (ok) {
         // Commits can synchronously emit layout changes for mode, scale, and
         // transform updates. Suppress those partial configurations until the
@@ -1484,6 +1513,54 @@ namespace andromeda {
       updateOutputManagerConfig();
     }
     return ok;
+  }
+
+  bool Server::buildOutputManagerSceneStates(
+      OutputManagerApply::FrameMasks& masks, wlr_output_swapchain_manager& manager, wlr_backend_output_state* pending,
+      size_t pendingLen
+  ) {
+    masks.clear();
+    for (size_t i = 0; i < pendingLen; ++i) {
+      Output* output = outputFromWlr(pending[i].output);
+      if (output == nullptr) {
+        return false;
+      }
+      const bool enabled = (pending[i].base.committed & WLR_OUTPUT_STATE_ENABLED) != 0 ? pending[i].base.enabled
+                                                                                       : pending[i].output->enabled;
+      const bool unbound = wlr_output_layout_get(m_outputLayout, pending[i].output) == nullptr;
+      if (enabled && (sessionLocked() || unbound)) {
+        wlr_scene_rect* mask = output->createConfiguredFrameMask(pending[i].base);
+        if (mask == nullptr) {
+          return false;
+        }
+        masks.emplace_back(mask);
+      }
+      // This frame is built without the reveal pair, so resume native slide first.
+      if (WorkspaceGroup* group = output->workspaceGroup()) {
+        group->abandonReveal();
+      }
+      // The pending mode, scale or transform may resize the optimized blur cache.
+      output->markBlurBackgroundDirty();
+      wlr_scene_output_state_options options{};
+      options.swapchain = wlr_output_swapchain_manager_get_swapchain(&manager, pending[i].output);
+      if (!wlr_scene_output_build_state(output->sceneOutput(), &pending[i].base, &options)) {
+        kLog.error("failed to build output-management scene state for '{}'", pending[i].output->name);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool Server::commitOutputManagerSceneStates(wlr_backend_output_state* pending, size_t pendingLen) {
+    std::vector<std::unique_ptr<Output::SceneCommit>> observations;
+    observations.reserve(pendingLen);
+    for (size_t i = 0; i < pendingLen; ++i) {
+      if (Output* output = outputFromWlr(pending[i].output)) {
+        observations.push_back(std::make_unique<Output::SceneCommit>(*output, pending[i].base, true));
+      }
+    }
+    // Each output's successful commit event is authoritative even if a later child backend fails the group.
+    return wlr_backend_commit(m_backend, pending, pendingLen);
   }
 
 } // namespace andromeda

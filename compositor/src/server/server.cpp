@@ -1145,6 +1145,8 @@ namespace andromeda {
 
   Server::~Server() {
     m_stopping = true;
+    fx_renderer_cancel_kick(m_renderer, onOutputManagerApplyDrawn, this);
+    fx_renderer_cancel_kick(m_renderer, onOutputManagerContextHome, this);
     xkb_keymap_unref(m_compiledKeymap);
     if (m_lockFileManaged) {
       unlink((std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/running").c_str());
@@ -2793,7 +2795,9 @@ namespace andromeda {
 #endif
 
   bool Server::configuredWorkPending() const {
-    return std::ranges::any_of(m_outputs, [](const auto& output) { return output->configuredWorkPending(); });
+    return m_outputApplyInFlight != nullptr
+        || !m_queuedOutputConfigs.empty()
+        || std::ranges::any_of(m_outputs, [](const auto& output) { return output->configuredWorkPending(); });
   }
 
   bool Server::settled() const {
