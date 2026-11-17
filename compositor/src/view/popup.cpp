@@ -40,6 +40,8 @@ namespace andromeda {
     wl_signal_add(&m_popup->base->surface->events.commit, &m_commit);
     m_reposition.notify = onReposition;
     wl_signal_add(&m_popup->events.reposition, &m_reposition);
+    m_configure.notify = onConfigure;
+    wl_signal_add(&m_popup->base->events.configure, &m_configure);
     m_map.notify = onMap;
     wl_signal_add(&m_popup->base->surface->events.map, &m_map);
     m_unmap.notify = onUnmap;
@@ -54,6 +56,7 @@ namespace andromeda {
     if (m_commit.link.next != nullptr) {
       wl_list_remove(&m_commit.link);
       wl_list_remove(&m_reposition.link);
+      wl_list_remove(&m_configure.link);
       wl_list_remove(&m_map.link);
       wl_list_remove(&m_unmap.link);
       wl_list_remove(&m_destroy.link);
@@ -67,7 +70,12 @@ namespace andromeda {
 
   void Popup::onReposition(wl_listener* listener, void* /*data*/) {
     Popup* self = wl_container_of(listener, self, m_reposition); // NOLINT(modernize-use-auto)
-    self->unconstrain();
+    self->handleReposition();
+  }
+
+  void Popup::onConfigure(wl_listener* listener, void* /*data*/) {
+    Popup* self = wl_container_of(listener, self, m_configure); // NOLINT(modernize-use-auto)
+    self->handleConfigure();
   }
 
   void Popup::onMap(wl_listener* listener, void* /*data*/) {
@@ -82,6 +90,7 @@ namespace andromeda {
   void Popup::onUnmap(wl_listener* listener, void* /*data*/) {
     Popup* self = wl_container_of(listener, self, m_unmap); // NOLINT(modernize-use-auto)
     self->m_blur.hide();
+    self->m_repositions.clear();
     self->refreshWindowCapture();
   }
 
@@ -154,6 +163,25 @@ namespace andromeda {
     wlr_xdg_surface_schedule_configure(m_popup->base);
   }
 
+  void Popup::handleReposition() {
+    unconstrain();
+    // Clients can wait for a reposition token before drawing. Keep each request's placement and token until wlroots
+    // sends its configure, then schedule the next request through the same configure path.
+    m_repositions.push_back(m_popup->scheduled);
+    m_popup->scheduled = m_repositions.front();
+  }
+
+  void Popup::handleConfigure() {
+    if (m_repositions.empty()) {
+      return;
+    }
+    m_repositions.pop_front();
+    if (!m_repositions.empty()) {
+      m_popup->scheduled = m_repositions.front();
+      unconstrain();
+    }
+  }
+
   void Popup::handleMap() {
     // Only a grabbing popup owns the keyboard. A toplevel's popup reaches it through its already focused window.
     if (m_popup->seat == nullptr) {
@@ -167,11 +195,13 @@ namespace andromeda {
   void Popup::handleDestroy() {
     wl_list_remove(&m_commit.link);
     wl_list_remove(&m_reposition.link);
+    wl_list_remove(&m_configure.link);
     wl_list_remove(&m_map.link);
     wl_list_remove(&m_unmap.link);
     wl_list_remove(&m_destroy.link);
     m_commit.link.next = nullptr;
     m_reposition.link.next = nullptr;
+    m_configure.link.next = nullptr;
     m_map.link.next = nullptr;
     m_unmap.link.next = nullptr;
     m_destroy.link.next = nullptr;

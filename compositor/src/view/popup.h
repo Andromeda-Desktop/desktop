@@ -3,7 +3,10 @@
 
 #include <wayland-server-core.h>
 
+#include <list>
+
 struct wlr_xdg_popup;
+struct wlr_xdg_popup_configure;
 struct wlr_scene_tree;
 
 namespace andromeda {
@@ -22,12 +25,15 @@ namespace andromeda {
   private:
     static void onCommit(wl_listener* listener, void* data);
     static void onReposition(wl_listener* listener, void* data);
+    static void onConfigure(wl_listener* listener, void* data);
     static void onMap(wl_listener* listener, void* data);
     static void onUnmap(wl_listener* listener, void* data);
     static void onDestroy(wl_listener* listener, void* data);
 
     void handleCommit();
     void unconstrain();
+    void handleReposition();
+    void handleConfigure();
     void handleMap();
     void handleDestroy();
     void refreshWindowCapture() const;
@@ -37,6 +43,8 @@ namespace andromeda {
 
     wl_listener m_commit{};
     wl_listener m_reposition{};
+    wl_listener m_configure{};
+    std::list<wlr_xdg_popup_configure> m_repositions;
     wl_listener m_map{};
     wl_listener m_unmap{};
     wl_listener m_destroy{};

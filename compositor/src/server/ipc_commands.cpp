@@ -758,7 +758,9 @@ namespace andromeda {
             layout = entry->second.get();
           }
         }
-        const wlr_box box = workspace->presentedTiledBox(&view, layout);
+        // A fullscreen tile reports the output box it covers.
+        const wlr_box box = view.layoutFullscreen() ? workspace->fullscreenTargetBox(&view, layout)
+                                                    : workspace->presentedTiledBox(&view, layout);
         entry["x"] = box.x;
         entry["y"] = box.y;
       } else if (
