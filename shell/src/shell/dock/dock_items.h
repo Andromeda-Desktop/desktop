@@ -53,6 +53,7 @@ namespace shell::dock {
     // After a rebuild the item glides from where it was to its new rest place (rulebook spring `move`).
     float glideMainOffset = 0.0F;
     AnimationManager::Id glideAnimId = 0;
+    AnimationManager::Id enterAnimId = 0;
   };
 
   struct DockItemAction {

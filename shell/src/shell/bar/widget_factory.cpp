@@ -225,6 +225,11 @@ std::unique_ptr<Widget> WidgetFactory::create(
                 SpacerWidget::Options{.length = static_cast<int>(Tokens::componentIslandGroupGap)}
             );
           }},
+      {"island_divider", [](const WidgetFactory&, const BuiltinWidgetContext& context) {
+            return createWidget<SpacerWidget>(
+                context.contentScale, context.verticalBar, SpacerWidget::Options{.length = 1, .line = true}
+            );
+          }},
       {"island_workspaces", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
             auto options = workspacesWidgetDefinition().resolve(context.config, context.settingContext);
             options.islandDots = true;

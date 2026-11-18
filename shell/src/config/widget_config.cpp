@@ -129,13 +129,23 @@ namespace noctalia::config {
     brand.settings["custom_image_colorize"] = true;
     seed("brand", std::move(brand));
 
-    // Bar islands: the Andromeda mark at the end of the right island opens the Control Center home page; the other
-    // island icons open their own pages.
+    // The Andromeda mark: a Control Center button with the brand image, for custom lanes.
     WidgetConfig andromedaMark;
     andromedaMark.type = "control-center";
     andromedaMark.settings["custom_image"] = paths::assetPath("amark.svg").string();
     andromedaMark.settings["custom_image_colorize"] = true;
     seed("andromeda_mark", std::move(andromedaMark));
+
+    // Concept C islands: the launcher button starts the left island, the Control Center button ends the right one.
+    WidgetConfig launcherButton;
+    launcherButton.type = "launcher";
+    launcherButton.settings["glyph"] = std::string("layout-grid");
+    seed("launcher_button", std::move(launcherButton));
+
+    WidgetConfig controlCenterButton;
+    controlCenterButton.type = "control-center";
+    controlCenterButton.settings["glyph"] = std::string("adjustments-horizontal");
+    seed("control_center_button", std::move(controlCenterButton));
 
     WidgetConfig macosApp;
     macosApp.type = "window_menu";

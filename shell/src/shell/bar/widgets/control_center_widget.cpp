@@ -1,11 +1,14 @@
 #include "shell/bar/widgets/control_center_widget.h"
 
 #include "render/scene/input_area.h"
+#include "shell/panel/panel_manager.h"
+#include "ui/controls/box.h"
 #include "render/scene/node.h"
 #include "ui/builders.h"
 #include "ui/palette.h"
 #include "ui/style.h"
 
+#include <algorithm>
 #include <memory>
 
 ControlCenterWidget::ControlCenterWidget(wl_output* /*output*/, Options options)
@@ -14,6 +17,7 @@ ControlCenterWidget::ControlCenterWidget(wl_output* /*output*/, Options options)
 
 void ControlCenterWidget::create() {
   auto area = ui::inputArea({});
+  area->addChild(ui::box({.out = &m_lens, .fill = colorSpecFromRole(ColorRole::Fill3), .visible = false}));
 
   if (m_customImage.enabled()) {
     area->addChild(ui::image({.out = &m_image, .fit = ImageFit::Contain}));
@@ -47,5 +51,22 @@ void ControlCenterWidget::doLayout(Renderer& renderer, float /*containerWidth*/,
     m_glyph->setColor(widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)));
     m_glyph->measure(renderer);
     node->setSize(m_glyph->width(), m_glyph->height());
+  }
+  // The symbol centres in an island cell, so the lens fits inside the widget bounds.
+  const float cell = std::max({Tokens::componentIslandCell * m_contentScale, node->width(), node->height()});
+  Node* content = m_image != nullptr ? static_cast<Node*>(m_image) : static_cast<Node*>(m_glyph);
+  if (content != nullptr) {
+    content->setPosition((cell - content->width()) * 0.5F, (cell - content->height()) * 0.5F);
+  }
+  node->setSize(cell, cell);
+  m_lens->setSize(cell, cell);
+  m_lens->setRadius(cell * 0.5F);
+}
+
+void ControlCenterWidget::doUpdate(Renderer& /*renderer*/) {
+  const bool open = PanelManager::instance().isOpenPanel("control-center");
+  if (m_lens->visible() != open) {
+    m_lens->setVisible(open);
+    requestRedraw();
   }
 }

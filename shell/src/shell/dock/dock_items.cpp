@@ -387,7 +387,7 @@ namespace shell::dock {
   };
 
   std::string_view dockLauncherIconGlyph(const DockConfig& cfg) {
-    return cfg.launcherIcon.empty() ? "grid-dots" : std::string_view{cfg.launcherIcon};
+    return cfg.launcherIcon.empty() ? "layout-grid" : std::string_view{cfg.launcherIcon};
   }
 
   std::unique_ptr<Flex> makeDockItemRow(const DockConfig& cfg, bool vertical) {
@@ -476,7 +476,7 @@ namespace shell::dock {
           .height = iSize,
           .configure = [&cfg, iSize](Glyph& glyph) {
             if (!glyph.setGlyph(dockLauncherIconGlyph(cfg))) {
-              glyph.setGlyph("grid-dots");
+              glyph.setGlyph("layout-grid");
             }
             glyph.setPosition(kCellPad, launcherIconBaseY(cfg, iSize));
           },
@@ -594,6 +594,10 @@ namespace shell::dock {
       if (item.glideAnimId != 0) {
         instance.animations.cancel(item.glideAnimId);
         item.glideAnimId = 0;
+      }
+      if (item.enterAnimId != 0) {
+        instance.animations.cancel(item.enterAnimId);
+        item.enterAnimId = 0;
       }
       if (item.scaleAnimId != 0) {
         instance.animations.cancel(item.scaleAnimId);
@@ -1482,6 +1486,23 @@ namespace shell::dock {
         item.hoverMainOffset = 0.0F;
       }
       const auto from = instance.glideFrom.find(item.idLower);
+      if (from == instance.glideFrom.end() && !instance.glideFrom.empty() && !item.isDragGhost) {
+        // An icon that joins the row (an app that runs without a pin) grows in while its neighbours glide apart.
+        DockItemView* view = &item;
+        auto enter = [view, &instance](float v) {
+          view->area->setTransformOrigin(view->area->width() * 0.5F, view->area->height() * 0.5F);
+          view->area->setScale(v);
+          view->area->setOpacity(v);
+          if (instance.sceneRoot != nullptr) {
+            instance.sceneRoot->markPaintDirty();
+          }
+        };
+        enter(0.0F);
+        item.enterAnimId = instance.animations.animateSpring(
+            0.0F, 1.0F, Style::spring(Tokens::springMove), enter, [view] { view->enterAnimId = 0; }, view
+        );
+        continue;
+      }
       if (from == instance.glideFrom.end() || std::abs(from->second - item.restMainPos) < 0.5F) {
         continue;
       }

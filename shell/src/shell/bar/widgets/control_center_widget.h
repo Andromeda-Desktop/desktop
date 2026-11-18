@@ -10,6 +10,8 @@ class Glyph;
 class Image;
 struct wl_output;
 
+class Box;
+
 class ControlCenterWidget : public Widget {
 public:
   struct Options {
@@ -24,8 +26,11 @@ public:
 
 private:
   void doLayout(Renderer& renderer, float containerWidth, float containerHeight) override;
+  void doUpdate(Renderer& renderer) override;
   std::string m_barGlyphId;
   WidgetCustomImage m_customImage;
   Glyph* m_glyph = nullptr;
   Image* m_image = nullptr;
+  // The lens: a round cell behind the symbol while the Control Center is open.
+  Box* m_lens = nullptr;
 };
