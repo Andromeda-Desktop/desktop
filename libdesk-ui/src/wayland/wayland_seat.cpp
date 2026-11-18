@@ -543,7 +543,7 @@ void WaylandSeat::handlePointerFrame(void* data, wl_pointer* /*pointer*/) {
   }
   for (std::uint32_t axis = 0; axis < stops.size(); ++axis) {
     if (stops[axis] && self->m_axisStopCallback) {
-      self->m_axisStopCallback(self->m_lastPointerSurface, axis);
+      self->m_axisStopCallback(WaylandSurface::fromWl(self->m_lastPointerSurface), axis);
     }
   }
 }

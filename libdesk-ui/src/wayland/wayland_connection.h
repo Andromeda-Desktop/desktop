@@ -157,16 +157,16 @@ public:
   // Delegate setters
   void setOutputChangeCallback(ChangeCallback callback);
   void setOutputLifecycleCallbacks(std::function<void(wl_output*)> added, std::function<void(wl_output*)> removed);
-  void setPointerEventCallback(WaylandSeat::PointerEventCallback callback);
-  void setPinchEventCallback(WaylandSeat::PinchEventCallback callback);
-  void setAxisStopCallback(WaylandSeat::AxisStopCallback callback);
-  void setKeyboardEventCallback(WaylandSeat::KeyboardEventCallback callback);
+  void setPointerEventCallback(WaylandSeat::PointerEventCallback callback) override;
+  void setPinchEventCallback(WaylandSeat::PinchEventCallback callback) override;
+  void setAxisStopCallback(WaylandSeat::AxisStopCallback callback) override;
+  void setKeyboardEventCallback(WaylandSeat::KeyboardEventCallback callback) override;
   void setKeyboardModifiersCallback(WaylandSeat::KeyboardModifiersCallback callback);
   void setLockKeysChangeCallback(WaylandSeat::LockKeysChangeCallback callback);
   void setKeyboardLayoutChangeCallback(WaylandSeat::KeyboardLayoutChangeCallback callback);
   /// Fired when both `ext_idle_notifier_v1` and `wl_seat` are bound (including late registry globals).
   void setIdleCapabilitiesReadyCallback(ChangeCallback callback);
-  void setTextInputService(TextInputService* textInputService);
+  void setTextInputService(TextInputService* textInputService) override;
   void setCursorShape(std::uint32_t serial, std::uint32_t shape) override;
 
   [[nodiscard]] int repeatPollTimeoutMs() const;
@@ -199,6 +199,17 @@ public:
   [[nodiscard]] DragAndDrop* dragAndDrop();
   // Created on first use; nullptr when the compositor has no primary selection.
   [[nodiscard]] PrimarySelection* primarySelection();
+  void setClipboardChangedCallback(std::function<void()> changed) override;
+  void readClipboard(
+      const std::vector<std::string>& accepted, std::function<void(const std::string& mime, std::string bytes)> done,
+      std::size_t maxBytes
+  ) override;
+  bool setClipboard(
+      std::uint32_t serial, std::vector<std::string> mimeTypes, std::function<std::string(const std::string& mime)> data
+  ) override;
+  [[nodiscard]] std::optional<std::string> primaryText() override;
+  void setPrimaryText(std::uint32_t serial, std::string text) override;
+  void whenPrimaryText(std::function<void(std::optional<std::string>)> done) override;
   [[nodiscard]] wl_display* display() const noexcept;
   [[nodiscard]] wl_registry* registry() const noexcept { return m_registry; }
   /// Registry name and bound version of zwlr_output_manager_v1, 0 when absent.

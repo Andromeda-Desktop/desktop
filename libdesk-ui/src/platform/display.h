@@ -3,11 +3,13 @@
 #include "platform/input_events.h"
 #include "platform/output_id.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 class Popup;
 class TextInputService;
@@ -48,6 +50,32 @@ public:
   [[nodiscard]] virtual bool isLive(const Surface* surface) const noexcept = 0;
   // Input method support; null when the window system has none.
   [[nodiscard]] virtual TextInputService* textInputService() const noexcept = 0;
+  virtual void setTextInputService(TextInputService* service) = 0;
+
+  // One receiver each: a second call replaces the first.
+  virtual void setPointerEventCallback(std::function<void(const PointerEvent&)> callback) = 0;
+  virtual void setPinchEventCallback(std::function<void(const PinchEvent&)> callback) = 0;
+  // The end of a scroll gesture on axis (0 vertical, 1 horizontal); surface is null when no Surface owns it.
+  virtual void setAxisStopCallback(std::function<void(Surface* surface, std::uint32_t axis)> callback) = 0;
+  virtual void setKeyboardEventCallback(std::function<void(const KeyboardEvent&)> callback) = 0;
+
+  // Runs after each clipboard change, ours included. Also starts listening to the primary selection.
+  virtual void setClipboardChangedCallback(std::function<void()> changed) = 0;
+  // Reads the clipboard as the first type of accepted it offers, off the main thread; done runs on the event loop with
+  // the type and bytes, or "" and "" when nothing matched, the source did not answer, or there is no clipboard.
+  virtual void readClipboard(
+      const std::vector<std::string>& accepted, std::function<void(const std::string& mime, std::string bytes)> done,
+      std::size_t maxBytes
+  ) = 0;
+  // serial: the input event that asked for the copy. False when the window system has no clipboard.
+  virtual bool setClipboard(
+      std::uint32_t serial, std::vector<std::string> mimeTypes, std::function<std::string(const std::string& mime)> data
+  ) = 0;
+  // The primary selection (middle-click paste); nullopt and no-ops when the window system has none.
+  [[nodiscard]] virtual std::optional<std::string> primaryText() = 0;
+  virtual void setPrimaryText(std::uint32_t serial, std::string text) = 0;
+  // done gets the text once known: at once, or when the read of a selection that just arrived ends.
+  virtual void whenPrimaryText(std::function<void(std::optional<std::string>)> done) = 0;
   [[nodiscard]] virtual OutputId outputForSurface(const Surface& surface) const noexcept = 0;
 
   virtual void ringBell(const Surface& surface) const = 0;

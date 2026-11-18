@@ -35,7 +35,7 @@ public:
   using PointerEventCallback = std::function<void(const PointerEvent&)>;
   using PinchEventCallback = std::function<void(const PinchEvent&)>;
   // wl_pointer.axis_stop: the fingers left the touchpad (continuous sources only), after the frame's axis events.
-  using AxisStopCallback = std::function<void(wl_surface* surface, std::uint32_t axis)>;
+  using AxisStopCallback = std::function<void(Surface* surface, std::uint32_t axis)>;
   using KeyboardEventCallback = std::function<void(const KeyboardEvent&)>;
   using KeyboardFocusCallback = std::function<void(wl_surface* surface, bool entered)>;
   using KeyboardModifiersCallback = std::function<void(std::uint32_t modifiers)>;

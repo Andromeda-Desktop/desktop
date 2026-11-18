@@ -27,6 +27,8 @@ public:
 
   [[nodiscard]] WaylandConnection& wayland() noexcept { return m_wayland; }
   [[nodiscard]] const WaylandConnection& wayland() const noexcept { return m_wayland; }
+  [[nodiscard]] Display& display() noexcept { return m_wayland; }
+  [[nodiscard]] const Display& display() const noexcept { return m_wayland; }
   [[nodiscard]] GlSharedContext& gl() noexcept { return m_gl; }
   [[nodiscard]] RenderContext& renderContext() noexcept { return m_render; }
 

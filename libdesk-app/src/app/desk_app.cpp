@@ -12,12 +12,10 @@
 #include "core/process/process_phase.h"
 #include "dbus/session_bus.h"
 #include "dbus/session_bus_poll_source.h"
+#include "platform/surface.h"
 #include "ui/controls/input.h"
 #include "ui/tooltip/tooltip_manager.h"
 #include "wayland/text_input_service.h"
-#include "wayland/wayland_connection.h"
-#include "wayland/surface.h"
-#include "wayland/wayland_seat.h"
 
 #include <algorithm>
 #include <optional>
@@ -99,7 +97,7 @@ DeskApp::~DeskApp() {
   Input::setTextClipboard(nullptr);
   Input::setContextMenuHandler({});
   if (m_textInput != nullptr) {
-    m_loop.wayland().setTextInputService(nullptr);
+    m_loop.display().setTextInputService(nullptr);
   }
   m_state.flush();
   m_loop.removeSource(m_busSource.get());
@@ -211,10 +209,10 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
 
   m_state.load();
   m_textInput = std::make_unique<TextInputService>();
-  m_loop.wayland().setTextInputService(m_textInput.get());
-  m_clipboard = std::make_unique<AppClipboard>(m_loop.wayland());
+  m_loop.display().setTextInputService(m_textInput.get());
+  m_clipboard = std::make_unique<AppClipboard>(m_loop.display());
   TooltipManager::instance().initialize(
-      m_loop.wayland(), [this] { return m_windows.empty() ? 1.0F : m_windows.front()->uiScale(); }, &m_loop.renderContext()
+      m_loop.display(), [this] { return m_windows.empty() ? 1.0F : m_windows.front()->uiScale(); }, &m_loop.renderContext()
   );
   Input::setTextClipboard(m_clipboard.get());
   Input::setContextMenuHandler([this](Input& input, float x, float y) {
@@ -225,18 +223,18 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     }
   });
   addStandardCommands();
-  m_loop.wayland().setPointerEventCallback([this](const PointerEvent& event) { routePointer(event); });
-  m_loop.wayland().setPinchEventCallback([this](const PinchEvent& event) {
+  m_loop.display().setPointerEventCallback([this](const PointerEvent& event) { routePointer(event); });
+  m_loop.display().setPinchEventCallback([this](const PinchEvent& event) {
     if (AppWindow* window = windowFor(event.surface)) {
       window->onPinchEvent(event);
     }
   });
-  m_loop.wayland().setAxisStopCallback([this](wl_surface* surface, std::uint32_t axis) {
-    if (AppWindow* window = windowFor(surface != nullptr ? WaylandSurface::fromWl(surface) : m_pointerSurface)) {
+  m_loop.display().setAxisStopCallback([this](Surface* surface, std::uint32_t axis) {
+    if (AppWindow* window = windowFor(surface != nullptr ? surface : m_pointerSurface)) {
       window->onAxisStop(axis);
     }
   });
-  m_loop.wayland().setKeyboardEventCallback([this](const KeyboardEvent& event) { routeKey(event); });
+  m_loop.display().setKeyboardEventCallback([this](const KeyboardEvent& event) { routeKey(event); });
 
   startup();
   const char* token = std::getenv("XDG_ACTIVATION_TOKEN");
@@ -333,7 +331,7 @@ bool DeskApp::reconnect() {
   if (!m_loop.reconnect(std::chrono::seconds(10))) {
     return false;
   }
-  m_clipboard = std::make_unique<AppClipboard>(m_loop.wayland());
+  m_clipboard = std::make_unique<AppClipboard>(m_loop.display());
   Input::setTextClipboard(m_clipboard.get());
   for (const auto& w : m_windows) {
     w->open();
@@ -367,7 +365,7 @@ AppWindow* DeskApp::windowFor(const Surface* surface) const {
 }
 
 AppWindow* DeskApp::activeWindow() const {
-  if (AppWindow* focused = windowFor(m_loop.wayland().keyboardSurface())) {
+  if (AppWindow* focused = windowFor(m_loop.display().keyboardSurface())) {
     return focused;
   }
   for (auto it = m_windows.rbegin(); it != m_windows.rend(); ++it) {
@@ -481,7 +479,7 @@ void DeskApp::routePointer(const PointerEvent& event) {
 }
 
 void DeskApp::routeKey(const KeyboardEvent& event) {
-  if (AppWindow* window = windowFor(m_loop.wayland().keyboardSurface())) {
+  if (AppWindow* window = windowFor(m_loop.display().keyboardSurface())) {
     window->onKeyboardEvent(event);
   }
 }

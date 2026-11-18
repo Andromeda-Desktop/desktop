@@ -1889,3 +1889,47 @@ DragAndDrop* WaylandConnection::dragAndDrop() {
   }
   return m_dragAndDrop.get();
 }
+
+void WaylandConnection::setClipboardChangedCallback(std::function<void()> changed) {
+  if (DragAndDrop* dnd = dragAndDrop()) {
+    dnd->setSelectionChanged(std::move(changed));
+  }
+  (void)primarySelection(); // its device must exist to hear selections before the first middle click
+}
+
+void WaylandConnection::readClipboard(
+    const std::vector<std::string>& accepted, std::function<void(const std::string& mime, std::string bytes)> done,
+    std::size_t maxBytes
+) {
+  if (DragAndDrop* dnd = dragAndDrop()) {
+    dnd->readSelection(accepted, std::move(done), maxBytes);
+  } else {
+    done({}, {});
+  }
+}
+
+bool WaylandConnection::setClipboard(
+    std::uint32_t serial, std::vector<std::string> mimeTypes, std::function<std::string(const std::string& mime)> data
+) {
+  DragAndDrop* dnd = dragAndDrop();
+  return dnd != nullptr && dnd->setSelection(serial, {.mimeTypes = std::move(mimeTypes), .data = std::move(data)});
+}
+
+std::optional<std::string> WaylandConnection::primaryText() {
+  PrimarySelection* primary = primarySelection();
+  return primary != nullptr ? primary->text() : std::nullopt;
+}
+
+void WaylandConnection::setPrimaryText(std::uint32_t serial, std::string text) {
+  if (PrimarySelection* primary = primarySelection()) {
+    primary->setText(serial, std::move(text));
+  }
+}
+
+void WaylandConnection::whenPrimaryText(std::function<void(std::optional<std::string>)> done) {
+  if (PrimarySelection* primary = primarySelection()) {
+    primary->whenText(std::move(done));
+  } else {
+    done(std::nullopt);
+  }
+}
