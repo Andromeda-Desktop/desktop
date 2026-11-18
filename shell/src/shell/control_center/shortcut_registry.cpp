@@ -251,7 +251,7 @@ namespace {
         (void)m_svc->toggleFocus();
       }
     }
-    void onRightClick() override { openTab("detail-notifications"); }
+    void onRightClick() override { PanelManager::instance().togglePanel("notification-center"); }
 
   private:
     NotificationManager* m_svc;

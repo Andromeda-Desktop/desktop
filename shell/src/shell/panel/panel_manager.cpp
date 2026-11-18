@@ -4170,6 +4170,11 @@ void PanelManager::registerIpc(IpcService& ipc) {
     // Preserve the context verbatim (only strip the separator's leading
     // whitespace) — trailing whitespace can be significant, e.g. a command.
     context = std::string(StringUtils::trimLeftView(args.substr(sep + 1)));
+    // Saved gestures and scripts still name the notification center by its old Control Center page.
+    if (panelId == "control-center" && (context == "detail-notifications" || context == "notifications")) {
+      panelId = "notification-center";
+      context.clear();
+    }
     return std::nullopt;
   };
 

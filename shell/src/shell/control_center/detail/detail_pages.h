@@ -296,20 +296,5 @@ namespace control_center {
 
   // Notification history (rulebook 9.11 notification center in the sheet): groups by app, newest first, 2 rows per
   // group until "Show all", Clear per group and Clear All.
-  class NotificationsDetailPage final : public DetailPage {
-  public:
-    NotificationsDetailPage(NotificationManager* notifications, CompositorPlatform* platform)
-        : m_notifications(notifications), m_platform(platform) {}
-    void setActive(bool active) override;
-
-  private:
-    [[nodiscard]] std::string structureKey() const override;
-    void build() override;
-    [[nodiscard]] std::vector<FooterButton> footerButtons() override;
-
-    NotificationManager* m_notifications = nullptr;
-    CompositorPlatform* m_platform = nullptr;
-    std::set<std::string> m_expanded;
-  };
 
 } // namespace control_center

@@ -95,8 +95,6 @@ ControlCenterPanel::ControlCenterPanel(const ControlCenterServices& services) {
   addDetail(TabId::DetailSystem, std::make_unique<control_center::SystemDetailPage>(services.sysmon, services.ipc));
   addDetail(TabId::DetailScreenTime, std::make_unique<control_center::ScreenTimeDetailPage>(services.screenTime));
   addDetail(TabId::DetailMedia, std::make_unique<control_center::MediaDetailPage>(services.mpris, services.httpClient));
-  addDetail(TabId::DetailNotifications,
-            std::make_unique<control_center::NotificationsDetailPage>(services.notifications, services.platform));
   m_tabContainers.fill(nullptr);
   m_tabHeaderActions.fill(nullptr);
 }
@@ -736,11 +734,10 @@ void ControlCenterPanel::scheduleMprisRefreshFor(TabId tab) {
 
 ControlCenterPanel::TabId ControlCenterPanel::tabFromContext(std::string_view context) const {
   // Pre-v2 context names that user gesture config and scripts may still send; each opens its v2 page.
-  static constexpr std::array<std::pair<std::string_view, std::string_view>, 10> kOldContexts{{
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 9> kOldContexts{{
       {"audio", "detail-sound"},
       {"bluetooth", "detail-bluetooth"},
       {"home", "quick"},
-      {"notifications", "detail-notifications"},
       {"media", "detail-media"},
       {"screen-time", "detail-screen-time"},
       {"monitor", "detail-display"},

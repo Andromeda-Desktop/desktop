@@ -983,7 +983,7 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
     b->setGlassPiece(footPill);
     footer->addChild(std::move(b));
   };
-  iconButton(m_notificationsButton, "bell", [this] { m_openTab("detail-notifications"); });
+  iconButton(m_notificationsButton, "bell", [] { PanelManager::instance().togglePanel("notification-center"); });
   m_notificationsButton->setTooltip(i18n::tr("control-center.tabs.notifications"));
   {
     auto badge = ui::box({

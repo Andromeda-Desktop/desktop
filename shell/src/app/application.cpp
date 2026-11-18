@@ -262,10 +262,6 @@ Application::Application()
     }
     kLog.debug("notification {} id={} origin={}", kind, n.id, static_cast<int>(n.origin));
 
-    if (event == NotificationEvent::Added && m_panelManager.isActivePanelContext("detail-notifications")) {
-      m_notificationManager.markNotificationHistorySeen();
-    }
-
     // Keep bar widgets in sync with notification state changes.
     scheduleNotificationShellRefresh();
     if (m_lockScreen.isActive()) {
