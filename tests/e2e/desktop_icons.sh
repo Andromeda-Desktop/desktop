@@ -7,6 +7,7 @@ OUT=${OUT:-$(pwd)/artifacts/desktop-icons}
 source "$(dirname "$0")/lib.sh"
 POINTER=$ROOT/compositor/build-debug/tests/pointer-client
 K_DELETE=111
+FILEOPS=${FILEOPS:-$ROOT/system/target/debug/andromeda-fileops}
 
 boot_headless 1
 DESK=$RUNTIME/home/Desktop
@@ -23,6 +24,9 @@ CONFIG
 
 with_noctalia '
   fail() { echo "FAIL: $*"; exit 1; }
+  # Delete moves to Trash as a FileOps1 job: the daemon runs on this test bus.
+  "'"$FILEOPS"'" > "$OUT/fileops.log" 2>&1 &
+  "'"$ROOT"'/tools/wait.sh" --dbus org.andromeda.FileOps1 --timeout 10 || fail "the FileOps1 daemon is not on the bus"
   # The headless seat has a keyboard only while a virtual keyboard exists, and the shell binds wl_keyboard when it
   # appears: a key sent in the same burst as its click was lost while the shell bound it (log: "keyboard: bound" and
   # "released" around the press, no key). One keyboard held for the whole test keeps it bound.

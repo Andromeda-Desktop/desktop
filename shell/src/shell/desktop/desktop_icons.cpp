@@ -78,6 +78,7 @@ namespace {
     Cut,
     Copy,
     Properties,
+    DeletePermanently,
     OpenWithFirst = 100, // + index into the app list of the menu
   };
   constexpr std::size_t kOpenWithMax = 4;
@@ -211,7 +212,12 @@ void DesktopIcons::open() {
             onCellMotion(x, y);
           }
           setDropHighlight(folderAt(x, y));
-          return m_systemDrag ? DragAndDrop::Move : DragAndDrop::Copy;
+          // Ctrl copies, Shift moves; otherwise our own icons move and files from other apps copy.
+          const std::uint32_t mods = m_wayland->keyboardModifiers();
+          if ((mods & KeyMod::Ctrl) != 0) {
+            return DragAndDrop::Copy;
+          }
+          return m_systemDrag || (mods & KeyMod::Shift) != 0 ? DragAndDrop::Move : DragAndDrop::Copy;
         },
         .leave =
             [this] {
@@ -240,20 +246,24 @@ void DesktopIcons::onDropTarget(float x, float y, std::uint32_t action, const st
       kLog.debug("desktop drop {} {} items into {}", move ? "moves" : "copies", paths.size(), m_cells[*folder].info->name);
       transferIn(paths, pathOf(*m_cells[*folder].info), move);
       resetDraggedCells();
-    } else {
+    } else if (move) {
       moveSelected(x - m_pressX, y - m_pressY);
       drop();
+    } else {
+      kLog.debug("desktop drop duplicates {} items", selectedPaths().size());
+      transferIn(selectedPaths(), m_dir, false, std::nullopt, true);
+      resetDraggedCells();
     }
     endSystemDrag(true);
     return;
   }
   if (folder.has_value()) {
-    kLog.debug("desktop drop copies into {}", m_cells[*folder].info->name);
+    kLog.debug("desktop drop {} into {}", move ? "moves" : "copies", m_cells[*folder].info->name);
     transferIn(urisToPaths(data), pathOf(*m_cells[*folder].info), move);
   } else {
     const Slot slot = slotAt(x, y);
-    kLog.debug("desktop drop copies in at {},{}", slot.column, slot.row);
-    transferIn(urisToPaths(data), m_dir, false, std::pair{x, y});
+    kLog.debug("desktop drop {} in at {},{}", move ? "moves" : "copies", slot.column, slot.row);
+    transferIn(urisToPaths(data), m_dir, move, std::pair{x, y});
   }
 }
 
@@ -329,11 +339,16 @@ void DesktopIcons::startSystemDrag() {
   const FileInfo info = *pressed.info;
   const std::filesystem::path path = pathOf(info);
   const int scale = std::max(1, static_cast<int>(std::ceil(m_surface->effectiveBufferScale())));
-  auto icon = std::make_unique<DragIconSurface>(*m_wayland, iconSize, iconSize, scale);
+  // Several files: the Files count pill on the icon's top-right corner, so the surface grows by the pill's overhang.
+  const std::size_t count = paths.size();
+  const int badge = count > 1 ? static_cast<int>(std::ceil(Tokens::spaceP24)) : 0;
+  const float top = static_cast<float>(badge / 2);
+  auto icon = std::make_unique<DragIconSurface>(*m_wayland, iconSize + badge, iconSize + badge / 2, scale);
   icon->setRenderContext(m_renderContext);
   m_dragImage = ui::node({});
-  m_dragImage->setSize(static_cast<float>(iconSize), static_cast<float>(iconSize));
-  icon->setPrepareFrameCallback([this, raw = icon.get(), iconFile, info, path, iconSize, loaded = false](bool, bool) mutable {
+  m_dragImage->setSize(static_cast<float>(iconSize + badge), static_cast<float>(iconSize + badge / 2));
+  icon->setPrepareFrameCallback([this, raw = icon.get(), iconFile, info, path, iconSize, count, badge, top,
+                                 loaded = false](bool, bool) mutable {
     m_renderContext->makeCurrent(raw->renderTarget());
     if (loaded || m_dragImage == nullptr) {
       return;
@@ -345,13 +360,26 @@ void DesktopIcons::startSystemDrag() {
       drawn->setParticipatesInLayout(false);
       drawn->bind(renderer, info, path, nullptr);
       drawn->layout(renderer);
+      drawn->setPosition(0.0F, top);
       m_dragImage->addChild(std::move(drawn));
-      return;
+    } else {
+      auto image = ui::image({.fit = ImageFit::Contain, .width = static_cast<float>(iconSize),
+                              .height = static_cast<float>(iconSize), .participatesInLayout = false});
+      if (image->setSourceFile(renderer, iconFile, iconSize, true)) {
+        image->setPosition(0.0F, top);
+        m_dragImage->addChild(std::move(image));
+      }
     }
-    auto image = ui::image({.fit = ImageFit::Contain, .width = static_cast<float>(iconSize),
-                            .height = static_cast<float>(iconSize), .participatesInLayout = false});
-    if (image->setSourceFile(renderer, iconFile, iconSize, true)) {
-      m_dragImage->addChild(std::move(image));
+    if (count > 1) {
+      const auto size = static_cast<float>(badge);
+      auto pill = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .paddingH = Tokens::spaceP8,
+                           .fill = colorSpecFromRole(ColorRole::Accent), .radius = size / 2.0F, .minWidth = size,
+                           .height = size, .participatesInLayout = false});
+      pill->addChild(ui::label({.text = std::to_string(count), .fontSize = Style::fontSizeCaption,
+                                .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::OnAccent)}));
+      pill->layout(renderer);
+      pill->setPosition(static_cast<float>(iconSize) - size / 2.0F, 0.0F);
+      m_dragImage->addChild(std::move(pill));
     }
   });
   icon->setSceneRoot(m_dragImage.get());
@@ -634,6 +662,26 @@ bool DesktopIcons::isSelected(const Cell& cell) const { return m_selected.contai
 
 void DesktopIcons::selectCell(const Cell& cell, bool on) {
   on ? (void)m_selected.insert(keyOf(cell)) : (void)m_selected.erase(keyOf(cell));
+}
+
+std::optional<std::size_t> DesktopIcons::neighbour(std::size_t from, int dx, int dy) const {
+  const Cell& origin = m_cells[from];
+  std::optional<std::size_t> best;
+  float bestScore = 0.0F;
+  for (std::size_t i = 0; i < m_cells.size(); ++i) {
+    const float along = (m_cells[i].x - origin.x) * static_cast<float>(dx) + (m_cells[i].y - origin.y) * static_cast<float>(dy);
+    const float across = std::abs(dx != 0 ? m_cells[i].y - origin.y : m_cells[i].x - origin.x);
+    if (i == from || along < 1.0F) {
+      continue;
+    }
+    // Straight ahead wins over a closer cell off to the side.
+    const float score = along + 2.0F * across;
+    if (!best.has_value() || score < bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 std::vector<std::filesystem::path> DesktopIcons::selectedPaths() const {
@@ -1146,8 +1194,13 @@ void DesktopIcons::build() {
                 const bool dragged = m_dragging;
                 m_pressIndex.reset();
                 m_dragging = false;
-                if (std::exchange(m_selectOnlyOnRelease, false) && !dragged && i < m_cells.size()) {
-                  selectOnly(i);
+                const OnRelease onRelease = std::exchange(m_onRelease, OnRelease::Nothing);
+                if (!dragged && i < m_cells.size()) {
+                  if (onRelease == OnRelease::SelectOnly) {
+                    selectOnly(i);
+                  } else if (onRelease == OnRelease::Deselect) {
+                    selectCell(m_cells[i], false);
+                  }
                 }
                 if (dragged) {
                   drop();
@@ -1409,15 +1462,16 @@ void DesktopIcons::onCellPress(std::size_t index, bool rightButton) {
   const Cell& pressed = m_cells[index];
   const std::uint32_t mods = m_wayland->keyboardModifiers();
   kLog.debug("desktop press {}", keyOf(pressed));
-  m_selectOnlyOnRelease = false;
+  m_onRelease = OnRelease::Nothing;
   if (rightButton) {
     if (!isSelected(pressed)) {
       selectOnly(index);
     }
   } else if ((mods & KeyMod::Ctrl) != 0) {
-    selectCell(pressed, !isSelected(pressed));
+    isSelected(pressed) ? (void)(m_onRelease = OnRelease::Deselect) : selectCell(pressed, true);
     m_anchor = index;
   } else if ((mods & KeyMod::Shift) != 0 && m_anchor.has_value() && *m_anchor < m_cells.size()) {
+    m_selected.clear();
     const auto [lo, hi] = std::minmax(*m_anchor, index);
     for (std::size_t i = lo; i <= hi; ++i) {
       selectCell(m_cells[i], true);
@@ -1427,8 +1481,9 @@ void DesktopIcons::onCellPress(std::size_t index, bool rightButton) {
     const bool second = m_lastClick == keyOf(pressed) && now - m_lastClickAt < kDoubleClick;
     m_lastClick = second ? std::nullopt : std::optional(keyOf(pressed));
     m_lastClickAt = now;
-    m_selectOnlyOnRelease = isSelected(pressed) && m_selected.size() > 1;
-    if (!m_selectOnlyOnRelease) {
+    if (isSelected(pressed) && m_selected.size() > 1) {
+      m_onRelease = OnRelease::SelectOnly;
+    } else {
       selectOnly(index);
     }
     // A stack opens on click (release), so a double click on it does not open every file.
@@ -1464,14 +1519,8 @@ void DesktopIcons::activate(const std::vector<std::filesystem::path>& paths) {
 }
 
 void DesktopIcons::trash(const std::vector<std::filesystem::path>& paths) {
-  for (const auto& path : paths) {
-    GFile* file = g_file_new_for_path(path.c_str());
-    GError* error = nullptr;
-    if (!g_file_trash(file, nullptr, &error)) {
-      kLog.warn("moving {} to Trash failed: {}", path.string(), error != nullptr ? error->message : "");
-      g_clear_error(&error);
-    }
-    g_object_unref(file);
+  if (m_fileOps == nullptr || !m_fileOps->trash(paths)) {
+    kLog.warn("moving {} items to Trash failed: no FileOps1", paths.size());
   }
 }
 
@@ -1574,6 +1623,35 @@ void DesktopIcons::openDesktopMenu(float x, float y) {
       .minMenuWidth = static_cast<float>(kMenuW),
       .maxVisible = 24, // every row shows: a scrolling desktop menu hides Change Wallpaper
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
+      .parent = PopupSurfaceParent{.layerSurface = m_surface->layerSurface(), .output = m_output},
+      .pointerParentSurface = m_surface->wlSurface(),
+  });
+}
+
+// Shift+Delete skips the Trash, so it asks first, in a menu at the first selected icon.
+void DesktopIcons::confirmDelete() {
+  const auto selected = selection();
+  const auto paths = selectedPaths();
+  if (selected.empty() || paths.empty() || m_surface == nullptr || m_renderContext == nullptr) {
+    return;
+  }
+  if (m_menu == nullptr) {
+    m_menu = std::make_unique<ContextMenuPopup>(*m_wayland, *m_renderContext);
+  }
+  m_menu->setShadowConfig(m_config->config().shell.shadow);
+  m_menu->setOnActivate([this, paths](const ContextMenuControlEntry& entry) {
+    if (entry.id == DeletePermanently && (m_fileOps == nullptr || !m_fileOps->remove(paths))) {
+      kLog.warn("deleting {} items failed: no FileOps1", paths.size());
+    }
+  });
+  const Cell& cell = m_cells[selected.front()];
+  m_menu->open(ContextMenuPopupRequest{
+      .entries = {{.label = i18n::trp("desktop-icons.delete-confirm", static_cast<long>(paths.size())), .header = true},
+                  {.id = DeletePermanently, .label = i18n::tr("desktop-icons.delete-permanently")},
+                  {.label = i18n::tr("desktop-icons.cancel")}},
+      .minMenuWidth = static_cast<float>(kMenuW),
+      .maxVisible = 4,
+      .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(cell.x), .y = static_cast<std::int32_t>(cell.y + m_plate)},
       .parent = PopupSurfaceParent{.layerSurface = m_surface->layerSurface(), .output = m_output},
       .pointerParentSurface = m_surface->wlSurface(),
   });
@@ -1722,12 +1800,53 @@ void DesktopIcons::onKeyboardEvent(const KeyboardEvent& event) {
   if (!event.pressed || m_cells.empty()) {
     return;
   }
+  const auto arrow = [&](int dx, int dy) {
+    const std::optional<std::size_t> from = m_anchor.has_value() && *m_anchor < m_cells.size() ? m_anchor
+                                            : selection().empty() ? std::nullopt
+                                                                  : std::optional(selection().front());
+    const std::optional<std::size_t> to = from.has_value() ? neighbour(*from, dx, dy) : std::optional<std::size_t>(0);
+    if (!to.has_value()) {
+      return;
+    }
+    if ((event.modifiers & KeyMod::Shift) != 0) {
+      selectCell(m_cells[*to], true);
+      m_anchor = to;
+    } else {
+      selectOnly(*to);
+    }
+  };
+  if ((event.modifiers & (KeyMod::Ctrl | KeyMod::Alt | KeyMod::Super)) == 0 && event.utf32 > U' ' && event.utf32 != 0x7F) {
+    const std::optional<std::size_t> match = m_typeAhead.feed(
+        event.utf32, m_cells.size(), [this](std::size_t i) -> std::string_view { return m_cells[i].info->displayName(); },
+        m_anchor);
+    if (match.has_value()) {
+      selectOnly(*match);
+      requestBuild();
+    }
+    return;
+  }
   switch (event.sym) {
+  case XKB_KEY_Left:
+    arrow(-1, 0);
+    break;
+  case XKB_KEY_Right:
+    arrow(1, 0);
+    break;
+  case XKB_KEY_Up:
+    arrow(0, -1);
+    break;
+  case XKB_KEY_Down:
+    arrow(0, 1);
+    break;
   case XKB_KEY_Return:
   case XKB_KEY_KP_Enter:
     activate(selectedPaths());
     break;
   case XKB_KEY_Delete:
+    if ((event.modifiers & KeyMod::Shift) != 0) {
+      confirmDelete();
+      return;
+    }
     trash(selectedPaths());
     break;
   case XKB_KEY_F2:

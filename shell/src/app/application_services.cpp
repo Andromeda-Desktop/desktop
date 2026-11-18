@@ -60,6 +60,7 @@
 #include "dbus/upower/upower_service.h"
 #include "debug/debug_service.h"
 #include "i18n/i18n.h"
+#include "shell/desktop/desktop_file_ops.h"
 #include "i18n/i18n_service.h"
 #include "ipc/ipc_arg_parse.h"
 #include "ipc/ipc_events.h"
@@ -120,6 +121,7 @@
 #include "util/file_utils.h"
 #include "util/string_utils.h"
 
+#include <array>
 #include <algorithm>
 #include <chrono>
 #include <ctime>
@@ -254,7 +256,7 @@ void Application::syncScheduledShutdown() {
   }
 }
 
-// One activity at a time, by priority: call, screen recording, file transfer.
+// One activity at a time, by priority: call, screen recording, desktop file job, file transfer.
 void Application::syncLiveActivity() {
   if (m_linkService != nullptr) {
     if (const auto call = m_linkService->activeCall(); call.has_value()) {
@@ -331,6 +333,26 @@ void Application::syncLiveActivity() {
         },
     });
     return;
+  }
+  if (const DesktopFileOps* ops = m_desktopIcons.fileOps(); ops != nullptr) {
+    if (const auto job = ops->progress(); job.has_value()) {
+      static constexpr std::array<const char*, 5> kTitles{"files-copy", "files-move", "files-trash", "files-delete",
+                                                          "files-undo"};
+      m_liveActivity.setActivity(LiveActivity{
+          .glyph = job->kind == DesktopFileOps::Kind::Trash || job->kind == DesktopFileOps::Kind::Delete ? "trash" : "files",
+          .title = i18n::trp(std::string("live-activity.") + kTitles[static_cast<std::size_t>(job->kind)],
+                             static_cast<long>(job->items)),
+          .subtitle = job->current,
+          .progress = job->fraction,
+          .actionGlyph = "close",
+          .action = [this] {
+            if (DesktopFileOps* running = m_desktopIcons.fileOps(); running != nullptr) {
+              running->cancelProgress();
+            }
+          },
+      });
+      return;
+    }
   }
   if (m_linkService != nullptr) {
     if (const auto transfer = m_linkService->activeTransfer(); transfer.has_value()) {

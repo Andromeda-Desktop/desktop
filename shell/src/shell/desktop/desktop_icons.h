@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/files/type_ahead.h"
 #include "core/files/directory_watcher.h"
 #include "core/files/file_model.h"
 #include "render/animation/animation_manager.h"
@@ -57,6 +58,8 @@ public:
   void sync();
   [[nodiscard]] DirectoryWatcher& watcher() noexcept { return m_watcher; }
   [[nodiscard]] bool ownsSurface(wl_surface* surface) const;
+  // Shared with the dock Trash, so one job list feeds progress and undo.
+  [[nodiscard]] DesktopFileOps* fileOps() const { return m_fileOps.get(); }
   bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
   // Copies an app's .desktop file into ~/Desktop as a shortcut (one FileOps1 job, undo with Ctrl+Z).
@@ -100,6 +103,7 @@ private:
   void onCellPress(std::size_t index, bool rightButton);
   void activate(const std::vector<std::filesystem::path>& paths);
   void trash(const std::vector<std::filesystem::path>& paths);
+  void confirmDelete();
   // Copies (or moves) files into `dir` as one FileOps1 job (undo with Ctrl+Z); the first new file in ~/Desktop lands
   // at the surface point `at`.
   void transferIn(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& dir, bool move,
@@ -149,6 +153,8 @@ private:
   [[nodiscard]] std::filesystem::path slotsFile() const;
   [[nodiscard]] std::string outputKey() const;
   [[nodiscard]] std::vector<std::size_t> selection() const;
+  // The nearest cell on screen from `from` in the direction (dx, dy), each -1, 0 or 1.
+  [[nodiscard]] std::optional<std::size_t> neighbour(std::size_t from, int dx, int dy) const;
   [[nodiscard]] std::string iconPathFor(const FileInfo& info);
   [[nodiscard]] std::string labelFor(const FileInfo& info) const;
   [[nodiscard]] std::filesystem::path pathOf(const FileInfo& info) const;
@@ -175,6 +181,7 @@ private:
   std::vector<Cell> m_cells;
   std::set<std::string> m_selected; // by file name, so a re-list keeps the selection
   std::optional<std::size_t> m_anchor; // Shift extends from here
+  TypeAhead m_typeAhead;
   // The file of the last click, by key: an index would pair clicks on different files after the list shifts.
   std::optional<std::string> m_lastClick;
   std::chrono::steady_clock::time_point m_lastClickAt;
@@ -203,8 +210,9 @@ private:
   std::optional<bool> m_snapToGrid;
   mutable std::map<std::string, std::pair<std::int64_t, std::string>> m_labels; // file name -> (mtime ns, app name)
   std::optional<std::size_t> m_pressIndex;
-  // A plain press on a selected icon keeps the selection for a drag; the release without a drag selects only it.
-  bool m_selectOnlyOnRelease = false;
+  // A press on a selected icon keeps the selection for a drag; a release without a drag then applies the click.
+  enum class OnRelease : std::uint8_t { Nothing, SelectOnly, Deselect };
+  OnRelease m_onRelease = OnRelease::Nothing;
   float m_pressX = 0.0F;
   float m_pressY = 0.0F;
   bool m_dragging = false;
