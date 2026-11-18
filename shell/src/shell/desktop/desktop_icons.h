@@ -203,6 +203,8 @@ private:
   std::optional<bool> m_snapToGrid;
   mutable std::map<std::string, std::pair<std::int64_t, std::string>> m_labels; // file name -> (mtime ns, app name)
   std::optional<std::size_t> m_pressIndex;
+  // A plain press on a selected icon keeps the selection for a drag; the release without a drag selects only it.
+  bool m_selectOnlyOnRelease = false;
   float m_pressX = 0.0F;
   float m_pressY = 0.0F;
   bool m_dragging = false;

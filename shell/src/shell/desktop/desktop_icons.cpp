@@ -1146,6 +1146,9 @@ void DesktopIcons::build() {
                 const bool dragged = m_dragging;
                 m_pressIndex.reset();
                 m_dragging = false;
+                if (std::exchange(m_selectOnlyOnRelease, false) && !dragged && i < m_cells.size()) {
+                  selectOnly(i);
+                }
                 if (dragged) {
                   drop();
                 } else if (i < m_cells.size() && m_cells[i].stack
@@ -1406,6 +1409,7 @@ void DesktopIcons::onCellPress(std::size_t index, bool rightButton) {
   const Cell& pressed = m_cells[index];
   const std::uint32_t mods = m_wayland->keyboardModifiers();
   kLog.debug("desktop press {}", keyOf(pressed));
+  m_selectOnlyOnRelease = false;
   if (rightButton) {
     if (!isSelected(pressed)) {
       selectOnly(index);
@@ -1423,7 +1427,10 @@ void DesktopIcons::onCellPress(std::size_t index, bool rightButton) {
     const bool second = m_lastClick == keyOf(pressed) && now - m_lastClickAt < kDoubleClick;
     m_lastClick = second ? std::nullopt : std::optional(keyOf(pressed));
     m_lastClickAt = now;
-    selectOnly(index);
+    m_selectOnlyOnRelease = isSelected(pressed) && m_selected.size() > 1;
+    if (!m_selectOnlyOnRelease) {
+      selectOnly(index);
+    }
     // A stack opens on click (release), so a double click on it does not open every file.
     if (second && !pressed.stack) {
       activate({pathOf(*pressed.info)});
