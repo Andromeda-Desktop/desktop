@@ -1,4 +1,7 @@
 #include "shell/control_center/sheet/quick_page.h"
+#include "ui/controls/context_menu.h"
+#include "shell/session/session_action_meta.h"
+#include "shell/control_center/sheet/power_menu_page.h"
 
 #include "dbus/bluetooth/bluetooth_service.h"
 #include "dbus/link/link_service.h"
@@ -998,7 +1001,27 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
   iconButton(settings, "settings", [] { PanelManager::instance().openSettingsWindow(); });
   settings->setTooltip(i18n::tr("control-center.quick.settings-tooltip"));
   Button* power = nullptr;
-  iconButton(power, "shutdown", [this] { m_openTab("session"); });
+  iconButton(power, "shutdown", [this] {
+    // The power popover (proto overlays.js): Lock, Sleep, Log Out | Restart…, Shut Down….
+    static constexpr std::array<std::string_view, 5> kActions{"lock", "suspend", "logout", "reboot", "shutdown"};
+    const std::array<std::string, 5> labels{
+        i18n::tr("control-center.power-menu.lock"), i18n::tr("control-center.power-menu.sleep"),
+        i18n::tr("control-center.power-menu.log-out"), i18n::tr("control-center.power-menu.restart-menu"),
+        i18n::tr("control-center.power-menu.shut-down-menu")};
+    std::vector<ContextMenuControlEntry> entries;
+    for (std::size_t i = 0; i < kActions.size(); ++i) {
+      if (i == 3) {
+        entries.push_back({.id = -1, .separator = true});
+      }
+      entries.push_back({.id = static_cast<std::int32_t>(i), .label = labels[i],
+                         .glyph = std::string(i == 1 ? std::string_view("moon") : session_action::defaultGlyph(kActions[i]))});
+    }
+    PanelManager::instance().openPanelMenu(std::move(entries), *m_powerButton, Tokens::componentMenuFixedWidth * contentScale(),
+                                           [services = m_services](std::int32_t id) {
+                                             runSessionAction(std::string(kActions[static_cast<std::size_t>(id)]), services);
+                                           });
+  });
+  m_powerButton = power;
   power->setTooltip(i18n::tr("control-center.shortcuts.session"));
   return footer;
 }

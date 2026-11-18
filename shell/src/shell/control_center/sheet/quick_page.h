@@ -136,6 +136,7 @@ private:
 
   Flex* m_footer = nullptr;
   Button* m_editButton = nullptr;
+  Button* m_powerButton = nullptr;
   bool m_editing = false;
   std::vector<Node*> m_normalParts;
   Flex* m_editHeader = nullptr;

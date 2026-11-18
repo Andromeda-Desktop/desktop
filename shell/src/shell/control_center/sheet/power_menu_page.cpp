@@ -278,15 +278,17 @@ std::unique_ptr<Flex> PowerMenuPage::makeTile(std::string_view glyph, const std:
   return card;
 }
 
-void PowerMenuPage::run(const std::string& action) {
-  SessionGuard* guard = m_services.sessionGuard;
-  const bool firmware = action == "reboot" && m_alt && guard != nullptr && guard->firmwareSetup();
+void PowerMenuPage::run(const std::string& action) { runSessionAction(action, m_services, m_alt); }
+
+void runSessionAction(const std::string& action, const ControlCenterServices& services, bool toFirmware) {
+  SessionGuard* guard = services.sessionGuard;
+  const bool firmware = action == "reboot" && toFirmware && guard != nullptr && guard->firmwareSetup();
   PanelManager::instance().closePanel();
-  if (m_services.ipc == nullptr) {
+  if (services.ipc == nullptr) {
     return;
   }
   if (firmware) {
-    (void)m_services.ipc->execute("session reboot_uefi");
+    (void)services.ipc->execute("session reboot_uefi");
     return;
   }
   // A block inhibitor holds the machine: Restart and Shut Down wait for it ("When done", island live activity).
@@ -296,7 +298,7 @@ void PowerMenuPage::run(const std::string& action) {
   }
   // Restart, Shut Down and Log Out first ask every window to close (D3 session end).
   const bool ends = action == "reboot" || action == "shutdown" || action == "logout";
-  (void)m_services.ipc->execute((ends ? "power-overlay end " : "session ") + action);
+  (void)services.ipc->execute((ends ? "power-overlay end " : "session ") + action);
 }
 
 void PowerMenuPage::syncWho(Renderer& renderer) {

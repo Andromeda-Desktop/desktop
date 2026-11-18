@@ -53,3 +53,7 @@ private:
   bool m_alt = false;
   bool m_watching = false;
 };
+
+// Runs a session action from any power surface: the firmware restart (toFirmware), the blocker queue for Restart and
+// Shut Down, and the session-end overlay for Restart, Shut Down and Log Out.
+void runSessionAction(const std::string& action, const ControlCenterServices& services, bool toFirmware = false);
