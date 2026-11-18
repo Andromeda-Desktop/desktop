@@ -953,25 +953,13 @@ namespace andromeda {
         area += m_nodeArea[i];
       }
     }
-    const bool measured = sampled && area > 0.0;
-    if (measured) {
+    if (sampled && area > 0.0) {
       m_backdropLuminance = static_cast<float>(weighted / area);
       m_shadow.setAlpha(glass::shadowOverBackdrop(m_backdropLuminance));
       updateDensity();
     }
-    // A static backdrop sends no new sample, so a Crossing tone re-steps on the last one until its dwell ends.
-    timespec now{};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    const auto nowMs = static_cast<uint32_t>(now.tv_sec * 1000 + now.tv_nsec / 1'000'000);
-    if (measured || m_backdropTone.phase == glass::BackdropTone::Phase::Crossing) {
-      m_backdropTone = glass::stepTone(m_backdropTone, m_backdropLuminance, nowMs);
-      if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
-        dsk->sendBackdrop(m_layerSurface->surface, m_backdropTone.dark);
-      }
-    }
     constexpr int kBackdropRecheckMs = 16;
-    const auto dwell = static_cast<int>(glass::dwellLeftMs(m_backdropTone, nowMs));
-    return pending ? kBackdropRecheckMs : dwell;
+    return pending ? kBackdropRecheckMs : 0;
   }
 
   void LayerSurface::updateDensity() {

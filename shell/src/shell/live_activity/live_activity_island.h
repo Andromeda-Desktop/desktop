@@ -81,8 +81,6 @@ class LiveActivityIsland {
 public:
   using VisibilityCallback = std::function<void(wl_output*, bool)>;
   using SpaceProvider = std::function<std::optional<CenterIslandSpace>(wl_output*)>;
-  // The bar's backdrop tone on an output (true dark); nullopt when no islands bar samples it.
-  using ToneProvider = std::function<std::optional<bool>(wl_output*)>;
 
   LiveActivityIsland();
   ~LiveActivityIsland();
@@ -94,9 +92,6 @@ public:
   // Runs per output with true when its island shows and false when it is gone, so the bar can hide that center section.
   void setVisibilityCallback(VisibilityCallback callback);
   void setSpaceProvider(SpaceProvider provider);
-  void setToneProvider(ToneProvider provider);
-  // The bar on `output` changed its backdrop tone: the island fades to it.
-  void onBarBackdrop(wl_output* output);
   // The lane pill a sheet grows out of: its surface, its x, y, width, height there, and its centre on the output.
   struct SheetSource {
     wl_surface* surface = nullptr;
@@ -304,7 +299,7 @@ private:
   // The banner's §9.2 action buttons (hidden until a banner has actions); the first is the primary capsule.
   std::unique_ptr<Node> bannerActionRow(Instance& inst);
   void bannerAction(Instance& inst, std::size_t index);
-  void applyContent(Instance& inst, bool fade = false);
+  void applyContent(Instance& inst);
   void applyReveal(Instance& inst, float reveal);
   void animateReveal(Instance& inst, Face face, float velocity);
   void bannerDragStart(Instance& inst, float x, float y);
@@ -330,7 +325,6 @@ private:
   // True when the clip moved (animated or jumped); `continueMirror`: a mirrored morph was running before this change.
   bool syncDsk(Instance& inst, bool animate, bool continueMirror);
   // The glass tint of `face`: the pill material at rest, the sheet tint expanded; alpha 0 when the shell paints it.
-  [[nodiscard]] PaletteTone islandTone(const Instance& inst, glass::Kind kind) const;
   [[nodiscard]] DskSurfaceClient::Value islandTint(const Instance& inst, Face face) const;
   void startMirror(Instance& inst, const Rect& target, bool grow, bool continueFrom);
   void stepMirror(Instance& inst);
@@ -394,7 +388,6 @@ private:
   RenderContext* m_renderContext = nullptr;
   VisibilityCallback m_visibilityCallback;
   SpaceProvider m_spaceProvider;
-  ToneProvider m_toneProvider;
   std::function<PipeWireService*()> m_pipewire;
   std::function<MprisService*()> m_mpris;
   std::string m_date;

@@ -262,17 +262,6 @@ void LiveActivityIsland::setVisibilityCallback(VisibilityCallback callback) {
 
 void LiveActivityIsland::setSpaceProvider(SpaceProvider provider) { m_spaceProvider = std::move(provider); }
 
-void LiveActivityIsland::setToneProvider(ToneProvider provider) { m_toneProvider = std::move(provider); }
-
-void LiveActivityIsland::onBarBackdrop(wl_output* output) {
-  for (const auto& inst : m_instances) {
-    if (inst->output == output && inst->material != nullptr) {
-      applyContent(*inst, true);
-      inst->surface->requestRedraw();
-    }
-  }
-}
-
 void LiveActivityIsland::setRestSources(
     std::function<PipeWireService*()> pipewire, std::function<MprisService*()> mpris, NotificationManager* notifications,
     OpenCallback open
@@ -600,19 +589,10 @@ void LiveActivityIsland::ensureSurfaces() {
     });
     inst->glassConn = Style::glassChanged().connect([this, instPtr = inst.get()] {
       if (instPtr->material != nullptr) {
-        instPtr->material->setPaletteTone(islandTone(*instPtr, glass::Kind::Shape));
-        instPtr->tint->setPaletteTone(islandTone(*instPtr, glass::Kind::Sheet));
+        instPtr->material->setPaletteTone(glassTone(glass::Kind::Shape));
+        instPtr->tint->setPaletteTone(glassTone(glass::Kind::Sheet));
       }
     });
-    if (inst->dsk != nullptr) {
-      inst->dsk->setOnBackdrop([this, instPtr = inst.get()](bool) {
-        if (instPtr->material == nullptr) {
-          return;
-        }
-        applyContent(*instPtr, true);
-        instPtr->surface->requestRedraw();
-      });
-    }
     m_instances.push_back(std::move(inst));
     updateFace(*m_instances.back());
   }
@@ -898,21 +878,12 @@ void LiveActivityIsland::hoverLeave(Instance& inst) {
   });
 }
 
-PaletteTone LiveActivityIsland::islandTone(const Instance& inst, glass::Kind kind) const {
-  // The top row takes one tone: the bar's when it samples this output, the island's own otherwise.
-  std::optional<bool> dark = m_toneProvider ? m_toneProvider(inst.output) : std::nullopt;
-  if (!dark && inst.dsk != nullptr) {
-    dark = inst.dsk->backdropDark();
-  }
-  return glassTone(kind, dark);
-}
-
 DskSurfaceClient::Value LiveActivityIsland::islandTint(const Instance& inst, Face face) const {
   if (!inst.compositorTint) {
     return glassTintValue(materialRole(), 0.0F, inst.material);
   }
   const glass::Kind kind = face == Face::Rest ? glass::Kind::Shape : glass::Kind::Sheet;
-  const float tint = Style::glassMaterial(kind, islandTone(inst, kind)).tint;
+  const float tint = Style::glassMaterial(kind, glassTone(kind)).tint;
   return face == Face::Rest ? glassTintValue(materialRole(), tint, inst.material)
                             : glassTintValue(panelMaterialRole(), tint, inst.tint);
 }
@@ -1794,28 +1765,18 @@ void LiveActivityIsland::loadArt(Instance& inst, Renderer& renderer, const std::
   }
 }
 
-void LiveActivityIsland::applyContent(Instance& inst, bool fade) {
+void LiveActivityIsland::applyContent(Instance& inst) {
   Renderer& renderer = inst.surface->renderTarget().renderer();
 
   // A small shape: liquid glass with the launcher pill's clear tint.
-  const bool liquid = inst.dsk != nullptr && inst.dsk->hasLiquidProperty() && !Style::reduceTransparency();
   // The resting pill is a shape; the other faces sit on the sheet tint, a sibling, so it takes its own tone.
-  // fade: a backdrop light/dark flip cross-fades the tone and the tint on spring.fade.
-  const PaletteTone shapeTone = islandTone(inst, glass::Kind::Shape);
-  const PaletteTone sheetTone = islandTone(inst, glass::Kind::Sheet);
-  if (fade) {
-    inst.material->fadePaletteTone(shapeTone, Style::spring(Tokens::springFade));
-    inst.tint->fadePaletteTone(sheetTone, Style::spring(Tokens::springFade));
-  } else {
-    inst.material->setPaletteTone(shapeTone);
-    inst.tint->setPaletteTone(sheetTone);
-  }
-  const auto setTint = [fade](auto& target, const DskSurfaceClient::Value& value) {
-    if (fade) {
-      target.animate(DskSurfaceClient::Property::Tint, DskSurfaceClient::Curve::SpringEffects, value);
-    } else {
-      target.set(DskSurfaceClient::Property::Tint, value);
-    }
+  const bool liquid = inst.dsk != nullptr && inst.dsk->hasLiquidProperty() && !Style::reduceTransparency();
+  const PaletteTone shapeTone = glassTone(glass::Kind::Shape);
+  const PaletteTone sheetTone = glassTone(glass::Kind::Sheet);
+  inst.material->setPaletteTone(shapeTone);
+  inst.tint->setPaletteTone(sheetTone);
+  const auto setTint = [](auto& target, const DskSurfaceClient::Value& value) {
+    target.set(DskSurfaceClient::Property::Tint, value);
   };
   if (inst.dsk != nullptr && inst.dsk->hasLiquidProperty()) {
     const glass::Material material = Style::glassMaterial(glass::Kind::Shape, shapeTone);

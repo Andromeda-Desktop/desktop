@@ -202,10 +202,8 @@
 
     <event name="backdrop" since="6">
       <description summary="the backdrop under the liquid glass changed tone">
-        Sent while the liquid property is above 0: once when the first
-        measurement of the blurred backdrop arrives, then each time it moves
-        between light and dark. The compositor applies hysteresis, so a
-        backdrop near the threshold does not flicker.
+        Deprecated: the compositor no longer sends it. Glass keeps the tone
+        of the colour scheme and adapts only its density (the density event).
       </description>
       <arg name="tone" type="uint" enum="backdrop"/>
     </event>

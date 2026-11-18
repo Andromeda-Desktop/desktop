@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A backdrop change inside the backdrop probe's 100 ms interval still reaches liquid glass: the glass samples again
-# once the interval ends, so a bar that maps before the wallpaper learns the backdrop is light.
+# once the interval ends, so glass that maps before the wallpaper takes the density of the new backdrop.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -18,7 +18,7 @@ CONFIG
 "$ANDROMEDA" msg config-reload > /dev/null
 
 mkfifo "$ANDROMEDA_RUNTIME_DIR/layer.fifo"
-env LAYER_CONTROL=1 LAYER_DSK_VERSION=10 "$ANDROMEDA_LAYER_CLIENT" HEADLESS-1 200 \
+env LAYER_CONTROL=1 LAYER_DSK_VERSION=16 "$ANDROMEDA_LAYER_CLIENT" HEADLESS-1 200 \
   < "$ANDROMEDA_RUNTIME_DIR/layer.fifo" > "$LAYER_LOG" 2>&1 &
 exec {layer_fd}> "$ANDROMEDA_RUNTIME_DIR/layer.fifo"
 await_lines "$LAYER_LOG" ready 1
@@ -33,11 +33,16 @@ layer_command() {
 layer_command color white FFFFFFFF
 layer_command blur-region area 100 50 100 50
 layer_command dsk-set liquid 6 1 1 0 0
-await_lines "$LAYER_LOG" "dsk-backdrop 1" 1 0.005
+layer_command dsk-set light-tint 8 1 1 1 0.5
+await_lines "$LAYER_LOG" "dsk-density 1.00" 1 0.005
 # A white bottom-layer surface under the glass a few ms after the first sample, inside the probe interval; nothing
 # redraws the glass after it.
 layer_command source white-under 100 50
-if ! await_lines "$LAYER_LOG" "dsk-backdrop 0" 1; then
-  echo "the glass kept the dark tone after a white surface mapped under it inside the probe interval"
+for _ in $(seq 60); do
+  awk '$1 == "dsk-density" && $2 < 0.9 { found = 1 } END { exit !found }' "$LAYER_LOG" && break
+  sleep 0.1
+done
+if ! awk '$1 == "dsk-density" && $2 < 0.9 { found = 1 } END { exit !found }' "$LAYER_LOG"; then
+  echo "light glass kept full density after a white surface mapped under it inside the probe interval"
   exit 1
 fi

@@ -199,13 +199,6 @@ PaletteTone glassTone(glass::Kind kind) noexcept {
   return glass::tone(kind, Style::glass()) == glass::Tone::Dark ? PaletteTone::Dark : PaletteTone::Scheme;
 }
 
-PaletteTone glassTone(glass::Kind kind, std::optional<bool> backdropDark) noexcept {
-  if (!backdropDark.has_value() || !glass::flipsWithBackdrop(kind, Style::glassSettings())) {
-    return glassTone(kind);
-  }
-  return *backdropDark ? PaletteTone::Dark : PaletteTone::Light;
-}
-
 const Color& colorForRole(ColorRole role, const Node* node) noexcept {
   return roleIn(node != nullptr ? paletteForTone(node->paletteTone()) : palette, role);
 }

@@ -200,7 +200,6 @@ namespace andromeda {
               }
           ),
           boolean("edge_reflection", &A::edgeReflection),
-          boolean("adaptive_tone", &A::adaptiveTone),
           real("liquid_tint", 0.0, 1.0, &A::liquidTint),
           real("liquid_blur", 0.0, 1.0, &A::liquidBlur),
           boolean("reduce_transparency", &A::reduceTransparency),

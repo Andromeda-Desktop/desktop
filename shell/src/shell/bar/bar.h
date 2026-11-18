@@ -87,10 +87,6 @@ public:
   void setCenterIslandHidden(wl_output* output, bool hidden);
   // Nullopt unless this output has a top or bottom islands bar that has been laid out.
   [[nodiscard]] std::optional<CenterIslandSpace> centerIslandSpace(wl_output* output) const;
-  // The backdrop tone (true dark) of the top or bottom islands bar on `output`; nullopt before its first sample.
-  [[nodiscard]] std::optional<bool> backdropDark(wl_output* output) const;
-  // Runs with the output whose islands bar changed its backdrop tone.
-  void setBackdropCallback(std::function<void(wl_output*)> callback) { m_backdropCallback = std::move(callback); }
   void setCenterIslandSpaceCallback(std::function<void()> callback) { m_centerIslandSpaceCallback = std::move(callback); }
   void setAutoHideSuppressionCallback(std::function<bool(const BarInstance&)> callback);
   // Re-run auto-hide after a panel closes so unrelated bars are not left visible.
@@ -238,7 +234,6 @@ private:
   std::vector<std::unique_ptr<BarInstance>> m_instances;
   std::unordered_set<wl_output*> m_centerIslandHiddenOutputs;
   std::function<void()> m_centerIslandSpaceCallback;
-  std::function<void(wl_output*)> m_backdropCallback;
   void notifyCenterIslandSpace(BarInstance& instance);
   // Wall-clock minute of the last full second-tick update, so minute-changing
   // widgets refresh on the first tick of a new minute even when it lands off

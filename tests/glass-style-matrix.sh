@@ -55,9 +55,7 @@ frosted-user glass_style = "frosted"|glass = 0.45|frost = 0.05|edge_reflection =
 liquid glass_style = "liquid"|liquid_tint = 0.15|liquid_blur = 0.1|liquid = 0.5
 liquid-clear glass_style = "liquid"|liquid_tint = 0.0|liquid_blur = 0.0|liquid = 1.0
 liquid-tinted glass_style = "liquid"|liquid_tint = 0.5|liquid_blur = 1.0|liquid = 0.5
-liquid-fixed glass_style = "liquid"|liquid_tint = 0.15|liquid_blur = 0.1|liquid = 0.5|adaptive_tone = false
 clear glass_style = "clear"|liquid = 0.5
-clear-fixed glass_style = "clear"|liquid = 0.5|adaptive_tone = false
 CFG
 export RUNTIME WALLDIR WALLS CONFIGS SURFACES SECONDS_PER SCHEME FOOT
 with_noctalia '

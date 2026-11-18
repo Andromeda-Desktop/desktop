@@ -209,13 +209,7 @@ void DskSurfaceClient::handleClipMapped(
   }
 }
 
-void DskSurfaceClient::handleBackdrop(void* data, dsk_surface_v1* /*surface*/, uint32_t tone) {
-  auto* self = static_cast<DskSurfaceClient*>(data);
-  self->m_backdropDark = tone == DSK_SURFACE_V1_BACKDROP_DARK;
-  if (self->m_onBackdrop) {
-    self->m_onBackdrop(*self->m_backdropDark);
-  }
-}
+void DskSurfaceClient::handleBackdrop(void* /*data*/, dsk_surface_v1* /*surface*/, uint32_t /*tone*/) {}
 
 void DskSurfaceClient::handleDensity(void* data, dsk_surface_v1* /*surface*/, int32_t density) {
   auto* self = static_cast<DskSurfaceClient*>(data);

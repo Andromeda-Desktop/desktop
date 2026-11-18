@@ -79,8 +79,6 @@ namespace glass {
     float frost = 0.5F;
     // Specular edge of every style and its pointer light (appearance.edge_reflection).
     bool edgeReflection = true;
-    // Shell glass follows its measured backdrop tone (appearance.adaptive_tone).
-    bool adaptiveTone = true;
     // Liquid Tint (appearance.liquid_tint), on the Tint scale.
     float liquidTint = 0.15F;
     // Liquid Blur (appearance.liquid_blur): 0 Soft, 1 Strong (kLiquidClarity).
@@ -101,45 +99,6 @@ namespace glass {
       settings.style = Style::Frosted;
     }
     return settings;
-  }
-
-  // Backdrop adaptation, the one rule for every glass surface. The compositor measures the backdrop luminance (0 to 1)
-  // and sends it; a backdrop turns dark below kBackdropDark[0] and stays dark until kBackdropDark[1], so luminance
-  // inside the band never flips a tone (no pulse over video).
-  inline constexpr float kBackdropDark[2] = {0.35F, 0.45F};
-  [[nodiscard]] constexpr bool backdropDark(bool wasDark, float luminance) noexcept {
-    return luminance < kBackdropDark[wasDark ? 1 : 0];
-  }
-  // A measured tone flips only after the backdrop stays past the band for kFlipDwellMs, so scrolling or video under
-  // the bar never flips it. The first measurement takes its tone at once.
-  inline constexpr uint32_t kFlipDwellMs = 500;
-  struct BackdropTone {
-    enum class Phase : uint8_t { Unmeasured, Settled, Crossing };
-    Phase phase = Phase::Unmeasured;
-    bool dark = false;
-    uint32_t crossedMs = 0; // monotonic ms of the first sample past the band; Crossing only
-  };
-  [[nodiscard]] constexpr BackdropTone stepTone(BackdropTone tone, float luminance, uint32_t nowMs) noexcept {
-    using Phase = BackdropTone::Phase;
-    const bool dark = backdropDark(tone.dark, luminance);
-    if (tone.phase == Phase::Unmeasured || dark == tone.dark) {
-      return {.phase = Phase::Settled, .dark = dark};
-    }
-    if (tone.phase == Phase::Settled) {
-      return {.phase = Phase::Crossing, .dark = tone.dark, .crossedMs = nowMs};
-    }
-    return nowMs - tone.crossedMs >= kFlipDwellMs ? BackdropTone{.phase = Phase::Settled, .dark = dark} : tone;
-  }
-  // Milliseconds until a Crossing tone may flip; 0 when it is not crossing.
-  [[nodiscard]] constexpr uint32_t dwellLeftMs(BackdropTone tone, uint32_t nowMs) noexcept {
-    const uint32_t held = nowMs - tone.crossedMs;
-    return tone.phase == BackdropTone::Phase::Crossing && held < kFlipDwellMs ? kFlipDwellMs - held : 0;
-  }
-  // Only shapes flip light/dark with their backdrop (Liquid and Clear, adaptive tone on); sheets, menus and tooltips keep
-  // tone(kind, slider) and adapt by density only (adaptDensity, always on: it keeps text legible).
-  [[nodiscard]] constexpr bool flipsWithBackdrop(Kind kind, const Settings& settings) noexcept {
-    return kind == Kind::Shape && settings.style != Style::Frosted && settings.adaptiveTone
-        && !settings.reduceTransparency;
   }
 
   // Opacity a configured `opacity` of `kind` is relative to: tint_regular (0.70) for shapes, tint_thick otherwise.

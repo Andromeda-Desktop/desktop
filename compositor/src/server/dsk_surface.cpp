@@ -89,21 +89,6 @@ namespace andromeda {
     }
   }
 
-  void DskSurfaceManager::sendBackdrop(wlr_surface* surface, bool dark) const {
-    wlr_addon* addon = wlr_addon_find(&surface->addons, this, &kAddonInterface);
-    if (addon == nullptr) {
-      return;
-    }
-    Surface* state = wl_container_of(addon, state, addon);
-    const int tone = dark ? DSK_SURFACE_V1_BACKDROP_DARK : DSK_SURFACE_V1_BACKDROP_LIGHT;
-    if (state->current.backdropTone == tone
-        || wl_resource_get_version(state->resource) < DSK_SURFACE_V1_BACKDROP_SINCE_VERSION) {
-      return;
-    }
-    state->current.backdropTone = tone;
-    dsk_surface_v1_send_backdrop(state->resource, static_cast<uint32_t>(tone));
-  }
-
   void DskSurfaceManager::sendDensity(wlr_surface* surface, float density) const {
     wlr_addon* addon = wlr_addon_find(&surface->addons, this, &kAddonInterface);
     if (addon == nullptr) {

@@ -35,7 +35,6 @@ namespace andromeda {
   public:
     struct State {
       SurfaceMotion motion;
-      int backdropTone = -1; // last dsk_surface_v1.backdrop sent, -1 = none yet
       float density = -1.0F; // last dsk_surface_v1.density sent, -1 = none yet
       int version = 0; // dsk_surface_v1 version the client bound
       // dsk_surface_v1.set_visible_region (v8), surface-local; nullopt = the whole surface.
@@ -89,8 +88,6 @@ namespace andromeda {
     // value changed.
     // Also advances the trackers of `surface` and writes their bound values.
     bool tick(wlr_surface* surface, uint32_t nowMs) const;
-    // Sends dsk_surface_v1.backdrop (v6) when `dark` differs from the tone the client last got.
-    void sendBackdrop(wlr_surface* surface, bool dark) const;
     void sendDensity(wlr_surface* surface, float density) const;
     // True while a tracker drives a property of `surface` (interacting or inertia).
     [[nodiscard]] bool driven(wlr_surface* surface) const;

@@ -205,10 +205,6 @@ extern Palette palette;
 [[nodiscard]] const Color& colorForRole(ColorRole role, const Palette& p) noexcept;
 // The tone of `kind` at the current glass slider (glass::tone).
 [[nodiscard]] PaletteTone glassTone(glass::Kind kind) noexcept;
-// A glass shape over its measured backdrop (dsk_surface_v1 backdrop): Liquid follows it, light glass with dark content
-// over a bright backdrop and dark glass over a dark one; Frosted, adaptiveTone off and an unmeasured backdrop keep
-// glassTone(kind).
-[[nodiscard]] PaletteTone glassTone(glass::Kind kind, std::optional<bool> backdropDark) noexcept;
 // The palettes of PaletteTone::Dark and ::Light. Set them before setPalette(), which re-resolves every control.
 void setDarkPalette(const Palette& p);
 void setLightPalette(const Palette& p);

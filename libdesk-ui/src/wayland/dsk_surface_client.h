@@ -85,9 +85,6 @@ public:
   [[nodiscard]] const std::optional<Value>& mappedClip() const noexcept { return m_mappedClip; }
   // Runs when the compositor reports the clip of the last setClipFrom.
   void setOnClipMapped(std::function<void(const Value&)> callback) { m_onClipMapped = std::move(callback); }
-  // dsk_surface_v1.backdrop (v6): the blurred backdrop under the liquid glass turned dark (true) or light (false).
-  [[nodiscard]] std::optional<bool> backdropDark() const noexcept { return m_backdropDark; }
-  void setOnBackdrop(std::function<void(bool dark)> callback) { m_onBackdrop = std::move(callback); }
   // dsk_surface_v1.density (v16): how much the compositor thickens this surface's tint, 0 to 1.
   void setOnDensity(std::function<void(float density)> callback) { m_onDensity = std::move(callback); }
 
@@ -105,8 +102,6 @@ private:
   uint32_t m_nextSerial = 1;
   std::optional<Value> m_mappedClip;
   std::function<void(const Value&)> m_onClipMapped;
-  std::optional<bool> m_backdropDark;
-  std::function<void(bool)> m_onBackdrop;
   float m_density = 0.0F;
   std::function<void(float)> m_onDensity;
   std::unordered_map<uint32_t, DoneCallback> m_pending;

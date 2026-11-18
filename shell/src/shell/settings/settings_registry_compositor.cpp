@@ -193,7 +193,6 @@ namespace settings {
           );
         }
         toggle(Appearance, "surfaces", "appearance.edge_reflection", "glass edge reflection glow highlight rim shine pointer");
-        toggle(Appearance, "surfaces", "appearance.adaptive_tone", "glass adaptive tone light dark backdrop bar dock");
       }
       toggle(Motion, "motion", "appearance.reduce_motion", "accessibility reduce motion animations");
       // Captioned as the shell rows they replace: the compositor runs every animation on the desktop.
