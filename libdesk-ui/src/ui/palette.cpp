@@ -196,7 +196,7 @@ const Color& colorForRole(ColorRole role, const Palette& p) noexcept { return ro
 const Color& colorForRole(ColorRole role, PaletteTone tone) noexcept { return roleIn(paletteForTone(tone), role); }
 
 PaletteTone glassTone(glass::Kind kind) noexcept {
-  return glass::tone(kind, Style::glass()) == glass::Tone::Dark ? PaletteTone::Dark : PaletteTone::Scheme;
+  return glass::tone(kind, Style::glassStyle()) == glass::Tone::Dark ? PaletteTone::Dark : PaletteTone::Scheme;
 }
 
 const Color& colorForRole(ColorRole role, const Node* node) noexcept {

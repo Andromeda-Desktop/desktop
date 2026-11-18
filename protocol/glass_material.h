@@ -40,13 +40,6 @@ namespace glass {
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };
 
-  // Shell glass below Frosted is dark glass in both schemes (docs/design/deviations.md "Shape glass tone"); app
-  // windows keep the scheme (Style::glassMaterial with PaletteTone::Scheme).
-  [[nodiscard]] constexpr Tone tone(Kind kind, float slider) noexcept {
-    (void)kind;
-    return slider < 0.75F ? Tone::Dark : Tone::Scheme;
-  }
-
   // Material::dense of a kind: tooltips rise halfway over a low-contrast backdrop, other kinds all the way, so white
   // text on a Clear sheet over white keeps 4.5:1 (halfway gives 4.2:1).
   [[nodiscard]] constexpr float denseTarget(Kind kind) noexcept { return kind == Kind::Tooltip ? 0.0F : 1.0F; }
@@ -54,6 +47,9 @@ namespace glass {
   // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
   // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
   inline constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
+  // Liquid sheets and menus sit over windows and text, so they blur about 4x a shape at the default (Soft 0.30 to
+  // Strong 0): text under them does not show through.
+  inline constexpr float kLiquidSheetClarity[2] = {0.30F, 0.0F};
   // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
   inline constexpr float kLiquidLift = 1.05F;
   // Glass shapes of one surface with the same material join by a smooth union within this many logical px, so shapes
@@ -67,6 +63,14 @@ namespace glass {
   // Clear: Liquid with kClearTint, white content, and dimming from the density path (adaptDensity) over bright
   // backdrops, so text keeps 4.5:1.
   enum class Style : std::uint8_t { Frosted, Liquid, Clear };
+
+  // Shell glass follows the scheme; Clear is dark glass with white content in both schemes (docs/design/deviations.md
+  // "Clear glass tone"). App windows keep the scheme (Style::glassMaterial with PaletteTone::Scheme).
+  [[nodiscard]] constexpr Tone tone(Kind kind, Style style) noexcept {
+    (void)kind;
+    return style == Style::Clear ? Tone::Dark : Tone::Scheme;
+  }
+
   // The tint alpha of Clear glass: enough to carry a tint colour, so the compositor can dim through the density.
   inline constexpr float kClearTint = 0.04F;
 
@@ -136,7 +140,9 @@ namespace glass {
       tint = kClearTint;
     }
     if (settings.style != Style::Frosted) {
-      const float clarity = std::lerp(kLiquidClarity[0], kLiquidClarity[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
+      const bool sheet = settings.style == Style::Liquid && (kind == Kind::Sheet || kind == Kind::Menu);
+      const float* range = sheet ? kLiquidSheetClarity : kLiquidClarity;
+      const float clarity = std::lerp(range[0], range[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
       const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
       return {
           .tint = tint, .level = level, .rim = settings.edgeReflection ? at(settings.lens, 0.4F, 1.0F, 1.0F) : 0.0F, .lens = level, .clarity = clarity,

@@ -134,8 +134,8 @@ namespace Style {
   Signal<>& glassChanged();
   // True when the compositor draws the glass tint a surface sends (dsk v9): the client then paints no material fill.
   [[nodiscard]] bool compositorDrawsTint() noexcept;
-  // The Tint slider of the active glass style.
-  [[nodiscard]] float glass() noexcept;
+  // The active glass style.
+  [[nodiscard]] glass::Style glassStyle() noexcept;
   // The one glass mapping (protocols/glass_material.h) for the current slider, scheme and reduce transparency.
   // Shell glass: the tone of glass::tone.
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind) noexcept;
