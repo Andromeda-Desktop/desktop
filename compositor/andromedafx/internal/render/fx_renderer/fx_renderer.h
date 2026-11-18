@@ -57,6 +57,8 @@ GLuint fx_framebuffer_get_fbo(struct fx_framebuffer* buffer);
 // Creates or refreshes the sampling view in the current context. Keeps the
 // active texture unit and unbinds the target after importing its EGLImage.
 GLuint fx_framebuffer_get_texture(struct fx_framebuffer* buffer);
+// A client committed the buffer again, so its contents may have changed: drop the shadow copy and import it live.
+void fx_framebuffer_drop_shadow(struct fx_framebuffer* buffer);
 
 /**
  * Attaches a stencil renderbuffer to the framebuffer on first use. Leaves the
@@ -69,8 +71,8 @@ bool fx_framebuffer_ensure_stencil(struct fx_framebuffer* buffer);
 ///
 
 // How a sampled client buffer reaches the GPU. Live: its dma-buf import. Copying: the import plus a queued copy into
-// shadow_tex. Shadow: only shadow_tex; a committed buffer we hold cannot change, so the copy stays exact and the
-// buffer is never imported again.
+// shadow_tex. Shadow: only shadow_tex, exact until the client commits the buffer again (clients reuse swapchain
+// buffers); that commit returns it to Live.
 enum fx_import_mode {
   FX_IMPORT_LIVE,
   FX_IMPORT_COPYING,

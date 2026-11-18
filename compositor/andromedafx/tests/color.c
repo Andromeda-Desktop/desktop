@@ -939,7 +939,7 @@ static const struct wlr_buffer_impl client_view_impl = {
     .get_dmabuf = client_view_get_dmabuf,
 };
 
-static bool fill_red(struct fixture* fixture, struct wlr_buffer* target) {
+static bool fill_color(struct fixture* fixture, struct wlr_buffer* target, struct wlr_render_color color) {
   struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL);
   if (pass == NULL) {
     return false;
@@ -948,11 +948,32 @@ static bool fill_red(struct fixture* fixture, struct wlr_buffer* target) {
       pass,
       &(struct wlr_render_rect_options){
           .box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
-          .color = {.r = 1.0f, .a = 1.0f},
+          .color = color,
           .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
       }
   );
   return wlr_render_pass_submit(pass);
+}
+
+static bool fill_red(struct fixture* fixture, struct wlr_buffer* target) {
+  return fill_color(fixture, target, (struct wlr_render_color){.r = 1.0f, .a = 1.0f});
+}
+
+static bool draw_texture(struct fixture* fixture, struct wlr_texture* texture, struct wlr_buffer* output, uint8_t* pixels) {
+  struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, output, NULL);
+  if (!check(pass != NULL, "begin render pass")) {
+    return false;
+  }
+  wlr_render_pass_add_texture(
+      pass,
+      &(struct wlr_render_texture_options){
+          .texture = texture,
+          .dst_box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  return check(wlr_render_pass_submit(pass), "draw the texture")
+      && check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, TEST_WIDTH * 4, pixels), "read output");
 }
 
 // A sampled-only dma-buf whose import was dropped while idle draws its content again on the next use.
@@ -1095,26 +1116,25 @@ static bool test_client_import_trim(struct fixture* fixture) {
                      "the next trim drops the import and keeps the shadow");
   }
   uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
-  if (ok) {
-    struct wlr_render_pass* pass = wlr_renderer_begin_buffer_pass(fixture->renderer, output, NULL);
-    ok = check(pass != NULL, "begin render pass");
-    if (ok) {
-      wlr_render_pass_add_texture(
-          pass,
-          &(struct wlr_render_texture_options){
-              .texture = texture,
-              .dst_box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
-              .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
-          }
-      );
-      ok = check(wlr_render_pass_submit(pass), "draw the dropped texture")
-          && check(read_buffer(fixture, output, DRM_FORMAT_ABGR8888, TEST_WIDTH * 4, pixels), "read output");
-    }
-  }
+  ok = ok && draw_texture(fixture, texture, output, pixels);
   const uint8_t red[4] = {255, 0, 0, 255};
   const int center = (TEST_HEIGHT / 2 * TEST_WIDTH + TEST_WIDTH / 2) * 4;
   ok = ok && check(codes_close(&pixels[center], red, 1), "the shadow shows the client content")
       && check(framebuffer->image == EGL_NO_IMAGE_KHR, "drawing a shadowed buffer does not import it again");
+  // The client reuses the buffer: it draws new content and commits it again.
+  struct wlr_texture* recommit = NULL;
+  if (ok) {
+    ok = check(fill_color(fixture, source, (struct wlr_render_color){.g = 1.0f, .a = 1.0f}), "redraw the client buffer");
+    recommit = ok ? wlr_texture_from_buffer(fixture->renderer, &client->base) : NULL;
+    ok = ok && check(recommit != NULL, "import the recommitted buffer") && draw_texture(fixture, recommit, output, pixels);
+  }
+  const uint8_t green[4] = {0, 255, 0, 255};
+  ok = ok && check(codes_close(&pixels[center], green, 1), "a recommitted buffer shows its new content")
+      && check(framebuffer->import_mode == FX_IMPORT_LIVE && framebuffer->shadow_tex == 0,
+               "a recommit drops the shadow");
+  if (recommit != NULL) {
+    wlr_texture_destroy(recommit);
+  }
   if (texture != NULL) {
     wlr_texture_destroy(texture);
   }

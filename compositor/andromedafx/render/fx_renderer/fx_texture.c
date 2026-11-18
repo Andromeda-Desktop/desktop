@@ -970,6 +970,7 @@ static struct wlr_texture* fx_texture_from_dmabuf(struct wlr_renderer* wlr_rende
   if (buffer == NULL) {
     return NULL;
   }
+  fx_framebuffer_drop_shadow(buffer);
 
   struct fx_framebuffer* texture_buffer = buffer;
   if (buffer->effect_capture_valid && buffer->effect_capture_buffer != NULL) {

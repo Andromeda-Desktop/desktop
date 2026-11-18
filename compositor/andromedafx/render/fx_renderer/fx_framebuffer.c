@@ -341,6 +341,24 @@ static void drop_import(struct fx_renderer* renderer, struct fx_framebuffer* buf
   buffer->image = EGL_NO_IMAGE_KHR;
 }
 
+void fx_framebuffer_drop_shadow(struct fx_framebuffer* buffer) {
+  if (buffer->import_mode == FX_IMPORT_LIVE) {
+    return;
+  }
+  struct fx_renderer* renderer = buffer->renderer;
+  struct fx_texture* texture;
+  wl_list_for_each(texture, &renderer->textures, link) {
+    if (texture->buffer == buffer && texture->tex == buffer->shadow_tex) {
+      texture->tex = buffer->tex;
+    }
+  }
+  fx_renderer_delete_gl(renderer, FX_GL_TEXTURE, buffer->shadow_tex);
+  renderer->shadow_bytes -= buffer->shadow_bytes;
+  buffer->shadow_tex = 0;
+  buffer->shadow_bytes = 0;
+  buffer->import_mode = FX_IMPORT_LIVE;
+}
+
 bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms) {
   bool busy = false;
   bool copied = false;
