@@ -600,6 +600,13 @@ void SettingsWindow::open(std::string context) {
     m_surface.reset();
     return;
   }
+  // The maximize button shows restore while maximized.
+  m_surface->setStateCallback([this, maximized = false](const ToplevelState& state) mutable {
+    if (state.maximized != maximized) {
+      maximized = state.maximized;
+      requestSceneRebuild();
+    }
+  });
   m_minWidthHint = minWidth;
   m_minHeightHint = minHeight;
   m_pointerInside = false;

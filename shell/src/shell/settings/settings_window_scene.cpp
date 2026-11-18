@@ -1445,7 +1445,7 @@ std::unique_ptr<Flex> SettingsWindow::buildHeaderRow(
     );
   };
   windowButton("minus", [this] { m_surface->setMinimized(); });
-  windowButton("square", [this] { m_surface->setMaximized(!m_surface->state().maximized); });
+  windowButton(m_surface->state().maximized ? "minimize" : "square", [this] { m_surface->setMaximized(!m_surface->state().maximized); });
   if (Style::closeButtonsEnabled()) {
     windowButton("close", [this] { close(); });
   }
