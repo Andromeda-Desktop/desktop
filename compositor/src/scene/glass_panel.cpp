@@ -39,10 +39,31 @@ namespace andromeda {
     m_useScrim = true;
   }
 
+  int GlassPanel::pollBackdrop() {
+    float luminance = 0.0F;
+    if (m_blur == nullptr || m_useScrim) {
+      return 0;
+    }
+    if (wlr_scene_blur_poll_backdrop(m_blur, &luminance)) {
+      const bool light = config().appearance.scheme == ColorScheme::Light;
+      const float target = glass::adaptDensity(light, luminance);
+      // Small moves are ignored, as on shell glass, so the panel does not pulse over video.
+      if (std::abs(target - m_density) > glass::kAdaptStep || target == 0.0F || target == 1.0F) {
+        m_density = target;
+        place(m_box, m_radius, m_opacity);
+      }
+    }
+    constexpr int kBackdropRecheckMs = 16;
+    return wlr_scene_blur_backdrop_pending(m_blur) ? kBackdropRecheckMs : 0;
+  }
+
   void GlassPanel::place(const wlr_box& box, int radius, float opacity) {
     if (m_tree == nullptr || m_shadow == nullptr || m_blur == nullptr || m_tint == nullptr || m_hairline == nullptr) {
       return;
     }
+    m_box = box;
+    m_radius = radius;
+    m_opacity = opacity;
     const bool light = config().appearance.scheme == ColorScheme::Light;
     const auto& scheme = light ? Tokens::schemeLight : Tokens::schemeDark;
     const glass::Material material = configGlass(m_kind);
@@ -78,11 +99,17 @@ namespace andromeda {
     wlr_scene_blur_set_rim(m_blur, m_useScrim ? 0.0F : material.rim);
     wlr_scene_blur_set_strength(m_blur, material.blurStrength);
     wlr_scene_blur_set_alpha(m_blur, opacity);
+    wlr_scene_blur_set_backdrop_sampling(m_blur, !m_useScrim);
+    // Glass draws its tint inside the blur, raised by the backdrop density; a scrim is a flat rect over a plain blur.
+    const auto tint = rgba(scheme.tintThick, 1.0F);
+    const float rgb[3]{tint[0], tint[1], tint[2]};
+    wlr_scene_blur_set_tint_mix(m_blur, rgb, m_useScrim ? 0.0F : glass::denser(material.tint, m_density, material.dense));
 
+    wlr_scene_node_set_enabled(&m_tint->node, m_useScrim);
     wlr_scene_node_set_position(&m_tint->node, box.x, box.y);
     wlr_scene_rect_set_size(m_tint, box.width, box.height);
     wlr_scene_rect_set_corner_radius(m_tint, radius);
-    wlr_scene_rect_set_color(m_tint, faded(m_useScrim ? m_scrim : rgba(scheme.tintThick, material.tint)).data());
+    wlr_scene_rect_set_color(m_tint, faded(m_scrim).data());
 
     // Hairline: the stroke colour with the inside cut away, 1 px wide.
     wlr_scene_node_set_enabled(&m_hairline->node, !m_useScrim);

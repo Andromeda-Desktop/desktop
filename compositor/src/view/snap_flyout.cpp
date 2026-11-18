@@ -130,6 +130,10 @@ namespace andromeda {
     scheduleFrame();
   }
 
+  int SnapFlyout::pollBackdrop() {
+    return active() && m_panel != nullptr ? m_panel->pollBackdrop() : 0;
+  }
+
   void SnapFlyout::scheduleFrame() {
     // Every output: the sheet's own output can be unknown or gone, and a fade must still finish.
     for (const auto& output : m_server.outputs()) {

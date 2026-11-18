@@ -38,6 +38,8 @@ namespace andromeda {
     // `animate` false hides at once (interruptions: lock, output removal, workspace switch).
     void close(bool animate = true);
     [[nodiscard]] bool active() const { return m_tree != nullptr && m_open; }
+    // GlassPanel::pollBackdrop of the open panel; 0 when closed.
+    int pollBackdrop();
     [[nodiscard]] View* view() const { return m_view.get(); }
 
     [[nodiscard]] std::optional<SnapZone> zoneAt(double lx, double ly) const;

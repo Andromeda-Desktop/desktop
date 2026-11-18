@@ -28,6 +28,9 @@ namespace andromeda {
     void setEnabled(bool enabled);
     // A flat scrim of `color` (premultiplied) over a plain blur, with no shadow, rim or hairline: for dimming an area.
     void setScrim(const std::array<float, 4>& color);
+    // Reads a finished backdrop sample and moves the tint density toward it (glass::adaptDensity). Returns the ms
+    // until it needs a new poll (a GPU sample pending), or 0.
+    int pollBackdrop();
 
   private:
     wlr_scene_tree* m_tree = nullptr;
@@ -38,5 +41,9 @@ namespace andromeda {
     glass::Kind m_kind;
     std::array<float, 4> m_scrim{};
     bool m_useScrim = false;
+    wlr_box m_box{};
+    int m_radius = 0;
+    float m_opacity = 1.0F;
+    float m_density = 0.0F;
   };
 } // namespace andromeda

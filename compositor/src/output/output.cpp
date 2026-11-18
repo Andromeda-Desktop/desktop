@@ -34,6 +34,7 @@
 #include "server/greeter_mode.h"
 #include "server/ipc.h"
 #include "server/server.h"
+#include "view/snap_flyout.h"
 #include "view/view.h"
 #include "wlr.h"
 #include "workspace/scratchpad.h"
@@ -2290,11 +2291,14 @@ namespace andromeda {
 
   void Output::pollBackdrops() {
     int recheckMs = 0;
+    const auto soonest = [&recheckMs](int ms) { recheckMs = ms > 0 && (recheckMs == 0 || ms < recheckMs) ? ms : recheckMs; };
     for (const auto& layer : m_server->layerSurfaces()) {
       if (layer->output() == this) {
-        const int ms = layer->pollBackdrop();
-        recheckMs = ms > 0 && (recheckMs == 0 || ms < recheckMs) ? ms : recheckMs;
+        soonest(layer->pollBackdrop());
       }
+    }
+    if (SnapFlyout* flyout = m_server->snapFlyout()) {
+      soonest(flyout->pollBackdrop());
     }
     if (recheckMs > 0 && m_backdropTimer != nullptr) {
       wl_event_source_timer_update(m_backdropTimer, recheckMs);
