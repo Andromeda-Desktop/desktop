@@ -952,6 +952,8 @@ void Application::initNotificationAndOsd() {
   m_liveActivity.initialize(m_wayland, &m_configService, &m_renderContext);
   m_liveActivity.setVisibilityCallback([this](wl_output* output, bool visible) { m_bar.setCenterIslandHidden(output, visible); });
   m_liveActivity.setSpaceProvider([this](wl_output* output) { return m_bar.centerIslandSpace(output); });
+  m_liveActivity.setToneProvider([this](wl_output* output) { return m_bar.backdropDark(output); });
+  m_bar.setBackdropCallback([this](wl_output* output) { m_liveActivity.onBarBackdrop(output); });
   m_liveActivity.setRestSources(
       [this] { return pipewire(); }, [this] { return mpris(); }, &m_notificationManager,
       [this](wl_output* output, std::string_view context, std::optional<LiveActivityIsland::SheetSource> source) {

@@ -262,6 +262,17 @@ void LiveActivityIsland::setVisibilityCallback(VisibilityCallback callback) {
 
 void LiveActivityIsland::setSpaceProvider(SpaceProvider provider) { m_spaceProvider = std::move(provider); }
 
+void LiveActivityIsland::setToneProvider(ToneProvider provider) { m_toneProvider = std::move(provider); }
+
+void LiveActivityIsland::onBarBackdrop(wl_output* output) {
+  for (const auto& inst : m_instances) {
+    if (inst->output == output && inst->material != nullptr) {
+      applyContent(*inst, true);
+      inst->surface->requestRedraw();
+    }
+  }
+}
+
 void LiveActivityIsland::setRestSources(
     std::function<PipeWireService*()> pipewire, std::function<MprisService*()> mpris, NotificationManager* notifications,
     OpenCallback open
@@ -587,7 +598,7 @@ void LiveActivityIsland::ensureSurfaces() {
       applyContent(*instPtr);
       instPtr->surface->requestRedraw();
     });
-    inst->glassConn = Style::glassChanged().connect([instPtr = inst.get()] {
+    inst->glassConn = Style::glassChanged().connect([this, instPtr = inst.get()] {
       if (instPtr->material != nullptr) {
         instPtr->material->setPaletteTone(islandTone(*instPtr, glass::Kind::Shape));
         instPtr->tint->setPaletteTone(islandTone(*instPtr, glass::Kind::Sheet));
@@ -887,11 +898,16 @@ void LiveActivityIsland::hoverLeave(Instance& inst) {
   });
 }
 
-PaletteTone LiveActivityIsland::islandTone(const Instance& inst, glass::Kind kind) {
-  return glassTone(kind, inst.dsk != nullptr ? inst.dsk->backdropDark() : std::nullopt);
+PaletteTone LiveActivityIsland::islandTone(const Instance& inst, glass::Kind kind) const {
+  // The top row takes one tone: the bar's when it samples this output, the island's own otherwise.
+  std::optional<bool> dark = m_toneProvider ? m_toneProvider(inst.output) : std::nullopt;
+  if (!dark && inst.dsk != nullptr) {
+    dark = inst.dsk->backdropDark();
+  }
+  return glassTone(kind, dark);
 }
 
-DskSurfaceClient::Value LiveActivityIsland::islandTint(const Instance& inst, Face face) {
+DskSurfaceClient::Value LiveActivityIsland::islandTint(const Instance& inst, Face face) const {
   if (!inst.compositorTint) {
     return glassTintValue(materialRole(), 0.0F, inst.material);
   }

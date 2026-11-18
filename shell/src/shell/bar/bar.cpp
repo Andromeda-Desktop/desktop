@@ -639,6 +639,17 @@ void Bar::setCenterIslandHidden(wl_output* output, bool hidden) {
   requestLayout();
 }
 
+std::optional<bool> Bar::backdropDark(wl_output* output) const {
+  for (const auto& instance : m_instances) {
+    const BarConfig& cfg = instance->barConfig;
+    if (instance->output == output && cfg.islands && (cfg.position == "top" || cfg.position == "bottom")
+        && instance->dsk != nullptr) {
+      return instance->dsk->backdropDark();
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<CenterIslandSpace> Bar::centerIslandSpace(wl_output* output) const {
   constexpr float kGap = 12.0F;
   for (const auto& instance : m_instances) {

@@ -324,6 +324,9 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
       if (inst->surface != nullptr) {
         inst->surface->requestRedraw();
       }
+      if (m_backdropCallback) {
+        m_backdropCallback(inst->output);
+      }
     });
   }
   instance.compositorTint = false;
