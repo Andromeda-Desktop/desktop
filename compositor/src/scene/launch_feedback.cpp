@@ -56,6 +56,22 @@ namespace andromeda {
 
   bool LaunchFeedback::finished() const { return m_finishing && !m_exit.animating(); }
 
+  wlr_box LaunchFeedback::box() const { return boxAt(m_scale); }
+
+  wlr_box LaunchFeedback::boxAt(double scale) const {
+    const double travel = m_travel.current();
+    const double fromX = m_from.x + m_from.width / 2.0;
+    const double fromY = m_from.y + m_from.height / 2.0;
+    const double centreX = fromX + (m_targetX - fromX) * travel;
+    const double centreY = fromY + (m_targetY - fromY) * travel;
+    const int width = std::max(1, static_cast<int>(std::lround(m_from.width * scale)));
+    const int height = std::max(1, static_cast<int>(std::lround(m_from.height * scale)));
+    return {
+        static_cast<int>(std::lround(centreX - width / 2.0)), static_cast<int>(std::lround(centreY - height / 2.0)),
+        width, height
+    };
+  }
+
   bool LaunchFeedback::tickAnimations(double nowMsec) {
     m_travel.tick(nowMsec);
     m_exit.tick(nowMsec);
@@ -75,21 +91,14 @@ namespace andromeda {
     }
     const double exit = m_exit.current();
     scale *= 1.0 + kExitGrowth * exit;
+    m_scale = scale;
 
-    const double fromX = m_from.x + m_from.width / 2.0;
-    const double fromY = m_from.y + m_from.height / 2.0;
-    const double centreX = fromX + (m_targetX - fromX) * travel;
-    const double centreY = fromY + (m_targetY - fromY) * travel;
-    const int width = std::max(1, static_cast<int>(std::lround(m_from.width * scale)));
-    const int height = std::max(1, static_cast<int>(std::lround(m_from.height * scale)));
+    const wlr_box icon = boxAt(scale);
     int parentX = 0;
     int parentY = 0;
     wlr_scene_node_coords(&m_tree->node.parent->node, &parentX, &parentY);
-    wlr_scene_node_set_position(
-        &m_tree->node, static_cast<int>(std::lround(centreX - width / 2.0)) - parentX,
-        static_cast<int>(std::lround(centreY - height / 2.0)) - parentY
-    );
-    wlr_scene_buffer_set_dest_size(m_node, width, height);
+    wlr_scene_node_set_position(&m_tree->node, icon.x - parentX, icon.y - parentY);
+    wlr_scene_buffer_set_dest_size(m_node, icon.width, icon.height);
     wlr_scene_buffer_set_opacity(m_node, static_cast<float>(m_alpha.current() * (1.0 - exit)));
   }
 

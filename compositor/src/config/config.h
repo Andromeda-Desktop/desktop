@@ -890,9 +890,10 @@ namespace andromeda {
         bool enabled = true;
         // Springs derive their own length; duration_ms stays at the shared value for a duration-based curve.
         int durationMs = 150;
-        AnimationCurve curve{.easing = Easing::EaseOutCubic};
+        // Rulebook P15: spring `open` (k 438.6, z 0.90); a launch grows from its icon, other opens from scale 0.94.
+        AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 0.9, .stiffness = 438.6}};
         std::string style = "popin";
-        double scale = 0.5;
+        double scale = 0.94;
         bool operator==(const WindowsIn&) const = default;
       } windowsIn;
 
@@ -906,7 +907,7 @@ namespace andromeda {
         // visible level (1/256) is reached near 120 ms.
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 1.0, .stiffness = 3947.8}};
         std::string style = "popin";
-        double scale = 0.8;
+        double scale = 0.96; // rulebook P16
         bool operator==(const WindowsOut&) const = default;
       } windowsOut;
 

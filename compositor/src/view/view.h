@@ -737,7 +737,8 @@ namespace andromeda {
     // A frozen copy of what this view shows now, held over it until Server::releaseCloseSnapshot.
     [[nodiscard]] CloseSnapshotId captureHeldSnapshot();
     // The windows_in fade (and popin or zoom scale) from transparent, as at map.
-    void startOpenAnimation();
+    // `from`: the launch icon's layout box a popin or zoom open grows from (rulebook P15).
+    void startOpenAnimation(std::optional<wlr_box> from = std::nullopt);
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop
@@ -774,7 +775,9 @@ namespace andromeda {
     [[nodiscard]] bool scaleOnlyOpening() const;
     // A built-in popin, zoom, or slide open offsets the presented box inside the box the layout assigned it, until
     // the fade that drives it reaches rest.
-    [[nodiscard]] bool openingInsetPending() const { return m_openingScale < 1.0 || m_openingSlide != 0; }
+    [[nodiscard]] bool openingInsetPending() const {
+      return m_openingScale < 1.0 || m_openingSlide != 0 || m_openingFrom.has_value();
+    }
     [[nodiscard]] bool openingInsetActive() const {
       return openingInsetPending() && (tiledOpeningActive() || fullscreenOpeningActive());
     }
@@ -1134,6 +1137,10 @@ namespace andromeda {
     // A float's presented size while windows_in runs; the client's first commits do not resize the opening frame.
     std::optional<std::array<int, 2>> m_openingFloatingSize;
     int m_openingSlide = 0;
+    // Rulebook P15: the launch icon's layout box a popin or zoom open grows from instead of its own centre.
+    std::optional<wlr_box> m_openingFrom;
+    // The launch icon's box from the first map, until the opening takes it.
+    std::optional<wlr_box> m_launchIconBox;
     // Changed only through transitionPlacement.
     Placement m_placement;
     std::optional<wlr_box> m_snapRestoreBox;

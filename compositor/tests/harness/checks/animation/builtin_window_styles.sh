@@ -192,8 +192,8 @@ fi
 "$ANDROMEDA" msg "window-close:$(window_id style-popin)" > /dev/null
 "$ANDROMEDA" clock-advance 2350
 read -r mid_x mid_y mid_w mid_h <<< "$(blue_bounds)"
-# Linear 5000 ms close sampled near 0.47: scale is about 0.906 of the captured 400x240 box, centred on 300, 560.
-if ((mid_x < 108 || mid_x + mid_w > 492 || mid_y < 444 || mid_y + mid_h > 676)); then
+# Linear 5000 ms close sampled near 0.47: scale is about 0.981 (P16 ends at 0.96) of the captured 400x240 box, centred on 300, 560.
+if ((mid_x < 102 || mid_x + mid_w > 498 || mid_y < 441 || mid_y + mid_h > 679)); then
   echo "popin close snapshot did not shrink inside its captured box: $mid_x $mid_y $mid_w $mid_h"
   exit 1
 fi

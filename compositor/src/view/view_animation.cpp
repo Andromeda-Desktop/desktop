@@ -178,7 +178,14 @@ namespace andromeda {
 
   wlr_box View::openingInsetBox(const wlr_box& box) const {
     wlr_box presented = box;
-    if (openingInsetActive()) {
+    if (openingInsetActive() && m_openingFrom) {
+      // Overshoot of the open spring carries through, so the window settles into its box.
+      const double progress = m_fade.current();
+      presented.x = static_cast<int>(std::lround(std::lerp(m_openingFrom->x, box.x, progress)));
+      presented.y = static_cast<int>(std::lround(std::lerp(m_openingFrom->y, box.y, progress)));
+      presented.width = static_cast<int>(std::lround(std::lerp(m_openingFrom->width, box.width, progress)));
+      presented.height = static_cast<int>(std::lround(std::lerp(m_openingFrom->height, box.height, progress)));
+    } else if (openingInsetActive()) {
       const double progress = std::clamp(m_fade.current(), 0.0, 1.0);
       const double scale = std::lerp(m_openingScale, 1.0, progress);
       presented.width = static_cast<int>(std::lround(box.width * scale));
@@ -216,6 +223,7 @@ namespace andromeda {
     }
     m_openingScale = 1.0;
     m_openingSlide = 0;
+    m_openingFrom.reset();
     if (!mapped()) {
       return;
     }
@@ -654,18 +662,19 @@ namespace andromeda {
     if (!transitionLifecycle(LifecycleEvent::ResumeOpening)) {
       return;
     }
-    startOpenAnimation();
+    startOpenAnimation(std::exchange(m_launchIconBox, std::nullopt));
     setNodeEnabled(m_onActiveWorkspace);
     syncAnimationEffects();
   }
 
-  void View::startOpenAnimation() {
+  void View::startOpenAnimation(std::optional<wlr_box> from) {
     const auto& animation = config().animation;
     const auto& open = animation.windowsIn;
     m_customFade =
         animation.enabled && open.enabled && effectRegistry().animationEffect(AnimationEvent::WindowsIn) != nullptr;
     m_openingScale = 1.0;
     m_openingSlide = 0;
+    m_openingFrom.reset();
     if (!animation.enabled
         || !open.enabled
         || (open.style == "none" && effectRegistry().animationEffect(AnimationEvent::WindowsIn) == nullptr)) {
@@ -679,6 +688,7 @@ namespace andromeda {
       settleFocusChrome();
       if (!m_customFade && (open.style == "popin" || open.style == "zoom")) {
         m_openingScale = std::clamp(open.style == "zoom" ? 0.5 : open.scale, 0.0, 1.0);
+        m_openingFrom = from;
       }
       scheduleFrame();
     }

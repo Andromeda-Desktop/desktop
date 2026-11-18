@@ -32,6 +32,8 @@ namespace andromeda {
     // The window mapped (or the launch expired): grow and fade out.
     void finish();
     [[nodiscard]] bool finished() const;
+    // The icon's box now, in layout coordinates: the window that replaces it grows from there.
+    [[nodiscard]] wlr_box box() const;
 
     [[nodiscard]] AnimationPhase animationPhase() const override { return AnimationPhase::Overlays; }
     bool tickAnimations(double nowMsec) override;
@@ -40,6 +42,7 @@ namespace andromeda {
 
   private:
     void apply(double nowMsec);
+    [[nodiscard]] wlr_box boxAt(double scale) const;
 
     Server* m_server = nullptr;
     Output* m_output = nullptr;
@@ -54,6 +57,7 @@ namespace andromeda {
     AnimatedValue m_exit{0.0}; // 0 while waiting, 1 when grown into the window
     double m_breathStartMsec = -1.0;
     bool m_finishing = false;
+    double m_scale = 1.0; // the icon's scale at the last apply
   };
 
 } // namespace andromeda

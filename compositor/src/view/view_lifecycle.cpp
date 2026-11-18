@@ -245,7 +245,7 @@ namespace andromeda {
 
   void View::handleMap() {
     if (!m_hasEverMapped) {
-      m_server->endLaunchBusy(m_launchToken);
+      m_launchIconBox = m_server->endLaunchBusy(m_launchToken);
     }
     m_hasEverMapped = true;
     // The XDG map signal is emitted before the root surface commit signal.
@@ -525,6 +525,7 @@ namespace andromeda {
         // windows_move reflow that makes room for it. An overview card follows that same reveal.
         deferTiledOpening();
       } else {
+        const std::optional<wlr_box> icon = std::exchange(m_launchIconBox, std::nullopt);
         if (!tiled() && !layoutFullscreen() && m_presentation.width() > 0 && m_presentation.height() > 0) {
           m_openingFloatingSize = std::array{m_presentation.width(), m_presentation.height()};
         }
@@ -539,18 +540,20 @@ namespace andromeda {
             // The output box this window rests in is assigned by the arrange that follows this map, so the inset is
             // applied against that box on every fade tick instead of tweening a node it has not been placed in yet.
             m_openingScale = scale;
+            m_openingFrom = icon;
             const wlr_box area = fullscreenLayoutBox();
             setLayoutTarget(area.x, area.y);
             presentBox(area);
           } else if (m_presentation.width() > 0 && m_presentation.height() > 0) {
             const int targetW = m_presentation.width();
             const int targetH = m_presentation.height();
-            const int startW = std::max(1, static_cast<int>(targetW * scale));
-            const int startH = std::max(1, static_cast<int>(targetH * scale));
             const int targetX = layoutX();
             const int targetY = layoutY();
-            const int startX = targetX + (targetW - startW) / 2;
-            const int startY = targetY + (targetH - startH) / 2;
+            // Launched from an icon (rulebook P15): grow from the icon's box; else scale up from its own centre.
+            const int startW = icon ? icon->width : std::max(1, static_cast<int>(targetW * scale));
+            const int startH = icon ? icon->height : std::max(1, static_cast<int>(targetH * scale));
+            const int startX = icon ? icon->x : targetX + (targetW - startW) / 2;
+            const int startY = icon ? icon->y : targetY + (targetH - startH) / 2;
 
             m_presentation.setSize(startW, startH);
             m_presentation.animateTo(targetW, targetH, open.durationMs, open.curve);

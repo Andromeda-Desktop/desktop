@@ -659,6 +659,7 @@ namespace andromeda {
     }
     m_openingScale = 1.0;
     m_openingSlide = 0;
+    m_openingFrom.reset();
     setOnActiveWorkspace(true);
   }
 

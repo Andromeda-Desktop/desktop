@@ -632,7 +632,8 @@ namespace andromeda {
     void releaseCloseSnapshot(CloseSnapshotId id);
 
     // Busy cursor of a pending launch (rulebook §10): ends when the window maps, or after 5 s.
-    void endLaunchBusy(const std::optional<std::string>& token);
+    // Returns the launch icon's box when the launch had icon feedback (rulebook P15: the window grows from it).
+    std::optional<wlr_box> endLaunchBusy(const std::optional<std::string>& token);
 
   private:
     friend class EisInput;
@@ -1121,7 +1122,7 @@ namespace andromeda {
     void setLaunchFrom(wlr_surface* surface, const wlr_box& box);
     void dropLaunchFrom();
     void beginLaunchFeedback(const std::string& token);
-    void finishLaunchFeedback(const std::optional<std::string>& token);
+    std::optional<wlr_box> finishLaunchFeedback(const std::optional<std::string>& token);
     std::unique_ptr<SystemdUnits> m_systemdUnits;
     std::unique_ptr<CpuBoost> m_cpuBoost;
     std::unique_ptr<qos::Controller> m_qos;

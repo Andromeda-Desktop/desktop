@@ -516,27 +516,32 @@ namespace andromeda {
     dropLaunchFrom();
   }
 
-  void Server::finishLaunchFeedback(const std::optional<std::string>& token) {
+  std::optional<wlr_box> Server::finishLaunchFeedback(const std::optional<std::string>& token) {
     for (auto& [name, feedback] : m_launchFeedback) {
       if (!token || name == *token) {
+        if (feedback->finished()) {
+          return std::nullopt;
+        }
+        const wlr_box icon = feedback->box();
         feedback->finish();
-        return;
+        return icon;
       }
     }
+    return std::nullopt;
   }
 
   // token: the launch token of the window; a window without one ends the oldest pending launch.
-  void Server::endLaunchBusy(const std::optional<std::string>& token) {
-    finishLaunchFeedback(token);
+  std::optional<wlr_box> Server::endLaunchBusy(const std::optional<std::string>& token) {
+    const std::optional<wlr_box> icon = finishLaunchFeedback(token);
     if (token && m_cpuBoost != nullptr) {
       m_cpuBoost->launchMapped(*token);
     }
     const auto match = token ? std::ranges::find(m_launchBusy, *token, &LaunchBusy::token) : m_launchBusy.begin();
-    if (match == m_launchBusy.end()) {
-      return;
+    if (match != m_launchBusy.end()) {
+      m_launchBusy.erase(match);
+      syncLaunchBusy();
     }
-    m_launchBusy.erase(match);
-    syncLaunchBusy();
+    return icon;
   }
 
   void Server::syncLaunchBusy() {
