@@ -12,8 +12,8 @@ set -uo pipefail
 if [ -n "${DESKTOP_BUILD_LOCKED:-}" ] || [ -n "${CI:-}" ]; then
   exec "$@"
 fi
-# Eight cc1plus jobs fill MemoryHigh=6G with anon memory and the slot re-reads its evicted page cache: cap ninja at 4.
-if [ "${1:-}" = ninja ] && [[ " $* " != *" -j"* ]]; then set -- ninja -j4 "${@:2}"; fi
+# A slot runs one cc1plus per core (user, 2026-11-19: 12 cores, 32 GB RAM; cores 12-15 stay free for the UI).
+if [ "${1:-}" = ninja ] && [[ " $* " != *" -j"* ]]; then set -- ninja -j12 "${@:2}"; fi
 # build.ninja calls bare cc/c++, so the ccache wrappers in PATH cache every build dir with no meson re-setup.
 [ -d /usr/lib/ccache/bin ] && export PATH=/usr/lib/ccache/bin:$PATH
 state=/tmp/desktop-build-state
@@ -37,13 +37,13 @@ if [ -n "${DESKTOP_BUILD_DIR_HELD:-}" ]; then
       exit 0
     fi
   fi
-  cores=(0-5 6-11)
+  cores=(0-11 0-11)
   last=$SECONDS
   while :; do
     for s in 0 1; do
       started=$(date +%s%N)
       flock -n -E 75 --close "/tmp/desktop-build.$s.lock" \
-        systemd-run --user --scope --quiet --collect -p CPUWeight=idle -p IOWeight=1 -p MemoryHigh=6G -p MemoryMax=8G -p MemorySwapMax=4G \
+        systemd-run --user --scope --quiet --collect -p CPUWeight=idle -p IOWeight=1 -p MemoryHigh=10G -p MemoryMax=12G -p MemorySwapMax=4G \
         --setenv=DESKTOP_BUILD_LOCKED=1 taskset -c "${cores[$s]}" nice -n 19 "$@"
       rc=$?
       if [ "$rc" -ne 75 ]; then
