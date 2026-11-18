@@ -59,6 +59,10 @@ namespace {
         std::println("dsk-backdrop {}", tone);
         std::fflush(stdout);
       },
+      .density = [](void* /*data*/, dsk_surface_v1* /*surface*/, wl_fixed_t density) {
+        std::println("dsk-density {:.2f}", wl_fixed_to_double(density));
+        std::fflush(stdout);
+      },
   };
   const dsk_tracker_v1_listener kDskTrackerListener = {
       .interacting = [](void* /*data*/, dsk_tracker_v1* /*tracker*/, uint32_t /*time*/) {

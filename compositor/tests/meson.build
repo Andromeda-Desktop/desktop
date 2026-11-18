@@ -86,7 +86,7 @@ unit_tests = [
   ['floating-layout', ['unit/floating_layout.cpp'], []],
   ['tabbed-layout', ['unit/tabbed_layout.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],
-  ['glass-density', ['unit/glass_density.cpp'], []],
+  ['glass-adapt', ['unit/glass_adapt.cpp'], []],
   ['ssd-frame-geometry', ['unit/ssd_frame_geometry.cpp'], []],
   ['floating', ['unit/floating.cpp'], []],
   ['snap', ['unit/snap.cpp'], []],

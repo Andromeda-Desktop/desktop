@@ -10,7 +10,7 @@
 namespace andromeda {
 
   namespace {
-    constexpr int kVersion = 15;
+    constexpr int kVersion = 16;
     constexpr uint32_t kPropertyCount = 13;
     constexpr uint32_t kCurveCount = 16;
     constexpr uint32_t kElevationCount = 3;
@@ -102,6 +102,20 @@ namespace andromeda {
     }
     state->current.backdropTone = tone;
     dsk_surface_v1_send_backdrop(state->resource, static_cast<uint32_t>(tone));
+  }
+
+  void DskSurfaceManager::sendDensity(wlr_surface* surface, float density) const {
+    wlr_addon* addon = wlr_addon_find(&surface->addons, this, &kAddonInterface);
+    if (addon == nullptr) {
+      return;
+    }
+    Surface* state = wl_container_of(addon, state, addon);
+    if (state->current.density == density
+        || wl_resource_get_version(state->resource) < DSK_SURFACE_V1_DENSITY_SINCE_VERSION) {
+      return;
+    }
+    state->current.density = density;
+    dsk_surface_v1_send_density(state->resource, wl_fixed_from_double(density));
   }
 
   DskSurfaceManager::State* DskSurfaceManager::state(wlr_surface* surface) const {

@@ -956,7 +956,7 @@ namespace andromeda {
     if (sampled && area > 0.0) {
       const auto luminance = static_cast<float>(weighted / area);
       // Hysteresis: a backdrop near the threshold keeps its tone instead of flickering.
-      m_backdropDark = m_backdropDark ? luminance < 0.45F : luminance < 0.35F;
+      m_backdropDark = glass::backdropDark(m_backdropDark, luminance);
       m_backdropLuminance = luminance;
       m_shadow.setAlpha(glass::shadowOverBackdrop(luminance));
       if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
@@ -976,6 +976,9 @@ namespace andromeda {
         || target == 1.0F) {
       m_tintLight = light;
       m_densityTarget = target;
+    }
+    if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
+      dsk->sendDensity(m_layerSurface->surface, m_densityTarget);
     }
     if (!m_densityMeasured) {
       // The first sample lands 1-3 frames after map, inside the open fade: apply it at once.
@@ -1321,7 +1324,12 @@ namespace andromeda {
           options
       );
     }
-    applyDensity();
+    // A tint change can switch the tint's tone, which changes the density target; before the first sample there is none.
+    if (m_densityMeasured) {
+      updateDensity();
+    } else {
+      applyDensity();
+    }
   }
 
   void LayerSurface::applyConfig() {

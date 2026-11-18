@@ -103,6 +103,20 @@ namespace glass {
     return settings;
   }
 
+  // Backdrop adaptation, the one rule for every glass surface. The compositor measures the backdrop luminance (0 to 1)
+  // and sends it; a backdrop turns dark below kBackdropDark[0] and stays dark until kBackdropDark[1], so luminance
+  // inside the band never flips a tone (no pulse over video).
+  inline constexpr float kBackdropDark[2] = {0.35F, 0.45F};
+  [[nodiscard]] constexpr bool backdropDark(bool wasDark, float luminance) noexcept {
+    return luminance < kBackdropDark[wasDark ? 1 : 0];
+  }
+  // Only shapes flip light/dark with their backdrop (Liquid and Clear, adaptive tone on); sheets, menus and tooltips keep
+  // tone(kind, slider) and adapt by density only (adaptDensity, always on: it keeps text legible).
+  [[nodiscard]] constexpr bool flipsWithBackdrop(Kind kind, const Settings& settings) noexcept {
+    return kind == Kind::Shape && settings.style != Style::Frosted && settings.adaptiveTone
+        && !settings.reduceTransparency;
+  }
+
   // Opacity a configured `opacity` of `kind` is relative to: tint_regular (0.70) for shapes, tint_thick otherwise.
   [[nodiscard]] constexpr float referenceOpacity(Kind kind, bool light) noexcept {
     return kind == Kind::Shape ? 0.70F : light ? 0.88F : 0.92F;
