@@ -25,7 +25,22 @@ namespace term {
     constexpr Logger kLog("terminal");
   } // namespace
 
-  TerminalApp::TerminalApp() : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}) {
+  TerminalApp::TerminalApp()
+      : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}),
+        m_workspaces([] {},
+                     [this] {
+                       WorkspaceWatcher::Defs defs;
+                       for (const nlohmann::json& def : state().get("/terminal/workspaces", nlohmann::json::array())) {
+                         if (!def.is_object()) continue;
+                         defs.push_back({.name = def.value("name", ""), .root = def.value("root", ""), .symbol = def.value("symbol", "")});
+                       }
+                       return defs;
+                     },
+                     [this](const WorkspaceWatcher::Defs& defs) {
+                       nlohmann::json out = nlohmann::json::array();
+                       for (const holder::WorkspaceInfo& def : defs) out.push_back({{"name", def.name}, {"root", def.root}, {"symbol", def.symbol}});
+                       state().set("/terminal/workspaces", std::move(out));
+                     }) {
     KittyImages::installPngDecoder();
     // The header's sidebar button; the keyboard path is Action::ToggleSidebar, which the user can rebind.
     commands().add({.id = "view.toggle-sidebar", .label = "Show Sidebar", .group = "View",
@@ -75,6 +90,9 @@ namespace term {
                                                           [this](const std::string& token) { openPreferences(token); },
                                                           [this, &window](const std::string& suggested, auto picked) {
                                                             chooseSaveFile(window, suggested, std::move(picked));
+                                                          },
+                                                          [this, &window](std::uint64_t heldId, const std::string& dir) {
+                                                            joinWorkspace(window, heldId, dir);
                                                           });
     m_windows[&window]->setWindows([this] {
       std::vector<TerminalWindow*> out;
@@ -98,8 +116,30 @@ namespace term {
       m_prefsWindow = nullptr;
     }
     if (auto it = m_windows.find(&window); it != m_windows.end()) it->second->detachSessions();
+    m_windowWorkspaces.erase(&window);
     m_windows.erase(&window);
     saveLayouts();
+  }
+
+  void TerminalApp::joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir) {
+    if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
+      if (auto* pending = std::get_if<WorkspacePending>(&it->second)) {
+        pending->held.push_back(heldId);
+      } else {
+        m_workspaces.setSession(heldId, std::get<std::uint64_t>(it->second));
+      }
+      return;
+    }
+    const std::filesystem::path root(dir);
+    const std::string name = root.filename().empty() ? dir : root.filename().string();
+    const auto req = m_workspaces.put({.name = name, .root = dir}, [this, &window](std::uint32_t answered, std::uint64_t id) {
+      const auto it = m_windowWorkspaces.find(&window);
+      auto* pending = it != m_windowWorkspaces.end() ? std::get_if<WorkspacePending>(&it->second) : nullptr;
+      if (pending == nullptr || pending->req != answered) return; // the window closed before the answer
+      for (const std::uint64_t held : pending->held) m_workspaces.setSession(held, id);
+      it->second = id;
+    });
+    if (req) m_windowWorkspaces.emplace(&window, WorkspacePending{*req, {heldId}});
   }
 
   void TerminalApp::shutdown() { m_layoutWrites = LayoutWrites::Kept; }

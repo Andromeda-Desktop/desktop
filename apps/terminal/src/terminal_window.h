@@ -105,13 +105,14 @@ namespace term {
     void detachSessions();
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
-    // activation token.
+    // activation token. joinWorkspace: puts each shell this window starts (held id, start folder) in its workspace.
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
                    std::function<void()> close, std::function<void(LayoutSave)> sessionsChanged,
                    std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
-                   std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile);
+                   std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile,
+                   std::function<void(std::uint64_t heldId, const std::string& dir)> joinWorkspace);
     ~TerminalWindow();
     // The surface and scene were destroyed (compositor reconnect): the next requestFrame hooks the new surface.
     void surfaceLost();
@@ -182,6 +183,7 @@ namespace term {
     std::function<std::vector<std::string>()> m_loadRecent;
     std::function<void(std::vector<std::string>)> m_saveRecent;
     std::function<std::vector<TerminalWindow*>()> m_windows;
+    std::function<void(std::uint64_t, const std::string&)> m_joinWorkspace;
     void openPalette(PaletteTarget target = PaletteTarget::Any);
     void closePalette(bool rootGone = false); // rootGone: the slot it was in was rebuilt
     [[nodiscard]] std::vector<palette::Item> paletteItems(PaletteTarget target,

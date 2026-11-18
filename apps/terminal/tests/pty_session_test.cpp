@@ -299,17 +299,18 @@ void runSessionTests() {
 // Another client's workspace edit reaches the watcher, and the watcher's own socket never blocks the caller.
 void watcherFollowsWorkspaceTable() {
   int changes = 0;
-  WorkspaceWatcher watcher([&] { ++changes; });
+  WorkspaceWatcher watcher([&] { ++changes; }, [] { return WorkspaceWatcher::Defs{}; }, [](const WorkspaceWatcher::Defs&) {});
   CHECK(watcher.connect());
-  auto pump = [&](auto pred) {
+  auto pumpOn = [](WorkspaceWatcher& w, auto pred) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!pred() && std::chrono::steady_clock::now() < end) {
       std::vector<pollfd> fds;
-      const std::size_t start = watcher.addPollFds(fds);
-      if (::poll(fds.data(), fds.size(), 100) > 0) watcher.dispatch(fds, start);
+      const std::size_t start = w.addPollFds(fds);
+      if (::poll(fds.data(), fds.size(), 100) > 0) w.dispatch(fds, start);
     }
     return pred();
   };
+  auto pump = [&](auto pred) { return pumpOn(watcher, pred); };
   CHECK(pump([&] { return changes > 0; }));
   const int editor = holder::connectSocket();
   CHECK(editor >= 0);
@@ -319,6 +320,34 @@ void watcherFollowsWorkspaceTable() {
     return std::ranges::any_of(ws, [](const holder::WorkspaceInfo& w) { return w.name == "web" && w.root == "/srv/web"; });
   }));
   ::close(editor);
+
+  std::optional<std::uint64_t> made;
+  const auto req = watcher.put({.name = "api", .root = "/srv/api"}, [&](std::uint32_t, std::uint64_t id) { made = id; });
+  CHECK(req.has_value() && pump([&] { return made.has_value(); }));
+  Waker w;
+  PtySession s([&] { w.wake(); });
+  CHECK(s.spawn({.argv = {"/bin/sleep", "5"}}) && s.heldId().has_value() && made.has_value());
+  if (!s.heldId() || !made) return;
+  watcher.setSession(*s.heldId(), *made);
+  CHECK(pump([&] {
+    return std::ranges::any_of(watcher.workspaces().sessions, [&](const holder::SessionInfo& info) {
+      return info.id == *s.heldId() && info.workspace == *made;
+    });
+  }));
+
+  // A new connection gets the saved definitions the holder lacks, once each, and saves only the full table.
+  const WorkspaceWatcher::Defs saved{{.name = "web", .root = "/srv/web", .symbol = "globe"}, {.name = "old", .root = "/srv/old"}};
+  std::vector<WorkspaceWatcher::Defs> writes;
+  WorkspaceWatcher second([] {}, [&] { return saved; }, [&](const WorkspaceWatcher::Defs& defs) { writes.push_back(defs); });
+  CHECK(second.connect());
+  auto count = [&](const std::string& name) {
+    return std::ranges::count(second.workspaces().workspaces, name, &holder::WorkspaceInfo::name);
+  };
+  CHECK(pumpOn(second, [&] { return !writes.empty(); }));
+  CHECK(count("old") == 1 && count("web") == 1 && count("api") == 1);
+  for (const WorkspaceWatcher::Defs& defs : writes) {
+    CHECK(std::ranges::count(defs, std::string("old"), &holder::WorkspaceInfo::name) == 1);
+  }
 }
 
 } // namespace

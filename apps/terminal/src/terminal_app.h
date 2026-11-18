@@ -59,7 +59,14 @@ namespace term {
     void chooseSaveFile(AppWindow& window, const std::string& suggested,
                         std::function<void(std::optional<std::filesystem::path>)> picked);
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
-    WorkspaceWatcher m_workspaces{[] {}};
+    WorkspaceWatcher m_workspaces;
+    // A window's workspace: Pending until the holder answers its PutWorkspace; absent until its first shell starts.
+    struct WorkspacePending {
+      std::uint32_t req;
+      std::vector<std::uint64_t> held; // shells to move into it on the answer
+    };
+    std::map<AppWindow*, std::variant<WorkspacePending, std::uint64_t>> m_windowWorkspaces;
+    void joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir);
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.

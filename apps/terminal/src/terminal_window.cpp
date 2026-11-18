@@ -28,13 +28,13 @@
 #include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
 #include <gio/gio.h>
 #include <pwd.h>
 #include <unistd.h>
 
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 
 #include <algorithm>
 #include <csignal>
@@ -114,10 +114,12 @@ namespace term {
                                  const std::vector<WindowOrigin>& origins, std::function<void()> close,
                                  std::function<void(LayoutSave)> sessionsChanged,
                                  std::function<void(const std::string& token, std::vector<WindowOrigin> origins)> newWindow,
-                                 std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile)
+                                 std::function<void(const std::string& token)> preferences, ChooseSaveFile chooseSaveFile,
+                                 std::function<void(std::uint64_t heldId, const std::string& dir)> joinWorkspace)
       : m_loop(loop), m_window(window), m_notifier(notifier), m_agents(std::move(agents)), m_thumbnails(thumbnails), m_settings(settings), m_close(std::move(close)), m_sessionsChanged(std::move(sessionsChanged)),
         m_newWindow(std::move(newWindow)), m_preferences(std::move(preferences)),
         m_chooseSaveFile(std::move(chooseSaveFile)), m_split(window, splitCallbacks()) {
+    m_joinWorkspace = std::move(joinWorkspace);
     m_settingsChanged = m_settings.changed().connect([this] {
       m_window.setMaterial(appMaterial(m_settings.settings().material));
       applyViewSettings();
@@ -587,17 +589,18 @@ namespace term {
           }
         }
       }
+      const std::string dir = cwd.empty() ? homeDir() : cwd;
+      bool started = false;
       if (fresh != nullptr && !fresh->argv.empty()) {
-        if (!ref.start(fresh->argv, cwd.empty() ? homeDir() : cwd, {})) {
-          kLog.warn("cannot start {}", fresh->argv.front());
-        }
+        started = ref.start(fresh->argv, dir, {});
+        if (!started) kLog.warn("cannot start {}", fresh->argv.front());
       } else {
         const std::string shell = m_settings.settings().shell.empty() ? defaultShell() : m_settings.settings().shell;
         const ShellLaunch launch = shellLaunch(shell, shellIntegrationDir(), [](const char* name) { return std::getenv(name); });
-        if (!ref.start(launch.argv, cwd.empty() ? homeDir() : cwd, launch.env)) {
-          kLog.warn("cannot start {}", shell);
-        }
+        started = ref.start(launch.argv, dir, launch.env);
+        if (!started) kLog.warn("cannot start {}", shell);
       }
+      if (const auto held = ref.session().heldId(); started && held && m_joinWorkspace) m_joinWorkspace(*held, dir);
     }
     apply(session_event::Open{id, SessionKind::Shell, "", ""});
     return id;

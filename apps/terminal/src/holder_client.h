@@ -59,6 +59,7 @@ struct WorkspaceInfo {
   std::string name;
   std::string root;
   std::string symbol;
+  bool operator==(const WorkspaceInfo&) const = default;
 };
 // The last command of a session, from the shell's OSC 133 marks.
 enum class CommandState : std::uint8_t { None, Running, Done };
