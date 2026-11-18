@@ -57,6 +57,7 @@ struct WorkspaceWindow {
   // The window's snap zone as fractions of the work area (x, y, w, h); set only with snapGroup.
   std::array<float, 4> snapZone{};
   std::optional<WindowAppMenu> appMenu;
+  std::uint32_t x11WindowId = 0; // XWayland windows only
 };
 
 // A running workspace slide on one output (Andromeda IPC "workspace_slide"): the screen shows `progress` of the way

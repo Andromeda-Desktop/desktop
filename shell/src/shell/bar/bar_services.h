@@ -1,5 +1,6 @@
 #pragma once
 
+class AppMenuRegistrar;
 class AsyncTextureCache;
 class BluetoothService;
 class LinkService;
@@ -68,4 +69,6 @@ struct BarServices {
   scripting::ScriptApiContext* scriptApi = nullptr;
   // Session bus for widgets that read other apps' D-Bus objects (the macOS-layout app menus).
   SessionBus* bus = nullptr;
+  // X11 apps' menu bars (com.canonical.AppMenu.Registrar).
+  AppMenuRegistrar* appMenuRegistrar = nullptr;
 };

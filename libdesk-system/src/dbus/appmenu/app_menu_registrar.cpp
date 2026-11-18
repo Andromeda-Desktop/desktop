@@ -14,6 +14,9 @@ namespace {
   const sdbus::ServiceName kBusName{"com.canonical.AppMenu.Registrar"};
   const sdbus::ObjectPath kObjectPath{"/com/canonical/AppMenu/Registrar"};
   constexpr auto kInterface = "com.canonical.AppMenu.Registrar";
+  const sdbus::ServiceName kDbusName{"org.freedesktop.DBus"};
+  const sdbus::ObjectPath kDbusPath{"/org/freedesktop/DBus"};
+  constexpr auto kDbusInterface = "org.freedesktop.DBus";
 
 } // namespace
 
@@ -29,12 +32,14 @@ AppMenuRegistrar::AppMenuRegistrar(SessionBus& bus) : m_bus(bus) {
                 m_object->emitSignal("WindowRegistered")
                     .onInterface(kInterface)
                     .withArguments(windowId, sdbus::BusName{sender}, path);
+                notifyChanged();
               }),
           sdbus::registerMethod("UnregisterWindow")
               .withInputParamNames("windowId")
               .implementedAs([this](std::uint32_t windowId) {
                 if (m_menus.erase(windowId) != 0) {
                   m_object->emitSignal("WindowUnregistered").onInterface(kInterface).withArguments(windowId);
+                  notifyChanged();
                 }
               }),
           sdbus::registerMethod("GetMenuForWindow")
@@ -59,6 +64,25 @@ AppMenuRegistrar::AppMenuRegistrar(SessionBus& bus) : m_bus(bus) {
           sdbus::registerSignal("WindowUnregistered").withParameters<std::uint32_t>("windowId")
       )
       .forInterface(kInterface);
+  // A client that exits without UnregisterWindow leaves no menu behind.
+  m_dbus = sdbus::createProxy(m_bus.connection(), kDbusName, kDbusPath);
+  m_dbus->uponSignal("NameOwnerChanged")
+      .onInterface(kDbusInterface)
+      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (!newOwner.empty() || !name.starts_with(':')) {
+          return;
+        }
+        const auto removed = std::erase_if(m_menus, [&](const auto& entry) {
+          if (entry.second.first != name) {
+            return false;
+          }
+          m_object->emitSignal("WindowUnregistered").onInterface(kInterface).withArguments(entry.first);
+          return true;
+        });
+        if (removed != 0) {
+          notifyChanged();
+        }
+      });
   m_bus.connection().requestName(kBusName);
   kLog.info("serving {}", static_cast<const std::string&>(kBusName));
 }
@@ -68,5 +92,19 @@ AppMenuRegistrar::~AppMenuRegistrar() {
     m_bus.connection().releaseName(kBusName);
   } catch (const sdbus::Error& e) {
     kLog.debug("release {} failed: {}", static_cast<const std::string&>(kBusName), e.what());
+  }
+}
+
+std::optional<std::pair<std::string, std::string>> AppMenuRegistrar::menuForWindow(std::uint32_t windowId) const {
+  const auto it = m_menus.find(windowId);
+  if (it == m_menus.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+void AppMenuRegistrar::notifyChanged() const {
+  if (m_changed) {
+    m_changed();
   }
 }

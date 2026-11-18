@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -10,6 +12,7 @@ class SessionBus;
 
 namespace sdbus {
   class IObject;
+  class IProxy;
 }
 
 // Owns com.canonical.AppMenu.Registrar. Chromium and Electron export their menu bar only while this name has an
@@ -23,9 +26,18 @@ public:
   AppMenuRegistrar(const AppMenuRegistrar&) = delete;
   AppMenuRegistrar& operator=(const AppMenuRegistrar&) = delete;
 
+  // The (service, menu object path) an X11 window registered.
+  [[nodiscard]] std::optional<std::pair<std::string, std::string>> menuForWindow(std::uint32_t windowId) const;
+  // Runs after a window's menu is registered or removed.
+  void setChangedCallback(std::function<void()> callback) { m_changed = std::move(callback); }
+
 private:
   SessionBus& m_bus;
   std::unique_ptr<sdbus::IObject> m_object;
+  std::unique_ptr<sdbus::IProxy> m_dbus;
   // X11 window id -> (service, menu object path).
   std::map<std::uint32_t, std::pair<std::string, std::string>> m_menus;
+  std::function<void()> m_changed;
+
+  void notifyChanged() const;
 };

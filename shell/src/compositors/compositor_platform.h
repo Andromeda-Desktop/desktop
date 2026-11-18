@@ -150,6 +150,8 @@ public:
   [[nodiscard]] std::vector<SnapGroupMember> snapGroupFor(const std::vector<ToplevelInfo>& windows) const;
   // The menu address the focused window exported (Andromeda only).
   [[nodiscard]] std::optional<WindowAppMenu> focusedWindowAppMenu() const;
+  // The focused window's X11 id; 0 for a Wayland window.
+  [[nodiscard]] std::uint32_t focusedWindowX11Id() const;
   // True when the focused window can be named exactly, so a failed lookup means the join is
   // still pending rather than that the title fallback should be tried.
   [[nodiscard]] bool hasExactExtToplevelIdentity() const noexcept;

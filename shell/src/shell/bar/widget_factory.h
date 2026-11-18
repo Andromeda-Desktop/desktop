@@ -87,4 +87,5 @@ private:
   AsyncTextureCache* m_asyncTextures = nullptr;
   scripting::ScriptApiContext* m_scriptApi = nullptr;
   SessionBus* m_bus = nullptr;
+  AppMenuRegistrar* m_appMenuRegistrar = nullptr;
 };

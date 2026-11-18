@@ -33,6 +33,7 @@
 #include "dbus/polkit/polkit_poll_source.h"
 #include "dbus/polkit/polkit_session_support.h"
 #include "dbus/portal/settings_portal.h"
+#include "dbus/appmenu/app_menu_registrar.h"
 #include "dbus/power/power_profiles_service.h"
 #include "dbus/session_bus.h"
 #include "dbus/session_bus_poll_source.h"
@@ -1129,7 +1130,11 @@ void Application::initBarDockAndLayout() {
       .screenshots = &m_screenshotService,
       .scriptApi = &m_scriptApi,
       .bus = m_bus.get(),
+      .appMenuRegistrar = m_appMenuRegistrar.get(),
   });
+  if (m_appMenuRegistrar != nullptr) {
+    m_appMenuRegistrar->setChangedCallback([this] { m_bar.refresh(); });
+  }
   m_idleInhibitor.setAnchorSurfacesProvider([this] { return m_bar.caffeineAnchorSurfaces(); });
   m_panelManager.setOpenWidgetSettingsCallback([this](std::string barName, std::string widgetName) {
     m_settingsWindow.openToBarWidget(std::move(barName), std::move(widgetName));

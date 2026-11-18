@@ -73,6 +73,7 @@ private:
     std::optional<std::uint32_t> snapGroup;
     std::array<float, 4> snapZone{};
     std::optional<WindowAppMenu> appMenu;
+    std::uint32_t x11WindowId = 0;
 
     bool operator==(const Window&) const = default;
   };

@@ -188,6 +188,7 @@ std::vector<WorkspaceWindow> AndromedaWorkspaceBackend::workspaceWindows(const s
             .snapGroup = window.snapGroup,
             .snapZone = window.snapZone,
             .appMenu = window.appMenu,
+            .x11WindowId = window.x11WindowId,
         }
     );
   }
@@ -312,6 +313,9 @@ void AndromedaWorkspaceBackend::handleEvent(std::string_view event, const nlohma
             .applicationPath = jsonString(*menu, "application_path"),
             .windowPath = jsonString(*menu, "window_path"),
         };
+      }
+      if (const auto xid = entry.find("x11_window_id"); xid != entry.end() && xid->is_number_unsigned()) {
+        window.x11WindowId = xid->get<std::uint32_t>();
       }
       if (const auto group = entry.find("snap_group"); group != entry.end() && group->is_number_unsigned()) {
         window.snapGroup = group->get<std::uint32_t>();

@@ -1,5 +1,7 @@
 #include "shell/bar/widgets/window_menu_widget.h"
 
+#include "dbus/appmenu/app_menu_registrar.h"
+
 #include "shell/bar/widgets/dbus_menu_client.h"
 #include "shell/bar/widgets/gtk_menu_client.h"
 
@@ -93,10 +95,10 @@ namespace {
 
 WindowMenuWidget::WindowMenuWidget(
     wl_output* output, ConfigService& config, CompositorPlatform& platform, RenderContext& renderContext,
-    std::string barPosition, SessionBus* bus
+    std::string barPosition, SessionBus* bus, const AppMenuRegistrar* registrar
 )
     : m_output(output), m_config(config), m_platform(platform), m_renderContext(renderContext),
-      m_barPosition(std::move(barPosition)), m_bus(bus) {}
+      m_barPosition(std::move(barPosition)), m_bus(bus), m_registrar(registrar) {}
 
 WindowMenuWidget::~WindowMenuWidget() {
   // The popup closes in its destructor; its dismiss callback must not reach a bar that is being torn down.
@@ -197,7 +199,14 @@ void WindowMenuWidget::doUpdate(Renderer& renderer) {
   if (m_menu != nullptr && m_menu->isOpen() && (appId.empty() || appId == m_appId)) {
     return;
   }
-  const auto address = m_platform.focusedWindowAppMenu();
+  auto address = m_platform.focusedWindowAppMenu();
+  if (!address.has_value() && m_registrar != nullptr) {
+    if (const std::uint32_t xid = m_platform.focusedWindowX11Id(); xid != 0) {
+      if (auto menu = m_registrar->menuForWindow(xid)) {
+        address = WindowAppMenu{.service = std::move(menu->first), .path = std::move(menu->second)};
+      }
+    }
+  }
   const bool hasMenu = address.has_value() && m_bus != nullptr && !address->service.empty() && !address->path.empty();
   const bool gtk = hasMenu && address->gtk;
   std::string menuKey = hasMenu
@@ -265,10 +274,11 @@ void WindowMenuWidget::doLayout(Renderer& renderer, float containerWidth, float 
       total += widths[i];
     }
   }
-  // The menus end before the bar's centre (the center island sits there); the rest go into ».
+  // The menus end before the next bar section, or before the bar's centre when the bar does not say; the rest go
+  // into ».
   const bool hasOverflow = !m_items.empty() && m_items.back().menuId == kOverflow;
-  const float budget = m_barWidth * 0.5F - kCenterReserve * s;
-  const bool overflow = hasOverflow && m_barWidth > 0.0F && total > budget;
+  const float budget = m_menuSpace > 0.0F ? m_menuSpace : m_barWidth * 0.5F - kCenterReserve * s;
+  const bool overflow = hasOverflow && (m_barWidth > 0.0F || m_menuSpace > 0.0F) && total > budget;
   const float limit = overflow ? budget - widths.back() : std::numeric_limits<float>::max();
   float used = 0.0F;
   bool hiding = false;

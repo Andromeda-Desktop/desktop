@@ -12,6 +12,7 @@ class Box;
 class DbusMenuClient;
 class GtkMenuClient;
 struct DbusMenuNode;
+class AppMenuRegistrar;
 class SessionBus;
 class CompositorPlatform;
 class ConfigService;
@@ -28,9 +29,12 @@ class WindowMenuWidget : public Widget {
 public:
   WindowMenuWidget(
       wl_output* output, ConfigService& config, CompositorPlatform& platform, RenderContext& renderContext,
-      std::string barPosition, SessionBus* bus
+      std::string barPosition, SessionBus* bus, const AppMenuRegistrar* registrar = nullptr
   );
   ~WindowMenuWidget() override;
+
+  // The width the menus may fill before the next bar section; 0 keeps the half-bar default.
+  void setMenuSpace(float width) { m_menuSpace = width; }
 
   void create() override;
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event) override;
@@ -64,6 +68,7 @@ private:
   RenderContext& m_renderContext;
   std::string m_barPosition;
   SessionBus* m_bus = nullptr;
+  const AppMenuRegistrar* m_registrar = nullptr;
   std::vector<Item> m_items;
   // Shared so popup callbacks hold them weakly: a deferred activation never reaches a newer app's client.
   std::shared_ptr<DbusMenuClient> m_appMenu;
@@ -72,6 +77,7 @@ private:
   std::unique_ptr<ContextMenuPopup> m_menu;
   std::size_t m_openItem = static_cast<std::size_t>(-1);
   float m_barWidth = 0.0F;
+  float m_menuSpace = 0.0F;
   bool m_switchingMenu = false;
   std::string m_appId;
   std::string m_appName;

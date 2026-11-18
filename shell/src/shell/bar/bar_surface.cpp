@@ -22,6 +22,7 @@
 #include "shell/bar/widgets/taskbar_widget.h"
 #include "shell/bar/widgets/spacer_widget.h"
 #include "shell/bar/widgets/tray_widget.h"
+#include "shell/bar/widgets/window_menu_widget.h"
 #include "shell/panel/panel_manager.h"
 #include "wayland/dsk_surface_client.h"
 #include "ui/surface_shadow.h"
@@ -567,6 +568,30 @@ namespace {
     layoutWidgets(instance.startWidgets);
     layoutWidgets(instance.centerWidgets);
     layoutWidgets(instance.endWidgets);
+
+    // App menus in the start section fill the bar up to the center section, or up to the end section when the
+    // center is empty.
+    if (!isVertical) {
+      const auto sectionWidth = [padding](const std::vector<std::unique_ptr<Widget>>& widgets, const Widget* skip) {
+        float width = 0.0F;
+        for (const auto& w : widgets) {
+          if (w.get() != skip && w->root() != nullptr && w->root()->visible()) {
+            width += w->root()->width() + padding;
+          }
+        }
+        return width;
+      };
+      for (auto& widget : instance.startWidgets) {
+        auto* menu = dynamic_cast<WindowMenuWidget*>(widget.get());
+        if (menu == nullptr || menu->root() == nullptr) {
+          continue;
+        }
+        const float center = sectionWidth(instance.centerWidgets, nullptr);
+        const float edge = center > 0.0F ? (barAreaW - center) * 0.5F : barAreaW - sectionWidth(instance.endWidgets, nullptr);
+        menu->setMenuSpace(std::max(1.0F, edge - sectionWidth(instance.startWidgets, menu) - 2.0F * padding));
+        menu->layout(renderer, barAreaW, barAreaH);
+      }
+    }
 
     // An island has no neighbour to separate at its edges: a spacer with no visible widget on one side adds only an
     // empty strip, so it collapses.

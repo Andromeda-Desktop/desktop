@@ -1366,6 +1366,19 @@ std::optional<WindowAppMenu> CompositorPlatform::focusedWindowAppMenu() const {
   return std::nullopt;
 }
 
+std::uint32_t CompositorPlatform::focusedWindowX11Id() const {
+  const auto id = focusedCompositorWindowId();
+  if (m_workspaceMetadataBackend == nullptr || !id.has_value()) {
+    return 0;
+  }
+  for (const auto& row : m_workspaceMetadataBackend->workspaceWindows()) {
+    if (row.windowId == *id) {
+      return row.x11WindowId;
+    }
+  }
+  return 0;
+}
+
 std::vector<WindowProcess> CompositorPlatform::windowPids() const {
   std::vector<WindowProcess> result;
   if (m_workspaceMetadataBackend == nullptr) {

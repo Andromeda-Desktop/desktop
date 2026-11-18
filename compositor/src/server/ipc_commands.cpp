@@ -871,6 +871,8 @@ namespace andromeda {
       entry["focused"] = view.workspace() != nullptr && view.workspace()->focusedView() == &view;
       entry["urgent"] = view.urgent();
       entry["xwayland"] = view.xwayland();
+      // X11 apps register their menu bar under this id with com.canonical.AppMenu.Registrar.
+      entry["x11_window_id"] = view.xwayland() ? nlohmann::json(view.xwaylandSurface()->window_id) : nlohmann::json(nullptr);
       // -1 whenever the owning process is unknown: an X11 client that publishes no _NET_WM_PID.
       entry["pid"] = view.pid();
       // Tiled windows report their layout slot, which the layout computes even for hidden workspaces; floats report

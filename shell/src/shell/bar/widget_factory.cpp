@@ -99,7 +99,8 @@ WidgetFactory::WidgetFactory(const BarServices& services)
       m_nightLight(services.nightLight), m_bluetooth(services.bluetooth),
       m_link(services.link), m_brightness(services.brightness), m_lockKeys(services.lockKeys),
       m_clipboard(services.clipboard), m_fileWatcher(services.fileWatcher), m_screenshots(services.screenshots),
-      m_renderContext(services.renderContext), m_asyncTextures(services.asyncTextures), m_scriptApi(services.scriptApi), m_bus(services.bus) {
+      m_renderContext(services.renderContext), m_asyncTextures(services.asyncTextures), m_scriptApi(services.scriptApi), m_bus(services.bus),
+      m_appMenuRegistrar(services.appMenuRegistrar) {
   scripting::PluginRegistry::instance().ensureScanned();
 }
 
@@ -184,7 +185,7 @@ std::unique_ptr<Widget> WidgetFactory::create(
             }
             return createWidget<WindowMenuWidget>(
                 context.contentScale, context.output, f.m_configService, f.m_platform, *f.m_renderContext,
-                context.barPosition, f.m_bus
+                context.barPosition, f.m_bus, f.m_appMenuRegistrar
             );
           }},
       {"island_battery", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
