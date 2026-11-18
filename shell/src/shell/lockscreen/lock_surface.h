@@ -31,6 +31,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 struct ext_session_lock_surface_v1;
@@ -235,13 +236,25 @@ private:
   LockCallCard m_callCard;
   // Session button + power menu (rulebook 9.15): Sleep, Restart, Shut down.
   AuthChrome m_chrome;
-  bool m_powerMenuOpen = false;
   LockAlert m_alert;
-  // Power menu item waiting on the inhibitor alert (0 Sleep, 1 Restart, 2 Shut down); -1 = none.
-  int m_powerAlert = -1;
+  // The power menu flow. Items and actions: 0 Sleep, 1 Restart, 2 Shut down.
+  struct PowerIdle {};
+  struct PowerMenu {
+    int hover = -1; // the item under the pointer; -1 = none
+  };
+  struct PowerChecking { // waiting on logind's inhibitor list for `action`
+    int action = 0;
+  };
+  struct PowerAlert { // the inhibitor alert asks before `action`
+    int action = 0;
+  };
+  using PowerState = std::variant<PowerIdle, PowerMenu, PowerChecking, PowerAlert>;
+  PowerState m_power;
+  // The only writer of m_power. Any state returns to Idle; otherwise Idle -> Menu -> (Menu | Checking) -> Alert.
+  // Returns false and changes nothing for any other move.
+  bool setPower(PowerState next);
   // Shown as an error hint when logind refused to override the inhibitors; cleared on the next key.
   std::string m_powerError;
-  int m_powerHover = -1;
   std::function<void(const std::string&)> m_onDeclineCall;
   // Device whose ringing call the user chose to decline on this surface.
   std::string m_declinePending;

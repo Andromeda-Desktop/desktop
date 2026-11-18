@@ -764,6 +764,7 @@ void LockSurface::setLockedState(bool locked) {
     return;
   }
   m_locked = locked;
+  setPower(PowerIdle{});
   if (m_locked) {
     m_pointerMoved = false;
     if (m_auth != nullptr) {
@@ -1039,6 +1040,7 @@ void LockSurface::setBlackout(bool blackout) {
   invalidateSleepFrame();
   m_blackout = blackout;
   if (m_blackout) {
+    setPower(PowerIdle{});
     m_inputDispatcher.setFocus(nullptr);
     cancelTransitionAnimation();
     m_transitionPhase = TransitionPhase::Disabled;
@@ -1098,12 +1100,11 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
       m_pointerMoved = true;
       requestLayout();
     }
-    if (m_powerMenuOpen) {
+    if (const auto* menu = std::get_if<PowerMenu>(&m_power)) {
       const AuthChrome::Hit hit = m_chrome.hitTest(static_cast<float>(event.sx), static_cast<float>(event.sy));
       const int hover = hit.target == AuthChrome::Target::Item ? hit.index : -1;
-      if (hover != m_powerHover) {
-        m_powerHover = hover;
-        requestLayout();
+      if (hover != menu->hover) {
+        setPower(PowerMenu{hover});
       }
     }
     wakeGlance();
@@ -1115,13 +1116,13 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
     // The inhibitor alert is modal: it takes every press until Cancel or the destructive button.
     if (m_locked && pressed && m_alert.shown()) {
       const LockAlert::Hit hit = m_alert.hitTest(x, y);
-      if (hit == LockAlert::Hit::Cancel || hit == LockAlert::Hit::Confirm) {
-        const int index = m_powerAlert;
-        m_powerAlert = -1;
+      const auto* asking = std::get_if<PowerAlert>(&m_power);
+      if (asking != nullptr && (hit == LockAlert::Hit::Cancel || hit == LockAlert::Hit::Confirm)) {
+        const int action = asking->action;
+        setPower(PowerIdle{});
         if (hit == LockAlert::Hit::Confirm) {
-          runPower(index, true);
+          runPower(action, true);
         }
-        requestLayout();
       }
       break;
     }
@@ -1201,12 +1202,15 @@ void LockSurface::onKeyboardEvent(const KeyboardEvent& event) {
     return;
   }
 
-  if (m_locked && event.pressed && m_powerAlert >= 0) {
+  if (m_locked && event.pressed && std::holds_alternative<PowerAlert>(m_power)) {
     // Modal alert: Escape and Enter cancel (Cancel is the default button); other keys do nothing.
     if (event.sym == XKB_KEY_Escape || event.sym == XKB_KEY_Return || event.sym == XKB_KEY_KP_Enter) {
-      m_powerAlert = -1;
-      requestLayout();
+      setPower(PowerIdle{});
     }
+    return;
+  }
+  if (m_locked && event.pressed && event.sym == XKB_KEY_Escape && std::holds_alternative<PowerMenu>(m_power)) {
+    setPower(PowerIdle{});
     return;
   }
   if (m_locked && event.pressed && !m_powerError.empty()) {
@@ -1954,32 +1958,35 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
   m_callCard.layout(renderer, place.columnCx, place.cardBottom, scale);
 
   AuthChrome::State chrome;
-  if (m_powerMenuOpen) {
+  if (const auto* menu = std::get_if<PowerMenu>(&m_power)) {
     chrome.menu = AuthChrome::Menu::Power;
     chrome.items = {
         {"moon", i18n::tr("lockscreen.power.sleep"), {}},
         {"refresh", i18n::tr("lockscreen.power.restart"), {}},
         {"power", i18n::tr("lockscreen.power.shutdown"), {}},
     };
-    chrome.hover = m_powerHover;
+    chrome.hover = menu->hover;
   }
   const bool chromeShown = visible && place.chrome && m_sessionActions != nullptr;
   if (!chromeShown) {
-    m_powerMenuOpen = false;
+    if (std::holds_alternative<PowerMenu>(m_power)) {
+      m_power = PowerIdle{}; // inside layout: no second layout request
+    }
     chrome = {};
   }
   m_chrome.setVisible(chromeShown);
   LockAlert::State alert;
-  if (visible && m_powerAlert >= 0) {
+  const auto* asking = std::get_if<PowerAlert>(&m_power);
+  if (visible && asking != nullptr) {
     static constexpr std::array<const char*, 3> kTitles{
         "lockscreen.alert.sleep-title", "lockscreen.alert.restart-title", "lockscreen.alert.shutdown-title"
     };
     static constexpr std::array<const char*, 3> kConfirms{
         "lockscreen.power.sleep", "lockscreen.power.restart", "lockscreen.power.shutdown"
     };
-    const auto i = static_cast<std::size_t>(m_powerAlert);
+    const auto i = static_cast<std::size_t>(asking->action);
     alert.title = i18n::tr(kTitles[i]);
-    alert.body = i18n::tr(m_powerAlert == 0 ? "lockscreen.alert.sleep-body" : "lockscreen.alert.shutdown-body");
+    alert.body = i18n::tr(asking->action == 0 ? "lockscreen.alert.sleep-body" : "lockscreen.alert.shutdown-body");
     alert.confirm = i18n::tr(kConfirms[i]);
   }
   m_alert.setState(std::move(alert));
@@ -1992,7 +1999,7 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
 }
 
 void LockSurface::requestPower(int index) {
-  if (index < 0 || index > 2) {
+  if (index < 0 || index > 2 || !setPower(PowerChecking{index})) {
     return;
   }
   // Sleep checks sleep inhibitors; Restart and Shut down check shutdown ones. The shell's own locks never count.
@@ -2002,12 +2009,17 @@ void LockSurface::requestPower(int index) {
       std::weak_ptr<void>(m_aliveGuard),
       [what] { return powerActionBlocked(listLogindInhibitors(), what, static_cast<std::uint32_t>(::getpid())); },
       [this, index](bool blocked) {
+        // An unlock or a blackout while the check ran reset the flow: its answer is dropped.
+        const auto* checking = std::get_if<PowerChecking>(&m_power);
+        if (checking == nullptr || checking->action != index) {
+          return;
+        }
         if (blocked) {
-          m_powerAlert = index;
+          setPower(PowerAlert{index});
         } else {
+          setPower(PowerIdle{});
           runPower(index, false);
         }
-        requestLayout();
       }
   );
 }
@@ -2035,13 +2047,11 @@ bool LockSurface::handleChromePress(float x, float y) {
   const AuthChrome::Hit hit = m_chrome.hitTest(x, y);
   switch (hit.target) {
   case AuthChrome::Target::Power:
-    m_powerMenuOpen = !m_powerMenuOpen;
-    m_powerHover = -1;
+    setPower(std::holds_alternative<PowerMenu>(m_power) ? PowerState{PowerIdle{}} : PowerState{PowerMenu{}});
     return true;
   case AuthChrome::Target::Item: {
-    m_powerMenuOpen = false;
-    m_powerHover = -1;
     if (m_sessionActions == nullptr) {
+      setPower(PowerIdle{});
       return true;
     }
     requestPower(hit.index);
@@ -2054,11 +2064,28 @@ bool LockSurface::handleChromePress(float x, float y) {
   case AuthChrome::Target::None:
     break;
   }
-  if (m_powerMenuOpen) {
-    m_powerMenuOpen = false;
+  if (std::holds_alternative<PowerMenu>(m_power)) {
+    setPower(PowerIdle{});
     return true;
   }
   return false;
+}
+
+bool LockSurface::setPower(PowerState next) {
+  const std::size_t from = m_power.index();
+  const std::size_t to = next.index();
+  constexpr std::size_t kIdle = 0;
+  constexpr std::size_t kMenu = 1;
+  constexpr std::size_t kChecking = 2;
+  constexpr std::size_t kAlert = 3;
+  const bool allowed = to == kIdle || (from == kIdle && to == kMenu) || (from == kMenu && (to == kMenu || to == kChecking))
+      || (from == kChecking && to == kAlert);
+  if (!allowed) {
+    return false;
+  }
+  m_power = next;
+  requestLayout();
+  return true;
 }
 
 // Glance: any key, click or pointer move Grows the auth sheet; it Returns after 10 s idle with an empty field. A
