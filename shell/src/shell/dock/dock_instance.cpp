@@ -320,7 +320,6 @@ namespace shell::dock {
     sendDockBlur(instance, Surface::tessellateShape(px, py, pw, ph, concave.corners, concave.logicalInset, concave.radii));
   }
 
-  PaletteTone dockTone(const DockInstance& instance);
 
   void buildScene(DockInstance& instance, DockInstanceDependencies deps, const DockInstanceCallbacks& callbacks) {
     uiAssertNotRendering("shell::dock::buildScene");
@@ -330,11 +329,6 @@ namespace shell::dock {
     if (instance.dsk == nullptr && instance.surface->wlSurface() != nullptr) {
       if (auto* manager = deps.platform.wayland().dskSurfaceManager(); manager != nullptr) {
         instance.dsk = std::make_unique<DskSurfaceClient>(manager, instance.surface->wlSurface());
-        instance.dsk->setOnBackdrop([inst = &instance](bool) {
-          applyPanelPalette(*inst, inst->config, true);
-          if (inst->surface)
-            inst->surface->requestRedraw();
-        });
       }
     }
     if (instance.dsk != nullptr && instance.dsk->hasShapes() && instance.shape == nullptr) {
@@ -550,7 +544,7 @@ namespace shell::dock {
     });
     instance.glassConn = Style::glassChanged().connect([inst = &instance] {
       if (inst->sceneRoot != nullptr) {
-        inst->sceneRoot->setPaletteTone(dockTone(*inst));
+        inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
       }
     });
 
@@ -559,18 +553,12 @@ namespace shell::dock {
     }
   }
 
-  PaletteTone dockTone(const DockInstance& instance) {
-    return glassTone(glass::Kind::Shape, instance.dsk != nullptr ? instance.dsk->backdropDark() : std::nullopt);
-  }
-
-  // fade: a backdrop light/dark flip fades the tint and the content on spring.fade instead of snapping.
-  void applyPanelPalette(DockInstance& instance, const DockConfig& cfg, bool fade) {
+  // The dock keeps the fixed shape tone: a row of icons does not flip with its backdrop (user, 2026-11-18).
+  void applyPanelPalette(DockInstance& instance, const DockConfig& cfg) {
     if (instance.panel == nullptr)
       return;
-    const PaletteTone tone = dockTone(instance);
-    if (instance.sceneRoot != nullptr && fade) {
-      instance.sceneRoot->fadePaletteTone(tone, Style::spring(Tokens::springFade));
-    } else if (instance.sceneRoot != nullptr) {
+    const PaletteTone tone = glassTone(glass::Kind::Shape);
+    if (instance.sceneRoot != nullptr) {
       instance.sceneRoot->setPaletteTone(tone);
     }
     // A small shape: liquid glass with the launcher pill's clear tint.
@@ -582,22 +570,14 @@ namespace shell::dock {
       compositorTint = liquid && cfg.compositorBlur && Style::compositorDrawsTint();
       setGlassMaterial(*instance.shape, *instance.dsk, liquid ? &material : nullptr);
       const auto tint = glassTintValue(materialRole(), compositorTint ? material.tint : 0.0F, instance.sceneRoot.get());
-      if (fade) {
-        instance.shape->animate(DskSurfaceClient::Property::Tint, DskSurfaceClient::Curve::SpringEffects, tint);
-      } else {
-        instance.shape->set(DskSurfaceClient::Property::Tint, tint);
-      }
+      instance.shape->set(DskSurfaceClient::Property::Tint, tint);
     } else if (instance.dsk != nullptr && instance.dsk->hasLiquidProperty()) {
       const glass::Material material = Style::glassMaterial(glass::Kind::Shape, tone);
       setGlassMaterial(*instance.dsk, *instance.dsk, liquid ? &material : nullptr);
       if (instance.dsk->hasTintProperty()) {
         compositorTint = liquid && cfg.compositorBlur && Style::compositorDrawsTint();
         const auto tint = glassTintValue(materialRole(), compositorTint ? material.tint : 0.0F, instance.sceneRoot.get());
-        if (fade) {
-          instance.dsk->animate(DskSurfaceClient::Property::Tint, DskSurfaceClient::Curve::SpringEffects, tint);
-        } else {
-          instance.dsk->set(DskSurfaceClient::Property::Tint, tint);
-        }
+        instance.dsk->set(DskSurfaceClient::Property::Tint, tint);
       }
     }
     // The compositor draws the tint (dsk v9): the dock paints no material fill.
