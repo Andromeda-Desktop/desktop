@@ -119,6 +119,15 @@ e2e-run +scripts:
 modules:
     @tools/module-check.py
 
+# Cross-builds the portable libdesk-ui for arm64 macOS: fails when Linux-only code leaves the platform layer.
+macos-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cross=$HOME/.cache/andromeda-mac/cross.ini
+    [ -f "$cross" ] || tools/macos/deps.py
+    [ -d libdesk-ui/build-macos ] || meson setup libdesk-ui/build-macos libdesk-ui --cross-file "$cross" -Dplatform=macos
+    tools/build.sh ninja -C libdesk-ui/build-macos
+
 check: modules test link system
     cd compositor && just check
     just e2e

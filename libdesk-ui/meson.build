@@ -33,16 +33,20 @@ if get_option('buildtype') == 'release'
   add_project_arguments('-ffunction-sections', '-fdata-sections', language: ['c', 'cpp'])
 endif
 
-egl_dep = dependency('egl', required: false)
-if not egl_dep.found()
-  egl_dep = dependency('wayland-egl', required: false)
-endif
-if not egl_dep.found()
-  egl_dep = dependency('epoxy')
-endif
-gles2_dep = dependency('glesv2', required: false)
-if not gles2_dep.found()
-  gles2_dep = dependency('epoxy')
+is_wayland = get_option('platform') == 'wayland'
+
+if is_wayland
+  egl_dep = dependency('egl', required: false)
+  if not egl_dep.found()
+    egl_dep = dependency('wayland-egl', required: false)
+  endif
+  if not egl_dep.found()
+    egl_dep = dependency('epoxy')
+  endif
+  gles2_dep = dependency('glesv2', required: false)
+  if not gles2_dep.found()
+    gles2_dep = dependency('epoxy')
+  endif
 endif
 
 foreach _h : ['stb/stb_image_resize2.h', 'stb/stb_image_write.h']
@@ -52,10 +56,6 @@ foreach _h : ['stb/stb_image_resize2.h', 'stb/stb_image_write.h']
 endforeach
 
 _system_deps = [
-  dependency('wayland-client'),
-  dependency('wayland-egl'),
-  egl_dep,
-  gles2_dep,
   dependency('freetype2'),
   dependency('fontconfig'),
   dependency('cairo'),
@@ -73,7 +73,6 @@ _system_deps = [
   dependency('gio-unix-2.0'), # GDesktopAppInfo: app icons by desktop id (ui/app_icon.cpp)
   dependency('md4c'),
   dependency('nlohmann_json'),
-  dependency('sdbus-c++'),
   dependency('libwebp'),
   dependency('libwebpdemux'),
   dependency('libjxl'),
@@ -81,6 +80,9 @@ _system_deps = [
   dependency('zlib'),
   cpp.find_library('dl', required: false),
 ]
+if is_wayland
+  _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), egl_dep, gles2_dep, dependency('sdbus-c++')]
+endif
 
 # ── Vendored: fzy matcher ─────────────────────────────────────────────────────
 _fzy_lib = static_library('fzy',
@@ -90,12 +92,13 @@ _fzy_lib = static_library('fzy',
 )
 _fzy_inc = include_directories('third_party/fzy/src', is_system: true)
 
+_protocol_sources = []
+_protocol_headers = []
 # ── Wayland client protocols the toolkit binds ────────────────────────────────
+if is_wayland
 wayland_scanner    = find_program('wayland-scanner')
 wayland_protos_dir = dependency('wayland-protocols').get_variable('pkgdatadir')
 
-_protocol_sources = []
-_protocol_headers = []
 foreach _p : [
   ['xdg-output-unstable-v1', wayland_protos_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml'],
   ['xdg-shell', wayland_protos_dir / 'stable/xdg-shell/xdg-shell.xml'],
@@ -148,6 +151,7 @@ _protocol_sources += custom_target('wlr-layer-shell-unstable-v1-client-source',
   depends: _wlr_ls_h,
 )
 _protocol_headers += _wlr_ls_h
+endif
 
 _protocol_headers += custom_target('tabler-glyphs-header',
   input: ['protocols/gen-tabler-glyphs.py', 'data/tabler.json'],
@@ -340,6 +344,10 @@ _desk_ui_sources = files(
   'src/util/fuzzy_match.cpp',
   'src/util/safe_regex.cpp',
   'src/util/string_utils.cpp',
+)
+
+# The Wayland backend, and code that still calls Linux-only APIs: `just macos-check` builds everything else.
+_wayland_sources = files(
   'src/wayland/dsk_surface_client.cpp',
   'src/wayland/hyprland/focus_grab_service.cpp',
   'src/wayland/layer_surface.cpp',
@@ -366,7 +374,7 @@ _desk_ui_inc = [
 ]
 
 desk_ui_lib = static_library('desk_ui',
-  sources: _desk_ui_sources + _protocol_sources + _protocol_headers,
+  sources: _desk_ui_sources + (is_wayland ? _wayland_sources : []) + _protocol_sources + _protocol_headers,
   dependencies: _system_deps,
   include_directories: _desk_ui_inc + [_fzy_inc],
   link_with: _fzy_lib,
@@ -387,7 +395,7 @@ desk_ui_dep = declare_dependency(
   compile_args: _tokens_runtime,
 )
 
-if not meson.is_subproject()
+if is_wayland and not meson.is_subproject()
   test('freedesktop_thumbnails', executable('freedesktop_thumbnails_test', 'tests/freedesktop_thumbnails_test.cpp',
     dependencies: desk_ui_dep))
 endif
