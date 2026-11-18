@@ -1,5 +1,6 @@
 #include "time/time_format.h"
 
+#include "core/sys/sys.h"
 #include "i18n/i18n.h"
 
 #include <algorithm>
@@ -277,11 +278,7 @@ bool isValidTimezone(std::string_view tzName) {
   if (tzName.empty()) {
     return true;
   }
-  try {
-    return std::chrono::locate_zone(tzName) != nullptr;
-  } catch (const std::runtime_error&) {
-    return false;
-  }
+  return sys::zoneAt(tzName, 0).has_value();
 }
 
 std::string formatTimezoneUnixTime(std::int64_t unixSeconds, std::string_view fmt, std::string_view tzName) {
@@ -290,14 +287,8 @@ std::string formatTimezoneUnixTime(std::int64_t unixSeconds, std::string_view fm
   }
 
   using namespace std::chrono;
-  const time_zone* tz = nullptr;
-  try {
-    tz = locate_zone(tzName);
-  } catch (const std::runtime_error&) {
-    return formatLocalUnixTime(unixSeconds, fmt);
-  }
-
-  if (tz == nullptr) {
+  const auto zone = sys::zoneAt(tzName, unixSeconds);
+  if (!zone) {
     return formatLocalUnixTime(unixSeconds, fmt);
   }
 
@@ -305,9 +296,7 @@ std::string formatTimezoneUnixTime(std::int64_t unixSeconds, std::string_view fm
   if (isBlankClockFormat(normalizedFmt)) {
     return {};
   }
-  const auto tp = sys_seconds{seconds{unixSeconds}};
-  const auto local = tz->to_local(tp);
-  const auto zoneInfo = tz->get_info(tp);
+  const auto local = local_seconds{seconds{unixSeconds + zone->offsetSeconds}};
 
   std::tm tm{};
   const auto localDays = floor<days>(local);
@@ -321,9 +310,9 @@ std::string formatTimezoneUnixTime(std::int64_t unixSeconds, std::string_view fm
   tm.tm_sec = static_cast<int>(time.seconds().count());
   tm.tm_wday = weekday(localDays).c_encoding();
   tm.tm_yday = static_cast<int>((localDays - local_days{ymd.year() / January / 1}).count());
-  tm.tm_isdst = zoneInfo.save != minutes::zero();
-  tm.tm_gmtoff = static_cast<long>(zoneInfo.offset.count());
-  tm.tm_zone = zoneInfo.abbrev.c_str();
+  tm.tm_isdst = zone->dst ? 1 : 0;
+  tm.tm_gmtoff = zone->offsetSeconds;
+  tm.tm_zone = const_cast<char*>(zone->abbrev.c_str()); // char* on macOS; strftime only reads it
 
   if (auto compat = formatStrftimeCompat(normalizedFmt, tm, unixSeconds)) {
     return *compat;

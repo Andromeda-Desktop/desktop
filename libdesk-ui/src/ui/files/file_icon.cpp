@@ -1,4 +1,5 @@
 #include "ui/files/file_icon.h"
+#include "core/sys/sys.h"
 
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -194,7 +195,7 @@ namespace {
       cache.emplace(key, TextureHandle{});
       return {};
     }
-    const IconRasterHeader source{.mtimeNs = static_cast<std::int64_t>(st.st_mtim.tv_sec) * 1'000'000'000 + st.st_mtim.tv_nsec,
+    const IconRasterHeader source{.mtimeNs = sys::mtimeNs(st),
                                   .size = static_cast<std::int64_t>(st.st_size)};
     const fs::path raster = iconRasterPath(asset, px);
     std::optional<LoadedImageFile> image = readIconRaster(raster, source);

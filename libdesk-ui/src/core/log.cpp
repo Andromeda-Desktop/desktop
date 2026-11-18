@@ -1,6 +1,6 @@
 #include "core/log.h"
+#include "core/sys/sys.h"
 
-#include "protocols/crash_capture.h"
 
 #include <algorithm>
 #include <atomic>
@@ -325,9 +325,9 @@ namespace {
   }
 
   void writerMain() {
-    andromeda::crash::installThreadStack();
+    sys::installCrashThreadStack();
     // Named: the idle-thread checks count unnamed threads as on-demand workers that should have exited.
-    pthread_setname_np(pthread_self(), "dsk-log");
+    sys::setCurrentThreadName("dsk-log");
     std::unique_lock lock(gQueueMutex);
     while (true) {
       gQueueReady.wait(lock, [] { return gWriterStop || !gQueue.empty(); });
@@ -509,7 +509,7 @@ void flushLogs() {
 namespace detail {
 
   void logMessage(LogLevel level, const char* section, std::string_view msg) {
-    andromeda::crash::record("DIWE"[static_cast<int>(level)], section, msg);
+    sys::recordCrashBreadcrumb("DIWE"[static_cast<int>(level)], section, msg);
     if (LogSink sink = gLogSink.load(std::memory_order_acquire); sink != nullptr) {
       if (level >= gMinLevel) {
         sink(level, section, msg);

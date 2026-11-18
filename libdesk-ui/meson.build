@@ -173,7 +173,6 @@ endif
 _desk_ui_sources = files(
   'src/core/deferred_call.cpp',
   'src/core/files/directory_scanner.cpp',
-  'src/core/files/directory_watcher.cpp',
   'src/core/files/file_info.cpp',
   'src/core/files/media_info.cpp',
   'src/core/files/volumes.cpp',
@@ -184,7 +183,6 @@ _desk_ui_sources = files(
   'src/core/log.cpp',
   'src/core/process/process_fds.cpp',
   'src/core/timer_manager.cpp',
-  'src/core/freedesktop_thumbnails.cpp',
   'src/core/ui_phase.cpp',
   'src/i18n/i18n.cpp',
   'src/i18n/i18n_service.cpp',
@@ -240,7 +238,6 @@ _desk_ui_sources = files(
   'src/render/scene/input_dispatcher.cpp',
   'src/render/scene/node.cpp',
   'src/render/scene/accessible.cpp',
-  'src/a11y/atspi_bridge.cpp',
   'src/render/text/cairo_glyph_renderer.cpp',
   'src/render/text/text_glyph_atlas.cpp',
   'src/render/text/cairo_text_renderer.cpp',
@@ -328,7 +325,6 @@ _desk_ui_sources = files(
   'src/ui/dialogs/layer_popup_host.cpp',
   'src/ui/dialogs/search_picker_popup.cpp',
   'src/ui/drag_drop_controller.cpp',
-  'src/ui/app_icon.cpp',
   'src/ui/contrast.cpp',
   'src/ui/theme_palette.cpp',
   'src/ui/palette.cpp',
@@ -345,6 +341,13 @@ _desk_ui_sources = files(
   'src/util/safe_regex.cpp',
   'src/util/string_utils.cpp',
 )
+
+# The OS layer: one implementation per OS behind a shared header.
+_sys_sources = host_machine.system() == 'darwin' \
+  ? files('src/core/sys/sys_macos.cpp', 'src/core/files/directory_watcher_macos.cpp',
+      'src/core/freedesktop_thumbnails_none.cpp') \
+  : files('src/core/sys/sys_linux.cpp', 'src/core/files/directory_watcher.cpp', 'src/core/freedesktop_thumbnails.cpp',
+      'src/a11y/atspi_bridge.cpp', 'src/ui/app_icon.cpp')
 
 # The Wayland backend, and code that still calls Linux-only APIs: `just macos-check` builds everything else.
 _wayland_sources = files(
@@ -374,7 +377,7 @@ _desk_ui_inc = [
 ]
 
 desk_ui_lib = static_library('desk_ui',
-  sources: _desk_ui_sources + (is_wayland ? _wayland_sources : []) + _protocol_sources + _protocol_headers,
+  sources: _desk_ui_sources + _sys_sources + (is_wayland ? _wayland_sources : []) + _protocol_sources + _protocol_headers,
   dependencies: _system_deps,
   include_directories: _desk_ui_inc + [_fzy_inc],
   link_with: _fzy_lib,

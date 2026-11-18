@@ -1,4 +1,5 @@
 #include "core/files/file_info.h"
+#include "core/sys/sys.h"
 
 #include <dirent.h>
 #include <fcntl.h>
@@ -67,18 +68,11 @@ void describeType(FileInfo& info) {
 }
 
 bool fillStat(int dirFd, FileInfo& info) {
-  // statx for the birth time (Date Added); the same cost as fstatat.
-  struct statx sx{};
-  if (::statx(dirFd, info.name.c_str(), AT_SYMLINK_NOFOLLOW, STATX_BASIC_STATS | STATX_BTIME, &sx) != 0) {
+  // The birth time is Date Added.
+  struct stat link{};
+  if (!sys::statWithBirth(dirFd, info.name.c_str(), link, info.addedNs)) {
     return false;
   }
-  struct stat link{};
-  link.st_mode = sx.stx_mode;
-  link.st_size = static_cast<off_t>(sx.stx_size);
-  link.st_ino = sx.stx_ino;
-  link.st_mtim = {.tv_sec = sx.stx_mtime.tv_sec, .tv_nsec = sx.stx_mtime.tv_nsec};
-  const auto& added = (sx.stx_mask & STATX_BTIME) != 0 ? sx.stx_btime : sx.stx_ctime;
-  info.addedNs = static_cast<std::int64_t>(added.tv_sec) * 1'000'000'000 + added.tv_nsec;
   struct stat target = link;
   info.kind = FileKind::File;
   if (S_ISLNK(link.st_mode)) {
@@ -94,7 +88,7 @@ bool fillStat(int dirFd, FileInfo& info) {
   }
   info.isDir = S_ISDIR(target.st_mode);
   info.size = info.isDir ? 0 : static_cast<std::uint64_t>(target.st_size);
-  info.mtimeNs = static_cast<std::int64_t>(target.st_mtim.tv_sec) * 1'000'000'000 + target.st_mtim.tv_nsec;
+  info.mtimeNs = sys::mtimeNs(target);
   info.mode = target.st_mode;
   info.inode = link.st_ino;
   info.pendingStat = false;

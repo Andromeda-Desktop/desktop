@@ -1,4 +1,5 @@
 #include "render/backend/gles_render_backend.h"
+#include "core/sys/sys.h"
 
 #include "core/log.h"
 #include "core/scoped_timer.h"
@@ -9,7 +10,6 @@
 #include "render/gl_shared_context.h"
 #include "render/render_target.h"
 
-#include <malloc.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 #include <algorithm>
@@ -649,8 +649,8 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
   if (swapped == EGL_TRUE) {
     const bool compilerReleased = ShaderProgram::releaseCompiler();
     if (startup_metrics::recordFirstFrame() || compilerReleased) {
-      // Startup temporaries (icon JSON, font setup, compiler state) are freed by now; glibc keeps their pages until a trim.
-      malloc_trim(0);
+      // Startup temporaries (icon JSON, font setup, compiler state) are freed by now; hand their pages back.
+      sys::releaseFreeHeap();
     }
   }
   if (swapped != EGL_TRUE) {

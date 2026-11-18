@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <mutex>
 #include <thread>
-#include <sys/eventfd.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -62,9 +61,8 @@ ThumbnailService::ThumbnailService(Resolver resolver, std::size_t workers)
       }) {
   static std::once_flag pruned;
   std::call_once(pruned, [] { std::thread([] { thumbnail_pipeline::pruneCache(); }).detach(); });
-  m_eventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (m_eventFd < 0) {
-    kLog.warn("failed to create eventfd; thumbnail wakeups will be disabled");
+  if (!m_wake.valid()) {
+    kLog.warn("failed to create the wake fd; thumbnail wakeups will be disabled");
   }
 
   const unsigned hc = std::thread::hardware_concurrency();
@@ -89,10 +87,6 @@ ThumbnailService::~ThumbnailService() {
 
   deleteAllTextures();
 
-  if (m_eventFd >= 0) {
-    ::close(m_eventFd);
-    m_eventFd = -1;
-  }
 }
 
 ThumbnailService::Subscription ThumbnailService::subscribePendingUpload(PendingUploadCallback callback) {
@@ -360,35 +354,31 @@ void ThumbnailService::abandonGpuResources() noexcept {
 }
 
 void ThumbnailService::doAddPollFds(std::vector<pollfd>& fds) {
-  if (m_eventFd < 0) {
+  if (!m_wake.valid()) {
     return;
   }
-  fds.push_back({.fd = m_eventFd, .events = POLLIN, .revents = 0});
+  fds.push_back({.fd = m_wake.pollFd(), .events = POLLIN, .revents = 0});
 }
 
 void ThumbnailService::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
-  if (m_eventFd < 0 || startIdx >= fds.size()) {
+  if (!m_wake.valid() || startIdx >= fds.size()) {
     return;
   }
   if ((fds[startIdx].revents & POLLIN) == 0) {
     return;
   }
 
-  std::uint64_t ignored = 0;
-  while (::read(m_eventFd, &ignored, sizeof(ignored)) > 0) {
-  }
+  m_wake.drain();
 
   notifyPendingUpload();
 }
 
 void ThumbnailService::signalMain() {
-  if (m_eventFd < 0) {
+  if (!m_wake.valid()) {
     return;
   }
-  const std::uint64_t one = 1;
-  const ssize_t written = ::write(m_eventFd, &one, sizeof(one));
-  if (written < 0 && errno != EAGAIN) {
-    kLog.warn("failed to signal thumbnail eventfd: errno={}", errno);
+  if (!m_wake.signal()) {
+    kLog.warn("failed to signal thumbnail wake: errno={}", errno);
   }
 }
 

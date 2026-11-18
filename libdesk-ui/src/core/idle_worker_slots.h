@@ -1,6 +1,6 @@
 #pragma once
 
-#include "protocols/crash_capture.h"
+#include "core/sys/sys.h"
 
 #include <chrono>
 #include <pthread.h>
@@ -26,8 +26,8 @@ public:
           m_threads[slot].join();
         }
         m_threads[slot] = std::thread([loop, slot, name = m_name]() mutable {
-          pthread_setname_np(pthread_self(), name);
-          andromeda::crash::installThreadStack();
+          sys::setCurrentThreadName(name);
+          sys::installCrashThreadStack();
           loop(slot);
         });
         m_alive[slot] = true;

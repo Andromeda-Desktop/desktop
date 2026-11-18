@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/sys/sys.h"
 #include "core/poll_source.h"
 #include "core/idle_worker_slots.h"
 #include "render/core/texture_handle.h"
@@ -135,7 +136,7 @@ private:
   GlSharedContext* m_sharedGl = nullptr;
   std::function<void()> m_makeCurrentCallback;
   std::unique_ptr<TextureManager> m_textureManager;
-  int m_eventFd = -1;
+  sys::WakeFd m_wake;
   std::unique_ptr<IdleWorkerSlots> m_workers; // guarded by m_queueMutex
   std::atomic<bool> m_shutdown{false};
 

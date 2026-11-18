@@ -1,4 +1,5 @@
 #include "render/core/thumbnail_pipeline.h"
+#include "core/sys/sys.h"
 
 #include "core/files/directory_scanner.h"
 #include "core/freedesktop_thumbnails.h"
@@ -93,7 +94,7 @@ namespace thumbnail_pipeline {
       }
       // Readers on other threads see the whole file or none: write aside, then rename.
       auto tmp = path;
-      tmp += ".tmp." + std::to_string(::getpid()) + "." + std::to_string(::gettid());
+      tmp += ".tmp." + std::to_string(::getpid()) + "." + std::to_string(sys::currentThreadId());
       {
         std::ofstream file(tmp, std::ios::binary | std::ios::trunc);
         file.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));

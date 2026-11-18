@@ -11,7 +11,6 @@
 #include <array>
 #include <cerrno>
 #include <cmath>
-#include <sys/eventfd.h>
 #include <unistd.h>
 #include <utility>
 
@@ -133,9 +132,8 @@ void SharedTextureCache::Lease::reset() {
 // ── Cache ────────────────────────────────────────────────────────────────────
 
 SharedTextureCache::SharedTextureCache() {
-  m_eventFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-  if (m_eventFd < 0) {
-    kLog.warn("failed to create eventfd; wallpaper textures will never finish loading");
+  if (!m_wake.valid()) {
+    kLog.warn("failed to create the wake fd; wallpaper textures will never finish loading");
   }
 }
 
@@ -156,10 +154,6 @@ SharedTextureCache::~SharedTextureCache() {
     m_textureManager->cleanup();
   }
 
-  if (m_eventFd >= 0) {
-    ::close(m_eventFd);
-    m_eventFd = -1;
-  }
 }
 
 void SharedTextureCache::initialize(GlSharedContext* sharedGl) {
@@ -209,20 +203,18 @@ void SharedTextureCache::reloadResidentTextures() {
 }
 
 void SharedTextureCache::doAddPollFds(std::vector<pollfd>& fds) {
-  if (m_eventFd < 0) {
+  if (!m_wake.valid()) {
     return;
   }
-  fds.push_back({.fd = m_eventFd, .events = POLLIN, .revents = 0});
+  fds.push_back({.fd = m_wake.pollFd(), .events = POLLIN, .revents = 0});
 }
 
 void SharedTextureCache::dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) {
-  if (m_eventFd < 0 || startIdx >= fds.size() || (fds[startIdx].revents & POLLIN) == 0) {
+  if (!m_wake.valid() || startIdx >= fds.size() || (fds[startIdx].revents & POLLIN) == 0) {
     return;
   }
 
-  std::uint64_t ignored = 0;
-  while (::read(m_eventFd, &ignored, sizeof(ignored)) > 0) {
-  }
+  m_wake.drain();
 
   std::deque<DecodedImage> results;
   {
@@ -592,12 +584,11 @@ void SharedTextureCache::pushResult(DecodedImage image) {
 }
 
 void SharedTextureCache::signalMain() {
-  if (m_eventFd < 0) {
+  if (!m_wake.valid()) {
     return;
   }
-  const std::uint64_t one = 1;
-  if (::write(m_eventFd, &one, sizeof(one)) < 0 && errno != EAGAIN) {
-    kLog.warn("failed to signal texture cache eventfd: errno={}", errno);
+  if (!m_wake.signal()) {
+    kLog.warn("failed to signal texture cache wake: errno={}", errno);
   }
 }
 

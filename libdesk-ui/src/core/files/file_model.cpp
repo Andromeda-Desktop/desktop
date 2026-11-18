@@ -1,4 +1,5 @@
 #include "core/files/file_model.h"
+#include "core/sys/sys.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -16,7 +17,6 @@
 #include <map>
 #include <mutex>
 #include <numeric>
-#include <sys/syscall.h>
 #include <thread>
 #include <unordered_map>
 #include <utility>
@@ -30,7 +30,6 @@ namespace {
   constexpr std::size_t kMaxStatWorkers = 4;
   constexpr std::size_t kParallelPart = 2048; // fewer entries per thread cost more to start a thread than to process
   constexpr unsigned kMaxListThreads = 4;
-  constexpr std::size_t kDirentBuffer = 256 * 1024;
 
   bool nameBefore(const FileInfo& a, const FileInfo& b) {
     const int cmp = a.collateKey.compare(b.collateKey);
@@ -174,35 +173,19 @@ namespace {
     }
     std::vector<FileInfo> infos;
     std::vector<std::uint32_t> undescribed;
-    std::vector<char> buffer(kDirentBuffer);
-    while (true) {
-      const long n = ::syscall(SYS_getdents64, fd, buffer.data(), buffer.size());
-      if (n < 0) {
-        out.status = FileModel::Status::Error;
-        out.error = std::strerror(errno);
-        ::close(fd);
-        return out;
-      }
-      if (n == 0) {
-        break;
-      }
-      // struct linux_dirent64: u64 ino, s64 off, u16 reclen, u8 type, then the NUL-terminated name.
-      for (long at = 0; at < n;) {
-        std::uint16_t reclen = 0;
-        std::memcpy(&reclen, buffer.data() + at + 16, sizeof(reclen));
-        const auto type = static_cast<unsigned char>(buffer[static_cast<std::size_t>(at) + 18]);
-        const std::string_view name(buffer.data() + at + 19);
-        at += reclen;
-        if (name == "." || name == "..") {
-          continue;
+    const bool listed = sys::readDirectory(fd, [&](std::string_view name, unsigned char type) {
+      if (auto info = fileFromDirent(fd, name, type, false)) {
+        if (info->pendingStat) { // a file or directory record: fileFromDirent left its name fields
+          undescribed.push_back(static_cast<std::uint32_t>(infos.size()));
         }
-        if (auto info = fileFromDirent(fd, name, type, false)) {
-          if (info->pendingStat) { // a file or directory record: fileFromDirent left its name fields
-            undescribed.push_back(static_cast<std::uint32_t>(infos.size()));
-          }
-          infos.push_back(std::move(*info));
-        }
+        infos.push_back(std::move(*info));
       }
+    });
+    if (!listed) {
+      out.status = FileModel::Status::Error;
+      out.error = std::strerror(errno);
+      ::close(fd);
+      return out;
     }
     // Collate keys, the sort and the row allocations are most of a big listing's time and scale with threads. Type
     // guesses share one GLib lock, so one thread guesses every type while the others build the keys.
