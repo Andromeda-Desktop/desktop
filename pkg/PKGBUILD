@@ -252,7 +252,7 @@ package_andromeda() {
   install -d "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants"
   ln -s ../andromeda-audio-park.service \
     "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-audio-park.service"
-  meson install -C build-indexer --destdir "$pkgdir"
+  meson install --no-rebuild -C build-indexer --destdir "$pkgdir"
   install -Dm644 desktop/session/applications/andromeda-mimeapps.list "$pkgdir/usr/share/applications/andromeda-mimeapps.list"
   for unit in andromeda-index.socket andromeda-index.service; do
     ln -s ../$unit "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/$unit"
@@ -270,7 +270,7 @@ package_andromeda-preview-git() {
   optdepends=('libreoffice-fresh: Quick Look for Office documents')
   # Quick Look serves org.gnome.NautilusPreviewer, the bus name sushi owns.
   conflicts=(sushi)
-  meson install -C build-preview --destdir "$pkgdir"
+  meson install --no-rebuild -C build-preview --destdir "$pkgdir"
   _pin_depends
 }
 
@@ -285,7 +285,7 @@ package_andromeda-files-git() {
               'exfatprogs: Files Erase Drive as ExFAT'
               'dosfstools: Files Erase Drive as FAT32'
               'ntfs-3g: Files Erase Drive as NTFS')
-  meson install -C build-files --destdir "$pkgdir" --skip-subprojects
+  meson install --no-rebuild -C build-files --destdir "$pkgdir" --skip-subprojects
   install -d "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants"
   ln -s ../andromeda-files-reconnect.service \
     "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-files-reconnect.service"
@@ -295,21 +295,21 @@ package_andromeda-files-git() {
 package_andromeda-player-git() {
   pkgdesc='Andromeda Player: media player and library'
   depends=("${_app_libs[@]}" mpv ffmpeg)
-  meson install -C build-player --destdir "$pkgdir" --skip-subprojects
+  meson install --no-rebuild -C build-player --destdir "$pkgdir" --skip-subprojects
   _pin_depends
 }
 
 package_andromeda-viewer-git() {
   pkgdesc='Andromeda Viewer: image and PDF viewer'
   depends=("${_app_libs[@]}" andromeda-preview-git glycin)
-  meson install -C build-viewer --destdir "$pkgdir" --skip-subprojects
+  meson install --no-rebuild -C build-viewer --destdir "$pkgdir" --skip-subprojects
   _pin_depends
 }
 
 package_andromeda-terminal-git() {
   pkgdesc='Andromeda Terminal: terminal emulator on libghostty-vt'
   depends=("${_app_libs[@]}" ttf-fira-code) # the mono token font (design-tokens.toml font.mono)
-  meson install -C build-terminal --destdir "$pkgdir" --skip-subprojects
+  meson install --no-rebuild -C build-terminal --destdir "$pkgdir" --skip-subprojects
   install -Dm644 desktop/apps/terminal/subprojects/libghostty-vt/prefix/LICENSE \
     "$pkgdir/usr/share/licenses/$pkgname/libghostty-vt-LICENSE"
   _pin_depends
@@ -323,7 +323,7 @@ package_andromeda-compositor-git() {
   provides=(andromeda-compositor)
   conflicts=(andromeda-compositor umbriel umbriel-desktop-git)
   replaces=(umbriel-desktop-git)
-  meson install -C build-compositor --destdir "$pkgdir"
+  meson install --no-rebuild -C build-compositor --destdir "$pkgdir"
   # Only the wraps' libraries ship, in the compositor's private RPATH (compositor/meson.build).
   mkdir -p "$pkgdir/usr/lib/andromeda"
   mv "$pkgdir"/usr/lib/libwlroots-0.20.so* "$pkgdir"/usr/lib/libliftoff.so.* "$pkgdir/usr/lib/andromeda/"
@@ -364,7 +364,7 @@ package_andromeda-shell-git() {
   replaces=(noctalia-desktop-git)
   backup=(etc/pam.d/andromeda-lock)
   install=andromeda-shell.install
-  meson install -C build-shell --destdir "$pkgdir"
+  meson install --no-rebuild -C build-shell --destdir "$pkgdir"
   install -Dm644 desktop/session/andromeda-askpass.sysusers "$pkgdir/usr/lib/sysusers.d/andromeda-askpass.conf"
   # Old /usr/bin/noctalia name for upgraded systems with old configs.
   ln -s andromeda-shell "$pkgdir/usr/bin/noctalia"
@@ -398,7 +398,7 @@ package_xdg-desktop-portal-andromeda-git() {
   provides=(xdg-desktop-portal-andromeda xdg-desktop-portal-impl)
   conflicts=(xdg-desktop-portal-andromeda xdg-desktop-portal-umbriel-git)
   replaces=(xdg-desktop-portal-umbriel-git)
-  meson install -C build-portal --destdir "$pkgdir"
+  meson install --no-rebuild -C build-portal --destdir "$pkgdir"
   install -Dm644 desktop/portal/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 desktop/NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
   _pin_depends
@@ -468,7 +468,7 @@ package_andromeda-greeter-git() {
   conflicts=(noctalia-greeter noctalia-greeter-desktop-git)
   replaces=(noctalia-greeter-desktop-git)
   install=noctalia-greeter.install
-  meson install -C build-greeter --destdir "$pkgdir"
+  meson install --no-rebuild -C build-greeter --destdir "$pkgdir"
   # Old /usr/bin/noctalia-greeter* names: a booted system with an old greetd config still logs in.
   for name in greeter greeter-apply-appearance greeter-session greeter-xsession greeter-print-greetd-config; do
     ln -s "andromeda-$name" "$pkgdir/usr/bin/noctalia-$name"
