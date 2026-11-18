@@ -16,6 +16,7 @@ namespace term::control {
 
     constexpr std::string_view kUsage = R"(usage: andromeda-terminal ctl COMMAND
   ls                                   the sessions of the running terminal, as JSON
+  workspaces                           the workspaces of the session holder, as JSON
   open [--cwd DIR] [--window N | --new-window] [--name NAME] [-- COMMAND...]
                                        a new session; prints its id
   send-text [--paste] ID TEXT          TEXT as typed ("-": stdin); --paste sends it as a paste
@@ -73,16 +74,16 @@ namespace term::control {
       // The trailing ID of a command; nullopt when it is missing or no number.
       const auto idAt = [&](std::size_t i) { return i < args.size() ? parseId(args[i]) : std::nullopt; };
 
-      if (verb == "ls" && args.empty()) {
-        std::vector<std::map<std::string, sdbus::Variant>> sessions;
-        proxy->callMethod("ListSessions").onInterface(kInterface).storeResultsTo(sessions);
+      if ((verb == "ls" || verb == "workspaces") && args.empty()) {
+        std::vector<std::map<std::string, sdbus::Variant>> entries;
+        proxy->callMethod(verb == "ls" ? "ListSessions" : "ListWorkspaces").onInterface(kInterface).storeResultsTo(entries);
         nlohmann::json out = nlohmann::json::array();
-        for (const auto& entry : sessions) {
-          nlohmann::json session = nlohmann::json::object();
+        for (const auto& entry : entries) {
+          nlohmann::json item = nlohmann::json::object();
           for (const auto& [key, value] : entry) {
-            session[key] = toJson(value);
+            item[key] = toJson(value);
           }
-          out.push_back(std::move(session));
+          out.push_back(std::move(item));
         }
         std::cout << out.dump(2) << '\n';
         return 0;

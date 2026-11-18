@@ -145,6 +145,7 @@ namespace term {
 
   void TerminalApp::workspacesChanged() {
     for (const auto& [window, terminal] : m_windows) terminal->workspacesChanged();
+    if (m_control != nullptr) m_control->emitSignal("WorkspacesChanged").onInterface(control::kInterface);
   }
 
   void TerminalApp::pickWorkspace(AppWindow& from, std::uint64_t id) {

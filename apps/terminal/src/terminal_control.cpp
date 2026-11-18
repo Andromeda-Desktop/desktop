@@ -147,6 +147,37 @@ namespace term {
               }
               return out;
             }),
+            sdbus::registerMethod("ListWorkspaces").withOutputParamNames("workspaces").implementedAs([this] {
+              std::map<std::uint64_t, std::uint32_t> shownIn;
+              for (const auto& [window, workspace] : m_windowWorkspaces) {
+                if (const auto* id = std::get_if<std::uint64_t>(&workspace)) shownIn[*id] = m_windows.at(window)->windowId();
+              }
+              const holder::Workspaces& table = m_workspaces.workspaces();
+              std::vector<Entry> out;
+              for (const holder::WorkspaceInfo& w : table.workspaces) {
+                std::uint32_t sessions = 0, running = 0, failed = 0;
+                for (const holder::SessionInfo& s : table.sessions) {
+                  if (s.workspace != w.id) continue;
+                  ++sessions;
+                  if (s.command == holder::CommandState::Running) ++running;
+                  if (s.command == holder::CommandState::Done && s.exitCode != 0) ++failed;
+                }
+                const auto shown = shownIn.find(w.id);
+                const char* location = shown != shownIn.end() ? "window" : sessions > 0 ? "detached" : "saved";
+                out.push_back(Entry{
+                    {"id", sdbus::Variant{w.id}},
+                    {"name", sdbus::Variant{w.name}},
+                    {"root", sdbus::Variant{w.root}},
+                    {"symbol", sdbus::Variant{w.symbol}},
+                    {"location", sdbus::Variant{std::string(location)}},
+                    {"window", sdbus::Variant{shown != shownIn.end() ? shown->second : 0U}},
+                    {"sessions", sdbus::Variant{sessions}},
+                    {"running", sdbus::Variant{running}},
+                    {"failed", sdbus::Variant{failed}},
+                });
+              }
+              return out;
+            }),
             sdbus::registerMethod("Open")
                 .withInputParamNames("options")
                 .withOutputParamNames("id")
@@ -173,7 +204,7 @@ namespace term {
                 .implementedAs([this](std::uint64_t id, const std::string& name) {
                   controlWindow(id).renameSession(id, name);
                 }),
-            sdbus::registerSignal("SessionsChanged"))
+            sdbus::registerSignal("SessionsChanged"), sdbus::registerSignal("WorkspacesChanged"))
         .forInterface(control::kInterface);
   }
 
