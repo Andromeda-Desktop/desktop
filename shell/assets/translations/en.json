@@ -5386,8 +5386,8 @@
           "description": "Light catches the glass edges and follows the pointer"
         },
         "appearance-adaptive-tone": {
-          "label": "Adaptive Tone",
-          "description": "Liquid bar, dock and island glass turns light or dark with the background"
+          "label": "Match Backdrop",
+          "description": "Liquid and Clear bar and island glass turns light or dark with the background"
         },
         "appearance-liquid-tint": {
           "label": "Tint",
