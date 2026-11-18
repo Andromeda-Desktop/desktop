@@ -238,6 +238,17 @@ float contentLeft(float margin, float sidebarShown, float cardGap) {
   return margin + sidebarShown + (sidebarShown > 0.0F ? 0.0F : cardGap);
 }
 
+// top over bottom, both straight alpha.
+Color stacked(const Color& top, const Color& bottom) {
+  const float a = top.a + bottom.a * (1.0F - top.a);
+  if (a <= 0.0F) {
+    return Color{0.0F, 0.0F, 0.0F, 0.0F};
+  }
+  const float under = bottom.a * (1.0F - top.a);
+  return Color{(top.r * top.a + bottom.r * under) / a, (top.g * top.a + bottom.g * under) / a,
+               (top.b * top.a + bottom.b * under) / a, a};
+}
+
 } // namespace
 
 AppWindow::AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, Config config)
@@ -1081,6 +1092,22 @@ std::optional<PaletteTone> AppWindow::chromeTone() const {
   return toneOn(resolveColorSpec(*m_mainFill));
 }
 
+// The content plane stacked on the sidebar glass, so sidebar and content read as one surface over any wallpaper. Opaque
+// content (glass sidebar only) lends its plane at the alpha a glass grid takes.
+ColorSpec AppWindow::sidebarGlass(const ColorSpec& glassFill) const {
+  const std::optional<PaletteTone> tone = chromeTone();
+  if (!tone || !glassSidebar()) {
+    return glassFill;
+  }
+  Color plane = resolveColorSpec(*m_mainFill);
+  if (!glassContent()) {
+    plane.a = Style::reduceTransparency() ? 1.0F : Style::glassTint(glass::Kind::Sheet, Tokens::componentTerminalGlassAlpha);
+  }
+  Color glass = colorForRole(panelMaterialRole(), *tone);
+  glass.a *= glassFill.alpha;
+  return fixedColorSpec(stacked(plane, glass));
+}
+
 void AppWindow::invalidate() {
   if (m_surface == nullptr || m_root == nullptr) {
     return;
@@ -1634,9 +1661,10 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   auto body = ui::row({.out = &m_bodyNode, .align = FlexAlign::Stretch, .width = width, .height = height});
   body->setPaletteTone(chromeTone());
+  const ColorSpec sideGlass = sidebarGlass(glassFill);
   if (sidebarWidth > 0.0F) {
     const ColorSpec sidebarFill = m_scene ? sceneFill(m_sceneTextTint)
-                                  : glassSidebar() ? glassFill : colorSpecFromRole(ColorRole::SolidThin);
+                                  : glassSidebar() ? sideGlass : colorSpecFromRole(ColorRole::SolidThin);
     // Collapsing (setSidebarVisible) narrows this clip; the list inside keeps its width.
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});
@@ -1664,7 +1692,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     auto frame = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
     frame->setPadding(m_cardGap, m_cardGap, m_cardGap, cardLeft);
     frame->setFill(m_scene ? sceneFill(m_sceneTextTint)
-                           : glassSidebar() ? glassFill : colorSpecFromRole(ColorRole::SolidThin));
+                           : glassSidebar() ? sideGlass : colorSpecFromRole(ColorRole::SolidThin));
     m_cardFrame = frame.get();
     frame->addChild(std::move(main));
     body->addChild(std::move(frame));

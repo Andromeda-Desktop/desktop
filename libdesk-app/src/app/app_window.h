@@ -342,6 +342,7 @@ private:
   Flex* m_sidebarNode = nullptr;
   Flex* m_bodyNode = nullptr;
   [[nodiscard]] std::optional<PaletteTone> chromeTone() const;
+  [[nodiscard]] ColorSpec sidebarGlass(const ColorSpec& glassFill) const;
   [[nodiscard]] bool glassSidebar() const noexcept;
   [[nodiscard]] bool glassContent() const noexcept;
   Flex* m_mainNode = nullptr;

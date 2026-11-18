@@ -184,11 +184,9 @@ namespace term {
       m_newButton->setOnRightClick([this] { openNewMenu(); });
       side->addChild(std::move(top));
       auto list = std::make_unique<SelectionList>(s);
-      if (const ThemeSpec theme = resolveTheme(m_settings.settings().theme, m_settings.themes()); hasScene(theme)) {
-        list->setTint(fixedColorSpec(withAlpha(themePalette(theme).label1, Tokens::componentTerminalSceneSelection)));
-      } else {
-        list->setTint(fixedColorSpec(withAlpha(themePalette(theme).accent, SelectionList::selectionTintAlpha())));
-      }
+      const ThemeSpec theme = resolveTheme(m_settings.settings().theme, m_settings.themes());
+      const ThemePalette colors = themePalette(theme);
+      list->setTint(fixedColorSpec(withAlpha(hasScene(theme) ? colors.label1 : colors.accent, SelectionList::selectionTintAlpha())));
       list->setGap(Tokens::spaceP4 * s);
       m_rows.clear();
       m_groups.clear();
@@ -622,6 +620,12 @@ namespace term {
     }
     for (const SessionListEvent& event : restoreEvents(saved, ids)) {
       apply(event);
+    }
+  }
+
+  void TerminalWindow::detachSessions() {
+    for (auto& v : m_views) {
+      if (auto* t = v.view->terminal()) t->session().detach();
     }
   }
 

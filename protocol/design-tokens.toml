@@ -530,7 +530,6 @@ bell_interval_ms = 150  # at most one bell per this time, so a stream of BEL rin
 scene_ink_contrast = 4.5  # an ANSI colour tints scene text only at this contrast on the plain view (rulebook label_2 floor)
 command_quiet_ms = 1500  # a running command with no output this long stops its spinner (P21: spin only for work)
 glass_alpha = 0.6  # the grid background's alpha in a Glass window, over the window's thick tint
-scene_selection = 0.12  # label_1 wash of the sidebar selection over a theme scene (an accent tint turns muddy over the scene's hues)
 scene_tint = 0.15  # the theme surface's alpha over a theme scene where no text needs it; text gets a measured backing
 group_row = 32.0  # a split member's row in the sidebar group block
 sidebar_drop_line = 2.0  # accent line where a dragged row lands in the sidebar order
