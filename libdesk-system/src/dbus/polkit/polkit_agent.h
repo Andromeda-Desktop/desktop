@@ -26,6 +26,8 @@ struct PolkitRequest {
   std::string message;
   std::string iconName;
   std::string cookie;
+  // The command a pkexec request runs (details "command_line", else "program"); empty for other callers.
+  std::string commandLine;
   bool isInternal = false;
   std::vector<PolkitRequestIdentity> identities;
   // The unix-user whose password the helper asks for.

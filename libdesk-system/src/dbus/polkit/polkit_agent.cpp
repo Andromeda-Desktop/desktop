@@ -425,6 +425,7 @@ namespace {
     std::string message;
     std::string iconName;
     std::string cookie;
+    std::string commandLine;
     bool isInternal = false;
     std::vector<PolkitRequestIdentity> identities;
     // Set by the first conversation (or the user's choice) and kept for retries.
@@ -507,11 +508,11 @@ struct PolkitAgent::Impl {
                   .withInputParamNames("action_id", "message", "icon_name", "details", "cookie", "identities")
                   .implementedAs([this](
                                      sdbus::Result<>&& result, const std::string& actionId, const std::string& message,
-                                     const std::string& iconName, const std::map<std::string, std::string>& /*details*/,
+                                     const std::string& iconName, const std::map<std::string, std::string>& details,
                                      const std::string& cookie, const std::vector<Subject>& identities
                                  ) {
                     guard("BeginAuthentication", [&] {
-                      beginAuthentication(std::move(result), actionId, message, iconName, cookie, identities);
+                      beginAuthentication(std::move(result), actionId, message, iconName, details, cookie, identities);
                     });
                   }),
               sdbus::registerMethod("CancelAuthentication")
@@ -636,7 +637,8 @@ struct PolkitAgent::Impl {
 
   void beginAuthentication(
       sdbus::Result<>&& result, const std::string& actionId, const std::string& message, const std::string& iconName,
-      const std::string& cookie, const std::vector<Subject>& identities
+      const std::map<std::string, std::string>& details, const std::string& cookie,
+      const std::vector<Subject>& identities
   ) {
     if (!fromAuthority()) {
       kLog.warn("BeginAuthentication from a peer that is not polkitd; refused");
@@ -651,6 +653,9 @@ struct PolkitAgent::Impl {
         .message = message,
         .iconName = iconName,
         .cookie = cookie,
+        .commandLine = details.contains("command_line") ? details.at("command_line")
+                       : details.contains("program")    ? details.at("program")
+                                                        : std::string{},
         .isInternal = m_nextInternal,
         .identities = parseIdentities(identities),
         .result = std::move(result),
@@ -924,6 +929,7 @@ struct PolkitAgent::Impl {
         .message = pending->message,
         .iconName = pending->iconName,
         .cookie = pending->cookie,
+        .commandLine = pending->commandLine,
         .isInternal = pending->isInternal,
         .identities = pending->identities,
         .activeUid = pending->activeUid,

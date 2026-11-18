@@ -59,6 +59,7 @@ private:
   bool handleInputKeyEvent(std::uint32_t sym, std::uint32_t modifiers);
   void resolveIcon(Renderer& renderer, const PolkitRequest& request);
   void updateIdentity(const PolkitRequest& request);
+  void updateAvatar(Renderer& renderer);
   void updateAskpass();
   [[nodiscard]] bool showsAskpass() const { return m_authMode && m_authMode() == AuthDialogMode::Askpass; }
 
@@ -69,7 +70,14 @@ private:
   Label* m_titleLabel = nullptr;
   Label* m_messageLabel = nullptr;
   Label* m_promptLabel = nullptr;
-  Label* m_identityLabel = nullptr;
+  Label* m_identityLabel = nullptr; // the asked user's name, beside the avatar
+  Label* m_avatarInitial = nullptr;
+  Image* m_avatar = nullptr;
+  std::string m_avatarPath;  // the asked user's account picture; empty: the initial shows
+  std::string m_avatarShown; // the picture m_avatar holds
+  Button* m_detailsButton = nullptr;
+  Label* m_detailsLabel = nullptr; // action id and command line, shown while Details is open
+  bool m_detailsOpen = false;
   Select* m_identitySelect = nullptr;
   // Offered unix-user uids, in m_identitySelect option order.
   std::vector<std::uint32_t> m_identityUids;

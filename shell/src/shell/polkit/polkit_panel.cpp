@@ -12,6 +12,7 @@
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
 #include "shell/panel/panel_manager.h"
+#include "ui/auth/auth_column.h"
 #include "ui/builders.h"
 #include "ui/controls/glyph.h"
 #include "ui/controls/image.h"
@@ -132,15 +133,38 @@ void PolkitPanel::create() {
   );
   root->addChild(std::move(topContent));
 
+  // Concept C .o-user: the asked user's picture (the initial on an accent circle until it loads) and name.
+  const float avatarSize = Tokens::sizeControlM * scale;
+  auto avatar = ui::row(
+      {.align = FlexAlign::Center, .justify = FlexJustify::Center, .fill = colorSpecFromRole(ColorRole::Accent),
+       .radius = avatarSize * 0.5F, .width = avatarSize, .height = avatarSize},
+      ui::label({.out = &m_avatarInitial,
+                 .fontSize = Style::fontSizeBody * scale,
+                 .fontWeight = FontWeight::SemiBold,
+                 .color = colorSpecFromRole(ColorRole::OnAccent),
+                 .maxLines = 1})
+  );
+  avatar->addChild(ui::image({
+      .out = &m_avatar,
+      .fit = ImageFit::Cover,
+      .radius = avatarSize * 0.5F,
+      .width = avatarSize,
+      .height = avatarSize,
+      .visible = false,
+  }));
   auto bottomContent = ui::column(
       {.align = FlexAlign::Stretch, .gap = Style::spaceSm * scale},
-      ui::label({
-          .out = &m_identityLabel,
-          .fontSize = Style::fontSizeBody * scale,
-          .fontWeight = FontWeight::SemiBold,
-          .color = colorSpecFromRole(ColorRole::Label1),
-          .maxLines = 2,
-      }),
+      ui::row(
+          {.align = FlexAlign::Center, .gap = Style::spaceSm * scale}, std::move(avatar),
+          ui::label({
+              .out = &m_identityLabel,
+              .fontSize = Style::fontSizeBody * scale,
+              .fontWeight = FontWeight::SemiBold,
+              .color = colorSpecFromRole(ColorRole::Label1),
+              .maxLines = 1,
+              .flexGrow = 1.0F,
+          })
+      ),
       ui::select({
           .out = &m_identitySelect,
           .fontSize = Style::fontSizeBody * scale,
@@ -196,6 +220,33 @@ void PolkitPanel::create() {
           .fontSize = Style::fontSizeCaption * scale,
           .color = colorSpecFromRole(ColorRole::Label2),
           .maxLines = 4,
+      }),
+      ui::row(
+          {.align = FlexAlign::Center},
+          ui::button({
+              .out = &m_detailsButton,
+              .text = i18n::tr("auth.polkit.details"),
+              .glyph = "chevron-right",
+              .fontSize = Style::fontSizeCaption * scale,
+              .glyphSize = Style::fontSizeCaption * scale,
+              .variant = ButtonVariant::Ghost,
+              .paddingV = 0.0F,
+              .paddingH = 0.0F,
+              .onClick =
+                  [this] {
+                    m_detailsOpen = !m_detailsOpen;
+                    m_detailsButton->setGlyph(m_detailsOpen ? "chevron-down" : "chevron-right");
+                    m_detailsLabel->setVisible(m_detailsOpen);
+                    PanelManager::instance().requestLayout();
+                  },
+          })
+      ),
+      ui::label({
+          .out = &m_detailsLabel,
+          .fontSize = Style::fontSizeCaption * scale,
+          .color = colorSpecFromRole(ColorRole::Label2),
+          .maxLines = 4,
+          .visible = false,
       }),
       ui::row(
           {
@@ -358,6 +409,13 @@ void PolkitPanel::doUpdate(Renderer& renderer) {
     supplementaryText.clear();
   }
   m_messageLabel->setText(wrapLongRuns(request.message.empty() ? request.actionId : request.message));
+  if (m_detailsLabel != nullptr) {
+    std::string details = i18n::tr("auth.polkit.details-action", "id", request.actionId);
+    if (!request.commandLine.empty()) {
+      details += "\n" + i18n::tr("auth.polkit.details-command", "command", wrapLongRuns(request.commandLine));
+    }
+    m_detailsLabel->setText(details);
+  }
   updateIdentity(request);
   m_promptLabel->setText(promptText);
   m_promptLabel->setColor(
@@ -390,6 +448,7 @@ void PolkitPanel::doUpdate(Renderer& renderer) {
     m_lastIconName = request.iconName;
     m_iconResolved = true;
     resolveIcon(renderer, request);
+    updateAvatar(renderer);
   }
 }
 
@@ -436,6 +495,7 @@ void PolkitPanel::updateIdentity(const PolkitRequest& request) {
   std::vector<std::uint32_t> uids;
   std::vector<std::string> options;
   std::string activeName;
+  std::string activeLogin;
   std::size_t activeIndex = 0;
   for (const PolkitRequestIdentity& identity : request.identities) {
     if (identity.kind != "unix-user") {
@@ -444,14 +504,21 @@ void PolkitPanel::updateIdentity(const PolkitRequest& request) {
     const std::string name = identity.realName.empty() ? identity.userName : identity.realName;
     if (request.activeUid == identity.uid) {
       activeName = name;
+      activeLogin = identity.userName;
       activeIndex = uids.size();
     }
     uids.push_back(identity.uid);
     options.push_back(identity.realName.empty() ? identity.userName
                                                 : std::format("{} ({})", identity.realName, identity.userName));
   }
-  m_identityLabel->setText(activeName.empty() ? std::string() : i18n::tr("auth.polkit.password-for", "name", activeName));
-  m_identityLabel->setVisible(!activeName.empty());
+  m_identityLabel->setText(activeName);
+  if (m_avatarInitial != nullptr) {
+    m_avatarInitial->setText(
+        activeName.empty() ? std::string{}
+                           : std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(activeName.front()))))
+    );
+  }
+  m_avatarPath = activeLogin.empty() ? std::string{} : accountPicturePath(activeLogin);
   m_identitySelect->setVisible(uids.size() > 1);
   if (uids != m_identityUids) {
     m_identityUids = std::move(uids);
@@ -460,6 +527,20 @@ void PolkitPanel::updateIdentity(const PolkitRequest& request) {
   if (!m_identityUids.empty()) {
     m_identitySelect->setSelectedIndexSilently(activeIndex);
   }
+}
+
+void PolkitPanel::updateAvatar(Renderer& renderer) {
+  if (m_avatar == nullptr || m_avatarPath == m_avatarShown) {
+    return;
+  }
+  const int size = static_cast<int>(std::round(m_avatar->width()));
+  m_avatarShown = !m_avatarPath.empty() && m_avatar->setSourceFile(renderer, m_avatarPath, size, true, true)
+      ? m_avatarPath
+      : std::string{};
+  if (m_avatarShown.empty()) {
+    m_avatar->clear(renderer);
+  }
+  m_avatar->setVisible(!m_avatarShown.empty());
 }
 
 void PolkitPanel::resolveIcon(Renderer& renderer, const PolkitRequest& request) {
