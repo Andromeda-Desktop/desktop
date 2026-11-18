@@ -10,8 +10,8 @@
 namespace andromeda {
 
   namespace {
-    constexpr int kVersion = 17;
-    constexpr uint32_t kPropertyCount = 13;
+    constexpr int kVersion = 18;
+    constexpr uint32_t kPropertyCount = 14;
     constexpr uint32_t kCurveCount = 16;
     constexpr uint32_t kElevationCount = 3;
 
@@ -21,6 +21,7 @@ namespace andromeda {
     constexpr int kTintPropertySince = 9;
     constexpr int kShapePropertiesSince = 10;
     constexpr int kBlurPropertySince = 15;
+    constexpr int kSoloPropertySince = 18;
 
     bool validProperty(wl_resource* resource, uint32_t property) {
       const int version = wl_resource_get_version(resource);
@@ -30,7 +31,8 @@ namespace andromeda {
           && (property != static_cast<uint32_t>(SurfaceMotion::Property::Stroke) || version >= kStrokePropertySince)
           && (property != static_cast<uint32_t>(SurfaceMotion::Property::Tint) || version >= kTintPropertySince)
           && (property < static_cast<uint32_t>(SurfaceMotion::Property::Join) || version >= kShapePropertiesSince)
-          && (property != static_cast<uint32_t>(SurfaceMotion::Property::Blur) || version >= kBlurPropertySince);
+          && (property != static_cast<uint32_t>(SurfaceMotion::Property::Blur) || version >= kBlurPropertySince)
+          && (property != static_cast<uint32_t>(SurfaceMotion::Property::Solo) || version >= kSoloPropertySince);
     }
 
     SurfaceMotion::Value toValue(int32_t a, int32_t b, int32_t c, int32_t d) {

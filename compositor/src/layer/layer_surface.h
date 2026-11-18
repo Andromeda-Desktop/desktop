@@ -141,8 +141,12 @@ namespace andromeda {
       float dense = 0.0F;
       float clarity = 0.0F;
       std::array<float, 4> tint{};
+      float opacity = 1.0F;
+      bool solo = false;
     };
     std::vector<ShapeMaterial> m_shapeMaterials;
+    // Per m_shapeBlurs entry: its shape's opacity, multiplied into the fade alpha.
+    std::vector<float> m_shapeBlurOpacity;
     bool m_tintLight = false;
     // Glass density, 0 to 1: how far the tint is raised over a same-tone backdrop. Rises only while mapped.
     AnimatedValue m_density{0.0};

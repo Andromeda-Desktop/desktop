@@ -289,6 +289,11 @@ namespace andromeda {
       return static_cast<float>(std::clamp(value[0], 0.0, 1.0));
     }
 
+    // dsk_shape_v1 opacity (v18) scales the shape's glass, fill and shadow; an older client's shape opacity is ignored.
+    double shapeOpacity(const DskSurfaceManager::State& state, const SurfaceMotion& shape) {
+      return state.version >= 18 ? std::clamp(shape.value(SurfaceMotion::Property::Opacity)[0], 0.0, 1.0) : 1.0;
+    }
+
   } // namespace
 
   LayerSurface* LayerSurface::fromSurface(wlr_surface* surface) {
@@ -490,8 +495,8 @@ namespace andromeda {
     }
     m_glassAlpha = alpha;
     m_blur.setAlpha(alpha);
-    for (SurfaceBlur& blur : m_shapeBlurs) {
-      blur.setAlpha(alpha);
+    for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
+      m_shapeBlurs[i].setAlpha(alpha * (i < m_shapeBlurOpacity.size() ? m_shapeBlurOpacity[i] : 1.0F));
     }
     for (auto* tree : {m_scene->tree, m_popupTree}) {
       wlr_scene_node_for_each_buffer(
@@ -628,6 +633,7 @@ namespace andromeda {
       }
       SurfaceShadow& shadow = *m_shapeShadows[shadowCount++];
       shadow.setStyle(elevationStyle(shapeLevel));
+      shadow.setAlpha(static_cast<float>(shapeOpacity(*state, *shapeMotion)));
       const auto px = [scale](double v) { return static_cast<int>(std::lround(v * scale)); };
       shadow.update(
           m_scene->tree, px(c[2]), px(c[3]), 0, px(shapeMotion->value(Property::Radius)[0]), 0, tree->node.x + px(c[0]),
@@ -656,7 +662,7 @@ namespace andromeda {
       }
       wlr_scene_rect* rect = m_shapeFills[fillCount++];
       const auto px = [scale](double v) { return static_cast<int>(std::lround(v * scale)); };
-      const double alpha = std::clamp(fill[3], 0.0, 1.0) * surfaceOpacity;
+      const double alpha = std::clamp(fill[3], 0.0, 1.0) * surfaceOpacity * shapeOpacity(*state, *shapeMotion);
       // Premultiplied, as the scene renders rects.
       const float color[4] = {static_cast<float>(std::clamp(fill[0], 0.0, 1.0) * alpha),
                               static_cast<float>(std::clamp(fill[1], 0.0, 1.0) * alpha),
@@ -1136,6 +1142,8 @@ namespace andromeda {
             .clarity = blurClarity(*state, *shape),
             .tint = {static_cast<float>(tint[0]), static_cast<float>(tint[1]), static_cast<float>(tint[2]),
                      static_cast<float>(std::clamp(tint[3], 0.0, 1.0))},
+            .opacity = static_cast<float>(shapeOpacity(*state, *shape)),
+            .solo = shape->value(SurfaceMotion::Property::Solo)[0] >= 0.5,
         });
       }
     }
@@ -1156,8 +1164,8 @@ namespace andromeda {
       const auto same = [this](std::size_t a, std::size_t b) {
         const ShapeMaterial& x = m_shapeMaterials[a];
         const ShapeMaterial& y = m_shapeMaterials[b];
-        return x.liquid > 0.0F && x.liquid == y.liquid && x.rim == y.rim && x.lens == y.lens && x.dense == y.dense
-            && x.clarity == y.clarity && x.tint == y.tint;
+        return x.liquid > 0.0F && !x.solo && !y.solo && x.liquid == y.liquid && x.rim == y.rim && x.lens == y.lens
+            && x.dense == y.dense && x.clarity == y.clarity && x.tint == y.tint;
       };
       groupMergedShapes(shapes, shapeClips, motionScale, mergeReach, same, merges, mergedAway);
       for (std::size_t i = 0; i < shapes.size(); ++i) {
@@ -1284,6 +1292,7 @@ namespace andromeda {
     }
     m_nodeArea.resize(m_shapeBlurs.size() + 1, 0);
     m_nodeLuminance.resize(m_nodeArea.size());
+    m_shapeBlurOpacity.resize(m_shapeBlurs.size(), 1.0F);
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
       SurfaceBlur& blur = m_shapeBlurs[i];
       const std::size_t shape = i + firstShapeBlur;
@@ -1312,7 +1321,8 @@ namespace andromeda {
       blur.setRim(own ? m_shapeMaterials[shape].rim : m_rim);
       blur.setLens(own ? m_shapeMaterials[shape].lens : m_lens);
       blur.setFade(m_blurFade);
-      blur.setAlpha(m_glassAlpha);
+      m_shapeBlurOpacity[i] = own ? m_shapeMaterials[shape].opacity : 1.0F;
+      blur.setAlpha(m_glassAlpha * m_shapeBlurOpacity[i]);
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,
           merged ? corner_radii_all(0) : shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],

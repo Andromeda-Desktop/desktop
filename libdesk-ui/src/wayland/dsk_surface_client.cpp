@@ -160,6 +160,8 @@ bool DskSurfaceClient::hasLiquidProperty() const { return dsk_surface_v1_get_ver
 
 bool DskSurfaceClient::hasBlurProperty() const { return dsk_surface_v1_get_version(m_surface) >= 15; }
 
+bool DskSurfaceClient::hasSoloProperty() const { return dsk_surface_v1_get_version(m_surface) >= 18; }
+
 bool DskSurfaceClient::hasStrokeProperty() const { return dsk_surface_v1_get_version(m_surface) >= 7; }
 
 bool DskSurfaceClient::hasTintProperty() const { return dsk_surface_v1_get_version(m_surface) >= 9; }
