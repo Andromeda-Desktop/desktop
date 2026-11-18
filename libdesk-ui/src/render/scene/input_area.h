@@ -181,6 +181,9 @@ public:
 
   void setPropagateEvents(bool propagate);
   [[nodiscard]] bool propagateEvents() const noexcept { return m_propagateEvents; }
+  // A two-finger scroll over this area or its children moves along one axis per gesture: the first past the slop.
+  void setLocksScrollAxis(bool lock) noexcept { m_locksScrollAxis = lock; }
+  [[nodiscard]] bool locksScrollAxis() const noexcept { return m_locksScrollAxis; }
 
   void setEnabled(bool enabled);
   [[nodiscard]] bool enabled() const noexcept { return m_enabled; }
@@ -272,6 +275,7 @@ private:
   std::uint32_t m_acceptedScrollDirections = allScrollDirections();
   TouchScrollAxis m_touchScrollAxis = TouchScrollAxis::None;
   bool m_propagateEvents = false;
+  bool m_locksScrollAxis = false;
   bool m_enabled = true;
   HitShape m_hitShape = HitShape::Rect;
   bool m_hovered = false;

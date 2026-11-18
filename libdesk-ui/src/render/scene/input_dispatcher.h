@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -126,6 +128,14 @@ private:
   InputArea* m_focusedArea = nullptr;
   InputArea* m_capturedArea = nullptr; // held while any button is pressed
   TouchScrollGesture m_touchGesture;
+  // A finger scroll under an area that locks the scroll axis: Deciding holds the motion until one axis passes the
+  // slop; then only that axis goes on until its stop or a pause.
+  enum class AxisLock : std::uint8_t { Idle, Deciding, Vertical, Horizontal };
+  AxisLock m_axisLock = AxisLock::Idle;
+  std::array<double, 2> m_axisLockHeld{};
+  std::chrono::steady_clock::time_point m_axisLockLast;
+  // False: the event is held or dropped. value: the held motion is added when the axis wins.
+  bool passAxisLock(InputArea* target, std::uint32_t axis, std::uint32_t axisSource, double& value);
   std::optional<std::size_t> m_stashedTabFocusIndex;
   std::optional<std::string> m_stashedTabFocusKey;
   std::uint32_t m_lastSerial = 0;

@@ -1,6 +1,7 @@
 #include "render/scene/input_dispatcher.h"
 
 #include "core/input/keybind_matcher.h"
+#include "core/input/pointer_axis.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
 #include "wayland/text_input_service.h"
@@ -14,6 +15,8 @@
 
 namespace {
   constexpr float kTouchScrollSlop = 8.0F;
+  constexpr double kAxisLockSlop = 8.0;
+  constexpr auto kAxisLockGap = std::chrono::milliseconds(100);
 
   bool nodeVisibleInScene(const Node* node) {
     for (const Node* current = node; current != nullptr; current = current->parent()) {
@@ -348,8 +351,42 @@ void InputDispatcher::syncPointerHover() {
   updateHover(m_lastPointerX, m_lastPointerY, m_lastSerial);
 }
 
+bool InputDispatcher::passAxisLock(InputArea* target, std::uint32_t axis, std::uint32_t axisSource, double& value) {
+  bool locks = false;
+  for (Node* node = target; node != nullptr && !locks; node = node->parent()) {
+    const auto* area = dynamic_cast<const InputArea*>(node);
+    locks = area != nullptr && area->locksScrollAxis();
+  }
+  if (axisSource != AxisSource::Finger || !locks || axis > PointerAxis::Horizontal) {
+    return true;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  if (now - m_axisLockLast > kAxisLockGap) {
+    m_axisLock = AxisLock::Idle;
+  }
+  m_axisLockLast = now;
+  if (m_axisLock == AxisLock::Idle) {
+    m_axisLock = AxisLock::Deciding;
+    m_axisLockHeld = {};
+  }
+  if (m_axisLock == AxisLock::Deciding) {
+    m_axisLockHeld[axis] += value;
+    if (std::abs(m_axisLockHeld[axis]) < kAxisLockSlop) {
+      return false;
+    }
+    m_axisLock = axis == PointerAxis::Vertical ? AxisLock::Vertical : AxisLock::Horizontal;
+    value = m_axisLockHeld[axis];
+    return true;
+  }
+  return m_axisLock == (axis == PointerAxis::Vertical ? AxisLock::Vertical : AxisLock::Horizontal);
+}
+
 bool InputDispatcher::pointerAxisStop(std::uint32_t axis) {
   pruneDetachedAreas();
+  if (m_axisLock == AxisLock::Deciding
+      || m_axisLock == (axis == PointerAxis::Vertical ? AxisLock::Vertical : AxisLock::Horizontal)) {
+    m_axisLock = AxisLock::Idle;
+  }
   for (Node* node = m_capturedArea != nullptr ? m_capturedArea : m_hoveredArea; node != nullptr; node = node->parent()) {
     auto* area = dynamic_cast<InputArea*>(node);
     if (area != nullptr && area->enabled() && area->dispatchAxisStop(axis)) {
@@ -367,6 +404,9 @@ bool InputDispatcher::pointerAxis(
   InputArea* target = m_capturedArea != nullptr ? m_capturedArea : findInputAreaAt(x, y);
   if (target == nullptr) {
     return false;
+  }
+  if (!passAxisLock(target, axis, axisSource, value)) {
+    return true;
   }
 
   bool consumedAny = false;

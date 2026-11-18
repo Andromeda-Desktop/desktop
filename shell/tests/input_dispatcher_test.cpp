@@ -209,8 +209,8 @@ int main() {
     int cancellations = 0;
     std::uint32_t cursor = 0;
     area->setOnCancel([&cancellations]() { ++cancellations; });
-    area->setCursorShape(19);
-    dispatcher.setCursorShapeCallback([&cursor](std::uint32_t, std::uint32_t shape) { cursor = shape; });
+    area->setCursorShape(static_cast<CursorShape>(19));
+    dispatcher.setCursorShapeCallback([&cursor](std::uint32_t, CursorShape shape) { cursor = static_cast<std::uint32_t>(shape); });
     dispatcher.setSceneRoot(root.get());
 
     ok = expect(press(dispatcher), "destruction setup press is consumed") && ok;
@@ -234,17 +234,17 @@ int main() {
 
     auto capturedArea = std::make_unique<InputArea>();
     capturedArea->setSize(40.0F, 40.0F);
-    capturedArea->setCursorShape(capturedCursor);
+    capturedArea->setCursorShape(static_cast<CursorShape>(capturedCursor));
 
     auto hoveredArea = std::make_unique<InputArea>();
     hoveredArea->setSize(40.0F, 40.0F);
-    hoveredArea->setCursorShape(hoveredCursor);
+    hoveredArea->setCursorShape(static_cast<CursorShape>(hoveredCursor));
     hoveredArea->setAcceptedButtons(0);
     auto* hovered = static_cast<InputArea*>(capturedArea->addChild(std::move(hoveredArea)));
     auto* captured = static_cast<InputArea*>(root->addChild(std::move(capturedArea)));
 
     std::uint32_t cursor = 0;
-    dispatcher.setCursorShapeCallback([&cursor](std::uint32_t, std::uint32_t shape) { cursor = shape; });
+    dispatcher.setCursorShapeCallback([&cursor](std::uint32_t, CursorShape shape) { cursor = static_cast<std::uint32_t>(shape); });
     dispatcher.setSceneRoot(root.get());
     dispatcher.pointerEnter(10.0F, 10.0F, 1);
 
@@ -415,6 +415,46 @@ int main() {
     ok = expect(rowPresses == 1, "mouse press reaches the child immediately") && ok;
     ok = expect(viewportPresses == 0, "mouse press is not handed to the touch-scroll viewport") && ok;
     (void)dispatcher.pointerButton(10.0F, 10.0F, BTN_LEFT, false, 2, 20, false);
+  }
+
+  // A pager (horizontal) holds a scroller (vertical): a diagonal finger scroll moves only the axis that passes the
+  // slop first; the stop of an axis the scroller declines reaches the pager.
+  {
+    InputDispatcher dispatcher;
+    auto root = std::make_unique<Node>();
+    root->setSize(100.0F, 100.0F);
+    auto* pager = addArea(*root);
+    pager->setSize(100.0F, 100.0F);
+    pager->setLocksScrollAxis(true);
+    auto* scroller = addArea(*pager);
+    double across = 0.0;
+    double down = 0.0;
+    int pagerStops = 0;
+    pager->setOnAxisHandler([&](const InputArea::PointerData& d) {
+      if (d.axis != 1) return false;
+      across += d.axisValue;
+      return true;
+    });
+    pager->setOnAxisStop([&](std::uint32_t axis) { return axis == 1 && ++pagerStops > 0; });
+    scroller->setOnAxisHandler([&](const InputArea::PointerData& d) {
+      if (d.axis != 0) return false;
+      down += d.axisValue;
+      return true;
+    });
+    scroller->setOnAxisStop([](std::uint32_t axis) { return axis == 0; });
+    dispatcher.setSceneRoot(root.get());
+    dispatcher.pointerEnter(10.0F, 10.0F, 1);
+    for (const auto& [axis, value] : {std::pair{1U, 2.0}, {0U, 3.0}, {1U, 2.0}, {0U, 6.0}, {1U, 5.0}, {0U, 1.0}}) {
+      (void)dispatcher.pointerAxis(10.0F, 10.0F, axis, 1, value, 0, 0, 0.0F);
+    }
+    ok = expect(down == 10.0 && across == 0.0, "a mostly vertical finger scroll moves only vertically") && ok;
+    (void)dispatcher.pointerAxisStop(0);
+    (void)dispatcher.pointerAxisStop(1);
+    ok = expect(pagerStops == 1, "a horizontal stop the scroller declines reaches the pager") && ok;
+    for (const auto& [axis, value] : {std::pair{1U, 6.0}, {0U, 1.0}, {1U, 4.0}, {0U, 1.0}}) {
+      (void)dispatcher.pointerAxis(10.0F, 10.0F, axis, 1, value, 0, 0, 0.0F);
+    }
+    ok = expect(down == 10.0 && across == 10.0, "the next gesture locks horizontally and keeps its held motion") && ok;
   }
 
   return ok ? 0 : 1;

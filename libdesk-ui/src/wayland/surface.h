@@ -146,6 +146,7 @@ public:
   void setWallpaperMask(std::optional<WallpaperMaskDrawParams> mask);
   [[nodiscard]] RenderContext* renderContext() const noexcept { return m_renderContext; }
   [[nodiscard]] RenderTarget& renderTarget() noexcept { return m_renderTarget; }
+  [[nodiscard]] Node* sceneRoot() const noexcept { return m_sceneRoot; }
   [[nodiscard]] wl_surface* wlSurface() const noexcept { return m_surface; }
   [[nodiscard]] const std::string& debugName() const noexcept { return m_debugName; }
   [[nodiscard]] std::uint32_t width() const noexcept { return m_width; }
