@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <utility>
 
 namespace term {
@@ -27,7 +28,7 @@ namespace term {
 
   TerminalApp::TerminalApp()
       : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}),
-        m_workspaces([] {},
+        m_workspaces([this] { workspacesChanged(); },
                      [this] {
                        WorkspaceWatcher::Defs defs;
                        for (const nlohmann::json& def : state().get("/terminal/workspaces", nlohmann::json::array())) {
@@ -102,6 +103,21 @@ namespace term {
       std::ranges::sort(out, {}, &TerminalWindow::windowId);
       return out;
     });
+    m_windows[&window]->setWorkspaceBar(
+        [this, &window] {
+          std::uint64_t here = 0;
+          std::set<std::uint64_t> elsewhere;
+          for (const auto& [shown, workspace] : m_windowWorkspaces) {
+            const auto* id = std::get_if<std::uint64_t>(&workspace);
+            if (id != nullptr && shown == &window) {
+              here = *id;
+            } else if (id != nullptr) {
+              elsewhere.insert(*id);
+            }
+          }
+          return workspace_bar::barFor(m_workspaces.workspaces(), here, elsewhere);
+        },
+        [this, &window](std::uint64_t id) { pickWorkspace(window, id); }, nullptr);
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });
@@ -121,8 +137,22 @@ namespace term {
       if (const auto* id = std::get_if<std::uint64_t>(&it->second); id != nullptr && !running) m_workspaces.close(*id);
       m_windowWorkspaces.erase(it);
     }
+    workspacesChanged();
     m_windows.erase(&window);
     saveLayouts();
+  }
+
+  void TerminalApp::workspacesChanged() {
+    for (const auto& [window, terminal] : m_windows) terminal->workspacesChanged();
+  }
+
+  void TerminalApp::pickWorkspace(AppWindow& from, std::uint64_t id) {
+    for (const auto& [window, workspace] : m_windowWorkspaces) {
+      if (window != &from && std::get_if<std::uint64_t>(&workspace) != nullptr && std::get<std::uint64_t>(workspace) == id) {
+        window->activate(loop().wayland().requestActivationToken(from.wlSurface()));
+        return;
+      }
+    }
   }
 
   void TerminalApp::joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir) {
@@ -142,6 +172,7 @@ namespace term {
       if (pending == nullptr || pending->req != answered) return; // the window closed before the answer
       for (const std::uint64_t held : pending->held) m_workspaces.setSession(held, id);
       it->second = id;
+      workspacesChanged();
     });
     if (req) m_windowWorkspaces.emplace(&window, WorkspacePending{*req, {heldId}});
   }

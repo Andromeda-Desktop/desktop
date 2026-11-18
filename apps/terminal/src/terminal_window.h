@@ -1,5 +1,6 @@
 #pragma once
 
+#include "workspace_bar.h"
 #include "command_palette.h"
 #include "settings_store.h"
 #include "core/timer_manager.h"
@@ -142,6 +143,16 @@ namespace term {
     void renameSession(std::uint64_t id, std::string name); // empty: the automatic name
     // All windows of the app, in opening order (the command palette lists their sessions).
     void setWindows(std::function<std::vector<TerminalWindow*>()> windows) { m_windows = std::move(windows); }
+    // The sidebar foot bar: its items, and a click on an item (by workspace id) or on "+".
+    void setWorkspaceBar(std::function<workspace_bar::Bar()> bar, std::function<void(std::uint64_t)> pick,
+                         std::function<void()> add) {
+      m_bar = std::move(bar);
+      m_pickWorkspace = std::move(pick);
+      m_addWorkspace = std::move(add);
+      workspacesChanged();
+    }
+    // The holder's workspace table changed.
+    void workspacesChanged();
     void setPaletteRecent(std::function<std::vector<std::string>()> load, std::function<void(std::vector<std::string>)> save) {
       m_loadRecent = std::move(load);
       m_saveRecent = std::move(save);
@@ -232,6 +243,15 @@ namespace term {
     void syncAgentBar();
     void fillAgentBar();
     [[nodiscard]] AgentView* agentView(std::uint64_t key);
+    std::function<workspace_bar::Bar()> m_bar;
+    std::function<void(std::uint64_t)> m_pickWorkspace;
+    std::function<void()> m_addWorkspace;
+    workspace_bar::Bar m_shownBar;
+    Button* m_prefsButton = nullptr; // hidden while the foot bar shows
+    Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
+    Flex* m_footBar = nullptr;   // the track's items
+    float m_footWidth = 0.0F;    // the track's inner width, px
+    void fillFootBar();
     Button* m_newButton = nullptr; // the sidebar "+": its menu opens new sessions and windows
     SelectionList* m_rowList = nullptr;
     Box* m_dropLine = nullptr; // where a dragged row lands in the sidebar order

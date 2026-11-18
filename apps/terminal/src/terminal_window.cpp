@@ -228,10 +228,22 @@ namespace term {
                               .radius = Tokens::componentTerminalSidebarDropLine * s / 2.0F, .visible = false,
                               .participatesInLayout = false}));
       auto bottom = ui::row({.align = FlexAlign::Center, .justify = m_rail ? FlexJustify::Center : FlexJustify::Start});
-      bottom->addChild(ui::button({.glyph = std::string("settings"), .glyphSize = Tokens::sizeSymbol * s,
+      m_footTrack = nullptr;
+      m_footBar = nullptr;
+      m_footWidth = width - 2.0F * Tokens::spaceP8 * s - 2.0F * Tokens::spaceP4 * s;
+      if (!m_rail) {
+        auto track = ui::row({.out = &m_footTrack, .align = FlexAlign::Center, .padding = Tokens::spaceP4 * s,
+                              .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::sizeControlL * s / 2.0F,
+                              .height = Tokens::sizeControlL * s, .flexGrow = 1.0F});
+        // Items live in their own row: the track's fill is a child of the track.
+        track->addChild(ui::row({.out = &m_footBar, .align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .flexGrow = 1.0F}));
+        bottom->addChild(std::move(track));
+      }
+      bottom->addChild(ui::button({.out = &m_prefsButton, .glyph = std::string("settings"), .glyphSize = Tokens::sizeSymbol * s,
                                    .variant = ButtonVariant::Ghost, .tooltip = std::string("Preferences"),
                                    .radius = button / 2.0F, .height = button,
                                    .onClick = [this] { m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); }}));
+      fillFootBar();
       side->addChild(std::move(bottom));
       refreshRows();
       applyFilter();
@@ -624,6 +636,83 @@ namespace term {
     for (const SessionListEvent& event : restoreEvents(saved, ids)) {
       apply(event);
     }
+  }
+
+  void TerminalWindow::workspacesChanged() {
+    if (m_bar == nullptr || m_bar() == m_shownBar) return;
+    fillFootBar();
+    requestFrame();
+  }
+
+  void TerminalWindow::fillFootBar() {
+    m_shownBar = m_bar != nullptr ? m_bar() : workspace_bar::Bar{};
+    if (m_footBar == nullptr) return;
+    while (!m_footBar->children().empty()) m_footBar->removeChild(m_footBar->children().back().get());
+    m_footTrack->setVisible(!m_shownBar.items.empty());
+    if (m_search != nullptr) {
+      const auto here = std::ranges::find(m_shownBar.items, workspace_bar::Location::Here, &workspace_bar::Item::location);
+      m_search->setPlaceholder(here != m_shownBar.items.end() ? here->name : std::string("Sessions"));
+    }
+    // The bar takes the whole row, as in the mockup; Preferences stays on its key and in the palette.
+    if (m_prefsButton != nullptr) m_prefsButton->setVisible(m_shownBar.items.empty());
+    if (m_shownBar.items.empty()) return;
+    const float s = m_window.uiScale();
+    const float item = Tokens::sizeControlM * s;
+    const float symbol = Tokens::sizeSymbol * s;
+    const ColorSpec clear = clearColorSpec();
+    auto ghost = [&](ColorRole label) {
+      Button::ButtonPalette palette;
+      palette.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(label)};
+      palette.hover = {.bg = colorSpecFromRole(ColorRole::Fill2), .border = clear, .label = colorSpecFromRole(ColorRole::Label1)};
+      palette.pressed = palette.hover;
+      palette.disabled = palette.normal;
+      return palette;
+    };
+    const std::size_t others = m_shownBar.items.size() - 1 + (m_shownBar.more > 0 ? 1 : 0) + 1; // + "+"
+    const float gap = Tokens::spaceP4 * s;
+    const float lensWidth = std::max(item, m_footWidth - static_cast<float>(others) * (item + gap));
+    const float nameWidth = std::max(0.0F, lensWidth - 2.0F * Tokens::spaceP8 * s - symbol - Tokens::spaceP8 * s);
+    for (const workspace_bar::Item& ws : m_shownBar.items) {
+      const std::string glyph = ws.symbol.empty() ? std::string("folder") : ws.symbol;
+      if (ws.location == workspace_bar::Location::Here) {
+        auto lens = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP8 * s,
+                             .fill = colorSpecFromRole(ColorRole::Lens), .radius = item / 2.0F, .minWidth = item,
+                             .maxWidth = lensWidth, .height = item});
+        lens->addChild(ui::glyph({.glyph = glyph, .glyphSize = symbol, .color = colorSpecFromRole(ColorRole::AccentText)}));
+        // Too narrow for a readable name: the lens shows the symbol only.
+        if (nameWidth < item) {
+          m_footBar->addChild(std::move(lens));
+          continue;
+        }
+        lens->addChild(ui::label({.text = ws.name, .fontSize = Tokens::typeBody.size * s, .fontWeight = FontWeight::SemiBold,
+                                  .color = colorSpecFromRole(ColorRole::Label1), .maxWidth = nameWidth, .maxLines = 1,
+                                  .ellipsize = TextEllipsize::End}));
+        m_footBar->addChild(std::move(lens));
+        continue;
+      }
+      Button* button = nullptr;
+      m_footBar->addChild(ui::button({.out = &button, .glyph = glyph, .glyphSize = symbol,
+                                      .customPalette = ghost(ws.location == workspace_bar::Location::Saved ? ColorRole::Label3 : ColorRole::Label2),
+                                      .tooltip = workspace_bar::tooltip(ws), .radius = item / 2.0F, .width = item,
+                                      .height = item, .onClick = [this, id = ws.id] { if (m_pickWorkspace) m_pickWorkspace(id); }}));
+      if (ws.status != workspace_bar::Status::None) {
+        const float dot = Tokens::componentTerminalWorkspaceDot * s;
+        Box* badge = nullptr;
+        button->addChild(ui::box({.out = &badge,
+                                  .fill = colorSpecFromRole(ws.status == workspace_bar::Status::Failed ? ColorRole::Danger : ColorRole::Label1),
+                                  .radius = dot / 2.0F, .width = dot, .height = dot, .participatesInLayout = false}));
+        badge->setPosition(item - dot - dot, dot);
+      }
+    }
+    if (m_shownBar.more > 0) {
+      m_footBar->addChild(ui::button({.glyph = std::string("dots"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
+                                      .tooltip = std::format("{} more", m_shownBar.more), .radius = item / 2.0F,
+                                      .width = item, .height = item}));
+    }
+    m_footBar->addChild(ui::box({.flexGrow = 1.0F}));
+    m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
+                                    .tooltip = std::string("New workspace"), .radius = item / 2.0F, .width = item,
+                                    .height = item, .onClick = [this] { if (m_addWorkspace) m_addWorkspace(); }}));
   }
 
   bool TerminalWindow::detachSessions() {

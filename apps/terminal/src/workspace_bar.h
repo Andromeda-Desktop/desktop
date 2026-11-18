@@ -22,11 +22,13 @@ namespace term::workspace_bar {
     Status status = Status::None; // Failed wins over Running
     int failed = 0;               // sessions whose last command exited non-zero
     int running = 0;              // sessions running a command
+    bool operator==(const Item&) const = default;
   };
 
   struct Bar {
     std::vector<Item> items; // empty with fewer than 2 workspaces
     std::size_t more = 0;    // workspaces not among items
+    bool operator==(const Bar&) const = default;
   };
 
   inline constexpr std::size_t kMaxItems = 5;
