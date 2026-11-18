@@ -362,7 +362,7 @@ struct fx_framebuffer* fx_render_pass_blur_saved_pixels_buffer(struct fx_gles_re
   if (pass->fx_offscreen_buffers == NULL) {
     return NULL;
   }
-  return ensure_offscreen_buffer(pass, &pass->fx_offscreen_buffers->blur_saved_pixels_buffer, false);
+  return ensure_offscreen_buffer(pass, &pass->fx_offscreen_buffers->blur_saved_pixels_buffer, true);
 }
 
 ///
