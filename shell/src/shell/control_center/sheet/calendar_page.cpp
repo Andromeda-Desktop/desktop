@@ -196,13 +196,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
       .height = gridHeight(scale),
       .configure = [](Flex& viewport) { viewport.setClipChildren(true); },
   });
-  auto grid = ui::column({
-      .out = &m_grid,
-      .align = FlexAlign::Stretch,
-      .gap = gridGap() * scale,
-      .configure = [](Flex& layer) { layer.setParticipatesInLayout(false); },
-  });
-  gridViewport->addChild(std::move(grid));
+  gridViewport->addChild(makeGrid(scale));
   calendarCard->addChild(std::move(gridViewport));
   tab->addChild(std::move(calendarCard));
 
@@ -640,17 +634,28 @@ void CalendarPage::changeMonthBy(int delta) {
   }
 
   cancelMonthSlide();
-
+  m_monthOffset += delta;
+  m_lastDisplayYear = std::numeric_limits<int>::min();
+  m_lastDisplayMonth = -1;
   AnimationManager* animations = m_gridViewport != nullptr ? m_gridViewport->animationManager() : nullptr;
-  if (animations == nullptr || m_grid == nullptr) {
-    m_monthOffset += delta;
-    m_lastDisplayYear = std::numeric_limits<int>::min();
-    m_lastDisplayMonth = -1;
-    PanelManager::instance().refresh();
-    return;
+  if (animations != nullptr && m_grid != nullptr) {
+    // P12: the shown month stays as the outgoing grid; the next layout builds the new month into a fresh grid and
+    // both slide together.
+    m_outgoingGrid = m_grid;
+    m_gridViewport->addChild(makeGrid(contentScale()));
+    m_monthSlideDirection = delta > 0 ? 1 : -1;
+    m_startMonthSlideIn = true;
   }
+  PanelManager::instance().refresh();
+}
 
-  beginSlideOut(delta);
+std::unique_ptr<Flex> CalendarPage::makeGrid(float scale) {
+  return ui::column({
+      .out = &m_grid,
+      .align = FlexAlign::Stretch,
+      .gap = gridGap() * scale,
+      .configure = [](Flex& layer) { layer.setParticipatesInLayout(false); },
+  });
 }
 
 void CalendarPage::cancelMonthSlide() {
@@ -658,95 +663,50 @@ void CalendarPage::cancelMonthSlide() {
     if (AnimationManager* animations = m_gridViewport->animationManager(); animations != nullptr) {
       animations->cancel(m_monthSlideAnimId);
     }
-    m_monthSlideAnimId = 0;
   }
-  // A slide cut short still lands on its month: the next move counts from there.
-  if (m_pendingMonthDelta != 0) {
-    m_monthOffset += m_pendingMonthDelta;
-    m_lastDisplayYear = std::numeric_limits<int>::min();
-    m_lastDisplayMonth = -1;
-  }
-  m_pendingMonthDelta = 0;
+  m_monthSlideAnimId = 0;
   m_startMonthSlideIn = false;
+  if (m_outgoingGrid != nullptr && m_gridViewport != nullptr) {
+    (void)m_gridViewport->removeChild(m_outgoingGrid);
+  }
+  m_outgoingGrid = nullptr;
   if (m_grid != nullptr) {
     m_grid->setPosition(0.0F, 0.0F);
-    m_grid->setOpacity(1.0F);
   }
 }
 
-void CalendarPage::applyMonthSlide(float progress, bool slidingIn) {
+// P12: both months move 1:1, the incoming one a viewport width plus 32 behind the outgoing one.
+void CalendarPage::applyMonthSlide(float progress) {
   if (m_grid == nullptr || m_gridViewport == nullptr) {
     return;
   }
-
-  const float travel = m_gridViewport->width();
-  if (travel <= 0.0F) {
-    return;
-  }
-
+  const float travel = m_gridViewport->width() + Tokens::spaceP32 * contentScale();
   const auto direction = static_cast<float>(m_monthSlideDirection);
-  if (slidingIn) {
-    m_grid->setPosition(direction * travel * (1.0F - progress), 0.0F);
-    m_grid->setOpacity(0.7F + 0.3F * progress);
-  } else {
-    m_grid->setPosition(-direction * travel * progress, 0.0F);
-    m_grid->setOpacity(1.0F - 0.3F * progress);
+  m_grid->setPosition(direction * travel * (1.0F - progress), 0.0F);
+  if (m_outgoingGrid != nullptr) {
+    m_outgoingGrid->setPosition(-direction * travel * progress, 0.0F);
   }
-}
-
-void CalendarPage::beginSlideOut(int delta) {
-  AnimationManager* animations = m_gridViewport != nullptr ? m_gridViewport->animationManager() : nullptr;
-  if (animations == nullptr || m_grid == nullptr) {
-    m_monthOffset += delta;
-    m_lastDisplayYear = std::numeric_limits<int>::min();
-    m_lastDisplayMonth = -1;
-    PanelManager::instance().refresh();
-    return;
-  }
-
-  m_monthSlideDirection = delta > 0 ? 1 : -1;
-  m_pendingMonthDelta = delta;
-
-  PanelManager::instance().requestFrameTick();
-  m_monthSlideAnimId = animations->animateSpring(
-      0.0F, 1.0F, Style::spring(Tokens::springPage),
-      [this](float progress) {
-        applyMonthSlide(progress, false);
-        PanelManager::instance().requestRedraw();
-      },
-      [this] {
-        m_monthSlideAnimId = 0;
-        m_monthOffset += m_pendingMonthDelta;
-        m_pendingMonthDelta = 0;
-        m_lastDisplayYear = std::numeric_limits<int>::min();
-        m_lastDisplayMonth = -1;
-        m_startMonthSlideIn = true;
-        PanelManager::instance().refresh();
-      },
-      m_gridViewport
-  , 0.0F, Unit::Progress);
 }
 
 void CalendarPage::beginSlideIn() {
   AnimationManager* animations = m_gridViewport != nullptr ? m_gridViewport->animationManager() : nullptr;
   if (animations == nullptr || m_grid == nullptr) {
+    cancelMonthSlide();
     return;
   }
 
-  applyMonthSlide(0.0F, true);
+  applyMonthSlide(0.0F);
   PanelManager::instance().requestFrameTick();
   m_monthSlideAnimId = animations->animateSpring(
       0.0F, 1.0F, Style::spring(Tokens::springPage),
       [this](float progress) {
-        applyMonthSlide(progress, true);
+        applyMonthSlide(progress);
         PanelManager::instance().requestRedraw();
       },
       [this] {
         m_monthSlideAnimId = 0;
-        if (m_grid != nullptr) {
-          m_grid->setPosition(0.0F, 0.0F);
-          m_grid->setOpacity(1.0F);
-        }
+        cancelMonthSlide();
+        PanelManager::instance().requestRedraw();
       },
       m_gridViewport
   , 0.0F, Unit::Progress);

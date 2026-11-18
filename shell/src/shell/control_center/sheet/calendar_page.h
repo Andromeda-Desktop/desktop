@@ -43,9 +43,9 @@ private:
   void addEventsEmptyState(float scale);
   void changeMonthBy(int delta);
   void cancelMonthSlide();
-  void beginSlideOut(int delta);
   void beginSlideIn();
-  void applyMonthSlide(float progress, bool slidingIn);
+  void applyMonthSlide(float progress);
+  [[nodiscard]] std::unique_ptr<Flex> makeGrid(float scale);
   void doLayout(Renderer& renderer, float contentWidth, float bodyHeight) override;
   void doUpdate(Renderer& renderer) override;
   void rebuild();
@@ -87,6 +87,7 @@ private:
   Button* m_nextButton = nullptr;
   Flex* m_gridViewport = nullptr;
   Flex* m_grid = nullptr;
+  Flex* m_outgoingGrid = nullptr; // the month sliding out while m_grid slides in
   Flex* m_eventsCard = nullptr;
   Label* m_eventsTitle = nullptr;
   ScrollView* m_eventsScroll = nullptr;
@@ -103,7 +104,6 @@ private:
   int m_lastCurrentMonth = -1;
   int m_lastToday = -1;
   int m_monthSlideDirection = 0;
-  int m_pendingMonthDelta = 0;
   bool m_startMonthSlideIn = false;
   AnimationManager::Id m_monthSlideAnimId = 0;
   bool m_showEventsCard = true;
