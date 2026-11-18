@@ -115,8 +115,12 @@ namespace term {
       m_prefsExport.reset();
       m_prefsWindow = nullptr;
     }
-    if (auto it = m_windows.find(&window); it != m_windows.end()) it->second->detachSessions();
-    m_windowWorkspaces.erase(&window);
+    const bool running = m_windows.contains(&window) && m_windows.at(&window)->detachSessions();
+    // A workspace with no running shell ends with its window; one with shells stays, detached.
+    if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
+      if (const auto* id = std::get_if<std::uint64_t>(&it->second); id != nullptr && !running) m_workspaces.close(*id);
+      m_windowWorkspaces.erase(it);
+    }
     m_windows.erase(&window);
     saveLayouts();
   }

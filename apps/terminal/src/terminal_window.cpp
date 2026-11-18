@@ -626,10 +626,15 @@ namespace term {
     }
   }
 
-  void TerminalWindow::detachSessions() {
+  bool TerminalWindow::detachSessions() {
+    bool running = false;
     for (auto& v : m_views) {
-      if (auto* t = v.view->terminal()) t->session().detach();
+      if (auto* t = v.view->terminal()) {
+        running = running || (t->session().heldId() && t->session().state() != SessionState::Exited);
+        t->session().detach();
+      }
     }
+    return running;
   }
 
   ContentView* TerminalWindow::shownView() {

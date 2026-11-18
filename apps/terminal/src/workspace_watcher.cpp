@@ -39,6 +39,10 @@ namespace term {
     if (connect()) send(holder::encodeSetWorkspace(heldId, workspace));
   }
 
+  void WorkspaceWatcher::close(std::uint64_t workspace) {
+    if (connect()) send(holder::encodeCloseWorkspace(workspace));
+  }
+
   void WorkspaceWatcher::doAddPollFds(std::vector<pollfd>& fds) {
     if (m_fd < 0) return;
     fds.push_back({.fd = m_fd, .events = static_cast<short>(POLLIN | (m_out.empty() ? 0 : POLLOUT)), .revents = 0});

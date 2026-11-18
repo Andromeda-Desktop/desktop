@@ -34,6 +34,8 @@ namespace term {
     std::optional<std::uint32_t> put(const holder::WorkspaceInfo& def,
                                      std::function<void(std::uint32_t req, std::uint64_t id)> done);
     void setSession(std::uint64_t heldId, std::uint64_t workspace);
+    // Ends the workspace's shells and removes it from the holder.
+    void close(std::uint64_t workspace);
 
     void dispatch(const std::vector<pollfd>& fds, std::size_t startIdx) override;
 

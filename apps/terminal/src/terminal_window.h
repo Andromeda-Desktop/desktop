@@ -102,7 +102,8 @@ namespace term {
   class TerminalWindow {
   public:
     // The window goes away but its held shells keep running (a closed window, not closed sessions).
-    void detachSessions();
+    // Returns true when a held shell still runs.
+    bool detachSessions();
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
     // activation token. joinWorkspace: puts each shell this window starts (held id, start folder) in its workspace.
