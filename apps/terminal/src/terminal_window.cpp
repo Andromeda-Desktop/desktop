@@ -172,7 +172,7 @@ namespace term {
       auto strip = std::make_unique<PageStrip>(&m_contentStrip, std::move(slot), m_shownBar.here, m_pager.count(), gap,
                                                [this](std::size_t page) { return contentPage(page); });
       strip->setSize(width, height);
-      showPagerPosition();
+      strip->setPagePosition(pagerAt()); // the sidebar may not be built yet: only this strip
       auto area = ui::inputArea({.width = width, .height = height}, std::move(strip));
       area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
       area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
@@ -283,7 +283,8 @@ namespace term {
       side->addChild(std::move(bottom));
       refreshRows();
       applyFilter();
-      showPagerPosition();
+      if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(pagerAt());
+      placeFootLens();
       auto area = ui::inputArea({.width = width, .height = height}, std::move(side));
       area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
       area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
@@ -705,9 +706,15 @@ namespace term {
     }
     // The bar takes the whole row, as in the mockup; Preferences stays on its key and in the palette.
     if (m_prefsButton != nullptr) m_prefsButton->setVisible(m_shownBar.items.empty());
+    m_footItems.clear();
+    m_footHere = nullptr;
+    m_footLens = nullptr;
     if (m_shownBar.items.empty()) return;
     const float s = m_window.uiScale();
     const float item = Tokens::sizeControlM * s;
+    // While the pages move, the lens leaves the current item and slides along the bar under them.
+    m_footBar->addChild(ui::box({.out = &m_footLens, .fill = colorSpecFromRole(ColorRole::Lens), .radius = item / 2.0F,
+                                 .visible = false, .participatesInLayout = false}));
     const float symbol = Tokens::sizeSymbol * s;
     const ColorSpec clear = clearColorSpec();
     auto ghost = [&](ColorRole label) {
@@ -725,10 +732,11 @@ namespace term {
     for (const workspace_bar::Item& ws : m_shownBar.items) {
       const std::string glyph = ws.symbol.empty() ? std::string("folder") : ws.symbol;
       if (ws.location == workspace_bar::Location::Here) {
-        auto lens = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP8 * s,
+        auto lens = ui::row({.out = &m_footHere, .align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP8 * s,
                              .fill = colorSpecFromRole(ColorRole::Lens), .radius = item / 2.0F, .minWidth = item,
                              .maxWidth = lensWidth, .height = item});
         lens->addChild(ui::glyph({.glyph = glyph, .glyphSize = symbol, .color = colorSpecFromRole(ColorRole::AccentText)}));
+        m_footItems.emplace_back(ws.id, lens.get());
         // Too narrow for a readable name: the lens shows the symbol only.
         if (nameWidth < item) {
           m_footBar->addChild(std::move(lens));
@@ -745,6 +753,7 @@ namespace term {
                                       .customPalette = ghost(ws.location == workspace_bar::Location::Saved ? ColorRole::Label3 : ColorRole::Label2),
                                       .tooltip = workspace_bar::tooltip(ws), .radius = item / 2.0F, .width = item,
                                       .height = item, .onClick = [this, id = ws.id] { pickPage(id); }}));
+      m_footItems.emplace_back(ws.id, button);
       if (ws.status != workspace_bar::Status::None) {
         const float dot = Tokens::componentTerminalWorkspaceDot * s;
         Box* badge = nullptr;
@@ -821,11 +830,35 @@ namespace term {
     }
   }
 
+  float TerminalWindow::pagerAt() const {
+    return m_pager.width() > 0.0F ? m_pager.shown() / m_pager.width() : static_cast<float>(m_shownBar.here);
+  }
+
   void TerminalWindow::showPagerPosition() {
-    const float at = m_pager.width() > 0.0F ? m_pager.shown() / m_pager.width() : static_cast<float>(m_shownBar.here);
+    const float at = pagerAt();
     if (m_contentStrip != nullptr) m_contentStrip->setPagePosition(at);
     if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(at);
+    placeFootLens();
     requestFrame();
+  }
+
+  void TerminalWindow::placeFootLens() {
+    if (m_footLens == nullptr || m_footHere == nullptr) return;
+    const auto item = [this](std::size_t page) -> Node* {
+      const std::uint64_t id = page < m_shownBar.pages.size() ? m_shownBar.pages[page] : 0;
+      const auto it = std::ranges::find(m_footItems, id, &std::pair<std::uint64_t, Node*>::first);
+      return it != m_footItems.end() ? it->second : m_footHere; // a page under "more" keeps the lens home
+    };
+    const bool moving = !std::holds_alternative<WorkspacePager::Rest>(m_pager.mode()) && m_pager.width() > 0.0F;
+    m_footLens->setVisible(moving);
+    m_footHere->setFill(moving ? clearColorSpec() : colorSpecFromRole(ColorRole::Lens));
+    if (!moving) return;
+    const float at = std::clamp(m_pager.shown() / m_pager.width(), 0.0F, static_cast<float>(m_pager.count() - 1));
+    const Node* from = item(static_cast<std::size_t>(std::floor(at)));
+    const Node* to = item(static_cast<std::size_t>(std::ceil(at)));
+    const float t = at - std::floor(at);
+    m_footLens->setPosition(std::lerp(from->x(), to->x(), t), from->y());
+    m_footLens->setSize(std::lerp(from->width(), to->width(), t), from->height());
   }
 
   void TerminalWindow::pagerLanded() {

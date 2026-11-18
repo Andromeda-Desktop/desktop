@@ -267,6 +267,7 @@ namespace term {
     void slideTo(std::size_t page);
     void slidePages(float velocity);
     void showPagerPosition();
+    [[nodiscard]] float pagerAt() const; // the shown position in pages
     void pagerLanded();
     // Neighbour pages: the session rows and the session cards of a workspace from the holder's table.
     [[nodiscard]] std::unique_ptr<Node> sidebarPage(std::size_t page);
@@ -286,6 +287,10 @@ namespace term {
     Button* m_prefsButton = nullptr; // hidden while the foot bar shows
     Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
     Flex* m_footBar = nullptr;   // the track's items
+    Flex* m_footHere = nullptr;  // this window's item: the lens at rest
+    Box* m_footLens = nullptr;   // the lens while pages move
+    std::vector<std::pair<std::uint64_t, Node*>> m_footItems; // bar item per workspace id
+    void placeFootLens();
     float m_footWidth = 0.0F;    // the track's inner width, px
     void fillFootBar();
     Button* m_newButton = nullptr; // the sidebar "+": its menu opens new sessions and windows
