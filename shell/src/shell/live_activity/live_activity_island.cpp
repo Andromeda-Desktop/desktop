@@ -687,14 +687,11 @@ LiveActivityIsland::Rect LiveActivityIsland::faceRect(const Instance& inst, Face
     w = std::max(inst.restWidth, std::min(inst.faceWidth[static_cast<std::size_t>(face)], inst.liveWidth));
     break;
   case Face::Osd:
-    // From the model: an OSD can arrive before the first configure builds osdBar.
-    if (m_osd.has_value() && !m_osd->showProgress) {
-      w = std::clamp(inst.faceWidth[static_cast<std::size_t>(face)], inst.restWidth, inst.liveWidth);
-      h = std::max(kMinCardHeight, inst.faceHeight[static_cast<std::size_t>(face)]);
-      radius = h * 0.5F;
-      break;
-    }
-    [[fallthrough]];
+    // Concept C: every OSD is a 40 high capsule (a level OSD 240 wide, a text OSD hugs its text).
+    w = std::clamp(inst.faceWidth[static_cast<std::size_t>(face)], inst.restWidth, inst.liveWidth);
+    h = inst.faceHeight[static_cast<std::size_t>(face)];
+    radius = h * 0.5F;
+    break;
   case Face::HoverMedia:
   case Face::Banner:
   case Face::Live:
@@ -1535,7 +1532,11 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
 
   // OSD face.
   auto osd = ui::row(
-      {.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = 12.0F, .paddingH = 12.0F, .width = inst.width, .height = kOsdHeight},
+      {.align = FlexAlign::Center,
+       .justify = FlexJustify::Center,
+       .gap = Tokens::spaceP12,
+       .width = inst.width,
+       .height = kOsdHeight},
       ui::glyph({.out = &inst.osdGlyph, .glyphSize = Tokens::componentIslandIcon, .color = liveLabel()}),
       ui::progressBar({
           .out = &inst.osdBar,
@@ -1547,7 +1548,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
       }),
       ui::label({
           .out = &inst.osdValue,
-          .fontSize = Tokens::typeCaption.size,
+          .fontSize = Tokens::typeBody.size,
           .fontWeight = FontWeight::SemiBold,
           .fontFeatures = "tnum",
           .color = liveLabel(),
@@ -1556,14 +1557,16 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
           .textAlign = TextAlign::End,
       })
   );
-  inst.osdValue->setLineHeight(Tokens::typeCaption.line);
+  osd->setPadding(0.0F, Tokens::spaceP16, 0.0F, Tokens::spaceP12);
+  inst.osdValue->setLineHeight(Tokens::typeBody.line);
   inst.faceNode[static_cast<std::size_t>(Face::Osd)] = osd.get();
   tint->addChild(std::move(osd));
 
-  // Banner face: the app icon (image-data, icon, desktop entry) over the accent glyph circle fallback.
+  // Banner face: the app icon (image-data, icon, desktop entry) over the accent glyph tile fallback.
   auto bannerIcon = ui::node({.width = kBannerGlyph, .height = kBannerGlyph});
   auto bannerCircle = iconCircle(&inst.bannerGlyph, kBannerGlyph);
   inst.bannerCircle = bannerCircle.get();
+  bannerCircle->setRadius(Tokens::radiusR8); // the fallback is a tile like the app icon it stands in for
   bannerIcon->addChild(std::move(bannerCircle));
   bannerIcon->addChild(ui::image({
       .out = &inst.bannerImage,
@@ -2014,7 +2017,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
     // A level OSD keeps its fixed width; a text OSD hugs glyph and text and ellipsizes at the expanded width.
     float osdW = static_cast<float>(kOsdWidth);
     const bool textOnly = m_osd.has_value() && !m_osd->showProgress;
-    const float osdFixed = 2.0F * 12.0F + Tokens::componentIslandIcon + 12.0F;
+    const float osdFixed = Tokens::spaceP12 + Tokens::spaceP16 + Tokens::componentIslandIcon + Tokens::spaceP12;
     inst.osdValue->setMaxWidth(textOnly ? std::max(0.0F, inst.liveWidth - osdFixed) : 0.0F);
     if (textOnly) {
       inst.osdValue->layout(renderer);
@@ -2022,7 +2025,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
     }
     inst.faceWidth[static_cast<std::size_t>(Face::Osd)] = osdW;
   }
-  inst.faceHeight[static_cast<std::size_t>(Face::Osd)] = kMinCardHeight;
+  inst.faceHeight[static_cast<std::size_t>(Face::Osd)] = kOsdHeight;
 
   // Banner face.
   if (m_banner.has_value()) {
@@ -2114,9 +2117,8 @@ void LiveActivityIsland::applyContent(Instance& inst) {
     inst.bannerTime->layout(renderer);
     inst.bannerApp->setMaxWidth(std::max(0.0F, inst.liveWidth - fixed - inst.bannerTime->width() - kCaptionGap));
     inst.bannerApp->layout(renderer);
-    const float header = inst.bannerApp->width() + kCaptionGap + inst.bannerTime->width();
-    const float textW = std::max({inst.bannerTitle->width(), inst.bannerBody->visible() ? inst.bannerBody->width() : 0.0F, header});
-    const float w = std::clamp(fixed + textW, kMinCardWidth, inst.liveWidth);
+    // Concept C: a banner is always the expanded width, so stacked banners and their peeks line up.
+    const float w = inst.liveWidth;
     inst.faceWidth[static_cast<std::size_t>(Face::Banner)] = w;
     inst.bannerTitle->setMaxWidth(w - fixed);
     inst.bannerBody->setMaxWidth(w - fixed);
@@ -2546,7 +2548,7 @@ void LiveActivityIsland::setBannerHover(Instance& inst, bool hover) {
     };
   } else if (!anyHover && m_bannerPausedFor.has_value()) {
     if (m_banner.has_value() && m_banner->id == m_bannerPausedFor->id) {
-      startBannerTimer(m_bannerPausedFor->banner);
+      startBannerTimer(std::chrono::milliseconds{Tokens::componentNotificationResumeMs});
     }
     if (m_notifications != nullptr && m_bannerPausedFor->notificationMs.has_value()) {
       m_notifications->resumeExpiry(m_bannerPausedFor->id, *m_bannerPausedFor->notificationMs);
