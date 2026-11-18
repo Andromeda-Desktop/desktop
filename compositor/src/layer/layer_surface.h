@@ -149,8 +149,8 @@ namespace andromeda {
     AnimatedValue m_density{0.0};
     float m_densityTarget = 0.0F;
     bool m_densityMeasured = false;
-    // Surface opacity (layer fade x dsk opacity): the compositor-drawn tint fades with the surface it belongs to.
-    float m_tintFade = 1.0F;
+    // Surface opacity (layer fade x dsk opacity): the whole glass (tint, rim, lens) fades with its surface.
+    float m_glassAlpha = 1.0F;
     float m_blurFade = 1.0F;
     SurfaceShadow m_shadow; // dsk_surface_v1 elevation
     std::vector<std::unique_ptr<SurfaceShadow>> m_shapeShadows; // dsk_shape_v1 elevation, one per shape

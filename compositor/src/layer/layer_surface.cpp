@@ -488,9 +488,10 @@ namespace andromeda {
         blur.setFade(m_blurFade);
       }
     }
-    if (alpha != m_tintFade) {
-      m_tintFade = alpha;
-      applyDensity();
+    m_glassAlpha = alpha;
+    m_blur.setAlpha(alpha);
+    for (SurfaceBlur& blur : m_shapeBlurs) {
+      blur.setAlpha(alpha);
     }
     for (auto* tree : {m_scene->tree, m_popupTree}) {
       wlr_scene_node_for_each_buffer(
@@ -993,7 +994,7 @@ namespace andromeda {
     // The compositor draws the client's tint over the blur, raised by the density.
     const float t = m_tint[3];
     const float amount =
-        t <= 0.0F ? 0.0F : glass::denser(t, static_cast<float>(m_density.current()), m_dense) * m_tintFade;
+        t <= 0.0F ? 0.0F : glass::denser(t, static_cast<float>(m_density.current()), m_dense);
     const std::array<float, 3> rgb{m_tint[0], m_tint[1], m_tint[2]};
     m_blur.setTintMix(rgb, amount);
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
@@ -1003,7 +1004,7 @@ namespace andromeda {
         const float ownDense = m_shapeMaterials[i + 1].dense;
         const float ownAmount = own[3] <= 0.0F
             ? 0.0F
-            : glass::denser(own[3], static_cast<float>(m_density.current()), ownDense) * m_tintFade;
+            : glass::denser(own[3], static_cast<float>(m_density.current()), ownDense);
         m_shapeBlurs[i].setTintMix({own[0], own[1], own[2]}, ownAmount);
       } else {
         m_shapeBlurs[i].setTintMix(rgb, amount);
@@ -1313,6 +1314,7 @@ namespace andromeda {
       blur.setRim(own ? m_shapeMaterials[shape].rim : m_rim);
       blur.setLens(own ? m_shapeMaterials[shape].lens : m_lens);
       blur.setFade(m_blurFade);
+      blur.setAlpha(m_glassAlpha);
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,
           merged ? corner_radii_all(0) : shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],
