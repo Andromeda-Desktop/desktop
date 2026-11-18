@@ -29,17 +29,17 @@ public:
     std::vector<std::string> hiddenItems;
     std::vector<std::string> pinnedItems;
     bool hidePassive = true;
-    bool drawerMode = false;
+    bool drawerMode = true;
     std::function<void()> itemActivated;
     std::string barPosition = "top";
     bool panelGridMode = false;
-    std::size_t panelGridColumns = 3;
+    std::size_t panelGridColumns = Tokens::componentTrayColumns;
     float inlineEntryGap = Style::spaceXs;
     bool matchAdjacentSpacing = false;
     std::optional<float> customItemSize;
     // Read by TrayDrawerPanel, not by TrayWidget: they live here so the tray widget definition owns their defaults.
     double drawerItemSize = Style::baseGlyphSize;
-    bool detachedPanel = false;
+    bool detachedPanel = true;
   };
 
   TrayWidget(ConfigService& config, TrayService* tray, Options options, AsyncTextureCache* asyncTextures = nullptr);
@@ -65,6 +65,7 @@ private:
   void rebuild(Renderer& renderer);
   [[nodiscard]] std::string iconForItem(const TrayItemInfo& item) const;
   [[nodiscard]] bool isPinnedItem(const TrayItemInfo& item) const;
+  [[nodiscard]] float iconLogicalSize() const;
   [[nodiscard]] bool isHiddenItem(const TrayItemInfo& item) const;
   [[nodiscard]] std::string_view drawerChevronGlyph(bool panelOpen) const;
   // Bar section gap is between capsule shells; inline tray icons share one shell, so add the

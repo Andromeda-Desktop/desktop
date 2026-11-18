@@ -23,47 +23,23 @@ PanelPlacement TrayDrawerPanel::panelPlacement() const noexcept {
                                                                     : PanelPlacement::Attached;
 }
 
-std::optional<float> TrayDrawerPanel::currentDrawerItemSize() const {
-  return m_config != nullptr ? tray::resolvedTrayOptions(*m_config).drawerItemSize : std::nullopt;
-}
+float TrayDrawerPanel::resolvedItemGap() const { return Tokens::componentTrayGap; }
 
-float TrayDrawerPanel::resolvedItemGap() const {
-  float gap = Style::spaceXs;
-  if (m_config == nullptr) {
-    return gap;
-  }
-
-  const auto resolved = tray::resolvedTrayOptions(*m_config);
-  if (!m_config->config().bars.empty()) {
-    gap = static_cast<float>(m_config->config().bars.front().widgetSpacing);
-  }
-  if (!resolved.options.matchAdjacentSpacing || m_config->config().bars.empty()) {
-    return gap;
-  }
-  const auto capsule = tray::resolvedTrayCapsuleSpec(*m_config, m_config->config().bars.front());
-  const float padding = capsule.enabled ? capsule.padding * contentScale() : 0.0F;
-  return gap + 2.0F * padding;
-}
-
+// Concept C: the drawer has no sheet: one row of round glass items (wrapping after componentTrayColumns), no padding.
 float TrayDrawerPanel::preferredWidth() const {
-  const float itemSize = scaled(currentDrawerItemSize().value_or(Style::baseGlyphSize));
+  const float itemSize = scaled(Tokens::componentTrayItem);
   const float gap = resolvedItemGap();
-  const std::size_t drawerColumns = currentDrawerColumns();
-  const std::size_t cols = std::min<std::size_t>(drawerColumns, std::max<std::size_t>(1, visibleItemCount()));
-  const float contentWidth = static_cast<float>(cols) * itemSize + static_cast<float>(cols > 1 ? cols - 1 : 0) * gap;
-  const float panelPadding = scaled(Style::panelPadding) * 2.0F;
-  return contentWidth + panelPadding;
+  const std::size_t cols = std::min<std::size_t>(currentDrawerColumns(), std::max<std::size_t>(1, visibleItemCount()));
+  return static_cast<float>(cols) * itemSize + static_cast<float>(cols > 1 ? cols - 1 : 0) * gap;
 }
 
 float TrayDrawerPanel::preferredHeight() const {
-  const float itemSize = scaled(currentDrawerItemSize().value_or(Style::baseGlyphSize));
+  const float itemSize = scaled(Tokens::componentTrayItem);
   const float gap = resolvedItemGap();
   const std::size_t count = std::max<std::size_t>(1, visibleItemCount());
   const std::size_t drawerColumns = currentDrawerColumns();
   const std::size_t rows = (count + drawerColumns - 1U) / drawerColumns;
-  const float contentHeight = static_cast<float>(rows) * itemSize + static_cast<float>(rows > 1 ? rows - 1 : 0) * gap;
-  const float panelPadding = scaled(Style::panelPadding) * 2.0F;
-  return contentHeight + panelPadding;
+  return static_cast<float>(rows) * itemSize + static_cast<float>(rows > 1 ? rows - 1 : 0) * gap;
 }
 
 void TrayDrawerPanel::create() {
@@ -71,12 +47,10 @@ void TrayDrawerPanel::create() {
     return;
   }
 
-  float widgetSpacing = Style::spaceXs;
+  const float widgetSpacing = resolvedItemGap();
   std::string barPosition = "top";
   if (!m_config->config().bars.empty()) {
-    const auto& barConfig = m_config->config().bars.front();
-    widgetSpacing = static_cast<float>(barConfig.widgetSpacing);
-    barPosition = barConfig.position;
+    barPosition = m_config->config().bars.front().position;
   }
 
   auto resolved = tray::resolvedTrayOptions(

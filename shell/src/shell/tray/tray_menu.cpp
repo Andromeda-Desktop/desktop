@@ -32,7 +32,7 @@ namespace {
 
   constexpr Logger kLog("tray");
 
-  constexpr float kMenuWidth = 246.0F;
+  constexpr float kMenuWidth = 240.0F;
   constexpr std::size_t kTrayMenuVisibleItems = 20;
   constexpr std::int32_t kPinToggleEntryId = -2147000000;
 

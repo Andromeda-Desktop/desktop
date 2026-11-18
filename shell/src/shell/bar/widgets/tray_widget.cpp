@@ -593,8 +593,9 @@ void TrayWidget::rebuild(Renderer& renderer) {
       continue;
     }
     const std::string iconPath = resolveIconPath(item);
-    const float itemSize = m_customItemSize.value_or(Style::baseGlyphSize) * m_contentScale;
-    const float iconSize = itemSize;
+    // Drawer items are round glass pieces (concept C): item 40, icon 24 or the configured size.
+    const float itemSize = (m_panelGridMode ? Tokens::componentTrayItem : m_customItemSize.value_or(Style::baseGlyphSize)) * m_contentScale;
+    const float iconSize = iconLogicalSize();
     const int iconRequestSize = std::max(32, static_cast<int>(std::round(iconSize * 2.0F)));
 
     std::unique_ptr<Node> iconNode;
@@ -791,6 +792,9 @@ void TrayWidget::rebuild(Renderer& renderer) {
     }
     m_itemAreas[item.id] = areaPtr;
     areaPtr->setSize(itemSize, itemSize);
+    if (m_panelGridMode) {
+      areaPtr->setGlassPiece(itemSize * 0.5F);
+    }
     iconNode->setPosition(std::round((itemSize - iconW) * 0.5F), std::round((itemSize - iconH) * 0.5F));
     auto itemId = item.id;
     areaPtr->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
@@ -910,6 +914,13 @@ bool TrayWidget::isHiddenItem(const TrayItemInfo& item) const {
   return false;
 }
 
+float TrayWidget::iconLogicalSize() const {
+  if (m_panelGridMode) {
+    return m_customItemSize.value_or(Tokens::componentTrayIcon) * m_contentScale;
+  }
+  return m_customItemSize.value_or(Style::baseGlyphSize) * m_contentScale;
+}
+
 bool TrayWidget::isPinnedItem(const TrayItemInfo& item) const {
   if (m_pinnedItems.empty()) {
     return false;
@@ -968,7 +979,7 @@ std::string TrayWidget::resolveIconPath(const TrayItemInfo& item) {
     preferred.clear();
   }
 
-  const float logicalSize = m_customItemSize.value_or(Style::baseGlyphSize) * m_contentScale;
+  const float logicalSize = iconLogicalSize();
   const int iconSize = std::max(1, static_cast<int>(std::round(logicalSize)));
   // Match the on-screen request size used when the icon is loaded (see rebuild).
   const int rasterSize = std::max(32, static_cast<int>(std::round(logicalSize * 2.0F)));
