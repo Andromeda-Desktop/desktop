@@ -155,13 +155,13 @@ namespace shell::dock {
     }
   }
 
-  std::int32_t dockContentSize(const DockConfig& cfg, std::size_t itemCount, bool separator) {
+  std::int32_t dockContentSize(const DockConfig& cfg, std::size_t itemCount, std::size_t separators) {
     const auto n = static_cast<std::int32_t>(itemCount);
     const std::int32_t cellSize = cfg.iconSize + kCellPad * 2;
     if (n == 0) {
       return cellSize + cfg.mainAxisPadding * 2;
     }
-    const std::int32_t sepSize = separator ? 1 + cfg.itemSpacing : 0;
+    const auto sepSize = static_cast<std::int32_t>(separators) * (1 + cfg.itemSpacing);
     return n * cellSize + std::max(0, n - 1) * cfg.itemSpacing + sepSize + cfg.mainAxisPadding * 2;
   }
 
@@ -218,7 +218,7 @@ namespace shell::dock {
 
   DockSurfaceGeometry computeSurfaceGeometry(
       const DockConfig& cfg, const ShellConfig::ShadowConfig& shadow, std::size_t itemCount, bool fractionalScale,
-      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, bool separator
+      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, std::size_t separators
   ) {
     const DockEdge edge = cfg.position;
     const bool vertical = isVerticalEdge(edge);
@@ -228,7 +228,7 @@ namespace shell::dock {
     const int insetT = static_cast<int>(concave.logicalInset.top);
     const int insetR = static_cast<int>(concave.logicalInset.right);
     const int insetB = static_cast<int>(concave.logicalInset.bottom);
-    const auto panelW = dockContentSize(cfg, itemCount, separator);
+    const auto panelW = dockContentSize(cfg, itemCount, separators);
     const auto panelH = dockThickness(cfg);
     const std::int32_t zoomPad = dockHoverZoomCrossPad(cfg);
     const std::int32_t mainPad = dockHoverZoomMainPad(cfg);
@@ -290,10 +290,11 @@ namespace shell::dock {
 
   LayerSurfaceConfig makeLayerSurfaceConfig(
       const DockConfig& cfg, const ShellConfig::ShadowConfig& shadow, std::size_t itemCount, bool fractionalScale,
-      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight
+      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, std::size_t separators
   ) {
-    const auto geometry =
-        computeSurfaceGeometry(cfg, shadow, itemCount, fractionalScale, outputLogicalWidth, outputLogicalHeight);
+    const auto geometry = computeSurfaceGeometry(
+        cfg, shadow, itemCount, fractionalScale, outputLogicalWidth, outputLogicalHeight, separators
+    );
     return LayerSurfaceConfig{
         .nameSpace = "noctalia-dock",
         .layer = layerShellLayerFromConfig(cfg.layer),

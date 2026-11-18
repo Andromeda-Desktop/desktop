@@ -757,6 +757,8 @@ DockConfig resolveDockMonitorOverride(const DockConfig& base, const DockMonitorO
     resolved.runningBar = *override.runningBar;
   if (override.showInstanceCount)
     resolved.showInstanceCount = *override.showInstanceCount;
+  if (override.showTrash)
+    resolved.showTrash = *override.showTrash;
   if (override.launcherPosition)
     resolved.launcherPosition = *override.launcherPosition;
   if (override.launcherIcon)

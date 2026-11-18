@@ -1277,7 +1277,8 @@
       "close": "Close",
       "close-all": "Close All"
     },
-    "launcher": "Launcher"
+    "launcher": "Launcher",
+    "trash": "Trash"
   },
   "internal-apps": {
     "settings": {
@@ -3780,6 +3781,10 @@
         "show-running": {
           "description": "Show running applications that are not pinned",
           "label": "Show Running Apps"
+        },
+        "show-trash": {
+          "description": "Show a Trash item after the last dock item",
+          "label": "Show Trash"
         }
       },
       "hooks": {

@@ -504,6 +504,62 @@ namespace shell::dock {
     return areaNode;
   }
 
+  std::unique_ptr<Box> makeDockSeparator(bool vert) {
+    return ui::box({
+        .fill = colorSpecFromRole(ColorRole::Separator),
+        .width = vert ? Tokens::componentDockSeparatorHeight : 1.0F,
+        .height = vert ? 1.0F : Tokens::componentDockSeparatorHeight,
+    });
+  }
+
+  [[nodiscard]] float trashIconBaseY(float iconSize) {
+    return kCellPad + (iconSize - iconSize * kLauncherGlyphSizeRatio) * 0.5F;
+  }
+
+  std::unique_ptr<InputArea> createTrashButton(
+      DockInstance& instance, const DockConfig& cfg, const std::shared_ptr<DockItemClickContext>& clickContext
+  ) {
+    const auto iSize = static_cast<float>(cfg.iconSize);
+    const float cell = iSize + 2.0F * kCellPad;
+
+    auto areaNode = ui::inputArea({});
+    areaNode->setSize(cell, cell);
+
+    auto glyph = ui::glyph({
+        .glyphSize = iSize * kLauncherGlyphSizeRatio,
+        .color = colorSpecFromRole(ColorRole::Label1),
+        .width = iSize,
+        .height = iSize,
+        .configure = [iSize](Glyph& g) { g.setPosition(kCellPad, trashIconBaseY(iSize)); },
+    });
+    instance.trash.icon = static_cast<Glyph*>(glyph.get());
+    areaNode->addChild(std::move(glyph));
+    instance.trash.area = areaNode.get();
+    applyTrashGlyph(instance);
+    instance.trash.visualScale = cfg.inactiveScale;
+    instance.trash.icon->setScale(cfg.inactiveScale);
+
+    auto* instPtr = &instance;
+    configureDockTooltip(*areaNode, cfg, i18n::tr("dock.trash"));
+    areaNode->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT}));
+    areaNode->setOnClick([instPtr, clickContext](const InputArea::PointerData& d) {
+      if (d.button == BTN_LEFT && clickContext->callbacks.openTrash) {
+        clickContext->callbacks.openTrash(*instPtr);
+      }
+    });
+    return areaNode;
+  }
+
+  void applyTrashGlyph(DockInstance& instance) {
+    if (instance.trash.icon == nullptr) {
+      return;
+    }
+    static_cast<Glyph*>(instance.trash.icon)->setGlyph(instance.trashFull ? "trash-x" : "trash");
+    if (instance.surface != nullptr) {
+      instance.surface->requestRedraw();
+    }
+  }
+
   void rebuildItems(
       DockInstance& instance, DockItemSceneDependencies deps, const DockSnapshot& snapshot,
       const DockItemCallbacks& callbacks
@@ -562,6 +618,10 @@ namespace shell::dock {
       instance.animations.cancel(instance.launcherScaleAnimId);
       instance.launcherScaleAnimId = 0;
     }
+    if (instance.trash.scaleAnimId != 0) {
+      instance.animations.cancel(instance.trash.scaleAnimId);
+    }
+    instance.trash = {};
 
     auto freshRow = makeDockItemRow(cfg, vert);
     Node* rowParent = instance.viewport != nullptr ? static_cast<Node*>(instance.viewport)
@@ -581,13 +641,7 @@ namespace shell::dock {
 
     for (std::size_t itemIndex = 0; itemIndex < itemModels.size(); ++itemIndex) {
       if (itemIndex == pinnedCount && pinnedCount > 0) {
-        instance.row->addChild(
-            ui::box({
-                .fill = colorSpecFromRole(ColorRole::Separator),
-                .width = vert ? Tokens::componentDockSeparatorHeight : 1.0F,
-                .height = vert ? 1.0F : Tokens::componentDockSeparatorHeight,
-            })
-        );
+        instance.row->addChild(makeDockSeparator(vert));
       }
       const auto& model = itemModels[itemIndex];
       auto& item = instance.items.emplace_back();
@@ -872,6 +926,18 @@ namespace shell::dock {
       instance.row->addChild(createLauncherButton(instance, cfg, renderer, clickContext));
     }
 
+    if (instance.hasTrash) {
+      instance.row->addChild(makeDockSeparator(vert));
+      instance.row->addChild(createTrashButton(instance, cfg, clickContext));
+    }
+
+    if (cfg.magnification && instance.trash.icon != nullptr) {
+      instance.trash.visualScale = cfg.inactiveScale;
+      applyHoverItemVisual(
+          instance.trash.icon, nullptr, edge, kCellPad, trashIconBaseY(iSize), iSize, 0.0F, cfg.inactiveScale
+      );
+    }
+
     if (cfg.magnification && instance.launcherIconNode != nullptr) {
       const float launcherScale = cfg.inactiveScale;
       instance.launcherVisualScale = launcherScale;
@@ -1062,6 +1128,24 @@ namespace shell::dock {
       applyDragVisuals(instance, cfg);
     }
 
+    if (!cfg.magnification && instance.trash.icon != nullptr) {
+      const auto iSize = static_cast<float>(cfg.iconSize);
+      instance.trash.icon->setPosition(kCellPad, trashIconBaseY(iSize));
+      if (instance.trash.visualScale < 0.0F) {
+        instance.trash.visualScale = cfg.inactiveScale;
+        instance.trash.icon->setScale(cfg.inactiveScale);
+      } else if (std::abs(instance.trash.visualScale - cfg.inactiveScale) > 0.001F) {
+        applyAnimatedIconScale(
+            instance, instance.trash.icon, instance.trash.visualScale, instance.trash.scaleAnimId, cfg.inactiveScale
+        );
+      }
+      instance.trash.hoverMainOffset = 0.0F;
+      applyItemMainOffset(
+          instance.trash.area, shell::dock::isVerticalEdge(cfg.position), instance.trash.restMainPos,
+          instance.trash.restCrossPos, 0.0F
+      );
+    }
+
     if (!cfg.magnification && instance.launcherIconNode != nullptr) {
       const float iconScale = cfg.inactiveScale;
       const auto iSize = static_cast<float>(cfg.iconSize);
@@ -1250,6 +1334,24 @@ namespace shell::dock {
       );
     }
 
+    if (instance.trash.area != nullptr) {
+      slots.push_back(
+          HoverSlot{
+              .area = instance.trash.area,
+              .iconNode = instance.trash.icon,
+              .visualScale = &instance.trash.visualScale,
+              .hoverMainOffset = &instance.trash.hoverMainOffset,
+              .scaleAnimId = &instance.trash.scaleAnimId,
+              .restMainPos = instance.trash.restMainPos,
+              .restCrossPos = instance.trash.restCrossPos,
+              .baseScale = baseLauncherScale,
+              .restCenterMain = itemRestCenterMain(instance.trash.restMainPos, cellMain),
+              .iconBaseX = kCellPad,
+              .iconBaseY = trashIconBaseY(iSize),
+          }
+      );
+    }
+
     std::vector<float> slotScales;
     slotScales.reserve(slots.size());
     for (HoverSlot& slot : slots) {
@@ -1355,6 +1457,13 @@ namespace shell::dock {
       return;
     }
     const bool vertical = shell::dock::isVerticalEdge(cfg.position);
+    if (instance.trash.area != nullptr) {
+      instance.trash.restMainPos = vertical ? instance.trash.area->y() : instance.trash.area->x();
+      instance.trash.restCrossPos = vertical ? instance.trash.area->x() : instance.trash.area->y();
+      if (!instance.hoverPointerValid) {
+        instance.trash.hoverMainOffset = 0.0F;
+      }
+    }
     if (cfg.launcherPosition == DockLauncherPosition::Start && instance.launcherArea != nullptr) {
       instance.launcherRestMainPos = vertical ? instance.launcherArea->y() : instance.launcherArea->x();
       instance.launcherRestCrossPos = vertical ? instance.launcherArea->x() : instance.launcherArea->y();

@@ -3,9 +3,11 @@
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
 #include "core/deferred_call.h"
+#include "core/files/directory_watcher.h"
 #include "core/log.h"
 #include "ipc/ipc_service.h"
 #include "render/scene/node.h"
+#include "shell/desktop/desktop_file_ops.h"
 #include "shell/dock/dock_context_menu.h"
 #include "shell/dock/dock_drop.h"
 #include "render/scene/input_area.h"
@@ -26,6 +28,7 @@
 #include "wayland/layer_surface.h"
 #include "wayland/surface.h"
 #include "compositors/wayland_toplevels.h"
+#include "util/file_utils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -33,6 +36,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <functional>
 #include <format>
 #include <optional>
@@ -87,7 +91,10 @@ namespace {
   [[nodiscard]] bool dockPointerHideAllowed(const DockConfig& cfg, const shell::dock::DockInstance& instance) noexcept;
 
   // File drags over the dock reveal and magnify it like the pointer; a drop on an app that takes files opens them.
-  void attachDropTarget(CompositorPlatform& platform, ConfigService& config, shell::dock::DockInstance& instance) {
+  void attachDropTarget(
+      CompositorPlatform& platform, ConfigService& config, shell::dock::DockInstance& instance,
+      std::function<void(const std::vector<std::filesystem::path>&)> trashPaths
+  ) {
     DragAndDrop* dnd = platform.wayland().dragAndDrop();
     if (dnd == nullptr || instance.surface == nullptr) {
       return;
@@ -130,13 +137,23 @@ namespace {
             inst->surface->requestFrameTick();
             inst->surface->requestRedraw();
           }
+          if (shell::dock::onTrash(*inst, x, y)) {
+            return DragAndDrop::Move;
+          }
           return accepting(x, y).has_value() ? DragAndDrop::Copy : DragAndDrop::None;
         },
         .leave = settle,
         .drop =
-            [&platform, &config, inst, accepting, settle](float x, float y, std::uint32_t, const std::string&,
-                                                          std::string data) {
+            [&platform, &config, inst, accepting, settle, trashPaths = std::move(trashPaths)](
+                float x, float y, std::uint32_t, const std::string&, std::string data
+            ) {
               settle();
+              if (shell::dock::onTrash(*inst, x, y)) {
+                if (const auto paths = shell::dock::localPaths(data); !paths.empty()) {
+                  trashPaths(paths);
+                }
+                return;
+              }
               const auto index = accepting(x, y);
               if (!index.has_value()) {
                 return;
@@ -945,6 +962,8 @@ void Dock::createInstance(const WaylandOutput& output) {
   instance->outputLogicalWidth = output.effectiveLogicalWidth();
   instance->outputLogicalHeight = output.effectiveLogicalHeight();
   instance->config = cfg;
+  instance->hasTrash = cfg.showTrash && m_fileOps != nullptr;
+  instance->trashFull = m_trashFull;
   if (const auto* override = matchingDockMonitorOverride(baseConfig, output); override != nullptr) {
     instance->monitorOverrideTable = override->tableName;
     instance->pinnedOverridden = override->pinned.has_value();
@@ -952,8 +971,8 @@ void Dock::createInstance(const WaylandOutput& output) {
 
   const auto& shadowConfig = m_config->config().shell.shadow;
   LayerSurfaceConfig lsCfg = shell::dock::makeLayerSurfaceConfig(
-      cfg, shadowConfig, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg), instance->fractionalScale,
-      instance->outputLogicalWidth, instance->outputLogicalHeight
+      cfg, shadowConfig, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg) + instance->trashCells(),
+      instance->fractionalScale, instance->outputLogicalWidth, instance->outputLogicalHeight, instance->separatorCount()
   );
 
   instance->surface = std::make_unique<LayerSurface>(m_platform->wayland(), std::move(lsCfg));
@@ -994,6 +1013,17 @@ void Dock::createInstance(const WaylandOutput& output) {
                      std::lround(area->width()), std::lround(area->height()));
         }
       }
+      if (const InputArea* area = inst->trash.area; area != nullptr) {
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(area, x, y);
+        if (inst->slideRoot != nullptr) {
+          x -= inst->slideRoot->x();
+          y -= inst->slideRoot->y();
+        }
+        kLog.debug("dock item trash {} {} {} {}", std::lround(x), std::lround(y), std::lround(area->width()),
+                   std::lround(area->height()));
+      }
     }
   });
   instance->surface->setFrameTickCallback([this, inst](float deltaMs) {
@@ -1013,7 +1043,11 @@ void Dock::createInstance(const WaylandOutput& output) {
   }
 
   m_surfaceMap[instance->surface->wlSurface()] = instance.get();
-  attachDropTarget(*m_platform, *m_config, *instance);
+  attachDropTarget(*m_platform, *m_config, *instance, [this](const std::vector<std::filesystem::path>& paths) {
+    if (m_fileOps != nullptr) {
+      (void)m_fileOps->trash(paths);
+    }
+  });
   m_instances.push_back(std::move(instance));
 }
 
@@ -1101,8 +1135,9 @@ void Dock::rebuildItems(shell::dock::DockInstance& instance) {
                   const float h = inst.launcherArea->height();
                   const auto geometry = shell::dock::computeSurfaceGeometry(
                       inst.config, m_config->config().shell.shadow,
-                      inst.items.size() + shell::dock::dockLauncherButtonCount(inst.config), inst.fractionalScale,
-                      inst.outputLogicalWidth, inst.outputLogicalHeight, inst.snapshot.hasSeparator()
+                      inst.items.size() + shell::dock::dockLauncherButtonCount(inst.config) + inst.trashCells(),
+                      inst.fractionalScale, inst.outputLogicalWidth, inst.outputLogicalHeight,
+                      inst.separatorCount()
                   );
                   const auto edge = inst.config.position;
                   const auto outW = static_cast<float>(inst.outputLogicalWidth);
@@ -1128,6 +1163,7 @@ void Dock::rebuildItems(shell::dock::DockInstance& instance) {
                 }
                 PanelManager::instance().togglePanel("launcher", request);
               },
+          .openTrash = [this](shell::dock::DockInstance& inst) { openTrash(inst); },
           .openItemMenu = [this](
                               shell::dock::DockInstance& inst, const shell::dock::DockItemAction& action
                           ) { openItemMenu(inst, action); },
@@ -1509,6 +1545,63 @@ void Dock::openItemMenu(shell::dock::DockInstance& instance, const shell::dock::
   if (m_itemMenu == nullptr) {
     m_popupOwnerInstance = nullptr;
   }
+}
+
+namespace {
+  std::filesystem::path trashFilesDir() { return std::filesystem::path(FileUtils::expandXdgBaseDir("$XDG_DATA_HOME")) / "Trash/files"; }
+
+  bool trashHasFiles() {
+    std::error_code ec;
+    std::filesystem::directory_iterator it(trashFilesDir(), ec);
+    return !ec && it != std::filesystem::directory_iterator{};
+  }
+} // namespace
+
+void Dock::setFileOps(DesktopFileOps* ops, DirectoryWatcher* watcher) {
+  m_fileOps = ops;
+  if (ops != nullptr && watcher != nullptr) {
+    // A watch needs the folder; the Trash spec lets any client create it, owner-only.
+    const std::filesystem::path files = trashFilesDir();
+    std::error_code ec;
+    std::filesystem::create_directories(files, ec);
+    std::filesystem::permissions(files.parent_path(), std::filesystem::perms::owner_all, ec);
+    m_trashFull = trashHasFiles();
+    watcher->watch(files, [this](DirectoryWatcher::Event, const std::string&, const std::string&) { onTrashChanged(); });
+  }
+  if (!m_instances.empty()) {
+    reload();
+  }
+}
+
+void Dock::onTrashChanged() {
+  const bool full = trashHasFiles();
+  if (full == m_trashFull) {
+    return;
+  }
+  m_trashFull = full;
+  for (auto& inst : m_instances) {
+    inst->trashFull = full;
+    shell::dock::applyTrashGlyph(*inst);
+  }
+}
+
+void Dock::openTrash(shell::dock::DockInstance& instance) {
+  const auto& entries = desktopEntries();
+  const auto entry = std::ranges::find(entries, std::string("dev.andromeda.Files"), &DesktopEntry::id);
+  if (entry == entries.end()) {
+    return;
+  }
+  const auto action = std::ranges::find(entry->actions, std::string_view("trash"), &DesktopAction::id);
+  if (action == entry->actions.end()) {
+    return;
+  }
+  m_platform->prepareAppLaunchOnOutput(instance.output);
+  launchWithDockToken(
+      *m_platform, *m_config, *entry,
+      [action = *action, id = entry->id, dir = entry->workingDir, terminal = entry->terminal](auto options) {
+        (void)desktop_entry_launch::launchAction(action, id, dir, terminal, options);
+      }
+  );
 }
 
 void Dock::registerIpc(IpcService& ipc) {

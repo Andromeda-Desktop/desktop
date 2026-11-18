@@ -1291,6 +1291,7 @@ void Application::initWidgetControllersAndCallbacks() {
                                         message);
     });
   }
+  m_dock.setFileOps(m_desktopIcons.fileOps(), &m_desktopIcons.watcher());
   m_configService.addReloadCallback([this] { m_desktopIcons.sync(); });
   m_desktopWidgetsController.setOnEnterEditCallback([this] { m_settingsWindow.closeForWidgetEditor(); });
   m_lockscreenWidgetsController.setOnEnterEditCallback([this] { m_settingsWindow.closeForWidgetEditor(); });

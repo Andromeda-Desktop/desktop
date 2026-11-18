@@ -4185,6 +4185,7 @@ namespace noctalia::config::schema {
           optionalBoolField(&DockMonitorOverride::showDots, "show_dots"),
           optionalBoolField(&DockMonitorOverride::runningBar, "running_bar"),
           optionalBoolField(&DockMonitorOverride::showInstanceCount, "show_instance_count"),
+          optionalBoolField(&DockMonitorOverride::showTrash, "show_trash"),
           optionalEnumField(&DockMonitorOverride::launcherPosition, "launcher_position", kDockLauncherPositions),
           field(&DockMonitorOverride::launcherIcon, "launcher_icon"),
           optionalPathStringField(&DockMonitorOverride::launcherCustomImage, "launcher_custom_image"),
@@ -4476,6 +4477,9 @@ namespace noctalia::config::schema {
         field(
             &DockConfig::showInstanceCount, "show_instance_count",
             RowSpec{.section = "dock", .group = "behavior", .tags = "badge windows"}
+        ),
+        field(
+            &DockConfig::showTrash, "show_trash", RowSpec{.section = "dock", .group = "behavior", .tags = "trash bin"}
         ),
         enumField(
             &DockConfig::launcherPosition, "launcher_position", kDockLauncherPositions,

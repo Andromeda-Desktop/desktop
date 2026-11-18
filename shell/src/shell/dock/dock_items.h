@@ -76,6 +76,7 @@ namespace shell::dock {
   struct DockItemCallbacks {
     std::function<void(DockInstance&, const DockItemAction&)> activateOrLaunch;
     std::function<void(DockInstance&)> toggleLauncher;
+    std::function<void(DockInstance&)> openTrash;
     std::function<void(DockInstance&, const DockItemAction&)> openItemMenu;
     // Drag-to-reorder: only called when the source item is pinned.
     std::function<void(DockInstance&, std::size_t itemIndex, float mainPos)> beginDrag;
@@ -95,6 +96,8 @@ namespace shell::dock {
   syncHoverPointerFromScene(DockInstance& instance, const DockConfig& cfg, float sceneX, float sceneY);
   void clearHoverZoom(DockInstance& instance, const DockSnapshot& snapshot);
   void syncDockItemRestPositions(DockInstance& instance, const DockConfig& cfg);
+  // Sets the Trash glyph from instance.trashFull.
+  void applyTrashGlyph(DockInstance& instance);
   void applyDragVisuals(DockInstance& instance, const DockConfig& cfg);
   void clearDragVisuals(DockInstance& instance, const DockConfig& cfg);
   void dismissDockTooltip();

@@ -17,6 +17,9 @@
 
 struct wl_output;
 
+class DesktopFileOps;
+class DirectoryWatcher;
+
 class CompositorPlatform;
 class ConfigService;
 class InputArea;
@@ -59,6 +62,8 @@ public:
   bool onPointerEvent(const PointerEvent& event);
 
   void registerIpc(IpcService& ipc);
+  /// Enables the Trash cell: drops go to `ops`, and `watcher` reports when the Trash gains or loses files.
+  void setFileOps(DesktopFileOps* ops, DirectoryWatcher* watcher);
 
 private:
   void pruneCachedToplevelHandles();
@@ -80,6 +85,8 @@ private:
   void updateDrag(shell::dock::DockInstance& instance, float mainPos);
   void endDrag(shell::dock::DockInstance& instance, bool commit);
   void reevaluateSmartAutoHide();
+  void openTrash(shell::dock::DockInstance& instance);
+  void onTrashChanged();
 
   CompositorPlatform* m_platform = nullptr;
   ConfigService* m_config = nullptr;
@@ -117,4 +124,6 @@ private:
   bool m_overlayDisplaySuppressed = false;
   bool m_hadInstancesBeforeOverlaySuppress = false;
   bool m_smartAutoHideReevalQueued = false;
+  DesktopFileOps* m_fileOps = nullptr;
+  bool m_trashFull = false;
 };

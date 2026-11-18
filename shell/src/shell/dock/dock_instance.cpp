@@ -511,8 +511,8 @@ namespace shell::dock {
     // The viewport follows the visible pill on its main axis and spans the surface on its cross axis,
     // allowing magnified icons to grow away from the screen edge without escaping past the pill ends.
     const auto contentLength = static_cast<float>(
-        shell::dock::dockContentSize(cfg, instance.items.size() + shell::dock::dockLauncherButtonCount(cfg),
-        instance.snapshot.hasSeparator())
+        shell::dock::dockContentSize(cfg, instance.items.size() + shell::dock::dockLauncherButtonCount(cfg) + instance.trashCells(),
+        instance.separatorCount())
     );
     if (vert) {
       instance.viewport->setPosition(0.0F, panelGeometry.panelY);
@@ -614,8 +614,9 @@ namespace shell::dock {
     }
 
     const auto surfaceGeometry = shell::dock::computeSurfaceGeometry(
-        cfg, shadowConfig, instance.items.size() + shell::dock::dockLauncherButtonCount(cfg), instance.fractionalScale,
-        instance.outputLogicalWidth, instance.outputLogicalHeight, instance.snapshot.hasSeparator()
+        cfg, shadowConfig, instance.items.size() + shell::dock::dockLauncherButtonCount(cfg) + instance.trashCells(),
+        instance.fractionalScale, instance.outputLogicalWidth, instance.outputLogicalHeight,
+        instance.separatorCount()
     );
 
     if (instance.surface->width() != surfaceGeometry.surfaceW

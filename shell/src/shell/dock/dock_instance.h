@@ -104,6 +104,21 @@ namespace shell::dock {
     float launcherHoverMainOffset = 0.0F;
     float launcherVisualScale = -1.0F;
     AnimationManager::Id launcherScaleAnimId = 0;
+    // Trash cell: the last cell of the row, after its own separator; built while hasTrash (show_trash with file ops).
+    struct TrashCell {
+      InputArea* area = nullptr;
+      Node* icon = nullptr;
+      float restMainPos = 0.0F;
+      float restCrossPos = 0.0F;
+      float hoverMainOffset = 0.0F;
+      float visualScale = -1.0F;
+      AnimationManager::Id scaleAnimId = 0;
+    };
+    bool hasTrash = false;
+    bool trashFull = false;
+    TrashCell trash;
+    [[nodiscard]] std::size_t trashCells() const { return hasTrash ? 1U : 0U; }
+    [[nodiscard]] std::size_t separatorCount() const { return (snapshot.hasSeparator() ? 1U : 0U) + trashCells(); }
     // Auto-hide: tracks visibility [0,1] driven by hover.
     float hideOpacity = 1.0F;
     std::optional<std::vector<InputRect>> sentBlur; // last blur region sent; empty vector = cleared

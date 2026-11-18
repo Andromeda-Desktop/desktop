@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -14,6 +15,10 @@ namespace shell::dock {
   // File drops on the dock (FILES-UI-SPEC §20): a drop on an app opens the files with it, as on the macOS Dock.
   // The app item under a surface point (the launcher button is not an item).
   [[nodiscard]] std::optional<std::size_t> itemAt(const DockInstance& instance, float x, float y);
+  // True when the surface point is over the Trash cell.
+  [[nodiscard]] bool onTrash(const DockInstance& instance, float x, float y);
+  // The local paths of a dropped text/uri-list.
+  [[nodiscard]] std::vector<std::filesystem::path> localPaths(const std::string& uriList);
   // True when the app's Exec takes files or URIs (%f %F %u %U).
   [[nodiscard]] bool takesFiles(const DesktopEntry& entry);
   // The Exec lines that open a dropped text/uri-list (Desktop Entry spec): %F/%U get every item, %f/%u one item per

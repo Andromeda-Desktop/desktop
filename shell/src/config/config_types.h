@@ -739,6 +739,7 @@ struct DockMonitorOverride {
   std::optional<bool> showDots;
   std::optional<bool> runningBar;
   std::optional<bool> showInstanceCount;
+  std::optional<bool> showTrash;
   std::optional<DockLauncherPosition> launcherPosition;
   std::optional<std::string> launcherIcon;
   std::optional<std::string> launcherCustomImage;
@@ -786,6 +787,7 @@ struct DockConfig {
   bool showDots = false;            // show optional running window dots below app icons
   bool runningBar = true;           // short bar under running apps; hidden while show_dots is on
   bool showInstanceCount = true;    // show a badge with count when app has >1 window
+  bool showTrash = true;            // Trash cell after the last item
   DockLauncherPosition launcherPosition = DockLauncherPosition::Start;
   std::string launcherIcon = "grid-dots";   // Tabler glyph name
   std::string launcherCustomImage;          // image path; overrides launcherIcon glyph when set

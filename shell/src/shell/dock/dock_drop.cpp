@@ -86,6 +86,27 @@ namespace shell::dock {
     return std::nullopt;
   }
 
+  bool onTrash(const DockInstance& instance, float x, float y) {
+    const InputArea* area = instance.trash.area;
+    if (area == nullptr) {
+      return false;
+    }
+    float ax = 0.0F;
+    float ay = 0.0F;
+    Node::absolutePosition(area, ax, ay);
+    return x >= ax && x < ax + area->width() && y >= ay && y < ay + area->height();
+  }
+
+  std::vector<std::filesystem::path> localPaths(const std::string& uriList) {
+    std::vector<std::filesystem::path> out;
+    for (const std::string& uri : uris(uriList)) {
+      if (std::string path = pathOf(uri); !path.empty()) {
+        out.emplace_back(std::move(path));
+      }
+    }
+    return out;
+  }
+
   bool takesFiles(const DesktopEntry& entry) {
     for (const char* code : {"%f", "%F", "%u", "%U"}) {
       if (entry.exec.find(code) != std::string::npos) {
