@@ -50,9 +50,10 @@ namespace andromeda {
     // only for an opaque fullscreen window with a valid tile.
     void setFullscreenOpaque(bool opaque);
     void setBackdropBox(int x, int y, int width, int height);
-    // The root surface buffer of a fullscreen window over the opaque black backdrop draws without blending and culls
-    // what is below it.
-    void markOverBlack(wlr_scene_node* surfaceNode, bool overBlack);
+    // The root surface buffer of a settled fullscreen window over the opaque black backdrop draws without blending and
+    // culls what is below it. Not while the window resizes or its workspace slides: those frames draw the window
+    // through offscreen or transformed paths, where the culled backdrop leaves its translucent pixels over stale content.
+    void syncOverBlack(wlr_scene_node* surfaceNode, bool settled);
     // Re-read the backdrop color after a config reload.
     void reloadBackdropColor();
     // Offsets centering a client buffer that does not match the output. Negative
@@ -62,7 +63,7 @@ namespace andromeda {
     // Follows the client's *committed* fullscreen state, never the scheduled intent: a client mid mode-change (wine)
     // would otherwise render as a stale buffer wearing fullscreen chrome.
     void updateFullscreen(
-        bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry
+        bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry, bool settled
     );
 
     // Present the buffer at the animated size. `content` and `surfaceClip` use surface coordinates. A scene clip

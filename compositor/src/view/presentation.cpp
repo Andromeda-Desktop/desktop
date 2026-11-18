@@ -104,12 +104,12 @@ namespace andromeda {
   }
 
   void ViewPresentation::updateFullscreen(
-      bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry
+      bool fullscreen, int tileWidth, int tileHeight, wlr_scene_node* surfaceNode, const wlr_box& geometry, bool settled
   ) {
     const bool validSize = tileWidth > 0 && tileHeight > 0;
     m_fullscreenSized = fullscreen && validSize;
     setBackdropEnabled(m_fullscreenSized && m_fullscreenOpaque);
-    markOverBlack(surfaceNode, m_fullscreenSized && m_fullscreenOpaque && config().colors.backdrop == kOpaqueBlack);
+    syncOverBlack(surfaceNode, settled);
     if (m_fullscreenSized) {
       setBackdropBox(0, 0, tileWidth, tileHeight);
       m_offsetX = fullscreenCenterOffset(tileWidth, geometry.width);
@@ -132,10 +132,11 @@ namespace andromeda {
     }
   }
 
-  void ViewPresentation::markOverBlack(wlr_scene_node* surfaceNode, bool overBlack) {
+  void ViewPresentation::syncOverBlack(wlr_scene_node* surfaceNode, bool settled) {
     if (surfaceNode == nullptr) {
       return;
     }
+    bool overBlack = settled && m_fullscreenSized && m_fullscreenOpaque && config().colors.backdrop == kOpaqueBlack;
     wlr_scene_node_for_each_buffer(
         surfaceNode,
         [](wlr_scene_buffer* buffer, int /*sx*/, int /*sy*/, void* data) {

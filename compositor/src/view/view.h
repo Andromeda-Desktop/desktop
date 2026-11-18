@@ -758,6 +758,8 @@ namespace andromeda {
       return m_presentation.animating() || m_layoutMotion || tiledOpeningActive() || fullscreenOpeningActive();
     }
     [[nodiscard]] bool layoutPresentationOwned() const { return sizeAnimating() || m_layoutPresentationHeld; }
+    // No size animation and no workspace switch: the window draws 1:1 on the output.
+    [[nodiscard]] bool presentationSettled() const;
     void requestTiledSize(int width, int height);
     [[nodiscard]] bool settleTiledSizeRequest();
     // A layout size configure the client has not yet answered with a commit at that size.
@@ -833,6 +835,7 @@ namespace andromeda {
     void scheduleFrame();
     void cancelSizeAnimation();
     void updateFullscreenPresentation(int width, int height);
+    void syncOverBlack();
     // Apply subsurface clip to the toplevel surface only, not xdg popup children.
     void setSurfaceTreeClip(const wlr_box* clip);
     void unconstrainPopup(wlr_xdg_popup* popup);

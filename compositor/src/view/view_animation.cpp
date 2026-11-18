@@ -286,8 +286,17 @@ namespace andromeda {
 
   void View::updateFullscreenPresentation(int width, int height) {
     m_presentation.updateFullscreen(
-        currentFullscreen(), width, height, toplevelSurfaceTreeNode(m_contentTree, rootSurface()), geometryBox()
+        currentFullscreen(), width, height, toplevelSurfaceTreeNode(m_contentTree, rootSurface()), geometryBox(),
+        presentationSettled()
     );
+  }
+
+  bool View::presentationSettled() const {
+    return !sizeAnimating() && (workspace() == nullptr || !workspace()->switchTransitionActive());
+  }
+
+  void View::syncOverBlack() {
+    m_presentation.syncOverBlack(toplevelSurfaceTreeNode(m_contentTree, rootSurface()), presentationSettled());
   }
 
   void View::applyPresentedCrop(const wlr_box& content, const wlr_box& surfaceClip) {

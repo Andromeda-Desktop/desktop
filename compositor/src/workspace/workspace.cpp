@@ -2630,6 +2630,7 @@ namespace andromeda {
     for (View* view : m_views) {
       if (!view->pinned() && view->mapped() && (view->sceneTree()->node.enabled || !m_active)) {
         m_switchViews.push_back(view);
+        view->syncOverBlack();
       }
     }
   }
@@ -2685,6 +2686,7 @@ namespace andromeda {
     m_inSwitchTransition = false;
     for (View* view : m_switchViews) {
       view->setFadeAlpha(1.0F);
+      view->syncOverBlack();
     }
     m_switchViews.clear();
     applyVisibility();
