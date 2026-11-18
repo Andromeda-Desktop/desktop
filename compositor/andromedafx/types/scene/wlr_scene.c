@@ -1303,12 +1303,17 @@ static bool blur_samples_cache(const struct wlr_scene_blur* blur) {
 }
 
 // The node draws blur this frame; matches should_blur_node_extend_damage, which sets up the offscreen buffers.
+// Glass draws its tint, rim and lens even when its strength leaves no blur pass.
+static bool blur_node_is_glass(const struct wlr_scene_blur* blur) {
+  return blur->liquid > 0.0f || blur->rim > 0.0f || blur->tint_mix[3] > 0.0f;
+}
+
 static bool blur_node_draws(const struct wlr_scene_blur* blur, struct blur_data* scene_blur_data) {
   if (blur_samples_cache(blur) && blur->strength == 1.0) {
     return true;
   }
   struct blur_data blur_data = blur_data_apply_strength(scene_blur_data, blur->strength);
-  return is_scene_blur_enabled(&blur_data);
+  return is_scene_blur_enabled(&blur_data) || blur_node_is_glass(blur);
 }
 
 // Adds the visible part of every enabled blur node that samples the optimized cache, grown by the blur reach. A node
@@ -4357,7 +4362,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
     break;
   case WLR_SCENE_NODE_BLUR:;
     struct wlr_scene_blur* blur = wlr_scene_blur_from_node(node);
-    // A strength with no blur pass left draws nothing (get_main_buffer_blur).
+    // A strength with no blur pass left draws nothing, unless the node is glass (fx_render_pass_add_blur).
     if (!blur_node_draws(blur, &scene->blur_data)) {
       break;
     }
@@ -6906,6 +6911,11 @@ static bool should_blur_node_extend_damage(
     // what's needed
     if (blur_node->strength < 1.0f) {
       *blur_data = blur_data_apply_strength(blur_data, blur_node->strength);
+    }
+    // Glass without a blur pass reads only its own rectangle: it needs the offscreen buffers, not wider damage.
+    if (!is_scene_blur_enabled(blur_data) && blur_node_is_glass(blur_node)) {
+      fx_pass->has_blur = true;
+      return false;
     }
     break;
   case WLR_SCENE_NODE_OPTIMIZED_BLUR:;

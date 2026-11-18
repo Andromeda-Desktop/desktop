@@ -3130,7 +3130,10 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     const char* env = getenv("ANDROMEDA_GLASS_FUSE");
     glass_fuse = env == NULL || strcmp(env, "0") != 0;
   }
-  const bool fuse = (!use_optimized || has_strength) && !(glass && (probe_due || !glass_fuse))
+  // Glass whose strength leaves no blur pass (clear Liquid) tints and bends a copy of the sharp backdrop.
+  struct blur_data applied = blur_data_apply_strength(fx_options->blur_data, fx_options->blur_strength);
+  const bool sharp_glass = glass && !is_scene_blur_enabled(&applied);
+  const bool fuse = (!use_optimized || has_strength) && !(glass && (probe_due || !glass_fuse)) && !sharp_glass
       && blur_composite_is_copy(pass, tex_options);
   struct blur_data final_upsample = {0};
   TRACY_ZONE_TEXT_f("Use Optimized Blur: %d", fx_options->use_optimized_blur);
@@ -3159,7 +3162,20 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
       pixman_region32_fini(&reads);
     }
     sharp = blur_options.current_buffer;
-    buffer = get_main_buffer_blur(pass, &blur_options, fuse ? &final_upsample : NULL);
+    if (sharp_glass) {
+      // The live target cannot be sampled while it is drawn into: copy the node's rectangle.
+      buffer = ensure_offscreen_buffer(pass, &target_buffers(pass)->lens_source, true);
+      const struct wlr_box* box = &fx_options->tex_options.base.dst_box;
+      pixman_region32_t region;
+      pixman_region32_init_rect(&region, box->x, box->y, box->width, box->height);
+      if (buffer != NULL && !fx_render_pass_read_to_buffer(pass, &region, buffer, sharp)) {
+        buffer = NULL;
+      }
+      pixman_region32_fini(&region);
+      fx_framebuffer_bind(pass->buffer);
+    } else {
+      buffer = get_main_buffer_blur(pass, &blur_options, fuse ? &final_upsample : NULL);
+    }
   } else {
     buffer = fbos->optimized_blur_buffer;
   }
@@ -3210,7 +3226,9 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     const char* env = getenv("ANDROMEDA_LENS");
     lens_enabled = env == NULL || strcmp(env, "0") != 0;
   }
-  if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && !wlr_box_empty(&probe_box)) {
+  if (sharp_glass && fx_options->lens > 0.0f) {
+    lens = wlr_texture;
+  } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && !wlr_box_empty(&probe_box)) {
     struct fx_framebuffer* copy = ensure_offscreen_buffer(pass, &target_buffers(pass)->lens_source, true);
     if (copy != NULL) {
       pixman_region32_t region;
@@ -3259,7 +3277,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     fx_render_pass_add_texture(pass, tex_options);
     tex_options->lens_texture = NULL;
   }
-  if (lens != NULL) {
+  if (lens != NULL && lens != wlr_texture) {
     wlr_texture_destroy(lens);
   }
 
