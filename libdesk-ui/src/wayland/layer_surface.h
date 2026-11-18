@@ -60,7 +60,7 @@ public:
 
   bool initialize() override;
   bool initialize(wl_output* output);
-  [[nodiscard]] zwlr_layer_surface_v1* layerSurface() const noexcept { return m_layerSurface; }
+  [[nodiscard]] zwlr_layer_surface_v1* layerSurface() const noexcept override { return m_layerSurface; }
 
   // Requests a new surface size from the compositor. The compositor will
   // respond with a configure event, which triggers the configure callback.

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/popup_positioner.h"
+#include "platform/popup.h"
 #include "wayland/surface.h"
 
 #include <cstdint>
@@ -9,47 +9,25 @@
 
 struct wl_output;
 struct xdg_popup;
-struct xdg_surface;
-struct zwlr_layer_surface_v1;
 
-struct PopupSurfaceConfig {
-  std::int32_t anchorX = 0;
-  std::int32_t anchorY = 0;
-  std::int32_t anchorWidth = 1;
-  std::int32_t anchorHeight = 1;
-  std::uint32_t width = 1;
-  std::uint32_t height = 1;
-  PopupAnchor anchor = PopupAnchor::None;
-  PopupGravity gravity = PopupGravity::None;
-  std::uint32_t constraintAdjustment = PopupConstraint::None;
-  std::int32_t offsetX = 0;
-  std::int32_t offsetY = 0;
-  std::uint32_t serial = 0;
-  bool grab = true;
-  bool reactive = false;
-};
-
-class PopupSurface : public WaylandSurface {
+class PopupSurface : public WaylandSurface, public Popup {
 public:
   explicit PopupSurface(WaylandConnection& connection);
   ~PopupSurface() override;
 
-  using Surface::initialize;
   bool initialize() override { return false; }
+  // Attaches to the parent's layer or xdg surface; false when the parent has neither.
+  bool initialize(const PopupParent& parent, PopupSurfaceConfig config) override;
   bool initialize(zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, PopupSurfaceConfig config);
   bool initializeAsChild(xdg_surface* parentXdgSurface, wl_output* output, PopupSurfaceConfig config);
-  // When commit is false, the geometry change (size, viewport destination, reposition) is left
-  // pending on the wl_surface so the caller can publish it atomically with the next rendered
-  // buffer. Committing here with the previous buffer still attached makes the compositor scale
-  // that stale buffer to the new geometry (visible as a stretched popup on NVIDIA).
-  bool resize(std::uint32_t width, std::uint32_t height, bool commit = true);
-  bool repositionAnchor(const PopupSurfaceConfig& anchorConfig, bool commit = true);
+  bool resize(std::uint32_t width, std::uint32_t height, bool commit = true) override;
+  bool repositionAnchor(const PopupSurfaceConfig& anchorConfig, bool commit = true) override;
 
-  void setDismissedCallback(std::function<void()> callback);
+  void setDismissedCallback(std::function<void()> callback) override;
 
-  [[nodiscard]] xdg_surface* xdgSurface() const noexcept { return m_xdgSurface; }
-  [[nodiscard]] std::int32_t configuredX() const noexcept { return m_configuredX; }
-  [[nodiscard]] std::int32_t configuredY() const noexcept { return m_configuredY; }
+  [[nodiscard]] xdg_surface* xdgSurface() const noexcept override { return m_xdgSurface; }
+  [[nodiscard]] std::int32_t configuredX() const noexcept override { return m_configuredX; }
+  [[nodiscard]] std::int32_t configuredY() const noexcept override { return m_configuredY; }
 
   static void handleXdgSurfaceConfigure(void* data, xdg_surface* surface, std::uint32_t serial);
   static void handlePopupConfigure(

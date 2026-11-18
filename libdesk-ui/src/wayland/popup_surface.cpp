@@ -97,6 +97,19 @@ void PopupSurface::unenrollFromGrabHost() {
   }
 }
 
+bool PopupSurface::initialize(const PopupParent& parent, PopupSurfaceConfig config) {
+  const auto* waylandParent = dynamic_cast<const WaylandSurface*>(parent.surface);
+  if (waylandParent == nullptr) {
+    kLog.warn("popup skipped: parent is not a Wayland surface");
+    return false;
+  }
+  wl_output* output = m_connection.wlOutput(parent.output);
+  if (auto* layer = waylandParent->layerSurface(); layer != nullptr) {
+    return initialize(layer, output, std::move(config));
+  }
+  return initializeAsChild(waylandParent->xdgSurface(), output, std::move(config));
+}
+
 bool PopupSurface::initialize(zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, PopupSurfaceConfig config) {
   if (parentLayerSurface == nullptr || !m_connection.hasXdgShell()) {
     kLog.warn("context menu skipped: missing layer parent or xdg-shell");

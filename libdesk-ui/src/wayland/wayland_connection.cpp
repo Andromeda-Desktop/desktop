@@ -16,6 +16,8 @@
 #include "viewporter-client-protocol.h"
 #include "presentation-time-client-protocol.h"
 #include "wayland/drag_and_drop.h"
+#include "wayland/popup_surface.h"
+#include "wayland/toplevel_surface.h"
 #include "wayland/primary_selection.h"
 #include "primary-selection-unstable-v1-client-protocol.h"
 #include "wayland/hyprland/focus_grab_service.h"
@@ -1305,6 +1307,53 @@ WaylandOutput* WaylandConnection::findOutputByWl(wl_output* wlOutput) {
     }
   }
   return nullptr;
+}
+
+namespace {
+  // Every Surface on a Wayland connection is a WaylandSurface.
+  wl_surface* wlSurfaceOf(const Surface& surface) {
+    return dynamic_cast<const WaylandSurface&>(surface).wlSurface();
+  }
+} // namespace
+
+std::unique_ptr<Toplevel> WaylandConnection::createToplevel() { return std::make_unique<ToplevelSurface>(*this); }
+
+std::unique_ptr<Popup> WaylandConnection::createPopup() { return std::make_unique<PopupSurface>(*this); }
+
+OutputId WaylandConnection::lastPointerOutputId() const noexcept { return outputId(lastPointerOutput()); }
+
+OutputId WaylandConnection::outputForSurface(const Surface& surface) const noexcept {
+  return outputId(outputForSurface(wlSurfaceOf(surface)));
+}
+
+void WaylandConnection::ringBell(const Surface& surface) const { ringBell(wlSurfaceOf(surface)); }
+
+std::string WaylandConnection::requestActivationToken(const Surface& surface, const std::string& appId) const {
+  return requestActivationToken(wlSurfaceOf(surface), appId);
+}
+
+void WaylandConnection::activateSurface(const Surface& surface, const std::string& token) const {
+  activateSurface(wlSurfaceOf(surface), token);
+}
+
+void WaylandConnection::requestAttentionTokenAsync(
+    const Surface& surface, std::function<void(std::string token)> done
+) const {
+  requestAttentionTokenAsync(wlSurfaceOf(surface), std::move(done));
+}
+
+wl_output* WaylandConnection::wlOutput(OutputId id) const noexcept {
+  for (const auto& out : m_outputs) {
+    if (OutputId{out.name} == id && id != OutputId::None) {
+      return out.output;
+    }
+  }
+  return nullptr;
+}
+
+OutputId WaylandConnection::outputId(wl_output* output) const noexcept {
+  const auto* out = output != nullptr ? findOutputByWl(output) : nullptr;
+  return out != nullptr ? OutputId{out->name} : OutputId::None;
 }
 
 const WaylandOutput* WaylandConnection::findOutputByWl(wl_output* wlOutput) const {

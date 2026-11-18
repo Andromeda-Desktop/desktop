@@ -16,9 +16,11 @@ struct wl_output;
 struct wl_surface;
 struct wp_fractional_scale_v1;
 struct wp_viewport;
+struct xdg_surface;
+struct zwlr_layer_surface_v1;
 
 // A Surface backed by a wl_surface. Role classes (layer, popup, toplevel, subsurface) derive from it.
-class WaylandSurface : public Surface {
+class WaylandSurface : public virtual Surface {
 public:
   using OutputChangedCallback = std::function<void(wl_output* output)>;
 
@@ -33,6 +35,9 @@ public:
   void clearBlurRegion() override;
 
   [[nodiscard]] wl_surface* wlSurface() const noexcept { return m_surface; }
+  // The role object a popup attaches to; null for roles that cannot parent a popup.
+  [[nodiscard]] virtual xdg_surface* xdgSurface() const noexcept { return nullptr; }
+  [[nodiscard]] virtual zwlr_layer_surface_v1* layerSurface() const noexcept { return nullptr; }
 
   static void handleFrameDone(void* data, wl_callback* callback, std::uint32_t callbackData);
   void onSurfaceOutputEnter(wl_surface* surface, wl_output* output);

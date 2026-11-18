@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/display.h"
+#include "platform/output_id.h"
 #include "wayland/output_scale.h"
 #include "wayland/wayland_seat.h"
 
@@ -130,7 +132,7 @@ struct WaylandOutputHeadInfo {
   std::optional<std::int32_t> transform;
 };
 
-class WaylandConnection {
+class WaylandConnection : public Display {
 public:
   enum class Purpose : std::uint8_t {
     Shell,
@@ -138,7 +140,7 @@ public:
   };
 
   explicit WaylandConnection(Purpose purpose = Purpose::Shell);
-  virtual ~WaylandConnection();
+  ~WaylandConnection() override;
 
   WaylandConnection(const WaylandConnection&) = delete;
   WaylandConnection& operator=(const WaylandConnection&) = delete;
@@ -165,7 +167,7 @@ public:
   /// Fired when both `ext_idle_notifier_v1` and `wl_seat` are bound (including late registry globals).
   void setIdleCapabilitiesReadyCallback(ChangeCallback callback);
   void setTextInputService(TextInputService* textInputService);
-  void setCursorShape(std::uint32_t serial, std::uint32_t shape);
+  void setCursorShape(std::uint32_t serial, std::uint32_t shape) override;
 
   [[nodiscard]] int repeatPollTimeoutMs() const;
   void repeatTick();
@@ -226,6 +228,9 @@ public:
   [[nodiscard]] WaylandOutput* findOutputByWl(wl_output* wlOutput);
   [[nodiscard]] const WaylandOutput* findOutputByWl(wl_output* wlOutput) const;
   [[nodiscard]] WaylandOutput* findOutputByXdg(zxdg_output_v1* xdgOutput);
+  // Null for OutputId::None or an output that is gone.
+  [[nodiscard]] wl_output* wlOutput(OutputId id) const noexcept;
+  [[nodiscard]] OutputId outputId(wl_output* output) const noexcept;
 
   [[nodiscard]] bool hasXdgActivation() const noexcept;
   // The system bell (xdg-system-bell v1): the desktop plays its bell for `surface`. Does nothing without the global.
@@ -246,18 +251,27 @@ public:
   [[nodiscard]] wl_output* lastPointerOutput() const noexcept;
   [[nodiscard]] wl_surface* lastPointerSurface() const noexcept;
   [[nodiscard]] wl_surface* lastKeyboardSurface() const noexcept;
-  [[nodiscard]] std::uint32_t keyboardModifiers() const noexcept;
-  [[nodiscard]] bool hasPointerPosition() const noexcept;
-  [[nodiscard]] double lastPointerX() const noexcept;
-  [[nodiscard]] double lastPointerY() const noexcept;
+  [[nodiscard]] std::uint32_t keyboardModifiers() const noexcept override;
+  [[nodiscard]] bool hasPointerPosition() const noexcept override;
+  [[nodiscard]] double lastPointerX() const noexcept override;
+  [[nodiscard]] double lastPointerY() const noexcept override;
   [[nodiscard]] WaylandSeat::InputSource lastInputSource() const noexcept;
   [[nodiscard]] std::string currentKeyboardLayoutName() const;
   [[nodiscard]] std::vector<std::string> keyboardLayoutNames() const;
   [[nodiscard]] WaylandSeat::LockKeysState keyboardLockKeysState() const;
-  [[nodiscard]] std::uint32_t lastInputSerial() const noexcept;
+  [[nodiscard]] std::uint32_t lastInputSerial() const noexcept override;
   [[nodiscard]] double userIdleSeconds() const noexcept;
   [[nodiscard]] bool hasFreshPointerOutput(std::chrono::milliseconds maxAge) const noexcept;
   [[nodiscard]] wl_output* outputForSurface(wl_surface* surface) const noexcept;
+
+  [[nodiscard]] std::unique_ptr<Toplevel> createToplevel() override;
+  [[nodiscard]] std::unique_ptr<Popup> createPopup() override;
+  [[nodiscard]] OutputId lastPointerOutputId() const noexcept override;
+  [[nodiscard]] OutputId outputForSurface(const Surface& surface) const noexcept override;
+  void ringBell(const Surface& surface) const override;
+  [[nodiscard]] std::string requestActivationToken(const Surface& surface, const std::string& appId) const override;
+  void activateSurface(const Surface& surface, const std::string& token) const override;
+  void requestAttentionTokenAsync(const Surface& surface, std::function<void(std::string token)> done) const override;
 
   void registerSurfaceOutput(wl_surface* surface, wl_output* output);
   void notifySurfaceOutputEnter(wl_surface* surface, wl_output* output);

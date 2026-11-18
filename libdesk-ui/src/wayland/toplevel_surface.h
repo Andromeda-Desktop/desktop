@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/toplevel.h"
 #include "wayland/surface.h"
 
 #include <cstdint>
@@ -8,66 +9,37 @@
 
 struct wl_array;
 struct wl_output;
-struct xdg_surface;
 struct xdg_toplevel;
 struct zxdg_toplevel_decoration_v1;
 
-struct ToplevelSurfaceConfig {
-  std::uint32_t width = 720;
-  std::uint32_t height = 480;
-  std::uint32_t minWidth = 0;
-  std::uint32_t minHeight = 0;
-  std::uint32_t maxWidth = 0; // 0: no maximum
-  std::uint32_t maxHeight = 0;
-  std::string title = "Noctalia";
-  const char* appId = "dev.noctalia.Noctalia";
-  bool maximized = false; // asked before the first commit, so the first configure is already maximized
-  // Transparent band around the window, outside its xdg window geometry, for client-side resize (the GTK way).
-  // Only while the window is free: maximized and fullscreen windows have none.
-  std::uint32_t resizeMargin = 0;
-};
-
-// xdg_toplevel states from the last configure.
-struct ToplevelState {
-  bool maximized = false;
-  bool fullscreen = false;
-  bool activated = false;
-  bool tiled = false; // any tiled edge
-  bool suspended = false; // not visible: minimized, on another workspace or fully covered (xdg-shell v6)
-  bool operator==(const ToplevelState&) const = default;
-};
-
-class ToplevelSurface : public WaylandSurface {
+class ToplevelSurface : public WaylandSurface, public Toplevel {
 public:
   explicit ToplevelSurface(WaylandConnection& connection);
   ~ToplevelSurface() override;
 
-  using Surface::initialize;
   bool initialize() override { return false; }
+  bool initialize(OutputId output, const ToplevelSurfaceConfig& config) override;
   bool initialize(wl_output* output, const ToplevelSurfaceConfig& config);
 
-  void setClosedCallback(std::function<void()> callback);
-  void setMinSize(std::uint32_t minWidth, std::uint32_t minHeight);
-  void setTitle(const std::string& title);
-  void beginMove(std::uint32_t serial);
-  void beginResize(std::uint32_t serial, std::uint32_t edges);
-  void setMaximized(bool maximized);
-  // On the output the compositor picks.
-  void setFullscreen(bool fullscreen);
-  void setMinimized();
-  // A floating window picks its own size (xdg-shell lets the client choose while the compositor sends 0 x 0). False
-  // when the compositor sizes the window (maximized, fullscreen, tiled with a size) or before the first configure.
-  bool requestWindowSize(std::uint32_t width, std::uint32_t height);
-  void showWindowMenu(std::uint32_t serial, std::int32_t x, std::int32_t y);
-  // Called after a configure whose states differ from the last one.
-  void setStateCallback(std::function<void(const ToplevelState&)> callback) { m_stateCallback = std::move(callback); }
-  [[nodiscard]] const ToplevelState& state() const noexcept { return m_state; }
-  // The window inside the surface: the surface is the window plus margin() on every side.
-  [[nodiscard]] std::uint32_t margin() const noexcept { return m_margin; }
-  [[nodiscard]] std::uint32_t windowWidth() const noexcept { return m_windowWidth; }
-  [[nodiscard]] std::uint32_t windowHeight() const noexcept { return m_windowHeight; }
+  void setClosedCallback(std::function<void()> callback) override;
+  void setMinSize(std::uint32_t minWidth, std::uint32_t minHeight) override;
+  void setTitle(const std::string& title) override;
+  void beginMove(std::uint32_t serial) override;
+  void beginResize(std::uint32_t serial, std::uint32_t edges) override;
+  void setMaximized(bool maximized) override;
+  void setFullscreen(bool fullscreen) override;
+  void setMinimized() override;
+  bool requestWindowSize(std::uint32_t width, std::uint32_t height) override;
+  void showWindowMenu(std::uint32_t serial, std::int32_t x, std::int32_t y) override;
+  void setStateCallback(std::function<void(const ToplevelState&)> callback) override {
+    m_stateCallback = std::move(callback);
+  }
+  [[nodiscard]] const ToplevelState& state() const noexcept override { return m_state; }
+  [[nodiscard]] std::uint32_t margin() const noexcept override { return m_margin; }
+  [[nodiscard]] std::uint32_t windowWidth() const noexcept override { return m_windowWidth; }
+  [[nodiscard]] std::uint32_t windowHeight() const noexcept override { return m_windowHeight; }
 
-  [[nodiscard]] xdg_surface* xdgSurface() const noexcept { return m_xdgSurface; }
+  [[nodiscard]] xdg_surface* xdgSurface() const noexcept override { return m_xdgSurface; }
 
   static void handleXdgSurfaceConfigure(void* data, xdg_surface* surface, std::uint32_t serial);
   static void handleToplevelConfigure(

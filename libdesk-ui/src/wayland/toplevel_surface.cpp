@@ -62,6 +62,10 @@ ToplevelSurface::~ToplevelSurface() {
   destroyRoleObjects();
 }
 
+bool ToplevelSurface::initialize(OutputId output, const ToplevelSurfaceConfig& config) {
+  return initialize(m_connection.wlOutput(output), config);
+}
+
 bool ToplevelSurface::initialize(wl_output* output, const ToplevelSurfaceConfig& config) {
   if (!m_connection.hasXdgShell()) {
     kLog.warn("toplevel: missing xdg-shell");
