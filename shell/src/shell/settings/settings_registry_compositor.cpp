@@ -191,8 +191,9 @@ namespace settings {
               Appearance, "surfaces", "appearance.frost", 0.0, 1.0, 0.05, false,
               "glass blur frost frosted backdrop"
           );
-          toggle(Appearance, "surfaces", "appearance.edge_reflection", "glass edge reflection highlight rim shine");
         }
+        toggle(Appearance, "surfaces", "appearance.edge_reflection", "glass edge reflection glow highlight rim shine pointer");
+        toggle(Appearance, "surfaces", "appearance.adaptive_tone", "glass adaptive tone light dark backdrop bar dock");
       }
       toggle(Motion, "motion", "appearance.reduce_motion", "accessibility reduce motion animations");
       // Captioned as the shell rows they replace: the compositor runs every animation on the desktop.
@@ -243,6 +244,8 @@ namespace settings {
       );
       stepper(Layout, "layout", "layout.gap", 0, 500, 1, "px", "gaps spacing between windows");
       choice(Layout, "layout", "appearance.title_bar.mode", {"auto", "on", "off"}, true, "title bar titlebar decorations window header");
+      choice(Layout, "layout", "appearance.title_bar.style", {"andromeda", "macos", "windows"}, true, "title bar style buttons macos windows");
+      choice(Layout, "layout", "appearance.title_bar.button_position", {"left", "right"}, true, "title bar buttons close minimize side left right");
       if (mode == "floating") {
         toggle(Layout, "layout", "input.window_snapping", "snap tile half quarter edge drag");
         toggle(Layout, "layout", "input.snap_layouts_hover", "snap layouts flyout maximize button hover zones");

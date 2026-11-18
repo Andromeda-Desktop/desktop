@@ -857,8 +857,10 @@ namespace andromeda {
       // Blur slider: 0 the lightest blur, 0.5 the design values, 1 full size.
       double frost = 0.5;
       GlassStyle glassStyle = GlassStyle::Frosted;
-      // Frosted: the specular edge.
+      // The specular edge of every glass style.
       bool edgeReflection = true;
+      // Shell glass (bar, dock, islands, panels) turns light or dark with the backdrop under it.
+      bool adaptiveTone = true;
       // Liquid Tint, on the Tint slider scale.
       double liquidTint = 0.15;
       // Liquid Blur: 0 None, 1 Light (the lightest Frosted blur).

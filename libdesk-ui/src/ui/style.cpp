@@ -87,6 +87,7 @@ namespace Style {
 
   float glass() noexcept { return g_glass.activeTint(); }
   bool liquidGlass() noexcept { return g_glass.style == glass::Style::Liquid && !g_glass.reduceTransparency; }
+  bool adaptiveTone() noexcept { return g_glass.adaptiveTone; }
 
   bool reduceTransparency() noexcept { return g_glass.reduceTransparency; }
 
@@ -97,7 +98,9 @@ namespace Style {
     return glass::material(kind, g_glass, light);
   }
 
-  float windowGlassTint() noexcept { return glassMaterial(glass::Kind::Sheet, PaletteTone::Scheme).tint; }
+  float windowGlassTint() noexcept {
+    return glass::material(glass::Kind::Sheet, glass::windowSettings(g_glass), isLightPalette()).tint;
+  }
 
   float glassTint(glass::Kind kind, float opacity) noexcept {
     const bool light = isLightPalette() && glassTone(kind) == PaletteTone::Scheme;

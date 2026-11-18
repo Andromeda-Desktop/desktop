@@ -293,7 +293,7 @@ namespace andromeda {
         m_blur, m_blurOptions.optimized.value_or(cfg.optimized) && !m_blurLive
     );
     wlr_scene_blur_set_alpha(m_blur, m_blurAlpha);
-    const glass::Material material = configGlass(glass::Kind::Sheet);
+    const glass::Material material = configWindowGlass();
     wlr_scene_blur_set_liquid(m_blur, material.level);
     wlr_scene_blur_set_rim(m_blur, material.rim);
     wlr_scene_blur_set_strength(m_blur, material.blurStrength);

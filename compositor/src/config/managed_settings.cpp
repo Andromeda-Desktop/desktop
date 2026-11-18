@@ -401,6 +401,7 @@ namespace andromeda {
         Spec{"appearance.liquid", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquid); }},
         Spec{"appearance.glass_style", Kind::Choice, 0, 0, kGlassStyle, [](const Config& c) { return text(c.appearance.glassStyle); }},
         Spec{"appearance.edge_reflection", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.edgeReflection); }},
+        Spec{"appearance.adaptive_tone", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.adaptiveTone); }},
         Spec{"appearance.liquid_tint", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquidTint); }},
         Spec{"appearance.liquid_blur", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquidBlur); }},
         Spec{"appearance.reduce_transparency", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.reduceTransparency); }},

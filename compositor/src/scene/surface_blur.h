@@ -30,6 +30,8 @@ namespace andromeda {
   // The glass material of compositor-drawn glass from the appearance glass settings. The tint
   // is the dark scheme's: the compositor draws no tint of its own.
   [[nodiscard]] glass::Material configGlass(glass::Kind kind);
+  // The material of app windows and their overview cards (glass::windowSettings).
+  [[nodiscard]] glass::Material configWindowGlass();
 
   // True when the surface's opaque region does not cover surfaceBox, given in surface-local coordinates.
   [[nodiscard]] bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox);

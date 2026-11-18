@@ -202,7 +202,7 @@ namespace andromeda {
       const pixman_region32_t* clientRegion
   ) {
     m_blur.setAlpha(blurAlpha);
-    m_blur.setMaterial(configGlass(glass::Kind::Sheet));
+    m_blur.setMaterial(configWindowGlass());
     const bool regionSet = clientRegion != nullptr && pixman_region32_not_empty(clientRegion);
     SurfaceBlurOptions options = m_blurOptions;
     if (regionSet && m_ruleBlur.value_or(true)) {

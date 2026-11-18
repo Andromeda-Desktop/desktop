@@ -200,7 +200,7 @@ PaletteTone glassTone(glass::Kind kind) noexcept {
 }
 
 PaletteTone glassTone(glass::Kind kind, std::optional<bool> backdropDark) noexcept {
-  if (!backdropDark.has_value() || !Style::liquidGlass()) {
+  if (!backdropDark.has_value() || !Style::liquidGlass() || !Style::adaptiveTone()) {
     return glassTone(kind);
   }
   return *backdropDark ? PaletteTone::Dark : PaletteTone::Light;

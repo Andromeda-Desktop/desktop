@@ -281,7 +281,7 @@ namespace andromeda {
       roundToCardBox(entry->buffer);
       const wlr_box blurBox{0, 0, contentW, contentH};
       card.blur.setAlpha(1.0F);
-      card.blur.setMaterial(configGlass(glass::Kind::Sheet));
+      card.blur.setMaterial(configWindowGlass());
       card.blur.update(
           card.tree, surface, blurBox, geometry, contentCorners, nullptr, view->blurOptions(), entry->buffer->opacity,
           entry->buffer

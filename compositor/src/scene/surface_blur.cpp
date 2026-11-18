@@ -35,9 +35,9 @@ namespace andromeda {
 
   } // namespace
 
-  glass::Material configGlass(glass::Kind kind) {
+  static glass::Settings configGlassSettings() {
     const Config::Appearance& a = config().appearance;
-    const glass::Settings settings{
+    return {
         .style = static_cast<glass::Style>(a.glassStyle),
         .tint = static_cast<float>(a.glass),
         .frost = static_cast<float>(a.frost),
@@ -47,7 +47,12 @@ namespace andromeda {
         .lens = static_cast<float>(a.liquid),
         .reduceTransparency = a.reduceTransparency,
     };
-    return glass::material(kind, settings, false);
+  }
+
+  glass::Material configGlass(glass::Kind kind) { return glass::material(kind, configGlassSettings(), false); }
+
+  glass::Material configWindowGlass() {
+    return glass::material(glass::Kind::Sheet, glass::windowSettings(configGlassSettings()), false);
   }
 
   bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox) {

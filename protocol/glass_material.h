@@ -76,8 +76,10 @@ namespace glass {
     float tint = 0.5F;
     // Frosted Blur (appearance.frost): 0 the lightest blur, 0.5 the design values, 1 full size.
     float frost = 0.5F;
-    // Frosted specular edge (appearance.edge_reflection).
+    // Specular edge of every style and its pointer light (appearance.edge_reflection).
     bool edgeReflection = true;
+    // Shell glass follows its measured backdrop tone (appearance.adaptive_tone).
+    bool adaptiveTone = true;
     // Liquid Tint (appearance.liquid_tint), on the Tint scale.
     float liquidTint = 0.15F;
     // Liquid Blur (appearance.liquid_blur): 0 Soft, 1 Strong (kLiquidClarity).
@@ -91,6 +93,14 @@ namespace glass {
     }
     bool operator==(const Settings&) const = default;
   };
+
+  // App windows take Frosted when the style is Clear: Clear glass is for shell surfaces only.
+  [[nodiscard]] constexpr Settings windowSettings(Settings settings) noexcept {
+    if (settings.style == Style::Clear) {
+      settings.style = Style::Frosted;
+    }
+    return settings;
+  }
 
   // Opacity a configured `opacity` of `kind` is relative to: tint_regular (0.70) for shapes, tint_thick otherwise.
   [[nodiscard]] constexpr float referenceOpacity(Kind kind, bool light) noexcept {
@@ -130,7 +140,7 @@ namespace glass {
       const float clarity = std::lerp(kLiquidClarity[0], kLiquidClarity[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
       const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
       return {
-          .tint = tint, .level = level, .rim = at(settings.lens, 0.4F, 1.0F, 1.0F), .lens = level, .clarity = clarity,
+          .tint = tint, .level = level, .rim = settings.edgeReflection ? at(settings.lens, 0.4F, 1.0F, 1.0F) : 0.0F, .lens = level, .clarity = clarity,
           .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
       };
     }
