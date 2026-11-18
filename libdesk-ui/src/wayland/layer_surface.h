@@ -53,7 +53,7 @@ struct LayerSurfaceConfig {
   bool prewarmBlur = false;
 };
 
-class LayerSurface : public Surface {
+class LayerSurface : public WaylandSurface {
 public:
   LayerSurface(WaylandConnection& connection, LayerSurfaceConfig config);
   ~LayerSurface() override;

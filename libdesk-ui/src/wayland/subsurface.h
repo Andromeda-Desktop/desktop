@@ -22,7 +22,7 @@ struct SubsurfaceConfig {
   bool desynchronized = true;
 };
 
-class Subsurface : public Surface {
+class Subsurface : public WaylandSurface {
 public:
   Subsurface(WaylandConnection& connection, SubsurfaceConfig config);
   ~Subsurface() override;

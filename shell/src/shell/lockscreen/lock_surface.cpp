@@ -169,7 +169,7 @@ namespace {
 
 } // namespace
 
-LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) : Surface(connection), m_config(config) {
+LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) : WaylandSurface(connection), m_config(config) {
   {
     auto backgroundLayer = ui::node({});
     backgroundLayer->setZIndex(0);

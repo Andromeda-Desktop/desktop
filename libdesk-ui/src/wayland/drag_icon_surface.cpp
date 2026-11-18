@@ -4,7 +4,7 @@
 
 DragIconSurface::DragIconSurface(WaylandConnection& connection, std::uint32_t width, std::uint32_t height,
                                  std::int32_t bufferScale)
-    : Surface(connection), m_width(width), m_height(height), m_scale(bufferScale) {}
+    : WaylandSurface(connection), m_width(width), m_height(height), m_scale(bufferScale) {}
 
 DragIconSurface::~DragIconSurface() { m_connection.unregisterSurface(m_surface); }
 

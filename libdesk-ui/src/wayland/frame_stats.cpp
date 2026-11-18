@@ -39,8 +39,8 @@ bool FrameStats::enabled() {
   return on;
 }
 
-FrameStats::FrameStats(wp_presentation* presentation, std::string name)
-    : m_presentation(presentation), m_name(std::move(name)) {}
+FrameStats::FrameStats(wp_presentation* presentation, wl_surface* surface, std::string name)
+    : m_presentation(presentation), m_surface(surface), m_name(std::move(name)) {}
 
 FrameStats::~FrameStats() {
   for (struct wp_presentation_feedback* feedback : m_pending) {
@@ -48,7 +48,7 @@ FrameStats::~FrameStats() {
   }
 }
 
-void FrameStats::beginFrame(wl_surface* surface, bool animating) {
+void FrameStats::beginFrame(bool animating) {
   // Once the run ends, only its pending frames count; a surface that keeps repainting must not hold the run open.
   if ((!m_active && !animating) || (m_active && m_ending)) {
     m_frameInRun = false;
@@ -65,7 +65,7 @@ void FrameStats::beginFrame(wl_surface* surface, bool animating) {
   }
   m_ending = m_ending || !animating;
   m_frameInRun = true;
-  struct wp_presentation_feedback* feedback = wp_presentation_feedback(m_presentation, surface);
+  struct wp_presentation_feedback* feedback = wp_presentation_feedback(m_presentation, m_surface);
   wp_presentation_feedback_add_listener(feedback, &kListener, this);
   m_pending.push_back(feedback);
 }

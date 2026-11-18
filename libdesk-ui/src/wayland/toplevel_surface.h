@@ -37,7 +37,7 @@ struct ToplevelState {
   bool operator==(const ToplevelState&) const = default;
 };
 
-class ToplevelSurface : public Surface {
+class ToplevelSurface : public WaylandSurface {
 public:
   explicit ToplevelSurface(WaylandConnection& connection);
   ~ToplevelSurface() override;

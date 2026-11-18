@@ -29,7 +29,7 @@ struct PopupSurfaceConfig {
   bool reactive = false;
 };
 
-class PopupSurface : public Surface {
+class PopupSurface : public WaylandSurface {
 public:
   explicit PopupSurface(WaylandConnection& connection);
   ~PopupSurface() override;

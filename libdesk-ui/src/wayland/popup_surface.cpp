@@ -57,7 +57,7 @@ namespace {
 
 } // namespace
 
-PopupSurface::PopupSurface(WaylandConnection& connection) : Surface(connection) {}
+PopupSurface::PopupSurface(WaylandConnection& connection) : WaylandSurface(connection) {}
 
 PopupSurface::~PopupSurface() {
   *m_alive = false;

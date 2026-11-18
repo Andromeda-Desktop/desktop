@@ -36,6 +36,7 @@ class Panel;
 class RenderContext;
 class Surface;
 class WaylandConnection;
+class WaylandSurface;
 enum class LayerShellLayer : std::uint32_t;
 enum class LayerShellKeyboard : std::uint32_t;
 struct KeyboardEvent;
@@ -334,7 +335,7 @@ private:
   std::unique_ptr<FocusGrab> m_focusGrab;
   std::unordered_set<wl_surface*> m_focusGrabPopupSurfaces;
 
-  std::unique_ptr<Surface> m_surface;
+  std::unique_ptr<WaylandSurface> m_surface;
   // Morphs the detached panel from its bar island; null when the panel opens with the shell's own reveal.
   std::unique_ptr<DskSurfaceClient> m_dsk;
   wl_surface* m_morphSource = nullptr;

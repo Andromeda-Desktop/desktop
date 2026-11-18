@@ -188,6 +188,7 @@ _desk_ui_sources = files(
   'src/i18n/i18n_service.cpp',
   'src/i18n/language_tag.cpp',
   'src/motion/desk_motion.cpp',
+  'src/platform/surface.cpp',
   'src/render/animation/animation.cpp',
   'src/render/animation/animation_manager.cpp',
   'src/render/animation/motion_service.cpp',
@@ -345,7 +346,7 @@ _desk_ui_sources = files(
 # The OS layer: one implementation per OS behind a shared header.
 _sys_sources = host_machine.system() == 'darwin' \
   ? files('src/core/sys/sys_macos.cpp', 'src/core/files/directory_watcher_macos.cpp',
-      'src/core/freedesktop_thumbnails_none.cpp') \
+      'src/core/freedesktop_thumbnails_none.cpp', 'src/a11y/a11y_roots_none.cpp') \
   : files('src/core/sys/sys_linux.cpp', 'src/core/files/directory_watcher.cpp', 'src/core/freedesktop_thumbnails.cpp',
       'src/a11y/atspi_bridge.cpp', 'src/ui/app_icon.cpp')
 

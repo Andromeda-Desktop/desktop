@@ -51,7 +51,7 @@ LayerShellLayer layerShellLayerFromConfig(std::string_view layer) {
 }
 
 LayerSurface::LayerSurface(WaylandConnection& connection, LayerSurfaceConfig config)
-    : Surface(connection), m_config(std::move(config)) {
+    : WaylandSurface(connection), m_config(std::move(config)) {
   setDebugName("layer:" + m_config.nameSpace);
 }
 

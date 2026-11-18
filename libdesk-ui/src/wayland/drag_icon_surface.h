@@ -6,7 +6,7 @@
 
 // The image under the pointer during a drag (wl_data_device start_drag icon): a role-less surface the compositor
 // moves with the pointer.
-class DragIconSurface final : public Surface {
+class DragIconSurface final : public WaylandSurface {
 public:
   DragIconSurface(WaylandConnection& connection, std::uint32_t width, std::uint32_t height, std::int32_t bufferScale);
   ~DragIconSurface() override;

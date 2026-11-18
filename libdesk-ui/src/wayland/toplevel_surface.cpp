@@ -55,7 +55,7 @@ namespace {
   }
 } // namespace
 
-ToplevelSurface::ToplevelSurface(WaylandConnection& connection) : Surface(connection) {}
+ToplevelSurface::ToplevelSurface(WaylandConnection& connection) : WaylandSurface(connection) {}
 
 ToplevelSurface::~ToplevelSurface() {
   m_connection.unregisterSurface(m_surface);

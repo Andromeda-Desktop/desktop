@@ -13,7 +13,7 @@ namespace {
 } // namespace
 
 Subsurface::Subsurface(WaylandConnection& connection, SubsurfaceConfig config)
-    : Surface(connection), m_config(config) {}
+    : WaylandSurface(connection), m_config(config) {}
 
 Subsurface::~Subsurface() {
   m_connection.unregisterSurface(m_surface);

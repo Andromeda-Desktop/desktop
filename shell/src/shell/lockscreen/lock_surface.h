@@ -67,7 +67,7 @@ void fillLockWidgetData(
     LockCards::Data& data, const LockscreenConfig& lock, const WeatherService* weather, const AuthColumn::Status& status
 );
 
-class LockSurface : public Surface {
+class LockSurface : public WaylandSurface {
 public:
   explicit LockSurface(WaylandConnection& connection, ConfigService* config = nullptr);
   ~LockSurface() override;

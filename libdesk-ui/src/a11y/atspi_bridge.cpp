@@ -1,4 +1,5 @@
 #include "a11y/atspi_bridge.h"
+#include "a11y/a11y_roots.h"
 
 #include "core/log.h"
 #include "render/scene/input_area.h"
@@ -1030,3 +1031,11 @@ void AtspiBridge::updateTree() {
     m_activeWindow = activeWindow;
   }
 }
+
+namespace a11y {
+  void addRoot(const Node* root, std::function<std::string()> title) {
+    AtspiBridge::instance().addRoot(root, std::move(title));
+  }
+  void removeRoot(const Node* root) { AtspiBridge::instance().removeRoot(root); }
+  void markDirty() noexcept { AtspiBridge::instance().markDirty(); }
+} // namespace a11y
