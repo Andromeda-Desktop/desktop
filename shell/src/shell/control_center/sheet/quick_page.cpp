@@ -75,7 +75,7 @@ namespace {
 
     void clipInk() {
       if (ink != nullptr && slider != nullptr) {
-        ink->setSize(std::round(slider->normalizedValue() * width()), height());
+        ink->setFrameSize(std::round(slider->normalizedValue() * width()), height());
       }
     }
 
@@ -431,6 +431,7 @@ std::unique_ptr<Flex> QuickPage::makeDropTile(std::string_view type) {
   const float size = Tokens::componentTileHeight * s;
   Button* body = row.get();
   ToggleRow& tile = m_extras.back();
+  tile.drop = true;
   if (Node* text = tile.title->parent(); text != nullptr) {
     text->setVisible(false);
     text->setParticipatesInLayout(false);
@@ -961,7 +962,6 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
     }
   });
   m_profileBox = profile.get();
-  profile->addChild(makeGlyph(m_profileGlyph));
   profile->addChild(makeLabel(m_profileText, Tokens::typeFootnote, s, ColorRole::Label2));
   status->addChild(std::move(profile));
   footer->addChild(std::move(status));
@@ -1193,7 +1193,7 @@ void QuickPage::syncToggleRow(ToggleRow& row, const std::string& subtitle) {
   }
   const bool active = row.shortcut->active();
   row.icon->setGlyph(!row.glyph.empty() ? row.glyph : row.shortcut->currentIcon());
-  row.icon->setVariant(active ? ButtonVariant::Primary : ButtonVariant::Tonal);
+  row.icon->setVariant(active ? ButtonVariant::Primary : (row.drop ? ButtonVariant::Ghost : ButtonVariant::Tonal));
   row.icon->setEnabled(row.shortcut->enabled());
   row.subtitle->setText(subtitle);
   if (row.body != nullptr) {
@@ -1253,7 +1253,6 @@ void QuickPage::syncFooter() {
     m_unreadBadge->setPosition(std::round(b * 0.5F + 3.0F * s), std::round(b * 0.5F - 9.0F * s));
   }
   if (profile) {
-    m_profileGlyph->setGlyph(m_profile->displayIcon());
     m_profileText->setText(m_profile->displayLabel());
   }
 }

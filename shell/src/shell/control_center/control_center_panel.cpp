@@ -101,7 +101,9 @@ ControlCenterPanel::ControlCenterPanel(const ControlCenterServices& services) {
   m_tabHeaderActions.fill(nullptr);
 }
 
-float ControlCenterPanel::preferredWidth() const { return kQuickSheetWidth * m_contentScale; }
+float ControlCenterPanel::preferredWidth() const {
+  return (kQuickSheetWidth + Style::panelPadding * 2.0F) * m_contentScale;
+}
 
 bool ControlCenterPanel::fitsContentHeight() const noexcept { return true; }
 

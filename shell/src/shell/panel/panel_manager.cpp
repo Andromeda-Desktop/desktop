@@ -1093,6 +1093,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       if (m_activePanel != nullptr) {
         m_activePanel->onFrameTick(deltaMs);
       }
+      // A pour frame is redraw-only (no prepareFrame): the glass shapes must follow the pieces in the same commit.
+      syncGlassPieces(false);
     });
     surface.setAnimationManager(&m_animations);
   };
@@ -2670,6 +2672,10 @@ void PanelManager::syncGlassPieces(bool material) {
     if (material) {
       // Level 1 = the float plane (tokens elevation.e2), the shadow of an island.
       shape.set(DskSurfaceClient::Property::Elevation, {1.0, 0.0, 0.0, 0.0});
+      // Concept C: each piece is its own glass with wallpaper between; pieces never melt into one outline.
+      if (m_dsk->hasSoloProperty()) {
+        shape.set(DskSurfaceClient::Property::Solo, {1.0, 0.0, 0.0, 0.0});
+      }
       setGlassMaterial(shape, *m_dsk, want ? &glassShape : nullptr);
       shape.set(
           DskSurfaceClient::Property::Tint,

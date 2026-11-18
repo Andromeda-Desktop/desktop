@@ -58,6 +58,7 @@ private:
     Button* body = nullptr;    // the tile row (tooltip, right-click)
     std::string detail;        // detail tab key; empty = none
     Spinner* spinner = nullptr;
+    bool drop = false; // the icon fills a round drop: off shows the piece glass, not a tonal disc (concept C)
   };
 
   void doLayout(Renderer& renderer, float contentWidth, float bodyHeight) override;
@@ -181,7 +182,6 @@ private:
   Glyph* m_batteryGlyph = nullptr;
   Label* m_batteryText = nullptr;
   Button* m_profileBox = nullptr;
-  Glyph* m_profileGlyph = nullptr;
   Label* m_profileText = nullptr;
   std::unique_ptr<Shortcut> m_profile;
 
