@@ -10,15 +10,34 @@ set -euo pipefail
 done_file="$ANDROMEDA_RUNTIME_DIR/disable.done"
 ( "$ANDROMEDA" msg output-disable:HEADLESS-2 > /dev/null || { echo "output-disable failed" >&2; exit 1; }
   "$ANDROMEDA" outputs --json | jq -r '.[] | select(.name == "HEADLESS-2") | .enabled' > "$done_file" ) &
-slowest=0
-start=$(date +%s%N)
-while (( $(date +%s%N) - start < 2000000000 )); do
-  t0=$(date +%s%N)
-  "$ANDROMEDA" windows --json > /dev/null || { echo "windows failed during the stall"; exit 1; }
-  ms=$(( ($(date +%s%N) - t0) / 1000000 ))
-  (( ms > slowest )) && slowest=$ms
-  sleep 0.1
-done
+# A raw socket request times the compositor's reply without the CLI's process start; IPC answers one request per connection.
+slowest=$(python3 - "$ANDROMEDA_SOCKET" <<'PY'
+import json
+import socket
+import sys
+import time
+
+slowest = 0.0
+end = time.monotonic() + 2
+while time.monotonic() < end:
+    start = time.monotonic()
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.connect(sys.argv[1])
+    client.sendall(b'{"cmd":"windows"}\n')
+    reply = b""
+    while not reply.endswith(b"\n"):
+        chunk = client.recv(65536)
+        if not chunk:
+            sys.exit("the compositor closed the IPC connection during the stall")
+        reply += chunk
+    client.close()
+    if "ok" not in json.loads(reply):
+        sys.exit(f"windows failed during the stall: {reply[:200]!r}")
+    slowest = max(slowest, time.monotonic() - start)
+    time.sleep(0.1)
+print(int(slowest * 1000))
+PY
+)
 (( slowest < 250 )) || { echo "IPC took $slowest ms while output-disable ran during the stalled submit, want < 250"; exit 1; }
 for _ in $(seq 100); do
   [[ -s "$done_file" ]] && break
