@@ -3,7 +3,7 @@
 # behind the glass. Inside a Wayland session it runs nested in a window (that session's GPU and vsync); without one
 # (over SSH on the test laptop) it runs headless at MODE on this machine's GPU.
 # Usage: tests/glass-style-matrix.sh. Env: OUT, SECONDS_PER (default 4), MODE (headless, default 1920x1080@60), WALLS,
-# CONFIGS, SURFACES (space lists).
+# CONFIGS, SURFACES (space lists), SCHEME (dark|light), FOOT (0: no scrolling text window, the wallpaper shows).
 # Report: $OUT/report.txt, one row per cell: frames, GPU p50/p99 ms (frame log col 4), CPU record p50/p99 ms (col 12),
 # GPU execution p50/p99 ms (col 13), mean blur kpx (col 6), compositor and shell CPU %. Shots: $OUT/<wall>/<config>-<surface>.png.
 set -euo pipefail
@@ -16,6 +16,8 @@ WALLS=${WALLS:-"light dark colour text"}
 CONFIGS=${CONFIGS:-"rt frosted frosted-noedge frosted-user liquid liquid-clear liquid-tinted"}
 SURFACES=${SURFACES:-"desktop launcher cc settings toast"}
 MODE=${MODE:-1920x1080@60}
+SCHEME=${SCHEME:-dark}
+FOOT=${FOOT:-1}
 NESTED_PARENT=
 if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
   NESTED_PARENT=$WAYLAND_DISPLAY
@@ -41,7 +43,7 @@ magick -size 1280x720 xc:'#fafafa' -stroke '#3060c0' -strokewidth 1 \
 boot_headless 1
 [[ -n $NESTED_PARENT ]] || printf '\n[output.HEADLESS-1]\nmode = "%s"\n' "$MODE" >> "$RUNTIME/andromeda.toml"
 cp "$RUNTIME/andromeda.toml" "$RUNTIME/base.toml"
-printf '\n[theme]\nmode = "dark"\n' >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
+printf '\n[theme]\nmode = "%s"\n' "$SCHEME" >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
 # No idle power-off: a headless run gets no input for its whole length.
 printf '\n[idle]\nbehaviors = []\n' >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
 # The [appearance] keys of each glass setting.
@@ -53,8 +55,11 @@ frosted-user glass_style = "frosted"|glass = 0.45|frost = 0.05|edge_reflection =
 liquid glass_style = "liquid"|liquid_tint = 0.15|liquid_blur = 0.1|liquid = 0.5
 liquid-clear glass_style = "liquid"|liquid_tint = 0.0|liquid_blur = 0.0|liquid = 1.0
 liquid-tinted glass_style = "liquid"|liquid_tint = 0.5|liquid_blur = 1.0|liquid = 0.5
+liquid-fixed glass_style = "liquid"|liquid_tint = 0.15|liquid_blur = 0.1|liquid = 0.5|adaptive_tone = false
+clear glass_style = "clear"|liquid = 0.5
+clear-fixed glass_style = "clear"|liquid = 0.5|adaptive_tone = false
 CFG
-export RUNTIME WALLDIR WALLS CONFIGS SURFACES SECONDS_PER
+export RUNTIME WALLDIR WALLS CONFIGS SURFACES SECONDS_PER SCHEME FOOT
 with_noctalia '
   mono_ns() { python3 -c "import time; print(time.monotonic_ns())"; }
   ticks() { awk "{print \$14 + \$15}" "/proc/$1/stat" 2> /dev/null || echo 0; }
@@ -66,14 +71,16 @@ with_noctalia '
   }
   comp=$(pgrep -f -n "andromeda -c $RUNTIME/andromeda.toml")
   shellpid=$(pgrep -f -n -x "$NOCTALIA")
-  foot --maximized -o main.font=monospace:size=11 sh -c "while :; do seq 1 400000; done" > /dev/null 2>&1 &
-  sleep 2
+  if [[ $FOOT == 1 ]]; then
+    foot --maximized -o main.font=monospace:size=11 sh -c "while :; do seq 1 400000; done" > /dev/null 2>&1 &
+    sleep 2
+  fi
   for wall in $WALLS; do
     mkdir -p "$OUT/$wall"
     "$NOCTALIA" msg wallpaper-set "$WALLDIR/$wall.png" > /dev/null
     for config in $CONFIGS; do
       keys=$(awk -v c="$config" "\$1 == c {sub(/^[^ ]+ /, \"\"); gsub(/\\|/, \"\\n\"); print}" "$RUNTIME/configs")
-      { cat "$RUNTIME/base.toml"; printf "\n[appearance]\nscheme = \"dark\"\n%s\n" "$keys"; } > "$RUNTIME/andromeda.toml"
+      { cat "$RUNTIME/base.toml"; printf "\n[appearance]\nscheme = \"%s\"\n%s\n" "$SCHEME" "$keys"; } > "$RUNTIME/andromeda.toml"
       "$ANDROMEDA" msg config-reload > /dev/null
       settle
       for surface in $SURFACES; do
