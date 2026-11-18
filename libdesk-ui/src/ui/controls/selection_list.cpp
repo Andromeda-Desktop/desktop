@@ -165,16 +165,14 @@ void SelectionList::removeAnimated(Flex* row, std::function<void()> beforeFree) 
   }
   row->setClipChildren(true);
   const float from = row->height();
-  animations->animateSpring(1.0F, 0.0F, Style::spring(Tokens::springFadeOut), [row](float v) { row->setOpacity(v); },
-                            [this, animations, row, from, free = std::move(free)]() mutable {
-                              row->setMinHeight(0.0F);
-                              animations->animateSpring(
-                                  from, 0.0F, Style::spring(Tokens::springMove),
-                                  [this, row](float h) {
-                                    row->setMaxHeight(std::max(h, 0.01F));
-                                    markLayoutDirty();
-                                  },
-                                  std::move(free), this, 0.0F, Unit::Px);
-                            },
-                            this);
+  row->setMinHeight(0.0F);
+  // Content is gone when 35 % of the height is left, the mirror of insertAnimated's fade-in.
+  animations->animateSpring(
+      from, 0.0F, Style::spring(Tokens::springMove),
+      [this, row, from](float h) {
+        row->setMaxHeight(std::max(h, 0.01F));
+        row->setOpacity(std::clamp((h / from - 0.35F) / 0.65F, 0.0F, 1.0F));
+        markLayoutDirty();
+      },
+      std::move(free), this, 0.0F, Unit::Px);
 }

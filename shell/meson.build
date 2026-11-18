@@ -1295,6 +1295,7 @@ if build_tests
     'screenshot_ipc_request',
     'screenshot_backdrop',
     'scrollbar_geometry',
+    'selection_list',
     'search_broker',
     'search_ranker',
     'secret_store',

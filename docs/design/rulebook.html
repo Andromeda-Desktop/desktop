@@ -403,7 +403,8 @@ canvas.plot { width: 100%; height: 120px; display: block; }
 <a class="sub" href="#ch-D-lock-screen-own-image-blur-2026-11-11" data-ch="D">Lock screen own image blur (2026-11-11)</a>
 <a class="sub" href="#ch-D-theme-transition-clock-2026-11-12" data-ch="D">Theme transition clock (2026-11-12)</a>
 <a class="sub" href="#ch-D-share-picker-2026-11-15" data-ch="D">Share picker (2026-11-15)</a>
-<a class="sub" href="#ch-D-terminal-split-cards-2026-11-17" data-ch="D">Terminal split cards (2026-11-17)</a></div>
+<a class="sub" href="#ch-D-terminal-split-cards-2026-11-17" data-ch="D">Terminal split cards (2026-11-17)</a>
+<a class="sub" href="#ch-D-user-styled-boxes-outside-the-glass-material-2026-11-17" data-ch="D">User-styled boxes outside the glass material (2026-11-17)</a></div>
 </nav>
 <main>
 <section class="doc cover" id="ch-cover"><h1>Andromeda design rulebook</h1>
@@ -1454,7 +1455,7 @@ focused control as the source; global shortcuts use the island that owns the sur
 <td>P13</td>
 <td>List change</td>
 <td>insert, remove, reorder</td>
-<td>remaining items reflow on move; an inserted row grows its height from 0 on move with content fade from 35 %; a removed row fades out, then its height closes on move</td>
+<td>remaining items reflow on move; an inserted row grows its height from 0 on move with content fade from 35 %; a removed row closes its height on move from the first frame, its content fading out by 35 % height left (never a fade first: the rows below would wait)</td>
 </tr>
 <tr>
 <td>P14</td>
@@ -3365,6 +3366,12 @@ rulebook yet, full restyle.</p>
   glass or scene card shows no dark tint.</li>
 <li>Over a theme scene the sidebar selection is a label_1 wash (<code>component.terminal.scene_selection</code>), not the accent
   tint: an accent tint over the scene's hues turns muddy (Tidepool pink over teal).</li>
+</ul>
+<h3 id="ch-D-user-styled-boxes-outside-the-glass-material-2026-11-17">User-styled boxes outside the glass material (2026-11-17)</h3>
+<ul>
+<li>Desktop widget backgrounds (<code>background_color</code> × <code>background_opacity</code>, default 0.8) and the lock login box
+  (default 0.88) are per-widget user styles from the widget editor, not glass: the compositor blurs nothing under
+  them, so the Tint slider does not scale them. They follow the slider only if they become glass surfaces.</li>
 </ul>
 </section>
 </main>
