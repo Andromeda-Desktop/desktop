@@ -522,6 +522,8 @@ namespace shell::dock {
       instance.row->setSize(contentLength, panelGeometry.panelH);
       instance.maxScrollOffset = std::max(0.0F, contentLength - panelGeometry.panelW);
     }
+    // The viewport is back at its rest size: the next hover frame grows it again from zero.
+    instance.zoomGrow = {0.0F, 0.0F};
     applyDockScrollOffset(instance, cfg);
     instance.row->layout(renderer);
     shell::dock::syncDockItemRestPositions(instance, cfg);

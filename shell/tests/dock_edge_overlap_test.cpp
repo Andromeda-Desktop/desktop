@@ -8,6 +8,7 @@
 #include "wayland/surface.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <random>
 #include <vector>
@@ -63,7 +64,8 @@ namespace {
 
 namespace {
 
-  // Random hover scales (1 to 2.5, any shape): no two drawn icons come closer than at rest, and the largest stays put.
+  // Random hover scales (1 to 2.5, any shape): no two drawn icons come closer than at rest, and a tiny scale change
+  // (the pointer moving one step, even across an icon boundary) moves no icon by more than a tiny amount.
   void checkHoverSpreadNeverOverlaps() {
     constexpr float kIcon = 48.0F;
     std::mt19937 rng(7);
@@ -76,12 +78,23 @@ namespace {
       }
       const std::vector<float> offsets = shell::dock::hoverSpreadOffsets(scales, kIcon);
       TEST_CHECK(offsets.size() == scales.size());
-      const auto peak = static_cast<std::size_t>(std::ranges::max_element(scales) - scales.begin());
-      TEST_CHECK(offsets[peak] == 0.0F);
+      constexpr float kStep = 0.001F;
+      std::vector<float> nudged = scales;
+      nudged[run % nudged.size()] += kStep;
+      const std::vector<float> moved = shell::dock::hoverSpreadOffsets(nudged, kIcon);
+      for (std::size_t i = 0; i < scales.size(); ++i) {
+        TEST_CHECK(std::abs(moved[i] - offsets[i]) <= kIcon * kStep * static_cast<float>(scales.size()));
+      }
       for (std::size_t i = 1; i < scales.size(); ++i) {
         const float shrink = offsets[i] - offsets[i - 1] - kIcon * (scales[i - 1] + scales[i] - 2.0F) * 0.5F;
         TEST_CHECK(shrink >= -0.01F);
       }
+    }
+    // The pointer halfway between two icons: either one may be the larger by a hair.
+    const std::vector<float> leftAhead = shell::dock::hoverSpreadOffsets({1.0F, 1.801F, 1.8F, 1.0F}, kIcon);
+    const std::vector<float> rightAhead = shell::dock::hoverSpreadOffsets({1.0F, 1.8F, 1.801F, 1.0F}, kIcon);
+    for (std::size_t i = 0; i < leftAhead.size(); ++i) {
+      TEST_CHECK(std::abs(leftAhead[i] - rightAhead[i]) <= 0.5F);
     }
   }
 

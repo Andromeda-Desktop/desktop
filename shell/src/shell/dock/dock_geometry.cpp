@@ -180,17 +180,20 @@ namespace shell::dock {
 
   std::vector<float> hoverSpreadOffsets(const std::vector<float>& scales, float iconSize) {
     std::vector<float> offsets(scales.size(), 0.0F);
-    std::size_t peak = 0;
     float before = 0.0F;
+    float weightSum = 0.0F;
+    float weightedOffset = 0.0F;
     for (std::size_t index = 0; index < scales.size(); ++index) {
-      const float extra = iconSize * std::max(0.0F, scales[index] - 1.0F);
+      const float growth = std::max(0.0F, scales[index] - 1.0F);
+      const float extra = iconSize * growth;
       offsets[index] = before + extra * 0.5F;
       before += extra;
-      if (scales[index] > scales[peak]) {
-        peak = index;
-      }
+      weightSum += growth;
+      weightedOffset += growth * offsets[index];
     }
-    const float anchor = offsets.empty() ? 0.0F : offsets[peak];
+    // Anchored on the growth-weighted centre, not the largest icon: the anchor stays continuous as the pointer
+    // crosses from one icon to the next, so the dock never jumps sideways.
+    const float anchor = weightSum > 0.0F ? weightedOffset / weightSum : 0.0F;
     for (float& offset : offsets) {
       offset -= anchor;
     }

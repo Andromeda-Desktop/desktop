@@ -1135,6 +1135,8 @@ namespace shell::dock {
   }
 
   bool updateHoverZoom(DockInstance& instance, const DockSnapshot& snapshot, float deltaMs) {
+    // Zoom moves and resizes nodes it owns; outside a phase each resize would request a rebuild that resets the zoom.
+    UiPhaseScope zoomPhase(UiPhase::Update);
     const auto& cfg = instance.config;
     if (!cfg.magnification || instance.row == nullptr) {
       return false;
@@ -1343,7 +1345,9 @@ namespace shell::dock {
     if (cfg.launcherPosition == DockLauncherPosition::Start && instance.launcherArea != nullptr) {
       instance.launcherRestMainPos = vertical ? instance.launcherArea->y() : instance.launcherArea->x();
       instance.launcherRestCrossPos = vertical ? instance.launcherArea->x() : instance.launcherArea->y();
-      instance.launcherHoverMainOffset = 0.0F;
+      if (!instance.hoverPointerValid) {
+        instance.launcherHoverMainOffset = 0.0F;
+      }
     }
     for (auto& item : instance.items) {
       if (item.area == nullptr) {
@@ -1351,7 +1355,10 @@ namespace shell::dock {
       }
       item.restMainPos = vertical ? item.area->y() : item.area->x();
       item.restCrossPos = vertical ? item.area->x() : item.area->y();
-      item.hoverMainOffset = 0.0F;
+      // A relayout under the pointer keeps the spread, so magnification continues instead of restarting from rest.
+      if (!instance.hoverPointerValid) {
+        item.hoverMainOffset = 0.0F;
+      }
       const auto from = instance.glideFrom.find(item.idLower);
       if (from == instance.glideFrom.end() || std::abs(from->second - item.restMainPos) < 0.5F) {
         continue;
