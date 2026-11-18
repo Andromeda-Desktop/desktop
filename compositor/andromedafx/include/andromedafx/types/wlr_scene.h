@@ -353,10 +353,6 @@ struct wlr_scene_buffer {
   int dst_width, dst_height;
   enum wl_output_transform transform;
   pixman_region32_t opaque_region;
-  // Node-local area outside of which the buffer is fully transparent (dsk content region); only valid while
-  // has_content_region. Glass above may treat the rest as absent when it picks its blur source.
-  pixman_region32_t content_region;
-  bool has_content_region;
 
   enum wlr_color_transfer_function transfer_function;
   enum wlr_color_named_primaries primaries;
@@ -389,6 +385,11 @@ struct wlr_scene_buffer {
     // Counts buffer commits with damage; tells new content apart from a reused buffer or staging slot.
     uint32_t content_seq;
   } WLR_PRIVATE;
+
+  // Node-local area outside of which the buffer is fully transparent (dsk content region); only valid while
+  // has_content_region. Glass above may treat the rest as absent when it picks its blur source.
+  pixman_region32_t content_region;
+  bool has_content_region;
 
   struct fx_corner_radii corners;
   /**
