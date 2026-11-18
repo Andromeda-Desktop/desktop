@@ -1390,6 +1390,9 @@ void Surface::render() {
     AtspiBridge::instance().markDirty();
   }
   m_redrawRequested = false;
+  if (m_renderTarget.takeStaleSizeSwap()) {
+    requestRedraw();
+  }
 }
 
 void Surface::requestFrame() {

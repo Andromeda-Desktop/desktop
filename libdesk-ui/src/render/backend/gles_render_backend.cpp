@@ -639,6 +639,10 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
       rects.push_back(static_cast<EGLint>(std::ceil(r.y1) - std::floor(r.y0)));
     }
   }
+  EGLint swapWidth = 0;
+  EGLint swapHeight = 0;
+  eglQuerySurface(m_display, surface.eglSurface(), EGL_WIDTH, &swapWidth);
+  eglQuerySurface(m_display, surface.eglSurface(), EGL_HEIGHT, &swapHeight);
   const EGLBoolean swapped = rects.empty()
       ? eglSwapBuffers(m_display, surface.eglSurface())
       : m_swapWithDamage(m_display, surface.eglSurface(), rects.data(), static_cast<EGLint>(rects.size() / 4));
@@ -657,6 +661,9 @@ void GlesRenderBackend::endFrame(RenderTarget& target, std::span<const DamageRec
     // frame instead of killing the shell.
     kLog.warn("eglSwapBuffers failed ({}); skipping frame", eglErrorDetail(eglGetError()));
     return;
+  }
+  if (std::cmp_not_equal(swapWidth, target.bufferWidth()) || std::cmp_not_equal(swapHeight, target.bufferHeight())) {
+    target.markStaleSizeSwap();
   }
   const float ms = elapsedSince(swapStart);
   logSlowRenderOperation(

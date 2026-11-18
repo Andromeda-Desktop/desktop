@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 #include "render/core/damage_region.h"
 
 #include "render/core/renderer.h"
@@ -131,6 +133,13 @@ public:
     return changed;
   }
 
+  // EGL may present a back buffer fetched before a resize at its old size; the next frame must repaint fully.
+  void markStaleSizeSwap() noexcept {
+    m_staleSizeSwap = true;
+    m_damageWidth = 0;
+  }
+  [[nodiscard]] bool takeStaleSizeSwap() noexcept { return std::exchange(m_staleSizeSwap, false); }
+
   void setLogicalSize(std::uint32_t w, std::uint32_t h) noexcept {
     m_logicalWidth = w;
     m_logicalHeight = h;
@@ -144,6 +153,7 @@ private:
   std::uint32_t m_damageWidth = 0;
   std::uint32_t m_damageHeight = 0;
   const void* m_damageRoot = nullptr;
+  bool m_staleSizeSwap = false;
   std::optional<WallpaperMaskDrawParams> m_wallpaperMask;
   std::uint32_t m_bufferWidth = 0;
   std::uint32_t m_bufferHeight = 0;
