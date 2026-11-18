@@ -53,6 +53,18 @@ float lens_shift(float t) {
   return h * -r.x / max(-r.y, 1e-3);
 }
 
+// Whole-surface magnification of small glass at full lens (main() cannot see the token defines, appended after it).
+float lens_magnify() { return TOKEN_LENS_MAGNIFY; }
+
+// The sharp backdrop seen through the lens at uv, which sits `bend` (uv units) inward of the unbent point: red bends
+// TOKEN_LENS_DISPERSION less and blue more, the colour fringe of real glass.
+vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend) {
+  vec4 color = texture2D(tex, clamp(uv, 0.0, 1.0));
+  color.r = texture2D(tex, clamp(uv + bend * TOKEN_LENS_DISPERSION, 0.0, 1.0)).r;
+  color.b = texture2D(tex, clamp(uv - bend * TOKEN_LENS_DISPERSION, 0.0, 1.0)).b;
+  return color;
+}
+
 // Smooth union of two distances: the shapes join with a fillet where they come within k of each other.
 float smooth_union(float a, float b, float k) {
   float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);

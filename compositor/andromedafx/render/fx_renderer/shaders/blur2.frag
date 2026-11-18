@@ -142,6 +142,8 @@ float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr,
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
 float lens_shift(float t);
+float lens_magnify();
+vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float rim_edge(float d, float scale);
 float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d);
 float smooth_union(float a, float b, float k);
@@ -182,12 +184,15 @@ void main() {
   float specular = 0.0;
   float lens_weight = 0.0;
   vec2 lens_uv = texcoord;
+  vec2 lens_bend = vec2(0.0);
   float shine = max(liquid, rim);
   if (shine > 0.0) {
     float band = liquid_band(liquid_size, liquid, liquid_scale);
     vec2 p = gl_FragCoord.xy;
     float d = liquid_distance(p);
-    if (d > -band) {
+    // A shape narrower than two bands is lens across its whole surface: no flat interior to skip.
+    bool whole = band >= 0.5 * min(liquid_size.x, liquid_size.y) - 0.5;
+    if (d > -band || whole) {
       vec2 normal = vec2(liquid_distance(p + vec2(1.0, 0.0)) - liquid_distance(p - vec2(1.0, 0.0)),
                          liquid_distance(p + vec2(0.0, 1.0)) - liquid_distance(p - vec2(0.0, 1.0)));
       normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
@@ -195,8 +200,13 @@ void main() {
       float sag = lens_sag(t);
       float shift = lens_shift(t) * band;
       texcoord -= normal * (shift * liquid) * liquid_texel;
-      lens_uv = texcoord - normal * (shift * 0.6 * lens) * liquid_texel;
-      lens_weight = lens * sag * 0.85;
+      lens_bend = normal * (shift * 0.6 * lens) * liquid_texel;
+      if (whole) {
+        // Small glass magnifies its whole surface toward the centre, the rim bending hardest.
+        lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
+      }
+      lens_uv = texcoord - lens_bend;
+      lens_weight = lens * 0.85 * (whole ? mix(0.6, 1.0, sag) : sag);
             float edge = rim_edge(d, liquid_scale);
       float facing = rim_facing(normal, p, light, light.z > 0.0 ? liquid_distance(light.xy) : 0.0);
       float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
@@ -243,7 +253,7 @@ void main() {
   }
 #if GLASS
   if (lens_weight > 0.0) {
-    color = mix(color, texture2D(lens_tex, clamp(lens_uv, 0.0, 1.0)), lens_weight);
+    color = mix(color, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   color.rgb += specular * color.a;

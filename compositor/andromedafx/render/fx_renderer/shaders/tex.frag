@@ -205,6 +205,8 @@ float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr,
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
 float lens_shift(float t);
+float lens_magnify();
+vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float rim_edge(float d, float scale);
 float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d);
 float smooth_union(float a, float b, float k);
@@ -241,6 +243,7 @@ void main() {
   float specular = 0.0;
   float lens_weight = 0.0;
   vec2 lens_uv = uv;
+  vec2 lens_bend = vec2(0.0);
   float shine = max(liquid, rim);
   if (shine > 0.0) {
     // t = 1 at the edge, 0 at the band's inner end.
@@ -248,7 +251,9 @@ void main() {
     vec2 p = gl_FragCoord.xy;
     float d = liquid_distance(p);
     // Past the rim band there is no refraction and no rim: skip the four extra distance evaluations.
-    if (d > -band) {
+    // A shape narrower than two bands is lens across its whole surface: no flat interior to skip.
+    bool whole = band >= 0.5 * min(liquid_size.x, liquid_size.y) - 0.5;
+    if (d > -band || whole) {
       vec2 normal = vec2(liquid_distance(p + vec2(1.0, 0.0)) - liquid_distance(p - vec2(1.0, 0.0)),
                          liquid_distance(p + vec2(0.0, 1.0)) - liquid_distance(p - vec2(0.0, 1.0)));
       normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
@@ -258,8 +263,13 @@ void main() {
       float shift = lens_shift(t) * band;
       uv -= normal * (shift * liquid) * liquid_texel;
       // Lens: the sharp backdrop magnified toward the centre; it fades into the blur over the band.
-      lens_uv = uv - normal * (shift * 0.6 * lens) * liquid_texel;
-      lens_weight = lens * sag * 0.85;
+      lens_bend = normal * (shift * 0.6 * lens) * liquid_texel;
+      if (whole) {
+        // Small glass magnifies its whole surface toward the centre, the rim bending hardest.
+        lens_bend += (p - (liquid_position + 0.5 * liquid_size)) * (lens_magnify() * lens) * liquid_texel;
+      }
+      lens_uv = uv - lens_bend;
+      lens_weight = lens * 0.85 * (whole ? mix(0.6, 1.0, sag) : sag);
       // Specular: a reflection, not an outline. Brightest on the outermost pixel (d = -0.5), fading over 2.5 px
       // inward; the coverage mask cuts it outside. pow 8 keeps the key glint on the curves that face the top-left
       // light (a straight top edge gets 6 %), a back glint opposite, a faint even rim between (rim_facing).
@@ -271,7 +281,7 @@ void main() {
   }
   vec4 base = sample_texture(uv);
   if (lens_weight > 0.0) {
-    base = mix(base, texture2D(lens_tex, clamp(lens_uv, 0.0, 1.0)), lens_weight);
+    base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
   vec4 color = convert_color(base);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);

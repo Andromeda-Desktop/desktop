@@ -33,6 +33,7 @@ mkdir -p "$WALLDIR"
 magick -size 1280x720 gradient:'#f4f1ea-#d9d2c6' -fill '#ffffff' -draw 'circle 900,200 900,420' -blur 0x30 "$WALLDIR/light.png"
 cp "$ROOT/shell/assets/andromeda-wallpaper.png" "$WALLDIR/dark.png"
 magick -size 1280x720 -seed 7 plasma:'#ff3b6b-#2b7bff' -blur 0x8 -modulate 100,160 "$WALLDIR/colour.png"
+magick -size 48x48 xc:'#e0306a' -fill '#2b6bff' -draw 'rectangle 0,0 23,23 rectangle 24,24 47,47' -write mpr:t +delete -size 1920x1080 tile:mpr:t "$WALLDIR/grid.png"
 # Fine black-on-white text and a grid: smooth walls hide how the lens bends the backdrop.
 magick -size 1280x720 xc:'#fafafa' -stroke '#3060c0' -strokewidth 1 \
   -draw "$(for i in $(seq 0 40 1280); do printf 'line %d,0 %d,720 line 0,%d 1280,%d ' "$i" "$i" "$i" "$i"; done)" \
@@ -55,6 +56,7 @@ frosted-user glass_style = "frosted"|glass = 0.45|frost = 0.05|edge_reflection =
 liquid glass_style = "liquid"|liquid_tint = 0.15|liquid_blur = 0.1|liquid = 0.5
 liquid-clear glass_style = "liquid"|liquid_tint = 0.0|liquid_blur = 0.0|liquid = 1.0
 liquid-tinted glass_style = "liquid"|liquid_tint = 0.5|liquid_blur = 1.0|liquid = 0.5
+liquid-light glass_style = "liquid"|liquid_tint = 0.8|liquid_blur = 0.1|liquid = 0.5
 clear glass_style = "clear"|liquid = 0.5
 CFG
 export RUNTIME WALLDIR WALLS CONFIGS SURFACES SECONDS_PER SCHEME FOOT
