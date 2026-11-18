@@ -265,7 +265,8 @@ namespace andromeda {
           || m_heldFrame->bufferWidth() != m_output->width || m_heldFrame->bufferHeight() != m_output->height) {
         dropHeldFrame();
       } else {
-        m_heldFrame->setBox(box.x, box.y, box.width, box.height);
+        // The layout box has the committed scale; the first configured commit may still be in flight.
+        placeHeldFrame(m_configuredSubmit.has_value() ? &m_configuredSubmit->state : nullptr);
       }
     }
     m_server->resolveOutputEffect(*this);
@@ -1214,14 +1215,7 @@ namespace andromeda {
     markBlurBackgroundDirty();
 
     if (m_heldFrame != nullptr) {
-      // This frame renders at the staged scale, which the output does not have yet (1.0 before the first commit):
-      // a box from the old scale draws the held frame zoomed for one frame.
-      const float stagedScale = (state.committed & WLR_OUTPUT_STATE_SCALE) != 0 ? state.scale : m_output->scale;
-      const double scale = stagedScale > 0.0F ? stagedScale : 1.0;
-      m_heldFrame->setBox(
-          m_sceneOutput->x, m_sceneOutput->y, static_cast<int>(std::lround(m_heldFrame->bufferWidth() / scale)),
-          static_cast<int>(std::lround(m_heldFrame->bufferHeight() / scale))
-      );
+      placeHeldFrame(&state);
     }
 
     const bool unbound = wlr_output_layout_get(m_server->outputLayout(), m_output) == nullptr;
@@ -1266,6 +1260,18 @@ namespace andromeda {
     m_frameState = FrameState::Submitting;
     fx_renderer_kick(m_server->renderer(), onConfiguredSubmitted, this);
     return true;
+  }
+
+  void Output::placeHeldFrame(const wlr_output_state* staged) {
+    // The next frame renders at the staged scale, which the output does not have until that commit lands
+    // (1.0 before the first one): a box from the old scale draws the held frame zoomed.
+    const float stagedScale =
+        staged != nullptr && (staged->committed & WLR_OUTPUT_STATE_SCALE) != 0 ? staged->scale : m_output->scale;
+    const double scale = stagedScale > 0.0F ? stagedScale : 1.0;
+    m_heldFrame->setBox(
+        m_sceneOutput->x, m_sceneOutput->y, static_cast<int>(std::lround(m_heldFrame->bufferWidth() / scale)),
+        static_cast<int>(std::lround(m_heldFrame->bufferHeight() / scale))
+    );
   }
 
   void Output::onConfiguredSubmitted(void* data, bool ok) {

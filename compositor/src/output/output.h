@@ -511,6 +511,7 @@ namespace andromeda {
     void advanceHeldFrame(HeldFrameEvent event);
     [[nodiscard]] bool greeterShowsNothing() const;
     void dropHeldFrame() { advanceHeldFrame(HeldFrameEvent::Dropped); }
+    void placeHeldFrame(const wlr_output_state* staged);
     void stepHeldFrame();
     static int onHeldFrameTimer(void* data);
     DirectScanoutTracker m_directScanout;
