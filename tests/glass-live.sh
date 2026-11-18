@@ -123,6 +123,15 @@ s_launcher_typing_over_scroll() {
   while ((SECONDS < end)); do type_text 60 "firefox settings terminal"; backspaces 25; done
   msg panel-close launcher; kill "$f"
 }
+s_cc() {
+  edges
+  local end=$((SECONDS + SECONDS_PER))
+  while ((SECONDS < end)); do msg panel-open control-center; sleep 2; msg panel-close control-center; sleep 0.7; done
+}
+s_notifications() {
+  edges
+  for i in $(seq "$SECONDS_PER"); do notify-send -a glass-live -h "string:x-canonical-private-synchronous:glass$i" "Glass test $i" "Banner over the still wallpaper"; sleep 1; done
+}
 s_notifications_over_video() {
   local v; v=$(video); edges
   for i in $(seq "$SECONDS_PER"); do notify-send -a glass-live -h "string:x-canonical-private-synchronous:glass$i" "Glass test $i" "Banner over moving video"; sleep 1; done
@@ -161,8 +170,8 @@ s_worst() {
 set_reduce "$([[ $REDUCE == 1 ]] && echo true || echo false)"; sleep 1
 rec=
 if [[ $RECORD == 1 ]]; then wf-recorder -f "$OUT/run.mp4" > "$OUT/wf-recorder.log" 2>&1 & rec=$!; sleep 1; fi
-for s in ${SCENARIOS:-idle bar_dock_over_video video_full cc_over_video launcher_typing launcher_typing_over_video \
-  notifications_over_video slider_sweep_over_video scheme_flip_over_scroll launcher_typing_over_scroll worst}; do
+for s in ${SCENARIOS:-idle bar_dock_over_video video_full cc cc_over_video launcher_typing launcher_typing_over_video \
+  notifications notifications_over_video slider_sweep_over_video scheme_flip_over_scroll launcher_typing_over_scroll worst}; do
   scenario "$s" "s_$s"
   sleep 1
 done
