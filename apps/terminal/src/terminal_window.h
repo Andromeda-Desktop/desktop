@@ -287,12 +287,22 @@ namespace term {
     Button* m_prefsButton = nullptr; // hidden while the foot bar shows
     Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
     Flex* m_footBar = nullptr;   // the track's items
-    Flex* m_footHere = nullptr;  // this window's item: the lens at rest
-    Box* m_footLens = nullptr;   // the lens while pages move
-    std::vector<std::pair<std::uint64_t, Node*>> m_footItems; // bar item per workspace id
+    Box* m_footLens = nullptr;   // under the shown page's item; slides along the bar while pages move
+    // A bar item opens to `full` (symbol + name) as its page comes under the finger and closes as it leaves.
+    struct FootItem {
+      std::uint64_t id = 0;
+      Flex* row = nullptr;
+      Button* symbol = nullptr;
+      Label* name = nullptr;                 // null: no room for a name, or not a page
+      std::optional<std::size_t> page;       // none: shown in another window
+      float full = 0.0F;                     // open width, px
+      ColorRole idle = ColorRole::Label2;    // symbol colour when closed
+      bool lit = false;                      // the symbol shows the lens colours
+    };
+    std::vector<FootItem> m_footItems; // bar order
     void placeFootLens();
     float m_footWidth = 0.0F;    // the track's inner width, px
-    void fillFootBar();
+    void fillFootBar(Renderer& renderer);
     Button* m_newButton = nullptr; // the sidebar "+": its menu opens new sessions and windows
     SelectionList* m_rowList = nullptr;
     Box* m_dropLine = nullptr; // where a dragged row lands in the sidebar order
