@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The overview's layout chip opens the arrangement menu; a click on a row switches that workspace's arrangement and
+# The Strip row name's layout chip opens the arrangement menu; a click on a row switches that workspace's arrangement and
 # closes the menu, and a click outside only closes it (OV8).
 set -euo pipefail
 
@@ -13,7 +13,7 @@ pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
 }
 
-# The menu fill is colors.background, made unique here; the chip is glass tint (thick scheme tint).
+# The menu fill is colors.background, made unique here; the chip is that colour at the thin .62 alpha over the dark backdrop.
 cat >> "$ANDROMEDA_CONFIG" <<'EOF2'
 
 [layout]
@@ -23,7 +23,7 @@ mode = "scrolling"
 background = "#FF00FFFF"
 
 [overview]
-style = "spaces"
+style = "strip"
 background_blur = false
 workspace_wallpaper = false
 titles = "hover"
@@ -44,10 +44,9 @@ done
 
 layout() { "$ANDROMEDA" workspaces --json | jq -r '.[] | select(.active) | .layout'; }
 magenta='r > 0.85 && g < 0.15 && b > 0.85'
-# The chip's dark-scheme glass tint over black is blue-leaning (about 17,17,19); grey title antialiasing has r == b.
-chip='r > 0.06 && r < 0.072 && g > 0.06 && g < 0.072 && b > 0.072 && b < 0.08'
-# The left column under the chip holds nothing of that fill but the menu (cards start further right).
-menu_box() { "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$magenta" "370x240+0+$((cy + ch))"; }
+chip='r > 0.5 && r < 0.75 && g < 0.1 && b > 0.5 && b < 0.75'
+# Under the chip only the menu has the full fill (the row frame is a wallpaper mirror and the workspace fill).
+menu_box() { "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$magenta" "370x240+$((cx - 8))+$((cy + ch))"; }
 # Height of the menu panel; 0 when the menu is closed.
 menu_height() {
   grim -o HEADLESS-1 "$IMAGE"
@@ -55,10 +54,10 @@ menu_height() {
 }
 
 grim -o HEADLESS-1 "$IMAGE"
-# The chip sits in the title row at the left, under the thumbs (whose badges share the menu fill further right).
-read -r cx cy cw ch < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$chip" "320x200+0+120")
+# The chip is the shown row's name, above the row frame's left edge.
+read -r cx cy cw ch < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$chip" "500x120+150+60")
 if ((cw == 0)); then
-  echo "no layout chip in the title row"
+  echo "no layout chip on the Strip row name"
   exit 1
 fi
 pointer move $((cx + cw / 2)) $((cy + ch / 2)) click "$BTN_LEFT"

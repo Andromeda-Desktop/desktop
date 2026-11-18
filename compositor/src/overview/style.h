@@ -95,7 +95,6 @@ namespace andromeda::ov {
     // Spaces, Task View: the current workspace's desktop -> the main area. A spread (exposé) workspace has no single
     // map, so it is the whole output fitted into the area.
     std::optional<Fit> mainFit;
-    std::optional<Point> title;   // workspace name + layout chip, top-left corner
     std::optional<Point> filter;  // filter field, top-left corner; kFilterWidth wide
     std::optional<Rect> viewport; // Spaces + Scrolling: the area that is on screen
     // Spaces, Task View: the current workspace's shown windows on its desktop, cut to the output, bottom to top. Its

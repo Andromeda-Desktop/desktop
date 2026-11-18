@@ -81,10 +81,10 @@ namespace andromeda::ov {
     bool closeHovered = false;     // the pointer is on that close button
     std::optional<ChromeMenu> menu;
     std::optional<ChromeWindowMenu> windowMenu;
-    std::optional<std::string_view> renaming; // the title row's name being typed (F2), drawn as a text field
+    std::optional<std::string_view> renaming; // the shown workspace's name being typed (F2), drawn as a text field
   };
 
-  // The overview's labels and targets on one output: workspace names, the title row (name + layout chip), the filter
+  // The overview's labels and targets on one output: workspace names, the filter
   // field, the new-workspace target and the window title capsules. Text renders once
   // per change of text or scale; every frame after that only moves and fades nodes. The nodes live under `parent`
   // and are freed by its scene-tree teardown, never by this class.
@@ -109,8 +109,8 @@ namespace andromeda::ov {
     [[nodiscard]] bool windowMenuContains(double lx, double ly) const;
     // The tab under the point, a workspace index; an index at or past the workspace count is the + tab or + target.
     [[nodiscard]] std::optional<size_t> tabAt(double lx, double ly) const;
-    // True when the point is on the title row's workspace name.
-    [[nodiscard]] bool titleAt(double lx, double ly) const;
+    // True when the point is on the shown workspace's name.
+    [[nodiscard]] bool nameAt(double lx, double ly) const;
 
   private:
     // Text over an optional rounded capsule.
@@ -133,6 +133,7 @@ namespace andromeda::ov {
       int padX = 0;
       int height = 0; // 0: the text's own height, no capsule
       int maxWidth = 400;
+      int width = 0; // a fixed capsule width with the text at padX; 0 fits the capsule to the text
       std::array<float, 4> fill{};
       bool wrap = false; // wrap at maxWidth instead of one ellipsized line
       wlr_buffer* icon = nullptr; // drawn iconSize square before the text
@@ -157,8 +158,6 @@ namespace andromeda::ov {
 
     wlr_scene_tree* m_tree = nullptr;
     std::vector<Label> m_names;
-    Label m_title;
-    Label m_chip;
     Label m_filter;
     Label m_noMatch;
     std::vector<Label> m_empties; // one per workspace card
@@ -184,8 +183,8 @@ namespace andromeda::ov {
     std::vector<Label> m_windowMenuLabels;
     std::vector<wlr_box> m_windowMenuRows;
     std::optional<wlr_box> m_windowMenuBox;
-    std::optional<wlr_box> m_titleBox;
-    Frame m_titleRing; // accent ring around the name while it is renamed
+    std::optional<wlr_box> m_nameBox; // the shown workspace's name
+    Frame m_nameRing; // accent ring around that name while it is renamed
     Frame m_tabBar;     // Strip: one tab per workspace and a + tab, in the dock's place (mockup B)
     Frame m_tabCurrent;
     std::vector<Label> m_tabs;

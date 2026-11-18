@@ -322,9 +322,12 @@ namespace andromeda {
       std::vector<WorkspaceBackground> workspaceBackgrounds;
       // Spaces: the current workspace's frame under its windows (wallpaper mirror and glass tint); hidden otherwise.
       WorkspaceBackground frame;
+      // The frame's shadow (below it) and its edge hairline (in a tree at the frame origin, above its wallpaper).
+      wlr_scene_shadow* frameShadow = nullptr;
+      wlr_scene_border* frameRim = nullptr;
       std::vector<std::unique_ptr<Card>> cards;
       std::vector<std::unique_ptr<DesktopSurface>> desktop;
-      // Names, title row, filter field, hint, + target and title capsules, above every card.
+      // Names, filter field, hint, + target and title capsules, above every card.
       std::unique_ptr<ov::Chrome> chrome;
       // The chosen workspace, fractional while it moves: 1.5 sits halfway between workspaces 1 and 2. Strip scrolls
       // its rows by it, Spaces and Task View morph between neighbours. Wheel steps, keyboard moves and touchpad
@@ -646,7 +649,7 @@ namespace andromeda {
     bool m_closeHover = false;
     std::optional<ArrangementMenu> m_menu;
     std::optional<WindowMenu> m_windowMenu;
-    // F2 rename of the title row's workspace: the text so far; `fresh` until the first key, which replaces the name.
+    // F2 rename of the shown workspace's name: the text so far; `fresh` until the first key, which replaces the name.
     struct Rename {
       Ref<Workspace> workspace;
       std::string text;

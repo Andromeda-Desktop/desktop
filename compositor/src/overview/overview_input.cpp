@@ -317,7 +317,7 @@ namespace andromeda {
       return true;
     }
     if (std::ranges::any_of(m_outputs, [&](const auto& state) {
-          return state->chrome != nullptr && state->chrome->titleAt(lx, ly);
+          return state->chrome != nullptr && state->chrome->nameAt(lx, ly);
         })) {
       constexpr uint32_t kDoubleClickMsec = 400;
       const bool second = m_titlePressMsec != 0 && timeMsec - m_titlePressMsec <= kDoubleClickMsec;
@@ -582,7 +582,7 @@ namespace andromeda {
     if (workspace == nullptr || workspace->group() == nullptr) {
       return;
     }
-    // The title row edits the shown workspace, so a rename from another workspace's card goes there first.
+    // The rename field is the shown workspace's name, so a rename from another workspace's card goes there first.
     if (workspace->group()->active() != workspace) {
       workspace->group()->select(workspace);
     }

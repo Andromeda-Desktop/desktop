@@ -500,6 +500,16 @@ namespace andromeda {
         state->workspaceBackgrounds.push_back(createWorkspaceBackground(*state));
       }
       state->frame = createWorkspaceBackground(*state);
+      if (state->frame.tree != nullptr) {
+        const std::array<float, 4> clear{};
+        state->frameShadow = wlr_scene_shadow_create(state->tree, 0, 0, 0, 0.0F, clear.data());
+        if (state->frameShadow != nullptr) {
+          wlr_scene_node_place_below(&state->frameShadow->node, &state->frame.tree->node);
+        }
+        if (wlr_scene_tree* rimTree = wlr_scene_tree_create(state->frame.tree)) {
+          state->frameRim = wlr_scene_border_create(rimTree, clear.data(), clear.data());
+        }
+      }
       state->tileShadows = wlr_scene_tree_create(state->tree);
       state->activeWorkspaceIndex = group->active() != nullptr ? group->active()->index() : 0;
       state->rowScroll.snap(static_cast<double>(state->activeWorkspaceIndex));

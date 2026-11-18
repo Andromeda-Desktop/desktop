@@ -115,7 +115,6 @@ namespace andromeda::ov {
       out.main = main;
       out.mainFit = frameFit;
       const double filterY = top ? y + th + kSpacesFilterGap : kTopFilterY;
-      out.title = Point{kFrameMargin, filterY};
       out.filter = Point{(in.width - kFilterWidth) / 2, filterY};
 
       if (in.current < n) {

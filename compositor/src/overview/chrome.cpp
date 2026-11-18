@@ -18,8 +18,6 @@ namespace andromeda::ov {
 
     constexpr int kNameHeight = 22;
     constexpr int kNameGap = 6;
-    constexpr int kToolHeight = 32;
-    constexpr int kChipHeight = 24;
     constexpr int kFieldHeight = 36;
     constexpr int kCapsuleHeight = 28;
     constexpr int kCapsuleIcon = 18; // app icon in a title capsule (overview handoff)
@@ -137,7 +135,7 @@ namespace andromeda::ov {
     return -1;
   }
 
-  bool Chrome::titleAt(double lx, double ly) const { return m_titleBox.has_value() && boxHolds(*m_titleBox, lx, ly); }
+  bool Chrome::nameAt(double lx, double ly) const { return m_nameBox.has_value() && boxHolds(*m_nameBox, lx, ly); }
 
   bool Chrome::menuContains(double lx, double ly) const { return m_menuBox.has_value() && boxHolds(*m_menuBox, lx, ly); }
 
@@ -173,7 +171,7 @@ namespace andromeda::ov {
   void Chrome::setLabel(Label& label, const std::string& markup, const LabelStyle& style, double scale) {
     label.used = true;
     std::string key = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}", markup, style.font, scale, style.maxWidth, style.height, style.wrap,
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}", markup, style.font, scale, style.maxWidth, style.width, style.height, style.wrap,
         static_cast<const void*>(style.icon), style.iconSize
     );
     if (label.tree != nullptr && key == label.key) {
@@ -210,7 +208,9 @@ namespace andromeda::ov {
     label.textHeight = rendered.logicalHeight;
     const bool capsule = style.height > 0;
     label.height = capsule ? style.height : rendered.logicalHeight;
-    label.width = capsule ? std::max(lead + label.textWidth + 2 * style.padX, style.height) : label.textWidth;
+    label.width = !capsule ? label.textWidth
+                  : style.width > 0 ? style.width
+                                    : std::max(lead + label.textWidth + 2 * style.padX, style.height);
     label.color = style.fill;
     if (capsule) {
       if (label.fill == nullptr) {
@@ -229,7 +229,7 @@ namespace andromeda::ov {
     }
     label.text->point_accepts_input = [](wlr_scene_buffer*, double*, double*) { return false; };
     wlr_scene_buffer_set_dest_size(label.text, label.textWidth, label.textHeight);
-    const int left = (label.width - lead - label.textWidth) / 2;
+    const int left = style.width > 0 ? style.padX : (label.width - lead - label.textWidth) / 2;
     wlr_scene_node_set_position(&label.text->node, left + lead, (label.height - label.textHeight) / 2);
     if (style.icon != nullptr) {
       if (label.icon == nullptr) {
@@ -361,26 +361,48 @@ namespace andromeda::ov {
       label.used = false;
     }
     m_names.resize(std::max(m_names.size(), frame.workspaces.size()));
+    m_nameBox.reset();
     for (size_t index = 0; index < frame.workspaces.size(); ++index) {
       const ChromeWorkspace& workspace = frame.workspaces[index];
       Label& label = m_names[index];
       if (!workspace.shown) {
         continue;
       }
-      std::string markup = span(l1, "600", workspace.name);
-      if (workspace.kind != CardKind::Thumb && !workspace.arrangement.empty()) {
+      // A thumb's name is plain text centred under it; a row name carries its arrangement chip. The shown workspace's
+      // name turns into a text field with an accent ring while it is renamed (F2); the caret ends the text.
+      const bool renaming = frame.renaming.has_value() && index == frame.current;
+      const bool chip = workspace.kind != CardKind::Thumb && !workspace.arrangement.empty() && !renaming;
+      std::string markup = renaming ? span(l1, "600", *frame.renaming) + span(colors.accentPrimary, "normal", "▏")
+                                    : span(l1, "600", workspace.name);
+      if (chip) {
         markup += span(l2, "500", std::format("  ·  {}  ▾", workspace.arrangement));
       }
+      const bool capsule = chip || renaming;
       setLabel(
-          label, markup, {.font = "sans 9", .padX = 8, .height = kNameHeight, .maxWidth = 280, .fill = thin}, scale
+          label, markup,
+          {.font = "sans 9.75",
+           .padX = capsule ? 8 : 0,
+           .height = capsule ? kNameHeight : 0,
+           .maxWidth = 280,
+           .fill = renaming ? thick : thin},
+          scale
       );
       const wlr_box& card = workspace.card;
       const bool above = workspace.kind == CardKind::Frame || frame.style == Style::TaskView;
-      const int y = above ? card.y - kNameHeight - kNameGap : card.y + card.height + kNameGap;
-      placeLabel(label, card.x, y, shown);
-      if (workspace.kind != CardKind::Thumb && !workspace.arrangement.empty() && shown > 0.5F) {
-        m_chips.emplace_back(index, wlr_box{card.x, y, label.width, label.height});
+      const int x = workspace.kind == CardKind::Thumb ? card.x + (card.width - label.width) / 2 : card.x;
+      const int y = above ? card.y - label.height - kNameGap : card.y + card.height + kNameGap;
+      placeLabel(label, x, y, shown);
+      const wlr_box box{x, y, label.width, label.height};
+      if (chip && shown > 0.5F) {
+        m_chips.emplace_back(index, box);
       }
+      if (index == frame.current) {
+        m_nameBox = box;
+        placeFrame(m_nameRing, box, box.height / 2, 2, {}, colors.accentPrimary, renaming ? shown : 0.0F);
+      }
+    }
+    if (!m_nameBox.has_value()) {
+      placeFrame(m_nameRing, {}, 0, 0, {}, {}, 0.0F);
     }
     for (Label& label : m_names) {
       if (!label.used && label.tree != nullptr) {
@@ -440,40 +462,6 @@ namespace andromeda::ov {
       placeLabel(m_tabs[index], 0, 0, 0.0F);
     }
 
-    // Title row: the chosen workspace's name and its arrangement chip.
-    const ChromeWorkspace* current =
-        frame.current < frame.workspaces.size() ? &frame.workspaces[frame.current] : nullptr;
-    if (placement.title.has_value() && current != nullptr) {
-      if (frame.renaming.has_value()) {
-        // Prototype .nm[contenteditable]: the name on a thick field with an accent ring; the caret ends the text.
-        setLabel(
-            m_title, span(l1, "bold", *frame.renaming) + span(colors.accentPrimary, "normal", "▏"),
-            {.font = "sans 13.5", .padX = 6, .height = kToolHeight, .maxWidth = 420, .fill = thick}, scale
-        );
-      } else {
-        setLabel(m_title, span(l1, "bold", current->name), {.font = "sans 13.5", .maxWidth = 420}, scale);
-      }
-      setLabel(
-          m_chip, span(l1, "600", std::format("{}  ▾", current->arrangement)),
-          {.font = "sans 9", .padX = 10, .height = kChipHeight, .maxWidth = 200, .fill = thick}, scale
-      );
-      const int x = ox + px(placement.title->x);
-      const int y = oy + px(placement.title->y);
-      placeLabel(m_title, x + 4, y + (kToolHeight - m_title.height) / 2, shown);
-      m_titleBox = wlr_box{x + 4, y + (kToolHeight - m_title.height) / 2, m_title.width, m_title.height};
-      placeFrame(m_titleRing, *m_titleBox, 6, 2, {}, colors.accentPrimary, frame.renaming.has_value() ? shown : 0.0F);
-      const wlr_box chip{x + 4 + m_title.width + 10, y + (kToolHeight - kChipHeight) / 2, m_chip.width, kChipHeight};
-      placeLabel(m_chip, chip.x, chip.y, shown);
-      if (shown > 0.5F) {
-        m_chips.emplace_back(frame.current, chip);
-      }
-    } else {
-      placeLabel(m_title, 0, 0, 0.0F);
-      placeLabel(m_chip, 0, 0, 0.0F);
-      placeFrame(m_titleRing, {}, 0, 0, {}, {}, 0.0F);
-      m_titleBox.reset();
-    }
-
     if (placement.filter.has_value()) {
       const std::string markup = frame.filter.empty() ? span(l3, "normal", "⌕  Type to filter windows")
                                                       : span(l1, "normal", std::format("⌕  {}", frame.filter));
@@ -483,6 +471,7 @@ namespace andromeda::ov {
            .padX = 14,
            .height = kFieldHeight,
            .maxWidth = static_cast<int>(kFilterWidth),
+           .width = static_cast<int>(kFilterWidth),
            .fill = thick},
           scale
       );
@@ -523,6 +512,8 @@ namespace andromeda::ov {
 
     // The shown workspace's windows live in the main area; its thumb shows them as see-through blocks (prototype
     // .mini i), so the desktop shows behind them and a maximized window does not turn the thumb solid.
+    const ChromeWorkspace* current =
+        frame.current < frame.workspaces.size() ? &frame.workspaces[frame.current] : nullptr;
     size_t minis = 0;
     if (current != nullptr && current->shown && current->kind == CardKind::Thumb && frame.output.width > 0) {
       const double z = static_cast<double>(current->card.width) / frame.output.width;

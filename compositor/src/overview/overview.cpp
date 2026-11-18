@@ -596,13 +596,48 @@ namespace andromeda {
     if (state.frame.tree != nullptr) {
       wlr_scene_node_set_enabled(&state.frame.tree->node, framed);
     }
+    if (state.frameShadow != nullptr) {
+      wlr_scene_node_set_enabled(&state.frameShadow->node, framed);
+    }
     if (framed) {
-      // Mirrors are rebuilt on top of the fill; the frame's fill lies over its wallpaper.
+      const wlr_box& box = *state.mainBox;
+      const int radius = static_cast<int>(std::lround(Tokens::radiusR20 * p));
+      // Mirrors are rebuilt on top of the fill; the frame's fill and rim lie over its wallpaper.
       wlr_scene_node_raise_to_top(&state.frame.fill->node);
-      layoutMirrored(
-          state.frame, *state.mainBox, state.mainFit.s, static_cast<int>(std::lround(Tokens::radiusR20 * p)),
-          backgroundColor, 1.0F
-      );
+      layoutMirrored(state.frame, box, state.mainFit.s, radius, backgroundColor, 1.0F);
+      const bool light = config().appearance.scheme == ColorScheme::Light;
+      const auto& scheme = light ? Tokens::schemeLight : Tokens::schemeDark;
+      const auto color = [](std::uint32_t value) {
+        const auto channel = [value](int shift) { return static_cast<float>((value >> shift) & 0xFFU) / 255.0F; };
+        return std::array<float, 4>{channel(24), channel(16), channel(8), channel(0)};
+      };
+      const float fade = static_cast<float>(m_progress);
+      if (state.frameShadow != nullptr) {
+        // E2 (0 6 16): the nearest elevation to the mockup's 0 8 24 .28; the hole keeps it out of the translucent frame.
+        const auto& e2 = Tokens::elevationE2;
+        const int sigma = static_cast<int>(std::lround(e2.keyBlur / 2.0F));
+        const int offsetY = static_cast<int>(std::lround(e2.keyY));
+        wlr_scene_node_set_position(&state.frameShadow->node, box.x - sigma, box.y - sigma + offsetY);
+        wlr_scene_shadow_set_size(state.frameShadow, box.width + 2 * sigma, box.height + 2 * sigma);
+        wlr_scene_shadow_set_blur_sigma(state.frameShadow, static_cast<float>(sigma));
+        wlr_scene_shadow_set_corner_radius(state.frameShadow, radius);
+        std::array<float, 4> shadow{};
+        premultiplied(shadow.data(), color(scheme.shadow | 0xFFU), (light ? e2.keyLight : e2.keyDark) * fade);
+        wlr_scene_shadow_set_color(state.frameShadow, shadow.data());
+        wlr_scene_shadow_set_clipped_region(
+            state.frameShadow,
+            clipped_region{.area = {sigma, sigma - offsetY, box.width, box.height}, .corners = corner_radii_all(radius)}
+        );
+      }
+      if (state.frameRim != nullptr) {
+        wlr_scene_node_raise_to_top(&state.frameRim->node.parent->node);
+        wlr_scene_node_set_position(&state.frameRim->node.parent->node, box.x, box.y);
+        const int rim = std::max(1, static_cast<int>(std::lround(Tokens::lensRimWidth)));
+        applyBorderGeometry(state.frameRim, makeBorderRing(box.width, box.height, radius, rim, 0), rim, 0);
+        std::array<float, 4> edge{};
+        premultiplied(edge.data(), color(scheme.edge), fade);
+        wlr_scene_border_set_colors(state.frameRim, edge.data(), edge.data());
+      }
     }
 
     const View* liveTarget = liveTargetView();
