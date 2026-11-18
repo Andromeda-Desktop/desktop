@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -319,6 +320,8 @@ namespace andromeda {
       // Card shadows the real scene draws below every tile, above the workspace backgrounds and below every card.
       wlr_scene_tree* tileShadows = nullptr;
       std::vector<WorkspaceBackground> workspaceBackgrounds;
+      // Spaces: the current workspace's frame under its windows (wallpaper mirror and glass tint); hidden otherwise.
+      WorkspaceBackground frame;
       std::vector<std::unique_ptr<Card>> cards;
       std::vector<std::unique_ptr<DesktopSurface>> desktop;
       // Names, title row, filter field, hint, + target and title capsules, above every card.
@@ -427,6 +430,13 @@ namespace andromeda {
     // Keeps the typed name (a blank one keeps the old name) or drops it, and ends the rename.
     void finishRename(bool keep);
     [[nodiscard]] WorkspaceBackground createWorkspaceBackground(OutputState& state) const;
+    // Every background that holds desktop mirrors: the workspace rows, then the Spaces frame.
+    template <typename State> static auto mirroredBackgrounds(State& state) {
+      using Background = std::remove_reference_t<decltype((state.frame))>;
+      return std::array<std::span<Background>, 2>{
+          std::span<Background>(state.workspaceBackgrounds), std::span<Background>(&state.frame, 1)
+      };
+    }
     // Mapped background- and bottom-layer surfaces of `output`, in render order.
     void collectDesktopSurfaces(const Output& output, std::vector<DesktopEntry>& out) const;
     // Re-resolves the output's mirrored stack, rebuilding every row's mirrors when its surfaces changed.

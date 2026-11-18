@@ -43,15 +43,17 @@ namespace andromeda {
 
   void Overview::clearDesktop(OutputState& state) const {
     state.desktop.clear();
-    for (WorkspaceBackground& background : state.workspaceBackgrounds) {
-      for (const auto& mirror : background.mirrors) {
-        mirror->outputSample.disconnect();
-        mirror->frameDone.disconnect();
-        if (mirror->buffer != nullptr) {
-          wlr_scene_node_destroy(&mirror->buffer->node);
+    for (const auto rows : mirroredBackgrounds(state)) {
+      for (WorkspaceBackground& background : rows) {
+        for (const auto& mirror : background.mirrors) {
+          mirror->outputSample.disconnect();
+          mirror->frameDone.disconnect();
+          if (mirror->buffer != nullptr) {
+            wlr_scene_node_destroy(&mirror->buffer->node);
+          }
         }
+        background.mirrors.clear();
       }
-      background.mirrors.clear();
     }
   }
 
@@ -83,8 +85,10 @@ namespace andromeda {
       source->destroy.connect(&entry.surface->events.destroy, source.get(), onDesktopSurfaceDestroy);
       state.desktop.push_back(std::move(source));
     }
-    for (WorkspaceBackground& background : state.workspaceBackgrounds) {
-      createRowMirrors(state, background);
+    for (const auto rows : mirroredBackgrounds(state)) {
+      for (WorkspaceBackground& background : rows) {
+        createRowMirrors(state, background);
+      }
     }
     syncDesktopMirrors(state);
   }
@@ -116,35 +120,37 @@ namespace andromeda {
   }
 
   void Overview::syncDesktopMirrors(const OutputState& state) const {
-    for (const WorkspaceBackground& background : state.workspaceBackgrounds) {
-      for (const auto& mirror : background.mirrors) {
-        wlr_surface* surface = mirror->source->surface;
-        // The surface holds the authoritative committed buffer; a scene buffer may already have released the client
-        // one after importing its texture.
-        wlr_buffer* committed = surface->buffer != nullptr ? &surface->buffer->base : nullptr;
-        wlr_scene_buffer_set_buffer_options options{
-            .damage = committed != nullptr ? &surface->buffer_damage : nullptr,
-            .wait_timeline = nullptr,
-            .wait_point = 0,
-        };
-        if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(surface)) {
-          options.wait_timeline = sync->acquire_timeline;
-          options.wait_point = sync->acquire_point;
-        }
-        wlr_scene_buffer_set_buffer_with_options(mirror->buffer, committed, &options);
-        if (committed == nullptr) {
-          continue;
-        }
-        wlr_fbox src{};
-        wlr_surface_get_buffer_source_box(surface, &src);
-        wlr_scene_buffer_set_source_box(mirror->buffer, &src);
-        wlr_scene_buffer_set_transform(mirror->buffer, surface->current.transform);
-        // layoutOutput owns the destination geometry; only the color description follows the live node.
-        if (wlr_scene_buffer* live = sourceBufferForSurface(&mirror->source->tree->node, surface)) {
-          wlr_scene_buffer_copy_color(mirror->buffer, live);
-        }
-        if (ColorManager* colorManager = m_server->colorManager()) {
-          colorManager->applySurfaceDescriptionToBuffer(surface, mirror->buffer);
+    for (const auto rows : mirroredBackgrounds(state)) {
+      for (const WorkspaceBackground& background : rows) {
+        for (const auto& mirror : background.mirrors) {
+          wlr_surface* surface = mirror->source->surface;
+          // The surface holds the authoritative committed buffer; a scene buffer may already have released the client
+          // one after importing its texture.
+          wlr_buffer* committed = surface->buffer != nullptr ? &surface->buffer->base : nullptr;
+          wlr_scene_buffer_set_buffer_options options{
+              .damage = committed != nullptr ? &surface->buffer_damage : nullptr,
+              .wait_timeline = nullptr,
+              .wait_point = 0,
+          };
+          if (wlr_linux_drm_syncobj_surface_v1_state* sync = wlr_linux_drm_syncobj_v1_get_surface_state(surface)) {
+            options.wait_timeline = sync->acquire_timeline;
+            options.wait_point = sync->acquire_point;
+          }
+          wlr_scene_buffer_set_buffer_with_options(mirror->buffer, committed, &options);
+          if (committed == nullptr) {
+            continue;
+          }
+          wlr_fbox src{};
+          wlr_surface_get_buffer_source_box(surface, &src);
+          wlr_scene_buffer_set_source_box(mirror->buffer, &src);
+          wlr_scene_buffer_set_transform(mirror->buffer, surface->current.transform);
+          // layoutOutput owns the destination geometry; only the color description follows the live node.
+          if (wlr_scene_buffer* live = sourceBufferForSurface(&mirror->source->tree->node, surface)) {
+            wlr_scene_buffer_copy_color(mirror->buffer, live);
+          }
+          if (ColorManager* colorManager = m_server->colorManager()) {
+            colorManager->applySurfaceDescriptionToBuffer(surface, mirror->buffer);
+          }
         }
       }
     }
@@ -171,18 +177,20 @@ namespace andromeda {
     OutputState* state = source->state;
     // Drop this surface's copies only. Re-resolving here would re-bind a surface that is already being destroyed;
     // the next layout notices the shorter stack and rebuilds from what is left.
-    for (WorkspaceBackground& background : state->workspaceBackgrounds) {
-      std::erase_if(background.mirrors, [source](const std::unique_ptr<DesktopMirror>& mirror) {
-        if (mirror->source != source) {
-          return false;
-        }
-        mirror->outputSample.disconnect();
-        mirror->frameDone.disconnect();
-        if (mirror->buffer != nullptr) {
-          wlr_scene_node_destroy(&mirror->buffer->node);
-        }
-        return true;
-      });
+    for (const auto rows : mirroredBackgrounds(*state)) {
+      for (WorkspaceBackground& background : rows) {
+        std::erase_if(background.mirrors, [source](const std::unique_ptr<DesktopMirror>& mirror) {
+          if (mirror->source != source) {
+            return false;
+          }
+          mirror->outputSample.disconnect();
+          mirror->frameDone.disconnect();
+          if (mirror->buffer != nullptr) {
+            wlr_scene_node_destroy(&mirror->buffer->node);
+          }
+          return true;
+        });
+      }
     }
     std::erase_if(state->desktop, [source](const std::unique_ptr<DesktopSurface>& candidate) {
       return candidate.get() == source;

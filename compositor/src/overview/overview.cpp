@@ -536,33 +536,18 @@ namespace andromeda {
     // Thumbs appear in their slots with the windows that are not on screen; the shown workspace grows with the zoom.
     const std::array<float, 4> backgroundColor = tint(workspaceFill, m_progress);
     const std::array<float, 4> thumbColor = tint(workspaceFill, thumbAlpha);
-    for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
-      const WorkspaceBackground& background = state.workspaceBackgrounds[index];
-      const WorkspaceView& view = state.workspaceViews[index];
-      wlr_scene_node_set_enabled(&background.tree->node, view.shown);
-      if (!view.shown) {
-        continue;
-      }
-      const bool thumb = view.kind == ov::CardKind::Thumb;
-      const double z = view.fit.s;
-      const wlr_box& full = view.box;
-      // A thumb keeps the desktop's corners scaled; a frame rounds from square to r20 as the desktop zooms out.
-      const int backgroundRadius =
-          static_cast<int>(std::lround(thumb ? config().appearance.cornerRadius * z : Tokens::radiusR20 * p));
-      const float alpha = (thumb ? thumbAlpha : static_cast<float>(m_progress)) * view.opacity;
-      layoutWorkspaceBackground(
-          background.fill, full, backgroundRadius,
-          view.opacity < 1.0F ? tint(workspaceFill, alpha) : (thumb ? thumbColor : backgroundColor)
-      );
+    // Lays out one mirrored background: its fill, then its desktop mirrors scaled by `z` into `full`.
+    const auto layoutMirrored = [&](const WorkspaceBackground& background, const wlr_box& full, double z,
+                                    int backgroundRadius, const std::array<float, 4>& fill, float mirrorAlpha) {
+      layoutWorkspaceBackground(background.fill, full, backgroundRadius, fill);
       if (background.mirrors.empty()) {
-        continue;
+        return;
       }
       // The card is the viewport onto the mirrored stack: a partially anchored surface must not reach past it.
       wlr_scene_tree_set_clip(background.tree, &full);
       for (const auto& mirror : background.mirrors) {
         wlr_box box{};
         const bool visible = desktopSourceBox(*mirror->source, box);
-        const float mirrorAlpha = (thumb ? thumbAlpha : 1.0F) * view.opacity;
         wlr_scene_node_set_enabled(&mirror->buffer->node, visible && mirrorAlpha > 0.0F);
         if (!visible) {
           continue;
@@ -584,6 +569,40 @@ namespace andromeda {
             box.x <= 0 && box.y <= 0 && box.x + box.width >= outputBox.width && box.y + box.height >= outputBox.height;
         wlr_scene_buffer_set_corner_radii(mirror->buffer, corner_radii_all(spansOutput ? backgroundRadius : 0));
       }
+    };
+    for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
+      const WorkspaceBackground& background = state.workspaceBackgrounds[index];
+      const WorkspaceView& view = state.workspaceViews[index];
+      wlr_scene_node_set_enabled(&background.tree->node, view.shown);
+      if (!view.shown) {
+        continue;
+      }
+      const bool thumb = view.kind == ov::CardKind::Thumb;
+      const double z = view.fit.s;
+      const wlr_box& full = view.box;
+      // A thumb keeps the desktop's corners scaled; a frame rounds from square to r20 as the desktop zooms out.
+      const int backgroundRadius =
+          static_cast<int>(std::lround(thumb ? config().appearance.cornerRadius * z : Tokens::radiusR20 * p));
+      const float alpha = (thumb ? thumbAlpha : static_cast<float>(m_progress)) * view.opacity;
+      layoutMirrored(
+          background, full, z, backgroundRadius,
+          view.opacity < 1.0F ? tint(workspaceFill, alpha) : (thumb ? thumbColor : backgroundColor),
+          (thumb ? thumbAlpha : 1.0F) * view.opacity
+      );
+    }
+    // Spaces: the current workspace's frame grows from the screen with the zoom; its wallpaper stays opaque so the
+    // desktop never shows through, and the workspace fill fades in over it by progress.
+    const bool framed = state.placedStyle == ov::Style::Spaces && state.mainBox.has_value() && state.frame.tree != nullptr;
+    if (state.frame.tree != nullptr) {
+      wlr_scene_node_set_enabled(&state.frame.tree->node, framed);
+    }
+    if (framed) {
+      // Mirrors are rebuilt on top of the fill; the frame's fill lies over its wallpaper.
+      wlr_scene_node_raise_to_top(&state.frame.fill->node);
+      layoutMirrored(
+          state.frame, *state.mainBox, state.mainFit.s, static_cast<int>(std::lround(Tokens::radiusR20 * p)),
+          backgroundColor, 1.0F
+      );
     }
 
     const View* liveTarget = liveTargetView();

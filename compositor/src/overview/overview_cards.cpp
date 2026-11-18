@@ -499,6 +499,7 @@ namespace andromeda {
       for (size_t row = 0; row < group->workspaceCount(); ++row) {
         state->workspaceBackgrounds.push_back(createWorkspaceBackground(*state));
       }
+      state->frame = createWorkspaceBackground(*state);
       state->tileShadows = wlr_scene_tree_create(state->tree);
       state->activeWorkspaceIndex = group->active() != nullptr ? group->active()->index() : 0;
       state->rowScroll.snap(static_cast<double>(state->activeWorkspaceIndex));
