@@ -147,6 +147,8 @@ andromedafx_tokens_glsl = custom_target(
   output: 'design_tokens.glsl',
   command: [find_program('python3'), '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
 )
+# fx_pass.c includes it too: the corner split needs the reach of a smoothed corner.
+andromedafx_sources += andromedafx_tokens_glsl
 andromedafx_sources += custom_target(
   'corner_alpha_frag_src.h',
   input: [andromedafx_tokens_glsl, 'render/fx_renderer/shaders/corner_alpha.frag'],
@@ -339,6 +341,8 @@ if build_tests
     'audio-spectrum',
     'backdrop-probe',
     'faded-blur',
+    'buffer-tint',
+    'corner-split',
   ]
     test('effects-' + case_name, andromedafx_effects_test, args: case_name, suite: 'andromedafx')
   endforeach

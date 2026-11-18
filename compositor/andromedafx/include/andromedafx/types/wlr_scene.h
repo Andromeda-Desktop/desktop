@@ -390,6 +390,8 @@ struct wlr_scene_buffer {
   // has_content_region. Glass above may treat the rest as absent when it picks its blur source.
   pixman_region32_t content_region;
   bool has_content_region;
+  // Premultiplied colour drawn over the buffer in its own pass (wlr_scene_buffer_set_tint).
+  float tint[4];
 
   struct fx_corner_radii corners;
   /**
@@ -1199,6 +1201,13 @@ void wlr_scene_buffer_set_content_region(struct wlr_scene_buffer* scene_buffer, 
  * channels, so the buffer is then drawn without blending and culls what lies below it.
  */
 void wlr_scene_buffer_set_over_black(struct wlr_scene_buffer* scene_buffer, bool over_black);
+
+/**
+ * Draws a premultiplied colour over the buffer's own pixels in the same pass: the result equals a rect of that colour
+ * drawn over the buffer and everything beneath it, provided the buffer is opaque where the beneath shows. Alpha is
+ * kept.
+ */
+void wlr_scene_buffer_set_tint(struct wlr_scene_buffer* scene_buffer, const float color[4]);
 
 /**
  * Set the source rectangle describing the region of the buffer which will be

@@ -305,6 +305,7 @@ bool link_tex_program(
   shader->source_luminances = glGetUniformLocation(prog, "source_luminances");
   shader->target_tf = glGetUniformLocation(prog, "target_tf");
   shader->map_hdr_to_sdr = glGetUniformLocation(prog, "map_hdr_to_sdr");
+  shader->tint_mix = glGetUniformLocation(prog, "tint_mix");
   shader->pos_attrib = glGetAttribLocation(prog, "pos");
   shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
 
@@ -330,7 +331,6 @@ bool link_tex_program(
   shader->effects.liquid = glGetUniformLocation(prog, "liquid");
   shader->effects.rim = glGetUniformLocation(prog, "rim");
   shader->effects.lens = glGetUniformLocation(prog, "lens");
-  shader->effects.tint_mix = glGetUniformLocation(prog, "tint_mix");
   shader->effects.lens_tex = glGetUniformLocation(prog, "lens_tex");
   shader->effects.liquid_texel = glGetUniformLocation(prog, "liquid_texel");
   shader->effects.liquid_size = glGetUniformLocation(prog, "liquid_size");

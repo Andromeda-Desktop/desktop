@@ -2513,6 +2513,130 @@ static bool test_faded_blur(struct fixture* fixture) {
   return ok;
 }
 
+static struct wlr_buffer* painted_buffer(struct fixture* fixture, const float premultiplied[4]) {
+  struct wlr_buffer* buffer = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, TEST_WIDTH, TEST_HEIGHT);
+  struct wlr_render_pass* paint = buffer ? wlr_renderer_begin_buffer_pass(fixture->renderer, buffer, NULL) : NULL;
+  if (paint == NULL) {
+    if (buffer != NULL) {
+      wlr_buffer_drop(buffer);
+    }
+    return NULL;
+  }
+  wlr_render_pass_add_rect(
+      paint,
+      &(struct wlr_render_rect_options){
+          .box = {.width = TEST_WIDTH, .height = TEST_HEIGHT},
+          .color = {premultiplied[0], premultiplied[1], premultiplied[2], premultiplied[3]},
+          .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+      }
+  );
+  wlr_render_pass_submit(paint);
+  return buffer;
+}
+
+// An opaque wallpaper and a translucent icon layer under a translucent fill, against the same two buffers tinted with
+// the fill: both pixels (icon over wallpaper, bare wallpaper) must match.
+static bool tint_case(struct fixture* fixture, bool tinted, uint8_t out[2][4]) {
+  static const float wallpaper[4] = {0.8f, 0.4f, 0.2f, 1.0f}, icon[4] = {0.3f, 0.0f, 0.25f, 0.5f};
+  static const float fill[4] = {0.054f, 0.162f, 0.108f, 0.27f}, none[4] = {0}, blue[4] = {0, 0, 1, 1};
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
+  struct wlr_buffer* wall_buffer = painted_buffer(fixture, wallpaper);
+  struct wlr_buffer* icon_buffer = painted_buffer(fixture, icon);
+  bool ok = check(wall_buffer != NULL && icon_buffer != NULL, "buffers paint");
+  if (ok) {
+    struct wlr_scene_buffer* wall = wlr_scene_buffer_create(&scene->tree, wall_buffer);
+    struct wlr_scene_buffer* icons = wlr_scene_buffer_create(&scene->tree, icon_buffer);
+    wlr_scene_buffer_set_dest_size(icons, TEST_WIDTH / 2, TEST_HEIGHT);
+    wlr_scene_buffer_set_tint(wall, tinted ? fill : none);
+    wlr_scene_buffer_set_tint(icons, tinted ? fill : none);
+    if (!tinted) {
+      wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, fill);
+    }
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+    ok &= check(rendered != NULL, "scene renders");
+    if (rendered != NULL) {
+      ok &= fixture_read_pixel(fixture, rendered, 4, 8, out[0]) && fixture_read_pixel(fixture, rendered, 12, 8, out[1]);
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+  }
+  if (wall_buffer != NULL) {
+    wlr_buffer_drop(wall_buffer);
+  }
+  if (icon_buffer != NULL) {
+    wlr_buffer_drop(icon_buffer);
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+static bool test_buffer_tint(struct fixture* fixture) {
+  uint8_t over[2][4], tinted[2][4];
+  bool ok = tint_case(fixture, false, over) && tint_case(fixture, true, tinted);
+  for (int i = 0; ok && i < 2; i++) {
+    for (int c = 0; c < 4; c++) {
+      if (abs(over[i][c] - tinted[i][c]) > 1) {
+        fprintf(stderr, "  pixel %d channel %d: fill over %u, tinted %u\n", i, c, over[i][c], tinted[i][c]);
+        ok = false;
+      }
+    }
+  }
+  return ok;
+}
+
+// A rounded, tinted, translucent buffer over a backdrop: the plain interior and effects corners give every pixel the
+// whole effects draw gives.
+static bool corner_split_case(struct fixture* fixture, bool whole, uint8_t out[TEST_WIDTH * TEST_HEIGHT][4]) {
+  static const float colour[4] = {0.8f, 0.4f, 0.2f, 1.0f}, tint[4] = {0.0f, 0.0f, 0.0f, 0.27f}, blue[4] = {0, 0, 1, 1};
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
+  struct wlr_buffer* buffer = painted_buffer(fixture, colour);
+  bool ok = check(buffer != NULL, "buffer paints");
+  if (ok) {
+    struct wlr_scene_buffer* rounded = wlr_scene_buffer_create(&scene->tree, buffer);
+    // Larger than the output, so the radius is large and the plain part still exists; the top-left corner shows.
+    wlr_scene_buffer_set_dest_size(rounded, 30, 30);
+    wlr_scene_buffer_set_corner_radii(rounded, corner_radii_all(8));
+    wlr_scene_buffer_set_tint(rounded, tint);
+    wlr_scene_buffer_set_opacity(rounded, 0.8f);
+    fx_renderer_whole_corner_textures_for_test(fixture->renderer, whole);
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+    fx_renderer_whole_corner_textures_for_test(fixture->renderer, false);
+    ok &= check(rendered != NULL, "scene renders");
+    for (int i = 0; ok && rendered != NULL && i < TEST_WIDTH * TEST_HEIGHT; i++) {
+      ok &= fixture_read_pixel(fixture, rendered, i % TEST_WIDTH, i / TEST_WIDTH, out[i]);
+    }
+    if (rendered != NULL) {
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+    wlr_buffer_drop(buffer);
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+static bool test_corner_split(struct fixture* fixture) {
+  static uint8_t whole[TEST_WIDTH * TEST_HEIGHT][4], split[TEST_WIDTH * TEST_HEIGHT][4];
+  bool ok = corner_split_case(fixture, true, whole) && corner_split_case(fixture, false, split);
+  ok &= check(!ok || whole[0][0] != whole[TEST_WIDTH * TEST_HEIGHT / 2][0], "the corner shows the backdrop");
+  for (int i = 0; ok && i < TEST_WIDTH * TEST_HEIGHT; i++) {
+    if (memcmp(whole[i], split[i], 4) != 0) {
+      fprintf(
+          stderr, "  pixel %d,%d: whole %u %u %u %u, split %u %u %u %u\n", i % TEST_WIDTH, i / TEST_WIDTH, whole[i][0],
+          whole[i][1], whole[i][2], whole[i][3], split[i][0], split[i][1], split[i][2], split[i][3]
+      );
+      ok = false;
+    }
+  }
+  return ok;
+}
+
 // Exercise dynamic sampling of every entry, interpolation and clamps.
 static bool test_audio_spectrum(struct fixture* fixture) {
   struct wlr_scene* scene = wlr_scene_create();
@@ -2999,6 +3123,10 @@ int main(int argc, char* argv[]) {
     ok = test_backdrop_probe(&fixture);
   } else if (strcmp(argv[1], "faded-blur") == 0) {
     ok = test_faded_blur(&fixture);
+  } else if (strcmp(argv[1], "buffer-tint") == 0) {
+    ok = test_buffer_tint(&fixture);
+  } else if (strcmp(argv[1], "corner-split") == 0) {
+    ok = test_corner_split(&fixture);
   } else if (strcmp(argv[1], "audio-spectrum") == 0) {
     ok = test_audio_spectrum(&fixture);
   } else if (strcmp(argv[1], "output-effects") == 0) {

@@ -390,6 +390,8 @@ struct fx_renderer {
   bool fail_animation_capture_for_test;
   // Set only through fx_renderer_split_blur_composite_for_test.
   bool split_blur_composite_for_test;
+  // Set only through fx_renderer_whole_corner_textures_for_test.
+  bool whole_corner_textures_for_test;
   struct fx_effect_shader* animation_shadow_horizontal;
   struct fx_effect_shader* animation_shadow_vertical;
 

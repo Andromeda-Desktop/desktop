@@ -539,8 +539,27 @@ namespace andromeda {
     const std::array<float, 4> thumbColor = tint(workspaceFill, thumbAlpha);
     // Lays out one mirrored background: its fill, then its desktop mirrors scaled by `z` into `full`.
     const auto layoutMirrored = [&](const WorkspaceBackground& background, const wlr_box& full, double z,
-                                    int backgroundRadius, const std::array<float, 4>& fill, float mirrorAlpha) {
-      layoutWorkspaceBackground(background.fill, full, backgroundRadius, fill);
+                                    int backgroundRadius, const std::array<float, 4>& fill, float mirrorAlpha,
+                                    bool fillOver) {
+      const auto spansOutput = [&outputBox](const wlr_box& box) {
+        return box.x <= 0
+            && box.y <= 0
+            && box.x + box.width >= outputBox.width
+            && box.y + box.height >= outputBox.height;
+      };
+      // A fill over the mirrors draws in their own pass as a tint when an opaque mirror covers the whole card.
+      const bool folded =
+          fillOver && mirrorAlpha >= 1.0F && std::ranges::any_of(background.mirrors, [&](const auto& mirror) {
+            wlr_box box{};
+            if (!desktopSourceBox(*mirror->source, box) || !spansOutput(box)) {
+              return false;
+            }
+            pixman_box32_t whole{0, 0, box.width, box.height};
+            return pixman_region32_contains_rectangle(&mirror->source->surface->opaque_region, &whole)
+                == PIXMAN_REGION_IN;
+          });
+      const std::array<float, 4> mirrorTint = folded ? fill : std::array<float, 4>{};
+      layoutWorkspaceBackground(background.fill, full, backgroundRadius, folded ? std::array<float, 4>{} : fill);
       if (background.mirrors.empty()) {
         return;
       }
@@ -554,6 +573,7 @@ namespace andromeda {
           continue;
         }
         wlr_scene_buffer_set_opacity(mirror->buffer, mirrorAlpha);
+        wlr_scene_buffer_set_tint(mirror->buffer, mirrorTint.data());
         wlr_scene_node_set_position(
             &mirror->buffer->node, full.x + static_cast<int>(std::lround(box.x * z)),
             full.y + static_cast<int>(std::lround(box.y * z))
@@ -573,9 +593,7 @@ namespace andromeda {
           }
         }
         // Only a surface spanning the whole output takes the card's rounding; a smaller one keeps its own edges.
-        const bool spansOutput =
-            box.x <= 0 && box.y <= 0 && box.x + box.width >= outputBox.width && box.y + box.height >= outputBox.height;
-        wlr_scene_buffer_set_corner_radii(mirror->buffer, corner_radii_all(spansOutput ? backgroundRadius : 0));
+        wlr_scene_buffer_set_corner_radii(mirror->buffer, corner_radii_all(spansOutput(box) ? backgroundRadius : 0));
       }
     };
     for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
@@ -595,7 +613,7 @@ namespace andromeda {
       layoutMirrored(
           background, full, z, backgroundRadius,
           view.opacity < 1.0F ? tint(workspaceFill, alpha) : (thumb ? thumbColor : backgroundColor),
-          (thumb ? thumbAlpha : 1.0F) * view.opacity
+          (thumb ? thumbAlpha : 1.0F) * view.opacity, false
       );
     }
     // Spaces: the current workspace's frame grows from the screen with the zoom; its wallpaper stays opaque so the
@@ -612,7 +630,7 @@ namespace andromeda {
       const int radius = static_cast<int>(std::lround(Tokens::radiusR20 * p));
       // Mirrors are rebuilt on top of the fill; the frame's fill and rim lie over its wallpaper.
       wlr_scene_node_raise_to_top(&state.frame.fill->node);
-      layoutMirrored(state.frame, box, state.mainFit.s, radius, backgroundColor, 1.0F);
+      layoutMirrored(state.frame, box, state.mainFit.s, radius, backgroundColor, 1.0F, true);
       const bool light = config().appearance.scheme == ColorScheme::Light;
       const auto& scheme = light ? Tokens::schemeLight : Tokens::schemeDark;
       const auto color = [](std::uint32_t value) {

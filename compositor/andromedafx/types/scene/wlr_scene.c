@@ -3252,6 +3252,14 @@ void wlr_scene_buffer_set_over_black(struct wlr_scene_buffer* scene_buffer, bool
   pixman_region32_fini(&update_region);
 }
 
+void wlr_scene_buffer_set_tint(struct wlr_scene_buffer* scene_buffer, const float color[4]) {
+  if (memcmp(scene_buffer->tint, color, sizeof(scene_buffer->tint)) == 0) {
+    return;
+  }
+  memcpy(scene_buffer->tint, color, sizeof(scene_buffer->tint));
+  scene_node_update(&scene_buffer->node, NULL);
+}
+
 void wlr_scene_buffer_set_content_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region) {
   scene_buffer->has_content_region = region != NULL;
   if (region != NULL) {
@@ -4212,6 +4220,15 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                 || scene_buffer->absolute_luminance
                 || src_lum.max > src_lum.reference),
     };
+
+    const float tint_alpha = scene_buffer->tint[3];
+    if (tint_alpha > 0.0f) {
+      // tint_mix takes a straight colour and its weight.
+      for (int i = 0; i < 3; i++) {
+        tex_options.tint_mix[i] = scene_buffer->tint[i] / tint_alpha;
+      }
+      tex_options.tint_mix[3] = tint_alpha;
+    }
 
     // TODO: Use the base wlr_render_pass_add_texture as a fast-path in the future
     fx_render_pass_add_texture(fx_pass, &tex_options);

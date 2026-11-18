@@ -1,3 +1,4 @@
+#include "design_tokens.glsl"
 #include "effect_light_frag_src.h"
 #include "andromedafx/render/frame_stats.h"
 #include "render/color.h"
@@ -2006,16 +2007,79 @@ get_or_create_output_lut(struct fx_renderer* renderer, struct wlr_color_transfor
   return lut;
 }
 
+// Rounded corners alone need the effects shader only near the corners, and it costs several times the plain one per
+// fragment: the part of the clip no corner curve reaches draws plain, the corner squares draw with effects. Returns
+// false, having drawn nothing, when the texture has other effects or the clip has no such part.
+static bool
+render_texture_corner_split(struct fx_gles_render_pass* pass, const struct fx_render_texture_options* fx_options) {
+  const struct fx_corner_fradii* corners = &fx_options->corners;
+  if (pass->buffer->renderer->whole_corner_textures_for_test
+      || fx_corner_fradii_is_empty(corners)
+      || corners_flared(corners)
+      || clipped_fregion_is_valid(&fx_options->clipped_region)
+      || fx_options->liquid > 0.0f
+      || fx_options->rim > 0.0f
+      || fx_options->merge.count >= 2) {
+    return false;
+  }
+  const struct wlr_render_texture_options* options = &fx_options->base;
+  struct wlr_box dst_box;
+  wlr_render_texture_options_get_dst_box(options, &dst_box);
+  const struct wlr_box* box = wlr_box_empty(fx_options->clip_box) ? &dst_box : fx_options->clip_box;
+  const float radius =
+      fmaxf(fmaxf(corners->top_left, corners->top_right), fmaxf(corners->bottom_left, corners->bottom_right));
+  // corner_alpha.frag gives exactly 1 to a fragment `inset` px inside its box, which it shrinks by 0.25 px a side.
+  const float inset =
+      fminf(radius * (1.0f + 0.88f * (float)TOKEN_RADIUS_SMOOTHING), fminf(box->width, box->height) * 0.5f) + 1.0f;
+  const int k = (int)ceilf(inset);
+  pixman_region32_t plain;
+  pixman_region32_init(&plain);
+  if (box->width > 2 * k) {
+    pixman_region32_union_rect(&plain, &plain, box->x + k, box->y, box->width - 2 * k, box->height);
+  }
+  if (box->height > 2 * k) {
+    pixman_region32_union_rect(&plain, &plain, box->x, box->y + k, box->width, box->height - 2 * k);
+  }
+  pixman_region32_t clip;
+  if (options->clip != NULL) {
+    pixman_region32_init(&clip);
+    pixman_region32_copy(&clip, options->clip);
+  } else {
+    pixman_region32_init_rect(&clip, dst_box.x, dst_box.y, dst_box.width, dst_box.height);
+  }
+  pixman_region32_intersect(&plain, &plain, &clip);
+  const bool split = !pixman_region32_empty(&plain);
+  if (split) {
+    struct fx_render_texture_options part = *fx_options;
+    part.base.clip = &plain;
+    part.corners = (struct fx_corner_fradii){0};
+    fx_render_pass_add_texture(pass, &part);
+    pixman_region32_subtract(&clip, &clip, &plain);
+    if (!pixman_region32_empty(&clip)) {
+      part.base.clip = &clip;
+      part.corners = *corners;
+      fx_render_pass_add_texture(pass, &part);
+    }
+  }
+  pixman_region32_fini(&clip);
+  pixman_region32_fini(&plain);
+  return split;
+}
+
 void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct fx_render_texture_options* fx_options) {
+  if (render_texture_corner_split(pass, fx_options)) {
+    return;
+  }
   const struct wlr_render_texture_options* options = &fx_options->base;
   struct fx_renderer* renderer = pass->buffer->renderer;
   struct fx_texture* texture = fx_get_texture(options->texture);
 
   struct tex_shader* shader = NULL;
 
-  bool use_effects =
-      !fx_corner_fradii_is_empty(&fx_options->corners) || clipped_fregion_is_valid(&fx_options->clipped_region)
-      || fx_options->liquid > 0.0f || fx_options->rim > 0.0f || fx_options->tint_mix[3] > 0.0f;
+  bool use_effects = !fx_corner_fradii_is_empty(&fx_options->corners)
+      || clipped_fregion_is_valid(&fx_options->clipped_region)
+      || fx_options->liquid > 0.0f
+      || fx_options->rim > 0.0f;
   // A non-empty sample box selects the clamp variant. Everything else runs
   // the same fetch as before the clamp existed, so a driver only ever sees
   // the extra uniform on fractionally cropped surfaces.
@@ -2186,6 +2250,10 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
   glUniform1i(shader->map_hdr_to_sdr, fx_options->map_hdr_to_sdr);
 
   glUniform1f(shader->discard_transparent, fx_options->discard_transparent);
+  glUniform4f(
+      shader->tint_mix, fx_options->tint_mix[0], fx_options->tint_mix[1], fx_options->tint_mix[2],
+      fx_options->tint_mix[3]
+  );
   if (use_clamp) {
     glUniform4f(shader->sample_bounds, sample_bounds[0], sample_bounds[1], sample_bounds[2], sample_bounds[3]);
   }
@@ -2215,8 +2283,6 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
                 1.0f / (float)texture->wlr_texture.height);
     // Unit 2: units 0 and 1 hold the source and the colour LUT.
     glUniform1i(shader->effects.lens_tex, 2);
-    glUniform4f(shader->effects.tint_mix, fx_options->tint_mix[0], fx_options->tint_mix[1], fx_options->tint_mix[2],
-                fx_options->tint_mix[3]);
     const bool lens = fx_options->lens_texture != NULL && fx_options->lens > 0.0f;
     glUniform1f(shader->effects.lens, lens ? fx_options->lens : 0.0f);
     if (lens) {
@@ -3671,6 +3737,10 @@ uint64_t fx_output_optimized_blur_pixels_for_test(struct wlr_output* output) {
 
 void fx_renderer_split_blur_composite_for_test(struct wlr_renderer* renderer, bool split) {
   fx_get_renderer(renderer)->split_blur_composite_for_test = split;
+}
+
+void fx_renderer_whole_corner_textures_for_test(struct wlr_renderer* renderer, bool whole) {
+  fx_get_renderer(renderer)->whole_corner_textures_for_test = whole;
 }
 
 static const char* reset_status_str(GLenum status) {

@@ -31,6 +31,8 @@ uniform float lum_multiplier;
 uniform vec2 source_luminances;
 uniform int target_tf;
 uniform bool map_hdr_to_sdr;
+// The colour mixed toward the tint colour (rgb) by a: glass density over its backdrop, or a fill folded into a buffer.
+uniform vec4 tint_mix;
 
 #define TRANSFER_FUNCTION_PASSTHROUGH 0
 #define TRANSFER_FUNCTION_SRGB 1
@@ -61,8 +63,6 @@ uniform float rim;
 // Lens (0 = off): the sharp backdrop, displaced by the glass thickness, shows through the rim band over the blur.
 uniform float lens;
 uniform sampler2D lens_tex;
-// Density: the backdrop mixed toward the tint colour (rgb) by a, so the client's tint reads denser.
-uniform vec4 tint_mix;
 // UV step of one framebuffer pixel; the y sign follows the texture orientation.
 uniform vec2 liquid_texel;
 // The shape whose edge gets the rim; liquid_radius < 0 = the quad's own corners.
@@ -288,6 +288,7 @@ void main() {
   color.rgb += specular * color.a;
 #else
   vec4 color = convert_color(sample_texture(uv));
+  color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
 #endif
 #if EFFECTS
   float quad_corner_alpha = corner_alpha(
