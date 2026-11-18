@@ -92,10 +92,10 @@ wait_field minimized true
 "$ANDROMEDA" msg "window-focus:$id" > /dev/null
 wait_field minimized false
 
-# A tiled window cannot minimize, so its bar has no minimize button.
+# A tiled window can minimize too, so its bar keeps the minimize button.
 "$ANDROMEDA" msg window-toggle-floating > /dev/null
 wait_field floating false
-expect_slots 18=green 38=yellow 58=bar
+expect_slots 18=green 38=yellow 58=blue
 
 # A rule keeping only close replaces the configured buttons on reload.
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
@@ -106,4 +106,4 @@ EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 expect_slots 18=green 38=bar
 
-echo "the minimize button minimizes a floating window, tiled bars omit it, and title_bar_buttons rules apply live"
+echo "the minimize button minimizes a floating window, tiled bars keep it, and title_bar_buttons rules apply live"

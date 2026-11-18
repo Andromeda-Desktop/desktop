@@ -65,6 +65,18 @@ namespace andromeda::tiling {
     void splitLeafToward(Node* leaf, TileKey key, double cx, double cy);
     // Splits `leaf` with `key` on `edge` (a TileEdge) and locks the axis; edge 0 is an AutoSplit, `key` last.
     void splitOn(Node* leaf, TileKey key, std::uint32_t edge);
+    // Where a leaf sits: the steps from the root to its parent (true = left/top), its side, and its parent split.
+    struct Place {
+      std::vector<bool> path;
+      bool first = false;
+      Node::Type type = Node::AutoSplit;
+      double ratio = 0.5;
+      bool locked = false;
+      bool root = false;
+    };
+    [[nodiscard]] Place placeOf(const Node* leaf) const;
+    // Puts `key` back at `place`: follows the path while the tree has splits there and splits the node reached.
+    void insertAt(TileKey key, const Place& place);
     // Removes the node; its sibling takes the parent's place.
     void detach(Node* node);
     // Flips the split holding `leaf` between side by side and stacked, and locks it. False for a lone tile.

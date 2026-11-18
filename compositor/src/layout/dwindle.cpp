@@ -295,6 +295,24 @@ namespace andromeda {
     rebuildFlatColumns();
   }
 
+  std::optional<TileSlot> DwindleLayout::slotOf(const View* view) const {
+    const Node* node = findNode(view);
+    if (node == nullptr) {
+      return std::nullopt;
+    }
+    return m_tree.placeOf(node);
+  }
+
+  bool DwindleLayout::insertAtSlot(View* view, const TileSlot& slot) {
+    const auto* place = std::get_if<tiling::DwindleTree::Place>(&slot);
+    if (place == nullptr || view == nullptr || findNode(view) != nullptr) {
+      return false;
+    }
+    m_tree.insertAt(keyOf(view), *place);
+    rebuildFlatColumns();
+    return true;
+  }
+
   void DwindleLayout::moveColumn(int from, int to) {
     const int count = static_cast<int>(m_flatColumns.size());
     if (from < 0 || from >= count) {

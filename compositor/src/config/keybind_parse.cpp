@@ -441,7 +441,7 @@ namespace andromeda {
          KeybindAction::WindowFocusWarpId, ActionArgKind::WindowId},
         {"window-kill", "[<window-id>]", "Forcefully close the focused or given window's client",
          KeybindAction::WindowKill, ActionArgKind::OptionalWindowId},
-        {"window-minimize", "[<window-id>]", "Minimize the focused floating window, or the given window",
+        {"window-minimize", "[<window-id>]", "Minimize the focused window, or the given window",
          KeybindAction::WindowMinimize, ActionArgKind::OptionalWindowId},
         {"window-modify-height-down", "<delta>", "Resize the focused window from its bottom edge",
          KeybindAction::WindowModifyHeightDown, ActionArgKind::FractionDelta},

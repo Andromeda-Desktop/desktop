@@ -563,7 +563,8 @@ namespace andromeda {
   void Workspace::layoutAttach(
       View* view, std::optional<double> initialExtent, std::optional<int> initialExtentPx, LayoutAttachOrigin origin
   ) {
-    if (view == nullptr || !view->mapped() || !view->tiled() || m_layout->columnOf(view) >= 0) {
+    // A minimized tile stays out of the layout until it is restored.
+    if (view == nullptr || !view->mapped() || !view->tiled() || view->minimized() || m_layout->columnOf(view) >= 0) {
       return;
     }
     if (m_layoutMode == LayoutMode::Floating) {
@@ -763,6 +764,17 @@ namespace andromeda {
     clampScrollToRange();
     ensureFocusedVisible();
     markArrange(true);
+  }
+
+  void Workspace::layoutShow(View* view, const TileSlot* slot) {
+    if (view == nullptr || !view->mapped() || !view->tiled() || view->minimized() || m_layout->columnOf(view) >= 0) {
+      return;
+    }
+    if (slot != nullptr && m_layout->insertAtSlot(view, *slot)) {
+      markArrange(true);
+      return;
+    }
+    layoutAttach(view);
   }
 
   void Workspace::layoutDetach(View* view, bool animate) {
@@ -1986,6 +1998,8 @@ namespace andromeda {
       }
       restore.push_back(view);
     }
+    // Newest first undoes the hiding in reverse, so each tile finds the layout as it left it.
+    std::ranges::sort(restore, std::greater{}, &View::minimizeSerial);
     for (View* view : restore) {
       view->setMinimized(false);
     }

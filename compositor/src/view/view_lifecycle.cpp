@@ -676,6 +676,7 @@ namespace andromeda {
     // window normally.
     if (m_minimized) {
       m_minimized = false;
+      m_hiddenTile.reset();
       if (m_foreign != nullptr) {
         wlr_foreign_toplevel_handle_v1_set_minimized(m_foreign, false);
       }

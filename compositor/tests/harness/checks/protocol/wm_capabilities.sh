@@ -25,25 +25,26 @@ expect_block() {
     fi
   done
   if [[ $minimize == true ]] && ! grep -q '^wm-capability=minimize$' <<< "$block"; then
-    echo "event $count does not offer minimize to a floating window: $(< "$CLIENT_LOG")"
+    echo "event $count does not offer minimize: $(< "$CLIENT_LOG")"
     exit 1
   fi
   if [[ $minimize == false ]] && grep -q '^wm-capability=minimize$' <<< "$block"; then
-    echo "event $count offers minimize to a tiled window: $(< "$CLIENT_LOG")"
+    echo "event $count offers minimize when it should not: $(< "$CLIENT_LOG")"
     exit 1
   fi
 }
 
 LOG_WM_CAPABILITIES=1 "$CLIENT" wm-capabilities > "$CLIENT_LOG" 2>&1 &
 
-# The default layout tiles the window: no minimize.
+# The first event goes out before the map, when nothing can minimize; the mapped tile then can.
 expect_block 1 false
 await_lines "$CLIENT_LOG" 'mapped$' 1
-
-"$ANDROMEDA" msg window-toggle-floating > /dev/null
 expect_block 2 true
 
-"$ANDROMEDA" msg window-toggle-floating > /dev/null
+"$ANDROMEDA" msg window-toggle-pinned > /dev/null
 expect_block 3 false
 
-echo "minimize is offered while the window floats and withdrawn when it tiles again"
+"$ANDROMEDA" msg window-toggle-pinned > /dev/null
+expect_block 4 true
+
+echo "minimize is offered to a tile, withdrawn while pinned, and offered again after"

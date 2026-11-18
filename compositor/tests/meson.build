@@ -82,6 +82,7 @@ unit_tests = [
   ['scrolling-layout', ['unit/scrolling_layout.cpp'], []],
   ['dwindle-layout', ['unit/dwindle_layout.cpp'], []],
   ['master-layout', ['unit/master_layout.cpp'], []],
+  ['tile-slot', ['unit/tile_slot.cpp'], []],
   ['floating-layout', ['unit/floating_layout.cpp'], []],
   ['tabbed-layout', ['unit/tabbed_layout.cpp'], []],
   ['border-ring', ['unit/border_ring.cpp'], []],

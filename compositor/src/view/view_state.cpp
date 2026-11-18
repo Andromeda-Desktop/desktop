@@ -19,6 +19,7 @@ extern "C" {
 #include "view/view_internal.h"
 // clang-format off
 #include <algorithm>
+#include <utility>
 #include <cassert>
 #include <string_view>
 #include "wlr.h"
@@ -283,7 +284,7 @@ namespace andromeda {
   }
 
   bool View::minimizable() const {
-    return mapped() && m_attachedTo == nullptr && !tiled() && !placedPinned() && !m_inScratchpad && m_workspace != nullptr;
+    return mapped() && m_attachedTo == nullptr && !placedPinned() && !m_inScratchpad && m_workspace != nullptr;
   }
 
   bool View::requestMinimize() {
@@ -312,6 +313,11 @@ namespace andromeda {
       (void)beginCloseAnimation();
     }
     m_minimized = minimized;
+    if (!minimized && tiled() && m_workspace != nullptr) {
+      const std::optional<HiddenTile> hidden = std::exchange(m_hiddenTile, std::nullopt);
+      m_workspace->layoutShow(this, hidden && hidden->workspace == m_workspace ? &hidden->slot : nullptr);
+    }
+    m_hiddenTile.reset();
     if (minimized) {
       m_minimizeSerial = ++gNextMinimizeSerial;
     } else if (SnapAssist* assist = m_server->snapAssist(); assist != nullptr) {
@@ -350,6 +356,13 @@ namespace andromeda {
       } else {
         workspace->setFocusedView(nullptr);
       }
+    }
+    // After the focus replacement, which reads this tile's neighbours.
+    if (tiled()) {
+      if (std::optional<TileSlot> slot = workspace->layout().slotOf(this)) {
+        m_hiddenTile = HiddenTile{.workspace = workspace, .slot = std::move(*slot)};
+      }
+      workspace->layoutDetach(this, true);
     }
     if (heldKeyboard) {
       // Nothing else on the workspace took the keyboard, so clear it rather than leave it on a hidden window.

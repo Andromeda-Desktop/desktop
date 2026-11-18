@@ -893,7 +893,7 @@ namespace andromeda {
         return true;
       }
       if (!view->minimizable()) {
-        return reject(error, "window-minimize needs a floating, unpinned window on a workspace");
+        return reject(error, "window-minimize needs an unpinned window on a workspace");
       }
       if (!view->requestMinimize()) {
         return reject(error, "window-minimize cannot hide a fullscreen window or one being moved or resized");
@@ -2033,6 +2033,24 @@ namespace andromeda {
       };
       const std::vector<View*> sourceFloats = snapshotFloats(sourceWs);
       const std::vector<View*> targetFloats = snapshotFloats(targetWs);
+      // Minimized tiles are out of the layout capture; they move as they are and return on restore.
+      const auto snapshotHiddenTiles = [](Workspace* ws) {
+        std::vector<View*> hidden;
+        for (View* view : ws->allViews()) {
+          if (view->tiled() && view->minimized()) {
+            hidden.push_back(view);
+          }
+        }
+        return hidden;
+      };
+      const std::vector<View*> sourceHidden = snapshotHiddenTiles(sourceWs);
+      const std::vector<View*> targetHidden = snapshotHiddenTiles(targetWs);
+      for (View* view : sourceHidden) {
+        view->moveToWorkspace(targetWs, /*attachToLayout=*/false);
+      }
+      for (View* view : targetHidden) {
+        view->moveToWorkspace(sourceWs, /*attachToLayout=*/false);
+      }
 
       const auto transfer = [](const LayoutCapture& tiles, const std::vector<View*>& floats, Workspace* dest) {
         for (const LayoutMember& member : tiles.members) {

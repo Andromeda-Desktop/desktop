@@ -175,6 +175,8 @@ namespace andromeda {
         NamedScrollingColumnChange change
     );
     void layoutDetach(View* view, bool animate = false);
+    // Returns a tile that was minimized to `slot` when the layout can still place it there, else attaches it as usual.
+    void layoutShow(View* view, const TileSlot* slot);
     // Keeps a closed tile's held snapshot until the tiles filling its space have redrawn at their new sizes.
     void holdCloseSnapshot(CloseSnapshotId snapshot);
     void arrange(bool animate = true);

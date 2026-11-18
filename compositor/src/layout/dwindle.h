@@ -50,6 +50,8 @@ namespace andromeda {
     bool toggleSplit(View* view);
     bool swapViews(View* a, View* b) override;
     void removeView(View* view) override;
+    [[nodiscard]] std::optional<TileSlot> slotOf(const View* view) const override;
+    bool insertAtSlot(View* view, const TileSlot& slot) override;
     void moveColumn(int from, int to) override;
     void arrange(const wlr_box& usable) override;
     [[nodiscard]] wlr_box targetBox(const View* view) const override;

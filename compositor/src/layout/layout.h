@@ -1,6 +1,7 @@
 #pragma once
 
 #include "layout/tab_state.h"
+#include "protocols/dwindle_tree.h"
 
 #include <cstdint>
 #include <functional>
@@ -8,6 +9,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <variant>
 #include <vector>
 
 struct wlr_box;
@@ -68,6 +70,22 @@ namespace andromeda {
     LayoutMemberId id = 0;
     View* view = nullptr;
   };
+
+  // Where a tile sat before it left the layout for a while (minimize), so it can return there.
+  struct ScrollingSlot {
+    int column = 0;
+    int row = 0;
+    bool ownColumn = false; // the tile was alone, so its column left with it
+    double width = 0.0;     // that column's widthFrac
+    double weight = 1.0;
+  };
+  struct MasterSlot {
+    int area = 0; // 0 master, 1 stack, 2 second stack
+    int row = 0;
+    double weight = 1.0;
+    int promotedFrom = 0; // the stack whose top took the emptied master, else 0
+  };
+  using TileSlot = std::variant<ScrollingSlot, MasterSlot, tiling::DwindleTree::Place>;
 
   // Immutable, layout-owned state. Member ids keep snapshots independent of
   // View lifetimes while a physical output is absent.
@@ -331,6 +349,12 @@ namespace andromeda {
         const wlr_box& usable, bool wantMaximized, std::optional<double> ruleExtent, std::optional<int> ruleExtentPx,
         const View* splitAnchor
     ) const = 0;
+
+    // Read before removeView. Floating holds no tiles.
+    [[nodiscard]] virtual std::optional<TileSlot> slotOf(const View* /*view*/) const { return std::nullopt; }
+    // Puts an absent view back at `slot`, clamped to what the layout holds now. False when the slot is from another
+    // layout mode; the caller then inserts the usual way.
+    virtual bool insertAtSlot(View* /*view*/, const TileSlot& /*slot*/) { return false; }
 
     [[nodiscard]] virtual std::optional<View*> focusHorizontalLeaf(const View* /*view*/, int /*direction*/) const {
       return std::nullopt;

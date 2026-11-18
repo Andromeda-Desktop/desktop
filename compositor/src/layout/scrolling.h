@@ -51,6 +51,8 @@ namespace andromeda {
     bool moveViewVertical(View* view, int direction) override;
     bool swapViews(View* a, View* b) override;
     void removeView(View* view) override;
+    [[nodiscard]] std::optional<TileSlot> slotOf(const View* view) const override;
+    bool insertAtSlot(View* view, const TileSlot& slot) override;
     void moveColumn(int from, int to) override;
     // Raw scroll mutation. `centeredRest` is true only when restoring a saved column-center resting position.
     void setScroll(double scroll, bool centeredRest = false);

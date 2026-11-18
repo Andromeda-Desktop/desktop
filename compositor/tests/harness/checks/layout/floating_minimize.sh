@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Floating windows minimize through the action, the client, and foreign-toplevel; every explicit focus path shows
-# them again, automatic focus skips them, and tiling a minimized window shows it.
+# Windows minimize through the action, the client, and foreign-toplevel; every explicit focus path shows them
+# again, automatic focus skips them, tiling a minimized window shows it, and a tile minimizes out of the layout.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -138,28 +138,35 @@ wait_for_field minimize-a minimized false
 wait_for_field minimize-a active true
 wait_for_field minimize-a visible true
 
-# Tiling shows the window, and a tiled window cannot minimize.
+# Tiling shows the window. A tile minimizes through the action and the client, and focus brings it back.
 msg "window-minimize:$A"
 wait_for_field minimize-a minimized true
 msg workspace-set-layout:scrolling
 wait_for_field minimize-a floating false
-wait_for_minimizable minimize-a false
+wait_for_minimizable minimize-a true
 expect_field minimize-a minimized false
 expect_field minimize-a visible true
 msg "window-focus:$A"
 wait_for_field minimize-a active true
-if reply=$("$ANDROMEDA" msg window-minimize 2>&1); then
-  echo "window-minimize unexpectedly succeeded on a tiled window"
-  exit 1
+column_a=$(field_of minimize-a column)
+column_b=$(field_of minimize-b column)
+msg window-minimize
+wait_for_field minimize-a minimized true
+wait_for_field minimize-a visible false
+# The tile left the strip: a column after it moves up one.
+if (( column_b > column_a )); then
+  wait_for_field minimize-b column $((column_b - 1))
 fi
-if [[ $reply != *"window-minimize needs a floating, unpinned window on a workspace"* ]]; then
-  echo "unexpected window-minimize rejection: $reply"
-  exit 1
-fi
+msg "window-focus:$A"
+wait_for_field minimize-a minimized false
+wait_for_field minimize-a visible true
+wait_for_field minimize-a column "$column_a"
+wait_for_field minimize-b column "$column_b"
 printf z >&"$control_fd"
 await_lines "$A_LOG" 'minimize-requested$' 2
-"$ANDROMEDA" settle
-expect_field minimize-a minimized false
+wait_for_field minimize-a minimized true
+msg "window-focus:$A"
+wait_for_field minimize-a minimized false
 
 # window-restore-minimized brings back the latest first.
 msg workspace-set-layout:floating
@@ -226,4 +233,4 @@ msg window-toggle-pinned
 wait_for_field minimize-a pinned false
 wait_for_minimizable minimize-a true
 
-echo "floating windows report minimize eligibility, minimize by action, client, and taskbar, return through every explicit focus path, and show desktop restores every minimized window"
+echo "windows report minimize eligibility, minimize by action, client, and taskbar (tiles leave and rejoin their column), return through every explicit focus path, and show desktop restores every minimized window"

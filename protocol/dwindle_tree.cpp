@@ -111,6 +111,53 @@ namespace andromeda::tiling {
     leaf->locked = true;
   }
 
+  DwindleTree::Place DwindleTree::placeOf(const Node* leaf) const {
+    Place place;
+    const Node* parent = leaf->parent;
+    if (parent == nullptr) {
+      place.root = true;
+      return place;
+    }
+    place.first = parent->left.get() == leaf;
+    place.type = parent->type;
+    place.ratio = parent->ratio;
+    place.locked = parent->locked;
+    for (const Node* node = parent; node->parent != nullptr; node = node->parent) {
+      place.path.push_back(node->parent->left.get() == node);
+    }
+    std::ranges::reverse(place.path);
+    return place;
+  }
+
+  void DwindleTree::insertAt(TileKey key, const Place& place) {
+    if (m_root == nullptr) {
+      addRoot(key);
+      return;
+    }
+    std::unique_ptr<Node>* slot = &m_root;
+    for (const bool left : place.path) {
+      Node* node = slot->get();
+      if (node->type == Node::Leaf) {
+        break;
+      }
+      slot = left ? &node->left : &node->right;
+    }
+    auto split = std::make_unique<Node>();
+    split->parent = (*slot)->parent;
+    split->type = place.root ? Node::AutoSplit : place.type;
+    split->ratio = place.ratio;
+    split->locked = place.locked;
+    auto leaf = std::make_unique<Node>();
+    leaf->key = key;
+    leaf->parent = split.get();
+    (*slot)->parent = split.get();
+    // A former root leaf returns first, as the tree had it.
+    const bool first = place.root || place.first;
+    split->left = first ? std::move(leaf) : std::move(*slot);
+    split->right = first ? std::move(*slot) : std::move(leaf);
+    *slot = std::move(split);
+  }
+
   void DwindleTree::detach(Node* node) {
     if (node == nullptr) {
       return;

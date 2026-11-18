@@ -1,6 +1,7 @@
 #pragma once
 #include "config/config.h"
 #include "core/animation.h"
+#include "layout/layout.h"
 #include "scene/node.h"
 #include "util/tracked.h"
 #include "view/chrome_attachment.h"
@@ -341,8 +342,8 @@ namespace andromeda {
     [[nodiscard]] bool notResponding() const noexcept { return m_notResponding; }
     // Pings the client; a missed ping marks the window not responding (windows IPC, Activity, session end).
     void ping();
-    // Only a mapped, unattached floating window on a workspace can be minimized; tiled, pinned, and scratchpad
-    // windows cannot.
+    // Only a mapped, unattached window on a workspace can be minimized; pinned and scratchpad windows cannot. A tiled
+    // window leaves its layout while minimized and returns to the same place.
     [[nodiscard]] bool minimizable() const;
     // Hide or show without checking eligibility. Hiding the focused window hands focus to a replacement.
     void setMinimized(bool minimized);
@@ -1052,6 +1053,12 @@ namespace andromeda {
     int m_chromeContentHeight = 0;
     bool m_tabHidden = false;
     bool m_minimized = false;
+    // Set while a minimized tile is out of its layout: where it sat, valid only on that workspace.
+    struct HiddenTile {
+      const Workspace* workspace = nullptr;
+      TileSlot slot;
+    };
+    std::optional<HiddenTile> m_hiddenTile;
     uint64_t m_minimizeSerial = 0;
     ViewEffects m_effects;
     ViewPresentation m_presentation;

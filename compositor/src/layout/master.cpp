@@ -714,6 +714,45 @@ namespace andromeda {
     rebuildColumns();
   }
 
+  std::optional<TileSlot> MasterStackLayout::slotOf(const View* view) const {
+    const Area* area = areaOf(view);
+    if (area == nullptr) {
+      return std::nullopt;
+    }
+    const int index = area == &m_master ? 0 : area == &m_stack ? 1 : 2;
+    const int row = rowInArea(*area, view);
+    int promotedFrom = 0;
+    if (index == 0 && m_master.views.size() == 1) {
+      // Mirrors promotionStack(), which removeView applies.
+      if (masterIsCenter() && m_secondStack.views.size() > m_stack.views.size()) {
+        promotedFrom = 2;
+      } else if (!m_stack.views.empty()) {
+        promotedFrom = 1;
+      }
+    }
+    return MasterSlot{
+        .area = index, .row = row, .weight = area->weights[static_cast<size_t>(row)], .promotedFrom = promotedFrom
+    };
+  }
+
+  bool MasterStackLayout::insertAtSlot(View* view, const TileSlot& slot) {
+    const auto* place = std::get_if<MasterSlot>(&slot);
+    if (place == nullptr || view == nullptr || areaOf(view) != nullptr) {
+      return false;
+    }
+    Area* areas[] = {&m_master, &m_stack, masterIsCenter() ? &m_secondStack : &m_stack};
+    if (place->promotedFrom > 0 && m_master.views.size() == 1) {
+      // Undo the promotion the removal made, so the stack gets its top back.
+      View* promoted = m_master.views.front();
+      insertRow(*areas[place->promotedFrom], 0, promoted, eraseRow(m_master, 0));
+    }
+    // A layout with views always has a master.
+    Area& area = m_master.views.empty() ? m_master : *areas[std::clamp(place->area, 0, 2)];
+    insertRow(area, static_cast<size_t>(std::max(place->row, 0)), view, place->weight);
+    rebuildColumns();
+    return true;
+  }
+
   void MasterStackLayout::moveColumn(int from, int to) {
     if (from == to) {
       return;

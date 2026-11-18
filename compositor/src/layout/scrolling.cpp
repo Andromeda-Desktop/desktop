@@ -589,6 +589,39 @@ namespace andromeda {
     insertRow(column, static_cast<size_t>(row), view, insertedWeight, 0.0);
   }
 
+  std::optional<TileSlot> ScrollingLayout::slotOf(const View* view) const {
+    const int columnIndex = columnOf(view);
+    if (columnIndex < 0) {
+      return std::nullopt;
+    }
+    const Column& column = m_columns[static_cast<size_t>(columnIndex)];
+    const auto row = static_cast<size_t>(rowOf(view));
+    return ScrollingSlot{
+        .column = columnIndex,
+        .row = static_cast<int>(row),
+        .ownColumn = column.views.size() == 1,
+        .width = column.widthFrac,
+        .weight = row < column.heightWeights.size() ? column.heightWeights[row] : 1.0,
+    };
+  }
+
+  bool ScrollingLayout::insertAtSlot(View* view, const TileSlot& slot) {
+    const auto* place = std::get_if<ScrollingSlot>(&slot);
+    if (place == nullptr || view == nullptr || columnOf(view) >= 0) {
+      return false;
+    }
+    if (place->ownColumn || m_columns.empty()) {
+      const int index = std::clamp(place->column, 0, static_cast<int>(m_columns.size()));
+      insertView(view, index);
+      m_columns[static_cast<size_t>(index)].widthFrac = place->width;
+      return true;
+    }
+    Column& column =
+        m_columns[static_cast<size_t>(std::clamp(place->column, 0, static_cast<int>(m_columns.size()) - 1))];
+    insertRow(column, static_cast<size_t>(std::max(place->row, 0)), view, place->weight, 0.0);
+    return true;
+  }
+
   bool ScrollingLayout::insertTab(View* view, int columnIndex, int rowIndex, const View* member) {
     if (view == nullptr
         || columnOf(view) >= 0

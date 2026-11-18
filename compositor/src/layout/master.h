@@ -57,6 +57,8 @@ namespace andromeda {
     bool promoteFromStack();
     bool demoteToStack();
     void removeView(View* view) override;
+    [[nodiscard]] std::optional<TileSlot> slotOf(const View* view) const override;
+    bool insertAtSlot(View* view, const TileSlot& slot) override;
     void moveColumn(int from, int to) override;
     void arrange(const wlr_box& usable) override;
 
