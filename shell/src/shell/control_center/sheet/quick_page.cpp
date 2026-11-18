@@ -196,17 +196,21 @@ namespace {
     const auto hoverTo = [rowPtr, motion, opacity, icon](float target) {
       driveCard(*rowPtr, motion, &CardMotion::hover, &CardMotion::hoverId, target, Tokens::springFade, [opacity, icon](Flex& card, float t) {
         icon->setHoverMix(t);
+        // A compositor glass piece has no fill of its own at rest, so every piece shows the same glass tint.
+        const bool glass = Style::compositorDrawsTint();
         // At rest the card keeps the role spec, so a theme change after a hover repaints it.
         if (t <= 0.0F) {
-          card.setFill(colorSpecFromRole(ColorRole::GlassCard, opacity));
+          if (glass) {
+            card.setFill(Color{0.0F, 0.0F, 0.0F, 0.0F});
+          } else {
+            card.setFill(colorSpecFromRole(ColorRole::GlassCard, opacity));
+          }
           return;
         }
-        card.setFill(
-            lerpColor(
-                resolveColorSpec(colorSpecFromRole(ColorRole::GlassCard, opacity)),
-                resolveColorSpec(colorSpecFromRole(ColorRole::Fill2, opacity)), t
-            )
-        );
+        const Color hover = resolveColorSpec(colorSpecFromRole(ColorRole::Fill2, opacity));
+        const Color rest = glass ? Color{hover.r, hover.g, hover.b, 0.0F}
+                                 : resolveColorSpec(colorSpecFromRole(ColorRole::GlassCard, opacity));
+        card.setFill(lerpColor(rest, hover, t));
       });
     };
     row.setOnEnter([hoverTo] { hoverTo(1.0F); });
