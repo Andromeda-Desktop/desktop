@@ -3914,7 +3914,7 @@ void PanelManager::placePanelChrome() {
     const auto shadowOffsetX = static_cast<float>(shadowOff.x);
     const auto shadowOffsetY = static_cast<float>(shadowOff.y);
     m_panelShadowNode->setPosition(bgX + shadowOffsetX, bgY + shadowOffsetY);
-    m_panelShadowNode->setSize(bgW, bgH);
+    m_panelShadowNode->setFrameSize(bgW, bgH);
     if (!m_attachedToBar && panelShadow) {
       const float shadowRadius = panelRadius();
       const float panelBackgroundOpacity = detachedBackgroundOpacity();
@@ -3933,7 +3933,7 @@ void PanelManager::placePanelChrome() {
     const auto extendUp = m_morphExtend ? static_cast<float>(m_morphMarginUp) : 0.0F;
     m_bgNode->setPosition(bgX - extendX, bgY - extendUp);
     const float extendBothX = 2.0F * extendX;
-    m_bgNode->setSize(bgW + extendBothX, bgH + extendY + extendUp);
+    static_cast<Box*>(m_bgNode)->setFrameSize(bgW + extendBothX, bgH + extendY + extendUp);
   }
   // A content-fitted card changes height while the open spring runs: the clip follows it.
   if (m_morphClipRunning && m_dsk != nullptr && !m_lifecycle.closing() && m_morphClipTarget != detachedSheetRect()) {
@@ -3963,7 +3963,7 @@ void PanelManager::placePanelChrome() {
       }
     }
     m_panelContactShadowNode->setPosition(contactX, contactY);
-    m_panelContactShadowNode->setSize(contactW, contactH);
+    m_panelContactShadowNode->setFrameSize(contactW, contactH);
   }
 
   // Re-apply opacity-dependent styling for bg, shadow, and contact-shadow.
