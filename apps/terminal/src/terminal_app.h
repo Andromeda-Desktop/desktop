@@ -6,6 +6,7 @@
 #include "render/core/thumbnail_service.h"
 #include "prefs_window.h"
 #include "terminal_window.h"
+#include "workspace_watcher.h"
 
 #include <sdbus-c++/sdbus-c++.h>
 
@@ -58,6 +59,7 @@ namespace term {
     void chooseSaveFile(AppWindow& window, const std::string& suggested,
                         std::function<void(std::optional<std::filesystem::path>)> picked);
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
+    WorkspaceWatcher m_workspaces{[] {}};
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.

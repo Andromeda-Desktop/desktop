@@ -1,10 +1,12 @@
 #include <format>
 #include "holder_client.h"
 #include "pty_session.h"
+#include "workspace_watcher.h"
 
 #include <cstdlib>
 #include <filesystem>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -294,6 +296,31 @@ void runSessionTests() {
   keyInputReachesProgram();
 }
 
+// Another client's workspace edit reaches the watcher, and the watcher's own socket never blocks the caller.
+void watcherFollowsWorkspaceTable() {
+  int changes = 0;
+  WorkspaceWatcher watcher([&] { ++changes; });
+  CHECK(watcher.connect());
+  auto pump = [&](auto pred) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!pred() && std::chrono::steady_clock::now() < end) {
+      std::vector<pollfd> fds;
+      const std::size_t start = watcher.addPollFds(fds);
+      if (::poll(fds.data(), fds.size(), 100) > 0) watcher.dispatch(fds, start);
+    }
+    return pred();
+  };
+  CHECK(pump([&] { return changes > 0; }));
+  const int editor = holder::connectSocket();
+  CHECK(editor >= 0);
+  CHECK(holder::sendAll(editor, holder::encodePutWorkspace(1, 0, "web", "/srv/web", "globe")));
+  CHECK(pump([&] {
+    const auto& ws = watcher.workspaces().workspaces;
+    return std::ranges::any_of(ws, [](const holder::WorkspaceInfo& w) { return w.name == "web" && w.root == "/srv/web"; });
+  }));
+  ::close(editor);
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -323,6 +350,7 @@ int main(int argc, char** argv) {
       PtySession s([&] { w.wake(); });
       CHECK(s.spawn({.argv = {"/bin/true"}}) && s.heldId().has_value());
       detachedSessionOutlivesItsWindow();
+      watcherFollowsWorkspaceTable();
     }
     reattachRestoresScreenMidEscape(snapshotted);
     ::kill(holderPid, SIGTERM);

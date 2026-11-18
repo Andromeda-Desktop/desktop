@@ -49,10 +49,12 @@ namespace term {
     return *host;
   }
 
-  TerminalApp::~TerminalApp() = default;
+  TerminalApp::~TerminalApp() { loop().removeSource(&m_workspaces); }
 
   void TerminalApp::startup() {
     loop().addSource(&m_thumbnails);
+    loop().addSource(&m_workspaces);
+    m_workspaces.connect();
     exportControl();
   }
 
