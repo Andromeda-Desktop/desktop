@@ -14,6 +14,7 @@ struct fx_corner_radii;
 struct wlr_box;
 struct wlr_scene_buffer;
 struct wlr_scene_blur;
+struct wlr_scene_node;
 struct wlr_scene_tree;
 struct wlr_surface;
 
@@ -87,6 +88,8 @@ namespace andromeda {
     [[nodiscard]] bool backdropPending() const;
     // Puts the blur above its siblings (it is created at the bottom, under the surface).
     void raiseToTop();
+    // Null until the first update that shows the blur.
+    [[nodiscard]] wlr_scene_node* sceneNode() const;
     // Disable the node (unmap path); update() re-enables.
     void hide();
     // True while the blur node is shown.

@@ -298,6 +298,8 @@ namespace andromeda {
 
   bool SurfaceBlur::active() const { return m_node != nullptr && m_node->node.enabled; }
 
+  wlr_scene_node* SurfaceBlur::sceneNode() const { return m_node != nullptr ? &m_node->node : nullptr; }
+
   void SurfaceBlur::raiseToTop() {
     if (m_node != nullptr) {
       wlr_scene_node_raise_to_top(&m_node->node);

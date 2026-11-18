@@ -1331,6 +1331,18 @@ namespace andromeda {
           options
       );
     }
+    // Shapes draw in creation order (dsk_surface_v1.get_shape), the first lowest; a new blur node starts at the bottom.
+    wlr_scene_node* below = m_blur.sceneNode();
+    for (const SurfaceBlur& blur : m_shapeBlurs) {
+      wlr_scene_node* node = blur.sceneNode();
+      if (node == nullptr) {
+        continue;
+      }
+      if (below != nullptr) {
+        wlr_scene_node_place_above(node, below);
+      }
+      below = node;
+    }
     // A tint change can switch the tint's tone, which changes the density target; before the first sample there is none.
     if (m_densityMeasured) {
       updateDensity();
