@@ -22,6 +22,7 @@ Toggle::Toggle() {
 
   auto thumb = std::make_unique<RectNode>();
   m_thumb = static_cast<RectNode*>(addChild(std::move(thumb)));
+  m_thumb->setParticipatesInLayout(false);
 
   auto area = std::make_unique<InputArea>();
   area->setOnEnter([this](const InputArea::PointerData& /*data*/) { applyState(); });
@@ -188,6 +189,8 @@ void Toggle::applySize() {
   }
 
   m_thumb->setFrameSize(m_thumbSize, m_thumbSize);
+  // The thumb is placed by hand, so the padding alone gives the track size.
+  setPadding(m_inset, m_inset + m_travel + m_thumbSize, m_inset + m_thumbSize, m_inset);
   setRadius((m_thumbSize + (m_inset * 2.0F)) * 0.5F);
 }
 
@@ -253,9 +256,6 @@ void Toggle::applyAnimatedState(float t) {
   thumbStyle.fill = thumbColor;
   m_thumb->setStyle(thumbStyle);
 
-  // Padding keeps Flex size consistent regardless of thumb position
-  const float rightPad = m_inset + m_travel - (thumbX - m_inset) - extra;
-  setPadding(m_inset, rightPad, m_inset, thumbX);
 
   if (m_enabled) {
     setOpacity(1.0F);

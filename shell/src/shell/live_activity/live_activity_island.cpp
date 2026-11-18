@@ -2149,6 +2149,11 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   if (inst.material == nullptr || inst.sceneRoot == nullptr) {
     return;
   }
+  // A morph change resizes the faces once; the per-frame sizes below are frame-only, so they start no layout.
+  for (std::size_t i = 1; i < kFaceCount; ++i) {
+    const Rect r = cardRect(inst, static_cast<Face>(i));
+    inst.faceNode[i]->setSize(r.w, r.h);
+  }
   const float t = std::clamp(reveal, 0.0F, 1.0F);
   // Reduced motion: the size jumps and only the content cross-fades. The size follows the unclamped spring (overshoot).
   const float sizeT = MotionService::instance().enabled() ? reveal : 1.0F;
@@ -2179,7 +2184,7 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   const Rect pillBox = lane ? restR : box;
   for (const auto& [fill, b] : {std::pair{inst.material, pillBox}, std::pair{inst.tint, box}}) {
     fill->setPosition(b.x, b.y);
-    fill->setSize(b.w, b.h);
+    fill->setFrameSize(b.w, b.h);
     fill->setRadius(b.radius);
   }
   // The pill material shows at rest; every other face sits on the live tint. In the lane the pill stays beside its card.
@@ -2190,7 +2195,7 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   inst.tint->setOpacity(1.0F - restMix);
   const Rect ringR = lane ? restR : cur;
   inst.ring->setPosition(ringR.x, ringR.y);
-  inst.ring->setSize(ringR.w, ringR.h);
+  inst.ring->setFrameSize(ringR.w, ringR.h);
   inst.ring->setRadius(ringR.radius);
   inst.ring->setOpacity(pillMix);
   {
@@ -2198,7 +2203,7 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
     const auto offset = shadowDirectionOffset(m_config->config().shell.shadow.direction);
     inst.shadow->setPosition(ringR.x + static_cast<float>(offset.x), ringR.y + static_cast<float>(offset.y));
   }
-  inst.shadow->setSize(ringR.w, ringR.h);
+  inst.shadow->setFrameSize(ringR.w, ringR.h);
   inst.shadow->setRadius(ringR.radius);
   // With the elevation property the compositor draws the one shadow along the clip; the shell box is the fallback.
   const bool compositorShadow = inst.dsk != nullptr && inst.dsk->hasElevationProperty();
