@@ -106,6 +106,9 @@ test('workspace_bar', executable('workspace_bar_test', 'tests/workspace_bar_test
 test('workspace_pager', executable('workspace_pager_test', 'tests/workspace_pager_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
+test('workspace_model', executable('workspace_model_test', 'tests/workspace_model_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings))
+
 test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 test('palette_model', executable('palette_model_test', 'tests/palette_model_test.cpp',

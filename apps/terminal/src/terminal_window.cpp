@@ -13,6 +13,11 @@
 #include "render/animation/animation_manager.h"
 #include "render/animation/motion_service.h"
 #include "core/input/pointer_axis.h"
+#include "render/core/texture_manager.h"
+#include "render/render_context.h"
+#include "render/render_target.h"
+#include "ui/controls/image.h"
+#include "wayland/toplevel_surface.h"
 #include "render/text/glyph_registry.h"
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
@@ -161,6 +166,7 @@ namespace term {
       m_contentHeight = height;
       fillSlot(renderer);
       registerDropTarget();
+      m_contentRenderer = &renderer;
       const float gap = Tokens::spaceP16 * m_window.uiScale();
       m_pager.setWidth(width + gap);
       auto strip = std::make_unique<PageStrip>(&m_contentStrip, std::move(slot), m_shownBar.here, m_pager.count(), gap,
@@ -170,6 +176,7 @@ namespace term {
       auto area = ui::inputArea({.width = width, .height = height}, std::move(strip));
       area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
       area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
+      area->setLocksScrollAxis(true);
       return area;
     });
     m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float height) -> std::unique_ptr<Node> {
@@ -280,6 +287,7 @@ namespace term {
       auto area = ui::inputArea({.width = width, .height = height}, std::move(side));
       area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
       area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
+      area->setLocksScrollAxis(true);
       return area;
     });
     m_window.setCaptionMenu([this](float x, float y) {
@@ -776,8 +784,9 @@ namespace term {
     if (d.axis != PointerAxis::Horizontal || d.axisSource != AxisSource::Finger || m_pager.count() < 2) return false;
     m_window.animations().cancel(m_pagerAnim);
     m_pagerAnim = 0;
-    // The libinput delta unscaled: the page follows the finger 1:1.
-    m_pager.track(static_cast<float>(d.axisValue), d.time);
+    // The page moves as far as a finger scroll moves any scrolled content. Right to left, later pages come from the left.
+    const float dx = d.scrollDelta(0.0F);
+    m_pager.track(Style::rtl() ? -dx : dx, d.time);
     showPagerPosition();
     return true;
   }
@@ -857,9 +866,59 @@ namespace term {
     return list;
   }
 
-  // A workspace this window does not show has no live panes: one card per session, as the shown panes' cards.
+  // Renders the window offscreen and keeps the content area: the live page, even while a slide shows another.
+  void TerminalWindow::capturePage() {
+    ToplevelSurface* surface = m_window.surface();
+    RenderContext* context = surface != nullptr ? surface->renderContext() : nullptr;
+    Node* root = surface != nullptr ? surface->sceneRoot() : nullptr;
+    if (context == nullptr || root == nullptr || m_contentStrip == nullptr || m_shownBar.here >= m_shownBar.pages.size()) return;
+    const RenderTarget& screen = surface->renderTarget();
+    if (screen.logicalWidth() == 0 || screen.bufferWidth() == 0) return;
+    m_contentStrip->setPagePosition(static_cast<float>(m_shownBar.here));
+    RenderTarget target;
+    target.createOffscreen(*context);
+    target.setContentScale(screen.contentScale());
+    target.setLogicalSize(screen.logicalWidth(), screen.logicalHeight());
+    target.resize(screen.bufferWidth(), screen.bufferHeight());
+    const auto bufferW = static_cast<std::size_t>(screen.bufferWidth());
+    const auto bufferH = static_cast<std::size_t>(screen.bufferHeight());
+    std::vector<std::uint8_t> pixels(bufferW * bufferH * 4);
+    if (!context->renderScene(target, root) || !context->readPixels(target, pixels)) return;
+    const float k = static_cast<float>(bufferW) / static_cast<float>(screen.logicalWidth());
+    float sceneX = 0.0F;
+    float sceneY = 0.0F;
+    Node::mapToScene(m_contentStrip, 0.0F, 0.0F, sceneX, sceneY);
+    const auto x0 = std::min(bufferW, static_cast<std::size_t>(std::lround(std::max(0.0F, sceneX) * k)));
+    const auto y0 = std::min(bufferH, static_cast<std::size_t>(std::lround(std::max(0.0F, sceneY) * k)));
+    const std::size_t w = std::min(bufferW - x0, static_cast<std::size_t>(std::lround(m_contentStrip->width() * k)));
+    const std::size_t h = std::min(bufferH - y0, static_cast<std::size_t>(std::lround(m_contentStrip->height() * k)));
+    if (w == 0 || h == 0) return;
+    PageFrame frame{.width = static_cast<int>(w), .height = static_cast<int>(h), .rgba = std::vector<std::uint8_t>(w * h * 4)};
+    for (std::size_t row = 0; row < h; ++row) {
+      std::copy_n(pixels.begin() + static_cast<std::ptrdiff_t>(((y0 + row) * bufferW + x0) * 4), w * 4,
+                  frame.rgba.begin() + static_cast<std::ptrdiff_t>(row * w * 4));
+    }
+    const std::uint64_t id = m_shownBar.pages[m_shownBar.here];
+    std::erase_if(m_pageFrames, [id](const auto& entry) { return entry.first == id; });
+    m_pageFrames.emplace_back(id, std::move(frame));
+    if (m_pageFrames.size() > kPageFrames) m_pageFrames.erase(m_pageFrames.begin());
+  }
+
+  // A workspace this window does not show has no live panes: its last frame here, else one card per session.
   std::unique_ptr<Node> TerminalWindow::contentPage(std::size_t page) {
     const float s = m_window.uiScale();
+    const auto frame = page < m_shownBar.pages.size()
+        ? std::ranges::find(m_pageFrames, m_shownBar.pages[page], &std::pair<std::uint64_t, PageFrame>::first)
+        : m_pageFrames.end();
+    if (frame != m_pageFrames.end() && m_contentRenderer != nullptr) {
+      auto image = std::make_unique<Image>();
+      const PageFrame& f = frame->second;
+      if (image->setSourceRaw(*m_contentRenderer, f.rgba.data(), f.rgba.size(), f.width, f.height, f.width * 4,
+                              PixmapFormat::RGBA)) {
+        image->setFit(ImageFit::Cover);
+        return image;
+      }
+    }
     auto column = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s});
     const ContentView* shown = shownView();
     const ColorSpec surface = shown != nullptr ? shown->surface() : colorSpecFromRole(ColorRole::View);
@@ -1335,6 +1394,7 @@ namespace term {
   void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
 
   bool TerminalWindow::showWorkspace(std::vector<WindowOrigin> origins) {
+    capturePage();
     std::vector<std::uint64_t> leaving;
     for (const Session& v : m_views) {
       if (v.view->terminal() != nullptr) leaving.push_back(v.id);

@@ -1,5 +1,7 @@
 #include "page_strip.h"
 
+#include "ui/style.h"
+
 #include <cmath>
 #include <set>
 
@@ -70,7 +72,9 @@ namespace term {
   }
 
   void PageStrip::place() {
-    const auto x = [&](std::size_t page) { return (static_cast<float>(page) - m_at) * (width() + m_gap); };
+    // Right to left, later pages lie to the left.
+    const float dir = Style::rtl() ? -1.0F : 1.0F;
+    const auto x = [&](std::size_t page) { return dir * (static_cast<float>(page) - m_at) * (width() + m_gap); };
     m_live->setPosition(x(m_livePage), 0.0F);
     for (const auto& [index, node] : m_built) node->setPosition(x(index), 0.0F);
   }

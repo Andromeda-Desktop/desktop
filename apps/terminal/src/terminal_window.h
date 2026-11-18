@@ -272,6 +272,17 @@ namespace term {
     [[nodiscard]] std::unique_ptr<Node> sidebarPage(std::size_t page);
     [[nodiscard]] std::unique_ptr<Node> contentPage(std::size_t page);
     [[nodiscard]] std::vector<StatusRow::Data> pageRows(std::size_t page) const;
+    // The content of a workspace when it last left this window (RGBA, buffer px): its page shows it while the
+    // finger moves; at most kPageFrames are kept.
+    struct PageFrame {
+      int width = 0;
+      int height = 0;
+      std::vector<std::uint8_t> rgba;
+    };
+    static constexpr std::size_t kPageFrames = 2;
+    std::vector<std::pair<std::uint64_t, PageFrame>> m_pageFrames; // oldest first
+    Renderer* m_contentRenderer = nullptr;
+    void capturePage();
     Button* m_prefsButton = nullptr; // hidden while the foot bar shows
     Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
     Flex* m_footBar = nullptr;   // the track's items
