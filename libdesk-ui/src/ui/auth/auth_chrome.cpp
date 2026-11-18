@@ -28,9 +28,9 @@ namespace {
   constexpr float kEdge = 24.0F;
   constexpr float kControl = 40.0F;
   constexpr const float& kGap = Tokens::spaceP8;
-  constexpr float kMenuWidth = 256.0F;
-  constexpr float kMenuPad = 4.0F;
-  constexpr float kRowHeight = 36.0F;
+  constexpr float kMenuWidth = 240.0F; // concept C .s-menu
+  constexpr const float& kMenuPad = Tokens::componentMenuPadding;
+  constexpr const float& kRowHeight = Tokens::componentMenuItem;
   constexpr float kAvatar = 24.0F;
 
   RectNode* addRect(Node& parent) {
@@ -156,7 +156,7 @@ void AuthChrome::layoutMenu(Renderer& renderer, float /*sw*/, float /*sh*/, floa
     return;
   }
 
-  // Power menu (rulebook 9.15): thick glass, r 20, p 4, w 256, 8 above its control and aligned with it.
+  // Power menu (rulebook 9.9 menu, concept C): thick glass, r 12, p 4, w 240, 8 above its control and aligned with it.
   const Chip& anchor = m_state.menu == Menu::Power ? m_power : m_state.menu == Menu::Session ? m_session : m_users;
   const float w = kMenuWidth * s;
   const float h = (kMenuPad * 2.0F + kRowHeight * static_cast<float>(m_state.items.size())) * s;
@@ -165,7 +165,7 @@ void AuthChrome::layoutMenu(Renderer& renderer, float /*sw*/, float /*sh*/, floa
   m_menuRect = {x, y, w, h};
   m_menuBg->setPosition(x, y);
   m_menuBg->setSize(w, h);
-  m_menuBg->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::radiusR20 * s, .borderWidth = 0.5F * s});
+  m_menuBg->setStyle(RoundedRectStyle{.fill = kThick, .border = kStroke, .radius = Tokens::componentMenuRadius * s, .borderWidth = 0.5F * s});
 
   for (std::size_t i = 0; i < m_state.items.size(); ++i) {
     const Item& item = m_state.items[i];
@@ -179,9 +179,9 @@ void AuthChrome::layoutMenu(Renderer& renderer, float /*sw*/, float /*sh*/, floa
     row.bg->setVisible(lit);
     row.bg->setPosition(rx, ry);
     row.bg->setSize(rw, rh);
-    row.bg->setStyle(RoundedRectStyle{.fill = kFill2, .radius = Tokens::radiusR16 * s});
+    row.bg->setStyle(RoundedRectStyle{.fill = kFill2, .radius = Tokens::radiusR8 * s});
 
-    float textX = rx + 12.0F * s;
+    float textX = rx + Tokens::spaceP8 * s;
     const bool avatar = !item.initial.empty();
     row.avatar->setVisible(avatar);
     row.initial->setVisible(avatar);
@@ -206,14 +206,14 @@ void AuthChrome::layoutMenu(Renderer& renderer, float /*sw*/, float /*sh*/, floa
       row.initial->setPosition(
           std::round(textX + (a - row.initial->width()) * 0.5F), std::round(ay + (a - row.initial->height()) * 0.5F)
       );
-      textX += a + 12.0F * s;
+      textX += a + Tokens::spaceP8 * s;
     } else if (!item.glyph.empty()) {
       row.glyph->setGlyph(item.glyph);
       row.glyph->setGlyphSize(16.0F * s);
       row.glyph->setColor(kLabel1);
       row.glyph->measure(renderer);
       row.glyph->setPosition(std::round(textX), std::round(ry + (rh - row.glyph->height()) * 0.5F));
-      textX += 16.0F * s + 12.0F * s;
+      textX += 16.0F * s + Tokens::spaceP8 * s;
     }
     row.label->setText(item.label);
     row.label->setFontSize(Tokens::typeBody.size * s);

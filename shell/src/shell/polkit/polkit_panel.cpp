@@ -75,12 +75,12 @@ float PolkitPanel::measureContentHeight(Renderer& renderer, float contentWidth) 
 
 void PolkitPanel::create() {
   const float scale = contentScale();
-  const float iconSize = scaled(48.0F);
+  const float iconSize = scaled(40.0F); // concept C .o-shield: 40 accent circle
   auto root = ui::column({
       .out = &m_rootLayout,
       .align = FlexAlign::Stretch,
       .gap = Style::spaceMd * scale,
-      .padding = Tokens::componentDialogPadding * scale,
+      .padding = Tokens::componentDialogAuthPadding * scale,
   });
 
   auto focusArea = ui::inputArea({});
@@ -88,16 +88,20 @@ void PolkitPanel::create() {
   focusArea->setVisible(false);
   m_focusArea = static_cast<InputArea*>(root->addChild(std::move(focusArea)));
 
-  auto iconContainer = ui::node({
-      .out = &m_iconContainer,
+  auto iconContainer = ui::row({
+      .align = FlexAlign::Center,
+      .justify = FlexJustify::Center,
+      .fill = colorSpecFromRole(ColorRole::Accent),
+      .radius = iconSize * 0.5F,
       .width = iconSize,
       .height = iconSize,
   });
+  m_iconContainer = iconContainer.get();
   auto iconFallback = ui::glyph({
       .out = &m_fallbackIcon,
-      .glyph = "shield-lock",
-      .glyphSize = iconSize * 0.65F,
-      .color = colorSpecFromRole(ColorRole::Label2),
+      .glyph = "shield",
+      .glyphSize = iconSize * 0.5F,
+      .color = colorSpecFromRole(ColorRole::OnAccent),
   });
   iconContainer->addChild(std::move(iconFallback));
   auto iconImage = ui::image({
@@ -171,6 +175,7 @@ void PolkitPanel::create() {
       ui::input({
           .out = &m_input,
           .placeholder = i18n::tr("auth.polkit.password-placeholder"),
+          .controlHeight = Tokens::sizeControlL * scale,
           .passwordMode = true,
           .surfaceOpacity = panelCardOpacity(),
           .onChange =
@@ -208,7 +213,7 @@ void PolkitPanel::create() {
               .minHeight = Tokens::sizeControlM * scale,
               .paddingV = 0.0F,
               .paddingH = Style::spaceMd * scale,
-              .radius = Style::scaledRadiusMd(scale),
+              .radius = Tokens::sizeControlM * scale * 0.5F,
               .onClick =
                   [this] { cancelAuth(); },
           }),
@@ -458,7 +463,7 @@ void PolkitPanel::updateIdentity(const PolkitRequest& request) {
 }
 
 void PolkitPanel::resolveIcon(Renderer& renderer, const PolkitRequest& request) {
-  const float iconSize = scaled(48.0F);
+  const float iconSize = scaled(40.0F); // concept C .o-shield: 40 accent circle
   if (m_iconContainer != nullptr) {
     m_iconContainer->setSize(iconSize, iconSize);
   }

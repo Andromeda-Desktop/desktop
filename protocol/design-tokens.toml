@@ -651,9 +651,12 @@ offset = 8.0
 [component.dialog]  # 9.10
 alert_width = 320.0
 width = 480.0
-radius = 12.0  # radius set B (user, 2026-11-08)
-padding = 24.0
-header = 56.0
+radius = 28.0  # sheet radius (rulebook 9.10, user 2026-11-18)
+padding = 12.0
+button_min_width = 96.0  # footer buttons, h 40
+auth_width = 360.0  # polkit dialog (concept C .o-dialog)
+auth_padding = 20.0
+header = 40.0
 
 [component.tooltip]  # 9.11
 height = 24.0

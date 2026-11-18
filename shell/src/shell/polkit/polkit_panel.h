@@ -38,7 +38,7 @@ public:
   void onClose() override;
   void clearInput();
 
-  [[nodiscard]] float preferredWidth() const override { return scaled(Tokens::componentDialogWidth); }
+  [[nodiscard]] float preferredWidth() const override { return scaled(Tokens::componentDialogAuthWidth); }
   // Fits its content (the prompt grows when a password is needed); this is the maximum.
   [[nodiscard]] float preferredHeight() const override { return scaled(640.0F); }
   [[nodiscard]] bool fitsContentHeight() const noexcept override { return true; }

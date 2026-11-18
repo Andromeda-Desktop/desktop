@@ -13,6 +13,7 @@
 #include "ui/controls/glyph.h"
 #include "ui/controls/image.h"
 #include "ui/controls/label.h"
+#include "ui/palette.h"
 #include "ui/style.h"
 
 #include <algorithm>
@@ -31,6 +32,7 @@ namespace {
   constexpr Color kStroke = rgba(1.0F, 1.0F, 1.0F, 0.14F);
   constexpr Color kFill1 = rgba(1.0F, 1.0F, 1.0F, 15.0F / 255.0F);
   constexpr Color kFill2 = rgba(1.0F, 1.0F, 1.0F, 26.0F / 255.0F);
+  constexpr Color kWell = rgba(1.0F, 1.0F, 1.0F, 36.0F / 255.0F); // concept C --well, 14 %
   constexpr Color kTextShadow = rgba(0.0F, 0.0F, 0.0F, 0.30F);
   constexpr std::string_view kPhonePlayerPrefix = "org.mpris.MediaPlayer2.andromeda_link_";
   constexpr float kCardH = 64.0F;
@@ -108,11 +110,9 @@ int LockCards::glanceCardCount() const {
   return (m_data.media.has_value() ? 1 : 0) + static_cast<int>(m_data.groups.size()) + (m_data.phone.has_value() ? 1 : 0);
 }
 
-std::vector<std::string> LockCards::chipTexts() const {
-  std::vector<std::string> chips;
-  if (m_data.phone.has_value()) {
-    chips.push_back(std::format("{} · {}%", m_data.phone->name, m_data.phone->battery));
-  }
+// Concept C .o-lchips: notifications, then the phone, then charging; each with its 16 px symbol.
+std::vector<LockCards::ChipText> LockCards::chipTexts() const {
+  std::vector<ChipText> chips;
   long count = 0;
   for (const LockNoticeGroup& group : m_data.groups) {
     count += group.count;
@@ -121,10 +121,13 @@ std::vector<std::string> LockCards::chipTexts() const {
     count += m_data.phone->notices;
   }
   if (count > 0) {
-    chips.push_back(i18n::trp("lockscreen.cards.notifications", count));
+    chips.push_back({"message-circle", i18n::trp("lockscreen.cards.notifications", count)});
+  }
+  if (m_data.phone.has_value()) {
+    chips.push_back({"device-mobile", std::format("{} · {} %", m_data.phone->name, m_data.phone->battery)});
   }
   if (!m_data.charging.empty()) {
-    chips.push_back(m_data.charging);
+    chips.push_back({"battery-charging", m_data.charging});
   }
   return chips;
 }
@@ -228,6 +231,7 @@ void LockCards::hideAll() {
   for (Chip& chip : m_chips) {
     chip.bg->setVisible(false);
     chip.label->setVisible(false);
+    chip.glyph->setVisible(false);
   }
   for (Widget& widget : m_widgets) {
     widget.bg->setVisible(false);
@@ -309,27 +313,39 @@ void LockCards::layout(Renderer& renderer, const AuthPlacement& place, float sca
     }
   }
 
-  // Chips row: h 24, r 12, p 0 / 8, fill_1, footnote label_2, g 8, centred in its slot.
+  // Chips row (concept C .o-chip): h 24, r 12, p 0 / 8, the well fill, symbol 16 g 4, footnote label_2, g 8, centred.
   if (!place.chips.empty()) {
-    const std::vector<std::string> texts = chipTexts();
-    while (m_chips.size() < texts.size()) {
-      m_chips.push_back({addRect(*m_group), addLabel(*m_group, FontWeight::Normal)});
+    const std::vector<ChipText> chips = chipTexts();
+    while (m_chips.size() < chips.size()) {
+      m_chips.push_back({addRect(*m_group), addGlyph(*m_group), addLabel(*m_group, FontWeight::Normal)});
     }
+    const float symbol = 16.0F * s;
+    const float lead = symbol + 4.0F * s;
     float total = 0.0F;
-    for (std::size_t i = 0; i < texts.size(); ++i) {
-      setText(renderer, m_chips[i].label, texts[i], Tokens::typeFootnote.size * s, Tokens::typeFootnote.line * s, kLabel2,
-              place.chips.w);
-      total += m_chips[i].label->width() + 16.0F * s;
+    for (std::size_t i = 0; i < chips.size(); ++i) {
+      setText(renderer, m_chips[i].label, chips[i].text, Tokens::typeFootnote.size * s, Tokens::typeFootnote.line * s,
+              kLabel2, place.chips.w);
+      total += m_chips[i].label->width() + lead + 16.0F * s;
     }
-    total += 8.0F * s * static_cast<float>(texts.empty() ? 0 : texts.size() - 1);
+    total += 8.0F * s * static_cast<float>(chips.empty() ? 0 : chips.size() - 1);
     float x = snap(place.chips.x + (place.chips.w - total) * 0.5F);
-    for (std::size_t i = 0; i < texts.size(); ++i) {
-      const float w = snap(m_chips[i].label->width() + 16.0F * s);
+    for (std::size_t i = 0; i < chips.size(); ++i) {
+      const float w = snap(m_chips[i].label->width() + lead + 16.0F * s);
       m_chips[i].bg->setVisible(true);
       m_chips[i].bg->setPosition(x, place.chips.y);
       m_chips[i].bg->setSize(w, place.chips.h);
-      m_chips[i].bg->setStyle(RoundedRectStyle{.fill = kFill1, .radius = place.chips.h * 0.5F});
-      m_chips[i].label->setPosition(x + 8.0F * s, snap(place.chips.y + (place.chips.h - m_chips[i].label->height()) * 0.5F));
+      m_chips[i].bg->setStyle(RoundedRectStyle{.fill = kWell, .radius = place.chips.h * 0.5F});
+      m_chips[i].glyph->setVisible(true);
+      m_chips[i].glyph->setGlyph(chips[i].glyph);
+      m_chips[i].glyph->setGlyphSize(symbol);
+      m_chips[i].glyph->setColor(kLabel2);
+      m_chips[i].glyph->measure(renderer);
+      m_chips[i].glyph->setPosition(
+          x + 8.0F * s, snap(place.chips.y + (place.chips.h - m_chips[i].glyph->height()) * 0.5F)
+      );
+      m_chips[i].label->setPosition(
+          x + 8.0F * s + lead, snap(place.chips.y + (place.chips.h - m_chips[i].label->height()) * 0.5F)
+      );
       x += w + 8.0F * s;
     }
   }
@@ -357,8 +373,7 @@ void LockCards::layout(Renderer& renderer, const AuthPlacement& place, float sca
   }
 }
 
-// Media card: art 40 r 8; title body 600 + footnote label_2 "artist · app"; controls 32 circles g 4, the playing
-// control on fill_2.
+// Media card: art 40 r 8; title body 600 + footnote label_2 "artist · app"; one play/pause circle 32 on fill_2.
 void LockCards::layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& rect, float s) {
   const Media& media = *m_data.media;
   glassCard(card.bg, rect, s);
@@ -391,34 +406,41 @@ void LockCards::layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& 
     );
   }
 
+  // Concept C: one play/pause circle on fill_2; previous and next stay with the media panel.
   const float control = 32.0F * s;
-  const float controlsW = control * 3.0F + 4.0F * s * 2.0F;
+  const float controlsW = control;
   const float controlY = snap(rect.y + (rect.h - control) * 0.5F);
-  float cx = rect.right() - pad - controlsW;
-  const std::array<const char*, 3> glyphs{"media-prev", media.playing ? "media-pause" : "media-play", "media-next"};
   for (std::size_t i = 0; i < m_buttons.size(); ++i) {
     Button& button = m_buttons[i];
-    button.rect = {snap(cx), controlY, control, control};
-    button.bg->setVisible(i == 1 && media.playing);
+    const bool shown = i == 1;
+    button.bg->setVisible(shown);
+    button.glyph->setVisible(shown);
+    if (!shown) {
+      button.rect = {};
+      continue;
+    }
+    button.rect = {snap(rect.right() - pad - control), controlY, control, control};
     button.bg->setPosition(button.rect.x, button.rect.y);
     button.bg->setSize(control, control);
-    button.bg->setStyle(RoundedRectStyle{.fill = kFill2, .radius = control * 0.5F});
-    button.glyph->setVisible(true);
-    button.glyph->setGlyph(glyphs[i]);
+    // The lock is always dark; play/pause is the inverted "on" button: a dark-scheme label fill, a light-scheme glyph.
+    static const Color onFill = tokenPalette(false).label1;
+    static const Color onGlyph = tokenPalette(true).label1;
+    button.bg->setStyle(RoundedRectStyle{.fill = onFill, .radius = control * 0.5F});
+    button.glyph->setGlyph(media.playing ? "media-pause" : "media-play");
     button.glyph->setGlyphSize(16.0F * s);
-    button.glyph->setColor(kLabel1);
+    button.glyph->setColor(onGlyph);
     button.glyph->measure(renderer);
     button.glyph->setPosition(
         snap(button.rect.x + (control - button.glyph->width()) * 0.5F),
         snap(button.rect.y + (control - button.glyph->height()) * 0.5F)
     );
-    cx += control + 4.0F * s;
   }
   m_buttonsShown = true;
 
   const float textX = rect.x + pad + art + 12.0F * s;
   const float textW = rect.right() - pad - controlsW - 12.0F * s - textX;
   setText(renderer, card.title, media.title, Tokens::typeBody.size * s, Tokens::typeBody.line * s, kLabel1, textW);
+  card.title->setFontWeight(FontWeight::SemiBold);
   setText(renderer, card.body, media.subtitle, Tokens::typeFootnote.size * s, Tokens::typeFootnote.line * s, kLabel2, textW);
   const float textH = Tokens::typeBody.line * s + (media.subtitle.empty() ? 0.0F : Tokens::typeFootnote.line * s);
   const float top = snap(rect.y + (rect.h - textH) * 0.5F);

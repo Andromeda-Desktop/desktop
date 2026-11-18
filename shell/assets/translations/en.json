@@ -1631,8 +1631,8 @@
     },
     "power": {
       "blocked": "Can't do that: an app is blocking it",
-      "restart": "Restart",
-      "shutdown": "Shut down",
+      "restart": "Restart…",
+      "shutdown": "Shut Down…",
       "sleep": "Sleep"
     },
     "call": {
@@ -1661,7 +1661,7 @@
     "hint-face": "Or look at the camera",
     "hint-face-fingerprint": "Or press Enter for Face Unlock, or touch the sensor",
     "hint-face-request": "Or press Enter for Face Unlock",
-    "hint-fingerprint": "Or touch the fingerprint sensor",
+    "hint-fingerprint": "Touch the sensor or type your password",
     "pam-error": "Can't check your password: {message}",
     "password-required": "Password required",
     "ready": "Type your password and press Enter.",

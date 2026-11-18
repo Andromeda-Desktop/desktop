@@ -105,7 +105,12 @@ private:
 
   struct Chip {
     RectNode* bg = nullptr;
+    Glyph* glyph = nullptr;
     Label* label = nullptr;
+  };
+  struct ChipText {
+    const char* glyph;
+    std::string text;
   };
 
   struct Widget {
@@ -120,7 +125,7 @@ private:
     AuthRect rect;
   };
 
-  [[nodiscard]] std::vector<std::string> chipTexts() const;
+  [[nodiscard]] std::vector<ChipText> chipTexts() const;
   [[nodiscard]] int glanceCardCount() const;
   [[nodiscard]] bool bottomCard() const;
   void layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& rect, float s);

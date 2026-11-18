@@ -122,17 +122,16 @@ namespace {
     }
     p.date = rect(0.0F, p.clockY - (kDateGap + kDateLine) * s, in.sw, kDateLine * s);
     float y = p.clockY + p.clockHeight();
-    float gap = 20.0F;
+    // Concept C .o-ltop: clock, widgets, media card and chips one column, 16 apart.
+    const float gap = Tokens::spaceP16;
     if (widgets) {
       const float w = stackHeight(in.widgets, kWidgetW, kCardGap) * s;
       p.widgets = rect(cx - w * 0.5F, y + gap * s, w, kWidgetH * s);
       y = p.widgets.bottom();
-      gap = kCardGap;
     }
     if (media) {
       p.media = rect(cx - 180.0F * s, y + gap * s, 360.0F * s, kCardH * s);
       y = p.media.bottom();
-      gap = kCardGap;
     }
     if (chips) {
       p.chips = rect(cx - 180.0F * s, y + gap * s, 360.0F * s, kChipH * s);

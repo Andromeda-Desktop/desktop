@@ -264,7 +264,7 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
   const bool inSheet = !place.sheet.empty();
   m_capsule->setStyle(
       RoundedRectStyle{
-          .fill = inSheet ? kFill1 : kThick,
+          .fill = inSheet ? kFill1 : kRegular, // concept C: the capsule is regular glass (40 %)
           .border = inSheet ? Color{} : kStroke,
           .radius = capH * 0.5F,
           .borderWidth = inSheet ? 0.0F : 0.5F * s,
