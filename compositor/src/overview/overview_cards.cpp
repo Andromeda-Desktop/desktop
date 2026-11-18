@@ -126,6 +126,7 @@ namespace andromeda {
     entry->sx = sx + walk->dx;
     entry->sy = sy + walk->dy;
     entry->isRoot = surface == card->view->rootSurface();
+    entry->sendFrame = card->refreshPhase != 0;
     wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
     buffer->point_accepts_input = rejectInput;
     entry->commit.connect(&surface->events.commit, entry.get(), onCardSurfaceCommit);
@@ -204,8 +205,26 @@ namespace andromeda {
     }
   }
 
+  // A thumbnail redraws at half its output's frame rate, and cards of the two phases on alternate frames: a client's new
+  // buffer (a full-size shm upload for a scrolling terminal) then costs one card's upload per frame, not every card's.
   void Overview::onCardBufferFrameDone(CardSurface* entry, void* data) {
     auto* event = static_cast<wlr_scene_frame_done_event*>(data);
+    wlr_output* output = entry->card->owner->output->wlr();
+    if (event->output->output != output) {
+      return;
+    }
+    // The output sends frame done twice per frame (before the render and after the commit), with the same time.
+    if (event->when.tv_sec != entry->frameTime.tv_sec || event->when.tv_nsec != entry->frameTime.tv_nsec) {
+      entry->frameTime = event->when;
+      entry->sendFrame = !entry->sendFrame;
+    }
+    if (!entry->sendFrame) {
+      // The next frame sends it; a client that waits for one must not stall on an output with nothing else to draw.
+      if (!wl_list_empty(&entry->surface->current.frame_callback_list)) {
+        wlr_output_schedule_frame(output);
+      }
+      return;
+    }
     wlr_surface_send_frame_done(entry->surface, &event->when);
   }
 
@@ -221,6 +240,7 @@ namespace andromeda {
     auto card = std::make_unique<Card>();
     card->overview = this;
     card->owner = &state;
+    card->refreshPhase = m_nextRefreshPhase++ & 1U;
     card->view = view;
     card->workspaceIndex = workspaceIndex;
     card->tree = wlr_scene_tree_create(state.tree);

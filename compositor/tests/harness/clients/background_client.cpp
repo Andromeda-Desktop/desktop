@@ -1,8 +1,9 @@
 // Maps an xdg toplevel that redraws on every wl_surface.frame callback, the way a game or a browser does, and prints
-// "frame" for each callback plus "suspended" / "resumed" when the xdg_toplevel suspended state changes. With
-// CONTENT_TYPE=game it declares the game content type before its first commit. With FORK_CHILD=1 it first forks an
-// idle child, prints "child <pid>" and stops itself (SIGSTOP) until the test moves it to another scope and sends
-// SIGCONT, as a browser forks its zygote before it moves into its own scope. Usage: background-client [title].
+// "frame <ms>" (the callback's time) for each callback plus "suspended" / "resumed" when the xdg_toplevel suspended
+// state changes. With CONTENT_TYPE=game it declares the game content type before its first commit. With FORK_CHILD=1 it
+// first forks an idle child, prints "child <pid>" and stops itself (SIGSTOP) until the test moves it to another scope
+// and sends SIGCONT, as a browser forks its zygote before it moves into its own scope.
+// Usage: background-client [title].
 
 #include "content-type-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -37,10 +38,10 @@ namespace {
 
   void requestFrame(State& state);
 
-  void frameDone(void* data, wl_callback* callback, uint32_t) {
+  void frameDone(void* data, wl_callback* callback, uint32_t timeMs) {
     wl_callback_destroy(callback);
     auto& state = *static_cast<State*>(data);
-    std::println("frame");
+    std::println("frame {}", timeMs);
     std::fflush(stdout);
     requestFrame(state);
   }

@@ -30,7 +30,7 @@ for log in "$NORMAL_LOG" "$GAME_LOG" "$RULED_LOG"; do
 done
 "$ANDROMEDA" settle
 
-frames() { grep -c '^frame$' "$1" || true; }
+frames() { grep -c '^frame ' "$1" || true; }
 
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 "$ANDROMEDA" settle

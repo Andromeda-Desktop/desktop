@@ -202,6 +202,9 @@ namespace andromeda {
       // Whether the latest walk of the card's surfaces reached `surface`. A surface that left the tree keeps its entry
       // until destroyed, and `sourceBuffer` may already be freed with its subsurface role.
       bool inTree = true;
+      // Flips on each frame of the card's output; the client gets its frame callback on frames where it is true.
+      bool sendFrame = false;
+      timespec frameTime{}; // the frame `sendFrame` was last flipped for
       Listener commit;
       Listener destroy;
       Listener outputSample;
@@ -212,6 +215,9 @@ namespace andromeda {
       Overview* overview = nullptr;
       OutputState* owner = nullptr;
       View* view = nullptr;
+      // Start value of the card's CardSurface::sendFrame; consecutive cards alternate, so their clients redraw on
+      // different frames.
+      std::uint8_t refreshPhase = 0;
       size_t workspaceIndex = 0; // workspace index inside the output's group
       wlr_scene_tree* tree = nullptr;
       // Parent of every `surfaces` buffer, at the card origin: the card's window and overlay slots live here, as they
@@ -694,6 +700,7 @@ namespace andromeda {
     DropTarget m_drop{};
     WorkspaceGroup* m_dropWorkspaceGroup = nullptr;
     size_t m_dropWorkspaceIndex = 0;
+    std::uint8_t m_nextRefreshPhase = 0;
   };
 
 } // namespace andromeda
