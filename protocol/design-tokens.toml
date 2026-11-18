@@ -346,6 +346,7 @@ press_scale_medium = 0.98 # items up to 240 px
 slop = 8.0
 rubber_band = 0.55
 projection_decay = 0.998
+projection_decay_stepped = 0.997  # stepped pagers (workspaces): a moderate swipe advances one step (§7.7)
 open_velocity = 300.0    # px/s toward open
 loading_delay_ms = 200
 loading_min_ms = 400
