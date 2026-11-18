@@ -258,22 +258,23 @@ namespace shell::dock {
       grown.panelX -= start;
       grown.panelW += start + end;
     }
+    // The hover tick owns these sizes: setFrameSize, since a layout of slideRoot would put the row items back at rest.
     const float panelW = grown.panelW + concave.logicalInset.left + concave.logicalInset.right;
     const float panelH = grown.panelH + concave.logicalInset.top + concave.logicalInset.bottom;
     instance.panel->setPosition(grown.panelX - concave.logicalInset.left, grown.panelY - concave.logicalInset.top);
-    instance.panel->setSize(panelW, panelH);
+    instance.panel->setFrameSize(panelW, panelH);
     if (instance.shadow != nullptr) {
       instance.shadow->setPosition(
           instance.shadow->x() - (vert ? 0.0F : shiftStart), instance.shadow->y() - (vert ? shiftStart : 0.0F)
       );
-      instance.shadow->setSize(panelW, panelH);
+      instance.shadow->setFrameSize(panelW, panelH);
     }
     if (vert) {
       instance.viewport->setPosition(instance.viewport->x(), grown.panelY);
-      instance.viewport->setSize(instance.viewport->width(), grown.panelH);
+      instance.viewport->setFrameSize(instance.viewport->width(), grown.panelH);
     } else {
       instance.viewport->setPosition(grown.panelX, instance.viewport->y());
-      instance.viewport->setSize(grown.panelW, instance.viewport->height());
+      instance.viewport->setFrameSize(grown.panelW, instance.viewport->height());
     }
     applyDockScrollOffset(instance, cfg);
     syncDockAutoHideInputRegion(instance, cfg, instance.restPanel);
