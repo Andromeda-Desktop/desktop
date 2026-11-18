@@ -268,6 +268,7 @@ namespace term {
     void showPagerPosition();
     [[nodiscard]] float pagerAt() const; // the shown position in pages
     void pagerLanded();
+    void switchToPage(std::size_t page);
     // Neighbour sidebar pages: the session rows of a workspace from the holder's table.
     [[nodiscard]] std::unique_ptr<Node> sidebarPage(std::size_t page);
     [[nodiscard]] std::vector<StatusRow::Data> pageRows(std::size_t page) const;

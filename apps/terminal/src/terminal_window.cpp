@@ -908,7 +908,16 @@ namespace term {
     showPagerPosition();
     const std::size_t page = m_pager.page();
     if (page == m_shownBar.here || page >= m_shownBar.pages.size()) return;
-    // The switch builds the new panes while nothing moves; they fade in from transparent.
+    // This runs in the slide's last animation tick: the switch waits until that frame is out, so its work falls in
+    // no animation frame. The new panes then fade in from transparent.
+    DeferredCall::callLater([this, page, alive = std::weak_ptr<bool>(m_alive)] {
+      if (!alive.expired()) switchToPage(page);
+    });
+  }
+
+  void TerminalWindow::switchToPage(std::size_t page) {
+    const auto* rest = std::get_if<WorkspacePager::Rest>(&m_pager.mode());
+    if (rest == nullptr || rest->page != page || page == m_shownBar.here || page >= m_shownBar.pages.size()) return;
     if (m_pickWorkspace) m_pickWorkspace(m_shownBar.pages[page]);
     // The switch did not happen (the workspace went away meanwhile): back to the shown page.
     if (m_pager.page() != m_shownBar.here) {
