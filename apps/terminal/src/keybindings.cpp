@@ -64,6 +64,8 @@ namespace term {
         {Action::ScrollPageDown, "scroll_page_down", "Scroll down a page", "shift+page_down"},
         {Action::CommandPalette, "command_palette", "Command palette", "ctrl+shift+p"},
         {Action::ToggleSidebar, "toggle_sidebar", "Show or hide the sidebar", "ctrl+shift+b"},
+        {Action::PreviousWorkspace, "previous_workspace", "Previous workspace", "ctrl+alt+page_up"},
+        {Action::NextWorkspace, "next_workspace", "Next workspace", "ctrl+alt+page_down"},
     }};
     static_assert(
         [] {

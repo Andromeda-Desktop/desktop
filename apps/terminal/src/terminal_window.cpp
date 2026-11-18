@@ -11,6 +11,8 @@
 #include "core/log.h"
 #include "time/time_format.h"
 #include "render/animation/animation_manager.h"
+#include "render/animation/motion_service.h"
+#include "core/input/pointer_axis.h"
 #include "render/text/glyph_registry.h"
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
@@ -107,6 +109,20 @@ namespace term {
       const bool inHome = path == home || path.starts_with(home + "/");
       return inHome ? "~" + path.substr(home.size()) : path;
     }
+
+    // A row of a session in the holder's table: its folder, and its program or last command's end.
+    StatusRow::Data heldRowData(const holder::SessionInfo& session) {
+      StatusRow::Data data{.symbol = "prompt", .name = shownPath(session.cwd), .status = session.program};
+      if (session.command == holder::CommandState::Running) {
+        data.symbol = "player-play";
+        data.status = "running · " + session.program;
+      } else if (session.command == holder::CommandState::Done) {
+        data.symbolDanger = session.exitCode != 0;
+        data.symbol = data.symbolDanger ? "alert-circle" : "circle-check";
+        data.status = data.symbolDanger ? "exit " + std::to_string(session.exitCode) : "done";
+      }
+      return data;
+    }
   } // namespace
 
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
@@ -145,7 +161,16 @@ namespace term {
       m_contentHeight = height;
       fillSlot(renderer);
       registerDropTarget();
-      return slot;
+      const float gap = Tokens::spaceP16 * m_window.uiScale();
+      m_pager.setWidth(width + gap);
+      auto strip = std::make_unique<PageStrip>(&m_contentStrip, std::move(slot), m_shownBar.here, m_pager.count(), gap,
+                                               [this](std::size_t page) { return contentPage(page); });
+      strip->setSize(width, height);
+      showPagerPosition();
+      auto area = ui::inputArea({.width = width, .height = height}, std::move(strip));
+      area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
+      area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
+      return area;
     });
     m_window.setSidebarBuilder([this](Renderer& /*renderer*/, float width, float height) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
@@ -223,7 +248,11 @@ namespace term {
                                     .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
       scroll->content()->setAlign(FlexAlign::Stretch);
       scroll->content()->addChild(std::move(list));
-      side->addChild(std::move(scroll));
+      // The rows are this workspace's page; a swipe brings in the next workspace's rows beside them.
+      auto strip = std::make_unique<PageStrip>(&m_sideStrip, std::move(scroll), m_shownBar.here, m_pager.count(), Tokens::spaceP16 * s,
+                                               [this](std::size_t page) { return sidebarPage(page); });
+      strip->setFlexGrow(1.0F);
+      side->addChild(std::move(strip));
       side->addChild(ui::box({.out = &m_dropLine, .fill = colorSpecFromRole(ColorRole::Accent),
                               .radius = Tokens::componentTerminalSidebarDropLine * s / 2.0F, .visible = false,
                               .participatesInLayout = false}));
@@ -247,7 +276,11 @@ namespace term {
       side->addChild(std::move(bottom));
       refreshRows();
       applyFilter();
-      return side;
+      showPagerPosition();
+      auto area = ui::inputArea({.width = width, .height = height}, std::move(side));
+      area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
+      area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
+      return area;
     });
     m_window.setCaptionMenu([this](float x, float y) {
       if (const auto id = m_sessions.shown()) {
@@ -645,7 +678,16 @@ namespace term {
   }
 
   void TerminalWindow::fillFootBar() {
-    m_shownBar = m_bar != nullptr ? m_bar() : workspace_bar::Bar{};
+    workspace_bar::Bar bar = m_bar != nullptr ? m_bar() : workspace_bar::Bar{};
+    const bool pagesChanged = bar.pages != m_shownBar.pages || bar.here != m_shownBar.here;
+    m_shownBar = std::move(bar);
+    if (pagesChanged) {
+      // A finger or a slide in progress ends: the page under it may be gone.
+      m_window.animations().cancel(m_pagerAnim);
+      m_pagerAnim = 0;
+      m_pager.setPages(m_shownBar.pages.size(), m_shownBar.here);
+      m_window.requestRebuild();
+    }
     if (m_footBar == nullptr) return;
     while (!m_footBar->children().empty()) m_footBar->removeChild(m_footBar->children().back().get());
     m_footTrack->setVisible(!m_shownBar.items.empty());
@@ -694,7 +736,7 @@ namespace term {
       m_footBar->addChild(ui::button({.out = &button, .glyph = glyph, .glyphSize = symbol,
                                       .customPalette = ghost(ws.location == workspace_bar::Location::Saved ? ColorRole::Label3 : ColorRole::Label2),
                                       .tooltip = workspace_bar::tooltip(ws), .radius = item / 2.0F, .width = item,
-                                      .height = item, .onClick = [this, id = ws.id] { if (m_pickWorkspace) m_pickWorkspace(id); }}));
+                                      .height = item, .onClick = [this, id = ws.id] { pickPage(id); }}));
       if (ws.status != workspace_bar::Status::None) {
         const float dot = Tokens::componentTerminalWorkspaceDot * s;
         Box* badge = nullptr;
@@ -713,6 +755,130 @@ namespace term {
     m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
                                     .tooltip = std::string("New workspace"), .radius = item / 2.0F, .width = item,
                                     .height = item, .onClick = [this] { if (m_addWorkspace) m_addWorkspace(); }}));
+  }
+
+  void TerminalWindow::pickPage(std::uint64_t id) {
+    const auto page = std::ranges::find(m_shownBar.pages, id);
+    if (page == m_shownBar.pages.end()) {
+      if (m_pickWorkspace) m_pickWorkspace(id);
+      return;
+    }
+    slideTo(static_cast<std::size_t>(page - m_shownBar.pages.begin()));
+  }
+
+  void TerminalWindow::slideTo(std::size_t page) {
+    if (page >= m_pager.count() || page == m_pager.page()) return;
+    m_pager.goTo(page);
+    slidePages(0.0F);
+  }
+
+  bool TerminalWindow::pageAxis(const InputArea::PointerData& d) {
+    if (d.axis != PointerAxis::Horizontal || d.axisSource != AxisSource::Finger || m_pager.count() < 2) return false;
+    m_window.animations().cancel(m_pagerAnim);
+    m_pagerAnim = 0;
+    // The libinput delta unscaled: the page follows the finger 1:1.
+    m_pager.track(static_cast<float>(d.axisValue), d.time);
+    showPagerPosition();
+    return true;
+  }
+
+  bool TerminalWindow::pageAxisStop(std::uint32_t axis) {
+    if (axis != PointerAxis::Horizontal || !std::holds_alternative<WorkspacePager::Tracking>(m_pager.mode())) return false;
+    const float velocity = m_pager.velocity();
+    m_pager.release();
+    slidePages(velocity);
+    return true;
+  }
+
+  // Rulebook 7.7: settle on the target page on the `page` spring with the finger's velocity; reduced motion (7.8)
+  // settles on `close` with no velocity carry.
+  void TerminalWindow::slidePages(float velocity) {
+    const bool reduced = MotionService::instance().reduced();
+    const float target = static_cast<float>(m_pager.page()) * m_pager.width();
+    m_pagerAnim = m_window.animations().drive(
+        m_pagerAnim, m_pager.position(), target, Style::spring(reduced ? Tokens::springClose : Tokens::springPage),
+        [this](float v) {
+          m_pager.animate(v);
+          showPagerPosition();
+        },
+        [this] {
+          m_pagerAnim = 0;
+          pagerLanded();
+        },
+        this, reduced ? 0.0F : velocity, Unit::Px, true);
+    if (m_pagerAnim == 0) {
+      m_pager.animate(target);
+      pagerLanded();
+    }
+  }
+
+  void TerminalWindow::showPagerPosition() {
+    const float at = m_pager.width() > 0.0F ? m_pager.shown() / m_pager.width() : static_cast<float>(m_shownBar.here);
+    if (m_contentStrip != nullptr) m_contentStrip->setPagePosition(at);
+    if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(at);
+    requestFrame();
+  }
+
+  void TerminalWindow::pagerLanded() {
+    if (!std::holds_alternative<WorkspacePager::Settling>(m_pager.mode())) return;
+    m_pager.settled();
+    showPagerPosition();
+    const std::size_t page = m_pager.page();
+    if (page == m_shownBar.here || page >= m_shownBar.pages.size()) return;
+    if (m_pickWorkspace) m_pickWorkspace(m_shownBar.pages[page]);
+    // The switch did not happen (the workspace went away meanwhile): back to the shown page.
+    if (m_pager.page() != m_shownBar.here) slideTo(m_shownBar.here);
+  }
+
+  // A saved workspace has no shells: its page shows the one shell that starts in its root on landing.
+  std::vector<StatusRow::Data> TerminalWindow::pageRows(std::size_t page) const {
+    std::vector<StatusRow::Data> out;
+    if (m_table == nullptr || page >= m_shownBar.pages.size()) return out;
+    const holder::Workspaces& table = m_table();
+    const std::uint64_t id = m_shownBar.pages[page];
+    for (const holder::SessionInfo& session : table.sessions) {
+      if (session.workspace == id) out.push_back(heldRowData(session));
+    }
+    if (const auto w = std::ranges::find(table.workspaces, id, &holder::WorkspaceInfo::id); out.empty() && w != table.workspaces.end()) {
+      out.push_back({.symbol = "prompt", .name = shownPath(w->root)});
+    }
+    return out;
+  }
+
+  std::unique_ptr<Node> TerminalWindow::sidebarPage(std::size_t page) {
+    const float s = m_window.uiScale();
+    auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
+    for (const StatusRow::Data& data : pageRows(page)) {
+      auto row = std::make_unique<StatusRow>(s);
+      row->setRail(m_rail);
+      row->setData(data);
+      list->addChild(std::move(row));
+    }
+    return list;
+  }
+
+  // A workspace this window does not show has no live panes: one card per session, as the shown panes' cards.
+  std::unique_ptr<Node> TerminalWindow::contentPage(std::size_t page) {
+    const float s = m_window.uiScale();
+    auto column = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s});
+    const ContentView* shown = shownView();
+    const ColorSpec surface = shown != nullptr ? shown->surface() : colorSpecFromRole(ColorRole::View);
+    for (const StatusRow::Data& data : pageRows(page)) {
+      auto card = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP12 * s,
+                              .fill = surface, .radius = Style::scaledRadius(Tokens::radiusR16, s),
+                              .flexGrow = 1.0F});
+      auto caption = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+      caption->addChild(ui::glyph({.glyph = data.symbol, .glyphSize = Tokens::sizeSymbol * s,
+                                   .color = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::AccentText)}));
+      caption->addChild(ui::label({.text = data.name, .fontSize = Tokens::typeBody.size * s, .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1, .ellipsize = TextEllipsize::End}));
+      caption->addChild(ui::label({.text = data.status, .fontSize = Tokens::typeBody.size * s,
+                                   .color = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2),
+                                   .maxLines = 1, .ellipsize = TextEllipsize::End}));
+      card->addChild(std::move(caption));
+      column->addChild(std::move(card));
+    }
+    return column;
   }
 
   bool TerminalWindow::detachSessions() {
@@ -990,6 +1156,10 @@ namespace term {
       case Action::Find: openFind(); return true;
       case Action::CommandPalette: openPalette(); return true;
       case Action::ToggleSidebar: m_window.setSidebarVisible(!m_window.sidebarVisible()); return true;
+      case Action::PreviousWorkspace:
+        if (m_pager.page() > 0) slideTo(m_pager.page() - 1);
+        return true;
+      case Action::NextWorkspace: slideTo(m_pager.page() + 1); return true;
       case Action::Session1:
       case Action::Session2:
       case Action::Session3:
@@ -1968,6 +2138,10 @@ namespace term {
 
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
+    m_window.animations().cancel(m_pagerAnim);
+    for (PageStrip* strip : {m_sideStrip, m_contentStrip}) {
+      if (strip != nullptr) strip->forgetOwner();
+    }
     if (DragAndDrop* dnd = m_loop.wayland().dragAndDrop(); dnd != nullptr && m_dropSurface != nullptr) {
       dnd->clearTarget(m_dropSurface);
     }

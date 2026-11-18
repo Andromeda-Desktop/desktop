@@ -117,7 +117,8 @@ namespace term {
           }
           return workspace_bar::barFor(m_workspaces.workspaces(), here, elsewhere);
         },
-        [this, &window](std::uint64_t id) { pickWorkspace(window, id); }, [this, &window] { addWorkspace(window); });
+        [this, &window](std::uint64_t id) { pickWorkspace(window, id); }, [this, &window] { addWorkspace(window); },
+        [this]() -> const holder::Workspaces& { return m_workspaces.workspaces(); });
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });

@@ -532,10 +532,13 @@ namespace term {
                                      });
                                      a.setOnAxisHandler([this](const InputArea::PointerData& d) { return wheel(d); });
                                      a.setOnAxisStop([this](std::uint32_t axis) {
-                                       if (axis == PointerAxis::Vertical
-                                           && m_scrollMotion == ScrollMotion::Finger) {
+                                       if (axis != PointerAxis::Vertical) {
+                                         return false;
+                                       }
+                                       if (m_scrollMotion == ScrollMotion::Finger) {
                                          settleScroll();
                                        }
+                                       return true;
                                      });
                                    }},
                               std::move(grid));

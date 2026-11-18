@@ -25,6 +25,12 @@ void checkBar(const holder::Workspaces& table, std::uint64_t here, const std::se
   CHECK(bar.items.size() == (n <= kMaxItems ? n : kMaxItems - 1));
   const bool hereKnown = std::ranges::any_of(table.workspaces, [&](const auto& w) { return w.id == here; });
   CHECK(std::ranges::count(bar.items, Location::Here, &Item::location) == (hereKnown ? 1 : 0));
+  std::vector<std::uint64_t> pages;
+  for (const auto& w : table.workspaces) {
+    if (hereKnown && (w.id == here || !elsewhere.contains(w.id))) pages.push_back(w.id);
+  }
+  CHECK(bar.pages == pages);
+  CHECK(!hereKnown || (bar.here < pages.size() && pages[bar.here] == here));
   std::set<std::uint64_t> ids;
   std::size_t last = 0;
   for (const Item& item : bar.items) {

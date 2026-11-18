@@ -28,6 +28,9 @@ namespace term::workspace_bar {
   struct Bar {
     std::vector<Item> items; // empty with fewer than 2 workspaces
     std::size_t more = 0;    // workspaces not among items
+    // The pager's pages in table order: the workspaces no other window shows. here: this window's index.
+    std::vector<std::uint64_t> pages;
+    std::size_t here = 0;
     bool operator==(const Bar&) const = default;
   };
 

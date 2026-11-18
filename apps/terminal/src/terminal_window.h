@@ -1,6 +1,8 @@
 #pragma once
 
 #include "workspace_bar.h"
+#include "workspace_pager.h"
+#include "page_strip.h"
 #include "command_palette.h"
 #include "settings_store.h"
 #include "core/timer_manager.h"
@@ -146,10 +148,12 @@ namespace term {
     void renameSession(std::uint64_t id, std::string name); // empty: the automatic name
     // All windows of the app, in opening order (the command palette lists their sessions).
     void setWindows(std::function<std::vector<TerminalWindow*>()> windows) { m_windows = std::move(windows); }
-    // The sidebar foot bar: its items, and a click on an item (by workspace id) or on "+".
+    // The sidebar foot bar: its items, and a click on an item (by workspace id) or on "+". table: the holder's
+    // workspace table, for the pages of workspaces this window does not show.
     void setWorkspaceBar(std::function<workspace_bar::Bar()> bar, std::function<void(std::uint64_t)> pick,
-                         std::function<void()> add) {
+                         std::function<void()> add, std::function<const holder::Workspaces&()> table) {
       m_bar = std::move(bar);
+      m_table = std::move(table);
       m_pickWorkspace = std::move(pick);
       m_addWorkspace = std::move(add);
       workspacesChanged();
@@ -249,7 +253,25 @@ namespace term {
     std::function<workspace_bar::Bar()> m_bar;
     std::function<void(std::uint64_t)> m_pickWorkspace;
     std::function<void()> m_addWorkspace;
+    std::function<const holder::Workspaces&()> m_table;
     workspace_bar::Bar m_shownBar;
+    // Workspace pages: a two-finger horizontal swipe, a foot-bar click or Ctrl+Alt+PgUp/PgDn slides the sidebar body
+    // and the content as one page; landing on another page switches to its workspace.
+    WorkspacePager m_pager;
+    PageStrip* m_sideStrip = nullptr;
+    PageStrip* m_contentStrip = nullptr;
+    AnimationManager::Id m_pagerAnim = 0;
+    [[nodiscard]] bool pageAxis(const InputArea::PointerData& d);
+    bool pageAxisStop(std::uint32_t axis);
+    void pickPage(std::uint64_t id); // a foot-bar click: slides to a page, else raises the window that shows it
+    void slideTo(std::size_t page);
+    void slidePages(float velocity);
+    void showPagerPosition();
+    void pagerLanded();
+    // Neighbour pages: the session rows and the session cards of a workspace from the holder's table.
+    [[nodiscard]] std::unique_ptr<Node> sidebarPage(std::size_t page);
+    [[nodiscard]] std::unique_ptr<Node> contentPage(std::size_t page);
+    [[nodiscard]] std::vector<StatusRow::Data> pageRows(std::size_t page) const;
     Button* m_prefsButton = nullptr; // hidden while the foot bar shows
     Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
     Flex* m_footBar = nullptr;   // the track's items

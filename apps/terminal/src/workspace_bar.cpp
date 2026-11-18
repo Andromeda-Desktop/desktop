@@ -23,8 +23,14 @@ namespace term::workspace_bar {
                       : elsewhere.contains(w.id) ? Location::OtherWindow
                       : held                     ? Location::Detached
                                                  : Location::Saved;
+      if (item.location != Location::OtherWindow) {
+        if (item.location == Location::Here) bar.here = bar.pages.size();
+        bar.pages.push_back(w.id);
+      }
       all.push_back(std::move(item));
     }
+    // A window without a workspace yet does not page.
+    if (std::ranges::find(all, Location::Here, &Item::location) == all.end()) bar.pages.clear();
     if (all.size() <= kMaxItems) {
       bar.items = std::move(all);
       return bar;

@@ -56,6 +56,8 @@ namespace term {
     ScrollPageDown,
     CommandPalette,
     ToggleSidebar,
+    PreviousWorkspace,
+    NextWorkspace,
     Count,
   };
   inline constexpr std::size_t kActionCount = static_cast<std::size_t>(Action::Count);
