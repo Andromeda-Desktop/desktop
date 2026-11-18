@@ -69,6 +69,8 @@ uniform vec2 liquid_texel;
 uniform vec2 liquid_size;
 uniform vec2 liquid_position;
 uniform float liquid_radius;
+// Render px per logical px.
+uniform float liquid_scale;
 #endif
 
 uniform float discard_transparent;
@@ -192,6 +194,8 @@ float rounded_rect_distance_at(
     vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
 );
 float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
+float liquid_band(vec2 size, float liquid, float scale);
+float lens_sag(float t);
 
 float liquid_distance(vec2 point) {
   if (liquid_radius >= 0.0) {
@@ -213,9 +217,8 @@ void main() {
   vec2 lens_uv = uv;
   float shine = max(liquid, rim);
   if (shine > 0.0) {
-    // Rim band: a quarter of the short side, at most 16 px up to refraction 0.5 and 40 px at 1, so a strong Liquid
-    // bends a large sheet too. t = 1 at the edge, 0 at the band's inner end.
-    float band = min(min(liquid_size.x, liquid_size.y) * 0.25, 16.0 + 48.0 * max(liquid - 0.5, 0.0));
+    // t = 1 at the edge, 0 at the band's inner end.
+    float band = liquid_band(liquid_size, liquid, liquid_scale);
     vec2 p = gl_FragCoord.xy;
     float d = liquid_distance(p);
     // Past the rim band there is no refraction and no rim: skip the four extra distance evaluations.
@@ -224,11 +227,12 @@ void main() {
                          liquid_distance(p + vec2(0.0, 1.0)) - liquid_distance(p - vec2(0.0, 1.0)));
       normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
-      // Refraction: sample from further inside, strongest at the rim (up to 0.8 band at Clear, 0.4 at Tinted).
-      uv -= normal * (t * t * band * 0.8 * liquid) * liquid_texel;
-      // Lens: a convex edge magnifies the sharp backdrop toward the centre; it fades into the blur over the band.
-      lens_uv = uv - normal * (t * t * band * 0.6 * lens) * liquid_texel;
-      lens_weight = lens * t * t * 0.85;
+      float sag = lens_sag(t);
+      // Refraction: the convex bezel samples from further inside, up to half the band at the rim.
+      uv -= normal * (sag * band * 0.5 * liquid) * liquid_texel;
+      // Lens: the sharp backdrop magnified toward the centre; it fades into the blur over the band.
+      lens_uv = uv - normal * (sag * band * 0.3 * lens) * liquid_texel;
+      lens_weight = lens * sag * 0.85;
       // Specular: a reflection, not an outline. Brightest on the outermost pixel (d = -0.5), fading over 2.5 px
       // inward; the coverage mask cuts it outside. pow 8 keeps the key glint on the curves that face the top-left
       // light (a straight top edge gets 6 %), a back glint opposite, a faint even rim between. y-down: light (-1, -1).

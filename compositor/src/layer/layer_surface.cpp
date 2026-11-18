@@ -990,8 +990,8 @@ namespace andromeda {
     m_blur.setClarity(m_clarity);
     m_blur.setRim(m_rim);
     m_blur.setLens(m_lens);
-    // Density follows the backdrop at every glass level, Frosted too (rim > 0 = glass on).
-    m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F);
+    // Density follows the backdrop of any see-through glass, Frosted without an edge reflection too.
+    m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F || (m_tint[3] > 0.0F && m_tint[3] < 1.0F));
     if (state != nullptr) {
       const auto& c = state->motion.value(SurfaceMotion::Property::Clip);
       const double scale = shownScale(state->motion, m_layerSurface->surface);
@@ -1103,7 +1103,7 @@ namespace andromeda {
       m_blur.setClarity(m_clarity);
       m_blur.setRim(m_rim);
       m_blur.setLens(m_lens);
-      m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F);
+      m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F || (m_tint[3] > 0.0F && m_tint[3] < 1.0F));
     } else if (region != nullptr && m_rule.blur.value_or(true) && dskClip && dskClipRounded && pixman_region32_not_empty(region)) {
       // The clip and its corner radius are the exact shape; a client region is a pixel staircase that shows past the
       // anti-aliased corner.

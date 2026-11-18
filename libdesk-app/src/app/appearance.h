@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/glass_material.h"
+
 #include <array>
 #include <functional>
 #include <memory>
@@ -47,10 +49,7 @@ private:
   double m_uiScale = 1.0;
   double m_textScale = 1.0;
   // Style::setGlass inputs; the defaults match Style's.
-  double m_glass = 0.5;
-  double m_frost = 0.5;
-  double m_liquid = 0.5;
-  bool m_reduceTransparency = false;
+  glass::Settings m_glass;
   bool m_compositorBlur = false;
   struct Applied {
     bool light = false;
@@ -60,10 +59,7 @@ private:
     std::array<double, 3> accent{};
     double uiScale = 1.0;
     double textScale = 1.0;
-    double glass = 0.5;
-    double frost = 0.5;
-    double liquid = 0.5;
-    bool reduceTransparency = false;
+    glass::Settings glass;
     bool compositorBlur = false;
     bool operator==(const Applied&) const = default;
   };

@@ -1,6 +1,6 @@
 #pragma once
 
-// The Glass and Liquid slider mapping (CLAUDE.md Decisions "Glass slider", "One glass system"), header-only so the
+// The Glass style and slider mapping (CLAUDE.md Decisions "Glass slider", "One glass system"), header-only so the
 // shell (through libdesk-ui Style::glassMaterial) and the compositor use the same values. No other code maps them.
 
 #include <algorithm>
@@ -50,27 +50,49 @@ namespace glass {
   // text on a Clear sheet over white keeps 4.5:1 (halfway gives 4.2:1).
   [[nodiscard]] constexpr float denseTarget(Kind kind) noexcept { return kind == Kind::Tooltip ? 0.0F : 1.0F; }
 
-  // Clarity 1 blurs at 30 %, so the rim refraction bends shapes, not a smear.
-  [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - 0.7F * clarity; }
+  // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur), Liquid spans 0.7 to 1.
+  [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
+
+  // Frosted: blur and tint, an optional specular edge. Liquid: a convex lens bezel over a light blur.
+  enum class Style : std::uint8_t { Frosted, Liquid };
+
+  // The Glass settings (appearance.glass_style and the sliders of each style). Each style keeps its own tint and blur.
+  struct Settings {
+    Style style = Style::Frosted;
+    // Frosted Tint (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted.
+    float tint = 0.5F;
+    // Frosted Blur (appearance.frost): 0 the lightest blur, 0.5 the design values, 1 full size.
+    float frost = 0.5F;
+    // Frosted specular edge (appearance.edge_reflection).
+    bool edgeReflection = true;
+    // Liquid Tint (appearance.liquid_tint), on the Tint scale.
+    float liquidTint = 0.15F;
+    // Liquid Blur (appearance.liquid_blur): 0 None, 1 Light (Frosted's lightest).
+    float liquidBlur = 0.1F;
+    // Liquid Lens (appearance.liquid): 0 Subtle, 0.5 the design values, 1 Strong.
+    float lens = 0.5F;
+    bool reduceTransparency = false;
+
+    [[nodiscard]] float activeTint() const noexcept { return style == Style::Liquid ? liquidTint : tint; }
+    bool operator==(const Settings&) const = default;
+  };
 
   // Opacity a configured `opacity` of `kind` is relative to: tint_regular (0.70) for shapes, tint_thick otherwise.
   [[nodiscard]] constexpr float referenceOpacity(Kind kind, bool light) noexcept {
     return kind == Kind::Shape ? 0.70F : light ? 0.88F : 0.92F;
   }
 
-  // slider (Tint): 0 Clear, 0.5 Tinted (the design values), 1 Frosted. frost (Blur): 0 the lightest blur, 0.5 the design
-  // values, 1 full size. liquid (refraction, lens, rim): 0 Off, 0.5 the design values, 1 Strong. light: the glass takes
-  // the light curve (a light scheme surface whose tone is Scheme).
-  [[nodiscard]] inline Material
-  material(Kind kind, float slider, float frost, float liquid, bool reduceTransparency, bool light) noexcept {
-    if (reduceTransparency) {
+  // The material of `kind` for `settings`. light: the glass takes the light curve (a light scheme surface whose tone is
+  // Scheme).
+  [[nodiscard]] inline Material material(Kind kind, const Settings& settings, bool light) noexcept {
+    if (settings.reduceTransparency) {
       return {};
     }
     const auto at = [](float v, float low, float mid, float high) {
       v = std::clamp(v, 0.0F, 1.0F);
       return v < 0.5F ? std::lerp(low, mid, v * 2.0F) : std::lerp(mid, high, v * 2.0F - 1.0F);
     };
-    const float g = std::clamp(slider, 0.0F, 1.0F);
+    const float g = std::clamp(settings.activeTint(), 0.0F, 1.0F);
     const auto curve = [&](float clear, float tinted, float frosted) { return at(g, clear, tinted, frosted); };
     float tint = 0.0F;
     switch (kind) {
@@ -85,14 +107,19 @@ namespace glass {
       tint = light ? curve(0.70F, 0.84F, 0.95F) : curve(0.80F, 0.88F, 0.99F);
       break;
     }
-    // Sheets blur and bend a step less than shapes at the middle and match them at both ends.
     const bool shape = kind == Kind::Shape;
-    const float clarity = shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F);
-    const float level = shape ? at(liquid, 0.0F, 0.5F, 1.0F) : at(liquid, 0.0F, 0.25F, 1.0F);
-    // The rim keeps a faint glint at Liquid off: glass still reads as glass, and the backdrop density keeps sampling.
-    const float rim = at(liquid, 0.4F, 1.0F, 1.0F);
+    if (settings.style == Style::Liquid) {
+      const float clarity = 1.0F - 0.3F * std::clamp(settings.liquidBlur, 0.0F, 1.0F);
+      const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
+      return {
+          .tint = tint, .level = level, .rim = at(settings.lens, 0.4F, 1.0F, 1.0F), .lens = level, .clarity = clarity,
+          .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
+      };
+    }
+    // Sheets blur a step less than shapes at the middle and match them at both ends.
+    const float clarity = 0.7F * (shape ? at(settings.frost, 1.0F, 0.5F, 0.0F) : at(settings.frost, 1.0F, 0.25F, 0.0F));
     return {
-        .tint = tint, .level = level, .rim = rim, .lens = level, .clarity = clarity,
+        .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? 1.0F : 0.0F, .lens = 0.0F, .clarity = clarity,
         .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
     };
   }

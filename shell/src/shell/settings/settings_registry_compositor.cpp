@@ -162,18 +162,34 @@ namespace settings {
           "accessibility reduce transparency glass solid opaque"
       );
       if (!isOn("appearance.reduce_transparency")) {
-        slider(
-            Appearance, "surfaces", "appearance.glass", 0.0, 1.0, 0.05, false,
-            "glass tint clear tinted frosted transparency material opacity"
+        choice(
+            Appearance, "surfaces", "appearance.glass_style", {"frosted", "liquid"}, true,
+            "glass style frosted liquid lens material"
         );
-        slider(
-            Appearance, "surfaces", "appearance.frost", 0.0, 1.0, 0.05, false,
-            "glass blur frost frosted backdrop"
-        );
-        slider(
-            Appearance, "surfaces", "appearance.liquid", 0.0, 1.0, 0.05, false,
-            "liquid glass refraction lens highlight rim shine"
-        );
+        if (compositor.value("appearance.glass_style") == "liquid") {
+          slider(
+              Appearance, "surfaces", "appearance.liquid_tint", 0.0, 1.0, 0.05, false,
+              "liquid glass tint clear tinted transparency material opacity"
+          );
+          slider(
+              Appearance, "surfaces", "appearance.liquid", 0.0, 1.0, 0.05, false,
+              "liquid glass lens refraction bend highlight rim shine"
+          );
+          slider(
+              Appearance, "surfaces", "appearance.liquid_blur", 0.0, 1.0, 0.05, false,
+              "liquid glass blur backdrop clear"
+          );
+        } else {
+          slider(
+              Appearance, "surfaces", "appearance.glass", 0.0, 1.0, 0.05, false,
+              "glass tint clear tinted frosted transparency material opacity"
+          );
+          slider(
+              Appearance, "surfaces", "appearance.frost", 0.0, 1.0, 0.05, false,
+              "glass blur frost frosted backdrop"
+          );
+          toggle(Appearance, "surfaces", "appearance.edge_reflection", "glass edge reflection highlight rim shine");
+        }
       }
       toggle(Motion, "motion", "appearance.reduce_motion", "accessibility reduce motion animations");
       // Captioned as the shell rows they replace: the compositor runs every animation on the desktop.

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 class SessionBus;
 
@@ -32,6 +33,11 @@ public:
   // org.andromeda.appearance glass, frost and liquid (0..1), reduce-transparency and compositor-blur (1 = on): apps
   // take the same glass material as the shell.
   void setGlass(double glass, double frost, double liquid, bool reduceTransparency, bool compositorBlur);
+  // org.andromeda.appearance glass-style (1 = liquid), edge-reflection (1 = on), liquid-tint and liquid-blur (0..1).
+  void setGlassStyle(bool liquid, bool edgeReflection, double liquidTint, double liquidBlur);
+  // org.gnome.desktop.wm.preferences button-layout: GTK and Chromium title bars show minimize, maximize and close
+  // on the same side as the compositor's title bars.
+  void setButtonsLeft(bool left);
 
 private:
   SessionBus& m_bus;
@@ -49,6 +55,11 @@ private:
   double m_liquid = 0.5;
   std::uint32_t m_reduceTransparency = 0;
   std::uint32_t m_compositorBlur = 0;
+  std::uint32_t m_glassStyle = 0;
+  std::uint32_t m_edgeReflection = 1;
+  double m_liquidTint = 0.15;
+  double m_liquidBlur = 0.1;
+  std::string m_buttonLayout = ":minimize,maximize,close";
 
   void emitChanged(const char* ns, const char* key, const sdbus::Variant& value);
   [[nodiscard]] sdbus::Variant accentVariant() const;

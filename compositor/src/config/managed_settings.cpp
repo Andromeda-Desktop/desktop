@@ -33,6 +33,7 @@ namespace andromeda {
     constexpr std::array<std::string_view, 2> kTapMap = {"left_right_middle", "left_middle_right"};
     constexpr std::array<std::string_view, 3> kDragLock = {"off", "timeout", "sticky"};
     constexpr std::array<std::string_view, 2> kScheme = {"dark", "light"};
+    constexpr std::array<std::string_view, 2> kGlassStyle = {"frosted", "liquid"};
     constexpr std::array<std::string_view, 5> kButtons = {
         "MouseLeft", "MouseRight", "MouseMiddle", "MouseBack", "MouseForward",
     };
@@ -107,6 +108,7 @@ namespace andromeda {
     std::string text(WindowDragToggle toggle) { return std::string(kDragToggle[static_cast<size_t>(toggle)]); }
     std::string text(TrackLayout track) { return track == TrackLayout::Global ? "global" : "window"; }
     std::string text(ColorScheme scheme) { return std::string(kScheme[static_cast<size_t>(scheme)]); }
+    std::string text(GlassStyle style) { return std::string(kGlassStyle[static_cast<size_t>(style)]); }
     std::string text(const std::optional<std::array<float, 4>>& color) {
       return color ? registry::formatColor(*color) : "";
     }
@@ -397,6 +399,10 @@ namespace andromeda {
         Spec{"appearance.glass", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.glass); }},
         Spec{"appearance.frost", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.frost); }},
         Spec{"appearance.liquid", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquid); }},
+        Spec{"appearance.glass_style", Kind::Choice, 0, 0, kGlassStyle, [](const Config& c) { return text(c.appearance.glassStyle); }},
+        Spec{"appearance.edge_reflection", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.edgeReflection); }},
+        Spec{"appearance.liquid_tint", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquidTint); }},
+        Spec{"appearance.liquid_blur", Kind::Real, 0.0, 1.0, {}, [](const Config& c) { return text(c.appearance.liquidBlur); }},
         Spec{"appearance.reduce_transparency", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.reduceTransparency); }},
         Spec{"appearance.increase_contrast", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.increaseContrast); }},
         Spec{"appearance.reduce_motion", Kind::Bool, 0, 0, {}, [](const Config& c) { return text(c.appearance.reduceMotion); }},

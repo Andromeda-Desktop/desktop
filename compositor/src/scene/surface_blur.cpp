@@ -37,9 +37,17 @@ namespace andromeda {
 
   glass::Material configGlass(glass::Kind kind) {
     const Config::Appearance& a = config().appearance;
-    return glass::material(
-        kind, static_cast<float>(a.glass), static_cast<float>(a.frost), static_cast<float>(a.liquid), a.reduceTransparency, false
-    );
+    const glass::Settings settings{
+        .style = a.glassStyle == GlassStyle::Liquid ? glass::Style::Liquid : glass::Style::Frosted,
+        .tint = static_cast<float>(a.glass),
+        .frost = static_cast<float>(a.frost),
+        .edgeReflection = a.edgeReflection,
+        .liquidTint = static_cast<float>(a.liquidTint),
+        .liquidBlur = static_cast<float>(a.liquidBlur),
+        .lens = static_cast<float>(a.liquid),
+        .reduceTransparency = a.reduceTransparency,
+    };
+    return glass::material(kind, settings, false);
   }
 
   bool surfaceTransparent(wlr_surface* surface, const wlr_box& surfaceBox) {

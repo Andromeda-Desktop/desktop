@@ -191,6 +191,16 @@ namespace andromeda {
           real("glass", 0.0, 1.0, &A::glass),
           real("frost", 0.0, 1.0, &A::frost),
           real("liquid", 0.0, 1.0, &A::liquid),
+          registry::choice(
+              "glass_style", &A::glassStyle,
+              {
+                  {.name = "frosted", .value = GlassStyle::Frosted},
+                  {.name = "liquid", .value = GlassStyle::Liquid},
+              }
+          ),
+          boolean("edge_reflection", &A::edgeReflection),
+          real("liquid_tint", 0.0, 1.0, &A::liquidTint),
+          real("liquid_blur", 0.0, 1.0, &A::liquidBlur),
           boolean("reduce_transparency", &A::reduceTransparency),
           boolean("increase_contrast", &A::increaseContrast),
           boolean("reduce_motion", &A::reduceMotion),

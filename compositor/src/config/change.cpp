@@ -220,7 +220,8 @@ namespace andromeda {
         || !sameDynamicWorkspaceDeclarations(before, after);
     const bool outputLayout = outputNamesChanged || outputProjectionChanged(before, after, sameOutputLayout);
     const bool sceneBlur =
-        before.appearance.blur != after.appearance.blur || before.optimizedBlurNeeded() != after.optimizedBlurNeeded();
+        before.appearance.blur != after.appearance.blur || before.appearance.glassStyle != after.appearance.glassStyle
+        || before.optimizedBlurNeeded() != after.optimizedBlurNeeded();
     const bool focusDim = before.animation.enabled != after.animation.enabled
         || before.animation.dimUnfocused != after.animation.dimUnfocused;
     const bool effectsChanged = before.effects != after.effects

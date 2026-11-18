@@ -79,6 +79,12 @@ namespace andromeda {
     Light,
   };
 
+  // glass::Style: Frosted blurs and tints; Liquid bends the backdrop through a lens bezel.
+  enum class GlassStyle : uint8_t {
+    Frosted,
+    Liquid,
+  };
+
   enum class TitleAlign : uint8_t {
     Left,
     Center,
@@ -849,7 +855,14 @@ namespace andromeda {
       double glass = 0.5;
       // Blur slider: 0 the lightest blur, 0.5 the design values, 1 full size.
       double frost = 0.5;
-      // Liquid slider: 0 Off, 0.5 the design values, 1 Strong (rim refraction, lens and specular rim).
+      GlassStyle glassStyle = GlassStyle::Frosted;
+      // Frosted: the specular edge.
+      bool edgeReflection = true;
+      // Liquid Tint, on the Tint slider scale.
+      double liquidTint = 0.15;
+      // Liquid Blur: 0 None, 1 Light (the lightest Frosted blur).
+      double liquidBlur = 0.1;
+      // Liquid Lens: 0 Subtle, 0.5 the design values, 1 Strong (bezel width, refraction and specular rim).
       double liquid = 0.5;
       bool reduceTransparency = false;
       bool increaseContrast = false;

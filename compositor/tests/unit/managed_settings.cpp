@@ -23,7 +23,7 @@ namespace {
   bool accepts(std::string_view key, std::string_view text) { return parseManagedSetting(key, text).value.has_value(); }
 
   // Values chosen to differ from every default, so a round trip proves the write took effect.
-  constexpr std::array<std::string_view, 24> kSamples = {
+  constexpr std::array<std::string_view, 25> kSamples = {
       "false",       "37",          "3",
       "0.5",         "flat",        "pinned",
       "window",      "clickfinger", "left_middle_right",
@@ -32,6 +32,7 @@ namespace {
       "Alt",         "light",       "#4a80ffff",
       "sticky",      "strip",       "hover",
       "macos",       "negotiated",  "sloppy",
+      "liquid",
   };
 
   // The config reader compiles the keymap, so XKB keys need names XKB knows.

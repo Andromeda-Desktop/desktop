@@ -148,6 +148,8 @@ struct fx_render_texture_options {
   // The liquid shape (render coords, radius in render px) whose edge gets the rim; empty = clip_box and corners.
   struct wlr_box liquid_box;
   float liquid_radius;
+  // Render px per logical px for the rim band; 0 = 1.
+  float liquid_scale;
 };
 
 struct fx_render_rect_options {
@@ -216,6 +218,7 @@ struct fx_render_blur_pass_options {
   float tint_mix[4]; // see fx_render_texture_options.tint_mix
   struct wlr_box liquid_box;
   float liquid_radius;
+  float liquid_scale;
   struct fx_backdrop_probe* backdrop_probe; // optional: sampled from the blurred region, see backdrop_probe.h
 };
 

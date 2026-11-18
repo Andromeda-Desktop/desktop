@@ -870,11 +870,7 @@ namespace andromeda {
         throw std::runtime_error("failed to create color-management manager");
       }
     }
-    const Config::Appearance::Blur& blur = config().appearance.blur;
-    wlr_scene_set_blur_data(
-        m_scene, blur.passes, blur.radius, static_cast<float>(blur.noise), static_cast<float>(blur.brightness),
-        static_cast<float>(blur.contrast), static_cast<float>(blur.saturation)
-    );
+    applyBlurData();
     m_sceneLayout = wlr_scene_attach_output_layout(m_scene, m_outputLayout);
     wlr_scene_set_background_color(m_scene, config().colors.backdrop.data());
 
@@ -1414,6 +1410,16 @@ namespace andromeda {
         &context
     );
     return context.description;
+  }
+
+  void Server::applyBlurData() {
+    const Config::Appearance::Blur& blur = config().appearance.blur;
+    const bool clear = config().appearance.glassStyle == GlassStyle::Liquid;
+    wlr_scene_set_blur_data(
+        m_scene, blur.passes, blur.radius, clear ? 0.0F : static_cast<float>(blur.noise),
+        clear ? 1.0F : static_cast<float>(blur.brightness), clear ? 1.0F : static_cast<float>(blur.contrast),
+        static_cast<float>(blur.saturation)
+    );
   }
 
   void Server::updateColorPreferences() {

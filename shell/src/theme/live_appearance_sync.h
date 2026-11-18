@@ -1,5 +1,7 @@
 #pragma once
 
+#include "protocols/glass_material.h"
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -13,10 +15,8 @@ class ShellWaylandConnection;
 struct LiveAppearance {
   std::string scheme;
   std::string accent; // "#rrggbb"; empty when unset
-  float glass = 0.5F; // appearance.glass: 0 Clear, 0.5 Tinted, 1 Frosted
-  float frost = 0.5F; // appearance.frost: blur, 0 lightest, 0.5 design values, 1 full size
-  float liquid = 0.5F; // appearance.liquid: 0 Off, 0.5 the design values, 1 Strong
-  bool reduceTransparency = false;
+  // appearance.glass_style, its sliders and appearance.reduce_transparency.
+  glass::Settings glass;
   bool increaseContrast = false;
   bool reduceMotion = false;
   // animation.enabled and animation.speed: the compositor owns them for every animation on the desktop.
@@ -26,6 +26,8 @@ struct LiveAppearance {
   bool blurEnabled = false;
   // general.developer_diagnostics: slow main-loop passes write stall reports.
   bool developerDiagnostics = false;
+  // appearance.title_bar.button_position: server-side title bars put their buttons on the left.
+  bool titleBarButtonsLeft = false;
 
   bool operator==(const LiveAppearance&) const = default;
 };

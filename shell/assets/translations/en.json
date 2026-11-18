@@ -5354,9 +5354,29 @@
           "label": "Blur",
           "description": "How much glass blurs the background, from Light to Full"
         },
+        "appearance-glass-style": {
+          "label": "Style",
+          "description": "Frosted blurs the background; Liquid bends it like a lens",
+          "options": {
+            "frosted": "Frosted",
+            "liquid": "Liquid"
+          }
+        },
+        "appearance-edge-reflection": {
+          "label": "Edge Reflection",
+          "description": "Light catches the glass edges"
+        },
+        "appearance-liquid-tint": {
+          "label": "Tint",
+          "description": "How dense the colour of liquid glass is, from Clear to Frosted"
+        },
         "appearance-liquid": {
-          "label": "Liquid",
-          "description": "How strongly glass edges bend and reflect the background, from Off to Strong"
+          "label": "Lens",
+          "description": "How strongly glass edges bend the background, from Subtle to Strong"
+        },
+        "appearance-liquid-blur": {
+          "label": "Blur",
+          "description": "How much liquid glass blurs the background, from None to Light"
         },
         "appearance-reduce-motion": {
           "label": "Reduce Motion",

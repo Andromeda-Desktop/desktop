@@ -125,11 +125,15 @@ uniform vec2 liquid_texel;
 uniform vec2 liquid_size;
 uniform vec2 liquid_position;
 uniform float liquid_radius;
+// Render px per logical px.
+uniform float liquid_scale;
 
 float rounded_rect_distance_at(
     vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
 );
 float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
+float liquid_band(vec2 size, float liquid, float scale);
+float lens_sag(float t);
 
 float liquid_distance(vec2 point) {
   if (liquid_radius >= 0.0) {
@@ -155,7 +159,7 @@ void main() {
   vec2 lens_uv = texcoord;
   float shine = max(liquid, rim);
   if (shine > 0.0) {
-    float band = min(min(liquid_size.x, liquid_size.y) * 0.25, 16.0);
+    float band = liquid_band(liquid_size, liquid, liquid_scale);
     vec2 p = gl_FragCoord.xy;
     float d = liquid_distance(p);
     if (d > -band) {
@@ -163,9 +167,10 @@ void main() {
                          liquid_distance(p + vec2(0.0, 1.0)) - liquid_distance(p - vec2(0.0, 1.0)));
       normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
-      texcoord -= normal * (t * t * band * 0.8 * liquid) * liquid_texel;
-      lens_uv = texcoord - normal * (t * t * band * 0.6 * lens) * liquid_texel;
-      lens_weight = lens * t * t * 0.85;
+      float sag = lens_sag(t);
+      texcoord -= normal * (sag * band * 0.5 * liquid) * liquid_texel;
+      lens_uv = texcoord - normal * (sag * band * 0.3 * lens) * liquid_texel;
+      lens_weight = lens * sag * 0.85;
       float inner = clamp(1.0 + (d + 0.5) / 2.5, 0.0, 1.0);
       float edge = inner * inner;
       float l = dot(normal, normalize(vec2(-1.0, -1.0)));

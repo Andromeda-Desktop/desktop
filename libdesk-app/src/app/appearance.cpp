@@ -78,6 +78,7 @@ void Appearance::read(bool backend) {
       {kNamespace, "color-scheme"}, {kNamespace, "accent-color"}, {kNamespace, "reduced-motion"},
       {kAndromeda, "ui-scale"},     {kAndromeda, "text-scale"},     {kAndromeda, "glass"},
       {kAndromeda, "frost"},        {kAndromeda, "liquid"},       {kAndromeda, "reduce-transparency"}, {kAndromeda, "compositor-blur"},
+      {kAndromeda, "glass-style"},  {kAndromeda, "edge-reflection"}, {kAndromeda, "liquid-tint"},     {kAndromeda, "liquid-blur"},
   };
   for (const auto& [ns, key] : keys) {
     proxy->callMethodAsync("Read")
@@ -103,18 +104,34 @@ void Appearance::read(bool backend) {
 }
 
 bool Appearance::take(const std::string& ns, const std::string& key, const sdbus::Variant& value) {
-  if (ns == kAndromeda && (key == "glass" || key == "frost" || key == "liquid")) {
+  if (ns == kAndromeda
+      && (key == "glass" || key == "frost" || key == "liquid" || key == "liquid-tint" || key == "liquid-blur")) {
     if (!value.containsValueOfType<double>()) {
       return false;
     }
-    (key == "glass" ? m_glass : key == "frost" ? m_frost : m_liquid) = std::clamp(value.get<double>(), 0.0, 1.0);
+    const auto unit = static_cast<float>(std::clamp(value.get<double>(), 0.0, 1.0));
+    (key == "glass"         ? m_glass.tint
+     : key == "frost"       ? m_glass.frost
+     : key == "liquid"      ? m_glass.lens
+     : key == "liquid-tint" ? m_glass.liquidTint
+                            : m_glass.liquidBlur) = unit;
     return true;
   }
-  if (ns == kAndromeda && (key == "reduce-transparency" || key == "compositor-blur")) {
+  if (ns == kAndromeda
+      && (key == "reduce-transparency" || key == "compositor-blur" || key == "glass-style" || key == "edge-reflection")) {
     if (!value.containsValueOfType<std::uint32_t>()) {
       return false;
     }
-    (key == "reduce-transparency" ? m_reduceTransparency : m_compositorBlur) = value.get<std::uint32_t>() == 1;
+    const bool on = value.get<std::uint32_t>() == 1;
+    if (key == "glass-style") {
+      m_glass.style = on ? glass::Style::Liquid : glass::Style::Frosted;
+    } else if (key == "edge-reflection") {
+      m_glass.edgeReflection = on;
+    } else if (key == "reduce-transparency") {
+      m_glass.reduceTransparency = on;
+    } else {
+      m_compositorBlur = on;
+    }
     return true;
   }
   if (ns == kAndromeda) {
@@ -166,15 +183,11 @@ void Appearance::apply() {
   setResolvedThemeLight(m_light);
   setPalette(paletteFor(m_light));
   MotionService::instance().setReduced(m_reducedMotion);
-  Style::setGlass(
-      static_cast<float>(m_glass), static_cast<float>(m_frost), static_cast<float>(m_liquid), m_reduceTransparency,
-      m_compositorBlur
-  );
+  Style::setGlass(m_glass, m_compositorBlur);
   kLog.debug("scheme {}{}", m_light ? "light" : "dark", m_hasAccent ? " accent" : "");
   const Applied now{
       m_light,   m_hasAccent, m_reducedMotion, m_powerSaver, {m_accent[0], m_accent[1], m_accent[2]},
-      m_uiScale, m_textScale, m_glass,         m_frost,      m_liquid,             m_reduceTransparency,
-      m_compositorBlur
+      m_uiScale, m_textScale, m_glass,         m_compositorBlur
   };
   if (now == m_applied) {
     return;

@@ -1435,11 +1435,12 @@ void Application::initWidgetControllersAndCallbacks() {
   });
   m_liveAppearance.initialize(m_wayland, [this](const LiveAppearance& appearance) {
     kLog.info(
-        "live appearance: glass={:.2f} frost={:.2f} liquid={:.2f} reduce_transparency={} increase_contrast={} reduce_motion={} accent={}",
-        appearance.glass, appearance.frost, appearance.liquid, appearance.reduceTransparency, appearance.increaseContrast, appearance.reduceMotion,
-        appearance.accent
+        "live appearance: glass_style={} glass={:.2f} frost={:.2f} liquid_tint={:.2f} liquid_blur={:.2f} liquid={:.2f} reduce_transparency={} increase_contrast={} reduce_motion={} accent={}",
+        appearance.glass.style == glass::Style::Liquid ? "liquid" : "frosted", appearance.glass.tint, appearance.glass.frost,
+        appearance.glass.liquidTint, appearance.glass.liquidBlur, appearance.glass.lens, appearance.glass.reduceTransparency,
+        appearance.increaseContrast, appearance.reduceMotion, appearance.accent
     );
-    Style::setGlass(appearance.glass, appearance.frost, appearance.liquid, appearance.reduceTransparency, appearance.blurEnabled);
+    Style::setGlass(appearance.glass, appearance.blurEnabled);
     MainLoop::setDeveloperDiagnostics(appearance.developerDiagnostics);
     applyLiveMotion(appearance);
     m_themeService.setLiveAppearance(appearance.accent, appearance.increaseContrast);
@@ -1448,7 +1449,10 @@ void Application::initWidgetControllersAndCallbacks() {
       m_settingsPortal->setAccent(accent.r, accent.g, accent.b);
       m_settingsPortal->setHighContrast(appearance.increaseContrast);
       m_settingsPortal->setReducedMotion(appearance.reduceMotion);
-      m_settingsPortal->setGlass(appearance.glass, appearance.frost, appearance.liquid, appearance.reduceTransparency, appearance.blurEnabled);
+      const glass::Settings& g = appearance.glass;
+      m_settingsPortal->setGlass(g.tint, g.frost, g.lens, g.reduceTransparency, appearance.blurEnabled);
+      m_settingsPortal->setGlassStyle(g.style == glass::Style::Liquid, g.edgeReflection, g.liquidTint, g.liquidBlur);
+      m_settingsPortal->setButtonsLeft(appearance.titleBarButtonsLeft);
     }
     if (m_configService.config().theme.toolkitThemes) {
       const auto& toolkit = m_themeService.toolkitColors();

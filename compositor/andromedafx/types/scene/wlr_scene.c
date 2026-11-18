@@ -4414,6 +4414,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                       .height = (int)lround(blur->liquid_box.height * data->scale),
                   },
         .liquid_radius = (float)blur->liquid_radius * data->scale,
+        .liquid_scale = data->scale,
     };
     if (blur->backdrop_sampling) {
       struct wlr_renderer* renderer = data->output->output->renderer;

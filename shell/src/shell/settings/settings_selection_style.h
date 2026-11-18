@@ -113,7 +113,8 @@ namespace settings {
       return FrameColors{
           .tileFill = clearColorSpec(),
           .tileGlyph = colorSpecFromRole(ColorRole::Label2),
-          .cardFill = colorSpecFromRole(ColorRole::SolidThin, 0.5F),
+          // A light lift, not a second veil: the window tint already sets the glass density.
+          .cardFill = colorSpecFromRole(ColorRole::Fill2),
           .cardBorder = colorSpecFromRole(ColorRole::LensEdge),
           .avatarFill = colorSpecFromRole(ColorRole::Accent),
           .avatarInitial = colorSpecFromRole(ColorRole::OnAccent),

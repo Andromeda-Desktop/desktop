@@ -6,6 +6,7 @@
 #include <map>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -27,7 +28,13 @@ namespace {
   constexpr auto kLiquid = "liquid";
   constexpr auto kReduceTransparency = "reduce-transparency";
   constexpr auto kCompositorBlur = "compositor-blur";
+  constexpr auto kGlassStyle = "glass-style";
+  constexpr auto kEdgeReflection = "edge-reflection";
+  constexpr auto kLiquidTint = "liquid-tint";
+  constexpr auto kLiquidBlur = "liquid-blur";
   constexpr auto kTextScale = "text-scale";
+  constexpr auto kWmPreferences = "org.gnome.desktop.wm.preferences";
+  constexpr auto kButtonLayout = "button-layout";
   constexpr std::uint32_t kVersion = 2;
 
   // A namespace pattern matches exactly, or as a prefix when it ends in '*'; no patterns means every namespace.
@@ -68,6 +75,13 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                   all[kAndromeda][kLiquid] = sdbus::Variant{m_liquid};
                   all[kAndromeda][kReduceTransparency] = sdbus::Variant{m_reduceTransparency};
                   all[kAndromeda][kCompositorBlur] = sdbus::Variant{m_compositorBlur};
+                  all[kAndromeda][kGlassStyle] = sdbus::Variant{m_glassStyle};
+                  all[kAndromeda][kEdgeReflection] = sdbus::Variant{m_edgeReflection};
+                  all[kAndromeda][kLiquidTint] = sdbus::Variant{m_liquidTint};
+                  all[kAndromeda][kLiquidBlur] = sdbus::Variant{m_liquidBlur};
+                }
+                if (wanted(namespaces, kWmPreferences)) {
+                  all[kWmPreferences][kButtonLayout] = sdbus::Variant{m_buttonLayout};
                 }
                 return all;
               }),
@@ -107,6 +121,21 @@ SettingsPortal::SettingsPortal(SessionBus& bus) : m_bus(bus) {
                 }
                 if (ns == kAndromeda && key == kCompositorBlur) {
                   return sdbus::Variant{m_compositorBlur};
+                }
+                if (ns == kAndromeda && key == kGlassStyle) {
+                  return sdbus::Variant{m_glassStyle};
+                }
+                if (ns == kAndromeda && key == kEdgeReflection) {
+                  return sdbus::Variant{m_edgeReflection};
+                }
+                if (ns == kAndromeda && key == kLiquidTint) {
+                  return sdbus::Variant{m_liquidTint};
+                }
+                if (ns == kAndromeda && key == kLiquidBlur) {
+                  return sdbus::Variant{m_liquidBlur};
+                }
+                if (ns == kWmPreferences && key == kButtonLayout) {
+                  return sdbus::Variant{m_buttonLayout};
                 }
                 throw sdbus::Error(
                     sdbus::Error::Name{"org.freedesktop.portal.Error.NotFound"}, "Requested setting not found"
@@ -165,6 +194,15 @@ void SettingsPortal::setReducedMotion(bool reduce) {
   emitChanged(kAppearance, kReducedMotion, sdbus::Variant{reduced});
 }
 
+void SettingsPortal::setButtonsLeft(bool left) {
+  std::string layout = left ? "close,minimize,maximize:" : ":minimize,maximize,close";
+  if (layout == m_buttonLayout) {
+    return;
+  }
+  m_buttonLayout = std::move(layout);
+  emitChanged(kWmPreferences, kButtonLayout, sdbus::Variant{m_buttonLayout});
+}
+
 void SettingsPortal::setScales(double uiScale, double textScale) {
   if (uiScale != m_uiScale) {
     m_uiScale = uiScale;
@@ -198,6 +236,27 @@ void SettingsPortal::setGlass(double glass, double frost, double liquid, bool re
   if (blur != m_compositorBlur) {
     m_compositorBlur = blur;
     emitChanged(kAndromeda, kCompositorBlur, sdbus::Variant{blur});
+  }
+}
+
+void SettingsPortal::setGlassStyle(bool liquid, bool edgeReflection, double liquidTint, double liquidBlur) {
+  const std::uint32_t style = liquid ? 1 : 0;
+  if (style != m_glassStyle) {
+    m_glassStyle = style;
+    emitChanged(kAndromeda, kGlassStyle, sdbus::Variant{style});
+  }
+  const std::uint32_t edge = edgeReflection ? 1 : 0;
+  if (edge != m_edgeReflection) {
+    m_edgeReflection = edge;
+    emitChanged(kAndromeda, kEdgeReflection, sdbus::Variant{edge});
+  }
+  if (liquidTint != m_liquidTint) {
+    m_liquidTint = liquidTint;
+    emitChanged(kAndromeda, kLiquidTint, sdbus::Variant{liquidTint});
+  }
+  if (liquidBlur != m_liquidBlur) {
+    m_liquidBlur = liquidBlur;
+    emitChanged(kAndromeda, kLiquidBlur, sdbus::Variant{liquidBlur});
   }
 }
 

@@ -389,7 +389,7 @@ namespace {
 
     void initLiveAppearance() {
       m_liveAppearance.initialize(m_wayland, [this](const LiveAppearance& appearance) {
-        Style::setGlass(appearance.glass, appearance.frost, appearance.liquid, appearance.reduceTransparency, appearance.blurEnabled);
+        Style::setGlass(appearance.glass, appearance.blurEnabled);
         applyLiveMotion(appearance);
         m_theme.setLiveAppearance(appearance.accent, appearance.increaseContrast);
         m_lock.onThemeChanged();

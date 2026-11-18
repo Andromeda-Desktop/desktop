@@ -31,6 +31,17 @@ float rounded_rect_distance(
   return rounded_rect_distance_at(gl_FragCoord.xy, size, position, radius_tl, radius_tr, radius_bl, radius_br);
 }
 
+// Glass rim band in render px. Frosted (liquid 0): a 16 px specular rim, at most a quarter of the short side. Liquid:
+// a lens bezel of 16 to 64 logical px; a shape narrower than two bezels is lens across its whole width.
+float liquid_band(vec2 size, float liquid, float scale) {
+  float share = liquid > 0.0 ? 0.5 : 0.25;
+  return min(min(size.x, size.y) * share, (16.0 + 48.0 * liquid) * scale);
+}
+
+// Sag of a circular convex bezel: 0 at the band's inner end (t = 0), 1 at the edge, steepest at the edge, so the
+// backdrop bends hardest at the rim and the flat interior has no seam.
+float lens_sag(float t) { return 1.0 - sqrt(1.0 - t * t); }
+
 #ifdef CORNER_FLARES
 // Coverage of the concave flare of the corner at `corner` (sign = outward direction from the box centre), radius
 // f > 0, along x (`along_x`) or y; -1 when rel is outside that flare's band.

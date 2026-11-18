@@ -126,16 +126,15 @@ namespace Style {
   [[nodiscard]] bool popupShadowsEnabled() noexcept;
   void setPopupShadowsEnabled(bool enabled);
 
-  // The tint slider (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted; the blur slider
-  // (appearance.frost) and the liquid slider (appearance.liquid): 0 to 1, 0.5 the design values; reduce transparency
-  // makes every glass surface solid.
+  // The glass style and its sliders (glass::Settings); reduce transparency makes every glass surface solid.
   // compositorBlur: the compositor blurs and draws glass tints (Andromeda appearance.blur.enabled).
-  void setGlass(float glass, float frost, float liquid, bool reduceTransparency, bool compositorBlur = false);
-  // Emitted by setGlass when the slider or reduce transparency changes, before the palette change that follows it:
+  void setGlass(const glass::Settings& settings, bool compositorBlur = false);
+  // Emitted by setGlass when a glass setting changes, before the palette change that follows it:
   // surfaces set their glass::tone here so no paletteChanged handler reads a stale tone.
   Signal<>& glassChanged();
   // True when the compositor draws the glass tint a surface sends (dsk v9): the client then paints no material fill.
   [[nodiscard]] bool compositorDrawsTint() noexcept;
+  // The Tint slider of the active glass style.
   [[nodiscard]] float glass() noexcept;
   // The one glass mapping (protocols/glass_material.h) for the current slider, scheme and reduce transparency.
   // Shell glass: the tone of glass::tone.
@@ -144,8 +143,7 @@ namespace Style {
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept;
   // Tint alpha for a configured `opacity` relative to glass::referenceOpacity (1 = solid).
   [[nodiscard]] float glassTint(glass::Kind kind, float opacity) noexcept;
-  // The tint of a glass app window (scheme tone): the sheet tint, never thinner than Tinted, so a window of text at
-  // Clear still reads over a busy wallpaper.
+  // The tint of a glass app window (scheme tone): the sheet tint.
   [[nodiscard]] float windowGlassTint() noexcept;
   [[nodiscard]] bool reduceTransparency() noexcept;
 

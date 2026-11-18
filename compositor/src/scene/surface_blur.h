@@ -23,7 +23,7 @@ namespace andromeda {
     bool always = false;
   };
 
-  // The glass material of compositor-drawn glass from appearance.glass and appearance.reduce_transparency. The tint
+  // The glass material of compositor-drawn glass from the appearance glass settings. The tint
   // is the dark scheme's: the compositor draws no tint of its own.
   [[nodiscard]] glass::Material configGlass(glass::Kind kind);
 

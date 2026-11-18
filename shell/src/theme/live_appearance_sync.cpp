@@ -44,16 +44,24 @@ LiveAppearance readLiveAppearance(const std::function<std::string(std::string_vi
   return LiveAppearance{
       .scheme = value("appearance.scheme"),
       .accent = normalizeColor(value("appearance.accent")),
-      .glass = parseUnit(value("appearance.glass"), 0.5F),
-      .frost = parseUnit(value("appearance.frost"), 0.5F),
-      .liquid = parseUnit(value("appearance.liquid"), 0.5F),
-      .reduceTransparency = value("appearance.reduce_transparency") == "true",
+      .glass =
+          glass::Settings{
+              .style = value("appearance.glass_style") == "liquid" ? glass::Style::Liquid : glass::Style::Frosted,
+              .tint = parseUnit(value("appearance.glass"), 0.5F),
+              .frost = parseUnit(value("appearance.frost"), 0.5F),
+              .edgeReflection = value("appearance.edge_reflection") != "false",
+              .liquidTint = parseUnit(value("appearance.liquid_tint"), 0.15F),
+              .liquidBlur = parseUnit(value("appearance.liquid_blur"), 0.1F),
+              .lens = parseUnit(value("appearance.liquid"), 0.5F),
+              .reduceTransparency = value("appearance.reduce_transparency") == "true",
+          },
       .increaseContrast = value("appearance.increase_contrast") == "true",
       .reduceMotion = value("appearance.reduce_motion") == "true",
       .animationEnabled = value("animation.enabled") != "false",
       .animationSpeed = speed,
       .blurEnabled = value("appearance.blur.enabled") == "true",
       .developerDiagnostics = value("general.developer_diagnostics") == "true",
+      .titleBarButtonsLeft = value("appearance.title_bar.button_position") == "left",
   };
 }
 

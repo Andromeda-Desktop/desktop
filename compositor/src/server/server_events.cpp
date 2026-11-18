@@ -106,11 +106,7 @@ namespace andromeda {
     }
 
     if (effects.sceneBlur) {
-      const Config::Appearance::Blur& blur = config().appearance.blur;
-      wlr_scene_set_blur_data(
-          m_scene, blur.passes, blur.radius, static_cast<float>(blur.noise), static_cast<float>(blur.brightness),
-          static_cast<float>(blur.contrast), static_cast<float>(blur.saturation)
-      );
+      applyBlurData();
       for (const auto& output : m_outputs) {
         output->markDirty(Dirty::LayerArrange);
       }

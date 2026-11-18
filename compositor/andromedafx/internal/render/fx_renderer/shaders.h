@@ -180,6 +180,7 @@ struct tex_shader {
     GLint liquid_size;
     GLint liquid_position;
     GLint liquid_radius;
+    GLint liquid_scale;
   } effects;
 };
 
@@ -285,6 +286,7 @@ struct blur2_composite_shader {
     GLint liquid_size;
     GLint liquid_position;
     GLint liquid_radius;
+    GLint liquid_scale;
   } glass;
 };
 
