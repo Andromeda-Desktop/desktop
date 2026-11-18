@@ -68,8 +68,11 @@ namespace term {
     std::map<AppWindow*, std::variant<WorkspacePending, std::uint64_t>> m_windowWorkspaces;
     void joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir);
     void workspacesChanged(); // updates every window's foot bar
-    // A foot-bar click: a workspace another window shows raises that window.
+    // A foot-bar click: a workspace another window shows raises that window; another one moves into this window.
     void pickWorkspace(AppWindow& from, std::uint64_t id);
+    void addWorkspace(AppWindow& from); // a new workspace with one shell in $HOME
+    // The window lets its shells go (they keep running, detached) and shows `origins` in workspace `next` (0: new).
+    void leaveWorkspace(AppWindow& window, std::uint64_t next, std::vector<WindowOrigin> origins);
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.

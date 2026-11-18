@@ -1164,6 +1164,25 @@ namespace term {
 
   void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
 
+  bool TerminalWindow::showWorkspace(std::vector<WindowOrigin> origins) {
+    std::vector<std::uint64_t> leaving;
+    for (const Session& v : m_views) {
+      if (v.view->terminal() != nullptr) leaving.push_back(v.id);
+    }
+    const bool running = detachSessions();
+    // Opened before the old ones close: a window whose last session closes closes itself.
+    std::optional<std::uint64_t> first;
+    for (WindowOrigin& origin : origins) {
+      // Not the folder of the session shown now: it belongs to the workspace being left.
+      if (auto* shell = std::get_if<NewShell>(&origin); shell != nullptr && shell->cwd.empty()) shell->cwd = homeDir();
+      const std::uint64_t id = openSession(origin);
+      if (!first) first = id;
+    }
+    for (const std::uint64_t id : leaving) apply(session_event::Close{id});
+    if (first) apply(session_event::Show{*first});
+    return running;
+  }
+
   void TerminalWindow::renameSession(std::uint64_t id, std::string name) {
     apply(session_event::Rename{id, std::move(name)});
   }

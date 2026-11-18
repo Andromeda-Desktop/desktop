@@ -117,7 +117,7 @@ namespace term {
           }
           return workspace_bar::barFor(m_workspaces.workspaces(), here, elsewhere);
         },
-        [this, &window](std::uint64_t id) { pickWorkspace(window, id); }, nullptr);
+        [this, &window](std::uint64_t id) { pickWorkspace(window, id); }, [this, &window] { addWorkspace(window); });
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });
@@ -153,6 +153,33 @@ namespace term {
         return;
       }
     }
+    const holder::Workspaces& table = m_workspaces.workspaces();
+    const auto target = std::ranges::find(table.workspaces, id, &holder::WorkspaceInfo::id);
+    if (target == table.workspaces.end()) return;
+    std::vector<WindowOrigin> origins;
+    for (const holder::SessionInfo& session : table.sessions) {
+      if (session.workspace == id && !session.attached) origins.emplace_back(Reattach{session.id});
+    }
+    // A saved workspace has no shells: it starts one in its root.
+    if (origins.empty()) origins.emplace_back(NewShell{.cwd = target->root});
+    leaveWorkspace(from, id, std::move(origins));
+  }
+
+  void TerminalApp::addWorkspace(AppWindow& from) { leaveWorkspace(from, 0, {NewShell{}}); }
+
+  void TerminalApp::leaveWorkspace(AppWindow& window, std::uint64_t next, std::vector<WindowOrigin> origins) {
+    const auto terminal = m_windows.find(&window);
+    if (terminal == m_windows.end()) return;
+    std::optional<std::uint64_t> left;
+    if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
+      if (const auto* id = std::get_if<std::uint64_t>(&it->second)) left = *id;
+      m_windowWorkspaces.erase(it);
+    }
+    // Set first: the shells the window starts next join `next`; with 0 the first one makes a new workspace.
+    if (next != 0) m_windowWorkspaces.emplace(&window, next);
+    const bool running = terminal->second->showWorkspace(std::move(origins));
+    if (left && !running) m_workspaces.close(*left);
+    workspacesChanged();
   }
 
   void TerminalApp::joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir) {
