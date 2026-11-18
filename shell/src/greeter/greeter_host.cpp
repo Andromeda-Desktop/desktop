@@ -795,13 +795,19 @@ namespace {
       AuthColumn::State state;
       state.user = displayName(m_user);
       state.avatarPath = accountPicturePath(m_user);
+      for (std::size_t i = 0; i < m_users.size(); ++i) {
+        state.accounts.push_back({m_users[i].display, accountPicturePath(m_users[i].login)});
+        if (m_users[i].login == m_user) {
+          state.selectedAccount = i;
+        }
+      }
       state.placeholder = "Password";
       state.passwordLength = codepointCount(m_password);
       state.trailing = m_phase == Phase::Posting || m_phase == Phase::Starting ? AuthColumn::Trailing::Checking
           : m_password.empty()                                                 ? AuthColumn::Trailing::None
                                                                                : AuthColumn::Trailing::Go;
       state.inputOff = !m_greetd.isConnected();
-      state.hint = m_hint;
+      state.hint = m_hint.empty() ? "Andromeda session" : m_hint;
       state.hintError = m_hintError;
       state.glanceHint = "Press any key to sign in";
       fillAuthClock(
@@ -940,7 +946,8 @@ namespace {
     // Menu entries; the host acts on the index in pickItem().
     [[nodiscard]] AuthChrome::State chromeState(const OutputView& view) const {
       AuthChrome::State state;
-      state.usersChip = m_users.size() > 1;
+      // The auth column's user row replaces the chip (concept C greeter).
+      state.usersChip = m_users.size() > 1 && !view.auth.accountRowShown();
       if (m_sessions.size() > 1 && m_sessionIndex < m_sessions.size()) {
         state.sessionLabel = m_sessions[m_sessionIndex].name;
       }
@@ -1003,6 +1010,14 @@ namespace {
       }
       if (event.type != PointerEvent::Type::Button || !event.pressed || event.button != BTN_LEFT
           || m_pointerView == nullptr) {
+        return;
+      }
+      if (const int account = m_pointerView->auth.accountAt(m_pointerX, m_pointerY);
+          account >= 0 && m_menu == AuthChrome::Menu::None) {
+        if (m_users[static_cast<std::size_t>(account)].login != m_user) {
+          switchUser(m_users[static_cast<std::size_t>(account)].login);
+          relayout();
+        }
         return;
       }
       const auto hit = m_pointerView->chrome.hitTest(m_pointerX, m_pointerY);

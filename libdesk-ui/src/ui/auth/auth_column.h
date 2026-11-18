@@ -43,8 +43,18 @@ public:
     bool operator==(const Status&) const = default;
   };
 
+  // Greeter user row entry.
+  struct Account {
+    std::string name;
+    std::string avatarPath;
+    bool operator==(const Account&) const = default;
+  };
+
   struct State {
     std::string user;
+    // Greeter: two or more accounts show as a row in place of the avatar and name; the lock screen leaves it empty.
+    std::vector<Account> accounts;
+    std::size_t selectedAccount = 0;
     // The account picture (accountPicturePath); empty = the initial on the gradient.
     std::string avatarPath;
     std::size_t passwordLength = 0;
@@ -151,6 +161,10 @@ public:
   [[nodiscard]] Rect capsule() const noexcept { return m_capsuleRect; }
   // The face glyph in the trailing slot is a button: a tap starts face unlock (it never starts on its own).
   [[nodiscard]] bool faceHit(float sceneX, float sceneY) const;
+  // The user row entry under the scene point; -1 = none.
+  [[nodiscard]] int accountAt(float sceneX, float sceneY) const;
+  // The last layout() drew the user row.
+  [[nodiscard]] bool accountRowShown() const;
   // The layer that recedes to 40 % while the Glance sheet is open; host cards attach here.
   [[nodiscard]] Node& glanceLayer() noexcept { return *m_glanceGroup; }
   // Avatar, name and capsule (the lock screen editor dims it).
@@ -180,6 +194,16 @@ private:
   std::string m_avatarShown;
   Label* m_initial = nullptr;
   Label* m_name = nullptr;
+  struct AccountItem {
+    RectNode* fill = nullptr;
+    RectNode* avatar = nullptr;
+    Image* image = nullptr;
+    std::string shown;
+    Label* initial = nullptr;
+    Label* name = nullptr;
+  };
+  std::vector<AccountItem> m_accounts;
+  void layoutAccounts(Renderer& renderer, float cx, float bottom, float s, bool visible);
   Node* m_capsuleGroup = nullptr;
   RectNode* m_capsule = nullptr;
   Label* m_field = nullptr;

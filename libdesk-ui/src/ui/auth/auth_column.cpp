@@ -315,8 +315,10 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
   }
 
   // Name (title-3) 16 above the capsule, avatar 64 12 above the name; Minimal shows neither.
-  m_name->setVisible(place.account);
-  m_avatar->setVisible(place.account);
+  const bool row = place.account && m_state.accounts.size() > 1;
+  const bool single = place.account && !row;
+  m_name->setVisible(single);
+  m_avatar->setVisible(single);
   m_name->setFontSize(Tokens::typeTitle3.size * s);
   m_name->setLineHeight(Tokens::typeTitle3.line * s);
   m_name->setColor(kLabel1);
@@ -351,9 +353,9 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
       m_avatarImage->clear(renderer);
     }
   }
-  const bool picture = place.account && !m_avatarShown.empty();
+  const bool picture = single && !m_avatarShown.empty();
   m_avatarImage->setVisible(picture);
-  m_initial->setVisible(place.account && !picture);
+  m_initial->setVisible(single && !picture);
   m_avatarImage->setPosition(snap(cx - avatar * 0.5F), avatarY);
   m_avatarImage->setSize(avatar, avatar);
   m_avatarImage->setRadius(avatar * 0.5F);
@@ -364,6 +366,8 @@ void AuthColumn::layout(Renderer& renderer, const AuthPlacement& place, float sw
   m_initial->setPosition(
       snap(cx - m_initial->width() * 0.5F), snap(avatarY + (avatar - m_initial->height()) * 0.5F)
   );
+
+  layoutAccounts(renderer, cx, capY - 16.0F * s, s, row);
 
   // Hint 12 below the capsule; owner message 24 below the hint line. Both keep their place when empty.
   const float footLine = Tokens::typeFootnote.line * s;
@@ -814,6 +818,124 @@ std::string accountPicturePath(const std::string& login, const std::string& home
     }
   }
   return {};
+}
+
+// Concept C .o-ub: avatar, g 8, headline name, p 8, r 20; the row ends 16 above the capsule (kAccountHead).
+void AuthColumn::layoutAccounts(Renderer& renderer, float cx, float bottom, float s, bool visible) {
+  const auto snap = [](float v) { return std::round(v); };
+  const std::size_t count = visible ? m_state.accounts.size() : 0;
+  while (m_accounts.size() < count) {
+    AccountItem item;
+    item.fill = addRect(*m_columnGroup);
+    item.avatar = addRect(*m_columnGroup);
+    item.image = static_cast<Image*>(m_columnGroup->addChild(std::make_unique<Image>()));
+    item.initial = addLabel(*m_columnGroup, FontWeight::SemiBold, false);
+    item.name = addLabel(*m_columnGroup, FontWeight::SemiBold, true);
+    m_accounts.push_back(item);
+  }
+  const float pad = Tokens::spaceP8 * s;
+  const float avatar = Tokens::componentLockRowAvatar * s;
+  const float nameLine = Tokens::typeHeadline.line * s;
+  const float itemH = pad + avatar + pad + nameLine + pad;
+  const float gap = 16.0F * s;
+  const float maxName = 120.0F * s;
+  std::vector<float> widths(count);
+  float total = 0.0F;
+  for (std::size_t i = 0; i < count; ++i) {
+    Label& name = *m_accounts[i].name;
+    name.setFontSize(Tokens::typeHeadline.size * s);
+    name.setLineHeight(nameLine);
+    name.setColor(kLabel1);
+    name.setText(m_state.accounts[i].name);
+    name.setMaxWidth(maxName);
+    name.setEllipsize(TextEllipsize::End);
+    name.measure(renderer);
+    widths[i] = std::max(avatar, name.width()) + 2.0F * pad;
+    total += widths[i] + (i > 0 ? gap : 0.0F);
+  }
+  const float y = snap(bottom - itemH);
+  float x = cx - total * 0.5F;
+  for (std::size_t i = 0; i < m_accounts.size(); ++i) {
+    AccountItem& item = m_accounts[i];
+    const bool shown = i < count;
+    item.fill->setVisible(shown);
+    item.avatar->setVisible(shown);
+    item.name->setVisible(shown);
+    if (!shown) {
+      item.image->setVisible(false);
+      item.initial->setVisible(false);
+      continue;
+    }
+    const Account& account = m_state.accounts[i];
+    const bool on = i == m_state.selectedAccount;
+    const float w = widths[i];
+    const float mid = x + w * 0.5F;
+    const float opacity = on ? 1.0F : Tokens::componentLockRowDim;
+    item.fill->setPosition(snap(x), y);
+    item.fill->setSize(snap(w), snap(itemH));
+    item.fill->setStyle(RoundedRectStyle{.fill = rgba(1.0F, 1.0F, 1.0F, on ? Tokens::componentLockRowSelected : 0.0F),
+                                         .radius = Tokens::radiusR20 * s});
+    const float ax = snap(mid - avatar * 0.5F);
+    const float ay = snap(y + pad);
+    item.avatar->setPosition(ax, ay);
+    item.avatar->setSize(avatar, avatar);
+    item.avatar->setStyle(
+        RoundedRectStyle{
+            .fill = kAvatarFrom,
+            .fillMode = FillMode::LinearGradient,
+            .gradientDirection = GradientDirection::Horizontal,
+            .gradientStops = {GradientStop{0.0F, kAvatarFrom}, GradientStop{1.0F, kAvatarTo},
+                              GradientStop{1.0F, kAvatarTo}, GradientStop{1.0F, kAvatarTo}},
+            .radius = avatar * 0.5F,
+        }
+    );
+    item.avatar->setOpacity(opacity);
+    if (account.avatarPath != item.shown) {
+      item.shown = !account.avatarPath.empty()
+              && item.image->setSourceFile(renderer, account.avatarPath, static_cast<int>(avatar), true, true)
+          ? account.avatarPath
+          : std::string{};
+      if (item.shown.empty()) {
+        item.image->clear(renderer);
+      }
+    }
+    const bool picture = !item.shown.empty();
+    item.image->setVisible(picture);
+    item.image->setPosition(ax, ay);
+    item.image->setSize(avatar, avatar);
+    item.image->setRadius(avatar * 0.5F);
+    item.image->setOpacity(opacity);
+    item.initial->setVisible(!picture);
+    item.initial->setFontSize(kInitialFontSize * Tokens::componentLockRowAvatar / Tokens::componentLockAvatar * s);
+    item.initial->setColor(rgba(1.0F, 1.0F, 1.0F, 1.0F));
+    item.initial->setText(initialOf(account.name));
+    item.initial->measure(renderer);
+    item.initial->setPosition(
+        snap(mid - item.initial->width() * 0.5F), snap(ay + (avatar - item.initial->height()) * 0.5F)
+    );
+    item.initial->setOpacity(opacity);
+    const float nameY = ay + avatar + pad;
+    item.name->setPosition(
+        snap(mid - item.name->width() * 0.5F), snap(nameY + (nameLine - item.name->height()) * 0.5F)
+    );
+    item.name->setOpacity(opacity);
+    x += w + gap;
+  }
+}
+
+bool AuthColumn::accountRowShown() const { return !m_accounts.empty() && m_accounts.front().fill->visible(); }
+
+int AuthColumn::accountAt(float sceneX, float sceneY) const {
+  if (m_place.layout == AuthLayout::Glance && !m_sheetOpen) {
+    return -1;
+  }
+  const std::size_t count = std::min(m_accounts.size(), m_state.accounts.size());
+  for (std::size_t i = 0; i < count; ++i) {
+    if (m_accounts[i].fill->visible() && m_accounts[i].fill->containsScenePoint(sceneX, sceneY)) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
 }
 
 bool AuthColumn::faceHit(float sceneX, float sceneY) const {

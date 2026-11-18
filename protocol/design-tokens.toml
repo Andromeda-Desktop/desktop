@@ -720,6 +720,10 @@ dim = 0.2
 password_width = 240.0
 password_height = 40.0
 avatar = 64.0
+# Greeter user row (concept C .o-ub): avatar, selected fill alpha, unselected opacity.
+row_avatar = 56.0
+row_selected = 0.12
+row_dim = 0.6
 
 [component.page]  # window content, 8
 padding = 24.0
