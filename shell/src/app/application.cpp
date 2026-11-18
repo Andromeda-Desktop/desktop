@@ -46,6 +46,7 @@
 #include "dbus/portal/inhibit_portal.h"
 #include "dbus/notification/notification_portal.h"
 #include "dbus/portal/settings_portal.h"
+#include "dbus/appmenu/app_menu_registrar.h"
 #include "dbus/power/power_profiles_service.h"
 #include "dbus/sensor/ambient_light_service.h"
 #include "dbus/session_bus.h"

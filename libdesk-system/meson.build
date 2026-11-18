@@ -83,6 +83,7 @@ _sources = files(
   'src/dbus/portal/background_portal.cpp',
   'src/dbus/portal/inhibit_portal.cpp',
   'src/dbus/portal/settings_portal.cpp',
+  'src/dbus/appmenu/app_menu_registrar.cpp',
   'src/dbus/sensor/ambient_light_service.cpp',
   'src/dbus/udisks/udisks_service.cpp',
   'src/dbus/upower/upower_service.cpp',

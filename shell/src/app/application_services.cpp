@@ -47,6 +47,7 @@
 #include "dbus/portal/background_portal.h"
 #include "dbus/portal/inhibit_portal.h"
 #include "dbus/portal/settings_portal.h"
+#include "dbus/appmenu/app_menu_registrar.h"
 #include "dbus/power/power_profiles_service.h"
 #include "dbus/secret/secret_collection_probe.h"
 #include "dbus/session_bus.h"
@@ -1031,6 +1032,11 @@ void Application::initStyleThemeAndWayland() {
       m_settingsPortal = std::make_unique<SettingsPortal>(*m_bus);
     } catch (const sdbus::Error& e) {
       kLog.warn("settings portal disabled: {}", e.what());
+    }
+    try {
+      m_appMenuRegistrar = std::make_unique<AppMenuRegistrar>(*m_bus);
+    } catch (const sdbus::Error& e) {
+      kLog.warn("app menu registrar disabled: {}", e.what());
     }
     try {
       m_notificationPortal = std::make_unique<NotificationPortal>(*m_bus, m_notificationManager);
