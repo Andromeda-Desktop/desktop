@@ -7,7 +7,7 @@
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_dispatcher.h"
 #include "render/scene/node.h"
-#include "wayland/toplevel_surface.h"
+#include "platform/toplevel.h"
 
 #include <array>
 #include <chrono>
@@ -25,8 +25,6 @@ class ContextMenuPopup;
 class CommandTable;
 class Flex;
 class Glyph;
-class DskSurfaceClient;
-struct zwp_keyboard_shortcuts_inhibitor_v1;
 class Image;
 class Label;
 class Renderer;
@@ -36,14 +34,11 @@ class StateStore;
 struct KeyboardEvent;
 struct PinchEvent;
 struct PointerEvent;
+struct wl_surface;
 
 // A first-party app window (docs/apps.md §2, rulebook §9.12): the 48 px app header with back / forward, title and
 // window buttons, over the app's content. Size and maximized state persist in the app's StateStore under
 // /window/<stateKey>/.
-namespace desk {
-  class ForeignParent;
-}
-
 class AppWindow {
 public:
   // Glass: the compositor blurs what lies below the whole window; the sidebar draws the Sheet tint over it and the main
@@ -256,6 +251,8 @@ public:
   void setLayoutCallback(std::function<void()> callback) { m_onLayout = std::move(callback); }
 
   [[nodiscard]] wl_surface* wlSurface() const noexcept;
+  // ready gets the handle another client parents a window to (portal form); "" when closed or not supported.
+  void exportHandle(std::function<void(const std::string& handle)> ready);
   [[nodiscard]] Material material() const noexcept { return m_config.material; }
   void setMaterial(Material material);
   void setGlassAlpha(std::optional<float> alpha);
@@ -265,7 +262,7 @@ public:
   // The desktop's ui scale; the caller rebuilds the window after a change.
   void setUiScale(float scale) noexcept { m_uiScale = scale; }
   [[nodiscard]] InputDispatcher& input() noexcept { return m_input; }
-  [[nodiscard]] ToplevelSurface* surface() noexcept { return m_surface.get(); }
+  [[nodiscard]] Toplevel* surface() noexcept { return m_surface.get(); }
 
   // The app routes events here only for this window's surface (DeskApp::routePointer, routeKey).
   void onPointerEvent(const PointerEvent& event);
@@ -319,8 +316,7 @@ private:
   Rect m_contentRect;
   float m_uiScale = 1.0F;
 
-  std::unique_ptr<ToplevelSurface> m_surface;
-  std::unique_ptr<desk::ForeignParent> m_foreignParent;
+  std::unique_ptr<Toplevel> m_surface;
   std::unique_ptr<Node> m_root;
   Label* m_titleLabel = nullptr;
   Glyph* m_captionSymbol = nullptr;
@@ -369,8 +365,6 @@ private:
   bool m_sceneSecret = false;
   bool m_sceneRemote = false;
   bool m_captureSecure = false;
-  std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure; goes with m_surface
-  zwp_keyboard_shortcuts_inhibitor_v1* m_shortcutsInhibitor = nullptr; // goes with m_surface
   float m_sceneBusyLevel = 0.0F;
   float m_sceneSecretLevel = 0.0F;
   float m_sceneRemoteLevel = 0.0F;

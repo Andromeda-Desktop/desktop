@@ -38,9 +38,6 @@
 
 class AppChooserSheet;
 class AppWindow;
-namespace desk {
-  class ForeignExport;
-}
 namespace sdbus {
   class IProxy;
 }
@@ -405,7 +402,6 @@ private:
   std::map<std::string, PendingExtract> m_extracts; // by job path: each extract keeps its own retry and follow-up
   std::unique_ptr<class DragIconSurface> m_dragIcon;
   std::unique_ptr<Node> m_dragImage;
-  std::unique_ptr<desk::ForeignExport> m_export;
   std::unique_ptr<class GalleryVideo> m_galleryVideo; // created on the first video the Gallery plays
   std::unique_ptr<sdbus::IProxy> m_preview; // org.gnome.NautilusPreviewer2 (andromeda-preview)
   bool m_previewOpen = false;

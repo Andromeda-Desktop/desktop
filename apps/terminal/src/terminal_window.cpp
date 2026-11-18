@@ -452,7 +452,7 @@ namespace term {
                 m_window.pulseScene(AppWindow::ScenePulse::Bell);
               }
               // In the background, the bell marks the window as needing attention; it never takes focus.
-              if (const ToplevelSurface* top = m_window.surface(); top != nullptr && !top->state().activated) {
+              if (const Toplevel* top = m_window.surface(); top != nullptr && !top->state().activated) {
                 m_loop.wayland().requestAttentionTokenAsync(m_window.wlSurface(), [this, alive](std::string token) {
                   if (!alive.expired()) {
                     m_loop.wayland().activateSurface(m_window.wlSurface(), token);

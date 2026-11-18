@@ -2,7 +2,6 @@
 
 #include "app/desk_app.h"
 #include "app/file_chooser.h"
-#include "app/foreign_export.h"
 #include "render/core/thumbnail_service.h"
 #include "prefs_window.h"
 #include "terminal_window.h"
@@ -53,9 +52,7 @@ namespace term {
     SettingsStore m_settings;
     AppWindow* m_prefsWindow = nullptr;
     std::unique_ptr<PrefsWindow> m_prefs;
-    std::unique_ptr<desk::ForeignExport> m_prefsExport; // parents the import dialog to Preferences; lives with it
     std::unique_ptr<desk::FileChooser> m_chooser;
-    std::unique_ptr<desk::ForeignExport> m_saveExport; // parents a save dialog to its terminal window
     void chooseSaveFile(AppWindow& window, const std::string& suggested,
                         std::function<void(std::optional<std::filesystem::path>)> picked);
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;

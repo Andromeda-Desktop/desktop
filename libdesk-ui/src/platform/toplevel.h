@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 
 struct ToplevelSurfaceConfig {
   std::uint32_t width = 720;
@@ -65,6 +66,17 @@ public:
   // A floating window picks its own size. False when the window system sizes the window (maximized, fullscreen,
   // tiled with a size) or before the first configure.
   virtual bool requestWindowSize(std::uint32_t width, std::uint32_t height) = 0;
+
+  // handle: another client's window, in the portal form ("wayland:<handle>"); the window system floats this window
+  // over it. An empty or foreign-form handle leaves the window unparented.
+  virtual void setParentWindow(std::string_view handle) = 0;
+  // ready gets this window's handle in the portal form, at once when known, else from the event loop; "" when the
+  // window system cannot export windows. Only the last pending ready runs.
+  virtual void exportHandle(std::function<void(const std::string& handle)> ready) = 0;
+  // Secure: screen capture shows the window blank. False when the window system cannot do it.
+  virtual bool setCaptureSecure(bool secure) = 0;
+  // Inhibited: the window system passes its own shortcuts to this window while it has keyboard focus.
+  virtual void setShortcutsInhibited(bool inhibited) = 0;
 
   [[nodiscard]] virtual const ToplevelState& state() const noexcept = 0;
   // The window inside the surface: the surface is the window plus margin() on every side.

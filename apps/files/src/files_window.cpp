@@ -28,7 +28,6 @@
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
-#include "app/foreign_export.h"
 #include "dbus/session_bus.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -853,11 +852,8 @@ void FilesWindow::quickLook(const fs::path& path, bool toggle) {
       return;
     }
   }
-  if (m_export == nullptr) {
-    m_export = std::make_unique<desk::ForeignExport>(m_app.loop().wayland().display());
-  }
   const std::string uri = uriFor(path);
-  m_export->handle(m_window.wlSurface(), [this, uri, toggle, alive = std::weak_ptr<bool>(m_alive)](const std::string& handle) {
+  m_window.exportHandle([this, uri, toggle, alive = std::weak_ptr<bool>(m_alive)](const std::string& handle) {
     if (alive.expired() || m_preview == nullptr) {
       return;
     }

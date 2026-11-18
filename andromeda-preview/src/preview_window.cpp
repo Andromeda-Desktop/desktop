@@ -3,7 +3,6 @@
 #include "app/app_loop.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
-#include "app/foreign_parent.h"
 #include "preview_service.h"
 #include "render/core/texture_manager.h"
 #include "ui/builders.h"
@@ -337,8 +336,8 @@ namespace preview {
     float m_numberWidth = 0.0F;
   };
 
-  PreviewWindow::PreviewWindow(AppLoop& loop, desk::ForeignParent& parent, FileOpsClient& fileOps, Callbacks callbacks)
-      : m_loop(loop), m_parent(parent), m_fileOps(fileOps), m_callbacks(std::move(callbacks)) {
+  PreviewWindow::PreviewWindow(AppLoop& loop, FileOpsClient& fileOps, Callbacks callbacks)
+      : m_loop(loop), m_fileOps(fileOps), m_callbacks(std::move(callbacks)) {
     m_loop.wayland().setKeyboardEventCallback([this](const KeyboardEvent& event) { onKeyboard(event); });
     m_loop.wayland().setPointerEventCallback([this](const PointerEvent& event) { onPointer(event); });
   }
@@ -357,7 +356,7 @@ namespace preview {
     if (!isOpen()) {
       openSurface(windowHandle);
     } else {
-      m_parent.setParent(m_surface->wlSurface(), windowHandle);
+      m_surface->setParentWindow(windowHandle);
       invalidate();
     }
   }
@@ -1170,7 +1169,7 @@ namespace preview {
       }
       return;
     }
-    m_parent.setParent(m_surface->wlSurface(), windowHandle);
+    m_surface->setParentWindow(windowHandle);
     m_dirty = true;
   }
 
@@ -1189,7 +1188,6 @@ namespace preview {
     m_decoder.cancel();
     m_root.reset();
     m_code.reset();
-    m_parent.clear();
     m_surface.reset();
     m_pages.clear();
     m_image = {};

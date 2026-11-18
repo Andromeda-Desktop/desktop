@@ -5,12 +5,17 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 
+class DskSurfaceClient;
 struct wl_array;
 struct wl_output;
 struct xdg_toplevel;
 struct zxdg_toplevel_decoration_v1;
+struct zxdg_exported_v2;
+struct zxdg_imported_v2;
+struct zwp_keyboard_shortcuts_inhibitor_v1;
 
 class ToplevelSurface : public WaylandSurface, public Toplevel {
 public:
@@ -31,6 +36,10 @@ public:
   void setMinimized() override;
   bool requestWindowSize(std::uint32_t width, std::uint32_t height) override;
   void showWindowMenu(std::uint32_t serial, std::int32_t x, std::int32_t y) override;
+  void setParentWindow(std::string_view handle) override;
+  void exportHandle(std::function<void(const std::string& handle)> ready) override;
+  bool setCaptureSecure(bool secure) override;
+  void setShortcutsInhibited(bool inhibited) override;
   void setStateCallback(std::function<void(const ToplevelState&)> callback) override {
     m_stateCallback = std::move(callback);
   }
@@ -49,6 +58,8 @@ public:
   static void
   handleToplevelConfigureBounds(void* data, xdg_toplevel* toplevel, std::int32_t width, std::int32_t height);
   static void handleToplevelWmCapabilities(void* data, xdg_toplevel* toplevel, wl_array* capabilities);
+  static void handleExportedHandle(void* data, zxdg_exported_v2* exported, const char* handle);
+  static void handleImportedDestroyed(void* data, zxdg_imported_v2* imported);
 
 private:
   void destroyRoleObjects();
@@ -56,6 +67,12 @@ private:
   xdg_surface* m_xdgSurface = nullptr;
   xdg_toplevel* m_toplevel = nullptr;
   zxdg_toplevel_decoration_v1* m_decoration = nullptr;
+  zxdg_exported_v2* m_exported = nullptr;
+  std::string m_exportHandle; // "" until the compositor answers
+  std::function<void(const std::string&)> m_exportReady;
+  zxdg_imported_v2* m_imported = nullptr;
+  std::unique_ptr<DskSurfaceClient> m_dsk; // made on the first setCaptureSecure
+  zwp_keyboard_shortcuts_inhibitor_v1* m_shortcutsInhibitor = nullptr;
   std::function<void()> m_closedCallback;
   std::function<void(const ToplevelState&)> m_stateCallback;
   ToplevelState m_state;

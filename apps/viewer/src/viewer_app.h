@@ -8,7 +8,6 @@
 
 namespace desk {
   class FileChooser;
-  class ForeignExport;
 }
 
 namespace viewer {
@@ -37,7 +36,6 @@ namespace viewer {
     void chooseFile();
 
     std::unique_ptr<desk::FileChooser> m_chooser;
-    std::unique_ptr<desk::ForeignExport> m_export;
 
     std::map<AppWindow*, std::unique_ptr<ViewerTabs>> m_windows;
   };

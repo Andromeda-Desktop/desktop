@@ -118,6 +118,7 @@ foreach _p : [
   ['hyprland-focus-grab-v1', 'protocols/hyprland-focus-grab-v1.xml'],
   ['wlr-output-management-unstable-v1', 'protocols/wlr-output-management-unstable-v1.xml'],
   ['dsk-surface-v1', 'protocols/dsk-surface-v1.xml'],
+  ['xdg-foreign-unstable-v2', wayland_protos_dir / 'unstable/xdg-foreign/xdg-foreign-unstable-v2.xml'],
   ['primary-selection-unstable-v1', wayland_protos_dir / 'unstable/primary-selection/primary-selection-unstable-v1.xml'],
 ]
   _h = custom_target(_p[0] + '-client-header',

@@ -12,10 +12,9 @@ namespace {
 
 } // namespace
 
-Subsurface::Subsurface(WaylandConnection& connection, SubsurfaceConfig config)
-    : WaylandSurface(connection), m_config(config) {}
+WaylandSubsurface::WaylandSubsurface(WaylandConnection& connection) : WaylandSurface(connection) {}
 
-Subsurface::~Subsurface() {
+WaylandSubsurface::~WaylandSubsurface() {
   m_connection.unregisterSurface(m_surface);
   if (m_subsurface != nullptr) {
     wl_subsurface_destroy(m_subsurface);
@@ -23,12 +22,17 @@ Subsurface::~Subsurface() {
   }
 }
 
-bool Subsurface::initialize() {
+bool WaylandSubsurface::initialize() {
   kLog.warn("subsurface skipped: parent surface is required");
   return false;
 }
 
-bool Subsurface::initialize(wl_surface* parentSurface, wl_output* output) {
+bool WaylandSubsurface::initialize(const Surface& parent, SubsurfaceConfig config) {
+  m_config = config;
+  return initialize(dynamic_cast<const WaylandSurface&>(parent).wlSurface(), nullptr);
+}
+
+bool WaylandSubsurface::initialize(wl_surface* parentSurface, wl_output* output) {
   if (m_connection.compositor() == nullptr || m_connection.shm() == nullptr || !m_connection.hasSubcompositor()) {
     kLog.warn("subsurface skipped: missing compositor/shm/subcompositor globals");
     return false;
@@ -78,7 +82,7 @@ bool Subsurface::initialize(wl_surface* parentSurface, wl_output* output) {
   return true;
 }
 
-void Subsurface::setPosition(std::int32_t x, std::int32_t y) {
+void WaylandSubsurface::setPosition(std::int32_t x, std::int32_t y) {
   if (m_config.x == x && m_config.y == y) {
     return;
   }
@@ -91,7 +95,7 @@ void Subsurface::setPosition(std::int32_t x, std::int32_t y) {
   wl_surface_commit(m_parentSurface);
 }
 
-void Subsurface::resize(std::uint32_t width, std::uint32_t height) {
+void WaylandSubsurface::resize(std::uint32_t width, std::uint32_t height) {
   m_config.width = width;
   m_config.height = height;
   if (isRunning() && width > 0 && height > 0 && (width != this->width() || height != this->height())) {
@@ -99,7 +103,7 @@ void Subsurface::resize(std::uint32_t width, std::uint32_t height) {
   }
 }
 
-void Subsurface::setStacking(SubsurfaceStacking stacking) {
+void WaylandSubsurface::setStacking(SubsurfaceStacking stacking) {
   if (m_config.stacking == stacking) {
     return;
   }
@@ -110,7 +114,7 @@ void Subsurface::setStacking(SubsurfaceStacking stacking) {
   }
 }
 
-void Subsurface::applyStacking() {
+void WaylandSubsurface::applyStacking() {
   if (m_subsurface == nullptr || m_parentSurface == nullptr) {
     return;
   }

@@ -7,10 +7,8 @@
 #include "render/scene/shader_scene_node.h"
 #include "ui/controls/image.h"
 #include "ui/contrast.h"
-#include "wayland/dsk_surface_client.h"
-#include "wayland/subsurface.h"
-
-#include "app/foreign_parent.h"
+#include "platform/subsurface.h"
+#include "wayland/surface.h"
 
 #include "app/app_loop.h"
 #include "app/command_table.h"
@@ -37,7 +35,6 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "core/input/cursor_shape.h"
-#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 #include "wayland/wayland_seat.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -258,7 +255,17 @@ AppWindow::~AppWindow() { close(); }
 
 std::string AppWindow::key(const char* field) const { return "/window/" + m_config.stateKey + "/" + field; }
 
-wl_surface* AppWindow::wlSurface() const noexcept { return m_surface != nullptr ? m_surface->wlSurface() : nullptr; }
+wl_surface* AppWindow::wlSurface() const noexcept {
+  return m_surface != nullptr ? dynamic_cast<const WaylandSurface&>(*m_surface).wlSurface() : nullptr;
+}
+
+void AppWindow::exportHandle(std::function<void(const std::string& handle)> ready) {
+  if (m_surface == nullptr) {
+    ready({});
+    return;
+  }
+  m_surface->exportHandle(std::move(ready));
+}
 
 bool AppWindow::ownsSurface(const Surface* surface) const noexcept {
   return surface != nullptr &&
@@ -272,7 +279,7 @@ void AppWindow::openMoreMenu() {
     return;
   }
   if (m_menu == nullptr) {
-    m_menu = std::make_unique<ContextMenuPopup>(m_loop.wayland(), m_loop.renderContext());
+    m_menu = std::make_unique<ContextMenuPopup>(m_loop.display(), m_loop.renderContext());
   }
   // One header per group in menu-bar order, then each group's commands in registration order.
   std::vector<const AppCommand*> commands;
@@ -371,7 +378,7 @@ void AppWindow::openContextMenu(std::vector<ContextMenuControlEntry> entries, fl
     return;
   }
   if (m_menu == nullptr) {
-    m_menu = std::make_unique<ContextMenuPopup>(m_loop.wayland(), m_loop.renderContext());
+    m_menu = std::make_unique<ContextMenuPopup>(m_loop.display(), m_loop.renderContext());
   }
   m_menu->setOnActivate([this, activated = std::move(activated)](const ContextMenuControlEntry& entry) {
     // The popup is still in its own callback: the command runs after it.
@@ -400,14 +407,14 @@ void AppWindow::openPopover(const Node* anchor, float width, float height,
     return;
   }
   if (m_popover == nullptr) {
-    m_popover = std::make_unique<AppPopover>(m_loop.wayland(), m_loop.renderContext());
+    m_popover = std::make_unique<AppPopover>(m_loop.display(), m_loop.renderContext());
   }
   float x = 0.0F;
   float y = 0.0F;
   Node::absolutePosition(anchor, x, y);
   const auto margin = static_cast<float>(m_surface->margin());
   m_popover->open({.parent = m_surface.get(),
-                   .serial = m_loop.wayland().lastInputSerial(),
+                   .serial = m_loop.display().lastInputSerial(),
                    .anchorX = static_cast<std::int32_t>(x - margin), .anchorY = static_cast<std::int32_t>(y - margin),
                    .anchorWidth = static_cast<std::int32_t>(anchor->width()),
                    .anchorHeight = static_cast<std::int32_t>(anchor->height()), .width = width * m_uiScale,
@@ -479,10 +486,10 @@ bool AppWindow::open() {
   if (m_surface != nullptr) {
     return true;
   }
-  WaylandConnection& wayland = m_loop.wayland();
-  wl_output* output = wayland.lastPointerOutput();
-  if (output == nullptr && !wayland.outputs().empty()) {
-    output = wayland.outputs().front().output;
+  Display& display = m_loop.display();
+  OutputId output = display.lastPointerOutputId();
+  if (output == OutputId::None) {
+    output = display.firstOutputId();
   }
 
   const auto scaled = [this](std::uint32_t v) { return static_cast<std::uint32_t>(std::lround(static_cast<float>(v) * m_uiScale)); };
@@ -494,7 +501,7 @@ bool AppWindow::open() {
   const bool maximized = !fixed && m_state.get<bool>(key("maximized"), false);
 
   m_blur.clear(); // a new surface has no blur region yet
-  m_surface = std::make_unique<ToplevelSurface>(wayland);
+  m_surface = display.createToplevel();
   m_surface->setRenderContext(&m_loop.renderContext());
   m_surface->setAnimationManager(&m_animations);
   m_surface->setClosedCallback([this] { onClosedByCompositor(); });
@@ -544,15 +551,12 @@ bool AppWindow::open() {
     m_surface.reset();
     return false;
   }
-  if (!m_config.parentWindow.empty()) {
-    m_foreignParent = std::make_unique<desk::ForeignParent>(wayland.display());
-    m_foreignParent->setParent(m_surface->wlSurface(), m_config.parentWindow);
-  }
+  m_surface->setParentWindow(m_config.parentWindow);
   m_input.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
-    m_loop.wayland().setCursorShape(serial, std::to_underlying(shape));
+    m_loop.display().setCursorShape(serial, std::to_underlying(shape));
   });
   // Input methods (fcitx5, IBus): preedit and commits reach the focused text field.
-  m_input.setTextInputContext(m_surface.get(), wayland.textInputService());
+  m_input.setTextInputContext(m_surface.get(), display.textInputService());
   m_input.setHoverChangeCallback([this](InputArea* /*old*/, InputArea* next) {
     if (m_surface == nullptr) {
       return;
@@ -563,7 +567,7 @@ bool AppWindow::open() {
       next = nullptr;
     }
     const auto margin = static_cast<float>(m_surface->margin());
-    TooltipManager::instance().onHoverChange(next, m_surface.get(), m_loop.wayland().outputForSurface(*m_surface),
+    TooltipManager::instance().onHoverChange(next, m_surface.get(), m_loop.display().outputForSurface(*m_surface),
                                              margin, margin);
   });
   m_rebuild = true;
@@ -580,7 +584,6 @@ void AppWindow::close() {
   TooltipManager::instance().forceDestroy(); // a tooltip popup must go before its parent surface
   m_input.setSceneRoot(nullptr);
   m_surface->setSceneRoot(nullptr);
-  m_foreignParent.reset();
   m_menu.reset();
   m_select.reset();
   m_popover.reset();
@@ -617,9 +620,7 @@ void AppWindow::close() {
   m_sheetCard = nullptr;
   m_sheetShade = nullptr;
   m_sheetScrim = nullptr;
-  m_dsk.reset();
   m_captureSecure = false;
-  setShortcutsInhibited(false);
   m_surface.reset();
   m_maximizeButton = nullptr;
   m_buttonDown = false;
@@ -773,31 +774,18 @@ void AppWindow::setSceneRemote(bool remote) {
 }
 
 void AppWindow::setCaptureSecure(bool secure) {
-  if (secure == m_captureSecure || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
+  if (secure == m_captureSecure || m_surface == nullptr) {
     return;
   }
-  dsk_surface_manager_v1* manager = m_loop.wayland().dskSurfaceManager();
-  if (manager == nullptr) {
-    return; // another compositor: no capture control
-  }
-  if (m_dsk == nullptr) {
-    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface->wlSurface());
-  }
-  if (m_dsk->setSecure(secure)) {
+  if (m_surface->setCaptureSecure(secure)) {
     m_captureSecure = secure;
     invalidate(); // the request applies on the next commit
   }
 }
 
 void AppWindow::setShortcutsInhibited(bool inhibited) {
-  if (inhibited == (m_shortcutsInhibitor != nullptr)) {
-    return;
-  }
-  if (!inhibited) {
-    zwp_keyboard_shortcuts_inhibitor_v1_destroy(m_shortcutsInhibitor);
-    m_shortcutsInhibitor = nullptr;
-  } else if (wl_surface* surface = wlSurface(); surface != nullptr) {
-    m_shortcutsInhibitor = m_loop.wayland().inhibitShortcuts(surface);
+  if (m_surface != nullptr) {
+    m_surface->setShortcutsInhibited(inhibited);
   }
 }
 
@@ -857,7 +845,7 @@ namespace {
 } // namespace
 
 void AppWindow::syncSceneLayer(float width, float height, float margin, float radius) {
-  if (m_surface != nullptr && m_surface->wlSurface() != nullptr) {
+  if (m_surface != nullptr) {
     // Solid without a scene paints every pixel of the frame but its corners, so the compositor draws nothing below it.
     const bool opaque = !m_scene && m_config.material == Material::Solid && !m_config.transparentContent;
     const int m = static_cast<int>(std::lround(margin));
@@ -865,7 +853,7 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
                                                        static_cast<int>(std::lround(height)), radius)
                                       : std::vector<InputRect>{});
   }
-  if (!m_scene || m_surface == nullptr || m_surface->wlSurface() == nullptr) {
+  if (!m_scene || m_surface == nullptr) {
     m_sceneNode = nullptr;
     m_scenePicture = nullptr;
     m_sceneClip = nullptr;
@@ -895,13 +883,14 @@ void AppWindow::syncSceneLayer(float width, float height, float margin, float ra
       m_sceneNode = static_cast<ShaderSceneNode*>(m_sceneClip->addChild(std::make_unique<ShaderSceneNode>()));
       m_sceneNode->setSecretDim(Tokens::componentWindowSceneSecretDim);
     }
-    m_sceneLayer = std::make_unique<Subsurface>(
-        m_loop.wayland(), SubsurfaceConfig{.width = w, .height = h, .x = static_cast<std::int32_t>(margin),
-                                           .y = static_cast<std::int32_t>(margin), .stacking = SubsurfaceStacking::BelowParent});
+    m_sceneLayer = m_loop.display().createSubsurface();
     m_sceneLayer->setDebugName("scene");
     m_sceneLayer->setRenderContext(&m_loop.renderContext());
     m_sceneLayer->setResolutionScale(Tokens::componentWindowSceneResolution);
-    if (!m_sceneLayer->initialize(m_surface->wlSurface(), nullptr)) {
+    if (!m_sceneLayer->initialize(
+            *m_surface, SubsurfaceConfig{.width = w, .height = h, .x = static_cast<std::int32_t>(margin),
+                                         .y = static_cast<std::int32_t>(margin), .stacking = SubsurfaceStacking::BelowParent}
+        )) {
       m_sceneLayer.reset();
       m_sceneRoot.reset();
       m_sceneNode = nullptr;
@@ -1142,7 +1131,11 @@ void AppWindow::toggleFullscreen() {
 
 bool AppWindow::fullscreen() const noexcept { return m_surface != nullptr && m_surface->state().fullscreen; }
 
-void AppWindow::activate(const std::string& token) { m_loop.wayland().activateSurface(wlSurface(), token); }
+void AppWindow::activate(const std::string& token) {
+  if (m_surface != nullptr) {
+    m_loop.display().activateSurface(*m_surface, token);
+  }
+}
 
 void AppWindow::toggleMaximized() {
   if (m_surface != nullptr) {
@@ -1724,10 +1717,10 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
 
   if (m_select == nullptr) {
     m_select = std::make_unique<WindowSelectPopup>(
-        m_loop.wayland(), m_loop.renderContext(),
+        m_loop.display(), m_loop.renderContext(),
         [this] { return m_surface != nullptr ? static_cast<int>(m_surface->margin()) : 0; },
         [this](WindowSelectPopup& popup) {
-          popup.setParent(m_surface.get(), m_loop.wayland().outputForSurface(*m_surface));
+          popup.setParent(m_surface.get(), m_loop.display().outputForSurface(*m_surface));
         });
   }
   m_root->setPopupContext(m_select.get());
@@ -1819,7 +1812,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   }
   if (edges != 0 && (event.type == PointerEvent::Type::Enter || event.type == PointerEvent::Type::Motion)) {
     m_input.pointerLeave();
-    m_loop.wayland().setCursorShape(event.serial, std::to_underlying(cursorForEdges(edges)));
+    m_loop.display().setCursorShape(event.serial, std::to_underlying(cursorForEdges(edges)));
     m_inResizeBand = true;
     return;
   }
@@ -1829,7 +1822,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   }
   if (m_inResizeBand && event.type == PointerEvent::Type::Motion) {
     m_inResizeBand = false;
-    m_loop.wayland().setCursorShape(event.serial, std::to_underlying(CursorShape::Default));
+    m_loop.display().setCursorShape(event.serial, std::to_underlying(CursorShape::Default));
     m_input.pointerEnter(x, y, event.serial);
   }
   switch (event.type) {

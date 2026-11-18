@@ -129,7 +129,6 @@ namespace term {
   void TerminalApp::windowClosed(AppWindow& window) {
     if (&window == m_prefsWindow) {
       m_prefs.reset();
-      m_prefsExport.reset();
       m_prefsWindow = nullptr;
     }
     const bool running = m_windows.contains(&window) && m_windows.at(&window)->detachSessions();
@@ -260,10 +259,7 @@ namespace term {
     if (m_chooser == nullptr) {
       m_chooser = std::make_unique<desk::FileChooser>(*bus());
     }
-    if (m_saveExport == nullptr) {
-      m_saveExport = std::make_unique<desk::ForeignExport>(loop().wayland().display());
-    }
-    m_saveExport->handle(window.wlSurface(), [this, suggested, picked = std::move(picked)](const std::string& parent) {
+    window.exportHandle([this, suggested, picked = std::move(picked)](const std::string& parent) {
       m_chooser->saveFile(parent, "Save Scrollback", suggested, picked);
     });
   }
@@ -299,10 +295,7 @@ namespace term {
                     if (m_chooser == nullptr) {
                       m_chooser = std::make_unique<desk::FileChooser>(*bus());
                     }
-                    if (m_prefsExport == nullptr) {
-                      m_prefsExport = std::make_unique<desk::ForeignExport>(loop().wayland().display());
-                    }
-                    m_prefsExport->handle(m_prefsWindow->wlSurface(), [this](const std::string& parent) {
+                    m_prefsWindow->exportHandle([this](const std::string& parent) {
                       if (m_prefs == nullptr) {
                         return;
                       }

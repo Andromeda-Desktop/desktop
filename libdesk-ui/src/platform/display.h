@@ -12,6 +12,7 @@
 #include <vector>
 
 class Popup;
+class Subsurface;
 class TextInputService;
 class Surface;
 class Toplevel;
@@ -30,6 +31,7 @@ public:
 
   [[nodiscard]] virtual std::unique_ptr<Toplevel> createToplevel() = 0;
   [[nodiscard]] virtual std::unique_ptr<Popup> createPopup() = 0;
+  [[nodiscard]] virtual std::unique_ptr<Subsurface> createSubsurface() = 0;
 
   // The serial of the last input event, for requests that must name the event that caused them.
   [[nodiscard]] virtual std::uint32_t lastInputSerial() const noexcept = 0;
@@ -41,6 +43,8 @@ public:
   [[nodiscard]] virtual double lastPointerX() const noexcept = 0;
   [[nodiscard]] virtual double lastPointerY() const noexcept = 0;
   [[nodiscard]] virtual OutputId lastPointerOutputId() const noexcept = 0;
+  // OutputId::None when there is no output.
+  [[nodiscard]] virtual OutputId firstOutputId() const noexcept = 0;
   [[nodiscard]] virtual std::optional<OutputInfo> outputInfo(OutputId output) const = 0;
   // The surfaces under the pointer and with keyboard focus; null when none or not a Surface.
   [[nodiscard]] virtual Surface* pointerSurface() const noexcept = 0;

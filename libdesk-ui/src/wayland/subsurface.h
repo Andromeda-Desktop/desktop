@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/subsurface.h"
 #include "wayland/surface.h"
 
 #include <cstdint>
@@ -8,31 +9,18 @@ struct wl_output;
 struct wl_subsurface;
 struct wl_surface;
 
-enum class SubsurfaceStacking {
-  AboveParent,
-  BelowParent,
-};
-
-struct SubsurfaceConfig {
-  std::uint32_t width = 0;
-  std::uint32_t height = 0;
-  std::int32_t x = 0;
-  std::int32_t y = 0;
-  SubsurfaceStacking stacking = SubsurfaceStacking::AboveParent;
-  bool desynchronized = true;
-};
-
-class Subsurface : public WaylandSurface {
+class WaylandSubsurface : public WaylandSurface, public Subsurface {
 public:
-  Subsurface(WaylandConnection& connection, SubsurfaceConfig config);
-  ~Subsurface() override;
+  explicit WaylandSubsurface(WaylandConnection& connection);
+  ~WaylandSubsurface() override;
 
   bool initialize() override;
+  bool initialize(const Surface& parent, SubsurfaceConfig config) override;
   bool initialize(wl_surface* parentSurface, wl_output* output);
 
-  void setPosition(std::int32_t x, std::int32_t y);
-  void resize(std::uint32_t width, std::uint32_t height);
-  void setStacking(SubsurfaceStacking stacking);
+  void setPosition(std::int32_t x, std::int32_t y) override;
+  void resize(std::uint32_t width, std::uint32_t height) override;
+  void setStacking(SubsurfaceStacking stacking) override;
 
 private:
   void applyStacking();

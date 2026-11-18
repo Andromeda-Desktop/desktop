@@ -31,10 +31,6 @@ struct KeyboardEvent;
 struct PointerEvent;
 struct WaylandOutput;
 
-namespace desk {
-  class ForeignParent;
-}
-
 namespace preview {
 
   class CodeLines;
@@ -48,7 +44,7 @@ namespace preview {
     };
 
     // fileOps lists archives (FileOps1 ListArchive): the daemon parses them, the window only shows the names.
-    PreviewWindow(AppLoop& loop, desk::ForeignParent& parent, FileOpsClient& fileOps, Callbacks callbacks);
+    PreviewWindow(AppLoop& loop, FileOpsClient& fileOps, Callbacks callbacks);
     ~PreviewWindow();
     PreviewWindow(const PreviewWindow&) = delete;
     PreviewWindow& operator=(const PreviewWindow&) = delete;
@@ -97,7 +93,6 @@ namespace preview {
     [[nodiscard]] std::pair<std::uint32_t, std::uint32_t> windowSizeFor(const WaylandOutput* output) const;
 
     AppLoop& m_loop;
-    desk::ForeignParent& m_parent;
     FileOpsClient& m_fileOps;
     Callbacks m_callbacks;
     AnimationManager m_animations;

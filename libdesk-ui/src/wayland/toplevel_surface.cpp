@@ -1,8 +1,11 @@
 #include "wayland/toplevel_surface.h"
 
 #include "core/log.h"
+#include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
+#include "wayland/dsk_surface_client.h"
 #include "wayland/wayland_connection.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -348,6 +351,15 @@ void ToplevelSurface::
     handleToplevelWmCapabilities(void* /*data*/, xdg_toplevel* /*toplevel*/, wl_array* /*capabilities*/) {}
 
 void ToplevelSurface::destroyRoleObjects() {
+  setParentWindow({});
+  if (m_exported != nullptr) {
+    zxdg_exported_v2_destroy(m_exported);
+    m_exported = nullptr;
+  }
+  m_exportHandle.clear();
+  m_exportReady = {};
+  m_dsk.reset();
+  setShortcutsInhibited(false);
   if (m_decoration != nullptr) {
     zxdg_toplevel_decoration_v1_destroy(m_decoration);
     m_decoration = nullptr;
@@ -359,5 +371,83 @@ void ToplevelSurface::destroyRoleObjects() {
   if (m_xdgSurface != nullptr) {
     xdg_surface_destroy(m_xdgSurface);
     m_xdgSurface = nullptr;
+  }
+}
+
+namespace {
+  constexpr std::string_view kPortalPrefix = "wayland:";
+} // namespace
+
+void ToplevelSurface::setParentWindow(std::string_view handle) {
+  if (m_imported != nullptr) {
+    zxdg_imported_v2_destroy(m_imported);
+    m_imported = nullptr;
+  }
+  zxdg_importer_v2* importer = m_connection.foreignImporter();
+  if (importer == nullptr || m_surface == nullptr || !handle.starts_with(kPortalPrefix) ||
+      handle.size() == kPortalPrefix.size()) {
+    return;
+  }
+  static constexpr zxdg_imported_v2_listener kListener{.destroyed = &ToplevelSurface::handleImportedDestroyed};
+  const std::string exported(handle.substr(kPortalPrefix.size()));
+  m_imported = zxdg_importer_v2_import_toplevel(importer, exported.c_str());
+  zxdg_imported_v2_add_listener(m_imported, &kListener, this);
+  zxdg_imported_v2_set_parent_of(m_imported, m_surface);
+}
+
+void ToplevelSurface::handleImportedDestroyed(void* data, zxdg_imported_v2* imported) {
+  auto* self = static_cast<ToplevelSurface*>(data);
+  if (self->m_imported == imported) {
+    self->m_imported = nullptr;
+  }
+  zxdg_imported_v2_destroy(imported);
+}
+
+void ToplevelSurface::exportHandle(std::function<void(const std::string& handle)> ready) {
+  zxdg_exporter_v2* exporter = m_connection.foreignExporter();
+  if (exporter == nullptr || m_surface == nullptr) {
+    ready({});
+    return;
+  }
+  if (!m_exportHandle.empty()) {
+    ready(m_exportHandle);
+    return;
+  }
+  m_exportReady = std::move(ready);
+  if (m_exported == nullptr) {
+    static constexpr zxdg_exported_v2_listener kListener{.handle = &ToplevelSurface::handleExportedHandle};
+    m_exported = zxdg_exporter_v2_export_toplevel(exporter, m_surface);
+    zxdg_exported_v2_add_listener(m_exported, &kListener, this);
+  }
+}
+
+void ToplevelSurface::handleExportedHandle(void* data, zxdg_exported_v2* /*exported*/, const char* handle) {
+  auto* self = static_cast<ToplevelSurface*>(data);
+  self->m_exportHandle = std::string(kPortalPrefix) + handle;
+  if (auto ready = std::exchange(self->m_exportReady, {})) {
+    ready(self->m_exportHandle);
+  }
+}
+
+bool ToplevelSurface::setCaptureSecure(bool secure) {
+  dsk_surface_manager_v1* manager = m_connection.dskSurfaceManager();
+  if (manager == nullptr || m_surface == nullptr) {
+    return false;
+  }
+  if (m_dsk == nullptr) {
+    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface);
+  }
+  return m_dsk->setSecure(secure);
+}
+
+void ToplevelSurface::setShortcutsInhibited(bool inhibited) {
+  if (inhibited == (m_shortcutsInhibitor != nullptr)) {
+    return;
+  }
+  if (!inhibited) {
+    zwp_keyboard_shortcuts_inhibitor_v1_destroy(m_shortcutsInhibitor);
+    m_shortcutsInhibitor = nullptr;
+  } else if (m_surface != nullptr) {
+    m_shortcutsInhibitor = m_connection.inhibitShortcuts(m_surface);
   }
 }

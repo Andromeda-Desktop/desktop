@@ -6,7 +6,6 @@
 #include "viewer_tabs.h"
 #include "viewer_window.h"
 #include "app/file_chooser.h"
-#include "app/foreign_export.h"
 #include "wayland/wayland_connection.h"
 
 #include <gio/gio.h>
@@ -142,10 +141,7 @@ namespace viewer {
     if (m_chooser == nullptr) {
       m_chooser = std::make_unique<desk::FileChooser>(*bus());
     }
-    if (m_export == nullptr) {
-      m_export = std::make_unique<desk::ForeignExport>(loop().wayland().display());
-    }
-    m_export->handle(window->wlSurface(), [this, window](const std::string& parent) {
+    window->exportHandle([this, window](const std::string& parent) {
       m_chooser->openFile(parent, "Open", [this, window](std::optional<std::filesystem::path> path) {
         // The window may have closed while the dialog showed.
         if (const auto it = m_windows.find(window); path && it != m_windows.end()) {

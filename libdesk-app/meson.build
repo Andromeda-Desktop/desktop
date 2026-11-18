@@ -45,20 +45,8 @@ _deps = [
 _inc = include_directories('src')
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
-_scanner = find_program('wayland-scanner')
-_foreign_xml = dependency('wayland-protocols').get_variable('pkgdatadir') / 'unstable/xdg-foreign/xdg-foreign-unstable-v2.xml'
-_foreign = [
-  custom_target('xdg-foreign-v2-client-header', input: _foreign_xml,
-    output: 'xdg-foreign-unstable-v2-client-protocol.h', command: [_scanner, 'client-header', '@INPUT@', '@OUTPUT@']),
-  custom_target('xdg-foreign-v2-client-source', input: _foreign_xml,
-    output: 'xdg-foreign-unstable-v2-client-protocol.c', command: [_scanner, 'private-code', '@INPUT@', '@OUTPUT@']),
-]
-
 desk_app_lib = static_library('desk_app',
-  _foreign,
   sources: files(
-    'src/app/foreign_export.cpp',
-    'src/app/foreign_parent.cpp',
     'src/app/app_loop.cpp',
     'src/app/appearance.cpp',
     'src/app/file_chooser.cpp',

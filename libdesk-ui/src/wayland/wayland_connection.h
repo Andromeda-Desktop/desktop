@@ -40,6 +40,8 @@ struct zwp_keyboard_shortcuts_inhibit_manager_v1;
 struct zwp_keyboard_shortcuts_inhibitor_v1;
 struct ext_background_effect_manager_v1;
 struct dsk_surface_manager_v1;
+struct zxdg_exporter_v2;
+struct zxdg_importer_v2;
 struct xdg_activation_v1;
 struct xdg_system_bell_v1;
 struct zxdg_decoration_manager_v1;
@@ -188,6 +190,9 @@ public:
   [[nodiscard]] ext_background_effect_manager_v1* backgroundEffectManager() const noexcept;
   // Our compositor only (dsk_surface_v1: compositor-run shape, elevation, motion, gestures); nullptr elsewhere.
   [[nodiscard]] dsk_surface_manager_v1* dskSurfaceManager() const noexcept { return m_dskSurfaceManager; }
+  // xdg-foreign v2; nullptr when the compositor has none.
+  [[nodiscard]] zxdg_exporter_v2* foreignExporter() const noexcept { return m_foreignExporter; }
+  [[nodiscard]] zxdg_importer_v2* foreignImporter() const noexcept { return m_foreignImporter; }
   [[nodiscard]] wp_fractional_scale_manager_v1* fractionalScaleManager() const noexcept;
   [[nodiscard]] hyprland_focus_grab_manager_v1* hyprlandFocusGrabManager() const noexcept;
   [[nodiscard]] FocusGrabService* focusGrabService() const noexcept;
@@ -277,6 +282,8 @@ public:
 
   [[nodiscard]] std::unique_ptr<Toplevel> createToplevel() override;
   [[nodiscard]] std::unique_ptr<Popup> createPopup() override;
+  [[nodiscard]] std::unique_ptr<Subsurface> createSubsurface() override;
+  [[nodiscard]] OutputId firstOutputId() const noexcept override;
   [[nodiscard]] OutputId lastPointerOutputId() const noexcept override;
   [[nodiscard]] std::optional<OutputInfo> outputInfo(OutputId output) const override;
   [[nodiscard]] Surface* pointerSurface() const noexcept override;
@@ -366,6 +373,8 @@ private:
   zwp_keyboard_shortcuts_inhibit_manager_v1* m_shortcutsInhibitManager = nullptr;
   ext_background_effect_manager_v1* m_backgroundEffectManager = nullptr;
   dsk_surface_manager_v1* m_dskSurfaceManager = nullptr;
+  zxdg_exporter_v2* m_foreignExporter = nullptr;
+  zxdg_importer_v2* m_foreignImporter = nullptr;
   wp_fractional_scale_manager_v1* m_fractionalScaleManager = nullptr;
   hyprland_focus_grab_manager_v1* m_hyprlandFocusGrabManager = nullptr;
   zwlr_output_manager_v1* m_outputManager = nullptr;

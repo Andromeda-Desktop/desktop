@@ -17,6 +17,7 @@
 #include "presentation-time-client-protocol.h"
 #include "wayland/drag_and_drop.h"
 #include "wayland/popup_surface.h"
+#include "wayland/subsurface.h"
 #include "wayland/toplevel_surface.h"
 #include "wayland/primary_selection.h"
 #include "primary-selection-unstable-v1-client-protocol.h"
@@ -28,6 +29,7 @@
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-system-bell-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
+#include "xdg-foreign-unstable-v2-client-protocol.h"
 #include "xdg-output-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -1320,6 +1322,12 @@ std::unique_ptr<Toplevel> WaylandConnection::createToplevel() { return std::make
 
 std::unique_ptr<Popup> WaylandConnection::createPopup() { return std::make_unique<PopupSurface>(*this); }
 
+std::unique_ptr<Subsurface> WaylandConnection::createSubsurface() { return std::make_unique<WaylandSubsurface>(*this); }
+
+OutputId WaylandConnection::firstOutputId() const noexcept {
+  return m_outputs.empty() ? OutputId::None : outputId(m_outputs.front().output);
+}
+
 OutputId WaylandConnection::lastPointerOutputId() const noexcept { return outputId(lastPointerOutput()); }
 
 std::optional<OutputInfo> WaylandConnection::outputInfo(OutputId output) const {
@@ -1558,6 +1566,16 @@ void WaylandConnection::bindGlobal(
     return;
   }
 
+  if (interfaceName == zxdg_exporter_v2_interface.name) {
+    m_foreignExporter = static_cast<zxdg_exporter_v2*>(wl_registry_bind(registry, name, &zxdg_exporter_v2_interface, 1));
+    return;
+  }
+
+  if (interfaceName == zxdg_importer_v2_interface.name) {
+    m_foreignImporter = static_cast<zxdg_importer_v2*>(wl_registry_bind(registry, name, &zxdg_importer_v2_interface, 1));
+    return;
+  }
+
   if (interfaceName == dsk_surface_manager_v1_interface.name) {
     m_dskSurfaceManager =
         static_cast<dsk_surface_manager_v1*>(wl_registry_bind(registry, name, &dsk_surface_manager_v1_interface, std::min(version, 17U)));
@@ -1732,6 +1750,14 @@ void WaylandConnection::cleanup() {
   if (m_dskSurfaceManager != nullptr) {
     dsk_surface_manager_v1_destroy(m_dskSurfaceManager);
     m_dskSurfaceManager = nullptr;
+  }
+  if (m_foreignExporter != nullptr) {
+    zxdg_exporter_v2_destroy(m_foreignExporter);
+    m_foreignExporter = nullptr;
+  }
+  if (m_foreignImporter != nullptr) {
+    zxdg_importer_v2_destroy(m_foreignImporter);
+    m_foreignImporter = nullptr;
   }
   if (m_backgroundEffectManager != nullptr) {
     ext_background_effect_manager_v1_destroy(m_backgroundEffectManager);
