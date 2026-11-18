@@ -48,6 +48,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <functional>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -1428,20 +1429,25 @@ std::unique_ptr<Flex> SettingsWindow::buildHeaderRow(
           .configure = [](Button& button) { button.setTabStop(false); },
       })
   );
-  if (Style::closeButtonsEnabled()) {
+  const auto windowButton = [&](const char* glyph, std::function<void()> onClick) {
     row->addChild(
         ui::button({
-            .glyph = "close",
+            .glyph = glyph,
             .glyphSize = Tokens::sizeSymbolInline * scale,
             .variant = ButtonVariant::Default,
             .minWidth = Tokens::sizeControlS * scale,
             .minHeight = Tokens::sizeControlS * scale,
             .padding = 0.0F,
             .radius = Tokens::sizeControlS * 0.5F * scale,
-            .onClick = [this] { close(); },
+            .onClick = std::move(onClick),
             .configure = [](Button& button) { button.setTabStop(false); },
         })
     );
+  };
+  windowButton("minus", [this] { m_surface->setMinimized(); });
+  windowButton("square", [this] { m_surface->setMaximized(!m_surface->state().maximized); });
+  if (Style::closeButtonsEnabled()) {
+    windowButton("close", [this] { close(); });
   }
   return row;
 }
