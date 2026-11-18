@@ -241,6 +241,10 @@ saturation = 1.6
 # Liquid glass lens: refractive index of the bezel (Snell's law; crown glass 1.5).
 [lens]
 ior = 1.5
+# Glass edge hairline width, logical px (scaled by the output and ui scale).
+rim_width = 1.5
+# Extra edge brightness right at the pointer: 0.4 = 1.4x, falling to 0 at kPointerLightReach.
+rim_pointer_boost = 0.4
 
 # Light-scheme recipe; the shell applies it to the compositor while the shell mode is light.
 [blur_light]

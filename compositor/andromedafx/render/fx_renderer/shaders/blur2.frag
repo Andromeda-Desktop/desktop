@@ -142,6 +142,7 @@ float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr,
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
 float lens_shift(float t);
+float rim_edge(float d, float scale);
 float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d);
 float smooth_union(float a, float b, float k);
 
@@ -196,8 +197,7 @@ void main() {
       texcoord -= normal * (shift * liquid) * liquid_texel;
       lens_uv = texcoord - normal * (shift * 0.6 * lens) * liquid_texel;
       lens_weight = lens * sag * 0.85;
-      float inner = clamp(1.0 + (d + 0.5) / 2.5, 0.0, 1.0);
-      float edge = inner * inner;
+            float edge = rim_edge(d, liquid_scale);
       float facing = rim_facing(normal, p, light, light.z > 0.0 ? liquid_distance(light.xy) : 0.0);
       float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
       specular = shine * (0.08 * glow * glow + 0.45 * edge) * facing;

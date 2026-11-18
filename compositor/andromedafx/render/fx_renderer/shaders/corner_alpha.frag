@@ -62,6 +62,12 @@ float smooth_union(float a, float b, float k) {
 // How much a rim pixel at p (outward normal) faces the key light, y-down. The light sits at the top-left, or, within
 // light.z render px of the pointer (light.xy, distance light_d from the shape), at the rim nearest the pointer: toward
 // it from outside the shape, away from it inside. The pointer also brightens the key glint up to 2x.
+// The edge hairline: 1 at the clip edge, 0 TOKEN_LENS_RIM_WIDTH logical px inside it; d = signed distance, px.
+float rim_edge(float d, float scale) {
+  float inner = clamp(1.0 + (d + 0.5) / (TOKEN_LENS_RIM_WIDTH * scale), 0.0, 1.0);
+  return inner * inner;
+}
+
 float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d) {
   vec2 dir = vec2(-0.70710678);
   float near = 0.0;
@@ -73,7 +79,7 @@ float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d) {
     dir = length(mixed) > 1e-3 ? normalize(mixed) : dir;
   }
   float l = dot(normal, dir);
-  return 0.1 + (1.0 + near) * pow(max(l, 0.0), 8.0) + 0.4 * pow(max(-l, 0.0), 8.0);
+  return 0.1 + (1.0 + TOKEN_LENS_RIM_POINTER_BOOST * near) * pow(max(l, 0.0), 8.0) + 0.4 * pow(max(-l, 0.0), 8.0);
 }
 
 #ifdef CORNER_FLARES
