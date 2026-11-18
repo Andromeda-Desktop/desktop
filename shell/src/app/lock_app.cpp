@@ -6,6 +6,7 @@
 #include "app/main_loop.h"
 #include "app/timer_poll_source.h"
 #include "compositors/compositor_platform.h"
+#include "compositors/event_stream_poll_source.h"
 #include "compositors/keyboard_layout_poll_source.h"
 #include "compositors/shell_wayland_connection.h"
 #include "config/config_poll_source.h"
@@ -487,6 +488,7 @@ namespace {
       sources.push_back(&m_configPoll);
       sources.push_back(&m_timerPoll);
       sources.push_back(&m_keyRepeatPoll);
+      sources.push_back(&m_eventStreamPoll);
       sources.push_back(&m_keyboardLayoutPoll);
       sources.push_back(&m_lockKeysPoll);
       sources.push_back(&m_pixelStreams);
@@ -495,7 +497,7 @@ namespace {
     }
 
     ShellWaylandConnection m_wayland;
-    CompositorPlatform m_platform{m_wayland};
+    CompositorPlatform m_platform{m_wayland, CompositorPlatform::Role::Lock};
     ConfigService m_config;
     HttpClient m_http;
     noctalia::theme::ThemeService m_theme{m_config, m_http};
@@ -533,6 +535,7 @@ namespace {
     ConfigPollSource m_configPoll{m_config};
     TimerPollSource m_timerPoll;
     KeyRepeatPollSource m_keyRepeatPoll{m_wayland};
+    EventStreamPollSource m_eventStreamPoll{m_platform};
     KeyboardLayoutPollSource m_keyboardLayoutPoll{m_platform};
     LockKeysPollSource m_lockKeysPoll{m_lockKeys};
 

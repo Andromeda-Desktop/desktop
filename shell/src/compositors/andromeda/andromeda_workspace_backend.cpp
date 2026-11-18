@@ -38,7 +38,9 @@ namespace {
 } // namespace
 
 AndromedaWorkspaceBackend::AndromedaWorkspaceBackend(compositors::andromeda::AndromedaRuntime& runtime)
-    : compositors::andromeda::AndromedaEventHandler(runtime) {}
+    : compositors::andromeda::AndromedaEventHandler(
+          runtime, {"windows", "overview", "workspaces", "outputs", "workspace_slide"}
+      ) {}
 
 AndromedaWorkspaceBackend::~AndromedaWorkspaceBackend() { cleanup(); }
 

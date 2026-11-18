@@ -48,6 +48,8 @@ namespace compositors::andromeda {
     void ensureResolved() const;
     void resolveSocketPath() const;
 
+    [[nodiscard]] std::vector<std::string_view> newFamilies(const AndromedaEventHandler* added) const;
+    [[nodiscard]] static std::string subscribeRequests(const std::vector<std::string_view>& families);
     void connectIfNeeded();
     void closeSocket(bool scheduleReconnect);
     void scheduleReconnect();

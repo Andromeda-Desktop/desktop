@@ -2,9 +2,12 @@
 
 #include "compositors/andromeda/andromeda_runtime.h"
 
+#include <utility>
+
 namespace compositors::andromeda {
 
-  AndromedaEventHandler::AndromedaEventHandler(AndromedaRuntime& runtime) : m_runtime(runtime) {
+  AndromedaEventHandler::AndromedaEventHandler(AndromedaRuntime& runtime, std::vector<std::string_view> families)
+      : m_runtime(runtime), m_families(std::move(families)) {
     m_runtime.registerEventHandler(this);
   }
 

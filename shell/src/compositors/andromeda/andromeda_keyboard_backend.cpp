@@ -39,7 +39,7 @@ namespace {
 } // namespace
 
 AndromedaKeyboardBackend::AndromedaKeyboardBackend(compositors::andromeda::AndromedaRuntime& runtime)
-    : compositors::andromeda::AndromedaEventHandler(runtime) {}
+    : compositors::andromeda::AndromedaEventHandler(runtime, {"keyboard_layout"}) {}
 
 bool AndromedaKeyboardBackend::isAvailable() const noexcept { return m_runtime.available(); }
 

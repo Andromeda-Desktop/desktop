@@ -36,7 +36,7 @@ namespace {
 } // namespace
 
 AndromedaOutputBackend::AndromedaOutputBackend(compositors::andromeda::AndromedaRuntime& runtime)
-    : compositors::andromeda::AndromedaEventHandler(runtime) {}
+    : compositors::andromeda::AndromedaEventHandler(runtime, {"workspaces", "outputs"}) {}
 
 std::optional<std::string> AndromedaOutputBackend::focusedOutputName() const { return m_focusedOutput; }
 

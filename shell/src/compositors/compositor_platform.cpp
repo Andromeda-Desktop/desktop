@@ -230,10 +230,12 @@ namespace {
 
 } // namespace
 
-CompositorPlatform::CompositorPlatform(ShellWaylandConnection& wayland)
+CompositorPlatform::CompositorPlatform(ShellWaylandConnection& wayland, Role role)
     : m_wayland(wayland), m_runtimeRegistry(std::make_unique<compositors::CompositorRuntimeRegistry>()),
       m_workspaces(std::make_unique<WaylandWorkspaces>()) {
-  m_workspaceMetadataBackend = createWorkspaceMetadataBackend(*m_runtimeRegistry);
+  if (role == Role::Shell) {
+    m_workspaceMetadataBackend = createWorkspaceMetadataBackend(*m_runtimeRegistry);
+  }
   if (m_workspaceMetadataBackend != nullptr) {
     m_workspaceMetadataBackend->setWindowChangeCallback([this] { notifyToplevelsChanged(); });
     m_workspaceMetadataBackend->setSlideChangeCallback([this] { m_workspaceSlideChanged.emit(); });
@@ -787,6 +789,22 @@ void CompositorPlatform::dispatchWorkspacePoll(const std::vector<pollfd>& fds, s
     }
     m_workspaceMetadataBackend->dispatchPoll(revents);
   }
+}
+
+void CompositorPlatform::addEventStreamPollFds(std::vector<pollfd>& fds) const {
+  if (const auto& runtime = m_runtimeRegistry->andromeda(); runtime.pollFd() >= 0) {
+    fds.push_back({.fd = runtime.pollFd(), .events = runtime.pollEvents(), .revents = 0});
+  }
+}
+
+int CompositorPlatform::eventStreamPollTimeoutMs() const noexcept {
+  return compositors::isAndromeda() ? m_runtimeRegistry->andromeda().pollTimeoutMs() : -1;
+}
+
+void CompositorPlatform::dispatchEventStreamPoll(const std::vector<pollfd>& fds, std::size_t startIdx) {
+  auto& runtime = m_runtimeRegistry->andromeda();
+  const bool polled = runtime.pollFd() >= 0 && startIdx < fds.size() && fds[startIdx].fd == runtime.pollFd();
+  runtime.dispatchPoll(polled ? fds[startIdx].revents : 0);
 }
 
 std::vector<Workspace> CompositorPlatform::workspaces() const {

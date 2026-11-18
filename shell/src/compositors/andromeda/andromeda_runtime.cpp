@@ -26,8 +26,7 @@ namespace compositors::andromeda {
     constexpr auto kReconnectInitial = std::chrono::seconds(2);
     constexpr auto kReconnectMax = std::chrono::seconds(30);
     constexpr std::size_t kReadBufferMaxBytes = 1024U * 1024U;
-    constexpr std::string_view kEventStreamRequest =
-        R"({"cmd":"subscribe","events":["windows","overview","keyboard_layout","workspaces","outputs"]})";
+    constexpr std::string_view kSlideFamily = "workspace_slide";
     // A request of its own: a compositor that predates workspace_slide rejects only this one.
     constexpr std::string_view kSlideStreamRequest = R"({"cmd":"subscribe","events":["workspace_slide"]})";
     constexpr std::string_view kSlideStreamUnknown = "unknown subscription event: workspace_slide";
@@ -230,12 +229,56 @@ namespace compositors::andromeda {
     notifyStreamReset();
   }
 
+  std::vector<std::string_view> AndromedaRuntime::newFamilies(const AndromedaEventHandler* added) const {
+    std::vector<std::string_view> wanted;
+    const auto collect = [&wanted](const AndromedaEventHandler& handler) {
+      for (const auto family : handler.families()) {
+        if (!std::ranges::contains(wanted, family)) {
+          wanted.push_back(family);
+        }
+      }
+    };
+    if (added == nullptr) {
+      for (const auto* handler : m_eventHandlers) {
+        collect(*handler);
+      }
+      return wanted;
+    }
+    std::vector<std::string_view> known;
+    for (const auto* handler : m_eventHandlers) {
+      known.insert(known.end(), handler->families().begin(), handler->families().end());
+    }
+    collect(*added);
+    std::erase_if(wanted, [&known](std::string_view family) { return std::ranges::contains(known, family); });
+    return wanted;
+  }
+
+  std::string AndromedaRuntime::subscribeRequests(const std::vector<std::string_view>& families) {
+    auto plain = families;
+    const auto wantsSlide = std::erase(plain, kSlideFamily) > 0;
+    std::string requests;
+    if (!plain.empty()) {
+      requests = nlohmann::json{{"cmd", "subscribe"}, {"events", plain}}.dump();
+      requests.push_back('\n');
+    }
+    if (wantsSlide) {
+      requests.append(kSlideStreamRequest);
+      requests.push_back('\n');
+    }
+    return requests;
+  }
+
   void AndromedaRuntime::registerEventHandler(AndromedaEventHandler* handler) {
     if (handler == nullptr || std::ranges::contains(m_eventHandlers, handler)) {
       return;
     }
+    const auto fresh = newFamilies(handler);
     m_eventHandlers.push_back(handler);
-    if (available()) {
+    if (m_eventSocketFd >= 0) {
+      if (!writeAll(m_eventSocketFd, subscribeRequests(fresh))) {
+        closeSocket(true);
+      }
+    } else if (available()) {
       connectIfNeeded();
     }
   }
@@ -322,10 +365,7 @@ namespace compositors::andromeda {
       return;
     }
 
-    std::string subscribe(kEventStreamRequest);
-    subscribe.push_back('\n');
-    subscribe.append(kSlideStreamRequest);
-    subscribe.push_back('\n');
+    const std::string subscribe = subscribeRequests(newFamilies(nullptr));
     if (!writeAll(fd, subscribe)) {
       ::close(fd);
       scheduleReconnect();

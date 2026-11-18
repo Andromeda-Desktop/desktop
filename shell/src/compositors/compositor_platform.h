@@ -41,7 +41,10 @@ class CompositorPlatform {
 public:
   using ChangeCallback = std::function<void()>;
 
-  explicit CompositorPlatform(ShellWaylandConnection& wayland);
+  // Lock builds only the backends the lock screen reads, so its event stream stays small.
+  enum class Role : std::uint8_t { Shell, Lock };
+
+  explicit CompositorPlatform(ShellWaylandConnection& wayland, Role role = Role::Shell);
   ~CompositorPlatform();
 
   CompositorPlatform(const CompositorPlatform&) = delete;
@@ -159,6 +162,9 @@ public:
   std::size_t addWorkspacePollFds(std::vector<pollfd>& fds) const;
   [[nodiscard]] int workspacePollTimeoutMs() const noexcept;
   void dispatchWorkspacePoll(const std::vector<pollfd>& fds, std::size_t startIdx);
+  void addEventStreamPollFds(std::vector<pollfd>& fds) const;
+  [[nodiscard]] int eventStreamPollTimeoutMs() const noexcept;
+  void dispatchEventStreamPoll(const std::vector<pollfd>& fds, std::size_t startIdx);
   [[nodiscard]] std::vector<Workspace> workspaces() const;
   [[nodiscard]] std::vector<Workspace> workspaces(wl_output* output) const;
   [[nodiscard]] std::unordered_map<std::string, std::vector<std::string>>
