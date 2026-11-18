@@ -189,9 +189,9 @@ stroke = "#ffffff14"
 edge = "#ffffff1f"
 lens = "#ffffff24"
 lens_edge = "#ffffff2e"
-tint_thin = "#1c1c208c"
-tint_regular = "#1c1c20b3"
-tint_thick = "#202024eb"
+tint_thin = "#38383f8c"
+tint_regular = "#38383fb3"
+tint_thick = "#38383feb"
 solid_thin = "#1c1c20ff"
 solid_regular = "#222226ff"
 solid_thick = "#28282cff"
@@ -234,9 +234,9 @@ diff_del = "#ff8f871f"
 passes = 3
 radius = 6
 noise = 0.02
-brightness = 0.95
+brightness = 1.04
 contrast = 0.95
-saturation = 1.6
+saturation = 1.25
 
 # Liquid glass lens: refractive index of the bezel (Snell's law; crown glass 1.5).
 [lens]
@@ -405,6 +405,7 @@ height = 56.0
 radius = "= component.sheet.radius - component.sheet.padding"
 padding = 12.0
 gap = 12.0           # R4: round icon to text
+drop_glyph = 20.0    # concept C drop icon
 
 [component.round_icon]
 size = 40.0          # concept C cap icon well

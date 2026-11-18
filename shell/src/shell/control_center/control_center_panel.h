@@ -74,6 +74,8 @@ public:
   void onClose() override;
   // The quick page draws each card as its own glass; other pages sit on the sheet.
   [[nodiscard]] bool usesGlassPieces() const override { return m_activeTab == TabId::Quick; }
+  // Glass pieces sit at the panel edge (mockup: 8 px from the bar and the screen edge); the sheet pads its pages.
+  [[nodiscard]] bool padsContent() const noexcept override { return m_activeTab != TabId::Quick; }
   [[nodiscard]] bool dismissTransientUi() override;
   [[nodiscard]] bool isContextActive(std::string_view context) const override;
   [[nodiscard]] std::string activeContext() const override { return kTabs[static_cast<std::size_t>(m_activeTab)].key; }

@@ -122,7 +122,7 @@ namespace {
   // A Button's own hit area has z-index 1 and covers its children; nested buttons must sit above it.
   constexpr std::int32_t kAboveCardArea = 2;
 
-  std::string percent(float value) { return std::format("{}%", static_cast<int>(std::lround(value * 100.0F))); }
+  std::string percent(float value) { return std::format("{} %", static_cast<int>(std::lround(value * 100.0F))); }
 
   std::unique_ptr<Label> makeLabel(Label*& out, const Tokens::Type& type, float scale, ColorRole role) {
     auto label = std::make_unique<Label>();
@@ -450,6 +450,7 @@ std::unique_ptr<Flex> QuickPage::makeDropTile(std::string_view type) {
   body->setPadding(0.0F);
   tile.icon->setControlHeight(size);
   tile.icon->setMinWidth(size);
+  tile.icon->setGlyphSize(Tokens::componentTileDropGlyph * s);
   tile.icon->setRadius(size * 0.5F);
   tile.card = card.get();
   return card;
@@ -1241,7 +1242,7 @@ void QuickPage::syncFooter() {
   if (battery) {
     m_batteryGlyph->setGlyph(batteryGlyphName(state->percentage, state->state));
     // The glyph already shows the charge state (plugged in, charging), so the text is the level only.
-    m_batteryText->setText(std::format("{:.0F}%", state->percentage));
+    m_batteryText->setText(std::format("{:.0F} %", state->percentage));
   }
   const std::size_t unread = m_services.notifications != nullptr ? m_services.notifications->unreadNotificationCount() : 0;
   m_unreadBadge->setVisible(unread > 0);

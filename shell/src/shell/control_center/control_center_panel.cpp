@@ -102,7 +102,7 @@ ControlCenterPanel::ControlCenterPanel(const ControlCenterServices& services) {
 }
 
 float ControlCenterPanel::preferredWidth() const {
-  return (kQuickSheetWidth + Style::panelPadding * 2.0F) * m_contentScale;
+  return (kQuickSheetWidth + (padsContent() ? Style::panelPadding * 2.0F : 0.0F)) * m_contentScale;
 }
 
 bool ControlCenterPanel::fitsContentHeight() const noexcept { return true; }
