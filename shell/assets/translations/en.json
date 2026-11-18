@@ -1427,6 +1427,7 @@
       "delete": "Delete",
       "earlier": "Earlier",
       "image": "Image",
+      "open": "Open",
       "pin": "Pin",
       "pinned": "Pinned",
       "size": "Size",
@@ -5554,7 +5555,6 @@
             "off": "Off"
           }
         },
-        "layout-gap": {
         "appearance-title-bar-style": {
           "label": "Title Bar Style",
           "description": "The look of the window buttons",
@@ -5572,6 +5572,7 @@
             "right": "Right"
           }
         },
+        "layout-gap": {
           "label": "Gaps",
           "description": "Space between windows and around the screen edge"
         },
