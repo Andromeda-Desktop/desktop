@@ -196,8 +196,8 @@ def emit_glsl(tokens, out_path):
             elif isinstance(value, (int, float)) and not isinstance(value, bool):
                 out.append(f"#define TOKEN_{'_'.join(path + (key,)).upper()} {float(value)!r}")
 
-    # Only the radius group: shaders.c joins sources into fixed-size buffers.
-    walk({"radius": tokens.get("radius", {})}, ())
+    # Only the shader groups: shaders.c joins sources into fixed-size buffers.
+    walk({"radius": tokens.get("radius", {}), "lens": tokens.get("lens", {})}, ())
     with open(out_path, "w") as f:
         f.write("\n".join(out) + "\n")
 

@@ -134,6 +134,7 @@ float rounded_rect_distance_at(
 float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
+float lens_shift(float t);
 
 float liquid_distance(vec2 point) {
   if (liquid_radius >= 0.0) {
@@ -168,8 +169,9 @@ void main() {
       normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
       float sag = lens_sag(t);
-      texcoord -= normal * (sag * band * 0.5 * liquid) * liquid_texel;
-      lens_uv = texcoord - normal * (sag * band * 0.3 * lens) * liquid_texel;
+      float shift = lens_shift(t) * band;
+      texcoord -= normal * (shift * liquid) * liquid_texel;
+      lens_uv = texcoord - normal * (shift * 0.6 * lens) * liquid_texel;
       lens_weight = lens * sag * 0.85;
       float inner = clamp(1.0 + (d + 0.5) / 2.5, 0.0, 1.0);
       float edge = inner * inner;

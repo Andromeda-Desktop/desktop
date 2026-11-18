@@ -42,6 +42,17 @@ float liquid_band(vec2 size, float liquid, float scale) {
 // backdrop bends hardest at the rim and the flat interior has no seam.
 float lens_sag(float t) { return 1.0 - sqrt(1.0 - t * t); }
 
+// Physical refraction: the inward shift, in band units, of a vertical view ray bent by Snell's law (TOKEN_LENS_IOR)
+// through a convex squircle bezel of height (1 - t^4)^(1/4) bands resting on the backdrop. 0 in the flat interior,
+// about 0.44 near the edge, falling to 0 at the edge where the glass is thin.
+float lens_shift(float t) {
+  float t2 = t * t;
+  float h = sqrt(sqrt(max(1.0 - t2 * t2, 1e-4)));
+  vec2 n = normalize(vec2(t2 * t / (h * h * h), 1.0));
+  vec2 r = refract(vec2(0.0, -1.0), n, 1.0 / TOKEN_LENS_IOR);
+  return h * -r.x / max(-r.y, 1e-3);
+}
+
 #ifdef CORNER_FLARES
 // Coverage of the concave flare of the corner at `corner` (sign = outward direction from the box centre), radius
 // f > 0, along x (`along_x`) or y; -1 when rel is outside that flare's band.

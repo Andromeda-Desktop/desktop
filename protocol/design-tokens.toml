@@ -238,6 +238,10 @@ brightness = 0.95
 contrast = 0.95
 saturation = 1.6
 
+# Liquid glass lens: refractive index of the bezel (Snell's law; crown glass 1.5).
+[lens]
+ior = 1.5
+
 # Light-scheme recipe; the shell applies it to the compositor while the shell mode is light.
 [blur_light]
 brightness = 1.05

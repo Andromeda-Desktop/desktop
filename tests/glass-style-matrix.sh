@@ -12,7 +12,7 @@ OUT=${OUT:-$ROOT/artifacts/glass-style-matrix}
 ANDROMEDA=${ANDROMEDA:-$ROOT/compositor/build-live/andromeda}
 NOCTALIA=${NOCTALIA:-$ROOT/shell/build-f7/andromeda-shell}
 SECONDS_PER=${SECONDS_PER:-4}
-WALLS=${WALLS:-"light dark colour"}
+WALLS=${WALLS:-"light dark colour text"}
 CONFIGS=${CONFIGS:-"rt frosted frosted-noedge frosted-user liquid liquid-clear liquid-tinted"}
 SURFACES=${SURFACES:-"desktop launcher cc settings toast"}
 MODE=${MODE:-1920x1080@60}
@@ -31,6 +31,12 @@ mkdir -p "$WALLDIR"
 magick -size 1280x720 gradient:'#f4f1ea-#d9d2c6' -fill '#ffffff' -draw 'circle 900,200 900,420' -blur 0x30 "$WALLDIR/light.png"
 cp "$ROOT/shell/assets/andromeda-wallpaper.png" "$WALLDIR/dark.png"
 magick -size 1280x720 -seed 7 plasma:'#ff3b6b-#2b7bff' -blur 0x8 -modulate 100,160 "$WALLDIR/colour.png"
+# Fine black-on-white text and a grid: smooth walls hide how the lens bends the backdrop.
+magick -size 1280x720 xc:'#fafafa' -stroke '#3060c0' -strokewidth 1 \
+  -draw "$(for i in $(seq 0 40 1280); do printf 'line %d,0 %d,720 line 0,%d 1280,%d ' "$i" "$i" "$i" "$i"; done)" \
+  -stroke none -fill '#111111' -pointsize 15 \
+  -annotate +0+0 "$(for i in $(seq 1 40); do printf '%s\n' 'The quick brown fox jumps over the lazy dog 0123456789 The quick brown fox jumps over the lazy dog'; done)" \
+  "$WALLDIR/text.png"
 
 boot_headless 1
 [[ -n $NESTED_PARENT ]] || printf '\n[output.HEADLESS-1]\nmode = "%s"\n' "$MODE" >> "$RUNTIME/andromeda.toml"

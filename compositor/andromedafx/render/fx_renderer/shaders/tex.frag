@@ -196,6 +196,7 @@ float rounded_rect_distance_at(
 float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
+float lens_shift(float t);
 
 float liquid_distance(vec2 point) {
   if (liquid_radius >= 0.0) {
@@ -228,10 +229,11 @@ void main() {
       normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
       float sag = lens_sag(t);
-      // Refraction: the convex bezel samples from further inside, up to half the band at the rim.
-      uv -= normal * (sag * band * 0.5 * liquid) * liquid_texel;
+      // Refraction through the bezel: the backdrop is sampled from further inside.
+      float shift = lens_shift(t) * band;
+      uv -= normal * (shift * liquid) * liquid_texel;
       // Lens: the sharp backdrop magnified toward the centre; it fades into the blur over the band.
-      lens_uv = uv - normal * (sag * band * 0.3 * lens) * liquid_texel;
+      lens_uv = uv - normal * (shift * 0.6 * lens) * liquid_texel;
       lens_weight = lens * sag * 0.85;
       // Specular: a reflection, not an outline. Brightest on the outermost pixel (d = -0.5), fading over 2.5 px
       // inward; the coverage mask cuts it outside. pow 8 keeps the key glint on the curves that face the top-left
