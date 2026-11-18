@@ -2955,6 +2955,51 @@ static bool optimized_buffer_fits(const struct fx_gles_render_pass* pass, const 
       && buffer->drm_format == offscreen_buffer_format(pass, false);
 }
 
+static bool blur_data_equal(const struct blur_data* a, const struct blur_data* b) {
+  return a->num_passes == b->num_passes && a->radius == b->radius && a->noise == b->noise
+      && a->brightness == b->brightness && a->contrast == b->contrast && a->saturation == b->saturation;
+}
+
+// The optimized backdrop blurred at the node's strength (below 1) over the whole node box, reused while the backdrop
+// and strength stay the same; NULL when it cannot be rendered.
+static struct fx_framebuffer* strength_blur(
+    struct fx_gles_render_pass* pass, const struct fx_render_blur_pass_options* fx_options
+) {
+  struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
+  struct wlr_box box = fx_options->tex_options.base.dst_box;
+  const struct wlr_box output = {0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height};
+  if (!wlr_box_intersection(&box, &box, &output)) {
+    return NULL;
+  }
+  if (fbos->strength_blur_buffer != NULL && optimized_buffer_fits(pass, fbos->strength_blur_buffer)
+      && fbos->strength_blur_strength == fx_options->blur_strength
+      && fx_options->blur_data != NULL && blur_data_equal(&fbos->strength_blur_data, fx_options->blur_data)
+      && fbos->strength_blur_generation == fbos->optimized_blur_generation) {
+    struct wlr_box covered;
+    if (wlr_box_intersection(&covered, &fbos->strength_blur_box, &box) && wlr_box_equal(&covered, &box)) {
+      return fbos->strength_blur_buffer;
+    }
+  }
+  struct fx_framebuffer* target = ensure_offscreen_buffer(pass, &fbos->strength_blur_buffer, false);
+  if (target == NULL) {
+    return NULL;
+  }
+  pixman_region32_t region;
+  pixman_region32_init_rect(&region, box.x, box.y, box.width, box.height);
+  struct fx_render_blur_pass_options blur_options = *fx_options;
+  blur_options.current_buffer = fbos->optimized_no_blur_buffer;
+  blur_options.tex_options.base.clip = &region;
+  struct fx_framebuffer* blurred = get_main_buffer_blur(pass, &blur_options, NULL);
+  const bool rendered = blurred != NULL && fx_render_pass_read_to_buffer(pass, &region, target, blurred);
+  pixman_region32_fini(&region);
+  fx_framebuffer_bind(pass->buffer);
+  fbos->strength_blur_strength = fx_options->blur_strength;
+  fbos->strength_blur_data = fx_options->blur_data != NULL ? *fx_options->blur_data : (struct blur_data){0};
+  fbos->strength_blur_generation = fbos->optimized_blur_generation;
+  fbos->strength_blur_box = rendered ? box : (struct wlr_box){0};
+  return rendered ? target : NULL;
+}
+
 // True when fx_render_pass_add_texture would draw the full-resolution blur
 // level with nothing beyond the alpha, corners, clipped region and blending
 // that render_blur_composite reproduces.
@@ -3164,12 +3209,17 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // Glass whose strength leaves no blur pass (clear Liquid) tints and bends a copy of the sharp backdrop.
   struct blur_data applied = blur_data_apply_strength(fx_options->blur_data, fx_options->blur_strength);
   const bool sharp_glass = glass && !is_scene_blur_enabled(&applied);
-  const bool fuse = (!use_optimized || has_strength) && !(glass && (probe_due || !glass_fuse)) && !sharp_glass
+  struct fx_framebuffer* buffer_cached = use_optimized && has_strength && !sharp_glass ? strength_blur(pass, fx_options)
+                                                                                      : NULL;
+  const bool fuse = (!use_optimized || has_strength) && buffer_cached == NULL && !(glass && (probe_due || !glass_fuse))
+      && !sharp_glass
       && blur_composite_is_copy(pass, tex_options);
   struct blur_data final_upsample = {0};
   TRACY_ZONE_TEXT_f("Use Optimized Blur: %d", fx_options->use_optimized_blur);
   TRACY_ZONE_TEXT_f("Fused Composite: %d", fuse);
-  if (!use_optimized || has_strength) {
+  if (buffer_cached != NULL) {
+    buffer = buffer_cached;
+  } else if (!use_optimized || has_strength) {
     // Render the blur into its own buffer
     struct fx_render_blur_pass_options blur_options = *fx_options;
     if (use_optimized) {
@@ -3424,6 +3474,7 @@ bool fx_render_pass_add_optimized_blur(
   if (!optimized_buffer_fits(pass, fbos->optimized_blur_buffer)
       || !optimized_buffer_fits(pass, fbos->optimized_no_blur_buffer)) {
     fbos->optimized_blur_valid = false;
+    fbos->optimized_blur_generation++;
     if (getenv("ANDROMEDA_BLUR_DEBUG") != NULL) {
       wlr_log(WLR_INFO, "blur cache buffers replaced (size or format change); cache invalid");
     }
@@ -3450,6 +3501,7 @@ bool fx_render_pass_add_optimized_blur(
     }
     fbos->optimized_blur_valid = rendered;
     fbos->optimized_blur_sdr_tf = linear_sdr_tf(pass);
+    fbos->optimized_blur_generation++;
     if (rendered) {
       int rects = 0;
       const pixman_box32_t* boxes = pixman_region32_rectangles(&clip, &rects);

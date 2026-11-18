@@ -4,8 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <andromedafx/render/effect.h>
+#include <andromedafx/types/fx/blur_data.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/addon.h>
+#include <wlr/util/box.h>
 
 // Scratch buffers sized to the current render target.
 struct fx_target_buffers {
@@ -59,6 +61,16 @@ struct fx_offscreen_buffers {
   // Contains the non-blurred background for tiled windows. Used for blurring
   // optimized surfaces with an alpha. Just as inefficient as the regular blur.
   struct fx_framebuffer* optimized_no_blur_buffer;
+  // Bumped each time the optimized blur buffers are re-rendered or replaced.
+  uint64_t optimized_blur_generation;
+  // optimized_no_blur_buffer blurred with strength_blur_data at strength_blur_strength (below 1), valid inside strength_blur_box while
+  // strength_blur_generation equals optimized_blur_generation: glass over a still backdrop composites it instead of
+  // blurring again each frame.
+  struct fx_framebuffer* strength_blur_buffer;
+  float strength_blur_strength;
+  struct blur_data strength_blur_data;
+  uint64_t strength_blur_generation;
+  struct wlr_box strength_blur_box;
   // Contains the original pixels to draw over the areas where artifact are visible
   struct fx_framebuffer* blur_saved_pixels_buffer;
   // Sized to the output

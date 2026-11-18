@@ -7002,9 +7002,9 @@ static bool should_blur_node_extend_damage(
   switch (node->type) {
   case WLR_SCENE_NODE_BLUR:;
     struct wlr_scene_blur* blur_node = wlr_scene_blur_from_node(node);
-    // No artifact prevention needed when the whole blur is already
-    // rendered
-    if (blur_samples_cache(blur_node) && blur_node->strength == 1.0) {
+    // No artifact prevention needed when the blur comes whole from a cache: the optimized blur at strength 1, the
+    // strength cache (fx_pass.c strength_blur) below it.
+    if (blur_samples_cache(blur_node)) {
       fx_pass->has_blur = true;
       return false;
     }

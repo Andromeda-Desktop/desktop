@@ -88,6 +88,7 @@ static void clear_effect_buffers(struct fx_offscreen_buffers* fbos) {
   clear_target_buffers(&fbos->group);
   drop_framebuffer(&fbos->optimized_blur_buffer);
   drop_framebuffer(&fbos->optimized_no_blur_buffer);
+  drop_framebuffer(&fbos->strength_blur_buffer);
   drop_framebuffer(&fbos->blur_saved_pixels_buffer);
 }
 
