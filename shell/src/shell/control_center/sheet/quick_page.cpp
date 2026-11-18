@@ -14,6 +14,7 @@
 #include "i18n/i18n.h"
 #include "pipewire/pipewire_service.h"
 #include "shell/panel/panel_manager.h"
+#include "shell/tooltip/tooltip_manager.h"
 #include "shell/control_center/bluetooth_glyph.h"
 #include "shell/phone/phone_state.h"
 #include "system/brightness_service.h"
@@ -1002,6 +1003,7 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
   settings->setTooltip(i18n::tr("control-center.quick.settings-tooltip"));
   Button* power = nullptr;
   iconButton(power, "shutdown", [this] {
+    TooltipManager::instance().forceDestroy();
     // The power popover (proto overlays.js): Lock, Sleep, Log Out | Restart…, Shut Down….
     static constexpr std::array<std::string_view, 5> kActions{"lock", "suspend", "logout", "reboot", "shutdown"};
     const std::array<std::string, 5> labels{
@@ -1022,7 +1024,7 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
                                            });
   });
   m_powerButton = power;
-  power->setTooltip(i18n::tr("control-center.shortcuts.session"));
+  power->setTooltip(i18n::tr("control-center.power-menu.title"));
   return footer;
 }
 
