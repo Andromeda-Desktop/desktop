@@ -26,15 +26,16 @@ namespace glass {
     float clarity = 0.0F;
     // Blur size, 0 to 1: blurStrength(clarity).
     float blurStrength = 1.0F;
-    // dsk_surface_v1 liquid [3]: how far a full density raises the tint to kDenseTint, 0 halfway, 1 all the way.
+    // dsk_surface_v1 liquid [3]: how far a full density lifts the tint (denser), 0 halfway, 1 all the way.
     float dense = 0.0F;
 
     bool operator==(const Material&) const = default;
   };
 
-  // Low-contrast backdrops raise the tint to this alpha (Material::dense), so the slider still shows; the colour never
-  // changes.
+  // Low-contrast backdrops raise the lowest Shape tint (kDenseFrom) to this alpha (Material::dense); the colour never
+  // changes. Higher tints move the same fraction of their gap to opaque, so the slider still shows at full density.
   inline constexpr float kDenseTint = 0.84F;
+  inline constexpr float kDenseFrom = 0.30F;
 
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };
@@ -194,7 +195,8 @@ namespace glass {
   // Material::dense.
   [[nodiscard]] inline float denser(float tint, float density, float dense) noexcept {
     const float reach = 0.5F + 0.5F * std::clamp(dense, 0.0F, 1.0F);
-    return tint + reach * (std::max(tint, kDenseTint) - tint) * std::clamp(density, 0.0F, 1.0F);
+    constexpr float lift = (kDenseTint - kDenseFrom) / (1.0F - kDenseFrom);
+    return tint + reach * lift * (1.0F - tint) * std::clamp(density, 0.0F, 1.0F);
   }
 
 } // namespace glass
