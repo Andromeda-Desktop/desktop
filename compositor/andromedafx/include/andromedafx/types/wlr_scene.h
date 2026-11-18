@@ -353,6 +353,10 @@ struct wlr_scene_buffer {
   int dst_width, dst_height;
   enum wl_output_transform transform;
   pixman_region32_t opaque_region;
+  // Node-local area outside of which the buffer is fully transparent (dsk content region); only valid while
+  // has_content_region. Glass above may treat the rest as absent when it picks its blur source.
+  pixman_region32_t content_region;
+  bool has_content_region;
 
   enum wlr_color_transfer_function transfer_function;
   enum wlr_color_named_primaries primaries;
@@ -1182,6 +1186,12 @@ void wlr_scene_buffer_set_buffer_with_options(
  * determine if buffers which reside under this one need to be rendered or not.
  */
 void wlr_scene_buffer_set_opaque_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region);
+
+/**
+ * Sets the node-local area outside of which the buffer draws nothing; NULL means everywhere. Unlike the clip region it
+ * changes neither drawing nor input.
+ */
+void wlr_scene_buffer_set_content_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region);
 
 /**
  * Declares that everything below the buffer is opaque black. A premultiplied buffer over black shows its own color

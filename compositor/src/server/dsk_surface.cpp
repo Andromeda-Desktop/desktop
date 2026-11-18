@@ -10,7 +10,7 @@
 namespace andromeda {
 
   namespace {
-    constexpr int kVersion = 16;
+    constexpr int kVersion = 17;
     constexpr uint32_t kPropertyCount = 13;
     constexpr uint32_t kCurveCount = 16;
     constexpr uint32_t kElevationCount = 3;
@@ -55,6 +55,7 @@ namespace andromeda {
       .launch_from = handleLaunchFrom,
       .set_glass_mask = handleSetGlassMask,
       .set_secure = handleSetSecure,
+      .set_content_region = handleSetContentRegion,
   };
 
   const struct dsk_shape_v1_interface DskSurfaceManager::kShapeImplementation = {
@@ -434,18 +435,28 @@ namespace andromeda {
     );
   }
 
+  namespace {
+    // A wl_region as boxes; null means the whole surface.
+    std::optional<std::vector<pixman_box32_t>> regionBoxes(wl_resource* region) {
+      if (region == nullptr) {
+        return std::nullopt;
+      }
+      int count = 0;
+      const pixman_box32_t* boxes = pixman_region32_rectangles(wlr_region_from_resource(region), &count);
+      return std::vector<pixman_box32_t>(boxes, boxes + count);
+    }
+  } // namespace
+
   void DskSurfaceManager::handleSetVisibleRegion(wl_client* /*client*/, wl_resource* resource, wl_resource* region) {
-    Surface* state = fromResource(resource);
-    if (state == nullptr) {
-      return;
+    if (Surface* state = fromResource(resource)) {
+      state->pendingVisibleRegion = regionBoxes(region);
     }
-    if (region == nullptr) {
-      state->pendingVisibleRegion.emplace();
-      return;
+  }
+
+  void DskSurfaceManager::handleSetContentRegion(wl_client* /*client*/, wl_resource* resource, wl_resource* region) {
+    if (Surface* state = fromResource(resource)) {
+      state->pendingContentRegion = regionBoxes(region);
     }
-    int count = 0;
-    const pixman_box32_t* boxes = pixman_region32_rectangles(wlr_region_from_resource(region), &count);
-    state->pendingVisibleRegion = std::vector<pixman_box32_t>(boxes, boxes + count);
   }
 
   void DskSurfaceManager::handleSetGlassMask(
@@ -667,6 +678,10 @@ namespace andromeda {
     if (state->pendingVisibleRegion) {
       state->current.visibleRegion = std::move(*state->pendingVisibleRegion);
       state->pendingVisibleRegion.reset();
+    }
+    if (state->pendingContentRegion) {
+      state->current.contentRegion = std::move(*state->pendingContentRegion);
+      state->pendingContentRegion.reset();
     }
     if (state->pendingGlassMaskSet) {
       if (state->current.glassMask != nullptr) {

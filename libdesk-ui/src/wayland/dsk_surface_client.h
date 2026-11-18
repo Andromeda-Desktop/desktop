@@ -73,6 +73,10 @@ public:
   // Protocol version 8: the surface-local area outside of which every pixel is transparent, shadows included; null
   // = the whole surface. Applies on the next commit. False when the compositor lacks it.
   bool setVisibleRegion(wl_region* region);
+  // Protocol version 17: the surface-local area outside of which every pixel is transparent, without clipping drawing
+  // or input; glass above the clear part may reuse a cached backdrop. Null = the whole surface. Applies on the next
+  // commit. False when the compositor lacks it.
+  bool setContentRegion(wl_region* region);
   // Protocol version 11: an app launch starts from the icon at this surface-local rect. Send it just before the
   // launch's activation token. False when the compositor lacks it.
   bool launchFrom(int x, int y, int width, int height);

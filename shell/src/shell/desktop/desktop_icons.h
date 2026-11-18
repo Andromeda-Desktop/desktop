@@ -11,6 +11,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <array>
 #include <map>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@ class Input;
 class InputArea;
 class ContextMenuPopup;
 class DragIconSurface;
+class DskSurfaceClient;
 class DesktopFileOps;
 class SessionBus;
 class LayerSurface;
@@ -175,6 +177,11 @@ private:
   std::shared_ptr<void> m_allStats;
   wl_output* m_output = nullptr;
   std::unique_ptr<LayerSurface> m_surface;
+  // Tells the compositor where the surface draws, so glass above the clear desktop reuses its cached backdrop.
+  std::unique_ptr<DskSurfaceClient> m_dsk;
+  // The content region last sent (x, y, width, height); nullopt = the whole surface (the default).
+  std::optional<std::vector<std::array<int, 4>>> m_contentRects;
+  void syncContentRegion();
   std::unique_ptr<Node> m_sceneRoot;
   InputDispatcher m_input;
   std::unique_ptr<ContextMenuPopup> m_menu;

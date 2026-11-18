@@ -39,6 +39,8 @@ namespace andromeda {
       int version = 0; // dsk_surface_v1 version the client bound
       // dsk_surface_v1.set_visible_region (v8), surface-local; nullopt = the whole surface.
       std::optional<std::vector<pixman_box32_t>> visibleRegion;
+      // dsk_surface_v1.set_content_region (v17), surface-local; nullopt = the whole surface.
+      std::optional<std::vector<pixman_box32_t>> contentRegion;
       // dsk_shape_v1 (v10) glass shapes in creation order; each owns its properties and animations.
       std::vector<SurfaceMotion*> shapes;
       // dsk_surface_v1.set_glass_mask (v13): the locked mask buffer and its surface-local box; null = none.
@@ -172,6 +174,7 @@ namespace andromeda {
       wl_listener clientCommit{};
       std::vector<Op> pending{};
       std::optional<std::optional<std::vector<pixman_box32_t>>> pendingVisibleRegion{};
+      std::optional<std::optional<std::vector<pixman_box32_t>>> pendingContentRegion{};
       // A set_glass_mask since the last commit: the locked buffer (null = remove) and its origin.
       bool pendingGlassMaskSet = false;
       wlr_buffer* pendingGlassMask = nullptr;
@@ -200,6 +203,7 @@ namespace andromeda {
     static void handleSetElevation(wl_client* client, wl_resource* resource, uint32_t level);
     static void handleLaunchFrom(wl_client* client, wl_resource* resource, int32_t x, int32_t y, int32_t width, int32_t height);
     static void handleSetVisibleRegion(wl_client* client, wl_resource* resource, wl_resource* region);
+    static void handleSetContentRegion(wl_client* client, wl_resource* resource, wl_resource* region);
     static void handleSetGlassMask(
         wl_client* client, wl_resource* resource, wl_resource* buffer, int32_t x, int32_t y, int32_t width,
         int32_t height

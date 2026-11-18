@@ -13,5 +13,7 @@ namespace andromeda {
   void applySurfaceShape(wlr_scene_buffer* buffer, wlr_surface* surface, const pixman_region32_t* shape);
   // Applies the shape to copies of this surface in a live or capture subsurface tree, including disabled copies.
   void applySurfaceTreeShape(wlr_scene_node* node, wlr_surface* surface, const pixman_region32_t* shape);
+  // Marks where copies of this surface draw (dsk content region), for blur source choice only; NULL = everywhere.
+  void applySurfaceTreeContent(wlr_scene_node* node, wlr_surface* surface, const pixman_region32_t* content);
 
 } // namespace andromeda

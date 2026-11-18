@@ -1506,12 +1506,20 @@ namespace andromeda {
     const DskSurfaceManager::State& state = *m_server->dskSurfaces()->state(surface);
     if (!state.visibleRegion) {
       applySurfaceTreeShape(&m_scene->tree->node, surface, nullptr);
-      return;
+    } else {
+      pixman_region32_t region;
+      pixman_region32_init_rects(&region, state.visibleRegion->data(), static_cast<int>(state.visibleRegion->size()));
+      applySurfaceTreeShape(&m_scene->tree->node, surface, &region);
+      pixman_region32_fini(&region);
     }
-    pixman_region32_t region;
-    pixman_region32_init_rects(&region, state.visibleRegion->data(), static_cast<int>(state.visibleRegion->size()));
-    applySurfaceTreeShape(&m_scene->tree->node, surface, &region);
-    pixman_region32_fini(&region);
+    if (!state.contentRegion) {
+      applySurfaceTreeContent(&m_scene->tree->node, surface, nullptr);
+    } else {
+      pixman_region32_t region;
+      pixman_region32_init_rects(&region, state.contentRegion->data(), static_cast<int>(state.contentRegion->size()));
+      applySurfaceTreeContent(&m_scene->tree->node, surface, &region);
+      pixman_region32_fini(&region);
+    }
   }
 
   // Client opaque regions are ignored in general (scene surface.c: a browser declared translucent pixels opaque). A

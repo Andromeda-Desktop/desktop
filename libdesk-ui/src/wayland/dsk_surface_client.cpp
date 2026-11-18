@@ -54,6 +54,14 @@ bool DskSurfaceClient::setVisibleRegion(wl_region* region) {
   return true;
 }
 
+bool DskSurfaceClient::setContentRegion(wl_region* region) {
+  if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_surface)) < DSK_SURFACE_V1_SET_CONTENT_REGION_SINCE_VERSION) {
+    return false;
+  }
+  dsk_surface_v1_set_content_region(m_surface, region);
+  return true;
+}
+
 namespace {
   // A mask buffer lives until the compositor releases it (when the next mask replaces it).
   const wl_buffer_listener kMaskBufferListener = {

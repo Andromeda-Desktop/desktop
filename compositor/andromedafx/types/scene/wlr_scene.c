@@ -509,6 +509,7 @@ void wlr_scene_node_destroy(struct wlr_scene_node* node) {
     scene_buffer_set_buffer(scene_buffer, NULL);
     scene_buffer_set_texture(scene_buffer, NULL);
     pixman_region32_fini(&scene_buffer->opaque_region);
+    pixman_region32_fini(&scene_buffer->content_region);
     wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
     linked_node_destroy(&scene_buffer->blur);
 
@@ -3032,6 +3033,7 @@ struct wlr_scene_buffer* wlr_scene_buffer_create(struct wlr_scene_tree* parent, 
   wl_signal_init(&scene_buffer->events.frame_done);
 
   pixman_region32_init(&scene_buffer->opaque_region);
+  pixman_region32_init(&scene_buffer->content_region);
   wl_list_init(&scene_buffer->buffer_release.link);
   wl_list_init(&scene_buffer->renderer_destroy.link);
   scene_buffer->opacity = 1;
@@ -3248,6 +3250,15 @@ void wlr_scene_buffer_set_over_black(struct wlr_scene_buffer* scene_buffer, bool
   scene_node_bounds(&scene_buffer->node, x, y, &update_region);
   scene_update_region(scene_node_get_root(&scene_buffer->node), &update_region);
   pixman_region32_fini(&update_region);
+}
+
+void wlr_scene_buffer_set_content_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region) {
+  scene_buffer->has_content_region = region != NULL;
+  if (region != NULL) {
+    pixman_region32_copy(&scene_buffer->content_region, region);
+  } else {
+    pixman_region32_clear(&scene_buffer->content_region);
+  }
 }
 
 void wlr_scene_buffer_set_opaque_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region) {
@@ -7402,6 +7413,17 @@ static bool scene_output_wait_overlay_render(struct wlr_scene_output* scene_outp
 static void scene_entry_drawn_region(const struct render_list_entry* entry, pixman_region32_t* out) {
   struct wlr_scene_node* node = entry->node;
   wlr_region_expand(out, &node->visible, scene_node_effect_expand(node));
+  if (node->type == WLR_SCENE_NODE_BUFFER) {
+    const struct wlr_scene_buffer* buffer = wlr_scene_buffer_from_node(node);
+    if (buffer->has_content_region) {
+      pixman_region32_t content;
+      pixman_region32_init(&content);
+      pixman_region32_copy(&content, &buffer->content_region);
+      pixman_region32_translate(&content, entry->x, entry->y);
+      pixman_region32_intersect(out, out, &content);
+      pixman_region32_fini(&content);
+    }
+  }
   const struct clipped_region* clip = NULL;
   if (node->type == WLR_SCENE_NODE_SHADOW) {
     clip = &wlr_scene_shadow_from_node(node)->clipped_region;

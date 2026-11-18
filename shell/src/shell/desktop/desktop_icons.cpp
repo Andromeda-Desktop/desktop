@@ -25,6 +25,7 @@
 #include "ui/style.h"
 #include "wayland/drag_and_drop.h"
 #include "wayland/drag_icon_surface.h"
+#include "wayland/dsk_surface_client.h"
 #include "wayland/layer_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
@@ -41,6 +42,7 @@
 #include <gio/gio.h>
 #include <linux/input-event-codes.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
+#include <wayland-client-protocol.h>
 
 namespace {
   constexpr Logger kLog("desktop-icons");
@@ -199,10 +201,14 @@ void DesktopIcons::open() {
     if (m_sceneRoot == nullptr || needsLayout || m_dirty) {
       build();
     }
+    syncContentRegion();
   });
   if (!m_surface->initialize(m_output)) {
     kLog.warn("desktop icons: no surface on the first output");
     m_surface.reset();
+  } else if (dsk_surface_manager_v1* manager = m_wayland->dskSurfaceManager(); manager != nullptr) {
+    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_surface->wlSurface());
+    m_contentRects.reset();
   }
   if (DragAndDrop* dnd = m_wayland->dragAndDrop(); dnd != nullptr && m_surface != nullptr) {
     dnd->setTarget(m_surface->wlSurface(), {
@@ -803,6 +809,7 @@ void DesktopIcons::close() {
     m_surface->setSceneRoot(nullptr);
   }
   m_sceneRoot.reset();
+  m_dsk.reset();
   m_surface.reset();
   m_band = nullptr;
   m_cells.clear();
@@ -1437,6 +1444,46 @@ void DesktopIcons::updateBand(float x, float y) {
     }
   }
   syncBand();
+}
+
+void DesktopIcons::syncContentRegion() {
+  if (m_dsk == nullptr) {
+    return;
+  }
+  // Labels and plate shadows may reach a little past a cell's input area.
+  constexpr float kPad = 12.0F;
+  std::optional<std::vector<std::array<int, 4>>> rects;
+  if (!m_dragging && !m_systemDrag) {
+    rects.emplace();
+    const auto add = [&](float x, float y, float w, float h) {
+      const int x0 = static_cast<int>(std::floor(x - kPad));
+      const int y0 = static_cast<int>(std::floor(y - kPad));
+      rects->push_back({x0, y0, static_cast<int>(std::ceil(x + w + kPad)) - x0, static_cast<int>(std::ceil(y + h + kPad)) - y0});
+    };
+    for (const Cell& cell : m_cells) {
+      if (cell.area != nullptr) {
+        add(cell.area->x(), cell.area->y(), cell.area->width(), cell.area->height());
+      }
+    }
+    if (m_banding) {
+      add(std::min(m_bandX0, m_bandX1), std::min(m_bandY0, m_bandY1), std::abs(m_bandX1 - m_bandX0), std::abs(m_bandY1 - m_bandY0));
+    }
+  }
+  if (rects == m_contentRects) {
+    return;
+  }
+  wl_region* region = nullptr;
+  if (rects.has_value()) {
+    region = wl_compositor_create_region(m_wayland->compositor());
+    for (const auto& [x, y, w, h] : *rects) {
+      wl_region_add(region, x, y, w, h);
+    }
+  }
+  (void)m_dsk->setContentRegion(region);
+  if (region != nullptr) {
+    wl_region_destroy(region);
+  }
+  m_contentRects = std::move(rects);
 }
 
 void DesktopIcons::syncBand() {
