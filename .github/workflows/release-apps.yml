@@ -1,7 +1,7 @@
 # A tag files-v*, player-v*, viewer-v* or terminal-v* builds only that app (Files and Viewer also the preview) and adds
-# its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the latest v* release
-# (releases/latest/download) and the Debian apt repository (releases/download/debian). The app's own release holds
-# its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
+# its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the rolling
+# release `repo` (Latest, so releases/latest/download) and the Debian apt repository (releases/download/debian). The app's
+# own release holds its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
 # A v* release with the app package split must exist first: andromeda 0.2.8 and older own the app files.
 # Dry run: run by hand with publish off; the packages stay as workflow artifacts.
 name: release-apps
@@ -87,7 +87,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
-        run: tools/repo-publish.sh arch "$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)" pkg
+        run: tools/repo-publish.sh arch repo pkg
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: arch
@@ -118,8 +118,7 @@ jobs:
           BASE: ${{ matrix.base }}
         run: |
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
-          # Ubuntu's apt repository is the latest v* release; Debian's is the rolling "debian" release.
-          if [[ $BASE == testing ]]; then target=debian; else target=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName); fi
+          if [[ $BASE == testing ]]; then target=debian; else target=repo; fi
           mkdir debs
           shopt -s nullglob
           out=$HOME/.cache/andromeda-ubuntu/deb-$BASE

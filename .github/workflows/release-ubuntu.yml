@@ -1,7 +1,6 @@
-# A tag v* builds the Ubuntu 26.04 debs and signs an apt repository, with the deb of Link's latest release.
-# Each release workflow runs on its own and adds its assets to the GitHub release of the tag, which the first one to
-# finish creates. Run it by hand with a tag to rebuild only that part. The assets also serve as a pacman and an apt
-# repository at releases/latest/download (see README.md).
+# A tag v* builds the Ubuntu 26.04 debs, with the deb of Link's latest release, into the tag's release and merges them
+# into the apt repository of the rolling release `repo`, which stays Latest so users keep releases/latest/download
+# (see README.md). Run it by hand with a tag to rebuild only that part.
 name: release-ubuntu
 
 on:
@@ -21,7 +20,7 @@ env:
 
 jobs:
   # The same scripts as a local build: debs from debian/ in an ubuntu:26.04 container, checked by installing them.
-  # The result is a flat apt repository in the tag's release (releases/latest/download); see README.md.
+  # The result is a flat apt repository in the tag's release; publish merges its debs into `repo`.
   ubuntu:
     name: ${{ matrix.base }}
     runs-on: ubuntu-latest
@@ -105,6 +104,7 @@ jobs:
           sparse-checkout: |
             install.sh
             andromeda-release.asc
+            tools/repo-publish.sh
           sparse-checkout-cone-mode: false
           path: src
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -112,12 +112,10 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber apt/* src/install.sh src/andromeda-release.asc
-          # Users read releases/latest: it moves here only when both repositories are on the newest tag.
-          names=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name')
-          newest=$(gh release list --repo "$GITHUB_REPOSITORY" --json tagName -q '.[].tagName' | grep -E '^v[0-9]' | sort -V | tail -n 1)
-          if [[ $TAG == "$newest" ]] && grep -qx andromeda.db <<< "$names" && grep -qx InRelease <<< "$names"; then
-            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --latest
-          fi
+          sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+          src/tools/repo-publish.sh apt repo apt
+          gh release upload repo --repo "$GITHUB_REPOSITORY" --clobber src/install.sh src/andromeda-release.asc

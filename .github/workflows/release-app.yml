@@ -1,7 +1,7 @@
 # A tag v* adds install.sh and the release key. Link releases the Android app from its own repo.
 # Each release workflow runs on its own and adds its assets to the GitHub release of the tag, which the first one to
-# finish creates. Run it by hand with a tag to rebuild only that part. The assets also serve as a pacman and an apt
-# repository at releases/latest/download (see README.md).
+# finish creates. Run it by hand with a tag to rebuild only that part. The package repositories live in the rolling
+# release `repo` (see README.md).
 name: release-app
 
 on:
