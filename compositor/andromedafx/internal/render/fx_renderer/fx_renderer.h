@@ -85,6 +85,8 @@ struct fx_framebuffer {
   struct wl_list link; // fx_renderer.buffers
   bool external_only;
   bool owned;
+  // An shm staging slot: an fx_texture keeps its GL name in slot_tex, so the idle trim never drops its import.
+  bool staging;
   uint32_t drm_format;
   // Non-NULL when this is a swapchain target using output-local scratch buffers
   struct fx_offscreen_buffers* output_buffers;

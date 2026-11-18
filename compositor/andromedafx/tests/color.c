@@ -1090,6 +1090,52 @@ static int test_shm_slot_busy(struct fixture* fixture) {
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
+// An idle shm texture still draws its own pixels after the idle client-import trim.
+static int test_shm_slot_trim(struct fixture* fixture) {
+  struct shm_test_buffer* client = calloc(1, sizeof(*client));
+  for (size_t i = 0; i < SLOT_TEST_SIZE * SLOT_TEST_SIZE; ++i) {
+    client->pixels[i] = 0x00ff0000;
+  }
+  wlr_buffer_init(&client->base, &shm_test_buffer_impl, SLOT_TEST_SIZE, SLOT_TEST_SIZE);
+  struct wlr_texture* texture = wlr_texture_from_buffer(fixture->renderer, &client->base);
+  struct fx_texture* fx = texture != NULL ? wl_container_of(texture, fx, wlr_texture) : NULL;
+  if (fx == NULL || fx->slots[0] == NULL) {
+    fprintf(stderr, "SKIP: the renderer does not stage shm buffers in slots\n");
+    if (texture != NULL) {
+      wlr_texture_destroy(texture);
+    }
+    wlr_buffer_drop(&client->base);
+    return 77;
+  }
+  struct fx_renderer* renderer = fx_get_renderer(fixture->renderer);
+  const int64_t idle = get_current_time_msec() + 2 * FX_CLIENT_IMPORT_IDLE_MS;
+  fx_renderer_trim_client_imports(renderer, idle, FX_CLIENT_IMPORT_IDLE_MS);
+  fx_renderer_trim_client_imports(renderer, idle, FX_CLIENT_IMPORT_IDLE_MS);
+  // Textures made after the trim take any GL names it freed.
+  struct wlr_buffer* decoy = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  bool ok = check(decoy != NULL && output != NULL, "allocate buffers")
+      && check(fill_color(fixture, decoy, (struct wlr_render_color){.g = 1.0f, .a = 1.0f}), "fill the decoy");
+  struct wlr_texture* decoy_texture = ok ? wlr_texture_from_buffer(fixture->renderer, decoy) : NULL;
+  uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
+  ok = ok && check(decoy_texture != NULL, "import the decoy") && draw_texture(fixture, texture, output, pixels);
+  const uint8_t red[4] = {255, 0, 0, 255};
+  const int center = (TEST_HEIGHT / 2 * TEST_WIDTH + TEST_WIDTH / 2) * 4;
+  ok = ok && check(codes_close(&pixels[center], red, 1), "an idle shm texture keeps its own pixels");
+  if (decoy_texture != NULL) {
+    wlr_texture_destroy(decoy_texture);
+  }
+  if (decoy != NULL) {
+    wlr_buffer_drop(decoy);
+  }
+  if (output != NULL) {
+    wlr_buffer_drop(output);
+  }
+  wlr_texture_destroy(texture);
+  wlr_buffer_drop(&client->base);
+  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
 static bool test_client_import_trim(struct fixture* fixture) {
   struct wlr_buffer* source = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
   struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
@@ -3474,6 +3520,11 @@ int main(int argc, char* argv[]) {
 
   if (strcmp(argv[1], "shm-slot-busy") == 0) {
     const int result = test_shm_slot_busy(&fixture);
+    fixture_finish(&fixture);
+    return result;
+  }
+  if (strcmp(argv[1], "shm-slot-trim") == 0) {
+    const int result = test_shm_slot_trim(&fixture);
     fixture_finish(&fixture);
     return result;
   }

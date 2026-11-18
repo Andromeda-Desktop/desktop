@@ -212,6 +212,9 @@ static struct wlr_buffer* shm_slot_create(struct fx_renderer* renderer, uint32_t
       .fd = {fd, -1, -1, -1},
   };
   struct fx_framebuffer* framebuffer = fx_framebuffer_get_or_create(renderer, &staging->base);
+  if (framebuffer != NULL) {
+    framebuffer->staging = true;
+  }
   *tex = framebuffer != NULL && !framebuffer->external_only ? fx_framebuffer_get_texture(framebuffer) : 0;
   if (*tex == 0) {
     wlr_buffer_drop(&staging->base);

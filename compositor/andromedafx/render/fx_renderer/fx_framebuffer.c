@@ -367,7 +367,7 @@ bool fx_renderer_trim_client_imports(struct fx_renderer* renderer, int64_t now_m
   bool current = false;
   struct fx_framebuffer* buffer;
   wl_list_for_each(buffer, &renderer->buffers, link) {
-    if (buffer->owned || buffer->fbo != 0 || buffer->image == EGL_NO_IMAGE_KHR) {
+    if (buffer->owned || buffer->staging || buffer->fbo != 0 || buffer->image == EGL_NO_IMAGE_KHR) {
       continue;
     }
     if (buffer->import_mode == FX_IMPORT_COPYING) {
