@@ -14,6 +14,11 @@ fi
 if [[ -n ${ANDROMEDA_CORE:-} ]]; then
   for _app in files player viewer terminal; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
 fi
+# ANDROMEDA_ONLY="compositor shell" (a test install of changed parts): builds and packages only those.
+if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
+  pkgname=()
+  for _part in $ANDROMEDA_ONLY; do pkgname+=(andromeda-$_part-git); done
+fi
 _apps=(files viewer player terminal)
 [[ -z ${ANDROMEDA_CORE:-} ]] || _apps=()
 # Epoch keeps the monorepo revision newer than the per-fork versions it replaces.
@@ -90,10 +95,16 @@ build() {
   # The wlroots and libliftoff wraps carry our patches (compositor/subprojects/packagefiles). libliftoff is shared so
   # libwlroots' calls reach the andromeda executable's overrides (src/server/liftoff_deadline.cpp).
   # --wrap-mode overrides arch-meson's nodownload.
-  arch-meson desktop/compositor build-compositor -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true \
+  _want() { [[ -z ${ANDROMEDA_ONLY:-} || " $ANDROMEDA_ONLY " == *" $1 "* ]]; }
+  _want compositor && arch-meson desktop/compositor build-compositor -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true \
     --wrap-mode=default --force-fallback-for=wlroots-0.20,libliftoff \
     -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false -Dwlroots:renderers=gles2
-  arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+  _want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+  if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
+    _want compositor && meson compile -C build-compositor
+    _want shell && meson compile -C build-shell
+    return 0
+  fi
   arch-meson desktop/portal build-portal -Dcpp_std=c++23
   arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   arch-meson desktop/indexer build-indexer -Db_lto=true
