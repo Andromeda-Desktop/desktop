@@ -222,8 +222,7 @@ namespace andromeda {
               "style", &O::style,
               {{"spaces", OverviewStyle::Spaces},
                {"taskview", OverviewStyle::TaskView},
-               {"strip", OverviewStyle::Strip},
-               {"grid", OverviewStyle::Grid}}
+               {"strip", OverviewStyle::Strip}}
           ),
           registry::choice(
               "titles", &O::titles, {{"hover", OverviewTitles::Hover}, {"always", OverviewTitles::Always}}

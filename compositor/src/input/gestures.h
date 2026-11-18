@@ -138,7 +138,7 @@ namespace andromeda {
     bool m_overviewCaught = false;
     bool m_holdCaughtOverview = false;
     int m_holdOverviewHeading = 0;
-    double m_overviewBase = 0.0; // the stop the 4-finger gesture began on: 0 closed, 1 open, 2 Grid
+    double m_overviewBase = 0.0; // the stop the 4-finger gesture began on: 0 closed, 1 open
     // A 4-finger pinch drives the overview: the scale it last reported, against the 1.0 it began at.
     bool m_overviewPinch = false;
     double m_pinchScale = 1.0;

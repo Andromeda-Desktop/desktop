@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Overview cards may extend beyond the scaled workspace preview while remaining inside the output, along whichever axis
-# the workspaces scroll on: horizontally arranged workspaces scroll vertically, so their cards overhang the preview
-# above and below it while the neighbouring workspace previews step along X.
+# A Strip row shows its workspace as the screen does: a column that runs past the output edge is cut at the row
+# frame, at full size, never shrunk to fit and never drawn outside the frame. This holds along whichever axis the
+# columns scroll, while the neighbouring workspace's row steps along the other axis.
 set -euo pipefail
 
 readonly CLIENT="${ANDROMEDA_UNMAP_CLIENT:-./build-debug/tests/unmap-client}"
-readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 readonly SCREENSHOT="$ANDROMEDA_RUNTIME_DIR/horizontal-overview-overflow.png"
 readonly VERTICAL_SHOT="$ANDROMEDA_RUNTIME_DIR/vertical-overview-overflow.png"
-readonly BTN_LEFT=272
-# The overview zoom below scales the 1280x720 output to a 640x360 preview centred on both axes.
-readonly PREVIEW_X=320
-readonly PREVIEW_Y=180
-readonly PREVIEW_BOTTOM=540
-readonly ZOOM=0.5
-# Horizontally arranged workspaces step along X by the preview width plus a tenth of the output width, both zoomed.
+# At zoom 0.5 the row frame is 640x360 at x 320, y 194 (centred, 14 px below the middle); the second workspace's row
+# starts one frame width plus the 64 px row gap further along X.
+readonly FRAME_X=320
+readonly FRAME_Y=194
+readonly FRAME_W=640
+readonly FRAME_H=360
 readonly NEIGHBOUR_X=1024
+# The unmap client's default fill.
+readonly FILL='r > 0.3 && r < 0.37 && g > 0.43 && g < 0.5 && b > 0.63 && b < 0.7'
 
 spawn_client() {
   "$CLIENT" "$1" 1200 700 > /dev/null 2>&1 &
@@ -77,9 +77,24 @@ fi
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 grim "$SCREENSHOT"
-blue=$(magick "$SCREENSHOT" -crop 20x20+1090+350 -format '%[fx:round(255*mean.b)]' info:)
-if (( blue < 80 )); then
-  echo "horizontal card was clipped to the workspace background: blue=$blue"
+
+# fill_outside <image>: client pixels above, below, left and right of the current row frame.
+fill_outside() {
+  local region n=0
+  for region in "1280x${FRAME_Y}+0+0" "1280x$((720 - FRAME_Y - FRAME_H))+0+$((FRAME_Y + FRAME_H))" \
+    "${FRAME_X}x${FRAME_H}+0+$FRAME_Y" "$((NEIGHBOUR_X - FRAME_X - FRAME_W))x${FRAME_H}+$((FRAME_X + FRAME_W))+$FRAME_Y"; do
+    n=$((n + $("$ANDROMEDA_PIXEL_PROBE" "$1" count "$FILL" "$region")))
+  done
+  echo "$n"
+}
+
+outside=$(fill_outside "$SCREENSHOT")
+((outside == 0)) || { echo "horizontal strip: $outside client pixels drawn outside the row frame"; exit 1; }
+# The second column starts 1200 px into the desk, so its first 80 px are on screen: the row shows them as a full-height
+# slice at the frame's right edge, right of the first column (which ends at x 924).
+read -r _ _ sw sh < <("$ANDROMEDA_PIXEL_PROBE" "$SCREENSHOT" bbox "$FILL" "30x${FRAME_H}+$((FRAME_X + FRAME_W - 30))+$FRAME_Y")
+if ((sw == 0 || sh < 300)); then
+  echo "horizontal strip: the column past the screen edge is not a full-height slice: ${sw}x$sh"
   exit 1
 fi
 
@@ -87,7 +102,7 @@ fi
 "$ANDROMEDA" settle
 
 # Arrange the workspaces horizontally: the strip turns vertical, so the same three columns now stack downwards past the
-# output's bottom edge instead of past its right edge.
+# output's bottom edge, and the neighbouring workspace's row steps along X.
 cat >> "$ANDROMEDA_CONFIG" <<'EOF'
 
 [output."HEADLESS-1"]
@@ -96,8 +111,8 @@ workspace_axis = "horizontal"
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
-# A client on the neighbouring workspace makes its preview identifiable by colour: the shared black workspace
-# background cannot be told apart from the backdrop.
+# A client on the neighbouring workspace makes its row identifiable by colour: the shared black workspace background
+# cannot be told apart from the backdrop.
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 spawn_client horizontal-overflow-neighbour
 wait_for_count 4
@@ -106,14 +121,10 @@ wait_for_count 4
 "$ANDROMEDA" msg column-focus-first > /dev/null
 "$ANDROMEDA" settle
 
-strip_windows() {
-  "$ANDROMEDA" windows --json |
-    jq '[.[] | select(.title | startswith("horizontal-overflow-")) | select(.title != "horizontal-overflow-neighbour")]'
-}
-
 vertical_rows=0
 for _ in $(seq 30); do
-  vertical_rows=$(strip_windows | jq '[.[] | .y] | unique | length')
+  vertical_rows=$("$ANDROMEDA" windows --json |
+    jq '[.[] | select(.title | startswith("horizontal-overflow-")) | select(.title != "horizontal-overflow-neighbour") | .y] | unique | length')
   [[ $vertical_rows -eq 3 ]] && break
   sleep 0.1
 done
@@ -122,70 +133,16 @@ if ((vertical_rows != 3)); then
   exit 1
 fi
 
-windows=$("$ANDROMEDA" windows --json)
-# A later column reaches past the output's bottom edge, so the only part of its card the overview can show is the
-# stretch below the preview. Sample the middle of exactly that stretch.
-read -r overhang_title overhang_x overhang_y < <(
-  jq -r --argjson px "$PREVIEW_X" --argjson py "$PREVIEW_Y" --argjson bottom "$PREVIEW_BOTTOM" --argjson z "$ZOOM" '
-    [.[] | select(.title | startswith("horizontal-overflow-")) | select(.title != "horizontal-overflow-neighbour")]
-    | map({
-        title: .title,
-        x: (($px + (.x + .w / 2) * $z) | round),
-        top: ([($py + .y * $z), $bottom + 5] | max),
-        bottom: ([($py + (.y + .h) * $z), 715] | min),
-      })
-    | map(select(.bottom - .top >= 30))
-    | first
-    | "\(.title) \(.x) \(((.top + .bottom) / 2) | round)"' <<< "$windows"
-)
-if [[ -z ${overhang_y:-} ]] || ((overhang_y <= PREVIEW_BOTTOM + 15 || overhang_y >= 705)); then
-  echo "test setup did not leave a card overhanging below the preview: y=${overhang_y:-none} in $windows"
-  exit 1
-fi
-read -r neighbour_x neighbour_y < <(
-  jq -r --argjson nx "$NEIGHBOUR_X" --argjson py "$PREVIEW_Y" --argjson z "$ZOOM" '
-    .[] | select(.title == "horizontal-overflow-neighbour")
-    | "\(($nx + (.x + 200) * $z) | round) \(($py + (.y + .h / 2) * $z) | round)"' <<< "$windows"
-)
-if ((neighbour_x <= 970 || neighbour_x >= 1250 || neighbour_y <= 190 || neighbour_y >= PREVIEW_BOTTOM - 15)); then
-  echo "test setup did not project the neighbouring workspace beside the preview: x=$neighbour_x y=$neighbour_y"
-  exit 1
-fi
-
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 grim "$VERTICAL_SHOT"
 
-overhang_blue=$(sample_blue "$VERTICAL_SHOT" $((overhang_x - 10)) $((overhang_y - 10)))
-if ((overhang_blue < 80)); then
-  echo "the vertical strip's card was clipped to the workspace preview: blue=$overhang_blue at $overhang_x,$overhang_y"
-  exit 1
-fi
-
-neighbour_blue=$(sample_blue "$VERTICAL_SHOT" $((neighbour_x - 10)) $((neighbour_y - 10)))
+outside=$(fill_outside "$VERTICAL_SHOT")
+((outside == 0)) || { echo "vertical strip: $outside client pixels drawn outside the row frame"; exit 1; }
+neighbour_blue=$(sample_blue "$VERTICAL_SHOT" $((NEIGHBOUR_X + 60)) $((FRAME_Y + 60)))
 if ((neighbour_blue < 80)); then
-  echo "the adjacent workspace preview did not step along X: blue=$neighbour_blue at $neighbour_x,$neighbour_y"
+  echo "the neighbouring workspace's row did not step along X: blue=$neighbour_blue at $((NEIGHBOUR_X + 60)),$((FRAME_Y + 60))"
   exit 1
 fi
 
-# The overhanging card is still a hit target: clicking it below the preview activates its window and closes the
-# overview.
-"$POINTER" 1280 720 move "$overhang_x" "$overhang_y" press "$BTN_LEFT" release "$BTN_LEFT"
-active=""
-for _ in $(seq 30); do
-  active=$("$ANDROMEDA" windows --json | jq -r '.[] | select(.active) | .title')
-  [[ $active == "$overhang_title" ]] && break
-  sleep 0.1
-done
-if [[ $active != "$overhang_title" ]]; then
-  echo "clicking the card overhanging below the preview did not activate $overhang_title, active is '$active'"
-  exit 1
-fi
-if [[ $("$ANDROMEDA" windows --json | jq 'length') -ne 4 ]]; then
-  echo "the click below the preview did not land on a card: $("$ANDROMEDA" windows --json)"
-  exit 1
-fi
-
-echo "overview cards overhang the preview along the scrolling axis of either arrangement and stay clickable:" \
-  "$overhang_title at $overhang_x,$overhang_y blue=$overhang_blue, neighbour blue=$neighbour_blue at" \
-  "$neighbour_x,$neighbour_y"
+echo "Strip rows cut columns past the screen edge at the frame, along either axis, and step workspaces along the other"

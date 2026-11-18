@@ -9,38 +9,38 @@ namespace andromeda::ov {
 
   namespace {
 
-    constexpr std::array<std::string_view, 4> kStyleNames = {"spaces", "taskview", "strip", "grid"};
+    constexpr std::array<std::string_view, 3> kStyleNames = {"spaces", "taskview", "strip"};
 
-    // Spaces + Task View: thumbs in one row, sized down when they would not fit between the margins.
-    constexpr double kThumbGap = 18;
-    constexpr double kSpacesThumbWidth = 176;
-    constexpr double kTaskViewThumbWidth = 208;
-    constexpr double kThumbTop = 56;     // Spaces: thumb row from the top edge, below the 32 px center island at 8
-    constexpr double kSpacesBottom = 24; // Spaces: main area to the usable bottom (no hint line)
-    constexpr double kThumbBottom = 52;  // Task View: thumb row above the bottom edge (names sit above the cards)
-    constexpr double kTitleGap = 32;     // thumb row to the title row (room for the names under the thumbs)
-    constexpr double kTitleHeight = 52;  // title row to the main area
-    constexpr double kMainBottom = 36;   // Task View: main area to the thumb row
-    constexpr double kTaskViewTop = 76;
-    constexpr double kTaskViewTitleY = 22;
+    // Spaces + Task View (overview handoff): one row of workspace pieces, their height a share of the output's,
+    // sized down when they would not fit between the frame margins.
+    constexpr double kThumbGap = 16;
+    constexpr double kSpacesThumbShare = 0.11;
+    constexpr double kTaskViewThumbShare = 0.12;
+    constexpr double kThumbMinHeight = 56;
+    constexpr double kThumbMaxHeight = 128;
+    constexpr double kPlusShare = 0.5;   // the + piece is half a piece wide
+    constexpr double kFrameMargin = 40;  // the current workspace's frame to the output's side edges
+    constexpr double kThumbTop = 52;     // Spaces: piece row from the top edge, below the center island
+    constexpr double kSpacesFrameGap = 76; // Spaces: piece row to the frame (names, then the filter field)
+    constexpr double kSpacesFilterGap = 28; // Spaces: piece row to the filter field (the names sit between)
+    constexpr double kSpacesBottom = 32; // Spaces: frame to the bottom edge
+    constexpr double kThumbBottom = 28;  // Task View: piece row above the bottom edge
+    constexpr double kTaskViewTop = 104; // Task View: frame top, under the filter field at kTopFilterY
+    constexpr double kMainBottom = 48;   // Task View: frame to the piece row (names sit above the pieces)
+    constexpr double kTopFilterY = 52;   // Task View and Strip: filter field top
+    constexpr double kExposeInsetX = 24; // Spaces: exposé inside the frame
+    constexpr double kExposeInsetTop = 20;
+    constexpr double kExposeInsetBottom = 12;
     constexpr double kMinimizedOpacity = 0.55;
 
-    constexpr double kStripGap = 60;      // between Strip rows: room for the next row's name above it (prototype)
-    constexpr double kStripFilterTop = 8; // Strip: filter field top, the center island's row
-    // Grid: filter field above the usable bottom (mockup B); the top of the screen holds the center island.
-    constexpr double kFilterBottom = 24;
-    constexpr double kFieldHeight = 32;
+    constexpr double kStripGap = 64;      // between Strip rows: room for the next row's name above it
+    constexpr double kStripShift = 14;    // Strip: the current row sits this far below the centre, under the filter
+    constexpr double kStripInset = 8;     // Strip: a window keeps this far inside its row's right and bottom edges
     constexpr double kPeekOpacity = 0.6;     // Strip: a neighbouring workspace row one step away (mockup B)
     constexpr double kStripPlusShare = 0.45; // the Strip's New row is this share of a row's extent along the axis
     constexpr double kDimmed = 0.5;
     constexpr double kHiddenFade = 3; // a window the placement hides is gone a third of the way into the open
 
-    constexpr double kGridMaxWidthShare = 0.2875; // 368 px tiles on a 1280 px output
-    constexpr double kGridGapX = 28;
-    constexpr double kGridGapY = 52;
-    constexpr double kGridTop = 64;
-    constexpr double kGridChrome = 110; // filter row + hint
-    constexpr size_t kGridColumns = 3;
 
     WindowPlace win(uint32_t id, size_t workspace, const Rect& rect, double opacity, bool dimmed = false) {
       WindowPlace w;
@@ -88,29 +88,35 @@ namespace andromeda::ov {
     Placement placeBar(const Input& in, bool top) {
       Placement out;
       const size_t n = in.workspaces.size();
-      const double avail = in.width - 2 * kMargin;
-      double tw = top ? kSpacesThumbWidth : kTaskViewThumbWidth;
-      tw = std::max(1.0, std::min(tw, (avail - static_cast<double>(n) * kThumbGap) / static_cast<double>(n + 1)));
-      const double th = tw * in.height / in.width;
-      const double plusW = tw; // the + target is an empty desktop: a thumb-sized card
-      const double total = static_cast<double>(n) * tw + plusW + static_cast<double>(n) * kThumbGap;
-      const double y = top ? kThumbTop : in.height - th - kThumbBottom;
-      double x = (in.width - total) / 2;
+      const double ar = in.width / std::max(in.height, 1.0);
+      double th = std::clamp(in.height * (top ? kSpacesThumbShare : kTaskViewThumbShare), kThumbMinHeight, kThumbMaxHeight);
+      double tw = th * ar;
+      const double avail = in.width - 2 * kFrameMargin;
+      const auto need = [&] { return static_cast<double>(n) * tw + tw * kPlusShare + static_cast<double>(n) * kThumbGap; };
+      if (need() > avail) {
+        tw = std::max(1.0, (avail - static_cast<double>(n) * kThumbGap) / (static_cast<double>(n) + kPlusShare));
+        th = tw / ar;
+      }
+      const double y = top ? kThumbTop : in.height - kThumbBottom - th;
+      double x = (in.width - need()) / 2;
       for (size_t i = 0; i < n; ++i) {
         out.cards.push_back({i, {x, y, tw, th}, CardKind::Thumb});
         x += tw + kThumbGap;
       }
-      out.plus = Rect{x, y, plusW, th};
+      out.plus = Rect{x, y, tw * kPlusShare, th};
 
-      const double titleY = top ? y + th + kTitleGap : kTaskViewTitleY;
-      const double mainY = top ? titleY + kTitleHeight : kTaskViewTop;
-      const double mainBottom = top ? in.usable.y + in.usable.h - kSpacesBottom : y - kMainBottom;
-      const Rect main{kMargin, mainY, in.width - 2 * kMargin, std::max(1.0, mainBottom - mainY)};
+      const double frameTop = top ? y + th + kSpacesFrameGap : kTaskViewTop;
+      const double frameBottom = top ? in.height - kSpacesBottom : y - kMainBottom;
+      const Fit frameFit = fitIn(
+          {0, 0, in.width, in.height},
+          {kFrameMargin, frameTop, in.width - 2 * kFrameMargin, std::max(1.0, frameBottom - frameTop)}
+      );
+      const Rect main = mapRect({0, 0, in.width, in.height}, frameFit);
       out.main = main;
-      out.mainFit = fitIn({0, 0, in.width, in.height}, main);
-      out.title = Point{kMargin, titleY};
-      // Spaces centres the field under the thumbs (mockup A); Task View keeps it at the trailing edge.
-      out.filter = Point{top ? (in.width - kFilterWidth) / 2 : in.width - kMargin - kFilterWidth, titleY};
+      out.mainFit = frameFit;
+      const double filterY = top ? y + th + kSpacesFilterGap : kTopFilterY;
+      out.title = Point{kFrameMargin, filterY};
+      out.filter = Point{(in.width - kFilterWidth) / 2, filterY};
 
       if (in.current < n) {
         const Workspace& ws = in.workspaces[in.current];
@@ -129,7 +135,11 @@ namespace andromeda::ov {
           for (const Member& m : ws.members) {
             items.push_back({m.id, m.desk});
           }
-          const std::vector<ExposeItem> spread = exposeGrid(items, main);
+          const Rect area = top ? Rect{
+              main.x + kExposeInsetX, main.y + kExposeInsetTop, main.w - 2 * kExposeInsetX,
+              main.h - kExposeInsetTop - kExposeInsetBottom
+          } : main;
+          const std::vector<ExposeItem> spread = exposeGrid(items, area);
           for (size_t i = 0; i < spread.size(); ++i) {
             out.windows.push_back(
                 win(spread[i].id, in.current, spread[i].rect, ws.members[i].minimized ? kMinimizedOpacity : 1.0)
@@ -179,7 +189,7 @@ namespace andromeda::ov {
       const double fw = std::max(1.0, std::round(in.width * s));
       const double fh = std::max(1.0, std::round(in.height * s));
       const double fx = std::round((in.width - fw) / 2);
-      const double fy = std::round((in.height - fh) / 2);
+      const double fy = std::round((in.height - fh) / 2 + kStripShift);
       const double step = (in.horizontal ? fw : fh) + kStripGap;
       const double row = in.stripRow.value_or(static_cast<double>(in.current));
       const auto frameAt = [&](double i) {
@@ -193,15 +203,28 @@ namespace andromeda::ov {
         const double peek = 1.0 - (1.0 - kPeekOpacity) * std::min(1.0, std::abs(static_cast<double>(i) - row));
         for (const Member& m : in.workspaces[i].members) {
           const bool away = in.workspaces[i].arrangement == Arrangement::Scrolling && offscreen(m.desk, in.width);
-          out.windows.push_back(win(m.id, i, mapRect(m.desk, fit), m.minimized ? 0.0 : peek, away));
+          const Rect r = mapRect(m.desk, fit);
+          // A window past the output edge is cut at full size where the frame ends, as the screen edge cuts it; it is
+          // never shrunk. Only those sides are cut, so a window on screen keeps its rounded corners.
+          const Insets cut{
+              m.desk.y < 0 ? std::max(0.0, frame.y - r.y) / s : 0.0,
+              m.desk.x + m.desk.w > in.width ? std::max(0.0, r.x + r.w - (frame.x + frame.w - kStripInset)) / s : 0.0,
+              m.desk.y + m.desk.h > in.height ? std::max(0.0, r.y + r.h - (frame.y + frame.h - kStripInset)) / s : 0.0,
+              m.desk.x < 0 ? std::max(0.0, frame.x - r.x) / s : 0.0
+          };
+          const bool inside = cut.left + cut.right < m.desk.w && cut.top + cut.bottom < m.desk.h;
+          const bool drawn = inside && std::abs(static_cast<double>(i) - row) <= 1.0; // ±1 rows (FRAME.md cost)
+          WindowPlace w = win(m.id, i, r, m.minimized || !drawn ? 0.0 : peek, away);
+          if (cut != Insets{}) {
+            w.clip = cut;
+          }
+          out.windows.push_back(w);
         }
       }
       Rect plus = frameAt(static_cast<double>(n));
       (in.horizontal ? plus.w : plus.h) *= kStripPlusShare;
       out.plus = plus;
-      // Top trailing corner, level with the center island: the side bar islands step aside while the overview is open,
-      // and no row reaches there at any zoom (the bottom holds the next row).
-      out.filter = Point{in.width - kMargin - kFilterWidth, kStripFilterTop};
+      out.filter = Point{(in.width - kFilterWidth) / 2, kTopFilterY};
       return out;
     }
 
@@ -239,42 +262,6 @@ namespace andromeda::ov {
       return out;
     }
 
-    Placement placeGrid(const Input& in) {
-      Placement out;
-      const size_t n = in.workspaces.size();
-      const size_t cols = std::min(kGridColumns, n + 1);
-      const size_t rows = (n + 1 + cols - 1) / cols;
-      const double availH = in.height - kGridChrome;
-      const double byHeight =
-          (availH - static_cast<double>(rows - 1) * kGridGapY) / static_cast<double>(rows) * in.width / in.height;
-      const double byWidth =
-          (in.width - 2 * kMargin - static_cast<double>(cols - 1) * kGridGapX) / static_cast<double>(cols);
-      const double tw = std::max(1.0, std::min({in.width * kGridMaxWidthShare, byHeight, byWidth}));
-      const double th = tw * in.height / in.width;
-      const double x0 = (in.width - (static_cast<double>(cols) * tw + static_cast<double>(cols - 1) * kGridGapX)) / 2;
-      const double y0 = kGridTop
-          + std::max(0.0, (availH - (static_cast<double>(rows) * th + static_cast<double>(rows - 1) * kGridGapY)) / 2);
-      const auto cell = [&](size_t i) {
-        return Rect{
-            x0 + static_cast<double>(i % cols) * (tw + kGridGapX),
-            y0 + static_cast<double>(i / cols) * (th + kGridGapY), tw, th
-        };
-      };
-      for (size_t i = 0; i < n; ++i) {
-        const Rect tile = cell(i);
-        out.cards.push_back({i, tile, CardKind::Tile});
-        const Fit fit = thumbFit(tile, in.width);
-        for (const Member& m : in.workspaces[i].members) {
-          WindowPlace w = win(m.id, i, mapRect(m.desk, fit), memberOpacity(m, in));
-          w.clip = outputClip(m.desk, in);
-          out.windows.push_back(w);
-        }
-      }
-      out.plus = cell(n);
-      out.filter = Point{in.width / 2 - kFilterWidth / 2, in.usable.y + in.usable.h - kFilterBottom - kFieldHeight};
-      return out;
-    }
-
   } // namespace
 
   std::string_view styleName(Style style) { return kStyleNames[static_cast<size_t>(style)]; }
@@ -299,8 +286,6 @@ namespace andromeda::ov {
       return placeBar(input, false);
     case Style::Strip:
       return placeStrip(input);
-    case Style::Grid:
-      return placeGrid(input);
     }
     return {};
   }
@@ -308,6 +293,26 @@ namespace andromeda::ov {
   const WindowPlace* findWindow(const Placement& placement, uint32_t id) {
     const auto it = std::ranges::find(placement.windows, id, &WindowPlace::id);
     return it == placement.windows.end() ? nullptr : &*it;
+  }
+
+  std::optional<Rect> zoomFrame(const Placement& placement, double row) {
+    if (placement.main.has_value()) {
+      return placement.main;
+    }
+    const auto current = static_cast<size_t>(std::max(0L, std::lround(row)));
+    for (const Card& card : placement.cards) {
+      if (card.kind == CardKind::Frame && card.workspace == current) {
+        return card.rect;
+      }
+    }
+    return std::nullopt;
+  }
+
+  Rect zoomRect(const Rect& rect, const Rect& output, const Rect& frame, double t) {
+    const Rect to = lerpRect(output, frame, t);
+    const double sx = output.w > 0 ? to.w / output.w : 1.0;
+    const double sy = output.h > 0 ? to.h / output.h : 1.0;
+    return {to.x + (rect.x - output.x) * sx, to.y + (rect.y - output.y) * sy, rect.w * sx, rect.h * sy};
   }
 
   Placement placeAt(Style style, Input input, double row) {

@@ -65,7 +65,7 @@ namespace andromeda::ovimpl {
   inline constexpr double kAppearScaleIn = 0.94;
   inline constexpr double kAppearScaleOut = 0.96;
 
-  static_assert(static_cast<int>(OverviewStyle::Grid) == static_cast<int>(ov::Style::Grid));
+  static_assert(static_cast<int>(OverviewStyle::Strip) == static_cast<int>(ov::Style::Strip));
   inline ov::Style configuredStyle() { return static_cast<ov::Style>(config().overview.style); }
 
   inline std::string_view arrangementLabel(LayoutMode mode) {

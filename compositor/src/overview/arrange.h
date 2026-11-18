@@ -50,9 +50,9 @@ namespace andromeda::ov {
   };
 
   struct ExposeLimits {
-    double padX = 40;      // horizontal room around each window
-    double padY = 56;      // vertical room per row, title capsule included
-    double caption = 28;   // the capsule's share of padY, kept under the window
+    double padX = 32;      // horizontal gap between windows
+    double padY = 64;      // vertical room per row: a 24 px gap plus the caption band
+    double caption = 40;   // the title capsule's band, kept under the window
     double maxScale = 0.7; // never shows a window larger than this share of its real size
   };
 

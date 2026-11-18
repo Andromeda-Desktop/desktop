@@ -55,7 +55,7 @@ measure() {
 # Every arrangement and style without a border (the case that went square), one pair with a border.
 combos=()
 for mode in floating scrolling dwindle master; do
-  for style in spaces taskview strip grid; do combos+=("0 $mode $style"); done
+  for style in spaces taskview strip; do combos+=("0 $mode $style"); done
 done
 combos+=("2 scrolling spaces")
 failed=0

@@ -84,7 +84,7 @@ namespace andromeda {
     constexpr std::array<std::string_view, 4> kModKeys = {"Super", "Alt", "Ctrl", "Shift"};
 
     // Enumerators and choice arrays share their order.
-    constexpr std::array<std::string_view, 4> kOverviewStyles = {"spaces", "taskview", "strip", "grid"};
+    constexpr std::array<std::string_view, 3> kOverviewStyles = {"spaces", "taskview", "strip"};
     std::string text(OverviewStyle style) { return std::string(kOverviewStyles[static_cast<size_t>(style)]); }
     constexpr std::array<std::string_view, 2> kOverviewTitles = {"hover", "always"};
     std::string text(OverviewTitles titles) { return std::string(kOverviewTitles[static_cast<size_t>(titles)]); }

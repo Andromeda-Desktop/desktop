@@ -34,7 +34,7 @@ namespace desktop_layout {
       static const Preset andromeda{true, "top", true, "scrolling", "spaces", "auto", "andromeda", "right", ""};
       static const Preset macos{false, "top", true, "floating", "spaces", "on", "macos", "left", ""};
       static const Preset windows{false, "bottom", false, "floating", "taskview", "on", "windows", "right", "8"};
-      static const Preset tiling{true, "top", false, "scrolling", "grid", "auto", "andromeda", "right", ""};
+      static const Preset tiling{true, "top", false, "scrolling", "strip", "auto", "andromeda", "right", ""};
       if (name == "andromeda") {
         return &andromeda;
       }

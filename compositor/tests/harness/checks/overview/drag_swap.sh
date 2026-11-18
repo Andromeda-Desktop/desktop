@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Grid overview: dropping a window on the middle of a window in another workspace swaps the two across workspaces;
-# a plain move would leave the target where it was.
+# Strip overview: dropping a window on the middle of a window in the next workspace's row swaps the two across
+# workspaces; a plain move would leave the target where it was.
 set -euo pipefail
 source "$(dirname "$ANDROMEDA_HARNESS_LIB")/title_bar.sh"
 source "$ANDROMEDA_HARNESS_LIB"
@@ -12,28 +12,36 @@ mode = "off"
 [layout]
 mode = "dwindle"
 [overview]
-style = "grid"
+style = "strip"
+# A small row brings the middle of the next row's window on screen (the default row leaves only its top edge visible).
+zoom = 0.3
+background_blur = false
 CONFIG
 "$ANDROMEDA" msg config-reload > /dev/null
-"$ANDROMEDA_FRACTIONAL_CLIENT" first 480 300 > "$ANDROMEDA_RUNTIME_DIR/first.log" 2>&1 &
+FILL_COLOR=0xFFFF0000 "$ANDROMEDA_UNMAP_CLIENT" first 480 300 > "$ANDROMEDA_RUNTIME_DIR/first.log" 2>&1 &
 title_bar_wait_field first floating false
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
-"$ANDROMEDA_FRACTIONAL_CLIENT" second 480 300 > "$ANDROMEDA_RUNTIME_DIR/second.log" 2>&1 &
+FILL_COLOR=0xFF0000FF "$ANDROMEDA_UNMAP_CLIENT" second 480 300 > "$ANDROMEDA_RUNTIME_DIR/second.log" 2>&1 &
 title_bar_wait_field second floating false
+"$ANDROMEDA" msg workspace-switch:1 > /dev/null
 "$ANDROMEDA" settle > /dev/null
 ws_of() { title_bar_window "$1" | jq -r '.workspace'; }
 first_ws=$(ws_of first)
 second_ws=$(ws_of second)
 [[ $first_ws != "$second_ws" ]] || { echo "expected two workspaces, both on $first_ws"; exit 1; }
-count=$("$ANDROMEDA" workspaces --json | jq 'length')
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle > /dev/null
-# Grid tiles (style.cpp placeGrid on 1280 x 720): 368 wide, 28 apart, centred; one tile per workspace plus the + cell.
-read -r ax ay bx by < <(awk -v n="$count" 'BEGIN {
-  cols = n + 1 < 3 ? n + 1 : 3; rows = int((n + cols) / cols); tw = 368; th = 207; avail = 610
-  x0 = (1280 - (cols * tw + (cols - 1) * 28)) / 2; pad = (avail - (rows * th + (rows - 1) * 52)) / 2
-  y0 = 64 + (pad > 0 ? pad : 0)
-  printf "%d %d %d %d\n", x0 + tw / 2, y0 + th / 2, x0 + tw + 28 + tw / 2, y0 + th / 2 }')
+# Window centres from the screen: the current row holds red, the next row (dimmed neighbour) blue.
+IMAGE="$ANDROMEDA_RUNTIME_DIR/drag-swap.png"
+grim -o HEADLESS-1 "$IMAGE"
+centre() {
+  local x y w h
+  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$1")
+  ((w > 0)) || { echo "no $2 window on screen" >&2; return 1; }
+  echo "$((x + w / 2)) $((y + h / 2))"
+}
+read -r ax ay < <(centre 'r > 0.6 && g < 0.3 && b < 0.3' red)
+read -r bx by < <(centre 'b > 0.4 && r < 0.2 && g < 0.2' blue)
 pointer_hold 1280 720 move "$ax" "$ay" press 272 move "$ax" $((ay + 40)) move $((bx - 20)) "$by" move "$bx" "$by" \
   -- release 272
 pointer_release

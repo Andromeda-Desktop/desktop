@@ -291,8 +291,8 @@ namespace settings {
 
       const std::string overviewStyle = compositor.value("overview.style");
       choice(
-          Overview, "overview", "overview.style", {"spaces", "taskview", "strip", "grid"}, false,
-          "overview style spaces task view strip grid mission control expose"
+          Overview, "overview", "overview.style", {"spaces", "taskview", "strip"}, false,
+          "overview style spaces task view strip mission control expose"
       );
       choice(Overview, "overview", "overview.titles", {"hover", "always"}, true, "overview window titles names");
       if (overviewStyle == "strip") {

@@ -38,12 +38,12 @@ namespace {
 ANDROMEDA_TEST(spacesMatchesThePrototypeAt1280x800) {
   const Placement p = place(Style::Spaces, sample(Arrangement::Scrolling));
   CHECK_EQ(p.cards.size(), size_t{3});
-  CHECK_EQ(p.cards[0].rect.y, 56.0);
-  CHECK_EQ(p.cards[0].rect.w, 176.0);
-  CHECK_EQ(p.cards[0].rect.h, 110.0);
-  CHECK(p.title.has_value() && p.title->y == 198.0);
-  CHECK(p.main.has_value() && p.main->y == 250.0);
-  CHECK(p.plus.has_value() && p.plus->x == p.cards[2].rect.x + 176 + 18);
+  CHECK_EQ(p.cards[0].rect.y, 52.0);
+  CHECK_EQ(p.cards[0].rect.h, 88.0);
+  CHECK_EQ(p.cards[0].rect.w, 140.8);
+  CHECK(p.filter.has_value() && p.filter->y == 168.0);
+  CHECK(p.main.has_value() && p.main->y == 216.0 && p.main->y + p.main->h == 768.0);
+  CHECK(p.plus.has_value() && p.plus->x == p.cards[2].rect.x + 140.8 + 16 && p.plus->w == 70.4);
 }
 
 // A fullscreen window reaches under the bar and the dock; the screen frame still holds its whole card.
@@ -117,35 +117,15 @@ ANDROMEDA_TEST(exposeNeverUpscalesAndKeepsReadingOrder) {
 ANDROMEDA_TEST(taskViewKeepsScrollingWorkspacesSpreadOutToo) {
   const Placement p = place(Style::TaskView, sample(Arrangement::Scrolling));
   CHECK(!p.viewport.has_value());
-  CHECK(p.cards[0].rect.y + p.cards[0].rect.h == kH - 52);
+  CHECK(p.cards[0].rect.y + p.cards[0].rect.h == kH - 28);
   CHECK(p.main.has_value() && p.main->y + p.main->h <= p.cards[0].rect.y);
 }
 
 ANDROMEDA_TEST(thumbsShrinkToFitManyWorkspaces) {
   const Placement p = place(Style::Spaces, sample(Arrangement::Scrolling, 10));
   CHECK(p.plus.has_value());
-  CHECK(p.cards.front().rect.x >= kMargin - 0.5);
-  CHECK(p.plus->x + p.plus->w <= kW - kMargin + 0.5);
-}
-
-ANDROMEDA_TEST(gridClipsEveryWindowToItsTile) {
-  const Placement p = place(Style::Grid, sample(Arrangement::Scrolling, 4));
-  CHECK(p.plus.has_value() && inside(*p.plus, {0, 0, kW, kH}));
-  for (const WindowPlace& w : p.windows) {
-    const Rect& tile = p.cards[w.workspace].rect;
-    const double s = tile.w / kW;
-    Rect shown = w.rect;
-    if (w.clip) {
-      shown = {
-          shown.x + w.clip->left * s, shown.y + w.clip->top * s, shown.w - (w.clip->left + w.clip->right) * s,
-          shown.h - (w.clip->top + w.clip->bottom) * s
-      };
-    }
-    CHECK(inside(shown, tile));
-  }
-  CHECK(findWindow(p, 3)->clip.has_value());
-  // Wholly off the output: a zero-size clip would draw it uncut beside the tile.
-  CHECK(findWindow(p, 3)->opacity == 0.0);
+  CHECK(p.cards.front().rect.x >= 40 - 0.5);
+  CHECK(p.plus->x + p.plus->w <= kW - 40 + 0.5);
 }
 
 ANDROMEDA_TEST(stripCentresTheChosenRowAndScrollsFractionally) {
@@ -153,11 +133,11 @@ ANDROMEDA_TEST(stripCentresTheChosenRowAndScrollsFractionally) {
   in.current = 1;
   const Placement p = place(Style::Strip, in);
   const Rect& row = p.cards[1].rect;
-  CHECK(std::abs((row.y + row.h / 2) - kH / 2) < 1e-9);
+  CHECK(std::abs((row.y + row.h / 2) - (kH / 2 + 14)) < 1e-9);
   in.stripRow = 1.5;
   const Placement half = place(Style::Strip, in);
   const double mid = (half.cards[1].rect.y + half.cards[1].rect.h + half.cards[2].rect.y) / 2;
-  CHECK(std::abs(mid - kH / 2) < 1e-9);
+  CHECK(std::abs(mid - (kH / 2 + 14)) < 1e-9);
 }
 
 ANDROMEDA_TEST(stripRowsFollowAHorizontalWorkspaceAxis) {
@@ -167,7 +147,7 @@ ANDROMEDA_TEST(stripRowsFollowAHorizontalWorkspaceAxis) {
   const Placement p = place(Style::Strip, in);
   CHECK_EQ(p.cards[0].rect.w, 320.0);
   CHECK_EQ(p.cards[1].rect.y, p.cards[0].rect.y);
-  CHECK_EQ(p.cards[1].rect.x - p.cards[0].rect.x, 320.0 + 60.0);
+  CHECK_EQ(p.cards[1].rect.x - p.cards[0].rect.x, 320.0 + 64.0);
 }
 
 ANDROMEDA_TEST(placeAtMorphsSpacesBetweenNeighbouringWorkspaces) {
@@ -195,8 +175,6 @@ ANDROMEDA_TEST(desktopRectsStepOneOutputPerWorkspace) {
   CHECK(cardDeskRect(in, spaces.cards[1], 0) == spaces.cards[1].rect);
   const Placement taskView = place(Style::TaskView, in);
   CHECK(cardDeskRect(in, taskView.cards[1], 0) == taskView.cards[1].rect);
-  const Placement grid = place(Style::Grid, in);
-  CHECK(cardDeskRect(in, grid.cards[1], 0) == (Rect{kW, 0, kW, kH}));
 }
 
 ANDROMEDA_TEST(windowOpacityFadesHiddenMinimizedAndDimmedWindows) {

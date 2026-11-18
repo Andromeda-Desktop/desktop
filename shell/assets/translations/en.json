@@ -5530,8 +5530,7 @@
           "options": {
             "spaces": "Spaces",
             "taskview": "Task View",
-            "strip": "Strip",
-            "grid": "Grid"
+            "strip": "Strip"
           }
         },
         "overview-titles": {

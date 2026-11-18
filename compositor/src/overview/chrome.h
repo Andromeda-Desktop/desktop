@@ -28,6 +28,7 @@ namespace andromeda::ov {
     wlr_box card{}; // layout coordinates, as drawn this frame
     CardKind kind = CardKind::Thumb;
     bool shown = false;
+    bool empty = false; // holds no window: the card reads "No windows"
   };
 
   // One window card as drawn this frame.
@@ -75,6 +76,7 @@ namespace andromeda::ov {
     std::span<const ChromeWindow> windows;
     bool titlesAlways = true;
     std::string_view filter;
+    bool noMatch = false; // the filter matches no window of the chosen workspace
     const void* hovered = nullptr; // the window card under the pointer; it shows its title and close button
     bool closeHovered = false;     // the pointer is on that close button
     std::optional<ChromeMenu> menu;
@@ -158,6 +160,8 @@ namespace andromeda::ov {
     Label m_title;
     Label m_chip;
     Label m_filter;
+    Label m_noMatch;
+    std::vector<Label> m_empties; // one per workspace card
     Label m_plusMark;
     Frame m_plus;
     Frame m_current; // accent ring around the shown workspace's thumb, row or tile

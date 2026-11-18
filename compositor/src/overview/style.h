@@ -14,8 +14,8 @@ namespace andromeda::ov {
 
   // `overview.style`. Spaces = workspace thumbs on top, current workspace below (macOS Mission Control). TaskView =
   // the current workspace's windows spread out, desktops along the bottom (Windows 11). Strip = one zoomed row per
-  // workspace stacked vertically (niri). Grid = every workspace as an equal tile (KDE desktop grid, hyprexpo).
-  enum class Style : uint8_t { Spaces, TaskView, Strip, Grid };
+  // workspace stacked vertically (niri).
+  enum class Style : uint8_t { Spaces, TaskView, Strip };
 
   [[nodiscard]] std::string_view styleName(Style style);
   [[nodiscard]] std::optional<Style> styleNamed(std::string_view name);
@@ -74,7 +74,7 @@ namespace andromeda::ov {
     std::optional<Insets> clip; // in desk-rect pixels: the part outside the output, cut away
   };
 
-  enum class CardKind : uint8_t { Thumb, Frame, Tile };
+  enum class CardKind : uint8_t { Thumb, Frame };
 
   struct Card {
     size_t workspace = 0;
@@ -103,16 +103,19 @@ namespace andromeda::ov {
     std::vector<Rect> currentDesk;
   };
 
-  inline constexpr double kFilterWidth = 260;
-  inline constexpr double kMargin = 56;
+  inline constexpr double kFilterWidth = 320;
 
   [[nodiscard]] Placement place(Style style, const Input& input);
   [[nodiscard]] const WindowPlace* findWindow(const Placement& placement, uint32_t id);
 
   // The placement while the chosen workspace is `row`, fractional while the wheel, a key or a swipe moves it. Strip
-  // scrolls its column; Spaces and Task View morph between the two neighbouring workspaces' placements; Grid only
-  // marks a tile. `input.current` and `input.stripRow` are ignored.
+  // scrolls its column; Spaces and Task View morph between the two neighbouring workspaces' placements.
+  // `input.current` and `input.stripRow` are ignored.
   [[nodiscard]] Placement placeAt(Style style, Input input, double row);
+  // The frame the current workspace (`row` rounded) zooms into: the main area, or its Strip row.
+  [[nodiscard]] std::optional<Rect> zoomFrame(const Placement& placement, double row);
+  // `rect` seen by a camera that maps `output` onto lerp(output, frame, t).
+  [[nodiscard]] Rect zoomRect(const Rect& rect, const Rect& output, const Rect& frame, double t);
 
   // Where a window of workspace `workspace` sits on the desktop while the workspaces are scrolled to `row`: its own
   // rect, one output away per workspace along the workspace axis. Open progress 0 starts here.

@@ -60,13 +60,13 @@ wait_for_count 2
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 
-# The switch starts 750 ms into the 1000 ms close, so the zoom lands with the 1000 ms row scroll a quarter done and the
-# slide has the remaining three quarters to cover.
+# The switch starts 950 ms into the 1000 ms close: the row follows the 0.32 s page spring, so it is still moving when
+# the zoom lands and the slide carries on.
 "$ANDROMEDA" clock-freeze
 "$ANDROMEDA" msg overview-close > /dev/null
-"$ANDROMEDA" clock-advance 750
+"$ANDROMEDA" clock-advance 950
 "$ANDROMEDA" msg workspace-next > /dev/null
-"$ANDROMEDA" clock-advance 300
+"$ANDROMEDA" clock-advance 100
 grim "$SHOT"
 read -r red blue <<< "$(red_blue "$SHOT")"
 if ((red < 3 || blue < 3)); then

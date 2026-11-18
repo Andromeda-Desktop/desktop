@@ -14,9 +14,10 @@ readonly STYLE=${DRAG_TO_THUMB_STYLE:-spaces}
 readonly FLOATING=${DRAG_TO_THUMB_FLOATING:-false}
 readonly ANIMATED=${DRAG_TO_THUMB_ANIMATED:-false}
 readonly KEY_ESC=1
-# Thumb width in the row (style.cpp kSpacesThumbWidth, kTaskViewThumbWidth).
-THUMB_W=176
-[[ $STYLE == taskview ]] && THUMB_W=208
+# Piece width in the row (style.cpp placeBar): 11 % (Spaces) or 12 % (Task View) of the height, at the output's
+# aspect; the + piece is half as wide; 16 apart.
+THUMB_W=140.8
+[[ $STYLE == taskview ]] && THUMB_W=153.6
 IMAGE="$ANDROMEDA_RUNTIME_DIR/drag-to-thumb.png"
 readonly RED='r > 0.6 && g < 0.3 && b < 0.3'
 readonly BLUE='b > 0.6 && r < 0.3 && g < 0.3'
@@ -105,10 +106,11 @@ inside_thumb() {
   ((rw > 0 && bw > 0)) || { echo "scale $scale: red ${rw}x${rh}, blue ${bw}x${bh}: a card is missing after the drop"; exit 1; }
   # The thumb holding the blue card, from the row's centred layout (the + drop below uses the same).
   left=$(awk -v n="$n" -v w="$W" -v t="$THUMB_W" -v c=$((bx + bw / 2)) 'BEGIN {
-    l = (w - (n + 1) * t - n * 18) / 2; printf "%d", l + int((c - l) / (t + 18)) * (t + 18) }')
-  th=$((THUMB_W * H / W))
-  ((rx >= left - 1 && rx + rw <= left + THUMB_W + 1 && ry >= row_mid - th && ry + rh <= row_mid + th)) || {
-    echo "scale $scale: the dropped card ended at ${rw}x${rh}+${rx}+${ry}, not in the thumb at x $left..$((left + THUMB_W))"
+    l = (w - (n + 0.5) * t - n * 16) / 2; printf "%d", l + int((c - l) / (t + 16)) * (t + 16) }')
+  local tw=${THUMB_W%.*}
+  th=$((tw * H / W))
+  ((rx >= left - 1 && rx + rw <= left + tw + 2 && ry >= row_mid - th && ry + rh <= row_mid + th)) || {
+    echo "scale $scale: the dropped card ended at ${rw}x${rh}+${rx}+${ry}, not in the thumb at x $left..$((left + tw))"
     exit 1
   }
 }
@@ -191,7 +193,7 @@ run_at_scale() {
   "$ANDROMEDA" settle > /dev/null
   return_check "$scale"
   count=$("$ANDROMEDA" workspaces --json | jq 'length')
-  plus_x=$(awk -v n="$count" -v w="$W" -v t="$THUMB_W" 'BEGIN { printf "%d", (w - (n + 1) * t - n * 18) / 2 + n * (t + 18) + t / 2 }')
+  plus_x=$(awk -v n="$count" -v w="$W" -v t="$THUMB_W" 'BEGIN { printf "%d", (w - (n + 0.5) * t - n * 16) / 2 + n * (t + 16) + t / 4 }')
   before=$(ws_of red)
   drag_red "$scale" "$plus_x" "$row_mid"
   [[ $(ws_of red) != "$before" && -n $(ws_of red) ]] ||

@@ -296,7 +296,7 @@ namespace andromeda {
       std::optional<wlr_box> mainBox;
       ov::Fit mainFit{};
       size_t mainWorkspace = 0;
-      // Cards step along x (thumb rows, grid rows, a horizontal strip) rather than y.
+      // Cards step along x (thumb rows, a horizontal strip) rather than y.
       bool cardsHorizontal = false;
       // The settled placement, recomputed only when its input, the chosen row or the style changes, so an open or
       // close in flight only interpolates. `placeOf[k]` is card k's entry, or null.
@@ -521,7 +521,7 @@ namespace andromeda {
     [[nodiscard]] View* swapTargetAt(double lx, double ly);
     void swapDragged(View& view, View& other);
     [[nodiscard]] bool cardInThumb(const Card& card) const;
-    // The workspace whose thumb or Grid tile is under the point (not a Frame or the main area), and its box.
+    // The workspace whose thumb is under the point (not a Frame or the main area), and its box.
     [[nodiscard]] Workspace* thumbAt(double lx, double ly, wlr_box* outBox = nullptr);
     // A thumb the pressed one can be reordered onto: another workspace of the same output.
     [[nodiscard]] Workspace* thumbDropAt(double lx, double ly, wlr_box* outBox);

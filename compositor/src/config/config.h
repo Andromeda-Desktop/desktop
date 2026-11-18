@@ -699,7 +699,6 @@ namespace andromeda {
     Spaces,
     TaskView,
     Strip,
-    Grid,
   };
 
   // `[overview] titles`: when a window card shows its title capsule.
@@ -745,8 +744,8 @@ namespace andromeda {
       } border;
 
       struct Overview {
-        // Composited over the desktop background while the overview is visible.
-        std::array<float, 4> backgroundTint{0.0627451F, 0.0627451F, 0.0784314F, 0.1882353F};
+        // Composited over the desktop background by open progress: a 20 % dim (rulebook P18).
+        std::array<float, 4> backgroundTint{0.0F, 0.0F, 0.0F, 0.2F};
         // Rounded background behind each workspace; alpha controls opacity.
         std::array<float, 4> workspaceBackground{0.0F, 0.0F, 0.0F, 0.2666667F};
         std::array<float, 4> badge{0.4784314F, 0.6392157F, 1.0F, 1.0F};
@@ -1055,13 +1054,13 @@ namespace andromeda {
 
     struct Overview {
       // How the overview arranges workspaces (overview/style.h): Spaces (thumbs on top, current workspace below),
-      // TaskView (current workspace spread out, desktops along the bottom), Strip (a zoomed row per workspace) or Grid
-      // (every workspace as an equal tile).
+      // TaskView (current workspace spread out, desktops along the bottom) or Strip (a zoomed row per
+      // workspace).
       OverviewStyle style = OverviewStyle::Spaces;
       // Title capsule under each window card: always, or only on the hovered or selected card.
       OverviewTitles titles = OverviewTitles::Always;
       // Strip only: each workspace row's scale.
-      double zoom = 0.6;
+      double zoom = 0.62;
       // Touchpad travel and wheel accumulation in the overview, by the physical direction of the movement rather
       // than the output's workspace axis. Independent of an input device's own scroll_factor.
       double scrollFactorHorizontal = 1.0;

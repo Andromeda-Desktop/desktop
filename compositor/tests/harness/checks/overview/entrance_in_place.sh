@@ -92,15 +92,12 @@ sample() {
 # The close mirrors the open: the card fades out where it is, from the first frame.
 "$ANDROMEDA" clock-freeze > /dev/null
 "$ANDROMEDA" msg overview-close > /dev/null
-closing=() closing_reds=()
+closing=()
 for frame in 1 2 3 4; do
   "$ANDROMEDA" clock-advance 8 > /dev/null
   sample "closing at $((frame * 8)) ms"
   closing+=("$level")
-  read -r _ _ red_w _ < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$RED")
-  closing_reds+=("$red_w")
 done
-((closing_reds[3] > rw + 4)) || { echo "$STYLE: the red card did not return to its window: widths ${closing_reds[*]}, slot $rw"; exit 1; }
 ((closing[3] < final - 20)) || { echo "$STYLE: the blue card did not fade out in place: ${closing[*]} (open $final)"; exit 1; }
 
 # Reopened mid-close, it turns around from where it is drawn instead of starting the entrance again from nothing.
@@ -117,4 +114,10 @@ for frame in $(seq 12); do
   fi
 done
 "$ANDROMEDA" clock-resume > /dev/null
+# The red card's slot is within 10 px of its frame-mapped rect, so only the finished close shows it back at its window.
+"$ANDROMEDA" msg overview-close > /dev/null
+"$ANDROMEDA" settle > /dev/null
+grim -o HEADLESS-1 "$IMAGE"
+read -r _ _ back _ < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$RED")
+((back > rw + 100)) || { echo "$STYLE: the red card did not return to its window: width $back, slot $rw"; exit 1; }
 echo "$STYLE: the other desktop's card stays in ${sw}x${sh}+${sx}+${sy} while it fades in: ${blues[*]} -> $final"

@@ -67,7 +67,9 @@ namespace andromeda {
     input.width = state.outputBox.width;
     input.height = state.outputBox.height;
     input.usable = localRect(state.usableBox, state.outputBox);
-    input.stripScale = std::clamp(config().overview.zoom, 0.1, 0.75);
+    // Strip rows leave 220 px for names, the filter and the neighbour peeks; `overview.zoom` caps the share.
+    const double fill = input.height > 0 ? (input.height - 220.0) / input.height : 0.0;
+    input.stripScale = std::clamp(fill, 0.1, std::clamp(config().overview.zoom, 0.1, 0.75));
     const WorkspaceGroup* group = state.output->workspaceGroup();
     input.horizontal = group != nullptr && group->workspaceAxis() == WorkspaceAxis::Horizontal;
     input.workspaces.resize(state.workspaceBackgrounds.size());
@@ -476,6 +478,14 @@ namespace andromeda {
     // Reduced motion (rulebook 7.8) moves nothing: workspace cards change place halfway, while the windows are faded out.
     const double travel = config().appearance.reduceMotion ? (p < 0.5 ? 0.0 : 1.0) : p;
     const ov::Rect output{0.0, 0.0, in.width, in.height};
+    // Zoom: the desktop shrinks into the current workspace's frame, then the windows spread from it to their slots.
+    const double zoom = config().appearance.reduceMotion ? travel : std::clamp(p / Tokens::motionOverviewZoomEnd, 0.0, 1.0);
+    const double spreadFrom = Tokens::motionOverviewSpreadStart;
+    const double spread =
+        config().appearance.reduceMotion ? travel : std::clamp((p - spreadFrom) / (1.0 - spreadFrom), 0.0, 1.0);
+    const ov::Rect frame = ov::zoomFrame(placement, row).value_or(output);
+    const auto zoomed = [&](const ov::Rect& rect) { return ov::zoomRect(rect, output, frame, zoom); };
+    const auto thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0));
     const auto toLayout = [&outputBox](ov::Rect rect) {
       rect.x += outputBox.x;
       rect.y += outputBox.y;
@@ -497,7 +507,12 @@ namespace andromeda {
       const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
       const ov::Rect placed =
           workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
-      const wlr_box box = layoutBox(ov::lerpRect(ov::cardDeskRect(in, card, row), placed, travel), outputBox);
+      ov::Rect rect = ov::lerpRect(zoomed(ov::cardDeskRect(in, card, row)), placed, spread);
+      if (card.kind == ov::CardKind::Thumb) {
+        const double s = Tokens::motionOverviewPieceScale + (1.0 - Tokens::motionOverviewPieceScale) * thumbAlpha;
+        rect = {rect.x + rect.w * (1.0 - s) / 2, rect.y + rect.h * (1.0 - s) / 2, rect.w * s, rect.h * s};
+      }
+      const wlr_box box = layoutBox(rect, outputBox);
       state.workspaceViews[card.workspace] = {
           .box = box,
           .fit =
@@ -513,14 +528,13 @@ namespace andromeda {
       const ov::Fit& fit = *placement.mainFit;
       state.mainWorkspace =
           static_cast<size_t>(std::clamp(std::lround(row), 0L, static_cast<long>(state.workspaceViews.size() - 1)));
-      state.mainBox = layoutBox(ov::lerpRect(output, *placement.main, travel), outputBox);
-      state.mainFit = {1.0 + (fit.s - 1.0) * travel, outputBox.x + fit.ox * travel, outputBox.y + fit.oy * travel};
+      state.mainBox = layoutBox(ov::lerpRect(output, *placement.main, zoom), outputBox);
+      state.mainFit = {1.0 + (fit.s - 1.0) * zoom, outputBox.x + fit.ox * zoom, outputBox.y + fit.oy * zoom};
     }
 
     const auto& workspaceFill = config().colors.overview.workspaceBackground;
     // Thumbs appear in their slots with the windows that are not on screen; the shown workspace grows with the zoom.
     const std::array<float, 4> backgroundColor = tint(workspaceFill, m_progress);
-    const auto thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0));
     const std::array<float, 4> thumbColor = tint(workspaceFill, thumbAlpha);
     for (size_t index = 0; index < state.workspaceBackgrounds.size(); ++index) {
       const WorkspaceBackground& background = state.workspaceBackgrounds[index];
@@ -532,7 +546,9 @@ namespace andromeda {
       const bool thumb = view.kind == ov::CardKind::Thumb;
       const double z = view.fit.s;
       const wlr_box& full = view.box;
-      const int backgroundRadius = static_cast<int>(std::lround(config().appearance.cornerRadius * z));
+      // A thumb keeps the desktop's corners scaled; a frame rounds from square to r20 as the desktop zooms out.
+      const int backgroundRadius =
+          static_cast<int>(std::lround(thumb ? config().appearance.cornerRadius * z : Tokens::radiusR20 * p));
       const float alpha = (thumb ? thumbAlpha : static_cast<float>(m_progress)) * view.opacity;
       layoutWorkspaceBackground(
           background.fill, full, backgroundRadius,
@@ -591,7 +607,7 @@ namespace andromeda {
           rect = p < 0.5 ? desk : placed;
           opacity *= std::clamp(std::abs(1.0 - 2.0 * p), 0.0, 1.0);
         } else {
-          rect = ov::lerpRect(desk, placed, p);
+          rect = ov::lerpRect(zoomed(desk), placed, spread);
         }
       } else {
         const double s = m_appearScale.current();
@@ -644,6 +660,12 @@ namespace andromeda {
         m_chromeNames[index] = named ? workspace->displayName() : std::format("Desktop {}", workspace->displayName());
       }
     }
+    std::vector<bool> holdsWindows(state.workspaceViews.size(), false);
+    for (const auto& card : state.cards) {
+      if (card->view != nullptr && card->workspaceIndex < holdsWindows.size()) {
+        holdsWindows[card->workspaceIndex] = true;
+      }
+    }
     for (size_t index = 0; index < state.workspaceViews.size(); ++index) {
       const WorkspaceView& view = state.workspaceViews[index];
       const Workspace* workspace = group != nullptr ? group->workspaceAt(index) : nullptr;
@@ -653,6 +675,7 @@ namespace andromeda {
           .card = view.box,
           .kind = view.kind,
           .shown = view.shown && workspace != nullptr,
+          .empty = !holdsWindows[index],
       });
     }
     m_chromeWindows.clear();
@@ -676,11 +699,11 @@ namespace andromeda {
         within = holder.box;
       }
       const char* appId = card.view->appId();
-      const int iconPx = static_cast<int>(std::ceil(static_cast<double>(state.output->wlr()->scale))) * 16;
+      const int iconPx = static_cast<int>(std::ceil(static_cast<double>(state.output->wlr()->scale))) * 18;
       m_chromeWindows.push_back({
           .key = card.view,
           .title = title != nullptr ? std::string_view(title) : std::string_view(),
-          .icon = appId != nullptr ? m_appIcons->get(appId, std::max(16, iconPx)) : nullptr,
+          .icon = appId != nullptr ? m_appIcons->get(appId, std::max(18, iconPx)) : nullptr,
           .box = visible,
           .within = within,
           .opacity = card.opacity,
@@ -738,6 +761,9 @@ namespace andromeda {
         .windows = m_chromeWindows,
         .titlesAlways = config().overview.titles == OverviewTitles::Always,
         .filter = m_filter,
+        .noMatch = !m_filter.empty() && std::ranges::none_of(state.cards, [&](const auto& card) {
+          return card->view != nullptr && card->workspaceIndex == current && cardMatches(*card);
+        }),
         .hovered = m_hoverView,
         .closeHovered = m_closeHover,
         .menu = menu,
@@ -1253,7 +1279,7 @@ namespace andromeda {
   }
 
   bool Overview::growsFromDesk(const OutputState& state, const Card& card) {
-    // Strip and Grid zoom whole workspace cards out of the screen, so their windows ride along.
+    // Strip zooms whole workspace cards out of the screen, so their windows ride along.
     return (state.placedStyle != ov::Style::Spaces && state.placedStyle != ov::Style::TaskView) || card.grows;
   }
 
@@ -1304,13 +1330,11 @@ namespace andromeda {
       }
       return;
     }
-    if (overview.workspaceCurve.easing == Easing::Spring && releaseVelocity != 0.0) {
-      state.rowScroll.settleSpring(target, overview.workspaceCurve.spring, releaseVelocity);
-    } else if (overview.workspaceCurve.easing == Easing::Spring) {
-      // A row already sliding keeps its speed toward the new row.
-      state.rowScroll.steerSpring(target, overview.workspaceCurve.spring);
+    if (releaseVelocity != 0.0) {
+      state.rowScroll.settleSpring(target, motionSpring(Tokens::springPage), releaseVelocity);
     } else {
-      state.rowScroll.retarget(target, overview.durationMs, overview.workspaceCurve);
+      // A row already sliding keeps its speed toward the new row.
+      state.rowScroll.steerSpring(target, motionSpring(Tokens::springPage));
     }
     // Animations only tick from an output frame; kick one so an idle desktop
     // starts both timelines from the same frame.

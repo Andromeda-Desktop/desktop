@@ -21,9 +21,9 @@ before=$(title_bar_window card | jq -r '.workspace')
 count=$("$ANDROMEDA" workspaces --json | jq 'length')
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle > /dev/null
-# Spaces thumbs: 176 x 99 at y 20, 18 apart, centred, + after the last one.
-plus_x=$(((1280 - (count + 1) * 176 - count * 18) / 2 + count * 194 + 88))
-pointer_hold 1280 720 move 640 443 press 272 move 640 403 move "$plus_x" 80 move "$plus_x" 70 -- release 272
+# Spaces pieces: 140.8 x 79.2 at y 52, 16 apart, centred, a half-width + last.
+plus_x=$(awk -v n="$count" 'BEGIN { printf "%d", (1280 - (n + 0.5) * 140.8 - n * 16) / 2 + n * 156.8 + 35.2 }')
+pointer_hold 1280 720 move 640 443 press 272 move 640 403 move "$plus_x" 100 move "$plus_x" 91 -- release 272
 pointer_release
 "$ANDROMEDA" settle > /dev/null
 after=$(title_bar_window card | jq -r '.workspace')

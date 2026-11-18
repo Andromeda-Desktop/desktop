@@ -49,9 +49,9 @@ fi
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 
-# At zoom 0.5 the third 624-pixel column is visible from x=961 to x=1273. Click its visible center, then sample focus
-# well before the two-second close animation can finish.
-pointer move 1110 360 click "$BTN_LEFT"
+# The Spaces exposé lays the three columns out in one row; the third card spans x 785-1064, y 307-589. Click its
+# centre, then sample focus well before the two-second close animation can finish.
+pointer move 925 448 click "$BTN_LEFT"
 sleep 0.1
 
 focused_title=$("$ANDROMEDA" windows --json | jq -r '[.[] | select(.focused) | .title] | if length == 1 then .[0] else "none" end')

@@ -3,6 +3,7 @@
 #include "config/config.h"
 #include "scene/border_rect.h"
 #include "scene/color.h"
+#include "scene/surface_blur.h"
 #include "scene/text_buffer.h"
 #include "wlr.h"
 
@@ -19,16 +20,16 @@ namespace andromeda::ov {
     constexpr int kNameGap = 6;
     constexpr int kToolHeight = 32;
     constexpr int kChipHeight = 24;
-    constexpr int kFieldHeight = 32;
-    constexpr int kCapsuleHeight = 26;
-    constexpr int kCapsuleIcon = 16; // app icon in a title capsule (prototype .lab)
+    constexpr int kFieldHeight = 36;
+    constexpr int kCapsuleHeight = 28;
+    constexpr int kCapsuleIcon = 18; // app icon in a title capsule (overview handoff)
     constexpr int kIconGap = 6;      // icon to title
     constexpr int kCapsuleGap = 6;
     constexpr int kCapsuleMaxWidth = 260;
     constexpr int kCapsuleMinCard = 60; // a card narrower than this shows no title
     constexpr int kCloseMinCard = 80;   // nor, narrower than this, a close button
     constexpr int kPlusRadius = 12;
-    constexpr int kCloseSize = 26;
+    constexpr int kCloseSize = 24;
     constexpr int kCloseInset = 4; // the button centres this far inside the card's top-right corner
     constexpr int kMiniRadius = 3;
     constexpr std::array<float, 4> kCloseRed{0.898F, 0.282F, 0.302F, 1.0F};
@@ -77,9 +78,10 @@ namespace andromeda::ov {
       return color;
     }
 
-    // Chrome fades in over the last fifth of the open, after the cards have mostly arrived.
+    // Chrome fades in after the chrome gate, once the cards have mostly arrived.
     float lateFade(double progress) {
-      const double t = std::clamp((progress - 0.8) / 0.2, 0.0, 1.0);
+      const double gate = Tokens::motionOverviewChromeGate;
+      const double t = std::clamp((progress - gate) / (1.0 - gate), 0.0, 1.0);
       return static_cast<float>(t * t * (3.0 - 2.0 * t));
     }
 
@@ -338,7 +340,11 @@ namespace andromeda::ov {
     }
     const Placement& placement = *frame.placement;
     const auto& colors = config().colors;
-    const std::array<float, 4> thick = withAlpha(colors.background, 0.92F);
+    // Glass pieces are tint-only over the overview's cached wallpaper blur: no per-frame blur (overview handoff perf).
+    const bool light = config().appearance.scheme == ColorScheme::Light;
+    const std::uint32_t tint = (light ? Tokens::schemeLight : Tokens::schemeDark).tintThick;
+    const auto channel = [tint](int shift) { return static_cast<float>((tint >> shift) & 0xFFU) / 255.0F; };
+    const std::array<float, 4> thick{channel(24), channel(16), channel(8), configGlass(glass::Kind::Shape).tint};
     const std::array<float, 4> thin = withAlpha(colors.background, 0.62F);
     const std::array<float, 4>& l1 = colors.textPrimary;
     const std::array<float, 4> l2 = withAlpha(colors.textPrimary, 0.62F);
@@ -469,7 +475,7 @@ namespace andromeda::ov {
     }
 
     if (placement.filter.has_value()) {
-      const std::string markup = frame.filter.empty() ? span(l3, "normal", "⌕  Type to search windows")
+      const std::string markup = frame.filter.empty() ? span(l3, "normal", "⌕  Type to filter windows")
                                                       : span(l1, "normal", std::format("⌕  {}", frame.filter));
       setLabel(
           m_filter, markup,
@@ -483,6 +489,34 @@ namespace andromeda::ov {
       placeLabel(m_filter, ox + px(placement.filter->x), oy + px(placement.filter->y), shown);
     } else {
       placeLabel(m_filter, 0, 0, 0.0F);
+    }
+
+    m_empties.resize(std::max(m_empties.size(), frame.workspaces.size()));
+    for (size_t index = 0; index < m_empties.size(); ++index) {
+      Label& label = m_empties[index];
+      const ChromeWorkspace* workspace = index < frame.workspaces.size() ? &frame.workspaces[index] : nullptr;
+      if (workspace == nullptr || !workspace->shown || !workspace->empty || workspace->card.width <= 0) {
+        placeLabel(label, 0, 0, 0.0F);
+        continue;
+      }
+      setLabel(label, span(l3, "normal", "No windows"), {.font = "sans 9", .maxWidth = workspace->card.width}, scale);
+      const wlr_box& card = workspace->card;
+      placeLabel(label, card.x + (card.width - label.width) / 2, card.y + (card.height - label.height) / 2, late);
+    }
+
+    const ChromeWorkspace* chosen = frame.current < frame.workspaces.size() ? &frame.workspaces[frame.current] : nullptr;
+    if (frame.noMatch && chosen != nullptr && chosen->shown) {
+      const wlr_box area = placement.main.has_value()
+          ? wlr_box{ox + px(placement.main->x), oy + px(placement.main->y), px(placement.main->w), px(placement.main->h)}
+          : chosen->card;
+      setLabel(
+          m_noMatch,
+          span(l2, "normal", std::format("No windows match “{}”. Enter searches apps and files.", frame.filter)),
+          {.font = "sans 10.5", .maxWidth = std::max(1, area.width - 48)}, scale
+      );
+      placeLabel(m_noMatch, area.x + (area.width - m_noMatch.width) / 2, area.y + (area.height - m_noMatch.height) / 2, late);
+    } else {
+      placeLabel(m_noMatch, 0, 0, 0.0F);
     }
 
     const int usableBottom = frame.usable.y + frame.usable.height;
@@ -509,10 +543,9 @@ namespace andromeda::ov {
       placeFrame(m_minis[minis], {}, kMiniRadius, 1, {}, {}, 0.0F);
     }
 
-    // The shown workspace's card carries an accent ring just outside it (prototype .card.cur: 3 px on thumbs, 2 px on
-    // full-size rows and tiles).
+    // The shown workspace's card carries a 3 px accent ring just outside it (overview handoff: selection ring).
     if (current != nullptr && current->shown && current->card.width > 0) {
-      const int width = current->kind == CardKind::Thumb ? 3 : 2;
+      const int width = 3;
       const wlr_box& card = current->card;
       const wlr_box box{card.x - width, card.y - width, card.width + 2 * width, card.height + 2 * width};
       placeFrame(m_current, box, kPlusRadius + width, width, {}, colors.accentPrimary, shown);

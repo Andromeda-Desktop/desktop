@@ -27,9 +27,9 @@ slot() {
 count=$("$ANDROMEDA" workspaces --json | jq 'length')
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle > /dev/null
-# Spaces thumbs (style.cpp placeBar on 1280 x 720): 176 x 99 at y 20, 18 apart, centred, + after the last one.
-x0=$(((1280 - (count + 1) * 176 - count * 18) / 2 + 88))
-pointer_hold 1280 720 move $((x0 + 194)) 69 press 272 move $((x0 + 160)) 69 move $((x0 + 10)) 69 move "$x0" 69 \
+# Spaces pieces (style.cpp placeBar on 1280 x 720): 140.8 x 79.2 at y 52, 16 apart, centred, a half-width + last.
+x0=$(awk -v n="$count" 'BEGIN { printf "%d", (1280 - (n + 0.5) * 140.8 - n * 16) / 2 + 70.4 }')
+pointer_hold 1280 720 move $((x0 + 157)) 91 press 272 move $((x0 + 120)) 91 move $((x0 + 10)) 91 move "$x0" 91 \
   -- release 272
 pointer_release
 "$ANDROMEDA" settle > /dev/null

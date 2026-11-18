@@ -327,7 +327,7 @@ namespace settings {
 
     std::vector<ArrangementRect> arrangementRects(std::string_view value) {
       // Overview styles: Spaces (thumbs over the current workspace), Task View (spread windows over a desktop row),
-      // Strip (the current row between faint neighbours), Grid (every workspace as a tile).
+      // Strip (the current row between faint neighbours).
       if (value == "spaces") {
         return {{8, 4, 10, 7}, {21, 4, 10, 7}, {34, 4, 10, 7}, {47, 4, 9, 7, true}, {8, 15, 48, 21}};
       }
@@ -336,10 +336,6 @@ namespace settings {
       }
       if (value == "strip") {
         return {{6, 2, 52, 7, true}, {4, 13, 26, 14}, {34, 13, 26, 14}, {6, 31, 52, 7, true}};
-      }
-      if (value == "grid") {
-        return {{5, 6, 16, 11}, {24, 6, 16, 11}, {43, 6, 16, 11}, {5, 22, 16, 11}, {24, 22, 16, 11},
-                {43, 22, 16, 11, true}};
       }
       if (value == "floating") {
         return {{6, 6, 30, 20}, {26, 14, 32, 20}};

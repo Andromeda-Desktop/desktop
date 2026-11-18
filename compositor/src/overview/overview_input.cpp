@@ -87,7 +87,7 @@ namespace andromeda {
       if (group == nullptr || !group->dynamic() || group->workspaceCount() >= kMaxWorkspaces) {
         continue;
       }
-      // Gaps run between neighbouring cards along the way the cards step. A Grid's wrap has no gap.
+      // Gaps run between neighbouring cards along the way the cards step.
       const bool horizontalWorkspaces = state->cardsHorizontal;
       const size_t previewCount = std::min(group->workspaceCount(), state->workspaceViews.size());
       for (size_t index = 0; index < previewCount; ++index) {
