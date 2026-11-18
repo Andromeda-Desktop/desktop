@@ -932,8 +932,28 @@ namespace andromeda {
   }
 
   bool LayerSurface::pollBackdrop() {
-    float luminance = 0.0F;
-    if (m_blur.pollBackdrop(&luminance)) {
+    m_nodeLuminance.resize(m_shapeBlurs.size() + 1);
+    bool sampled = false;
+    bool pending = false;
+    for (std::size_t i = 0; i <= m_shapeBlurs.size(); ++i) {
+      SurfaceBlur& blur = i == 0 ? m_blur : m_shapeBlurs[i - 1];
+      float sample = 0.0F;
+      if (blur.pollBackdrop(&sample)) {
+        m_nodeLuminance[i] = sample;
+        sampled = true;
+      }
+      pending = pending || blur.backdropPending();
+    }
+    double weighted = 0.0;
+    double area = 0.0;
+    for (std::size_t i = 0; i < m_nodeLuminance.size() && i < m_nodeArea.size(); ++i) {
+      if (m_nodeLuminance[i]) {
+        weighted += static_cast<double>(*m_nodeLuminance[i]) * m_nodeArea[i];
+        area += m_nodeArea[i];
+      }
+    }
+    if (sampled && area > 0.0) {
+      const auto luminance = static_cast<float>(weighted / area);
       // Hysteresis: a backdrop near the threshold keeps its tone instead of flickering.
       m_backdropDark = m_backdropDark ? luminance < 0.45F : luminance < 0.35F;
       m_backdropLuminance = luminance;
@@ -943,7 +963,7 @@ namespace andromeda {
       }
       updateDensity();
     }
-    return m_blur.backdropPending();
+    return pending;
   }
 
   void LayerSurface::updateDensity() {
@@ -1249,6 +1269,9 @@ namespace andromeda {
       pixman_region32_init_rects(&scaledRegion, scaled.data(), count);
       region = &scaledRegion;
     }
+    m_nodeArea.assign(m_shapeBlurs.size() + 1, 0);
+    m_nodeLuminance.resize(m_nodeArea.size());
+    m_nodeArea[0] = clip ? clip->width * clip->height : nodeBox.width * nodeBox.height;
     m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
     m_blur.update(
         m_scene->tree, m_layerSurface->surface, nodeBox, box, corners, clip ? &*clip : nullptr, options, 1.0F, nullptr,
@@ -1260,12 +1283,27 @@ namespace andromeda {
     if (m_shapeBlurs.size() + firstShapeBlur < shapes.size()) {
       m_shapeBlurs.resize(shapes.size() - firstShapeBlur);
     }
+    m_nodeArea.resize(m_shapeBlurs.size() + 1, 0);
+    m_nodeLuminance.resize(m_nodeArea.size());
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
       SurfaceBlur& blur = m_shapeBlurs[i];
       const std::size_t shape = i + firstShapeBlur;
       if (shape >= shapes.size() || (shape < mergedAway.size() && mergedAway[shape])) {
+        blur.setBackdropSampling(false);
+        m_nodeArea[i + 1] = 0;
+        m_nodeLuminance[i + 1].reset();
         blur.hide();
         continue;
+      }
+      const ShapeMaterial* material = shape < m_shapeMaterials.size() ? &m_shapeMaterials[shape] : nullptr;
+      const float liquid = material != nullptr ? material->liquid : m_liquid;
+      const float rim = material != nullptr ? material->rim : m_rim;
+      const float tintAlpha = material != nullptr ? material->tint[3] : m_tint[3];
+      const bool sampling = liquid > 0.0F || rim > 0.0F || (tintAlpha > 0.0F && tintAlpha < 1.0F);
+      blur.setBackdropSampling(sampling);
+      m_nodeArea[i + 1] = sampling ? shapeClips[shape].width * shapeClips[shape].height : 0;
+      if (!sampling) {
+        m_nodeLuminance[i + 1].reset();
       }
       const bool merged = shape < merges.size() && merges[shape].size() >= 2;
       blur.setMerge(merged ? merges[shape] : std::vector<SurfaceBlur::MergedShape>{}, mergeReach);

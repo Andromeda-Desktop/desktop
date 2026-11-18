@@ -2,6 +2,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "config/config.h"
@@ -127,6 +128,10 @@ namespace andromeda {
     float m_dense = 0.0F;
     bool m_backdropDark = false;
     float m_backdropLuminance = 0.5F; // the last probe sample, 0 to 1
+    // Per blur node (m_blur, then m_shapeBlurs): the last backdrop sample and the node's area in px; m_backdropLuminance
+    // is their area-weighted mean, so every glass shape of a surface takes one tone.
+    std::vector<std::optional<float>> m_nodeLuminance;
+    std::vector<int> m_nodeArea;
     // dsk_surface_v1 tint (v9): the client's tint over the blur, rgba; the compositor adds the density to it.
     std::array<float, 4> m_tint{};
     // Per blur node (m_blur, then m_shapeBlurs) material from dsk_shape_v1 (v10); empty = the surface material.
