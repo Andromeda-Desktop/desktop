@@ -212,6 +212,7 @@ namespace term {
 
   TerminalView::~TerminalView() {
     m_alive.reset();
+    endDrag();
     if (std::holds_alternative<TerminalFind>(m_find)) {
       m_session.withTerminal([&](GhosttyTerminal) { m_find = FindClosed{}; });
     }
@@ -509,6 +510,12 @@ namespace term {
                                          [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
                                      a.setOnMotion(
                                          [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
+                                     a.setOnCancel([this] {
+                                       if (const auto* drag = std::get_if<DragSelecting>(&m_drag); drag != nullptr && drag->moved) {
+                                         publishSelection();
+                                       }
+                                       endDrag();
+                                     });
                                      a.setOnAxisHandler([this](const InputArea::PointerData& d) { return wheel(d); });
                                      a.setOnAxisStop([this](std::uint32_t axis) {
                                        if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL
@@ -1946,9 +1953,18 @@ namespace term {
       if (m_lastClick.count == 1) {
         // Looked up here, not from hover: a tap has no motion before its press.
         auto link = mouseTracking() ? std::nullopt : linkAt(cell);
-        m_drag = DragSelecting{.anchor = cell, .link = link ? std::optional(std::move(link->uri)) : std::nullopt};
+        m_session.withTerminal([&](GhosttyTerminal t) {
+          GhosttyTrackedGridRef ref = nullptr;
+          if (t != nullptr) {
+            (void)ghostty_terminal_grid_ref_track(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = cell}},
+                                                  &ref);
+          }
+          m_drag = DragSelecting{.anchor = cell,
+                                 .anchorRef = TrackedRef(ref),
+                                 .link = link ? std::optional(std::move(link->uri)) : std::nullopt};
+        });
       } else {
-        m_drag = DragIdle{};
+        endDrag();
         selectAround(cell, m_lastClick.count);
         publishSelection();
       }
@@ -1964,7 +1980,46 @@ namespace term {
     } else if (drag != nullptr) {
       publishSelection();
     }
-    m_drag = DragIdle{};
+    endDrag();
+  }
+
+  void TerminalView::endDrag() {
+    m_dragScroll.stop();
+    m_dragScrollRows = 0.0F;
+    if (std::holds_alternative<DragSelecting>(m_drag)) {
+      m_session.withTerminal([&](GhosttyTerminal) { m_drag = DragIdle{}; });
+    }
+  }
+
+  float TerminalView::dragOvershoot() const {
+    const float top = (kTopInset + padding()) * m_uiScale;
+    const float bottom = top + static_cast<float>(viewRows()) * m_grid->cellHeight();
+    return m_pointerY < top ? m_pointerY - top : std::max(0.0F, m_pointerY - bottom);
+  }
+
+  // Speed grows with the distance past the edge: 4 rows/s at the edge, 1 more per 2 px, at most 80 rows/s.
+  void TerminalView::dragScrollTick() {
+    const float overshoot = dragOvershoot();
+    if (!std::holds_alternative<DragSelecting>(m_drag) || overshoot == 0.0F || m_grid == nullptr) {
+      m_dragScroll.stop();
+      m_dragScrollRows = 0.0F;
+      return;
+    }
+    const float rowsPerSecond = std::min(4.0F + std::abs(overshoot) / 2.0F, 80.0F);
+    m_dragScrollRows += rowsPerSecond * static_cast<float>(kDragScrollTick.count()) / 1000.0F;
+    const float rows = std::floor(m_dragScrollRows);
+    if (rows < 1.0F) {
+      return;
+    }
+    m_dragScrollRows -= rows;
+    if (m_scrollAnim != 0 && m_area != nullptr && m_area->animationManager() != nullptr) {
+      m_area->animationManager()->cancel(m_scrollAnim);
+    }
+    m_scrollAnim = 0;
+    m_scrollMotion = ScrollMotion::Rest;
+    const float cellH = m_grid->cellHeight();
+    setScrollPx((std::round(m_scrollPx / cellH) + std::copysign(rows, overshoot)) * cellH);
+    extendDrag(m_pointerX, m_pointerY);
   }
 
   void TerminalView::pointerMotion(float localX, float localY) {
@@ -1993,6 +2048,14 @@ namespace term {
       }
       return;
     }
+    extendDrag(localX, localY);
+    if (drag->moved && dragOvershoot() != 0.0F && !m_dragScroll.active()) {
+      m_dragScroll.startRepeating(kDragScrollTick, [this] { dragScrollTick(); });
+    }
+  }
+
+  void TerminalView::extendDrag(float localX, float localY) {
+    auto* drag = std::get_if<DragSelecting>(&m_drag);
     const GhosttyPointCoordinate cell = cellAt(localX, localY);
     if (!drag->moved && cell.x == drag->anchor.x && cell.y == drag->anchor.y) {
       return;
@@ -2003,8 +2066,11 @@ namespace term {
     const bool set = m_session.withTerminal([&](GhosttyTerminal t) {
       GhosttySelection selection{.rectangle = block};
       return t != nullptr
-             && ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = drag->anchor}},
-                                          &selection.start)
+             && (drag->anchorRef != nullptr
+                     ? ghostty_tracked_grid_ref_snapshot(drag->anchorRef.get(), &selection.start)
+                     : ghostty_terminal_grid_ref(
+                           t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = drag->anchor}},
+                           &selection.start))
                     == GHOSTTY_SUCCESS
              && ghostty_terminal_grid_ref(t, {.tag = GHOSTTY_POINT_TAG_VIEWPORT, .value = {.coordinate = cell}},
                                           &selection.end)

@@ -204,6 +204,7 @@ namespace term {
     struct DragIdle {};
     struct DragSelecting {
       GhosttyPointCoordinate anchor; // viewport cell where the drag started
+      TrackedRef anchorRef;          // the same cell, followed through scrolling; freed under the terminal lock
       bool moved = false;
       std::optional<std::string> link; // URI under a single press; a release without a drag opens it
     };
@@ -235,6 +236,11 @@ namespace term {
     [[nodiscard]] GhosttyPointCoordinate cellAt(float localX, float localY) const;
     void pointerButton(std::uint32_t button, float localX, float localY, bool pressed, std::uint32_t time);
     void pointerMotion(float localX, float localY);
+    void extendDrag(float localX, float localY);
+    // Px the pointer sits above (negative) or below (positive) the grid rows; 0 inside.
+    [[nodiscard]] float dragOvershoot() const;
+    void dragScrollTick();
+    void endDrag();
     bool wheel(const InputArea::PointerData& d);
     [[nodiscard]] bool mouseTracking();
     struct ContextKey {
@@ -421,6 +427,9 @@ namespace term {
     Color m_findHitCurrent{};
     struct FindClosed {};
     std::variant<FindClosed, TerminalFind> m_find; // destroyed under the terminal lock
+    static constexpr std::chrono::milliseconds kDragScrollTick{16};
+    Timer m_dragScroll; // repeats while a selection drag holds the pointer past the top or bottom edge
+    float m_dragScrollRows = 0.0F; // fraction of a row owed to the next tick
     Timer m_findRescan; // one shot: the frame that rescans a changed screen for a regex or case-sensitive query
     static constexpr std::chrono::milliseconds kFindRescan{250};
     bool m_marksDirty = false;
