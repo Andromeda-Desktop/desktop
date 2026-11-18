@@ -12,6 +12,8 @@ struct fx_renderer;
 
 /** True when no sample is in flight and the first sample, or 100 ms since the last one, is due. */
 bool fx_backdrop_probe_due(const struct fx_backdrop_probe* probe);
+// A pass redrew the whole probe box but did not capture: the sample is out of date until the next capture.
+void fx_backdrop_probe_mark_stale(struct fx_backdrop_probe* probe);
 
 /**
  * Draws the 4x2 sample grid of box (texture px, top-left origin) from texture into the probe and fences it. linear:

@@ -393,6 +393,9 @@ namespace {
             wl_fixed_from_double(d)
         );
       }
+    } else if (action == "dsk-new-shape") {
+      // dsk-new-shape <label>: later dsk-shape commands go to a new dsk_shape_v1; the old one keeps its properties.
+      state.dskShape = nullptr;
     } else if (action == "source") {
       // source <label> <x> <y>: a second, 100x50 bottom-layer surface at output x,y; prints source-mapped.
       int x = 0;

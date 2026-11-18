@@ -83,6 +83,28 @@ bool fx_render_pass_init_offscreen_buffers(struct wlr_render_pass* render_pass, 
 
 // Returns the DRM format that offscreen effect buffers should use for the
 // current pass.
+// Merged glass (fx_liquid_merge): the shapes, radii and blend reach; the band follows the smallest shape.
+static void set_liquid_merge(GLint count, GLint shapes, GLint radii, GLint reach, GLint size,
+                             const struct fx_liquid_merge* merge) {
+  glUniform1i(count, merge->count >= 2 ? merge->count : 0);
+  if (merge->count < 2) {
+    return;
+  }
+  float boxes[FX_LIQUID_MERGE_MAX * 4];
+  float side = INFINITY;
+  for (int i = 0; i < merge->count; i++) {
+    boxes[i * 4 + 0] = (float)merge->boxes[i].x;
+    boxes[i * 4 + 1] = (float)merge->boxes[i].y;
+    boxes[i * 4 + 2] = (float)merge->boxes[i].width;
+    boxes[i * 4 + 3] = (float)merge->boxes[i].height;
+    side = fminf(side, (float)fmin(merge->boxes[i].width, merge->boxes[i].height));
+  }
+  glUniform4fv(shapes, merge->count, boxes);
+  glUniform1fv(radii, merge->count, merge->radii);
+  glUniform1f(reach, merge->reach);
+  glUniform2f(size, side, side);
+}
+
 static uint32_t offscreen_buffer_format(const struct fx_gles_render_pass* pass, bool alpha) {
   struct fx_renderer* renderer = pass->buffer->renderer;
   const bool ten_bit_output = pass->output_buffer != NULL
@@ -2187,6 +2209,8 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     glUniform1f(shader->effects.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
     glUniform1f(shader->effects.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
     glUniform3fv(shader->effects.light, 1, fx_options->light);
+    set_liquid_merge(shader->effects.liquid_count, shader->effects.liquid_shapes, shader->effects.liquid_radii,
+                     shader->effects.liquid_merge, shader->effects.liquid_size, &fx_options->merge);
     glUniform2f(shader->effects.liquid_texel, 1.0f / (float)texture->wlr_texture.width,
                 1.0f / (float)texture->wlr_texture.height);
     // Unit 2: units 0 and 1 hold the source and the colour LUT.
@@ -3052,6 +3076,8 @@ static void render_blur_composite(
     glUniform1f(shader->glass.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
     glUniform1f(shader->glass.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
     glUniform3fv(shader->glass.light, 1, fx_options->light);
+    set_liquid_merge(shader->glass.liquid_count, shader->glass.liquid_shapes, shader->glass.liquid_radii,
+                     shader->glass.liquid_merge, shader->glass.liquid_size, &fx_options->merge);
     glUniform2f(shader->glass.liquid_texel, 1.0f / (float)width, 1.0f / (float)height);
     glUniform4f(shader->glass.tint_mix, fx_options->tint_mix[0], fx_options->tint_mix[1], fx_options->tint_mix[2],
                 fx_options->tint_mix[3]);
@@ -3122,10 +3148,13 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   const pixman_box32_t probe_extents = {
       probe_box.x, probe_box.y, probe_box.x + probe_box.width, probe_box.y + probe_box.height
   };
-  const bool probe_due = fx_options->backdrop_probe != NULL && pass->group_depth == 0 && !wlr_box_empty(&probe_box)
-      && fx_backdrop_probe_due(fx_options->backdrop_probe)
+  const bool probe_redrawn = fx_options->backdrop_probe != NULL && pass->group_depth == 0 && !wlr_box_empty(&probe_box)
       && (tex_options->base.clip == NULL
           || pixman_region32_contains_rectangle(tex_options->base.clip, &probe_extents) == PIXMAN_REGION_IN);
+  const bool probe_due = probe_redrawn && fx_backdrop_probe_due(fx_options->backdrop_probe);
+  if (probe_redrawn && !probe_due) {
+    fx_backdrop_probe_mark_stale(fx_options->backdrop_probe);
+  }
   // ANDROMEDA_GLASS_FUSE=0 draws glass through the stored level, for A/B runs.
   static int glass_fuse = -1;
   if (glass_fuse < 0) {
@@ -3275,6 +3304,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     tex_options->liquid_box = fx_options->liquid_box;
     tex_options->liquid_radius = fx_options->liquid_radius;
     tex_options->liquid_scale = fx_options->liquid_scale;
+    tex_options->merge = fx_options->merge;
     memcpy(tex_options->light, fx_options->light, sizeof(tex_options->light));
     tex_options->lens_texture = lens;
     fx_render_pass_add_texture(pass, tex_options);

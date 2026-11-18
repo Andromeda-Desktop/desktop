@@ -18,6 +18,15 @@ void fx_backdrop_probe_destroy(struct fx_backdrop_probe* probe);
 /** The renderer the probe samples with; NULL after that renderer was destroyed. */
 struct wlr_renderer* fx_backdrop_probe_renderer(const struct fx_backdrop_probe* probe);
 
+/** True while a pass redrew the backdrop that the last sample did not see. */
+bool fx_backdrop_probe_stale(const struct fx_backdrop_probe* probe);
+
+/**
+ * True once a stale probe may capture again; clears the mark, so the caller damages the probed region once and an
+ * undrawn node never keeps redrawing.
+ */
+bool fx_backdrop_probe_take_stale(struct fx_backdrop_probe* probe);
+
 /** True while a captured sample waits for its fence. */
 bool fx_backdrop_probe_pending(const struct fx_backdrop_probe* probe);
 

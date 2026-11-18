@@ -55,12 +55,19 @@ namespace glass {
   inline constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
   // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
   inline constexpr float kLiquidLift = 1.05F;
+  // Glass shapes of one surface with the same material join by a smooth union within this many logical px, so shapes
+  // that move together merge and split like one liquid (gaps under about half of it bridge).
+  inline constexpr float kMergeReach = 24.0F;
   // Glass rims within this many logical px of the pointer turn their key light toward it.
   inline constexpr float kPointerLightReach = 160.0F;
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
 
   // Frosted: blur and tint, an optional specular edge. Liquid: a soft blur with a lift, a convex lens bezel at the edge.
-  enum class Style : std::uint8_t { Frosted, Liquid };
+  // Clear: Liquid with kClearTint, white content, and dimming from the density path (adaptDensity) over bright
+  // backdrops, so text keeps 4.5:1.
+  enum class Style : std::uint8_t { Frosted, Liquid, Clear };
+  // The tint alpha of Clear glass: enough to carry a tint colour, so the compositor can dim through the density.
+  inline constexpr float kClearTint = 0.04F;
 
   // The Glass settings (appearance.glass_style and the sliders of each style). Each style keeps its own tint and blur.
   struct Settings {
@@ -79,7 +86,9 @@ namespace glass {
     float lens = 0.5F;
     bool reduceTransparency = false;
 
-    [[nodiscard]] float activeTint() const noexcept { return style == Style::Liquid ? liquidTint : tint; }
+    [[nodiscard]] float activeTint() const noexcept {
+      return style == Style::Liquid ? liquidTint : style == Style::Clear ? 0.0F : tint;
+    }
     bool operator==(const Settings&) const = default;
   };
 
@@ -114,7 +123,10 @@ namespace glass {
       break;
     }
     const bool shape = kind == Kind::Shape;
-    if (settings.style == Style::Liquid) {
+    if (settings.style == Style::Clear) {
+      tint = kClearTint;
+    }
+    if (settings.style != Style::Frosted) {
       const float clarity = std::lerp(kLiquidClarity[0], kLiquidClarity[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
       const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
       return {
@@ -149,6 +161,23 @@ namespace glass {
   // An opacity relative to tint_regular (0.70) rescaled to tint_thick (0.92), for sheets configured in regular terms.
   [[nodiscard]] constexpr float thickOpacity(float opacity) noexcept {
     return opacity >= 1.0F ? 1.0F : std::min(1.0F, opacity * (0.92F / 0.70F));
+  }
+
+  // Large glass adapts its density to the measured backdrop luminance (0 to 1) inside its tone: full density at or
+  // past kAdaptLuminance[0] toward the tint's own tone, none from kAdaptLuminance[1]; it retargets over kAdaptFadeMs
+  // only when the target moves by more than kAdaptStep, so it does not pulse over video.
+  inline constexpr float kAdaptLuminance[2] = {0.25F, 0.6F};
+  inline constexpr float kAdaptStep = 0.15F;
+  inline constexpr int kAdaptFadeMs = 150;
+  [[nodiscard]] inline float adaptDensity(bool lightTint, float luminance) noexcept {
+    const float own = lightTint ? luminance : 1.0F - luminance;
+    const float x = std::clamp((kAdaptLuminance[1] - own) / (kAdaptLuminance[1] - kAdaptLuminance[0]), 0.0F, 1.0F);
+    return x * x * (3.0F - 2.0F * x);
+  }
+  // Elevation shadow opacity multiplier over a backdrop of `luminance`: lighter over dark, full over light.
+  inline constexpr float kShadowOverDark = 0.55F;
+  [[nodiscard]] inline float shadowOverBackdrop(float luminance) noexcept {
+    return std::lerp(kShadowOverDark, 1.0F, std::clamp(luminance, 0.0F, 1.0F));
   }
 
   // The tint for a backdrop of the tint's own tone, `density` (0 to 1) of the way to the dense tint; `dense` is

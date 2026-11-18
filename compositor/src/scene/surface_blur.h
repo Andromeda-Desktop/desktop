@@ -3,8 +3,12 @@
 #include "protocols/glass_material.h"
 
 #include <pixman.h>
+extern "C" {
+#include <wlr/util/box.h>
+}
 #include <array>
 #include <optional>
+#include <vector>
 
 struct fx_corner_radii;
 struct wlr_box;
@@ -61,6 +65,13 @@ namespace andromeda {
     void setLens(float lens);
     // Mixes the backdrop toward rgb by amount, 0 to 1 (glass density).
     void setTintMix(const std::array<float, 3>& rgb, float amount);
+    // Shapes (parent tree coords, radius in the same px) drawn as one glass whose shapes join within `reach` px; the
+    // clip box passed to update() must be their bounding box. Fewer than 2 shapes draw each shape alone.
+    struct MergedShape {
+      wlr_box box;
+      int radius;
+    };
+    void setMerge(const std::vector<MergedShape>& shapes, int reach);
     // Fade of a surface, 0 to 1: it scales the blur size, so a fading surface defocuses its backdrop instead of
     // blending a blurred copy over the sharp one.
     void setFade(float fade);
@@ -93,6 +104,8 @@ namespace andromeda {
     float m_tintAmount = 0.0F;
     float m_fade = 1.0F;
     bool m_backdropSampling = false;
+    std::vector<MergedShape> m_merge;
+    int m_mergeReach = 0;
   };
 
 } // namespace andromeda

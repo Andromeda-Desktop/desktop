@@ -32,6 +32,7 @@ struct fx_backdrop_probe {
   bool linear;
   bool captured;          // the first capture runs at once: a new sheet stays hidden until its first sample
   int64_t last_capture_ns; // CLOCK_MONOTONIC
+  bool stale; // a pass redrew the backdrop after the last capture, inside kProbeIntervalNs or while one was in flight
 };
 
 static int64_t monotonic_ns(void) {
@@ -157,6 +158,24 @@ bool fx_backdrop_probe_due(const struct fx_backdrop_probe* probe) {
       && (!probe->captured || monotonic_ns() - probe->last_capture_ns >= kProbeIntervalNs);
 }
 
+void fx_backdrop_probe_mark_stale(struct fx_backdrop_probe* probe) {
+  if (probe != NULL) {
+    probe->stale = true;
+  }
+}
+
+bool fx_backdrop_probe_stale(const struct fx_backdrop_probe* probe) {
+  return probe != NULL && probe->renderer != NULL && probe->stale;
+}
+
+bool fx_backdrop_probe_take_stale(struct fx_backdrop_probe* probe) {
+  if (!fx_backdrop_probe_stale(probe) || !fx_backdrop_probe_due(probe)) {
+    return false;
+  }
+  probe->stale = false;
+  return true;
+}
+
 bool fx_backdrop_probe_pending(const struct fx_backdrop_probe* probe) {
   return probe != NULL && probe->renderer != NULL && (probe->fence != NULL || probe->awaiting_fence);
 }
@@ -233,6 +252,7 @@ void fx_backdrop_probe_capture(
   probe->linear = linear;
   probe->captured = true;
   probe->last_capture_ns = monotonic_ns();
+  probe->stale = false;
 }
 
 bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, float* luminance) {

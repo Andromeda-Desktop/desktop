@@ -83,6 +83,7 @@ namespace andromeda {
   enum class GlassStyle : uint8_t {
     Frosted,
     Liquid,
+    Clear,
   };
 
   enum class TitleAlign : uint8_t {

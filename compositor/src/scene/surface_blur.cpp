@@ -38,7 +38,7 @@ namespace andromeda {
   glass::Material configGlass(glass::Kind kind) {
     const Config::Appearance& a = config().appearance;
     const glass::Settings settings{
-        .style = a.glassStyle == GlassStyle::Liquid ? glass::Style::Liquid : glass::Style::Frosted,
+        .style = static_cast<glass::Style>(a.glassStyle),
         .tint = static_cast<float>(a.glass),
         .frost = static_cast<float>(a.frost),
         .edgeReflection = a.edgeReflection,
@@ -55,6 +55,11 @@ namespace andromeda {
         surfaceBox.x, surfaceBox.y, surfaceBox.x + surfaceBox.width, surfaceBox.y + surfaceBox.height
     };
     return pixman_region32_contains_rectangle(&surface->opaque_region, &box) != PIXMAN_REGION_IN;
+  }
+
+  void SurfaceBlur::setMerge(const std::vector<MergedShape>& shapes, int reach) {
+    m_merge = shapes;
+    m_mergeReach = reach;
   }
 
   void SurfaceBlur::update(
@@ -143,6 +148,17 @@ namespace andromeda {
     // The rim follows the client's blur region (the drawn shape), not the node box: a panel surface is larger than
     // its sheet. The radius is where the staircase first reaches the full width (a rectangle, e.g. a settings
     // sidebar: 0; the launcher pill: half its height).
+    wlr_scene_blur_merge merge{};
+    if (m_merge.size() >= 2) {
+      merge.count = static_cast<int>(std::min<std::size_t>(m_merge.size(), 4));
+      merge.reach = m_mergeReach;
+      for (int i = 0; i < merge.count; ++i) {
+        const MergedShape& shape = m_merge[static_cast<std::size_t>(i)];
+        merge.boxes[i] = {shape.box.x - drawBox.x, shape.box.y - drawBox.y, shape.box.width, shape.box.height};
+        merge.radii[i] = shape.radius;
+      }
+    }
+    wlr_scene_blur_set_liquid_merge(m_node, &merge);
     if (clipRegion != nullptr && pixman_region32_not_empty(clipRegion)) {
       const pixman_box32_t* e = pixman_region32_extents(clipRegion);
       const wlr_box shape{e->x1 + nodeBox.x - drawBox.x, e->y1 + nodeBox.y - drawBox.y, e->x2 - e->x1, e->y2 - e->y1};

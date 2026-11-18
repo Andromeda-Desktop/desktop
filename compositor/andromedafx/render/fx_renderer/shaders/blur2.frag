@@ -128,6 +128,12 @@ uniform float liquid_radius;
 // Render px per logical px.
 uniform float liquid_scale;
 uniform vec3 light;
+// Merged glass: liquid_count >= 2 shapes (x, y, w, h render px) join by a smooth union over liquid_merge px; the union
+// is the coverage.
+uniform int liquid_count;
+uniform vec4 liquid_shapes[4];
+uniform float liquid_radii[4];
+uniform float liquid_merge;
 
 float rounded_rect_distance_at(
     vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
@@ -137,8 +143,23 @@ float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
 float lens_shift(float t);
 float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d);
+float smooth_union(float a, float b, float k);
 
 float liquid_distance(vec2 point) {
+  if (liquid_count >= 2) {
+    float d = rounded_rect_distance_at(
+        point, liquid_shapes[0].zw, liquid_shapes[0].xy, liquid_radii[0], liquid_radii[0], liquid_radii[0], liquid_radii[0]
+    );
+    for (int i = 1; i < 4; ++i) {
+      if (i >= liquid_count) {
+        break;
+      }
+      float r = liquid_radii[i];
+      d = smooth_union(d, rounded_rect_distance_at(point, liquid_shapes[i].zw, liquid_shapes[i].xy, r, r, r, r),
+                       liquid_merge);
+    }
+    return d;
+  }
   if (liquid_radius >= 0.0) {
     return rounded_rect_distance_at(
         point, liquid_size, liquid_position, liquid_radius, liquid_radius, liquid_radius, liquid_radius
@@ -235,6 +256,9 @@ void main() {
       clip_size - 1.0, clip_position + 0.5, true, clip_radius_top_left, clip_radius_top_right, clip_radius_bottom_left,
       clip_radius_bottom_right
   );
+#if GLASS
+  quad_corner_alpha *= liquid_count >= 2 ? clamp(0.5 - liquid_distance(gl_FragCoord.xy), 0.0, 1.0) : 1.0;
+#endif
   gl_FragColor = color * alpha * quad_corner_alpha * clip_corner_alpha;
 #else
   gl_FragColor = color * alpha;

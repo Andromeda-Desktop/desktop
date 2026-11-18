@@ -117,6 +117,16 @@ struct fx_gradient {
   float* colors;
 };
 
+#define FX_LIQUID_MERGE_MAX 4
+
+// Glass shapes drawn as one: a smooth union with blend reach `reach` (render px).
+struct fx_liquid_merge {
+  int count;
+  struct wlr_box boxes[FX_LIQUID_MERGE_MAX];
+  float radii[FX_LIQUID_MERGE_MAX];
+  float reach;
+};
+
 struct fx_render_texture_options {
   struct wlr_render_texture_options base;
   const struct wlr_box* clip_box; // Used to clip csd. Ignored if NULL
@@ -152,6 +162,9 @@ struct fx_render_texture_options {
   float liquid_scale;
   // Pointer key light: x, y in liquid_box coords, reach in render px (0: the fixed top-left light).
   float light[3];
+  // Merged glass: count >= 2 replaces liquid_box with the smooth union of these shapes (render coords), which also
+  // gives the coverage; clip_box is their bounding box.
+  struct fx_liquid_merge merge;
 };
 
 struct fx_render_rect_options {
@@ -222,6 +235,7 @@ struct fx_render_blur_pass_options {
   float liquid_radius;
   float liquid_scale;
   float light[3]; // see fx_render_texture_options.light
+  struct fx_liquid_merge merge; // see fx_render_texture_options.merge
   struct fx_backdrop_probe* backdrop_probe; // optional: sampled from the blurred region, see backdrop_probe.h
 };
 

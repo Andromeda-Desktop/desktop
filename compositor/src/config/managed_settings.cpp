@@ -33,7 +33,7 @@ namespace andromeda {
     constexpr std::array<std::string_view, 2> kTapMap = {"left_right_middle", "left_middle_right"};
     constexpr std::array<std::string_view, 3> kDragLock = {"off", "timeout", "sticky"};
     constexpr std::array<std::string_view, 2> kScheme = {"dark", "light"};
-    constexpr std::array<std::string_view, 2> kGlassStyle = {"frosted", "liquid"};
+    constexpr std::array<std::string_view, 3> kGlassStyle = {"frosted", "liquid", "clear"};
     constexpr std::array<std::string_view, 5> kButtons = {
         "MouseLeft", "MouseRight", "MouseMiddle", "MouseBack", "MouseForward",
     };

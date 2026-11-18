@@ -22,6 +22,7 @@ extern "C" {
 #include "wlr.h"
 
 #include <algorithm>
+#include <functional>
 #include <array>
 #include <cmath>
 #include <vector>
@@ -138,6 +139,46 @@ namespace andromeda {
       // No full-width band: a capsule, the curve spans the whole short side.
       shape.radius = std::min(width, height) / 2;
       return shape;
+    }
+
+    int boxGap(const wlr_box& a, const wlr_box& b) {
+      const int dx = std::max({0, b.x - (a.x + a.width), a.x - (b.x + b.width)});
+      const int dy = std::max({0, b.y - (a.y + a.height), a.y - (b.y + b.height)});
+      return static_cast<int>(std::lround(std::hypot(dx, dy)));
+    }
+
+    // Groups liquid shapes that `same` pairs and that lie within `reach` px of a group member, at most 4 per group, in
+    // shape order. merges[leader] lists its group (2 or more); mergedAway marks the other members.
+    void groupMergedShapes(
+        const std::vector<RoundedShape>& shapes, const std::vector<wlr_box>& clips, double scale, int reach,
+        const std::function<bool(std::size_t, std::size_t)>& same,
+        std::vector<std::vector<SurfaceBlur::MergedShape>>& merges, std::vector<bool>& mergedAway
+    ) {
+      merges.assign(shapes.size(), {});
+      mergedAway.assign(shapes.size(), false);
+      for (std::size_t lead = 0; lead < shapes.size(); ++lead) {
+        if (mergedAway[lead] || shapes[lead].flare > 0) {
+          continue;
+        }
+        std::vector<std::size_t> group{lead};
+        for (std::size_t next = 0; next < group.size() && group.size() < 4; ++next) {
+          for (std::size_t other = lead + 1; other < shapes.size() && group.size() < 4; ++other) {
+            if (!mergedAway[other] && shapes[other].flare == 0 && std::ranges::find(group, other) == group.end()
+                && same(lead, other) && boxGap(clips[group[next]], clips[other]) < reach) {
+              group.push_back(other);
+              mergedAway[other] = true;
+            }
+          }
+        }
+        if (group.size() < 2) {
+          continue;
+        }
+        for (const std::size_t member : group) {
+          merges[lead].push_back(
+              {.box = clips[member], .radius = static_cast<int>(std::lround(shapes[member].radius * scale))}
+          );
+        }
+      }
     }
 
     fx_corner_radii shapeCorners(const RoundedShape& shape, double scale, int slack) {
@@ -895,6 +936,8 @@ namespace andromeda {
     if (m_blur.pollBackdrop(&luminance)) {
       // Hysteresis: a backdrop near the threshold keeps its tone instead of flickering.
       m_backdropDark = m_backdropDark ? luminance < 0.45F : luminance < 0.35F;
+      m_backdropLuminance = luminance;
+      m_shadow.setAlpha(glass::shadowOverBackdrop(luminance));
       if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
         dsk->sendBackdrop(m_layerSurface->surface, m_backdropDark);
       }
@@ -905,20 +948,20 @@ namespace andromeda {
 
   void LayerSurface::updateDensity() {
     const bool light = 0.2126F * m_tint[0] + 0.7152F * m_tint[1] + 0.0722F * m_tint[2] > 0.5F;
-    // A light/dark switch starts over; otherwise density only rises, so it never pulses over video.
-    if (light != m_tintLight) {
-      m_tintLight = light;
-      m_densityTarget = 0.0F;
-    }
     const bool glassOn = m_liquid > 0.0F || m_rim > 0.0F;
-    const bool contrastLow = glassOn && m_tint[3] > 0.0F && light == m_backdropDark;
-    m_densityTarget = std::max(m_densityTarget, contrastLow ? 1.0F : 0.0F);
+    const float target = glassOn && m_tint[3] > 0.0F ? glass::adaptDensity(light, m_backdropLuminance) : 0.0F;
+    // A light/dark switch takes the new target at once; within a tone, small moves are ignored (no pulse over video).
+    if (light != m_tintLight || std::abs(target - m_densityTarget) > glass::kAdaptStep || target == 0.0F
+        || target == 1.0F) {
+      m_tintLight = light;
+      m_densityTarget = target;
+    }
     if (!m_densityMeasured) {
       // The first sample lands 1-3 frames after map, inside the open fade: apply it at once.
       m_densityMeasured = true;
       m_density.snap(m_densityTarget);
     } else if (m_density.target() != m_densityTarget) {
-      m_density.retarget(m_densityTarget, 150);
+      m_density.retarget(m_densityTarget, glass::kAdaptFadeMs);
       if (Output* out = output()) {
         wlr_output_schedule_frame(out->wlr());
       }
@@ -1026,6 +1069,10 @@ namespace andromeda {
     }
     std::vector<RoundedShape> shapes;
     std::vector<wlr_box> shapeClips;
+    // Merged glass (kMergeReach): the shapes a group leader draws as one; a member that is not its leader draws nothing.
+    std::vector<std::vector<SurfaceBlur::MergedShape>> merges;
+    std::vector<bool> mergedAway;
+    const int mergeReach = static_cast<int>(std::lround(glass::kMergeReach * motionScale));
     // The first shape drawn by m_shapeBlurs: 1 when m_blur draws shapes[0], 0 when m_blur draws a region.
     std::size_t firstShapeBlur = 1;
     pixman_region32_t rest;
@@ -1087,8 +1134,30 @@ namespace andromeda {
         }
         shapeClips.push_back(cut);
       }
+      const auto same = [this](std::size_t a, std::size_t b) {
+        const ShapeMaterial& x = m_shapeMaterials[a];
+        const ShapeMaterial& y = m_shapeMaterials[b];
+        return x.liquid > 0.0F && x.liquid == y.liquid && x.rim == y.rim && x.lens == y.lens && x.dense == y.dense
+            && x.clarity == y.clarity && x.tint == y.tint;
+      };
+      groupMergedShapes(shapes, shapeClips, motionScale, mergeReach, same, merges, mergedAway);
+      for (std::size_t i = 0; i < shapes.size(); ++i) {
+        if (merges[i].size() >= 2) {
+          wlr_box bounds = merges[i].front().box;
+          for (const SurfaceBlur::MergedShape& member : merges[i]) {
+            const int right = std::max(bounds.x + bounds.width, member.box.x + member.box.width);
+            const int bottom = std::max(bounds.y + bounds.height, member.box.y + member.box.height);
+            bounds.x = std::min(bounds.x, member.box.x);
+            bounds.y = std::min(bounds.y, member.box.y);
+            bounds.width = right - bounds.x;
+            bounds.height = bottom - bounds.y;
+          }
+          shapeClips[i] = bounds;
+        }
+      }
       clip = shapeClips.front();
-      corners = shapeCorners(shapes.front(), motionScale, kBlurCornerSlack);
+      corners = merges.front().size() >= 2 ? corner_radii_all(0)
+                                           : shapeCorners(shapes.front(), motionScale, kBlurCornerSlack);
       region = nullptr;
       options.enabled = true;
       options.ignoreAlpha = 0.0F;
@@ -1180,6 +1249,7 @@ namespace andromeda {
       pixman_region32_init_rects(&scaledRegion, scaled.data(), count);
       region = &scaledRegion;
     }
+    m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
     m_blur.update(
         m_scene->tree, m_layerSurface->surface, nodeBox, box, corners, clip ? &*clip : nullptr, options, 1.0F, nullptr,
         region
@@ -1193,10 +1263,12 @@ namespace andromeda {
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
       SurfaceBlur& blur = m_shapeBlurs[i];
       const std::size_t shape = i + firstShapeBlur;
-      if (shape >= shapes.size()) {
+      if (shape >= shapes.size() || (shape < mergedAway.size() && mergedAway[shape])) {
         blur.hide();
         continue;
       }
+      const bool merged = shape < merges.size() && merges[shape].size() >= 2;
+      blur.setMerge(merged ? merges[shape] : std::vector<SurfaceBlur::MergedShape>{}, mergeReach);
       const bool own = shape < m_shapeMaterials.size();
       blur.setLiquid(own ? m_shapeMaterials[shape].liquid : m_liquid);
       blur.setClarity(own ? m_shapeMaterials[shape].clarity : m_clarity);
@@ -1205,7 +1277,7 @@ namespace andromeda {
       blur.setFade(m_blurFade);
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,
-          shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],
+          merged ? corner_radii_all(0) : shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],
           options
       );
     }

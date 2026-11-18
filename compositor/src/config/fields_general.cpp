@@ -196,6 +196,7 @@ namespace andromeda {
               {
                   {.name = "frosted", .value = GlassStyle::Frosted},
                   {.name = "liquid", .value = GlassStyle::Liquid},
+                  {.name = "clear", .value = GlassStyle::Clear},
               }
           ),
           boolean("edge_reflection", &A::edgeReflection),

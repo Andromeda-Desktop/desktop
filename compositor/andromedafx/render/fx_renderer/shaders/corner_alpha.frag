@@ -53,6 +53,12 @@ float lens_shift(float t) {
   return h * -r.x / max(-r.y, 1e-3);
 }
 
+// Smooth union of two distances: the shapes join with a fillet where they come within k of each other.
+float smooth_union(float a, float b, float k) {
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+
 // How much a rim pixel at p (outward normal) faces the key light, y-down. The light sits at the top-left, or, within
 // light.z render px of the pointer (light.xy, distance light_d from the shape), at the rim nearest the pointer: toward
 // it from outside the shape, away from it inside. The pointer also brightens the key glint up to 2x.

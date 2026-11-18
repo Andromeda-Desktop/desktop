@@ -338,6 +338,10 @@ bool link_tex_program(
   shader->effects.liquid_radius = glGetUniformLocation(prog, "liquid_radius");
   shader->effects.liquid_scale = glGetUniformLocation(prog, "liquid_scale");
   shader->effects.light = glGetUniformLocation(prog, "light");
+  shader->effects.liquid_count = glGetUniformLocation(prog, "liquid_count");
+  shader->effects.liquid_shapes = glGetUniformLocation(prog, "liquid_shapes");
+  shader->effects.liquid_radii = glGetUniformLocation(prog, "liquid_radii");
+  shader->effects.liquid_merge = glGetUniformLocation(prog, "liquid_merge");
 
   return true;
 }
@@ -487,6 +491,10 @@ bool link_blur2_composite_program(
   shader->glass.liquid_radius = glGetUniformLocation(prog, "liquid_radius");
   shader->glass.liquid_scale = glGetUniformLocation(prog, "liquid_scale");
   shader->glass.light = glGetUniformLocation(prog, "light");
+  shader->glass.liquid_count = glGetUniformLocation(prog, "liquid_count");
+  shader->glass.liquid_shapes = glGetUniformLocation(prog, "liquid_shapes");
+  shader->glass.liquid_radii = glGetUniformLocation(prog, "liquid_radii");
+  shader->glass.liquid_merge = glGetUniformLocation(prog, "liquid_merge");
 
   return true;
 }

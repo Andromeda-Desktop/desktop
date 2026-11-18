@@ -126,6 +126,7 @@ namespace andromeda {
     // Liquid value [3]: glass::Material::dense.
     float m_dense = 0.0F;
     bool m_backdropDark = false;
+    float m_backdropLuminance = 0.5F; // the last probe sample, 0 to 1
     // dsk_surface_v1 tint (v9): the client's tint over the blur, rgba; the compositor adds the density to it.
     std::array<float, 4> m_tint{};
     // Per blur node (m_blur, then m_shapeBlurs) material from dsk_shape_v1 (v10); empty = the surface material.

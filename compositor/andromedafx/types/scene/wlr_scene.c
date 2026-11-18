@@ -2705,6 +2705,21 @@ void wlr_scene_blur_set_alpha(struct wlr_scene_blur* blur, float alpha) {
   scene_node_update(&blur->node, NULL);
 }
 
+void wlr_scene_blur_set_liquid_merge(struct wlr_scene_blur* blur, const struct wlr_scene_blur_merge* merge) {
+  struct wlr_scene_blur_merge next = {0};
+  if (merge != NULL && merge->count >= 2) {
+    next = *merge;
+    if (next.count > FX_LIQUID_MERGE_MAX) {
+      next.count = FX_LIQUID_MERGE_MAX;
+    }
+  }
+  if (memcmp(&next, &blur->liquid_merge, sizeof(next)) == 0) {
+    return;
+  }
+  blur->liquid_merge = next;
+  scene_node_update(&blur->node, NULL);
+}
+
 void wlr_scene_blur_set_liquid_shape(struct wlr_scene_blur* blur, const struct wlr_box* box, int radius) {
   const struct wlr_box next = box != NULL ? *box : (struct wlr_box){0};
   if (wlr_box_equal(&blur->liquid_box, &next) && blur->liquid_radius == radius) {
@@ -2768,11 +2783,15 @@ void wlr_scene_blur_set_backdrop_sampling(struct wlr_scene_blur* blur, bool enab
 }
 
 bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, float* luminance) {
+  if (fx_backdrop_probe_take_stale(blur->backdrop_probe)) {
+    // The backdrop changed inside the probe interval: redraw once so the probe samples it.
+    scene_node_update(&blur->node, NULL);
+  }
   return blur->backdrop_probe != NULL && fx_backdrop_probe_poll(blur->backdrop_probe, luminance);
 }
 
 bool wlr_scene_blur_backdrop_pending(const struct wlr_scene_blur* blur) {
-  return fx_backdrop_probe_pending(blur->backdrop_probe);
+  return fx_backdrop_probe_pending(blur->backdrop_probe) || fx_backdrop_probe_stale(blur->backdrop_probe);
 }
 
 void wlr_scene_blur_set_ignore_alpha(struct wlr_scene_blur* blur, float ignore_alpha) {
@@ -4421,6 +4440,18 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .liquid_radius = (float)blur->liquid_radius * data->scale,
         .liquid_scale = data->scale,
     };
+    blur_options.merge.count = blur->liquid_merge.count;
+    blur_options.merge.reach = (float)blur->liquid_merge.reach * data->scale;
+    for (int i = 0; i < blur->liquid_merge.count; i++) {
+      const struct wlr_box b = blur->liquid_merge.boxes[i];
+      blur_options.merge.boxes[i] = (struct wlr_box){
+          .x = dst_box.x + (int)lround(b.x * data->scale),
+          .y = dst_box.y + (int)lround(b.y * data->scale),
+          .width = (int)lround(b.width * data->scale),
+          .height = (int)lround(b.height * data->scale),
+      };
+      blur_options.merge.radii[i] = (float)blur->liquid_merge.radii[i] * data->scale;
+    }
     if (data->output->glass_light.reach > 0.0f) {
       struct wlr_box light = {
           .x = (int)lround(data->output->glass_light.x) - data->logical.x,

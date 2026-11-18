@@ -249,6 +249,14 @@ struct wlr_scene_shadow {
 
 struct fx_backdrop_probe;
 
+// Glass shapes one blur node draws as one (wlr_scene_blur_set_liquid_merge).
+struct wlr_scene_blur_merge {
+  int count; // < 2: no merge
+  struct wlr_box boxes[4]; // node-local
+  int radii[4];
+  int reach;
+};
+
 struct wlr_scene_blur {
   struct wlr_scene_node node;
   int width, height;
@@ -265,6 +273,7 @@ struct wlr_scene_blur {
   float tint_mix[4]; // backdrop pre-mix toward rgb by a (glass density)
   struct wlr_box liquid_box; // node-local; empty = the node box and corners
   int liquid_radius;
+  struct wlr_scene_blur_merge liquid_merge;
 
   bool should_only_blur_bottom_layer;
   // Samples the cached bottom-layer blur in frames where nothing but the bottom layers lies under the node, and blurs
@@ -1048,6 +1057,9 @@ bool wlr_scene_blur_backdrop_pending(const struct wlr_scene_blur* blur);
  * NULL box = the node box and its corners.
  */
 void wlr_scene_blur_set_liquid_shape(struct wlr_scene_blur* blur, const struct wlr_box* box, int radius);
+// Draws up to 4 node-local shapes as one glass: their SDFs join by a smooth union within `reach` logical px, and the
+// union is the coverage (the node box should be their bounding box). NULL or count < 2 clears it.
+void wlr_scene_blur_set_liquid_merge(struct wlr_scene_blur* blur, const struct wlr_scene_blur_merge* merge);
 
 /**
  * Sets the blur strength from 1.0f -> 0.0f. This adjusts how strong the blur is
