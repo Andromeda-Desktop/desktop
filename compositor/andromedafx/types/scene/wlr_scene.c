@@ -1340,8 +1340,9 @@ static void scene_blur_cache_consumers(struct wlr_scene_node* node, int x, int y
 }
 
 // How far, in layout pixels, a change reaches into the cache: the blur kernel is in buffer pixels.
-static int scene_blur_reach(struct wlr_scene* scene) {
-  int reach = blur_data_calc_size(&scene->blur_data);
+static int scene_blur_reach_at(struct wlr_scene* scene, float strength) {
+  struct blur_data applied = blur_data_apply_strength(&scene->blur_data, strength);
+  int reach = blur_data_calc_size(&applied);
   float scale = 1.0f;
   struct wlr_scene_output* scene_output;
   wl_list_for_each(scene_output, &scene->outputs, link) {
@@ -1351,6 +1352,8 @@ static int scene_blur_reach(struct wlr_scene* scene) {
   }
   return scale > 0.0f ? (int)ceilf(reach / scale) : reach;
 }
+
+static int scene_blur_reach(struct wlr_scene* scene) { return scene_blur_reach_at(scene, 1.0f); }
 
 static const pixman_region32_t* optimized_blur_consumers(struct wlr_scene_optimized_blur* blur, int reach) {
   struct wlr_scene* scene = scene_node_get_root(&blur->node);
@@ -7454,7 +7457,6 @@ static void scene_output_choose_blur_sources(
     const char* env = getenv("ANDROMEDA_BLUR_DEBUG");
     debug = env != NULL && strcmp(env, "1") == 0;
   }
-  const int reach = scene_blur_reach(scene_output->scene);
   for (int i = 0; i < len; i++) {
     if (list[i].node->type != WLR_SCENE_NODE_BLUR) {
       continue;
@@ -7468,7 +7470,8 @@ static void scene_output_choose_blur_sources(
     if (cached) {
       pixman_region32_t under;
       pixman_region32_init(&under);
-      wlr_region_expand(&under, &blur->node.visible, reach);
+      // A node below full strength blurs with a smaller kernel, so only content inside that reach changes it.
+      wlr_region_expand(&under, &blur->node.visible, scene_blur_reach_at(scene_output->scene, blur->strength));
       pixman_region32_t hit;
       pixman_region32_init(&hit);
       const struct wlr_box own = {list[i].x, list[i].y, blur->width, blur->height};

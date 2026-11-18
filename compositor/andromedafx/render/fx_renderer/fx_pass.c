@@ -3309,6 +3309,10 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   }
   if (sharp_glass && fx_options->lens > 0.0f) {
     lens = wlr_texture;
+  } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && sharp == fbos->optimized_no_blur_buffer
+             && !wlr_box_empty(&probe_box)) {
+    // The cached backdrop is not the pass target, so the lens samples it in place.
+    lens = fx_texture_from_buffer(&renderer->wlr_renderer, sharp->buffer);
   } else if (lens_enabled && glass && fx_options->lens > 0.0f && sharp != NULL && !wlr_box_empty(&probe_box)) {
     struct fx_framebuffer* copy = ensure_offscreen_buffer(pass, &target_buffers(pass)->lens_source, true);
     if (copy != NULL) {
