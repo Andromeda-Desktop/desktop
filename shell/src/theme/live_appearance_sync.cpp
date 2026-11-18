@@ -52,7 +52,7 @@ LiveAppearance readLiveAppearance(const std::function<std::string(std::string_vi
               .tint = parseUnit(value("appearance.glass"), 0.5F),
               .frost = parseUnit(value("appearance.frost"), 0.5F),
               .edgeReflection = value("appearance.edge_reflection") != "false",
-              .liquidTint = parseUnit(value("appearance.liquid_tint"), 0.15F),
+              .liquidTint = parseUnit(value("appearance.liquid_tint"), glass::Settings{}.liquidTint),
               .liquidBlur = parseUnit(value("appearance.liquid_blur"), 0.1F),
               .lens = parseUnit(value("appearance.liquid"), 0.5F),
               .reduceTransparency = value("appearance.reduce_transparency") == "true",

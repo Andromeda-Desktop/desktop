@@ -84,7 +84,7 @@ namespace glass {
     // Specular edge of every style and its pointer light (appearance.edge_reflection).
     bool edgeReflection = true;
     // Liquid Tint (appearance.liquid_tint), on the Tint scale.
-    float liquidTint = 0.15F;
+    float liquidTint = 0.5F;
     // Liquid Blur (appearance.liquid_blur): 0 Soft, 1 Strong (kLiquidClarity).
     float liquidBlur = 0.1F;
     // Liquid Lens (appearance.liquid): 0 Subtle, 0.5 the design values, 1 Strong.
@@ -125,7 +125,7 @@ namespace glass {
     float tint = 0.0F;
     switch (kind) {
     case Kind::Shape:
-      tint = light ? curve(0.20F, 0.34F, 0.84F) : curve(0.30F, 0.52F, 0.70F);
+      tint = light ? curve(0.20F, 0.34F, 0.84F) : curve(0.30F, 0.56F, 0.70F);
       break;
     case Kind::Sheet:
     case Kind::Menu:

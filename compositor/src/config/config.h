@@ -860,7 +860,7 @@ namespace andromeda {
       bool edgeReflection = true;
       // Shell glass (bar, dock, islands, panels) turns light or dark with the backdrop under it.
       // Liquid Tint, on the Tint slider scale.
-      double liquidTint = 0.15;
+      double liquidTint = 0.5;
       // Liquid Blur: 0 None, 1 Light (the lightest Frosted blur).
       double liquidBlur = 0.1;
       // Liquid Lens: 0 Subtle, 0.5 the design values, 1 Strong (bezel width, refraction and specular rim).
