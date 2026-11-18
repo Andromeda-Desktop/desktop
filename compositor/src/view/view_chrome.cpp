@@ -436,6 +436,7 @@ namespace andromeda {
     }
     updateShadow();
     reloadBackdropColor();
+    syncOverBlack();
     syncModalShade();
   }
   const pixman_region32_t* View::clientBlurRegion(wlr_surface* surface) const {

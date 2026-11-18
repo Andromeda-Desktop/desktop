@@ -506,6 +506,7 @@ namespace andromeda {
     }
     self->syncXwaylandShape();
     self->m_presentation.setFullscreenOpaque(self->fullscreenOpaque());
+    self->syncOverBlack();
     self->updateBlur();
     if (Overview* overview = self->m_server->overview()) {
       overview->onViewPresentationChanged(self);

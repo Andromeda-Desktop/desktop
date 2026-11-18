@@ -872,6 +872,7 @@ namespace andromeda {
     // Client transparency can change on any commit. An unmap commit reaches here after handleUnmap hid the backdrop.
     if (mapped()) {
       m_presentation.setFullscreenOpaque(fullscreenOpaque());
+      syncOverBlack();
     }
     if (m_captureScene != nullptr) {
       // Restrict the capture to the window geometry. Client subsurfaces

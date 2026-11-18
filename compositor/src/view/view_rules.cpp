@@ -805,6 +805,7 @@ namespace andromeda {
       m_server->scheduleQos();
     }
     m_presentation.setFullscreenOpaque(fullscreenOpaque());
+    syncOverBlack();
     updateBlur();
     // updateBlur creates the full node box. Re-apply the owning output's clip immediately, because focus, title, and
     // app-id rule refreshes do not necessarily produce a later surface commit or layout pass.
