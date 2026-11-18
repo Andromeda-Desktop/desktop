@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <memory>
 
-struct wl_surface;
+class NativeEglWindow;
 
 class GlSharedContext;
 class RenderBackend;
@@ -29,7 +29,7 @@ public:
   WallpaperRenderer(const WallpaperRenderer&) = delete;
   WallpaperRenderer& operator=(const WallpaperRenderer&) = delete;
 
-  void bind(GlSharedContext& shared, wl_surface* surface);
+  void bind(GlSharedContext& shared, std::unique_ptr<NativeEglWindow> window);
   void makeCurrent();
   void resize(
       std::uint32_t bufferWidth, std::uint32_t bufferHeight, std::uint32_t logicalWidth, std::uint32_t logicalHeight
@@ -63,7 +63,6 @@ private:
   void swapBuffers();
   void checkGraphicsReset();
 
-  wl_surface* m_surface = nullptr;
   GlSharedContext* m_shared = nullptr;
   std::unique_ptr<RenderBackend> m_backend;
   std::unique_ptr<RenderTarget> m_target;

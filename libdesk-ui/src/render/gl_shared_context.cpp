@@ -1,6 +1,7 @@
 #include "render/gl_shared_context.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "render/backend/render_backend.h"
 #include "render/core/startup_metrics.h"
 
@@ -8,9 +9,6 @@
 #include <GLES2/gl2.h>
 #include <chrono>
 #include <dlfcn.h>
-#include <filesystem>
-#include <fstream>
-#include <sched.h>
 #include <format>
 #include <iterator>
 #include <stdexcept>
@@ -181,14 +179,10 @@ namespace {
 
 GlSharedContext::~GlSharedContext() { cleanup(); }
 
-void GlSharedContext::initialize(wl_display* display, bool createSharedContext) {
-  if (display == nullptr) {
-    throw std::runtime_error("GlSharedContext requires a valid Wayland display");
-  }
-
+void GlSharedContext::initialize(EGLNativeDisplayType display, bool createSharedContext) {
   const auto initStart = std::chrono::steady_clock::now();
   (void)dlerror();
-  m_display = eglGetDisplay(reinterpret_cast<EGLNativeDisplayType>(display));
+  m_display = eglGetDisplay(display);
   if (m_display == EGL_NO_DISPLAY) {
     const char* loaderError = dlerror();
     const std::string loaderDetail = loaderError != nullptr ? loaderError : "";
@@ -206,7 +200,7 @@ void GlSharedContext::initializeSurfaceless() {
   if (getPlatformDisplay == nullptr) {
     throw std::runtime_error("eglGetPlatformDisplayEXT is missing");
   }
-  m_display = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, nullptr);
+  m_display = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, nullptr, nullptr);
   if (m_display == EGL_NO_DISPLAY) {
     throw std::runtime_error(std::format("no surfaceless EGL display (EGL error 0x{:04x})", eglGetError()));
   }
@@ -325,34 +319,12 @@ EGLContext GlSharedContext::createContext(EGLContext shareContext, std::string_v
   return context;
 }
 
-namespace {
-
-  // Mesa submits GL work on its own "gdrv" thread, created with each context. The render thread waits for it, so it
-  // shares that thread's real-time policy: at SCHED_OTHER a parallel build delays every frame.
-  void shareSchedulingWithDriverThreads() {
-    const int policy = sched_getscheduler(0) & ~SCHED_RESET_ON_FORK;
-    sched_param param{};
-    if ((policy != SCHED_RR && policy != SCHED_FIFO) || sched_getparam(0, &param) != 0) {
-      return;
-    }
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator("/proc/self/task", ec)) {
-      std::ifstream commFile(entry.path() / "comm");
-      std::string comm;
-      std::getline(commFile, comm);
-      if (comm.contains("gdrv")) {
-        sched_setscheduler(static_cast<pid_t>(std::stol(entry.path().filename().string())), policy | SCHED_RESET_ON_FORK,
-                           &param);
-      }
-    }
-  }
-
-} // namespace
-
 EGLContext GlSharedContext::createContextWithCurrentAttributes(EGLContext shareContext) const {
   EGLContext context = eglCreateContext(m_display, m_config, shareContext, m_contextAttributes.data());
   if (context != EGL_NO_CONTEXT) {
-    shareSchedulingWithDriverThreads();
+    // Mesa submits GL work on its own "gdrv" thread, created with each context. The render thread waits for it, so it
+    // shares that thread's real-time policy: at SCHED_OTHER a parallel build delays every frame.
+    sys::shareSchedulingWithThreads("gdrv");
   }
   return context;
 }

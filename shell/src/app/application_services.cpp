@@ -1144,7 +1144,7 @@ void Application::initStyleThemeAndWayland() {
   // Wayland event queue, and no context is made current on the worker.
   const bool sharedGlContext = m_configService.config().shell.sharedGlContext;
   m_glSharedInit = std::async(std::launch::async, [this, sharedGlContext] {
-    m_glShared.initialize(m_wayland.display(), sharedGlContext);
+    m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGlContext);
   });
   // initialize() creates the root context or throws, so the config decides the share group up front.
   auto* sharedGlPtr = sharedGlContext ? &m_glShared : nullptr;

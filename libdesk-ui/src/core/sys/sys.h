@@ -39,6 +39,9 @@ namespace sys {
   // Hands free heap pages back to the OS.
   void releaseFreeHeap();
 
+  // Gives this process's threads whose name contains namePart the calling thread's real-time policy.
+  void shareSchedulingWithThreads(std::string_view namePart);
+
   [[nodiscard]] std::int64_t mtimeNs(const struct stat& st);
 
   // lstat of dirFd/name, plus the birth time in ns (the change time when the file system has none).

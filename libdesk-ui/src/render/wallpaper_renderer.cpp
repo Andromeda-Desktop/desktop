@@ -37,19 +37,14 @@ WallpaperRenderer::WallpaperRenderer() = default;
 
 WallpaperRenderer::~WallpaperRenderer() { cleanup(); }
 
-void WallpaperRenderer::bind(GlSharedContext& shared, wl_surface* surface) {
+void WallpaperRenderer::bind(GlSharedContext& shared, std::unique_ptr<NativeEglWindow> window) {
   cleanup();
 
-  if (surface == nullptr) {
-    throw std::runtime_error("wallpaper renderer requires a valid Wayland surface");
-  }
-
   m_shared = &shared;
-  m_surface = surface;
   m_backend = createDefaultRenderBackend();
   m_backend->initialize(shared);
   m_target = std::make_unique<RenderTarget>();
-  m_target->create(surface, *m_backend);
+  m_target->create(std::move(window), *m_backend);
 }
 
 void WallpaperRenderer::makeCurrent() {
@@ -65,7 +60,7 @@ void WallpaperRenderer::resize(
     return;
   }
 
-  if (m_surface == nullptr || m_backend == nullptr || m_target == nullptr) {
+  if (m_backend == nullptr || m_target == nullptr) {
     throw std::runtime_error("wallpaper renderer is not bound");
   }
 
@@ -369,7 +364,6 @@ void WallpaperRenderer::cleanup() {
     m_backend.reset();
   }
 
-  m_surface = nullptr;
   m_bufferWidth = 0;
   m_bufferHeight = 0;
   m_logicalWidth = 0;

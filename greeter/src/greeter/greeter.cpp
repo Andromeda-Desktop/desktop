@@ -85,7 +85,7 @@ bool Greeter::initialize(WaylandClient& client) {
                                                                          : Input::PasswordMaskStyle::CircleFilled
   );
 
-  m_glSharedContext.initialize(client.display());
+  m_glSharedContext.initialize(reinterpret_cast<EGLNativeDisplayType>(client.display()));
 
   m_renderContext = std::make_unique<RenderContext>();
   m_renderContext->initialize(m_glSharedContext);

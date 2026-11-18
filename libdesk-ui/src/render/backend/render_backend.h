@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include "render/backend/native_egl_window.h"
 #include "render/core/damage_region.h"
 
 #include "render/core/color.h"
@@ -17,7 +18,6 @@
 class GlSharedContext;
 class RenderTarget;
 class TextureManager;
-struct wl_surface;
 struct WallpaperDrawParams;
 struct WallpaperMaskDrawParams;
 struct LockscreenTransitionDrawParams;
@@ -152,8 +152,8 @@ public:
   // Tear down a lost context without attempting to preserve its invalid GL objects.
   virtual void abandonAfterGraphicsReset() noexcept = 0;
 
-  [[nodiscard]] virtual std::unique_ptr<RenderSurfaceTarget> createSurfaceTarget(wl_surface* surface) = 0;
-  // Renders into GPU memory instead of a wl_surface, for processes without a compositor connection.
+  [[nodiscard]] virtual std::unique_ptr<RenderSurfaceTarget> createSurfaceTarget(std::unique_ptr<NativeEglWindow> window) = 0;
+  // Renders into GPU memory instead of a window, for processes without a compositor connection.
   [[nodiscard]] virtual std::unique_ptr<RenderSurfaceTarget> createOffscreenTarget() = 0;
   // Copies an offscreen target's last frame as top-down RGBA8 rows, premultiplied alpha;
   // `rgba` holds bufferWidth * bufferHeight * 4 bytes. False when the target has no frame.

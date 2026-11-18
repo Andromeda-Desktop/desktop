@@ -499,7 +499,7 @@ namespace {
         kLog.error("failed to connect to the Wayland compositor");
         return false;
       }
-      m_gl.initialize(m_wayland.display());
+      m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()));
       m_render.initialize(m_gl);
       m_wayland.setOutputChangeCallback([this] { syncOutputs(); });
       m_wayland.setKeyboardEventCallback([this](const KeyboardEvent& event) { onKey(event); });

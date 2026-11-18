@@ -92,7 +92,7 @@ bool AppLoop::initialize(bool sharedGl) {
   }
   // EGL init loads Mesa (~50 ms) on a worker while this thread sets up text and the app opens and builds its first
   // window. Mesa uses its own Wayland event queue, and no context is made current on the worker.
-  m_egl = std::async(std::launch::async, [this, sharedGl] { m_gl.initialize(m_wayland.display(), sharedGl); });
+  m_egl = std::async(std::launch::async, [this, sharedGl] { m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGl); });
   try {
     m_render.initializeText();
   } catch (const std::exception& e) {
@@ -170,7 +170,7 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   std::future<void> eglDone = egl->get_future();
   std::thread([this, egl] {
     try {
-      m_gl.initialize(m_wayland.display(), m_sharedGl);
+      m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), m_sharedGl);
       egl->set_value();
     } catch (...) {
       egl->set_exception(std::current_exception());

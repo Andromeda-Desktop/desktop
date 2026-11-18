@@ -13,6 +13,7 @@
 #include "viewporter-client-protocol.h"
 #include "wayland/frame_stats.h"
 #include "wayland/wayland_connection.h"
+#include "wayland/wayland_egl_window.h"
 
 #include <algorithm>
 #include <cctype>
@@ -480,7 +481,7 @@ bool Surface::createWlSurface() {
   initializeSurfaceScaleProtocol();
 
   if (m_renderContext != nullptr) {
-    m_renderTarget.create(m_surface, *m_renderContext);
+    m_renderTarget.create(std::make_unique<WaylandEglWindow>(m_surface), *m_renderContext);
     m_renderTarget.setContentScale(effectiveBufferScale());
   }
   return true;
@@ -585,7 +586,7 @@ void Surface::setRenderContext(RenderContext* ctx) {
   m_renderTarget.destroy();
 
   if (m_surface != nullptr && m_renderContext != nullptr) {
-    m_renderTarget.create(m_surface, *m_renderContext);
+    m_renderTarget.create(std::make_unique<WaylandEglWindow>(m_surface), *m_renderContext);
     m_renderTarget.setContentScale(effectiveBufferScale());
     resizeRenderTarget();
   }
@@ -650,7 +651,7 @@ void Surface::resizeRenderTarget() {
   }
 
   if (m_surface != nullptr && m_renderTarget.surfaceTarget() == nullptr) {
-    m_renderTarget.create(m_surface, *m_renderContext);
+    m_renderTarget.create(std::make_unique<WaylandEglWindow>(m_surface), *m_renderContext);
   }
 
   const auto bufferWidth = bufferWidthFor(m_width);

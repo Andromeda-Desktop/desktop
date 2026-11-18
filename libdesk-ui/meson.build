@@ -366,6 +366,7 @@ _wayland_sources = files(
   'src/wayland/text_input_service.cpp',
   'src/wayland/toplevel_surface.cpp',
   'src/wayland/wayland_connection.cpp',
+  'src/wayland/wayland_egl_window.cpp',
   'src/wayland/wayland_seat.cpp',
 )
 

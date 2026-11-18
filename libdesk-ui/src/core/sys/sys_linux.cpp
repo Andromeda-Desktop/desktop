@@ -8,9 +8,11 @@
 #include <cstring>
 #include <ctime>
 #include <fcntl.h>
+#include <filesystem>
 #include <fstream>
 #include <malloc.h>
 #include <pthread.h>
+#include <sched.h>
 #include <sstream>
 #include <string>
 #include <string.h>
@@ -76,6 +78,24 @@ namespace sys {
 
   // glibc keeps freed pages until a trim.
   void releaseFreeHeap() { malloc_trim(0); }
+
+  void shareSchedulingWithThreads(std::string_view namePart) {
+    const int policy = sched_getscheduler(0) & ~SCHED_RESET_ON_FORK;
+    sched_param param{};
+    if ((policy != SCHED_RR && policy != SCHED_FIFO) || sched_getparam(0, &param) != 0) {
+      return;
+    }
+    std::error_code ec;
+    for (const auto& entry : std::filesystem::directory_iterator("/proc/self/task", ec)) {
+      std::ifstream commFile(entry.path() / "comm");
+      std::string comm;
+      std::getline(commFile, comm);
+      if (comm.contains(namePart)) {
+        sched_setscheduler(static_cast<pid_t>(std::stol(entry.path().filename().string())), policy | SCHED_RESET_ON_FORK,
+                           &param);
+      }
+    }
+  }
 
   std::int64_t mtimeNs(const struct stat& st) {
     return static_cast<std::int64_t>(st.st_mtim.tv_sec) * 1'000'000'000 + st.st_mtim.tv_nsec;

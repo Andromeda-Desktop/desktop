@@ -23,7 +23,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <wayland-egl.h>
 
 namespace {
 
@@ -181,8 +180,8 @@ void main() {
 
   class GlesSurfaceTarget final : public RenderSurfaceTarget {
   public:
-    GlesSurfaceTarget(EGLDisplay display, EGLConfig config, wl_surface* surface)
-        : m_display(display), m_config(config), m_wlSurface(surface) {}
+    GlesSurfaceTarget(EGLDisplay display, EGLConfig config, std::unique_ptr<NativeEglWindow> window)
+        : m_display(display), m_config(config), m_window(std::move(window)) {}
     ~GlesSurfaceTarget() override { destroy(); }
 
     GlesSurfaceTarget(const GlesSurfaceTarget&) = delete;
@@ -191,24 +190,20 @@ void main() {
     void resize(std::uint32_t bufferWidth, std::uint32_t bufferHeight) override {
       if (bufferWidth == 0
           || bufferHeight == 0
-          || m_wlSurface == nullptr
+          || m_window == nullptr
           || m_display == EGL_NO_DISPLAY
           || m_config == nullptr) {
         return;
       }
 
-      if (m_window == nullptr) {
-        m_window = wl_egl_window_create(m_wlSurface, static_cast<int>(bufferWidth), static_cast<int>(bufferHeight));
-        if (m_window == nullptr) {
-          return;
-        }
-      } else {
-        wl_egl_window_resize(m_window, static_cast<int>(bufferWidth), static_cast<int>(bufferHeight), 0, 0);
+      void* const nativeWindow = m_window->resize(bufferWidth, bufferHeight);
+      if (nativeWindow == nullptr) {
+        return;
       }
 
       if (m_surface == EGL_NO_SURFACE) {
         m_surface =
-            eglCreateWindowSurface(m_display, m_config, reinterpret_cast<EGLNativeWindowType>(m_window), nullptr);
+            eglCreateWindowSurface(m_display, m_config, reinterpret_cast<EGLNativeWindowType>(nativeWindow), nullptr);
         if (m_surface == EGL_NO_SURFACE && !m_createFailureLogged) {
           const EGLint error = eglGetError();
           kLog.warn("eglCreateWindowSurface failed ({}); will retry before rendering", eglErrorDetail(error));
@@ -239,12 +234,7 @@ void main() {
         m_surface = EGL_NO_SURFACE;
       }
 
-      if (m_window != nullptr) {
-        wl_egl_window_destroy(m_window);
-        m_window = nullptr;
-      }
-
-      m_wlSurface = nullptr;
+      m_window.reset();
     }
 
     [[nodiscard]] bool isReady() const noexcept override { return m_surface != EGL_NO_SURFACE; }
@@ -253,8 +243,7 @@ void main() {
   private:
     EGLDisplay m_display = EGL_NO_DISPLAY;
     EGLConfig m_config = nullptr;
-    wl_surface* m_wlSurface = nullptr;
-    wl_egl_window* m_window = nullptr;
+    std::unique_ptr<NativeEglWindow> m_window;
     EGLSurface m_surface = EGL_NO_SURFACE;
     bool m_createFailureLogged = false;
   };
@@ -327,8 +316,6 @@ void main() {
   }
 
 } // namespace
-
-GlesRenderBackend::~GlesRenderBackend() { cleanup(); }
 
 void GlesRenderBackend::initialize(GlSharedContext& shared) {
   m_display = shared.display();
@@ -560,6 +547,8 @@ struct GpuSplitTimer {
   }
 };
 
+GlesRenderBackend::~GlesRenderBackend() { cleanup(); }
+
 GlesRenderBackend::GlesRenderBackend() = default;
 
 void GlesRenderBackend::gpuMark(std::uint8_t kind) {
@@ -709,8 +698,8 @@ void GlesRenderBackend::abandonAfterGraphicsReset() noexcept {
   m_maxTextureSize = 0;
 }
 
-std::unique_ptr<RenderSurfaceTarget> GlesRenderBackend::createSurfaceTarget(wl_surface* surface) {
-  return std::make_unique<GlesSurfaceTarget>(m_display, m_config, surface);
+std::unique_ptr<RenderSurfaceTarget> GlesRenderBackend::createSurfaceTarget(std::unique_ptr<NativeEglWindow> window) {
+  return std::make_unique<GlesSurfaceTarget>(m_display, m_config, std::move(window));
 }
 
 std::unique_ptr<RenderSurfaceTarget> GlesRenderBackend::createOffscreenTarget() {

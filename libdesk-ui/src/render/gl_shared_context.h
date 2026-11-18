@@ -6,7 +6,6 @@
 #include <utility>
 #include <vector>
 
-struct wl_display;
 enum class RenderGraphicsResetStatus;
 
 // Reset status of the GL context current on this thread. NoError when the driver exposes no reset query.
@@ -26,7 +25,7 @@ public:
   GlSharedContext(const GlSharedContext&) = delete;
   GlSharedContext& operator=(const GlSharedContext&) = delete;
 
-  void initialize(wl_display* display, bool createSharedContext = true);
+  void initialize(EGLNativeDisplayType display, bool createSharedContext = true);
   // For processes without a compositor connection; render with offscreen targets only.
   void initializeSurfaceless();
   void cleanup();

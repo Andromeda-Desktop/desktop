@@ -95,17 +95,17 @@ RenderTarget::RenderTarget() { m_renderer.attachTarget(*this); }
 
 RenderTarget::~RenderTarget() { destroy(); }
 
-void RenderTarget::create(wl_surface* surface, RenderContext& context) {
+void RenderTarget::create(std::unique_ptr<NativeEglWindow> window, RenderContext& context) {
   m_renderer.setContext(&context);
   // Without GL the renderer only measures; Surface::ensureRenderTargetReady() creates the GL target.
   if (context.glReady()) {
-    create(surface, context.backend());
+    create(std::move(window), context.backend());
   }
 }
 
-void RenderTarget::create(wl_surface* surface, RenderBackend& backend) {
+void RenderTarget::create(std::unique_ptr<NativeEglWindow> window, RenderBackend& backend) {
   destroy();
-  m_surfaceTarget = backend.createSurfaceTarget(surface);
+  m_surfaceTarget = backend.createSurfaceTarget(std::move(window));
   if (m_surfaceTarget == nullptr) {
     throw std::runtime_error("render backend failed to create a surface target");
   }

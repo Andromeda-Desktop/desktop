@@ -107,7 +107,7 @@ namespace {
       }
       m_platform.initialize();
       const bool sharedGl = m_config.config().shell.sharedGlContext;
-      m_glShared.initialize(m_wayland.display(), sharedGl);
+      m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGl);
       m_textures.initialize(sharedGl ? &m_glShared : nullptr);
       m_renderContext.initialize(m_glShared);
       m_renderContext.setTextFontFamily(m_config.config().shell.fontFamily);

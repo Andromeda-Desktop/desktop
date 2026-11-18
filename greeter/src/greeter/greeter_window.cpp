@@ -8,6 +8,7 @@
 #include "render/scene/node.h"
 #include "viewporter-client-protocol.h"
 #include "wayland/wayland_client.h"
+#include "wayland/wayland_egl_window.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
@@ -236,7 +237,7 @@ bool GreeterWindow::ensureRenderTarget() {
     return true;
   }
 
-  m_renderTarget.create(m_wlSurface, m_renderContext);
+  m_renderTarget.create(std::make_unique<WaylandEglWindow>(m_wlSurface), m_renderContext);
   m_renderTarget.resize(bufferWidth, bufferHeight);
   m_renderTarget.setLogicalSize(m_width, m_height);
   m_renderTarget.setContentScale(m_width > 0 ? std::max(1.0F, static_cast<float>(bufferWidth) / static_cast<float>(m_width)) : 1.0F);

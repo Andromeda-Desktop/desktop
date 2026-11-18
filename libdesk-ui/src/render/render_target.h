@@ -11,7 +11,7 @@
 #include <memory>
 #include <optional>
 
-struct wl_surface;
+class NativeEglWindow;
 
 class RenderBackend;
 class RenderContext;
@@ -84,9 +84,9 @@ public:
   RenderTarget(const RenderTarget&) = delete;
   RenderTarget& operator=(const RenderTarget&) = delete;
 
-  void create(wl_surface* surface, RenderContext& context);
-  void create(wl_surface* surface, RenderBackend& backend);
-  // A target without a wl_surface; read frames with RenderContext::readPixels.
+  void create(std::unique_ptr<NativeEglWindow> window, RenderContext& context);
+  void create(std::unique_ptr<NativeEglWindow> window, RenderBackend& backend);
+  // A target without a window; read frames with RenderContext::readPixels.
   void createOffscreen(RenderContext& context);
   void resize(std::uint32_t bufferWidth, std::uint32_t bufferHeight);
   void destroy();

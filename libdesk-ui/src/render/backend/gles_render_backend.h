@@ -50,7 +50,7 @@ public:
   void invalidateGpuResources() override;
   void abandonAfterGraphicsReset() noexcept override;
 
-  [[nodiscard]] std::unique_ptr<RenderSurfaceTarget> createSurfaceTarget(wl_surface* surface) override;
+  [[nodiscard]] std::unique_ptr<RenderSurfaceTarget> createSurfaceTarget(std::unique_ptr<NativeEglWindow> window) override;
   [[nodiscard]] std::unique_ptr<RenderSurfaceTarget> createOffscreenTarget() override;
   bool readPixels(RenderTarget& target, std::span<std::uint8_t> rgba) override;
   [[nodiscard]] std::unique_ptr<RenderFramebuffer>

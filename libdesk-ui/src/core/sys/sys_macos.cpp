@@ -79,6 +79,9 @@ namespace sys {
 
   void releaseFreeHeap() { malloc_zone_pressure_relief(nullptr, 0); }
 
+  // Mesa driver threads, the only users, exist only on Linux.
+  void shareSchedulingWithThreads(std::string_view) {}
+
   std::int64_t mtimeNs(const struct stat& st) { return toNs(st.st_mtimespec); }
 
   bool statWithBirth(int dirFd, const char* name, struct stat& out, std::int64_t& birthNs) {
