@@ -235,7 +235,7 @@ done
 # Report: per scenario and mode. Budget: 25 % of a 60 Hz frame on the target GPU, scaled to this GPU.
 budget=$(awk -v s="$BUDGET_SCALE" 'BEGIN {printf "%.3f", 16.667 * 0.25 / s}')
 printf '%-16s %-8s %7s %8s %8s %8s %8s %7s %6s %8s\n' scenario mode frames p50ms p99ms maxms sub99ms watts cpu% rssMB
-for name in idle cc_over_motion open_close window_open_close launcher_typing worst workspace_switch; do
+for name in idle cc_over_motion open_close window_open_close launcher_typing worst workspace_switch overview_open; do
   [[ -z ${SCENARIOS:-} || " $SCENARIOS " == *" $name "* ]] || continue
   for mode in "${MODES[@]}"; do
     line=$(awk -v n="$name" '$1 == n' "$OUT/$mode/scenarios.txt")
