@@ -79,6 +79,16 @@ public:
   [[nodiscard]] virtual bool hasDecoration() const { return true; }
   // True: the panel draws no sheet; each node marked with Node::setGlassPiece is its own glass shape.
   [[nodiscard]] virtual bool usesGlassPieces() const { return false; }
+  // How glass pieces pour in on open: each piece travels xShare of its x distance to the anchor (the pieces' right
+  // end, or left start when towardLeft) and yShare of its y distance to the surface top plus lift px, from fromScale.
+  struct PiecePour {
+    float fromScale = 0.92F;
+    float xShare = 0.15F;
+    float yShare = 0.5F;
+    float lift = 0.0F;
+    bool towardLeft = false;
+  };
+  [[nodiscard]] virtual PiecePour piecePour() const { return {}; }
   // False: the content reaches the card edge; the panel insets its own rows.
   [[nodiscard]] virtual bool padsContent() const noexcept { return true; }
   [[nodiscard]] virtual LayerShellLayer layer() const { return LayerShellLayer::Top; }

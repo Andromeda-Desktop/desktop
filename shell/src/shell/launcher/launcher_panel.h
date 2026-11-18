@@ -84,6 +84,10 @@ public:
   [[nodiscard]] bool fitsContentHeight() const noexcept override { return usesBrowserLayout(); }
   [[nodiscard]] float centerTopFraction() const noexcept override { return usesBrowserLayout() ? 0.2F : 0.0F; }
   [[nodiscard]] bool padsContent() const noexcept override { return !usesBrowserLayout(); }
+  // Concept C: the search capsule, each mode drop and the results are separate glass pieces.
+  [[nodiscard]] bool usesGlassPieces() const override { return usesBrowserLayout(); }
+  // The pieces pour out of the launcher button, left on the bar.
+  [[nodiscard]] PiecePour piecePour() const override { return {.towardLeft = true}; }
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override;
   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::Exclusive; }
   [[nodiscard]] InputArea* initialFocusArea() const override;
@@ -166,6 +170,9 @@ private:
   void setFilesKind(std::size_t index);
   void syncKindTabs();
   void syncModeTabs();
+  void syncModeDrops();
+  [[nodiscard]] bool modeDropOn(std::size_t index) const;
+  void toggleModeDrop(std::size_t index);
   void syncEmojiStrip();
   void syncPackStrip();
   [[nodiscard]] bool pillExpanded() const;
@@ -241,14 +248,18 @@ private:
   std::size_t m_selectedIndex = 0;
   std::size_t m_activeCategorySlotIndex = 0;
   bool m_browserMode = false;
-  Separator* m_pillSeparator = nullptr;
   Flex* m_pillFooter = nullptr;
+  Flex* m_resultsPiece = nullptr;
+  // The mode drops right of the capsule: Apps, Files, Clipboard, Emoji.
+  struct ModeDrop {
+    Flex* node = nullptr;
+    Glyph* glyph = nullptr;
+  };
+  std::array<ModeDrop, 4> m_modeDrops{};
   // Media modes (DESIGN.md "Launcher media modes"): the provider the tabs scope the search to; empty = search.
-  std::string m_modeProviderId;
   Flex* m_modeTabs = nullptr;
   Flex* m_emojiStrip = nullptr;
   Flex* m_packStrip = nullptr;
-  Separator* m_modeTabsLine = nullptr;
   std::vector<std::pair<std::string, Flex*>> m_modeTabItems;
   // Direction C preview pane (right of the result list).
   Flex* m_previewPane = nullptr;
@@ -296,13 +307,16 @@ private:
   Label* m_filesTokenLabel = nullptr;
   // Kind chips of the Files scope (DESIGN.md "Show all" B, kind filter A); index into kFileKinds.
   Flex* m_kindTabs = nullptr;
-  Separator* m_kindTabsLine = nullptr;
   std::vector<Flex*> m_kindTabItems;
   std::size_t m_kindIndex = 0;
   std::size_t m_packIndex = 0;
   Flex* m_pillKindHint = nullptr;
   launcher_view::State<BrowserViewState> m_view;
   [[nodiscard]] bool filesScope() const noexcept { return m_view.is<launcher_view::Files>(); }
+  [[nodiscard]] bool appsView() const noexcept { return m_view.is<launcher_view::Apps>(); }
+  // Only the clipboard shows the list in a 360 pane beside a preview; every other list is full width.
+  [[nodiscard]] bool previewSplit() const noexcept { return m_view.mediaProviderId() == "Clipboard"; }
+  [[nodiscard]] std::string_view modeProviderId() const noexcept { return m_view.mediaProviderId(); }
   [[nodiscard]] bool showingProviderOverview() const noexcept { return m_view.is<launcher_view::ProviderOverview>(); }
   // Leaves a provider view for plain search; the Files and overview views stay.
   void leaveProviderView();

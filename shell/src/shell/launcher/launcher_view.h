@@ -7,19 +7,24 @@
 #include <utility>
 #include <variant>
 
-// What the launcher shows: plain search, the provider overview ("/"), the Files scope, or one provider's view.
+// What the launcher shows: plain search, the provider overview ("/"), the Files scope, the apps grid, a media mode
+// (Clipboard, Emoji, ...), or one provider's view.
 namespace launcher_view {
 
   struct Default {};
   struct ProviderOverview {};
   struct Files {};
+  struct Apps {};
+  struct Media {
+    std::string providerId;
+  };
   template <typename Return> struct Browser {
     std::string providerViewId;
     // The view to restore when the user leaves this provider view again.
     std::optional<Return> returnView;
   };
 
-  template <typename Return> using View = std::variant<Default, ProviderOverview, Files, Browser<Return>>;
+  template <typename Return> using View = std::variant<Default, ProviderOverview, Files, Apps, Media, Browser<Return>>;
 
   // ProviderOverview comes only from a plain search; a provider view never opens over the Files scope.
   template <typename Return> [[nodiscard]] bool canEnter(const View<Return>& from, const View<Return>& to) {
@@ -31,7 +36,7 @@ namespace launcher_view {
             return true;
           } else if constexpr (std::is_same_v<To, ProviderOverview>) {
             return std::is_same_v<From, Default>;
-          } else if constexpr (std::is_same_v<To, Files>) {
+          } else if constexpr (std::is_same_v<To, Files> || std::is_same_v<To, Apps> || std::is_same_v<To, Media>) {
             return true;
           } else {
             return !std::is_same_v<From, Files>;
@@ -60,6 +65,11 @@ namespace launcher_view {
     [[nodiscard]] std::string_view providerViewId() const noexcept {
       const auto* browser = std::get_if<Browser<Return>>(&m_view);
       return browser == nullptr ? std::string_view() : std::string_view(browser->providerViewId);
+    }
+
+    [[nodiscard]] std::string_view mediaProviderId() const noexcept {
+      const auto* media = std::get_if<Media>(&m_view);
+      return media == nullptr ? std::string_view() : std::string_view(media->providerId);
     }
 
     // Takes the return view out of a provider view; the provider view stays open.

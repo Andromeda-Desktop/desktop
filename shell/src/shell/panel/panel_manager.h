@@ -26,6 +26,7 @@
 class ConfigService;
 class CompositorPlatform;
 class ContextMenuPopup;
+struct ContextMenuControlEntry;
 class SelectDropdownPopup;
 class Box;
 class IpcService;
@@ -177,6 +178,10 @@ public:
   // Applies the shell's effective popup shadow settings to a panel-owned
   // context menu before it opens.
   void configureContextMenuPopup(ContextMenuPopup& popup) const;
+  // Opens a menu under `anchor` (a node of the active panel), its right edge on the anchor's right edge, 8 below
+  // (proto overlays.js power menu); `onActivate` receives the chosen entry's id.
+  void openPanelMenu(std::vector<ContextMenuControlEntry> entries, const Node& anchor, float width,
+                     std::function<void(std::int32_t)> onActivate);
   void setActivePopup(ContextMenuPopup* popup);
   void clearActivePopup();
 
@@ -478,5 +483,6 @@ private:
   Box* m_dialogDim = nullptr;
   ContextMenuPopup* m_activePopup = nullptr;
   std::unique_ptr<SelectDropdownPopup> m_selectPopup;
+  std::unique_ptr<ContextMenuPopup> m_panelMenu;
   std::uint64_t m_destroyGeneration = 0; // invalidates stale deferred destroyPanel calls
 };

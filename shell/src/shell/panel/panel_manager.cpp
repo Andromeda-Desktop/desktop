@@ -37,6 +37,7 @@
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
+#include <limits>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
@@ -1741,6 +1742,7 @@ void PanelManager::destroyPanel() {
   m_panelShadowNode = nullptr;
   m_panelContactShadowNode = nullptr;
   m_selectPopup.reset();
+  m_panelMenu.reset();
   m_sceneRoot.reset();
   m_pieceShapes.clear();
   m_pieceClips.clear();
@@ -2991,12 +2993,13 @@ bool PanelManager::startPiecesClose(std::uint64_t gen) {
   return true;
 }
 
-// proto flow.js openCC / closeCC: a piece travels 15 % of its x and 50 % of its y distance to the top edge above
-// the column's right end, scales from 0.92 and fades; entries stagger, exits do not.
+// proto flow.js openCC / closeCC: a piece travels part of its distance to the panel's pour anchor (Panel::piecePour),
+// scales up and fades in; entries stagger, exits do not.
 void PanelManager::pourPieces(bool open) {
-  constexpr float kFromScale = 0.92F;
+  const Panel::PiecePour pour = m_activePanel != nullptr ? m_activePanel->piecePour() : Panel::PiecePour{};
   std::vector<Node*> pieces;
   float right = 0.0F;
+  float left = std::numeric_limits<float>::max();
   const auto collect = [&](const auto& self, Node& node) -> void {
     if (!node.visible()) {
       return;
@@ -3006,6 +3009,7 @@ void PanelManager::pourPieces(bool open) {
       float y = 0.0F;
       Node::absolutePosition(&node, x, y);
       right = std::max(right, x + node.width());
+      left = std::min(left, x);
       pieces.push_back(&node);
       return;
     }
@@ -3020,19 +3024,20 @@ void PanelManager::pourPieces(bool open) {
     float y = 0.0F;
     Node::absolutePosition(piece, x, y);
     // A pour in flight left the piece at progress v = its opacity: solve back to its rest box, so a reversal mid-way
-    // returns it home instead of keeping the displaced spot as its rest. The right-most piece has no x travel, so
-    // `right` is already at rest.
+    // returns it home instead of keeping the displaced spot as its rest. The end piece has no x travel, so the
+    // anchor is already at rest.
     const float pending = 1.0F - std::clamp(piece->opacity(), 0.0F, 1.0F);
-    const float kx = 0.15F * pending;
-    const float restAbsX = (x - kx * (right - piece->width())) / (1.0F - kx);
-    const float restAbsY = y / (1.0F - 0.5F * pending);
-    const float offX = (right - (restAbsX + piece->width())) * 0.15F;
-    const float offY = -restAbsY * 0.5F;
+    const float anchorX = pour.towardLeft ? left : right - piece->width();
+    const float kx = pour.xShare * pending;
+    const float restAbsX = (x - kx * anchorX) / (1.0F - kx);
+    const float restAbsY = (y + pour.lift * pending) / (1.0F - pour.yShare * pending);
+    const float offX = (anchorX - restAbsX) * pour.xShare;
+    const float offY = -restAbsY * pour.yShare - pour.lift;
     const float restX = piece->x() - offX * pending;
     const float restY = piece->y() - offY * pending;
-    const auto apply = [this, piece, restX, restY, offX, offY](float v) {
+    const auto apply = [this, piece, restX, restY, offX, offY, fromScale = pour.fromScale](float v) {
       piece->setPosition(restX + offX * (1.0F - v), restY + offY * (1.0F - v));
-      piece->setScale(std::lerp(kFromScale, 1.0F, v));
+      piece->setScale(std::lerp(fromScale, 1.0F, v));
       piece->setOpacity(v);
       if (m_surface != nullptr) {
         m_surface->requestRedraw();
@@ -4329,4 +4334,53 @@ void PanelManager::registerIpc(IpcService& ipc) {
     toggleSettingsWindow(std::string(StringUtils::trimLeftView(args)));
     return "ok\n";
   });
+}
+
+void PanelManager::openPanelMenu(std::vector<ContextMenuControlEntry> entries, const Node& anchor, float width,
+                                 std::function<void(std::int32_t)> onActivate) {
+  if (m_surface == nullptr || m_renderContext == nullptr || wayland() == nullptr) {
+    return;
+  }
+  const auto parent = popupParentContextForSurface(m_surface.get());
+  if (!parent.has_value()) {
+    return;
+  }
+  if (m_panelMenu == nullptr) {
+    m_panelMenu = std::make_unique<ContextMenuPopup>(*wayland(), *m_renderContext);
+  }
+  configureContextMenuPopup(*m_panelMenu);
+  m_panelMenu->setOnActivate([onActivate = std::move(onActivate)](const ContextMenuControlEntry& entry) {
+    if (entry.id >= 0) {
+      onActivate(entry.id);
+    }
+  });
+  Surface* const parentSurface = parent->surface;
+  beginAttachedPopup(parentSurface);
+  m_panelMenu->setOnDismissed([this, parentSurface] {
+    clearActivePopup();
+    endAttachedPopup(parentSurface);
+  });
+  float x = 0.0F;
+  float y = 0.0F;
+  Node::absolutePosition(&anchor, x, y);
+  const float scale = m_activePanel != nullptr ? m_activePanel->contentScale() : 1.0F;
+  m_panelMenu->open(ContextMenuPopupRequest{
+      .entries = std::move(entries),
+      .menuWidth = width,
+      .contentScale = scale,
+      .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(std::lround(x)),
+                                .y = static_cast<std::int32_t>(std::lround(y)),
+                                .width = std::max(1, static_cast<std::int32_t>(std::lround(anchor.width()))),
+                                .height = std::max(1, static_cast<std::int32_t>(std::lround(anchor.height())))},
+      .parent = PopupParent{.surface = parent->surface, .output = parent->output},
+      .pointerParentSurface = parent->surface,
+      .placement = ContextMenuPopupPlacement{.anchor = PopupAnchor::BottomRight,
+                                             .gravity = PopupGravity::BottomLeft,
+                                             .offsetY = static_cast<std::int32_t>(std::lround(Tokens::spaceP8 * scale))},
+  });
+  if (m_panelMenu->isOpen()) {
+    setActivePopup(m_panelMenu.get());
+  } else {
+    endAttachedPopup(parentSurface);
+  }
 }

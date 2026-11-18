@@ -1041,6 +1041,8 @@
       "sleep": "Sleep",
       "restart": "Restart",
       "shut-down": "Shut Down",
+      "restart-menu": "Restart…",
+      "shut-down-menu": "Shut Down…",
       "restart-when-done": "Restart When Done",
       "shut-down-when-done": "Shut Down When Done",
       "restart-firmware": "Restart to Firmware",
@@ -1502,6 +1504,12 @@
       "add-key-hint": "Settings → Launcher → GIF API Key",
       "trending": "Trending",
       "fluent": "Fluent 3D"
+    },
+    "mode": {
+      "apps": "Apps",
+      "files": "Files",
+      "clipboard": "Clipboard",
+      "emoji": "Emoji"
     }
   },
   "live-activity": {

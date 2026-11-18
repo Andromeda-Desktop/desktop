@@ -129,10 +129,12 @@ namespace launcher_detail {
   // Rulebook 9.14 at its tallest (the apps grid): field, hairline, p, grid rows with g 8, page dots, p.
   [[nodiscard]] inline float launcherSheetHeight() {
     const float rows = static_cast<float>(Tokens::componentLauncherRows);
-    return Tokens::componentLauncherSearch + 1.0F + 2.0F * Tokens::componentLauncherPadding
-        + rows * Tokens::componentLauncherCellHeight + rows * Tokens::spaceP8 + Tokens::componentPageDotsRow;
+    return Tokens::componentLauncherSearch + Tokens::spaceP8 + 2.0F * Tokens::componentLauncherResultsPadding
+        + 2.0F * Tokens::spaceP8 + rows * Tokens::componentLauncherCellHeight + (rows - 1.0F) * Tokens::spaceP8
+        + Tokens::componentPageDotsRow;
   }
-  [[nodiscard]] inline bool isAppsQuery(std::string_view query) { return query == "apps"; }
+  constexpr std::string_view kAppsContext = "apps";
+  [[nodiscard]] inline bool isAppsQuery(std::string_view query) { return query == kAppsContext; }
   [[nodiscard]] inline bool isTwoLineRow(const LauncherResult& result) { return result.presentation.starts_with("clipboard"); }
   [[nodiscard]] inline std::string formatByteSize(std::size_t bytes) {
     if (bytes < 1024) {
@@ -295,7 +297,7 @@ namespace launcher_detail {
            .gap = gap,
            .paddingV = paddingV,
            .paddingH = (m_style.pill ? Tokens::spaceP12 : Style::spaceSm) * m_style.scale,
-           .radius = m_style.pill ? Tokens::radiusR12 * m_style.scale : Style::scaledRadiusMd(m_style.scale)}
+           .radius = m_style.pill ? Tokens::componentLauncherRowRadius * m_style.scale : Style::scaledRadiusMd(m_style.scale)}
       );
       addChild(std::move(row));
 

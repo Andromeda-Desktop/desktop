@@ -119,21 +119,21 @@ void LauncherPanel::rebuildLauncherSections() {
     return;
   }
   m_launcherSectionsAdapter->setPillStyle(m_browserMode);
-  const bool emojiMode = m_modeProviderId == "Emoji";
+  const bool emojiMode = modeProviderId() == "Emoji";
   const auto thumbs = [this](std::string_view presentation) {
     return std::ranges::any_of(m_results, [&](const LauncherResult& r) { return r.presentation == presentation; });
   };
   m_launcherSectionsAdapter->setCellGrid(
       emojiMode                                          ? CellGrid::Emoji
-          : m_modeProviderId == "Gifs" && thumbs("gif")         ? CellGrid::Gif
-          : m_modeProviderId == "Stickers" && thumbs("sticker") ? CellGrid::Sticker
+          : modeProviderId() == "Gifs" && thumbs("gif")         ? CellGrid::Gif
+          : modeProviderId() == "Stickers" && thumbs("sticker") ? CellGrid::Sticker
                                                                 : CellGrid::None
   );
   if (m_browserMode && shouldUseLauncherSections() && emojiMode) {
     (void)m_launcherSectionsAdapter->setGridView(false);
     m_launcherSectionsAdapter->rebuildSections(emojiSections(m_results, m_providers, !m_query.empty()));
     m_launcherSectionsAdapter->setSelectedResultIndex(m_selectedIndex);
-  } else if (m_browserMode && shouldUseLauncherSections() && !m_modeProviderId.empty()) {
+  } else if (m_browserMode && shouldUseLauncherSections() && !modeProviderId().empty()) {
     (void)m_launcherSectionsAdapter->setGridView(false);
     m_launcherSectionsAdapter->rebuildSections(categorySections(m_results));
     m_launcherSectionsAdapter->setSelectedResultIndex(m_selectedIndex);
@@ -187,9 +187,13 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
   }
 
   if (m_browserMode && m_body != nullptr && m_resultsViewport != nullptr && m_previewPane != nullptr) {
-    // Rulebook 9.14: the grid sits at p 16; direction C puts the list in a 360 pane, lens at inset 8.
-    const bool split = !useGrid && pillExpanded();
-    m_body->setPadding(useGrid ? Tokens::componentLauncherPadding * scale : 0.0F);
+    // Concept C: the grid sits at p 8 24 inside the results piece.
+    const bool split = !useGrid && pillExpanded() && previewSplit();
+    if (useGrid) {
+      m_body->setPadding(Tokens::spaceP8 * scale, Tokens::spaceP24 * scale);
+    } else {
+      m_body->setPadding(0.0F);
+    }
     m_resultsViewport->setPadding(split ? Tokens::spaceP8 * scale : 0.0F);
     m_resultsViewport->setFlexGrow(split ? 0.0F : 1.0F);
     m_resultsViewport->setMinWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
@@ -321,18 +325,21 @@ void LauncherPanel::onPanelCardOpacityChanged(float opacity) {
 }
 
 bool LauncherPanel::isContextActive(std::string_view context) const {
-  if (m_modeProviderId.empty()) {
-    // A plain context opens as the field text ("apps" shows the grid); it stays active until the user edits the field.
+  if (modeProviderId().empty()) {
+    // "apps" opens the apps grid; another plain context opens as the field text and stays active until the user edits it.
+    if (isAppsQuery(context)) {
+      return appsView();
+    }
     return !context.starts_with(kModeContextPrefix) && m_query == context;
   }
   if (context.starts_with(kModeContextPrefix)) {
-    return context.substr(kModeContextPrefix.size()) == m_modeProviderId;
+    return context.substr(kModeContextPrefix.size()) == modeProviderId();
   }
-  const auto provider = std::ranges::find(m_providers, std::string_view(m_modeProviderId), [](const auto& p) { return p->id(); });
+  const auto provider = std::ranges::find(m_providers, std::string_view(modeProviderId()), [](const auto& p) { return p->id(); });
   return provider != m_providers.end() && StringUtils::trim(context) == (*provider)->prefix();
 }
 
-bool LauncherPanel::pillExpanded() const { return !m_query.empty() || !m_modeProviderId.empty() || filesScope(); }
+bool LauncherPanel::pillExpanded() const { return !m_query.empty() || !modeProviderId().empty() || filesScope() || appsView(); }
 
 void LauncherPanel::showProviderOverview() {
   const std::string prefix = m_config != nullptr ? m_config->config().shell.launcher.providerPrefix : "/";

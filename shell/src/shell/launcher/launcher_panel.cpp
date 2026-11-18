@@ -1,4 +1,5 @@
 #include "shell/launcher/launcher_panel.h"
+#include "shell/panel/glass_piece.h"
 #include "wayland/drag_icon_surface.h"
 
 #include "shell/launcher/launcher_adapters.h"
@@ -41,19 +42,19 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
   }
   // Field, the taller of the list (p 8, 8 rows visible) and the preview, footer (rulebook 9.14, direction C).
   const bool strip = (m_emojiStrip != nullptr && m_emojiStrip->visible()) || (m_packStrip != nullptr && m_packStrip->visible());
-  const float list = 2.0F * Tokens::spaceP8 * scale + m_launcherSectionsAdapter->pillContentHeight(8)
+  const bool split = previewSplit();
+  const float list = (split ? 2.0F * Tokens::spaceP8 * scale : 0.0F) + m_launcherSectionsAdapter->pillContentHeight(8)
       + (strip ? Tokens::componentLauncherTabs * scale : 0.0F);
   // A clipboard image replaces the 64 icon with a 160 high picture.
   const bool picture = m_selectedIndex < m_results.size()
       && (m_results[m_selectedIndex].presentation == "clipboard-image" || isMediaPresentation(m_results[m_selectedIndex]));
-  const float previewHeight = (Tokens::componentLauncherPreviewMin
+  const float previewHeight = !split ? 0.0F : (Tokens::componentLauncherPreviewMin
                                + (picture ? Tokens::componentLauncherPreviewMedia - Tokens::componentLauncherIcon : 0.0F))
       * scale;
-  // Mode tabs and the chip row (file kinds, sticker packs) each add a row and a hairline.
-  const float rows = (m_modeProviderId.empty() ? 0.0F : 1.0F) + (m_kindTabs != nullptr && m_kindTabs->visible() ? 1.0F : 0.0F);
-  const float hairlines = 2.0F + rows; // under the field (and each row) and above the footer
-  return field + hairlines + rows * Tokens::componentLauncherTabs * scale + std::max(list, previewHeight)
-      + Tokens::componentLauncherFooter * scale;
+  // Mode tabs and the chip row (file kinds, sticker packs) each add a row inside the results piece.
+  const float rows = (modeProviderId().empty() ? 0.0F : 1.0F) + (m_kindTabs != nullptr && m_kindTabs->visible() ? 1.0F : 0.0F);
+  return field + Tokens::spaceP8 * scale + 2.0F * Tokens::componentLauncherResultsPadding * scale
+      + rows * Tokens::componentLauncherTabs * scale + std::max(list, previewHeight) + Tokens::componentLauncherFooter * scale;
 }
 
 PanelPlacement LauncherPanel::panelPlacement() const noexcept {
@@ -235,7 +236,7 @@ void LauncherPanel::create() {
   auto input = ui::input({
       .out = &m_input,
       .placeholder = m_scopedPlaceholder.empty() ? i18n::tr("launcher.search-placeholder") : m_scopedPlaceholder,
-      .fontSize = (m_browserMode ? Tokens::typeTitle3.size : Style::fontSizeBody) * scale,
+      .fontSize = (m_browserMode ? Tokens::componentLauncherFieldText : Style::fontSizeBody) * scale,
       .controlHeight = (m_browserMode ? Tokens::componentLauncherSearch : Style::controlHeight) * scale,
       .horizontalPadding = m_browserMode ? 0.0F : Style::spaceMd * scale,
       .clearButtonEnabled = !m_browserMode,
@@ -451,6 +452,7 @@ void LauncherPanel::create() {
     auto container = ui::column({
         .out = &m_container,
         .align = FlexAlign::Stretch,
+        .gap = Tokens::spaceP8 * scale,
         .fillWidth = true,
         .fillHeight = true,
     });
@@ -484,12 +486,12 @@ void LauncherPanel::create() {
       token->addChild(std::move(area));
       return token;
     };
-    container->addChild(ui::row(
+    // Concept C search row: the capsule (h 56, symbol 20 label_2 at inset 20, g 12) and four round mode drops, each its own glass.
+    auto capsule = ui::row(
         {.align = FlexAlign::Center,
          .gap = Tokens::spaceP12 * scale,
          .paddingH = Tokens::spaceP20 * scale,
-         .minHeight = Tokens::componentLauncherSearch * scale,
-         .fillWidth = true},
+         .minHeight = Tokens::componentLauncherSearch * scale},
         ui::glyph(
             {.out = &m_pillSearchGlyph,
              .glyph = "search",
@@ -498,15 +500,49 @@ void LauncherPanel::create() {
         ),
         filesToken(),
         std::move(input)
-    ));
-    container->addChild(ui::separator({
-        .out = &m_pillSeparator,
-        .color = colorSpecFromRole(ColorRole::Separator),
-        .thickness = 1.0F,
+    );
+    capsule->setFlexGrow(1.0F);
+    styleGlassPiece(*capsule, Tokens::componentLauncherSearchRadius * scale, scale, panelCardOpacity());
+    auto searchRow = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
+    searchRow->addChild(std::move(capsule));
+    constexpr std::array<std::string_view, 4> kDropGlyphs{"layout-grid", "folder", "clipboard", "mood-smile"};
+    constexpr std::array<std::string_view, 4> kDropTips{"launcher.mode.apps", "launcher.mode.files", "launcher.mode.clipboard", "launcher.mode.emoji"};
+    const float drop = Tokens::componentLauncherModeDrop * scale;
+    for (std::size_t i = 0; i < m_modeDrops.size(); ++i) {
+      auto node = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .minHeight = drop});
+      node->setMinWidth(drop);
+      node->setMaxWidth(drop);
+      styleGlassPiece(*node, drop * 0.5F, scale, panelCardOpacity());
+      node->addChild(ui::glyph({
+          .out = &m_modeDrops[i].glyph,
+          .glyph = std::string(kDropGlyphs[i]),
+          .glyphSize = Tokens::sizeSymbolL * scale,
+          .color = colorSpecFromRole(ColorRole::Label1),
+      }));
+      auto area = std::make_unique<InputArea>();
+      area->setParticipatesInLayout(false);
+      area->setCursorShape(CursorShape::Pointer);
+      area->setSize(drop, drop);
+      area->setTooltip(i18n::tr(std::string(kDropTips[i])));
+      area->setOnClick([this, i](const InputArea::PointerData&) { toggleModeDrop(i); });
+      node->addChild(std::move(area));
+      m_modeDrops[i].node = node.get();
+      searchRow->addChild(std::move(node));
+    }
+    container->addChild(std::move(searchRow));
+
+    // The results: one glass piece under the search row (r 28, p 8); it shows only once the pill expands.
+    auto results = ui::column({
+        .out = &m_resultsPiece,
+        .align = FlexAlign::Stretch,
+        .padding = Tokens::componentLauncherResultsPadding * scale,
+        .fillWidth = true,
         .visible = false,
         .participatesInLayout = false,
-    }));
-    container->addChild(ui::row({
+    });
+    styleGlassPiece(*results, Tokens::componentLauncherResultsRadius * scale, scale, panelCardOpacity());
+    results->setFlexGrow(1.0F);
+    results->addChild(ui::row({
         .out = &m_modeTabs,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP4 * scale,
@@ -516,15 +552,8 @@ void LauncherPanel::create() {
         .visible = false,
         .participatesInLayout = false,
     }));
-    container->addChild(ui::separator({
-        .out = &m_modeTabsLine,
-        .color = colorSpecFromRole(ColorRole::Separator),
-        .thickness = 1.0F,
-        .visible = false,
-        .participatesInLayout = false,
-    }));
     m_modeTabItems.clear();
-    container->addChild(ui::row({
+    results->addChild(ui::row({
         .out = &m_kindTabs,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP4 * scale,
@@ -534,15 +563,8 @@ void LauncherPanel::create() {
         .visible = false,
         .participatesInLayout = false,
     }));
-    container->addChild(ui::separator({
-        .out = &m_kindTabsLine,
-        .color = colorSpecFromRole(ColorRole::Separator),
-        .thickness = 1.0F,
-        .visible = false,
-        .participatesInLayout = false,
-    }));
     m_kindTabItems.clear();
-    body->setPadding(Tokens::componentLauncherPadding * scale);
+    body->setPadding(0.0F);
     body->setVisible(false);
     body->setParticipatesInLayout(false);
 
@@ -713,7 +735,7 @@ void LauncherPanel::create() {
     }
     preview->addChild(std::move(meta));
     body->addChild(std::move(preview));
-    container->addChild(std::move(body));
+    results->addChild(std::move(body));
 
     // Rulebook 9.14 footer: hairline, h 36, count leading, key hints trailing.
     const auto keyHint = [scale](std::string text, std::string key, Label** out = nullptr) {
@@ -730,11 +752,10 @@ void LauncherPanel::create() {
       );
     };
     auto footer = ui::column({.out = &m_pillFooter, .align = FlexAlign::Stretch, .visible = false, .participatesInLayout = false});
-    footer->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = 1.0F}));
     auto footerRow = ui::row({
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP12 * scale,
-        .paddingH = Tokens::spaceP20 * scale,
+        .paddingH = Tokens::spaceP12 * scale,
         .minHeight = Tokens::componentLauncherFooter * scale,
         .fillWidth = true,
     });
@@ -754,7 +775,8 @@ void LauncherPanel::create() {
     footerRow->addChild(std::move(backHint));
     footerRow->addChild(keyHint(i18n::tr("launcher.pill.close-hint"), "esc"));
     footer->addChild(std::move(footerRow));
-    container->addChild(std::move(footer));
+    results->addChild(std::move(footer));
+    container->addChild(std::move(results));
     setRoot(std::move(container));
     // The rulebook 9.14 sheet has no category tabs: the filter is not in the tree and dies with this scope.
     m_categoryFilter = nullptr;
@@ -837,7 +859,7 @@ void LauncherPanel::updatePageDots(std::size_t page, std::size_t pages) {
 
 bool LauncherPanel::shouldUseAppGrid() const {
   if (m_browserMode) {
-    return isAppsQuery(m_query) && !m_results.empty() && supportsResultGrid();
+    return appsView() && !m_results.empty() && supportsResultGrid();
   }
   return m_config != nullptr && m_config->config().shell.launcher.appGrid && !m_results.empty() && supportsResultGrid();
 }
@@ -981,7 +1003,10 @@ void LauncherPanel::syncLauncherAvatar(Renderer& renderer) {
 }
 
 std::string LauncherPanel::handoffContext() const {
-  return m_modeProviderId.empty() ? m_query : std::string(kModeContextPrefix) + m_modeProviderId;
+  if (appsView()) {
+    return std::string(kAppsContext);
+  }
+  return modeProviderId().empty() ? m_query : std::string(kModeContextPrefix) + std::string(modeProviderId());
 }
 
 void LauncherPanel::onOpen(std::string_view context) {
@@ -1010,7 +1035,6 @@ void LauncherPanel::onOpen(std::string_view context) {
 
   // "mode:<provider>" or a mode provider's prefix (Mod+Period sends "/emo") opens that mode with an empty field.
   std::string initialValue(context);
-  m_modeProviderId.clear();
   if (m_browserMode) {
     std::string_view requested;
     const bool modeContext = initialValue.starts_with(kModeContextPrefix);
@@ -1028,9 +1052,13 @@ void LauncherPanel::onOpen(std::string_view context) {
     const auto known = std::ranges::find(kModeProviders, requested);
     if (!requested.empty() && known != kModeProviders.end()
         && std::ranges::any_of(m_providers, [&](const auto& p) { return p->id() == requested; })) {
-      m_modeProviderId = std::string(requested);
+      m_view.set(launcher_view::Media{.providerId = std::string(requested)});
     }
-    if (modeContext || !m_modeProviderId.empty()) {
+    if (isAppsQuery(initialValue)) {
+      m_view.set(launcher_view::Apps{});
+      initialValue.clear();
+    }
+    if (modeContext || !modeProviderId().empty()) {
       initialValue.clear(); // an unknown mode opens plain search, never a search for "mode:..."
     }
     syncModeTabs();
@@ -1222,13 +1250,13 @@ void LauncherPanel::onInputChanged(const std::string& text) {
   const bool trackUsage = m_config == nullptr || launcher.trackUsage;
   m_searchBroker.setOverviewPrefix(m_config != nullptr ? launcher.providerPrefix : "/");
   auto outcome = m_searchBroker.search({
-      .text = m_browserMode && isAppsQuery(text) ? std::string() : text,
+      .text = text,
       .scopedProviderId = m_scopedProviderId,
       .providerViewId = filesScope() ? std::string("Files")
-          : !m_modeProviderId.empty()
-          ? m_modeProviderId
+          : !modeProviderId().empty()
+          ? std::string(modeProviderId())
           : (m_scopedProviderId.empty() ? std::string(m_view.providerViewId()) : std::string()),
-      .applicationsOnly = m_browserMode && m_modeProviderId.empty() && (text.empty() || isAppsQuery(text)),
+      .applicationsOnly = m_browserMode && modeProviderId().empty() && (text.empty() || appsView()),
       .trackUsage = trackUsage,
       .sortByUsage = trackUsage && m_config != nullptr && launcher.sortByUsage,
   });
@@ -1315,7 +1343,7 @@ void LauncherPanel::refreshResults() {
     return;
   }
 
-  if (m_browserMode && m_modeProviderId.empty() && m_results.empty() && !m_query.empty()) {
+  if (m_browserMode && modeProviderId().empty() && m_results.empty() && !m_query.empty()) {
     // Rulebook 9.14 / docs/search.md §1: never an empty sheet, also while a slow provider answers; offer the web
     // search row.
     const auto web = std::ranges::find(m_providers, "Web", [](const auto& provider) { return provider->id(); });
@@ -1385,12 +1413,13 @@ void LauncherPanel::applyEmptyState() {
   m_emptyLabel->setParticipatesInLayout(empty);
   syncEmojiStrip();
   syncPackStrip();
-  if (m_browserMode && m_body != nullptr && m_pillSeparator != nullptr && m_pillFooter != nullptr) {
+  if (m_browserMode && m_body != nullptr && m_resultsPiece != nullptr && m_pillFooter != nullptr) {
     const bool expanded = pillExpanded();
     m_body->setVisible(expanded);
     m_body->setParticipatesInLayout(expanded);
-    m_pillSeparator->setVisible(expanded);
-    m_pillSeparator->setParticipatesInLayout(expanded);
+    m_resultsPiece->setVisible(expanded);
+    m_resultsPiece->setParticipatesInLayout(expanded);
+    syncModeDrops();
     const bool footer = expanded && !shouldUseAppGrid();
     m_pillFooter->setVisible(footer);
     m_pillFooter->setParticipatesInLayout(footer);
@@ -1409,7 +1438,7 @@ void LauncherPanel::applyEmptyState() {
         area->setFrameSize(m_filesToken->width(), m_filesToken->height());
       }
     }
-    const bool pasteMode = !m_modeProviderId.empty();
+    const bool pasteMode = !modeProviderId().empty();
     m_pillOpenHint->setText(i18n::tr(pasteMode ? "launcher.pill.paste" : "launcher.pill.open"));
   }
   if (empty) {

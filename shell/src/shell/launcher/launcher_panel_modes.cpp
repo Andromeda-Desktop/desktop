@@ -2,6 +2,7 @@
 
 #include "shell/launcher/launcher_adapters.h"
 #include "shell/launcher/launcher_panel_detail.h"
+#include "shell/panel/glass_piece.h"
 
 
 void LauncherPanel::syncModeTabs() {
@@ -36,13 +37,11 @@ void LauncherPanel::syncModeTabs() {
       m_modeTabItems.emplace_back(std::string(id), tabPtr);
     }
   }
-  const bool show = m_browserMode && !m_modeProviderId.empty();
+  const bool show = m_browserMode && !modeProviderId().empty();
   m_modeTabs->setVisible(show);
   m_modeTabs->setParticipatesInLayout(show);
-  m_modeTabsLine->setVisible(show);
-  m_modeTabsLine->setParticipatesInLayout(show);
   for (auto& [id, tab] : m_modeTabItems) {
-    const bool on = id == m_modeProviderId;
+    const bool on = id == modeProviderId();
     tab->setFill(on ? colorSpecFromRole(ColorRole::Lens) : clearColorSpec());
     if (auto* label = dynamic_cast<Label*>(tab->children().front().get())) {
       label->setColor(colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Label2));
@@ -57,7 +56,7 @@ void LauncherPanel::syncPackStrip() {
   if (m_packStrip == nullptr) {
     return;
   }
-  const bool show = m_browserMode && m_modeProviderId == "Stickers";
+  const bool show = m_browserMode && modeProviderId() == "Stickers";
   m_packStrip->setVisible(show);
   m_packStrip->setParticipatesInLayout(show);
   if (show && m_packStrip->children().empty()) {
@@ -82,7 +81,7 @@ void LauncherPanel::syncEmojiStrip() {
   if (m_emojiStrip == nullptr) {
     return;
   }
-  const bool show = m_browserMode && m_modeProviderId == "Emoji" && m_query.empty();
+  const bool show = m_browserMode && modeProviderId() == "Emoji" && m_query.empty();
   m_emojiStrip->setVisible(show);
   m_emojiStrip->setParticipatesInLayout(show);
   if (!show || !m_emojiStrip->children().empty()) {
@@ -116,8 +115,68 @@ void LauncherPanel::syncEmojiStrip() {
   }
 }
 
+namespace {
+  // Mode drop order: Apps, Files, Clipboard, Emoji.
+  constexpr std::array<std::string_view, 2> kDropModes{"Clipboard", "Emoji"};
+} // namespace
+
+bool LauncherPanel::modeDropOn(std::size_t index) const {
+  switch (index) {
+  case 0:
+    return appsView();
+  case 1:
+    return filesScope();
+  default:
+    return modeProviderId() == kDropModes[index - 2];
+  }
+}
+
+void LauncherPanel::syncModeDrops() {
+  const float scale = contentScale();
+  for (std::size_t i = 0; i < m_modeDrops.size(); ++i) {
+    auto& drop = m_modeDrops[i];
+    if (drop.node == nullptr) {
+      continue;
+    }
+    const bool available = i < 2 || std::ranges::any_of(m_providers, [&](const auto& p) { return p->id() == kDropModes[i - 2]; });
+    drop.node->setVisible(available);
+    drop.node->setParticipatesInLayout(available);
+    const bool on = modeDropOn(i);
+    if (on) {
+      drop.node->setFill(colorSpecFromRole(ColorRole::Accent));
+    } else {
+      styleGlassPiece(*drop.node, Tokens::componentLauncherModeDrop * 0.5F * scale, scale, panelCardOpacity());
+    }
+    drop.glyph->setColor(colorSpecFromRole(on ? ColorRole::OnAccent : ColorRole::Label1));
+  }
+}
+
+void LauncherPanel::toggleModeDrop(std::size_t index) {
+  const bool on = modeDropOn(index);
+  if (filesScope()) {
+    setFilesScope(false);
+  }
+  if (index == 1 && !on) {
+    setFilesScope(true);
+    return;
+  }
+  if (on) {
+    m_view.set(launcher_view::Default{});
+  } else if (index == 0) {
+    m_view.set(launcher_view::Apps{});
+  } else if (index > 1) {
+    m_view.set(launcher_view::Media{.providerId = std::string(kDropModes[index - 2])});
+  }
+  m_selectedIndex = 0;
+  syncModeTabs();
+  if (m_input != nullptr && !m_input->value().empty()) {
+    m_input->setValue("");
+  }
+  onInputChanged("");
+}
+
 void LauncherPanel::setMode(std::string_view providerId) {
-  m_modeProviderId = std::string(providerId);
+  m_view.set(launcher_view::Media{.providerId = std::string(providerId)});
   m_selectedIndex = 0;
   syncModeTabs();
   if (m_input != nullptr && !m_input->value().empty()) {
@@ -223,8 +282,6 @@ void LauncherPanel::syncKindTabs() {
   const bool show = m_browserMode && filesScope();
   m_kindTabs->setVisible(show);
   m_kindTabs->setParticipatesInLayout(show);
-  m_kindTabsLine->setVisible(show);
-  m_kindTabsLine->setParticipatesInLayout(show);
   for (std::size_t i = 0; i < m_kindTabItems.size(); ++i) {
     Flex* tab = m_kindTabItems[i];
     const bool on = i == m_kindIndex;
@@ -239,10 +296,10 @@ void LauncherPanel::syncKindTabs() {
 }
 
 void LauncherPanel::cycleMode(int direction) {
-  if (m_modeTabItems.empty() || m_modeProviderId.empty()) {
+  if (m_modeTabItems.empty() || modeProviderId().empty()) {
     return;
   }
-  const auto it = std::ranges::find(m_modeTabItems, m_modeProviderId, &std::pair<std::string, Flex*>::first);
+  const auto it = std::ranges::find(m_modeTabItems, modeProviderId(), &std::pair<std::string, Flex*>::first);
   const auto count = static_cast<int>(m_modeTabItems.size());
   const int index = it == m_modeTabItems.end() ? 0 : static_cast<int>(it - m_modeTabItems.begin());
   setMode(m_modeTabItems[static_cast<std::size_t>((index + direction + count) % count)].first);
@@ -289,7 +346,7 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   m_previewGlyph->setParticipatesInLayout(!imageReady && !emoji);
   m_previewOpen->setText(
       i18n::tr(
-          emoji || (!m_modeProviderId.empty() && result.presentation != "action") ? "launcher.pill.paste-hint"
+          emoji || (!modeProviderId().empty() && result.presentation != "action") ? "launcher.pill.paste-hint"
                                                                                   : "launcher.pill.open-hint"
       )
   );
