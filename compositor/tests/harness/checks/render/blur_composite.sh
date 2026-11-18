@@ -76,8 +76,8 @@ default_position = { x = 700, y = 100, anchor = "top_left" }
 match.title = "^blur-bright$"
 blur = true
 default_floating = true
-default_floating_size_px = { width = 300, height = 200 }
-default_position = { x = 50, y = 50, anchor = "top_left" }
+default_floating_size_px = { width = 300, height = 90 }
+default_position = { x = 50, y = 5, anchor = "top_left" }
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 
@@ -127,7 +127,9 @@ compare "settled blur"
 sed -i 's/^brightness = 1.0$/brightness = 1.6/; s/^contrast = 1.0$/contrast = 1.3/; s/^saturation = 1.0$/saturation = 0.5/' \
   "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null
-spawn blur-bright 0x00000000 300 200
+# blur-bright straddles the square's right edge above blur-clear: a blur over another blurred window starts from
+# inputs that already differ by 1, and contrast 1.3 would scale that to 2.
+spawn blur-bright 0x00000000 300 90
 "$ANDROMEDA" clock-advance 2350
 compare "half-faded blur with blur controls"
 "$ANDROMEDA" clock-advance 5000
