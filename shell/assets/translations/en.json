@@ -5382,7 +5382,11 @@
         },
         "appearance-edge-reflection": {
           "label": "Edge Reflection",
-          "description": "Light catches the glass edges"
+          "description": "Light catches the glass edges and follows the pointer"
+        },
+        "appearance-adaptive-tone": {
+          "label": "Adaptive Tone",
+          "description": "Liquid bar, dock and island glass turns light or dark with the background"
         },
         "appearance-liquid-tint": {
           "label": "Tint",
@@ -5551,6 +5555,23 @@
           }
         },
         "layout-gap": {
+        "appearance-title-bar-style": {
+          "label": "Title Bar Style",
+          "description": "The look of the window buttons",
+          "options": {
+            "andromeda": "Andromeda",
+            "macos": "macOS",
+            "windows": "Windows"
+          }
+        },
+        "appearance-title-bar-button-position": {
+          "label": "Window Buttons",
+          "description": "The side of the title bar that holds the window buttons",
+          "options": {
+            "left": "Left",
+            "right": "Right"
+          }
+        },
           "label": "Gaps",
           "description": "Space between windows and around the screen edge"
         },
