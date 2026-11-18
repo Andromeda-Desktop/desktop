@@ -40,7 +40,11 @@ with_noctalia '
   sleep 0.5 # real time: the signal reaches the monitor
   kill "$monitor"
   grep -q "uint32 2" "$OUT/signals.txt" || { echo "FAIL: no SettingChanged to light"; exit 1; }
-  first=$(rss); sleep 3; second=$(rss) # real time: memory must not grow at idle
+  # The shell settles for a few seconds after startup and the theme switch; idle starts when two samples 1 s apart
+  # agree within 2 MB (at most 15 s).
+  first=$(rss)
+  for _ in $(seq 15); do sleep 1; next=$(rss); (( next - first < 2048 && first - next < 2048 )) && break; first=$next; done
+  sleep 3; second=$(rss) # real time: memory must not grow at idle
   echo "rss_kb first=$first second=$second" | tee "$OUT/result.txt"
   (( second - first < 20000 && second < 400000 )) || { echo "FAIL: shell memory grew"; exit 1; }
 '

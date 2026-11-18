@@ -29,10 +29,15 @@ boot_headless() {
   </policy>
 </busconfig>
 CONF
+  # One private bus for the whole session: apps the compositor spawns reach the shell on it, as in a real session.
+  dbus-daemon --config-file="$RUNTIME/bus.conf" --nofork --print-address=3 3> "$RUNTIME/bus.address" &
+  for _ in $(seq 100); do [[ -s $RUNTIME/bus.address ]] && break; sleep 0.05; done
+  [[ -s $RUNTIME/bus.address ]] || { echo "dbus-daemon did not start" >&2; exit 1; }
+  BUS_ADDRESS=$(head -n 1 "$RUNTIME/bus.address")
   # NESTED_PARENT (a parent Wayland socket path): one output as a window on that session, with its GPU and vsync.
   local backend=headless
   [[ -n ${NESTED_PARENT:-} ]] && backend=wayland
-  env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
+  env -u WAYLAND_DISPLAY -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" XDG_RUNTIME_DIR="$RUNTIME" XDG_STATE_HOME="$RUNTIME/home/.local/state" \
     ${NESTED_PARENT:+WAYLAND_DISPLAY=$NESTED_PARENT} WLR_BACKENDS=$backend WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS="$1" \
     "$ANDROMEDA" -c "$RUNTIME/andromeda.toml" > "$OUT/andromeda.log" 2>&1 &
   # The IPC socket comes after the Wayland socket (server.cpp creates Ipc later); `msg` needs it.
@@ -57,13 +62,13 @@ run() {
     XDG_RUNTIME_DIR="$RUNTIME" WAYLAND_DISPLAY=wayland-0 ANDROMEDA_SOCKET="$RUNTIME/andromeda-wayland-0.sock" "$@"
 }
 
-# with_noctalia SCRIPT: run a bash script while Noctalia runs on a private bus, used as both session and system bus
-# so the test shell never reaches the real BlueZ, NetworkManager, or logind. The script sees $NOCTALIA, $OUT,
+# with_noctalia SCRIPT: run a bash script while Noctalia runs on the session's private bus, used as both session and
+# system bus so the test shell never reaches the real BlueZ, NetworkManager, or logind. The script sees $NOCTALIA, $OUT,
 # $ANDROMEDA, $DESKTOP_CLIENT, and $RUNTIME, and Noctalia is answering IPC when it starts. $BEFORE_NOCTALIA runs on
 # that bus before Noctalia starts (for a mock service the shell must find at startup).
 with_noctalia() {
   run env NOCTALIA="$NOCTALIA" OUT="$OUT" BEFORE_NOCTALIA="${BEFORE_NOCTALIA:-}" ANDROMEDA="$ANDROMEDA" DESKTOP_CLIENT="$DESKTOP_CLIENT" RUNTIME="$RUNTIME" \
-    dbus-run-session --config-file="$RUNTIME/bus.conf" -- bash -c '
+    DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" bash -c '
       set -euo pipefail
       export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
       trap '"'"'kill $(jobs -p) 2>/dev/null || true; wait'"'"' EXIT
