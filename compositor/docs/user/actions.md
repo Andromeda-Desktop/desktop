@@ -177,11 +177,11 @@ Sizing rules per layout live in [Sizing behavior](layout.md#sizing-behavior).
 | `window-close:[<window-id>]`           | Close the focused window, or the given window              |
 | `window-close-or-power-overlay`        | Close the focused window; with none, open the power menu   |
 | `window-kill:[<window-id>]`            | Forcefully close the focused or given window's client      |
-| `window-minimize:[<window-id>]`        | Minimize the focused floating window, or the given window  |
+| `window-minimize:[<window-id>]`        | Minimize the focused window, or the given window           |
 | `window-restore-minimized`             | Restore the latest minimized window on this workspace      |
 | `window-toggle-floating:[<window-id>]` | Float or tile the focused window, or the given window      |
 | `window-toggle-fullscreen`             | Toggle fullscreen or exit a window covering the focus      |
-| `window-toggle-maximize`               | Toggle full width for the focused column                   |
+| `window-toggle-maximize`               | Full-width column; maximize in dwindle/master              |
 | `window-toggle-maximize-to-edges`      | Toggle maximize without gaps, struts, or borders           |
 | `window-toggle-pinned`                 | Pin the focused window above other windows                 |
 
