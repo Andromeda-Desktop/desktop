@@ -1262,7 +1262,9 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
   });
   instance.glassConn = Style::glassChanged().connect([inst = &instance] {
     if (inst->sceneRoot != nullptr) {
-      inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
+      inst->sceneRoot->setPaletteTone(
+          glassTone(glass::Kind::Shape, inst->dsk != nullptr ? inst->dsk->backdropDark() : std::nullopt)
+      );
     }
   });
   applyBackgroundPalette(instance);

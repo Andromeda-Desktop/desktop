@@ -1,3 +1,4 @@
+#include "protocols/glass_material.h"
 #include "core/cpu_boost.h"
 #include "core/systemd_units.h"
 #include "core/scanout_keeper.h"
@@ -1417,7 +1418,7 @@ namespace andromeda {
     const bool clear = config().appearance.glassStyle == GlassStyle::Liquid;
     wlr_scene_set_blur_data(
         m_scene, blur.passes, blur.radius, clear ? 0.0F : static_cast<float>(blur.noise),
-        clear ? 1.0F : static_cast<float>(blur.brightness), clear ? 1.0F : static_cast<float>(blur.contrast),
+        clear ? glass::kLiquidLift : static_cast<float>(blur.brightness), clear ? 1.0F : static_cast<float>(blur.contrast),
         static_cast<float>(blur.saturation)
     );
   }

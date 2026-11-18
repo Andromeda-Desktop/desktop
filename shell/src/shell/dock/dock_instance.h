@@ -165,7 +165,7 @@ namespace shell::dock {
   );
   void buildScene(DockInstance& instance, DockInstanceDependencies deps, const DockInstanceCallbacks& callbacks);
   void resizeSurface(DockInstance& instance, const DockConfig& cfg, const ShellConfig::ShadowConfig& shadowConfig);
-  void applyPanelPalette(DockInstance& instance, const DockConfig& cfg);
+  void applyPanelPalette(DockInstance& instance, const DockConfig& cfg, bool fade = false);
   void syncDockSlideLayerTransform(DockInstance& instance, const DockConfig& cfg);
   void applyDockCompositorBlur(DockInstance& instance, const DockConfig& cfg);
   // Grows the pill, its glass, viewport and input region `start` and `end` px past its rest ends on the main axis.

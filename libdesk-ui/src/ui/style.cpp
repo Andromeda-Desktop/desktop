@@ -86,6 +86,7 @@ namespace Style {
   bool compositorDrawsTint() noexcept { return g_compositorBlur && !g_glass.reduceTransparency; }
 
   float glass() noexcept { return g_glass.activeTint(); }
+  bool liquidGlass() noexcept { return g_glass.style == glass::Style::Liquid && !g_glass.reduceTransparency; }
 
   bool reduceTransparency() noexcept { return g_glass.reduceTransparency; }
 

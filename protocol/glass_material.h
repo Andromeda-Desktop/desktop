@@ -50,10 +50,14 @@ namespace glass {
   // text on a Clear sheet over white keeps 4.5:1 (halfway gives 4.2:1).
   [[nodiscard]] constexpr float denseTarget(Kind kind) noexcept { return kind == Kind::Tooltip ? 0.0F : 1.0F; }
 
-  // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur), Liquid spans 0.7 to 1.
+  // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
+  // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
+  inline constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
+  // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
+  inline constexpr float kLiquidLift = 1.05F;
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
 
-  // Frosted: blur and tint, an optional specular edge. Liquid: a convex lens bezel over a light blur.
+  // Frosted: blur and tint, an optional specular edge. Liquid: a soft blur with a lift, a convex lens bezel at the edge.
   enum class Style : std::uint8_t { Frosted, Liquid };
 
   // The Glass settings (appearance.glass_style and the sliders of each style). Each style keeps its own tint and blur.
@@ -67,7 +71,7 @@ namespace glass {
     bool edgeReflection = true;
     // Liquid Tint (appearance.liquid_tint), on the Tint scale.
     float liquidTint = 0.15F;
-    // Liquid Blur (appearance.liquid_blur): 0 None, 1 Light (Frosted's lightest).
+    // Liquid Blur (appearance.liquid_blur): 0 Soft, 1 Strong (kLiquidClarity).
     float liquidBlur = 0.1F;
     // Liquid Lens (appearance.liquid): 0 Subtle, 0.5 the design values, 1 Strong.
     float lens = 0.5F;
@@ -109,7 +113,7 @@ namespace glass {
     }
     const bool shape = kind == Kind::Shape;
     if (settings.style == Style::Liquid) {
-      const float clarity = 1.0F - 0.3F * std::clamp(settings.liquidBlur, 0.0F, 1.0F);
+      const float clarity = std::lerp(kLiquidClarity[0], kLiquidClarity[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
       const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
       return {
           .tint = tint, .level = level, .rim = at(settings.lens, 0.4F, 1.0F, 1.0F), .lens = level, .clarity = clarity,

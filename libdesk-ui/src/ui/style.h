@@ -136,6 +136,8 @@ namespace Style {
   [[nodiscard]] bool compositorDrawsTint() noexcept;
   // The Tint slider of the active glass style.
   [[nodiscard]] float glass() noexcept;
+  // Liquid glass is on (not Frosted, not Reduce Transparency).
+  [[nodiscard]] bool liquidGlass() noexcept;
   // The one glass mapping (protocols/glass_material.h) for the current slider, scheme and reduce transparency.
   // Shell glass: the tone of glass::tone.
   [[nodiscard]] glass::Material glassMaterial(glass::Kind kind) noexcept;

@@ -5376,7 +5376,7 @@
         },
         "appearance-liquid-blur": {
           "label": "Blur",
-          "description": "How much liquid glass blurs the background, from None to Light"
+          "description": "How much liquid glass softens the background, from Soft to Strong"
         },
         "appearance-reduce-motion": {
           "label": "Reduce Motion",
