@@ -1,4 +1,5 @@
 #include "terminal_view.h"
+#include "core/input/pointer_axis.h"
 
 #include "a11y/atspi_bridge.h"
 #include "core/deferred_call.h"
@@ -25,11 +26,11 @@
 #include "util/string_utils.h"
 #include "wayland/text_input_service.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
 #include <glib.h>
 #include <unistd.h>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 
 #include <wayland-client-protocol.h>
 
@@ -531,7 +532,7 @@ namespace term {
                                      });
                                      a.setOnAxisHandler([this](const InputArea::PointerData& d) { return wheel(d); });
                                      a.setOnAxisStop([this](std::uint32_t axis) {
-                                       if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL
+                                       if (axis == PointerAxis::Vertical
                                            && m_scrollMotion == ScrollMotion::Finger) {
                                          settleScroll();
                                        }
@@ -1833,32 +1834,33 @@ namespace term {
 
   void TerminalView::updatePointerShape() {
     // libghostty's shapes are the W3C names in their own order; cursor-shape-v1 numbers them differently.
-    static constexpr std::uint32_t kShapes[] = {
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,     WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CONTEXT_MENU,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_HELP,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_PROGRESS,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_WAIT,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CELL,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_VERTICAL_TEXT,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALIAS,       WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COPY,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE,        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NO_DROP,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NOT_ALLOWED, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COL_RESIZE,  WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ROW_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE,    WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE,   WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE,   WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE,   WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NESW_RESIZE, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NWSE_RESIZE,
-        WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_IN,     WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_OUT,
+    static constexpr ::CursorShape kShapes[] = {
+        ::CursorShape::Default,     ::CursorShape::ContextMenu,
+        ::CursorShape::Help,        ::CursorShape::Pointer,
+        ::CursorShape::Progress,    ::CursorShape::Wait,
+        ::CursorShape::Cell,        ::CursorShape::Crosshair,
+        ::CursorShape::Text,        ::CursorShape::VerticalText,
+        ::CursorShape::Alias,       ::CursorShape::Copy,
+        ::CursorShape::Move,        ::CursorShape::NoDrop,
+        ::CursorShape::NotAllowed, ::CursorShape::Grab,
+        ::CursorShape::Grabbing,    ::CursorShape::AllScroll,
+        ::CursorShape::ColResize,  ::CursorShape::RowResize,
+        ::CursorShape::NResize,    ::CursorShape::EResize,
+        ::CursorShape::SResize,    ::CursorShape::WResize,
+        ::CursorShape::NeResize,   ::CursorShape::NwResize,
+        ::CursorShape::SeResize,   ::CursorShape::SwResize,
+        ::CursorShape::EwResize,   ::CursorShape::NsResize,
+        ::CursorShape::NeswResize, ::CursorShape::NwseResize,
+        ::CursorShape::ZoomIn,     ::CursorShape::ZoomOut,
     };
     if (m_area == nullptr) {
       return;
     }
     const auto index = static_cast<std::size_t>(m_programShape);
-    const std::uint32_t program =
-        m_programShape != GHOSTTY_MOUSE_SHAPE_TEXT && index < std::size(kShapes) ? kShapes[index] : 0; // 0: the grid's own
-    m_area->setCursorShape(m_link || m_overPill ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : program);
+    // nullopt: the grid's own shape.
+    const std::optional<::CursorShape> program =
+        m_programShape != GHOSTTY_MOUSE_SHAPE_TEXT && index < std::size(kShapes) ? std::optional(kShapes[index]) : std::nullopt;
+    m_area->setCursorShape(m_link || m_overPill ? ::CursorShape::Pointer : program);
   }
 
   void TerminalView::applyLink(std::optional<HoverLink> next) {
@@ -2172,7 +2174,7 @@ namespace term {
   }
 
   bool TerminalView::wheel(const InputArea::PointerData& d) {
-    if (d.axis != WL_POINTER_AXIS_VERTICAL_SCROLL || m_grid == nullptr) {
+    if (d.axis != PointerAxis::Vertical || m_grid == nullptr) {
       return false;
     }
     m_wheelRemainder += d.axisSteps;
@@ -2185,7 +2187,7 @@ namespace term {
       // A finger sends one report per row of travel, so the program scrolls at the finger's pace; the rate-capped
       // detent steps would send about 12 a second.
       int reports = notches;
-      if (d.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
+      if (d.axisSource == AxisSource::Finger) {
         m_reportPx += d.scrollDelta(cellH * rowsPerNotch);
         reports = static_cast<int>(m_reportPx / cellH);
         m_reportPx -= static_cast<float>(reports) * cellH;
@@ -2222,7 +2224,7 @@ namespace term {
       }
       return true;
     }
-    if (d.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
+    if (d.axisSource == AxisSource::Finger) {
       if (m_scrollMotion == ScrollMotion::Settling && m_area->animationManager() != nullptr) {
         m_area->animationManager()->cancel(m_scrollAnim);
         m_scrollAnim = 0;

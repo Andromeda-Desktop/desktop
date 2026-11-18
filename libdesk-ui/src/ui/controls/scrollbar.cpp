@@ -1,6 +1,7 @@
 #include "ui/controls/scrollbar.h"
+#include "core/input/pointer_axis.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/animation/animation.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/render_styles.h"
@@ -11,9 +12,8 @@
 
 #include <algorithm>
 #include <chrono>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
-#include <wayland-client-protocol.h>
 
 namespace {
 
@@ -33,8 +33,8 @@ namespace {
   }
 
   bool acceptsScrollAxis(const InputArea::PointerData& data, ScrollOrientation orientation) {
-    return data.axis == WL_POINTER_AXIS_VERTICAL_SCROLL
-        || (orientation == ScrollOrientation::Horizontal && data.axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL);
+    return data.axis == PointerAxis::Vertical
+        || (orientation == ScrollOrientation::Horizontal && data.axis == PointerAxis::Horizontal);
   }
 
 } // namespace
@@ -61,7 +61,7 @@ Scrollbar::Scrollbar() {
   m_trackArea = static_cast<InputArea*>(addChild(std::move(trackArea)));
 
   auto thumbArea = std::make_unique<InputArea>();
-  thumbArea->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  thumbArea->setCursorShape(CursorShape::Pointer);
   thumbArea->setOnPress([this](const InputArea::PointerData& data) {
     if (data.button != BTN_LEFT) {
       return;

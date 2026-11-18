@@ -1,0 +1,43 @@
+#pragma once
+
+#include <cstdint>
+
+// Values equal the wp_cursor_shape_device_v1 shape enum, so the Wayland backend passes them through unchanged.
+enum class CursorShape : std::uint32_t {
+  Default = 1,
+  ContextMenu,
+  Help,
+  Pointer,
+  Progress,
+  Wait,
+  Cell,
+  Crosshair,
+  Text,
+  VerticalText,
+  Alias,
+  Copy,
+  Move,
+  NoDrop,
+  NotAllowed,
+  Grab,
+  Grabbing,
+  EResize,
+  NResize,
+  NeResize,
+  NwResize,
+  SResize,
+  SeResize,
+  SwResize,
+  WResize,
+  EwResize,
+  NsResize,
+  NeswResize,
+  NwseResize,
+  ColResize,
+  RowResize,
+  AllScroll,
+  ZoomIn,
+  ZoomOut,
+  DndAsk,
+  AllResize,
+};

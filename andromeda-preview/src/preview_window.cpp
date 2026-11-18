@@ -1372,8 +1372,8 @@ namespace preview {
     if (m_scroll != nullptr && offset > 0.0F) {
       m_scroll->setScrollOffset(offset);
     }
-    m_input.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-      m_loop.wayland().setCursorShape(serial, shape);
+    m_input.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+      m_loop.wayland().setCursorShape(serial, std::to_underlying(shape));
     });
     m_input.setSceneRoot(m_root.get());
     m_surface->setSceneRoot(m_root.get());

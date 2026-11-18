@@ -1,4 +1,5 @@
 #include "shell/bar/widgets/taskbar_preview.h"
+#include "core/input/cursor_shape.h"
 
 #include "capture/toplevel_thumbnail_capture.h"
 #include "compositors/compositor_platform.h"
@@ -659,8 +660,8 @@ void TaskbarPreview::build() {
     child->layout(renderer);
   }
   m_input.setSceneRoot(m_sceneRoot.get());
-  m_input.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_platform.setCursorShape(serial, shape);
+  m_input.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_platform.setCursorShape(serial, std::to_underlying(shape));
   });
   m_surface->setSceneRoot(m_sceneRoot.get());
 }

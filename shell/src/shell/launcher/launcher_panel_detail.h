@@ -12,7 +12,7 @@
 #include "core/input/key_symbols.h"
 #include "core/input/keybind_matcher.h"
 #include "core/ui_phase.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "launcher/app_provider.h"
 #include "launcher/clipboard_provider.h"
@@ -928,7 +928,7 @@ namespace launcher_detail {
       for (std::size_t slot = 0; slot < kMaxSectionColumns; ++slot) {
         auto area = std::make_unique<InputArea>();
         area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
-        area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+        area->setCursorShape(CursorShape::Pointer);
         area->setOnEnter([this](const InputArea::PointerData&) { markLayoutDirty(); });
         area->setOnLeave([this] { markLayoutDirty(); });
         area->setOnPress([this, slot](const InputArea::PointerData& data) {

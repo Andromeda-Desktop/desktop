@@ -1,7 +1,7 @@
 #include "shell/bar/widget.h"
 
 #include "core/log.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
@@ -270,8 +270,8 @@ void Widget::installGestureHandlers() {
     m_innerArea->setAcceptedButtons(m_innerBaseButtons & ~mask);
     m_innerArea->setAcceptedScrollDirections(m_innerBaseScrollDirections & ~scrollMask);
     // Hover resolves to the innermost area, so it carries the pointer cursor for the wrapper.
-    if (mask != 0 && m_innerArea->cursorShape() == 0) {
-      m_innerArea->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+    if (mask != 0 && !m_innerArea->cursorShape()) {
+      m_innerArea->setCursorShape(CursorShape::Pointer);
     }
   }
 

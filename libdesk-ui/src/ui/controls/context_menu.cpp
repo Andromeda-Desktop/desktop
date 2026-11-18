@@ -10,7 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 
 namespace {
 

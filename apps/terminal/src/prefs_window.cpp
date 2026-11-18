@@ -1,7 +1,7 @@
 #include "prefs_window.h"
 
 #include "app/app_window.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "design_tokens.h"
@@ -542,7 +542,7 @@ namespace term {
                          link->addChild(ui::glyph({.glyph = "chevron-right",
                                                    .glyphSize = Tokens::sizeSymbolInline * s,
                                                    .color = colorSpecFromRole(ColorRole::Label3)}));
-                         return ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+                         return ui::inputArea({.cursorShape = ::CursorShape::Pointer,
                                                .width = w,
                                                .height = h,
                                                .onClick = [self](const InputArea::PointerData&) { self->showPane(Pane::Keyboard); }},
@@ -734,7 +734,7 @@ namespace term {
                                 .fontSize = Tokens::typeBody.size * s,
                                 .fontWeight = FontWeight::Medium,
                                 .color = colorSpecFromRole(ColorRole::AccentText)}));
-      content->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+      content->addChild(ui::inputArea({.cursorShape = ::CursorShape::Pointer,
                                        .width = cardWidth,
                                        .height = Tokens::sizeRow * s,
                                        .onClick = [this](const InputArea::PointerData&) { showPane(Pane::Main); }},
@@ -927,7 +927,7 @@ namespace term {
                                 .color = colorSpecFromRole(on ? ColorRole::Label1 : ColorRole::Label2),
                                 .maxWidth = tileW,
                                 .maxLines = 1}));
-    return ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+    return ui::inputArea({.cursorShape = ::CursorShape::Pointer,
                           .width = tileW,
                           .height = tileH + Tokens::spaceP8 * s + Tokens::typeFootnote.line * s,
                           .onClick = [pick = std::move(pick)](const InputArea::PointerData& data) { pick(data); }},

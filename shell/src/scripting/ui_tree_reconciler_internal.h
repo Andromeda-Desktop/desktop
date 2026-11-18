@@ -473,7 +473,7 @@ namespace ui {
       inputArea->setOnClick(nullptr);
       inputArea->setOnKeyDown(nullptr);
       // setOnClick(fn) auto-selects the pointer cursor; drop it with the click.
-      inputArea->setCursorShape(0);
+      inputArea->setCursorShape(std::nullopt);
     }
 
     inline void clearWrapperHover(InputArea* inputArea) {

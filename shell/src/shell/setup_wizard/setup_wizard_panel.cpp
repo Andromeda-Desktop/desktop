@@ -10,7 +10,7 @@
 #include "core/files/resource_paths.h"
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "dbus/link/link_service.h"
 #include "dbus/andromeda/software_update_service.h"
 #include "dbus/system_bus.h"
@@ -449,7 +449,7 @@ std::unique_ptr<Flex> SetupWizardPanel::makeThumb(
   cell->addChild(std::move(text));
 
   auto area = ui::inputArea({});
-  area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  area->setCursorShape(CursorShape::Pointer);
   area->setOnClick([onClick = std::move(onClick)](const InputArea::PointerData&) { onClick(); });
   Flex* cellPtr = cell.get();
   addOverlay(cell->addChild(std::move(area)), cellPtr, 0.0F);

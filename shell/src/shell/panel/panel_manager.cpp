@@ -1,4 +1,5 @@
 #include "shell/panel/panel_manager.h"
+#include "core/input/cursor_shape.h"
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
@@ -3525,8 +3526,8 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
 
     m_inputDispatcher.setSceneRoot(m_sceneRoot.get());
     m_inputDispatcher.setTextInputContext(m_wlSurface, m_platform->wayland().textInputService());
-    m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-      m_platform->setCursorShape(serial, shape);
+    m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+      m_platform->setCursorShape(serial, std::to_underlying(shape));
     });
     m_inputDispatcher.setHoverChangeCallback([this](InputArea* /*old*/, InputArea* next) {
       if (m_layerSurface != nullptr) {

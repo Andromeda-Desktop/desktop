@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/input/cursor_shape.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
 #include "ui/controls/box.h"
@@ -83,7 +84,7 @@ namespace ui {
   struct InputAreaProps {
     InputArea** out = nullptr;
     std::optional<std::uint32_t> acceptedButtons = std::nullopt;
-    std::optional<std::uint32_t> cursorShape = std::nullopt;
+    std::optional<CursorShape> cursorShape = std::nullopt;
     std::optional<bool> propagateEvents = std::nullopt;
     std::optional<bool> enabled = std::nullopt;
     std::optional<InputArea::HitShape> hitShape = std::nullopt;
@@ -460,7 +461,7 @@ namespace ui {
     std::optional<float> columnGap = std::nullopt;
     std::optional<float> rowGap = std::nullopt;
     std::optional<std::size_t> overscanRows = std::nullopt;
-    std::optional<std::uint32_t> itemCursorShape = std::nullopt;
+    std::optional<CursorShape> itemCursorShape = std::nullopt;
     std::optional<bool> scrollbarVisible = std::nullopt;
     std::optional<float> scrollCardStyleScale = std::nullopt;
     VirtualGridAdapter* adapter = nullptr;

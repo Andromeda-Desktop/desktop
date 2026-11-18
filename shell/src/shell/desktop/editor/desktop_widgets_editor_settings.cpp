@@ -1,5 +1,5 @@
 #include "core/files/directory_scanner.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/core/render_styles.h"
 #include "render/render_context.h"
@@ -1047,7 +1047,7 @@ void DesktopWidgetsEditor::buildInspector(
   auto handleArea = ui::inputArea({});
   handleArea->setParticipatesInLayout(false);
   handleArea->setZIndex(1);
-  handleArea->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE);
+  handleArea->setCursorShape(CursorShape::Move);
   handleArea->setOnPress([this, outputName = surface.outputName](const InputArea::PointerData& data) {
     if (data.button != BTN_LEFT) {
       return;

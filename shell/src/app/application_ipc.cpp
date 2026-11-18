@@ -24,7 +24,7 @@
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "core/process/process.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "dbus/logind/power_config_service.h"
 #include "dbus/accounts/accounts_service.h"
 #include "dbus/bluetooth/bluetooth_agent.h"

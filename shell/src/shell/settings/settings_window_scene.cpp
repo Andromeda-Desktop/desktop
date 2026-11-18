@@ -1,4 +1,5 @@
 #include "calendar/calendar_service.h"
+#include "core/input/cursor_shape.h"
 #include "compositors/compositor_detect.h"
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
@@ -2388,8 +2389,8 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
   m_modalHost.attach(*m_sceneRoot, m_mainContainer, renderer, w, h);
 
   m_inputDispatcher.setTextInputContext(m_surface->wlSurface(), m_wayland->textInputService());
-  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
   m_inputDispatcher.setHoverChangeCallback([this](InputArea* /*old*/, InputArea* next) {
     if (m_surface != nullptr) {

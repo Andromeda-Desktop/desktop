@@ -1,7 +1,7 @@
 #include "shell/wallpaper/panel/wallpaper_tile.h"
 
 #include "config/config_types.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/renderer.h"
 #include "render/core/thumbnail_service.h"
@@ -87,7 +87,7 @@ WallpaperTile::starTooltipAnchorInsets(float cellWidth, float cellHeight, float 
 WallpaperTile::WallpaperTile(float cellWidth, float cellHeight, float contentScale)
     : m_cellWidth(cellWidth), m_cellHeight(cellHeight), m_contentScale(contentScale) {
   setAcceptedButtons(InputArea::buttonMask(BTN_LEFT));
-  setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  setCursorShape(CursorShape::Pointer);
   setOnClick([this](const InputArea::PointerData&) {
     if (m_hasEntry && m_onClick) {
       m_onClick(m_entry);

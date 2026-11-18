@@ -1,12 +1,12 @@
 #include "ui/controls/drag_source.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
 #include "ui/drag_drop_controller.h"
 
 #include <algorithm>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
 #include <utility>
 
@@ -19,7 +19,7 @@ DragSource::DragSource(DragDropController* controller) : m_controller(controller
   area->setPropagateEvents(false);
   area->setFocusable(false);
   area->setTabStop(false);
-  area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB);
+  area->setCursorShape(CursorShape::Grab);
   area->setOnPress([this](const InputArea::PointerData& data) {
     if (m_controller == nullptr || !m_enabled) {
       return;
@@ -174,9 +174,9 @@ void DragSource::applyCursor() {
     return;
   }
   m_inputArea->setCursorShape(
-      m_dragging         ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING
-          : m_grabCursor ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB
-                         : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER
+      m_dragging         ? CursorShape::Grabbing
+          : m_grabCursor ? CursorShape::Grab
+                         : CursorShape::Pointer
   );
 }
 

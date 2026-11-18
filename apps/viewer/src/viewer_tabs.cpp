@@ -4,7 +4,7 @@
 #include "app/app_window.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/scene/accessible.h"
 #include "render/scene/input_area.h"
 #include "ui/builders.h"
@@ -530,7 +530,7 @@ namespace viewer {
                            on ? colorSpecFromRole(ColorRole::Accent, isResolvedLightTheme() ? 0.32F : 0.24F)
                               : clearColorSpec(),
                            width, s);
-      auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+      auto area = ui::inputArea({.cursorShape = ::CursorShape::Pointer, .participatesInLayout = false});
       area->setSize(width, Tokens::componentSidebarRow * s);
       // A document row drags onto a pane half to join the split; a right click opens its menu.
       enum class Drag : std::uint8_t { Idle, Pressed, Dragging, Dropped };

@@ -5,7 +5,7 @@
 #include "core/files/directory_scanner.h"
 #include "core/log.h"
 #include "core/random.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "ipc/ipc_service.h"
 #include "render/animation/animation.h"
 #include "render/backend/render_backend.h"
@@ -391,7 +391,7 @@ bool Wallpaper::onPointerEvent(const PointerEvent& event) {
   if (event.type == PointerEvent::Type::Enter || event.type == PointerEvent::Type::Motion) {
     const std::uint32_t serial = event.serial != 0 ? event.serial : m_wayland->lastInputSerial();
     if (serial != 0) {
-      m_wayland->setCursorShape(serial, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+      m_wayland->setCursorShape(serial, std::to_underlying(CursorShape::Default));
     }
   }
 

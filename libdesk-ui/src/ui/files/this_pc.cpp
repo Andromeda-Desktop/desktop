@@ -1,6 +1,6 @@
 #include "ui/files/this_pc.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
 #include "core/files/file_info.h"
 #include "core/files/volumes.h"
@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <optional>
 
 namespace fs = std::filesystem;
@@ -151,7 +151,7 @@ namespace {
   std::unique_ptr<Cell> cell(float s, std::function<void()> open) {
     auto c = std::make_unique<Cell>();
     c->setRadius(Style::scaledRadius(Tokens::radiusR8, s));
-    auto areaOwned = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, .participatesInLayout = false});
+    auto areaOwned = ui::inputArea({.cursorShape = CursorShape::Default, .participatesInLayout = false});
     c->area = areaOwned.get();
     c->area->setZIndex(1); // above the icon and labels added after it: the whole cell hovers, not only the text
     Cell* body = c.get();

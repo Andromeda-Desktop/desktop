@@ -1,6 +1,6 @@
 #include "shell/switcher/window_switcher_tile.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
@@ -26,7 +26,7 @@ WindowSwitcherTile::WindowSwitcherTile(float contentScale, AsyncTextureCache* as
   const float previewRadius = std::max(0.0F, cardRadius - Style::spaceXs * m_contentScale);
 
   setAcceptedButtons(InputArea::buttonMask(BTN_LEFT));
-  setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  setCursorShape(CursorShape::Pointer);
   setOnClick([this](const InputArea::PointerData&) {
     if (m_onActivate) {
       m_onActivate();

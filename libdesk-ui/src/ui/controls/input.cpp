@@ -1,11 +1,12 @@
 #include "ui/controls/input.h"
+#include "core/input/pointer_axis.h"
 
 #include "core/deferred_call.h"
 #include "core/input/key_chord.h"
 #include "core/input/key_modifiers.h"
 #include "core/input/key_symbols.h"
 #include "core/text_clipboard.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/animation/animation.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/color.h"
@@ -24,7 +25,7 @@
 #include "wayland/text_input_service.h"
 #include "render/scene/accessible.h"
 
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -35,7 +36,6 @@
 #include <numbers>
 #include <optional>
 #include <string>
-#include <wayland-client-protocol.h>
 
 namespace {
 
@@ -200,7 +200,7 @@ Input::Input() {
   auto area = std::make_unique<InputArea>();
   area->setFocusable(true);
   area->setTextInputClient(this);
-  area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
+  area->setCursorShape(CursorShape::Text);
   area->setOnEnter([this](const InputArea::PointerData& /*data*/) { applyVisualState(); });
   area->setOnLeave([this] { applyVisualState(); });
   area->setOnFocusGain([this] {
@@ -356,7 +356,7 @@ Input::Input() {
     }
   });
   area->setOnAxisHandler([this](const InputArea::PointerData& data) {
-    if (data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL || m_inputArea == nullptr || !m_inputArea->focused()) {
+    if (data.axis != PointerAxis::Vertical || m_inputArea == nullptr || !m_inputArea->focused()) {
       return false;
     }
     const float delta = data.scrollSteps();

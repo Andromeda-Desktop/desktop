@@ -413,7 +413,7 @@ void Button::setPressedVisual(bool pressed) {
   applyVisualState();
 }
 
-void Button::setCursorShape(std::uint32_t shape) {
+void Button::setCursorShape(CursorShape shape) {
   if (m_inputArea != nullptr) {
     m_inputArea->setCursorShape(shape);
   }

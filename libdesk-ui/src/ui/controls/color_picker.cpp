@@ -1,7 +1,7 @@
 #include "ui/controls/color_picker.h"
 
 #include "core/text_clipboard.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
@@ -21,7 +21,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
 #include <optional>
 #include <string>
@@ -219,7 +219,7 @@ InputArea* ColorPicker::addPickArea(const std::function<void(const InputArea::Po
   auto area = std::make_unique<InputArea>();
   area->setParticipatesInLayout(false);
   area->setZIndex(10);
-  area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  area->setCursorShape(CursorShape::Pointer);
   InputArea* raw = area.get();
   area->setOnPress([this, pick](const InputArea::PointerData& data) {
     if (data.button != BTN_LEFT) {
@@ -386,7 +386,7 @@ void ColorPicker::rebuildSwatches() {
   m_swatchBoxes.clear();
   for (std::size_t i = 0; i < m_swatches.size(); ++i) {
     auto area = std::make_unique<InputArea>();
-    area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+    area->setCursorShape(CursorShape::Pointer);
     area->setEnabled(m_enabled);
     area->setOnClick([this, i](const InputArea::PointerData& /*data*/) {
       if (i >= m_swatches.size()) {

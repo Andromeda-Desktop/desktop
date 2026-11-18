@@ -243,8 +243,8 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
 
     self->m_sceneRoot->addChild(std::move(scrollView));
     self->m_inputDispatcher.setSceneRoot(self->m_sceneRoot.get());
-    self->m_inputDispatcher.setCursorShapeCallback([self](std::uint32_t serial, std::uint32_t shape) {
-      self->m_wayland.setCursorShape(serial, shape);
+    self->m_inputDispatcher.setCursorShapeCallback([self](std::uint32_t serial, CursorShape shape) {
+      self->m_wayland.setCursorShape(serial, std::to_underlying(shape));
     });
     self->m_surface->setSceneRoot(self->m_sceneRoot.get());
     // The Grow springs started before the surface was configured: make sure the frame loop ticks them.

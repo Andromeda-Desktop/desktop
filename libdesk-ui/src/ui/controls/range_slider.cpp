@@ -3,7 +3,7 @@
 #include "core/input/key_modifiers.h"
 #include "core/input/key_symbols.h"
 #include "core/input/keybind_matcher.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/core/render_styles.h"
 #include "render/scene/input_area.h"
 #include "render/scene/rect_node.h"
@@ -13,7 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
 
 namespace {
@@ -154,7 +154,7 @@ RangeSlider::RangeSlider() {
     markPaintDirty();
   });
   m_inputArea = static_cast<InputArea*>(addChild(std::move(area)));
-  m_inputArea->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  m_inputArea->setCursorShape(CursorShape::Pointer);
 
   applyVisualState();
 }

@@ -1,4 +1,5 @@
 #include "shell/live_activity/live_activity_island.h"
+#include "core/input/cursor_shape.h"
 
 #include "config/config_service.h"
 #include "config/config_types.h"
@@ -1727,8 +1728,8 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   restArea->addChild(std::move(ring));
   inst.sceneRoot->addChild(std::move(restArea));
   inst.inputDispatcher.setSceneRoot(inst.sceneRoot.get());
-  inst.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  inst.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
 }
 

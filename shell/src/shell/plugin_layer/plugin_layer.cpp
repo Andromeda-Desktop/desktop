@@ -1,4 +1,5 @@
 #include "shell/plugin_layer/plugin_layer.h"
+#include "core/input/cursor_shape.h"
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
@@ -252,8 +253,8 @@ void PluginLayer::buildScene() {
 
   m_inputDispatcher.setSceneRoot(m_sceneRoot.get());
   m_inputDispatcher.setTextInputContext(m_surface->wlSurface(), m_services.platform.wayland().textInputService());
-  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_services.platform.setCursorShape(serial, shape);
+  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_services.platform.setCursorShape(serial, std::to_underlying(shape));
   });
   m_surface->setSceneRoot(m_sceneRoot.get());
 }

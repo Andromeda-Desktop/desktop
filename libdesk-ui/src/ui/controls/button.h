@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/input/cursor_shape.h"
 #include "render/core/color.h"
 #include "ui/controls/flex.h"
 #include "ui/palette.h"
@@ -83,7 +84,7 @@ public:
   void setHoverMix(float amount);
   void setHoveredVisual(bool hovered);
   void setPressedVisual(bool pressed);
-  void setCursorShape(std::uint32_t shape);
+  void setCursorShape(CursorShape shape);
   void setBadge(std::string_view text);
   void setBadgeFontSize(float size);
   // Thumbnail selection (rulebook 9.7): a 2 px label_1 ring on the edge and an accent circle 20 with a white

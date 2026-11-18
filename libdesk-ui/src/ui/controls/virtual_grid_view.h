@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/input/cursor_shape.h"
 #include "render/scene/node.h"
 #include "ui/tooltip_content.h"
 #include "ui/controls/flex.h"
@@ -147,7 +148,7 @@ public:
   // nullopt past the first or last row.
   [[nodiscard]] std::optional<std::size_t> indexInNextRow(std::size_t index, int rowDelta) const;
   // wp_cursor_shape value applied while the pointer is over a cell (0 = inherit).
-  void setItemCursorShape(std::uint32_t shape);
+  void setItemCursorShape(CursorShape shape);
   // Content scale of the hosting surface: sets the scrollbar geometry scale and the pointer
   // travel threshold that separates a click from a drag on an adapter-consumed press.
   void setScale(float scale);
@@ -252,7 +253,7 @@ private:
   std::size_t m_rowCount = 0;
   std::vector<Node*> m_headerPool;
   std::vector<std::optional<std::size_t>> m_headerBound; // section bound to each header node
-  std::uint32_t m_itemCursorShape = 0;
+  std::optional<CursorShape> m_itemCursorShape;
   float m_scale = 1.0F;
 
   std::optional<std::size_t> m_selectedIndex;

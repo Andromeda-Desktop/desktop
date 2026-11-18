@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 
+#include "core/input/cursor_shape.h"
 #include "render/scene/input_area.h"
 
 class InputArea;
@@ -16,7 +17,7 @@ struct wl_surface;
 
 class InputDispatcher {
 public:
-  using CursorShapeCallback = std::function<void(std::uint32_t serial, std::uint32_t shape)>;
+  using CursorShapeCallback = std::function<void(std::uint32_t serial, CursorShape shape)>;
   using HoverChangeCallback = std::function<void(InputArea* oldArea, InputArea* newArea)>;
   using FocusChangeCallback = std::function<void(InputArea* oldArea, InputArea* newArea)>;
   // Every button press at scene x, y, before it reaches its area.

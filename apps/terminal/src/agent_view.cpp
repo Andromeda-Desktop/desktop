@@ -2,7 +2,7 @@
 
 #include "agent_host.h"
 #include "agent_markup.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "link_finder.h"
 #include "design_tokens.h"
 #include "render/animation/animation_manager.h"
@@ -1173,7 +1173,7 @@ namespace term {
             }
             const bool open = m_expanded.contains(e.id);
             if (hasDetail(e)) {
-              item->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+              item->addChild(ui::inputArea({.cursorShape = ::CursorShape::Pointer,
                                             .width = width - 2.0F * inset,
                                             .height = Tokens::componentAgentActionRow * s,
                                             .onClick = [this, id = e.id](const InputArea::PointerData&) { toggleDetail(id); }},
@@ -1350,7 +1350,7 @@ namespace term {
       bar->addChild(std::move(name));
       bar->addChild(kit.counts(*action));
       auto open = kit.text("Open", Tokens::typeFootnote, ColorRole::AccentText);
-      open->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      open->setCursorShape(::CursorShape::Pointer);
       open->setOnClick([this, path](const InputArea::PointerData&) {
         if (m_openUri) {
           m_openUri(fileUri(path));

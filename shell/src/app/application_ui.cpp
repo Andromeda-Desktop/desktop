@@ -14,7 +14,7 @@
 #include "core/process/process.h"
 #include "shell/settings/speaker_sound.h"
 #include "system/crash_report.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "dbus/accounts/accounts_service.h"
 #include "dbus/bluetooth/bluetooth_agent.h"
 #include "dbus/bluetooth/bluetooth_service.h"

@@ -491,8 +491,8 @@ void DialogPopupHost::buildScene(std::uint32_t width, std::uint32_t height) {
   m_inputDispatcher.setTextInputContext(
       m_surface->wlSurface(), m_wayland->textInputService(), /*keyboardFocusActivation=*/true, m_parentSurface
   );
-  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
   m_surface->setSceneRoot(m_sceneRoot.get());
 

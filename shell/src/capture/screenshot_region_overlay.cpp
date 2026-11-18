@@ -7,7 +7,7 @@
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "core/ui_phase.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/color.h"
@@ -135,24 +135,24 @@ namespace capture {
       return capture::DragMode::None;
     }
 
-    [[nodiscard]] std::uint32_t cursorShapeForDragMode(capture::DragMode mode) {
+    [[nodiscard]] CursorShape cursorShapeForDragMode(capture::DragMode mode) {
       switch (mode) {
       case capture::DragMode::TopEdge:
       case capture::DragMode::BottomEdge:
-        return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE;
+        return CursorShape::NsResize;
       case capture::DragMode::LeftEdge:
       case capture::DragMode::RightEdge:
-        return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE;
+        return CursorShape::EwResize;
       case capture::DragMode::TopLeftCorner:
       case capture::DragMode::BottomRightCorner:
-        return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NWSE_RESIZE;
+        return CursorShape::NwseResize;
       case capture::DragMode::TopRightCorner:
       case capture::DragMode::BottomLeftCorner:
-        return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NESW_RESIZE;
+        return CursorShape::NeswResize;
       case capture::DragMode::Move:
-        return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL;
+        return CursorShape::AllScroll;
       default:
-        return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR;
+        return CursorShape::Crosshair;
       }
     }
 
@@ -307,7 +307,7 @@ namespace capture {
 
   void ScreenshotRegionOverlay::setShowRegionDimensions(bool show) { m_showRegionDimensions = show; }
 
-  void ScreenshotRegionOverlay::applyCursorShape(std::uint32_t shape) {
+  void ScreenshotRegionOverlay::applyCursorShape(CursorShape shape) {
     for (auto& instance : m_instances) {
       if (instance->input != nullptr) {
         instance->input->setCursorShape(shape);
@@ -315,7 +315,7 @@ namespace capture {
     }
     // Stored shapes only reach the compositor on pointer events, so push it explicitly.
     if (m_wayland != nullptr) {
-      m_wayland->setCursorShape(0, shape);
+      m_wayland->setCursorShape(0, std::to_underlying(shape));
     }
   }
 
@@ -324,7 +324,7 @@ namespace capture {
       return;
     }
     applyCursorShape(
-        modifierHeld() ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR
+        modifierHeld() ? CursorShape::AllScroll : CursorShape::Crosshair
     );
   }
 
@@ -553,7 +553,7 @@ namespace capture {
     auto input = ui::inputArea({
         .acceptedButtons =
             m_regionModifierMask == 0 ? InputArea::buttonMask(BTN_LEFT) : InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}),
-        .cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR,
+        .cursorShape = CursorShape::Crosshair,
         .focusable = true,
     });
 
@@ -720,8 +720,8 @@ namespace capture {
             if (m_regionModifierMask != 0) {
               // Modifier drives the gesture: move cursor while held, crosshair otherwise.
               inputPtr->setCursorShape(
-                  modifierHeld() ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL
-                                 : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR
+                  modifierHeld() ? CursorShape::AllScroll
+                                 : CursorShape::Crosshair
               );
             } else {
               // Default mode: preview the edge/corner hit zones on hover.
@@ -736,7 +736,7 @@ namespace capture {
               inputPtr->setCursorShape(cursorShapeForDragMode(hoverMode));
             }
           } else {
-            inputPtr->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR);
+            inputPtr->setCursorShape(CursorShape::Crosshair);
           }
           return;
         }
@@ -883,9 +883,9 @@ namespace capture {
 
     inst.surface->setSceneRoot(inst.sceneRoot.get());
     inst.inputDispatcher.setSceneRoot(inst.sceneRoot.get());
-    inst.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
+    inst.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
       if (m_wayland != nullptr) {
-        m_wayland->setCursorShape(serial, shape);
+        m_wayland->setCursorShape(serial, std::to_underlying(shape));
       }
     });
     if (inst.input != nullptr) {

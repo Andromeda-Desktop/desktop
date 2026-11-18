@@ -8,7 +8,7 @@
 #include "core/input/key_symbols.h"
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/backend/render_backend.h"
 #include "render/core/color.h"
@@ -403,8 +403,8 @@ void DesktopWidgetsEditor::createSurface(const WaylandOutput& output) {
   overlay->surface = std::make_unique<LayerSurface>(*m_wayland, std::move(surfaceConfig));
   overlay->surface->setRenderContext(m_renderContext);
   overlay->surface->setAnimationManager(&overlay->animations);
-  overlay->inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  overlay->inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
 
   auto* rawOverlay = overlay.get();
@@ -1050,7 +1050,7 @@ void DesktopWidgetsEditor::rebuildScene(OverlaySurface& surface) {
   auto toolbarHandleArea = ui::inputArea({});
   toolbarHandleArea->setParticipatesInLayout(false);
   toolbarHandleArea->setZIndex(1);
-  toolbarHandleArea->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE);
+  toolbarHandleArea->setCursorShape(CursorShape::Move);
   toolbarHandleArea->setOnPress([this, outputName = surface.outputName](const InputArea::PointerData& data) {
     if (data.button != BTN_LEFT) {
       return;

@@ -1,11 +1,12 @@
 #include "viewer_window.h"
+#include "core/input/pointer_axis.h"
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "app/command_table.h"
 #include "app/state_store.h"
 #include "core/text_clipboard.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "ui/controls/input.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_scanner.h"
@@ -1302,7 +1303,7 @@ namespace viewer {
   }
 
   bool ViewerWindow::wheelZoom(const InputArea::PointerData& data) {
-    if ((m_loop.wayland().keyboardModifiers() & KeyMod::Ctrl) == 0 || data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if ((m_loop.wayland().keyboardModifiers() & KeyMod::Ctrl) == 0 || data.axis != PointerAxis::Vertical) {
       return false;
     }
     // One wheel notch (value 15) zooms by 10 %; a touchpad scales in proportion.
@@ -1597,7 +1598,7 @@ namespace viewer {
       const RectF box = m_model.pageBox(i);
       const float w = box.x1 - box.x0;
       const float h = box.y1 - box.y0;
-      auto sheet = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT, .width = w, .height = h});
+      auto sheet = ui::inputArea({.cursorShape = ::CursorShape::Text, .width = w, .height = h});
       sheet->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_MIDDLE}));
       InputArea* sheetArea = sheet.get();
       sheet->setClipChildren(true);
@@ -1630,8 +1631,8 @@ namespace viewer {
           m_pan = d.pressed ? std::optional<Pan>(Pan{.x = d.sceneX, .y = d.sceneY, .top = m_scroll->scrollOffset(),
                                                      .left = m_hscroll->scrollOffset()})
                             : std::nullopt;
-          sheetArea->setCursorShape(d.pressed ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING
-                                                : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
+          sheetArea->setCursorShape(d.pressed ? ::CursorShape::Grabbing
+                                                : ::CursorShape::Text);
         }
       });
       sheet->setOnMotion([this, i, zoom, sheetArea](const InputArea::PointerData& d) {
@@ -1641,7 +1642,7 @@ namespace viewer {
           return;
         }
         const bool onLink = m_tool == Tool::Select && !m_selecting && linkAt(i, d.localX / zoom, d.localY / zoom) != nullptr;
-        sheetArea->setCursorShape(onLink ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT);
+        sheetArea->setCursorShape(onLink ? ::CursorShape::Pointer : ::CursorShape::Text);
         onPageMotion(d.localX / zoom, d.localY / zoom);
       });
       column->addChild(std::move(sheet));
@@ -1829,7 +1830,7 @@ namespace viewer {
         row->addChild(ui::label({.text = std::format("Page {}", page + 1), .fontSize = Tokens::typeFootnote.size * s,
                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
                                  .maxLines = 1}));
-        row->addChild(ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false,
+        row->addChild(ui::inputArea({.cursorShape = ::CursorShape::Pointer, .participatesInLayout = false,
                                      .onClick = [this, page, index](const InputArea::PointerData&) {
                                        if (page < m_model.pageCount() && index < m_model.hits(page).size()) {
                                          m_model.setCurrentHit({.page = page, .index = index});
@@ -1928,7 +1929,7 @@ namespace viewer {
     m_outlineRows.assign(m_outline.size(), nullptr);
     for (std::size_t i = 0; i < m_outline.size(); ++i) {
       const OutlineEntry& entry = m_outline[i];
-      auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .width = width, .height = height,
+      auto area = ui::inputArea({.cursorShape = ::CursorShape::Pointer, .width = width, .height = height,
                                  .onClick = [this, i](const InputArea::PointerData&) {
                                    if (i < m_outline.size() && m_outline[i].page) {
                                      goToPage(*m_outline[i].page);
@@ -2419,7 +2420,7 @@ namespace viewer {
                              .flexGrow = 1.0F});
     sheet->addChild(ui::label({.text = std::string("Draw your signature"), .fontSize = Style::fontSizeBody * s,
                                .color = colorSpecFromRole(ColorRole::Label1)}));
-    auto pad = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR, .width = kPadWidth * s, .height = kPadHeight * s});
+    auto pad = ui::inputArea({.cursorShape = ::CursorShape::Crosshair, .width = kPadWidth * s, .height = kPadHeight * s});
     pad->setClipChildren(true);
     auto paper = ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .border = colorSpecFromRole(ColorRole::Separator),
                           .borderWidth = 1.0F, .radius = Style::scaledRadiusMd(s), .width = kPadWidth * s,

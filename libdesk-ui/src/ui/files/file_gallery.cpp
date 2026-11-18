@@ -1,6 +1,7 @@
 #include "ui/files/file_gallery.h"
+#include "core/input/pointer_axis.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
 #include "core/log.h"
 #include "render/core/renderer.h"
@@ -21,8 +22,7 @@
 #include <cctype>
 #include <cmath>
 #include <format>
-#include <wayland-client-protocol.h>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 
 namespace fs = std::filesystem;
 
@@ -111,7 +111,7 @@ namespace {
     c->setMinHeight(side);
     c->setMaxHeight(side);
     c->addChild(ui::glyph({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .color = role(ColorRole::Label1)}));
-    auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+    auto area = ui::inputArea({.cursorShape = CursorShape::Pointer, .participatesInLayout = false});
     area->setOnClick([onClick = std::move(onClick)](const InputArea::PointerData& data) {
       if (data.button == BTN_LEFT) {
         onClick();
@@ -135,7 +135,7 @@ namespace {
     c->setMaxHeight(side);
     c->addChild(ui::glyph({.out = out, .glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s,
                            .color = role(ColorRole::Label1)}));
-    auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+    auto area = ui::inputArea({.cursorShape = CursorShape::Pointer, .participatesInLayout = false});
     area->setOnClick([onClick = std::move(onClick)](const InputArea::PointerData& data) {
       if (data.button == BTN_LEFT) {
         onClick(data.sceneX, data.sceneY);
@@ -232,18 +232,18 @@ FileGallery::FileGallery(float scale, ThumbnailService* thumbnails, AnimationMan
     }
   });
   hover->setOnAxisHandler([this](const InputArea::PointerData& data) {
-    const bool finger = data.axisSource == WL_POINTER_AXIS_SOURCE_FINGER;
+    const bool finger = data.axisSource == AxisSource::Finger;
     if (finger) {
       // A two-finger scroll pans a zoomed photo; at fit it is not ours.
       if (m_zoom <= 1.0F) {
         return false;
       }
-      (data.axis == WL_POINTER_AXIS_VERTICAL_SCROLL ? m_panY : m_panX) -= static_cast<float>(data.axisValue);
+      (data.axis == PointerAxis::Vertical ? m_panY : m_panX) -= static_cast<float>(data.axisValue);
       clampPan();
       refresh();
       return true;
     }
-    if (data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if (data.axis != PointerAxis::Vertical) {
       return false;
     }
     const float steps = data.axisLines != 0.0F ? data.axisLines : static_cast<float>(data.axisValue) / 10.0F;
@@ -820,7 +820,7 @@ void FileGallery::rebuildFilm() {
       mark->setZIndex(1);
       cell->addChild(std::move(mark));
     }
-    auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+    auto area = ui::inputArea({.cursorShape = CursorShape::Pointer, .participatesInLayout = false});
     area->setOnClick([this, i](const InputArea::PointerData& data) {
       if (data.button == BTN_LEFT && m_host.select) {
         m_host.select(i);

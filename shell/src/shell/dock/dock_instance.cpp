@@ -1,4 +1,6 @@
 #include "shell/dock/dock_instance.h"
+#include "core/input/pointer_axis.h"
+#include "core/input/cursor_shape.h"
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
@@ -391,8 +393,8 @@ namespace shell::dock {
         const auto& dockConfig = inst->config;
         const bool vertical = shell::dock::isVerticalEdge(dockConfig.position);
         const bool mainAxis =
-            data.axis == (vertical ? WL_POINTER_AXIS_VERTICAL_SCROLL : WL_POINTER_AXIS_HORIZONTAL_SCROLL);
-        const bool verticalWheelOnHorizontalDock = !vertical && data.axis == WL_POINTER_AXIS_VERTICAL_SCROLL;
+            data.axis == (vertical ? PointerAxis::Vertical : PointerAxis::Horizontal);
+        const bool verticalWheelOnHorizontalDock = !vertical && data.axis == PointerAxis::Vertical;
         if (!mainAxis && !verticalWheelOnHorizontalDock) {
           return false;
         }
@@ -420,8 +422,8 @@ namespace shell::dock {
       // Wire up InputDispatcher.
       instance.inputDispatcher.setSceneRoot(instance.sceneRoot.get());
       instance.inputDispatcher.setCursorShapeCallback([&platform =
-                                                           deps.platform](std::uint32_t serial, std::uint32_t shape) {
-        platform.setCursorShape(serial, shape);
+                                                           deps.platform](std::uint32_t serial, CursorShape shape) {
+        platform.setCursorShape(serial, std::to_underlying(shape));
       });
       instance.inputDispatcher.setHoverChangeCallback(
           [inst = &instance, itemHover = callbacks.itemHover](InputArea* /*old*/, InputArea* next) {

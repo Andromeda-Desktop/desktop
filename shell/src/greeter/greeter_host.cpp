@@ -20,7 +20,7 @@
 #include "ui/auth/ryoku_auth_scene.h"
 #include "ui/builders.h"
 #include "ui/controls/image.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "wayland/layer_surface.h"
 #include "wayland/surface.h"
 #include "wayland/wayland_connection.h"
@@ -979,7 +979,7 @@ namespace {
     void onPointer(const PointerEvent& event) {
       if (event.type == PointerEvent::Type::Enter) {
         // A client sets its cursor on every enter; without it the compositor draws none over the greeter (G0).
-        m_wayland.setCursorShape(event.serial, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+        m_wayland.setCursorShape(event.serial, std::to_underlying(CursorShape::Default));
       }
       if (event.type == PointerEvent::Type::Enter || event.type == PointerEvent::Type::Motion) {
         if (event.surface != nullptr) {

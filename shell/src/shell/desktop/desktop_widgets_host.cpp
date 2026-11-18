@@ -1,4 +1,5 @@
 #include "shell/desktop/desktop_widgets_host.h"
+#include "core/input/cursor_shape.h"
 
 #include "config/config_service.h"
 #include "core/log.h"
@@ -447,8 +448,8 @@ void DesktopWidgetsHost::buildScene(DesktopWidgetInstance& instance) {
 
     instance.inputDispatcher.setSceneRoot(instance.sceneRoot.get());
     if (m_wayland != nullptr) {
-      instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-        m_wayland->setCursorShape(serial, shape);
+      instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+        m_wayland->setCursorShape(serial, std::to_underlying(shape));
       });
     }
 

@@ -1,4 +1,5 @@
 #include "shell/activity/activity_window.h"
+#include "core/input/cursor_shape.h"
 
 #include "shell/activity/activity_ui.h"
 #include "system/battery_impact.h"
@@ -510,8 +511,8 @@ void ActivityWindow::buildScene(Renderer& renderer, float width, float height) {
   body->layout(renderer);
   m_body = m_sceneRoot->addChild(std::move(body));
 
-  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
   m_inputDispatcher.setSceneRoot(m_sceneRoot.get());
   m_surface->setSceneRoot(m_sceneRoot.get());

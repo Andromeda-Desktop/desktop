@@ -1,4 +1,5 @@
 #include "shell/bar/bar.h"
+#include "core/input/cursor_shape.h"
 
 #include "shell/bar/bar_internal.h"
 #include "compositors/compositor_platform.h"
@@ -1166,8 +1167,8 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
 
     // Wire up InputDispatcher for this instance
     instance.inputDispatcher.setSceneRoot(instance.sceneRoot.get());
-    instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-      m_platform->setCursorShape(serial, shape);
+    instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+      m_platform->setCursorShape(serial, std::to_underlying(shape));
     });
     instance.inputDispatcher.setHoverChangeCallback([this, inst = &instance](InputArea* /*old*/, InputArea* next) {
       if (next != nullptr) {

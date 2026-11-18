@@ -370,7 +370,7 @@ void LauncherPanel::create() {
           .columnGap = 0.0F,
           .rowGap = Style::spaceXs * scale,
           .overscanRows = kRowOverscan,
-          .itemCursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+          .itemCursorShape = CursorShape::Pointer,
           .adapter = m_listAdapter.get(),
           .flexGrow = 1.0F,
           .onSelectionChanged =
@@ -479,7 +479,7 @@ void LauncherPanel::create() {
       token->addChild(ui::glyph({.glyph = "x", .glyphSize = Tokens::sizeSymbolInline * scale, .color = colorSpecFromRole(ColorRole::Label2)}));
       auto area = std::make_unique<InputArea>();
       area->setParticipatesInLayout(false);
-      area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      area->setCursorShape(CursorShape::Pointer);
       area->setOnClick([this](const InputArea::PointerData&) { setFilesScope(false); });
       token->addChild(std::move(area));
       return token;
@@ -652,7 +652,7 @@ void LauncherPanel::create() {
       cell->addChild(ui::label({.out = &m_previewToneLabels[i], .fontSize = Tokens::componentLauncherEmoji * scale, .maxLines = 1}));
       auto area = std::make_unique<InputArea>();
       area->setParticipatesInLayout(false);
-      area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      area->setCursorShape(CursorShape::Pointer);
       area->setFrameSize(Tokens::sizeControlM * scale, Tokens::sizeControlM * scale);
       area->setOnClick([this, i](const InputArea::PointerData&) { activateEmojiVariant(i); });
       cell->addChild(std::move(area));

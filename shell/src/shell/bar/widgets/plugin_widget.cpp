@@ -1,8 +1,9 @@
 #include "shell/bar/widgets/plugin_widget.h"
+#include "core/input/pointer_axis.h"
 
 #include "compositors/compositor_platform.h"
 #include "core/log.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "dbus/mpris/mpris_service.h"
 #include "i18n/i18n.h"
 #include "notification/notifications.h"
@@ -154,7 +155,7 @@ std::filesystem::path PluginWidget::resolvePluginPath(std::string_view path) con
 void PluginWidget::create() {
   auto area = ui::inputArea({});
   area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT, BTN_MIDDLE}));
-  area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  area->setCursorShape(CursorShape::Pointer);
   area->setOnClick([this](const InputArea::PointerData& data) {
     if (!m_runtime)
       return;
@@ -190,7 +191,7 @@ void PluginWidget::create() {
     const float steps = data.scrollSteps();
     if (steps == 0.0F)
       return false;
-    const char* axis = data.axis == WL_POINTER_AXIS_VERTICAL_SCROLL ? "vertical" : "horizontal";
+    const char* axis = data.axis == PointerAxis::Vertical ? "vertical" : "horizontal";
     // The third argument is true only on the first step of a flick in that direction. A script
     // stepping through a list acts on it alone; one ramping a value ignores it.
     (void)m_runtime->enqueueCallArgs(

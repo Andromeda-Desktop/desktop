@@ -776,15 +776,9 @@ void InputDispatcher::updateCursor(std::uint32_t serial) {
     return;
   }
 
-  std::uint32_t shape = 1; // Default arrow
-
   InputArea* cursorAuthority = m_capturedArea != nullptr ? m_capturedArea : m_hoveredArea;
-  if (cursorAuthority != nullptr) {
-    auto areaShape = cursorAuthority->cursorShape();
-    if (areaShape != 0) {
-      shape = areaShape;
-    }
-  }
+  const CursorShape shape =
+      cursorAuthority != nullptr ? cursorAuthority->cursorShape().value_or(CursorShape::Default) : CursorShape::Default;
 
   m_cursorShapeCallback(serial, shape);
 }

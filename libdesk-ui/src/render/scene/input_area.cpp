@@ -1,8 +1,9 @@
 #include "render/scene/input_area.h"
+#include "core/input/pointer_axis.h"
 
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
 #include <algorithm>
 #include <chrono>
@@ -30,13 +31,13 @@ namespace {
   constexpr auto kContinuousStepInterval = std::chrono::milliseconds(80);
 
   bool isWheelSource(std::uint32_t axisSource) noexcept {
-    return axisSource == WL_POINTER_AXIS_SOURCE_WHEEL || axisSource == WL_POINTER_AXIS_SOURCE_WHEEL_TILT;
+    return axisSource == AxisSource::Wheel || axisSource == AxisSource::WheelTilt;
   }
 
 } // namespace
 
 float InputArea::PointerData::scrollDelta(float wheelStep) const noexcept {
-  if (axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
+  if (axisSource == AxisSource::Finger) {
     return static_cast<float>(axisValue) * kTouchpadScrollScale;
   }
   if (axisLines != 0.0F) {
@@ -118,12 +119,12 @@ bool InputArea::activate() {
 
 void InputArea::setOnClick(PointerCallback callback) {
   m_onClick = std::move(callback);
-  if (m_onClick && m_cursorShape == 0) {
-    m_cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER;
+  if (m_onClick && !m_cursorShape) {
+    m_cursorShape = CursorShape::Pointer;
   }
 }
 
-void InputArea::setCursorShape(std::uint32_t shape) { m_cursorShape = shape; }
+void InputArea::setCursorShape(std::optional<CursorShape> shape) { m_cursorShape = shape; }
 void InputArea::setAcceptedButtons(std::uint32_t mask) { m_acceptedButtons = mask; }
 bool InputArea::acceptsButton(std::uint32_t button) const noexcept {
   return (m_acceptedButtons & buttonMask(button)) != 0;
@@ -321,9 +322,9 @@ bool InputArea::dispatchAxis(
     if (delta != 0.0F) {
       // Wayland reports up/left as a negative delta.
       std::optional<ScrollDirection> direction;
-      if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+      if (axis == PointerAxis::Vertical) {
         direction = delta < 0.0F ? ScrollDirection::Up : ScrollDirection::Down;
-      } else if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+      } else if (axis == PointerAxis::Horizontal) {
         direction = delta < 0.0F ? ScrollDirection::Left : ScrollDirection::Right;
       }
       if (direction.has_value() && (m_acceptedScrollDirections & scrollDirectionMask(*direction)) == 0) {

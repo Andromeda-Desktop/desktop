@@ -7,7 +7,7 @@
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "core/ui_phase.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/color.h"
@@ -1106,7 +1106,7 @@ namespace capture {
 
     auto canvas = ui::inputArea({
         .acceptedButtons = InputArea::buttonMask(BTN_LEFT),
-        .cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR,
+        .cursorShape = CursorShape::Crosshair,
         .focusable = true,
         .width = surfaceW,
         .height = surfaceH,
@@ -1210,9 +1210,9 @@ namespace capture {
 
     inst.surface->setSceneRoot(inst.sceneRoot.get());
     inst.inputDispatcher.setSceneRoot(inst.sceneRoot.get());
-    inst.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
+    inst.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
       if (m_wayland != nullptr) {
-        m_wayland->setCursorShape(serial, shape);
+        m_wayland->setCursorShape(serial, std::to_underlying(shape));
       }
     });
     // Toolbar tooltips are xdg_popups parented to this layer surface, and they must die
@@ -1361,7 +1361,7 @@ namespace capture {
     // pointer stream, which the pointer's implicit grab keeps pointed at this overlay.
     auto* instPtr = &inst;
     inst.dragHandle = addGhostButton("grip-vertical", "bar.annotate.move-toolbar", nullptr);
-    inst.dragHandle->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL);
+    inst.dragHandle->setCursorShape(CursorShape::AllScroll);
     inst.dragHandle->setOnPress([this, instPtr](float /*localX*/, float /*localY*/, bool pressed) {
       if (pressed) {
         beginToolbarDrag(*instPtr);
@@ -1501,7 +1501,7 @@ namespace capture {
         area->setEnabled(true);
         area->setFocusable(available);
         area->setCursorShape(
-            available ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT
+            available ? CursorShape::Pointer : CursorShape::Default
         );
       }
     }
@@ -2841,7 +2841,7 @@ namespace capture {
     const auto& presets = gradientPresets();
     for (std::size_t i = 0; i < presets.size(); ++i) {
       auto chip = ui::inputArea({
-          .cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+          .cursorShape = CursorShape::Pointer,
           .tooltip = i18n::tr(presets[i].tooltipKey),
           .width = kGradientChipSize,
           .height = kGradientChipSize,

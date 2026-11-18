@@ -1,6 +1,6 @@
 #include "key_map.h"
 
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace term {

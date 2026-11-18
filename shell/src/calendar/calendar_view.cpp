@@ -4,7 +4,7 @@
 #include "compositors/compositor_platform.h"
 #include "core/deferred_call.h"
 #include "core/ui_phase.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "net/url_open.h"
 #include "render/core/color.h"
@@ -472,7 +472,7 @@ namespace calendar_view {
       auto area = ui::inputArea({});
       area->setParticipatesInLayout(false);
       area->setZIndex(1);
-      area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      area->setCursorShape(CursorShape::Pointer);
       const auto setHovered = [chip, label, glyph, requestRedraw = options.requestRedraw](bool hovered) {
         if (hovered) {
           chip->setFill(colorSpecFromRole(ColorRole::Fill3));
@@ -627,7 +627,7 @@ namespace calendar_view {
           auto area = ui::inputArea({});
           area->setParticipatesInLayout(false);
           area->setZIndex(1);
-          area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+          area->setCursorShape(CursorShape::Pointer);
           area->setTooltip(link);
 
           Flex* row = eventRow;

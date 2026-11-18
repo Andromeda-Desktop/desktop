@@ -6,7 +6,7 @@
 #include "config/schema/engine.h"
 #include "config/schema/ranges.h"
 #include "core/files/directory_scanner.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/scene/node.h"
 #include "shell/bar/widget_gesture.h"
@@ -2940,7 +2940,7 @@ namespace settings {
             .minHeight = iconSize,
             .padding = iconPad,
             .radius = Style::scaledRadiusSm(ctx.scale),
-            .configure = [](Button& button) { button.setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE); },
+            .configure = [](Button& button) { button.setCursorShape(CursorShape::Move); },
         });
         wireDrag(*dragBtn, dragBtnPtr, cardPtr, homeZoneIndex, itemIndex);
         row->addChild(std::move(dragBtn));
@@ -3338,7 +3338,7 @@ namespace settings {
                 .minHeight = iconSize,
                 .padding = iconPad,
                 .radius = Style::scaledRadiusSm(ctx.scale),
-                .configure = [](Button& button) { button.setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE); },
+                .configure = [](Button& button) { button.setCursorShape(CursorShape::Move); },
             });
             wireDrag(*groupDrag, groupDragPtr, containerPtr, laneZoneIndex, i);
             groupHeader->addChild(std::move(groupDrag));

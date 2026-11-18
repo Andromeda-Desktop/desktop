@@ -1,7 +1,7 @@
 #include "ui/controls/select.h"
 
 #include "core/input/keybind_matcher.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/render_styles.h"
@@ -18,7 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
 #include <numbers>
 
@@ -58,7 +58,7 @@ Select::Select() {
 
   auto triggerArea = std::make_unique<InputArea>();
   triggerArea->setFocusable(true);
-  triggerArea->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+  triggerArea->setCursorShape(CursorShape::Pointer);
   triggerArea->setOnEnter([this](const InputArea::PointerData& /*data*/) {
     applyVisualState();
     markPaintDirty();

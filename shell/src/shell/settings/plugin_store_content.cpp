@@ -4,7 +4,7 @@
 #include "core/input/key_symbols.h"
 #include "core/input/keybind_matcher.h"
 #include "core/ui_phase.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "i18n/i18n.h"
 #include "scripting/plugin_api.h"
 #include "scripting/plugin_file_cache.h"
@@ -598,7 +598,7 @@ namespace settings {
         .squareCells = false,
         .columnGap = Style::spaceSm * scale,
         .rowGap = Style::spaceSm * scale,
-        .itemCursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+        .itemCursorShape = CursorShape::Pointer,
         .adapter = adapterPtr,
         .flexGrow = 1.0F,
         .onSelectionChanged =

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/input/cursor_shape.h"
 #include "render/scene/node.h"
 #include "ui/tooltip_content.h"
 
@@ -8,7 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <map>
 #include <memory>
 #include <string>
@@ -149,8 +150,8 @@ public:
   [[nodiscard]] bool capturesAllKeys() const noexcept { return m_capturesAllKeys; }
 
   // Configuration
-  void setCursorShape(std::uint32_t shape);
-  [[nodiscard]] std::uint32_t cursorShape() const noexcept { return m_cursorShape; }
+  void setCursorShape(std::optional<CursorShape> shape);
+  [[nodiscard]] std::optional<CursorShape> cursorShape() const noexcept { return m_cursorShape; }
 
   void setAcceptedButtons(std::uint32_t mask);
   [[nodiscard]] std::uint32_t acceptedButtons() const noexcept { return m_acceptedButtons; }
@@ -271,7 +272,7 @@ private:
   VoidCallback m_onFocusGain;
   VoidCallback m_onFocusLoss;
 
-  std::uint32_t m_cursorShape = 0;
+  std::optional<CursorShape> m_cursorShape;
   std::uint32_t m_acceptedButtons = buttonMask(BTN_LEFT);
   std::uint32_t m_acceptedScrollDirections = allScrollDirections();
   TouchScrollAxis m_touchScrollAxis = TouchScrollAxis::None;

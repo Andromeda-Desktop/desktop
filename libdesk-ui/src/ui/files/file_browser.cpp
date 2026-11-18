@@ -4,7 +4,7 @@
 #include "core/files/media_info.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/animation/animation_manager.h"
 #include "render/animation/motion_service.h"
 #include "render/core/renderer.h"
@@ -42,7 +42,7 @@
 #include <cstdlib>
 #include <format>
 #include <glib.h>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <sys/statvfs.h>
 #include <thread>
 #include <unistd.h>
@@ -945,7 +945,7 @@ std::unique_ptr<Node> FileBrowser::buildHeaderAccessory() {
             focusSearch();
           },
   }));
-  auto hit = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER, .participatesInLayout = false});
+  auto hit = ui::inputArea({.cursorShape = CursorShape::Pointer, .participatesInLayout = false});
   hit->setVisible(false);
   hit->setOnClick([this, accessory = row.get()](const InputArea::PointerData&) {
     accessory->setCollapsed(false);
@@ -1334,7 +1334,7 @@ void FileBrowser::refreshSidebar() {
     flex->setRadius(Style::scaledRadius(Tokens::radiusR8, s));
     flex->setMinHeight(kSidebarRow * s);
     flex->setMaxHeight(kSidebarRow * s);
-    auto areaOwned = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, .participatesInLayout = false});
+    auto areaOwned = ui::inputArea({.cursorShape = CursorShape::Default, .participatesInLayout = false});
     InputArea* area = areaOwned.get();
     flex->area = area;
     if (rail) {
@@ -1631,7 +1631,7 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
         .columnGap = kIconGap * s,
         .rowGap = kIconGap * s,
         .overscanRows = 1,
-        .itemCursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+        .itemCursorShape = CursorShape::Default,
         .scrollbarVisible = true,
         .adapter = page.iconsAdapter.get(),
         .configure = [](VirtualGridView& grid) { grid.setFixedCellWidth(true); },
@@ -1719,7 +1719,7 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
         .columnGap = 0.0F,
         .rowGap = 0.0F,
         .overscanRows = 3,
-        .itemCursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+        .itemCursorShape = CursorShape::Default,
         .scrollbarVisible = true,
         .adapter = page.listAdapter.get(),
         .flexGrow = 1.0F,
@@ -2167,7 +2167,7 @@ void FileBrowser::refreshTabs() {
     tab->addChild(ui::glyph({.glyph = std::string("folder"), .glyphSize = Tokens::sizeSymbolInline * s, .color = ink}));
     tab->addChild(ui::label({.text = titleOf(i), .fontSize = Style::fontSizeCaption * s, .fontWeight = FontWeight::Medium,
                              .color = ink, .maxLines = 1, .ellipsize = TextEllipsize::Middle, .flexGrow = 1.0F}));
-    auto areaOwned = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, .participatesInLayout = false});
+    auto areaOwned = ui::inputArea({.cursorShape = CursorShape::Default, .participatesInLayout = false});
     tab->area = areaOwned.get();
     areaOwned->setOnClick([this, i](const InputArea::PointerData&) {
       DeferredCall::callLater([this, i, alive = std::weak_ptr<bool>(m_alive)] {

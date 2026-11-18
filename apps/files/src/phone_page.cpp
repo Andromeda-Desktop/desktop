@@ -1,7 +1,7 @@
 #include "phone_page.h"
 
 #include "state_file.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
 #include "core/deferred_call.h"
 #include "core/log.h"
@@ -135,7 +135,7 @@ namespace {
     auto c = std::make_unique<Click>();
     c->setRadius(radius);
     c->addChild(std::move(child));
-    auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT, .participatesInLayout = false});
+    auto area = ui::inputArea({.cursorShape = ::CursorShape::Default, .participatesInLayout = false});
     Click* body = c.get();
     if (radius > 0.0F) {
       area->setOnEnter([body](const InputArea::PointerData&) { body->setFill(colorSpecFromRole(ColorRole::Fill1)); });

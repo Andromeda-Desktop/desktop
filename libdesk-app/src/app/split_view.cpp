@@ -10,9 +10,9 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 
 #include <algorithm>
 #include <cmath>
@@ -259,8 +259,8 @@ void SplitView::buildCards(Renderer& renderer, const std::vector<std::uint64_t>&
     const std::size_t index = m_dividers.size();
     Divider& divider = m_dividers.emplace_back(Divider{.vertical = vertical, .split = split});
     auto area = ui::inputArea({.out = &divider.area,
-                               .cursorShape = vertical ? WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE
-                                                       : WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE,
+                               .cursorShape = vertical ? CursorShape::EwResize
+                                                       : CursorShape::NsResize,
                                .participatesInLayout = false});
     // Mockup .grip: a 4 x 32 capsule centred in the gap while the pointer is over it or drags it.
     auto handle = ui::box({.out = &divider.grip, .fill = colorSpecFromRole(ColorRole::Label3),

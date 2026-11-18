@@ -1,4 +1,6 @@
 #include "wayland/glass_surface.h"
+#include "core/input/pointer_axis.h"
+#include "core/input/cursor_shape.h"
 #include "shell/switcher/window_switcher.h"
 #include "config/app_icon_settings.h"
 
@@ -1939,7 +1941,7 @@ void WindowSwitcher::buildScene(Instance& instance, std::uint32_t width, std::ui
   });
 
   input->setOnAxisHandler([this](const InputArea::PointerData& data) -> bool {
-    if (data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL && data.axis != WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+    if (data.axis != PointerAxis::Vertical && data.axis != PointerAxis::Horizontal) {
       return false;
     }
 
@@ -2076,9 +2078,9 @@ void WindowSwitcher::buildScene(Instance& instance, std::uint32_t width, std::ui
 
   instance.surface->setSceneRoot(instance.sceneRoot.get());
   instance.inputDispatcher.setSceneRoot(instance.sceneRoot.get());
-  instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
+  instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     if (m_wayland != nullptr) {
-      m_wayland->setCursorShape(serial, shape);
+      m_wayland->setCursorShape(serial, std::to_underlying(shape));
     }
   });
   if (instance.input != nullptr) {

@@ -1,4 +1,5 @@
 #include "shell/control_center/sheet/calendar_page.h"
+#include "core/input/pointer_axis.h"
 
 #include "calendar/calendar_service.h"
 #include "config/config_service.h"
@@ -117,7 +118,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
   calendarArea->setParticipatesInLayout(false);
   calendarArea->setPropagateEvents(true);
   calendarArea->setOnAxis([this](const InputArea::PointerData& data) {
-    if (data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if (data.axis != PointerAxis::Vertical) {
       return;
     }
     const float steps = data.scrollSteps();

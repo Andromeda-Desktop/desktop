@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/input/cursor_shape.h"
 #include "capture/screenshot_image.h"
 
 #include <functional>
@@ -85,7 +86,7 @@ namespace capture {
     void abortWithError(const std::string& message);
     void updateSelectionVisuals();
     // Stores the shape on every instance and pushes it to the compositor right away.
-    void applyCursorShape(std::uint32_t shape);
+    void applyCursorShape(CursorShape shape);
     [[nodiscard]] bool modifierHeld() const;
     void completeSelection();
     void confirmPendingSelection(ConfirmAction action = ConfirmAction::None);

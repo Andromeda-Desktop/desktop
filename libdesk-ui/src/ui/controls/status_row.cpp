@@ -10,7 +10,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <algorithm>
 #include <cmath>
 #include <utility>

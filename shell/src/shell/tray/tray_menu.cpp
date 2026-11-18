@@ -1,4 +1,5 @@
 #include "shell/tray/tray_menu.h"
+#include "core/input/cursor_shape.h"
 
 #include "config/config_service.h"
 #include "core/deferred_call.h"
@@ -977,8 +978,8 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
   inst.sceneRoot->addChild(std::move(scrollView));
 
   inst.inputDispatcher.setSceneRoot(inst.sceneRoot.get());
-  inst.inputDispatcher.setCursorShapeCallback([this](uint32_t serial, uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  inst.inputDispatcher.setCursorShapeCallback([this](uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
   inst.surface->setSceneRoot(inst.sceneRoot.get());
 }
@@ -1338,8 +1339,8 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
   inst.sceneRoot->addChild(std::move(scrollView));
 
   inst.inputDispatcher.setSceneRoot(inst.sceneRoot.get());
-  inst.inputDispatcher.setCursorShapeCallback([this](uint32_t serial, uint32_t shape) {
-    m_wayland->setCursorShape(serial, shape);
+  inst.inputDispatcher.setCursorShapeCallback([this](uint32_t serial, CursorShape shape) {
+    m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
   inst.surface->setSceneRoot(inst.sceneRoot.get());
 }

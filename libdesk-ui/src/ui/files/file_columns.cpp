@@ -3,7 +3,7 @@
 #include "core/log.h"
 #include "core/deferred_call.h"
 #include "core/files/directory_watcher.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/animation/animation_manager.h"
 #include "render/scene/accessible.h"
 #include "ui/builders.h"
@@ -253,7 +253,7 @@ void FileColumns::rebuildColumns() {
         .columnGap = 0.0F,
         .rowGap = 0.0F,
         .overscanRows = 3,
-        .itemCursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT,
+        .itemCursorShape = CursorShape::Default,
         .scrollbarVisible = true,
         .adapter = &col->adapter,
         .width = kColumnWidth * s,

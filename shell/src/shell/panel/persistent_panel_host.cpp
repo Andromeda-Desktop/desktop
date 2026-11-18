@@ -1,4 +1,5 @@
 #include "shell/panel/persistent_panel_host.h"
+#include "core/input/cursor_shape.h"
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
@@ -368,8 +369,8 @@ void PersistentPanelHost::buildScene(Instance& instance, std::uint32_t width, st
   auto* raw = &instance;
   instance.inputDispatcher.setSceneRoot(instance.sceneRoot.get());
   instance.inputDispatcher.setTextInputContext(instance.surface->wlSurface(), m_platform->wayland().textInputService());
-  instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_platform->setCursorShape(serial, shape);
+  instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_platform->setCursorShape(serial, std::to_underlying(shape));
   });
   instance.inputDispatcher.setHoverChangeCallback([raw](InputArea* /*old*/, InputArea* next) {
     if (raw->surface != nullptr) {

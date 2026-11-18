@@ -1,4 +1,5 @@
 #include "shell/bar/widget_gesture.h"
+#include "core/input/pointer_axis.h"
 
 #include <algorithm>
 #include <array>
@@ -109,10 +110,10 @@ namespace noctalia::bar {
       return std::nullopt;
     }
     // Wayland reports up/left as a negative delta.
-    if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if (axis == PointerAxis::Vertical) {
       return steps < 0.0F ? Gesture::ScrollUp : Gesture::ScrollDown;
     }
-    if (axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+    if (axis == PointerAxis::Horizontal) {
       return steps < 0.0F ? Gesture::ScrollLeft : Gesture::ScrollRight;
     }
     return std::nullopt;

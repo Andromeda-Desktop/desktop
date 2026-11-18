@@ -1,4 +1,5 @@
 #include "shell/dock/dock_context_menu.h"
+#include "core/input/cursor_shape.h"
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
@@ -456,8 +457,8 @@ namespace shell::dock {
 
       menuPtr->sceneRoot->addChild(std::move(ctrl));
       menuPtr->inputDispatcher.setSceneRoot(menuPtr->sceneRoot.get());
-      menuPtr->inputDispatcher.setCursorShapeCallback([&platform](std::uint32_t serial, std::uint32_t shape) {
-        platform.setCursorShape(serial, shape);
+      menuPtr->inputDispatcher.setCursorShapeCallback([&platform](std::uint32_t serial, CursorShape shape) {
+        platform.setCursorShape(serial, std::to_underlying(shape));
       });
       menuPtr->surface->setSceneRoot(menuPtr->sceneRoot.get());
     });

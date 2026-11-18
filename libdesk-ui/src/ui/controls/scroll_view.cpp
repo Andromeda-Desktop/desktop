@@ -1,4 +1,5 @@
 #include "ui/controls/scroll_view.h"
+#include "core/input/pointer_axis.h"
 
 #include "render/animation/animation_manager.h"
 #include "render/core/render_styles.h"
@@ -12,10 +13,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
 #include <utility>
-#include <wayland-client-protocol.h>
 
 namespace {
 
@@ -31,8 +31,8 @@ namespace {
   }
 
   std::uint32_t scrollAxis(ScrollOrientation orientation) {
-    return orientation == ScrollOrientation::Horizontal ? WL_POINTER_AXIS_HORIZONTAL_SCROLL
-                                                        : WL_POINTER_AXIS_VERTICAL_SCROLL;
+    return orientation == ScrollOrientation::Horizontal ? PointerAxis::Horizontal
+                                                        : PointerAxis::Vertical;
   }
 
   bool subtreeContains(const Node& root, const Node* target) {
@@ -88,7 +88,7 @@ ScrollView::ScrollView() {
       return true;
     }
     // A pager also turns on a mouse wheel of the other axis; a touchpad swipe must match the axis.
-    const bool wheelPages = m_pageStep > 0.0F && data.axisSource != WL_POINTER_AXIS_SOURCE_FINGER;
+    const bool wheelPages = m_pageStep > 0.0F && data.axisSource != AxisSource::Finger;
     if (!scrollable() || (data.axis != scrollAxis(m_orientation) && !wheelPages)) {
       return false;
     }
@@ -105,7 +105,7 @@ ScrollView::ScrollView() {
       return true;
     }
     const float delta = data.scrollDelta(m_scrollWheelStep);
-    if (data.axisSource == WL_POINTER_AXIS_SOURCE_FINGER) {
+    if (data.axisSource == AxisSource::Finger) {
       setScrollOffset(m_scrollOffset + delta);
     } else {
       scrollBy(delta);

@@ -36,7 +36,7 @@
 #include "ui/controls/label.h"
 #include "ui/palette.h"
 #include "ui/style.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h"
 #include "wayland/wayland_seat.h"
 #include "xdg-shell-client-protocol.h"
@@ -47,7 +47,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <format>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -75,24 +75,24 @@ namespace {
   constexpr float kResizeBand = 8.0F;
   constexpr float kResizeCorner = 16.0F;
 
-  std::uint32_t cursorForEdges(std::uint32_t edges) {
+  CursorShape cursorForEdges(std::uint32_t edges) {
     switch (edges) {
     case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE;
+      return CursorShape::NResize;
     case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE;
+      return CursorShape::SResize;
     case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE;
+      return CursorShape::WResize;
     case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE;
+      return CursorShape::EResize;
     case XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE;
+      return CursorShape::NwResize;
     case XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE;
+      return CursorShape::NeResize;
     case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE;
+      return CursorShape::SwResize;
     default:
-      return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE;
+      return CursorShape::SeResize;
     }
   }
 
@@ -548,8 +548,8 @@ bool AppWindow::open() {
     m_foreignParent = std::make_unique<desk::ForeignParent>(wayland.display());
     m_foreignParent->setParent(m_surface->wlSurface(), m_config.parentWindow);
   }
-  m_input.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_loop.wayland().setCursorShape(serial, shape);
+  m_input.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_loop.wayland().setCursorShape(serial, std::to_underlying(shape));
   });
   // Input methods (fcitx5, IBus): preedit and commits reach the focused text field.
   m_input.setTextInputContext(m_surface->wlSurface(), wayland.textInputService());
@@ -1385,7 +1385,7 @@ std::unique_ptr<Flex> AppWindow::buildHeader() {
   header->title = m_titleLabel;
   header->titleMin = 96.0F * s;
   if (m_titleClick) {
-    auto area = ui::inputArea({.cursorShape = WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT, .participatesInLayout = false});
+    auto area = ui::inputArea({.cursorShape = CursorShape::Text, .participatesInLayout = false});
     // A drag on the title still moves the window (the header's own drag needs an empty spot); a click edits.
     struct Press {
       bool down = false;
@@ -1820,7 +1820,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   }
   if (edges != 0 && (event.type == PointerEvent::Type::Enter || event.type == PointerEvent::Type::Motion)) {
     m_input.pointerLeave();
-    m_loop.wayland().setCursorShape(event.serial, cursorForEdges(edges));
+    m_loop.wayland().setCursorShape(event.serial, std::to_underlying(cursorForEdges(edges)));
     m_inResizeBand = true;
     return;
   }
@@ -1830,7 +1830,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
   }
   if (m_inResizeBand && event.type == PointerEvent::Type::Motion) {
     m_inResizeBand = false;
-    m_loop.wayland().setCursorShape(event.serial, WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
+    m_loop.wayland().setCursorShape(event.serial, std::to_underlying(CursorShape::Default));
     m_input.pointerEnter(x, y, event.serial);
   }
   switch (event.type) {

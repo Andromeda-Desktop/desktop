@@ -8,7 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <linux/input-event-codes.h>
+#include "core/input/input_codes.h"
 #include <memory>
 #include <utility>
 
@@ -305,7 +305,7 @@ void VirtualGridView::setScale(float scale) {
   }
 }
 
-void VirtualGridView::setItemCursorShape(std::uint32_t shape) {
+void VirtualGridView::setItemCursorShape(CursorShape shape) {
   if (m_itemCursorShape == shape) {
     return;
   }

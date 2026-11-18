@@ -1,4 +1,5 @@
 #include "shell/lockscreen/lock_surface.h"
+#include "core/input/cursor_shape.h"
 
 #include "core/shared_worker.h"
 #include "capture/screencopy_capture.h"
@@ -584,8 +585,8 @@ LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) :
   }
 
   m_inputDispatcher.setSceneRoot(&m_root);
-  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
-    m_connection.setCursorShape(serial, shape);
+  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
+    m_connection.setCursorShape(serial, std::to_underlying(shape));
   });
 
   setSceneRoot(&m_root);

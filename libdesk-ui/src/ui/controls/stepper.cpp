@@ -2,7 +2,7 @@
 
 #include "core/input/key_modifiers.h"
 #include "core/input/key_symbols.h"
-#include "cursor-shape-v1-client-protocol.h"
+#include "core/input/cursor_shape.h"
 #include "render/core/render_styles.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
@@ -80,7 +80,7 @@ Stepper::Stepper() {
     btn->setPadding(0.0F);
     btn->setContentAlign(ButtonContentAlign::Center);
     btn->setFlexGrow(0.0F);
-    btn->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+    btn->setCursorShape(CursorShape::Pointer);
     btn->setOnPress([this, directionSign = increment ? 1 : -1](float /*localX*/, float /*localY*/, bool pressed) {
       if (pressed) {
         beginStepRepeat(directionSign);

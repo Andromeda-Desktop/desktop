@@ -1,4 +1,5 @@
 #include "shell/desktop/widgets/desktop_calendar_widget.h"
+#include "core/input/pointer_axis.h"
 
 #include "calendar/calendar_service.h"
 #include "config/config_service.h"
@@ -59,7 +60,7 @@ void DesktopCalendarWidget::create() {
   auto calendarArea = std::make_unique<InputArea>();
   m_calendarArea = calendarArea.get();
   calendarArea->setOnAxis([this](const InputArea::PointerData& data) {
-    if (data.axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+    if (data.axis != PointerAxis::Vertical) {
       return;
     }
     const float steps = data.scrollSteps();

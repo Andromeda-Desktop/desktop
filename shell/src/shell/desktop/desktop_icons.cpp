@@ -1,4 +1,5 @@
 #include "shell/desktop/desktop_icons.h"
+#include "core/input/cursor_shape.h"
 
 #include "config/config_service.h"
 #include "dbus/session_bus.h"
@@ -136,7 +137,7 @@ void DesktopIcons::initialize(WaylandConnection& wayland, ConfigService& config,
   });
   const char* desktop = g_get_user_special_dir(G_USER_DIRECTORY_DESKTOP);
   m_dir = desktop != nullptr ? std::filesystem::path(desktop) : std::filesystem::path(g_get_home_dir()) / "Desktop";
-  m_input.setCursorShapeCallback([](std::uint32_t, std::uint32_t) {});
+  m_input.setCursorShapeCallback([](std::uint32_t, CursorShape) {});
   sync();
 }
 

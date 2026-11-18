@@ -28,7 +28,7 @@ void LauncherPanel::syncModeTabs() {
       }));
       auto area = std::make_unique<InputArea>();
       area->setParticipatesInLayout(false);
-      area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      area->setCursorShape(CursorShape::Pointer);
       area->setOnClick([this, modeId = std::string(id)](const InputArea::PointerData&) { setMode(modeId); });
       Flex* tabPtr = tab.get();
       tab->addChild(std::move(area));
@@ -212,7 +212,7 @@ void LauncherPanel::syncKindTabs() {
       }));
       auto area = std::make_unique<InputArea>();
       area->setParticipatesInLayout(false);
-      area->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER);
+      area->setCursorShape(CursorShape::Pointer);
       area->setOnClick([this, i](const InputArea::PointerData&) { setFilesKind(i); });
       Flex* tabPtr = tab.get();
       tab->addChild(std::move(area));

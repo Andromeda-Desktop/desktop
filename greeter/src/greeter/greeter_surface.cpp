@@ -1,4 +1,6 @@
 #include "greeter/greeter_surface.h"
+#include "core/input/pointer_axis.h"
+#include "core/input/cursor_shape.h"
 
 #include "accounts/accounts_icon.h"
 #include "core/input/key_modifiers.h"
@@ -630,9 +632,9 @@ void GreeterSurface::initialize(RenderContext* context) {
     }
   }
   m_inputDispatcher.setSceneRoot(&m_root);
-  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, std::uint32_t shape) {
+  m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     if (m_onCursorShape) {
-      m_onCursorShape(serial, shape);
+      m_onCursorShape(serial, std::to_underlying(shape));
     }
   });
 
@@ -1025,7 +1027,7 @@ void GreeterSurface::onPointerMotion(float x, float y) {
 
 void GreeterSurface::onPointerAxis(float x, float y, std::uint32_t axis, float axisLines) {
   markLive();
-  if (!pointerInViewport(x, y) || axisLines == 0.0f || axis != WL_POINTER_AXIS_VERTICAL_SCROLL) {
+  if (!pointerInViewport(x, y) || axisLines == 0.0f || axis != PointerAxis::Vertical) {
     return;
   }
   if (!m_userMenuOpen || !pointerInUserMenuScrollArea(x, y)) {
