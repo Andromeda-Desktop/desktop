@@ -3838,6 +3838,16 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
   if (data->overlay_entry != NULL && entry >= data->overlay_entry) {
     pixman_region32_intersect(&render_region, &render_region, data->overlay_clip);
   }
+  if (node->type == WLR_SCENE_NODE_BUFFER && wlr_scene_buffer_from_node(node)->has_content_region) {
+    // The buffer draws nothing outside its content region, so a mostly transparent surface costs only its content.
+    pixman_region32_t content;
+    pixman_region32_init(&content);
+    pixman_region32_copy(&content, &wlr_scene_buffer_from_node(node)->content_region);
+    pixman_region32_translate(&content, entry->x - data->logical.x, entry->y - data->logical.y);
+    logical_to_buffer_coords(&content, data, true);
+    pixman_region32_intersect(&render_region, &render_region, &content);
+    pixman_region32_fini(&content);
+  }
   if (pixman_region32_empty(&render_region)) {
     pixman_region32_fini(&render_region);
     return;

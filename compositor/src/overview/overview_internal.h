@@ -165,32 +165,64 @@ namespace andromeda::ovimpl {
     premultiplied(out.data(), base, static_cast<float>(std::clamp(opacity, 0.0, 1.0)));
     return out;
   }
+  // Scales a surface-local region to a copy drawn at destWidth x destHeight. `inward` rounds edges in (a pixel the
+  // region only partly covers is left out, as an opaque region needs); otherwise they round out (as a content region
+  // needs: a partly covered pixel may still draw).
+  inline void scaleRegion(
+      const pixman_region32_t& source, int sourceWidth, int sourceHeight, int destWidth, int destHeight, bool inward,
+      pixman_region32_t& out
+  ) {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return;
+    }
+    const double sx = static_cast<double>(destWidth) / sourceWidth;
+    const double sy = static_cast<double>(destHeight) / sourceHeight;
+    const auto low = [inward](double v) { return static_cast<int>(inward ? std::ceil(v) : std::floor(v)); };
+    const auto high = [inward](double v) { return static_cast<int>(inward ? std::floor(v) : std::ceil(v)); };
+    int count = 0;
+    const pixman_box32_t* rects = pixman_region32_rectangles(&source, &count);
+    for (int index = 0; index < count; ++index) {
+      const int x1 = low(rects[index].x1 * sx);
+      const int y1 = low(rects[index].y1 * sy);
+      const int x2 = high(rects[index].x2 * sx);
+      const int y2 = high(rects[index].y2 * sy);
+      if (x2 > x1 && y2 > y1) {
+        pixman_region32_union_rect(&out, &out, x1, y1, x2 - x1, y2 - y1);
+      }
+    }
+  }
+
   // A scene buffer's opaque region is in its destination coordinates, so a scaled copy of a surface needs the
-  // surface's region scaled with it. Edges round inward: a pixel the opaque area only partly covers stays
-  // see-through.
+  // surface's region scaled with it.
   inline void setScaledOpaqueRegion(
       wlr_scene_buffer* buffer, const pixman_region32_t& source, int sourceWidth, int sourceHeight, int destWidth,
       int destHeight
   ) {
     pixman_region32_t scaled;
     pixman_region32_init(&scaled);
-    if (sourceWidth > 0 && sourceHeight > 0) {
-      const double sx = static_cast<double>(destWidth) / sourceWidth;
-      const double sy = static_cast<double>(destHeight) / sourceHeight;
-      int count = 0;
-      const pixman_box32_t* rects = pixman_region32_rectangles(&source, &count);
-      for (int index = 0; index < count; ++index) {
-        const auto x1 = static_cast<int>(std::ceil(rects[index].x1 * sx));
-        const auto y1 = static_cast<int>(std::ceil(rects[index].y1 * sy));
-        const auto x2 = static_cast<int>(std::floor(rects[index].x2 * sx));
-        const auto y2 = static_cast<int>(std::floor(rects[index].y2 * sy));
-        if (x2 > x1 && y2 > y1) {
-          pixman_region32_union_rect(&scaled, &scaled, x1, y1, x2 - x1, y2 - y1);
-        }
-      }
-    }
+    scaleRegion(source, sourceWidth, sourceHeight, destWidth, destHeight, true, scaled);
     wlr_scene_buffer_set_opaque_region(buffer, &scaled);
     pixman_region32_fini(&scaled);
+  }
+
+  // The same for the dsk content region (surface-local boxes; nullopt = the whole surface): a copy of a mostly
+  // transparent surface (desktop icons) then draws only where the surface has content.
+  inline void setScaledContentRegion(
+      wlr_scene_buffer* buffer, const std::optional<std::vector<pixman_box32_t>>& source, int sourceWidth,
+      int sourceHeight, int destWidth, int destHeight
+  ) {
+    if (!source) {
+      wlr_scene_buffer_set_content_region(buffer, nullptr);
+      return;
+    }
+    pixman_region32_t region;
+    pixman_region32_init_rects(&region, source->data(), static_cast<int>(source->size()));
+    pixman_region32_t scaled;
+    pixman_region32_init(&scaled);
+    scaleRegion(region, sourceWidth, sourceHeight, destWidth, destHeight, false, scaled);
+    wlr_scene_buffer_set_content_region(buffer, &scaled);
+    pixman_region32_fini(&scaled);
+    pixman_region32_fini(&region);
   }
 
   inline void layoutWorkspaceBackground(

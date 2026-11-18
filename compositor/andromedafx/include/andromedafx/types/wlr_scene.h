@@ -1188,8 +1188,8 @@ void wlr_scene_buffer_set_buffer_with_options(
 void wlr_scene_buffer_set_opaque_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region);
 
 /**
- * Sets the node-local area outside of which the buffer draws nothing; NULL means everywhere. Unlike the clip region it
- * changes neither drawing nor input.
+ * Sets the node-local area outside of which the buffer draws nothing; NULL means everywhere. The render skips the
+ * rest; unlike the clip region it changes neither damage nor input.
  */
 void wlr_scene_buffer_set_content_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region);
 

@@ -1,4 +1,5 @@
 #include "overview/overview_internal.h"
+#include "server/dsk_surface.h"
 
 namespace andromeda {
 
@@ -564,6 +565,13 @@ namespace andromeda {
         setScaledOpaqueRegion(
             mirror->buffer, mirror->source->surface->opaque_region, box.width, box.height, destWidth, destHeight
         );
+        if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
+          if (const DskSurfaceManager::State* dskState = dsk->state(mirror->source->surface)) {
+            setScaledContentRegion(
+                mirror->buffer, dskState->contentRegion, box.width, box.height, destWidth, destHeight
+            );
+          }
+        }
         // Only a surface spanning the whole output takes the card's rounding; a smaller one keeps its own edges.
         const bool spansOutput =
             box.x <= 0 && box.y <= 0 && box.x + box.width >= outputBox.width && box.y + box.height >= outputBox.height;
