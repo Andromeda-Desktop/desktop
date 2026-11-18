@@ -736,8 +736,9 @@ namespace term {
         foot.page = static_cast<std::size_t>(page - m_shownBar.pages.begin());
       }
       // Clipped: a closing item cuts its name off at its edge instead of shrinking it.
-      m_footBar->addChild(ui::row({.out = &foot.row, .align = FlexAlign::Center, .minWidth = item, .maxWidth = item,
-                                   .clipChildren = true, .height = item}));
+      // Placed by placeFootLens: a width change moves no other node through layout.
+      m_footBar->addChild(ui::row({.out = &foot.row, .align = FlexAlign::Center, .clipChildren = true, .width = item,
+                                   .height = item, .participatesInLayout = false}));
       foot.row->addChild(ui::button({.out = &foot.symbol, .glyph = ws.symbol.empty() ? std::string("folder") : ws.symbol,
                                      .glyphSize = symbol, .customPalette = ghost(foot.idle), .tooltip = workspace_bar::tooltip(ws),
                                      .radius = item / 2.0F, .width = item, .height = item,
@@ -759,12 +760,14 @@ namespace term {
         foot.name->setMinWidth(foot.name->width());
         foot.full = std::min(lensWidth, item + foot.name->width() + Tokens::spaceP8 * s);
       }
+      foot.row->markLocalLayoutDirty();
       m_footItems.push_back(foot);
     }
+    m_footMore = nullptr;
     if (m_shownBar.more > 0) {
-      m_footBar->addChild(ui::button({.glyph = std::string("dots"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
+      m_footBar->addChild(ui::button({.out = &m_footMore, .glyph = std::string("dots"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
                                       .tooltip = std::format("{} more", m_shownBar.more), .radius = item / 2.0F,
-                                      .width = item, .height = item}));
+                                      .width = item, .height = item, .participatesInLayout = false}));
     }
     m_footBar->addChild(ui::box({.flexGrow = 1.0F}));
     m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
@@ -855,8 +858,8 @@ namespace term {
     for (FootItem& foot : m_footItems) {
       const float weight = foot.page ? std::max(0.0F, 1.0F - std::abs(at - static_cast<float>(*foot.page))) : 0.0F;
       const float w = item + weight * (foot.full - item);
-      foot.row->setMinWidth(w);
-      foot.row->setMaxWidth(w);
+      foot.row->setPosition(Style::rtl() && m_footBar->mirrorInRtl() ? m_footWidth - x - w : x, 0.0F);
+      foot.row->setSize(w, item);
       if (foot.name != nullptr) foot.name->setOpacity(weight);
       if (const bool lit = weight >= 0.5F; lit != foot.lit) {
         foot.lit = lit;
@@ -874,6 +877,7 @@ namespace term {
       lensWeight += weight;
       x += w + gap;
     }
+    if (m_footMore != nullptr) m_footMore->setPosition(Style::rtl() && m_footBar->mirrorInRtl() ? m_footWidth - x - item : x, 0.0F);
     m_footLens->setVisible(lensWeight > 0.0F);
     if (lensWeight <= 0.0F) return;
     lensX /= lensWeight;

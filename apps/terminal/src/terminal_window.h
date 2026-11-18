@@ -300,6 +300,7 @@ namespace term {
       bool lit = false;                      // the symbol shows the lens colours
     };
     std::vector<FootItem> m_footItems; // bar order
+    Button* m_footMore = nullptr;      // "more", after the items
     void placeFootLens();
     float m_footWidth = 0.0F;    // the track's inner width, px
     void fillFootBar(Renderer& renderer);

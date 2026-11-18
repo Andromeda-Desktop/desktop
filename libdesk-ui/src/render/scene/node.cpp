@@ -378,6 +378,12 @@ void Node::setInvalidationCallback(std::function<void(NodeInvalidation)> callbac
 void Node::attachChild(Node* child) {
   const PaletteTone detachedTone = child->paletteTone();
   child->m_parent = this;
+  // A local layout marked while the subtree was detached must still reach the root's local pass.
+  if (child->m_localLayoutInSubtree) {
+    for (Node* node = this; node != nullptr && !node->m_localLayoutInSubtree; node = node->m_parent) {
+      node->m_localLayoutInSubtree = true;
+    }
+  }
   if (m_animationManager != nullptr && child->m_animationManager == nullptr) {
     child->setAnimationManager(m_animationManager);
   }
@@ -609,6 +615,11 @@ void Node::propagatePaintDirty() {
 }
 
 void Node::propagateLayoutDirty() {
+  // A node outside its parent's layout cannot move its siblings: it lays out alone, not the whole tree.
+  if (m_parent != nullptr && !m_participatesInLayout) {
+    markLocalLayoutDirty();
+    return;
+  }
   if (m_layoutDirty) {
     return;
   }
