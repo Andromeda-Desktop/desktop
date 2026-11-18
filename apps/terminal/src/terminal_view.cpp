@@ -18,6 +18,7 @@
 #include "ui/builders.h"
 #include "ui/controls/input.h"
 #include "ui/controls/scrollbar.h"
+#include "ui/contrast.h"
 #include "ui/palette.h"
 #include "time/time_format.h"
 #include "ui/style.h"
@@ -114,6 +115,15 @@ namespace term {
     std::uint32_t over(const Color& c, std::uint32_t background) {
       auto byte = [](float v) { return static_cast<std::uint32_t>(std::lround(std::clamp(v, 0.0F, 1.0F) * 255.0F)); };
       return mix(background, (byte(c.r) << 16) | (byte(c.g) << 8) | byte(c.b), c.a);
+    }
+
+    // The grid at alpha over the window glass over the backdrop that weakens its ink most: black under a light grid.
+    std::uint32_t worstBackdrop(std::uint32_t gridBg, float alpha) {
+      const Color grid = rgbHex(gridBg);
+      const bool lightGrid = contrastRatio(grid, rgbHex(0x000000U)) >= contrastRatio(grid, rgbHex(0xFFFFFFU));
+      Color translucent = grid;
+      translucent.a = alpha;
+      return over(translucent, over(colorForRole(panelMaterialRole()), lightGrid ? 0x000000U : 0xFFFFFFU));
     }
 
     void appendUtf8(std::string& out, std::uint32_t cp) {
@@ -276,7 +286,8 @@ namespace term {
   float TerminalView::backgroundAlpha() const { return term::backgroundAlpha(m_settings, m_theme); }
 
   ColorSpec TerminalView::surface() const {
-    Color color = rgbHex(m_background);
+    // From the current scheme, not m_background: the window reads this before build() refreshes the palette.
+    Color color = themePalette(m_theme).view;
     color.a = backgroundAlpha();
     return fixedColorSpec(color);
   }
@@ -756,7 +767,26 @@ namespace term {
     const std::uint32_t defaultBg = pack(colors.background);
     m_grid->setBackground(defaultBg);
     // A theme scene: the window's tinted main pane is the grid background.
-    m_grid->setBackgroundAlpha(backgroundAlpha());
+    const float gridAlpha = backgroundAlpha();
+    m_grid->setBackgroundAlpha(gridAlpha);
+    // Every ink keeps 4.5:1 (faint 3:1) over what its cell shows, so 24-bit colours made for another tone stay legible.
+    // A scene is not known here: its own palette is derived for its plane.
+    const std::uint32_t backdrop = gridAlpha <= 0.0F ? defaultBg : worstBackdrop(defaultBg, gridAlpha);
+    struct Ink {
+      std::uint32_t fg, bg;
+      bool faint;
+      std::uint32_t out;
+    };
+    std::optional<Ink> lastInk; // runs of cells share colours
+    auto legible = [&](std::uint32_t fg, std::uint32_t bg, bool faint) {
+      if (fg == bg) { // hidden on purpose
+        return fg;
+      }
+      if (!lastInk || lastInk->fg != fg || lastInk->bg != bg || lastInk->faint != faint) {
+        lastInk = Ink{fg, bg, faint, over(ensureContrast(rgbHex(fg), rgbHex(bg), faint ? 3.0 : 4.5), 0)};
+      }
+      return lastInk->out;
+    };
 
     bool visible = false;
     bool inViewport = false;
@@ -877,7 +907,7 @@ namespace term {
           bg = m_selection;
           hasBg = true;
         }
-        cell.fg = fg;
+        cell.fg = legible(fg, hasBg ? bg : backdrop, (flags & GHOSTTY_STYLE_FLAG_FAINT) != 0);
         cell.bg = bg;
         cell.flags = static_cast<std::uint16_t>(
             (hasBg ? TerminalCell::Background : 0) | ((flags & GHOSTTY_STYLE_FLAG_BOLD) != 0 ? TerminalCell::Bold : 0)
