@@ -751,7 +751,8 @@ bool Dock::onPointerEvent(const PointerEvent& event) {
       && m_hoveredInstance->sceneRoot != nullptr
       && (m_hoveredInstance->sceneRoot->paintDirty() || m_hoveredInstance->sceneRoot->layoutDirty())) {
     // Hover zoom resizes the pill and viewport itself; a rebuild would reset that zoom mid-hover and shake the dock.
-    const bool zoomOnly = m_hoveredInstance->hoverPointerValid && !m_hoveredInstance->drag.active();
+    const bool zooming = m_hoveredInstance->hoverPointerValid || m_hoveredInstance->hoverAmount > 0.0F;
+    const bool zoomOnly = zooming && !m_hoveredInstance->drag.active();
     if (m_hoveredInstance->sceneRoot->layoutDirty() && !zoomOnly) {
       m_hoveredInstance->surface->requestLayout();
     } else {

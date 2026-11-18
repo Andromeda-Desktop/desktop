@@ -95,6 +95,8 @@ namespace shell::dock {
     bool pointerInside = false;
     float hoverPointerMain = 0.0F;
     bool hoverPointerValid = false;
+    // 0 at rest, 1 fully zoomed: eases the zoom in on the first enter and out on the last leave.
+    float hoverAmount = 0.0F;
     InputArea* launcherArea = nullptr;
     Node* launcherIconNode = nullptr;
     float launcherRestMainPos = 0.0F;

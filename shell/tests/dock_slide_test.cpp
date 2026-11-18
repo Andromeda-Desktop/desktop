@@ -118,12 +118,19 @@ namespace {
     const auto shownRegion = shell::dock::computeInputRegion(
         cfg, panel, static_cast<int>(surface.surfaceW), static_cast<int>(surface.surfaceH), false, false
     );
+    // A shown dock takes the pointer over its pill and in the gap out to the screen edge.
     TEST_CHECK(shownRegion.size() == 1);
+    const auto& r = shownRegion.front();
+    const auto sw = static_cast<int>(surface.surfaceW);
+    const auto sh = static_cast<int>(surface.surfaceH);
+    TEST_CHECK(r.x <= std::lround(panel.panelX) && r.y <= std::lround(panel.panelY));
+    TEST_CHECK(r.x + r.width >= std::lround(panel.panelX + panel.panelW));
+    TEST_CHECK(r.y + r.height >= std::lround(panel.panelY + panel.panelH));
     TEST_CHECK(
-        shownRegion.front().x == static_cast<int>(std::lround(panel.panelX))
-        && shownRegion.front().y == static_cast<int>(std::lround(panel.panelY))
-        && shownRegion.front().width == static_cast<int>(std::lround(panel.panelW))
-        && shownRegion.front().height == static_cast<int>(std::lround(panel.panelH))
+        edge == DockEdge::Bottom ? r.y + r.height == sh
+        : edge == DockEdge::Top  ? r.y == 0
+        : edge == DockEdge::Left ? r.x == 0
+                                 : r.x + r.width == sw
     );
   }
 

@@ -50,6 +50,7 @@ namespace {
   constexpr float kCellPad = 0.0F;
   constexpr float kLauncherGlyphSizeRatio = 0.8F;
   constexpr float kHoverZoomLerp = 0.28F;
+  constexpr float kHoverZoomEaseMs = 180.0F;
   constexpr float kHoverZoomReferenceFrameMs = 1000.0F / 60.0F;
   // Pointer hit padding (in item pitches) — keep generous so edge icons still magnify.
   constexpr float kHoverZoomInfluence = 2.25F;
@@ -1124,7 +1125,10 @@ namespace shell::dock {
     const float cross = vertical ? localX : localY;
     const float mainSize = vertical ? instance.row->height() : instance.row->width();
     const float crossSize = vertical ? instance.row->width() : instance.row->height();
-    if (main < -mainPad || main > mainSize + mainPad || cross < -crossPad || cross > crossSize + crossPad) {
+    // Between the icons and the screen edge the pointer is still on the dock: only the inner side ends the hover.
+    const bool edgeAtEnd = cfg.position == DockEdge::Bottom || cfg.position == DockEdge::Right;
+    const bool pastInnerSide = edgeAtEnd ? cross < -crossPad : cross > crossSize + crossPad;
+    if (main < -mainPad || main > mainSize + mainPad || pastInnerSide) {
       instance.hoverPointerValid = false;
       return false;
     }
@@ -1157,6 +1161,14 @@ namespace shell::dock {
     const bool pointerActive = instance.pointerInside && instance.hoverPointerValid;
     const std::size_t itemCount = std::min(instance.items.size(), snapshot.items.size());
     bool needsMoreFrames = false;
+    const float easeStep = std::clamp(deltaMs, 1.0F, 50.0F) / kHoverZoomEaseMs;
+    instance.hoverAmount = std::clamp(instance.hoverAmount + (pointerActive ? easeStep : -easeStep), 0.0F, 1.0F);
+    // Inside the dock only the pointer moves the zoom; the amount eases it in and out at the dock's edges.
+    const float amount = instance.hoverAmount * instance.hoverAmount * (3.0F - 2.0F * instance.hoverAmount);
+    const bool zoomActive = instance.hoverAmount > 0.0F;
+    if (zoomActive && instance.hoverAmount < 1.0F) {
+      needsMoreFrames = true;
+    }
 
     struct HoverSlot {
       InputArea* area = nullptr;
@@ -1241,17 +1253,18 @@ namespace shell::dock {
     std::vector<float> slotScales;
     slotScales.reserve(slots.size());
     for (HoverSlot& slot : slots) {
-      const float hoverMultiplier = pointerActive ? computeHoverMultiplier(
-                                                        instance.hoverPointerMain, slot.restCenterMain, itemPitch,
-                                                        cfg.magnificationScale, kHoverZoomFalloffInfluence
-                                                    )
-                                                  : 1.0F;
+      const float fullMultiplier = zoomActive ? computeHoverMultiplier(
+                                                   instance.hoverPointerMain, slot.restCenterMain, itemPitch,
+                                                   cfg.magnificationScale, kHoverZoomFalloffInfluence
+                                               )
+                                             : 1.0F;
+      const float hoverMultiplier = 1.0F + (fullMultiplier - 1.0F) * amount;
       slot.targetScale = slot.baseScale * hoverMultiplier;
       slotScales.push_back(slot.targetScale);
     }
 
     std::vector<float> targetOffsets;
-    if (pointerActive) {
+    if (zoomActive) {
       targetOffsets = shell::dock::hoverSpreadOffsets(slotScales, iSize);
       std::vector<float> restMainPos;
       restMainPos.reserve(slots.size());
@@ -1275,7 +1288,7 @@ namespace shell::dock {
     }
 
     for (HoverSlot& slot : slots) {
-      if (lerpHoverMainOffset(*slot.hoverMainOffset, pointerActive ? slot.targetMainOffset : 0.0F, lerpFactor)) {
+      if (lerpHoverMainOffset(*slot.hoverMainOffset, zoomActive ? slot.targetMainOffset : 0.0F, lerpFactor)) {
         needsMoreFrames = true;
       }
       applyItemMainOffset(slot.area, vertical, slot.restMainPos, slot.restCrossPos, *slot.hoverMainOffset);

@@ -415,12 +415,28 @@ namespace shell::dock {
       return {InputRect{0, 0, surfaceW, trigger}};
     }
 
-    return {InputRect{
-        static_cast<int>(std::lround(panel.panelX)),
-        static_cast<int>(std::lround(panel.panelY)),
-        static_cast<int>(std::lround(panel.panelW)),
-        static_cast<int>(std::lround(panel.panelH)),
-    }};
+    // The gap between the pill and the screen edge belongs to the dock: a pointer pushed against the edge keeps it.
+    int x = static_cast<int>(std::lround(panel.panelX));
+    int y = static_cast<int>(std::lround(panel.panelY));
+    int w = static_cast<int>(std::lround(panel.panelW));
+    int h = static_cast<int>(std::lround(panel.panelH));
+    switch (cfg.position) {
+    case DockEdge::Bottom:
+      h = surfaceH - y;
+      break;
+    case DockEdge::Top:
+      h += y;
+      y = 0;
+      break;
+    case DockEdge::Left:
+      w += x;
+      x = 0;
+      break;
+    case DockEdge::Right:
+      w = surfaceW - x;
+      break;
+    }
+    return {InputRect{x, y, w, h}};
   }
 
 } // namespace shell::dock
