@@ -237,6 +237,9 @@ bool wlr_scene_output_cursor_motion_active(struct wlr_scene_output* output);
 // Layout coordinates. A hidden pointer, or one outside the output, draws no
 // cursor effect and resets its history.
 void wlr_scene_output_set_effect_pointer(struct wlr_scene_output* output, double lx, double ly, bool visible);
+// Glass rims within `reach` logical px of the pointer (layout px) face it; reach 0 restores the fixed top-left light.
+// Damages only the glass inside the old and new reach.
+void wlr_scene_output_set_glass_light(struct wlr_scene_output* output, double lx, double ly, float reach);
 
 // Exist for tests/effects.c: damage the whole output, and acknowledge a built
 // state's damage the way a commit of its buffer does.

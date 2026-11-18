@@ -4421,6 +4421,16 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .liquid_radius = (float)blur->liquid_radius * data->scale,
         .liquid_scale = data->scale,
     };
+    if (data->output->glass_light.reach > 0.0f) {
+      struct wlr_box light = {
+          .x = (int)lround(data->output->glass_light.x) - data->logical.x,
+          .y = (int)lround(data->output->glass_light.y) - data->logical.y,
+      };
+      transform_output_box(&light, data);
+      blur_options.light[0] = (float)light.x;
+      blur_options.light[1] = (float)light.y;
+      blur_options.light[2] = data->output->glass_light.reach * data->scale;
+    }
     if (blur->backdrop_sampling) {
       struct wlr_renderer* renderer = data->output->output->renderer;
       if (blur->backdrop_probe != NULL && fx_backdrop_probe_renderer(blur->backdrop_probe) != renderer) {
@@ -5410,6 +5420,66 @@ void wlr_scene_output_set_cursor_effect(
   effects->cursor_parameters = *parameters;
   output_effects_update_configured(effects);
   output_effects_damage_cursor(effects);
+}
+
+// Adds the rimmed glass of `node` inside `box` (layout px) to `out`.
+static void glass_light_region(struct wlr_scene_node* node, const struct wlr_box* box, pixman_region32_t* out) {
+  if (!node->enabled) {
+    return;
+  }
+  if (node->type == WLR_SCENE_NODE_TREE) {
+    struct wlr_scene_node* child;
+    wl_list_for_each(child, &wlr_scene_tree_from_node(node)->children, link) { glass_light_region(child, box, out); }
+    return;
+  }
+  if (node->type != WLR_SCENE_NODE_BLUR) {
+    return;
+  }
+  const struct wlr_scene_blur* blur = wlr_scene_blur_from_node(node);
+  if (blur->liquid <= 0.0f && blur->rim <= 0.0f) {
+    return;
+  }
+  pixman_region32_t hit;
+  pixman_region32_init_rect(&hit, box->x, box->y, box->width, box->height);
+  pixman_region32_intersect(&hit, &hit, &node->visible);
+  pixman_region32_union(out, out, &hit);
+  pixman_region32_fini(&hit);
+}
+
+static void glass_light_damage(struct wlr_scene_output* output, pixman_region32_t* damage) {
+  if (output->glass_light.reach <= 0.0f) {
+    return;
+  }
+  const int reach = (int)ceilf(output->glass_light.reach) + 1;
+  const struct wlr_box box = {
+      (int)floor(output->glass_light.x) - reach, (int)floor(output->glass_light.y) - reach, 2 * reach, 2 * reach
+  };
+  glass_light_region(&output->scene->tree.node, &box, damage);
+}
+
+void wlr_scene_output_set_glass_light(struct wlr_scene_output* output, double lx, double ly, float reach) {
+  if (reach <= 0.0f) {
+    reach = 0.0f;
+    lx = output->glass_light.x;
+    ly = output->glass_light.y;
+  }
+  if (output->glass_light.x == lx && output->glass_light.y == ly && output->glass_light.reach == reach) {
+    return;
+  }
+  pixman_region32_t damage;
+  pixman_region32_init(&damage);
+  glass_light_damage(output, &damage);
+  output->glass_light.x = lx;
+  output->glass_light.y = ly;
+  output->glass_light.reach = reach;
+  glass_light_damage(output, &damage);
+  if (pixman_region32_not_empty(&damage)) {
+    pixman_region32_translate(&damage, -output->x, -output->y);
+    scale_region(&damage, output->output->scale, true);
+    output_to_buffer_coords(&damage, output->output);
+    scene_output_damage(output, &damage);
+  }
+  pixman_region32_fini(&damage);
 }
 
 void wlr_scene_output_set_effect_pointer(struct wlr_scene_output* output, double lx, double ly, bool visible) {

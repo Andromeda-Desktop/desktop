@@ -1,3 +1,4 @@
+#include "protocols/glass_material.h"
 #include "server/focus_grab.h"
 #include "input/cursor.h"
 
@@ -17,6 +18,9 @@
 #include "view/snap_flyout.h"
 #include "view/view.h"
 // clang-format off
+extern "C" {
+#include <andromedafx/render/effect.h>
+}
 #include <drm_fourcc.h>
 #include <linux/input-event-codes.h>
 // clang-format on
@@ -246,6 +250,10 @@ namespace andromeda {
   void Cursor::forwardEffectPointer() const {
     if (m_server->effects().cursorEffectActive()) {
       m_server->effects().pointerMoved(m_cursor->x, m_cursor->y, !m_cursorHidden);
+    }
+    const float reach = m_cursorHidden ? 0.0F : glass::kPointerLightReach;
+    for (const auto& output : m_server->outputs()) {
+      wlr_scene_output_set_glass_light(output->sceneOutput(), m_cursor->x, m_cursor->y, reach);
     }
   }
 

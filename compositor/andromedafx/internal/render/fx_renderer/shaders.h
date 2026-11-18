@@ -181,6 +181,7 @@ struct tex_shader {
     GLint liquid_position;
     GLint liquid_radius;
     GLint liquid_scale;
+    GLint light;
   } effects;
 };
 
@@ -287,6 +288,7 @@ struct blur2_composite_shader {
     GLint liquid_position;
     GLint liquid_radius;
     GLint liquid_scale;
+    GLint light;
   } glass;
 };
 

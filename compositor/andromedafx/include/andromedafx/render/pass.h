@@ -150,6 +150,8 @@ struct fx_render_texture_options {
   float liquid_radius;
   // Render px per logical px for the rim band; 0 = 1.
   float liquid_scale;
+  // Pointer key light: x, y in liquid_box coords, reach in render px (0: the fixed top-left light).
+  float light[3];
 };
 
 struct fx_render_rect_options {
@@ -219,6 +221,7 @@ struct fx_render_blur_pass_options {
   struct wlr_box liquid_box;
   float liquid_radius;
   float liquid_scale;
+  float light[3]; // see fx_render_texture_options.light
   struct fx_backdrop_probe* backdrop_probe; // optional: sampled from the blurred region, see backdrop_probe.h
 };
 

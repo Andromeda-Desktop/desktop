@@ -53,6 +53,23 @@ float lens_shift(float t) {
   return h * -r.x / max(-r.y, 1e-3);
 }
 
+// How much a rim pixel at p (outward normal) faces the key light, y-down. The light sits at the top-left, or, within
+// light.z render px of the pointer (light.xy, distance light_d from the shape), at the rim nearest the pointer: toward
+// it from outside the shape, away from it inside. The pointer also brightens the key glint up to 2x.
+float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d) {
+  vec2 dir = vec2(-0.70710678);
+  float near = 0.0;
+  if (light.z > 0.0) {
+    vec2 to = (light.xy - p) * sign(light_d + 0.5);
+    float reach = length(to);
+    near = 1.0 - smoothstep(0.0, light.z, reach);
+    vec2 mixed = mix(dir, to / max(reach, 1.0), near);
+    dir = length(mixed) > 1e-3 ? normalize(mixed) : dir;
+  }
+  float l = dot(normal, dir);
+  return 0.1 + (1.0 + near) * pow(max(l, 0.0), 8.0) + 0.4 * pow(max(-l, 0.0), 8.0);
+}
+
 #ifdef CORNER_FLARES
 // Coverage of the concave flare of the corner at `corner` (sign = outward direction from the box centre), radius
 // f > 0, along x (`along_x`) or y; -1 when rel is outside that flare's band.

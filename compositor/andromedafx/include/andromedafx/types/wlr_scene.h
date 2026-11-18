@@ -466,6 +466,11 @@ struct wlr_scene_output {
     struct wlr_scene_buffer* direct_scanout_buffer;
     // A screen or cursor effect is set on this output.
     bool output_effects_configured;
+    // Pointer key light of glass rims (wlr_scene_output_set_glass_light): layout px; reach 0 = the fixed light.
+    struct {
+        double x, y;
+        float reach;
+    } glass_light;
     float hdr_white_point[3];
     bool hdr_white_point_active;
     bool hdr_white_point_cursor_locked;

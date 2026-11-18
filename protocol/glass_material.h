@@ -55,6 +55,8 @@ namespace glass {
   inline constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
   // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
   inline constexpr float kLiquidLift = 1.05F;
+  // Glass rims within this many logical px of the pointer turn their key light toward it.
+  inline constexpr float kPointerLightReach = 160.0F;
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
 
   // Frosted: blur and tint, an optional specular edge. Liquid: a soft blur with a lift, a convex lens bezel at the edge.

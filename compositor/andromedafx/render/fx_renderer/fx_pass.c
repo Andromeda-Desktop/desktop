@@ -2186,6 +2186,7 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     glUniform2f(shader->effects.liquid_position, liquid_box.x, liquid_box.y);
     glUniform1f(shader->effects.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
     glUniform1f(shader->effects.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
+    glUniform3fv(shader->effects.light, 1, fx_options->light);
     glUniform2f(shader->effects.liquid_texel, 1.0f / (float)texture->wlr_texture.width,
                 1.0f / (float)texture->wlr_texture.height);
     // Unit 2: units 0 and 1 hold the source and the colour LUT.
@@ -3050,6 +3051,7 @@ static void render_blur_composite(
     glUniform2f(shader->glass.liquid_position, liquid_box.x, liquid_box.y);
     glUniform1f(shader->glass.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
     glUniform1f(shader->glass.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
+    glUniform3fv(shader->glass.light, 1, fx_options->light);
     glUniform2f(shader->glass.liquid_texel, 1.0f / (float)width, 1.0f / (float)height);
     glUniform4f(shader->glass.tint_mix, fx_options->tint_mix[0], fx_options->tint_mix[1], fx_options->tint_mix[2],
                 fx_options->tint_mix[3]);
@@ -3273,6 +3275,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     tex_options->liquid_box = fx_options->liquid_box;
     tex_options->liquid_radius = fx_options->liquid_radius;
     tex_options->liquid_scale = fx_options->liquid_scale;
+    memcpy(tex_options->light, fx_options->light, sizeof(tex_options->light));
     tex_options->lens_texture = lens;
     fx_render_pass_add_texture(pass, tex_options);
     tex_options->lens_texture = NULL;

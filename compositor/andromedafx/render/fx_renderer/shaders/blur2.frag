@@ -127,6 +127,7 @@ uniform vec2 liquid_position;
 uniform float liquid_radius;
 // Render px per logical px.
 uniform float liquid_scale;
+uniform vec3 light;
 
 float rounded_rect_distance_at(
     vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
@@ -135,6 +136,7 @@ float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr,
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
 float lens_shift(float t);
+float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d);
 
 float liquid_distance(vec2 point) {
   if (liquid_radius >= 0.0) {
@@ -175,10 +177,7 @@ void main() {
       lens_weight = lens * sag * 0.85;
       float inner = clamp(1.0 + (d + 0.5) / 2.5, 0.0, 1.0);
       float edge = inner * inner;
-      float l = dot(normal, normalize(vec2(-1.0, -1.0)));
-      float key = pow(max(l, 0.0), 8.0);
-      float back = 0.4 * pow(max(-l, 0.0), 8.0);
-      float facing = 0.1 + key + back;
+      float facing = rim_facing(normal, p, light, light.z > 0.0 ? liquid_distance(light.xy) : 0.0);
       float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
       specular = shine * (0.08 * glow * glow + 0.45 * edge) * facing;
     }
