@@ -163,14 +163,17 @@ namespace settings {
       );
       if (!isOn("appearance.reduce_transparency")) {
         choice(
-            Appearance, "surfaces", "appearance.glass_style", {"frosted", "liquid"}, true,
-            "glass style frosted liquid lens material"
+            Appearance, "surfaces", "appearance.glass_style", {"frosted", "liquid", "clear"}, true,
+            "glass style frosted liquid clear lens material"
         );
-        if (compositor.value("appearance.glass_style") == "liquid") {
-          slider(
-              Appearance, "surfaces", "appearance.liquid_tint", 0.0, 1.0, 0.05, false,
-              "liquid glass tint clear tinted transparency material opacity"
-          );
+        const std::string style = compositor.value("appearance.glass_style");
+        if (style == "liquid" || style == "clear") {
+          if (style == "liquid") {
+            slider(
+                Appearance, "surfaces", "appearance.liquid_tint", 0.0, 1.0, 0.05, false,
+                "liquid glass tint clear tinted transparency material opacity"
+            );
+          }
           slider(
               Appearance, "surfaces", "appearance.liquid", 0.0, 1.0, 0.05, false,
               "liquid glass lens refraction bend highlight rim shine"

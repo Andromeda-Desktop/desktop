@@ -239,8 +239,7 @@ void SettingsPortal::setGlass(double glass, double frost, double liquid, bool re
   }
 }
 
-void SettingsPortal::setGlassStyle(bool liquid, bool edgeReflection, double liquidTint, double liquidBlur) {
-  const std::uint32_t style = liquid ? 1 : 0;
+void SettingsPortal::setGlassStyle(std::uint32_t style, bool edgeReflection, double liquidTint, double liquidBlur) {
   if (style != m_glassStyle) {
     m_glassStyle = style;
     emitChanged(kAndromeda, kGlassStyle, sdbus::Variant{style});

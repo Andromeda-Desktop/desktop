@@ -33,8 +33,9 @@ public:
   // org.andromeda.appearance glass, frost and liquid (0..1), reduce-transparency and compositor-blur (1 = on): apps
   // take the same glass material as the shell.
   void setGlass(double glass, double frost, double liquid, bool reduceTransparency, bool compositorBlur);
-  // org.andromeda.appearance glass-style (1 = liquid), edge-reflection (1 = on), liquid-tint and liquid-blur (0..1).
-  void setGlassStyle(bool liquid, bool edgeReflection, double liquidTint, double liquidBlur);
+  // org.andromeda.appearance glass-style (glass::Style: 0 frosted, 1 liquid, 2 clear), edge-reflection (1 = on),
+  // liquid-tint and liquid-blur (0..1).
+  void setGlassStyle(std::uint32_t style, bool edgeReflection, double liquidTint, double liquidBlur);
   // org.gnome.desktop.wm.preferences button-layout: GTK and Chromium title bars show minimize, maximize and close
   // on the same side as the compositor's title bars.
   void setButtonsLeft(bool left);

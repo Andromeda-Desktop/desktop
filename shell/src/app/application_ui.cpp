@@ -44,6 +44,7 @@
 #include "dbus/upower/upower_service.h"
 #include "debug/debug_service.h"
 #include "i18n/i18n.h"
+#include "shell/desktop/desktop_file_ops.h"
 #include "i18n/i18n_service.h"
 #include "ipc/ipc_arg_parse.h"
 #include "launcher/app_provider.h"
@@ -1283,6 +1284,13 @@ void Application::initWidgetControllersAndCallbacks() {
       .lockscreenWidgets = &m_lockscreenWidgetsController,
   });
   m_desktopIcons.initialize(m_wayland, m_configService, m_renderContext, m_thumbnailService, m_bus.get());
+  if (DesktopFileOps* ops = m_desktopIcons.fileOps(); ops != nullptr) {
+    ops->setOnProgress([this] { syncLiveActivity(); });
+    ops->setOnError([this](DesktopFileOps::Kind, const std::string& message) {
+      m_notificationManager.addInternal(i18n::tr("live-activity.files-app"), i18n::tr("live-activity.files-failed"),
+                                        message);
+    });
+  }
   m_configService.addReloadCallback([this] { m_desktopIcons.sync(); });
   m_desktopWidgetsController.setOnEnterEditCallback([this] { m_settingsWindow.closeForWidgetEditor(); });
   m_lockscreenWidgetsController.setOnEnterEditCallback([this] { m_settingsWindow.closeForWidgetEditor(); });
@@ -1441,7 +1449,7 @@ void Application::initWidgetControllersAndCallbacks() {
   m_liveAppearance.initialize(m_wayland, [this](const LiveAppearance& appearance) {
     kLog.info(
         "live appearance: glass_style={} glass={:.2f} frost={:.2f} liquid_tint={:.2f} liquid_blur={:.2f} liquid={:.2f} reduce_transparency={} increase_contrast={} reduce_motion={} accent={}",
-        appearance.glass.style == glass::Style::Liquid ? "liquid" : "frosted", appearance.glass.tint, appearance.glass.frost,
+        static_cast<int>(appearance.glass.style), appearance.glass.tint, appearance.glass.frost,
         appearance.glass.liquidTint, appearance.glass.liquidBlur, appearance.glass.lens, appearance.glass.reduceTransparency,
         appearance.increaseContrast, appearance.reduceMotion, appearance.accent
     );
@@ -1456,7 +1464,7 @@ void Application::initWidgetControllersAndCallbacks() {
       m_settingsPortal->setReducedMotion(appearance.reduceMotion);
       const glass::Settings& g = appearance.glass;
       m_settingsPortal->setGlass(g.tint, g.frost, g.lens, g.reduceTransparency, appearance.blurEnabled);
-      m_settingsPortal->setGlassStyle(g.style == glass::Style::Liquid, g.edgeReflection, g.liquidTint, g.liquidBlur);
+      m_settingsPortal->setGlassStyle(static_cast<std::uint32_t>(g.style), g.edgeReflection, g.liquidTint, g.liquidBlur);
       m_settingsPortal->setButtonsLeft(appearance.titleBarButtonsLeft);
     }
     if (m_configService.config().theme.toolkitThemes) {

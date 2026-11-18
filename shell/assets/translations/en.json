@@ -1502,7 +1502,14 @@
   "live-activity": {
     "call-active": "On a call with {caller}",
     "call-ringing": "Call from {caller}",
-    "recording": "Recording the screen"
+    "recording": "Recording the screen",
+    "files-copy": "Copying {count} items",
+    "files-move": "Moving {count} items",
+    "files-trash": "Moving {count} items to Trash",
+    "files-delete": "Deleting {count} items",
+    "files-undo": "Undoing",
+    "files-failed": "A file operation failed",
+    "files-app": "Files"
   },
   "location": {
     "errors": {
@@ -5356,10 +5363,11 @@
         },
         "appearance-glass-style": {
           "label": "Style",
-          "description": "Frosted blurs the background; Liquid bends it like a lens",
+          "description": "Frosted blurs the background; Liquid bends it like a lens; Clear is an untinted lens that dims over bright backgrounds",
           "options": {
             "frosted": "Frosted",
-            "liquid": "Liquid"
+            "liquid": "Liquid",
+            "clear": "Clear"
           }
         },
         "appearance-edge-reflection": {
@@ -7695,6 +7703,9 @@
     "change-wallpaper": "Change Wallpaper…",
     "open": "Open",
     "move-to-trash": "Move to Trash",
+    "delete-confirm": "Delete {count} items permanently?",
+    "delete-permanently": "Delete Permanently",
+    "cancel": "Cancel",
     "untitled-folder": "untitled folder",
     "clean-up": "Clean Up",
     "icon-size": "Icon Size",
