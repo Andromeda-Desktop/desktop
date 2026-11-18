@@ -1170,7 +1170,8 @@ namespace ui {
     Input* field = nullptr;
     capsule->addChild(input({.out = &field, .value = std::move(props.value), .placeholder = std::move(props.placeholder),
                              .fontSize = Tokens::typeBody.size * s, .controlHeight = h, .horizontalPadding = 0.0F,
-                             .frameVisible = false, .flexGrow = 1.0F, .onChange = std::move(props.onChange),
+                             .clearButtonEnabled = props.clearButton, .frameVisible = false, .flexGrow = 1.0F,
+                             .onChange = std::move(props.onChange),
                              .onSubmit = std::move(props.onSubmit), .onKeyEvent = std::move(props.onKeyEvent)}));
     capsule->setInput(field);
     if (props.out != nullptr) {

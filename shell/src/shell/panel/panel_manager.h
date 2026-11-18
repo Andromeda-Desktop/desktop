@@ -212,6 +212,8 @@ public:
   void close();
   void beginAttachedPopup(Surface* surface);
   void endAttachedPopup(Surface* surface);
+  // A dialog popup on `surface` dims the panel behind it (rulebook 9.10 scrim: window-modal on the parent only).
+  void setDialogDim(Surface* surface, bool dimmed);
 
   // PopupGrabHost. PopupSurface enrolls itself with us while our focus_grab
   // is active so the compositor doesn't fire `cleared` when the user
@@ -472,6 +474,8 @@ private:
   bool m_attachedToBar = false;
   bool m_attachedOpenAnimationPending = false;
   std::size_t m_attachedPopupCount = 0;
+  std::size_t m_dialogCount = 0;
+  Box* m_dialogDim = nullptr;
   ContextMenuPopup* m_activePopup = nullptr;
   std::unique_ptr<SelectDropdownPopup> m_selectPopup;
   std::uint64_t m_destroyGeneration = 0; // invalidates stale deferred destroyPanel calls

@@ -124,6 +124,7 @@ private:
   std::array<Input*, 3> m_componentInputs{};
   Input* m_alphaField = nullptr;
   Button* m_copyButton = nullptr;
+  Box* m_currentSwatch = nullptr;
 
   Flex* m_swatchRow = nullptr;
   std::vector<Color> m_swatches;
@@ -154,6 +155,7 @@ public:
 
   void setOnCancel(std::function<void()> callback) { m_onCancel = std::move(callback); }
   void setOnApply(std::function<void(const Color&)> callback) { m_onApply = std::move(callback); }
+  void apply();
 
   [[nodiscard]] static float preferredDialogWidth(float scale);
   [[nodiscard]] static float preferredDialogHeight(float dialogWidth, float scale);

@@ -628,6 +628,7 @@ namespace ui {
     float scale = 1.0F;
     std::optional<std::string> value = std::nullopt;
     std::optional<float> flexGrow = std::nullopt;
+    bool clearButton = false;
     std::function<void(const std::string&)> onChange = nullptr;
     std::function<void(const std::string&)> onSubmit = nullptr;
     std::function<bool(std::uint32_t, std::uint32_t)> onKeyEvent = nullptr;

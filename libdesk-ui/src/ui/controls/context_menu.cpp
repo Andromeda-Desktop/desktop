@@ -16,7 +16,7 @@ namespace {
 
   TOKENS_LIVE(kMenuPadding, Tokens::spaceP4); // rulebook 9.9: p 4, so item text sits 12 from the menu edge
   TOKENS_LIVE(kItemHeight, Tokens::componentMenuItem);
-  constexpr float kSeparatorHeight = 10.0F;
+  TOKENS_LIVE(kSeparatorHeight, Tokens::componentMenuSeparator); // rulebook 9.9: an 8 high block
   TOKENS_LIVE(kTwoLineItemHeight, Tokens::componentMenuItemTwoLine);
   constexpr float kItemGap = 0.0F;
   // Rulebook 9.9: items in body type, shortcuts one step down in footnote.

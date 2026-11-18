@@ -1729,6 +1729,8 @@ void PanelManager::destroyPanel() {
     m_activePanel->onClose();
   }
   m_bgNode = nullptr;
+  m_dialogDim = nullptr;
+  m_dialogCount = 0;
   m_contentNode = nullptr;
   m_detachedRevealClipNode = nullptr;
   m_detachedRevealContentNode = nullptr;
@@ -2167,6 +2169,23 @@ void PanelManager::beginAttachedPopup(Surface* surface) {
     return;
   }
   ++m_attachedPopupCount;
+}
+
+void PanelManager::setDialogDim(Surface* surface, bool dimmed) {
+  if (surface == nullptr || WaylandSurface::wlOf(surface) != m_wlSurface || m_sceneRoot == nullptr) {
+    return;
+  }
+  m_dialogCount = dimmed ? m_dialogCount + 1 : (m_dialogCount > 0 ? m_dialogCount - 1 : 0);
+  if (m_dialogDim == nullptr) {
+    m_dialogDim = static_cast<Box*>(m_sceneRoot->addChild(ui::box({})));
+  }
+  const Node* panel = m_bgNode != nullptr ? m_bgNode : m_sceneRoot.get();
+  m_dialogDim->setPosition(panel->x(), panel->y());
+  m_dialogDim->setSize(panel->width(), panel->height());
+  m_dialogDim->setRadius(panelRadius());
+  m_dialogDim->setFill(colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? 0.20F : 0.40F));
+  m_dialogDim->setVisible(m_dialogCount > 0);
+  requestRedraw();
 }
 
 void PanelManager::endAttachedPopup(Surface* surface) {
@@ -2994,10 +3013,17 @@ void PanelManager::pourPieces(bool open) {
     float x = 0.0F;
     float y = 0.0F;
     Node::absolutePosition(piece, x, y);
-    const float restX = piece->x();
-    const float restY = piece->y();
-    const float offX = (right - (x + piece->width())) * 0.15F;
-    const float offY = -y * 0.5F;
+    // A pour in flight left the piece at progress v = its opacity: solve back to its rest box, so a reversal mid-way
+    // returns it home instead of keeping the displaced spot as its rest. The right-most piece has no x travel, so
+    // `right` is already at rest.
+    const float pending = 1.0F - std::clamp(piece->opacity(), 0.0F, 1.0F);
+    const float kx = 0.15F * pending;
+    const float restAbsX = (x - kx * (right - piece->width())) / (1.0F - kx);
+    const float restAbsY = y / (1.0F - 0.5F * pending);
+    const float offX = (right - (restAbsX + piece->width())) * 0.15F;
+    const float offY = -restAbsY * 0.5F;
+    const float restX = piece->x() - offX * pending;
+    const float restY = piece->y() - offY * pending;
     const auto apply = [this, piece, restX, restY, offX, offY](float v) {
       piece->setPosition(restX + offX * (1.0F - v), restY + offY * (1.0F - v));
       piece->setScale(std::lerp(kFromScale, 1.0F, v));

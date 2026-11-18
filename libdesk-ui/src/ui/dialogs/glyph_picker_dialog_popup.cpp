@@ -1,5 +1,6 @@
 #include "ui/dialogs/glyph_picker_dialog_popup.h"
 
+#include "core/input/keybind_matcher.h"
 #include "core/deferred_call.h"
 #include "render/render_context.h"
 #include "render/scene/node.h"
@@ -90,6 +91,16 @@ void GlyphPickerDialogPopup::onSheetClose() {
   if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
     m_selectPopup->closeSelectDropdown();
   }
+}
+
+// Enter picks the selected glyph (rulebook 9.10: Enter = default), also from the search field.
+bool GlyphPickerDialogPopup::preDispatchKeyboard(const KeyboardEvent& event) {
+  if (m_sheet == nullptr || !event.pressed || event.preedit
+      || !KeybindMatcher::matches(KeybindAction::Validate, event.sym, event.modifiers)) {
+    return false;
+  }
+  m_sheet->apply();
+  return true;
 }
 
 void GlyphPickerDialogPopup::accept(const GlyphPickerResult& result) {

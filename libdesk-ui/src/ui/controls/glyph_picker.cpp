@@ -141,23 +141,35 @@ private:
   std::vector<std::string> m_categories;
 };
 
+void GlyphPicker::apply() {
+  if (!m_onApply) {
+    return;
+  }
+  const auto result = currentResult();
+  if (result.has_value()) {
+    m_onApply(*result);
+  }
+}
+
 GlyphPicker::GlyphPicker(float chromeScale) : m_chromeScale(std::max(0.1F, chromeScale)) {
   setDirection(FlexDirection::Vertical);
   setAlign(FlexAlign::Stretch);
   setGap(Style::spaceMd * m_chromeScale);
-  setPadding(Style::spaceSm * m_chromeScale);
 
+  // Rulebook 9.10: header h 40, title-3 at inset 12; the host pads the sheet 12.
   auto headerRow = ui::row({
       .align = FlexAlign::Center,
       .gap = Style::spaceSm * m_chromeScale,
+      .minHeight = Style::controlHeightLg * m_chromeScale,
   });
+  headerRow->setPadding(0.0F, 0.0F, 0.0F, Style::spaceMd * m_chromeScale);
   headerRow->addChild(
       ui::label({
           .out = &m_title,
           .text = i18n::tr("ui.dialogs.glyph-picker.title"),
-          .fontSize = Style::fontSizeTitle * m_chromeScale,
-          .fontWeight = FontWeight::Bold,
-          .color = colorSpecFromRole(ColorRole::AccentText),
+          .fontSize = Tokens::typeTitle3.size * m_chromeScale,
+          .fontWeight = FontWeight::SemiBold,
+          .color = colorSpecFromRole(ColorRole::Label1),
       })
   );
   headerRow->addChild(ui::spacer());
@@ -194,14 +206,13 @@ GlyphPicker::GlyphPicker(float chromeScale) : m_chromeScale(std::max(0.1F, chrom
               .align = FlexAlign::Center,
               .gap = Style::spaceSm * m_chromeScale,
           },
-          ui::input({
+          ui::searchCapsule({
               .out = &m_searchInput,
               .placeholder = i18n::tr("ui.dialogs.glyph-picker.search-placeholder"),
-              .fontSize = Style::fontSizeBody * m_chromeScale,
-              .controlHeight = Style::controlHeight * m_chromeScale,
-              .horizontalPadding = Style::spaceMd * m_chromeScale,
-              .clearButtonEnabled = true,
+              .height = Tokens::sizeControlL,
+              .scale = m_chromeScale,
               .flexGrow = 1.0F,
+              .clearButton = true,
               .onChange = [this](const std::string& value) { applyFilter(value); },
           }),
           ui::select({
@@ -209,7 +220,7 @@ GlyphPicker::GlyphPicker(float chromeScale) : m_chromeScale(std::max(0.1F, chrom
               .options = m_categoryOptions,
               .selectedIndex = 0,
               .fontSize = Style::fontSizeBody * m_chromeScale,
-              .controlHeight = Style::controlHeight * m_chromeScale,
+              .controlHeight = Tokens::sizeControlL * m_chromeScale,
               .horizontalPadding = Style::spaceMd * m_chromeScale,
               .glyphSize = Style::fontSizeBody * m_chromeScale,
               .width = 180.0F * m_chromeScale,
@@ -247,11 +258,10 @@ GlyphPicker::GlyphPicker(float chromeScale) : m_chromeScale(std::max(0.1F, chrom
           ui::button({
               .text = i18n::tr("common.actions.cancel"),
               .variant = ButtonVariant::Secondary,
-              .minWidth = 92.0F * m_chromeScale,
-              .minHeight = Style::controlHeight * m_chromeScale,
-              .paddingV = Style::spaceSm * m_chromeScale,
-              .paddingH = Style::spaceMd * m_chromeScale,
-              .radius = Style::scaledRadiusMd(m_chromeScale),
+              .minWidth = Tokens::componentDialogButtonMinWidth * m_chromeScale,
+              .minHeight = Style::controlHeightLg * m_chromeScale,
+              .paddingH = Tokens::spaceP20 * m_chromeScale,
+              .radius = Style::controlHeightLg * m_chromeScale / 2.0F,
               .onClick =
                   [this] {
                     if (m_onCancel) {
@@ -263,20 +273,11 @@ GlyphPicker::GlyphPicker(float chromeScale) : m_chromeScale(std::max(0.1F, chrom
               .out = &m_applyButton,
               .text = i18n::tr("common.actions.apply"),
               .variant = ButtonVariant::Primary,
-              .minWidth = 92.0F * m_chromeScale,
-              .minHeight = Style::controlHeight * m_chromeScale,
-              .paddingV = Style::spaceSm * m_chromeScale,
-              .paddingH = Style::spaceMd * m_chromeScale,
-              .radius = Style::scaledRadiusMd(m_chromeScale),
-              .onClick = [this] {
-                if (!m_onApply) {
-                  return;
-                }
-                const auto result = currentResult();
-                if (result.has_value()) {
-                  m_onApply(*result);
-                }
-              },
+              .minWidth = Tokens::componentDialogButtonMinWidth * m_chromeScale,
+              .minHeight = Style::controlHeightLg * m_chromeScale,
+              .paddingH = Tokens::spaceP20 * m_chromeScale,
+              .radius = Style::controlHeightLg * m_chromeScale / 2.0F,
+              .onClick = [this] { apply(); },
           })
       )
   );

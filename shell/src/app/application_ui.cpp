@@ -815,6 +815,8 @@ void Application::initPanelManagerAndPanels() {
           m_panelManager.attachedPanelOutput(), m_panelManager.attachedSourceBarName()
       );
     }
+    // Open-panel lenses on bar cells.
+    m_bar.refresh();
   });
   m_panelManager.setPanelClosedCallback([this] {
     m_bar.rearmTooltipForHoveredWidget();
@@ -1198,8 +1200,14 @@ void Application::initBarDockAndLayout() {
   );
   m_layerPopupHosts.registerHost(
       [this](Surface* surface) { return m_panelManager.popupParentContextForSurface(surface); },
-      [this](Surface* surface) { m_panelManager.beginAttachedPopup(surface); },
-      [this](Surface* surface) { m_panelManager.endAttachedPopup(surface); },
+      [this](Surface* surface) {
+        m_panelManager.beginAttachedPopup(surface);
+        m_panelManager.setDialogDim(surface, true);
+      },
+      [this](Surface* surface) {
+        m_panelManager.setDialogDim(surface, false);
+        m_panelManager.endAttachedPopup(surface);
+      },
       [this] { return m_panelManager.fallbackPopupParentContext(); }
   );
   m_layerPopupHosts.registerHost(

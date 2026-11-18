@@ -31,6 +31,7 @@ protected:
   void cancelToFacade() override;
   [[nodiscard]] InputArea* initialFocusArea() override;
   void onSheetClose() override;
+  [[nodiscard]] bool preDispatchKeyboard(const KeyboardEvent& event) override;
 
 private:
   void accept(const Color& result);

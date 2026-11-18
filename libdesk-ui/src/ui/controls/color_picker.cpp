@@ -167,6 +167,16 @@ ColorPicker::ColorPicker() {
           },
       })
   );
+  // The current colour, as in the mockup's HEX row: a round swatch after the copy button.
+  fields->addChild(ui::box({
+      .out = &m_currentSwatch,
+      .fill = fixedColorSpec(m_color),
+      .border = colorSpecFromRole(ColorRole::Stroke),
+      .borderWidth = Style::borderWidth,
+      .radius = Style::controlHeight * 0.5F,
+      .width = Style::controlHeight,
+      .height = Style::controlHeight,
+  }));
   m_alphaField->setOnChange([this](const std::string& /*value*/) { onAlphaInputChange(); });
   m_hexInput->setOnChange([this](const std::string& value) { onHexInputChange(value); });
   m_hexInput->setOnSubmit([this](const std::string& value) { applyHexInput(sanitizeHexFieldInput(value)); });
@@ -269,6 +279,8 @@ void ColorPicker::applyStyle() {
   }
   m_copyButton->setGlyphSize(fontSize);
   m_copyButton->setControlHeight(controlHeight);
+  m_currentSwatch->setSize(controlHeight, controlHeight);
+  m_currentSwatch->setRadius(controlHeight * 0.5F);
   const float svThumb = kSvThumbSize * m_scale;
   m_svThumb->setSize(svThumb, svThumb);
   m_svThumb->setRadius(svThumb * 0.5F);
@@ -450,6 +462,7 @@ void ColorPicker::setFormat(Format format) {
 
 void ColorPicker::syncFields(Origin origin) {
   m_suppressFieldCallbacks = true;
+  m_currentSwatch->setFill(fixedColorSpec(m_color));
   if (origin != Origin::Hex) {
     m_hexInput->setValue(formatRgbHex(m_color));
     m_hexInput->setInvalid(false);
@@ -795,23 +808,31 @@ void ColorPicker::doArrange(Renderer& renderer, const LayoutRect& rect) {
   arrangeByLayout(renderer, rect);
 }
 
+void ColorPickerSheet::apply() {
+  if (m_picker != nullptr && m_onApply) {
+    m_onApply(m_picker->color());
+  }
+}
+
 ColorPickerSheet::ColorPickerSheet(float chromeScale) : m_chromeScale(std::max(0.1F, chromeScale)) {
   setDirection(FlexDirection::Vertical);
   setAlign(FlexAlign::Stretch);
   setGap(Style::spaceMd * m_chromeScale);
-  setPadding(Style::spaceSm * m_chromeScale);
 
+  // Rulebook 9.10: header h 40, title-3 at inset 12; the host pads the sheet 12.
   auto headerRow = ui::row({
       .align = FlexAlign::Center,
       .gap = Style::spaceSm * m_chromeScale,
+      .minHeight = Style::controlHeightLg * m_chromeScale,
   });
+  headerRow->setPadding(0.0F, 0.0F, 0.0F, Style::spaceMd * m_chromeScale);
   headerRow->addChild(
       ui::label({
           .out = &m_title,
           .text = i18n::tr("ui.dialogs.color-picker.title"),
-          .fontSize = Style::fontSizeTitle * m_chromeScale,
-          .fontWeight = FontWeight::Bold,
-          .color = colorSpecFromRole(ColorRole::AccentText),
+          .fontSize = Tokens::typeTitle3.size * m_chromeScale,
+          .fontWeight = FontWeight::SemiBold,
+          .color = colorSpecFromRole(ColorRole::Label1),
       })
   );
   headerRow->addChild(ui::spacer());
@@ -850,11 +871,10 @@ ColorPickerSheet::ColorPickerSheet(float chromeScale) : m_chromeScale(std::max(0
           ui::button({
               .text = i18n::tr("common.actions.cancel"),
               .variant = ButtonVariant::Secondary,
-              .minWidth = 92.0F * m_chromeScale,
-              .minHeight = Style::controlHeight * m_chromeScale,
-              .paddingV = Style::spaceSm * m_chromeScale,
-              .paddingH = Style::spaceMd * m_chromeScale,
-              .radius = Style::scaledRadiusMd(m_chromeScale),
+              .minWidth = Tokens::componentDialogButtonMinWidth * m_chromeScale,
+              .minHeight = Style::controlHeightLg * m_chromeScale,
+              .paddingH = Tokens::spaceP20 * m_chromeScale,
+              .radius = Style::controlHeightLg * m_chromeScale / 2.0F,
               .onClick =
                   [this] {
                     if (m_onCancel) {
@@ -865,16 +885,11 @@ ColorPickerSheet::ColorPickerSheet(float chromeScale) : m_chromeScale(std::max(0
           ui::button({
               .text = i18n::tr("common.actions.apply"),
               .variant = ButtonVariant::Primary,
-              .minWidth = 92.0F * m_chromeScale,
-              .minHeight = Style::controlHeight * m_chromeScale,
-              .paddingV = Style::spaceSm * m_chromeScale,
-              .paddingH = Style::spaceMd * m_chromeScale,
-              .radius = Style::scaledRadiusMd(m_chromeScale),
-              .onClick = [this] {
-                if (m_picker != nullptr && m_onApply) {
-                  m_onApply(m_picker->color());
-                }
-              },
+              .minWidth = Tokens::componentDialogButtonMinWidth * m_chromeScale,
+              .minHeight = Style::controlHeightLg * m_chromeScale,
+              .paddingH = Tokens::spaceP20 * m_chromeScale,
+              .radius = Style::controlHeightLg * m_chromeScale / 2.0F,
+              .onClick = [this] { apply(); },
           })
       )
   );

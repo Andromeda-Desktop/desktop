@@ -1,5 +1,6 @@
 #include "ui/dialogs/color_picker_dialog_popup.h"
 
+#include "core/input/keybind_matcher.h"
 #include "core/deferred_call.h"
 #include "render/render_context.h"
 #include "render/scene/node.h"
@@ -78,8 +79,7 @@ void ColorPickerDialogPopup::layoutSheet(float contentWidth, float contentHeight
   if (m_sheet == nullptr) {
     return;
   }
-  const float sheetPadding = Style::spaceSm * uiScale();
-  m_sheet->setPickerColumnWidth(std::max(160.0F, contentWidth - sheetPadding * 2.0F));
+  m_sheet->setPickerColumnWidth(std::max(160.0F, contentWidth));
   m_sheet->setSize(contentWidth, contentHeight);
   m_sheet->layout(renderer());
 }
@@ -94,6 +94,20 @@ void ColorPickerDialogPopup::onSheetClose() {
   if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
     m_selectPopup->closeSelectDropdown();
   }
+}
+
+// Enter applies (rulebook 9.10: Enter = default); a focused hex or number field keeps Enter to commit its text.
+bool ColorPickerDialogPopup::preDispatchKeyboard(const KeyboardEvent& event) {
+  if (m_sheet == nullptr || !event.pressed || event.preedit
+      || !KeybindMatcher::matches(KeybindAction::Validate, event.sym, event.modifiers)) {
+    return false;
+  }
+  const InputArea* focused = inputDispatcher().focusedArea();
+  if (focused != nullptr && focused->textInputClient() != nullptr) {
+    return false;
+  }
+  m_sheet->apply();
+  return true;
 }
 
 void ColorPickerDialogPopup::accept(const Color& result) {
