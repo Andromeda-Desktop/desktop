@@ -101,6 +101,8 @@ namespace andromeda {
     [[nodiscard]] bool hasFullscreenViewOnAnyWorkspace() const;
 
     void arrangeLayers();
+    // Runs a layer arrange a mode change recorded for the next frame now, so the usable area matches the mode.
+    void flushLayerArrange();
     // Record that something on this output became stale; flushed at the top of the next frame. Schedules that frame, so
     // recording is always enough on its own: marking work that nothing then asks for would simply never happen.
     void markDirty(Dirty what);

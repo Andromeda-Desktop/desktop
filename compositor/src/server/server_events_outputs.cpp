@@ -529,6 +529,10 @@ namespace andromeda {
     if (fallback == nullptr) {
       return;
     }
+    // A returning output's new mode sets its usable area only at its next frame; scroll anchors restore against it.
+    for (const auto& output : m_outputs) {
+      output->flushLayerArrange();
+    }
     const auto nativeFallback = [](WorkspaceGroup* group) -> Workspace* {
       if (group->active() != nullptr && !group->active()->displacedWorkspace()) {
         return group->active();

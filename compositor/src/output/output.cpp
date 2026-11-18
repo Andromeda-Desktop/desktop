@@ -2750,6 +2750,13 @@ namespace andromeda {
     wlr_output_schedule_frame(m_output);
   }
 
+  void Output::flushLayerArrange() {
+    if (desktopEnabled() && m_output->enabled && has(m_dirty, Dirty::LayerArrange)) {
+      m_dirty = static_cast<Dirty>(static_cast<uint32_t>(m_dirty) & ~static_cast<uint32_t>(Dirty::LayerArrange));
+      arrangeLayers();
+    }
+  }
+
   void Output::flushDirty() {
     ANDROMEDA_ZONE("Output::flushDirty");
     // Server-wide chrome is recorded on the Server and flushed by whichever
