@@ -440,7 +440,6 @@ drag_scale = 1.04
 [component.page_dots]
 row = 16.0
 dot = 6.0
-current_width = 16.0
 gap = 6.0
 
 [component.dock]  # 9.4
@@ -676,6 +675,8 @@ preview = 200.0 # long edge of an image preview (terminal link hover)
 
 [component.toast]
 height = 40.0
+bottom = 96.0       # gap from the output bottom
+timeout_ms = 2000
 
 [component.notification]
 timeout_ms = 5000
@@ -719,6 +720,9 @@ row = 44.0
 row_tall = 48.0  # two-line rows (clipboard)
 row_icon = 32.0
 row_radius = 20.0
+top_hit = 72.0  # best app match above the sections: icon 56 + p 8 above and below
+top_hit_icon = 56.0
+top_hit_icon_radius = 14.0
 emoji = 32.0
 emoji_preview = 88.0
 gif_cell = 96.0

@@ -1438,7 +1438,8 @@
       "size": "Size",
       "today": "Today",
       "unpin": "Unpin",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "copied-toast": "Copied to the clipboard"
     },
     "pill": {
       "actions-hint": "Actions",
@@ -1459,7 +1460,8 @@
       "times": "{count} time",
       "times-plural": "{count} times",
       "unicode": "Unicode",
-      "used": "Used"
+      "used": "Used",
+      "new-window": "New Window"
     },
     "search-placeholder": "Search",
     "symbols": {

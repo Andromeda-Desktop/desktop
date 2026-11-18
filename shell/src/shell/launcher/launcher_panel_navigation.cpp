@@ -10,6 +10,26 @@ bool LauncherPanel::shouldUseLauncherSections() const {
 
 namespace {
 
+  // The first result of the first section, when it is an app (concept C launcher top hit).
+  std::optional<LauncherSectionsAdapter::TopHit> topHitFor(
+      const std::vector<LauncherSectionsAdapter::Section>& sections, const std::vector<LauncherResult>& results
+  ) {
+    const auto first = std::ranges::find_if(sections, [](const auto& section) { return !section.resultIndices.empty(); });
+    if (first == sections.end()) {
+      return std::nullopt;
+    }
+    const std::size_t index = first->resultIndices.front();
+    const LauncherResult& result = results[index];
+    if (result.providerId != "Applications" || result.desktopEntryPath.empty() || !result.desktopActionId.empty()) {
+      return std::nullopt;
+    }
+    const auto& entries = desktopEntries();
+    const auto entry = std::ranges::find(entries, result.desktopEntryPath, &DesktopEntry::path);
+    const bool newWindow =
+        entry != entries.end() && std::ranges::contains(entry->actions, std::string_view("new-window"), &DesktopAction::id);
+    return LauncherSectionsAdapter::TopHit{.resultIndex = index, .newWindow = newWindow};
+  }
+
   std::vector<LauncherSectionsAdapter::Section> providerSections(
       const std::vector<LauncherResult>& results, const std::vector<std::unique_ptr<LauncherProvider>>& providers
   ) {
@@ -139,7 +159,10 @@ void LauncherPanel::rebuildLauncherSections() {
     m_launcherSectionsAdapter->setSelectedResultIndex(m_selectedIndex);
   } else if (m_browserMode && shouldUseLauncherSections()) {
     (void)m_launcherSectionsAdapter->setGridView(false);
-    m_launcherSectionsAdapter->rebuildSections(providerSections(m_results, m_providers));
+    const auto sections = providerSections(m_results, m_providers);
+    m_launcherSectionsAdapter->rebuildSections(
+        sections, m_query.empty() ? std::nullopt : topHitFor(sections, m_results)
+    );
     m_launcherSectionsAdapter->setSelectedResultIndex(m_selectedIndex);
   } else if (shouldUseLauncherSections()) {
     (void)m_launcherSectionsAdapter->setGridView(

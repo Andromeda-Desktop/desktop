@@ -126,6 +126,7 @@ private:
   void onProviderResultsChanged(const LauncherProvider& provider);
   void refreshResults();
   void activateAt(std::size_t index);
+  void activateNewWindow(std::size_t index);
   void activateSelected();
   bool handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers);
   void applyEmptyState();

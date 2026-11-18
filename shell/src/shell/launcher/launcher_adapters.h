@@ -319,6 +319,7 @@ public:
         m_onSecondaryActivate(std::move(onSecondaryActivate)) {}
 
   void setListStyle(LauncherListStyle style) { m_style = style; }
+  void setOnNewWindow(ActivateCallback onNewWindow) { m_onNewWindow = std::move(onNewWindow); }
   void setResults(const std::vector<LauncherResult>* results) { m_results = results; }
   void setSelectedResultIndex(std::optional<std::size_t> index) { m_selectedResultIndex = index; }
   [[nodiscard]] bool setGridView(bool gridView) {
@@ -367,7 +368,13 @@ public:
     rebuildSections(sections);
   }
 
-  void rebuildSections(const std::vector<Section>& sections) {
+  // The best app match shown above the sections, and whether its entry has a "new-window" action.
+  struct TopHit {
+    std::size_t resultIndex = 0;
+    bool newWindow = false;
+  };
+
+  void rebuildSections(const std::vector<Section>& sections, std::optional<TopHit> topHit = std::nullopt) {
     m_rows.clear();
     m_visualResultOrder.clear();
     m_resultPositions.assign(m_results == nullptr ? 0U : m_results->size(), std::nullopt);
@@ -375,9 +382,25 @@ public:
     if (m_results == nullptr) {
       return;
     }
+    if (topHit.has_value() && topHit->resultIndex >= m_results->size()) {
+      topHit.reset();
+    }
+    m_topHitNewWindow = topHit.has_value() && topHit->newWindow;
+    if (topHit.has_value()) {
+      LauncherSectionRowData row;
+      row.kind = LauncherSectionRowData::Kind::TopHit;
+      row.resultCount = 1;
+      row.resultIndices[0] = topHit->resultIndex;
+      m_resultPositions[topHit->resultIndex] = ResultPosition{.row = 0, .column = 0, .visualOrder = 0};
+      m_visualResultOrder.push_back(topHit->resultIndex);
+      m_rows.push_back(std::move(row));
+    }
     const std::size_t columns =
         m_cellGrid != CellGrid::None ? cellColumns(m_cellGrid) : (m_gridView ? kAppGridColumns : 1);
-    for (const Section& section : sections) {
+    for (Section section : sections) {
+      if (topHit.has_value()) {
+        std::erase(section.resultIndices, topHit->resultIndex);
+      }
       if (section.resultIndices.empty()) {
         continue;
       }
@@ -442,6 +465,8 @@ public:
     for (const auto& row : m_rows) {
       if (row.kind == LauncherSectionRowData::Kind::Header) {
         height += Tokens::componentLauncherSectionHeader * m_style.scale;
+      } else if (row.kind == LauncherSectionRowData::Kind::TopHit) {
+        height += Tokens::componentLauncherTopHit * m_style.scale;
       } else if (rows++ < maxRows) {
         height += resultRowHeight(row) * m_style.scale;
       } else {
@@ -512,7 +537,7 @@ public:
         ++rowIndex;
       }
       const auto& row = m_rows[rowIndex];
-      if (row.kind != LauncherSectionRowData::Kind::Applications || row.resultCount == 0) {
+      if (row.kind == LauncherSectionRowData::Kind::Header || row.resultCount == 0) {
         continue;
       }
       --rowsRemaining;
@@ -536,8 +561,10 @@ public:
       return 1.0F;
     }
     if (m_pillStyle) {
-      return (m_rows[index].kind == LauncherSectionRowData::Kind::Header ? Tokens::componentLauncherSectionHeader
-                                                                         : resultRowHeight(m_rows[index]))
+      const auto kind = m_rows[index].kind;
+      return (kind == LauncherSectionRowData::Kind::Header   ? Tokens::componentLauncherSectionHeader
+                  : kind == LauncherSectionRowData::Kind::TopHit ? Tokens::componentLauncherTopHit
+                                                                 : resultRowHeight(m_rows[index]))
           * m_style.scale;
     }
     if (m_rows[index].kind == LauncherSectionRowData::Kind::Header) {
@@ -551,7 +578,9 @@ public:
   }
 
   [[nodiscard]] std::unique_ptr<Node> createItem() override {
-    return std::make_unique<LauncherSectionRow>(m_style, m_cache, m_onSelect, m_onActivate, m_onSecondaryActivate);
+    return std::make_unique<LauncherSectionRow>(
+        m_style, m_cache, m_onSelect, m_onActivate, m_onSecondaryActivate, m_onNewWindow
+    );
   }
 
   void bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float width, bool /*hovered*/) override {
@@ -563,7 +592,7 @@ public:
     row->setGridView(m_gridView);
     row->setCellGrid(m_cellGrid);
     row->setPillStyle(m_pillStyle);
-    row->bind(m_rows[index], *m_results, m_selectedResultIndex, width, item.height());
+    row->bind(m_rows[index], *m_results, m_selectedResultIndex, width, item.height(), m_topHitNewWindow);
   }
 
 private:
@@ -578,6 +607,8 @@ private:
   SelectCallback m_onSelect;
   ActivateCallback m_onActivate;
   SecondaryActivateCallback m_onSecondaryActivate;
+  ActivateCallback m_onNewWindow;
+  bool m_topHitNewWindow = false;
   const std::vector<LauncherResult>* m_results = nullptr;
   std::vector<LauncherSectionRowData> m_rows;
   std::vector<std::optional<ResultPosition>> m_resultPositions;

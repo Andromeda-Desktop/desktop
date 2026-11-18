@@ -126,12 +126,20 @@ namespace launcher_detail {
     }
     return Tokens::componentLauncherRow;
   }
-  // Rulebook 9.14 at its tallest (the apps grid): field, hairline, p, grid rows with g 8, page dots, p.
+  // Rulebook 9.14, the apps grid: field, g 8, p, grid rows with g 8, page dots, p.
   [[nodiscard]] inline float launcherSheetHeight() {
     const float rows = static_cast<float>(Tokens::componentLauncherRows);
     return Tokens::componentLauncherSearch + Tokens::spaceP8 + 2.0F * Tokens::componentLauncherResultsPadding
         + 2.0F * Tokens::spaceP8 + rows * Tokens::componentLauncherCellHeight + (rows - 1.0F) * Tokens::spaceP8
         + Tokens::componentPageDotsRow;
+  }
+  // The tallest result list (LauncherPanel::measureContentHeight): the top hit, 8 rows under 3 section headers and
+  // the footer.
+  [[nodiscard]] inline float launcherListSheetHeight() {
+    return Tokens::componentLauncherSearch + Tokens::spaceP8 + 2.0F * Tokens::componentLauncherResultsPadding
+        + Tokens::componentLauncherTopHit + 3.0F * Tokens::componentLauncherSectionHeader
+        + 8.0F * Tokens::componentLauncherRow
+        + Tokens::componentLauncherFooter;
   }
   constexpr std::string_view kAppsContext = "apps";
   [[nodiscard]] inline bool isAppsQuery(std::string_view query) { return query == kAppsContext; }
@@ -834,7 +842,7 @@ namespace launcher_detail {
   private:
     void applyVisualState() {
       if (m_selected) {
-        m_col->setFill(colorSpecFromRole(ColorRole::Accent));
+        m_col->setFill(colorSpecFromRole(ColorRole::Lens));
       } else if (m_hovered) {
         m_col->setFill(colorSpecFromRole(ColorRole::Fill3));
       } else {
@@ -846,17 +854,16 @@ namespace launcher_detail {
         m_col->clearBorder();
       }
 
-      const auto activeRole = m_selected ? ColorRole::OnAccent : ColorRole::Label1;
       const bool active = m_selected || m_hovered;
-      const ColorSpec foreground = colorSpecFromRole(active ? activeRole : ColorRole::Label1);
+      const ColorSpec foreground = colorSpecFromRole(ColorRole::Label1);
       m_badgeLabel->setColor(foreground);
       m_glyph->setColor(foreground);
       m_title->setColor(foreground);
       m_pinnedGlyph->setColor(
-          active ? colorSpecFromRole(activeRole, 0.7F) : colorSpecFromRole(ColorRole::Label2)
+          active ? colorSpecFromRole(ColorRole::Label1, 0.7F) : colorSpecFromRole(ColorRole::Label2)
       );
       m_originGlyph->setColor(
-          active ? colorSpecFromRole(activeRole, 0.7F) : colorSpecFromRole(ColorRole::Label2)
+          active ? colorSpecFromRole(ColorRole::Label1, 0.7F) : colorSpecFromRole(ColorRole::Label2)
       );
     }
 
@@ -881,13 +888,129 @@ namespace launcher_detail {
   };
 
   struct LauncherSectionRowData {
-    enum class Kind : std::uint8_t { Header, Applications };
+    enum class Kind : std::uint8_t { Header, Applications, TopHit };
 
     Kind kind = Kind::Header;
     std::string label;
     std::string glyphName;
     std::array<std::size_t, kMaxSectionColumns> resultIndices{};
     std::size_t resultCount = 0;
+  };
+
+  // The best app match above the sections (concept C launcher .top): icon 56 r14, title and subtitle, Open and New Window.
+  class LauncherTopHitRow final : public Node {
+  public:
+    LauncherTopHitRow(float scale, AsyncTextureCache* asyncTextures, std::function<void()> onOpen,
+                      std::function<void()> onNewWindow)
+        : m_scale(scale), m_asyncTextures(asyncTextures) {
+      auto row = ui::row({
+          .out = &m_row,
+          .align = FlexAlign::Center,
+          .gap = Tokens::spaceP16 * scale,
+          .radius = Tokens::componentLauncherRowRadius * scale,
+      });
+      m_row->setPadding(Tokens::spaceP8 * scale, Tokens::spaceP12 * scale, Tokens::spaceP8 * scale, Tokens::spaceP8 * scale);
+      const float icon = Tokens::componentLauncherTopHitIcon * scale;
+      row->addChild(ui::image({
+          .out = &m_image,
+          .width = icon,
+          .height = icon,
+          .configure = [scale](Image& image) { image.setRadius(Tokens::componentLauncherTopHitIconRadius * scale); },
+      }));
+      row->addChild(ui::glyph({
+          .out = &m_glyph,
+          .glyphSize = icon * 0.5F,
+          .color = colorSpecFromRole(ColorRole::Label1),
+          .width = icon,
+          .height = icon,
+      }));
+      auto text = ui::column({.out = &m_text, .align = FlexAlign::Start, .flexGrow = 1.0F});
+      text->addChild(ui::label({
+          .out = &m_title,
+          .fontSize = Tokens::typeTitle2.size * scale,
+          .fontWeight = FontWeight::SemiBold,
+          .color = colorSpecFromRole(ColorRole::Label1),
+          .maxLines = 1,
+          .ellipsize = TextEllipsize::End,
+      }));
+      text->addChild(ui::label({
+          .out = &m_subtitle,
+          .fontSize = Tokens::typeFootnote.size * scale,
+          .color = colorSpecFromRole(ColorRole::Label2),
+          .maxLines = 1,
+          .ellipsize = TextEllipsize::End,
+      }));
+      row->addChild(std::move(text));
+      auto actions = ui::row({.out = &m_actions, .align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale});
+      actions->addChild(ui::button({
+          .text = i18n::tr("launcher.pill.open"),
+          .controlHeight = Tokens::sizeControlM * scale,
+          .variant = ButtonVariant::Primary,
+          .onClick = std::move(onOpen),
+      }));
+      actions->addChild(ui::button({
+          .out = &m_newWindow,
+          .text = i18n::tr("launcher.pill.new-window"),
+          .controlHeight = Tokens::sizeControlM * scale,
+          .onClick = std::move(onNewWindow),
+      }));
+      row->addChild(std::move(actions));
+      addChild(std::move(row));
+    }
+
+    void bind(const LauncherResult& result, float width, float height, bool selected, bool hovered, bool newWindow) {
+      setSize(width, height);
+      m_row->setFrameSize(width, height);
+      m_row->setFill(
+          selected ? colorSpecFromRole(ColorRole::Lens) : (hovered ? colorSpecFromRole(ColorRole::Fill1) : clearColorSpec())
+      );
+      m_iconPath = result.iconPath;
+      m_glyph->setGlyph(result.glyphName.empty() ? "app-window" : result.glyphName);
+      m_title->setText(result.title);
+      m_subtitle->setText(result.subtitle);
+      m_subtitle->setVisible(!result.subtitle.empty());
+      m_newWindow->setVisible(newWindow);
+      m_newWindow->setParticipatesInLayout(newWindow);
+      auto& accessible = accessibleState();
+      accessible.role = AccessibleRole::ListItem;
+      accessible.name = result.title;
+      accessible.description = result.subtitle;
+      accessible.selected = selected;
+    }
+
+  protected:
+    void doLayout(Renderer& renderer) override {
+      const float icon = Tokens::componentLauncherTopHitIcon * m_scale;
+      bool ready = false;
+      if (!m_iconPath.empty()) {
+        const int target = static_cast<int>(std::round(icon));
+        ready = m_asyncTextures != nullptr ? m_image->setSourceFileAsync(renderer, *m_asyncTextures, m_iconPath, target, true)
+                                           : m_image->setSourceFile(renderer, m_iconPath, target, true);
+      }
+      m_image->setVisible(ready);
+      m_image->setParticipatesInLayout(ready);
+      m_glyph->setVisible(!ready);
+      m_glyph->setParticipatesInLayout(!ready);
+      // The text column takes what the icon and the buttons leave.
+      m_actions->layout(renderer);
+      const float text = std::max(0.0F, width() - icon - m_actions->width() - (2.0F * Tokens::spaceP16 + Tokens::spaceP8 + Tokens::spaceP12) * m_scale);
+      m_title->setMaxWidth(text);
+      m_subtitle->setMaxWidth(text);
+      m_row->layout(renderer);
+    }
+
+  private:
+    float m_scale = 1.0F;
+    AsyncTextureCache* m_asyncTextures = nullptr;
+    std::string m_iconPath;
+    Flex* m_row = nullptr;
+    Image* m_image = nullptr;
+    Glyph* m_glyph = nullptr;
+    Flex* m_text = nullptr;
+    Label* m_title = nullptr;
+    Label* m_subtitle = nullptr;
+    Flex* m_actions = nullptr;
+    Button* m_newWindow = nullptr;
   };
 
   class LauncherSectionRow final : public Node {
@@ -898,10 +1021,11 @@ namespace launcher_detail {
 
     LauncherSectionRow(
         LauncherListStyle style, AsyncTextureCache* asyncTextures, SelectCallback onSelect, ActivateCallback onActivate,
-        SecondaryActivateCallback onSecondaryActivate
+        SecondaryActivateCallback onSecondaryActivate, ActivateCallback onNewWindow
     )
         : m_style(style), m_asyncTextures(asyncTextures), m_onSelect(std::move(onSelect)),
-          m_onActivate(std::move(onActivate)), m_onSecondaryActivate(std::move(onSecondaryActivate)) {
+          m_onActivate(std::move(onActivate)), m_onSecondaryActivate(std::move(onSecondaryActivate)),
+          m_onNewWindow(std::move(onNewWindow)) {
       auto header = ui::row({
           .out = &m_header,
           .align = FlexAlign::Center,
@@ -993,6 +1117,21 @@ namespace launcher_detail {
         }));
         area->addChild(std::move(emojiCell));
         area->addChild(std::move(listRow));
+        if (slot == 0) {
+          const auto bound = [this](const ActivateCallback& callback) {
+            return [this, &callback] {
+              if (m_boundResultIndices[0].has_value() && callback) {
+                callback(*m_boundResultIndices[0]);
+              }
+            };
+          };
+          auto topHit = std::make_unique<LauncherTopHitRow>(
+              m_style.scale, asyncTextures, bound(m_onActivate), bound(m_onNewWindow)
+          );
+          topHit->setVisible(false);
+          m_topHit = topHit.get();
+          area->addChild(std::move(topHit));
+        }
         m_areas[slot] = static_cast<InputArea*>(addChild(std::move(area)));
       }
     }
@@ -1014,9 +1153,12 @@ namespace launcher_detail {
 
     void bind(
         const LauncherSectionRowData& row, const std::vector<LauncherResult>& results,
-        std::optional<std::size_t> selectedResultIndex, float width, float height
+        std::optional<std::size_t> selectedResultIndex, float width, float height, bool newWindow
     ) {
       m_results = &results;
+      m_isTopHit = row.kind == LauncherSectionRowData::Kind::TopHit;
+      m_topHitNewWindow = newWindow;
+      m_topHit->setVisible(m_isTopHit);
       m_selectedResultIndex = selectedResultIndex;
       setSize(width, height);
 
@@ -1044,7 +1186,7 @@ namespace launcher_detail {
         m_boundResultIndices[slot] = active ? std::optional<std::size_t>(row.resultIndices[slot]) : std::nullopt;
         m_areas[slot]->setVisible(active);
         m_tiles[slot]->setVisible(active && m_gridView && !cells);
-        m_listRows[slot]->setVisible(active && !m_gridView && !cells);
+        m_listRows[slot]->setVisible(active && !m_gridView && !cells && !m_isTopHit);
         m_emojiCells[slot]->setVisible(active && cells);
         m_emojiLabels[slot]->setVisible(m_cellGrid == CellGrid::Emoji);
         m_cellImages[slot]->setVisible(false);
@@ -1058,6 +1200,9 @@ namespace launcher_detail {
         m_tiles[slot]->setSize(cellWidth, height);
         m_listRows[slot]->setPosition(0.0F, 0.0F);
         m_listRows[slot]->setSize(cellWidth, height);
+        if (slot == 0) {
+          m_topHit->setPosition(0.0F, 0.0F);
+        }
         m_emojiCells[slot]->setPosition(0.0F, 0.0F);
         m_emojiCells[slot]->setFrameSize(cellWidth, height);
         const float inset = Tokens::spaceP4 * m_style.scale;
@@ -1097,6 +1242,11 @@ namespace launcher_detail {
           m_emojiCells[slot]->setFill(
               selected ? colorSpecFromRole(ColorRole::Lens)
                        : (m_areas[slot]->hovered() ? colorSpecFromRole(ColorRole::Fill1) : clearColorSpec())
+          );
+        } else if (m_isTopHit) {
+          m_topHit->bind(
+              (*m_results)[resultIndex], m_areas[slot]->width(), m_areas[slot]->height(),
+              m_selectedResultIndex == resultIndex, m_areas[slot]->hovered(), m_topHitNewWindow
           );
         } else if (m_gridView) {
           m_tiles[slot]->setListStyle(m_style);
@@ -1138,6 +1288,9 @@ namespace launcher_detail {
     std::array<InputArea*, kMaxSectionColumns> m_areas{};
     std::array<LauncherAppGridTile*, kMaxSectionColumns> m_tiles{};
     std::array<LauncherResultRow*, kMaxSectionColumns> m_listRows{};
+    LauncherTopHitRow* m_topHit = nullptr;
+    bool m_isTopHit = false;
+    bool m_topHitNewWindow = false;
     std::array<Flex*, kMaxSectionColumns> m_emojiCells{};
     std::array<Label*, kMaxSectionColumns> m_emojiLabels{};
     std::array<std::optional<std::size_t>, kMaxSectionColumns> m_boundResultIndices{};
@@ -1146,6 +1299,7 @@ namespace launcher_detail {
     SelectCallback m_onSelect;
     ActivateCallback m_onActivate;
     SecondaryActivateCallback m_onSecondaryActivate;
+    ActivateCallback m_onNewWindow;
     bool m_gridView = false;
   };
 

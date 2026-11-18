@@ -236,6 +236,19 @@ void LauncherPanel::activateAt(std::size_t index) {
   activateSelected();
 }
 
+void LauncherPanel::activateNewWindow(std::size_t index) {
+  if (index >= m_results.size()) {
+    return;
+  }
+  LauncherResult result = m_results[index];
+  result.desktopActionId = "new-window";
+  result.id = AppProvider::actionResultId(result.desktopEntryPath, result.desktopActionId);
+  const auto provider = std::ranges::find(m_providers, std::string_view(result.providerId), [](const auto& p) { return p->id(); });
+  if (provider != m_providers.end() && (*provider)->activate(result)) {
+    finishActivation(**provider, result.id, (*provider)->supportsAutoPaste(), true);
+  }
+}
+
 void LauncherPanel::activateSelected() {
   if (m_selectedIndex >= m_results.size()) {
     return;

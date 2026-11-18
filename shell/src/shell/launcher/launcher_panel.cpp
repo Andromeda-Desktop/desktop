@@ -22,7 +22,9 @@ bool LauncherPanel::usesBrowserLayout() const {
 
 float LauncherPanel::preferredWidth() const { return scaled(Tokens::componentLauncherWidth); }
 
-float LauncherPanel::preferredHeight() const { return scaled(usesBrowserLayout() ? launcherSheetHeight() : 500.0F); }
+float LauncherPanel::preferredHeight() const {
+  return scaled(usesBrowserLayout() ? std::max(launcherSheetHeight(), launcherListSheetHeight()) : 500.0F);
+}
 
 float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*contentWidth*/) {
   const float scale = contentScale();
@@ -38,7 +40,7 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
     return field;
   }
   if (!shouldUseLauncherSections() || m_launcherSectionsAdapter == nullptr || m_results.empty()) {
-    return preferredHeight();
+    return usesBrowserLayout() ? scaled(launcherSheetHeight()) : preferredHeight();
   }
   // Field, the taller of the list (p 8, 8 rows visible) and the preview, footer (rulebook 9.14, direction C).
   const bool strip = (m_emojiStrip != nullptr && m_emojiStrip->visible()) || (m_packStrip != nullptr && m_packStrip->visible());
@@ -304,6 +306,7 @@ void LauncherPanel::create() {
       onSecondaryActivate
   );
   m_launcherSectionsAdapter->setResults(&m_results);
+  m_launcherSectionsAdapter->setOnNewWindow([this](std::size_t index) { activateNewWindow(index); });
   m_listAdapter->setOnActivate(onActivate);
   m_listAdapter->setOnSecondaryActivate(onSecondaryActivate);
   m_listAdapter->setOnReorder([this](std::size_t sourceIndex, std::size_t targetIndex) {
@@ -392,6 +395,7 @@ void LauncherPanel::create() {
           .justify = FlexJustify::Center,
           .gap = Tokens::componentPageDotsGap * scale,
           .minHeight = Tokens::componentPageDotsRow * scale,
+          .fillWidth = true,
           .visible = false,
           .participatesInLayout = false,
       })
@@ -848,7 +852,7 @@ void LauncherPanel::updatePageDots(std::size_t page, std::size_t pages) {
   }
   for (std::size_t i = 0; i < m_pageDots.size(); ++i) {
     const bool current = i == page;
-    const float width = current ? Tokens::componentPageDotsCurrentWidth * s : dot;
+    const float width = dot;
     m_pageDots[i]->setMinWidth(width);
     m_pageDots[i]->setMaxWidth(width);
     m_pageDots[i]->setFill(colorSpecFromRole(current ? ColorRole::Label1 : ColorRole::Label3));
