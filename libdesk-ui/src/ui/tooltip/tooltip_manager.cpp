@@ -12,7 +12,6 @@
 #include "ui/style.h"
 #include "wayland/popup_surface.h"
 #include "wayland/wayland_connection.h"
-#include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
 #include <chrono>
@@ -165,12 +164,12 @@ namespace {
     float anchorY = absY;
     float anchorW = boundsNode->width();
     float anchorH = boundsNode->height();
-    std::uint32_t anchor = XDG_POSITIONER_ANCHOR_BOTTOM;
-    std::uint32_t gravity = XDG_POSITIONER_GRAVITY_BOTTOM;
+    PopupAnchor anchor = PopupAnchor::Bottom;
+    PopupGravity gravity = PopupGravity::Bottom;
     std::int32_t offsetX = 0;
     auto offsetY = gap;
     std::uint32_t constraintAdjustment =
-        XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X;
+        PopupConstraint::FlipY | PopupConstraint::SlideX;
 
     switch (area->tooltipPlacement()) {
     case TooltipPlacement::Above:
@@ -178,40 +177,40 @@ namespace {
       anchorY = iconY;
       anchorW = iconW;
       anchorH = 1.0F;
-      anchor = XDG_POSITIONER_ANCHOR_TOP;
-      gravity = XDG_POSITIONER_GRAVITY_TOP;
+      anchor = PopupAnchor::Top;
+      gravity = PopupGravity::Top;
       offsetY = -gap;
-      constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X;
+      constraintAdjustment = PopupConstraint::SlideX;
       break;
     case TooltipPlacement::Below:
       anchorX = iconX;
       anchorY = iconY + iconH;
       anchorW = iconW;
       anchorH = 1.0F;
-      anchor = XDG_POSITIONER_ANCHOR_BOTTOM;
-      gravity = XDG_POSITIONER_GRAVITY_BOTTOM;
+      anchor = PopupAnchor::Bottom;
+      gravity = PopupGravity::Bottom;
       offsetY = gap;
-      constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X;
+      constraintAdjustment = PopupConstraint::SlideX;
       break;
     case TooltipPlacement::Left:
       anchorX = iconX;
       anchorY = iconY;
       anchorW = 1.0F;
       anchorH = iconH;
-      anchor = XDG_POSITIONER_ANCHOR_LEFT;
-      gravity = XDG_POSITIONER_GRAVITY_LEFT;
+      anchor = PopupAnchor::Left;
+      gravity = PopupGravity::Left;
       offsetX = -gap;
-      constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y;
+      constraintAdjustment = PopupConstraint::SlideY;
       break;
     case TooltipPlacement::Right:
       anchorX = iconX + iconW;
       anchorY = iconY;
       anchorW = 1.0F;
       anchorH = iconH;
-      anchor = XDG_POSITIONER_ANCHOR_RIGHT;
-      gravity = XDG_POSITIONER_GRAVITY_RIGHT;
+      anchor = PopupAnchor::Right;
+      gravity = PopupGravity::Right;
       offsetX = gap;
-      constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y;
+      constraintAdjustment = PopupConstraint::SlideY;
       break;
     case TooltipPlacement::Default:
       anchorX = iconX;

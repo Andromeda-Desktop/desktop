@@ -538,8 +538,8 @@ void WindowMenuWidget::openPopup(std::size_t index, std::vector<ContextMenuContr
       // macOS menus drop from the item's leading edge.
       .placement =
           ContextMenuPopupPlacement{
-              .anchor = bottom ? XDG_POSITIONER_ANCHOR_TOP_LEFT : XDG_POSITIONER_ANCHOR_BOTTOM_LEFT,
-              .gravity = bottom ? XDG_POSITIONER_GRAVITY_TOP_RIGHT : XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT,
+              .anchor = bottom ? PopupAnchor::TopLeft : PopupAnchor::BottomLeft,
+              .gravity = bottom ? PopupGravity::TopRight : PopupGravity::BottomRight,
               .offsetY = bottom ? -gap : gap,
               .chromeAttachment =
                   popup_chrome::Attachment{

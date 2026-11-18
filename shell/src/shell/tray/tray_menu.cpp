@@ -36,10 +36,10 @@ namespace {
   constexpr std::size_t kTrayMenuVisibleItems = 20;
   constexpr std::int32_t kPinToggleEntryId = -2147000000;
 
-  constexpr std::uint32_t kPopupConstraintAdjust = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
-      | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y
-      | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
-      | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y;
+  constexpr std::uint32_t kPopupConstraintAdjust = PopupConstraint::SlideX
+      | PopupConstraint::SlideY
+      | PopupConstraint::FlipX
+      | PopupConstraint::FlipY;
 
   bool containsTrayWidget(const std::vector<std::string>& widgets) {
     return std::ranges::contains(widgets, tray::kCanonicalTrayWidgetName);
@@ -120,8 +120,8 @@ namespace {
     std::int32_t anchorY = 0;
     std::int32_t anchorWidth = 1;
     std::int32_t anchorHeight = 1;
-    std::uint32_t anchor = XDG_POSITIONER_ANCHOR_NONE;
-    std::uint32_t gravity = XDG_POSITIONER_GRAVITY_TOP;
+    PopupAnchor anchor = PopupAnchor::None;
+    PopupGravity gravity = PopupGravity::Top;
     std::int32_t offsetX = 0;
     std::int32_t offsetY = 2;
     popup_chrome::Attachment chromeAttachment{
@@ -144,8 +144,8 @@ namespace {
     };
 
     if (bar.position == "bottom") {
-      placement.anchor = XDG_POSITIONER_ANCHOR_TOP;
-      placement.gravity = XDG_POSITIONER_GRAVITY_TOP;
+      placement.anchor = PopupAnchor::Top;
+      placement.gravity = PopupGravity::Top;
       placement.offsetX = 0;
       placement.offsetY = -kGap;
       placement.chromeAttachment = popup_chrome::Attachment{
@@ -157,8 +157,8 @@ namespace {
     }
 
     if (bar.position == "left") {
-      placement.anchor = XDG_POSITIONER_ANCHOR_RIGHT;
-      placement.gravity = XDG_POSITIONER_GRAVITY_RIGHT;
+      placement.anchor = PopupAnchor::Right;
+      placement.gravity = PopupGravity::Right;
       placement.offsetX = kGap;
       placement.offsetY = 0;
       placement.chromeAttachment = popup_chrome::Attachment{
@@ -170,8 +170,8 @@ namespace {
     }
 
     if (bar.position == "right") {
-      placement.anchor = XDG_POSITIONER_ANCHOR_LEFT;
-      placement.gravity = XDG_POSITIONER_GRAVITY_LEFT;
+      placement.anchor = PopupAnchor::Left;
+      placement.gravity = PopupGravity::Left;
       placement.offsetX = -kGap;
       placement.offsetY = 0;
       placement.chromeAttachment = popup_chrome::Attachment{
@@ -182,8 +182,8 @@ namespace {
       return placement;
     }
 
-    placement.anchor = XDG_POSITIONER_ANCHOR_BOTTOM;
-    placement.gravity = XDG_POSITIONER_GRAVITY_BOTTOM;
+    placement.anchor = PopupAnchor::Bottom;
+    placement.gravity = PopupGravity::Bottom;
     placement.offsetX = 0;
     placement.offsetY = kGap;
     placement.chromeAttachment = popup_chrome::Attachment{
@@ -1159,8 +1159,8 @@ void TrayMenu::openSubmenuAtLevel(std::size_t levelIndex, std::int32_t parentEnt
 
   const std::int32_t anchorX = isRight ? parentContentX + parentWidth : parentContentX;
   const std::int32_t anchorY = static_cast<std::int32_t>(std::lround(parentMenu->chrome.contentY())) + rowTop;
-  const std::uint32_t anchor = isRight ? XDG_POSITIONER_ANCHOR_TOP_RIGHT : XDG_POSITIONER_ANCHOR_TOP_LEFT;
-  const std::uint32_t gravity = isRight ? XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT : XDG_POSITIONER_GRAVITY_BOTTOM_LEFT;
+  const PopupAnchor anchor = isRight ? PopupAnchor::TopRight : PopupAnchor::TopLeft;
+  const PopupGravity gravity = isRight ? PopupGravity::BottomRight : PopupGravity::BottomLeft;
   const std::int32_t offsetX = isRight ? subGap : -subGap;
   const auto subDir = isRight ? ContextSubmenuDirection::Right : ContextSubmenuDirection::Left;
   const auto chromeAttachment = isRight

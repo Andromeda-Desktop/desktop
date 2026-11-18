@@ -16,7 +16,6 @@
 #include "wayland/popup_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
-#include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
 #include <cassert>
@@ -27,10 +26,10 @@
 
 namespace {
 
-  constexpr std::uint32_t kPopupConstraintAdjust = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
-      | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y
-      | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
-      | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y;
+  constexpr std::uint32_t kPopupConstraintAdjust = PopupConstraint::SlideX
+      | PopupConstraint::SlideY
+      | PopupConstraint::FlipX
+      | PopupConstraint::FlipY;
 
   // Every live DialogPopupHost, used to resolve parent/child popup relationships
   // across instances that don't own each other (e.g. the editor sheet popup and
@@ -293,8 +292,8 @@ PopupSurfaceConfig DialogPopupHost::defaultPopupConfig(
       .anchorHeight = static_cast<std::int32_t>(parent.height),
       .width = width,
       .height = height,
-      .anchor = XDG_POSITIONER_ANCHOR_NONE,
-      .gravity = XDG_POSITIONER_GRAVITY_NONE,
+      .anchor = PopupAnchor::None,
+      .gravity = PopupGravity::None,
       .constraintAdjustment = kPopupConstraintAdjust,
       .offsetX = offsetX,
       .offsetY = offsetY,

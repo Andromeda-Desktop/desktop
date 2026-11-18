@@ -175,28 +175,28 @@ PopupSurfaceConfig TaskbarPreview::surfaceConfig() {
 
   const std::string& bar = m_request.barPosition;
   const auto gap = static_cast<std::int32_t>(std::lround(Style::spaceSm * s));
-  std::uint32_t anchor = XDG_POSITIONER_ANCHOR_TOP;
-  std::uint32_t gravity = XDG_POSITIONER_GRAVITY_TOP;
+  PopupAnchor anchor = PopupAnchor::Top;
+  PopupGravity gravity = PopupGravity::Top;
   std::int32_t offsetX = 0;
   std::int32_t offsetY = -gap;
   popup_chrome::Attachment attachment{
       .horizontal = popup_chrome::HorizontalAttachment::Center, .vertical = popup_chrome::VerticalAttachment::Bottom
   };
   if (bar == "top") {
-    anchor = XDG_POSITIONER_ANCHOR_BOTTOM;
-    gravity = XDG_POSITIONER_GRAVITY_BOTTOM;
+    anchor = PopupAnchor::Bottom;
+    gravity = PopupGravity::Bottom;
     offsetY = gap;
     attachment.vertical = popup_chrome::VerticalAttachment::Top;
   } else if (bar == "left") {
-    anchor = XDG_POSITIONER_ANCHOR_RIGHT;
-    gravity = XDG_POSITIONER_GRAVITY_RIGHT;
+    anchor = PopupAnchor::Right;
+    gravity = PopupGravity::Right;
     offsetX = gap;
     offsetY = 0;
     attachment = {.horizontal = popup_chrome::HorizontalAttachment::Left,
                   .vertical = popup_chrome::VerticalAttachment::Center};
   } else if (bar == "right") {
-    anchor = XDG_POSITIONER_ANCHOR_LEFT;
-    gravity = XDG_POSITIONER_GRAVITY_LEFT;
+    anchor = PopupAnchor::Left;
+    gravity = PopupGravity::Left;
     offsetX = -gap;
     offsetY = 0;
     attachment = {.horizontal = popup_chrome::HorizontalAttachment::Right,
@@ -211,10 +211,10 @@ PopupSurfaceConfig TaskbarPreview::surfaceConfig() {
       .height = m_chrome.surfaceHeight,
       .anchor = anchor,
       .gravity = gravity,
-      .constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
-          | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y
-          | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
-          | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y,
+      .constraintAdjustment = PopupConstraint::SlideX
+          | PopupConstraint::SlideY
+          | PopupConstraint::FlipX
+          | PopupConstraint::FlipY,
       .offsetX = offsetX,
       .offsetY = offsetY,
       .serial = m_platform.lastInputSerial(),

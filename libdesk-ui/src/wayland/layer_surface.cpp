@@ -301,3 +301,8 @@ void LayerSurface::applyInputRegion() {
 
   wl_surface_set_input_region(m_surface, nullptr);
 }
+
+void setLayerKeyboardInteractivity(zwlr_layer_surface_v1* layerSurface, wl_surface* surface, LayerShellKeyboard mode) {
+  zwlr_layer_surface_v1_set_keyboard_interactivity(layerSurface, static_cast<std::uint32_t>(mode));
+  wl_surface_commit(surface);
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/popup_positioner.h"
 #include "wayland/surface.h"
 
 #include <cstdint>
@@ -18,9 +19,9 @@ struct PopupSurfaceConfig {
   std::int32_t anchorHeight = 1;
   std::uint32_t width = 1;
   std::uint32_t height = 1;
-  std::uint32_t anchor = 0;
-  std::uint32_t gravity = 0;
-  std::uint32_t constraintAdjustment = 0;
+  PopupAnchor anchor = PopupAnchor::None;
+  PopupGravity gravity = PopupGravity::None;
+  std::uint32_t constraintAdjustment = PopupConstraint::None;
   std::int32_t offsetX = 0;
   std::int32_t offsetY = 0;
   std::uint32_t serial = 0;

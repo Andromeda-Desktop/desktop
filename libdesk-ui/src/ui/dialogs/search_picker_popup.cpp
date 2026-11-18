@@ -5,7 +5,6 @@
 #include "render/scene/node.h"
 #include "ui/builders.h"
 #include "ui/style.h"
-#include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -32,10 +31,10 @@ namespace {
         .anchorHeight = 1,
         .width = std::max<std::uint32_t>(1, width),
         .height = std::max<std::uint32_t>(1, height),
-        .anchor = XDG_POSITIONER_ANCHOR_NONE,
-        .gravity = XDG_POSITIONER_GRAVITY_NONE,
+        .anchor = PopupAnchor::None,
+        .gravity = PopupGravity::None,
         .constraintAdjustment =
-            XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y,
+            PopupConstraint::SlideX | PopupConstraint::SlideY,
         .offsetX = 0,
         .offsetY = 0,
         .serial = serial,

@@ -8,6 +8,7 @@
 #include <string_view>
 
 struct wl_output;
+struct wl_surface;
 struct zwlr_layer_surface_v1;
 
 enum class LayerShellLayer : std::uint32_t {
@@ -24,6 +25,9 @@ enum class LayerShellKeyboard : std::uint32_t {
 };
 
 [[nodiscard]] LayerShellLayer layerShellLayerFromConfig(std::string_view layer);
+
+// Sets a layer surface's keyboard interactivity and commits its wl_surface.
+void setLayerKeyboardInteractivity(zwlr_layer_surface_v1* layerSurface, wl_surface* surface, LayerShellKeyboard mode);
 
 namespace LayerShellAnchor {
   inline constexpr std::uint32_t Top = 1;

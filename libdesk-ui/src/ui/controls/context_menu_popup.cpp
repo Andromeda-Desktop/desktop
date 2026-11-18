@@ -16,13 +16,10 @@
 #include "wayland/popup_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_seat.h"
-#include "wlr-layer-shell-unstable-v1-client-protocol.h"
-#include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
 #include <cmath>
 #include <utility>
-#include <wayland-client-protocol.h>
 
 namespace {
 
@@ -83,8 +80,8 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   m_highlightedIndex = request.initialHighlight < request.entries.size() ? request.initialHighlight : 0;
 
   const ContextMenuPopupPlacement defaultPlacement{
-      .anchor = XDG_POSITIONER_ANCHOR_BOTTOM,
-      .gravity = XDG_POSITIONER_GRAVITY_BOTTOM,
+      .anchor = PopupAnchor::Bottom,
+      .gravity = PopupGravity::Bottom,
       .offsetX = 0,
       .offsetY = static_cast<std::int32_t>(Style::spaceXs),
       .chromeAttachment = popup_chrome::Attachment{
@@ -102,10 +99,10 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
       .height = chrome.surfaceHeight,
       .anchor = resolvedPlacement.anchor,
       .gravity = resolvedPlacement.gravity,
-      .constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
-          | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y
-          | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
-          | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y,
+      .constraintAdjustment = PopupConstraint::SlideX
+          | PopupConstraint::SlideY
+          | PopupConstraint::FlipX
+          | PopupConstraint::FlipY,
       .offsetX = resolvedPlacement.offsetX,
       .offsetY = resolvedPlacement.offsetY,
       .serial = request.inputSerial.value_or(m_wayland.lastInputSerial()),
@@ -262,10 +259,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   if (request.parent.layerSurface != nullptr && request.parent.wlSurface != nullptr) {
     m_keyboardParentLayerSurface = request.parent.layerSurface;
     m_keyboardParentWlSurface = request.parent.wlSurface;
-    zwlr_layer_surface_v1_set_keyboard_interactivity(
-        request.parent.layerSurface, static_cast<std::uint32_t>(LayerShellKeyboard::OnDemand)
-    );
-    wl_surface_commit(request.parent.wlSurface);
+    setLayerKeyboardInteractivity(request.parent.layerSurface, request.parent.wlSurface, LayerShellKeyboard::OnDemand);
   }
 
   const bool initialized = request.parent.xdgSurface != nullptr
@@ -637,8 +631,7 @@ void ContextMenuPopup::restoreParentKeyboardInteractivity() {
   if (layerSurface == nullptr || m_wayland.layerSurfaceFor(wlSurface) != layerSurface) {
     return;
   }
-  zwlr_layer_surface_v1_set_keyboard_interactivity(layerSurface, static_cast<std::uint32_t>(LayerShellKeyboard::None));
-  wl_surface_commit(wlSurface);
+  setLayerKeyboardInteractivity(layerSurface, wlSurface, LayerShellKeyboard::None);
 }
 
 void ContextMenuPopup::openSubmenu(std::size_t index) {
@@ -682,8 +675,8 @@ void ContextMenuPopup::openSubmenu(std::size_t index) {
       .parent = {.xdgSurface = xdgSurface(), .output = m_output},
       // The submenu's first row lines up with this row: its top edge sits one menu padding above the row.
       .placement = ContextMenuPopupPlacement{
-          .anchor = XDG_POSITIONER_ANCHOR_TOP_RIGHT,
-          .gravity = XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT,
+          .anchor = PopupAnchor::TopRight,
+          .gravity = PopupGravity::BottomRight,
           .offsetX = 0,
           .offsetY = -static_cast<std::int32_t>(Style::spaceXs * m_contentScale),
           .chromeAttachment = {.horizontal = popup_chrome::HorizontalAttachment::Left,

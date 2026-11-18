@@ -10,6 +10,13 @@
 #include <algorithm>
 #include <utility>
 
+static_assert(static_cast<std::uint32_t>(PopupAnchor::BottomRight) == XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT);
+static_assert(static_cast<std::uint32_t>(PopupGravity::BottomRight) == XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT);
+static_assert(PopupConstraint::SlideX == XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
+              && PopupConstraint::SlideY == XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y
+              && PopupConstraint::FlipX == XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
+              && PopupConstraint::FlipY == XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y);
+
 namespace {
 
   constexpr Logger kLog("wayland");
@@ -38,8 +45,8 @@ namespace {
         positioner, static_cast<std::int32_t>(config.width), static_cast<std::int32_t>(config.height)
     );
     xdg_positioner_set_anchor_rect(positioner, config.anchorX, config.anchorY, config.anchorWidth, config.anchorHeight);
-    xdg_positioner_set_anchor(positioner, config.anchor);
-    xdg_positioner_set_gravity(positioner, config.gravity);
+    xdg_positioner_set_anchor(positioner, static_cast<std::uint32_t>(config.anchor));
+    xdg_positioner_set_gravity(positioner, static_cast<std::uint32_t>(config.gravity));
     xdg_positioner_set_constraint_adjustment(positioner, config.constraintAdjustment);
     xdg_positioner_set_offset(positioner, config.offsetX, config.offsetY);
     if (config.reactive && xdg_positioner_get_version(positioner) >= XDG_POSITIONER_SET_REACTIVE_SINCE_VERSION) {

@@ -283,28 +283,28 @@ namespace shell::dock {
     const bool isTop = edge == DockEdge::Top;
     const bool isRight = edge == DockEdge::Right;
 
-    std::uint32_t anchor = XDG_POSITIONER_ANCHOR_NONE;
-    std::uint32_t gravity = XDG_POSITIONER_GRAVITY_NONE;
+    PopupAnchor anchor = PopupAnchor::None;
+    PopupGravity gravity = PopupGravity::None;
     std::int32_t offsetX = 0;
     std::int32_t offsetY = 0;
     // Clearance past the icon/tooltip; chrome Bottom attachment folds bleed into offset.
     const std::int32_t kGap = std::max(2, static_cast<std::int32_t>(Style::spaceLg + Style::spaceMd));
 
     if (isBottom) {
-      anchor = XDG_POSITIONER_ANCHOR_TOP;
-      gravity = XDG_POSITIONER_GRAVITY_TOP;
+      anchor = PopupAnchor::Top;
+      gravity = PopupGravity::Top;
       offsetY = -kGap;
     } else if (isTop) {
-      anchor = XDG_POSITIONER_ANCHOR_BOTTOM;
-      gravity = XDG_POSITIONER_GRAVITY_BOTTOM;
+      anchor = PopupAnchor::Bottom;
+      gravity = PopupGravity::Bottom;
       offsetY = kGap;
     } else if (isRight) {
-      anchor = XDG_POSITIONER_ANCHOR_LEFT;
-      gravity = XDG_POSITIONER_GRAVITY_LEFT;
+      anchor = PopupAnchor::Left;
+      gravity = PopupGravity::Left;
       offsetX = -kGap;
     } else { // left
-      anchor = XDG_POSITIONER_ANCHOR_RIGHT;
-      gravity = XDG_POSITIONER_GRAVITY_RIGHT;
+      anchor = PopupAnchor::Right;
+      gravity = PopupGravity::Right;
       offsetX = kGap;
     }
 
@@ -330,10 +330,10 @@ namespace shell::dock {
         .height = menuChrome.surfaceHeight,
         .anchor = anchor,
         .gravity = gravity,
-        .constraintAdjustment = XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X
-            | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y
-            | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X
-            | XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y,
+        .constraintAdjustment = PopupConstraint::SlideX
+            | PopupConstraint::SlideY
+            | PopupConstraint::FlipX
+            | PopupConstraint::FlipY,
         .offsetX = offsetX,
         .offsetY = offsetY,
         .serial = platform.lastInputSerial(),

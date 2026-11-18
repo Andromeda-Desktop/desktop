@@ -7,6 +7,7 @@
 #include "ui/controls/scroll_view.h"
 #include "ui/popup_chrome.h"
 #include "ui/popup_parent.h"
+#include "ui/popup_positioner.h"
 
 #include <cstdint>
 #include <functional>
@@ -24,8 +25,8 @@ struct wl_surface;
 class ContextMenuPopupTestAccess;
 
 struct ContextMenuPopupPlacement {
-  std::uint32_t anchor = 0;
-  std::uint32_t gravity = 0;
+  PopupAnchor anchor = PopupAnchor::None;
+  PopupGravity gravity = PopupGravity::None;
   std::int32_t offsetX = 0;
   std::int32_t offsetY = 0;
   popup_chrome::Attachment chromeAttachment{

@@ -3397,8 +3397,8 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
     anchorW = area.width();
     anchorH = 1.0F;
     placement = ContextMenuPopupPlacement{
-        .anchor = XDG_POSITIONER_ANCHOR_TOP,
-        .gravity = XDG_POSITIONER_GRAVITY_TOP,
+        .anchor = PopupAnchor::Top,
+        .gravity = PopupGravity::Top,
         .offsetX = 0,
         .offsetY = -gap,
         .chromeAttachment = popup_chrome::Attachment{
@@ -3409,8 +3409,8 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
   } else if (m_barPosition == "left") {
     // Gravity-based placement instead of a width-derived anchor offset, so the menu can auto-size.
     placement = ContextMenuPopupPlacement{
-        .anchor = XDG_POSITIONER_ANCHOR_RIGHT,
-        .gravity = XDG_POSITIONER_GRAVITY_RIGHT,
+        .anchor = PopupAnchor::Right,
+        .gravity = PopupGravity::Right,
         .offsetX = gap,
         .offsetY = 0,
         .chromeAttachment = popup_chrome::Attachment{
@@ -3420,8 +3420,8 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
     };
   } else if (m_barPosition == "right") {
     placement = ContextMenuPopupPlacement{
-        .anchor = XDG_POSITIONER_ANCHOR_LEFT,
-        .gravity = XDG_POSITIONER_GRAVITY_LEFT,
+        .anchor = PopupAnchor::Left,
+        .gravity = PopupGravity::Left,
         .offsetX = -gap,
         .offsetY = 0,
         .chromeAttachment = popup_chrome::Attachment{

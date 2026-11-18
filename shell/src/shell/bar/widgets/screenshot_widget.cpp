@@ -48,8 +48,8 @@ namespace {
 
     if (barPosition == "bottom") {
       anchor.placement = ContextMenuPopupPlacement{
-          .anchor = XDG_POSITIONER_ANCHOR_TOP,
-          .gravity = XDG_POSITIONER_GRAVITY_TOP,
+          .anchor = PopupAnchor::Top,
+          .gravity = PopupGravity::Top,
           .offsetX = 0,
           .offsetY = -gap,
           .chromeAttachment = popup_chrome::Attachment{
@@ -59,8 +59,8 @@ namespace {
       };
     } else if (barPosition == "left") {
       anchor.placement = ContextMenuPopupPlacement{
-          .anchor = XDG_POSITIONER_ANCHOR_RIGHT,
-          .gravity = XDG_POSITIONER_GRAVITY_RIGHT,
+          .anchor = PopupAnchor::Right,
+          .gravity = PopupGravity::Right,
           .offsetX = gap,
           .offsetY = 0,
           .chromeAttachment = popup_chrome::Attachment{
@@ -70,8 +70,8 @@ namespace {
       };
     } else if (barPosition == "right") {
       anchor.placement = ContextMenuPopupPlacement{
-          .anchor = XDG_POSITIONER_ANCHOR_LEFT,
-          .gravity = XDG_POSITIONER_GRAVITY_LEFT,
+          .anchor = PopupAnchor::Left,
+          .gravity = PopupGravity::Left,
           .offsetX = -gap,
           .offsetY = 0,
           .chromeAttachment = popup_chrome::Attachment{
@@ -81,8 +81,8 @@ namespace {
       };
     } else {
       anchor.placement = ContextMenuPopupPlacement{
-          .anchor = XDG_POSITIONER_ANCHOR_BOTTOM,
-          .gravity = XDG_POSITIONER_GRAVITY_BOTTOM,
+          .anchor = PopupAnchor::Bottom,
+          .gravity = PopupGravity::Bottom,
           .offsetX = 0,
           .offsetY = gap,
           .chromeAttachment = popup_chrome::Attachment{
