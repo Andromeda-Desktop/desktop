@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <sdbus-c++/sdbus-c++.h>
 #include <string>
@@ -41,7 +42,48 @@ namespace {
 int main(int argc, char** argv) {
   TEST_CHECK(argc == 2);
   const std::string mode{argv[1]};
-  TEST_CHECK(mode == "discovery" || mode == "registration" || mode == "vanished");
+  TEST_CHECK(mode == "discovery" || mode == "registration" || mode == "vanished" || mode == "connections");
+  if (mode == "connections") {
+    SessionBus bus;
+    TrayService tray(bus);
+    tray.start();
+    runDeferredCalls();
+    // Chromium serves each further icon from its own connection on the same path; one connection that registers
+    // under a second name stays one item.
+    std::vector<std::unique_ptr<sdbus::IConnection>> connections;
+    std::vector<std::unique_ptr<sdbus::IObject>> objects;
+    const auto registerAs = [&](sdbus::IConnection& connection, const std::string& service) {
+      auto watcher = sdbus::createProxy(
+          connection, sdbus::ServiceName{kWatcherInterface}, sdbus::ObjectPath{"/StatusNotifierWatcher"}
+      );
+      watcher->callMethod("RegisterStatusNotifierItem")
+          .onInterface(kWatcherInterface)
+          .withArguments(service)
+          .dontExpectReply();
+    };
+    const auto addItem = [&]() {
+      auto& connection = connections.emplace_back(sdbus::createSessionBusConnection());
+      auto& object = objects.emplace_back(sdbus::createObject(*connection, sdbus::ObjectPath{"/StatusNotifierItem"}));
+      object->addVTable(sdbus::registerProperty("IconName").withGetter([]() { return std::string{"test-tray-icon"}; }))
+          .forInterface(kItemInterface);
+      connection->enterEventLoopAsync();
+      registerAs(*connection, connection->getUniqueName());
+    };
+    addItem();
+    addItem();
+    TEST_CHECK(drainUntil(bus, [&]() { return tray.itemCount() == 2; }));
+    const sdbus::ServiceName alias{"org.kde.StatusNotifierItem-4243-1"};
+    connections.front()->requestName(alias);
+    registerAs(*connections.front(), std::string{alias});
+    // The watcher handles registrations in order, so the third item lands after the alias.
+    addItem();
+    TEST_CHECK(drainUntil(bus, [&]() { return tray.itemCount() >= 3; }));
+    TEST_CHECK(tray.itemCount() == 3);
+    for (auto& connection : connections) {
+      connection->leaveEventLoop();
+    }
+    return 0;
+  }
   if (mode == "vanished") {
     SessionBus bus;
     TrayService tray(bus);

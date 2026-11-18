@@ -1752,6 +1752,27 @@ std::uint32_t TrayService::connectionPidForBusName(const std::string& busName) c
   }
 }
 
+std::string TrayService::connectionOwnerForBusName(const std::string& busName) const {
+  if (busName.starts_with(':')) {
+    return busName;
+  }
+  if (m_dbusProxy == nullptr || !looks_like_dbus_name(busName)) {
+    return {};
+  }
+  try {
+    std::string owner;
+    m_dbusProxy->callMethod("GetNameOwner")
+        .onInterface(kDbusInterface)
+        .withTimeout(std::chrono::milliseconds(200))
+        .withArguments(busName)
+        .storeResultsTo(owner);
+    return owner;
+  } catch (const sdbus::Error& e) {
+    kLog.debug("owner lookup failed bus={} err={}", busName, e.what());
+    return {};
+  }
+}
+
 std::string TrayService::busNameFromItemId(const std::string& itemId) {
   if (itemId.empty()) {
     return {};
@@ -1782,10 +1803,11 @@ void TrayService::registerOrRefreshItem(const std::string& busName, const std::s
   }
 
   if (!m_items.contains(itemId)) {
-    const auto pid = connectionPidForBusName(busName);
-    if (pid != 0) {
+    // One connection can register one item under two names; Chromium gives each further icon its own connection.
+    const std::string owner = connectionOwnerForBusName(busName);
+    if (!owner.empty()) {
       for (const auto& [existingId, existingItem] : m_items) {
-        if (existingItem.objectPath == objectPath && connectionPidForBusName(existingItem.busName) == pid) {
+        if (existingItem.objectPath == objectPath && connectionOwnerForBusName(existingItem.busName) == owner) {
           kLog.debug(
               "tray item duplicate ignored id={} existing={} bus='{}' path='{}'", itemId, existingId, busName,
               objectPath

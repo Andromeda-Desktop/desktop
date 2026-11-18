@@ -144,6 +144,8 @@ private:
   void resolvePathOnlyItemProxy(const std::string& itemId);
   void requestProcessNameForItem(const std::string& itemId, const std::string& busName);
   [[nodiscard]] std::uint32_t connectionPidForBusName(const std::string& busName) const;
+  // The unique connection name that owns `busName`; empty when the lookup fails.
+  [[nodiscard]] std::string connectionOwnerForBusName(const std::string& busName) const;
   void refreshItemMetadata(const std::string& itemId);
   void ensureMenuCache(const std::string& itemId, const std::string& busName, const std::string& menuPath);
   void dropMenuCache(const std::string& itemId);
