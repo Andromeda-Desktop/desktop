@@ -14,6 +14,7 @@
 #include "ui/scroll_into_view.h"
 #include "ui/style.h"
 #include "wayland/layer_surface.h"
+#include "wayland/wayland_connection.h"
 
 #include <algorithm>
 #include <cmath>
@@ -447,7 +448,7 @@ void PluginPanel::openContextMenu(scripting::ScriptContextMenuRequest request) {
     }
     (void)m_runtime->enqueueCallArgs(callback, std::move(args), makeScriptSnapshot());
   });
-  wl_surface* const parentSurface = parent->surface;
+  Surface* const parentSurface = parent->surface;
   panels.beginAttachedPopup(parentSurface);
   m_contextMenuPopup->setOnDismissed([parentSurface] {
     if (auto* manager = PanelManager::current(); manager != nullptr) {
@@ -465,17 +466,7 @@ void PluginPanel::openContextMenu(scripting::ScriptContextMenuRequest request) {
           .contentScale = contentScale(),
           .maxVisible = request.maxVisible,
           .anchor = PopupAnchorRect{.x = anchorX, .y = anchorY, .width = 1, .height = 1},
-          .parent =
-              PopupSurfaceParent{
-                  .layerSurface = parent->layerSurface,
-                  .xdgSurface = parent->xdgSurface,
-                  .output = parent->output,
-                  // ContextMenuPopup uses a non-null wlSurface to temporarily
-                  // promote a keyboard-inert layer parent and restores None on
-                  // dismissal. Panels already using OnDemand/Exclusive must
-                  // keep their current mode untouched.
-                  .wlSurface = m_keyboardMode == LayerShellKeyboard::None ? parent->surface : nullptr,
-              },
+          .parent = PopupParent{.surface = parent->surface, .output = parent->output},
           .pointerParentSurface = parent->surface,
           .inputSerial = request.pointer.serial,
       }

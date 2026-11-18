@@ -357,8 +357,8 @@ bool AppProvider::activate(const LauncherResult& result) {
     wl_output* launchOutput = nullptr;
     if (m_platform != nullptr) {
       if (auto context = PanelManager::instance().popupParentContextForPanel("launcher"); context.has_value()) {
-        launchSurface = context->surface;
-        launchOutput = context->output;
+        launchSurface = WaylandSurface::wlOf(context->surface);
+        launchOutput = m_platform->wayland().wlOutput(context->output);
       }
 
       if (launchOutput == nullptr) {

@@ -4,7 +4,7 @@
 #include "render/scene/input_dispatcher.h"
 #include "ui/dialogs/layer_popup_host.h"
 #include "ui/popup_chrome.h"
-#include "wayland/popup_surface.h"
+#include "platform/popup.h"
 
 #include <cstdint>
 #include <functional>
@@ -18,12 +18,9 @@ class RectNode;
 class Renderer;
 class RenderContext;
 class UiSettings;
-class WaylandConnection;
-struct XdgPopupParent;
+class Display;
 struct KeyboardEvent;
 struct PointerEvent;
-struct wl_surface;
-struct xdg_surface;
 
 // Shared base for the three xdg_popup-backed dialog popups (GlyphPicker,
 // ColorPicker, FileDialog). Owns the PopupSurface, the scene scaffolding
@@ -63,8 +60,7 @@ public:
 
   [[nodiscard]] bool isOpen() const noexcept { return m_surface != nullptr; }
   [[nodiscard]] bool isInitializing() const noexcept { return m_openInProgress; }
-  [[nodiscard]] wl_surface* wlSurface() const noexcept;
-  [[nodiscard]] xdg_surface* xdgSurface() const noexcept;
+  [[nodiscard]] Surface* surface() const noexcept { return m_surface.get(); }
   [[nodiscard]] std::uint32_t width() const noexcept;
   [[nodiscard]] std::uint32_t height() const noexcept;
 
@@ -72,9 +68,9 @@ protected:
   DialogPopupHost();
 
   // Called once during subclass `initialize` to capture the shared deps.
-  void initializeBase(WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext);
+  void initializeBase(Display& display, const UiSettings& settings, RenderContext& renderContext);
   void initializeBase(
-      WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext,
+      Display& display, const UiSettings& settings, RenderContext& renderContext,
       LayerPopupHostRegistry& popupHosts
   );
 
@@ -85,10 +81,10 @@ protected:
   // automatically calls `destroyPopup()`.
   [[nodiscard]] bool openPopup(std::uint32_t width, std::uint32_t height);
 
-  // Build the PopupSurface as a child of an xdg parent. Uses the same scene/
+  // Build the popup as a child of parent. Uses the same scene/
   // input/prepareFrame plumbing as openPopup() but bypasses LayerPopupHostRegistry
   // parent resolution.
-  [[nodiscard]] bool openPopupAsChild(PopupSurfaceConfig config, const XdgPopupParent& parent);
+  [[nodiscard]] bool openPopupAsChild(PopupSurfaceConfig config, const PopupParent& parent);
 
   // Tear the popup down — endAttachedPopup, invoke `onSheetClose()` hook,
   // reset the scene tree, drop the PopupSurface. Safe to call repeatedly.
@@ -110,7 +106,7 @@ protected:
 
   [[nodiscard]] InputDispatcher& inputDispatcher() noexcept { return m_inputDispatcher; }
   [[nodiscard]] AnimationManager& animations() noexcept { return m_animations; }
-  [[nodiscard]] WaylandConnection* wayland() const noexcept { return m_wayland; }
+  [[nodiscard]] Display* display() const noexcept { return m_display; }
   [[nodiscard]] ShadowStyle shadowStyle() const;
   [[nodiscard]] RenderContext* renderContext() const noexcept { return m_renderContext; }
   // Stable Renderer view for this popup's own surface. Valid only while open.
@@ -179,12 +175,12 @@ protected:
 
   // Owned shared state. Subclasses don't manipulate these directly outside
   // of the `populateContent` / `layoutSheet` hooks where appropriate.
-  WaylandConnection* m_wayland = nullptr;
+  Display* m_display = nullptr;
   const UiSettings* m_uiSettings = nullptr;
   RenderContext* m_renderContext = nullptr;
   LayerPopupHostRegistry* m_popupHosts = nullptr;
 
-  std::unique_ptr<PopupSurface> m_surface;
+  std::unique_ptr<Popup> m_surface;
   popup_chrome::Geometry m_chrome;
   AnimationManager m_animations;
   std::unique_ptr<Node> m_sceneRoot;
@@ -193,7 +189,7 @@ protected:
   Node* m_contentNode = nullptr;
   InputDispatcher m_inputDispatcher;
   bool m_attachedToHost = false;
-  wl_surface* m_parentSurface = nullptr;
+  Surface* m_parentSurface = nullptr;
   bool m_pointerInside = false;
   bool m_openInProgress = false;
   bool m_closeRequestedDuringOpen = false;
@@ -213,9 +209,9 @@ private:
   void buildScene(std::uint32_t width, std::uint32_t height);
   void layoutScene(float width, float height);
   [[nodiscard]] bool mapPointerEvent(const PointerEvent& event, float& localX, float& localY) const noexcept;
-  [[nodiscard]] wl_surface* resolveEventSurface(const PointerEvent& event) const noexcept;
+  [[nodiscard]] Surface* resolveEventSurface(const PointerEvent& event) const noexcept;
   [[nodiscard]] std::optional<LayerPopupParentContext> resolveParentContext() const;
   void syncPointerStateFromCurrentPosition();
-  [[nodiscard]] bool ownsSurface(wl_surface* surface) const noexcept;
+  [[nodiscard]] bool ownsSurface(const Surface* surface) const noexcept;
   void markDirtyTail();
 };

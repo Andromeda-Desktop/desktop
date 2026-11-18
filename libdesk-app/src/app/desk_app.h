@@ -86,7 +86,7 @@ private:
   void addStandardCommands();
   void routePointer(const PointerEvent& event);
   void routeKey(const KeyboardEvent& event);
-  [[nodiscard]] AppWindow* windowFor(wl_surface* surface) const;
+  [[nodiscard]] AppWindow* windowFor(const Surface* surface) const;
   void reapClosed();
   // Reopens every window on the compositor that took over the socket; false when none did.
   bool reconnect();
@@ -109,5 +109,5 @@ private:
   CommandTable m_commands;
   std::vector<std::unique_ptr<AppWindow>> m_windows;
   Timer m_serviceQuit; // a D-Bus activation start whose request never came
-  wl_surface* m_pointerSurface = nullptr;
+  Surface* m_pointerSurface = nullptr;
 };

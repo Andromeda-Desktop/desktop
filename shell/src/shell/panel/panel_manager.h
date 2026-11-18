@@ -164,7 +164,7 @@ public:
   [[nodiscard]] std::int32_t activePanelIslandTop() const noexcept { return m_contentFit.desiredTopY; }
   // True when a panel is open and it reports the given context as active (e.g. control-center tab).
   [[nodiscard]] bool isActivePanelContext(std::string_view context) const noexcept;
-  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(wl_surface* surface) const noexcept;
+  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(Surface* surface) const noexcept;
   [[nodiscard]] std::optional<LayerPopupParentContext> fallbackPopupParentContext() const noexcept;
   [[nodiscard]] std::optional<LayerPopupParentContext>
   popupParentContextForPanel(std::string_view panelId) const noexcept;
@@ -206,8 +206,8 @@ public:
   void requestRedraw();
   void requestFrameTick();
   void close();
-  void beginAttachedPopup(wl_surface* surface);
-  void endAttachedPopup(wl_surface* surface);
+  void beginAttachedPopup(Surface* surface);
+  void endAttachedPopup(Surface* surface);
 
   // PopupGrabHost. PopupSurface enrolls itself with us while our focus_grab
   // is active so the compositor doesn't fire `cleared` when the user

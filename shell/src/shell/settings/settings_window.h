@@ -131,7 +131,7 @@ public:
     return m_surface != nullptr ? m_surface->wlSurface() : nullptr;
   }
   [[nodiscard]] bool ownsKeyboardSurface(wl_surface* surface) const noexcept;
-  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(wl_surface* surface) const;
+  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(Surface* surface) const;
   [[nodiscard]] std::optional<LayerPopupParentContext> fallbackPopupParentContext() const;
 
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);

@@ -44,6 +44,11 @@ public:
   void onSurfaceOutputLeave(wl_surface* surface, wl_output* output);
   // True while a WaylandSurface owns this wl_surface; a destroyed one must not be passed to a protocol request.
   [[nodiscard]] static bool isLive(const wl_surface* surface);
+  [[nodiscard]] static bool isLive(const Surface* surface) noexcept;
+  // The WaylandSurface that owns surface; null for a destroyed or foreign wl_surface.
+  [[nodiscard]] static WaylandSurface* fromWl(const wl_surface* surface);
+  // Null for null or a non-Wayland Surface.
+  [[nodiscard]] static wl_surface* wlOf(const Surface* surface);
   void onPreferredFractionalScale(std::uint32_t numerator);
 
 protected:

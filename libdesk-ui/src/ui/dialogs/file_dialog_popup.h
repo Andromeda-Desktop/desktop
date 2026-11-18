@@ -15,7 +15,7 @@ public:
   ~FileDialogPopup() override;
 
   void initialize(
-      WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext,
+      Display& display, const UiSettings& settings, RenderContext& renderContext,
       LayerPopupHostRegistry& popupHosts, ThumbnailService& thumbnails
   );
 

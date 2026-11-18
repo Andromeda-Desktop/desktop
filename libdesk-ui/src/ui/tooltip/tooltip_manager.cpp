@@ -10,8 +10,8 @@
 #include "ui/builders.h"
 #include "ui/palette.h"
 #include "ui/style.h"
-#include "wayland/popup_surface.h"
-#include "wayland/wayland_connection.h"
+#include "platform/display.h"
+#include "platform/popup.h"
 
 #include <algorithm>
 #include <chrono>
@@ -240,8 +240,8 @@ TooltipManager& TooltipManager::instance() {
   return inst;
 }
 
-void TooltipManager::initialize(WaylandConnection& wayland, std::function<float()> uiScale, RenderContext* renderContext) {
-  m_wayland = &wayland;
+void TooltipManager::initialize(Display& display, std::function<float()> uiScale, RenderContext* renderContext) {
+  m_display = &display;
   m_uiScale = std::move(uiScale);
   m_renderContext = renderContext;
 }
@@ -251,9 +251,8 @@ void TooltipManager::forceDestroy() {
   m_refreshTimer.stop();
   m_pendingArea = nullptr;
   m_pendingContent = {};
-  m_pendingLayerParent = nullptr;
-  m_pendingXdgParent = nullptr;
-  m_pendingOutput = nullptr;
+  m_pendingParent = nullptr;
+  m_pendingOutput = OutputId::None;
   m_reshowQueued = false;
   m_retargetQueued = false;
   m_destroyScheduled = false;
@@ -268,34 +267,17 @@ void TooltipManager::forceDestroy() {
 void TooltipManager::shutdown() {
   forceDestroy();
   m_suppressedBarTooltipPanels.clear();
-  m_wayland = nullptr;
+  m_display = nullptr;
   m_uiScale = nullptr;
   m_renderContext = nullptr;
 }
 
-void TooltipManager::onHoverChange(InputArea* area, zwlr_layer_surface_v1* parentLayerSurface, wl_output* output) {
-  if (area != nullptr && area->hasTooltip() && parentLayerSurface != nullptr && output != nullptr) {
-    m_originX = 0.0F;
-    m_originY = 0.0F;
-    m_pendingContent = area->tooltipContent();
-    m_pendingLayerParent = parentLayerSurface;
-    m_pendingXdgParent = nullptr;
-    m_pendingOutput = output;
-    handleHoverChange(area);
-    return;
-  }
-
-  dismissPopup();
-}
-
-void TooltipManager::onHoverChange(InputArea* area, xdg_surface* parentXdgSurface, wl_output* output, float originX,
-                                   float originY) {
-  if (area != nullptr && area->hasTooltip() && parentXdgSurface != nullptr && output != nullptr) {
+void TooltipManager::onHoverChange(InputArea* area, Surface* parent, OutputId output, float originX, float originY) {
+  if (area != nullptr && area->hasTooltip() && parent != nullptr && output != OutputId::None) {
     m_originX = originX;
     m_originY = originY;
     m_pendingContent = area->tooltipContent();
-    m_pendingLayerParent = nullptr;
-    m_pendingXdgParent = parentXdgSurface;
+    m_pendingParent = parent;
     m_pendingOutput = output;
     handleHoverChange(area);
     return;
@@ -304,12 +286,12 @@ void TooltipManager::onHoverChange(InputArea* area, xdg_surface* parentXdgSurfac
   dismissPopup();
 }
 
-void TooltipManager::onBarHoverChange(InputArea* area, zwlr_layer_surface_v1* parentLayerSurface, wl_output* output) {
+void TooltipManager::onBarHoverChange(InputArea* area, Surface* parent, OutputId output) {
   if (!m_suppressedBarTooltipPanels.empty()) {
     dismissPopup();
     return;
   }
-  onHoverChange(area, parentLayerSurface, output);
+  onHoverChange(area, parent, output);
 }
 
 void TooltipManager::suppressBarTooltipsForPanel(std::string_view panelId) {
@@ -360,8 +342,7 @@ void TooltipManager::handleHoverChange(InputArea* area) {
 
 bool TooltipManager::canRetargetPopup() const {
   return m_surface != nullptr
-      && m_activeLayerParent == m_pendingLayerParent
-      && m_activeXdgParent == m_pendingXdgParent
+      && m_activeParent == m_pendingParent
       && m_activeOutput == m_pendingOutput;
 }
 
@@ -428,10 +409,10 @@ void TooltipManager::syncAnchor(InputArea* area) {
 }
 
 void TooltipManager::showPopup() {
-  if (m_wayland == nullptr
+  if (m_display == nullptr
       || m_renderContext == nullptr
-      || (m_pendingLayerParent == nullptr && m_pendingXdgParent == nullptr)
-      || m_pendingOutput == nullptr
+      || m_pendingParent == nullptr
+      || m_pendingOutput == OutputId::None
       || m_pendingArea == nullptr) {
     m_state = State::Idle;
     return;
@@ -456,13 +437,12 @@ void TooltipManager::showPopup() {
   config.height = contentH;
   config.grab = false;
 
-  m_surface = std::make_unique<PopupSurface>(*m_wayland);
+  m_surface = m_display->createPopup();
   m_surface->setRenderContext(m_renderContext);
   m_surface->setDismissedCallback([this] { scheduleDestroyPopup(); });
 
-  const bool initialized = m_pendingXdgParent != nullptr
-      ? m_surface->initializeAsChild(m_pendingXdgParent, m_pendingOutput, config)
-      : m_surface->initialize(m_pendingLayerParent, m_pendingOutput, config);
+  const bool initialized =
+      m_surface->initialize(PopupParent{.surface = m_pendingParent, .output = m_pendingOutput}, config);
   if (!initialized) {
     kLog.warn("failed to create tooltip popup");
     m_surface.reset();
@@ -498,8 +478,7 @@ void TooltipManager::showPopup() {
   });
 
   m_state = State::Showing;
-  m_activeLayerParent = m_pendingLayerParent;
-  m_activeXdgParent = m_pendingXdgParent;
+  m_activeParent = m_pendingParent;
   m_activeOutput = m_pendingOutput;
   scheduleProviderRefresh();
   m_surface->requestUpdate();
@@ -583,9 +562,8 @@ void TooltipManager::destroyPopup() {
     m_surface->setSceneRoot(nullptr);
   }
   m_surface.reset();
-  m_activeLayerParent = nullptr;
-  m_activeXdgParent = nullptr;
-  m_activeOutput = nullptr;
+  m_activeParent = nullptr;
+  m_activeOutput = OutputId::None;
   m_state = State::Idle;
 }
 
@@ -678,9 +656,9 @@ void TooltipManager::scheduleProviderRefresh() {
 }
 
 float TooltipManager::pendingOutputScale() const {
-  if (m_wayland != nullptr && m_pendingOutput != nullptr) {
-    if (const WaylandOutput* output = m_wayland->findOutputByWl(m_pendingOutput); output != nullptr) {
-      return output->configuredScale();
+  if (m_display != nullptr) {
+    if (const auto output = m_display->outputInfo(m_pendingOutput); output.has_value()) {
+      return output->scale;
     }
   }
   return 1.0F;
@@ -744,7 +722,7 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
   Renderer& renderer = m_surface->renderTarget().renderer();
 
   m_sceneRoot = ui::node({});
-  m_sceneRoot->setPaletteTone(m_activeXdgParent != nullptr ? PaletteTone::Scheme : glassTone(glass::Kind::Tooltip));
+  m_sceneRoot->setPaletteTone(m_activeParent != nullptr && !m_activeParent->isShellLayer() ? PaletteTone::Scheme : glassTone(glass::Kind::Tooltip));
   m_sceneRoot->setSize(w, h);
   m_sceneRoot->setOpacity(opacity);
   m_sceneRoot->setHitTestVisible(false);

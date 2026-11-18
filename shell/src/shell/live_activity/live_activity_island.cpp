@@ -2812,7 +2812,7 @@ bool LiveActivityIsland::onPointerEvent(const PointerEvent& event) {
     // Surface px: the scene root's scale maps them to layout px.
     const auto x = static_cast<float>(event.sx);
     const auto y = static_cast<float>(event.sy);
-    const bool ours = event.surface == inst->surface->wlSurface();
+    const bool ours = event.surface == inst->surface.get();
     switch (event.type) {
     case PointerEvent::Type::Enter:
       if (ours) {

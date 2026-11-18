@@ -222,10 +222,7 @@ bool LauncherPanel::openAppActionsMenu(std::size_t index, float anchorX, float a
                   .width = std::max(1, aw),
                   .height = std::max(1, ah),
               },
-          .parent = PopupSurfaceParent{
-              .layerSurface = parentCtx->layerSurface,
-              .output = parentCtx->output,
-          },
+          .parent = PopupParent{.surface = parentCtx->surface, .output = parentCtx->output},
       }
   );
   return true;

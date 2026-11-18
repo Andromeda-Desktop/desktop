@@ -1625,10 +1625,10 @@ void WallpaperPanel::syncSortButtonGlyph() {
     return;
   }
   const auto parentCtx = (m_window != nullptr ? m_window->fallbackPopupParentContext() : std::nullopt);
-  if (!parentCtx.has_value() || parentCtx->xdgSurface == nullptr || parentCtx->output == nullptr) {
+  if (!parentCtx.has_value() || parentCtx->surface == nullptr || parentCtx->output == OutputId::None) {
     return;
   }
-  TooltipManager::instance().onHoverChange(area, parentCtx->xdgSurface, parentCtx->output);
+  TooltipManager::instance().onHoverChange(area, parentCtx->surface, parentCtx->output);
 }
 
 void WallpaperPanel::cycleSortMode() {

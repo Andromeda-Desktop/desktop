@@ -1175,7 +1175,7 @@ void Bar::buildScene(BarInstance& instance, std::uint32_t width, std::uint32_t h
         next->setTooltipPlacement(tooltipPlacementAwayFromEdge(inst->barConfig.position));
       }
       TooltipManager::instance().onBarHoverChange(
-          tooltipAreaForHover(*inst, next), inst->surface->layerSurface(), inst->output
+          tooltipAreaForHover(*inst, next), inst->surface.get(), m_platform->wayland().outputId(inst->output)
       );
       updateWidgetHoverHighlight(*inst, next);
       updateAccordionExpansion(*inst, next);

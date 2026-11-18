@@ -136,7 +136,7 @@ void InputDispatcher::setCursorShapeCallback(CursorShapeCallback callback) {
 }
 
 void InputDispatcher::setTextInputContext(
-    wl_surface* surface, TextInputService* service, bool keyboardFocusActivation, wl_surface* keyboardFocusParentSurface
+    Surface* surface, TextInputService* service, bool keyboardFocusActivation, Surface* keyboardFocusParentSurface
 ) {
   if ((m_textInputSurface != surface || m_textInputService != service) && m_focusedArea != nullptr) {
     clearTextInputFocus(m_focusedArea);

@@ -8,6 +8,7 @@
 
 struct wl_seat;
 struct wl_surface;
+class Surface;
 struct zwp_text_input_manager_v3;
 struct zwp_text_input_v3;
 
@@ -25,8 +26,8 @@ public:
   [[nodiscard]] bool isAvailable() const noexcept;
 
   void setFocusedClient(
-      wl_surface* surface, TextInputClient* client, bool acceptKeyboardFocusActivation = false,
-      wl_surface* keyboardFocusParentSurface = nullptr
+      Surface* surface, TextInputClient* client, bool acceptKeyboardFocusActivation = false,
+      Surface* keyboardFocusParentSurface = nullptr
   );
   void clearFocusedClient(TextInputClient* client);
   void notifyClientStateChanged(TextInputClient* client, TextInputChangeCause cause);

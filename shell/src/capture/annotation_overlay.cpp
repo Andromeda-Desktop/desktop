@@ -1228,7 +1228,7 @@ namespace capture {
           );
         }
         TooltipManager::instance().onHoverChange(
-            m_toolbarDragInstance != nullptr ? nullptr : next, instPtr->surface->layerSurface(), instPtr->output
+            m_toolbarDragInstance != nullptr ? nullptr : next, instPtr->surface.get(), m_wayland->outputId(instPtr->output)
         );
       }
     });
@@ -1919,7 +1919,7 @@ namespace capture {
       return false;
     }
 
-    Instance* target = instanceForSurface(event.surface);
+    Instance* target = instanceForSurface(WaylandSurface::wlOf(event.surface));
     if (target == nullptr) {
       for (auto& inst : m_instances) {
         if (inst != nullptr && inst->pointerInside) {
@@ -1933,7 +1933,7 @@ namespace capture {
     }
 
     const bool onTarget =
-        event.surface != nullptr && target->surface != nullptr && event.surface == target->surface->wlSurface();
+        event.surface != nullptr && target->surface != nullptr && event.surface == target->surface.get();
 
     // Surface-local pointer position, kept for the toolbar drag which needs an absolute
     // anchor rather than the handle-relative deltas a relayout invalidates.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/timer_manager.h"
+#include "platform/output_id.h"
 #include "render/animation/animation_manager.h"
 #include "ui/tooltip_content.h"
 #include "ui/signal.h"
@@ -13,30 +14,26 @@
 
 class InputArea;
 class Node;
-class PopupSurface;
+class Display;
+class Popup;
 class RenderContext;
 class Renderer;
-class WaylandConnection;
-struct wl_output;
-struct xdg_surface;
-struct zwlr_layer_surface_v1;
+class Surface;
 
 class TooltipManager {
 public:
   static TooltipManager& instance();
 
   // `uiScale` gives the current ui scale (accessibility); null = 1.
-  void initialize(WaylandConnection& wayland, std::function<float()> uiScale, RenderContext* renderContext);
+  void initialize(Display& display, std::function<float()> uiScale, RenderContext* renderContext);
   void shutdown();
   // Destroy any live tooltip immediately. Required before destroying a parent
   // layer surface — xdg_popup must die before its parent (Jay enforces this).
   void forceDestroy();
 
-  void onHoverChange(InputArea* area, zwlr_layer_surface_v1* parentLayerSurface, wl_output* output);
   // origin: the window geometry origin in scene coordinates (a shadow margin), subtracted from anchors.
-  void onHoverChange(InputArea* area, xdg_surface* parentXdgSurface, wl_output* output, float originX = 0.0F,
-                     float originY = 0.0F);
-  void onBarHoverChange(InputArea* area, zwlr_layer_surface_v1* parentLayerSurface, wl_output* output);
+  void onHoverChange(InputArea* area, Surface* parent, OutputId output, float originX = 0.0F, float originY = 0.0F);
+  void onBarHoverChange(InputArea* area, Surface* parent, OutputId output);
   void syncAnchor(InputArea* area);
 
   void suppressBarTooltipsForPanel(std::string_view panelId);
@@ -69,7 +66,7 @@ private:
   void buildScene(const TooltipContent& content, float w, float h, float opacity = 0.0F);
   void prepareFrame(bool needsUpdate, bool needsLayout);
 
-  WaylandConnection* m_wayland = nullptr;
+  Display* m_display = nullptr;
   std::function<float()> m_uiScale;
   RenderContext* m_renderContext = nullptr;
 
@@ -87,18 +84,16 @@ private:
   // What the current scene shows: a provider refresh with the same content skips the rebuild and redraw.
   TooltipContent m_builtContent;
   InputArea* m_builtArea = nullptr;
-  zwlr_layer_surface_v1* m_pendingLayerParent = nullptr;
-  xdg_surface* m_pendingXdgParent = nullptr;
+  Surface* m_pendingParent = nullptr;
   float m_originX = 0.0F;
   float m_originY = 0.0F;
-  wl_output* m_pendingOutput = nullptr;
+  OutputId m_pendingOutput = OutputId::None;
   InputArea* m_pendingArea = nullptr;
 
-  zwlr_layer_surface_v1* m_activeLayerParent = nullptr;
-  xdg_surface* m_activeXdgParent = nullptr;
-  wl_output* m_activeOutput = nullptr;
+  Surface* m_activeParent = nullptr;
+  OutputId m_activeOutput = OutputId::None;
 
-  std::unique_ptr<PopupSurface> m_surface;
+  std::unique_ptr<Popup> m_surface;
   AnimationManager m_animations;
   std::unique_ptr<Node> m_sceneRoot;
   AnimationManager::Id m_fadeAnimId = 0;

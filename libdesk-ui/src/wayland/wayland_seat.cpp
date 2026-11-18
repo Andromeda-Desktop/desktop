@@ -1,4 +1,5 @@
 #include "wayland/wayland_seat.h"
+#include "wayland/surface.h"
 
 #include "core/input/shortcut_keysym.h"
 #include "core/log.h"
@@ -117,7 +118,8 @@ void WaylandSeat::emitPinch(PinchEvent event) {
     return;
   }
   bumpUserActivity();
-  event.surface = m_pinchSurface;
+  event.surface = WaylandSurface::fromWl(m_pinchSurface);
+  event.nativeSurface = m_pinchSurface;
   event.sx = m_hasPointerPosition ? m_lastPointerX : 0.0;
   event.sy = m_hasPointerPosition ? m_lastPointerY : 0.0;
   m_pinchEventCallback(event);
@@ -205,12 +207,12 @@ void WaylandSeat::forgetSurface(wl_surface* surface) noexcept {
     m_lastKeyboardSurface = nullptr;
     m_repeatActive = false;
   }
-  std::erase_if(m_pendingPointerEvents, [surface](const PointerEvent& event) { return event.surface == surface; });
+  std::erase_if(m_pendingPointerEvents, [surface](const PointerEvent& event) { return event.nativeSurface == surface; });
   if (m_touchSurface == surface) {
     m_touchSurface = nullptr;
     m_activeTouchId = -1;
   }
-  std::erase_if(m_pendingTouchEvents, [surface](const PointerEvent& event) { return event.surface == surface; });
+  std::erase_if(m_pendingTouchEvents, [surface](const PointerEvent& event) { return event.nativeSurface == surface; });
 }
 
 void WaylandSeat::cleanup() {
@@ -341,7 +343,8 @@ void WaylandSeat::handlePointerEnter(
       PointerEvent{
           .type = PointerEvent::Type::Enter,
           .serial = serial,
-          .surface = surface,
+          .surface = WaylandSurface::fromWl(surface),
+          .nativeSurface = surface,
           .sx = self->m_lastPointerX,
           .sy = self->m_lastPointerY,
       }
@@ -368,7 +371,8 @@ void WaylandSeat::handlePointerLeave(void* data, wl_pointer* /*pointer*/, std::u
       PointerEvent{
           .type = PointerEvent::Type::Leave,
           .serial = serial,
-          .surface = surface,
+          .surface = WaylandSurface::fromWl(surface),
+          .nativeSurface = surface,
       }
   );
 }
@@ -383,7 +387,8 @@ void WaylandSeat::handlePointerMotion(
   self->m_pendingPointerEvents.push_back(
       PointerEvent{
           .type = PointerEvent::Type::Motion,
-          .surface = self->m_lastPointerSurface,
+          .surface = WaylandSurface::fromWl(self->m_lastPointerSurface),
+          .nativeSurface = self->m_lastPointerSurface,
           .sx = self->m_lastPointerX,
           .sy = self->m_lastPointerY,
           .time = time,
@@ -402,7 +407,8 @@ void WaylandSeat::handlePointerButton(
       PointerEvent{
           .type = PointerEvent::Type::Button,
           .serial = serial,
-          .surface = self->m_lastPointerSurface,
+          .surface = WaylandSurface::fromWl(self->m_lastPointerSurface),
+          .nativeSurface = self->m_lastPointerSurface,
           .sx = self->m_hasPointerPosition ? self->m_lastPointerX : 0.0,
           .sy = self->m_hasPointerPosition ? self->m_lastPointerY : 0.0,
           .time = time,
@@ -418,7 +424,8 @@ void WaylandSeat::handlePointerAxis(
   auto* self = static_cast<WaylandSeat*>(data);
   PointerEvent event{
       .type = PointerEvent::Type::Axis,
-      .surface = self->m_lastPointerSurface,
+      .surface = WaylandSurface::fromWl(self->m_lastPointerSurface),
+      .nativeSurface = self->m_lastPointerSurface,
       .sx = self->m_hasPointerPosition ? self->m_lastPointerX : 0.0,
       .sy = self->m_hasPointerPosition ? self->m_lastPointerY : 0.0,
       .time = time,
@@ -561,7 +568,8 @@ void WaylandSeat::handleTouchDown(
       PointerEvent{
           .type = PointerEvent::Type::Enter,
           .serial = serial,
-          .surface = surface,
+          .surface = WaylandSurface::fromWl(surface),
+          .nativeSurface = surface,
           .sx = self->m_lastPointerX,
           .sy = self->m_lastPointerY,
           .time = time,
@@ -572,7 +580,8 @@ void WaylandSeat::handleTouchDown(
       PointerEvent{
           .type = PointerEvent::Type::Button,
           .serial = serial,
-          .surface = surface,
+          .surface = WaylandSurface::fromWl(surface),
+          .nativeSurface = surface,
           .sx = self->m_lastPointerX,
           .sy = self->m_lastPointerY,
           .time = time,
@@ -596,7 +605,8 @@ void WaylandSeat::handleTouchUp(
       PointerEvent{
           .type = PointerEvent::Type::Button,
           .serial = serial,
-          .surface = surface,
+          .surface = WaylandSurface::fromWl(surface),
+          .nativeSurface = surface,
           .sx = self->m_lastPointerX,
           .sy = self->m_lastPointerY,
           .time = time,
@@ -609,7 +619,8 @@ void WaylandSeat::handleTouchUp(
       PointerEvent{
           .type = PointerEvent::Type::Leave,
           .serial = serial,
-          .surface = surface,
+          .surface = WaylandSurface::fromWl(surface),
+          .nativeSurface = surface,
           .touch = true,
       }
   );
@@ -631,7 +642,8 @@ void WaylandSeat::handleTouchMotion(
   self->m_pendingTouchEvents.push_back(
       PointerEvent{
           .type = PointerEvent::Type::Motion,
-          .surface = self->m_touchSurface,
+          .surface = WaylandSurface::fromWl(self->m_touchSurface),
+          .nativeSurface = self->m_touchSurface,
           .sx = self->m_lastPointerX,
           .sy = self->m_lastPointerY,
           .time = time,
@@ -682,7 +694,8 @@ void WaylandSeat::handleTouchCancel(void* data, wl_touch* /*touch*/) {
     self->m_pointerEventCallback(
         PointerEvent{
             .type = PointerEvent::Type::Leave,
-            .surface = surface,
+            .surface = WaylandSurface::fromWl(surface),
+            .nativeSurface = surface,
             .touch = true,
         }
     );

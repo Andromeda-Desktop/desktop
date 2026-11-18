@@ -807,7 +807,7 @@ void WaylandConnection::setAxisStopCallback(WaylandSeat::AxisStopCallback callba
 void WaylandConnection::setPointerEventCallback(WaylandSeat::PointerEventCallback callback) {
   m_pointerEventCallback = std::move(callback);
   m_seatHandler.setPointerEventCallback([this](const PointerEvent& event) {
-    const auto it = m_surfaceOutputMap.find(event.surface);
+    const auto it = m_surfaceOutputMap.find(static_cast<wl_surface*>(event.nativeSurface));
     if (it != m_surfaceOutputMap.end() && it->second != nullptr) {
       m_lastPointerOutput = it->second;
       m_lastPointerOutputAt = std::chrono::steady_clock::now();
@@ -1321,6 +1321,24 @@ std::unique_ptr<Toplevel> WaylandConnection::createToplevel() { return std::make
 std::unique_ptr<Popup> WaylandConnection::createPopup() { return std::make_unique<PopupSurface>(*this); }
 
 OutputId WaylandConnection::lastPointerOutputId() const noexcept { return outputId(lastPointerOutput()); }
+
+std::optional<OutputInfo> WaylandConnection::outputInfo(OutputId output) const {
+  const auto* out = findOutputByWl(wlOutput(output));
+  if (out == nullptr) {
+    return std::nullopt;
+  }
+  return OutputInfo{
+      .logicalWidth = out->logicalWidth > 0 ? out->logicalWidth : out->width / std::max(1, out->scale),
+      .logicalHeight = out->logicalHeight > 0 ? out->logicalHeight : out->height / std::max(1, out->scale),
+      .scale = out->configuredScale(),
+  };
+}
+
+Surface* WaylandConnection::pointerSurface() const noexcept { return WaylandSurface::fromWl(lastPointerSurface()); }
+
+Surface* WaylandConnection::keyboardSurface() const noexcept { return WaylandSurface::fromWl(lastKeyboardSurface()); }
+
+bool WaylandConnection::isLive(const Surface* surface) const noexcept { return WaylandSurface::isLive(surface); }
 
 OutputId WaylandConnection::outputForSurface(const Surface& surface) const noexcept {
   return outputId(outputForSurface(wlSurfaceOf(surface)));

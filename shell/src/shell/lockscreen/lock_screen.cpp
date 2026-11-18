@@ -589,20 +589,21 @@ void LockScreen::onWallpaperChanged() {
 }
 
 void LockScreen::onPointerEvent(const PointerEvent& event) {
+  wl_surface* const eventSurface = WaylandSurface::wlOf(event.surface);
   if (!isActive() || !m_lifecycle.locked() || unlocking()) {
     return;
   }
 
   if (event.type == PointerEvent::Type::Enter && event.surface != nullptr) {
-    m_pointerSurface = event.surface;
+    m_pointerSurface = eventSurface;
     m_pointerEnterX = event.sx;
     m_pointerEnterY = event.sy;
-  } else if (event.type == PointerEvent::Type::Leave && event.surface == m_pointerSurface) {
+  } else if (event.type == PointerEvent::Type::Leave && eventSurface == m_pointerSurface) {
     m_pointerSurface = nullptr;
   } else if (
       (event.type == PointerEvent::Type::Button || event.type == PointerEvent::Type::Axis) && event.surface != nullptr
   ) {
-    m_pointerSurface = event.surface;
+    m_pointerSurface = eventSurface;
   }
 
   if (event.type == PointerEvent::Type::Button && m_face != nullptr && faceEnabled() && !faceOnRequest()) {
@@ -618,7 +619,7 @@ void LockScreen::onPointerEvent(const PointerEvent& event) {
     }
   }
 
-  wl_surface* target = event.surface != nullptr ? event.surface : m_pointerSurface;
+  wl_surface* target = eventSurface != nullptr ? eventSurface : m_pointerSurface;
   if (target == nullptr) {
     return;
   }

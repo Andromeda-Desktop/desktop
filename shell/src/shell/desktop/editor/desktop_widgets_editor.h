@@ -29,7 +29,7 @@ struct KeyboardEvent;
 struct PointerEvent;
 struct WaylandOutput;
 struct wl_output;
-struct wl_surface;
+class Surface;
 
 class DesktopWidgetsEditor {
 public:
@@ -45,7 +45,7 @@ public:
 
   bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
-  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(wl_surface* surface) const;
+  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(Surface* surface) const;
   [[nodiscard]] std::optional<LayerPopupParentContext> fallbackPopupParentContext() const;
   void onOutputChange();
   void onSecondTick();
@@ -198,8 +198,8 @@ private:
   void updateDrag();
   void finishDrag();
   void updateLassoVisual(OverlaySurface& surface);
-  [[nodiscard]] OverlaySurface* findSurface(wl_surface* surface);
-  [[nodiscard]] const OverlaySurface* findSurface(wl_surface* surface) const;
+  [[nodiscard]] OverlaySurface* findSurface(Surface* surface);
+  [[nodiscard]] const OverlaySurface* findSurface(Surface* surface) const;
   [[nodiscard]] std::optional<LayerPopupParentContext> overlayPopupParentContext(const OverlaySurface& surface) const;
   [[nodiscard]] OverlaySurface* findSurface(const std::string& outputName);
   [[nodiscard]] OverlaySurface* findSurfaceForWidget(const std::string& widgetId);

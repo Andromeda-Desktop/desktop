@@ -12,10 +12,8 @@
 #include "ui/palette.h"
 #include "ui/popup_chrome.h"
 #include "ui/style.h"
-#include "wayland/layer_surface.h"
-#include "wayland/popup_surface.h"
-#include "wayland/wayland_connection.h"
-#include "wayland/wayland_seat.h"
+#include "platform/display.h"
+#include "platform/input_events.h"
 
 #include <algorithm>
 #include <cmath>
@@ -29,8 +27,8 @@ namespace {
 
 ContextMenuPopup* ContextMenuPopup::s_openMenu = nullptr;
 
-ContextMenuPopup::ContextMenuPopup(WaylandConnection& wayland, RenderContext& renderContext)
-    : m_wayland(wayland), m_renderContext(renderContext) {}
+ContextMenuPopup::ContextMenuPopup(Display& display, RenderContext& renderContext)
+    : m_display(display), m_renderContext(renderContext) {}
 
 ContextMenuPopup::~ContextMenuPopup() {
   if (m_alive != nullptr) {
@@ -50,10 +48,8 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   float menuWidth = request.menuWidth;
   if (menuWidth <= 0.0F) {
     float measureScale = 1.0F;
-    if (request.parent.output != nullptr) {
-      if (const WaylandOutput* out = m_wayland.findOutputByWl(request.parent.output); out != nullptr) {
-        measureScale = out->configuredScale();
-      }
+    if (const auto out = m_display.outputInfo(request.parent.output); out.has_value()) {
+      measureScale = out->scale;
     }
     ScaledRenderer measureRenderer(m_renderContext, measureScale);
     menuWidth = ContextMenuControl::preferredWidth(measureRenderer, request.entries, contentScale);
@@ -72,7 +68,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   m_contentWidth = chrome.contentWidth;
   m_output = request.parent.output;
   m_tone = m_parentMenu != nullptr               ? m_parentMenu->m_tone
-      : request.parent.xdgSurface != nullptr ? PaletteTone::Scheme
+      : request.parent.surface != nullptr && !request.parent.surface->isShellLayer() ? PaletteTone::Scheme
                                              : glassTone(glass::Kind::Menu);
   m_scrollState = {};
   m_scrollView = nullptr;
@@ -105,12 +101,12 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
           | PopupConstraint::FlipY,
       .offsetX = resolvedPlacement.offsetX,
       .offsetY = resolvedPlacement.offsetY,
-      .serial = request.inputSerial.value_or(m_wayland.lastInputSerial()),
+      .serial = request.inputSerial.value_or(m_display.lastInputSerial()),
       .grab = true,
   };
   popup_chrome::applyToConfig(popupCfg, chrome, resolvedPlacement.chromeAttachment);
 
-  m_surface = std::make_unique<PopupSurface>(m_wayland);
+  m_surface = m_display.createPopup();
   m_surface->setRenderContext(&m_renderContext);
   m_surface->setAnimationManager(&m_animations);
 
@@ -241,7 +237,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
     self->m_sceneRoot->addChild(std::move(scrollView));
     self->m_inputDispatcher.setSceneRoot(self->m_sceneRoot.get());
     self->m_inputDispatcher.setCursorShapeCallback([self](std::uint32_t serial, CursorShape shape) {
-      self->m_wayland.setCursorShape(serial, std::to_underlying(shape));
+      self->m_display.setCursorShape(serial, std::to_underlying(shape));
     });
     self->m_surface->setSceneRoot(self->m_sceneRoot.get());
     // The Grow springs started before the surface was configured: make sure the frame loop ticks them.
@@ -252,19 +248,13 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
 
   m_surface->setDismissedCallback([self] { self->deferClose(); });
 
-  // Layer-shell popups inherit their parent's keyboard interactivity. A bar is
-  // None, so flip it to OnDemand before the popup maps or the grabbing popup
-  // gets no keyboard focus and ESC cannot reach it. Only bar-style callers pass
-  // a parent wlSurface; panels are already OnDemand and leave it null.
-  if (request.parent.layerSurface != nullptr && request.parent.wlSurface != nullptr) {
-    m_keyboardParentLayerSurface = request.parent.layerSurface;
-    m_keyboardParentWlSurface = request.parent.wlSurface;
-    setLayerKeyboardInteractivity(request.parent.layerSurface, request.parent.wlSurface, LayerShellKeyboard::OnDemand);
+  // The grabbing popup needs keyboard focus before it maps, or ESC cannot reach it.
+  if (request.parent.surface != nullptr) {
+    m_keyboardParent = request.parent.surface;
+    m_keyboardParent->setPopupKeyboardFocus(true);
   }
 
-  const bool initialized = request.parent.xdgSurface != nullptr
-      ? m_surface->initializeAsChild(request.parent.xdgSurface, request.parent.output, popupCfg)
-      : m_surface->initialize(request.parent.layerSurface, request.parent.output, popupCfg);
+  const bool initialized = m_surface->initialize(request.parent, popupCfg);
   if (!initialized) {
     kLog.warn("failed to create context menu popup");
     restoreParentKeyboardInteractivity();
@@ -273,9 +263,8 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   }
 
   popup_chrome::setContentInputRegion(*m_surface, chrome);
-  m_wlSurface = m_surface->wlSurface();
   m_pointerParentSurface =
-      request.pointerParentSurface != nullptr ? request.pointerParentSurface : request.parent.wlSurface;
+      request.pointerParentSurface != nullptr ? request.pointerParentSurface : request.parent.surface;
   s_openMenu = this;
 }
 
@@ -326,7 +315,6 @@ void ContextMenuPopup::close() {
   m_scrollView = nullptr;
   m_sceneRoot.reset();
   m_surface.reset();
-  m_wlSurface = nullptr;
   m_pointerParentSurface = nullptr;
   m_pointerInside = false;
   if (wasOpen && m_onDismissed) {
@@ -432,7 +420,7 @@ bool ContextMenuPopup::onPointerEvent(const PointerEvent& event) {
   }
 
   const bool captured = m_inputDispatcher.pointerCaptured();
-  const bool onPopup = (event.surface != nullptr && event.surface == m_wlSurface);
+  const bool onPopup = (event.surface != nullptr && event.surface == m_surface.get());
   auto localX = static_cast<float>(event.sx);
   auto localY = static_cast<float>(event.sy);
   // While a press holds the pointer capture (e.g. a scrollbar thumb drag), events sliding onto the
@@ -622,16 +610,13 @@ void ContextMenuPopup::requestVisualUpdate() {
 }
 
 void ContextMenuPopup::restoreParentKeyboardInteractivity() {
-  zwlr_layer_surface_v1* layerSurface = m_keyboardParentLayerSurface;
-  wl_surface* wlSurface = m_keyboardParentWlSurface;
-  m_keyboardParentLayerSurface = nullptr;
-  m_keyboardParentWlSurface = nullptr;
+  Surface* parent = std::exchange(m_keyboardParent, nullptr);
   // The parent surface can be destroyed while the menu is open (bar rebuild,
   // output removal). Its proxies are then freed, so only touch it while still registered.
-  if (layerSurface == nullptr || m_wayland.layerSurfaceFor(wlSurface) != layerSurface) {
+  if (parent == nullptr || !m_display.isLive(parent)) {
     return;
   }
-  setLayerKeyboardInteractivity(layerSurface, wlSurface, LayerShellKeyboard::None);
+  parent->setPopupKeyboardFocus(false);
 }
 
 void ContextMenuPopup::openSubmenu(std::size_t index) {
@@ -645,7 +630,7 @@ void ContextMenuPopup::openSubmenu(std::size_t index) {
   const float offset = m_scrollView != nullptr ? m_scrollView->scrollOffset() : 0.0F;
   const float top = m_contentY + m_menu->rowTop(index) - offset;
   const float bottom = m_contentY + m_menu->rowBottom(index) - offset;
-  m_child = std::make_unique<ContextMenuPopup>(m_wayland, m_renderContext);
+  m_child = std::make_unique<ContextMenuPopup>(m_display, m_renderContext);
   m_child->m_parentMenu = this;
   m_child->setShadowConfig(m_shadowConfig);
   const std::weak_ptr<bool> alive = m_alive;
@@ -672,7 +657,7 @@ void ContextMenuPopup::openSubmenu(std::size_t index) {
           .width = static_cast<std::int32_t>(m_contentWidth),
           .height = std::max(1, static_cast<std::int32_t>(bottom - top)),
       },
-      .parent = {.xdgSurface = xdgSurface(), .output = m_output},
+      .parent = {.surface = m_surface.get(), .output = m_output},
       // The submenu's first row lines up with this row: its top edge sits one menu padding above the row.
       .placement = ContextMenuPopupPlacement{
           .anchor = PopupAnchor::TopRight,
@@ -700,15 +685,11 @@ bool ContextMenuPopup::dispatchKeyboardEvent(const KeyboardEvent& event) {
   return true;
 }
 
-wl_surface* ContextMenuPopup::wlSurface() const noexcept { return m_wlSurface; }
+Surface* ContextMenuPopup::surface() const noexcept { return m_surface.get(); }
 
-bool ContextMenuPopup::ownsSurface(wl_surface* surface) const noexcept {
+bool ContextMenuPopup::ownsSurface(const Surface* surface) const noexcept {
   return surface != nullptr && isOpen() &&
-         (surface == m_wlSurface || (m_child != nullptr && m_child->ownsSurface(surface)));
-}
-
-xdg_surface* ContextMenuPopup::xdgSurface() const noexcept {
-  return m_surface != nullptr ? m_surface->xdgSurface() : nullptr;
+         (surface == m_surface.get() || (m_child != nullptr && m_child->ownsSurface(surface)));
 }
 
 std::uint32_t ContextMenuPopup::width() const noexcept { return m_surface != nullptr ? m_surface->width() : 0; }

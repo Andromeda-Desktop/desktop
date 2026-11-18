@@ -47,14 +47,14 @@ namespace {
 
 SearchPickerPopup::~SearchPickerPopup() { destroyPopup(); }
 
-void SearchPickerPopup::initialize(WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext) {
-  initializeBase(wayland, settings, renderContext);
+void SearchPickerPopup::initialize(Display& display, const UiSettings& settings, RenderContext& renderContext) {
+  initializeBase(display, settings, renderContext);
 }
 
 void SearchPickerPopup::initialize(
-    WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
+    Display& display, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
 ) {
-  initializeBase(wayland, settings, renderContext, popupHosts);
+  initializeBase(display, settings, renderContext, popupHosts);
 }
 
 void SearchPickerPopup::setOnSelect(SelectCallback callback) { m_onSelect = std::move(callback); }
@@ -64,7 +64,7 @@ void SearchPickerPopup::setOnDismissed(std::function<void()> callback) { m_onDis
 void SearchPickerPopup::open(SearchPickerPopupRequest request) {
   if (request.options.empty()
       || (request.parent.has_value()
-          && (request.parent->xdgSurface == nullptr || request.parent->wlSurface == nullptr))) {
+          && request.parent->surface == nullptr)) {
     return;
   }
 
@@ -103,7 +103,7 @@ bool SearchPickerPopup::onPointerEvent(const PointerEvent& event) { return Dialo
 
 void SearchPickerPopup::onKeyboardEvent(const KeyboardEvent& event) { DialogPopupHost::onKeyboardEvent(event); }
 
-wl_surface* SearchPickerPopup::wlSurface() const noexcept { return DialogPopupHost::wlSurface(); }
+Surface* SearchPickerPopup::surface() const noexcept { return DialogPopupHost::surface(); }
 
 void SearchPickerPopup::populateContent(Node* contentParent, std::uint32_t /*width*/, std::uint32_t /*height*/) {
   const float panelPadding = Style::spaceSm * m_scale;

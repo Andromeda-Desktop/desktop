@@ -19,7 +19,7 @@ struct KeyboardEvent;
 struct LayerPopupParentContext;
 struct PointerEvent;
 struct wl_output;
-struct wl_surface;
+class Surface;
 
 // The wallpaper picker as a normal app window (xdg toplevel) with the Settings glass look. It hosts WallpaperPanel's
 // content; the panel lives as long as this object and builds its scene at each open.
@@ -50,7 +50,7 @@ public:
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
   void onThemeChanged();
-  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(wl_surface* surface) const;
+  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(Surface* surface) const;
   [[nodiscard]] std::optional<LayerPopupParentContext> fallbackPopupParentContext() const;
 
 private:

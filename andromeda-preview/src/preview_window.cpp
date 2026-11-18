@@ -1702,7 +1702,7 @@ namespace preview {
     if (!m_surface) {
       return;
     }
-    const bool onThis = event.surface == m_surface->wlSurface();
+    const bool onThis = event.surface == m_surface.get();
     const auto x = static_cast<float>(event.sx);
     const auto y = static_cast<float>(event.sy);
     switch (event.type) {

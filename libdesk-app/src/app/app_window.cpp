@@ -204,9 +204,9 @@ namespace {
   // Select dropdowns of the window's controls: scene coordinates include the shadow margin, xdg anchors do not.
   class WindowSelectPopup final : public SelectDropdownPopup {
   public:
-    WindowSelectPopup(WaylandConnection& wayland, RenderContext& context, std::function<int()> margin,
+    WindowSelectPopup(Display& display, RenderContext& context, std::function<int()> margin,
                       std::function<void(WindowSelectPopup&)> reparent)
-        : SelectDropdownPopup(wayland, context), m_margin(std::move(margin)), m_reparent(std::move(reparent)) {}
+        : SelectDropdownPopup(display, context), m_margin(std::move(margin)), m_reparent(std::move(reparent)) {}
     void openSelectDropdown(const DropdownRequest& request, DropdownCallbacks callbacks) override {
       m_reparent(*this); // the window's current output: the dropdown renders at its scale
       DropdownRequest local = request;
@@ -260,11 +260,11 @@ std::string AppWindow::key(const char* field) const { return "/window/" + m_conf
 
 wl_surface* AppWindow::wlSurface() const noexcept { return m_surface != nullptr ? m_surface->wlSurface() : nullptr; }
 
-bool AppWindow::ownsSurface(wl_surface* surface) const noexcept {
+bool AppWindow::ownsSurface(const Surface* surface) const noexcept {
   return surface != nullptr &&
-         (surface == wlSurface() || (m_menu != nullptr && m_menu->ownsSurface(surface)) ||
-          (m_select != nullptr && m_select->isSelectDropdownOpen() && m_select->wlSurface() == surface) ||
-          (m_popover != nullptr && m_popover->isOpen() && m_popover->wlSurface() == surface));
+         (surface == m_surface.get() || (m_menu != nullptr && m_menu->ownsSurface(surface)) ||
+          (m_select != nullptr && m_select->isSelectDropdownOpen() && m_select->surface() == surface) ||
+          (m_popover != nullptr && m_popover->isOpen() && m_popover->surface() == surface));
 }
 
 void AppWindow::openMoreMenu() {
@@ -329,7 +329,7 @@ void AppWindow::openMoreMenu() {
   float y = 0.0F;
   Node::absolutePosition(m_moreButton, x, y);
   const auto margin = static_cast<float>(m_surface->margin());
-  TooltipManager::instance().onHoverChange(nullptr, static_cast<xdg_surface*>(nullptr), nullptr);
+  TooltipManager::instance().onHoverChange(nullptr, nullptr, OutputId::None);
   m_menu->open(ContextMenuPopupRequest{
       .entries = std::move(entries),
       .contentScale = m_uiScale,
@@ -337,7 +337,7 @@ void AppWindow::openMoreMenu() {
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x - margin), .y = static_cast<std::int32_t>(y - margin),
                                 .width = static_cast<std::int32_t>(m_moreButton->width()),
                                 .height = static_cast<std::int32_t>(m_moreButton->height())},
-      .parent = PopupSurfaceParent{.xdgSurface = m_surface->xdgSurface(), .wlSurface = m_surface->wlSurface()},
+      .parent = PopupParent{.surface = m_surface.get()},
   });
 }
 
@@ -382,7 +382,7 @@ void AppWindow::openContextMenu(std::vector<ContextMenuControlEntry> entries, fl
     });
   });
   const auto margin = static_cast<float>(m_surface->margin());
-  TooltipManager::instance().onHoverChange(nullptr, static_cast<xdg_surface*>(nullptr), nullptr);
+  TooltipManager::instance().onHoverChange(nullptr, nullptr, OutputId::None);
   m_menu->open(ContextMenuPopupRequest{
       .entries = std::move(entries),
       .minMenuWidth = kContextMenuMinWidth * m_uiScale,
@@ -390,7 +390,7 @@ void AppWindow::openContextMenu(std::vector<ContextMenuControlEntry> entries, fl
       .maxVisible = 24,
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(sceneX - margin),
                                 .y = static_cast<std::int32_t>(sceneY - margin), .width = 1, .height = 1},
-      .parent = PopupSurfaceParent{.xdgSurface = m_surface->xdgSurface(), .wlSurface = m_surface->wlSurface()},
+      .parent = PopupParent{.surface = m_surface.get()},
   });
 }
 
@@ -406,7 +406,7 @@ void AppWindow::openPopover(const Node* anchor, float width, float height,
   float y = 0.0F;
   Node::absolutePosition(anchor, x, y);
   const auto margin = static_cast<float>(m_surface->margin());
-  m_popover->open({.parentXdg = m_surface->xdgSurface(), .parentWl = m_surface->wlSurface(),
+  m_popover->open({.parent = m_surface.get(),
                    .serial = m_loop.wayland().lastInputSerial(),
                    .anchorX = static_cast<std::int32_t>(x - margin), .anchorY = static_cast<std::int32_t>(y - margin),
                    .anchorWidth = static_cast<std::int32_t>(anchor->width()),
@@ -552,7 +552,7 @@ bool AppWindow::open() {
     m_loop.wayland().setCursorShape(serial, std::to_underlying(shape));
   });
   // Input methods (fcitx5, IBus): preedit and commits reach the focused text field.
-  m_input.setTextInputContext(m_surface->wlSurface(), wayland.textInputService());
+  m_input.setTextInputContext(m_surface.get(), wayland.textInputService());
   m_input.setHoverChangeCallback([this](InputArea* /*old*/, InputArea* next) {
     if (m_surface == nullptr) {
       return;
@@ -563,8 +563,8 @@ bool AppWindow::open() {
       next = nullptr;
     }
     const auto margin = static_cast<float>(m_surface->margin());
-    TooltipManager::instance().onHoverChange(next, m_surface->xdgSurface(),
-                                             m_loop.wayland().outputForSurface(m_surface->wlSurface()), margin, margin);
+    TooltipManager::instance().onHoverChange(next, m_surface.get(), m_loop.wayland().outputForSurface(*m_surface),
+                                             margin, margin);
   });
   m_rebuild = true;
   return true;
@@ -1727,8 +1727,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
         m_loop.wayland(), m_loop.renderContext(),
         [this] { return m_surface != nullptr ? static_cast<int>(m_surface->margin()) : 0; },
         [this](WindowSelectPopup& popup) {
-          popup.setParent(m_surface->xdgSurface(), m_surface->wlSurface(),
-                          m_loop.wayland().outputForSurface(m_surface->wlSurface()));
+          popup.setParent(m_surface.get(), m_loop.wayland().outputForSurface(*m_surface));
         });
   }
   m_root->setPopupContext(m_select.get());
@@ -1808,7 +1807,7 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
       m_menu->close();
     }
   }
-  if (event.surface != nullptr && event.surface != wlSurface()) {
+  if (event.surface != nullptr && event.surface != m_surface.get()) {
     return;
   }
   const auto x = static_cast<float>(event.sx);

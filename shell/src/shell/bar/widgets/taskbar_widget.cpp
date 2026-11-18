@@ -23,6 +23,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "util/string_utils.h"
+#include "wayland/surface.h"
 #include "wayland/wayland_seat.h"
 #include "compositors/wayland_toplevels.h"
 #include "xdg-shell-client-protocol.h"
@@ -522,7 +523,7 @@ void TaskbarWidget::beginDrag() {
   m_drag.pinnedCount = pinnedConfigIds().size();
   // The press that started this gesture has already shown the tile's tooltip; it would hang over
   // the strip for the whole drag.
-  TooltipManager::instance().onHoverChange(nullptr, static_cast<zwlr_layer_surface_v1*>(nullptr), nullptr);
+  TooltipManager::instance().onHoverChange(nullptr, nullptr, OutputId::None);
   requestDragLayout();
 }
 
@@ -3122,9 +3123,8 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
     return;
   }
 
-  wl_surface* pointerSurface = m_platform.lastPointerSurface();
-  auto* layerSurface = m_platform.layerSurfaceFor(pointerSurface);
-  if (layerSurface == nullptr) {
+  Surface* pointerSurface = m_platform.wayland().pointerSurface();
+  if (m_platform.layerSurfaceFor(WaylandSurface::wlOf(pointerSurface)) == nullptr) {
     return;
   }
 
@@ -3445,11 +3445,7 @@ void TaskbarWidget::openTaskContextMenu(const TaskModel& task, InputArea& area, 
                   .height = static_cast<std::int32_t>(std::round(anchorH)),
               },
           .parent =
-              PopupSurfaceParent{
-                  .layerSurface = layerSurface,
-                  .output = m_output,
-                  .wlSurface = pointerSurface,
-              },
+PopupParent{.surface = pointerSurface, .output = m_platform.wayland().outputId(m_output)},
           .placement = placement,
       }
   );

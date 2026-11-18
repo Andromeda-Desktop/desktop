@@ -558,7 +558,7 @@ void Greeter::onGreetdReadable() {
 
 void Greeter::setupInputCallbacks(WaylandClient& client) {
   client.setPointerEventCallback([this](const PointerEvent& event) {
-    View* view = viewForSurface(event.surface);
+    View* view = viewForSurface(static_cast<wl_surface*>(event.nativeSurface));
     if (view == nullptr) {
       return;
     }

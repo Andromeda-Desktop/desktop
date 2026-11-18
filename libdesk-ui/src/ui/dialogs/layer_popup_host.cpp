@@ -1,9 +1,6 @@
 #include "ui/dialogs/layer_popup_host.h"
 
-#include "wayland/wayland_connection.h"
-#include "wayland/wayland_seat.h"
-
-#include <algorithm>
+#include "platform/display.h"
 
 void LayerPopupHostRegistry::registerHost(
     ContextResolver contextResolver, PopupHook beginAttachedPopup, PopupHook endAttachedPopup,
@@ -19,7 +16,7 @@ void LayerPopupHostRegistry::registerHost(
   );
 }
 
-std::optional<LayerPopupParentContext> LayerPopupHostRegistry::contextForSurface(wl_surface* surface) const {
+std::optional<LayerPopupParentContext> LayerPopupHostRegistry::contextForSurface(Surface* surface) const {
   if (surface == nullptr) {
     return std::nullopt;
   }
@@ -49,36 +46,36 @@ std::optional<LayerPopupParentContext> LayerPopupHostRegistry::fallbackContext()
   return std::nullopt;
 }
 
-std::pair<std::int32_t, std::int32_t> LayerPopupParentContext::centeringOffset(WaylandConnection& wayland) const {
+std::pair<std::int32_t, std::int32_t> LayerPopupParentContext::centeringOffset(const Display& display) const {
   if (!usedFallback) {
     return {0, 0};
   }
 
-  const auto* out = wayland.findOutputByWl(output);
-  if (out == nullptr) {
+  const auto out = display.outputInfo(output);
+  if (!out.has_value()) {
     return {0, 0};
   }
-
-  const std::int32_t outputW = out->logicalWidth > 0 ? out->logicalWidth : out->width / std::max(1, out->scale);
-  const std::int32_t outputH = out->logicalHeight > 0 ? out->logicalHeight : out->height / std::max(1, out->scale);
-  return {(outputW - static_cast<std::int32_t>(width)) / 2, (outputH - static_cast<std::int32_t>(height)) / 2};
+  return {
+      (out->logicalWidth - static_cast<std::int32_t>(width)) / 2,
+      (out->logicalHeight - static_cast<std::int32_t>(height)) / 2,
+  };
 }
 
-std::optional<LayerPopupParentContext> LayerPopupHostRegistry::resolveForInput(WaylandConnection& wayland) const {
-  const auto trySurface = [this](wl_surface* surface) { return contextForSurface(surface); };
+std::optional<LayerPopupParentContext> LayerPopupHostRegistry::resolveForInput(const Display& display) const {
+  const auto trySurface = [this](Surface* surface) { return contextForSurface(surface); };
 
-  if (wayland.lastInputSource() == WaylandSeat::InputSource::Keyboard) {
-    if (auto context = trySurface(wayland.lastKeyboardSurface()); context.has_value()) {
+  if (display.lastInputSource() == InputSource::Keyboard) {
+    if (auto context = trySurface(display.keyboardSurface()); context.has_value()) {
       return context;
     }
-    if (auto context = trySurface(wayland.lastPointerSurface()); context.has_value()) {
+    if (auto context = trySurface(display.pointerSurface()); context.has_value()) {
       return context;
     }
   } else {
-    if (auto context = trySurface(wayland.lastPointerSurface()); context.has_value()) {
+    if (auto context = trySurface(display.pointerSurface()); context.has_value()) {
       return context;
     }
-    if (auto context = trySurface(wayland.lastKeyboardSurface()); context.has_value()) {
+    if (auto context = trySurface(display.keyboardSurface()); context.has_value()) {
       return context;
     }
   }
@@ -90,7 +87,7 @@ std::optional<LayerPopupParentContext> LayerPopupHostRegistry::resolveForInput(W
   return context;
 }
 
-void LayerPopupHostRegistry::beginAttachedPopup(wl_surface* surface) const {
+void LayerPopupHostRegistry::beginAttachedPopup(Surface* surface) const {
   if (surface == nullptr) {
     return;
   }
@@ -102,7 +99,7 @@ void LayerPopupHostRegistry::beginAttachedPopup(wl_surface* surface) const {
   }
 }
 
-void LayerPopupHostRegistry::endAttachedPopup(wl_surface* surface) const {
+void LayerPopupHostRegistry::endAttachedPopup(Surface* surface) const {
   if (surface == nullptr) {
     return;
   }

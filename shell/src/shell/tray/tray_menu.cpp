@@ -371,7 +371,7 @@ bool TrayMenu::onPointerEvent(const PointerEvent& event) {
       continue;
     }
     auto* sub = level.instance.get();
-    const bool onSub = (event.surface != nullptr && event.surface == sub->wlSurface);
+    const bool onSub = (event.surface != nullptr && event.surface == sub->surface.get());
     bool subConsumed = false;
 
     switch (event.type) {
@@ -435,7 +435,7 @@ bool TrayMenu::onPointerEvent(const PointerEvent& event) {
   }
 
   auto* inst = m_instance.get();
-  const bool onThisSurface = (event.surface != nullptr && event.surface == inst->wlSurface);
+  const bool onThisSurface = (event.surface != nullptr && event.surface == inst->surface.get());
   bool consumed = false;
 
   switch (event.type) {

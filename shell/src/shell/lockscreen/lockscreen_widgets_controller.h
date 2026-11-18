@@ -69,7 +69,7 @@ public:
   void setOnExitEditCallback(std::function<void()> callback);
 
   [[nodiscard]] bool isEditing() const noexcept;
-  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(wl_surface* surface) const;
+  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(Surface* surface) const;
   [[nodiscard]] std::optional<LayerPopupParentContext> fallbackPopupParentContext() const;
   bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);

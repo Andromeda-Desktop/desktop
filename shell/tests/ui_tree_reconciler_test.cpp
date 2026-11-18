@@ -1,4 +1,3 @@
-#include "cursor-shape-v1-client-protocol.h"
 #include "render/backend/render_backend.h"
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
@@ -32,10 +31,6 @@
 #include <utility>
 #include <vector>
 #include <wayland-client-protocol.h>
-
-// Satisfies the AsyncTextureCache link dependency pulled in by the Image
-// control; never invoked — this test exercises no GPU path.
-std::unique_ptr<TextureManager> createDefaultTextureManager() { return nullptr; }
 
 namespace {
 
@@ -583,7 +578,7 @@ int main() {
                    && area != nullptr
                    && area->acceptedButtons() == 0
                    && !area->focusable()
-                   && area->cursorShape() == 0,
+                   && !area->cursorShape().has_value(),
                "emptied onClick clears the wrapper's activation"
            )
           && ok;
@@ -2889,7 +2884,7 @@ int main() {
     ok = expect(source != nullptr && zone != nullptr && source->inputArea() != nullptr, "row drag fixture built") && ok;
     if (source != nullptr && zone != nullptr && source->inputArea() != nullptr) {
       ok = expect(
-               source->inputArea()->cursorShape() == WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER,
+               source->inputArea()->cursorShape() == CursorShape::Pointer,
                "grabCursor = false hovers with the plain pointer"
            )
           && ok;
@@ -2916,7 +2911,7 @@ int main() {
       source->inputArea()->dispatchPress(2.0F, 2.0F, BTN_LEFT, true);
       source->inputArea()->dispatchMotion(localX, localY);
       ok = expect(
-               source->dragging() && source->inputArea()->cursorShape() == WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING,
+               source->dragging() && source->inputArea()->cursorShape() == CursorShape::Grabbing,
                "dragging shows the grabbing hand even without the grab hover cursor"
            )
           && ok;

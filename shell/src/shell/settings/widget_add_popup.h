@@ -29,7 +29,7 @@ struct xdg_surface;
 namespace settings {
 
   struct WidgetAddPopupRequest {
-    XdgPopupParent parent;
+    PopupParent parent;
     std::vector<std::string> lanePath;
     const Config& config;
     float scale = 1.0F;
@@ -56,7 +56,6 @@ namespace settings {
     [[nodiscard]] bool isOpen() const noexcept;
     [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
     void onKeyboardEvent(const KeyboardEvent& event);
-    [[nodiscard]] wl_surface* wlSurface() const noexcept;
     void requestLayout();
     void requestRedraw();
 
@@ -94,7 +93,7 @@ namespace settings {
     [[nodiscard]] std::string suggestedInstanceId(std::string_view type) const;
     [[nodiscard]] bool canCreateInstanceId(std::string_view id) const;
 
-    XdgPopupParent m_parent;
+    PopupParent m_parent;
     bool m_internalReopen = false;
     SelectCallback m_onSelect;
     std::function<void()> m_onDismissed;

@@ -74,7 +74,7 @@ namespace shell::dock {
   DockPopup::~DockPopup() = default;
 
   bool routePopupEvent(DockPopup& popup, const PointerEvent& event) {
-    const bool onPopup = (event.surface != nullptr && event.surface == popup.wlSurface);
+    const bool onPopup = (event.surface != nullptr && event.surface == popup.surface.get());
     bool consumed = false;
 
     switch (event.type) {

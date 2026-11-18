@@ -7,7 +7,7 @@
 #include "ui/controls/select_dropdown_popup.h"
 #include "ui/palette.h"
 #include "ui/style.h"
-#include "wayland/wayland_seat.h"
+#include "platform/input_events.h"
 
 #include <algorithm>
 #include <memory>
@@ -15,9 +15,9 @@
 ColorPickerDialogPopup::~ColorPickerDialogPopup() { destroyPopup(); }
 
 void ColorPickerDialogPopup::initialize(
-    WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
+    Display& display, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
 ) {
-  initializeBase(wayland, settings, renderContext, popupHosts);
+  initializeBase(display, settings, renderContext, popupHosts);
 }
 
 bool ColorPickerDialogPopup::openColorPicker() {
@@ -64,12 +64,12 @@ void ColorPickerDialogPopup::populateContent(Node* contentParent, std::uint32_t 
   m_sheet = sheet.get();
   contentParent->addChild(std::move(sheet));
 
-  if (wayland() != nullptr && renderContext() != nullptr && xdgSurface() != nullptr) {
+  if (display() != nullptr && renderContext() != nullptr && surface() != nullptr) {
     if (m_selectPopup == nullptr) {
-      m_selectPopup = std::make_unique<SelectDropdownPopup>(*wayland(), *renderContext());
+      m_selectPopup = std::make_unique<SelectDropdownPopup>(*display(), *renderContext());
     }
     m_selectPopup->setShadowConfig(shadowStyle());
-    m_selectPopup->setParent(xdgSurface(), wlSurface(), nullptr);
+    m_selectPopup->setParent(surface(), OutputId::None);
     contentParent->setPopupContext(m_selectPopup.get());
   }
 }

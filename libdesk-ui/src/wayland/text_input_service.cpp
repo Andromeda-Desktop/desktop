@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "text-input-unstable-v3-client-protocol.h"
+#include "wayland/surface.h"
 
 #include <algorithm>
 #include <limits>
@@ -151,9 +152,11 @@ void TextInputService::cleanup() {
 bool TextInputService::isAvailable() const noexcept { return m_textInput != nullptr; }
 
 void TextInputService::setFocusedClient(
-    wl_surface* surface, TextInputClient* client, bool acceptKeyboardFocusActivation,
-    wl_surface* keyboardFocusParentSurface
+    Surface* focusSurface, TextInputClient* client, bool acceptKeyboardFocusActivation,
+    Surface* keyboardFocusParent
 ) {
+  wl_surface* surface = WaylandSurface::wlOf(focusSurface);
+  wl_surface* keyboardFocusParentSurface = WaylandSurface::wlOf(keyboardFocusParent);
   if (surface == nullptr || client == nullptr) {
     clearFocusedClient(m_activeClient);
     return;

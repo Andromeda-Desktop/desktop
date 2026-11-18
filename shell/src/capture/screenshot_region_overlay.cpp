@@ -903,7 +903,7 @@ namespace capture {
     Instance* target = nullptr;
     if (event.surface != nullptr) {
       for (auto& inst : m_instances) {
-        if (inst != nullptr && inst->surface != nullptr && inst->surface->wlSurface() == event.surface) {
+        if (inst != nullptr && inst->surface != nullptr && inst->surface.get() == event.surface) {
           target = inst.get();
           break;
         }
@@ -924,7 +924,7 @@ namespace capture {
     }
 
     const bool onTarget =
-        event.surface != nullptr && target->surface != nullptr && event.surface == target->surface->wlSurface();
+        event.surface != nullptr && target->surface != nullptr && event.surface == target->surface.get();
 
     switch (event.type) {
     case PointerEvent::Type::Enter:

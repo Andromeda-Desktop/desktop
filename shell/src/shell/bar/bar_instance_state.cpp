@@ -193,7 +193,7 @@ void Bar::syncInstances() {
     }
     if (!found || recreate) {
       if (inst->surface != nullptr) {
-        m_surfaceMap.erase(inst->surface->wlSurface());
+        m_surfaceMap.erase(inst->surface.get());
       }
       if (m_hoveredInstance == inst.get()) {
         m_hoveredInstance = nullptr;
@@ -289,7 +289,7 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
     return;
   }
 
-  m_surfaceMap[instance->surface->wlSurface()] = instance.get();
+  m_surfaceMap[instance->surface.get()] = instance.get();
   m_instances.push_back(std::move(instance));
   if (m_centerIslandSpaceCallback) {
     m_centerIslandSpaceCallback();
@@ -299,7 +299,7 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
 void Bar::destroyInstance(std::uint32_t outputName) {
   std::erase_if(m_instances, [outputName, this](const auto& inst) {
     if (inst->surface != nullptr) {
-      m_surfaceMap.erase(inst->surface->wlSurface());
+      m_surfaceMap.erase(inst->surface.get());
     }
     if (m_hoveredInstance == inst.get()) {
       m_hoveredInstance = nullptr;
@@ -779,7 +779,7 @@ void Bar::startHideFadeOut(BarInstance& instance, bool immediate) {
   }
 }
 
-BarInstance* Bar::instanceForSurface(wl_surface* surface) const noexcept {
+BarInstance* Bar::instanceForSurface(Surface* surface) const noexcept {
   if (surface == nullptr) {
     return nullptr;
   }

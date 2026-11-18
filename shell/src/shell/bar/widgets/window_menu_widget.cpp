@@ -22,6 +22,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "util/string_utils.h"
+#include "wayland/surface.h"
 #include "xdg-shell-client-protocol.h"
 
 #include <cmath>
@@ -509,9 +510,8 @@ void WindowMenuWidget::openAppMenu(std::size_t item) {
 
 void WindowMenuWidget::openPopup(std::size_t index, std::vector<ContextMenuControlEntry> entries) {
   const Item& menuItem = m_items[index];
-  wl_surface* pointerSurface = m_platform.lastPointerSurface();
-  auto* layerSurface = m_platform.layerSurfaceFor(pointerSurface);
-  if (layerSurface == nullptr || menuItem.area == nullptr) {
+  Surface* pointerSurface = m_platform.wayland().pointerSurface();
+  if (m_platform.layerSurfaceFor(WaylandSurface::wlOf(pointerSurface)) == nullptr || menuItem.area == nullptr) {
     return;
   }
   float absX = 0.0F;
@@ -534,7 +534,7 @@ void WindowMenuWidget::openPopup(std::size_t index, std::vector<ContextMenuContr
               .width = static_cast<std::int32_t>(std::lround(menuItem.area->width())),
               .height = static_cast<std::int32_t>(std::lround(menuItem.area->height())),
           },
-      .parent = PopupSurfaceParent{.layerSurface = layerSurface, .output = m_output, .wlSurface = pointerSurface},
+      .parent = PopupParent{.surface = pointerSurface, .output = m_platform.wayland().outputId(m_output)},
       // macOS menus drop from the item's leading edge.
       .placement =
           ContextMenuPopupPlacement{

@@ -6,6 +6,7 @@
 #include "ui/controls/context_menu.h"
 #include "ui/controls/scroll_view.h"
 #include "ui/popup_chrome.h"
+#include "platform/popup.h"
 #include "ui/popup_parent.h"
 #include "ui/popup_positioner.h"
 
@@ -16,12 +17,10 @@
 #include <vector>
 
 class Node;
-class PopupSurface;
 class RenderContext;
-class WaylandConnection;
+class Display;
 struct KeyboardEvent;
 struct PointerEvent;
-struct wl_surface;
 class ContextMenuPopupTestAccess;
 
 struct ContextMenuPopupPlacement {
@@ -48,10 +47,10 @@ struct ContextMenuPopupRequest {
   // first interactive entry.
   std::size_t initialHighlight = static_cast<std::size_t>(-1);
   PopupAnchorRect anchor;
-  PopupSurfaceParent parent;
+  PopupParent parent;
   // Surface whose pointer events are translated into menu coordinates while a press holds the
-  // pointer capture (scrollbar thumb drags leaving the popup). Defaults to parent.wlSurface.
-  wl_surface* pointerParentSurface = nullptr;
+  // pointer capture (scrollbar thumb drags leaving the popup). Defaults to parent.surface.
+  Surface* pointerParentSurface = nullptr;
   // Serial of the input event that requested this popup. When absent, legacy
   // callers retain the previous last-input-serial behavior.
   std::optional<std::uint32_t> inputSerial = std::nullopt;
@@ -62,7 +61,7 @@ struct ContextMenuPopupRequest {
 
 class ContextMenuPopup {
 public:
-  ContextMenuPopup(WaylandConnection& wayland, RenderContext& renderContext);
+  ContextMenuPopup(Display& display, RenderContext& renderContext);
   ~ContextMenuPopup();
 
   void open(ContextMenuPopupRequest request);
@@ -77,10 +76,9 @@ public:
 
   bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
-  [[nodiscard]] wl_surface* wlSurface() const noexcept;
+  [[nodiscard]] Surface* surface() const noexcept;
   // This menu's surface or an open submenu's, at any depth: pointer events on either belong to this menu.
-  [[nodiscard]] bool ownsSurface(wl_surface* surface) const noexcept;
-  [[nodiscard]] xdg_surface* xdgSurface() const noexcept;
+  [[nodiscard]] bool ownsSurface(const Surface* surface) const noexcept;
   [[nodiscard]] std::uint32_t width() const noexcept;
   [[nodiscard]] std::uint32_t height() const noexcept;
 
@@ -91,17 +89,16 @@ public:
 private:
   friend class ContextMenuPopupTestAccess;
 
-  WaylandConnection& m_wayland;
+  Display& m_display;
   RenderContext& m_renderContext;
-  std::unique_ptr<PopupSurface> m_surface;
+  std::unique_ptr<Popup> m_surface;
   std::unique_ptr<Node> m_sceneRoot;
   InputDispatcher m_inputDispatcher;
   ScrollViewState m_scrollState{};
   ScrollView* m_scrollView = nullptr;
   ContextMenuControl* m_menu = nullptr;
   std::size_t m_highlightedIndex = 0;
-  wl_surface* m_wlSurface = nullptr;
-  wl_surface* m_pointerParentSurface = nullptr;
+  Surface* m_pointerParentSurface = nullptr;
   bool m_pointerInside = false;
   bool m_closing = false; // fading out after an activation: input is ignored
   std::function<void()> m_pendingAction; // runs when the fade ends or the menu closes first
@@ -134,18 +131,15 @@ private:
   // example, a plugin panel being unregistered) destroys the popup.
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 
-  // Parent layer surface (e.g. a bar) whose keyboard interactivity is flipped to
-  // OnDemand while the menu is open so the grabbing popup inherits keyboard
-  // focus, then restored to None on close.
-  zwlr_layer_surface_v1* m_keyboardParentLayerSurface = nullptr;
-  wl_surface* m_keyboardParentWlSurface = nullptr;
+  // The parent that lends keyboard focus to this menu while it is open (Surface::setPopupKeyboardFocus).
+  Surface* m_keyboardParent = nullptr;
 
   std::vector<ContextMenuControlEntry> m_entries;
   float m_contentScale = 1.0F;
   float m_contentX = 0.0F;
   float m_contentY = 0.0F;
   float m_contentWidth = 0.0F;
-  wl_output* m_output = nullptr;
+  OutputId m_output = OutputId::None;
   std::unique_ptr<ContextMenuPopup> m_child;
   std::size_t m_childIndex = static_cast<std::size_t>(-1);
   ContextMenuPopup* m_parentMenu = nullptr;

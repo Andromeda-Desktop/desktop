@@ -277,6 +277,16 @@ void LayerSurface::setKeyboardInteractivity(LayerShellKeyboard mode) {
   wl_surface_commit(m_surface);
 }
 
+void LayerSurface::setPopupKeyboardFocus(bool lend) {
+  if (lend && m_config.keyboard == LayerShellKeyboard::None) {
+    m_keyboardLent = true;
+    setKeyboardInteractivity(LayerShellKeyboard::OnDemand);
+  } else if (!lend && m_keyboardLent) {
+    m_keyboardLent = false;
+    setKeyboardInteractivity(LayerShellKeyboard::None);
+  }
+}
+
 void LayerSurface::setClickThrough(bool clickThrough) {
   if (m_clickThrough == clickThrough) {
     return;

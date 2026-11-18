@@ -5,16 +5,16 @@
 #include "render/scene/node.h"
 #include "ui/controls/glyph_picker.h"
 #include "ui/controls/select_dropdown_popup.h"
-#include "wayland/wayland_seat.h"
+#include "platform/input_events.h"
 
 #include <memory>
 
 GlyphPickerDialogPopup::~GlyphPickerDialogPopup() { destroyPopup(); }
 
 void GlyphPickerDialogPopup::initialize(
-    WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
+    Display& display, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
 ) {
-  initializeBase(wayland, settings, renderContext, popupHosts);
+  initializeBase(display, settings, renderContext, popupHosts);
 }
 
 bool GlyphPickerDialogPopup::openGlyphPicker() {
@@ -47,8 +47,8 @@ void GlyphPickerDialogPopup::onKeyboardEvent(const KeyboardEvent& event) {
   DialogPopupHost::onKeyboardEvent(event);
 }
 
-bool GlyphPickerDialogPopup::ownsSelectDropdownSurface(wl_surface* surface) const noexcept {
-  return m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && m_selectPopup->wlSurface() == surface;
+bool GlyphPickerDialogPopup::ownsSelectDropdownSurface(const Surface* surface) const noexcept {
+  return m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && m_selectPopup->surface() == surface;
 }
 
 void GlyphPickerDialogPopup::populateContent(Node* contentParent, std::uint32_t /*width*/, std::uint32_t /*height*/) {
@@ -62,12 +62,12 @@ void GlyphPickerDialogPopup::populateContent(Node* contentParent, std::uint32_t 
   m_sheet = sheet.get();
   contentParent->addChild(std::move(sheet));
 
-  if (wayland() != nullptr && renderContext() != nullptr && xdgSurface() != nullptr) {
+  if (display() != nullptr && renderContext() != nullptr && surface() != nullptr) {
     if (m_selectPopup == nullptr) {
-      m_selectPopup = std::make_unique<SelectDropdownPopup>(*wayland(), *renderContext());
+      m_selectPopup = std::make_unique<SelectDropdownPopup>(*display(), *renderContext());
     }
     m_selectPopup->setShadowConfig(shadowStyle());
-    m_selectPopup->setParent(xdgSurface(), wlSurface(), nullptr);
+    m_selectPopup->setParent(surface(), OutputId::None);
     contentParent->setPopupContext(m_selectPopup.get());
   }
 }

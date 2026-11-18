@@ -652,7 +652,7 @@ bool Dock::onPointerEvent(const PointerEvent& event) {
     }
     if (event.type == PointerEvent::Type::Button && event.pressed) {
       closeItemMenu();
-      if (event.surface == nullptr || !m_surfaceMap.contains(event.surface)) {
+      if (event.surface == nullptr || !m_surfaceMap.contains(WaylandSurface::wlOf(event.surface))) {
         return true;
       }
     }
@@ -660,7 +660,7 @@ bool Dock::onPointerEvent(const PointerEvent& event) {
 
   switch (event.type) {
   case PointerEvent::Type::Enter: {
-    auto it = m_surfaceMap.find(event.surface);
+    auto it = m_surfaceMap.find(WaylandSurface::wlOf(event.surface));
     if (it == m_surfaceMap.end()) {
       break;
     }
@@ -719,7 +719,7 @@ bool Dock::onPointerEvent(const PointerEvent& event) {
     break;
   }
   case PointerEvent::Type::Button: {
-    auto it = m_surfaceMap.find(event.surface);
+    auto it = m_surfaceMap.find(WaylandSurface::wlOf(event.surface));
     if (it != m_surfaceMap.end()) {
       shell::dock::DockInstance* targetInstance = it->second;
       if (m_hoveredInstance != targetInstance) {
@@ -1688,7 +1688,7 @@ void Dock::openItemPreview(shell::dock::DockInstance* instance, const std::strin
       });
     });
   }
-  TooltipManager::instance().onHoverChange(nullptr, static_cast<zwlr_layer_surface_v1*>(nullptr), nullptr);
+  TooltipManager::instance().onHoverChange(nullptr, nullptr, OutputId::None);
   const InputArea& area = *instance->items[index].area;
   float x = 0.0F;
   float y = 0.0F;

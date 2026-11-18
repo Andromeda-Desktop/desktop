@@ -7,15 +7,13 @@
 #include <memory>
 
 class Node;
-struct xdg_surface;
 
 // A popover under a header control (FILES-UI-SPEC §14 jobs popover): an xdg_popup in the menu material with any
 // content. Outside clicks and Escape close it.
 class AppPopover final : public DialogPopupHost {
 public:
   struct Request {
-    xdg_surface* parentXdg = nullptr;
-    wl_surface* parentWl = nullptr;
+    Surface* parent = nullptr;
     std::uint32_t serial = 0;
     // The control the popover hangs under, in window surface coordinates.
     std::int32_t anchorX = 0;
@@ -28,7 +26,7 @@ public:
     std::function<std::unique_ptr<Node>(float scale)> content;
   };
 
-  AppPopover(WaylandConnection& wayland, RenderContext& renderContext);
+  AppPopover(Display& display, RenderContext& renderContext);
   ~AppPopover() override;
 
   void open(Request request);
@@ -43,7 +41,7 @@ public:
   using DialogPopupHost::isOpen;
   using DialogPopupHost::onKeyboardEvent;
   using DialogPopupHost::onPointerEvent;
-  using DialogPopupHost::wlSurface;
+  using DialogPopupHost::surface;
 
 protected:
   void populateContent(Node* contentParent, std::uint32_t width, std::uint32_t height) override;

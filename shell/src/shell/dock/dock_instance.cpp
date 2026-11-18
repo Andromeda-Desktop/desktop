@@ -426,8 +426,9 @@ namespace shell::dock {
         platform.setCursorShape(serial, std::to_underlying(shape));
       });
       instance.inputDispatcher.setHoverChangeCallback(
-          [inst = &instance, itemHover = callbacks.itemHover](InputArea* /*old*/, InputArea* next) {
-            TooltipManager::instance().onHoverChange(next, inst->surface->layerSurface(), inst->output);
+          [inst = &instance, &platform = deps.platform,
+           itemHover = callbacks.itemHover](InputArea* /*old*/, InputArea* next) {
+            TooltipManager::instance().onHoverChange(next, inst->surface.get(), platform.wayland().outputId(inst->output));
             if (itemHover) {
               itemHover(*inst, next);
             }

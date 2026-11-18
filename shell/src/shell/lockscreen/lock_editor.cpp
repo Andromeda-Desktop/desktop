@@ -1060,7 +1060,7 @@ bool LockEditor::onPointerEvent(const PointerEvent& event) {
   if (!isOpen()) {
     return false;
   }
-  if (event.surface != nullptr && event.surface != m_surface->wlSurface()) {
+  if (event.surface != nullptr && event.surface != m_surface.get()) {
     return false;
   }
   const auto x = static_cast<float>(event.sx);

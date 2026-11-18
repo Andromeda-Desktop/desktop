@@ -13,14 +13,14 @@
 #include <format>
 #include <limits>
 #include <string>
-#include <unordered_set>
+#include <unordered_map>
 
 namespace {
 
   constexpr Logger kLog("surface");
 
-  std::unordered_set<const wl_surface*>& liveSurfaces() {
-    static std::unordered_set<const wl_surface*> surfaces;
+  std::unordered_map<const wl_surface*, WaylandSurface*>& liveSurfaces() {
+    static std::unordered_map<const wl_surface*, WaylandSurface*> surfaces;
     return surfaces;
   }
 
@@ -163,12 +163,27 @@ void WaylandSurface::onSurfaceOutputLeave(wl_surface* surface, wl_output* output
 
 bool WaylandSurface::isLive(const wl_surface* surface) { return liveSurfaces().contains(surface); }
 
+bool WaylandSurface::isLive(const Surface* surface) noexcept {
+  return surface != nullptr
+      && std::ranges::any_of(liveSurfaces(), [surface](const auto& entry) { return entry.second == surface; });
+}
+
+WaylandSurface* WaylandSurface::fromWl(const wl_surface* surface) {
+  const auto it = liveSurfaces().find(surface);
+  return it != liveSurfaces().end() ? it->second : nullptr;
+}
+
+wl_surface* WaylandSurface::wlOf(const Surface* surface) {
+  const auto* wayland = dynamic_cast<const WaylandSurface*>(surface);
+  return wayland != nullptr ? wayland->wlSurface() : nullptr;
+}
+
 bool WaylandSurface::createWlSurface() {
   m_surface = wl_compositor_create_surface(m_connection.compositor());
   if (m_surface == nullptr) {
     return false;
   }
-  liveSurfaces().insert(m_surface);
+  liveSurfaces().emplace(m_surface, this);
   trace("create-wl-surface");
   wl_surface_add_listener(m_surface, &kSurfaceListener, this);
 

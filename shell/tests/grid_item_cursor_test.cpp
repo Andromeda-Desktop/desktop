@@ -62,14 +62,14 @@ int main() {
   grid.setCellHeight(50.0F);
   grid.setColumnGap(20.0F);
   grid.setRowGap(20.0F);
-  grid.setItemCursorShape(21);
+  grid.setItemCursorShape(CursorShape::NwResize);
   grid.setAdapter(&adapter);
   grid.setSize(240.0F, 120.0F);
   grid.layout(renderer);
 
   InputDispatcher dispatcher;
-  std::uint32_t cursor = 0;
-  dispatcher.setCursorShapeCallback([&cursor](std::uint32_t, std::uint32_t shape) { cursor = shape; });
+  CursorShape cursor{};
+  dispatcher.setCursorShapeCallback([&cursor](std::uint32_t, CursorShape shape) { cursor = shape; });
   dispatcher.setSceneRoot(&grid);
 
   float cell0X = 0.0F;
@@ -80,20 +80,20 @@ int main() {
   ok = expect(grid.absoluteAnchorForIndex(1, cell1X, cell1Y), "cell 1 anchor resolved") && ok;
 
   dispatcher.pointerEnter(cell0X, cell0Y, 1);
-  ok = expect(cursor == 21, "item cursor shape applies over a cell") && ok;
+  ok = expect(cursor == CursorShape::NwResize, "item cursor shape applies over a cell") && ok;
 
   dispatcher.pointerMotion((cell0X + cell1X) * 0.5F, cell0Y, 2);
-  ok = expect(cursor == 1, "gutter between cells keeps the default cursor") && ok;
+  ok = expect(cursor == CursorShape::Default, "gutter between cells keeps the default cursor") && ok;
 
   dispatcher.pointerMotion(cell1X, cell1Y, 3);
-  ok = expect(cursor == 21, "item cursor shape applies to every cell") && ok;
+  ok = expect(cursor == CursorShape::NwResize, "item cursor shape applies to every cell") && ok;
 
-  grid.setItemCursorShape(24);
+  grid.setItemCursorShape(CursorShape::SwResize);
   dispatcher.pointerMotion(cell1X + 1.0F, cell1Y, 4);
-  ok = expect(cursor == 24, "shape change reaches already-created cell areas") && ok;
+  ok = expect(cursor == CursorShape::SwResize, "shape change reaches already-created cell areas") && ok;
 
   dispatcher.pointerLeave();
-  ok = expect(cursor == 1, "leaving the surface restores the default cursor") && ok;
+  ok = expect(cursor == CursorShape::Default, "leaving the surface restores the default cursor") && ok;
 
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }

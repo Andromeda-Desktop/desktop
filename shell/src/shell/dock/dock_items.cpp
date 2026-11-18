@@ -75,7 +75,7 @@ namespace {
   }
 
   void dismissDockTooltipImpl() {
-    TooltipManager::instance().onHoverChange(nullptr, static_cast<zwlr_layer_surface_v1*>(nullptr), nullptr);
+    TooltipManager::instance().onHoverChange(nullptr, nullptr, OutputId::None);
   }
 
   [[nodiscard]] int dockIconDecodeTargetSize(const DockConfig& cfg) {

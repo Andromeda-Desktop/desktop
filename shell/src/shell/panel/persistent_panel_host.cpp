@@ -81,13 +81,12 @@ std::optional<LayerPopupParentContext> PersistentPanelHost::popupParentContext(s
   }
   const auto& instance = **it;
   LayerPopupParentContext context{
-      .surface = instance.surface->wlSurface(),
-      .layerSurface = instance.surface->layerSurface(),
-      .output = instance.output,
+      .surface = instance.surface.get(),
+      .output = m_platform->wayland().outputId(instance.output),
       .width = instance.surface->width(),
       .height = instance.surface->height(),
   };
-  if (context.surface == nullptr || context.layerSurface == nullptr || context.width == 0 || context.height == 0) {
+  if (context.surface == nullptr || instance.surface->layerSurface() == nullptr || context.width == 0 || context.height == 0) {
     return std::nullopt;
   }
   return context;
@@ -368,13 +367,13 @@ void PersistentPanelHost::buildScene(Instance& instance, std::uint32_t width, st
 
   auto* raw = &instance;
   instance.inputDispatcher.setSceneRoot(instance.sceneRoot.get());
-  instance.inputDispatcher.setTextInputContext(instance.surface->wlSurface(), m_platform->wayland().textInputService());
+  instance.inputDispatcher.setTextInputContext(instance.surface.get(), m_platform->wayland().textInputService());
   instance.inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     m_platform->setCursorShape(serial, std::to_underlying(shape));
   });
-  instance.inputDispatcher.setHoverChangeCallback([raw](InputArea* /*old*/, InputArea* next) {
+  instance.inputDispatcher.setHoverChangeCallback([this, raw](InputArea* /*old*/, InputArea* next) {
     if (raw->surface != nullptr) {
-      TooltipManager::instance().onHoverChange(next, raw->surface->layerSurface(), raw->output);
+      TooltipManager::instance().onHoverChange(next, raw->surface.get(), m_platform->wayland().outputId(raw->output));
     }
   });
   instance.inputDispatcher.setFocusChangeCallback([raw](InputArea* /*old*/, InputArea* next) {
@@ -506,7 +505,7 @@ bool PersistentPanelHost::onPointerEvent(const PointerEvent& event) {
   if (m_instances.empty()) {
     return false;
   }
-  Instance* instance = findInstanceForSurface(event.surface);
+  Instance* instance = findInstanceForSurface(WaylandSurface::wlOf(event.surface));
   if (instance == nullptr) {
     // Motion/axis carry no surface on some compositors; route to whichever
     // instance the pointer last entered.

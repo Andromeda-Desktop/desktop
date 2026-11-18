@@ -414,8 +414,8 @@ void DesktopWidgetsEditor::createSurface(const WaylandOutput& output) {
   overlay->surface->setPrepareFrameCallback([this, rawOverlay](bool needsUpdate, bool needsLayout) {
     prepareFrame(*rawOverlay, needsUpdate, needsLayout);
   });
-  overlay->inputDispatcher.setHoverChangeCallback([rawOverlay](InputArea* /*old*/, InputArea* next) {
-    TooltipManager::instance().onHoverChange(next, rawOverlay->surface->layerSurface(), rawOverlay->output);
+  overlay->inputDispatcher.setHoverChangeCallback([this, rawOverlay](InputArea* /*old*/, InputArea* next) {
+    TooltipManager::instance().onHoverChange(next, rawOverlay->surface.get(), m_wayland->outputId(rawOverlay->output));
   });
   overlay->surface->setFrameTickCallback([this, rawOverlay](float deltaMs) {
     if (m_renderContext == nullptr || rawOverlay->surface == nullptr) {
@@ -446,23 +446,21 @@ DesktopWidgetsEditor::overlayPopupParentContext(const OverlaySurface& surface) c
     return std::nullopt;
   }
 
-  zwlr_layer_surface_v1* layerSurface = surface.surface->layerSurface();
   const std::uint32_t width = surface.surface->width();
   const std::uint32_t height = surface.surface->height();
-  if (layerSurface == nullptr || width == 0 || height == 0) {
+  if (surface.surface->layerSurface() == nullptr || width == 0 || height == 0) {
     return std::nullopt;
   }
 
   return LayerPopupParentContext{
-      .surface = surface.surface->wlSurface(),
-      .layerSurface = layerSurface,
-      .output = surface.output,
+      .surface = surface.surface.get(),
+      .output = m_wayland->outputId(surface.output),
       .width = width,
       .height = height,
   };
 }
 
-std::optional<LayerPopupParentContext> DesktopWidgetsEditor::popupParentContextForSurface(wl_surface* surface) const {
+std::optional<LayerPopupParentContext> DesktopWidgetsEditor::popupParentContextForSurface(Surface* surface) const {
   if (surface == nullptr) {
     return std::nullopt;
   }
@@ -476,12 +474,12 @@ std::optional<LayerPopupParentContext> DesktopWidgetsEditor::fallbackPopupParent
   }
 
   if (m_wayland != nullptr) {
-    if (const OverlaySurface* overlay = findSurface(m_wayland->lastPointerSurface()); overlay != nullptr) {
+    if (const OverlaySurface* overlay = findSurface(m_wayland->pointerSurface()); overlay != nullptr) {
       if (auto context = overlayPopupParentContext(*overlay); context.has_value()) {
         return context;
       }
     }
-    if (const OverlaySurface* overlay = findSurface(m_wayland->lastKeyboardSurface()); overlay != nullptr) {
+    if (const OverlaySurface* overlay = findSurface(m_wayland->keyboardSurface()); overlay != nullptr) {
       if (auto context = overlayPopupParentContext(*overlay); context.has_value()) {
         return context;
       }
@@ -496,13 +494,13 @@ std::optional<LayerPopupParentContext> DesktopWidgetsEditor::fallbackPopupParent
   return std::nullopt;
 }
 
-DesktopWidgetsEditor::OverlaySurface* DesktopWidgetsEditor::findSurface(wl_surface* surface) {
+DesktopWidgetsEditor::OverlaySurface* DesktopWidgetsEditor::findSurface(Surface* surface) {
   return const_cast<OverlaySurface*>(std::as_const(*this).findSurface(surface));
 }
 
-const DesktopWidgetsEditor::OverlaySurface* DesktopWidgetsEditor::findSurface(wl_surface* surface) const {
+const DesktopWidgetsEditor::OverlaySurface* DesktopWidgetsEditor::findSurface(Surface* surface) const {
   for (const auto& overlay : m_surfaces) {
-    if (overlay->surface != nullptr && overlay->surface->wlSurface() == surface) {
+    if (overlay->surface != nullptr && overlay->surface.get() == surface) {
       return overlay.get();
     }
   }
@@ -663,7 +661,7 @@ void DesktopWidgetsEditor::rebuildScene(OverlaySurface& surface) {
     if (m_config != nullptr) {
       surface.selectPopup->setShadowConfig(m_config->config().shell.shadow);
     }
-    surface.selectPopup->setParent(surface.surface->layerSurface(), surface.surface->wlSurface(), surface.output);
+    surface.selectPopup->setParent(surface.surface.get(), m_wayland->outputId(surface.output));
     root->setPopupContext(surface.selectPopup.get());
   }
   root->setFrameSize(static_cast<float>(surface.surface->width()), static_cast<float>(surface.surface->height()));
@@ -1328,7 +1326,7 @@ void DesktopWidgetsEditor::rebuildScene(OverlaySurface& surface) {
 
   surface.sceneRoot = std::move(root);
   surface.surface->setSceneRoot(surface.sceneRoot.get());
-  surface.inputDispatcher.setTextInputContext(surface.surface->wlSurface(), m_wayland->textInputService());
+  surface.inputDispatcher.setTextInputContext(surface.surface.get(), m_wayland->textInputService());
   surface.inputDispatcher.setSceneRoot(surface.sceneRoot.get());
 }
 
@@ -1819,7 +1817,7 @@ std::string DesktopWidgetsEditor::currentPointerOutputName() const {
     }
   }
   if (m_wayland != nullptr) {
-    if (const OverlaySurface* surface = findSurface(m_wayland->lastPointerSurface()); surface != nullptr) {
+    if (const OverlaySurface* surface = findSurface(m_wayland->pointerSurface()); surface != nullptr) {
       return surface->outputName;
     }
   }
@@ -2443,11 +2441,11 @@ bool DesktopWidgetsEditor::onPointerEvent(const PointerEvent& event) {
     return false;
   }
 
-  wl_surface* eventSurface = event.surface;
+  Surface* eventSurface = event.surface;
   if (eventSurface == nullptr && m_wayland != nullptr) {
     // wl_pointer.motion does not carry the surface; reuse the seat's current
     // pointer focus so drags continue after the initial press.
-    eventSurface = m_wayland->lastPointerSurface();
+    eventSurface = m_wayland->pointerSurface();
   }
 
   for (auto& s : m_surfaces) {

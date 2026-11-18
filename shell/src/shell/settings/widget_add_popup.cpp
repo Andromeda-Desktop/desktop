@@ -157,7 +157,7 @@ namespace settings {
   void WidgetAddPopup::setOnDismissed(std::function<void()> callback) { m_onDismissed = std::move(callback); }
 
   void WidgetAddPopup::open(WidgetAddPopupRequest request) {
-    if (request.parent.xdgSurface == nullptr || request.parent.wlSurface == nullptr) {
+    if (request.parent.surface == nullptr) {
       return;
     }
 
@@ -242,8 +242,6 @@ namespace settings {
   bool WidgetAddPopup::onPointerEvent(const PointerEvent& event) { return DialogPopupHost::onPointerEvent(event); }
 
   void WidgetAddPopup::onKeyboardEvent(const KeyboardEvent& event) { DialogPopupHost::onKeyboardEvent(event); }
-
-  wl_surface* WidgetAddPopup::wlSurface() const noexcept { return DialogPopupHost::wlSurface(); }
 
   void WidgetAddPopup::requestLayout() { DialogPopupHost::requestLayout(); }
 
@@ -599,9 +597,9 @@ namespace settings {
     if (m_renderContext != nullptr && !m_createLabel.empty()) {
       const float fontSize = Style::fontSizeBody * m_scale;
       float measureScale = 1.0F;
-      if (wayland() != nullptr && m_parent.output != nullptr) {
-        if (const WaylandOutput* out = wayland()->findOutputByWl(m_parent.output); out != nullptr) {
-          measureScale = out->configuredScale();
+      if (display() != nullptr) {
+        if (const auto info = display()->outputInfo(m_parent.output); info.has_value()) {
+          measureScale = info->scale;
         }
       }
       ScaledRenderer measureRenderer(*m_renderContext, measureScale);
@@ -627,7 +625,7 @@ namespace settings {
   }
 
   void WidgetAddPopup::reopenForCurrentMode() {
-    if (m_parent.xdgSurface == nullptr || m_parent.wlSurface == nullptr) {
+    if (m_parent.surface == nullptr) {
       return;
     }
 

@@ -252,7 +252,7 @@ void PluginLayer::buildScene() {
   m_reconciler.setFocusRequestSink([this](InputArea* area) { m_pendingFocusArea = area; });
 
   m_inputDispatcher.setSceneRoot(m_sceneRoot.get());
-  m_inputDispatcher.setTextInputContext(m_surface->wlSurface(), m_services.platform.wayland().textInputService());
+  m_inputDispatcher.setTextInputContext(m_surface.get(), m_services.platform.wayland().textInputService());
   m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     m_services.platform.setCursorShape(serial, std::to_underlying(shape));
   });

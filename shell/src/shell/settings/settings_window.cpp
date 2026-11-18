@@ -319,13 +319,14 @@ bool SettingsWindow::ownsKeyboardSurface(wl_surface* surface) const noexcept {
   if (surface == m_surface->wlSurface()) {
     return true;
   }
-  if (m_widgetAddPopup != nullptr && m_widgetAddPopup->wlSurface() == surface) {
+  if (m_widgetAddPopup != nullptr && WaylandSurface::wlOf(m_widgetAddPopup->surface()) == surface) {
     return true;
   }
-  if (m_searchPickerPopup != nullptr && m_searchPickerPopup->wlSurface() == surface) {
+  if (m_searchPickerPopup != nullptr && WaylandSurface::wlOf(m_searchPickerPopup->surface()) == surface) {
     return true;
   }
-  return m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && m_selectPopup->wlSurface() == surface;
+  return m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()
+      && WaylandSurface::wlOf(m_selectPopup->surface()) == surface;
 }
 
 std::optional<LayerPopupParentContext> SettingsWindow::topmostPopupParentContext() const {
@@ -333,20 +334,17 @@ std::optional<LayerPopupParentContext> SettingsWindow::topmostPopupParentContext
     return std::nullopt;
   }
 
-  const auto makeContext = [this](
-                               wl_surface* wlSurface, xdg_surface* xdgSurface, std::uint32_t width, std::uint32_t height
-                           ) -> std::optional<LayerPopupParentContext> {
-    if (wlSurface == nullptr || xdgSurface == nullptr || width == 0 || height == 0) {
+  const auto makeContext = [this](Surface* surface, std::uint32_t width, std::uint32_t height)
+      -> std::optional<LayerPopupParentContext> {
+    if (surface == nullptr || width == 0 || height == 0) {
       return std::nullopt;
     }
-    wl_output* output = m_wayland != nullptr ? m_wayland->outputForSurface(wlSurface) : nullptr;
-    if (output == nullptr) {
-      output = m_output;
+    OutputId output = m_wayland->outputForSurface(*surface);
+    if (output == OutputId::None) {
+      output = m_wayland->outputId(m_output);
     }
     return LayerPopupParentContext{
-        .surface = wlSurface,
-        .layerSurface = nullptr,
-        .xdgSurface = xdgSurface,
+        .surface = surface,
         .output = output,
         .width = width,
         .height = height,
@@ -358,7 +356,7 @@ std::optional<LayerPopupParentContext> SettingsWindow::topmostPopupParentContext
       return std::nullopt;
     }
     return makeContext(
-        m_selectPopup->wlSurface(), m_selectPopup->xdgSurface(), m_selectPopup->popupWidth(),
+        m_selectPopup->surface(), m_selectPopup->popupWidth(),
         m_selectPopup->popupHeight()
     );
   };
@@ -368,17 +366,17 @@ std::optional<LayerPopupParentContext> SettingsWindow::topmostPopupParentContext
   }
   if (m_searchPickerPopup != nullptr && m_searchPickerPopup->isOpen()) {
     return makeContext(
-        m_searchPickerPopup->wlSurface(), m_searchPickerPopup->xdgSurface(), m_searchPickerPopup->width(),
+        m_searchPickerPopup->surface(), m_searchPickerPopup->width(),
         m_searchPickerPopup->height()
     );
   }
   if (m_widgetAddPopup != nullptr && m_widgetAddPopup->isOpen()) {
     return makeContext(
-        m_widgetAddPopup->wlSurface(), m_widgetAddPopup->xdgSurface(), m_widgetAddPopup->width(),
+        m_widgetAddPopup->surface(), m_widgetAddPopup->width(),
         m_widgetAddPopup->height()
     );
   }
-  return makeContext(m_surface->wlSurface(), m_surface->xdgSurface(), m_surface->width(), m_surface->height());
+  return makeContext(m_surface.get(), m_surface->width(), m_surface->height());
 }
 
 std::optional<LayerPopupParentContext> SettingsWindow::fallbackPopupParentContext() const {
@@ -389,49 +387,46 @@ std::optional<LayerPopupParentContext> SettingsWindow::fallbackPopupParentContex
   return context;
 }
 
-std::optional<LayerPopupParentContext> SettingsWindow::popupParentContextForSurface(wl_surface* surface) const {
+std::optional<LayerPopupParentContext> SettingsWindow::popupParentContextForSurface(Surface* surface) const {
   if (!isOpen() || surface == nullptr || m_surface == nullptr) {
     return std::nullopt;
   }
 
-  const auto makeContext = [this](
-                               wl_surface* wlSurface, xdg_surface* xdgSurface, std::uint32_t width, std::uint32_t height
-                           ) -> std::optional<LayerPopupParentContext> {
-    if (wlSurface == nullptr || xdgSurface == nullptr) {
+  const auto makeContext = [this](Surface* surface, std::uint32_t width, std::uint32_t height)
+      -> std::optional<LayerPopupParentContext> {
+    if (surface == nullptr) {
       return std::nullopt;
     }
-    wl_output* output = m_wayland != nullptr ? m_wayland->outputForSurface(wlSurface) : nullptr;
-    if (output == nullptr) {
-      output = m_output;
+    OutputId output = m_wayland->outputForSurface(*surface);
+    if (output == OutputId::None) {
+      output = m_wayland->outputId(m_output);
     }
     return LayerPopupParentContext{
-        .surface = wlSurface,
-        .layerSurface = nullptr,
-        .xdgSurface = xdgSurface,
+        .surface = surface,
         .output = output,
         .width = width,
         .height = height,
     };
   };
 
-  if (surface == m_surface->wlSurface()) {
+  if (surface == m_surface.get()) {
     return topmostPopupParentContext();
   }
-  if (m_widgetAddPopup != nullptr && surface == m_widgetAddPopup->wlSurface()) {
+  if (m_widgetAddPopup != nullptr && surface == m_widgetAddPopup->surface()) {
     return makeContext(
-        m_widgetAddPopup->wlSurface(), m_widgetAddPopup->xdgSurface(), m_widgetAddPopup->width(),
+        m_widgetAddPopup->surface(), m_widgetAddPopup->width(),
         m_widgetAddPopup->height()
     );
   }
-  if (m_searchPickerPopup != nullptr && surface == m_searchPickerPopup->wlSurface()) {
+  if (m_searchPickerPopup != nullptr && surface == m_searchPickerPopup->surface()) {
     return makeContext(
-        m_searchPickerPopup->wlSurface(), m_searchPickerPopup->xdgSurface(), m_searchPickerPopup->width(),
+        m_searchPickerPopup->surface(), m_searchPickerPopup->width(),
         m_searchPickerPopup->height()
     );
   }
-  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && surface == m_selectPopup->wlSurface()) {
+  if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && surface == m_selectPopup->surface()) {
     return makeContext(
-        m_selectPopup->wlSurface(), m_selectPopup->xdgSurface(), m_selectPopup->popupWidth(),
+        m_selectPopup->surface(), m_selectPopup->popupWidth(),
         m_selectPopup->popupHeight()
     );
   }
@@ -1136,8 +1131,7 @@ bool SettingsWindow::onPointerEvent(const PointerEvent& event) {
     return true;
   }
 
-  wl_surface* const ws = m_surface->wlSurface();
-  const bool onThis = (event.surface != nullptr && event.surface == ws);
+  const bool onThis = (event.surface != nullptr && event.surface == m_surface.get());
   bool consumed = false;
 
   switch (event.type) {

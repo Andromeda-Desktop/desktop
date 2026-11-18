@@ -397,7 +397,7 @@ void Bar::reload() {
     auto it = newBarsByName.find(inst.barConfig.name);
     auto destroy = [&] {
       if (inst.surface != nullptr) {
-        m_surfaceMap.erase(inst.surface->wlSurface());
+        m_surfaceMap.erase(inst.surface.get());
       }
       if (m_hoveredInstance == &inst) {
         m_hoveredInstance = nullptr;
@@ -789,8 +789,8 @@ void Bar::rearmTooltipForHoveredWidget() {
   // Same path a real hover takes, so the usual show delay still applies — the
   // tooltip must not blink into existence the instant the panel disappears.
   TooltipManager::instance().onBarHoverChange(
-      tooltipAreaForHover(*m_hoveredInstance, hovered), m_hoveredInstance->surface->layerSurface(),
-      m_hoveredInstance->output
+      tooltipAreaForHover(*m_hoveredInstance, hovered), m_hoveredInstance->surface.get(),
+      m_platform->wayland().outputId(m_hoveredInstance->output)
   );
 }
 
@@ -945,23 +945,21 @@ void Bar::syncBarSurfaceChrome(BarInstance& instance) {
   notifyCenterIslandSpace(instance);
 }
 
-std::optional<LayerPopupParentContext> Bar::popupParentContextForSurface(wl_surface* surface) const noexcept {
+std::optional<LayerPopupParentContext> Bar::popupParentContextForSurface(Surface* surface) const noexcept {
   auto* instance = instanceForSurface(surface);
   if (instance == nullptr || instance->surface == nullptr) {
     return std::nullopt;
   }
 
-  auto* layerSurface = instance->surface->layerSurface();
   const auto width = instance->surface->width();
   const auto height = instance->surface->height();
-  if (layerSurface == nullptr || width == 0 || height == 0) {
+  if (instance->surface->layerSurface() == nullptr || width == 0 || height == 0) {
     return std::nullopt;
   }
 
   return LayerPopupParentContext{
-      .surface = instance->surface->wlSurface(),
-      .layerSurface = layerSurface,
-      .output = instance->output,
+      .surface = instance->surface.get(),
+      .output = m_platform->wayland().outputId(instance->output),
       .width = width,
       .height = height,
   };
@@ -973,7 +971,7 @@ std::optional<LayerPopupParentContext> Bar::preferredPopupParentContext(wl_outpu
     instance = m_instances.front().get();
   }
   return instance != nullptr && instance->surface != nullptr
-      ? popupParentContextForSurface(instance->surface->wlSurface())
+      ? popupParentContextForSurface(instance->surface.get())
       : std::nullopt;
 }
 
@@ -1180,7 +1178,7 @@ void Bar::setAttachedPanelGeometry(
   }
 }
 
-void Bar::beginAttachedPopup(wl_surface* surface) {
+void Bar::beginAttachedPopup(Surface* surface) {
   auto* instance = instanceForSurface(surface);
   if (instance == nullptr) {
     return;
@@ -1188,7 +1186,7 @@ void Bar::beginAttachedPopup(wl_surface* surface) {
   ++instance->attachedPopupCount;
 }
 
-void Bar::endAttachedPopup(wl_surface* surface) {
+void Bar::endAttachedPopup(Surface* surface) {
   auto* instance = instanceForSurface(surface);
   if (instance == nullptr) {
     return;
@@ -1200,7 +1198,7 @@ void Bar::endAttachedPopup(wl_surface* surface) {
     return;
   }
   instance->pointerInside =
-      m_platform != nullptr && m_platform->hasPointerPosition() && m_platform->lastPointerSurface() == surface;
+      m_platform != nullptr && m_platform->hasPointerPosition() && m_platform->wayland().pointerSurface() == surface;
   if (instance->pointerInside) {
     instance->lastPointerSx = static_cast<float>(m_platform->lastPointerX());
     instance->lastPointerSy = static_cast<float>(m_platform->lastPointerY());

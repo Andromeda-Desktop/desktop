@@ -3,17 +3,17 @@
 #include "render/render_context.h"
 #include "render/scene/input_dispatcher.h"
 #include "render/scene/node.h"
-#include "wayland/wayland_seat.h"
+#include "platform/input_events.h"
 
 #include <utility>
 
 FileDialogPopup::~FileDialogPopup() { destroyPopup(); }
 
 void FileDialogPopup::initialize(
-    WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts,
+    Display& display, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts,
     ThumbnailService& thumbnails
 ) {
-  initializeBase(wayland, settings, renderContext, popupHosts);
+  initializeBase(display, settings, renderContext, popupHosts);
   m_thumbnails = &thumbnails;
 }
 

@@ -1182,7 +1182,7 @@ void Application::initBarDockAndLayout() {
   m_configService.addReloadCallback([this] { m_hotCorners.onConfigReload(); });
 
   m_layerPopupHosts.registerHost(
-      [this](wl_surface* surface) {
+      [this](Surface* surface) {
         if (auto context = m_lockscreenWidgetsController.popupParentContextForSurface(surface); context.has_value()) {
           return context;
         }
@@ -1197,15 +1197,15 @@ void Application::initBarDockAndLayout() {
       }
   );
   m_layerPopupHosts.registerHost(
-      [this](wl_surface* surface) { return m_panelManager.popupParentContextForSurface(surface); },
-      [this](wl_surface* surface) { m_panelManager.beginAttachedPopup(surface); },
-      [this](wl_surface* surface) { m_panelManager.endAttachedPopup(surface); },
+      [this](Surface* surface) { return m_panelManager.popupParentContextForSurface(surface); },
+      [this](Surface* surface) { m_panelManager.beginAttachedPopup(surface); },
+      [this](Surface* surface) { m_panelManager.endAttachedPopup(surface); },
       [this] { return m_panelManager.fallbackPopupParentContext(); }
   );
   m_layerPopupHosts.registerHost(
-      [this](wl_surface* surface) { return m_bar.popupParentContextForSurface(surface); },
-      [this](wl_surface* surface) { m_bar.beginAttachedPopup(surface); },
-      [this](wl_surface* surface) { m_bar.endAttachedPopup(surface); },
+      [this](Surface* surface) { return m_bar.popupParentContextForSurface(surface); },
+      [this](Surface* surface) { m_bar.beginAttachedPopup(surface); },
+      [this](Surface* surface) { m_bar.endAttachedPopup(surface); },
       [this] {
         return m_bar.preferredPopupParentContext(
             m_compositorPlatform.preferredInteractiveOutput(std::chrono::milliseconds(1200))
@@ -1213,11 +1213,11 @@ void Application::initBarDockAndLayout() {
       }
   );
   m_layerPopupHosts.registerHost(
-      [this](wl_surface* surface) { return m_settingsWindow.popupParentContextForSurface(surface); }, {}, {},
+      [this](Surface* surface) { return m_settingsWindow.popupParentContextForSurface(surface); }, {}, {},
       [this] { return m_settingsWindow.fallbackPopupParentContext(); }
   );
   m_layerPopupHosts.registerHost(
-      [this](wl_surface* surface) { return m_wallpaperWindow.popupParentContextForSurface(surface); }, {}, {},
+      [this](Surface* surface) { return m_wallpaperWindow.popupParentContextForSurface(surface); }, {}, {},
       [this] { return m_wallpaperWindow.fallbackPopupParentContext(); }
   );
 

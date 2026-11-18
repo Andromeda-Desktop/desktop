@@ -75,6 +75,9 @@ public:
   void setKeyboardInteractivity(LayerShellKeyboard mode);
   void setClosedCallback(std::function<void()> callback);
   [[nodiscard]] LayerShellKeyboard keyboardInteractivity() const noexcept { return m_config.keyboard; }
+  // A popup inherits its layer parent's keyboard interactivity: a None layer (bar) is OnDemand while lent.
+  void setPopupKeyboardFocus(bool lend) override;
+  [[nodiscard]] bool isShellLayer() const noexcept override { return true; }
   [[nodiscard]] std::uint32_t anchor() const noexcept { return m_config.anchor; }
   [[nodiscard]] std::int32_t marginTop() const noexcept { return m_config.marginTop; }
   [[nodiscard]] std::int32_t marginRight() const noexcept { return m_config.marginRight; }
@@ -90,6 +93,7 @@ private:
   void applyInputRegion();
 
   LayerSurfaceConfig m_config;
+  bool m_keyboardLent = false; // setPopupKeyboardFocus raised None to OnDemand
   zwlr_layer_surface_v1* m_layerSurface = nullptr;
   std::function<void()> m_closedCallback;
   bool m_clickThrough = false;

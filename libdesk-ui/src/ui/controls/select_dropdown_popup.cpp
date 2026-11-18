@@ -2,7 +2,6 @@
 
 #include "core/log.h"
 #include "ui/controls/context_menu.h"
-#include "ui/popup_parent.h"
 #include "ui/style.h"
 
 #include <algorithm>
@@ -16,24 +15,13 @@ namespace {
 
 } // namespace
 
-SelectDropdownPopup::SelectDropdownPopup(WaylandConnection& wayland, RenderContext& renderContext)
-    : m_popup(wayland, renderContext) {}
+SelectDropdownPopup::SelectDropdownPopup(Display& display, RenderContext& renderContext)
+    : m_popup(display, renderContext) {}
 
 SelectDropdownPopup::~SelectDropdownPopup() = default;
 
-void SelectDropdownPopup::setParent(
-    zwlr_layer_surface_v1* layerSurface, wl_surface* parentWlSurface, wl_output* output
-) {
-  m_parentLayerSurface = layerSurface;
-  m_parentXdgSurface = nullptr;
-  m_parentWlSurface = parentWlSurface;
-  m_parentOutput = output;
-}
-
-void SelectDropdownPopup::setParent(xdg_surface* xdgSurface, wl_surface* parentWlSurface, wl_output* output) {
-  m_parentLayerSurface = nullptr;
-  m_parentXdgSurface = xdgSurface;
-  m_parentWlSurface = parentWlSurface;
+void SelectDropdownPopup::setParent(Surface* parent, OutputId output) {
+  m_parent = parent;
   m_parentOutput = output;
 }
 
@@ -44,7 +32,7 @@ void SelectDropdownPopup::openSelectDropdown(const DropdownRequest& request, Dro
   // callbacks are rebound to the new one.
   m_popup.close();
 
-  if (m_parentLayerSurface == nullptr && m_parentXdgSurface == nullptr) {
+  if (m_parent == nullptr) {
     kLog.warn("no parent surface set");
     if (callbacks.onDismiss) {
       callbacks.onDismiss();
@@ -116,16 +104,7 @@ void SelectDropdownPopup::openSelectDropdown(const DropdownRequest& request, Dro
                   .width = request.anchorWidth,
                   .height = request.anchorHeight,
               },
-          // parent.wlSurface stays null: select parents (panels, settings window) are already
-          // keyboard OnDemand; the bar-style interactivity flip must not touch them. The parent
-          // surface is passed only for pointer-capture mapping (scrollbar drags).
-          .parent =
-              PopupSurfaceParent{
-                  .layerSurface = m_parentLayerSurface,
-                  .xdgSurface = m_parentXdgSurface,
-                  .output = m_parentOutput,
-              },
-          .pointerParentSurface = m_parentWlSurface,
+          .parent = PopupParent{.surface = m_parent, .output = m_parentOutput},
       }
   );
 }
@@ -138,9 +117,7 @@ bool SelectDropdownPopup::onPointerEvent(const PointerEvent& event) { return m_p
 
 void SelectDropdownPopup::onKeyboardEvent(const KeyboardEvent& event) { m_popup.onKeyboardEvent(event); }
 
-wl_surface* SelectDropdownPopup::wlSurface() const noexcept { return m_popup.wlSurface(); }
-
-xdg_surface* SelectDropdownPopup::xdgSurface() const noexcept { return m_popup.xdgSurface(); }
+Surface* SelectDropdownPopup::surface() const noexcept { return m_popup.surface(); }
 
 std::uint32_t SelectDropdownPopup::popupWidth() const noexcept { return m_popup.width(); }
 

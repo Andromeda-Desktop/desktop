@@ -1671,8 +1671,8 @@ void DesktopIcons::openDesktopMenu(float x, float y) {
       .minMenuWidth = static_cast<float>(kMenuW),
       .maxVisible = 24, // every row shows: a scrolling desktop menu hides Change Wallpaper
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
-      .parent = PopupSurfaceParent{.layerSurface = m_surface->layerSurface(), .output = m_output},
-      .pointerParentSurface = m_surface->wlSurface(),
+      .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
+      .pointerParentSurface = m_surface.get(),
   });
 }
 
@@ -1700,8 +1700,8 @@ void DesktopIcons::confirmDelete() {
       .minMenuWidth = static_cast<float>(kMenuW),
       .maxVisible = 4,
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(cell.x), .y = static_cast<std::int32_t>(cell.y + m_plate)},
-      .parent = PopupSurfaceParent{.layerSurface = m_surface->layerSurface(), .output = m_output},
-      .pointerParentSurface = m_surface->wlSurface(),
+      .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
+      .pointerParentSurface = m_surface.get(),
   });
 }
 
@@ -1773,8 +1773,8 @@ void DesktopIcons::openItemMenu(std::size_t index, float x, float y) {
       .minMenuWidth = static_cast<float>(kMenuW),
       .maxVisible = 20,
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
-      .parent = PopupSurfaceParent{.layerSurface = m_surface->layerSurface(), .output = m_output},
-      .pointerParentSurface = m_surface->wlSurface(),
+      .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
+      .pointerParentSurface = m_surface.get(),
   });
 }
 
@@ -1787,7 +1787,7 @@ bool DesktopIcons::onPointerEvent(const PointerEvent& event) {
       m_menu->close();
     }
   }
-  if (!ownsSurface(event.surface)) {
+  if (!ownsSurface(WaylandSurface::wlOf(event.surface))) {
     if (event.type == PointerEvent::Type::Leave && m_banding) {
       m_banding = false;
       requestBuild();

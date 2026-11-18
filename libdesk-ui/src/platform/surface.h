@@ -73,6 +73,11 @@ public:
 
   virtual bool initialize() = 0;
 
+  // A popup of this surface needs keyboard focus while open; a keyboard-inert shell layer lends it until false.
+  virtual void setPopupKeyboardFocus(bool /*lend*/) {}
+  // A desktop-shell layer (bar, panel, dock), not an application window or popup.
+  [[nodiscard]] virtual bool isShellLayer() const noexcept { return false; }
+
   [[nodiscard]] bool isRunning() const noexcept;
 
   void setConfigureCallback(ConfigureCallback callback);

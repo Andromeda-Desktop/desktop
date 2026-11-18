@@ -2,7 +2,7 @@
 
 #include "ui/controls/search_picker.h"
 #include "ui/dialogs/dialog_popup_host.h"
-#include "ui/popup_parent.h"
+#include "platform/popup.h"
 
 #include <functional>
 #include <memory>
@@ -13,15 +13,15 @@
 class UiSettings;
 class Flex;
 class RenderContext;
-class WaylandConnection;
+class Display;
 struct KeyboardEvent;
 struct PointerEvent;
-struct wl_surface;
+class Surface;
 
 struct SearchPickerPopupRequest {
-  // Set to open over an xdg toplevel (the settings window). Unset opens over the layer surface
+  // Set to open over a window (the settings window). Unset opens over the layer surface
   // that received the last input, resolved through LayerPopupHostRegistry.
-  std::optional<XdgPopupParent> parent;
+  std::optional<PopupParent> parent;
   std::string title;
   std::vector<SearchPickerOption> options;
   std::string selectedValue;
@@ -37,9 +37,9 @@ public:
   SearchPickerPopup() = default;
   ~SearchPickerPopup() override;
 
-  void initialize(WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext);
+  void initialize(Display& display, const UiSettings& settings, RenderContext& renderContext);
   void initialize(
-      WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext,
+      Display& display, const UiSettings& settings, RenderContext& renderContext,
       LayerPopupHostRegistry& popupHosts
   );
 
@@ -52,7 +52,7 @@ public:
   [[nodiscard]] bool isOpen() const noexcept;
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
-  [[nodiscard]] wl_surface* wlSurface() const noexcept;
+  [[nodiscard]] Surface* surface() const noexcept;
 
 protected:
   void populateContent(Node* contentParent, std::uint32_t width, std::uint32_t height) override;

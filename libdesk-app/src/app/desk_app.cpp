@@ -16,6 +16,7 @@
 #include "ui/tooltip/tooltip_manager.h"
 #include "wayland/text_input_service.h"
 #include "wayland/wayland_connection.h"
+#include "wayland/surface.h"
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
@@ -231,7 +232,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     }
   });
   m_loop.wayland().setAxisStopCallback([this](wl_surface* surface, std::uint32_t axis) {
-    if (AppWindow* window = windowFor(surface != nullptr ? surface : m_pointerSurface)) {
+    if (AppWindow* window = windowFor(surface != nullptr ? WaylandSurface::fromWl(surface) : m_pointerSurface)) {
       window->onAxisStop(axis);
     }
   });
@@ -353,7 +354,7 @@ void DeskApp::reapClosed() {
   }
 }
 
-AppWindow* DeskApp::windowFor(wl_surface* surface) const {
+AppWindow* DeskApp::windowFor(const Surface* surface) const {
   if (surface == nullptr) {
     return nullptr;
   }
@@ -366,7 +367,7 @@ AppWindow* DeskApp::windowFor(wl_surface* surface) const {
 }
 
 AppWindow* DeskApp::activeWindow() const {
-  if (AppWindow* focused = windowFor(m_loop.wayland().lastKeyboardSurface())) {
+  if (AppWindow* focused = windowFor(m_loop.wayland().keyboardSurface())) {
     return focused;
   }
   for (auto it = m_windows.rbegin(); it != m_windows.rend(); ++it) {
@@ -480,7 +481,7 @@ void DeskApp::routePointer(const PointerEvent& event) {
 }
 
 void DeskApp::routeKey(const KeyboardEvent& event) {
-  if (AppWindow* window = windowFor(m_loop.wayland().lastKeyboardSurface())) {
+  if (AppWindow* window = windowFor(m_loop.wayland().keyboardSurface())) {
     window->onKeyboardEvent(event);
   }
 }

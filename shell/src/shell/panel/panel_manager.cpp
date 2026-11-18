@@ -1856,7 +1856,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
   // A context menu may belong to a persistent plugin panel, for which the
   // ordinary single-panel host is closed. Route the grabbing popup first.
   if (m_activePopup != nullptr) {
-    const bool onPopup = (event.surface != nullptr && event.surface == m_activePopup->wlSurface());
+    const bool onPopup = (event.surface != nullptr && event.surface == m_activePopup->surface());
     if (ignorePointer && onPopup) {
       return true;
     }
@@ -1878,7 +1878,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
   }
 
   if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {
-    const bool onSelect = (event.surface != nullptr && event.surface == m_selectPopup->wlSurface());
+    const bool onSelect = (event.surface != nullptr && event.surface == m_selectPopup->surface());
     if (ignorePointer && onSelect) {
       return true;
     }
@@ -1892,7 +1892,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
   }
 
   if (m_attachedPopupCount > 0) {
-    if (event.surface == m_wlSurface) {
+    if (WaylandSurface::wlOf(event.surface) == m_wlSurface) {
       if (event.type == PointerEvent::Type::Enter) {
         m_pointerInside = true;
       } else if (event.type == PointerEvent::Type::Leave) {
@@ -1902,7 +1902,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
     return false;
   }
 
-  if (m_activePanel != nullptr && m_surface != nullptr && event.surface == m_wlSurface && !ignorePointer
+  if (m_activePanel != nullptr && m_surface != nullptr && WaylandSurface::wlOf(event.surface) == m_wlSurface && !ignorePointer
       && m_activePanel->interceptPointerEvent(
           event, static_cast<float>(m_surface->width()), static_cast<float>(m_surface->height())
       )) {
@@ -1912,7 +1912,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
 
   switch (event.type) {
   case PointerEvent::Type::Enter: {
-    if (event.surface == m_wlSurface) {
+    if (WaylandSurface::wlOf(event.surface) == m_wlSurface) {
       m_pointerInside = true;
       if (!ignorePointer) {
         m_inputDispatcher.pointerEnter(static_cast<float>(event.sx), static_cast<float>(event.sy), event.serial);
@@ -1921,7 +1921,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
     break;
   }
   case PointerEvent::Type::Leave: {
-    if (event.surface == m_wlSurface) {
+    if (WaylandSurface::wlOf(event.surface) == m_wlSurface) {
       m_pointerInside = false;
       if (!ignorePointer) {
         m_inputDispatcher.pointerLeave();
@@ -1950,7 +1950,7 @@ bool PanelManager::onPointerEvent(const PointerEvent& event) {
         return true;
       }
       if (pressed
-          && event.surface == m_wlSurface
+          && WaylandSurface::wlOf(event.surface) == m_wlSurface
           && m_inputDispatcher.hoveredArea() == nullptr
           && m_activePanel != nullptr
           && m_activePanel->dismissTransientUi()) {
@@ -2158,15 +2158,15 @@ void PanelManager::unregisterPopupSurface(wl_surface* surface) {
   m_focusGrab->commit();
 }
 
-void PanelManager::beginAttachedPopup(wl_surface* surface) {
-  if (surface == nullptr || surface != m_wlSurface) {
+void PanelManager::beginAttachedPopup(Surface* surface) {
+  if (surface == nullptr || WaylandSurface::wlOf(surface) != m_wlSurface) {
     return;
   }
   ++m_attachedPopupCount;
 }
 
-void PanelManager::endAttachedPopup(wl_surface* surface) {
-  if (surface == nullptr || surface != m_wlSurface) {
+void PanelManager::endAttachedPopup(Surface* surface) {
+  if (surface == nullptr || WaylandSurface::wlOf(surface) != m_wlSurface) {
     return;
   }
   if (m_attachedPopupCount > 0) {
@@ -2193,8 +2193,8 @@ void PanelManager::endAttachedPopup(wl_surface* surface) {
   requestRedraw();
 }
 
-std::optional<LayerPopupParentContext> PanelManager::popupParentContextForSurface(wl_surface* surface) const noexcept {
-  if (surface == nullptr || surface != m_wlSurface) {
+std::optional<LayerPopupParentContext> PanelManager::popupParentContextForSurface(Surface* surface) const noexcept {
+  if (surface == nullptr || WaylandSurface::wlOf(surface) != m_wlSurface) {
     return std::nullopt;
   }
   return fallbackPopupParentContext();
@@ -2206,12 +2206,11 @@ std::optional<LayerPopupParentContext> PanelManager::fallbackPopupParentContext(
   }
 
   LayerPopupParentContext context;
-  context.surface = m_wlSurface;
-  context.layerSurface = m_layerSurface->layerSurface();
-  context.output = m_output;
+  context.surface = m_surface.get();
+  context.output = m_platform->wayland().outputId(m_output);
   context.width = m_surface->width();
   context.height = m_surface->height();
-  if (context.layerSurface == nullptr || context.width == 0 || context.height == 0) {
+  if (m_layerSurface->layerSurface() == nullptr || context.width == 0 || context.height == 0) {
     return std::nullopt;
   }
   return context;
@@ -2246,7 +2245,7 @@ bool PanelManager::onKeyboardEvent(const KeyboardEvent& event) {
     wl_surface* const kbSurface = m_platform->lastKeyboardSurface();
     const bool onPanel = (m_wlSurface != nullptr && kbSurface == m_wlSurface);
     const bool onSelectPopup =
-        (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && kbSurface == m_selectPopup->wlSurface());
+        (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen() && kbSurface == WaylandSurface::wlOf(m_selectPopup->surface()));
     if (!onPanel && !onSelectPopup) {
       return false;
     }
@@ -3442,7 +3441,7 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
       if (m_config != nullptr) {
         m_selectPopup->setShadowConfig(m_config->config().shell.shadow);
       }
-      m_selectPopup->setParent(m_layerSurface->layerSurface(), m_wlSurface, m_output);
+      m_selectPopup->setParent(m_surface.get(), m_platform->wayland().outputId(m_output));
       m_sceneRoot->setPopupContext(m_selectPopup.get());
     }
     m_sceneRoot->setSize(w, h);
@@ -3525,13 +3524,13 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
     sceneParent->addChild(std::move(contentWrapper));
 
     m_inputDispatcher.setSceneRoot(m_sceneRoot.get());
-    m_inputDispatcher.setTextInputContext(m_wlSurface, m_platform->wayland().textInputService());
+    m_inputDispatcher.setTextInputContext(m_surface.get(), m_platform->wayland().textInputService());
     m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
       m_platform->setCursorShape(serial, std::to_underlying(shape));
     });
     m_inputDispatcher.setHoverChangeCallback([this](InputArea* /*old*/, InputArea* next) {
       if (m_layerSurface != nullptr) {
-        TooltipManager::instance().onHoverChange(next, m_layerSurface->layerSurface(), m_output);
+        TooltipManager::instance().onHoverChange(next, m_surface.get(), m_platform->wayland().outputId(m_output));
       }
     });
     m_inputDispatcher.setFocusChangeCallback([this](InputArea* /*old*/, InputArea* next) {

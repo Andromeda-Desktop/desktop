@@ -13,9 +13,8 @@
 #include "ui/popup_chrome.h"
 #include "ui/popup_parent.h"
 #include "ui/style.h"
-#include "wayland/popup_surface.h"
-#include "wayland/wayland_connection.h"
-#include "wayland/wayland_seat.h"
+#include "platform/display.h"
+#include "platform/input_events.h"
 
 #include <algorithm>
 #include <cassert>
@@ -54,7 +53,7 @@ DialogPopupHost::~DialogPopupHost() {
 }
 
 void DialogPopupHost::closeChildPopups() {
-  wl_surface* const self = wlSurface();
+  const Surface* const self = surface();
   if (self == nullptr) {
     return;
   }
@@ -68,24 +67,24 @@ void DialogPopupHost::closeChildPopups() {
   }
 }
 
-void DialogPopupHost::initializeBase(WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext) {
-  m_wayland = &wayland;
+void DialogPopupHost::initializeBase(Display& display, const UiSettings& settings, RenderContext& renderContext) {
+  m_display = &display;
   m_uiSettings = &settings;
   m_renderContext = &renderContext;
   m_popupHosts = nullptr;
 }
 
 void DialogPopupHost::initializeBase(
-    WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
+    Display& display, const UiSettings& settings, RenderContext& renderContext, LayerPopupHostRegistry& popupHosts
 ) {
-  m_wayland = &wayland;
+  m_display = &display;
   m_uiSettings = &settings;
   m_renderContext = &renderContext;
   m_popupHosts = &popupHosts;
 }
 
 bool DialogPopupHost::openPopup(std::uint32_t width, std::uint32_t height) {
-  if (m_wayland == nullptr || m_renderContext == nullptr || m_popupHosts == nullptr) {
+  if (m_display == nullptr || m_renderContext == nullptr || m_popupHosts == nullptr) {
     return false;
   }
 
@@ -97,7 +96,7 @@ bool DialogPopupHost::openPopup(std::uint32_t width, std::uint32_t height) {
   }
   m_parentSurface = parentContext->surface;
 
-  auto surface = std::make_unique<PopupSurface>(*m_wayland);
+  auto surface = m_display->createPopup();
   surface->setRenderContext(m_renderContext);
   surface->setAnimationManager(&m_animations);
   surface->setConfigureCallback([this](std::uint32_t /*w*/, std::uint32_t /*h*/) { requestLayout(); });
@@ -123,9 +122,9 @@ bool DialogPopupHost::openPopup(std::uint32_t width, std::uint32_t height) {
   m_popupHosts->beginAttachedPopup(m_parentSurface);
   m_attachedToHost = true;
   m_openInProgress = true;
-  const bool initialized = parentContext->xdgSurface != nullptr
-      ? m_surface->initializeAsChild(parentContext->xdgSurface, parentContext->output, popupConfig)
-      : m_surface->initialize(parentContext->layerSurface, parentContext->output, popupConfig);
+  const bool initialized = m_surface->initialize(
+      PopupParent{.surface = parentContext->surface, .output = parentContext->output}, popupConfig
+  );
   m_openInProgress = false;
   if (!initialized) {
     destroyPopup();
@@ -142,18 +141,15 @@ bool DialogPopupHost::openPopup(std::uint32_t width, std::uint32_t height) {
   return true;
 }
 
-bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const XdgPopupParent& parent) {
-  if (m_wayland == nullptr
-      || m_renderContext == nullptr
-      || parent.xdgSurface == nullptr
-      || parent.wlSurface == nullptr) {
+bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const PopupParent& parent) {
+  if (m_display == nullptr || m_renderContext == nullptr || parent.surface == nullptr) {
     return false;
   }
 
   destroyPopup();
-  m_parentSurface = parent.wlSurface;
+  m_parentSurface = parent.surface;
 
-  auto surface = std::make_unique<PopupSurface>(*m_wayland);
+  auto surface = m_display->createPopup();
   surface->setRenderContext(m_renderContext);
   surface->setAnimationManager(&m_animations);
   surface->setConfigureCallback([this](std::uint32_t /*w*/, std::uint32_t /*h*/) { requestLayout(); });
@@ -172,7 +168,7 @@ bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const XdgPopup
 
   m_surface = std::move(surface);
   m_openInProgress = true;
-  const bool initialized = m_surface->initializeAsChild(parent.xdgSurface, parent.output, config);
+  const bool initialized = m_surface->initialize(parent, config);
   m_openInProgress = false;
   if (!initialized) {
     destroyPopup();
@@ -284,7 +280,7 @@ ShadowStyle DialogPopupHost::shadowStyle() const {
 PopupSurfaceConfig DialogPopupHost::defaultPopupConfig(
     const LayerPopupParentContext& parent, std::uint32_t width, std::uint32_t height
 ) const {
-  const auto [offsetX, offsetY] = parent.centeringOffset(*m_wayland);
+  const auto [offsetX, offsetY] = parent.centeringOffset(*m_display);
   return PopupSurfaceConfig{
       .anchorX = 0,
       .anchorY = 0,
@@ -297,7 +293,7 @@ PopupSurfaceConfig DialogPopupHost::defaultPopupConfig(
       .constraintAdjustment = kPopupConstraintAdjust,
       .offsetX = offsetX,
       .offsetY = offsetY,
-      .serial = m_wayland->lastInputSerial(),
+      .serial = m_display->lastInputSerial(),
       // Dialogs stay open on outside click / focus loss; Escape and close dismiss.
       .grab = false,
   };
@@ -407,13 +403,6 @@ void DialogPopupHost::requestUpdateOnly() {
   }
 }
 
-wl_surface* DialogPopupHost::wlSurface() const noexcept {
-  return m_surface != nullptr ? m_surface->wlSurface() : nullptr;
-}
-
-xdg_surface* DialogPopupHost::xdgSurface() const noexcept {
-  return m_surface != nullptr ? m_surface->xdgSurface() : nullptr;
-}
 
 std::uint32_t DialogPopupHost::width() const noexcept { return m_surface != nullptr ? m_surface->width() : 0; }
 
@@ -488,10 +477,10 @@ void DialogPopupHost::buildScene(std::uint32_t width, std::uint32_t height) {
   // Popup grabs keyboard focus before the compositor delivers a text_input enter; allow IME activation on
   // keyboard focus alone. Other surfaces keep the strict protocol-enter gate.
   m_inputDispatcher.setTextInputContext(
-      m_surface->wlSurface(), m_wayland->textInputService(), /*keyboardFocusActivation=*/true, m_parentSurface
+      m_surface.get(), m_display->textInputService(), /*keyboardFocusActivation=*/true, m_parentSurface
   );
   m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
-    m_wayland->setCursorShape(serial, std::to_underlying(shape));
+    m_display->setCursorShape(serial, std::to_underlying(shape));
   });
   m_surface->setSceneRoot(m_sceneRoot.get());
 
@@ -585,7 +574,7 @@ bool DialogPopupHost::mapPointerEvent(const PointerEvent& event, float& localX, 
     return false;
   }
 
-  wl_surface* eventSurface = resolveEventSurface(event);
+  Surface* eventSurface = resolveEventSurface(event);
   if (eventSurface == nullptr) {
     return false;
   }
@@ -634,16 +623,16 @@ bool DialogPopupHost::mapPointerEvent(const PointerEvent& event, float& localX, 
 }
 
 void DialogPopupHost::syncPointerStateFromCurrentPosition() {
-  if (m_wayland == nullptr || m_surface == nullptr || !m_wayland->hasPointerPosition()) {
+  if (m_display == nullptr || m_surface == nullptr || !m_display->hasPointerPosition()) {
     return;
   }
 
   PointerEvent synthetic;
   synthetic.type = PointerEvent::Type::Motion;
-  synthetic.surface = m_wayland->lastPointerSurface();
-  synthetic.sx = m_wayland->lastPointerX();
-  synthetic.sy = m_wayland->lastPointerY();
-  synthetic.serial = m_wayland->lastInputSerial();
+  synthetic.surface = m_display->pointerSurface();
+  synthetic.sx = m_display->lastPointerX();
+  synthetic.sy = m_display->lastPointerY();
+  synthetic.serial = m_display->lastInputSerial();
 
   float localX = 0.0F;
   float localY = 0.0F;
@@ -656,23 +645,23 @@ void DialogPopupHost::syncPointerStateFromCurrentPosition() {
   markDirtyTail();
 }
 
-bool DialogPopupHost::ownsSurface(wl_surface* surface) const noexcept {
-  return m_surface != nullptr && surface != nullptr && surface == m_surface->wlSurface();
+bool DialogPopupHost::ownsSurface(const Surface* surface) const noexcept {
+  return m_surface != nullptr && surface != nullptr && surface == m_surface.get();
 }
 
-wl_surface* DialogPopupHost::resolveEventSurface(const PointerEvent& event) const noexcept {
-  wl_surface* eventSurface = event.surface;
-  if (eventSurface == nullptr && event.type == PointerEvent::Type::Motion && m_wayland != nullptr) {
-    eventSurface = m_wayland->lastPointerSurface();
+Surface* DialogPopupHost::resolveEventSurface(const PointerEvent& event) const noexcept {
+  Surface* eventSurface = event.surface;
+  if (eventSurface == nullptr && event.type == PointerEvent::Type::Motion && m_display != nullptr) {
+    eventSurface = m_display->pointerSurface();
   }
   return eventSurface;
 }
 
 std::optional<LayerPopupParentContext> DialogPopupHost::resolveParentContext() const {
-  if (m_wayland == nullptr || m_popupHosts == nullptr) {
+  if (m_display == nullptr || m_popupHosts == nullptr) {
     return std::nullopt;
   }
-  return m_popupHosts->resolveForInput(*m_wayland);
+  return m_popupHosts->resolveForInput(*m_display);
 }
 
 void DialogPopupHost::markDirtyTail() {

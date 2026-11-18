@@ -1,26 +1,21 @@
 #include "app/app_popover.h"
 
 #include "render/scene/node.h"
-#include "ui/popup_parent.h"
-#include "wayland/popup_surface.h"
 
-#include <xdg-shell-client-protocol.h>
-
-AppPopover::AppPopover(WaylandConnection& wayland, RenderContext& renderContext) {
-  initializeBase(wayland, m_settings, renderContext);
+AppPopover::AppPopover(Display& display, RenderContext& renderContext) {
+  initializeBase(display, m_settings, renderContext);
 }
 
 AppPopover::~AppPopover() { destroyPopup(); }
 
 void AppPopover::open(Request request) {
-  if (request.parentXdg == nullptr || request.parentWl == nullptr || !request.content) {
+  if (request.parent == nullptr || !request.content) {
     return;
   }
   m_request = std::move(request);
   m_settings.scale = m_request.scale;
   const PopupSurfaceConfig config = popupConfig();
-  if (!openPopupAsChild(config, XdgPopupParent{.xdgSurface = m_request.parentXdg, .wlSurface = m_request.parentWl,
-                                               .output = nullptr, .serial = m_request.serial, .width = 0, .height = 0})) {
+  if (!openPopupAsChild(config, PopupParent{.surface = m_request.parent, .serial = m_request.serial})) {
     destroyPopup();
   }
 }

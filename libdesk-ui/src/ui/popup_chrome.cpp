@@ -5,7 +5,7 @@
 #include "ui/builders.h"
 #include "ui/controls/box.h"
 #include "ui/style.h"
-#include "wayland/popup_surface.h"
+#include "platform/popup.h"
 
 #include <algorithm>
 #include <cmath>
@@ -92,11 +92,11 @@ namespace popup_chrome {
     config.offsetY = adjustedOffsetY(config.offsetY, geometry, attachment.vertical);
   }
 
-  void setContentInputRegion(PopupSurface& surface, const Geometry& geometry) {
+  void setContentInputRegion(Surface& surface, const Geometry& geometry) {
     surface.setInputRegion({geometry.inputRect()});
   }
 
-  void setCardBlurRegion(PopupSurface& surface, const Geometry& geometry, float contentScale) {
+  void setCardBlurRegion(Surface& surface, const Geometry& geometry, float contentScale) {
     surface.setBlurRegion(Surface::tessellateRoundedRect(
         static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
         static_cast<int>(std::lround(geometry.contentWidth)), static_cast<int>(std::lround(geometry.contentHeight)),

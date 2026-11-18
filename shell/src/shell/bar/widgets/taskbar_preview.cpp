@@ -670,7 +670,7 @@ bool TaskbarPreview::onPointerEvent(const PointerEvent& event) {
   if (!isOpen()) {
     return false;
   }
-  const bool onPopup = event.surface != nullptr && event.surface == m_surface->wlSurface();
+  const bool onPopup = event.surface != nullptr && event.surface == m_surface.get();
   const auto leave = [this] {
     if (!m_pointerInside) {
       return;

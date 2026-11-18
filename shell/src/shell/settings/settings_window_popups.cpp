@@ -82,10 +82,9 @@ namespace {
     return i18n::tr("settings.calendar-accounts.secret-service-error");
   }
 
-  XdgPopupParent popupParentFor(ToplevelSurface& surface, wl_output* output, std::uint32_t serial) {
-    return XdgPopupParent{
-        .xdgSurface = surface.xdgSurface(),
-        .wlSurface = surface.wlSurface(),
+  PopupParent popupParentFor(ToplevelSurface& surface, OutputId output, std::uint32_t serial) {
+    return PopupParent{
+        .surface = &surface,
         .output = output,
         .serial = serial,
         .width = surface.width(),
@@ -399,10 +398,7 @@ void SettingsWindow::openActionsMenu() {
                   .width = static_cast<std::int32_t>(m_actionsMenuButton->width()),
                   .height = static_cast<std::int32_t>(m_actionsMenuButton->height()),
               },
-          .parent = PopupSurfaceParent{
-              .xdgSurface = m_surface->xdgSurface(),
-              .output = output,
-          },
+          .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(output)},
       }
   );
 }
@@ -500,7 +496,7 @@ void SettingsWindow::openBarWidgetAddPopup(const std::vector<std::string>& laneP
 
   m_widgetAddPopup->open(
       settings::WidgetAddPopupRequest{
-          .parent = popupParentFor(*m_surface, output, m_wayland->lastInputSerial()),
+          .parent = popupParentFor(*m_surface, m_wayland->outputId(output), m_wayland->lastInputSerial()),
           .lanePath = lanePath,
           .config = m_config->config(),
           .scale = uiScale(),
@@ -563,7 +559,7 @@ void SettingsWindow::openSearchPickerPopup(settings::SearchPickerOpenRequest req
     output = m_output;
   }
 
-  XdgPopupParent parent = popupParentFor(*m_surface, output, m_wayland->lastInputSerial());
+  PopupParent parent = popupParentFor(*m_surface, m_wayland->outputId(output), m_wayland->lastInputSerial());
 
   m_searchPickerPopup->open(
       SearchPickerPopupRequest{

@@ -7,7 +7,7 @@
 
 class Box;
 class Node;
-class PopupSurface;
+class Surface;
 class RectNode;
 struct InputRect;
 struct PopupSurfaceConfig;
@@ -54,9 +54,9 @@ namespace popup_chrome {
   adjustedOffsetY(std::int32_t baseOffset, const Geometry& geometry, VerticalAttachment attachment) noexcept;
 
   void applyToConfig(PopupSurfaceConfig& config, const Geometry& geometry, Attachment attachment) noexcept;
-  void setContentInputRegion(PopupSurface& surface, const Geometry& geometry);
+  void setContentInputRegion(Surface& surface, const Geometry& geometry);
   // The compositor blurs behind the card only (its rounded shape), so the glass tint lets the window text read through.
-  void setCardBlurRegion(PopupSurface& surface, const Geometry& geometry, float contentScale);
+  void setCardBlurRegion(Surface& surface, const Geometry& geometry, float contentScale);
   [[nodiscard]] RectNode* addShadow(
       Node& parent, const Geometry& geometry, const ShadowStyle& shadow, float radius,
       float backgroundOpacity = 1.0F

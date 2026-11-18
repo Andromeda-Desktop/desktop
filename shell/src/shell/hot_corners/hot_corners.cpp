@@ -266,7 +266,7 @@ bool HotCorners::onPointerEvent(const PointerEvent& event) {
   for (const auto& instance : m_instances) {
     Corner* corners[] = {&instance->topLeft, &instance->topRight, &instance->bottomLeft, &instance->bottomRight};
     for (auto* corner : corners) {
-      if (corner->surface && event.surface == corner->surface->wlSurface()) {
+      if (corner->surface && event.surface == corner->surface.get()) {
         switch (event.type) {
         case PointerEvent::Type::Enter:
           corner->inputDispatcher.pointerEnter(

@@ -242,7 +242,7 @@ void WallpaperWindow::buildScene(float width, float height) {
 
   m_selectPopup = std::make_unique<SelectDropdownPopup>(*m_wayland, *m_renderContext);
   m_selectPopup->setShadowConfig(cfg.shell.shadow);
-  m_selectPopup->setParent(m_surface->xdgSurface(), m_surface->wlSurface(), m_output);
+  m_selectPopup->setParent(m_surface.get(), m_wayland->outputId(m_output));
   m_sceneRoot->setPopupContext(m_selectPopup.get());
 
   m_panel->setContentScale(uiScale());
@@ -257,13 +257,13 @@ void WallpaperWindow::buildScene(float width, float height) {
   }
 
   m_inputDispatcher.setSceneRoot(m_sceneRoot.get());
-  m_inputDispatcher.setTextInputContext(m_surface->wlSurface(), m_wayland->textInputService());
+  m_inputDispatcher.setTextInputContext(m_surface.get(), m_wayland->textInputService());
   m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
   m_inputDispatcher.setHoverChangeCallback([this](InputArea* /*old*/, InputArea* next) {
     if (m_surface != nullptr) {
-      TooltipManager::instance().onHoverChange(next, m_surface->xdgSurface(), m_output);
+      TooltipManager::instance().onHoverChange(next, m_surface.get(), m_wayland->outputId(m_output));
     }
   });
   m_surface->setSceneRoot(m_sceneRoot.get());
@@ -296,7 +296,7 @@ bool WallpaperWindow::onPointerEvent(const PointerEvent& event) {
   if (!isOpen()) {
     return false;
   }
-  const bool onThis = event.surface != nullptr && event.surface == m_surface->wlSurface();
+  const bool onThis = event.surface != nullptr && event.surface == m_surface.get();
   bool consumed = false;
   switch (event.type) {
   case PointerEvent::Type::Enter:
@@ -369,8 +369,8 @@ void WallpaperWindow::onKeyboardEvent(const KeyboardEvent& event) {
   invalidate();
 }
 
-std::optional<LayerPopupParentContext> WallpaperWindow::popupParentContextForSurface(wl_surface* surface) const {
-  if (!isOpen() || surface == nullptr || surface != m_surface->wlSurface()) {
+std::optional<LayerPopupParentContext> WallpaperWindow::popupParentContextForSurface(Surface* surface) const {
+  if (!isOpen() || surface == nullptr || surface != m_surface.get()) {
     return std::nullopt;
   }
   return fallbackPopupParentContext();
@@ -381,10 +381,8 @@ std::optional<LayerPopupParentContext> WallpaperWindow::fallbackPopupParentConte
     return std::nullopt;
   }
   return LayerPopupParentContext{
-      .surface = m_surface->wlSurface(),
-      .layerSurface = nullptr,
-      .xdgSurface = m_surface->xdgSurface(),
-      .output = m_output,
+      .surface = m_surface.get(),
+      .output = m_wayland->outputId(m_output),
       .width = m_surface->width(),
       .height = m_surface->height(),
   };

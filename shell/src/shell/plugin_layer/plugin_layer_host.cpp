@@ -115,7 +115,7 @@ void PluginLayerHost::onConfigReload() {
 }
 
 bool PluginLayerHost::onPointerEvent(const PointerEvent& event) {
-  PluginLayer* instance = findInstance(event.surface);
+  PluginLayer* instance = findInstance(WaylandSurface::wlOf(event.surface));
   if (instance == nullptr && event.surface == nullptr) {
     // Motion and axis events carry no surface on some compositors; route to the entered layer.
     for (auto& entry : m_entries) {

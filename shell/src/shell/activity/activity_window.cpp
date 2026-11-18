@@ -970,7 +970,7 @@ bool ActivityWindow::onPointerEvent(const PointerEvent& event) {
   if (!isOpen()) {
     return false;
   }
-  const bool onThis = event.surface != nullptr && event.surface == m_surface->wlSurface();
+  const bool onThis = event.surface != nullptr && event.surface == m_surface.get();
   bool consumed = false;
   switch (event.type) {
   case PointerEvent::Type::Enter:

@@ -11,6 +11,7 @@
 #include "ui/controls/context_menu_popup.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "wayland/surface.h"
 #include "wayland/wayland_seat.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -194,9 +195,8 @@ void ScreenshotWidget::openCaptureMenu() {
       }
   );
 
-  wl_surface* pointerSurface = m_platform.lastPointerSurface();
-  auto* layerSurface = m_platform.layerSurfaceFor(pointerSurface);
-  if (layerSurface == nullptr || m_hitArea == nullptr) {
+  Surface* pointerSurface = m_platform.wayland().pointerSurface();
+  if (m_platform.layerSurfaceFor(WaylandSurface::wlOf(pointerSurface)) == nullptr || m_hitArea == nullptr) {
     return;
   }
 
@@ -239,11 +239,7 @@ void ScreenshotWidget::openCaptureMenu() {
                   .height = menuAnchor.h,
               },
           .parent =
-              PopupSurfaceParent{
-                  .layerSurface = layerSurface,
-                  .output = m_output,
-                  .wlSurface = pointerSurface,
-              },
+PopupParent{.surface = pointerSurface, .output = m_platform.wayland().outputId(m_output)},
           .placement = menuAnchor.placement,
       }
   );

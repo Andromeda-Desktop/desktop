@@ -104,7 +104,7 @@ public:
   void requestRedraw();
   bool onPointerEvent(const PointerEvent& event);
   [[nodiscard]] bool isRunning() const noexcept;
-  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(wl_surface* surface) const noexcept;
+  [[nodiscard]] std::optional<LayerPopupParentContext> popupParentContextForSurface(Surface* surface) const noexcept;
   [[nodiscard]] std::optional<LayerPopupParentContext> preferredPopupParentContext(wl_output* output) const noexcept;
   // Returns the bar surface rects on the given output in output-local logical
   // coordinates. Used by the panel click shield to keep clicks on bar widgets
@@ -128,8 +128,8 @@ public:
   // bars that have finished sliding into their resting position.
   [[nodiscard]] bool isAttachedPanelBarSettled(wl_output* output, std::string_view barName) const noexcept;
   void revealAutoHideForAttachedPanel(wl_output* output, std::string_view barName);
-  void beginAttachedPopup(wl_surface* surface);
-  void endAttachedPopup(wl_surface* surface);
+  void beginAttachedPopup(Surface* surface);
+  void endAttachedPopup(Surface* surface);
 
   void registerIpc(IpcService& ipc);
 
@@ -197,7 +197,7 @@ private:
       std::optional<std::string> barName, std::optional<std::string> monitorSelector,
       std::vector<BarInstance*>& instancesOut
   );
-  [[nodiscard]] BarInstance* instanceForSurface(wl_surface* surface) const noexcept;
+  [[nodiscard]] BarInstance* instanceForSurface(Surface* surface) const noexcept;
   [[nodiscard]] BarInstance* instanceForOutput(wl_output* output) const noexcept;
   [[nodiscard]] BarInstance* instanceForBar(wl_output* output, std::string_view barName) const noexcept;
 
@@ -251,7 +251,7 @@ private:
   PluginsConfig m_lastPlugins;
 
   // Surface → BarInstance mapping for pointer event routing
-  std::unordered_map<wl_surface*, BarInstance*> m_surfaceMap;
+  std::unordered_map<Surface*, BarInstance*> m_surfaceMap;
   BarInstance* m_hoveredInstance = nullptr;
   std::function<bool(const BarInstance&)> m_autoHideSuppressionCallback;
   noctalia::bar::WidgetActionDispatcher m_actionDispatcher;

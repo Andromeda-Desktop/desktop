@@ -590,7 +590,7 @@ bool DesktopWidgetsHost::onPointerEvent(const PointerEvent& event) {
   if (!m_visible || m_instances.empty())
     return false;
 
-  wl_surface* eventSurface = event.surface;
+  wl_surface* eventSurface = WaylandSurface::wlOf(event.surface);
   if (eventSurface == nullptr && m_wayland != nullptr)
     eventSurface = m_wayland->lastPointerSurface();
 

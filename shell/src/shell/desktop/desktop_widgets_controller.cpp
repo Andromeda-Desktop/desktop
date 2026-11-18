@@ -399,7 +399,7 @@ void DesktopWidgetsController::unsuppressDisplay() {
 bool DesktopWidgetsController::isEditing() const noexcept { return m_editor != nullptr && m_editor->isOpen(); }
 
 std::optional<LayerPopupParentContext>
-DesktopWidgetsController::popupParentContextForSurface(wl_surface* surface) const {
+DesktopWidgetsController::popupParentContextForSurface(Surface* surface) const {
   if (!isEditing() || m_editor == nullptr) {
     return std::nullopt;
   }

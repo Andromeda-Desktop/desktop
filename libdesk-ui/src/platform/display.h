@@ -1,15 +1,24 @@
 #pragma once
 
+#include "platform/input_events.h"
 #include "platform/output_id.h"
 
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 class Popup;
+class TextInputService;
 class Surface;
 class Toplevel;
+
+struct OutputInfo {
+  std::int32_t logicalWidth = 0;
+  std::int32_t logicalHeight = 0;
+  float scale = 1.0F; // the scale the window system renders this output at
+};
 
 // The connection to the window system: creates windows and popups and answers seat and output queries.
 // Wayland: WaylandConnection.
@@ -30,6 +39,15 @@ public:
   [[nodiscard]] virtual double lastPointerX() const noexcept = 0;
   [[nodiscard]] virtual double lastPointerY() const noexcept = 0;
   [[nodiscard]] virtual OutputId lastPointerOutputId() const noexcept = 0;
+  [[nodiscard]] virtual std::optional<OutputInfo> outputInfo(OutputId output) const = 0;
+  // The surfaces under the pointer and with keyboard focus; null when none or not a Surface.
+  [[nodiscard]] virtual Surface* pointerSurface() const noexcept = 0;
+  [[nodiscard]] virtual Surface* keyboardSurface() const noexcept = 0;
+  [[nodiscard]] virtual InputSource lastInputSource() const noexcept = 0;
+  // False once surface is destroyed: a popup that outlives its parent checks before it touches it.
+  [[nodiscard]] virtual bool isLive(const Surface* surface) const noexcept = 0;
+  // Input method support; null when the window system has none.
+  [[nodiscard]] virtual TextInputService* textInputService() const noexcept = 0;
   [[nodiscard]] virtual OutputId outputForSurface(const Surface& surface) const noexcept = 0;
 
   virtual void ringBell(const Surface& surface) const = 0;

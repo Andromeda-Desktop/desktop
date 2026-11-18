@@ -380,7 +380,7 @@ bool Wallpaper::onPointerEvent(const PointerEvent& event) {
     return false;
   }
 
-  wl_surface* eventSurface = event.surface;
+  wl_surface* eventSurface = WaylandSurface::wlOf(event.surface);
   if (eventSurface == nullptr) {
     eventSurface = m_wayland->lastPointerSurface();
   }

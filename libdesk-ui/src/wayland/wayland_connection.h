@@ -191,7 +191,7 @@ public:
   [[nodiscard]] wp_fractional_scale_manager_v1* fractionalScaleManager() const noexcept;
   [[nodiscard]] hyprland_focus_grab_manager_v1* hyprlandFocusGrabManager() const noexcept;
   [[nodiscard]] FocusGrabService* focusGrabService() const noexcept;
-  [[nodiscard]] TextInputService* textInputService() const noexcept { return m_textInputService; }
+  [[nodiscard]] TextInputService* textInputService() const noexcept override { return m_textInputService; }
   [[nodiscard]] wp_viewporter* viewporter() const noexcept;
   [[nodiscard]] wp_presentation* presentation() const noexcept { return m_presentation; }
   [[nodiscard]] wl_data_device_manager* dataDeviceManager() const noexcept { return m_dataDeviceManager; }
@@ -255,7 +255,7 @@ public:
   [[nodiscard]] bool hasPointerPosition() const noexcept override;
   [[nodiscard]] double lastPointerX() const noexcept override;
   [[nodiscard]] double lastPointerY() const noexcept override;
-  [[nodiscard]] WaylandSeat::InputSource lastInputSource() const noexcept;
+  [[nodiscard]] InputSource lastInputSource() const noexcept override;
   [[nodiscard]] std::string currentKeyboardLayoutName() const;
   [[nodiscard]] std::vector<std::string> keyboardLayoutNames() const;
   [[nodiscard]] WaylandSeat::LockKeysState keyboardLockKeysState() const;
@@ -267,6 +267,10 @@ public:
   [[nodiscard]] std::unique_ptr<Toplevel> createToplevel() override;
   [[nodiscard]] std::unique_ptr<Popup> createPopup() override;
   [[nodiscard]] OutputId lastPointerOutputId() const noexcept override;
+  [[nodiscard]] std::optional<OutputInfo> outputInfo(OutputId output) const override;
+  [[nodiscard]] Surface* pointerSurface() const noexcept override;
+  [[nodiscard]] Surface* keyboardSurface() const noexcept override;
+  [[nodiscard]] bool isLive(const Surface* surface) const noexcept override;
   [[nodiscard]] OutputId outputForSurface(const Surface& surface) const noexcept override;
   void ringBell(const Surface& surface) const override;
   [[nodiscard]] std::string requestActivationToken(const Surface& surface, const std::string& appId) const override;

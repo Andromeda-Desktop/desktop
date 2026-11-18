@@ -2348,7 +2348,7 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
   if (m_surface != nullptr && m_renderContext != nullptr && m_wayland != nullptr) {
     m_selectPopup = std::make_unique<SelectDropdownPopup>(*m_wayland, *m_renderContext);
     m_selectPopup->setShadowConfig(cfg.shell.shadow);
-    m_selectPopup->setParent(m_surface->xdgSurface(), m_surface->wlSurface(), m_output);
+    m_selectPopup->setParent(m_surface.get(), m_wayland->outputId(m_output));
     m_sceneRoot->setPopupContext(m_selectPopup.get());
   }
 
@@ -2388,7 +2388,7 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
   m_mainContainer = static_cast<Flex*>(m_sceneRoot->addChild(std::move(main)));
   m_modalHost.attach(*m_sceneRoot, m_mainContainer, renderer, w, h);
 
-  m_inputDispatcher.setTextInputContext(m_surface->wlSurface(), m_wayland->textInputService());
+  m_inputDispatcher.setTextInputContext(m_surface.get(), m_wayland->textInputService());
   m_inputDispatcher.setCursorShapeCallback([this](std::uint32_t serial, CursorShape shape) {
     m_wayland->setCursorShape(serial, std::to_underlying(shape));
   });
@@ -2398,7 +2398,7 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
       if (output == nullptr && m_wayland != nullptr) {
         output = m_wayland->outputForSurface(m_surface->wlSurface());
       }
-      TooltipManager::instance().onHoverChange(next, m_surface->xdgSurface(), output);
+      TooltipManager::instance().onHoverChange(next, m_surface.get(), m_wayland->outputId(output));
     }
   });
   m_inputDispatcher.setFocusChangeCallback([this](InputArea* /*old*/, InputArea* next) {

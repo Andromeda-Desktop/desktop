@@ -312,7 +312,7 @@ bool LockscreenWidgetsController::isEditing() const noexcept {
 }
 
 std::optional<LayerPopupParentContext>
-LockscreenWidgetsController::popupParentContextForSurface(wl_surface* surface) const {
+LockscreenWidgetsController::popupParentContextForSurface(Surface* surface) const {
   if (!isEditing() || m_editor == nullptr) {
     return std::nullopt;
   }

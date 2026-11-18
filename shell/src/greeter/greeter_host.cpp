@@ -983,7 +983,7 @@ namespace {
       }
       if (event.type == PointerEvent::Type::Enter || event.type == PointerEvent::Type::Motion) {
         if (event.surface != nullptr) {
-          m_pointerView = viewFor(event.surface);
+          m_pointerView = viewFor(WaylandSurface::wlOf(event.surface));
         }
         m_pointerX = static_cast<float>(event.sx);
         m_pointerY = static_cast<float>(event.sy);

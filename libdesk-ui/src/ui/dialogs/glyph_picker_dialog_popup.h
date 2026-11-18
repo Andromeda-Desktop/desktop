@@ -7,14 +7,14 @@ class GlyphPicker;
 class SelectDropdownPopup;
 struct KeyboardEvent;
 struct PointerEvent;
-struct wl_surface;
+class Surface;
 
 class GlyphPickerDialogPopup final : public DialogPopupHost, public GlyphPickerDialogPresenter {
 public:
   ~GlyphPickerDialogPopup() override;
 
   void initialize(
-      WaylandConnection& wayland, const UiSettings& settings, RenderContext& renderContext,
+      Display& display, const UiSettings& settings, RenderContext& renderContext,
       LayerPopupHostRegistry& popupHosts
   );
 
@@ -22,7 +22,7 @@ public:
   void closeGlyphPickerWithoutResult() override;
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   void onKeyboardEvent(const KeyboardEvent& event);
-  [[nodiscard]] bool ownsSelectDropdownSurface(wl_surface* surface) const noexcept;
+  [[nodiscard]] bool ownsSelectDropdownSurface(const Surface* surface) const noexcept;
 
 protected:
   void populateContent(Node* contentParent, std::uint32_t width, std::uint32_t height) override;

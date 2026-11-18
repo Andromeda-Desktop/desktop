@@ -668,7 +668,7 @@ bool PowerOverlay::onPointerEvent(const PointerEvent& event) {
   if (!isActive()) {
     return false;
   }
-  const bool onTarget = event.surface != nullptr && event.surface == m_surface->wlSurface();
+  const bool onTarget = event.surface != nullptr && event.surface == m_surface.get();
   switch (event.type) {
   case PointerEvent::Type::Enter:
     if (onTarget) {

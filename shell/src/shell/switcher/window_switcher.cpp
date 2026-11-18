@@ -1606,7 +1606,7 @@ bool WindowSwitcher::onPointerEvent(const PointerEvent& event) {
 
   Instance* target = m_instance;
   const bool onTarget =
-      event.surface != nullptr && target->surface != nullptr && event.surface == target->surface->wlSurface();
+      event.surface != nullptr && target->surface != nullptr && event.surface == target->surface.get();
 
   switch (event.type) {
   case PointerEvent::Type::Enter:
