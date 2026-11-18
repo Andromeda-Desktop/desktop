@@ -337,7 +337,8 @@ namespace andromeda {
   }
 
   void View::updateShadow() {
-    if (scheduledFullscreen() || maximizedToEdges()) {
+    // A maximized window's shadow shows only in the gap to the work-area edge, cut off there as a dark strip.
+    if (scheduledFullscreen() || m_placement.fit != Fit::Free) {
       m_decoration.hideShadow();
       return;
     }
