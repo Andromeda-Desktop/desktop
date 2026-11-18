@@ -255,11 +255,10 @@ namespace term {
     std::function<void()> m_addWorkspace;
     std::function<const holder::Workspaces&()> m_table;
     workspace_bar::Bar m_shownBar;
-    // Workspace pages: a two-finger horizontal swipe, a foot-bar click or Ctrl+Alt+PgUp/PgDn slides the sidebar body
-    // and the content as one page; landing on another page switches to its workspace.
+    // Workspace pages: a two-finger horizontal swipe, a foot-bar click or Ctrl+Alt+PgUp/PgDn slides the sidebar body;
+    // the content dims in place. Landing on another page switches to its workspace and fades its content in.
     WorkspacePager m_pager;
     PageStrip* m_sideStrip = nullptr;
-    PageStrip* m_contentStrip = nullptr;
     AnimationManager::Id m_pagerAnim = 0;
     [[nodiscard]] bool pageAxis(const InputArea::PointerData& d);
     bool pageAxisStop(std::uint32_t axis);
@@ -269,21 +268,12 @@ namespace term {
     void showPagerPosition();
     [[nodiscard]] float pagerAt() const; // the shown position in pages
     void pagerLanded();
-    // Neighbour pages: the session rows and the session cards of a workspace from the holder's table.
+    // Neighbour sidebar pages: the session rows of a workspace from the holder's table.
     [[nodiscard]] std::unique_ptr<Node> sidebarPage(std::size_t page);
-    [[nodiscard]] std::unique_ptr<Node> contentPage(std::size_t page);
     [[nodiscard]] std::vector<StatusRow::Data> pageRows(std::size_t page) const;
-    // The content of a workspace when it last left this window (RGBA, buffer px): its page shows it while the
-    // finger moves; at most kPageFrames are kept.
-    struct PageFrame {
-      int width = 0;
-      int height = 0;
-      std::vector<std::uint8_t> rgba;
-    };
-    static constexpr std::size_t kPageFrames = 2;
-    std::vector<std::pair<std::uint64_t, PageFrame>> m_pageFrames; // oldest first
-    Renderer* m_contentRenderer = nullptr;
-    void capturePage();
+    [[nodiscard]] float pagerDim() const; // content opacity for the sidebar's travel
+    void fadeContentIn(float from);
+    AnimationManager::Id m_contentFade = 0;
     Button* m_prefsButton = nullptr; // hidden while the foot bar shows
     Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
     Flex* m_footBar = nullptr;   // the track's items

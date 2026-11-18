@@ -16,7 +16,6 @@
 #include "render/core/texture_manager.h"
 #include "render/render_context.h"
 #include "render/render_target.h"
-#include "ui/controls/image.h"
 #include "wayland/toplevel_surface.h"
 #include "render/text/glyph_registry.h"
 #include "ui/builders.h"
@@ -166,14 +165,9 @@ namespace term {
       m_contentHeight = height;
       fillSlot(renderer);
       registerDropTarget();
-      m_contentRenderer = &renderer;
-      const float gap = Tokens::spaceP16 * m_window.uiScale();
-      m_pager.setWidth(width + gap);
-      auto strip = std::make_unique<PageStrip>(&m_contentStrip, std::move(slot), m_shownBar.here, m_pager.count(), gap,
-                                               [this](std::size_t page) { return contentPage(page); });
-      strip->setSize(width, height);
-      strip->setPagePosition(pagerAt()); // the sidebar may not be built yet: only this strip
-      auto area = ui::inputArea({.width = width, .height = height}, std::move(strip));
+      m_pager.setWidth(width + Tokens::spaceP16 * m_window.uiScale());
+      if (m_contentFade == 0) slot->setOpacity(pagerDim());
+      auto area = ui::inputArea({.width = width, .height = height}, std::move(slot));
       area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
       area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
       area->setLocksScrollAxis(true);
@@ -794,6 +788,8 @@ namespace term {
     if (d.axis != PointerAxis::Horizontal || d.axisSource != AxisSource::Finger || m_pager.count() < 2) return false;
     m_window.animations().cancel(m_pagerAnim);
     m_pagerAnim = 0;
+    m_window.animations().cancel(m_contentFade);
+    m_contentFade = 0;
     // The page moves as far as a finger scroll moves any scrolled content. Right to left, later pages come from the left.
     const float dx = d.scrollDelta(0.0F);
     m_pager.track(Style::rtl() ? -dx : dx, d.time);
@@ -835,10 +831,29 @@ namespace term {
     return m_pager.width() > 0.0F ? m_pager.shown() / m_pager.width() : static_cast<float>(m_shownBar.here);
   }
 
+  // The content stays in place while the sidebar slides: it dims with the travel away from the shown workspace.
+  float TerminalWindow::pagerDim() const {
+    const float travel = std::min(1.0F, std::abs(pagerAt() - static_cast<float>(m_shownBar.here)));
+    return 1.0F - Tokens::motionSwipeDim * travel;
+  }
+
+  void TerminalWindow::fadeContentIn(float from) {
+    if (m_contentSlot == nullptr) return;
+    m_contentSlot->setOpacity(from);
+    m_contentFade = m_window.animations().drive(
+        m_contentFade, from, 1.0F, Style::spring(Tokens::springFade),
+        [this](float v) {
+          if (m_contentSlot != nullptr) m_contentSlot->setOpacity(v);
+          requestFrame();
+        },
+        [this] { m_contentFade = 0; }, this);
+    if (m_contentFade == 0) m_contentSlot->setOpacity(1.0F);
+    requestFrame();
+  }
+
   void TerminalWindow::showPagerPosition() {
-    const float at = pagerAt();
-    if (m_contentStrip != nullptr) m_contentStrip->setPagePosition(at);
-    if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(at);
+    if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(pagerAt());
+    if (m_contentSlot != nullptr && m_contentFade == 0) m_contentSlot->setOpacity(pagerDim());
     placeFootLens();
     requestFrame();
   }
@@ -893,9 +908,14 @@ namespace term {
     showPagerPosition();
     const std::size_t page = m_pager.page();
     if (page == m_shownBar.here || page >= m_shownBar.pages.size()) return;
+    // The switch builds the new panes while nothing moves; they fade in from transparent.
     if (m_pickWorkspace) m_pickWorkspace(m_shownBar.pages[page]);
     // The switch did not happen (the workspace went away meanwhile): back to the shown page.
-    if (m_pager.page() != m_shownBar.here) slideTo(m_shownBar.here);
+    if (m_pager.page() != m_shownBar.here) {
+      slideTo(m_shownBar.here);
+      return;
+    }
+    fadeContentIn(0.0F);
   }
 
   // A saved workspace has no shells: its page shows the one shell that starts in its root on landing.
@@ -923,80 +943,6 @@ namespace term {
       list->addChild(std::move(row));
     }
     return list;
-  }
-
-  // Renders the window offscreen and keeps the content area: the live page, even while a slide shows another.
-  void TerminalWindow::capturePage() {
-    ToplevelSurface* surface = m_window.surface();
-    RenderContext* context = surface != nullptr ? surface->renderContext() : nullptr;
-    Node* root = surface != nullptr ? surface->sceneRoot() : nullptr;
-    if (context == nullptr || root == nullptr || m_contentStrip == nullptr || m_shownBar.here >= m_shownBar.pages.size()) return;
-    const RenderTarget& screen = surface->renderTarget();
-    if (screen.logicalWidth() == 0 || screen.bufferWidth() == 0) return;
-    m_contentStrip->setPagePosition(static_cast<float>(m_shownBar.here));
-    RenderTarget target;
-    target.createOffscreen(*context);
-    target.setContentScale(screen.contentScale());
-    target.setLogicalSize(screen.logicalWidth(), screen.logicalHeight());
-    target.resize(screen.bufferWidth(), screen.bufferHeight());
-    const auto bufferW = static_cast<std::size_t>(screen.bufferWidth());
-    const auto bufferH = static_cast<std::size_t>(screen.bufferHeight());
-    std::vector<std::uint8_t> pixels(bufferW * bufferH * 4);
-    if (!context->renderScene(target, root) || !context->readPixels(target, pixels)) return;
-    const float k = static_cast<float>(bufferW) / static_cast<float>(screen.logicalWidth());
-    float sceneX = 0.0F;
-    float sceneY = 0.0F;
-    Node::mapToScene(m_contentStrip, 0.0F, 0.0F, sceneX, sceneY);
-    const auto x0 = std::min(bufferW, static_cast<std::size_t>(std::lround(std::max(0.0F, sceneX) * k)));
-    const auto y0 = std::min(bufferH, static_cast<std::size_t>(std::lround(std::max(0.0F, sceneY) * k)));
-    const std::size_t w = std::min(bufferW - x0, static_cast<std::size_t>(std::lround(m_contentStrip->width() * k)));
-    const std::size_t h = std::min(bufferH - y0, static_cast<std::size_t>(std::lround(m_contentStrip->height() * k)));
-    if (w == 0 || h == 0) return;
-    PageFrame frame{.width = static_cast<int>(w), .height = static_cast<int>(h), .rgba = std::vector<std::uint8_t>(w * h * 4)};
-    for (std::size_t row = 0; row < h; ++row) {
-      std::copy_n(pixels.begin() + static_cast<std::ptrdiff_t>(((y0 + row) * bufferW + x0) * 4), w * 4,
-                  frame.rgba.begin() + static_cast<std::ptrdiff_t>(row * w * 4));
-    }
-    const std::uint64_t id = m_shownBar.pages[m_shownBar.here];
-    std::erase_if(m_pageFrames, [id](const auto& entry) { return entry.first == id; });
-    m_pageFrames.emplace_back(id, std::move(frame));
-    if (m_pageFrames.size() > kPageFrames) m_pageFrames.erase(m_pageFrames.begin());
-  }
-
-  // A workspace this window does not show has no live panes: its last frame here, else one card per session.
-  std::unique_ptr<Node> TerminalWindow::contentPage(std::size_t page) {
-    const float s = m_window.uiScale();
-    const auto frame = page < m_shownBar.pages.size()
-        ? std::ranges::find(m_pageFrames, m_shownBar.pages[page], &std::pair<std::uint64_t, PageFrame>::first)
-        : m_pageFrames.end();
-    if (frame != m_pageFrames.end() && m_contentRenderer != nullptr) {
-      auto image = std::make_unique<Image>();
-      const PageFrame& f = frame->second;
-      if (image->setSourceRaw(*m_contentRenderer, f.rgba.data(), f.rgba.size(), f.width, f.height, f.width * 4,
-                              PixmapFormat::RGBA)) {
-        image->setFit(ImageFit::Cover);
-        return image;
-      }
-    }
-    auto column = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP8 * s});
-    const ContentView* shown = shownView();
-    const ColorSpec surface = shown != nullptr ? shown->surface() : colorSpecFromRole(ColorRole::View);
-    for (const StatusRow::Data& data : pageRows(page)) {
-      auto card = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP12 * s,
-                              .fill = surface, .radius = Style::scaledRadius(Tokens::radiusR16, s),
-                              .flexGrow = 1.0F});
-      auto caption = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
-      caption->addChild(ui::glyph({.glyph = data.symbol, .glyphSize = Tokens::sizeSymbol * s,
-                                   .color = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::AccentText)}));
-      caption->addChild(ui::label({.text = data.name, .fontSize = Tokens::typeBody.size * s, .fontWeight = FontWeight::SemiBold,
-                                   .color = colorSpecFromRole(ColorRole::Label1), .maxLines = 1, .ellipsize = TextEllipsize::End}));
-      caption->addChild(ui::label({.text = data.status, .fontSize = Tokens::typeBody.size * s,
-                                   .color = colorSpecFromRole(data.symbolDanger ? ColorRole::Danger : ColorRole::Label2),
-                                   .maxLines = 1, .ellipsize = TextEllipsize::End}));
-      card->addChild(std::move(caption));
-      column->addChild(std::move(card));
-    }
-    return column;
   }
 
   bool TerminalWindow::detachSessions() {
@@ -1453,7 +1399,6 @@ namespace term {
   void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
 
   bool TerminalWindow::showWorkspace(std::vector<WindowOrigin> origins) {
-    capturePage();
     std::vector<std::uint64_t> leaving;
     for (const Session& v : m_views) {
       if (v.view->terminal() != nullptr) leaving.push_back(v.id);
@@ -2258,9 +2203,8 @@ namespace term {
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
     m_window.animations().cancel(m_pagerAnim);
-    for (PageStrip* strip : {m_sideStrip, m_contentStrip}) {
-      if (strip != nullptr) strip->forgetOwner();
-    }
+    m_window.animations().cancel(m_contentFade);
+    if (m_sideStrip != nullptr) m_sideStrip->forgetOwner();
     if (DragAndDrop* dnd = m_loop.wayland().dragAndDrop(); dnd != nullptr && m_dropSurface != nullptr) {
       dnd->clearTarget(m_dropSurface);
     }
