@@ -57,7 +57,6 @@ private:
     Flex* card = nullptr;
     Button* body = nullptr;    // the tile row (tooltip, right-click)
     std::string detail;        // detail tab key; empty = none
-    Button* chevron = nullptr; // hidden while connecting
     Spinner* spinner = nullptr;
   };
 
@@ -66,14 +65,17 @@ private:
 
   std::unique_ptr<Flex> makeCard(bool badged = false);
   void addSingleRow(Flex& card, std::unique_ptr<Button> row);
-  // An empty `detailTab` makes the card toggle; with `chevron` the card toggles and a chevron opens `detailTab`.
+  // An empty `detailTab` makes the card toggle; otherwise the icon toggles and the body opens `detailTab`. `spinner`
+  // adds a spinner that shows while connecting.
   std::unique_ptr<Button> makeToggleRow(
-      ToggleRow& row, std::string_view detailTab, float iconTextGap, bool chevron = false
+      ToggleRow& row, std::string_view detailTab, float iconTextGap, bool spinner = false
   );
   // A small toggle card for the shortcut `type`, kept in m_extras; null when the type has no shortcut.
   // The toggle row of a tile, registered in m_extras; its card is set by the caller.
   std::unique_ptr<Button> makeTileRow(std::string_view type, bool plain);
   std::unique_ptr<Flex> makeTileCard(std::string_view type, bool plain = false);
+  // A round toggle (concept C drop): symbol only, the name in its tooltip; null when the type has no shortcut.
+  std::unique_ptr<Flex> makeDropTile(std::string_view type);
   void attachTileDrag(Button& button);
   void tilePress(Button* button, float x, float y, bool pressed);
   void tileMotion(Button* button, float x, float y);
@@ -109,7 +111,7 @@ private:
   [[nodiscard]] int editSlotAt(float x, float y) const;
   [[nodiscard]] static float offsetIn(const Node* node, const Node* ancestor, bool y);
   void refreshDots(float offset);
-  std::unique_ptr<Flex> makePill(std::string_view glyph, Slider*& slider, Label*& value);
+  std::unique_ptr<Flex> makePill(std::string_view glyph, Slider*& slider, Label*& name, Label*& value);
   void syncToggleRow(ToggleRow& row, const std::string& subtitle);
   void syncSliders();
   void syncExtras();
@@ -186,8 +188,10 @@ private:
   bool m_syncingSliders = false;
   Flex* m_brightnessPill = nullptr;
   Slider* m_brightnessSlider = nullptr;
+  Label* m_brightnessName = nullptr;
   Label* m_brightnessValue = nullptr;
   Slider* m_volumeSlider = nullptr;
+  Label* m_volumeName = nullptr;
   Label* m_volumeValue = nullptr;
 
   Flex* m_mediaCard = nullptr;

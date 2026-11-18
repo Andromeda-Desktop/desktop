@@ -158,6 +158,9 @@ public:
   void setHitTestOutset(const HitTestOutset& outset);
   void setZIndex(std::int32_t zIndex);
   void setExcludeSubtreeFromTabOrder(bool exclude) noexcept;
+  // Marks this node's box as its own compositor glass shape with this corner radius; the surface host draws it.
+  void setGlassPiece(std::optional<float> radius) noexcept { m_glassPiece = radius; }
+  [[nodiscard]] std::optional<float> glassPiece() const noexcept { return m_glassPiece; }
   // nullopt inherits the parent's tone; a root without one uses Scheme. A change re-resolves the subtree's colours.
   void setPaletteTone(std::optional<PaletteTone> tone);
   [[nodiscard]] PaletteTone paletteTone() const noexcept;
@@ -286,6 +289,7 @@ private:
   bool m_paintedSubtree = false; // false: no painted bounds or clip anywhere in the subtree, so takePaintedBounds stops
   std::unique_ptr<DamageRegion> m_pendingDamage;
   std::unique_ptr<DamageRegion> m_partialDamage;
+  std::optional<float> m_glassPiece;
   std::optional<Radii> m_clip; // children clip to this node's box with these corner radii; nullopt = no clip
   bool m_paintContained = false;
   bool m_excludeSubtreeFromTabOrder = false;

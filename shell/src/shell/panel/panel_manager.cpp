@@ -1669,7 +1669,7 @@ void PanelManager::closePanel(bool animateClose) {
             m_attachedRevealClipNode, 0.0F, Threshold::px(attachedRevealTravelPx())
         );
       }
-    } else if (!startDetachedMorphClose(gen) && !startDetachedScaleClose(gen)) {
+    } else if (!startPiecesClose(gen) && !startDetachedMorphClose(gen) && !startDetachedScaleClose(gen)) {
       m_animations.cancelForOwner(m_sceneRoot.get());
       fadeSceneRoot(
           0.0F,
@@ -1738,6 +1738,10 @@ void PanelManager::destroyPanel() {
   m_panelContactShadowNode = nullptr;
   m_selectPopup.reset();
   m_sceneRoot.reset();
+  m_pieceShapes.clear();
+  m_pieceClips.clear();
+  m_pieceOpacity.clear();
+  m_piecesShown = false;
   m_dsk.reset();
   m_panelLiquid = 0.0F;
   m_liquidAnimation = 0;
@@ -2534,13 +2538,126 @@ void PanelManager::sendSheetStroke() {
 // Liquid shapes get the compositor's specular rim instead of the sheet hairline, so the hairline fades with liquid.
 // In light mode the rim adds white light, which shows nothing over a white backdrop, so the hairline stays.
 ColorSpec PanelManager::detachedBorder(float backgroundOpacity) const {
+  if (piecesActive()) {
+    return clearColorSpec();
+  }
   const float keep = sheetLight() ? 1.0F : 1.0F - m_panelLiquid;
   return scaleAlpha(shell::panel_surface::borderColor(m_config, backgroundOpacity), keep);
 }
 
 ColorSpec PanelManager::detachedFill() const {
   // The compositor draws the tint and its density (dsk v9); without it the sheet paints the slider tint.
-  return compositorTint() ? clearColorSpec() : colorSpecFromRole(panelMaterialRole(), detachedFillAlpha());
+  return compositorTint() || piecesActive() ? clearColorSpec() : colorSpecFromRole(panelMaterialRole(), detachedFillAlpha());
+}
+
+bool PanelManager::piecesActive() const {
+  return m_dsk != nullptr && m_dsk->hasShapes() && m_activePanel != nullptr && m_activePanel->usesGlassPieces();
+}
+
+void PanelManager::syncGlassPieces(bool material) {
+  const bool active = piecesActive() && m_sceneRoot != nullptr;
+  if (active != m_piecesShown) {
+    m_piecesShown = active;
+    // The sheet chrome (fill, hairline, shadow) shows only while the panel has no pieces.
+    if (!m_attachedToBar && m_bgNode != nullptr && m_config != nullptr) {
+      auto* bg = static_cast<Box*>(m_bgNode);
+      bg->setFill(detachedFill());
+      if (m_config->config().shell.panel.borders) {
+        bg->setBorder(detachedBorder(detachedBackgroundOpacity()), shell::panel_surface::borderWidth(m_config));
+      }
+    }
+    if (m_panelShadowNode != nullptr && m_config != nullptr) {
+      m_panelShadowNode->setVisible(
+          !active && m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, m_config->config().shell.shadow)
+      );
+    }
+    sendSheetStroke();
+  }
+  if (!active) {
+    m_pieceShapes.clear();
+    m_pieceClips.clear();
+    m_pieceOpacity.clear();
+    return;
+  }
+  struct Piece {
+    DskSurfaceClient::Value clip;
+    float radius;
+    float opacity;
+  };
+  std::vector<Piece> pieces;
+  // Clip rect in surface coordinates: x0, y0, x1, y1. A piece outside its clipping ancestors (another page) draws nothing.
+  // A piece takes its node's scale (about the centre) and the opacity of its path, so the glass follows the content.
+  const auto walk = [&](const auto& self, const Node& node, float x0, float y0, float x1, float y1, float alpha) -> void {
+    if (!node.visible()) {
+      return;
+    }
+    alpha *= node.opacity();
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(&node, x, y);
+    if (const std::optional<float> radius = node.glassPiece()) {
+      const float scale = node.scale();
+      const float w = node.width() * scale;
+      const float h = node.height() * scale;
+      x += (node.width() - w) * 0.5F;
+      y += (node.height() - h) * 0.5F;
+      const float l = std::max(x, x0);
+      const float t = std::max(y, y0);
+      const float r = std::min(x + w, x1);
+      const float b = std::min(y + h, y1);
+      if (r - l >= 1.0F && b - t >= 1.0F) {
+        pieces.push_back(
+            {{std::round(x), std::round(y), std::round(w), std::round(h)}, std::min(*radius * scale, std::min(w, h) * 0.5F),
+             alpha}
+        );
+      }
+      return;
+    }
+    if (node.clipChildren()) {
+      x0 = std::max(x0, x);
+      y0 = std::max(y0, y);
+      x1 = std::min(x1, x + node.width());
+      y1 = std::min(y1, y + node.height());
+    }
+    for (const auto& child : node.children()) {
+      self(self, *child, x0, y0, x1, y1, alpha);
+    }
+  };
+  walk(walk, *m_sceneRoot, 0.0F, 0.0F, m_sceneRoot->width(), m_sceneRoot->height(), 1.0F);
+
+  if (pieces.size() != m_pieceShapes.size()) {
+    material = true;
+  }
+  while (m_pieceShapes.size() < pieces.size()) {
+    m_pieceShapes.push_back(std::make_unique<DskShapeClient>(*m_dsk));
+    m_pieceClips.push_back({});
+  }
+  m_pieceShapes.resize(pieces.size());
+  m_pieceClips.resize(pieces.size());
+  m_pieceOpacity.resize(pieces.size(), -1.0F);
+  const glass::Material glassShape = Style::glassMaterial(glass::Kind::Shape);
+  const bool want = !Style::reduceTransparency();
+  for (std::size_t i = 0; i < pieces.size(); ++i) {
+    DskShapeClient& shape = *m_pieceShapes[i];
+    if (pieces[i].clip != m_pieceClips[i]) {
+      shape.set(DskSurfaceClient::Property::Clip, pieces[i].clip);
+      shape.set(DskSurfaceClient::Property::Radius, {pieces[i].radius, 0.0, 0.0, 0.0});
+      m_pieceClips[i] = pieces[i].clip;
+    }
+    if (pieces[i].opacity != m_pieceOpacity[i]) {
+      shape.set(DskSurfaceClient::Property::Opacity, {pieces[i].opacity, 0.0, 0.0, 0.0});
+      m_pieceOpacity[i] = pieces[i].opacity;
+    }
+    if (material) {
+      // Level 1 = the float plane (tokens elevation.e2), the shadow of an island.
+      shape.set(DskSurfaceClient::Property::Elevation, {1.0, 0.0, 0.0, 0.0});
+      setGlassMaterial(shape, *m_dsk, want ? &glassShape : nullptr);
+      shape.set(
+          DskSurfaceClient::Property::Tint,
+          glassTintValue(panelMaterialRole(), compositorTint() ? glassShape.tint : 0.0F, m_sceneRoot.get())
+      );
+    }
+  }
 }
 
 void PanelManager::syncPanelTone() {
@@ -2586,6 +2703,7 @@ void PanelManager::sendSheetTint(bool animate) {
   if (m_dsk == nullptr || !m_dsk->hasTintProperty()) {
     return;
   }
+  syncGlassPieces(true);
   const DskSurfaceClient::Value tint = glassTintValue(
       panelMaterialRole(), compositorTint() ? sheetTintAlpha(m_liquidTarget) : 0.0F, m_sceneRoot.get()
   );
@@ -2813,6 +2931,91 @@ void PanelManager::setPanelLiquid(float liquid, bool animate) {
   sendSheetTint(animate);
 }
 
+bool PanelManager::startPiecesOpen() {
+  if (!piecesActive() || m_attachedToBar || m_sceneRoot == nullptr || !MotionService::instance().enabled()) {
+    return false;
+  }
+  m_morphSource = nullptr;
+  applyDetachedReveal(1.0F);
+  m_contentGateTimer.stop();
+  m_contentGate = 1.0F;
+  if (m_contentNode != nullptr) {
+    m_contentNode->setOpacity(panelRevealContentOpacity(m_detachedRevealProgress));
+  }
+  pourPieces(true);
+  return true;
+}
+
+bool PanelManager::startPiecesClose(std::uint64_t gen) {
+  if (!piecesActive() || m_attachedToBar || m_sceneRoot == nullptr || !MotionService::instance().enabled()) {
+    return false;
+  }
+  pourPieces(false);
+  // The surface goes when the close spring settles; it runs beside the pieces so a rebuilt piece cannot hold it open.
+  m_animations.animateSpring(
+      1.0F, 0.0F, Style::spring(Tokens::springClose), [](float) {},
+      [this, gen] {
+        DeferredCall::callLater([this, gen] {
+          if (m_destroyGeneration == gen) {
+            destroyPanel();
+          }
+        });
+      },
+      m_sceneRoot.get()
+  );
+  return true;
+}
+
+// proto flow.js openCC / closeCC: a piece travels 15 % of its x and 50 % of its y distance to the top edge above
+// the column's right end, scales from 0.92 and fades; entries stagger, exits do not.
+void PanelManager::pourPieces(bool open) {
+  constexpr float kFromScale = 0.92F;
+  std::vector<Node*> pieces;
+  float right = 0.0F;
+  const auto collect = [&](const auto& self, Node& node) -> void {
+    if (!node.visible()) {
+      return;
+    }
+    if (node.glassPiece().has_value()) {
+      float x = 0.0F;
+      float y = 0.0F;
+      Node::absolutePosition(&node, x, y);
+      right = std::max(right, x + node.width());
+      pieces.push_back(&node);
+      return;
+    }
+    for (const auto& child : node.children()) {
+      self(self, *child);
+    }
+  };
+  collect(collect, *m_sceneRoot);
+  int index = 0;
+  for (Node* piece : pieces) {
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(piece, x, y);
+    const float restX = piece->x();
+    const float restY = piece->y();
+    const float offX = (right - (x + piece->width())) * 0.15F;
+    const float offY = -y * 0.5F;
+    const auto apply = [this, piece, restX, restY, offX, offY](float v) {
+      piece->setPosition(restX + offX * (1.0F - v), restY + offY * (1.0F - v));
+      piece->setScale(std::lerp(kFromScale, 1.0F, v));
+      piece->setOpacity(v);
+      if (m_surface != nullptr) {
+        m_surface->requestRedraw();
+      }
+    };
+    m_animations.cancelForOwner(piece);
+    if (open) {
+      apply(0.0F);
+      m_animations.animateStaggered(index++, 0.0F, 1.0F, Style::spring(Tokens::springOpen), apply, {}, piece);
+    } else {
+      m_animations.animateSpring(piece->opacity(), 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
+    }
+  }
+}
+
 bool PanelManager::startDetachedScaleOpen() {
   using Property = DskSurfaceClient::Property;
   dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
@@ -2871,6 +3074,41 @@ void PanelManager::animateMorphClip() {
         }
       }
   );
+}
+
+void PanelManager::morphSheetFrom(const Node& source) {
+  using Property = DskSurfaceClient::Property;
+  if (m_attachedToBar || m_dsk == nullptr || m_lifecycle.closing() || m_morphClipRunning || !MotionService::instance().enabled()) {
+    return;
+  }
+  float x = 0.0F;
+  float y = 0.0F;
+  Node::absolutePosition(&source, x, y);
+  const DskSurfaceClient::Value from{x, y, source.width(), source.height()};
+  const DskSurfaceClient::Value to = detachedSheetRect();
+  // Same contract as morphCardHeight: a content-fit change during the hop retargets this clip.
+  m_cardClipRunning = true;
+  sendSheetStroke();
+  m_dsk->set(Property::Clip, from);
+  m_dsk->set(Property::Radius, {source.glassPiece().value_or(0.0F), 0.0, 0.0, 0.0});
+  m_dsk->animate(Property::Radius, openCurve(), {std::min(static_cast<double>(panelRadius()), to[3] / 2.0), 0.0, 0.0, 0.0});
+  m_dsk->animate(Property::Clip, openCurve(), to, [this](DskSurfaceClient::EndReason reason) {
+    if (reason != DskSurfaceClient::EndReason::Finished || m_dsk == nullptr || m_lifecycle.closing()) {
+      return;
+    }
+    m_cardClipRunning = false;
+    m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
+    m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+    if (m_surface != nullptr) {
+      m_surface->requestRedraw();
+    }
+  });
+}
+
+void PanelManager::returnToPieces() {
+  if (piecesActive() && !m_attachedToBar && m_sceneRoot != nullptr && MotionService::instance().enabled()) {
+    pourPieces(true);
+  }
 }
 
 bool PanelManager::morphCardHeight(std::uint32_t target) {
@@ -3294,7 +3532,7 @@ void PanelManager::applyAttachedDecorationStyle() {
     const auto& shadowConfig = m_config->config().shell.shadow;
     const bool panelShadow =
         m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, shadowConfig);
-    m_panelShadowNode->setVisible(panelShadow);
+    m_panelShadowNode->setVisible(panelShadow && !piecesActive());
     if (panelShadow) {
       const RoundedRectStyle shadowStyle = ui::surface_shadow::style(
           shadowConfig, m_attachedBackgroundOpacity,
@@ -3376,7 +3614,7 @@ void PanelManager::onConfigReloaded() {
     const auto& shadowConfig = m_config->config().shell.shadow;
     const bool panelShadow =
         m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, shadowConfig);
-    m_panelShadowNode->setVisible(panelShadow);
+    m_panelShadowNode->setVisible(panelShadow && !piecesActive());
     if (!m_attachedToBar && panelShadow) {
       const float shadowRadius = panelRadius();
       m_panelShadowNode->setStyle(
@@ -3543,7 +3781,7 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
       m_sceneRoot->setOpacity(1.0F);
       applyAttachedReveal(0.0F);
       m_attachedOpenAnimationPending = true;
-    } else if (!startDetachedMorph() && !startDetachedScaleOpen()) {
+    } else if (!startPiecesOpen() && !startDetachedMorph() && !startDetachedScaleOpen()) {
       applyDetachedReveal(1.0F);
       m_sceneRoot->setOpacity(0.0F);
       fadeSceneRoot(1.0F, {});
@@ -3639,7 +3877,7 @@ void PanelManager::placePanelChrome() {
     const auto& shadowConfig = m_config->config().shell.shadow;
     const bool panelShadow =
         m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, shadowConfig);
-    m_panelShadowNode->setVisible(panelShadow);
+    m_panelShadowNode->setVisible(panelShadow && !piecesActive());
     const auto shadowOff = shadowDirectionOffset(shadowConfig.direction);
     const auto shadowOffsetX = static_cast<float>(shadowOff.x);
     const auto shadowOffsetY = static_cast<float>(shadowOff.y);
@@ -3863,6 +4101,7 @@ void PanelManager::prepareFrame(bool needsUpdate, bool needsLayout) {
   if (!needsSceneBuild && (needsUpdate || needsLayout)) {
     applyPendingPanelFocus();
   }
+  syncGlassPieces(false);
 }
 
 std::vector<std::string> PanelManager::availablePanelIds() const {

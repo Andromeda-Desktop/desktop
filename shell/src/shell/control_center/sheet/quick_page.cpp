@@ -55,13 +55,29 @@ namespace {
   constexpr std::string_view kPhonePlayerPrefix = "org.mpris.MediaPlayer2.andromeda_link_";
   constexpr float kChevronGlyph = 12.0F;
   constexpr float kTileDragSlop = 8.0F;
+  constexpr std::size_t kDropsPerRow = 5;
   constexpr float kChevronHit = 12.0F; // the glyph sits at inset 12; the hit area grows by 6 each side
 
   // The slider fills the whole pill; the icon and the value label draw over it.
+  // Split ink: the row repeats in on_accent inside `ink`, a clip as wide as the level, so a symbol or value
+  // the fill edge crosses shows both inks.
   class SliderPill : public Flex {
   public:
     Slider* slider = nullptr;
-    std::function<void()> restyle; // symbol colours depend on the arranged width
+    Glyph* icon = nullptr;
+    Label* name = nullptr;
+    Label* value = nullptr;
+    Flex* ink = nullptr;
+    Flex* inkRow = nullptr;
+    Glyph* inkIcon = nullptr;
+    Label* inkName = nullptr;
+    Label* inkValue = nullptr;
+
+    void clipInk() {
+      if (ink != nullptr && slider != nullptr) {
+        ink->setSize(std::round(slider->normalizedValue() * width()), height());
+      }
+    }
 
   protected:
     void doArrange(Renderer& renderer, const LayoutRect& rect) override {
@@ -69,9 +85,16 @@ namespace {
       if (slider != nullptr) {
         slider->arrange(renderer, LayoutRect{.width = width(), .height = height()});
       }
-      if (restyle) {
-        restyle();
+      if (inkRow != nullptr) {
+        inkIcon->setCodepoint(icon->codepoint());
+        inkName->setText(name->text());
+        inkName->setMaxWidth(name->width());
+        inkValue->setText(value->text());
+        inkValue->setMaxWidth(value->width());
+        inkRow->arrange(renderer, LayoutRect{.width = width(), .height = height()});
+        ink->setPosition(0.0F, 0.0F);
       }
+      clipInk();
     }
   };
 
@@ -217,9 +240,13 @@ std::unique_ptr<Flex> QuickPage::makeCard(bool badged) {
   card->setDirection(FlexDirection::Vertical);
   card->setAlign(FlexAlign::Stretch);
   card->setGap(Style::spaceSm * s);
-  card->setFill(colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()));
-  card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * s);
+  // The compositor draws each card as a glass piece; without it the card paints its own fill on the sheet.
+  if (!Style::compositorDrawsTint()) {
+    card->setFill(colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()));
+    card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * s);
+  }
   card->setRadius(Tokens::componentTileRadius * s);
+  card->setGlassPiece(Tokens::componentTileRadius * s);
   card->setPadding(Tokens::componentTilePadding * s);
   card->setGap(Tokens::componentTileGap * s);
   card->setJustify(FlexJustify::Center);
@@ -237,7 +264,7 @@ void QuickPage::addSingleRow(Flex& card, std::unique_ptr<Button> row) {
 }
 
 std::unique_ptr<Button> QuickPage::makeToggleRow(
-    ToggleRow& row, std::string_view detailTab, float iconTextGap, bool chevron
+    ToggleRow& row, std::string_view detailTab, float iconTextGap, bool spinner
 ) {
   const float s = contentScale();
   auto container = std::make_unique<Button>();
@@ -286,27 +313,7 @@ std::unique_ptr<Button> QuickPage::makeToggleRow(
   text->addChild(makeLabel(row.title, Tokens::typeHeadline, s, ColorRole::Label1));
   text->addChild(makeLabel(row.subtitle, Tokens::typeFootnote, s, ColorRole::Label2));
   container->addChild(std::move(text));
-  if (chevron) {
-    Button* unused = nullptr;
-    auto open = makeGlyphButton(unused, "chevron-right", s, [this, tab = std::string(detailTab)] {
-      if (m_swallowClick) {
-        return;
-      }
-      m_openTab(tab);
-    },
-                                kChevronHit, ButtonVariant::Ghost);
-    open->setGlyphSize(kChevronGlyph * s);
-    open->setZIndex(kAboveCardArea);
-    if (open->inputArea() != nullptr) {
-      constexpr float kOutset = 6.0F;
-      open->inputArea()->setHitTestOutset({.left = kOutset * s, .top = kOutset * s, .right = kOutset * s, .bottom = kOutset * s});
-    }
-    if (open->glyph() != nullptr) {
-      open->glyph()->setColor(colorSpecFromRole(ColorRole::Label3));
-    }
-    attachTileDrag(*open);
-    row.chevron = open.get();
-    container->addChild(std::move(open));
+  if (spinner) {
     auto spinner = std::make_unique<Spinner>();
     spinner->setSpinnerSize(kChevronGlyph * 1.5F * s);
     spinner->setVisible(false);
@@ -411,7 +418,37 @@ std::unique_ptr<Flex> QuickPage::makeTileCard(std::string_view type, bool plain)
   return card;
 }
 
-std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slider, Label*& value) {
+std::unique_ptr<Flex> QuickPage::makeDropTile(std::string_view type) {
+  auto row = makeTileRow(type, true);
+  if (row == nullptr) {
+    return nullptr;
+  }
+  const float s = contentScale();
+  const float size = Tokens::componentTileHeight * s;
+  Button* body = row.get();
+  ToggleRow& tile = m_extras.back();
+  if (Node* text = tile.title->parent(); text != nullptr) {
+    text->setVisible(false);
+    text->setParticipatesInLayout(false);
+  }
+  auto card = makeCard(true);
+  card->setMinWidth(size);
+  card->setMaxWidth(size);
+  card->setMinHeight(size);
+  card->setMaxHeight(size);
+  card->setRadius(size * 0.5F);
+  card->setGlassPiece(size * 0.5F);
+  addSingleRow(*card, std::move(row));
+  // The toggle fills the whole drop, so its on state colours the drop (concept C), not a disc inside it.
+  body->setPadding(0.0F);
+  tile.icon->setControlHeight(size);
+  tile.icon->setMinWidth(size);
+  tile.icon->setRadius(size * 0.5F);
+  tile.card = card.get();
+  return card;
+}
+
+std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slider, Label*& name, Label*& value) {
   const float s = contentScale();
   auto pill = std::make_unique<SliderPill>();
   pill->setDirection(FlexDirection::Horizontal);
@@ -420,7 +457,10 @@ std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slide
   pill->setPadding(0.0F, Tokens::componentSliderInset * s, 0.0F, Tokens::componentSliderInset * s);
   pill->setMinHeight(kPillHeight * s);
   pill->setRadius(Tokens::componentSliderRadius * s);
-  pill->setFill(colorSpecFromRole(ColorRole::SliderTrack));
+  pill->setGlassPiece(Tokens::componentSliderRadius * s);
+  if (!Style::compositorDrawsTint()) {
+    pill->setFill(colorSpecFromRole(ColorRole::SliderTrack));
+  }
 
   auto bar = std::make_unique<Slider>();
   bar->setRange(0.0, 1.0);
@@ -439,25 +479,46 @@ std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slide
   Glyph* iconPtr = icon.get();
   pill->addChild(std::move(icon));
 
-  auto spacer = std::make_unique<Flex>();
-  spacer->setFlexGrow(1.0F);
-  pill->addChild(std::move(spacer));
+  auto nameLabel = makeLabel(name, Tokens::typeHeadline, s, ColorRole::Label1);
+  nameLabel->setFlexGrow(1.0F);
+  pill->name = name;
+  pill->addChild(std::move(nameLabel));
 
   auto label = makeLabel(value, Tokens::typeFootnote, s, ColorRole::Label2);
   label->setMaxWidth(120.0F * s);
-  Label* labelPtr = label.get();
+  iconPtr->setColor(colorSpecFromRole(ColorRole::Label2));
+  pill->icon = iconPtr;
+  pill->value = label.get();
   pill->addChild(std::move(label));
-  // The symbol and the value use on_slider_fill only where the level covers them; over the bare track they use label_2.
-  const auto restyle = [pillPtr = pill.get(), iconPtr, labelPtr, s] {
-    const float level = pillPtr->slider->normalizedValue() * pillPtr->width();
-    const float inset = Tokens::componentSliderInset * s;
-    const bool iconCovered = level >= inset + iconPtr->width() * 0.5F;
-    const bool valueCovered = level >= pillPtr->width() - inset - labelPtr->width() * 0.5F;
-    iconPtr->setColor(colorSpecFromRole(iconCovered ? ColorRole::OnSliderFill : ColorRole::Label2));
-    labelPtr->setColor(colorSpecFromRole(valueCovered ? ColorRole::OnSliderFill : ColorRole::Label2));
-  };
-  slider->setOnLevelChanged(restyle);
-  pill->restyle = restyle;
+
+  auto ink = std::make_unique<Flex>();
+  ink->setParticipatesInLayout(false);
+  ink->setClipChildren(true);
+  ink->setHitTestVisible(false);
+  auto inkRow = std::make_unique<Flex>();
+  inkRow->setDirection(FlexDirection::Horizontal);
+  inkRow->setAlign(FlexAlign::Center);
+  inkRow->setGap(Tokens::componentSliderInset * s);
+  inkRow->setPadding(0.0F, Tokens::componentSliderInset * s, 0.0F, Tokens::componentSliderInset * s);
+  auto inkIcon = std::make_unique<Glyph>();
+  inkIcon->setGlyphSize(Tokens::componentRoundIconGlyph * s);
+  inkIcon->setColor(colorSpecFromRole(ColorRole::OnAccent));
+  pill->inkIcon = inkIcon.get();
+  inkRow->addChild(std::move(inkIcon));
+  Label* inkName = nullptr;
+  auto inkNameLabel = makeLabel(inkName, Tokens::typeHeadline, s, ColorRole::OnAccent);
+  inkNameLabel->setFlexGrow(1.0F);
+  pill->inkName = inkName;
+  inkRow->addChild(std::move(inkNameLabel));
+  Label* inkValue = nullptr;
+  auto inkLabel = makeLabel(inkValue, Tokens::typeFootnote, s, ColorRole::OnAccent);
+  pill->inkValue = inkValue;
+  inkRow->addChild(std::move(inkLabel));
+  pill->inkRow = inkRow.get();
+  ink->addChild(std::move(inkRow));
+  pill->ink = ink.get();
+  pill->addChild(std::move(ink));
+  slider->setOnLevelChanged([pillPtr = pill.get()] { pillPtr->clipInk(); });
   return pill;
 }
 
@@ -516,7 +577,8 @@ std::unique_ptr<Flex> QuickPage::create() {
   root->addChild(makeDots());
   buildPages(tileOrder());
 
-  auto brightness = makePill("sun", m_brightnessSlider, m_brightnessValue);
+  auto brightness = makePill("sun", m_brightnessSlider, m_brightnessName, m_brightnessValue);
+  m_brightnessName->setText(i18n::tr("control-center.detail.display.brightness"));
   m_brightnessPill = brightness.get();
   m_brightnessSlider->setOnValueChanged([this](double value) {
     if (m_syncingSliders) {
@@ -534,7 +596,7 @@ std::unique_ptr<Flex> QuickPage::create() {
   });
   root->addChild(std::move(brightness));
 
-  auto volume = makePill("volume", m_volumeSlider, m_volumeValue);
+  auto volume = makePill("volume", m_volumeSlider, m_volumeName, m_volumeValue);
   m_volumeSlider->setOnValueChanged([this](double value) {
     if (m_syncingSliders) {
       return;
@@ -544,15 +606,17 @@ std::unique_ptr<Flex> QuickPage::create() {
         m_services.audio->setSinkVolume(sink->id, static_cast<float>(value));
       }
     }
+    m_volumeValue->setText(percent(static_cast<float>(value)));
   });
-  // The output device name sits at the trailing end of the pill; a tap or a right-click opens the Sound page.
-  m_volumeValue->setEllipsize(TextEllipsize::End);
-  m_volumeValue->setOnPress([this](const InputArea::PointerData& d) {
+  // A tap or a right-click on the output device name opens the Sound page.
+  m_volumeName->setEllipsize(TextEllipsize::End);
+  m_brightnessName->setEllipsize(TextEllipsize::End);
+  m_volumeName->setOnPress([this](const InputArea::PointerData& d) {
     if (d.pressed && d.button == BTN_RIGHT) {
       m_openTab("detail-sound");
     }
   });
-  m_volumeValue->setOnClick([this](const InputArea::PointerData& d) {
+  m_volumeName->setOnClick([this](const InputArea::PointerData& d) {
     if (d.button == BTN_LEFT) {
       m_openTab("detail-sound");
     }
@@ -563,6 +627,8 @@ std::unique_ptr<Flex> QuickPage::create() {
   media->setDirection(FlexDirection::Horizontal);
   media->setAlign(FlexAlign::Center);
   m_mediaCard = media.get();
+  media->setRadius(Tokens::componentMediaHeight * s * 0.5F);
+  media->setGlassPiece(Tokens::componentMediaHeight * s * 0.5F);
   media->setPadding(Tokens::componentMediaPadding * s);
   media->setMinHeight(Tokens::componentMediaHeight * s);
   // fill_3 shows while there is no artwork.
@@ -783,86 +849,79 @@ void QuickPage::buildPages(const std::vector<std::string>& order) {
   }
   std::ranges::sort(connectivity, std::greater<>{}); // "wifi" before "bluetooth"
 
-  std::size_t nextOther = 0;
-  // Page 1: the connectivity card (Wi-Fi and Bluetooth rows) beside the next two tiles stacked. The tiles are made in
-  // row-major order so keyboard indices follow the screen.
-  auto top = std::make_unique<Flex>();
-  top->setDirection(FlexDirection::Horizontal);
-  top->setAlign(FlexAlign::Stretch);
-  top->setGap(Tokens::componentSheetGap * s);
-  auto card = makeCard();
-  card->setFlexGrow(1.0F);
-  auto stack = std::make_unique<Flex>();
-  stack->setDirection(FlexDirection::Vertical);
-  stack->setAlign(FlexAlign::Stretch);
-  stack->setGap(Tokens::componentSheetGap * s);
-  for (std::size_t i = 0; i < 2; ++i) {
-    if (i < connectivity.size()) {
-      if (auto row = makeTileRow(connectivity[i], false); row != nullptr) {
-        m_extras.back().card = card.get();
-        card->addChild(std::move(row));
+  // Concept C: the Wi-Fi + Bluetooth pair, then rows of round toggles; one page, each card its own glass piece.
+  auto page = std::make_unique<Flex>();
+  page->setDirection(FlexDirection::Vertical);
+  page->setAlign(FlexAlign::Stretch);
+  page->setGap(Tokens::componentSheetGap * s);
+  if (!connectivity.empty()) {
+    auto pair = std::make_unique<Flex>();
+    pair->setDirection(FlexDirection::Horizontal);
+    pair->setAlign(FlexAlign::Stretch);
+    pair->setGap(Tokens::componentSheetGap * s);
+    const float pill = Tokens::componentTileHeight * s * 0.5F;
+    for (const std::string& id : connectivity) {
+      if (auto cap = makeTileCard(id); cap != nullptr) {
+        cap->setRadius(pill);
+        cap->setGlassPiece(pill);
+        m_halfWidth.push_back(cap.get());
+        pair->addChild(std::move(cap));
       }
     }
-    while (nextOther < others.size()) {
-      if (auto tile = makeTileCard(others[nextOther++]); tile != nullptr) {
-        stack->addChild(std::move(tile));
-        break;
-      }
-    }
+    page->addChild(std::move(pair));
   }
-  m_halfWidth.push_back(card.get());
-  m_halfWidth.push_back(stack.get());
-  top->addChild(std::move(card));
-  top->addChild(std::move(stack));
-  m_pages.push_back(top.get());
-  strip->addChild(std::move(top));
-
-  std::vector<std::unique_ptr<Flex>> cards;
-  for (; nextOther < others.size(); ++nextOther) {
-    if (auto tile = makeTileCard(others[nextOther]); tile != nullptr) {
-      cards.push_back(std::move(tile));
+  std::unique_ptr<Flex> row;
+  const auto closeRow = [&] {
+    // Empty slots keep the last row on the same columns as the full rows above it.
+    while (row->children().size() < kDropsPerRow) {
+      auto slot = std::make_unique<Flex>();
+      slot->setMinWidth(Tokens::componentTileHeight * s);
+      row->addChild(std::move(slot));
     }
-  }
-  constexpr std::size_t kTilesPerPage = 4;
-  const std::size_t extraPages = (cards.size() + kTilesPerPage - 1) / kTilesPerPage;
-  for (std::size_t p = 0; p < extraPages; ++p) {
-    auto page = std::make_unique<Flex>();
-    page->setDirection(FlexDirection::Vertical);
-    page->setAlign(FlexAlign::Stretch);
-    page->setGap(Tokens::componentSheetGap * s);
-    const std::size_t end = std::min(cards.size(), (p + 1) * kTilesPerPage);
-    for (std::size_t i = p * kTilesPerPage; i < end; i += 2) {
-      auto row = std::make_unique<Flex>();
+    page->addChild(std::move(row));
+  };
+  for (const std::string& id : others) {
+    auto drop = makeDropTile(id);
+    if (drop == nullptr) {
+      continue;
+    }
+    if (row == nullptr) {
+      row = std::make_unique<Flex>();
       row->setDirection(FlexDirection::Horizontal);
-      row->setAlign(FlexAlign::Stretch);
-      row->setGap(Tokens::componentSheetGap * s);
-      m_halfWidth.push_back(cards[i].get());
-      row->addChild(std::move(cards[i]));
-      if (i + 1 < end) {
-        m_halfWidth.push_back(cards[i + 1].get());
-        row->addChild(std::move(cards[i + 1]));
-      } else {
-        auto filler = std::make_unique<Flex>();
-        m_halfWidth.push_back(filler.get());
-        row->addChild(std::move(filler));
-      }
-      page->addChild(std::move(row));
+      row->setAlign(FlexAlign::Center);
+      row->setJustify(FlexJustify::SpaceBetween);
     }
-    m_pages.push_back(page.get());
-    strip->addChild(std::move(page));
+    row->addChild(std::move(drop));
+    if (row->children().size() == kDropsPerRow) {
+      closeRow();
+    }
   }
+  if (row != nullptr) {
+    closeRow();
+  }
+  m_pages.push_back(page.get());
+  strip->addChild(std::move(page));
   fillDots(m_pages.size());
 }
 
 std::unique_ptr<Flex> QuickPage::makeFooter() {
   const float s = contentScale();
-  const float kFooterHeight = Tokens::componentButtonHeightM;
+  const float kFooterHeight = Tokens::componentRoundIconSize;
   auto footer = std::make_unique<Flex>();
   footer->setDirection(FlexDirection::Horizontal);
   footer->setAlign(FlexAlign::Center);
   footer->setMinHeight(kFooterHeight * s);
-  footer->setJustify(FlexJustify::SpaceBetween);
-  footer->setPadding(0.0F, Tokens::componentTilePadding * s, 0.0F, Tokens::componentTilePadding * s);
+  footer->setGap(Tokens::componentSheetGap * s);
+  const float footPill = kFooterHeight * s * 0.5F;
+  // Battery and power profile share one glass pill at the start; the round buttons end the row.
+  auto status = std::make_unique<Flex>();
+  status->setDirection(FlexDirection::Horizontal);
+  status->setAlign(FlexAlign::Center);
+  status->setGap(Tokens::spaceP8 * s);
+  status->setMinHeight(kFooterHeight * s);
+  status->setPadding(0.0F, Tokens::componentTilePadding * s, 0.0F, Tokens::componentTilePadding * s);
+  status->setRadius(footPill);
+  status->setGlassPiece(footPill);
   m_footer = footer.get();
 
   const auto makeGlyph = [&](Glyph*& out) {
@@ -880,7 +939,7 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
   m_batteryBox = battery.get();
   battery->addChild(makeGlyph(m_batteryGlyph));
   battery->addChild(makeLabel(m_batteryText, Tokens::typeFootnote, s, ColorRole::Label2));
-  footer->addChild(std::move(battery));
+  status->addChild(std::move(battery));
 
   m_profile = ShortcutRegistry::create("power_profile", m_services.shortcutServices());
   auto profile = std::make_unique<Button>();
@@ -900,13 +959,17 @@ std::unique_ptr<Flex> QuickPage::makeFooter() {
   m_profileBox = profile.get();
   profile->addChild(makeGlyph(m_profileGlyph));
   profile->addChild(makeLabel(m_profileText, Tokens::typeFootnote, s, ColorRole::Label2));
-  footer->addChild(std::move(profile));
+  status->addChild(std::move(profile));
+  footer->addChild(std::move(status));
+  auto spacer = std::make_unique<Flex>();
+  spacer->setFlexGrow(1.0F);
+  footer->addChild(std::move(spacer));
 
   const auto iconButton = [&](Button*& out, std::string_view glyph, std::function<void()> click) {
     Button* unused = nullptr;
-    auto b = makeGlyphButton(out, glyph, s, std::move(click), Tokens::componentButtonHeightM,
-                             ButtonVariant::Ghost);
-    b->setRadius(Tokens::componentButtonRadius * s);
+    auto b = makeGlyphButton(out, glyph, s, std::move(click), kFooterHeight, ButtonVariant::Ghost);
+    b->setRadius(footPill);
+    b->setGlassPiece(footPill);
     footer->addChild(std::move(b));
   };
   iconButton(m_notificationsButton, "bell", [this] { m_openTab("detail-notifications"); });
@@ -975,7 +1038,8 @@ void QuickPage::sizePages(Renderer& renderer, float width) {
   if (std::abs(m_pager->height() - height) >= 0.5F) {
     m_pager->setSize(m_pager->width(), height);
   }
-  m_volumeValue->setMaxWidth(width * 0.5F);
+  m_volumeName->setMaxWidth(width * 0.5F);
+  m_brightnessName->setMaxWidth(width * 0.5F);
 }
 
 void QuickPage::refreshDots(float offset) {
@@ -1154,7 +1218,6 @@ void QuickPage::syncExtras() {
     }
     syncToggleRow(row, subtitle);
     if (row.spinner != nullptr) {
-      row.chevron->setVisible(!connecting);
       row.spinner->setVisible(connecting);
       connecting ? row.spinner->start() : row.spinner->stop();
     }
@@ -1167,6 +1230,7 @@ void QuickPage::syncFooter() {
   const bool profile = m_services.powerProfiles != nullptr && !m_services.powerProfiles->activeProfile().empty();
   m_batteryBox->setVisible(battery);
   m_profileBox->setVisible(profile);
+  m_batteryBox->parent()->setVisible(battery || profile);
   m_footer->setVisible(true);
   if (battery) {
     m_batteryGlyph->setGlyph(batteryGlyphName(state->percentage, state->state));
@@ -1213,7 +1277,8 @@ void QuickPage::syncSliders() {
   const AudioNode* sink = m_services.audio != nullptr ? m_services.audio->defaultSink() : nullptr;
   m_volumeSlider->setEnabled(sink != nullptr);
   m_volumeSlider->setValue(sink != nullptr ? sink->volume : 0.0);
-  m_volumeValue->setText(sink == nullptr ? std::string{} : (!sink->description.empty() ? sink->description : sink->name));
+  m_volumeName->setText(sink == nullptr ? std::string{} : (!sink->description.empty() ? sink->description : sink->name));
+  m_volumeValue->setText(sink == nullptr ? std::string{} : percent(static_cast<float>(sink->volume)));
 
   m_syncingSliders = false;
 }
@@ -1519,22 +1584,22 @@ void QuickPage::reflowEditGrid() {
   m_editRows.clear();
   m_editCards.clear();
   m_editHalf.clear();
-  for (std::size_t i = 0; i < held.size(); i += 2) {
+  // Edit mode lays every tile out as a drop, kDropsPerRow to a row; empty slots keep the columns.
+  const float drop = Tokens::componentTileHeight * s;
+  for (std::size_t i = 0; i < held.size(); i += kDropsPerRow) {
     auto row = std::make_unique<Flex>();
     row->setDirection(FlexDirection::Horizontal);
-    row->setAlign(FlexAlign::Stretch);
-    row->setGap(Tokens::componentSheetGap * s);
-    m_editCards.push_back(held[i].get());
-    m_editHalf.push_back(held[i].get());
-    row->addChild(std::move(held[i]));
-    if (i + 1 < held.size()) {
-      m_editCards.push_back(held[i + 1].get());
-      m_editHalf.push_back(held[i + 1].get());
-      row->addChild(std::move(held[i + 1]));
-    } else {
-      auto filler = std::make_unique<Flex>();
-      m_editHalf.push_back(filler.get());
-      row->addChild(std::move(filler));
+    row->setAlign(FlexAlign::Center);
+    row->setJustify(FlexJustify::SpaceBetween);
+    for (std::size_t j = i; j < i + kDropsPerRow; ++j) {
+      if (j < held.size()) {
+        m_editCards.push_back(held[j].get());
+        row->addChild(std::move(held[j]));
+      } else {
+        auto slot = std::make_unique<Flex>();
+        slot->setMinWidth(drop);
+        row->addChild(std::move(slot));
+      }
     }
     m_editRows.push_back(row.get());
     m_editGrid->addChild(std::move(row));
@@ -1572,7 +1637,7 @@ void QuickPage::rebuildEdit() {
   std::vector<std::unique_ptr<Flex>> cards;
   std::vector<std::string> built; // ids that have a card: card index == order index
   for (const std::string& id : m_editOrder) {
-    auto card = makeTileCard(id, true);
+    auto card = makeDropTile(id);
     if (card == nullptr) {
       continue;
     }
@@ -1604,7 +1669,7 @@ void QuickPage::rebuildEdit() {
     if (!tileAvailable(id) || std::ranges::find(m_editOrder, id) != m_editOrder.end()) {
       continue;
     }
-    auto card = makeTileCard(id, true);
+    auto card = makeDropTile(id);
     if (card == nullptr) {
       continue;
     }
@@ -1626,20 +1691,20 @@ void QuickPage::rebuildEdit() {
     auto titleLabel = makeLabel(title, Tokens::typeFootnote, s, ColorRole::Label1);
     title->setText(i18n::tr("control-center.quick.add-controls"));
     m_editGallery->addChild(std::move(titleLabel));
-    for (std::size_t i = 0; i < gallery.size(); i += 2) {
+    const float drop = Tokens::componentTileHeight * s;
+    for (std::size_t i = 0; i < gallery.size(); i += kDropsPerRow) {
       auto row = std::make_unique<Flex>();
       row->setDirection(FlexDirection::Horizontal);
-      row->setAlign(FlexAlign::Stretch);
-      row->setGap(Tokens::componentSheetGap * s);
-      m_galleryHalf.push_back(gallery[i].get());
-      row->addChild(std::move(gallery[i]));
-      if (i + 1 < gallery.size()) {
-        m_galleryHalf.push_back(gallery[i + 1].get());
-        row->addChild(std::move(gallery[i + 1]));
-      } else {
-        auto filler = std::make_unique<Flex>();
-        m_galleryHalf.push_back(filler.get());
-        row->addChild(std::move(filler));
+      row->setAlign(FlexAlign::Center);
+      row->setJustify(FlexJustify::SpaceBetween);
+      for (std::size_t j = i; j < i + kDropsPerRow; ++j) {
+        if (j < gallery.size()) {
+          row->addChild(std::move(gallery[j]));
+        } else {
+          auto slot = std::make_unique<Flex>();
+          slot->setMinWidth(drop);
+          row->addChild(std::move(slot));
+        }
       }
       m_editGallery->addChild(std::move(row));
     }

@@ -201,6 +201,10 @@ public:
   [[nodiscard]] const InputDispatcher& inputDispatcher() const noexcept { return m_inputDispatcher; }
   void requestUpdateOnly();
   void requestLayout();
+  // Concept C detail hop: the sheet grows out of the glass piece `source` (from its own radius); back pours the
+  // pieces in again. No-ops without motion or for a bar-attached panel.
+  void morphSheetFrom(const Node& source);
+  void returnToPieces();
   // Requests a redraw on the active panel surface without re-running panel
   // update/layout. Used for reactive palette restyling.
   void requestRedraw();
@@ -250,6 +254,10 @@ private:
   bool morphCardHeight(std::uint32_t target);
   bool startDetachedScaleOpen();
   bool startDetachedScaleClose(std::uint64_t gen);
+  // Glass pieces pour out of the panel's top edge, top piece first, and back on close (concept C).
+  bool startPiecesOpen();
+  bool startPiecesClose(std::uint64_t gen);
+  void pourPieces(bool open);
   [[nodiscard]] DskSurfaceClient::Value detachedScaleShift(double scale) const;
   [[nodiscard]] static desk::motion::SpringConfig effectsSpring();
   [[nodiscard]] static DskSurfaceClient::Curve opacityCurve(bool fast);
@@ -277,6 +285,8 @@ private:
   void sendSheetTint(bool animate = false);
   // The sheet and its content take the sheet's glass::tone.
   void syncPanelTone();
+  [[nodiscard]] bool piecesActive() const;
+  void syncGlassPieces(bool material);
   [[nodiscard]] float densityCardOpacity(float opacity) const;
   // Attached panels keep the bar-joined radius; floating panels are sheets (component.sheet.radius).
   [[nodiscard]] float panelRadius() const;
@@ -338,6 +348,10 @@ private:
   std::unique_ptr<WaylandSurface> m_surface;
   // Morphs the detached panel from its bar island; null when the panel opens with the shell's own reveal.
   std::unique_ptr<DskSurfaceClient> m_dsk;
+  std::vector<std::unique_ptr<DskShapeClient>> m_pieceShapes;
+  std::vector<DskSurfaceClient::Value> m_pieceClips;
+  std::vector<float> m_pieceOpacity;
+  bool m_piecesShown = false;
   wl_surface* m_morphSource = nullptr;
   std::array<float, 4> m_morphSourceRect{};
   float m_morphSourceRadius = 0.0F;

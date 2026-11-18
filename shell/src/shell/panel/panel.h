@@ -77,6 +77,8 @@ public:
     return 0.0F;
   }
   [[nodiscard]] virtual bool hasDecoration() const { return true; }
+  // True: the panel draws no sheet; each node marked with Node::setGlassPiece is its own glass shape.
+  [[nodiscard]] virtual bool usesGlassPieces() const { return false; }
   // False: the content reaches the card edge; the panel insets its own rows.
   [[nodiscard]] virtual bool padsContent() const noexcept { return true; }
   [[nodiscard]] virtual LayerShellLayer layer() const { return LayerShellLayer::Top; }

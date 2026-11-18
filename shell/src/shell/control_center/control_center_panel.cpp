@@ -587,17 +587,30 @@ void ControlCenterPanel::selectTab(TabId tab, bool animated) {
   }
 
   endTitleMove();
+  // The glass piece a detail page opens from: its sheet grows out of that piece instead of sliding in.
+  const Node* morphSource = nullptr;
   if (animated && previousTab == TabId::Quick && isDetailTab(tab) && m_tabs[tabIndex(previousTab)] != nullptr
       && MotionService::instance().enabled()) {
     if (Label* source = m_tabs[tabIndex(previousTab)]->sharedTitleFor(kTabs[tabIndex(tab)].key); source != nullptr) {
       beginTitleMove(*source);
+      for (const Node* n = source; n != nullptr && morphSource == nullptr; n = n->parent()) {
+        if (n->glassPiece().has_value()) {
+          morphSource = n;
+        }
+      }
     }
   }
+  const bool backToPieces = animated && tab == TabId::Quick && isDetailTab(previousTab);
   m_activeTab = tab;
 
   updateTabChrome(tab);
 
-  if (tabChanged && animated && m_animations != nullptr && m_tabBodies != nullptr) {
+  if (morphSource != nullptr) {
+    PanelManager::instance().morphSheetFrom(*morphSource);
+  } else if (backToPieces) {
+    PanelManager::instance().returnToPieces();
+  }
+  if (tabChanged && animated && morphSource == nullptr && !backToPieces && m_animations != nullptr && m_tabBodies != nullptr) {
     startTabTransition(previousTab, tab);
   } else {
     m_tabTransitionActive = false;
