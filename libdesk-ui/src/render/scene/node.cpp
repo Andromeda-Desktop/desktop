@@ -391,6 +391,16 @@ void Node::attachChild(Node* child) {
 }
 
 void Node::setPaletteTone(std::optional<PaletteTone> tone) {
+  if (m_paletteToneFade.has_value()) {
+    if (m_animationManager != nullptr) {
+      m_animationManager->cancel(m_paletteToneFade->id);
+    }
+    m_paletteToneFade.reset();
+    if (m_paletteTone == tone) {
+      notifyPaletteTone();
+      return;
+    }
+  }
   if (m_paletteTone == tone) {
     return;
   }
@@ -399,6 +409,54 @@ void Node::setPaletteTone(std::optional<PaletteTone> tone) {
   if (paletteTone() != before) {
     notifyPaletteTone();
   }
+}
+
+void Node::fadePaletteTone(PaletteTone tone, const desk::motion::SpringConfig& spring) {
+  const PaletteTone before = paletteTone();
+  if (m_animationManager == nullptr || (before == tone && !m_paletteToneFade.has_value())) {
+    setPaletteTone(tone);
+    return;
+  }
+  if (before == tone) {
+    return;
+  }
+  // A reversal mid-fade runs back from where the colours are now.
+  float start = 0.0F;
+  if (m_paletteToneFade.has_value()) {
+    m_animationManager->cancel(m_paletteToneFade->id);
+    start = m_paletteToneFade->from == tone ? 1.0F - m_paletteToneFade->progress : 0.0F;
+  }
+  m_paletteTone = tone;
+  m_paletteToneFade = PaletteToneFade{.from = before, .progress = start, .id = 0};
+  // With motion off, drive() may complete at once and end the fade.
+  const std::uint32_t id = m_animationManager->drive(
+      0, start, 1.0F, spring,
+      [this](float t) {
+        m_paletteToneFade->progress = t;
+        notifyPaletteTone();
+        markPaintDirty();
+      },
+      [this] {
+        m_paletteToneFade.reset();
+        notifyPaletteTone();
+        markPaintDirty();
+      },
+      this, 0.0F, Unit::Progress
+  );
+  if (m_paletteToneFade.has_value()) {
+    m_paletteToneFade->id = id;
+  }
+  notifyPaletteTone();
+  markPaintDirty();
+}
+
+std::optional<Node::PaletteToneFade> Node::paletteToneFade() const noexcept {
+  for (const Node* node = this; node != nullptr; node = node->m_parent) {
+    if (node->m_paletteTone.has_value()) {
+      return node->m_paletteToneFade;
+    }
+  }
+  return std::nullopt;
 }
 
 PaletteTone Node::paletteTone() const noexcept {

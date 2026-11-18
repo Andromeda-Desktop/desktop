@@ -9,6 +9,9 @@
 #include <optional>
 #include <vector>
 
+namespace desk::motion {
+  struct SpringConfig;
+}
 struct Mat3;
 class AnimationManager;
 class Renderer;
@@ -158,6 +161,16 @@ public:
   // nullopt inherits the parent's tone; a root without one uses Scheme. A change re-resolves the subtree's colours.
   void setPaletteTone(std::optional<PaletteTone> tone);
   [[nodiscard]] PaletteTone paletteTone() const noexcept;
+  // Sets the tone and cross-fades the subtree's colours from the old tone over `spring`; snaps without an
+  // AnimationManager. setPaletteTone() ends a running fade.
+  void fadePaletteTone(PaletteTone tone, const desk::motion::SpringConfig& spring);
+  struct PaletteToneFade {
+    PaletteTone from;
+    float progress; // 0 = from, 1 = paletteTone()
+    std::uint32_t id;
+  };
+  // The running fade of the node that decides paletteTone(); nullopt when settled.
+  [[nodiscard]] std::optional<PaletteToneFade> paletteToneFade() const noexcept;
   [[nodiscard]] bool excludeSubtreeFromTabOrder() const noexcept { return m_excludeSubtreeFromTabOrder; }
 
   virtual Node* addChild(std::unique_ptr<Node> child);
@@ -290,6 +303,7 @@ private:
   std::vector<std::unique_ptr<Node>> m_children;
   std::unique_ptr<Accessible> m_accessible;
   std::optional<PaletteTone> m_paletteTone;
+  std::optional<PaletteToneFade> m_paletteToneFade;
 
   void propagatePaintDirty();
   void propagateLayoutDirty();

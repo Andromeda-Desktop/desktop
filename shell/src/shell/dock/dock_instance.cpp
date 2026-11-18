@@ -563,12 +563,14 @@ namespace shell::dock {
     return glassTone(glass::Kind::Shape, instance.dsk != nullptr ? instance.dsk->backdropDark() : std::nullopt);
   }
 
-  // fade: a backdrop light/dark flip fades the tint on spring.fade instead of snapping.
+  // fade: a backdrop light/dark flip fades the tint and the content on spring.fade instead of snapping.
   void applyPanelPalette(DockInstance& instance, const DockConfig& cfg, bool fade) {
     if (instance.panel == nullptr)
       return;
     const PaletteTone tone = dockTone(instance);
-    if (instance.sceneRoot != nullptr) {
+    if (instance.sceneRoot != nullptr && fade) {
+      instance.sceneRoot->fadePaletteTone(tone, Style::spring(Tokens::springFade));
+    } else if (instance.sceneRoot != nullptr) {
       instance.sceneRoot->setPaletteTone(tone);
     }
     // A small shape: liquid glass with the launcher pill's clear tint.

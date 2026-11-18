@@ -589,10 +589,19 @@ void LiveActivityIsland::ensureSurfaces() {
     });
     inst->glassConn = Style::glassChanged().connect([instPtr = inst.get()] {
       if (instPtr->material != nullptr) {
-        instPtr->material->setPaletteTone(glassTone(glass::Kind::Shape));
-        instPtr->tint->setPaletteTone(glassTone(glass::Kind::Sheet));
+        instPtr->material->setPaletteTone(islandTone(*instPtr, glass::Kind::Shape));
+        instPtr->tint->setPaletteTone(islandTone(*instPtr, glass::Kind::Sheet));
       }
     });
+    if (inst->dsk != nullptr) {
+      inst->dsk->setOnBackdrop([this, instPtr = inst.get()](bool) {
+        if (instPtr->material == nullptr) {
+          return;
+        }
+        applyContent(*instPtr, true);
+        instPtr->surface->requestRedraw();
+      });
+    }
     m_instances.push_back(std::move(inst));
     updateFace(*m_instances.back());
   }
@@ -878,12 +887,18 @@ void LiveActivityIsland::hoverLeave(Instance& inst) {
   });
 }
 
+PaletteTone LiveActivityIsland::islandTone(const Instance& inst, glass::Kind kind) {
+  return glassTone(kind, inst.dsk != nullptr ? inst.dsk->backdropDark() : std::nullopt);
+}
+
 DskSurfaceClient::Value LiveActivityIsland::islandTint(const Instance& inst, Face face) {
   if (!inst.compositorTint) {
     return glassTintValue(materialRole(), 0.0F, inst.material);
   }
-  return face == Face::Rest ? glassTintValue(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint, inst.material)
-                            : glassTintValue(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint, inst.tint);
+  const glass::Kind kind = face == Face::Rest ? glass::Kind::Shape : glass::Kind::Sheet;
+  const float tint = Style::glassMaterial(kind, islandTone(inst, kind)).tint;
+  return face == Face::Rest ? glassTintValue(materialRole(), tint, inst.material)
+                            : glassTintValue(panelMaterialRole(), tint, inst.tint);
 }
 
 namespace {
@@ -1763,40 +1778,55 @@ void LiveActivityIsland::loadArt(Instance& inst, Renderer& renderer, const std::
   }
 }
 
-void LiveActivityIsland::applyContent(Instance& inst) {
+void LiveActivityIsland::applyContent(Instance& inst, bool fade) {
   Renderer& renderer = inst.surface->renderTarget().renderer();
 
   // A small shape: liquid glass with the launcher pill's clear tint.
   const bool liquid = inst.dsk != nullptr && inst.dsk->hasLiquidProperty() && !Style::reduceTransparency();
   // The resting pill is a shape; the other faces sit on the sheet tint, a sibling, so it takes its own tone.
-  inst.material->setPaletteTone(glassTone(glass::Kind::Shape));
-  inst.tint->setPaletteTone(glassTone(glass::Kind::Sheet));
+  // fade: a backdrop light/dark flip cross-fades the tone and the tint on spring.fade.
+  const PaletteTone shapeTone = islandTone(inst, glass::Kind::Shape);
+  const PaletteTone sheetTone = islandTone(inst, glass::Kind::Sheet);
+  if (fade) {
+    inst.material->fadePaletteTone(shapeTone, Style::spring(Tokens::springFade));
+    inst.tint->fadePaletteTone(sheetTone, Style::spring(Tokens::springFade));
+  } else {
+    inst.material->setPaletteTone(shapeTone);
+    inst.tint->setPaletteTone(sheetTone);
+  }
+  const auto setTint = [fade](auto& target, const DskSurfaceClient::Value& value) {
+    if (fade) {
+      target.animate(DskSurfaceClient::Property::Tint, DskSurfaceClient::Curve::SpringEffects, value);
+    } else {
+      target.set(DskSurfaceClient::Property::Tint, value);
+    }
+  };
   if (inst.dsk != nullptr && inst.dsk->hasLiquidProperty()) {
-    const glass::Material material = Style::glassMaterial(glass::Kind::Shape);
+    const glass::Material material = Style::glassMaterial(glass::Kind::Shape, shapeTone);
     setGlassMaterial(*inst.dsk, *inst.dsk, liquid ? &material : nullptr);
     inst.compositorTint = liquid && inst.dsk->hasTintProperty() && Style::compositorDrawsTint();
     if (inst.dsk->hasTintProperty()) {
-      inst.dsk->set(DskSurfaceClient::Property::Tint, islandTint(inst, inst.morph.shown()));
+      setTint(*inst.dsk, islandTint(inst, inst.morph.shown()));
     }
     if (laneGlass(inst)) {
       for (DskShapeClient* shape : {inst.pillShape.get(), inst.cardShape.get()}) {
         setGlassMaterial(*shape, *inst.dsk, liquid ? &material : nullptr);
       }
       if (inst.dsk->hasTintProperty()) {
-        inst.pillShape->set(DskSurfaceClient::Property::Tint, islandTint(inst, Face::Rest));
-        inst.cardShape->set(DskSurfaceClient::Property::Tint, islandTint(inst, inst.morph.shown()));
+        setTint(*inst.pillShape, islandTint(inst, Face::Rest));
+        setTint(*inst.cardShape, islandTint(inst, inst.morph.shown()));
       }
     }
   }
   inst.material->setFill(
       inst.compositorTint ? colorSpecFromRole(materialRole(), 0.0F)
                           : colorSpecFromRole(
-                                materialRole(), liquid ? Style::glassMaterial(glass::Kind::Shape).tint
+                                materialRole(), liquid ? Style::glassMaterial(glass::Kind::Shape, shapeTone).tint
                                                        : Style::glassTint(glass::Kind::Shape, inst.space.backgroundOpacity)
                             )
   );
   inst.tint->setFill(colorSpecFromRole(
-      panelMaterialRole(), inst.compositorTint ? 0.0F : Style::glassMaterial(glass::Kind::Sheet).tint
+      panelMaterialRole(), inst.compositorTint ? 0.0F : Style::glassMaterial(glass::Kind::Sheet, sheetTone).tint
   ));
   inst.ring->setBorder(inst.space.border, islandStrokeWidth(inst.space.borderWidth));
 

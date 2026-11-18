@@ -299,7 +299,7 @@ private:
   // The banner's §9.2 action buttons (hidden until a banner has actions); the first is the primary capsule.
   std::unique_ptr<Node> bannerActionRow(Instance& inst);
   void bannerAction(Instance& inst, std::size_t index);
-  void applyContent(Instance& inst);
+  void applyContent(Instance& inst, bool fade = false);
   void applyReveal(Instance& inst, float reveal);
   void animateReveal(Instance& inst, Face face, float velocity);
   void bannerDragStart(Instance& inst, float x, float y);
@@ -325,6 +325,7 @@ private:
   // True when the clip moved (animated or jumped); `continueMirror`: a mirrored morph was running before this change.
   bool syncDsk(Instance& inst, bool animate, bool continueMirror);
   // The glass tint of `face`: the pill material at rest, the sheet tint expanded; alpha 0 when the shell paints it.
+  [[nodiscard]] static PaletteTone islandTone(const Instance& inst, glass::Kind kind);
   [[nodiscard]] static DskSurfaceClient::Value islandTint(const Instance& inst, Face face);
   void startMirror(Instance& inst, const Rect& target, bool grow, bool continueFrom);
   void stepMirror(Instance& inst);

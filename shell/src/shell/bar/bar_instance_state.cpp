@@ -402,7 +402,13 @@ void Bar::applyBackgroundPalette(BarInstance& instance) {
   }
   const Node* tone = instance.sceneRoot.get();
   if (instance.sceneRoot != nullptr) {
-    instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape, instance.dsk != nullptr ? instance.dsk->backdropDark() : std::nullopt));
+    const PaletteTone tone =
+        glassTone(glass::Kind::Shape, instance.dsk != nullptr ? instance.dsk->backdropDark() : std::nullopt);
+    if (instance.tintFade) {
+      instance.sceneRoot->fadePaletteTone(tone, Style::spring(Tokens::springFade));
+    } else {
+      instance.sceneRoot->setPaletteTone(tone);
+    }
   }
   const Color material = colorForRole(materialRole(), barBodyTint(instance.barConfig), tone);
   // Islands are small shapes: liquid glass with the launcher pill's clear tint.

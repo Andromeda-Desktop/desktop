@@ -276,6 +276,11 @@ Color resolveColorSpec(const ColorSpec& color) noexcept {
 
 Color resolveColorSpec(const ColorSpec& color, const Node* node) noexcept {
   Color resolved = color.role.has_value() ? colorForRole(*color.role, node) : color.fixed;
+  if (color.role.has_value() && node != nullptr) {
+    if (const auto fade = node->paletteToneFade(); fade.has_value()) {
+      resolved = lerpColor(roleIn(paletteForTone(fade->from), *color.role), resolved, fade->progress);
+    }
+  }
   resolved.a *= color.alpha;
   return resolved;
 }
