@@ -56,6 +56,7 @@ private:
   void activateSelected();
   void togglePinSelected();
   void runImageAction();
+  void openSelectedImage();
   void requestClearUnpinnedHistory();
   void clearUnpinnedHistory();
   void clearAllHistory();
@@ -99,6 +100,7 @@ private:
   Label* m_previewTitle = nullptr;
   Label* m_previewMeta = nullptr;
   Button* m_imageActionButton = nullptr;
+  Button* m_openImageButton = nullptr;
   Button* m_pinButton = nullptr;
   Button* m_copyButton = nullptr;
   Button* m_deleteEntryButton = nullptr;

@@ -9,6 +9,7 @@
 #include "core/ui_phase.h"
 #include "cursor-shape-v1-client-protocol.h"
 #include "i18n/i18n.h"
+#include "net/url_open.h"
 #include "render/core/async_texture_cache.h"
 #include "render/core/color.h"
 #include "render/core/renderer.h"
@@ -773,6 +774,10 @@ void ClipboardPanel::create() {
       {.align = FlexAlign::Center, .gap = Style::spaceSm * scale},
       makeCompactIconButton(&m_copyButton, "copy", ButtonVariant::Default, scale, [this] { activateSelected(); }),
       makeCompactIconButton(
+          &m_openImageButton, "external-link", ButtonVariant::Default, scale, [this] { openSelectedImage(); }, false,
+          false
+      ),
+      makeCompactIconButton(
           &m_imageActionButton, "photo-edit", ButtonVariant::Default, scale, [this] { runImageAction(); }, false, false
       ),
       makeCompactIconButton(&m_pinButton, "pin", ButtonVariant::Default, scale, [this] { togglePinSelected(); }),
@@ -1012,6 +1017,7 @@ void ClipboardPanel::onClose() {
   m_previewTitle = nullptr;
   m_previewMeta = nullptr;
   m_imageActionButton = nullptr;
+  m_openImageButton = nullptr;
   m_pinButton = nullptr;
   m_copyButton = nullptr;
   m_deleteEntryButton = nullptr;
@@ -1153,6 +1159,7 @@ void ClipboardPanel::updateListState() {
 void ClipboardPanel::updatePreviewActions() {
   bool hasSelection = false;
   bool showImageAction = false;
+  bool isImage = false;
   bool pinned = false;
   bool deleteConfirmActive = false;
 
@@ -1164,9 +1171,10 @@ void ClipboardPanel::updatePreviewActions() {
       pinned = history[historyIndex].pinned;
       deleteConfirmActive =
           !m_deleteConfirmStorageId.empty() && m_deleteConfirmStorageId == history[historyIndex].storageId;
+      isImage = history[historyIndex].isImage();
       showImageAction = m_config != nullptr
           && !StringUtils::trim(m_config->config().shell.clipboardImageActionCommand).empty()
-          && history[historyIndex].isImage();
+          && isImage;
     }
   }
 
@@ -1183,6 +1191,11 @@ void ClipboardPanel::updatePreviewActions() {
   if (m_deleteConfirmPanel != nullptr) {
     m_deleteConfirmPanel->setVisible(hasSelection && deleteConfirmActive);
     m_deleteConfirmPanel->setParticipatesInLayout(hasSelection && deleteConfirmActive);
+  }
+
+  if (m_openImageButton != nullptr) {
+    m_openImageButton->setVisible(isImage);
+    m_openImageButton->setParticipatesInLayout(isImage);
   }
 
   if (m_imageActionButton != nullptr) {
@@ -1753,6 +1766,27 @@ void ClipboardPanel::runImageAction() {
     return;
   }
   PanelManager::instance().close();
+}
+
+void ClipboardPanel::openSelectedImage() {
+  if (m_clipboard == nullptr) {
+    return;
+  }
+  const std::size_t historyIndex = selectedHistoryIndex();
+  const auto& history = m_clipboard->history();
+  if (historyIndex >= history.size() || !history[historyIndex].isImage()) {
+    return;
+  }
+
+  const std::optional<std::string> exportedPath = m_clipboard->exportEntryForExternalTool(historyIndex);
+  if (!exportedPath.has_value()) {
+    kLog.warn("clipboard open image failed: selected image could not be exported");
+    return;
+  }
+
+  if (net::openFile(*exportedPath)) {
+    PanelManager::instance().close();
+  }
 }
 
 void ClipboardPanel::activateSelected() {

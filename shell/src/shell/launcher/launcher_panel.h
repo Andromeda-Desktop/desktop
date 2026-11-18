@@ -174,6 +174,7 @@ private:
   [[nodiscard]] KlipyProvider* stickersProvider() const;
   void setStickerPack(std::size_t index);
   void deleteSelectedClipboardEntry();
+  void openSelectedClipboardImage();
   void activateEmojiVariant(std::size_t tone);
   void showProviderOverview();
   void showSessionActions();
@@ -261,6 +262,7 @@ private:
   Label* m_previewTitle = nullptr;
   Label* m_previewKind = nullptr;
   Button* m_previewOpen = nullptr;
+  Button* m_previewOpenImage = nullptr;
   Button* m_previewAction = nullptr;
   Button* m_previewDelete = nullptr;
   Label* m_previewBody = nullptr;

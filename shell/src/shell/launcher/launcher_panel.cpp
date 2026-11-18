@@ -669,6 +669,15 @@ void LauncherPanel::create() {
         .onClick = [this] { activateSelected(); },
     }));
     actions->addChild(ui::button({
+        .out = &m_previewOpenImage,
+        .text = i18n::tr("launcher.clipboard.open"),
+        .controlHeight = Tokens::sizeControlS * scale,
+        .variant = ButtonVariant::Default,
+        .visible = false,
+        .participatesInLayout = false,
+        .onClick = [this] { openSelectedClipboardImage(); },
+    }));
+    actions->addChild(ui::button({
         .out = &m_previewAction,
         .controlHeight = Tokens::sizeControlS * scale,
         .variant = ButtonVariant::Default,

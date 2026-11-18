@@ -28,4 +28,15 @@ namespace net {
     return launched;
   }
 
+  bool openFile(const std::string& path) {
+    gchar* uri = g_filename_to_uri(path.c_str(), nullptr, nullptr);
+    if (uri == nullptr) {
+      kLog.warn("failed to open '{}': not an absolute path", path);
+      return false;
+    }
+    const bool opened = openInBrowser(uri);
+    g_free(uri);
+    return opened;
+  }
+
 } // namespace net

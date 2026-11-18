@@ -30,6 +30,8 @@ public:
   // Pin or unpin, and delete, by result id; the launcher's preview buttons call these.
   bool togglePinned(const LauncherResult& result);
   bool remove(const LauncherResult& result);
+  // Opens an image entry in the default image viewer, from a plain copy in the state dir.
+  bool openImage(const LauncherResult& result);
   // The stored text preview of a text entry (the row title is only its first line).
   [[nodiscard]] std::string text(const LauncherResult& result) const;
   // Encoded image bytes of an image entry (loads the payload from disk on first use); empty if none.

@@ -315,6 +315,9 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   const bool clip = result.presentation.starts_with("clipboard");
   const bool file = result.providerId == "Files" && result.id != FilesProvider::kShowAllId;
   const bool hasAction = clip || file || (entry != nullptr && !entry->actions.empty());
+  const bool clipImage = result.presentation == "clipboard-image";
+  m_previewOpenImage->setVisible(clipImage);
+  m_previewOpenImage->setParticipatesInLayout(clipImage);
   m_previewAction->setVisible(hasAction);
   m_previewAction->setParticipatesInLayout(hasAction);
   if (clip) {
@@ -480,6 +483,20 @@ void LauncherPanel::deleteSelectedClipboardEntry() {
         && clipboard->remove(m_results[m_selectedIndex])) {
       reapplyCurrentQuery();
     }
+  }
+}
+
+void LauncherPanel::openSelectedClipboardImage() {
+  if (m_selectedIndex >= m_results.size()) {
+    return;
+  }
+  const auto provider = std::ranges::find(m_providers, "Clipboard", [](const auto& p) { return p->id(); });
+  if (provider == m_providers.end()) {
+    return;
+  }
+  if (auto* clipboard = dynamic_cast<ClipboardProvider*>(provider->get()); clipboard != nullptr
+      && clipboard->openImage(m_results[m_selectedIndex])) {
+    finishActivation(*clipboard, m_results[m_selectedIndex].id, false);
   }
 }
 

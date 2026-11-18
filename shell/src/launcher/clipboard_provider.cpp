@@ -2,6 +2,7 @@
 
 #include "clipboard/clipboard_service.h"
 #include "i18n/i18n.h"
+#include "net/url_open.h"
 #include "time/time_format.h"
 #include "util/string_utils.h"
 
@@ -159,6 +160,15 @@ bool ClipboardProvider::togglePinned(const LauncherResult& result) {
 bool ClipboardProvider::remove(const LauncherResult& result) {
   const std::size_t index = indexOf(result);
   return index != static_cast<std::size_t>(-1) && m_clipboard->removeHistoryEntry(index);
+}
+
+bool ClipboardProvider::openImage(const LauncherResult& result) {
+  const std::size_t index = indexOf(result);
+  if (index == static_cast<std::size_t>(-1) || !m_clipboard->history()[index].isImage()) {
+    return false;
+  }
+  const std::optional<std::string> path = m_clipboard->exportEntryForExternalTool(index);
+  return path.has_value() && net::openFile(*path);
 }
 
 std::string ClipboardProvider::text(const LauncherResult& result) const {
