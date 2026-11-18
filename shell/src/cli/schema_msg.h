@@ -169,6 +169,9 @@ namespace noctalia::cli {
       Positional{"icon", {}, {}, true, false, false},
       Positional{"value", "Text shown next to the icon; NN% or a decimal 0.0 to 1.0 also draws the level bar", {}, false, false, true},
   };
+  inline constexpr std::array kMsgToastShowPositionals{
+      Positional{"text", "Notice text next to a check glyph", {}, true, false, true},
+  };
   inline constexpr std::array kMsgPanelClosePositionals{
       Positional{"id", {}, {}, false, false, false},
   };
@@ -740,6 +743,8 @@ namespace noctalia::cli {
     inline constexpr Command osdShow{"osd-show", "Show a custom OSD popup", {}, {},
                                      {},         kMsgOsdShowPositionals,    {}, false};
     inline constexpr Command osdToggle{"osd-toggle", "Toggle OSD popups", {}, {}, {}, {}, {}, false};
+    inline constexpr Command toastShow{"toast-show", "Show a short notice above the bottom edge", {}, {},
+                                       {},           kMsgToastShowPositionals,                    {}, false};
     inline constexpr Command panelClose{
         "panel-close",
         "Close the active panel, or close the named panel if it is active",
@@ -1233,6 +1238,7 @@ namespace noctalia::cli {
       msg::osdEnable,
       msg::osdShow,
       msg::osdToggle,
+      msg::toastShow,
       msg::panelClose,
       msg::panelOpen,
       msg::panelRect,

@@ -902,6 +902,7 @@ void Application::initIpc() {
   }
 
   m_osdOverlay.registerIpc(m_ipcService);
+  m_toastOverlay.registerIpc(m_ipcService);
 
   if (m_brightnessService != nullptr) {
     m_brightnessService->registerIpc(m_ipcService, [this](BrightnessService::BatchChangePhase phase) {

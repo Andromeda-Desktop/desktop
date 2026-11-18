@@ -89,6 +89,25 @@ public:
     return true;
   }
 
+  // Any other whole-surface property (scale, translate); false before apply() bound a surface.
+  bool set(DskSurfaceClient::Property property, const DskSurfaceClient::Value& value) {
+    if (m_dsk == nullptr) {
+      return false;
+    }
+    m_dsk->set(property, value);
+    return true;
+  }
+  bool animate(
+      DskSurfaceClient::Property property, DskSurfaceClient::Curve curve, const DskSurfaceClient::Value& to,
+      DskSurfaceClient::DoneCallback onDone = {}
+  ) {
+    if (m_dsk == nullptr) {
+      return false;
+    }
+    m_dsk->animate(property, curve, to, std::move(onDone));
+    return true;
+  }
+
   void reset() {
     m_paletteConn = {};
     m_dsk.reset();

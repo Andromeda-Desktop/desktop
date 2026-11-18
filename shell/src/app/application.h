@@ -59,6 +59,7 @@
 #include "shell/osd/lock_keys_osd.h"
 #include "shell/osd/media_osd.h"
 #include "shell/osd/osd_overlay.h"
+#include "shell/osd/toast_overlay.h"
 #include "shell/live_activity/live_activity_island.h"
 #include "shell/osd/privacy_osd.h"
 #include "shell/panel/panel_manager.h"
@@ -516,6 +517,7 @@ private:
   KeyboardLayoutOsd m_keyboardLayoutOsd;
   PrivacyOsd m_privacyOsd;
   OsdOverlay m_osdOverlay;
+  ToastOverlay m_toastOverlay;
   LiveActivityIsland m_liveActivity;
   int m_islandUnreadToken = -1;
   HotCorners m_hotCorners{this};

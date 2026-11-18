@@ -621,6 +621,7 @@ _noctalia_sources = files(
   'src/shell/osd/keyboard_layout_osd.cpp',
   'src/shell/osd/privacy_osd.cpp',
   'src/shell/osd/osd_overlay.cpp',
+  'src/shell/osd/toast_overlay.cpp',
   'src/shell/live_activity/live_activity_island.cpp',
   'src/shell/hot_corners/hot_corners.cpp',
   'src/shell/screen_corners/screen_corners.cpp',

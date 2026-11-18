@@ -754,6 +754,7 @@ void Application::initPanelManagerAndPanels() {
     launcherPanel->setCopiedActivationCallback([this](bool isImage) {
       const ClipboardAutoPasteMode mode = m_configService.config().shell.launcher.autoPaste;
       if (mode == ClipboardAutoPasteMode::Off) {
+        m_toastOverlay.show(i18n::tr("launcher.clipboard.copied-toast"));
         return;
       }
       m_launcherAutoPasteTimer.stop();
@@ -951,6 +952,7 @@ void Application::initNotificationAndOsd() {
       m_wayland, [this] { return m_configService.config().accessibility.uiScale; }, &m_renderContext
   );
   m_osdOverlay.initialize(m_wayland, m_compositorPlatform, &m_configService, &m_renderContext);
+  m_toastOverlay.initialize(m_wayland, m_compositorPlatform, &m_configService, &m_renderContext);
   m_liveActivity.initialize(m_wayland, &m_configService, &m_renderContext);
   m_liveActivity.setVisibilityCallback([this](wl_output* output, bool visible) { m_bar.setCenterIslandHidden(output, visible); });
   m_liveActivity.setSpaceProvider([this](wl_output* output) { return m_bar.centerIslandSpace(output); });
