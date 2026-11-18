@@ -1637,8 +1637,16 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
       .onClick = [this] { closeBanner(); },
   }));
   inst.bannerClose->setCustomPalette(livePalette(false));
-  inst.bannerClose->setOnEnter([this, instPtr] { setBannerHover(*instPtr, true); });
-  inst.bannerClose->setOnLeave([this, instPtr] { setBannerHover(*instPtr, false); });
+  inst.bannerClose->setOpacity(0.0F);
+  // The pointer leaves restArea when it enters the button, so the button keeps the island hovered too.
+  inst.bannerClose->setOnEnter([this, instPtr] {
+    hoverEnter(*instPtr);
+    setBannerHover(*instPtr, true);
+  });
+  inst.bannerClose->setOnLeave([this, instPtr] {
+    hoverLeave(*instPtr);
+    setBannerHover(*instPtr, false);
+  });
   inst.faceNode[static_cast<std::size_t>(Face::Banner)] = banner.get();
   tint->addChild(std::move(banner));
 
@@ -2495,10 +2503,21 @@ bool LiveActivityIsland::bannerScroll(Instance& inst, const InputArea::PointerDa
 
 // Hovering the banner shows its close button and pauses its timeout; leaving resumes it with the time it had left.
 void LiveActivityIsland::setBannerHover(Instance& inst, bool hover) {
-  inst.bannerHover = hover && inst.morph.shown() == Face::Banner;
-  if (inst.bannerClose != nullptr && inst.bannerClose->visible() != inst.bannerHover) {
-    inst.bannerClose->setVisible(inst.bannerHover);
-    inst.bannerTime->setOpacity(inst.bannerHover ? 0.0F : 1.0F);
+  const bool shown = hover && inst.morph.shown() == Face::Banner;
+  if (std::exchange(inst.bannerHover, shown) != shown && inst.bannerClose != nullptr) {
+    Node* close = inst.bannerClose;
+    Node* time = inst.bannerTime;
+    close->setVisible(true);
+    inst.animations.cancelForOwner(close);
+    inst.animations.animateSpring(
+        close->opacity(), shown ? 1.0F : 0.0F, Style::spring(shown ? Tokens::springFade : Tokens::springFadeOut),
+        [close, time](float progress) {
+          close->setOpacity(progress);
+          close->setVisible(progress > 0.001F);
+          time->setOpacity(1.0F - progress);
+        },
+        {}, close
+    );
     inst.surface->requestLayout();
   }
   const bool anyHover = std::ranges::any_of(m_instances, [](const auto& i) { return i->bannerHover; });
