@@ -932,7 +932,7 @@ namespace andromeda {
     wlr_xdg_popup_unconstrain_from_box(popup, &box);
   }
 
-  bool LayerSurface::pollBackdrop() {
+  int LayerSurface::pollBackdrop() {
     m_nodeLuminance.resize(m_shapeBlurs.size() + 1);
     bool sampled = false;
     bool pending = false;
@@ -953,18 +953,25 @@ namespace andromeda {
         area += m_nodeArea[i];
       }
     }
-    if (sampled && area > 0.0) {
-      const auto luminance = static_cast<float>(weighted / area);
-      // Hysteresis: a backdrop near the threshold keeps its tone instead of flickering.
-      m_backdropDark = glass::backdropDark(m_backdropDark, luminance);
-      m_backdropLuminance = luminance;
-      m_shadow.setAlpha(glass::shadowOverBackdrop(luminance));
-      if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
-        dsk->sendBackdrop(m_layerSurface->surface, m_backdropDark);
-      }
+    const bool measured = sampled && area > 0.0;
+    if (measured) {
+      m_backdropLuminance = static_cast<float>(weighted / area);
+      m_shadow.setAlpha(glass::shadowOverBackdrop(m_backdropLuminance));
       updateDensity();
     }
-    return pending;
+    // A static backdrop sends no new sample, so a Crossing tone re-steps on the last one until its dwell ends.
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    const auto nowMs = static_cast<uint32_t>(now.tv_sec * 1000 + now.tv_nsec / 1'000'000);
+    if (measured || m_backdropTone.phase == glass::BackdropTone::Phase::Crossing) {
+      m_backdropTone = glass::stepTone(m_backdropTone, m_backdropLuminance, nowMs);
+      if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
+        dsk->sendBackdrop(m_layerSurface->surface, m_backdropTone.dark);
+      }
+    }
+    constexpr int kBackdropRecheckMs = 16;
+    const auto dwell = static_cast<int>(glass::dwellLeftMs(m_backdropTone, nowMs));
+    return pending ? kBackdropRecheckMs : dwell;
   }
 
   void LayerSurface::updateDensity() {

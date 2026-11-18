@@ -71,4 +71,33 @@ ANDROMEDA_TEST(onlyShapesFlipInLiquidAndClear) {
   CHECK(glass::flipsWithBackdrop(glass::Kind::Shape, on));
 }
 
+// Random luminance and time steps: a tone flips only after every sample for kFlipDwellMs wants the new tone, and the
+// first sample sets the tone at once.
+ANDROMEDA_TEST(backdropToneFlipsAfterDwell) {
+  std::mt19937 rng(11);
+  std::uniform_real_distribution<float> any(0.0F, 1.0F);
+  std::uniform_int_distribution<uint32_t> step(0, 200);
+  for (int run = 0; run < 200; ++run) {
+    uint32_t now = 0xFFFFFF00U + static_cast<uint32_t>(run);
+    const float first = any(rng);
+    glass::BackdropTone tone = glass::stepTone({}, first, now);
+    CHECK(tone.dark == glass::backdropDark(false, first));
+    uint32_t wantedSince = now;
+    bool wanted = tone.dark;
+    for (int i = 0; i < 200; ++i) {
+      now += step(rng);
+      const float l = any(rng);
+      const bool want = glass::backdropDark(tone.dark, l);
+      if (want == tone.dark || want != wanted) {
+        wantedSince = now;
+      }
+      wanted = want;
+      const bool before = tone.dark;
+      tone = glass::stepTone(tone, l, now);
+      CHECK(tone.dark == before || now - wantedSince >= glass::kFlipDwellMs);
+      CHECK(glass::dwellLeftMs(tone, now) <= glass::kFlipDwellMs);
+    }
+  }
+}
+
 int main() { return RUN_TESTS(); }

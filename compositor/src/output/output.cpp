@@ -2289,15 +2289,15 @@ namespace andromeda {
   }
 
   void Output::pollBackdrops() {
-    constexpr int kBackdropRecheckMs = 16;
-    bool pending = false;
+    int recheckMs = 0;
     for (const auto& layer : m_server->layerSurfaces()) {
-      if (layer->output() == this && layer->pollBackdrop()) {
-        pending = true;
+      if (layer->output() == this) {
+        const int ms = layer->pollBackdrop();
+        recheckMs = ms > 0 && (recheckMs == 0 || ms < recheckMs) ? ms : recheckMs;
       }
     }
-    if (pending && m_backdropTimer != nullptr) {
-      wl_event_source_timer_update(m_backdropTimer, kBackdropRecheckMs);
+    if (recheckMs > 0 && m_backdropTimer != nullptr) {
+      wl_event_source_timer_update(m_backdropTimer, recheckMs);
     }
   }
 

@@ -53,8 +53,8 @@ namespace andromeda {
     [[nodiscard]] SurfaceBlurOptions blurOptions() const;
     [[nodiscard]] bool blurActive() const { return m_blur.active(); }
     // Reads a finished backdrop sample of the liquid blur and sends dsk_surface_v1.backdrop on a tone change. Returns
-    // true while a sample still waits for the GPU.
-    bool pollBackdrop();
+    // the ms until it needs a new poll (a GPU sample pending or a tone flip dwell running), or 0.
+    int pollBackdrop();
     // Moves the density toward the tone of the last backdrop sample.
     void updateDensity();
     // Sends the density to the blur nodes as a backdrop pre-mix toward the tint.
@@ -126,7 +126,7 @@ namespace andromeda {
     float m_lens = 0.0F;
     // Liquid value [3]: glass::Material::dense.
     float m_dense = 0.0F;
-    bool m_backdropDark = false;
+    glass::BackdropTone m_backdropTone;
     float m_backdropLuminance = 0.5F; // the last probe sample, 0 to 1
     // Per blur node (m_blur, then m_shapeBlurs): the last backdrop sample and the node's area in px; m_backdropLuminance
     // is their area-weighted mean, so every glass shape of a surface takes one tone.
