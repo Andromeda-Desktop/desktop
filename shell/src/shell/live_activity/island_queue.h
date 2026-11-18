@@ -17,7 +17,9 @@
 }
 
 // What the island shows, and the two timers that end it. An OSD outranks everything; an activity that hides the
-// banner (activityHidesBanner) holds it with its timer paused; banners take turns from the queue.
+// banner (activityHidesBanner) holds it with its timer paused. Banners are newest first: a new banner takes the island
+// at once, the one it covers waits at the queue front (the island draws the first queued ones as peeks behind it), and
+// ending a banner brings back the next older one.
 // advance() is the one place that promotes a banner and decides whether the banner timer runs.
 // BannerT needs `std::uint32_t id` and `bool sticky`.
 template <typename BannerT, typename OsdT> class IslandQueue {
@@ -71,7 +73,11 @@ public:
     return advance(changed);
   }
   Step push(BannerT banner) {
-    m_queue.push_back(std::move(banner));
+    if (m_banner.has_value()) {
+      m_queue.push_front(std::move(*m_banner));
+      m_banner.reset();
+    }
+    m_queue.push_front(std::move(banner));
     return advance(false);
   }
   // Replaces the current or queued banner with this id; false when neither holds it.

@@ -42,6 +42,7 @@ namespace {
       bool restless = false;
       for (int step = 0; step < 60; ++step) {
         Queue::Step result;
+        bool pushed = false;
         const auto before = std::tuple(
             queue.osd().has_value(), queue.banner().has_value() ? queue.banner()->id : 0U, queue.mode()
         );
@@ -68,6 +69,7 @@ namespace {
           break;
         case 4:
           result = queue.push(Banner{.id = nextId++, .sticky = (rng() % 4) == 0});
+          pushed = true;
           break;
         case 5:
           if (!bannerTimer.running) {
@@ -103,6 +105,16 @@ namespace {
         // A free island never leaves banners waiting in the queue.
         TEST_CHECK(queue.osd().has_value() || queue.banner().has_value() || queue.queued().empty());
         TEST_CHECK(!queue.osd().has_value() || !queue.banner().has_value());
+        // Newest first: a push shows the new banner unless an OSD holds the island; the current banner is newer than
+        // every queued one, and the queue runs from newer to older.
+        if (pushed && !queue.osd().has_value()) {
+          TEST_CHECK(queue.banner().has_value() && queue.banner()->id == nextId - 1);
+        }
+        std::uint32_t newer = queue.banner().has_value() ? queue.banner()->id : UINT32_MAX;
+        for (const Banner& waiting : queue.queued()) {
+          TEST_CHECK(waiting.id < newer);
+          newer = waiting.id;
+        }
         // A step that reports no change leaves the face as it was.
         const auto after = std::tuple(
             queue.osd().has_value(), queue.banner().has_value() ? queue.banner()->id : 0U, queue.mode()

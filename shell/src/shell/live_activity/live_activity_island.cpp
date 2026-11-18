@@ -409,6 +409,7 @@ void LiveActivityIsland::apply(Queue::Step step) {
   }
   updateAllFaces();
   for (auto& inst : m_instances) {
+    syncPeeks(*inst);
     inst->surface->requestLayout();
   }
 }
@@ -568,10 +569,16 @@ void LiveActivityIsland::ensureSurfaces() {
     inst->surface->setInputRegion({});
     if (auto* manager = m_wayland->dskSurfaceManager(); manager != nullptr) {
       inst->dsk = std::make_unique<DskSurfaceClient>(manager, inst->surface->wlSurface());
-      if (inLane(*inst) && inst->dsk->hasShapes()) {
-        // Created first, so the media bars' flat shapes draw over the pill.
-        inst->pillShape = std::make_unique<DskShapeClient>(*inst->dsk);
+      if (inst->dsk->hasShapes()) {
+        // The media bars' flat shapes, created later, draw over the pill. The compositor draws a later glass shape
+        // under an earlier one (layer_surface.cpp: m_blur takes shapes[0]), so the peeks come last.
+        if (inLane(*inst)) {
+          inst->pillShape = std::make_unique<DskShapeClient>(*inst->dsk);
+        }
         inst->cardShape = std::make_unique<DskShapeClient>(*inst->dsk);
+        for (auto& peek : inst->peekShapes) {
+          peek = std::make_unique<DskShapeClient>(*inst->dsk);
+        }
       }
     }
     inst->liveWidth = std::min(inst->width, static_cast<float>(kExpandedWidth));
@@ -939,6 +946,8 @@ bool LiveActivityIsland::syncDsk(Instance& inst, bool animate, bool continueMirr
   const bool jump = !inst.dskTarget.has_value() || !animate || !MotionService::instance().enabled();
   if (laneGlass(inst)) {
     syncLaneCard(inst, face, jump, continueMirror);
+  } else if (rowGlass(inst)) {
+    syncRowCard(inst, face, jump, continueMirror);
   } else if (jump) {
     inst.dsk->set(DskSurfaceClient::Property::Clip, clip);
     inst.dsk->set(DskSurfaceClient::Property::Radius, radius);
@@ -966,7 +975,7 @@ bool LiveActivityIsland::syncDsk(Instance& inst, bool animate, bool continueMirr
       inst.dsk->animate(DskSurfaceClient::Property::Elevation, curve, {elevation, 0.0, 0.0, 0.0});
     }
   }
-  if (laneGlass(inst)) {
+  if (laneGlass(inst) || rowGlass(inst)) {
     // The shapes carry the elevation; syncLanePill sets the pill's.
   } else if (level) {
     if (jump) {
@@ -979,6 +988,7 @@ bool LiveActivityIsland::syncDsk(Instance& inst, bool animate, bool continueMirr
     inst.dsk->setElevation(DskSurfaceClient::Elevation::None);
   }
   inst.dskTarget = r;
+  syncPeeks(inst);
   // A jump while a morph runs (surface size or margin change) ends that morph: the shell settles on the new rect.
   if (jump && !inst.morph.settled()) {
     MorphHost host{*this, inst};
@@ -993,6 +1003,8 @@ bool LiveActivityIsland::syncDsk(Instance& inst, bool animate, bool continueMirr
 }
 
 bool LiveActivityIsland::laneGlass(const Instance& inst) { return inst.pillShape != nullptr; }
+
+bool LiveActivityIsland::rowGlass(const Instance& inst) { return inst.pillShape == nullptr && inst.cardShape != nullptr; }
 
 bool LiveActivityIsland::compactActivity(const Instance& inst) const {
   return m_activity.has_value()
@@ -1117,6 +1129,85 @@ void LiveActivityIsland::syncLaneCard(Instance& inst, Face face, bool jump, bool
   }
   // A shape sends no `started`: the mirror starts with the request, a frame before the compositor.
   inst.morph.started(host, generation, monotonicMs(), continueMirror);
+}
+
+void LiveActivityIsland::syncRowCard(Instance& inst, Face face, bool jump, bool continueMirror) {
+  const double k = inst.scale;
+  const bool expanded = face != Face::Rest;
+  // The surface clip spans the surface, so it cuts no shape and draws no glass of its own.
+  inst.dsk->set(DskSurfaceClient::Property::Clip, {0.0, 0.0, surfaceWidth(inst) * k, surfaceHeight(inst) * k});
+  inst.dsk->set(DskSurfaceClient::Property::Radius, {});
+  const Rect r = faceRect(inst, face);
+  const DskSurfaceClient::Value clip{r.x * k, r.y * k, r.w * k, r.h * k};
+  const DskSurfaceClient::Value radius{r.radius * k, 0.0, 0.0, 0.0};
+  const double level =
+      expanded ? kExpandedElevation : kRestElevation * (inst.space.restless ? 0.0F : inst.space.opacity);
+  const bool tinted = inst.dsk->hasTintProperty();
+  DskShapeClient& card = *inst.cardShape;
+  inst.dskLevel = level;
+  if (jump) {
+    card.set(DskSurfaceClient::Property::Clip, clip);
+    card.set(DskSurfaceClient::Property::Radius, radius);
+    card.set(DskSurfaceClient::Property::Elevation, {level, 0.0, 0.0, 0.0});
+    if (tinted) {
+      card.set(DskSurfaceClient::Property::Tint, islandTint(inst, face));
+    }
+    return;
+  }
+  const auto curve = expanded ? DskSurfaceClient::Curve::SpringIslandExpand : DskSurfaceClient::Curve::SpringIslandCollapse;
+  startMirror(inst, r, expanded, continueMirror);
+  MorphHost host{*this, inst};
+  const std::uint32_t generation = inst.morph.retarget(host, clipSpring(*inst.dsk, expanded));
+  card.animate(DskSurfaceClient::Property::Clip, curve, clip);
+  card.animate(DskSurfaceClient::Property::Radius, curve, radius);
+  card.animate(DskSurfaceClient::Property::Elevation, curve, {level, 0.0, 0.0, 0.0});
+  if (tinted) {
+    card.animate(DskSurfaceClient::Property::Tint, curve, islandTint(inst, face));
+  }
+  // A shape sends no `started`: the mirror starts with the request, a frame before the compositor.
+  inst.morph.started(host, generation, monotonicMs(), continueMirror);
+}
+
+void LiveActivityIsland::syncPeeks(Instance& inst) {
+  if (inst.peekShapes[0] == nullptr) {
+    return;
+  }
+  const bool banner = inst.morph.shown() == Face::Banner && m_queue.mode() == Queue::Mode::Banner;
+  const std::size_t count = banner ? std::min(inst.peekShapes.size(), m_queue.queued().size()) : 0U;
+  const double k = inst.scale;
+  const Rect r = faceRect(inst, Face::Banner);
+  for (std::size_t i = 0; i < inst.peekShapes.size(); ++i) {
+    DskShapeClient& peek = *inst.peekShapes[i];
+    if (i >= count) {
+      if (i < inst.peekCount) {
+        peek.set(DskSurfaceClient::Property::Clip, {});
+      }
+      continue;
+    }
+    const auto step = static_cast<float>(i + 1);
+    const float scale = 1.0F - (1.0F - Tokens::componentNotificationStackScale) * step;
+    const float w = r.w * scale;
+    const float h = r.h * scale;
+    // Scaled about its bottom centre, then lowered one offset per step.
+    const float bottom = r.y + r.h + Tokens::componentNotificationStackOffset * step;
+    const DskSurfaceClient::Value clip{(r.x + (r.w - w) * 0.5F) * k, (bottom - h) * k, w * k, h * k};
+    const DskSurfaceClient::Value radius{r.radius * scale * k, 0.0, 0.0, 0.0};
+    if (i < inst.peekCount && inst.peekClip[i] == clip) {
+      continue;
+    }
+    inst.peekClip[i] = clip;
+    if (i >= inst.peekCount) {
+      // A new peek starts as the card it was and moves down into place.
+      peek.set(DskSurfaceClient::Property::Clip, {r.x * k, r.y * k, r.w * k, r.h * k});
+      peek.set(DskSurfaceClient::Property::Radius, {r.radius * k, 0.0, 0.0, 0.0});
+    }
+    peek.animate(DskSurfaceClient::Property::Clip, DskSurfaceClient::Curve::SpringStandard, clip);
+    peek.animate(DskSurfaceClient::Property::Radius, DskSurfaceClient::Curve::SpringStandard, radius);
+  }
+  if (count != inst.peekCount) {
+    inst.peekCount = count;
+    inst.surface->requestRedraw();
+  }
 }
 
 bool LiveActivityIsland::mirrored(const Instance& inst) { return inst.dsk != nullptr && MotionService::instance().enabled(); }
@@ -1789,13 +1880,21 @@ void LiveActivityIsland::applyContent(Instance& inst) {
     if (inst.dsk->hasTintProperty()) {
       setTint(*inst.dsk, islandTint(inst, inst.morph.shown()));
     }
-    if (laneGlass(inst)) {
-      for (DskShapeClient* shape : {inst.pillShape.get(), inst.cardShape.get()}) {
-        setGlassMaterial(*shape, *inst.dsk, liquid ? &material : nullptr);
+    if (inst.cardShape != nullptr) {
+      for (DskShapeClient* shape :
+           {inst.peekShapes[0].get(), inst.peekShapes[1].get(), inst.pillShape.get(), inst.cardShape.get()}) {
+        if (shape != nullptr) {
+          setGlassMaterial(*shape, *inst.dsk, liquid ? &material : nullptr);
+        }
       }
       if (inst.dsk->hasTintProperty()) {
-        setTint(*inst.pillShape, islandTint(inst, Face::Rest));
+        if (inst.pillShape != nullptr) {
+          setTint(*inst.pillShape, islandTint(inst, Face::Rest));
+        }
         setTint(*inst.cardShape, islandTint(inst, inst.morph.shown()));
+        for (const auto& peek : inst.peekShapes) {
+          setTint(*peek, islandTint(inst, Face::Banner));
+        }
       }
     }
   }
@@ -2259,6 +2358,8 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
     if (std::abs(level - inst.dskLevel) > 0.004) {
       if (lane) {
         inst.pillShape->set(DskSurfaceClient::Property::Elevation, {level, 0.0, 0.0, 0.0});
+      } else if (rowGlass(inst)) {
+        inst.cardShape->set(DskSurfaceClient::Property::Elevation, {level, 0.0, 0.0, 0.0});
       } else {
         inst.dsk->set(DskSurfaceClient::Property::Elevation, {level, 0.0, 0.0, 0.0});
       }

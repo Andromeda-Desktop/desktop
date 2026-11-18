@@ -165,8 +165,13 @@ private:
     std::unique_ptr<LayerSurface> surface;
     // Our compositor morphs the island (clip and radius) and draws its shadow; null on other compositors.
     std::unique_ptr<DskSurfaceClient> dsk;
-    // In a bar lane on our compositor the pill and the card are two glass shapes, so the pill stays beside its card
-    // and the surface clip spans the surface; null elsewhere. After `dsk`, so destroyed first.
+    // On our compositor the island glass is shapes and the surface clip spans the surface: in a bar lane the pill and
+    // the card are two shapes, so the pill stays beside its card; in a row one card shape morphs between the faces
+    // (rowGlass). The banner peeks are created last, so they draw under both. Null elsewhere. After `dsk`, so
+    // destroyed first.
+    std::array<std::unique_ptr<DskShapeClient>, 2> peekShapes;
+    std::size_t peekCount = 0; // peek shapes that draw glass now
+    std::array<DskSurfaceClient::Value, 2> peekClip{}; // last clip sent to each drawing peek
     std::unique_ptr<DskShapeClient> pillShape;
     std::unique_ptr<DskShapeClient> cardShape;
     std::optional<DskSurfaceClient::Value> pillClip; // last clip sent to pillShape; nullopt = none yet
@@ -358,6 +363,7 @@ private:
   void tickBars();
   void syncBarShapes(Instance& inst);
   [[nodiscard]] static bool laneGlass(const Instance& inst);
+  [[nodiscard]] static bool rowGlass(const Instance& inst);
   // The activity rests as a compact face (LiveActivity::since and compact) on this island.
   [[nodiscard]] bool compactActivity(const Instance& inst) const;
   // Runs the 1 s elapsed-time refresh while any island shows a compact activity; on every activity or island change.
@@ -368,6 +374,9 @@ private:
   void syncLanePill(Instance& inst, bool shown) const;
   // The card shape follows `face`: grown from the pill to its card, or shrunk back into the pill and then cleared.
   void syncLaneCard(Instance& inst, Face face, bool jump, bool continueMirror);
+  void syncRowCard(Instance& inst, Face face, bool jump, bool continueMirror);
+  // Up to two queued banners peek under the banner card, each 8 px lower and 4 % smaller (concept C P8).
+  void syncPeeks(Instance& inst);
   [[nodiscard]] bool restUnderFullscreen(const Instance& inst) const;
   [[nodiscard]] bool fullscreenOn(const Instance& inst) const;
   [[nodiscard]] bool everyIslandFullscreen() const;
