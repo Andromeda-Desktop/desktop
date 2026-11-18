@@ -248,6 +248,8 @@ std::unique_ptr<Flex> QuickPage::makeCard(bool badged) {
   if (!Style::compositorDrawsTint()) {
     card->setFill(colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()));
     card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * s);
+  } else {
+    card->setFill(Color{0.0F, 0.0F, 0.0F, 0.0F});
   }
   card->setRadius(Tokens::componentTileRadius * s);
   card->setGlassPiece(Tokens::componentTileRadius * s);
