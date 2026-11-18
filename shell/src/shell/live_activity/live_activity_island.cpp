@@ -570,15 +570,15 @@ void LiveActivityIsland::ensureSurfaces() {
     if (auto* manager = m_wayland->dskSurfaceManager(); manager != nullptr) {
       inst->dsk = std::make_unique<DskSurfaceClient>(manager, inst->surface->wlSurface());
       if (inst->dsk->hasShapes()) {
-        // The media bars' flat shapes, created later, draw over the pill. The compositor draws a later glass shape
-        // under an earlier one (layer_surface.cpp: m_blur takes shapes[0]), so the peeks come last.
+        // Glass shapes stack in creation order, first lowest: the deepest peek first, the card over the peeks; the
+        // media bars' flat shapes, created later, draw over the pill.
+        for (auto peek = inst->peekShapes.rbegin(); peek != inst->peekShapes.rend(); ++peek) {
+          *peek = std::make_unique<DskShapeClient>(*inst->dsk);
+        }
         if (inLane(*inst)) {
           inst->pillShape = std::make_unique<DskShapeClient>(*inst->dsk);
         }
         inst->cardShape = std::make_unique<DskShapeClient>(*inst->dsk);
-        for (auto& peek : inst->peekShapes) {
-          peek = std::make_unique<DskShapeClient>(*inst->dsk);
-        }
       }
     }
     inst->liveWidth = std::min(inst->width, static_cast<float>(kExpandedWidth));
@@ -1806,7 +1806,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
             }
             // A banner opens the notification history; the resting date pill opens the calendar, as the clock does.
             if (m_open) {
-              m_open(instPtr->output, fromBanner ? "detail-notifications" : "calendar", laneSheetSource(*instPtr));
+              m_open(instPtr->output, fromBanner ? "notification-center" : "calendar", laneSheetSource(*instPtr));
             }
           },
       .onAxisHandler = [this, instPtr](const InputArea::PointerData& d) { return bannerScroll(*instPtr, d); },

@@ -826,8 +826,8 @@
     "notifications": {
       "clear-all": "Clear all notifications",
       "clear-group": "Clear group",
-      "collapse-group": "Show less",
-      "group-more": "+ {count} more",
+      "collapse-group": "Show Less",
+      "group-more": "{count} More",
       "dnd-off": "Turn Do Not Disturb Off",
       "dnd-on": "Turn Do Not Disturb On",
       "empty-body": "Recent notifications will show here.",

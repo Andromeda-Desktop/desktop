@@ -581,6 +581,8 @@ _noctalia_sources = files(
   'src/shell/control_center/sheet/weather_page.cpp',
   'src/shell/control_center/sheet/power_menu_page.cpp',
   'src/shell/launcher/launcher_panel.cpp',
+  'src/shell/notification_center/notification_center_model.cpp',
+  'src/shell/notification_center/notification_center_panel.cpp',
   'src/shell/launcher/launcher_panel_input.cpp',
   'src/shell/launcher/launcher_panel_modes.cpp',
   'src/shell/launcher/launcher_panel_navigation.cpp',
@@ -1341,6 +1343,7 @@ if build_tests
     'workspaces_widget',
     'xdg_autostart',
     'launcher_view',
+    'notification_center_model',
   ]
 
   foreach test_name : _cpp_test_names

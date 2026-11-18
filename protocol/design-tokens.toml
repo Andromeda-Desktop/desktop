@@ -684,6 +684,9 @@ resume_ms = 2000  # a banner left by the pointer stays this long (proto overlays
 stack_visible = 3
 stack_offset = 8.0
 stack_scale = 0.96
+center_width = 360.0  # the notification center column, under the island (proto overlays.css .o-nc)
+center_top = 48.0  # column top from the output top
+center_reserve = 140.0  # the column is at most the output height minus this; more cards scroll
 
 [component.window]  # 9.12
 radius = 12.0  # radius set B (user, 2026-11-08)

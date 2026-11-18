@@ -83,6 +83,7 @@
 #include "shell/greeter/greeter_appearance_sync.h"
 #include "shell/lockscreen/lock_surface.h"
 #include "shell/launcher/launcher_panel.h"
+#include "shell/notification_center/notification_center_panel.h"
 #include "shell/panel/plugin_panel.h"
 #include "shell/phone/phone_panel.h"
 #include "shell/polkit/polkit_panel.h"
@@ -777,6 +778,9 @@ void Application::initPanelManagerAndPanels() {
     m_launcherPanel = launcherPanel.get();
     m_panelManager.registerPanel("launcher", std::move(launcherPanel));
   }
+  m_panelManager.registerPanel(
+      "notification-center", std::make_unique<NotificationCenterPanel>(&m_notificationManager, &m_compositorPlatform)
+  );
   m_configService.addReloadCallback(
       [this] {
         if (m_launcherPanel != nullptr) {
@@ -959,6 +963,10 @@ void Application::initNotificationAndOsd() {
   m_liveActivity.setRestSources(
       [this] { return pipewire(); }, [this] { return mpris(); }, &m_notificationManager,
       [this](wl_output* output, std::string_view context, std::optional<LiveActivityIsland::SheetSource> source) {
+        if (context == "notification-center") {
+          m_panelManager.togglePanel("notification-center", PanelOpenRequest{.output = output});
+          return;
+        }
         PanelOpenRequest request{.output = output, .context = context};
         if (source.has_value()) {
           // A lane island: the sheet grows out of the pill and keeps its top edge.

@@ -60,7 +60,7 @@ namespace noctalia::bar {
         {{Gesture::Left, "nightlight-toggle"}, {Gesture::Right, "nightlight-force-toggle"}}
     };
     constexpr std::array<GestureBinding, 2> kNotification{
-        {{Gesture::Left, "panel-toggle control-center detail-notifications"}, {Gesture::Right, "notification-dnd-toggle"}}
+        {{Gesture::Left, "panel-toggle notification-center"}, {Gesture::Right, "notification-dnd-toggle"}}
     };
     // Left steps toward performance, right back toward power-saver; scroll up matches left.
     constexpr std::array<GestureBinding, 4> kPowerProfile{
