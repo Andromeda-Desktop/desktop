@@ -63,14 +63,17 @@ struct fx_offscreen_buffers {
   struct fx_framebuffer* optimized_no_blur_buffer;
   // Bumped each time the optimized blur buffers are re-rendered or replaced.
   uint64_t optimized_blur_generation;
-  // optimized_no_blur_buffer blurred with strength_blur_data at strength_blur_strength (below 1), valid inside strength_blur_box while
+  // optimized_no_blur_buffer blurred per entry (strength below 1, blur data) inside the entry box, valid while
   // strength_blur_generation equals optimized_blur_generation: glass over a still backdrop composites it instead of
-  // blurring again each frame.
+  // blurring again each frame. Entry boxes never overlap, so glass nodes with different strengths share the buffer.
   struct fx_framebuffer* strength_blur_buffer;
-  float strength_blur_strength;
-  struct blur_data strength_blur_data;
   uint64_t strength_blur_generation;
-  struct wlr_box strength_blur_box;
+  struct fx_strength_blur_entry {
+    float strength;
+    struct blur_data data;
+    struct wlr_box box;
+  } strength_blur_entries[4];
+  size_t strength_blur_count;
   // Contains the original pixels to draw over the areas where artifact are visible
   struct fx_framebuffer* blur_saved_pixels_buffer;
   // Sized to the output

@@ -2968,20 +2968,24 @@ static struct fx_framebuffer* strength_blur(
   struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
   struct wlr_box box = fx_options->tex_options.base.dst_box;
   const struct wlr_box output = {0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height};
-  if (!wlr_box_intersection(&box, &box, &output)) {
+  if (fx_options->blur_data == NULL || !wlr_box_intersection(&box, &box, &output)) {
     return NULL;
   }
-  if (fbos->strength_blur_buffer != NULL && optimized_buffer_fits(pass, fbos->strength_blur_buffer)
-      && fbos->strength_blur_strength == fx_options->blur_strength
-      && fx_options->blur_data != NULL && blur_data_equal(&fbos->strength_blur_data, fx_options->blur_data)
-      && fbos->strength_blur_generation == fbos->optimized_blur_generation) {
+  if (fbos->strength_blur_buffer == NULL || !optimized_buffer_fits(pass, fbos->strength_blur_buffer)
+      || fbos->strength_blur_generation != fbos->optimized_blur_generation) {
+    fbos->strength_blur_count = 0;
+  }
+  for (size_t i = 0; i < fbos->strength_blur_count; i++) {
+    const struct fx_strength_blur_entry* entry = &fbos->strength_blur_entries[i];
     struct wlr_box covered;
-    if (wlr_box_intersection(&covered, &fbos->strength_blur_box, &box) && wlr_box_equal(&covered, &box)) {
+    if (entry->strength == fx_options->blur_strength && blur_data_equal(&entry->data, fx_options->blur_data)
+        && wlr_box_intersection(&covered, &entry->box, &box) && wlr_box_equal(&covered, &box)) {
       return fbos->strength_blur_buffer;
     }
   }
   struct fx_framebuffer* target = ensure_offscreen_buffer(pass, &fbos->strength_blur_buffer, false);
   if (target == NULL) {
+    fbos->strength_blur_count = 0;
     return NULL;
   }
   pixman_region32_t region;
@@ -2993,10 +2997,25 @@ static struct fx_framebuffer* strength_blur(
   const bool rendered = blurred != NULL && fx_render_pass_read_to_buffer(pass, &region, target, blurred);
   pixman_region32_fini(&region);
   fx_framebuffer_bind(pass->buffer);
-  fbos->strength_blur_strength = fx_options->blur_strength;
-  fbos->strength_blur_data = fx_options->blur_data != NULL ? *fx_options->blur_data : (struct blur_data){0};
   fbos->strength_blur_generation = fbos->optimized_blur_generation;
-  fbos->strength_blur_box = rendered ? box : (struct wlr_box){0};
+  // The copy overwrote every entry that overlaps the box; the oldest entry leaves when the table is full.
+  size_t kept = 0;
+  for (size_t i = 0; i < fbos->strength_blur_count; i++) {
+    struct wlr_box overlap;
+    if (!wlr_box_intersection(&overlap, &fbos->strength_blur_entries[i].box, &box)) {
+      fbos->strength_blur_entries[kept++] = fbos->strength_blur_entries[i];
+    }
+  }
+  const size_t capacity = sizeof(fbos->strength_blur_entries) / sizeof(fbos->strength_blur_entries[0]);
+  if (kept == capacity) {
+    memmove(&fbos->strength_blur_entries[0], &fbos->strength_blur_entries[1], (capacity - 1) * sizeof(fbos->strength_blur_entries[0]));
+    kept--;
+  }
+  if (rendered) {
+    fbos->strength_blur_entries[kept++] = (struct fx_strength_blur_entry){
+        .strength = fx_options->blur_strength, .data = *fx_options->blur_data, .box = box};
+  }
+  fbos->strength_blur_count = kept;
   return rendered ? target : NULL;
 }
 
