@@ -16,7 +16,9 @@ use rustix::fs::{Mode, OFlags};
 use rustix::net::{SendAncillaryBuffer, SendAncillaryMessage, SendFlags, sendmsg};
 use rustix::process::{Pid, PidfdFlags, Signal};
 
-use crate::proto::{ClientMsg, HolderMsg, WinSize, split_frame};
+use crate::proto::{
+    ClientMsg, HolderMsg, LastCommand, SessionInfo, WinSize, WorkspaceInfo, split_frame,
+};
 
 pub struct Config {
     /// Run when a client disconnects and leaves running sessions with no owner.
@@ -64,6 +66,8 @@ const COALESCE_TARGET: usize = 1 << 10;
 const COALESCE_MIN: Duration = Duration::from_micros(20);
 const RELAUNCH_LIMIT: usize = 3;
 const RELAUNCH_WINDOW: Duration = Duration::from_secs(60);
+/// Shortest gap between two foreground-process checks of one session.
+const FG_INTERVAL: Duration = Duration::from_secs(1);
 
 type ClientId = u64;
 type SessionId = u64;
@@ -110,6 +114,102 @@ struct Session {
     want_sent_at: u64,
     pace: ReadPace,
     last_read: Instant,
+    workspace: u64,
+    program: String,
+    cwd: String,
+    marks: MarkParser,
+    command: LastCommand,
+    fg_checked: Option<Instant>,
+    /// A foreground check waits for FG_INTERVAL to pass since the last one.
+    fg_due: Option<Instant>,
+}
+
+/// Finds the shell's OSC 133 marks in the output stream: C starts a command, D[;code] ends it.
+#[derive(Default)]
+pub struct MarkParser {
+    state: MarkState,
+}
+
+#[derive(Default, Clone, Copy)]
+enum MarkState {
+    #[default]
+    Idle,
+    Prefix(usize),
+    Kind,
+    Code {
+        sep: bool,
+        value: Option<i32>,
+    },
+}
+
+const MARK: &[u8] = b"\x1b]133;";
+
+impl MarkParser {
+    /// Returns the last command change in `bytes`.
+    pub fn feed(&mut self, bytes: &[u8]) -> Option<LastCommand> {
+        let mut found = None;
+        let mut i = 0;
+        while i < bytes.len() {
+            if let MarkState::Idle = self.state {
+                match bytes[i..].iter().position(|&b| b == 0x1b) {
+                    Some(p) => i += p,
+                    None => break,
+                }
+            }
+            let b = bytes[i];
+            self.state = match self.state {
+                MarkState::Idle => MarkState::Prefix(1),
+                MarkState::Prefix(n) if b == MARK[n] => {
+                    if n + 1 == MARK.len() {
+                        MarkState::Kind
+                    } else {
+                        MarkState::Prefix(n + 1)
+                    }
+                }
+                MarkState::Prefix(_) => {
+                    // An ESC that breaks one mark can start the next.
+                    if b == 0x1b {
+                        MarkState::Prefix(1)
+                    } else {
+                        MarkState::Idle
+                    }
+                }
+                MarkState::Kind => match b {
+                    b'C' => {
+                        found = Some(LastCommand::Running);
+                        MarkState::Idle
+                    }
+                    b'D' => MarkState::Code {
+                        sep: false,
+                        value: None,
+                    },
+                    _ => MarkState::Idle,
+                },
+                MarkState::Code { sep: false, value } if b == b';' => {
+                    MarkState::Code { sep: true, value }
+                }
+                MarkState::Code { sep: true, value } if b.is_ascii_digit() => MarkState::Code {
+                    sep: true,
+                    value: Some(
+                        value
+                            .unwrap_or(0)
+                            .saturating_mul(10)
+                            .saturating_add(i32::from(b - b'0')),
+                    ),
+                },
+                MarkState::Code { value, .. } => {
+                    found = Some(LastCommand::Done(value.unwrap_or(0)));
+                    if b == 0x1b {
+                        MarkState::Prefix(1)
+                    } else {
+                        MarkState::Idle
+                    }
+                }
+            };
+            i += 1;
+        }
+        found
+    }
 }
 
 /// The rest that lets the next read gather about COALESCE_TARGET bytes at the rate of this read,
@@ -149,6 +249,44 @@ impl Session {
         };
     }
 
+    /// Reads the foreground process name and the shell's folder; returns true when either changed.
+    fn refresh_fg(&mut self, now: Instant) -> bool {
+        self.fg_checked = Some(now);
+        self.fg_due = None;
+        let program = self
+            .master()
+            .and_then(|m| rustix::termios::tcgetpgrp(m).ok())
+            .and_then(|pg| {
+                std::fs::read_to_string(format!("/proc/{}/comm", pg.as_raw_nonzero())).ok()
+            })
+            .map(|c| c.trim_end().to_owned());
+        let cwd = std::fs::read_link(format!("/proc/{}/cwd", self.child.id()))
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned());
+        let mut changed = false;
+        // A gone process keeps the last known values.
+        for (new, old) in [(program, &mut self.program), (cwd, &mut self.cwd)] {
+            if let Some(new) = new
+                && new != *old
+            {
+                *old = new;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn info(&self, id: SessionId) -> SessionInfo {
+        SessionInfo {
+            id,
+            workspace: self.workspace,
+            attached: matches!(self.owner, Owner::Attached(_)),
+            program: self.program.clone(),
+            cwd: self.cwd.clone(),
+            command: self.command,
+        }
+    }
+
     fn on_hangup(&mut self) {
         self.life = match std::mem::replace(&mut self.life, Life::PtyGone) {
             Life::Running { .. } => Life::PtyGone,
@@ -169,6 +307,7 @@ struct Client {
     inbuf: Vec<u8>,
     out: VecDeque<Outgoing>,
     queued: usize,
+    watch: bool,
 }
 
 impl Client {
@@ -229,6 +368,11 @@ pub struct Holder {
     relaunch_at: Option<Instant>,
     relaunches: VecDeque<Instant>,
     idle_since: Option<Instant>,
+    workspaces: BTreeMap<u64, WorkspaceInfo>,
+    next_workspace: u64,
+    workspaces_seq: u64,
+    /// The table changed since the last `Workspaces` went out.
+    workspaces_dirty: bool,
 }
 
 impl Holder {
@@ -244,7 +388,43 @@ impl Holder {
             relaunch_at: None,
             relaunches: VecDeque::new(),
             idle_since: Some(Instant::now()),
+            workspaces: BTreeMap::new(),
+            next_workspace: 1,
+            workspaces_seq: 0,
+            workspaces_dirty: false,
         })
+    }
+
+    fn watched(&self) -> bool {
+        self.clients.values().any(|c| c.watch)
+    }
+
+    fn publish(&mut self) {
+        self.workspaces_dirty = false;
+        if !self.watched() {
+            return;
+        }
+        self.workspaces_seq += 1;
+        let msg = HolderMsg::Workspaces {
+            seq: self.workspaces_seq,
+            workspaces: self.workspaces.values().cloned().collect(),
+            sessions: self
+                .sessions
+                .iter()
+                .filter(|(_, s)| matches!(s.owner, Owner::Attached(_) | Owner::Orphaned))
+                .map(|(id, s)| s.info(*id))
+                .collect(),
+        };
+        let mut gone = Vec::new();
+        for (id, c) in self.clients.iter_mut().filter(|(_, c)| c.watch) {
+            c.send(&msg, None);
+            if !c.flush() {
+                gone.push(*id);
+            }
+        }
+        for id in gone {
+            self.disconnect(id);
+        }
     }
 
     /// Runs until the holder was idle for `idle_exit`.
@@ -270,7 +450,14 @@ impl Holder {
                     }
                     s.owner = Owner::Closed;
                 }
+                if s.fg_due.is_some_and(|at| at <= now) && s.refresh_fg(now) {
+                    self.workspaces_dirty = true;
+                }
             }
+            if self.workspaces_dirty {
+                self.publish();
+            }
+            let fg_at = self.sessions.values().filter_map(|s| s.fg_due).min();
             let kill_at = self
                 .sessions
                 .values()
@@ -294,13 +481,16 @@ impl Holder {
                     ReadPace::Now => None,
                 })
                 .min();
-            let deadline = [self.relaunch_at, idle_deadline, kill_at, read_at]
+            let deadline = [self.relaunch_at, idle_deadline, kill_at, read_at, fg_at]
                 .into_iter()
                 .flatten()
                 .min();
             let events = self.wait(deadline.map(|at| at.saturating_duration_since(now)))?;
             for event in events {
                 self.handle(event);
+            }
+            if self.workspaces_dirty {
+                self.publish();
             }
             self.idle_since = match (
                 self.clients.is_empty() && self.sessions.is_empty(),
@@ -403,6 +593,7 @@ impl Holder {
                     inbuf: Vec::new(),
                     out: VecDeque::new(),
                     queued: 0,
+                    watch: false,
                 },
             );
         }
@@ -466,6 +657,9 @@ impl Holder {
     }
 
     fn on_message(&mut self, client: ClientId, msg: ClientMsg) {
+        if !matches!(msg, ClientMsg::Snapshot { .. } | ClientMsg::List) {
+            self.workspaces_dirty = true;
+        }
         match msg {
             ClientMsg::Spawn {
                 req,
@@ -510,23 +704,75 @@ impl Holder {
                 }
             }
             ClientMsg::Close { id } => {
-                if let Some(s) = self
+                if self
                     .sessions
-                    .get_mut(&id)
-                    .filter(|s| matches!(s.owner, Owner::Attached(c) if c == client))
+                    .get(&id)
+                    .is_some_and(|s| matches!(s.owner, Owner::Attached(c) if c == client))
                 {
-                    s.owner = Owner::Closed;
-                    if s.pidfd.is_some() {
-                        let _ =
-                            rustix::process::kill_process(Pid::from_child(&s.child), Signal::HUP);
-                        s.owner = Owner::Closing {
-                            kill_at: Instant::now() + self.config.close_grace,
-                        };
+                    self.hang_up(id);
+                }
+            }
+            ClientMsg::Watch => {
+                if let Some(c) = self.clients.get_mut(&client) {
+                    c.watch = true;
+                }
+                let now = Instant::now();
+                for s in self
+                    .sessions
+                    .values_mut()
+                    .filter(|s| s.fg_checked.is_none())
+                {
+                    s.refresh_fg(now);
+                }
+            }
+            ClientMsg::PutWorkspace {
+                req,
+                id,
+                name,
+                root,
+                symbol,
+            } => {
+                let id = if id == 0 || !self.workspaces.contains_key(&id) {
+                    self.next_workspace += 1;
+                    self.next_workspace - 1
+                } else {
+                    id
+                };
+                self.workspaces.insert(
+                    id,
+                    WorkspaceInfo {
+                        id,
+                        name,
+                        root,
+                        symbol,
+                    },
+                );
+                self.send(client, &HolderMsg::WorkspacePut { req, id }, None);
+            }
+            ClientMsg::CloseWorkspace { id } => {
+                let ids: Vec<_> = self
+                    .sessions
+                    .iter()
+                    .filter(|(_, s)| {
+                        s.workspace == id && matches!(s.owner, Owner::Attached(_) | Owner::Orphaned)
+                    })
+                    .map(|(sid, _)| *sid)
+                    .collect();
+                for sid in ids {
+                    if let Some(Owner::Attached(c)) = self.sessions.get(&sid).map(|s| &s.owner) {
+                        // Raw wait status of a child killed by SIGHUP.
+                        let c = *c;
+                        self.send(c, &HolderMsg::Exited { id: sid, status: 1 }, None);
                     }
-                    s.on_hangup();
-                    s.tail = Vec::new();
-                    s.snapshot = Vec::new();
-                    self.drop_if_done(id);
+                    self.hang_up(sid);
+                }
+                self.workspaces.remove(&id);
+            }
+            ClientMsg::SetWorkspace { id, workspace } => {
+                if let Some(s) = self.sessions.get_mut(&id)
+                    && (workspace == 0 || self.workspaces.contains_key(&workspace))
+                {
+                    s.workspace = workspace;
                 }
             }
             ClientMsg::List => {
@@ -539,6 +785,24 @@ impl Holder {
                 self.send(client, &HolderMsg::Orphans { ids }, None);
             }
         }
+    }
+
+    /// The user closed the session: SIGHUP now, SIGKILL after the grace period.
+    fn hang_up(&mut self, id: SessionId) {
+        let Some(s) = self.sessions.get_mut(&id) else {
+            return;
+        };
+        s.owner = Owner::Closed;
+        if s.pidfd.is_some() {
+            let _ = rustix::process::kill_process(Pid::from_child(&s.child), Signal::HUP);
+            s.owner = Owner::Closing {
+                kill_at: Instant::now() + self.config.close_grace,
+            };
+        }
+        s.on_hangup();
+        s.tail = Vec::new();
+        s.snapshot = Vec::new();
+        self.drop_if_done(id);
     }
 
     fn spawn(
@@ -639,6 +903,13 @@ impl Holder {
                 want_sent_at: 0,
                 pace: ReadPace::Now,
                 last_read: Instant::now(),
+                workspace: 0,
+                program: String::new(),
+                cwd: String::new(),
+                marks: MarkParser::default(),
+                command: LastCommand::None,
+                fg_checked: None,
+                fg_due: None,
             },
             client_fd,
         ))
@@ -704,6 +975,7 @@ impl Holder {
         let mut buf = vec![0u8; room];
         match rustix::io::read(master, &mut buf) {
             Ok(0) | Err(rustix::io::Errno::IO) => {
+                self.workspaces_dirty = true;
                 s.on_hangup();
                 self.finish_if_exited(id);
             }
@@ -713,6 +985,20 @@ impl Holder {
                 s.last_read = now;
                 s.pace = rest.map_or(ReadPace::Now, |d| ReadPace::After(now + d));
                 buf.truncate(n);
+                if let Some(command) = s.marks.feed(&buf)
+                    && command != s.command
+                {
+                    s.command = command;
+                    self.workspaces_dirty = true;
+                }
+                // A command that prints nothing after it starts shows up at the check after the last output.
+                if self.clients.values().any(|c| c.watch) && s.fg_due.is_none() {
+                    match s.fg_checked {
+                        Some(at) if now < at + FG_INTERVAL => {}
+                        _ => self.workspaces_dirty |= s.refresh_fg(now),
+                    }
+                    s.fg_due = s.fg_checked.map(|at| at + FG_INTERVAL);
+                }
                 let offset = s.read_offset();
                 s.tail.extend_from_slice(&buf);
                 // Cut in steps of a quarter cap: each cut moves the whole tail.
@@ -767,6 +1053,7 @@ impl Holder {
                 hang_up_session(s.child.id());
             }
             s.on_reaped(status.into_raw());
+            self.workspaces_dirty = true;
             self.finish_if_exited(id);
         }
     }
@@ -800,6 +1087,7 @@ impl Holder {
         // A failed write can come before the poll reports the client's last frames (a Close, then hang-up).
         self.read_client(client);
         self.clients.remove(&client);
+        self.workspaces_dirty = true;
         let mut orphaned_running = false;
         let mut exited = Vec::new();
         for (id, s) in &mut self.sessions {

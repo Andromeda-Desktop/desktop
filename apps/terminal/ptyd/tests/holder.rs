@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use andromeda_ptyd::holder::{Config, Holder};
-use andromeda_ptyd::proto::{ClientMsg, HolderMsg, WinSize, split_frame};
+use andromeda_ptyd::proto::{
+    ClientMsg, HolderMsg, LastCommand, SessionInfo, WinSize, WorkspaceInfo, split_frame,
+};
 use rustix::net::{RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags, recvmsg};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -306,7 +308,11 @@ fn attached_output_flows_past_the_tail_cap_without_a_snapshot() {
         ..Config::default()
     });
     let mut c = TestClient::connect(&path);
-    let (id, _fd) = c.spawn(&["sh", "-c", "head -c 100000 /dev/zero | tr '\\0' a; echo END"]);
+    let (id, _fd) = c.spawn(&[
+        "sh",
+        "-c",
+        "head -c 100000 /dev/zero | tr '\\0' a; echo END",
+    ]);
     // Never answers WantSnapshot: as when the client cannot encode one.
     let mut seen = Vec::new();
     while !contains(&seen, "END") {
@@ -350,7 +356,11 @@ fn a_cut_tail_starts_where_a_fresh_parser_starts_clean() {
         panic!("not attached")
     };
     assert!(snapshot.is_empty());
-    assert!(tail.starts_with(b"b"), "tail starts with {:?}", String::from_utf8_lossy(&tail[..16]));
+    assert!(
+        tail.starts_with(b"b"),
+        "tail starts with {:?}",
+        String::from_utf8_lossy(&tail[..16])
+    );
 }
 
 #[test]
@@ -423,7 +433,13 @@ fn close_holds_when_the_client_hangs_up_with_unread_output() {
     let (id, _fd) = c.spawn(&["sh", "-c", "echo pid=$$; exec yes"]);
     let seen = c.read_until(id, 0, Vec::new(), |s| contains(s, "\n"));
     let text = String::from_utf8(seen).unwrap();
-    let pid = text.lines().next().unwrap().strip_prefix("pid=").unwrap().to_string();
+    let pid = text
+        .lines()
+        .next()
+        .unwrap()
+        .strip_prefix("pid=")
+        .unwrap()
+        .to_string();
     let unread = || {
         let mut b = [MaybeUninit::uninit(); 1];
         rustix::net::recv(&c.stream, &mut b, RecvFlags::PEEK | RecvFlags::DONTWAIT).is_ok()
@@ -446,7 +462,14 @@ fn close_holds_when_the_client_hangs_up_during_a_flood() {
         let (id, _fd) = c.spawn(&["sh", "-c", "echo pid=$$; exec yes"]);
         let seen = c.read_until(id, 0, Vec::new(), |s| contains(s, "\n"));
         let text = String::from_utf8(seen).unwrap();
-        pids.push(text.lines().next().unwrap().strip_prefix("pid=").unwrap().to_string());
+        pids.push(
+            text.lines()
+                .next()
+                .unwrap()
+                .strip_prefix("pid=")
+                .unwrap()
+                .to_string(),
+        );
         c.send(ClientMsg::Close { id });
         drop(c);
     }
@@ -938,4 +961,172 @@ fn random_event_sequences_keep_the_holder_invariants() {
         m.finish();
         dirs.push((dir, _d));
     }
+}
+
+/// Reads `Workspaces` until one satisfies `want`; every one must keep `seq` rising and point only at known workspaces.
+fn await_table(
+    w: &mut TestClient,
+    last_seq: &mut u64,
+    what: &str,
+    want: impl Fn(&[WorkspaceInfo], &[SessionInfo]) -> bool,
+) {
+    let deadline = Instant::now() + TIMEOUT;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Some((msg, _)) = w.try_recv(left) else {
+            panic!("no workspace table where {what}");
+        };
+        if let HolderMsg::Workspaces {
+            seq,
+            workspaces,
+            sessions,
+        } = msg
+        {
+            assert!(seq > *last_seq, "seq went from {last_seq} to {seq}");
+            *last_seq = seq;
+            for s in &sessions {
+                assert!(
+                    s.workspace == 0 || workspaces.iter().any(|ws| ws.id == s.workspace),
+                    "session {} in unknown workspace {}",
+                    s.id,
+                    s.workspace
+                );
+            }
+            if want(&workspaces, &sessions) {
+                return;
+            }
+        }
+    }
+}
+
+#[test]
+fn workspace_table_follows_spawn_move_detach_and_close() {
+    let seeds: Vec<u64> = match std::env::var("PTYD_MODEL_SEED") {
+        Ok(s) => vec![s.parse().unwrap()],
+        Err(_) => (1..=4).collect(),
+    };
+    for seed in seeds {
+        eprintln!("PTYD_MODEL_SEED={seed}");
+        let (_d, path) = start(Config::default());
+        let mut rng = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+        let mut pick = |n: usize| {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            (rng % n as u64) as usize
+        };
+        let mut w = TestClient::connect(&path);
+        w.send(ClientMsg::Watch);
+        let mut seq = 0;
+        let mut clients = [TestClient::connect(&path), TestClient::connect(&path)];
+        // Model: session -> (workspace, owning client slot or None when detached); workspaces by id.
+        let mut sessions: std::collections::BTreeMap<u64, (u64, Option<usize>)> =
+            Default::default();
+        let mut spaces: Vec<u64> = Vec::new();
+        let mut fds = Vec::new();
+        for step in 0..60 {
+            let ids: Vec<u64> = sessions.keys().copied().collect();
+            match pick(5) {
+                0 => {
+                    let slot = pick(2);
+                    // A closed workspace leaves Exited messages queued before the Spawned reply.
+                    clients[slot].send(ClientMsg::Spawn {
+                        req: 9,
+                        size: WinSize::default(),
+                        cwd: String::new(),
+                        argv: vec!["cat".into()],
+                        env: vec!["PATH=/usr/bin:/bin".into()],
+                    });
+                    let id = loop {
+                        if let (HolderMsg::Spawned { id, .. }, Some(fd)) = clients[slot].recv() {
+                            fds.push(fd);
+                            break id;
+                        }
+                    };
+                    sessions.insert(id, (0, Some(slot)));
+                }
+                1 => {
+                    w.send(ClientMsg::PutWorkspace {
+                        req: step,
+                        id: 0,
+                        name: format!("ws{step}"),
+                        root: "/tmp".into(),
+                        symbol: "folder".into(),
+                    });
+                    let id = loop {
+                        if let (HolderMsg::WorkspacePut { req, id }, _) = w.recv()
+                            && req == step
+                        {
+                            break id;
+                        }
+                    };
+                    spaces.push(id);
+                }
+                2 if !ids.is_empty() => {
+                    let id = ids[pick(ids.len())];
+                    let ws = if spaces.is_empty() || pick(4) == 0 {
+                        0
+                    } else {
+                        spaces[pick(spaces.len())]
+                    };
+                    w.send(ClientMsg::SetWorkspace { id, workspace: ws });
+                    sessions.get_mut(&id).unwrap().0 = ws;
+                }
+                3 if !spaces.is_empty() => {
+                    let ws = spaces.remove(pick(spaces.len()));
+                    w.send(ClientMsg::CloseWorkspace { id: ws });
+                    sessions.retain(|_, (s, _)| *s != ws);
+                }
+                4 => {
+                    let slot = pick(2);
+                    clients[slot] = TestClient::connect(&path);
+                    for (_, owner) in sessions.values_mut() {
+                        if *owner == Some(slot) {
+                            *owner = None;
+                        }
+                    }
+                }
+                _ => continue,
+            }
+            let model = sessions.clone();
+            let model_spaces = spaces.clone();
+            await_table(&mut w, &mut seq, &format!("step {step}"), |ws, ss| {
+                ws.len() == model_spaces.len()
+                    && model_spaces.iter().all(|id| ws.iter().any(|w| w.id == *id))
+                    && ss.len() == model.len()
+                    && ss.iter().all(|s| {
+                        model.get(&s.id).is_some_and(|(ws, owner)| {
+                            *ws == s.workspace && owner.is_some() == s.attached
+                        })
+                    })
+            });
+        }
+    }
+}
+
+#[test]
+fn workspace_table_shows_the_last_command_and_the_foreground_program() {
+    let (_d, path) = start(Config::default());
+    let mut w = TestClient::connect(&path);
+    w.send(ClientMsg::Watch);
+    let mut seq = 0;
+    let mut c = TestClient::connect(&path);
+    let (id, _fd) = c.spawn(&[
+        "sh",
+        "-c",
+        r"printf '\033]133;C\007'; printf 'out\033]133;D;3\007'; exec sleep 30",
+    ]);
+    await_table(
+        &mut w,
+        &mut seq,
+        "the command failed and sleep runs",
+        |_, ss| {
+            ss.iter().any(|s| {
+                s.id == id
+                    && s.command == LastCommand::Done(3)
+                    && s.program == "sleep"
+                    && !s.cwd.is_empty()
+            })
+        },
+    );
 }
