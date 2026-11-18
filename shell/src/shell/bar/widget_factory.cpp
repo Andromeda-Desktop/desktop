@@ -193,13 +193,10 @@ std::unique_ptr<Widget> WidgetFactory::create(
                 context.config, context.settingContext,
                 BatteryWidgetDefinitionContext{.batteryConfig = &f.m_config.battery, .upower = f.m_upower}
             );
-            // The island draws the level symbol; display_mode "none" leaves the percent as text only.
-            if (options.displayMode == BatteryDisplayMode::None) {
-              options.showLabel = true;
-            } else {
-              options.displayMode = BatteryDisplayMode::Graphic;
-            }
-            options.islandStyle = true;
+            // Concept C: the status island shows the battery as its percent only, without a symbol.
+            options.displayMode = BatteryDisplayMode::None;
+            options.labelContent = BatteryLabelContent::Percent;
+            options.showLabel = true;
             return createWidget<BatteryWidget>(context.contentScale, f.m_upower, options);
           }},
       {"island_clock", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
