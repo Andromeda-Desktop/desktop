@@ -117,13 +117,15 @@ namespace term {
       return mix(background, (byte(c.r) << 16) | (byte(c.g) << 8) | byte(c.b), c.a);
     }
 
-    // The grid at alpha over the window glass over the backdrop that weakens its ink most: black under a light grid.
+    // The grid at alpha over the window glass (in the grid's tone, as AppWindow::chromeTone) over the backdrop that
+    // weakens its ink most: black under a light grid.
     std::uint32_t worstBackdrop(std::uint32_t gridBg, float alpha) {
       const Color grid = rgbHex(gridBg);
       const bool lightGrid = contrastRatio(grid, rgbHex(0x000000U)) >= contrastRatio(grid, rgbHex(0xFFFFFFU));
       Color translucent = grid;
       translucent.a = alpha;
-      return over(translucent, over(colorForRole(panelMaterialRole()), lightGrid ? 0x000000U : 0xFFFFFFU));
+      const Color& glass = colorForRole(panelMaterialRole(), lightGrid ? PaletteTone::Light : PaletteTone::Dark);
+      return over(translucent, over(glass, lightGrid ? 0x000000U : 0xFFFFFFU));
     }
 
     void appendUtf8(std::string& out, std::uint32_t cp) {
