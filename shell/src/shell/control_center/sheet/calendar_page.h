@@ -20,9 +20,12 @@ class WeatherService;
 
 class CalendarPage : public SheetPage {
 public:
+  // Sheet: the Control Center clock sheet. Pieces: concept C (proto overlays.js renderCal), the month card and the
+  // events card as glass pieces, no date header or weather tile.
+  enum class Layout : std::uint8_t { Sheet, Pieces };
   explicit CalendarPage(
       ConfigService* config = nullptr, CalendarService* calendar = nullptr, WeatherService* weather = nullptr,
-      CompositorPlatform* platform = nullptr
+      CompositorPlatform* platform = nullptr, Layout layout = Layout::Sheet
   );
 
   // Height of the one-column clock sheet at this width (the panel fits the sheet to it).
@@ -50,8 +53,11 @@ private:
   void toggleEventsCard();
   void updateWeather();
   void updateDateHeader();
-  [[nodiscard]] static float gridHeight(float scale);
+  [[nodiscard]] float gridHeight(float scale) const;
+  [[nodiscard]] float gridGap() const;
+  [[nodiscard]] float dayButtonSize() const;
 
+  Layout m_layout = Layout::Sheet;
   ConfigService* m_config = nullptr;
   CalendarService* m_calendar = nullptr;
   WeatherService* m_weather = nullptr;

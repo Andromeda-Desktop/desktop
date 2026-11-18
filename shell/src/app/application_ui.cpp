@@ -84,6 +84,7 @@
 #include "shell/lockscreen/lock_surface.h"
 #include "shell/launcher/launcher_panel.h"
 #include "shell/notification_center/notification_center_panel.h"
+#include "shell/calendar_panel/calendar_panel.h"
 #include "shell/panel/plugin_panel.h"
 #include "shell/phone/phone_panel.h"
 #include "shell/polkit/polkit_panel.h"
@@ -781,6 +782,9 @@ void Application::initPanelManagerAndPanels() {
   m_panelManager.registerPanel(
       "notification-center", std::make_unique<NotificationCenterPanel>(&m_notificationManager, &m_compositorPlatform)
   );
+  m_panelManager.registerPanel(
+      "calendar", std::make_unique<CalendarPanel>(&m_configService, &m_calendarService, &m_compositorPlatform)
+  );
   m_configService.addReloadCallback(
       [this] {
         if (m_launcherPanel != nullptr) {
@@ -963,8 +967,8 @@ void Application::initNotificationAndOsd() {
   m_liveActivity.setRestSources(
       [this] { return pipewire(); }, [this] { return mpris(); }, &m_notificationManager,
       [this](wl_output* output, std::string_view context, std::optional<LiveActivityIsland::SheetSource> source) {
-        if (context == "notification-center") {
-          m_panelManager.togglePanel("notification-center", PanelOpenRequest{.output = output});
+        if (context == "notification-center" || context == "calendar") {
+          m_panelManager.togglePanel(std::string(context), PanelOpenRequest{.output = output});
           return;
         }
         PanelOpenRequest request{.output = output, .context = context};

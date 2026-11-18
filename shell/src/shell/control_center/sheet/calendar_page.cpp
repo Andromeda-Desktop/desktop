@@ -11,6 +11,7 @@
 #include "render/scene/input_area.h"
 #include "render/scene/input_dispatcher.h"
 #include "shell/control_center/sheet/sheet_page.h"
+#include "shell/panel/glass_piece.h"
 #include "shell/panel/panel_button_style.h"
 #include "shell/panel/panel_manager.h"
 #include "system/desktop_entry_launch.h"
@@ -49,9 +50,9 @@ namespace {
 } // namespace
 
 CalendarPage::CalendarPage(
-    ConfigService* config, CalendarService* calendar, WeatherService* weather, CompositorPlatform* platform
+    ConfigService* config, CalendarService* calendar, WeatherService* weather, CompositorPlatform* platform, Layout layout
 )
-    : m_config(config), m_calendar(calendar), m_weather(weather), m_platform(platform) {}
+    : m_layout(layout), m_config(config), m_calendar(calendar), m_weather(weather), m_platform(platform) {}
 
 std::unique_ptr<Flex> CalendarPage::create() {
   const float scale = contentScale();
@@ -76,7 +77,8 @@ std::unique_ptr<Flex> CalendarPage::create() {
       .gap = Tokens::componentSheetGap * scale,
   });
 
-  tab->addChild(ui::row(
+  const bool pieces = m_layout == Layout::Pieces;
+  auto dateHeader = ui::row(
       {.align = FlexAlign::Center, .gap = Tokens::spaceP12 * scale, .paddingH = Tokens::spaceP4 * scale,
        .height = Tokens::componentSheetDetailHeader * scale},
       ui::column(
@@ -110,9 +112,16 @@ std::unique_ptr<Flex> CalendarPage::create() {
                 PanelManager::instance().refresh();
               },
       })
-  ));
+  );
   m_weekdayLabel->setLineHeight(Tokens::typeFootnote.line * scale);
   m_todayLabel->setLineHeight(Tokens::typeTitle2.line * scale);
+  if (pieces) {
+    m_weekdayLabel = nullptr;
+    m_todayLabel = nullptr;
+    m_todayButton = nullptr;
+  } else {
+    tab->addChild(std::move(dateHeader));
+  }
 
   auto calendarArea = ui::inputArea({});
   calendarArea->setParticipatesInLayout(false);
@@ -137,7 +146,11 @@ std::unique_ptr<Flex> CalendarPage::create() {
       .fill = colorSpecFromRole(ColorRole::GlassCard),
       .radius = Tokens::componentTileRadius * scale,
   });
-  calendarCard->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
+  if (pieces) {
+    styleGlassPiece(*calendarCard, Tokens::componentSheetRadius * scale, scale, panelCardOpacity());
+  } else {
+    calendarCard->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
+  }
   calendarCard->addChild(std::move(calendarArea));
 
   auto header = ui::row({
@@ -151,22 +164,24 @@ std::unique_ptr<Flex> CalendarPage::create() {
       {.out = &m_monthWrap, .align = FlexAlign::Start, .flexGrow = 1.0F},
       ui::label({
           .out = &m_monthLabel,
-          .fontSize = Tokens::typeHeadline.size * scale,
+          .fontSize = (pieces ? Tokens::typeTitle3.size : Tokens::typeHeadline.size) * scale,
           .fontWeight = FontWeight::SemiBold,
           .color = colorSpecFromRole(ColorRole::Label1),
           .maxLines = 1,
       })
   ));
-  const auto navButton = [scale](Button** out, const char* glyph, std::function<void()> onClick) {
+  // Pieces: round 32 well buttons (proto .o-rb).
+  const float nav = (pieces ? Tokens::sizeControlM : kCalendarNavButtonSize) * scale;
+  const auto navButton = [scale, nav, pieces](Button** out, const char* glyph, std::function<void()> onClick) {
     return ui::button({
         .out = out,
         .glyph = glyph,
         .glyphSize = Tokens::sizeSymbol * scale,
-        .variant = ButtonVariant::Ghost,
-        .minWidth = kCalendarNavButtonSize * scale,
-        .minHeight = kCalendarNavButtonSize * scale,
+        .variant = pieces ? ButtonVariant::Default : ButtonVariant::Ghost,
+        .minWidth = nav,
+        .minHeight = nav,
         .padding = 0.0F,
-        .radius = kCalendarNavButtonSize * scale * 0.5F,
+        .radius = nav * 0.5F,
         .onClick = std::move(onClick),
     });
   };
@@ -184,24 +199,28 @@ std::unique_ptr<Flex> CalendarPage::create() {
   auto grid = ui::column({
       .out = &m_grid,
       .align = FlexAlign::Stretch,
-      .gap = kCalendarGridGap * scale,
+      .gap = gridGap() * scale,
       .configure = [](Flex& layer) { layer.setParticipatesInLayout(false); },
   });
   gridViewport->addChild(std::move(grid));
   calendarCard->addChild(std::move(gridViewport));
   tab->addChild(std::move(calendarCard));
 
-  // Events of the selected day: caption header (its date) over a grouped card.
-  tab->addChild(ui::row(
-      {.out = &m_eventsHeader, .paddingH = Tokens::spaceP16 * scale, .visible = m_showEventsCard},
+  // Events of the selected day: caption header (its date) over a grouped card; in pieces the caption is inside the card
+  // (proto .o-events .o-sec 12/600 label 2).
+  auto eventsHeader = ui::row(
+      {.out = &m_eventsHeader, .paddingH = (pieces ? 0.0F : Tokens::spaceP16) * scale, .visible = m_showEventsCard},
       ui::label({
           .out = &m_eventsTitle,
-          .fontSize = Tokens::typeCaption.size * scale,
+          .fontSize = (pieces ? Tokens::typeFootnote.size : Tokens::typeCaption.size) * scale,
           .fontWeight = FontWeight::SemiBold,
-          .color = colorSpecFromRole(ColorRole::Label3),
+          .color = colorSpecFromRole(pieces ? ColorRole::Label2 : ColorRole::Label3),
           .maxLines = 1,
       })
-  ));
+  );
+  if (!pieces) {
+    tab->addChild(std::move(eventsHeader));
+  }
   auto eventsCard = ui::column(
       {.out = &m_eventsCard,
        .padding = Tokens::spaceP12 * scale,
@@ -217,8 +236,19 @@ std::unique_ptr<Flex> CalendarPage::create() {
           .height = kEventsHeight * scale,
       })
   );
-  eventsCard->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
+  if (pieces) {
+    eventsCard->setPadding(Tokens::spaceP8 * scale, Tokens::spaceP12 * scale, Tokens::spaceP12 * scale, Tokens::spaceP12 * scale);
+    eventsCard->setGap(Tokens::spaceP4 * scale);
+    eventsCard->setAlign(FlexAlign::Stretch);
+    eventsCard->insertChildAt(0, std::move(eventsHeader));
+    styleGlassPiece(*eventsCard, Tokens::radiusR24 * scale, scale, panelCardOpacity());
+  } else {
+    eventsCard->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * scale);
+  }
   tab->addChild(std::move(eventsCard));
+  if (pieces) {
+    return tab;
+  }
 
   // Weather tile (span 2): opens the weather page; hidden while weather is off.
   auto weatherTile = ui::row(
@@ -450,9 +480,14 @@ void CalendarPage::updateDateHeader() {
   m_todayLabel->setText(formatLocalTime("%-d %B"));
 }
 
-float CalendarPage::gridHeight(float scale) {
-  return (kCalendarWeekdayRowHeight + kCalendarGridGap + 6.0F * kCalendarDayCellHeight + 5.0F * kCalendarGridGap) * scale;
+float CalendarPage::gridHeight(float scale) const {
+  return (kCalendarWeekdayRowHeight + gridGap() + 6.0F * kCalendarDayCellHeight + 5.0F * gridGap()) * scale;
 }
+
+// Pieces (proto .o-days): rows 2 apart, today a 32 circle.
+float CalendarPage::gridGap() const { return m_layout == Layout::Pieces ? Tokens::spaceP2 : kCalendarGridGap; }
+
+float CalendarPage::dayButtonSize() const { return m_layout == Layout::Pieces ? Tokens::sizeControlM : kCalendarDayButtonSize; }
 
 float CalendarPage::measureHeight(Renderer& renderer, float width) {
   if (m_rootLayout == nullptr) {
@@ -730,14 +765,14 @@ void CalendarPage::rebuild() {
   // The week-number column takes its share of the row before the day columns split the rest. It is
   // inset from the divider by one grid gap, which reads as balanced against the card padding on its
   // other side without spending a full card padding's worth of width on a two-digit number.
-  const float weekLaneInset = m_showWeekNumbers ? kCalendarGridGap * scale : 0.0F;
+  const float weekLaneInset = m_showWeekNumbers ? gridGap() * scale : 0.0F;
   const float weekDividerWidth = m_showWeekNumbers ? std::round(1.0F * scale) : 0.0F;
-  const float weekLaneOverhead = m_showWeekNumbers ? weekLaneInset + weekDividerWidth + kCalendarGridGap * scale : 0.0F;
+  const float weekLaneOverhead = m_showWeekNumbers ? weekLaneInset + weekDividerWidth + gridGap() * scale : 0.0F;
   // Solve for a day column that leaves the week column its fraction, then floor the week column at the
   // width of its text and give the day grid whatever is actually left.
   const float provisionalDayColumn = std::max(
       0.0F,
-      (innerWidth - kCalendarGridGap * scale * 6.0F - weekLaneOverhead)
+      (innerWidth - gridGap() * scale * 6.0F - weekLaneOverhead)
           / (m_showWeekNumbers ? 7.0F + kCalendarWeekColumnRatio : 7.0F)
   );
   const float weekColumnWidth = m_showWeekNumbers
@@ -747,10 +782,10 @@ void CalendarPage::rebuild() {
         )
       : 0.0F;
   const float dayGridWidth = std::max(0.0F, innerWidth - weekColumnWidth - weekLaneOverhead);
-  const float dayColumnWidth = std::max(0.0F, (dayGridWidth - kCalendarGridGap * scale * 6.0F) / 7.0F);
+  const float dayColumnWidth = std::max(0.0F, (dayGridWidth - gridGap() * scale * 6.0F) / 7.0F);
   const float dotDiameter = Tokens::spaceP4 * scale;
   const float dotGap = Tokens::spaceP2 * scale;
-  const float dayButtonSize = std::min(kCalendarDayButtonSize * scale, dayColumnWidth);
+  const float dayButton = std::min(dayButtonSize() * scale, dayColumnWidth);
 
   if (m_todayLabel != nullptr) {
     updateDateHeader();
@@ -769,14 +804,14 @@ void CalendarPage::rebuild() {
               .width = innerWidth,
               .weekdayHeight = weekdayHeight,
               .dayCellHeight = dayCellHeight,
-              .dayButtonSize = dayButtonSize,
-              .gap = kCalendarGridGap * scale,
+              .dayButtonSize = dayButton,
+              .gap = gridGap() * scale,
               .dotDiameter = dotDiameter,
               .dotGap = dotGap,
               .weekColumnWidth = weekColumnWidth,
               .weekLaneInset = weekLaneInset,
               .weekDividerWidth = weekDividerWidth,
-              .weekDaysGap = m_showWeekNumbers ? kCalendarGridGap * scale : 0.0F,
+              .weekDaysGap = m_showWeekNumbers ? gridGap() * scale : 0.0F,
           },
       .onDateSelected =
           [this](calendar_view::Date date, int monthShift) {

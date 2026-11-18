@@ -688,6 +688,9 @@ center_width = 360.0  # the notification center column, under the island (proto 
 center_top = 48.0  # column top from the output top
 center_reserve = 140.0  # the column is at most the output height minus this; more cards scroll
 
+[component.calendar]
+width = 320.0  # the month and events column under the island (proto overlays.css .o-cal)
+
 [component.window]  # 9.12
 radius = 12.0  # radius set B (user, 2026-11-08)
 card_gap = 8.0  # contentCard windows: the sidebar material shows this wide around the content card (terminal split design A)
