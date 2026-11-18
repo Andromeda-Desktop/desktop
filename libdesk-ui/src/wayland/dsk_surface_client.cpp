@@ -18,6 +18,7 @@ const dsk_surface_v1_listener DskSurfaceClient::kListener = {
     .done = handleDone,
     .clip_mapped = handleClipMapped,
     .backdrop = handleBackdrop,
+    .density = handleDensity,
 };
 
 DskSurfaceClient::DskSurfaceClient(dsk_surface_manager_v1* manager, wl_surface* surface)
@@ -213,6 +214,14 @@ void DskSurfaceClient::handleBackdrop(void* data, dsk_surface_v1* /*surface*/, u
   self->m_backdropDark = tone == DSK_SURFACE_V1_BACKDROP_DARK;
   if (self->m_onBackdrop) {
     self->m_onBackdrop(*self->m_backdropDark);
+  }
+}
+
+void DskSurfaceClient::handleDensity(void* data, dsk_surface_v1* /*surface*/, int32_t density) {
+  auto* self = static_cast<DskSurfaceClient*>(data);
+  self->m_density = static_cast<float>(wl_fixed_to_double(density));
+  if (self->m_onDensity) {
+    self->m_onDensity(self->m_density);
   }
 }
 

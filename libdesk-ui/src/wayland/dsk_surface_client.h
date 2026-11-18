@@ -88,6 +88,8 @@ public:
   // dsk_surface_v1.backdrop (v6): the blurred backdrop under the liquid glass turned dark (true) or light (false).
   [[nodiscard]] std::optional<bool> backdropDark() const noexcept { return m_backdropDark; }
   void setOnBackdrop(std::function<void(bool dark)> callback) { m_onBackdrop = std::move(callback); }
+  // dsk_surface_v1.density (v16): how much the compositor thickens this surface's tint, 0 to 1.
+  void setOnDensity(std::function<void(float density)> callback) { m_onDensity = std::move(callback); }
 
   [[nodiscard]] dsk_surface_v1* resource() const noexcept { return m_surface; }
 
@@ -97,6 +99,7 @@ private:
   static void handleDone(void* data, dsk_surface_v1* surface, uint32_t serial, uint32_t reason);
   static void handleClipMapped(void* data, dsk_surface_v1* surface, int32_t x, int32_t y, int32_t width, int32_t height);
   static void handleBackdrop(void* data, dsk_surface_v1* surface, uint32_t tone);
+  static void handleDensity(void* data, dsk_surface_v1* surface, int32_t density);
 
   dsk_surface_v1* m_surface = nullptr;
   uint32_t m_nextSerial = 1;
@@ -104,6 +107,8 @@ private:
   std::function<void(const Value&)> m_onClipMapped;
   std::optional<bool> m_backdropDark;
   std::function<void(bool)> m_onBackdrop;
+  float m_density = 0.0F;
+  std::function<void(float)> m_onDensity;
   std::unordered_map<uint32_t, DoneCallback> m_pending;
   std::unordered_map<uint32_t, StartedCallback> m_started;
 };

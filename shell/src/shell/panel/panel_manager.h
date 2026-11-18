@@ -260,14 +260,14 @@ private:
   [[nodiscard]] float detachedBackgroundOpacity() const;
   // The detached panel fill alpha (tint_thick), eased toward the liquid tint while setPanelLiquid is on.
   [[nodiscard]] float detachedFillAlpha() const;
-  // The detached fill: the material role; m_glassDark (low-contrast backdrop) makes the tint denser.
+  // The detached fill: the material role; the compositor draws the tint and its density.
   [[nodiscard]] ColorSpec detachedFill() const;
   [[nodiscard]] ColorSpec detachedBorder(float backgroundOpacity) const;
   [[nodiscard]] static glass::Material sheetGlass(float liquid);
   // Adaptive glass: listens for dsk_surface_v1.backdrop on the current m_dsk.
   void bindBackdrop();
-  // Low-contrast backdrop (light glass on dark, dark glass on bright): m_glassDark -> 1; instant skips the cross-fade.
-  void updateGlassTone(bool instant = false);
+  // Fades m_glassDark to the compositor's density (cards follow it); instant skips the cross-fade.
+  void updateGlassDensity(bool instant = false);
   // True when the compositor draws this sheet's tint (dsk v9); the sheet then paints no material fill.
   [[nodiscard]] bool compositorTint() const;
   // The sheet tint alpha `liquid` (0 to 1) of the way to the launcher pill's shape tint.
@@ -357,11 +357,9 @@ private:
   float m_panelLiquid = 0.0F; // 0..1, see setPanelLiquid
   AnimationManager::Id m_liquidAnimation = 0;
   float m_liquidTarget = 0.0F;
-  bool m_backdropDark = false;
-  bool m_backdropMeasured = false;
-  bool m_glassToneLight = false; // sheetLight() of the last updateGlassTone
-  float m_glassTarget = 0.0F;    // last m_glassDark target, for the rise-only rule
-  float m_glassDark = 0.0F; // 0..1, see updateGlassTone
+  bool m_densityMeasured = false;
+  float m_densityTarget = 0.0F; // dsk_surface_v1.density
+  float m_glassDark = 0.0F;     // 0..1, the shown density, see updateGlassDensity
   AnimationManager::Id m_glassDarkAnimation = 0;
   Signal<>::ScopedConnection m_glassPaletteConn;
   Signal<>::ScopedConnection m_glassToneConn;

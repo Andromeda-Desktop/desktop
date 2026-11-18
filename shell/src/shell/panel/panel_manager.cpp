@@ -423,7 +423,7 @@ namespace {
 void PanelManager::initialize(CompositorPlatform& platform, ConfigService* config, RenderContext* renderContext) {
   m_glassPaletteConn = paletteChanged().connect([this] {
     if (isOpen()) {
-      updateGlassTone();
+      updateGlassDensity();
       if (m_dsk != nullptr && m_dsk->hasLiquidProperty()) {
         const glass::Material material = sheetGlass(m_panelLiquid);
         setGlassMaterial(*m_dsk, *m_dsk, &material);
@@ -434,7 +434,7 @@ void PanelManager::initialize(CompositorPlatform& platform, ConfigService* confi
   m_glassToneConn = Style::glassChanged().connect([this] {
     syncPanelTone();
     if (isOpen()) {
-      updateGlassTone();
+      updateGlassDensity();
       sendSheetTint();
       sendSheetStroke();
     }
@@ -1741,10 +1741,8 @@ void PanelManager::destroyPanel() {
   m_panelLiquid = 0.0F;
   m_liquidAnimation = 0;
   m_liquidTarget = 0.0F;
-  m_backdropDark = false;
-  m_backdropMeasured = false;
+  m_densityMeasured = false;
   m_glassDark = 0.0F;
-  m_glassTarget = 0.0F;
   m_glassDarkAnimation = 0;
   m_scaleMode = false;
   m_morphExtend = false;
@@ -2555,12 +2553,12 @@ void PanelManager::bindBackdrop() {
   if (m_dsk == nullptr) {
     return;
   }
-  m_dsk->setOnBackdrop([this](bool dark) {
-    m_backdropDark = dark;
+  m_dsk->setOnDensity([this](float density) {
+    m_densityTarget = density;
     // The first measurement lands 1-2 frames after the sheet maps, inside the open motion: apply it at once.
-    const bool first = !m_backdropMeasured;
-    m_backdropMeasured = true;
-    updateGlassTone(first);
+    const bool first = !m_densityMeasured;
+    m_densityMeasured = true;
+    updateGlassDensity(first);
   });
   // One glass system: every sheet, detached or bar-attached, carries the slider's material.
   if (m_dsk->hasLiquidProperty()) {
@@ -2608,20 +2606,9 @@ float PanelManager::densityCardOpacity(float opacity) const {
   return !m_attachedToBar && sheetLight() ? std::lerp(opacity, 2.0F, m_glassDark) : opacity;
 }
 
-void PanelManager::updateGlassTone(bool instant) {
-  // Glass whose backdrop is the same tone as its tint (light on dark, dark on bright) loses contrast: make it denser.
-  const bool contrastLow = sheetLight() ? m_backdropDark : !m_backdropDark;
-  float target = m_backdropMeasured && !Style::reduceTransparency() && contrastLow ? 1.0F : 0.0F;
-  // While open, density only rises (user: no pulsing over a changing backdrop); a light/dark sheet switch resets it.
-  const bool light = sheetLight();
-  const bool sameScheme = m_glassToneLight == light;
-  m_glassToneLight = light;
-  // Against the last target, not the animated m_glassDark: a palette cross-fade calls this every frame and would
-  // freeze a running fade.
-  if (sameScheme && target < m_glassTarget) {
-    target = m_glassTarget;
-  }
-  m_glassTarget = target;
+void PanelManager::updateGlassDensity(bool instant) {
+  // The compositor decides the density (dsk_surface_v1.density) and thickens the tint; the cards follow it.
+  const float target = Style::reduceTransparency() ? 0.0F : m_densityTarget;
   const auto apply = [this](float v) {
     m_glassDark = std::clamp(v, 0.0F, 1.0F);
     if (!m_attachedToBar && m_bgNode != nullptr) {
@@ -2812,7 +2799,7 @@ void PanelManager::setPanelLiquid(float liquid, bool animate) {
     bindBackdrop();
   }
   m_liquidTarget = liquid;
-  updateGlassTone();
+  updateGlassDensity();
   if (m_dsk == nullptr || !m_dsk->hasLiquidProperty()) {
     return;
   }
@@ -3377,7 +3364,7 @@ void PanelManager::onConfigReloaded() {
     auto* bg = static_cast<Box*>(m_bgNode);
     bg->setPanelStyle(m_config->config().shell.panel.borders);
     bg->setFill(detachedFill());
-    updateGlassTone();
+    updateGlassDensity();
     if (m_config->config().shell.panel.borders) {
       bg->setBorder(
           detachedBorder(panelBackgroundOpacity),
