@@ -147,6 +147,8 @@ namespace andromeda {
     std::vector<ShapeMaterial> m_shapeMaterials;
     // Per m_shapeBlurs entry: its shape's opacity, multiplied into the fade alpha.
     std::vector<float> m_shapeBlurOpacity;
+    // m_blur's shape opacity when it draws shapes[0], else 1.
+    float m_blurOpacity = 1.0F;
     bool m_tintLight = false;
     // Glass density, 0 to 1: how far the tint is raised over a same-tone backdrop. Rises only while mapped.
     AnimatedValue m_density{0.0};

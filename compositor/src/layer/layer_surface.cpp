@@ -494,7 +494,7 @@ namespace andromeda {
       }
     }
     m_glassAlpha = alpha;
-    m_blur.setAlpha(alpha);
+    m_blur.setAlpha(alpha * m_blurOpacity);
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
       m_shapeBlurs[i].setAlpha(alpha * (i < m_shapeBlurOpacity.size() ? m_shapeBlurOpacity[i] : 1.0F));
     }
@@ -1279,6 +1279,8 @@ namespace andromeda {
     m_nodeArea.assign(m_shapeBlurs.size() + 1, 0);
     m_nodeLuminance.resize(m_nodeArea.size());
     m_nodeArea[0] = clip ? clip->width * clip->height : nodeBox.width * nodeBox.height;
+    m_blurOpacity = firstShapeBlur == 1 && !m_shapeMaterials.empty() ? m_shapeMaterials.front().opacity : 1.0F;
+    m_blur.setAlpha(m_glassAlpha * m_blurOpacity);
     m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
     m_blur.update(
         m_scene->tree, m_layerSurface->surface, nodeBox, box, corners, clip ? &*clip : nullptr, options, 1.0F, nullptr,
