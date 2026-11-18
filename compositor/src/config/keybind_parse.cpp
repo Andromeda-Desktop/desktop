@@ -528,7 +528,7 @@ namespace andromeda {
          KeybindAction::ToggleFloating, ActionArgKind::OptionalWindowId},
         {"window-toggle-fullscreen", "", "Toggle fullscreen or exit a window covering the focus",
          KeybindAction::ToggleFullscreen},
-        {"window-toggle-maximize", "", "Toggle full width for the focused column", KeybindAction::ToggleMaximize},
+        {"window-toggle-maximize", "", "Full-width column; maximize in dwindle/master", KeybindAction::ToggleMaximize},
         {"window-toggle-maximize-to-edges", "", "Toggle maximize without gaps, struts, or borders",
          KeybindAction::ToggleMaximizeToEdges},
         {"window-toggle-pinned", "", "Pin the focused window above other windows", KeybindAction::TogglePinned},

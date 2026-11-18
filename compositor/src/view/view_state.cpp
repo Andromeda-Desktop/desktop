@@ -107,6 +107,11 @@ namespace andromeda {
 
   void View::setMaximized(bool maximized, bool animate) {
     if (tiled() && m_workspace != nullptr) {
+      // Only scrolling columns can overhang the viewport; widening a split tile would squash its siblings.
+      if (m_workspace->layoutMode() != LayoutMode::Scrolling) {
+        setMaximizedToEdges(maximized, animate);
+        return;
+      }
       if (maximizedToEdges()) {
         setMaximizedToEdges(false);
       }
@@ -552,6 +557,10 @@ namespace andromeda {
   }
 
   bool View::honorsRestoredMaximize() const {
+    // A new tile in a dwindle or master layout takes its split, as in Hyprland; a restored maximize would cover it.
+    if (m_openingSplitTile) {
+      return false;
+    }
     const char* id = appId();
     return config().general.honorRestoredMaximize || (id != nullptr && std::string_view(id).starts_with("dev.andromeda."));
   }

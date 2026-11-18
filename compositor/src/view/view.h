@@ -1099,6 +1099,7 @@ namespace andromeda {
     // With honor_restored_maximize off, suppress a restored maximize re-assert
     // only through the first root commit after the opening gate.
     bool m_consumeRestoredMaximizeRequest = false;
+    bool m_openingSplitTile = false;
     wl_event_source* m_acceptClientMaximizeIdle = nullptr;
     wl_event_source* m_effectSelectionIdle = nullptr;
     // Configure serial whose acknowledgement opens the gate when one was outstanding after the map dispatch.

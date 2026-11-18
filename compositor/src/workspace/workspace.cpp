@@ -2397,6 +2397,10 @@ namespace andromeda {
   }
 
   bool Workspace::toggleFocusedFullWidth() {
+    // Only scrolling columns can overhang the viewport; widening a split tile would squash its siblings.
+    if (m_layoutMode != LayoutMode::Scrolling && m_focusedView != nullptr && !m_focusedView->floating()) {
+      return toggleFocusedMaximizedToEdges();
+    }
     if (m_focusedView != nullptr && m_focusedView->maximizedToEdges()) {
       m_focusedView->setMaximizedToEdges(false);
     }

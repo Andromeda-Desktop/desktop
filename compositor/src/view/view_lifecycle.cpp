@@ -932,9 +932,9 @@ namespace andromeda {
         target = windowRuleWorkspace(targetGroup, rule);
       }
 
-      const bool layoutFloats =
-          (target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode) == LayoutMode::Floating;
-      wantTiled = wantTiled && !layoutFloats;
+      const LayoutMode targetMode = target != nullptr ? target->layoutMode() : resolveGlobalLayout(config()).mode;
+      wantTiled = wantTiled && targetMode != LayoutMode::Floating;
+      m_openingSplitTile = wantTiled && targetMode != LayoutMode::Scrolling;
 
       // A window that opens in the only tiled column is configured in its `match.is_alone` state right away, instead
       // of showing one frame at the size its not-alone rules give it. Alone-ness depends on the workspace those rules
