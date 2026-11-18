@@ -966,8 +966,8 @@ namespace andromeda {
     const bool light = 0.2126F * m_tint[0] + 0.7152F * m_tint[1] + 0.0722F * m_tint[2] > 0.5F;
     const bool glassOn = m_liquid > 0.0F || m_rim > 0.0F;
     const float target = glassOn && m_tint[3] > 0.0F ? glass::adaptDensity(light, m_backdropLuminance) : 0.0F;
-    // A light/dark switch takes the new target at once; within a tone, small moves are ignored (no pulse over video).
-    if (light != m_tintLight || std::abs(target - m_densityTarget) > glass::kAdaptStep || target == 0.0F
+    // A light/dark switch takes the new target at once; within a tone, jitter inside the deadband is ignored.
+    if (light != m_tintLight || std::abs(target - m_densityTarget) > glass::kAdaptDeadband || target == 0.0F
         || target == 1.0F) {
       m_tintLight = light;
       m_densityTarget = target;

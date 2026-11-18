@@ -47,14 +47,20 @@ namespace andromeda {
     if (wlr_scene_blur_poll_backdrop(m_blur, &luminance)) {
       const bool light = config().appearance.scheme == ColorScheme::Light;
       const float target = glass::adaptDensity(light, luminance);
-      // Small moves are ignored, as on shell glass, so the panel does not pulse over video.
-      if (std::abs(target - m_density) > glass::kAdaptStep || target == 0.0F || target == 1.0F) {
-        m_density = target;
-        place(m_box, m_radius, m_opacity);
+      // Jitter inside the deadband is ignored, as on shell glass, so the panel does not pulse over video.
+      if (std::abs(target - m_densityTarget) > glass::kAdaptDeadband || target == 0.0F || target == 1.0F) {
+        m_densityTarget = target;
       }
     }
     constexpr int kBackdropRecheckMs = 16;
-    return wlr_scene_blur_backdrop_pending(m_blur) ? kBackdropRecheckMs : 0;
+    if (m_density != m_densityTarget) {
+      // Glides at kAdaptFadeMs per full density change, one step per recheck.
+      constexpr float kStep = static_cast<float>(kBackdropRecheckMs) / static_cast<float>(glass::kAdaptFadeMs);
+      m_density = m_density < m_densityTarget ? std::min(m_density + kStep, m_densityTarget)
+                                              : std::max(m_density - kStep, m_densityTarget);
+      place(m_box, m_radius, m_opacity);
+    }
+    return wlr_scene_blur_backdrop_pending(m_blur) || m_density != m_densityTarget ? kBackdropRecheckMs : 0;
   }
 
   void GlassPanel::place(const wlr_box& box, int radius, float opacity) {

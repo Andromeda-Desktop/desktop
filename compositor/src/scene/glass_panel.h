@@ -45,5 +45,6 @@ namespace andromeda {
     int m_radius = 0;
     float m_opacity = 1.0F;
     float m_density = 0.0F;
+    float m_densityTarget = 0.0F;
   };
 } // namespace andromeda

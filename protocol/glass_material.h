@@ -173,11 +173,11 @@ namespace glass {
   }
 
   // Large glass adapts its density to the measured backdrop luminance (0 to 1) inside its tone: full density at or
-  // past kAdaptLuminance[0] toward the tint's own tone, none from kAdaptLuminance[1]; it retargets over kAdaptFadeMs
-  // only when the target moves by more than kAdaptStep, so it does not pulse over video.
-  inline constexpr float kAdaptLuminance[2] = {0.25F, 0.6F};
-  inline constexpr float kAdaptStep = 0.15F;
-  inline constexpr int kAdaptFadeMs = 150;
+  // past kAdaptLuminance[0] toward the tint's own tone, none from kAdaptLuminance[1]; it glides to each target over
+  // kAdaptFadeMs and ignores moves within kAdaptDeadband, so it neither jumps nor pulses over video.
+  inline constexpr float kAdaptLuminance[2] = {0.2F, 0.75F};
+  inline constexpr float kAdaptDeadband = 0.04F;
+  inline constexpr int kAdaptFadeMs = 600;
   [[nodiscard]] inline float adaptDensity(bool lightTint, float luminance) noexcept {
     const float own = lightTint ? luminance : 1.0F - luminance;
     const float x = std::clamp((kAdaptLuminance[1] - own) / (kAdaptLuminance[1] - kAdaptLuminance[0]), 0.0F, 1.0F);
