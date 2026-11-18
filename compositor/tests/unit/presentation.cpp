@@ -27,7 +27,7 @@ ANDROMEDA_TEST(fullscreenCenteringSurvivesSceneReconfiguration) {
   // Non-zero geometry origin, as a client with CSD shadows commits: the node
   // position is the centering offset minus that origin, not the offset alone.
   const wlr_box geometry{40, 30, 1920, 1080};
-  presentation.updateFullscreen(true, 2560, 1440, &surfaceTree->node, geometry);
+  presentation.updateFullscreen(true, 2560, 1440, &surfaceTree->node, geometry, true);
   CHECK_EQ(presentation.offsetX(), 320);
   CHECK_EQ(presentation.offsetY(), 180);
   CHECK_EQ(surfaceTree->node.x, 280);
@@ -36,13 +36,13 @@ ANDROMEDA_TEST(fullscreenCenteringSurvivesSceneReconfiguration) {
   // What the scene helper does on a commit. Re-running the fullscreen update is
   // what puts the centering back.
   wlr_scene_node_set_position(&surfaceTree->node, -geometry.x, -geometry.y);
-  presentation.updateFullscreen(true, 2560, 1440, &surfaceTree->node, geometry);
+  presentation.updateFullscreen(true, 2560, 1440, &surfaceTree->node, geometry, true);
   CHECK_EQ(surfaceTree->node.x, 280);
   CHECK_EQ(surfaceTree->node.y, 150);
 
   // Leaving fullscreen drops the centering, otherwise the tiled view renders
   // offset by half a size difference that no longer applies.
-  presentation.updateFullscreen(false, 2560, 1440, &surfaceTree->node, geometry);
+  presentation.updateFullscreen(false, 2560, 1440, &surfaceTree->node, geometry, true);
   CHECK_EQ(presentation.offsetX(), 0);
   CHECK_EQ(presentation.offsetY(), 0);
   CHECK_EQ(surfaceTree->node.x, -40);
