@@ -50,7 +50,36 @@ struct Orphans {
   std::vector<std::uint64_t> ids;
 };
 
-using Message = std::variant<Spawned, SpawnFailed, Attached, AttachFailed, Output, WantSnapshot, Exited, Orphans>;
+struct WorkspacePut {
+  std::uint32_t req;
+  std::uint64_t id;
+};
+struct WorkspaceInfo {
+  std::uint64_t id = 0;
+  std::string name;
+  std::string root;
+  std::string symbol;
+};
+// The last command of a session, from the shell's OSC 133 marks.
+enum class CommandState : std::uint8_t { None, Running, Done };
+struct SessionInfo {
+  std::uint64_t id = 0;
+  std::uint64_t workspace = 0; // 0: none
+  bool attached = false;
+  std::string program; // foreground process name
+  std::string cwd;
+  CommandState command = CommandState::None;
+  int exitCode = 0; // when command is Done
+};
+// The whole table; `seq` grows by one per message.
+struct Workspaces {
+  std::uint64_t seq = 0;
+  std::vector<WorkspaceInfo> workspaces;
+  std::vector<SessionInfo> sessions;
+};
+
+using Message = std::variant<Spawned, SpawnFailed, Attached, AttachFailed, Output, WantSnapshot, Exited, Orphans,
+                             WorkspacePut, Workspaces>;
 
 std::vector<std::uint8_t> encodeSpawn(std::uint32_t req, WinSize size, const std::string& cwd,
                                       const std::vector<std::string>& argv, const std::vector<std::string>& env);
@@ -58,6 +87,14 @@ std::vector<std::uint8_t> encodeAttach(std::uint64_t id);
 std::vector<std::uint8_t> encodeSnapshot(std::uint64_t id, std::uint64_t offset, std::span<const std::uint8_t> blob);
 std::vector<std::uint8_t> encodeClose(std::uint64_t id);
 std::vector<std::uint8_t> encodeList();
+std::vector<std::uint8_t> encodeWatch();
+// The session keeps running with no client; only an explicit attach brings it back.
+std::vector<std::uint8_t> encodeDetach(std::uint64_t id);
+// `id` 0 creates a workspace; the holder answers WorkspacePut.
+std::vector<std::uint8_t> encodePutWorkspace(std::uint32_t req, std::uint64_t id, const std::string& name,
+                                             const std::string& root, const std::string& symbol);
+std::vector<std::uint8_t> encodeCloseWorkspace(std::uint64_t id);
+std::vector<std::uint8_t> encodeSetWorkspace(std::uint64_t session, std::uint64_t workspace);
 
 // Splits one frame off the front of `buf`. Returns the bytes used, 0 when the frame is incomplete,
 // or nullopt when the frame is malformed.

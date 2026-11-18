@@ -136,7 +136,8 @@ PtySession::~PtySession() {
     hangUpSession(local->pid);
   }
   if (auto* held = std::get_if<HeldSession>(&m_link)) {
-    (void)holder::sendAll(held->socket, holder::encodeClose(held->id));
+    (void)holder::sendAll(held->socket, m_end == End::Close ? holder::encodeClose(held->id)
+                                                             : holder::encodeDetach(held->id));
     ::close(held->socket);
   }
   if (m_master >= 0) ::close(m_master);

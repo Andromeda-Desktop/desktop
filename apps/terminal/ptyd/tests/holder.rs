@@ -1130,3 +1130,29 @@ fn workspace_table_shows_the_last_command_and_the_foreground_program() {
         },
     );
 }
+
+#[test]
+fn a_detached_session_waits_for_attach_and_starts_no_relaunch() {
+    let dir = tempfile::tempdir().unwrap();
+    let marker = dir.path().join("relaunched");
+    let (_d, path) = start(Config {
+        relaunch: Some(vec![
+            "sh".into(),
+            "-c".into(),
+            format!("echo >> {}", marker.display()),
+        ]),
+        relaunch_delay: Duration::from_millis(20),
+        ..Config::default()
+    });
+    let mut a = TestClient::connect(&path);
+    let (id, _fd) = a.spawn(&["cat"]);
+    a.send(ClientMsg::Detach { id });
+    drop(a);
+    let mut b = TestClient::connect(&path);
+    // The hang-up is seen asynchronously; a relaunch would come 20 ms after it.
+    assert!(!wait_for(|| marker.exists(), Duration::from_millis(300)));
+    b.send(ClientMsg::List);
+    assert!(matches!(b.recv().0, HolderMsg::Orphans { ids } if ids.is_empty()));
+    b.send(ClientMsg::Attach { id });
+    assert!(matches!(b.recv().0, HolderMsg::Attached { id: i, .. } if i == id));
+}

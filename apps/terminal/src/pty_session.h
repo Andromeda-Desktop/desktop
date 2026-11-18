@@ -74,6 +74,8 @@ public:
               std::uint16_t cellHeightPx);
   // The holder session id, or nullopt when the pty is local.
   std::optional<std::uint64_t> heldId() const;
+  // A held session outlives this object: the holder keeps its shell with no client. UI thread only.
+  void detach() { m_end = End::Detach; }
   void write(std::span<const std::uint8_t> bytes);
   void resize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cellWidthPx, std::uint16_t cellHeightPx);
 
@@ -160,6 +162,9 @@ private:
 
   // Set before the threads start and fixed after.
   std::variant<std::monostate, LocalChild, HeldSession> m_link;
+  // What the destructor does to a held session.
+  enum class End : std::uint8_t { Close, Detach };
+  End m_end = End::Close;
   // Local: the pty master. Held: a dup of the holder's master, for writes and TIOCSWINSZ only.
   int m_master = -1;
   int m_eventFd = -1;

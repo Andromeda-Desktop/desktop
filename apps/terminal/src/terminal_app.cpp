@@ -95,6 +95,7 @@ namespace term {
       m_prefsExport.reset();
       m_prefsWindow = nullptr;
     }
+    if (auto it = m_windows.find(&window); it != m_windows.end()) it->second->detachSessions();
     m_windows.erase(&window);
     saveLayouts();
   }

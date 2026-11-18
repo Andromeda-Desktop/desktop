@@ -74,7 +74,10 @@ type SessionId = u64;
 
 enum Owner {
     Attached(ClientId),
+    /// The client went away without a word (a crash): a relaunch and `List` bring it back.
     Orphaned,
+    /// The client let it go on purpose (its window closed): it waits for an explicit Attach.
+    Detached,
     /// The user closed it: the child got SIGHUP and gets SIGKILL at `kill_at` if it ignores that.
     Closing {
         kill_at: Instant,
@@ -411,7 +414,12 @@ impl Holder {
             sessions: self
                 .sessions
                 .iter()
-                .filter(|(_, s)| matches!(s.owner, Owner::Attached(_) | Owner::Orphaned))
+                .filter(|(_, s)| {
+                    matches!(
+                        s.owner,
+                        Owner::Attached(_) | Owner::Orphaned | Owner::Detached
+                    )
+                })
                 .map(|(id, s)| s.info(*id))
                 .collect(),
         };
@@ -512,7 +520,7 @@ impl Holder {
                 .clients
                 .get(&c)
                 .is_some_and(|c| c.queued >= self.config.client_queue_cap),
-            Owner::Orphaned | Owner::Closing { .. } | Owner::Closed => {
+            Owner::Orphaned | Owner::Detached | Owner::Closing { .. } | Owner::Closed => {
                 s.tail.len() >= self.config.tail_cap
             }
         }
@@ -712,6 +720,16 @@ impl Holder {
                     self.hang_up(id);
                 }
             }
+            ClientMsg::Detach { id } => {
+                if let Some(s) = self
+                    .sessions
+                    .get_mut(&id)
+                    .filter(|s| matches!(s.owner, Owner::Attached(c) if c == client))
+                {
+                    s.owner = Owner::Detached;
+                }
+                self.finish_if_exited(id);
+            }
             ClientMsg::Watch => {
                 if let Some(c) = self.clients.get_mut(&client) {
                     c.watch = true;
@@ -754,7 +772,11 @@ impl Holder {
                     .sessions
                     .iter()
                     .filter(|(_, s)| {
-                        s.workspace == id && matches!(s.owner, Owner::Attached(_) | Owner::Orphaned)
+                        s.workspace == id
+                            && matches!(
+                                s.owner,
+                                Owner::Attached(_) | Owner::Orphaned | Owner::Detached
+                            )
                     })
                     .map(|(sid, _)| *sid)
                     .collect();
@@ -919,7 +941,7 @@ impl Holder {
         let Some(s) = self
             .sessions
             .get_mut(&id)
-            .filter(|s| matches!(s.owner, Owner::Orphaned))
+            .filter(|s| matches!(s.owner, Owner::Orphaned | Owner::Detached))
         else {
             self.send(client, &HolderMsg::AttachFailed { id }, None);
             return;
@@ -1067,7 +1089,7 @@ impl Holder {
         };
         match s.owner {
             Owner::Attached(client) => self.send(client, &HolderMsg::Exited { id, status }, None),
-            Owner::Orphaned | Owner::Closing { .. } | Owner::Closed => {
+            Owner::Orphaned | Owner::Detached | Owner::Closing { .. } | Owner::Closed => {
                 self.sessions.remove(&id);
             }
         }

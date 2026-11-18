@@ -21,6 +21,11 @@ enum Tag : std::uint8_t {
   kSnapshot = 3,
   kClose = 4,
   kList = 5,
+  kWatch = 6,
+  kPutWorkspace = 7,
+  kCloseWorkspace = 8,
+  kSetWorkspace = 9,
+  kDetach = 20,
   kSpawned = 10,
   kSpawnFailed = 11,
   kAttached = 12,
@@ -29,6 +34,8 @@ enum Tag : std::uint8_t {
   kWantSnapshot = 15,
   kExited = 16,
   kOrphans = 17,
+  kWorkspacePut = 18,
+  kWorkspaces = 19,
 };
 
 class Writer {
@@ -66,6 +73,7 @@ class Reader {
 public:
   explicit Reader(std::span<const std::uint8_t> s) : m_s(s) {}
   bool ok() const { return m_ok; }
+  std::uint8_t u8() { return static_cast<std::uint8_t>(get(1)); }
   std::uint32_t u32() { return static_cast<std::uint32_t>(get(4)); }
   std::uint64_t u64() { return get(8); }
   std::vector<std::uint8_t> bytes() {
@@ -124,6 +132,21 @@ std::vector<std::uint8_t> encodeClose(std::uint64_t id) { return Writer(kClose).
 
 std::vector<std::uint8_t> encodeList() { return Writer(kList).finish(); }
 
+std::vector<std::uint8_t> encodeWatch() { return Writer(kWatch).finish(); }
+
+std::vector<std::uint8_t> encodeDetach(std::uint64_t id) { return Writer(kDetach).u64(id).finish(); }
+
+std::vector<std::uint8_t> encodePutWorkspace(std::uint32_t req, std::uint64_t id, const std::string& name,
+                                             const std::string& root, const std::string& symbol) {
+  return Writer(kPutWorkspace).u32(req).u64(id).str(name).str(root).str(symbol).finish();
+}
+
+std::vector<std::uint8_t> encodeCloseWorkspace(std::uint64_t id) { return Writer(kCloseWorkspace).u64(id).finish(); }
+
+std::vector<std::uint8_t> encodeSetWorkspace(std::uint64_t session, std::uint64_t workspace) {
+  return Writer(kSetWorkspace).u64(session).u64(workspace).finish();
+}
+
 std::optional<std::size_t> decode(std::span<const std::uint8_t> buf, std::optional<Message>& out) {
   out.reset();
   if (buf.size() < 4) return 0;
@@ -172,6 +195,40 @@ std::optional<std::size_t> decode(std::span<const std::uint8_t> buf, std::option
     const std::uint32_t n = r.u32();
     for (std::uint32_t i = 0; i < n && r.ok(); ++i) o.ids.push_back(r.u64());
     out = std::move(o);
+    break;
+  }
+  case kWorkspacePut: {
+    auto req = r.u32();
+    out = WorkspacePut{req, r.u64()};
+    break;
+  }
+  case kWorkspaces: {
+    Workspaces w;
+    w.seq = r.u64();
+    const std::uint32_t n = r.u32();
+    for (std::uint32_t i = 0; i < n && r.ok(); ++i) {
+      WorkspaceInfo ws;
+      ws.id = r.u64();
+      ws.name = r.str();
+      ws.root = r.str();
+      ws.symbol = r.str();
+      w.workspaces.push_back(std::move(ws));
+    }
+    const std::uint32_t m = r.u32();
+    for (std::uint32_t i = 0; i < m && r.ok(); ++i) {
+      SessionInfo si;
+      si.id = r.u64();
+      si.workspace = r.u64();
+      si.attached = r.u8() != 0;
+      si.program = r.str();
+      si.cwd = r.str();
+      const std::uint8_t kind = r.u8();
+      si.exitCode = static_cast<int>(r.u32());
+      if (kind > 2) return std::nullopt;
+      si.command = static_cast<CommandState>(kind);
+      w.sessions.push_back(std::move(si));
+    }
+    out = std::move(w);
     break;
   }
   default: return std::nullopt;

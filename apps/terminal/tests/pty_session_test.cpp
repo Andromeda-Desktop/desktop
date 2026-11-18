@@ -136,6 +136,27 @@ GhosttyTerminalScreen activeScreen(GhosttyTerminal t) {
   return screen;
 }
 
+// A closed window detaches its held shells: they keep running, crash recovery does not list them, and an
+// explicit attach takes them over with their input working.
+void detachedSessionOutlivesItsWindow() {
+  std::uint64_t id = 0;
+  {
+    Waker w;
+    PtySession s([&] { w.wake(); });
+    CHECK(s.spawn({.argv = {"/bin/cat"}}) && s.heldId().has_value());
+    if (!s.heldId()) return;
+    id = *s.heldId();
+    s.detach();
+  }
+  const auto orphans = holder::listOrphans();
+  CHECK(std::find(orphans.begin(), orphans.end(), id) == orphans.end());
+  Waker w;
+  PtySession s([&] { w.wake(); });
+  CHECK(s.attach(id, 80, 24, 8, 16));
+  s.write({reinterpret_cast<const std::uint8_t*>("alive\n"), 6});
+  CHECK(w.waitFor(s, [&] { return screenText(s).find("alive") != std::string::npos; }));
+}
+
 // The terminal process dies while a full-screen program sits mid escape sequence on the alternate screen.
 // A new process reattaches: its screen must equal a terminal that parsed the whole stream in one go, and the
 // program must not get a second reply to a query it sent before the crash. `snapshotted`: the holder keeps a
@@ -301,6 +322,7 @@ int main(int argc, char** argv) {
       Waker w;
       PtySession s([&] { w.wake(); });
       CHECK(s.spawn({.argv = {"/bin/true"}}) && s.heldId().has_value());
+      detachedSessionOutlivesItsWindow();
     }
     reattachRestoresScreenMidEscape(snapshotted);
     ::kill(holderPid, SIGTERM);

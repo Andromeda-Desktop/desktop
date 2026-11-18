@@ -38,6 +38,10 @@ pub enum ClientMsg {
         id: u64,
     },
     List,
+    /// The client lets the session go on purpose: it keeps running with no client and is not relaunched.
+    Detach {
+        id: u64,
+    },
     /// Subscribes this connection to `Workspaces`: one now, then one after each change.
     Watch,
     /// Creates (`id` 0) or edits a workspace; the holder answers `WorkspacePut`.
@@ -145,6 +149,7 @@ mod tag {
     pub const PUT_WORKSPACE: u8 = 7;
     pub const CLOSE_WORKSPACE: u8 = 8;
     pub const SET_WORKSPACE: u8 = 9;
+    pub const DETACH: u8 = 20;
     pub const SPAWNED: u8 = 10;
     pub const SPAWN_FAILED: u8 = 11;
     pub const ATTACHED: u8 = 12;
@@ -304,6 +309,7 @@ impl ClientMsg {
                 .finish(),
             ClientMsg::Close { id } => Writer::new(tag::CLOSE).u64(*id).finish(),
             ClientMsg::List => Writer::new(tag::LIST).finish(),
+            ClientMsg::Detach { id } => Writer::new(tag::DETACH).u64(*id).finish(),
             ClientMsg::Watch => Writer::new(tag::WATCH).finish(),
             ClientMsg::PutWorkspace {
                 req,
@@ -344,6 +350,7 @@ impl ClientMsg {
             },
             tag::CLOSE => ClientMsg::Close { id: r.u64()? },
             tag::LIST => ClientMsg::List,
+            tag::DETACH => ClientMsg::Detach { id: r.u64()? },
             tag::WATCH => ClientMsg::Watch,
             tag::PUT_WORKSPACE => ClientMsg::PutWorkspace {
                 req: r.u32()?,
