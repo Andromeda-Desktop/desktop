@@ -1029,8 +1029,9 @@ bool LiveActivityIsland::compactActivity(const Instance& inst) const {
 }
 
 void LiveActivityIsland::syncElapsedTimer() {
-  // The elapsed time ticks only where a compact face shows it.
-  if (std::ranges::any_of(m_instances, [this](const auto& inst) { return compactActivity(*inst); })) {
+  // The elapsed time ticks only where a face shows it: a compact face, or the status of a timed activity.
+  const bool timedStatus = m_activity.has_value() && m_activity->since.has_value() && m_activity->subtitle.empty();
+  if (timedStatus || std::ranges::any_of(m_instances, [this](const auto& inst) { return compactActivity(*inst); })) {
     if (!m_callTimer.active()) {
       m_callTimer.startRepeating(std::chrono::seconds(1), [this] { refresh(); });
     }
@@ -1439,6 +1440,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   auto subtitle = ui::label({
       .out = &inst.subtitle,
       .fontSize = Tokens::typeFootnote.size,
+      .fontFeatures = "tnum",
       .color = liveLabel2(),
       .maxWidth = kTitleMaxWidth,
       .maxLines = 1,
@@ -2009,8 +2011,10 @@ void LiveActivityIsland::applyContent(Instance& inst) {
     inst.icon->setGlyph(a.glyph);
   }
   inst.title->setText(a.title);
-  inst.subtitle->setText(a.subtitle);
-  inst.subtitle->setVisible(!a.subtitle.empty());
+  // A timed activity with no status (a recording) shows its elapsed time there (rulebook: title + status).
+  const std::string status = a.subtitle.empty() && a.since.has_value() ? elapsedText(*a.since) : a.subtitle;
+  inst.subtitle->setText(status);
+  inst.subtitle->setVisible(!status.empty());
   inst.progress->setVisible(a.progress.has_value());
   if (a.progress.has_value()) {
     inst.progress->setProgress(std::clamp(*a.progress, 0.0F, 1.0F));
