@@ -378,7 +378,7 @@ namespace term {
         running = running || std::holds_alternative<CommandRunning>(session.command);
       }
       if (!running) return true;
-      askClose(std::move(ids));
+      askClose(std::move(ids), true);
       return false;
     });
     m_window.setActiveCallback([this](bool active) {
@@ -1273,7 +1273,7 @@ namespace term {
     }
   }
 
-  void TerminalWindow::askClose(std::vector<std::uint64_t> ids) {
+  void TerminalWindow::askClose(std::vector<std::uint64_t> ids, bool window) {
     const auto close = [this](const std::vector<std::uint64_t>& targets) {
       for (const std::uint64_t target : targets) {
         apply(session_event::Close{target});
@@ -1288,11 +1288,13 @@ namespace term {
       return;
     }
     m_window.presentSheet(
-        [this, ids, running, close](float s) {
+        [this, ids, running, close, window](float s) {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
                                  .width = Tokens::componentTerminalFindWidth * s});
           const bool one = ids.size() == 1;
-          box->addChild(ui::label({.text = one ? std::string("Close this session?") : std::format("Close {} sessions?", ids.size()),
+          box->addChild(ui::label({.text = window ? std::string("Close this window?")
+                                          : one   ? std::string("Close this session?")
+                                                  : std::format("Close {} sessions?", ids.size()),
                                    .fontSize = Tokens::typeTitle3.size * s, .fontWeight = FontWeight::SemiBold,
                                    .color = colorSpecFromRole(ColorRole::Label1)}));
           box->addChild(ui::label({.text = running == 1 ? std::string("A command is still running. Closing stops it.")

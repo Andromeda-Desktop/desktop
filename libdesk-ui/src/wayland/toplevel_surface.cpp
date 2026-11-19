@@ -328,9 +328,11 @@ void ToplevelSurface::handleToplevelConfigure(
 
 void ToplevelSurface::handleToplevelClose(void* data, xdg_toplevel* /*toplevel*/) {
   auto* self = static_cast<ToplevelSurface*>(data);
-  self->setRunning(false);
+  // A close request, not a close: an owner may refuse it (a confirm sheet) and keep drawing and taking input.
   if (self->m_closedCallback) {
     self->m_closedCallback();
+  } else {
+    self->setRunning(false);
   }
 }
 
