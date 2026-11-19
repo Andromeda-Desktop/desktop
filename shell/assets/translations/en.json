@@ -1283,7 +1283,11 @@
       "close-all": "Close All"
     },
     "launcher": "Launcher",
-    "trash": "Trash"
+    "trash": "Trash",
+    "trash-menu": {
+      "hide": "Hide Trash",
+      "open": "Open Trash"
+    }
   },
   "internal-apps": {
     "settings": {
