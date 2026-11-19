@@ -2,6 +2,7 @@
 
 #include "shell/launcher/launcher_adapters.h"
 #include "shell/launcher/launcher_panel_detail.h"
+#include "i18n/i18n.h"
 
 
 bool LauncherPanel::shouldUseLauncherSections() const {
@@ -11,8 +12,10 @@ bool LauncherPanel::shouldUseLauncherSections() const {
 namespace {
 
   // The first result of the first section, when it is an app (concept C launcher top hit).
+  // surfaces.html topSub: "Application, 3 windows open"; no window clause without open windows.
   std::optional<LauncherSectionsAdapter::TopHit> topHitFor(
-      const std::vector<LauncherSectionsAdapter::Section>& sections, const std::vector<LauncherResult>& results
+      const std::vector<LauncherSectionsAdapter::Section>& sections, const std::vector<LauncherResult>& results,
+      const std::function<std::size_t(const std::string&)>& windowCounter
   ) {
     const auto first = std::ranges::find_if(sections, [](const auto& section) { return !section.resultIndices.empty(); });
     if (first == sections.end()) {
@@ -27,7 +30,11 @@ namespace {
     const auto entry = std::ranges::find(entries, result.desktopEntryPath, &DesktopEntry::path);
     const bool newWindow =
         entry != entries.end() && std::ranges::contains(entry->actions, std::string_view("new-window"), &DesktopAction::id);
-    return LauncherSectionsAdapter::TopHit{.resultIndex = index, .newWindow = newWindow};
+    std::string subtitle = i18n::tr("launcher.top-hit.application");
+    if (const std::size_t windows = windowCounter ? windowCounter(result.desktopEntryPath) : 0; windows > 0) {
+      subtitle += ", " + i18n::trp("launcher.top-hit.windows-open", static_cast<long>(windows));
+    }
+    return LauncherSectionsAdapter::TopHit{.resultIndex = index, .newWindow = newWindow, .subtitle = std::move(subtitle)};
   }
 
   std::vector<LauncherSectionsAdapter::Section> providerSections(
@@ -161,7 +168,7 @@ void LauncherPanel::rebuildLauncherSections() {
     (void)m_launcherSectionsAdapter->setGridView(false);
     const auto sections = providerSections(m_results, m_providers);
     m_launcherSectionsAdapter->rebuildSections(
-        sections, m_query.empty() ? std::nullopt : topHitFor(sections, m_results)
+        sections, m_query.empty() ? std::nullopt : topHitFor(sections, m_results, m_windowCounter)
     );
     m_launcherSectionsAdapter->setSelectedResultIndex(m_selectedIndex);
   } else if (shouldUseLauncherSections()) {

@@ -74,6 +74,8 @@ public:
   void setCopiedActivationCallback(std::function<void(bool isImage)> callback) { m_onCopiedActivation = std::move(callback); }
 
   void setOnAppLaunchCallback(std::function<void()> callback) { m_onAppLaunch = std::move(callback); }
+  // Open windows of the app behind a desktop entry path, for the top hit's subtitle.
+  void setWindowCounter(std::function<std::size_t(const std::string&)> counter) { m_windowCounter = std::move(counter); }
   // "Add to Desktop" in the app menu (shown while desktop icons are on) and app drags dropped on the desktop.
   void setAddToDesktopCallback(std::function<void(const std::filesystem::path&)> callback) {
     m_addToDesktop = std::move(callback);
@@ -340,6 +342,7 @@ private:
   Signal<>::ScopedConnection m_appIconColorizeConn;
   std::function<void(bool isImage)> m_onCopiedActivation;
   std::function<void()> m_onAppLaunch;
+  std::function<std::size_t(const std::string&)> m_windowCounter;
   std::function<void(const std::filesystem::path&)> m_addToDesktop;
   // An app row pressed and dragged out of the launcher becomes a system drag of its .desktop file (text/uri-list),
   // so the desktop makes a shortcut where it is dropped.

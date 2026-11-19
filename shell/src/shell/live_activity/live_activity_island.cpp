@@ -287,6 +287,10 @@ void LiveActivityIsland::hideDndSuppressed() {
   apply(m_queue.dropIf([](const BannerItem& b) { return b.respectsDnd; }));
 }
 
+void LiveActivityIsland::clearBanners() {
+  apply(m_queue.dropIf([](const BannerItem&) { return true; }));
+}
+
 void LiveActivityIsland::setActivity(std::optional<LiveActivity> activity) {
   m_activity = std::move(activity);
   for (auto& inst : m_instances) {
@@ -1256,9 +1260,7 @@ void LiveActivityIsland::finishReveal(Instance& inst) {
     inst.dsk->setElevation(DskSurfaceClient::Elevation::None);
   }
   if (inst.morph.shown() != Face::Banner && inst.dragOffset != 0.0F && !inst.dragTimer.active()) {
-    inst.dragOffset = 0.0F;
-    inst.dsk->set(DskSurfaceClient::Property::Translate, {0.0, 0.0, 0.0, 0.0});
-    inst.surface->requestRedraw();
+    applyBannerOffset(inst, 0.0F);
   }
 }
 
@@ -2543,10 +2545,19 @@ float LiveActivityIsland::bannerLimit(const Instance& inst) const {
 void LiveActivityIsland::applyBannerOffset(Instance& inst, float offset) {
   inst.dragOffset = offset;
   const bool horizontal = inst.dragAxis == BannerSwipeAxis::Horizontal;
+  // proto: a row's banner peeks stay while the card follows the finger up, so the card moves inside the surface (its
+  // top edge is the output's); sideways the card leaves the surface, so the whole surface moves.
+  const bool cardOnly = !horizontal && rowGlass(inst) && inst.morph.shown() == Face::Banner;
+  const double surfaceOffset = cardOnly ? 0.0 : static_cast<double>(offset);
   inst.dsk->set(
-      DskSurfaceClient::Property::Translate,
-      {horizontal ? static_cast<double>(offset) : 0.0, horizontal ? 0.0 : static_cast<double>(offset), 0.0, 0.0}
+      DskSurfaceClient::Property::Translate, {horizontal ? surfaceOffset : 0.0, horizontal ? 0.0 : surfaceOffset, 0.0, 0.0}
   );
+  inst.sceneRoot->setPosition(0.0F, cardOnly ? offset : 0.0F);
+  if (cardOnly) {
+    const double k = inst.scale;
+    const Rect r = faceRect(inst, Face::Banner);
+    inst.cardShape->set(DskSurfaceClient::Property::Clip, {r.x * k, r.y * k + offset, r.w * k, r.h * k});
+  }
   inst.surface->requestRedraw();
 }
 

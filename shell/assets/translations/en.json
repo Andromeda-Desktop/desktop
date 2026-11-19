@@ -1291,6 +1291,11 @@
     }
   },
   "launcher": {
+    "top-hit": {
+      "application": "Application",
+      "windows-open": "{count} window open",
+      "windows-open-plural": "{count} windows open"
+    },
     "browser": {
       "actions": {
         "power": "Power",

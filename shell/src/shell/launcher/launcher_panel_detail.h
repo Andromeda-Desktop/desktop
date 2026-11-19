@@ -501,8 +501,10 @@ namespace launcher_detail {
       m_title->setText(singleLinePreview(result.title));
       m_title->setMaxWidth(textWidth);
 
-      const bool showSubtitle = !m_style.compact && (!m_style.pill || result.presentation.starts_with("clipboard") || result.presentation == "symbol-wide")
-          && !result.subtitle.empty();
+      // surfaces.html: a pill row names an app's kind, not its generic name.
+      const std::string subtitle =
+          m_style.pill && result.providerId == kApplicationsProviderId ? i18n::tr("launcher.top-hit.application") : result.subtitle;
+      const bool showSubtitle = !m_style.compact && !subtitle.empty();
       // Clipboard rows put the subtitle under the title (row_tall); other pill rows put it after the title.
       const bool twoLine = m_style.pill && isTwoLineRow(result);
       if (m_style.pill) {
@@ -515,7 +517,7 @@ namespace launcher_detail {
         m_subtitle->setText("");
       } else {
         m_subtitle->setVisible(true);
-        m_subtitle->setText(singleLinePreview(result.subtitle));
+        m_subtitle->setText(singleLinePreview(subtitle));
         // A pill row puts the kind after the title on one line; the title keeps its width first.
         m_subtitle->setMaxWidth(
             m_style.pill && !twoLine ? std::max(0.0F, textWidth - m_title->width() - Tokens::spaceP8 * m_style.scale)
@@ -958,7 +960,10 @@ namespace launcher_detail {
       addChild(std::move(row));
     }
 
-    void bind(const LauncherResult& result, float width, float height, bool selected, bool hovered, bool newWindow) {
+    void bind(
+        const LauncherResult& result, float width, float height, bool selected, bool hovered, bool newWindow,
+        const std::string& subtitle
+    ) {
       setSize(width, height);
       m_row->setFrameSize(width, height);
       m_row->setFill(
@@ -967,8 +972,8 @@ namespace launcher_detail {
       m_iconPath = result.iconPath;
       m_glyph->setGlyph(result.glyphName.empty() ? "app-window" : result.glyphName);
       m_title->setText(result.title);
-      m_subtitle->setText(result.subtitle);
-      m_subtitle->setVisible(!result.subtitle.empty());
+      m_subtitle->setText(subtitle);
+      m_subtitle->setVisible(!subtitle.empty());
       m_newWindow->setVisible(newWindow);
       m_newWindow->setParticipatesInLayout(newWindow);
       auto& accessible = accessibleState();
@@ -1153,11 +1158,13 @@ namespace launcher_detail {
 
     void bind(
         const LauncherSectionRowData& row, const std::vector<LauncherResult>& results,
-        std::optional<std::size_t> selectedResultIndex, float width, float height, bool newWindow
+        std::optional<std::size_t> selectedResultIndex, float width, float height, bool newWindow,
+        const std::string& topHitSubtitle
     ) {
       m_results = &results;
       m_isTopHit = row.kind == LauncherSectionRowData::Kind::TopHit;
       m_topHitNewWindow = newWindow;
+      m_topHitSubtitle = topHitSubtitle;
       m_topHit->setVisible(m_isTopHit);
       m_selectedResultIndex = selectedResultIndex;
       setSize(width, height);
@@ -1246,7 +1253,7 @@ namespace launcher_detail {
         } else if (m_isTopHit) {
           m_topHit->bind(
               (*m_results)[resultIndex], m_areas[slot]->width(), m_areas[slot]->height(),
-              m_selectedResultIndex == resultIndex, m_areas[slot]->hovered(), m_topHitNewWindow
+              m_selectedResultIndex == resultIndex, m_areas[slot]->hovered(), m_topHitNewWindow, m_topHitSubtitle
           );
         } else if (m_gridView) {
           m_tiles[slot]->setListStyle(m_style);
@@ -1291,6 +1298,7 @@ namespace launcher_detail {
     LauncherTopHitRow* m_topHit = nullptr;
     bool m_isTopHit = false;
     bool m_topHitNewWindow = false;
+    std::string m_topHitSubtitle;
     std::array<Flex*, kMaxSectionColumns> m_emojiCells{};
     std::array<Label*, kMaxSectionColumns> m_emojiLabels{};
     std::array<std::optional<std::size_t>, kMaxSectionColumns> m_boundResultIndices{};

@@ -372,6 +372,7 @@ public:
   struct TopHit {
     std::size_t resultIndex = 0;
     bool newWindow = false;
+    std::string subtitle;
   };
 
   void rebuildSections(const std::vector<Section>& sections, std::optional<TopHit> topHit = std::nullopt) {
@@ -386,6 +387,7 @@ public:
       topHit.reset();
     }
     m_topHitNewWindow = topHit.has_value() && topHit->newWindow;
+    m_topHitSubtitle = topHit.has_value() ? topHit->subtitle : std::string{};
     if (topHit.has_value()) {
       LauncherSectionRowData row;
       row.kind = LauncherSectionRowData::Kind::TopHit;
@@ -592,7 +594,7 @@ public:
     row->setGridView(m_gridView);
     row->setCellGrid(m_cellGrid);
     row->setPillStyle(m_pillStyle);
-    row->bind(m_rows[index], *m_results, m_selectedResultIndex, width, item.height(), m_topHitNewWindow);
+    row->bind(m_rows[index], *m_results, m_selectedResultIndex, width, item.height(), m_topHitNewWindow, m_topHitSubtitle);
   }
 
 private:
@@ -609,6 +611,7 @@ private:
   SecondaryActivateCallback m_onSecondaryActivate;
   ActivateCallback m_onNewWindow;
   bool m_topHitNewWindow = false;
+  std::string m_topHitSubtitle;
   const std::vector<LauncherResult>* m_results = nullptr;
   std::vector<LauncherSectionRowData> m_rows;
   std::vector<std::optional<ResultPosition>> m_resultPositions;
