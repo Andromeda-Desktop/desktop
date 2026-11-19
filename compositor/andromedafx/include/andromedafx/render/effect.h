@@ -258,7 +258,8 @@ void fx_renderer_fail_animation_capture_for_test(struct wlr_renderer* renderer, 
 // Exists for the blur-composite-split harness IPC: draws backdrop blur's final upsample into an effect buffer and
 // composites that, as fx_render_pass_add_blur does when it cannot draw the upsample into the pass target directly.
 void fx_renderer_split_blur_composite_for_test(struct wlr_renderer* renderer, bool split);
-// Draws a texture with rounded corners whole with the effects shader, as before the plain interior split existed.
+// Draws a texture with rounded corners or glass whole with the effects shader, as before the plain interior splits
+// existed.
 void fx_renderer_whole_corner_textures_for_test(struct wlr_renderer* renderer, bool whole);
 
 #endif

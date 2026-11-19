@@ -2066,8 +2066,90 @@ render_texture_corner_split(struct fx_gles_render_pass* pass, const struct fx_re
   return split;
 }
 
+// Glass bends, lenses and lights only its rim band: a fragment farther inside than the band and the corner curves skips
+// every liquid term in tex.frag, so that part draws with the plain shader and the band with effects. Returns false,
+// having drawn nothing, when the texture is no such glass or the clip has no such part.
+static bool
+render_texture_glass_split(struct fx_gles_render_pass* pass, const struct fx_render_texture_options* fx_options) {
+  if (pass->buffer->renderer->whole_corner_textures_for_test
+      || (fx_options->liquid <= 0.0f && fx_options->rim <= 0.0f)
+      || corners_flared(&fx_options->corners)
+      || clipped_fregion_is_valid(&fx_options->clipped_region)
+      || fx_options->merge.count >= 2) {
+    return false;
+  }
+  const struct wlr_render_texture_options* options = &fx_options->base;
+  struct wlr_box dst_box;
+  wlr_render_texture_options_get_dst_box(options, &dst_box);
+  const struct wlr_box* clip_box = wlr_box_empty(fx_options->clip_box) ? &dst_box : fx_options->clip_box;
+  const struct fx_corner_fradii* corners = &fx_options->corners;
+  const float corner_radius =
+      fmaxf(fmaxf(corners->top_left, corners->top_right), fmaxf(corners->bottom_left, corners->bottom_right));
+  const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
+  const struct wlr_box* shape = liquid_shape ? &fx_options->liquid_box : clip_box;
+  const float short_side = fminf((float)shape->width, (float)shape->height);
+  // liquid_band (corner_alpha.frag); a shape no wider than two bands is lens across its whole surface.
+  const float scale = fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f;
+  const float band =
+      fminf(short_side * (fx_options->liquid > 0.0f ? 0.5f : 0.25f), (16.0f + 48.0f * fx_options->liquid) * scale);
+  if (band >= 0.5f * short_side - 0.5f) {
+    return false;
+  }
+  // rounded_rect_distance_at is exact inside the box inset by its corner extent: minus the distance to the nearest
+  // edge, so a fragment inset by the band as well skips the band branch.
+  const float shape_radius = fmaxf(liquid_shape ? fx_options->liquid_radius : corner_radius, 0.0f);
+  const float extent = fminf(shape_radius * (1.0f + 0.88f * (float)TOKEN_RADIUS_SMOOTHING), short_side * 0.5f);
+  const int inset = (int)ceilf(fmaxf(extent, band)) + 1;
+  if (shape->width <= 2 * inset || shape->height <= 2 * inset) {
+    return false;
+  }
+  pixman_region32_t plain;
+  pixman_region32_init_rect(
+      &plain, shape->x + inset, shape->y + inset, shape->width - 2 * inset, shape->height - 2 * inset
+  );
+  if (liquid_shape && corner_radius > 0.0f) {
+    // The quad's own corners on clip_box (corner_alpha gives 1 past `k`, as in render_texture_corner_split).
+    const int k = (int)ceilf(
+        fminf(corner_radius * (1.0f + 0.88f * (float)TOKEN_RADIUS_SMOOTHING),
+              fminf(clip_box->width, clip_box->height) * 0.5f) + 1.0f
+    );
+    pixman_region32_intersect_rect(
+        &plain, &plain, clip_box->x + k, clip_box->y + k, clip_box->width - 2 * k, clip_box->height - 2 * k
+    );
+  }
+  pixman_region32_t clip;
+  if (options->clip != NULL) {
+    pixman_region32_init(&clip);
+    pixman_region32_copy(&clip, options->clip);
+  } else {
+    pixman_region32_init_rect(&clip, dst_box.x, dst_box.y, dst_box.width, dst_box.height);
+  }
+  pixman_region32_intersect(&plain, &plain, &clip);
+  const bool split = !pixman_region32_empty(&plain);
+  if (split) {
+    struct fx_render_texture_options part = *fx_options;
+    part.base.clip = &plain;
+    part.corners = (struct fx_corner_fradii){0};
+    part.liquid = 0.0f;
+    part.rim = 0.0f;
+    part.lens = 0.0f;
+    part.lens_texture = NULL;
+    part.liquid_box = (struct wlr_box){0};
+    fx_render_pass_add_texture(pass, &part);
+    pixman_region32_subtract(&clip, &clip, &plain);
+    if (!pixman_region32_empty(&clip)) {
+      part = *fx_options;
+      part.base.clip = &clip;
+      fx_render_pass_add_texture(pass, &part);
+    }
+  }
+  pixman_region32_fini(&clip);
+  pixman_region32_fini(&plain);
+  return split;
+}
+
 void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct fx_render_texture_options* fx_options) {
-  if (render_texture_corner_split(pass, fx_options)) {
+  if (render_texture_corner_split(pass, fx_options) || render_texture_glass_split(pass, fx_options)) {
     return;
   }
   const struct wlr_render_texture_options* options = &fx_options->base;

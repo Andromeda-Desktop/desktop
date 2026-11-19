@@ -2637,6 +2637,92 @@ static bool test_corner_split(struct fixture* fixture) {
   return ok;
 }
 
+#define GLASS_SIZE 48
+
+// Liquid glass with lens, rim and tint over a gradient; `shaped` gives the glass its own box inside the quad.
+static bool glass_split_case(
+    struct fixture* fixture, bool whole, bool shaped, float liquid, uint8_t out[GLASS_SIZE * GLASS_SIZE][4]
+) {
+  static uint8_t backdrop[GLASS_SIZE * GLASS_SIZE * 4], sharp[GLASS_SIZE * GLASS_SIZE * 4];
+  for (int y = 0; y < GLASS_SIZE; y++) {
+    for (int x = 0; x < GLASS_SIZE; x++) {
+      uint8_t* b = &backdrop[(y * GLASS_SIZE + x) * 4];
+      uint8_t* l = &sharp[(y * GLASS_SIZE + x) * 4];
+      b[0] = (uint8_t)(x * 5), b[1] = (uint8_t)(y * 5), b[2] = (uint8_t)((x * y) & 0xff), b[3] = 255;
+      l[0] = (uint8_t)(255 - y * 5), l[1] = (uint8_t)((x * 7) & 0xff), l[2] = (uint8_t)(x * 3), l[3] = 255;
+    }
+  }
+  const uint32_t stride = GLASS_SIZE * 4;
+  struct wlr_texture* source =
+      wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, stride, GLASS_SIZE, GLASS_SIZE, backdrop);
+  struct wlr_texture* lens =
+      wlr_texture_from_pixels(fixture->renderer, DRM_FORMAT_ABGR8888, stride, GLASS_SIZE, GLASS_SIZE, sharp);
+  struct wlr_buffer* target = create_output_buffer(fixture, DRM_FORMAT_ARGB8888, GLASS_SIZE, GLASS_SIZE);
+  struct wlr_render_pass* pass = source != NULL && lens != NULL && target != NULL
+      ? wlr_renderer_begin_buffer_pass(fixture->renderer, target, NULL)
+      : NULL;
+  bool ok = check(pass != NULL, "glass textures, target and pass");
+  if (ok) {
+    const struct wlr_box box = {.width = GLASS_SIZE, .height = GLASS_SIZE};
+    struct fx_render_texture_options options = {
+        .base =
+            {
+                .texture = source,
+                .src_box = {.width = GLASS_SIZE, .height = GLASS_SIZE},
+                .dst_box = box,
+                .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+            },
+        .clip_box = &box,
+        .corners = {.top_left = 6, .top_right = 6, .bottom_left = 6, .bottom_right = 6},
+        .liquid = liquid,
+        .rim = 0.3f,
+        .lens = 0.6f,
+        .tint_mix = {0.1f, 0.2f, 0.3f, 0.25f},
+        .lens_texture = lens,
+        .liquid_box = shaped ? (struct wlr_box){.x = 4, .y = 3, .width = 40, .height = 42} : (struct wlr_box){0},
+        .liquid_radius = 5,
+        .liquid_scale = 0.25f,
+    };
+    fx_renderer_whole_corner_textures_for_test(fixture->renderer, whole);
+    fx_render_pass_add_texture(fx_get_render_pass(pass), &options);
+    fx_renderer_whole_corner_textures_for_test(fixture->renderer, false);
+    ok &= check(wlr_render_pass_submit(pass), "submit");
+    ok &= check(read_buffer(fixture, target, DRM_FORMAT_ABGR8888, stride, out), "read the glass");
+  }
+  if (target != NULL) {
+    wlr_buffer_drop(target);
+  }
+  if (lens != NULL) {
+    wlr_texture_destroy(lens);
+  }
+  if (source != NULL) {
+    wlr_texture_destroy(source);
+  }
+  return ok;
+}
+
+static bool test_glass_split(struct fixture* fixture) {
+  static uint8_t whole[GLASS_SIZE * GLASS_SIZE][4], split[GLASS_SIZE * GLASS_SIZE][4], flat[GLASS_SIZE * GLASS_SIZE][4];
+  bool ok = true;
+  for (int shaped = 0; ok && shaped <= 1; shaped++) {
+    ok &= glass_split_case(fixture, true, shaped, 0.55f, whole) && glass_split_case(fixture, false, shaped, 0.55f, split)
+        && glass_split_case(fixture, true, shaped, 0.0f, flat);
+    ok &= check(!ok || memcmp(whole, flat, sizeof(whole)) != 0, "the liquid band bends the backdrop");
+    for (int i = 0; ok && i < GLASS_SIZE * GLASS_SIZE; i++) {
+      if (memcmp(whole[i], split[i], 4) != 0) {
+        fprintf(
+            stderr, "  shaped %d pixel %d,%d: whole %u %u %u %u, split %u %u %u %u\n", shaped, i % GLASS_SIZE,
+            i / GLASS_SIZE, whole[i][0], whole[i][1], whole[i][2], whole[i][3], split[i][0], split[i][1], split[i][2],
+            split[i][3]
+        );
+        ok = false;
+      }
+    }
+  }
+  return ok;
+}
+
 // Exercise dynamic sampling of every entry, interpolation and clamps.
 static bool test_audio_spectrum(struct fixture* fixture) {
   struct wlr_scene* scene = wlr_scene_create();
@@ -3127,6 +3213,8 @@ int main(int argc, char* argv[]) {
     ok = test_buffer_tint(&fixture);
   } else if (strcmp(argv[1], "corner-split") == 0) {
     ok = test_corner_split(&fixture);
+  } else if (strcmp(argv[1], "glass-split") == 0) {
+    ok = test_glass_split(&fixture);
   } else if (strcmp(argv[1], "audio-spectrum") == 0) {
     ok = test_audio_spectrum(&fixture);
   } else if (strcmp(argv[1], "output-effects") == 0) {

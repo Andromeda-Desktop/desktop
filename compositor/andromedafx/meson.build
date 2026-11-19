@@ -343,6 +343,7 @@ if build_tests
     'faded-blur',
     'buffer-tint',
     'corner-split',
+    'glass-split',
   ]
     test('effects-' + case_name, andromedafx_effects_test, args: case_name, suite: 'andromedafx')
   endforeach
