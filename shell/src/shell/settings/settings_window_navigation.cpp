@@ -19,6 +19,7 @@ void SettingsWindow::applyNavEntry(const NavEntry& entry) {
   m_wifiJoinSsid.clear();
   m_wifiPassword.clear();
   m_expertQuery.clear();
+  m_moreFilter = settings::MoreFilter::All;
   m_contentScrollState.offset = 0.0F;
   // Swap, initramfs and logind can change outside Settings; the page shows them as they are now.
   if (m_selectedSection == "power" && m_powerConfigProvider) {

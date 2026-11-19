@@ -641,6 +641,19 @@ private:
   std::function<void()> m_openLockscreenWidgetEditor;
   bool m_sidebarMoreExpanded = false;
   settings::metrics::SidebarMode m_sidebarMode = settings::metrics::SidebarMode::Full;
+  settings::metrics::MorePlacement m_morePlacement = settings::metrics::MorePlacement::BesideSidebar;
+  // More options: the open page's clusters, the filter, the index (Changed row, then one row per cluster).
+  std::vector<settings::MoreGroup> m_moreGroups;
+  settings::MoreFilter m_moreFilter = settings::MoreFilter::All;
+  Flex* m_moreIndex = nullptr;
+  std::vector<Button*> m_moreIndexRows;
+  std::size_t m_moreCurrent = 0;
+  // A cluster picked while the Changed filter hid it: scrolled to once the rebuilt rows are laid out.
+  std::string m_morePendingJump;
+  std::unique_ptr<Flex> buildMoreIndex(float scale);
+  void fillMoreIndex(float scale);
+  void markMoreIndexCurrent();
+  void scrollToMoreGroup(const settings::MoreGroup& group);
   // Stack mode shows the page list or one page; a page pick shows the page, the back button the list.
   bool m_stackShowsPage = false;
   [[nodiscard]] bool stackShowsPage() const noexcept { return m_stackShowsPage || !m_searchQuery.empty(); }

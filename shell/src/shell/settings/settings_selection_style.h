@@ -52,6 +52,14 @@ namespace settings {
           : windowWidth >= kStackBreak ? SidebarMode::Rail
                                        : SidebarMode::Stack;
     }
+    // More options: its cluster index sits beside the sidebar on wide windows and takes the sidebar's place below
+    // kMoreBesideBreak (logical px of window width).
+    enum class MorePlacement : std::uint8_t { BesideSidebar, InSidebar };
+    inline constexpr float kMoreBesideBreak = 1400.0F;
+    inline constexpr float kMoreIndexWidth = 176.0F;
+    [[nodiscard]] inline MorePlacement morePlacementFor(float windowWidth) {
+      return windowWidth >= kMoreBesideBreak ? MorePlacement::BesideSidebar : MorePlacement::InSidebar;
+    }
     // The column width for a window `windowWidth` logical px wide, on the 8 grid; narrow windows go below the cap.
     [[nodiscard]] inline float contentWidthFor(float windowWidth) {
       const SidebarMode mode = sidebarModeFor(windowWidth);

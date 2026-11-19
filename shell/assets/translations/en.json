@@ -2390,6 +2390,9 @@
       "caption": "Account"
     },
     "expert": {
+      "changed": "Changed",
+      "changed-empty": "Every option here is at its default",
+      "changed-mark": "· changed",
       "count": "{count} options",
       "count-one": "1 option",
       "row": "More options",

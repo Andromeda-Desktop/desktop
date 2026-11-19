@@ -862,6 +862,8 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
           : std::string_view(m_selectedMonitorOverride),
       .rowScope = m_expertOpen ? settings::RowScope::Expert : settings::RowScope::Main,
       .pageQuery = m_expertQuery,
+      .moreFilter = m_moreFilter,
+      .moreGroups = &m_moreGroups,
       .highlightKey = m_highlightKey,
       .batteryDeviceOptions = batteryDeviceOptions(),
       .canHibernate = m_powerConfigProvider && m_powerConfigProvider() != nullptr
@@ -1035,7 +1037,10 @@ void SettingsWindow::rebuildSettingsContent() {
     // A sub-page (More options, a detail, Language under Date and Time) leads with a way up to its page.
     const auto* parentPage =
         titlePage != nullptr && !titlePage->parent.empty() ? settings::settingsPageFromId(titlePage->parent) : nullptr;
-    if (m_searchQuery.empty() && (m_expertOpen || detailOpen || parentPage != nullptr)) {
+    // In a narrow window the More index replaces the sidebar and leads with the way back itself.
+    const bool indexLeadsBack =
+        m_expertOpen && m_moreIndex != nullptr && m_morePlacement == settings::metrics::MorePlacement::InSidebar;
+    if (m_searchQuery.empty() && (m_expertOpen || detailOpen || parentPage != nullptr) && !indexLeadsBack) {
       const bool toParent = !m_expertOpen && !detailOpen;
       std::string upLabel = toParent ? i18n::tr(settings::settingsPageLabelKey(*parentPage)) : pageLabel;
       if (toParent) {
@@ -1061,6 +1066,9 @@ void SettingsWindow::rebuildSettingsContent() {
               },
       }));
       m_contentContainer->addChild(std::move(upRow));
+    }
+    if (indexLeadsBack) {
+      title = i18n::tr("settings.expert.row");
     }
     m_contentContainer->addChild(
         makeLabel(title, Style::fontSizeHeader * scale, colorSpecFromRole(ColorRole::Label1), FontWeight::Bold)
@@ -1155,6 +1163,9 @@ void SettingsWindow::rebuildSettingsContent() {
       : settings::addSettingsContentSections(
             *m_contentContainer, m_settingsRegistry, makeContentContext(cfg, selectedBar, selectedMonitorOverride)
         );
+  if (m_moreIndex != nullptr) {
+    fillMoreIndex(scale);
+  }
 
 
   logSettingsProfile("rebuildContent sections", phaseProfileWatch);
@@ -1600,8 +1611,21 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
     sidebar->setVisible(false);
     sidebar->setParticipatesInLayout(false);
   }
+  m_moreIndex = nullptr;
+  m_moreIndexRows.clear();
+  std::unique_ptr<Flex> moreIndex;
+  if (m_expertOpen && m_searchQuery.empty() && showPage) {
+    moreIndex = buildMoreIndex(scale);
+    if (m_morePlacement == settings::metrics::MorePlacement::InSidebar) {
+      sidebar->setVisible(false);
+      sidebar->setParticipatesInLayout(false);
+    }
+  }
   m_sidebarNode = sidebar.get();
   body->addChild(std::move(sidebar));
+  if (moreIndex != nullptr) {
+    body->addChild(std::move(moreIndex));
+  }
   auto outer = ui::column({.align = FlexAlign::Stretch});
   m_headerRow = outer->addChild(buildHeaderRow(scale, resetPageScope, std::move(resetPagePaths)));
   if (!showPage) {
@@ -1646,7 +1670,11 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
       .contentAlign = ScrollView::ContentAlign::Start,
       .viewportPaddingV = Style::spaceXs * scale,
       .flexGrow = 1.0F,
-      .onScrollChanged = [this](float /*offset*/) { dismissOpenSelectDropdown(); },
+      .onScrollChanged =
+          [this](float /*offset*/) {
+            dismissOpenSelectDropdown();
+            markMoreIndexCurrent();
+          },
       .configure =
           [](ScrollView& scrollView) {
             scrollView.clearFill();
@@ -2450,4 +2478,171 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
         sections.size(), m_selectedSection, width, height
     );
   }
+}
+
+std::unique_ptr<Flex> SettingsWindow::buildMoreIndex(float scale) {
+  using settings::metrics::MorePlacement;
+  const bool inSidebar = m_morePlacement == MorePlacement::InSidebar;
+  const float width = (inSidebar ? settings::metrics::kSidebarWidth : settings::metrics::kMoreIndexWidth) * scale;
+  auto column = ui::column({
+      .align = FlexAlign::Stretch,
+      .fill = inSidebar && !m_glassSidebar ? colorSpecFromRole(ColorRole::Fill2) : clearColorSpec(),
+      .minWidth = width,
+      .fillHeight = true,
+      .width = width,
+      .configure =
+          [scale](Flex& flex) {
+            flex.setPadding(
+                settings::metrics::kSidebarPaddingV * scale, settings::metrics::kSidebarPaddingH * scale, 0.0F,
+                settings::metrics::kSidebarPaddingH * scale
+            );
+          },
+  });
+  if (inSidebar) {
+    const auto* page = settings::settingsPageFromId(m_selectedSection);
+    column->addChild(ui::button({
+        .text = page != nullptr ? i18n::tr(settings::settingsPageLabelKey(*page)) : std::string{},
+        .glyph = "chevron-left",
+        .fontSize = Style::fontSizeBody * scale,
+        .glyphSize = Style::fontSizeBody * scale,
+        .contentAlign = ButtonContentAlign::Start,
+        .variant = ButtonVariant::Ghost,
+        .minHeight = settings::metrics::kSidebarRowHeight * scale,
+        .paddingV = 0.0F,
+        .paddingH = settings::metrics::kSidebarRowPaddingH * scale,
+        .radius = Style::scaledRadiusMd(scale),
+        .onClick =
+            [this] { navigateTo(m_selectedSection, m_selectedBarName, false, {}, m_selectedMonitorOverride); },
+    }));
+  }
+  m_moreIndex = static_cast<Flex*>(column->addChild(ui::column({.align = FlexAlign::Stretch})));
+  return column;
+}
+
+void SettingsWindow::fillMoreIndex(float scale) {
+  while (!m_moreIndex->children().empty()) {
+    m_moreIndex->removeChild(m_moreIndex->children().back().get());
+  }
+  m_moreIndexRows.clear();
+  const auto indexRow = [scale](std::string text, std::size_t count, bool dot, bool accent, std::function<void()> onClick) {
+    return ui::button({
+        .text = std::move(text),
+        .fontSize = Style::fontSizeBody * scale,
+        .contentAlign = ButtonContentAlign::Start,
+        .variant = ButtonVariant::Tab,
+        .minHeight = settings::metrics::kSidebarRowHeight * scale,
+        .paddingV = 0.0F,
+        .paddingH = settings::metrics::kSidebarRowPaddingH * scale,
+        .gap = settings::metrics::kSidebarRowGap * scale,
+        .radius = Style::scaledRadiusMd(scale),
+        .onClick = std::move(onClick),
+        .configure =
+            [scale, count, dot, accent](Button& button) {
+              button.setTabStop(false);
+              if (Label* label = button.label(); label != nullptr) {
+                label->setFlexGrow(1.0F);
+                if (accent) {
+                  label->setColor(colorSpecFromRole(ColorRole::Accent));
+                }
+              }
+              const float dotSize = 6.0F * scale;
+              button.insertChildAt(
+                  0, ui::box({
+                         .fill = dot ? colorSpecFromRole(ColorRole::Accent) : clearColorSpec(),
+                         .radius = dotSize * 0.5F,
+                         .width = dotSize,
+                         .height = dotSize,
+                     })
+              );
+              button.addChild(makeLabel(
+                  std::to_string(count), Style::fontSizeCaption * scale, colorSpecFromRole(ColorRole::Label2),
+                  FontWeight::Normal
+              ));
+            },
+    });
+  };
+  std::size_t changed = 0;
+  for (const auto& group : m_moreGroups) {
+    changed += group.changed;
+  }
+  const bool changedOnly = m_moreFilter == settings::MoreFilter::Changed;
+  auto changedRow = indexRow(i18n::tr("settings.expert.changed"), changed, false, true, [this, changedOnly] {
+    m_moreFilter = changedOnly ? settings::MoreFilter::All : settings::MoreFilter::Changed;
+    m_contentScrollState.offset = 0.0F;
+    requestContentRebuild();
+  });
+  if (changedOnly) {
+    changedRow->setCustomPalette(
+        settings::selectedRowPalette(settings::selectionStyle().childFill, colorSpecFromRole(ColorRole::Accent))
+    );
+  }
+  m_moreIndex->addChild(std::move(changedRow));
+  m_moreIndex->addChild(ui::column(
+      {.align = FlexAlign::Stretch, .paddingV = Style::spaceSm * scale, .paddingH = Style::spaceSm * scale},
+      ui::box({.fill = colorSpecFromRole(ColorRole::Separator), .height = settings::metrics::kRowSeparatorThickness * scale})
+  ));
+  for (const auto& group : m_moreGroups) {
+    auto row = indexRow(
+        group.label.empty() ? i18n::tr("settings.expert.row") : group.label, group.rows, group.changed > 0, false,
+        [this, key = group.key] {
+          if (m_moreFilter == settings::MoreFilter::Changed) {
+            m_moreFilter = settings::MoreFilter::All;
+            m_morePendingJump = key;
+            requestContentRebuild();
+            return;
+          }
+          if (const auto it = std::ranges::find(m_moreGroups, key, &settings::MoreGroup::key); it != m_moreGroups.end()) {
+            scrollToMoreGroup(*it);
+          }
+        }
+    );
+    m_moreIndexRows.push_back(row.get());
+    m_moreIndex->addChild(std::move(row));
+  }
+  m_moreCurrent = m_moreIndexRows.size();
+  markMoreIndexCurrent();
+}
+
+void SettingsWindow::markMoreIndexCurrent() {
+  if (m_moreIndex == nullptr || m_contentScrollView == nullptr || m_moreFilter == settings::MoreFilter::Changed) {
+    return;
+  }
+  // The current cluster is the last one whose card starts above the top of the view.
+  std::size_t current = 0;
+  float contentX = 0.0F;
+  float contentY = 0.0F;
+  Node::absolutePosition(m_contentScrollView->content(), contentX, contentY);
+  const float top = m_contentScrollView->scrollOffset() + Tokens::spaceP48 * uiScale();
+  for (std::size_t i = 0; i < m_moreGroups.size() && i < m_moreIndexRows.size(); ++i) {
+    const Node* card = m_moreGroups[i].card;
+    if (card == nullptr) {
+      continue;
+    }
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(card, x, y);
+    if (y - contentY <= top) {
+      current = i;
+    }
+  }
+  if (current == m_moreCurrent) {
+    return;
+  }
+  m_moreCurrent = current;
+  for (std::size_t i = 0; i < m_moreIndexRows.size(); ++i) {
+    m_moreIndexRows[i]->setCustomPalette(settings::selectedRowPalette(
+        i == current ? settings::selectionStyle().childFill : clearColorSpec(),
+        colorSpecFromRole(i == current ? ColorRole::Label1 : ColorRole::Label2)
+    ));
+  }
+}
+
+void SettingsWindow::scrollToMoreGroup(const settings::MoreGroup& group) {
+  if (group.card == nullptr || m_contentScrollView == nullptr) {
+    return;
+  }
+  // The card's caption sits above its body: one footnote line and the caption gap.
+  scrollNodeToScrollViewTop(
+      *m_contentScrollView, *group.card, (Tokens::typeFootnote.line + 2.0F * Style::spaceSm) * uiScale()
+  );
 }

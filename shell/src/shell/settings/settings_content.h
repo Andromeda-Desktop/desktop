@@ -40,6 +40,17 @@ namespace settings {
   };
 
   enum class RowScope : std::uint8_t { Main, Expert };
+  // Which More rows show: all, or only those that differ from their default.
+  enum class MoreFilter : std::uint8_t { All, Changed };
+
+  // One cluster of the open page's More rows, in page order; the More index lists these.
+  struct MoreGroup {
+    std::string key;
+    std::string label;
+    Node* card = nullptr; // null while the filter hides the cluster
+    std::size_t rows = 0;
+    std::size_t changed = 0;
+  };
 
   struct SettingsContentContext {
     const Config& config;
@@ -54,6 +65,9 @@ namespace settings {
     RowScope rowScope = RowScope::Main;
     // Filters the expert rows of the open page; empty shows all.
     std::string_view pageQuery;
+    MoreFilter moreFilter = MoreFilter::All;
+    // Filled with the open page's More clusters when rowScope is Expert.
+    std::vector<MoreGroup>* moreGroups = nullptr;
     // Key of the row a search result opened; drawn highlighted and scrolled into view.
     std::string_view highlightKey;
     std::vector<SelectOption> batteryDeviceOptions;

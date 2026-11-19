@@ -828,6 +828,13 @@ void SettingsWindow::prepareFrame(bool needsUpdate, bool needsLayout) {
       requestSceneRebuild();
     }
   }
+  if (const auto placement = settings::metrics::morePlacementFor(static_cast<float>(width) / scale);
+      placement != m_morePlacement) {
+    m_morePlacement = placement;
+    if (!firstBuild && m_expertOpen) {
+      requestSceneRebuild();
+    }
+  }
   // Grow then clamp: the column follows the window at once (layout only); pages with art sized to the column
   // (charts) rebuild once the size rests, so a window animation causes no rebuild storm.
   if (const float column = settings::metrics::contentWidthFor(static_cast<float>(width) / scale);
@@ -922,6 +929,13 @@ void SettingsWindow::prepareFrame(bool needsUpdate, bool needsLayout) {
     logSettingsProfile("prepareFrame layout", phaseProfileWatch);
     phaseProfileWatch.reset();
     applyPendingContentScrollTarget(Style::spaceMd * uiScale());
+    if (!m_morePendingJump.empty()) {
+      const auto it = std::ranges::find(m_moreGroups, m_morePendingJump, &settings::MoreGroup::key);
+      m_morePendingJump.clear();
+      if (it != m_moreGroups.end()) {
+        scrollToMoreGroup(*it);
+      }
+    }
     logSettingsProfile("prepareFrame scrollTarget", phaseProfileWatch);
     m_lastSceneWidth = width;
     m_lastSceneHeight = height;

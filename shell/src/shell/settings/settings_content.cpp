@@ -1051,6 +1051,16 @@ namespace settings {
       };
       std::ranges::stable_sort(entryOrder, {}, [&](std::size_t i) { return rank(registry[i]); });
     }
+    const auto entryChanged = [&](const SettingEntry& entry) {
+      return ctx.configService != nullptr
+          && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
+    };
+    const auto groupKeyOf = [](const SettingEntry& entry) {
+      return barSettingContentSectionKey(entry) + '\x1F' + entry.group;
+    };
+    const auto groupCaption = [&](const SettingEntry& entry) {
+      return entry.group.empty() || entry.group.front() == '~' ? std::string{} : groupLabel(entry.group);
+    };
     const auto entryPassesFilters = [&](const SettingEntry& entry) -> bool {
       if (!entryOnOpenPage(entry)) {
         return false;
@@ -1058,8 +1068,25 @@ namespace settings {
       if (ctx.rowScope == RowScope::Main) {
         return !settingEntryIsExpert(entry);
       }
-      return settingEntryIsExpert(entry) && matchesNormalizedSettingQuery(entry, normalizedPageQuery);
+      return settingEntryIsExpert(entry) && matchesNormalizedSettingQuery(entry, normalizedPageQuery)
+          && (ctx.moreFilter == MoreFilter::All || entryChanged(entry));
     };
+    // The index lists every cluster with its counts, whatever the filter and query hide.
+    if (ctx.rowScope == RowScope::Expert && ctx.moreGroups != nullptr) {
+      ctx.moreGroups->clear();
+      for (const std::size_t entryIndex : entryOrder) {
+        const auto& entry = registry[entryIndex];
+        if (!settingEntryIsExpert(entry) || !entryOnOpenPage(entry)) {
+          continue;
+        }
+        std::string key = groupKeyOf(entry);
+        if (ctx.moreGroups->empty() || ctx.moreGroups->back().key != key) {
+          ctx.moreGroups->push_back(MoreGroup{.key = std::move(key), .label = groupCaption(entry)});
+        }
+        ++ctx.moreGroups->back().rows;
+        ctx.moreGroups->back().changed += entryChanged(entry) ? 1 : 0;
+      }
+    }
 
     if (ctx.rowScope == RowScope::Main && selectedPageShows(ctx.selectedSection, "dock")) {
       addSettingsGroupCard(content, {}, scale)->addChild(makeDockPreview(ctx.config.dock, scale));
@@ -1087,10 +1114,14 @@ namespace settings {
         activeGroupKey = entry.group;
         activeKeybindRow = nullptr;
         activeKeybindRowCount = 0;
-        activeGroupBody = addSettingsGroupCard(
-            content, entry.group.empty() || entry.group.front() == '~' ? std::string{} : groupLabel(entry.group), scale
-        );
+        activeGroupBody = addSettingsGroupCard(content, groupCaption(entry), scale);
         cardBodies.push_back(activeGroupBody);
+        if (ctx.rowScope == RowScope::Expert && ctx.moreGroups != nullptr) {
+          const std::string key = groupKeyOf(entry);
+          if (auto it = std::ranges::find(*ctx.moreGroups, key, &MoreGroup::key); it != ctx.moreGroups->end()) {
+            it->card = activeGroupBody;
+          }
+        }
         if (entry.section == SettingsSection::Power && entry.group == "idle") {
           addIdleLiveStatusPanel(*activeGroupBody, ctx, scale);
         }
@@ -1194,19 +1225,28 @@ namespace settings {
           .padding = Tokens::spaceP48 * scale,
           .fillWidth = true,
       });
+      const bool nothingChanged =
+          ctx.rowScope == RowScope::Expert && ctx.moreFilter == MoreFilter::Changed && ctx.pageQuery.empty();
       emptyState->addChild(ui::glyph({
-          .glyph = std::string(placeholderPage && !openPage->glyph.empty() ? openPage->glyph : "search"),
+          .glyph = std::string(
+              nothingChanged ? "check" : placeholderPage && !openPage->glyph.empty() ? openPage->glyph : "search"
+          ),
           .glyphSize = 48.0F * scale,
           .color = colorSpecFromRole(ColorRole::Label3),
       }));
       emptyState->addChild(makeLabel(
-          i18n::tr(placeholderPage ? "settings.pages.empty-title" : "settings.window.no-results"),
+          i18n::tr(
+              nothingChanged ? "settings.expert.changed-empty"
+                  : placeholderPage ? "settings.pages.empty-title" : "settings.window.no-results"
+          ),
           Tokens::typeTitle3.size * scale, colorSpecFromRole(ColorRole::Label1), FontWeight::SemiBold
       ));
-      emptyState->addChild(makeLabel(
-          i18n::tr(placeholderPage ? "settings.pages.empty-hint" : "settings.window.no-results-hint"),
-          Style::fontSizeBody * scale, colorSpecFromRole(ColorRole::Label2), FontWeight::Normal
-      ));
+      if (!nothingChanged) {
+        emptyState->addChild(makeLabel(
+            i18n::tr(placeholderPage ? "settings.pages.empty-hint" : "settings.window.no-results-hint"),
+            Style::fontSizeBody * scale, colorSpecFromRole(ColorRole::Label2), FontWeight::Normal
+        ));
+      }
       content.addChild(std::move(emptyState));
     }
 

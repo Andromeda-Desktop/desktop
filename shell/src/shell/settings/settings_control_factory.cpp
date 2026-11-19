@@ -412,6 +412,12 @@ namespace settings {
     titleRow->addChild(fittedTitle(
         makeLabel(entry.title, Style::fontSizeBody * scale, colorSpecFromRole(ColorRole::Label1), FontWeight::Medium)
     ));
+    if (overridden && ctx.rowScope == RowScope::Expert) {
+      titleRow->addChild(makeLabel(
+          i18n::tr("settings.expert.changed-mark"), Style::fontSizeCaption * scale, colorSpecFromRole(ColorRole::Accent),
+          FontWeight::Normal
+      ));
+    }
     if (monitorExplicit) {
       titleRow->addChild(makeStatusBadge(
           i18n::tr("settings.badges.monitor"), colorSpecFromRole(ColorRole::Fill1),
