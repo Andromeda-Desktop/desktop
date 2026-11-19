@@ -296,21 +296,6 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
   }
 }
 
-void Bar::destroyInstance(std::uint32_t outputName) {
-  std::erase_if(m_instances, [outputName, this](const auto& inst) {
-    if (inst->surface != nullptr) {
-      m_surfaceMap.erase(inst->surface.get());
-    }
-    if (m_hoveredInstance == inst.get()) {
-      m_hoveredInstance = nullptr;
-    }
-    return inst->outputName == outputName;
-  });
-  if (m_centerIslandSpaceCallback) {
-    m_centerIslandSpaceCallback();
-  }
-}
-
 bool Bar::syncIslandLiquid(BarInstance& instance) {
   dsk_surface_manager_v1* manager = m_platform != nullptr ? m_platform->wayland().dskSurfaceManager() : nullptr;
   const bool want = instance.barConfig.islands && !Style::reduceTransparency();
