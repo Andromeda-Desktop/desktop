@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dsk_surface_v1.launch_from (rulebook P15): after a layer surface names an icon rect, the next app launch token makes
-# the icon's pixels move from there to the middle of the usable area, breathe while the app starts, and fade out
-# when the launch expires (5 s without a window).
+# the app's theme icon move from there to the middle of the usable area, breathe while the app starts, and fade out
+# when the launch expires (5 s without a window). The icon keeps its own shape: none of the layer's pixels come along.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -39,6 +39,12 @@ blue_in() {
 }
 readonly MIDDLE="120x120+580+320"
 
+readonly ICON_DIR="$ANDROMEDA_RUNTIME_DIR/xdg-data/icons/hicolor/scalable/apps"
+mkdir -p "$ICON_DIR"
+cat > "$ICON_DIR/launch-from-app.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#2040A0"/></svg>
+SVG
+
 "$ANDROMEDA" clock-freeze
 printf '%s\n' "dsk-launch-from icon 100 0 40 40" >&"$control_fd"
 await_lines "$LOG" 'done icon' 1
@@ -50,9 +56,14 @@ if (($(blue_in "$MIDDLE") != 0)); then
 fi
 "$ANDROMEDA" clock-advance 600
 travelled=$(blue_in "$MIDDLE")
-# 40 px at 1.5x is a 60 px square: 3600 pixels, less the breathing swing.
+# 40 px at 1.5x is a 60 px rounded square centred at 640,380: about 3400 pixels, less the breathing swing.
 if ((travelled < 2500)); then
   echo "the icon did not reach the middle: $travelled blue pixels"
+  exit 1
+fi
+corner=$(blue_in "4x4+610+350")
+if ((corner != 0)); then
+  echo "the icon has a square backing: $corner blue pixels in its rounded corner"
   exit 1
 fi
 "$ANDROMEDA" clock-advance 275

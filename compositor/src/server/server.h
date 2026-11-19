@@ -108,6 +108,9 @@ namespace andromeda {
   class LaunchFeedback;
   class SystemdUnits;
   class AppsBus;
+  namespace ov {
+    class AppIcons;
+  }
   namespace qos {
     class Controller;
   }
@@ -1119,17 +1122,16 @@ namespace andromeda {
     wl_event_source* m_launchBusyTimer = nullptr;
     // dsk_surface_v1.launch_from: the icon the next app launch token takes (the shell sends it just before).
     struct LaunchFrom {
-      wlr_buffer* buffer = nullptr; // locked
-      wlr_fbox source{};            // buffer pixels
-      wlr_box from{};               // layout
+      wlr_box from{}; // layout
       Output* output = nullptr;
       std::chrono::steady_clock::time_point at;
     };
     std::optional<LaunchFrom> m_launchFrom;
+    std::unique_ptr<ov::AppIcons> m_launchIcons; // created on the first launch; outlives m_launchFeedback
     std::vector<std::pair<std::string, std::unique_ptr<LaunchFeedback>>> m_launchFeedback; // by launch token
     void setLaunchFrom(wlr_surface* surface, const wlr_box& box);
     void dropLaunchFrom();
-    void beginLaunchFeedback(const std::string& token);
+    void beginLaunchFeedback(const std::string& token, const std::string& appId);
     std::optional<wlr_box> finishLaunchFeedback(const std::optional<std::string>& token);
     std::unique_ptr<SystemdUnits> m_systemdUnits;
     std::unique_ptr<CpuBoost> m_cpuBoost;

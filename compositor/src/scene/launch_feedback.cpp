@@ -1,6 +1,7 @@
 #include "scene/launch_feedback.h"
 
 #include "output/output.h"
+#include "overview/app_icons.h"
 #include "server/server.h"
 #include "wlr.h"
 
@@ -20,14 +21,15 @@ namespace andromeda {
   } // namespace
 
   LaunchFeedback::LaunchFeedback(
-      Server& server, Output* output, wlr_scene_tree* parent, wlr_buffer* buffer, const wlr_fbox& source,
+      Server& server, Output* output, wlr_scene_tree* parent, ov::AppIcons& icons, std::string appId,
       const wlr_box& from, const wlr_box& area
   )
-      : m_server(&server), m_output(output), m_buffer(wlr_buffer_lock(buffer)), m_from(from),
+      : m_server(&server), m_output(output), m_icons(&icons), m_appId(std::move(appId)), m_from(from),
         m_targetX(area.x + area.width / 2.0), m_targetY(area.y + area.height / 2.0) {
+    const double outputScale = m_output != nullptr ? m_output->wlr()->scale : 1.0;
+    m_iconPx = static_cast<int>(std::ceil(m_from.width * kTravelScale * (1.0 + kBreathAmount) * outputScale));
     m_tree = wlr_scene_tree_create(parent);
-    m_node = wlr_scene_buffer_create(m_tree, m_buffer);
-    wlr_scene_buffer_set_source_box(m_node, &source);
+    m_node = wlr_scene_buffer_create(m_tree, nullptr);
     m_alpha.snap(1.0);
     m_travel.retarget(1.0, kTravelMs, Easing::EaseOutCubic);
     apply(0.0);
@@ -40,7 +42,6 @@ namespace andromeda {
   LaunchFeedback::~LaunchFeedback() {
     m_server->unregisterAnimatable(this);
     wlr_scene_node_destroy(&m_tree->node);
-    wlr_buffer_unlock(m_buffer);
   }
 
   void LaunchFeedback::finish() {
@@ -80,6 +81,11 @@ namespace andromeda {
   }
 
   void LaunchFeedback::apply(double nowMsec) {
+    if (m_node->buffer == nullptr) {
+      if (wlr_buffer* icon = m_icons->get(m_appId, m_iconPx); icon != nullptr) {
+        wlr_scene_buffer_set_buffer(m_node, icon);
+      }
+    }
     const double travel = m_travel.current();
     double scale = 1.0 + (kTravelScale - 1.0) * travel;
     if (!m_travel.animating() && nowMsec > 0.0) {

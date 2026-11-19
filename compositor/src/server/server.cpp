@@ -33,6 +33,7 @@
 #include "layer/layer_surface.h"
 #include "lock/session_lock.h"
 #include "output/output.h"
+#include "overview/app_icons.h"
 #include "overview/overview.h"
 #include "scene/color.h"
 #include "scene/config_banner.h"

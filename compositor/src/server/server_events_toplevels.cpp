@@ -32,6 +32,7 @@
 #include "server/desktop_settings_manager.h"
 #include "server/desktop_shell.h"
 #include "server/ipc.h"
+#include "overview/app_icons.h"
 #include "server/server.h"
 #include "server/server_events_internal.h"
 #include "view/popup.h"
@@ -483,19 +484,13 @@ namespace andromeda {
 
   void Server::setLaunchFrom(wlr_surface* surface, const wlr_box& box) {
     const LayerSurface* layer = LayerSurface::fromSurface(surface);
-    if (layer == nullptr || layer->scene() == nullptr || surface->buffer == nullptr || surface->current.width <= 0
-        || surface->current.height <= 0) {
+    if (layer == nullptr || layer->scene() == nullptr) {
       return;
     }
-    dropLaunchFrom();
     int x = 0;
     int y = 0;
     wlr_scene_node_coords(&layer->scene()->tree->node, &x, &y);
-    const double scaleX = static_cast<double>(surface->current.buffer_width) / surface->current.width;
-    const double scaleY = static_cast<double>(surface->current.buffer_height) / surface->current.height;
     m_launchFrom = LaunchFrom{
-        .buffer = wlr_buffer_lock(&surface->buffer->base),
-        .source = {box.x * scaleX, box.y * scaleY, box.width * scaleX, box.height * scaleY},
         .from = {x + box.x, y + box.y, box.width, box.height},
         .output = layer->output(),
         .at = std::chrono::steady_clock::now(),
@@ -503,14 +498,9 @@ namespace andromeda {
     kLog.debug("launch from {},{} {}x{}", m_launchFrom->from.x, m_launchFrom->from.y, box.width, box.height);
   }
 
-  void Server::dropLaunchFrom() {
-    if (m_launchFrom) {
-      wlr_buffer_unlock(m_launchFrom->buffer);
-      m_launchFrom.reset();
-    }
-  }
+  void Server::dropLaunchFrom() { m_launchFrom.reset(); }
 
-  void Server::beginLaunchFeedback(const std::string& token) {
+  void Server::beginLaunchFeedback(const std::string& token, const std::string& appId) {
     constexpr auto kLaunchFromLimit = std::chrono::seconds(1);
     if (!m_launchFrom || m_launchFrom->output == nullptr
         || std::chrono::steady_clock::now() - m_launchFrom->at > kLaunchFromLimit) {
@@ -518,10 +508,13 @@ namespace andromeda {
       return;
     }
     kLog.debug("launch feedback for token '{}'", token);
+    if (!m_launchIcons) {
+      m_launchIcons = std::make_unique<ov::AppIcons>(wl_display_get_event_loop(m_display), nullptr);
+    }
     m_launchFeedback.emplace_back(
         token, std::make_unique<LaunchFeedback>(
-                   *this, m_launchFrom->output, shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY), m_launchFrom->buffer,
-                   m_launchFrom->source, m_launchFrom->from, m_launchFrom->output->usableArea()
+                   *this, m_launchFrom->output, shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY), *m_launchIcons, appId,
+                   m_launchFrom->from, m_launchFrom->output->usableArea()
                )
     );
     dropLaunchFrom();
@@ -637,7 +630,7 @@ namespace andromeda {
     // most spawn keybinds run commands without a window (volume, brightness).
     if (!watch->tokenName.empty() && token->app_id != nullptr) {
       beginLaunchBusy(watch->tokenName, token->app_id);
-      beginLaunchFeedback(watch->tokenName);
+      beginLaunchFeedback(watch->tokenName, token->app_id);
     }
     watch->destroy.notify = onActivationTokenDestroy;
     wl_signal_add(&token->events.destroy, &watch->destroy);

@@ -2,27 +2,32 @@
 
 #include "core/animation.h"
 
+#include <string>
+
 extern "C" {
 #include <wlr/util/box.h>
 }
 
-struct wlr_buffer;
 struct wlr_scene_buffer;
 struct wlr_scene_tree;
+
+namespace andromeda::ov {
+  class AppIcons;
+}
 
 namespace andromeda {
 
   class Output;
   class Server;
 
-  // Launch feedback (rulebook P15): the launching icon's pixels lift off the dock or launcher, move toward the middle
-  // of the output and breathe there until the app's first window maps; then they grow and fade into it.
+  // Launch feedback (rulebook P15): the app's icon lifts off the dock or launcher, moves toward the middle of the
+  // output and breathes there until the app's first window maps; then it grows and fades into it.
   class LaunchFeedback : public Animatable {
   public:
-    // `buffer` is locked for the feedback's life. `source` is in buffer pixels; `from` and `area` are layout boxes:
-    // the icon and the output's usable area.
+    // `icons` outlives the feedback. `from` and `area` are layout boxes: the launching icon and the output's usable
+    // area. The icon shows once `icons` has drawn it at the largest size it reaches on this output.
     LaunchFeedback(
-        Server& server, Output* output, wlr_scene_tree* parent, wlr_buffer* buffer, const wlr_fbox& source,
+        Server& server, Output* output, wlr_scene_tree* parent, ov::AppIcons& icons, std::string appId,
         const wlr_box& from, const wlr_box& area
     );
     ~LaunchFeedback() override;
@@ -48,7 +53,9 @@ namespace andromeda {
     Output* m_output = nullptr;
     wlr_scene_tree* m_tree = nullptr;
     wlr_scene_buffer* m_node = nullptr;
-    wlr_buffer* m_buffer = nullptr;
+    ov::AppIcons* m_icons = nullptr;
+    std::string m_appId;
+    int m_iconPx = 0; // device pixels
     wlr_box m_from{};
     double m_targetX = 0.0; // centre the icon travels to, layout coordinates
     double m_targetY = 0.0;
