@@ -12,9 +12,9 @@ readonly OUTPUT_W=1280
 readonly OUTPUT_H=720
 readonly OVERVIEW_ZOOM=0.5
 readonly OVERVIEW_X=320
-readonly OVERVIEW_Y=180
-# The zoom below scales the output to a 640x360 preview centred on both axes.
-readonly PREVIEW_BOTTOM=540
+readonly OVERVIEW_Y=194
+# The zoom below scales the output to a 640x360 preview centred on x and 14 px below centre on y (kStripShift, 634515412).
+readonly PREVIEW_BOTTOM=554
 readonly POINTER="${ANDROMEDA_POINTER_CLIENT:-./build-debug/tests/pointer-client}"
 
 pointer() {
