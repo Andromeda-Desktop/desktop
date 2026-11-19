@@ -66,6 +66,7 @@ struct fx_offscreen_buffers {
   // optimized_no_blur_buffer blurred per entry (strength below 1, blur data) inside the entry box, valid while
   // strength_blur_generation equals optimized_blur_generation: glass over a still backdrop composites it instead of
   // blurring again each frame. Entry boxes never overlap, so glass nodes with different strengths share the buffer.
+  // A partial rebuild drops only the entries whose blur reach it touches.
   struct fx_framebuffer* strength_blur_buffer;
   uint64_t strength_blur_generation;
   struct fx_strength_blur_entry {
