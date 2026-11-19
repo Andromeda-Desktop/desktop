@@ -58,7 +58,7 @@ namespace glass {
   // that move together merge and split like one liquid (gaps under about half of it bridge).
   inline constexpr float kMergeReach = 24.0F;
   // Glass rims within this many logical px of the pointer turn their key light toward it.
-  inline constexpr float kPointerLightReach = 64.0F;
+  inline constexpr float kPointerLightReach = 128.0F;
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
 
   // Frosted: blur and tint from the Tint and Blur sliders, an optional specular edge. Liquid: a soft blur with a lift, a

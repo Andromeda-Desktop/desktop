@@ -215,7 +215,8 @@ float lens_shift(float t);
 float lens_magnify();
 vec4 lens_sample(sampler2D tex, vec2 uv, vec2 bend);
 float rim_edge(float d, float scale);
-float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d);
+float pointer_near(vec2 p, vec3 light);
+float rim_facing(vec2 normal, float near);
 float smooth_union(float a, float b, float k);
 
 float liquid_distance(vec2 point) {
@@ -293,10 +294,12 @@ void main() {
       // Specular: a reflection, not an outline. Brightest on the outermost pixel (d = -0.5), fading over 2.5 px
       // inward; the coverage mask cuts it outside. pow 8 keeps the key glint on the curves that face the top-left
       // light (a straight top edge gets 6 %), a back glint opposite, a faint even rim between (rim_facing).
-            float edge = rim_edge(d, liquid_scale);
-      float facing = rim_facing(normal, p, light, light.z > 0.0 ? liquid_distance(light.xy) : 0.0);
+      // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
+      float near = pointer_near(p, light);
+      float edge = rim_edge(d, liquid_scale);
+      float facing = rim_facing(normal, near);
       float glow = clamp(1.0 + 2.0 * d / band, 0.0, 1.0);
-      specular = shine * (0.08 * glow * glow + 0.45 * edge) * facing;
+      specular = shine * (0.08 * (1.0 + 4.0 * near) * glow * glow + 0.45 * edge) * facing;
     }
   }
   vec4 base = sample_texture(uv);

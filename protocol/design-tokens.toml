@@ -243,8 +243,8 @@ saturation = 1.25
 ior = 1.5
 # Glass edge hairline width, logical px (scaled by the output and ui scale).
 rim_width = 1.5
-# Extra edge brightness right at the pointer: 0.4 = 1.4x, falling to 0 at kPointerLightReach.
-rim_pointer_boost = 0.4
+# Pointer light added to the rim right at the pointer (the key glint peaks at 1), a Gaussian to 2 % at kPointerLightReach.
+rim_pointer_boost = 0.9
 # Colour fringe: red bends this fraction of the lens shift less, blue more (Apple's lens shows yellow/magenta edges).
 dispersion = 0.12
 # A glass shape narrower than two bezels magnifies its whole surface toward its centre by this fraction.
@@ -306,11 +306,11 @@ damping = 0.80
 [spring.move]      # response 0.35 s, bounce 0.10: reflow, banner stack, tiling
 stiffness = 322.3
 damping = 0.90
-[spring.open]      # response 0.30 s, bounce 0.10: Grow from a source
-stiffness = 438.6
+[spring.open]      # response 0.26 s, bounce 0.10: Grow from a source
+stiffness = 584.0
 damping = 0.90
-[spring.close]     # response 0.28 s, bounce 0: Return, dismissals
-stiffness = 503.6
+[spring.close]     # response 0.24 s, bounce 0: Return, dismissals
+stiffness = 685.4
 damping = 1.00
 [spring.morph]     # response 0.46 s, bounce 0.18: center island expands
 stiffness = 186.6
