@@ -7,6 +7,7 @@
 #include "andromedafx/render/effect.h"
 #include "andromedafx/render/pass.h"
 
+#include <math.h>
 #include <stdarg.h>
 #include <wlr/util/log.h>
 #include <wlr/util/transform.h>
@@ -2450,11 +2451,16 @@ static bool test_backdrop_probe(struct fixture* fixture) {
   if (!check(probe != NULL, "probe")) {
     return false;
   }
-  static const uint8_t colours[][4] = {{200, 100, 50, 255}, {20, 240, 90, 255}};
+  static const uint8_t colours[][4] = {{200, 100, 50, 255}, {20, 240, 90, 255}, {250, 0, 75, 255}};
   bool ok = true;
   for (size_t i = 0; ok && i < sizeof(colours) / sizeof(colours[0]); i++) {
     const uint8_t* c = colours[i];
-    const float expected = (float)((0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255.0);
+    double lin[3];
+    for (int k = 0; k < 3; k++) {
+      const double v = c[k] / 255.0;
+      lin[k] = v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
+    }
+    const float expected = (float)pow(0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2], 1.0 / 2.2);
     float luminance = -1.0f;
     ok &= backdrop_probe_sample(fixture, probe, c, &luminance);
     if (ok && fabsf(luminance - expected) > 1.5f / 255.0f) {

@@ -290,13 +290,18 @@ bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, float* luminance) {
   glBindBuffer(GL_PIXEL_PACK_BUFFER, probe->pack_buffer);
   const GLubyte* pixels = glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, kProbeWidth * kProbeHeight * 4, GL_MAP_READ_BIT);
   if (pixels != NULL) {
+    // Rec.709 weights apply to linear light; on encoded bytes they underrate saturated colours (pink reads as dark).
     double sum = 0.0;
     for (int i = 0; i < kProbeWidth * kProbeHeight; i++) {
       const GLubyte* p = &pixels[i * 4];
-      sum += (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]) / 255.0;
+      double rgb[3];
+      for (int c = 0; c < 3; c++) {
+        const double v = p[c] / 255.0;
+        rgb[c] = probe->linear ? v : (v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4));
+      }
+      sum += 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
     }
-    double mean = sum / (kProbeWidth * kProbeHeight);
-    *luminance = (float)(probe->linear ? pow(mean, 1.0 / 2.2) : mean);
+    *luminance = (float)pow(sum / (kProbeWidth * kProbeHeight), 1.0 / 2.2);
     done = true;
     glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
   }
