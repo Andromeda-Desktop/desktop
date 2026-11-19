@@ -56,7 +56,7 @@ namespace settings {
     // kMoreBesideBreak (logical px of window width).
     enum class MorePlacement : std::uint8_t { BesideSidebar, InSidebar };
     inline constexpr float kMoreBesideBreak = 1400.0F;
-    inline constexpr float kMoreIndexWidth = 176.0F;
+    inline constexpr float kMoreIndexWidth = 184.0F;
     [[nodiscard]] inline MorePlacement morePlacementFor(float windowWidth) {
       return windowWidth >= kMoreBesideBreak ? MorePlacement::BesideSidebar : MorePlacement::InSidebar;
     }
