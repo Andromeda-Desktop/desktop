@@ -7560,7 +7560,11 @@ static void scene_output_choose_blur_sources(
       pixman_region32_init(&hit);
       const struct wlr_box own = {list[i].x, list[i].y, blur->width, blur->height};
       for (int j = i + 1; j < cache && cached; j++) {
-        if (scene_entry_is_shadow_of(&list[j], &own)) {
+        // Glass pieces of one surface do not see each other's glass or shadow: a sibling inside the reach would force
+        // every piece of a panel to blur live in every frame.
+        const enum wlr_scene_node_type type = list[j].node->type;
+        if (scene_entry_is_shadow_of(&list[j], &own)
+            || ((type == WLR_SCENE_NODE_BLUR || type == WLR_SCENE_NODE_SHADOW) && list[j].node->parent == blur->node.parent)) {
           continue;
         }
         scene_entry_drawn_region(&list[j], &hit);
