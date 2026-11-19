@@ -2411,7 +2411,44 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
     inst.surface->setInputRegion(input);
     inst.sentInput = std::move(input);
   }
+  syncContentRegion(inst, shown > 0.01F, lane ? std::optional<Rect>{restR} : std::nullopt);
   inst.surface->requestRedraw();
+}
+
+// The island draws only inside its morph box: a declared content region lets glass above the clear rest of the
+// full-width surface (Control Center pieces) sample the cached backdrop instead of blurring live in every frame.
+// The compositor animates the clip ahead of the shell's commits, so the box spans the whole morph, not one frame.
+void LiveActivityIsland::syncContentRegion(Instance& inst, bool shown, std::optional<Rect> pill) const {
+  if (inst.dsk == nullptr) {
+    return;
+  }
+  std::vector<InputRect> rects;
+  if (shown) {
+    const float k = inst.scale;
+    const auto add = [&](float x0, float y0, float x1, float y1) {
+      const float pad = static_cast<float>(kShadowPad);
+      const auto x = static_cast<int>(std::floor((x0 * k) - pad));
+      const auto y = static_cast<int>(std::floor((y0 * k) - pad));
+      rects.push_back(InputRect{x, y, static_cast<int>(std::ceil((x1 * k) + pad)) - x,
+                                static_cast<int>(std::ceil((y1 * k) + pad)) - y});
+    };
+    const bool moving = !inst.morph.settled();
+    const auto lo = [&](float a, float b, float c) { return moving ? std::min({a, b, c}) : c; };
+    const auto hi = [&](float a, float b, float c) { return moving ? std::max({a, b, c}) : c; };
+    const Rect& f = inst.from;
+    const Rect& t = inst.to;
+    const Rect& c = inst.cur;
+    add(lo(f.x, t.x, c.x), lo(f.y, t.y, c.y), hi(f.x + f.w, t.x + t.w, c.x + c.w), hi(f.y + f.h, t.y + t.h, c.y + c.h));
+    if (pill.has_value()) {
+      add(pill->x, pill->y, pill->x + pill->w, pill->y + pill->h);
+    }
+  }
+  if (rects == inst.sentContent) {
+    return;
+  }
+  if (inst.dsk->setContentRegion(m_wayland->compositor(), rects)) {
+    inst.sentContent = std::move(rects);
+  }
 }
 
 void LiveActivityIsland::animateReveal(Instance& inst, Face face, float velocity) {

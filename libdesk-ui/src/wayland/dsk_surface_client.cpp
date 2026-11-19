@@ -1,6 +1,7 @@
 #include "wayland/dsk_surface_client.h"
 
 #include "dsk-surface-v1-client-protocol.h"
+#include "platform/surface.h"
 #include "render/animation/motion_service.h"
 
 #include <cstring>
@@ -60,6 +61,16 @@ bool DskSurfaceClient::setContentRegion(wl_region* region) {
   }
   dsk_surface_v1_set_content_region(m_surface, region);
   return true;
+}
+
+bool DskSurfaceClient::setContentRegion(wl_compositor* compositor, const std::vector<InputRect>& rects) {
+  wl_region* region = wl_compositor_create_region(compositor);
+  for (const auto& r : rects) {
+    wl_region_add(region, r.x, r.y, r.width, r.height);
+  }
+  const bool sent = setContentRegion(region);
+  wl_region_destroy(region);
+  return sent;
 }
 
 namespace {

@@ -17,6 +17,8 @@ struct dsk_tracker_v1;
 struct dsk_shape_v1;
 struct dsk_shape_v1_listener;
 struct wl_region;
+struct wl_compositor;
+struct InputRect;
 struct wl_shm;
 struct dsk_surface_v1_listener;
 struct dsk_tracker_v1_listener;
@@ -81,6 +83,8 @@ public:
   // or input; glass above the clear part may reuse a cached backdrop. Null = the whole surface. Applies on the next
   // commit. False when the compositor lacks it.
   bool setContentRegion(wl_region* region);
+  // The same from rects; an empty list declares the whole surface clear.
+  bool setContentRegion(wl_compositor* compositor, const std::vector<InputRect>& rects);
   // Protocol version 11: an app launch starts from the icon at this surface-local rect. Send it just before the
   // launch's activation token. False when the compositor lacks it.
   // dsk_surface_v1.window_icon (v19): the window's icon box on this surface; an empty box forgets it.

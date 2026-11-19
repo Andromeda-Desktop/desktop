@@ -164,6 +164,8 @@ private:
     // Last blur and input regions sent; nullopt = none yet. A tick with the same rects sends nothing.
     std::optional<std::vector<InputRect>> sentBlur;
     std::optional<std::vector<InputRect>> sentInput;
+    // Last content region sent (surface px); nullopt = none yet.
+    std::optional<std::vector<InputRect>> sentContent;
     float restWidth = 0.0F;
     float restLength = 0.0F; // lane pill height, hugging its stacked content
     float restPadTop = 0.0F; // lane pill: rows above the stacked content
@@ -376,6 +378,7 @@ private:
   [[nodiscard]] std::optional<SheetSource> sheetSource(const Instance& inst, Face face) const;
   // The lane pill's glass shape: at the pill while `shown`, else no clip.
   void syncLanePill(Instance& inst, bool shown) const;
+  void syncContentRegion(Instance& inst, bool shown, std::optional<Rect> pill) const;
   // The card shape follows `face`: grown from the pill to its card, or shrunk back into the pill and then cleared.
   void syncLaneCard(Instance& inst, Face face, bool jump, bool continueMirror);
   void syncRowCard(Instance& inst, Face face, bool jump, bool continueMirror);
