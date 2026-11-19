@@ -56,7 +56,6 @@ namespace {
   constexpr int kNamePad = 4;
   constexpr int kNameRound = 4;
   constexpr int kBandRound = 4;
-  constexpr int kMenuW = 220;
   constexpr float kDragSlop = 8.0F; // rulebook 7.7
   constexpr float kDraggedOpacity = 0.5F;
   constexpr auto kDoubleClick = std::chrono::milliseconds(400);
@@ -1668,7 +1667,7 @@ void DesktopIcons::openDesktopMenu(float x, float y) {
   });
   m_menu->open(ContextMenuPopupRequest{
       .entries = std::move(entries),
-      .minMenuWidth = static_cast<float>(kMenuW),
+      .minMenuWidth = Tokens::componentMenuFixedWidth,
       .maxVisible = 24, // every row shows: a scrolling desktop menu hides Change Wallpaper
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
       .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
@@ -1697,7 +1696,7 @@ void DesktopIcons::confirmDelete() {
       .entries = {{.label = i18n::trp("desktop-icons.delete-confirm", static_cast<long>(paths.size())), .header = true},
                   {.id = DeletePermanently, .label = i18n::tr("desktop-icons.delete-permanently")},
                   {.label = i18n::tr("desktop-icons.cancel")}},
-      .minMenuWidth = static_cast<float>(kMenuW),
+      .minMenuWidth = Tokens::componentMenuFixedWidth,
       .maxVisible = 4,
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(cell.x), .y = static_cast<std::int32_t>(cell.y + m_plate)},
       .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
@@ -1770,7 +1769,7 @@ void DesktopIcons::openItemMenu(std::size_t index, float x, float y) {
   });
   m_menu->open(ContextMenuPopupRequest{
       .entries = std::move(entries),
-      .minMenuWidth = static_cast<float>(kMenuW),
+      .minMenuWidth = Tokens::componentMenuFixedWidth,
       .maxVisible = 20,
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
       .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
