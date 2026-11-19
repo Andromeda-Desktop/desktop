@@ -82,7 +82,9 @@ acquire() {
   local tree held born
   tree=$(gh api "repos/$repo/git/commits/${GITHUB_SHA:?}" -q .tree.sha)
   lock_sha=$(gh api "repos/$repo/git/commits" -f message="repo-publish lock, run ${GITHUB_RUN_ID:-local}" -f tree="$tree" -q .sha)
-  for _ in $(seq 120); do
+  # 45 min of waits: longer than the 30 min after which a lock is stale (a cancelled run never unlocks), so a waiter
+  # takes a dead lock instead of giving up just before it may.
+  for _ in $(seq 180); do
     if gh api "repos/$repo/git/refs" -f ref="refs/$lock" -f sha="$lock_sha" > /dev/null 2>&1; then
       trap unlock EXIT
       return 0
@@ -97,7 +99,7 @@ acquire() {
     echo "repo-publish: $lock is held, waiting" >&2
     sleep 15
   done
-  echo "::error::repo-publish: $lock still held after 30 min" >&2
+  echo "::error::repo-publish: $lock still held after 45 min" >&2
   exit 1
 }
 [[ ${PUBLISH:-true} != true ]] || acquire
