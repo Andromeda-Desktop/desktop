@@ -223,7 +223,8 @@ namespace {
           }
           return;
         }
-        const Color hover = resolveColorSpec(colorSpecFromRole(ColorRole::Fill2, opacity));
+        // One ladder step (rulebook P3): a glass tile rests clear, so its hover is fill_1.
+        const Color hover = resolveColorSpec(colorSpecFromRole(glass ? ColorRole::Fill1 : ColorRole::Fill2, opacity));
         const Color rest = glass ? Color{hover.r, hover.g, hover.b, 0.0F}
                                  : resolveColorSpec(colorSpecFromRole(ColorRole::GlassCard, opacity));
         card.setFill(lerpColor(rest, hover, t));
@@ -1407,7 +1408,10 @@ void QuickPage::syncPhone() {
     return;
   }
   m_phoneName->setText(phone->name);
-  m_phoneCard->setOpacity(phone->connected ? 1.0F : 0.6F);
+  // The card's own opacity belongs to the sheet's piece fade; the disconnected dim goes on its content.
+  for (const auto& child : m_phoneCard->children()) {
+    child->setOpacity(phone->connected ? 1.0F : 0.6F);
+  }
   m_phoneKeys[0]->setEnabled(phone->connected);
   m_phoneKeys[1]->setEnabled(phone->connected);
   std::string line;
