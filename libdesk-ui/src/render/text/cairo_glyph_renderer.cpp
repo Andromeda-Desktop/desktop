@@ -347,12 +347,16 @@ void CairoGlyphRenderer::drawGlyph(
     return;
   }
 
-  CacheEntry* entry = lookupOrRasterize(contentScale, codepoint, fontSize);
+  // A glyph scaled up by its node (dock magnify) rasters at that size, in 0.25 steps up, so it stays sharp and an
+  // animated scale re-rasters at most a few times.
+  const float nodeScale = std::sqrt(std::abs(transform.m[0] * transform.m[4] - transform.m[1] * transform.m[3]));
+  const float rasterScale = contentScale * std::max(1.0F, std::ceil(nodeScale * 4.0F - 0.01F) / 4.0F);
+  CacheEntry* entry = lookupOrRasterize(rasterScale, codepoint, fontSize);
   if (entry == nullptr || entry->texture.id == 0) {
     return;
   }
 
-  const float invScale = 1.0F / contentScale;
+  const float invScale = 1.0F / rasterScale;
   const float quadW = static_cast<float>(entry->pixelWidth) * invScale;
   const float quadH = static_cast<float>(entry->pixelHeight) * invScale;
   const float baselineXLocal = entry->baselineXPx * invScale;
