@@ -8,6 +8,7 @@
 #include "design_tokens.h"
 #include "dbus/polkit/polkit_agent.h"
 #include "shell/polkit/askpass_broker.h"
+#include "system/distro_info.h"
 #include "i18n/i18n.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
@@ -375,6 +376,7 @@ void PolkitPanel::doUpdate(Renderer& renderer) {
       m_iconResolved = false;
     }
     updateAskpass();
+    updateAvatar(renderer);
     return;
   }
   PolkitAgent* agent = m_agentProvider != nullptr ? m_agentProvider() : nullptr;
@@ -476,7 +478,8 @@ void PolkitPanel::updateAskpass() {
   ));
   m_promptLabel->setColor(colorSpecFromRole(ColorRole::Label2));
   m_promptLabel->setVisible(true);
-  m_identityLabel->setVisible(false);
+  // sudo -A asks for the password of the user who runs it: this session's user.
+  showIdentity(sessionDisplayName(), sessionUserName());
   m_identitySelect->setVisible(false);
   m_supplementaryLabel->setVisible(false);
   if (m_faceGlyph != nullptr) {
@@ -511,14 +514,7 @@ void PolkitPanel::updateIdentity(const PolkitRequest& request) {
     options.push_back(identity.realName.empty() ? identity.userName
                                                 : std::format("{} ({})", identity.realName, identity.userName));
   }
-  m_identityLabel->setText(activeName);
-  if (m_avatarInitial != nullptr) {
-    m_avatarInitial->setText(
-        activeName.empty() ? std::string{}
-                           : std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(activeName.front()))))
-    );
-  }
-  m_avatarPath = activeLogin.empty() ? std::string{} : accountPicturePath(activeLogin);
+  showIdentity(activeName, activeLogin);
   m_identitySelect->setVisible(uids.size() > 1);
   if (uids != m_identityUids) {
     m_identityUids = std::move(uids);
@@ -527,6 +523,18 @@ void PolkitPanel::updateIdentity(const PolkitRequest& request) {
   if (!m_identityUids.empty()) {
     m_identitySelect->setSelectedIndexSilently(activeIndex);
   }
+}
+
+void PolkitPanel::showIdentity(const std::string& name, const std::string& login) {
+  m_identityLabel->setText(name);
+  m_identityLabel->setVisible(true);
+  if (m_avatarInitial != nullptr) {
+    m_avatarInitial->setText(
+        name.empty() ? std::string{}
+                     : std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(name.front()))))
+    );
+  }
+  m_avatarPath = login.empty() ? std::string{} : accountPicturePath(login);
 }
 
 void PolkitPanel::updateAvatar(Renderer& renderer) {

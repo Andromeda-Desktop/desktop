@@ -59,6 +59,7 @@ private:
   bool handleInputKeyEvent(std::uint32_t sym, std::uint32_t modifiers);
   void resolveIcon(Renderer& renderer, const PolkitRequest& request);
   void updateIdentity(const PolkitRequest& request);
+  void showIdentity(const std::string& name, const std::string& login);
   void updateAvatar(Renderer& renderer);
   void updateAskpass();
   [[nodiscard]] bool showsAskpass() const { return m_authMode && m_authMode() == AuthDialogMode::Askpass; }
