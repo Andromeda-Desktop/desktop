@@ -410,10 +410,11 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
     return true;
   }
 
-  // Validate+Shift opens the app context menu (Shift layered on the configured
-  // Validate chord). Menu navigation uses the Up/Down/Validate/Cancel keybinds.
-  if ((modifiers & KeyMod::Shift) != 0
-      && KeybindMatcher::matches(KeybindAction::Validate, sym, modifiers & ~KeyMod::Shift)) {
+  // Validate+Shift or Ctrl+K (the footer hint) opens the app context menu. Menu navigation uses the
+  // Up/Down/Validate/Cancel keybinds.
+  if (((modifiers & KeyMod::Shift) != 0
+       && KeybindMatcher::matches(KeybindAction::Validate, sym, modifiers & ~KeyMod::Shift))
+      || (modifiers == KeyMod::Ctrl && (sym == XKB_KEY_k || sym == XKB_KEY_K))) {
     float anchorX = 0.0F;
     float anchorY = 0.0F;
     if (sectionNav && m_launcherSections != nullptr) {

@@ -770,14 +770,14 @@ void LauncherPanel::create() {
         .flexGrow = 1.0F,
     }));
     footerRow->addChild(keyHint(i18n::tr("launcher.pill.open"), "↩", &m_pillOpenHint));
-    footerRow->addChild(keyHint(i18n::tr("launcher.pill.actions-hint"), "⌘K"));
+    footerRow->addChild(keyHint(i18n::tr("launcher.pill.actions-hint"), "Ctrl K"));
     auto kindHint = keyHint(i18n::tr("launcher.pill.kind-hint"), "⇥");
     m_pillKindHint = kindHint.get();
     footerRow->addChild(std::move(kindHint));
     auto backHint = keyHint(i18n::tr("launcher.pill.back-hint"), "⌫");
     m_pillBackHint = backHint.get();
     footerRow->addChild(std::move(backHint));
-    footerRow->addChild(keyHint(i18n::tr("launcher.pill.close-hint"), "esc"));
+    footerRow->addChild(keyHint(i18n::tr("launcher.pill.close-hint"), "Esc"));
     footer->addChild(std::move(footerRow));
     results->addChild(std::move(footer));
     container->addChild(std::move(results));
@@ -1429,8 +1429,10 @@ void LauncherPanel::applyEmptyState() {
     m_pillFooter->setParticipatesInLayout(footer);
     m_pillCount->setText(
         filesScope() ? i18n::trp("launcher.files.count", static_cast<long>(m_results.size()))
-                     : i18n::tr("launcher.pill.result-count", "count",
-                                std::ranges::count_if(m_results, [](const LauncherResult& r) { return r.id != FilesProvider::kShowAllId; }))
+                     : i18n::trp("launcher.pill.result-count",
+                                 static_cast<long>(std::ranges::count_if(m_results, [](const LauncherResult& r) {
+                                   return r.id != FilesProvider::kShowAllId;
+                                 })))
     );
     m_pillBackHint->setVisible(filesScope());
     m_pillBackHint->setParticipatesInLayout(filesScope());

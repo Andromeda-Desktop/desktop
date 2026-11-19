@@ -149,6 +149,19 @@ void LauncherPanel::syncModeDrops() {
     }
     drop.glyph->setColor(colorSpecFromRole(on ? ColorRole::OnAccent : ColorRole::Label1));
   }
+  if (m_input != nullptr && m_scopedPlaceholder.empty()) {
+    constexpr std::array<std::string_view, 4> kModePlaceholders{
+        "launcher.mode-placeholder.apps", "launcher.mode-placeholder.files", "launcher.mode-placeholder.clipboard",
+        "launcher.mode-placeholder.emoji"
+    };
+    std::string_view key = "launcher.search-placeholder";
+    for (std::size_t i = 0; i < m_modeDrops.size() && i < kModePlaceholders.size(); ++i) {
+      if (modeDropOn(i)) {
+        key = kModePlaceholders[i];
+      }
+    }
+    m_input->setPlaceholder(i18n::tr(key));
+  }
 }
 
 void LauncherPanel::toggleModeDrop(std::size_t index) {
