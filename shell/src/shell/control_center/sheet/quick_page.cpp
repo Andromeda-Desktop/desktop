@@ -96,7 +96,13 @@ namespace {
         inkName->setMaxWidth(name->width());
         inkValue->setText(value->text());
         inkValue->setMaxWidth(value->width());
+        // A fixed size: a later relayout of the dirty copy would otherwise pack the value beside the name.
+        inkRow->setSize(width(), height());
         inkRow->arrange(renderer, LayoutRect{.width = width(), .height = height()});
+        // Each ink piece sits exactly on the piece it repeats, whatever width the copy measured.
+        inkIcon->setPosition(icon->x(), icon->y());
+        inkName->setPosition(name->x(), name->y());
+        inkValue->setPosition(value->x(), value->y());
         ink->setPosition(0.0F, 0.0F);
       }
       clipInk();
@@ -246,6 +252,8 @@ namespace {
       }
       pressCard(pressed);
     });
+    // A press lost to a leave or a capture change sends no release.
+    row.inputArea()->setOnCancel([pressCard] { pressCard(false); });
     return pressCard;
   }
 
