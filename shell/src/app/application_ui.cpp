@@ -1188,6 +1188,8 @@ void Application::initBarDockAndLayout() {
     auto surfaces = m_bar.allBarSurfaces();
     const auto island = m_liveActivity.surfaces();
     surfaces.insert(surfaces.end(), island.begin(), island.end());
+    const auto dock = m_dock.surfaces();
+    surfaces.insert(surfaces.end(), dock.begin(), dock.end());
     return surfaces;
   });
   m_panelManager.setAttachedPanelAvailabilityCallback([this](wl_output* output, std::string_view barName) {

@@ -644,6 +644,15 @@ void Dock::requestLayout() {
 
 // ── Input ─────────────────────────────────────────────────────────────────────
 
+std::vector<wl_surface*> Dock::surfaces() const {
+  std::vector<wl_surface*> out;
+  out.reserve(m_surfaceMap.size());
+  for (const auto& [surface, instance] : m_surfaceMap) {
+    out.push_back(surface);
+  }
+  return out;
+}
+
 bool Dock::onPointerEvent(const PointerEvent& event) {
   if (m_preview != nullptr && m_preview->isOpen() && m_preview->onPointerEvent(event)) {
     return true;
@@ -753,6 +762,12 @@ bool Dock::onPointerEvent(const PointerEvent& event) {
     if (m_hoveredInstance == nullptr)
       break;
     const bool pressed = event.pressed;
+    // Dock surfaces sit in the panel focus-grab whitelist, so the dock closes an open panel itself; the launcher
+    // button toggles it on its click.
+    if (pressed && PanelManager::instance().isOpen() &&
+        (m_hoveredInstance->launcherArea == nullptr || !m_hoveredInstance->launcherArea->hovered())) {
+      PanelManager::instance().closePanel();
+    }
     m_hoveredInstance->inputDispatcher.pointerButton(
         static_cast<float>(event.sx), static_cast<float>(event.sy), event.button, pressed, event.serial, event.time,
         event.touch

@@ -61,6 +61,7 @@ public:
   void requestLayout();
   void requestRedraw();
   bool onPointerEvent(const PointerEvent& event);
+  [[nodiscard]] std::vector<wl_surface*> surfaces() const;
 
   void registerIpc(IpcService& ipc);
   /// Enables the Trash cell: drops go to `ops`, and `watcher` reports when the Trash gains or loses files.
