@@ -262,7 +262,7 @@ namespace settings {
   }
 
   bool settingEntryShowsCaption(const SettingEntry& entry) {
-    return settingEntryIsExpert(entry);
+    return entry.captionAlways || settingEntryIsExpert(entry);
   }
 
   bool settingEntryDrawnByPage(const SettingEntry& entry) {

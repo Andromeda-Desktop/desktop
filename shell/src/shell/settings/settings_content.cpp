@@ -688,6 +688,7 @@ namespace settings {
       });
       block->addChild(ui::row({.paddingV = Style::spaceXs * scale}, std::move(addBtn)));
 
+      addSettingsRowSeparators(*block, scale);
       section.addChild(std::move(block));
     };
 
@@ -814,6 +815,7 @@ namespace settings {
       });
       block->addChild(ui::row({.paddingV = Style::spaceXs * scale}, std::move(addBtn)));
 
+      addSettingsRowSeparators(*block, scale);
       section.addChild(std::move(block));
     };
 
@@ -899,6 +901,7 @@ namespace settings {
       });
       block->addChild(std::move(addBtn));
 
+      addSettingsRowSeparators(*block, scale);
       section.addChild(std::move(block));
     };
 

@@ -322,6 +322,8 @@ namespace settings {
     std::vector<std::string> path;
     SettingControl control;
     bool advanced = false;
+    // The caption is the row's message (a storage or credential error), so main rows show it too.
+    bool captionAlways = false;
     std::string searchText;
     SettingVisibility visibleWhen; // empty = always visible
     bool fromSchema = false;       // built from a config schema RowSpec, not written by hand

@@ -1732,6 +1732,7 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
                 .glyph = "refresh",
                 .variant = ButtonVariant::Secondary,
             },
+        .captionAlways = true,
         .searchText = "calendar credentials keyring secret service retry migration unlock",
     };
     m_settingsRegistry.insert(it, std::move(retry));
@@ -1789,6 +1790,7 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
                 .glyph = "refresh",
                 .variant = ButtonVariant::Secondary,
             },
+        .captionAlways = true,
         .searchText = "calendar events cache encryption storage keyring retry migration unlock",
         .visibleWhen = [](const Config& config) { return config.calendar.enabled; },
     };
@@ -1846,6 +1848,7 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
                 .action = [this] { m_clipboardService->retryPersistence(); },
                 .glyph = "refresh",
             },
+        .captionAlways = true,
         .searchText = "clipboard history encryption keyring secret service retry migration unlock",
         .visibleWhen = [](const Config& config) { return config.shell.clipboardEnabled; },
     };
@@ -1872,6 +1875,7 @@ void SettingsWindow::refreshSettingsRegistry(const Config& cfg) {
                 .action = [this]() { m_notificationManager->retryHistoryPersistence(); },
                 .glyph = "refresh",
             },
+        .captionAlways = true,
         .searchText = "notification history encryption keyring secret service retry migration unlock",
     };
     m_settingsRegistry.insert(it, std::move(retry));
