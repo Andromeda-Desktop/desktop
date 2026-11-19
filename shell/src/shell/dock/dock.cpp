@@ -47,6 +47,8 @@
 namespace {
 
   constexpr Logger kLog("dock");
+  // Time to cross from a dock icon to its preview card before the card closes.
+  constexpr auto kPreviewCloseGrace = std::chrono::milliseconds(150);
 
   void assertDockInitialized(
       [[maybe_unused]] const CompositorPlatform* platform, [[maybe_unused]] const ConfigService* config,
@@ -1650,7 +1652,7 @@ void Dock::onTrashChanged() {
   m_trashFull = full;
   for (auto& inst : m_instances) {
     inst->trashFull = full;
-    shell::dock::applyTrashGlyph(*inst);
+    shell::dock::applyTrashIcon(*inst);
   }
 }
 
@@ -1750,7 +1752,7 @@ void Dock::onItemHover(shell::dock::DockInstance& instance, InputArea* area) {
   }
   m_previewOpenTimer.stop();
   if (m_preview != nullptr && m_preview->isOpen()) {
-    m_previewCloseTimer.start(std::chrono::milliseconds(300), [this] {
+    m_previewCloseTimer.start(kPreviewCloseGrace, [this] {
       if (m_preview != nullptr && !m_preview->pointerInside()) {
         m_preview->close();
       }
@@ -1784,7 +1786,7 @@ void Dock::openItemPreview(shell::dock::DockInstance* instance, const std::strin
   if (m_preview == nullptr) {
     m_preview = std::make_unique<TaskbarPreview>(*m_platform, *m_config, *m_renderContext);
     m_preview->setOnPointerLeave([this] {
-      m_previewCloseTimer.start(std::chrono::milliseconds(300), [this] {
+      m_previewCloseTimer.start(kPreviewCloseGrace, [this] {
         if (m_preview != nullptr && !m_preview->pointerInside()) {
           m_preview->close();
         }

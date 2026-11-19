@@ -544,7 +544,8 @@ namespace shell::dock {
   }
 
   std::unique_ptr<InputArea> createTrashButton(
-      DockInstance& instance, const DockConfig& cfg, const std::shared_ptr<DockItemClickContext>& clickContext
+      DockInstance& instance, const DockConfig& cfg, DockItemSceneDependencies deps,
+      const std::shared_ptr<DockItemClickContext>& clickContext
   ) {
     const float g = glyphCell(cfg);
     const float cellMain = g + 2.0F * kCellPad;
@@ -557,17 +558,40 @@ namespace shell::dock {
       areaNode->setSize(cellMain, cellCross);
     }
 
-    auto glyph = ui::glyph({
-        .glyphSize = g,
-        .color = colorSpecFromRole(ColorRole::Label1),
-        .width = g,
-        .height = g,
-        .configure = [&cfg](Glyph& node) { node.setPosition(glyphBaseX(cfg), glyphBaseY(cfg)); },
-    });
-    instance.trash.icon = static_cast<Glyph*>(glyph.get());
-    areaNode->addChild(std::move(glyph));
+    // The theme's full-colour trash, decoded at its magnified size like app icons; the glyph only without one.
+    const int decode = std::max(
+        1, static_cast<int>(std::round(static_cast<float>(dockIconDecodeTargetSize(cfg)) * g / static_cast<float>(cfg.iconSize)))
+    );
+    // Copied one at a time: resolve() returns a cache reference that a theme change on the next call clears.
+    instance.trash.themeIcons[0] = deps.iconResolver.resolve("user-trash", decode);
+    instance.trash.themeIcons[1] = deps.iconResolver.resolve("user-trash-full", decode);
+    if (instance.trash.themeIcons[0].empty() || instance.trash.themeIcons[1].empty()) {
+      instance.trash.themeIcons = {};
+    }
+    instance.trash.decodeSize = decode;
+    std::unique_ptr<Node> icon;
+    if (!instance.trash.themeIcons[0].empty()) {
+      icon = ui::image({
+          .width = g,
+          .height = g,
+          .configure = [&cfg, &shell = deps.model.config.config().shell](Image& image) {
+            image.setAppIconColorization(effectiveShellAppIconColorizationTint(shell));
+            image.setPosition(glyphBaseX(cfg), glyphBaseY(cfg));
+          },
+      });
+    } else {
+      icon = ui::glyph({
+          .glyphSize = g,
+          .color = colorSpecFromRole(ColorRole::Label1),
+          .width = g,
+          .height = g,
+          .configure = [&cfg](Glyph& node) { node.setPosition(glyphBaseX(cfg), glyphBaseY(cfg)); },
+      });
+    }
+    instance.trash.icon = icon.get();
+    areaNode->addChild(std::move(icon));
     instance.trash.area = areaNode.get();
-    applyTrashGlyph(instance);
+    applyTrashIcon(instance);
     instance.trash.visualScale = cfg.inactiveScale;
     instance.trash.icon->setScale(cfg.inactiveScale);
 
@@ -585,11 +609,19 @@ namespace shell::dock {
     return areaNode;
   }
 
-  void applyTrashGlyph(DockInstance& instance) {
+  void applyTrashIcon(DockInstance& instance) {
     if (instance.trash.icon == nullptr) {
       return;
     }
-    static_cast<Glyph*>(instance.trash.icon)->setGlyph(instance.trashFull ? "trash-x" : "trash");
+    if (instance.trash.themeIcons[0].empty()) {
+      static_cast<Glyph*>(instance.trash.icon)->setGlyph(instance.trashFull ? "trash-x" : "trash");
+    } else if (instance.surface != nullptr) {
+      static_cast<Image*>(instance.trash.icon)
+          ->setSourceFile(
+              instance.surface->renderTarget().renderer(), instance.trash.themeIcons[instance.trashFull ? 1 : 0],
+              instance.trash.decodeSize, true
+          );
+    }
     if (instance.surface != nullptr) {
       instance.surface->requestRedraw();
     }
@@ -960,7 +992,7 @@ namespace shell::dock {
 
     if (instance.hasTrash) {
       instance.separators.push_back({.node = instance.row->addChild(makeDockSeparator(vert, cfg.scale))});
-      instance.row->addChild(createTrashButton(instance, cfg, clickContext));
+      instance.row->addChild(createTrashButton(instance, cfg, deps, clickContext));
     }
 
     if (cfg.magnification && instance.trash.icon != nullptr) {

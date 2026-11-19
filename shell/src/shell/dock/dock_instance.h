@@ -108,6 +108,9 @@ namespace shell::dock {
     struct TrashCell {
       InputArea* area = nullptr;
       Node* icon = nullptr;
+      // Theme icon paths {empty, full}, both or neither; neither = the glyph.
+      std::array<std::string, 2> themeIcons;
+      int decodeSize = 0;
       float restMainPos = 0.0F;
       float hoverMainOffset = 0.0F;
       float visualScale = -1.0F;

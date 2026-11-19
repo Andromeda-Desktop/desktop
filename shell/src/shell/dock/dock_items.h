@@ -102,8 +102,8 @@ namespace shell::dock {
   void syncDockItemRestPositions(DockInstance& instance, const DockConfig& cfg);
   // Pins launcher and trash to the pill ends of a dock that scrolls and fades the apps clipped at those ends.
   void applyDockOverflowEnds(DockInstance& instance, const DockConfig& cfg);
-  // Sets the Trash glyph from instance.trashFull.
-  void applyTrashGlyph(DockInstance& instance);
+  // Sets the Trash icon (theme image or glyph) from instance.trashFull.
+  void applyTrashIcon(DockInstance& instance);
   void applyDragVisuals(DockInstance& instance, const DockConfig& cfg);
   void clearDragVisuals(DockInstance& instance, const DockConfig& cfg);
   void dismissDockTooltip();
