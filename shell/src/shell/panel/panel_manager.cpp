@@ -3091,18 +3091,18 @@ std::vector<Node*> PanelManager::visiblePieces() const {
 }
 
 // proto surfaces.js openLauncher: inside the growing group, the pieces fade in on spring.fade once the grow has covered
-// content_gate of its travel, in scene order and staggered.
+// content_gate of its travel, in scene order and staggered. Ungated (quick scale open), they fade together as one sheet.
 void PanelManager::fadePiecesIn(bool gated) {
   for (Node* piece : visiblePieces()) {
     m_animations.cancelForOwner(piece);
     piece->setOpacity(0.0F);
   }
-  const auto fadeIn = [this] {
+  const auto fadeIn = [this, gated] {
     int index = 0;
     for (Node* piece : visiblePieces()) {
       m_animations.cancelForOwner(piece);
       m_animations.animateStaggered(
-          index++, piece->opacity(), 1.0F, effectsSpring(),
+          gated ? index++ : 0, piece->opacity(), 1.0F, effectsSpring(),
           [this, piece](float v) {
             piece->setOpacity(v);
             if (m_surface != nullptr) {
