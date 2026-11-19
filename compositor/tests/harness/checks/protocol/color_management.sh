@@ -155,7 +155,8 @@ window_h=$(jq -r '.h' <<< "$window_json")
 normal_x=$((window_x + window_w / 2))
 normal_y=$((window_y + window_h / 2))
 overview_x=$((320 + normal_x / 2))
-overview_y=$((180 + normal_y / 2))
+# The Strip row sits 14 px below the output centre (kStripShift, 634515412).
+overview_y=$((194 + normal_y / 2))
 
 sample_rgb() {
   magick "$1" -alpha off -crop "20x20+$(($2 - 10))+$(($3 - 10))" +repage \
