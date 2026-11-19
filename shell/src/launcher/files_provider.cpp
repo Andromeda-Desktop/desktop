@@ -93,6 +93,53 @@ namespace {
     return folder;
   }
 
+  // One row for a path: name, "~/folder", a file or folder glyph, and the picture or thumbnail when there is one.
+  LauncherResult fileResult(const std::string& path, bool folder) {
+    LauncherResult r;
+    r.id = path;
+    r.title = std::filesystem::path(path).filename().string();
+    r.subtitle = displayFolder(path);
+    r.glyphName = folder ? "folder" : "file";
+    r.presentation = folder ? "folder" : "file";
+    // Images preview themselves; other files use a thumbnail a file manager already made, if any.
+    if (!folder) {
+      r.iconPath = isImage(path) ? path : cachedThumbnail(path);
+      if (!r.iconPath.empty()) {
+        r.presentation = "file-image";
+      }
+    }
+    return r;
+  }
+
+  // The shared GTK/Qt recent-files list (Files > Recents), local paths, newest use (else change) first.
+  std::vector<std::string> readRecentPaths(const std::string& file) {
+    std::vector<std::string> paths;
+    GBookmarkFile* bookmarks = g_bookmark_file_new();
+    if (g_bookmark_file_load_from_file(bookmarks, file.c_str(), nullptr)) {
+      gsize count = 0;
+      gchar** uris = g_bookmark_file_get_uris(bookmarks, &count);
+      std::vector<std::pair<gint64, std::string>> byUse;
+      for (gsize i = 0; i < count; ++i) {
+        GDateTime* when = g_bookmark_file_get_visited_date_time(bookmarks, uris[i], nullptr);
+        if (when == nullptr) {
+          when = g_bookmark_file_get_modified_date_time(bookmarks, uris[i], nullptr);
+        }
+        if (gchar* path = g_filename_from_uri(uris[i], nullptr, nullptr); path != nullptr) {
+          byUse.emplace_back(when != nullptr ? g_date_time_to_unix(when) : 0, path);
+          g_free(path);
+        }
+      }
+      g_strfreev(uris);
+      std::ranges::stable_sort(byUse, std::greater<>{}, &std::pair<gint64, std::string>::first);
+      paths.reserve(byUse.size());
+      for (auto& [when, path] : byUse) {
+        paths.push_back(std::move(path));
+      }
+    }
+    g_bookmark_file_free(bookmarks);
+    return paths;
+  }
+
 } // namespace
 
 FilesProvider::FilesProvider(ClipboardService* clipboard, SessionBus* bus) : m_clipboard(clipboard), m_bus(bus) {}
@@ -154,6 +201,15 @@ std::vector<LauncherResult> FilesProvider::request(std::string_view text, bool s
   const Request key{std::string(text), scoped ? std::optional(m_scopeKind) : std::nullopt};
   std::string needle = StringUtils::trim(text);
   std::erase(needle, '\n');
+  if (scoped && needle.empty() && m_scopeKind.empty()) {
+    m_answered = key.first;
+    m_answeredScope = key.second;
+    m_requested.reset();
+    m_loading = false;
+    m_debounce.stop();
+    m_results = recentFiles();
+    return m_results;
+  }
   if (needle.size() < kMinQuery && (!scoped || m_scopeKind.empty() || !needle.empty())) {
     m_answered = key.first;
     m_answeredScope = key.second;
@@ -180,6 +236,32 @@ std::vector<LauncherResult> FilesProvider::request(std::string_view text, bool s
   m_loading = true;
   m_debounce.start(needle.empty() ? std::chrono::milliseconds(0) : kTypingDebounce, [this, key, line] { send(key, line); });
   return m_results;
+}
+
+std::vector<LauncherResult> FilesProvider::recentFiles() const {
+  const std::string file = (std::filesystem::path(g_get_user_data_dir()) / "recently-used.xbel").string();
+  std::error_code ec;
+  const auto stamp = std::filesystem::last_write_time(file, ec);
+  if (ec) {
+    m_recentPaths.clear();
+  } else if (stamp != m_recentStamp) {
+    m_recentStamp = stamp;
+    m_recentPaths = readRecentPaths(file);
+  }
+  std::vector<LauncherResult> out;
+  for (const std::string& path : m_recentPaths) {
+    if (out.size() >= static_cast<std::size_t>(kScopedLimit)) {
+      break;
+    }
+    const auto status = std::filesystem::status(path, ec);
+    if (ec || !std::filesystem::exists(status)) {
+      continue;
+    }
+    LauncherResult r = fileResult(path, std::filesystem::is_directory(status));
+    r.category = i18n::tr("launcher.pill.recent");
+    out.push_back(std::move(r));
+  }
+  return out;
 }
 
 void FilesProvider::send(const Request& request, const std::string& line) const {
@@ -264,19 +346,7 @@ void FilesProvider::onAnswer(const Request& request, const std::string& body) co
     const std::string path(row.substr(0, tab));
     const bool folder = row.substr(row.size() - 4, 2) == "\td";
     mtimes.push_back(std::atoll(std::string(row.substr(tab + 1)).c_str()));
-    LauncherResult r;
-    r.id = path;
-    r.title = std::filesystem::path(path).filename().string();
-    r.subtitle = displayFolder(path);
-    r.glyphName = folder ? "folder" : "file";
-    r.presentation = folder ? "folder" : "file";
-    // Images preview themselves; other files use a thumbnail a file manager already made, if any.
-    if (!folder) {
-      r.iconPath = isImage(path) ? path : cachedThumbnail(path);
-      if (!r.iconPath.empty()) {
-        r.presentation = "file-image";
-      }
-    }
+    LauncherResult r = fileResult(path, folder);
     r.category = displayName();
     m_results.push_back(std::move(r));
   }

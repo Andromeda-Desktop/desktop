@@ -72,7 +72,9 @@ namespace {
     const int r = rank(id);
     const std::string label = r == 1   ? i18n::tr("launcher.browser.sections.commands")
                               : r == 6 ? i18n::tr("launcher.browser.sections.actions")
-                                       : displayName(id);
+                              // Files rows name their section: "Files" for matches, "Recent" for the empty Files scope.
+                              : r == 4 && !results[i].category.empty() ? results[i].category
+                                                                       : displayName(id);
     auto it = std::ranges::find_if(sections, [&](const auto& entry) { return entry.second.label == label; });
     if (it == sections.end()) {
       sections.push_back({r, {.label = label, .glyphName = {}, .resultIndices = {}}});

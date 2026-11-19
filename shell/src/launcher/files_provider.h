@@ -5,6 +5,7 @@
 #include "launcher/launcher_provider.h"
 
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -69,6 +70,7 @@ protected:
   void doAddPollFds(std::vector<pollfd>& fds) override;
 
 private:
+  [[nodiscard]] std::vector<LauncherResult> recentFiles() const;
   [[nodiscard]] bool connect() const;
   void disconnect() const;
   // A request is the asked text plus its scope: nullopt = the general search, else the Files scope's kind word.
@@ -90,6 +92,9 @@ private:
   mutable std::optional<std::string> m_answeredScope;
   std::string m_scopeKind;
   mutable std::vector<LauncherResult> m_results;
+  // recently-used.xbel paths, newest use first, parsed again only when the file's mtime changes.
+  mutable std::filesystem::file_time_type m_recentStamp{};
+  mutable std::vector<std::string> m_recentPaths;
   mutable bool m_loading = false;
   mutable Timer m_debounce;
   mutable std::unique_ptr<sdbus::IProxy> m_fileManager; // kept alive for pending ShowItems replies
