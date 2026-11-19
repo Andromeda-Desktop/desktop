@@ -2086,8 +2086,11 @@ namespace andromeda {
     // Keep the usable area output-local so layout moves take effect immediately,
     // without waiting for the next layer arrangement.
     m_localUsableArea = usableArea;
-    m_arrangedLayoutX = m_sceneOutput->x;
-    m_arrangedLayoutY = m_sceneOutput->y;
+    // An output off the layout keeps its last position: enabling it again places it there.
+    if (wlr_output_layout_get(m_server->outputLayout(), m_output) != nullptr) {
+      m_arrangedLayoutX = m_sceneOutput->x;
+      m_arrangedLayoutY = m_sceneOutput->y;
+    }
 
     if (ScratchpadManager* scratchpad = m_server->scratchpadManager()) {
       scratchpad->refreshOutputGeometry(this);
