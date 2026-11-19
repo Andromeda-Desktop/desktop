@@ -2805,6 +2805,7 @@
         "focus-styling": "Focus Styling",
         "formats": "Formats",
         "general": "General",
+        "glass": "Glass",
         "greeter": "Greeter",
         "grouping": "Grouping",
         "history": "History",
@@ -4474,7 +4475,7 @@
         },
         "transparency-mode": {
           "description": "Panel glass style, including floating panel opacity and card translucency",
-          "label": "Transparency"
+          "label": "Panel Transparency"
         },
         "wallpaper-show-names": {
           "description": "Caption each thumbnail with its file name in the wallpaper picker.",

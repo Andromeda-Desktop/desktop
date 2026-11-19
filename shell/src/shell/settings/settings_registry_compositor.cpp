@@ -158,41 +158,41 @@ namespace settings {
 
       toggle(TextScale, "accessibility", "appearance.increase_contrast", "accessibility high contrast visually impaired");
       toggle(
-          TextScale, "accessibility", "appearance.reduce_transparency",
+          Appearance, "glass", "appearance.reduce_transparency",
           "accessibility reduce transparency glass solid opaque"
       );
       if (!isOn("appearance.reduce_transparency")) {
         choice(
-            Appearance, "surfaces", "appearance.glass_style", {"clear", "liquid", "tinted", "frosted"}, true,
+            Appearance, "glass", "appearance.glass_style", {"clear", "liquid", "tinted", "frosted"}, true,
             "glass style frosted liquid clear tinted lens material"
         );
         const std::string style = compositor.value("appearance.glass_style");
         if (style == "liquid" || style == "clear") {
           if (style == "liquid") {
             slider(
-                Appearance, "surfaces", "appearance.liquid_tint", 0.0, 1.0, 0.05, false,
+                Appearance, "glass", "appearance.liquid_tint", 0.0, 1.0, 0.05, false,
                 "liquid glass tint clear tinted transparency material opacity"
             );
           }
           slider(
-              Appearance, "surfaces", "appearance.liquid", 0.0, 1.0, 0.05, false,
+              Appearance, "glass", "appearance.liquid", 0.0, 1.0, 0.05, false,
               "liquid glass lens refraction bend highlight rim shine"
           );
           slider(
-              Appearance, "surfaces", "appearance.liquid_blur", 0.0, 1.0, 0.05, false,
+              Appearance, "glass", "appearance.liquid_blur", 0.0, 1.0, 0.05, false,
               "liquid glass blur backdrop clear"
           );
         } else if (style == "frosted") {
           slider(
-              Appearance, "surfaces", "appearance.glass", 0.0, 1.0, 0.05, false,
+              Appearance, "glass", "appearance.glass", 0.0, 1.0, 0.05, false,
               "glass tint clear tinted frosted transparency material opacity"
           );
           slider(
-              Appearance, "surfaces", "appearance.frost", 0.0, 1.0, 0.05, false,
+              Appearance, "glass", "appearance.frost", 0.0, 1.0, 0.05, false,
               "glass blur frost frosted backdrop"
           );
         }
-        toggle(Appearance, "surfaces", "appearance.edge_reflection", "glass edge reflection glow highlight rim shine pointer");
+        toggle(Appearance, "glass", "appearance.edge_reflection", "glass edge reflection glow highlight rim shine pointer");
       }
       toggle(Motion, "motion", "appearance.reduce_motion", "accessibility reduce motion animations");
       // Captioned as the shell rows they replace: the compositor runs every animation on the desktop.

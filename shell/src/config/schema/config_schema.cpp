@@ -2163,8 +2163,9 @@ namespace noctalia::config::schema {
               &ShellConfig::PanelConfig::transparencyMode, "transparency_mode", kPanelTransparencyModes,
               RowSpec{
                   .kind = RowSpec::Kind::Select,
-                  .section = "panels",
-                  .group = "effects",
+                  .section = "appearance",
+                  .group = "glass",
+                  .label = "panels.transparency-mode",
                   .tags = "glass alpha transparency translucent opacity cards blur",
                   .segmented = true,
               }
@@ -2638,7 +2639,7 @@ namespace noctalia::config::schema {
           field(
               &ShellConfig::WindowSwitcherConfig::currentWorkspaceOnly, "current_workspace_only",
               RowSpec{
-                  .section = "shell",
+                  .section = "windows",
                   .group = "window-switcher",
                   .label = "shell.window-switcher-current-workspace-only",
                   .tags = "window switcher alt tab workspace current only filter",
@@ -3161,7 +3162,6 @@ namespace noctalia::config::schema {
                 .group = "text",
                 .label = "appearance.language",
                 .tags = "locale translation",
-                .advanced = true,
                 .options = RowSpec::Options::Languages,
             }
         ),
@@ -3281,8 +3281,9 @@ namespace noctalia::config::schema {
         field(
             &ShellConfig::settingsWindowTranslucent, "settings_window_translucent",
             RowSpec{
-                .section = "shell",
-                .group = "general",
+                .section = "appearance",
+                .group = "glass",
+                .label = "shell.settings-window-translucent",
                 .tags = "settings window background alpha transparency translucent opacity",
             }
         ),
