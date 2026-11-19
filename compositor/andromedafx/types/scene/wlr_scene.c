@@ -2843,6 +2843,15 @@ void wlr_scene_blur_set_strength(struct wlr_scene_blur* blur, float strength) {
   scene_node_update(&blur->node, NULL);
 }
 
+void wlr_scene_blur_set_full_strength(struct wlr_scene_blur* blur, float full_strength) {
+  if (blur->full_strength == full_strength) {
+    return;
+  }
+
+  blur->full_strength = full_strength;
+  scene_node_update(&blur->node, NULL);
+}
+
 void wlr_scene_blur_set_clipped_region(struct wlr_scene_blur* blur, struct clipped_region clipped_region) {
   if (fx_corner_radii_eq(blur->clipped_region.corners, clipped_region.corners)
       && wlr_box_equal(&blur->clipped_region.area, &clipped_region.area)) {
@@ -4500,6 +4509,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
         .blur_data = &scene->blur_data,
         .ignore_alpha = mask != NULL ? blur->ignore_alpha : 0.0f,
         .blur_strength = blur->strength,
+        .blur_full_strength = blur->full_strength,
         .liquid = blur->liquid,
         .rim = blur->rim,
         .lens = blur->lens,

@@ -3234,9 +3234,10 @@ static bool blur_data_equal(const struct blur_data* a, const struct blur_data* b
 }
 
 // The optimized backdrop blurred at the node's strength (below 1) over the node box (or the whole output), reused
-// while the backdrop and strength stay the same; NULL when it cannot be rendered.
+// while the backdrop and strength stay the same; NULL when it cannot be rendered, or when it is not stored and render is
+// false.
 static struct fx_framebuffer* strength_blur(
-    struct fx_gles_render_pass* pass, const struct fx_render_blur_pass_options* fx_options
+    struct fx_gles_render_pass* pass, const struct fx_render_blur_pass_options* fx_options, bool render
 ) {
   struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
   struct wlr_box box = fx_options->tex_options.base.dst_box;
@@ -3254,6 +3255,9 @@ static struct fx_framebuffer* strength_blur(
     if (s->last_used > 0 && s->strength == fx_options->blur_strength && blur_data_equal(&s->data, fx_options->blur_data)) {
       slot = s;
     }
+  }
+  if (slot == NULL && !render) {
+    return NULL;
   }
   if (slot == NULL) {
     for (size_t i = 0; i < slots; i++) {
@@ -3280,6 +3284,9 @@ static struct fx_framebuffer* strength_blur(
     if (wlr_box_intersection(&covered, &slot->boxes[i], &box) && wlr_box_equal(&covered, &box)) {
       return slot->buffer;
     }
+  }
+  if (!render) {
+    return NULL;
   }
   struct fx_framebuffer* target = ensure_offscreen_buffer(pass, &slot->buffer, false);
   if (target == NULL) {
@@ -3531,8 +3538,41 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
   // Glass whose strength leaves no blur pass (clear Liquid) tints and bends a copy of the sharp backdrop.
   struct blur_data applied = blur_data_apply_strength(fx_options->blur_data, fx_options->blur_strength);
   const bool sharp_glass = glass && !is_scene_blur_enabled(&applied);
-  struct fx_framebuffer* buffer_cached = use_optimized && has_strength && !sharp_glass ? strength_blur(pass, fx_options)
-                                                                                      : NULL;
+  // A fade (strength below full_strength) mixes two stored levels, sharp, half and full strength, instead of
+  // blurring each frame at a new strength; only while the backdrop holds still.
+  struct fx_framebuffer* buffer_cached = NULL;
+  struct fx_framebuffer* fade_source = NULL;
+  float fade_mix = 0.0f;
+  if (use_optimized && has_strength && !sharp_glass && fx_options->blur_full_strength > fx_options->blur_strength) {
+    struct fx_render_blur_pass_options level = *fx_options;
+    level.blur_strength = fx_options->blur_full_strength;
+    // A backdrop that changes each frame (video) would blur both levels each frame: keep the single blur then.
+    const bool backdrop_still = fbos->optimized_blur_rebuilt_frame + 1 < fbos->frame;
+    struct fx_framebuffer* full = strength_blur(pass, &level, backdrop_still);
+    const float fade = fx_options->blur_strength / fx_options->blur_full_strength;
+    level.blur_strength = fx_options->blur_full_strength * 0.5f;
+    // A light blur leaves no pass at half strength (the sharp backdrop is that level): mix full with sharp then.
+    struct blur_data half_data = blur_data_apply_strength(fx_options->blur_data, level.blur_strength);
+    struct fx_framebuffer* half = full == NULL ? NULL
+        : is_scene_blur_enabled(&half_data)   ? strength_blur(pass, &level, true)
+                                              : NULL;
+    if (full != NULL && !is_scene_blur_enabled(&half_data)) {
+      buffer_cached = full;
+      fade_source = fbos->optimized_no_blur_buffer;
+      fade_mix = 1.0f - fade;
+    } else if (half != NULL && fade >= 0.5f) {
+      buffer_cached = full;
+      fade_source = half;
+      fade_mix = (1.0f - fade) * 2.0f;
+    } else if (half != NULL) {
+      buffer_cached = half;
+      fade_source = fbos->optimized_no_blur_buffer;
+      fade_mix = 1.0f - fade * 2.0f;
+    }
+  }
+  if (buffer_cached == NULL && use_optimized && has_strength && !sharp_glass) {
+    buffer_cached = strength_blur(pass, fx_options, true);
+  }
   const bool fuse = (!use_optimized || has_strength) && buffer_cached == NULL && !(glass && (probe_due || !glass_fuse))
       && !sharp_glass
       && blur_composite_is_copy(pass, tex_options);
@@ -3687,14 +3727,20 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     const float* alpha = tex_options->base.alpha;
     const float opaque = 1.0f;
     struct wlr_texture* source = NULL;
-    if (fx_options->fade_from_source && buffer == fbos->optimized_blur_buffer && alpha != NULL
-        && *alpha < 1.0f) {
+    if (fade_source != NULL && buffer == buffer_cached && fade_mix > 0.0f) {
+      source = fx_texture_from_buffer(&renderer->wlr_renderer, fade_source->buffer);
+      if (source != NULL) {
+        tex_options->source_texture = source;
+        tex_options->source_mix = fade_mix;
+      }
+    } else if (fx_options->fade_from_source && buffer == fbos->optimized_blur_buffer && alpha != NULL
+               && *alpha < 1.0f) {
       source = fx_texture_from_buffer(&renderer->wlr_renderer, fbos->optimized_no_blur_buffer->buffer);
-    }
-    if (source != NULL) {
-      tex_options->source_texture = source;
-      tex_options->source_mix = 1.0f - *alpha;
-      tex_options->base.alpha = &opaque;
+      if (source != NULL) {
+        tex_options->source_texture = source;
+        tex_options->source_mix = 1.0f - *alpha;
+        tex_options->base.alpha = &opaque;
+      }
     }
     fx_render_pass_add_texture(pass, tex_options);
     if (source != NULL) {

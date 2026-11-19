@@ -78,7 +78,7 @@ struct fx_offscreen_buffers {
     struct blur_data data;
     struct wlr_box boxes[32]; // more than the glass boxes of one frame (launcher: 7), or boxes evict in turn
     size_t count;
-  } strength_blurs[3];
+  } strength_blurs[4];
   uint64_t strength_blur_clock;
   // Box shadow shapes drawn once and then copied: the analytic shader takes 4 erf samples per pixel, and a panel of
   // tiles draws ~0.5 MP of shadow per frame. An entry is filled when its key repeats within two passes, so a shadow that

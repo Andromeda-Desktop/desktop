@@ -150,6 +150,7 @@ namespace andromeda {
     wlr_scene_blur_set_tint_mix(m_node, m_tintRgb.data(), m_tintAmount);
     wlr_scene_blur_set_backdrop_sampling(m_node, m_backdropSampling);
     wlr_scene_blur_set_strength(m_node, glass::blurStrength(m_clarity) * m_fade);
+    wlr_scene_blur_set_full_strength(m_node, glass::blurStrength(m_clarity));
     // The rim follows the client's blur region (the drawn shape), not the node box: a panel surface is larger than
     // its sheet. The radius is where the staircase first reaches the full width (a rectangle, e.g. a settings
     // sidebar: 0; the launcher pill: half its height).
@@ -243,6 +244,7 @@ namespace andromeda {
     m_clarity = clarity;
     if (m_node != nullptr) {
       wlr_scene_blur_set_strength(m_node, glass::blurStrength(clarity) * m_fade);
+      wlr_scene_blur_set_full_strength(m_node, glass::blurStrength(clarity));
     }
   }
 

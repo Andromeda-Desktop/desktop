@@ -228,6 +228,8 @@ struct fx_render_blur_pass_options {
   bool use_optimized_blur;
   float ignore_alpha; // 0.0 = blur whole box; >0 = skip pixels with mask alpha < value
   float blur_strength;
+  // The strength a fade scales toward (0 = no fade): a node fading at a lower strength mixes stored levels.
+  float blur_full_strength;
   struct fx_corner_fradii corners;
   struct clipped_fregion clipped_region;
   float liquid; // 0 to 1, see fx_render_texture_options.liquid

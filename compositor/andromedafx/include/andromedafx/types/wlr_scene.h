@@ -265,6 +265,7 @@ struct wlr_scene_blur {
   struct clipped_region clipped_region;
 
   float strength;
+  float full_strength; // the strength a fade scales toward, 0 = not fading; see wlr_scene_blur_set_full_strength
   float alpha;
   float ignore_alpha;
   float liquid; // liquid glass strength, 0 to 1
@@ -1084,6 +1085,12 @@ void wlr_scene_blur_set_liquid_merge(struct wlr_scene_blur* blur, const struct w
  * fade-out effect.
  */
 void wlr_scene_blur_set_strength(struct wlr_scene_blur* blur, float strength);
+
+/**
+ * Sets the strength a fade scales toward. While the strength is lower, the node mixes stored blurs of the cached
+ * backdrop (sharp, half and full strength) instead of blurring at a new strength each frame.
+ */
+void wlr_scene_blur_set_full_strength(struct wlr_scene_blur* blur, float full_strength);
 
 /**
  * Skip blurring pixels whose transparency-mask alpha is below this threshold
