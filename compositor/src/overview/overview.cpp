@@ -609,7 +609,8 @@ namespace andromeda {
       const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
       const ov::Rect placed =
           workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
-      ov::Rect rect = travelRect(ov::cardDeskRect(in, card, row), placed);
+      // A thumb stays in its slot and only grows as it fades: riding the zoom made it slide in from the frame.
+      ov::Rect rect = card.kind == ov::CardKind::Thumb ? placed : travelRect(ov::cardDeskRect(in, card, row), placed);
       if (card.kind == ov::CardKind::Thumb) {
         const double s = Tokens::motionOverviewPieceScale + (1.0 - Tokens::motionOverviewPieceScale) * thumbAlpha;
         rect = {rect.x + rect.w * (1.0 - s) / 2, rect.y + rect.h * (1.0 - s) / 2, rect.w * s, rect.h * s};
