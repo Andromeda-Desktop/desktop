@@ -1,0 +1,26 @@
+# A tag greeter-vYYYY.M.N (tools/unit-version.sh greeter next) releases only the greeter package, for Arch and Ubuntu (release-unit.yml).
+name: release-greeter
+
+on:
+  push:
+    tags: ["greeter-v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Existing greeter-v tag to build and publish", required: true }
+      debian: { description: "Also Debian testing", type: boolean, default: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-greeter-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-unit.yml
+    with:
+      unit: greeter
+      tag: ${{ inputs.tag || github.ref_name }}
+      debian: ${{ inputs.debian || false }}
+    secrets: inherit

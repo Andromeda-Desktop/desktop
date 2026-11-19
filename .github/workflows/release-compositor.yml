@@ -1,0 +1,26 @@
+# A tag compositor-vYYYY.M.N (tools/unit-version.sh compositor next) releases only the compositor package, for Arch and Ubuntu (release-unit.yml).
+name: release-compositor
+
+on:
+  push:
+    tags: ["compositor-v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Existing compositor-v tag to build and publish", required: true }
+      debian: { description: "Also Debian testing", type: boolean, default: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-compositor-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-unit.yml
+    with:
+      unit: compositor
+      tag: ${{ inputs.tag || github.ref_name }}
+      debian: ${{ inputs.debian || false }}
+    secrets: inherit

@@ -12,10 +12,14 @@ fi
 if [[ -n ${ANDROMEDA_CORE:-} ]]; then
   for _app in files player viewer terminal; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
 fi
-# ANDROMEDA_ONLY="compositor shell" (a test install of changed parts): builds and packages only those.
+# ANDROMEDA_ONLY="compositor shell" (a unit release, or a test install of changed parts): builds and packages only
+# those units.
 if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
+  declare -A _unit_pkg=([compositor]=andromeda-compositor-git [shell]=andromeda-shell-git
+    [portal]=xdg-desktop-portal-andromeda-git [greeter]=andromeda-greeter-git [preview]=andromeda-preview-git
+    [system]=andromeda-system-git [greetd]=andromeda-greetd [power]=andromeda-power-git)
   pkgname=()
-  for _part in $ANDROMEDA_ONLY; do pkgname+=(andromeda-$_part-git); done
+  for _part in $ANDROMEDA_ONLY; do pkgname+=("${_unit_pkg[$_part]:?unknown unit $_part}"); done
 fi
 _apps=(files viewer player terminal)
 [[ -z ${ANDROMEDA_CORE:-} ]] || _apps=()
@@ -91,28 +95,21 @@ build() {
     --wrap-mode=default --force-fallback-for=wlroots-0.20,libliftoff \
     -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false -Dwlroots:renderers=gles2
   _want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-  if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
-    _want compositor && meson compile -C build-compositor
-    _want shell && meson compile -C build-shell
-    return 0
-  fi
-  arch-meson desktop/portal build-portal -Dcpp_std=c++23
-  arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-  arch-meson desktop/indexer build-indexer -Db_lto=true
-  arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+  _want portal && arch-meson desktop/portal build-portal -Dcpp_std=c++23
+  _want greeter && arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+  _want preview && arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+  # The indexer ships in the meta package, which only a full release builds.
+  [[ -n ${ANDROMEDA_ONLY:-} ]] || arch-meson desktop/indexer build-indexer -Db_lto=true
   for app in "${_apps[@]}"; do
     arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
   done
-  meson compile -C build-compositor
-  meson compile -C build-shell
-  meson compile -C build-portal
-  meson compile -C build-greeter
-  meson compile -C build-indexer
-  meson compile -C build-preview
+  for part in compositor shell portal greeter preview; do _want $part && meson compile -C build-$part; done
+  [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
   for app in "${_apps[@]}"; do meson compile -C build-$app; done
-  echo "$stamp" > meson.stamp
-  CFLAGS="${CFLAGS//-flto=auto/}" CXXFLAGS="${CXXFLAGS//-flto=auto/}" cargo build --frozen --release --manifest-path desktop/system/Cargo.toml
-  cargo build --frozen --release --manifest-path greetd/Cargo.toml -p greetd
+  [[ -n ${ANDROMEDA_ONLY:-} ]] || echo "$stamp" > meson.stamp
+  _want system && CFLAGS="${CFLAGS//-flto=auto/}" CXXFLAGS="${CXXFLAGS//-flto=auto/}" cargo build --frozen --release --manifest-path desktop/system/Cargo.toml
+  _want greetd && cargo build --frozen --release --manifest-path greetd/Cargo.toml -p greetd
+  return 0
 }
 
 # Library dependencies at least at the version this was built against: an Andromeda-only update (Settings) on an

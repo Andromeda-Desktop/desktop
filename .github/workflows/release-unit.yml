@@ -1,0 +1,118 @@
+# One core package, released alone: called by release-<unit>.yml on a tag <unit>-vYYYY.M.N (tools/unit-version.sh <unit>
+# next). Builds only that unit (ANDROMEDA_ONLY) for Arch and Ubuntu 26.04, and Debian testing when asked, and merges its
+# packages into the repositories of the rolling release `repo` (and the Debian one); every other package stays.
+# The unit's own release holds its Arch packages and is never marked latest.
+name: release-unit
+
+on:
+  workflow_call:
+    inputs:
+      unit: { type: string, required: true }
+      tag: { type: string, required: true }
+      debian: { type: boolean, default: false }
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag }}
+  PUBLISH: "true"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        run: |
+          version=${TAG#${{ inputs.unit }}-v}
+          [[ $TAG == ${{ inputs.unit }}-v* && $version =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] ||
+            { echo "::error::$TAG is not ${{ inputs.unit }}-vYYYY.M.N"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  arch:
+    needs: [version]
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      ANDROMEDA_ONLY: ${{ inputs.unit }}
+      ANDROMEDA_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git ccache zstd github-cli
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TAG }}
+      # The core release's ccache (saved on main); a tag run can read main's caches but its own saves stay with the tag.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache
+          key: ccache-release-arch-${{ github.run_id }}
+          restore-keys: ccache-release-arch-
+      - name: Build user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          git config --system --add safe.directory '*'
+          mkdir -p .ccache
+          chown -R builder: "$GITHUB_WORKSPACE"
+          sed -i 's/^BUILDENV=(\(.*\)!ccache/BUILDENV=(\1ccache/' /etc/makepkg.conf
+      - name: Packages
+        working-directory: pkg
+        run: >
+          sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
+          ANDROMEDA_CORE=1 ANDROMEDA_ONLY="$ANDROMEDA_ONLY" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+          ANDROMEDA_VERSION="$ANDROMEDA_VERSION" makepkg --syncdeps --noconfirm --force
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false \
+            || gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null
+          mkdir out
+          for package in pkg/*.pkg.tar.zst; do name=$(basename "$package"); cp "$package" "out/${name//:/.}"; done
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber out/*
+      - name: Repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+        run: tools/repo-publish.sh arch repo pkg
+
+  deb:
+    needs: [version]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base: ${{ fromJSON(inputs.debian && '["26.04", "testing"]' || '["26.04"]') }}
+    env:
+      ANDROMEDA_ONLY: ${{ inputs.unit }}
+      DEB_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - run: echo "UBUNTU_BUILD_CPUS=$(nproc)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ env.TAG }}
+      - name: xwayland-satellite
+        run: tools/deb-xwayland-satellite.sh ${{ matrix.base }}
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/andromeda-ubuntu/ccache-deb-${{ matrix.base }}
+          key: ccache-deb-${{ matrix.base }}-${{ github.run_id }}
+          restore-keys: ccache-deb-${{ matrix.base }}-
+      - name: Packages
+        run: ANDROMEDA_CORE=1 tools/ubuntu-deb.sh --clean ${{ matrix.base }}
+      - name: Repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
+          BASE: ${{ matrix.base }}
+        run: |
+          sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
+          if [[ $BASE == testing ]]; then target=debian; else target=repo; fi
+          mkdir debs
+          cp "$HOME/.cache/andromeda-ubuntu/deb-$BASE/"*.deb debs/
+          tools/repo-publish.sh apt "$target" debs

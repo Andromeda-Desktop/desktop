@@ -1,0 +1,26 @@
+# A tag greetd-vYYYY.M.N (tools/unit-version.sh greetd next) releases only the greetd package, for Arch and Ubuntu (release-unit.yml).
+name: release-greetd
+
+on:
+  push:
+    tags: ["greetd-v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Existing greetd-v tag to build and publish", required: true }
+      debian: { description: "Also Debian testing", type: boolean, default: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-greetd-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-unit.yml
+    with:
+      unit: greetd
+      tag: ${{ inputs.tag || github.ref_name }}
+      debian: ${{ inputs.debian || false }}
+    secrets: inherit

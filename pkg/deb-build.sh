@@ -44,30 +44,38 @@ case ${1:-} in
       for dir in "${app_dirs[@]}"; do meson compile -C "build-$dir"; done
       exit 0
     fi
+    # ANDROMEDA_ONLY="shell" (a unit release): build only those units, as the PKGBUILD's _want.
+    want() { [[ -z ${ANDROMEDA_ONLY:-} || " $ANDROMEDA_ONLY " == *" $1 "* ]]; }
     # As PKGBUILD build(): the patched wlroots and libliftoff wraps.
-    arch-meson desktop/compositor build-compositor -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true \
+    want compositor && arch-meson desktop/compositor build-compositor -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true \
       --force-fallback-for=wlroots-0.20,libliftoff \
       -Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false
-    arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-    arch-meson desktop/portal build-portal -Dcpp_std=c++23
-    arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-    arch-meson desktop/indexer build-indexer -Db_lto=true
-    arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+    want shell && arch-meson desktop/shell build-shell -Dcpp_std=c++23 -Dtests=disabled -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+    want portal && arch-meson desktop/portal build-portal -Dcpp_std=c++23
+    want greeter && arch-meson desktop/greeter build-greeter -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+    [[ -n ${ANDROMEDA_ONLY:-} ]] || arch-meson desktop/indexer build-indexer -Db_lto=true
+    want preview && arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     for app in "${apps[@]}"; do
       arch-meson desktop/apps/$app build-$app -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
     done
-    for dir in compositor shell portal greeter indexer preview "${apps[@]}"; do meson compile -C build-$dir; done
-    cargo build --locked --release --manifest-path desktop/system/Cargo.toml --workspace \
-      --exclude andromeda-update --exclude andromeda-update-helper
-    cargo build --locked --release --manifest-path desktop/system/Cargo.toml -p andromeda-update \
-      -p andromeda-update-helper --no-default-features --features apt
-    # andromeda-greetd: the PKGBUILD source pin plus our patches (a kept tree is already patched).
-    if [[ ! -d greetd ]]; then
-      git clone -q https://git.sr.ht/~kennylevinsen/greetd greetd
-      git -C greetd checkout -q "${source[1]##*#commit=}"
-      for patch in desktop/session/greetd/patches/*.patch; do patch -d greetd -Np1 < "$patch"; done
+    for dir in compositor shell portal greeter preview; do want $dir && meson compile -C build-$dir; done
+    [[ -n ${ANDROMEDA_ONLY:-} ]] || meson compile -C build-indexer
+    for app in "${apps[@]}"; do meson compile -C build-$app; done
+    if want system; then
+      cargo build --locked --release --manifest-path desktop/system/Cargo.toml --workspace \
+        --exclude andromeda-update --exclude andromeda-update-helper
+      cargo build --locked --release --manifest-path desktop/system/Cargo.toml -p andromeda-update \
+        -p andromeda-update-helper --no-default-features --features apt
     fi
-    cargo build --locked --release --manifest-path greetd/Cargo.toml -p greetd
+    if want greetd; then
+      # andromeda-greetd: the PKGBUILD source pin plus our patches (a kept tree is already patched).
+      if [[ ! -d greetd ]]; then
+        git clone -q https://git.sr.ht/~kennylevinsen/greetd greetd
+        git -C greetd checkout -q "${source[1]##*#commit=}"
+        for patch in desktop/session/greetd/patches/*.patch; do patch -d greetd -Np1 < "$patch"; done
+      fi
+      cargo build --locked --release --manifest-path greetd/Cargo.toml -p greetd
+    fi
     ;;
   install)
     declare -A debs=(
@@ -90,6 +98,13 @@ case ${1:-} in
       [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || debs[andromeda-preview-git]=andromeda-preview
     fi
     [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]'
+    if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
+      declare -A wanted=()
+      for fn in "${pkgname[@]}"; do wanted[$fn]=${debs[$fn]}; done
+      unset debs
+      declare -A debs
+      for fn in "${!wanted[@]}"; do debs[$fn]=${wanted[$fn]}; done
+    fi
     for fn in "${!debs[@]}"; do
       pkgname=${debs[$fn]}
       pkgdir=$root/debian/$pkgname
@@ -104,7 +119,7 @@ case ${1:-} in
     sed -Ei 's/^(auth|account|password|session)\s+include\s+system-(local-login|auth)$/@include common-\1/' \
       "$root"/debian/*/etc/pam.d/*
     # The pacman hook's apt equal is the dpkg trigger in debian/andromeda-system.triggers.
-    rm -r "$root/debian/andromeda-system/usr/share/libalpm"
+    [[ ! -d $root/debian/andromeda-system/usr/share/libalpm ]] || rm -r "$root/debian/andromeda-system/usr/share/libalpm"
     ;;
   *)
     echo "usage: $0 build|install" >&2

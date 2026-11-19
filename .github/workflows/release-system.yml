@@ -1,0 +1,26 @@
+# A tag system-vYYYY.M.N (tools/unit-version.sh system next) releases only the system package, for Arch and Ubuntu (release-unit.yml).
+name: release-system
+
+on:
+  push:
+    tags: ["system-v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Existing system-v tag to build and publish", required: true }
+      debian: { description: "Also Debian testing", type: boolean, default: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-system-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-unit.yml
+    with:
+      unit: system
+      tag: ${{ inputs.tag || github.ref_name }}
+      debian: ${{ inputs.debian || false }}
+    secrets: inherit

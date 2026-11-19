@@ -1,0 +1,26 @@
+# A tag preview-vYYYY.M.N (tools/unit-version.sh preview next) releases only the preview package, for Arch and Ubuntu (release-unit.yml).
+name: release-preview
+
+on:
+  push:
+    tags: ["preview-v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Existing preview-v tag to build and publish", required: true }
+      debian: { description: "Also Debian testing", type: boolean, default: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-preview-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-unit.yml
+    with:
+      unit: preview
+      tag: ${{ inputs.tag || github.ref_name }}
+      debian: ${{ inputs.debian || false }}
+    secrets: inherit

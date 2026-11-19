@@ -4,13 +4,21 @@
 # which sorts above that release and below the next one (pacman and apt): 2026.11.1.r15800.
 #   tools/unit-version.sh UNIT        print the version
 #   tools/unit-version.sh UNIT next   print the next release version: YYYY.M.N, N counts the unit's tags this month
+#                                     (the core and its units count together)
 set -euo pipefail
 unit=$1
 cd "$(dirname "$0")/.."
 prefix=$([[ $unit == core ]] && echo v || echo "$unit-v")
+# The core's packages release alone too (release-<unit>.yml); they share the core's counter, so each release sorts above
+# every core and unit release before it (pacman and apt compare the numbers, never the tag names).
+core_units="compositor shell portal greeter preview system greetd power"
 if [[ ${2:-} == next ]]; then
   month=$(date -u +%Y.%-m)
-  n=$(git tag -l "$prefix$month.*" | wc -l)
+  if [[ $unit == core || " $core_units " == *" $unit "* ]]; then
+    n=$({ git tag -l "v$month.*"; for u in $core_units; do git tag -l "$u-v$month.*"; done; } | wc -l)
+  else
+    n=$(git tag -l "$prefix$month.*" | wc -l)
+  fi
   echo "$month.$((n + 1))"
   exit 0
 fi

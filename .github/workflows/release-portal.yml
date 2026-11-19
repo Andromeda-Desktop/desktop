@@ -1,0 +1,26 @@
+# A tag portal-vYYYY.M.N (tools/unit-version.sh portal next) releases only the portal package, for Arch and Ubuntu (release-unit.yml).
+name: release-portal
+
+on:
+  push:
+    tags: ["portal-v*"]
+  workflow_dispatch:
+    inputs:
+      tag: { description: "Existing portal-v tag to build and publish", required: true }
+      debian: { description: "Also Debian testing", type: boolean, default: false }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-portal-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-unit.yml
+    with:
+      unit: portal
+      tag: ${{ inputs.tag || github.ref_name }}
+      debian: ${{ inputs.debian || false }}
+    secrets: inherit
