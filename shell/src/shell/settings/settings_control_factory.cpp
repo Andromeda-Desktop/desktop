@@ -878,7 +878,7 @@ namespace settings {
   ) {
     auto& ctx = m_ctx;
     const float scale = m_scale;
-    return ui::button({
+    auto picker = ui::button({
         .text = optionLabel(setting.options, setting.selectedValue),
         .fontSize = Style::fontSizeBody * scale,
         .contentAlign = ButtonContentAlign::Start,
@@ -906,6 +906,16 @@ namespace settings {
           }
         },
     });
+    // A popup button (rulebook 9.6): the value grows, the chevron sits at the end.
+    if (Label* text = picker->label(); text != nullptr) {
+      text->setFlexGrow(1.0F);
+    }
+    picker->addChild(ui::glyph({
+        .glyph = "chevron-down",
+        .glyphSize = Tokens::sizeSymbolInline * scale,
+        .color = colorSpecFromRole(ColorRole::Label2),
+    }));
+    return picker;
   }
 
   std::unique_ptr<Flex> SettingsControlFactory::makeSlider(
@@ -930,16 +940,14 @@ namespace settings {
                                    : Style::sliderDefaultWidth - kInvertSlotContentWidth - Style::spaceSm)
         * scale;
 
-    Input* valueInputPtr = nullptr;
-    auto valueInput = ui::input({
-        .out = &valueInputPtr,
-        .value = formatSliderValue(sliderValue, integerValue),
-        .fontSize = Style::fontSizeCaption * scale,
-        .controlHeight = Style::controlHeight * scale,
-        .horizontalPadding = Style::spaceXs * scale,
-        .width = Tokens::sizeControlXl * scale,
-        .height = Style::controlHeight * scale,
-    });
+    // The value reads as text beside the track; arrow keys on the slider step it exactly.
+    const auto valueText = [integerValue, valueSuffix](double v) {
+      return formatSliderValue(v, integerValue) + (valueSuffix.empty() ? std::string{} : " " + valueSuffix);
+    };
+    auto valueLabel = makeLabel(valueText(sliderValue), Style::fontSizeCaption * scale, colorSpecFromRole(ColorRole::Label2));
+    Label* valueLabelPtr = valueLabel.get();
+    valueLabel->setMinWidth(Tokens::sizeControlXl * scale);
+    valueLabel->setTextAlign(TextAlign::End);
 
     Slider* sliderPtr = nullptr;
     auto slider = ui::slider({
@@ -953,12 +961,9 @@ namespace settings {
         .controlHeight = Style::controlHeight * scale,
         .width = sliderWidth,
         .height = Style::controlHeight * scale,
-        .onValueChanged = [valueInputPtr, integerValue](double next) {
-          valueInputPtr->setInvalid(false);
-          valueInputPtr->setValue(formatSliderValue(next, integerValue));
-        },
+        .onValueChanged = [valueLabelPtr, valueText](double next) { valueLabelPtr->setText(valueText(next)); },
     });
-    valueInputPtr->setValue(formatSliderValue(sliderPtr->value(), integerValue));
+    valueLabelPtr->setText(valueText(sliderPtr->value()));
 
     // Helper: commit either via single setOverride or as an atomic batch when linkedCommit
     // returns extra overrides (cross-field constraints).
@@ -999,28 +1004,7 @@ namespace settings {
       commitValue(sliderPtr->value());
     });
 
-    const auto commitInputText = [commitValue, sliderPtr, valueInputPtr, minValue, maxValue,
-                                  integerValue](const std::string& text) {
-      const auto parsed = parseDoubleInput(text);
-      if (!parsed.has_value() || *parsed < minValue || *parsed > maxValue) {
-        valueInputPtr->setInvalid(true);
-        return false;
-      }
-      const double v = *parsed;
-      valueInputPtr->setInvalid(false);
-      sliderPtr->setValue(v);
-      const double snapped = sliderPtr->value();
-      valueInputPtr->setValue(formatSliderValue(snapped, integerValue));
-      commitValue(snapped);
-      return true;
-    };
-
-    valueInput->setOnChange([valueInputPtr](const std::string& /*text*/) { valueInputPtr->setInvalid(false); });
-    valueInput->setOnSubmit([commitInputText](const std::string& text) { (void)commitInputText(text); });
-    valueInput->setOnFocusLoss([commitInputText, valueInputPtr] { (void)commitInputText(valueInputPtr->value()); });
-
-    // Invert toggle leads, then slider, then the numeric value field on the right (reset from makeRow
-    // stays left of this cluster).
+    // Invert toggle leads, then slider, then the value on the right (reset from makeRow stays left of this cluster).
     if (auto invert = makeInvertSlot(invertSlot, invertEnabled, inverted, commitValue, sliderPtr, scale)) {
       wrap->addChild(std::move(invert));
     }
@@ -1047,12 +1031,8 @@ namespace settings {
     wrap->addChild(std::move(slider));
     if (labelled) {
       wrap->addChild(endLabel(ends.second, true));
-      valueInput->setVisible(false);
-      valueInput->setParticipatesInLayout(false);
-    }
-    wrap->addChild(std::move(valueInput));
-    if (auto suffix = makeSuffixSlot(std::move(valueSuffix), scale)) {
-      wrap->addChild(std::move(suffix));
+    } else {
+      wrap->addChild(std::move(valueLabel));
     }
     return wrap;
   }

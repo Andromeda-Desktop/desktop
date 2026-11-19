@@ -20,6 +20,8 @@ Toggle::Toggle() {
   setMirrorInRtl(false);
   setBorder(colorSpecFromRole(ColorRole::Stroke), Style::borderWidth);
 
+  m_thumbShadow = static_cast<RectNode*>(addChild(std::make_unique<RectNode>()));
+  m_thumbShadow->setParticipatesInLayout(false);
   auto thumb = std::make_unique<RectNode>();
   m_thumb = static_cast<RectNode*>(addChild(std::move(thumb)));
   m_thumb->setParticipatesInLayout(false);
@@ -225,7 +227,7 @@ void Toggle::updatePressWiden() {
 void Toggle::applyAnimatedState(float t) {
   m_animationProgress = t;
   const float mixT = std::clamp(m_colorProgress, 0.0F, 1.0F);
-  const Color trackColor = lerpColor(colorForRole(ColorRole::Stroke, this), colorForRole(ColorRole::Accent, this), mixT);
+  const Color trackColor = lerpColor(colorForRole(ColorRole::Fill2, this), colorForRole(ColorRole::Accent, this), mixT);
   const Color thumbColor = lerpColor(colorForRole(ColorRole::OnAccent, this), colorForRole(ColorRole::OnAccent, this), mixT);
   const float along = Style::rtl() ? 1.0F - t : t;
   const float extra = Tokens::componentTogglePressWiden * m_scale * m_widen;
@@ -255,6 +257,13 @@ void Toggle::applyAnimatedState(float t) {
   thumbStyle.borderWidth = 0.0F;
   thumbStyle.fill = thumbColor;
   m_thumb->setStyle(thumbStyle);
+  auto shadowStyle = thumbStyle;
+  shadowStyle.fill = colorForRole(ColorRole::Shadow, this);
+  shadowStyle.fill.a = isResolvedLightTheme() ? Tokens::elevationE1.keyLight : Tokens::elevationE1.keyDark;
+  shadowStyle.softness = Tokens::elevationE1.keyBlur * m_scale;
+  m_thumbShadow->setPosition(thumbX, m_inset + Tokens::elevationE1.keyY * m_scale);
+  m_thumbShadow->setFrameSize(thumbW, m_thumbSize);
+  m_thumbShadow->setStyle(shadowStyle);
 
 
   if (m_enabled) {

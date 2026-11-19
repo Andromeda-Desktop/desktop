@@ -42,6 +42,7 @@ private:
   LayoutSize doMeasure(Renderer& renderer, const LayoutConstraints& constraints) override;
   void doArrange(Renderer& renderer, const LayoutRect& rect) override;
 
+  class RectNode* m_thumbShadow = nullptr; // E1 under the knob
   class RectNode* m_thumb = nullptr;
   InputArea* m_inputArea = nullptr;
   std::uint32_t m_animId = 0;
