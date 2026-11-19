@@ -6,6 +6,7 @@
 #include "calendar/calendar_view.h"
 
 #include <chrono>
+#include <cstdint>
 #include <limits>
 
 class Button;
@@ -104,7 +105,9 @@ private:
   int m_lastCurrentMonth = -1;
   int m_lastToday = -1;
   int m_monthSlideDirection = 0;
-  bool m_startMonthSlideIn = false;
+  // Pending: the new month's grid waits for its first layout. m_outgoingGrid is set exactly while not Idle.
+  enum class MonthSlide : std::uint8_t { Idle, Pending, Running };
+  MonthSlide m_monthSlide = MonthSlide::Idle;
   AnimationManager::Id m_monthSlideAnimId = 0;
   bool m_showEventsCard = true;
   bool m_showWeekNumbers = false;

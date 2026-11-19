@@ -414,13 +414,13 @@ void CalendarPage::doLayout(Renderer& renderer, float contentWidth, float bodyHe
       || state.current.month != m_lastCurrentMonth
       || state.current.day != m_lastToday;
 
-  if (m_monthSlideAnimId != 0 && !m_startMonthSlideIn) {
+  if (m_monthSlide == MonthSlide::Running) {
     m_rootLayout->layout(renderer);
     calendar_view::layoutEventLinkOverlays(m_eventListState);
     return;
   }
 
-  if (!sizeChanged && !displayChanged && !todayChanged && !m_eventsDirty && !m_startMonthSlideIn) {
+  if (!sizeChanged && !displayChanged && !todayChanged && !m_eventsDirty && m_monthSlide != MonthSlide::Pending) {
     return;
   }
   m_eventsDirty = false;
@@ -447,14 +447,13 @@ void CalendarPage::doLayout(Renderer& renderer, float contentWidth, float bodyHe
     }
   }
   if (m_grid != nullptr) {
-    if (m_monthSlideAnimId == 0 && !m_startMonthSlideIn) {
+    if (m_monthSlide == MonthSlide::Idle) {
       m_grid->setPosition(0.0F, 0.0F);
       m_grid->setOpacity(1.0F);
     }
     m_grid->layout(renderer);
   }
-  if (m_startMonthSlideIn && m_gridViewport != nullptr) {
-    m_startMonthSlideIn = false;
+  if (m_monthSlide == MonthSlide::Pending) {
     beginSlideIn();
   }
   m_rootLayout->layout(renderer);
@@ -633,18 +632,23 @@ void CalendarPage::changeMonthBy(int delta) {
     return;
   }
 
-  cancelMonthSlide();
+  // A second change before the next layout keeps the shown month outgoing; the pending grid takes the new month.
+  if (m_monthSlide != MonthSlide::Pending) {
+    cancelMonthSlide();
+  }
   m_monthOffset += delta;
   m_lastDisplayYear = std::numeric_limits<int>::min();
   m_lastDisplayMonth = -1;
   AnimationManager* animations = m_gridViewport != nullptr ? m_gridViewport->animationManager() : nullptr;
-  if (animations != nullptr && m_grid != nullptr) {
+  if (m_monthSlide == MonthSlide::Pending) {
+    m_monthSlideDirection = delta > 0 ? 1 : -1;
+  } else if (animations != nullptr && m_grid != nullptr) {
     // P12: the shown month stays as the outgoing grid; the next layout builds the new month into a fresh grid and
     // both slide together.
     m_outgoingGrid = m_grid;
     m_gridViewport->addChild(makeGrid(contentScale()));
     m_monthSlideDirection = delta > 0 ? 1 : -1;
-    m_startMonthSlideIn = true;
+    m_monthSlide = MonthSlide::Pending;
   }
   PanelManager::instance().refresh();
 }
@@ -665,7 +669,7 @@ void CalendarPage::cancelMonthSlide() {
     }
   }
   m_monthSlideAnimId = 0;
-  m_startMonthSlideIn = false;
+  m_monthSlide = MonthSlide::Idle;
   if (m_outgoingGrid != nullptr && m_gridViewport != nullptr) {
     (void)m_gridViewport->removeChild(m_outgoingGrid);
   }
@@ -695,6 +699,7 @@ void CalendarPage::beginSlideIn() {
     return;
   }
 
+  m_monthSlide = MonthSlide::Running;
   applyMonthSlide(0.0F);
   PanelManager::instance().requestFrameTick();
   m_monthSlideAnimId = animations->animateSpring(
