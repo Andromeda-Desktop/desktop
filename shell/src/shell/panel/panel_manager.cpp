@@ -1795,6 +1795,7 @@ void PanelManager::destroyPanel() {
   m_morphExtend = false;
   m_morphClipRunning = false;
   m_cardClipRunning = false;
+  m_sheetSource.reset();
   m_morphSource = nullptr;
   m_gestureTracker.reset();
   m_commitTracker = nullptr;
@@ -3327,6 +3328,7 @@ void PanelManager::morphSheetFrom(const Node& source) {
   float y = 0.0F;
   Node::absolutePosition(&source, x, y);
   const DskSurfaceClient::Value from{x, y, source.width(), source.height()};
+  m_sheetSource = from;
   const DskSurfaceClient::Value to = detachedSheetRect();
   // Same contract as morphCardHeight: a content-fit change during the hop retargets this clip.
   m_cardClipRunning = true;
@@ -3345,6 +3347,79 @@ void PanelManager::morphSheetFrom(const Node& source) {
       m_surface->requestRedraw();
     }
   });
+}
+
+bool PanelManager::collapseSheetTo(const Node& target, std::function<void()> done) {
+  using Property = DskSurfaceClient::Property;
+  if (m_attachedToBar || m_dsk == nullptr || m_lifecycle.closing() || m_morphClipRunning || !m_sheetSource.has_value() ||
+      !MotionService::instance().enabled()) {
+    return false;
+  }
+  const DskSurfaceClient::Value to = *m_sheetSource;
+  m_sheetSource.reset();
+  // A settled sheet has no clip: start from its full rect. A running morphSheetFrom retargets from where it is.
+  if (!m_cardClipRunning) {
+    m_dsk->set(Property::Clip, detachedSheetRect());
+    m_dsk->set(Property::Radius, {static_cast<double>(panelRadius()), 0.0, 0.0, 0.0});
+  }
+  m_cardClipRunning = true;
+  sendSheetStroke();
+  m_dsk->animate(Property::Radius, DskSurfaceClient::Curve::SpringClose, {target.glassPiece().value_or(0.0F), 0.0, 0.0, 0.0});
+  m_dsk->animate(Property::Clip, DskSurfaceClient::Curve::SpringClose, to);
+  // The compositor spring reports Finished only after its tail; the shell twin of the same spring says when the clip
+  // has landed (98 %), and the pieces take over there.
+  m_animations.animateGated(
+      0.0F, 1.0F, Style::spring(Tokens::springClose), [](float) {}, 0.98F,
+      [this, done = std::move(done)] {
+        if (m_dsk == nullptr || m_lifecycle.closing() || !m_cardClipRunning) {
+          return;
+        }
+        m_cardClipRunning = false;
+        m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
+        m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+        done();
+        requestFrameTick();
+      },
+      {}, m_sceneRoot.get()
+  );
+  requestFrameTick();
+  return true;
+}
+
+void PanelManager::cancelSheetCollapse() {
+  using Property = DskSurfaceClient::Property;
+  if (m_dsk == nullptr || !m_cardClipRunning) {
+    return;
+  }
+  m_cardClipRunning = false;
+  m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
+  m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+}
+
+void PanelManager::returnToPiecesAround(const Node& kept) {
+  if (!piecesActive() || m_sceneRoot == nullptr) {
+    return;
+  }
+  int index = 0;
+  for (Node* piece : visiblePieces()) {
+    m_animations.cancelForOwner(piece);
+    if (piece == &kept) {
+      piece->setOpacity(1.0F);
+      continue;
+    }
+    piece->setOpacity(0.0F);
+    m_animations.animateStaggered(
+        index++, 0.0F, 1.0F, effectsSpring(),
+        [this, piece](float v) {
+          piece->setOpacity(v);
+          if (m_surface != nullptr) {
+            m_surface->requestRedraw();
+          }
+        },
+        {}, piece
+    );
+  }
+  requestFrameTick();
 }
 
 void PanelManager::returnToPieces() {

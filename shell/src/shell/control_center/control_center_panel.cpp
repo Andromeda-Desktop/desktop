@@ -331,7 +331,76 @@ void ControlCenterPanel::onFrameTick(float deltaMs) {
   }
 }
 
+// The quick page's piece for a detail page: the glass ancestor of the tile title the detail shares.
+static const Node* tilePieceFor(SheetPage* quick, std::string_view detailKey) {
+  const Node* n = quick != nullptr ? quick->sharedTitleFor(detailKey) : nullptr;
+  while (n != nullptr && !n->glassPiece().has_value()) {
+    n = n->parent();
+  }
+  return n;
+}
+
+bool ControlCenterPanel::beginDetailExit(TabId from) {
+  if (!MotionService::instance().enabled() || m_animations == nullptr) {
+    return false;
+  }
+  const Node* tile = tilePieceFor(m_tabs[tabIndex(TabId::Quick)].get(), kTabs[tabIndex(from)].key);
+  if (tile == nullptr || !PanelManager::instance().collapseSheetTo(*tile, [this, tile] {
+        if (m_detailExit == DetailExit::Collapsing) {
+          finishDetailExit(tile);
+        }
+      })) {
+    return false;
+  }
+  m_detailExit = DetailExit::Collapsing;
+  m_detailExitFrom = from;
+  endTitleMove();
+  for (Node* node : {static_cast<Node*>(m_tabContainers[tabIndex(from)]), static_cast<Node*>(m_contentHeader), static_cast<Node*>(m_contentHeaderActions)}) {
+    if (node == nullptr) {
+      continue;
+    }
+    m_animations->animateSpring(
+        node->opacity(), 0.0F, Style::spring(Tokens::springFade),
+        [node](float v) {
+          node->setOpacity(v);
+          PanelManager::instance().requestRedraw();
+        },
+        {}, node
+    );
+  }
+  PanelManager::instance().requestFrameTick();
+  return true;
+}
+
+// `tile` null: the exit is cut short (another page or a close); the quick page is not shown here.
+void ControlCenterPanel::finishDetailExit(const Node* tile) {
+  m_detailExit = DetailExit::None;
+  for (Node* node : {static_cast<Node*>(m_tabContainers[tabIndex(m_detailExitFrom)]), static_cast<Node*>(m_contentHeader), static_cast<Node*>(m_contentHeaderActions)}) {
+    if (node == nullptr) {
+      continue;
+    }
+    if (m_animations != nullptr) {
+      m_animations->cancelForOwner(node);
+    }
+    node->setOpacity(1.0F);
+  }
+  if (tile == nullptr) {
+    return;
+  }
+  m_activeTab = TabId::Quick;
+  updateTabChrome(TabId::Quick);
+  m_tabTransitionActive = false;
+  applyTabContainerVisibility(TabId::Quick);
+  resetTabContainerTransforms();
+  PanelManager::instance().returnToPiecesAround(*tile);
+  PanelManager::instance().refresh();
+  scheduleMprisRefreshFor(TabId::Quick);
+}
+
 void ControlCenterPanel::onOpen(std::string_view context) {
+  if (m_detailExit == DetailExit::Collapsing) {
+    finishDetailExit(nullptr);
+  }
   if (m_dependencies != nullptr) {
     m_dependencies->rescan();
   }
@@ -355,6 +424,9 @@ bool ControlCenterPanel::handleGlobalKey(std::uint32_t sym, std::uint32_t modifi
 
 
 void ControlCenterPanel::onClose() {
+  if (m_detailExit == DetailExit::Collapsing) {
+    finishDetailExit(nullptr);
+  }
   if (m_titleMove.animation != 0 && m_animations != nullptr) {
     m_animations->cancel(m_titleMove.animation);
   }
@@ -577,8 +649,18 @@ void ControlCenterPanel::selectTab(TabId tab, bool animated) {
     tab = TabId::Quick;
   }
 
+  if (m_detailExit == DetailExit::Collapsing) {
+    if (tab == TabId::Quick) {
+      return;
+    }
+    finishDetailExit(nullptr);
+    PanelManager::instance().cancelSheetCollapse();
+  }
   const TabId previousTab = m_activeTab;
   const bool tabChanged = tab != previousTab;
+  if (animated && tab == TabId::Quick && isDetailTab(previousTab) && beginDetailExit(previousTab)) {
+    return;
+  }
 
   if (m_tabTransitionAnimId != 0 && m_animations != nullptr) {
     m_animations->cancel(m_tabTransitionAnimId);

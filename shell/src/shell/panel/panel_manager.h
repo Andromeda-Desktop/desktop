@@ -215,7 +215,14 @@ public:
   // Concept C detail hop: the sheet grows out of the glass piece `source` (from its own radius); back pours the
   // pieces in again. No-ops without motion or for a bar-attached panel.
   void morphSheetFrom(const Node& source);
+  // The reverse of morphSheetFrom: the sheet shrinks into the rect it grew from, with `target`'s radius; `done` runs
+  // when it lands. False: no motion (no morphSheetFrom since the panel opened).
+  bool collapseSheetTo(const Node& target, std::function<void()> done);
+  // Stops a collapseSheetTo short: the sheet shows whole again.
+  void cancelSheetCollapse();
   void returnToPieces();
+  // After collapseSheetTo: `kept` (the sheet's landing piece) shows at once, the other pieces fade in staggered.
+  void returnToPiecesAround(const Node& kept);
   // Requests a redraw on the active panel surface without re-running panel
   // update/layout. Used for reactive palette restyling.
   void requestRedraw();
@@ -404,6 +411,8 @@ private:
   std::optional<ScaleFrom> m_scaleFrom;
   bool m_morphClipRunning = false;
   bool m_cardClipRunning = false;
+  // The rect morphSheetFrom grew the sheet from; collapseSheetTo lands there (the source moves while hidden).
+  std::optional<DskSurfaceClient::Value> m_sheetSource;
   DskSurfaceClient::Value m_morphClipTarget{};
   bool m_morphExtend = false; // the sheet fill and blur extend into the margin while the island morph runs
   std::int32_t m_morphMarginX = 0;

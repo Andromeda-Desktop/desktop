@@ -200,4 +200,10 @@ private:
   bool m_tabTransitionActive = false;
   bool m_firstOpenAfterCreate = false;
   bool m_openedOnDetail = false;
+  // Back from a detail page: the sheet collapses into its tile before the quick page shows (proto closeDetail).
+  enum class DetailExit : std::uint8_t { None, Collapsing };
+  DetailExit m_detailExit = DetailExit::None;
+  TabId m_detailExitFrom = TabId::Quick;
+  bool beginDetailExit(TabId from);
+  void finishDetailExit(const Node* tile);
 };
