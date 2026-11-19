@@ -183,6 +183,9 @@ private:
   // Islands as dsk shapes (v10): clip and radius from the island boxes, material from the glass slider. False when
   // the compositor has no shapes; the blur region path runs then.
   bool syncIslandShapes(BarInstance& instance, bool material) const;
+  void pressIslandAt(BarInstance& instance, float sx, float sy);
+  void driveIslandPress(BarInstance& instance, bool pressed);
+  void applyIslandPress(BarInstance& instance, float press);
   void syncContentRegion(BarInstance& instance) const;
   [[nodiscard]] std::string showBarIpc(std::string_view args);
   [[nodiscard]] std::string hideBarIpc(std::string_view args);

@@ -379,7 +379,9 @@ bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
       float x = 0.0F;
       float y = 0.0F;
       Node::absolutePosition(island, x, y);
-      clip = {std::round(x), std::round(y), std::round(island->width()), std::round(island->height())};
+      // The top-left is already scaled (a pressed island scales about its centre); the size is not.
+      clip = {std::round(x), std::round(y), std::round(island->width() * island->scaleX()),
+              std::round(island->height() * island->scaleY())};
     }
     // A moved island resends only its own material: the others did not change.
     bool shapeMaterial = material;

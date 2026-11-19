@@ -115,6 +115,10 @@ struct BarInstance {
   Box* edgeLine = nullptr;
   // Islands mode: one pill per section (start, center, end), in slideRoot coordinates.
   std::array<Box*, 3> islands{};
+  // The island under a press (rulebook P2): it and its section scale with islandPress, 0 at rest to 1 pressed.
+  std::optional<std::size_t> pressedIsland;
+  float islandPress = 0.0F;
+  AnimationManager::Id islandPressId = 0;
   // Glass recipe of each island: drop shadow below it and the top edge highlight above its fill.
   std::array<Box*, 3> islandShadows{};
   std::optional<RoundedRectStyle> islandShadowStyle;

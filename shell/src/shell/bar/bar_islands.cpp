@@ -119,8 +119,10 @@ namespace bar_detail {
       float x = 0.0F;
       float y = 0.0F;
       Node::absolutePosition(island, x, y);
-      if (sx >= x && sx < x + island->width() && sy >= y && sy < y + island->height()) {
-        return std::array<float, 4>{x, y, island->width(), island->height()};
+      const float w = island->width() * island->scaleX();
+      const float h = island->height() * island->scaleY();
+      if (sx >= x && sx < x + w && sy >= y && sy < y + h) {
+        return std::array<float, 4>{x, y, w, h};
       }
     }
     return std::nullopt;
@@ -435,6 +437,70 @@ void Bar::finishSheetTracker(BarInstance& instance, double position) {
   });
 }
 
+void Bar::pressIslandAt(BarInstance& instance, float sx, float sy) {
+  if (!instance.barConfig.islands) {
+    return;
+  }
+  for (std::size_t i = 0; i < instance.islands.size(); ++i) {
+    const Box* island = instance.islands[i];
+    if (island == nullptr || !island->visible()) {
+      continue;
+    }
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(island, x, y);
+    if (sx < x || sx >= x + island->width() * island->scaleX() || sy < y || sy >= y + island->height() * island->scaleY()) {
+      continue;
+    }
+    if (instance.pressedIsland.has_value() && *instance.pressedIsland != i) {
+      instance.animations.cancel(instance.islandPressId);
+      applyIslandPress(instance, 0.0F);
+    }
+    instance.pressedIsland = i;
+    driveIslandPress(instance, true);
+    return;
+  }
+}
+
+void Bar::driveIslandPress(BarInstance& instance, bool pressed) {
+  if (!instance.pressedIsland.has_value()) {
+    return;
+  }
+  instance.islandPressId = instance.animations.drive(
+      instance.islandPressId, instance.islandPress, pressed ? 1.0F : 0.0F,
+      Style::spring(pressed ? Tokens::springPress : Tokens::springRelease),
+      [this, &instance](float v) { applyIslandPress(instance, v); },
+      [&instance] {
+        instance.islandPressId = 0;
+        if (instance.islandPress <= 0.0F) {
+          instance.pressedIsland.reset();
+        }
+      }
+  );
+  if (instance.surface != nullptr) {
+    instance.surface->requestRedraw();
+  }
+}
+
+void Bar::applyIslandPress(BarInstance& instance, float press) {
+  instance.islandPress = press;
+  const std::size_t i = *instance.pressedIsland;
+  Box* island = instance.islands[i];
+  const std::array<Flex*, 3> sections{instance.startSection, instance.centerSection, instance.endSection};
+  // P2: 0.96 up to 96 px, 0.98 up to 240 px; a wider island presses by the fill step only.
+  const float size = std::max(island->width(), island->height()) / instance.barConfig.scale;
+  const float depth = size <= 96.0F ? Tokens::motionPressScaleSmall : size <= 240.0F ? Tokens::motionPressScaleMedium : 1.0F;
+  const float s = 1.0F - (1.0F - depth) * press;
+  island->setScale(s);
+  if (sections[i] != nullptr) {
+    sections[i]->setScale(s);
+  }
+  syncIslandShapes(instance, false);
+  if (instance.surface != nullptr) {
+    instance.surface->requestRedraw();
+  }
+}
+
 bool Bar::onPointerEvent(const PointerEvent& event) {
   bool consumed = false;
   BarInstance* targetInstance = nullptr;
@@ -527,6 +593,7 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
     if (m_hoveredInstance != nullptr) {
       m_hoveredInstance->pointerInside = false;
       m_hoveredInstance->inputDispatcher.pointerLeave();
+      driveIslandPress(*m_hoveredInstance, false);
       updateAccordionExpansion(*m_hoveredInstance, nullptr);
       const bool suppressAutoHide =
           (m_autoHideSuppressionCallback != nullptr) ? m_autoHideSuppressionCallback(*m_hoveredInstance) : false;
@@ -563,6 +630,11 @@ bool Bar::onPointerEvent(const PointerEvent& event) {
     consumed = m_hoveredInstance->inputDispatcher.pointerButton(
         sx, sy, event.button, pressed, event.serial, event.time, event.touch
     );
+    if (pressed) {
+      pressIslandAt(*m_hoveredInstance, sx, sy);
+    } else {
+      driveIslandPress(*m_hoveredInstance, false);
+    }
     if (pressed
         && !consumed
         && handleBarDeadZoneButton(*m_hoveredInstance, sx, sy, event.button, m_platform, m_actionDispatcher)) {
