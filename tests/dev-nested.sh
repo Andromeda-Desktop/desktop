@@ -17,6 +17,12 @@ mkdir -p "$H/.config" "$H/.local/state"
 mkdir -p "$H/.config/andromeda" "$H/.local/state/andromeda" && cp -r ~/.config/andromeda/shell "$H/.config/andromeda/" 2>/dev/null || true
 cp -r ~/.local/state/andromeda/shell "$H/.local/state/andromeda/" 2>/dev/null || true
 ln -s ~/Pictures "$H/Pictures"
+# The user's settings (glass, dock pins) as a copy; their own apps and icons as links, so the dock and launcher match.
+cp ~/.config/andromeda/settings.toml "$H/.config/andromeda/" 2>/dev/null || true
+mkdir -p "$H/.local/share"
+for dir in applications icons flatpak; do
+  [[ -e ~/.local/share/$dir ]] && ln -s ~/.local/share/$dir "$H/.local/share/$dir"
+done
 # The user's compositor config without its autostart (the shell starts below).
 sed -e '/^autostart *=/d' ~/.config/andromeda/config.toml > "$RUNTIME/andromeda.toml"
 
