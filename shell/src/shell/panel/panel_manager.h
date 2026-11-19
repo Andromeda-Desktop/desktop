@@ -268,7 +268,14 @@ private:
   void sendSheetStroke();
   // Grows or shrinks a detached card as one compositor clip on the open spring; false = no dsk surface.
   bool morphCardHeight(std::uint32_t target);
+  // Set while the surface opened with the compositor scale motion: the transform its close returns to.
+  struct ScaleFrom {
+    double scale;
+    DskSurfaceClient::Value shift;
+  };
   bool startDetachedScaleOpen();
+  bool startScaleOpen(ScaleFrom from);
+  bool startGrowOpen();
   bool startDetachedScaleClose(std::uint64_t gen);
   // Glass pieces pour out of the panel's top edge, top piece first, and back on close (concept C).
   bool startPiecesOpen();
@@ -281,7 +288,6 @@ private:
   PieceRest& pieceRest(Node& piece, bool open);
   bool startPiecesClose(std::uint64_t gen);
   void pourPieces(bool open);
-  void growPieces(bool open, const std::vector<Node*>& pieces);
   [[nodiscard]] DskSurfaceClient::Value detachedScaleShift(double scale) const;
   [[nodiscard]] static desk::motion::SpringConfig effectsSpring();
   [[nodiscard]] static DskSurfaceClient::Curve opacityCurve(bool fast);
@@ -387,7 +393,8 @@ private:
   double m_gestureRange = 0.0;
   std::function<void()> m_commitTracker;
   bool m_morphSettled = false;
-  bool m_scaleMode = false;
+  // Set while the surface opened with the compositor scale motion: the transform its close returns to.
+  std::optional<ScaleFrom> m_scaleFrom;
   bool m_morphClipRunning = false;
   bool m_cardClipRunning = false;
   DskSurfaceClient::Value m_morphClipTarget{};

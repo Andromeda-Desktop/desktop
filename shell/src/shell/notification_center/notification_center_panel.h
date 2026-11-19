@@ -42,7 +42,8 @@ public:
   [[nodiscard]] PiecePour piecePour() const override { return {.xShare = 0.0F, .yShare = Tokens::componentNotificationCenterPourYShare}; }
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override;
   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Floating; }
-  [[nodiscard]] std::string panelScreenPosition() const override { return "top_center"; }
+  // auto: it hangs under the bell like the tray drawer (user, 2026-11-19); a call without a click anchors top centre.
+  [[nodiscard]] std::string panelScreenPosition() const override { return "auto"; }
 
 protected:
   void doLayout(Renderer& renderer, float width, float height) override;
