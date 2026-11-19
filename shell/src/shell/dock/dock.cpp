@@ -993,6 +993,7 @@ void Dock::createInstance(const WaylandOutput& output) {
   if (const auto* override = matchingDockMonitorOverride(baseConfig, output); override != nullptr) {
     instance->monitorOverrideTable = override->tableName;
     instance->pinnedOverridden = override->pinned.has_value();
+    instance->trashOverridden = override->showTrash.has_value();
   }
 
   const auto& shadowConfig = m_config->config().shell.shadow;
@@ -1194,6 +1195,7 @@ void Dock::rebuildItems(shell::dock::DockInstance& instance) {
                 PanelManager::instance().togglePanel("launcher", request);
               },
           .openTrash = [this](shell::dock::DockInstance& inst) { openTrash(inst); },
+          .openTrashMenu = [this](shell::dock::DockInstance& inst) { openTrashMenu(inst); },
           .openItemMenu = [this](
                               shell::dock::DockInstance& inst, const shell::dock::DockItemAction& action
                           ) { openItemMenu(inst, action); },
@@ -1649,6 +1651,40 @@ void Dock::onTrashChanged() {
   for (auto& inst : m_instances) {
     inst->trashFull = full;
     shell::dock::applyTrashGlyph(*inst);
+  }
+}
+
+void Dock::openTrashMenu(shell::dock::DockInstance& instance) {
+  assertDockInitialized(m_platform, m_config, m_renderContext);
+  closeItemMenu();
+  if (!m_platform->hasXdgShell()) {
+    return;
+  }
+  m_popupOwnerInstance = &instance;
+  // The rebuild after the write replaces the instance: capture what the callbacks need by value.
+  std::vector<std::string> showTrashPath = instance.trashOverridden && !instance.monitorOverrideTable.empty()
+      ? std::vector<std::string>{"dock", "monitor", instance.monitorOverrideTable, "show_trash"}
+      : std::vector<std::string>{"dock", "show_trash"};
+  const shell::dock::DockTrashMenuCallbacks callbacks{
+      .openTrash =
+          [this, output = instance.output] {
+            for (auto& inst : m_instances) {
+              if (inst->output == output) {
+                openTrash(*inst);
+                return;
+              }
+            }
+          },
+      .hideTrash = [this, path = std::move(showTrashPath)] { (void)m_config->setOverride(path, false); },
+      .closeMenu = [this] { closeItemMenu(); },
+  };
+  auto* layerSurface =
+      instance.surface != nullptr ? m_platform->layerSurfaceFor(instance.surface->wlSurface()) : nullptr;
+  m_itemMenu = shell::dock::createTrashMenu(
+      *m_platform, *m_config, *m_renderContext, layerSurface, instance.output, instance.config, callbacks
+  );
+  if (m_itemMenu == nullptr) {
+    m_popupOwnerInstance = nullptr;
   }
 }
 

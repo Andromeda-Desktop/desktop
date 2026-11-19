@@ -49,6 +49,12 @@ namespace shell::dock {
     std::function<void()> closeMenu;
   };
 
+  struct DockTrashMenuCallbacks {
+    std::function<void()> openTrash;
+    std::function<void()> hideTrash;
+    std::function<void()> closeMenu;
+  };
+
   // Route a pointer event to an open popup; returns true if consumed.
   bool routePopupEvent(DockPopup& popup, const PointerEvent& event);
 
@@ -56,6 +62,12 @@ namespace shell::dock {
       CompositorPlatform& platform, ConfigService& config, RenderContext& renderContext,
       zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, const DockConfig& dockConfig,
       const DesktopEntry& entry, const std::vector<ToplevelInfo>& windows, const DockMenuCallbacks& callbacks
+  );
+
+  [[nodiscard]] std::unique_ptr<DockPopup> createTrashMenu(
+      CompositorPlatform& platform, ConfigService& config, RenderContext& renderContext,
+      zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, const DockConfig& dockConfig,
+      const DockTrashMenuCallbacks& callbacks
   );
 
 } // namespace shell::dock

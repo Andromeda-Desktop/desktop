@@ -35,6 +35,8 @@ namespace shell::dock {
     constexpr std::int32_t kMenuCloseAllId = -2;
     constexpr std::int32_t kMenuSeparatorId = -3;
     constexpr std::int32_t kMenuPinToggleId = -4;
+    constexpr std::int32_t kMenuOpenTrashId = -5;
+    constexpr std::int32_t kMenuHideTrashId = -6;
     constexpr std::int32_t kMenuWindowBaseId = -1000;
 
     bool isWindowClosable(const ToplevelInfo& window) {
@@ -134,6 +136,188 @@ namespace shell::dock {
 
     return consumed;
   }
+
+  namespace {
+    // Shows `entries` as a dock popup menu at the pointer; `onActivate` gets the chosen entry id, then the menu closes.
+    std::unique_ptr<DockPopup> showMenu(
+        std::unique_ptr<DockPopup> menu, CompositorPlatform& platform, ConfigService& config,
+        RenderContext& renderContext, zwlr_layer_surface_v1* parentLayerSurface, wl_output* output,
+        const DockConfig& dockConfig, const std::vector<ContextMenuControlEntry>& entries,
+        const std::function<void(std::int32_t)>& onActivate, const std::function<void()>& closeMenu
+    ) {
+      // Compute popup geometry; width grows past the base width to fit long window titles.
+      const float menuHeight = ContextMenuControl::preferredHeight(entries, entries.size());
+      float measureScale = 1.0F;
+      if (const WaylandOutput* menuOutput = platform.wayland().findOutputByWl(output); menuOutput != nullptr) {
+        measureScale = menuOutput->configuredScale();
+      }
+      ScaledRenderer measureRenderer(renderContext, measureScale);
+      const float menuWidth =
+          std::clamp(ContextMenuControl::preferredWidth(measureRenderer, entries), kMenuWidth, Style::menuAutoMaxWidth);
+
+      // Determine anchor / gravity + gap based on dock position.
+      const DockEdge edge = dockConfig.position;
+      const bool isBottom = edge == DockEdge::Bottom;
+      const bool isTop = edge == DockEdge::Top;
+      const bool isRight = edge == DockEdge::Right;
+
+      PopupAnchor anchor = PopupAnchor::None;
+      PopupGravity gravity = PopupGravity::None;
+      std::int32_t offsetX = 0;
+      std::int32_t offsetY = 0;
+      // Clearance past the icon/tooltip; chrome Bottom attachment folds bleed into offset.
+      const std::int32_t kGap = std::max(2, static_cast<std::int32_t>(Style::spaceLg + Style::spaceMd));
+
+      if (isBottom) {
+        anchor = PopupAnchor::Top;
+        gravity = PopupGravity::Top;
+        offsetY = -kGap;
+      } else if (isTop) {
+        anchor = PopupAnchor::Bottom;
+        gravity = PopupGravity::Bottom;
+        offsetY = kGap;
+      } else if (isRight) {
+        anchor = PopupAnchor::Left;
+        gravity = PopupGravity::Left;
+        offsetX = -kGap;
+      } else { // left
+        anchor = PopupAnchor::Right;
+        gravity = PopupGravity::Right;
+        offsetX = kGap;
+      }
+
+      const auto ptrX = static_cast<std::int32_t>(platform.lastPointerX());
+      const auto ptrY = static_cast<std::int32_t>(platform.lastPointerY());
+      const std::int32_t halfCell = std::max(1, dockConfig.iconSize / 2);
+
+      // Pointer-centred cell (tray-style); panel-face anchors miss hover-zoom padding.
+      const std::int32_t aX = ptrX - halfCell;
+      const std::int32_t aY = ptrY - halfCell;
+      const std::int32_t aW = halfCell * 2;
+      const std::int32_t aH = halfCell * 2;
+
+      const auto menuChrome = popup_chrome::computeGeometry(
+          menuWidth, menuHeight, config.config().shell.shadow, Style::popupShadowsEnabled()
+      );
+      PopupSurfaceConfig popupCfg{
+          .anchorX = aX,
+          .anchorY = aY,
+          .anchorWidth = std::max(1, aW),
+          .anchorHeight = std::max(1, aH),
+          .width = menuChrome.surfaceWidth,
+          .height = menuChrome.surfaceHeight,
+          .anchor = anchor,
+          .gravity = gravity,
+          .constraintAdjustment = PopupConstraint::SlideX
+              | PopupConstraint::SlideY
+              | PopupConstraint::FlipX
+              | PopupConstraint::FlipY,
+          .offsetX = offsetX,
+          .offsetY = offsetY,
+          .serial = platform.lastInputSerial(),
+          .grab = true,
+      };
+      popup_chrome::applyToConfig(popupCfg, menuChrome, popupAttachmentForDockPosition(isBottom, isTop, isRight));
+
+      menu->surface = std::make_unique<PopupSurface>(platform.wayland());
+      menu->surface->setRenderContext(&renderContext);
+      menu->chrome = menuChrome;
+
+      auto* menuPtr = menu.get();
+
+      menu->surface->setConfigureCallback([menuPtr](std::uint32_t /*w*/, std::uint32_t /*h*/) {
+        menuPtr->surface->requestLayout();
+      });
+      menu->surface->setPrepareFrameCallback([&platform, &config, &renderContext, menuPtr, entries, onActivate,
+                                              closeMenu](bool /*needsUpdate*/, bool needsLayout) {
+        if (menuPtr->surface == nullptr) {
+          return;
+        }
+
+        const auto width = menuPtr->surface->width();
+        const auto height = menuPtr->surface->height();
+        if (width == 0 || height == 0) {
+          return;
+        }
+
+        renderContext.makeCurrent(menuPtr->surface->renderTarget());
+
+        const bool needsSceneBuild = menuPtr->sceneRoot == nullptr
+            || static_cast<std::uint32_t>(std::round(menuPtr->sceneRoot->width())) != width
+            || static_cast<std::uint32_t>(std::round(menuPtr->sceneRoot->height())) != height;
+        if (!needsSceneBuild && !needsLayout) {
+          return;
+        }
+
+        UiPhaseScope layoutPhase(UiPhase::Layout);
+
+        const auto fw = static_cast<float>(width);
+        const auto fh = static_cast<float>(height);
+
+        menuPtr->sceneRoot = ui::node({});
+        menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+        menuPtr->glassConn = Style::glassChanged().connect([menuPtr] {
+          if (menuPtr->sceneRoot != nullptr) {
+            menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+          }
+        });
+        menuPtr->sceneRoot->setSize(fw, fh);
+        if (Style::popupShadowsEnabled()) {
+          (void)popup_chrome::addShadow(
+              *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledRadiusLg()
+          );
+        }
+        (void)popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F);
+        if (menuPtr->surface != nullptr) {
+          popup_chrome::setCardBlurRegion(*menuPtr->surface, menuPtr->chrome, 1.0F);
+        }
+
+        auto ctrl = std::make_unique<ContextMenuControl>();
+        ctrl->setMenuWidth(menuPtr->chrome.contentWidth);
+        ctrl->setMaxVisible(entries.size());
+        ctrl->setEntries(entries);
+        ctrl->setRedrawCallback([menuPtr] {
+          if (menuPtr->surface)
+            menuPtr->surface->requestRedraw();
+        });
+        ctrl->setOnActivate([onActivate, closeMenu](const ContextMenuControlEntry& e) {
+          DeferredCall::callLater([id = e.id, onActivate, closeMenu] {
+            onActivate(id);
+            if (closeMenu) {
+              closeMenu();
+            }
+          });
+        });
+        ctrl->setPosition(menuPtr->chrome.contentX(), menuPtr->chrome.contentY());
+        ctrl->setSize(menuPtr->chrome.contentWidth, menuPtr->chrome.contentHeight);
+        ctrl->layout(menuPtr->surface->renderTarget().renderer());
+
+        menuPtr->sceneRoot->addChild(std::move(ctrl));
+        menuPtr->inputDispatcher.setSceneRoot(menuPtr->sceneRoot.get());
+        menuPtr->inputDispatcher.setCursorShapeCallback([&platform](std::uint32_t serial, CursorShape shape) {
+          platform.setCursorShape(serial, std::to_underlying(shape));
+        });
+        menuPtr->surface->setSceneRoot(menuPtr->sceneRoot.get());
+      });
+
+      menu->surface->setDismissedCallback([closeMenu] {
+        DeferredCall::callLater([closeMenu] {
+          if (closeMenu) {
+            closeMenu();
+          }
+        });
+      });
+
+      if (parentLayerSurface == nullptr || !menu->surface->initialize(parentLayerSurface, output, popupCfg)) {
+        kLog.warn("dock: failed to create item-menu popup");
+        return nullptr;
+      }
+
+      popup_chrome::setContentInputRegion(*menu->surface, menu->chrome);
+      menu->wlSurface = menu->surface->wlSurface();
+      return menu;
+    }
+  } // namespace
 
   std::unique_ptr<DockPopup> createItemMenu(
       CompositorPlatform& platform, ConfigService& config, RenderContext& renderContext,
@@ -267,218 +451,71 @@ namespace shell::dock {
       return nullptr;
     }
 
-    // Compute popup geometry; width grows past the base width to fit long window titles.
-    const float menuHeight = ContextMenuControl::preferredHeight(entries, entries.size());
-    float measureScale = 1.0F;
-    if (const WaylandOutput* menuOutput = platform.wayland().findOutputByWl(output); menuOutput != nullptr) {
-      measureScale = menuOutput->configuredScale();
-    }
-    ScaledRenderer measureRenderer(renderContext, measureScale);
-    const float menuWidth =
-        std::clamp(ContextMenuControl::preferredWidth(measureRenderer, entries), kMenuWidth, Style::menuAutoMaxWidth);
-
-    // Determine anchor / gravity + gap based on dock position.
-    const DockEdge edge = dockConfig.position;
-    const bool isBottom = edge == DockEdge::Bottom;
-    const bool isTop = edge == DockEdge::Top;
-    const bool isRight = edge == DockEdge::Right;
-
-    PopupAnchor anchor = PopupAnchor::None;
-    PopupGravity gravity = PopupGravity::None;
-    std::int32_t offsetX = 0;
-    std::int32_t offsetY = 0;
-    // Clearance past the icon/tooltip; chrome Bottom attachment folds bleed into offset.
-    const std::int32_t kGap = std::max(2, static_cast<std::int32_t>(Style::spaceLg + Style::spaceMd));
-
-    if (isBottom) {
-      anchor = PopupAnchor::Top;
-      gravity = PopupGravity::Top;
-      offsetY = -kGap;
-    } else if (isTop) {
-      anchor = PopupAnchor::Bottom;
-      gravity = PopupGravity::Bottom;
-      offsetY = kGap;
-    } else if (isRight) {
-      anchor = PopupAnchor::Left;
-      gravity = PopupGravity::Left;
-      offsetX = -kGap;
-    } else { // left
-      anchor = PopupAnchor::Right;
-      gravity = PopupGravity::Right;
-      offsetX = kGap;
-    }
-
-    const auto ptrX = static_cast<std::int32_t>(platform.lastPointerX());
-    const auto ptrY = static_cast<std::int32_t>(platform.lastPointerY());
-    const std::int32_t halfCell = std::max(1, dockConfig.iconSize / 2);
-
-    // Pointer-centred cell (tray-style); panel-face anchors miss hover-zoom padding.
-    const std::int32_t aX = ptrX - halfCell;
-    const std::int32_t aY = ptrY - halfCell;
-    const std::int32_t aW = halfCell * 2;
-    const std::int32_t aH = halfCell * 2;
-
-    const auto menuChrome = popup_chrome::computeGeometry(
-        menuWidth, menuHeight, config.config().shell.shadow, Style::popupShadowsEnabled()
-    );
-    PopupSurfaceConfig popupCfg{
-        .anchorX = aX,
-        .anchorY = aY,
-        .anchorWidth = std::max(1, aW),
-        .anchorHeight = std::max(1, aH),
-        .width = menuChrome.surfaceWidth,
-        .height = menuChrome.surfaceHeight,
-        .anchor = anchor,
-        .gravity = gravity,
-        .constraintAdjustment = PopupConstraint::SlideX
-            | PopupConstraint::SlideY
-            | PopupConstraint::FlipX
-            | PopupConstraint::FlipY,
-        .offsetX = offsetX,
-        .offsetY = offsetY,
-        .serial = platform.lastInputSerial(),
-        .grab = true,
+    // Capture by value; the entry may be rebuilt before the callback fires.
+    auto onActivate = [entryActions = entry.actions, callbacks, isPinned, menuWindows = menu->windows,
+                       closableWindowIndices](std::int32_t id) {
+      if (id == kMenuPinToggleId) {
+        if (callbacks.setEntryPinned) {
+          callbacks.setEntryPinned(!isPinned);
+        }
+      } else if (id <= kMenuWindowBaseId) {
+        const auto actionIndex = static_cast<std::size_t>(kMenuWindowBaseId - id);
+        const auto idx = actionIndex / 2;
+        if (idx < menuWindows.size()) {
+          if (actionIndex % 2 == 0 && callbacks.activateWindow) {
+            callbacks.activateWindow(idx);
+          } else if (
+              actionIndex % 2 != 0 && menuWindows[idx].minimizeState.has_value() && callbacks.setWindowMinimized
+          ) {
+            callbacks.setWindowMinimized(idx, !menuWindows[idx].minimizeState->minimized);
+          }
+        }
+      } else if (id >= 0) {
+        const auto idx = static_cast<std::size_t>(id);
+        if (idx < entryActions.size() && callbacks.launchAction) {
+          callbacks.launchAction(entryActions[idx]);
+        }
+      } else if (id == kMenuCloseId && !closableWindowIndices.empty()) {
+        if (callbacks.closeWindow) {
+          callbacks.closeWindow(closableWindowIndices[0]);
+        }
+      } else if (id == kMenuCloseAllId) {
+        if (callbacks.closeWindow) {
+          for (std::size_t windowIndex : closableWindowIndices) {
+            if (windowIndex < menuWindows.size()) {
+              callbacks.closeWindow(windowIndex);
+            }
+          }
+        }
+      }
     };
-    popup_chrome::applyToConfig(popupCfg, menuChrome, popupAttachmentForDockPosition(isBottom, isTop, isRight));
+    return showMenu(
+        std::move(menu), platform, config, renderContext, parentLayerSurface, output, dockConfig, entries, onActivate,
+        callbacks.closeMenu
+    );
+  }
 
-    menu->surface = std::make_unique<PopupSurface>(platform.wayland());
-    menu->surface->setRenderContext(&renderContext);
-    menu->chrome = menuChrome;
-
-    auto* menuPtr = menu.get();
-
-    // Capture actions by value; the entry may be rebuilt before the callback fires.
-    auto entryActions = entry.actions;
-
-    menu->surface->setConfigureCallback([menuPtr](std::uint32_t /*w*/, std::uint32_t /*h*/) {
-      menuPtr->surface->requestLayout();
-    });
-    menu->surface->setPrepareFrameCallback([&platform, &config, &renderContext, menuPtr, entries, entryActions,
-                                            callbacks, isPinned,
-                                            closableWindowIndices](bool /*needsUpdate*/, bool needsLayout) {
-      if (menuPtr->surface == nullptr) {
-        return;
+  std::unique_ptr<DockPopup> createTrashMenu(
+      CompositorPlatform& platform, ConfigService& config, RenderContext& renderContext,
+      zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, const DockConfig& dockConfig,
+      const DockTrashMenuCallbacks& callbacks
+  ) {
+    const std::vector<ContextMenuControlEntry> entries{
+        {.id = kMenuOpenTrashId, .label = i18n::tr("dock.trash-menu.open"), .enabled = callbacks.openTrash != nullptr},
+        {.id = kMenuSeparatorId, .label = {}, .enabled = false, .separator = true},
+        {.id = kMenuHideTrashId, .label = i18n::tr("dock.trash-menu.hide"), .enabled = callbacks.hideTrash != nullptr},
+    };
+    auto onActivate = [callbacks](std::int32_t id) {
+      if (id == kMenuOpenTrashId && callbacks.openTrash) {
+        callbacks.openTrash();
+      } else if (id == kMenuHideTrashId && callbacks.hideTrash) {
+        callbacks.hideTrash();
       }
-
-      const auto width = menuPtr->surface->width();
-      const auto height = menuPtr->surface->height();
-      if (width == 0 || height == 0) {
-        return;
-      }
-
-      renderContext.makeCurrent(menuPtr->surface->renderTarget());
-
-      const bool needsSceneBuild = menuPtr->sceneRoot == nullptr
-          || static_cast<std::uint32_t>(std::round(menuPtr->sceneRoot->width())) != width
-          || static_cast<std::uint32_t>(std::round(menuPtr->sceneRoot->height())) != height;
-      if (!needsSceneBuild && !needsLayout) {
-        return;
-      }
-
-      UiPhaseScope layoutPhase(UiPhase::Layout);
-
-      const auto fw = static_cast<float>(width);
-      const auto fh = static_cast<float>(height);
-
-      menuPtr->sceneRoot = ui::node({});
-      menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
-      menuPtr->glassConn = Style::glassChanged().connect([menuPtr] {
-        if (menuPtr->sceneRoot != nullptr) {
-          menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
-        }
-      });
-      menuPtr->sceneRoot->setSize(fw, fh);
-      if (Style::popupShadowsEnabled()) {
-        (void)popup_chrome::addShadow(
-            *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledRadiusLg()
-        );
-      }
-      (void)popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F);
-      if (menuPtr->surface != nullptr) {
-        popup_chrome::setCardBlurRegion(*menuPtr->surface, menuPtr->chrome, 1.0F);
-      }
-
-      auto ctrl = std::make_unique<ContextMenuControl>();
-      ctrl->setMenuWidth(menuPtr->chrome.contentWidth);
-      ctrl->setMaxVisible(entries.size());
-      ctrl->setEntries(entries);
-      ctrl->setRedrawCallback([menuPtr] {
-        if (menuPtr->surface)
-          menuPtr->surface->requestRedraw();
-      });
-      ctrl->setOnActivate([menuPtr, entryActions, callbacks, isPinned,
-                           closableWindowIndices](const ContextMenuControlEntry& e) {
-        const std::int32_t id = e.id;
-        auto menuWindows = menuPtr->windows;
-        DeferredCall::callLater([id, entryActions, callbacks, isPinned, menuWindows = std::move(menuWindows),
-                                 closableWindowIndices] mutable {
-          if (id == kMenuPinToggleId) {
-            if (callbacks.setEntryPinned) {
-              callbacks.setEntryPinned(!isPinned);
-            }
-          } else if (id <= kMenuWindowBaseId) {
-            const auto actionIndex = static_cast<std::size_t>(kMenuWindowBaseId - id);
-            const auto idx = actionIndex / 2;
-            if (idx < menuWindows.size()) {
-              if (actionIndex % 2 == 0 && callbacks.activateWindow) {
-                callbacks.activateWindow(idx);
-              } else if (
-                  actionIndex % 2 != 0 && menuWindows[idx].minimizeState.has_value() && callbacks.setWindowMinimized
-              ) {
-                callbacks.setWindowMinimized(idx, !menuWindows[idx].minimizeState->minimized);
-              }
-            }
-          } else if (id >= 0) {
-            const auto idx = static_cast<std::size_t>(id);
-            if (idx < entryActions.size() && callbacks.launchAction) {
-              callbacks.launchAction(entryActions[idx]);
-            }
-          } else if (id == kMenuCloseId && !closableWindowIndices.empty()) {
-            if (callbacks.closeWindow) {
-              callbacks.closeWindow(closableWindowIndices[0]);
-            }
-          } else if (id == kMenuCloseAllId) {
-            if (callbacks.closeWindow) {
-              for (std::size_t windowIndex : closableWindowIndices) {
-                if (windowIndex < menuWindows.size()) {
-                  callbacks.closeWindow(windowIndex);
-                }
-              }
-            }
-          }
-          if (callbacks.closeMenu) {
-            callbacks.closeMenu();
-          }
-        });
-      });
-      ctrl->setPosition(menuPtr->chrome.contentX(), menuPtr->chrome.contentY());
-      ctrl->setSize(menuPtr->chrome.contentWidth, menuPtr->chrome.contentHeight);
-      ctrl->layout(menuPtr->surface->renderTarget().renderer());
-
-      menuPtr->sceneRoot->addChild(std::move(ctrl));
-      menuPtr->inputDispatcher.setSceneRoot(menuPtr->sceneRoot.get());
-      menuPtr->inputDispatcher.setCursorShapeCallback([&platform](std::uint32_t serial, CursorShape shape) {
-        platform.setCursorShape(serial, std::to_underlying(shape));
-      });
-      menuPtr->surface->setSceneRoot(menuPtr->sceneRoot.get());
-    });
-
-    menu->surface->setDismissedCallback([callbacks] {
-      DeferredCall::callLater([callbacks] {
-        if (callbacks.closeMenu) {
-          callbacks.closeMenu();
-        }
-      });
-    });
-
-    if (parentLayerSurface == nullptr || !menu->surface->initialize(parentLayerSurface, output, popupCfg)) {
-      kLog.warn("dock: failed to create item-menu popup");
-      return nullptr;
-    }
-
-    popup_chrome::setContentInputRegion(*menu->surface, menu->chrome);
-    menu->wlSurface = menu->surface->wlSurface();
-    return menu;
+    };
+    return showMenu(
+        std::make_unique<DockPopup>(), platform, config, renderContext, parentLayerSurface, output, dockConfig,
+        entries, onActivate, callbacks.closeMenu
+    );
   }
 
 } // namespace shell::dock

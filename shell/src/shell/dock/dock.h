@@ -88,6 +88,7 @@ private:
   void endDrag(shell::dock::DockInstance& instance, bool commit);
   void reevaluateSmartAutoHide();
   void openTrash(shell::dock::DockInstance& instance);
+  void openTrashMenu(shell::dock::DockInstance& instance);
   void onTrashChanged();
   void sendWindowRectangles(shell::dock::DockInstance& instance);
 

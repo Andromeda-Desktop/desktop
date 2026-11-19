@@ -78,6 +78,7 @@ namespace shell::dock {
     std::function<void(DockInstance&, const DockItemAction&)> activateOrLaunch;
     std::function<void(DockInstance&)> toggleLauncher;
     std::function<void(DockInstance&)> openTrash;
+    std::function<void(DockInstance&)> openTrashMenu;
     std::function<void(DockInstance&, const DockItemAction&)> openItemMenu;
     // Drag-to-reorder: only called when the source item is pinned.
     std::function<void(DockInstance&, std::size_t itemIndex, float mainPos)> beginDrag;

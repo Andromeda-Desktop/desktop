@@ -575,10 +575,12 @@ namespace shell::dock {
 
     auto* instPtr = &instance;
     configureDockTooltip(*areaNode, cfg, i18n::tr("dock.trash"));
-    areaNode->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT}));
+    areaNode->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
     areaNode->setOnClick([instPtr, clickContext](const InputArea::PointerData& d) {
       if (d.button == BTN_LEFT && clickContext->callbacks.openTrash) {
         clickContext->callbacks.openTrash(*instPtr);
+      } else if (d.button == BTN_RIGHT && clickContext->callbacks.openTrashMenu) {
+        clickContext->callbacks.openTrashMenu(*instPtr);
       }
     });
     return areaNode;

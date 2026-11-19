@@ -60,6 +60,7 @@ namespace shell::dock {
     DockConfig config;
     std::string monitorOverrideTable;
     bool pinnedOverridden = false;
+    bool trashOverridden = false; // the monitor override table sets show_trash
     std::vector<std::string> lastPinnedConfig;
     std::vector<DesktopEntry> pinnedEntries;
     std::uint64_t modelSerial = 0;
