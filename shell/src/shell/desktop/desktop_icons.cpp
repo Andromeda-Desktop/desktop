@@ -192,7 +192,15 @@ void DesktopIcons::open() {
   );
   m_surface->setRenderContext(m_renderContext);
   m_surface->setAnimationManager(&m_animations);
-  m_surface->setConfigureCallback([this](std::uint32_t, std::uint32_t) { rebuildCells(); });
+  // Every layer map or unmap on the output re-sends a configure; one with the built size changes nothing, and a
+  // rebuild would repaint and damage the whole desktop under each opening panel.
+  m_surface->setConfigureCallback([this](std::uint32_t width, std::uint32_t height) {
+    if (m_sceneRoot != nullptr && m_configuredSize == std::pair{width, height}) {
+      return;
+    }
+    m_configuredSize = {width, height};
+    rebuildCells();
+  });
   m_surface->setPrepareFrameCallback([this](bool, bool needsLayout) {
     if (m_surface == nullptr || m_surface->width() == 0 || m_surface->height() == 0) {
       return;

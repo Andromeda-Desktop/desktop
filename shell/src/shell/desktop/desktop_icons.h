@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <utility>
 #include <filesystem>
 #include <array>
 #include <map>
@@ -200,6 +201,7 @@ private:
   float m_bandX1 = 0.0F;
   float m_bandY1 = 0.0F;
   bool m_dirty = false;
+  std::pair<std::uint32_t, std::uint32_t> m_configuredSize; // last configure that rebuilt the cells
   int m_cellW = 96;
   int m_cellH = 104;
   int m_plate = 72;
