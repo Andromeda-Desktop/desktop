@@ -1,3 +1,4 @@
+#include "time/time_format.h"
 #include "shell/greeter/greeter_appearance_sync.h"
 
 #include "compositors/compositor_platform.h"
@@ -677,7 +678,7 @@ namespace {
     lockscreen.insert_or_assign("layout", ls.layout);
     lockscreen.insert_or_assign("clock_style", ls.clockStyle);
     lockscreen.insert_or_assign("clock_size", ls.clockSize);
-    lockscreen.insert_or_assign("clock_format_24h", ls.clockFormat24h);
+    lockscreen.insert_or_assign("clock_format_24h", formatIs24Hour(config.shell.timeFormat));
     lockscreen.insert_or_assign("clock_seconds", ls.clockSeconds);
     // The greeter validator accepts only these forms; out-of-range values go as the style default.
     lockscreen.insert_or_assign("clock_weight", ls.clockWeight >= 100 && ls.clockWeight <= 1000 ? ls.clockWeight : 0);

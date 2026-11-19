@@ -279,7 +279,8 @@ namespace control_center {
   // Media (rulebook 9.3 "Media"): now-playing card with seek line and controls, then the players list when 2 or more.
   class MediaDetailPage final : public DetailPage {
   public:
-    MediaDetailPage(MprisService* mpris, HttpClient* http) : m_mpris(mpris), m_http(http) {}
+    MediaDetailPage(MprisService* mpris, HttpClient* http, CompositorPlatform* platform)
+        : m_mpris(mpris), m_http(http), m_platform(platform) {}
     void setActive(bool active) override;
 
   private:
@@ -289,6 +290,7 @@ namespace control_center {
 
     MprisService* m_mpris = nullptr;
     HttpClient* m_http = nullptr;
+    CompositorPlatform* m_platform = nullptr;
     std::unordered_set<std::string> m_pendingArt;
     std::shared_ptr<int> m_alive = std::make_shared<int>(0);
     Timer m_tick;

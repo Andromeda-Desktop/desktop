@@ -1,3 +1,4 @@
+#include "time/time_format.h"
 #include "shell/settings/settings_content_datetime.h"
 
 #include "i18n/i18n.h"
@@ -42,43 +43,6 @@ namespace settings {
       localtime_r(&when, &tm);
       char buf[128]{};
       return std::strftime(buf, sizeof(buf), format, &tm) > 0 ? std::string(buf) : std::string{};
-    }
-
-    bool is24Hour(std::string_view format) {
-      return format.find("%H") != std::string_view::npos || format.find("%R") != std::string_view::npos
-          || format.find("%T") != std::string_view::npos || format.find("%k") != std::string_view::npos;
-    }
-
-    // Swaps only the hour and AM/PM tokens, so seconds, separators and the date part survive.
-    std::string withHourCycle(std::string format, bool hour24) {
-      const auto replaceAll = [&](std::string_view from, std::string_view to) {
-        for (std::size_t at = format.find(from); at != std::string::npos; at = format.find(from, at + to.size())) {
-          format.replace(at, from.size(), to);
-        }
-      };
-      if (hour24) {
-        replaceAll("%r", "%T");
-        replaceAll(" %p", "");
-        replaceAll(" %P", "");
-        replaceAll("%p", "");
-        replaceAll("%P", "");
-        replaceAll("%I", "%H");
-        replaceAll("%l", "%k");
-        return format;
-      }
-      replaceAll("%T", "%I:%M:%S");
-      replaceAll("%R", "%I:%M");
-      replaceAll("%H", "%I");
-      replaceAll("%k", "%l");
-      std::size_t last = format.rfind("%M");
-      if (const std::size_t seconds = format.rfind("%S"); seconds != std::string::npos
-          && (last == std::string::npos || seconds > last)) {
-        last = seconds;
-      }
-      if (last != std::string::npos && format.find("%p") == std::string::npos) {
-        format.insert(last + 2, " %p");
-      }
-      return format;
     }
 
     // The region localed sets (/etc/locale.conf LC_TIME, else LANG).
@@ -177,9 +141,9 @@ namespace settings {
       const float scale = ctx.scale;
       const ShellConfig& shell = ctx.config->shell;
       Flex* card = addSettingsGroupCard(content, i18n::tr("settings.datetime.formats"), scale);
-      addSwitchRow(*card, "", i18n::tr("settings.datetime.24-hour"), is24Hour(shell.timeFormat), scale,
+      addSwitchRow(*card, "", i18n::tr("settings.datetime.24-hour"), formatIs24Hour(shell.timeFormat), scale,
                    [set = ctx.setOverride, format = shell.timeFormat](bool on) {
-                     set({"shell", "time_format"}, withHourCycle(format, on));
+                     set({"shell", "time_format"}, formatWithHourCycle(format, on));
                    });
 
       const std::time_t now = std::time(nullptr);

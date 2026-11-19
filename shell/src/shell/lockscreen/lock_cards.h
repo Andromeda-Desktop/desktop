@@ -77,7 +77,7 @@ public:
   [[nodiscard]] static AuthRect rowRect(const AuthPlacement& place);
   [[nodiscard]] static AuthRect widgetRect(const AuthPlacement& place, std::size_t i, float scale);
 
-  enum class Control { None, Previous, PlayPause, Next };
+  enum class Control { None, Previous, PlayPause, Next, OpenPlayer };
 
   // `parent` = the layer that recedes with the Glance sheet (AuthColumn::glanceLayer()).
   void build(Node& parent);
@@ -140,6 +140,7 @@ private:
   std::vector<Widget> m_widgets;
   std::array<Button, 3> m_buttons{};
   bool m_buttonsShown = false;
+  AuthRect m_mediaRect; // the media card laid out this frame, while m_buttonsShown
 };
 
 // Lock card data from the shell services; any service or the provider may be null. Notification content never enters it.

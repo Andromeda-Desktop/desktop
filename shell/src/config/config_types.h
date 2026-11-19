@@ -601,7 +601,6 @@ struct LockscreenConfig {
   // Clock style id (libdesk-ui ui/auth/clock_style.h); s | m | l | xl | fill, empty = the layout's size.
   std::string clockStyle = "classic";
   std::string clockSize;
-  bool clockFormat24h = true;
   bool clockSeconds = false;
   // Font axes of the clock (clock_style.h ClockAxisValues): 0 (round -1) = the style's own value; slant in degrees.
   int clockWeight = 0;

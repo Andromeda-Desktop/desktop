@@ -1158,6 +1158,10 @@ void LockSurface::onPointerEvent(const PointerEvent& event) {
         case LockCards::Control::Next:
           (void)m_mpris->next(bus);
           break;
+        case LockCards::Control::OpenPlayer:
+          // The player's window comes up under the lock, so it is in front after unlock.
+          (void)m_mpris->raise(bus);
+          break;
         case LockCards::Control::None:
           break;
         }
@@ -1887,7 +1891,7 @@ void LockSurface::layoutAndromeda(Renderer& renderer, float sw, float sh) {
         : m_authExtras.faceOnRequest ? "lockscreen.glance-hint-face-request"
                                      : "lockscreen.glance-hint-face"
     );
-    fillAuthClock(state, lockClockOptions(lock), m_clockGradientFrom, m_clockGradientTo);
+    fillAuthClock(state, lockClockOptions(lock, formatIs24Hour(m_config->config().shell.timeFormat)), m_clockGradientFrom, m_clockGradientTo);
     if (m_authExtras.passwordOnly) {
       state.reasonTitle = i18n::tr("lockscreen.phone-lock.title");
       state.reasonBody = i18n::tr("lockscreen.phone-lock.body");
@@ -2127,10 +2131,10 @@ namespace {
 
 void setLockClockPowerSaver(bool powerSaver) { g_clockPowerSaver = powerSaver; }
 
-AuthClockOptions lockClockOptions(const LockscreenConfig& lock) {
+AuthClockOptions lockClockOptions(const LockscreenConfig& lock, bool h24) {
   return {
       .style = lock.clockStyle,
-      .h24 = lock.clockFormat24h,
+      .h24 = h24,
       .seconds = lock.clockSeconds,
       .axes = {.weight = lock.clockWeight, .width = lock.clockWidth, .round = lock.clockRound, .slant = lock.clockSlant},
       .color = lock.clockColor,
@@ -2143,7 +2147,7 @@ AuthClockOptions lockClockOptions(const LockscreenConfig& lock) {
 void LockSurface::startAndromedaClock() {
   const bool seconds = m_config != nullptr && [&] {
     const LockscreenConfig& lock = m_config->config().lockscreen;
-    const AuthClockOptions options = lockClockOptions(lock);
+    const AuthClockOptions options = lockClockOptions(lock, formatIs24Hour(m_config->config().shell.timeFormat));
     return clockTicksSeconds(clockStyleById(lock.clockStyle), lock.clockSeconds, options.motion, options.axes);
   }();
   const std::int64_t period = seconds ? 1000 : 60000;

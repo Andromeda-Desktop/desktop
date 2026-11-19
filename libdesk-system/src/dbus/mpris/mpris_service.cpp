@@ -799,6 +799,27 @@ bool MprisService::pause(const std::string& busName) {
   return callPlayerMethod(busName, "Pause");
 }
 
+bool MprisService::raise(const std::string& busName) {
+  const auto it = m_players.find(busName);
+  const auto proxyIt = m_playerProxies.find(busName);
+  if (it == m_players.end() || !it->second.canRaise || proxyIt == m_playerProxies.end()) {
+    return false;
+  }
+  try {
+    proxyIt->second->callMethodAsync("Raise")
+        .onInterface(kMprisRootInterface)
+        .uponReplyInvoke([busName](std::optional<sdbus::Error> err) {
+          if (err.has_value()) {
+            kLog.warn("raise failed name={} err={}", busName, err->what());
+          }
+        });
+    return true;
+  } catch (const sdbus::Error& e) {
+    kLog.warn("raise failed name={} err={}", busName, e.what());
+    return false;
+  }
+}
+
 bool MprisService::stop(const std::string& busName) {
   const auto it = m_players.find(busName);
   if (it == m_players.end()) {
@@ -2813,6 +2834,7 @@ MprisPlayerInfo MprisService::readPlayerInfoFromProperties(
       .canGoNext = get_bool_from_props(playerProps, "CanGoNext"),
       .canGoPrevious = get_bool_from_props(playerProps, "CanGoPrevious"),
       .canSeek = get_bool_from_props(playerProps, "CanSeek"),
+      .canRaise = get_bool_from_props(rootProps, "CanRaise"),
   };
 }
 

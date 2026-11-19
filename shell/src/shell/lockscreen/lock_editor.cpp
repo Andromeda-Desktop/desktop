@@ -1,3 +1,4 @@
+#include "time/time_format.h"
 #include "shell/lockscreen/lock_editor.h"
 
 #include "ui/auth/auth_clock.h"
@@ -102,7 +103,7 @@ void LockEditor::open() {
     }
   }
   m_clock.size = indexOf(LockEditorGallery::kSizeNames, lock.clockSize);
-  m_clock.hour24 = lock.clockFormat24h;
+  m_clock.hour24 = formatIs24Hour(m_config->config().shell.timeFormat);
   m_clock.seconds = lock.clockSeconds;
   m_clock.axes = {lock.clockWeight, lock.clockWidth, lock.clockRound, lock.clockSlant};
   m_clock.color = std::max(0, indexOf(LockEditorGallery::kColorNames, lock.clockColor));
@@ -172,7 +173,7 @@ void LockEditor::open() {
 void LockEditor::startClock() {
   const LockscreenConfig lock = previewConfig();
   const std::int64_t period =
-      clockTicksSeconds(clockStyleById(lock.clockStyle), lock.clockSeconds, lockClockOptions(lock).motion, lockClockOptions(lock).axes) ? 1000 : 60000;
+      clockTicksSeconds(clockStyleById(lock.clockStyle), lock.clockSeconds, lockClockOptions(lock, m_clock.hour24).motion, lockClockOptions(lock, m_clock.hour24).axes) ? 1000 : 60000;
   const auto now = std::chrono::system_clock::now();
   const auto into = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % period;
   m_clockTimer.start(std::chrono::milliseconds(period - into + 5), [this] {
@@ -352,7 +353,7 @@ void LockEditor::layoutScene(float width, float height) {
   const auto [gradientFrom, gradientTo] =
       m_lockScreen != nullptr ? m_lockScreen->clockGradient() : std::pair<std::uint32_t, std::uint32_t>{0, 0};
   const LockscreenConfig preview = previewConfig();
-  fillAuthClock(state, lockClockOptions(preview), gradientFrom, gradientTo);
+  fillAuthClock(state, lockClockOptions(preview, m_clock.hour24), gradientFrom, gradientTo);
   AuthPlacementInput input{
       .layout = authLayoutFromName(LockEditorBar::kLayoutNames[static_cast<std::size_t>(m_draft.layout)]),
       .sw = width,
@@ -471,7 +472,6 @@ LockscreenConfig LockEditor::previewConfig() const {
   LockscreenConfig lock = m_config->config().lockscreen;
   lock.clockStyle = std::string(clockStyles()[static_cast<std::size_t>(m_clock.style)].id);
   lock.clockSize = LockEditorGallery::kSizeNames[static_cast<std::size_t>(m_clock.size)];
-  lock.clockFormat24h = m_clock.hour24;
   lock.clockSeconds = m_clock.seconds;
   lock.clockWeight = m_clock.axes[0];
   lock.clockWidth = m_clock.axes[1];
@@ -1015,7 +1015,10 @@ void LockEditor::save() {
   change("theme", theme, lock.theme);
   change("clock_style", preview.clockStyle, lock.clockStyle);
   change("clock_size", preview.clockSize, lock.clockSize);
-  change("clock_format_24h", preview.clockFormat24h, lock.clockFormat24h);
+  // The editor's 24-hour chip sets the system clock format, which the lock clock follows.
+  if (const std::string& format = m_config->config().shell.timeFormat; m_clock.hour24 != formatIs24Hour(format)) {
+    changes.push_back({{"shell", "time_format"}, formatWithHourCycle(format, m_clock.hour24)});
+  }
   change("clock_seconds", preview.clockSeconds, lock.clockSeconds);
   change("clock_weight", static_cast<std::int64_t>(preview.clockWeight), static_cast<std::int64_t>(lock.clockWeight));
   change("clock_width", static_cast<std::int64_t>(preview.clockWidth), static_cast<std::int64_t>(lock.clockWidth));

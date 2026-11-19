@@ -181,7 +181,6 @@ location.sunrise
 location.sunset
 lockscreen.allow_empty_password
 lockscreen.blur_intensity
-lockscreen.clock_format_24h
 lockscreen.clock_seconds
 lockscreen.clock_size
 lockscreen.clock_style

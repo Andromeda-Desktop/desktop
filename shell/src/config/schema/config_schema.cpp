@@ -406,10 +406,7 @@ namespace noctalia::config::schema {
                  {"xl", "settings.schema.lockscreen.clock-size.xl"}}
             )
         ),
-        field(
-            &LockscreenConfig::clockFormat24h, "clock_format_24h",
-            lock("lockscreen.clock-format-24h", "lock screen clock 24 hour 12")
-        ),
+        retiredField<LockscreenConfig>("clock_format_24h"),
         field(&LockscreenConfig::clockSeconds, "clock_seconds", lock("lockscreen.clock-seconds", "lock screen clock seconds")),
         field(&LockscreenConfig::clockWeight, "clock_weight", Range<std::int64_t>{0, 1000}),
         field(&LockscreenConfig::clockWidth, "clock_width", Range<std::int64_t>{0, 200}),

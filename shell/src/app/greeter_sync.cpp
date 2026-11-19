@@ -6,6 +6,7 @@
 #include "notification/notifications.h"
 #include "shell/greeter/greeter_appearance_sync.h"
 #include "theme/theme_service.h"
+#include "time/time_format.h"
 #include "util/string_utils.h"
 
 #include <chrono>
@@ -20,12 +21,15 @@ GreeterSync::~GreeterSync() { greeter::setLockWallpaperBakeReady({}); }
 
 void GreeterSync::start() {
   m_lockscreen = m_config.config().lockscreen;
+  m_clock24h = formatIs24Hour(m_config.config().shell.timeFormat);
   greeter::setLockWallpaperBakeReady([this] { scheduleAuto(); });
 }
 
 void GreeterSync::onConfigReload() {
-  if (m_config.config().lockscreen != m_lockscreen) {
+  const bool clock24h = formatIs24Hour(m_config.config().shell.timeFormat);
+  if (m_config.config().lockscreen != m_lockscreen || clock24h != m_clock24h) {
     m_lockscreen = m_config.config().lockscreen;
+    m_clock24h = clock24h;
     scheduleAuto();
   }
 }

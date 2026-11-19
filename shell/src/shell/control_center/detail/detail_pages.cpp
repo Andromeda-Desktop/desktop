@@ -7,7 +7,10 @@
 #include "ipc/ipc_service.h"
 #include "util/parse_number.h"
 #include "util/string_utils.h"
+#include "system/app_identity.h"
 #include "system/brightness_service.h"
+#include "system/desktop_entry.h"
+#include "system/desktop_entry_launch.h"
 #include "system/easyeffects_service.h"
 #include "system/format_units.h"
 #include "system/screen_time_service.h"
@@ -2041,6 +2044,22 @@ namespace control_center {
     text->addChild(ui::label({.text = player->identity, .fontSize = Tokens::typeFootnote.size * s,
                               .color = colorSpecFromRole(ColorRole::Label3), .maxLines = 1, .ellipsize = TextEllipsize::End}));
     head->addChild(std::move(text));
+    // The art and title open the player: its own Raise, else its window, else its desktop entry.
+    auto openArea = ui::inputArea({.cursorShape = CursorShape::Pointer});
+    openArea->setParticipatesInLayout(false);
+    openArea->setOnClick([this, bus, entryId = player->desktopEntry](const InputArea::PointerData&) {
+      if (!m_mpris->raise(bus) && !entryId.empty()) {
+        std::string idLower = entryId;
+        std::ranges::transform(idLower, idLower.begin(), [](unsigned char c) { return std::tolower(c); });
+        if (m_platform != nullptr && !m_platform->windowsForApp(idLower, idLower).empty()) {
+          m_platform->activateToplevelForAppId(entryId);
+        } else if (const auto entry = app_identity::findDesktopEntry(entryId, desktopEntries()); entry.has_value()) {
+          (void)desktop_entry_launch::launchEntry(*entry, {.dbusActivatable = entry->dbusActivatable, .dbusAppId = entry->id});
+        }
+      }
+      PanelManager::instance().close();
+    });
+    head->addChild(std::move(openArea));
     body->addChild(std::move(head));
 
     if (player->lengthUs > 0) {

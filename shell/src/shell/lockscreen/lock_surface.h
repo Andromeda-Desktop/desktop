@@ -62,7 +62,7 @@ class LockscreenWidgetsHost;
 // The power-saver profile is active: clock motion stops (set by Application::syncLockStreamPause).
 void setLockClockPowerSaver(bool powerSaver);
 // lockscreen.clock_* as the shared clock options (lock screen and its editor).
-[[nodiscard]] AuthClockOptions lockClockOptions(const LockscreenConfig& lock);
+[[nodiscard]] AuthClockOptions lockClockOptions(const LockscreenConfig& lock, bool h24);
 // The lockscreen.widgets / bottom_slot choice and the widget values (battery, weather) for LockCards.
 void fillLockWidgetData(
     LockCards::Data& data, const LockscreenConfig& lock, const WeatherService* weather, const AuthColumn::Status& status

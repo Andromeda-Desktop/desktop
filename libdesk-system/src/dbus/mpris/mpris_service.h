@@ -46,6 +46,7 @@ struct MprisPlayerInfo {
   bool canGoNext{false};
   bool canGoPrevious{false};
   bool canSeek{false};
+  bool canRaise{false};
 
   bool operator==(const MprisPlayerInfo&) const = default;
 };
@@ -77,6 +78,8 @@ public:
   bool play(const std::string& busName);
   bool pause(const std::string& busName);
   bool stop(const std::string& busName);
+  // Asks the player to show its window (MediaPlayer2.Raise); false when it cannot.
+  bool raise(const std::string& busName);
   bool next(const std::string& busName);
   bool previous(const std::string& busName);
   bool playPauseActive();

@@ -6,6 +6,7 @@ PropertiesChanged and Seeked), and appends every call to the file named by argv[
 "e2e" in the bus name and drops mpris:trackid, so a seek must use the relative Seek. org.e2e.Test.Advance moves the
 position without a signal, as playback does.
 """
+import os
 import sys
 
 import dbus
@@ -25,7 +26,7 @@ class Player(dbus.service.Object):
         self.log = log
         self.track = track
         self.status = "Playing"
-        self.title = "Desk Session"
+        self.title = os.environ.get("MPRIS_TEST_TITLE", "Desk Session")
         self.position = 12_000_000
         self.volume = 0.5
 
@@ -38,7 +39,7 @@ class Player(dbus.service.Object):
             "PlaybackStatus": self.status,
             "Metadata": dbus.Dictionary({
                 "xesam:title": self.title,
-                "xesam:artist": dbus.Array(["The Testers"], signature="s"),
+                "xesam:artist": dbus.Array([os.environ.get("MPRIS_TEST_ARTIST", "The Testers")], signature="s"),
                 "xesam:album": "E2E",
                 "mpris:length": dbus.Int64(200_000_000),
             } | ({"mpris:trackid": TRACK} if self.track else {}), signature="sv"),
@@ -60,7 +61,7 @@ class Player(dbus.service.Object):
     @dbus.service.method(PROPS, in_signature="s", out_signature="a{sv}")
     def GetAll(self, interface):
         if interface == ROOT:
-            return {"Identity": "E2E Player", "CanQuit": False, "CanRaise": False, "HasTrackList": False}
+            return {"Identity": "E2E Player", "CanQuit": False, "CanRaise": True, "HasTrackList": False}
         return self.player_props()
 
     @dbus.service.method(PROPS, in_signature="ssv")
@@ -77,6 +78,10 @@ class Player(dbus.service.Object):
     @dbus.service.signal(PLAYER, signature="x")
     def Seeked(self, position):
         pass
+
+    @dbus.service.method(ROOT)
+    def Raise(self):
+        self.record("Raise")
 
     @dbus.service.method(PLAYER)
     def Play(self):

@@ -48,5 +48,6 @@ private:
   Timer m_timeoutTimer;
   Timer m_autoTimer;
   LockscreenConfig m_lockscreen;
+  bool m_clock24h = true; // the greeter clock follows the system hour cycle
   std::uint64_t m_generation = 0;
 };

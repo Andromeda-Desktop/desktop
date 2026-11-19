@@ -70,7 +70,7 @@ namespace settings {
         return c.lockscreen.enabled && c.lockscreen.theme == "andromeda";
       };
       lockRow("layout", andromedaOn);
-      for (const auto* key : {"clock_style", "clock_size", "clock_format_24h", "clock_seconds", "notification_content", "owner_message"}) {
+      for (const auto* key : {"clock_style", "clock_size", "clock_seconds", "notification_content", "owner_message"}) {
         lockRow(key, andromedaOn);
       }
     }

@@ -34,6 +34,12 @@ std::string formatTimeAgo(std::chrono::system_clock::time_point tp);
 // flag/width-prefixed forms such as %OS, %EX or %-S. "%%" is a literal percent.
 [[nodiscard]] bool formatShowsSeconds(std::string_view fmt) noexcept;
 
+// True when a clock format shows a 24-hour hour (%H, %R, %T or %k).
+[[nodiscard]] bool formatIs24Hour(std::string_view fmt) noexcept;
+
+// Swaps only the hour and AM/PM tokens, so seconds, separators and the date part survive.
+[[nodiscard]] std::string formatWithHourCycle(std::string fmt, bool hour24);
+
 // Empty selects system-local time. Non-empty values must name a zone in the active timezone database.
 [[nodiscard]] bool isValidTimezone(std::string_view tzName);
 

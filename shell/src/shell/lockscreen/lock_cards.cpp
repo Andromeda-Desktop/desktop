@@ -436,9 +436,13 @@ void LockCards::layoutMediaCard(Renderer& renderer, Card& card, const AuthRect& 
     );
   }
   m_buttonsShown = true;
+  m_mediaRect = rect;
 
   const float textX = rect.x + pad + art + 12.0F * s;
   const float textW = rect.right() - pad - controlsW - 12.0F * s - textX;
+  // The card is one row high: a long title or artist ends in an ellipsis.
+  card.title->setMaxLines(1);
+  card.body->setMaxLines(1);
   setText(renderer, card.title, media.title, Tokens::typeBody.size * s, Tokens::typeBody.line * s, kLabel1, textW);
   card.title->setFontWeight(FontWeight::SemiBold);
   setText(renderer, card.body, media.subtitle, Tokens::typeFootnote.size * s, Tokens::typeFootnote.line * s, kLabel2, textW);
@@ -543,7 +547,8 @@ LockCards::Control LockCards::hitTest(float x, float y) const {
       return kControls[i];
     }
   }
-  return Control::None;
+  const AuthRect& card = m_mediaRect;
+  return x >= card.x && x < card.right() && y >= card.y && y < card.bottom() ? Control::OpenPlayer : Control::None;
 }
 
 LockCards::Data collectLockCards(

@@ -94,7 +94,7 @@ ControlCenterPanel::ControlCenterPanel(const ControlCenterServices& services) {
             std::make_unique<control_center::DisplayDetailPage>(services.brightness, services.shortcutServices()));
   addDetail(TabId::DetailSystem, std::make_unique<control_center::SystemDetailPage>(services.sysmon, services.ipc));
   addDetail(TabId::DetailScreenTime, std::make_unique<control_center::ScreenTimeDetailPage>(services.screenTime));
-  addDetail(TabId::DetailMedia, std::make_unique<control_center::MediaDetailPage>(services.mpris, services.httpClient));
+  addDetail(TabId::DetailMedia, std::make_unique<control_center::MediaDetailPage>(services.mpris, services.httpClient, services.platform));
   m_tabContainers.fill(nullptr);
   m_tabHeaderActions.fill(nullptr);
 }
