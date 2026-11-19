@@ -116,11 +116,14 @@ namespace bar_detail {
       if (island == nullptr || !island->visible() || (only != nullptr && island != only)) {
         continue;
       }
-      float x = 0.0F;
-      float y = 0.0F;
-      Node::absolutePosition(island, x, y);
-      const float w = island->width() * island->scaleX();
-      const float h = island->height() * island->scaleY();
+      // The rest rect, not the pressed one: a sheet opens on release, while the island still springs back.
+      float x = island->x();
+      float y = island->y();
+      if (island->parent() != nullptr) {
+        Node::mapToScene(island->parent(), island->x(), island->y(), x, y);
+      }
+      const float w = island->width();
+      const float h = island->height();
       if (sx >= x && sx < x + w && sy >= y && sy < y + h) {
         return std::array<float, 4>{x, y, w, h};
       }
