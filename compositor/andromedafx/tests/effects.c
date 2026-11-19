@@ -2587,6 +2587,55 @@ static bool test_buffer_tint(struct fixture* fixture) {
   return ok;
 }
 
+// An opaque wallpaper under a half faded-in optimized blur, under a translucent fill, against the wallpaper and the
+// blur each tinted with the fill in its own pass: the optimized blur must sample the wallpaper untinted.
+static bool blur_tint_case(struct fixture* fixture, bool folded, uint8_t out[4]) {
+  static const float wallpaper[4] = {0.8f, 0.4f, 0.2f, 1.0f}, fill[4] = {0.054f, 0.162f, 0.108f, 0.27f};
+  static const float straight[3] = {0.2f, 0.6f, 0.4f}, none[4] = {0}, blue[4] = {0, 0, 1, 1};
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_set_blur_data(scene, 1, 1, 0, 1, 1, 1);
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
+  struct wlr_buffer* wall_buffer = painted_buffer(fixture, wallpaper);
+  bool ok = check(wall_buffer != NULL, "buffer paints");
+  if (ok) {
+    struct wlr_scene_buffer* wall = wlr_scene_buffer_create(&scene->tree, wall_buffer);
+    wlr_scene_buffer_set_tint(wall, folded ? fill : none);
+    // The compositor marks the cache when the background changes; a bare scene renders it only once marked.
+    wlr_scene_optimized_blur_mark_dirty(wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT));
+    struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+    wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+    wlr_scene_blur_set_alpha(blur, 0.5f);
+    wlr_scene_blur_set_tint_mix(blur, straight, folded ? fill[3] : 0.0f);
+    if (!folded) {
+      wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, fill);
+    }
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+    ok &= check(rendered != NULL, "scene renders");
+    if (rendered != NULL) {
+      ok &= fixture_read_pixel(fixture, rendered, TEST_WIDTH / 2, TEST_HEIGHT / 2, out);
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+    wlr_buffer_drop(wall_buffer);
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+static bool test_blur_tint_fold(struct fixture* fixture) {
+  uint8_t over[4], folded[4];
+  bool ok = blur_tint_case(fixture, false, over) && blur_tint_case(fixture, true, folded);
+  for (int c = 0; ok && c < 4; c++) {
+    if (abs(over[c] - folded[c]) > 1) {
+      fprintf(stderr, "  channel %d: fill over %u, folded %u\n", c, over[c], folded[c]);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
 // A rounded, tinted, translucent buffer over a backdrop: the plain interior and effects corners give every pixel the
 // whole effects draw gives.
 static bool corner_split_case(struct fixture* fixture, bool whole, uint8_t out[TEST_WIDTH * TEST_HEIGHT][4]) {
@@ -3211,6 +3260,8 @@ int main(int argc, char* argv[]) {
     ok = test_faded_blur(&fixture);
   } else if (strcmp(argv[1], "buffer-tint") == 0) {
     ok = test_buffer_tint(&fixture);
+  } else if (strcmp(argv[1], "blur-tint-fold") == 0) {
+    ok = test_blur_tint_fold(&fixture);
   } else if (strcmp(argv[1], "corner-split") == 0) {
     ok = test_corner_split(&fixture);
   } else if (strcmp(argv[1], "glass-split") == 0) {

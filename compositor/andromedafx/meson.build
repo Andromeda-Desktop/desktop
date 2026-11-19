@@ -342,6 +342,7 @@ if build_tests
     'backdrop-probe',
     'faded-blur',
     'buffer-tint',
+    'blur-tint-fold',
     'corner-split',
     'glass-split',
   ]

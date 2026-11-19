@@ -1019,6 +1019,8 @@ struct render_data {
   bool effect_capture;
   // An earlier composition this frame emitted output_sample.
   bool sampled_earlier;
+  // Drawing the optimized blur source: buffers draw without their tint.
+  bool optimized_source;
   // Replay native lower layers for blur without sampling or advancing feedback.
   const void* backdrop_group;
   const void* workspace_group;
@@ -1810,8 +1812,15 @@ int wlr_scene_node_animation_expand(struct wlr_scene_node* node) {
  * when disabling the node. Note that reparenting the node could lead to the node
  * being reparented to a disabled super tree.
  */
+static void scene_node_damage_update(struct wlr_scene_node* node, pixman_region32_t* damage);
 static void scene_node_update(struct wlr_scene_node* node, pixman_region32_t* damage) {
   scene_node_note_update(node);
+  scene_node_damage_update(node, damage);
+}
+
+// scene_node_update without the update observers, for a change of appearance only: no geometry, visibility or
+// drawn source that an observer derives state from.
+static void scene_node_damage_update(struct wlr_scene_node* node, pixman_region32_t* damage) {
   struct wlr_scene* scene = scene_node_get_root(node);
   struct scene_effects* effects = NULL;
 
@@ -3257,7 +3266,8 @@ void wlr_scene_buffer_set_tint(struct wlr_scene_buffer* scene_buffer, const floa
     return;
   }
   memcpy(scene_buffer->tint, color, sizeof(scene_buffer->tint));
-  scene_node_update(&scene_buffer->node, NULL);
+  // The optimized blur source draws buffers untinted, so a tint changes no cache an observer keeps.
+  scene_node_damage_update(&scene_buffer->node, NULL);
 }
 
 void wlr_scene_buffer_set_content_region(struct wlr_scene_buffer* scene_buffer, const pixman_region32_t* region) {
@@ -3805,6 +3815,7 @@ static void render_optimized_source(
   pixman_region32_copy(&below.damage, region);
   below.overlay_entry = NULL;
   below.sampled_earlier = true;
+  below.optimized_source = true;
   for (struct render_list_entry* e = data->entries + data->entry_count - 1; e > cache_entry; e--) {
     struct wlr_scene_node* node = e->node;
     if (node->type == WLR_SCENE_NODE_BLUR || node->type == WLR_SCENE_NODE_OPTIMIZED_BLUR) {
@@ -4221,7 +4232,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                 || src_lum.max > src_lum.reference),
     };
 
-    const float tint_alpha = scene_buffer->tint[3];
+    const float tint_alpha = data->optimized_source ? 0.0f : scene_buffer->tint[3];
     if (tint_alpha > 0.0f) {
       // tint_mix takes a straight colour and its weight.
       for (int i = 0; i < 3; i++) {
