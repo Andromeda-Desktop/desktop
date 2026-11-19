@@ -22,7 +22,20 @@ env:
   ONLY: ${{ inputs.only }}
 
 jobs:
+  # A tag's run may restore main's caches but saves only for that tag, which no later release can read. The tag
+  # starts the build on main instead (GITHUB_TOKEN may dispatch), so its ccache serves the next releases.
+  relay:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-arch.yml -R "$GITHUB_REPOSITORY" --ref main -f tag="$TAG"
+
   packages:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
