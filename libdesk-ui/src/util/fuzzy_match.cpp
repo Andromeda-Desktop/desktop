@@ -39,7 +39,7 @@ namespace FuzzyMatch {
   }
 
   std::optional<int> typoDistance(std::string_view pattern, std::string_view text) {
-    const int allowed = pattern.size() < 4 ? 0 : (pattern.size() < 7 ? 1 : 2);
+    const int allowed = pattern.size() < 5 ? 0 : (pattern.size() < 7 ? 1 : 2);
     if (allowed == 0) {
       return std::nullopt;
     }

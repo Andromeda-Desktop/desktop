@@ -40,7 +40,7 @@ namespace {
   std::vector<LauncherSectionsAdapter::Section> providerSections(
       const std::vector<LauncherResult>& results, const std::vector<std::unique_ptr<LauncherProvider>>& providers
   ) {
-  // docs/search.md §1 order: Applications, Commands, Settings, Windows, Files, then the others as they come.
+  // docs/search.md §1 order: Applications, Commands, Settings, Windows, Files, the others as they come, then Actions.
   const auto rank = [](std::string_view id) -> int {
     if (id == kApplicationsProviderId) {
       return 0;
@@ -57,6 +57,9 @@ namespace {
     if (id == "Files") {
       return 4;
     }
+    if (id == "Web") {
+      return 6;
+    }
     return 5;
   };
   std::vector<std::pair<int, LauncherSectionsAdapter::Section>> sections;
@@ -67,7 +70,9 @@ namespace {
   for (std::size_t i = 0; i < results.size(); ++i) {
     const std::string& id = results[i].providerId;
     const int r = rank(id);
-    const std::string label = r == 1 ? i18n::tr("launcher.browser.sections.commands") : displayName(id);
+    const std::string label = r == 1   ? i18n::tr("launcher.browser.sections.commands")
+                              : r == 6 ? i18n::tr("launcher.browser.sections.actions")
+                                       : displayName(id);
     auto it = std::ranges::find_if(sections, [&](const auto& entry) { return entry.second.label == label; });
     if (it == sections.end()) {
       sections.push_back({r, {.label = label, .glyphName = {}, .resultIndices = {}}});

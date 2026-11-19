@@ -1316,6 +1316,7 @@
         "use-default-order": "Use Default Ordering"
       },
       "sections": {
+        "actions": "Actions",
         "all-apps": "All Apps",
         "commands": "Commands",
         "other-apps": "Other Apps",

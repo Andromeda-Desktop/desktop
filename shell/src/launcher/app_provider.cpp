@@ -11,6 +11,7 @@
 #include "util/string_utils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <optional>
 #include <string>
@@ -27,16 +28,51 @@ namespace {
   // Below any fuzzy score: those stay within a few points of zero even with their field weights.
   constexpr double kTypoMatchScore = -1'000.0;
 
+  bool isWordStart(std::string_view text, std::size_t i) {
+    const auto alnum = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0; };
+    return alnum(text[i]) && (i == 0 || !alnum(text[i - 1]));
+  }
+
+  // The pattern splits into prefixes of words in order: "qz" is Quill Zephyr, "vsco" Visual Studio Code.
+  bool matchesWordPrefixes(std::string_view pattern, std::string_view text, std::size_t from) {
+    if (pattern.empty()) {
+      return true;
+    }
+    for (std::size_t start = from; start < text.size(); ++start) {
+      if (!isWordStart(text, start)) {
+        continue;
+      }
+      std::size_t common = 0;
+      while (common < pattern.size() && start + common < text.size() && pattern[common] == text[start + common]) {
+        ++common;
+      }
+      for (std::size_t len = common; len > 0; --len) {
+        if (matchesWordPrefixes(pattern.substr(len), text, start + len)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // fzy ranks, but a hit must be a substring or word prefixes: a bare subsequence ("fire" in LibreOffice Impress) is noise.
+  double wordScore(std::string_view pattern, std::string_view text) {
+    if (text.find(pattern) == std::string_view::npos && !matchesWordPrefixes(pattern, text, 0)) {
+      return FuzzyMatch::noMatchScore;
+    }
+    return FuzzyMatch::score(pattern, text);
+  }
+
   double scoreEntry(std::string_view pattern, const DesktopEntry& entry) {
     if (pattern.empty()) {
       return 0.0;
     }
 
-    double nameScore = FuzzyMatch::score(pattern, entry.nameLower) * 5.0;
+    double nameScore = wordScore(pattern, entry.nameLower) * 5.0;
     if (FuzzyMatch::isMatch(nameScore) && entry.nameLower.starts_with(pattern)) {
       nameScore += 500.0;
     }
-    const double genericScore = FuzzyMatch::score(pattern, entry.genericNameLower) * 2.0;
+    const double genericScore = wordScore(pattern, entry.genericNameLower) * 2.0;
 
     // Keep the application name as the primary match field.
     if (FuzzyMatch::isMatch(nameScore)) {
@@ -45,7 +81,7 @@ namespace {
 
     double localizedNameScore = FuzzyMatch::noMatchScore;
     for (const std::string& name : entry.localizedNamesLower) {
-      localizedNameScore = std::max(localizedNameScore, FuzzyMatch::score(pattern, name) * 5.0);
+      localizedNameScore = std::max(localizedNameScore, wordScore(pattern, name) * 5.0);
     }
     if (FuzzyMatch::isMatch(localizedNameScore)) {
       return localizedNameScore + kLocalizedNameMatchPriority;
@@ -58,7 +94,7 @@ namespace {
         auto semi = list.find(';', start);
         auto word = (semi == std::string_view::npos) ? list.substr(start) : list.substr(start, semi - start);
         if (!word.empty()) {
-          best = std::max(best, FuzzyMatch::score(pattern, word) * weight);
+          best = std::max(best, wordScore(pattern, word) * weight);
         }
         if (semi == std::string_view::npos)
           break;
@@ -69,8 +105,8 @@ namespace {
 
     const double keywordScore = scoreList(entry.keywordsLower, 0.8);
     const double catScore = scoreList(entry.categoriesLower, 0.3);
-    const double idScore = FuzzyMatch::score(pattern, entry.idLower) * 1.5;
-    const double execScore = FuzzyMatch::score(pattern, entry.execLower);
+    const double idScore = wordScore(pattern, entry.idLower) * 1.5;
+    const double execScore = wordScore(pattern, entry.execLower);
 
     const double best = std::max({nameScore, genericScore, keywordScore, catScore, idScore, execScore});
     if (FuzzyMatch::isMatch(best)) {
@@ -91,11 +127,11 @@ namespace {
       return 0.0;
     }
 
-    double nameScore = FuzzyMatch::score(pattern, action.nameLower) * 5.0;
+    double nameScore = wordScore(pattern, action.nameLower) * 5.0;
     if (FuzzyMatch::isMatch(nameScore) && action.nameLower.starts_with(pattern)) {
       nameScore += 500.0;
     }
-    const double execScore = FuzzyMatch::score(pattern, action.execLower);
+    const double execScore = wordScore(pattern, action.execLower);
 
     return std::max(nameScore, execScore);
   }

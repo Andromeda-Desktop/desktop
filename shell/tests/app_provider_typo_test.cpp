@@ -42,6 +42,7 @@ int main() {
   writeEntry(applications, "probe-quarnet", "Quarnet");
   writeEntry(applications, "probe-quarnix", "Quarnix");
   writeEntry(applications, "probe-quill", "Quill Zephyr");
+  writeEntry(applications, "probe-offline", "Offline Imprese");
   setenv("XDG_DATA_HOME", (root / "data").c_str(), 1);
   setenv("XDG_DATA_DIRS", (root / "empty").c_str(), 1);
 
@@ -60,6 +61,9 @@ int main() {
   TEST_CHECK(exact != quarnet.end() && typo != quarnet.end() && exact < typo);
   // Initials find a multi-word name.
   TEST_CHECK(titles(provider.query("qz")).front() == "Quill Zephyr");
+  // Letters in order but neither a substring nor word starts: "fire" is not Offline Imprese.
+  TEST_CHECK(!contains(provider.query("fire"), "Offline Imprese"));
+  TEST_CHECK(contains(provider.query("imp"), "Offline Imprese"));
 
   fs::remove_all(root);
   return 0;

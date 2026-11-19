@@ -1353,13 +1353,15 @@ void LauncherPanel::refreshResults() {
     return;
   }
 
-  if (m_browserMode && modeProviderId().empty() && m_results.empty() && !m_query.empty()) {
-    // Rulebook 9.14 / docs/search.md §1: never an empty sheet, also while a slow provider answers; offer the web
-    // search row.
+  if (m_browserMode && modeProviderId().empty() && !m_query.empty()) {
+    // Rulebook 9.14 / docs/search.md §1: the web search row closes every query, so the sheet is never empty, also
+    // while a slow provider answers.
+    std::erase_if(m_results, [](const LauncherResult& result) { return result.providerId == "Web"; });
     const auto web = std::ranges::find(m_providers, "Web", [](const auto& provider) { return provider->id(); });
     if (web != m_providers.end()) {
       for (auto& result : (*web)->query(m_query)) {
         result.providerId = (*web)->id();
+        result.presentation = "action";
         m_results.push_back(std::move(result));
       }
     }

@@ -639,10 +639,18 @@ namespace launcher_detail {
           .gap = gap,
           .paddingV = gap,
           .paddingH = padding,
-          .radius = Style::scaledRadiusMd(m_style.scale),
+          .radius = Style::scaledRadius(Tokens::radiusR16, m_style.scale),
           .fillWidth = true,
           .fillHeight = true,
       });
+      // Rulebook §6: the current cell is the lens, a lifted pane with the E1 shadow under it.
+      addChild(ui::box({
+          .out = &m_lensShadow,
+          .radius = Style::scaledRadius(Tokens::radiusR16, m_style.scale),
+          .softness = Tokens::elevationE1.keyBlur * m_style.scale,
+          .visible = false,
+          .participatesInLayout = false,
+      }));
       addChild(std::move(col));
 
       addChild(
@@ -747,6 +755,7 @@ namespace launcher_detail {
 
       setSize(width, height);
       m_col->setSize(width, height);
+      placeLensShadow();
       m_isAppIcon = !result.desktopEntryPath.empty();
 
       const float pinSize = Style::fontSizeBody * m_style.scale;
@@ -835,6 +844,7 @@ namespace launcher_detail {
   protected:
     void doLayout(Renderer& renderer) override {
       m_col->setSize(width(), height());
+      placeLensShadow();
       if (m_style.showIcons && !m_badgeVisible && !m_iconPath.empty()) {
         (void)refreshAsyncIcon(renderer);
       }
@@ -842,11 +852,20 @@ namespace launcher_detail {
     }
 
   private:
+    void placeLensShadow() {
+      m_lensShadow->setPosition(0.0F, Tokens::elevationE1.keyY * m_style.scale);
+      m_lensShadow->setSize(width(), height());
+    }
+
     void applyVisualState() {
+      m_lensShadow->setVisible(m_selected);
+      m_lensShadow->setFill(colorSpecFromRole(
+          ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE1.keyLight : Tokens::elevationE1.keyDark
+      ));
       if (m_selected) {
         m_col->setFill(colorSpecFromRole(ColorRole::Lens));
       } else if (m_hovered) {
-        m_col->setFill(colorSpecFromRole(ColorRole::Fill3));
+        m_col->setFill(colorSpecFromRole(ColorRole::Fill1));
       } else {
         m_col->setFill(m_style.listItemBackground.value_or(clearColorSpec()));
       }
@@ -872,6 +891,7 @@ namespace launcher_detail {
     LauncherListStyle m_style{};
     bool m_selected = false;
     bool m_hovered = false;
+    Box* m_lensShadow = nullptr;
     Flex* m_col = nullptr;
     Box* m_badgeHost = nullptr;
     Label* m_badgeLabel = nullptr;

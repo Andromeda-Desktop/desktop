@@ -13,7 +13,7 @@ namespace FuzzyMatch {
   [[nodiscard]] double score(std::string_view pattern, std::string_view text);
 
   // Fewest edits (insert, delete, change, swap of neighbours) that turn the pattern into the start of the text or of a
-  // word in it, ASCII case folded; nullopt above the allowance: no typo under 4 letters, 1 from 4, 2 from 7. After
+  // word in it, ASCII case folded; nullopt above the allowance: no typo under 5 letters, 1 from 5, 2 from 7. After
   // nanolight (github.com/justrach/nanolight, MIT): "chorme" finds Chrome.
   [[nodiscard]] std::optional<int> typoDistance(std::string_view pattern, std::string_view text);
 
