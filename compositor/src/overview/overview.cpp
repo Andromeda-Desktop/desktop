@@ -623,6 +623,8 @@ namespace andromeda {
           .kind = card.kind,
           .shown = true,
           .opacity = workspace != nullptr ? reflowOpacity(workspace) : 1.0F,
+          .placed = placed,
+          .rect = rect,
       };
     }
     state.mainBox.reset();
@@ -770,6 +772,20 @@ namespace andromeda {
     }
 
     const View* liveTarget = liveTargetView();
+    // A window in a thumb rides it: the thumb's zoom travel and piece scale map the window's settled slot.
+    const auto inThumb = [&](const ov::WindowPlace& place, const ov::Rect& placed) -> std::optional<ov::Rect> {
+      if (place.workspace >= state.workspaceViews.size()) {
+        return std::nullopt;
+      }
+      const WorkspaceView& thumb = state.workspaceViews[place.workspace];
+      if (!thumb.shown || thumb.kind != ov::CardKind::Thumb || thumb.placed.w <= 0 || thumb.placed.h <= 0) {
+        return std::nullopt;
+      }
+      const double sx = thumb.rect.w / thumb.placed.w;
+      const double sy = thumb.rect.h / thumb.placed.h;
+      return ov::Rect{thumb.rect.x + (placed.x - thumb.placed.x) * sx, thumb.rect.y + (placed.y - thumb.placed.y) * sy,
+                      placed.w * sx, placed.h * sy};
+    };
     // A ThumbCopy appears in its thumb as the other thumbs' windows do; it follows its window's search filter.
     const auto layoutThumbCopy = [&](Card& card, const ov::WindowPlace* place) {
       if (place != nullptr && card.thumb == nullptr) {
@@ -783,10 +799,7 @@ namespace andromeda {
       if (place != nullptr) {
         const wlr_box& world = card.view->presentedBox();
         const ov::Rect placed = toLocal(reflowRect(card.view, toLayout(place->rect), reflowed));
-        const double s = m_appearScale.current();
-        const ov::Rect rect{
-            placed.x + placed.w * (1.0 - s) / 2, placed.y + placed.h * (1.0 - s) / 2, placed.w * s, placed.h * s
-        };
+        const ov::Rect rect = inThumb(*place, placed).value_or(placed);
         copy.box = layoutBox(rect, outputBox);
         copy.scale = world.width > 0 ? rect.w / world.width : 1.0;
         copy.opacity = static_cast<float>(
@@ -820,6 +833,9 @@ namespace andromeda {
         } else {
           rect = travelRect(desk, placed);
         }
+      } else if (const auto thumbRect = inThumb(*place, placed)) {
+        rect = *thumbRect;
+        opacity = ov::windowOpacity(*place, card.view->minimized(), 1.0) * std::clamp(m_appearOpacity.current(), 0.0, 1.0);
       } else {
         const double s = m_appearScale.current();
         rect = {placed.x + placed.w * (1.0 - s) / 2, placed.y + placed.h * (1.0 - s) / 2, placed.w * s, placed.h * s};

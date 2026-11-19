@@ -385,6 +385,24 @@ namespace andromeda::ov {
     const int ox = frame.output.x;
     const int oy = frame.output.y;
     const auto px = [](double value) { return static_cast<int>(std::lround(value)); };
+    // Strip chrome (the plus, the filter) rides the last thumb's zoom travel and piece scale, so the strip moves as one.
+    const auto rideStrip = [&](const Rect& settled) {
+      wlr_box box{ox + px(settled.x), oy + px(settled.y), px(settled.w), px(settled.h)};
+      for (auto it = placement.cards.rbegin(); it != placement.cards.rend(); ++it) {
+        if (it->kind != CardKind::Thumb || it->workspace >= frame.workspaces.size() || it->rect.w <= 0) {
+          continue;
+        }
+        const ChromeWorkspace& thumb = frame.workspaces[it->workspace];
+        if (thumb.shown && thumb.card.width > 0) {
+          const double sx = thumb.card.width / it->rect.w;
+          const double sy = thumb.card.height / it->rect.h;
+          box = {px(thumb.card.x + (settled.x - it->rect.x) * sx), px(thumb.card.y + (settled.y - it->rect.y) * sy),
+                 px(settled.w * sx), px(settled.h * sy)};
+        }
+        break;
+      }
+      return box;
+    };
 
     m_chips.clear();
     for (Label& label : m_names) {
@@ -464,12 +482,14 @@ namespace andromeda::ov {
            .iconSize = kSearchIcon},
           scale
       );
-      const int fx = ox + px(placement.filter->x);
-      const int fy = oy + px(placement.filter->y);
-      placeLabel(m_filter, fx, fy, shown);
+      // The field keeps its size; only its centre follows the strip.
+      const wlr_box ride = rideStrip({placement.filter->x, placement.filter->y, kFilterWidth, double(kFieldHeight)});
+      const int fx = ride.x + (ride.width - static_cast<int>(kFilterWidth)) / 2;
+      const int fy = ride.y + (ride.height - kFieldHeight) / 2;
+      placeLabel(m_filter, fx, fy, late);
       if (m_filterGlass != nullptr) {
-        m_filterGlass->setEnabled(shown > 0.004F);
-        m_filterGlass->place({fx, fy, static_cast<int>(kFilterWidth), kFieldHeight}, kFieldHeight / 2, shown);
+        m_filterGlass->setEnabled(late > 0.004F);
+        m_filterGlass->place({fx, fy, static_cast<int>(kFilterWidth), kFieldHeight}, kFieldHeight / 2, late);
       }
     } else {
       placeLabel(m_filter, 0, 0, 0.0F);
@@ -539,7 +559,7 @@ namespace andromeda::ov {
 
     if (placement.plus.has_value()) {
       const Rect& plus = *placement.plus;
-      const wlr_box box{ox + px(plus.x), oy + px(plus.y), px(plus.w), px(plus.h)};
+      const wlr_box box = rideStrip(plus);
       placeFrame(m_plus, box, kPlusRadius, 2, {0.5F, 0.5F, 0.5F, 0.08F}, l3, frame.thumbAlpha);
       setLabel(m_plusMark, span(l2, "normal", "+"), {.font = tokenFont(Tokens::typeLarge)}, scale);
       placeLabel(

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Spaces overview: a window on another desktop does not travel into the overview. It appears in its thumb slot, never
-# outside it, and its opacity rises once the shown windows pass 35 % of their travel. entrance_in_place_taskview.sh runs
+# Spaces overview: a window on another desktop does not travel into the overview. It rides its thumb, never wider or
+# taller than its slot, and its opacity rises once the shown windows pass 35 % of their travel. entrance_in_place_taskview.sh runs
 # it in Task View. With ENTRANCE_SHOTS set to a directory, the frames are copied there.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
@@ -58,7 +58,8 @@ for frame in $(seq "$FRAMES"); do
   read -r _ _ red_w _ < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$RED")
   reds+=("$red_w")
   read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$BLUE")
-  if ((w > 0)) && ((x < sx - 1 || y < sy - 1 || x + w > sx + sw + 1 || y + h > sy + sh + 1)); then
+  # The strip rises into place as one piece, so only the across-strip extent and the size are fixed.
+  if ((w > 0)) && ((x < sx - 1 || x + w > sx + sw + 1 || w > sw + 1 || h > sh + 1)); then
     echo "$STYLE: at $((frame * 8)) ms the blue card is at ${w}x${h}+${x}+${y}, outside its slot ${sw}x${sh}+${sx}+${sy}"
     exit 1
   fi
@@ -80,16 +81,18 @@ done
 # Blue level inside the slot, and an exit when the card left the slot.
 sample() {
   grim -o HEADLESS-1 "$IMAGE"
+  [[ -n ${ENTRANCE_SHOTS:-} ]] && cp "$IMAGE" "$ENTRANCE_SHOTS/$STYLE-${1// /_}.png"
   read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$BLUE")
-  if ((w > 0)) && ((x < sx - 1 || y < sy - 1 || x + w > sx + sw + 1 || y + h > sy + sh + 1)); then
+  if ((w > 0)) && ((x < sx - 1 || x + w > sx + sw + 1 || w > sw + 1 || h > sh + 1)); then
     "$ANDROMEDA" clock-resume > /dev/null
     echo "$STYLE: $1: the blue card is at ${w}x${h}+${x}+${y}, outside its slot ${sw}x${sh}+${sx}+${sy}"
     exit 1
   fi
-  read -r _ _ level < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" max "${sw}x${sh}+${sx}+${sy}")
+  # The whole frame: the card rides its thumb, so it leaves its settled slot while the strip moves.
+  read -r _ _ level < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" max "1280x720+0+0")
 }
 
-# The close mirrors the open: the card fades out where it is, from the first frame.
+# The close mirrors the open: the card fades out with its thumb, from the first frame.
 "$ANDROMEDA" clock-freeze > /dev/null
 "$ANDROMEDA" msg overview-close > /dev/null
 closing=()
@@ -100,14 +103,15 @@ for frame in 1 2 3 4; do
 done
 ((closing[3] < final - 20)) || { echo "$STYLE: the blue card did not fade out in place: ${closing[*]} (open $final)"; exit 1; }
 
-# Reopened mid-close, it turns around from where it is drawn instead of starting the entrance again from nothing.
+# Reopened mid-close, it turns around from where it is drawn (its springs carry a short dip) instead of starting the
+# entrance again from nothing.
 "$ANDROMEDA" msg overview-open > /dev/null
 reopen=()
 for frame in $(seq 12); do
   "$ANDROMEDA" clock-advance 8 > /dev/null
   sample "reopened at $((frame * 8)) ms"
   reopen+=("$level")
-  if ((level < closing[3] - 20)); then
+  if ((level < closing[3] / 2)); then
     "$ANDROMEDA" clock-resume > /dev/null
     echo "$STYLE: the reopened card restarted its entrance: ${reopen[*]} after closing to ${closing[3]}"
     exit 1

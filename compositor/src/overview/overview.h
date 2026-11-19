@@ -299,6 +299,8 @@ namespace andromeda {
       ov::CardKind kind = ov::CardKind::Frame;
       bool shown = false;
       float opacity = 1.0F; // a reflow crossfade's factor
+      ov::Rect placed;      // the settled card, local
+      ov::Rect rect;        // the card as drawn this frame, local
     };
 
     struct OutputState {
