@@ -12,12 +12,14 @@ on:
       tag: { description: "Existing tag to build and publish", required: true }
       ref: { description: "Commit or branch to build instead of the tag, for a packaging fix", required: false }
       prebuilt: { description: "Sign the packages already on the release instead of building them", type: boolean, default: false }
+      only: { description: "Build and publish only these parts (\"compositor shell\"); the repository keeps the others", required: false }
 
 permissions:
   contents: write
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
+  ONLY: ${{ inputs.only }}
 
 jobs:
   packages:
@@ -52,7 +54,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_CORE=1 CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
+          ANDROMEDA_CORE=1 ANDROMEDA_ONLY="$ONLY" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
           makepkg --syncdeps --noconfirm --force
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && !inputs.prebuilt
