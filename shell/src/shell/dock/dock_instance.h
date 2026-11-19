@@ -100,7 +100,6 @@ namespace shell::dock {
     InputArea* launcherArea = nullptr;
     Node* launcherIconNode = nullptr;
     float launcherRestMainPos = 0.0F;
-    float launcherRestCrossPos = 0.0F;
     float launcherHoverMainOffset = 0.0F;
     float launcherVisualScale = -1.0F;
     AnimationManager::Id launcherScaleAnimId = 0;
@@ -109,7 +108,6 @@ namespace shell::dock {
       InputArea* area = nullptr;
       Node* icon = nullptr;
       float restMainPos = 0.0F;
-      float restCrossPos = 0.0F;
       float hoverMainOffset = 0.0F;
       float visualScale = -1.0F;
       AnimationManager::Id scaleAnimId = 0;
@@ -118,7 +116,6 @@ namespace shell::dock {
     struct Separator {
       Node* node = nullptr;
       float restMainPos = 0.0F;
-      float restCrossPos = 0.0F;
     };
     std::vector<Separator> separators;
     std::int32_t restIconSize = 0; // config.iconSize before the fit to the output (dockFitIconSize)

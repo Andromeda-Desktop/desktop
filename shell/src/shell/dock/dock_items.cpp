@@ -64,7 +64,7 @@ namespace {
       return 0.0F;
     }
     const bool vertical = shell::dock::isVerticalEdge(cfg.position);
-    const float areaMain = vertical ? area->y() : area->x();
+    const float areaMain = vertical ? area->y() + area->translationY() : area->x() + area->translationX();
     return areaMain + (vertical ? localY : localX);
   }
 
@@ -144,15 +144,12 @@ namespace {
 
   [[nodiscard]] float itemRestCenterMain(float restMainPos, float cellMain) { return restMainPos + cellMain * 0.5F; }
 
-  void applyItemMainOffset(InputArea* area, bool vertical, float restMain, float restCross, float offset) {
-    if (area == nullptr) {
+  // The row layout owns an item's position; hover, drag and glide move it by a translation layout never writes.
+  void applyItemMainOffset(Node* node, bool vertical, float offset) {
+    if (node == nullptr) {
       return;
     }
-    if (!vertical) {
-      area->setPosition(restMain + offset, restCross);
-    } else {
-      area->setPosition(restCross, restMain + offset);
-    }
+    node->setTranslation(vertical ? 0.0F : offset, vertical ? offset : 0.0F);
   }
 
   [[nodiscard]] float hoverZoomFrameLerp(float deltaMs) {
@@ -1015,8 +1012,7 @@ namespace shell::dock {
 
         if (!cfg.magnification && !dragActive) {
           item.hoverMainOffset = 0.0F;
-          applyItemMainOffset(item.area, shell::dock::isVerticalEdge(edge), item.restMainPos, item.restCrossPos,
-                              item.glideMainOffset);
+          applyItemMainOffset(item.area, shell::dock::isVerticalEdge(edge), item.glideMainOffset);
           if (item.area != nullptr) {
             item.area->setZIndex(0);
           }
@@ -1158,10 +1154,7 @@ namespace shell::dock {
         );
       }
       instance.trash.hoverMainOffset = 0.0F;
-      applyItemMainOffset(
-          instance.trash.area, shell::dock::isVerticalEdge(cfg.position), instance.trash.restMainPos,
-          instance.trash.restCrossPos, 0.0F
-      );
+      applyItemMainOffset(instance.trash.area, shell::dock::isVerticalEdge(cfg.position), 0.0F);
     }
 
     if (!cfg.magnification && instance.launcherIconNode != nullptr) {
@@ -1177,10 +1170,7 @@ namespace shell::dock {
         );
       }
       instance.launcherHoverMainOffset = 0.0F;
-      applyItemMainOffset(
-          instance.launcherArea, shell::dock::isVerticalEdge(edge), instance.launcherRestMainPos,
-          instance.launcherRestCrossPos, 0.0F
-      );
+      applyItemMainOffset(instance.launcherArea, shell::dock::isVerticalEdge(edge), 0.0F);
       if (instance.launcherArea != nullptr) {
         instance.launcherArea->setZIndex(0);
       }
@@ -1280,7 +1270,7 @@ namespace shell::dock {
       float* hoverMainOffset = nullptr;
       AnimationManager::Id* scaleAnimId = nullptr;
       float restMainPos = 0.0F;
-      float restCrossPos = 0.0F;
+      float glideOffset = 0.0F;
       float baseScale = 1.0F;
       float targetScale = 1.0F;
       float targetMainOffset = 0.0F;
@@ -1300,7 +1290,6 @@ namespace shell::dock {
               .hoverMainOffset = &instance.launcherHoverMainOffset,
               .scaleAnimId = &instance.launcherScaleAnimId,
               .restMainPos = instance.launcherRestMainPos,
-              .restCrossPos = instance.launcherRestCrossPos,
               .baseScale = baseLauncherScale,
               .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, cellMain),
               .iconBaseX = kCellPad,
@@ -1328,7 +1317,7 @@ namespace shell::dock {
               .hoverMainOffset = &item.hoverMainOffset,
               .scaleAnimId = &item.scaleAnimId,
               .restMainPos = item.restMainPos + item.glideMainOffset,
-              .restCrossPos = item.restCrossPos,
+              .glideOffset = item.glideMainOffset,
               .baseScale = model.active ? cfg.activeScale : cfg.inactiveScale,
               .restCenterMain = itemRestCenterMain(item.restMainPos, cellMain),
           }
@@ -1343,7 +1332,6 @@ namespace shell::dock {
               .hoverMainOffset = &instance.launcherHoverMainOffset,
               .scaleAnimId = &instance.launcherScaleAnimId,
               .restMainPos = instance.launcherRestMainPos,
-              .restCrossPos = instance.launcherRestCrossPos,
               .baseScale = baseLauncherScale,
               .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, cellMain),
               .iconBaseX = kCellPad,
@@ -1361,7 +1349,6 @@ namespace shell::dock {
               .hoverMainOffset = &instance.trash.hoverMainOffset,
               .scaleAnimId = &instance.trash.scaleAnimId,
               .restMainPos = instance.trash.restMainPos,
-              .restCrossPos = instance.trash.restCrossPos,
               .baseScale = baseLauncherScale,
               .restCenterMain = itemRestCenterMain(instance.trash.restMainPos, cellMain),
               .iconBaseX = kCellPad,
@@ -1411,7 +1398,7 @@ namespace shell::dock {
       if (lerpHoverMainOffset(*slot.hoverMainOffset, zoomActive ? slot.targetMainOffset : 0.0F, lerpFactor)) {
         needsMoreFrames = true;
       }
-      applyItemMainOffset(slot.area, vertical, slot.restMainPos, slot.restCrossPos, *slot.hoverMainOffset);
+      applyItemMainOffset(slot.area, vertical, slot.glideOffset + *slot.hoverMainOffset);
 
       if (applyHoverIconScale(
               slot.iconNode, *slot.visualScale, *slot.scaleAnimId, instance, slot.targetScale, slot.baseScale,
@@ -1451,11 +1438,7 @@ namespace shell::dock {
             0.5F
         );
       }
-      if (vertical) {
-        separator.node->setPosition(separator.restCrossPos, separator.restMainPos + offset);
-      } else {
-        separator.node->setPosition(separator.restMainPos + offset, separator.restCrossPos);
-      }
+      applyItemMainOffset(separator.node, vertical, offset);
     }
 
     // The pill follows the drawn icons past its rest ends, so a magnified end icon never leaves the glass.
@@ -1485,7 +1468,8 @@ namespace shell::dock {
         const float drawn = vertical ? area->height() - in.top - in.bottom : area->width() - in.left - in.right;
         const float grow = drawn / iSize;
         const float inset = Tokens::componentDockLensInset * k * grow;
-        const float mainStart = vertical ? area->y() + in.top : area->x() + in.left;
+        const float mainStart =
+            vertical ? area->y() + area->translationY() + in.top : area->x() + area->translationX() + in.left;
         const float crossStart = vertical ? area->x() + in.left : area->y() + in.top;
         const float cross = vertical ? area->width() - in.left - in.right : area->height() - in.top - in.bottom;
         instance.lens.moveTo(
@@ -1508,18 +1492,15 @@ namespace shell::dock {
     const bool vertical = shell::dock::isVerticalEdge(cfg.position);
     for (auto& separator : instance.separators) {
       separator.restMainPos = vertical ? separator.node->y() : separator.node->x();
-      separator.restCrossPos = vertical ? separator.node->x() : separator.node->y();
     }
     if (instance.trash.area != nullptr) {
       instance.trash.restMainPos = vertical ? instance.trash.area->y() : instance.trash.area->x();
-      instance.trash.restCrossPos = vertical ? instance.trash.area->x() : instance.trash.area->y();
       if (!instance.hoverPointerValid) {
         instance.trash.hoverMainOffset = 0.0F;
       }
     }
     if (cfg.launcherPosition == DockLauncherPosition::Start && instance.launcherArea != nullptr) {
       instance.launcherRestMainPos = vertical ? instance.launcherArea->y() : instance.launcherArea->x();
-      instance.launcherRestCrossPos = vertical ? instance.launcherArea->x() : instance.launcherArea->y();
       if (!instance.hoverPointerValid) {
         instance.launcherHoverMainOffset = 0.0F;
       }
@@ -1557,14 +1538,13 @@ namespace shell::dock {
       }
       // Icons that stay glide into their new places instead of jumping when an app opens or closes (motion audit 4).
       item.glideMainOffset = from->second - item.restMainPos;
-      applyItemMainOffset(item.area, vertical, item.restMainPos, item.restCrossPos, item.glideMainOffset);
+      applyItemMainOffset(item.area, vertical, item.glideMainOffset);
       DockItemView* view = &item;
       item.glideAnimId = instance.animations.animateSpring(
           item.glideMainOffset, 0.0F, Style::spring(Tokens::springMove),
           [view, vertical, &instance](float offset) {
             view->glideMainOffset = offset;
-            applyItemMainOffset(view->area, vertical, view->restMainPos, view->restCrossPos,
-                                view->hoverMainOffset + view->dragMainOffset + offset);
+            applyItemMainOffset(view->area, vertical, view->hoverMainOffset + view->dragMainOffset + offset);
             if (instance.sceneRoot != nullptr) {
               instance.sceneRoot->markPaintDirty();
             }
@@ -1575,7 +1555,6 @@ namespace shell::dock {
     instance.glideFrom.clear();
     if (cfg.launcherPosition == DockLauncherPosition::End && instance.launcherArea != nullptr) {
       instance.launcherRestMainPos = vertical ? instance.launcherArea->y() : instance.launcherArea->x();
-      instance.launcherRestCrossPos = vertical ? instance.launcherArea->x() : instance.launcherArea->y();
       instance.launcherHoverMainOffset = 0.0F;
     }
   }
@@ -1661,12 +1640,7 @@ namespace shell::dock {
       }
 
       item.dragMainOffset = extraOffset;
-      const float totalMain = item.restMainPos + item.hoverMainOffset + extraOffset + item.glideMainOffset;
-      if (!vertical) {
-        item.area->setPosition(totalMain, item.restCrossPos);
-      } else {
-        item.area->setPosition(item.restCrossPos, totalMain);
-      }
+      applyItemMainOffset(item.area, vertical, item.hoverMainOffset + extraOffset + item.glideMainOffset);
     }
   }
 
@@ -1679,12 +1653,7 @@ namespace shell::dock {
       item.dragMainOffset = 0.0F;
       item.isDragGhost = false;
       item.area->setZIndex(0);
-      const float totalMain = item.restMainPos + item.hoverMainOffset + item.glideMainOffset;
-      if (!vertical) {
-        item.area->setPosition(totalMain, item.restCrossPos);
-      } else {
-        item.area->setPosition(item.restCrossPos, totalMain);
-      }
+      applyItemMainOffset(item.area, vertical, item.hoverMainOffset + item.glideMainOffset);
       Node* iconNode =
           item.iconImage != nullptr ? static_cast<Node*>(item.iconImage) : static_cast<Node*>(item.iconGlyph);
       if (iconNode != nullptr) {
