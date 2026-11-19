@@ -75,7 +75,7 @@ esac
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 grim "$OVERVIEW"
-read -r slot_x slot_y slot_w slot_h < <("$ANDROMEDA_PIXEL_PROBE" "$OVERVIEW" bbox "$MAGENTA")
+read -r slot_x slot_y slot_w slot_h < <("$ANDROMEDA_PIXEL_PROBE" "$OVERVIEW" blob "$MAGENTA")
 read -r card_x _ card_w _ < <("$ANDROMEDA_PIXEL_PROBE" "$OVERVIEW" bbox "$shown_color")
 if ((slot_w == 0 || card_w == 0)); then
   echo "the tab group's overview card has no tab bar (slot ${slot_w}px, card ${card_w}px)"

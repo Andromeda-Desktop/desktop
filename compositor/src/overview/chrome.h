@@ -172,7 +172,6 @@ namespace andromeda::ov {
     Label m_plusMark;
     Frame m_plus;
     Frame m_current; // ink ring around the shown workspace's thumb, row or tile
-    std::vector<Frame> m_minis; // the shown workspace's windows as blocks in its thumb
     std::unordered_map<const void*, Label> m_titles;
     Label m_close;
     Label m_closeHot; // the same button under the pointer: red, white mark

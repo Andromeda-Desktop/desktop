@@ -149,6 +149,19 @@ namespace andromeda {
     return 1.0;
   }
 
+  // A placement cut in card-local pixels at card scale `z`; empty for none.
+  static wlr_box cardClip(const wlr_box& world, const std::optional<ov::Insets>& cut, double z) {
+    if (!cut.has_value()) {
+      return {};
+    }
+    return {
+        .x = static_cast<int>(std::lround(cut->left * z)),
+        .y = static_cast<int>(std::lround(cut->top * z)),
+        .width = static_cast<int>(std::lround((world.width - cut->left - cut->right) * z)),
+        .height = static_cast<int>(std::lround((world.height - cut->top - cut->bottom) * z)),
+    };
+  }
+
   void Overview::layoutCard(Card& card, const View* liveTarget) {
     View* view = card.view;
     if (card.shadowTree != nullptr) {
@@ -219,7 +232,8 @@ namespace andromeda {
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
     }
     // Rulebook §11: a 2 px accent ring, 2 px outside the card's decorated edge and concentric with it.
-    const bool ringShown = m_focusRing == FocusRing::Shown && interactive() && view == liveTarget && cardMatches(card);
+    const bool ringShown = card.role == CardRole::Window && m_focusRing == FocusRing::Shown && interactive() &&
+                           view == liveTarget && cardMatches(card);
     wlr_scene_node_set_enabled(&card.focusRing->node, ringShown);
     if (ringShown) {
       constexpr int kRingGap = 2;
@@ -523,6 +537,12 @@ namespace andromeda {
           state.placeOf[place.id] = &place;
         }
       }
+      state.thumbOf.assign(state.cards.size(), nullptr);
+      for (const ov::WindowPlace& place : state.placement.currentThumb) {
+        if (place.id < state.thumbOf.size()) {
+          state.thumbOf[place.id] = &place;
+        }
+      }
     }
     const ov::Input& in = state.placedInput;
     const ov::Placement& placement = state.placement;
@@ -750,8 +770,36 @@ namespace andromeda {
     }
 
     const View* liveTarget = liveTargetView();
+    // A ThumbCopy appears in its thumb as the other thumbs' windows do; it follows its window's search filter.
+    const auto layoutThumbCopy = [&](Card& card, const ov::WindowPlace* place) {
+      if (place != nullptr && card.thumb == nullptr) {
+        card.thumb = makeCard(state, card.view, card.workspaceIndex, CardRole::ThumbCopy);
+      }
+      if (card.thumb == nullptr) {
+        return;
+      }
+      Card& copy = *card.thumb;
+      copy.opacity = 0.0F;
+      if (place != nullptr) {
+        const wlr_box& world = card.view->presentedBox();
+        const ov::Rect placed = toLocal(reflowRect(card.view, toLayout(place->rect), reflowed));
+        const double s = m_appearScale.current();
+        const ov::Rect rect{
+            placed.x + placed.w * (1.0 - s) / 2, placed.y + placed.h * (1.0 - s) / 2, placed.w * s, placed.h * s
+        };
+        copy.box = layoutBox(rect, outputBox);
+        copy.scale = world.width > 0 ? rect.w / world.width : 1.0;
+        copy.opacity = static_cast<float>(
+            ov::windowOpacity(*place, card.view->minimized(), 1.0) * std::clamp(m_appearOpacity.current(), 0.0, 1.0) *
+            card.filter.current()
+        );
+        copy.clip = cardClip(world, place->clip, copy.scale);
+      }
+      layoutCard(copy, liveTarget);
+    };
     for (size_t k = 0; k < state.cards.size(); ++k) {
       Card& card = *state.cards[k];
+      layoutThumbCopy(card, k < state.thumbOf.size() ? state.thumbOf[k] : nullptr);
       const ov::WindowPlace* place = k < state.placeOf.size() ? state.placeOf[k] : nullptr;
       if (place == nullptr) {
         card.opacity = 0.0F;
@@ -790,17 +838,7 @@ namespace andromeda {
       }
       card.opacity =
           static_cast<float>(opacity * card.filter.current()) * (&card != dragCard() ? reflowOpacity(card.view) : 1.0F);
-      card.clip = {};
-      if (place->clip.has_value()) {
-        const ov::Insets& cut = *place->clip;
-        const double z = card.scale;
-        card.clip = {
-            .x = static_cast<int>(std::lround(cut.left * z)),
-            .y = static_cast<int>(std::lround(cut.top * z)),
-            .width = static_cast<int>(std::lround((world.width - cut.left - cut.right) * z)),
-            .height = static_cast<int>(std::lround((world.height - cut.top - cut.bottom) * z)),
-        };
-      }
+      card.clip = cardClip(world, place->clip, card.scale);
       layoutCard(card, liveTarget);
     }
     layoutChrome(state, liveTarget);
@@ -1069,6 +1107,9 @@ namespace andromeda {
   }
 
   void Overview::syncCardEffects(Card& card) {
+    if (card.role != CardRole::Window) {
+      return;
+    }
     View* view = card.view;
     Workspace* workspace = view->workspace();
     const BorderEffectGate cardGate{
@@ -2047,6 +2088,10 @@ namespace andromeda {
     source->cards.erase(it);
     moved->owner = target;
     wlr_scene_node_reparent(&moved->tree->node, target->tree);
+    if (moved->thumb != nullptr) {
+      moved->thumb->owner = target;
+      wlr_scene_node_reparent(&moved->thumb->tree->node, target->tree);
+    }
     target->cards.push_back(std::move(moved));
     layoutOutput(*source);
     layoutOutput(*target);

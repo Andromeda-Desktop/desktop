@@ -45,7 +45,7 @@ red='r > 0.9 && g < 0.1 && b < 0.1'
 # Prints "<content width> <radius>" from the bottom-left corner of the red content box.
 measure() {
   grim -o HEADLESS-1 "$IMAGE"
-  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$red")
+  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob "$red")
   ((w > 40 && h > 40)) || { echo "no red content on screen ($x $y $w $h)" >&2; return 1; }
   local filled
   filled=$("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" count "$red" "40x40+$x+$((y + h - 40))")

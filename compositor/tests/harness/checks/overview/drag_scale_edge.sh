@@ -28,7 +28,7 @@ done
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle > /dev/null
 grim -o HEADLESS-1 "$IMAGE"
-read -r rx ry rw rh < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$RED")
+read -r rx ry rw rh < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob "$RED")
 ((rw > 0)) || { echo "no red card"; exit 1; }
 cx=$((rx + rw / 2))
 grab=$((ry + 6))

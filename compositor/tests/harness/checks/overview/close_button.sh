@@ -47,7 +47,7 @@ wait_for_windows 2
 "$ANDROMEDA" settle
 
 grim -o HEADLESS-1 "$IMAGE"
-read -r bx by bw bh < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox 'b > 0.9 && r < 0.1 && g < 0.1')
+read -r bx by bw bh < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob 'b > 0.9 && r < 0.1 && g < 0.1')
 if ((bw == 0)); then
   echo "the blue window's card is not on screen"
   exit 1

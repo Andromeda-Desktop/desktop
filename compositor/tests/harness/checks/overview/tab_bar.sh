@@ -64,7 +64,7 @@ fi
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" settle
 grim "$OVERVIEW"
-read -r card_x card_y card_w card_h < <("$ANDROMEDA_PIXEL_PROBE" "$OVERVIEW" bbox "$MAGENTA")
+read -r card_x card_y card_w card_h < <("$ANDROMEDA_PIXEL_PROBE" "$OVERVIEW" blob "$MAGENTA")
 if ((card_w == 0 || card_h == 0)); then
   echo "the tab group's overview card has no tab bar"
   exit 1

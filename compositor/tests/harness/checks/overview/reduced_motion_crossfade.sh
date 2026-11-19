@@ -34,7 +34,7 @@ bbox() {
   local crop=${1:-0,0 ${W}x${H}} ox oy x y w h
   grim -l 0 -g "$crop" "$IMAGE"
   IFS=, read -r ox oy <<< "${crop%% *}"
-  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$BLUE")
+  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob "$BLUE")
   ((w > 0)) && echo "$((x + ox)) $((y + oy)) $w $h" || echo "0 0 0 0"
 }
 near() { (($1 - $2 <= 2 && $2 - $1 <= 2)); }

@@ -70,17 +70,15 @@ namespace andromeda::ov {
       return m.minimized || !onOutput ? 0.0 : 1.0;
     }
 
-    // Members of a non-current workspace shrink into its thumb, cut to the output, so the thumb is a live miniature.
+    // Members of each workspace shrink into its thumb, cut to the output, so the thumb is a live miniature.
     void placeIntoCards(Placement& out, const Input& in) {
       for (const Card& card : out.cards) {
-        if (card.workspace == in.current && card.kind == CardKind::Thumb) {
-          continue;
-        }
+        const bool copy = card.workspace == in.current && card.kind == CardKind::Thumb;
         const Fit fit = thumbFit(card.rect, in.width);
         for (const Member& m : in.workspaces[card.workspace].members) {
           WindowPlace w = win(m.id, card.workspace, mapRect(m.desk, fit), memberOpacity(m, in));
           w.clip = outputClip(m.desk, in);
-          out.windows.push_back(w);
+          (copy ? out.currentThumb : out.windows).push_back(w);
         }
       }
     }
@@ -119,15 +117,6 @@ namespace andromeda::ov {
 
       if (in.current < n) {
         const Workspace& ws = in.workspaces[in.current];
-        for (const Member& m : ws.members) {
-          const double x0 = std::max(0.0, m.desk.x);
-          const double y0 = std::max(0.0, m.desk.y);
-          const double x1 = std::min(in.width, m.desk.x + m.desk.w);
-          const double y1 = std::min(in.height, m.desk.y + m.desk.h);
-          if (!m.minimized && x1 > x0 && y1 > y0) {
-            out.currentDesk.push_back({x0, y0, x1 - x0, y1 - y0});
-          }
-        }
         if (!top || ws.arrangement == Arrangement::Free) {
           std::vector<ExposeItem> items;
           items.reserve(ws.members.size());

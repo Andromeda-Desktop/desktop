@@ -191,6 +191,7 @@ namespace andromeda {
     uint32_t m_scrollTime = 0;
     struct Card;
     struct OutputState;
+    enum class CardRole : std::uint8_t { Window, ThumbCopy };
 
     struct CardSurface {
       Card* card = nullptr;
@@ -249,6 +250,10 @@ namespace andromeda {
       // Spaces and Task View: the window was on screen when the open or close began, so it grows from (returns to) its
       // real rect; otherwise it appears in its slot. A card made later appears.
       bool grows = false;
+      // A ThumbCopy draws the window a second time, in the shown workspace's thumb (Spaces, Task View); it leaves the
+      // view's effects and the client's frame pacing to the window's own card.
+      CardRole role = CardRole::Window;
+      std::unique_ptr<Card> thumb; // the window's ThumbCopy, made when first placed
     };
 
     // One surface of the output's mirrored stack: a background- or bottom-layer surface copied into every workspace
@@ -310,10 +315,11 @@ namespace andromeda {
       // Cards step along x (thumb rows, a horizontal strip) rather than y.
       bool cardsHorizontal = false;
       // The settled placement, recomputed only when its input, the chosen row or the style changes, so an open or
-      // close in flight only interpolates. `placeOf[k]` is card k's entry, or null.
+      // close in flight only interpolates. `placeOf[k]` is card k's entry, or null; `thumbOf[k]` its ThumbCopy's.
       ov::Input placedInput;
       ov::Placement placement;
       std::vector<const ov::WindowPlace*> placeOf;
+      std::vector<const ov::WindowPlace*> thumbOf;
       ov::Style placedStyle = ov::Style::Spaces;
       double placedRow = 0;
       bool placed = false;
@@ -385,6 +391,7 @@ namespace andromeda {
     void buildState();
     void populateCards(OutputState& state);
     Card* createCard(OutputState& state, View* view, size_t workspaceIndex);
+    std::unique_ptr<Card> makeCard(OutputState& state, View* view, size_t workspaceIndex, CardRole role);
     void snapshotCardForClose(Card& card);
     void destroyCard(Card* card);
     void layoutCardShadow(Card& card, float alpha) const;

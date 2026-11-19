@@ -3,6 +3,7 @@
 //
 //   pixel-probe <png> count <predicate>... [region]  matching pixels, one count per predicate
 //   pixel-probe <png> bbox <predicate> [region]    "x y w h" of matching pixels, "0 0 0 0" when none match
+//   pixel-probe <png> blob <predicate> [region]    "x y w h" of the largest 8-connected patch of matching pixels
 //   pixel-probe <png> mean [region]                "r g b" region mean
 //   pixel-probe <png> max [region]                 "r g b" per-channel maximum
 //   pixel-probe <png> pixel <x> <y>                "r g b"
@@ -13,6 +14,7 @@
 // '(r > 0.8 && g < 0.1) || b > 0.5'.
 
 #include <algorithm>
+#include <array>
 #include <cairo.h>
 #include <cctype>
 #include <charconv>
@@ -296,7 +298,7 @@ namespace {
 
   int usage() {
     std::println(stderr, "usage: pixel-probe <png> count <predicate>... [WxH+X+Y]");
-    std::println(stderr, "       pixel-probe <png> bbox <predicate> [WxH+X+Y]");
+    std::println(stderr, "       pixel-probe <png> bbox|blob <predicate> [WxH+X+Y]");
     std::println(stderr, "       pixel-probe <png> mean|max [WxH+X+Y]");
     std::println(stderr, "       pixel-probe <png> pixel <x> <y>");
     std::println(stderr, "       pixel-probe <png> diff <other-png> [WxH+X+Y]");
@@ -405,7 +407,7 @@ int main(int argc, char** argv) {
     std::println("{} {}", largest, differing);
     return 0;
   }
-  if (op == "count" || op == "bbox") {
+  if (op == "count" || op == "bbox" || op == "blob") {
     // A trailing argument that parses as a region is the region; every other argument is a predicate.
     std::vector<std::string_view> predicateArgs = args;
     Region region{.x = 0, .y = 0, .width = image->width, .height = image->height};
@@ -415,7 +417,7 @@ int main(int argc, char** argv) {
         predicateArgs.pop_back();
       }
     }
-    if (predicateArgs.empty() || (op == "bbox" && predicateArgs.size() != 1)) {
+    if (predicateArgs.empty() || (op != "count" && predicateArgs.size() != 1)) {
       return usage();
     }
     std::vector<std::unique_ptr<Node>> predicates;
@@ -425,6 +427,58 @@ int main(int argc, char** argv) {
         std::println(stderr, "pixel-probe: malformed predicate '{}'", text);
         return 2;
       }
+    }
+    if (op == "blob") {
+      const int w = region.width;
+      std::vector<uint8_t> mask(static_cast<size_t>(w) * region.height, 0);
+      for (int y = 0; y < region.height; ++y) {
+        for (int x = 0; x < w; ++x) {
+          mask[(static_cast<size_t>(y) * w) + x] =
+              evaluate(*predicates.front(), image->at(region.x + x, region.y + y)) != 0.0 ? 1 : 0;
+        }
+      }
+      long best = 0;
+      std::array<int, 4> box{0, 0, 0, 0};
+      std::vector<int> stack;
+      for (int start = 0; start < static_cast<int>(mask.size()); ++start) {
+        if (mask[start] != 1) {
+          continue;
+        }
+        long size = 0;
+        int l = w;
+        int t = region.height;
+        int r = -1;
+        int b = -1;
+        mask[start] = 2;
+        stack.push_back(start);
+        while (!stack.empty()) {
+          const int at = stack.back();
+          stack.pop_back();
+          const int x = at % w;
+          const int y = at / w;
+          ++size;
+          l = std::min(l, x);
+          t = std::min(t, y);
+          r = std::max(r, x);
+          b = std::max(b, y);
+          for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+              const int nx = x + dx;
+              const int ny = y + dy;
+              if (nx >= 0 && nx < w && ny >= 0 && ny < region.height && mask[(ny * w) + nx] == 1) {
+                mask[(ny * w) + nx] = 2;
+                stack.push_back((ny * w) + nx);
+              }
+            }
+          }
+        }
+        if (size > best) {
+          best = size;
+          box = {region.x + l, region.y + t, r - l + 1, b - t + 1};
+        }
+      }
+      std::println("{} {} {} {}", box[0], box[1], box[2], box[3]);
+      return 0;
     }
     std::vector<long> counts(predicates.size(), 0);
     int left = image->width;

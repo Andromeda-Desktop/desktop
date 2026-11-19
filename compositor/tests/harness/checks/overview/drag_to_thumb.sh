@@ -58,8 +58,8 @@ probe() {
     region=$(awk -v s="$scale" -v r="$region" 'BEGIN {
       split(r, a, /[x+]/); printf "%dx%d+%d+%d", a[1] * s, a[2] * s, a[3] * s, a[4] * s }')
   fi
-  if [[ $op == bbox ]]; then
-    "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$predicate" ${region:+"$region"} |
+  if [[ $op == bbox || $op == blob ]]; then
+    "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" "$op" "$predicate" ${region:+"$region"} |
       awk -v s="$scale" '{ printf "%d %d %d %d\n", $1 / s, $2 / s, $3 / s, $4 / s }'
   else
     "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" count "$predicate" ${region:+"$region"}
@@ -70,7 +70,7 @@ probe() {
 # releases there. Sets AREAS to the red pixel counts "claim mid over" (thumbs draw the shown desktop as a grey stand-in).
 drag_red() {
   local scale=$1 tx=$2 ty=$3 rx ry rw rh
-  read -r rx ry rw rh < <(probe "$scale" bbox "$RED")
+  read -r rx ry rw rh < <(probe "$scale" blob "$RED")
   ((rw > 0)) || { echo "scale $scale: no red card in the main area"; exit 1; }
   rx=$((rx + rw / 2))
   ry=$((ry + rh / 2))
@@ -118,7 +118,7 @@ inside_thumb() {
 # escape_card <predicate> <scale>: holds that card 100 px below its slot and presses Escape there.
 escape_card() {
   local predicate=$1 scale=$2 x y w h
-  read -r x y w h < <(probe "$scale" bbox "$predicate")
+  read -r x y w h < <(probe "$scale" blob "$predicate")
   x=$((x + w / 2))
   y=$((y + h / 2))
   "$ANDROMEDA_POINTER_CLIENT" "$W" "$H" move "$x" "$y" press "$BTN_LEFT" move "$x" $((y + 4)) move "$x" $((y + 9)) \
@@ -129,18 +129,18 @@ escape_card() {
 # overview card). Animated, blue cancelled while red still returns leaves red on its own path, sampled over frames.
 return_check() {
   local scale=$1 x0 y0 w0 h0 x1 y1 x2 y2 x3 y3 x y w h
-  read -r x0 y0 w0 h0 < <(probe "$scale" bbox "$RED")
+  read -r x0 y0 w0 h0 < <(probe "$scale" blob "$RED")
   ((w0 > 0 && w0 < 600)) || { echo "scale $scale: no red overview card before Escape (${w0}x${h0})"; exit 1; }
   if [[ $ANIMATED == true ]]; then
     "$ANDROMEDA" clock-freeze > /dev/null
     escape_card "$RED" "$scale"
     "$ANDROMEDA" clock-advance 48 > /dev/null
-    read -r x1 y1 _ _ < <(probe "$scale" bbox "$RED")
+    read -r x1 y1 _ _ < <(probe "$scale" blob "$RED")
     ((y1 > y0 + 8)) || { "$ANDROMEDA" clock-resume > /dev/null; echo "scale $scale: red was not returning (y $y0 -> $y1)"; exit 1; }
     escape_card "$BLUE" "$scale"
-    read -r x2 y2 _ _ < <(probe "$scale" bbox "$RED")
+    read -r x2 y2 _ _ < <(probe "$scale" blob "$RED")
     "$ANDROMEDA" clock-advance 16 > /dev/null
-    read -r x3 y3 _ _ < <(probe "$scale" bbox "$RED")
+    read -r x3 y3 _ _ < <(probe "$scale" blob "$RED")
     "$ANDROMEDA" clock-resume > /dev/null
     ((x2 - x1 <= 2 && x1 - x2 <= 2 && y2 - y1 <= 2 && y1 - y2 <= 2)) || {
       echo "scale $scale: a second return moved the returning red card from +$x1+$y1 to +$x2+$y2 at once (slot +$x0+$y0)"
@@ -152,7 +152,7 @@ return_check() {
     escape_card "$RED" "$scale"
   fi
   "$ANDROMEDA" settle > /dev/null
-  read -r x y w h < <(probe "$scale" bbox "$RED")
+  read -r x y w h < <(probe "$scale" blob "$RED")
   ((x - x0 <= 1 && x0 - x <= 1 && y - y0 <= 1 && y0 - y <= 1 && w - w0 <= 1 && w0 - w <= 1)) || {
     echo "scale $scale: after Escape red is at ${w}x${h}+${x}+${y}, not in its slot ${w0}x${h0}+${x0}+${y0}"
     exit 1

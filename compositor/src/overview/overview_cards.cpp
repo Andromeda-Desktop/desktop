@@ -131,8 +131,10 @@ namespace andromeda {
     buffer->point_accepts_input = rejectInput;
     entry->commit.connect(&surface->events.commit, entry.get(), onCardSurfaceCommit);
     entry->destroy.connect(&surface->events.destroy, entry.get(), onCardSurfaceDestroy);
-    entry->outputSample.connect(&buffer->events.output_sample, entry.get(), onCardBufferOutputSample);
-    entry->frameDone.connect(&buffer->events.frame_done, entry.get(), onCardBufferFrameDone);
+    if (card->role == CardRole::Window) {
+      entry->outputSample.connect(&buffer->events.output_sample, entry.get(), onCardBufferOutputSample);
+      entry->frameDone.connect(&buffer->events.frame_done, entry.get(), onCardBufferFrameDone);
+    }
     syncCardBuffer(*entry);
     card->surfaces.push_back(std::move(entry));
   }
@@ -233,6 +235,20 @@ namespace andromeda {
     if (view == nullptr || !view->mapped() || view->pinned() || view->attached()) {
       return nullptr;
     }
+    std::unique_ptr<Card> card = makeCard(state, view, workspaceIndex, CardRole::Window);
+    if (card == nullptr) {
+      return nullptr;
+    }
+    Card* raw = card.get();
+    state.cards.push_back(std::move(card));
+    // Animation schedules the first output frame. The passive card buffers then
+    // pace clients from frames where their content was actually sampled.
+    m_server->scheduleSuspensionSync();
+    return raw;
+  }
+
+  std::unique_ptr<Overview::Card>
+  Overview::makeCard(OutputState& state, View* view, size_t workspaceIndex, CardRole role) {
     wlr_surface* surface = view->rootSurface();
     if (surface == nullptr) {
       return nullptr;
@@ -243,6 +259,7 @@ namespace andromeda {
     card->refreshPhase = m_nextRefreshPhase++ & 1U;
     card->view = view;
     card->workspaceIndex = workspaceIndex;
+    card->role = role;
     card->tree = wlr_scene_tree_create(state.tree);
     if (card->tree == nullptr) {
       return nullptr;
@@ -266,15 +283,8 @@ namespace andromeda {
     }
     // A card made during a search starts at its filter level instead of fading to it.
     card->filter.snap(m_filter.empty() || cardMatches(*card) ? 1.0 : kFilterMissOpacity);
-    Card* raw = card.get();
-    state.cards.push_back(std::move(card));
-
-    forEachCardSurface(raw, addCardSurface);
-
-    // Animation schedules the first output frame. The passive card buffers then
-    // pace clients from frames where their content was actually sampled.
-    m_server->scheduleSuspensionSync();
-    return raw;
+    forEachCardSurface(card.get(), addCardSurface);
+    return card;
   }
 
   void Overview::snapshotCardForClose(Card& card) {
@@ -376,6 +386,10 @@ namespace andromeda {
   }
 
   void Overview::destroyCard(Card* card) {
+    if (card->thumb != nullptr) {
+      destroyCard(card->thumb.get());
+      card->thumb.reset();
+    }
     if (m_pointer.forget(*card)) {
       hideDropHint();
       stopEdgeScroll();

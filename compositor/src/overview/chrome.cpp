@@ -33,7 +33,6 @@ namespace andromeda::ov {
     constexpr int kPlusRadius = 12;
     constexpr int kCloseSize = 24;
     constexpr int kCloseInset = 4; // the button centres this far inside the card's top-right corner
-    constexpr int kMiniRadius = 3;
     constexpr std::array<float, 4> kCloseRed{0.898F, 0.282F, 0.302F, 1.0F};
     constexpr int kMenuWidth = 280;
     constexpr int kMenuPad = 6;
@@ -502,30 +501,8 @@ namespace andromeda::ov {
     }
 
     const int usableBottom = frame.usable.y + frame.usable.height;
-
-    // The shown workspace's windows live in the main area; its thumb shows them as see-through blocks (prototype
-    // .mini i), so the desktop shows behind them and a maximized window does not turn the thumb solid.
     const ChromeWorkspace* current =
         frame.current < frame.workspaces.size() ? &frame.workspaces[frame.current] : nullptr;
-    size_t minis = 0;
-    if (current != nullptr && current->shown && current->kind == CardKind::Thumb && frame.output.width > 0) {
-      const double z = static_cast<double>(current->card.width) / frame.output.width;
-      const std::array<float, 4> fill = withAlpha(colors.textPrimary, 0.14F);
-      const std::array<float, 4> line = withAlpha(colors.textPrimary, 0.3F);
-      for (const Rect& r : placement.currentDesk) {
-        if (minis == m_minis.size()) {
-          m_minis.emplace_back();
-        }
-        const wlr_box box{
-            current->card.x + px(r.x * z), current->card.y + px(r.y * z), std::max(1, px(r.w * z)),
-            std::max(1, px(r.h * z))
-        };
-        placeFrame(m_minis[minis++], box, kMiniRadius, 1, fill, line, frame.thumbAlpha);
-      }
-    }
-    for (; minis < m_minis.size(); ++minis) {
-      placeFrame(m_minis[minis], {}, kMiniRadius, 1, {}, {}, 0.0F);
-    }
 
     // The shown workspace's card carries a 2 px ink ring just outside it (overview.css .ov-ws.cur; the handoff's 3 px
     // accent is the hover ring, docs/design/deviations.md).

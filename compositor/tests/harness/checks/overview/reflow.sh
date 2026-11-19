@@ -35,7 +35,7 @@ wait_for_windows() {
 # Center x of the blue survivor's card.
 blue_center() {
   grim -o HEADLESS-1 "$IMAGE"
-  read -r x _ w _ < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox 'b > 0.9 && r < 0.1 && g < 0.1')
+  read -r x _ w _ < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob 'b > 0.9 && r < 0.1 && g < 0.1')
   ((w > 0)) || { echo "the survivor's card is not on screen" >&2; return 1; }
   echo $((x + w / 2))
 }
