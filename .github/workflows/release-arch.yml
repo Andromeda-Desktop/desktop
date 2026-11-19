@@ -99,7 +99,7 @@ jobs:
             || echo "::warning::no Link release: this release ships without Link"
           tools/repo-publish.sh arch repo core
           # upload-artifact rejects ':' in a path: the epoch in the file name becomes '.', as release assets name it.
-          for package in core/*.pkg.tar.zst; do name=$(basename "$package"); mv "$package" "core/${name//:/.}"; done
+          for package in core/*:*.pkg.tar.zst; do name=$(basename "$package"); mv "$package" "core/${name//:/.}"; done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core
