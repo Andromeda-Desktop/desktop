@@ -88,7 +88,7 @@ namespace {
     if (config == nullptr) {
       return 0.97F;
     }
-    return Style::glassTint(glass::Kind::Sheet, std::clamp(config->config().osd.backgroundOpacity, 0.0F, 1.0F));
+    return Style::glassTint(glass::Kind::Shape, std::clamp(config->config().osd.backgroundOpacity, 0.0F, 1.0F));
   }
 
   [[nodiscard]] ColorSpec osdBorderColor(const ConfigService* config) {
@@ -737,10 +737,10 @@ void OsdOverlay::buildScene(Instance& inst, std::uint32_t width, std::uint32_t h
   const float gap = innerGap(s);
 
   inst.sceneRoot = ui::node({});
-  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   inst.glassConn = Style::glassChanged().connect([instPtr = &inst] {
     if (instPtr->sceneRoot != nullptr) {
-      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     }
   });
   inst.sceneRoot->setSize(w, h);
@@ -919,7 +919,7 @@ void OsdOverlay::updateBlurRegion(Instance& inst) const {
   const int rh = std::max(1, static_cast<int>(std::ceil(inst.background->height())));
   const float radius = osdCardRadius(inst.background->width(), inst.background->height(), inst.uiLayoutScale);
   inst.surface->setBlurRegion(Surface::tessellateRoundedRect(rx, ry, rw, rh, radius));
-  inst.glass.apply(m_wayland->dskSurfaceManager(), inst.surface->wlSurface(), GlassSurface::Kind::Sheet);
+  inst.glass.apply(m_wayland->dskSurfaceManager(), inst.surface->wlSurface(), GlassSurface::Kind::Shape);
 }
 
 void OsdOverlay::applyReveal(Instance& inst, float reveal) {

@@ -29,13 +29,6 @@ float LauncherPanel::preferredHeight() const {
 float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*contentWidth*/) {
   const float scale = contentScale();
   const float field = Tokens::componentLauncherSearch * scale;
-  // Hybrid material: liquid glass on the empty pill, frosted once it grows into the sheet.
-  const float liquid = usesBrowserLayout() && !pillExpanded() ? 1.0F : 0.0F;
-  if (m_sentLiquid != liquid) {
-    const bool animate = m_sentLiquid >= 0.0F;
-    m_sentLiquid = liquid;
-    PanelManager::instance().setPanelLiquid(liquid, animate);
-  }
   if (!pillExpanded()) {
     return field;
   }
@@ -1099,7 +1092,6 @@ void LauncherPanel::onOpen(std::string_view context) {
 void LauncherPanel::onClose() {
   stopPreviewGif();
   m_iconPrefetchTimer.start(std::chrono::seconds(1), [this] { prefetchAppIcons(); });
-  m_sentLiquid = -1.0F;
   if (m_actionsMenu != nullptr && m_actionsMenu->isOpen()) {
     m_actionsMenu->close();
   }

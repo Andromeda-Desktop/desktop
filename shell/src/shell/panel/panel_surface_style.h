@@ -46,7 +46,7 @@ namespace shell::panel_surface {
   [[nodiscard]] inline float backgroundOpacity(const ConfigService* configService) noexcept {
     const auto mode =
         configService != nullptr ? configService->config().shell.panel.transparencyMode : PanelTransparencyMode::Solid;
-    return Style::glassTint(glass::Kind::Sheet, detachedPanelBackgroundOpacityForTransparencyMode(mode));
+    return Style::glassTint(glass::Kind::Shape, detachedPanelBackgroundOpacityForTransparencyMode(mode));
   }
 
   [[nodiscard]] inline ColorSpec

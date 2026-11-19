@@ -101,10 +101,6 @@ public:
   void setToggleSettingsWindowCallback(std::function<void(std::string)> callback);
   void setCloseDesktopWidgetsEditorCallback(std::function<void()> callback);
   void openSettingsWindow(std::string context = "");
-  // Liquid glass strength (0..1) of the open panel's backdrop; animates on the open spring. No-op on compositors
-  // without dsk_surface_v1 version 5.
-  // animate = false sets the fill at once (first value after open).
-  void setPanelLiquid(float liquid, bool animate = true);
   // Closes any open panel, then opens the settings window at the plugin's settings.
   // False when the settings window is unavailable, or the plugin is unknown, disabled, or
   // exposes no settings.
@@ -310,24 +306,20 @@ private:
   [[nodiscard]] const Tokens::Spring& openSpringToken() const;
   // Floating panel material: the island's glass for a panel grown from one, else shell.panel transparency.
   [[nodiscard]] float detachedBackgroundOpacity() const;
-  // The detached panel fill alpha (tint_thick), eased toward the liquid tint while setPanelLiquid is on.
-  [[nodiscard]] float detachedFillAlpha() const;
   // The detached fill: the material role; the compositor draws the tint and its density.
   [[nodiscard]] ColorSpec detachedFill() const;
   [[nodiscard]] ColorSpec detachedBorder(float backgroundOpacity) const;
-  [[nodiscard]] glass::Material sheetGlass(float liquid) const;
-  // `liquid`, or 1 when the active panel's sheet is a glass shape (Panel::sheetIsShape).
-  [[nodiscard]] float sheetLiquid(float liquid) const;
-  [[nodiscard]] ColorRole sheetMaterialRole() const;
+  // Every sheet, detached or bar-attached, is the island glass (Kind::Shape, tint_regular).
+  [[nodiscard]] static glass::Material sheetGlass();
   // Adaptive glass: listens for dsk_surface_v1.backdrop on the current m_dsk.
   void bindBackdrop();
   // Fades m_glassDark to the compositor's density (cards follow it); instant skips the cross-fade.
   void updateGlassDensity(bool instant = false);
   // True when the compositor draws this sheet's tint (dsk v9); the sheet then paints no material fill.
   [[nodiscard]] bool compositorTint() const;
-  // The sheet tint alpha `liquid` (0 to 1) of the way to the launcher pill's shape tint.
-  [[nodiscard]] float sheetTintAlpha(float liquid) const;
-  // Sends the sheet tint to the compositor; `animate` runs it on the open spring with the liquid value.
+  // The sheet tint alpha: the island tint, or the solid fill's alpha under reduce transparency.
+  [[nodiscard]] float sheetTintAlpha() const;
+  // Sends the sheet tint to the compositor; `animate` runs it on the open spring.
   void sendSheetTint(bool animate = false);
   // The sheet and its content take the sheet's glass::tone.
   void syncPanelTone();
@@ -423,9 +415,6 @@ private:
   std::int32_t m_morphMarginUp = 0;
   bool m_morphFromBottomBar = false;
   std::optional<float> m_islandBackgroundOpacity;
-  float m_panelLiquid = 0.0F; // 0..1, see setPanelLiquid
-  AnimationManager::Id m_liquidAnimation = 0;
-  float m_liquidTarget = 0.0F;
   bool m_densityMeasured = false;
   float m_densityTarget = 0.0F; // dsk_surface_v1.density
   float m_glassDark = 0.0F;     // 0..1, the shown density, see updateGlassDensity

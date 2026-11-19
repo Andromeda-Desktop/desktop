@@ -286,7 +286,6 @@ private:
   Image* m_previewShot = nullptr;
   std::string m_previewShotId;
   // Last liquid strength sent to the panel surface; -1 = none since open.
-  float m_sentLiquid = -1.0F;
   // Frames of the animated GIF preview; the textures belong to the panel and unload on change or close.
   struct PreviewFrame {
     TextureHandle handle;

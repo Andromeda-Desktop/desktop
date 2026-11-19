@@ -170,10 +170,10 @@ void ToastOverlay::prepareFrame() {
   const bool first = m_root == nullptr;
   if (first) {
     m_root = ui::node({});
-    m_root->setPaletteTone(glassTone(glass::Kind::Sheet));
+    m_root->setPaletteTone(glassTone(glass::Kind::Shape));
     m_glassConn = Style::glassChanged().connect([this] {
       if (m_root != nullptr) {
-        m_root->setPaletteTone(glassTone(glass::Kind::Sheet));
+        m_root->setPaletteTone(glassTone(glass::Kind::Shape));
       }
     });
     Flex* row = nullptr;
@@ -181,7 +181,7 @@ void ToastOverlay::prepareFrame() {
         .out = &row,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP8 * s,
-        .fill = colorSpecFromRole(materialRole(), Style::glassTint(glass::Kind::Sheet, 1.0F)),
+        .fill = colorSpecFromRole(materialRole(), Style::glassTint(glass::Kind::Shape, 1.0F)),
         .radius = height * 0.5F,
         .height = height,
     }));
@@ -215,7 +215,7 @@ void ToastOverlay::prepareFrame() {
   m_surface->setBlurRegion(Surface::tessellateRoundedRect(
       static_cast<int>(x), 0, static_cast<int>(std::ceil(row->width())), static_cast<int>(height), radius
   ));
-  m_glass.apply(m_wayland->dskSurfaceManager(), m_surface->wlSurface(), GlassSurface::Kind::Sheet);
+  m_glass.apply(m_wayland->dskSurfaceManager(), m_surface->wlSurface(), GlassSurface::Kind::Shape);
   if (first) {
     m_glass.set(Property::Scale, scalar(kScaleFrom));
     m_glass.set(Property::Opacity, scalar(0.0));

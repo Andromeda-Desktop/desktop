@@ -52,7 +52,7 @@ PanelManager* PanelManager::s_instance = nullptr;
 
 namespace {
   // The sheet takes the light glass curve and light-scheme rules (glass::tone Scheme in the light scheme).
-  bool sheetLight() { return isLightPalette() && glassTone(glass::Kind::Sheet) == PaletteTone::Scheme; }
+  bool sheetLight() { return isLightPalette() && glassTone(glass::Kind::Shape) == PaletteTone::Scheme; }
 
   constexpr double kScaleOpenFrom = 0.92;
   constexpr float kMorphMarginRatio = 0.08F;
@@ -448,7 +448,7 @@ void PanelManager::initialize(CompositorPlatform& platform, ConfigService* confi
     if (isOpen()) {
       updateGlassDensity();
       if (m_dsk != nullptr && m_dsk->hasLiquidProperty()) {
-        const glass::Material material = sheetGlass(m_panelLiquid);
+        const glass::Material material = sheetGlass();
         setGlassMaterial(*m_dsk, *m_dsk, &material);
       }
       sendSheetTint();
@@ -1060,7 +1060,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
 
   // It keeps the island's glass, as an attached panel keeps the bar's.
   m_islandBackgroundOpacity = morphFromIsland && m_activePanel->inheritsBarBackgroundOpacity()
-      ? std::optional<float>{Style::glassTint(glass::Kind::Sheet, barConfig.backgroundOpacity)}
+      ? std::optional<float>{Style::glassTint(glass::Kind::Shape, barConfig.backgroundOpacity)}
       : std::nullopt;
   const bool useAttachedPlacement = activePlacement == PanelPlacement::Attached
       && !morphFromIsland
@@ -1277,7 +1277,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     m_panelVisualWidth = panelWidth;
     m_panelVisualHeight = panelHeight;
     m_attachedBackgroundOpacity = m_activePanel->inheritsBarBackgroundOpacity()
-        ? Style::glassTint(glass::Kind::Sheet, barConfig.backgroundOpacity)
+        ? Style::glassTint(glass::Kind::Shape, barConfig.backgroundOpacity)
         : m_activePanel->attachedBackgroundOpacityOverride();
     m_attachedContactShadow = barConfig.contactShadow;
     m_attachedRevealProgress = 0.0F;
@@ -1784,9 +1784,6 @@ void PanelManager::destroyPanel() {
   m_pieceRest.clear();
   m_piecesShown = false;
   m_dsk.reset();
-  m_panelLiquid = 0.0F;
-  m_liquidAnimation = 0;
-  m_liquidTarget = 0.0F;
   m_densityMeasured = false;
   m_glassDark = 0.0F;
   m_glassDarkAnimation = 0;
@@ -2581,14 +2578,6 @@ float PanelManager::detachedBackgroundOpacity() const {
   return m_islandBackgroundOpacity.value_or(shell::panel_surface::backgroundOpacity(m_config));
 }
 
-float PanelManager::detachedFillAlpha() const {
-  if (Style::reduceTransparency()) {
-    return glass::thickOpacity(detachedBackgroundOpacity());
-  }
-  // Liquid glass shows the refracted backdrop through a clear tint (.agent/mockups/launcher-material.html).
-  return sheetTintAlpha(m_panelLiquid);
-}
-
 void PanelManager::sendSheetStroke() {
   if (m_dsk == nullptr || !m_dsk->hasStrokeProperty() || m_attachedToBar) {
     return;
@@ -2599,19 +2588,19 @@ void PanelManager::sendSheetStroke() {
   m_dsk->set(DskSurfaceClient::Property::Stroke, {c.r, c.g, c.b, c.a});
 }
 
-// Liquid shapes get the compositor's specular rim instead of the sheet hairline, so the hairline fades with liquid.
-// In light mode the rim adds white light, which shows nothing over a white backdrop, so the hairline stays.
+// Sheets get the compositor's specular rim instead of a hairline; in light mode the rim adds white light, which shows
+// nothing over a white backdrop, so the hairline stays.
 ColorSpec PanelManager::detachedBorder(float backgroundOpacity) const {
   if (piecesActive()) {
     return clearColorSpec();
   }
-  const float keep = sheetLight() ? 1.0F : 1.0F - sheetLiquid(m_panelLiquid);
+  const float keep = sheetLight() ? 1.0F : 0.0F;
   return scaleAlpha(shell::panel_surface::borderColor(m_config, backgroundOpacity), keep);
 }
 
 ColorSpec PanelManager::detachedFill() const {
   // The compositor draws the tint and its density (dsk v9); without it the sheet paints the slider tint.
-  return compositorTint() || piecesActive() ? clearColorSpec() : colorSpecFromRole(sheetMaterialRole(), detachedFillAlpha());
+  return compositorTint() || piecesActive() ? clearColorSpec() : colorSpecFromRole(materialRole(), sheetTintAlpha());
 }
 
 bool PanelManager::piecesActive() const {
@@ -2741,7 +2730,7 @@ void PanelManager::syncGlassPieces(bool material) {
 
 void PanelManager::syncPanelTone() {
   if (m_sceneRoot != nullptr) {
-    m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+    m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   }
 }
 
@@ -2758,7 +2747,7 @@ void PanelManager::bindBackdrop() {
   });
   // One glass system: every sheet, detached or bar-attached, carries the slider's material.
   if (m_dsk->hasLiquidProperty()) {
-    const glass::Material material = sheetGlass(m_liquidTarget);
+    const glass::Material material = sheetGlass();
     setGlassMaterial(*m_dsk, *m_dsk, &material);
   }
   sendSheetTint();
@@ -2770,20 +2759,11 @@ bool PanelManager::compositorTint() const {
   return DskSurfaceClient::managerHasTint(manager) && Style::compositorDrawsTint();
 }
 
-float PanelManager::sheetTintAlpha(float liquid) const {
-  if (m_attachedToBar) {
-    return glass::thickOpacity(m_attachedBackgroundOpacity);
+float PanelManager::sheetTintAlpha() const {
+  if (Style::reduceTransparency()) {
+    return glass::thickOpacity(m_attachedToBar ? m_attachedBackgroundOpacity : detachedBackgroundOpacity());
   }
-  const float thick = glass::thickOpacity(detachedBackgroundOpacity());
-  return std::lerp(thick, std::min(thick, Style::glassMaterial(glass::Kind::Shape).tint), sheetLiquid(liquid));
-}
-
-float PanelManager::sheetLiquid(float liquid) const {
-  return m_activePanel != nullptr && m_activePanel->sheetIsShape() ? 1.0F : liquid;
-}
-
-ColorRole PanelManager::sheetMaterialRole() const {
-  return m_activePanel != nullptr && m_activePanel->sheetIsShape() ? materialRole() : panelMaterialRole();
+  return Style::glassMaterial(glass::Kind::Shape).tint;
 }
 
 void PanelManager::sendSheetTint(bool animate) {
@@ -2792,7 +2772,7 @@ void PanelManager::sendSheetTint(bool animate) {
   }
   syncGlassPieces(true);
   const DskSurfaceClient::Value tint = glassTintValue(
-      sheetMaterialRole(), compositorTint() ? sheetTintAlpha(m_liquidTarget) : 0.0F, m_sceneRoot.get()
+      materialRole(), compositorTint() ? sheetTintAlpha() : 0.0F, m_sceneRoot.get()
   );
   if (animate) {
     m_dsk->animate(DskSurfaceClient::Property::Tint, openCurve(), tint);
@@ -2801,11 +2781,8 @@ void PanelManager::sendSheetTint(bool animate) {
   }
 }
 
-// The material of a sheet `liquid` (0 to 1) of the way to a shape (the launcher pill).
-glass::Material PanelManager::sheetGlass(float liquid) const {
-  return glass::mix(
-      Style::glassMaterial(glass::Kind::Sheet), Style::glassMaterial(glass::Kind::Shape), sheetLiquid(liquid)
-  );
+glass::Material PanelManager::sheetGlass() {
+  return Style::glassMaterial(glass::Kind::Shape);
 }
 
 float PanelManager::densityCardOpacity(float opacity) const {
@@ -2976,44 +2953,6 @@ DskSurfaceClient::Value PanelManager::detachedScaleShift(double scale) const {
   const double ax = centered ? cx : (cx < sw * 0.5 ? sheet[0] : sheet[0] + sheet[2]);
   const double ay = cy < sh * 0.5 ? sheet[1] : sheet[1] + sheet[3];
   return {(1.0 - scale) * (ax - sw * 0.5), (1.0 - scale) * (ay - sh * 0.5), 0.0, 0.0};
-}
-
-void PanelManager::setPanelLiquid(float liquid, bool animate) {
-  const auto apply = [this](float v) {
-    m_panelLiquid = std::clamp(v, 0.0F, 1.0F);
-    if (!m_attachedToBar && m_bgNode != nullptr) {
-      auto* bg = static_cast<Box*>(m_bgNode);
-      bg->setFill(detachedFill());
-      if (m_config != nullptr && m_config->config().shell.panel.borders) {
-        bg->setBorder(detachedBorder(detachedBackgroundOpacity()), shell::panel_surface::borderWidth(m_config));
-      }
-    }
-  };
-  if (!animate || m_sceneRoot == nullptr) {
-    m_animations.cancel(m_liquidAnimation);
-    m_liquidAnimation = 0;
-    apply(liquid);
-  } else if (m_panelLiquid != liquid) {
-    // The fill cross-fades on the spring the compositor uses for its Liquid property (openCurve()).
-    m_liquidAnimation = m_animations.drive(
-        m_liquidAnimation, m_panelLiquid, liquid, Style::spring(openSpringToken()), apply,
-        [this] { m_liquidAnimation = 0; }, m_sceneRoot.get()
-    );
-  }
-  ensureDsk();
-  m_liquidTarget = liquid;
-  updateGlassDensity();
-  if (m_dsk == nullptr || !m_dsk->hasLiquidProperty()) {
-    return;
-  }
-  const glass::Material material = sheetGlass(liquid);
-  if (animate) {
-    animateGlassMaterial(*m_dsk, *m_dsk, openCurve(), material);
-  } else {
-    setGlassMaterial(*m_dsk, *m_dsk, &material);
-  }
-  // One clock: the compositor runs the tint cross-fade on the liquid value's spring.
-  sendSheetTint(animate);
 }
 
 bool PanelManager::ensureDsk() {
@@ -3824,7 +3763,7 @@ void PanelManager::applyAttachedDecorationStyle() {
     auto* bg = static_cast<Box*>(m_bgNode);
     bg->setFill(
         compositorTint() ? clearColorSpec()
-                         : colorSpecFromRole(panelMaterialRole(), glass::thickOpacity(m_attachedBackgroundOpacity))
+                         : colorSpecFromRole(materialRole(), sheetTintAlpha())
     );
   }
 
@@ -3941,7 +3880,7 @@ void PanelManager::onConfigReloaded() {
   const auto& barConfig = *barConfigOpt;
   bool changed = false;
   if (m_activePanel->inheritsBarBackgroundOpacity()) {
-    const float newOpacity = Style::glassTint(glass::Kind::Sheet, barConfig.backgroundOpacity);
+    const float newOpacity = Style::glassTint(glass::Kind::Shape, barConfig.backgroundOpacity);
     if (std::abs(newOpacity - m_attachedBackgroundOpacity) >= 0.001F) {
       m_attachedBackgroundOpacity = newOpacity;
       sendSheetTint();
@@ -3973,7 +3912,7 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
 
   if (m_sceneRoot == nullptr) {
     m_sceneRoot = ui::node({});
-    m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+    m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     m_sceneRoot->setAnimationManager(&m_animations);
     if (m_layerSurface != nullptr && m_renderContext != nullptr) {
       m_selectPopup = std::make_unique<SelectDropdownPopup>(m_platform->wayland(), *m_renderContext);

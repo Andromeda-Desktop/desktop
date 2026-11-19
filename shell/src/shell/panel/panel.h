@@ -79,8 +79,6 @@ public:
   [[nodiscard]] virtual bool hasDecoration() const { return true; }
   // True: the panel draws no sheet; each node marked with Node::setGlassPiece is its own glass shape.
   [[nodiscard]] virtual bool usesGlassPieces() const { return false; }
-  // True: the sheet takes the glass-piece material and tint, so a page grown from a piece stays the same glass.
-  [[nodiscard]] virtual bool sheetIsShape() const { return false; }
   // How glass pieces pour in on open: each piece travels xShare of its x distance to the anchor (the pieces' right
   // end, or left start when towardLeft) and yShare of its y distance to the surface top plus lift px, from fromScale.
   // Grow: the pieces as one group grow out of the open request's source rect and return into it (proto M.grow, P19);

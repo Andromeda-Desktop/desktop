@@ -429,10 +429,10 @@ void DesktopWidgetsHost::createInstance(const DesktopWidgetState& state, const W
 void DesktopWidgetsHost::buildScene(DesktopWidgetInstance& instance) {
   if (instance.sceneRoot == nullptr) {
     instance.sceneRoot = ui::node({});
-    instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+    instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     instance.glassConn = Style::glassChanged().connect([inst = &instance] {
       if (inst->sceneRoot != nullptr) {
-        inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+        inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
         if (inst->surface != nullptr) {
           inst->surface->requestLayout();
         }
@@ -580,7 +580,7 @@ void DesktopWidgetsHost::prepareFrame(DesktopWidgetInstance& instance, bool need
         instance.state.rotationRad
     );
     instance.surface->setBlurRegion(blurStrips);
-    instance.glass.apply(m_wayland->dskSurfaceManager(), instance.surface->wlSurface(), GlassSurface::Kind::Sheet);
+    instance.glass.apply(m_wayland->dskSurfaceManager(), instance.surface->wlSurface(), GlassSurface::Kind::Shape);
   } else {
     instance.surface->clearBlurRegion();
   }
