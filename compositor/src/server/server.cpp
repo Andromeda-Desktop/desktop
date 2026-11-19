@@ -2592,9 +2592,7 @@ namespace andromeda {
   void Server::CloseSnapshot::setTarget(const wlr_box& box) {
     m_target = box;
     if (m_hold == Hold::None) {
-      const AnimationCurve close{
-          .easing = Easing::Spring, .spring = {.damping = Tokens::springClose.damping, .stiffness = Tokens::springClose.stiffness}
-      };
+      const AnimationCurve close{.easing = Easing::Spring, .spring = motionSpring(Tokens::springClose)};
       m_alpha.retarget(0.0, 0, close);
     }
     applyPresentation();
