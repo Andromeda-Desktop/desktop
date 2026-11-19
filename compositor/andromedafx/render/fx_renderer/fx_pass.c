@@ -2813,6 +2813,111 @@ void fx_render_pass_add_rounded_rect_grad(
   TRACY_BOTH_ZONES_END;
 }
 
+// Draws the analytic shadow of box into the bound target.
+static void draw_box_shadow(
+    struct fx_renderer* renderer, const float projection[9], const struct wlr_box* box, const pixman_region32_t* clip,
+    const struct wlr_render_color* color, float sigma, int corner_radius, const struct wlr_box* cut,
+    const struct fx_corner_fradii* cut_corners
+) {
+  glUseProgram(renderer->shaders.box_shadow.program);
+  set_proj_matrix(renderer->shaders.box_shadow.proj, projection, box);
+  glUniform4f(renderer->shaders.box_shadow.color, color->r, color->g, color->b, color->a);
+  glUniform1f(renderer->shaders.box_shadow.blur_sigma, sigma);
+  glUniform2f(renderer->shaders.box_shadow.size, box->width, box->height);
+  glUniform2f(renderer->shaders.box_shadow.position, box->x, box->y);
+  glUniform1f(renderer->shaders.box_shadow.corner_radius, corner_radius);
+  uniform_corner_radii_set(&renderer->shaders.box_shadow.clip_radius, cut_corners);
+  glUniform2f(renderer->shaders.box_shadow.clip_position, cut->x, cut->y);
+  glUniform2f(renderer->shaders.box_shadow.clip_size, cut->width, cut->height);
+  render(box, clip, renderer->shaders.box_shadow.pos_attrib);
+}
+
+// The cached shape of a shadow (premultiplied, alpha 1), or NULL when it must be drawn directly this time.
+static struct fx_framebuffer* cached_box_shadow(
+    struct fx_gles_render_pass* pass, const struct fx_render_box_shadow_options* options,
+    const struct wlr_render_color* color
+) {
+  struct fx_offscreen_buffers* fbos = pass->fx_offscreen_buffers;
+  const struct wlr_box* box = &options->box;
+  // Larger shadows are panels: their interior is cut on the CPU and they rarely redraw.
+  if (fbos == NULL || (int64_t)box->width * box->height > 128 * 1024) {
+    return NULL;
+  }
+  struct fx_shadow_key key;
+  memset(&key, 0, sizeof(key)); // memcmp compares the padding too
+  key.width = box->width;
+  key.height = box->height;
+  key.radius = options->corner_radius;
+  key.sigma = options->blur_sigma;
+  key.rgb[0] = color->r;
+  key.rgb[1] = color->g;
+  key.rgb[2] = color->b;
+  const struct wlr_box* area = &options->clipped_region.area;
+  if (!wlr_box_empty(area)) {
+    key.cut = (struct wlr_box){area->x - box->x, area->y - box->y, area->width, area->height};
+    key.cut_radii[0] = options->clipped_region.corners.top_left;
+    key.cut_radii[1] = options->clipped_region.corners.top_right;
+    key.cut_radii[2] = options->clipped_region.corners.bottom_left;
+    key.cut_radii[3] = options->clipped_region.corners.bottom_right;
+  }
+  key.linear = pass->has_color_transform;
+
+  const size_t n = sizeof(fbos->shadows) / sizeof(fbos->shadows[0]);
+  struct fx_shadow_cache* entry = NULL;
+  struct fx_shadow_cache* oldest = &fbos->shadows[0];
+  for (size_t i = 0; i < n && entry == NULL; i++) {
+    struct fx_shadow_cache* e = &fbos->shadows[i];
+    if (e->last_used != 0 && memcmp(&e->key, &key, sizeof(key)) == 0) {
+      entry = e;
+    } else if (e->last_used < oldest->last_used) {
+      oldest = e;
+    }
+  }
+  const uint64_t frame = fbos->frame;
+  if (entry == NULL) {
+    oldest->key = key;
+    oldest->filled = false;
+    oldest->last_used = frame;
+    return NULL;
+  }
+  const bool repeated = frame - entry->last_used <= 2;
+  entry->last_used = frame;
+  if (entry->filled) {
+    return entry->buffer;
+  }
+  if (!repeated) {
+    return NULL;
+  }
+  struct fx_framebuffer* target = ensure_offscreen_buffer_size(pass, &entry->buffer, true, box->width, box->height);
+  if (target == NULL) {
+    return NULL;
+  }
+  fx_framebuffer_bind(target);
+  glViewport(0, 0, box->width, box->height);
+  glDisable(GL_SCISSOR_TEST);
+  glClearColor(0, 0, 0, 0);
+  glClear(GL_COLOR_BUFFER_BIT);
+  float projection[9];
+  matrix_projection(projection, box->width, box->height, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+  const struct wlr_box local = {.width = box->width, .height = box->height};
+  pixman_region32_t whole;
+  pixman_region32_init_rect(&whole, 0, 0, box->width, box->height);
+  const struct wlr_render_color opaque = {color->r, color->g, color->b, 1.0f};
+  // Premultiplied out: rgb times the shape's alpha, alpha as is.
+  setup_blending(WLR_RENDER_BLEND_MODE_PREMULTIPLIED);
+  glBlendFuncSeparate(GL_SRC_ALPHA, GL_ZERO, GL_ONE, GL_ZERO);
+  draw_box_shadow(
+      pass->buffer->renderer, projection, &local, &whole, &opaque, options->blur_sigma, options->corner_radius,
+      &key.cut, &options->clipped_region.corners
+  );
+  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  pixman_region32_fini(&whole);
+  fx_framebuffer_bind(pass->buffer);
+  glViewport(0, 0, pass->buffer->buffer->width, pass->buffer->buffer->height);
+  entry->filled = true;
+  return target;
+}
+
 void fx_render_pass_add_box_shadow(
     struct fx_gles_render_pass* pass, const struct fx_render_box_shadow_options* options
 ) {
@@ -2850,31 +2955,34 @@ void fx_render_pass_add_box_shadow(
   TRACY_ZONE_TEXT_f("\tBlur Sigma: %f", options->blur_sigma);
   push_fx_debug(renderer);
 
-  // blending will practically always be needed (unless we have a madman
-  // who uses opaque shadows with zero sigma), so just enable it
-  setup_blending(WLR_RENDER_BLEND_MODE_PREMULTIPLIED);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  glUseProgram(renderer->shaders.box_shadow.program);
-
   const struct wlr_render_color converted_color = pass_color(pass, &options->color);
-  const struct wlr_render_color* color = &converted_color;
-  set_proj_matrix(renderer->shaders.box_shadow.proj, pass->projection_matrix, &box);
-  glUniform4f(renderer->shaders.box_shadow.color, color->r, color->g, color->b, color->a);
-  glUniform1f(renderer->shaders.box_shadow.blur_sigma, options->blur_sigma);
-  glUniform2f(renderer->shaders.box_shadow.size, box.width, box.height);
-  glUniform2f(renderer->shaders.box_shadow.position, box.x, box.y);
-  glUniform1f(renderer->shaders.box_shadow.corner_radius, options->corner_radius);
-
-  uniform_corner_radii_set(&renderer->shaders.box_shadow.clip_radius, &clipped_region_corners);
-
-  glUniform2f(renderer->shaders.box_shadow.clip_position, clipped_region_box.x, clipped_region_box.y);
-  glUniform2f(renderer->shaders.box_shadow.clip_size, clipped_region_box.width, clipped_region_box.height);
-
-  render(&box, &clip_region, renderer->shaders.box_shadow.pos_attrib);
+  struct fx_framebuffer* cached = cached_box_shadow(pass, options, &converted_color);
+  struct wlr_texture* texture = cached != NULL ? fx_texture_from_buffer(&renderer->wlr_renderer, cached->buffer) : NULL;
+  if (texture != NULL) {
+    const float alpha = converted_color.a;
+    struct wlr_render_texture_options copy = {
+        .texture = texture,
+        .src_box = {.width = box.width, .height = box.height},
+        .dst_box = box,
+        .alpha = &alpha,
+        .clip = &clip_region,
+        .transfer_function = pass->has_color_transform ? WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR : 0,
+        .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+    };
+    struct fx_render_texture_options fx_copy = fx_render_texture_options_default(&copy);
+    fx_render_pass_add_texture(pass, &fx_copy);
+    wlr_texture_destroy(texture);
+  } else {
+    // The shader writes straight colour: blend it by its alpha.
+    setup_blending(WLR_RENDER_BLEND_MODE_PREMULTIPLIED);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    draw_box_shadow(
+        renderer, pass->projection_matrix, &box, &clip_region, &converted_color, options->blur_sigma,
+        options->corner_radius, &clipped_region_box, &clipped_region_corners
+    );
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  }
   pixman_region32_fini(&clip_region);
-
-  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
   pop_fx_debug(renderer);
   TRACY_BOTH_ZONES_END;

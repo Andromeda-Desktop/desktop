@@ -91,6 +91,10 @@ static void clear_effect_buffers(struct fx_offscreen_buffers* fbos) {
   for (size_t i = 0; i < sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]); i++) {
     drop_framebuffer(&fbos->strength_blurs[i].buffer);
   }
+  for (size_t i = 0; i < sizeof(fbos->shadows) / sizeof(fbos->shadows[0]); i++) {
+    drop_framebuffer(&fbos->shadows[i].buffer);
+    fbos->shadows[i].filled = false;
+  }
   drop_framebuffer(&fbos->blur_saved_pixels_buffer);
 }
 

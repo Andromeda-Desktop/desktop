@@ -78,6 +78,22 @@ struct fx_offscreen_buffers {
     size_t count;
   } strength_blurs[3];
   uint64_t strength_blur_clock;
+  // Box shadow shapes drawn once and then copied: the analytic shader takes 4 erf samples per pixel, and a panel of
+  // tiles draws ~0.5 MP of shadow per frame. An entry is filled when its key repeats within two passes, so a shadow that
+  // changes size every frame never fills one. Alpha is not in the key: the copy multiplies it.
+  struct fx_shadow_cache {
+    struct fx_shadow_key {
+      int width, height, radius;
+      float sigma;
+      float rgb[3];
+      struct wlr_box cut; // clipped region relative to the shadow box
+      float cut_radii[4];
+      bool linear;
+    } key;
+    struct fx_framebuffer* buffer;
+    bool filled;
+    uint64_t last_used; // frame
+  } shadows[32];
   uint64_t frame; // output render passes begun
   // Contains the original pixels to draw over the areas where artifact are visible
   struct fx_framebuffer* blur_saved_pixels_buffer;
