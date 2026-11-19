@@ -7514,17 +7514,6 @@ static void scene_entry_drawn_region(const struct render_list_entry* entry, pixm
   pixman_region32_fini(&hole);
 }
 
-// A glass shape's own drop shadow: its hole is the glass box, so it adds only a faint halo inside the blur reach.
-static bool scene_entry_is_shadow_of(const struct render_list_entry* entry, const struct wlr_box* box) {
-  if (entry->node->type != WLR_SCENE_NODE_SHADOW) {
-    return false;
-  }
-  struct wlr_box hole = wlr_scene_shadow_from_node(entry->node)->clipped_region.area;
-  hole.x += entry->x;
-  hole.y += entry->y;
-  return wlr_box_equal(&hole, box);
-}
-
 // Each adaptive blur node samples the cached bottom-layer blur when no entry between it and the cache node (top to
 // bottom in `list`) reaches under it, else the live content. A changed choice repaints the node.
 static void scene_output_choose_blur_sources(
@@ -7552,19 +7541,19 @@ static void scene_output_choose_blur_sources(
     bool cached = cache > i;
     int blocker = -1;
     if (cached) {
+      // Only content under the node itself blocks the cache: content in the kernel margin alone adds a faint edge halo,
+      // and counting it made the CC top tiles blur live under the bar in every frame (2 live blurs, ~1 ms each).
       pixman_region32_t under;
       pixman_region32_init(&under);
-      // A node below full strength blurs with a smaller kernel, so only content inside that reach changes it.
-      wlr_region_expand(&under, &blur->node.visible, scene_blur_reach_at(scene_output->scene, blur->strength));
+      pixman_region32_copy(&under, &blur->node.visible);
       pixman_region32_t hit;
       pixman_region32_init(&hit);
-      const struct wlr_box own = {list[i].x, list[i].y, blur->width, blur->height};
       for (int j = i + 1; j < cache && cached; j++) {
-        // Glass pieces of one surface do not see each other's glass or shadow: a sibling inside the reach would force
-        // every piece of a panel to blur live in every frame.
+        // Glass pieces of one surface do not see each other's glass: a sibling would force every piece of a panel to
+        // blur live in every frame. No shadow blocks: its soft edge only darkens, and the bar island's shadow under the
+        // CC top tiles made them blur live in every frame.
         const enum wlr_scene_node_type type = list[j].node->type;
-        if (scene_entry_is_shadow_of(&list[j], &own)
-            || ((type == WLR_SCENE_NODE_BLUR || type == WLR_SCENE_NODE_SHADOW) && list[j].node->parent == blur->node.parent)) {
+        if (type == WLR_SCENE_NODE_SHADOW || (type == WLR_SCENE_NODE_BLUR && list[j].node->parent == blur->node.parent)) {
           continue;
         }
         scene_entry_drawn_region(&list[j], &hit);
