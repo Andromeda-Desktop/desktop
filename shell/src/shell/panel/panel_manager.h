@@ -381,6 +381,7 @@ private:
   std::vector<std::unique_ptr<DskShapeClient>> m_pieceShapes;
   std::vector<DskSurfaceClient::Value> m_pieceClips;
   std::vector<float> m_pieceOpacity;
+  std::vector<std::int8_t> m_pieceSheet; // -1 unsent, else the piece's glassSheet()
   bool m_piecesShown = false;
   wl_surface* m_morphSource = nullptr;
   std::array<float, 4> m_morphSourceRect{};

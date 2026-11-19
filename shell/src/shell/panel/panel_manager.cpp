@@ -1776,6 +1776,7 @@ void PanelManager::destroyPanel() {
   m_pieceShapes.clear();
   m_pieceClips.clear();
   m_pieceOpacity.clear();
+  m_pieceSheet.clear();
   m_pieceRest.clear();
   m_piecesShown = false;
   m_dsk.reset();
@@ -2635,12 +2636,14 @@ void PanelManager::syncGlassPieces(bool material) {
     m_pieceShapes.clear();
     m_pieceClips.clear();
     m_pieceOpacity.clear();
+    m_pieceSheet.clear();
     return;
   }
   struct Piece {
     DskSurfaceClient::Value clip;
     float radius;
     float opacity;
+    bool sheet;
   };
   std::vector<Piece> pieces;
   // Clip rect in surface coordinates: x0, y0, x1, y1. A piece outside its clipping ancestors (another page) draws nothing.
@@ -2666,7 +2669,7 @@ void PanelManager::syncGlassPieces(bool material) {
       if (r - l >= 1.0F && b - t >= 1.0F) {
         pieces.push_back(
             {{std::round(x), std::round(y), std::round(w), std::round(h)}, std::min(*radius * scale, std::min(w, h) * 0.5F),
-             alpha}
+             alpha, node.glassSheet()}
         );
       }
       return;
@@ -2689,6 +2692,7 @@ void PanelManager::syncGlassPieces(bool material) {
     m_pieceShapes.resize(1);
     m_pieceClips.resize(1);
     m_pieceOpacity.resize(1);
+    m_pieceSheet.resize(1);
     if (m_pieceOpacity[0] != 0.0F) {
       m_pieceShapes[0]->set(DskSurfaceClient::Property::Opacity, {0.0, 0.0, 0.0, 0.0});
       m_pieceOpacity[0] = 0.0F;
@@ -2705,7 +2709,9 @@ void PanelManager::syncGlassPieces(bool material) {
   m_pieceShapes.resize(pieces.size());
   m_pieceClips.resize(pieces.size());
   m_pieceOpacity.resize(pieces.size(), -1.0F);
+  m_pieceSheet.resize(pieces.size(), -1);
   const glass::Material glassShape = Style::glassMaterial(glass::Kind::Shape);
+  const glass::Material glassSheet = Style::glassMaterial(glass::Kind::Sheet);
   const bool want = !Style::reduceTransparency();
   for (std::size_t i = 0; i < pieces.size(); ++i) {
     DskShapeClient& shape = *m_pieceShapes[i];
@@ -2718,17 +2724,19 @@ void PanelManager::syncGlassPieces(bool material) {
       shape.set(DskSurfaceClient::Property::Opacity, {pieces[i].opacity, 0.0, 0.0, 0.0});
       m_pieceOpacity[i] = pieces[i].opacity;
     }
-    if (material) {
+    if (material || m_pieceSheet[i] != static_cast<std::int8_t>(pieces[i].sheet)) {
+      m_pieceSheet[i] = static_cast<std::int8_t>(pieces[i].sheet);
+      const glass::Material& glassPiece = pieces[i].sheet ? glassSheet : glassShape;
       // Level 1 = the float plane (tokens elevation.e2), the shadow of an island.
       shape.set(DskSurfaceClient::Property::Elevation, {1.0, 0.0, 0.0, 0.0});
       // Concept C: each piece is its own glass with wallpaper between; pieces never melt into one outline.
       if (m_dsk->hasSoloProperty()) {
         shape.set(DskSurfaceClient::Property::Solo, {1.0, 0.0, 0.0, 0.0});
       }
-      setGlassMaterial(shape, *m_dsk, want ? &glassShape : nullptr);
+      setGlassMaterial(shape, *m_dsk, want ? &glassPiece : nullptr);
       shape.set(
           DskSurfaceClient::Property::Tint,
-          glassTintValue(panelMaterialRole(), compositorTint() ? glassShape.tint : 0.0F, m_sceneRoot.get())
+          glassTintValue(panelMaterialRole(), compositorTint() ? glassPiece.tint : 0.0F, m_sceneRoot.get())
       );
     }
   }
