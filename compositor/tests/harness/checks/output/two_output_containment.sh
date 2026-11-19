@@ -71,6 +71,12 @@ home_base_edge=$(region_mean "$ANDROMEDA_RUNTIME_DIR/home-base.png" "$edge_crop"
 
 # Overview baseline while the home output holds a single card: its filmstrip cannot overhang the shared edge yet, so
 # this is the neighbour showing nothing but its own filmstrip.
+# The first overview open of a session differs from every later one by one level on a few glass edge pixels (cold glass
+# state), with the scene unchanged. Open it once before the baseline so the baseline is a warm open like the later one.
+"$ANDROMEDA" msg overview-open > /dev/null
+"$ANDROMEDA" clock-advance 2000
+"$ANDROMEDA" msg overview-close > /dev/null
+"$ANDROMEDA" clock-advance 2000
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" clock-advance 2000
 shot_settled "$neighbour" "$ANDROMEDA_RUNTIME_DIR/neighbour-ov-base.png"
