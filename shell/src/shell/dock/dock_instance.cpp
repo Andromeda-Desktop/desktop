@@ -530,6 +530,11 @@ namespace shell::dock {
     applyDockScrollOffset(instance, cfg);
     instance.row->layout(renderer);
     shell::dock::syncDockItemRestPositions(instance, cfg);
+    // The layout put the icons and pill back at rest while the zoom state keeps its scales: re-apply it in this frame,
+    // or the icons show rest sizes until the zoom changes (a tap on the launcher rebuilds the dock).
+    if (instance.hoverPointerValid || instance.hoverAmount > 0.0F) {
+      (void)shell::dock::updateHoverZoom(instance, instance.snapshot, 0.0F, true);
+    }
 
     // Every dock can slide away: the overview sends it off even with auto-hide off.
     const auto hiddenDelta = shell::dock::computeHiddenSlideDelta(cfg, shadowConfig, w, h, panelGeometry);

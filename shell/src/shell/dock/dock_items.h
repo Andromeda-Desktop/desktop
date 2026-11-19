@@ -92,7 +92,10 @@ namespace shell::dock {
       const DockItemCallbacks& callbacks
   );
   void updateVisuals(DockInstance& instance, DockItemSceneDependencies deps, const DockSnapshot& snapshot);
-  [[nodiscard]] bool updateHoverZoom(DockInstance& instance, const DockSnapshot& snapshot, float deltaMs);
+  // relaid: a layout just put the icon nodes back at rest; re-apply their current zoom.
+  [[nodiscard]] bool updateHoverZoom(
+      DockInstance& instance, const DockSnapshot& snapshot, float deltaMs, bool relaid = false
+  );
   [[nodiscard]] bool
   syncHoverPointerFromScene(DockInstance& instance, const DockConfig& cfg, float sceneX, float sceneY);
   void clearHoverZoom(DockInstance& instance, const DockSnapshot& snapshot);

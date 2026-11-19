@@ -352,7 +352,7 @@ namespace {
   [[nodiscard]] bool applyHoverIconScale(
       Node* iconNode, float& visualScale, AnimationManager::Id& animId, shell::dock::DockInstance& instance,
       float targetScale, float restScale, float lerpFactor, DockEdge edge, float baseX, float baseY, float iconSize,
-      Box* badge, float badgeSize
+      Box* badge, float badgeSize, bool relaid
   ) {
     if (iconNode == nullptr) {
       return false;
@@ -364,6 +364,8 @@ namespace {
     if (visualScale < 0.0F) {
       visualScale = restScale;
       applyHoverItemVisual(iconNode, badge, edge, baseX, baseY, iconSize, badgeSize, restScale);
+    } else if (relaid) {
+      applyHoverItemVisual(iconNode, badge, edge, baseX, baseY, iconSize, badgeSize, visualScale);
     }
     if (std::abs(visualScale - targetScale) <= 0.002F) {
       if (std::abs(visualScale - targetScale) > 0.0F) {
@@ -1232,7 +1234,7 @@ namespace shell::dock {
     return true;
   }
 
-  bool updateHoverZoom(DockInstance& instance, const DockSnapshot& snapshot, float deltaMs) {
+  bool updateHoverZoom(DockInstance& instance, const DockSnapshot& snapshot, float deltaMs, bool relaid) {
     // Zoom moves and resizes nodes it owns; outside a phase each resize would request a rebuild that resets the zoom.
     UiPhaseScope zoomPhase(UiPhase::Update);
     const auto& cfg = instance.config;
@@ -1252,13 +1254,7 @@ namespace shell::dock {
     const float itemPitch = cellMain + static_cast<float>(cfg.itemSpacing);
     const float badgeSize = std::max(kBadgeMinSize, iSize * kBadgeSizeRatio);
     const float baseLauncherScale = cfg.inactiveScale;
-    const auto pointerInCell = [&](float restMainPos) {
-      return instance.hoverPointerMain >= restMainPos && instance.hoverPointerMain < restMainPos + cellMain;
-    };
-    // The launcher and trash glyphs are buttons, not app tiles: the pointer on them zooms nothing (rulebook 9.4).
-    const bool pointerOnGlyph = (instance.launcherArea != nullptr && pointerInCell(instance.launcherRestMainPos)) ||
-                                (instance.trash.area != nullptr && pointerInCell(instance.trash.restMainPos));
-    const bool pointerActive = instance.pointerInside && instance.hoverPointerValid && !pointerOnGlyph;
+    const bool pointerActive = instance.pointerInside && instance.hoverPointerValid;
     const std::size_t itemCount = std::min(instance.items.size(), snapshot.items.size());
     bool needsMoreFrames = false;
     const float easeStep = std::clamp(deltaMs, 1.0F, 50.0F) / kHoverZoomEaseMs;
@@ -1285,7 +1281,6 @@ namespace shell::dock {
       float restCenterMain = 0.0F;
       float iconBaseX = kCellPad;
       float iconBaseY = kCellPad;
-      bool glyph = false; // keeps its base scale; still moves with the spread
     };
 
     std::vector<HoverSlot> slots;
@@ -1304,7 +1299,6 @@ namespace shell::dock {
               .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, cellMain),
               .iconBaseX = kCellPad,
               .iconBaseY = launcherIconBaseY(cfg, iSize),
-              .glyph = true,
           }
       );
     }
@@ -1348,7 +1342,6 @@ namespace shell::dock {
               .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, cellMain),
               .iconBaseX = kCellPad,
               .iconBaseY = launcherIconBaseY(cfg, iSize),
-              .glyph = true,
           }
       );
     }
@@ -1367,7 +1360,6 @@ namespace shell::dock {
               .restCenterMain = itemRestCenterMain(instance.trash.restMainPos, cellMain),
               .iconBaseX = kCellPad,
               .iconBaseY = trashIconBaseY(iSize),
-              .glyph = true,
           }
       );
     }
@@ -1375,7 +1367,7 @@ namespace shell::dock {
     std::vector<float> slotScales;
     slotScales.reserve(slots.size());
     for (HoverSlot& slot : slots) {
-      const float fullMultiplier = zoomActive && !slot.glyph ? computeHoverMultiplier(
+      const float fullMultiplier = zoomActive ? computeHoverMultiplier(
                                                    instance.hoverPointerMain, slot.restCenterMain, itemPitch,
                                                    cfg.magnificationScale, kHoverZoomFalloffInfluence
                                                )
@@ -1417,7 +1409,7 @@ namespace shell::dock {
 
       if (applyHoverIconScale(
               slot.iconNode, *slot.visualScale, *slot.scaleAnimId, instance, slot.targetScale, slot.baseScale,
-              lerpFactor, edge, slot.iconBaseX, slot.iconBaseY, iSize, slot.badge, badgeSize
+              lerpFactor, edge, slot.iconBaseX, slot.iconBaseY, iSize, slot.badge, badgeSize, relaid
           )) {
         needsMoreFrames = true;
       }
