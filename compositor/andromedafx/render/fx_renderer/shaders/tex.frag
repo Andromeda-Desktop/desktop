@@ -33,6 +33,9 @@ uniform int target_tf;
 uniform bool map_hdr_to_sdr;
 // The colour mixed toward the tint colour (rgb) by a: glass density over its backdrop, or a fill folded into a buffer.
 uniform vec4 tint_mix;
+// Share of source_tex (a blur's sharp source, same size and orientation) under the texture, 0 = off.
+uniform sampler2D source_tex;
+uniform float source_mix;
 
 #define TRANSFER_FUNCTION_PASSTHROUGH 0
 #define TRANSFER_FUNCTION_SRGB 1
@@ -297,6 +300,9 @@ void main() {
     }
   }
   vec4 base = sample_texture(uv);
+  if (source_mix > 0.0) {
+    base = mix(base, texture2D(source_tex, uv), source_mix);
+  }
   if (lens_weight > 0.0) {
     base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
   }
@@ -304,7 +310,11 @@ void main() {
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   color.rgb += specular * color.a;
 #else
-  vec4 color = convert_color(sample_texture(uv));
+  vec4 base = sample_texture(uv);
+  if (source_mix > 0.0) {
+    base = mix(base, texture2D(source_tex, uv), source_mix);
+  }
+  vec4 color = convert_color(base);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
 #endif
 #if EFFECTS

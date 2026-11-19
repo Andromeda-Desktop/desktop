@@ -276,6 +276,7 @@ struct wlr_scene_blur {
   struct wlr_scene_blur_merge liquid_merge;
 
   bool should_only_blur_bottom_layer;
+  bool fade_from_source; // see wlr_scene_blur_set_fade_from_source
   // Samples the cached bottom-layer blur in frames where nothing but the bottom layers lies under the node, and blurs
   // the live content otherwise. use_cache is that choice for the frame being built; cached_outputs keeps the last
   // choice per output index, so outputs with different content under the node do not repaint each other.
@@ -1046,6 +1047,13 @@ void wlr_scene_blur_set_lens(struct wlr_scene_blur* blur, float lens);
  * Mixes the blurred backdrop toward the colour rgb by amount (0 to 1), so a tint over it reads denser.
  */
 void wlr_scene_blur_set_tint_mix(struct wlr_scene_blur* blur, const float rgb[3], float amount);
+
+/**
+ * For a blur that only blurs the bottom layer: below alpha 1 it draws its sharp source mixed with the blur by alpha,
+ * instead of the blur over what lies under it. It is then opaque at every alpha (with strength 1, no transparency
+ * mask and no lens), so nothing under it draws. The caller ensures the bottom layers are all that shows under it.
+ */
+void wlr_scene_blur_set_fade_from_source(struct wlr_scene_blur* blur, bool fade_from_source);
 
 /**
  * Turns backdrop luminance sampling on or off. While on, each render of this node samples its blurred region; the

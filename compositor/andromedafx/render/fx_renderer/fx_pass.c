@@ -2336,6 +2336,17 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
       shader->tint_mix, fx_options->tint_mix[0], fx_options->tint_mix[1], fx_options->tint_mix[2],
       fx_options->tint_mix[3]
   );
+  // Unit 3: units 0 to 2 hold the source, the colour LUT and the lens.
+  const bool source = fx_options->source_texture != NULL && fx_options->source_mix > 0.0f;
+  glUniform1i(shader->source_tex, 3);
+  glUniform1f(shader->source_mix, source ? fx_options->source_mix : 0.0f);
+  if (source) {
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, fx_get_texture(fx_options->source_texture)->tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glActiveTexture(GL_TEXTURE0);
+  }
   if (use_clamp) {
     glUniform4f(shader->sample_bounds, sample_bounds[0], sample_bounds[1], sample_bounds[2], sample_bounds[3]);
   }
@@ -2385,6 +2396,11 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 
   if (use_effects && fx_options->lens_texture != NULL) {
     glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glActiveTexture(GL_TEXTURE0);
+  }
+  if (source) {
+    glActiveTexture(GL_TEXTURE3);
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
   }
@@ -3528,7 +3544,26 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     tex_options->merge = fx_options->merge;
     memcpy(tex_options->light, fx_options->light, sizeof(tex_options->light));
     tex_options->lens_texture = lens;
+    // Fading in from the sharp source: one opaque draw, so nothing under the node needs drawing.
+    const float* alpha = tex_options->base.alpha;
+    const float opaque = 1.0f;
+    struct wlr_texture* source = NULL;
+    if (fx_options->fade_from_source && buffer == fbos->optimized_blur_buffer && alpha != NULL
+        && *alpha < 1.0f) {
+      source = fx_texture_from_buffer(&renderer->wlr_renderer, fbos->optimized_no_blur_buffer->buffer);
+    }
+    if (source != NULL) {
+      tex_options->source_texture = source;
+      tex_options->source_mix = 1.0f - *alpha;
+      tex_options->base.alpha = &opaque;
+    }
     fx_render_pass_add_texture(pass, tex_options);
+    if (source != NULL) {
+      wlr_texture_destroy(source);
+      tex_options->source_texture = NULL;
+      tex_options->source_mix = 0.0f;
+      tex_options->base.alpha = alpha;
+    }
     tex_options->lens_texture = NULL;
   }
   if (lens != NULL && lens != wlr_texture) {

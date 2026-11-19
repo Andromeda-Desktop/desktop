@@ -2636,6 +2636,59 @@ static bool test_blur_tint_fold(struct fixture* fixture) {
   return ok;
 }
 
+// A wallpaper split red | green under a half faded-in optimized blur, blended over the live wallpaper or faded in from
+// the cache's sharp source: the same pixels across the edge. A white square above the cache source and under the blur
+// shows through the blend; the source fade is opaque and hides it.
+static bool blur_fade_case(struct fixture* fixture, bool from_source, uint8_t out[3][4]) {
+  static const float red[4] = {1, 0, 0, 1}, green[4] = {0, 1, 0, 1}, blue[4] = {0, 0, 1, 1}, white[4] = {1, 1, 1, 1};
+  struct wlr_scene* scene = wlr_scene_create();
+  struct wlr_scene_output* scene_output = wlr_scene_output_create(scene, fixture->output);
+  wlr_scene_set_blur_data(scene, 2, 4, 0, 1, 1, 1);
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT, blue);
+  wlr_scene_rect_create(&scene->tree, TEST_WIDTH / 2, TEST_HEIGHT, red);
+  struct wlr_scene_rect* right = wlr_scene_rect_create(&scene->tree, TEST_WIDTH - TEST_WIDTH / 2, TEST_HEIGHT, green);
+  wlr_scene_node_set_position(&right->node, TEST_WIDTH / 2, 0);
+  wlr_scene_optimized_blur_mark_dirty(wlr_scene_optimized_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT));
+  wlr_scene_rect_create(&scene->tree, 4, 4, white);
+  struct wlr_scene_blur* blur = wlr_scene_blur_create(&scene->tree, TEST_WIDTH, TEST_HEIGHT);
+  wlr_scene_blur_set_should_only_blur_bottom_layer(blur, true);
+  wlr_scene_blur_set_fade_from_source(blur, from_source);
+  wlr_scene_blur_set_alpha(blur, 0.5f);
+  bool ok = true;
+  // The first frame renders the cache; the second is the one a fade draws.
+  for (int frame = 0; frame < 2 && ok; frame++) {
+    wlr_scene_blur_set_alpha(blur, frame == 0 ? 0.6f : 0.5f);
+    struct wlr_output_state state;
+    struct wlr_buffer* rendered = fixture_render_scene(fixture, scene_output, &state);
+    ok &= check(rendered != NULL, "scene renders");
+    if (rendered != NULL) {
+      ok &= fixture_read_pixel(fixture, rendered, TEST_WIDTH / 2 - 2, TEST_HEIGHT / 2, out[0])
+          && fixture_read_pixel(fixture, rendered, TEST_WIDTH / 2 + 1, TEST_HEIGHT / 2, out[1])
+          && fixture_read_pixel(fixture, rendered, 1, 1, out[2]);
+      wlr_buffer_unlock(rendered);
+    }
+    wlr_output_state_finish(&state);
+  }
+  wlr_scene_node_destroy(&scene->tree.node);
+  return ok;
+}
+
+static bool test_blur_fade_source(struct fixture* fixture) {
+  uint8_t over[3][4], faded[3][4];
+  bool ok = blur_fade_case(fixture, false, over) && blur_fade_case(fixture, true, faded);
+  // Green: white adds it, the wallpaper (red at that corner) has almost none.
+  ok &= check(over[2][1] > 120 && faded[2][1] < 60, "the blend shows the square, the source fade hides it");
+  for (int i = 0; ok && i < 2; i++) {
+    for (int c = 0; c < 4; c++) {
+      if (abs(over[i][c] - faded[i][c]) > 1) {
+        fprintf(stderr, "  pixel %d channel %d: blend over %u, source fade %u\n", i, c, over[i][c], faded[i][c]);
+        ok = false;
+      }
+    }
+  }
+  return ok;
+}
+
 // A rounded, tinted, translucent buffer over a backdrop: the plain interior and effects corners give every pixel the
 // whole effects draw gives.
 static bool corner_split_case(struct fixture* fixture, bool whole, uint8_t out[TEST_WIDTH * TEST_HEIGHT][4]) {
@@ -3262,6 +3315,8 @@ int main(int argc, char* argv[]) {
     ok = test_buffer_tint(&fixture);
   } else if (strcmp(argv[1], "blur-tint-fold") == 0) {
     ok = test_blur_tint_fold(&fixture);
+  } else if (strcmp(argv[1], "blur-fade-source") == 0) {
+    ok = test_blur_fade_source(&fixture);
   } else if (strcmp(argv[1], "corner-split") == 0) {
     ok = test_corner_split(&fixture);
   } else if (strcmp(argv[1], "glass-split") == 0) {

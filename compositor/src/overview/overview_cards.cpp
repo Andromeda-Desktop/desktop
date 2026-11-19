@@ -509,6 +509,8 @@ namespace andromeda {
         state->backgroundBlur = wlr_scene_blur_create(m_server->overviewBlurTree(), 1, 1);
         if (state->backgroundBlur != nullptr) {
           wlr_scene_blur_set_should_only_blur_bottom_layer(state->backgroundBlur, config().appearance.blur.optimized);
+          // The blur tree lies right above the background layer, which the optimized source holds whole.
+          wlr_scene_blur_set_fade_from_source(state->backgroundBlur, true);
         }
       }
       const std::array<float, 4> backgroundTint = tint(config().colors.overview.backgroundTint, 0.0);

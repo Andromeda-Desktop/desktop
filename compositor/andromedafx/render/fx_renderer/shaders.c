@@ -306,6 +306,8 @@ bool link_tex_program(
   shader->target_tf = glGetUniformLocation(prog, "target_tf");
   shader->map_hdr_to_sdr = glGetUniformLocation(prog, "map_hdr_to_sdr");
   shader->tint_mix = glGetUniformLocation(prog, "tint_mix");
+  shader->source_tex = glGetUniformLocation(prog, "source_tex");
+  shader->source_mix = glGetUniformLocation(prog, "source_mix");
   shader->pos_attrib = glGetAttribLocation(prog, "pos");
   shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
 

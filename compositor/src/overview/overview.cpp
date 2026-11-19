@@ -14,41 +14,6 @@ namespace andromeda {
       );
       return count;
     }
-
-    // The only buffer a background layer tree draws, when it covers the output (width x height at the tree's origin)
-    // opaquely; null otherwise.
-    wlr_scene_buffer* soleOpaqueBackground(wlr_scene_tree* layer, int width, int height) {
-      wlr_scene_buffer* only = nullptr;
-      if (countBuffers(layer) != 1) {
-        return nullptr;
-      }
-      wlr_scene_node_for_each_buffer(
-          &layer->node,
-          [](wlr_scene_buffer* buffer, int, int, void* data) { *static_cast<wlr_scene_buffer**>(data) = buffer; }, &only
-      );
-      int lx = 0, ly = 0, bx = 0, by = 0;
-      if (!wlr_scene_node_coords(&layer->node, &lx, &ly)
-          || !wlr_scene_node_coords(&only->node, &bx, &by)
-          || only->opacity < 1.0F) {
-        return nullptr;
-      }
-      // The output's corner in the buffer's own coordinates, where its opaque region lives.
-      const pixman_box32_t output{lx - bx, ly - by, lx - bx + width, ly - by + height};
-      return pixman_region32_contains_rectangle(&only->opaque_region, &output) == PIXMAN_REGION_IN ? only : nullptr;
-    }
-
-    void tintBuffers(wlr_scene_tree* tree, const std::array<float, 4>& color) {
-      if (tree == nullptr) {
-        return;
-      }
-      wlr_scene_node_for_each_buffer(
-          &tree->node,
-          [](wlr_scene_buffer* buffer, int, int, void* data) {
-            wlr_scene_buffer_set_tint(buffer, static_cast<const float*>(data));
-          },
-          const_cast<float*>(color.data())
-      );
-    }
   } // namespace
 
   using namespace ovimpl;
@@ -481,20 +446,14 @@ namespace andromeda {
     wlr_scene_rect_set_size(state.backgroundTint, outputBox.width, outputBox.height);
     const std::array<float, 4> backgroundTint = tint(config().colors.overview.backgroundTint, m_progress);
     // The background blur draws the tint in its own pass, the same result as the rect over it without a second
-    // full-output blend. While the blur fades in, the desktop showing through needs the tint as well: an opaque sole
-    // wallpaper draws it in its own pass too (the optimized blur samples it untinted); any other desktop keeps the
-    // rect.
-    wlr_scene_tree* backgroundLayer = state.output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND);
+    // full-output blend. While it fades in from its sharp source, that holds as long as no bottom layer shows above it.
     const bool tintable =
         state.backgroundBlur != nullptr && state.backgroundBlur->node.enabled && backgroundTint[3] > 0.001F;
-    const bool wallpaperTint = tintable
-        && state.backgroundBlur->alpha < 1.0F
+    const bool fadeTint = tintable
         && state.backgroundBlur->should_only_blur_bottom_layer
         && (!m_server->shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)->node.enabled
-            || countBuffers(state.output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)) == 0)
-        && soleOpaqueBackground(backgroundLayer, outputBox.width, outputBox.height) != nullptr;
-    const bool blurTint = tintable && (state.backgroundBlur->alpha >= 1.0F || wallpaperTint);
-    tintBuffers(backgroundLayer, wallpaperTint ? backgroundTint : std::array<float, 4>{});
+            || countBuffers(state.output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM)) == 0);
+    const bool blurTint = tintable && (state.backgroundBlur->alpha >= 1.0F || fadeTint);
     if (state.backgroundBlur != nullptr) {
       const float amount = blurTint ? backgroundTint[3] : 0.0F;
       const std::array<float, 3> straight =
@@ -1709,7 +1668,6 @@ namespace andromeda {
     hideDropHint();
     stopEdgeScroll();
     for (const auto& state : m_outputs) {
-      tintBuffers(state->output->layerTree(ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND), {});
       clearDesktop(*state);
       for (const auto& card : state->cards) {
         destroyCard(card.get());

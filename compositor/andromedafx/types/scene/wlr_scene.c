@@ -814,6 +814,12 @@ create_corner_location_region(struct fx_corner_radii corners, int x, int y, int 
   return corner_region;
 }
 
+// The blur draws opaque in fx_render_pass_add_blur (fade_from_source) whenever the optimized cache is usable.
+static bool blur_draws_opaque(struct wlr_scene_blur* blur) {
+  return blur->fade_from_source && blur->should_only_blur_bottom_layer && blur->strength == 1.0f && blur->lens == 0.0f
+      && wlr_scene_blur_get_transparency_mask_source(blur) == NULL;
+}
+
 // `effects` is the scene's effect state, already looked up by the caller (NULL
 // when the scene has none). Transient animations keep the conservative
 // scene-wide policy. A persistent effect only exempts its own subtree: the
@@ -1021,6 +1027,10 @@ struct render_data {
   bool sampled_earlier;
   // Drawing the optimized blur source: buffers draw without their tint.
   bool optimized_source;
+  // An opaque source-faded blur in entries and its drawn region (buffer coords); entries under it skip that region.
+  // The scene keeps them visible: the cache's source capture draws them.
+  struct render_list_entry* faded_entry;
+  pixman_region32_t faded;
   // Replay native lower layers for blur without sampling or advancing feedback.
   const void* backdrop_group;
   const void* workspace_group;
@@ -2760,6 +2770,14 @@ void wlr_scene_blur_set_lens(struct wlr_scene_blur* blur, float lens) {
   scene_node_update(&blur->node, NULL);
 }
 
+void wlr_scene_blur_set_fade_from_source(struct wlr_scene_blur* blur, bool fade_from_source) {
+  if (blur->fade_from_source == fade_from_source) {
+    return;
+  }
+  blur->fade_from_source = fade_from_source;
+  scene_node_update(&blur->node, NULL);
+}
+
 void wlr_scene_blur_set_tint_mix(struct wlr_scene_blur* blur, const float rgb[3], float amount) {
   if (blur->tint_mix[0] == rgb[0] && blur->tint_mix[1] == rgb[1] && blur->tint_mix[2] == rgb[2]
       && blur->tint_mix[3] == amount) {
@@ -3857,6 +3875,11 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
   if (data->overlay_entry != NULL && entry >= data->overlay_entry) {
     pixman_region32_intersect(&render_region, &render_region, data->overlay_clip);
   }
+  if (data->faded_entry != NULL && !data->optimized_source && data->entries <= data->faded_entry
+      && entry > data->faded_entry && entry < data->entries + data->entry_count
+      && node->type != WLR_SCENE_NODE_OPTIMIZED_BLUR) {
+    pixman_region32_subtract(&render_region, &render_region, &data->faded);
+  }
   if (node->type == WLR_SCENE_NODE_BUFFER && wlr_scene_buffer_from_node(node)->has_content_region) {
     // The buffer draws nothing outside its content region, so a mostly transparent surface costs only its content.
     pixman_region32_t content;
@@ -4473,6 +4496,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                 .discard_transparent = false,
             },
         .use_optimized_blur = blur_samples_cache(blur),
+        .fade_from_source = blur_draws_opaque(blur),
         .blur_data = &scene->blur_data,
         .ignore_alpha = mask != NULL ? blur->ignore_alpha : 0.0f,
         .blur_strength = blur->strength,
@@ -8202,6 +8226,27 @@ static bool scene_output_build_state(
   render_background(render_pass, scene_output->scene, buffer, &background, WLR_RENDER_BLEND_MODE_NONE);
   pixman_region32_fini(&background);
 
+  // A usable cache stays usable through this frame: the cache entry re-renders it whole or keeps it.
+  pixman_region32_init(&render_data.faded);
+  for (int i = 0; i < list_len && fx_render_pass_optimized_blur_reusable(fx_pass); i++) {
+    struct wlr_scene_node* node = list_data[i].node;
+    if (node->type != WLR_SCENE_NODE_BLUR || !blur_draws_opaque(wlr_scene_blur_from_node(node))) {
+      continue;
+    }
+    struct wlr_scene_blur* blur = wlr_scene_blur_from_node(node);
+    pixman_region32_copy(&render_data.faded, &node->visible);
+    if (!fx_corner_radii_is_empty(&blur->corners)) {
+      pixman_region32_t corners =
+          create_corner_location_region(blur->corners, list_data[i].x, list_data[i].y, blur->width, blur->height);
+      pixman_region32_subtract(&render_data.faded, &render_data.faded, &corners);
+      pixman_region32_fini(&corners);
+    }
+    pixman_region32_translate(&render_data.faded, -scene_output->x, -scene_output->y);
+    logical_to_buffer_coords(&render_data.faded, &render_data, false);
+    render_data.faded_entry = &list_data[i];
+    break;
+  }
+
   // The unfiltered composition, when it runs, emits output_sample; a display
   // composition drawn after it does not.
   bool cursors_drawn = false;
@@ -8277,6 +8322,7 @@ static bool scene_output_build_state(
     fx_render_pass_read_to_buffer(fx_pass, &fx_pass->blur_padding_region, fx_pass->buffer, blur_saved_pixels);
   }
 
+  pixman_region32_fini(&render_data.faded);
   pixman_region32_fini(&render_data.damage);
   pixman_region32_fini(&overlay_clip);
 

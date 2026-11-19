@@ -155,6 +155,9 @@ struct fx_render_texture_options {
   float tint_mix[4];
   // Sharp backdrop for the liquid lens, same size and orientation as texture; NULL = no lens.
   struct wlr_texture* lens_texture;
+  // A blur's sharp source, same size and orientation as texture, mixed under it by source_mix (0 to 1).
+  struct wlr_texture* source_texture;
+  float source_mix;
   // The liquid shape (render coords, radius in render px) whose edge gets the rim; empty = clip_box and corners.
   struct wlr_box liquid_box;
   float liquid_radius;
@@ -237,6 +240,8 @@ struct fx_render_blur_pass_options {
   float light[3]; // see fx_render_texture_options.light
   struct fx_liquid_merge merge; // see fx_render_texture_options.merge
   struct fx_backdrop_probe* backdrop_probe; // optional: sampled from the blurred region, see backdrop_probe.h
+  // An optimized blur under alpha 1 draws opaque: its sharp source mixed with the blur by alpha.
+  bool fade_from_source;
 };
 
 struct fx_gles_render_pass* fx_get_render_pass(struct wlr_render_pass* render_pass);
