@@ -892,7 +892,7 @@ namespace andromeda {
         std::string effect;
         bool enabled = true;
         // Springs derive their own length; duration_ms stays at the shared value for a duration-based curve.
-        int durationMs = 150;
+        int durationMs = 250;
         // Rulebook P15: spring `open` (k 438.6, z 0.90); a launch grows from its icon, other opens from scale 0.94.
         AnimationCurve curve{.easing = Easing::Spring, .spring = {.damping = 0.9, .stiffness = 438.6}};
         std::string style = "popin";
