@@ -432,8 +432,19 @@ namespace andromeda {
     wlr_scene_node_set_position(&state.backgroundTint->node, outputBox.x, outputBox.y);
     wlr_scene_rect_set_size(state.backgroundTint, outputBox.width, outputBox.height);
     const std::array<float, 4> backgroundTint = tint(config().colors.overview.backgroundTint, m_progress);
+    // The opaque, fully faded-in background blur draws the tint in its own pass, the same result as the rect over it
+    // without a second full-output blend; while the blur fades, the rect also tints the desktop showing through.
+    const bool blurTint = state.backgroundBlur != nullptr && state.backgroundBlur->node.enabled
+        && state.backgroundBlur->alpha >= 1.0F && backgroundTint[3] > 0.001F;
+    if (state.backgroundBlur != nullptr) {
+      const float amount = blurTint ? backgroundTint[3] : 0.0F;
+      const std::array<float, 3> straight =
+          blurTint ? std::array<float, 3>{backgroundTint[0] / amount, backgroundTint[1] / amount, backgroundTint[2] / amount}
+                   : std::array<float, 3>{};
+      wlr_scene_blur_set_tint_mix(state.backgroundBlur, straight.data(), amount);
+    }
     // A fully transparent tint leaves the wallpaper untouched.
-    wlr_scene_node_set_enabled(&state.backgroundTint->node, backgroundTint[3] > 0.001F);
+    wlr_scene_node_set_enabled(&state.backgroundTint->node, backgroundTint[3] > 0.001F && !blurTint);
     wlr_scene_rect_set_color(state.backgroundTint, backgroundTint.data());
 
     refreshDesktop(state);
