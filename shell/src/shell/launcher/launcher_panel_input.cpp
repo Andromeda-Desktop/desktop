@@ -304,12 +304,22 @@ void LauncherPanel::activateSelected() {
   }
 }
 
+void LauncherPanel::showKeyFocus() {
+  if (InputDispatcher* dispatcher = InputDispatcher::owning(m_input); dispatcher != nullptr) {
+    dispatcher->setKeyboardFocus(dispatcher->focusedArea());
+  }
+}
+
 bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
   const bool sectionNav =
       shouldUseLauncherSections() && m_launcherSectionsAdapter != nullptr && m_launcherSections != nullptr;
   const bool gridNav = !sectionNav && m_usingAppGrid && m_grid != nullptr;
   if (filesScope() && sym == XKB_KEY_BackSpace && m_query.empty()) {
     setFilesScope(false);
+    return true;
+  }
+  if (!m_query.empty() && KeybindMatcher::matches(KeybindAction::Cancel, sym, modifiers)) {
+    setQuery("");
     return true;
   }
   const int columns = gridNav ? static_cast<int>(std::max<std::size_t>(1, m_grid->layoutColumnCount())) : 1;
@@ -323,6 +333,7 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
     if (next == static_cast<int>(m_selectedIndex)) {
       return;
     }
+    showKeyFocus();
     selectResult(static_cast<std::size_t>(next), true);
   };
 
@@ -334,17 +345,31 @@ bool LauncherPanel::handleKeyEvent(std::uint32_t sym, std::uint32_t modifiers) {
         ? m_launcherSectionsAdapter->moveVertical(m_selectedIndex, direction, rows)
         : m_launcherSectionsAdapter->moveHorizontal(m_selectedIndex, direction);
     if (next.has_value()) {
+      showKeyFocus();
       selectResult(*next, true);
     }
   };
 
-  if (filesScope() && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab)) {
+  if (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab) {
     const bool back = sym == XKB_KEY_ISO_Left_Tab || (modifiers & KeyMod::Shift) != 0;
-    setFilesKind(m_kindIndex + (back ? kFileKinds.size() - 1 : 1));
-    return true;
-  }
-  if (!modeProviderId().empty() && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab)) {
-    cycleMode((sym == XKB_KEY_ISO_Left_Tab || (modifiers & KeyMod::Shift) != 0) ? -1 : 1);
+    // Ctrl+Tab steps inside the mode (file kinds, provider tabs); Tab steps search -> the 4 mode drops, as the buttons.
+    if ((modifiers & KeyMod::Ctrl) != 0) {
+      if (filesScope()) {
+        setFilesKind(m_kindIndex + (back ? kFileKinds.size() - 1 : 1));
+      } else if (!modeProviderId().empty()) {
+        cycleMode(back ? -1 : 1);
+      }
+      return true;
+    }
+    constexpr std::size_t kRing = 5;
+    std::size_t current = 0;
+    for (std::size_t i = 0; i + 1 < kRing; ++i) {
+      if (modeDropOn(i)) {
+        current = i + 1;
+      }
+    }
+    const std::size_t next = (current + (back ? kRing - 1 : 1)) % kRing;
+    toggleModeDrop(next == 0 ? current - 1 : next - 1);
     return true;
   }
 

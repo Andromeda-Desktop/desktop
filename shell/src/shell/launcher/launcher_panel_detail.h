@@ -1,6 +1,7 @@
 #pragma once
 
 #include "render/scene/accessible.h"
+#include "render/scene/input_dispatcher.h"
 
 // Launcher helpers and row nodes shared by the launcher_panel*.cpp files.
 
@@ -291,6 +292,28 @@ namespace launcher_detail {
     return style;
   }
 
+  // Rulebook 11: the current item after key navigation shows the lens plus the 2 px accent ring. The ring sits on the
+  // lens edge, not 2 px out: the scrolled grid and list clip their items at the viewport (deviations.md).
+  class KeyFocusRing {
+  public:
+    void attach(Node& host) {
+      auto node = std::make_unique<Flex>();
+      node->setParticipatesInLayout(false);
+      node->setBorder(focusRingColorSpec(), Style::focusRingWidth);
+      node->setVisible(false);
+      m_ring = static_cast<Flex*>(host.addChild(std::move(node)));
+    }
+    void sync(bool selected) { m_ring->setVisible(selected && InputDispatcher::focusVisible()); }
+    void place(const Flex& shape) {
+      m_ring->setPosition(shape.x(), shape.y());
+      m_ring->setSize(shape.width(), shape.height());
+      m_ring->setRadius(shape.radius());
+    }
+
+  private:
+    Flex* m_ring = nullptr;
+  };
+
   class LauncherResultRow final : public Node {
   public:
     LauncherResultRow(LauncherListStyle style, AsyncTextureCache* asyncTextures)
@@ -308,6 +331,7 @@ namespace launcher_detail {
            .radius = m_style.pill ? Tokens::componentLauncherRowRadius * m_style.scale : Style::scaledRadiusMd(m_style.scale)}
       );
       addChild(std::move(row));
+      m_focusRing.attach(*this);
 
       m_row->addChild(
           ui::label({
@@ -557,10 +581,12 @@ namespace launcher_detail {
         (void)refreshAsyncIcon(renderer);
       }
       Node::doLayout(renderer);
+      m_focusRing.place(*m_row);
     }
 
   private:
     void applyVisualState() {
+      m_focusRing.sync(m_selected);
       if (m_style.pill) {
         // Rulebook 9.14: the current row is the lens; text keeps its label colours.
         m_row->setFill(
@@ -610,6 +636,7 @@ namespace launcher_detail {
     bool m_selected = false;
     bool m_hovered = false;
     Flex* m_row = nullptr;
+    KeyFocusRing m_focusRing;
     Label* m_badgeLabel = nullptr;
     Image* m_image = nullptr;
     Glyph* m_glyph = nullptr;
@@ -652,6 +679,7 @@ namespace launcher_detail {
           .participatesInLayout = false,
       }));
       addChild(std::move(col));
+      m_focusRing.attach(*this);
 
       addChild(
           ui::glyph({
@@ -849,6 +877,7 @@ namespace launcher_detail {
         (void)refreshAsyncIcon(renderer);
       }
       Node::doLayout(renderer);
+      m_focusRing.place(*m_col);
     }
 
   private:
@@ -858,6 +887,7 @@ namespace launcher_detail {
     }
 
     void applyVisualState() {
+      m_focusRing.sync(m_selected);
       m_lensShadow->setVisible(m_selected);
       m_lensShadow->setFill(colorSpecFromRole(
           ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE1.keyLight : Tokens::elevationE1.keyDark
@@ -893,6 +923,7 @@ namespace launcher_detail {
     bool m_hovered = false;
     Box* m_lensShadow = nullptr;
     Flex* m_col = nullptr;
+    KeyFocusRing m_focusRing;
     Box* m_badgeHost = nullptr;
     Label* m_badgeLabel = nullptr;
     Image* m_image = nullptr;
@@ -978,6 +1009,7 @@ namespace launcher_detail {
       }));
       row->addChild(std::move(actions));
       addChild(std::move(row));
+      m_focusRing.attach(*this);
     }
 
     void bind(
@@ -989,6 +1021,7 @@ namespace launcher_detail {
       m_row->setFill(
           selected ? colorSpecFromRole(ColorRole::Lens) : (hovered ? colorSpecFromRole(ColorRole::Fill1) : clearColorSpec())
       );
+      m_focusRing.sync(selected);
       m_iconPath = result.iconPath;
       m_glyph->setGlyph(result.glyphName.empty() ? "app-window" : result.glyphName);
       m_title->setText(result.title);
@@ -1022,6 +1055,7 @@ namespace launcher_detail {
       m_title->setMaxWidth(text);
       m_subtitle->setMaxWidth(text);
       m_row->layout(renderer);
+      m_focusRing.place(*m_row);
     }
 
   private:
@@ -1029,6 +1063,7 @@ namespace launcher_detail {
     AsyncTextureCache* m_asyncTextures = nullptr;
     std::string m_iconPath;
     Flex* m_row = nullptr;
+    KeyFocusRing m_focusRing;
     Image* m_image = nullptr;
     Glyph* m_glyph = nullptr;
     Flex* m_text = nullptr;

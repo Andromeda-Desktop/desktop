@@ -160,6 +160,8 @@ private:
   [[nodiscard]] bool shouldUseLauncherSections() const;
   void rebuildLauncherSections();
   void selectResult(std::size_t index, bool scrollToSelection);
+  // Key navigation: the current item shows the focus ring until the next pointer press.
+  void showKeyFocus();
   void refreshLauncherAppIconColorization();
   void updateLauncherGridMetrics(Renderer& renderer);
   void updatePinnedApplicationState();
