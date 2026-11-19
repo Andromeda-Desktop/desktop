@@ -91,7 +91,6 @@ void TaskbarPreview::open(Request request) {
     closeNow();
   }
   std::vector<Card> previous = std::move(m_cards);
-  const bool switched = reuse && !m_closing && request.key != m_request.key;
   m_request = std::move(request);
   m_cards.clear();
   m_group.clear();
@@ -124,11 +123,6 @@ void TaskbarPreview::open(Request request) {
     m_surface->repositionAnchor(config);
     popup_chrome::setContentInputRegion(*m_surface, m_chrome);
     requestRebuild();
-    if (switched) {
-      // Another app: the moved card settles in with a short grow instead of a hard cut.
-      m_scale = std::min(m_scale, 0.97F);
-      m_opacity = std::min(m_opacity, 0.6F);
-    }
   } else {
     m_surface = std::make_unique<PopupSurface>(m_platform.wayland());
     m_surface->setRenderContext(&m_renderContext);
@@ -247,6 +241,7 @@ void TaskbarPreview::closeNow() {
   // The scene first: its images unload textures through the surface's renderer.
   m_sceneRoot.reset();
   m_surface.reset();
+  m_blurShown = false;
   m_cards.clear();
   m_group.clear();
   m_pointerInside = false;
@@ -287,11 +282,27 @@ void TaskbarPreview::driveShown(bool shown) {
   applyTransform();
 }
 
+// The compositor blur cannot follow the node fade, so it shows only while the card is nearly opaque: it joins near
+// the end of the open and goes at the start of the close.
+void TaskbarPreview::syncBlur() {
+  const bool want = !m_closing && m_opacity >= kBlurOpacity;
+  if (m_surface == nullptr || want == m_blurShown) {
+    return;
+  }
+  m_blurShown = want;
+  if (want) {
+    popup_chrome::setCardBlurRegion(*m_surface, m_chrome, m_request.contentScale);
+  } else {
+    m_surface->clearBlurRegion();
+  }
+}
+
 void TaskbarPreview::applyTransform() {
   if (m_sceneRoot != nullptr) {
     m_sceneRoot->setScale(m_scale);
     m_sceneRoot->setOpacity(m_opacity);
   }
+  syncBlur();
   if (m_surface != nullptr) {
     m_surface->requestRedraw();
   }
@@ -440,7 +451,8 @@ void TaskbarPreview::build() {
     (void)popup_chrome::addShadow(*m_sceneRoot, m_chrome, m_config.config().shell.shadow, Style::scaledRadiusLg(s));
   }
   (void)popup_chrome::addCardBackground(*m_sceneRoot, m_chrome, s, true);
-  popup_chrome::setCardBlurRegion(*m_surface, m_chrome, s);
+  m_blurShown = false;
+  syncBlur();
 
   m_sceneRoot->addChild(ui::box({
       .out = &m_lens,

@@ -97,6 +97,7 @@ private:
   [[nodiscard]] PopupSurfaceConfig surfaceConfig();
   void driveShown(bool shown);
   void applyTransform();
+  void syncBlur();
   void moveLens(std::size_t slot);
   void applyLens();
   // Runs `fn` on the next main-loop turn unless this preview is gone by then.
@@ -132,6 +133,8 @@ private:
   AnimationManager::Id m_lensFadeAnim = 0;
   float m_scale = 1.0F;
   float m_opacity = 1.0F;
+  bool m_blurShown = false; // the surface blur region is set
+  static constexpr float kBlurOpacity = 0.9F;
   float m_lensLeft = 0.0F;
   float m_lensRight = 0.0F;
   float m_lensOpacity = 1.0F;
