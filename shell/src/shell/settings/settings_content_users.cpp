@@ -285,10 +285,8 @@ namespace settings {
       card->addChild(std::move(r));
     }
     if (ctx.draft != nullptr) {
-      auto actions = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .fillWidth = true});
-      actions->addChild(plainButton(i18n::tr("settings.users.add"), ButtonVariant::Default, scale,
-                                    [open = ctx.openDetail] { open("users:" + i18n::tr("settings.users.new-user")); }));
-      content.addChild(std::move(actions));
+      addActionRow(*card, i18n::tr("settings.users.add"), !others.empty(), scale,
+                   [open = ctx.openDetail] { open("users:" + i18n::tr("settings.users.new-user")); });
     }
 
     if (ctx.loginScreens.size() >= 2 && ctx.switchLoginScreen) {

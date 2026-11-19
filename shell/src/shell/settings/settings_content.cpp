@@ -7,6 +7,7 @@
 #include "notification/notification_filter.h"
 #include "shell/settings/bar_widget_editor.h"
 #include "shell/settings/settings_content_common.h"
+#include "shell/settings/settings_page_rows.h"
 #include "shell/settings/settings_pages.h"
 #include "shell/settings/settings_selection_style.h"
 #include "shell/settings/settings_control_factory.h"
@@ -1094,14 +1095,7 @@ namespace settings {
           addIdleLiveStatusPanel(*activeGroupBody, ctx, scale);
         }
         if (entry.section == SettingsSection::Screenshot && entry.group == "screenshot-output") {
-          activeGroupBody->addChild(
-              ui::label({
-                  .text = i18n::tr("settings.schema.shell.screenshot-output.description"),
-                  .fontSize = Style::fontSizeBody * scale,
-                  .color = colorSpecFromRole(ColorRole::Label2),
-                  .maxLines = 0,
-              })
-          );
+          page_rows::addFootnote(*activeGroupBody, i18n::tr("settings.schema.shell.screenshot-output.description"), scale);
         }
       }
       if (!std::holds_alternative<KeybindListSetting>(entry.control)) {
