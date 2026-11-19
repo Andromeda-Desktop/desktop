@@ -129,6 +129,8 @@ void Node::arrange(Renderer& renderer, const LayoutRect& rect) {
   uiAssertNotRendering("Node::arrange");
   m_arranging = true;
   m_sizeAssignedByLayout = true;
+  // The parent's layout sized this node: a pending local layout would redo it at the node's own size.
+  m_localLayoutDirty = false;
   doArrange(renderer, rect);
   m_arranging = false;
   m_sizeAssignedByLayout = true;
@@ -603,8 +605,7 @@ void Node::layoutLocalPending(Renderer& renderer) {
   if (!visible()) {
     return;
   }
-  // A node that rejoined its parent's layout since the mark was laid out by the parent; a local pass would shrink it.
-  if (m_localLayoutDirty && !m_participatesInLayout) {
+  if (m_localLayoutDirty) {
     layout(renderer);
   }
   for (auto& child : m_children) {
