@@ -46,6 +46,14 @@
 #include <wayland-client-protocol.h>
 
 namespace {
+
+  // A menu opened at the pointer hangs from it: top-left corner at the click point.
+  const ContextMenuPopupPlacement kPointerMenuPlacement{
+      .anchor = PopupAnchor::TopLeft,
+      .gravity = PopupGravity::BottomRight,
+      .chromeAttachment = {.horizontal = popup_chrome::HorizontalAttachment::Left,
+                           .vertical = popup_chrome::VerticalAttachment::Top},
+  };
   constexpr Logger kLog("desktop-icons");
 
   // DESIGN.md "Desktop icons": 96 x 104 cells 16 from the usable-area edge; icon on a 72 plate (r 8) with the name 4
@@ -1680,6 +1688,7 @@ void DesktopIcons::openDesktopMenu(float x, float y) {
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
       .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
       .pointerParentSurface = m_surface.get(),
+      .placement = kPointerMenuPlacement,
   });
 }
 
@@ -1782,6 +1791,7 @@ void DesktopIcons::openItemMenu(std::size_t index, float x, float y) {
       .anchor = PopupAnchorRect{.x = static_cast<std::int32_t>(x), .y = static_cast<std::int32_t>(y)},
       .parent = PopupParent{.surface = m_surface.get(), .output = m_wayland->outputId(m_output)},
       .pointerParentSurface = m_surface.get(),
+      .placement = kPointerMenuPlacement,
   });
 }
 
