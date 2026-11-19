@@ -1197,7 +1197,9 @@ void LauncherPanel::syncUsageOrderingState() {
 void LauncherPanel::reapplyCurrentQuery() {
   std::string selectedProvider;
   std::string selectedId;
-  if (m_selectedIndex < m_results.size()) {
+  // A row the user moved to stays selected; the default first row follows the new first row (a late answer would
+  // otherwise leave the web row, which answers first, selected above it).
+  if (m_selectedIndex > 0 && m_selectedIndex < m_results.size()) {
     selectedProvider = m_results[m_selectedIndex].providerId;
     selectedId = m_results[m_selectedIndex].id;
   }

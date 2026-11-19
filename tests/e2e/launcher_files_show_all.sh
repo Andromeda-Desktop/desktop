@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Launcher "Show all files": with 13 matching files the Files section shows 8 and a "Show all files" row; Enter on it
-# opens the Files scope, which lists all 13; Tab twice picks the PDFs chip (1 file); Backspace on the empty field
+# opens the Files scope, which lists all 13; Ctrl+Tab twice picks the PDFs chip (1 file); Backspace on the empty field
 # leaves the scope. Captures in $OUT (default ./artifacts/launcher-files-show-all): sections, scope, kind, left.png.
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/launcher-files-show-all}
@@ -36,9 +36,9 @@ with_noctalia '
   sleep 0.4
   grim "$OUT/scope.png"
 
-  # Kind chips: All, Folders, PDFs.
-  wtype -k Tab
-  wtype -k Tab
+  # Kind chips: All, Folders, PDFs (Ctrl+Tab steps kinds; Tab steps the mode buttons).
+  wtype -M ctrl -k Tab -m ctrl
+  wtype -M ctrl -k Tab -m ctrl
   wait_for "the PDFs chip did not filter to 1 file" \
     "grep -q \"\] 1 files for \\\"kiwi-report\\\" in the Files scope kind pdf\" \"$OUT/noctalia.log\""
   sleep 0.4
