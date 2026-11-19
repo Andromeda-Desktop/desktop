@@ -1085,8 +1085,10 @@ std::optional<BarConfig> Bar::configForBar(wl_output* output, std::string_view b
 }
 
 void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) const {
-  const bool tray = panelId == "tray-drawer";
-  if (panelId != "control-center" && !tray) {
+  // The tray drawer and the notification center hang under the status island and end at its trailing edge, as when
+  // they are opened by a click on it.
+  const bool endSheet = panelId == "tray-drawer" || panelId == "notification-center";
+  if (panelId != "control-center" && !endSheet) {
     return;
   }
   for (const auto& instance : m_instances) {
@@ -1097,8 +1099,7 @@ void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) 
     const Box* statusIsland = instance->islands[2];
     const bool vertical = instance->barConfig.position == "left" || instance->barConfig.position == "right";
     const bool statusShown = instance->barConfig.islands && statusIsland != nullptr && statusIsland->visible();
-    if (tray) {
-      // A drawer opened without a click still hangs under the status island, ending at its trailing edge.
+    if (endSheet) {
       if (vertical || !statusShown) {
         continue;
       }
@@ -1116,19 +1117,19 @@ void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) 
     } else {
       continue;
     }
-    float anchorX = tray ? r[0] + r[2] : r[0] + r[2] * 0.5F;
+    float anchorX = endSheet ? r[0] + r[2] : r[0] + r[2] * 0.5F;
     float anchorY = r[1] + r[3] * 0.5F;
     if (m_platform != nullptr) {
       if (const auto* out = m_platform->findOutputByWl(instance->output); out != nullptr && out->hasUsableGeometry()) {
         const auto [surfaceX, surfaceY] = surfaceOriginForOutputLocal(*instance, *out);
         anchorX += surfaceX;
         anchorY += surfaceY;
-        if (tray) {
+        if (endSheet) {
           request.sourceOutputRect = std::array<float, 4>{r[0] + surfaceX, r[1] + surfaceY, r[2], r[3]};
         }
       }
     }
-    if (tray) {
+    if (endSheet) {
       request.anchorAlign = PanelAnchorAlign::End;
     }
     request.anchorX = anchorX;
