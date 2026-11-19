@@ -28,6 +28,8 @@ namespace andromeda {
     void setEnabled(bool enabled);
     // A flat scrim of `color` (premultiplied) over a plain blur, with no shadow, rim or hairline: for dimming an area.
     void setScrim(const std::array<float, 4>& color);
+    // Samples only the bottom layer's cached blur (blur.optimized), not a live blur of everything below.
+    void setBottomLayerOnly(bool bottomOnly);
     // Reads a finished backdrop sample and moves the tint density toward it (glass::adaptDensity). Returns the ms
     // until it needs a new poll (a GPU sample pending), or 0.
     int pollBackdrop();
@@ -41,6 +43,7 @@ namespace andromeda {
     glass::Kind m_kind;
     std::array<float, 4> m_scrim{};
     bool m_useScrim = false;
+    bool m_bottomOnly = false;
     wlr_box m_box{};
     int m_radius = 0;
     float m_opacity = 1.0F;

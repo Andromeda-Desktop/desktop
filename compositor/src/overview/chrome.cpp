@@ -114,7 +114,13 @@ namespace andromeda::ov {
 
   } // namespace
 
-  Chrome::Chrome(wlr_scene_tree* parent) : m_tree(wlr_scene_tree_create(parent)) {}
+  Chrome::Chrome(wlr_scene_tree* parent) : m_tree(wlr_scene_tree_create(parent)) {
+    if (m_tree != nullptr) {
+      m_filterGlass = std::make_unique<GlassPanel>(m_tree, glass::Kind::Shape);
+      m_filterGlass->setBottomLayerOnly(config().appearance.blur.optimized);
+      m_filterGlass->setEnabled(false);
+    }
+  }
 
   Chrome::~Chrome() {
     if (m_searchIcon != nullptr) {
@@ -437,19 +443,28 @@ namespace andromeda::ov {
       }
       setLabel(
           m_filter, markup,
-          {.font = "sans 9.75",
+          {.font = std::format("{} {}px", Tokens::fontFamily, Tokens::typeBody.size),
            .padX = 14,
            .height = kFieldHeight,
            .maxWidth = static_cast<int>(kFilterWidth),
            .width = static_cast<int>(kFilterWidth),
-           .fill = thick,
+           .fill = {},
            .icon = m_searchIcon,
            .iconSize = kSearchIcon},
           scale
       );
-      placeLabel(m_filter, ox + px(placement.filter->x), oy + px(placement.filter->y), shown);
+      const int fx = ox + px(placement.filter->x);
+      const int fy = oy + px(placement.filter->y);
+      placeLabel(m_filter, fx, fy, shown);
+      if (m_filterGlass != nullptr) {
+        m_filterGlass->setEnabled(shown > 0.004F);
+        m_filterGlass->place({fx, fy, static_cast<int>(kFilterWidth), kFieldHeight}, kFieldHeight / 2, shown);
+      }
     } else {
       placeLabel(m_filter, 0, 0, 0.0F);
+      if (m_filterGlass != nullptr) {
+        m_filterGlass->setEnabled(false);
+      }
     }
 
     m_empties.resize(std::max(m_empties.size(), frame.workspaces.size()));

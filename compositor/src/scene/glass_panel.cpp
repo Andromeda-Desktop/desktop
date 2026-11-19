@@ -39,6 +39,10 @@ namespace andromeda {
     m_useScrim = true;
   }
 
+  void GlassPanel::setBottomLayerOnly(bool bottomOnly) {
+    m_bottomOnly = bottomOnly;
+  }
+
   int GlassPanel::pollBackdrop() {
     float luminance = 0.0F;
     if (m_blur == nullptr || m_useScrim) {
@@ -100,7 +104,7 @@ namespace andromeda {
     wlr_scene_node_set_position(&m_blur->node, box.x, box.y);
     wlr_scene_blur_set_size(m_blur, box.width, box.height);
     wlr_scene_blur_set_corner_radius(m_blur, radius);
-    wlr_scene_blur_set_should_only_blur_bottom_layer(m_blur, false);
+    wlr_scene_blur_set_should_only_blur_bottom_layer(m_blur, m_bottomOnly);
     wlr_scene_blur_set_liquid(m_blur, m_useScrim ? 0.0F : material.level);
     wlr_scene_blur_set_rim(m_blur, m_useScrim ? 0.0F : material.rim);
     wlr_scene_blur_set_strength(m_blur, material.blurStrength);

@@ -1,9 +1,11 @@
 #pragma once
 
 #include "overview/style.h"
+#include "scene/glass_panel.h"
 
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -161,6 +163,7 @@ namespace andromeda::ov {
     wlr_scene_tree* m_tree = nullptr;
     std::vector<Label> m_names;
     Label m_filter;
+    std::unique_ptr<GlassPanel> m_filterGlass; // under every label: created first in the chrome tree
     wlr_buffer* m_searchIcon = nullptr; // filter field glyph, drawn at m_searchIconPx in m_searchIconColor
     int m_searchIconPx = 0;
     std::array<float, 4> m_searchIconColor{};
