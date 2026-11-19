@@ -45,8 +45,8 @@ const std::unordered_map<std::string, std::string_view> kAliases = {
     // Media
     {"media-pause", "player-pause-filled"},
     {"media-play", "player-play-filled"},
-    {"media-prev", "player-skip-back-filled"},
-    {"media-next", "player-skip-forward-filled"},
+    {"media-prev", "player-track-prev-filled"},
+    {"media-next", "player-track-next-filled"},
     {"shuffle", "arrows-shuffle"},
     {"stop", "player-stop-filled"},
     {"microphone-mute", "microphone-off"},

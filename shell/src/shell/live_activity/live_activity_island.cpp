@@ -151,12 +151,14 @@ namespace {
   constexpr auto kOsdTime = std::chrono::milliseconds(1500);
   constexpr auto kBannerTime = std::chrono::milliseconds(5000);
 
-  Button::ButtonPalette ghostPalette() {
-    const Button::ButtonStateColors normal{.bg = clearColorSpec(), .border = clearColorSpec(), .label = liveLabel()};
+  // Play/pause is the inverted "on" button: a label fill under an opaque-surface glyph, in either scheme.
+  Button::ButtonPalette onPalette() {
+    const ColorSpec label = colorSpecFromRole(ColorRole::SolidRegular);
+    const Button::ButtonStateColors normal{.bg = liveLabel(), .border = clearColorSpec(), .label = label};
     return Button::ButtonPalette{
         .normal = normal,
-        .hover = {.bg = colorSpecFromRole(ColorRole::Fill3), .border = clearColorSpec(), .label = liveLabel()},
-        .pressed = {.bg = colorSpecFromRole(ColorRole::Fill3), .border = clearColorSpec(), .label = liveLabel()},
+        .hover = {.bg = colorSpecFromRole(ColorRole::Label1, 0.85F), .border = clearColorSpec(), .label = label},
+        .pressed = {.bg = liveLabel2(), .border = clearColorSpec(), .label = label},
         .disabled = normal,
     };
   }
@@ -1541,7 +1543,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
         .height = kHoverButton,
         .onClick = std::move(onClick),
     });
-    (*out)->setCustomPalette(filled ? livePalette(false) : ghostPalette());
+    (*out)->setCustomPalette(filled ? onPalette() : livePalette(false));
     (*out)->setOnEnter([this, instPtr] { hoverEnter(*instPtr); });
     (*out)->setOnLeave([this, instPtr] { hoverLeave(*instPtr); });
     return button;
@@ -1582,7 +1584,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
       std::move(hoverRow),
       ui::progressBar({
           .out = &inst.hoverProgress,
-          .fill = colorSpecFromRole(ColorRole::Accent),
+          .fill = liveLabel(),
           .track = colorSpecFromRole(ColorRole::Fill2),
           .radius = kProgressHeight * 0.5F,
           .height = kProgressHeight,
@@ -2045,8 +2047,12 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   // Media hover face.
   const std::string trackTitle = player.has_value() ? (!player->title.empty() ? player->title : player->identity) : "";
   inst.hoverTitle->setText(trackTitle);
-  inst.hoverArtist->setText(player.has_value() ? joinedArtists(player->artists) : "");
-  inst.hoverArtist->setVisible(player.has_value() && !player->artists.empty());
+  std::string byline = player.has_value() ? joinedArtists(player->artists) : "";
+  if (player.has_value() && !player->album.empty()) {
+    byline += (byline.empty() ? "" : " · ") + player->album;
+  }
+  inst.hoverArtist->setText(byline);
+  inst.hoverArtist->setVisible(!byline.empty());
   inst.playPause->setGlyph(playing ? "media-pause" : "media-play");
   const float textMax = std::max(60.0F, inst.liveWidth - hoverFixed());
   inst.hoverTitle->setMaxWidth(textMax);
@@ -2054,8 +2060,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   inst.hoverTitle->layout(renderer);
   inst.hoverArtist->layout(renderer);
   syncHoverProgress(inst);
-  inst.faceWidth[static_cast<std::size_t>(Face::HoverMedia)] =
-      hoverFixed() + std::max(inst.hoverTitle->width(), inst.hoverArtist->visible() ? inst.hoverArtist->width() : 0.0F);
+  inst.faceWidth[static_cast<std::size_t>(Face::HoverMedia)] = inst.liveWidth;
   inst.faceHeight[static_cast<std::size_t>(Face::HoverMedia)] = static_cast<float>(kBannerHeight);
 
   // Idle hover face.
