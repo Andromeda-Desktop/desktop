@@ -770,6 +770,15 @@ void Application::initPanelManagerAndPanels() {
     launcherPanel->setAddToDesktopCallback([this](const std::filesystem::path& entry) {
       m_desktopIcons.addShortcut(entry);
     });
+    launcherPanel->setWindowCounter([this](const std::string& entryPath) {
+      std::size_t windows = 0;
+      for (const auto& run : app_identity::resolveRunningApps(m_compositorPlatform.runningAppIds(), desktopEntries())) {
+        if (run.entry.path == entryPath) {
+          windows += m_compositorPlatform.windowsForApp(run.runningLower, run.runningLower).size();
+        }
+      }
+      return windows;
+    });
     launcherPanel->setOnAppLaunchCallback([this] {
       if (!overviewCloseOnLaunchEnabled(m_configService)) {
         return;
@@ -826,6 +835,10 @@ void Application::initPanelManagerAndPanels() {
     }
     // Open-panel lenses on bar cells.
     m_bar.refresh();
+    // proto openNC: the history takes the island's banners, so none covers the column.
+    if (m_panelManager.activePanelId() == "notification-center") {
+      m_liveActivity.clearBanners();
+    }
   });
   m_panelManager.setPanelClosedCallback([this] {
     m_bar.rearmTooltipForHoveredWidget();

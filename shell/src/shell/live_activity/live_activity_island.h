@@ -118,6 +118,8 @@ public:
   [[nodiscard]] bool showBanner(const Notification& notification, NotificationEvent event);
   // Do Not Disturb turned on: drops the banners that respect it.
   void hideDndSuppressed();
+  // Drops the banner and the queued banners; they stay in the notification history.
+  void clearBanners();
   void setActivity(std::optional<LiveActivity> activity);
   // Outputs that show a fullscreen window. There the island rests under the window and shows only a ringing call
   // (LiveActivity::overFullscreen) or a critical banner; banners and OSDs that no output can show are dropped.
