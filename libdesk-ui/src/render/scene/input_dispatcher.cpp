@@ -177,6 +177,11 @@ void InputDispatcher::pointerMotion(float x, float y, std::uint32_t serial) {
   if (serial != 0) {
     m_lastSerial = serial;
   }
+  // Rulebook 11: pointer use hides the key focus ring; a repeat of the same position is not use.
+  const bool moved = m_hasPointerPosition && (x != m_lastPointerX || y != m_lastPointerY);
+  if (moved && std::exchange(s_focusVisible, false) && m_focusedArea != nullptr) {
+    m_focusedArea->dispatchFocusVisibleChange();
+  }
   m_lastPointerX = x;
   m_lastPointerY = y;
   m_hasPointerPosition = true;

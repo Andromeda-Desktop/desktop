@@ -261,6 +261,15 @@ void LauncherPanel::create() {
   });
   if (m_input != nullptr && m_input->inputArea() != nullptr) {
     m_input->inputArea()->setTabFocusKey("launcher.search");
+    // The field keeps focus during key navigation, so it hears the ring show and hide; the current item redraws it.
+    m_input->inputArea()->setOnFocusVisibleChange([this] {
+      if (m_grid != nullptr) {
+        m_grid->notifyDataChanged();
+      }
+      if (m_launcherSections != nullptr) {
+        m_launcherSections->notifyDataChanged();
+      }
+    });
   }
 
   auto categoryFilter = ui::segmented({
