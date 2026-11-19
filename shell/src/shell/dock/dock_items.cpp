@@ -580,6 +580,7 @@ namespace shell::dock {
       if (d.button == BTN_LEFT && clickContext->callbacks.openTrash) {
         clickContext->callbacks.openTrash(*instPtr);
       } else if (d.button == BTN_RIGHT && clickContext->callbacks.openTrashMenu) {
+        dismissDockTooltipImpl();
         clickContext->callbacks.openTrashMenu(*instPtr);
       }
     });
@@ -941,6 +942,7 @@ namespace shell::dock {
                             item = static_cast<Node*>(areaNode.get())](const InputArea::PointerData& d) {
         if (d.button == BTN_RIGHT) {
           if (clickContext->callbacks.openItemMenu) {
+            dismissDockTooltipImpl();
             clickContext->callbacks.openItemMenu(*instPtr, action);
           }
           return;
