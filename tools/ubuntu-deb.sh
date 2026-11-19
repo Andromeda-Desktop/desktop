@@ -17,6 +17,8 @@ OUT=${XDG_CACHE_HOME:-$HOME/.cache}/andromeda-ubuntu/deb-$VERSION
 IMAGE=andromeda-deb:${BASE/:/-}
 # ccache lives beside OUT, so --clean keeps it.
 CCACHE=$(dirname "$OUT")/ccache-deb-$VERSION
+# In CI the repo's caches share 10 GiB: two deb caches of 1.5G leave room for the Arch release cache.
+[[ -z ${CI:-} ]] || { mkdir -p "$CCACHE" && echo 'max_size = 1.5G' > "$CCACHE/ccache.conf"; }
 # Crate downloads persist across runs, so a build needs the network only for new crates.
 CARGO_CACHE=$(dirname "$OUT")/cargo-deb-$VERSION
 mkdir -p "$CARGO_CACHE"

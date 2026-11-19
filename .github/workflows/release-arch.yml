@@ -42,7 +42,8 @@ jobs:
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           git config --system --add safe.directory '*'
-          mkdir -p .ccache
+          # The repo's caches share 10 GiB; an uncapped ccache evicts this one before the next release (ccache.conf).
+          mkdir -p .ccache && echo 'max_size = 2G' > .ccache/ccache.conf
           chown -R builder: "$GITHUB_WORKSPACE"
           sed -i 's/^BUILDENV=(\(.*\)!ccache/BUILDENV=(\1ccache/' /etc/makepkg.conf
       # Under fakeroot cargo resolves its home from the faked root uid; meson install reruns the stale cargo targets.

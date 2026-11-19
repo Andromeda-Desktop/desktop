@@ -32,6 +32,8 @@ jobs:
           source pkg/PKGBUILD
           pacman -S --noconfirm --needed "${makedepends[@]}" python-gobject
           echo "CCACHE_DIR=$PWD/.ccache" >> "$GITHUB_ENV"
+          # The repo's caches share 10 GiB: the release caches must survive this one.
+          mkdir -p .ccache && echo 'max_size = 1.2G' > .ccache/ccache.conf
           # The container runs as root on a checkout the runner user owns; git refuses it without this.
           git config --global --add safe.directory "$PWD"
       # Meson uses ccache when it is on PATH; each run saves a new key and restores the newest.
