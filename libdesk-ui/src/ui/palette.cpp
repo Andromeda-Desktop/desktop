@@ -4,8 +4,11 @@
 #include "render/core/color.h"
 #include "render/scene/node.h"
 #include "design_tokens.h"
+#include "protocols/glass_material.h"
 #include "util/string_utils.h"
 
+#include <algorithm>
+#include <cmath>
 #include <mutex>
 #include <string>
 
@@ -272,6 +275,13 @@ Color resolveColorSpec(const ColorSpec& color, const Node* node) noexcept {
   if (color.role.has_value() && node != nullptr) {
     if (const auto fade = node->paletteToneFade(); fade.has_value()) {
       resolved = lerpColor(roleIn(paletteForTone(fade->from), *color.role), resolved, fade->progress);
+    }
+    const bool secondary = *color.role == ColorRole::Label2 || *color.role == ColorRole::Label3;
+    if (const float lift = node->inkLift(); secondary && lift > 0.0F) {
+      // Labels are black or white at an opacity: light ink sits on dark glass.
+      const int tone = resolved.r + resolved.g + resolved.b > 1.5F ? 1 : 0;
+      const float legible = *color.role == ColorRole::Label2 ? glass::kLegibleInk2[tone] : glass::kLegibleInk3[tone];
+      resolved.a = std::max(resolved.a, std::lerp(resolved.a, legible, lift));
     }
   }
   resolved.a *= color.alpha;

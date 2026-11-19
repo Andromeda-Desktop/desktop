@@ -502,6 +502,33 @@ void Node::notifyPaletteTone() {
   }
 }
 
+void Node::setInkLift(std::optional<float> lift) {
+  if (m_inkLift == lift) {
+    return;
+  }
+  m_inkLift = lift;
+  notifyInkLift();
+  markPaintDirty();
+}
+
+float Node::inkLift() const noexcept {
+  for (const Node* node = this; node != nullptr; node = node->m_parent) {
+    if (node->m_inkLift.has_value()) {
+      return *node->m_inkLift;
+    }
+  }
+  return 0.0F;
+}
+
+void Node::notifyInkLift() {
+  onPaletteToneChanged();
+  for (auto& child : m_children) {
+    if (!child->m_inkLift.has_value()) {
+      child->notifyInkLift();
+    }
+  }
+}
+
 Node* Node::addChild(std::unique_ptr<Node> child) {
   uiAssertSceneMutationAllowed("Node::addChild");
   auto* raw = child.get();

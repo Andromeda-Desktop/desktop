@@ -589,6 +589,11 @@ void LiveActivityIsland::ensureSurfaces() {
     inst->surface->setInputRegion({});
     if (auto* manager = m_wayland->dskSurfaceManager(); manager != nullptr) {
       inst->dsk = std::make_unique<DskSurfaceClient>(manager, inst->surface->wlSurface());
+      inst->dsk->setOnDensity([raw = inst.get()](float density) {
+        if (raw->sceneRoot != nullptr) {
+          raw->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);
+        }
+      });
       if (inst->dsk->hasShapes()) {
         // Glass shapes stack in creation order, first lowest: the deepest peek first, the card over the peeks; the
         // media bars' flat shapes, created later, draw over the pill.

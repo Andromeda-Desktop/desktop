@@ -2836,6 +2836,10 @@ void PanelManager::updateGlassDensity(bool instant) {
   const float target = Style::reduceTransparency() ? 0.0F : m_densityTarget;
   const auto apply = [this](float v) {
     m_glassDark = std::clamp(v, 0.0F, 1.0F);
+    if (m_sceneRoot != nullptr) {
+      // 1/32 steps: each step re-resolves every label of the sheet.
+      m_sceneRoot->setInkLift(std::round(m_glassDark * 32.0F) / 32.0F);
+    }
     if (!m_attachedToBar && m_bgNode != nullptr) {
       static_cast<Box*>(m_bgNode)->setFill(detachedFill());
       if (m_activePanel != nullptr) {

@@ -181,6 +181,10 @@ public:
   };
   // The running fade of the node that decides paletteTone(); nullopt when settled.
   [[nodiscard]] std::optional<PaletteToneFade> paletteToneFade() const noexcept;
+  // 0..1, how far label_2 and label_3 rise to the legible ink over dense glass (glass::kLegibleInk2/3); nullopt
+  // inherits the parent's lift, a root without one has 0. A change re-resolves the subtree's colours.
+  void setInkLift(std::optional<float> lift);
+  [[nodiscard]] float inkLift() const noexcept;
   [[nodiscard]] bool excludeSubtreeFromTabOrder() const noexcept { return m_excludeSubtreeFromTabOrder; }
 
   virtual Node* addChild(std::unique_ptr<Node> child);
@@ -318,12 +322,14 @@ private:
   std::unique_ptr<Accessible> m_accessible;
   std::optional<PaletteTone> m_paletteTone;
   std::optional<PaletteToneFade> m_paletteToneFade;
+  std::optional<float> m_inkLift;
 
   void propagatePaintDirty();
   void propagateLayoutDirty();
   void notifyInvalidated(NodeInvalidation invalidation);
   void attachChild(Node* child);
   void notifyPaletteTone();
+  void notifyInkLift();
 };
 
 // Paints an existing retained subtree a second time at this node's transform.

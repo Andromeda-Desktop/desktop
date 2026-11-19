@@ -35,8 +35,13 @@ namespace glass {
   // Over a low-contrast backdrop each style's glass moves this fraction of its gap to opaque, in its own colour
   // (concept C styles.css --dense), indexed by Style: {light glass, dark glass}.
   inline constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.0F, 0.66F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
-  // The least alpha at full density that keeps 4.5:1 text over a white or black backdrop: {light glass, dark glass}.
-  inline constexpr float kLegibleAlpha[2] = {0.54F, 0.67F};
+  // The least alpha at full density that keeps label_1 at 4.5:1 over a white (dark glass) or black (light glass)
+  // backdrop, blended in sRGB like the compositor: {light glass, dark glass}.
+  inline constexpr float kLegibleAlpha[2] = {0.60F, 0.80F};
+  // Ink alpha label_2 (4.5:1) and label_3 (3:1, dim by design) reach at full density over kLegibleAlpha glass:
+  // {light glass (dark ink), dark glass (light ink)}. Secondary ink rises to these with the surface's density.
+  inline constexpr float kLegibleInk2[2] = {0.80F, 0.86F};
+  inline constexpr float kLegibleInk3[2] = {0.62F, 0.60F};
 
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };

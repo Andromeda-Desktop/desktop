@@ -302,6 +302,11 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
   if (instance.dsk == nullptr && want && manager != nullptr && instance.surface != nullptr
       && instance.surface->wlSurface() != nullptr) {
     instance.dsk = std::make_unique<DskSurfaceClient>(manager, instance.surface->wlSurface());
+    instance.dsk->setOnDensity([inst = &instance](float density) {
+      if (inst->sceneRoot != nullptr) {
+        inst->sceneRoot->setInkLift(std::round(density * 32.0F) / 32.0F);
+      }
+    });
   }
   instance.compositorTint = false;
   if (instance.dsk == nullptr || !instance.dsk->hasLiquidProperty()) {
