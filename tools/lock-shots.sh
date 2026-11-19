@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Screenshots of the Andromeda lock screen in a headless session: idle, typing, caps-lock hint, lock from phone.
 # Usage: SCALE=1.5 LAYOUT=split CLOCK=stacked CLOCK_SIZE=xl CARDS=1 WALL=path PHONE=1 tools/lock-shots.sh [out-dir]; PHONE=1 locks the way the phone does; OUTPUT_WALL=path sets a lock wallpaper for HEADLESS-1 only;
-# CARDS=1 plays the E2E MPRIS player and posts notifications first; MENU=1 also opens the power menu (menu.png); INHIBIT=1 (with MENU=1) starts a mock logind with a shutdown block and clicks Shut down (alert.png). Never submits a password (the real faillock count stays).
+# CARDS=1 plays the E2E MPRIS player (calls in player-calls.txt) and posts notifications first; CARD_CLICK="x y" clicks there after idle.png and fails without a Raise; MENU=1 also opens the power menu (menu.png); INHIBIT=1 (with MENU=1) starts a mock logind with a shutdown block and clicks Shut down (alert.png). Never submits a password (the real faillock count stays).
 set -euo pipefail
 OUT=${1:-$(pwd)/artifacts/lock-shots}
 SCALE=${SCALE:-1}
@@ -22,6 +22,7 @@ with_noctalia '
   KEYS='"$KEYS"'
   PHONE='"${PHONE:-0}"'
   CARDS='"${CARDS:-0}"'
+  CARD_CLICK="'"${CARD_CLICK:-}"'"
   MENU='"${MENU:-0}"'
   INHIBIT='"${INHIBIT:-0}"'
   PLAYER='"$ROOT/tests/e2e/mpris_test_player.py"'
@@ -33,7 +34,7 @@ with_noctalia '
   wtype -s 3600000 &
   sleep 0.3
   if [[ $CARDS == 1 ]]; then
-    python3 "$PLAYER" /dev/null &
+    python3 "$PLAYER" "$OUT/player-calls.txt" &
     notify-send -a Mail "Invoice" "secret body"
     notify-send -a Mail "Lunch" "secret body"
     notify-send -a WhatsApp "Maya" "secret body"
@@ -48,6 +49,11 @@ with_noctalia '
   wait_for "did not lock" locked
   sleep 2 # real time: the enter transition and the wallpaper settle
   grim "$OUT/idle.png"
+  if [[ -n $CARD_CLICK ]]; then
+    "$KEYS" 1280 720 move $CARD_CLICK click 272 > /dev/null
+    sleep 0.5 # real time: the Raise call reaches the player
+    grep -q "^Raise" "$OUT/player-calls.txt" || fail "media card click at $CARD_CLICK did not raise the player"
+  fi
   wtype abcdef
   sleep 0.5
   grim "$OUT/typing.png"
