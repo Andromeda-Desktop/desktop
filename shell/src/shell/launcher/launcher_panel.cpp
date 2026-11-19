@@ -1039,6 +1039,7 @@ void LauncherPanel::onOpen(std::string_view context) {
 
   // "mode:<provider>" or a mode provider's prefix (Mod+Period sends "/emo") opens that mode with an empty field.
   std::string initialValue(context);
+  bool openFiles = false;
   if (m_browserMode) {
     std::string_view requested;
     const bool modeContext = initialValue.starts_with(kModeContextPrefix);
@@ -1058,6 +1059,7 @@ void LauncherPanel::onOpen(std::string_view context) {
         && std::ranges::any_of(m_providers, [&](const auto& p) { return p->id() == requested; })) {
       m_view.set(launcher_view::Media{.providerId = std::string(requested)});
     }
+    openFiles = requested == "Files";
     if (isAppsQuery(initialValue)) {
       m_view.set(launcher_view::Apps{});
       initialValue.clear();
@@ -1079,7 +1081,11 @@ void LauncherPanel::onOpen(std::string_view context) {
   if (m_launcherSections != nullptr) {
     m_launcherSections->scrollView().setScrollOffset(0.0F);
   }
-  onInputChanged(initialValue);
+  if (openFiles) {
+    setFilesScope(true);
+  } else {
+    onInputChanged(initialValue);
+  }
 }
 
 void LauncherPanel::onClose() {
