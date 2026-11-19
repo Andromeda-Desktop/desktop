@@ -269,6 +269,9 @@ private:
   void animateMorphClip();
   // The compositor draws the sheet's hairline while a clip cuts the bg box edge, in the bg border's colour.
   void sendSheetStroke();
+  [[nodiscard]] bool sheetShadowOn() const;
+  void setSheetElevation(bool on);
+  void restSheetClip();
   // Grows or shrinks a detached card as one compositor clip on the open spring; false = no dsk surface.
   bool morphCardHeight(std::uint32_t target);
   // Set while the surface opened with the compositor scale motion: the transform its close returns to.
@@ -408,6 +411,8 @@ private:
   // The rect morphSheetFrom grew the sheet from; collapseSheetTo lands there (the source moves while hidden).
   std::optional<DskSurfaceClient::Value> m_sheetSource;
   DskSurfaceClient::Value m_morphClipTarget{};
+  DskSurfaceClient::Value m_restClip{}; // the clip restSheetClip sent: the sheet rect, or zero (no clip)
+  bool m_sheetElevated = false;         // Elevation E3 sent: the compositor draws the sheet shadow, not m_panelShadowNode
   bool m_morphExtend = false; // the sheet fill and blur extend into the margin while the island morph runs
   std::int32_t m_morphMarginX = 0;
   std::int32_t m_morphMarginY = 0;

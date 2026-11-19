@@ -158,6 +158,7 @@ namespace andromeda {
     float m_glassAlpha = 1.0F;
     float m_blurFade = 1.0F;
     SurfaceShadow m_shadow; // dsk_surface_v1 elevation
+    float m_shadowOpacity = 1.0F; // the surface's dsk Opacity, 0 to 1, applied to m_shadow
     std::vector<std::unique_ptr<SurfaceShadow>> m_shapeShadows; // dsk_shape_v1 elevation, one per shape
     // dsk_surface_v1 stroke: the hairline the client border cannot draw while the clip cuts the client's sheet edge.
     wlr_scene_border* m_stroke = nullptr;

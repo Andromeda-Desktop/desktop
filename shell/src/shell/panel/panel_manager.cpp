@@ -1784,6 +1784,8 @@ void PanelManager::destroyPanel() {
   m_pieceRest.clear();
   m_piecesShown = false;
   m_dsk.reset();
+  m_sheetElevated = false;
+  m_restClip = {};
   m_densityMeasured = false;
   m_glassDark = 0.0F;
   m_glassDarkAnimation = 0;
@@ -2588,6 +2590,41 @@ void PanelManager::sendSheetStroke() {
   m_dsk->set(DskSurfaceClient::Property::Stroke, {c.r, c.g, c.b, c.a});
 }
 
+bool PanelManager::sheetShadowOn() const {
+  return !m_attachedToBar && m_dsk != nullptr && m_config != nullptr && m_config->config().shell.panel.shadow &&
+      ui::surface_shadow::enabled(true, m_config->config().shell.shadow);
+}
+
+// A clipped sheet's shadow is the compositor's (level 2 = E3, rulebook: sheets are E3): it follows the clip, which cuts
+// the shell's own shadow node.
+void PanelManager::setSheetElevation(bool on) {
+  if (m_dsk == nullptr || on == m_sheetElevated) {
+    return;
+  }
+  m_sheetElevated = on;
+  m_dsk->set(DskSurfaceClient::Property::Elevation, {on ? 2.0 : 0.0, 0.0, 0.0, 0.0});
+  if (m_panelShadowNode != nullptr) {
+    m_panelShadowNode->setVisible(!on && sheetShadowOn() && !piecesActive());
+  }
+}
+
+// At rest a sheet keeps its clip on the sheet rect, so the compositor shadow stays on it; pieces have no sheet clip.
+void PanelManager::restSheetClip() {
+  using Property = DskSurfaceClient::Property;
+  if (m_dsk == nullptr) {
+    return;
+  }
+  const bool sheet = sheetShadowOn() && !piecesActive();
+  m_restClip = sheet ? detachedSheetRect() : DskSurfaceClient::Value{};
+  m_dsk->set(Property::Clip, m_restClip);
+  m_dsk->set(Property::Radius, {sheet ? static_cast<double>(panelRadius()) : 0.0, 0.0, 0.0, 0.0});
+  // The sheet draws its own hairline at rest; the compositor stroke would double it.
+  if (sheet && m_dsk->hasStrokeProperty()) {
+    m_dsk->set(Property::Stroke, {0.0, 0.0, 0.0, 0.0});
+  }
+  setSheetElevation(sheet);
+}
+
 // Sheets get the compositor's specular rim instead of a hairline; in light mode the rim adds white light, which shows
 // nothing over a white backdrop, so the hairline stays.
 ColorSpec PanelManager::detachedBorder(float backgroundOpacity) const {
@@ -2621,10 +2658,14 @@ void PanelManager::syncGlassPieces(bool material) {
     }
     if (m_panelShadowNode != nullptr && m_config != nullptr) {
       m_panelShadowNode->setVisible(
-          !active && m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, m_config->config().shell.shadow)
+          !active && !m_sheetElevated && m_config->config().shell.panel.shadow &&
+          ui::surface_shadow::enabled(true, m_config->config().shell.shadow)
       );
     }
     sendSheetStroke();
+    if (m_sheetElevated && m_morphSettled && !m_morphClipRunning && !m_cardClipRunning && !m_lifecycle.closing()) {
+      restSheetClip();
+    }
   }
   if (!active) {
     m_pieceShapes.clear();
@@ -2893,6 +2934,7 @@ bool PanelManager::startDetachedMorph() {
     return false;
   }
   sendSheetStroke();
+  setSheetElevation(sheetShadowOn() && !piecesActive());
   m_morphSettled = false;
   const auto& r = m_morphSourceRect;
   if (!m_dsk->setClipFrom(source, {r[0], r[1], r[2], r[3]})) {
@@ -3271,6 +3313,7 @@ void PanelManager::morphSheetFrom(const Node& source) {
   // Same contract as morphCardHeight: a content-fit change during the hop retargets this clip.
   m_cardClipRunning = true;
   sendSheetStroke();
+  setSheetElevation(sheetShadowOn());
   m_dsk->set(Property::Clip, from);
   m_dsk->set(Property::Radius, {source.glassPiece().value_or(0.0F), 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Radius, openCurve(), {std::min(static_cast<double>(panelRadius()), to[3] / 2.0), 0.0, 0.0, 0.0});
@@ -3279,8 +3322,7 @@ void PanelManager::morphSheetFrom(const Node& source) {
       return;
     }
     m_cardClipRunning = false;
-    m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
-    m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+    restSheetClip();
     if (m_surface != nullptr) {
       m_surface->requestRedraw();
     }
@@ -3313,9 +3355,8 @@ bool PanelManager::collapseSheetTo(const Node& target, std::function<void()> don
           return;
         }
         m_cardClipRunning = false;
-        m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
-        m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
         done();
+        restSheetClip();
         requestFrameTick();
       },
       {}, m_sceneRoot.get()
@@ -3330,8 +3371,7 @@ void PanelManager::cancelSheetCollapse() {
     return;
   }
   m_cardClipRunning = false;
-  m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
-  m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+  restSheetClip();
 }
 
 void PanelManager::returnToPiecesAround(const Node& kept) {
@@ -3381,6 +3421,7 @@ bool PanelManager::morphCardHeight(std::uint32_t target) {
   if (!m_cardClipRunning) {
     const DskSurfaceClient::Value from = detachedSheetRect();
     sendSheetStroke();
+    setSheetElevation(sheetShadowOn() && !piecesActive());
     m_dsk->set(Property::Clip, from);
     m_dsk->set(Property::Radius, {radiusFor(from), 0.0, 0.0, 0.0});
   }
@@ -3406,8 +3447,7 @@ bool PanelManager::morphCardHeight(std::uint32_t target) {
     if (setCardHeight(target)) {
       placePanelChrome();
     }
-    m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
-    m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+    restSheetClip();
     if (m_surface != nullptr) {
       m_surface->requestRedraw();
     }
@@ -3476,12 +3516,10 @@ void PanelManager::applyContentMorph() {
 
 void PanelManager::settleDetachedMorph() {
   using Property = DskSurfaceClient::Property;
-  // Settled: drop the clip so the sheet's own shadow shows.
   if (m_dsk == nullptr || m_lifecycle.closing()) {
     return;
   }
-  m_dsk->set(Property::Clip, {0.0, 0.0, 0.0, 0.0});
-  m_dsk->set(Property::Radius, {0.0, 0.0, 0.0, 0.0});
+  restSheetClip();
   m_dsk->set(Property::Opacity, {1.0, 0.0, 0.0, 0.0});
   m_morphSettled = true;
   m_morphExtend = false;
@@ -3771,7 +3809,7 @@ void PanelManager::applyAttachedDecorationStyle() {
     const auto& shadowConfig = m_config->config().shell.shadow;
     const bool panelShadow =
         m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, shadowConfig);
-    m_panelShadowNode->setVisible(panelShadow && !piecesActive());
+    m_panelShadowNode->setVisible(panelShadow && !piecesActive() && !m_sheetElevated);
     if (panelShadow) {
       const RoundedRectStyle shadowStyle = ui::surface_shadow::style(
           shadowConfig, m_attachedBackgroundOpacity,
@@ -3853,7 +3891,7 @@ void PanelManager::onConfigReloaded() {
     const auto& shadowConfig = m_config->config().shell.shadow;
     const bool panelShadow =
         m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, shadowConfig);
-    m_panelShadowNode->setVisible(panelShadow && !piecesActive());
+    m_panelShadowNode->setVisible(panelShadow && !piecesActive() && !m_sheetElevated);
     if (!m_attachedToBar && panelShadow) {
       const float shadowRadius = panelRadius();
       m_panelShadowNode->setStyle(
@@ -4122,7 +4160,7 @@ void PanelManager::placePanelChrome() {
     const auto& shadowConfig = m_config->config().shell.shadow;
     const bool panelShadow =
         m_config->config().shell.panel.shadow && ui::surface_shadow::enabled(true, shadowConfig);
-    m_panelShadowNode->setVisible(panelShadow && !piecesActive());
+    m_panelShadowNode->setVisible(panelShadow && !piecesActive() && !m_sheetElevated);
     const auto shadowOff = shadowDirectionOffset(shadowConfig.direction);
     const auto shadowOffsetX = static_cast<float>(shadowOff.x);
     const auto shadowOffsetY = static_cast<float>(shadowOff.y);
@@ -4147,6 +4185,11 @@ void PanelManager::placePanelChrome() {
     m_bgNode->setPosition(bgX - extendX, bgY - extendUp);
     const float extendBothX = 2.0F * extendX;
     static_cast<Box*>(m_bgNode)->setFrameSize(bgW + extendBothX, bgH + extendY + extendUp);
+  }
+  // At rest the clip follows the sheet as it resizes (the compositor draws the shadow along it).
+  if (m_sheetElevated && m_morphSettled && !m_morphClipRunning && !m_cardClipRunning && !m_lifecycle.closing() &&
+      m_restClip != detachedSheetRect()) {
+    restSheetClip();
   }
   // A content-fitted card changes height while the open spring runs: the clip follows it.
   if (m_morphClipRunning && m_dsk != nullptr && !m_lifecycle.closing() && m_morphClipTarget != detachedSheetRect()) {
