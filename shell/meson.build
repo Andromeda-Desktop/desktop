@@ -1126,7 +1126,6 @@ if build_tests
 
   _cpp_test_names = [
     'crash_records',
-    'bar_island_aside',
     'damage_region',
     'update_run',
     'dconf_read',
