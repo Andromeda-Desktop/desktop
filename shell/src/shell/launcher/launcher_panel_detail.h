@@ -91,8 +91,7 @@ namespace launcher_detail {
   constexpr float kIconSizeDefault = 32.0F;
   constexpr float kIconSizeCompact = 24.0F;
   constexpr std::size_t kAppGridColumns = 6;
-  // Emoji mode grid (DESIGN.md "Launcher media modes"): 8 cells across the 360 list pane.
-  constexpr std::size_t kEmojiColumns = 8;
+  constexpr std::size_t kEmojiColumns = 12;
   constexpr std::size_t kMaxSectionColumns = kEmojiColumns;
   // Klipy "sm" GIFs are short loops; the caps bound GPU memory for a hostile file.
   constexpr int kMaxPreviewGifFrames = 120;
@@ -122,6 +121,7 @@ namespace launcher_detail {
     case CellGrid::Sticker:
       return Tokens::componentLauncherStickerCell;
     case CellGrid::Emoji:
+      return Tokens::componentLauncherEmojiCell + Tokens::spaceP4;
     case CellGrid::None:
       break;
     }
@@ -1164,7 +1164,7 @@ namespace launcher_detail {
             .out = &m_emojiCells[slot],
             .align = FlexAlign::Center,
             .justify = FlexJustify::Center,
-            .radius = Tokens::radiusR8 * m_style.scale,
+            .radius = Tokens::radiusR16 * m_style.scale,
             .visible = false,
         });
         emojiCell->addChild(ui::label({
@@ -1244,9 +1244,13 @@ namespace launcher_detail {
 
       const bool cells = m_cellGrid != CellGrid::None;
       const std::size_t columns = cells ? cellColumns(m_cellGrid) : (m_gridView ? kAppGridColumns : 1);
-      const float gap = m_gridView && !cells ? Style::spaceSm * m_style.scale : 0.0F;
+      const bool emoji = m_cellGrid == CellGrid::Emoji;
+      const float gap = emoji ? Tokens::spaceP4 * m_style.scale
+                              : (m_gridView && !cells ? Style::spaceSm * m_style.scale : 0.0F);
+      const float side = emoji ? Tokens::spaceP12 * m_style.scale : 0.0F;
       const auto columnCount = static_cast<float>(columns);
-      const float cellWidth = std::max(0.0F, (width - static_cast<float>(columns - 1) * gap) / columnCount);
+      const float cellWidth =
+          std::max(0.0F, (width - 2.0F * side - static_cast<float>(columns - 1) * gap) / columnCount);
       for (std::size_t slot = 0; slot < kMaxSectionColumns; ++slot) {
         const bool active = !headerVisible && slot < row.resultCount && row.resultIndices[slot] < results.size();
         m_boundResultIndices[slot] = active ? std::optional<std::size_t>(row.resultIndices[slot]) : std::nullopt;
@@ -1260,7 +1264,7 @@ namespace launcher_detail {
           continue;
         }
         const std::size_t visualSlot = Style::rtl() ? columns - 1 - slot : slot;
-        m_areas[slot]->setPosition(static_cast<float>(visualSlot) * (cellWidth + gap), 0.0F);
+        m_areas[slot]->setPosition(side + static_cast<float>(visualSlot) * (cellWidth + gap), 0.0F);
         m_areas[slot]->setFrameSize(cellWidth, height);
         m_tiles[slot]->setPosition(0.0F, 0.0F);
         m_tiles[slot]->setSize(cellWidth, height);
@@ -1269,8 +1273,10 @@ namespace launcher_detail {
         if (slot == 0) {
           m_topHit->setPosition(0.0F, 0.0F);
         }
-        m_emojiCells[slot]->setPosition(0.0F, 0.0F);
-        m_emojiCells[slot]->setFrameSize(cellWidth, height);
+        // An emoji row holds the row gap: the cell sits centred in it.
+        const float rowGap = emoji ? gap : 0.0F;
+        m_emojiCells[slot]->setPosition(0.0F, rowGap / 2.0F);
+        m_emojiCells[slot]->setFrameSize(cellWidth, height - rowGap);
         const float inset = Tokens::spaceP4 * m_style.scale;
         m_cellImages[slot]->setPosition(inset, inset);
         const float insets = 2.0F * inset;

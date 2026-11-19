@@ -757,6 +757,7 @@ top_hit = 72.0  # best app match above the sections: icon 56 + p 8 above and bel
 top_hit_icon = 56.0
 top_hit_icon_radius = 14.0
 emoji = 32.0
+emoji_cell = 56.0  # emoji grid cell height, r16; 12 columns, gap space.p4, side inset space.p12
 emoji_preview = 88.0
 gif_cell = 96.0
 sticker_cell = 80.0
