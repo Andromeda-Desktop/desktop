@@ -38,6 +38,8 @@ jobs:
       - name: xwayland-satellite
         if: ${{ !inputs.prebuilt }}
         run: tools/deb-xwayland-satellite.sh ${{ matrix.base }}
+      # Restore only: a tag run's save stays with its tag, which no later run reads, yet fills the 10 GiB. check-ubuntu
+      # saves this cache on main with every push.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ !inputs.prebuilt }}
         with:
@@ -47,11 +49,6 @@ jobs:
       - name: Packages
         if: ${{ !inputs.prebuilt }}
         run: ANDROMEDA_CORE=1 DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean ${{ matrix.base }}
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: always() && !inputs.prebuilt
-        with:
-          path: ~/.cache/andromeda-ubuntu/ccache-deb-${{ matrix.base }}
-          key: ccache-deb-${{ matrix.base }}-${{ github.run_id }}
       # A local build (DEB_VERSION=<tag without v> tools/ubuntu-deb.sh) uploads its debs to the release first; this
       # only signs the repository.
       - name: Prebuilt debs
