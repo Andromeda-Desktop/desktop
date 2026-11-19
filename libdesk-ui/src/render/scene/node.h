@@ -165,9 +165,6 @@ public:
   // Marks this node's box as its own compositor glass shape with this corner radius; the surface host draws it.
   void setGlassPiece(std::optional<float> radius) noexcept { m_glassPiece = radius; }
   [[nodiscard]] std::optional<float> glassPiece() const noexcept { return m_glassPiece; }
-  // The piece takes the thick sheet material (launcher results, menus), not the island material.
-  void setGlassSheet(bool sheet) noexcept { m_glassSheet = sheet; }
-  [[nodiscard]] bool glassSheet() const noexcept { return m_glassSheet; }
   // nullopt inherits the parent's tone; a root without one uses Scheme. A change re-resolves the subtree's colours.
   void setPaletteTone(std::optional<PaletteTone> tone);
   [[nodiscard]] PaletteTone paletteTone() const noexcept;
@@ -299,7 +296,6 @@ private:
   std::unique_ptr<DamageRegion> m_pendingDamage;
   std::unique_ptr<DamageRegion> m_partialDamage;
   std::optional<float> m_glassPiece;
-  bool m_glassSheet = false;
   std::optional<Radii> m_clip; // children clip to this node's box with these corner radii; nullopt = no clip
   bool m_paintContained = false;
   bool m_excludeSubtreeFromTabOrder = false;

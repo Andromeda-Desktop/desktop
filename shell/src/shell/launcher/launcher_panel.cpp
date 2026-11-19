@@ -554,7 +554,6 @@ void LauncherPanel::create() {
         .participatesInLayout = false,
     });
     styleGlassPiece(*results, Tokens::componentLauncherResultsRadius * scale, scale, panelCardOpacity());
-    results->setGlassSheet(true);
     results->setFlexGrow(1.0F);
     results->addChild(ui::row({
         .out = &m_modeTabs,
