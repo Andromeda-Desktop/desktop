@@ -1082,9 +1082,52 @@ void SettingsWindow::rebuildSettingsContent() {
       }
       title = name.empty() ? pageLabel : pageLabel + " › " + name;
     }
+    // A sub-page (More options, a detail, Language under Date and Time) leads with a way up to its page.
+    const auto* parentPage =
+        titlePage != nullptr && !titlePage->parent.empty() ? settings::settingsPageFromId(titlePage->parent) : nullptr;
+    if (m_searchQuery.empty() && (m_expertOpen || detailOpen || parentPage != nullptr)) {
+      const bool toParent = !m_expertOpen && !detailOpen;
+      std::string upLabel = toParent ? i18n::tr(settings::settingsPageLabelKey(*parentPage)) : pageLabel;
+      if (toParent) {
+        title = pageLabel;
+      } else if (const auto sep = title.rfind(" › "); sep != std::string::npos) {
+        title = title.substr(sep + std::string_view(" › ").size());
+      }
+      auto upRow = ui::row({.align = FlexAlign::Center});
+      upRow->addChild(ui::button({
+          .text = std::move(upLabel),
+          .glyph = "chevron-left",
+          .fontSize = Style::fontSizeBody * scale,
+          .glyphSize = Style::fontSizeTitle * scale,
+          .variant = ButtonVariant::Ghost,
+          .minHeight = Style::controlHeight * scale,
+          .paddingV = Style::spaceXs * scale,
+          .paddingH = Style::spaceXs * scale,
+          .radius = Style::scaledRadiusMd(scale),
+          .onClick =
+              [this, toParent, target = toParent ? std::string(parentPage->id) : m_selectedSection] {
+                navigateTo(target, toParent ? std::string{} : m_selectedBarName, false, {},
+                           toParent ? std::string{} : m_selectedMonitorOverride);
+              },
+      }));
+      m_contentContainer->addChild(std::move(upRow));
+    }
     m_contentContainer->addChild(
         makeLabel(title, Style::fontSizeHeader * scale, colorSpecFromRole(ColorRole::Label1), FontWeight::Bold)
     );
+
+    if (m_expertOpen && m_searchQuery.empty()) {
+      const auto* page = settings::settingsPageFromId(m_selectedSection);
+      std::size_t optionCount = 0;
+      for (const auto& entry : m_settingsRegistry) {
+        optionCount += settings::settingEntryIsExpert(entry)
+            && settings::settingEntryOnPage(entry, m_selectedSection, m_selectedBarName, m_selectedMonitorOverride)
+            && (!entry.visibleWhen || entry.visibleWhen(cfg));
+      }
+      m_contentContainer->addChild(buildExpertSearchRow(
+          scale, optionCount, page != nullptr ? i18n::tr(settings::settingsPageLabelKey(*page)) : std::string{}
+      ));
+    }
   }
 
   if (pageRows) {
@@ -1289,7 +1332,6 @@ std::unique_ptr<Flex> SettingsWindow::buildExpertSearchRow(float scale, std::siz
       )
   );
   auto host = ui::column({.align = FlexAlign::Stretch});
-  host->setPadding(0.0F, settings::metrics::kPagePadding * scale, Style::spaceSm * scale, settings::metrics::kPagePadding * scale);
   host->addChild(std::move(row));
   return host;
 }
@@ -1574,18 +1616,6 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
        .fill = m_glassSidebar ? clearColorSpec() : colorSpecFromRole(ColorRole::Fill1),
        .flexGrow = 1.0F}
   );
-  if (m_expertOpen && m_searchQuery.empty()) {
-    const auto* page = settings::settingsPageFromId(m_selectedSection);
-    std::size_t optionCount = 0;
-    for (const auto& entry : m_settingsRegistry) {
-      optionCount += settings::settingEntryIsExpert(entry)
-          && settings::settingEntryOnPage(entry, m_selectedSection, m_selectedBarName, m_selectedMonitorOverride)
-          && (!entry.visibleWhen || entry.visibleWhen(cfg));
-    }
-    contentColumn->addChild(buildExpertSearchRow(
-        scale, optionCount, page != nullptr ? i18n::tr(settings::settingsPageLabelKey(*page)) : std::string{}
-    ));
-  }
   contentColumn->addChild(
       ui::row({
           .out = &m_groupJumpRow,
@@ -1614,6 +1644,7 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
       .scrollbarAutoHide = true,
       .viewportPaddingH = settings::metrics::kPagePadding * scale,
       .maxContentWidth = settings::metrics::liveContentWidth() * scale,
+      .contentAlign = ScrollView::ContentAlign::Start,
       .viewportPaddingV = Style::spaceXs * scale,
       .flexGrow = 1.0F,
       .onScrollChanged = [this](float /*offset*/) { dismissOpenSelectDropdown(); },

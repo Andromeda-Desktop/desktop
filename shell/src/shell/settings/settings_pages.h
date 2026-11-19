@@ -20,6 +20,8 @@ namespace settings {
     std::span<const SettingsSection> sections;
     // False for pages reached from elsewhere, such as the account card.
     bool inSidebar = true;
+    // A sub-page's sidebar entry, which shows as selected while the sub-page is open.
+    std::string_view parent = {};
   };
 
   [[nodiscard]] std::span<const SettingsPage> settingsPages();

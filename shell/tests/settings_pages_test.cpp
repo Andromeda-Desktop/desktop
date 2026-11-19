@@ -36,7 +36,7 @@ int main() {
   };
   for (const Legacy legacy : {
            Legacy{"templates", "appearance"}, Legacy{"osd", "notifications"}, Legacy{"andromeda", "windows"},
-           Legacy{"dock", "desktop-dock"}, Legacy{"desktop", "desktop-dock"}, Legacy{"panels", "control-center"},
+           Legacy{"dock", "desktop-dock"}, Legacy{"desktop", "desktop-dock"}, Legacy{"panels", "bar"}, Legacy{"control-center", "bar"},
            Legacy{"keybinds", "keyboard"}, Legacy{"shortcuts", "keyboard"}, Legacy{"input", "keyboard"},
            Legacy{"security", "privacy"}, Legacy{"location", "privacy"}, Legacy{"system", "about"},
            Legacy{"hooks", "automation"},

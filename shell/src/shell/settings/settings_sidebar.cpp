@@ -314,7 +314,8 @@ namespace settings {
       lastGroup = page->group;
 
       const std::string pageId(page->id);
-      const bool selected = showActiveTab && pageId == ctx.selectedPage;
+      const auto* open = settingsPageFromId(ctx.selectedPage);
+      const bool selected = showActiveTab && (pageId == ctx.selectedPage || (open != nullptr && open->parent == pageId));
       // With 2+ bars each bar has a child row, and the selection look moves to that row.
       const bool barRows = pageId == "bar" && selected && ctx.availableBars.size() > 1;
       const auto onClick = [navigate, pageId]() { navigate(pageId, {}); };

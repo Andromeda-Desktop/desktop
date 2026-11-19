@@ -2747,25 +2747,25 @@
       "sound": "Sound",
       "notifications": "Notifications",
       "desktop-dock": "Desktop and Dock",
-      "bar": "Bar and Islands",
+      "bar": "Bar and Control Center",
       "control-center": "Control Center",
       "launcher": "Launcher and Search",
       "windows": "Windows",
       "keyboard": "Keyboard",
       "mouse": "Mouse and Touchpad",
-      "devices": "Devices",
+      "devices": "Phones and Devices",
       "problems": "Problems",
       "software-update": "Software Update",
       "power": "Battery and Power",
       "privacy": "Privacy and Security",
-      "date-time": "Date and Time",
+      "date-time": "Date, Time and Language",
       "language": "Language and Region",
       "default-apps": "Default Apps",
       "screenshot": "Screenshots and Recording",
       "services": "Apps and Services",
       "plugins": "Plugins",
       "automation": "Automation",
-      "about": "About",
+      "about": "About and Updates",
       "users": "Users"
     },
     "navigation": {
@@ -2821,7 +2821,7 @@
         "monitor-polling": "Poll Intervals",
         "monitor-thresholds": "Highlight Thresholds",
         "monitors": "Monitors",
-        "motion": "Interface",
+        "motion": "Motion",
         "navigation": "Navigation",
         "network": "Network",
         "night-light": "Night Light",
@@ -3372,8 +3372,8 @@
         },
         "palette-inspector": {
           "button": "Inspect Colors",
-          "description": "View template color names, swatches, and hex values for the active palette",
-          "label": "Show Palette Colors"
+          "description": "Names, swatches and hex values of the current colors",
+          "label": "Palette Colors"
         },
         "popup-borders": {
           "description": "Draw outlines around popups and dropdowns",
@@ -3384,7 +3384,7 @@
           "label": "Popup Shadows"
         },
         "pure-black-dark": {
-          "description": "Anchor dark surfaces to true black, preventing banding on OLED panels (dark mode only)",
+          "description": "Dark mode uses true black, for OLED screens",
           "label": "Pure Black"
         },
         "show-close-buttons": {
@@ -3400,12 +3400,12 @@
           "label": "Interface Size"
         },
         "shell-theme-mode": {
-          "description": "Pin Andromeda's own light or dark mode; Follow keeps it in sync with Theme Mode",
-          "label": "Shell Theme Mode"
+          "description": "Follow uses the mode above; Dark or Light keeps the desktop in that mode",
+          "label": "Desktop Light or Dark"
         },
         "sync-color-scheme": {
-          "description": "Set the system dark/light preference read by browsers and other apps to follow Theme Mode",
-          "label": "Apps Follow the Color Scheme"
+          "description": "Browsers and other apps use the same light or dark mode",
+          "label": "Apps Follow Light or Dark"
         },
         "toolkit-themes": {
           "description": "Color GTK, Qt, KDE and fcitx5 apps with the desktop's colors and accent",
@@ -5166,8 +5166,8 @@
           "label": "Show Plugin Groups Without Tabs"
         },
         "settings-window-translucent": {
-          "description": "Make the Settings background translucent for compositor effects",
-          "label": "Settings Translucent Background"
+          "description": "Show the wallpaper through the Settings background",
+          "label": "Translucent Settings Window"
         },
         "show-location": {
           "description": "Show location name in weather widgets",

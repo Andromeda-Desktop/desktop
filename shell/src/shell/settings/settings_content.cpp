@@ -164,16 +164,11 @@ namespace settings {
     if (count == 0) {
       return;
     }
-    content.addChild(ui::column(
-        {.align = FlexAlign::Start, .configure = [scale = ctx.scale](Flex& header) {
-          header.setPadding(Style::spaceMd * scale, Style::spaceMd * scale, 0.0F, Style::spaceMd * scale);
-        }},
-        makeLabel(i18n::tr("settings.expert.heading"), Style::fontSizeTitle * ctx.scale, colorSpecFromRole(ColorRole::Label1), FontWeight::SemiBold)
-    ));
-    SettingsContentContext expertCtx = ctx;
-    expertCtx.rowScope = RowScope::Expert;
-    expertCtx.pageQuery = {};
-    addSettingsContentSections(content, registry, std::move(expertCtx));
+    // Rare rows wait behind one row at the page end; it opens the page's expert view.
+    addSettingsGroupCard(content, {}, ctx.scale)
+        ->addChild(makeSettingsLinkRow(i18n::tr("settings.expert.row"),
+                                       i18n::tr("settings.expert.count", "count", std::to_string(count)), ctx.scale,
+                                       ctx.openExpert));
   }
 
   std::size_t
@@ -1042,9 +1037,16 @@ namespace settings {
 
     // Coalesce entries by (content section, group) so each group renders once even if its entries were
     // declared non-contiguously in the registry. See coalesceByGroupKey().
-    const auto entryOrder = coalesceByGroupKey(registry.size(), [&](std::size_t i) {
+    auto entryOrder = coalesceByGroupKey(registry.size(), [&](std::size_t i) {
       return barSettingContentSectionKey(registry[i]) + '\x1F' + registry[i].group;
     });
+    // A merged page shows its sections in the page's order (Bar before Control Center), not the registry's.
+    if (const auto* page = settingsPageFromId(ctx.selectedSection); page != nullptr) {
+      const auto rank = [page](const SettingEntry& entry) {
+        return static_cast<std::size_t>(std::ranges::find(page->sections, entry.section) - page->sections.begin());
+      };
+      std::ranges::stable_sort(entryOrder, {}, [&](std::size_t i) { return rank(registry[i]); });
+    }
     const auto entryPassesFilters = [&](const SettingEntry& entry) -> bool {
       if (!entryOnOpenPage(entry)) {
         return false;

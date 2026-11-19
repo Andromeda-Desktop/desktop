@@ -16,8 +16,7 @@ namespace settings {
     constexpr std::array<S, 1> kDisplays{S::Displays};
     constexpr std::array<S, 1> kNotifications{S::Notifications};
     constexpr std::array<S, 2> kDesktopDock{S::Dock, S::Desktop};
-    constexpr std::array<S, 1> kBar{S::Bar};
-    constexpr std::array<S, 2> kControlCenter{S::ControlCenter, S::Panels};
+    constexpr std::array<S, 3> kBar{S::Bar, S::ControlCenter, S::Panels};
     constexpr std::array<S, 1> kLauncher{S::Launcher};
     constexpr std::array<S, 3> kWindows{S::Windows, S::Layout, S::Overview};
     // The input page holds keyboard and pointer options in one block until it is split.
@@ -42,11 +41,10 @@ namespace settings {
     constexpr PageGroup kMore = PageGroup::More;
 
     // IA order (.agent/mockups/settings-ia.html).
-    const std::array<SettingsPage, 31> kPages{{
+    const std::array<SettingsPage, 30> kPages{{
         {"wifi", kConn, "wifi", {}},
         {"bluetooth", kConn, "bluetooth", {}},
         {"network", kConn, "world", {}},
-        {"printers", kConn, "printer", {}},
         {"appearance", kPers, "palette", kAppearance},
         {"wallpaper", kPers, "photo", kWallpaper},
         {"lock-screen", kPers, "lock", {}},
@@ -58,22 +56,22 @@ namespace settings {
         {"power", kDev, "bolt", kPower},
         {"keyboard", kDev, "keyboard", kKeyboard},
         {"mouse", kDev, "mouse", {}},
+        {"printers", kDev, "printer", {}},
         {"devices", kDev, "device-mobile", kDevices},
         {"windows", kApps, "window", kWindows},
         {"launcher", kApps, "rocket", kLauncher},
-        {"control-center", kApps, "adjustments", kControlCenter},
         {"screenshot", kApps, "screenshot", kScreenshot},
         {"default-apps", kApps, "apps", kDefaultApps},
         {"privacy", kSys, "shield-lock", kPrivacy},
         {"date-time", kSys, "clock", kDateTime},
-        {"language", kSys, "language", kLanguage},
-        {"software-update", kSys, "download", {}},
         {"about", kSys, "info-circle", kAbout},
         {"services", kMore, "adjustments-horizontal", kServices},
         {"plugins", kMore, "puzzle", kPlugins},
         {"automation", kMore, "link", kAutomation},
         {"problems", kMore, "alert-triangle", {}},
         {"users", kSys, "user", {}, false},
+        {"language", kSys, "language", kLanguage, false, "date-time"},
+        {"software-update", kSys, "download", {}, false, "about"},
     }};
 
     // Legacy section ids that no longer name a page of their own.
@@ -81,10 +79,11 @@ namespace settings {
       std::string_view id;
       std::string_view page;
     };
-    constexpr std::array<Alias, 8> kAliases{{
+    constexpr std::array<Alias, 9> kAliases{{
         {"dock", "desktop-dock"},
         {"desktop", "desktop-dock"},
-        {"panels", "control-center"},
+        {"panels", "bar"},
+        {"control-center", "bar"},
         {"keybinds", "keyboard"},
         {"shortcuts", "keyboard"},
         {"input", "keyboard"},
@@ -97,8 +96,10 @@ namespace settings {
       std::string_view prefix;
       std::string_view page;
     };
-    constexpr std::array<PageRule, 11> kPageRules{{
+    constexpr std::array<PageRule, 13> kPageRules{{
         {"shell.avatar_path", "users"},
+        {"shell.lang", "language"},
+        {"shell.desktop_layout", "desktop-dock"},
         {"shell.settings_window_translucent", "appearance"},
         {"lockscreen.", "lock-screen"},
         {"lockscreen_widgets.", "lock-screen"},
@@ -155,7 +156,7 @@ namespace settings {
         "shell.screenshot.format", "shell.screenshot.annotate", "shell.screenshot.show_cursor",
         "shell.screenshot.freeze_screen",
         "shell.clipboard_enabled",
-        "shell.avatar_path", "shell.settings_window_translucent",
+        "shell.avatar_path",
     });
     // Rows that share one uncaptioned card (a group starting with '~' has no caption), in the mockup's order.
     struct GroupRule {

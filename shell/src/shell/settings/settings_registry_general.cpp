@@ -91,7 +91,7 @@ namespace settings {
             .action = {},
             .glyph = "color-swatch",
         },
-        "palette inspector template tokens colors swatches hex terminal ansi"
+        "palette inspector template tokens colors swatches hex terminal ansi", true
     ));
     appendGroup(entries, themeRows, "theme");
     {
