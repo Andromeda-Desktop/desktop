@@ -1,4 +1,5 @@
 #include "protocols/glass_material.h"
+#include "design_tokens.h"
 #include "core/cpu_boost.h"
 #include "core/systemd_units.h"
 #include "core/scanout_keeper.h"
@@ -2586,6 +2587,17 @@ namespace andromeda {
     if (m_shadow.tree != nullptr) {
       wlr_scene_tree_set_clip(m_shadow.tree, nullptr);
     }
+  }
+
+  void Server::CloseSnapshot::setTarget(const wlr_box& box) {
+    m_target = box;
+    if (m_hold == Hold::None) {
+      const AnimationCurve close{
+          .easing = Easing::Spring, .spring = {.damping = Tokens::springClose.damping, .stiffness = Tokens::springClose.stiffness}
+      };
+      m_alpha.retarget(0.0, 0, close);
+    }
+    applyPresentation();
   }
 
   void Server::CloseSnapshot::present(int canvasX, int canvasY, bool visible) {

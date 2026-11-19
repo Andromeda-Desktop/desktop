@@ -986,10 +986,8 @@ namespace andromeda {
 
       [[nodiscard]] CloseSnapshotId id() const { return m_id; }
       void release() { m_hold = Hold::None; }
-      void setTarget(const wlr_box& box) {
-        m_target = box;
-        applyPresentation();
-      }
+      // Minimize: move, scale and fade into the dock icon box on one spring.close (rulebook P16 Return, proto windows.js).
+      void setTarget(const wlr_box& box);
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
