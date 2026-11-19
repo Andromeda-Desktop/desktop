@@ -534,6 +534,8 @@ row_radius = 8.0
 row_inset = 8.0
 group_top = 16.0
 group_bottom = 4.0
+# Settings More: the cluster index beside the sidebar (shell text sets ~4 % wider than the mockup).
+more_index_width = 184.0
 
 [component.grid]
 cell_width = 96.0
