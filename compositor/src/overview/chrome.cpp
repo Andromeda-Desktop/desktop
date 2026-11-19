@@ -366,10 +366,19 @@ namespace andromeda::ov {
     const std::uint32_t tint = (light ? Tokens::schemeLight : Tokens::schemeDark).tintThick;
     const auto channel = [tint](int shift) { return static_cast<float>((tint >> shift) & 0xFFU) / 255.0F; };
     const std::array<float, 4> thick{channel(24), channel(16), channel(8), configGlass(glass::Kind::Shape).tint};
-    const std::array<float, 4> thin = withAlpha(colors.background, 0.62F);
-    const std::array<float, 4>& l1 = colors.textPrimary;
-    const std::array<float, 4> l2 = withAlpha(colors.textPrimary, 0.62F);
-    const std::array<float, 4> l3 = withAlpha(colors.textPrimary, 0.38F);
+    // Ink and fills follow the scheme, as the glass tint does: colors.* hold one scheme's values.
+    const Tokens::Scheme& scheme = light ? Tokens::schemeLight : Tokens::schemeDark;
+    const auto rgba = [](std::uint32_t c) {
+      return std::array<float, 4>{
+          static_cast<float>((c >> 24) & 0xFFU) / 255.0F, static_cast<float>((c >> 16) & 0xFFU) / 255.0F,
+          static_cast<float>((c >> 8) & 0xFFU) / 255.0F, static_cast<float>(c & 0xFFU) / 255.0F
+      };
+    };
+    const std::array<float, 4> thin = rgba(scheme.tintThin);
+    const std::array<float, 4> solid = rgba(scheme.solidRegular);
+    const std::array<float, 4> l1 = rgba(scheme.label1);
+    const std::array<float, 4> l2 = rgba(scheme.label2);
+    const std::array<float, 4> l3 = rgba(scheme.label3);
     const double scale = frame.scale;
     const float shown = static_cast<float>(std::clamp(frame.progress, 0.0, 1.0));
     const float late = lateFade(frame.progress);
@@ -651,7 +660,7 @@ namespace andromeda::ov {
       }
       m_menuBox = wlr_box{x, y, kMenuWidth, height};
       // No backdrop blur under this panel, so it is near solid: the cards' edges must not show through.
-      placeFrame(m_menu, *m_menuBox, kMenuRadius, 1, withAlpha(colors.background, 0.97F), withAlpha(l1, 0.1F), 1.0F);
+      placeFrame(m_menu, *m_menuBox, kMenuRadius, 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F);
       raise(m_menu.tree);
       const std::string_view name = frame.workspaces[frame.menu->workspace].name;
       setLabel(m_menuHead, span(l2, "600", std::format("Arrange “{}”", name)), {.font = tokenFont(Tokens::typeCaption), .maxWidth = 240}, scale);
@@ -725,7 +734,7 @@ namespace andromeda::ov {
           std::clamp(wm.y, frame.output.y + kMenuPad, frame.output.y + frame.output.height - kMenuPad - height);
       m_windowMenuBox = wlr_box{x, y, kWindowMenuWidth, height};
       placeFrame(
-          m_windowMenu, *m_windowMenuBox, kMenuRadius, 1, withAlpha(colors.background, 0.97F), withAlpha(l1, 0.1F), 1.0F
+          m_windowMenu, *m_windowMenuBox, kMenuRadius, 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F
       );
       raise(m_windowMenu.tree);
       for (size_t row = 0; row < windowRows; ++row) {

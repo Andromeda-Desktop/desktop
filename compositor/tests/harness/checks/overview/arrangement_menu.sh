@@ -13,14 +13,12 @@ pointer() {
   "$POINTER" "$OUTPUT_W" "$OUTPUT_H" "$@"
 }
 
-# The menu fill is colors.background, made unique here; the chip is that colour at the thin .62 alpha over the dark backdrop.
+# The chrome takes its ink and fills from the scheme tokens (dark here): the chip is found by its thin fill, the menu by
+# its solid fill.
 cat >> "$ANDROMEDA_CONFIG" <<'EOF2'
 
 [layout]
 mode = "scrolling"
-
-[colors]
-background = "#FF00FFFF"
 
 [overview]
 style = "strip"
@@ -43,10 +41,11 @@ done
 "$ANDROMEDA" settle
 
 layout() { "$ANDROMEDA" workspaces --json | jq -r '.[] | select(.active) | .layout'; }
-magenta='r > 0.85 && g < 0.15 && b > 0.85'
-chip='r > 0.5 && r < 0.75 && g < 0.1 && b > 0.5 && b < 0.75'
-# Under the chip only the menu has the full fill (the row frame is a wallpaper mirror and the workspace fill).
-menu_box() { "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$magenta" "370x240+$((cx - 8))+$((cy + ch))"; }
+ink='r > 0.8 && g > 0.8 && b > 0.8'
+thin='r > 0.08 && r < 0.2 && b > r'
+# solid_regular at .97: the window cards are 0xFF203040, so under the chip only the menu is this neutral grey.
+solid='r > 0.11 && r < 0.16 && g > 0.11 && g < 0.16 && b > 0.12 && b < 0.17'
+menu_box() { "$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob "$solid" "370x240+$((cx - 8))+$((cy + ch))"; }
 # Height of the menu panel; 0 when the menu is closed.
 menu_height() {
   grim -o HEADLESS-1 "$IMAGE"
@@ -54,8 +53,9 @@ menu_height() {
 }
 
 grim -o HEADLESS-1 "$IMAGE"
-# The chip is the shown row's name, above the row frame's left edge.
-read -r cx cy cw ch < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox "$chip" "500x120+150+60")
+# The row frame is the largest patch of label ink; the chip is the thin-fill capsule just above its top edge.
+read -r _ fy _ _ < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob "$ink" "500x120+150+60")
+read -r cx cy cw ch < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob "$thin" "500x40+150+$((fy - 40))")
 if ((cw == 0)); then
   echo "no layout chip on the Strip row name"
   exit 1
@@ -64,7 +64,7 @@ pointer move $((cx + cw / 2)) $((cy + ch / 2)) click "$BTN_LEFT"
 "$ANDROMEDA" settle
 grim -o HEADLESS-1 "$IMAGE"
 read -r mx my mw mh < <(menu_box)
-if ((mh < 200)); then
+if ((mh < 200 || mw > 300)); then
   echo "clicking the chip did not open the menu (panel ${mw}x${mh})"
   exit 1
 fi
