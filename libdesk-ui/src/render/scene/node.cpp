@@ -594,7 +594,8 @@ void Node::layoutLocalPending(Renderer& renderer) {
   if (!visible()) {
     return;
   }
-  if (m_localLayoutDirty) {
+  // A node that rejoined its parent's layout since the mark was laid out by the parent; a local pass would shrink it.
+  if (m_localLayoutDirty && !m_participatesInLayout) {
     layout(renderer);
   }
   for (auto& child : m_children) {

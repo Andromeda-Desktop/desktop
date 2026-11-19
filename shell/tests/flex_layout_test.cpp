@@ -82,6 +82,23 @@ namespace {
     TEST_CHECK(a->x() == 40.0F && b->x() == 60.0F);
   }
 
+  // A hidden piece outside layout comes back into it: the row sizes it, a local layout must not shrink it after.
+  void rejoinedChildKeepsRowLayout(StubRenderer& renderer) {
+    auto row = makeRow(FlexJustify::Start, FlexAlign::Start);
+    auto* piece = addBox(*row, 50.0F, 20.0F, 1.0F);
+    piece->setVisible(false);
+    piece->setParticipatesInLayout(false);
+    row->setSize(300.0F, 100.0F);
+    row->layout(renderer);
+    row->clearDirty();
+    piece->setVisible(true);
+    piece->setParticipatesInLayout(true);
+    TEST_CHECK(row->layoutDirty());
+    row->layout(renderer);
+    row->layoutLocalPending(renderer);
+    TEST_CHECK(piece->width() == 280.0F);
+  }
+
 } // namespace
 
 int main() {
@@ -89,5 +106,6 @@ int main() {
   growFillsTheRest(renderer);
   justifyAndAlignCenter(renderer);
   justifyEndColumn(renderer);
+  rejoinedChildKeepsRowLayout(renderer);
   return EXIT_SUCCESS;
 }
