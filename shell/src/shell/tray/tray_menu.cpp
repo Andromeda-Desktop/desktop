@@ -885,10 +885,10 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
   const auto h = static_cast<float>(height);
 
   inst.sceneRoot = ui::node({});
-  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   inst.glassConn = Style::glassChanged().connect([instPtr = &inst] {
     if (instPtr->sceneRoot != nullptr) {
-      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     }
   });
   inst.sceneRoot->setSize(w, h);
@@ -897,7 +897,7 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
         *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledRadiusLg(contentScale())
     );
   }
-  (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale());
+  (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
   if (inst.surface != nullptr) {
     popup_chrome::setCardBlurRegion(*inst.surface, inst.chrome, contentScale());
   }
@@ -1249,10 +1249,10 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
   const auto h = static_cast<float>(height);
 
   inst.sceneRoot = ui::node({});
-  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+  inst.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   inst.glassConn = Style::glassChanged().connect([instPtr = &inst] {
     if (instPtr->sceneRoot != nullptr) {
-      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+      instPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     }
   });
   inst.sceneRoot->setSize(w, h);
@@ -1261,7 +1261,7 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
         *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledRadiusLg(contentScale())
     );
   }
-  (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale());
+  (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
   if (inst.surface != nullptr) {
     popup_chrome::setCardBlurRegion(*inst.surface, inst.chrome, contentScale());
   }

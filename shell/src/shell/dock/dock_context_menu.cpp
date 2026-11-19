@@ -255,10 +255,10 @@ namespace shell::dock {
         const auto fh = static_cast<float>(height);
 
         menuPtr->sceneRoot = ui::node({});
-        menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+        menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
         menuPtr->glassConn = Style::glassChanged().connect([menuPtr] {
           if (menuPtr->sceneRoot != nullptr) {
-            menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+            menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
           }
         });
         menuPtr->sceneRoot->setSize(fw, fh);
@@ -267,7 +267,7 @@ namespace shell::dock {
               *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledRadiusLg()
           );
         }
-        (void)popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F);
+        (void)popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F, true);
         if (menuPtr->surface != nullptr) {
           popup_chrome::setCardBlurRegion(*menuPtr->surface, menuPtr->chrome, 1.0F);
         }

@@ -67,9 +67,9 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   m_contentY = chrome.contentY();
   m_contentWidth = chrome.contentWidth;
   m_output = request.parent.output;
-  m_tone = m_parentMenu != nullptr               ? m_parentMenu->m_tone
-      : request.parent.surface != nullptr && !request.parent.surface->isShellLayer() ? PaletteTone::Scheme
-                                             : glassTone(glass::Kind::Menu);
+  m_shellLayer = m_parentMenu != nullptr ? m_parentMenu->m_shellLayer
+                                         : request.parent.surface == nullptr || request.parent.surface->isShellLayer();
+  m_tone = m_shellLayer ? glassTone(glass::Kind::Shape) : PaletteTone::Scheme;
   m_scrollState = {};
   m_scrollView = nullptr;
   m_menu = nullptr;
@@ -189,7 +189,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
           *self->m_sceneRoot, chrome, self->m_shadowConfig, Style::scaledRadiusLg(contentScale)
       );
     }
-    (void)popup_chrome::addCardBackground(*self->m_sceneRoot, chrome, contentScale);
+    (void)popup_chrome::addCardBackground(*self->m_sceneRoot, chrome, contentScale, self->m_shellLayer);
     if (self->m_surface != nullptr) {
       popup_chrome::setCardBlurRegion(*self->m_surface, chrome, contentScale);
     }

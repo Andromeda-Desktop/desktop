@@ -30,6 +30,7 @@ namespace andromeda {
     static void onUnmap(wl_listener* listener, void* data);
     static void onDestroy(wl_listener* listener, void* data);
 
+    [[nodiscard]] glass::Kind glassKind() const;
     void handleCommit();
     void unconstrain();
     void handleReposition();

@@ -21,7 +21,7 @@ namespace andromeda {
 
   void Popup::applyGlassToAll() {
     for (Popup* popup : livePopups()) {
-      popup->m_blur.setMaterial(configGlass(glass::Kind::Menu));
+      popup->m_blur.setMaterial(configGlass(popup->glassKind()));
     }
   }
 
@@ -106,6 +106,11 @@ namespace andromeda {
     self->handleDestroy();
   }
 
+  glass::Kind Popup::glassKind() const {
+    // Shell popups (menus, tooltips) are parented to a layer surface and take the one island glass.
+    return LayerSurface::fromSurface(m_popup->parent) != nullptr ? glass::Kind::Shape : glass::Kind::Menu;
+  }
+
   void Popup::handleCommit() {
     const wlr_box& geometry = m_popup->base->geometry;
     SurfaceBlurOptions blurOptions;
@@ -127,7 +132,7 @@ namespace andromeda {
     } else {
       region = nullptr;
     }
-    m_blur.setMaterial(configGlass(glass::Kind::Menu));
+    m_blur.setMaterial(configGlass(glassKind()));
     m_blur.update(
         static_cast<wlr_scene_tree*>(m_popup->base->data), surface, wlr_box{0, 0, geometry.width, geometry.height},
         geometry, corner_radii_none(), nullptr, blurOptions, 1.0F, nullptr, region

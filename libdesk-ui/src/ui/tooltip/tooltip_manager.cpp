@@ -722,7 +722,9 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
   Renderer& renderer = m_surface->renderTarget().renderer();
 
   m_sceneRoot = ui::node({});
-  m_sceneRoot->setPaletteTone(m_activeParent != nullptr && !m_activeParent->isShellLayer() ? PaletteTone::Scheme : glassTone(glass::Kind::Tooltip));
+  // Shell tooltips take the one island glass; app tooltips keep the tooltip material.
+  const bool shellLayer = m_activeParent == nullptr || m_activeParent->isShellLayer();
+  m_sceneRoot->setPaletteTone(shellLayer ? glassTone(glass::Kind::Shape) : PaletteTone::Scheme);
   m_sceneRoot->setSize(w, h);
   m_sceneRoot->setOpacity(opacity);
   m_sceneRoot->setHitTestVisible(false);
@@ -736,8 +738,8 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
           .width = w,
           .height = h,
           .configure =
-              [](Box& box) {
-                box.setGlassFill(glass::Kind::Tooltip);
+              [shellLayer](Box& box) {
+                box.setGlassFill(shellLayer ? glass::Kind::Shape : glass::Kind::Tooltip);
                 box.setBorder(colorSpecFromRole(ColorRole::Stroke), kBorder);
               },
       })

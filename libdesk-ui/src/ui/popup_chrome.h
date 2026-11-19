@@ -64,6 +64,6 @@ namespace popup_chrome {
   // Rounded popup card background at the fixed content rect. Hosts that scroll a
   // ContextMenuControl draw the card here so its corners stay pinned to the viewport
   // instead of scrolling away with the rows.
-  Box* addCardBackground(Node& parent, const Geometry& geometry, float contentScale);
+  Box* addCardBackground(Node& parent, const Geometry& geometry, float contentScale, bool shellLayer);
 
 } // namespace popup_chrome

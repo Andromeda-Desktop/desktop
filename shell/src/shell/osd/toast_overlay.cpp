@@ -171,21 +171,22 @@ void ToastOverlay::prepareFrame() {
   if (first) {
     m_root = ui::node({});
     m_root->setPaletteTone(glassTone(glass::Kind::Shape));
-    m_glassConn = Style::glassChanged().connect([this] {
-      if (m_root != nullptr) {
-        m_root->setPaletteTone(glassTone(glass::Kind::Shape));
-      }
-    });
     Flex* row = nullptr;
     m_root->addChild(ui::row({
         .out = &row,
         .align = FlexAlign::Center,
         .gap = Tokens::spaceP8 * s,
-        .fill = colorSpecFromRole(materialRole(), Style::glassTint(glass::Kind::Shape, 1.0F)),
+        .fill = colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint),
         .radius = height * 0.5F,
         .height = height,
     }));
     row->setPadding(0.0F, Tokens::spaceP16 * s, 0.0F, Tokens::spaceP12 * s);
+    m_glassConn = Style::glassChanged().connect([this, row] {
+      if (m_root != nullptr) {
+        m_root->setPaletteTone(glassTone(glass::Kind::Shape));
+        row->setFill(colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint));
+      }
+    });
     row->addChild(ui::glyph({
         .out = &m_glyph,
         .glyph = std::string("check"),

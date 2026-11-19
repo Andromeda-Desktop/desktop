@@ -55,7 +55,7 @@ namespace andromeda {
       return;
     }
     wlr_scene_node_set_enabled(&m_tree->node, false);
-    m_panel = std::make_unique<GlassPanel>(m_tree, glass::Kind::Menu);
+    m_panel = std::make_unique<GlassPanel>(m_tree, glass::Kind::Shape);
     for (size_t layout = 0; layout < kSnapLayouts; ++layout) {
       for (size_t zone = 0; zone < snapLayoutZones(layout); ++zone) {
         m_zoneRects.push_back(roundRect(m_tree, kZoneRadius));

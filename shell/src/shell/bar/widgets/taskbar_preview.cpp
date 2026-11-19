@@ -415,10 +415,10 @@ void TaskbarPreview::build() {
   Renderer& renderer = m_surface->renderTarget().renderer();
   const float s = m_request.contentScale;
   m_sceneRoot = ui::node({});
-  m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+  m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   m_glassConn = Style::glassChanged().connect([this] {
     if (m_sceneRoot != nullptr) {
-      m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Menu));
+      m_sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     }
   });
   m_sceneRoot->setSize(static_cast<float>(m_surface->width()), static_cast<float>(m_surface->height()));
@@ -439,7 +439,7 @@ void TaskbarPreview::build() {
   if (Style::popupShadowsEnabled()) {
     (void)popup_chrome::addShadow(*m_sceneRoot, m_chrome, m_config.config().shell.shadow, Style::scaledRadiusLg(s));
   }
-  (void)popup_chrome::addCardBackground(*m_sceneRoot, m_chrome, s);
+  (void)popup_chrome::addCardBackground(*m_sceneRoot, m_chrome, s, true);
   popup_chrome::setCardBlurRegion(*m_surface, m_chrome, s);
 
   m_sceneRoot->addChild(ui::box({
