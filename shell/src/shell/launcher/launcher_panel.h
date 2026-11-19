@@ -266,6 +266,7 @@ private:
   Flex* m_emojiStrip = nullptr;
   Flex* m_packStrip = nullptr;
   std::vector<std::pair<std::string, Flex*>> m_modeTabItems;
+  float m_modeTabsWidth = 0.0F; // the mode tabs' natural width, measured in the clipboard split
   // Direction C preview pane (right of the result list).
   Flex* m_previewPane = nullptr;
   Image* m_previewImage = nullptr;

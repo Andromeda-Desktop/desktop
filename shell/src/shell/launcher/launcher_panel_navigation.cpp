@@ -231,13 +231,21 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
     } else {
       m_body->setPadding(0.0F);
     }
-    // Split: the list card is list_pane wide; the preview piece takes the rest of the row.
+    // Split: the list card is list_pane wide, or as wide as the mode tabs; the preview piece takes the rest of the row.
+    if (split && renderer != nullptr) {
+      m_modeTabsWidth = 0.0F;
+      for (const auto& [id, tab] : m_modeTabItems) {
+        m_modeTabsWidth += tab->measure(*renderer, LayoutConstraints::unconstrained()).width;
+      }
+    }
+    const float listCard = std::max(Tokens::componentLauncherListPane * scale,
+                                    m_modeTabsWidth + 2.0F * Tokens::componentLauncherResultsPadding * scale);
     m_resultsPiece->setFlexGrow(split ? 0.0F : 1.0F);
-    m_resultsPiece->setMinWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
-    m_resultsPiece->setMaxWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
+    m_resultsPiece->setMinWidth(split ? listCard : 0.0F);
+    m_resultsPiece->setMaxWidth(split ? listCard : 0.0F);
     m_previewPane->setVisible(split);
     m_previewPane->setParticipatesInLayout(split);
-    // The mode tabs fit the list card only without their own inset and gaps (the card's p 8 aligns them with the rows).
+    // In the list card the tabs drop their own inset and gaps: the card's p 8 aligns them with the rows.
     m_modeTabs->setPadding(0.0F, split ? 0.0F : Tokens::spaceP12 * scale);
     m_modeTabs->setGap(split ? 0.0F : Tokens::spaceP4 * scale);
     if (m_launcherSections != nullptr) {
