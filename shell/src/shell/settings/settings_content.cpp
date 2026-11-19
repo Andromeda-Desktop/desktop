@@ -1120,7 +1120,6 @@ namespace settings {
       const std::string contentSectionKey = barSettingContentSectionKey(entry);
       if (contentSectionKey != activeSectionKey) {
         activeSectionKey = contentSectionKey;
-        activeGroupBody = nullptr;
         activeKeybindRow = nullptr;
         activeKeybindRowCount = 0;
         if (ctx.config.shell.offlineMode && settingsSectionNeedsOfflineModeNotice(entry.section)) {
