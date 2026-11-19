@@ -22,8 +22,11 @@ with_noctalia '
   }
   tag=e2e-nc-$$-$RANDOM
   # notify-send -w stays connected and prints the invoked action key: that is the app side of ActionInvoked.
+  grim "$OUT/0-before.png"
   notify-send -w -t 0 -a "$tag" -A "default=Open" "Open $tag" "body" > "$OUT/default.txt" 2>&1 &
-  sleep 0.5
+  # The banner on screen means the shell has the notification.
+  bannered() { grim "$OUT/now.png"; ! cmp -s "$OUT/0-before.png" "$OUT/now.png"; }
+  wait_for 5 bannered || fail "the notification banner did not show"
   "$NOCTALIA" msg panel-open notification-center > /dev/null
   settle
   cp "$OUT/now.png" "$OUT/1-open.png"
