@@ -1,5 +1,6 @@
 #include "render/animation/animation_manager.h"
 #include "render/animation/motion_service.h"
+#include "ui/style.h"
 
 #include <chrono>
 #include <cmath>
@@ -130,9 +131,12 @@ int main() {
   }
 
   {
-    // Stagger: 16 ms apart, the sixth and later start together; the first child moves on the first step.
+    // Stagger: stagger_ms apart, the sixth and later start together; the first child moves on the first step.
     ok &= check(nearlyEqual(AnimationManager::staggerDelayMs(0), 0.0F), "first child delayed");
-    ok &= check(nearlyEqual(AnimationManager::staggerDelayMs(2), 32.0F), "stagger not 16 ms apart");
+    ok &= check(
+        nearlyEqual(AnimationManager::staggerDelayMs(2), 2.0F * static_cast<float>(Tokens::motionStaggerMs)),
+        "stagger not stagger_ms apart"
+    );
     ok &= check(
         nearlyEqual(AnimationManager::staggerDelayMs(5), AnimationManager::staggerDelayMs(40)),
         "children after the sixth did not start with the sixth"

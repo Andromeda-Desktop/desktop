@@ -2836,14 +2836,13 @@ void PanelManager::updateGlassDensity(bool instant) {
   }
 }
 
-// The launcher opens on the faster close spring (0.28 s, no overshoot); other panels grow from
-// their source on spring.open. Shell springs and compositor curves of one open use the same pair.
+// Shell springs and compositor curves of one open use the same pair (proto motion.js S.open).
 DskSurfaceClient::Curve PanelManager::openCurve() const {
-  return m_activePanelId == "launcher" ? DskSurfaceClient::Curve::SpringClose : DskSurfaceClient::Curve::SpringOpen;
+  return DskSurfaceClient::Curve::SpringOpen;
 }
 
 const Tokens::Spring& PanelManager::openSpringToken() const {
-  return m_activePanelId == "launcher" ? Tokens::springClose : Tokens::springOpen;
+  return Tokens::springOpen;
 }
 
 DskSurfaceClient::Value PanelManager::detachedSheetRect() const {
@@ -2867,10 +2866,10 @@ void PanelManager::launchFrom(const Node& node) const {
 }
 
 std::chrono::milliseconds PanelManager::openContentGate(const Tokens::Spring& spring) {
-  constexpr double kGateProgress = 0.35;
   const desk::motion::SpringConfig config = Style::spring(spring);
   for (int ms = 1; ms < 1000; ++ms) {
-    if (desk::motion::solveSpringPhysics(0.0, 1.0, 0.0, static_cast<double>(ms) / 1000.0, config) >= kGateProgress) {
+    if (desk::motion::solveSpringPhysics(0.0, 1.0, 0.0, static_cast<double>(ms) / 1000.0, config) >=
+        Tokens::motionContentGate) {
       return std::chrono::milliseconds(ms);
     }
   }
@@ -3062,8 +3061,7 @@ PanelManager::PieceRest& PanelManager::pieceRest(Node& piece, bool open) {
 
 // proto flow.js openCC / closeCC: a piece travels part of its distance to the panel's pour anchor (Panel::piecePour),
 // scales up and fades in; entries stagger, exits do not.
-void PanelManager::pourPieces(bool open) {
-  const Panel::PiecePour pour = m_activePanel != nullptr ? m_activePanel->piecePour() : Panel::PiecePour{};
+std::vector<Node*> PanelManager::visiblePieces() const {
   std::vector<Node*> pieces;
   const auto collect = [&](const auto& self, Node& node) -> void {
     if (!node.visible()) {
@@ -3077,9 +3075,44 @@ void PanelManager::pourPieces(bool open) {
       self(self, *child);
     }
   };
-  collect(collect, *m_sceneRoot);
+  if (m_sceneRoot != nullptr) {
+    collect(collect, *m_sceneRoot);
+  }
+  return pieces;
+}
+
+// proto surfaces.js openLauncher: inside the growing group, the pieces fade in on spring.fade once the grow has covered
+// content_gate of its travel, in scene order and staggered.
+void PanelManager::gatePiecesIn() {
+  for (Node* piece : visiblePieces()) {
+    m_animations.cancelForOwner(piece);
+    piece->setOpacity(0.0F);
+  }
+  m_contentGateTimer.start(openContentGate(openSpringToken()), [this] {
+    int index = 0;
+    for (Node* piece : visiblePieces()) {
+      m_animations.cancelForOwner(piece);
+      m_animations.animateStaggered(
+          index++, piece->opacity(), 1.0F, effectsSpring(),
+          [this, piece](float v) {
+            piece->setOpacity(v);
+            if (m_surface != nullptr) {
+              m_surface->requestRedraw();
+            }
+          },
+          {}, piece
+      );
+    }
+  });
+}
+
+void PanelManager::pourPieces(bool open) {
+  const Panel::PiecePour pour = m_activePanel != nullptr ? m_activePanel->piecePour() : Panel::PiecePour{};
+  const std::vector<Node*> pieces = visiblePieces();
   std::erase_if(m_pieceRest, [&](const auto& entry) { return std::ranges::find(pieces, entry.first) == pieces.end(); });
-  if (pour.motion == Panel::PourMotion::Grow && m_growSourceOutput.has_value() && open && startGrowOpen()) {
+  // The grow is the open itself; a later pour (back from a card) pours the pieces in place.
+  if (pour.motion == Panel::PourMotion::Grow && m_growSourceOutput.has_value() && open && !m_scaleFrom.has_value() &&
+      startGrowOpen()) {
     return;
   }
   struct Rest {
@@ -3157,25 +3190,15 @@ bool PanelManager::startGrowOpen() {
   float top = std::numeric_limits<float>::max();
   float right = std::numeric_limits<float>::lowest();
   float bottom = std::numeric_limits<float>::lowest();
-  const auto collect = [&](const auto& self, const Node& node) -> void {
-    if (!node.visible()) {
-      return;
-    }
-    if (node.glassPiece().has_value()) {
-      float x = 0.0F;
-      float y = 0.0F;
-      Node::absolutePosition(&node, x, y);
-      left = std::min(left, x);
-      top = std::min(top, y);
-      right = std::max(right, x + node.width());
-      bottom = std::max(bottom, y + node.height());
-      return;
-    }
-    for (const auto& child : node.children()) {
-      self(self, *child);
-    }
-  };
-  collect(collect, *m_sceneRoot);
+  for (const Node* node : visiblePieces()) {
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(node, x, y);
+    left = std::min(left, x);
+    top = std::min(top, y);
+    right = std::max(right, x + node->width());
+    bottom = std::max(bottom, y + node->height());
+  }
   if (right <= left || bottom <= top) {
     return false;
   }
@@ -3191,10 +3214,10 @@ bool PanelManager::startGrowOpen() {
   const double srcCy = src[1] - m_panelSurfaceOrigin[1] + src[3] * 0.5;
   const double gx = (left + right) * 0.5;
   const double gy = (top + bottom) * 0.5;
-  return startScaleOpen({scale, {srcCx - cx - scale * (gx - cx), srcCy - cy - scale * (gy - cy), 0.0, 0.0}});
+  return startScaleOpen({scale, {srcCx - cx - scale * (gx - cx), srcCy - cy - scale * (gy - cy), 0.0, 0.0}}, true);
 }
 
-bool PanelManager::startScaleOpen(ScaleFrom from) {
+bool PanelManager::startScaleOpen(ScaleFrom from, bool grow) {
   using Property = DskSurfaceClient::Property;
   dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
   if (manager == nullptr || m_wlSurface == nullptr || m_activePanel == nullptr || !MotionService::instance().enabled() ||
@@ -3212,10 +3235,16 @@ bool PanelManager::startScaleOpen(ScaleFrom from) {
   m_dsk->set(Property::Scale, {from.scale, 0.0, 0.0, 0.0});
   m_dsk->set(Property::Translate, from.shift);
   m_scaleFrom = from;
-  // The compositor adds the glass density in the frame it samples the backdrop, so the open starts at once.
-  m_dsk->set(Property::Opacity, {0.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Scale, openCurve(), {1.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Translate, openCurve(), {0.0, 0.0, 0.0, 0.0});
+  if (grow) {
+    // The pieces are the only fade: a group fade under them multiplied both and hid the first 130 ms (laptop).
+    m_dsk->set(Property::Opacity, {1.0, 0.0, 0.0, 0.0});
+    gatePiecesIn();
+    return true;
+  }
+  // The compositor adds the glass density in the frame it samples the backdrop, so the open starts at once.
+  m_dsk->set(Property::Opacity, {0.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Opacity, opacityCurve(false), {1.0, 0.0, 0.0, 0.0});
   return true;
 }
@@ -3226,6 +3255,8 @@ bool PanelManager::startDetachedScaleClose(std::uint64_t gen) {
   if (m_dsk == nullptr || !m_scaleFrom.has_value()) {
     return false;
   }
+  // A close before the pieces gated in keeps them hidden.
+  m_contentGateTimer.stop();
   m_dsk->animate(Property::Opacity, opacityCurve(true), {0.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Translate, Curve::SpringClose, m_scaleFrom->shift);
   m_dsk->animate(

@@ -243,9 +243,7 @@ AnimationManager::Id AnimationManager::animateGated(
 }
 
 float AnimationManager::staggerDelayMs(int index) {
-  constexpr float kStaggerMs = 16.0F;
-  constexpr int kMaxStaggered = 6;
-  return kStaggerMs * static_cast<float>(std::clamp(index, 0, kMaxStaggered - 1));
+  return static_cast<float>(Tokens::motionStaggerMs) * static_cast<float>(std::clamp(index, 0, Tokens::motionStaggerMax - 1));
 }
 
 AnimationManager::Id AnimationManager::animateStaggered(

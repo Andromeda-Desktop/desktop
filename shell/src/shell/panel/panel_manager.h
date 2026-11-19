@@ -274,7 +274,9 @@ private:
     DskSurfaceClient::Value shift;
   };
   bool startDetachedScaleOpen();
-  bool startScaleOpen(ScaleFrom from);
+  bool startScaleOpen(ScaleFrom from, bool grow = false);
+  void gatePiecesIn();
+  [[nodiscard]] std::vector<Node*> visiblePieces() const;
   bool startGrowOpen();
   bool startDetachedScaleClose(std::uint64_t gen);
   // Glass pieces pour out of the panel's top edge, top piece first, and back on close (concept C).

@@ -18,6 +18,7 @@
 #include "shell/bar/bar_reserved_zone.h"
 #include "shell/bar/widget.h"
 #include "shell/bar/widget_gesture_defaults.h"
+#include "shell/bar/widgets/launcher_widget.h"
 #include "shell/bar/widgets/plugin_widget.h"
 #include "shell/bar/widgets/taskbar_widget.h"
 #include "shell/bar/widgets/spacer_widget.h"
@@ -1091,6 +1092,10 @@ void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) 
   // The tray drawer and the notification center hang under the status island and end at its trailing edge, as when
   // they are opened by a click on it.
   const bool endSheet = panelId == "tray-drawer" || panelId == "notification-center";
+  if (panelId == "launcher") {
+    fillLauncherSource(request);
+    return;
+  }
   if (panelId != "control-center" && !endSheet) {
     return;
   }
@@ -1142,6 +1147,47 @@ void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) 
     request.sourceSurface = instance->surface->wlSurface();
     request.sourceRect = r;
     return;
+  }
+}
+
+// proto surfaces.js: a key opens the launcher from the bar's launcher button, so it grows from the same source as a click.
+void Bar::fillLauncherSource(PanelOpenRequest& request) const {
+  for (const auto& instance : m_instances) {
+    if (instance->output != request.output || instance->surface == nullptr) {
+      continue;
+    }
+    for (const auto& [root, widget] : instance->widgetByRoot) {
+      if (dynamic_cast<const LauncherWidget*>(widget) == nullptr) {
+        continue;
+      }
+      const Node* node = widget->barHoverBox();
+      if (node == nullptr || node->width() <= 0.0F || node->height() <= 0.0F) {
+        node = root;
+      }
+      if (node == nullptr || node->width() <= 0.0F || node->height() <= 0.0F) {
+        continue;
+      }
+      float x = 0.0F;
+      float y = 0.0F;
+      Node::absolutePosition(node, x, y);
+      const auto island = islandRectAt(*instance, x + node->width() * 0.5F, y + node->height() * 0.5F);
+      const std::array<float, 4> r = island.value_or(std::array<float, 4>{x, y, node->width(), node->height()});
+      float surfaceX = 0.0F;
+      float surfaceY = 0.0F;
+      if (m_platform != nullptr) {
+        if (const auto* out = m_platform->findOutputByWl(instance->output); out != nullptr && out->hasUsableGeometry()) {
+          std::tie(surfaceX, surfaceY) = surfaceOriginForOutputLocal(*instance, *out);
+          request.sourceOutputRect = std::array<float, 4>{r[0] + surfaceX, r[1] + surfaceY, r[2], r[3]};
+        }
+      }
+      request.anchorX = r[0] + r[2] * 0.5F + surfaceX;
+      request.anchorY = r[1] + r[3] * 0.5F + surfaceY;
+      request.hasAnchorPosition = true;
+      request.sourceBarName = instance->barConfig.name;
+      request.sourceSurface = instance->surface->wlSurface();
+      request.sourceRect = r;
+      return;
+    }
   }
 }
 
