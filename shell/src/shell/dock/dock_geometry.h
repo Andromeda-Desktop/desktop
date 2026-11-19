@@ -47,6 +47,12 @@ namespace shell::dock {
   [[nodiscard]] std::int32_t dockHoverZoomCrossPad(const DockConfig& cfg);
   // Extra main-axis end padding for magnified icon/badge overhang past the pill ends.
   [[nodiscard]] std::int32_t dockHoverZoomMainPad(const DockConfig& cfg);
+  // The largest icon size from restIconSize down to component.dock.icon_min whose row and zoom room fit outputLength
+  // inside marginEdge per end; past that floor the row scrolls.
+  [[nodiscard]] std::int32_t dockFitIconSize(
+      const DockConfig& cfg, std::int32_t restIconSize, std::size_t itemCount, std::size_t separators,
+      std::int32_t outputLength
+  );
   // Main-axis offsets of icons drawn at `scales` (1 = rest) so no two grown icons overlap: each moves by the growth of
   // the icons before it plus half its own; the largest stays put and the rest spread out on both sides.
   [[nodiscard]] std::vector<float> hoverSpreadOffsets(const std::vector<float>& scales, float iconSize);

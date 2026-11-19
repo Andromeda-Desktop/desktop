@@ -121,6 +121,7 @@ namespace shell::dock {
       float restCrossPos = 0.0F;
     };
     std::vector<Separator> separators;
+    std::int32_t restIconSize = 0; // config.iconSize before the fit to the output (dockFitIconSize)
     bool hasTrash = false;
     bool trashFull = false;
     TrashCell trash;

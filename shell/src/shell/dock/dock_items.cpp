@@ -579,6 +579,12 @@ namespace shell::dock {
 
     resetDockItemDragState(instance);
 
+    const bool vertical = shell::dock::isVerticalEdge(instance.config.position);
+    instance.config.iconSize = shell::dock::dockFitIconSize(
+        instance.config, instance.restIconSize,
+        snapshot.items.size() + shell::dock::dockLauncherButtonCount(instance.config) + instance.trashCells(),
+        instance.separatorCount(), vertical ? instance.outputLogicalHeight : instance.outputLogicalWidth
+    );
     const auto& cfg = instance.config;
     const DockEdge edge = cfg.position;
     const DockLauncherPosition launcherPosition = cfg.launcherPosition;

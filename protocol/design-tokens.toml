@@ -453,6 +453,7 @@ radius = 24.0        # r24
 padding = 8.0
 gap = 8.0
 icon = 48.0
+icon_min = 32.0     # icons shrink to fit the output down to this; past it the row scrolls
 glyph = 32.0        # launcher and trash glyphs; 24 read half the size of the app tiles (deviations.md)
 lens = 56.0
 lens_radius = "= component.dock.radius - component.dock.lens_inset"

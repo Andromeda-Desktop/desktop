@@ -982,7 +982,13 @@ void Dock::createInstance(const WaylandOutput& output) {
   instance->outputLogicalWidth = output.effectiveLogicalWidth();
   instance->outputLogicalHeight = output.effectiveLogicalHeight();
   instance->config = cfg;
+  instance->restIconSize = cfg.iconSize;
   instance->hasTrash = cfg.showTrash && m_fileOps != nullptr;
+  instance->config.iconSize = shell::dock::dockFitIconSize(
+      cfg, cfg.iconSize, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg) + instance->trashCells(),
+      instance->separatorCount(),
+      shell::dock::isVerticalEdge(cfg.position) ? instance->outputLogicalHeight : instance->outputLogicalWidth
+  );
   instance->trashFull = m_trashFull;
   if (const auto* override = matchingDockMonitorOverride(baseConfig, output); override != nullptr) {
     instance->monitorOverrideTable = override->tableName;
@@ -991,7 +997,7 @@ void Dock::createInstance(const WaylandOutput& output) {
 
   const auto& shadowConfig = m_config->config().shell.shadow;
   LayerSurfaceConfig lsCfg = shell::dock::makeLayerSurfaceConfig(
-      cfg, shadowConfig, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg) + instance->trashCells(),
+      instance->config, shadowConfig, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg) + instance->trashCells(),
       instance->fractionalScale, instance->outputLogicalWidth, instance->outputLogicalHeight, instance->separatorCount()
   );
 

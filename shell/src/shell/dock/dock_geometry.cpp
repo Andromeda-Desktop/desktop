@@ -210,6 +210,23 @@ namespace shell::dock {
     return static_cast<std::int32_t>(std::ceil(extra));
   }
 
+  std::int32_t dockFitIconSize(
+      const DockConfig& cfg, std::int32_t restIconSize, std::size_t itemCount, std::size_t separators,
+      std::int32_t outputLength
+  ) {
+    const auto floor =
+        std::min(restIconSize, static_cast<std::int32_t>(std::lround(Tokens::componentDockIconMin * cfg.scale)));
+    const std::int32_t available = outputLength - cfg.marginEdge * 2;
+    DockConfig probe = cfg;
+    for (std::int32_t size = restIconSize; size > floor; --size) {
+      probe.iconSize = size;
+      if (dockContentSize(probe, itemCount, separators) + dockHoverZoomMainPad(probe) * 2 <= available) {
+        return size;
+      }
+    }
+    return outputLength > 0 ? floor : restIconSize;
+  }
+
   std::size_t dockLauncherButtonCount(DockLauncherPosition position) {
     return position == DockLauncherPosition::Start || position == DockLauncherPosition::End ? 1U : 0U;
   }
