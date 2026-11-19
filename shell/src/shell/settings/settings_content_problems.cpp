@@ -2,6 +2,7 @@
 
 #include "i18n/i18n.h"
 #include "shell/settings/settings_content_common.h"
+#include "shell/settings/settings_selection_style.h"
 #include "system/crash_report.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
@@ -14,11 +15,15 @@
 #include <filesystem>
 
 #include <nlohmann/json.hpp>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace settings {
 
   namespace {
 
+    // Apps shown; each row is one app with its newest crash.
     constexpr std::size_t kMaxRows = 20;
 
     // Units the desktop starts: the session services it ships and the app units it launches (app-*.scope, app-*.service).
@@ -93,9 +98,6 @@ namespace settings {
       records.push_back({.exe = field("COREDUMP_EXE"), .pid = pid, .timeUs = timeUs});
     }
     std::ranges::sort(records, std::ranges::greater{}, &CrashRecord::timeUs);
-    if (records.size() > kMaxRows) {
-      records.resize(kMaxRows);
-    }
     return records;
   }
 
@@ -111,20 +113,26 @@ namespace settings {
           Style::fontSizeBody * scale, colorSpecFromRole(ColorRole::Label2)
       ));
     } else {
-      auto list = ui::column(
-          {.gap = Style::spaceXs * scale,
-           .paddingV = Style::spaceSm * scale,
-           .paddingH = Style::spaceMd * scale,
-           .fill = colorSpecFromRole(ColorRole::SolidRegular),
-           .radius = Style::scaledRadiusMd(scale),
-           .fillWidth = true}
-      );
+      Flex* list = addSettingsGroupCard(content, {}, scale);
+      // Records are newest first: the first record of an app is its newest crash.
+      std::vector<std::pair<const CrashRecord*, std::size_t>> apps;
       for (const CrashRecord& record : *records) {
+        // By shown name: the shell's binaries share one name.
+        const auto it = std::ranges::find(apps, displayName(record.exe),
+                                          [](const auto& app) { return displayName(app.first->exe); });
+        if (it != apps.end()) {
+          ++it->second;
+        } else if (apps.size() < kMaxRows) {
+          apps.emplace_back(&record, 1);
+        }
+      }
+      for (const auto& [newest, times] : apps) {
+        const CrashRecord& record = *newest;
         const int pid = record.pid;
         list->addChild(ui::row(
             {.align = FlexAlign::Center,
              .gap = Style::spaceMd * scale,
-             .minHeight = Style::controlHeightLg * scale,
+             .minHeight = metrics::kRowHeightTwoLine * scale,
              .fillWidth = true},
             ui::glyph({
                 .glyph = "alert-triangle",
@@ -138,7 +146,9 @@ namespace settings {
                     FontWeight::Bold
                 ),
                 makeLabel(
-                    i18n::tr("settings.problems.stopped", "when", whenText(record.timeUs)),
+                    times == 1 ? i18n::tr("settings.problems.stopped", "when", whenText(record.timeUs))
+                               : i18n::tr("settings.problems.stopped-times", "count", std::to_string(times), "when",
+                                          whenText(record.timeUs)),
                     Style::fontSizeCaption * scale, colorSpecFromRole(ColorRole::Label2)
                 )
             ),
@@ -151,7 +161,7 @@ namespace settings {
             })
         ));
       }
-      content.addChild(std::move(list));
+      addSettingsRowSeparators(*list, scale);
     }
     content.addChild(ui::row(
         {.align = FlexAlign::Center, .fillWidth = true},

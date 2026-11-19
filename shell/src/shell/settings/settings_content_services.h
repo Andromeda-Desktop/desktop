@@ -34,17 +34,9 @@ namespace settings {
     bool backgroundLoaded = false;
     std::function<void(std::string app, bool allowed)> setBackground;
     std::function<std::unique_ptr<Node>(const std::string& icon, float size)> appIcon;
-
-    struct DefaultApp {
-      std::string label;
-      std::string app;
-    };
-    std::vector<DefaultApp> defaults;
-    std::function<void()> openDefaultApps;
   };
 
-  // Apps and Services page (.agent/mockups/settings-d6.html §3): Media Players, Running in the Background,
-  // Default Apps.
+  // Apps and Services page (.agent/mockups/settings-d6.html §3): Media Players, Running in the Background.
   void addSettingsServices(Flex& content, const SettingsServicesContext& ctx);
 
 } // namespace settings

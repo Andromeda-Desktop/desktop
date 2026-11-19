@@ -51,14 +51,6 @@ namespace settings {
     addSettingsRowSeparators(*background, scale);
     addFootnote(*background, i18n::tr("settings.services-page.background-footnote"), scale);
 
-    if (!ctx.defaults.empty()) {
-      Flex* defaults = addSettingsGroupCard(content, i18n::tr("settings.pages.default-apps"), scale);
-      for (const auto& app : ctx.defaults) {
-        addInfoRow(*defaults, "", app.label, app.app.empty() ? i18n::tr("settings.services-page.none") : app.app, scale,
-                   ctx.openDefaultApps);
-      }
-      addSettingsRowSeparators(*defaults, scale);
-    }
   }
 
 } // namespace settings

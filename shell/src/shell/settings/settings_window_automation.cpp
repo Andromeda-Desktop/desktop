@@ -7,7 +7,6 @@
 #include "shell/settings/settings_page_rows.h"
 #include "shell/settings/settings_window.h"
 #include "system/app_permissions.h"
-#include "system/default_apps.h"
 #include "system/desktop_entry.h"
 #include "system/icon_resolver.h"
 #include "ui/builders.h"
@@ -435,19 +434,6 @@ void SettingsWindow::addServicesContent(float scale) {
     });
   }
 
-  std::vector<settings::SettingsServicesContext::DefaultApp> defaults;
-  const std::pair<default_apps::Category, const char*> kDefaults[] = {
-      {default_apps::Category::WebBrowser, "settings.default-apps.web-browser"},
-      {default_apps::Category::Mail, "settings.default-apps.mail"},
-      {default_apps::Category::FileManager, "settings.default-apps.file-manager"},
-  };
-  for (const auto& [category, key] : kDefaults) {
-    const std::string id = default_apps::effectiveDefault(category);
-    const DesktopEntry* entry = id.empty() ? nullptr : findEntry(id);
-    defaults.push_back({.label = i18n::tr(key),
-                        .app = entry != nullptr ? entry->name : id.substr(0, id.rfind(".desktop"))});
-  }
-
   settings::addSettingsServices(
       *m_contentContainer,
       settings::SettingsServicesContext{
@@ -490,8 +476,6 @@ void SettingsWindow::addServicesContent(float scale) {
             }
             return node;
           },
-          .defaults = std::move(defaults),
-          .openDefaultApps = [this] { navigateTo("default-apps"); },
       }
   );
 }

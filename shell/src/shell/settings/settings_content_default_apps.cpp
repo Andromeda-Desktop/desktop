@@ -64,6 +64,9 @@ namespace settings {
           ui::select({
               .options = std::move(labels),
               .selectedIndex = selected,
+              // No default yet (or one not installed): the trigger says so instead of showing the first app.
+              .clearSelection = !selected.has_value(),
+              .placeholder = i18n::tr("settings.default-apps.none"),
               .fontSize = Style::fontSizeBody * ctx.scale,
               .controlHeight = Style::controlHeight * ctx.scale,
               .glyphSize = Style::fontSizeBody * ctx.scale,

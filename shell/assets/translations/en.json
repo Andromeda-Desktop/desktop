@@ -7222,6 +7222,7 @@
     },
     "default-apps": {
       "title": "Default Applications",
+      "none": "None",
       "web-browser": "Web Browser",
       "mail": "Mail",
       "file-manager": "File Manager",
@@ -7273,6 +7274,7 @@
       "desktop": "Desktop",
       "shell": "Bar and panels",
       "stopped": "Stopped unexpectedly, {when}",
+      "stopped-times": "Stopped unexpectedly {count} times, last {when}",
       "today": "Today {time}",
       "yesterday": "Yesterday {time}",
       "save-report": "Save report",
@@ -7408,7 +7410,6 @@
     "services-page": {
       "media": "Media Players",
       "hidden-players": "Hidden Players",
-      "none": "None",
       "media-footnote": "Players you switch off do not show in the island or the control center.",
       "background": "Running in the Background",
       "background-none": "No apps asked to run in the background",

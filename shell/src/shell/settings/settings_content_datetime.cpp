@@ -140,8 +140,13 @@ namespace settings {
       const TimeDateService& td = *ctx.timedate;
       addSwitchRow(*card, "", i18n::tr("settings.datetime.automatic"), td.ntp(), scale, ctx.setNtp);
 
-      const auto& zones = td.timezones();
-      const auto zoneIt = std::ranges::find(zones, td.timezone());
+      // The current zone always shows, also before ListTimezones answers or when it lacks the zone.
+      std::vector<std::string> zones = td.timezones();
+      auto zoneIt = std::ranges::find(zones, td.timezone());
+      if (zoneIt == zones.end() && !td.timezone().empty()) {
+        zones.insert(zones.begin(), td.timezone());
+        zoneIt = zones.begin();
+      }
       auto zone = labelRow("", i18n::tr("settings.datetime.timezone"), scale);
       zone->addChild(select(zones, zoneIt != zones.end() ? std::optional<std::size_t>(zoneIt - zones.begin()) : std::nullopt,
                             scale, [set = ctx.setTimezone, zones](std::size_t index) { set(zones[index]); }));
