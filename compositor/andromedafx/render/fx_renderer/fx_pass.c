@@ -79,6 +79,7 @@ bool fx_render_pass_init_offscreen_buffers(struct wlr_render_pass* render_pass, 
     return false;
   }
   pass->fx_offscreen_buffers->allocator = output->allocator;
+  pass->fx_offscreen_buffers->frame++;
   return true;
 }
 
@@ -3135,12 +3136,13 @@ static struct fx_framebuffer* strength_blur(
   if (fx_options->blur_data == NULL || !wlr_box_intersection(&box, &box, &output)) {
     return NULL;
   }
-  // The slot of this strength, else the least recently used one, which then switches to this strength.
+  // The slot of this strength (kept while its boxes are pruned away), else the least recently used one, which then
+  // switches to this strength.
   const size_t slots = sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]);
   struct fx_strength_blur* slot = NULL;
   for (size_t i = 0; i < slots && slot == NULL; i++) {
     struct fx_strength_blur* s = &fbos->strength_blurs[i];
-    if (s->count > 0 && s->strength == fx_options->blur_strength && blur_data_equal(&s->data, fx_options->blur_data)) {
+    if (s->last_used > 0 && s->strength == fx_options->blur_strength && blur_data_equal(&s->data, fx_options->blur_data)) {
       slot = s;
     }
   }
@@ -3154,6 +3156,7 @@ static struct fx_framebuffer* strength_blur(
     slot->count = 0;
     slot->strength = fx_options->blur_strength;
     slot->data = *fx_options->blur_data;
+    slot->since = fbos->frame;
   }
   slot->last_used = ++fbos->strength_blur_clock;
   if (slot->buffer == NULL || !optimized_buffer_fits(pass, slot->buffer)
@@ -3171,9 +3174,10 @@ static struct fx_framebuffer* strength_blur(
     slot->count = 0;
     return NULL;
   }
-  // A second box at this strength means several or moving nodes use it: blur the whole output once, so every node
-  // at this strength hits until the backdrop changes, instead of re-blurring each frame.
-  const struct wlr_box area = slot->count > 0 ? output : box;
+  // A second box at a strength kept from an earlier frame means several or moving nodes use it: blur the whole output
+  // once, so every node at this strength hits until the backdrop changes, instead of re-blurring each frame. A strength
+  // new in this frame may be animating and never come back, so it renders only its box.
+  const struct wlr_box area = slot->count > 0 && slot->since < fbos->frame ? output : box;
   pixman_region32_t region;
   pixman_region32_init_rect(&region, area.x, area.y, area.width, area.height);
   struct fx_render_blur_pass_options blur_options = *fx_options;

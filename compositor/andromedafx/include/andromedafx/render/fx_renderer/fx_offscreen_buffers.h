@@ -71,12 +71,14 @@ struct fx_offscreen_buffers {
     struct fx_framebuffer* buffer;
     uint64_t generation;
     uint64_t last_used; // strength_blur_clock at the last lookup; the least recent slot is reused
+    uint64_t since; // frame at which the slot took this strength
     float strength;
     struct blur_data data;
     struct wlr_box boxes[32]; // more than the glass boxes of one frame (launcher: 7), or boxes evict in turn
     size_t count;
   } strength_blurs[3];
   uint64_t strength_blur_clock;
+  uint64_t frame; // output render passes begun
   // Contains the original pixels to draw over the areas where artifact are visible
   struct fx_framebuffer* blur_saved_pixels_buffer;
   // Sized to the output
