@@ -73,6 +73,7 @@ private:
   [[nodiscard]] std::string contentKey() const;
   void rebuild();
   void captureReflow();
+  void collapseGroup(const std::string& key);
   void playReflow();
   void requestRebuild();
   void addGroup(Flex& list, const notification_center::Group& group);

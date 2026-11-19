@@ -209,6 +209,62 @@ void NotificationCenterPanel::playReflow() {
   m_reflowFrom.clear();
 }
 
+// Collapse mirrors expand: the group's back cards slide under its front card while the footer and everything below
+// move up by the height they free; the rebuild then lands on the same layout, and playReflow absorbs any rest.
+void NotificationCenterPanel::collapseGroup(const std::string& key) {
+  const std::string footerKey = "f:" + key;
+  const auto footer = std::find_if(m_moving.begin(), m_moving.end(), [&](const Moving& m) { return m.key == footerKey; });
+  if (footer == m_moving.end() || m_animations == nullptr) {
+    m_openGroups.erase(key);
+    requestRebuild();
+    return;
+  }
+  const std::string front = footer == m_moving.begin() ? std::string{} : std::prev(footer)->from;
+  const auto first = std::find_if(m_moving.begin(), footer, [&](const Moving& m) { return m.key == front; });
+  if (first == footer) {
+    m_openGroups.erase(key);
+    requestRebuild();
+    return;
+  }
+  const auto bottomOf = [](const Node* node) {
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(node, x, y);
+    return y + node->height();
+  };
+  const float frontBottom = bottomOf(first->node);
+  const auto backs = static_cast<std::size_t>(std::distance(first, footer)) - 1;
+  const std::size_t peeks = std::min(backs, static_cast<std::size_t>(Tokens::componentNotificationStackVisible) - 1);
+  const float shift = bottomOf(std::prev(footer)->node) - frontBottom
+                      - Tokens::componentNotificationStackOffset * contentScale() * static_cast<float>(peeks);
+  for (auto it = std::next(first); it != footer; ++it) {
+    Node* node = it->node;
+    const float dy = frontBottom - bottomOf(node);
+    m_animations->animateSpatial(
+        0.0F, dy, Style::spring(Tokens::springMove),
+        [node, dy](float v) {
+          node->setTranslation(0.0F, v);
+          node->setOpacity(std::clamp(1.0F - 3.0F * v / dy, 0.0F, 1.0F));
+        },
+        {}, node
+    );
+  }
+  for (auto it = footer; it != m_moving.end(); ++it) {
+    Node* node = it->node;
+    const bool last = std::next(it) == m_moving.end();
+    m_animations->animateSpatial(
+        0.0F, -shift, Style::spring(Tokens::springMove), [node](float v) { node->setTranslation(0.0F, v); },
+        last ? std::function<void()>([this, key] {
+          captureReflow();
+          m_openGroups.erase(key);
+          requestRebuild();
+        })
+             : std::function<void()>{},
+        node
+    );
+  }
+}
+
 void NotificationCenterPanel::rebuild() {
   if (m_list == nullptr) {
     return;
@@ -290,12 +346,12 @@ void NotificationCenterPanel::addGroup(Flex& list, const nc::Group& group) {
     const std::string toggle = open ? i18n::tr("control-center.notifications.collapse-group")
                                     : i18n::tr("control-center.notifications.group-more", "count", static_cast<int>(group.items.size() - 1));
     footer->addChild(plainPill(toggle, scale, [this, key, open] {
-      captureReflow();
       if (open) {
-        m_openGroups.erase(key);
-      } else {
-        m_openGroups.insert(key);
+        collapseGroup(key);
+        return;
       }
+      captureReflow();
+      m_openGroups.insert(key);
       requestRebuild();
     }, open ? "chevron-up" : "chevron-down"));
     footer->addChild(plainPill(i18n::tr("control-center.detail.notifications.clear"), scale, [this, ids] {
