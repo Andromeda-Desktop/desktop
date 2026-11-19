@@ -109,8 +109,8 @@ namespace andromeda::ov {
     // The same for the window menu.
     [[nodiscard]] int windowMenuRowAt(double lx, double ly) const;
     [[nodiscard]] bool windowMenuContains(double lx, double ly) const;
-    // The tab under the point, a workspace index; an index at or past the workspace count is the + tab or + target.
-    [[nodiscard]] std::optional<size_t> tabAt(double lx, double ly) const;
+    // True when the point is on the + target past the workspace cards.
+    [[nodiscard]] bool plusAt(double lx, double ly) const;
     // True when the point is on the shown workspace's name.
     [[nodiscard]] bool nameAt(double lx, double ly) const;
 
@@ -190,10 +190,6 @@ namespace andromeda::ov {
     std::optional<wlr_box> m_windowMenuBox;
     std::optional<wlr_box> m_nameBox; // the shown workspace's name
     Frame m_nameRing; // accent ring around that name while it is renamed
-    Frame m_tabBar;     // Strip: one tab per workspace and a + tab, in the dock's place (mockup B)
-    Frame m_tabCurrent;
-    std::vector<Label> m_tabs;
-    std::vector<std::pair<size_t, wlr_box>> m_tabBoxes;
   };
 
 } // namespace andromeda::ov

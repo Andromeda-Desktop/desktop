@@ -299,16 +299,14 @@ namespace andromeda {
     }
     for (const auto& state : m_outputs) {
       WorkspaceGroup* group = state->output->workspaceGroup();
-      const std::optional<size_t> tab = state->chrome != nullptr ? state->chrome->tabAt(lx, ly) : std::nullopt;
-      if (!tab.has_value() || group == nullptr) {
+      if (group == nullptr || state->chrome == nullptr || !state->chrome->plusAt(lx, ly)) {
         continue;
       }
-      // The + tab adds a workspace at the end, or goes to an empty last one, which already is the new desktop (a
-      // second empty one would be dropped again at once); the row follows the selection (onWorkspaceActivated).
+      // + adds a workspace at the end, or goes to an empty last one, which already is the new desktop (a second empty
+      // one would be dropped again at once).
       Workspace* last = group->workspaceCount() > 0 ? group->workspaceAt(group->workspaceCount() - 1) : nullptr;
-      Workspace* workspace = *tab < group->workspaceCount()     ? group->workspaceAt(*tab)
-          : last != nullptr && !last->hasViews()                           ? last
-                                                                 : group->insertDynamicWorkspace(group->workspaceCount());
+      Workspace* workspace =
+          last != nullptr && !last->hasViews() ? last : group->insertDynamicWorkspace(group->workspaceCount());
       if (workspace != nullptr) {
         group->select(workspace);
       }
