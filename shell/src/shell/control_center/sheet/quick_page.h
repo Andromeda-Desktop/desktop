@@ -188,6 +188,7 @@ private:
 
   bool m_syncingSliders = false;
   Flex* m_brightnessPill = nullptr;
+  Flex* m_volumePill = nullptr;
   Slider* m_brightnessSlider = nullptr;
   Label* m_brightnessName = nullptr;
   Label* m_brightnessValue = nullptr;

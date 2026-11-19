@@ -609,6 +609,7 @@ std::unique_ptr<Flex> QuickPage::create() {
   root->addChild(std::move(brightness));
 
   auto volume = makePill("volume", m_volumeSlider, m_volumeName, m_volumeValue);
+  m_volumePill = volume.get();
   m_volumeSlider->setOnValueChanged([this](double value) {
     if (m_syncingSliders) {
       return;
@@ -1306,7 +1307,7 @@ void QuickPage::syncSliders() {
   }
 
   const AudioNode* sink = m_services.audio != nullptr ? m_services.audio->defaultSink() : nullptr;
-  m_volumeSlider->setEnabled(sink != nullptr);
+  m_volumePill->setVisible(sink != nullptr);
   m_volumeSlider->setValue(sink != nullptr ? sink->volume : 0.0);
   m_volumeName->setText(sink == nullptr ? std::string{} : (!sink->description.empty() ? sink->description : sink->name));
   m_volumeValue->setText(sink == nullptr ? std::string{} : percent(static_cast<float>(sink->volume)));
