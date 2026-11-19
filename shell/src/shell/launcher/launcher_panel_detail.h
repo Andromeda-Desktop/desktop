@@ -997,14 +997,18 @@ namespace launcher_detail {
       auto actions = ui::row({.out = &m_actions, .align = FlexAlign::Center, .gap = Tokens::spaceP8 * scale});
       actions->addChild(ui::button({
           .text = i18n::tr("launcher.pill.open"),
+          .fontSize = Tokens::typeBody.size * scale,
           .controlHeight = Tokens::sizeControlM * scale,
           .variant = ButtonVariant::Primary,
+          .paddingH = Tokens::spaceP12 * scale,
           .onClick = std::move(onOpen),
       }));
       actions->addChild(ui::button({
           .out = &m_newWindow,
           .text = i18n::tr("launcher.pill.new-window"),
+          .fontSize = Tokens::typeBody.size * scale,
           .controlHeight = Tokens::sizeControlM * scale,
+          .paddingH = Tokens::spaceP12 * scale,
           .onClick = std::move(onNewWindow),
       }));
       row->addChild(std::move(actions));
