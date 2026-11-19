@@ -92,11 +92,15 @@ public:
 
   [[nodiscard]] float contentViewportWidth(bool reserveScrollbarGutter = false) const noexcept;
   [[nodiscard]] float contentViewportHeight() const noexcept;
-  // Grows past the set padding to centre the content when the view is wider than the max content width.
-  [[nodiscard]] float viewportPaddingH() const noexcept {
-    return m_maxContentWidth > 0.0F ? std::max(m_viewportPaddingH, (width() - m_maxContentWidth) * 0.5F) : m_viewportPaddingH;
+  // Where content narrower than the view sits: centred, or at the reading start (left; right in RTL).
+  enum class ContentAlign : std::uint8_t { Centre, Start };
+  // The horizontal insets grow past the set padding when the view is wider than the max content width.
+  [[nodiscard]] float viewportPaddingLeft() const noexcept;
+  [[nodiscard]] float viewportPaddingRight() const noexcept;
+  void setMaxContentWidth(float width, ContentAlign align = ContentAlign::Centre) {
+    m_maxContentWidth = width;
+    m_contentAlign = align;
   }
-  void setMaxContentWidth(float width) { m_maxContentWidth = width; }
   [[nodiscard]] float viewportPaddingV() const noexcept { return m_viewportPaddingV; }
   [[nodiscard]] bool reservesScrollbarGutter() const noexcept { return m_reserveScrollbarGutter; }
   // Width reserved for the vertical scrollbar plus its gap, at the current content scale.
@@ -140,6 +144,7 @@ private:
 
   float m_viewportPaddingH = Style::spaceXs;
   float m_maxContentWidth = 0.0F;
+  ContentAlign m_contentAlign = ContentAlign::Centre;
   float m_viewportPaddingV = Style::spaceSm;
   float m_scrollOffset = 0.0F;
   float m_targetScrollOffset = 0.0F;

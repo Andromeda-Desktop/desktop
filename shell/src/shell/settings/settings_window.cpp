@@ -834,7 +834,7 @@ void SettingsWindow::prepareFrame(bool needsUpdate, bool needsLayout) {
       column != settings::metrics::liveContentWidth()) {
     settings::metrics::liveContentWidth() = column;
     if (m_contentScrollView != nullptr) {
-      m_contentScrollView->setMaxContentWidth(column * scale);
+      m_contentScrollView->setMaxContentWidth(column * scale, ScrollView::ContentAlign::Start);
     }
     if (!firstBuild) {
       m_columnRebuildTimer.start(std::chrono::milliseconds(200), [this] { requestContentRebuild(); });

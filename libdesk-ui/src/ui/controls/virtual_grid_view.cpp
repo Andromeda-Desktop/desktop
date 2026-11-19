@@ -512,9 +512,9 @@ void VirtualGridView::doLayout(Renderer& renderer) {
   // content height correctly. Match ScrollView's configured gutter behavior.
   const float ourW = std::max(0.0F, width());
   const float ourH = std::max(0.0F, height());
-  const float padH = m_scroll->viewportPaddingH();
+  const float padH = m_scroll->viewportPaddingLeft();
   const float padV = m_scroll->viewportPaddingV();
-  const float innerW = std::max(0.0F, ourW - 2.0F * padH);
+  const float innerW = std::max(0.0F, ourW - padH - m_scroll->viewportPaddingRight());
   const float viewportH = std::max(0.0F, ourH - 2.0F * padV);
   const float scrollbarGutter = m_scroll->scrollbarGutter();
 

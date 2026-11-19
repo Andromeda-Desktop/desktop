@@ -34,9 +34,8 @@ namespace settings {
     inline constexpr float kCardBorderWidth = 0.5F;
     inline constexpr float kCardFillOpacity = 0.4F;
     inline constexpr float kRowSeparatorThickness = 1.0F;
-    // The page column grows with the window from kContentMaxWidth to kContentWideWidth, then stays centred.
-    inline constexpr float kContentMaxWidth = 640.0F;
-    inline constexpr const float& kContentWideWidth = Tokens::componentPageColumnWide;
+    // The page column follows the window up to kContentMaxWidth, then stays beside the sidebar (spare width at the end).
+    inline constexpr const float& kContentMaxWidth = Tokens::componentPageColumn;
     // The column width the current pages were built for, in logical px; set by the Settings window before a build.
     inline float& liveContentWidth() {
       static float width = kContentMaxWidth;
@@ -53,12 +52,12 @@ namespace settings {
           : windowWidth >= kStackBreak ? SidebarMode::Rail
                                        : SidebarMode::Stack;
     }
-    // The column width for a window `windowWidth` logical px wide, on the 8 grid; narrow windows go below 640.
+    // The column width for a window `windowWidth` logical px wide, on the 8 grid; narrow windows go below the cap.
     [[nodiscard]] inline float contentWidthFor(float windowWidth) {
       const SidebarMode mode = sidebarModeFor(windowWidth);
       const float sidebar = mode == SidebarMode::Full ? kSidebarWidth : mode == SidebarMode::Rail ? kRailWidth : 0.0F;
       const float pane = std::max(0.0F, windowWidth - sidebar - 2.0F * kPagePadding);
-      return std::floor(std::clamp(pane, std::min(pane, kContentMaxWidth), kContentWideWidth) / 8.0F) * 8.0F;
+      return std::floor(std::min(pane, kContentMaxWidth) / 8.0F) * 8.0F;
     }
     inline constexpr float kRowHeight = 40.0F;
     inline constexpr float kRowHeightTwoLine = 56.0F;

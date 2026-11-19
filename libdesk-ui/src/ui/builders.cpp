@@ -757,7 +757,7 @@ namespace ui {
       control->setScrollbarVisible(*props.scrollbarVisible);
     }
     if (props.maxContentWidth.has_value()) {
-      control->setMaxContentWidth(*props.maxContentWidth);
+      control->setMaxContentWidth(*props.maxContentWidth, props.contentAlign);
     }
     if (props.viewportPaddingH.has_value()) {
       control->setViewportPaddingH(*props.viewportPaddingH);

@@ -13,7 +13,7 @@ void scrollNodeIntoScrollView(ScrollView& scrollView, ScrollViewState* state, co
 
   const bool horizontal = scrollView.orientation() == ScrollOrientation::Horizontal;
   const float viewportSize = horizontal
-      ? std::max(0.0F, scrollView.width() - scrollView.viewportPaddingH() * 2.0F)
+      ? std::max(0.0F, scrollView.width() - scrollView.viewportPaddingLeft() - scrollView.viewportPaddingRight())
       : std::max(0.0F, scrollView.height() - scrollView.viewportPaddingV() * 2.0F);
   if (viewportSize <= 0.0F) {
     return;

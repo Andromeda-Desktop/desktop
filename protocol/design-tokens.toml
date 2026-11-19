@@ -453,6 +453,7 @@ radius = 24.0        # r24
 padding = 8.0
 gap = 8.0
 icon = 48.0
+glyph = 24.0        # launcher and trash glyphs (concept C .app .i)
 lens = 56.0
 lens_radius = "= component.dock.radius - component.dock.lens_inset"
 lens_inset = 4.0
@@ -760,4 +761,3 @@ row_dim = 0.6
 padding = 24.0
 padding_compact = 16.0
 column = 640.0
-column_wide = 960.0  # responsive apps: the column grows from column to column_wide, then stays centred

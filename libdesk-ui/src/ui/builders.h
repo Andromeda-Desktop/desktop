@@ -432,6 +432,7 @@ namespace ui {
     std::optional<bool> scrollbarAutoHide = std::nullopt;
     std::optional<float> viewportPaddingH = std::nullopt;
     std::optional<float> maxContentWidth = std::nullopt;
+    ScrollView::ContentAlign contentAlign = ScrollView::ContentAlign::Centre;
     std::optional<float> viewportPaddingV = std::nullopt;
     std::optional<ColorSpec> fill = std::nullopt;
     std::optional<float> radius = std::nullopt;
