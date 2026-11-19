@@ -42,8 +42,6 @@ namespace {
   constexpr float kDotSizeRatio = 0.09F;
   constexpr float kDotMinSize = 4.0F;
   TOKENS_LIVE(kDotGap, Tokens::spaceP4);
-  constexpr float kMinimizedIndicatorLength = 12.0F;
-  constexpr float kMinimizedIndicatorThickness = 2.0F;
   // Running dot (rulebook 9.4): centred in the bottom padding, so 2 below the icon.
   TOKENS_LIVE(kRunningDot, Tokens::componentDockRunningDot);
   TOKENS_LIVE(kRunningDotOffset, (Tokens::componentDockPadding - Tokens::componentDockRunningDot) * 0.5F);
@@ -778,26 +776,6 @@ namespace shell::dock {
         }
       }
 
-      const float minLength = std::round(kMinimizedIndicatorLength * cfg.scale);
-      const float minThickness = std::round(kMinimizedIndicatorThickness * cfg.scale);
-      areaNode->addChild(
-          ui::box({
-              .out = &item.minimizedIndicator,
-              .fill = colorSpecFromRole(ColorRole::Accent),
-              .radius = minThickness * 0.5F,
-              .width = vert ? minThickness : minLength,
-              .height = vert ? minLength : minThickness,
-              .visible = false,
-              .participatesInLayout = false,
-              .configure = [vert, edge, cellMain, minLength, minThickness](Box& box) {
-                const float centered = std::round((cellMain - minLength) * 0.5F);
-                const bool atStart = edge == DockEdge::Top || edge == DockEdge::Left;
-                const float outer = atStart ? 1.0F : std::round(cellMain - minThickness - 1.0F);
-                box.setPosition(vert ? outer : centered, vert ? centered : outer);
-              },
-          })
-      );
-
       if (cfg.runningBar && !cfg.showDots) {
         const float dot = std::round(kRunningDot * cfg.scale);
         const float offset = std::round(kRunningDotOffset * cfg.scale);
@@ -1088,11 +1066,8 @@ namespace shell::dock {
           setDockTooltipText(*item.area, item.tooltipText);
         }
       }
-      if (item.minimizedIndicator != nullptr) {
-        item.minimizedIndicator->setVisible(model.allMinimized);
-      }
       if (item.runningIndicator != nullptr) {
-        const bool runningNow = model.running && !model.allMinimized && !model.active;
+        const bool runningNow = model.running && !model.active;
         item.runningIndicator->setVisible(runningNow || item.runningScale > 0.001F);
         if (runningNow != item.runningShown) {
           item.runningShown = runningNow;
@@ -1121,7 +1096,7 @@ namespace shell::dock {
       }
 
       if (cfg.showDots) {
-        const std::size_t dotCount = model.allMinimized ? 0 : std::min<std::size_t>(count, 3);
+        const std::size_t dotCount = std::min<std::size_t>(count, 3);
         const auto iSize = static_cast<float>(cfg.iconSize);
         const float cellMain = iSize + 2.0F * kCellPad;
         const float dot = std::max(kDotMinSize * cfg.scale, std::round(iSize * kDotSizeRatio));

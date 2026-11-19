@@ -28,7 +28,6 @@ namespace shell::dock {
   struct DockItemView {
     InputArea* area = nullptr;
     std::array<Box*, 3> dotIndicators{};
-    Box* minimizedIndicator = nullptr;
     Box* runningIndicator = nullptr;
     Box* badge = nullptr;
     Label* badgeLabel = nullptr;
