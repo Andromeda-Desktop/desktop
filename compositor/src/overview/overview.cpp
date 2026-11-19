@@ -659,7 +659,9 @@ namespace andromeda {
       const int radius = static_cast<int>(std::lround(Tokens::radiusR20 * p));
       // Mirrors are rebuilt on top of the fill; the frame's fill and rim lie over its wallpaper.
       wlr_scene_node_raise_to_top(&state.frame.fill->node);
-      layoutMirrored(state.frame, box, state.mainFit.s, radius, backgroundColor, 1.0F, true);
+      // The frame's wallpaper fills the frame: a Scrolling strip's mainFit is smaller than the frame's own scale.
+      const double frameScale = static_cast<double>(box.width) / std::max(1, state.outputBox.width);
+      layoutMirrored(state.frame, box, frameScale, radius, backgroundColor, 1.0F, true);
       const bool light = config().appearance.scheme == ColorScheme::Light;
       const auto& scheme = light ? Tokens::schemeLight : Tokens::schemeDark;
       const auto color = [](std::uint32_t value) {
