@@ -26,23 +26,20 @@ namespace glass {
     float clarity = 0.0F;
     // Blur size, 0 to 1: blurStrength(clarity).
     float blurStrength = 1.0F;
-    // dsk_surface_v1 liquid [3]: how far a full density lifts the tint (denser), 0 halfway, 1 all the way.
+    // dsk_surface_v1 liquid [3]: the fraction of the gap to opaque a full density closes (denser, denseLift).
     float dense = 0.0F;
 
     bool operator==(const Material&) const = default;
   };
 
-  // Low-contrast backdrops raise the lowest Shape tint (kDenseFrom) to this alpha (Material::dense); the colour never
-  // changes. Higher tints move the same fraction of their gap to opaque, so the slider still shows at full density.
-  inline constexpr float kDenseTint = 0.84F;
-  inline constexpr float kDenseFrom = 0.30F;
+  // Over a low-contrast backdrop each style's glass moves this fraction of its gap to opaque, in its own colour
+  // (concept C styles.css --dense), indexed by Style: {light glass, dark glass}.
+  inline constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.0F, 0.66F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
+  // The least alpha at full density that keeps 4.5:1 text over a white or black backdrop: {light glass, dark glass}.
+  inline constexpr float kLegibleAlpha[2] = {0.54F, 0.67F};
 
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };
-
-  // Material::dense of a kind: tooltips rise halfway over a low-contrast backdrop, other kinds all the way, so white
-  // text on a Clear sheet over white keeps 4.5:1 (halfway gives 4.2:1).
-  [[nodiscard]] constexpr float denseTarget(Kind kind) noexcept { return kind == Kind::Tooltip ? 0.0F : 1.0F; }
 
   // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
   // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
@@ -68,15 +65,27 @@ namespace glass {
   // The Tint and Blur slider position Tinted glass takes.
   inline constexpr float kTintedLevel = 0.5F;
 
+  // Shape tints at the lowest and the middle (kTintedLevel) Tint slider position: {light glass, dark glass}.
+  inline constexpr float kLowestTint[2] = {0.20F, 0.30F};
+  inline constexpr float kTintedTint[2] = {0.34F, 0.56F};
+  // The tint alpha of Clear glass: enough to carry a tint colour, so the compositor can dim through the density.
+  inline constexpr float kClearTint = 0.04F;
+
+  // Material::dense: the fraction of the gap to opaque every tint closes at full density; the style's overlay, raised
+  // so the style's lowest Shape tint reaches kLegibleAlpha. It stays below 1, so the slider order holds. Tooltips close half.
+  [[nodiscard]] inline float denseLift(Kind kind, Style style, bool lightGlass) noexcept {
+    const int tone = lightGlass ? 0 : 1;
+    const float lowest = style == Style::Clear ? kClearTint : style == Style::Tinted ? kTintedTint[tone] : kLowestTint[tone];
+    const float lift = std::max(kDenseOverlay[static_cast<int>(style)][tone], (kLegibleAlpha[tone] - lowest) / (1.0F - lowest));
+    return kind == Kind::Tooltip ? 0.5F * lift : lift;
+  }
+
   // Shell glass follows the scheme; Clear is dark glass with white content in both schemes (docs/design/deviations.md
   // "Clear glass tone"). App windows keep the scheme (Style::glassMaterial with PaletteTone::Scheme).
   [[nodiscard]] constexpr Tone tone(Kind kind, Style style) noexcept {
     (void)kind;
     return style == Style::Clear ? Tone::Dark : Tone::Scheme;
   }
-
-  // The tint alpha of Clear glass: enough to carry a tint colour, so the compositor can dim through the density.
-  inline constexpr float kClearTint = 0.04F;
 
   // The Glass settings (appearance.glass_style and the sliders of each style). Each style keeps its own tint and blur.
   struct Settings {
@@ -136,7 +145,7 @@ namespace glass {
     float tint = 0.0F;
     switch (kind) {
     case Kind::Shape:
-      tint = light ? curve(0.20F, 0.34F, 0.84F) : curve(0.30F, 0.56F, 0.70F);
+      tint = light ? curve(kLowestTint[0], kTintedTint[0], 0.84F) : curve(kLowestTint[1], kTintedTint[1], 0.70F);
       break;
     case Kind::Sheet:
     case Kind::Menu:
@@ -157,7 +166,7 @@ namespace glass {
       const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
       return {
           .tint = tint, .level = level, .rim = settings.edgeReflection ? at(settings.lens, 0.4F, 1.0F, 1.0F) : 0.0F, .lens = level, .clarity = clarity,
-          .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
+          .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
       };
     }
     // Sheets blur a step less than shapes at the middle and match them at both ends.
@@ -165,7 +174,7 @@ namespace glass {
     const float clarity = 0.7F * (shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F));
     return {
         .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? 1.0F : 0.0F, .lens = 0.0F, .clarity = clarity,
-        .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
+        .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
     };
   }
 
@@ -207,12 +216,10 @@ namespace glass {
     return std::lerp(kShadowOverDark, 1.0F, std::clamp(luminance, 0.0F, 1.0F));
   }
 
-  // The tint for a backdrop of the tint's own tone, `density` (0 to 1) of the way to the dense tint; `dense` is
-  // Material::dense.
+  // The tint for a backdrop of the tint's own tone, `density` (0 to 1) of the way to full density; `dense` is
+  // Material::dense (denseLift).
   [[nodiscard]] inline float denser(float tint, float density, float dense) noexcept {
-    const float reach = 0.5F + 0.5F * std::clamp(dense, 0.0F, 1.0F);
-    constexpr float lift = (kDenseTint - kDenseFrom) / (1.0F - kDenseFrom);
-    return tint + reach * lift * (1.0F - tint) * std::clamp(density, 0.0F, 1.0F);
+    return tint + std::clamp(dense, 0.0F, 1.0F) * (1.0F - tint) * std::clamp(density, 0.0F, 1.0F);
   }
 
 } // namespace glass
