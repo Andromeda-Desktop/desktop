@@ -530,11 +530,6 @@ namespace andromeda {
     // Reduced motion (rulebook 7.8) moves nothing: workspace cards change place halfway, while the windows are faded out.
     const double travel = config().appearance.reduceMotion ? (p < 0.5 ? 0.0 : 1.0) : p;
     const ov::Rect output{0.0, 0.0, in.width, in.height};
-    // Zoom: the desktop shrinks into the current workspace's frame, then the windows spread from it to their slots.
-    const double zoom = config().appearance.reduceMotion ? travel : std::clamp(p / Tokens::motionOverviewZoomEnd, 0.0, 1.0);
-    const double spreadFrom = Tokens::motionOverviewSpreadStart;
-    const double spread =
-        config().appearance.reduceMotion ? travel : std::clamp((p - spreadFrom) / (1.0 - spreadFrom), 0.0, 1.0);
     const ov::Rect frame = ov::zoomFrame(placement, row).value_or(output);
     const auto zoomed = [&](const ov::Rect& rect) { return ov::zoomRect(rect, output, frame, zoom); };
     const auto thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0));
@@ -557,9 +552,12 @@ namespace andromeda {
         continue;
       }
       const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
+    // Zoom (set below): the desktop shrinks into the current workspace's frame, then the windows spread to their slots.
+    double zoom = 0.0;
+    double spread = 0.0;
       const ov::Rect placed =
           workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
-      ov::Rect rect = ov::lerpRect(zoomed(ov::cardDeskRect(in, card, row)), placed, spread);
+      ov::Rect rect = travelRect(ov::cardDeskRect(in, card, row), placed);
       if (card.kind == ov::CardKind::Thumb) {
         const double s = Tokens::motionOverviewPieceScale + (1.0 - Tokens::motionOverviewPieceScale) * thumbAlpha;
         rect = {rect.x + rect.w * (1.0 - s) / 2, rect.y + rect.h * (1.0 - s) / 2, rect.w * s, rect.h * s};
@@ -569,6 +567,38 @@ namespace andromeda {
           .box = box,
           .fit =
               {static_cast<double>(box.width) / outputBox.width, static_cast<double>(box.x),
+    // A window spreads when its slot is not where the zoom leaves it (exposé); tiled Spaces and Strip only zoom.
+    const auto near = [](const ov::Rect& a, const ov::Rect& b) {
+      return std::max({std::abs(a.x - b.x), std::abs(a.y - b.y), std::abs(a.w - b.w), std::abs(a.h - b.h)}) <= 1.0;
+    };
+    // A piece whose slot is where the zoom leaves it only zooms; a spread on top would bend its path.
+    const auto travelRect = [&](const ov::Rect& start, const ov::Rect& slot) {
+      return near(ov::zoomRect(start, output, frame, 1.0), slot) ? zoomed(start) : ov::lerpRect(zoomed(start), slot, spread);
+    };
+    bool spreads = false;
+    for (size_t k = 0; k < state.cards.size() && !spreads; ++k) {
+      const ov::WindowPlace* place = k < state.placeOf.size() ? state.placeOf[k] : nullptr;
+      if (place == nullptr || !growsFromDesk(state, *state.cards[k])) {
+        continue;
+      }
+      const View* view = state.cards[k]->view;
+      const ov::Rect desk = ov::deskRect(in, localRect(view->presentedBox(), outputBox), place->workspace, row);
+      spreads = !near(ov::zoomRect(desk, output, frame, 1.0), toLocal(reflowRect(view, toLayout(place->rect), reflowed)));
+    }
+    if (config().appearance.reduceMotion) {
+      zoom = spread = travel;
+    } else if (!spreads) {
+      // The zoom is the whole motion, so it takes the whole spring: a phase of it would stop dead within ~5 frames.
+      zoom = std::clamp(p, 0.0, 1.0);
+      spread = zoom;
+    } else {
+      // Each phase eases at its ends, so no element changes speed in one frame where the phases meet.
+      const double z = std::clamp(p / Tokens::motionOverviewZoomEnd, 0.0, 1.0);
+      const double spreadFrom = Tokens::motionOverviewSpreadStart;
+      const double t = std::clamp((p - spreadFrom) / (1.0 - spreadFrom), 0.0, 1.0);
+      zoom = z * (2.0 - z);
+      spread = t * t * (3.0 - 2.0 * t);
+    }
                static_cast<double>(box.y)},
           .kind = card.kind,
           .shown = true,
@@ -740,7 +770,7 @@ namespace andromeda {
           rect = p < 0.5 ? desk : placed;
           opacity *= std::clamp(std::abs(1.0 - 2.0 * p), 0.0, 1.0);
         } else {
-          rect = ov::lerpRect(zoomed(desk), placed, spread);
+          rect = travelRect(desk, placed);
         }
       } else {
         const double s = m_appearScale.current();

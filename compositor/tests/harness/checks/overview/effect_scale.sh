@@ -108,8 +108,8 @@ curve = "linear"
 EOF
 "$ANDROMEDA" msg config-reload > /dev/null
 "$ANDROMEDA" settle > /dev/null
-# At p .5 the zoom (to the frame, p 0-.55) is 10/11 done and the spread (to the 0.1 slot, p .45-1) 1/11.
-halfway=$(awk -v z=0.1 'BEGIN { zoom = 0.5 / 0.55; spread = (0.5 - 0.45) / 0.55; printf "%.3f", (1 - spread) * (1 - zoom * (1 - z)) + spread * z }')
+# The 0.1 slot is where the zoom leaves the window (nothing spreads), so the zoom takes the whole progress: half at p .5.
+halfway=$(awk -v z=0.1 'BEGIN { printf "%.3f", 1 - 0.5 * (1 - z) }')
 "$ANDROMEDA" clock-freeze
 "$ANDROMEDA" msg overview-open > /dev/null
 "$ANDROMEDA" clock-advance 500
