@@ -259,6 +259,11 @@ namespace andromeda {
       wlr_scene_node_destroy(&card->tree->node);
       return nullptr;
     }
+    card->focusRing = wlr_scene_border_create(card->tree, innerColor.data(), innerColor.data());
+    if (card->focusRing == nullptr) {
+      wlr_scene_node_destroy(&card->tree->node);
+      return nullptr;
+    }
     // A card made during a search starts at its filter level instead of fading to it.
     card->filter.snap(m_filter.empty() || cardMatches(*card) ? 1.0 : kFilterMissOpacity);
     Card* raw = card.get();

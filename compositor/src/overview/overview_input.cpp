@@ -356,7 +356,11 @@ namespace andromeda {
   }
 
   void Overview::handleMotion(double lx, double ly, uint32_t timeMsec, ov::HoldSource from) {
-    if (!interactive() || !m_pointer.admits(from)) {
+    if (!interactive()) {
+      return;
+    }
+    setFocusRing(FocusRing::Hidden);
+    if (!m_pointer.admits(from)) {
       return;
     }
     // The live target resolves through preferredOutput(), and the overview owns motion while it is up: repaint when
@@ -1333,10 +1337,15 @@ namespace andromeda {
     const auto centre = [](const Card& card) {
       return ov::Point{card.box.x + card.box.width / 2.0, card.box.y + card.box.height / 2.0};
     };
+    std::vector<Card*> others;
     std::vector<ov::Point> centres;
+    others.reserve(cards.size());
     centres.reserve(cards.size());
-    for (const Card* card : cards) {
-      centres.push_back(card == from ? ov::Point{1e9, 1e9} : centre(*card));
+    for (Card* card : cards) {
+      if (card != from) {
+        others.push_back(card);
+        centres.push_back(centre(*card));
+      }
     }
     const ov::Direction direction = dx < 0 ? ov::Direction::Left
         : dx > 0                           ? ov::Direction::Right
@@ -1344,7 +1353,7 @@ namespace andromeda {
                                            : ov::Direction::Down;
     const int pick = ov::pickInDirection(centres, centre(*from), direction);
     if (pick >= 0) {
-      selectCard(*cards[static_cast<size_t>(pick)]);
+      selectCard(*others[static_cast<size_t>(pick)]);
     }
     return true;
   }
@@ -1382,7 +1391,23 @@ namespace andromeda {
     return true;
   }
 
+  void Overview::setFocusRing(FocusRing ring) {
+    if (ring == m_focusRing) {
+      return;
+    }
+    m_focusRing = ring;
+    applyProgress();
+  }
+
   bool Overview::handleFallbackKey(uint32_t keysym, bool shift, bool ctrl) {
+    const bool handled = handleKey(keysym, shift, ctrl);
+    if (handled && interactive()) {
+      setFocusRing(FocusRing::Shown);
+    }
+    return handled;
+  }
+
+  bool Overview::handleKey(uint32_t keysym, bool shift, bool ctrl) {
     if (ctrl) {
       // An open menu or rename holds the keyboard; Ctrl+W there must not close a window behind it.
       if (keysym != XKB_KEY_w || m_rename.has_value() || m_windowMenu.has_value() || m_menu.has_value()) {

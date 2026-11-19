@@ -218,6 +218,28 @@ namespace andromeda {
       const std::array<float, 4> outerColor = tint(view->borderColors().outer, presentedOpacity);
       wlr_scene_border_set_colors(card.border, innerColor.data(), outerColor.data());
     }
+    // Rulebook §11: a 2 px accent ring, 2 px outside the card's decorated edge and concentric with it.
+    const bool ringShown = m_focusRing == FocusRing::Shown && interactive() && view == liveTarget && cardMatches(card);
+    wlr_scene_node_set_enabled(&card.focusRing->node, ringShown);
+    if (ringShown) {
+      constexpr int kRingGap = 2;
+      constexpr int kRingWidth = 2;
+      const int titleHeight = static_cast<int>(std::lround(view->titleBarHeight() * z));
+      const int inset = (borderVisible ? innerWidth + outerWidth : 0) + kRingGap;
+      applyBorderGeometry(
+          card.focusRing,
+          makeBorderRing(
+              contentW + 2 * inset, contentH + titleHeight + 2 * inset,
+              outerRadius > 0 ? outerRadius + kRingGap + kRingWidth : 0, kRingWidth, 0
+          ),
+          kRingWidth, 0
+      );
+      wlr_scene_node_set_position(
+          &card.focusRing->node, card.focusRing->node.x - inset, card.focusRing->node.y - inset - titleHeight
+      );
+      const std::array<float, 4> ring = tint(config().colors.accentPrimary, presentedOpacity);
+      wlr_scene_border_set_colors(card.focusRing, ring.data(), ring.data());
+    }
     layoutCardChrome(card, world, decorated ? total : 0, z, presentedOpacity);
     syncCardEffects(card);
 
@@ -1135,6 +1157,7 @@ namespace andromeda {
 
     m_active = true;
     m_closing = false;
+    m_focusRing = FocusRing::Hidden;
     m_progress = 0.0;
     m_targetProgress = 0.0;
     m_zoomAnim.snap(0.0);

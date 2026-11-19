@@ -152,6 +152,9 @@ namespace andromeda {
     // `shift`: Shift is held (Shift+arrows move the selected window to the neighbouring workspace). `ctrl`: Ctrl is held
     // (Ctrl+W closes the selected window); no other Ctrl key reaches the overview.
     bool handleFallbackKey(uint32_t keysym, bool shift = false, bool ctrl = false);
+    // The selection ring shows after keyboard input and hides on pointer motion (rulebook §11).
+    enum class FocusRing : std::uint8_t { Hidden, Shown };
+    void setFocusRing(FocusRing ring);
     // Configured actions retain their regular handlers throughout the closing animation.
     bool handleKeybindAction(KeybindAction action);
     // Step the active workspace `delta` rows along the workspaces on `output` (null: wherever the pointer is). Returns
@@ -224,6 +227,7 @@ namespace andromeda {
       // live on the view's surface tree.
       wlr_scene_tree* surfaceTree = nullptr;
       wlr_scene_border* border = nullptr;
+      wlr_scene_border* focusRing = nullptr; // keyboard selection ring, outside the border
       int borderPadding = 0; // effect padding the ring was last laid out with, scaled
       SurfaceBlur blur;
       // Scaled copy of the view's drop shadow. Its tree lives under `tree` or, for a view whose shadow the workspace
@@ -483,6 +487,7 @@ namespace andromeda {
     [[nodiscard]] Card* selectedCard();
     void selectCard(Card& card);
     void setFilter(std::string filter);
+    bool handleKey(uint32_t keysym, bool shift, bool ctrl);
     bool moveSelection(int dx, int dy);
     bool cycleSelection(int step);
     bool activateFilter();
@@ -570,6 +575,7 @@ namespace andromeda {
 
     bool m_active = false;
     bool m_closing = false;
+    FocusRing m_focusRing = FocusRing::Hidden;
     double m_progress = 0;
     double m_targetProgress = 0;
     // The open progress itself: 0 desktop, 1 overview.

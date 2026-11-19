@@ -643,6 +643,9 @@ namespace andromeda {
         );
       }
       if (matched.has_value()) {
+        if (Overview* overview = m_server->overview(); overview != nullptr && overview->interactive()) {
+          overview->setFocusRing(Overview::FocusRing::Shown);
+        }
         armRepeat(*matched, event->keycode);
         if (std::optional<Keybind> release = m_server->releasePhase(*matched)) {
           m_releaseBinds.insert_or_assign(event->keycode, std::move(*release));
