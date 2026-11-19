@@ -448,6 +448,7 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
           return std::array<float, 4>{x, y, node->width(), node->height()};
         };
         const auto source = island ? island : widgetRect();
+        std::optional<std::array<float, 4>> sourceOutput;
         if (island) {
           anchorX = (*island)[0] + (*island)[2] * 0.5F;
           anchorY = (*island)[1] + (*island)[3] * 0.5F;
@@ -457,6 +458,9 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
             const auto [surfaceX, surfaceY] = surfaceOriginForOutputLocal(*inst, *out);
             anchorX += surfaceX;
             anchorY += surfaceY;
+            if (source) {
+              sourceOutput = std::array<float, 4>{(*source)[0] + surfaceX, (*source)[1] + surfaceY, (*source)[2], (*source)[3]};
+            }
           }
         }
         PanelOpenRequest request{
@@ -469,6 +473,7 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
             .sourceBarName = inst->barConfig.name,
             .sourceSurface = source && inst->surface != nullptr ? inst->surface->wlSurface() : nullptr,
             .sourceRect = source.value_or(std::array<float, 4>{}),
+            .sourceOutputRect = sourceOutput,
         };
         if (activation == Widget::PanelActivation::Open) {
           PanelManager::instance().openPanel(std::string(panelId), request);

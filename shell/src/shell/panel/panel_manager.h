@@ -58,6 +58,8 @@ struct PanelOpenRequest {
   // of it when the compositor supports dsk_surface_v1.set_clip_from.
   wl_surface* sourceSurface = nullptr;
   std::array<float, 4> sourceRect{};
+  // The same source as x, y, width, height on the output, for pieces that grow out of it (Panel::PourMotion::Grow).
+  std::optional<std::array<float, 4>> sourceOutputRect;
   // A drag on the island that opens the panel: the sheet follows tracker positions 0..trackerRange instead of
   // animating. Bindings apply on the tracker surface's commit, so commitTracker asks its owner to commit.
   std::weak_ptr<DskTrackerClient> tracker;
@@ -265,6 +267,7 @@ private:
   bool startPiecesOpen();
   bool startPiecesClose(std::uint64_t gen);
   void pourPieces(bool open);
+  void growPieces(bool open, const std::vector<Node*>& pieces);
   [[nodiscard]] DskSurfaceClient::Value detachedScaleShift(double scale) const;
   [[nodiscard]] static desk::motion::SpringConfig effectsSpring();
   [[nodiscard]] static DskSurfaceClient::Curve opacityCurve(bool fast);
@@ -361,6 +364,11 @@ private:
   bool m_piecesShown = false;
   wl_surface* m_morphSource = nullptr;
   std::array<float, 4> m_morphSourceRect{};
+  std::optional<std::array<float, 4>> m_growSourceOutput;
+  // The panel surface's top left on the output: maps m_growSourceOutput into scene coordinates.
+  std::array<float, 2> m_panelSurfaceOrigin{};
+  // Each grown piece's rest position in its parent, so a reversed grow returns it home.
+  std::unordered_map<const Node*, std::array<float, 4>> m_growRest; // x, y, scale x, scale y
   float m_morphSourceRadius = 0.0F;
   std::weak_ptr<DskTrackerClient> m_gestureTracker;
   double m_gestureRange = 0.0;

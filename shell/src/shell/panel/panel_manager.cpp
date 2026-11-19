@@ -717,6 +717,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   m_gestureRange = request.trackerRange;
   m_commitTracker = request.commitTracker;
   m_morphSourceRect = request.sourceRect;
+  m_growSourceOutput = request.sourceOutputRect;
   const bool isBottom = barConfig.position == "bottom";
   const bool isLeft = barConfig.position == "left";
   const bool isRight = barConfig.position == "right";
@@ -1428,6 +1429,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   m_surface->setAccessibleTitle(panelAccessibleTitle(m_activePanelId));
   m_panelInsetX = detachedShadowBleed.left;
   m_panelInsetY = detachedShadowBleed.up;
+  m_panelSurfaceOrigin = {static_cast<float>(detachedPanelInputRect.x) - static_cast<float>(m_panelInsetX),
+                          static_cast<float>(detachedPanelInputRect.y) - static_cast<float>(m_panelInsetY)};
   m_panelVisualWidth = panelWidth;
   m_panelVisualHeight = panelHeight;
   m_contentFit.align = detachedCardAlign;
@@ -2619,9 +2622,9 @@ void PanelManager::syncGlassPieces(bool material) {
     float y = 0.0F;
     Node::absolutePosition(&node, x, y);
     if (const std::optional<float> radius = node.glassPiece()) {
-      const float scale = node.scale();
-      const float w = node.width() * scale;
-      const float h = node.height() * scale;
+      const float w = node.width() * node.scaleX();
+      const float h = node.height() * node.scaleY();
+      const float scale = std::min(node.scaleX(), node.scaleY());
       x += (node.width() - w) * 0.5F;
       y += (node.height() - h) * 0.5F;
       const float l = std::max(x, x0);
@@ -3018,6 +3021,10 @@ void PanelManager::pourPieces(bool open) {
     }
   };
   collect(collect, *m_sceneRoot);
+  if (pour.motion == Panel::PourMotion::Grow && m_growSourceOutput.has_value()) {
+    growPieces(open, pieces);
+    return;
+  }
   int index = 0;
   for (Node* piece : pieces) {
     float x = 0.0F;
@@ -3035,9 +3042,14 @@ void PanelManager::pourPieces(bool open) {
     const float offY = -restAbsY * pour.yShare - pour.lift;
     const float restX = piece->x() - offX * pending;
     const float restY = piece->y() - offY * pending;
-    const auto apply = [this, piece, restX, restY, offX, offY, fromScale = pour.fromScale](float v) {
+    // The piece's own scale (a stack's back card) multiplies the pour's.
+    const float pourNow = std::lerp(pour.fromScale, 1.0F, 1.0F - pending);
+    const float baseX = piece->scaleX() / pourNow;
+    const float baseY = piece->scaleY() / pourNow;
+    const auto apply = [this, piece, restX, restY, offX, offY, baseX, baseY, fromScale = pour.fromScale](float v) {
       piece->setPosition(restX + offX * (1.0F - v), restY + offY * (1.0F - v));
-      piece->setScale(std::lerp(fromScale, 1.0F, v));
+      const float s = std::lerp(fromScale, 1.0F, v);
+      piece->setScale(baseX * s, baseY * s);
       piece->setOpacity(v);
       if (m_surface != nullptr) {
         m_surface->requestRedraw();
@@ -3047,6 +3059,72 @@ void PanelManager::pourPieces(bool open) {
     if (open) {
       apply(0.0F);
       m_animations.animateStaggered(index++, 0.0F, 1.0F, Style::spring(Tokens::springOpen), apply, {}, piece);
+    } else {
+      m_animations.animateSpring(piece->opacity(), 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
+    }
+  }
+}
+
+// proto motion.js M.grow / M.ret: the pieces' joint box translates and scales from the source rect to its rest box (each
+// piece keeps its place in the group), fading in on the open spring; the close returns them into the source.
+void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
+  if (pieces.empty()) {
+    return;
+  }
+  std::erase_if(m_growRest, [&](const auto& entry) { return std::ranges::find(pieces, entry.first) == pieces.end(); });
+  struct Rest {
+    Node* node;
+    float x, y;   // in the parent
+    float ax, ay; // in the scene
+    float scaleX, scaleY;
+  };
+  std::vector<Rest> rests;
+  float left = std::numeric_limits<float>::max();
+  float top = std::numeric_limits<float>::max();
+  float right = std::numeric_limits<float>::lowest();
+  float bottom = std::numeric_limits<float>::lowest();
+  for (Node* piece : pieces) {
+    const auto [rx, ry, rsx, rsy] =
+        m_growRest.try_emplace(piece, std::array<float, 4>{piece->x(), piece->y(), piece->scaleX(), piece->scaleY()}).first->second;
+    float ax = 0.0F;
+    float ay = 0.0F;
+    Node::absolutePosition(piece, ax, ay);
+    ax += rx - piece->x();
+    ay += ry - piece->y();
+    rests.push_back({piece, rx, ry, ax, ay, rsx, rsy});
+    left = std::min(left, ax);
+    top = std::min(top, ay);
+    right = std::max(right, ax + piece->width());
+    bottom = std::max(bottom, ay + piece->height());
+  }
+  const std::array<float, 4>& src = *m_growSourceOutput;
+  const float srcX = src[0] - m_panelSurfaceOrigin[0];
+  const float srcY = src[1] - m_panelSurfaceOrigin[1];
+  const float sx = std::max(0.05F, src[2] / std::max(1.0F, right - left));
+  const float sy = std::max(0.05F, src[3] / std::max(1.0F, bottom - top));
+  const float groupCx = (left + right) * 0.5F;
+  const float groupCy = (top + bottom) * 0.5F;
+  const float srcCx = srcX + src[2] * 0.5F;
+  const float srcCy = srcY + src[3] * 0.5F;
+  for (const Rest& rest : rests) {
+    Node* piece = rest.node;
+    const float cx = rest.ax + piece->width() * 0.5F;
+    const float cy = rest.ay + piece->height() * 0.5F;
+    const float offX = srcCx + (cx - groupCx) * sx - cx;
+    const float offY = srcCy + (cy - groupCy) * sy - cy;
+    const auto apply = [this, piece, rest, offX, offY, sx, sy](float v) {
+      piece->setPosition(rest.x + offX * (1.0F - v), rest.y + offY * (1.0F - v));
+      piece->setScale(rest.scaleX * std::lerp(sx, 1.0F, v), rest.scaleY * std::lerp(sy, 1.0F, v));
+      piece->setOpacity(v);
+      if (m_surface != nullptr) {
+        m_surface->requestRedraw();
+      }
+    };
+    m_animations.cancelForOwner(piece);
+    if (open) {
+      const float from = std::clamp(piece->opacity(), 0.0F, 1.0F) < 1.0F ? piece->opacity() : 0.0F;
+      apply(from);
+      m_animations.animateSpring(from, 1.0F, Style::spring(Tokens::springOpen), apply, {}, piece);
     } else {
       m_animations.animateSpring(piece->opacity(), 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
     }

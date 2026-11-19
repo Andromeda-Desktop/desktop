@@ -81,12 +81,16 @@ public:
   [[nodiscard]] virtual bool usesGlassPieces() const { return false; }
   // How glass pieces pour in on open: each piece travels xShare of its x distance to the anchor (the pieces' right
   // end, or left start when towardLeft) and yShare of its y distance to the surface top plus lift px, from fromScale.
+  // Grow: the pieces as one group grow out of the open request's source rect and return into it (proto M.grow, P19);
+  // without a source rect they pour.
+  enum class PourMotion : std::uint8_t { Pour, Grow };
   struct PiecePour {
     float fromScale = 0.92F;
     float xShare = 0.15F;
     float yShare = 0.5F;
     float lift = 0.0F;
     bool towardLeft = false;
+    PourMotion motion = PourMotion::Pour;
   };
   [[nodiscard]] virtual PiecePour piecePour() const { return {}; }
   // False: the content reaches the card edge; the panel insets its own rows.

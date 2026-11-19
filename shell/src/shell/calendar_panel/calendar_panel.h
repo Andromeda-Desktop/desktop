@@ -22,7 +22,8 @@ public:
   [[nodiscard]] bool fitsContentHeight() const noexcept override { return true; }
   [[nodiscard]] bool padsContent() const noexcept override { return false; }
   [[nodiscard]] bool usesGlassPieces() const override { return true; }
-  [[nodiscard]] PiecePour piecePour() const override { return {.xShare = 0.0F, .yShare = 0.4F}; }
+  // proto: the pieces grow out of their source (M.grow); a source without an output rect pours them from above.
+  [[nodiscard]] PiecePour piecePour() const override { return {.xShare = 0.0F, .yShare = 0.4F, .motion = PourMotion::Grow}; }
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override {
     return m_page.measureHeight(renderer, contentWidth);
   }
