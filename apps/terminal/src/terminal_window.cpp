@@ -113,20 +113,6 @@ namespace term {
       const bool inHome = path == home || path.starts_with(home + "/");
       return inHome ? "~" + path.substr(home.size()) : path;
     }
-
-    // A row of a session in the holder's table: its folder, and its program or last command's end.
-    StatusRow::Data heldRowData(const holder::SessionInfo& session) {
-      StatusRow::Data data{.symbol = "prompt", .name = shownPath(session.cwd), .status = session.program};
-      if (session.command == holder::CommandState::Running) {
-        data.symbol = "player-play";
-        data.status = "running · " + session.program;
-      } else if (session.command == holder::CommandState::Done) {
-        data.symbolDanger = session.exitCode != 0;
-        data.symbol = data.symbolDanger ? "alert-circle" : "circle-check";
-        data.status = data.symbolDanger ? "exit " + std::to_string(session.exitCode) : "done";
-      }
-      return data;
-    }
   } // namespace
 
   TerminalWindow::TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents,
@@ -165,13 +151,7 @@ namespace term {
       m_contentHeight = height;
       fillSlot(renderer);
       registerDropTarget();
-      m_pager.setWidth(width + Tokens::spaceP16 * m_window.uiScale());
-      if (m_contentFade == 0) slot->setOpacity(pagerDim());
-      auto area = ui::inputArea({.width = width, .height = height}, std::move(slot));
-      area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
-      area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
-      area->setLocksScrollAxis(true);
-      return area;
+      return slot;
     });
     m_window.setSidebarBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();
@@ -249,11 +229,7 @@ namespace term {
                                     .viewportPaddingV = 0.0F, .flexGrow = 1.0F});
       scroll->content()->setAlign(FlexAlign::Stretch);
       scroll->content()->addChild(std::move(list));
-      // The rows are this workspace's page; a swipe brings in the next workspace's rows beside them.
-      auto strip = std::make_unique<PageStrip>(&m_sideStrip, std::move(scroll), m_shownBar.here, m_pager.count(), Tokens::spaceP16 * s,
-                                               [this](std::size_t page) { return sidebarPage(page); });
-      strip->setFlexGrow(1.0F);
-      side->addChild(std::move(strip));
+      side->addChild(std::move(scroll));
       side->addChild(ui::box({.out = &m_dropLine, .fill = colorSpecFromRole(ColorRole::Accent),
                               .radius = Tokens::componentTerminalSidebarDropLine * s / 2.0F, .visible = false,
                               .participatesInLayout = false}));
@@ -278,13 +254,7 @@ namespace term {
       side->addChild(std::move(bottom));
       refreshRows();
       applyFilter();
-      if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(pagerAt());
-      placeFootLens();
-      auto area = ui::inputArea({.width = width, .height = height}, std::move(side));
-      area->setOnAxisHandler([this](const InputArea::PointerData& d) { return pageAxis(d); });
-      area->setOnAxisStop([this](std::uint32_t axis) { return pageAxisStop(axis); });
-      area->setLocksScrollAxis(true);
-      return area;
+      return side;
     });
     m_window.setCaptionMenu([this](float x, float y) {
       if (const auto id = m_sessions.shown()) {
@@ -620,6 +590,9 @@ namespace term {
     const std::uint64_t id = adopt != nullptr ? adopt->session->id : s_nextId++;
     if (adopt != nullptr) {
       adoptSession(id, std::move(*adopt->session));
+      if (TerminalView* moved = terminalOf(id); moved != nullptr && m_joinWorkspace) {
+        if (const auto held = moved->session().heldId()) m_joinWorkspace(*held, moved->cwd());
+      }
       return id;
     }
     if (const auto* fresh = std::get_if<NewAgent>(&origin)) {
@@ -641,6 +614,7 @@ namespace term {
     ref.setSecureInput(m_keysSecure, m_window.input());
     m_views.push_back({id, std::move(view)});
     const auto* reattach = std::get_if<Reattach>(&origin);
+    std::string joinDir = homeDir();
     if (reattach == nullptr || !ref.reattach(reattach->heldId)) {
       const auto* fresh = std::get_if<NewShell>(&origin);
       std::string cwd = fresh != nullptr ? fresh->cwd : std::string();
@@ -663,8 +637,9 @@ namespace term {
         started = ref.start(launch.argv, dir, launch.env);
         if (!started) kLog.warn("cannot start {}", shell);
       }
-      if (const auto held = ref.session().heldId(); started && held && m_joinWorkspace) m_joinWorkspace(*held, dir);
+      joinDir = dir;
     }
+    if (const auto held = ref.session().heldId(); held && m_joinWorkspace) m_joinWorkspace(*held, joinDir);
     apply(session_event::Open{id, SessionKind::Shell, "", ""});
     return id;
   }
@@ -691,284 +666,75 @@ namespace term {
 
   void TerminalWindow::workspacesChanged() {
     if (m_bar == nullptr || m_bar() == m_shownBar) return;
-    m_window.updateInPlace([this](Renderer& renderer) {
-      fillFootBar(renderer);
-      placeFootLens();
-    });
+    m_window.updateInPlace([this](Renderer& renderer) { fillFootBar(renderer); });
   }
 
   void TerminalWindow::fillFootBar(Renderer& renderer) {
-    workspace_bar::Bar bar = m_bar != nullptr ? m_bar() : workspace_bar::Bar{};
-    const bool pagesChanged = bar.pages != m_shownBar.pages || bar.here != m_shownBar.here;
-    m_shownBar = std::move(bar);
-    if (pagesChanged) {
-      // A finger or a slide in progress ends: the page under it may be gone.
-      m_window.animations().cancel(m_pagerAnim);
-      m_pagerAnim = 0;
-      m_pager.setPages(m_shownBar.pages.size(), m_shownBar.here);
-      m_window.requestRebuild();
-    }
+    m_shownBar = m_bar != nullptr ? m_bar() : std::vector<workspace_bar::Item>{};
     if (m_footBar == nullptr) return;
     while (!m_footBar->children().empty()) m_footBar->removeChild(m_footBar->children().back().get());
-    m_footTrack->setVisible(!m_shownBar.items.empty());
-    if (m_search != nullptr) {
-      const auto here = std::ranges::find(m_shownBar.items, workspace_bar::Location::Here, &workspace_bar::Item::location);
-      m_search->setPlaceholder(here != m_shownBar.items.end() ? here->name : std::string("Sessions"));
-    }
-    m_footItems.clear();
-    m_footLens = nullptr;
-    if (m_shownBar.items.empty()) return;
+    m_footTrack->setVisible(!m_shownBar.empty());
+    const auto here = std::ranges::find(m_shownBar, true, &workspace_bar::Item::here);
+    if (m_search != nullptr) m_search->setPlaceholder(here != m_shownBar.end() ? here->name : std::string("Sessions"));
+    if (here == m_shownBar.end()) return;
     const float s = m_window.uiScale();
     const float item = Tokens::sizeControlM * s;
-    m_footBar->addChild(ui::box({.out = &m_footLens, .fill = colorSpecFromRole(ColorRole::Lens), .radius = item / 2.0F,
-                                 .visible = false, .participatesInLayout = false}));
     const float symbol = Tokens::sizeSymbol * s;
-    const ColorSpec clear = clearColorSpec();
-    auto ghost = [&](ColorRole label) {
-      Button::ButtonPalette palette;
-      palette.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(label)};
-      palette.hover = {.bg = colorSpecFromRole(ColorRole::Fill2), .border = clear, .label = colorSpecFromRole(ColorRole::Label1)};
-      palette.pressed = palette.hover;
-      palette.disabled = palette.normal;
-      return palette;
-    };
-    const std::size_t others = m_shownBar.items.size(); // the other items and "+"
     const float gap = Tokens::spaceP4 * s;
-    const float lensWidth = std::max(item, m_footWidth - static_cast<float>(others) * (item + gap));
-    const float nameWidth = std::max(0.0F, lensWidth - 2.0F * Tokens::spaceP8 * s - symbol - Tokens::spaceP8 * s);
-    for (const workspace_bar::Item& ws : m_shownBar.items) {
-      FootItem foot{.id = ws.id, .full = item,
-                    .idle = ws.location == workspace_bar::Location::Saved ? ColorRole::Label3 : ColorRole::Label2};
-      if (const auto page = std::ranges::find(m_shownBar.pages, ws.id); page != m_shownBar.pages.end()) {
-        foot.page = static_cast<std::size_t>(page - m_shownBar.pages.begin());
+    const ColorSpec clear = clearColorSpec();
+    const auto palette = [&](ColorRole label, ColorRole hover) {
+      Button::ButtonPalette p;
+      p.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(label)};
+      p.hover = {.bg = colorSpecFromRole(hover), .border = clear, .label = colorSpecFromRole(ColorRole::Label1)};
+      p.pressed = p.hover;
+      p.disabled = p.normal;
+      return p;
+    };
+    // This window's item and "+" always show; the other windows fill the room left, in window order.
+    const auto room = static_cast<std::size_t>(std::max(0.0F, (m_footWidth - item - item - gap) / (item + gap)));
+    std::size_t others = 0;
+    for (const workspace_bar::Item& w : m_shownBar) {
+      const std::string glyph = w.symbol.empty() ? std::string("folder") : w.symbol;
+      if (w.here) {
+        // The lens holds the symbol and, when the other items leave room for it, the name.
+        const std::size_t shownOthers = std::min(room, m_shownBar.size() - 1);
+        const float lens = std::max(item, m_footWidth - static_cast<float>(shownOthers + 1) * (item + gap));
+        const float nameWidth = lens - item - Tokens::spaceP8 * s;
+        Flex* row = nullptr;
+        m_footBar->addChild(ui::row({.out = &row, .align = FlexAlign::Center, .fill = colorSpecFromRole(ColorRole::Lens),
+                                     .radius = item / 2.0F, .clipChildren = true, .height = item}));
+        row->addChild(ui::button({.glyph = glyph, .glyphSize = symbol,
+                                  .customPalette = palette(ColorRole::AccentText, ColorRole::Lens),
+                                  .tooltip = workspace_bar::tooltip(w), .radius = item / 2.0F, .width = item, .height = item}));
+        if (nameWidth >= item) {
+          Label* name = nullptr;
+          row->addChild(ui::label({.out = &name, .text = w.name, .fontSize = Tokens::typeBody.size * s,
+                                   .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1),
+                                   .maxWidth = nameWidth, .maxLines = 1, .ellipsize = TextEllipsize::End}));
+          name->measure(renderer);
+          row->addChild(ui::box({.width = Tokens::spaceP8 * s}));
+        }
+        continue;
       }
-      // Clipped: a closing item cuts its name off at its edge instead of shrinking it.
-      // Placed by placeFootLens: a width change moves no other node through layout.
-      m_footBar->addChild(ui::row({.out = &foot.row, .align = FlexAlign::Center, .clipChildren = true, .width = item,
-                                   .height = item, .participatesInLayout = false}));
-      foot.row->addChild(ui::button({.out = &foot.symbol, .glyph = ws.symbol.empty() ? std::string("folder") : ws.symbol,
-                                     .glyphSize = symbol, .customPalette = ghost(foot.idle), .tooltip = workspace_bar::tooltip(ws),
-                                     .radius = item / 2.0F, .width = item, .height = item,
-                                     .onClick = [this, id = ws.id] { pickPage(id); }}));
-      if (ws.location != workspace_bar::Location::Here && ws.status != workspace_bar::Status::None) {
+      if (others++ >= room) continue;
+      Button* other = nullptr;
+      m_footBar->addChild(ui::button({.out = &other, .glyph = glyph, .glyphSize = symbol,
+                                      .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
+                                      .tooltip = workspace_bar::tooltip(w), .radius = item / 2.0F, .width = item,
+                                      .height = item, .onClick = [this, id = w.window] { m_pickWorkspace(id); }}));
+      if (w.status != workspace_bar::Status::None) {
         const float dot = Tokens::componentTerminalWorkspaceDot * s;
         Box* badge = nullptr;
-        foot.symbol->addChild(ui::box({.out = &badge,
-                                       .fill = colorSpecFromRole(ws.status == workspace_bar::Status::Failed ? ColorRole::Danger : ColorRole::Label1),
-                                       .radius = dot / 2.0F, .width = dot, .height = dot, .participatesInLayout = false}));
+        other->addChild(ui::box({.out = &badge,
+                                 .fill = colorSpecFromRole(w.status == workspace_bar::Status::Failed ? ColorRole::Danger : ColorRole::Label1),
+                                 .radius = dot / 2.0F, .width = dot, .height = dot, .participatesInLayout = false}));
         badge->setPosition(item - dot - dot, dot);
       }
-      // Too narrow for a readable name: the item shows the symbol only.
-      if (foot.page && nameWidth >= item) {
-        foot.row->addChild(ui::label({.out = &foot.name, .text = ws.name, .fontSize = Tokens::typeBody.size * s,
-                                      .fontWeight = FontWeight::SemiBold, .color = colorSpecFromRole(ColorRole::Label1),
-                                      .maxWidth = nameWidth, .maxLines = 1, .ellipsize = TextEllipsize::End}));
-        foot.name->measure(renderer);
-        foot.name->setMinWidth(foot.name->width());
-        foot.full = std::min(lensWidth, item + foot.name->width() + Tokens::spaceP8 * s);
-      }
-      foot.row->markLocalLayoutDirty();
-      m_footItems.push_back(foot);
     }
     m_footBar->addChild(ui::box({.flexGrow = 1.0F}));
-    m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
-                                    .tooltip = std::string("New workspace"), .radius = item / 2.0F, .width = item,
+    m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = palette(ColorRole::Label2, ColorRole::Fill2),
+                                    .tooltip = std::string("New Window"), .radius = item / 2.0F, .width = item,
                                     .height = item, .onClick = [this] { if (m_addWorkspace) m_addWorkspace(); }}));
-  }
-
-  void TerminalWindow::pickPage(std::uint64_t id) {
-    const auto page = std::ranges::find(m_shownBar.pages, id);
-    if (page == m_shownBar.pages.end()) {
-      if (m_pickWorkspace) m_pickWorkspace(id);
-      return;
-    }
-    slideTo(static_cast<std::size_t>(page - m_shownBar.pages.begin()));
-  }
-
-  void TerminalWindow::slideTo(std::size_t page) {
-    if (page >= m_pager.count() || page == m_pager.page()) return;
-    m_pager.goTo(page);
-    slidePages(0.0F);
-  }
-
-  bool TerminalWindow::pageAxis(const InputArea::PointerData& d) {
-    if (d.axis != PointerAxis::Horizontal || d.axisSource != AxisSource::Finger || m_pager.count() < 2) return false;
-    m_window.animations().cancel(m_pagerAnim);
-    m_pagerAnim = 0;
-    m_window.animations().cancel(m_contentFade);
-    m_contentFade = 0;
-    // The page moves as far as a finger scroll moves any scrolled content. Right to left, later pages come from the left.
-    const float dx = d.scrollDelta(0.0F);
-    m_pager.track(Style::rtl() ? -dx : dx, d.time);
-    showPagerPosition();
-    return true;
-  }
-
-  bool TerminalWindow::pageAxisStop(std::uint32_t axis) {
-    if (axis != PointerAxis::Horizontal || !std::holds_alternative<WorkspacePager::Tracking>(m_pager.mode())) return false;
-    const float velocity = m_pager.velocity();
-    m_pager.release();
-    slidePages(velocity);
-    return true;
-  }
-
-  // Rulebook 7.7: settle on the target page on the `page` spring with the finger's velocity; reduced motion (7.8)
-  // settles on `close` with no velocity carry.
-  void TerminalWindow::slidePages(float velocity) {
-    const bool reduced = MotionService::instance().reduced();
-    const float target = static_cast<float>(m_pager.page()) * m_pager.width();
-    m_pagerAnim = m_window.animations().drive(
-        m_pagerAnim, m_pager.position(), target, Style::spring(reduced ? Tokens::springClose : Tokens::springPage),
-        [this](float v) {
-          m_pager.animate(v);
-          showPagerPosition();
-        },
-        [this] {
-          m_pagerAnim = 0;
-          pagerLanded();
-        },
-        this, reduced ? 0.0F : velocity, Unit::Px, true);
-    if (m_pagerAnim == 0) {
-      m_pager.animate(target);
-      pagerLanded();
-    }
-  }
-
-  float TerminalWindow::pagerAt() const {
-    return m_pager.width() > 0.0F ? m_pager.shown() / m_pager.width() : static_cast<float>(m_shownBar.here);
-  }
-
-  // The content stays in place while the sidebar slides: it dims with the travel away from the shown workspace.
-  float TerminalWindow::pagerDim() const {
-    const float travel = std::min(1.0F, std::abs(pagerAt() - static_cast<float>(m_shownBar.here)));
-    return 1.0F - Tokens::motionSwipeDim * travel;
-  }
-
-  void TerminalWindow::fadeContentIn(float from) {
-    if (m_contentSlot == nullptr) return;
-    m_contentSlot->setOpacity(from);
-    m_contentFade = m_window.animations().drive(
-        m_contentFade, from, 1.0F, Style::spring(Tokens::springFade),
-        [this](float v) {
-          if (m_contentSlot != nullptr) m_contentSlot->setOpacity(v);
-          requestFrame();
-        },
-        [this] { m_contentFade = 0; }, this);
-    if (m_contentFade == 0) m_contentSlot->setOpacity(1.0F);
-    requestFrame();
-  }
-
-  void TerminalWindow::showPagerPosition() {
-    if (m_sideStrip != nullptr) m_sideStrip->setPagePosition(pagerAt());
-    if (m_contentSlot != nullptr && m_contentFade == 0) m_contentSlot->setOpacity(pagerDim());
-    placeFootLens();
-    requestFrame();
-  }
-
-  void TerminalWindow::placeFootLens() {
-    if (m_footLens == nullptr) return;
-    const float s = m_window.uiScale();
-    const float item = Tokens::sizeControlM * s;
-    const float gap = Tokens::spaceP4 * s;
-    const float last = m_pager.count() > 0 ? static_cast<float>(m_pager.count() - 1) : 0.0F;
-    const float at = std::clamp(pagerAt(), 0.0F, last);
-    // Rows are fixed-width, so the bar's x of each item is known before layout: the lens and the items move together.
-    float x = 0.0F;
-    float lensX = 0.0F;
-    float lensW = 0.0F;
-    float lensWeight = 0.0F;
-    for (FootItem& foot : m_footItems) {
-      const float weight = foot.page ? std::max(0.0F, 1.0F - std::abs(at - static_cast<float>(*foot.page))) : 0.0F;
-      const float w = item + weight * (foot.full - item);
-      foot.row->setPosition(Style::rtl() && m_footBar->mirrorInRtl() ? m_footWidth - x - w : x, 0.0F);
-      foot.row->setSize(w, item);
-      if (foot.name != nullptr) foot.name->setOpacity(weight);
-      if (const bool lit = weight >= 0.5F; lit != foot.lit) {
-        foot.lit = lit;
-        Button::ButtonPalette palette;
-        const ColorSpec clear = clearColorSpec();
-        palette.normal = {.bg = clear, .border = clear, .label = colorSpecFromRole(lit ? ColorRole::AccentText : foot.idle)};
-        palette.hover = {.bg = lit ? clear : colorSpecFromRole(ColorRole::Fill2), .border = clear,
-                         .label = colorSpecFromRole(lit ? ColorRole::AccentText : ColorRole::Label1)};
-        palette.pressed = palette.hover;
-        palette.disabled = palette.normal;
-        foot.symbol->setCustomPalette(palette);
-      }
-      lensX += weight * x;
-      lensW += weight * w;
-      lensWeight += weight;
-      x += w + gap;
-    }
-    m_footLens->setVisible(lensWeight > 0.0F);
-    if (lensWeight <= 0.0F) return;
-    lensX /= lensWeight;
-    lensW /= lensWeight;
-    if (Style::rtl() && m_footBar->mirrorInRtl()) lensX = m_footWidth - lensX - lensW;
-    m_footLens->setPosition(lensX, 0.0F);
-    m_footLens->setSize(lensW, item);
-  }
-
-  void TerminalWindow::pagerLanded() {
-    if (!std::holds_alternative<WorkspacePager::Settling>(m_pager.mode())) return;
-    m_pager.settled();
-    showPagerPosition();
-    const std::size_t page = m_pager.page();
-    if (page == m_shownBar.here || page >= m_shownBar.pages.size()) return;
-    // This runs in the slide's last animation tick: the switch waits until that frame is out, so its work falls in
-    // no animation frame. The new panes then fade in from transparent.
-    DeferredCall::callLater([this, page, alive = std::weak_ptr<bool>(m_alive)] {
-      if (!alive.expired()) switchToPage(page);
-    });
-  }
-
-  void TerminalWindow::switchToPage(std::size_t page) {
-    const auto* rest = std::get_if<WorkspacePager::Rest>(&m_pager.mode());
-    if (rest == nullptr || rest->page != page || page == m_shownBar.here || page >= m_shownBar.pages.size()) return;
-    if (m_pickWorkspace) m_pickWorkspace(m_shownBar.pages[page]);
-    // The switch did not happen (the workspace went away meanwhile): back to the shown page.
-    if (m_pager.page() != m_shownBar.here) {
-      slideTo(m_shownBar.here);
-      return;
-    }
-    fadeContentIn(0.0F);
-  }
-
-  // A saved workspace has no shells: its page shows the one shell that starts in its root on landing.
-  std::vector<StatusRow::Data> TerminalWindow::pageRows(std::size_t page) const {
-    std::vector<StatusRow::Data> out;
-    if (m_table == nullptr || page >= m_shownBar.pages.size()) return out;
-    const holder::Workspaces& table = m_table();
-    const std::uint64_t id = m_shownBar.pages[page];
-    for (const holder::SessionInfo& session : table.sessions) {
-      if (session.workspace == id) out.push_back(heldRowData(session));
-    }
-    if (const auto w = std::ranges::find(table.workspaces, id, &holder::WorkspaceInfo::id); out.empty() && w != table.workspaces.end()) {
-      out.push_back({.symbol = "prompt", .name = shownPath(w->root)});
-    }
-    return out;
-  }
-
-  std::unique_ptr<Node> TerminalWindow::sidebarPage(std::size_t page) {
-    const float s = m_window.uiScale();
-    auto list = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s});
-    for (const StatusRow::Data& data : pageRows(page)) {
-      auto row = std::make_unique<StatusRow>(s);
-      row->setRail(m_rail);
-      row->setData(data);
-      list->addChild(std::move(row));
-    }
-    return list;
-  }
-
-  bool TerminalWindow::detachSessions() {
-    bool running = false;
-    for (auto& v : m_views) {
-      if (auto* t = v.view->terminal()) {
-        running = running || (t->session().heldId() && t->session().state() != SessionState::Exited);
-        t->session().detach();
-      }
-    }
-    return running;
   }
 
   ContentView* TerminalWindow::shownView() {
@@ -1236,9 +1002,15 @@ namespace term {
       case Action::CommandPalette: openPalette(); return true;
       case Action::ToggleSidebar: m_window.setSidebarVisible(!m_window.sidebarVisible()); return true;
       case Action::PreviousWorkspace:
-        if (m_pager.page() > 0) slideTo(m_pager.page() - 1);
+      case Action::NextWorkspace: {
+        // The neighbour window in the bar, wrapping.
+        const auto here = std::ranges::find(m_shownBar, true, &workspace_bar::Item::here);
+        if (here == m_shownBar.end() || m_pickWorkspace == nullptr) return true;
+        const auto n = static_cast<std::ptrdiff_t>(m_shownBar.size());
+        const std::ptrdiff_t by = action == Action::NextWorkspace ? 1 : n - 1;
+        m_pickWorkspace(m_shownBar[static_cast<std::size_t>((here - m_shownBar.begin() + by) % n)].window);
         return true;
-      case Action::NextWorkspace: slideTo(m_pager.page() + 1); return true;
+      }
       case Action::Session1:
       case Action::Session2:
       case Action::Session3:
@@ -1435,25 +1207,6 @@ namespace term {
   }
 
   void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
-
-  bool TerminalWindow::showWorkspace(std::vector<WindowOrigin> origins) {
-    std::vector<std::uint64_t> leaving;
-    for (const Session& v : m_views) {
-      if (v.view->terminal() != nullptr) leaving.push_back(v.id);
-    }
-    const bool running = detachSessions();
-    // Opened before the old ones close: a window whose last session closes closes itself.
-    std::optional<std::uint64_t> first;
-    for (WindowOrigin& origin : origins) {
-      // Not the folder of the session shown now: it belongs to the workspace being left.
-      if (auto* shell = std::get_if<NewShell>(&origin); shell != nullptr && shell->cwd.empty()) shell->cwd = homeDir();
-      const std::uint64_t id = openSession(origin);
-      if (!first) first = id;
-    }
-    for (const std::uint64_t id : leaving) apply(session_event::Close{id});
-    if (first) apply(session_event::Show{*first});
-    return running;
-  }
 
   void TerminalWindow::renameSession(std::uint64_t id, std::string name) {
     apply(session_event::Rename{id, std::move(name)});
@@ -2240,9 +1993,6 @@ namespace term {
 
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
-    m_window.animations().cancel(m_pagerAnim);
-    m_window.animations().cancel(m_contentFade);
-    if (m_sideStrip != nullptr) m_sideStrip->forgetOwner();
     if (DragAndDrop* dnd = m_loop.wayland().dragAndDrop(); dnd != nullptr && m_dropSurface != nullptr) {
       dnd->clearTarget(m_dropSurface);
     }

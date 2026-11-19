@@ -26,7 +26,7 @@ if not _ghostty.found()
 endif
 
 _desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
-_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/workspace_pager.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
+_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
   dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')], link_args: ['-lutil'],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
@@ -100,12 +100,6 @@ test('command_index', executable('command_index_test', 'tests/command_index_test
 test('session_list', executable('session_list_test', 'tests/session_list_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
-test('workspace_bar', executable('workspace_bar_test', 'tests/workspace_bar_test.cpp',
-  dependencies: _core_dep, cpp_args: _warnings))
-
-test('workspace_pager', executable('workspace_pager_test', 'tests/workspace_pager_test.cpp',
-  dependencies: _core_dep, cpp_args: _warnings))
-
 test('workspace_model', executable('workspace_model_test', 'tests/workspace_model_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
@@ -143,7 +137,7 @@ executable('andromeda-terminal',
   'src/notifier.cpp',
   'src/terminal_app.cpp',
   'src/terminal_view.cpp',
-  'src/terminal_window.cpp', 'src/page_strip.cpp', 'src/command_palette.cpp',
+  'src/terminal_window.cpp', 'src/command_palette.cpp',
   'src/settings_store.cpp',
   'src/theme_store.cpp',
   'src/theme_cli.cpp', 'src/terminal_control.cpp', 'src/control_cli.cpp',

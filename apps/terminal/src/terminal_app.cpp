@@ -28,7 +28,15 @@ namespace term {
 
   TerminalApp::TerminalApp()
       : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}),
-        m_workspaces([this] { workspacesChanged(); }) {
+        m_workspaces([this] { workspacesChanged(); }),
+        m_windowWorkspaces({.put = [this](const std::string& name, const std::string& root) {
+                              return m_workspaces.put({.name = name, .root = root}, [this](std::uint32_t req, std::uint64_t id) {
+                                m_windowWorkspaces.answered(req, id);
+                                workspacesChanged();
+                              });
+                            },
+                            .setSession = [this](std::uint64_t held, std::uint64_t id) { m_workspaces.setSession(held, id); },
+                            .close = [this](std::uint64_t id) { m_workspaces.close(id); }}) {
     KittyImages::installPngDecoder();
     // The header's sidebar button; the keyboard path is Action::ToggleSidebar, which the user can rebind.
     commands().add({.id = "view.toggle-sidebar", .label = "Show Sidebar", .group = "View",
@@ -68,6 +76,8 @@ namespace term {
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
+    // Before the window's sessions open: each one joins the window's workspace.
+    m_windowWorkspaces.opened(&window, std::exchange(m_nextWorkspace, std::nullopt));
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, [this](agent::Kind kind) -> agent::Host& { return agentHost(kind); }, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
                                                           [this, &window] { closeWindow(window); },
                                                           [this](LayoutSave save) { sessionsChanged(save); },
@@ -80,7 +90,7 @@ namespace term {
                                                             chooseSaveFile(window, suggested, std::move(picked));
                                                           },
                                                           [this, &window](std::uint64_t heldId, const std::string& dir) {
-                                                            joinWorkspace(window, heldId, dir);
+                                                            m_windowWorkspaces.sessionStarted(&window, heldId, dir);
                                                           });
     m_windows[&window]->setWindows([this] {
       std::vector<TerminalWindow*> out;
@@ -92,20 +102,22 @@ namespace term {
     });
     m_windows[&window]->setWorkspaceBar(
         [this, &window] {
+          std::vector<workspace_bar::Window> shown;
           std::uint64_t here = 0;
-          std::set<std::uint64_t> elsewhere;
-          for (const auto& [shown, workspace] : m_windowWorkspaces) {
-            const auto* id = std::get_if<std::uint64_t>(&workspace);
-            if (id != nullptr && shown == &window) {
-              here = *id;
-            } else if (id != nullptr) {
-              elsewhere.insert(*id);
-            }
+          for (const auto& [app, terminal] : m_windows) {
+            shown.push_back({.id = terminal->windowId(), .workspace = m_windowWorkspaces.workspaceOf(app)});
+            if (app == &window) here = terminal->windowId();
           }
-          return workspace_bar::barFor(m_workspaces.workspaces(), here, elsewhere);
+          std::ranges::sort(shown, {}, &workspace_bar::Window::id);
+          return workspace_bar::barFor(m_workspaces.workspaces(), shown, here);
         },
-        [this, &window](std::uint64_t id) { pickWorkspace(window, id); }, [this, &window] { addWorkspace(window); },
-        [this]() -> const holder::Workspaces& { return m_workspaces.workspaces(); });
+        [this, &window](std::uint64_t id) {
+          for (const auto& [app, terminal] : m_windows) {
+            if (terminal->windowId() == id && app != &window) app->activate(loop().wayland().requestActivationToken(window.wlSurface()));
+          }
+        },
+        [this, &window] { addWorkspace(window); });
+    workspacesChanged(); // the other windows' bars gain this one
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });
@@ -119,12 +131,9 @@ namespace term {
       m_prefsWindow = nullptr;
     }
     // The window's shells and its workspace end with it.
-    if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
-      if (const auto* id = std::get_if<std::uint64_t>(&it->second); id != nullptr) m_workspaces.close(*id);
-      m_windowWorkspaces.erase(it);
-    }
-    workspacesChanged();
+    m_windowWorkspaces.closed(&window);
     m_windows.erase(&window);
+    workspacesChanged();
     saveLayouts();
   }
 
@@ -133,63 +142,7 @@ namespace term {
     if (m_control != nullptr) m_control->emitSignal("WorkspacesChanged").onInterface(control::kInterface);
   }
 
-  void TerminalApp::pickWorkspace(AppWindow& from, std::uint64_t id) {
-    for (const auto& [window, workspace] : m_windowWorkspaces) {
-      if (window != &from && std::get_if<std::uint64_t>(&workspace) != nullptr && std::get<std::uint64_t>(workspace) == id) {
-        window->activate(loop().wayland().requestActivationToken(from.wlSurface()));
-        return;
-      }
-    }
-    const holder::Workspaces& table = m_workspaces.workspaces();
-    const auto target = std::ranges::find(table.workspaces, id, &holder::WorkspaceInfo::id);
-    if (target == table.workspaces.end()) return;
-    std::vector<WindowOrigin> origins;
-    for (const holder::SessionInfo& session : table.sessions) {
-      if (session.workspace == id && !session.attached) origins.emplace_back(Reattach{session.id});
-    }
-    // A saved workspace has no shells: it starts one in its root.
-    if (origins.empty()) origins.emplace_back(NewShell{.cwd = target->root});
-    leaveWorkspace(from, id, std::move(origins));
-  }
-
   void TerminalApp::addWorkspace(AppWindow& from) { openWindow(loop().wayland().requestActivationToken(from.wlSurface())); }
-
-  void TerminalApp::leaveWorkspace(AppWindow& window, std::uint64_t next, std::vector<WindowOrigin> origins) {
-    const auto terminal = m_windows.find(&window);
-    if (terminal == m_windows.end()) return;
-    std::optional<std::uint64_t> left;
-    if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
-      if (const auto* id = std::get_if<std::uint64_t>(&it->second)) left = *id;
-      m_windowWorkspaces.erase(it);
-    }
-    // Set first: the shells the window starts next join `next`; with 0 the first one makes a new workspace.
-    if (next != 0) m_windowWorkspaces.emplace(&window, next);
-    const bool running = terminal->second->showWorkspace(std::move(origins));
-    if (left && !running) m_workspaces.close(*left);
-    workspacesChanged();
-  }
-
-  void TerminalApp::joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir) {
-    if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
-      if (auto* pending = std::get_if<WorkspacePending>(&it->second)) {
-        pending->held.push_back(heldId);
-      } else {
-        m_workspaces.setSession(heldId, std::get<std::uint64_t>(it->second));
-      }
-      return;
-    }
-    const std::filesystem::path root(dir);
-    const std::string name = root.filename().empty() ? dir : root.filename().string();
-    const auto req = m_workspaces.put({.name = name, .root = dir}, [this, &window](std::uint32_t answered, std::uint64_t id) {
-      const auto it = m_windowWorkspaces.find(&window);
-      auto* pending = it != m_windowWorkspaces.end() ? std::get_if<WorkspacePending>(&it->second) : nullptr;
-      if (pending == nullptr || pending->req != answered) return; // the window closed before the answer
-      for (const std::uint64_t held : pending->held) m_workspaces.setSession(held, id);
-      it->second = id;
-      workspacesChanged();
-    });
-    if (req) m_windowWorkspaces.emplace(&window, WorkspacePending{*req, {heldId}});
-  }
 
   void TerminalApp::shutdown() { m_layoutWrites = LayoutWrites::Kept; }
 
@@ -346,20 +299,25 @@ namespace term {
       return;
     }
     bool reattached = false;
-    std::vector<WindowOrigin> origins;
-    for (const std::uint64_t id : holder::listOrphans()) {
-      origins.emplace_back(Reattach{id});
+    // Sessions left running come back in a window per workspace they had (0: none, one window for those).
+    std::map<std::uint64_t, std::vector<WindowOrigin>> groups;
+    if (const std::vector<std::uint64_t> orphans = holder::listOrphans(); !orphans.empty()) {
+      const holder::Workspaces& table = m_workspaces.awaitTable();
+      for (const std::uint64_t id : orphans) {
+        const auto it = std::ranges::find(table.sessions, id, &holder::SessionInfo::id);
+        groups[it != table.sessions.end() ? it->workspace : 0].emplace_back(Reattach{id});
+      }
     }
-    if (!origins.empty()) {
-      // Sessions left running wait in the sidebar; the window opens on a new shell, not on an old screen.
-      origins.emplace_back(NewShell{});
+    for (auto& [workspace, origins] : groups) {
       m_nextOrigins = std::move(origins);
+      if (workspace != 0) m_nextWorkspace = workspace;
       AppWindow& window = createWindow();
       if (window.open()) {
         window.activate(activationToken);
         reattached = true;
       }
-    } else if (m_settings.settings().restoreSessions) {
+    }
+    if (groups.empty() && m_settings.settings().restoreSessions) {
       for (const SavedWindow& saved : windowsFromJson(state().get("/terminal/windows", nlohmann::json::array()))) {
         m_nextOrigins.clear();
         AppWindow& window = createWindow();

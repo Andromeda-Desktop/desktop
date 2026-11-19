@@ -5,6 +5,7 @@
 #include "render/core/thumbnail_service.h"
 #include "prefs_window.h"
 #include "terminal_window.h"
+#include "window_workspaces.h"
 #include "workspace_watcher.h"
 
 #include <sdbus-c++/sdbus-c++.h>
@@ -34,8 +35,8 @@ namespace term {
     // "exec": parameter[0] is the start directory, the rest the command (andromeda-terminal -e).
     void action(const std::string& name, const std::vector<std::string>& parameter,
                 const std::string& activationToken) override;
-    // With no window yet, sessions that lost their terminal process come back first, all in one window; with none,
-    // the windows saved at the last quit open again (sessions.restore).
+    // With no window yet, sessions that lost their terminal process come back first, one window per workspace they
+    // had; with none, the windows saved at the last quit open again (sessions.restore).
     void activate(const std::string& activationToken) override;
     void openWindow(const std::string& activationToken);
     void openPreferences(const std::string& activationToken);
@@ -57,21 +58,12 @@ namespace term {
                         std::function<void(std::optional<std::filesystem::path>)> picked);
     std::map<AppWindow*, std::unique_ptr<TerminalWindow>> m_windows;
     WorkspaceWatcher m_workspaces;
-    // A window's workspace: Pending until the holder answers its PutWorkspace; absent until its first shell starts.
-    struct WorkspacePending {
-      std::uint32_t req;
-      std::vector<std::uint64_t> held; // shells to move into it on the answer
-    };
-    std::map<AppWindow*, std::variant<WorkspacePending, std::uint64_t>> m_windowWorkspaces;
-    void joinWorkspace(AppWindow& window, std::uint64_t heldId, const std::string& dir);
+    WindowWorkspaces m_windowWorkspaces; // each window's holder workspace
     void workspacesChanged(); // updates every window's foot bar
-    // A foot-bar click: a workspace another window shows raises that window; another one moves into this window.
-    void pickWorkspace(AppWindow& from, std::uint64_t id);
     void addWorkspace(AppWindow& from); // a new window, which is a new workspace
-    // The window lets its shells go (they keep running, detached) and shows `origins` in workspace `next` (0: new).
-    void leaveWorkspace(AppWindow& window, std::uint64_t next, std::vector<WindowOrigin> origins);
     std::unique_ptr<Notifier> m_notifier;
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
+    std::optional<std::uint64_t> m_nextWorkspace;        // the workspace those sessions already belong to
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.
     enum class LayoutWrites : std::uint8_t { Live, Kept };
     LayoutWrites m_layoutWrites = LayoutWrites::Live;

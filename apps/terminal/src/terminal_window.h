@@ -1,8 +1,6 @@
 #pragma once
 
 #include "workspace_bar.h"
-#include "workspace_pager.h"
-#include "page_strip.h"
 #include "command_palette.h"
 #include "settings_store.h"
 #include "core/timer_manager.h"
@@ -104,15 +102,9 @@ namespace term {
 
   class TerminalWindow {
   public:
-    // The window goes away but its held shells keep running (a closed window, not closed sessions).
-    // Returns true when a held shell still runs.
-    bool detachSessions();
-    // Swaps the window's shells for `origins` (the first is shown); the shells it held keep running, detached.
-    // Agent sessions stay. Returns true when a shell it let go still runs.
-    bool showWorkspace(std::vector<WindowOrigin> origins);
     // origins: one session each, in order; the last one is shown. close: closes this window later, outside the
     // current callback (DeskApp::closeWindow). newWindow: opens another window (Ctrl+Shift+N) with this
-    // activation token. joinWorkspace: puts each shell this window starts (held id, start folder) in its workspace.
+    // activation token. joinWorkspace: puts each held shell this window shows (held id, folder) in its workspace.
     TerminalWindow(AppLoop& loop, AppWindow& window, Notifier& notifier, AgentHosts agents, ThumbnailService& thumbnails,
                    SettingsStore& settings,
                    const std::vector<WindowOrigin>& origins,
@@ -148,12 +140,10 @@ namespace term {
     void renameSession(std::uint64_t id, std::string name); // empty: the automatic name
     // All windows of the app, in opening order (the command palette lists their sessions).
     void setWindows(std::function<std::vector<TerminalWindow*>()> windows) { m_windows = std::move(windows); }
-    // The sidebar foot bar: its items, and a click on an item (by workspace id) or on "+". table: the holder's
-    // workspace table, for the pages of workspaces this window does not show.
-    void setWorkspaceBar(std::function<workspace_bar::Bar()> bar, std::function<void(std::uint64_t)> pick,
-                         std::function<void()> add, std::function<const holder::Workspaces&()> table) {
+    // The sidebar foot bar: its items, and a click on an item (by window id) or on "+".
+    void setWorkspaceBar(std::function<std::vector<workspace_bar::Item>()> bar, std::function<void(std::uint64_t)> pick,
+                         std::function<void()> add) {
       m_bar = std::move(bar);
-      m_table = std::move(table);
       m_pickWorkspace = std::move(pick);
       m_addWorkspace = std::move(add);
       workspacesChanged();
@@ -251,48 +241,13 @@ namespace term {
     void syncAgentBar();
     void fillAgentBar();
     [[nodiscard]] AgentView* agentView(std::uint64_t key);
-    std::function<workspace_bar::Bar()> m_bar;
-    std::function<void(std::uint64_t)> m_pickWorkspace;
+    std::function<std::vector<workspace_bar::Item>()> m_bar;
+    std::function<void(std::uint64_t)> m_pickWorkspace; // raises the window with this id
     std::function<void()> m_addWorkspace;
-    std::function<const holder::Workspaces&()> m_table;
-    workspace_bar::Bar m_shownBar;
-    // Workspace pages: a two-finger horizontal swipe, a foot-bar click or Ctrl+Alt+PgUp/PgDn slides the sidebar body;
-    // the content dims in place. Landing on another page switches to its workspace and fades its content in.
-    WorkspacePager m_pager;
-    PageStrip* m_sideStrip = nullptr;
-    AnimationManager::Id m_pagerAnim = 0;
-    [[nodiscard]] bool pageAxis(const InputArea::PointerData& d);
-    bool pageAxisStop(std::uint32_t axis);
-    void pickPage(std::uint64_t id); // a foot-bar click: slides to a page, else raises the window that shows it
-    void slideTo(std::size_t page);
-    void slidePages(float velocity);
-    void showPagerPosition();
-    [[nodiscard]] float pagerAt() const; // the shown position in pages
-    void pagerLanded();
-    void switchToPage(std::size_t page);
-    // Neighbour sidebar pages: the session rows of a workspace from the holder's table.
-    [[nodiscard]] std::unique_ptr<Node> sidebarPage(std::size_t page);
-    [[nodiscard]] std::vector<StatusRow::Data> pageRows(std::size_t page) const;
-    [[nodiscard]] float pagerDim() const; // content opacity for the sidebar's travel
-    void fadeContentIn(float from);
-    AnimationManager::Id m_contentFade = 0;
+    std::vector<workspace_bar::Item> m_shownBar;
     Button* m_prefsButton = nullptr;
-    Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
+    Flex* m_footTrack = nullptr; // hidden with fewer than 2 windows
     Flex* m_footBar = nullptr;   // the track's items
-    Box* m_footLens = nullptr;   // under the shown page's item; slides along the bar while pages move
-    // A bar item opens to `full` (symbol + name) as its page comes under the finger and closes as it leaves.
-    struct FootItem {
-      std::uint64_t id = 0;
-      Flex* row = nullptr;
-      Button* symbol = nullptr;
-      Label* name = nullptr;                 // null: no room for a name, or not a page
-      std::optional<std::size_t> page;       // none: shown in another window
-      float full = 0.0F;                     // open width, px
-      ColorRole idle = ColorRole::Label2;    // symbol colour when closed
-      bool lit = false;                      // the symbol shows the lens colours
-    };
-    std::vector<FootItem> m_footItems; // bar order
-    void placeFootLens();
     float m_footWidth = 0.0F;    // the track's inner width, px
     void fillFootBar(Renderer& renderer);
     Button* m_newButton = nullptr; // the sidebar "+": its menu opens new sessions and windows

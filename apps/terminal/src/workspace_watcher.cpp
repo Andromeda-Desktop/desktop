@@ -1,6 +1,8 @@
 #include "workspace_watcher.h"
 
 #include <algorithm>
+#include <chrono>
+#include <poll.h>
 #include <cerrno>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -38,6 +40,19 @@ namespace term {
 
   void WorkspaceWatcher::close(std::uint64_t workspace) {
     if (connect()) send(holder::encodeCloseWorkspace(workspace));
+  }
+
+  const holder::Workspaces& WorkspaceWatcher::awaitTable() {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (connect() && !m_seq) {
+      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(end - std::chrono::steady_clock::now()).count();
+      if (left <= 0) break;
+      pollfd fd{.fd = m_fd, .events = static_cast<short>(POLLIN | (m_out.empty() ? 0 : POLLOUT)), .revents = 0};
+      if (::poll(&fd, 1, static_cast<int>(left)) <= 0) continue;
+      if ((fd.revents & POLLOUT) != 0) flush();
+      if (m_fd >= 0 && (fd.revents & (POLLIN | POLLHUP | POLLERR)) != 0) read();
+    }
+    return m_table;
   }
 
   void WorkspaceWatcher::doAddPollFds(std::vector<pollfd>& fds) {

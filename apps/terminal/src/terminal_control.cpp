@@ -149,8 +149,8 @@ namespace term {
             }),
             sdbus::registerMethod("ListWorkspaces").withOutputParamNames("workspaces").implementedAs([this] {
               std::map<std::uint64_t, std::uint32_t> shownIn;
-              for (const auto& [window, workspace] : m_windowWorkspaces) {
-                if (const auto* id = std::get_if<std::uint64_t>(&workspace)) shownIn[*id] = m_windows.at(window)->windowId();
+              for (const auto& [window, terminal] : m_windows) {
+                if (const auto id = m_windowWorkspaces.workspaceOf(window)) shownIn[*id] = terminal->windowId();
               }
               const holder::Workspaces& table = m_workspaces.workspaces();
               std::vector<Entry> out;
@@ -163,7 +163,7 @@ namespace term {
                   if (s.command == holder::CommandState::Done && s.exitCode != 0) ++failed;
                 }
                 const auto shown = shownIn.find(w.id);
-                const char* location = shown != shownIn.end() ? "window" : sessions > 0 ? "detached" : "saved";
+                const char* location = shown != shownIn.end() ? "window" : "none"; // none: start-up or a closing window
                 out.push_back(Entry{
                     {"id", sdbus::Variant{w.id}},
                     {"name", sdbus::Variant{w.name}},

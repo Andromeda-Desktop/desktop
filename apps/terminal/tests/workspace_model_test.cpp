@@ -1,16 +1,17 @@
-// Random event sequences over the workspace table, the windows' foot bars and their pagers (the TerminalApp and
-// TerminalWindow rules on top of barFor and WorkspacePager) keep the task's invariants.
+// Random event sequences (open, "+", a session starts, the holder answers late, close, crash and restart) through
+// WindowWorkspaces and a fake holder keep the task's invariants once every answer is in.
+#include "window_workspaces.h"
 #include "workspace_bar.h"
-#include "workspace_pager.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <deque>
 #include <map>
+#include <memory>
 #include <random>
 #include <set>
 
 using namespace term;
-using namespace term::workspace_bar;
 
 namespace {
 
@@ -18,186 +19,162 @@ int failures = 0;
 unsigned seed = 0;
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr, "FAIL %s:%d %s (seed %u)\n", __FILE__, __LINE__, #c, seed); ++failures; } } while (0)
 
-constexpr float kWidth = 600.0F;
+struct Holder {
+  std::set<std::uint64_t> workspaces;
+  std::map<std::uint64_t, std::uint64_t> sessions; // held id -> workspace (0: none)
+  std::uint64_t nextWorkspace = 1;
+  std::uint64_t nextSession = 1;
+  std::uint32_t nextReq = 1;
+  std::deque<std::pair<std::uint32_t, std::uint64_t>> answers; // in flight
+  bool reachable = true;
 
-struct Window {
-  std::uint64_t here = 0;
-  Bar bar;
-  WorkspacePager pager;
+  void close(std::uint64_t ws) {
+    workspaces.erase(ws);
+    std::erase_if(sessions, [&](const auto& s) { return s.second == ws; });
+  }
 };
 
-struct App {
-  holder::Workspaces table;
-  std::map<int, Window> windows;
-  std::uint64_t nextId = 1;
+struct Sim {
+  Holder holder;
+  std::unique_ptr<WindowWorkspaces> model;
+  std::map<int, std::set<std::uint64_t>> windows; // window -> its held sessions
   int nextWindow = 1;
+  std::mt19937 rng;
 
-  std::set<std::uint64_t> elsewhere(int w) const {
-    std::set<std::uint64_t> out;
-    for (const auto& [id, window] : windows) {
-      if (id != w && window.here != 0) out.insert(window.here);
-    }
-    return out;
-  }
-  bool exists(std::uint64_t id) const { return std::ranges::contains(table.workspaces, id, &holder::WorkspaceInfo::id); }
+  explicit Sim(unsigned s) : rng(s) { start(); }
 
-  // TerminalWindow::fillFootBar: the pager restarts only when its pages or this window's page change.
-  void sync() {
-    for (auto& [id, window] : windows) {
-      Bar bar = barFor(table, window.here, elsewhere(id));
-      if (bar.pages != window.bar.pages || bar.here != window.bar.here) window.pager.setPages(bar.pages.size(), bar.here);
-      window.bar = std::move(bar);
-    }
-  }
+  WindowWorkspaces::Window key(int w) { return reinterpret_cast<WindowWorkspaces::Window>(static_cast<std::uintptr_t>(w)); }
 
-  std::uint64_t put() {
-    const std::uint64_t id = nextId++;
-    table.workspaces.push_back({.id = id, .name = "w"});
-    return id;
-  }
-  void addSession(std::uint64_t workspace, bool attached) {
-    table.sessions.push_back({.id = nextId++, .workspace = workspace, .attached = attached});
-  }
-  void close(std::uint64_t id) {
-    std::erase_if(table.workspaces, [id](const auto& w) { return w.id == id; });
-    std::erase_if(table.sessions, [id](const auto& s) { return s.workspace == id; });
-  }
-  bool running(std::uint64_t id) const {
-    return std::ranges::any_of(table.sessions, [id](const auto& s) { return s.workspace == id && s.command == holder::CommandState::Running; });
-  }
-  void detach(std::uint64_t id) {
-    for (auto& s : table.sessions) {
-      if (s.workspace == id) s.attached = false;
-    }
+  void start() {
+    model = std::make_unique<WindowWorkspaces>(WindowWorkspaces::Port{
+        .put = [this](const std::string&, const std::string&) -> std::optional<std::uint32_t> {
+          if (!holder.reachable) return std::nullopt;
+          const std::uint32_t req = holder.nextReq++;
+          const std::uint64_t ws = holder.nextWorkspace++;
+          holder.workspaces.insert(ws);
+          holder.answers.emplace_back(req, ws);
+          return req;
+        },
+        .setSession = [this](std::uint64_t held, std::uint64_t ws) {
+          if (holder.workspaces.contains(ws) && holder.sessions.contains(held)) holder.sessions[held] = ws;
+        },
+        .close = [this](std::uint64_t ws) { holder.close(ws); }});
   }
 
-  void newWindow() {
-    Window window;
-    window.pager.setWidth(kWidth);
-    window.here = put();
-    addSession(window.here, true);
-    windows.emplace(nextWindow++, std::move(window));
+  void startSession(int w) {
+    const std::uint64_t held = holder.nextSession++;
+    holder.sessions[held] = 0;
+    windows[w].insert(held);
+    model->sessionStarted(key(w), held, "/home/u");
   }
-  // TerminalApp::pickWorkspace + leaveWorkspace.
-  void pick(int w, std::uint64_t id) {
-    Window& window = windows.at(w);
-    if (elsewhere(w).contains(id) || !exists(id) || id == window.here) return;
-    const std::uint64_t left = window.here;
-    detach(left);
-    window.here = id;
-    bool any = false;
-    for (auto& s : table.sessions) {
-      if (s.workspace == id) any = s.attached = true;
-    }
-    if (!any) addSession(id, true);
-    if (left != 0 && !running(left)) close(left);
+
+  void openWindow() {
+    const int w = nextWindow++;
+    windows[w];
+    model->opened(key(w), std::nullopt);
+    startSession(w);
   }
-  // TerminalApp::windowClosed.
+
   void closeWindow(int w) {
-    const std::uint64_t here = windows.at(w).here;
-    detach(here);
-    if (here != 0 && !running(here)) close(here);
+    model->closed(key(w));
+    for (const std::uint64_t held : windows[w]) holder.sessions.erase(held); // End::Close
     windows.erase(w);
   }
-  // A swipe of `dx` px in `steps` events, then the release, the settle and the landing (TerminalWindow::pagerLanded).
-  void swipe(int w, float dx, int steps, std::uint32_t& time, bool statusChangeMidway, std::mt19937& rng) {
-    Window& window = windows.at(w);
-    if (window.pager.count() < 2) return;
-    for (int i = 0; i < steps; ++i) {
-      window.pager.track(dx / static_cast<float>(steps), time += 8);
-      if (statusChangeMidway && i == steps / 2 && !table.sessions.empty()) {
-        auto& s = table.sessions[rng() % table.sessions.size()];
-        s.command = s.command == holder::CommandState::Running ? holder::CommandState::Done : holder::CommandState::Running;
-        sync();
-        CHECK(std::holds_alternative<WorkspacePager::Tracking>(windows.at(w).pager.mode()));
+
+  void answerOne() {
+    if (holder.answers.empty()) return;
+    // Answers come back in order on one connection; a late one is still in order.
+    const auto [req, ws] = holder.answers.front();
+    holder.answers.pop_front();
+    model->answered(req, ws);
+  }
+
+  // The app dies: windows go, shells and workspaces stay. The next start does what TerminalApp::activate does.
+  void crashAndRestart() {
+    windows.clear();
+    holder.answers.clear(); // the connection dropped
+    start();
+    for (std::uint64_t ws : std::set(holder.workspaces)) {
+      if (std::ranges::none_of(holder.sessions, [&](const auto& s) { return s.second == ws; })) holder.close(ws);
+    }
+    std::map<std::uint64_t, std::vector<std::uint64_t>> groups;
+    for (const auto& [held, ws] : holder.sessions) groups[ws].push_back(held);
+    for (const auto& [ws, held] : groups) {
+      const int w = nextWindow++;
+      model->opened(key(w), ws == 0 ? std::nullopt : std::optional(ws));
+      for (const std::uint64_t h : held) {
+        windows[w].insert(h);
+        model->sessionStarted(key(w), h, "/home/u");
       }
     }
-    Window& still = windows.at(w);
-    const std::size_t target = still.pager.release();
-    CHECK(target < still.pager.count());
-    still.pager.animate(static_cast<float>(target) * kWidth);
-    still.pager.settled();
-    CHECK(still.pager.page() == target);
-    if (target != still.bar.here && target < still.bar.pages.size()) {
-      const std::uint64_t id = still.bar.pages[target];
-      CHECK(!elsewhere(w).contains(id));
-      pick(w, id);
-      CHECK(still.here == id);
+  }
+
+  void step() {
+    std::vector<int> open;
+    for (const auto& [w, s] : windows) open.push_back(w);
+    const int pick = open.empty() ? 0 : open[std::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng)];
+    switch (std::uniform_int_distribution<int>(0, 9)(rng)) {
+    case 0: case 1: openWindow(); break; // launch or "+"
+    case 2: if (pick != 0) startSession(pick); break;
+    case 3: if (pick != 0) closeWindow(pick); break;
+    case 4: crashAndRestart(); break;
+    case 5: holder.reachable = !holder.reachable; break;
+    default: answerOne(); break;
+    }
+  }
+
+  void settle() {
+    holder.reachable = true;
+    while (!holder.answers.empty()) answerOne();
+    // A window whose put was refused joins on its next session.
+    for (auto& [w, held] : windows) {
+      if (!model->workspaceOf(key(w))) startSession(w);
+    }
+    while (!holder.answers.empty()) answerOne();
+  }
+
+  void checkInvariants() {
+    std::set<std::uint64_t> owned;
+    for (const auto& [w, held] : windows) {
+      const auto ws = model->workspaceOf(key(w));
+      CHECK(ws.has_value());
+      if (!ws) continue;
+      CHECK(holder.workspaces.contains(*ws));
+      CHECK(owned.insert(*ws).second); // one window per workspace
+      for (const std::uint64_t h : held) CHECK(!holder.sessions.contains(h) || holder.sessions.at(h) == *ws);
+    }
+    CHECK(owned == holder.workspaces); // no workspace without a window
+    for (const auto& [held, ws] : holder.sessions) {
+      CHECK(std::ranges::any_of(windows, [&](const auto& w) { return w.second.contains(held); })); // no shell unseen
+    }
+    std::vector<workspace_bar::Window> shown;
+    for (const auto& [w, held] : windows) shown.push_back({.id = static_cast<std::uint64_t>(w), .workspace = model->workspaceOf(key(w))});
+    holder::Workspaces table;
+    for (const std::uint64_t ws : holder.workspaces) table.workspaces.push_back({.id = ws, .name = "u", .root = "/home/u"});
+    for (const auto& [w, held] : windows) {
+      const auto bar = workspace_bar::barFor(table, shown, static_cast<std::uint64_t>(w));
+      CHECK(bar.size() == (windows.size() < 2 ? 0 : windows.size()));
+      CHECK(windows.size() < 2 || std::ranges::count(bar, true, &workspace_bar::Item::here) == 1);
     }
   }
 };
-
-void checkInvariants(const App& app) {
-  std::set<std::uint64_t> shown;
-  for (const auto& [w, window] : app.windows) {
-    const Bar& bar = window.bar;
-    const std::size_t n = app.table.workspaces.size();
-    if (n >= 2) CHECK(bar.items.size() + bar.more == n);
-    if (window.here != 0 && app.exists(window.here)) CHECK(shown.insert(window.here).second);
-    // One workspace: no pages, the sidebar as before.
-    if (n >= 2 && window.here != 0 && app.exists(window.here)) {
-      CHECK(bar.here < bar.pages.size() && bar.pages[bar.here] == window.here);
-      const auto others = app.elsewhere(w);
-      for (const auto& ws : app.table.workspaces) CHECK(std::ranges::contains(bar.pages, ws.id) != others.contains(ws.id));
-    } else {
-      CHECK(bar.pages.empty());
-    }
-    CHECK(window.pager.count() == std::max<std::size_t>(bar.pages.size(), 1));
-    CHECK(window.pager.page() < window.pager.count());
-    if (std::holds_alternative<WorkspacePager::Rest>(window.pager.mode())) {
-      CHECK(window.pager.position() == static_cast<float>(window.pager.page()) * kWidth);
-      CHECK(bar.pages.empty() || window.pager.page() == bar.here);
-    }
-  }
-}
 
 } // namespace
 
 int main() {
-  for (seed = 1; seed <= 1500; ++seed) {
-    std::mt19937 rng(seed);
-    auto pick = [&](int n) { return static_cast<int>(rng() % static_cast<unsigned>(n)); };
-    App app;
-    std::uint32_t time = 0;
-    app.newWindow();
-    app.sync();
-    for (int step = 0; step < 80; ++step) {
-      const auto windowIds = [&] {
-        std::vector<int> ids;
-        for (const auto& [id, window] : app.windows) ids.push_back(id);
-        return ids;
-      }();
-      const int w = windowIds.empty() ? 0 : windowIds[static_cast<std::size_t>(pick(static_cast<int>(windowIds.size())))];
-      switch (pick(8)) {
-        case 0: app.newWindow(); break;
-        case 1: app.put(); break; // a saved workspace comes back
-        case 2:
-          if (w != 0) app.closeWindow(w);
-          break;
-        case 3: // close a workspace no window shows
-          if (!app.table.workspaces.empty()) {
-            const std::uint64_t id = app.table.workspaces[static_cast<std::size_t>(pick(static_cast<int>(app.table.workspaces.size())))].id;
-            if (!app.elsewhere(0).contains(id)) app.close(id);
-          }
-          break;
-        case 4: // ptyd restart: shells gone, the saved workspaces come back under new ids
-          app.table.sessions.clear();
-          for (auto& ws : app.table.workspaces) ws.id = app.nextId++;
-          break;
-        case 5:
-          if (w != 0 && !app.table.workspaces.empty()) {
-            app.pick(w, app.table.workspaces[static_cast<std::size_t>(pick(static_cast<int>(app.table.workspaces.size())))].id);
-          }
-          break;
-        default:
-          if (w != 0) app.swipe(w, static_cast<float>(pick(2400) - 1200), 1 + pick(12), time, pick(2) == 0, rng);
-          break;
+  for (seed = 1; seed <= 300; ++seed) {
+    Sim sim(seed);
+    for (int i = 0; i < 200; ++i) {
+      sim.step();
+      if (i % 25 == 24) {
+        sim.settle();
+        sim.checkInvariants();
       }
-      if (app.windows.empty()) app.newWindow();
-      app.sync();
-      checkInvariants(app);
     }
+    sim.settle();
+    sim.checkInvariants();
   }
-  std::printf("%s\n", failures == 0 ? "workspace model: ok" : "workspace model: FAILED");
-  return failures == 0 ? 0 : 1;
+  if (failures > 0) return 1;
+  std::puts("workspace model: ok");
+  return 0;
 }

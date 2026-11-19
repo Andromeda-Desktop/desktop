@@ -27,6 +27,8 @@ namespace term {
     bool connect();
     // The last table received; kept while the holder is unreachable.
     [[nodiscard]] const holder::Workspaces& workspaces() const { return m_table; }
+    // Blocks up to a short timeout for this connection's first table; the start-up needs it before any window.
+    const holder::Workspaces& awaitTable();
     // Sends PutWorkspace (def.id 0 makes a new one); `done` gets the request id and the workspace id. Returns the
     // request id, or nullopt when the holder is unreachable. A lost connection drops the answer.
     std::optional<std::uint32_t> put(const holder::WorkspaceInfo& def,
