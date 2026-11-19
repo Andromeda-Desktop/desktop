@@ -32,7 +32,6 @@ namespace {
 
   constexpr Logger kLog("tray");
 
-  constexpr float kMenuWidth = 240.0F;
   constexpr std::size_t kTrayMenuVisibleItems = 20;
   constexpr std::int32_t kPinToggleEntryId = -2147000000;
 
@@ -654,7 +653,7 @@ bool TrayMenu::ownsSurface(wl_surface* surface) const {
 
 float TrayMenu::contentScale() const noexcept { return std::max(0.1F, m_contentScale); }
 
-float TrayMenu::menuWidth() const noexcept { return kMenuWidth * contentScale(); }
+float TrayMenu::menuWidth() const noexcept { return Tokens::componentMenuFixedWidth * contentScale(); }
 
 void TrayMenu::ensureSurface() {
   if (m_instance != nullptr) {
