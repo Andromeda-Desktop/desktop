@@ -527,7 +527,10 @@ namespace andromeda::ov {
         placeLabel(label, 0, 0, 0.0F);
         continue;
       }
-      setLabel(label, span(l2, "normal", "No windows"), {.font = "sans 9", .maxWidth = workspace->card.width}, scale);
+      setLabel(
+          label, span(l2, "normal", "No windows"),
+          {.font = "sans 9", .padX = 10, .height = kNameHeight, .maxWidth = workspace->card.width, .fill = thick}, scale
+      );
       const wlr_box& card = workspace->card;
       placeLabel(label, card.x + (card.width - label.width) / 2, card.y + (card.height - label.height) / 2, late);
     }
