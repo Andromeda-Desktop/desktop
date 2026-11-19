@@ -63,6 +63,7 @@ struct fx_offscreen_buffers {
   struct fx_framebuffer* optimized_no_blur_buffer;
   // Bumped each time the optimized blur buffers are re-rendered or replaced.
   uint64_t optimized_blur_generation;
+  uint64_t optimized_blur_rebuilt_frame; // `frame` at the last generation bump
   // optimized_no_blur_buffer blurred at one strength (below 1) and blur data per slot, inside the slot's boxes, valid
   // while the slot generation equals optimized_blur_generation: glass over a still backdrop composites it instead of
   // blurring again each frame. One slot per strength, so a whole-output render of one never evicts another. A partial
@@ -72,6 +73,7 @@ struct fx_offscreen_buffers {
     uint64_t generation;
     uint64_t last_used; // strength_blur_clock at the last lookup; the least recent slot is reused
     uint64_t since; // frame at which the slot took this strength
+    bool held; // looked up in a frame after since: a settled strength, not one step of a fade
     float strength;
     struct blur_data data;
     struct wlr_box boxes[32]; // more than the glass boxes of one frame (launcher: 7), or boxes evict in turn

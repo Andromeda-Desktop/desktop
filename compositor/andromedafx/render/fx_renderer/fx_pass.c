@@ -3245,7 +3245,8 @@ static struct fx_framebuffer* strength_blur(
     return NULL;
   }
   // The slot of this strength (kept while its boxes are pruned away), else the least recently used one, which then
-  // switches to this strength.
+  // switches to this strength. A fade passes a new strength every frame, so a new strength takes a slot that was never
+  // held first: else the fade evicts the settled strength's whole-output blur and every open renders it again.
   const size_t slots = sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]);
   struct fx_strength_blur* slot = NULL;
   for (size_t i = 0; i < slots && slot == NULL; i++) {
@@ -3255,16 +3256,19 @@ static struct fx_framebuffer* strength_blur(
     }
   }
   if (slot == NULL) {
-    slot = &fbos->strength_blurs[0];
-    for (size_t i = 1; i < slots; i++) {
-      if (fbos->strength_blurs[i].last_used < slot->last_used) {
-        slot = &fbos->strength_blurs[i];
+    for (size_t i = 0; i < slots; i++) {
+      struct fx_strength_blur* s = &fbos->strength_blurs[i];
+      if (slot == NULL || (s->held == slot->held ? s->last_used < slot->last_used : !s->held)) {
+        slot = s;
       }
     }
     slot->count = 0;
     slot->strength = fx_options->blur_strength;
     slot->data = *fx_options->blur_data;
     slot->since = fbos->frame;
+    slot->held = false;
+  } else if (slot->since < fbos->frame) {
+    slot->held = true;
   }
   slot->last_used = ++fbos->strength_blur_clock;
   if (slot->buffer == NULL || !optimized_buffer_fits(pass, slot->buffer)
@@ -3282,10 +3286,12 @@ static struct fx_framebuffer* strength_blur(
     slot->count = 0;
     return NULL;
   }
-  // A second box at a strength kept from an earlier frame means several or moving nodes use it: blur the whole output
-  // once, so every node at this strength hits until the backdrop changes, instead of re-blurring each frame. A strength
-  // new in this frame may be animating and never come back, so it renders only its box.
-  const struct wlr_box area = slot->count > 0 && slot->since < fbos->frame ? output : box;
+  // A second box at a held strength means several or moving nodes use it: blur the whole output once, so every node at
+  // this strength hits until the backdrop changes, instead of re-blurring each frame. A strength new in this frame may
+  // be animating and never come back, and a backdrop rebuilt in this or the last frame drops a whole-output box at once
+  // (~10 ms of GPU on an HD 520 each time): those render only their box.
+  const bool backdrop_still = fbos->optimized_blur_rebuilt_frame + 1 < fbos->frame;
+  const struct wlr_box area = slot->held && slot->count > 0 && backdrop_still ? output : box;
   pixman_region32_t region;
   pixman_region32_init_rect(&region, area.x, area.y, area.width, area.height);
   struct fx_render_blur_pass_options blur_options = *fx_options;
@@ -3814,6 +3820,7 @@ bool fx_render_pass_add_optimized_blur(
       || !optimized_buffer_fits(pass, fbos->optimized_no_blur_buffer)) {
     fbos->optimized_blur_valid = false;
     fbos->optimized_blur_generation++;
+    fbos->optimized_blur_rebuilt_frame = fbos->frame;
     if (getenv("ANDROMEDA_BLUR_DEBUG") != NULL) {
       wlr_log(WLR_INFO, "blur cache buffers replaced (size or format change); cache invalid");
     }
@@ -3842,6 +3849,7 @@ bool fx_render_pass_add_optimized_blur(
     fbos->optimized_blur_sdr_tf = linear_sdr_tf(pass);
     // Strength boxes read the backdrop only within their blur reach: a rebuild elsewhere keeps them valid.
     const uint64_t previous = fbos->optimized_blur_generation++;
+    fbos->optimized_blur_rebuilt_frame = fbos->frame;
     for (size_t s = 0; s < sizeof(fbos->strength_blurs) / sizeof(fbos->strength_blurs[0]); s++) {
       struct fx_strength_blur* slot = &fbos->strength_blurs[s];
       if (slot->generation != previous) {
