@@ -7,7 +7,6 @@
 #include "notification/notification_manager.h"
 #include "render/core/texture_manager.h"
 #include "render/scene/input_area.h"
-#include "shell/panel/glass_piece.h"
 #include "shell/panel/panel_manager.h"
 #include "ui/builders.h"
 #include "ui/controls/button.h"
@@ -38,14 +37,25 @@ namespace {
     });
   }
 
-  // A pill outside the head is its own glass piece, so it pours with the cards on open and close.
-  std::unique_ptr<Button> piecePill(std::string text, float scale, float opacity, std::function<void()> onClick) {
-    auto button = pill(std::move(text), scale, std::move(onClick));
-    if (Style::compositorDrawsTint()) {
-      button->setVariant(ButtonVariant::Ghost);
-      styleGlassPiece(*button, Tokens::sizeControlM * 0.5F * scale, scale, opacity);
-    }
-    return button;
+  // Cards and the back cards of a stack: fill_2 with a hairline edge, so stacked cards read as separate cards on glass.
+  void styleCard(Flex& card, float scale) {
+    card.setFill(colorSpecFromRole(ColorRole::Fill2));
+    card.setRadius(Tokens::radiusR16 * scale);
+    card.setBorder(colorSpecFromRole(ColorRole::Separator), scale);
+  }
+
+  std::unique_ptr<Button> plainPill(std::string text, float scale, std::function<void()> onClick,
+                                    std::optional<std::string> glyph = std::nullopt) {
+    return ui::button({
+        .text = std::move(text),
+        .glyph = std::move(glyph),
+        .fontSize = Tokens::typeFootnote.size * scale,
+        .glyphSize = Tokens::sizeSymbolInline * scale,
+        .controlHeight = Tokens::sizeControlS * scale,
+        .variant = ButtonVariant::Ghost,
+        .radius = Tokens::sizeControlS * 0.5F * scale,
+        .onClick = std::move(onClick),
+    });
   }
 
 } // namespace
@@ -80,6 +90,7 @@ void NotificationCenterPanel::onClose() {
   m_list = nullptr;
   m_cards.clear();
   m_peeks.clear();
+  m_moving.clear();
   m_icons.clear();
   m_key.clear();
   m_slotHeight = 0.0F;
@@ -105,8 +116,7 @@ void NotificationCenterPanel::create() {
         requestRebuild();
       })
   );
-  head->setPadding(0.0F, Tokens::spaceP8 * scale, 0.0F, Tokens::spaceP16 * scale);
-  styleGlassPiece(*head, Tokens::sizeControlXl * 0.5F * scale, scale, panelCardOpacity());
+  head->setPadding(0.0F, 0.0F, 0.0F, Tokens::spaceP4 * scale);
   column->addChild(std::move(head));
 
   auto scroll = std::make_unique<ScrollView>();
@@ -151,6 +161,54 @@ void NotificationCenterPanel::requestRebuild() {
   PanelManager::instance().refresh();
 }
 
+void NotificationCenterPanel::captureReflow() {
+  m_reflowFrom.clear();
+  for (const Moving& m : m_moving) {
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m.node, x, y);
+    m_reflowFrom[m.key] = y;
+  }
+}
+
+void NotificationCenterPanel::playReflow() {
+  for (const Moving& m : m_moving) {
+    auto it = m_reflowFrom.find(m.key);
+    const bool entering = it == m_reflowFrom.end();
+    if (entering) {
+      it = m_reflowFrom.find(m.from);
+    }
+    if (it == m_reflowFrom.end()) {
+      continue;
+    }
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(m.node, x, y);
+    const float dy = it->second - y;
+    Node* node = m.node;
+    if (std::abs(dy) < 0.5F || m_animations == nullptr) {
+      continue;
+    }
+    // Cards are translucent: an entering card shows only in the last third of its travel, once it is mostly clear of
+    // the card it slides out from under.
+    node->setTranslation(0.0F, dy);
+    if (entering) {
+      node->setOpacity(0.0F);
+    }
+    m_animations->animateSpatial(
+        dy, 0.0F, Style::spring(Tokens::springMove),
+        [node, dy, entering](float v) {
+          node->setTranslation(0.0F, v);
+          if (entering) {
+            node->setOpacity(std::clamp(1.0F - 3.0F * v / dy, 0.0F, 1.0F));
+          }
+        },
+        [node] { node->setOpacity(1.0F); }, node
+    );
+  }
+  m_reflowFrom.clear();
+}
+
 void NotificationCenterPanel::rebuild() {
   if (m_list == nullptr) {
     return;
@@ -158,6 +216,7 @@ void NotificationCenterPanel::rebuild() {
   m_dirty = false;
   m_cards.clear();
   m_peeks.clear();
+  m_moving.clear();
   m_icons.clear();
   while (!m_list->children().empty()) {
     m_list->removeChild(m_list->children().back().get());
@@ -179,7 +238,6 @@ void NotificationCenterPanel::rebuild() {
             .color = colorSpecFromRole(ColorRole::Label2),
         })
     );
-    styleGlassPiece(*empty, Tokens::radiusR24 * scale, scale, panelCardOpacity());
     m_list->addChild(std::move(empty));
     return;
   }
@@ -193,17 +251,22 @@ void NotificationCenterPanel::addGroup(Flex& list, const nc::Group& group) {
   const nc::GroupView view = nc::viewOf(group, static_cast<std::size_t>(Tokens::componentNotificationStackVisible));
   auto column = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
   auto stack = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
-  // Back cards come first: they draw (and their glass stacks) under the front card.
-  std::vector<std::unique_ptr<Flex>> peeks;
+  // Back cards come first: they draw under the front card.
   for (std::size_t k = view.peeks; k >= 1; --k) {
     auto peek = ui::row({.participatesInLayout = false});
-    styleGlassPiece(*peek, Tokens::radiusR24 * scale, scale, panelCardOpacity());
-    m_peeks.push_back({.node = peek.get(), .depth = static_cast<int>(k)});
+    peek->setClipChildren(true);
+    auto* back = static_cast<Flex*>(peek->addChild(ui::row({.participatesInLayout = false})));
+    styleCard(*back, scale);
+    m_peeks.push_back({.node = peek.get(), .card = back, .depth = static_cast<int>(k)});
+    m_moving.push_back({.key = "p:" + group.key + ":" + std::to_string(k), .from = "c:" + std::to_string(group.items.front()->id), .node = peek.get()});
     stack->addChild(std::move(peek));
   }
   const std::size_t firstPeek = m_peeks.size() - view.peeks;
   for (std::size_t i = 0; i < view.cards; ++i) {
     auto card = makeCard(*group.items[i]);
+    m_moving.push_back({.key = "c:" + std::to_string(group.items[i]->id), .from = "c:" + std::to_string(group.items.front()->id), .node = card.get()});
+    // Each card draws under the one above it, so an expanding stack slides out from under its front card.
+    card->setZIndex(-static_cast<std::int32_t>(i));
     if (i == 0) {
       for (std::size_t p = firstPeek; p < m_peeks.size(); ++p) {
         m_peeks[p].front = card.get();
@@ -226,20 +289,22 @@ void NotificationCenterPanel::addGroup(Flex& list, const nc::Group& group) {
     auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
     const std::string toggle = open ? i18n::tr("control-center.notifications.collapse-group")
                                     : i18n::tr("control-center.notifications.group-more", "count", static_cast<int>(group.items.size() - 1));
-    footer->addChild(piecePill(toggle, scale, panelCardOpacity(), [this, key, open] {
+    footer->addChild(plainPill(toggle, scale, [this, key, open] {
+      captureReflow();
       if (open) {
         m_openGroups.erase(key);
       } else {
         m_openGroups.insert(key);
       }
       requestRebuild();
-    }));
-    footer->addChild(piecePill(i18n::tr("control-center.detail.notifications.clear"), scale, panelCardOpacity(), [this, ids] {
+    }, open ? "chevron-up" : "chevron-down"));
+    footer->addChild(plainPill(i18n::tr("control-center.detail.notifications.clear"), scale, [this, ids] {
       for (const std::uint32_t id : ids) {
         m_notifications->removeHistoryEntry(id);
       }
       requestRebuild();
     }));
+    m_moving.push_back({.key = "f:" + key, .node = footer.get()});
     column->addChild(std::move(footer));
   }
   list.addChild(std::move(column));
@@ -248,8 +313,9 @@ void NotificationCenterPanel::addGroup(Flex& list, const nc::Group& group) {
 std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
   const float scale = contentScale();
   const float tile = Tokens::sizeControlM * scale;
-  auto card = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * scale, .padding = Tokens::spaceP12 * scale, .fillWidth = true});
-  styleGlassPiece(*card, Tokens::radiusR24 * scale, scale, panelCardOpacity());
+  auto card = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * scale, .padding = Tokens::spaceP12 * scale,
+                       .fillWidth = true});
+  styleCard(*card, scale);
 
   IconSlot slot;
   auto frame = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .fill = colorSpecFromRole(ColorRole::Fill1),
@@ -438,13 +504,19 @@ void NotificationCenterPanel::doLayout(Renderer& renderer, float width, float he
     card.clear->setPosition(card.node->width() - inset - card.clear->width(), inset);
   }
   for (const Peek& peek : m_peeks) {
-    // Scaled about its centre, the box keeps its bottom edge `depth` steps under the front card's bottom (origin 50% 100%).
+    // A back card `depth` steps deep: scaled about its bottom centre, its bottom edge `depth` steps under the front card's.
+    // Only the strip under the card in front shows, so the translucent fills never stack.
     const float s = 1.0F - (1.0F - Tokens::componentNotificationStackScale) * static_cast<float>(peek.depth);
-    const float w = peek.front->width();
-    const float h = peek.front->height();
-    peek.node->setSize(w, h);
-    peek.node->setScale(s);
-    peek.node->setPosition(peek.front->x(), peek.front->y() + Tokens::componentNotificationStackOffset * scale * static_cast<float>(peek.depth)
-                                                + h * (1.0F - s) * 0.5F);
+    const float step = Tokens::componentNotificationStackOffset * scale;
+    const float w = peek.front->width() * s;
+    const float h = peek.front->height() * s;
+    const float bottom = peek.front->y() + peek.front->height() + step * static_cast<float>(peek.depth);
+    peek.node->setPosition(peek.front->x() + (peek.front->width() - w) * 0.5F, bottom - step);
+    peek.node->setSize(w, step);
+    peek.card->setPosition(0.0F, step - h);
+    peek.card->setSize(w, h);
+  }
+  if (!m_dirty && !m_reflowFrom.empty()) {
+    playReflow();
   }
 }
