@@ -182,6 +182,7 @@ private:
   // Islands as dsk shapes (v10): clip and radius from the island boxes, material from the glass slider. False when
   // the compositor has no shapes; the blur region path runs then.
   bool syncIslandShapes(BarInstance& instance, bool material) const;
+  void syncContentRegion(BarInstance& instance) const;
   [[nodiscard]] std::string showBarIpc(std::string_view args);
   [[nodiscard]] std::string hideBarIpc(std::string_view args);
   [[nodiscard]] std::string toggleBarIpc(std::string_view args);
@@ -244,6 +245,7 @@ private:
   // Plugin enable/disable changes which widget types resolve, so a plugins-only
   // config change must also rebuild widgets.
   PluginsConfig m_lastPlugins;
+  float m_lastUiScale = 1.0F;
 
   // Surface → BarInstance mapping for pointer event routing
   std::unordered_map<Surface*, BarInstance*> m_surfaceMap;

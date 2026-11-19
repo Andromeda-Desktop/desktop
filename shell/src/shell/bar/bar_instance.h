@@ -93,6 +93,8 @@ struct BarInstance {
   // dsk v10: one glass shape per island; the compositor draws its blur, rim and tint, so no blur region is sent.
   std::vector<std::unique_ptr<DskShapeClient>> islandShapes;
   std::vector<DskSurfaceClient::Value> islandShapeClips; // last clip sent per shape
+  // dsk v17: last content region sent (the island rects; nullopt = none, the whole bar draws).
+  std::optional<std::vector<DskSurfaceClient::Value>> contentRects;
   // bar-hide/toggle IPC on non-autohide bars: release compositor exclusive zone until bar-show (v4 isVisible=false).
   bool ipcLayoutReleased = false;
   // bar-auto-hide-set off keeps autoHide true until the reveal completes; block hover helpers from replacing it.

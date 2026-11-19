@@ -320,8 +320,43 @@ bool Bar::syncIslandLiquid(BarInstance& instance) {
   return want;
 }
 
+// An island bar draws only inside its islands: a declared content region lets glass near the bar (Control Center
+// pieces) sample the cached backdrop instead of blurring live in every frame. The pad keeps strokes and badges inside.
+void Bar::syncContentRegion(BarInstance& instance) const {
+  if (instance.dsk == nullptr || m_platform == nullptr) {
+    return;
+  }
+  std::optional<std::vector<DskSurfaceClient::Value>> rects;
+  if (instance.barConfig.islands && !instance.islandShapes.empty()) {
+    constexpr double kPad = 8.0;
+    rects.emplace();
+    for (const auto& clip : instance.islandShapeClips) {
+      if (clip[2] > 0.0 && clip[3] > 0.0) {
+        rects->push_back({clip[0] - kPad, clip[1] - kPad, clip[2] + 2 * kPad, clip[3] + 2 * kPad});
+      }
+    }
+  }
+  if (rects == instance.contentRects) {
+    return;
+  }
+  wl_region* region = nullptr;
+  if (rects.has_value()) {
+    region = wl_compositor_create_region(m_platform->wayland().compositor());
+    for (const auto& r : *rects) {
+      wl_region_add(region, static_cast<int>(r[0]), static_cast<int>(r[1]), static_cast<int>(r[2]), static_cast<int>(r[3]));
+    }
+  }
+  if (instance.dsk->setContentRegion(region)) {
+    instance.contentRects = std::move(rects);
+  }
+  if (region != nullptr) {
+    wl_region_destroy(region);
+  }
+}
+
 bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
   if (instance.dsk == nullptr || !instance.dsk->hasShapes() || !instance.barConfig.compositorBlur) {
+    syncContentRegion(instance);
     return false;
   }
   if (!instance.islandBlurStrips.empty() && instance.surface != nullptr) {
@@ -366,6 +401,7 @@ bool Bar::syncIslandShapes(BarInstance& instance, bool material) const {
       shape.set(DskSurfaceClient::Property::Tint, tint);
     }
   }
+  syncContentRegion(instance);
   return true;
 }
 
