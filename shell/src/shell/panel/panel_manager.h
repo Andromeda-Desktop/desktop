@@ -508,7 +508,6 @@ private:
   // content to the current shape (uniform scale, pinned to the shape's top and right edge).
   float m_morphProgress = 1.0F;
   AnimationManager::Id m_morphProgressId = 0;
-  bool m_returnFaded = false;
   void driveContentMorph(float target, bool open);
   void applyContentMorph();
   void startContentGate();

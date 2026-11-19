@@ -3488,12 +3488,6 @@ void PanelManager::driveContentMorph(float target, bool open) {
       [this, open](float v) {
         m_morphProgress = v;
         applyContentMorph();
-        // Return: the shape fades out while it shrinks (7.4 exits overlap); left opaque to the end, the shrinking
-        // sheet read as a small box over the island.
-        if (!open && !m_returnFaded && v <= 0.6F && m_dsk != nullptr) {
-          m_returnFaded = true;
-          m_dsk->animate(DskSurfaceClient::Property::Opacity, DskSurfaceClient::Curve::SpringEffectsFast, {0.0, 0.0, 0.0, 0.0});
-        }
       },
       [this] { m_morphProgressId = 0; }, m_sceneRoot.get(), 0.0F, Unit::Progress
   );
@@ -3605,24 +3599,13 @@ bool PanelManager::startDetachedMorphClose(std::uint64_t gen) {
     m_dsk->set(Property::Clip, detachedSheetRect());
     m_dsk->set(Property::Radius, {panelRadius(), 0.0, 0.0, 0.0});
   }
-  // Return: the shape closes into the island on close while the content fades out on fade_out (7.4 exits overlap).
+  // Return: the shape closes into the island while the surface (glass and content as one) fades out on fade_out
+  // (7.4 exits overlap); a client fade on top would empty the glass first.
   m_contentGateTimer.stop();
-  if (m_contentNode != nullptr && m_sceneRoot != nullptr) {
-    m_animations.animateSpring(
-        m_contentGate, 0.0F, Style::spring(Tokens::springFadeOut),
-        [this](float v) {
-          m_contentGate = v;
-          if (m_contentNode != nullptr) {
-            m_contentNode->setOpacity(panelRevealContentOpacity(m_detachedRevealProgress) * v);
-          }
-        },
-        {}, m_sceneRoot.get()
-    );
-  }
   if (m_morphSettled) {
     m_morphProgress = 1.0F;
   }
-  m_returnFaded = false;
+  m_dsk->animate(Property::Opacity, Curve::SpringEffectsFast, {0.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Radius, Curve::SpringClose, {m_morphSourceRadius, 0.0, 0.0, 0.0});
   m_dsk->animate(
       Property::Clip, Curve::SpringClose, *m_dsk->mappedClip(),
