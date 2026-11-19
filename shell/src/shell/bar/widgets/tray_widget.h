@@ -67,7 +67,7 @@ private:
   [[nodiscard]] bool isPinnedItem(const TrayItemInfo& item) const;
   [[nodiscard]] float iconLogicalSize() const;
   [[nodiscard]] bool isHiddenItem(const TrayItemInfo& item) const;
-  [[nodiscard]] std::string_view drawerChevronGlyph(bool panelOpen) const;
+  [[nodiscard]] std::string_view drawerChevronGlyph() const;
   // Bar section gap is between capsule shells; inline tray icons share one shell, so add the
   // lateral inset that adjacent single-icon capsules would contribute between their icons.
   [[nodiscard]] float resolvedInlineEntryGap() const;
@@ -110,7 +110,7 @@ private:
   // Rasterised white and tinted, so a palette or tone change recolours them without a rebuild.
   InputArea* m_drawerTrigger = nullptr;
   Glyph* m_drawerChevron = nullptr;
-  std::string m_drawerChevronGlyph;
+  Box* m_drawerLens = nullptr;
   Signal<>::ScopedConnection m_paletteConn;
   Signal<>::ScopedConnection m_appIconColorizeConn;
   Node* m_hoverOverlayParent = nullptr;

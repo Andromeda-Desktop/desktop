@@ -248,16 +248,8 @@ void TrayWidget::doLayout(Renderer& renderer, float containerWidth, float contai
   }
   if (m_drawerMode && m_drawerChevron != nullptr && m_drawerTrigger != nullptr) {
     const bool panelOpen = PanelManager::instance().isOpenPanel("tray-drawer");
-    const std::string_view glyphName = drawerChevronGlyph(panelOpen);
-    if (m_drawerChevronGlyph != glyphName) {
-      m_drawerChevronGlyph = glyphName;
-      m_drawerChevron->setGlyph(glyphName);
-      m_drawerChevron->setGlyphSize(m_drawerTrigger->width());
-      m_drawerChevron->measure(renderer);
-      m_drawerChevron->setPosition(
-          std::round((m_drawerTrigger->width() - m_drawerChevron->width()) * 0.5F),
-          std::round((m_drawerTrigger->height() - m_drawerChevron->height()) * 0.5F)
-      );
+    if (m_drawerLens != nullptr && m_drawerLens->visible() != panelOpen) {
+      m_drawerLens->setVisible(panelOpen);
       requestRedraw();
     }
   }
@@ -513,7 +505,7 @@ void TrayWidget::rebuild(Renderer& renderer) {
   if (m_drawerMode) {
     m_drawerTrigger = nullptr;
     m_drawerChevron = nullptr;
-    m_drawerChevronGlyph.clear();
+    m_drawerLens = nullptr;
     bool hasDrawerItems = false;
     for (const auto& item : m_items) {
       if ((m_hidePassive && tray::isPassiveStatus(item)) || isHiddenItem(item) || isPinnedItem(item)) {
@@ -562,10 +554,20 @@ void TrayWidget::rebuild(Renderer& renderer) {
           requestPanelToggle("tray-drawer", {}, anchorX, anchorY);
         }
       });
-      const bool panelOpen = PanelManager::instance().isOpenPanel("tray-drawer");
-      m_drawerChevronGlyph = drawerChevronGlyph(panelOpen);
+      // The open drawer's chevron carries the lens, an island cell circle (proto .cell.lens).
+      const float cell = std::max(Tokens::componentIslandCell * m_contentScale, itemSize);
+      triggerArea->addChild(ui::box({
+          .out = &m_drawerLens,
+          .fill = colorSpecFromRole(ColorRole::Fill3),
+          .radius = cell * 0.5F,
+          .width = cell,
+          .height = cell,
+          .visible = PanelManager::instance().isOpenPanel("tray-drawer"),
+          .configure = [](Box& box) { box.setHitTestVisible(false); },
+      }));
+      m_drawerLens->setPosition(std::round((itemSize - cell) * 0.5F), std::round((itemSize - cell) * 0.5F));
       auto glyph = ui::glyph({
-          .glyph = m_drawerChevronGlyph,
+          .glyph = std::string(drawerChevronGlyph()),
           .glyphSize = itemSize,
           .color = widgetIconColorOr(colorSpecFromRole(ColorRole::Label1)),
       });
@@ -869,17 +871,18 @@ void TrayWidget::rebuild(Renderer& renderer) {
   m_container->setVisible(!m_container->children().empty());
 }
 
-std::string_view TrayWidget::drawerChevronGlyph(bool panelOpen) const {
+// The chevron points where the drawer opens; the open state is the lens, not a flipped glyph (proto .btray).
+std::string_view TrayWidget::drawerChevronGlyph() const {
   if (m_barPosition == "bottom") {
-    return panelOpen ? "chevron-down" : "chevron-up";
+    return "chevron-up";
   }
   if (m_barPosition == "left") {
-    return panelOpen ? "chevron-left" : "chevron-right";
+    return "chevron-right";
   }
   if (m_barPosition == "right") {
-    return panelOpen ? "chevron-right" : "chevron-left";
+    return "chevron-left";
   }
-  return panelOpen ? "chevron-up" : "chevron-down";
+  return "chevron-down";
 }
 
 bool TrayWidget::isHiddenItem(const TrayItemInfo& item) const {

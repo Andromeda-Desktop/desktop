@@ -831,7 +831,8 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       && barConfig.reserveSpace
       && barConfig.thickness > 0;
   const auto marginLeftFromAnchor = clampMargin(
-      request.anchorX - static_cast<float>(panelWidth) * 0.5F, static_cast<std::int32_t>(panelWidth), outputWidth,
+      request.anchorX - static_cast<float>(panelWidth) * (request.anchorAlign == PanelAnchorAlign::End ? 1.0F : 0.5F),
+      static_cast<std::int32_t>(panelWidth), outputWidth,
       screenPadding
   );
   const auto marginTopFromAnchor = clampMargin(

@@ -109,12 +109,12 @@ namespace bar_detail {
   }
 
   // The visible island under bar-surface point sx, sy, as x, y, width, height in the bar surface.
-  std::optional<std::array<float, 4>> islandRectAt(const BarInstance& instance, float sx, float sy) {
+  std::optional<std::array<float, 4>> islandRectAt(const BarInstance& instance, float sx, float sy, const Box* only) {
     if (!instance.barConfig.islands) {
       return std::nullopt;
     }
     for (const Box* island : instance.islands) {
-      if (island == nullptr || !island->visible()) {
+      if (island == nullptr || !island->visible() || (only != nullptr && island != only)) {
         continue;
       }
       float x = 0.0F;

@@ -77,7 +77,9 @@ namespace bar_detail {
   Widget* widgetAtPoint(const BarInstance& instance, float sceneX, float sceneY);
   std::pair<float, float> surfaceOriginForOutputLocal(const BarInstance& instance, const WaylandOutput& outputInfo);
   void suppressTooltipForOpenPanel(std::string_view panelId);
-  std::optional<std::array<float, 4>> islandRectAt(const BarInstance& instance, float sx, float sy);
+  // only: limit the search to that one island.
+  std::optional<std::array<float, 4>>
+  islandRectAt(const BarInstance& instance, float sx, float sy, const Box* only = nullptr);
   [[nodiscard]] BarSurfaceSpec
   computeBarSurfaceSpec(const BarConfig& barConfig, const ShellConfig::ShadowConfig& shadowConfig);
   [[nodiscard]] float barInnerSurfaceExtension(

@@ -449,8 +449,10 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
         };
         const auto source = island ? island : widgetRect();
         std::optional<std::array<float, 4>> sourceOutput;
+        // A sheet under the end island keeps the island's trailing edge (proto .cc, .o-tray: right 8).
+        const bool endIsland = island && islandRectAt(*inst, anchorX, anchorY, inst->islands[2]).has_value();
         if (island) {
-          anchorX = (*island)[0] + (*island)[2] * 0.5F;
+          anchorX = endIsland ? (*island)[0] + (*island)[2] : (*island)[0] + (*island)[2] * 0.5F;
           anchorY = (*island)[1] + (*island)[3] * 0.5F;
         }
         if (m_platform != nullptr && inst->output != nullptr) {
@@ -466,6 +468,7 @@ void Bar::attachWidgetsToSections(BarInstance& instance) {
         PanelOpenRequest request{
             .output = inst->output,
             .anchorX = anchorX,
+            .anchorAlign = endIsland ? PanelAnchorAlign::End : PanelAnchorAlign::Center,
             .anchorY = anchorY,
             .hasExplicitAnchor = anchorSurfaceX.has_value() || anchorSurfaceY.has_value(),
             .hasAnchorPosition = true,

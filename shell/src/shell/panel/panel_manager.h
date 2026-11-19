@@ -46,9 +46,13 @@ struct wl_output;
 struct wl_surface;
 struct wl_callback;
 
+// Which point of the panel's width anchorX names: its centre, or its trailing edge (a sheet under the bar's end island).
+enum class PanelAnchorAlign : std::uint8_t { Center, End };
+
 struct PanelOpenRequest {
   wl_output* output = nullptr;
   float anchorX = 0.0F;
+  PanelAnchorAlign anchorAlign = PanelAnchorAlign::Center;
   float anchorY = 0.0F;
   bool hasExplicitAnchor = false;
   bool hasAnchorPosition = false;
