@@ -38,6 +38,16 @@ namespace {
     });
   }
 
+  // A pill outside the head is its own glass piece, so it pours with the cards on open and close.
+  std::unique_ptr<Button> piecePill(std::string text, float scale, float opacity, std::function<void()> onClick) {
+    auto button = pill(std::move(text), scale, std::move(onClick));
+    if (Style::compositorDrawsTint()) {
+      button->setVariant(ButtonVariant::Ghost);
+      styleGlassPiece(*button, Tokens::sizeControlM * 0.5F * scale, scale, opacity);
+    }
+    return button;
+  }
+
 } // namespace
 
 float NotificationCenterPanel::preferredWidth() const { return scaled(Tokens::componentNotificationCenterWidth); }
@@ -216,7 +226,7 @@ void NotificationCenterPanel::addGroup(Flex& list, const nc::Group& group) {
     auto footer = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
     const std::string toggle = open ? i18n::tr("control-center.notifications.collapse-group")
                                     : i18n::tr("control-center.notifications.group-more", "count", static_cast<int>(group.items.size() - 1));
-    footer->addChild(pill(toggle, scale, [this, key, open] {
+    footer->addChild(piecePill(toggle, scale, panelCardOpacity(), [this, key, open] {
       if (open) {
         m_openGroups.erase(key);
       } else {
@@ -224,7 +234,7 @@ void NotificationCenterPanel::addGroup(Flex& list, const nc::Group& group) {
       }
       requestRebuild();
     }));
-    footer->addChild(pill(i18n::tr("control-center.detail.notifications.clear"), scale, [this, ids] {
+    footer->addChild(piecePill(i18n::tr("control-center.detail.notifications.clear"), scale, panelCardOpacity(), [this, ids] {
       for (const std::uint32_t id : ids) {
         m_notifications->removeHistoryEntry(id);
       }
