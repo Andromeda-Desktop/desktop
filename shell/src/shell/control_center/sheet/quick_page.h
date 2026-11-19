@@ -98,7 +98,8 @@ private:
   void sizePages(Renderer& renderer, float width);
   void syncPager();
   void setEditing(bool editing);
-  bool moveFocus(int index);
+  bool moveFocus(int index, bool keyboard = false);
+  [[nodiscard]] int tileToward(int from, int dx, int dy) const;
   // Edit-mode motion: scale on `snap`, tile moves on `move`, badges on `fade` (rulebook 9.16).
   void animateScale(Flex& card, float to);
   void animateFlip();

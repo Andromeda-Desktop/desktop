@@ -44,6 +44,7 @@
 #include "core/input/key_modifiers.h"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 #include <format>
 #include <functional>
@@ -309,6 +310,8 @@ std::unique_ptr<Button> QuickPage::makeToggleRow(
   });
   icon->setZIndex(kAboveCardArea);
   icon->setStateFillless(true);
+  // The tile is one focus stop (rulebook 11): Space toggles through the icon, Enter opens the detail.
+  icon->inputArea()->setFocusable(false);
   Button* body = container.get();
   attachCardMotion(*container, panelCardOpacity(), icon.get(),
                    [this, body](float x, float y, bool pressed) { tilePress(body, x, y, pressed); });
@@ -1873,7 +1876,7 @@ void QuickPage::setActive(bool active) {
 
 bool QuickPage::focusSlider(Slider* slider) {
   if (slider != nullptr && slider->inputArea() != nullptr) {
-    PanelManager::instance().inputDispatcher().setFocus(slider->inputArea());
+    PanelManager::instance().inputDispatcher().setKeyboardFocus(slider->inputArea());
   }
   return true;
 }
@@ -1906,19 +1909,87 @@ bool QuickPage::handleSliderKey(std::uint32_t sym, std::uint32_t modifiers, cons
     if (slider == m_volumeSlider && m_brightnessPill->visible()) {
       return focusSlider(m_brightnessSlider);
     }
-    return moveFocus(static_cast<int>(std::min(m_page * 4 + 2, m_extras.size() - 1)));
+    return moveFocus(tileToward(-1, 0, -1), true);
   default:
     return false;
   }
 }
 
-bool QuickPage::moveFocus(int index) {
+bool QuickPage::moveFocus(int index, bool keyboard) {
   if (index < 0 || static_cast<std::size_t>(index) >= m_extras.size() || m_extras[static_cast<std::size_t>(index)].body == nullptr) {
     return true;
   }
-  goToPage(static_cast<std::size_t>(index) / 4);
-  PanelManager::instance().inputDispatcher().setFocus(m_extras[static_cast<std::size_t>(index)].body->inputArea());
+  const Node* card = m_extras[static_cast<std::size_t>(index)].card;
+  for (std::size_t page = 0; page < m_pages.size(); ++page) {
+    for (const Node* n = card; n != nullptr; n = n->parent()) {
+      if (n == m_pages[page]) {
+        goToPage(page);
+      }
+    }
+  }
+  InputArea* area = m_extras[static_cast<std::size_t>(index)].body->inputArea();
+  auto& dispatcher = PanelManager::instance().inputDispatcher();
+  if (keyboard) {
+    dispatcher.setKeyboardFocus(area);
+  } else {
+    dispatcher.setFocus(area);
+  }
   return true;
+}
+
+// The tile nearest to tile `from` in direction (dx, dy) by card centres: the nearest row first, then the nearest
+// column; -1 when none. from -1 with dy -1 starts below the grid (Up from the sliders reaches the last row).
+int QuickPage::tileToward(int from, int dx, int dy) const {
+  const auto centre = [](const Node* n) {
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(n, x, y);
+    return std::pair{x + n->width() * 0.5F, y + n->height() * 0.5F};
+  };
+  const auto shown = [this](std::size_t i) {
+    const Node* card = m_extras[i].card;
+    return card != nullptr && m_extras[i].body != nullptr && card->visible() && card->width() > 0.0F;
+  };
+  float fx = 0.0F;
+  float fy = 1.0e6F;
+  float rowHalf = 0.0F;
+  if (from >= 0) {
+    const Node* card = m_extras[static_cast<std::size_t>(from)].card;
+    std::tie(fx, fy) = centre(card);
+    rowHalf = card->height() * 0.5F;
+  }
+  int best = -1;
+  float bestMain = std::numeric_limits<float>::max();
+  float bestCross = std::numeric_limits<float>::max();
+  for (std::size_t i = 0; i < m_extras.size(); ++i) {
+    if (static_cast<int>(i) == from || !shown(i)) {
+      continue;
+    }
+    const auto [cx, cy] = centre(m_extras[i].card);
+    const float ddx = cx - fx;
+    const float ddy = cy - fy;
+    const bool sameRow = std::abs(ddy) < std::max(rowHalf, m_extras[i].card->height() * 0.5F);
+    float main = 0.0F;
+    float cross = 0.0F;
+    if (dx != 0) {
+      if (!sameRow || ddx * static_cast<float>(dx) <= 0.0F) {
+        continue;
+      }
+      main = std::abs(ddx);
+    } else {
+      if (sameRow || ddy * static_cast<float>(dy) <= 0.0F) {
+        continue;
+      }
+      main = std::round(std::abs(ddy));
+      cross = from >= 0 ? std::abs(ddx) : cx;
+    }
+    if (main < bestMain || (main == bestMain && cross < bestCross)) {
+      best = static_cast<int>(i);
+      bestMain = main;
+      bestCross = cross;
+    }
+  }
+  return best;
 }
 
 // The media and phone cards are rows of buttons below the volume pill: Down reaches them, Left and Right move along a row.
@@ -1941,7 +2012,7 @@ bool QuickPage::handleCardKey(std::uint32_t sym, const InputArea* focused) {
     if (best == nullptr) {
       return false;
     }
-    PanelManager::instance().inputDispatcher().setFocus(best->inputArea());
+    PanelManager::instance().inputDispatcher().setKeyboardFocus(best->inputArea());
     return true;
   };
   if (m_volumeSlider != nullptr && focused == m_volumeSlider->inputArea() && sym == XKB_KEY_Down) {
@@ -2023,21 +2094,26 @@ bool QuickPage::handleKey(std::uint32_t sym, std::uint32_t modifiers, bool press
   }
   if (at >= 0) {
     const auto index = static_cast<std::size_t>(at);
-    const bool leftColumn = at % 2 == 0;
-    const int rowInPage = (at % 4) / 2;
     switch (sym) {
     case XKB_KEY_Left:
-      return leftColumn ? (at >= 4 ? moveFocus(at - 3) : true) : moveFocus(at - 1);
+      return moveFocus(tileToward(at, -1, 0), true);
     case XKB_KEY_Right:
-      return !leftColumn ? (static_cast<std::size_t>(at + 3) < m_extras.size() ? moveFocus(at + 3) : true)
-                         : (index + 1 < m_extras.size() ? moveFocus(at + 1) : true);
+      return moveFocus(tileToward(at, 1, 0), true);
     case XKB_KEY_Up:
-      return rowInPage == 1 ? moveFocus(at - 2) : true;
+      return moveFocus(tileToward(at, 0, -1), true);
     case XKB_KEY_Down:
-      if (rowInPage == 0 && index + 2 < m_extras.size() && (at + 2) / 4 == at / 4) {
-        return moveFocus(at + 2);
+      if (const int below = tileToward(at, 0, 1); below >= 0) {
+        return moveFocus(below, true);
       }
-      return focusSlider(m_brightnessPill->visible() ? m_brightnessSlider : m_volumeSlider);
+      if (m_brightnessPill->visible()) {
+        return focusSlider(m_brightnessSlider);
+      }
+      return m_volumePill->visible() ? focusSlider(m_volumeSlider) : true;
+    case XKB_KEY_space:
+      if (m_extras[index].shortcut != nullptr) {
+        m_extras[index].shortcut->onClick();
+      }
+      return true;
     case XKB_KEY_Menu:
       if (!m_extras[index].detail.empty()) {
         m_openTab(m_extras[index].detail);

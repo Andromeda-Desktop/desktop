@@ -40,6 +40,11 @@ public:
   [[nodiscard]] static bool inSceneTeardown() noexcept { return s_sceneTeardown; }
   // True after Tab moved focus, until the next pointer press: the focus ring shows only then (rulebook 11).
   [[nodiscard]] static bool focusVisible() noexcept { return s_focusVisible; }
+  // Focus moved by a key other than Tab (arrows in a roving group): the ring shows as after Tab.
+  void setKeyboardFocus(InputArea* area) {
+    s_focusVisible = true;
+    setFocus(area);
+  }
 
   void setSceneRoot(Node* root);
   void setCursorShapeCallback(CursorShapeCallback callback);
