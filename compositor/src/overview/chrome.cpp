@@ -469,20 +469,33 @@ namespace andromeda::ov {
       }
     }
 
-    m_empties.resize(std::max(m_empties.size(), frame.workspaces.size()));
+    while (m_empties.size() < frame.workspaces.size()) {
+      // Made before its label's lazy tree, so the glass sits under the text. It blurs the whole scene: the thumb's
+      // wallpaper mirror under it is not the bottom layer.
+      m_emptyGlass.push_back(std::make_unique<GlassPanel>(m_tree, glass::Kind::Shape));
+      m_emptyGlass.back()->setEnabled(false);
+      m_empties.emplace_back();
+    }
     for (size_t index = 0; index < m_empties.size(); ++index) {
       Label& label = m_empties[index];
+      GlassPanel& glass = *m_emptyGlass[index];
       const ChromeWorkspace* workspace = index < frame.workspaces.size() ? &frame.workspaces[index] : nullptr;
       if (workspace == nullptr || !workspace->shown || !workspace->empty || workspace->card.width <= 0) {
         placeLabel(label, 0, 0, 0.0F);
+        glass.setEnabled(false);
         continue;
       }
       setLabel(
           label, span(l2, "normal", "No windows"),
-          {.font = tokenFont(Tokens::typeFootnote), .padX = 10, .height = kNameHeight, .maxWidth = workspace->card.width, .fill = thick}, scale
+          {.font = tokenFont(Tokens::typeFootnote), .padX = 10, .height = kNameHeight, .maxWidth = workspace->card.width},
+          scale
       );
       const wlr_box& card = workspace->card;
-      placeLabel(label, card.x + (card.width - label.width) / 2, card.y + (card.height - label.height) / 2, late);
+      const int x = card.x + (card.width - label.width) / 2;
+      const int y = card.y + (card.height - label.height) / 2;
+      placeLabel(label, x, y, late);
+      glass.setEnabled(late > 0.004F);
+      glass.place({x, y, label.width, label.height}, label.height / 2, late);
     }
 
     const ChromeWorkspace* chosen = frame.current < frame.workspaces.size() ? &frame.workspaces[frame.current] : nullptr;

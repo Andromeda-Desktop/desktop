@@ -169,6 +169,7 @@ namespace andromeda::ov {
     std::array<float, 4> m_searchIconColor{};
     Label m_noMatch;
     std::vector<Label> m_empties; // one per workspace card
+    std::vector<std::unique_ptr<GlassPanel>> m_emptyGlass; // the island glass under each m_empties capsule
     Label m_plusMark;
     Frame m_plus;
     Frame m_current; // ink ring around the shown workspace's thumb, row or tile
