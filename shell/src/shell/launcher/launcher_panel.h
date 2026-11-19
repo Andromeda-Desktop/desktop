@@ -89,7 +89,7 @@ public:
   // Concept C: the search capsule, each mode drop and the results are separate glass pieces.
   [[nodiscard]] bool usesGlassPieces() const override { return usesBrowserLayout(); }
   // proto P19: the pieces grow out of the launcher button and return into it.
-  [[nodiscard]] PiecePour piecePour() const override { return {.towardLeft = true, .motion = PourMotion::Grow}; }
+  [[nodiscard]] PiecePour piecePour() const override { return {.towardLeft = true, .motion = PourMotion::Scale}; }
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override;
   [[nodiscard]] LayerShellKeyboard keyboardMode() const override { return LayerShellKeyboard::Exclusive; }
   [[nodiscard]] InputArea* initialFocusArea() const override;

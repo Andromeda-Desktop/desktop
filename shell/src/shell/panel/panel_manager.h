@@ -274,8 +274,11 @@ private:
     DskSurfaceClient::Value shift;
   };
   bool startDetachedScaleOpen();
-  bool startScaleOpen(ScaleFrom from, bool grow = false);
-  void gatePiecesIn();
+  // Surface: the compositor fades the surface. Pieces: the pieces fade themselves (piece glass ignores the surface
+  // opacity), now or after the content gate.
+  enum class ScaleOpenFade : std::uint8_t { Surface, Pieces, GatedPieces };
+  bool startScaleOpen(ScaleFrom from, ScaleOpenFade fade = ScaleOpenFade::Surface);
+  void fadePiecesIn(bool gated);
   [[nodiscard]] std::vector<Node*> visiblePieces() const;
   bool startGrowOpen();
   bool startDetachedScaleClose(std::uint64_t gen);

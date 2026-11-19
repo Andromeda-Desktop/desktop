@@ -82,8 +82,9 @@ public:
   // How glass pieces pour in on open: each piece travels xShare of its x distance to the anchor (the pieces' right
   // end, or left start when towardLeft) and yShare of its y distance to the surface top plus lift px, from fromScale.
   // Grow: the pieces as one group grow out of the open request's source rect and return into it (proto M.grow, P19);
-  // without a source rect they pour.
-  enum class PourMotion : std::uint8_t { Pour, Grow };
+  // without a source rect they pour. Scale: a short scale-up in place with the pieces fading in, for a panel opened
+  // often (launcher), where travel from the source is more motion than it needs.
+  enum class PourMotion : std::uint8_t { Pour, Grow, Scale };
   struct PiecePour {
     float fromScale = Tokens::motionFaceScale;
     float xShare = Tokens::motionPourXShare;

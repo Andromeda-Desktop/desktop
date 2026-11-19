@@ -3083,12 +3083,12 @@ std::vector<Node*> PanelManager::visiblePieces() const {
 
 // proto surfaces.js openLauncher: inside the growing group, the pieces fade in on spring.fade once the grow has covered
 // content_gate of its travel, in scene order and staggered.
-void PanelManager::gatePiecesIn() {
+void PanelManager::fadePiecesIn(bool gated) {
   for (Node* piece : visiblePieces()) {
     m_animations.cancelForOwner(piece);
     piece->setOpacity(0.0F);
   }
-  m_contentGateTimer.start(openContentGate(openSpringToken()), [this] {
+  const auto fadeIn = [this] {
     int index = 0;
     for (Node* piece : visiblePieces()) {
       m_animations.cancelForOwner(piece);
@@ -3103,7 +3103,12 @@ void PanelManager::gatePiecesIn() {
           {}, piece
       );
     }
-  });
+  };
+  if (gated) {
+    m_contentGateTimer.start(openContentGate(openSpringToken()), fadeIn);
+  } else {
+    fadeIn();
+  }
 }
 
 void PanelManager::pourPieces(bool open) {
@@ -3113,6 +3118,10 @@ void PanelManager::pourPieces(bool open) {
   // The grow is the open itself; a later pour (back from a card) pours the pieces in place.
   if (pour.motion == Panel::PourMotion::Grow && m_growSourceOutput.has_value() && open && !m_scaleFrom.has_value() &&
       startGrowOpen()) {
+    return;
+  }
+  if (pour.motion == Panel::PourMotion::Scale && open && !m_scaleFrom.has_value() &&
+      startScaleOpen({kScaleOpenFrom, detachedScaleShift(kScaleOpenFrom)}, ScaleOpenFade::Pieces)) {
     return;
   }
   struct Rest {
@@ -3214,10 +3223,12 @@ bool PanelManager::startGrowOpen() {
   const double srcCy = src[1] - m_panelSurfaceOrigin[1] + src[3] * 0.5;
   const double gx = (left + right) * 0.5;
   const double gy = (top + bottom) * 0.5;
-  return startScaleOpen({scale, {srcCx - cx - scale * (gx - cx), srcCy - cy - scale * (gy - cy), 0.0, 0.0}}, true);
+  return startScaleOpen(
+      {scale, {srcCx - cx - scale * (gx - cx), srcCy - cy - scale * (gy - cy), 0.0, 0.0}}, ScaleOpenFade::GatedPieces
+  );
 }
 
-bool PanelManager::startScaleOpen(ScaleFrom from, bool grow) {
+bool PanelManager::startScaleOpen(ScaleFrom from, ScaleOpenFade fade) {
   using Property = DskSurfaceClient::Property;
   dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
   if (manager == nullptr || m_wlSurface == nullptr || m_activePanel == nullptr || !MotionService::instance().enabled() ||
@@ -3237,10 +3248,10 @@ bool PanelManager::startScaleOpen(ScaleFrom from, bool grow) {
   m_scaleFrom = from;
   m_dsk->animate(Property::Scale, openCurve(), {1.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Translate, openCurve(), {0.0, 0.0, 0.0, 0.0});
-  if (grow) {
+  if (fade != ScaleOpenFade::Surface) {
     // The pieces are the only fade: a group fade under them multiplied both and hid the first 130 ms (laptop).
     m_dsk->set(Property::Opacity, {1.0, 0.0, 0.0, 0.0});
-    gatePiecesIn();
+    fadePiecesIn(fade == ScaleOpenFade::GatedPieces);
     return true;
   }
   // The compositor adds the glass density in the frame it samples the backdrop, so the open starts at once.
@@ -3259,15 +3270,31 @@ bool PanelManager::startDetachedScaleClose(std::uint64_t gen) {
   m_contentGateTimer.stop();
   m_dsk->animate(Property::Opacity, opacityCurve(true), {0.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Translate, Curve::SpringClose, m_scaleFrom->shift);
-  m_dsk->animate(
-      Property::Scale, Curve::SpringClose, {m_scaleFrom->scale, 0.0, 0.0, 0.0},
-      [this, gen](DskSurfaceClient::EndReason) {
+  m_dsk->animate(Property::Scale, Curve::SpringClose, {m_scaleFrom->scale, 0.0, 0.0, 0.0});
+  // Piece glass does not follow the surface opacity, so the pieces fade themselves; the panel goes once they are gone,
+  // part way into the shrink: a uniform scale cannot end in the source's shape, and the rest would be unseen work.
+  const std::vector<Node*> pieces = visiblePieces();
+  for (Node* piece : pieces) {
+    m_animations.cancelForOwner(piece);
+  }
+  m_animations.animateSpring(
+      1.0F, 0.0F, Style::spring(Tokens::springFadeOut),
+      [this, pieces](float v) {
+        for (Node* piece : pieces) {
+          piece->setOpacity(std::min(piece->opacity(), v));
+        }
+        if (m_surface != nullptr) {
+          m_surface->requestRedraw();
+        }
+      },
+      [this, gen] {
         DeferredCall::callLater([this, gen] {
           if (m_destroyGeneration == gen) {
             destroyPanel();
           }
         });
-      }
+      },
+      m_sceneRoot.get()
   );
   return true;
 }
