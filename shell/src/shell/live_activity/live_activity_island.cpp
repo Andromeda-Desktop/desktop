@@ -615,7 +615,7 @@ void LiveActivityIsland::ensureSurfaces() {
     inst->glassConn = Style::glassChanged().connect([this, instPtr = inst.get()] {
       if (instPtr->material != nullptr) {
         instPtr->material->setPaletteTone(glassTone(glass::Kind::Shape));
-        instPtr->tint->setPaletteTone(glassTone(glass::Kind::Sheet));
+        instPtr->tint->setPaletteTone(glassTone(glass::Kind::Shape));
       }
     });
     m_instances.push_back(std::move(inst));
@@ -904,10 +904,8 @@ DskSurfaceClient::Value LiveActivityIsland::islandTint(const Instance& inst, Fac
   if (!inst.compositorTint) {
     return glassTintValue(materialRole(), 0.0F, inst.material);
   }
-  const glass::Kind kind = face == Face::Rest ? glass::Kind::Shape : glass::Kind::Sheet;
-  const float tint = Style::glassMaterial(kind, glassTone(kind)).tint;
-  return face == Face::Rest ? glassTintValue(materialRole(), tint, inst.material)
-                            : glassTintValue(panelMaterialRole(), tint, inst.tint);
+  const float tint = Style::glassMaterial(glass::Kind::Shape, glassTone(glass::Kind::Shape)).tint;
+  return glassTintValue(materialRole(), tint, face == Face::Rest ? inst.material : inst.tint);
 }
 
 namespace {
@@ -1318,7 +1316,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   material->setClipChildren(true);
   auto tint = ui::box({
       .out = &inst.tint,
-      .fill = colorSpecFromRole(panelMaterialRole(), Style::glassMaterial(glass::Kind::Sheet).tint),
+      .fill = colorSpecFromRole(materialRole(), Style::glassMaterial(glass::Kind::Shape).tint),
   });
   tint->setClipChildren(true);
 
@@ -1807,9 +1805,15 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
               }
               return;
             }
-            if (!fromBanner && inLane(*instPtr) && instPtr->mediaGroup->visible() && m_open) {
-              m_open(instPtr->output, "detail-media", source);
-              return;
+            const bool mediaFace = instPtr->morph.shown() == Face::HoverMedia;
+            if (!fromBanner && (mediaFace || (inLane(*instPtr) && instPtr->mediaGroup->visible()))) {
+              const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
+              const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
+              if (player.has_value() && m_openPlayer) {
+                endHover(*instPtr);
+                m_openPlayer(player->busName, player->desktopEntry);
+                return;
+              }
             }
             // A banner opens the notification history; the resting date pill opens the calendar, as the clock does.
             if (m_open) {
@@ -1874,7 +1878,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   // The resting pill is a shape; the other faces sit on the sheet tint, a sibling, so it takes its own tone.
   const bool liquid = inst.dsk != nullptr && inst.dsk->hasLiquidProperty() && !Style::reduceTransparency();
   const PaletteTone shapeTone = glassTone(glass::Kind::Shape);
-  const PaletteTone sheetTone = glassTone(glass::Kind::Sheet);
+  const PaletteTone sheetTone = glassTone(glass::Kind::Shape);
   inst.material->setPaletteTone(shapeTone);
   inst.tint->setPaletteTone(sheetTone);
   const auto setTint = [](auto& target, const DskSurfaceClient::Value& value) {
@@ -1913,7 +1917,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
                             )
   );
   inst.tint->setFill(colorSpecFromRole(
-      panelMaterialRole(), inst.compositorTint ? 0.0F : Style::glassMaterial(glass::Kind::Sheet, sheetTone).tint
+      materialRole(), inst.compositorTint ? 0.0F : Style::glassMaterial(glass::Kind::Shape, sheetTone).tint
   ));
   inst.ring->setBorder(inst.space.border, islandStrokeWidth(inst.space.borderWidth));
 

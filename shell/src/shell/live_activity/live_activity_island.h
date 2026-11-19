@@ -101,6 +101,10 @@ public:
     std::array<float, 4> outputRect{};
   };
   using OpenCallback = std::function<void(wl_output*, std::string_view, std::optional<SheetSource>)>;
+  // Brings the media player of the bus forward; the island media tap and its hover card call it.
+  void setOpenPlayer(std::function<void(const std::string& busName, const std::string& desktopEntry)> openPlayer) {
+    m_openPlayer = std::move(openPlayer);
+  }
   // False while hover cards must stay closed: a sheet is open beside the island.
   void setHoverGate(std::function<bool()> gate) { m_hoverGate = std::move(gate); }
   // Sources of the rest content, and the click on the rest pill.
@@ -409,6 +413,7 @@ private:
   std::string m_date;
   NotificationManager* m_notifications = nullptr;
   OpenCallback m_open;
+  std::function<void(const std::string&, const std::string&)> m_openPlayer;
   std::function<bool()> m_hoverGate;
   PrivacyFilter m_micFilter;
   PrivacyFilter m_camFilter;

@@ -13,6 +13,7 @@
 #include "system/desktop_entry_launch.h"
 #include "system/easyeffects_service.h"
 #include "system/format_units.h"
+#include "system/media_player_open.h"
 #include "system/screen_time_service.h"
 #include "system/system_monitor_service.h"
 #include "ui/controls/countdown_ring.h"
@@ -2048,15 +2049,7 @@ namespace control_center {
     auto openArea = ui::inputArea({.cursorShape = CursorShape::Pointer});
     openArea->setParticipatesInLayout(false);
     openArea->setOnClick([this, bus, entryId = player->desktopEntry](const InputArea::PointerData&) {
-      if (!m_mpris->raise(bus) && !entryId.empty()) {
-        std::string idLower = entryId;
-        std::ranges::transform(idLower, idLower.begin(), [](unsigned char c) { return std::tolower(c); });
-        if (m_platform != nullptr && !m_platform->windowsForApp(idLower, idLower).empty()) {
-          m_platform->activateToplevelForAppId(entryId);
-        } else if (const auto entry = app_identity::findDesktopEntry(entryId, desktopEntries()); entry.has_value()) {
-          (void)desktop_entry_launch::launchEntry(*entry, {.dbusActivatable = entry->dbusActivatable, .dbusAppId = entry->id});
-        }
-      }
+      media_player_open::openPlayer(*m_mpris, m_platform, bus, entryId);
       PanelManager::instance().close();
     });
     head->addChild(std::move(openArea));

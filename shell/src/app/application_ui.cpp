@@ -102,6 +102,7 @@
 #include "system/desktop_entry_launch.h"
 #include "system/distro_info.h"
 #include "system/easyeffects_service.h"
+#include "system/media_player_open.h"
 #include "system/system_monitor_service.h"
 #include "ui/app_icon_colorization.h"
 #include "ui/controls/context_menu_popup.h"
@@ -1000,6 +1001,11 @@ void Application::initNotificationAndOsd() {
         m_panelManager.togglePanel("control-center", request);
       }
   );
+  m_liveActivity.setOpenPlayer([this](const std::string& busName, const std::string& desktopEntry) {
+    if (MprisService* service = mpris(); service != nullptr) {
+      media_player_open::openPlayer(*service, &m_compositorPlatform, busName, desktopEntry);
+    }
+  });
   m_liveActivity.setHoverGate([this] { return !m_panelManager.isOpen(); });
   m_liveActivity.setExtraSources(&m_httpClient, [this] { return m_pipewireSpectrum.get(); }, &m_calendarService);
   (void)m_calendarService.addChangeCallback(m_liveActivity.refresher());
