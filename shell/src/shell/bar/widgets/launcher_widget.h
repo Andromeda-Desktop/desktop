@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 
+class Box;
 class Glyph;
 class Image;
 class Node;
@@ -29,11 +30,13 @@ public:
 
 private:
   void doLayout(Renderer& renderer, float containerWidth, float containerHeight) override;
+  void doUpdate(Renderer& renderer) override;
   void fitCell(Node& node, Node& icon) const;
   std::string m_barGlyphId;
   WidgetCustomImage m_customImage;
   int m_iconSize = 0;
   int m_cellSize = 0;
+  Box* m_lens = nullptr;
   Glyph* m_glyph = nullptr;
   Image* m_image = nullptr;
 };

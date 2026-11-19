@@ -40,7 +40,7 @@ namespace noctalia::bar {
     constexpr std::array<GestureBinding, 1> kClipboard{{{Gesture::Left, "panel-toggle clipboard"}}};
     constexpr std::array<GestureBinding, 1> kClock{{{Gesture::Left, "panel-toggle calendar"}}};
     constexpr std::array<GestureBinding, 1> kControlCenter{{{Gesture::Left, "panel-toggle control-center quick"}}};
-    constexpr std::array<GestureBinding, 1> kLauncher{{{Gesture::Left, "panel-toggle launcher"}}};
+    constexpr std::array<GestureBinding, 1> kLauncher{{{Gesture::Left, "panel-toggle launcher apps"}}};
     constexpr std::array<GestureBinding, 2> kNetwork{
         {{Gesture::Left, "panel-toggle control-center detail-wifi"}, {Gesture::Right, "network-toggle"}}
     };

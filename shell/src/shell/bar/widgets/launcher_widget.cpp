@@ -2,6 +2,8 @@
 
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
+#include "shell/panel/panel_manager.h"
+#include "ui/controls/box.h"
 #include "ui/builders.h"
 #include "ui/palette.h"
 #include "ui/style.h"
@@ -17,6 +19,7 @@ LauncherWidget::LauncherWidget(wl_output* /*output*/, Options options)
 
 void LauncherWidget::create() {
   auto area = ui::inputArea({});
+  area->addChild(ui::box({.out = &m_lens, .fill = colorSpecFromRole(ColorRole::Fill3), .visible = false}));
 
   if (m_customImage.enabled()) {
     area->addChild(ui::image({.out = &m_image, .fit = ImageFit::Contain}));
@@ -60,4 +63,14 @@ void LauncherWidget::fitCell(Node& node, Node& icon) const {
   const float h = std::max(cell, icon.height());
   icon.setPosition(std::round((w - icon.width()) * 0.5F), std::round((h - icon.height()) * 0.5F));
   node.setSize(w, h);
+  m_lens->setSize(w, h);
+  m_lens->setRadius(std::min(w, h) * 0.5F);
+}
+
+void LauncherWidget::doUpdate(Renderer& /*renderer*/) {
+  const bool open = PanelManager::instance().isOpenPanel("launcher");
+  if (m_lens->visible() != open) {
+    m_lens->setVisible(open);
+    requestRedraw();
+  }
 }

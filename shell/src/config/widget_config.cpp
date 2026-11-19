@@ -140,6 +140,7 @@ namespace noctalia::config {
     WidgetConfig launcherButton;
     launcherButton.type = "launcher";
     launcherButton.settings["glyph"] = std::string("layout-grid");
+  launcherButton.settings["cell_size"] = static_cast<std::int64_t>(Tokens::componentIslandCell);
     seed("launcher_button", std::move(launcherButton));
 
     WidgetConfig controlCenterButton;
