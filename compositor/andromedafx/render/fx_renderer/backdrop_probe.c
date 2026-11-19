@@ -153,9 +153,11 @@ struct wlr_renderer* fx_backdrop_probe_renderer(const struct fx_backdrop_probe* 
   return probe != NULL && probe->renderer != NULL ? &probe->renderer->wlr_renderer : NULL;
 }
 
+// Every probe shares one phase (a new kProbeIntervalNs epoch): a pass that redraws two overlapping probes finds both due
+// or neither. Per-probe phases ping-pong: each refresh redraw marks its sibling stale, and the output never idles.
 bool fx_backdrop_probe_due(const struct fx_backdrop_probe* probe) {
   return probe != NULL && probe->fence == NULL && !probe->awaiting_fence
-      && (!probe->captured || monotonic_ns() - probe->last_capture_ns >= kProbeIntervalNs);
+      && (!probe->captured || monotonic_ns() / kProbeIntervalNs > probe->last_capture_ns / kProbeIntervalNs);
 }
 
 void fx_backdrop_probe_mark_stale(struct fx_backdrop_probe* probe) {
