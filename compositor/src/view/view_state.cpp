@@ -309,8 +309,11 @@ namespace andromeda {
     const View* keyboardView = View::fromSurface(m_server->seat()->wlr()->keyboard_state.focused_surface);
     const bool heldKeyboard = keyboardView != nullptr && keyboardView->placementRoot() == this;
     if (minimized) {
-      // The windows_out snapshot plays while the live node hides.
-      (void)beginCloseAnimation();
+      // The windows_out snapshot plays while the live node hides, shrinking into the dock icon when a dock set one.
+      const CloseSnapshotId snapshot = beginCloseAnimation();
+      if (snapshot != kInvalidCloseSnapshot && m_dockIconBox.has_value()) {
+        m_server->setCloseSnapshotTarget(snapshot, *m_dockIconBox);
+      }
     }
     m_minimized = minimized;
     if (!minimized && tiled() && m_workspace != nullptr) {
@@ -328,7 +331,8 @@ namespace andromeda {
     }
     syncShown();
     if (shown()) {
-      startOpenAnimation();
+      // Restore grows out of the dock icon when a dock set one.
+      startOpenAnimation(minimized ? std::nullopt : m_dockIconBox);
       syncAnimationEffects();
     }
     if (m_foreign != nullptr) {

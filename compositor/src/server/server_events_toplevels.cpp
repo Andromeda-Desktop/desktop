@@ -470,6 +470,17 @@ namespace andromeda {
     syncLaunchBusy();
   }
 
+  std::optional<wlr_box> Server::layerBoxToLayout(wlr_surface* surface, const wlr_box& box) const {
+    const LayerSurface* layer = surface != nullptr ? LayerSurface::fromSurface(surface) : nullptr;
+    if (layer == nullptr || layer->scene() == nullptr || box.width <= 0 || box.height <= 0) {
+      return std::nullopt;
+    }
+    int x = 0;
+    int y = 0;
+    wlr_scene_node_coords(&layer->scene()->tree->node, &x, &y);
+    return wlr_box{x + box.x, y + box.y, box.width, box.height};
+  }
+
   void Server::setLaunchFrom(wlr_surface* surface, const wlr_box& box) {
     const LayerSurface* layer = LayerSurface::fromSurface(surface);
     if (layer == nullptr || layer->scene() == nullptr || surface->buffer == nullptr || surface->current.width <= 0

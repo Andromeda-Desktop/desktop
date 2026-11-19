@@ -823,6 +823,15 @@ namespace andromeda {
     m_dskSurfaces->setLaunchFromHandler([this](wl_client* /*client*/, wlr_surface* surface, const wlr_box& box) {
       setLaunchFrom(surface, box);
     });
+    m_dskSurfaces->setWindowIconHandler([this](wlr_surface* surface, std::string_view identifier, const wlr_box& box) {
+      for (const auto& view : views()) {
+        const char* id = view->extForeignIdentifier();
+        if (id != nullptr && identifier == id) {
+          view->setDockIconBox(layerBoxToLayout(surface, box));
+          return;
+        }
+      }
+    });
     m_fifoManager = std::make_unique<FifoManager>(m_display);
     {
       const char* state = std::getenv("XDG_STATE_HOME");
@@ -2539,14 +2548,27 @@ namespace andromeda {
       }
       return;
     }
-    const bool shrinks = m_shrinkTo < 1.0 && m_captured.width > 0 && m_captured.height > 0;
+    const bool sized = m_captured.width > 0 && m_captured.height > 0;
+    const bool targeted = m_target.has_value() && sized && m_tree->node.parent != nullptr;
+    const bool shrinks = targeted || (m_shrinkTo < 1.0 && sized);
     const double closeProgress = 1.0 - std::clamp(m_alpha.current(), 0.0, 1.0);
-    const double scale = shrinks ? std::lerp(1.0, m_shrinkTo, closeProgress) : 1.0;
-    const int width = std::max(1, static_cast<int>(std::lround(m_captured.width * scale)));
-    const int height = std::max(1, static_cast<int>(std::lround(m_captured.height * scale)));
-    const int x = m_canvasX + (shrinks ? (m_captured.width - width) / 2 : 0);
-    const int y =
-        m_canvasY + (shrinks ? (m_captured.height - height) / 2 : 0) + static_cast<int>(std::lround(m_slide.current()));
+    const double scale = shrinks && !targeted ? std::lerp(1.0, m_shrinkTo, closeProgress) : 1.0;
+    int width = std::max(1, static_cast<int>(std::lround(m_captured.width * scale)));
+    int height = std::max(1, static_cast<int>(std::lround(m_captured.height * scale)));
+    int x = m_canvasX + (shrinks ? (m_captured.width - width) / 2 : 0);
+    int y = m_canvasY + (shrinks ? (m_captured.height - height) / 2 : 0) + static_cast<int>(std::lround(m_slide.current()));
+    if (targeted) {
+      int parentX = 0;
+      int parentY = 0;
+      wlr_scene_node_coords(&m_tree->node.parent->node, &parentX, &parentY);
+      const auto toward = [closeProgress](int from, int to) {
+        return static_cast<int>(std::lround(std::lerp(static_cast<double>(from), static_cast<double>(to), closeProgress)));
+      };
+      x = toward(m_canvasX, m_target->x - parentX);
+      y = toward(m_canvasY, m_target->y - parentY);
+      width = std::max(1, toward(m_captured.width, m_target->width));
+      height = std::max(1, toward(m_captured.height, m_target->height));
+    }
     wlr_scene_node_set_position(&m_tree->node, x, y);
     if (m_shadow.tree != nullptr) {
       wlr_scene_node_set_position(&m_shadow.tree->node, x, y);
@@ -2893,6 +2915,15 @@ namespace andromeda {
     for (const auto& snapshot : m_closeSnapshots) {
       if (snapshot->id() == id) {
         snapshot->release();
+        return;
+      }
+    }
+  }
+
+  void Server::setCloseSnapshotTarget(CloseSnapshotId id, const wlr_box& box) {
+    for (const auto& snapshot : m_closeSnapshots) {
+      if (snapshot->id() == id) {
+        snapshot->setTarget(box);
         return;
       }
     }

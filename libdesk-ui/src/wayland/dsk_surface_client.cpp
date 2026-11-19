@@ -118,6 +118,14 @@ bool DskSurfaceClient::setGlassMask(
   return true;
 }
 
+bool DskSurfaceClient::windowIcon(const std::string& identifier, int x, int y, int width, int height) {
+  if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_surface)) < DSK_SURFACE_V1_WINDOW_ICON_SINCE_VERSION) {
+    return false;
+  }
+  dsk_surface_v1_window_icon(m_surface, identifier.c_str(), x, y, width, height);
+  return true;
+}
+
 bool DskSurfaceClient::launchFrom(int x, int y, int width, int height) {
   if (wl_proxy_get_version(reinterpret_cast<wl_proxy*>(m_surface)) < DSK_SURFACE_V1_LAUNCH_FROM_SINCE_VERSION) {
     return false;

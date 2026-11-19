@@ -630,6 +630,10 @@ namespace andromeda {
     [[nodiscard]] bool closeSnapshotAlive(CloseSnapshotId id) const;
     // End a held snapshot; it is reaped at the end of the current animation tick.
     void releaseCloseSnapshot(CloseSnapshotId id);
+    // The snapshot moves and scales into `box` (layout coordinates) as it fades, instead of shrinking in place.
+    void setCloseSnapshotTarget(CloseSnapshotId id, const wlr_box& box);
+    // A box local to a layer surface in layout coordinates; nullopt for an empty box or a surface that is no layer.
+    [[nodiscard]] std::optional<wlr_box> layerBoxToLayout(wlr_surface* surface, const wlr_box& box) const;
 
     // Busy cursor of a pending launch (rulebook §10): ends when the window maps, or after 5 s.
     // Returns the launch icon's box when the launch had icon feedback (rulebook P15: the window grows from it).
@@ -982,6 +986,10 @@ namespace andromeda {
 
       [[nodiscard]] CloseSnapshotId id() const { return m_id; }
       void release() { m_hold = Hold::None; }
+      void setTarget(const wlr_box& box) {
+        m_target = box;
+        applyPresentation();
+      }
       // Place the captured box at a canvas origin in output-root coordinates, or hide it while its workspace is not
       // showing.
       void present(int canvasX, int canvasY, bool visible);
@@ -1014,6 +1022,8 @@ namespace andromeda {
       bool m_blurBackground = false;
       // popin/zoom end scale; 1.0 = no shrink.
       double m_shrinkTo = 1.0;
+      // Minimize: the dock icon box in layout coordinates the snapshot moves and scales into.
+      std::optional<wlr_box> m_target;
       // Each copied buffer with its captured opacity, position and size relative to the content tree.
       struct Buffer {
         wlr_scene_buffer* node = nullptr;

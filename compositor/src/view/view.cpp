@@ -274,6 +274,8 @@ namespace andromeda {
         wl_signal_add(&m_foreign->events.request_close, &m_foreignClose);
         m_foreignMinimize.notify = onForeignMinimize;
         wl_signal_add(&m_foreign->events.request_minimize, &m_foreignMinimize);
+        m_foreignRectangle.notify = onForeignRectangle;
+        wl_signal_add(&m_foreign->events.set_rectangle, &m_foreignRectangle);
         m_foreignDestroy.notify = onForeignDestroy;
         wl_signal_add(&m_foreign->events.destroy, &m_foreignDestroy);
         updateForeignIdentity();

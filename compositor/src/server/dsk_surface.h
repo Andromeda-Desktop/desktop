@@ -3,6 +3,7 @@
 #include "server/surface_motion.h"
 #include "server/tracker_motion.h"
 
+#include <string_view>
 #include <pixman.h>
 
 #include <cstdint>
@@ -65,6 +66,11 @@ namespace andromeda {
     // dsk_surface_v1.launch_from (v11): `box` is surface-local.
     void setLaunchFromHandler(std::function<void(wl_client*, wlr_surface*, const wlr_box&)> handler) {
       m_launchFromHandler = std::move(handler);
+    }
+
+    // dsk_surface_v1.window_icon (v19): `box` is surface-local; an empty box forgets the icon.
+    void setWindowIconHandler(std::function<void(wlr_surface*, std::string_view, const wlr_box&)> handler) {
+      m_windowIconHandler = std::move(handler);
     }
 
     // Called when a surface's committed secure flag changes, and with false when its dsk_surface_v1 goes while the
@@ -202,6 +208,10 @@ namespace andromeda {
     static void handleSurfaceDestroy(wl_client* client, wl_resource* resource);
     static void handleSetElevation(wl_client* client, wl_resource* resource, uint32_t level);
     static void handleLaunchFrom(wl_client* client, wl_resource* resource, int32_t x, int32_t y, int32_t width, int32_t height);
+    static void handleWindowIcon(
+        wl_client* client, wl_resource* resource, const char* identifier, int32_t x, int32_t y, int32_t width,
+        int32_t height
+    );
     static void handleSetVisibleRegion(wl_client* client, wl_resource* resource, wl_resource* region);
     static void handleSetContentRegion(wl_client* client, wl_resource* resource, wl_resource* region);
     static void handleSetGlassMask(
@@ -274,6 +284,7 @@ namespace andromeda {
     wl_global* m_global = nullptr;
     std::function<std::optional<std::pair<int, int>>(wlr_surface*)> m_originLookup;
     std::function<void(wl_client*, wlr_surface*, const wlr_box&)> m_launchFromHandler;
+    std::function<void(wlr_surface*, std::string_view, const wlr_box&)> m_windowIconHandler;
     std::function<void(wlr_surface*, bool)> m_secureHandler;
     size_t m_secureCount = 0;
     struct SecureCopy {

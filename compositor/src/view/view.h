@@ -230,6 +230,8 @@ namespace andromeda {
     [[nodiscard]] const char* extForeignIdentifier() const {
       return m_extForeign != nullptr ? m_extForeign->identifier : nullptr;
     }
+    // The dock icon box (layout coordinates) minimize shrinks into and restore grows from; nullopt forgets it.
+    void setDockIconBox(std::optional<wlr_box> box) { m_dockIconBox = box; }
     // Seat-global activation, tracked independently of the per-workspace focus
     // state the IPC `focused` field reports.
     [[nodiscard]] bool activated() const { return m_activated; }
@@ -658,6 +660,7 @@ namespace andromeda {
     static void onForeignActivate(wl_listener* listener, void* data);
     static void onForeignClose(wl_listener* listener, void* data);
     static void onForeignMinimize(wl_listener* listener, void* data);
+    static void onForeignRectangle(wl_listener* listener, void* data);
     static void onForeignDestroy(wl_listener* listener, void* data);
     static void onExtForeignDestroy(wl_listener* listener, void* data);
     static void onViewSurfaceCommit(wl_listener* listener, void* data);
@@ -689,6 +692,7 @@ namespace andromeda {
     void handleForeignActivate();
     void handleForeignClose();
     void handleForeignMinimize(void* data);
+    void handleForeignRectangle(void* data);
     // Drop the minimized state of a window that can no longer be minimized, and offer the client and the title bar
     // minimize only while it can be.
     void syncMinimizeEligibility();
@@ -1141,6 +1145,9 @@ namespace andromeda {
     std::optional<wlr_box> m_openingFrom;
     // The launch icon's box from the first map, until the opening takes it.
     std::optional<wlr_box> m_launchIconBox;
+    // The dock icon a taskbar set for this window (foreign-toplevel set_rectangle), in layout coordinates: minimize
+    // shrinks into it and restore grows out of it.
+    std::optional<wlr_box> m_dockIconBox;
     // Changed only through transitionPlacement.
     Placement m_placement;
     std::optional<wlr_box> m_snapRestoreBox;
@@ -1219,6 +1226,7 @@ namespace andromeda {
     wl_listener m_foreignActivate{};
     wl_listener m_foreignClose{};
     wl_listener m_foreignMinimize{};
+    wl_listener m_foreignRectangle{};
     wl_listener m_foreignDestroy{};
     wl_listener m_extForeignDestroy{};
     wl_listener m_captureSourceDestroy{};

@@ -31,6 +31,7 @@
 #include "util/file_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cerrno>
 #include <chrono>
@@ -996,6 +997,9 @@ void Dock::createInstance(const WaylandOutput& output) {
         },
         needsUpdate, needsLayout
     );
+    if (needsLayout || needsUpdate) {
+      sendWindowRectangles(*inst);
+    }
     // E2E: item rects in surface coordinates, logged when they change.
     static const bool geometry = std::getenv("DESK_DOCK_GEOMETRY") != nullptr;
     if (geometry && needsLayout) {
@@ -1177,6 +1181,43 @@ void Dock::rebuildItems(shell::dock::DockInstance& instance) {
 }
 
 // ── Private: visual update ────────────────────────────────────────────────────
+
+void Dock::sendWindowRectangles(shell::dock::DockInstance& instance) {
+  if (instance.dsk == nullptr || instance.sceneRoot == nullptr) {
+    return;
+  }
+  std::unordered_map<std::string, std::array<int, 4>> sent;
+  for (std::size_t i = 0; i < instance.items.size() && i < instance.snapshot.items.size(); ++i) {
+    const InputArea* area = instance.items[i].area;
+    if (area == nullptr) {
+      continue;
+    }
+    float x = 0.0F;
+    float y = 0.0F;
+    Node::absolutePosition(area, x, y);
+    // Rest box: without the auto-hide slide.
+    if (instance.slideRoot != nullptr) {
+      x -= instance.slideRoot->x();
+      y -= instance.slideRoot->y();
+    }
+    const std::array<int, 4> box{static_cast<int>(std::lround(x)), static_cast<int>(std::lround(y)),
+                                 static_cast<int>(std::lround(area->width())),
+                                 static_cast<int>(std::lround(area->height()))};
+    for (const auto& window : shell::dock::windowsForDockItem(*m_platform, instance.snapshot.items[i], nullptr)) {
+      if (window.identifier.empty()) {
+        continue;
+      }
+      sent[window.identifier] = box;
+      const auto it = m_sentRects.find(window.identifier);
+      if (it != m_sentRects.end() && it->second == box) {
+        continue;
+      }
+      (void)instance.dsk->windowIcon(window.identifier, box[0], box[1], box[2], box[3]);
+      kLog.debug("window_icon {} {} {} {} {}", window.appId, box[0], box[1], box[2], box[3]);
+    }
+  }
+  m_sentRects = std::move(sent);
+}
 
 void Dock::updateVisuals(shell::dock::DockInstance& instance) {
   assertDockInitialized(m_platform, m_config, m_renderContext);

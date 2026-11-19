@@ -95,6 +95,11 @@ namespace andromeda {
     self->handleForeignMinimize(data);
   }
 
+  void View::onForeignRectangle(wl_listener* listener, void* data) {
+    View* self = wl_container_of(listener, self, m_foreignRectangle);
+    self->handleForeignRectangle(data);
+  }
+
   void View::onForeignDestroy(wl_listener* listener, void* /*data*/) {
     View* self = wl_container_of(listener, self, m_foreignDestroy);
     self->handleForeignDestroy();
@@ -189,14 +194,21 @@ namespace andromeda {
     }
   }
 
+  void View::handleForeignRectangle(void* data) {
+    const auto* event = static_cast<wlr_foreign_toplevel_handle_v1_set_rectangle_event*>(data);
+    m_dockIconBox = m_server->layerBoxToLayout(event->surface, {event->x, event->y, event->width, event->height});
+  }
+
   void View::handleForeignDestroy() {
     wl_list_remove(&m_foreignActivate.link);
     wl_list_remove(&m_foreignClose.link);
     wl_list_remove(&m_foreignMinimize.link);
+    wl_list_remove(&m_foreignRectangle.link);
     wl_list_remove(&m_foreignDestroy.link);
     m_foreignActivate.link.next = nullptr;
     m_foreignClose.link.next = nullptr;
     m_foreignMinimize.link.next = nullptr;
+    m_foreignRectangle.link.next = nullptr;
     m_foreignDestroy.link.next = nullptr;
     m_foreign = nullptr;
     m_foreignOutput = nullptr;

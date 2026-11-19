@@ -10,7 +10,7 @@
 namespace andromeda {
 
   namespace {
-    constexpr int kVersion = 18;
+    constexpr int kVersion = 19;
     constexpr uint32_t kPropertyCount = 14;
     constexpr uint32_t kCurveCount = 16;
     constexpr uint32_t kElevationCount = 3;
@@ -58,6 +58,7 @@ namespace andromeda {
       .set_glass_mask = handleSetGlassMask,
       .set_secure = handleSetSecure,
       .set_content_region = handleSetContentRegion,
+      .window_icon = handleWindowIcon,
   };
 
   const struct dsk_shape_v1_interface DskSurfaceManager::kShapeImplementation = {
@@ -499,6 +500,17 @@ namespace andromeda {
       return;
     }
     state->manager->m_launchFromHandler(client, state->surface, wlr_box{x, y, width, height});
+  }
+
+  void DskSurfaceManager::handleWindowIcon(
+      wl_client* /*client*/, wl_resource* resource, const char* identifier, int32_t x, int32_t y, int32_t width,
+      int32_t height
+  ) {
+    Surface* state = fromResource(resource);
+    if (state == nullptr || state->surface == nullptr || identifier == nullptr || !state->manager->m_windowIconHandler) {
+      return;
+    }
+    state->manager->m_windowIconHandler(state->surface, identifier, wlr_box{x, y, width, height});
   }
 
   void DskSurfaceManager::handleGetShape(wl_client* client, wl_resource* resource, uint32_t id) {

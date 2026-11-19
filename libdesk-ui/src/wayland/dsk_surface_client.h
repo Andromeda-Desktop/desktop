@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -81,6 +83,8 @@ public:
   bool setContentRegion(wl_region* region);
   // Protocol version 11: an app launch starts from the icon at this surface-local rect. Send it just before the
   // launch's activation token. False when the compositor lacks it.
+  // dsk_surface_v1.window_icon (v19): the window's icon box on this surface; an empty box forgets it.
+  bool windowIcon(const std::string& identifier, int x, int y, int width, int height);
   bool launchFrom(int x, int y, int width, int height);
   // Protocol version 13: the compositor draws glass where `alpha` (one byte per pixel, pixelWidth x pixelHeight) is
   // at least 128, stretched over the surface-local rect (x, y, width, height). Empty alpha removes the mask. Applies

@@ -1178,6 +1178,7 @@ namespace andromeda {
       wl_list_remove(&m_foreignActivate.link);
       wl_list_remove(&m_foreignClose.link);
       wl_list_remove(&m_foreignMinimize.link);
+      wl_list_remove(&m_foreignRectangle.link);
       wl_list_remove(&m_foreignDestroy.link);
       wlr_foreign_toplevel_handle_v1_destroy(m_foreign);
       m_foreign = nullptr;

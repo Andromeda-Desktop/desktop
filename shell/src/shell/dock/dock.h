@@ -7,6 +7,7 @@
 #include "system/icon_resolver.h"
 #include "ui/signal.h"
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -87,11 +88,13 @@ private:
   void reevaluateSmartAutoHide();
   void openTrash(shell::dock::DockInstance& instance);
   void onTrashChanged();
+  void sendWindowRectangles(shell::dock::DockInstance& instance);
 
   CompositorPlatform* m_platform = nullptr;
   ConfigService* m_config = nullptr;
   RenderContext* m_renderContext = nullptr;
   const NotificationManager* m_notifications = nullptr;
+  std::unordered_map<std::string, std::array<int, 4>> m_sentRects; // window identifier -> last window_icon box sent
   DockConfig m_lastDockConfig{};
   ShellConfig::ShadowConfig m_lastShadow;
   std::vector<std::string> m_lastBarLayerStack;
