@@ -551,6 +551,9 @@ namespace andromeda {
     const double travel = config().appearance.reduceMotion ? (p < 0.5 ? 0.0 : 1.0) : p;
     const ov::Rect output{0.0, 0.0, in.width, in.height};
     const ov::Rect frame = ov::zoomFrame(placement, row).value_or(output);
+    // Zoom (set below): the desktop shrinks into the current workspace's frame, then the windows spread to their slots.
+    double zoom = 0.0;
+    double spread = 0.0;
     const auto zoomed = [&](const ov::Rect& rect) { return ov::zoomRect(rect, output, frame, zoom); };
     const auto thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0));
     const auto toLayout = [&outputBox](ov::Rect rect) {
@@ -563,30 +566,6 @@ namespace andromeda {
       rect.y -= outputBox.y;
       return rect;
     };
-    const WorkspaceGroup* group = state.output->workspaceGroup();
-
-    state.cardsHorizontal = style != ov::Style::Strip || in.horizontal;
-    state.workspaceViews.assign(state.workspaceBackgrounds.size(), WorkspaceView{});
-    for (const ov::Card& card : placement.cards) {
-      if (card.workspace >= state.workspaceViews.size()) {
-        continue;
-      }
-      const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
-    // Zoom (set below): the desktop shrinks into the current workspace's frame, then the windows spread to their slots.
-    double zoom = 0.0;
-    double spread = 0.0;
-      const ov::Rect placed =
-          workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
-      ov::Rect rect = travelRect(ov::cardDeskRect(in, card, row), placed);
-      if (card.kind == ov::CardKind::Thumb) {
-        const double s = Tokens::motionOverviewPieceScale + (1.0 - Tokens::motionOverviewPieceScale) * thumbAlpha;
-        rect = {rect.x + rect.w * (1.0 - s) / 2, rect.y + rect.h * (1.0 - s) / 2, rect.w * s, rect.h * s};
-      }
-      const wlr_box box = layoutBox(rect, outputBox);
-      state.workspaceViews[card.workspace] = {
-          .box = box,
-          .fit =
-              {static_cast<double>(box.width) / outputBox.width, static_cast<double>(box.x),
     // A window spreads when its slot is not where the zoom leaves it (exposé); tiled Spaces and Strip only zoom.
     const auto near = [](const ov::Rect& a, const ov::Rect& b) {
       return std::max({std::abs(a.x - b.x), std::abs(a.y - b.y), std::abs(a.w - b.w), std::abs(a.h - b.h)}) <= 1.0;
@@ -619,6 +598,27 @@ namespace andromeda {
       zoom = z * (2.0 - z);
       spread = t * t * (3.0 - 2.0 * t);
     }
+    const WorkspaceGroup* group = state.output->workspaceGroup();
+
+    state.cardsHorizontal = style != ov::Style::Strip || in.horizontal;
+    state.workspaceViews.assign(state.workspaceBackgrounds.size(), WorkspaceView{});
+    for (const ov::Card& card : placement.cards) {
+      if (card.workspace >= state.workspaceViews.size()) {
+        continue;
+      }
+      const Workspace* workspace = group != nullptr ? group->workspaceAt(card.workspace) : nullptr;
+      const ov::Rect placed =
+          workspace != nullptr ? toLocal(reflowRect(workspace, toLayout(card.rect), reflowed)) : card.rect;
+      ov::Rect rect = travelRect(ov::cardDeskRect(in, card, row), placed);
+      if (card.kind == ov::CardKind::Thumb) {
+        const double s = Tokens::motionOverviewPieceScale + (1.0 - Tokens::motionOverviewPieceScale) * thumbAlpha;
+        rect = {rect.x + rect.w * (1.0 - s) / 2, rect.y + rect.h * (1.0 - s) / 2, rect.w * s, rect.h * s};
+      }
+      const wlr_box box = layoutBox(rect, outputBox);
+      state.workspaceViews[card.workspace] = {
+          .box = box,
+          .fit =
+              {static_cast<double>(box.width) / outputBox.width, static_cast<double>(box.x),
                static_cast<double>(box.y)},
           .kind = card.kind,
           .shown = true,
@@ -953,6 +953,7 @@ namespace andromeda {
     state.chrome->update({
         .style = state.placedStyle,
         .progress = m_progress,
+        .thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0)),
         .output = state.outputBox,
         .usable = state.usableBox,
         .scale = std::max(1.0, std::ceil(static_cast<double>(state.output->wlr()->scale))),
@@ -972,7 +973,6 @@ namespace andromeda {
         .renaming = m_rename.has_value() && group != nullptr && m_rename->workspace.get() == group->workspaceAt(current)
             ? std::optional<std::string_view>(m_rename->text)
             : std::nullopt,
-        .thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0)),
     });
     // Cards rebuilt after the chrome was made land above it.
     state.chrome->raise();
