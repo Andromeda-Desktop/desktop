@@ -15,6 +15,9 @@
 namespace andromeda::ov {
 
   namespace {
+    // A Pango font string for a type token, in px so it does not depend on the DPI.
+    std::string tokenFont(const Tokens::Type& type) { return std::format("{} {}px", Tokens::fontFamily, type.size); }
+
 
     constexpr int kNameHeight = 22;
     constexpr int kNameGap = 6;
@@ -399,7 +402,7 @@ namespace andromeda::ov {
       const bool capsule = chip || renaming;
       setLabel(
           label, markup,
-          {.font = "sans 9.75",
+          {.font = tokenFont(Tokens::typeBody),
            .padX = capsule ? 8 : 0,
            .height = capsule ? kNameHeight : 0,
            .maxWidth = 280,
@@ -443,7 +446,7 @@ namespace andromeda::ov {
       }
       setLabel(
           m_filter, markup,
-          {.font = std::format("{} {}px", Tokens::fontFamily, Tokens::typeBody.size),
+          {.font = tokenFont(Tokens::typeBody),
            .padX = 14,
            .height = kFieldHeight,
            .maxWidth = static_cast<int>(kFilterWidth),
@@ -477,7 +480,7 @@ namespace andromeda::ov {
       }
       setLabel(
           label, span(l2, "normal", "No windows"),
-          {.font = "sans 9", .padX = 10, .height = kNameHeight, .maxWidth = workspace->card.width, .fill = thick}, scale
+          {.font = tokenFont(Tokens::typeFootnote), .padX = 10, .height = kNameHeight, .maxWidth = workspace->card.width, .fill = thick}, scale
       );
       const wlr_box& card = workspace->card;
       placeLabel(label, card.x + (card.width - label.width) / 2, card.y + (card.height - label.height) / 2, late);
@@ -491,7 +494,7 @@ namespace andromeda::ov {
       setLabel(
           m_noMatch,
           span(l2, "normal", std::format("No windows match “{}”. Enter searches apps and files.", frame.filter)),
-          {.font = "sans 10.5", .maxWidth = std::max(1, area.width - 48)}, scale
+          {.font = tokenFont(Tokens::typeBody), .maxWidth = std::max(1, area.width - 48)}, scale
       );
       placeLabel(m_noMatch, area.x + (area.width - m_noMatch.width) / 2, area.y + (area.height - m_noMatch.height) / 2, late);
     } else {
@@ -539,7 +542,7 @@ namespace andromeda::ov {
       const Rect& plus = *placement.plus;
       const wlr_box box{ox + px(plus.x), oy + px(plus.y), px(plus.w), px(plus.h)};
       placeFrame(m_plus, box, kPlusRadius, 2, {0.5F, 0.5F, 0.5F, 0.08F}, l3, frame.thumbAlpha);
-      setLabel(m_plusMark, span(l2, "normal", "+"), {.font = "sans 21"}, scale);
+      setLabel(m_plusMark, span(l2, "normal", "+"), {.font = tokenFont(Tokens::typeLarge)}, scale);
       placeLabel(
           m_plusMark, box.x + (box.width - m_plusMark.width) / 2, box.y + (box.height - m_plusMark.height) / 2,
           frame.thumbAlpha
@@ -562,7 +565,7 @@ namespace andromeda::ov {
       Label& label = m_titles[window.key];
       setLabel(
           label, span(l1, "600", window.title.empty() ? std::string_view("Untitled") : window.title),
-          {.font = "sans 9",
+          {.font = tokenFont(Tokens::typeFootnote),
            .padX = 10,
            .height = kCapsuleHeight,
            .maxWidth = kCapsuleMaxWidth,
@@ -608,7 +611,8 @@ namespace andromeda::ov {
         && closeFor->box.width > kCloseMinCard
         && closeFor->opacity > 0.45F
         && late > 0.5F) {
-      const LabelStyle style{.font = "sans 9.75", .height = kCloseSize, .maxWidth = kCloseSize, .fill = thick};
+      const std::string closeFont = tokenFont(Tokens::typeBody);
+      const LabelStyle style{.font = closeFont, .height = kCloseSize, .maxWidth = kCloseSize, .fill = thick};
       setLabel(m_close, span(l1, "bold", "✕"), style, scale);
       LabelStyle hot = style;
       hot.fill = kCloseRed;
@@ -660,7 +664,7 @@ namespace andromeda::ov {
       placeFrame(m_menu, *m_menuBox, kMenuRadius, 1, withAlpha(colors.background, 0.97F), withAlpha(l1, 0.1F), 1.0F);
       raise(m_menu.tree);
       const std::string_view name = frame.workspaces[frame.menu->workspace].name;
-      setLabel(m_menuHead, span(l2, "600", std::format("Arrange “{}”", name)), {.font = "sans 8.25", .maxWidth = 240}, scale);
+      setLabel(m_menuHead, span(l2, "600", std::format("Arrange “{}”", name)), {.font = tokenFont(Tokens::typeCaption), .maxWidth = 240}, scale);
       placeLabel(m_menuHead, x + kMenuPad + 10, y + kMenuPad + (kMenuHeadHeight - m_menuHead.height) / 2, 1.0F);
       raise(m_menuHead.tree);
       const int textX = kMenuPad + 10 + kMenuArtWidth + 10;
@@ -695,7 +699,7 @@ namespace andromeda::ov {
             "\n<span size='small' foreground='{}'>{}</span>", rgbaHex(l2), escapeMarkup(item.description)
         );
         Label& label = m_menuLabels[row];
-        setLabel(label, markup, {.font = "sans 9", .maxWidth = kMenuWidth - textX - kMenuPad - 10, .wrap = true}, scale);
+        setLabel(label, markup, {.font = tokenFont(Tokens::typeFootnote), .maxWidth = kMenuWidth - textX - kMenuPad - 10, .wrap = true}, scale);
         placeLabel(label, x + textX, box.y + (kMenuRowHeight - label.height) / 2, 1.0F);
         raise(label.tree);
       }
@@ -748,7 +752,7 @@ namespace andromeda::ov {
         Label& label = m_windowMenuLabels[row];
         setLabel(
             label, span(danger ? colors.error : l1, "normal", wm.rows[row]),
-            {.font = "sans 9.75", .maxWidth = kWindowMenuWidth - 2 * kMenuPad - 24}, scale
+            {.font = tokenFont(Tokens::typeBody), .maxWidth = kWindowMenuWidth - 2 * kMenuPad - 24}, scale
         );
         placeLabel(label, box.x + 12, box.y + (kWindowMenuRowHeight - label.height) / 2, 1.0F);
         raise(label.tree);
