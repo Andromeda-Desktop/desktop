@@ -285,10 +285,11 @@ private:
   // Glass pieces pour out of the panel's top edge, top piece first, and back on close (concept C).
   bool startPiecesOpen();
   bool ensureDsk();
-  // A poured or grown piece in motion: its rest position and scale in its parent, and its progress v (1 = at rest).
-  // It lives from the motion's start until an open settles, so a reversal mid-way returns the piece home.
+  // A poured or grown piece in motion: its rest scale and its progress v (1 = at rest). The motion moves the piece by its
+  // translation, so layout keeps the rest position. It lives from the motion's start until an open settles, so a
+  // reversal mid-way returns the piece home.
   struct PieceRest {
-    float x, y, scaleX, scaleY, v;
+    float scaleX, scaleY, v;
   };
   PieceRest& pieceRest(Node& piece, bool open);
   bool startPiecesClose(std::uint64_t gen);
@@ -407,8 +408,9 @@ private:
   bool m_morphExtend = false; // the sheet fill and blur extend into the margin while the island morph runs
   std::int32_t m_morphMarginX = 0;
   std::int32_t m_morphMarginY = 0;
-  // Room above the sheet up to the island top, so the clip starts as the whole island (P5).
+  // Overshoot room above the sheet; only a sheet that grows upward from a bottom bar needs it.
   std::int32_t m_morphMarginUp = 0;
+  bool m_morphFromBottomBar = false;
   std::optional<float> m_islandBackgroundOpacity;
   float m_panelLiquid = 0.0F; // 0..1, see setPanelLiquid
   AnimationManager::Id m_liquidAnimation = 0;

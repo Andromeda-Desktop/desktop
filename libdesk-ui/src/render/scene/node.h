@@ -103,6 +103,8 @@ public:
 
   [[nodiscard]] float x() const noexcept { return m_x; }
   [[nodiscard]] float y() const noexcept { return m_y; }
+  [[nodiscard]] float translationX() const noexcept { return m_translateX; }
+  [[nodiscard]] float translationY() const noexcept { return m_translateY; }
   [[nodiscard]] float width() const noexcept { return m_width; }
   [[nodiscard]] float height() const noexcept { return m_height; }
   [[nodiscard]] float rotation() const noexcept { return m_rotation; }
@@ -138,6 +140,8 @@ public:
   Accessible& accessibleState();
 
   void setPosition(float x, float y);
+  // An offset on top of the position that layout never writes: motion a mid-animation layout pass must not undo.
+  void setTranslation(float x, float y);
   virtual void setSize(float width, float height);
   void setFrameSize(float width, float height);
   void setRotation(float radians);
@@ -269,6 +273,8 @@ private:
   NodeType m_type;
   float m_x = 0.0F;
   float m_y = 0.0F;
+  float m_translateX = 0.0F;
+  float m_translateY = 0.0F;
   float m_width = 0.0F;
   float m_height = 0.0F;
   float m_rotation = 0.0F;

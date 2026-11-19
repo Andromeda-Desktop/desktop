@@ -207,12 +207,21 @@ bool Node::pointInsideNode(
 Mat3 Node::localTransform() const {
   // Most nodes only translate: skip the rotation (sin, cos) and four matrix products. Exact: R(0) and S(1) are identity.
   if (m_rotation == 0.0F && m_scaleX == 1.0F && m_scaleY == 1.0F) {
-    return Mat3::translation(m_x, m_y);
+    return Mat3::translation(m_x + m_translateX, m_y + m_translateY);
   }
   const float cx = transformOriginX();
   const float cy = transformOriginY();
-  return Mat3::translation(m_x, m_y) * Mat3::translation(cx, cy) * Mat3::rotation(m_rotation)
+  return Mat3::translation(m_x + m_translateX, m_y + m_translateY) * Mat3::translation(cx, cy) * Mat3::rotation(m_rotation)
       * Mat3::scale(m_scaleX, m_scaleY) * Mat3::translation(-cx, -cy);
+}
+
+void Node::setTranslation(float x, float y) {
+  if (m_translateX == x && m_translateY == y) {
+    return;
+  }
+  m_translateX = x;
+  m_translateY = y;
+  markPaintDirty();
 }
 
 void Node::setPosition(float x, float y) {

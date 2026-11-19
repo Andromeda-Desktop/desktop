@@ -742,11 +742,16 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   m_gestureTracker = request.tracker;
   m_gestureRange = request.trackerRange;
   m_commitTracker = request.commitTracker;
-  m_morphSourceRect = request.sourceRect;
   m_growSourceOutput = request.sourceOutputRect;
   const bool isBottom = barConfig.position == "bottom";
   const bool isLeft = barConfig.position == "left";
   const bool isRight = barConfig.position == "right";
+  // The morph starts from the island rect moved past the island to the sheet side: the sheet never draws over the bar.
+  m_morphSourceRect = request.sourceRect;
+  const float pastX = request.sourceRect[2] + Tokens::spaceChromeGap;
+  const float pastY = request.sourceRect[3] + Tokens::spaceChromeGap;
+  m_morphSourceRect[0] += isLeft ? pastX : (isRight ? -pastX : 0.0F);
+  m_morphSourceRect[1] += (isLeft || isRight) ? 0.0F : (isBottom ? -pastY : pastY);
   const std::int32_t panelGap = m_config->config().shell.panel.floatingOffset;
   const auto screenPadding = static_cast<std::int32_t>(Style::spaceSm);
 
@@ -841,9 +846,9 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
   detachedShadowBleed.left = std::max(detachedShadowBleed.left, m_morphMarginX);
   detachedShadowBleed.right = std::max(detachedShadowBleed.right, m_morphMarginX);
   detachedShadowBleed.down = std::max(detachedShadowBleed.down, m_morphMarginY);
-  m_morphMarginUp = morphFromIsland && !isLeft && !isRight
-      ? static_cast<std::int32_t>(std::ceil(request.sourceRect[3] + Tokens::spaceChromeGap))
-      : 0;
+  // A bottom bar's sheet grows upward, so its overshoot needs the margin above the sheet.
+  m_morphMarginUp = isBottom ? m_morphMarginY : 0;
+  m_morphFromBottomBar = isBottom;
   detachedShadowBleed.up = std::max(detachedShadowBleed.up, m_morphMarginUp);
   const std::uint32_t detachedSurfaceWidth =
       shell::panel_surface::surfaceExtent(panelWidth, detachedShadowBleed.left, detachedShadowBleed.right);
@@ -2734,9 +2739,13 @@ void PanelManager::syncGlassPieces(bool material) {
         shape.set(DskSurfaceClient::Property::Solo, {1.0, 0.0, 0.0, 0.0});
       }
       setGlassMaterial(shape, *m_dsk, want ? &glassPiece : nullptr);
+      // A shape piece is the island's material (tint_regular); only a sheet piece takes the panel's tint_thick.
       shape.set(
           DskSurfaceClient::Property::Tint,
-          glassTintValue(panelMaterialRole(), compositorTint() ? glassPiece.tint : 0.0F, m_sceneRoot.get())
+          glassTintValue(
+              pieces[i].sheet ? panelMaterialRole() : materialRole(), compositorTint() ? glassPiece.tint : 0.0F,
+              m_sceneRoot.get()
+          )
       );
     }
   }
@@ -3055,7 +3064,7 @@ bool PanelManager::startPiecesClose(std::uint64_t gen) {
 }
 
 PanelManager::PieceRest& PanelManager::pieceRest(Node& piece, bool open) {
-  return m_pieceRest.try_emplace(&piece, PieceRest{piece.x(), piece.y(), piece.scaleX(), piece.scaleY(), open ? 0.0F : 1.0F})
+  return m_pieceRest.try_emplace(&piece, PieceRest{piece.scaleX(), piece.scaleY(), open ? 0.0F : 1.0F})
       .first->second;
 }
 
@@ -3137,8 +3146,8 @@ void PanelManager::pourPieces(bool open) {
     float ax = 0.0F;
     float ay = 0.0F;
     Node::absolutePosition(piece, ax, ay);
-    ax += rest.x - piece->x();
-    ay += rest.y - piece->y();
+    ax -= piece->translationX();
+    ay -= piece->translationY();
     rests.push_back({piece, rest, ax, ay});
     right = std::max(right, ax + piece->width());
     left = std::min(left, ax);
@@ -3161,7 +3170,7 @@ void PanelManager::pourPieces(bool open) {
       if (auto it = m_pieceRest.find(piece); it != m_pieceRest.end()) {
         it->second.v = v;
       }
-      piece->setPosition(rest.x + offX * (1.0F - v), rest.y + offY * (1.0F - v));
+      piece->setTranslation(offX * (1.0F - v), offY * (1.0F - v));
       // The piece's own scale (a stack's back card) multiplies the pour's.
       const float s = std::lerp(fromScale, 1.0F, v);
       piece->setScale(rest.scaleX * s, rest.scaleY * s);
@@ -3429,11 +3438,11 @@ void PanelManager::applyContentMorph() {
     m_contentNode->setScale(1.0F);
     return;
   }
-  // The island rect in this surface: the compositor's mapping when known, else the island sits right above the sheet.
+  // The morph source in this surface: the compositor's mapping when known, else the sheet corner next to the island.
   std::array<float, 4> island{
       static_cast<float>(sheet[0] + sheet[2]) - m_morphSourceRect[2],
-      static_cast<float>(sheet[1]) - m_morphSourceRect[3] - Tokens::spaceChromeGap, m_morphSourceRect[2],
-      m_morphSourceRect[3]
+      m_morphFromBottomBar ? static_cast<float>(sheet[1] + sheet[3]) - m_morphSourceRect[3] : static_cast<float>(sheet[1]),
+      m_morphSourceRect[2], m_morphSourceRect[3]
   };
   if (m_dsk != nullptr && m_dsk->mappedClip()) {
     const auto& c = *m_dsk->mappedClip();
