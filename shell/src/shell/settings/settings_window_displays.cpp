@@ -75,12 +75,10 @@ void SettingsWindow::addDisplaysContent(float scale) {
           .confirmLabelOut = &m_displayConfirmLabel,
           .error = m_displayError,
           .selected = m_selectedDisplay,
-          .nightLight = m_config != nullptr && m_config->config().nightlight.enabled,
           .select = [this](std::string name) {
             m_selectedDisplay = std::move(name);
             requestContentRebuild();
           },
-          .setNightLight = [this](bool on) { setSettingOverride({"nightlight", "enabled"}, on); },
           .edit = [this](OutputHeadConfig config) { editDisplay(std::move(config)); },
           .apply = [this]() { applyDisplays(m_displayEdits, /*confirm=*/true); },
           .discard =

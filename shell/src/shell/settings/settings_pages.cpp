@@ -162,7 +162,7 @@ namespace settings {
         "andromeda.appearance.edge_reflection", "shell.settings_window_translucent", "shell.panel.transparency_mode",
         "andromeda.appearance.corner_radius", "andromeda.appearance.border_width", "andromeda.appearance.shadow.enabled",
         "andromeda.appearance.blur.enabled", "andromeda.appearance.reduce_motion",
-        "dock.reserve_space", "dock.show_trash", "dock.launcher_position", "dock.background_opacity",
+        "dock.reserve_space", "dock.show_trash", "dock.launcher_position",
         "dock.compositor_blur", "bar.*.reserve_space", "bar.*.background_opacity", "bar.*.compositor_blur",
         "nightlight.enabled", "nightlight.temperature_night",
         "audio.enable_notification_sounds", "audio.enable_volume_sounds", "audio.enable_screenshot_sounds",

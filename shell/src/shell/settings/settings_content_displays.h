@@ -28,9 +28,7 @@ namespace settings {
     Label** confirmLabelOut = nullptr;
     std::string error;
     std::string selected; // head name of the display whose card is shown; empty = the first
-    bool nightLight = false;
     std::function<void(std::string)> select;
-    std::function<void(bool)> setNightLight;
     std::function<void(OutputHeadConfig)> edit;
     std::function<void()> apply;
     std::function<void()> discard;

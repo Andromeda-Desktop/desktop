@@ -446,23 +446,6 @@ namespace settings {
       return head.name.starts_with("eDP") || head.name.starts_with("LVDS") || head.name.starts_with("DSI");
     }
 
-    void addNightLightRow(Flex& body, const SettingsDisplaysContext& ctx) {
-      if (!ctx.setNightLight) {
-        return;
-      }
-      auto control = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * ctx.scale});
-      control->addChild(makeLabel(
-          i18n::tr(ctx.nightLight ? "settings.displays.night-light-on" : "settings.displays.night-light-off"),
-          Style::fontSizeBody * ctx.scale, colorSpecFromRole(ColorRole::Label2)
-      ));
-      control->addChild(ui::toggle({
-          .checked = ctx.nightLight,
-          .scale = ctx.scale,
-          .onChange = [set = ctx.setNightLight](bool on) { set(on); },
-      }));
-      body.addChild(SettingsControlFactory::makeRow(i18n::tr("settings.displays.night-light"), std::move(control), ctx.scale));
-    }
-
     // Extend or mirror, for exactly two enabled displays: the second mirrors the first.
     void addMultipleDisplaysRow(Flex& body, const SettingsDisplaysContext& ctx) {
       const auto& heads = ctx.outputs->heads();
@@ -546,7 +529,6 @@ namespace settings {
             ctx.scale
         ));
       }
-      addNightLightRow(*body, ctx);
       addMultipleDisplaysRow(*body, ctx);
       addRotationRow(*body, config, ctx);
       if (!mirror) {

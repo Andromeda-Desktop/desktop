@@ -64,7 +64,7 @@ launcher	shell.launcher.providers.wallpaper.global	per-provider rows over a runt
 launcher	shell.launcher.providers.wallpaper.prefix	per-provider rows over a runtime provider list
 launcher	shell.launcher.providers.windows.global	per-provider rows over a runtime provider list
 launcher	shell.launcher.providers.windows.prefix	per-provider rows over a runtime provider list
-layout	shell.desktop_layout	preset select that writes many keys
+dock	shell.desktop_layout	preset select that writes many keys
 location	location.latitude	optional number control
 location	location.longitude	optional number control
 notifications	notification.filter	notification filter list control

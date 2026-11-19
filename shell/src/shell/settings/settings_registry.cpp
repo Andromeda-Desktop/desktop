@@ -192,7 +192,7 @@ namespace settings {
   }
 
   bool settingEntryMatchesDockNavigation(const SettingEntry& entry, std::string_view selectedMonitorOverride) {
-    if (entry.section != SettingsSection::Dock || entry.path.empty() || entry.path[0] != "dock") {
+    if (entry.section != SettingsSection::Dock || entry.path.empty()) {
       return false;
     }
     const bool monitorEntry = isDockMonitorOverrideSettingPath(entry.path);

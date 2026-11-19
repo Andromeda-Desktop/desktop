@@ -238,30 +238,30 @@ namespace settings {
 
       const std::string mode = compositor.value("layout.mode");
       choice(
-          Layout, "layout", "layout.mode", {"floating", "scrolling", "dwindle", "master"}, false,
+          Layout, "window-layout", "layout.mode", {"floating", "scrolling", "dwindle", "master"}, false,
           "window arrangement free floating scrolling split tiling main stack master layout mode"
       );
-      stepper(Layout, "layout", "layout.gap", 0, 500, 1, "px", "gaps spacing between windows");
-      choice(Layout, "layout", "appearance.title_bar.mode", {"auto", "on", "off"}, true, "title bar titlebar decorations window header");
-      choice(Layout, "layout", "appearance.title_bar.style", {"andromeda", "macos", "windows"}, true, "title bar style buttons macos windows");
-      choice(Layout, "layout", "appearance.title_bar.button_position", {"left", "right"}, true, "title bar buttons close minimize side left right");
+      stepper(Layout, "window-layout", "layout.gap", 0, 500, 1, "px", "gaps spacing between windows");
+      choice(Layout, "window-layout", "appearance.title_bar.mode", {"auto", "on", "off"}, true, "title bar titlebar decorations window header");
+      choice(Layout, "window-layout", "appearance.title_bar.style", {"andromeda", "macos", "windows"}, true, "title bar style buttons macos windows");
+      choice(Layout, "window-layout", "appearance.title_bar.button_position", {"left", "right"}, true, "title bar buttons close minimize side left right");
       if (mode == "floating") {
-        toggle(Layout, "layout", "input.window_snapping", "snap tile half quarter edge drag");
-        toggle(Layout, "layout", "input.snap_layouts_hover", "snap layouts flyout maximize button hover zones");
-        toggle(Layout, "layout", "input.snap_groups", "snap groups assist restore raise together");
+        toggle(Layout, "window-layout", "input.window_snapping", "snap tile half quarter edge drag");
+        toggle(Layout, "window-layout", "input.snap_layouts_hover", "snap layouts flyout maximize button hover zones");
+        toggle(Layout, "window-layout", "input.snap_groups", "snap groups assist restore raise together");
       } else if (mode == "scrolling") {
         choice(
-            Layout, "layout", "layout.scrolling.center_focused", {"never", "always", "on_overflow"}, false,
+            Layout, "window-layout", "layout.scrolling.center_focused", {"never", "always", "on_overflow"}, false,
             "center focused column"
         );
-        toggle(Layout, "layout", "layout.scrolling.center_underfull_strip", "center columns");
+        toggle(Layout, "window-layout", "layout.scrolling.center_underfull_strip", "center columns");
       } else if (mode == "dwindle") {
-        toggle(Layout, "layout", "layout.dwindle.preserve_split", "split direction");
+        toggle(Layout, "window-layout", "layout.dwindle.preserve_split", "split direction");
       } else if (mode == "master") {
-        choice(Layout, "layout", "layout.master.position", {"left", "right", "center"}, true, "master stack position");
-        slider(Layout, "layout", "layout.master.default_width_fraction", 0.1, 0.9, 0.05, false, "master width ratio");
-        toggle(Layout, "layout", "layout.master.new_on_top", "new window stack order");
-        toggle(Layout, "layout", "layout.master.new_becomes_master", "new window master");
+        choice(Layout, "window-layout", "layout.master.position", {"left", "right", "center"}, true, "master stack position");
+        slider(Layout, "window-layout", "layout.master.default_width_fraction", 0.1, 0.9, 0.05, false, "master width ratio");
+        toggle(Layout, "window-layout", "layout.master.new_on_top", "new window stack order");
+        toggle(Layout, "window-layout", "layout.master.new_becomes_master", "new window master");
       }
       toggle(Layout, "workspaces", "workspaces.back_and_forth", "workspace back and forth previous");
       toggle(Layout, "workspaces", "workspaces.empty_above", "workspace empty");
