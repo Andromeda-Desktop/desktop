@@ -323,9 +323,10 @@ void LiveActivityIsland::setExtraSources(
 }
 
 std::string LiveActivityIsland::clockText() const {
-  // Concept C clock island: "Wed 18 Nov  20:04", the time in the user's 12/24 h format.
+  // Concept C clock island: "Wed 18 Nov 20:04" (the mockup's double space renders as one), the time in the user's
+  // 12/24 h format.
   const std::string time = m_config != nullptr ? formatLocalTime(m_config->config().shell.timeFormat.c_str()) : timeText();
-  return dateText() + "  " + time;
+  return dateText() + " " + time;
 }
 
 void LiveActivityIsland::onTimeTick() {

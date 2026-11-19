@@ -221,10 +221,10 @@ namespace calendar_view {
       tile->addChild(
           ui::label({
               .text = weekdays[index],
-              .fontSize = Tokens::typeCaption.size * options.scale,
-              .fontWeight = FontWeight::SemiBold,
+              .fontSize = Tokens::typeFootnote.size * options.scale,
+              .fontWeight = static_cast<FontWeight>(Style::glassWeight(Tokens::typeFootnote.weight)),
               .fontFamily = options.fontFamily,
-              .color = colorSpecFromRole(ColorRole::Label3),
+              .color = colorSpecFromRole(ColorRole::Label2),
               .maxLines = 1,
           })
       );
@@ -293,7 +293,6 @@ namespace calendar_view {
       tile->setDirection(FlexDirection::Vertical);
       tile->setAlign(FlexAlign::Center);
       tile->setJustify(FlexJustify::Center);
-      tile->setGap(layout.dotGap);
 
       auto button = ui::button({
           .text = std::to_string(date.day),
@@ -340,7 +339,6 @@ namespace calendar_view {
       if (options.onDateRightClicked) {
         button->setOnRightClick([callback = options.onDateRightClicked, date] { callback(date); });
       }
-      tile->addChild(std::move(button));
 
       auto dots = ui::row({
           .align = FlexAlign::Center,
@@ -360,11 +358,11 @@ namespace calendar_view {
           );
         }
       }
-      auto dotArea = ui::inputArea({});
-      dotArea->setSize(layout.dayButtonSize, layout.dotDiameter);
-      dotArea->setOnClick([selectDate](const InputArea::PointerData&) { selectDate(); });
-      dotArea->addChild(std::move(dots));
-      tile->addChild(std::move(dotArea));
+      // The dots overlay the button's foot, 2 above the cell bottom (proto .o-d.ev::after), so the digit stays centred.
+      dots->setParticipatesInLayout(false);
+      dots->setPosition(0.0F, (layout.dayCellHeight + layout.dayButtonSize) * 0.5F - layout.dotGap - layout.dotDiameter);
+      button->addChild(std::move(dots));
+      tile->addChild(std::move(button));
       dayGrid->addChild(std::move(tile));
     }
 

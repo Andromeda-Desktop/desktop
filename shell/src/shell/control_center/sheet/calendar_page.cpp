@@ -141,7 +141,7 @@ std::unique_ptr<Flex> CalendarPage::create() {
   auto calendarCard = ui::column({
       .out = &m_card,
       .align = FlexAlign::Stretch,
-      .gap = Tokens::spaceP4 * scale,
+      .gap = (pieces ? Tokens::spaceP8 : Tokens::spaceP4) * scale,
       .padding = Tokens::componentTilePadding * scale,
       .fill = colorSpecFromRole(ColorRole::GlassCard),
       .radius = Tokens::componentTileRadius * scale,
@@ -156,10 +156,14 @@ std::unique_ptr<Flex> CalendarPage::create() {
   auto header = ui::row({
       .out = &m_header,
       .align = FlexAlign::Center,
-      .gap = Tokens::spaceP4 * scale,
+      .gap = (pieces ? Tokens::spaceP8 : Tokens::spaceP4) * scale,
       .paddingH = Tokens::spaceP4 * scale,
       .height = kCalendarHeaderHeight * scale,
   });
+  // Pieces (proto .o-mhead padding 0 0 8 8): the title sits 8 in, the next button at the card padding.
+  if (pieces) {
+    header->setPadding(0.0F, 0.0F, 0.0F, Tokens::spaceP8 * scale);
+  }
   header->addChild(ui::column(
       {.out = &m_monthWrap, .align = FlexAlign::Start, .flexGrow = 1.0F},
       ui::label({
@@ -234,6 +238,8 @@ std::unique_ptr<Flex> CalendarPage::create() {
     eventsCard->setPadding(Tokens::spaceP8 * scale, Tokens::spaceP12 * scale, Tokens::spaceP12 * scale, Tokens::spaceP12 * scale);
     eventsCard->setGap(Tokens::spaceP4 * scale);
     eventsCard->setAlign(FlexAlign::Stretch);
+    // proto .o-sec padding 4 0 8: with the card gap 4, the title sits 12 in and 8 above the first row.
+    eventsHeader->setPadding(Tokens::spaceP4 * scale, 0.0F, Tokens::spaceP4 * scale, 0.0F);
     eventsCard->insertChildAt(0, std::move(eventsHeader));
     styleGlassPiece(*eventsCard, Tokens::radiusR24 * scale, scale, panelCardOpacity());
   } else {
