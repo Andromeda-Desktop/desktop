@@ -795,6 +795,7 @@ struct DockConfig {
   // The desktop's own apps: Settings ships with the shell; Files and Terminal with the andromeda package.
   std::vector<std::string> pinned = {"dev.andromeda.Files", "dev.andromeda.Terminal", "dev.noctalia.Noctalia"};
   std::vector<DockMonitorOverride> monitorOverrides;
+  float scale = 1.0F; // resolved accessibility.ui_scale for fixed-size marks; not a config key
   bool operator==(const DockConfig&) const = default;
 };
 

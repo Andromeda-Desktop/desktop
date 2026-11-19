@@ -504,11 +504,12 @@ namespace shell::dock {
     return areaNode;
   }
 
-  std::unique_ptr<Box> makeDockSeparator(bool vert) {
+  std::unique_ptr<Box> makeDockSeparator(bool vert, float scale) {
+    const float length = std::round(Tokens::componentDockSeparatorHeight * scale);
     return ui::box({
         .fill = colorSpecFromRole(ColorRole::Separator),
-        .width = vert ? Tokens::componentDockSeparatorHeight : 1.0F,
-        .height = vert ? 1.0F : Tokens::componentDockSeparatorHeight,
+        .width = vert ? length : 1.0F,
+        .height = vert ? 1.0F : length,
     });
   }
 
@@ -645,7 +646,7 @@ namespace shell::dock {
 
     for (std::size_t itemIndex = 0; itemIndex < itemModels.size(); ++itemIndex) {
       if (itemIndex == pinnedCount && pinnedCount > 0) {
-        instance.row->addChild(makeDockSeparator(vert));
+        instance.row->addChild(makeDockSeparator(vert, cfg.scale));
       }
       const auto& model = itemModels[itemIndex];
       auto& item = instance.items.emplace_back();
@@ -708,7 +709,7 @@ namespace shell::dock {
       }
 
       if (cfg.showDots) {
-        const float dot = std::max(kDotMinSize, std::round(iSize * kDotSizeRatio));
+        const float dot = std::max(kDotMinSize * cfg.scale, std::round(iSize * kDotSizeRatio));
         const bool verticalDots = shell::dock::isVerticalEdge(edge);
 
         for (auto& dotIndicator : item.dotIndicators) {
@@ -733,38 +734,42 @@ namespace shell::dock {
         }
       }
 
+      const float minLength = std::round(kMinimizedIndicatorLength * cfg.scale);
+      const float minThickness = std::round(kMinimizedIndicatorThickness * cfg.scale);
       areaNode->addChild(
           ui::box({
               .out = &item.minimizedIndicator,
               .fill = colorSpecFromRole(ColorRole::Accent),
-              .radius = kMinimizedIndicatorThickness * 0.5F,
-              .width = vert ? kMinimizedIndicatorThickness : kMinimizedIndicatorLength,
-              .height = vert ? kMinimizedIndicatorLength : kMinimizedIndicatorThickness,
+              .radius = minThickness * 0.5F,
+              .width = vert ? minThickness : minLength,
+              .height = vert ? minLength : minThickness,
               .visible = false,
               .participatesInLayout = false,
-              .configure = [vert, edge, cellMain](Box& box) {
-                const float centered = std::round((cellMain - kMinimizedIndicatorLength) * 0.5F);
+              .configure = [vert, edge, cellMain, minLength, minThickness](Box& box) {
+                const float centered = std::round((cellMain - minLength) * 0.5F);
                 const bool atStart = edge == DockEdge::Top || edge == DockEdge::Left;
-                const float outer = atStart ? 1.0F : std::round(cellMain - kMinimizedIndicatorThickness - 1.0F);
+                const float outer = atStart ? 1.0F : std::round(cellMain - minThickness - 1.0F);
                 box.setPosition(vert ? outer : centered, vert ? centered : outer);
               },
           })
       );
 
       if (cfg.runningBar && !cfg.showDots) {
+        const float dot = std::round(kRunningDot * cfg.scale);
+        const float offset = std::round(kRunningDotOffset * cfg.scale);
         areaNode->addChild(
             ui::box({
                 .out = &item.runningIndicator,
                 .fill = colorSpecFromRole(ColorRole::Label2),
-                .radius = kRunningDot * 0.5F,
-                .width = kRunningDot,
-                .height = kRunningDot,
+                .radius = dot * 0.5F,
+                .width = dot,
+                .height = dot,
                 .visible = false,
                 .participatesInLayout = false,
-                .configure = [vert, edge, cellMain](Box& box) {
-                  const float centered = std::round((cellMain - kRunningDot) * 0.5F);
+                .configure = [vert, edge, cellMain, dot, offset](Box& box) {
+                  const float centered = std::round((cellMain - dot) * 0.5F);
                   const bool atStart = edge == DockEdge::Top || edge == DockEdge::Left;
-                  const float outer = atStart ? -(kRunningDotOffset + kRunningDot) : cellMain + kRunningDotOffset;
+                  const float outer = atStart ? -(offset + dot) : cellMain + offset;
                   box.setPosition(vert ? outer : centered, vert ? centered : outer);
                 },
             })
@@ -931,7 +936,7 @@ namespace shell::dock {
     }
 
     if (instance.hasTrash) {
-      instance.row->addChild(makeDockSeparator(vert));
+      instance.row->addChild(makeDockSeparator(vert, cfg.scale));
       instance.row->addChild(createTrashButton(instance, cfg, clickContext));
     }
 
@@ -1073,9 +1078,9 @@ namespace shell::dock {
         const std::size_t dotCount = model.allMinimized ? 0 : std::min<std::size_t>(count, 3);
         const auto iSize = static_cast<float>(cfg.iconSize);
         const float cellMain = iSize + 2.0F * kCellPad;
-        const float dot = std::max(kDotMinSize, std::round(iSize * kDotSizeRatio));
+        const float dot = std::max(kDotMinSize * cfg.scale, std::round(iSize * kDotSizeRatio));
         const float groupLength =
-            dotCount == 0 ? dot : dot * static_cast<float>(dotCount) + kDotGap * static_cast<float>(dotCount - 1);
+            dotCount == 0 ? dot : dot * static_cast<float>(dotCount) + kDotGap * cfg.scale * static_cast<float>(dotCount - 1);
         const float groupStart = std::round((cellMain - groupLength) * 0.5F);
         const bool verticalDots = shell::dock::isVerticalEdge(edge);
 
@@ -1088,7 +1093,7 @@ namespace shell::dock {
           dotNode->setVisible(visible);
           dotNode->setFill(colorSpecFromRole(model.active ? ColorRole::Accent : ColorRole::Accent));
           if (visible) {
-            const float main = groupStart + static_cast<float>(dotIndex) * (dot + kDotGap);
+            const float main = groupStart + static_cast<float>(dotIndex) * (dot + kDotGap * cfg.scale);
             if (verticalDots) {
               const float x = edge == DockEdge::Left ? 1.0F : std::round(cellMain - dot - 1.0F);
               dotNode->setPosition(x, main);

@@ -239,6 +239,7 @@ bool Bar::initialize(const BarServices& services) {
   m_lastWidgets = m_config->config().widgets;
   m_lastShadow = m_config->config().shell.shadow;
   m_lastClockFormats = {m_config->config().shell.timeFormat, m_config->config().shell.dateFormat};
+  m_lastUiScale = m_config->config().accessibility.uiScale;
   m_lastPlugins = m_config->config().plugins;
   m_config->addReloadCallback(
       [this] {
@@ -247,7 +248,8 @@ bool Bar::initialize(const BarServices& services) {
             && cfg.widgets == m_lastWidgets
             && cfg.shell.shadow == m_lastShadow
             && std::tie(cfg.shell.timeFormat, cfg.shell.dateFormat) == std::tie(m_lastClockFormats.first, m_lastClockFormats.second)
-            && cfg.plugins == m_lastPlugins) {
+            && cfg.plugins == m_lastPlugins
+            && cfg.accessibility.uiScale == m_lastUiScale) {
           return;
         }
         reload();
@@ -333,6 +335,7 @@ void Bar::reload() {
   m_lastWidgets = m_config->config().widgets;
   m_lastShadow = m_config->config().shell.shadow;
   m_lastClockFormats = {m_config->config().shell.timeFormat, m_config->config().shell.dateFormat};
+  m_lastUiScale = m_config->config().accessibility.uiScale;
   m_lastPlugins = m_config->config().plugins;
   m_widgetFactory = std::make_unique<WidgetFactory>(services());
 

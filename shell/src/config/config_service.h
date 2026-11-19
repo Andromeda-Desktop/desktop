@@ -205,9 +205,9 @@ public:
   bool clearOverrides(const std::vector<std::vector<std::string>>& paths, bool* changed);
   bool renameOverrideTable(const std::vector<std::string>& oldPath, const std::vector<std::string>& newPath);
 
-  // uiScale (accessibility.ui_scale) grows the resolved bar thickness and content scale.
+  // uiScale (accessibility.ui_scale) grows the resolved bar thickness and content scale, and every dock size.
   [[nodiscard]] static BarConfig resolveForOutput(const BarConfig& base, const WaylandOutput& output, float uiScale);
-  [[nodiscard]] static DockConfig resolveForOutput(const DockConfig& base, const WaylandOutput& output);
+  [[nodiscard]] static DockConfig resolveForOutput(const DockConfig& base, const WaylandOutput& output, float uiScale);
 
   // Recursively overlays `overlay` onto `base` (tables merge, everything else
   // replaces). Public so `config validate` can reproduce loadAll's merge order.

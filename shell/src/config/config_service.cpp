@@ -1163,7 +1163,8 @@ BarConfig ConfigService::resolveForOutput(const BarConfig& base, const WaylandOu
   return resolved;
 }
 
-DockConfig ConfigService::resolveForOutput(const DockConfig& base, const WaylandOutput& output) {
+DockConfig ConfigService::resolveForOutput(const DockConfig& base, const WaylandOutput& output, float uiScale) {
+  DockConfig resolved = base;
   for (const auto& ovr : base.monitorOverrides) {
     if (!outputMatchesSelector(ovr.match, output)) {
       continue;
@@ -1173,11 +1174,25 @@ DockConfig ConfigService::resolveForOutput(const DockConfig& base, const Wayland
         "dock monitor override \"{}\" matched output {} ({})", ovr.match, output.connectorName, output.description
     );
 
-    return resolveDockMonitorOverride(base, ovr);
+    resolved = resolveDockMonitorOverride(base, ovr);
+    break;
   }
-
-  DockConfig resolved = base;
   resolved.monitorOverrides.clear();
+
+  const float scale = std::max(0.1F, uiScale);
+  const auto px = [scale](std::int32_t v) { return static_cast<std::int32_t>(std::lround(static_cast<float>(v) * scale)); };
+  resolved.iconSize = px(resolved.iconSize);
+  resolved.mainAxisPadding = px(resolved.mainAxisPadding);
+  resolved.crossAxisPadding = px(resolved.crossAxisPadding);
+  resolved.itemSpacing = px(resolved.itemSpacing);
+  resolved.radius = px(resolved.radius);
+  resolved.radiusTopLeft = px(resolved.radiusTopLeft);
+  resolved.radiusTopRight = px(resolved.radiusTopRight);
+  resolved.radiusBottomLeft = px(resolved.radiusBottomLeft);
+  resolved.radiusBottomRight = px(resolved.radiusBottomRight);
+  resolved.marginEnds = px(resolved.marginEnds);
+  resolved.marginEdge = px(resolved.marginEdge);
+  resolved.scale = scale;
   return resolved;
 }
 

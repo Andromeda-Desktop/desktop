@@ -416,7 +416,9 @@ bool Dock::initialize(
         const auto& newCfg = m_config->config().dock;
         const auto& newShadow = m_config->config().shell.shadow;
         const auto newBarLayerStack = barLayerStackSignature(m_config->config());
-        if (newCfg == m_lastDockConfig && newShadow == m_lastShadow && newBarLayerStack == m_lastBarLayerStack) {
+        const float newUiScale = m_config->config().accessibility.uiScale;
+        if (newCfg == m_lastDockConfig && newShadow == m_lastShadow && newBarLayerStack == m_lastBarLayerStack &&
+            newUiScale == m_lastUiScale) {
           return;
         }
         if (newBarLayerStack != m_lastBarLayerStack && newCfg == m_lastDockConfig && newShadow == m_lastShadow) {
@@ -442,6 +444,7 @@ bool Dock::initialize(
   m_lastDockConfig = cfg;
   m_lastShadow = m_config->config().shell.shadow;
   m_lastBarLayerStack = barLayerStackSignature(m_config->config());
+  m_lastUiScale = m_config->config().accessibility.uiScale;
 
   if (!dockMayBeEnabled(cfg)) {
     kLog.info("dock disabled in config");
@@ -456,6 +459,7 @@ void Dock::reload() {
   m_lastDockConfig = cfg;
   m_lastShadow = m_config->config().shell.shadow;
   m_lastBarLayerStack = barLayerStackSignature(m_config->config());
+  m_lastUiScale = m_config->config().accessibility.uiScale;
 
   if (!dockMayBeEnabled(cfg)) {
     closeAllInstances();
@@ -793,7 +797,7 @@ void Dock::syncInstances() {
     if (!output.done || !output.hasUsableGeometry()) {
       return false;
     }
-    const DockConfig cfg = ConfigService::resolveForOutput(baseConfig, output);
+    const DockConfig cfg = ConfigService::resolveForOutput(baseConfig, output, m_config->config().accessibility.uiScale);
     if (!cfg.enabled) {
       return false;
     }
@@ -947,7 +951,7 @@ void Dock::createInstance(const WaylandOutput& output) {
   assertDockInitialized(m_platform, m_config, m_renderContext);
 
   const auto& baseConfig = m_config->config().dock;
-  const DockConfig cfg = ConfigService::resolveForOutput(baseConfig, output);
+  const DockConfig cfg = ConfigService::resolveForOutput(baseConfig, output, m_config->config().accessibility.uiScale);
   kLog.info(
       "creating dock on {} ({}) icon_size={} position={}", output.connectorName, output.description, cfg.iconSize,
       enumToKey(kDockEdges, cfg.position)
