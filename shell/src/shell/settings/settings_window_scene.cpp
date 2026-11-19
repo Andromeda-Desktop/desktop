@@ -1612,6 +1612,7 @@ std::unique_ptr<Flex> SettingsWindow::buildBody(
     sidebar->setParticipatesInLayout(false);
   }
   m_moreIndex = nullptr;
+  m_moreIndexScroll = nullptr;
   m_moreIndexRows.clear();
   std::unique_ptr<Flex> moreIndex;
   if (m_expertOpen && m_searchQuery.empty() && showPage) {
@@ -2483,7 +2484,11 @@ void SettingsWindow::buildScene(std::uint32_t width, std::uint32_t height) {
 std::unique_ptr<Flex> SettingsWindow::buildMoreIndex(float scale) {
   using settings::metrics::MorePlacement;
   const bool inSidebar = m_morePlacement == MorePlacement::InSidebar;
-  const float width = (inSidebar ? settings::metrics::kSidebarWidth : settings::metrics::kMoreIndexWidth) * scale;
+  // Beside the sidebar the index rows span kMoreIndexWidth, after a page-padding gap to the sidebar.
+  const float padH = (inSidebar ? settings::metrics::kSidebarPaddingH : 0.0F) * scale;
+  const float padStart = inSidebar ? padH : settings::metrics::kPagePadding * scale;
+  const float width = inSidebar ? settings::metrics::kSidebarWidth * scale
+                                : (settings::metrics::kMoreIndexWidth + settings::metrics::kPagePadding) * scale;
   auto column = ui::column({
       .align = FlexAlign::Stretch,
       .fill = inSidebar && !m_glassSidebar ? colorSpecFromRole(ColorRole::Fill2) : clearColorSpec(),
@@ -2491,11 +2496,8 @@ std::unique_ptr<Flex> SettingsWindow::buildMoreIndex(float scale) {
       .fillHeight = true,
       .width = width,
       .configure =
-          [scale](Flex& flex) {
-            flex.setPadding(
-                settings::metrics::kSidebarPaddingV * scale, settings::metrics::kSidebarPaddingH * scale, 0.0F,
-                settings::metrics::kSidebarPaddingH * scale
-            );
+          [scale, padH, padStart](Flex& flex) {
+            flex.setPadding(settings::metrics::kSidebarPaddingV * scale, padH, 0.0F, padStart);
           },
   });
   if (inSidebar) {
@@ -2515,7 +2517,24 @@ std::unique_ptr<Flex> SettingsWindow::buildMoreIndex(float scale) {
             [this] { navigateTo(m_selectedSection, m_selectedBarName, false, {}, m_selectedMonitorOverride); },
     }));
   }
-  m_moreIndex = static_cast<Flex*>(column->addChild(ui::column({.align = FlexAlign::Stretch})));
+  auto scroll = ui::scrollView({
+      .out = &m_moreIndexScroll,
+      .state = &m_moreIndexScrollState,
+      .contentScale = scale,
+      .scrollbarVisible = true,
+      .scrollbarAutoHide = true,
+      .viewportPaddingH = 0.0F,
+      .viewportPaddingV = 0.0F,
+      .fill = clearColorSpec(),
+      .flexGrow = 1.0F,
+      .configure =
+          [](ScrollView& scrollView) {
+            scrollView.clearFill();
+            scrollView.clearBorder();
+          },
+  });
+  m_moreIndex = static_cast<Flex*>(scroll->content()->addChild(ui::column({.align = FlexAlign::Stretch})));
+  column->addChild(std::move(scroll));
   return column;
 }
 
@@ -2599,8 +2618,12 @@ void SettingsWindow::fillMoreIndex(float scale) {
     m_moreIndexRows.push_back(row.get());
     m_moreIndex->addChild(std::move(row));
   }
-  m_moreCurrent = m_moreIndexRows.size();
-  markMoreIndexCurrent();
+  if (m_moreCurrent >= m_moreIndexRows.size()) {
+    m_moreCurrent = 0;
+  }
+  if (m_moreFilter == settings::MoreFilter::All) {
+    styleMoreIndexRows();
+  }
 }
 
 void SettingsWindow::markMoreIndexCurrent() {
@@ -2629,10 +2652,17 @@ void SettingsWindow::markMoreIndexCurrent() {
     return;
   }
   m_moreCurrent = current;
+  styleMoreIndexRows();
+  if (m_moreIndexScroll != nullptr && current < m_moreIndexRows.size()) {
+    m_moreIndexScroll->requestScrollIntoView(m_moreIndexRows[current]);
+  }
+}
+
+void SettingsWindow::styleMoreIndexRows() {
   for (std::size_t i = 0; i < m_moreIndexRows.size(); ++i) {
     m_moreIndexRows[i]->setCustomPalette(settings::selectedRowPalette(
-        i == current ? settings::selectionStyle().childFill : clearColorSpec(),
-        colorSpecFromRole(i == current ? ColorRole::Label1 : ColorRole::Label2)
+        i == m_moreCurrent ? settings::selectionStyle().childFill : clearColorSpec(),
+        colorSpecFromRole(i == m_moreCurrent ? ColorRole::Label1 : ColorRole::Label2)
     ));
   }
 }

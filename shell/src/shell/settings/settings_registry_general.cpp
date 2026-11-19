@@ -459,7 +459,7 @@ namespace settings {
       anchorBarSelect.selectedValue = cfg.shell.panelAnchorBar;
       anchorBarSelect.allowEmptySelection = true;
       entries.push_back(makeEntry(
-          SettingsSection::Panels, "general", tr("settings.schema.panels.panel-anchor-bar.label"),
+          SettingsSection::Panels, "panel-placement", tr("settings.schema.panels.panel-anchor-bar.label"),
           tr("settings.schema.panels.panel-anchor-bar.description"), {"shell", "panel_anchor_bar"},
           std::move(anchorBarSelect), "anchor attach bar panel wallpaper launcher"
       ));
@@ -472,7 +472,7 @@ namespace settings {
     appendRow(entries, panelRows, "border_color");
     appendRow(entries, panelRows, "border_width");
     appendRow(entries, panelRows, "shadow");
-    appendGroup(entries, panelRows, "effects");
+    appendGroup(entries, panelRows, "panel-look");
 
     appendRow(entries, panelRows, "launcher_placement");
     appendRow(entries, panelRows, "launcher_position");
@@ -562,7 +562,7 @@ namespace settings {
     );
     appendRow(entries, panelRows, "polkit_placement");
     appendRow(entries, panelRows, "polkit_position");
-    appendGroup(entries, panelRows, "wallpaper");
+    appendRow(entries, panelRows, "wallpaper_placement");
     appendRow(entries, panelRows, "wallpaper_position");
     appendOpenNearClickRow(
         entries, panelRows, "wallpaper", &ShellConfig::PanelConfig::wallpaperPlacement,
@@ -596,6 +596,7 @@ namespace settings {
         "quick settings shortcuts toggles wifi bluetooth caffeine night light dnd power media weather clipboard"
     ));
     appendGroup(entries, controlCenterRows, "home");
+    appendGroup(entries, controlCenterRows, "panel-look");
   }
 
   void registry_detail::add_desktop_settings(RegistryContext& ctx) {

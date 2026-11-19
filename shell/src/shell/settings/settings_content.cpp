@@ -1044,10 +1044,29 @@ namespace settings {
     auto entryOrder = coalesceByGroupKey(registry.size(), [&](std::size_t i) {
       return barSettingContentSectionKey(registry[i]) + '\x1F' + registry[i].group;
     });
-    // A merged page shows its sections in the page's order (Bar before Control Center), not the registry's.
-    if (const auto* page = settingsPageFromId(ctx.selectedSection); page != nullptr) {
-      const auto rank = [page](const SettingEntry& entry) {
-        return static_cast<std::size_t>(std::ranges::find(page->sections, entry.section) - page->sections.begin());
+    const auto* openPage = settingsPageFromId(ctx.selectedSection);
+    // In More, a group the page lists as a cluster gathers its rows from every section of the page.
+    const auto clusterIndex = [&](const SettingEntry& entry) -> std::optional<std::size_t> {
+      if (ctx.rowScope != RowScope::Expert || openPage == nullptr) {
+        return std::nullopt;
+      }
+      const auto it = std::ranges::find(openPage->moreClusters, entry.group);
+      if (it == openPage->moreClusters.end()) {
+        return std::nullopt;
+      }
+      return static_cast<std::size_t>(it - openPage->moreClusters.begin());
+    };
+    // A merged page shows its sections in the page's order (Bar before Control Center), not the registry's;
+    // its listed clusters come first, in the listed order.
+    if (openPage != nullptr) {
+      const auto rank = [&](const SettingEntry& entry) {
+        if (const auto cluster = clusterIndex(entry)) {
+          return *cluster;
+        }
+        return openPage->moreClusters.size()
+            + static_cast<std::size_t>(
+                   std::ranges::find(openPage->sections, entry.section) - openPage->sections.begin()
+            );
       };
       std::ranges::stable_sort(entryOrder, {}, [&](std::size_t i) { return rank(registry[i]); });
     }
@@ -1055,8 +1074,8 @@ namespace settings {
       return ctx.configService != nullptr
           && settingEntryHasEffectiveOverride(entry, *ctx.configService, ctx.compositorSettings);
     };
-    const auto groupKeyOf = [](const SettingEntry& entry) {
-      return barSettingContentSectionKey(entry) + '\x1F' + entry.group;
+    const auto groupKeyOf = [&](const SettingEntry& entry) {
+      return clusterIndex(entry) ? entry.group : barSettingContentSectionKey(entry) + '\x1F' + entry.group;
     };
     const auto groupCaption = [&](const SettingEntry& entry) {
       return entry.group.empty() || entry.group.front() == '~' ? std::string{} : groupLabel(entry.group);
@@ -1101,7 +1120,6 @@ namespace settings {
       const std::string contentSectionKey = barSettingContentSectionKey(entry);
       if (contentSectionKey != activeSectionKey) {
         activeSectionKey = contentSectionKey;
-        activeGroupKey.clear();
         activeGroupBody = nullptr;
         activeKeybindRow = nullptr;
         activeKeybindRowCount = 0;
@@ -1110,8 +1128,8 @@ namespace settings {
           content.addChild(makeOfflineModeNotice(scale, offlineModeNoticeMessage(entry.section), showDisableHint));
         }
       }
-      if (activeGroupBody == nullptr || entry.group != activeGroupKey) {
-        activeGroupKey = entry.group;
+      if (activeGroupBody == nullptr || groupKeyOf(entry) != activeGroupKey) {
+        activeGroupKey = groupKeyOf(entry);
         activeKeybindRow = nullptr;
         activeKeybindRowCount = 0;
         activeGroupBody = addSettingsGroupCard(content, groupCaption(entry), scale);
@@ -1214,7 +1232,6 @@ namespace settings {
                    "hooks", "services"},
         [&](std::string_view sectionId) { return selectedPageShows(ctx.selectedSection, sectionId); }
     ) || settingsPageHasOwnContent(ctx.selectedSection);
-    const auto* openPage = settingsPageFromId(ctx.selectedSection);
     const bool placeholderPage = openPage != nullptr && openPage->sections.empty();
     if (visibleEntries == 0 && !customPage && (ctx.rowScope == RowScope::Expert || expertEntryCount == 0)) {
       // Empty state (rulebook 9.13): symbol 48 label_3, title-3, one footnote line; no card.

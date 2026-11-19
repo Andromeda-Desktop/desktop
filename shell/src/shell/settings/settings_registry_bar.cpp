@@ -40,6 +40,12 @@
 namespace settings {
   using namespace registry_detail;
 
+  namespace {
+    std::string deadZoneGroup(noctalia::bar::Gesture gesture) {
+      return noctalia::bar::scrollDirectionForGesture(gesture).has_value() ? "empty-scroll" : "empty-clicks";
+    }
+  } // namespace
+
   void registry_detail::add_osd_settings(RegistryContext& ctx) {
     using i18n::tr;
     const auto& cfg = ctx.cfg;
@@ -196,7 +202,7 @@ namespace settings {
         const std::string key(noctalia::bar::gestureConfigKey(gesture));
         const auto configured = bar.deadZone.actions.find(key);
         entries.push_back(makeEntry(
-            section, "dead-zone", tr(noctalia::bar::gestureLabelKey(gesture)),
+            section, deadZoneGroup(gesture), tr(noctalia::bar::gestureLabelKey(gesture)),
             tr("settings.schema.bar.dead-zone-action.description"),
             std::vector<std::string>{"bar", bar.name, "dead_zone", "actions", key},
             GestureActionSetting{
@@ -361,7 +367,7 @@ namespace settings {
           }
           const auto inherited = bar.deadZone.actions.find(key);
           entries.push_back(makeEntry(
-              section, "dead-zone", tr(noctalia::bar::gestureLabelKey(gesture)),
+              section, deadZoneGroup(gesture), tr(noctalia::bar::gestureLabelKey(gesture)),
               tr("settings.schema.bar.dead-zone-action.description"), std::move(gesturePath),
               GestureActionSetting{
                   .gestureKey = key,

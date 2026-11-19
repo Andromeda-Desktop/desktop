@@ -17,6 +17,10 @@ namespace settings {
     constexpr std::array<S, 1> kNotifications{S::Notifications};
     constexpr std::array<S, 2> kDesktopDock{S::Dock, S::Desktop};
     constexpr std::array<S, 3> kBar{S::Bar, S::ControlCenter, S::Panels};
+    constexpr std::array<std::string_view, 9> kBarClusters{
+        "position-spacing", "corners", "border-shadow", "widgets", "capsules",
+        "empty-clicks", "empty-scroll", "panel-look", "panel-placement",
+    };
     constexpr std::array<S, 1> kLauncher{S::Launcher};
     constexpr std::array<S, 3> kWindows{S::Windows, S::Layout, S::Overview};
     // The input page holds keyboard and pointer options in one block until it is split.
@@ -49,7 +53,7 @@ namespace settings {
         {"wallpaper", kPers, "photo", kWallpaper},
         {"lock-screen", kPers, "lock", {}},
         {"desktop-dock", kPers, "layout-bottombar", kDesktopDock},
-        {"bar", kPers, "crop-3-2", kBar},
+        {"bar", kPers, "crop-3-2", kBar, true, {}, kBarClusters},
         {"notifications", kPers, "bell", kNotifications},
         {"displays", kDev, "device-desktop", kDisplays},
         {"sound", kDev, "volume", {}},

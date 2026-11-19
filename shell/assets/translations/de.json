@@ -1199,6 +1199,13 @@
         "community": "Community",
         "control-center": "Kontrollzentrum",
         "dead-zone": "Leerer Bereich",
+        "position-spacing": "Position und Abstände",
+        "corners": "Ecken",
+        "border-shadow": "Rahmen und Schatten",
+        "empty-clicks": "Klicks auf leere Leiste",
+        "empty-scroll": "Scrollen auf leerer Leiste",
+        "panel-look": "Aussehen der Panels",
+        "panel-placement": "Wo Panels öffnen",
         "directories": "Verzeichnisse",
         "display": "Anzeige",
         "effects": "Effekte",
@@ -2420,15 +2427,15 @@
         },
         "open-near-click-clipboard": {
           "description": "Wo die Zwischenablage platziert wird, wenn sie durch Klicken auf das Leisten-Widget geöffnet wird",
-          "label": "An der Leiste"
+          "label": "Zwischenablage: An der Leiste"
         },
         "open-near-click-control-center": {
           "description": "Wo das Kontrollzentrum platziert wird, wenn es durch Klicken auf das Leisten-Widget geöffnet wird",
-          "label": "An der Leiste"
+          "label": "Kontrollzentrum: An der Leiste"
         },
         "open-near-click-launcher": {
           "description": "Wo der Launcher platziert wird, wenn er durch Klicken auf das Leisten-Widget geöffnet wird",
-          "label": "An der Leiste"
+          "label": "Launcher: An der Leiste"
         },
         "open-near-click-session": {
           "description": "Wo das Sitzungsmenü platziert wird, wenn es durch Klicken auf das Leisten-Widget geöffnet wird",
@@ -2436,7 +2443,7 @@
         },
         "open-near-click-wallpaper": {
           "description": "Wo die Hintergrundbild-Auswahl platziert wird, wenn sie durch Klicken auf das Leisten-Widget geöffnet wird",
-          "label": "An der Leiste"
+          "label": "Hintergrundbild-Auswahl: An der Leiste"
         },
         "panel-anchor-bar": {
           "description": "Leiste, an der Panels angeheftet werden, wenn sie geöffnet werden; leer lassen, um dem Widget, Tastenkürzel oder Dock zu folgen, das sie geöffnet hat",
@@ -2444,19 +2451,19 @@
         },
         "placement-clipboard": {
           "description": "Wähle, ob die Zwischenablage an der Leiste angedockt wird oder an einer gewählten Bildschirmposition schwebt",
-          "label": "Platzierung"
+          "label": "Zwischenablage: Platzierung"
         },
         "placement-control-center": {
           "description": "Wähle, ob das Kontrollzentrum an der Leiste angedockt wird oder an einer gewählten Bildschirmposition schwebt",
-          "label": "Platzierung"
+          "label": "Kontrollzentrum: Platzierung"
         },
         "placement-launcher": {
           "description": "Wähle, ob der Launcher an der Leiste angedockt wird oder an einer gewählten Bildschirmposition schwebt",
-          "label": "Platzierung"
+          "label": "Launcher: Platzierung"
         },
         "placement-polkit": {
           "description": "Wähle, ob die Polkit-Anfrage an der Leiste angedockt wird oder an einer gewählten Bildschirmposition schwebt",
-          "label": "Platzierung"
+          "label": "Polkit-Abfrage: Platzierung"
         },
         "placement-session": {
           "description": "Wähle, ob das Sitzungsmenü an der Leiste angedockt wird oder an einer gewählten Bildschirmposition schwebt",
@@ -2464,23 +2471,23 @@
         },
         "placement-wallpaper": {
           "description": "Wähle, ob die Hintergrundbild-Auswahl an der Leiste angedockt wird oder an einer gewählten Bildschirmposition schwebt",
-          "label": "Platzierung"
+          "label": "Hintergrundbild-Auswahl: Platzierung"
         },
         "position-clipboard": {
           "description": "Wo die Zwischenablage auf dem Bildschirm schwebt; „Leiste folgen“ hält die Position in der Nähe der Leiste",
-          "label": "Position"
+          "label": "Zwischenablage: Position"
         },
         "position-control-center": {
           "description": "Wo das Kontrollzentrum auf dem Bildschirm schwebt; „Leiste folgen“ hält die Position in der Nähe der Leiste",
-          "label": "Position"
+          "label": "Kontrollzentrum: Position"
         },
         "position-launcher": {
           "description": "Wo der Launcher auf dem Bildschirm schwebt; „Leiste folgen“ hält die Position in der Nähe der Leiste",
-          "label": "Position"
+          "label": "Launcher: Position"
         },
         "position-polkit": {
           "description": "Wo die Polkit-Anfrage auf dem Bildschirm schwebt; „Leiste folgen“ hält die Position in der Nähe der Leiste",
-          "label": "Position"
+          "label": "Polkit-Abfrage: Position"
         },
         "position-session": {
           "description": "Wo das Sitzungsmenü auf dem Bildschirm schwebt; „Leiste folgen“ hält die Position in der Nähe der Leiste",
@@ -2488,7 +2495,7 @@
         },
         "position-wallpaper": {
           "description": "Wo die Hintergrundbild-Auswahl auf dem Bildschirm schwebt; „Leiste folgen“ hält die Position in der Nähe der Leiste",
-          "label": "Position"
+          "label": "Hintergrundbild-Auswahl: Position"
         },
         "shadow": {
           "description": "Aktiviere den globalen Oberflächenschatten für Panel-Oberflächen"

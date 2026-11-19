@@ -936,6 +936,8 @@ void SettingsWindow::prepareFrame(bool needsUpdate, bool needsLayout) {
         scrollToMoreGroup(*it);
       }
     }
+    // A rebuild keeps the last mark; the laid-out cards say whether the scroll offset moved it.
+    markMoreIndexCurrent();
     logSettingsProfile("prepareFrame scrollTarget", phaseProfileWatch);
     m_lastSceneWidth = width;
     m_lastSceneHeight = height;

@@ -1283,7 +1283,7 @@ namespace noctalia::config::schema {
             &ControlCenterConfig::circularAvatar, "circular_avatar",
             RowSpec{
                 .section = "control-center",
-                .group = "home",
+                .group = "panel-look",
                 .label = "panels.home-circular-avatar",
                 .tags = "avatar profile picture circle radius roundness",
             }
@@ -1292,7 +1292,7 @@ namespace noctalia::config::schema {
             &ControlCenterConfig::showAvatarBorder, "show_avatar_border",
             RowSpec{
                 .section = "control-center",
-                .group = "home",
+                .group = "panel-look",
                 .label = "panels.home-avatar-border",
                 .tags = "avatar border ring accent hide show",
             }
@@ -2123,7 +2123,7 @@ namespace noctalia::config::schema {
     }
 
     const Schema<ShellConfig::PanelConfig>& shellPanelSchema() {
-      const auto panelPosition = [](std::string_view group, std::string_view label) {
+      const auto panelPosition = [](std::string_view label) {
         static const std::vector<RowSpec::Choice> positions = {
             {"auto", "settings.options.panel-position.auto"},
             {"center", "settings.options.screen-position.center"},
@@ -2139,16 +2139,16 @@ namespace noctalia::config::schema {
         return RowSpec{
             .kind = RowSpec::Kind::Select,
             .section = "panels",
-            .group = group,
+            .group = "panel-placement",
             .label = label,
             .tags = "panel position screen anchor corner edge floating attached align bottom right",
             .choices = positions,
         };
       };
-      const auto openNearClick = [](std::string_view group, std::string_view label) {
+      const auto openNearClick = [](std::string_view label) {
         return RowSpec{
             .section = "panels",
-            .group = group,
+            .group = "panel-placement",
             .label = label,
             .tags = "open near click trigger widget along bar position anchor",
         };
@@ -2169,14 +2169,14 @@ namespace noctalia::config::schema {
           ),
           field(
               &ShellConfig::PanelConfig::borders, "borders",
-              RowSpec{.section = "panels", .group = "effects", .tags = "outline border shell edge"}
+              RowSpec{.section = "panels", .group = "panel-look", .tags = "outline border shell edge"}
           ),
           colorField(
               &ShellConfig::PanelConfig::borderColor, "border_color",
               RowSpec{
                   .kind = RowSpec::Kind::Color,
                   .section = "panels",
-                  .group = "effects",
+                  .group = "panel-look",
                   .tags = "outline border color theme accent",
               }
           ),
@@ -2185,19 +2185,19 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Slider,
                   .section = "panels",
-                  .group = "effects",
+                  .group = "panel-look",
                   .tags = "outline border width thickness",
               }
           ),
           field(
               &ShellConfig::PanelConfig::shadow, "shadow",
-              RowSpec{.section = "panels", .group = "effects", .title = "shared.shadow", .tags = "shadow depth"}
+              RowSpec{.section = "panels", .group = "panel-look", .title = "shared.shadow", .tags = "shadow depth"}
           ),
           field(
               &ShellConfig::PanelConfig::listItemBackground, "list_item_background",
               RowSpec{
                   .section = "panels",
-                  .group = "effects",
+                  .group = "panel-look",
                   .tags = "list item background fill row card launcher clipboard",
               }
           ),
@@ -2205,7 +2205,7 @@ namespace noctalia::config::schema {
               &ShellConfig::PanelConfig::wallpaperShowNames, "wallpaper_show_names",
               RowSpec{
                   .section = "panels",
-                  .group = "wallpaper",
+                  .group = "panel-look",
                   .tags = "picker grid caption file name label thumbnail",
               }
           ),
@@ -2229,7 +2229,7 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Select,
                   .section = "panels",
-                  .group = "general",
+                  .group = "panel-placement",
                   .tags = "floating detached panel layer shell z-order input method popup fullscreen",
                   .segmented = true,
                   .choices = layerChoices(),
@@ -2240,7 +2240,7 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Select,
                   .section = "panels",
-                  .group = "launcher",
+                  .group = "panel-placement",
                   .label = "panels.placement-launcher",
                   .tags = "attached floating bar panel position",
                   .segmented = true,
@@ -2251,7 +2251,7 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Select,
                   .section = "panels",
-                  .group = "clipboard",
+                  .group = "panel-placement",
                   .label = "panels.placement-clipboard",
                   .tags = "attached floating bar panel position",
                   .segmented = true,
@@ -2262,7 +2262,7 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Select,
                   .section = "panels",
-                  .group = "control-center",
+                  .group = "panel-placement",
                   .label = "panels.placement-control-center",
                   .tags = "attached floating bar panel position",
                   .segmented = true,
@@ -2273,7 +2273,7 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Select,
                   .section = "panels",
-                  .group = "wallpaper",
+                  .group = "panel-placement",
                   .label = "panels.placement-wallpaper",
                   .tags = "attached floating bar panel position",
                   .segmented = true,
@@ -2284,7 +2284,7 @@ namespace noctalia::config::schema {
               RowSpec{
                   .kind = RowSpec::Kind::Select,
                   .section = "panels",
-                  .group = "polkit",
+                  .group = "panel-placement",
                   .label = "panels.placement-polkit",
                   .tags = "attached floating bar panel polkit auth password",
                   .segmented = true,
@@ -2292,49 +2292,49 @@ namespace noctalia::config::schema {
           ),
           field(
               &ShellConfig::PanelConfig::launcherPosition, "launcher_position",
-              panelPosition("launcher", "panels.position-launcher")
+              panelPosition("panels.position-launcher")
           ),
           field(
               &ShellConfig::PanelConfig::clipboardPosition, "clipboard_position",
-              panelPosition("clipboard", "panels.position-clipboard")
+              panelPosition("panels.position-clipboard")
           ),
           field(
               &ShellConfig::PanelConfig::controlCenterPosition, "control_center_position",
-              panelPosition("control-center", "panels.position-control-center")
+              panelPosition("panels.position-control-center")
           ),
           field(
               &ShellConfig::PanelConfig::wallpaperPosition, "wallpaper_position",
-              panelPosition("wallpaper", "panels.position-wallpaper")
+              panelPosition("panels.position-wallpaper")
           ),
           field(
               &ShellConfig::PanelConfig::polkitPosition, "polkit_position",
-              panelPosition("polkit", "panels.position-polkit")
+              panelPosition("panels.position-polkit")
           ),
           field(
               &ShellConfig::PanelConfig::floatingOffset, "floating_offset", Range<std::int64_t>{0, 100},
               RowSpec{
                   .kind = RowSpec::Kind::Stepper,
                   .section = "panels",
-                  .group = "effects",
+                  .group = "panel-look",
                   .tags = "floating detached panel gap offset distance bar",
                   .suffix = "px",
               }
           ),
           field(
               &ShellConfig::PanelConfig::openNearClickControlCenter, "open_near_click_control_center",
-              openNearClick("control-center", "panels.open-near-click-control-center")
+              openNearClick("panels.open-near-click-control-center")
           ),
           field(
               &ShellConfig::PanelConfig::openNearClickLauncher, "open_near_click_launcher",
-              openNearClick("launcher", "panels.open-near-click-launcher")
+              openNearClick("panels.open-near-click-launcher")
           ),
           field(
               &ShellConfig::PanelConfig::openNearClickClipboard, "open_near_click_clipboard",
-              openNearClick("clipboard", "panels.open-near-click-clipboard")
+              openNearClick("panels.open-near-click-clipboard")
           ),
           field(
               &ShellConfig::PanelConfig::openNearClickWallpaper, "open_near_click_wallpaper",
-              openNearClick("wallpaper", "panels.open-near-click-wallpaper")
+              openNearClick("panels.open-near-click-wallpaper")
           ),
       };
       return s;
@@ -4086,7 +4086,7 @@ namespace noctalia::config::schema {
           RowSpec{
               .kind = RowSpec::Kind::Select,
               .section = "bar",
-              .group = "general",
+              .group = "position-spacing",
               .tags = "layer shell z-order",
               .segmented = true,
               .choices = layerChoices(),
@@ -4116,7 +4116,7 @@ namespace noctalia::config::schema {
           RowSpec{
               .kind = RowSpec::Kind::Slider,
               .section = "bar",
-              .group = "shape",
+              .group = "corners",
               .label = "bar.corner-radius",
               .title = "shared.corner-radius",
               .tags = "rounded",
@@ -4533,7 +4533,7 @@ namespace noctalia::config::schema {
             &BarDeadZoneConfig::clickThrough, "click_through",
             RowSpec{
                 .section = "bar",
-                .group = "dead-zone",
+                .group = "empty-clicks",
                 .label = "bar.dead-zone-click-through",
                 .tags = "bar empty margin dead zone click through pass input region",
             }
@@ -4555,7 +4555,7 @@ namespace noctalia::config::schema {
       return RowSpec{
           .kind = RowSpec::Kind::Slider,
           .section = "bar",
-          .group = "shape",
+          .group = "corners",
           .label = label,
           .title = title,
           .tags = "rounded corner",
@@ -4568,7 +4568,7 @@ namespace noctalia::config::schema {
       return RowSpec{
           .kind = RowSpec::Kind::Stepper,
           .section = "bar",
-          .group = "layout",
+          .group = "position-spacing",
           .label = label,
           .title = title,
           .tags = tags,
@@ -4645,14 +4645,14 @@ namespace noctalia::config::schema {
         ),
         colorField(
             &BarConfig::border, "border",
-            RowSpec{.kind = RowSpec::Kind::Color, .section = "bar", .group = "shape", .tags = "outline color", .advanced = true}
+            RowSpec{.kind = RowSpec::Kind::Color, .section = "bar", .group = "border-shadow", .tags = "outline color", .advanced = true}
         ),
         field(
             &BarConfig::borderWidth, "border_width", kBarBorderWidthRange,
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "bar",
-                .group = "shape",
+                .group = "border-shadow",
                 .tags = "outline stroke",
                 .advanced = true,
                 .range = {0.0F, 20.0F, 0.5F},
@@ -4677,7 +4677,7 @@ namespace noctalia::config::schema {
         ),
         field(
             &BarConfig::concaveEdgeCorners, "concave_edge_corners",
-            RowSpec{.section = "bar", .group = "shape", .tags = "rounded corner carve"}
+            RowSpec{.section = "bar", .group = "corners", .tags = "rounded corner carve"}
         ),
         field(&BarConfig::marginEnds, "margin_ends", std::nullopt, barMargin("bar.ends-margin", "shared.ends-margin", "gap inset")),
         field(&BarConfig::marginEdge, "margin_edge", std::nullopt, barMargin("bar.edge-margin", "shared.edge-margin", "gap inset")),
@@ -4691,7 +4691,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "bar",
-                .group = "layout",
+                .group = "position-spacing",
                 .label = "bar.content-padding",
                 .tags = "inset",
                 .range = {0.0F, 80.0F, 1.0F},
@@ -4709,18 +4709,18 @@ namespace noctalia::config::schema {
         ),
         field(
             &BarConfig::shadow, "shadow",
-            RowSpec{.section = "bar", .group = "effects", .title = "shared.shadow", .tags = "shadow"}
+            RowSpec{.section = "bar", .group = "border-shadow", .title = "shared.shadow", .tags = "shadow"}
         ),
         field(
             &BarConfig::contactShadow, "contact_shadow",
-            RowSpec{.section = "bar", .group = "effects", .title = "shared.contact-shadow", .tags = "shadow contact panel attached"}
+            RowSpec{.section = "bar", .group = "border-shadow", .title = "shared.contact-shadow", .tags = "shadow contact panel attached"}
         ),
         field(
             &BarConfig::panelOverlap, "panel_overlap", kBarPanelOverlapRange,
             RowSpec{
                 .kind = RowSpec::Kind::Stepper,
                 .section = "bar",
-                .group = "layout",
+                .group = "position-spacing",
                 .tags = "seam gap overlap attached panel fractional scale",
                 .advanced = true,
                 .suffix = "px",
@@ -4751,7 +4751,7 @@ namespace noctalia::config::schema {
         ),
         field(
             &BarConfig::fontScale, "font_scale", kBarFontScaleRange,
-            RowSpec{.kind = RowSpec::Kind::Slider, .section = "bar", .group = "layout", .tags = "text zoom size"}
+            RowSpec{.kind = RowSpec::Kind::Slider, .section = "bar", .group = "position-spacing", .tags = "text zoom size"}
         ),
         field(&BarConfig::fontWeight, "font_weight"),
         optionalTrimmedStringField(&BarConfig::fontFamily, "font_family"),

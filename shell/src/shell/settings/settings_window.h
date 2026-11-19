@@ -646,6 +646,8 @@ private:
   std::vector<settings::MoreGroup> m_moreGroups;
   settings::MoreFilter m_moreFilter = settings::MoreFilter::All;
   Flex* m_moreIndex = nullptr;
+  ScrollView* m_moreIndexScroll = nullptr;
+  ScrollViewState m_moreIndexScrollState;
   std::vector<Button*> m_moreIndexRows;
   std::size_t m_moreCurrent = 0;
   // A cluster picked while the Changed filter hid it: scrolled to once the rebuilt rows are laid out.
@@ -653,6 +655,7 @@ private:
   std::unique_ptr<Flex> buildMoreIndex(float scale);
   void fillMoreIndex(float scale);
   void markMoreIndexCurrent();
+  void styleMoreIndexRows();
   void scrollToMoreGroup(const settings::MoreGroup& group);
   // Stack mode shows the page list or one page; a page pick shows the page, the back button the list.
   bool m_stackShowsPage = false;

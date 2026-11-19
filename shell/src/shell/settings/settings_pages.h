@@ -22,6 +22,8 @@ namespace settings {
     bool inSidebar = true;
     // A sub-page's sidebar entry, which shows as selected while the sub-page is open.
     std::string_view parent = {};
+    // More-options cluster group ids in index order; a listed group joins its rows from every section of the page.
+    std::span<const std::string_view> moreClusters = {};
   };
 
   [[nodiscard]] std::span<const SettingsPage> settingsPages();
