@@ -361,7 +361,8 @@ void Bar::populateWidgets(BarInstance& instance) {
 void Bar::attachWidgetsToSections(BarInstance& instance) {
   const bool isVertical = instance.barConfig.position == "left" || instance.barConfig.position == "right";
   const auto widgetSpacing = static_cast<float>(instance.barConfig.widgetSpacing);
-  const bool hoverHighlight = instance.barConfig.hoverHighlight;
+  // Island items show no hover pill: a circle inside the island glass reads as a second shape (deviations.md).
+  const bool hoverHighlight = instance.barConfig.hoverHighlight && !instance.barConfig.islands;
 
   instance.widgetByRoot.clear();
   instance.hoverHighlightWidget = nullptr;
