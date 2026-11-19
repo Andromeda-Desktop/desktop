@@ -81,6 +81,8 @@ jobs:
             [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal)-git- ]] || cp "$package" core/
           done
           tools/repo-publish.sh arch repo core
+          # upload-artifact rejects ':' in a path: the epoch in the file name becomes '.', as release assets name it.
+          for package in core/*.pkg.tar.zst; do name=$(basename "$package"); mv "$package" "core/${name//:/.}"; done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core
@@ -105,5 +107,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false || gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null
-          for package in core/*.pkg.tar.zst; do name=$(basename "$package"); mv "$package" "core/${name//:/.}"; done
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber core/* src/install.sh src/andromeda-release.asc
