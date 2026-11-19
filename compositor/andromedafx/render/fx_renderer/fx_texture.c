@@ -82,10 +82,14 @@ struct shm_staging {
   size_t size;
   // The GPU does not snoop the CPU cache, and the udmabuf sync ioctl does not flush it on x86.
   bool flush;
+  GLuint tex; // owned by the slot's framebuffer
+  struct wl_list pool_link; // fx_renderer.shm_slot_pool while released, else empty
+  int64_t released_ms;
 };
 
 static void shm_staging_destroy(struct wlr_buffer* buffer) {
   struct shm_staging* staging = wl_container_of(buffer, staging, base);
+  wl_list_remove(&staging->pool_link);
   wlr_buffer_finish(buffer);
   munmap(staging->map, staging->size);
   close(staging->dmabuf.fd[0]);
@@ -160,9 +164,21 @@ static void copy_uncached(uint8_t* dst, const uint8_t* src, size_t len) {
 }
 #endif
 
-// Allocates one staging slot and its GL texture; needs the EGL context current.
+static bool shm_slot_busy(struct wlr_buffer* slot);
+
+// Takes a warm pooled slot or allocates one staging slot and its GL texture; needs the EGL context current.
 static struct wlr_buffer* shm_slot_create(struct fx_renderer* renderer, uint32_t format, int width, int height,
                                           GLuint* tex) {
+  struct shm_staging* pooled;
+  wl_list_for_each(pooled, &renderer->shm_slot_pool, pool_link) {
+    if (pooled->dmabuf.format == format && pooled->base.width == width && pooled->base.height == height
+        && pooled->base.n_locks == 0 && !shm_slot_busy(&pooled->base)) {
+      wl_list_remove(&pooled->pool_link);
+      wl_list_init(&pooled->pool_link);
+      *tex = pooled->tex;
+      return &pooled->base;
+    }
+  }
   const int dev = udmabuf_open();
   if (dev < 0) {
     return NULL;
@@ -198,6 +214,7 @@ static struct wlr_buffer* shm_slot_create(struct fx_renderer* renderer, uint32_t
     return NULL;
   }
   wlr_buffer_init(&staging->base, &shm_staging_impl, width, height);
+  wl_list_init(&staging->pool_link);
   staging->map = map;
   staging->size = size;
   staging->flush = !gpu_snoops_cpu_cache(renderer);
@@ -220,7 +237,30 @@ static struct wlr_buffer* shm_slot_create(struct fx_renderer* renderer, uint32_t
     wlr_buffer_drop(&staging->base);
     return NULL;
   }
+  staging->tex = *tex;
   return &staging->base;
+}
+
+// A texture lets go of a slot: it waits warm in the pool for the next texture of its size.
+static void shm_slot_release(struct fx_renderer* renderer, struct wlr_buffer* slot) {
+  struct shm_staging* staging = wl_container_of(slot, staging, base);
+  staging->released_ms = get_current_time_msec();
+  wl_list_insert(&renderer->shm_slot_pool, &staging->pool_link);
+  if (wl_list_length(&renderer->shm_slot_pool) > FX_SHM_POOL_MAX) {
+    struct shm_staging* oldest = wl_container_of(renderer->shm_slot_pool.prev, oldest, pool_link);
+    wl_list_remove(&oldest->pool_link);
+    wl_list_init(&oldest->pool_link);
+    wlr_buffer_drop(&oldest->base);
+  }
+}
+
+void fx_renderer_drain_shm_pool(struct fx_renderer* renderer) {
+  struct shm_staging *staging, *tmp;
+  wl_list_for_each_safe(staging, tmp, &renderer->shm_slot_pool, pool_link) {
+    wl_list_remove(&staging->pool_link);
+    wl_list_init(&staging->pool_link);
+    wlr_buffer_drop(&staging->base);
+  }
 }
 
 // True while a GPU job still reads or writes the slot; writing it then would block in the sync ioctl.
@@ -439,7 +479,7 @@ void fx_texture_destroy(struct fx_texture* texture) {
     fx_renderer_delete_gl(texture->fx_renderer, FX_GL_FRAMEBUFFER, texture->fbo);
     // The slot framebuffers own the GL textures.
     for (int i = 0; i < FX_SHM_SLOTS && texture->slots[i] != NULL; ++i) {
-      wlr_buffer_drop(texture->slots[i]);
+      shm_slot_release(texture->fx_renderer, texture->slots[i]);
       pixman_region32_fini(&texture->slot_stale[i]);
     }
   } else {
@@ -1102,7 +1142,7 @@ bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, in
     const int keep = texture->slot;
     for (int i = 0; i < FX_SHM_SLOTS && texture->slots[i] != NULL; ++i) {
       if (i != keep) {
-        wlr_buffer_drop(texture->slots[i]);
+        shm_slot_release(renderer, texture->slots[i]);
         pixman_region32_fini(&texture->slot_stale[i]);
       }
     }
@@ -1114,6 +1154,16 @@ bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, in
     }
     texture->slot = 0;
     texture->slot_failed = false;
+  }
+  struct shm_staging *staging, *tmp;
+  wl_list_for_each_safe(staging, tmp, &renderer->shm_slot_pool, pool_link) {
+    if (now_ms - staging->released_ms >= FX_SHM_POOL_IDLE_MS) {
+      wl_list_remove(&staging->pool_link);
+      wl_list_init(&staging->pool_link);
+      wlr_buffer_drop(&staging->base);
+    } else {
+      spares = true;
+    }
   }
   return spares;
 }

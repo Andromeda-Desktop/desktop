@@ -236,6 +236,7 @@ if build_tests
     'client-import-trim',
     'shm-slot-busy',
     'shm-slot-trim',
+    'shm-slot-pool',
     'implicit-srgb-target',
     'scene-unset-primaries',
     'scene-custom-color',

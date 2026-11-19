@@ -5,6 +5,7 @@
 #include <wlr/interfaces/wlr_buffer.h>
 #include <drm/vgem_drm.h>
 #include <fcntl.h>
+#include <sys/resource.h>
 #include <xf86drm.h>
 
 static bool submit_solid_frame(struct wlr_render_pass* pass, int width, int height, float red) {
@@ -1133,6 +1134,59 @@ static int test_shm_slot_trim(struct fixture* fixture) {
   }
   wlr_texture_destroy(texture);
   wlr_buffer_drop(&client->base);
+  return ok ? EXIT_SUCCESS : EXIT_FAILURE;
+}
+
+static long minor_faults(void) {
+  struct rusage usage;
+  getrusage(RUSAGE_SELF, &usage);
+  return usage.ru_minflt;
+}
+
+// A new shm texture of a size just freed stages into warm memory, so its first copy faults no fresh pages, and it
+// still draws its own pixels, not those of the texture that held the memory before.
+static int test_shm_slot_pool(struct fixture* fixture) {
+  struct shm_test_buffer* first = calloc(1, sizeof(*first));
+  struct shm_test_buffer* second = calloc(1, sizeof(*second));
+  for (size_t i = 0; i < SLOT_TEST_SIZE * SLOT_TEST_SIZE; ++i) {
+    first->pixels[i] = 0x00ff0000;
+    second->pixels[i] = 0x000000ff;
+  }
+  wlr_buffer_init(&first->base, &shm_test_buffer_impl, SLOT_TEST_SIZE, SLOT_TEST_SIZE);
+  wlr_buffer_init(&second->base, &shm_test_buffer_impl, SLOT_TEST_SIZE, SLOT_TEST_SIZE);
+  struct wlr_texture* texture = wlr_texture_from_buffer(fixture->renderer, &first->base);
+  struct fx_texture* fx = texture != NULL ? wl_container_of(texture, fx, wlr_texture) : NULL;
+  if (fx == NULL || fx->slots[0] == NULL) {
+    fprintf(stderr, "SKIP: the renderer does not stage shm buffers in slots\n");
+    if (texture != NULL) {
+      wlr_texture_destroy(texture);
+    }
+    wlr_buffer_drop(&first->base);
+    wlr_buffer_drop(&second->base);
+    return 77;
+  }
+  wlr_texture_destroy(texture);
+  const long faults_before = minor_faults();
+  texture = wlr_texture_from_buffer(fixture->renderer, &second->base);
+  const long faults = minor_faults() - faults_before;
+  const long pages = SLOT_TEST_SIZE * SLOT_TEST_SIZE * 4 / 4096;
+  fprintf(stderr, "second texture: %ld minor faults, a fresh slot has %ld pages\n", faults, pages);
+  bool ok = check(texture != NULL, "import the second buffer")
+      && check(faults < pages / 4, "the second texture stages into warm memory");
+  struct wlr_buffer* output = create_output_buffer(fixture, DRM_FORMAT_ABGR8888, TEST_WIDTH, TEST_HEIGHT);
+  uint8_t pixels[TEST_WIDTH * TEST_HEIGHT * 4] = {0};
+  ok = ok && check(output != NULL, "allocate the output") && draw_texture(fixture, texture, output, pixels);
+  const uint8_t blue[4] = {0, 0, 255, 255};
+  const int center = (TEST_HEIGHT / 2 * TEST_WIDTH + TEST_WIDTH / 2) * 4;
+  ok = ok && check(codes_close(&pixels[center], blue, 1), "the second texture draws its own pixels");
+  if (output != NULL) {
+    wlr_buffer_drop(output);
+  }
+  if (texture != NULL) {
+    wlr_texture_destroy(texture);
+  }
+  wlr_buffer_drop(&first->base);
+  wlr_buffer_drop(&second->base);
   return ok ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
@@ -3520,6 +3574,11 @@ int main(int argc, char* argv[]) {
 
   if (strcmp(argv[1], "shm-slot-busy") == 0) {
     const int result = test_shm_slot_busy(&fixture);
+    fixture_finish(&fixture);
+    return result;
+  }
+  if (strcmp(argv[1], "shm-slot-pool") == 0) {
+    const int result = test_shm_slot_pool(&fixture);
     fixture_finish(&fixture);
     return result;
   }

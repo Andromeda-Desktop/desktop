@@ -138,6 +138,7 @@ static void fx_renderer_destroy(struct wlr_renderer* wlr_renderer) {
 
   struct fx_texture *tex, *tex_tmp;
   wl_list_for_each_safe(tex, tex_tmp, &renderer->textures, link) { fx_texture_destroy(tex); }
+  fx_renderer_drain_shm_pool(renderer);
 
   fx_backdrop_probes_release(renderer);
 
@@ -719,6 +720,7 @@ struct wlr_renderer* fx_renderer_create_egl(struct wlr_egl* egl) {
 
   wl_list_init(&renderer->buffers);
   wl_list_init(&renderer->textures);
+  wl_list_init(&renderer->shm_slot_pool);
   wl_list_init(&renderer->pending_textures);
   wl_list_init(&renderer->backdrop_probes);
   wl_list_init(&renderer->offscreen_buffers);

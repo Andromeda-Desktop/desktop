@@ -155,6 +155,7 @@ bool fx_renderer_take_context(struct fx_renderer* renderer);
 void fx_renderer_upload_pending_textures(struct fx_renderer* renderer);
 // Frees the spare slots of each texture no client wrote for `idle_ms`. Returns true while a texture keeps a spare.
 bool fx_renderer_trim_shm_slots(struct fx_renderer* renderer, int64_t now_ms, int64_t idle_ms);
+void fx_renderer_drain_shm_pool(struct fx_renderer* renderer);
 // On xe each GPU submit locks every imported dma-buf of the context, so a client that holds its buffer lock stalls
 // our frames. Each client buffer unused for `idle_ms` (hidden windows, idle swapchain buffers) is copied into a shadow
 // texture and then loses its import, so drawing it again never locks the client's buffer. Without budget room the
@@ -185,6 +186,10 @@ bool fx_framebuffer_copy(
 #define FX_SHM_SLOTS 3
 // A texture no client wrote for this long keeps one slot: no frame still samples it, so the next write goes in place.
 #define FX_SHM_SLOT_IDLE_MS 1000
+// Released staging slots stay warm this long for a texture of the same size: a new one costs a full copy into
+// freshly faulted pages (8-14 ms for a maximised window).
+#define FX_SHM_POOL_IDLE_MS 5000
+#define FX_SHM_POOL_MAX 4
 
 struct fx_texture {
   struct wlr_texture wlr_texture;
@@ -405,6 +410,7 @@ struct fx_renderer {
   struct wl_list buffers;           // fx_framebuffer.link
   struct wl_list textures;          // fx_texture.link
   struct wl_list pending_textures;  // fx_texture.pending_link
+  struct wl_list shm_slot_pool;     // shm_staging.pool_link: released staging slots, newest first
   struct wl_list backdrop_probes;   // fx_backdrop_probe.link
   struct wl_list offscreen_buffers; // fx_offscreen_buffers.link
   struct wl_list output_luts;       // fx_output_lut.link
