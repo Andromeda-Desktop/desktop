@@ -221,7 +221,7 @@ void Segmented::applyButtonMetrics(Button& button) const {
     return;
   }
 
-  button.setMinHeight((Style::controlHeight - 4.0F) * m_scale);
+  button.setMinHeight((Tokens::componentSegmentedHeight - Tokens::componentSegmentedInset - Tokens::componentSegmentedInset) * m_scale);
   button.setPadding(0.0F, Style::spaceMd * m_scale);
 }
 
@@ -247,7 +247,7 @@ void Segmented::refreshVariants() {
     }
   }
   const std::size_t n = m_buttons.size();
-  const float r = (Style::controlHeight * 0.5F - 2.0F) * m_scale;
+  const float r = (Tokens::componentSegmentedHeight * 0.5F - Tokens::componentSegmentedInset) * m_scale;
   for (std::size_t i = 0; i < n; ++i) {
     if (i > 0 && i - 1 < m_separators.size() && m_separators[i - 1] != nullptr) {
       m_separators[i - 1]->setVisible(false);
@@ -277,7 +277,7 @@ void Segmented::applyOuterStyle() {
   Flex::setPadding(m_outerPadding);
   setFill(colorSpecFromRole(m_surfaceRole, m_surfaceOpacity));
   clearBorder();
-  setRadius(Style::controlHeight * 0.5F * m_scale);
+  setRadius(Tokens::componentSegmentedHeight * 0.5F * m_scale);
 }
 
 void Segmented::doLayout(Renderer& renderer) {

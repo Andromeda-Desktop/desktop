@@ -488,6 +488,9 @@ symbol_inset = 8.0
 height = 32.0
 inset = 2.0
 
+[component.stepper]
+divider = 12.0  # vertical rule between the stepper parts, centred
+
 [component.tabs]
 height = 40.0
 radius = 12.0

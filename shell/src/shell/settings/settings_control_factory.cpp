@@ -958,9 +958,9 @@ namespace settings {
         .value = sliderValue,
         .trackHeight = Style::sliderTrackHeight * scale,
         .thumbSize = Style::sliderThumbSize * scale,
-        .controlHeight = Style::controlHeight * scale,
+        .controlHeight = Tokens::componentRangeHit * scale,
         .width = sliderWidth,
-        .height = Style::controlHeight * scale,
+        .height = Tokens::componentRangeHit * scale,
         .onValueChanged = [valueLabelPtr, valueText](double next) { valueLabelPtr->setText(valueText(next)); },
     });
     valueLabelPtr->setText(valueText(sliderPtr->value()));
@@ -1072,9 +1072,9 @@ namespace settings {
         .highValue = setting.highValue,
         .trackHeight = Style::sliderTrackHeight * scale,
         .thumbSize = Style::sliderThumbSize * scale,
-        .controlHeight = Style::controlHeight * scale,
+        .controlHeight = Tokens::componentRangeHit * scale,
         .width = Style::sliderDefaultWidth * scale,
-        .height = Style::controlHeight * scale,
+        .height = Tokens::componentRangeHit * scale,
         .onLowChanged =
             [lowInputPtr, integerValue](double next) {
               lowInputPtr->setInvalid(false);

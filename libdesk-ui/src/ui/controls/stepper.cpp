@@ -34,13 +34,22 @@ namespace {
 
   float valueInputHorizontalPadding(float scale) { return Style::spaceSm * scale; }
 
-  std::unique_ptr<Separator> makeStepperSeparator(float scale) {
+  // The row stretches its children; the slot does, the rule inside stays divider-high and centred.
+  std::unique_ptr<Flex> makeStepperSeparator(float scale, Separator*& rule) {
+    auto slot = std::make_unique<Flex>();
+    slot->setDirection(FlexDirection::Vertical);
+    slot->setAlign(FlexAlign::Center);
+    slot->setJustify(FlexJustify::Center);
+    slot->setFlexGrow(0.0F);
     auto sep = std::make_unique<Separator>();
     sep->setOrientation(SeparatorOrientation::VerticalRule);
-    sep->setThickness(std::max(1.0F, Style::borderWidth * scale));
+    const float thickness = std::max(1.0F, Style::borderWidth * scale);
+    sep->setThickness(thickness);
+    sep->setSize(thickness, Tokens::componentStepperDivider * scale);
     sep->setColor(colorSpecFromRole(ColorRole::Separator));
-    sep->setFlexGrow(0.0F);
-    return sep;
+    rule = sep.get();
+    slot->addChild(std::move(sep));
+    return slot;
   }
 
   std::string trimAscii(std::string_view s) {
@@ -100,8 +109,7 @@ Stepper::Stepper() {
   }
 
   {
-    auto sep = makeStepperSeparator(m_scale);
-    m_separatorBeforeValue = sep.get();
+    auto sep = makeStepperSeparator(m_scale, m_separatorBeforeValue);
     addChild(std::move(sep));
   }
 
@@ -135,8 +143,7 @@ Stepper::Stepper() {
   }
 
   {
-    auto sep = makeStepperSeparator(m_scale);
-    m_separatorAfterValue = sep.get();
+    auto sep = makeStepperSeparator(m_scale, m_separatorAfterValue);
     addChild(std::move(sep));
   }
 
@@ -455,8 +462,10 @@ void Stepper::refreshSegmentStyle() {
   const float ruleW = std::max(1.0F, Style::borderWidth * m_scale);
   if (m_separatorBeforeValue != nullptr) {
     m_separatorBeforeValue->setThickness(ruleW);
+    m_separatorBeforeValue->setSize(ruleW, Tokens::componentStepperDivider * m_scale);
   }
   if (m_separatorAfterValue != nullptr) {
     m_separatorAfterValue->setThickness(ruleW);
+    m_separatorAfterValue->setSize(ruleW, Tokens::componentStepperDivider * m_scale);
   }
 }

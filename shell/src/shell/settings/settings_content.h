@@ -107,8 +107,6 @@ namespace settings {
     std::function<void(std::size_t, Label*)> registerSessionActionSummaryLabel;
     std::function<void(std::shared_ptr<std::vector<SessionPanelActionConfig>>)> bindSessionActionsEditState;
 
-    // When set (session action entry popup), called after commits instead of requestRebuild.
-    std::function<void()> afterSessionActionsCommit;
     std::function<void()> afterIdleBehaviorApply;
     std::function<void()> afterNotificationFilterApply;
     std::function<void()> closeHostedEditor;

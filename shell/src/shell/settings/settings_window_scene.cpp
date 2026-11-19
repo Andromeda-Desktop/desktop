@@ -936,7 +936,6 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
       .bindSessionActionsEditState = [this](
                                          std::shared_ptr<std::vector<SessionPanelActionConfig>> state
                                      ) { m_sessionActionsEditState = std::move(state); },
-      .afterSessionActionsCommit = {},
       .afterIdleBehaviorApply = {},
       .afterNotificationFilterApply = {},
       .closeHostedEditor = {},
@@ -1008,55 +1007,6 @@ void SettingsWindow::rebuildSettingsContent() {
 
   const bool detailOpen = m_searchQuery.empty() && !m_detail.empty();
   const bool pageRows = m_searchQuery.empty() && !m_expertOpen && !detailOpen;
-  if (pageRows) {
-    settings::addSettingsBarManagement(
-      *m_contentContainer,
-      settings::SettingsBarManagementContext{
-          .config = cfg,
-          .configService = m_config,
-          .scale = scale,
-          .searchQuery = m_searchQuery,
-          .selectedSection = m_selectedSection,
-          .selectedBar = selectedBar,
-          .selectedMonitorOverride = selectedMonitorOverride,
-          .selectedDockMonitorOverride = selectedDockMonitorOverride,
-          .renamingBarName = m_renamingBarName,
-          .renamingMonitorOverrideBarName = m_renamingMonitorOverrideBarName,
-          .renamingMonitorOverrideMatch = m_renamingMonitorOverrideMatch,
-          .renamingDockMonitorOverride = m_renamingDockMonitorOverride,
-          .requestRebuild = [this] { requestContentRebuild(/*refreshRegistry=*/true, /*refreshFilterRow=*/true); },
-          .renameBar =
-              [this](std::string oldName, std::string newName) { renameBar(std::move(oldName), std::move(newName)); },
-          .deleteBar = [this](std::string name) { deleteBar(std::move(name)); },
-          .moveBar = [this](std::string name, int direction) { moveBar(std::move(name), direction); },
-          .renameMonitorOverride =
-              [this](std::string barName, std::string oldMatch, std::string newMatch) {
-                renameMonitorOverride(std::move(barName), std::move(oldMatch), std::move(newMatch));
-              },
-          .deleteMonitorOverride = [this](
-                                       std::string barName, std::string match
-                                   ) { deleteMonitorOverride(std::move(barName), std::move(match)); },
-          .selectMonitorOverride =
-              [this](std::string match) {
-                m_selectedMonitorOverride = std::move(match);
-                m_contentScrollState.offset = 0.0F;
-                requestSceneRebuild();
-              },
-          .createMonitorOverride = [this](std::string barName) { openMonitorOverrideCreateDialog(std::move(barName)); },
-          .renameDockMonitorOverride = [this](
-                                           std::string oldTableName, std::string newMatch
-                                       ) { renameDockMonitorOverride(std::move(oldTableName), std::move(newMatch)); },
-          .deleteDockMonitorOverride =
-              [this](std::string tableName) { deleteDockMonitorOverride(std::move(tableName)); },
-          .confirmDelete =
-              [this](std::string title, std::string body, std::string action, std::function<void()> onConfirm) {
-                showDeleteAlert(std::move(title), std::move(body), std::move(action), std::move(onConfirm));
-              },
-      }
-    );
-  }
-  logSettingsProfile("rebuildContent barManagement", phaseProfileWatch);
-  phaseProfileWatch.reset();
 
   {
     const auto* titlePage = settings::settingsPageFromId(m_selectedSection);
@@ -1129,6 +1079,55 @@ void SettingsWindow::rebuildSettingsContent() {
       ));
     }
   }
+  if (pageRows) {
+    settings::addSettingsBarManagement(
+      *m_contentContainer,
+      settings::SettingsBarManagementContext{
+          .config = cfg,
+          .configService = m_config,
+          .scale = scale,
+          .searchQuery = m_searchQuery,
+          .selectedSection = m_selectedSection,
+          .selectedBar = selectedBar,
+          .selectedMonitorOverride = selectedMonitorOverride,
+          .selectedDockMonitorOverride = selectedDockMonitorOverride,
+          .renamingBarName = m_renamingBarName,
+          .renamingMonitorOverrideBarName = m_renamingMonitorOverrideBarName,
+          .renamingMonitorOverrideMatch = m_renamingMonitorOverrideMatch,
+          .renamingDockMonitorOverride = m_renamingDockMonitorOverride,
+          .requestRebuild = [this] { requestContentRebuild(/*refreshRegistry=*/true, /*refreshFilterRow=*/true); },
+          .renameBar =
+              [this](std::string oldName, std::string newName) { renameBar(std::move(oldName), std::move(newName)); },
+          .deleteBar = [this](std::string name) { deleteBar(std::move(name)); },
+          .moveBar = [this](std::string name, int direction) { moveBar(std::move(name), direction); },
+          .renameMonitorOverride =
+              [this](std::string barName, std::string oldMatch, std::string newMatch) {
+                renameMonitorOverride(std::move(barName), std::move(oldMatch), std::move(newMatch));
+              },
+          .deleteMonitorOverride = [this](
+                                       std::string barName, std::string match
+                                   ) { deleteMonitorOverride(std::move(barName), std::move(match)); },
+          .selectMonitorOverride =
+              [this](std::string match) {
+                m_selectedMonitorOverride = std::move(match);
+                m_contentScrollState.offset = 0.0F;
+                requestSceneRebuild();
+              },
+          .createMonitorOverride = [this](std::string barName) { openMonitorOverrideCreateDialog(std::move(barName)); },
+          .renameDockMonitorOverride = [this](
+                                           std::string oldTableName, std::string newMatch
+                                       ) { renameDockMonitorOverride(std::move(oldTableName), std::move(newMatch)); },
+          .deleteDockMonitorOverride =
+              [this](std::string tableName) { deleteDockMonitorOverride(std::move(tableName)); },
+          .confirmDelete =
+              [this](std::string title, std::string body, std::string action, std::function<void()> onConfirm) {
+                showDeleteAlert(std::move(title), std::move(body), std::move(action), std::move(onConfirm));
+              },
+      }
+    );
+  }
+  logSettingsProfile("rebuildContent barManagement", phaseProfileWatch);
+  phaseProfileWatch.reset();
 
   if (pageRows) {
     addDisplaysContent(scale);

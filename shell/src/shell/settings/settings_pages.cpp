@@ -126,7 +126,7 @@ namespace settings {
         "desktop_widgets.enabled", "shell.screen_corners.enabled", "desktop_icons.enabled",
         "desktop_icons.start_corner", "desktop_icons.snap_to_grid",
         "bar.*.enabled", "bar.*.position", "bar.*.auto_hide", "bar.*.auto_hide_delay_ms",
-        "bar.*.show_on_workspace_switch", "bar.*.reserve_space", "bar.*.layer", "bar.*.islands", "bar.*.thickness",
+        "bar.*.show_on_workspace_switch", "bar.*.islands", "bar.*.thickness",
         "bar.*.scale", "bar.*.show_tooltip", "bar.*.start", "bar.*.center", "bar.*.end",
         "control_center.shortcuts", "control_center.show_shortcut_labels", "control_center.show_session_button",
         "shell.launcher.layout", "shell.launcher.width", "shell.launcher.search_position",
