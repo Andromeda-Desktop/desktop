@@ -30,12 +30,6 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ inputs.ref || env.TAG }}
-      # Link is not critical: when its commit is not on its remote, the release builds without andromeda-link-git.
-      - name: Link
-        run: |
-          git submodule update --init --recursive link && exit 0
-          echo "::warning::Link $(git rev-parse HEAD:link) is not on its remote: this release ships without Link"
-          echo ANDROMEDA_NO_LINK=1 >> "$GITHUB_ENV"
       # makepkg's ccache option compiles through ccache; LTO objects cache too, only the final link reruns.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: ${{ !inputs.prebuilt }}
@@ -57,7 +51,7 @@ jobs:
         working-directory: pkg
         run: >
           sudo -u builder env HOME=/home/builder CARGO_HOME=/home/builder/.cargo ANDROMEDA_SOURCE="file://$GITHUB_WORKSPACE"
-          ANDROMEDA_CORE=1 ANDROMEDA_NO_LINK="${ANDROMEDA_NO_LINK:-}" CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
+          ANDROMEDA_CORE=1 CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" ANDROMEDA_VERSION="${TAG#v}"
           makepkg --syncdeps --noconfirm --force
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always() && !inputs.prebuilt
@@ -80,6 +74,9 @@ jobs:
           for package in pkg/*.pkg.tar.zst; do
             [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal)-git- ]] || cp "$package" core/
           done
+          # Link releases on its own tags; the repository carries its latest release.
+          gh release download -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' -D core \
+            || echo "::warning::no Link release: this release ships without Link"
           tools/repo-publish.sh arch repo core
           # upload-artifact rejects ':' in a path: the epoch in the file name becomes '.', as release assets name it.
           for package in core/*.pkg.tar.zst; do name=$(basename "$package"); mv "$package" "core/${name//:/.}"; done
