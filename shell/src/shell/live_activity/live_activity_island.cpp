@@ -2034,8 +2034,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   inst.title->layout(renderer);
   inst.subtitle->layout(renderer);
   {
-    const float textW = std::max(inst.title->width(), inst.subtitle->visible() ? inst.subtitle->width() : 0.0F);
-    const float w = std::clamp(liveFixed + textW, kMinCardWidth, inst.liveWidth);
+    const float w = inst.liveWidth;
     inst.faceWidth[static_cast<std::size_t>(Face::Live)] = w;
     inst.title->setMaxWidth(w - liveFixed);
     inst.subtitle->setMaxWidth(w - liveFixed);

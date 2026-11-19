@@ -261,10 +261,9 @@ void Application::syncLiveActivity() {
   if (m_linkService != nullptr) {
     if (const auto call = m_linkService->activeCall(); call.has_value()) {
       LiveActivity activity{
-          .glyph = "phone-call",
-          .title = call->ringing ? i18n::tr("live-activity.call-ringing", "caller", call->caller)
-                                 : i18n::tr("live-activity.call-active", "caller", call->caller),
-          .subtitle = call->device,
+          .glyph = "phone",
+          .title = call->caller,
+          .subtitle = call->ringing ? i18n::tr("live-activity.call-ringing") : call->device,
           .open = [this](wl_output* output) {
             m_panelManager.openPanel("control-center", PanelOpenRequest{.output = output, .context = "detail-phone"});
           },

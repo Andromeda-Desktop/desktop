@@ -1534,8 +1534,7 @@
     }
   },
   "live-activity": {
-    "call-active": "On a call with {caller}",
-    "call-ringing": "Call from {caller}",
+    "call-ringing": "Incoming call",
     "recording": "Recording the screen",
     "files-copy": "Copying {count} item",
     "files-copy-plural": "Copying {count} items",
