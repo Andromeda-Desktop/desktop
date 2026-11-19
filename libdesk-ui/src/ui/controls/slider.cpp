@@ -349,9 +349,10 @@ void Slider::applyVisualState() {
   }
 
   if (m_filled) {
-    // The parent pill (a glass piece) is the track; the level is the accent (concept C), ink on it is on_accent.
+    // The parent pill (a glass piece) is the track; the level is a lighter glass (slider_fill), ink on it is
+    // on_slider_fill.
     trackColor = Color{.a = 0.0F};
-    fillColor = resolved(this, ColorRole::Accent);
+    fillColor = resolved(this, ColorRole::SliderFill);
     fillColor.a *= m_enabled ? 1.0F : 0.45F;
     m_thumb->setVisible(false);
   }

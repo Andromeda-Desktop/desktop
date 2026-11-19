@@ -64,7 +64,7 @@ namespace {
   constexpr float kChevronHit = 12.0F; // the glyph sits at inset 12; the hit area grows by 6 each side
 
   // The slider fills the whole pill; the icon and the value label draw over it.
-  // Split ink: the row repeats in on_accent inside `ink`, a clip as wide as the level, so a symbol or value
+  // Split ink: the row repeats in on_slider_fill inside `ink`, a clip as wide as the level, so a symbol or value
   // the fill edge crosses shows both inks.
   class SliderPill : public Flex {
   public:
@@ -517,16 +517,16 @@ std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slide
   inkRow->setPadding(0.0F, Tokens::componentSliderInset * s, 0.0F, Tokens::componentSliderInset * s);
   auto inkIcon = std::make_unique<Glyph>();
   inkIcon->setGlyphSize(Tokens::componentRoundIconGlyph * s);
-  inkIcon->setColor(colorSpecFromRole(ColorRole::OnAccent));
+  inkIcon->setColor(colorSpecFromRole(ColorRole::OnSliderFill));
   pill->inkIcon = inkIcon.get();
   inkRow->addChild(std::move(inkIcon));
   Label* inkName = nullptr;
-  auto inkNameLabel = makeLabel(inkName, Tokens::typeHeadline, s, ColorRole::OnAccent);
+  auto inkNameLabel = makeLabel(inkName, Tokens::typeHeadline, s, ColorRole::OnSliderFill);
   inkNameLabel->setFlexGrow(1.0F);
   pill->inkName = inkName;
   inkRow->addChild(std::move(inkNameLabel));
   Label* inkValue = nullptr;
-  auto inkLabel = makeLabel(inkValue, Tokens::typeFootnote, s, ColorRole::OnAccent);
+  auto inkLabel = makeLabel(inkValue, Tokens::typeFootnote, s, ColorRole::OnSliderFill);
   pill->inkValue = inkValue;
   inkRow->addChild(std::move(inkLabel));
   pill->inkRow = inkRow.get();
