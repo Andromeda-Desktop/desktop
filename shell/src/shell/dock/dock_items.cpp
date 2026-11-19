@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <cstdint>
 #include <linux/input-event-codes.h>
 #include <memory>
@@ -56,6 +57,8 @@ namespace {
   // Scale falloff radius — tighter than hit padding so neighbors stay closer to rest size.
   constexpr float kHoverZoomFalloffInfluence = 1.5F;
   constexpr std::int32_t kHoverZoomZScale = 100;
+  // Pinned caps of a scrolling dock draw and take input above every app, zoomed or not.
+  constexpr std::int32_t kPinnedCapZ = 1 << 20;
   constexpr auto kDragHoldDelay = std::chrono::milliseconds(300);
 
   [[nodiscard]] float pointerMainOnRow(const DockConfig& cfg, const InputArea* area, float localX, float localY) {
@@ -1187,7 +1190,6 @@ namespace shell::dock {
         );
       }
       instance.trash.hoverMainOffset = 0.0F;
-      applyItemMainOffset(instance.trash.area, shell::dock::isVerticalEdge(cfg.position), 0.0F);
     }
 
     if (!cfg.magnification && instance.launcherIconNode != nullptr) {
@@ -1202,10 +1204,12 @@ namespace shell::dock {
         );
       }
       instance.launcherHoverMainOffset = 0.0F;
-      applyItemMainOffset(instance.launcherArea, shell::dock::isVerticalEdge(edge), 0.0F);
       if (instance.launcherArea != nullptr) {
         instance.launcherArea->setZIndex(0);
       }
+    }
+    if (!cfg.magnification) {
+      applyDockOverflowEnds(instance, cfg);
     }
 
     // Magnification owns active/inactive scale via updateHoverZoom; kick it on focus updates.
@@ -1216,6 +1220,49 @@ namespace shell::dock {
       instance.surface->requestRedraw();
     }
   }
+
+  namespace {
+  // A dock that scrolls keeps its caps (launcher, trash and its separator) at the pill ends by a pin translation; the
+  // apps scroll in the span between them.
+  struct OverflowEnds {
+    bool active = false;
+    float startPin = 0.0F;
+    float endPin = 0.0F;
+    float lo = 0.0F; // visible app span in row coordinates
+    float hi = 0.0F;
+    float endCapStart = std::numeric_limits<float>::infinity(); // rest main position of the first end cap
+  };
+
+  [[nodiscard]] OverflowEnds overflowEnds(const DockInstance& instance, const DockConfig& cfg) {
+    OverflowEnds ends;
+    if (instance.maxScrollOffset <= 0.0F || instance.viewport == nullptr) {
+      return ends;
+    }
+    const bool vertical = shell::dock::isVerticalEdge(cfg.position);
+    const auto spacing = static_cast<float>(cfg.itemSpacing);
+    const auto mainPad = static_cast<float>(cfg.mainAxisPadding);
+    const float viewLength = vertical ? instance.viewport->height() : instance.viewport->width();
+    ends.active = true;
+    ends.startPin = instance.scrollOffset;
+    ends.endPin = instance.scrollOffset - instance.maxScrollOffset;
+    if (cfg.launcherPosition == DockLauncherPosition::End && instance.launcherArea != nullptr) {
+      ends.endCapStart = instance.launcherRestMainPos;
+    }
+    if (instance.trash.area != nullptr && !instance.separators.empty()) {
+      ends.endCapStart = std::min(ends.endCapStart, instance.separators.back().restMainPos);
+    }
+    ends.lo = cfg.launcherPosition == DockLauncherPosition::Start && instance.launcherArea != nullptr
+                  ? instance.launcherRestMainPos + ends.startPin + launcherIconSize(cfg) + spacing
+                  : instance.scrollOffset + mainPad;
+    ends.hi = std::isfinite(ends.endCapStart) ? ends.endCapStart + ends.endPin - spacing
+                                              : instance.scrollOffset + viewLength - mainPad;
+    return ends;
+  }
+
+  [[nodiscard]] bool isEndCapPos(const OverflowEnds& ends, float restMainPos) {
+    return ends.active && restMainPos >= ends.endCapStart - 0.5F;
+  }
+  } // namespace
 
   void clearHoverZoom(DockInstance& instance, const DockSnapshot& snapshot) {
     instance.hoverPointerValid = false;
@@ -1310,7 +1357,11 @@ namespace shell::dock {
       float iconBaseX = kCellPad;
       float iconBaseY = kCellPad;
       float size = 0.0F; // rest main-axis size of the icon and its cell
+      float pin = 0.0F;  // overflow pin of a cap; restMainPos includes it
+      bool cap = false;
     };
+    const OverflowEnds ends = overflowEnds(instance, cfg);
+    const float launcherPin = cfg.launcherPosition == DockLauncherPosition::Start ? ends.startPin : ends.endPin;
 
     std::vector<HoverSlot> slots;
     slots.reserve(itemCount + 1U);
@@ -1322,12 +1373,14 @@ namespace shell::dock {
               .visualScale = &instance.launcherVisualScale,
               .hoverMainOffset = &instance.launcherHoverMainOffset,
               .scaleAnimId = &instance.launcherScaleAnimId,
-              .restMainPos = instance.launcherRestMainPos,
+              .restMainPos = instance.launcherRestMainPos + launcherPin,
               .baseScale = baseLauncherScale,
-              .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, launcherIconSize(cfg)),
+              .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos + launcherPin, launcherIconSize(cfg)),
               .iconBaseX = launcherIconBaseX(cfg),
               .iconBaseY = launcherIconBaseY(cfg),
               .size = launcherIconSize(cfg),
+              .pin = launcherPin,
+              .cap = true,
           }
       );
     }
@@ -1366,12 +1419,14 @@ namespace shell::dock {
               .visualScale = &instance.launcherVisualScale,
               .hoverMainOffset = &instance.launcherHoverMainOffset,
               .scaleAnimId = &instance.launcherScaleAnimId,
-              .restMainPos = instance.launcherRestMainPos,
+              .restMainPos = instance.launcherRestMainPos + launcherPin,
               .baseScale = baseLauncherScale,
-              .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, launcherIconSize(cfg)),
+              .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos + launcherPin, launcherIconSize(cfg)),
               .iconBaseX = launcherIconBaseX(cfg),
               .iconBaseY = launcherIconBaseY(cfg),
               .size = launcherIconSize(cfg),
+              .pin = launcherPin,
+              .cap = true,
           }
       );
     }
@@ -1384,12 +1439,14 @@ namespace shell::dock {
               .visualScale = &instance.trash.visualScale,
               .hoverMainOffset = &instance.trash.hoverMainOffset,
               .scaleAnimId = &instance.trash.scaleAnimId,
-              .restMainPos = instance.trash.restMainPos,
+              .restMainPos = instance.trash.restMainPos + ends.endPin,
               .baseScale = baseLauncherScale,
-              .restCenterMain = itemRestCenterMain(instance.trash.restMainPos, glyphCell(cfg)),
+              .restCenterMain = itemRestCenterMain(instance.trash.restMainPos + ends.endPin, glyphCell(cfg)),
               .iconBaseX = glyphBaseX(cfg),
               .iconBaseY = glyphBaseY(cfg),
               .size = glyphCell(cfg),
+              .pin = ends.endPin,
+              .cap = true,
           }
       );
     }
@@ -1408,7 +1465,76 @@ namespace shell::dock {
     }
 
     std::vector<float> targetOffsets;
-    if (zoomActive) {
+    if (zoomActive && ends.active) {
+      // The caps stay pinned; the apps whose cells lie inside the span spread, then move as one so every grown icon
+      // stays inside it. Cells already part-hidden move with them and fade further.
+      targetOffsets.assign(slots.size(), 0.0F);
+      std::vector<std::size_t> spread;
+      std::vector<float> scales;
+      std::vector<float> sizes;
+      for (std::size_t index = 0; index < slots.size(); ++index) {
+        const HoverSlot& slot = slots[index];
+        if (!slot.cap && slot.restMainPos + slot.size > ends.lo && slot.restMainPos < ends.hi) {
+          spread.push_back(index);
+          scales.push_back(slotScales[index]);
+          sizes.push_back(slot.size);
+        }
+      }
+      const std::vector<float> offsets = shell::dock::hoverSpreadOffsets(scales, sizes);
+      // A grown cap takes room from the span on its side.
+      float lo = ends.lo;
+      float hi = ends.hi;
+      for (std::size_t index = 0; index < slots.size(); ++index) {
+        const HoverSlot& slot = slots[index];
+        if (slot.cap) {
+          const float growth = slot.size * std::max(0.0F, slotScales[index] - 1.0F) * 0.5F;
+          if (slot.restMainPos < ends.lo) {
+            lo = std::max(lo, ends.lo + growth);
+          } else {
+            hi = std::min(hi, ends.hi - growth);
+          }
+        }
+      }
+      const float zoomRange = std::max(0.001F, cfg.magnificationScale - 1.0F);
+      // Drawn extent of the spread apps with their offsets times `factor`. A cell part-hidden at an end counts as it
+      // grows, so the row reveals a hovered end icon smoothly.
+      const auto extent = [&](float factor) {
+        float low = std::numeric_limits<float>::infinity();
+        float high = -std::numeric_limits<float>::infinity();
+        for (std::size_t k = 0; k < spread.size(); ++k) {
+          const HoverSlot& slot = slots[spread[k]];
+          const float center = slot.restMainPos + slot.size * 0.5F + offsets[k] * factor;
+          const float weight =
+              slot.restMainPos < ends.lo - 0.5F || slot.restMainPos + slot.size > ends.hi + 0.5F
+                  ? std::clamp((scales[k] / slot.baseScale - 1.0F) / zoomRange, 0.0F, 1.0F)
+                  : 1.0F;
+          low = std::min(low, lo + (center - slot.size * scales[k] * 0.5F - lo) * weight);
+          high = std::max(high, hi + (center + slot.size * scales[k] * 0.5F - hi) * weight);
+        }
+        return std::pair{low, high};
+      };
+      float factor = 1.0F;
+      if (const auto [fullLow, fullHigh] = extent(1.0F); fullHigh - fullLow > hi - lo) {
+        float fits = 0.0F;
+        float overflows = 1.0F;
+        for (int step = 0; step < 12; ++step) {
+          const float mid = (fits + overflows) * 0.5F;
+          const auto [l, h] = extent(mid);
+          (h - l > hi - lo ? overflows : fits) = mid;
+        }
+        factor = fits;
+      }
+      const auto [low, high] = extent(factor);
+      float shift = 0.0F;
+      if (high > hi) {
+        shift = hi - high;
+      } else if (low < lo) {
+        shift = lo - low;
+      }
+      for (std::size_t k = 0; k < spread.size(); ++k) {
+        targetOffsets[spread[k]] = offsets[k] * factor + shift;
+      }
+    } else if (zoomActive) {
       std::vector<float> restMainPos;
       std::vector<float> sizes;
       restMainPos.reserve(slots.size());
@@ -1438,7 +1564,7 @@ namespace shell::dock {
       if (lerpHoverMainOffset(*slot.hoverMainOffset, zoomActive ? slot.targetMainOffset : 0.0F, lerpFactor)) {
         needsMoreFrames = true;
       }
-      applyItemMainOffset(slot.area, vertical, slot.glideOffset + *slot.hoverMainOffset);
+      applyItemMainOffset(slot.area, vertical, slot.pin + slot.glideOffset + *slot.hoverMainOffset);
 
       if (applyHoverIconScale(
               slot.iconNode, *slot.visualScale, *slot.scaleAnimId, instance, slot.targetScale, slot.baseScale,
@@ -1461,9 +1587,16 @@ namespace shell::dock {
              side * slot.size * scale * 0.5F;
     };
     for (const auto& separator : instance.separators) {
+      if (isEndCapPos(ends, separator.restMainPos)) {
+        applyItemMainOffset(separator.node, vertical, ends.endPin);
+        continue;
+      }
       const HoverSlot* before = nullptr;
       const HoverSlot* after = nullptr;
       for (const HoverSlot& slot : slots) {
+        if (ends.active && slot.cap) {
+          continue;
+        }
         if (slot.restMainPos < separator.restMainPos && (before == nullptr || slot.restMainPos > before->restMainPos)) {
           before = &slot;
         } else if (slot.restMainPos > separator.restMainPos &&
@@ -1520,10 +1653,57 @@ namespace shell::dock {
       }
     }
 
+    if (ends.active) {
+      applyDockOverflowEnds(instance, cfg);
+    }
     if (needsMoreFrames && instance.sceneRoot != nullptr) {
       instance.sceneRoot->markPaintDirty();
     }
     return needsMoreFrames;
+  }
+
+  void applyDockOverflowEnds(DockInstance& instance, const DockConfig& cfg) {
+    if (instance.row == nullptr) {
+      return;
+    }
+    const bool vertical = shell::dock::isVerticalEdge(cfg.position);
+    const OverflowEnds ends = overflowEnds(instance, cfg);
+    const float launcherPin = cfg.launcherPosition == DockLauncherPosition::Start ? ends.startPin : ends.endPin;
+    applyItemMainOffset(instance.launcherArea, vertical, launcherPin + instance.launcherHoverMainOffset);
+    applyItemMainOffset(instance.trash.area, vertical, ends.endPin + instance.trash.hoverMainOffset);
+    if (ends.active) {
+      for (InputArea* cap : {instance.launcherArea, instance.trash.area}) {
+        if (cap != nullptr) {
+          cap->setZIndex(kPinnedCapZ);
+        }
+      }
+    }
+    for (const auto& separator : instance.separators) {
+      if (isEndCapPos(ends, separator.restMainPos)) {
+        applyItemMainOffset(separator.node, vertical, ends.endPin);
+      }
+    }
+    const auto cell = static_cast<float>(cfg.iconSize) + 2.0F * kCellPad;
+    for (auto& item : instance.items) {
+      if (item.area == nullptr || item.enterAnimId != 0) {
+        continue;
+      }
+      float opacity = 1.0F;
+      if (ends.active) {
+        const float start = item.restMainPos + item.glideMainOffset + item.hoverMainOffset;
+        const float shown = std::clamp(std::min(start + cell, ends.hi) - std::max(start, ends.lo), 0.0F, cell) / cell;
+        // Gone by half-hidden, so a cell's ink never draws over a cap's glyph.
+        const float fade = std::clamp(shown * 2.0F - 1.0F, 0.0F, 1.0F);
+        opacity = fade * fade;
+      }
+      if (std::abs(item.area->opacity() - opacity) > 0.001F) {
+        item.area->setOpacity(opacity);
+        item.area->setHitTestVisible(opacity > 0.0F);
+      }
+    }
+    if (instance.sceneRoot != nullptr) {
+      instance.sceneRoot->markPaintDirty();
+    }
   }
 
   void syncDockItemRestPositions(DockInstance& instance, const DockConfig& cfg) {
@@ -1598,6 +1778,7 @@ namespace shell::dock {
       instance.launcherRestMainPos = vertical ? instance.launcherArea->y() : instance.launcherArea->x();
       instance.launcherHoverMainOffset = 0.0F;
     }
+    applyDockOverflowEnds(instance, cfg);
   }
 
   void handleItemClick(DockInstance& instance, const DockItemAction& action, DockItemClickContext& context) {

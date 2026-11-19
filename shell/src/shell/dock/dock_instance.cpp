@@ -402,6 +402,7 @@ namespace shell::dock {
 
         inst->scrollOffset += data.scrollDelta(Style::scrollWheelStep);
         applyDockScrollOffset(*inst, dockConfig);
+        shell::dock::applyDockOverflowEnds(*inst, dockConfig);
         inst->inputDispatcher.syncPointerHover();
 
         float viewportX = 0.0F;

@@ -100,6 +100,8 @@ namespace shell::dock {
   syncHoverPointerFromScene(DockInstance& instance, const DockConfig& cfg, float sceneX, float sceneY);
   void clearHoverZoom(DockInstance& instance, const DockSnapshot& snapshot);
   void syncDockItemRestPositions(DockInstance& instance, const DockConfig& cfg);
+  // Pins launcher and trash to the pill ends of a dock that scrolls and fades the apps clipped at those ends.
+  void applyDockOverflowEnds(DockInstance& instance, const DockConfig& cfg);
   // Sets the Trash glyph from instance.trashFull.
   void applyTrashGlyph(DockInstance& instance);
   void applyDragVisuals(DockInstance& instance, const DockConfig& cfg);
