@@ -1091,7 +1091,8 @@ std::optional<BarConfig> Bar::configForBar(wl_output* output, std::string_view b
 }
 
 void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) const {
-  if (panelId != "control-center") {
+  const bool tray = panelId == "tray-drawer";
+  if (panelId != "control-center" && !tray) {
     return;
   }
   for (const auto& instance : m_instances) {
@@ -1101,9 +1102,19 @@ void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) 
     std::array<float, 4> r{};
     const Box* statusIsland = instance->islands[2];
     const bool vertical = instance->barConfig.position == "left" || instance->barConfig.position == "right";
-    if (instance->sheetTracker != nullptr) {
+    const bool statusShown = instance->barConfig.islands && statusIsland != nullptr && statusIsland->visible();
+    if (tray) {
+      // A drawer opened without a click still hangs under the status island, ending at its trailing edge.
+      if (vertical || !statusShown) {
+        continue;
+      }
+      float x = 0.0F;
+      float y = 0.0F;
+      Node::absolutePosition(statusIsland, x, y);
+      r = {x, y, statusIsland->width(), statusIsland->height()};
+    } else if (instance->sheetTracker != nullptr) {
       r = instance->sheetTrackerRect;
-    } else if (vertical && instance->barConfig.islands && statusIsland != nullptr && statusIsland->visible()) {
+    } else if (vertical && statusShown) {
       float x = 0.0F;
       float y = 0.0F;
       Node::absolutePosition(statusIsland, x, y);
@@ -1111,14 +1122,20 @@ void Bar::fillIslandSource(PanelOpenRequest& request, std::string_view panelId) 
     } else {
       continue;
     }
-    float anchorX = r[0] + r[2] * 0.5F;
+    float anchorX = tray ? r[0] + r[2] : r[0] + r[2] * 0.5F;
     float anchorY = r[1] + r[3] * 0.5F;
     if (m_platform != nullptr) {
       if (const auto* out = m_platform->findOutputByWl(instance->output); out != nullptr && out->hasUsableGeometry()) {
         const auto [surfaceX, surfaceY] = surfaceOriginForOutputLocal(*instance, *out);
         anchorX += surfaceX;
         anchorY += surfaceY;
+        if (tray) {
+          request.sourceOutputRect = std::array<float, 4>{r[0] + surfaceX, r[1] + surfaceY, r[2], r[3]};
+        }
       }
+    }
+    if (tray) {
+      request.anchorAlign = PanelAnchorAlign::End;
     }
     request.anchorX = anchorX;
     request.anchorY = anchorY;
