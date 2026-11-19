@@ -28,20 +28,7 @@ namespace term {
 
   TerminalApp::TerminalApp()
       : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}),
-        m_workspaces([this] { workspacesChanged(); },
-                     [this] {
-                       WorkspaceWatcher::Defs defs;
-                       for (const nlohmann::json& def : state().get("/terminal/workspaces", nlohmann::json::array())) {
-                         if (!def.is_object()) continue;
-                         defs.push_back({.name = def.value("name", ""), .root = def.value("root", ""), .symbol = def.value("symbol", "")});
-                       }
-                       return defs;
-                     },
-                     [this](const WorkspaceWatcher::Defs& defs) {
-                       nlohmann::json out = nlohmann::json::array();
-                       for (const holder::WorkspaceInfo& def : defs) out.push_back({{"name", def.name}, {"root", def.root}, {"symbol", def.symbol}});
-                       state().set("/terminal/workspaces", std::move(out));
-                     }) {
+        m_workspaces([this] { workspacesChanged(); }) {
     KittyImages::installPngDecoder();
     // The header's sidebar button; the keyboard path is Action::ToggleSidebar, which the user can rebind.
     commands().add({.id = "view.toggle-sidebar", .label = "Show Sidebar", .group = "View",
@@ -131,10 +118,9 @@ namespace term {
       m_prefs.reset();
       m_prefsWindow = nullptr;
     }
-    const bool running = m_windows.contains(&window) && m_windows.at(&window)->detachSessions();
-    // A workspace with no running shell ends with its window; one with shells stays, detached.
+    // The window's shells and its workspace end with it.
     if (auto it = m_windowWorkspaces.find(&window); it != m_windowWorkspaces.end()) {
-      if (const auto* id = std::get_if<std::uint64_t>(&it->second); id != nullptr && !running) m_workspaces.close(*id);
+      if (const auto* id = std::get_if<std::uint64_t>(&it->second); id != nullptr) m_workspaces.close(*id);
       m_windowWorkspaces.erase(it);
     }
     workspacesChanged();
@@ -166,7 +152,7 @@ namespace term {
     leaveWorkspace(from, id, std::move(origins));
   }
 
-  void TerminalApp::addWorkspace(AppWindow& from) { leaveWorkspace(from, 0, {NewShell{}}); }
+  void TerminalApp::addWorkspace(AppWindow& from) { openWindow(loop().wayland().requestActivationToken(from.wlSurface())); }
 
   void TerminalApp::leaveWorkspace(AppWindow& window, std::uint64_t next, std::vector<WindowOrigin> origins) {
     const auto terminal = m_windows.find(&window);

@@ -22,7 +22,7 @@ void checkBar(const holder::Workspaces& table, std::uint64_t here, const std::se
     return;
   }
   CHECK(bar.items.size() + bar.more == n);
-  CHECK(bar.items.size() == (n <= kMaxItems ? n : kMaxItems - 1));
+  CHECK(bar.items.size() == std::min(n, kMaxItems));
   const bool hereKnown = std::ranges::any_of(table.workspaces, [&](const auto& w) { return w.id == here; });
   CHECK(std::ranges::count(bar.items, Location::Here, &Item::location) == (hereKnown ? 1 : 0));
   std::vector<std::uint64_t> pages;

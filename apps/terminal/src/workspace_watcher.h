@@ -14,13 +14,11 @@
 namespace term {
 
   // The app's one Watch connection to andromeda-ptyd: keeps the holder's latest workspace table and sends workspace
-  // edits. Runs on the app loop and never blocks it.
-  // The holder forgets its workspaces when it ends, so the definitions (id 0) persist through load/save: the first
-  // table of each connection gets the saved ones it lacks, and the table is saved only after those answers arrive.
+  // edits. Runs on the app loop and never blocks it. Workspaces live only in the holder: a workspace exists while a
+  // window shows it or a shell in it runs, so the first table of each connection closes the ones with no shell.
   class WorkspaceWatcher final : public PollSource {
   public:
-    using Defs = std::vector<holder::WorkspaceInfo>;
-    WorkspaceWatcher(std::function<void()> changed, std::function<Defs()> load, std::function<void(const Defs&)> save);
+    explicit WorkspaceWatcher(std::function<void()> changed);
     ~WorkspaceWatcher() override;
     WorkspaceWatcher(const WorkspaceWatcher&) = delete;
     WorkspaceWatcher& operator=(const WorkspaceWatcher&) = delete;
@@ -47,19 +45,9 @@ namespace term {
     void flush();
     void read();
     void disconnect();
-    void syncDefs();
-
-    struct AwaitTable {};
-    struct Restoring {
-      std::set<std::uint32_t> reqs; // PutWorkspace requests not answered yet
-    };
-    struct Live {};
+    void closeEmpty();
 
     std::function<void()> m_changed;
-    std::function<Defs()> m_load;
-    std::function<void(const Defs&)> m_save;
-    std::variant<AwaitTable, Restoring, Live> m_sync; // of this connection
-    Defs m_saved; // what load returned or save last got
     int m_fd = -1; // -1: not connected
     std::vector<std::uint8_t> m_in;
     std::vector<std::uint8_t> m_out;

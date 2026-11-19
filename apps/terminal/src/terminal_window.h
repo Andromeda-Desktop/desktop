@@ -276,7 +276,7 @@ namespace term {
     [[nodiscard]] float pagerDim() const; // content opacity for the sidebar's travel
     void fadeContentIn(float from);
     AnimationManager::Id m_contentFade = 0;
-    Button* m_prefsButton = nullptr; // hidden while the foot bar shows
+    Button* m_prefsButton = nullptr;
     Flex* m_footTrack = nullptr; // hidden with fewer than 2 workspaces
     Flex* m_footBar = nullptr;   // the track's items
     Box* m_footLens = nullptr;   // under the shown page's item; slides along the bar while pages move
@@ -292,7 +292,6 @@ namespace term {
       bool lit = false;                      // the symbol shows the lens colours
     };
     std::vector<FootItem> m_footItems; // bar order
-    Button* m_footMore = nullptr;      // "more", after the items
     void placeFootLens();
     float m_footWidth = 0.0F;    // the track's inner width, px
     void fillFootBar(Renderer& renderer);

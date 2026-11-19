@@ -299,7 +299,7 @@ void runSessionTests() {
 // Another client's workspace edit reaches the watcher, and the watcher's own socket never blocks the caller.
 void watcherFollowsWorkspaceTable() {
   int changes = 0;
-  WorkspaceWatcher watcher([&] { ++changes; }, [] { return WorkspaceWatcher::Defs{}; }, [](const WorkspaceWatcher::Defs&) {});
+  WorkspaceWatcher watcher([&] { ++changes; });
   CHECK(watcher.connect());
   auto pumpOn = [](WorkspaceWatcher& w, auto pred) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -335,19 +335,13 @@ void watcherFollowsWorkspaceTable() {
     });
   }));
 
-  // A new connection gets the saved definitions the holder lacks, once each, and saves only the full table.
-  const WorkspaceWatcher::Defs saved{{.name = "web", .root = "/srv/web", .symbol = "globe"}, {.name = "old", .root = "/srv/old"}};
-  std::vector<WorkspaceWatcher::Defs> writes;
-  WorkspaceWatcher second([] {}, [&] { return saved; }, [&](const WorkspaceWatcher::Defs& defs) { writes.push_back(defs); });
+  // A new connection closes the workspaces left with no shell ("web") and keeps those with one ("api").
+  WorkspaceWatcher second([] {});
   CHECK(second.connect());
   auto count = [&](const std::string& name) {
     return std::ranges::count(second.workspaces().workspaces, name, &holder::WorkspaceInfo::name);
   };
-  CHECK(pumpOn(second, [&] { return !writes.empty(); }));
-  CHECK(count("old") == 1 && count("web") == 1 && count("api") == 1);
-  for (const WorkspaceWatcher::Defs& defs : writes) {
-    CHECK(std::ranges::count(defs, std::string("old"), &holder::WorkspaceInfo::name) == 1);
-  }
+  CHECK(pumpOn(second, [&] { return count("web") == 0 && count("api") == 1; }));
 }
 
 } // namespace

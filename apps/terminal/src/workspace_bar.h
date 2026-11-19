@@ -34,7 +34,7 @@ namespace term::workspace_bar {
     bool operator==(const Bar&) const = default;
   };
 
-  inline constexpr std::size_t kMaxItems = 5;
+  inline constexpr std::size_t kMaxItems = 4;
 
   // here: this window's workspace (0: none yet); elsewhere: workspaces other windows of the app show.
   Bar barFor(const holder::Workspaces& table, std::uint64_t here, const std::set<std::uint64_t>& elsewhere);

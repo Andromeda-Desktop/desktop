@@ -8,9 +8,7 @@
 
 namespace term {
 
-  WorkspaceWatcher::WorkspaceWatcher(std::function<void()> changed, std::function<Defs()> load,
-                                     std::function<void(const Defs&)> save)
-      : m_changed(std::move(changed)), m_load(std::move(load)), m_save(std::move(save)) {}
+  WorkspaceWatcher::WorkspaceWatcher(std::function<void()> changed) : m_changed(std::move(changed)) {}
 
   WorkspaceWatcher::~WorkspaceWatcher() { disconnect(); }
 
@@ -20,7 +18,6 @@ namespace term {
     m_fd = holder::connectSocket();
     if (m_fd < 0) return false;
     ::fcntl(m_fd, F_SETFL, ::fcntl(m_fd, F_GETFL) | O_NONBLOCK);
-    m_sync = AwaitTable{};
     send(holder::encodeWatch());
     return m_fd >= 0;
   }
@@ -99,10 +96,12 @@ namespace term {
     for (holder::Message& msg : msgs) {
       if (m_fd != fd) break;
       if (auto* table = std::get_if<holder::Workspaces>(&msg); table != nullptr && (!m_seq || table->seq > *m_seq)) {
+        const bool first = !m_seq;
         m_seq = table->seq;
         m_table = std::move(*table);
         changed = true;
-        syncDefs();
+        // The first table holds no workspace of this connection yet, so an empty one there is left over.
+        if (first) closeEmpty();
       } else if (auto* answer = std::get_if<holder::WorkspacePut>(&msg)) {
         if (auto node = m_puts.extract(answer->req)) node.mapped()(answer->req, answer->id);
       }
@@ -122,37 +121,11 @@ namespace term {
     m_out.clear();
     m_seq.reset();
     m_puts.clear();
-    m_sync = AwaitTable{};
   }
 
-  void WorkspaceWatcher::syncDefs() {
-    Defs defs;
-    for (const holder::WorkspaceInfo& w : m_table.workspaces) defs.push_back({.name = w.name, .root = w.root, .symbol = w.symbol});
-    if (std::holds_alternative<AwaitTable>(m_sync)) {
-      m_saved = m_load();
-      Defs held = defs;
-      Defs missing;
-      for (const holder::WorkspaceInfo& def : m_saved) {
-        if (const auto it = std::ranges::find(held, def); it != held.end()) {
-          held.erase(it);
-        } else {
-          missing.push_back(def);
-        }
-      }
-      m_sync = missing.empty() ? decltype(m_sync){Live{}} : decltype(m_sync){Restoring{}};
-      const int fd = m_fd;
-      for (const holder::WorkspaceInfo& def : missing) {
-        const auto req = put(def, [this](std::uint32_t answered, std::uint64_t) {
-          auto* restoring = std::get_if<Restoring>(&m_sync);
-          if (restoring != nullptr && restoring->reqs.erase(answered) == 1 && restoring->reqs.empty()) m_sync = Live{};
-        });
-        if (!req || m_fd != fd) return;
-        std::get<Restoring>(m_sync).reqs.insert(*req);
-      }
-    }
-    if (std::holds_alternative<Live>(m_sync) && defs != m_saved) {
-      m_saved = defs;
-      m_save(m_saved);
+  void WorkspaceWatcher::closeEmpty() {
+    for (const holder::WorkspaceInfo& w : m_table.workspaces) {
+      if (std::ranges::none_of(m_table.sessions, [&](const holder::SessionInfo& s) { return s.workspace == w.id; })) close(w.id);
     }
   }
 

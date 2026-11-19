@@ -257,10 +257,11 @@ namespace term {
       side->addChild(ui::box({.out = &m_dropLine, .fill = colorSpecFromRole(ColorRole::Accent),
                               .radius = Tokens::componentTerminalSidebarDropLine * s / 2.0F, .visible = false,
                               .participatesInLayout = false}));
-      auto bottom = ui::row({.align = FlexAlign::Center, .justify = m_rail ? FlexJustify::Center : FlexJustify::Start});
+      auto bottom = ui::row({.align = FlexAlign::Center, .justify = m_rail ? FlexJustify::Center : FlexJustify::Start,
+                             .gap = Tokens::spaceP8 * s});
       m_footTrack = nullptr;
       m_footBar = nullptr;
-      m_footWidth = width - 2.0F * Tokens::spaceP8 * s - 2.0F * Tokens::spaceP4 * s;
+      m_footWidth = width - 3.0F * Tokens::spaceP8 * s - 2.0F * Tokens::spaceP4 * s - button;
       if (!m_rail) {
         auto track = ui::row({.out = &m_footTrack, .align = FlexAlign::Center, .padding = Tokens::spaceP4 * s,
                               .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Tokens::sizeControlL * s / 2.0F,
@@ -271,7 +272,7 @@ namespace term {
       }
       bottom->addChild(ui::button({.out = &m_prefsButton, .glyph = std::string("settings"), .glyphSize = Tokens::sizeSymbol * s,
                                    .variant = ButtonVariant::Ghost, .tooltip = std::string("Preferences"),
-                                   .radius = button / 2.0F, .height = button,
+                                   .radius = button / 2.0F, .width = button, .height = button,
                                    .onClick = [this] { m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); }}));
       fillFootBar(renderer);
       side->addChild(std::move(bottom));
@@ -396,6 +397,19 @@ namespace term {
       }
       return view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == view->focusArea() &&
              view->key(event);
+    });
+    // Closing the window ends its shells: with a command running, askClose asks first, and the last closed session
+    // closes the window.
+    m_window.setCloseGuard([this] {
+      std::vector<std::uint64_t> ids;
+      bool running = false;
+      for (const SessionInfo& session : m_sessions.sessions()) {
+        ids.push_back(session.id);
+        running = running || std::holds_alternative<CommandRunning>(session.command);
+      }
+      if (!running) return true;
+      askClose(std::move(ids));
+      return false;
     });
     m_window.setActiveCallback([this](bool active) {
       m_active = active;
@@ -701,8 +715,6 @@ namespace term {
       const auto here = std::ranges::find(m_shownBar.items, workspace_bar::Location::Here, &workspace_bar::Item::location);
       m_search->setPlaceholder(here != m_shownBar.items.end() ? here->name : std::string("Sessions"));
     }
-    // The bar takes the whole row, as in the mockup; Preferences stays on its key and in the palette.
-    if (m_prefsButton != nullptr) m_prefsButton->setVisible(m_shownBar.items.empty());
     m_footItems.clear();
     m_footLens = nullptr;
     if (m_shownBar.items.empty()) return;
@@ -720,7 +732,7 @@ namespace term {
       palette.disabled = palette.normal;
       return palette;
     };
-    const std::size_t others = m_shownBar.items.size() - 1 + (m_shownBar.more > 0 ? 1 : 0) + 1; // + "+"
+    const std::size_t others = m_shownBar.items.size(); // the other items and "+"
     const float gap = Tokens::spaceP4 * s;
     const float lensWidth = std::max(item, m_footWidth - static_cast<float>(others) * (item + gap));
     const float nameWidth = std::max(0.0F, lensWidth - 2.0F * Tokens::spaceP8 * s - symbol - Tokens::spaceP8 * s);
@@ -757,12 +769,6 @@ namespace term {
       }
       foot.row->markLocalLayoutDirty();
       m_footItems.push_back(foot);
-    }
-    m_footMore = nullptr;
-    if (m_shownBar.more > 0) {
-      m_footBar->addChild(ui::button({.out = &m_footMore, .glyph = std::string("dots"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
-                                      .tooltip = std::format("{} more", m_shownBar.more), .radius = item / 2.0F,
-                                      .width = item, .height = item, .participatesInLayout = false}));
     }
     m_footBar->addChild(ui::box({.flexGrow = 1.0F}));
     m_footBar->addChild(ui::button({.glyph = std::string("plus"), .glyphSize = symbol, .customPalette = ghost(ColorRole::Label2),
@@ -893,7 +899,6 @@ namespace term {
       lensWeight += weight;
       x += w + gap;
     }
-    if (m_footMore != nullptr) m_footMore->setPosition(Style::rtl() && m_footBar->mirrorInRtl() ? m_footWidth - x - item : x, 0.0F);
     m_footLens->setVisible(lensWeight > 0.0F);
     if (lensWeight <= 0.0F) return;
     lensX /= lensWeight;

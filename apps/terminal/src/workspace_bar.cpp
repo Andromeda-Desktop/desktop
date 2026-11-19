@@ -35,7 +35,7 @@ namespace term::workspace_bar {
       bar.items = std::move(all);
       return bar;
     }
-    const std::size_t shown = kMaxItems - 1;
+    const std::size_t shown = kMaxItems;
     bar.items.assign(all.begin(), all.begin() + static_cast<std::ptrdiff_t>(shown));
     if (const auto it = std::ranges::find(all, Location::Here, &Item::location);
         it != all.end() && std::ranges::find(bar.items, Location::Here, &Item::location) == bar.items.end()) {
