@@ -79,11 +79,12 @@ namespace andromeda {
     Light,
   };
 
-  // glass::Style: Frosted blurs and tints; Liquid bends the backdrop through a lens bezel.
+  // glass::Style, same values: Frosted blurs and tints; Liquid bends the backdrop through a lens bezel.
   enum class GlassStyle : uint8_t {
     Frosted,
     Liquid,
     Clear,
+    Tinted,
   };
 
   enum class TitleAlign : uint8_t {
@@ -852,10 +853,10 @@ namespace andromeda {
       std::optional<std::array<float, 4>> accent;
       // Tint slider: 0 Clear, 0.5 Tinted (the design values), 1 Frosted; reduceTransparency replaces glass with
       // solids.
-      double glass = 0.5;
+      double glass = 1.0;
       // Blur slider: 0 the lightest blur, 0.5 the design values, 1 full size.
-      double frost = 0.5;
-      GlassStyle glassStyle = GlassStyle::Frosted;
+      double frost = 1.0;
+      GlassStyle glassStyle = GlassStyle::Tinted;
       // The specular edge of every glass style.
       bool edgeReflection = true;
       // Shell glass (bar, dock, islands, panels) turns light or dark with the backdrop under it.

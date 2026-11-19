@@ -1415,7 +1415,7 @@ namespace andromeda {
 
   void Server::applyBlurData() {
     const Config::Appearance::Blur& blur = config().appearance.blur;
-    const bool clear = config().appearance.glassStyle != GlassStyle::Frosted;
+    const bool clear = config().appearance.glassStyle == GlassStyle::Liquid || config().appearance.glassStyle == GlassStyle::Clear;
     wlr_scene_set_blur_data(
         m_scene, blur.passes, blur.radius, clear ? 0.0F : static_cast<float>(blur.noise),
         clear ? glass::kLiquidLift : static_cast<float>(blur.brightness), clear ? 1.0F : static_cast<float>(blur.contrast),

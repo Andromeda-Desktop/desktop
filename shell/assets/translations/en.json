@@ -1459,7 +1459,8 @@
       "paste": "Paste",
       "paste-hint": "Paste ↩",
       "recent": "Recent",
-      "result-count": "{count} results",
+      "result-count": "{count} result",
+      "result-count-plural": "{count} results",
       "results": "Results",
       "search-web": "Search the web for “{query}”",
       "times": "{count} time",
@@ -1469,6 +1470,12 @@
       "new-window": "New Window"
     },
     "search-placeholder": "Search",
+    "mode-placeholder": {
+      "apps": "Search apps",
+      "files": "Search files",
+      "clipboard": "Search the clipboard",
+      "emoji": "Search emoji"
+    },
     "symbols": {
       "arrows": "Arrows",
       "currency": "Currency",
@@ -5384,7 +5391,7 @@
         },
         "appearance-glass": {
           "label": "Tint",
-          "description": "How dense the colour of every glass surface is, from Clear to Frosted; the middle is Tinted"
+          "description": "How dense the colour of every glass surface is, from Clear to Frosted"
         },
         "appearance-frost": {
           "label": "Blur",
@@ -5392,11 +5399,12 @@
         },
         "appearance-glass-style": {
           "label": "Style",
-          "description": "Frosted blurs the background; Liquid bends it like a lens; Clear is an untinted lens that dims over bright backgrounds",
+          "description": "Clear and Liquid bend the background like a lens; Tinted is the design glass; Frosted takes your own tint and blur",
           "options": {
             "frosted": "Frosted",
             "liquid": "Liquid",
-            "clear": "Clear"
+            "clear": "Clear",
+            "tinted": "Tinted"
           }
         },
         "appearance-edge-reflection": {

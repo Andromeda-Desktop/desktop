@@ -125,8 +125,8 @@ bool Appearance::take(const std::string& ns, const std::string& key, const sdbus
     const std::uint32_t raw = value.get<std::uint32_t>();
     const bool on = raw == 1;
     if (key == "glass-style") {
-      m_glass.style = raw <= static_cast<std::uint32_t>(glass::Style::Clear) ? static_cast<glass::Style>(raw)
-                                                                           : glass::Style::Frosted;
+      m_glass.style = raw <= static_cast<std::uint32_t>(glass::Style::Tinted) ? static_cast<glass::Style>(raw)
+                                                                            : glass::Style::Tinted;
     } else if (key == "edge-reflection") {
       m_glass.edgeReflection = on;
     } else if (key == "reduce-transparency") {

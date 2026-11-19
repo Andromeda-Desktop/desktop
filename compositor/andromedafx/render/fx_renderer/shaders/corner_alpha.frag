@@ -113,6 +113,7 @@ float rim_facing(vec2 normal, vec2 p, vec3 light, float light_d) {
     vec2 to = (light.xy - p) * sign(light_d + 0.5);
     float reach = length(to);
     near = 1.0 - smoothstep(0.0, light.z, reach);
+    near *= near;
     vec2 mixed = mix(dir, to / max(reach, 1.0), near);
     dir = length(mixed) > 1e-3 ? normalize(mixed) : dir;
   }

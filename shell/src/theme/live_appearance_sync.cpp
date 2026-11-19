@@ -46,11 +46,12 @@ LiveAppearance readLiveAppearance(const std::function<std::string(std::string_vi
       .accent = normalizeColor(value("appearance.accent")),
       .glass =
           glass::Settings{
-              .style = value("appearance.glass_style") == "liquid"  ? glass::Style::Liquid
-                  : value("appearance.glass_style") == "clear" ? glass::Style::Clear
-                                                               : glass::Style::Frosted,
-              .tint = parseUnit(value("appearance.glass"), 0.5F),
-              .frost = parseUnit(value("appearance.frost"), 0.5F),
+              .style = value("appearance.glass_style") == "liquid"    ? glass::Style::Liquid
+                  : value("appearance.glass_style") == "clear"   ? glass::Style::Clear
+                  : value("appearance.glass_style") == "frosted" ? glass::Style::Frosted
+                                                                 : glass::Style::Tinted,
+              .tint = parseUnit(value("appearance.glass"), glass::Settings{}.tint),
+              .frost = parseUnit(value("appearance.frost"), glass::Settings{}.frost),
               .edgeReflection = value("appearance.edge_reflection") != "false",
               .liquidTint = parseUnit(value("appearance.liquid_tint"), glass::Settings{}.liquidTint),
               .liquidBlur = parseUnit(value("appearance.liquid_blur"), 0.1F),

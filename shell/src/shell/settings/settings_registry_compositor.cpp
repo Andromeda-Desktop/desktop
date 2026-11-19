@@ -163,8 +163,8 @@ namespace settings {
       );
       if (!isOn("appearance.reduce_transparency")) {
         choice(
-            Appearance, "surfaces", "appearance.glass_style", {"frosted", "liquid", "clear"}, true,
-            "glass style frosted liquid clear lens material"
+            Appearance, "surfaces", "appearance.glass_style", {"clear", "liquid", "tinted", "frosted"}, true,
+            "glass style frosted liquid clear tinted lens material"
         );
         const std::string style = compositor.value("appearance.glass_style");
         if (style == "liquid" || style == "clear") {
@@ -182,7 +182,7 @@ namespace settings {
               Appearance, "surfaces", "appearance.liquid_blur", 0.0, 1.0, 0.05, false,
               "liquid glass blur backdrop clear"
           );
-        } else {
+        } else if (style == "frosted") {
           slider(
               Appearance, "surfaces", "appearance.glass", 0.0, 1.0, 0.05, false,
               "glass tint clear tinted frosted transparency material opacity"

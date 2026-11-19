@@ -56,13 +56,17 @@ namespace glass {
   // that move together merge and split like one liquid (gaps under about half of it bridge).
   inline constexpr float kMergeReach = 24.0F;
   // Glass rims within this many logical px of the pointer turn their key light toward it.
-  inline constexpr float kPointerLightReach = 160.0F;
+  inline constexpr float kPointerLightReach = 64.0F;
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
 
-  // Frosted: blur and tint, an optional specular edge. Liquid: a soft blur with a lift, a convex lens bezel at the edge.
-  // Clear: Liquid with kClearTint, white content, and dimming from the density path (adaptDensity) over bright
-  // backdrops, so text keeps 4.5:1.
-  enum class Style : std::uint8_t { Frosted, Liquid, Clear };
+  // Frosted: blur and tint from the Tint and Blur sliders, an optional specular edge. Liquid: a soft blur with a lift, a
+  // convex lens bezel at the edge. Clear: Liquid with kClearTint, white content, and dimming from the density path
+  // (adaptDensity) over bright backdrops, so text keeps 4.5:1. Tinted: Frosted at the design tint and blur (kTintedLevel).
+  // The values are the portal's glass-style numbers.
+  enum class Style : std::uint8_t { Frosted, Liquid, Clear, Tinted };
+
+  // The Tint and Blur slider position Tinted glass takes.
+  inline constexpr float kTintedLevel = 0.5F;
 
   // Shell glass follows the scheme; Clear is dark glass with white content in both schemes (docs/design/deviations.md
   // "Clear glass tone"). App windows keep the scheme (Style::glassMaterial with PaletteTone::Scheme).
@@ -76,11 +80,11 @@ namespace glass {
 
   // The Glass settings (appearance.glass_style and the sliders of each style). Each style keeps its own tint and blur.
   struct Settings {
-    Style style = Style::Frosted;
-    // Frosted Tint (appearance.glass): 0 Clear, 0.5 Tinted (the design values), 1 Frosted.
-    float tint = 0.5F;
-    // Frosted Blur (appearance.frost): 0 the lightest blur, 0.5 the design values, 1 full size.
-    float frost = 0.5F;
+    Style style = Style::Tinted;
+    // Frosted Tint (appearance.glass): 0 Clear, kTintedLevel Tinted, 1 Frosted.
+    float tint = 1.0F;
+    // Frosted Blur (appearance.frost): 0 the lightest blur, kTintedLevel Tinted, 1 full size.
+    float frost = 1.0F;
     // Specular edge of every style and its pointer light (appearance.edge_reflection).
     bool edgeReflection = true;
     // Liquid Tint (appearance.liquid_tint), on the Tint scale.
@@ -92,8 +96,15 @@ namespace glass {
     bool reduceTransparency = false;
 
     [[nodiscard]] float activeTint() const noexcept {
-      return style == Style::Liquid ? liquidTint : style == Style::Clear ? 0.0F : tint;
+      switch (style) {
+      case Style::Liquid: return liquidTint;
+      case Style::Clear: return 0.0F;
+      case Style::Tinted: return kTintedLevel;
+      case Style::Frosted: break;
+      }
+      return tint;
     }
+    [[nodiscard]] float activeFrost() const noexcept { return style == Style::Tinted ? kTintedLevel : frost; }
     bool operator==(const Settings&) const = default;
   };
 
@@ -139,7 +150,7 @@ namespace glass {
     if (settings.style == Style::Clear) {
       tint = kClearTint;
     }
-    if (settings.style != Style::Frosted) {
+    if (settings.style == Style::Liquid || settings.style == Style::Clear) {
       const bool sheet = settings.style == Style::Liquid && (kind == Kind::Sheet || kind == Kind::Menu);
       const float* range = sheet ? kLiquidSheetClarity : kLiquidClarity;
       const float clarity = std::lerp(range[0], range[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
@@ -150,7 +161,8 @@ namespace glass {
       };
     }
     // Sheets blur a step less than shapes at the middle and match them at both ends.
-    const float clarity = 0.7F * (shape ? at(settings.frost, 1.0F, 0.5F, 0.0F) : at(settings.frost, 1.0F, 0.25F, 0.0F));
+    const float frost = settings.activeFrost();
+    const float clarity = 0.7F * (shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F));
     return {
         .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? 1.0F : 0.0F, .lens = 0.0F, .clarity = clarity,
         .blurStrength = blurStrength(clarity), .dense = denseTarget(kind)
