@@ -116,7 +116,7 @@ namespace settings {
     constexpr auto kMainRows = std::to_array<std::string_view>({
         "shell.automount_drives", "theme.mode", "shell.desktop_layout", "andromeda.appearance.accent", "andromeda.appearance.reduce_transparency", "accessibility.text_scale", "accessibility.ui_scale",
         "shell.font_family",
-        "wallpaper.enabled", "wallpaper.fill_mode", "wallpaper.directory", "wallpaper.transition",
+        "wallpaper.enabled", "wallpaper.fill_mode", "wallpaper.directory",
         "wallpaper.automation.enabled", "wallpaper.automation.interval_seconds",
         "brightness.sync_all_monitors", "brightness.automatic",
         "audio.enable_sounds", "audio.sound_volume", "audio.auto_switch_hdmi", "bluetooth.connect_when_enabled",
@@ -156,7 +156,6 @@ namespace settings {
         "shell.screenshot.format", "shell.screenshot.annotate", "shell.screenshot.show_cursor",
         "shell.screenshot.freeze_screen",
         "shell.clipboard_enabled",
-        "shell.avatar_path",
     });
     // Rows that share one uncaptioned card (a group starting with '~' has no caption), in the mockup's order.
     struct GroupRule {

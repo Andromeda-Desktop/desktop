@@ -1326,7 +1326,7 @@ std::unique_ptr<Flex> SettingsWindow::buildExpertSearchRow(float scale, std::siz
       }),
       std::move(input),
       makeLabel(
-          i18n::tr("settings.expert.count", "count", std::to_string(optionCount)), Style::fontSizeCaption * scale,
+          (optionCount == 1 ? i18n::tr("settings.expert.count-one") : i18n::tr("settings.expert.count", "count", std::to_string(optionCount))), Style::fontSizeCaption * scale,
           colorSpecFromRole(ColorRole::Label3)
       )
   );

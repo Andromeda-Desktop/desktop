@@ -2385,6 +2385,7 @@
     },
     "expert": {
       "count": "{count} options",
+      "count-one": "1 option",
       "row": "More options",
       "search-placeholder": "Search in {page}"
     },

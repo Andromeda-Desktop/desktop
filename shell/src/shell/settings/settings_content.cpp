@@ -167,7 +167,7 @@ namespace settings {
     // Rare rows wait behind one row at the page end; it opens the page's expert view.
     addSettingsGroupCard(content, {}, ctx.scale)
         ->addChild(makeSettingsLinkRow(i18n::tr("settings.expert.row"),
-                                       i18n::tr("settings.expert.count", "count", std::to_string(count)), ctx.scale,
+                                       (count == 1 ? i18n::tr("settings.expert.count-one") : i18n::tr("settings.expert.count", "count", std::to_string(count))), ctx.scale,
                                        ctx.openExpert));
   }
 
