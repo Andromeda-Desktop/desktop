@@ -340,28 +340,25 @@ namespace calendar_view {
         button->setOnRightClick([callback = options.onDateRightClicked, date] { callback(date); });
       }
 
-      auto dots = ui::row({
-          .align = FlexAlign::Center,
-          .justify = FlexJustify::Center,
-          .gap = layout.dotGap,
-      });
-      dots->setSize(layout.dayButtonSize, layout.dotDiameter);
+      // The dots overlay the button's foot, 2 above the cell bottom (proto .o-d.ev::after), so the digit stays centred.
       if (inMonth) {
-        for (const ColorSpec& color : eventDots[static_cast<std::size_t>(date.day)]) {
-          dots->addChild(
-              ui::box({
-                  .fill = color,
-                  .radius = layout.dotDiameter * 0.5F,
-                  .width = layout.dotDiameter,
-                  .height = layout.dotDiameter,
-              })
-          );
+        const auto& colors = eventDots[static_cast<std::size_t>(date.day)];
+        const float n = static_cast<float>(colors.size());
+        float x = (layout.dayButtonSize - n * layout.dotDiameter - std::max(0.0F, n - 1.0F) * layout.dotGap) * 0.5F;
+        const float y = (layout.dayCellHeight + layout.dayButtonSize) * 0.5F - layout.dotGap - layout.dotDiameter;
+        for (const ColorSpec& color : colors) {
+          auto dot = ui::box({
+              .fill = isToday ? colorSpecFromRole(ColorRole::OnAccent) : color,
+              .radius = layout.dotDiameter * 0.5F,
+              .width = layout.dotDiameter,
+              .height = layout.dotDiameter,
+          });
+          dot->setParticipatesInLayout(false);
+          dot->setPosition(x, y);
+          button->addChild(std::move(dot));
+          x += layout.dotDiameter + layout.dotGap;
         }
       }
-      // The dots overlay the button's foot, 2 above the cell bottom (proto .o-d.ev::after), so the digit stays centred.
-      dots->setParticipatesInLayout(false);
-      dots->setPosition(0.0F, (layout.dayCellHeight + layout.dayButtonSize) * 0.5F - layout.dotGap - layout.dotDiameter);
-      button->addChild(std::move(dots));
       tile->addChild(std::move(button));
       dayGrid->addChild(std::move(tile));
     }
