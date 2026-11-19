@@ -25,6 +25,32 @@ float rounded_rect_distance_at(
   return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - e;
 }
 
+// The outward unit gradient of rounded_rect_distance_at, in closed form: one pow in a smoothed corner instead of the
+// four distance evaluations of a central difference.
+vec2 rounded_rect_normal_at(
+    vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
+) {
+  vec2 centered_pos = point - position - size * 0.5;
+  float radius;
+  if (centered_pos.x < 0.0) {
+    radius = centered_pos.y < 0.0 ? radius_tl : radius_bl;
+  } else {
+    radius = centered_pos.y < 0.0 ? radius_tr : radius_br;
+  }
+  vec2 half_size = size * 0.5;
+  float max_r = min(half_size.x, half_size.y);
+  float s = radius > 0.0 ? clamp((max_r / radius - 1.0) / 0.88, 0.0, TOKEN_RADIUS_SMOOTHING) : 0.0;
+  float e = min(radius * (1.0 + 0.88 * s), max_r);
+  vec2 q = abs(centered_pos) - (half_size - vec2(e));
+  vec2 g;
+  if (q.x > 0.0 && q.y > 0.0) {
+    g = s > 0.001 ? pow(q / e, vec2(1.0 + 5.0 * s)) : q;
+  } else {
+    g = q.x > q.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+  }
+  return normalize(g) * sign(centered_pos + 1e-6);
+}
+
 float rounded_rect_distance(
     vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
 ) {
@@ -134,6 +160,18 @@ void flare_body(inout vec2 size, inout vec2 position, float tl, float tr, float 
 }
 
 #endif
+
+// The outward unit normal of body_distance_at.
+vec2 body_normal_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br) {
+#ifdef CORNER_FLARES
+  if (min(min(tl, tr), min(bl, br)) < 0.0) {
+    flare_body(size, position, tl, tr, bl, br);
+  }
+  return rounded_rect_normal_at(point, size, position, max(tl, 0.0), max(tr, 0.0), max(bl, 0.0), max(br, 0.0));
+#else
+  return rounded_rect_normal_at(point, size, position, tl, tr, bl, br);
+#endif
+}
 
 // The signed distance to the body of a box whose negative radii are flares (the rim and lens outline).
 float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br) {

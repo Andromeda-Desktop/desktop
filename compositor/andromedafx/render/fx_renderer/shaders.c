@@ -282,7 +282,7 @@ static const char kFlaresDefine[] = "#define CORNER_FLARES\n";
 bool link_tex_program(
     struct tex_shader* shader, enum fx_tex_shader_source source, bool effects, bool sample_clamp, bool flares
 ) {
-  GLchar frag_src_part[12288];
+  GLchar frag_src_part[sizeof(tex_frag_src)];
   GLchar frag_src[sizeof(frag_src_part) + sizeof(kFlaresDefine) + sizeof(corner_alpha_frag_src) + 3];
   snprintf(frag_src_part, sizeof(frag_src_part), tex_frag_src, source, effects, sample_clamp);
   snprintf(
@@ -412,7 +412,7 @@ bool link_blur1_program(struct blur_shader* shader) {
 static bool link_blur2_variant(
     struct blur2_with_effects_shader* shader, bool effects, bool composite, bool corners, bool flares, bool glass
 ) {
-  GLchar frag_src_part[12288];
+  GLchar frag_src_part[sizeof(blur2_frag_src)];
   GLchar frag_src[sizeof(frag_src_part) + sizeof(kFlaresDefine) + sizeof(corner_alpha_frag_src) + 3];
   snprintf(frag_src_part, sizeof(frag_src_part), blur2_frag_src, effects, composite, corners, glass);
   snprintf(

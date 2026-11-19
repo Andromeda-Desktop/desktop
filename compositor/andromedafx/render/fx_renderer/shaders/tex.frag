@@ -202,6 +202,10 @@ float rounded_rect_distance_at(
     vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
 );
 float body_distance_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
+vec2 rounded_rect_normal_at(
+    vec2 point, vec2 size, vec2 position, float radius_tl, float radius_tr, float radius_bl, float radius_br
+);
+vec2 body_normal_at(vec2 point, vec2 size, vec2 position, float tl, float tr, float bl, float br);
 float liquid_band(vec2 size, float liquid, float scale);
 float lens_sag(float t);
 float lens_shift(float t);
@@ -235,6 +239,21 @@ float liquid_distance(vec2 point) {
       point, size, position, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right
   );
 }
+
+// The outward unit normal of liquid_distance: closed form for one shape, a central difference over merged shapes.
+vec2 liquid_normal(vec2 p) {
+  if (liquid_count >= 2) {
+    vec2 g = vec2(liquid_distance(p + vec2(1.0, 0.0)) - liquid_distance(p - vec2(1.0, 0.0)),
+                  liquid_distance(p + vec2(0.0, 1.0)) - liquid_distance(p - vec2(0.0, 1.0)));
+    return length(g) > 0.0 ? normalize(g) : vec2(0.0);
+  }
+  if (liquid_radius >= 0.0) {
+    return rounded_rect_normal_at(
+        p, liquid_size, liquid_position, liquid_radius, liquid_radius, liquid_radius, liquid_radius
+    );
+  }
+  return body_normal_at(p, size, position, radius_top_left, radius_top_right, radius_bottom_left, radius_bottom_right);
+}
 #endif
 
 void main() {
@@ -254,9 +273,7 @@ void main() {
     // A shape narrower than two bands is lens across its whole surface: no flat interior to skip.
     bool whole = band >= 0.5 * min(liquid_size.x, liquid_size.y) - 0.5;
     if (d > -band || whole) {
-      vec2 normal = vec2(liquid_distance(p + vec2(1.0, 0.0)) - liquid_distance(p - vec2(1.0, 0.0)),
-                         liquid_distance(p + vec2(0.0, 1.0)) - liquid_distance(p - vec2(0.0, 1.0)));
-      normal = length(normal) > 0.0 ? normalize(normal) : vec2(0.0);
+      vec2 normal = liquid_normal(p);
       float t = clamp(1.0 + d / band, 0.0, 1.0);
       float sag = lens_sag(t);
       // Refraction through the bezel: the backdrop is sampled from further inside.
