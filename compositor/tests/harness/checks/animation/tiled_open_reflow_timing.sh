@@ -2,7 +2,7 @@
 # A tiled opener starts its windows_in in its final slot on the same tick established neighbours begin their
 # windows_move reflow. Both clocks run independently: the opener is already visible while the neighbour is mid-reflow,
 # and still mid-fade after that shorter reflow has settled. An opener that takes the whole width through
-# default_maximize reflows them on that same clock.
+# default_maximize covers them and leaves their tile unchanged.
 set -euo pipefail
 
 readonly IMAGE="$ANDROMEDA_RUNTIME_DIR/tiled-open-reflow.png"
@@ -147,13 +147,15 @@ maximized_early=$(red_width)
 "$ANDROMEDA" settle
 maximized_final=$(red_width)
 
-if ((settled - maximized_final < 200)); then
-  echo "the maximized opener did not take width from the survivor: ${settled} -> ${maximized_final}"
+# A maximized opener covers the tiled area and leaves the split unchanged (9ce283948): the survivor keeps its width
+# under it and is hidden only by the opener, not squashed.
+if ((maximized_early != settled)); then
+  echo "the maximized opener changed the survivor's tile: ${settled} -> ${maximized_early}"
   exit 1
 fi
-if ((maximized_early <= maximized_final + 20 || maximized_early >= settled - 20)); then
-  echo "the survivor snapped instead of reflowing under the maximized opener: ${settled} -> ${maximized_early} -> ${maximized_final}"
+if ((maximized_final != 0)); then
+  echo "the maximized opener did not cover the survivor: ${settled} -> ${maximized_final}"
   exit 1
 fi
 
-echo "tiled opener ran windows_in in its final slot alongside the neighbour reflow, and a maximized opener reflowed that neighbour on windows_move too"
+echo "tiled opener ran windows_in in its final slot alongside the neighbour reflow, and a maximized opener covered that neighbour without squashing it"
