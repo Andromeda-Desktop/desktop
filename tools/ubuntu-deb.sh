@@ -17,8 +17,9 @@ OUT=${XDG_CACHE_HOME:-$HOME/.cache}/andromeda-ubuntu/deb-$VERSION
 IMAGE=andromeda-deb:${BASE/:/-}
 # ccache lives beside OUT, so --clean keeps it.
 CCACHE=$(dirname "$OUT")/ccache-deb-$VERSION
-# In CI the repo's caches share 10 GiB: two deb caches of 1.5G leave room for the Arch release cache.
-[[ -z ${CI:-} ]] || { mkdir -p "$CCACHE" && echo 'max_size = 1.5G' > "$CCACHE/ccache.conf"; }
+# In CI the repo's caches share 10 GiB: no limit while building (a trim mid-build would drop entries this build has
+# not reached yet), then a trim to 1.5G after it, least recently used first.
+[[ -z ${CI:-} ]] || { mkdir -p "$CCACHE" && echo 'max_size = 0' > "$CCACHE/ccache.conf"; }
 # Crate downloads persist across runs, so a build needs the network only for new crates.
 CARGO_CACHE=$(dirname "$OUT")/cargo-deb-$VERSION
 mkdir -p "$CARGO_CACHE"
@@ -96,6 +97,7 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
   fi
   apt-get install -y -qq $debs 2>&1 | tee /o/install.log || exit 12
 ' || status=$?
+[[ -z ${CI:-} ]] || docker run --rm -v "$CCACHE:/ccache" -e CCACHE_DIR=/ccache "$IMAGE" ccache --max-size=1.5G --cleanup > /dev/null
 docker run --rm -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" "$BASE" chown -R "$(id -u):$(id -g)" /o /ccache /cargo
 case $status in
   0) echo "PASS: $(ls "$OUT"/*.deb | wc -l) debs built and installed" ;;

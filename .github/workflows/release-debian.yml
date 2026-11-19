@@ -29,18 +29,9 @@ jobs:
           ref: ${{ inputs.ref || env.TAG }}
       - name: xwayland-satellite
         run: tools/deb-xwayland-satellite.sh testing
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/andromeda-ubuntu/ccache-deb-testing
-          key: ccache-deb-testing-${{ github.run_id }}
-          restore-keys: ccache-deb-testing-
+      # No ccache: the repo's 10 GiB of caches go to the Arch and Ubuntu releases.
       - name: Packages
         run: ANDROMEDA_CORE=1 DEB_VERSION=${TAG#v} tools/ubuntu-deb.sh --clean testing
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: always()
-        with:
-          path: ~/.cache/andromeda-ubuntu/ccache-deb-testing
-          key: ccache-deb-testing-${{ github.run_id }}
       - name: Link
         env:
           GH_TOKEN: ${{ github.token }}
