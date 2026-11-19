@@ -127,9 +127,12 @@ namespace andromeda {
     // Liquid value [3]: glass::Material::dense.
     float m_dense = 0.0F;
     float m_backdropLuminance = 0.5F; // the last probe sample, 0 to 1
+    // The darkest and brightest sample under any node: the density follows the one that most threatens the ink.
+    float m_backdropDarkest = 0.5F;
+    float m_backdropBrightest = 0.5F;
     // Per blur node (m_blur, then m_shapeBlurs): the last backdrop sample and the node's area in px; m_backdropLuminance
-    // is their area-weighted mean, so every glass shape of a surface takes one tone.
-    std::vector<std::optional<float>> m_nodeLuminance;
+    // is their area-weighted mean (the shadow), so every glass shape of a surface takes one tone.
+    std::vector<std::optional<fx_backdrop_luminance>> m_nodeLuminance;
     std::vector<int> m_nodeArea;
     // dsk_surface_v1 tint (v9): the client's tint over the blur, rgba; the compositor adds the density to it.
     std::array<float, 4> m_tint{};

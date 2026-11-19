@@ -44,13 +44,13 @@ namespace andromeda {
   }
 
   int GlassPanel::pollBackdrop() {
-    float luminance = 0.0F;
+    fx_backdrop_luminance luminance{};
     if (m_blur == nullptr || m_useScrim) {
       return 0;
     }
     if (wlr_scene_blur_poll_backdrop(m_blur, &luminance)) {
       const bool light = config().appearance.scheme == ColorScheme::Light;
-      const float target = glass::adaptDensity(light, luminance);
+      const float target = glass::adaptDensity(light, light ? luminance.darkest : luminance.brightest);
       // Jitter inside the deadband is ignored, as on shell glass, so the panel does not pulse over video.
       if (std::abs(target - m_densityTarget) > glass::kAdaptDeadband || target == 0.0F || target == 1.0F) {
         m_densityTarget = target;

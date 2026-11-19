@@ -19,6 +19,7 @@
  * compositors need to implement custom rendering logic.
  */
 
+#include "andromedafx/render/backdrop_probe.h"
 #include "andromedafx/types/fx/blur_data.h"
 #include "andromedafx/types/fx/clipped_region.h"
 #include "andromedafx/types/linked_node.h"
@@ -1062,8 +1063,8 @@ void wlr_scene_blur_set_fade_from_source(struct wlr_scene_blur* blur, bool fade_
  */
 void wlr_scene_blur_set_backdrop_sampling(struct wlr_scene_blur* blur, bool enabled);
 
-/** Never blocks. True with luminance (0 to 1) when a sample of the blurred backdrop finished since the last poll. */
-bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, float* luminance);
+/** Never blocks. True with luminance when a sample of the blurred backdrop finished since the last poll. */
+bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, struct fx_backdrop_luminance* luminance);
 
 /** True while a sample waits for the GPU. */
 bool wlr_scene_blur_backdrop_pending(const struct wlr_scene_blur* blur);

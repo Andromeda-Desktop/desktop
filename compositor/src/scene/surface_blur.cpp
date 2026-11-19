@@ -220,7 +220,7 @@ namespace andromeda {
     }
   }
 
-  bool SurfaceBlur::pollBackdrop(float* luminance) {
+  bool SurfaceBlur::pollBackdrop(fx_backdrop_luminance* luminance) {
     return m_node != nullptr && wlr_scene_blur_poll_backdrop(m_node, luminance);
   }
 

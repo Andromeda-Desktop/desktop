@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Every glass shape of a surface counts toward its backdrop luminance, weighted by area: a small first shape over black
-# and a larger second shape over a white surface give a lighter backdrop, so light glass gets less than full density.
+# Every glass shape of a surface counts toward its density, and the darkest spot decides for light glass: a small first
+# shape over black keeps full density although a larger second shape sits over a white surface.
 set -euo pipefail
 source "$ANDROMEDA_HARNESS_LIB"
 
@@ -40,15 +40,16 @@ await_lines "$LAYER_LOG" source-mapped 1
 layer_command color clear 00000000
 layer_command dsk-set light-tint 8 1 1 1 0.5
 layer_command dsk-shape a-liquid 6 1 1 0 0
+layer_command dsk-shape a-tint 8 1 1 1 0.5
 layer_command dsk-shape a-clip 3 10 10 20 20
 layer_command dsk-new-shape b
 layer_command dsk-shape b-liquid 6 1 1 0 0
+layer_command dsk-shape b-tint 8 1 1 1 0.5
 layer_command dsk-shape b-clip 3 320 60 60 30
+last_density() { awk '$1 == "dsk-density" { v = $2 } END { print v + 0 }' "$LAYER_LOG"; }
 for _ in $(seq 60); do
-  awk '$1 == "dsk-density" && $2 < 0.9 { found = 1 } END { exit !found }' "$LAYER_LOG" && break
+  awk -v d="$(last_density)" 'BEGIN { exit !(d >= 0.99) }' && exit 0
   sleep 0.1
 done
-if ! awk '$1 == "dsk-density" && $2 < 0.9 { found = 1 } END { exit !found }' "$LAYER_LOG"; then
-  echo "a 20x20 shape over black and a 60x30 shape inside a white surface did not lower the density of light glass: $(grep dsk-density "$LAYER_LOG" | tr '\n' ' ')"
-  exit 1
-fi
+echo "a 20x20 shape over black did not keep light glass at full density beside a 60x30 shape over white: $(grep dsk-density "$LAYER_LOG" | tr '\n' ' ')"
+exit 1

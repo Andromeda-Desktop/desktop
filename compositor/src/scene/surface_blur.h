@@ -4,6 +4,7 @@
 
 #include <pixman.h>
 extern "C" {
+#include "andromedafx/render/backdrop_probe.h"
 #include <wlr/util/box.h>
 }
 #include <array>
@@ -83,8 +84,8 @@ namespace andromeda {
     void setLive(bool live);
     // Samples the blurred backdrop on each render of the node (wlr_scene_blur_set_backdrop_sampling).
     void setBackdropSampling(bool enabled);
-    // Never blocks: true with the mean luminance (0 to 1) when a sample finished since the last call.
-    bool pollBackdrop(float* luminance);
+    // Never blocks: true with the sample's luminance when a sample finished since the last call.
+    bool pollBackdrop(fx_backdrop_luminance* luminance);
     [[nodiscard]] bool backdropPending() const;
     // Puts the blur above its siblings (it is created at the bottom, under the surface).
     void raiseToTop();

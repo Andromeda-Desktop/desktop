@@ -12,6 +12,13 @@ struct wlr_renderer;
  */
 struct fx_backdrop_probe;
 
+/** Luminances of one sample grid, 0 to 1, display-encoded: the mean and the darkest and brightest sample. */
+struct fx_backdrop_luminance {
+  float mean;
+  float darkest;
+  float brightest;
+};
+
 struct fx_backdrop_probe* fx_backdrop_probe_create(struct wlr_renderer* renderer);
 void fx_backdrop_probe_destroy(struct fx_backdrop_probe* probe);
 
@@ -31,9 +38,9 @@ bool fx_backdrop_probe_take_stale(struct fx_backdrop_probe* probe);
 bool fx_backdrop_probe_pending(const struct fx_backdrop_probe* probe);
 
 /**
- * Never blocks. Returns true and sets luminance (0 to 1, display-encoded) when a captured sample finished.
+ * Never blocks. Returns true and sets luminance when a captured sample finished.
  * Makes the renderer's EGL context current and restores the previous one.
  */
-bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, float* luminance);
+bool fx_backdrop_probe_poll(struct fx_backdrop_probe* probe, struct fx_backdrop_luminance* luminance);
 
 #endif

@@ -947,7 +947,7 @@ namespace andromeda {
     bool pending = false;
     for (std::size_t i = 0; i <= m_shapeBlurs.size(); ++i) {
       SurfaceBlur& blur = i == 0 ? m_blur : m_shapeBlurs[i - 1];
-      float sample = 0.0F;
+      fx_backdrop_luminance sample{};
       if (blur.pollBackdrop(&sample)) {
         m_nodeLuminance[i] = sample;
         sampled = true;
@@ -956,14 +956,20 @@ namespace andromeda {
     }
     double weighted = 0.0;
     double area = 0.0;
+    float darkest = 1.0F;
+    float brightest = 0.0F;
     for (std::size_t i = 0; i < m_nodeLuminance.size() && i < m_nodeArea.size(); ++i) {
-      if (m_nodeLuminance[i]) {
-        weighted += static_cast<double>(*m_nodeLuminance[i]) * m_nodeArea[i];
+      if (m_nodeLuminance[i] && m_nodeArea[i] > 0) {
+        weighted += static_cast<double>(m_nodeLuminance[i]->mean) * m_nodeArea[i];
         area += m_nodeArea[i];
+        darkest = std::min(darkest, m_nodeLuminance[i]->darkest);
+        brightest = std::max(brightest, m_nodeLuminance[i]->brightest);
       }
     }
     if (sampled && area > 0.0) {
       m_backdropLuminance = static_cast<float>(weighted / area);
+      m_backdropDarkest = darkest;
+      m_backdropBrightest = brightest;
       m_shadow.setAlpha(glass::shadowOverBackdrop(m_backdropLuminance) * m_shadowOpacity);
       updateDensity();
     }
@@ -974,7 +980,9 @@ namespace andromeda {
   void LayerSurface::updateDensity() {
     const bool light = 0.2126F * m_tint[0] + 0.7152F * m_tint[1] + 0.0722F * m_tint[2] > 0.5F;
     const bool glassOn = m_liquid > 0.0F || m_rim > 0.0F;
-    const float target = glassOn && m_tint[3] > 0.0F ? glass::adaptDensity(light, m_backdropLuminance) : 0.0F;
+    // Text must read over the whole surface: light glass (dark ink) answers its darkest spot, dark glass its brightest.
+    const float threat = light ? m_backdropDarkest : m_backdropBrightest;
+    const float target = glassOn && m_tint[3] > 0.0F ? glass::adaptDensity(light, threat) : 0.0F;
     // A light/dark switch takes the new target at once; within a tone, jitter inside the deadband is ignored.
     if (light != m_tintLight || std::abs(target - m_densityTarget) > glass::kAdaptDeadband || target == 0.0F
         || target == 1.0F) {

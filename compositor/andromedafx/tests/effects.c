@@ -2406,7 +2406,7 @@ static bool test_in_place_shape(struct fixture* fixture) {
 
 // Captures a solid texture into the probe in one pass, submits it, and polls until the fenced sample arrives.
 static bool backdrop_probe_sample(
-    struct fixture* fixture, struct fx_backdrop_probe* probe, const uint8_t rgba[4], float* luminance
+    struct fixture* fixture, struct fx_backdrop_probe* probe, const uint8_t rgba[4], struct fx_backdrop_luminance* luminance
 ) {
   uint8_t pixels[8 * 8 * 4];
   for (int i = 0; i < 8 * 8; i++) {
@@ -2461,10 +2461,14 @@ static bool test_backdrop_probe(struct fixture* fixture) {
       lin[k] = v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4);
     }
     const float expected = (float)pow(0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2], 1.0 / 2.2);
-    float luminance = -1.0f;
+    struct fx_backdrop_luminance luminance = {-1.0f, -1.0f, -1.0f};
     ok &= backdrop_probe_sample(fixture, probe, c, &luminance);
-    if (ok && fabsf(luminance - expected) > 1.5f / 255.0f) {
-      fprintf(stderr, "  colour %zu: luminance %.4f, expected %.4f\n", i, luminance, expected);
+    // A flat colour: the darkest and brightest sample equal the mean.
+    const float error = fmaxf(fabsf(luminance.mean - expected),
+                              fmaxf(fabsf(luminance.darkest - expected), fabsf(luminance.brightest - expected)));
+    if (ok && error > 1.5f / 255.0f) {
+      fprintf(stderr, "  colour %zu: luminance %.4f %.4f %.4f, expected %.4f\n", i, luminance.mean, luminance.darkest,
+              luminance.brightest, expected);
       ok = false;
     }
   }

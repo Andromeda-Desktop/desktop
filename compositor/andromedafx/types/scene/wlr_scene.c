@@ -2813,7 +2813,7 @@ void wlr_scene_blur_set_backdrop_sampling(struct wlr_scene_blur* blur, bool enab
   }
 }
 
-bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, float* luminance) {
+bool wlr_scene_blur_poll_backdrop(struct wlr_scene_blur* blur, struct fx_backdrop_luminance* luminance) {
   if (fx_backdrop_probe_take_stale(blur->backdrop_probe)) {
     // The backdrop changed inside the probe interval: redraw once so the probe samples it.
     scene_node_update(&blur->node, NULL);
