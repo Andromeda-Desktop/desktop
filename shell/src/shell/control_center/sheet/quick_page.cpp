@@ -796,9 +796,19 @@ void QuickPage::goToPage(std::size_t page) {
 }
 
 const std::vector<std::string>& QuickPage::tileOrderDefault() {
-  static const std::vector<std::string> kDefault = {"wifi",    "bluetooth",  "notification", "dark_mode",     "airplane",
-                                                    "hotspot", "nightlight", "caffeine",     "screen-record", "mic_mute"};
+  // concept-c.html:165-175: the Wi-Fi and Bluetooth cards, then Focus, Dark Mode, Airplane, Night Light, Caffeine.
+  static const std::vector<std::string> kDefault = {"wifi",     "bluetooth",  "notification", "dark_mode",
+                                                    "airplane", "nightlight", "caffeine"};
   return kDefault;
+}
+
+const std::vector<std::string>& QuickPage::tileIdsAll() {
+  static const std::vector<std::string> kAll = [] {
+    std::vector<std::string> ids = tileOrderDefault();
+    ids.insert(ids.end(), {"hotspot", "screen-record", "mic_mute"});
+    return ids;
+  }();
+  return kAll;
 }
 
 std::vector<std::string> QuickPage::savedTileOrder() const {
@@ -1694,8 +1704,8 @@ void QuickPage::rebuildEdit() {
   reflowEditGrid();
 
   std::vector<std::unique_ptr<Flex>> gallery;
-  // The gallery offers the default tiles plus controls that are not in the default layout.
-  std::vector<std::string> galleryIds = tileOrderDefault();
+  // The gallery offers every tile plus controls that are not tiles.
+  std::vector<std::string> galleryIds = tileIdsAll();
   galleryIds.emplace_back("session");
   for (const std::string& id : galleryIds) {
     if (!tileAvailable(id) || std::ranges::find(m_editOrder, id) != m_editOrder.end()) {
@@ -1758,7 +1768,7 @@ void QuickPage::saveEdit() {
   std::vector<std::string> next = m_editOrder;
   for (std::size_t i = 0; i < saved.size(); ++i) {
     const std::string& id = saved[i];
-    if (!tileAvailable(id) && std::ranges::find(tileOrderDefault(), id) != tileOrderDefault().end() &&
+    if (!tileAvailable(id) && std::ranges::find(tileIdsAll(), id) != tileIdsAll().end() &&
         std::ranges::find(next, id) == next.end()) {
       next.insert(next.begin() + static_cast<std::ptrdiff_t>(std::min(i, next.size())), id);
     }

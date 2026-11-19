@@ -82,13 +82,13 @@ const std::unordered_map<std::string, std::string_view> kAliases = {
     {"hibernate", "zzz"},
 
     // Night light / dark mode
-    {"nightlight-on", "moon"},
+    {"nightlight-on", "sun-low"},
     {"nightlight-off", "moon-off"},
     {"nightlight-forced", "moon-stars"},
-    {"theme-mode", "contrast-filled"},
+    {"theme-mode", "circle-half-2"},
 
     // Caffeine (idle inhibitor)
-    {"caffeine-on", "mug-filled"},
+    {"caffeine-on", "coffee"},
     {"caffeine-off", "mug"},
 
     // Brightness / Display

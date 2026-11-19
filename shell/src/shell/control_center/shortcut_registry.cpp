@@ -81,7 +81,7 @@ namespace {
     std::string_view id() const override { return "airplane"; }
     std::string defaultLabel() const override { return i18n::tr("control-center.shortcuts.airplane"); }
     std::string_view iconOn() const override { return "plane"; }
-    std::string_view iconOff() const override { return "plane-off"; }
+    std::string_view iconOff() const override { return "plane"; }
     bool isToggle() const override { return true; }
     bool active() const override { return areAllRadiosSoftBlocked(); }
     void onClick() override { (void)setAllRadiosSoftBlocked(!areAllRadiosSoftBlocked()); }
@@ -217,7 +217,7 @@ namespace {
     std::string_view iconOn() const override {
       return m_svc != nullptr && m_svc->forceEnabled() ? "nightlight-forced" : "nightlight-on";
     }
-    std::string_view iconOff() const override { return "nightlight-off"; }
+    std::string_view iconOff() const override { return "nightlight-on"; }
     bool isToggle() const override { return true; }
     bool active() const override { return m_svc != nullptr && (m_svc->forceEnabled() || m_svc->active()); }
     void onClick() override {
@@ -297,7 +297,7 @@ namespace {
     std::string_view id() const override { return "caffeine"; }
     std::string defaultLabel() const override { return i18n::tr("control-center.shortcuts.caffeine"); }
     std::string_view iconOn() const override { return "caffeine-on"; }
-    std::string_view iconOff() const override { return "caffeine-off"; }
+    std::string_view iconOff() const override { return "caffeine-on"; }
     bool isToggle() const override { return true; }
     bool active() const override { return m_svc != nullptr && m_svc->enabled(); }
     void onClick() override {

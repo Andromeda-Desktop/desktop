@@ -87,6 +87,8 @@ private:
   [[nodiscard]] std::vector<std::string> tileOrder() const;
   void saveEdit();
   [[nodiscard]] static const std::vector<std::string>& tileOrderDefault();
+  // The default tiles and the ones only the edit gallery offers.
+  [[nodiscard]] static const std::vector<std::string>& tileIdsAll();
   std::unique_ptr<Flex> makeDots();
   void fillDots(std::size_t pages);
   void goToPage(std::size_t page);
