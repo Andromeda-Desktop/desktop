@@ -67,6 +67,7 @@ namespace andromeda::ov {
   struct ChromeFrame {
     Style style = Style::Spaces;
     double progress = 0;
+    float thumbAlpha = 1.0F; // the workspace thumbs' appear opacity; the current thumb's window blocks share it
     wlr_box output{}; // layout coordinates
     wlr_box usable{}; // layout coordinates
     double scale = 1; // device-pixel scale text renders at

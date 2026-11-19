@@ -880,6 +880,7 @@ namespace andromeda {
         .renaming = m_rename.has_value() && group != nullptr && m_rename->workspace.get() == group->workspaceAt(current)
             ? std::optional<std::string_view>(m_rename->text)
             : std::nullopt,
+        .thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0)),
     });
     // Cards rebuilt after the chrome was made land above it.
     state.chrome->raise();

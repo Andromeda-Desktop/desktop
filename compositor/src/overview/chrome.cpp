@@ -566,7 +566,7 @@ namespace andromeda::ov {
             current->card.x + px(r.x * z), current->card.y + px(r.y * z), std::max(1, px(r.w * z)),
             std::max(1, px(r.h * z))
         };
-        placeFrame(m_minis[minis++], box, kMiniRadius, 1, fill, line, shown);
+        placeFrame(m_minis[minis++], box, kMiniRadius, 1, fill, line, frame.thumbAlpha);
       }
     }
     for (; minis < m_minis.size(); ++minis) {
@@ -587,10 +587,11 @@ namespace andromeda::ov {
     if (placement.plus.has_value()) {
       const Rect& plus = *placement.plus;
       const wlr_box box{ox + px(plus.x), oy + px(plus.y), px(plus.w), px(plus.h)};
-      placeFrame(m_plus, box, kPlusRadius, 2, {0.5F, 0.5F, 0.5F, 0.08F}, l3, shown);
+      placeFrame(m_plus, box, kPlusRadius, 2, {0.5F, 0.5F, 0.5F, 0.08F}, l3, frame.thumbAlpha);
       setLabel(m_plusMark, span(l2, "normal", "+"), {.font = "sans 21"}, scale);
       placeLabel(
-          m_plusMark, box.x + (box.width - m_plusMark.width) / 2, box.y + (box.height - m_plusMark.height) / 2, shown
+          m_plusMark, box.x + (box.width - m_plusMark.width) / 2, box.y + (box.height - m_plusMark.height) / 2,
+          frame.thumbAlpha
       );
     } else {
       placeFrame(m_plus, {}, kPlusRadius, 2, {}, {}, 0.0F);
