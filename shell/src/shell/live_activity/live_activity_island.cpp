@@ -1,4 +1,5 @@
 #include "shell/live_activity/live_activity_island.h"
+#include "shell/panel/panel_manager.h"
 #include "core/input/cursor_shape.h"
 
 #include "config/config_service.h"
@@ -276,6 +277,10 @@ void LiveActivityIsland::setRestSources(
     m_notificationToken = m_notifications->addEventCallback([this](const Notification& n, NotificationEvent event) {
       if (event == NotificationEvent::Added && m_notifications->doNotDisturb()
           && n.dndPolicy == NotificationDndPolicy::Respect) {
+        return;
+      }
+      // The open notification center lists the new card itself; a banner would cover its column (proto openNC).
+      if (event == NotificationEvent::Added && PanelManager::instance().isOpenPanel("notification-center")) {
         return;
       }
       (void)showBanner(n, event);

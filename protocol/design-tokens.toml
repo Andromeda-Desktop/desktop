@@ -348,6 +348,9 @@ overview_chrome_gate = 0.6   # overview: title capsules and the filter fade in a
 stagger_ms = 16
 stagger_max = 6
 face_scale = 0.92
+pour_x_share = 0.15  # panel pieces pour in from face_scale, this share of their x distance to the anchor (proto openCC)
+pour_y_share = 0.5   # ... and this share of their y distance to the surface top
+grow_min_scale = 0.05  # Grow: the piece group never scales below this toward a tiny source rect
 face_blur = 8.0
 press_scale_small = 0.96 # items up to 96 px
 press_scale_medium = 0.98 # items up to 240 px
@@ -412,6 +415,8 @@ item = "= component.round_icon.size"
 icon = 24.0
 gap = 8.0
 columns = 5
+pour_scale = 0.6  # items grow in from this scale, 0.3 of the way from the chevron and 16 above (proto overlays.js tray)
+pour_x_share = 0.3
 
 [component.round_icon]
 size = 40.0          # concept C cap icon well
@@ -687,9 +692,11 @@ stack_scale = 0.96
 center_width = 360.0  # the notification center column, under the island (proto overlays.css .o-nc)
 center_top = 48.0  # column top from the output top
 center_reserve = 140.0  # the column is at most the output height minus this; more cards scroll
+center_pour_y_share = 0.4  # cards pour from 0.4 of their distance to the column top (proto openNC)
 
 [component.calendar]
 width = 320.0  # the month and events column under the island (proto overlays.css .o-cal)
+pour_y_share = 0.4  # without a source rect the cards pour from 0.4 of their distance to the top
 
 [component.window]  # 9.12
 radius = 12.0  # radius set B (user, 2026-11-08)

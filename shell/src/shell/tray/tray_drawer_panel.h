@@ -26,7 +26,7 @@ public:
   // Each item is its own glass piece; they grow in from the chevron at the right end.
   [[nodiscard]] bool usesGlassPieces() const override { return panelPlacement() == PanelPlacement::Floating; }
   [[nodiscard]] bool padsContent() const noexcept override { return false; }
-  [[nodiscard]] PiecePour piecePour() const override { return {.fromScale = 0.6F, .xShare = 0.3F, .yShare = 0.0F, .lift = Tokens::spaceP16 * contentScale()}; }
+  [[nodiscard]] PiecePour piecePour() const override { return {.fromScale = Tokens::componentTrayPourScale, .xShare = Tokens::componentTrayPourXShare, .yShare = 0.0F, .lift = Tokens::spaceP16 * contentScale()}; }
   void setAnimationManager(AnimationManager* mgr) noexcept override;
 
 private:

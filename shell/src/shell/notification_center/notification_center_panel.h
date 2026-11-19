@@ -39,7 +39,7 @@ public:
   [[nodiscard]] bool fitsContentHeight() const noexcept override { return true; }
   [[nodiscard]] bool padsContent() const noexcept override { return false; }
   [[nodiscard]] bool usesGlassPieces() const override { return true; }
-  [[nodiscard]] PiecePour piecePour() const override { return {.xShare = 0.0F, .yShare = 0.4F}; }
+  [[nodiscard]] PiecePour piecePour() const override { return {.xShare = 0.0F, .yShare = Tokens::componentNotificationCenterPourYShare}; }
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override;
   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Floating; }
   [[nodiscard]] std::string panelScreenPosition() const override { return "top_center"; }
@@ -74,7 +74,7 @@ private:
   void requestRebuild();
   void addGroup(Flex& list, const notification_center::Group& group);
   [[nodiscard]] std::unique_ptr<Flex> makeCard(const Notification& n);
-  void activate(std::uint32_t id);
+  void activate(std::uint32_t id, const std::string& action);
   void loadIcons(Renderer& renderer);
 
   NotificationManager* m_notifications = nullptr;

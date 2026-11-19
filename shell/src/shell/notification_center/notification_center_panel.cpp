@@ -47,6 +47,10 @@ void NotificationCenterPanel::onOpen(std::string_view /*context*/) {
     return;
   }
   m_notifications->markNotificationHistorySeen();
+  // PanelManager calls onOpen again on the open panel for a new context: subscribe once per open.
+  if (m_eventToken.has_value()) {
+    return;
+  }
   m_eventToken = m_notifications->addEventCallback([this](const Notification& /*n*/, NotificationEvent event) {
     if (event == NotificationEvent::Added) {
       m_notifications->markNotificationHistorySeen();
@@ -291,6 +295,20 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
         .configure = [scale](Label& l) { l.setLineHeight(Tokens::typeFootnote.line * scale); },
     }));
   }
+  // The app's first named action (Reply, Open) as a pill under the text; "default" is the card click.
+  Node* actionPtr = nullptr;
+  std::string actionKey;
+  if (m_notifications != nullptr && m_notifications->canInvokeActions(n.id)) {
+    for (std::size_t a = 0; a + 1 < n.actions.size(); a += 2) {
+      if (n.actions[a] != "default" && !n.actions[a + 1].empty()) {
+        actionKey = n.actions[a];
+        auto button = pill(n.actions[a + 1], scale, {});
+        actionPtr = button.get();
+        text->addChild(ui::row({.paddingV = Tokens::spaceP4 * scale}, std::move(button)));
+        break;
+      }
+    }
+  }
   card->addChild(std::move(text));
 
   // The clear mark replaces the age while the pointer is on the card (proto .o-x); one area takes hover and clicks.
@@ -313,14 +331,26 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
   };
   area->setOnEnter([show](const InputArea::PointerData&) { show(true); });
   area->setOnLeave([show] { show(false); });
-  area->setOnClick([this, clearPtr, id = n.id](const InputArea::PointerData& p) {
-    const bool onClear = p.localX >= clearPtr->x() && p.localX <= clearPtr->x() + clearPtr->width() && p.localY >= clearPtr->y()
-        && p.localY <= clearPtr->y() + clearPtr->height();
-    if (onClear) {
+  area->setOnClick([this, areaPtr = entry.area, clearPtr, actionPtr, actionKey, id = n.id](const InputArea::PointerData& p) {
+    const auto on = [&p, areaPtr](const Node* node) {
+      if (node == nullptr || !node->visible()) {
+        return false;
+      }
+      float ax = 0.0F;
+      float ay = 0.0F;
+      float nx = 0.0F;
+      float ny = 0.0F;
+      Node::absolutePosition(areaPtr, ax, ay);
+      Node::absolutePosition(node, nx, ny);
+      const float x = ax + p.localX - nx;
+      const float y = ay + p.localY - ny;
+      return x >= 0.0F && x <= node->width() && y >= 0.0F && y <= node->height();
+    };
+    if (on(clearPtr)) {
       m_notifications->removeHistoryEntry(id);
       requestRebuild();
     } else {
-      activate(id);
+      activate(id, on(actionPtr) ? actionKey : std::string("default"));
     }
   });
   card->addChild(std::move(area));
@@ -329,12 +359,12 @@ std::unique_ptr<Flex> NotificationCenterPanel::makeCard(const Notification& n) {
   return card;
 }
 
-void NotificationCenterPanel::activate(std::uint32_t id) {
+void NotificationCenterPanel::activate(std::uint32_t id, const std::string& action) {
   if (m_notifications == nullptr || !m_notifications->canInvokeActions(id)) {
     return;
   }
   const std::string token = m_platform != nullptr ? m_platform->requestActivationToken(m_platform->lastPointerSurface()) : std::string{};
-  (void)m_notifications->invokeAction(id, "default", token, true);
+  (void)m_notifications->invokeAction(id, action, token, true);
   PanelManager::instance().closePanel();
 }
 

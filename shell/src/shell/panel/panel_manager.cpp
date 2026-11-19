@@ -351,6 +351,26 @@ namespace {
     return panel.layer();
   }
 
+  // Saved gestures, scripts and restart handoffs still name the notification center and the calendar by their old
+  // Control Center pages: the panel that page moved to.
+  [[nodiscard]] std::optional<std::string> movedPagePanel(std::string_view panelId, std::string_view context) {
+    if (panelId != "control-center") {
+      return std::nullopt;
+    }
+    if (context == "detail-notifications" || context == "notifications") {
+      return "notification-center";
+    }
+    if (context == "calendar") {
+      return "calendar";
+    }
+    return std::nullopt;
+  }
+
+  // The panel's leading x for a request anchored at its centre or its trailing edge.
+  [[nodiscard]] float panelLeftFromAnchor(const PanelOpenRequest& request, float panelWidth) {
+    return request.anchorX - panelWidth * (request.anchorAlign == PanelAnchorAlign::End ? 1.0F : 0.5F);
+  }
+
   [[nodiscard]] bool openNearClickEnabledForPanel(const ConfigService* configService, std::string_view panelId) {
     if (panelId == "tray-drawer") {
       return true;
@@ -613,6 +633,11 @@ void PanelManager::setPanelAlias(std::string from, std::string to, std::string c
 }
 
 void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest request) {
+  if (const auto moved = movedPagePanel(panelId, request.context)) {
+    request.context = {};
+    openPanel(*moved, request);
+    return;
+  }
   if (const auto alias = m_panelAliases.find(panelId); alias != m_panelAliases.end()) {
     request.context = alias->second.second;
     openPanel(alias->second.first, request);
@@ -831,8 +856,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       && barConfig.reserveSpace
       && barConfig.thickness > 0;
   const auto marginLeftFromAnchor = clampMargin(
-      request.anchorX - static_cast<float>(panelWidth) * (request.anchorAlign == PanelAnchorAlign::End ? 1.0F : 0.5F),
-      static_cast<std::int32_t>(panelWidth), outputWidth,
+      panelLeftFromAnchor(request, static_cast<float>(panelWidth)), static_cast<std::int32_t>(panelWidth), outputWidth,
       screenPadding
   );
   const auto marginTopFromAnchor = clampMargin(
@@ -1226,7 +1250,7 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       const auto maxX = std::max(minX, barRight - static_cast<std::int32_t>(panelWidth) - totalEndInset);
       const auto centeredX = barLeft + (barRight - barLeft - static_cast<std::int32_t>(panelWidth)) / 2;
       const auto desiredX =
-          static_cast<std::int32_t>(std::lround(request.anchorX - static_cast<float>(panelWidth) * 0.5F));
+          static_cast<std::int32_t>(std::lround(panelLeftFromAnchor(request, static_cast<float>(panelWidth))));
       visualX = alongBar(minX, maxX, centeredX, desiredX);
       visualY = barIsBottom ? barTop - static_cast<std::int32_t>(panelHeight) + panelOverlap : barBottom - panelOverlap;
     }
@@ -1805,6 +1829,11 @@ void PanelManager::destroyPanel() {
 }
 
 void PanelManager::togglePanel(const std::string& panelId, PanelOpenRequest request) {
+  if (const auto moved = movedPagePanel(panelId, request.context)) {
+    request.context = {};
+    togglePanel(*moved, request);
+    return;
+  }
   if (const auto alias = m_panelAliases.find(panelId); alias != m_panelAliases.end()) {
     request.context = alias->second.second;
     togglePanel(alias->second.first, request);
@@ -3124,8 +3153,8 @@ void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
   const std::array<float, 4>& src = *m_growSourceOutput;
   const float srcX = src[0] - m_panelSurfaceOrigin[0];
   const float srcY = src[1] - m_panelSurfaceOrigin[1];
-  const float sx = std::max(0.05F, src[2] / std::max(1.0F, right - left));
-  const float sy = std::max(0.05F, src[3] / std::max(1.0F, bottom - top));
+  const float sx = std::max(Tokens::motionGrowMinScale, src[2] / std::max(1.0F, right - left));
+  const float sy = std::max(Tokens::motionGrowMinScale, src[3] / std::max(1.0F, bottom - top));
   const float groupCx = (left + right) * 0.5F;
   const float groupCy = (top + bottom) * 0.5F;
   const float srcCx = srcX + src[2] * 0.5F;
@@ -4281,12 +4310,8 @@ void PanelManager::registerIpc(IpcService& ipc) {
     // Preserve the context verbatim (only strip the separator's leading
     // whitespace) — trailing whitespace can be significant, e.g. a command.
     context = std::string(StringUtils::trimLeftView(args.substr(sep + 1)));
-    // Saved gestures and scripts still name the notification center and the calendar by their old Control Center pages.
-    if (panelId == "control-center" && (context == "detail-notifications" || context == "notifications")) {
-      panelId = "notification-center";
-      context.clear();
-    } else if (panelId == "control-center" && context == "calendar") {
-      panelId = "calendar";
+    if (auto moved = movedPagePanel(panelId, context)) {
+      panelId = std::move(*moved);
       context.clear();
     }
     return std::nullopt;

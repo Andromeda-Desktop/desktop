@@ -85,9 +85,9 @@ public:
   // without a source rect they pour.
   enum class PourMotion : std::uint8_t { Pour, Grow };
   struct PiecePour {
-    float fromScale = 0.92F;
-    float xShare = 0.15F;
-    float yShare = 0.5F;
+    float fromScale = Tokens::motionFaceScale;
+    float xShare = Tokens::motionPourXShare;
+    float yShare = Tokens::motionPourYShare;
     float lift = 0.0F;
     bool towardLeft = false;
     PourMotion motion = PourMotion::Pour;
