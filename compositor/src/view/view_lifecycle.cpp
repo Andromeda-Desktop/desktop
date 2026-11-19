@@ -544,24 +544,8 @@ namespace andromeda {
             const wlr_box area = fullscreenLayoutBox();
             setLayoutTarget(area.x, area.y);
             presentBox(area);
-          } else if (m_presentation.width() > 0 && m_presentation.height() > 0) {
-            const int targetW = m_presentation.width();
-            const int targetH = m_presentation.height();
-            const int targetX = layoutX();
-            const int targetY = layoutY();
-            // Launched from an icon (rulebook P15): grow from the icon's box; else scale up from its own centre.
-            const int startW = icon ? icon->width : std::max(1, static_cast<int>(targetW * scale));
-            const int startH = icon ? icon->height : std::max(1, static_cast<int>(targetH * scale));
-            const int startX = icon ? icon->x : targetX + (targetW - startW) / 2;
-            const int startY = icon ? icon->y : targetY + (targetH - startH) / 2;
-
-            m_presentation.setSize(startW, startH);
-            m_presentation.animateTo(targetW, targetH, open.durationMs, open.curve);
-            setScenePosition(startX, startY);
-            m_posX.snap(startX);
-            m_posY.snap(startY);
-            m_posX.retarget(targetX, open.durationMs, open.curve);
-            m_posY.retarget(targetY, open.durationMs, open.curve);
+          } else {
+            growFloatingOpen(icon, scale);
           }
         } else if (!m_customFade && open.style == "slide") {
           if (layoutFullscreen()) {

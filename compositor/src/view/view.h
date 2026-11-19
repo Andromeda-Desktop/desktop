@@ -743,6 +743,8 @@ namespace andromeda {
     // The windows_in fade (and popin or zoom scale) from transparent, as at map.
     // `from`: the launch icon's layout box a popin or zoom open grows from (rulebook P15).
     void startOpenAnimation(std::optional<wlr_box> from = std::nullopt);
+    // A floating window's open tween of its own box: from `icon`, else from its centre at `scale`.
+    void growFloatingOpen(std::optional<wlr_box> icon, double scale);
     void applyPresentedSize();
     // Refresh presentation through whichever owner currently holds the view.
     // Scratchpads are detached from workspaces but still need animated crop
