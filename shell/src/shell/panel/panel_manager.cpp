@@ -3048,13 +3048,20 @@ void PanelManager::pourPieces(bool open) {
     right = std::max(right, ax + piece->width());
     left = std::min(left, ax);
   }
+  // proto: the pieces pour toward the source's top and its leading edge; without a source, the group's edge and the top.
+  float top = 0.0F;
+  if (m_growSourceOutput.has_value()) {
+    const std::array<float, 4>& src = *m_growSourceOutput;
+    left = src[0] - m_panelSurfaceOrigin[0];
+    right = left + src[2];
+    top = src[1] - m_panelSurfaceOrigin[1];
+  }
   int index = 0;
   for (const Rest& r : rests) {
     Node* piece = r.node;
-    // The end piece has no x travel: the anchor is its rest.
     const float anchorX = pour.towardLeft ? left : right - piece->width();
     const float offX = (anchorX - r.ax) * pour.xShare;
-    const float offY = -r.ay * pour.yShare - pour.lift;
+    const float offY = (top - r.ay) * pour.yShare - pour.lift;
     const auto apply = [this, piece, rest = r.rest, offX, offY, fromScale = pour.fromScale](float v) {
       if (auto it = m_pieceRest.find(piece); it != m_pieceRest.end()) {
         it->second.v = v;
