@@ -7,6 +7,7 @@
 #include <pixman.h>
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -168,7 +169,20 @@ namespace andromeda {
       wl_resource* resource = nullptr;
       Surface* parent = nullptr;
       std::vector<Op> pending{};
+      // Committed ops waiting for their wl_surface state (seq) to apply: a cached commit applies later.
+      std::deque<std::pair<uint32_t, std::vector<Op>>> committed{};
       SurfaceMotion motion{};
+    };
+
+    // The requests of one wl_surface.commit, applied with that commit's state (seq), when its buffer goes on screen.
+    struct Committed {
+      uint32_t seq = 0;
+      std::vector<Op> ops{};
+      std::optional<std::optional<std::vector<pixman_box32_t>>> visibleRegion{};
+      std::optional<std::optional<std::vector<pixman_box32_t>>> contentRegion{};
+      bool glassMaskSet = false;
+      wlr_buffer* glassMask = nullptr;
+      wlr_box glassMaskBox{};
     };
 
     // Lives with its wl_surface while the protocol object exists.
@@ -190,6 +204,7 @@ namespace andromeda {
       // syncobj) applies later, and its old buffer stays on screen until then.
       std::optional<uint32_t> secureClearSeq{};
       wl_listener commit{};
+      std::deque<Committed> committed{};
       State current{};
       std::vector<Shape*> shapes{}; // every live dsk_shape_v1, in creation order
     };
@@ -201,6 +216,7 @@ namespace andromeda {
     static const wlr_addon_interface kAddonInterface;
 
     static Surface* fromResource(wl_resource* resource);
+    static void applyCommitted(Surface* state, Committed& batch);
     static void bind(wl_client* client, void* data, uint32_t version, uint32_t id);
     static void handleManagerDestroy(wl_client* client, wl_resource* resource);
     static void handleGetSurface(wl_client* client, wl_resource* resource, uint32_t id, wl_resource* surface);

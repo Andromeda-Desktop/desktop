@@ -323,7 +323,8 @@ namespace andromeda {
     state->clientCommit.notify = handleClientCommit;
     wl_signal_add(&surface->events.client_commit, &state->clientCommit);
     state->commit.notify = handleCommit;
-    wl_signal_add(&surface->events.commit, &state->commit);
+    // First of the commit listeners, so the role and scene handlers see the motion of the state they apply.
+    wl_list_insert(&surface->events.commit.listener_list, &state->commit.link);
     wl_resource_set_implementation(object, &kSurfaceImplementation, state, handleSurfaceResourceDestroyed);
   }
 
@@ -652,6 +653,11 @@ namespace andromeda {
     for (Shape* shape : state->shapes) {
       shape->parent = nullptr;
     }
+    for (const Committed& batch : state->committed) {
+      if (batch.glassMask != nullptr) {
+        wlr_buffer_unlock(batch.glassMask);
+      }
+    }
     for (wlr_buffer* buffer : {state->pendingGlassMask, state->current.glassMask}) {
       if (buffer != nullptr) {
         wlr_buffer_unlock(buffer);
@@ -664,7 +670,35 @@ namespace andromeda {
 
   void DskSurfaceManager::handleClientCommit(wl_listener* listener, void* /*data*/) {
     Surface* state = wl_container_of(listener, state, clientCommit);
-    for (const Op& op : state->pending) {
+    // A fifo barrier or an acquire fence can hold this state for frames: its ops wait for it, so the glass and the
+    // clip never run ahead of the pixels they frame.
+    const uint32_t seq = state->surface->pending.seq;
+    state->committed.push_back(
+        {.seq = seq,
+         .ops = std::exchange(state->pending, {}),
+         .visibleRegion = std::exchange(state->pendingVisibleRegion, std::nullopt),
+         .contentRegion = std::exchange(state->pendingContentRegion, std::nullopt),
+         .glassMaskSet = std::exchange(state->pendingGlassMaskSet, false),
+         .glassMask = std::exchange(state->pendingGlassMask, nullptr),
+         .glassMaskBox = state->pendingGlassMaskBox}
+    );
+    for (Shape* shape : state->shapes) {
+      if (!shape->pending.empty()) {
+        shape->committed.emplace_back(seq, std::exchange(shape->pending, {}));
+      }
+    }
+    // Secure applies at once and fails safe; clearing waits until this commit's buffer is the one on screen.
+    if (state->pendingSecure == true) {
+      state->secureClearSeq.reset();
+      setSecure(state, true);
+    } else if (state->pendingSecure == false && state->current.secure) {
+      state->secureClearSeq = seq;
+    }
+    state->pendingSecure.reset();
+  }
+
+  void DskSurfaceManager::applyCommitted(Surface* state, Committed& batch) {
+    for (const Op& op : batch.ops) {
       if (op.kind == Op::Kind::ClipFrom) {
         const auto to = state->manager->m_originLookup ? state->manager->m_originLookup(state->surface) : std::nullopt;
         if (!to) {
@@ -684,51 +718,46 @@ namespace andromeda {
         state->current.motion.animate(op.serial, op.property, still ? SurfaceMotion::Curve::None : op.curve, op.value);
       }
     }
-    state->pending.clear();
-    for (Shape* shape : state->shapes) {
-      applyOps(shape->pending, shape->motion);
-      shape->pending.clear();
+    if (batch.visibleRegion) {
+      state->current.visibleRegion = std::move(*batch.visibleRegion);
     }
-    if (state->pendingVisibleRegion) {
-      state->current.visibleRegion = std::move(*state->pendingVisibleRegion);
-      state->pendingVisibleRegion.reset();
+    if (batch.contentRegion) {
+      state->current.contentRegion = std::move(*batch.contentRegion);
     }
-    if (state->pendingContentRegion) {
-      state->current.contentRegion = std::move(*state->pendingContentRegion);
-      state->pendingContentRegion.reset();
-    }
-    if (state->pendingGlassMaskSet) {
+    if (batch.glassMaskSet) {
       if (state->current.glassMask != nullptr) {
         wlr_buffer_unlock(state->current.glassMask);
       }
-      state->current.glassMask = state->pendingGlassMask;
-      state->current.glassMaskBox = state->pendingGlassMaskBox;
+      state->current.glassMask = std::exchange(batch.glassMask, nullptr);
+      state->current.glassMaskBox = batch.glassMaskBox;
       ++state->current.glassMaskSerial;
-      state->pendingGlassMask = nullptr;
-      state->pendingGlassMaskSet = false;
     }
-    // Secure applies at once and fails safe; clearing waits until this commit's buffer is the one on screen.
-    if (state->pendingSecure == true) {
+  }
+
+  void DskSurfaceManager::handleCommit(wl_listener* listener, void* /*data*/) {
+    Surface* state = wl_container_of(listener, state, commit);
+    const uint32_t current = state->surface->current.seq;
+    const auto applied = [current](uint32_t seq) { return static_cast<int32_t>(current - seq) >= 0; };
+    while (!state->committed.empty() && applied(state->committed.front().seq)) {
+      applyCommitted(state, state->committed.front());
+      state->committed.pop_front();
+    }
+    for (Shape* shape : state->shapes) {
+      while (!shape->committed.empty() && applied(shape->committed.front().first)) {
+        applyOps(shape->committed.front().second, shape->motion);
+        shape->committed.pop_front();
+      }
+    }
+    if (state->secureClearSeq && applied(*state->secureClearSeq)) {
       state->secureClearSeq.reset();
-      setSecure(state, true);
-    } else if (state->pendingSecure == false && state->current.secure) {
-      state->secureClearSeq = state->surface->pending.seq;
+      setSecure(state, false);
     }
-    state->pendingSecure.reset();
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     const auto nowMs = static_cast<uint32_t>(now.tv_sec * 1000 + now.tv_nsec / 1000000);
     sendEvents(*state, nowMs);
     for (Shape* shape : state->shapes) {
       sendShapeEvents(*shape, nowMs);
-    }
-  }
-
-  void DskSurfaceManager::handleCommit(wl_listener* listener, void* /*data*/) {
-    Surface* state = wl_container_of(listener, state, commit);
-    if (state->secureClearSeq && static_cast<int32_t>(state->surface->current.seq - *state->secureClearSeq) >= 0) {
-      state->secureClearSeq.reset();
-      setSecure(state, false);
     }
   }
 
