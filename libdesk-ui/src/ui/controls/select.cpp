@@ -364,7 +364,8 @@ void Select::applyVisualState() {
   }
 
   m_triggerLabel->setColor(triggerText);
-  m_triggerGlyph->setColor(triggerText);
+  // A placeholder dims only the text: the chevron still says the control is enabled.
+  m_triggerGlyph->setColor(m_enabled ? colorSpecFromRole(ColorRole::Label1) : triggerText);
   m_triggerGlyph->setRotation(m_caretProgress * std::numbers::pi_v<float>);
 
   float resolvedBorderWidth = 0.0F;

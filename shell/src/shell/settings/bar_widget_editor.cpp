@@ -2726,7 +2726,8 @@ namespace settings {
       addLaneSelectionToolbar(*block, entry, ctx);
     }
 
-    auto lanes = ui::row({
+    // Lanes stack: three side by side in the page column leave a widget name no room.
+    auto lanes = ui::column({
         .align = FlexAlign::Stretch,
         .gap = Style::spaceSm * ctx.scale,
         .fillWidth = true,
@@ -3041,8 +3042,6 @@ namespace settings {
           .fill = colorSpecFromRole(ColorRole::SolidThin),
           .radius = Style::scaledRadiusMd(ctx.scale),
           .border = colorSpecFromRole(ColorRole::Stroke),
-          .minWidth = 160.0F * ctx.scale,
-          .flexGrow = 1.0F,
       });
       auto* lanePtr = lane.get();
 
