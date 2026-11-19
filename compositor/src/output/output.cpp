@@ -1804,12 +1804,14 @@ namespace andromeda {
 
   // One line per rendered frame: monotonic ns at build, output name, CPU build ns, GPU render ns, then effect work
   // (fx_frame_stats): blurs blur_px lens lens_px backdrop_rebuilds backdrop_px fp16_passes, cpu and GPU-exec ns, rects
-  // rect_px, then the damage: pixel count, x y width height of its extents.
+  // rect_px, then the damage: pixel count, x y width height of its extents; then the last presentation before the build:
+  // monotonic ns (0 on a variable refresh rate), vblank sequence, and monotonic ns when its event was handled.
   struct Output::FrameTimers {
     static constexpr std::size_t kDepth = 3;
     std::array<wlr_scene_timer, kDepth> timers{};
     std::array<bool, kDepth> used{};
     std::array<int64_t, kDepth> startNs{};
+    std::array<std::array<uint64_t, 3>, kDepth> present{};
     std::array<fx_frame_stats, kDepth> stats{};
     // Damaged buffer area of the built frame: pixel count, then the extents box.
     std::array<std::array<int64_t, 5>, kDepth> damage{};
@@ -1829,7 +1831,7 @@ namespace andromeda {
     }
 
     // Writes the slot's finished frame, then hands the slot to the next build.
-    wlr_scene_timer* take(const char* output) {
+    wlr_scene_timer* take(const char* output, std::array<uint64_t, 3> lastPresent) {
       // The effect work done since the last take belongs to the frame that take built.
       const fx_frame_stats work = fx_frame_stats_take();
       if (built < kDepth) {
@@ -1844,7 +1846,7 @@ namespace andromeda {
           int64_t gpuExecNs = -1;
           (void)fx_render_timer_split(timer->render_timer, &cpuNs, &gpuExecNs);
           const auto& dmg = damage[next];
-          std::fprintf(log(), "%lld %s %lld %lld %u %llu %u %llu %u %llu %u %lld %lld %u %llu %lld %lld %lld %lld %lld\n", static_cast<long long>(startNs[next]),
+          std::fprintf(log(), "%lld %s %lld %lld %u %llu %u %llu %u %llu %u %lld %lld %u %llu %lld %lld %lld %lld %lld %llu %llu %llu\n", static_cast<long long>(startNs[next]),
                        output, static_cast<long long>(timer->pre_render_duration),
                        static_cast<long long>(total - timer->pre_render_duration), st.blurs,
                        static_cast<unsigned long long>(st.blur_px), st.lens, static_cast<unsigned long long>(st.lens_px),
@@ -1852,7 +1854,9 @@ namespace andromeda {
                        static_cast<long long>(cpuNs), static_cast<long long>(gpuExecNs), st.rects,
                        static_cast<unsigned long long>(st.rect_px), static_cast<long long>(dmg[0]),
                        static_cast<long long>(dmg[1]), static_cast<long long>(dmg[2]), static_cast<long long>(dmg[3]),
-                       static_cast<long long>(dmg[4]));
+                       static_cast<long long>(dmg[4]), static_cast<unsigned long long>(present[next][0]),
+                       static_cast<unsigned long long>(present[next][1]),
+                       static_cast<unsigned long long>(present[next][2]));
         }
       }
       built = next;
@@ -1860,6 +1864,7 @@ namespace andromeda {
       timespec now{};
       clock_gettime(CLOCK_MONOTONIC, &now);
       startNs[next] = static_cast<int64_t>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+      present[next] = lastPresent;
       used[next] = true;
       next = (next + 1) % kDepth;
       return timer;
@@ -3056,7 +3061,7 @@ namespace andromeda {
         if (m_frameTimers == nullptr) {
           m_frameTimers = std::make_unique<FrameTimers>();
         }
-        sceneOptions.timer = m_frameTimers->take(m_output->name);
+        sceneOptions.timer = m_frameTimers->take(m_output->name, {m_lastPresentNs, m_lastPresentSeq, m_lastPresentHandledNs});
       }
       // Before the render, so clients draw their next frame while we composite (1-3 ms more per period). No client
       // request runs until this handler returns, so the call at the bottom then finds no new callbacks.
@@ -3430,6 +3435,10 @@ namespace andromeda {
           ? static_cast<uint64_t>(event->when.tv_sec) * 1'000'000'000 + static_cast<uint64_t>(event->when.tv_nsec)
           : 0;
       m_refreshNs = fixedRefresh ? static_cast<uint64_t>(event->refresh) : 0;
+      m_lastPresentSeq = event->seq;
+      timespec handled{};
+      clock_gettime(CLOCK_MONOTONIC, &handled);
+      m_lastPresentHandledNs = static_cast<uint64_t>(handled.tv_sec) * 1'000'000'000 + static_cast<uint64_t>(handled.tv_nsec);
     }
     if (SessionLock* lock = m_server->sessionLock()) {
       lock->handleOutputPresent(*this, event->commit_seq, event->presented);

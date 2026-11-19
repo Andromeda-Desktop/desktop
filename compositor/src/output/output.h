@@ -484,6 +484,8 @@ namespace andromeda {
     // unknown, including under adaptive sync, whose refresh varies.
     uint64_t m_lastPresentNs = 0;
     uint64_t m_refreshNs = 0;
+    uint64_t m_lastPresentSeq = 0;
+    uint64_t m_lastPresentHandledNs = 0;
     bool m_appliedConfiguredScale = false;
     wl_event_source* m_frameRetryTimer = nullptr;
     bool m_frameRetryArmed = false;
