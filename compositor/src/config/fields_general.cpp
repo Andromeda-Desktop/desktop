@@ -177,6 +177,7 @@ namespace andromeda {
           integer("outer_border_width", 0, 100, &A::outerBorderWidth),
           boolean("window_edge", &A::windowEdge),
           integer("corner_radius", 0, 100, &A::cornerRadius),
+          real("corner_scale", 0.0, 2.0, &A::cornerScale),
           real("drag_opacity", 0.0, 1.0, &A::dragOpacity),
           boolean("prefer_no_csd", &A::preferNoCsd),
           boolean("opaque_fullscreen", &A::opaqueFullscreen),

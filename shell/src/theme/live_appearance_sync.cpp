@@ -112,9 +112,18 @@ void LiveAppearanceSync::setFocusScheme(std::string scheme) {
   flush();
 }
 
+void LiveAppearanceSync::setCornerScale(float scale) {
+  m_cornerScale = std::format("{:g}", scale);
+  flush();
+}
+
 void LiveAppearanceSync::flush() {
   if (m_control == nullptr || !m_control->ready()) {
     return;
+  }
+  if (!m_cornerScale.empty() && m_cornerScale != m_layerCornerScale) {
+    m_layerCornerScale = m_cornerScale;
+    m_control->setInLayer("style", "appearance.corner_scale", m_cornerScale);
   }
   // Blur recipe per scheme (glass tokens): the user's in the settings, a Focus scheme's in its layer.
   const auto recipe = [](std::string_view scheme) {

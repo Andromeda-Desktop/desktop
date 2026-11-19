@@ -6,6 +6,7 @@
 #include "view/border_ring.h"
 
 #include <algorithm>
+#include <cmath>
 
 // clang-format off
 #include "wlr.h"
@@ -182,7 +183,7 @@ namespace andromeda {
     const auto& appearance = config().appearance;
     const int borderWidth = rule.borderWidth.value_or(appearance.borderWidth);
     const int outerBorderWidth = rule.outerBorderWidth.value_or(appearance.outerBorderWidth);
-    const int cornerRadius = rule.cornerRadius.value_or(appearance.cornerRadius);
+    const int cornerRadius = rule.cornerRadius.value_or(static_cast<int>(std::lround(appearance.cornerRadius * appearance.cornerScale)));
     const bool changed = borderWidth != m_borderWidth
         || outerBorderWidth != m_outerBorderWidth
         || cornerRadius != m_cornerRadius

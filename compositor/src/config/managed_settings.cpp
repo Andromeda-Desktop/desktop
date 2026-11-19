@@ -382,6 +382,7 @@ namespace andromeda {
         Spec{"appearance.border_width", Kind::Int, 0, 100, {}, [](const Config& c) { return text(c.appearance.borderWidth); }},
         Spec{"appearance.outer_border_width", Kind::Int, 0, 100, {}, [](const Config& c) { return text(c.appearance.outerBorderWidth); }},
         Spec{"appearance.corner_radius", Kind::Int, 0, 100, {}, [](const Config& c) { return text(c.appearance.cornerRadius); }},
+        Spec{"appearance.corner_scale", Kind::Real, 0.0, 2.0, {}, [](const Config& c) { return text(c.appearance.cornerScale); }},
         Spec{"appearance.title_bar.mode", Kind::Choice, 0, 0, kTitleBarModes, [](const Config& c) {
                return text(c.appearance.titleBar.mode);
              }},

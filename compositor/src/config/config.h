@@ -791,6 +791,8 @@ namespace andromeda {
       // A faint scheme-stroke hairline just inside each decorated window, so black windows keep an edge on black.
       bool windowEdge = true;
       int cornerRadius = static_cast<int>(Tokens::componentWindowRadius);
+      // The shell's Interface Corners scale, set in its runtime layer; window corners are cornerRadius times this.
+      double cornerScale = 1.0;
       double dragOpacity = 0.75;
       // Fullscreen windows ignore window rule opacity and draw over the backdrop. When false, a fullscreen window with
       // rule or client transparency shows the desktop instead.
