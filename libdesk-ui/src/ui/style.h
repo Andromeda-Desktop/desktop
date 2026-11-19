@@ -69,22 +69,22 @@ namespace Style {
   inline constexpr const float& menuAutoMaxWidth = Tokens::componentMenuMaxWidth;
 
   // Window switcher carousel geometry and depth treatment.
-  inline constexpr float windowSwitcherDimOpacity = 0.3F;
-  inline constexpr float windowSwitcherSelectedCardWidth = 500.0F;
-  inline constexpr float windowSwitcherNearCardWidth = 380.0F;
-  inline constexpr float windowSwitcherFarCardWidth = 280.0F;
-  inline constexpr float windowSwitcherCompactCardWidth = 220.0F;
-  inline constexpr float windowSwitcherPreviewAspect = 1.6F;
+  inline constexpr const float& windowSwitcherDimOpacity = Tokens::componentSwitcherDimOpacity;
+  inline constexpr const float& windowSwitcherSelectedCardWidth = Tokens::componentSwitcherCardSelected;
+  inline constexpr const float& windowSwitcherNearCardWidth = Tokens::componentSwitcherCardNear;
+  inline constexpr const float& windowSwitcherFarCardWidth = Tokens::componentSwitcherCardFar;
+  inline constexpr const float& windowSwitcherCompactCardWidth = Tokens::componentSwitcherCardCompact;
+  inline constexpr const float& windowSwitcherPreviewAspect = Tokens::componentSwitcherPreviewAspect;
   TOKENS_LIVE(windowSwitcherCardOverlap, controlHeightLg + spaceLg);
-  inline constexpr float windowSwitcherNarrowLayoutThreshold = 0.72F;
-  inline constexpr float windowSwitcherPreviewIconScale = 0.12F;
-  inline constexpr float windowSwitcherFallbackIconScale = 0.28F;
+  inline constexpr const float& windowSwitcherNarrowLayoutThreshold = Tokens::componentSwitcherNarrowThreshold;
+  inline constexpr const float& windowSwitcherPreviewIconScale = Tokens::componentSwitcherPreviewIconScale;
+  inline constexpr const float& windowSwitcherFallbackIconScale = Tokens::componentSwitcherFallbackIconScale;
   TOKENS_LIVE(windowSwitcherCaptionHeight, controlHeightLg);
   TOKENS_LIVE(windowSwitcherCaptionLineGap, -spaceXs);
-  inline constexpr float windowSwitcherIncomingCardScale = 0.9F;
-  inline constexpr float windowSwitcherIncomingCardSlide = 0.25F;
-  inline constexpr float windowSwitcherOutgoingCardSlide = 0.3F;
-  inline constexpr float windowSwitcherRevealScale = 0.95F;
+  inline constexpr const float& windowSwitcherIncomingCardScale = Tokens::componentSwitcherIncomingScale;
+  inline constexpr const float& windowSwitcherIncomingCardSlide = Tokens::componentSwitcherIncomingSlide;
+  inline constexpr const float& windowSwitcherOutgoingCardSlide = Tokens::componentSwitcherOutgoingSlide;
+  inline constexpr const float& windowSwitcherRevealScale = Tokens::componentSwitcherRevealScale;
 
   // One toggle size for every preset. Track height = thumb + 2 * inset; track width = thumb + 2 * inset + travel.
   inline constexpr const float& toggleThumbSizeSm = Tokens::componentToggleKnob;

@@ -347,8 +347,19 @@ void WindowSwitcherTile::layoutContent(Renderer& renderer) {
   m_frame->setFrameSize(m_cardWidth, frameH);
   m_previewHost->setPosition(outerPad, outerPad);
   m_previewHost->setFrameSize(innerW, previewH);
-  m_thumbnail->setPosition(0.0F, 0.0F);
-  m_thumbnail->setSize(innerW, previewH);
+  // The shot keeps its aspect and covers the frame top-anchored, so a tall window keeps its title; the host clips it.
+  float thumbW = innerW;
+  float thumbH = previewH;
+  if (m_thumbnailImage != nullptr && m_thumbnailImage->width > 0 && m_thumbnailImage->height > 0 && previewH > 0.0F) {
+    const float aspect = static_cast<float>(m_thumbnailImage->width) / static_cast<float>(m_thumbnailImage->height);
+    if (aspect < innerW / previewH) {
+      thumbH = innerW / aspect;
+    } else {
+      thumbW = previewH * aspect;
+    }
+  }
+  m_thumbnail->setPosition(std::round((innerW - thumbW) * 0.5F), 0.0F);
+  m_thumbnail->setSize(thumbW, thumbH);
   m_toneOverlay->setPosition(0.0F, 0.0F);
   m_toneOverlay->setFrameSize(innerW, previewH);
   const float indicatorWidth = Style::spaceMd * m_contentScale;

@@ -660,6 +660,21 @@ max_width = 320.0
 fixed_width = 240.0  # power menu, tray item menu
 submenu_delay_ms = 200
 
+[component.switcher]  # window switcher carousel (product carousel kept, deviations.md)
+card_selected = 500.0
+card_near = 380.0
+card_far = 280.0
+card_compact = 220.0
+preview_aspect = 1.6
+narrow_threshold = 0.72  # fewer cards below this share of the wanted strip width
+preview_icon_scale = 0.12
+fallback_icon_scale = 0.28
+dim_opacity = 0.3
+incoming_scale = 0.9
+incoming_slide = 0.25
+outgoing_slide = 0.3
+reveal_scale = 0.95
+
 [component.popover]
 radius = 12.0  # radius set B (user, 2026-11-08)
 padding = 12.0

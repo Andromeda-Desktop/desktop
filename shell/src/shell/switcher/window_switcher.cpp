@@ -1899,7 +1899,7 @@ void WindowSwitcher::positionPanel(Instance& instance, float screenW, float scre
     blurRects.insert(blurRects.end(), strips.begin(), strips.end());
   }
   instance.surface->setBlurRegion(blurRects);
-  instance.glass.apply(m_wayland->dskSurfaceManager(), instance.surface->wlSurface(), GlassSurface::Kind::Sheet);
+  instance.glass.apply(m_wayland->dskSurfaceManager(), instance.surface->wlSurface(), GlassSurface::Kind::Shape);
 }
 
 void WindowSwitcher::buildScene(Instance& instance, std::uint32_t width, std::uint32_t height) {
@@ -1916,10 +1916,10 @@ void WindowSwitcher::buildScene(Instance& instance, std::uint32_t width, std::ui
 
   Renderer& renderer = instance.surface->renderTarget().renderer();
   instance.sceneRoot = ui::node({});
-  instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+  instance.sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
   instance.glassConn = Style::glassChanged().connect([inst = &instance] {
     if (inst->sceneRoot != nullptr) {
-      inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Sheet));
+      inst->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
     }
   });
   instance.sceneRoot->setAnimationManager(&instance.animations);
