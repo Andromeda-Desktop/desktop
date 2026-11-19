@@ -68,31 +68,37 @@ namespace {
   // (the pointer moving one step, even across an icon boundary) moves no icon by more than a tiny amount.
   void checkHoverSpreadNeverOverlaps() {
     constexpr float kIcon = 48.0F;
+    constexpr float kGlyph = 38.0F;
     std::mt19937 rng(7);
     std::uniform_real_distribution<float> scale(1.0F, 2.5F);
     std::uniform_int_distribution<std::size_t> count(1, 12);
+    std::bernoulli_distribution glyphSlot(0.25);
     for (int run = 0; run < 2000; ++run) {
       std::vector<float> scales(count(rng));
-      for (float& s : scales) {
-        s = scale(rng);
+      std::vector<float> sizes(scales.size());
+      for (std::size_t i = 0; i < scales.size(); ++i) {
+        scales[i] = scale(rng);
+        sizes[i] = glyphSlot(rng) ? kGlyph : kIcon;
       }
-      const std::vector<float> offsets = shell::dock::hoverSpreadOffsets(scales, kIcon);
+      const std::vector<float> offsets = shell::dock::hoverSpreadOffsets(scales, sizes);
       TEST_CHECK(offsets.size() == scales.size());
       constexpr float kStep = 0.001F;
       std::vector<float> nudged = scales;
       nudged[run % nudged.size()] += kStep;
-      const std::vector<float> moved = shell::dock::hoverSpreadOffsets(nudged, kIcon);
+      const std::vector<float> moved = shell::dock::hoverSpreadOffsets(nudged, sizes);
       for (std::size_t i = 0; i < scales.size(); ++i) {
         TEST_CHECK(std::abs(moved[i] - offsets[i]) <= kIcon * kStep * static_cast<float>(scales.size()));
       }
+      // Cells sit side by side at rest, so grown neighbours must part by half of each one's growth.
       for (std::size_t i = 1; i < scales.size(); ++i) {
-        const float shrink = offsets[i] - offsets[i - 1] - kIcon * (scales[i - 1] + scales[i] - 2.0F) * 0.5F;
-        TEST_CHECK(shrink >= -0.01F);
+        const float growth = (sizes[i - 1] * (scales[i - 1] - 1.0F) + sizes[i] * (scales[i] - 1.0F)) * 0.5F;
+        TEST_CHECK(offsets[i] - offsets[i - 1] - growth >= -0.01F);
       }
     }
     // The pointer halfway between two icons: either one may be the larger by a hair.
-    const std::vector<float> leftAhead = shell::dock::hoverSpreadOffsets({1.0F, 1.801F, 1.8F, 1.0F}, kIcon);
-    const std::vector<float> rightAhead = shell::dock::hoverSpreadOffsets({1.0F, 1.8F, 1.801F, 1.0F}, kIcon);
+    const std::vector<float> sizes(4, kIcon);
+    const std::vector<float> leftAhead = shell::dock::hoverSpreadOffsets({1.0F, 1.801F, 1.8F, 1.0F}, sizes);
+    const std::vector<float> rightAhead = shell::dock::hoverSpreadOffsets({1.0F, 1.8F, 1.801F, 1.0F}, sizes);
     for (std::size_t i = 0; i < leftAhead.size(); ++i) {
       TEST_CHECK(std::abs(leftAhead[i] - rightAhead[i]) <= 0.5F);
     }

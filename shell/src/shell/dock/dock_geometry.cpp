@@ -155,14 +155,23 @@ namespace shell::dock {
     }
   }
 
-  std::int32_t dockContentSize(const DockConfig& cfg, std::size_t itemCount, std::size_t separators) {
+  std::int32_t dockGlyphCellSize(const DockConfig& cfg) {
+    return static_cast<std::int32_t>(
+        std::lround(static_cast<float>(cfg.iconSize) * Tokens::componentDockGlyph / Tokens::componentDockIcon)
+    );
+  }
+
+  std::int32_t dockContentSize(
+      const DockConfig& cfg, std::size_t itemCount, std::size_t separators, std::size_t glyphCells
+  ) {
     const auto n = static_cast<std::int32_t>(itemCount);
     const std::int32_t cellSize = cfg.iconSize + kCellPad * 2;
     if (n == 0) {
       return cellSize + cfg.mainAxisPadding * 2;
     }
     const auto sepSize = static_cast<std::int32_t>(separators) * (1 + cfg.itemSpacing);
-    return n * cellSize + std::max(0, n - 1) * cfg.itemSpacing + sepSize + cfg.mainAxisPadding * 2;
+    const auto glyphShrink = static_cast<std::int32_t>(glyphCells) * (cellSize - dockGlyphCellSize(cfg));
+    return n * cellSize - glyphShrink + std::max(0, n - 1) * cfg.itemSpacing + sepSize + cfg.mainAxisPadding * 2;
   }
 
   std::int32_t dockThickness(const DockConfig& cfg) { return cfg.iconSize + kCellPad * 2 + cfg.crossAxisPadding * 2; }
@@ -178,14 +187,14 @@ namespace shell::dock {
     return static_cast<std::int32_t>(std::ceil(extra + static_cast<float>(kCellPad)));
   }
 
-  std::vector<float> hoverSpreadOffsets(const std::vector<float>& scales, float iconSize) {
+  std::vector<float> hoverSpreadOffsets(const std::vector<float>& scales, const std::vector<float>& sizes) {
     std::vector<float> offsets(scales.size(), 0.0F);
     float before = 0.0F;
     float weightSum = 0.0F;
     float weightedOffset = 0.0F;
     for (std::size_t index = 0; index < scales.size(); ++index) {
       const float growth = std::max(0.0F, scales[index] - 1.0F);
-      const float extra = iconSize * growth;
+      const float extra = sizes[index] * growth;
       offsets[index] = before + extra * 0.5F;
       before += extra;
       weightSum += growth;
@@ -212,7 +221,7 @@ namespace shell::dock {
 
   std::int32_t dockFitIconSize(
       const DockConfig& cfg, std::int32_t restIconSize, std::size_t itemCount, std::size_t separators,
-      std::int32_t outputLength
+      std::size_t glyphCells, std::int32_t outputLength
   ) {
     const auto floor =
         std::min(restIconSize, static_cast<std::int32_t>(std::lround(Tokens::componentDockIconMin * cfg.scale)));
@@ -220,7 +229,7 @@ namespace shell::dock {
     DockConfig probe = cfg;
     for (std::int32_t size = restIconSize; size > floor; --size) {
       probe.iconSize = size;
-      if (dockContentSize(probe, itemCount, separators) + dockHoverZoomMainPad(probe) * 2 <= available) {
+      if (dockContentSize(probe, itemCount, separators, glyphCells) + dockHoverZoomMainPad(probe) * 2 <= available) {
         return size;
       }
     }
@@ -233,9 +242,13 @@ namespace shell::dock {
 
   std::size_t dockLauncherButtonCount(const DockConfig& cfg) { return dockLauncherButtonCount(cfg.launcherPosition); }
 
+  std::size_t dockGlyphCells(const DockConfig& cfg, std::size_t trashCells) {
+    return (cfg.launcherCustomImage.empty() ? dockLauncherButtonCount(cfg) : 0U) + trashCells;
+  }
+
   DockSurfaceGeometry computeSurfaceGeometry(
       const DockConfig& cfg, const ShellConfig::ShadowConfig& shadow, std::size_t itemCount, bool fractionalScale,
-      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, std::size_t separators
+      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, std::size_t separators, std::size_t glyphCells
   ) {
     const DockEdge edge = cfg.position;
     const bool vertical = isVerticalEdge(edge);
@@ -245,7 +258,7 @@ namespace shell::dock {
     const int insetT = static_cast<int>(concave.logicalInset.top);
     const int insetR = static_cast<int>(concave.logicalInset.right);
     const int insetB = static_cast<int>(concave.logicalInset.bottom);
-    const auto panelW = dockContentSize(cfg, itemCount, separators);
+    const auto panelW = dockContentSize(cfg, itemCount, separators, glyphCells);
     const auto panelH = dockThickness(cfg);
     const std::int32_t zoomPad = dockHoverZoomCrossPad(cfg);
     const std::int32_t mainPad = dockHoverZoomMainPad(cfg);
@@ -307,10 +320,10 @@ namespace shell::dock {
 
   LayerSurfaceConfig makeLayerSurfaceConfig(
       const DockConfig& cfg, const ShellConfig::ShadowConfig& shadow, std::size_t itemCount, bool fractionalScale,
-      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, std::size_t separators
+      std::int32_t outputLogicalWidth, std::int32_t outputLogicalHeight, std::size_t separators, std::size_t glyphCells
   ) {
     const auto geometry = computeSurfaceGeometry(
-        cfg, shadow, itemCount, fractionalScale, outputLogicalWidth, outputLogicalHeight, separators
+        cfg, shadow, itemCount, fractionalScale, outputLogicalWidth, outputLogicalHeight, separators, glyphCells
     );
     return LayerSurfaceConfig{
         .nameSpace = "noctalia-dock",

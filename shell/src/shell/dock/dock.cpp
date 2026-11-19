@@ -986,7 +986,7 @@ void Dock::createInstance(const WaylandOutput& output) {
   instance->hasTrash = cfg.showTrash && m_fileOps != nullptr;
   instance->config.iconSize = shell::dock::dockFitIconSize(
       cfg, cfg.iconSize, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg) + instance->trashCells(),
-      instance->separatorCount(),
+      instance->separatorCount(), shell::dock::dockGlyphCells(cfg, instance->trashCells()),
       shell::dock::isVerticalEdge(cfg.position) ? instance->outputLogicalHeight : instance->outputLogicalWidth
   );
   instance->trashFull = m_trashFull;
@@ -998,7 +998,8 @@ void Dock::createInstance(const WaylandOutput& output) {
   const auto& shadowConfig = m_config->config().shell.shadow;
   LayerSurfaceConfig lsCfg = shell::dock::makeLayerSurfaceConfig(
       instance->config, shadowConfig, cfg.pinned.size() + shell::dock::dockLauncherButtonCount(cfg) + instance->trashCells(),
-      instance->fractionalScale, instance->outputLogicalWidth, instance->outputLogicalHeight, instance->separatorCount()
+      instance->fractionalScale, instance->outputLogicalWidth, instance->outputLogicalHeight, instance->separatorCount(),
+      shell::dock::dockGlyphCells(cfg, instance->trashCells())
   );
 
   instance->surface = std::make_unique<LayerSurface>(m_platform->wayland(), std::move(lsCfg));
@@ -1166,7 +1167,7 @@ void Dock::rebuildItems(shell::dock::DockInstance& instance) {
                       inst.config, m_config->config().shell.shadow,
                       inst.items.size() + shell::dock::dockLauncherButtonCount(inst.config) + inst.trashCells(),
                       inst.fractionalScale, inst.outputLogicalWidth, inst.outputLogicalHeight,
-                      inst.separatorCount()
+                      inst.separatorCount(), shell::dock::dockGlyphCells(inst.config, inst.trashCells())
                   );
                   const auto edge = inst.config.position;
                   const auto outW = static_cast<float>(inst.outputLogicalWidth);
