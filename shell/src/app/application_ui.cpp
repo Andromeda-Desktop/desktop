@@ -1184,7 +1184,12 @@ void Application::initBarDockAndLayout() {
   m_panelManager.setClickShieldExcludeRectsProvider([this](wl_output* output) {
     return m_bar.surfaceRectsForOutput(output);
   });
-  m_panelManager.setFocusGrabBarSurfacesProvider([this] { return m_bar.allBarSurfaces(); });
+  m_panelManager.setFocusGrabBarSurfacesProvider([this] {
+    auto surfaces = m_bar.allBarSurfaces();
+    const auto island = m_liveActivity.surfaces();
+    surfaces.insert(surfaces.end(), island.begin(), island.end());
+    return surfaces;
+  });
   m_panelManager.setAttachedPanelAvailabilityCallback([this](wl_output* output, std::string_view barName) {
     return m_bar.canAttachPanelToBar(output, barName);
   });

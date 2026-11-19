@@ -199,6 +199,11 @@ std::unique_ptr<Widget> WidgetFactory::create(
             options.showLabel = true;
             return createWidget<BatteryWidget>(context.contentScale, f.m_upower, options);
           }},
+      {"island_bluetooth", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
+            auto options = bluetoothWidgetDefinition().resolve(context.config, context.settingContext);
+            options.showLabel = false;
+            return createWidget<BluetoothWidget>(context.contentScale, f.m_bluetooth, context.output, options);
+          }},
       {"island_clock", [](const WidgetFactory& f, const BuiltinWidgetContext& context) {
             return createWidget<ClockWidget>(
                 context.contentScale, context.output, clockOptions(f.m_config.shell, context)

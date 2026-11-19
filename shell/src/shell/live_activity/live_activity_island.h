@@ -128,6 +128,9 @@ public:
   void setUnderEditor(bool underEditor);
   // IPC: "none" or "title|subtitle|secondary glyph|primary glyph"; press runs the button's action.
   [[nodiscard]] std::string describeActivity() const;
+  // Panels keep these in their focus grab, so a tap on the island toggles its sheet instead of dismissing it first.
+  [[nodiscard]] std::vector<wl_surface*> surfaces() const;
+  [[nodiscard]] std::string clockText() const;
   bool pressActivityButton(bool secondary);
   // The bar layout, the config, the privacy state or the unread count changed.
   void refresh();

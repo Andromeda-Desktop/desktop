@@ -1146,9 +1146,10 @@ BarConfig ConfigService::resolveForOutput(const BarConfig& base, const WaylandOu
     if (resolved.startWidgets == defaults.startWidgets
         && resolved.centerWidgets == defaults.centerWidgets
         && resolved.endWidgets == defaults.endWidgets) {
-      resolved.startWidgets = {"launcher_button", "island_divider", "island_workspaces", "island_app"};
-      // proto bar: the tray chevron leads the status island; it shows only while the drawer has items.
-      resolved.endWidgets = {"tray", "island_network", "island_volume", "island_battery", "island_clock", "notifications",
+      // proto bar (concept-c.html:147-150): the clock island in the centre holds date and time; volume lives in the CC.
+      resolved.startWidgets = {"launcher_button", "island_divider", "island_workspaces"};
+      // The tray chevron leads the status island; it shows only while the drawer has items.
+      resolved.endWidgets = {"tray", "island_network", "island_bluetooth", "island_battery", "notifications",
                              "island_divider", "control_center_button"};
       if (resolved.widgetSpacing == defaults.widgetSpacing) {
         resolved.widgetSpacing = static_cast<std::int32_t>(Tokens::componentIslandGap);

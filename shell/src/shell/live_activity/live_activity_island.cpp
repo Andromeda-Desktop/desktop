@@ -1,4 +1,6 @@
 #include "shell/live_activity/live_activity_island.h"
+#include "i18n/i18n.h"
+#include "time/time_format.h"
 #include "shell/panel/panel_manager.h"
 #include "core/input/cursor_shape.h"
 
@@ -318,8 +320,14 @@ void LiveActivityIsland::setExtraSources(
   m_calendar = calendar;
 }
 
+std::string LiveActivityIsland::clockText() const {
+  // Concept C clock island: "Wed 18 Nov  20:04", the time in the user's 12/24 h format.
+  const std::string time = m_config != nullptr ? formatLocalTime(m_config->config().shell.timeFormat.c_str()) : timeText();
+  return dateText() + "  " + time;
+}
+
 void LiveActivityIsland::onTimeTick() {
-  if (const std::string minute = timeText(); m_date != dateText() || m_minute != minute) {
+  if (const std::string minute = timeText(); m_date != clockText() || m_minute != minute) {
     m_minute = minute;
     refresh();
   }
@@ -359,7 +367,7 @@ bool LiveActivityIsland::showBanner(const Notification& n, NotificationEvent eve
         .body = n.hideContent ? std::string{} : n.body,
         .defaultAction = hasDefaultAction(n.actions),
         .appName = notificationDisplayAppName(n),
-        .time = timeText(),
+        .time = i18n::tr("control-center.detail.notifications.now"),
         .icon = n.icon.value_or(std::string{}),
         .desktopEntry = n.desktopEntry.value_or(std::string{}),
         .imageData = n.hideContent ? std::nullopt : n.imageData,
@@ -1953,7 +1961,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
   const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
   const bool playing = player.has_value() && player->playbackStatus == "Playing";
-  m_date = dateText();
+  m_date = clockText();
   const bool compactCall = compactActivity(inst);
   inst.mediaGroup->setVisible(playing && !compactCall);
   inst.mediaTitle->setText(playing ? (!player->title.empty() ? player->title : player->identity) : std::string{});
@@ -2758,6 +2766,16 @@ void LiveActivityIsland::finishBannerDrag(Instance& inst, bool dismiss) {
   if (instPtr->dsk != nullptr) {
     applyBannerOffset(*instPtr, 0.0F);
   }
+}
+
+std::vector<wl_surface*> LiveActivityIsland::surfaces() const {
+  std::vector<wl_surface*> out;
+  for (const auto& inst : m_instances) {
+    if (inst != nullptr && inst->surface != nullptr && inst->surface->wlSurface() != nullptr) {
+      out.push_back(inst->surface->wlSurface());
+    }
+  }
+  return out;
 }
 
 std::string LiveActivityIsland::describeActivity() const {
