@@ -370,10 +370,10 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
     title[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(title[0])));
   }
   m_previewTitle->setText(title);
-  m_previewTitle->setMaxWidth(m_previewPane->width() - 2.0F * Tokens::spaceP20 * scale);
+  m_previewTitle->setMaxWidth(m_previewPane->width() - 2.0F * Tokens::spaceP16 * scale);
   const std::string kind = result.origin.empty() ? result.subtitle : result.subtitle + " · " + result.origin;
   m_previewKind->setText(singleLinePreview(kind));
-  // A clipboard entry's time already shows in its details.
+  // A clipboard entry shows its own meta line (bindPreview details).
   m_previewKind->setVisible(!kind.empty() && !result.presentation.starts_with("clipboard"));
 
   const DesktopEntry* entry = nullptr;
@@ -409,7 +409,7 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
     const auto provider = std::ranges::find(m_providers, "Clipboard", [](const auto& p) { return p->id(); });
     const auto* clipboard = provider == m_providers.end() ? nullptr : dynamic_cast<const ClipboardProvider*>(provider->get());
     m_previewBody->setText(clipboard == nullptr ? result.title : clipboard->text(result));
-    m_previewBody->setMaxWidth(m_previewPane->width() - 2.0F * (Tokens::spaceP20 + Tokens::spaceP12) * scale);
+    m_previewBody->setMaxWidth(m_previewPane->width() - 2.0F * (Tokens::spaceP16 + Tokens::spaceP12) * scale);
   }
   bool shot = result.presentation == "clipboard-image";
   std::string gif;
@@ -475,12 +475,22 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
       meta[count++] = {i18n::tr("launcher.pill.category"), result.category};
     }
   } else if (clip) {
-    meta[count++] = {i18n::tr("launcher.clipboard.copied"), result.subtitle};
-    if (clipboard != nullptr) {
-      if (const std::size_t bytes = clipboard->byteSize(result); bytes > 0) {
-        meta[count++] = {i18n::tr("launcher.clipboard.size"), formatByteSize(bytes)};
+    // One meta line over the content (proto surfaces.js): "Text, 21 characters, Terminal, 20:03".
+    std::string line;
+    if (result.presentation == "clipboard-text") {
+      const std::string text = clipboard == nullptr ? result.title : clipboard->text(result);
+      line = i18n::trp("launcher.clipboard.meta-text", std::ranges::count_if(text, [](char c) { return (c & 0xC0) != 0x80; }));
+    } else {
+      line = i18n::tr("launcher.clipboard.image");
+      if (const std::size_t bytes = clipboard == nullptr ? 0 : clipboard->byteSize(result); bytes > 0) {
+        line += ", " + formatByteSize(bytes);
       }
     }
+    if (!result.subtitle.empty()) {
+      line += ", " + result.subtitle;
+    }
+    m_previewKind->setText(line);
+    m_previewKind->setVisible(true);
   } else if (file) {
     // One stat on selection: the index answer carries no sizes, and the file may have changed since.
     std::error_code ec;

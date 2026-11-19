@@ -268,7 +268,6 @@ private:
   std::vector<std::pair<std::string, Flex*>> m_modeTabItems;
   // Direction C preview pane (right of the result list).
   Flex* m_previewPane = nullptr;
-  Separator* m_previewDivider = nullptr;
   Image* m_previewImage = nullptr;
   Glyph* m_previewGlyph = nullptr;
   Glyph* m_pillSearchGlyph = nullptr;

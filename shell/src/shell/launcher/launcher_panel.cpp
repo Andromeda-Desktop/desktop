@@ -45,7 +45,7 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
   // Field, the taller of the list (p 8, 8 rows visible) and the preview, footer (rulebook 9.14, direction C).
   const bool strip = (m_emojiStrip != nullptr && m_emojiStrip->visible()) || (m_packStrip != nullptr && m_packStrip->visible());
   const bool split = previewSplit();
-  const float list = (split ? 2.0F * Tokens::spaceP8 * scale : 0.0F) + m_launcherSectionsAdapter->pillContentHeight(8)
+  const float list = m_launcherSectionsAdapter->pillContentHeight(8)
       + (strip ? Tokens::componentLauncherTabs * scale : 0.0F);
   // A clipboard image replaces the 64 icon with a 160 high picture.
   const bool picture = m_selectedIndex < m_results.size()
@@ -56,7 +56,8 @@ float LauncherPanel::measureContentHeight(Renderer& /*renderer*/, float /*conten
   // Mode tabs and the chip row (file kinds, sticker packs) each add a row inside the results piece.
   const float rows = (modeProviderId().empty() ? 0.0F : 1.0F) + (m_kindTabs != nullptr && m_kindTabs->visible() ? 1.0F : 0.0F);
   return field + Tokens::spaceP8 * scale + 2.0F * Tokens::componentLauncherResultsPadding * scale
-      + rows * Tokens::componentLauncherTabs * scale + std::max(list, previewHeight) + Tokens::componentLauncherFooter * scale;
+      + rows * Tokens::componentLauncherTabs * scale + std::max(list, previewHeight)
+      + (split ? 0.0F : Tokens::componentLauncherFooter * scale);
 }
 
 PanelPlacement LauncherPanel::panelPlacement() const noexcept {
@@ -585,24 +586,17 @@ void LauncherPanel::create() {
     body->setDirection(FlexDirection::Horizontal);
     body->setAlign(FlexAlign::Stretch);
     body->setGap(0.0F);
-    body->addChild(ui::separator({
-        .out = &m_previewDivider,
-        .color = colorSpecFromRole(ColorRole::Separator),
-        .thickness = 1.0F,
-        .orientation = SeparatorOrientation::VerticalRule,
-        .visible = false,
-        .participatesInLayout = false,
-    }));
+    // Clipboard: the preview is its own glass piece beside the list card (proto surfaces.css .s-clip, .s-prev).
     auto preview = ui::column({
         .out = &m_previewPane,
-        .align = FlexAlign::Center,
+        .align = FlexAlign::Stretch,
         .gap = Tokens::spaceP8 * scale,
-        .paddingV = Tokens::spaceP24 * scale,
-        .paddingH = Tokens::spaceP20 * scale,
+        .padding = Tokens::spaceP16 * scale,
         .flexGrow = 1.0F,
         .visible = false,
         .participatesInLayout = false,
     });
+    styleGlassPiece(*preview, Tokens::componentLauncherResultsRadius * scale, scale, panelCardOpacity());
     const float previewIcon = Tokens::componentLauncherIcon * scale;
     preview->addChild(ui::image({.out = &m_previewImage, .width = previewIcon, .height = previewIcon, .visible = false}));
     preview->addChild(ui::glyph({
@@ -669,6 +663,8 @@ void LauncherPanel::create() {
             .ellipsize = TextEllipsize::End,
         })
     ));
+    // The text box fills the card down to the actions (proto .s-prev pre flex 1).
+    m_previewBodyBox->setFlexGrow(1.0F);
     auto tones = ui::row({
         .out = &m_previewTones,
         .align = FlexAlign::Center,
@@ -699,14 +695,14 @@ void LauncherPanel::create() {
     actions->addChild(ui::button({
         .out = &m_previewOpen,
         .text = i18n::tr("launcher.pill.open-hint"),
-        .controlHeight = Tokens::sizeControlS * scale,
+        .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Primary,
         .onClick = [this] { activateSelected(); },
     }));
     actions->addChild(ui::button({
         .out = &m_previewOpenImage,
         .text = i18n::tr("launcher.clipboard.open"),
-        .controlHeight = Tokens::sizeControlS * scale,
+        .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
         .visible = false,
         .participatesInLayout = false,
@@ -714,7 +710,7 @@ void LauncherPanel::create() {
     }));
     actions->addChild(ui::button({
         .out = &m_previewAction,
-        .controlHeight = Tokens::sizeControlS * scale,
+        .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
         .visible = false,
         .participatesInLayout = false,
@@ -723,7 +719,7 @@ void LauncherPanel::create() {
     actions->addChild(ui::button({
         .out = &m_previewDelete,
         .text = i18n::tr("launcher.clipboard.delete"),
-        .controlHeight = Tokens::sizeControlS * scale,
+        .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,
         .visible = false,
         .participatesInLayout = false,
@@ -747,7 +743,6 @@ void LauncherPanel::create() {
       meta->addChild(std::move(metaRow));
     }
     preview->addChild(std::move(meta));
-    body->addChild(std::move(preview));
     results->addChild(std::move(body));
 
     // Rulebook 9.14 footer: hairline, h 36, count leading, key hints trailing.
@@ -789,7 +784,11 @@ void LauncherPanel::create() {
     footerRow->addChild(keyHint(i18n::tr("launcher.pill.close-hint"), "Esc"));
     footer->addChild(std::move(footerRow));
     results->addChild(std::move(footer));
-    container->addChild(std::move(results));
+    auto stage = ui::row({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * scale, .fillWidth = true});
+    stage->setFlexGrow(1.0F);
+    stage->addChild(std::move(results));
+    stage->addChild(std::move(preview));
+    container->addChild(std::move(stage));
     setRoot(std::move(container));
     // The rulebook 9.14 sheet has no category tabs: the filter is not in the tree and dies with this scope.
     m_categoryFilter = nullptr;
@@ -1441,7 +1440,7 @@ void LauncherPanel::applyEmptyState() {
     m_resultsPiece->setVisible(expanded);
     m_resultsPiece->setParticipatesInLayout(expanded);
     syncModeDrops();
-    const bool footer = expanded && !shouldUseAppGrid();
+    const bool footer = expanded && !shouldUseAppGrid() && !previewSplit();
     m_pillFooter->setVisible(footer);
     m_pillFooter->setParticipatesInLayout(footer);
     m_pillCount->setText(

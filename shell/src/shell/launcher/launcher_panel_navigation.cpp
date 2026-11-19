@@ -229,14 +229,15 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
     } else {
       m_body->setPadding(0.0F);
     }
-    m_resultsViewport->setPadding(split ? Tokens::spaceP8 * scale : 0.0F);
-    m_resultsViewport->setFlexGrow(split ? 0.0F : 1.0F);
-    m_resultsViewport->setMinWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
-    m_resultsViewport->setMaxWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
+    // Split: the list card is list_pane wide; the preview piece takes the rest of the row.
+    m_resultsPiece->setFlexGrow(split ? 0.0F : 1.0F);
+    m_resultsPiece->setMinWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
+    m_resultsPiece->setMaxWidth(split ? Tokens::componentLauncherListPane * scale : 0.0F);
     m_previewPane->setVisible(split);
     m_previewPane->setParticipatesInLayout(split);
-    m_previewDivider->setVisible(split);
-    m_previewDivider->setParticipatesInLayout(split);
+    // The mode tabs fit the list card only without their own inset and gaps (the card's p 8 aligns them with the rows).
+    m_modeTabs->setPadding(0.0F, split ? 0.0F : Tokens::spaceP12 * scale);
+    m_modeTabs->setGap(split ? 0.0F : Tokens::spaceP4 * scale);
     if (m_launcherSections != nullptr) {
       m_launcherSections->setItemGap(0.0F);
     }

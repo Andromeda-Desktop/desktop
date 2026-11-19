@@ -1442,6 +1442,8 @@
       "delete": "Delete",
       "earlier": "Earlier",
       "image": "Image",
+      "meta-text": "Text, {count} character",
+      "meta-text-plural": "Text, {count} characters",
       "open": "Open",
       "pin": "Pin",
       "pinned": "Pinned",
