@@ -4228,7 +4228,7 @@ void PanelManager::placePanelChrome() {
     applyAttachedDecorationStyle();
   }
 
-  const float kPadding = m_activePanel->hasDecoration() && m_activePanel->padsContent() ? m_activePanel->contentScale() * Style::panelPadding : 0.0F;
+  const float kPadding = m_activePanel->hasDecoration() && m_activePanel->padsContent() ? m_activePanel->contentScale() * m_activePanel->contentPadding() : 0.0F;
   m_contentWidth = panelW - kPadding * 2.0F;
   // A content-fitted panel lays its content out at the target height once; while the card
   // animates toward it, the content node clips to the card instead of relaying out.
@@ -4246,7 +4246,7 @@ void PanelManager::layoutActivePanel(Renderer& renderer) {
   if (!m_contentFit.enabled) {
     return;
   }
-  const float padding = m_activePanel->hasDecoration() && m_activePanel->padsContent() ? m_activePanel->contentScale() * Style::panelPadding : 0.0F;
+  const float padding = m_activePanel->hasDecoration() && m_activePanel->padsContent() ? m_activePanel->contentScale() * m_activePanel->contentPadding() : 0.0F;
   const float natural = m_activePanel->measureContentHeight(renderer, m_contentWidth);
   const auto target = std::clamp<std::uint32_t>(
       static_cast<std::uint32_t>(std::ceil(std::max(0.0F, natural) + padding * 2.0F)), 1U,

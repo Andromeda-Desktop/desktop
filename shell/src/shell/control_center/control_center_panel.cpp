@@ -189,15 +189,16 @@ void ControlCenterPanel::create() {
       .out = &m_contentHeader,
       .align = FlexAlign::Center,
       .justify = FlexJustify::SpaceBetween,
-      .gap = Style::spaceSm * scale,
+      .gap = Tokens::spaceP12 * scale,
   });
 
   header->setMinHeight(Tokens::componentSheetDetailHeader * scale);
+  header->setPadding(0.0F, Tokens::spaceP4 * scale, Tokens::spaceP4 * scale, Tokens::spaceP4 * scale);
   header->addChild(ui::button({
       .out = &m_backButton,
       .glyph = "chevron-left",
       .onClick = [this] { selectTab(TabId::Quick, /*animated=*/true); },
-      .configure = [scale](Button& button) { panel_button_style::configureHeaderIconButton(button, scale); },
+      .configure = [scale](Button& button) { panel_button_style::configureGlassIconButton(button, scale); },
   }));
   header->addChild(
       ui::label({
@@ -211,6 +212,7 @@ void ControlCenterPanel::create() {
           .flexGrow = 1.0F,
       })
   );
+  m_contentTitle->setLineHeight(Tokens::typeTitle3.line * scale);
 
   auto headerActions = ui::row({
       .out = &m_contentHeaderActions,

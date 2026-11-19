@@ -96,6 +96,8 @@ public:
   [[nodiscard]] virtual PiecePour piecePour() const { return {}; }
   // False: the content reaches the card edge; the panel insets its own rows.
   [[nodiscard]] virtual bool padsContent() const noexcept { return true; }
+  // The inset a padded panel keeps around its content (logical px, before contentScale).
+  [[nodiscard]] virtual float contentPadding() const noexcept { return Style::panelPadding; }
   [[nodiscard]] virtual LayerShellLayer layer() const { return LayerShellLayer::Top; }
   // Keyboard focus policy. `None` means the panel never takes keyboard focus, so the
   // app the user is typing into keeps it — that also rules out outside-click
