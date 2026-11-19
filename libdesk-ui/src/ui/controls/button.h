@@ -95,6 +95,8 @@ public:
 
   void setTabStop(bool tabStop);
   void setKeyboardFocusHint(bool hint);
+  // The focus ring sits on the button's edge, not 2 px out: for buttons inside a scroller that clips at their edge.
+  void setFocusRingInset(bool inset) { m_focusRingInset = inset; }
 
   // Call after layout() to sync InputArea bounds
   void updateInputArea();
@@ -172,6 +174,7 @@ private:
   bool m_enabled = true;
   bool m_selected = false;
   bool m_keyboardFocusHint = false;
+  bool m_focusRingInset = false;
   bool m_hoverSuppressed = false;
   bool m_statefillless = false;
   float m_hoverMix = 0.0F;

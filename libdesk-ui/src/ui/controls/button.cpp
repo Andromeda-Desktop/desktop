@@ -935,8 +935,8 @@ void Button::doLayout(Renderer& renderer) {
   }
 
   if (m_focusRing != nullptr && m_focusRing->visible()) {
-    // Concentric outward: 2 px gap, then the 2 px ring (rulebook 11, R7).
-    const float out = Style::focusRingGap + Style::focusRingWidth;
+    // Concentric outward: 2 px gap, then the 2 px ring (rulebook 11, R7); inset rings sit on the edge.
+    const float out = m_focusRingInset ? 0.0F : Style::focusRingGap + Style::focusRingWidth;
     m_focusRing->setPosition(-out, -out);
     m_focusRing->setSize(width() + 2.0F * out, height() + 2.0F * out);
     m_focusRing->setRadius(radius() + out);

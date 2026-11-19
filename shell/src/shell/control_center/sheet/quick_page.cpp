@@ -313,6 +313,8 @@ std::unique_ptr<Button> QuickPage::makeToggleRow(
   // The tile is one focus stop (rulebook 11): Space toggles through the icon, Enter opens the detail.
   icon->inputArea()->setFocusable(false);
   Button* body = container.get();
+  // The pager clips at the tile edge, so an outset ring would lose its outer edges.
+  body->setFocusRingInset(true);
   attachCardMotion(*container, panelCardOpacity(), icon.get(),
                    [this, body](float x, float y, bool pressed) { tilePress(body, x, y, pressed); });
   attachTileDrag(*icon);
@@ -455,6 +457,7 @@ std::unique_ptr<Flex> QuickPage::makeDropTile(std::string_view type) {
   addSingleRow(*card, std::move(row));
   // The toggle fills the whole drop, so its on state colours the drop (concept C), not a disc inside it.
   body->setPadding(0.0F);
+  body->setRadius(size * 0.5F);
   tile.icon->setControlHeight(size);
   tile.icon->setMinWidth(size);
   tile.icon->setGlyphSize(Tokens::componentTileDropGlyph * s);
