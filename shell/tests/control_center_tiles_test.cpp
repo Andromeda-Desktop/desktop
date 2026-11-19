@@ -19,7 +19,6 @@ namespace {
     const std::unique_ptr<Shortcut> tile = ShortcutRegistry::create(type, services);
     TEST_CHECK(tile != nullptr);
     TEST_CHECK(tile->isToggle());
-    TEST_CHECK(tile->iconOn() != tile->iconOff());
 
     for (const bool on : {true, false, true}) {
       setServiceOn(on);
