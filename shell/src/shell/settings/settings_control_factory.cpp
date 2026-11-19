@@ -380,9 +380,10 @@ namespace settings {
   } // namespace
 
   namespace {
-    // The title takes the width the control leaves and wraps, so large text never runs under the control.
+    // The title keeps its natural width, so marks and badges follow it, and shrinks to wrap in the width the
+    // control leaves, so large text never runs under the control.
     template <typename T> std::unique_ptr<T> fittedTitle(std::unique_ptr<T> title) {
-      title->setFlexGrow(1.0F);
+      title->setFlexShrink(1.0F);
       title->setMaxLines(2);
       title->setEllipsize(TextEllipsize::End);
       return title;

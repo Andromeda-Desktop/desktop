@@ -113,6 +113,8 @@ public:
   [[nodiscard]] float scaleY() const noexcept { return m_scaleY; }
   [[nodiscard]] float opacity() const noexcept { return m_opacity; }
   [[nodiscard]] float flexGrow() const noexcept { return m_flexGrow; }
+  // Share of a row overflow this child gives up, weighted by its natural size (CSS flex-shrink); 0 keeps it.
+  [[nodiscard]] float flexShrink() const noexcept { return m_flexShrink; }
   [[nodiscard]] bool visible() const noexcept { return m_visible; }
   [[nodiscard]] bool participatesInLayout() const noexcept { return m_participatesInLayout; }
   [[nodiscard]] bool paintDirty() const noexcept { return m_paintDirty; }
@@ -150,6 +152,7 @@ public:
   void setTransformOrigin(float x, float y);
   void setOpacity(float opacity);
   void setFlexGrow(float grow);
+  void setFlexShrink(float shrink);
   void setVisible(bool visible);
   void setParticipatesInLayout(bool participatesInLayout);
   void setClipChildren(bool clipChildren);
@@ -282,6 +285,7 @@ private:
   bool m_hasTransformOrigin = false;
   float m_opacity = 1.0F;
   float m_flexGrow = 0.0F;
+  float m_flexShrink = 0.0F;
   bool m_visible = true;
   bool m_participatesInLayout = true;
   bool m_paintDirty = true;

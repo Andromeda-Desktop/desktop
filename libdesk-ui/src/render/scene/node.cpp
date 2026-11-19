@@ -304,6 +304,14 @@ void Node::setFlexGrow(float grow) {
   markLayoutDirty();
 }
 
+void Node::setFlexShrink(float shrink) {
+  if (m_flexShrink == shrink) {
+    return;
+  }
+  m_flexShrink = shrink;
+  markLayoutDirty();
+}
+
 void Node::setVisible(bool visible) {
   if (m_visible == visible) {
     return;

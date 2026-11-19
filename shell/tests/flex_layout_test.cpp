@@ -99,6 +99,25 @@ namespace {
     TEST_CHECK(piece->width() == 280.0F);
   }
 
+  // A shrinkable child keeps its natural width while the row has room, so the next child follows it; on overflow it
+  // gives up exactly the overflow.
+  void shrinkTakesOnlyTheOverflow(StubRenderer& renderer) {
+    for (const float rowWidth : {400.0F, 300.0F}) {
+      auto row = makeRow(FlexJustify::Start, FlexAlign::Start);
+      auto title = std::make_unique<Flex>();
+      addBox(*title, 250.0F, 20.0F);
+      title->setFlexShrink(1.0F);
+      auto* shrinking = title.get();
+      row->addChild(std::move(title));
+      auto* mark = addBox(*row, 50.0F, 20.0F);
+      row->setSize(rowWidth, 100.0F);
+      row->layout(renderer);
+      const float expected = rowWidth == 400.0F ? 250.0F : 222.0F;
+      TEST_CHECK(shrinking->width() == expected);
+      TEST_CHECK(mark->x() == 10.0F + expected + 8.0F);
+    }
+  }
+
 } // namespace
 
 int main() {
@@ -107,5 +126,6 @@ int main() {
   justifyAndAlignCenter(renderer);
   justifyEndColumn(renderer);
   rejoinedChildKeepsRowLayout(renderer);
+  shrinkTakesOnlyTheOverflow(renderer);
   return EXIT_SUCCESS;
 }

@@ -542,6 +542,28 @@ LayoutSize Flex::runLayout(Renderer& renderer, const LayoutConstraints& constrai
   }
   const float totalGap = m_gap * static_cast<float>(numGaps);
 
+  if (!wrapping && mainKnown) {
+    float fixedMain = mainPaddingStart(*this, horizontal) + mainPaddingEnd(*this, horizontal) + totalGap;
+    float shrinkWeight = 0.0F;
+    for (const auto& item : items) {
+      if (totalGrow > 0.0F && item.node->flexGrow() > 0.0F) {
+        continue;
+      }
+      fixedMain += item.main;
+      shrinkWeight += item.node->flexShrink() * item.main;
+    }
+    const float overflow = fixedMain - containerMain;
+    if (overflow > 0.0F && shrinkWeight > 0.0F) {
+      for (auto& item : items) {
+        if ((totalGrow > 0.0F && item.node->flexGrow() > 0.0F) || item.node->flexShrink() <= 0.0F) {
+          continue;
+        }
+        const float cut = overflow * item.node->flexShrink() * item.main / shrinkWeight;
+        measureItem(item, true, std::max(0.0F, item.main - cut));
+      }
+    }
+  }
+
   if (!wrapping && mainKnown && totalGrow > 0.0F) {
     float fixedMain = mainPaddingStart(*this, horizontal) + mainPaddingEnd(*this, horizontal) + totalGap;
     for (const auto& item : items) {
