@@ -181,6 +181,8 @@ namespace {
     if (card == nullptr || manager == nullptr) {
       return;
     }
+    // The spring advances on frame ticks; a panel at rest ticks only after a paint request.
+    row.markPaintDirty();
     if (id != 0 && manager->retarget(id, target, springOf(token))) {
       return;
     }
@@ -194,7 +196,10 @@ namespace {
     );
   }
 
-  void attachCardMotion(Button& row, float opacity, Button* icon, std::function<void(float, float, bool)> onPressExtra = {}) {
+  // Returns the card's press motion, for a child control that takes the press itself (the tile icon).
+  std::function<void(bool)> attachCardMotion(
+      Button& row, float opacity, float scale, Button* icon, std::function<void(float, float, bool)> onPressExtra = {}
+  ) {
     row.setStateFillless(true);
     auto motion = std::make_shared<CardMotion>();
     Button* rowPtr = &row;
@@ -220,19 +225,28 @@ namespace {
     };
     row.setOnEnter([hoverTo] { hoverTo(1.0F); });
     row.setOnLeave([hoverTo] { hoverTo(0.0F); });
-    row.setOnPress([rowPtr, motion, onPressExtra = std::move(onPressExtra)](float x, float y, bool pressed) {
-      if (onPressExtra) {
-        onPressExtra(x, y, pressed);
-      }
+    auto pressCard = [rowPtr, motion, scale](bool pressed) {
       driveCard(
           *rowPtr, motion, &CardMotion::press, &CardMotion::pressId, pressed ? 1.0F : 0.0F,
           pressed ? Tokens::springPress : Tokens::springRelease,
-          [](Flex& card, float t) {
+          [scale](Flex& card, float t) {
+            // P2: 0.96 up to 96 px, 0.98 up to 240 px; wider cards press by the fill step only.
+            const float size = std::max(card.width(), card.height()) / scale;
+            const float depth = size <= 96.0F ? Tokens::motionPressScaleSmall
+                : size <= 240.0F             ? Tokens::motionPressScaleMedium
+                                             : 1.0F;
             card.setTransformOrigin(card.width() * 0.5F, card.height() * 0.5F);
-            card.setScale(1.0F - 0.03F * t);
+            card.setScale(1.0F - (1.0F - depth) * t);
           }
       );
+    };
+    row.setOnPress([pressCard, onPressExtra = std::move(onPressExtra)](float x, float y, bool pressed) {
+      if (onPressExtra) {
+        onPressExtra(x, y, pressed);
+      }
+      pressCard(pressed);
     });
+    return pressCard;
   }
 
 } // namespace
@@ -315,9 +329,11 @@ std::unique_ptr<Button> QuickPage::makeToggleRow(
   Button* body = container.get();
   // The pager clips at the tile edge, so an outset ring would lose its outer edges.
   body->setFocusRingInset(true);
-  attachCardMotion(*container, panelCardOpacity(), icon.get(),
-                   [this, body](float x, float y, bool pressed) { tilePress(body, x, y, pressed); });
-  attachTileDrag(*icon);
+  auto pressCard = attachCardMotion(
+      *container, panelCardOpacity(), s, icon.get(),
+      [this, body](float x, float y, bool pressed) { tilePress(body, x, y, pressed); }
+  );
+  attachTileDrag(*icon, std::move(pressCard));
   container->setOnPointerMotion([this, body](float x, float y) { tileMotion(body, x, y); });
   container->addChild(std::move(icon));
 
@@ -342,9 +358,12 @@ std::unique_ptr<Button> QuickPage::makeToggleRow(
   return container;
 }
 
-void QuickPage::attachTileDrag(Button& button) {
+void QuickPage::attachTileDrag(Button& button, std::function<void(bool)> pressCard) {
   Button* source = &button;
-  button.setOnPress([this, source](float x, float y, bool pressed) { tilePress(source, x, y, pressed); });
+  button.setOnPress([this, source, pressCard = std::move(pressCard)](float x, float y, bool pressed) {
+    tilePress(source, x, y, pressed);
+    pressCard(pressed);
+  });
   button.setOnPointerMotion([this, source](float x, float y) { tileMotion(source, x, y); });
 }
 
@@ -1241,7 +1260,8 @@ void QuickPage::syncToggleRow(ToggleRow& row, const std::string& subtitle) {
   row.icon->setVariant(active ? ButtonVariant::Primary : (row.drop ? ButtonVariant::Ghost : ButtonVariant::Tonal));
   row.icon->setEnabled(row.shortcut->enabled());
   row.subtitle->setText(subtitle);
-  if (row.body != nullptr) {
+  // A wide tile shows its title and state; only an icon-only round tile names itself in a tooltip.
+  if (row.body != nullptr && row.drop) {
     row.body->setTooltip(row.title->text() + "\n" + subtitle);
   }
 }

@@ -2652,7 +2652,7 @@ void PanelManager::syncGlassPieces(bool material) {
   };
   std::vector<Piece> pieces;
   // Clip rect in surface coordinates: x0, y0, x1, y1. A piece outside its clipping ancestors (another page) draws nothing.
-  // A piece takes its node's scale (about the centre) and the opacity of its path, so the glass follows the content.
+  // A piece takes its node's scale (absolutePosition already maps it about the origin) and the opacity of its path.
   const auto walk = [&](const auto& self, const Node& node, float x0, float y0, float x1, float y1, float alpha) -> void {
     if (!node.visible()) {
       return;
@@ -2665,8 +2665,6 @@ void PanelManager::syncGlassPieces(bool material) {
       const float w = node.width() * node.scaleX();
       const float h = node.height() * node.scaleY();
       const float scale = std::min(node.scaleX(), node.scaleY());
-      x += (node.width() - w) * 0.5F;
-      y += (node.height() - h) * 0.5F;
       const float l = std::max(x, x0);
       const float t = std::max(y, y0);
       const float r = std::min(x + w, x1);

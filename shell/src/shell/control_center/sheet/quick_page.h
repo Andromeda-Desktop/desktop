@@ -77,7 +77,7 @@ private:
   std::unique_ptr<Flex> makeTileCard(std::string_view type, bool plain = false);
   // A round toggle (concept C drop): symbol only, the name in its tooltip; null when the type has no shortcut.
   std::unique_ptr<Flex> makeDropTile(std::string_view type);
-  void attachTileDrag(Button& button);
+  void attachTileDrag(Button& button, std::function<void(bool)> pressCard);
   void tilePress(Button* button, float x, float y, bool pressed);
   void tileMotion(Button* button, float x, float y);
   // Fills the pager with 2 x 2 pages of the tiles in `order`; an unavailable tile is skipped.
