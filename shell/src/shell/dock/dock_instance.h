@@ -114,6 +114,13 @@ namespace shell::dock {
       float visualScale = -1.0F;
       AnimationManager::Id scaleAnimId = 0;
     };
+    // Row separators; while the zoom spreads the icons, each stays centred in the gap between its neighbours.
+    struct Separator {
+      Node* node = nullptr;
+      float restMainPos = 0.0F;
+      float restCrossPos = 0.0F;
+    };
+    std::vector<Separator> separators;
     bool hasTrash = false;
     bool trashFull = false;
     TrashCell trash;

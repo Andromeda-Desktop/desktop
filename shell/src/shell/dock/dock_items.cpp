@@ -616,6 +616,7 @@ namespace shell::dock {
       instance.row = nullptr;
     }
     instance.items.clear();
+    instance.separators.clear();
     instance.launcherArea = nullptr;
     instance.launcherIconNode = nullptr;
     instance.launcherVisualScale = -1.0F;
@@ -646,7 +647,7 @@ namespace shell::dock {
 
     for (std::size_t itemIndex = 0; itemIndex < itemModels.size(); ++itemIndex) {
       if (itemIndex == pinnedCount && pinnedCount > 0) {
-        instance.row->addChild(makeDockSeparator(vert, cfg.scale));
+        instance.separators.push_back({.node = instance.row->addChild(makeDockSeparator(vert, cfg.scale))});
       }
       const auto& model = itemModels[itemIndex];
       auto& item = instance.items.emplace_back();
@@ -936,7 +937,7 @@ namespace shell::dock {
     }
 
     if (instance.hasTrash) {
-      instance.row->addChild(makeDockSeparator(vert, cfg.scale));
+      instance.separators.push_back({.node = instance.row->addChild(makeDockSeparator(vert, cfg.scale))});
       instance.row->addChild(createTrashButton(instance, cfg, clickContext));
     }
 
@@ -1251,7 +1252,13 @@ namespace shell::dock {
     const float itemPitch = cellMain + static_cast<float>(cfg.itemSpacing);
     const float badgeSize = std::max(kBadgeMinSize, iSize * kBadgeSizeRatio);
     const float baseLauncherScale = cfg.inactiveScale;
-    const bool pointerActive = instance.pointerInside && instance.hoverPointerValid;
+    const auto pointerInCell = [&](float restMainPos) {
+      return instance.hoverPointerMain >= restMainPos && instance.hoverPointerMain < restMainPos + cellMain;
+    };
+    // The launcher and trash glyphs are buttons, not app tiles: the pointer on them zooms nothing (rulebook 9.4).
+    const bool pointerOnGlyph = (instance.launcherArea != nullptr && pointerInCell(instance.launcherRestMainPos)) ||
+                                (instance.trash.area != nullptr && pointerInCell(instance.trash.restMainPos));
+    const bool pointerActive = instance.pointerInside && instance.hoverPointerValid && !pointerOnGlyph;
     const std::size_t itemCount = std::min(instance.items.size(), snapshot.items.size());
     bool needsMoreFrames = false;
     const float easeStep = std::clamp(deltaMs, 1.0F, 50.0F) / kHoverZoomEaseMs;
@@ -1278,6 +1285,7 @@ namespace shell::dock {
       float restCenterMain = 0.0F;
       float iconBaseX = kCellPad;
       float iconBaseY = kCellPad;
+      bool glyph = false; // keeps its base scale; still moves with the spread
     };
 
     std::vector<HoverSlot> slots;
@@ -1296,6 +1304,7 @@ namespace shell::dock {
               .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, cellMain),
               .iconBaseX = kCellPad,
               .iconBaseY = launcherIconBaseY(cfg, iSize),
+              .glyph = true,
           }
       );
     }
@@ -1339,6 +1348,7 @@ namespace shell::dock {
               .restCenterMain = itemRestCenterMain(instance.launcherRestMainPos, cellMain),
               .iconBaseX = kCellPad,
               .iconBaseY = launcherIconBaseY(cfg, iSize),
+              .glyph = true,
           }
       );
     }
@@ -1357,6 +1367,7 @@ namespace shell::dock {
               .restCenterMain = itemRestCenterMain(instance.trash.restMainPos, cellMain),
               .iconBaseX = kCellPad,
               .iconBaseY = trashIconBaseY(iSize),
+              .glyph = true,
           }
       );
     }
@@ -1364,7 +1375,7 @@ namespace shell::dock {
     std::vector<float> slotScales;
     slotScales.reserve(slots.size());
     for (HoverSlot& slot : slots) {
-      const float fullMultiplier = zoomActive ? computeHoverMultiplier(
+      const float fullMultiplier = zoomActive && !slot.glyph ? computeHoverMultiplier(
                                                    instance.hoverPointerMain, slot.restCenterMain, itemPitch,
                                                    cfg.magnificationScale, kHoverZoomFalloffInfluence
                                                )
@@ -1418,6 +1429,37 @@ namespace shell::dock {
       }
     }
 
+    // Drawn main extent of a slot's icon: live (current offset and scale) or at rest.
+    const auto slotEdge = [&](const HoverSlot& slot, bool live, float side) {
+      const float scale = !live ? slot.baseScale : (*slot.visualScale > 0.0F ? *slot.visualScale : slot.targetScale);
+      return slot.restMainPos + cellMain * 0.5F + (live ? *slot.hoverMainOffset : 0.0F) + side * iSize * scale * 0.5F;
+    };
+    for (const auto& separator : instance.separators) {
+      const HoverSlot* before = nullptr;
+      const HoverSlot* after = nullptr;
+      for (const HoverSlot& slot : slots) {
+        if (slot.restMainPos < separator.restMainPos && (before == nullptr || slot.restMainPos > before->restMainPos)) {
+          before = &slot;
+        } else if (slot.restMainPos > separator.restMainPos &&
+                   (after == nullptr || slot.restMainPos < after->restMainPos)) {
+          after = &slot;
+        }
+      }
+      float offset = 0.0F;
+      if (before != nullptr && after != nullptr) {
+        offset = std::round(
+            (slotEdge(*before, true, 1.0F) + slotEdge(*after, true, -1.0F) - slotEdge(*before, false, 1.0F) -
+             slotEdge(*after, false, -1.0F)) *
+            0.5F
+        );
+      }
+      if (vertical) {
+        separator.node->setPosition(separator.restCrossPos, separator.restMainPos + offset);
+      } else {
+        separator.node->setPosition(separator.restMainPos + offset, separator.restCrossPos);
+      }
+    }
+
     // The pill follows the drawn icons past its rest ends, so a magnified end icon never leaves the glass.
     if (instance.maxScrollOffset <= 0.0F) {
       const float rowMainSize = vertical ? instance.row->height() : instance.row->width();
@@ -1466,6 +1508,10 @@ namespace shell::dock {
       return;
     }
     const bool vertical = shell::dock::isVerticalEdge(cfg.position);
+    for (auto& separator : instance.separators) {
+      separator.restMainPos = vertical ? separator.node->y() : separator.node->x();
+      separator.restCrossPos = vertical ? separator.node->x() : separator.node->y();
+    }
     if (instance.trash.area != nullptr) {
       instance.trash.restMainPos = vertical ? instance.trash.area->y() : instance.trash.area->x();
       instance.trash.restCrossPos = vertical ? instance.trash.area->x() : instance.trash.area->y();
