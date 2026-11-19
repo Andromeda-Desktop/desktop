@@ -530,9 +530,11 @@ namespace settings {
     auto notificationRows =
         generateSchemaEntries(noctalia::config::schema::notificationSchema(), cfg.notification, {"notification"});
     appendGroup(entries, notificationRows, "general");
+    appendRow(entries, notificationRows, "show_actions");
     appendGroup(entries, notificationRows, "history");
+    appendRow(entries, notificationRows, "history_retention_hours");
     entries.push_back(makeEntry(
-        SettingsSection::Notifications, "filtering", tr("settings.schema.notifications.filters.label"),
+        SettingsSection::Notifications, "notification-more", tr("settings.schema.notifications.filters.label"),
         tr("settings.schema.notifications.filters.description"), {"notification", "filter"},
         NotificationFiltersSetting{.items = cfg.notification.filters},
         "filter blacklist suppress toast history sound dnd bypass do not disturb app name desktop entry category "

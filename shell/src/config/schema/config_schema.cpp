@@ -11,6 +11,7 @@
 #include "util/file_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
 #include <format>
 #include <stdexcept>
@@ -207,12 +208,26 @@ namespace noctalia::config::schema {
   } // namespace
 
   const Schema<OsdConfig>& osdSchema() {
-    const auto osd = [](std::string_view label, std::string_view tags, RowSpec::Kind kind = RowSpec::Kind::Toggle,
+    // More-options clusters: where the OSD shows, and how it looks; other rows stay in the main "osd" group.
+    const auto osdGroup = [](std::string_view label) -> std::string_view {
+      static constexpr std::array<std::string_view, 4> look = {
+          "shell.osd-background-opacity", "shell.osd-border", "shell.osd-border-color", "shell.osd-border-width"
+      };
+      static constexpr std::array<std::string_view, 8> placement = {
+          "shell.osd-position-vertical", "shell.osd-orientation", "shell.osd-hide-delay", "shell.osd-scale",
+          "shell.osd-follow-focused-output", "shell.osd-offset-x", "shell.osd-offset-y", "shell.osd-monitors",
+      };
+      if (std::ranges::contains(look, label)) {
+        return "osd-look";
+      }
+      return std::ranges::contains(placement, label) ? "osd-placement" : "osd";
+    };
+    const auto osd = [osdGroup](std::string_view label, std::string_view tags, RowSpec::Kind kind = RowSpec::Kind::Toggle,
                         std::vector<RowSpec::Choice> choices = {}) {
       return RowSpec{
           .kind = kind,
           .section = "notifications",
-          .group = "osd",
+          .group = osdGroup(label),
           .label = label,
           .tags = tags,
           .choices = std::move(choices)
@@ -784,7 +799,7 @@ namespace noctalia::config::schema {
         ),
         field(
             &NotificationConfig::showActions, "show_actions",
-            RowSpec{.section = "notifications", .group = "general", .tags = "action buttons"}
+            RowSpec{.section = "notifications", .group = "notification-more", .tags = "action buttons"}
         ),
         // Retired toast keys (the island shows every notification): read and dropped so old configs load without a
         // warning.
@@ -853,7 +868,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Stepper,
                 .section = "notifications",
-                .group = "history",
+                .group = "notification-more",
                 .tags = "history retention hours clear",
                 .suffix = "h",
             }
@@ -4222,7 +4237,7 @@ namespace noctalia::config::schema {
       return RowSpec{
           .kind = RowSpec::Kind::Slider,
           .section = "dock",
-          .group = "shape",
+          .group = "corners",
           .label = label,
           .title = title,
           .tags = "rounded corner",
@@ -4247,7 +4262,7 @@ namespace noctalia::config::schema {
         ),
         field(
             &DockConfig::activeMonitorOnly, "active_monitor_only",
-            RowSpec{.section = "dock", .group = "general", .tags = "monitor"}
+            RowSpec{.section = "dock", .group = "position-spacing", .tags = "monitor"}
         ),
         field(
             &DockConfig::iconSize, "icon_size", kDockIconSizeRange,
@@ -4260,7 +4275,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "layout",
+                .group = "position-spacing",
                 .title = "shared.main-axis-padding",
                 .tags = "inset",
             }
@@ -4270,21 +4285,21 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "layout",
+                .group = "position-spacing",
                 .title = "shared.cross-axis-padding",
                 .tags = "inset",
             }
         ),
         field(
             &DockConfig::itemSpacing, "item_spacing", kDockItemSpacingRange,
-            RowSpec{.kind = RowSpec::Kind::Slider, .section = "dock", .group = "layout", .tags = "gap", .integer = true}
+            RowSpec{.kind = RowSpec::Kind::Slider, .section = "dock", .group = "position-spacing", .tags = "gap", .integer = true}
         ),
         field(
             &DockConfig::backgroundOpacity, "background_opacity", kUnitRange,
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "effects",
+                .group = "dock-surface",
                 .title = "shared.background-opacity",
                 .tags = "alpha transparency translucent opacity",
             }
@@ -4295,14 +4310,14 @@ namespace noctalia::config::schema {
         ),
         colorField(
             &DockConfig::border, "border",
-            RowSpec{.kind = RowSpec::Kind::Color, .section = "dock", .group = "shape", .tags = "outline color", .advanced = true}
+            RowSpec{.kind = RowSpec::Kind::Color, .section = "dock", .group = "dock-surface", .tags = "outline color", .advanced = true}
         ),
         field(
             &DockConfig::borderWidth, "border_width", kDockBorderWidthRange,
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "shape",
+                .group = "dock-surface",
                 .tags = "outline stroke",
                 .advanced = true,
             }
@@ -4327,7 +4342,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "shape",
+                .group = "corners",
                 .label = "dock.corner-radius",
                 .title = "shared.corner-radius",
                 .tags = "rounded",
@@ -4353,14 +4368,14 @@ namespace noctalia::config::schema {
         ),
         field(
             &DockConfig::concaveEdgeCorners, "concave_edge_corners",
-            RowSpec{.section = "dock", .group = "shape", .tags = "rounded corner carve"}
+            RowSpec{.section = "dock", .group = "corners", .tags = "rounded corner carve"}
         ),
         field(
             &DockConfig::marginEnds, "margin_ends", kDockMarginEndsRange,
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "layout",
+                .group = "position-spacing",
                 .label = "dock.ends-margin",
                 .title = "shared.ends-margin",
                 .tags = "gap inset",
@@ -4371,7 +4386,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Slider,
                 .section = "dock",
-                .group = "layout",
+                .group = "position-spacing",
                 .label = "dock.edge-margin",
                 .title = "shared.edge-margin",
                 .tags = "gap inset",
@@ -4379,7 +4394,7 @@ namespace noctalia::config::schema {
         ),
         field(
             &DockConfig::shadow, "shadow",
-            RowSpec{.section = "dock", .group = "effects", .title = "shared.shadow", .tags = "shadow"}
+            RowSpec{.section = "dock", .group = "dock-surface", .title = "shared.shadow", .tags = "shadow"}
         ),
         field(
             &DockConfig::showRunning, "show_running", RowSpec{.section = "dock", .group = "behavior", .tags = "windows"}
@@ -4403,7 +4418,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Select,
                 .section = "dock",
-                .group = "behavior",
+                .group = "position-spacing",
                 .tags = "layer shell z-order",
                 .segmented = true,
                 .choices = layerChoices(),
@@ -4466,15 +4481,15 @@ namespace noctalia::config::schema {
             }
         ),
         field(
-            &DockConfig::showDots, "show_dots", RowSpec{.section = "dock", .group = "behavior", .tags = "running dots"}
+            &DockConfig::showDots, "show_dots", RowSpec{.section = "dock", .group = "dock-indicators", .tags = "running dots"}
         ),
         field(
             &DockConfig::runningBar, "running_bar",
-            RowSpec{.section = "dock", .group = "behavior", .tags = "running indicator"}
+            RowSpec{.section = "dock", .group = "dock-indicators", .tags = "running indicator"}
         ),
         field(
             &DockConfig::showInstanceCount, "show_instance_count",
-            RowSpec{.section = "dock", .group = "behavior", .tags = "badge windows"}
+            RowSpec{.section = "dock", .group = "dock-indicators", .tags = "badge windows"}
         ),
         field(
             &DockConfig::showTrash, "show_trash", RowSpec{.section = "dock", .group = "behavior", .tags = "trash bin"}
@@ -4494,7 +4509,7 @@ namespace noctalia::config::schema {
             RowSpec{
                 .kind = RowSpec::Kind::Text,
                 .section = "dock",
-                .group = "layout",
+                .group = "dock-launcher",
                 .tags = "launcher apps icon glyph",
                 .placeholder = "grain",
             }
@@ -4502,7 +4517,7 @@ namespace noctalia::config::schema {
         pathStringField(&DockConfig::launcherCustomImage, "launcher_custom_image"),
         field(
             &DockConfig::launcherCustomImageColorize, "launcher_custom_image_colorize",
-            RowSpec{.section = "dock", .group = "layout", .tags = "launcher apps image tint color"}
+            RowSpec{.section = "dock", .group = "dock-launcher", .tags = "launcher apps image tint color"}
         ),
         field(
             &DockConfig::pinned, "pinned",

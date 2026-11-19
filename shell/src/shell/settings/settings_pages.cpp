@@ -17,6 +17,13 @@ namespace settings {
     constexpr std::array<S, 1> kNotifications{S::Notifications};
     constexpr std::array<S, 2> kDesktopDock{S::Dock, S::Desktop};
     constexpr std::array<S, 3> kBar{S::Bar, S::ControlCenter, S::Panels};
+    constexpr std::array<std::string_view, 8> kDesktopDockClusters{
+        "position-spacing", "dock-indicators", "dock-launcher", "focus-styling", "corners",
+        "dock-surface", "pinned-apps", "screen-corners",
+    };
+    constexpr std::array<std::string_view, 4> kNotificationsClusters{
+        "notification-more", "osd-placement", "osd-look", "kinds",
+    };
     constexpr std::array<std::string_view, 9> kBarClusters{
         "position-spacing", "corners", "border-shadow", "widgets", "capsules",
         "empty-clicks", "empty-scroll", "panel-look", "panel-placement",
@@ -52,9 +59,9 @@ namespace settings {
         {"appearance", kPers, "palette", kAppearance},
         {"wallpaper", kPers, "photo", kWallpaper},
         {"lock-screen", kPers, "lock", {}},
-        {"desktop-dock", kPers, "layout-bottombar", kDesktopDock},
+        {"desktop-dock", kPers, "layout-bottombar", kDesktopDock, true, {}, kDesktopDockClusters},
         {"bar", kPers, "crop-3-2", kBar, true, {}, kBarClusters},
-        {"notifications", kPers, "bell", kNotifications},
+        {"notifications", kPers, "bell", kNotifications, true, {}, kNotificationsClusters},
         {"displays", kDev, "device-desktop", kDisplays},
         {"sound", kDev, "volume", {}},
         {"power", kDev, "bolt", kPower},

@@ -366,6 +366,9 @@ namespace settings {
       appendRow(entries, dockRows, "reserve_space");
       appendRow(entries, dockRows, "layer");
       appendGroup(entries, dockRows, "behavior");
+      for (const auto* key : {"show_dots", "running_bar", "show_instance_count"}) {
+        appendRow(entries, dockRows, key);
+      }
       appendRow(entries, dockRows, "launcher_position");
       const SettingVisibility dockLauncherEnabled = [currentDock](const Config& current) {
         const auto effective = currentDock(current);
@@ -376,7 +379,7 @@ namespace settings {
       entries.back().visibleWhen = dockLauncherEnabled;
       {
         auto entry = makeEntry(
-            SettingsSection::Dock, "layout", tr("settings.schema.dock.launcher-custom-image.label"),
+            SettingsSection::Dock, "dock-launcher", tr("settings.schema.dock.launcher-custom-image.label"),
             tr("settings.schema.dock.launcher-custom-image.description"), path("launcher_custom_image"),
             TextSetting{
                 .value = dock.launcherCustomImage,
