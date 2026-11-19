@@ -2354,9 +2354,17 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
 
   if (use_effects) {
     struct fx_corner_fradii corners = fx_options->corners;
-
-    glUniform2f(shader->effects.size, clip_box->width, clip_box->height);
-    glUniform2f(shader->effects.position, clip_box->x, clip_box->y);
+    // A sub-pixel shape that fills its quad: the quad's own edge and corners take the exact shape.
+    const float* frac = fx_options->liquid_frac;
+    const bool exact = (frac[0] != 0.0f || frac[1] != 0.0f || frac[2] != 0.0f || frac[3] != 0.0f)
+        && wlr_box_equal(&fx_options->liquid_box, clip_box);
+    if (exact) {
+      corners = (struct fx_corner_fradii){
+          fx_options->liquid_radius, fx_options->liquid_radius, fx_options->liquid_radius, fx_options->liquid_radius};
+    }
+    glUniform2f(shader->effects.size, clip_box->width + (exact ? frac[2] : 0.0f),
+                clip_box->height + (exact ? frac[3] : 0.0f));
+    glUniform2f(shader->effects.position, clip_box->x + (exact ? frac[0] : 0.0f), clip_box->y + (exact ? frac[1] : 0.0f));
     uniform_corner_radii_set(&shader->effects.radius, &corners);
 
     glUniform2f(shader->effects.clip_size, clipped_region_box.width, clipped_region_box.height);
@@ -2366,8 +2374,9 @@ void fx_render_pass_add_texture(struct fx_gles_render_pass* pass, const struct f
     glUniform1f(shader->effects.rim, fx_options->rim);
     const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
     const struct wlr_box liquid_box = liquid_shape ? fx_options->liquid_box : *clip_box;
-    glUniform2f(shader->effects.liquid_size, liquid_box.width, liquid_box.height);
-    glUniform2f(shader->effects.liquid_position, liquid_box.x, liquid_box.y);
+    const float* lfrac = liquid_shape ? fx_options->liquid_frac : (const float[4]){0.0f, 0.0f, 0.0f, 0.0f};
+    glUniform2f(shader->effects.liquid_size, liquid_box.width + lfrac[2], liquid_box.height + lfrac[3]);
+    glUniform2f(shader->effects.liquid_position, liquid_box.x + lfrac[0], liquid_box.y + lfrac[1]);
     glUniform1f(shader->effects.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
     glUniform1f(shader->effects.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
     glUniform3fv(shader->effects.light, 1, fx_options->light);
@@ -3431,9 +3440,16 @@ static void render_blur_composite(
   // The full-resolution level would share the half-resolution level's format.
   glUniform1i(shader->clamp_level, level->drm_format != DRM_FORMAT_ABGR16161616F);
   if (corners) {
-    glUniform2f(shader->corners.size, clip_box->width, clip_box->height);
-    glUniform2f(shader->corners.position, clip_box->x, clip_box->y);
-    uniform_corner_radii_set(&shader->corners.radius, &tex_options->corners);
+    // A sub-pixel shape that fills its quad: the quad's own edge and corners take the exact shape.
+    const float* frac = fx_options->liquid_frac;
+    const bool exact = (frac[0] != 0.0f || frac[1] != 0.0f || frac[2] != 0.0f || frac[3] != 0.0f)
+        && wlr_box_equal(&fx_options->liquid_box, clip_box);
+    const float r = fx_options->liquid_radius;
+    const struct fx_corner_fradii exact_corners = {r, r, r, r};
+    glUniform2f(shader->corners.size, clip_box->width + (exact ? frac[2] : 0.0f),
+                clip_box->height + (exact ? frac[3] : 0.0f));
+    glUniform2f(shader->corners.position, clip_box->x + (exact ? frac[0] : 0.0f), clip_box->y + (exact ? frac[1] : 0.0f));
+    uniform_corner_radii_set(&shader->corners.radius, exact ? &exact_corners : &tex_options->corners);
 
     glUniform2f(shader->corners.clip_size, clipped_region_box.width, clipped_region_box.height);
     glUniform2f(shader->corners.clip_position, clipped_region_box.x, clipped_region_box.y);
@@ -3445,8 +3461,9 @@ static void render_blur_composite(
     glUniform1f(shader->glass.rim, fx_options->rim);
     const bool liquid_shape = !wlr_box_empty(&fx_options->liquid_box);
     const struct wlr_box liquid_box = liquid_shape ? fx_options->liquid_box : *clip_box;
-    glUniform2f(shader->glass.liquid_size, liquid_box.width, liquid_box.height);
-    glUniform2f(shader->glass.liquid_position, liquid_box.x, liquid_box.y);
+    const float* lfrac = liquid_shape ? fx_options->liquid_frac : (const float[4]){0.0f, 0.0f, 0.0f, 0.0f};
+    glUniform2f(shader->glass.liquid_size, liquid_box.width + lfrac[2], liquid_box.height + lfrac[3]);
+    glUniform2f(shader->glass.liquid_position, liquid_box.x + lfrac[0], liquid_box.y + lfrac[1]);
     glUniform1f(shader->glass.liquid_radius, liquid_shape ? fx_options->liquid_radius : -1.0f);
     glUniform1f(shader->glass.liquid_scale, fx_options->liquid_scale > 0.0f ? fx_options->liquid_scale : 1.0f);
     glUniform3fv(shader->glass.light, 1, fx_options->light);
@@ -3718,6 +3735,7 @@ void fx_render_pass_add_blur(struct fx_gles_render_pass* pass, struct fx_render_
     tex_options->lens = fx_options->lens;
     memcpy(tex_options->tint_mix, fx_options->tint_mix, sizeof(tex_options->tint_mix));
     tex_options->liquid_box = fx_options->liquid_box;
+    memcpy(tex_options->liquid_frac, fx_options->liquid_frac, sizeof(tex_options->liquid_frac));
     tex_options->liquid_radius = fx_options->liquid_radius;
     tex_options->liquid_scale = fx_options->liquid_scale;
     tex_options->merge = fx_options->merge;

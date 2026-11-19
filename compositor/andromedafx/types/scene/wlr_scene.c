@@ -2745,10 +2745,33 @@ void wlr_scene_blur_set_liquid_merge(struct wlr_scene_blur* blur, const struct w
 
 void wlr_scene_blur_set_liquid_shape(struct wlr_scene_blur* blur, const struct wlr_box* box, int radius) {
   const struct wlr_box next = box != NULL ? *box : (struct wlr_box){0};
-  if (wlr_box_equal(&blur->liquid_box, &next) && blur->liquid_radius == radius) {
+  if (wlr_box_equal(&blur->liquid_box, &next) && blur->liquid_exact.width == 0.0 && blur->liquid_radius == (float)radius) {
     return;
   }
   blur->liquid_box = next;
+  blur->liquid_exact = (struct wlr_fbox){0};
+  blur->liquid_radius = (float)radius;
+  scene_node_update(&blur->node, NULL);
+}
+
+void wlr_scene_blur_set_liquid_shape_exact(struct wlr_scene_blur* blur, const struct wlr_fbox* box, float radius) {
+  if (box == NULL || box->width <= 0.0 || box->height <= 0.0) {
+    wlr_scene_blur_set_liquid_shape(blur, NULL, 0);
+    return;
+  }
+  if (wlr_fbox_equal(&blur->liquid_exact, box) && blur->liquid_radius == radius) {
+    return;
+  }
+  // The whole pixels that hold the shape bound its damage and its draw.
+  const int x1 = (int)floor(box->x);
+  const int y1 = (int)floor(box->y);
+  blur->liquid_box = (struct wlr_box){
+      .x = x1,
+      .y = y1,
+      .width = (int)ceil(box->x + box->width) - x1,
+      .height = (int)ceil(box->y + box->height) - y1,
+  };
+  blur->liquid_exact = *box;
   blur->liquid_radius = radius;
   scene_node_update(&blur->node, NULL);
 }
@@ -4523,9 +4546,16 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                       .width = (int)lround(blur->liquid_box.width * data->scale),
                       .height = (int)lround(blur->liquid_box.height * data->scale),
                   },
-        .liquid_radius = (float)blur->liquid_radius * data->scale,
+        .liquid_radius = blur->liquid_radius * data->scale,
         .liquid_scale = data->scale,
     };
+    if (blur->liquid_exact.width > 0.0 && !wlr_box_empty(&blur_options.liquid_box)) {
+      const struct wlr_box* box = &blur_options.liquid_box;
+      blur_options.liquid_frac[0] = (float)(dst_box.x + blur->liquid_exact.x * data->scale - box->x);
+      blur_options.liquid_frac[1] = (float)(dst_box.y + blur->liquid_exact.y * data->scale - box->y);
+      blur_options.liquid_frac[2] = (float)(blur->liquid_exact.width * data->scale - box->width);
+      blur_options.liquid_frac[3] = (float)(blur->liquid_exact.height * data->scale - box->height);
+    }
     blur_options.merge.count = blur->liquid_merge.count;
     blur_options.merge.reach = (float)blur->liquid_merge.reach * data->scale;
     for (int i = 0; i < blur->liquid_merge.count; i++) {

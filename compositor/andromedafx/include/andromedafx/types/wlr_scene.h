@@ -274,7 +274,8 @@ struct wlr_scene_blur {
   float lens; // sharp backdrop through the rim band, 0 to 1
   float tint_mix[4]; // backdrop pre-mix toward rgb by a (glass density)
   struct wlr_box liquid_box; // node-local; empty = the node box and corners
-  int liquid_radius;
+  struct wlr_fbox liquid_exact; // node-local sub-pixel liquid_box; width 0 = liquid_box as is
+  float liquid_radius;
   struct wlr_scene_blur_merge liquid_merge;
 
   bool should_only_blur_bottom_layer;
@@ -1074,6 +1075,9 @@ bool wlr_scene_blur_backdrop_pending(const struct wlr_scene_blur* blur);
  * NULL box = the node box and its corners.
  */
 void wlr_scene_blur_set_liquid_shape(struct wlr_scene_blur* blur, const struct wlr_box* box, int radius);
+
+// A sub-pixel liquid shape: the edge, rim and corners move by fractions of a pixel (a press scale).
+void wlr_scene_blur_set_liquid_shape_exact(struct wlr_scene_blur* blur, const struct wlr_fbox* box, float radius);
 // Draws up to 4 node-local shapes as one glass: their SDFs join by a smooth union within `reach` logical px, and the
 // union is the coverage (the node box should be their bounding box). NULL or count < 2 clears it.
 void wlr_scene_blur_set_liquid_merge(struct wlr_scene_blur* blur, const struct wlr_scene_blur_merge* merge);

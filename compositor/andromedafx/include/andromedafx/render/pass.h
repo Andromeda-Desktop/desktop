@@ -160,6 +160,8 @@ struct fx_render_texture_options {
   float source_mix;
   // The liquid shape (render coords, radius in render px) whose edge gets the rim; empty = clip_box and corners.
   struct wlr_box liquid_box;
+  // Render px added to liquid_box x, y, width, height in the shader: a sub-pixel shape.
+  float liquid_frac[4];
   float liquid_radius;
   // Render px per logical px for the rim band; 0 = 1.
   float liquid_scale;
@@ -237,6 +239,7 @@ struct fx_render_blur_pass_options {
   float lens;   // 0 to 1, see fx_render_texture_options.lens
   float tint_mix[4]; // see fx_render_texture_options.tint_mix
   struct wlr_box liquid_box;
+  float liquid_frac[4]; // see fx_render_texture_options.liquid_frac
   float liquid_radius;
   float liquid_scale;
   float light[3]; // see fx_render_texture_options.light

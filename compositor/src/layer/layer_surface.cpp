@@ -84,6 +84,9 @@ namespace andromeda {
       // panel, an edge dock. The box includes the flares.
       int joinEdge = 0;
       int flare = 0;
+      // The client's shape at sub-pixel precision (surface-local), for a plain rounded shape; `box` holds it rounded.
+      std::optional<wlr_fbox> exact{};
+      double exactRadius = 0.0;
     };
 
     // One rounded rectangle sent as a pixel staircase (one band per row inside the curve, e.g.
@@ -1142,6 +1145,10 @@ namespace andromeda {
             rounded.box.height += 2 * flare;
           }
         }
+        if (rounded.flare == 0) {
+          rounded.exact = wlr_fbox{c[0], c[1], c[2], c[3]};
+          rounded.exactRadius = shape->value(SurfaceMotion::Property::Radius)[0];
+        }
         shapes.push_back(rounded);
         const auto& liquid = shape->value(SurfaceMotion::Property::Liquid);
         const auto& tint = shape->value(SurfaceMotion::Property::Tint);
@@ -1160,16 +1167,28 @@ namespace andromeda {
     }
     if (!shapes.empty()) {
       const auto scaled = [motionScale](int v) { return static_cast<int>(std::lround(v * motionScale)); };
-      for (const RoundedShape& shape : shapes) {
+      for (RoundedShape& shape : shapes) {
         wlr_box shapeClip{
             nodeBox.x + scaled(shape.box.x), nodeBox.y + scaled(shape.box.y), scaled(shape.box.width),
             scaled(shape.box.height)
         };
+        std::optional<wlr_fbox> exact{};
+        if (shape.exact.has_value()) {
+          // The whole pixels that hold the exact shape: its edge moves by fractions inside them.
+          exact = wlr_fbox{nodeBox.x + shape.exact->x * motionScale, nodeBox.y + shape.exact->y * motionScale,
+                           shape.exact->width * motionScale, shape.exact->height * motionScale};
+          const int x1 = static_cast<int>(std::floor(exact->x));
+          const int y1 = static_cast<int>(std::floor(exact->y));
+          shapeClip = wlr_box{x1, y1, static_cast<int>(std::ceil(exact->x + exact->width)) - x1,
+                              static_cast<int>(std::ceil(exact->y + exact->height)) - y1};
+        }
         wlr_box cut = shapeClip;
         // The surface clip still cuts every shape (a slide under a fixed clip).
         if (dskClip && !wlr_box_intersection(&cut, &shapeClip, &*dskClip)) {
           cut = wlr_box{dskClip->x, dskClip->y, 0, 0};
         }
+        // A cut shape is no longer the exact one.
+        shape.exact = exact.has_value() && wlr_box_equal(&cut, &shapeClip) ? exact : std::nullopt;
         shapeClips.push_back(cut);
       }
       const auto same = [this](std::size_t a, std::size_t b) {
@@ -1293,6 +1312,10 @@ namespace andromeda {
     m_blurOpacity = firstShapeBlur == 1 && !m_shapeMaterials.empty() ? m_shapeMaterials.front().opacity : 1.0F;
     m_blur.setAlpha(m_glassAlpha * m_blurOpacity);
     m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
+    m_blur.setExactShape(
+        firstShapeBlur == 1 && !shapes.empty() && clip ? shapes.front().exact : std::nullopt,
+        static_cast<float>(!shapes.empty() ? shapes.front().exactRadius * motionScale : 0.0)
+    );
     m_blur.update(
         m_scene->tree, m_layerSurface->surface, nodeBox, box, corners, clip ? &*clip : nullptr, options, 1.0F, nullptr,
         region
@@ -1336,6 +1359,7 @@ namespace andromeda {
       blur.setFade(m_blurFade);
       m_shapeBlurOpacity[i] = own ? m_shapeMaterials[shape].opacity : 1.0F;
       blur.setAlpha(m_glassAlpha * m_shapeBlurOpacity[i]);
+      blur.setExactShape(shapes[shape].exact, static_cast<float>(shapes[shape].exactRadius * motionScale));
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,
           merged ? corner_radii_all(0) : shapeCorners(shapes[shape], motionScale, kBlurCornerSlack), &shapeClips[shape],

@@ -67,6 +67,9 @@ namespace andromeda {
     void setMaterial(const glass::Material& material);
     // Lens strength, 0 to 1 (dsk_surface_v1 liquid [2] since v9).
     void setLens(float lens);
+    // The shape at sub-pixel precision (layout coords) when its clip box is that shape rounded outward; nullopt =
+    // the clip box and corners.
+    void setExactShape(const std::optional<wlr_fbox>& box, float radius);
     // Mixes the backdrop toward rgb by amount, 0 to 1 (glass density).
     void setTintMix(const std::array<float, 3>& rgb, float amount);
     // Shapes (parent tree coords, radius in the same px) drawn as one glass whose shapes join within `reach` px; the
@@ -112,6 +115,8 @@ namespace andromeda {
     bool m_backdropSampling = false;
     std::vector<MergedShape> m_merge;
     int m_mergeReach = 0;
+    std::optional<wlr_fbox> m_exact;
+    float m_exactRadius = 0.0F;
   };
 
 } // namespace andromeda
