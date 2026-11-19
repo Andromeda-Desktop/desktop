@@ -54,7 +54,7 @@ start_layer "$LAYER_LOG" HEADLESS-1 0
 start_layer "$BOTTOM_LOG" HEADLESS-1 0 bottom-layer
 
 # 1280x720 output at zoom 0.5: the only workspace row spans 320,180 to 960,540, so the bottom-layer surface's mirror
-# lands in its top-left corner as a 100x100 square.
+# lands in its top-left corner as a 100x100 square. Samples stay above the centred "No windows" capsule.
 sample_rgb() {
   magick "$1" -crop "16x16+$2+$3" -format \
     '%[fx:round(255*mean.r)] %[fx:round(255*mean.g)] %[fx:round(255*mean.b)]' info:
@@ -76,7 +76,7 @@ assert_rgb() {
 "$ANDROMEDA" settle
 grim "$MIRRORED"
 "$ANDROMEDA" msg overview-close > /dev/null
-assert_rgb "wallpaper mirrored" "$MIRRORED" 632 352 85 119 170
+assert_rgb "wallpaper mirrored" "$MIRRORED" 632 300 85 119 170
 assert_rgb "bottom layer mirrored" "$MIRRORED" 344 204 0 255 0
 # The real bottom layer is hidden while its copies stand in, so its own corner shows the wallpaper.
 assert_rgb "bottom layer hidden" "$MIRRORED" 40 40 85 119 170
@@ -87,7 +87,7 @@ assert_rgb "bottom layer hidden" "$MIRRORED" 40 40 85 119 170
 "$ANDROMEDA" settle
 grim "$FLAT"
 "$ANDROMEDA" msg overview-close > /dev/null
-assert_rgb "wallpaper disabled" "$FLAT" 632 352 255 0 0
+assert_rgb "wallpaper disabled" "$FLAT" 632 300 255 0 0
 assert_rgb "bottom layer kept" "$FLAT" 40 40 0 255 0
 
 # Horizontally arranged workspaces put the adjacent preview beside the active one instead of below it, so a preview's
@@ -129,7 +129,7 @@ write_horizontal_config false
 "$ANDROMEDA" settle
 grim "$HORIZONTAL_FLAT"
 "$ANDROMEDA" msg overview-close > /dev/null
-assert_rgb "active fill" "$HORIZONTAL_FLAT" 632 352 255 0 0
+assert_rgb "active fill" "$HORIZONTAL_FLAT" 632 300 255 0 0
 assert_rgb "adjacent fill beside" "$HORIZONTAL_FLAT" 1100 352 255 0 0
 assert_rgb "gap between previews" "$HORIZONTAL_FLAT" 990 352 85 119 170
 assert_rgb "nothing below the previews" "$HORIZONTAL_FLAT" 632 620 85 119 170
