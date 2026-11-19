@@ -2915,13 +2915,15 @@ bool PanelManager::startDetachedMorph() {
   startContentGate();
   m_morphSourceRadius = std::min(r[2], r[3]) * 0.5F;
   m_dsk->set(Property::Radius, {m_morphSourceRadius, 0.0, 0.0, 0.0});
-  // The shape is the island from its first frame (7.4 source hand-off); only the content fades, from 35 %.
-  m_dsk->set(Property::Opacity, {m_gestureTracker.expired() ? 1.0 : 0.0, 0.0, 0.0, 0.0});
+  // The shape fades in while it grows, the mirror of the return; opaque from frame 1, the denser sheet glass covered
+  // the island as an empty pill.
+  m_dsk->set(Property::Opacity, {0.0, 0.0, 0.0, 0.0});
   if (!m_gestureTracker.expired()) {
     // The finger drives it: bind once the compositor reports where the island sits in this surface.
     m_dsk->setOnClipMapped([this](const DskSurfaceClient::Value& clip) { bindTrackerOpen(clip); });
     return true;
   }
+  m_dsk->animate(Property::Opacity, DskSurfaceClient::Curve::SpringEffectsFast, {1.0, 0.0, 0.0, 0.0});
   m_dsk->animate(Property::Radius, openCurve(), {panelRadius(), 0.0, 0.0, 0.0});
   animateMorphClip();
   m_morphClipRunning = true;
