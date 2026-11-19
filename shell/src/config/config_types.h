@@ -789,7 +789,7 @@ struct DockConfig {
   bool showInstanceCount = true;    // show a badge with count when app has >1 window
   bool showTrash = true;            // Trash cell after the last item
   DockLauncherPosition launcherPosition = DockLauncherPosition::Start;
-  std::string launcherIcon = "grid-dots";     // Tabler glyph name
+  std::string launcherIcon = "grain";         // Tabler glyph name
   std::string launcherCustomImage;          // image path; overrides launcherIcon glyph when set
   bool launcherCustomImageColorize = false; // tint the custom image with the icon color role
   // The desktop's own apps: Settings ships with the shell; Files and Terminal with the andromeda package.

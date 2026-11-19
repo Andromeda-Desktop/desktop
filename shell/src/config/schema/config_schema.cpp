@@ -4498,7 +4498,7 @@ namespace noctalia::config::schema {
                 .section = "dock",
                 .group = "layout",
                 .tags = "launcher apps icon glyph",
-                .placeholder = "grid-dots",
+                .placeholder = "grain",
             }
         ),
         pathStringField(&DockConfig::launcherCustomImage, "launcher_custom_image"),

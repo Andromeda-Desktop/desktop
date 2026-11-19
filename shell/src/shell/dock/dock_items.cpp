@@ -386,7 +386,7 @@ namespace shell::dock {
   };
 
   std::string_view dockLauncherIconGlyph(const DockConfig& cfg) {
-    return cfg.launcherIcon.empty() ? "grid-dots" : std::string_view{cfg.launcherIcon};
+    return cfg.launcherIcon.empty() ? "grain" : std::string_view{cfg.launcherIcon};
   }
 
   std::unique_ptr<Flex> makeDockItemRow(const DockConfig& cfg, bool vertical) {
@@ -475,7 +475,7 @@ namespace shell::dock {
           .height = iSize,
           .configure = [&cfg, iSize](Glyph& glyph) {
             if (!glyph.setGlyph(dockLauncherIconGlyph(cfg))) {
-              glyph.setGlyph("grid-dots");
+              glyph.setGlyph("grain");
             }
             glyph.setPosition(kCellPad, launcherIconBaseY(cfg, iSize));
           },
