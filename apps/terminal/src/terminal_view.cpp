@@ -1979,6 +1979,15 @@ namespace term {
       }
       return;
     }
+    if (button == BTN_RIGHT && pressed) {
+      if (m_host.contextMenu) {
+        float sceneX = 0.0F;
+        float sceneY = 0.0F;
+        Node::absolutePosition(m_area, sceneX, sceneY);
+        m_host.contextMenu(sceneX + localX, sceneY + localY);
+      }
+      return;
+    }
     if (button != BTN_LEFT) {
       return;
     }

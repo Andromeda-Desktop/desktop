@@ -539,6 +539,7 @@ namespace term {
               updateSceneState();
             },
         .openUri = [this](const std::string& uri) { openUri(uri); },
+        .contextMenu = [this, id](float sceneX, float sceneY) { openTerminalMenu(id, sceneX, sceneY); },
         .findChanged =
             [this, id](std::size_t total, std::optional<std::size_t> current, FindError error) {
               if (m_sessions.shown() == id) {
@@ -1325,6 +1326,29 @@ namespace term {
       apply(session_event::Show{id});
       focusGrid();
     }
+  }
+
+  void TerminalWindow::openTerminalMenu(std::uint64_t id, float sceneX, float sceneY) {
+    TerminalView* view = terminalOf(id);
+    if (view == nullptr) {
+      return;
+    }
+    const Keybindings& keys = m_settings.settings().keys;
+    const auto entry = [&keys](Action action, const char* label, bool enabled = true) {
+      return ContextMenuControlEntry{.id = static_cast<std::int32_t>(action), .label = label, .shortcut = keys.label(action),
+                                     .enabled = enabled};
+    };
+    std::vector<ContextMenuControlEntry> entries{entry(Action::Copy, "Copy", view->hasSelection()), entry(Action::Paste, "Paste"),
+                                                 {.separator = true}, entry(Action::SplitRight, "Split right"),
+                                                 entry(Action::SplitDown, "Split down"), {.separator = true},
+                                                 entry(Action::Find, "Find"), entry(Action::Preferences, "Preferences…")};
+    m_window.openContextMenu(std::move(entries), sceneX, sceneY, [this, id](std::int32_t item) {
+      const auto action = static_cast<Action>(item);
+      if (TerminalView* target = terminalOf(id); target != nullptr && target->runAction(action)) {
+        return;
+      }
+      runAction(action);
+    });
   }
 
   void TerminalWindow::openRowMenu(std::uint64_t id, float sceneX, float sceneY) {

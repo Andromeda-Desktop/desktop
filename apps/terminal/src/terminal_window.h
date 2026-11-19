@@ -212,6 +212,7 @@ namespace term {
     agent::Kind defaultAgentKind();
     void openNewMenu();
     // The session menu of row `id` (sidebar secondary click, caption menu button) at a scene point.
+    void openTerminalMenu(std::uint64_t id, float sceneX, float sceneY);
     void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
     void renameSession(std::uint64_t id);
     void duplicateSession(std::uint64_t id);
