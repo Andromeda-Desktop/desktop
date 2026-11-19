@@ -1781,7 +1781,6 @@ void PanelManager::destroyPanel() {
   m_pieceShapes.clear();
   m_pieceClips.clear();
   m_pieceOpacity.clear();
-  m_pieceSheet.clear();
   m_pieceRest.clear();
   m_piecesShown = false;
   m_dsk.reset();
@@ -2606,13 +2605,13 @@ ColorSpec PanelManager::detachedBorder(float backgroundOpacity) const {
   if (piecesActive()) {
     return clearColorSpec();
   }
-  const float keep = sheetLight() ? 1.0F : 1.0F - m_panelLiquid;
+  const float keep = sheetLight() ? 1.0F : 1.0F - sheetLiquid(m_panelLiquid);
   return scaleAlpha(shell::panel_surface::borderColor(m_config, backgroundOpacity), keep);
 }
 
 ColorSpec PanelManager::detachedFill() const {
   // The compositor draws the tint and its density (dsk v9); without it the sheet paints the slider tint.
-  return compositorTint() || piecesActive() ? clearColorSpec() : colorSpecFromRole(panelMaterialRole(), detachedFillAlpha());
+  return compositorTint() || piecesActive() ? clearColorSpec() : colorSpecFromRole(sheetMaterialRole(), detachedFillAlpha());
 }
 
 bool PanelManager::piecesActive() const {
@@ -2642,14 +2641,12 @@ void PanelManager::syncGlassPieces(bool material) {
     m_pieceShapes.clear();
     m_pieceClips.clear();
     m_pieceOpacity.clear();
-    m_pieceSheet.clear();
-    return;
+      return;
   }
   struct Piece {
     DskSurfaceClient::Value clip;
     float radius;
     float opacity;
-    bool sheet;
   };
   std::vector<Piece> pieces;
   // Clip rect in surface coordinates: x0, y0, x1, y1. A piece outside its clipping ancestors (another page) draws nothing.
@@ -2673,7 +2670,7 @@ void PanelManager::syncGlassPieces(bool material) {
       if (r - l >= 1.0F && b - t >= 1.0F) {
         pieces.push_back(
             {{std::round(x), std::round(y), std::round(w), std::round(h)}, std::min(*radius * scale, std::min(w, h) * 0.5F),
-             alpha, node.glassSheet()}
+             alpha}
         );
       }
       return;
@@ -2696,7 +2693,6 @@ void PanelManager::syncGlassPieces(bool material) {
     m_pieceShapes.resize(1);
     m_pieceClips.resize(1);
     m_pieceOpacity.resize(1);
-    m_pieceSheet.resize(1);
     if (m_pieceOpacity[0] != 0.0F) {
       m_pieceShapes[0]->set(DskSurfaceClient::Property::Opacity, {0.0, 0.0, 0.0, 0.0});
       m_pieceOpacity[0] = 0.0F;
@@ -2713,9 +2709,7 @@ void PanelManager::syncGlassPieces(bool material) {
   m_pieceShapes.resize(pieces.size());
   m_pieceClips.resize(pieces.size());
   m_pieceOpacity.resize(pieces.size(), -1.0F);
-  m_pieceSheet.resize(pieces.size(), -1);
   const glass::Material glassShape = Style::glassMaterial(glass::Kind::Shape);
-  const glass::Material glassSheet = Style::glassMaterial(glass::Kind::Sheet);
   const bool want = !Style::reduceTransparency();
   for (std::size_t i = 0; i < pieces.size(); ++i) {
     DskShapeClient& shape = *m_pieceShapes[i];
@@ -2728,23 +2722,18 @@ void PanelManager::syncGlassPieces(bool material) {
       shape.set(DskSurfaceClient::Property::Opacity, {pieces[i].opacity, 0.0, 0.0, 0.0});
       m_pieceOpacity[i] = pieces[i].opacity;
     }
-    if (material || m_pieceSheet[i] != static_cast<std::int8_t>(pieces[i].sheet)) {
-      m_pieceSheet[i] = static_cast<std::int8_t>(pieces[i].sheet);
-      const glass::Material& glassPiece = pieces[i].sheet ? glassSheet : glassShape;
+    if (material) {
       // Level 1 = the float plane (tokens elevation.e2), the shadow of an island.
       shape.set(DskSurfaceClient::Property::Elevation, {1.0, 0.0, 0.0, 0.0});
       // Concept C: each piece is its own glass with wallpaper between; pieces never melt into one outline.
       if (m_dsk->hasSoloProperty()) {
         shape.set(DskSurfaceClient::Property::Solo, {1.0, 0.0, 0.0, 0.0});
       }
-      setGlassMaterial(shape, *m_dsk, want ? &glassPiece : nullptr);
-      // A shape piece is the island's material (tint_regular); only a sheet piece takes the panel's tint_thick.
+      setGlassMaterial(shape, *m_dsk, want ? &glassShape : nullptr);
+      // Every piece is the island's material (tint_regular), the launcher results card too.
       shape.set(
           DskSurfaceClient::Property::Tint,
-          glassTintValue(
-              pieces[i].sheet ? panelMaterialRole() : materialRole(), compositorTint() ? glassPiece.tint : 0.0F,
-              m_sceneRoot.get()
-          )
+          glassTintValue(materialRole(), compositorTint() ? glassShape.tint : 0.0F, m_sceneRoot.get())
       );
     }
   }
@@ -2786,7 +2775,15 @@ float PanelManager::sheetTintAlpha(float liquid) const {
     return glass::thickOpacity(m_attachedBackgroundOpacity);
   }
   const float thick = glass::thickOpacity(detachedBackgroundOpacity());
-  return std::lerp(thick, std::min(thick, Style::glassMaterial(glass::Kind::Shape).tint), liquid);
+  return std::lerp(thick, std::min(thick, Style::glassMaterial(glass::Kind::Shape).tint), sheetLiquid(liquid));
+}
+
+float PanelManager::sheetLiquid(float liquid) const {
+  return m_activePanel != nullptr && m_activePanel->sheetIsShape() ? 1.0F : liquid;
+}
+
+ColorRole PanelManager::sheetMaterialRole() const {
+  return m_activePanel != nullptr && m_activePanel->sheetIsShape() ? materialRole() : panelMaterialRole();
 }
 
 void PanelManager::sendSheetTint(bool animate) {
@@ -2795,7 +2792,7 @@ void PanelManager::sendSheetTint(bool animate) {
   }
   syncGlassPieces(true);
   const DskSurfaceClient::Value tint = glassTintValue(
-      panelMaterialRole(), compositorTint() ? sheetTintAlpha(m_liquidTarget) : 0.0F, m_sceneRoot.get()
+      sheetMaterialRole(), compositorTint() ? sheetTintAlpha(m_liquidTarget) : 0.0F, m_sceneRoot.get()
   );
   if (animate) {
     m_dsk->animate(DskSurfaceClient::Property::Tint, openCurve(), tint);
@@ -2805,8 +2802,10 @@ void PanelManager::sendSheetTint(bool animate) {
 }
 
 // The material of a sheet `liquid` (0 to 1) of the way to a shape (the launcher pill).
-glass::Material PanelManager::sheetGlass(float liquid) {
-  return glass::mix(Style::glassMaterial(glass::Kind::Sheet), Style::glassMaterial(glass::Kind::Shape), liquid);
+glass::Material PanelManager::sheetGlass(float liquid) const {
+  return glass::mix(
+      Style::glassMaterial(glass::Kind::Sheet), Style::glassMaterial(glass::Kind::Shape), sheetLiquid(liquid)
+  );
 }
 
 float PanelManager::densityCardOpacity(float opacity) const {

@@ -315,7 +315,10 @@ private:
   // The detached fill: the material role; the compositor draws the tint and its density.
   [[nodiscard]] ColorSpec detachedFill() const;
   [[nodiscard]] ColorSpec detachedBorder(float backgroundOpacity) const;
-  [[nodiscard]] static glass::Material sheetGlass(float liquid);
+  [[nodiscard]] glass::Material sheetGlass(float liquid) const;
+  // `liquid`, or 1 when the active panel's sheet is a glass shape (Panel::sheetIsShape).
+  [[nodiscard]] float sheetLiquid(float liquid) const;
+  [[nodiscard]] ColorRole sheetMaterialRole() const;
   // Adaptive glass: listens for dsk_surface_v1.backdrop on the current m_dsk.
   void bindBackdrop();
   // Fades m_glassDark to the compositor's density (cards follow it); instant skips the cross-fade.
@@ -394,7 +397,6 @@ private:
   std::vector<std::unique_ptr<DskShapeClient>> m_pieceShapes;
   std::vector<DskSurfaceClient::Value> m_pieceClips;
   std::vector<float> m_pieceOpacity;
-  std::vector<std::int8_t> m_pieceSheet; // -1 unsent, else the piece's glassSheet()
   bool m_piecesShown = false;
   wl_surface* m_morphSource = nullptr;
   std::array<float, 4> m_morphSourceRect{};

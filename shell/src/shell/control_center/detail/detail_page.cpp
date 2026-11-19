@@ -286,8 +286,6 @@ namespace control_center {
     card->setAlign(FlexAlign::Stretch);
     card->setPadding(Tokens::componentListCardPadding * s);
     card->setRadius(Tokens::componentListCardRadius * s);
-    card->setFill(colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()));
-    card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * s);
     Flex* raw = card.get();
     section->addChild(std::move(card));
     m_content->addChild(std::move(section));
