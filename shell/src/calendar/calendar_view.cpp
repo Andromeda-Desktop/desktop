@@ -21,6 +21,7 @@
 #include "ui/controls/scroll_view.h"
 #include "ui/controls/separator.h"
 #include "ui/style.h"
+#include "util/string_utils.h"
 
 #include <algorithm>
 #include <array>
@@ -201,7 +202,8 @@ namespace calendar_view {
       std::tm value{};
       value.tm_wday = (firstDayOfWeek + index) % 7;
       value.tm_mday = 1;
-      weekdays[static_cast<std::size_t>(index)] = formatStrftime("%a", value);
+      // Two letters, as the mockup weekday row (Mo Tu ...).
+      weekdays[static_cast<std::size_t>(index)] = StringUtils::truncateUtf8CodePoints(formatStrftime("%a", value), 2);
     }
 
     auto weekdayRow = std::make_unique<GridView>();
