@@ -8,6 +8,7 @@
 #include "wlr.h"
 
 #include <algorithm>
+#include <cairo.h>
 #include <limits>
 #include <cmath>
 #include <format>
@@ -22,6 +23,7 @@ namespace andromeda::ov {
     constexpr int kCapsuleHeight = 28;
     constexpr int kCapsuleIcon = 18; // app icon in a title capsule (overview handoff)
     constexpr int kIconGap = 6;      // icon to title
+    constexpr int kSearchIcon = 16;  // filter field glyph (overview mockup .ov-search .i)
     constexpr int kCapsuleGap = 6;
     constexpr int kCapsuleMaxWidth = 260;
     constexpr int kCapsuleMinCard = 60; // a card narrower than this shows no title
@@ -87,6 +89,26 @@ namespace andromeda::ov {
       return std::format("<span foreground='{}' weight='{}'>{}</span>", rgbaHex(color), weight, escapeMarkup(text));
     }
 
+    // Tabler "search" (24-unit grid, stroke 2, round caps) at px device pixels square.
+    wlr_buffer* searchIcon(int px, const std::array<float, 4>& color) {
+      cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, px, px);
+      cairo_t* cr = cairo_create(surface);
+      cairo_scale(cr, px / 24.0, px / 24.0);
+      cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+      cairo_set_line_width(cr, 2.0);
+      cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+      cairo_arc(cr, 10.0, 10.0, 7.0, 0.0, 2.0 * M_PI);
+      cairo_stroke(cr);
+      cairo_move_to(cr, 21.0, 21.0);
+      cairo_line_to(cr, 15.0, 15.0);
+      cairo_stroke(cr);
+      cairo_destroy(cr);
+      cairo_surface_flush(surface);
+      wlr_buffer* buffer = imageBuffer(surface);
+      cairo_surface_destroy(surface);
+      return buffer;
+    }
+
     void destroyNode(wlr_scene_tree*& tree) {
       if (tree != nullptr) {
         wlr_scene_node_destroy(&tree->node);
@@ -97,6 +119,12 @@ namespace andromeda::ov {
   } // namespace
 
   Chrome::Chrome(wlr_scene_tree* parent) : m_tree(wlr_scene_tree_create(parent)) {}
+
+  Chrome::~Chrome() {
+    if (m_searchIcon != nullptr) {
+      wlr_buffer_drop(m_searchIcon);
+    }
+  }
 
   void Chrome::raise() {
     if (m_tree != nullptr) {
@@ -463,8 +491,17 @@ namespace andromeda::ov {
     }
 
     if (placement.filter.has_value()) {
-      const std::string markup = frame.filter.empty() ? span(l3, "normal", "⌕  Type to filter windows")
-                                                      : span(l1, "normal", std::format("⌕  {}", frame.filter));
+      const std::string markup = frame.filter.empty() ? span(l2, "normal", "Type to filter windows")
+                                                      : span(l1, "normal", frame.filter);
+      const int iconPx = std::max(1, static_cast<int>(std::lround(kSearchIcon * scale)));
+      if (m_searchIcon == nullptr || m_searchIconPx != iconPx || m_searchIconColor != l2) {
+        if (m_searchIcon != nullptr) {
+          wlr_buffer_drop(m_searchIcon);
+        }
+        m_searchIcon = searchIcon(iconPx, l2);
+        m_searchIconPx = iconPx;
+        m_searchIconColor = l2;
+      }
       setLabel(
           m_filter, markup,
           {.font = "sans 9.75",
@@ -472,7 +509,9 @@ namespace andromeda::ov {
            .height = kFieldHeight,
            .maxWidth = static_cast<int>(kFilterWidth),
            .width = static_cast<int>(kFilterWidth),
-           .fill = thick},
+           .fill = thick,
+           .icon = m_searchIcon,
+           .iconSize = kSearchIcon},
           scale
       );
       placeLabel(m_filter, ox + px(placement.filter->x), oy + px(placement.filter->y), shown);
@@ -488,7 +527,7 @@ namespace andromeda::ov {
         placeLabel(label, 0, 0, 0.0F);
         continue;
       }
-      setLabel(label, span(l3, "normal", "No windows"), {.font = "sans 9", .maxWidth = workspace->card.width}, scale);
+      setLabel(label, span(l2, "normal", "No windows"), {.font = "sans 9", .maxWidth = workspace->card.width}, scale);
       const wlr_box& card = workspace->card;
       placeLabel(label, card.x + (card.width - label.width) / 2, card.y + (card.height - label.height) / 2, late);
     }
@@ -534,12 +573,13 @@ namespace andromeda::ov {
       placeFrame(m_minis[minis], {}, kMiniRadius, 1, {}, {}, 0.0F);
     }
 
-    // The shown workspace's card carries a 3 px accent ring just outside it (overview handoff: selection ring).
+    // The shown workspace's card carries a 2 px ink ring just outside it (overview.css .ov-ws.cur; the handoff's 3 px
+    // accent is the hover ring, docs/design/deviations.md).
     if (current != nullptr && current->shown && current->card.width > 0) {
-      const int width = 3;
+      const int width = 2;
       const wlr_box& card = current->card;
       const wlr_box box{card.x - width, card.y - width, card.width + 2 * width, card.height + 2 * width};
-      placeFrame(m_current, box, kPlusRadius + width, width, {}, colors.accentPrimary, shown);
+      placeFrame(m_current, box, kPlusRadius + width, width, {}, l1, shown);
     } else {
       placeFrame(m_current, {}, kPlusRadius, 2, {}, {}, 0.0F);
     }

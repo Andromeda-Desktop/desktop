@@ -91,6 +91,7 @@ namespace andromeda::ov {
   class Chrome {
   public:
     explicit Chrome(wlr_scene_tree* parent);
+    ~Chrome();
     Chrome(const Chrome&) = delete;
     Chrome& operator=(const Chrome&) = delete;
 
@@ -159,11 +160,14 @@ namespace andromeda::ov {
     wlr_scene_tree* m_tree = nullptr;
     std::vector<Label> m_names;
     Label m_filter;
+    wlr_buffer* m_searchIcon = nullptr; // filter field glyph, drawn at m_searchIconPx in m_searchIconColor
+    int m_searchIconPx = 0;
+    std::array<float, 4> m_searchIconColor{};
     Label m_noMatch;
     std::vector<Label> m_empties; // one per workspace card
     Label m_plusMark;
     Frame m_plus;
-    Frame m_current; // accent ring around the shown workspace's thumb, row or tile
+    Frame m_current; // ink ring around the shown workspace's thumb, row or tile
     std::vector<Frame> m_minis; // the shown workspace's windows as blocks in its thumb
     std::unordered_map<const void*, Label> m_titles;
     Label m_close;
