@@ -48,7 +48,7 @@ namespace {
   TOKENS_LIVE(kRunningDotOffset, (Tokens::componentDockPadding - Tokens::componentDockRunningDot) * 0.5F);
   // component.dock.padding and .gap space the icons; a cell adds none.
   constexpr float kCellPad = 0.0F;
-  constexpr float kLauncherGlyphSizeRatio = 0.8F;
+  TOKENS_LIVE(kLauncherGlyphSizeRatio, Tokens::componentDockGlyph / Tokens::componentDockIcon);
   constexpr float kHoverZoomLerp = 0.28F;
   constexpr float kHoverZoomEaseMs = 180.0F;
   constexpr float kHoverZoomReferenceFrameMs = 1000.0F / 60.0F;
