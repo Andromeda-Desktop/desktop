@@ -1421,25 +1421,8 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
   restContent->addChild(dot(&inst.micDot, colorSpecFromRole(ColorRole::Accent)));
   restContent->addChild(dot(&inst.cameraDot, colorSpecFromRole(ColorRole::Accent)));
   restContent->addChild(dot(&inst.screenDot, colorSpecFromRole(ColorRole::Danger)));
-  // A bare number reads as a workspace; the bell says it counts unread notifications.
-  auto unreadGroup = ui::flex(restDirection, {.align = FlexAlign::Center, .gap = Style::spaceXs, .visible = false});
-  unreadGroup->addChild(ui::glyph({
-      .glyph = "bell",
-      .glyphSize = lane ? Tokens::typeCaption.size : Tokens::componentIslandIcon,
-      .color = colorSpecFromRole(ColorRole::Label2),
-  }));
-  unreadGroup->addChild(ui::label({
-      .out = &inst.count,
-      .fontSize = lane ? Tokens::typeCaption.size : restFont,
-      .fontWeight = restWeight,
-      .color = colorSpecFromRole(ColorRole::Label1),
-      .maxLines = 1,
-  }));
-  inst.unreadGroup = unreadGroup.get();
-  restContent->addChild(std::move(unreadGroup));
   inst.mediaTitle->setLineHeight(Tokens::typeFootnote.line);
   inst.weekday->setLineHeight(Tokens::typeCaption.line);
-  inst.count->setLineHeight(lane ? Tokens::typeCaption.line : Tokens::typeBody.line);
   inst.date->setLineHeight(Tokens::typeBody.line);
   inst.faceNode[static_cast<std::size_t>(Face::Rest)] = restContent.get();
   material->addChild(std::move(restContent));
@@ -1957,7 +1940,6 @@ void LiveActivityIsland::applyContent(Instance& inst) {
       }
     }
   }
-  const std::size_t unread = m_notifications != nullptr ? m_notifications->unreadNotificationCount() : 0;
   const MprisService* mpris = m_mpris ? m_mpris() : nullptr;
   const auto player = mpris != nullptr ? mpris->activePlayer() : std::nullopt;
   const bool playing = player.has_value() && player->playbackStatus == "Playing";
@@ -1984,14 +1966,10 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   } else {
     inst.date->setText(compactCall ? elapsedText(*m_activity->since) : m_date);
   }
-  inst.divider->setVisible(mic || camera || screen || unread > 0);
+  inst.divider->setVisible(mic || camera || screen);
   inst.micDot->setVisible(mic);
   inst.cameraDot->setVisible(camera);
   inst.screenDot->setVisible(screen);
-  inst.unreadGroup->setVisible(unread > 0);
-  if (unread > 0) {
-    inst.count->setText(std::to_string(unread));
-  }
   loadArt(inst, renderer, player.has_value() ? mpris::effectiveArtUrl(*player) : std::string{});
   const bool hasArt = inst.art->hasImage();
   inst.art->setVisible(hasArt);
@@ -2002,7 +1980,7 @@ void LiveActivityIsland::applyContent(Instance& inst) {
   restNode->layout(renderer);
   if (lane) {
     const bool textFirst = !compactCall && !playing;
-    const bool textLast = unread > 0 || (!(mic || camera || screen) && (compactCall || !playing));
+    const bool textLast = !(mic || camera || screen) && (compactCall || !playing);
     const island_lane::Length length = island_lane::pillLength(restNode->height(), textFirst, textLast);
     inst.restLength = length.height;
     inst.restPadTop = length.padTop;

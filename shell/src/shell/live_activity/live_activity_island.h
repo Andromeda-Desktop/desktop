@@ -75,8 +75,8 @@ struct LiveActivity {
   bool overFullscreen = false;
 };
 
-// The center island of the top or bottom islands bar. At rest it is a pill in the bar row with the privacy dots and the
-// unread notification count. A live activity grows it away from the bar edge, over windows, with a shadow and tint.
+// The center island of the top or bottom islands bar. At rest it is a pill in the bar row with the clock and the privacy
+// dots. A live activity grows it away from the bar edge, over windows, with a shadow and tint.
 class LiveActivityIsland {
 public:
   using VisibilityCallback = std::function<void(wl_output*, bool)>;
@@ -132,7 +132,7 @@ public:
   [[nodiscard]] std::vector<wl_surface*> surfaces() const;
   [[nodiscard]] std::string clockText() const;
   bool pressActivityButton(bool secondary);
-  // The bar layout, the config, the privacy state or the unread count changed.
+  // The bar layout, the config, or the privacy state changed.
   void refresh();
   // A callable that refreshes while this island lives and does nothing after.
   [[nodiscard]] std::function<void()> refresher();
@@ -203,7 +203,6 @@ private:
     Box* cameraDot = nullptr;
     Box* screenDot = nullptr;
     Node* mediaGroup = nullptr;
-    Node* unreadGroup = nullptr;
     Label* mediaTitle = nullptr;
     Node* artPlaceholder = nullptr;
     Image* art = nullptr;
@@ -215,7 +214,6 @@ private:
     Glyph* callGlyph = nullptr;
     Box* recordDot = nullptr; // lane pill: the red dot of a compact recording
     Box* divider = nullptr;
-    Label* count = nullptr;
     Glyph* icon = nullptr;
     Label* title = nullptr;
     Label* subtitle = nullptr;
