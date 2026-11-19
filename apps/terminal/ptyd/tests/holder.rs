@@ -173,6 +173,19 @@ fn wait_for_orphans(c: &mut TestClient) -> Vec<u64> {
 }
 
 #[test]
+fn hello_answers_the_protocol_version() {
+    let (_dir, path) = start(Config::default());
+    let mut c = TestClient::connect(&path);
+    c.send(ClientMsg::Hello);
+    assert_eq!(
+        c.recv().0,
+        HolderMsg::Version {
+            version: andromeda_ptyd::proto::VERSION
+        }
+    );
+}
+
+#[test]
 fn spawn_streams_output_then_exit_status() {
     let (_dir, path) = start(Config::default());
     let mut c = TestClient::connect(&path);

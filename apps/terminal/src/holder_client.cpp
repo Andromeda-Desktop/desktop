@@ -26,6 +26,8 @@ enum Tag : std::uint8_t {
   kCloseWorkspace = 8,
   kSetWorkspace = 9,
   kDetach = 20,
+  kHello = 21,
+  kVersion = 22,
   kSpawned = 10,
   kSpawnFailed = 11,
   kAttached = 12,
@@ -190,6 +192,9 @@ std::optional<std::size_t> decode(std::span<const std::uint8_t> buf, std::option
     out = Exited{id, static_cast<int>(r.u32())};
     break;
   }
+  case kVersion:
+    out = Version{r.u32()};
+    break;
   case kOrphans: {
     Orphans o;
     const std::uint32_t n = r.u32();
@@ -338,6 +343,21 @@ std::vector<std::uint64_t> listOrphans() {
   }
   ::close(sock);
   return ids;
+}
+
+std::uint32_t holderVersion() {
+  const int sock = connectSocket();
+  if (sock < 0) return 0;
+  std::uint32_t version = 1;
+  std::vector<std::uint8_t> buf;
+  int fd = -1;
+  if (sendAll(sock, Writer(kHello).finish())) {
+    if (auto msg = receiveOne(sock, buf, fd); msg && std::holds_alternative<Version>(*msg)) {
+      version = std::get<Version>(*msg).version;
+    }
+  }
+  ::close(sock);
+  return version;
 }
 
 } // namespace term::holder

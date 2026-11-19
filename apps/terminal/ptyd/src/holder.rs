@@ -665,7 +665,10 @@ impl Holder {
     }
 
     fn on_message(&mut self, client: ClientId, msg: ClientMsg) {
-        if !matches!(msg, ClientMsg::Snapshot { .. } | ClientMsg::List) {
+        if !matches!(
+            msg,
+            ClientMsg::Snapshot { .. } | ClientMsg::List | ClientMsg::Hello
+        ) {
             self.workspaces_dirty = true;
         }
         match msg {
@@ -806,6 +809,13 @@ impl Holder {
                     .collect();
                 self.send(client, &HolderMsg::Orphans { ids }, None);
             }
+            ClientMsg::Hello => self.send(
+                client,
+                &HolderMsg::Version {
+                    version: crate::proto::VERSION,
+                },
+                None,
+            ),
         }
     }
 

@@ -108,6 +108,8 @@ private:
   struct HeldSession {
     int socket;
     std::uint64_t id;
+    // An older holder drops the connection on Detach and relaunches the terminal for the orphan.
+    bool detachable;
   };
 
   bool newTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cellWidthPx, std::uint16_t cellHeightPx);

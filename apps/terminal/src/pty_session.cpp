@@ -136,8 +136,8 @@ PtySession::~PtySession() {
     hangUpSession(local->pid);
   }
   if (auto* held = std::get_if<HeldSession>(&m_link)) {
-    (void)holder::sendAll(held->socket, m_end == End::Close ? holder::encodeClose(held->id)
-                                                             : holder::encodeDetach(held->id));
+    (void)holder::sendAll(held->socket, m_end == End::Detach && held->detachable ? holder::encodeDetach(held->id)
+                                                                                 : holder::encodeClose(held->id));
     ::close(held->socket);
   }
   if (m_master >= 0) ::close(m_master);
@@ -212,7 +212,7 @@ bool PtySession::spawnHeld(const SpawnOptions& o) {
     return false;
   }
   m_master = fd;
-  m_link = HeldSession{sock, spawned->id};
+  m_link = HeldSession{sock, spawned->id, holder::holderVersion() >= 2};
   return true;
 }
 
@@ -284,7 +284,7 @@ bool PtySession::attach(std::uint64_t id, std::uint16_t cols, std::uint16_t rows
   m_received = attached->offset + m_inbound.size();
   m_replayEnd = m_received;
   m_master = fd;
-  m_link = HeldSession{sock, id};
+  m_link = HeldSession{sock, id, holder::holderVersion() >= 2};
   if (m_master >= 0) {
     const winsize ws = makeWinsize(cols, rows, cw, ch);
     ::ioctl(m_master, TIOCSWINSZ, &ws);

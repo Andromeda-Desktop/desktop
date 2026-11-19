@@ -3,9 +3,12 @@
 //! Frame: u32 length (of type byte + payload), u8 type, payload. Integers are little-endian; a string or
 //! byte blob is a u32 length and its bytes; a list is a u32 count and its items. `Spawned` and `Attached`
 //! carry a dup of the pty master in SCM_RIGHTS: the client writes input and sets the window size on it,
-//! and never reads it. A new incompatible format gets a new socket name (`ptyd-<version>.sock`).
+//! and never reads it. A new incompatible format gets a new socket name (`ptyd-<version>.sock`). A client sends `Hello` to
+//! learn `VERSION` before it sends a message an older holder lacks; a holder older than `Hello` hangs up (version 1).
 
 pub const MAX_FRAME: usize = 64 << 20;
+/// 2: `Hello`, `Detach` and the workspace messages.
+pub const VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WinSize {
@@ -44,6 +47,8 @@ pub enum ClientMsg {
     },
     /// Subscribes this connection to `Workspaces`: one now, then one after each change.
     Watch,
+    /// The holder answers `Version`.
+    Hello,
     /// Creates (`id` 0) or edits a workspace; the holder answers `WorkspacePut`.
     PutWorkspace {
         req: u32,
@@ -137,6 +142,9 @@ pub enum HolderMsg {
         workspaces: Vec<WorkspaceInfo>,
         sessions: Vec<SessionInfo>,
     },
+    Version {
+        version: u32,
+    },
 }
 
 mod tag {
@@ -150,6 +158,8 @@ mod tag {
     pub const CLOSE_WORKSPACE: u8 = 8;
     pub const SET_WORKSPACE: u8 = 9;
     pub const DETACH: u8 = 20;
+    pub const HELLO: u8 = 21;
+    pub const VERSION: u8 = 22;
     pub const SPAWNED: u8 = 10;
     pub const SPAWN_FAILED: u8 = 11;
     pub const ATTACHED: u8 = 12;
@@ -311,6 +321,7 @@ impl ClientMsg {
             ClientMsg::List => Writer::new(tag::LIST).finish(),
             ClientMsg::Detach { id } => Writer::new(tag::DETACH).u64(*id).finish(),
             ClientMsg::Watch => Writer::new(tag::WATCH).finish(),
+            ClientMsg::Hello => Writer::new(tag::HELLO).finish(),
             ClientMsg::PutWorkspace {
                 req,
                 id,
@@ -352,6 +363,7 @@ impl ClientMsg {
             tag::LIST => ClientMsg::List,
             tag::DETACH => ClientMsg::Detach { id: r.u64()? },
             tag::WATCH => ClientMsg::Watch,
+            tag::HELLO => ClientMsg::Hello,
             tag::PUT_WORKSPACE => ClientMsg::PutWorkspace {
                 req: r.u32()?,
                 id: r.u64()?,
@@ -437,6 +449,7 @@ impl HolderMsg {
                 }
                 w.finish()
             }
+            HolderMsg::Version { version } => Writer::new(tag::VERSION).u32(*version).finish(),
         }
     }
 
@@ -478,6 +491,7 @@ impl HolderMsg {
                 req: r.u32()?,
                 id: r.u64()?,
             },
+            tag::VERSION => HolderMsg::Version { version: r.u32()? },
             tag::WORKSPACES => {
                 let seq = r.u64()?;
                 let n = r.u32()? as usize;

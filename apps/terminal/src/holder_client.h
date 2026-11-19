@@ -49,6 +49,9 @@ struct Exited {
 struct Orphans {
   std::vector<std::uint64_t> ids;
 };
+struct Version {
+  std::uint32_t version;
+};
 
 struct WorkspacePut {
   std::uint32_t req;
@@ -80,7 +83,7 @@ struct Workspaces {
 };
 
 using Message = std::variant<Spawned, SpawnFailed, Attached, AttachFailed, Output, WantSnapshot, Exited, Orphans,
-                             WorkspacePut, Workspaces>;
+                             WorkspacePut, Workspaces, Version>;
 
 std::vector<std::uint8_t> encodeSpawn(std::uint32_t req, WinSize size, const std::string& cwd,
                                       const std::vector<std::string>& argv, const std::vector<std::string>& env);
@@ -119,5 +122,8 @@ std::optional<Message> receiveOne(int sock, std::vector<std::uint8_t>& buf, int&
 
 // Orphaned session ids, or an empty list when the holder is unreachable.
 std::vector<std::uint64_t> listOrphans();
+
+// 2 and up takes Detach and the workspace messages; 1 is a holder older than Hello; 0 is no holder.
+std::uint32_t holderVersion();
 
 } // namespace term::holder
