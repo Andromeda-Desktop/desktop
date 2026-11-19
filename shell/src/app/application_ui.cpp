@@ -968,7 +968,11 @@ void Application::initNotificationAndOsd() {
       [this] { return pipewire(); }, [this] { return mpris(); }, &m_notificationManager,
       [this](wl_output* output, std::string_view context, std::optional<LiveActivityIsland::SheetSource> source) {
         if (context == "notification-center" || context == "calendar") {
-          m_panelManager.togglePanel(std::string(context), PanelOpenRequest{.output = output});
+          PanelOpenRequest request{.output = output};
+          if (source.has_value()) {
+            request.sourceOutputRect = source->outputRect;
+          }
+          m_panelManager.togglePanel(std::string(context), request);
           return;
         }
         PanelOpenRequest request{.output = output, .context = context};

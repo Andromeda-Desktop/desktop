@@ -1750,6 +1750,7 @@ void PanelManager::destroyPanel() {
   m_pieceShapes.clear();
   m_pieceClips.clear();
   m_pieceOpacity.clear();
+  m_pieceRest.clear();
   m_piecesShown = false;
   m_dsk.reset();
   m_panelLiquid = 0.0F;
@@ -2853,11 +2854,10 @@ bool PanelManager::startDetachedMorph() {
   using Property = DskSurfaceClient::Property;
   wl_surface* source = std::exchange(m_morphSource, nullptr);
   dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
-  if (source == nullptr || !WaylandSurface::isLive(source) || manager == nullptr || m_wlSurface == nullptr || m_activePanel == nullptr) {
+  if (source == nullptr || !WaylandSurface::isLive(source) || manager == nullptr || m_wlSurface == nullptr || m_activePanel == nullptr ||
+      !ensureDsk()) {
     return false;
   }
-  m_dsk = std::make_unique<DskSurfaceClient>(manager, m_wlSurface);
-  bindBackdrop();
   sendSheetStroke();
   m_morphSettled = false;
   const auto& r = m_morphSourceRect;
@@ -2941,11 +2941,7 @@ void PanelManager::setPanelLiquid(float liquid, bool animate) {
         [this] { m_liquidAnimation = 0; }, m_sceneRoot.get()
     );
   }
-  dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
-  if (m_dsk == nullptr && manager != nullptr && m_wlSurface != nullptr) {
-    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_wlSurface);
-    bindBackdrop();
-  }
+  ensureDsk();
   m_liquidTarget = liquid;
   updateGlassDensity();
   if (m_dsk == nullptr || !m_dsk->hasLiquidProperty()) {
@@ -2961,8 +2957,18 @@ void PanelManager::setPanelLiquid(float liquid, bool animate) {
   sendSheetTint(animate);
 }
 
+bool PanelManager::ensureDsk() {
+  dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
+  if (m_dsk == nullptr && manager != nullptr && m_wlSurface != nullptr) {
+    m_dsk = std::make_unique<DskSurfaceClient>(manager, m_wlSurface);
+    bindBackdrop();
+  }
+  return m_dsk != nullptr;
+}
+
+// The pour itself starts after the first layout (buildScene): it needs the pieces' rest boxes.
 bool PanelManager::startPiecesOpen() {
-  if (!piecesActive() || m_attachedToBar || m_sceneRoot == nullptr || !MotionService::instance().enabled()) {
+  if (!ensureDsk() || !piecesActive() || m_attachedToBar || m_sceneRoot == nullptr || !MotionService::instance().enabled()) {
     return false;
   }
   m_morphSource = nullptr;
@@ -2972,7 +2978,6 @@ bool PanelManager::startPiecesOpen() {
   if (m_contentNode != nullptr) {
     m_contentNode->setOpacity(panelRevealContentOpacity(m_detachedRevealProgress));
   }
-  pourPieces(true);
   return true;
 }
 
@@ -2996,23 +3001,21 @@ bool PanelManager::startPiecesClose(std::uint64_t gen) {
   return true;
 }
 
+PanelManager::PieceRest& PanelManager::pieceRest(Node& piece, bool open) {
+  return m_pieceRest.try_emplace(&piece, PieceRest{piece.x(), piece.y(), piece.scaleX(), piece.scaleY(), open ? 0.0F : 1.0F})
+      .first->second;
+}
+
 // proto flow.js openCC / closeCC: a piece travels part of its distance to the panel's pour anchor (Panel::piecePour),
 // scales up and fades in; entries stagger, exits do not.
 void PanelManager::pourPieces(bool open) {
   const Panel::PiecePour pour = m_activePanel != nullptr ? m_activePanel->piecePour() : Panel::PiecePour{};
   std::vector<Node*> pieces;
-  float right = 0.0F;
-  float left = std::numeric_limits<float>::max();
   const auto collect = [&](const auto& self, Node& node) -> void {
     if (!node.visible()) {
       return;
     }
     if (node.glassPiece().has_value()) {
-      float x = 0.0F;
-      float y = 0.0F;
-      Node::absolutePosition(&node, x, y);
-      right = std::max(right, x + node.width());
-      left = std::min(left, x);
       pieces.push_back(&node);
       return;
     }
@@ -3021,35 +3024,45 @@ void PanelManager::pourPieces(bool open) {
     }
   };
   collect(collect, *m_sceneRoot);
+  std::erase_if(m_pieceRest, [&](const auto& entry) { return std::ranges::find(pieces, entry.first) == pieces.end(); });
   if (pour.motion == Panel::PourMotion::Grow && m_growSourceOutput.has_value()) {
     growPieces(open, pieces);
     return;
   }
-  int index = 0;
+  struct Rest {
+    Node* node;
+    PieceRest rest;
+    float ax, ay; // in the scene
+  };
+  std::vector<Rest> rests;
+  float right = 0.0F;
+  float left = std::numeric_limits<float>::max();
   for (Node* piece : pieces) {
-    float x = 0.0F;
-    float y = 0.0F;
-    Node::absolutePosition(piece, x, y);
-    // A pour in flight left the piece at progress v = its opacity: solve back to its rest box, so a reversal mid-way
-    // returns it home instead of keeping the displaced spot as its rest. The end piece has no x travel, so the
-    // anchor is already at rest.
-    const float pending = 1.0F - std::clamp(piece->opacity(), 0.0F, 1.0F);
+    const PieceRest rest = pieceRest(*piece, open);
+    float ax = 0.0F;
+    float ay = 0.0F;
+    Node::absolutePosition(piece, ax, ay);
+    ax += rest.x - piece->x();
+    ay += rest.y - piece->y();
+    rests.push_back({piece, rest, ax, ay});
+    right = std::max(right, ax + piece->width());
+    left = std::min(left, ax);
+  }
+  int index = 0;
+  for (const Rest& r : rests) {
+    Node* piece = r.node;
+    // The end piece has no x travel: the anchor is its rest.
     const float anchorX = pour.towardLeft ? left : right - piece->width();
-    const float kx = pour.xShare * pending;
-    const float restAbsX = (x - kx * anchorX) / (1.0F - kx);
-    const float restAbsY = (y + pour.lift * pending) / (1.0F - pour.yShare * pending);
-    const float offX = (anchorX - restAbsX) * pour.xShare;
-    const float offY = -restAbsY * pour.yShare - pour.lift;
-    const float restX = piece->x() - offX * pending;
-    const float restY = piece->y() - offY * pending;
-    // The piece's own scale (a stack's back card) multiplies the pour's.
-    const float pourNow = std::lerp(pour.fromScale, 1.0F, 1.0F - pending);
-    const float baseX = piece->scaleX() / pourNow;
-    const float baseY = piece->scaleY() / pourNow;
-    const auto apply = [this, piece, restX, restY, offX, offY, baseX, baseY, fromScale = pour.fromScale](float v) {
-      piece->setPosition(restX + offX * (1.0F - v), restY + offY * (1.0F - v));
+    const float offX = (anchorX - r.ax) * pour.xShare;
+    const float offY = -r.ay * pour.yShare - pour.lift;
+    const auto apply = [this, piece, rest = r.rest, offX, offY, fromScale = pour.fromScale](float v) {
+      if (auto it = m_pieceRest.find(piece); it != m_pieceRest.end()) {
+        it->second.v = v;
+      }
+      piece->setPosition(rest.x + offX * (1.0F - v), rest.y + offY * (1.0F - v));
+      // The piece's own scale (a stack's back card) multiplies the pour's.
       const float s = std::lerp(fromScale, 1.0F, v);
-      piece->setScale(baseX * s, baseY * s);
+      piece->setScale(rest.scaleX * s, rest.scaleY * s);
       piece->setOpacity(v);
       if (m_surface != nullptr) {
         m_surface->requestRedraw();
@@ -3057,10 +3070,15 @@ void PanelManager::pourPieces(bool open) {
     };
     m_animations.cancelForOwner(piece);
     if (open) {
-      apply(0.0F);
-      m_animations.animateStaggered(index++, 0.0F, 1.0F, Style::spring(Tokens::springOpen), apply, {}, piece);
+      const auto settled = [this, piece] { m_pieceRest.erase(piece); };
+      apply(r.rest.v);
+      if (r.rest.v <= 0.0F) {
+        m_animations.animateStaggered(index++, 0.0F, 1.0F, Style::spring(Tokens::springOpen), apply, settled, piece);
+      } else {
+        m_animations.animateSpring(r.rest.v, 1.0F, Style::spring(Tokens::springOpen), apply, settled, piece);
+      }
     } else {
-      m_animations.animateSpring(piece->opacity(), 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
+      m_animations.animateSpring(r.rest.v, 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
     }
   }
 }
@@ -3071,12 +3089,11 @@ void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
   if (pieces.empty()) {
     return;
   }
-  std::erase_if(m_growRest, [&](const auto& entry) { return std::ranges::find(pieces, entry.first) == pieces.end(); });
   struct Rest {
     Node* node;
     float x, y;   // in the parent
     float ax, ay; // in the scene
-    float scaleX, scaleY;
+    PieceRest rest;
   };
   std::vector<Rest> rests;
   float left = std::numeric_limits<float>::max();
@@ -3084,14 +3101,13 @@ void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
   float right = std::numeric_limits<float>::lowest();
   float bottom = std::numeric_limits<float>::lowest();
   for (Node* piece : pieces) {
-    const auto [rx, ry, rsx, rsy] =
-        m_growRest.try_emplace(piece, std::array<float, 4>{piece->x(), piece->y(), piece->scaleX(), piece->scaleY()}).first->second;
+    const PieceRest rest = pieceRest(*piece, open);
     float ax = 0.0F;
     float ay = 0.0F;
     Node::absolutePosition(piece, ax, ay);
-    ax += rx - piece->x();
-    ay += ry - piece->y();
-    rests.push_back({piece, rx, ry, ax, ay, rsx, rsy});
+    ax += rest.x - piece->x();
+    ay += rest.y - piece->y();
+    rests.push_back({piece, rest.x, rest.y, ax, ay, rest});
     left = std::min(left, ax);
     top = std::min(top, ay);
     right = std::max(right, ax + piece->width());
@@ -3113,8 +3129,11 @@ void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
     const float offX = srcCx + (cx - groupCx) * sx - cx;
     const float offY = srcCy + (cy - groupCy) * sy - cy;
     const auto apply = [this, piece, rest, offX, offY, sx, sy](float v) {
+      if (auto it = m_pieceRest.find(piece); it != m_pieceRest.end()) {
+        it->second.v = v;
+      }
       piece->setPosition(rest.x + offX * (1.0F - v), rest.y + offY * (1.0F - v));
-      piece->setScale(rest.scaleX * std::lerp(sx, 1.0F, v), rest.scaleY * std::lerp(sy, 1.0F, v));
+      piece->setScale(rest.rest.scaleX * std::lerp(sx, 1.0F, v), rest.rest.scaleY * std::lerp(sy, 1.0F, v));
       piece->setOpacity(v);
       if (m_surface != nullptr) {
         m_surface->requestRedraw();
@@ -3122,11 +3141,12 @@ void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
     };
     m_animations.cancelForOwner(piece);
     if (open) {
-      const float from = std::clamp(piece->opacity(), 0.0F, 1.0F) < 1.0F ? piece->opacity() : 0.0F;
-      apply(from);
-      m_animations.animateSpring(from, 1.0F, Style::spring(Tokens::springOpen), apply, {}, piece);
+      apply(rest.rest.v);
+      m_animations.animateSpring(
+          rest.rest.v, 1.0F, Style::spring(Tokens::springOpen), apply, [this, piece] { m_pieceRest.erase(piece); }, piece
+      );
     } else {
-      m_animations.animateSpring(piece->opacity(), 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
+      m_animations.animateSpring(rest.rest.v, 0.0F, Style::spring(Tokens::springClose), apply, {}, piece);
     }
   }
 }
@@ -3134,11 +3154,10 @@ void PanelManager::growPieces(bool open, const std::vector<Node*>& pieces) {
 bool PanelManager::startDetachedScaleOpen() {
   using Property = DskSurfaceClient::Property;
   dsk_surface_manager_v1* manager = wayland() != nullptr ? wayland()->dskSurfaceManager() : nullptr;
-  if (manager == nullptr || m_wlSurface == nullptr || m_activePanel == nullptr || !MotionService::instance().enabled()) {
+  if (manager == nullptr || m_wlSurface == nullptr || m_activePanel == nullptr || !MotionService::instance().enabled() ||
+      !ensureDsk()) {
     return false;
   }
-  m_dsk = std::make_unique<DskSurfaceClient>(manager, m_wlSurface);
-  bindBackdrop();
   applyDetachedReveal(1.0F);
   // The compositor fades the whole surface in, so the content shows from the first frame; the 35 % gate (rulebook
   // 7.4) is only for content inside a growing shape.
@@ -3784,6 +3803,7 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
 
   const auto w = static_cast<float>(width);
   const auto h = static_cast<float>(height);
+  bool pourAfterLayout = false;
 
   if (m_sceneRoot == nullptr) {
     m_sceneRoot = ui::node({});
@@ -3896,7 +3916,9 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
       m_sceneRoot->setOpacity(1.0F);
       applyAttachedReveal(0.0F);
       m_attachedOpenAnimationPending = true;
-    } else if (!startPiecesOpen() && !startDetachedMorph() && !startDetachedScaleOpen()) {
+    } else if (startPiecesOpen()) {
+      pourAfterLayout = true;
+    } else if (!startDetachedMorph() && !startDetachedScaleOpen()) {
       applyDetachedReveal(1.0F);
       m_sceneRoot->setOpacity(0.0F);
       fadeSceneRoot(1.0F, {});
@@ -3963,6 +3985,9 @@ void PanelManager::buildScene(std::uint32_t width, std::uint32_t height) {
     noctalia::profiling::ScopedTimer tl(kLog, "panel: first layout");
     UiPhaseScope layoutPhase(UiPhase::Layout);
     layoutActivePanel(renderer);
+  }
+  if (pourAfterLayout) {
+    pourPieces(true);
   }
   applyPendingPanelFocus();
   if (m_pointerInside && (m_activePanel == nullptr || !m_activePanel->ignorePointerEvent())) {

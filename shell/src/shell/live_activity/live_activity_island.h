@@ -92,12 +92,13 @@ public:
   // Runs per output with true when its island shows and false when it is gone, so the bar can hide that center section.
   void setVisibilityCallback(VisibilityCallback callback);
   void setSpaceProvider(SpaceProvider provider);
-  // The lane pill a sheet grows out of: its surface, its x, y, width, height there, and its centre on the output.
+  // The island card a sheet grows out of: its surface, its x, y, width, height there, its centre and its rect on the output.
   struct SheetSource {
     wl_surface* surface = nullptr;
     std::array<float, 4> rect{};
     float anchorX = 0.0F;
     float anchorY = 0.0F;
+    std::array<float, 4> outputRect{};
   };
   using OpenCallback = std::function<void(wl_output*, std::string_view, std::optional<SheetSource>)>;
   // False while hover cards must stay closed: a sheet is open beside the island.
@@ -369,7 +370,7 @@ private:
   // Runs the 1 s elapsed-time refresh while any island shows a compact activity; on every activity or island change.
   void syncElapsedTimer();
   // The lane pill as a sheet's source, so the sheet sits beside the bar at the island's top; nullopt in a bar row.
-  [[nodiscard]] std::optional<SheetSource> laneSheetSource(const Instance& inst) const;
+  [[nodiscard]] std::optional<SheetSource> sheetSource(const Instance& inst, Face face) const;
   // The lane pill's glass shape: at the pill while `shown`, else no clip.
   void syncLanePill(Instance& inst, bool shown) const;
   // The card shape follows `face`: grown from the pill to its card, or shrunk back into the pill and then cleared.

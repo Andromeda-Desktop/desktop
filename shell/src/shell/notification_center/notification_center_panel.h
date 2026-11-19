@@ -39,6 +39,7 @@ public:
   [[nodiscard]] bool fitsContentHeight() const noexcept override { return true; }
   [[nodiscard]] bool padsContent() const noexcept override { return false; }
   [[nodiscard]] bool usesGlassPieces() const override { return true; }
+  [[nodiscard]] PiecePour piecePour() const override { return {.xShare = 0.0F, .yShare = 0.4F, .motion = PourMotion::Grow}; }
   [[nodiscard]] float measureContentHeight(Renderer& renderer, float contentWidth) override;
   [[nodiscard]] PanelPlacement panelPlacement() const noexcept override { return PanelPlacement::Floating; }
   [[nodiscard]] std::string panelScreenPosition() const override { return "top_center"; }

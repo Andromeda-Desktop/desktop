@@ -1022,8 +1022,8 @@ void LiveActivityIsland::syncElapsedTimer() {
   }
 }
 
-std::optional<LiveActivityIsland::SheetSource> LiveActivityIsland::laneSheetSource(const Instance& inst) const {
-  if (!inLane(inst) || inst.surface == nullptr) {
+std::optional<LiveActivityIsland::SheetSource> LiveActivityIsland::sheetSource(const Instance& inst, Face face) const {
+  if (inst.surface == nullptr) {
     return std::nullopt;
   }
   const auto& outputs = m_wayland->outputs();
@@ -1031,21 +1031,29 @@ std::optional<LiveActivityIsland::SheetSource> LiveActivityIsland::laneSheetSour
   if (output == outputs.end()) {
     return std::nullopt;
   }
-  const Rect p = faceRect(inst, Face::Rest);
+  const Rect p = faceRect(inst, face);
   const float k = inst.scale;
   const auto w = static_cast<float>(inst.surface->width());
   const auto h = static_cast<float>(inst.surface->height());
+  const auto outW = static_cast<float>(output->effectiveLogicalWidth());
+  const auto outH = static_cast<float>(output->effectiveLogicalHeight());
   const auto margin = static_cast<float>(surfaceMargin(inst.space));
-  // islandAnchor: the compositor centres the lane surface on the output's height.
-  const float x0 =
-      inst.space.lane == IslandLane::Right ? static_cast<float>(output->effectiveLogicalWidth()) - margin - w : margin;
-  const float y0 = std::floor((static_cast<float>(output->effectiveLogicalHeight()) - h) * 0.5F);
+  // islandAnchor: the compositor centres a lane surface on the output's height and a Top or Bottom row on its width.
+  float x0 = std::floor((outW - w) * 0.5F);
+  float y0 = inst.space.bottom ? outH - margin - h : margin;
+  if (inLane(inst)) {
+    x0 = inst.space.lane == IslandLane::Right ? outW - margin - w : margin;
+    y0 = std::floor((outH - h) * 0.5F);
+  } else if (inst.space.end) {
+    x0 = outW - static_cast<float>(endMargin()) - w;
+  }
   const std::array<float, 4> rect{p.x * k, p.y * k, p.w * k, p.h * k};
   return SheetSource{
       .surface = inst.surface->wlSurface(),
       .rect = rect,
       .anchorX = x0 + rect[0] + rect[2] * 0.5F,
       .anchorY = y0 + rect[1] + rect[3] * 0.5F,
+      .outputRect = {x0 + rect[0], y0 + rect[1], rect[2], rect[3]},
   };
 }
 
@@ -1780,6 +1788,7 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
               return;
             }
             const bool fromBanner = instPtr->morph.shown() == Face::Banner;
+            const auto source = sheetSource(*instPtr, fromBanner ? Face::Banner : Face::Rest);
             if (inLane(*instPtr)) {
               // The sheet opens beside the pill, where a hover card would lie.
               endHover(*instPtr);
@@ -1801,12 +1810,12 @@ void LiveActivityIsland::buildScene(Instance& inst, float width, float height) {
               return;
             }
             if (!fromBanner && inLane(*instPtr) && instPtr->mediaGroup->visible() && m_open) {
-              m_open(instPtr->output, "detail-media", laneSheetSource(*instPtr));
+              m_open(instPtr->output, "detail-media", source);
               return;
             }
             // A banner opens the notification history; the resting date pill opens the calendar, as the clock does.
             if (m_open) {
-              m_open(instPtr->output, fromBanner ? "notification-center" : "calendar", laneSheetSource(*instPtr));
+              m_open(instPtr->output, fromBanner ? "notification-center" : "calendar", source);
             }
           },
       .onAxisHandler = [this, instPtr](const InputArea::PointerData& d) { return bannerScroll(*instPtr, d); },

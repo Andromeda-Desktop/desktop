@@ -230,6 +230,9 @@ public:
 
   void registerIpc(IpcService& ipc);
 
+  // True while a pour or grow moves the piece: the pour owns its position, scale and opacity.
+  [[nodiscard]] bool pieceInMotion(const Node& piece) const { return m_pieceRest.contains(&piece); }
+
 private:
   static PanelManager* s_instance;
 
@@ -265,6 +268,13 @@ private:
   bool startDetachedScaleClose(std::uint64_t gen);
   // Glass pieces pour out of the panel's top edge, top piece first, and back on close (concept C).
   bool startPiecesOpen();
+  bool ensureDsk();
+  // A poured or grown piece in motion: its rest position and scale in its parent, and its progress v (1 = at rest).
+  // It lives from the motion's start until an open settles, so a reversal mid-way returns the piece home.
+  struct PieceRest {
+    float x, y, scaleX, scaleY, v;
+  };
+  PieceRest& pieceRest(Node& piece, bool open);
   bool startPiecesClose(std::uint64_t gen);
   void pourPieces(bool open);
   void growPieces(bool open, const std::vector<Node*>& pieces);
@@ -367,8 +377,7 @@ private:
   std::optional<std::array<float, 4>> m_growSourceOutput;
   // The panel surface's top left on the output: maps m_growSourceOutput into scene coordinates.
   std::array<float, 2> m_panelSurfaceOrigin{};
-  // Each grown piece's rest position in its parent, so a reversed grow returns it home.
-  std::unordered_map<const Node*, std::array<float, 4>> m_growRest; // x, y, scale x, scale y
+  std::unordered_map<const Node*, PieceRest> m_pieceRest;
   float m_morphSourceRadius = 0.0F;
   std::weak_ptr<DskTrackerClient> m_gestureTracker;
   double m_gestureRange = 0.0;

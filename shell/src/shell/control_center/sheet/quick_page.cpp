@@ -1207,7 +1207,7 @@ void QuickPage::startStagger() {
     }
     card->setOpacity(0.0F);
     m_staggerTimers[i].start(std::chrono::milliseconds(kGateMs + kStaggerMs * static_cast<int>(i)), [this, i] {
-      if (i < m_extras.size() && m_extras[i].card != nullptr) {
+      if (i < m_extras.size() && m_extras[i].card != nullptr && !PanelManager::instance().pieceInMotion(*m_extras[i].card)) {
         fadeIn(*m_extras[i].card);
         PanelManager::instance().requestRedraw();
       }
