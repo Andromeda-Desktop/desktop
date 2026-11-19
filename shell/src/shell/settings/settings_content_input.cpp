@@ -375,6 +375,7 @@ namespace settings {
         );
         // An add picker has no current value: with an item preselected, picking that item would add nothing.
         static_cast<Select*>(addSelect.get())->clearSelection();
+        static_cast<Select*>(addSelect.get())->setPlaceholder(i18n::tr("settings.input.keyboard.add-source-placeholder"));
         body->addChild(makeInputRow(i18n::tr("settings.input.keyboard.add-source"), std::move(addSelect), layoutKey, ctx));
       }
 

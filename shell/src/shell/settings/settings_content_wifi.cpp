@@ -151,8 +151,7 @@ namespace settings {
       }
 
       if (!known.empty()) {
-        addHeader(content, i18n::tr("settings.wifi.known"), nullptr, scale);
-        Flex* card = addCard(content, scale);
+        Flex* card = addSection(content, i18n::tr("settings.wifi.known"), nullptr, scale);
         for (const auto& ap : known) {
           auto r = row(scale);
           r->addChild(ui::label({.text = ap.ssid, .fontSize = Style::fontSizeBody * scale,
@@ -173,8 +172,7 @@ namespace settings {
         spinner = iconButton("refresh", i18n::tr("settings.wifi.scan"), scale,
                              [network = ctx.network] { network->requestScan(); });
       }
-      addHeader(content, i18n::tr("settings.wifi.other"), std::move(spinner), scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.wifi.other"), std::move(spinner), scale);
       if (other.empty()) {
         auto r = row(scale);
         r->addChild(makeLabel(i18n::tr(state.scanning ? "settings.wifi.searching" : "settings.wifi.none"),

@@ -355,8 +355,7 @@ namespace settings {
       if (health.entries().empty()) {
         return;
       }
-      addHeader(content, i18n::tr("settings.power.what-happened"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.what-happened"), nullptr, scale);
       std::size_t shown = 0;
       for (const auto& entry : health.entries()) {
         if (++shown > 5) {
@@ -498,8 +497,7 @@ namespace settings {
 
     void addLidButtonsCard(Flex& content, PowerConfigService& config, float scale) {
       const PowerConfigState& state = config.state();
-      addHeader(content, i18n::tr("settings.power.lid-buttons"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.lid-buttons"), nullptr, scale);
       if (state.hasLid) {
         addHandleRow(*card, config, "settings.power.lid-battery", "lid-battery", state.lidBattery, false, scale);
         // Unset (logind returns "") follows HandleLidSwitch (logind.conf(5)).
@@ -515,8 +513,7 @@ namespace settings {
 
     void addSleepCard(Flex& content, PowerConfigService& config, float scale) {
       const PowerConfigState& state = config.state();
-      addHeader(content, i18n::tr("settings.power.sleep"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.sleep"), nullptr, scale);
       const auto modeLabel = [](const std::string& mode) {
         return mode == "s2idle" || mode == "shallow" || mode == "deep" ? i18n::tr("settings.power.sleep-mode-" + mode)
                                                                         : mode;
@@ -538,8 +535,7 @@ namespace settings {
     // Each check names what blocks hibernation on this machine; swap below RAM size gets a fix (andromeda-power-config).
     void addHibernateCard(Flex& content, PowerConfigService& config, float scale) {
       const PowerConfigState& state = config.state();
-      addHeader(content, i18n::tr("settings.power.hibernate"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.hibernate"), nullptr, scale);
       const bool swapOk = state.diskSwapBytes >= state.ramBytes;
       // logind's CanHibernate already checks that swap can hold the current memory; full-RAM swap is advice.
       const bool checksPass = !state.lockdown && state.resumeConfigured && !state.restartNeeded && state.canHibernate;
@@ -643,8 +639,7 @@ namespace settings {
       if (!showLimit && !health.has_value() && battery.chargeCycles < 0) {
         return;
       }
-      addHeader(content, i18n::tr("settings.power.battery-health"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.battery-health"), nullptr, scale);
       if (showLimit) {
         auto r = row(scale);
         const std::string label = limit.configuredEnd.has_value()
@@ -1257,8 +1252,7 @@ namespace settings {
                 }
               },
       }));
-      addHeader(content, i18n::tr("settings.power.sot"), std::move(tabs), scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.sot"), std::move(tabs), scale);
 
       const std::optional<std::int64_t> start = sotPeriodStart(points, period);
       if (!start.has_value() || *start >= now) {
@@ -1456,8 +1450,7 @@ namespace settings {
                     }
                   },
           }));
-      addHeader(content, i18n::tr("settings.power.apps"), std::move(tabs), scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.power.apps"), std::move(tabs), scale);
       std::size_t shown = 0;
       for (const BatteryImpact& impact : ranked) {
         if (++shown > 4) {
@@ -1562,8 +1555,7 @@ namespace settings {
       addApps(content, ctx, tenDays);
     }
     if (ctx.profiles != nullptr && ctx.profiles->hasStateSnapshot() && !ctx.profiles->profiles().empty()) {
-      addHeader(content, i18n::tr("settings.power.energy-saving"), nullptr, scale);
-      Flex* card = addEnergySaving(content, *ctx.profiles, ctx.health, scale);
+      Flex* card = addEnergySaving(addHeader(content, i18n::tr("settings.power.energy-saving"), nullptr, scale), *ctx.profiles, ctx.health, scale);
       if (card != nullptr && ctx.health != nullptr) {
         addAppRulesRow(*card, *ctx.health, ctx);
       }

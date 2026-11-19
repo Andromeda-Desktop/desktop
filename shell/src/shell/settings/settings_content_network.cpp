@@ -96,8 +96,7 @@ namespace settings {
 
     const auto& vpns = net->vpnConnections();
     if (!vpns.empty()) {
-      addHeader(content, i18n::tr("settings.network.vpn"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.network.vpn"), nullptr, scale);
       for (const auto& vpn : vpns) {
         auto r = row(scale);
         r->addChild(symbol(network_display::vpnGlyph(), Tokens::sizeSymbol * scale, ColorRole::Label2));
@@ -118,8 +117,7 @@ namespace settings {
     }
 
     if (state.connected && (!state.ipv4.empty() || !state.interfaceName.empty())) {
-      addHeader(content, i18n::tr("settings.network.connection"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.network.connection"), nullptr, scale);
       if (!state.ipv4.empty()) {
         addValueRow(*card, i18n::tr("settings.wifi.ip-address"), state.ipv4, scale);
       }

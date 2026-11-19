@@ -34,8 +34,7 @@ namespace settings {
         }
       }
 
-      addHeader(content, i18n::tr(output ? "settings.sound.output" : "settings.sound.input"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr(output ? "settings.sound.output" : "settings.sound.input"), nullptr, scale);
       if (nodes.empty()) {
         auto r = row(scale);
         r->addChild(ui::label({.text = i18n::tr("settings.sound.no-devices"), .fontSize = Style::fontSizeBody * scale,
@@ -108,8 +107,7 @@ namespace settings {
       if (programs.empty()) {
         return;
       }
-      addHeader(content, i18n::tr("settings.sound.apps"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.sound.apps"), nullptr, scale);
       for (const auto& program : programs) {
         std::string name = !program.applicationName.empty() ? program.applicationName
             : !program.streamTitle.empty()                  ? program.streamTitle
@@ -163,8 +161,7 @@ namespace settings {
       const auto run = ctx.runSpeaker;
       const SpeakerStatus s = *st;
 
-      addHeader(content, i18n::tr("settings.sound.speaker-sound"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.sound.speaker-sound"), nullptr, scale);
       std::string source = s.basic() ? i18n::tr("settings.sound.basic-tuning")
                                      : i18n::tr("settings.sound.tuned-from-windows", "vendor", s.source);
       if (ctx.speakerPhase == SpeakerPhase::ApplyFailed) {

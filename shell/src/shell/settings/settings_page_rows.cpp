@@ -58,7 +58,8 @@ namespace settings::page_rows {
     });
   }
 
-  void addHeader(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale) {
+  Flex& addHeader(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale) {
+    auto section = ui::column({.align = FlexAlign::Stretch, .gap = Style::spaceSm * scale});
     auto header = ui::row({.align = FlexAlign::Center, .gap = Style::spaceSm * scale, .paddingH = Style::spaceLg * scale});
     header->addChild(
         makeLabel(text, Style::fontSizeCaption * scale, colorSpecFromRole(ColorRole::Label2), FontWeight::SemiBold)
@@ -66,10 +67,17 @@ namespace settings::page_rows {
     if (trailing != nullptr) {
       header->addChild(std::move(trailing));
     }
-    content.addChild(std::move(header));
+    section->addChild(std::move(header));
+    Flex& out = *section;
+    content.addChild(std::move(section));
+    return out;
   }
 
   Flex* addCard(Flex& content, float scale) { return addSettingsGroupCard(content, {}, scale); }
+
+  Flex* addSection(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale) {
+    return addCard(addHeader(content, text, std::move(trailing), scale), scale);
+  }
 
   void addValueRow(Flex& card, std::string_view label, std::string_view value, float scale) {
     auto r = row(scale);

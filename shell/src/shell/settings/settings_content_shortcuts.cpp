@@ -664,7 +664,8 @@ namespace settings {
       addAddForm(*pane, ctx, rows);
     }
     panes->addChild(std::move(pane));
-    content.addChild(std::move(panes));
+    page_rows::addHeader(content, i18n::tr("settings.navigation.categories.shortcuts"), nullptr, ctx.scale)
+        .addChild(std::move(panes));
   }
 
 } // namespace settings

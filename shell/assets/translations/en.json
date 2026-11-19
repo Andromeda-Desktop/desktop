@@ -7147,6 +7147,7 @@
       "keyboard.variant": "Variant",
       "keyboard.variant-default": "Default",
       "keyboard.add-source": "Add input source",
+      "keyboard.add-source-placeholder": "Choose a Layout…",
       "keyboard.default-source": "Default",
       "keyboard.remove-source": "Remove",
       "keyboard.repeat-rate": "Repeat rate",

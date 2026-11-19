@@ -161,8 +161,7 @@ namespace settings {
     void addDefaults(Flex& content, const PrinterInfo& p, const SettingsPrintersContext& ctx) {
       const float scale = ctx.scale;
       PrintersModel* model = ctx.model;
-      addHeader(content, i18n::tr("settings.printers.defaults"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.printers.defaults"), nullptr, scale);
       if (!p.media.empty()) {
         std::vector<std::string> labels;
         std::ranges::transform(p.media, std::back_inserter(labels), mediaLabel);
@@ -240,12 +239,11 @@ namespace settings {
                    });
 
       const std::vector<JobInfo> jobs = jobsOf(*model, p.name);
-      addHeader(content, i18n::tr("settings.printers.queue"),
+      Flex* queue = addSection(content, i18n::tr("settings.printers.queue"),
                 ui::label({.text = i18n::tr(jobs.size() == 1 ? "settings.printers.one-job" : "settings.printers.jobs",
                                             "count", std::to_string(jobs.size())),
                            .fontSize = Tokens::typeFootnote.size * scale, .color = colorSpecFromRole(ColorRole::Label2)}),
                 scale);
-      Flex* queue = addCard(content, scale);
       if (jobs.empty()) {
         addValueRow(*queue, i18n::tr("settings.printers.no-jobs"), {}, scale);
       }
@@ -284,8 +282,7 @@ namespace settings {
       } else {
         trailing = iconButton("refresh", i18n::tr("settings.printers.scan"), scale, [model] { model->discover(); });
       }
-      addHeader(content, i18n::tr("settings.printers.nearby"), std::move(trailing), scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.printers.nearby"), std::move(trailing), scale);
       const std::vector<FoundPrinter> nearby = model->nearby();
       if (nearby.empty()) {
         auto r = row(scale);
@@ -339,8 +336,7 @@ namespace settings {
                                 i18n::tr("settings.printers.no-printers-hint"), false, scale));
       card->addChild(std::move(r));
     } else {
-      addHeader(content, i18n::tr("settings.printers.mine"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.printers.mine"), nullptr, scale);
       for (const auto& p : printers) {
         addPrinterRow(*card, p, ctx);
         const std::vector<JobInfo> jobs = jobsOf(*model, p.name);

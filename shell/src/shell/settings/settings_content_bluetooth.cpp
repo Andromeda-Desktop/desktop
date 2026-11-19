@@ -127,8 +127,7 @@ namespace settings {
     std::ranges::stable_sort(mine, std::greater<>{}, &BluetoothDeviceInfo::connected);
 
     if (!mine.empty()) {
-      addHeader(content, i18n::tr("settings.bluetooth.mine"), nullptr, scale);
-      Flex* card = addCard(content, scale);
+      Flex* card = addSection(content, i18n::tr("settings.bluetooth.mine"), nullptr, scale);
       for (const auto& device : mine) {
         addDeviceRow(*card, device, ctx);
       }
@@ -140,8 +139,7 @@ namespace settings {
     } else {
       trailing = iconButton("refresh", i18n::tr("settings.wifi.scan"), scale, [bt] { bt->startDiscovery(); });
     }
-    addHeader(content, i18n::tr("settings.bluetooth.nearby"), std::move(trailing), scale);
-    Flex* card = addCard(content, scale);
+    Flex* card = addSection(content, i18n::tr("settings.bluetooth.nearby"), std::move(trailing), scale);
     // Unnamed devices are address-only noise; macOS hides them too.
     std::erase_if(nearby, [](const BluetoothDeviceInfo& d) { return d.alias.empty() || d.alias == d.address; });
     if (nearby.empty()) {

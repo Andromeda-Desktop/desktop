@@ -298,8 +298,7 @@ namespace settings {
     }
 
     void addGroupList(Flex& content, float scale, const SoftwareUpdateService& service, std::string_view group) {
-      rows::addHeader(content, i18n::tr("settings.update.group." + std::string(group)), nullptr, scale);
-      Flex* card = rows::addCard(content, scale);
+      Flex* card = rows::addSection(content, i18n::tr("settings.update.group." + std::string(group)), nullptr, scale);
       for (const auto& update : service.updates()) {
         if (update.group != group) {
           continue;

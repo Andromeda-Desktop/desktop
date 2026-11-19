@@ -22,8 +22,11 @@ namespace settings::page_rows {
   [[nodiscard]] std::unique_ptr<Node> iconButton(std::string_view glyph, std::string tooltip, float scale,
                                                  std::function<void()> onClick);
   [[nodiscard]] std::unique_ptr<Node> title(std::string text, float scale);
-  void addHeader(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale);
+  // A section column (caption, then what the caller adds) with the generated pages' caption-to-card gap.
+  Flex& addHeader(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale);
   [[nodiscard]] Flex* addCard(Flex& content, float scale);
+  // addHeader plus its card.
+  [[nodiscard]] Flex* addSection(Flex& content, std::string_view text, std::unique_ptr<Node> trailing, float scale);
   void addValueRow(Flex& card, std::string_view label, std::string_view value, float scale);
   // Rulebook 9.13: symbol 48, title-3, then an optional 2-line body and one button.
   void addEmptyState(Flex& content, std::string_view glyph, std::string_view text, float scale,

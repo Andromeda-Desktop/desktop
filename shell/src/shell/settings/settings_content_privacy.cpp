@@ -89,11 +89,11 @@ namespace settings {
         addEmptyState(content, "face-id-error", i18n::tr("settings.privacy.face-unavailable"), scale);
         return;
       }
-      addHeader(content, i18n::tr("settings.privacy.faces"), nullptr, scale);
+      Flex& section = addHeader(content, i18n::tr("settings.privacy.faces"), nullptr, scale);
       if (ctx.enrolling == 1) {
-        addEnrollCard(content, ctx);
+        addEnrollCard(section, ctx);
       } else {
-        Flex* card = addCard(content, scale);
+        Flex* card = addCard(section, scale);
         for (const auto& face : ctx.faces) {
           auto r = row(scale);
           r->setGap(Style::spaceMd * scale);
@@ -111,8 +111,7 @@ namespace settings {
       }
       addStatus(content, ctx);
 
-      addHeader(content, i18n::tr("settings.privacy.face-use-for"), nullptr, scale);
-      Flex* use = addCard(content, scale);
+      Flex* use = addSection(content, i18n::tr("settings.privacy.face-use-for"), nullptr, scale);
       addToggleRow(*use, i18n::tr("settings.privacy.use-unlock"), ctx.faceUnlock, {"lockscreen", "face"}, ctx);
       if (ctx.faceAdminKnown) {
         auto r = row(scale);
@@ -133,11 +132,11 @@ namespace settings {
                       scale);
         return;
       }
-      addHeader(content, i18n::tr("settings.privacy.fingers"), nullptr, scale);
+      Flex& section = addHeader(content, i18n::tr("settings.privacy.fingers"), nullptr, scale);
       if (ctx.enrolling == 2) {
-        addEnrollCard(content, ctx);
+        addEnrollCard(section, ctx);
       } else {
-        Flex* card = addCard(content, scale);
+        Flex* card = addCard(section, scale);
         for (const auto& finger : ctx.fingers) {
           auto r = row(scale);
           r->setGap(Style::spaceMd * scale);
@@ -155,8 +154,7 @@ namespace settings {
       }
       addStatus(content, ctx);
 
-      addHeader(content, i18n::tr("settings.privacy.finger-use-for"), nullptr, scale);
-      Flex* use = addCard(content, scale);
+      Flex* use = addSection(content, i18n::tr("settings.privacy.finger-use-for"), nullptr, scale);
       addToggleRow(*use, i18n::tr("settings.privacy.use-unlock"), ctx.fingerprintUnlock, {"lockscreen", "fingerprint"},
                    ctx);
       if (ctx.fingerAdminKnown) {
@@ -481,8 +479,7 @@ namespace settings {
       return;
     }
 
-    addHeader(content, i18n::tr("settings.privacy.sign-in"), nullptr, scale);
-    Flex* card = addCard(content, scale);
+    Flex* card = addSection(content, i18n::tr("settings.privacy.sign-in"), nullptr, scale);
     const std::string unavailable = i18n::tr("settings.privacy.not-available");
     std::string face = unavailable;
     if (ctx.facePresent) {
@@ -511,8 +508,7 @@ namespace settings {
 
     const bool shortcutsRow = ctx.shortcuts != nullptr && ctx.shortcuts->load == global_shortcuts::Load::Ready;
     if (!ctx.access.empty() || shortcutsRow) {
-      addHeader(content, i18n::tr("settings.privacy.app-access"), nullptr, scale);
-      Flex* access = addCard(content, scale);
+      Flex* access = addSection(content, i18n::tr("settings.privacy.app-access"), nullptr, scale);
       if (shortcutsRow) {
         const std::size_t apps = ctx.shortcuts->apps.size();
         const std::string shortcutsTitle = i18n::tr("settings.privacy.global-shortcuts");

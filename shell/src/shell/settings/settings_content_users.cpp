@@ -263,8 +263,7 @@ namespace settings {
 
     std::vector<UserInfo> others;
     std::ranges::copy_if(users, std::back_inserter(others), [me](const UserInfo& u) { return u.uid != me; });
-    addHeader(content, i18n::tr("settings.users.others"), nullptr, scale);
-    Flex* card = addCard(content, scale);
+    Flex* card = addSection(content, i18n::tr("settings.users.others"), nullptr, scale);
     if (others.empty()) {
       auto r = row(scale);
       r->addChild(ui::label({.text = i18n::tr("settings.users.none"), .fontSize = Style::fontSizeBody * scale,
@@ -293,8 +292,7 @@ namespace settings {
     }
 
     if (ctx.loginScreens.size() >= 2 && ctx.switchLoginScreen) {
-      addHeader(content, i18n::tr("settings.users.login-screen"), nullptr, scale);
-      Flex* login = addCard(content, scale);
+      Flex* login = addSection(content, i18n::tr("settings.users.login-screen"), nullptr, scale);
       std::vector<std::string> labels;
       std::vector<std::string> units;
       std::optional<std::size_t> selected;
