@@ -33,6 +33,18 @@ impl Coeffs {
         Self::norm((1.0 - cos) / 2.0, 1.0 - cos, (1.0 - cos) / 2.0, 1.0 + alpha, -2.0 * cos, 1.0 - alpha)
     }
 
+    /// Magnitude in dB at `f` Hz.
+    pub fn db_at(&self, fs: f32, f: f32) -> f32 {
+        let w = 2.0 * PI * f64::from(f) / f64::from(fs);
+        let mag2 = |c0: f64, c1: f64, c2: f64| {
+            let (re, im) = (c0 + c1 * w.cos() + c2 * (2.0 * w).cos(), -c1 * w.sin() - c2 * (2.0 * w).sin());
+            re * re + im * im
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let db = (10.0 * (mag2(self.b0, self.b1, self.b2) / mag2(1.0, self.a1, self.a2)).log10()) as f32;
+        db
+    }
+
     fn w(fs: f32, f: f32, q: f32) -> (f64, f64) {
         let w0 = 2.0 * PI * f64::from(f) / f64::from(fs);
         (w0.cos(), w0.sin() / (2.0 * f64::from(q)))
@@ -42,6 +54,8 @@ impl Coeffs {
         Self { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 }
     }
 }
+
+const DENORMAL_GUARD: f64 = 1e-20;
 
 /// Transposed direct form II; f64 state keeps the 47 Hz band stable.
 #[derive(Clone, Copy)]
@@ -64,8 +78,9 @@ impl Biquad {
     pub fn run(&mut self, x: f32) -> f32 {
         let x = f64::from(x);
         let y = self.c.b0 * x + self.z1;
-        self.z1 = self.c.b1 * x - self.c.a1 * y + self.z2;
-        self.z2 = self.c.b2 * x - self.c.a2 * y;
+        // Adding and removing DENORMAL_GUARD flushes decaying state to zero before it turns denormal (10x slower).
+        self.z1 = (self.c.b1 * x - self.c.a1 * y + self.z2 + DENORMAL_GUARD) - DENORMAL_GUARD;
+        self.z2 = (self.c.b2 * x - self.c.a2 * y + DENORMAL_GUARD) - DENORMAL_GUARD;
         #[allow(clippy::cast_possible_truncation)]
         let y = y as f32;
         y

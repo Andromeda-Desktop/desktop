@@ -299,6 +299,7 @@ pub fn read_archive(path: &Path, subsystem: &str) -> Result<Option<Tuning>> {
         subsystem: subsystem.to_ascii_uppercase(),
         tuning_date: String::new(),
         band_freqs_hz: band_centres(),
+        ieq_presets: BTreeMap::new(),
         endpoints: vec![Endpoint { kind: "internal_speaker".to_owned(), channels: 2, profiles }],
     }))
 }

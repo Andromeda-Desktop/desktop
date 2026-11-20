@@ -27,6 +27,9 @@ pub struct Tuning {
     pub tuning_date: String,
     /// Band centres of the per-channel curve: 20 Dolby bands at 48 kHz, or a Sonitude 1/3-octave grid.
     pub band_freqs_hz: Vec<f64>,
+    /// Dolby's intelligent-EQ targets by preset name (`warm`, `balanced`, `detailed`), in 1/16 dB.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ieq_presets: BTreeMap<String, Vec<f64>>,
     pub endpoints: Vec<Endpoint>,
 }
 
@@ -102,6 +105,7 @@ pub fn parse(xml: &str) -> Result<Tuning> {
         subsystem: String::new(),
         tuning_date: String::new(),
         band_freqs_hz: Vec::new(),
+        ieq_presets: BTreeMap::new(),
         endpoints: Vec::new(),
     };
     let mut profile: Option<(String, Profile)> = None;
@@ -197,6 +201,8 @@ pub fn parse(xml: &str) -> Result<Tuning> {
         map.insert(p.key, values);
     }
     tuning.band_freqs_hz = constants.remove("band_20_freq").context("no band_20_freq constant")?;
+    tuning.ieq_presets =
+        constants.into_iter().filter_map(|(k, v)| Some((k.strip_prefix("ieq_")?.to_owned(), v))).collect();
     if tuning.endpoints.is_empty() {
         bail!("no endpoint in tuning file");
     }
@@ -243,6 +249,7 @@ pub fn eqapo_tuning(subsystem: &str, config: &str, include: &dyn Fn(&str) -> Opt
         subsystem: subsystem.to_owned(),
         tuning_date: String::new(),
         band_freqs_hz: Vec::new(),
+        ieq_presets: BTreeMap::new(),
         endpoints: vec![Endpoint {
             kind: "internal_speaker".to_owned(),
             channels: 2,

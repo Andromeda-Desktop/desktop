@@ -357,6 +357,7 @@ fn preset_tuning(presets: &BTreeMap<String, BTreeMap<u32, Vec<String>>>, subsyst
         subsystem: subsystem.to_uppercase(),
         tuning_date: String::new(),
         band_freqs_hz: hz.iter().map(|&f| f64::from(f)).collect(),
+        ieq_presets: BTreeMap::new(),
         endpoints: vec![Endpoint {
             kind: "internal_speaker".to_owned(),
             channels: 2,

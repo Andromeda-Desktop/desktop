@@ -218,6 +218,7 @@ mod tests {
             subsystem: "10431A63".into(),
             tuning_date: String::new(),
             band_freqs_hz: vec![100.0, 1000.0, 10000.0],
+            ieq_presets: std::collections::BTreeMap::new(),
             endpoints: vec![Endpoint {
                 kind: "internal_speaker".into(),
                 channels: 2,

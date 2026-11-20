@@ -1,4 +1,4 @@
-//! LADSPA 1.1 ABI. Plugins (labels): `limiter`, `regulator`, `leveler`, `bass`; each has ports
+//! LADSPA 1.1 ABI. Plugins (labels): `limiter`, `regulator`, `leveler`, `bass`, `ieq`; each has ports
 //! `In L`, `In R`, `Out L`, `Out R`, then its controls.
 #![allow(unsafe_code)]
 
@@ -7,6 +7,7 @@ use std::ptr;
 use std::sync::OnceLock;
 
 use crate::bass::VirtualBass;
+use crate::ieq::Ieq;
 use crate::leveler::Leveler;
 use crate::limiter::Limiter;
 use crate::regulator::{BANDS, Regulator};
@@ -70,9 +71,10 @@ enum Kind {
     Regulator,
     Leveler,
     Bass,
+    Ieq,
 }
 
-const KINDS: [Kind; 4] = [Kind::Limiter, Kind::Regulator, Kind::Leveler, Kind::Bass];
+const KINDS: [Kind; 5] = [Kind::Limiter, Kind::Regulator, Kind::Leveler, Kind::Bass, Kind::Ieq];
 
 impl Kind {
     fn label(self) -> &'static str {
@@ -81,6 +83,7 @@ impl Kind {
             Kind::Regulator => "regulator",
             Kind::Leveler => "leveler",
             Kind::Bass => "bass",
+            Kind::Ieq => "ieq",
         }
     }
 
@@ -107,6 +110,10 @@ impl Kind {
                 control("Max gain", 0.0, 24.0, 12.0),
             ],
             Kind::Bass => vec![control("Amount", 0.0, 10.0, 0.0), control("Highpass", 0.0, 200.0, 0.0)],
+            Kind::Ieq => [control("Amount", 0.0, 1.0, 0.0), control("Max gain", 0.0, 24.0, 6.0)]
+                .into_iter()
+                .chain((0..BANDS).map(|i| control(&format!("Target {i}"), -96.0, 96.0, 0.0)))
+                .collect(),
         }
     }
 }
@@ -116,6 +123,7 @@ enum Dsp {
     Regulator(Box<Regulator>),
     Leveler(Leveler),
     Bass(Box<VirtualBass>),
+    Ieq(Box<Ieq>),
 }
 
 impl Dsp {
@@ -125,6 +133,7 @@ impl Dsp {
             Kind::Regulator => Dsp::Regulator(Box::new(Regulator::new(fs))),
             Kind::Leveler => Dsp::Leveler(Leveler::new(fs)),
             Kind::Bass => Dsp::Bass(Box::new(VirtualBass::new(fs))),
+            Kind::Ieq => Dsp::Ieq(Box::new(Ieq::new(fs))),
         }
     }
 
@@ -146,6 +155,11 @@ impl Dsp {
             }
             Dsp::Bass(d) => {
                 (d.amount, d.highpass_hz) = (c[0], c[1]);
+                d.process(l, r);
+            }
+            Dsp::Ieq(d) => {
+                (d.amount, d.max_db) = (c[0], c[1]);
+                d.target_db.copy_from_slice(&c[2..2 + BANDS]);
                 d.process(l, r);
             }
         }

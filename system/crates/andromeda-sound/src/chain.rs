@@ -1,6 +1,6 @@
 //! Turns one imported profile into a `PipeWire` filter-chain config:
-//! speaker EQ (`param_eq`) → bass → leveler → limiter (andromeda-dsp); without
-//! an imported profile our basic EQ → bass → limiter.
+//! leveler → adaptive IEQ (when the tuning enables it) → speaker EQ (`param_eq`) → bass → limiter
+//! (andromeda-dsp). Without an imported profile our basic EQ → bass → limiter.
 
 use std::f64::consts::PI;
 use std::fmt::Write as _;
@@ -14,6 +14,11 @@ pub const SINK_NAME: &str = "andromeda_speakers";
 pub const SINK_PRIORITY: u32 = 1010;
 const FS: f64 = 48_000.0;
 pub(crate) const DAX: f64 = 16.0;
+/// Full scale of Dolby's `ieq-amount`.
+const IEQ_AMOUNT_MAX: f64 = 16.0;
+/// IEQ target preset used when the tuning carries it: fuller vocals than the music profile's own
+/// `detailed` on the UX3405CA (user A/B, 2026-11-20).
+const IEQ_PRESET: &str = "warm";
 
 pub struct Settings<'a> {
     pub profile: &'a str,
@@ -108,10 +113,10 @@ pub fn filter_chain_conf(t: Option<&Tuning>, s: &Settings) -> Result<String> {
                 "leveler",
                 format!(" \"Target\" = {leveler_target:.2} \"Amount\" = {leveler_amount:.1} \"Max gain\" = 6.0"),
             );
-            (
-                format!("{} profile \"{}\" (tuned {})", t.subsystem, s.profile, t.tuning_date),
-                vec![eq, bass, lev, limiter],
-            )
+            let mut nodes = vec![lev];
+            nodes.extend(ieq_controls(t, p).map(|c| ladspa("ieq", "ieq", c)));
+            nodes.extend([eq, bass, limiter]);
+            (format!("{} profile \"{}\" (tuned {})", t.subsystem, s.profile, t.tuning_date), nodes)
         }
     };
     let port =
@@ -164,6 +169,20 @@ context.modules = [
         out1 = port(last, "Out", 1),
         target = s.target,
     ))
+}
+
+/// IEQ plugin controls when the profile enables Dolby's intelligent EQ with a 20-band target.
+fn ieq_controls(t: &Tuning, p: &Profile) -> Option<String> {
+    let on = p.cp.get("ieq-enable").and_then(|v| v.first()).is_some_and(|&e| e > 0.0);
+    let target = t.ieq_presets.get(IEQ_PRESET).or(p.cp.get("ieq-bands-set")).filter(|v| v.len() == 20)?;
+    let amount = p.cp.get("ieq-amount").and_then(|v| v.first()).copied().unwrap_or(0.0) / IEQ_AMOUNT_MAX;
+    on.then(|| {
+        let mut c = format!(" \"Amount\" = {:.3} \"Max gain\" = 10.0", amount.clamp(0.0, 1.0));
+        for (i, v) in target.iter().enumerate() {
+            let _ = write!(c, " \"Target {i}\" = {:.3}", v / DAX);
+        }
+        c
+    })
 }
 
 /// Target curve in dB at the `bands` band centres for one channel.
@@ -360,6 +379,7 @@ mod tests {
             subsystem: String::new(),
             tuning_date: String::new(),
             band_freqs_hz: freqs.clone(),
+            ieq_presets: std::collections::BTreeMap::new(),
             endpoints: vec![Endpoint {
                 kind: "internal_speaker".into(),
                 channels: 2,
@@ -374,5 +394,30 @@ mod tests {
             let want = interp_log(&freqs, &db, f);
             assert!((resp - want).abs() < 1.0, "{f:.0} Hz: {resp:.2} dB, want {want:.2}");
         }
+    }
+
+    #[test]
+    fn dolby_ieq_reaches_the_chain() {
+        let mut p = Profile::default();
+        p.cp.insert("ieq-enable".into(), vec![1.0]);
+        p.cp.insert("ieq-amount".into(), vec![8.0]);
+        p.cp.insert("ieq-bands-set".into(), (0..20).map(|i| f64::from(i) * 16.0).collect());
+        let t = Tuning {
+            source: String::new(),
+            subsystem: String::new(),
+            tuning_date: String::new(),
+            band_freqs_hz: Vec::new(),
+            ieq_presets: [("warm".into(), (0..20).map(|i| f64::from(i) * 32.0).collect())].into(),
+            endpoints: vec![Endpoint {
+                kind: "internal_speaker".into(),
+                channels: 2,
+                profiles: [("music".into(), p)].into(),
+            }],
+        };
+        let s = Settings { profile: "music", dsp_path: "dsp.so", target: "spk", loudness_db: 0.0, bass: 0.0 };
+        let conf = filter_chain_conf(Some(&t), &s).unwrap_or_default();
+        assert!(conf.contains("label = ieq"), "{conf}");
+        assert!(conf.contains("\"Amount\" = 0.500") && conf.contains("\"Target 19\" = 38.000"), "{conf}");
+        assert!(conf.contains("{ output = \"lev:Out L\" input = \"ieq:In L\" }"), "{conf}");
     }
 }

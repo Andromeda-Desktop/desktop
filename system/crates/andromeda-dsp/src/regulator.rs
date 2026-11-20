@@ -40,11 +40,7 @@ impl Regulator {
         let bands = (0..BANDS)
             .filter(|&i| BAND_HZ[i] < 0.45 * fs)
             .map(|i| {
-                let f = BAND_HZ[i];
-                let lo = if i > 0 { BAND_HZ[i - 1] } else { f * f / BAND_HZ[1] };
-                let hi = if i + 1 < BANDS { BAND_HZ[i + 1] } else { f * f / BAND_HZ[i - 1] };
-                let bw = 2f32.powf((hi / lo).log2() / 2.0);
-                let q = bw.sqrt() / (bw - 1.0);
+                let (f, q) = (BAND_HZ[i], band_q(i));
                 Band {
                     hz: f,
                     q,
@@ -84,10 +80,19 @@ impl Regulator {
                     level = level.max(10.0 * (*p + 1e-12).log10() + 3.0103);
                 }
                 let cut = knee_cut(level, self.low_db[i], self.high_db[i]).max(-self.max_cut_db);
+                if cut == 0.0 {
+                    band.cut_db = 0.0;
+                    continue;
+                }
                 if (cut - band.cut_db).abs() > 0.01 {
-                    band.cut_db = cut;
                     let c = Coeffs::peaking(self.fs, band.hz, band.q, cut);
-                    band.eq.iter_mut().for_each(|f| f.set(c));
+                    if band.cut_db == 0.0 {
+                        // A 0 dB peaking filter's state is all zero: restarting from it is seamless.
+                        band.eq = [Biquad::new(c); 2];
+                    } else {
+                        band.eq.iter_mut().for_each(|f| f.set(c));
+                    }
+                    band.cut_db = cut;
                 }
                 for (ch, block) in [&mut *cl, &mut *cr].into_iter().enumerate() {
                     for x in block.iter_mut() {
@@ -97,6 +102,15 @@ impl Regulator {
             }
         }
     }
+}
+
+/// Q of band `i` whose bell crosses its neighbours near their -3 dB points.
+pub(crate) fn band_q(i: usize) -> f32 {
+    let f = BAND_HZ[i];
+    let lo = if i > 0 { BAND_HZ[i - 1] } else { f * f / BAND_HZ[1] };
+    let hi = if i + 1 < BANDS { BAND_HZ[i + 1] } else { f * f / BAND_HZ[i - 1] };
+    let bw = 2f32.powf((hi / lo).log2() / 2.0);
+    bw.sqrt() / (bw - 1.0)
 }
 
 /// Gain change in dB (≤ 0) for a band at `level` dB.

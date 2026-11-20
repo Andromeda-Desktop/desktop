@@ -83,6 +83,7 @@ pub fn read_dir(dir: &Path, subsystem: &str) -> Result<Option<Tuning>> {
         tuning_date: String::new(),
         // The fixed biquads are fitted with bells on this grid, as for Surface.
         band_freqs_hz: sonitude::band_centres(),
+        ieq_presets: BTreeMap::new(),
         endpoints: vec![Endpoint { kind: "internal_speaker".to_owned(), channels: 2, profiles }],
     }))
 }
