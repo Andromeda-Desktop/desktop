@@ -368,6 +368,8 @@ open_velocity = 300.0    # px/s toward open
 loading_delay_ms = 200
 loading_min_ms = 400
 caret_blink_ms = 530  # half a blink cycle: the text field caret and the terminal cursor
+spinner_period_ms = 800  # one linear turn of the spinner arc (rulebook 9 spinner)
+spinner_arc = 270.0      # degrees of the spinner ring that draw
 
 # Component anatomy (rulebook 9). A value equal to a scale token says so in its comment; a nested radius is an
 # expression so it cannot drift from its container.
@@ -796,6 +798,7 @@ glyph_tint = 0.14    # identity glyph and fix chip: accent / warning at this alp
 identity = 64.0      # identity row and mode tile min height
 fix_chip = 22.0      # fix chip height
 slider = 52.0        # home capsule slider height (the media card's is size.control_l)
+media_art = 240.0    # Media page artwork square (r20 = radius.r20)
 dock_inset = 28.0    # floating dock above the gesture inset
 fade_dock = 132.0    # bottom fade under the home dock
 off_alpha = 0.38     # controls and dock while the desktop is away, paused or connecting

@@ -27,7 +27,8 @@ RULES = {
     ".tbar": {"h": [T["size"]["control_l"]]},
     ".tog": {"h": [C["toggle"]["height"]], "w": [C["toggle"]["width"]]},
     ".kc, .kc2": {"h": [20.0]},
-    ".seg": {"h": [T["size"]["control_m"], T["size"]["control_s"]]},
+    ".seg:not(.device .seg)": {"h": [T["size"]["control_m"], T["size"]["control_s"]]},
+    ".device .seg": {"h": [T["size"]["control_l"], C["phone"]["hit"]]},  # phone: 40, or the 48 touch row when tall
     ".pop": {"h": [T["size"]["control_s"], T["size"]["control_m"]]},
     ".sheet": {"w": [C["sheet"]["width"]]},
     ".sheet .tile:not(.span2)": {"h": [C["tile"]["height"]], "w": [C["sheet"]["column"]]},
