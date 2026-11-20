@@ -8,7 +8,6 @@
 #include "ui/controls/image.h"
 #include "ui/contrast.h"
 #include "platform/subsurface.h"
-#include "wayland/surface.h"
 
 #include "app/app_loop.h"
 #include "app/command_table.h"
@@ -35,8 +34,6 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "core/input/cursor_shape.h"
-#include "wayland/wayland_seat.h"
-#include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
 #include <chrono>
@@ -74,19 +71,19 @@ namespace {
 
   CursorShape cursorForEdges(std::uint32_t edges) {
     switch (edges) {
-    case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
+    case ResizeEdge::Top:
       return CursorShape::NResize;
-    case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM:
+    case ResizeEdge::Bottom:
       return CursorShape::SResize;
-    case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
+    case ResizeEdge::Left:
       return CursorShape::WResize;
-    case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
+    case ResizeEdge::Right:
       return CursorShape::EResize;
-    case XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT:
+    case ResizeEdge::Top | ResizeEdge::Left:
       return CursorShape::NwResize;
-    case XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT:
+    case ResizeEdge::Top | ResizeEdge::Right:
       return CursorShape::NeResize;
-    case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT:
+    case ResizeEdge::Bottom | ResizeEdge::Left:
       return CursorShape::SwResize;
     default:
       return CursorShape::SeResize;
@@ -254,10 +251,6 @@ AppWindow::AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, C
 AppWindow::~AppWindow() { close(); }
 
 std::string AppWindow::key(const char* field) const { return "/window/" + m_config.stateKey + "/" + field; }
-
-wl_surface* AppWindow::wlSurface() const noexcept {
-  return m_surface != nullptr ? dynamic_cast<const WaylandSurface&>(*m_surface).wlSurface() : nullptr;
-}
 
 std::string AppWindow::activationToken() {
   return m_surface != nullptr ? m_loop.display().requestActivationToken(*m_surface, "") : std::string();
@@ -1762,14 +1755,14 @@ std::uint32_t AppWindow::resizeEdgesAt(float x, float y) const {
   const bool nearBottom = y >= h - corner;
   std::uint32_t edges = 0;
   if (top || ((left || right) && nearTop)) {
-    edges |= XDG_TOPLEVEL_RESIZE_EDGE_TOP;
+    edges |= ResizeEdge::Top;
   } else if (bottom || ((left || right) && nearBottom)) {
-    edges |= XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM;
+    edges |= ResizeEdge::Bottom;
   }
   if (left || ((top || bottom) && nearLeft)) {
-    edges |= XDG_TOPLEVEL_RESIZE_EDGE_LEFT;
+    edges |= ResizeEdge::Left;
   } else if (right || ((top || bottom) && nearRight)) {
-    edges |= XDG_TOPLEVEL_RESIZE_EDGE_RIGHT;
+    edges |= ResizeEdge::Right;
   }
   return edges;
 }
