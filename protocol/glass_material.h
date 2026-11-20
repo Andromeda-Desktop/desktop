@@ -1,7 +1,8 @@
 #pragma once
 
-// The Glass style and slider mapping (CLAUDE.md Decisions "Glass slider", "One glass system"), header-only so the
-// shell (through libdesk-ui Style::glassMaterial) and the compositor use the same values. No other code maps them.
+// The Glass style and slider mapping (CLAUDE.md Decisions "Glass slider", "One glass system"), shared so the shell
+// (through libdesk-ui Style::glassMaterial) and the compositor use the same values. No other code maps them. The
+// tuning values and the functions that read them live in glass_material.cpp, so a tuning change rebuilds one file.
 
 #include <algorithm>
 #include <cmath>
@@ -32,35 +33,25 @@ namespace glass {
     bool operator==(const Material&) const = default;
   };
 
-  // Over a low-contrast backdrop each style's glass moves this fraction of its gap to opaque, in its own colour
-  // (concept C styles.css --dense; Liquid light goes milky, not a grey veil), by Style: {light glass, dark glass}.
-  inline constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.8F, 0.66F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
   // The least alpha at full density that keeps label_1 at 4.5:1 over a white (dark glass) or black (light glass)
   // backdrop, blended in sRGB like the compositor: {light glass, dark glass}.
-  inline constexpr float kLegibleAlpha[2] = {0.60F, 0.80F};
+  extern const float kLegibleAlpha[2];
   // Ink alpha label_2 (4.5:1) and label_3 (3:1, dim by design) reach at full density over kLegibleAlpha glass:
   // {light glass (dark ink), dark glass (light ink)}. Secondary ink rises to these with the surface's density.
-  inline constexpr float kLegibleInk2[2] = {0.80F, 0.86F};
-  inline constexpr float kLegibleInk3[2] = {0.62F, 0.60F};
+  extern const float kLegibleInk2[2];
+  extern const float kLegibleInk3[2];
 
   // The palette a kind's glass and content take. Dark: dark glass with white content in both schemes.
   enum class Tone : std::uint8_t { Scheme, Dark };
 
-  // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
-  // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
-  inline constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
-  // Liquid sheets and menus sit over windows and text, so they blur about 4x a shape at the default (Soft 0.30 to
-  // Strong 0): text under them does not show through.
-  inline constexpr float kLiquidSheetClarity[2] = {0.30F, 0.0F};
   // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
-  inline constexpr float kLiquidLift = 1.05F;
+  extern const float kLiquidLift;
   // Glass shapes of one surface with the same material join by a smooth union within this many logical px, so shapes
   // that move together merge and split like one liquid (gaps under about half of it bridge).
-  inline constexpr float kMergeReach = 24.0F;
-  // Specular rim strength of frosted glass with edge reflection on: a soft glow that marks the edge without a line.
-  inline constexpr float kFrostedRim = 0.6F;
+  extern const float kMergeReach;
   // Glass rims within this many logical px of the pointer turn their key light toward it.
-  inline constexpr float kPointerLightReach = 128.0F;
+  extern const float kPointerLightReach;
+  // Clarity 0 blurs at full size, 1 not at all.
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
 
   // Frosted: blur and tint from the Tint and Blur sliders, an optional specular edge. Liquid: a soft blur with a lift, a
@@ -69,23 +60,15 @@ namespace glass {
   // The values are the portal's glass-style numbers.
   enum class Style : std::uint8_t { Frosted, Liquid, Clear, Tinted };
 
-  // The Tint and Blur slider position Tinted glass takes.
-  inline constexpr float kTintedLevel = 0.5F;
-
-  // Shape tints at the lowest and the middle (kTintedLevel) Tint slider position: {light glass, dark glass}.
-  inline constexpr float kLowestTint[2] = {0.20F, 0.30F};
-  inline constexpr float kTintedTint[2] = {0.34F, 0.56F};
+  // Shape tints at the lowest and the middle Tint slider position: {light glass, dark glass}.
+  extern const float kLowestTint[2];
+  extern const float kTintedTint[2];
   // The tint alpha of Clear glass: enough to carry a tint colour, so the compositor can dim through the density.
-  inline constexpr float kClearTint = 0.04F;
+  extern const float kClearTint;
 
   // Material::dense: the fraction of the gap to opaque every tint closes at full density; the style's overlay, raised
   // so the style's lowest Shape tint reaches kLegibleAlpha. It stays below 1, so the slider order holds. Tooltips close half.
-  [[nodiscard]] inline float denseLift(Kind kind, Style style, bool lightGlass) noexcept {
-    const int tone = lightGlass ? 0 : 1;
-    const float lowest = style == Style::Clear ? kClearTint : style == Style::Tinted ? kTintedTint[tone] : kLowestTint[tone];
-    const float lift = std::max(kDenseOverlay[static_cast<int>(style)][tone], (kLegibleAlpha[tone] - lowest) / (1.0F - lowest));
-    return kind == Kind::Tooltip ? 0.5F * lift : lift;
-  }
+  [[nodiscard]] float denseLift(Kind kind, Style style, bool lightGlass) noexcept;
 
   // Shell glass follows the scheme; Clear is dark glass with white content in both schemes (docs/design/deviations.md
   // "Clear glass tone"). App windows keep the scheme (Style::glassMaterial with PaletteTone::Scheme).
@@ -111,16 +94,8 @@ namespace glass {
     float lens = 0.5F;
     bool reduceTransparency = false;
 
-    [[nodiscard]] float activeTint() const noexcept {
-      switch (style) {
-      case Style::Liquid: return liquidTint;
-      case Style::Clear: return 0.0F;
-      case Style::Tinted: return kTintedLevel;
-      case Style::Frosted: break;
-      }
-      return tint;
-    }
-    [[nodiscard]] float activeFrost() const noexcept { return style == Style::Tinted ? kTintedLevel : frost; }
+    [[nodiscard]] float activeTint() const noexcept;
+    [[nodiscard]] float activeFrost() const noexcept;
     bool operator==(const Settings&) const = default;
   };
 
@@ -133,70 +108,15 @@ namespace glass {
   }
 
   // Opacity a configured `opacity` of `kind` is relative to: tint_regular (0.70) for shapes, tint_thick otherwise.
-  [[nodiscard]] constexpr float referenceOpacity(Kind kind, bool light) noexcept {
-    return kind == Kind::Shape ? 0.70F : light ? 0.88F : 0.92F;
-  }
+  [[nodiscard]] float referenceOpacity(Kind kind, bool light) noexcept;
 
   // The material of `kind` for `settings`. light: the glass takes the light curve (a light scheme surface whose tone is
   // Scheme).
-  [[nodiscard]] inline Material material(Kind kind, const Settings& settings, bool light) noexcept {
-    if (settings.reduceTransparency) {
-      return {};
-    }
-    const auto at = [](float v, float low, float mid, float high) {
-      v = std::clamp(v, 0.0F, 1.0F);
-      return v < 0.5F ? std::lerp(low, mid, v * 2.0F) : std::lerp(mid, high, v * 2.0F - 1.0F);
-    };
-    const float g = std::clamp(settings.activeTint(), 0.0F, 1.0F);
-    const auto curve = [&](float clear, float tinted, float frosted) { return at(g, clear, tinted, frosted); };
-    float tint = 0.0F;
-    switch (kind) {
-    case Kind::Shape:
-      tint = light ? curve(kLowestTint[0], kTintedTint[0], 0.84F) : curve(kLowestTint[1], kTintedTint[1], 0.70F);
-      break;
-    case Kind::Sheet:
-    case Kind::Menu:
-      tint = light ? curve(0.60F, 0.84F, 0.97F) : curve(0.46F, 0.66F, 0.99F);
-      break;
-    case Kind::Tooltip:
-      tint = light ? curve(0.70F, 0.84F, 0.95F) : curve(0.80F, 0.88F, 0.99F);
-      break;
-    }
-    const bool shape = kind == Kind::Shape;
-    if (settings.style == Style::Clear) {
-      tint = kClearTint;
-    }
-    if (settings.style == Style::Liquid || settings.style == Style::Clear) {
-      const bool sheet = settings.style == Style::Liquid && (kind == Kind::Sheet || kind == Kind::Menu);
-      const float* range = sheet ? kLiquidSheetClarity : kLiquidClarity;
-      const float clarity = std::lerp(range[0], range[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
-      const float level = std::lerp(0.1F, 1.0F, std::clamp(settings.lens, 0.0F, 1.0F));
-      return {
-          .tint = tint, .level = level, .rim = settings.edgeReflection ? at(settings.lens, 0.4F, 1.0F, 1.0F) : 0.0F, .lens = level, .clarity = clarity,
-          .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
-      };
-    }
-    // Sheets blur a step less than shapes at the middle and match them at both ends.
-    const float frost = settings.activeFrost();
-    const float clarity = 0.7F * (shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F));
-    return {
-        .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? kFrostedRim : 0.0F, .lens = 0.0F, .clarity = clarity,
-        .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
-    };
-  }
+  [[nodiscard]] Material material(Kind kind, const Settings& settings, bool light) noexcept;
 
   // Shell popovers (menus, tooltips, window previews): the island glass; outside Liquid with the menu blur, so the backdrop does not
   // show through their text; the lens bends that blurred backdrop at the bezel.
-  [[nodiscard]] inline Material popover(const Settings& settings, bool light) noexcept {
-    Material m = material(Kind::Shape, settings, light);
-    const Material menu = material(Kind::Menu, settings, light);
-    // Liquid keeps the island blur, so backdrop shapes and the lens bend show; the near-black dark tint keeps text legible.
-    if (settings.style != Style::Liquid) {
-      m.clarity = menu.clarity;
-      m.blurStrength = menu.blurStrength;
-    }
-    return m;
-  }
+  [[nodiscard]] Material popover(const Settings& settings, bool light) noexcept;
 
   // `t` of the way from a to b (a sheet that morphs from a shape).
   [[nodiscard]] inline Material mix(const Material& a, const Material& b, float t) noexcept {
@@ -210,9 +130,7 @@ namespace glass {
   }
 
   // The tint for a configured opacity (relative to referenceOpacity); an opacity of 1 is solid.
-  [[nodiscard]] inline float tintFor(const Material& m, Kind kind, bool light, float opacity) noexcept {
-    return opacity >= 1.0F || m.tint >= 1.0F ? 1.0F : std::min(1.0F, m.tint * opacity / referenceOpacity(kind, light));
-  }
+  [[nodiscard]] float tintFor(const Material& m, Kind kind, bool light, float opacity) noexcept;
 
   // An opacity relative to tint_regular (0.70) rescaled to tint_thick (0.92), for sheets configured in regular terms.
   [[nodiscard]] constexpr float thickOpacity(float opacity) noexcept {
@@ -222,14 +140,10 @@ namespace glass {
   // Large glass adapts its density to the measured backdrop luminance (0 to 1) inside its tone: full density at or
   // past kAdaptLuminance[0] toward the tint's own tone, none from kAdaptLuminance[1]; it glides to each target over
   // kAdaptFadeMs and ignores moves within kAdaptDeadband, so it neither jumps nor pulses over video.
-  inline constexpr float kAdaptLuminance[2] = {0.2F, 0.75F};
-  inline constexpr float kAdaptDeadband = 0.04F;
+  // kAdaptFadeMs stays constexpr: callers derive constexpr steps from it.
+  extern const float kAdaptDeadband;
   inline constexpr int kAdaptFadeMs = 600;
-  [[nodiscard]] inline float adaptDensity(bool lightTint, float luminance) noexcept {
-    const float own = lightTint ? luminance : 1.0F - luminance;
-    const float x = std::clamp((kAdaptLuminance[1] - own) / (kAdaptLuminance[1] - kAdaptLuminance[0]), 0.0F, 1.0F);
-    return x * x * (3.0F - 2.0F * x);
-  }
+  [[nodiscard]] float adaptDensity(bool lightTint, float luminance) noexcept;
 
   // The tint for a backdrop of the tint's own tone, `density` (0 to 1) of the way to full density; `dense` is
   // Material::dense (denseLift).

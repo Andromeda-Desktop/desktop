@@ -303,6 +303,7 @@ _desk_ui_sources = files(
   'src/ui/controls/spinner.cpp',
   'src/ui/controls/status_row.cpp',
   'protocols/dwindle_tree.cpp',
+  'protocols/glass_material.cpp',
   'src/ui/controls/stepper.cpp',
   'src/ui/controls/toggle.cpp',
   'src/ui/controls/virtual_grid_view.cpp',

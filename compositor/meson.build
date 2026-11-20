@@ -918,6 +918,7 @@ pure_sources = files(
   'src/layout/scrolling.cpp',
   'src/layout/dwindle.cpp',
   'protocols/dwindle_tree.cpp',
+  'protocols/glass_material.cpp',
   'src/layout/master.cpp',
   'src/layout/floating.cpp',
   'src/output/direction.cpp',
