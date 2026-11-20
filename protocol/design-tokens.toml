@@ -791,6 +791,16 @@ chip = 36.0          # filter chip, visible height inside a 48 hit
 pill_pad = 14.0      # pill and chip side padding
 value_max = 160.0    # trailing value text in a row
 chip_tint = 0.12     # selected chip: accent at this alpha
+glyph = 52.0         # home identity glyph (r16)
+glyph_tint = 0.14    # identity glyph and fix chip: accent / warning at this alpha
+identity = 64.0      # identity row and mode tile min height
+fix_chip = 22.0      # fix chip height
+slider = 52.0        # home capsule slider height (the media card's is size.control_l)
+dock_inset = 28.0    # floating dock above the gesture inset
+fade_dock = 132.0    # bottom fade under the home dock
+off_alpha = 0.38     # controls and dock while the desktop is away, paused or connecting
+grab = 36.0          # sheet grab bar width (height space.p4)
+desk_glyph = 40.0    # desktop glyph in the Desktops sheet (r12)
 
 [component.page]  # window content, 8
 padding = 24.0
