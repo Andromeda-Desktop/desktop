@@ -3,6 +3,7 @@
 #include "render/core/renderer.h"
 #include "render/scene/node.h"
 #include "ui/controls/color_swatch_preview.h"
+#include "ui/controls/lens_track.h"
 
 #include <cstdint>
 #include <functional>
@@ -101,6 +102,11 @@ private:
   std::vector<RowVisual> m_rows;
   std::size_t m_maxVisible = 14;
   std::size_t m_highlightedIndex = 0;
+  // The hover pane: one lens that slides between rows (rulebook 6, P1); x, width and radius of the row box.
+  LensTrack m_lens;
+  float m_lensX = 0.0F;
+  float m_lensWidth = 0.0F;
+  float m_lensRadius = 0.0F;
   float m_menuWidth = 246.0F;
   float m_contentScale = 1.0F;
   ContextSubmenuDirection m_submenuDirection = ContextSubmenuDirection::Right;

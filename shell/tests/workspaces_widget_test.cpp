@@ -1,6 +1,6 @@
 #include "render/animation/animation_manager.h"
 #include "render/scene/node.h"
-#include "shell/bar/lens_track.h"
+#include "ui/controls/lens_track.h"
 #include "shell/bar/widgets/workspaces_widget.h"
 #include "tests/test_check.h"
 
@@ -67,7 +67,7 @@ int main() {
     AnimationManager animations;
     LensTrack lens;
     lens.setFlat(colorSpecFromRole(ColorRole::Accent));
-    lens.attach(parent, animations, false, 1.0F);
+    lens.attach(parent, &animations, false, 1.0F);
     lens.moveTo(12.0F, 32.0F, 0.0F, 7.0F, 3.5F, false);
     lens.moveTo(24.0F, 44.0F, 0.0F, 7.0F, 3.5F, true);
     animations.tick(16.0F);
@@ -84,7 +84,7 @@ int main() {
     AnimationManager animations;
     LensTrack lens;
     lens.setFlat(colorSpecFromRole(ColorRole::Accent));
-    lens.attach(parent, animations, false, 1.0F);
+    lens.attach(parent, &animations, false, 1.0F);
     lens.moveTo(12.0F, 32.0F, 0.0F, 7.0F, 3.5F, false);
     lens.moveTo(14.0F, 34.0F, 0.0F, 7.0F, 3.5F, true);
     animations.tick(16.0F);

@@ -2,7 +2,7 @@
 
 #include "compositors/compositor_platform.h"
 #include "render/animation/animation_manager.h"
-#include "shell/bar/lens_track.h"
+#include "ui/controls/lens_track.h"
 #include "shell/bar/widget.h"
 #include "system/icon_resolver.h"
 #include "ui/palette.h"

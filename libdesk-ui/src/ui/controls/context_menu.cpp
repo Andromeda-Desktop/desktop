@@ -177,6 +177,12 @@ void ContextMenuControl::applyHighlightVisuals() {
       m_rows[i].apply(i == m_highlightedIndex && m_rows[i].interactive);
     }
   }
+  if (m_highlightedIndex < m_rows.size() && m_rows[m_highlightedIndex].interactive) {
+    const RowVisual& row = m_rows[m_highlightedIndex];
+    m_lens.moveTo(row.y, row.y + row.height, m_lensX, m_lensWidth, m_lensRadius, true);
+  } else {
+    m_lens.hide();
+  }
 }
 
 void ContextMenuControl::setHighlightedIndex(std::size_t index) {
@@ -319,6 +325,7 @@ void ContextMenuControl::doLayout(Renderer& renderer) {
 
 void ContextMenuControl::rebuild(Renderer& renderer) {
   uiAssertNotRendering("ContextMenuControl::rebuild");
+  m_lens.hide();
   while (!children().empty()) {
     removeChild(children().back().get());
   }
@@ -343,6 +350,12 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
   const float highlightRadius = std::max(0.0F, Style::scaledMenuRadius(scale) - menuPadding);
   float currentY = menuPadding;
   m_rows.clear();
+  m_lens = LensTrack{};
+  m_lens.attach(*this, animationManager(), true, scale);
+  m_lens.setZIndex(-1);
+  m_lensX = menuPadding;
+  m_lensWidth = rowWidth;
+  m_lensRadius = highlightRadius;
   m_rows.reserve(visibleItems);
   const bool symbols = hasSymbolColumn(m_entries);
   const bool dots = hasDotColumn(m_entries);
@@ -570,7 +583,6 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
     if (rowBgPtr != nullptr && labelPtr != nullptr) {
       visual.apply = [rowBgPtr, labelPtr, togglePtr, chevronPtr, interactive, separator,
                       header = entry.header, danger = entry.danger, accent = entry.accent](bool highlighted) {
-        rowBgPtr->setFill(highlighted ? colorSpecFromRole(ColorRole::Fill3) : clearColorSpec());
         const ColorSpec ink = danger   ? colorSpecFromRole(ColorRole::Danger, interactive ? 1.0F : 0.55F)
                               : accent ? colorSpecFromRole(ColorRole::AccentText, interactive ? 1.0F : 0.55F)
                               : highlighted ? colorSpecFromRole(ColorRole::Label1)

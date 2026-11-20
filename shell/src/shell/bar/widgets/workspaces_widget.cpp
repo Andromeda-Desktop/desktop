@@ -357,7 +357,7 @@ void WorkspacesWidget::rebuild(Renderer& renderer) {
   }
   if (m_islandDots && m_animations != nullptr) {
     m_lens.setFlat(m_focusedColor);
-    m_lens.attach(*m_container, *m_animations, m_isVertical, m_contentScale);
+    m_lens.attach(*m_container, m_animations, m_isVertical, m_contentScale);
     m_lens.setZIndex(1);
   }
   m_items.clear();

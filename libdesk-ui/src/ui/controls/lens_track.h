@@ -14,16 +14,17 @@
 
 // The one lens of a track (rulebook 6, P1): a lifted pane that travels between items. The edge toward the
 // target leads on `snap`, the other edge trails on `trail`, so the pane stretches across the gap and settles.
-// Lives in a parent that does not lay out its children; the caller owns the parent and the AnimationManager.
+// Lives in a parent that does not lay out its children; the caller owns the parent and the AnimationManager. Without
+// an AnimationManager the pane jumps.
 class LensTrack {
 public:
-  void attach(Node& parent, AnimationManager& animations, bool vertical, float scale) {
+  void attach(Node& parent, AnimationManager* animations, bool vertical, float scale) {
     m_scale = scale;
     m_startId = 0;
     m_endId = 0;
     m_start = m_targetStart;
     m_end = m_targetEnd;
-    m_animations = &animations;
+    m_animations = animations;
     m_vertical = vertical;
     auto shadow = ui::box({.visible = false, .participatesInLayout = false});
     shadow->setSoftness(Tokens::elevationE1.keyBlur * scale);

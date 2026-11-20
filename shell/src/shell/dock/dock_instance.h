@@ -4,7 +4,7 @@
 #include "core/timer_manager.h"
 #include "design_tokens.h"
 #include "motion/desk_motion.h"
-#include "shell/bar/lens_track.h"
+#include "ui/controls/lens_track.h"
 #include "shell/dock/dock_geometry.h"
 #include "render/scene/input_dispatcher.h"
 #include "shell/dock/dock_items.h"

@@ -707,7 +707,7 @@ namespace shell::dock {
         : instance.slideRoot != nullptr            ? instance.slideRoot
                                                    : static_cast<Node*>(instance.panel);
     instance.row = static_cast<Flex*>(rowParent->addChild(std::move(freshRow)));
-        instance.lens.attach(*instance.row, instance.animations, vert, iSize / Tokens::componentDockIcon);
+        instance.lens.attach(*instance.row, &instance.animations, vert, iSize / Tokens::componentDockIcon);
     const auto& itemModels = snapshot.items;
 
     if (launcherPosition == DockLauncherPosition::Start) {
