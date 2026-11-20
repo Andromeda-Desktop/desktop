@@ -1,7 +1,7 @@
 //! Process samples for `per = "process"` rules: CPU wakeups per second and anonymous memory growth of every
 //! user-space process. `/proc/<pid>/stat`, `status` and `task/*/schedstat` are world-readable, so root daemons count.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -22,6 +22,44 @@ struct Track {
     /// (seconds since the first sample, MiB of anonymous memory).
     anon: VecDeque<(f64, f64)>,
     first: Instant,
+}
+
+/// What the user can see: the compositor's visible app units.
+#[derive(Default)]
+pub struct Visible {
+    pub units: HashSet<String>,
+}
+
+/// The systemd unit of a process: the last element of its cgroup v2 path.
+fn unit_of(cgroup: &str) -> Option<&str> {
+    cgroup.lines().find_map(|l| l.strip_prefix("0::"))?.rsplit('/').next().filter(|u| !u.is_empty())
+}
+
+fn is_desktop_unit(unit: &str) -> bool {
+    matches!(unit, "andromeda.service" | "andromeda-shell.service")
+}
+
+/// The process is the compositor or the shell: a fault in it is a desktop bug, not the user's app.
+pub fn is_desktop(pid: u32) -> bool {
+    read(Path::new(&format!("/proc/{pid}/cgroup"))).as_deref().and_then(unit_of).is_some_and(is_desktop_unit)
+}
+
+/// A terminal job scope of the pty daemon: `app-<prefix>-<ptyd pid>s<session>.scope`.
+fn is_terminal_job(unit: &str) -> bool {
+    let Some(tail) = unit.strip_prefix("app-").and_then(|u| u.strip_suffix(".scope")).and_then(|u| u.rsplit_once('-'))
+    else {
+        return false;
+    };
+    tail.1
+        .split_once('s')
+        .is_some_and(|(a, b)| !a.is_empty() && !b.is_empty() && a.bytes().chain(b.bytes()).all(|c| c.is_ascii_digit()))
+}
+
+/// A process draws or feeds what is on screen: it runs in a visible app, or it is the desktop or a terminal job
+/// while any app is visible (their output shows in a window we cannot map them to).
+fn shows(unit: Option<&str>, visible: &Visible) -> bool {
+    let Some(unit) = unit else { return false };
+    visible.units.contains(unit) || (!visible.units.is_empty() && (is_desktop_unit(unit) || is_terminal_job(unit)))
 }
 
 #[derive(Default)]
@@ -90,7 +128,7 @@ fn wakeups_of(task_dir: &Path) -> u64 {
 impl Sampler {
     /// Reads every user-space process; each row is keyed `<comm> <pid>`. `idle` = the session was idle; a wake rate shows only when this sample and
     /// the one before it were both idle, so it never mixes in time the user worked.
-    pub fn sample(&mut self, idle: bool, now: Instant) -> Vec<InstanceRow> {
+    pub fn sample(&mut self, idle: bool, visible: &Visible, now: Instant) -> Vec<InstanceRow> {
         let both_idle = idle && self.idle;
         self.idle = idle;
         let me = std::process::id();
@@ -122,7 +160,11 @@ impl Sampler {
             if track.start != start {
                 *track = Track { start, wakeups, at: now, anon: VecDeque::new(), first: now };
             }
-            let mut fields = vec![("proc.anon_mb", Value::Num(anon_mb))];
+            let unit = read(&base.join("cgroup"));
+            let mut fields = vec![
+                ("proc.anon_mb", Value::Num(anon_mb)),
+                ("proc.visible", Value::Bool(shows(unit.as_deref().and_then(unit_of), visible))),
+            ];
             let elapsed = now.duration_since(track.at).as_secs_f64();
             if both_idle && elapsed > 0.0 {
                 #[allow(clippy::cast_precision_loss)] // a wakeup count
@@ -170,6 +212,22 @@ mod tests {
         let noisy: Vec<(f64, f64)> =
             (0..12).map(|i| (f64::from(i) * 600.0, if i % 2 == 0 { 300.0 } else { 500.0 })).collect();
         assert!(fit(&noisy).unwrap().1 < 0.1);
+    }
+
+    #[test]
+    fn the_desktop_and_terminal_jobs_count_as_shown_only_while_an_app_is_visible() {
+        let browser =
+            unit_of("0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-com.vivaldi.Vivaldi-1935.scope\n");
+        let job =
+            unit_of("0::/user.slice/user@1000.service/app.slice/app-andromeda-dev.andromeda.Terminal-3531s5.scope\n");
+        let desktop = unit_of("0::/user.slice/user@1000.service/session.slice/andromeda.service\n");
+        let daemon = unit_of("0::/user.slice/user@1000.service/app.slice/andromeda-ptyd.service\n");
+        let none = Visible::default();
+        let terminal = Visible { units: HashSet::from(["app-andromeda-andromeda\\x2dterminal-18.scope".to_owned()]) };
+        let both = Visible { units: HashSet::from(["app-com.vivaldi.Vivaldi-1935.scope".to_owned()]) };
+        assert_eq!([browser, job, desktop, daemon].map(|u| shows(u, &none)), [false; 4]);
+        assert_eq!([browser, job, desktop, daemon].map(|u| shows(u, &terminal)), [false, true, true, false]);
+        assert!(shows(browser, &both));
     }
 
     #[test]

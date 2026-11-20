@@ -1,14 +1,15 @@
 # Health watch (docs/system-health.md §4.3): alerts only, one per episode.
 
 # Names the process that keeps the CPU waking while the session is idle (wakeups = voluntary context switches per second, all
-# threads). Samples come each minute while idle; a rate shows only when two idle samples in a row frame it.
+# threads). Samples come each minute while idle; a rate shows only when two idle samples in a row frame it. A process that
+# draws or feeds what is on screen (proc.visible) is doing what the user watches; with the screens off nothing is visible.
 [[rule]]
 id = "power.wakeups"
 scope = "session"
 priority = "automatic"
 per = "process"
 params = { busy_hz = 50, calm_hz = 20 }
-when = "session.idle and proc.wakeups_s >= busy_hz"
+when = "session.idle and not proc.visible and proc.wakeups_s >= busy_hz"
 for = "5m"
 clear = "proc.wakeups_s < calm_hz"
 dwell = "10m"

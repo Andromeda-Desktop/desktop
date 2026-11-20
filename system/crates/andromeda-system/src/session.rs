@@ -342,7 +342,12 @@ impl Session {
                 .replace("{cache}", &human_bytes(cache))
                 .replace("{trash}", &human_bytes(trash))
         };
-        let (summary, body) = (fill(summary), fill(body));
+        let (summary, mut body) = (fill(summary), fill(body));
+        let per_process = ["wakeups", "memory_leak"].contains(&alert.text.as_str());
+        let pid = entry.instance.rsplit_once(' ').and_then(|(_, pid)| pid.parse::<u32>().ok());
+        if per_process && pid.is_some_and(procs::is_desktop) {
+            body.push_str(" It is part of the desktop: please report it as a bug.");
+        }
         let actions: Vec<&str> = match alert.action.as_deref() {
             Some("undo") => vec!["undo", "Undo"],
             Some("open") => vec!["default", "Open"],
@@ -1054,7 +1059,11 @@ async fn follow_procs(shared: Shared) {
     let mut ticks = PROCS_EVERY_TICKS;
     loop {
         tick.tick().await;
-        let idle = shared.lock().await.state.value_of("session.idle") == Some(Value::Bool(true));
+        let (idle, visible) = {
+            let inner = shared.lock().await;
+            let units = inner.apps.iter().filter(|a| a.1).map(|a| a.0.clone()).collect();
+            (inner.state.value_of("session.idle") == Some(Value::Bool(true)), procs::Visible { units })
+        };
         ticks += 1;
         let due = idle || ticks >= PROCS_EVERY_TICKS;
         if !due || !wanted(&shared, "process").await {
@@ -1062,7 +1071,7 @@ async fn follow_procs(shared: Shared) {
         }
         let Some(mut s) = sampler.take() else { return };
         let Ok((s, rows)) = tokio::task::spawn_blocking(move || {
-            let rows = s.sample(idle, Instant::now());
+            let rows = s.sample(idle, &visible, Instant::now());
             (s, rows)
         })
         .await

@@ -61,6 +61,8 @@ const FIELDS: &[(&str, Type)] = &[
     // One process, for `per = "process"` rules (procs.rs). Wakeups = voluntary context switches per second, all threads.
     ("proc.wakeups_s", Type::Num),
     ("proc.anon_mb", Type::Num),
+    // The process runs in a visible app, or is the desktop or a terminal job while an app is visible.
+    ("proc.visible", Type::Bool),
     // Least-squares growth of anonymous memory over the last 2 h, and its fit; absent before 1 h of samples.
     ("proc.growth_mb_h", Type::Num),
     ("proc.growth_r2", Type::Num),
