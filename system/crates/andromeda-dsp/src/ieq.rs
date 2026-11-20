@@ -2,8 +2,8 @@ use crate::biquad::{Biquad, Coeffs};
 use crate::coef;
 use crate::regulator::{BAND_HZ, BANDS, band_q};
 
-/// Gains are recomputed once per this many samples.
-const STEP: usize = 32;
+/// Gains are recomputed once per this many samples (5 ms): they glide over 500 ms anyway.
+const STEP: usize = 256;
 /// Below this mean band level (dB) the signal is silence or a fade: gains hold.
 const GATE_DB: f32 = -70.0;
 /// A band this far below the mean has no content to shape (a low-passed file): it gets no boost.
@@ -83,12 +83,16 @@ impl Ieq {
         let target_mean = self.target_db[..self.bands.len()].iter().sum::<f32>() / n;
         let mut levels = [0.0f32; BANDS];
         for (cl, cr) in l.chunks_mut(STEP).zip(r.chunks_mut(STEP)) {
-            for (band, level) in self.bands.iter_mut().zip(&mut levels) {
-                for (&xl, &xr) in cl.iter().zip(cr.iter()) {
-                    let y = band.detect.run(f32::midpoint(xl, xr));
+            // Sample-outer loops: the bands are independent, so their filters overlap in the pipeline.
+            for (&xl, &xr) in cl.iter().zip(cr.iter()) {
+                let m = f32::midpoint(xl, xr);
+                for band in &mut self.bands {
+                    let y = band.detect.run(m);
                     let e = y * y;
-                    band.power = (e + (band.power - e) * det + 1e-30) - 1e-30;
+                    band.power = e + (band.power - e) * det;
                 }
+            }
+            for (band, level) in self.bands.iter().zip(&mut levels) {
                 *level = 10.0 * (band.power + 1e-20).log10();
             }
             let mean = levels[..self.bands.len()].iter().sum::<f32>() / n;
@@ -111,11 +115,14 @@ impl Ieq {
                     let c = Coeffs::peaking(self.fs, band.hz, band.q, band.gain_db);
                     band.eq.iter_mut().for_each(|f| f.set(c));
                 }
-                for (f, block) in band.eq.iter_mut().zip([&mut *cl, &mut *cr]) {
-                    for x in block.iter_mut() {
-                        *x = f.run(*x);
-                    }
+            }
+            for (xl, xr) in cl.iter_mut().zip(cr.iter_mut()) {
+                let (mut yl, mut yr) = (*xl, *xr);
+                for band in &mut self.bands {
+                    yl = band.eq[0].run(yl);
+                    yr = band.eq[1].run(yr);
                 }
+                (*xl, *xr) = (yl, yr);
             }
         }
     }

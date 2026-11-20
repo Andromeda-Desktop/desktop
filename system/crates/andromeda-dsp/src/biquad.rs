@@ -60,8 +60,6 @@ impl Coeffs {
     }
 }
 
-const DENORMAL_GUARD: f64 = 1e-20;
-
 /// Transposed direct form II; f64 state keeps the 47 Hz band stable.
 #[derive(Clone, Copy)]
 pub struct Biquad {
@@ -83,9 +81,8 @@ impl Biquad {
     pub fn run(&mut self, x: f32) -> f32 {
         let x = f64::from(x);
         let y = self.c.b0 * x + self.z1;
-        // Adding and removing DENORMAL_GUARD flushes decaying state to zero before it turns denormal (10x slower).
-        self.z1 = (self.c.b1 * x - self.c.a1 * y + self.z2 + DENORMAL_GUARD) - DENORMAL_GUARD;
-        self.z2 = (self.c.b2 * x - self.c.a2 * y + DENORMAL_GUARD) - DENORMAL_GUARD;
+        self.z1 = self.c.b1 * x - self.c.a1 * y + self.z2;
+        self.z2 = self.c.b2 * x - self.c.a2 * y;
         #[allow(clippy::cast_possible_truncation)]
         let y = y as f32;
         y

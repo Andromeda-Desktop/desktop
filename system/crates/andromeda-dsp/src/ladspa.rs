@@ -344,7 +344,25 @@ unsafe extern "C" fn run(h: Handle, count: c_ulong) {
         ptr::copy(ir, or, n);
         (std::slice::from_raw_parts_mut(ol, n), std::slice::from_raw_parts_mut(or, n))
     };
-    inst.dsp.run(&inst.values, l, r);
+    flush_denormals(|| inst.dsp.run(&inst.values, l, r));
+}
+
+/// Runs `f` with denormals flushed to zero (x86 MXCSR FTZ and DAZ), then restores the host's mode.
+/// Decaying filter state turns denormal in silence and costs 10x the CPU.
+fn flush_denormals(f: impl FnOnce()) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        const FTZ_DAZ: u32 = 0x8040;
+        let mut old: u32 = 0;
+        // SAFETY: stmxcsr and ldmxcsr only move the SSE control register to and from these locals.
+        unsafe { std::arch::asm!("stmxcsr [{}]", in(reg) &raw mut old, options(nostack, preserves_flags)) };
+        let new = old | FTZ_DAZ;
+        unsafe { std::arch::asm!("ldmxcsr [{}]", in(reg) &raw const new, options(nostack, preserves_flags, readonly)) };
+        f();
+        unsafe { std::arch::asm!("ldmxcsr [{}]", in(reg) &raw const old, options(nostack, preserves_flags, readonly)) };
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    f();
 }
 
 unsafe extern "C" fn cleanup(h: Handle) {

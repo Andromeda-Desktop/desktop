@@ -130,7 +130,7 @@ impl Mbc {
                 split[1][k] = self.trees[1].run(*xr);
                 for ((p, yl), yr) in self.power.iter_mut().zip(split[0][k]).zip(split[1][k]) {
                     let e = (yl * yl).max(yr * yr);
-                    *p = (e + (*p - e) * rms + 1e-30) - 1e-30;
+                    *p = e + (*p - e) * rms;
                 }
             }
             let target: [f32; BANDS] = std::array::from_fn(|b| {
