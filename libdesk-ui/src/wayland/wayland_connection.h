@@ -210,6 +210,8 @@ public:
   [[nodiscard]] DragAndDrop* dragAndDrop();
   bool setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) override;
   void clearDropTarget(const Surface& surface) override;
+  [[nodiscard]] bool serverPresent() const override;
+  [[nodiscard]] std::unique_ptr<TextInputService> createTextInputService() override;
   // Created on first use; nullptr when the compositor has no primary selection.
   [[nodiscard]] PrimarySelection* primarySelection();
   void setClipboardChangedCallback(std::function<void()> changed) override;

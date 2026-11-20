@@ -39,7 +39,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <poll.h>
@@ -1432,6 +1434,22 @@ OutputId WaylandConnection::outputForSurface(const Surface& surface) const noexc
 }
 
 void WaylandConnection::ringBell(const Surface& surface) const { ringBell(wlSurfaceOf(surface)); }
+
+std::unique_ptr<Display> createDisplay() { return std::make_unique<WaylandConnection>(); }
+
+bool WaylandConnection::serverPresent() const {
+  const char* name = std::getenv("WAYLAND_DISPLAY");
+  const std::filesystem::path socket = name != nullptr && *name != '\0' ? name : "wayland-0";
+  if (socket.is_absolute()) {
+    return std::filesystem::exists(socket);
+  }
+  const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+  return runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / socket);
+}
+
+std::unique_ptr<TextInputService> WaylandConnection::createTextInputService() {
+  return std::make_unique<WaylandTextInputService>();
+}
 
 bool WaylandConnection::setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) {
   DragAndDrop* dnd = dragAndDrop();

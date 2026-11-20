@@ -3,13 +3,11 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/timer_manager.h"
-#include "wayland/surface.h"
+#include "platform/surface.h"
 
 #include <algorithm>
 #include <cerrno>
-#include <cstdlib>
 #include <exception>
-#include <filesystem>
 #include <limits>
 #include <optional>
 #include <thread>
@@ -52,20 +50,9 @@ namespace {
 
   DeferredSource g_deferred;
   TimerSource g_timers;
-
-  // A compositor exit at logout removes the socket; a crash leaves it (socket-activated, or a stale file).
-  bool compositorSocketExists() {
-    const char* name = std::getenv("WAYLAND_DISPLAY");
-    const std::filesystem::path socket = name != nullptr && *name != '\0' ? name : "wayland-0";
-    if (socket.is_absolute()) {
-      return std::filesystem::exists(socket);
-    }
-    const char* runtime = std::getenv("XDG_RUNTIME_DIR");
-    return runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / socket);
-  }
 } // namespace
 
-AppLoop::AppLoop() : m_keyRepeat(m_wayland) {}
+AppLoop::AppLoop() : m_display(createDisplay()), m_keyRepeat(*m_display) {}
 
 AppLoop::~AppLoop() = default;
 
@@ -131,7 +118,7 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   // A socket-activated compositor accepts at once; a stale socket refuses until the new compositor binds it.
   // Past the deadline the app exits as before the reconnect; a terminal's shells stay in andromeda-ptyd.
   for (auto wait = std::chrono::milliseconds(50);; wait = std::min(wait * 2, std::chrono::milliseconds(1000))) {
-    if (!compositorSocketExists()) {
+    if (!display().serverPresent()) {
       kLog.info("the compositor socket is gone: the session ended");
       return false;
     }

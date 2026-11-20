@@ -48,6 +48,7 @@ _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic'
 desk_app_lib = static_library('desk_app',
   sources: files(
     'src/app/app_loop.cpp',
+    'src/app/app_loop_wayland.cpp',
     'src/app/appearance.cpp',
     'src/app/file_chooser.cpp',
     'src/app/glib_source.cpp',

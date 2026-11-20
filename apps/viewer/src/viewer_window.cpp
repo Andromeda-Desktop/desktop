@@ -25,6 +25,7 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "wayland/wayland_seat.h"
+#include "wayland/wayland_connection.h"
 
 #include <algorithm>
 #include <cctype>

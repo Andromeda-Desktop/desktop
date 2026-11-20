@@ -4,7 +4,11 @@
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
 #include "platform/key_repeat_poll_source.h"
-#include "wayland/wayland_connection.h"
+#include "platform/display.h"
+
+#include <memory>
+
+class WaylandConnection;
 
 #include <chrono>
 #include <functional>
@@ -25,10 +29,10 @@ public:
   // Connects Wayland, starts GL and the render context. False when no compositor answers.
   bool initialize(bool sharedGl);
 
-  [[nodiscard]] WaylandConnection& wayland() noexcept { return m_wayland; }
-  [[nodiscard]] const WaylandConnection& wayland() const noexcept { return m_wayland; }
-  [[nodiscard]] Display& display() noexcept { return m_wayland; }
-  [[nodiscard]] const Display& display() const noexcept { return m_wayland; }
+  // Wayland builds only; apps that still call Wayland directly (files, viewer, player).
+  [[nodiscard]] WaylandConnection& wayland() noexcept;
+  [[nodiscard]] Display& display() noexcept { return *m_display; }
+  [[nodiscard]] const Display& display() const noexcept { return *m_display; }
   [[nodiscard]] GlSharedContext& gl() noexcept { return m_gl; }
   [[nodiscard]] RenderContext& renderContext() noexcept { return m_render; }
 
@@ -53,10 +57,10 @@ public:
 private:
   [[nodiscard]] std::vector<PollSource*> sources();
 
-  WaylandConnection m_wayland;
+  std::unique_ptr<Display> m_display;
   GlSharedContext m_gl;
   RenderContext m_render;
-  std::future<void> m_egl; // declared after m_gl and m_wayland: its destructor waits for the worker that uses them
+  std::future<void> m_egl; // declared after m_gl and m_display: its destructor waits for the worker that uses them
   KeyRepeatPollSource m_keyRepeat;
   std::vector<PollSource*> m_sources;
   std::unordered_map<PollSource*, std::chrono::steady_clock::time_point> m_deadlines;

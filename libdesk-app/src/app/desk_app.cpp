@@ -17,7 +17,7 @@
 #include "render/text/cairo_text_renderer.h"
 #include "ui/controls/input.h"
 #include "ui/tooltip/tooltip_manager.h"
-#include "wayland/text_input_service.h"
+#include "platform/text_input_service.h"
 
 #include <algorithm>
 #include <optional>
@@ -261,7 +261,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   }
 
   m_state.load();
-  m_textInput = std::make_unique<WaylandTextInputService>();
+  m_textInput = m_loop.display().createTextInputService();
   m_loop.display().setTextInputService(m_textInput.get());
   m_clipboard = std::make_unique<AppClipboard>(m_loop.display());
   TooltipManager::instance().initialize(
