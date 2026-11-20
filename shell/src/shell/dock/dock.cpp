@@ -1553,32 +1553,10 @@ void Dock::openItemMenu(shell::dock::DockInstance& instance, const shell::dock::
   const auto configuredPinned = instance.config.pinned;
 
   shell::dock::DockMenuCallbacks callbacks{
-      .activateWindow =
-          [this, windows](std::size_t windowIndex) {
-            if (windowIndex < windows.size()) {
-              m_platform->activateToplevelInfo(windows[windowIndex]);
-            }
-          },
       .closeWindow =
           [this, windows](std::size_t windowIndex) {
             if (windowIndex < windows.size()) {
               m_platform->closeToplevelInfo(windows[windowIndex]);
-            }
-          },
-      .setWindowMinimized =
-          [this, windows](std::size_t windowIndex, bool minimized) {
-            if (windowIndex >= windows.size()) {
-              return;
-            }
-            const auto& window = windows[windowIndex];
-            const auto state = m_platform->windowMinimizeState(window);
-            if (!state.has_value() || state->minimized == minimized) {
-              return;
-            }
-            if (minimized) {
-              (void)m_platform->minimizeToplevelInfo(window);
-            } else {
-              m_platform->activateToplevelInfo(window);
             }
           },
       .launchAction =

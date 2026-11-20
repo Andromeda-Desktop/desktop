@@ -37,7 +37,6 @@ namespace shell::dock {
     constexpr std::int32_t kMenuPinToggleId = -4;
     constexpr std::int32_t kMenuOpenTrashId = -5;
     constexpr std::int32_t kMenuHideTrashId = -6;
-    constexpr std::int32_t kMenuWindowBaseId = -1000;
 
     bool isWindowClosable(const ToplevelInfo& window) {
       if (window.handle != nullptr) {
@@ -326,12 +325,12 @@ namespace shell::dock {
   ) {
     auto menu = std::make_unique<DockPopup>();
 
-    // Collect running windows for activation/close actions.
+    // Collect running windows for the close actions.
     menu->windows = windows;
 
-    // IDs 0..N-1 -> desktop actions; negative constants -> windows / close commands.
+    // IDs 0..N-1 -> desktop actions; negative constants -> pin and close commands.
     std::vector<ContextMenuControlEntry> entries;
-    entries.reserve(windows.size() * 2 + entry.actions.size() + 5);
+    entries.reserve(entry.actions.size() + 5);
 
     const bool isPinned = pinned_apps::containsEntry(dockConfig.pinned, entry);
     entries.push_back(
@@ -345,38 +344,8 @@ namespace shell::dock {
     );
 
     std::vector<ContextMenuControlEntry> bodyEntries;
-    bodyEntries.reserve(windows.size() * 2 + entry.actions.size() + 4);
+    bodyEntries.reserve(entry.actions.size() + 4);
 
-    for (std::size_t i = 0; i < menu->windows.size(); ++i) {
-      auto& window = menu->windows[i];
-      window.minimizeState = platform.windowMinimizeState(window);
-      std::string title = window.title.empty() ? entry.name : window.title;
-      if (window.minimizeState.has_value() && window.minimizeState->minimized) {
-        title += " (" + i18n::tr("common.minimized") + ")";
-      }
-      bodyEntries.push_back(
-          ContextMenuControlEntry{
-              .id = kMenuWindowBaseId - static_cast<std::int32_t>(i) * 2,
-              .label = title,
-              .enabled = window.handle != nullptr || !window.identifier.empty(),
-              .separator = false,
-              .hasSubmenu = false,
-          }
-      );
-      if (window.minimizeState.has_value()) {
-        const auto& state = *window.minimizeState;
-        bodyEntries.push_back(
-            ContextMenuControlEntry{
-                .id = kMenuWindowBaseId - static_cast<std::int32_t>(i) * 2 - 1,
-                .label = i18n::tr(state.minimized ? "common.restore" : "common.minimize"),
-                .enabled = callbacks.setWindowMinimized != nullptr && (state.minimized || state.minimizable),
-                .indentLevel = 1,
-            }
-        );
-      }
-    }
-
-    const bool hasWindowEntries = !windows.empty();
     const bool hasActionEntries = !entry.actions.empty();
     std::vector<std::size_t> closableWindowIndices;
     closableWindowIndices.reserve(menu->windows.size());
@@ -386,14 +355,6 @@ namespace shell::dock {
       }
     }
     const std::size_t closableCount = closableWindowIndices.size();
-    const bool hasCloseEntries = closableCount > 0;
-    if (hasWindowEntries && (hasActionEntries || hasCloseEntries)) {
-      bodyEntries.push_back(
-          ContextMenuControlEntry{
-              .id = kMenuSeparatorId, .label = {}, .enabled = false, .separator = true, .hasSubmenu = false
-          }
-      );
-    }
 
     for (std::int32_t i = 0; i < static_cast<std::int32_t>(entry.actions.size()); ++i) {
       bodyEntries.push_back(
@@ -457,18 +418,6 @@ namespace shell::dock {
       if (id == kMenuPinToggleId) {
         if (callbacks.setEntryPinned) {
           callbacks.setEntryPinned(!isPinned);
-        }
-      } else if (id <= kMenuWindowBaseId) {
-        const auto actionIndex = static_cast<std::size_t>(kMenuWindowBaseId - id);
-        const auto idx = actionIndex / 2;
-        if (idx < menuWindows.size()) {
-          if (actionIndex % 2 == 0 && callbacks.activateWindow) {
-            callbacks.activateWindow(idx);
-          } else if (
-              actionIndex % 2 != 0 && menuWindows[idx].minimizeState.has_value() && callbacks.setWindowMinimized
-          ) {
-            callbacks.setWindowMinimized(idx, !menuWindows[idx].minimizeState->minimized);
-          }
         }
       } else if (id >= 0) {
         const auto idx = static_cast<std::size_t>(id);
