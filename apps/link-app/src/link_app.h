@@ -196,6 +196,8 @@ namespace linkapp {
     void chooseAndSend(const std::string& deviceId);
 
     std::unique_ptr<LinkClient> m_client;
+    // Shows this phone; the open page reloads its data from it.
+    void choosePhone(const std::string& deviceId);
     std::unique_ptr<FeedAdapter> m_feed;
     ScrollViewState m_feedScroll;
     std::unique_ptr<ThreadAdapter> m_threads;

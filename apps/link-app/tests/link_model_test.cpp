@@ -42,6 +42,30 @@ namespace {
     }
   }
 
+  // A snapshot gives back every item but offers, in order and field for field; a cut one gives nothing.
+  void snapshotInvariants(const Feed& feed, unsigned seed, int step) {
+    const std::vector<Phone> phones{{.id = "p", .name = "Pé \"8\"", .connected = true, .battery = 7, .lastSeen = 9, .locked = 1}};
+    const std::string text = encodeSnapshot(phones, feed, {"c:p:1"});
+    const auto back = decodeSnapshot(text);
+    expect(back.has_value(), "snapshot decodes", seed, step);
+    if (!back) return;
+    std::vector<const FeedItem*> kept;
+    for (const FeedItem& item : feed.items()) {
+      if (item.kind != FeedItem::Kind::Offer) kept.push_back(&item);
+    }
+    bool same = back->items.size() == kept.size() && back->dismissed == std::set<std::string>{"c:p:1"} &&
+                back->phones.size() == 1 && back->phones[0].name == phones[0].name && back->phones[0].locked == 1 &&
+                back->phones[0].battery == 7 && back->phones[0].connected;
+    for (std::size_t i = 0; same && i < kept.size(); ++i) {
+      const FeedItem& a = *kept[i];
+      const FeedItem& b = back->items[i];
+      same = a.kind == b.kind && a.key == b.key && a.deviceId == b.deviceId && a.who == b.who && a.body == b.body &&
+             a.atMs == b.atMs && a.actions.size() == b.actions.size();
+    }
+    expect(same, "snapshot round trip keeps every non-offer item", seed, step);
+    expect(!decodeSnapshot(text.substr(0, text.size() / 2)), "a cut snapshot decodes to nothing", seed, step);
+  }
+
   void runFeed(unsigned seed) {
     std::mt19937 rng(seed);
     Feed feed;
@@ -71,6 +95,7 @@ namespace {
         if (before && !moved) expect(feed.items()[*at].transfer == before->transfer, "rejected move changes nothing", seed, step);
       }
       feedInvariants(feed, seed, step);
+      if (step % 97 == 0) snapshotInvariants(feed, seed, step);
     }
   }
 
@@ -82,10 +107,13 @@ namespace {
     locked.locked = 1;
     // Every combination: the result names a phone exactly when one is paired.
     for (int daemon = 0; daemon < 2; ++daemon) {
-      for (const auto& phones : {std::vector<Phone>{}, {away}, {away, live}, {away, locked}}) {
-        const Presence p = presenceFrom(daemon, phones);
+      for (const auto& phones : {std::vector<Phone>{}, {away}, {away, live}, {away, locked}})
+      for (const std::string selected : {"", "a", "b", "gone"}) {
+        const Presence p = presenceFrom(daemon, phones, selected);
         const bool named = !p.phone.id.empty();
+        const bool paired = std::ranges::find(phones, selected, &Phone::id) != phones.end();
         expect(named == (daemon && !phones.empty()), "phone named only when shown", 0, 0);
+        if (named && paired) expect(p.phone.id == selected, "a paired selected phone is the one shown", 0, 0);
         if (!daemon) expect(p.kind == K::NoDaemon, "no daemon wins", 0, 0);
         if (named) {
           expect(p.phone.connected == (p.kind == K::Connected || p.kind == K::Locked), "connected kinds", 0, 0);

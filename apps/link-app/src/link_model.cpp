@@ -7,17 +7,68 @@
 #include <ctime>
 #include <format>
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <tuple>
 
 namespace linkapp {
 
-  Presence presenceFrom(bool daemon, const std::vector<Phone>& phones) {
+  Presence presenceFrom(bool daemon, const std::vector<Phone>& phones, const std::string& selected) {
     using K = Presence::Kind;
     if (!daemon) return {K::NoDaemon, {}};
     if (phones.empty()) return {K::NotPaired, {}};
-    const auto live = std::ranges::find_if(phones, [](const Phone& p) { return p.connected; });
+    auto live = std::ranges::find(phones, selected, &Phone::id);
+    if (live == phones.end()) live = std::ranges::find_if(phones, [](const Phone& p) { return p.connected; });
     if (live == phones.end()) return {K::Away, phones.front()};
+    if (!live->connected) return {K::Away, *live};
     return {live->locked == 1 ? K::Locked : K::Connected, *live};
+  }
+
+  namespace {
+    constexpr int kSnapshotVersion = 1;
+  } // namespace
+
+  std::string encodeSnapshot(const std::vector<Phone>& phones, const Feed& feed, const std::set<std::string>& dismissed) {
+    using nlohmann::json;
+    json out{{"version", kSnapshotVersion}, {"phones", json::array()}, {"items", json::array()}, {"dismissed", dismissed}};
+    for (const Phone& p : phones) {
+      out["phones"].push_back({{"id", p.id}, {"name", p.name}, {"connected", p.connected}, {"transport", p.transport},
+                               {"battery", p.battery}, {"charging", p.charging}, {"lastSeen", p.lastSeen},
+                               {"locked", p.locked}, {"dnd", p.dnd}, {"paused", p.paused}});
+    }
+    for (const FeedItem& item : feed.items()) {
+      if (item.kind == FeedItem::Kind::Offer) continue;
+      json actions = json::array();
+      for (const FeedAction& a : item.actions) actions.push_back({{"id", a.id}, {"label", a.label}, {"reply", a.reply}});
+      out["items"].push_back({{"kind", static_cast<int>(item.kind)}, {"key", item.key}, {"deviceId", item.deviceId},
+                              {"who", item.who}, {"body", item.body}, {"atMs", item.atMs}, {"actions", std::move(actions)}});
+    }
+    return out.dump();
+  }
+
+  std::optional<Snapshot> decodeSnapshot(std::string_view text) {
+    const nlohmann::json in = nlohmann::json::parse(text, nullptr, false);
+    try {
+      if (in.is_discarded() || in.at("version").get<int>() != kSnapshotVersion) return std::nullopt;
+      Snapshot snapshot;
+      for (const auto& p : in.at("phones")) {
+        snapshot.phones.push_back({.id = p.at("id"), .name = p.at("name"), .connected = p.at("connected"),
+                                   .transport = p.at("transport"), .battery = p.at("battery"), .charging = p.at("charging"),
+                                   .lastSeen = p.at("lastSeen"), .locked = p.at("locked"), .dnd = p.at("dnd"),
+                                   .paused = p.at("paused")});
+      }
+      for (const auto& i : in.at("items")) {
+        const int kind = i.at("kind");
+        if (kind < 0 || kind >= static_cast<int>(FeedItem::Kind::Offer)) return std::nullopt;
+        FeedItem item{.kind = static_cast<FeedItem::Kind>(kind), .key = i.at("key"), .deviceId = i.at("deviceId"),
+                      .who = i.at("who"), .body = i.at("body"), .atMs = i.at("atMs")};
+        for (const auto& a : i.at("actions")) item.actions.push_back({a.at("id"), a.at("label"), a.at("reply")});
+        snapshot.items.push_back(std::move(item));
+      }
+      snapshot.dismissed = in.at("dismissed").get<std::set<std::string>>();
+      return snapshot;
+    } catch (const nlohmann::json::exception&) {
+      return std::nullopt;
+    }
   }
 
   bool pairStep(Pair& pair, const PairEvent& event) {

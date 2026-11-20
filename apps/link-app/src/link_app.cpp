@@ -573,6 +573,9 @@ namespace linkapp {
         m_window->requestRebuild();
       });
     }
+      // The snapshot feed is there before Link1 answers.
+      sync();
+      updateCaption();
     window.setSidebarBuilder([this](Renderer&, float width, float) { return sidebar(width); });
     window.setContentBuilder([this](Renderer& renderer, float width, float height) { return content(renderer, width, height); });
     // The header's one Ghost action: "Clear all" on Waiting, "Clear finished" on Activity.
@@ -601,7 +604,8 @@ namespace linkapp {
   }
 
   void LinkApp::action(const std::string& name, const std::vector<std::string>& parameter, const std::string& activationToken) {
-    if (name == "page" && parameter.size() == 1) {
+    // "page" takes the page name, then optionally the id of the phone to show.
+    if (name == "page" && (parameter.size() == 1 || parameter.size() == 2)) {
       const auto it = std::ranges::find_if(kPages, [&](const PageInfo& info) {
         return std::ranges::equal(std::string_view(info.name), parameter.front(),
                                   [](char a, char b) { return std::tolower(a) == std::tolower(b); });
@@ -609,6 +613,7 @@ namespace linkapp {
       if (it != kPages.end()) {
         activate(activationToken);
         if (m_window != nullptr) show(it->page);
+        if (parameter.size() == 2) choosePhone(parameter[1]);
         return;
       }
     }
@@ -617,7 +622,7 @@ namespace linkapp {
 
   void LinkApp::chooseAndSend(const std::string& deviceId) {
     if (m_window == nullptr || bus() == nullptr) return;
-    if (m_chooser == nullptr) m_chooser = std::make_unique<desk::FileChooser>(*bus());
+    if (m_chooser == nullptr) m_chooser = std::make_unique<desk::FileChooser>(bus());
     m_window->exportHandle([this, deviceId](const std::string& parent) {
       m_chooser->openFiles(parent, "Send Files", [this, deviceId](std::vector<std::filesystem::path> paths) {
         if (!paths.empty()) m_client->sendFiles(deviceId, paths);
@@ -626,6 +631,19 @@ namespace linkapp {
   }
 
   void LinkApp::show(Page page) {
+  void LinkApp::choosePhone(const std::string& deviceId) {
+    if (!m_client || m_client->presence().phone.id == deviceId) return;
+    if (m_page == Page::Mirror) m_client->stopMirror();
+    m_client->select(deviceId);
+    if (m_window == nullptr) return;
+    if (m_page == Page::Photos) m_client->loadPhotos();
+    if (m_page == Page::Files) m_client->openFolder("/");
+    if (m_page == Page::Mirror) m_client->startMirror();
+    sync();
+    updateCaption();
+    m_window->requestRebuild();
+  }
+
     if (m_page == page) return;
     if (m_client && m_page == Page::Mirror) m_client->stopMirror();
     m_page = page;
@@ -813,6 +831,29 @@ namespace linkapp {
       keys->addChild(round("circle-minus", "Do not disturb", dnd, [this, id, dnd] { m_client->setDnd(id, !dnd); }));
       keys->addChild(round("arrow-up", "Send files", false, [this, id] { chooseAndSend(id); }));
       card->addChild(std::move(keys));
+    if (m_client && m_client->phones().size() > 1) {
+      Button* choose = nullptr;
+      head->addChild(ui::button({.out = &choose, .glyph = std::string("selector"), .glyphSize = Tokens::sizeSymbol * s,
+                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Choose phone"),
+                                 .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
+                                 .height = Tokens::sizeControlS * s}));
+      choose->setOnClick([this, choose] {
+        std::vector<ContextMenuControlEntry> entries;
+        const std::vector<Phone>& phones = m_client->phones();
+        const std::string shown = m_client->presence().phone.id;
+        for (std::size_t i = 0; i < phones.size(); ++i) {
+          entries.push_back({.id = static_cast<std::int32_t>(i), .label = phones[i].name, .radio = true,
+                             .toggleState = phones[i].id == shown ? 1 : 0});
+        }
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(choose, x, y);
+        m_window->openContextMenu(std::move(entries), x, y + choose->height(), [this](std::int32_t i) {
+          const std::vector<Phone>& now = m_client->phones();
+          if (i >= 0 && static_cast<std::size_t>(i) < now.size()) choosePhone(now[static_cast<std::size_t>(i)].id);
+        });
+      });
+    }
     }
     side->addChild(std::move(card));
     return side;
@@ -1152,7 +1193,11 @@ namespace linkapp {
         head->addChild(std::move(box));
       }
       page->addChild(std::move(head));
+        const Button::ButtonStateColors rest{.bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label2)};
+        const Button::ButtonStateColors hot{.bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label1)};
       page->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = s}));
+                                 .customPalette = Button::ButtonPalette{.normal = rest, .hover = hot, .pressed = hot, .disabled = rest},
+                                 .paddingV = 0.0F, .paddingH = 0.0F,
       if (!files.entries().empty()) {
         page->addChild(ui::virtualListView({.state = &m_fileScroll, .contentScale = s, .adapter = m_files.get(), .flexGrow = 1.0F}));
       }

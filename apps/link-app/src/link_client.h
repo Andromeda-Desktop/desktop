@@ -31,7 +31,10 @@ namespace linkapp {
 
     void setOnChanged(std::function<void()> changed) { m_changed = std::move(changed); }
 
-    [[nodiscard]] Presence presence() const { return presenceFrom(m_daemon, m_phones); }
+    [[nodiscard]] Presence presence() const { return presenceFrom(m_daemon, m_phones, m_selected); }
+    [[nodiscard]] const std::vector<Phone>& phones() const { return m_phones; }
+    // Shows this phone from now on, also after a restart; an id that is not paired keeps the default choice.
+    void select(const std::string& deviceId);
     [[nodiscard]] const Pair& pair() const { return m_pair; }
     // Opens a pairing window (StartPairing) when this app has none open; the daemon closes it after 120 s.
     void startPairing();
@@ -120,6 +123,7 @@ namespace linkapp {
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
+    std::unique_ptr<sdbus::IProxy> m_busWatch;
     std::uint64_t m_applied = 0; // serial of the newest refresh applied
     bool m_daemon = false;
     bool m_pairing = false; // Link1 Pairing: a window is open, ours or another client's
@@ -128,6 +132,7 @@ namespace linkapp {
     Feed m_feed;
     Messages m_messages;
     Activity m_activity;
+    std::string m_selected;
     Photos m_photos;
     Files m_files;
     Mirror m_mirror;

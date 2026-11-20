@@ -449,7 +449,7 @@ std::unique_ptr<Node> PhonePage::buildHero(float s) const {
   card->addChild(std::move(info));
   const bool on = d->connected;
   card->addChild(ui::button({.text = std::string("Mirror Screen"), .enabled = on, .variant = ButtonVariant::Default,
-                             .onClick = [this] { m_link.mirror(); }}));
+                             .onClick = [this] { m_link.mirror(m_deviceId); }}));
   card->addChild(ui::button({.text = std::string("Send Files…"), .enabled = on, .variant = ButtonVariant::Primary,
                              .onClick = [this] { m_actions.sendFiles(); }}));
   return card;

@@ -17,9 +17,9 @@ endif
 
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
-_model = static_library('link_model', 'src/link_model.cpp', cpp_args: _warnings)
+_model = static_library('link_model', 'src/link_model.cpp', dependencies: dependency('nlohmann_json'), cpp_args: _warnings)
 
-test('link_model', executable('link_model_test', 'tests/link_model_test.cpp', link_with: _model,
+test('link_model', executable('link_model_test', 'tests/link_model_test.cpp', link_with: _model, dependencies: dependency('nlohmann_json'),
   include_directories: include_directories('src'), cpp_args: _warnings))
 
 _desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')

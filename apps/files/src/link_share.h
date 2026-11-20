@@ -60,7 +60,7 @@ public:
                  std::function<void(const std::filesystem::path& saved, const std::string& error)> done);
   void cancel(const std::string& transferId);
   // Opens the Link app on its Mirror page, which shows the current phone's screen.
-  void mirror() const;
+  void mirror(const std::string& deviceId) const;
   // Watches a transfer id returned by send.
   void watch(const std::string& transferId, Transfer transfer);
   // The sentence for a TransferFinished status; empty for "done".

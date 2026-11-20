@@ -142,7 +142,7 @@ public:
   /// Opens the phone's folder under ~/Phone, which andromeda-link-mount serves while the phone allows browsing.
   void browse(const std::string& deviceId);
   /// Opens the Link app on its Mirror page, which shows the current phone's screen.
-  void mirror();
+  void mirror(const std::string& deviceId);
   // Opens the files here and passes the descriptors, since the sandboxed daemon cannot read the user's files. Returns
   // the paths that could not be opened.
   std::vector<std::string> sendFiles(const std::string& deviceId, const std::vector<std::string>& paths);

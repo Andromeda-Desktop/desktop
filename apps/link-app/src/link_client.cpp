@@ -13,6 +13,7 @@
 #include <glib.h>
 #include <chrono>
 #include <format>
+#include <fstream>
 #include <map>
 #include <optional>
 #include <sdbus-c++/sdbus-c++.h>
@@ -47,8 +48,42 @@ namespace linkapp {
 
   } // namespace
 
+  namespace {
+    std::filesystem::path selectedFile() {
+      return std::filesystem::path(g_get_user_state_dir()) / "andromeda" / "link-app" / "phone";
+    }
+
+    std::filesystem::path snapshotFile() {
+      return std::filesystem::path(g_get_user_cache_dir()) / "andromeda" / "link-app" / "waiting.json";
+    }
+
+    // Items a phone may have removed while this app was closed: older ones stay out of a cold start.
+    constexpr std::int64_t kSnapshotMaxAgeMs = 24LL * 3600 * 1000;
+  } // namespace
+
   LinkClient::LinkClient(SessionBus& bus) : m_bus(bus) {
+    std::getline(std::ifstream(selectedFile()), m_selected);
+    std::ifstream cached(snapshotFile(), std::ios::binary);
+    if (auto snapshot = decodeSnapshot(std::string(std::istreambuf_iterator<char>(cached), {}))) {
+      m_daemon = true;
+      m_phones = std::move(snapshot->phones);
+      m_dismissed = std::move(snapshot->dismissed);
+      const std::int64_t oldest = nowMs() - kSnapshotMaxAgeMs;
+      for (FeedItem& item : snapshot->items) {
+        if (item.atMs >= oldest) m_feed.upsert(std::move(item));
+      }
+    }
     m_proxy = sdbus::createProxy(m_bus.connection(), kBusName, kObjectPath);
+    // Link1 starting or stopping after this app: ask again, so presence leaves NoDaemon or enters it.
+    m_busWatch = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"},
+                                    sdbus::ObjectPath{"/org/freedesktop/DBus"});
+    m_busWatch->uponSignal("NameOwnerChanged").onInterface("org.freedesktop.DBus")
+        .call([this](const std::string& name, const std::string&, const std::string&) {
+          if (name == kBusName) {
+            refresh();
+            refreshNearby();
+          }
+        });
     m_proxy->uponSignal("PropertiesChanged")
         .onInterface("org.freedesktop.DBus.Properties")
         .call([this](const std::string& interfaceName, const std::map<std::string, sdbus::Variant>&,
@@ -119,7 +154,11 @@ namespace linkapp {
     refreshNearby();
   }
 
-  LinkClient::~LinkClient() = default;
+  LinkClient::~LinkClient() {
+    std::error_code error;
+    std::filesystem::create_directories(snapshotFile().parent_path(), error);
+    std::ofstream(snapshotFile(), std::ios::binary | std::ios::trunc) << encodeSnapshot(m_phones, m_feed, m_dismissed);
+  }
 
   void LinkClient::changed() {
     if (m_changed) m_changed();
@@ -752,6 +791,16 @@ namespace linkapp {
     m_proxy->callMethodAsync("SendFiles").onInterface(kInterface).withArguments(deviceId, files)
         .uponReplyInvoke([](std::optional<sdbus::Error> error, std::string /*transfer*/) {
           if (error) kLog.warn("SendFiles: {}", error->getMessage());
+  void LinkClient::select(const std::string& deviceId) {
+    if (deviceId == m_selected) return;
+    m_selected = deviceId;
+    std::error_code error;
+    std::filesystem::create_directories(selectedFile().parent_path(), error);
+    std::ofstream(selectedFile()) << deviceId << '\n';
+    refresh();
+    changed();
+  }
+
         });
   }
 

@@ -596,8 +596,8 @@ void LinkService::browse(const std::string& deviceId) {
   (void)net::openInBrowser(fileUri(std::filesystem::path(home) / "Phone" / name));
 }
 
-void LinkService::mirror() {
-  if (!process::runAsync(std::vector<std::string>{"andromeda-link-app", "--action=page", "--", "Mirror"})) {
+void LinkService::mirror(const std::string& deviceId) {
+  if (!process::runAsync(std::vector<std::string>{"andromeda-link-app", "--action=page", "--", "Mirror", deviceId})) {
     kLog.warn("could not start andromeda-link-app");
   }
 }

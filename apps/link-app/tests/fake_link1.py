@@ -46,14 +46,16 @@ texts = [
     (3, 5, LENA, "Photo", ago(3, 9, 30), False),
 ]
 contacts = [("Maya Okafor", [MAYA]), ("Dad", ["0170 1234567"]), ("Jonas Weber", [JONAS]), ("Lena", [LENA])]
-connected = MODE == "sample"
+connected = MODE in ("sample", "two")
 props = {
-    "Devices": GLib.Variant("a(ssb)", [] if MODE == "unpaired" else [("p1", "Pixel 8", connected)]),
+    "Devices": GLib.Variant("a(ssb)", [] if MODE == "unpaired" else [("p1", "Pixel 8", connected)] + ([("p2", "Galaxy A54", False)] if MODE == "two" else [])),
     "DeviceInfo": GLib.Variant("a{sa{sv}}", {} if MODE == "unpaired" else {"p1": {
         "transport": GLib.Variant("s", "wifi" if connected else ""),
         "connected": GLib.Variant("b", connected),
         "last_seen": GLib.Variant("x", now_ms // 1000 - 12 * 60),
-        "battery": GLib.Variant("i", 74)}}),
+        "battery": GLib.Variant("i", 74)}} | ({"p2": {
+        "connected": GLib.Variant("b", False),
+        "last_seen": GLib.Variant("x", now_ms // 1000 - 3 * 3600)}} if MODE == "two" else {})),
     "DeviceStatus": GLib.Variant("a{s(ubsi)}", {"p1": (74, False, "wifi", -1)} if connected else {}),
     "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
     "Paused": GLib.Variant("as", []),
@@ -185,7 +187,13 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
 
 def get(_conn, _sender, _path, _iface, name):
     if name in props:
+slow = [float(os.environ.get("SLOW", "0"))]  # seconds the first property read waits: a slow daemon start
+
+
         return props[name]
+    if slow[0] > 0:
+        time.sleep(slow[0])
+        slow[0] = 0
     sig = iface.lookup_property(name).signature
     empty = {"b": False, "s": ""}
     return GLib.Variant(sig, {} if sig.startswith("a{") else [] if sig[0] == "a" else empty.get(sig, 0))

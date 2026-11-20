@@ -5,6 +5,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,8 +32,8 @@ namespace linkapp {
     Phone phone; // empty for NoDaemon and NotPaired
   };
 
-  // The one place presence comes from: the first connected phone, else the first paired one.
-  [[nodiscard]] Presence presenceFrom(bool daemon, const std::vector<Phone>& phones);
+  // The one place presence comes from: the selected phone while paired, else the first connected one, else the first.
+  [[nodiscard]] Presence presenceFrom(bool daemon, const std::vector<Phone>& phones, const std::string& selected = {});
 
   // This app's pairing window: Idle -> Starting -> Showing -> Idle (finished, or closed by expiry or another client);
   // Starting | Showing -> Failed -> Starting (Try Again). pairStep rejects every other move and leaves the state as is.
@@ -104,6 +105,18 @@ namespace linkapp {
   private:
     std::vector<FeedItem> m_items;
   };
+
+  // Waiting as last shown, so a cold start draws it before Link1 answers. File offers stay out: a transfer lives only in
+  // the daemon run that offered it.
+  struct Snapshot {
+    std::vector<Phone> phones;
+    std::vector<FeedItem> items;
+    std::set<std::string> dismissed; // missed calls the user cleared
+  };
+  [[nodiscard]] std::string encodeSnapshot(const std::vector<Phone>& phones, const Feed& feed,
+                                           const std::set<std::string>& dismissed);
+  // nullopt for anything encodeSnapshot did not write.
+  [[nodiscard]] std::optional<Snapshot> decodeSnapshot(std::string_view text);
 
   // The Settings page: one phone's switches (Link1 Grants and AutoAccept) and this desktop's.
   struct PhoneSettings {
