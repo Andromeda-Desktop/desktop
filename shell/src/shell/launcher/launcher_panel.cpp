@@ -1096,7 +1096,8 @@ void LauncherPanel::onClose() {
     m_actionsMenu->close();
   }
   if (m_asyncTextures != nullptr) {
-    DeferredCall::callLater([asyncTextures = m_asyncTextures] { asyncTextures->trimUnused(0); });
+    // About one screen of row icons stays resident, so the next open draws them in its first frame.
+    DeferredCall::callLater([asyncTextures = m_asyncTextures] { asyncTextures->trimUnused(32); });
   }
 
   for (auto& provider : m_providers) {

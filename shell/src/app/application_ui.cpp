@@ -746,7 +746,10 @@ void Application::initPanelManagerAndPanels() {
     launcherPanel->addProvider(std::make_unique<FocusProvider>(&m_notificationManager));
     launcherPanel->addProvider(std::make_unique<MathProvider>(&m_clipboardService, &m_configService, &m_httpClient));
     launcherPanel->addProvider(std::make_unique<EmojiProvider>(&m_clipboardService, &m_configService));
-    launcherPanel->addProvider(std::make_unique<ClipboardProvider>(&m_clipboardService));
+    auto clipboard = std::make_unique<ClipboardProvider>(&m_clipboardService);
+    m_clipboardProvider = clipboard.get();
+    m_clipboardProvider->warmThumbnails();
+    launcherPanel->addProvider(std::move(clipboard));
     launcherPanel->addProvider(std::make_unique<KlipyProvider>(
         KlipyProvider::Kind::Gifs, &m_configService, &m_httpClient, &m_clipboardService
     ));

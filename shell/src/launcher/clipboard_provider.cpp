@@ -64,11 +64,7 @@ std::vector<LauncherResult> ClipboardProvider::query(std::string_view text) cons
   const std::string needle = StringUtils::toLower(StringUtils::trim(text));
   const auto& history = m_clipboard->history();
   results.reserve(history.size());
-  // A thumbnail is a whole image as a data URI: drop those whose entry left the history.
-  std::erase_if(m_thumbs, [&history](const auto& thumb) {
-    return std::ranges::none_of(history, [&thumb](const ClipboardEntry& entry) { return entry.storageId == thumb.first; });
-  });
-  std::size_t thumbCount = 0;
+  warmThumbnails();
   // Pinned entries first, then newest first; history() keeps newest at the front.
   for (const bool pinnedPass : {true, false}) {
     for (const ClipboardEntry& entry : history) {
@@ -87,21 +83,39 @@ std::vector<LauncherResult> ClipboardProvider::query(std::string_view text) cons
       r.category = dayGroup(entry);
       r.presentation = entry.isImage() ? "clipboard-image" : "clipboard-text";
       r.pinned = entry.pinned;
-      if (entry.isImage()) {
-        if (const auto thumb = m_thumbs.find(entry.storageId); thumb != m_thumbs.end()) {
-          r.iconPath = thumb->second;
-        } else if (thumbCount < kMaxThumbs && !std::ranges::contains(m_pendingThumbs, entry.storageId)) {
-          m_pendingThumbs.push_back(entry.storageId);
-        }
-        ++thumbCount;
+      if (const auto thumb = m_thumbs.find(entry.storageId); entry.isImage() && thumb != m_thumbs.end()) {
+        r.iconPath = thumb->second;
       }
       results.push_back(std::move(r));
+    }
+  }
+  return results;
+}
+
+void ClipboardProvider::warmThumbnails() const {
+  if (m_clipboard == nullptr) {
+    return;
+  }
+  const auto& history = m_clipboard->history();
+  // A thumbnail is a whole image as a data URI: drop those whose entry left the history.
+  std::erase_if(m_thumbs, [&history](const auto& thumb) {
+    return std::ranges::none_of(history, [&thumb](const ClipboardEntry& entry) { return entry.storageId == thumb.first; });
+  });
+  std::size_t count = 0;
+  for (const bool pinnedPass : {true, false}) {
+    for (const ClipboardEntry& entry : history) {
+      if (entry.pinned != pinnedPass || !entry.isImage() || count == kMaxThumbs) {
+        continue;
+      }
+      ++count;
+      if (!m_thumbs.contains(entry.storageId) && !std::ranges::contains(m_pendingThumbs, entry.storageId)) {
+        m_pendingThumbs.push_back(entry.storageId);
+      }
     }
   }
   if (!m_pendingThumbs.empty() && !m_thumbTimer.active()) {
     m_thumbTimer.start(std::chrono::milliseconds(0), [this] { loadNextThumbnail(); });
   }
-  return results;
 }
 
 void ClipboardProvider::loadNextThumbnail() const {

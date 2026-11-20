@@ -146,6 +146,7 @@ class PipeWireSpectrum;
 class PolkitAgent;
 class PowerProfilesService;
 class ScreenSaverService;
+class ClipboardProvider;
 class FilesProvider;
 class SessionBus;
 class SoundPlayer;
@@ -500,6 +501,8 @@ private:
   LauncherPanel* m_launcherPanel = nullptr;
   // Owned by the launcher panel; polled for index daemon answers.
   FilesProvider* m_filesProvider = nullptr;
+  // Owned by the launcher panel; warms its thumbnails when the clipboard history changes.
+  ClipboardProvider* m_clipboardProvider = nullptr;
   // Ids of plugin-backed panels currently registered with m_panelManager, so a
   // reload can retire the previous set before registering the new one.
   std::vector<std::string> m_pluginPanelIds;

@@ -65,6 +65,7 @@
 #include "ipc/ipc_arg_parse.h"
 #include "ipc/ipc_events.h"
 #include "launcher/app_provider.h"
+#include "launcher/clipboard_provider.h"
 #include "launcher/dmenu_provider.h"
 #include "launcher/emoji_provider.h"
 #include "launcher/math_provider.h"
@@ -1219,6 +1220,9 @@ void Application::initWaylandCallbacks() {
   });
   m_clipboardService.setChangeCallback([this] {
     m_scriptApi.setClipboardText(m_clipboardService.clipboardText());
+    if (m_clipboardProvider != nullptr) {
+      m_clipboardProvider->warmThumbnails();
+    }
     if (m_panelManager.isOpenPanel("clipboard")) {
       m_panelManager.refresh();
     }

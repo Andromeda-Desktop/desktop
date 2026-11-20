@@ -34,9 +34,11 @@ public:
   bool openImage(const LauncherResult& result);
   // The stored text preview of a text entry (the row title is only its first line).
   [[nodiscard]] std::string text(const LauncherResult& result) const;
-  // Encoded image bytes of an image entry (loads the payload from disk on first use); empty if none.
   // Loads the result's image data URI next (front of the queue); the results refresh when it lands.
   void requestThumbnail(const LauncherResult& result);
+  // Loads the thumbnails of the newest image entries in the background, so the next open lists them in its first
+  // frame. Call it when the history changes.
+  void warmThumbnails() const;
   // Payload size in bytes, for the preview details.
   [[nodiscard]] std::size_t byteSize(const LauncherResult& result) const;
 
@@ -47,7 +49,7 @@ private:
   ClipboardService* m_clipboard = nullptr;
   std::function<void()> m_onResultsChanged;
   // Row thumbnails as data URIs (the texture cache decodes them off the main thread), by storage id. They load one
-  // per timer tick after the first frame: a payload read decrypts it from disk.
+  // per timer tick when the history changes: a payload read decrypts it from disk.
   mutable std::unordered_map<std::string, std::string> m_thumbs;
   std::shared_ptr<int> m_alive = std::make_shared<int>(0);
   mutable std::vector<std::string> m_pendingThumbs;
