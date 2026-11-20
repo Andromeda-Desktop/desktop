@@ -169,9 +169,9 @@ void DragAndDrop::onSelection(wl_data_offer* offer) {
 }
 
 bool DragAndDrop::setSelection(std::uint32_t serial, Selection selection) {
-  if (m_selectionSource != nullptr) {
-    wl_data_source_destroy(m_selectionSource);
-  }
+  // The new source replaces the old one before the old is destroyed: destroying the live selection source first
+  // empties the clipboard for a moment, and a clipboard manager then restores the old content over the new.
+  wl_data_source* previous = m_selectionSource;
   m_selection = std::move(selection);
   m_selectionSource = wl_data_device_manager_create_data_source(m_manager);
   wl_data_source_add_listener(m_selectionSource, &kSelectionListener, this);
@@ -179,6 +179,9 @@ bool DragAndDrop::setSelection(std::uint32_t serial, Selection selection) {
     wl_data_source_offer(m_selectionSource, mime.c_str());
   }
   wl_data_device_set_selection(m_device, m_selectionSource, serial);
+  if (previous != nullptr) {
+    wl_data_source_destroy(previous);
+  }
   wl_display_flush(m_connection.display());
   kLog.debug("selection set with {} types", m_selection.mimeTypes.size());
   return true;

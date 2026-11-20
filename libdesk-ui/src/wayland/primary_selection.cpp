@@ -139,9 +139,8 @@ void PrimarySelection::setText(std::uint32_t serial, std::string text) {
   if (m_source != nullptr && text == m_ownText) {
     return;
   }
-  if (m_source != nullptr) {
-    zwp_primary_selection_source_v1_destroy(m_source);
-  }
+  // Replaced before the old source is destroyed, so the primary selection is never empty in between.
+  zwp_primary_selection_source_v1* previous = m_source;
   m_ownText = std::move(text);
   m_text = m_ownText;
   m_reading = false;
@@ -152,6 +151,9 @@ void PrimarySelection::setText(std::uint32_t serial, std::string text) {
     zwp_primary_selection_source_v1_offer(m_source, mime);
   }
   zwp_primary_selection_device_v1_set_selection(m_device, m_source, serial);
+  if (previous != nullptr) {
+    zwp_primary_selection_source_v1_destroy(previous);
+  }
   wl_display_flush(m_connection.display());
   kLog.debug("primary selection set, {} bytes", m_ownText.size());
 }
