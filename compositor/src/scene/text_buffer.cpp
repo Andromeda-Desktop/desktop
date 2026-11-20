@@ -1,6 +1,7 @@
 #include "scene/text_buffer.h"
 
 #include "core/log.h"
+#include "design_tokens.h"
 
 extern "C" {
 #include <wlr/interfaces/wlr_buffer.h>
@@ -8,6 +9,7 @@ extern "C" {
 
 #include <cairo.h>
 #include <chrono>
+#include <format>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -242,7 +244,10 @@ namespace andromeda {
         markup += std::string("<span weight='") + weight + "'>Desktop 1 · ▾ ▏ +</span>";
       }
       for (const double scale : {1.0, 2.0}) {
-        for (const char* font : {"sans 8.25", "sans 9", "sans 9.75", "sans 13.5", "sans 21"}) {
+        for (const Tokens::Type* type :
+             {&Tokens::typeCaption, &Tokens::typeFootnote, &Tokens::typeBody, &Tokens::typeLarge}) {
+          // The chrome's font strings (overview/chrome.cpp tokenFont): another family would leave its fonts cold.
+          const std::string font = std::format("{} {}px", Tokens::fontFamily, type->size);
           if (wlr_buffer* buffer = renderTextBufferHere({.markup = markup, .font = font, .scale = scale}).buffer) {
             wlr_buffer_drop(buffer);
           }
