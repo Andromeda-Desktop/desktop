@@ -247,6 +247,7 @@ public:
   // Picker mode (`andromeda-files --picker`): the window answers one FileChooser request, then closes.
   void setPicker(std::uint64_t id, PickerPortal::Request request);
   [[nodiscard]] bool isPicker() const noexcept { return m_picker.has_value(); }
+  [[nodiscard]] bool isPhotos() const noexcept { return m_photos; }
   [[nodiscard]] std::optional<std::uint64_t> pickerId() const noexcept;
   void pickerAccept();
   void pickerCancel();

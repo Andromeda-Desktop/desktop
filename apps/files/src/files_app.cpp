@@ -685,8 +685,16 @@ void FilesApp::action(const std::string& name, const std::vector<std::string>& p
   FilesWindow* window = activeFilesWindow();
   if (name == "go" && window != nullptr && !parameter.empty()) {
     window->go(pathFromUri(parameter.front()));
-  } else if (name == "trash" && window != nullptr && !window->isPicker()) {
-    window->goTrash();
+  } else if (name == "trash") { // the dock's Trash: shown in a plain Files window, brought to the front
+    FilesWindow* target = window != nullptr && !window->isPicker() && !window->isPhotos() ? window : nullptr;
+    if (target == nullptr) {
+      target = &openWindow(fs::path(g_get_home_dir()));
+    }
+    target->goTrash();
+    const auto it = std::ranges::find_if(m_windows, [&](const auto& entry) { return entry.second.get() == target; });
+    if (it != m_windows.end() && it->first->isOpen()) {
+      it->first->activate(activationToken);
+    }
   } else if (name == "storage" && window != nullptr && !window->isPicker()) {
     window->showStorage();
   } else if (name == "vault.new" && window != nullptr && !window->isPicker() && !parameter.empty()) {
