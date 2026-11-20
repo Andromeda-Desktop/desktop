@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Returning to a workspace can replace the scene under a stationary pointer. The next motion must focus the window
-# under that pointer even when the old and new coordinates remain inside the same tile.
+# Returning to a workspace replaces the scene under a stationary pointer. With follow-mouse on, the window under that
+# pointer must take focus without a pointer motion.
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -65,16 +65,10 @@ wait_for_active "workspace-hover-right"
 sleep 0.1
 
 # Clear pointer focus on an empty workspace, then return without moving the pointer. Workspace focus history restores
-# the right window while the pointer's position is over the left window.
+# the right window, but the pointer rests over the left one: follow-mouse focus must move there with no motion.
 "$ANDROMEDA" msg workspace-switch:2 > /dev/null
 pointer move 64 64
 "$ANDROMEDA" msg workspace-switch:1 > /dev/null
-wait_for_active "workspace-hover-right"
-sleep 0.1
-
-# Both coordinates resolve to the left tile after the workspace returns. The workspace focus transition must let this
-# motion refresh hover focus once and activate that tile.
-pointer move 65 64
 wait_for_active "workspace-hover-left"
 
-echo "motion refreshes hover focus after returning to a workspace"
+echo "the window under a resting pointer takes focus after a workspace switch"

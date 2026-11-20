@@ -3890,7 +3890,7 @@ namespace andromeda {
     activate(selected);
     m_server->cursor()->clearConstraint();
     m_server->refocus(m_output);
-    m_server->cursor()->refocusAfterSceneChange();
+    m_server->cursor()->refocusAfterWorkspaceSwitch();
   }
 
   void WorkspaceGroup::deactivate(Workspace* workspace) {

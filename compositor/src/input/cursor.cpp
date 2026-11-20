@@ -1936,6 +1936,12 @@ namespace andromeda {
     }
   }
 
+  void Cursor::refocusAfterWorkspaceSwitch() {
+    if (config().input.focus.followsMouseEnabled()) {
+      setSceneRefocus(SceneRefocus::Queued);
+    }
+  }
+
   void Cursor::onSceneRefocusIdle(void* data) {
     auto* self = static_cast<Cursor*>(data);
     // wayland frees an idle source after it fires.
@@ -1947,11 +1953,13 @@ namespace andromeda {
   void Cursor::applySceneRefocus() {
     const Output* output =
         m_server->outputFromWlr(wlr_output_layout_output_at(m_server->outputLayout(), m_cursor->x, m_cursor->y));
-    if (config().input.focus.followsMouse != FollowsMouse::Always || output == nullptr) {
+    // Only a workspace switch queues this under sloppy; every other scene change queues it only under always.
+    if (!config().input.focus.followsMouseEnabled() || output == nullptr) {
       setSceneRefocus(SceneRefocus::Idle);
       return;
     }
-    // Content still moving keeps the request Waiting: the frame that settles it queues this again.
+    // Content still moving keeps the request Waiting: the frame that settles it queues this again. A workspace slide
+    // ends a frame after its animation; until slideFinish the shown windows are not in the hit-test scene.
     if (m_server->animationsActiveFor(output)
         || (m_server->gestures() != nullptr && m_server->gestures()->movingContent())) {
       return;

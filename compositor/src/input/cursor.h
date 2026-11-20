@@ -241,7 +241,15 @@ namespace andromeda {
     // With follows_mouse = "always", focus the window under a stationary pointer once the scene settles after a change
     // nobody aimed at a window: a workspace switch, a close, a layout command. Any later focus choice cancels it.
     void refocusAfterSceneChange();
+    // Under sloppy and always: the window under a still pointer takes focus once the switch settles.
+    void refocusAfterWorkspaceSwitch();
     void cancelSceneRefocus() { setSceneRefocus(SceneRefocus::Idle); }
+    // A waiting refocus runs again: an arrange that moves nothing draws no frame to retry it.
+    void resumeSceneRefocus() {
+      if (m_sceneRefocus == SceneRefocus::Waiting) {
+        setSceneRefocus(SceneRefocus::Queued);
+      }
+    }
     // A keyboard escape from confinement must wait for an actual pointer re-entry before hover can refocus it.
     void releaseRuleConfinement(View& view);
     // Compositor-owned cursor override for grabs the Cursor does not track

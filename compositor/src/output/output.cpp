@@ -2798,6 +2798,9 @@ namespace andromeda {
     }
     if (has(pending, Dirty::Layout) && m_workspaceGroup != nullptr) {
       m_workspaceGroup->flushArrange();
+      if (Cursor* cursor = m_server->cursor(); cursor != nullptr) {
+        cursor->resumeSceneRefocus();
+      }
     }
     if (has(pending, Dirty::Banner)) {
       m_server->relayoutBanner();
