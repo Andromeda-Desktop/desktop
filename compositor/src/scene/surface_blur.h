@@ -32,6 +32,10 @@ namespace andromeda {
   // The glass material of compositor-drawn glass from the appearance glass settings. The tint
   // is the dark scheme's: the compositor draws no tint of its own.
   [[nodiscard]] glass::Material configGlass(glass::Kind kind);
+  // `light`: the light curve, for a surface whose glass takes the light scheme (configGlassLight).
+  [[nodiscard]] glass::Material configGlass(glass::Kind kind, bool light);
+  // The glass of `kind` takes the light scheme: its tone follows the scheme (Clear glass is always dark, glass::tone).
+  [[nodiscard]] bool configGlassLight(glass::Kind kind);
   // The material of app windows and their overview cards (glass::windowSettings).
   [[nodiscard]] glass::Material configWindowGlass();
 

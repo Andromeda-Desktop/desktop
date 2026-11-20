@@ -355,7 +355,8 @@ namespace andromeda::ov {
     const Placement& placement = *frame.placement;
     const auto& colors = config().colors;
     // Glass pieces are tint-only over the overview's cached wallpaper blur: no per-frame blur (overview handoff perf).
-    const bool light = config().appearance.scheme == ColorScheme::Light;
+    // The bar islands' glass and ink: Clear glass is dark in both schemes.
+    const bool light = configGlassLight(glass::Kind::Shape);
     const std::uint32_t tint = (light ? Tokens::schemeLight : Tokens::schemeDark).tintThick;
     const auto channel = [tint](int shift) { return static_cast<float>((tint >> shift) & 0xFFU) / 255.0F; };
     const std::array<float, 4> thick{channel(24), channel(16), channel(8), configGlass(glass::Kind::Shape).tint};

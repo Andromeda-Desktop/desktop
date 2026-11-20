@@ -51,6 +51,13 @@ namespace andromeda {
 
   glass::Material configGlass(glass::Kind kind) { return glass::material(kind, configGlassSettings(), false); }
 
+  glass::Material configGlass(glass::Kind kind, bool light) { return glass::material(kind, configGlassSettings(), light); }
+
+  bool configGlassLight(glass::Kind kind) {
+    return glass::tone(kind, configGlassSettings().style) == glass::Tone::Scheme
+        && config().appearance.scheme == ColorScheme::Light;
+  }
+
   glass::Material configWindowGlass() {
     return glass::material(glass::Kind::Sheet, glass::windowSettings(configGlassSettings()), false);
   }

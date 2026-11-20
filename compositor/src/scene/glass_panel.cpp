@@ -74,9 +74,11 @@ namespace andromeda {
     m_box = box;
     m_radius = radius;
     m_opacity = opacity;
-    const bool light = config().appearance.scheme == ColorScheme::Light;
+    // A shape is island glass (Kind::Shape, tint_regular, E2, the rim as its only edge); other kinds are popovers.
+    const bool shape = m_kind == glass::Kind::Shape;
+    const bool light = configGlassLight(m_kind);
     const auto& scheme = light ? Tokens::schemeLight : Tokens::schemeDark;
-    const glass::Material material = configGlass(m_kind);
+    const glass::Material material = configGlass(m_kind, light);
     // Colours are premultiplied, so a fade scales all four channels.
     const auto faded = [opacity](std::array<float, 4> color) {
       for (float& channel : color) {
@@ -85,8 +87,8 @@ namespace andromeda {
       return color;
     };
 
-    // E3: key shadow 12 down, 32 blur; the hole keeps it from showing through the translucent glass.
-    const auto& e3 = Tokens::elevationE3;
+    // E2 for a shape, E3 for a popover; the hole keeps it from showing through the translucent glass.
+    const auto& e3 = shape ? Tokens::elevationE2 : Tokens::elevationE3;
     const int sigma = static_cast<int>(std::lround(e3.keyBlur / 2.0F));
     const int offsetY = static_cast<int>(std::lround(e3.keyY));
     wlr_scene_node_set_enabled(&m_shadow->node, !m_useScrim);
@@ -111,7 +113,7 @@ namespace andromeda {
     wlr_scene_blur_set_alpha(m_blur, opacity);
     wlr_scene_blur_set_backdrop_sampling(m_blur, !m_useScrim);
     // Glass draws its tint inside the blur, raised by the backdrop density; a scrim is a flat rect over a plain blur.
-    const auto tint = rgba(scheme.tintThick, 1.0F);
+    const auto tint = rgba(shape ? scheme.tintRegular : scheme.tintThick, 1.0F);
     const float rgb[3]{tint[0], tint[1], tint[2]};
     wlr_scene_blur_set_tint_mix(m_blur, rgb, m_useScrim ? 0.0F : glass::denser(material.tint, m_density, material.dense));
 
@@ -122,7 +124,7 @@ namespace andromeda {
     wlr_scene_rect_set_color(m_tint, faded(m_scrim).data());
 
     // Hairline: the stroke colour with the inside cut away, 1 px wide.
-    wlr_scene_node_set_enabled(&m_hairline->node, !m_useScrim);
+    wlr_scene_node_set_enabled(&m_hairline->node, !m_useScrim && !(shape && material.rim > 0.0F));
     wlr_scene_node_set_position(&m_hairline->node, box.x, box.y);
     wlr_scene_rect_set_size(m_hairline, box.width, box.height);
     wlr_scene_rect_set_corner_radius(m_hairline, radius);
