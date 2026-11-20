@@ -13,6 +13,7 @@
 #include "dbus/upower/upower_service.h"
 #include "i18n/i18n.h"
 #include "pipewire/pipewire_service.h"
+#include "shell/panel/glass_piece.h"
 #include "shell/panel/panel_manager.h"
 #include "shell/tooltip/tooltip_manager.h"
 #include "shell/control_center/bluetooth_glyph.h"
@@ -274,7 +275,7 @@ std::unique_ptr<Flex> QuickPage::makeCard(bool badged) {
   card->setGap(Style::spaceSm * s);
   // The compositor draws each card as a glass piece; without it the card paints its own fill on the sheet.
   if (!Style::compositorDrawsTint()) {
-    card->setFill(colorSpecFromRole(ColorRole::GlassCard, panelCardOpacity()));
+    card->setFill(glassPieceFill(panelCardOpacity()));
     card->setBorder(colorSpecFromRole(ColorRole::GlassCardEdge), 0.5F * s);
   } else {
     card->setFill(Color{0.0F, 0.0F, 0.0F, 0.0F});

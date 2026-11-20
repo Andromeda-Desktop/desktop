@@ -622,8 +622,9 @@ void LiveActivityIsland::ensureSurfaces() {
     });
     inst->glassConn = Style::glassChanged().connect([this, instPtr = inst.get()] {
       if (instPtr->material != nullptr) {
-        instPtr->material->setPaletteTone(glassTone(glass::Kind::Shape));
-        instPtr->tint->setPaletteTone(glassTone(glass::Kind::Shape));
+        applyContent(*instPtr);
+        applyReveal(*instPtr, instPtr->reveal);
+        instPtr->surface->requestRedraw();
       }
     });
     m_instances.push_back(std::move(inst));
@@ -2298,10 +2299,10 @@ void LiveActivityIsland::applyReveal(Instance& inst, float reveal) {
   inst.cur = cur;
   const Rect restR = faceRect(inst, Face::Rest);
 
-  // With the compositor the fills span the surface and its clip morphs them; otherwise the fills are the island.
-  // Lane glass: the compositor clips nothing, so the pill fill is the pill and the card fill is the card.
+  // When the compositor draws the glass, the fills span the surface and its clip morphs them; otherwise (no glass,
+  // Reduce Transparency) the fills are the island. Lane glass: the compositor clips nothing, so each fill is its shape.
   const bool lane = laneGlass(inst);
-  const Rect box = inst.dsk != nullptr && !lane ? Rect{0.0F, 0.0F, maxW, maxH, cur.radius} : cur;
+  const Rect box = inst.compositorTint && !lane ? Rect{0.0F, 0.0F, maxW, maxH, cur.radius} : cur;
   const Rect pillBox = lane ? restR : box;
   for (const auto& [fill, b] : {std::pair{inst.material, pillBox}, std::pair{inst.tint, box}}) {
     fill->setPosition(b.x, b.y);
