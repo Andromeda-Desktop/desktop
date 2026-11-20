@@ -701,6 +701,19 @@ namespace {
     std::call_once(once, [] {
       try {
         connection = sdbus::createSessionBusConnection();
+        // A private session bus (dbus-run-session) only lists systemd1 as activatable, and activating it fails after
+        // the launch was sent; systemd-run reaches the user manager over its own socket instead.
+        auto bus = sdbus::createProxy(
+            *connection, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+        );
+        bool owned = false;
+        bus->callMethod("NameHasOwner")
+            .onInterface("org.freedesktop.DBus")
+            .withArguments(std::string("org.freedesktop.systemd1"))
+            .storeResultsTo(owned);
+        if (!owned) {
+          return;
+        }
         manager = sdbus::createProxy(
             *connection, sdbus::ServiceName{"org.freedesktop.systemd1"}, sdbus::ObjectPath{"/org/freedesktop/systemd1"}
         );
@@ -1404,7 +1417,15 @@ namespace process {
     if (args.empty() || args.front().empty()) {
       return false;
     }
-    if (runningUnderSystemdUserManager()) {
+    // A shell under the user manager may still not reach it (a nested session with its own runtime dir and bus):
+    // systemd-run needs the manager's socket, the bus call its name.
+    static const bool reachable = [] {
+      const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+      std::error_code error;
+      return (runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / "systemd/private", error))
+          || systemdManager() != nullptr;
+    }();
+    if (runningUnderSystemdUserManager() && reachable) {
       return startSystemdService(args, activationToken, workingDir, appName);
     }
 #endif
