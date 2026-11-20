@@ -322,11 +322,6 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   if (m_previewPane == nullptr || !m_previewPane->visible()) {
     return;
   }
-  // No row, no preview: the last bound result must not stay beside an empty list.
-  m_previewPane->setOpacity(m_selectedIndex < m_results.size() ? 1.0F : 0.0F);
-  if (m_selectedIndex >= m_results.size()) {
-    return;
-  }
   const LauncherResult& result = m_results[m_selectedIndex];
   const float scale = contentScale();
   const int iconSize = static_cast<int>(std::round(Tokens::componentLauncherIcon * scale));

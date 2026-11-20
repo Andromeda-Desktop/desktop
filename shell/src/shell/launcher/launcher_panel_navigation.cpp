@@ -243,7 +243,8 @@ void LauncherPanel::syncLauncherViewLayout(Renderer* renderer) {
     m_resultsPiece->setFlexGrow(split ? 0.0F : 1.0F);
     m_resultsPiece->setMinWidth(split ? listCard : 0.0F);
     m_resultsPiece->setMaxWidth(split ? listCard : 0.0F);
-    m_previewPane->setVisible(split);
+    // No row, no preview: the card keeps its place beside an empty list. Opacity belongs to the open and close motion.
+    m_previewPane->setVisible(split && m_selectedIndex < m_results.size());
     m_previewPane->setParticipatesInLayout(split);
     // In the list card the tabs drop their own inset and gaps: the card's p 8 aligns them with the rows.
     m_modeTabs->setPadding(0.0F, split ? 0.0F : Tokens::spaceP12 * scale);
