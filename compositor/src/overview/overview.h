@@ -240,11 +240,12 @@ namespace andromeda {
       std::unique_ptr<ViewChromeAttachment> frame;
       std::vector<std::unique_ptr<CardSurface>> surfaces;
       wlr_box box{}; // content box in layout coordinates
-      // Card scale against the view's presented box, its placement opacity and its clip in card-local pixels (empty:
-      // none), as the latest output layout left them.
+      // Card scale against the view's presented box, its placement opacity and its cut in presented-box pixels, as the
+      // latest output layout left them; layoutCard turns the cut into `clip`, card-local pixels on the snapped box.
       double scale = 1.0;
       float opacity = 1.0F;
-      wlr_box clip{};
+      std::optional<ov::Insets> cut;
+      std::optional<wlr_box> clip;
       // Opacity factor of the search filter: 1 for a match, kFilterMissOpacity for a miss.
       AnimatedValue filter{1.0};
       // Spaces and Task View: the window was on screen when the open or close began, so it grows from (returns to) its

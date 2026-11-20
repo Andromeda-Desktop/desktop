@@ -151,17 +151,19 @@ namespace andromeda {
     return 1.0;
   }
 
-  // A placement cut in card-local pixels at card scale `z`; empty for none.
-  static wlr_box cardClip(const wlr_box& world, const std::optional<ov::Insets>& cut, double z) {
+  // A placement cut in card-local pixels: its edges map onto the snapped content `box`, so an uncut side stays on the
+  // box edge.
+  static std::optional<wlr_box> cardClip(const wlr_box& world, const std::optional<ov::Insets>& cut, const wlr_box& box) {
     if (!cut.has_value()) {
-      return {};
+      return std::nullopt;
     }
-    return {
-        .x = static_cast<int>(std::lround(cut->left * z)),
-        .y = static_cast<int>(std::lround(cut->top * z)),
-        .width = static_cast<int>(std::lround((world.width - cut->left - cut->right) * z)),
-        .height = static_cast<int>(std::lround((world.height - cut->top - cut->bottom) * z)),
-    };
+    const double sx = world.width > 0 ? static_cast<double>(box.width) / world.width : 1.0;
+    const double sy = world.height > 0 ? static_cast<double>(box.height) / world.height : 1.0;
+    const auto x0 = static_cast<int>(std::lround(cut->left * sx));
+    const auto y0 = static_cast<int>(std::lround(cut->top * sy));
+    const auto x1 = static_cast<int>(std::lround((world.width - cut->right) * sx));
+    const auto y1 = static_cast<int>(std::lround((world.height - cut->bottom) * sy));
+    return wlr_box{.x = x0, .y = y0, .width = std::max(0, x1 - x0), .height = std::max(0, y1 - y0)};
   }
 
   void Overview::layoutCard(Card& card, const View* liveTarget) {
@@ -192,10 +194,18 @@ namespace andromeda {
       card.box.width = scaledW;
       card.box.height = scaledH;
     }
+    card.clip = cardClip(world, card.cut, card.box);
+    // A cut that leaves no whole pixel shows nothing; the scene reads an empty clip as none and would draw it all.
+    if (card.clip.has_value() && (card.clip->width <= 0 || card.clip->height <= 0)) {
+      card.blur.hide();
+      wlr_scene_node_set_enabled(&card.tree->node, false);
+      syncCardEffects(card);
+      return;
+    }
     const int contentW = card.box.width;
     const int contentH = card.box.height;
     wlr_scene_node_set_position(&card.tree->node, card.box.x, card.box.y);
-    wlr_scene_tree_set_clip(card.tree, card.clip.width > 0 && card.clip.height > 0 ? &card.clip : nullptr);
+    wlr_scene_tree_set_clip(card.tree, card.clip.has_value() ? &*card.clip : nullptr);
     layoutCardShadow(card, desktopChromeAlpha() * card.opacity);
     const float cardOpacity = (&card == dragCard() ? config().appearance.dragOpacity : 1.0F) * card.opacity;
     const float presentedOpacity = view->presentedOpacity() * cardOpacity;
@@ -790,7 +800,7 @@ namespace andromeda {
             ov::windowOpacity(*place, card.view->minimized(), 1.0) * std::clamp(m_appearOpacity.current(), 0.0, 1.0) *
             card.filter.current()
         );
-        copy.clip = cardClip(world, place->clip, copy.scale);
+        copy.cut = place->clip;
       }
       layoutCard(copy, liveTarget);
     };
@@ -838,7 +848,7 @@ namespace andromeda {
       }
       card.opacity =
           static_cast<float>(opacity * card.filter.current()) * (&card != dragCard() ? reflowOpacity(card.view) : 1.0F);
-      card.clip = cardClip(world, place->clip, card.scale);
+      card.cut = place->clip;
       layoutCard(card, liveTarget);
     }
     layoutChrome(state, liveTarget);
@@ -886,8 +896,11 @@ namespace andromeda {
       }
       const char* title = card.view->title();
       wlr_box visible = card.box;
-      if (card.clip.width > 0 && card.clip.height > 0) {
-        visible = {card.box.x + card.clip.x, card.box.y + card.clip.y, card.clip.width, card.clip.height};
+      if (card.clip.has_value()) {
+        if (card.clip->width <= 0 || card.clip->height <= 0) {
+          return;
+        }
+        visible = {card.box.x + card.clip->x, card.box.y + card.clip->y, card.clip->width, card.clip->height};
       }
       std::optional<wlr_box> within;
       const bool inMain = state.mainBox.has_value() && card.workspaceIndex == state.mainWorkspace;

@@ -16,8 +16,8 @@ namespace andromeda {
           continue;
         }
         wlr_box shown = card->box;
-        if (card->clip.width > 0 && card->clip.height > 0) {
-          shown = {card->box.x + card->clip.x, card->box.y + card->clip.y, card->clip.width, card->clip.height};
+        if (card->clip.has_value()) {
+          shown = {card->box.x + card->clip->x, card->box.y + card->clip->y, card->clip->width, card->clip->height};
         }
         wlr_box hit = shown;
         if (card.get() != dragCard() && !wlr_box_intersection(&hit, &shown, &state->outputBox)) {
