@@ -66,6 +66,7 @@ namespace linkapp {
         .call([this](const std::string& device, std::uint64_t id, const std::string& address, const std::string& body) {
           m_feed.upsert({.kind = FeedItem::Kind::Text, .key = "t:" + std::to_string(id), .deviceId = device,
                          .who = address, .body = body, .atMs = nowMs()});
+          m_messages.received(id);
           changed();
         });
     m_proxy->uponSignal("TransferOffered")
@@ -158,7 +159,55 @@ namespace linkapp {
                              .atMs = at, .actions = {{call.get<0>(), "Call back", false}}});
             }
           }
+          // Texts and Contacts of the phone presence() shows; Link1 keeps its newest 256 texts.
+          const std::string phone = presence().phone.id;
+          using Sms = sdbus::Struct<std::uint64_t, std::uint64_t, std::string, std::string, std::uint64_t, bool>;
+          const auto texts = property<std::map<std::string, std::vector<Sms>>>(props, "Texts");
+          std::vector<Text> list;
+          if (const auto it = texts.find(phone); it != texts.end()) {
+            list.reserve(it->second.size());
+            for (const Sms& t : it->second) {
+              list.push_back({.id = t.get<0>(), .thread = t.get<1>(), .address = t.get<2>(), .body = t.get<3>(),
+                              .atMs = static_cast<std::int64_t>(t.get<4>()), .sent = t.get<5>()});
+            }
+          }
+          using Person = sdbus::Struct<std::string, std::vector<std::string>>;
+          const auto contacts = property<std::map<std::string, std::vector<Person>>>(props, "Contacts");
+          std::vector<Contact> people;
+          if (const auto it = contacts.find(phone); it != contacts.end()) {
+            people.reserve(it->second.size());
+            for (const Person& c : it->second) people.push_back({.name = c.get<0>(), .numbers = c.get<1>()});
+          }
+          m_messages.setContacts(people);
+          m_messages.setTexts(std::move(list));
           changed();
+        });
+  }
+
+  void LinkClient::viewThread(std::optional<std::uint64_t> thread) { m_messages.view(thread); }
+
+  void LinkClient::sendText(std::uint64_t thread, const std::string& body) {
+    const std::uint64_t serial = m_messages.send(thread, body, nowMs());
+    if (serial == 0) return;
+    send(serial);
+    changed();
+  }
+
+  void LinkClient::retryText(std::uint64_t serial) {
+    if (!m_messages.retry(serial)) return;
+    send(serial);
+    changed();
+  }
+
+  void LinkClient::send(std::uint64_t serial) {
+    const Outgoing* out = m_messages.outgoing(serial);
+    const Thread* thread = out ? m_messages.thread(out->thread) : nullptr;
+    if (thread == nullptr) return;
+    m_proxy->callMethodAsync("SendText").onInterface(kInterface).withArguments(presence().phone.id, thread->address, out->body)
+        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error) {
+          if (alive.expired() || !error) return;
+          kLog.warn("SendText: {}", error->getMessage());
+          if (m_messages.sendFailed(serial)) changed();
         });
   }
 
@@ -182,10 +231,7 @@ namespace linkapp {
 
   void LinkClient::action(const FeedItem& item, const std::string& actionId) {
     if (item.kind == FeedItem::Kind::MissedCall) {
-      m_proxy->callMethodAsync("Dial").onInterface(kInterface).withArguments(item.deviceId, actionId)
-          .uponReplyInvoke([](std::optional<sdbus::Error> error) {
-            if (error) kLog.warn("Dial: {}", error->getMessage());
-          });
+      dial(item.deviceId, actionId);
       return;
     }
     m_proxy->callMethodAsync("NotificationAction").onInterface(kInterface)
@@ -225,6 +271,13 @@ namespace linkapp {
     m_proxy->callMethodAsync("Connect").onInterface(kInterface).withArguments(deviceId)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("Connect: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::dial(const std::string& deviceId, const std::string& number) {
+    m_proxy->callMethodAsync("Dial").onInterface(kInterface).withArguments(deviceId, number)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("Dial: {}", error->getMessage());
         });
   }
 

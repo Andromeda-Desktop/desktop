@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -80,6 +82,102 @@ namespace linkapp {
 
   private:
     std::vector<FeedItem> m_items;
+  };
+
+  // One SMS as Link1 Texts reports it.
+  struct Text {
+    std::uint64_t id = 0;
+    std::uint64_t thread = 0;
+    std::string address;
+    std::string body;
+    std::int64_t atMs = 0;
+    bool sent = false;
+  };
+
+  struct Contact {
+    std::string name;
+    std::vector<std::string> numbers;
+  };
+
+  struct Thread {
+    std::uint64_t id = 0;
+    std::string address; // the other side's number
+    std::string name;    // the contact name, else the address
+    std::string last;    // the newest body
+    std::int64_t atMs = 0;
+    int unread = 0;
+  };
+
+  // A text the user sent that Texts does not hold yet: Sending -> (in Texts: gone) | Failed; Failed -> Sending.
+  struct Outgoing {
+    enum class State : std::uint8_t { Sending, Failed };
+    std::uint64_t serial = 0;
+    std::uint64_t thread = 0;
+    std::string body;
+    std::int64_t atMs = 0;
+    State state = State::Sending;
+  };
+
+  // One row of a conversation, oldest first.
+  struct ConversationRow {
+    enum class Kind : std::uint8_t { Day, In, Out, Sending, Failed };
+    Kind kind = Kind::Day;
+    std::string text; // the day label or the body
+    std::int64_t atMs = 0;
+    std::uint64_t key = 0;   // stable per row: text id, outgoing serial, or day
+    bool runEnd = false; // the last bubble before the other side, a day line or the end: its time shows below
+    std::uint64_t serial = 0; // Sending and Failed: the outgoing serial
+  };
+
+  // "Today", "Yesterday", a weekday within the last week, else "12 Mar" (and the year when it is not this year).
+  [[nodiscard]] std::string dayLabel(std::int64_t atMs, std::int64_t nowMs);
+
+  // Match key of a phone number: its last 9 digits, so "+49 151 2345 6789" and "0151 23456789" meet; a name-like
+  // sender (no digits) keys as itself.
+  [[nodiscard]] std::string numberKey(const std::string& address);
+
+  // The Messages page: threads from the newest texts Link1 keeps, unread from TextReceived since start (Link1 has no
+  // read state), and texts the user sent until Texts holds them.
+  class Messages {
+  public:
+    enum class Load : std::uint8_t { Loading, Ready };
+
+    // The phone's texts, any order. Loading -> Ready; drops each outgoing text the new list holds.
+    void setTexts(std::vector<Text> texts);
+    void setContacts(const std::vector<Contact>& contacts);
+    // A new text arrived: unread until its thread is on screen.
+    void received(std::uint64_t textId);
+    // The thread on screen (nullopt: none); its texts count as read now and while it stays on screen.
+    void view(std::optional<std::uint64_t> thread);
+    // Returns the outgoing serial; 0 (and no change) for an unknown thread or an empty body.
+    std::uint64_t send(std::uint64_t thread, std::string body, std::int64_t atMs);
+    // Sending -> Failed; false for an unknown serial or another state.
+    bool sendFailed(std::uint64_t serial);
+    // Failed -> Sending; false otherwise.
+    bool retry(std::uint64_t serial);
+
+    [[nodiscard]] Load load() const { return m_load; }
+    // Newest first.
+    [[nodiscard]] const std::vector<Thread>& threads() const { return m_threads; }
+    [[nodiscard]] const Thread* thread(std::uint64_t id) const;
+    [[nodiscard]] const Outgoing* outgoing(std::uint64_t serial) const;
+    [[nodiscard]] int unread() const;
+    // The contact name for a number, else the number.
+    [[nodiscard]] std::string nameFor(const std::string& address) const;
+    [[nodiscard]] std::vector<ConversationRow> conversation(std::uint64_t thread, std::int64_t nowMs) const;
+
+  private:
+    void rebuild();
+    void readViewed();
+
+    Load m_load = Load::Loading;
+    std::vector<Text> m_texts;
+    std::map<std::string, std::string> m_names; // numberKey -> contact name
+    std::set<std::uint64_t> m_unread;           // text ids
+    std::optional<std::uint64_t> m_viewing;
+    std::vector<Outgoing> m_outgoing;
+    std::uint64_t m_serial = 0;
+    std::vector<Thread> m_threads;
   };
 
 } // namespace linkapp
