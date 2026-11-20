@@ -599,13 +599,14 @@ namespace linkapp {
   }
 
   void LinkApp::action(const std::string& name, const std::vector<std::string>& parameter, const std::string& activationToken) {
-    if (name == "page" && parameter.size() == 1 && m_window != nullptr) {
+    if (name == "page" && parameter.size() == 1) {
       const auto it = std::ranges::find_if(kPages, [&](const PageInfo& info) {
         return std::ranges::equal(std::string_view(info.name), parameter.front(),
                                   [](char a, char b) { return std::tolower(a) == std::tolower(b); });
       });
       if (it != kPages.end()) {
-        show(it->page);
+        activate(activationToken);
+        if (m_window != nullptr) show(it->page);
         return;
       }
     }
