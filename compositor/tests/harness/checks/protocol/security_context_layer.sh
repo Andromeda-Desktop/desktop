@@ -49,7 +49,7 @@ if ! wait "$pid"; then
   echo "denied client failed: $(< "$APP_LOG")"
   exit 1
 fi
-sandboxed_layer org.andromeda.Denied > "$APP_LOG" 2>&1 || {
+(sandboxed_layer org.andromeda.Denied) > "$APP_LOG" 2>&1 || {
   echo "second denied client failed: $(< "$APP_LOG")"
   exit 1
 }
@@ -82,6 +82,18 @@ for _ in $(seq 60); do
   sleep 0.1
 done
 expect_mapped 1 "a second surface of an allowed app"
+
+# A revoke closes the app's surface, and its next surface asks again.
+"$ANDROMEDA" layer-shell-revoke org.andromeda.harness/org.andromeda.Allowed > /dev/null
+if ! wait "$pid"; then
+  echo "revoked client failed: $(< "$APP_LOG")"
+  exit 1
+fi
+expect_mapped 0 "a revoked app"
+sandboxed_layer org.andromeda.Allowed > "$APP_LOG" 2>&1 &
+pid=$!
+await_log "layer-shell access requested app='org.andromeda.harness/org.andromeda.Allowed'" 2
+expect_mapped 0 "a revoked app asking again"
 stop_app "$pid"
 
 # A rule that grants the global skips the panel.

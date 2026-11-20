@@ -1558,11 +1558,6 @@ namespace andromeda {
     pixman_region32_fini(&empty);
   }
 
-  void LayerSurface::awaitAccess(std::string app) {
-    m_access = Access::Awaiting;
-    m_sandboxApp = std::move(app);
-  }
-
   void LayerSurface::grantAccess() {
     m_access = Access::Granted;
     if (Output* out = output()) {

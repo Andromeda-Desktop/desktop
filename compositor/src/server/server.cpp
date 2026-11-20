@@ -523,13 +523,44 @@ namespace andromeda {
     }
   }
 
-  void Server::confirmLayerShellAccess() {
+  void Server::confirmLayerShellAccess(bool remember) {
     if (sessionLocked()) {
       dismissConfirmation();
       return;
     }
+    if (remember && m_pendingLayerShellApp && !m_layerShellPermissions.remember(*m_pendingLayerShellApp)) {
+      kLog.warn("layer-shell access for app='{}' is not remembered: state write failed", *m_pendingLayerShellApp);
+    }
     resolveLayerShellAccess(true);
     m_quitConfirm->hide();
+  }
+
+  bool Server::revokeLayerShellAccess(std::string_view app) {
+    const bool all = app == "all";
+    const bool remembered = m_layerShellPermissions.revoke(app);
+    // A revoke also forgets a session deny, so the app asks again.
+    const std::string key(app);
+    const bool session = all || m_allowedLayerShellApps.erase(key) + m_deniedLayerShellApps.erase(key) > 0;
+    if (all) {
+      m_allowedLayerShellApps.clear();
+      m_deniedLayerShellApps.clear();
+    }
+    if (!remembered && !session) {
+      return false;
+    }
+    std::vector<wlr_layer_surface_v1*> closing;
+    for (const auto& layer : m_layerSurfaces) {
+      if (!layer->sandboxApp().empty() && !layer->awaitingAccess() && (all || layer->sandboxApp() == app)
+          && !m_layerShellPermissions.contains(layer->sandboxApp())
+          && !m_allowedLayerShellApps.contains(layer->sandboxApp())) {
+        closing.push_back(layer->layerSurface());
+      }
+    }
+    for (wlr_layer_surface_v1* surface : closing) {
+      wlr_layer_surface_v1_destroy(surface);
+    }
+    kLog.info("layer-shell access revoked app='{}'", app);
+    return true;
   }
 
   void Server::layerShellRequestGone(const std::string& app) {
@@ -637,7 +668,7 @@ namespace andromeda {
         || m_sessionLock != nullptr
         || sessionLocked()
         || (m_session != nullptr && !m_session->active)
-        || (remember && (m_quitConfirm == nullptr || !m_quitConfirm->canRememberInputCapture()))) {
+        || (remember && (m_quitConfirm == nullptr || !m_quitConfirm->canRemember()))) {
       dismissConfirmation();
       return;
     }

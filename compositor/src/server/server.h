@@ -4,6 +4,7 @@
 #include "core/animation.h"
 #include "core/application_scope.h"
 #include "core/dirty.h"
+#include "layer/layer_shell_permissions.h"
 #include "input/keyboard_layout.h"
 #include "input/lid_state.h"
 #include "input/modifier_tap.h"
@@ -348,7 +349,10 @@ namespace andromeda {
     void confirmScreenCastDynamic();
     void confirmInputEmulation();
     void confirmInputCapture(bool remember = false);
-    void confirmLayerShellAccess();
+    void confirmLayerShellAccess(bool remember = false);
+    // Forgets a remembered or session answer (`all` for every app) and closes the app's layer surfaces.
+    bool revokeLayerShellAccess(std::string_view app);
+    [[nodiscard]] const LayerShellPermissions& layerShellPermissions() const { return m_layerShellPermissions; }
     // A sandboxed app's last surface awaiting layer-shell access is gone.
     void layerShellRequestGone(const std::string& app);
     void dismissConfirmation();
@@ -1125,6 +1129,7 @@ namespace andromeda {
     std::unordered_set<std::string> m_allowedLayerShellApps;
     std::unordered_set<std::string> m_deniedLayerShellApps;
     std::optional<std::string> m_pendingLayerShellApp;
+    LayerShellPermissions m_layerShellPermissions{LayerShellPermissions::defaultPath()};
     void promptLayerShellAccess();
     void resolveLayerShellAccess(bool allow);
     wl_event_source* m_backgroundFrameTimer = nullptr;

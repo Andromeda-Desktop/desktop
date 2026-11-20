@@ -64,6 +64,20 @@ namespace andromeda {
     return nlohmann::json{{"ok", std::move(result)}};
   }
 
+  nlohmann::json IpcCommands::layerShellPermissions(Server& server, std::string_view) {
+    return nlohmann::json{{"ok", server.layerShellPermissions().apps()}};
+  }
+
+  nlohmann::json IpcCommands::layerShellRevoke(Server& server, std::string_view arg) {
+    if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
+      return nlohmann::json{{"err", "usage: layer-shell-revoke <sandbox_engine/app_id|all>"}};
+    }
+    if (!server.revokeLayerShellAccess(arg)) {
+      return nlohmann::json{{"err", "unable to revoke layer-shell access (unknown app or state write failed)"}};
+    }
+    return nlohmann::json{{"ok", true}};
+  }
+
   nlohmann::json IpcCommands::inputCaptureRevoke(Server& server, std::string_view arg) {
     if (arg.empty() || arg.find_first_of(" \t\r\n") != std::string_view::npos) {
       return nlohmann::json{{"err", "usage: input-capture-revoke <id|all>"}};
@@ -1863,6 +1877,10 @@ namespace andromeda {
        &IpcCommands::inputCapturePermissions, nullptr},
       {"input-capture-revoke", "<id|all>", "forget capture permission and stop sessions using it",
        IpcCommandGroup::Control, true, &IpcCommands::inputCaptureRevoke, nullptr},
+      {"layer-shell-permissions", "", "list sandboxed apps remembered for layer-shell", IpcCommandGroup::Inspect, false,
+       &IpcCommands::layerShellPermissions, nullptr},
+      {"layer-shell-revoke", "<sandbox_engine/app_id|all>", "forget layer-shell approval and close the app's layers",
+       IpcCommandGroup::Control, true, &IpcCommands::layerShellRevoke, nullptr},
       {"global-shortcuts", "", "list global shortcut grants and app sessions", IpcCommandGroup::Inspect, false,
        &IpcCommands::globalShortcuts, &printGlobalShortcuts},
       {"global-shortcuts-revoke", "<app-id|all>", "forget an app's global shortcut approvals and unbind it",

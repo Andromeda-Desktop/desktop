@@ -25,6 +25,8 @@ Replies use `{"ok": ...}` or `{"err": "..."}`.
 | `{"cmd":"outputs"}`                           | `andromeda outputs --json`                   |
 | `{"cmd":"input-capture-permissions"}`         | `andromeda input-capture-permissions --json` |
 | `{"cmd":"input-capture-revoke","arg":"<id>"}` | `andromeda input-capture-revoke <id>`        |
+| `{"cmd":"layer-shell-permissions"}`           | `andromeda layer-shell-permissions --json`   |
+| `{"cmd":"layer-shell-revoke","arg":"<app>"}`  | `andromeda layer-shell-revoke <app>`         |
 | `{"cmd":"global-shortcuts"}`                  | `andromeda global-shortcuts --json`          |
 | `{"cmd":"global-shortcuts-revoke","arg":"<app>"}` | `andromeda global-shortcuts-revoke <app>` |
 | `{"cmd":"global-shortcuts-assign","arg":"<app> <id> <chord\|off>"}` | `andromeda global-shortcuts-assign <app> <id> <chord\|off>` |
@@ -86,6 +88,8 @@ Inspection never picks, compiles, or binds an effect. Use `effects`, not `output
 `input-capture-permissions` lists remembered grants with `id`, `application`, `capabilities`, and `persist_mode`. Application identifiers can be empty and are not verified display names. The reply never contains restore credentials.
 
 `input-capture-revoke <id>` forgets a grant and stops its live capture sessions. `input-capture-revoke all` forgets every grant. Revoking an already forgotten valid ID succeeds. A state-write error is reported even though matching live capture sessions are stopped. See [Input capture](security.md#input-capture) for approval lifetimes and the state file location.
+
+`layer-shell-permissions` lists the sandboxed applications remembered for layer shell, as `sandbox_engine/app_id` strings. `layer-shell-revoke <app>` forgets the remembered and the session answer for that application and closes its layer surfaces; `all` forgets every answer. An application with no answer is an error. See [Overlays](security.md#overlays).
 
 ## Global shortcuts
 

@@ -170,7 +170,9 @@ namespace andromeda {
         : m_kind == Kind::LayerShell
         ? std::format(
               "The sandboxed app '{}' wants to draw above other windows, including fullscreen games.\n"
-              "Enter allows it for this Andromeda session; any other key or click denies it.",
+              "Enter allows it for this Andromeda session.\n"
+              "R remembers approval until you revoke it.\n"
+              "Any other key or click denies it.",
               m_application
           )
         : m_kind == Kind::SessionQuit

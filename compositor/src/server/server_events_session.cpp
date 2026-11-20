@@ -82,16 +82,19 @@ namespace andromeda {
       );
       const std::vector<std::string> ruleGlobals =
           securityContextRuleGlobals(config(), context->sandbox_engine, context->app_id);
-      if (self->m_deniedLayerShellApps.contains(app)) {
-        LayerSurface* denied = surface.get();
-        self->m_layerSurfaces.push_back(std::move(surface));
-        // Sends closed; destroy removes the surface again.
-        wlr_layer_surface_v1_destroy(denied->layerSurface());
-        return;
-      }
-      if (!self->m_allowedLayerShellApps.contains(app)
-          && std::ranges::find(ruleGlobals, std::string_view("zwlr_layer_shell_v1")) == ruleGlobals.end()) {
-        surface->awaitAccess(std::move(app));
+      // A rule grant is config, not an answer: such surfaces carry no app, so a revoke leaves them alone.
+      if (std::ranges::find(ruleGlobals, std::string_view("zwlr_layer_shell_v1")) == ruleGlobals.end()) {
+        if (self->m_deniedLayerShellApps.contains(app)) {
+          LayerSurface* denied = surface.get();
+          self->m_layerSurfaces.push_back(std::move(surface));
+          // Sends closed; destroy removes the surface again.
+          wlr_layer_surface_v1_destroy(denied->layerSurface());
+          return;
+        }
+        if (!self->m_allowedLayerShellApps.contains(app) && !self->m_layerShellPermissions.contains(app)) {
+          surface->awaitAccess();
+        }
+        surface->setSandboxApp(std::move(app));
       }
     }
     if (wlrLayer->namespace_ != nullptr && std::string_view(wlrLayer->namespace_) == kWindowSwitcherNamespace) {

@@ -81,7 +81,7 @@ andromeda global-shortcuts-revoke all
 
 Andromeda supports version 1 of the [Wayland security-context protocol](https://wayland.app/protocols/security-context-v1). It is always enabled.
 
-A sandbox engine can create a restricted Wayland connection and label it with the sandbox engine, application, and instance. Andromeda then limits the protocols available through that connection. This does not create the sandbox or display permission prompts.
+A sandbox engine can create a restricted Wayland connection and label it with the sandbox engine, application, and instance. Andromeda then limits the protocols available through that connection. This does not create the sandbox. The only permission prompt is for [overlays](#overlays).
 
 ### Restricted capabilities
 
@@ -91,7 +91,7 @@ Restricted clients retain the protocols needed for ordinary windows, rendering, 
 - Direct access to the input-capture bridge
 - Virtual input and input-method ownership
 - Clipboard-manager access
-- Layer shell and session locking
+- Session locking
 - Gamma and output configuration
 - Global workspace and window control
 - Creation of nested security contexts
@@ -99,6 +99,25 @@ Restricted clients retain the protocols needed for ordinary windows, rendering, 
 Trusted host services such as xdg-desktop-portal can mediate privileged operations for a sandboxed application.
 
 New protocols remain hidden from restricted clients until they receive a security review.
+
+### Overlays
+
+Restricted clients can use layer shell, for example a game overlay that draws above a fullscreen game. The first layer surface of each application waits for consent: an **Allow screen overlay?** panel names the application ID, and the surface stays hidden until you answer.
+
+| Key                  | Result                                                                              |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| **Enter**            | Allow the application for this Andromeda session.                                   |
+| **R**                | Allow it until you revoke it. Only a physical keyboard can choose this.            |
+| Any other key, click | Deny it for this session. Its layer surfaces close; the application keeps running. |
+
+The lock screen hides the panel without an answer, and the panel returns after unlock. A `[[security_context_rule]]` that lists `zwlr_layer_shell_v1` skips the panel. Remembered applications are stored in `$XDG_STATE_HOME/andromeda/layer-shell-permissions.json`.
+
+```sh
+andromeda layer-shell-permissions                # remembered applications
+andromeda layer-shell-revoke org.flatpak/com.example.App   # or: all
+```
+
+A revoke forgets the answer for this session too and closes the application's layer surfaces, so its next surface asks again. Applications are named `sandbox_engine/app_id`.
 
 ### Per-application grants
 

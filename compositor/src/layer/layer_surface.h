@@ -44,10 +44,12 @@ namespace andromeda {
     [[nodiscard]] wlr_layer_surface_v1* layerSurface() const { return m_layerSurface; }
     [[nodiscard]] wlr_scene_layer_surface_v1* scene() const { return m_scene; }
     [[nodiscard]] bool mapped() const { return m_mapped; }
+    // "sandbox_engine/app_id" of a sandboxed client that needs the user's answer, else empty.
     // A sandboxed app's surface gets no configure, so it cannot map, until the user allows layer-shell for the app.
     [[nodiscard]] bool awaitingAccess() const { return m_access == Access::Awaiting; }
     [[nodiscard]] const std::string& sandboxApp() const { return m_sandboxApp; }
-    void awaitAccess(std::string app);
+    void setSandboxApp(std::string app) { m_sandboxApp = std::move(app); }
+    void awaitAccess() { m_access = Access::Awaiting; }
     void grantAccess();
     [[nodiscard]] bool exclusiveKeyboard() const;
     [[nodiscard]] bool acceptsKeyboard() const;

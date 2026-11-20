@@ -546,12 +546,12 @@ namespace andromeda {
       if (QuitConfirm* confirm = m_server->quitConfirm(); confirm != nullptr && confirm->visible()) {
         if (!modifierOnly) {
           bool confirmed = false;
-          bool rememberCapture = false;
+          bool remember = false;
           for (int i = 0; i < nsyms; ++i) {
             confirmed = confirmed || syms[i] == XKB_KEY_Return || syms[i] == XKB_KEY_KP_Enter;
-            if (!m_virtual && confirm->canRememberInputCapture() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
+            if (!m_virtual && confirm->canRemember() && (syms[i] == XKB_KEY_r || syms[i] == XKB_KEY_R)) {
               confirmed = true;
-              rememberCapture = true;
+              remember = true;
             }
           }
           // Repeating the quit action or any target-changing screencast action confirms its corresponding panel.
@@ -577,11 +577,11 @@ namespace andromeda {
             } else if (confirm->kind() == QuitConfirm::Kind::InputEmulation) {
               m_server->confirmInputEmulation();
             } else if (confirm->kind() == QuitConfirm::Kind::InputCapture) {
-              m_server->confirmInputCapture(rememberCapture);
+              m_server->confirmInputCapture(remember);
             } else if (confirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
               m_server->globalShortcuts()->approvalEnter();
             } else if (confirm->kind() == QuitConfirm::Kind::LayerShell) {
-              m_server->confirmLayerShellAccess();
+              m_server->confirmLayerShellAccess(remember);
             } else {
               m_server->confirmScreenCastDynamic();
             }

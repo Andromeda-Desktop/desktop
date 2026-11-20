@@ -40,8 +40,9 @@ namespace andromeda {
     void hide();
     [[nodiscard]] bool visible() const { return m_tree != nullptr; }
     [[nodiscard]] Kind kind() const { return m_kind; }
-    [[nodiscard]] bool canRememberInputCapture() const {
-      return m_kind == Kind::InputCapture && (m_inputCapturePersistMode == 1 || m_inputCapturePersistMode == 2);
+    [[nodiscard]] bool canRemember() const {
+      return m_kind == Kind::LayerShell
+          || (m_kind == Kind::InputCapture && (m_inputCapturePersistMode == 1 || m_inputCapturePersistMode == 2));
     }
     void relayout(); // re-render if visible (output add/remove/scale change)
 
