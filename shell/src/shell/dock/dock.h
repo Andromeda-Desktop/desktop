@@ -60,6 +60,8 @@ public:
   void toggleVisibility();
   void requestLayout();
   void requestRedraw();
+  // The open preview and item menu, routed before every other shell surface so an outside press always closes them.
+  bool onPopupPointerEvent(const PointerEvent& event);
   bool onPointerEvent(const PointerEvent& event);
   [[nodiscard]] std::vector<wl_surface*> surfaces() const;
 

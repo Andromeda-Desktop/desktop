@@ -655,25 +655,24 @@ std::vector<wl_surface*> Dock::surfaces() const {
   return out;
 }
 
-bool Dock::onPointerEvent(const PointerEvent& event) {
+bool Dock::onPopupPointerEvent(const PointerEvent& event) {
   if (m_preview != nullptr && m_preview->isOpen() && m_preview->onPointerEvent(event)) {
     return true;
   }
-  // Route open popups first. Unconsumed presses dismiss the menu; only continue to
-  // dock hit-testing when the press is on the dock itself.
+  // Unconsumed presses dismiss the menu; only a press on the dock itself goes on to dock hit-testing.
   if (m_itemMenu != nullptr) {
-    const bool consumed = shell::dock::routePopupEvent(*m_itemMenu, event);
-    if (consumed) {
+    if (shell::dock::routePopupEvent(*m_itemMenu, event)) {
       return true;
     }
     if (event.type == PointerEvent::Type::Button && event.pressed) {
       closeItemMenu();
-      if (event.surface == nullptr || !m_surfaceMap.contains(WaylandSurface::wlOf(event.surface))) {
-        return true;
-      }
+      return event.surface == nullptr || !m_surfaceMap.contains(WaylandSurface::wlOf(event.surface));
     }
   }
+  return false;
+}
 
+bool Dock::onPointerEvent(const PointerEvent& event) {
   switch (event.type) {
   case PointerEvent::Type::Enter: {
     auto it = m_surfaceMap.find(WaylandSurface::wlOf(event.surface));
@@ -1591,10 +1590,8 @@ void Dock::openItemMenu(shell::dock::DockInstance& instance, const shell::dock::
       .closeMenu = [this] { closeItemMenu(); },
   };
 
-  auto* layerSurface =
-      instance.surface != nullptr ? m_platform->layerSurfaceFor(instance.surface->wlSurface()) : nullptr;
   m_itemMenu = shell::dock::createItemMenu(
-      *m_platform, *m_config, *m_renderContext, layerSurface, instance.output, instance.config, action.entry, windows,
+      *m_platform, *m_config, *m_renderContext, instance.surface.get(), instance.output, instance.config, action.entry, windows,
       callbacks
   );
   if (m_itemMenu == nullptr) {
@@ -1664,10 +1661,8 @@ void Dock::openTrashMenu(shell::dock::DockInstance& instance) {
       .hideTrash = [this, path = std::move(showTrashPath)] { (void)m_config->setOverride(path, false); },
       .closeMenu = [this] { closeItemMenu(); },
   };
-  auto* layerSurface =
-      instance.surface != nullptr ? m_platform->layerSurfaceFor(instance.surface->wlSurface()) : nullptr;
   m_itemMenu = shell::dock::createTrashMenu(
-      *m_platform, *m_config, *m_renderContext, layerSurface, instance.output, instance.config, callbacks
+      *m_platform, *m_config, *m_renderContext, instance.surface.get(), instance.output, instance.config, callbacks
   );
   if (m_itemMenu == nullptr) {
     m_popupOwnerInstance = nullptr;

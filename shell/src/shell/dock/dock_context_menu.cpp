@@ -1,28 +1,21 @@
 #include "shell/dock/dock_context_menu.h"
-#include "core/input/cursor_shape.h"
 
 #include "compositors/compositor_platform.h"
 #include "config/config_service.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
-#include "core/ui_phase.h"
 #include "i18n/i18n.h"
 #include "render/render_context.h"
-#include "render/render_target.h"
-#include "render/scene/node.h"
 #include "shell/dock/pinned_apps.h"
 #include "system/desktop_entry.h"
-#include "ui/builders.h"
 #include "ui/controls/context_menu.h"
+#include "ui/controls/context_menu_popup.h"
 #include "ui/popup_chrome.h"
 #include "ui/style.h"
-#include "wayland/popup_surface.h"
 #include "wayland/wayland_connection.h"
 #include "compositors/wayland_toplevels.h"
-#include "xdg-shell-client-protocol.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 
 namespace shell::dock {
@@ -75,252 +68,79 @@ namespace shell::dock {
   DockPopup::~DockPopup() = default;
 
   bool routePopupEvent(DockPopup& popup, const PointerEvent& event) {
-    const bool onPopup = (event.surface != nullptr && event.surface == popup.surface.get());
-    bool consumed = false;
-
-    switch (event.type) {
-    case PointerEvent::Type::Enter:
-      if (onPopup) {
-        popup.pointerInside = true;
-        popup.inputDispatcher.pointerEnter(static_cast<float>(event.sx), static_cast<float>(event.sy), event.serial);
-      }
-      break;
-    case PointerEvent::Type::Leave:
-      if (onPopup) {
-        popup.pointerInside = false;
-        popup.inputDispatcher.pointerLeave();
-      }
-      break;
-    case PointerEvent::Type::Motion:
-      if (onPopup) {
-        popup.pointerInside = true;
-        popup.inputDispatcher.pointerMotion(static_cast<float>(event.sx), static_cast<float>(event.sy), 0);
-        consumed = true;
-      } else if (popup.pointerInside && event.surface != nullptr) {
-        // Grab may omit Leave when the pointer moves to another noctalia surface.
-        popup.pointerInside = false;
-        popup.inputDispatcher.pointerLeave();
-      }
-      break;
-    case PointerEvent::Type::Button:
-      if (onPopup) {
-        popup.pointerInside = true;
-        // Keep hover state synced before click dispatch so stationary pointers can
-        // still activate rows even if Enter/Motion ordering is flaky.
-        popup.inputDispatcher.pointerMotion(static_cast<float>(event.sx), static_cast<float>(event.sy), event.serial);
-        const bool pressed = event.pressed;
-        popup.inputDispatcher.pointerButton(
-            static_cast<float>(event.sx), static_cast<float>(event.sy), event.button, pressed, event.serial, event.time,
-            event.touch
-        );
-        consumed = true;
-      } else if (popup.pointerInside && event.surface != nullptr) {
-        popup.pointerInside = false;
-        popup.inputDispatcher.pointerLeave();
-      }
-      break;
-    case PointerEvent::Type::Axis:
-      break;
-    }
-
-    if (popup.surface != nullptr
-        && popup.sceneRoot != nullptr
-        && (popup.sceneRoot->paintDirty() || popup.sceneRoot->layoutDirty())) {
-      if (popup.sceneRoot->layoutDirty()) {
-        popup.surface->requestLayout();
-      } else {
-        popup.surface->requestRedraw();
-      }
-    }
-
-    return consumed;
+    return popup.menu != nullptr && popup.menu->isOpen() && popup.menu->onPointerEvent(event);
   }
 
   namespace {
     // Shows `entries` as a dock popup menu at the pointer; `onActivate` gets the chosen entry id, then the menu closes.
     std::unique_ptr<DockPopup> showMenu(
         std::unique_ptr<DockPopup> menu, CompositorPlatform& platform, ConfigService& config,
-        RenderContext& renderContext, zwlr_layer_surface_v1* parentLayerSurface, wl_output* output,
-        const DockConfig& dockConfig, const std::vector<ContextMenuControlEntry>& entries,
-        const std::function<void(std::int32_t)>& onActivate, const std::function<void()>& closeMenu
+        RenderContext& renderContext, Surface* parent, wl_output* output, const DockConfig& dockConfig,
+        std::vector<ContextMenuControlEntry> entries, const std::function<void(std::int32_t)>& onActivate,
+        const std::function<void()>& closeMenu
     ) {
-      // Compute popup geometry; width grows past the base width to fit long window titles.
-      const float menuHeight = ContextMenuControl::preferredHeight(entries, entries.size());
-      float measureScale = 1.0F;
-      if (const WaylandOutput* menuOutput = platform.wayland().findOutputByWl(output); menuOutput != nullptr) {
-        measureScale = menuOutput->configuredScale();
+      if (parent == nullptr) {
+        kLog.warn("dock: no dock surface for the item menu");
+        return nullptr;
       }
-      ScaledRenderer measureRenderer(renderContext, measureScale);
-      const float menuWidth =
-          std::clamp(ContextMenuControl::preferredWidth(measureRenderer, entries), kMenuWidth, Style::menuAutoMaxWidth);
-
-      // Determine anchor / gravity + gap based on dock position.
       const DockEdge edge = dockConfig.position;
       const bool isBottom = edge == DockEdge::Bottom;
       const bool isTop = edge == DockEdge::Top;
       const bool isRight = edge == DockEdge::Right;
-
-      PopupAnchor anchor = PopupAnchor::None;
-      PopupGravity gravity = PopupGravity::None;
-      std::int32_t offsetX = 0;
-      std::int32_t offsetY = 0;
       // Clearance past the icon/tooltip; chrome Bottom attachment folds bleed into offset.
       const std::int32_t kGap = std::max(2, static_cast<std::int32_t>(Style::spaceLg + Style::spaceMd));
-
+      ContextMenuPopupPlacement placement{
+          .chromeAttachment = popupAttachmentForDockPosition(isBottom, isTop, isRight),
+      };
       if (isBottom) {
-        anchor = PopupAnchor::Top;
-        gravity = PopupGravity::Top;
-        offsetY = -kGap;
+        placement.anchor = PopupAnchor::Top;
+        placement.gravity = PopupGravity::Top;
+        placement.offsetY = -kGap;
       } else if (isTop) {
-        anchor = PopupAnchor::Bottom;
-        gravity = PopupGravity::Bottom;
-        offsetY = kGap;
+        placement.anchor = PopupAnchor::Bottom;
+        placement.gravity = PopupGravity::Bottom;
+        placement.offsetY = kGap;
       } else if (isRight) {
-        anchor = PopupAnchor::Left;
-        gravity = PopupGravity::Left;
-        offsetX = -kGap;
-      } else { // left
-        anchor = PopupAnchor::Right;
-        gravity = PopupGravity::Right;
-        offsetX = kGap;
+        placement.anchor = PopupAnchor::Left;
+        placement.gravity = PopupGravity::Left;
+        placement.offsetX = -kGap;
+      } else {
+        placement.anchor = PopupAnchor::Right;
+        placement.gravity = PopupGravity::Right;
+        placement.offsetX = kGap;
       }
 
+      // Pointer-centred cell (tray-style); panel-face anchors miss hover-zoom padding.
       const auto ptrX = static_cast<std::int32_t>(platform.lastPointerX());
       const auto ptrY = static_cast<std::int32_t>(platform.lastPointerY());
       const std::int32_t halfCell = std::max(1, dockConfig.iconSize / 2);
 
-      // Pointer-centred cell (tray-style); panel-face anchors miss hover-zoom padding.
-      const std::int32_t aX = ptrX - halfCell;
-      const std::int32_t aY = ptrY - halfCell;
-      const std::int32_t aW = halfCell * 2;
-      const std::int32_t aH = halfCell * 2;
-
-      const auto menuChrome = popup_chrome::computeGeometry(
-          menuWidth, menuHeight, config.config().shell.shadow, Style::popupShadowsEnabled()
-      );
-      PopupSurfaceConfig popupCfg{
-          .anchorX = aX,
-          .anchorY = aY,
-          .anchorWidth = std::max(1, aW),
-          .anchorHeight = std::max(1, aH),
-          .width = menuChrome.surfaceWidth,
-          .height = menuChrome.surfaceHeight,
-          .anchor = anchor,
-          .gravity = gravity,
-          .constraintAdjustment = PopupConstraint::SlideX
-              | PopupConstraint::SlideY
-              | PopupConstraint::FlipX
-              | PopupConstraint::FlipY,
-          .offsetX = offsetX,
-          .offsetY = offsetY,
-          .serial = platform.lastInputSerial(),
-          .grab = true,
-      };
-      popup_chrome::applyToConfig(popupCfg, menuChrome, popupAttachmentForDockPosition(isBottom, isTop, isRight));
-
-      menu->surface = std::make_unique<PopupSurface>(platform.wayland());
-      menu->surface->setRenderContext(&renderContext);
-      menu->chrome = menuChrome;
-
-      auto* menuPtr = menu.get();
-
-      menu->surface->setConfigureCallback([menuPtr](std::uint32_t /*w*/, std::uint32_t /*h*/) {
-        menuPtr->surface->requestLayout();
-      });
-      menu->surface->setPrepareFrameCallback([&platform, &config, &renderContext, menuPtr, entries, onActivate,
-                                              closeMenu](bool /*needsUpdate*/, bool needsLayout) {
-        if (menuPtr->surface == nullptr) {
-          return;
-        }
-
-        const auto width = menuPtr->surface->width();
-        const auto height = menuPtr->surface->height();
-        if (width == 0 || height == 0) {
-          return;
-        }
-
-        renderContext.makeCurrent(menuPtr->surface->renderTarget());
-
-        const bool needsSceneBuild = menuPtr->sceneRoot == nullptr
-            || static_cast<std::uint32_t>(std::round(menuPtr->sceneRoot->width())) != width
-            || static_cast<std::uint32_t>(std::round(menuPtr->sceneRoot->height())) != height;
-        if (!needsSceneBuild && !needsLayout) {
-          return;
-        }
-
-        UiPhaseScope layoutPhase(UiPhase::Layout);
-
-        const auto fw = static_cast<float>(width);
-        const auto fh = static_cast<float>(height);
-
-        menuPtr->sceneRoot = ui::node({});
-        menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-        menuPtr->glassConn = Style::glassChanged().connect([menuPtr] {
-          if (menuPtr->sceneRoot != nullptr) {
-            menuPtr->sceneRoot->setPaletteTone(glassTone(glass::Kind::Shape));
-          }
-        });
-        menuPtr->sceneRoot->setSize(fw, fh);
-        if (Style::popupShadowsEnabled()) {
-          (void)popup_chrome::addShadow(
-              *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledMenuRadius()
-          );
-        }
-        Box* card = popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F, true);
-        if (menuPtr->surface != nullptr) {
-          popup_chrome::setCardGlass(*menuPtr->surface, menuPtr->chrome, 1.0F, *card, *menuPtr->sceneRoot);
-        }
-
-        auto ctrl = std::make_unique<ContextMenuControl>();
-        ctrl->setMenuWidth(menuPtr->chrome.contentWidth);
-        ctrl->setMaxVisible(entries.size());
-        ctrl->setEntries(entries);
-        ctrl->setRedrawCallback([menuPtr] {
-          if (menuPtr->surface)
-            menuPtr->surface->requestRedraw();
-        });
-        ctrl->setOnActivate([onActivate, closeMenu](const ContextMenuControlEntry& e) {
-          DeferredCall::callLater([id = e.id, onActivate, closeMenu] {
-            onActivate(id);
-            if (closeMenu) {
-              closeMenu();
-            }
-          });
-        });
-        ctrl->setPosition(menuPtr->chrome.contentX(), menuPtr->chrome.contentY());
-        ctrl->setSize(menuPtr->chrome.contentWidth, menuPtr->chrome.contentHeight);
-        ctrl->layout(menuPtr->surface->renderTarget().renderer());
-
-        menuPtr->sceneRoot->addChild(std::move(ctrl));
-        menuPtr->inputDispatcher.setSceneRoot(menuPtr->sceneRoot.get());
-        menuPtr->inputDispatcher.setCursorShapeCallback([&platform](std::uint32_t serial, CursorShape shape) {
-          platform.setCursorShape(serial, std::to_underlying(shape));
-        });
-        menuPtr->surface->setSceneRoot(menuPtr->sceneRoot.get());
-      });
-
-      menu->surface->setDismissedCallback([closeMenu] {
+      menu->menu = std::make_unique<ContextMenuPopup>(platform.wayland(), renderContext);
+      menu->menu->setShadowConfig(config.config().shell.shadow);
+      menu->menu->setOnActivate([onActivate](const ContextMenuControlEntry& e) { onActivate(e.id); });
+      menu->menu->setOnDismissed([closeMenu] {
         DeferredCall::callLater([closeMenu] {
           if (closeMenu) {
             closeMenu();
           }
         });
       });
-
-      if (parentLayerSurface == nullptr || !menu->surface->initialize(parentLayerSurface, output, popupCfg)) {
-        kLog.warn("dock: failed to create item-menu popup");
-        return nullptr;
-      }
-
-      popup_chrome::setContentInputRegion(*menu->surface, menu->chrome);
-      menu->wlSurface = menu->surface->wlSurface();
+      menu->menu->open(ContextMenuPopupRequest{
+          .entries = std::move(entries),
+          .minMenuWidth = kMenuWidth,
+          .maxMenuWidth = Style::menuAutoMaxWidth,
+          .anchor = PopupAnchorRect{.x = ptrX - halfCell, .y = ptrY - halfCell, .width = 2 * halfCell, .height = 2 * halfCell},
+          .parent = PopupParent{.surface = parent, .output = platform.wayland().outputId(output)},
+          .inputSerial = platform.lastInputSerial(),
+          .placement = placement,
+      });
       return menu;
     }
   } // namespace
 
   std::unique_ptr<DockPopup> createItemMenu(
       CompositorPlatform& platform, ConfigService& config, RenderContext& renderContext,
-      zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, const DockConfig& dockConfig,
+      Surface* parent, wl_output* output, const DockConfig& dockConfig,
       const DesktopEntry& entry, const std::vector<ToplevelInfo>& windows, const DockMenuCallbacks& callbacks
   ) {
     auto menu = std::make_unique<DockPopup>();
@@ -439,14 +259,14 @@ namespace shell::dock {
       }
     };
     return showMenu(
-        std::move(menu), platform, config, renderContext, parentLayerSurface, output, dockConfig, entries, onActivate,
+        std::move(menu), platform, config, renderContext, parent, output, dockConfig, entries, onActivate,
         callbacks.closeMenu
     );
   }
 
   std::unique_ptr<DockPopup> createTrashMenu(
       CompositorPlatform& platform, ConfigService& config, RenderContext& renderContext,
-      zwlr_layer_surface_v1* parentLayerSurface, wl_output* output, const DockConfig& dockConfig,
+      Surface* parent, wl_output* output, const DockConfig& dockConfig,
       const DockTrashMenuCallbacks& callbacks
   ) {
     const std::vector<ContextMenuControlEntry> entries{
@@ -462,7 +282,7 @@ namespace shell::dock {
       }
     };
     return showMenu(
-        std::make_unique<DockPopup>(), platform, config, renderContext, parentLayerSurface, output, dockConfig,
+        std::make_unique<DockPopup>(), platform, config, renderContext, parent, output, dockConfig,
         entries, onActivate, callbacks.closeMenu
     );
   }

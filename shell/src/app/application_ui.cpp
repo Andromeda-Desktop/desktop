@@ -463,6 +463,9 @@ void Application::initInputDispatch() {
     if (m_windowSwitcher.onPointerEvent(event)) {
       return;
     }
+    if (m_dock.onPopupPointerEvent(event)) {
+      return;
+    }
     if (m_colorPickerDialogPopup.onPointerEvent(event)) {
       return;
     }
