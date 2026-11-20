@@ -52,9 +52,6 @@ namespace glass {
   // Liquid sheets and menus sit over windows and text, so they blur about 4x a shape at the default (Soft 0.30 to
   // Strong 0): text under them does not show through.
   inline constexpr float kLiquidSheetClarity[2] = {0.30F, 0.0F};
-  // Liquid popovers blur about a quarter of Frosted (clarity 0), so backdrop shapes and the lens bend stay visible; the
-  // near-black dark tint keeps text at 4.5:1 over them.
-  inline constexpr float kLiquidPopoverClarity[2] = {0.75F, 0.35F};
   // Liquid's blur recipe lifts the backdrop by this brightness factor (no frost dimming, no grain).
   inline constexpr float kLiquidLift = 1.05F;
   // Glass shapes of one surface with the same material join by a smooth union within this many logical px, so shapes
@@ -188,16 +185,15 @@ namespace glass {
     };
   }
 
-  // Shell popovers (menus, tooltips, window previews): the island glass with the menu blur, so the backdrop does not
+  // Shell popovers (menus, tooltips, window previews): the island glass; outside Liquid with the menu blur, so the backdrop does not
   // show through their text; the lens bends that blurred backdrop at the bezel.
   [[nodiscard]] inline Material popover(const Settings& settings, bool light) noexcept {
     Material m = material(Kind::Shape, settings, light);
     const Material menu = material(Kind::Menu, settings, light);
-    m.clarity = menu.clarity;
-    m.blurStrength = menu.blurStrength;
-    if (settings.style == Style::Liquid && !settings.reduceTransparency) {
-      m.clarity = std::lerp(kLiquidPopoverClarity[0], kLiquidPopoverClarity[1], std::clamp(settings.liquidBlur, 0.0F, 1.0F));
-      m.blurStrength = blurStrength(m.clarity);
+    // Liquid keeps the island blur, so backdrop shapes and the lens bend show; the near-black dark tint keeps text legible.
+    if (settings.style != Style::Liquid) {
+      m.clarity = menu.clarity;
+      m.blurStrength = menu.blurStrength;
     }
     return m;
   }
