@@ -127,7 +127,8 @@ namespace andromeda::ov {
       wlr_scene_rect* fill = nullptr;
       wlr_scene_buffer* text = nullptr;
       wlr_scene_buffer* icon = nullptr; // leading icon inside the capsule
-      std::string key; // markup + font + scale + width the buffer was rendered for
+      std::string key; // markup, font, scale and box the buffer was rendered for
+      int textMax = 0; // text width limit the buffer was rendered for
       int width = 0;   // capsule (or text) size
       int height = 0;
       int textWidth = 0;

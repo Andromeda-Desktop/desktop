@@ -187,10 +187,14 @@ namespace andromeda::ov {
   void Chrome::setLabel(Label& label, const std::string& markup, const LabelStyle& style, double scale) {
     label.used = true;
     std::string key = std::format(
-        "{}|{}|{}|{}|{}|{}|{}|{}|{}", markup, style.font, scale, style.maxWidth, style.width, style.height, style.wrap,
+        "{}|{}|{}|{}|{}|{}|{}|{}|{}", markup, style.font, scale, style.padX, style.width, style.height, style.wrap,
         static_cast<const void*>(style.icon), style.iconSize
     );
-    if (label.tree != nullptr && key == label.key) {
+    const int lead = style.icon != nullptr ? style.iconSize + u(kIconGap) : 0;
+    const int textMax = std::max(1, style.maxWidth - 2 * style.padX - lead);
+    // One line narrower than both limits renders the same at either, so a card's animated width costs no re-render.
+    const bool sameText = textMax == label.textMax || (!style.wrap && label.textWidth < std::min(textMax, label.textMax));
+    if (label.tree != nullptr && key == label.key && sameText) {
       return;
     }
     if (label.tree == nullptr) {
@@ -205,8 +209,6 @@ namespace andromeda::ov {
       wlr_scene_node_destroy(&label.text->node);
       label.text = nullptr;
     }
-    const int lead = style.icon != nullptr ? style.iconSize + u(kIconGap) : 0;
-    const int textMax = std::max(1, style.maxWidth - 2 * style.padX - lead);
     TextBufferResult rendered = renderTextBuffer({
         .markup = markup,
         .font = std::string(style.font),
@@ -216,6 +218,7 @@ namespace andromeda::ov {
         .ellipsize = !style.wrap,
     });
     label.key = std::move(key);
+    label.textMax = textMax;
     if (rendered.buffer == nullptr) {
       label.textWidth = label.textHeight = 0;
       return;
