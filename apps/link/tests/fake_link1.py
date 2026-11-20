@@ -6,7 +6,9 @@ text, a file offer and notifications once a client calls GetAll. Usage: fake_lin
 """
 import os
 import sys
+import socket
 import struct
+import threading
 import time
 import zlib
 
@@ -127,8 +129,28 @@ def png(index, size=64):
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
+def stream_mirror(sock):
+    """MIRROR env: an Annex B H.264 clip with an AUD per access unit; one unit per access unit at 30 fps, looped."""
+    data = open(os.environ["MIRROR"], "rb").read()
+    starts = [i for i in range(len(data) - 4) if data[i:i + 5] == b"\0\0\0\x01\x09"] + [len(data)]
+    units = [data[a:b] for a, b in zip(starts, starts[1:])]
+    try:
+        while True:
+            for n, unit in enumerate(units):
+                sock.sendall(struct.pack(">IQB", len(unit), n * 33_333, 1 if n == 0 else 0) + unit)
+                time.sleep(1 / 30)
+    except OSError:
+        sock.close()
+
+
 def call(_conn, _sender, _path, _iface, method, params, invocation):
     print("call", method, params, flush=True)
+    if method == "OpenMirror":
+        viewer, phone = socket.socketpair()
+        threading.Thread(target=stream_mirror, args=(phone,), daemon=True).start()
+        fds = Gio.UnixFDList.new_from_array([viewer.detach()])
+        invocation.return_value_with_unix_fd_list(GLib.Variant("(huu)", (0, 1080, 2400)), fds)
+        return
     if method == "ListFiles":
         folders = {"/": [
                        ("DCIM", True, 0, ago(0, 17, 0) // 1000), ("Documents", True, 0, ago(4, 10, 0) // 1000),

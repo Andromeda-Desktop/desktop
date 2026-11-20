@@ -1,6 +1,7 @@
 #pragma once
 
 #include "link_model.h"
+#include "mirror_decoder.h"
 
 #include <cstdint>
 #include <functional>
@@ -42,6 +43,19 @@ namespace linkapp {
     [[nodiscard]] const Activity& activity() const { return m_activity; }
     [[nodiscard]] const Photos& photos() const { return m_photos; }
     [[nodiscard]] const Files& files() const { return m_files; }
+    [[nodiscard]] const Mirror& mirror() const { return m_mirror; }
+    // OpenMirror on the phone presence() shows; the phone's user allows it there.
+    void startMirror();
+    void stopMirror();
+    // MirrorInput without args: back, home, recents, screen-off.
+    void mirrorAction(const std::string& action);
+    // A key press and release (Android key code).
+    void mirrorKey(std::int32_t code);
+    // touch-down, touch-move or touch-up at x, y in 1/10000 of the video.
+    void mirrorTouch(const std::string& action, std::int32_t x, std::int32_t y);
+    void setMirrorTarget(int width, int height);
+    [[nodiscard]] int mirrorFps() const { return m_decoder ? m_decoder->fps() : 0; }
+    void setOnMirrorFrame(std::function<void(MirrorDecoder::Frame)> frame) { m_mirrorFrame = std::move(frame); }
     // Lists `path` on the phone presence() shows ("/" for its roots).
     void openFolder(const std::string& path);
     // Copies the file `name` of the open folder into the downloads folder with ReadFile, 1 MiB at a time.
@@ -108,6 +122,10 @@ namespace linkapp {
     Activity m_activity;
     Photos m_photos;
     Files m_files;
+    Mirror m_mirror;
+    std::string m_mirrorDevice;
+    std::unique_ptr<MirrorDecoder> m_decoder;
+    std::function<void(MirrorDecoder::Frame)> m_mirrorFrame;
     std::string m_photosDevice;
     std::map<std::string, std::vector<std::uint8_t>> m_thumbs; // path -> PNG; empty while in flight
     std::function<void()> m_thumbnailReady;

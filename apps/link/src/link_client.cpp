@@ -523,7 +523,10 @@ namespace linkapp {
     std::string device;
     std::string phonePath;
     std::string local;
-    std::unique_ptr<std::FILE, decltype(&std::fclose)> file{nullptr, &std::fclose};
+    struct Close {
+      void operator()(std::FILE* file) const { std::fclose(file); }
+    };
+    std::unique_ptr<std::FILE, Close> file;
     std::uint64_t got = 0;
     std::chrono::steady_clock::time_point shown;
   };
@@ -597,6 +600,91 @@ namespace linkapp {
           }
           readChunk(download);
         });
+  }
+
+  void LinkClient::startMirror() {
+    const std::string device = presence().phone.id;
+    if (device.empty() || !mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Start})) return;
+    m_mirrorDevice = device;
+    const std::uint64_t session = m_mirror.session;
+    changed();
+    // The phone's user has 60 s to allow capture; the default D-Bus timeout is shorter.
+    m_proxy->callMethodAsync("OpenMirror")
+        .onInterface(kInterface)
+        .withArguments(device)
+        .withTimeout(std::chrono::seconds(70))
+        .uponReplyInvoke([this, session, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, sdbus::UnixFd fd,
+                                                                                std::uint32_t width, std::uint32_t height) {
+          if (alive.expired()) return;
+          if (error) {
+            kLog.warn("OpenMirror: {}", error->getMessage());
+            const std::string why = error->getName().ends_with(".Refused") ? "The phone did not allow screen sharing."
+                                    : error->getName().ends_with(".NotConnected") ? "The phone is not connected."
+                                                                                  : "The phone did not start sharing its screen.";
+            if (mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Failed, .session = session, .error = why})) changed();
+            return;
+          }
+          if (!mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Opened, .session = session, .width = width, .height = height})) {
+            return; // stopped or restarted meanwhile: fd closes here
+          }
+          m_decoder = std::make_unique<MirrorDecoder>(
+              fd.release(),
+              [this](MirrorDecoder::Frame frame) {
+                if (m_mirrorFrame) m_mirrorFrame(std::move(frame));
+              },
+              [this, session](std::string why) {
+                const MirrorEvent event = why.empty() ? MirrorEvent{.kind = MirrorEvent::Kind::Ended, .session = session}
+                                                      : MirrorEvent{.kind = MirrorEvent::Kind::Failed, .session = session, .error = why};
+                if (mirrorStep(m_mirror, event)) {
+                  m_decoder.reset();
+                  changed();
+                }
+              });
+          changed();
+        });
+  }
+
+  void LinkClient::stopMirror() {
+    if (!mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Stop})) return;
+    m_decoder.reset();
+    changed();
+  }
+
+  void LinkClient::mirrorAction(const std::string& action) {
+    if (m_mirror.kind != Mirror::Kind::Showing) return;
+    m_proxy->callMethodAsync("MirrorInput")
+        .onInterface(kInterface)
+        .withArguments(m_mirrorDevice, action, std::map<std::string, sdbus::Variant>{})
+        .uponReplyInvoke([action](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("MirrorInput {}: {}", action, error->getMessage());
+        });
+  }
+
+  void LinkClient::mirrorKey(std::int32_t code) {
+    if (m_mirror.kind != Mirror::Kind::Showing) return;
+    for (const char* action : {"key-down", "key-up"}) {
+      m_proxy->callMethodAsync("MirrorInput")
+          .onInterface(kInterface)
+          .withArguments(m_mirrorDevice, std::string(action),
+                         std::map<std::string, sdbus::Variant>{{"code", sdbus::Variant(code)}, {"meta", sdbus::Variant(std::int32_t{0})}})
+          .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+            if (error) kLog.warn("MirrorInput key: {}", error->getMessage());
+          });
+    }
+  }
+
+  void LinkClient::mirrorTouch(const std::string& action, std::int32_t x, std::int32_t y) {
+    if (m_mirror.kind != Mirror::Kind::Showing) return;
+    m_proxy->callMethodAsync("MirrorInput")
+        .onInterface(kInterface)
+        .withArguments(m_mirrorDevice, action, std::map<std::string, sdbus::Variant>{{"x", sdbus::Variant(x)}, {"y", sdbus::Variant(y)}})
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("MirrorInput touch: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::setMirrorTarget(int width, int height) {
+    if (m_decoder) m_decoder->setTarget(width, height);
   }
 
   void LinkClient::startPairing() {

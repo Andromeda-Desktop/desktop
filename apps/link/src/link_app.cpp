@@ -556,6 +556,7 @@ namespace linkapp {
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
       m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale);
       m_files = std::make_unique<FileAdapter>(*m_client, m_scale);
+      m_client->setOnMirrorFrame([this](MirrorDecoder::Frame frame) { showMirrorFrame(std::move(frame)); });
       m_client->setOnThumbnail([this] {
         if (m_photoGrid != nullptr) m_photoGrid->notifyDataChanged();
       });
@@ -610,10 +611,12 @@ namespace linkapp {
 
   void LinkApp::show(Page page) {
     if (m_page == page) return;
+    if (m_client && m_page == Page::Mirror) m_client->stopMirror();
     m_page = page;
     m_confirmForget = false;
     if (page == Page::Photos && m_client) m_client->loadPhotos();
     if (page == Page::Files && m_client) m_client->openFolder(m_client->files().path());
+    if (page == Page::Mirror && m_client) m_client->startMirror();
     sync();
     updateCaption();
     m_window->requestRebuild();
@@ -627,7 +630,7 @@ namespace linkapp {
     m_window->setTitle(pairing ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
     const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
     if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
-    const bool cards = (m_page == Page::Messages || m_page == Page::Files) && live;
+    const bool cards = (m_page == Page::Messages || m_page == Page::Files || m_page == Page::Mirror) && live;
     const Messages& messages = m_client->messages();
     if (cards && (!m_thread || messages.thread(*m_thread) == nullptr)) {
       m_thread = messages.threads().empty() ? std::nullopt : std::optional(messages.threads().front().id);
@@ -851,6 +854,9 @@ namespace linkapp {
 
   std::unique_ptr<Node> LinkApp::content(Renderer& renderer, float width, float height) {
     m_photoGrid = nullptr;
+    m_mirrorImage = nullptr;
+    m_mirrorStat = nullptr;
+    m_renderer = &renderer;
     const float s = m_scale = m_window->uiScale();
     if (m_client == nullptr) return emptyState("plug-connected-x", "No session bus", "Link needs a D-Bus session.", s);
     const Presence presence = m_client->presence();
@@ -880,6 +886,7 @@ namespace linkapp {
     if (m_page == Page::Calls) return calls();
     if (m_page == Page::Photos) return photos(renderer);
     if (m_page == Page::Files) return files(width, height);
+    if (m_page == Page::Mirror) return mirror(width, height);
     if (m_page == Page::Activity) return activity();
     if (m_page == Page::Settings) return settings(presence);
     if (m_page != Page::Waiting) {
@@ -1125,6 +1132,123 @@ namespace linkapp {
     body->setFlexGrow(1.0F);
     auto cards = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
     cards->addChild(card(std::move(caption), std::move(body), width, true));
+    return cards;
+  }
+
+  std::string LinkApp::mirrorStat() const {
+    const Mirror& mirror = m_client->mirror();
+    const std::string transport = m_client->presence().phone.transport == "bluetooth" ? "Bluetooth" : "Wi-Fi";
+    return std::format("{} × {} · {} fps · {}", mirror.width, mirror.height, m_client->mirrorFps(), transport);
+  }
+
+  void LinkApp::showMirrorFrame(MirrorDecoder::Frame frame) {
+    if (m_renderer == nullptr) return;
+    TextureManager& textures = m_renderer->textureManager();
+    const bool same = m_mirrorTexture.valid() && m_mirrorTexture.width == frame.width && m_mirrorTexture.height == frame.height;
+    const bool uploaded =
+        (same && textures.updateSubImage(m_mirrorTexture, frame.rgba.data(), 0, 0, frame.width, frame.height, TextureDataFormat::Rgba)) ||
+        textures.replace(m_mirrorTexture, frame.rgba.data(), frame.width, frame.height, TextureDataFormat::Rgba);
+    if (!uploaded || m_mirrorImage == nullptr) return;
+    m_mirrorImage->setExternalTexture(*m_renderer, m_mirrorTexture);
+    m_mirrorImage->markPaintDirty();
+    if (m_mirrorStat != nullptr) m_mirrorStat->setText(mirrorStat());
+    m_window->surface()->requestRedraw();
+  }
+
+  // Mirror (flow.html#page=mirror): a dark stage, the phone's screen centred, its size and rate above, keys below.
+  std::unique_ptr<Node> LinkApp::mirror(float width, float height) {
+    const float s = m_scale;
+    const Mirror& mirror = m_client->mirror();
+    const std::string phone = m_client->presence().phone.name;
+    std::vector<std::unique_ptr<Node>> caption;
+    caption.push_back(text("Mirror", Tokens::typeHeadline, ColorRole::Label1, s));
+    auto name = text(phone, Tokens::typeFootnote, ColorRole::Label2, s);
+    name->setFlexGrow(1.0F);
+    caption.push_back(std::move(name));
+    if (mirror.kind == Mirror::Kind::Showing || mirror.kind == Mirror::Kind::Asking) {
+      caption.push_back(ui::button({.text = std::string("Stop"), .variant = ButtonVariant::Ghost, .onClick = [this] { m_client->stopMirror(); }}));
+    }
+
+    const float bodyH = height - Tokens::componentWindowCaption * s;
+    auto stage = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP16 * s,
+                             .fill = colorSpecFromRole(ColorRole::View), .flexGrow = 1.0F});
+    stage->setPaletteTone(PaletteTone::Dark);
+    const auto start = [this](const char* label) {
+      return ui::button({.text = std::string(label), .variant = ButtonVariant::Primary, .onClick = [this] { m_client->startMirror(); }});
+    };
+    switch (mirror.kind) {
+    case Mirror::Kind::Idle:
+      stage->addChild(emptyState("device-mobile", "Show " + phone + "'s screen", "The phone asks before it shares its screen.", s, start("Start")));
+      break;
+    case Mirror::Kind::Asking:
+      stage->addChild(emptyState("device-mobile", "Allow on the phone", "Tap Start now on " + phone + " to share its screen.", s));
+      break;
+    case Mirror::Kind::Ended:
+      stage->addChild(emptyState("device-mobile-off", "Screen sharing stopped", phone + " stopped sharing its screen.", s, start("Start Again")));
+      break;
+    case Mirror::Kind::Failed:
+      stage->addChild(emptyState("device-mobile-off", "No screen to show", mirror.error, s, start("Try Again")));
+      break;
+    case Mirror::Kind::Showing: {
+      auto stat = text(mirrorStat(), Tokens::typeFootnote, ColorRole::Label2, s);
+      m_mirrorStat = stat.get();
+      stage->addChild(std::move(stat));
+      // The video fills the stage height less the stat line, the key bar and their gaps, in the phone's aspect.
+      const float aspect = static_cast<float>(mirror.width) / static_cast<float>(mirror.height);
+      float videoH = std::max(1.0F, bodyH - Tokens::componentLinkMirrorChrome * s);
+      float videoW = videoH * aspect;
+      const float maxW = width - 2.0F * Tokens::spaceP24 * s;
+      if (videoW > maxW) {
+        videoW = maxW;
+        videoH = videoW / aspect;
+      }
+      m_client->setMirrorTarget(static_cast<int>(std::lround(videoW)), static_cast<int>(std::lround(videoH)));
+      Image* image = nullptr;
+      auto area = ui::inputArea({.width = videoW, .height = videoH});
+      area->addChild(ui::image({.out = &image, .fit = ImageFit::Contain, .radius = Style::scaledRadius(Tokens::componentLinkMirrorRadius, s),
+                                .width = videoW, .height = videoH}));
+      m_mirrorImage = image;
+      if (m_mirrorTexture.valid()) image->setExternalTexture(*m_renderer, m_mirrorTexture);
+      // MirrorInput takes positions in 1/10000 of the video.
+      const auto at = [videoW, videoH](float x, float y) {
+        return std::pair{static_cast<std::int32_t>(std::clamp(x / videoW, 0.0F, 1.0F) * 10000.0F),
+                         static_cast<std::int32_t>(std::clamp(y / videoH, 0.0F, 1.0F) * 10000.0F)};
+      };
+      area->setOnPress([this, at](const InputArea::PointerData& data) {
+        if (data.button != BTN_LEFT || data.pressed == m_touching) return;
+        m_touching = data.pressed;
+        const auto [x, y] = at(data.localX, data.localY);
+        m_client->mirrorTouch(data.pressed ? "touch-down" : "touch-up", x, y);
+      });
+      area->setOnMotion([this, at](const InputArea::PointerData& data) {
+        if (!m_touching) return;
+        const auto [x, y] = at(data.localX, data.localY);
+        m_client->mirrorTouch("touch-move", x, y);
+      });
+      stage->addChild(std::move(area));
+
+      // FloatingCapsuleBar (handoff.yaml), dark glass: Back, Home, Recents | Volume, Lock.
+      auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Popover),
+                          .radius = Tokens::sizeControlXl * s / 2.0F, .height = Tokens::sizeControlXl * s});
+      bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
+      const auto key = [&](const char* glyph, const char* tip, std::function<void()> press) {
+        bar->addChild(ui::button({.glyph = std::string(glyph), .variant = ButtonVariant::Ghost, .tooltip = std::string(tip),
+                                  .onClick = std::move(press)}));
+      };
+      key("chevron-left", "Back", [this] { m_client->mirrorAction("back"); });
+      key("home", "Home", [this] { m_client->mirrorAction("home"); });
+      key("dots", "Recent apps", [this] { m_client->mirrorAction("recents"); });
+      bar->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Separator), .width = s, .height = Tokens::spaceP12 * s}));
+      constexpr std::int32_t kVolumeUp = 24; // Android KeyEvent codes
+      constexpr std::int32_t kPower = 26;
+      key("volume", "Volume", [this] { m_client->mirrorKey(kVolumeUp); });
+      key("lock", "Lock", [this] { m_client->mirrorKey(kPower); });
+      stage->addChild(std::move(bar));
+      break;
+    }
+    }
+    auto cards = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
+    cards->addChild(card(std::move(caption), std::move(stage), width, true));
     return cards;
   }
 

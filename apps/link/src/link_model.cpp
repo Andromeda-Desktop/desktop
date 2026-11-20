@@ -530,4 +530,35 @@ namespace linkapp {
     return true;
   }
 
+  bool mirrorStep(Mirror& mirror, const MirrorEvent& event) {
+    using K = Mirror::Kind;
+    using E = MirrorEvent::Kind;
+    const bool current = event.session == mirror.session;
+    switch (event.kind) {
+    case E::Start:
+      if (mirror.kind == K::Asking || mirror.kind == K::Showing) return false;
+      mirror = {.kind = K::Asking, .session = mirror.session + 1};
+      return true;
+    case E::Opened:
+      if (!current || mirror.kind != K::Asking || event.width == 0 || event.height == 0) return false;
+      mirror.kind = K::Showing;
+      mirror.width = event.width;
+      mirror.height = event.height;
+      return true;
+    case E::Ended:
+      if (!current || mirror.kind != K::Showing) return false;
+      mirror = {.kind = K::Ended, .session = mirror.session};
+      return true;
+    case E::Failed:
+      if (!current || (mirror.kind != K::Asking && mirror.kind != K::Showing)) return false;
+      mirror = {.kind = K::Failed, .session = mirror.session, .error = event.error};
+      return true;
+    case E::Stop:
+      if (mirror.kind != K::Asking && mirror.kind != K::Showing) return false;
+      mirror = {.kind = K::Idle, .session = mirror.session};
+      return true;
+    }
+    return false;
+  }
+
 } // namespace linkapp

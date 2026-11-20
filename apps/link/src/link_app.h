@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/desk_app.h"
+#include "render/core/texture_manager.h"
 #include "link_client.h"
 #include "ui/controls/scroll_view.h"
 #include "ui/controls/virtual_grid_view.h"
@@ -178,6 +179,10 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> activity();
     [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer);
     [[nodiscard]] std::unique_ptr<Node> files(float width, float height);
+    [[nodiscard]] std::unique_ptr<Node> mirror(float width, float height);
+    // Uploads a decoded frame into the one mirror texture (same size: in place) and repaints the video.
+    void showMirrorFrame(MirrorDecoder::Frame frame);
+    [[nodiscard]] std::string mirrorStat() const;
     [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
@@ -208,6 +213,11 @@ namespace linkapp {
     AppWindow* m_window = nullptr;
     Page m_page = Page::Waiting;
     float m_scale = 1.0F;
+    Renderer* m_renderer = nullptr;   // the window's, from the last content build
+    TextureHandle m_mirrorTexture;    // owned here; the video Image shows it without owning it
+    Image* m_mirrorImage = nullptr;   // of the last build, null off the Mirror page
+    Label* m_mirrorStat = nullptr;
+    bool m_touching = false;          // a primary press on the video is down
   };
 
 } // namespace linkapp

@@ -384,4 +384,27 @@ namespace linkapp {
     std::map<std::string, FileSave> m_saves; // phone path -> its save
   };
 
+  // The Mirror page. Start: Idle | Ended | Failed -> Asking (OpenMirror sent; the phone's user allows capture within
+  // 60 s) -> Showing -> Ended (the phone stopped) | Failed; Stop: Asking | Showing -> Idle. Each Start opens a new
+  // session; an event of an older session is rejected, so a late reply never revives a stopped mirror.
+  struct Mirror {
+    enum class Kind : std::uint8_t { Idle, Asking, Showing, Ended, Failed };
+    Kind kind = Kind::Idle;
+    std::uint64_t session = 0;
+    std::uint32_t width = 0;  // Showing: the phone's video size
+    std::uint32_t height = 0;
+    std::string error;        // Failed only
+  };
+
+  struct MirrorEvent {
+    enum class Kind : std::uint8_t { Start, Opened, Ended, Failed, Stop };
+    Kind kind = Kind::Start;
+    std::uint64_t session = 0; // Opened, Ended, Failed
+    std::uint32_t width = 0;   // Opened
+    std::uint32_t height = 0;
+    std::string error;         // Failed
+  };
+
+  [[nodiscard]] bool mirrorStep(Mirror& mirror, const MirrorEvent& event);
+
 } // namespace linkapp

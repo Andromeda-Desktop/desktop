@@ -450,6 +450,33 @@ namespace {
     }
   }
 
+  void runMirror(unsigned seed) {
+    using K = Mirror::Kind;
+    using E = MirrorEvent::Kind;
+    const std::set<std::pair<K, K>> edges{{K::Idle, K::Asking},    {K::Ended, K::Asking},    {K::Failed, K::Asking},
+                                          {K::Asking, K::Showing}, {K::Showing, K::Ended},   {K::Asking, K::Failed},
+                                          {K::Showing, K::Failed}, {K::Asking, K::Idle},     {K::Showing, K::Idle}};
+    std::mt19937 rng(seed);
+    Mirror mirror;
+    for (int step = 0; step < 3000; ++step) {
+      // Events of the current session, or of an older one (a late reply).
+      const std::uint64_t session = rng() % 3 ? mirror.session : mirror.session - std::min<std::uint64_t>(mirror.session, 1 + rng() % 2);
+      const MirrorEvent event{.kind = static_cast<E>(rng() % 5), .session = session, .width = 1080, .height = 2400, .error = "denied"};
+      const Mirror before = mirror;
+      const bool moved = mirrorStep(mirror, event);
+      if (moved) {
+        expect(edges.contains({before.kind, mirror.kind}), "only allowed moves", seed, step);
+        const bool sessionFree = event.kind == E::Start || event.kind == E::Stop;
+        expect(sessionFree || session == before.session, "an older session's event never lands", seed, step);
+        expect(mirror.session == before.session + (event.kind == E::Start ? 1 : 0), "Start alone opens a session", seed, step);
+      } else {
+        expect(mirror.kind == before.kind && mirror.session == before.session, "a rejected event changes nothing", seed, step);
+      }
+      expect((mirror.kind == K::Showing) == (mirror.width > 0), "a size exactly while Showing", seed, step);
+      expect(mirror.kind == K::Failed || mirror.error.empty(), "an error only while Failed", seed, step);
+    }
+  }
+
   void lastSeen() {
     const std::int64_t now = 1'763'640'000; // 2025-11-20 12:00 UTC
     expect(lastSeenText(0, now) == "Not connected", "never seen", 0, 0);
@@ -467,6 +494,7 @@ int main() {
   lastSeen();
   for (unsigned seed = 1; seed <= 20; ++seed) runPhotos(seed);
   for (unsigned seed = 1; seed <= 20; ++seed) runFiles(seed);
+  for (unsigned seed = 1; seed <= 20; ++seed) runMirror(seed);
   setenv("TZ", "UTC", 1);
   tzset();
   for (unsigned seed = 1; seed <= 20; ++seed) runFeed(seed);
