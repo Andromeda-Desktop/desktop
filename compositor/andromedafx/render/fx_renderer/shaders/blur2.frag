@@ -272,8 +272,9 @@ void main() {
     color = clamp(color, 0.0, 1.0);
   }
 #if GLASS
+  // The bezel bends the blurred backdrop (this pass's half-size input), never sharp detail.
   if (lens_weight > 0.0) {
-    color = mix(color, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
+    color = mix(color, lens_sample(tex, lens_uv / 2.0, lens_bend / 2.0), lens_weight);
   }
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
   color.rgb += specular * color.a;

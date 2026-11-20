@@ -305,8 +305,9 @@ void main() {
   if (source_mix > 0.0) {
     base = mix(base, texture2D(source_tex, uv), source_mix);
   }
+  // The bezel bends what the glass shows: the blurred backdrop, or the sharp one for glass with no blur.
   if (lens_weight > 0.0) {
-    base = mix(base, lens_sample(lens_tex, lens_uv, lens_bend), lens_weight);
+    base = mix(base, lens_sample(tex, lens_uv, lens_bend), lens_weight);
   }
   vec4 color = convert_color(base);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
