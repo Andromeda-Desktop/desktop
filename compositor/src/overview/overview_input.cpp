@@ -1313,6 +1313,7 @@ namespace andromeda {
       return;
     }
     m_filter = std::move(filter);
+    drive(m_filterOpacity, m_filter.empty() ? 0.0 : 1.0, m_filter.empty() ? Tokens::springFadeOut : Tokens::springFade);
     if (!m_filter.empty() && selectedCard() == nullptr) {
       const std::vector<Card*> matches = selectableCards();
       if (!matches.empty()) {

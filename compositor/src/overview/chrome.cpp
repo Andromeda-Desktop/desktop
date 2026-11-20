@@ -76,13 +76,6 @@ namespace andromeda::ov {
       return color;
     }
 
-    // Chrome fades in after the chrome gate, once the cards have mostly arrived.
-    float lateFade(double progress) {
-      const double gate = Tokens::motionOverviewChromeGate;
-      const double t = std::clamp((progress - gate) / (1.0 - gate), 0.0, 1.0);
-      return static_cast<float>(t * t * (3.0 - 2.0 * t));
-    }
-
     std::string span(const std::array<float, 4>& color, std::string_view weight, std::string_view text) {
       return std::format("<span foreground='{}' weight='{}'>{}</span>", rgbaHex(color), weight, escapeMarkup(text));
     }
@@ -381,7 +374,8 @@ namespace andromeda::ov {
     const std::array<float, 4> l3 = rgba(scheme.label3);
     const double scale = frame.scale;
     const float shown = static_cast<float>(std::clamp(frame.progress, 0.0, 1.0));
-    const float late = lateFade(frame.progress);
+    // One fade for every label: the thumbs' appear spring, so the overview arrives and leaves as one piece.
+    const float late = frame.thumbAlpha;
     const int ox = frame.output.x;
     const int oy = frame.output.y;
     const auto px = [](double value) { return static_cast<int>(std::lround(value)); };
@@ -458,9 +452,13 @@ namespace andromeda::ov {
       }
     }
 
-    if (placement.filter.has_value()) {
-      const std::string markup = frame.filter.empty() ? span(l2, "normal", "Type to filter windows")
-                                                      : span(l1, "normal", frame.filter);
+    if (!frame.filter.empty()) {
+      m_shownFilter = frame.filter;
+    }
+    const float filterAlpha = late * frame.filterAlpha;
+    if (placement.filter.has_value() && filterAlpha > 0.004F) {
+      // Fading out after the filter clears, the field keeps the last text instead of flashing a placeholder.
+      const std::string markup = span(l1, "normal", m_shownFilter);
       const int iconPx = std::max(1, static_cast<int>(std::lround(kSearchIcon * scale)));
       if (m_searchIcon == nullptr || m_searchIconPx != iconPx || m_searchIconColor != l2) {
         if (m_searchIcon != nullptr) {
@@ -482,14 +480,13 @@ namespace andromeda::ov {
            .iconSize = kSearchIcon},
           scale
       );
-      // The field keeps its size; only its centre follows the strip.
-      const wlr_box ride = rideStrip({placement.filter->x, placement.filter->y, kFilterWidth, double(kFieldHeight)});
-      const int fx = ride.x + (ride.width - static_cast<int>(kFilterWidth)) / 2;
-      const int fy = ride.y + (ride.height - kFieldHeight) / 2;
-      placeLabel(m_filter, fx, fy, late);
+      // A fixed place: the field only fades, it never rides the strip's travel.
+      const int fx = ox + px(placement.filter->x);
+      const int fy = oy + px(placement.filter->y);
+      placeLabel(m_filter, fx, fy, filterAlpha);
       if (m_filterGlass != nullptr) {
-        m_filterGlass->setEnabled(late > 0.004F);
-        m_filterGlass->place({fx, fy, static_cast<int>(kFilterWidth), kFieldHeight}, kFieldHeight / 2, late);
+        m_filterGlass->setEnabled(true);
+        m_filterGlass->place({fx, fy, static_cast<int>(kFilterWidth), kFieldHeight}, kFieldHeight / 2, filterAlpha);
       }
     } else {
       placeLabel(m_filter, 0, 0, 0.0F);

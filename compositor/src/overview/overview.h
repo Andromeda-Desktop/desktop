@@ -592,6 +592,7 @@ namespace andromeda {
     // In-place entrance of what is not on screen at the open (rulebook 7.4): opacity on fade / fade_out, scale
     // 0.94 -> 1 on open and 1 -> 0.96 on close. It shows once the zoom passes Tokens::motionContentGate of its travel.
     AnimatedValue m_appearOpacity{0.0};
+    AnimatedValue m_filterOpacity{0.0}; // the filter field: 1 while a filter is typed
     AnimatedValue m_appearScale{1.0};
     // `startMsec` (frame clock) starts a new appear motion at that instant instead of the next tick; 0 for the next tick.
     void updateAppear(double startMsec = 0.0);

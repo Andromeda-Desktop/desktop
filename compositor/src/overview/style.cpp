@@ -25,9 +25,13 @@ namespace andromeda::ov {
     constexpr double kSpacesFilterGap = 28; // Spaces: piece row to the filter field (the names sit between)
     constexpr double kSpacesBottom = 32; // Spaces: frame to the bottom edge
     constexpr double kThumbBottom = 28;  // Task View: piece row above the bottom edge
-    constexpr double kTaskViewTop = 104; // Task View: frame top, under the filter field at kTopFilterY
+    constexpr double kTaskViewTop = 104; // Task View: frame top when the filter field sits at kTopFilterY
     constexpr double kMainBottom = 48;   // Task View: frame to the piece row (names sit above the pieces)
-    constexpr double kTopFilterY = 52;   // Task View and Strip: filter field top
+    constexpr double kTopFilterY = 52;   // Task View and Strip: filter field top, at least
+    constexpr double kBarFilterGap = 20; // Task View and Strip: work-area top (the bar) to the filter field
+
+    // Task View and Strip: the field sits under the bar however tall ui_scale makes it.
+    double topFilterY(const Input& in) { return std::max(kTopFilterY, in.usable.y + kBarFilterGap); }
     constexpr double kExposeInsetX = 24; // Spaces: exposé inside the frame
     constexpr double kExposeInsetTop = 20;
     constexpr double kExposeInsetBottom = 12;
@@ -103,7 +107,7 @@ namespace andromeda::ov {
       }
       out.plus = Rect{x, y, tw * kPlusShare, th};
 
-      const double frameTop = top ? y + th + kSpacesFrameGap : kTaskViewTop;
+      const double frameTop = top ? y + th + kSpacesFrameGap : topFilterY(in) + (kTaskViewTop - kTopFilterY);
       const double frameBottom = top ? in.height - kSpacesBottom : y - kMainBottom;
       const Fit frameFit = fitIn(
           {0, 0, in.width, in.height},
@@ -112,7 +116,7 @@ namespace andromeda::ov {
       const Rect main = mapRect({0, 0, in.width, in.height}, frameFit);
       out.main = main;
       out.mainFit = frameFit;
-      const double filterY = top ? y + th + kSpacesFilterGap : kTopFilterY;
+      const double filterY = top ? y + th + kSpacesFilterGap : topFilterY(in);
       out.filter = Point{(in.width - kFilterWidth) / 2, filterY};
 
       if (in.current < n) {
@@ -212,7 +216,7 @@ namespace andromeda::ov {
       Rect plus = frameAt(static_cast<double>(n));
       (in.horizontal ? plus.w : plus.h) *= kStripPlusShare;
       out.plus = plus;
-      out.filter = Point{(in.width - kFilterWidth) / 2, kTopFilterY};
+      out.filter = Point{(in.width - kFilterWidth) / 2, topFilterY(in)};
       return out;
     }
 

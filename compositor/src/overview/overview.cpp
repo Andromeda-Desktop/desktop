@@ -971,6 +971,7 @@ namespace andromeda {
         .style = state.placedStyle,
         .progress = m_progress,
         .thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0)),
+        .filterAlpha = static_cast<float>(std::clamp(m_filterOpacity.current(), 0.0, 1.0)),
         .output = state.outputBox,
         .usable = state.usableBox,
         .scale = std::max(1.0, std::ceil(static_cast<double>(state.output->wlr()->scale))),
@@ -1250,6 +1251,7 @@ namespace andromeda {
     m_targetProgress = 0.0;
     m_zoomAnim.snap(0.0);
     m_appearOpacity.snap(0.0);
+    m_filterOpacity.snap(0.0);
     m_appearScale.snap(config().appearance.reduceMotion ? 1.0 : kAppearScaleIn);
     m_pendingFocus = nullptr;
     m_pointerOutput = m_server->outputFromWlr(m_server->preferredOutput());
@@ -1651,6 +1653,7 @@ namespace andromeda {
     }
     active = active || !m_reflows.empty();
     bool appearTicked = tickTail(m_appearOpacity, kOpacityLevels);
+    appearTicked = tickTail(m_filterOpacity, kOpacityLevels) || appearTicked;
     appearTicked = tickTail(m_appearScale, motionPixelsPerUnit(true)) || appearTicked;
     for (const auto& state : m_outputs) {
       for (const auto& card : state->cards) {
@@ -1658,7 +1661,7 @@ namespace andromeda {
         active = active || card->filter.animating();
       }
     }
-    active = active || m_appearOpacity.animating() || m_appearScale.animating();
+    active = active || m_appearOpacity.animating() || m_filterOpacity.animating() || m_appearScale.animating();
     for (const auto& state : m_outputs) {
       const bool ticked = state->rowScroll.tick(nowMsec);
       if (ticked && state->rowScroll.animating() && state->rowScroll.curve().easing == Easing::Spring) {
@@ -1709,6 +1712,7 @@ namespace andromeda {
     return m_zoomAnim.animating()
         || !m_reflows.empty()
         || m_appearOpacity.animating()
+        || m_filterOpacity.animating()
         || m_appearScale.animating()
         || std::ranges::any_of(
                m_outputs,

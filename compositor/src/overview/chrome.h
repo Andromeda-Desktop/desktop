@@ -69,7 +69,8 @@ namespace andromeda::ov {
   struct ChromeFrame {
     Style style = Style::Spaces;
     double progress = 0;
-    float thumbAlpha = 1.0F; // the workspace thumbs' appear opacity; the current thumb's window blocks share it
+    float thumbAlpha = 1.0F; // the workspace thumbs' appear opacity; every label and the window blocks share it
+    float filterAlpha = 0.0F; // the filter field's own fade: 0 with no filter typed
     wlr_box output{}; // layout coordinates
     wlr_box usable{}; // layout coordinates
     double scale = 1; // device-pixel scale text renders at
@@ -163,6 +164,7 @@ namespace andromeda::ov {
     wlr_scene_tree* m_tree = nullptr;
     std::vector<Label> m_names;
     Label m_filter;
+    std::string m_shownFilter; // the last non-empty filter: the field shows it while it fades out
     std::unique_ptr<GlassPanel> m_filterGlass; // under every label: created first in the chrome tree
     wlr_buffer* m_searchIcon = nullptr; // filter field glyph, drawn at m_searchIconPx in m_searchIconColor
     int m_searchIconPx = 0;

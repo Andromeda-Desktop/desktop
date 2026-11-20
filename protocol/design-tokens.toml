@@ -345,7 +345,6 @@ return_face_gate = 0.7   # Return: the source face fades back in after this frac
 overview_zoom_end = 0.55     # overview Zoom: the desktop reaches the current workspace frame at this progress
 overview_spread_start = 0.45 # overview Zoom: windows leave the frame for their slots from this progress
 overview_piece_scale = 0.86  # overview Zoom: workspace pieces grow from this scale as they fade in
-overview_chrome_gate = 0.6   # overview: title capsules and the filter fade in after this progress
 stagger_ms = 8
 stagger_max = 6
 face_scale = 0.92
