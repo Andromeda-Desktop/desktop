@@ -203,8 +203,9 @@ def emit_glsl(tokens, out_path):
         f.write("\n".join(out) + "\n")
 
 
-# Groups the Link Android app reads; the compositor-only groups (blur, lens, component) stay out.
+# Groups the Link Android app reads; the compositor-only groups (blur, lens, other components) stay out.
 KOTLIN_GROUPS = ("font", "type", "type_rules", "scheme", "elevation", "spring", "motion", "radius", "space", "size")
+KOTLIN_COMPONENTS = ("phone",)  # emitted as top-level objects: component.phone -> Tok.Phone
 
 
 def kotlin_value(path, value):
@@ -256,7 +257,9 @@ def emit_kotlin(tokens, out_path):
                 block(value, sub, ind + "    ")
                 out.append(f"{ind}}}")
 
-    block({k: tokens[k] for k in KOTLIN_GROUPS if k in tokens}, (), "    ")
+    groups = {k: tokens[k] for k in KOTLIN_GROUPS if k in tokens}
+    groups |= {k: v for k, v in tokens.get("component", {}).items() if k in KOTLIN_COMPONENTS}
+    block(groups, (), "    ")
     out += ["}", ""]
     with open(out_path, "w") as f:
         f.write("\n".join(out))

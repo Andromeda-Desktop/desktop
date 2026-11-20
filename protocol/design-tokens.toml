@@ -312,6 +312,9 @@ damping = 0.90
 [spring.open]      # response 0.26 s, bounce 0.10: Grow from a source
 stiffness = 584.0
 damping = 0.90
+[spring.zoom]      # response 0.34 s, bounce 0.20: the overview opens (a full-screen zoom shows open's 0.2 % as none)
+stiffness = 341.5
+damping = 0.80
 [spring.close]     # response 0.24 s, bounce 0: Return, dismissals
 stiffness = 685.4
 damping = 1.00
@@ -780,6 +783,14 @@ avatar = 64.0
 row_avatar = 56.0
 row_selected = 0.12
 row_dim = 0.6
+
+[component.phone]  # Link Android (design-link/phone handoff.yaml); sizes in dp
+hit = 48.0           # phone touch target (Material / iOS 44-48)
+symbol = 22.0        # row and tile symbols
+chip = 36.0          # filter chip, visible height inside a 48 hit
+pill_pad = 14.0      # pill and chip side padding
+value_max = 160.0    # trailing value text in a row
+chip_tint = 0.12     # selected chip: accent at this alpha
 
 [component.page]  # window content, 8
 padding = 24.0
