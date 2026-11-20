@@ -155,6 +155,9 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
         threading.Thread(target=stream_mirror, args=(phone,), daemon=True).start()
         fds = Gio.UnixFDList.new_from_array([viewer.detach()])
         invocation.return_value_with_unix_fd_list(GLib.Variant("(huu)", (0, 1080, 2400)), fds)
+        if os.environ.get("CORNERS"):  # corner radius in 1/10000 of the width, sent as the phone's ScreenShape
+            radius = int(os.environ["CORNERS"])
+            GLib.timeout_add(300, lambda: emit("ScreenShape", "(saqa(qqqq))", params[0], [radius] * 4, []) and False)
         return
     if method == "ListFiles":
         folders = {"/": [

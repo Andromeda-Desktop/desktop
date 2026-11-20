@@ -1312,7 +1312,9 @@ namespace linkapp {
       m_client->setMirrorTarget(static_cast<int>(std::lround(videoW)), static_cast<int>(std::lround(videoH)));
       Image* image = nullptr;
       auto area = ui::inputArea({.width = videoW, .height = videoH});
-      area->addChild(ui::image({.out = &image, .fit = ImageFit::Contain, .radius = Style::scaledRadius(Tokens::componentLinkMirrorRadius, s),
+      const float corner = m_client->mirrorCorner() > 0 ? videoW * static_cast<float>(m_client->mirrorCorner()) / 10000.0F
+                                                        : Style::scaledRadius(Tokens::componentLinkMirrorRadius, s);
+      area->addChild(ui::image({.out = &image, .fit = ImageFit::Contain, .radius = corner,
                                 .width = videoW, .height = videoH}));
       m_mirrorImage = image;
       if (m_mirrorTexture.valid()) image->setExternalTexture(*m_renderer, m_mirrorTexture);
@@ -1338,17 +1340,20 @@ namespace linkapp {
       auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Popover),
                           .radius = Tokens::sizeControlXl * s / 2.0F, .height = Tokens::sizeControlXl * s});
       bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
-      const auto key = [&](const char* glyph, const char* tip, std::function<void()> press) {
+      const auto key = [&](const char* glyph, const char* tip, std::function<void()> press,
+                           std::function<void()> secondary = nullptr) {
         bar->addChild(ui::button({.glyph = std::string(glyph), .variant = ButtonVariant::Ghost, .tooltip = std::string(tip),
-                                  .onClick = std::move(press)}));
+                                  .onClick = std::move(press), .onRightClick = std::move(secondary)}));
       };
       key("chevron-left", "Back", [this] { m_client->mirrorAction("back"); });
       key("home", "Home", [this] { m_client->mirrorAction("home"); });
       key("dots", "Recent apps", [this] { m_client->mirrorAction("recents"); });
       bar->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Separator), .width = s, .height = Tokens::spaceP12 * s}));
       constexpr std::int32_t kVolumeUp = 24; // Android KeyEvent codes
+      constexpr std::int32_t kVolumeDown = 25;
       constexpr std::int32_t kPower = 26;
-      key("volume", "Volume", [this] { m_client->mirrorKey(kVolumeUp); });
+      key("volume", "Volume up (right-click: down)", [this] { m_client->mirrorKey(kVolumeUp); },
+          [this] { m_client->mirrorKey(kVolumeDown); });
       key("lock", "Lock", [this] { m_client->mirrorKey(kPower); });
       stage->addChild(std::move(bar));
       break;

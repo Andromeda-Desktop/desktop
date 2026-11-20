@@ -55,6 +55,8 @@ namespace linkapp {
     void mirrorAction(const std::string& action);
     // A key press and release (Android key code).
     void mirrorKey(std::int32_t code);
+    // The mirrored screen's largest corner radius in 1/10000 of the video width; 0 until the phone says.
+    [[nodiscard]] std::uint16_t mirrorCorner() const { return m_mirrorCorner; }
     // touch-down, touch-move or touch-up at x, y in 1/10000 of the video.
     void mirrorTouch(const std::string& action, std::int32_t x, std::int32_t y);
     void setMirrorTarget(int width, int height);
@@ -136,6 +138,7 @@ namespace linkapp {
     Photos m_photos;
     Files m_files;
     Mirror m_mirror;
+    std::uint16_t m_mirrorCorner = 0;
     std::string m_mirrorDevice;
     std::unique_ptr<MirrorDecoder> m_decoder;
     std::function<void(MirrorDecoder::Frame)> m_mirrorFrame;

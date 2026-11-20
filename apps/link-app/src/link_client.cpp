@@ -108,6 +108,14 @@ namespace linkapp {
           m_feed.upsert(std::move(item));
           changed();
         });
+    m_proxy->uponSignal("ScreenShape")
+        .onInterface(kInterface)
+        .call([this](const std::string& device, const std::vector<std::uint16_t>& corners,
+                     const std::vector<sdbus::Struct<std::uint16_t, std::uint16_t, std::uint16_t, std::uint16_t>>&) {
+          if (device != m_mirrorDevice) return;
+          const std::uint16_t radius = corners.empty() ? 0 : std::ranges::max(corners);
+          if (radius != std::exchange(m_mirrorCorner, radius)) changed();
+        });
     m_proxy->uponSignal("NotificationRemoved")
         .onInterface(kInterface)
         .call([this](const std::string&, const std::string& id) {
@@ -648,6 +656,7 @@ namespace linkapp {
     const std::string device = presence().phone.id;
     if (device.empty() || !mirrorStep(m_mirror, {.kind = MirrorEvent::Kind::Start})) return;
     m_mirrorDevice = device;
+    m_mirrorCorner = 0;
     const std::uint64_t session = m_mirror.session;
     changed();
     // The phone's user has 60 s to allow capture; the default D-Bus timeout is shorter.
