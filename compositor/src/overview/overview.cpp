@@ -1,5 +1,6 @@
 #include "overview/overview_internal.h"
 #include "server/dsk_surface.h"
+#include <cstdlib>
 
 namespace andromeda {
 
@@ -1697,6 +1698,15 @@ namespace andromeda {
       const bool rowOwns = !m_zoomAnim.animating() && row.transitionId() > m_zoomAnim.transitionId();
       bindAnimationEffect(
           &state->tree->node, AnimationEvent::Overview, rowOwns ? row : m_zoomAnim, m_closing ? -1.0F : 1.0F
+      );
+    }
+    // ANDROMEDA_OVERVIEW_TRACE=1: one line per tick with every overview clock, for motion review (.agent/scratch/overview-motion).
+    static const bool kTraceAll = std::getenv("ANDROMEDA_OVERVIEW_TRACE") != nullptr;
+    if (kTraceAll && (m_active || m_zoomAnim.animating())) {
+      kLog.info(
+          "ovtrace {:.2f} p {:.4f} appear {:.4f} scale {:.4f} filter {:.4f} row {:.4f}", nowMsec, m_progress,
+          m_appearOpacity.current(), m_appearScale.current(), m_filterOpacity.current(),
+          m_outputs.empty() ? 0.0 : m_outputs.front()->rowScroll.current()
       );
     }
     if (m_traceFrames) {
