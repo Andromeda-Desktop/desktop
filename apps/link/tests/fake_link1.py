@@ -6,7 +6,9 @@ text, a file offer and notifications once a client calls GetAll. Usage: fake_lin
 """
 import os
 import sys
+import struct
 import time
+import zlib
 
 import gi
 
@@ -109,8 +111,34 @@ def emit_activity():
     emit("TransferOffered", "(ssa(st))", "t1", "p1", [("Quarterly report Q3 final (2).pdf", 2_400_000)])
 
 
+PALETTE = [((255, 40, 90), (150, 60, 200)), ((10, 25, 60), (60, 150, 210)), ((250, 250, 248), (225, 220, 210)),
+           ((120, 40, 200), (40, 60, 255)), ((240, 90, 170), (200, 60, 160))]
+photos = [(f"/DCIM/Camera/IMG_{i:03}.jpg", f"IMG_{i:03}.jpg", (ago(0, 18, 0) if i < 11 else ago(1, 12, 0)) // 1000 - i * 60)
+          for i in range(18)]
+
+
+def png(index, size=64):
+    """A diagonal gradient PNG: one of the mockup's five photo tones."""
+    a, b = PALETTE[index % len(PALETTE)]
+    rows = b"".join(b"\0" + bytes(round(a[c] + (b[c] - a[c]) * (x + y) / (2 * size)) for x in range(size) for c in range(3))
+                    for y in range(size))
+    chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
 def call(_conn, _sender, _path, _iface, method, params, invocation):
     print("call", method, params, flush=True)
+    if method == "RecentPhotos":
+        invocation.return_value(GLib.Variant("(a(sst))", (photos if connected else [],)))
+        return
+    if method == "Thumbnail":
+        index = next(i for i, p in enumerate(photos) if p[0] == params[1])
+        invocation.return_value(GLib.Variant("(ay)", (png(index),)))
+        return
+    if method == "SavePhoto":
+        invocation.return_value(GLib.Variant("(s)", ("/home/user/Downloads/" + params[1].rsplit("/", 1)[1],)))
+        return
     if method in ("StartPairing", "CancelPairing"):
         props["Pairing"] = GLib.Variant("b", method == "StartPairing")
         conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",

@@ -40,6 +40,16 @@ namespace linkapp {
     [[nodiscard]] const std::vector<CallEntry>& calls() const { return m_calls; }
     [[nodiscard]] CallLog callLog() const { return m_callLog; }
     [[nodiscard]] const Activity& activity() const { return m_activity; }
+    [[nodiscard]] const Photos& photos() const { return m_photos; }
+    // RecentPhotos of the phone presence() shows; ignored while a load runs.
+    void loadPhotos();
+    void togglePhoto(std::size_t index);
+    void clearPhotoSelection();
+    // SavePhoto for each selected photo into the downloads folder.
+    void savePhotos();
+    // The PNG thumbnail of a listed photo, or null; the first ask fetches it and calls the thumbnail callback.
+    [[nodiscard]] const std::vector<std::uint8_t>* thumbnail(const std::string& path);
+    void setOnThumbnail(std::function<void()> ready) { m_thumbnailReady = std::move(ready); }
     [[nodiscard]] const PhoneSettings& phoneSettings() const { return m_phoneSettings; }
     [[nodiscard]] const DesktopSettings& desktopSettings() const { return m_desktopSettings; }
     void setGrant(const std::string& deviceId, const std::string& feature, bool granted);
@@ -89,6 +99,10 @@ namespace linkapp {
     Feed m_feed;
     Messages m_messages;
     Activity m_activity;
+    Photos m_photos;
+    std::string m_photosDevice;
+    std::map<std::string, std::vector<std::uint8_t>> m_thumbs; // path -> PNG; empty while in flight
+    std::function<void()> m_thumbnailReady;
     PhoneSettings m_phoneSettings;
     DesktopSettings m_desktopSettings;
     std::uint64_t m_nearbySent = 0;    // serials of the Quick Share GetAll, as m_sent / m_applied

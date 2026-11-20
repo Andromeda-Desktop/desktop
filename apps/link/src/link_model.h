@@ -279,4 +279,52 @@ namespace linkapp {
     std::vector<Thread> m_threads;
   };
 
+  // One photo of RecentPhotos: the newest 64 on the phone, no paging (Link1 has no more).
+  struct Photo {
+    std::string path; // for Thumbnail and SavePhoto
+    std::string name;
+    std::int64_t atS = 0;
+  };
+
+  // The Photos page. Load: Idle -> Loading -> Ready | Denied | Unsupported | Failed; any settled state -> Loading.
+  // Save: Idle | Done -> Saving -> Done once every photo of the batch answered. The selection is a subset of items.
+  class Photos {
+  public:
+    enum class Load : std::uint8_t { Idle, Loading, Ready, Denied, Unsupported, Failed };
+    enum class Save : std::uint8_t { Idle, Saving, Done };
+    static constexpr std::uint16_t kCount = 64;
+
+    [[nodiscard]] Load load() const { return m_load; }
+    [[nodiscard]] const std::vector<Photo>& items() const { return m_items; }
+    [[nodiscard]] bool startLoad();
+    // Loading -> Ready, newest first; the selection keeps the photos still listed.
+    bool loaded(std::vector<Photo> photos);
+    // Loading -> Denied | Unsupported | Failed.
+    bool failed(Load why);
+
+    void toggle(std::size_t index);
+    void clearSelection() { m_selected.clear(); }
+    [[nodiscard]] bool selected(std::size_t index) const;
+    [[nodiscard]] std::size_t selectedCount() const { return m_selected.size(); }
+
+    // Saving -> starts a batch of the selected paths and clears the selection; empty when rejected.
+    [[nodiscard]] std::vector<std::string> startSave();
+    void saveAnswered(bool ok);
+    [[nodiscard]] Save save() const { return m_save; }
+    [[nodiscard]] std::size_t saved() const { return m_saved; }
+    [[nodiscard]] std::size_t saveFailed() const { return m_saveFailed; }
+
+    // First index of each day ("Today", "Yesterday", ...) and its label.
+    [[nodiscard]] std::vector<std::pair<std::size_t, std::string>> days(std::int64_t nowMs) const;
+
+  private:
+    Load m_load = Load::Idle;
+    std::vector<Photo> m_items;
+    std::set<std::string> m_selected; // paths
+    Save m_save = Save::Idle;
+    std::size_t m_pending = 0;
+    std::size_t m_saved = 0;
+    std::size_t m_saveFailed = 0;
+  };
+
 } // namespace linkapp

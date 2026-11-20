@@ -323,6 +323,65 @@ namespace {
     }
   }
 
+  // Random loads, failures, selections and save batches against the Photos rules.
+  void runPhotos(unsigned seed) {
+    using L = Photos::Load;
+    std::mt19937 rng(seed);
+    const std::int64_t now = 1'763'640'000'000;
+    Photos photos;
+    std::size_t batch = 0;
+    for (int step = 0; step < 3000; ++step) {
+      switch (rng() % 8) {
+      case 0: (void)photos.startLoad(); break;
+      case 1: {
+        std::vector<Photo> list;
+        std::set<int> used;
+        for (unsigned i = rng() % 12; i > 0; --i) {
+          const int id = static_cast<int>(rng() % 20);
+          if (!used.insert(id).second) continue;
+          list.push_back({.path = std::format("/p/{}", id), .name = "x", .atS = now / 1000 - static_cast<std::int64_t>(rng() % 900'000)});
+        }
+        (void)photos.loaded(std::move(list));
+        break;
+      }
+      case 2: (void)photos.failed(static_cast<L>(rng() % 6)); break;
+      case 3:
+      case 4: photos.toggle(rng() % 14); break;
+      case 5: photos.clearSelection(); break;
+      case 6: {
+        const bool saving = photos.save() == Photos::Save::Saving;
+        const std::size_t want = photos.selectedCount();
+        const auto paths = photos.startSave();
+        expect(paths.size() == (saving ? 0 : want), "a save takes the whole selection unless one runs", seed, step);
+        if (!paths.empty()) batch = paths.size();
+        break;
+      }
+      case 7: photos.saveAnswered(rng() % 2); break;
+      }
+      const auto& items = photos.items();
+      std::size_t picked = 0;
+      for (std::size_t i = 0; i < items.size(); ++i) {
+        picked += photos.selected(i) ? 1 : 0;
+        if (i > 0) expect(items[i - 1].atS >= items[i].atS, "newest first", seed, step);
+      }
+      expect(picked == photos.selectedCount(), "the selection is a subset of the photos", seed, step);
+      const L load = photos.load();
+      if (load != L::Ready && load != L::Loading) expect(items.empty() && picked == 0, "no photos unless loaded", seed, step);
+      const std::size_t answered = photos.saved() + photos.saveFailed();
+      if (photos.save() == Photos::Save::Saving) expect(answered < batch, "saving until every photo answered", seed, step);
+      if (photos.save() == Photos::Save::Done) expect(answered == batch, "done when every photo answered", seed, step);
+      const auto days = photos.days(now);
+      for (std::size_t d = 0; d < days.size(); ++d) {
+        const std::size_t end = d + 1 < days.size() ? days[d + 1].first : items.size();
+        expect(days[d].first < end, "each day has a photo", seed, step);
+        for (std::size_t i = days[d].first; i < end; ++i) {
+          expect(dayLabel(items[i].atS * 1000, now) == days[d].second, "a photo sits under its own day", seed, step);
+        }
+      }
+      expect(items.empty() == days.empty() && (days.empty() || days.front().first == 0), "days start at the first photo", seed, step);
+    }
+  }
+
   void lastSeen() {
     const std::int64_t now = 1'763'640'000; // 2025-11-20 12:00 UTC
     expect(lastSeenText(0, now) == "Not connected", "never seen", 0, 0);
@@ -338,6 +397,7 @@ namespace {
 int main() {
   for (unsigned seed = 1; seed <= 20; ++seed) runPair(seed);
   lastSeen();
+  for (unsigned seed = 1; seed <= 20; ++seed) runPhotos(seed);
   setenv("TZ", "UTC", 1);
   tzset();
   for (unsigned seed = 1; seed <= 20; ++seed) runFeed(seed);

@@ -554,6 +554,10 @@ namespace linkapp {
       });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
+      m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale);
+      m_client->setOnThumbnail([this] {
+        if (m_photoGrid != nullptr) m_photoGrid->notifyDataChanged();
+      });
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
       m_client->setOnChanged([this] {
         if (m_window == nullptr) return;
@@ -607,6 +611,7 @@ namespace linkapp {
     if (m_page == page) return;
     m_page = page;
     m_confirmForget = false;
+    if (page == Page::Photos && m_client) m_client->loadPhotos();
     sync();
     updateCaption();
     m_window->requestRebuild();
@@ -632,6 +637,9 @@ namespace linkapp {
     const std::size_t n = m_client ? m_client->feed().items().size() : 0;
     std::string state;
     if (m_page == Page::Waiting && n > 0) state = n == 1 ? "1 item" : std::format("{} items", n);
+    if (m_page == Page::Photos && m_client && !m_client->photos().items().empty()) {
+      state = std::to_string(m_client->photos().items().size());
+    }
     m_window->setCaption({.state = state});
   }
 
@@ -688,7 +696,14 @@ namespace linkapp {
         break;
       case Page::Files: line.first = "Phone storage"; break;
       case Page::Mirror: line.first = "Show the phone screen"; break;
-      case Page::Photos:
+      case Page::Photos: {
+        if (!m_client) break;
+        const auto days = m_client->photos().days(nowMs());
+        if (days.empty() || days.front().second != "Today") break;
+        const std::size_t today = days.size() > 1 ? days[1].first : m_client->photos().items().size();
+        line.first = today == 1 ? std::string("1 new photo today") : std::format("{} new photos today", today);
+        break;
+      }
       case Page::Settings: break;
       }
       const bool hot = !line.second.empty() || (info.page == Page::Waiting && !items.empty());
@@ -831,6 +846,7 @@ namespace linkapp {
   }
 
   std::unique_ptr<Node> LinkApp::content(Renderer& renderer, float width, float height) {
+    m_photoGrid = nullptr;
     const float s = m_scale = m_window->uiScale();
     if (m_client == nullptr) return emptyState("plug-connected-x", "No session bus", "Link needs a D-Bus session.", s);
     const Presence presence = m_client->presence();
@@ -858,6 +874,7 @@ namespace linkapp {
     }
     if (m_page == Page::Messages) return messages(width, height);
     if (m_page == Page::Calls) return calls();
+    if (m_page == Page::Photos) return photos(renderer);
     if (m_page == Page::Activity) return activity();
     if (m_page == Page::Settings) return settings(presence);
     if (m_page != Page::Waiting) {
@@ -974,6 +991,138 @@ namespace linkapp {
   }
 
   // Calls (handoff.yaml): dial row (capsule "Name or number" + Primary Call), then the log grouped Today / Earlier.
+  std::unique_ptr<Node> PhotoAdapter::createTile() {
+    auto tile = std::make_unique<Node>();
+    tile->addChild(ui::image({.fit = ImageFit::Cover}));
+    // Rulebook §9.7 thumbnail grid: a 2 px label_1 ring at a 2 px gap and a 20 px accent check badge at inset 8.
+    tile->addChild(ui::box({.fill = clearColorSpec(), .border = colorSpecFromRole(ColorRole::Label1), .borderWidth = 2.0F}));
+    tile->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Accent)}));
+    tile->addChild(ui::glyph({.glyph = std::string("check"), .color = colorSpecFromRole(ColorRole::OnAccent)}));
+    return tile;
+  }
+
+  void PhotoAdapter::bindTile(Node& tile, std::size_t index, bool /*selected*/, bool /*hovered*/) {
+    const float s = m_scale;
+    const auto& kids = tile.children();
+    auto* image = static_cast<Image*>(kids[0].get());
+    auto* ring = static_cast<Box*>(kids[1].get());
+    auto* badge = static_cast<Box*>(kids[2].get());
+    auto* check = static_cast<Glyph*>(kids[3].get());
+    const float w = tile.width();
+    const float h = tile.height();
+    const bool picked = m_client.photos().selected(index);
+    const float radius = Style::scaledRadius(Tokens::radiusR12, s);
+    const float inset = picked ? 4.0F * s : 0.0F; // the ring and its gap stay inside the cell
+    image->setPosition(inset, inset);
+    image->setSize(w - 2.0F * inset, h - 2.0F * inset);
+    image->setRadius(std::max(0.0F, radius - inset));
+    ring->setBorder(colorSpecFromRole(picked ? ColorRole::Label1 : ColorRole::Stroke), (picked ? 2.0F : 0.5F) * s);
+    ring->setPosition(0.0F, 0.0F);
+    ring->setSize(w, h);
+    ring->setRadius(radius);
+    const float d = 20.0F * s;
+    badge->setVisible(picked);
+    badge->setPosition(w - Tokens::spaceP8 * s - d, h - Tokens::spaceP8 * s - d);
+    badge->setSize(d, d);
+    badge->setRadius(d / 2.0F);
+    check->setVisible(picked);
+    check->setGlyphSize(Tokens::sizeSymbol * s * 0.75F);
+    check->setPosition(badge->x() + (d - check->width()) / 2.0F, badge->y() + (d - check->height()) / 2.0F);
+    const std::string& path = m_client.photos().items()[index].path;
+    std::string& shown = m_shown[&tile];
+    if (shown == path || m_renderer == nullptr) return;
+    const std::vector<std::uint8_t>* png = m_client.thumbnail(path);
+    if (png == nullptr) {
+      image->clear(*m_renderer);
+      shown.clear();
+      return;
+    }
+    if (image->setSourceBytes(*m_renderer, png->data(), png->size())) shown = path;
+  }
+
+  std::string PhotoAdapter::itemTooltip(std::size_t index) const {
+    return m_client.photos().items()[index].name;
+  }
+
+  std::unique_ptr<Node> PhotoAdapter::createSectionHeader() {
+    auto header = ui::column({.align = FlexAlign::Start, .justify = FlexJustify::End});
+    header->setPadding(Tokens::spaceP16 * m_scale, 0.0F, Tokens::spaceP8 * m_scale, 0.0F);
+    header->addChild(ui::label({.fontSize = Tokens::typeFootnote.size * m_scale, .fontWeight = static_cast<FontWeight>(600),
+                                .color = colorSpecFromRole(ColorRole::Label2), .maxLines = 1}));
+    return header;
+  }
+
+  void PhotoAdapter::bindSectionHeader(Node& header, std::size_t section, float /*width*/, float /*height*/) {
+    if (section < m_days.size()) static_cast<Label*>(header.children()[0].get())->setText(m_days[section].second);
+  }
+
+  std::unique_ptr<Node> LinkApp::photos(Renderer& renderer) {
+    const float s = m_scale;
+    const Photos& photos = m_client->photos();
+    const auto retry = [this] {
+      return ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
+                         .onClick = [this] { m_client->loadPhotos(); }});
+    };
+    switch (photos.load()) {
+    case Photos::Load::Idle:
+    case Photos::Load::Loading:
+      if (photos.items().empty()) return emptyState("photo", "Loading photos", "The newest photos on the phone show here.", s);
+      break;
+    case Photos::Load::Denied:
+      return emptyState("photo-off", "Link cannot see photos", "Allow Photos access for Link in the phone's settings.", s, retry());
+    case Photos::Load::Unsupported:
+      return emptyState("photo-off", "This phone does not share photos", "Update Link on the phone to see its new photos here.", s);
+    case Photos::Load::Failed:
+      return emptyState("alert-circle", "Photos did not load", "The phone did not answer in time.", s, retry());
+    case Photos::Load::Ready:
+      if (photos.items().empty()) return emptyState("photo", "No photos", "New photos on the phone show here.", s);
+      break;
+    }
+    m_photos->setRenderer(&renderer);
+    auto days = photos.days(nowMs());
+    std::vector<std::size_t> starts;
+    starts.reserve(days.size());
+    for (const auto& day : days) starts.push_back(day.first);
+    m_photos->setDays(std::move(days));
+    auto page = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+    page->setPadding(0.0F, Tokens::spaceP24 * s, 0.0F, Tokens::spaceP24 * s);
+    const float headerH = (Tokens::spaceP16 + Tokens::typeFootnote.line + Tokens::spaceP8) * s;
+    page->addChild(ui::virtualGridView({.out = &m_photoGrid, .state = &m_photoScroll, .contentScale = s,
+                                        .minCellWidth = Tokens::componentLinkPhotoMin * s, .squareCells = true,
+                                        .columnGap = Tokens::spaceP8 * s, .rowGap = Tokens::spaceP8 * s, .overscanRows = 2,
+                                        .itemCursorShape = CursorShape::Pointer, .adapter = m_photos.get(), .flexGrow = 1.0F}));
+    m_photoGrid->setSections(std::move(starts), headerH);
+
+    // FloatingCapsuleBar (handoff.yaml): "n selected · Save · Clear", or how the last save went.
+    std::string what;
+    if (photos.selectedCount() > 0) {
+      what = std::format("{} selected", photos.selectedCount());
+    } else if (photos.save() == Photos::Save::Saving) {
+      what = "Saving to Downloads…";
+    } else if (photos.save() == Photos::Save::Done) {
+      what = photos.saveFailed() == 0 ? std::format("Saved {} to Downloads", photos.saved())
+                                      : std::format("{} not saved", photos.saveFailed());
+    }
+    if (!what.empty()) {
+      auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .fill = colorSpecFromRole(ColorRole::Popover),
+                          .radius = Tokens::sizeControlL * s / 2.0F, .height = Tokens::sizeControlL * s});
+      bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP16 * s);
+      bar->addChild(text(what, Tokens::typeBody, ColorRole::Label1, s));
+      if (photos.selectedCount() > 0) {
+        const bool saving = photos.save() == Photos::Save::Saving;
+        bar->addChild(ui::button({.text = std::string("Save"), .glyph = std::string("download"), .enabled = !saving,
+                                  .variant = ButtonVariant::Ghost, .onClick = [this] { m_client->savePhotos(); }}));
+        bar->addChild(ui::button({.text = std::string("Clear"), .glyph = std::string("x"), .variant = ButtonVariant::Ghost,
+                                  .onClick = [this] { m_client->clearPhotoSelection(); }}));
+      }
+      auto foot = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center});
+      foot->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP24 * s, 0.0F);
+      foot->addChild(std::move(bar));
+      page->addChild(std::move(foot));
+    }
+    return page;
+  }
+
   std::unique_ptr<Node> LinkApp::calls() {
     const float s = m_scale;
     switch (m_client->callLog()) {

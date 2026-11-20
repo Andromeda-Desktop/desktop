@@ -3,6 +3,7 @@
 #include "app/desk_app.h"
 #include "link_client.h"
 #include "ui/controls/scroll_view.h"
+#include "ui/controls/virtual_grid_view.h"
 #include "ui/controls/virtual_list_view.h"
 
 #include <map>
@@ -96,6 +97,29 @@ namespace linkapp {
     const float& m_scale;
   };
 
+  // Photos: the phone's newest photos under day headers; a click toggles the selection.
+  class PhotoAdapter final : public VirtualGridAdapter {
+  public:
+    PhotoAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
+    // The renderer of the window; thumbnails decode on bind.
+    void setRenderer(Renderer* renderer) { m_renderer = renderer; }
+    [[nodiscard]] std::size_t itemCount() const override { return m_client.photos().items().size(); }
+    [[nodiscard]] std::unique_ptr<Node> createTile() override;
+    void bindTile(Node& tile, std::size_t index, bool selected, bool hovered) override;
+    void onActivate(std::size_t index) override { m_client.togglePhoto(index); }
+    [[nodiscard]] std::string itemTooltip(std::size_t index) const override;
+    [[nodiscard]] std::unique_ptr<Node> createSectionHeader() override;
+    void bindSectionHeader(Node& header, std::size_t section, float width, float height) override;
+    void setDays(std::vector<std::pair<std::size_t, std::string>> days) { m_days = std::move(days); }
+
+  private:
+    LinkClient& m_client;
+    const float& m_scale;
+    Renderer* m_renderer = nullptr;
+    std::vector<std::pair<std::size_t, std::string>> m_days;
+    std::map<const Node*, std::string> m_shown; // tile -> path of the thumbnail it shows
+  };
+
   // Activity: transfers since the app started, newest first, with actions per state.
   class TransferAdapter final : public VirtualListAdapter {
   public:
@@ -135,6 +159,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> messages(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();
+    [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer);
     [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
@@ -152,6 +177,9 @@ namespace linkapp {
     std::map<std::uint64_t, std::string> m_threadDrafts;
     std::unique_ptr<CallAdapter> m_calls;
     ScrollViewState m_callScroll;
+    std::unique_ptr<PhotoAdapter> m_photos;
+    ScrollViewState m_photoScroll;
+    VirtualGridView* m_photoGrid = nullptr; // the grid of the last build, null off the Photos page
     std::unique_ptr<TransferAdapter> m_transfers;
     ScrollViewState m_transferScroll;
     ScrollViewState m_settingsScroll;

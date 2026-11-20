@@ -402,6 +402,87 @@ namespace linkapp {
         });
   }
 
+  void LinkClient::loadPhotos() {
+    const std::string device = presence().phone.id;
+    if (device.empty() || !m_photos.startLoad()) return;
+    if (device != m_photosDevice) m_thumbs.clear();
+    m_photosDevice = device;
+    m_proxy->callMethodAsync("RecentPhotos")
+        .onInterface(kInterface)
+        .withArguments(device, Photos::kCount)
+        .uponReplyInvoke([this, device, alive = std::weak_ptr<bool>(m_alive)](
+                             std::optional<sdbus::Error> error, std::vector<sdbus::Struct<std::string, std::string, std::uint64_t>> list) {
+          if (alive.expired()) return;
+          if (error) {
+            kLog.warn("RecentPhotos: {}", error->getMessage());
+            const bool refused = error->getName().ends_with(".Refused");
+            (void)m_photos.failed(!refused                             ? Photos::Load::Failed
+                                  : error->getMessage() == "denied" ? Photos::Load::Denied
+                                                                    : Photos::Load::Unsupported);
+            changed();
+            return;
+          }
+          std::vector<Photo> photos;
+          photos.reserve(list.size());
+          for (const auto& p : list) {
+            photos.push_back({.path = p.get<0>(), .name = p.get<1>(), .atS = static_cast<std::int64_t>(p.get<2>())});
+          }
+          std::erase_if(m_thumbs, [&](const auto& entry) {
+            return std::ranges::find(photos, entry.first, &Photo::path) == photos.end();
+          });
+          (void)m_photos.loaded(std::move(photos));
+          changed();
+        });
+  }
+
+  void LinkClient::togglePhoto(std::size_t index) {
+    m_photos.toggle(index);
+    changed();
+  }
+
+  void LinkClient::clearPhotoSelection() {
+    m_photos.clearSelection();
+    changed();
+  }
+
+  void LinkClient::savePhotos() {
+    const std::vector<std::string> paths = m_photos.startSave();
+    for (const std::string& path : paths) {
+      m_proxy->callMethodAsync("SavePhoto")
+          .onInterface(kInterface)
+          .withArguments(m_photosDevice, path)
+          .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, std::string) {
+            if (alive.expired()) return;
+            if (error) kLog.warn("SavePhoto: {}", error->getMessage());
+            m_photos.saveAnswered(!error);
+            changed();
+          });
+    }
+    if (!paths.empty()) changed();
+  }
+
+  const std::vector<std::uint8_t>* LinkClient::thumbnail(const std::string& path) {
+    const auto [it, asked] = m_thumbs.try_emplace(path);
+    if (!asked) return it->second.empty() ? nullptr : &it->second;
+    m_proxy->callMethodAsync("Thumbnail")
+        .onInterface(kInterface)
+        .withArguments(m_photosDevice, path, std::uint16_t{256})
+        .uponReplyInvoke([this, path, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+                                                                             std::vector<std::uint8_t> png) {
+          if (alive.expired()) return;
+          const auto entry = m_thumbs.find(path);
+          if (entry == m_thumbs.end()) return;
+          if (error) {
+            kLog.debug("Thumbnail: {}", error->getMessage());
+            m_thumbs.erase(entry); // the next bind of its tile asks again
+            return;
+          }
+          entry->second = std::move(png);
+          if (m_thumbnailReady) m_thumbnailReady();
+        });
+    return nullptr;
+  }
+
   void LinkClient::startPairing() {
     if (!pairStep(m_pair, {.kind = PairEvent::Kind::Start})) return;
     m_proxy->callMethodAsync("StartPairing")

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <ctime>
 #include <format>
+#include <functional>
 #include <tuple>
 
 namespace linkapp {
@@ -369,6 +370,71 @@ namespace linkapp {
     }
     if (!rows.empty()) rows.back().runEnd = true;
     return rows;
+  }
+
+  bool Photos::startLoad() {
+    if (m_load == Load::Loading) return false;
+    m_load = Load::Loading;
+    return true;
+  }
+
+  bool Photos::loaded(std::vector<Photo> photos) {
+    if (m_load != Load::Loading) return false;
+    std::ranges::stable_sort(photos, std::greater{}, &Photo::atS);
+    std::set<std::string> kept;
+    for (const Photo& photo : photos) {
+      if (m_selected.contains(photo.path)) kept.insert(photo.path);
+    }
+    m_items = std::move(photos);
+    m_selected = std::move(kept);
+    m_load = Load::Ready;
+    return true;
+  }
+
+  bool Photos::failed(Load why) {
+    if (m_load != Load::Loading || why == Load::Idle || why == Load::Loading || why == Load::Ready) return false;
+    m_load = why;
+    m_items.clear();
+    m_selected.clear();
+    return true;
+  }
+
+  void Photos::toggle(std::size_t index) {
+    if (index >= m_items.size()) return;
+    const std::string& path = m_items[index].path;
+    if (!m_selected.erase(path)) m_selected.insert(path);
+  }
+
+  bool Photos::selected(std::size_t index) const {
+    return index < m_items.size() && m_selected.contains(m_items[index].path);
+  }
+
+  std::vector<std::string> Photos::startSave() {
+    if (m_save == Save::Saving || m_selected.empty()) return {};
+    std::vector<std::string> paths;
+    for (const Photo& photo : m_items) {
+      if (m_selected.contains(photo.path)) paths.push_back(photo.path);
+    }
+    m_selected.clear();
+    m_save = Save::Saving;
+    m_pending = paths.size();
+    m_saved = m_saveFailed = 0;
+    return paths;
+  }
+
+  void Photos::saveAnswered(bool ok) {
+    if (m_save != Save::Saving) return;
+    ++(ok ? m_saved : m_saveFailed);
+    if (--m_pending == 0) m_save = Save::Done;
+  }
+
+  std::vector<std::pair<std::size_t, std::string>> Photos::days(std::int64_t nowMs) const {
+    std::vector<std::pair<std::size_t, std::string>> out;
+    for (std::size_t i = 0; i < m_items.size(); ++i) {
+      std::string label = dayLabel(m_items[i].atS * 1000, nowMs);
+      if (out.empty() || out.back().second != label) out.emplace_back(i, std::move(label));
+    }
+    return out;
   }
 
 } // namespace linkapp
