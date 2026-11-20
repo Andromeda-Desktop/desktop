@@ -11,13 +11,17 @@ const USAGE: &str = "usage: andromeda-sound import-dolby [--xml FILE | --windows
        andromeda-sound import-eqapo FILE [-o FILE]
        andromeda-sound import-driver FILE [-o FILE]
        andromeda-sound probe [--windows DIR]
-       andromeda-sound apply [--profile NAME] [--tuning FILE] [--dsp FILE] [--target SINK] [--loudness DB] [--bass 0-10] [-o FILE]
+       andromeda-sound apply [--profile NAME] [--tuning FILE] [--dsp FILE] [--target SINK] [--loudness DB] [--bass 0-10] [--ieq PRESET] [--width 0-1] [-o FILE]
        andromeda-sound off
        andromeda-sound import-windows
        andromeda-sound status";
 /// Defaults that make laptop speakers sound fuller and louder than the flat Dolby curve.
 const DEFAULT_LOUDNESS_DB: f32 = 4.0;
 const DEFAULT_BASS: f32 = 5.0;
+/// Fuller vocals than the music profile's own `detailed` on the UX3405CA (user A/B, 2026-11-20).
+const DEFAULT_IEQ: &str = "warm";
+/// Depth without a hollow centre (user A/B, 2026-11-20).
+const DEFAULT_WIDTH: f32 = 0.5;
 const DSP_PATH: &str = "/usr/lib/ladspa/andromeda-dsp.so";
 
 fn main() -> Result<()> {
@@ -59,17 +63,18 @@ fn main() -> Result<()> {
         // Import from Windows, then turn the chain on with the user's last bass and loudness.
         Some("import-windows") => {
             let tuning: andromeda_sound::Tuning = toml::from_str(&fs::read_to_string(import(std::iter::empty())?)?)?;
-            let (_, last, loudness, bass) = last_settings()?;
+            let last = last_settings()?;
             let styles = styles(Some(&tuning));
             // The last style when the new tuning has it, else music, else the tuning's first style.
-            let profile = [last.as_str(), "music"]
+            let profile = [last.profile.as_str(), "music"]
                 .into_iter()
                 .chain(styles.first().copied())
                 .find(|p| styles.contains(p))
                 .context("the imported tuning has no speaker style")?
                 .to_owned();
-            apply(["--profile", &profile, "--loudness", &loudness, "--bass", &bass].into_iter().map(str::to_owned))
-                .context("imported the tuning, but apply failed")
+            let args = ["--profile", &profile, "--loudness", &last.loudness, "--bass", &last.bass];
+            let more = ["--ieq", &last.ieq, "--width", &last.width];
+            apply(args.into_iter().chain(more).map(str::to_owned)).context("imported the tuning, but apply failed")
         }
         _ => bail!(USAGE),
     }
@@ -77,7 +82,8 @@ fn main() -> Result<()> {
 
 fn apply(mut args: impl Iterator<Item = String>) -> Result<()> {
     let (mut profile, mut tuning, mut dsp, mut target, mut out) = ("music".to_owned(), None, default_dsp(), None, None);
-    let (mut loudness, mut bass) = (DEFAULT_LOUDNESS_DB, DEFAULT_BASS);
+    let (mut loudness, mut bass, mut ieq, mut width) =
+        (DEFAULT_LOUDNESS_DB, DEFAULT_BASS, DEFAULT_IEQ.to_owned(), DEFAULT_WIDTH);
     while let Some(a) = args.next() {
         let v = args.next().context(USAGE)?;
         match a.as_str() {
@@ -87,6 +93,8 @@ fn apply(mut args: impl Iterator<Item = String>) -> Result<()> {
             "--target" => target = Some(v),
             "--loudness" => loudness = v.parse().context("--loudness takes dB")?,
             "--bass" => bass = v.parse().context("--bass takes 0-10")?,
+            "--ieq" => ieq = v,
+            "--width" => width = v.parse().context("--width takes 0-1")?,
             "-o" => out = Some(PathBuf::from(v)),
             _ => bail!(USAGE),
         }
@@ -115,6 +123,8 @@ fn apply(mut args: impl Iterator<Item = String>) -> Result<()> {
             target: &target,
             loudness_db: loudness.clamp(0.0, 12.0),
             bass: bass.clamp(0.0, 10.0),
+            ieq: &ieq,
+            width: width.clamp(0.0, 1.0),
         },
     )?;
     if let Some(out) = out {
@@ -145,8 +155,17 @@ fn apply(mut args: impl Iterator<Item = String>) -> Result<()> {
     Ok(())
 }
 
-/// (enabled, profile, loudness, bass) from the header of the live config, else of the `.off` one.
-fn last_settings() -> Result<(bool, String, String, String)> {
+struct Last {
+    enabled: bool,
+    profile: String,
+    loudness: String,
+    bass: String,
+    ieq: String,
+    width: String,
+}
+
+/// The settings in the header of the live config, else of the `.off` one.
+fn last_settings() -> Result<Last> {
     let conf = conf_path()?;
     let enabled = conf.exists();
     let text =
@@ -158,19 +177,21 @@ fn last_settings() -> Result<(bool, String, String, String)> {
             .and_then(|(_, r)| r.split([' ', ';']).next())
             .map(|v| v.trim_matches('"').to_owned())
     };
-    Ok((
+    Ok(Last {
         enabled,
-        field("profile").unwrap_or_else(|| "music".to_owned()),
-        field("loudness").unwrap_or_else(|| DEFAULT_LOUDNESS_DB.to_string()),
-        field("bass").unwrap_or_else(|| DEFAULT_BASS.to_string()),
-    ))
+        profile: field("profile").unwrap_or_else(|| "music".to_owned()),
+        loudness: field("loudness").unwrap_or_else(|| DEFAULT_LOUDNESS_DB.to_string()),
+        bass: field("bass").unwrap_or_else(|| DEFAULT_BASS.to_string()),
+        ieq: field("ieq").unwrap_or_else(|| DEFAULT_IEQ.to_owned()),
+        width: field("width").unwrap_or_else(|| DEFAULT_WIDTH.to_string()),
+    })
 }
 
 /// One `key=value` per line for the Settings card: enabled, source (`basic` or the vendor),
-/// profile, loudness, bass, profiles (comma list from the imported tuning), windows (an NTFS
+/// profile, loudness, bass, ieq, width, profiles and ieqs (comma lists from the imported tuning), windows (an NTFS
 /// partition exists), speakers (an internal speaker sink exists).
 fn status() -> Result<()> {
-    let (enabled, profile, loudness, bass) = last_settings()?;
+    let Last { enabled, profile, loudness, bass, ieq, width } = last_settings()?;
     let tuning = codec_stem().ok().and_then(|stem| {
         let path = data_dir().ok()?.join(format!("{}.toml", stem.rsplit('_').next().unwrap_or_default()));
         toml::from_str::<andromeda_sound::Tuning>(&fs::read_to_string(path).ok()?).ok()
@@ -182,7 +203,14 @@ fn status() -> Result<()> {
     println!("profile={profile}");
     println!("loudness={loudness}");
     println!("bass={bass}");
+    println!("ieq={ieq}");
+    println!("width={width}");
     println!("profiles={}", profiles.join(","));
+    let ieqs = ["warm", "balanced", "detailed"]
+        .into_iter()
+        .filter(|p| tuning.as_ref().is_some_and(|t| t.ieq_presets.contains_key(*p)))
+        .collect::<Vec<_>>();
+    println!("ieqs={}", ieqs.join(","));
     println!("windows={}", u8::from(windows));
     println!("speakers={}", u8::from(speaker_sink().is_ok()));
     Ok(())
