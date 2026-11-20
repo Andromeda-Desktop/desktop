@@ -2,6 +2,7 @@
 
 #include "config/config.h"
 #include "config/managed_settings.h"
+#include "config/resolve.h"
 #include "core/log.h"
 #include "qos/holds.h"
 
@@ -123,6 +124,7 @@ namespace andromeda {
         SD_BUS_METHOD("HoldFreeze", "ss", "s", onHoldFreeze, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SetAppRule", "ss", "", onSetAppRule, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("AppRules", "", "a(ss)", onAppRules, SD_BUS_VTABLE_UNPRIVILEGED),
+        SD_BUS_METHOD("BuiltInAppRules", "", "a(ss)", onBuiltInAppRules, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SetHiddenFpsCap", "u", "", onSetHiddenFpsCap, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SetRefreshCap", "u", "", onSetRefreshCap, SD_BUS_VTABLE_UNPRIVILEGED),
         SD_BUS_METHOD("SetFreezeHidden", "b", "", onSetFreezeHidden, SD_BUS_VTABLE_UNPRIVILEGED),
@@ -403,6 +405,22 @@ namespace andromeda {
     r = r < 0 ? r : sd_bus_message_open_container(reply, 'a', "(ss)");
     for (const auto& [app, qos] : documentAppQos(document)) {
       r = r < 0 ? r : sd_bus_message_append(reply, "(ss)", app.c_str(), qos.c_str());
+    }
+    r = r < 0 ? r : sd_bus_message_close_container(reply);
+    r = r < 0 ? r : sd_bus_send(nullptr, reply, nullptr);
+    sd_bus_message_unref(reply);
+    return r;
+  }
+
+  // (app id regex, rule): what an app with no AppRules entry gets.
+  int AppsBus::onBuiltInAppRules(sd_bus_message* message, void* /*data*/, sd_bus_error* /*error*/) {
+    sd_bus_message* reply = nullptr;
+    int r = sd_bus_message_new_method_return(message, &reply);
+    r = r < 0 ? r : sd_bus_message_open_container(reply, 'a', "(ss)");
+    for (const BuiltInQosRule& rule : builtInQosRules()) {
+      const std::string pattern(rule.appIdPattern);
+      const std::string name(rule.name);
+      r = r < 0 ? r : sd_bus_message_append(reply, "(ss)", pattern.c_str(), name.c_str());
     }
     r = r < 0 ? r : sd_bus_message_close_container(reply);
     r = r < 0 ? r : sd_bus_send(nullptr, reply, nullptr);

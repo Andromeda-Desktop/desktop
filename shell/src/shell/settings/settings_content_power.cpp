@@ -204,10 +204,8 @@ namespace settings {
         labels.push_back(i18n::tr("settings.power.app-rule-" + std::string(rule)));
       }
       for (const auto& [appId, name] : apps) {
-        const auto set = health.appRules().find(appId);
-        const std::size_t current = set == health.appRules().end()
-            ? 0
-            : static_cast<std::size_t>(std::ranges::find(kRules, set->second) - kRules.begin()) % kRules.size();
+        const std::size_t current =
+            static_cast<std::size_t>(std::ranges::find(kRules, health.appRule(appId)) - kRules.begin()) % kRules.size();
         auto r = row(scale);
         r->addChild(twoLines(name, appId, scale));
         r->addChild(ui::select({

@@ -98,9 +98,33 @@ void SystemHealthService::loadAppRules() {
           notify();
         }
     );
+    m_apps->callMethodAsync("BuiltInAppRules").onInterface(kAppsInterface).uponReplyInvoke(
+        [this, alive](std::optional<sdbus::Error> error, const std::vector<sdbus::Struct<std::string, std::string>>& rules) {
+          if (alive.expired() || error.has_value()) {
+            return;
+          }
+          m_builtInAppRules.clear();
+          for (const auto& rule : rules) {
+            m_builtInAppRules.emplace_back(std::regex(rule.get<0>()), rule.get<1>());
+          }
+          notify();
+        }
+    );
   } catch (const sdbus::Error& e) {
     kLog.warn("app rules: {}", e.what());
   }
+}
+
+std::string SystemHealthService::appRule(const std::string& appId) const {
+  if (const auto set = m_appRules.find(appId); set != m_appRules.end()) {
+    return set->second;
+  }
+  for (const auto& [pattern, rule] : m_builtInAppRules) {
+    if (std::regex_match(appId, pattern)) {
+      return rule;
+    }
+  }
+  return "normal";
 }
 
 void SystemHealthService::setAppRule(const std::string& appId, const std::string& rule) {

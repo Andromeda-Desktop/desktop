@@ -45,6 +45,7 @@ namespace andromeda {
     static int onHoldFreeze(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onSetAppRule(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onAppRules(sd_bus_message* message, void* data, sd_bus_error* error);
+    static int onBuiltInAppRules(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onSetRefreshCap(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onSetHiddenFpsCap(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onSetFreezeHidden(sd_bus_message* message, void* data, sd_bus_error* error);

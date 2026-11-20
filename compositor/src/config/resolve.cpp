@@ -1,6 +1,7 @@
 #include "config/resolve.h"
 
 #include <algorithm>
+#include <array>
 #include <optional>
 #include <regex>
 #include <string>
@@ -240,13 +241,27 @@ namespace andromeda {
     return false;
   }
 
-  std::optional<qos::Rule> builtInQos(std::string_view appId) {
+  std::span<const BuiltInQosRule> builtInQosRules() {
     // A terminal runs work the user started (builds, agents), so hiding it never throttles that work.
-    static const std::regex kTerminal(
-        R"(^(dev\.andromeda\.Terminal|foot|footclient|kitty|Alacritty|org\.wezfurlong\.wezterm|com\.mitchellh\.ghostty|org\.gnome\.Console|org\.gnome\.Ptyxis|org\.gnome\.Terminal|org\.kde\.konsole|xterm)$)"
-    );
-    if (std::regex_match(appId.begin(), appId.end(), kTerminal)) {
-      return qos::Rule::NeverThrottle;
+    static constexpr std::array<BuiltInQosRule, 1> kRules{{
+        {R"(^(dev\.andromeda\.Terminal|foot|footclient|kitty|Alacritty|org\.wezfurlong\.wezterm|com\.mitchellh\.ghostty|org\.gnome\.Console|org\.gnome\.Ptyxis|org\.gnome\.Terminal|org\.kde\.konsole|xterm)$)",
+         "never_throttle", qos::Rule::NeverThrottle},
+    }};
+    return kRules;
+  }
+
+  std::optional<qos::Rule> builtInQos(std::string_view appId) {
+    static const std::vector<std::regex> kPatterns = [] {
+      std::vector<std::regex> patterns;
+      for (const BuiltInQosRule& rule : builtInQosRules()) {
+        patterns.emplace_back(rule.appIdPattern.begin(), rule.appIdPattern.end());
+      }
+      return patterns;
+    }();
+    for (std::size_t i = 0; i < kPatterns.size(); ++i) {
+      if (std::regex_match(appId.begin(), appId.end(), kPatterns[i])) {
+        return builtInQosRules()[i].rule;
+      }
     }
     return std::nullopt;
   }

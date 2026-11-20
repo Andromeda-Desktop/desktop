@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string_view>
 
 namespace andromeda {
@@ -20,7 +21,14 @@ namespace andromeda {
 
   inline constexpr uint64_t kStartupRuleDurationMs = 60'000;
 
-  // The qos rule an app gets before any user rule: terminals never throttle. nullopt = none.
+  // A qos rule an app gets before any user rule; `name` is its config value.
+  struct BuiltInQosRule {
+    std::string_view appIdPattern;
+    std::string_view name;
+    qos::Rule rule;
+  };
+  [[nodiscard]] std::span<const BuiltInQosRule> builtInQosRules();
+  // The first built-in rule whose pattern matches `appId`. nullopt = none.
   [[nodiscard]] std::optional<qos::Rule> builtInQos(std::string_view appId);
 
   [[nodiscard]] ResolvedWindowRule resolveWindowRules(

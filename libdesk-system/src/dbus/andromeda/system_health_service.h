@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <regex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,9 +64,11 @@ public:
 
   void setRule(const std::string& id, bool enabled, const std::map<std::string, double>& params);
 
-  // Per-app CPU rules the user set in Settings (org.andromeda.Compositor1.Apps): app id -> never_throttle or
-  // freeze_when_hidden; an app with no entry is normal.
+  // Per-app CPU rules the user set in Settings (org.andromeda.Compositor1.Apps): app id -> normal, never_throttle or
+  // freeze_when_hidden.
   [[nodiscard]] const std::map<std::string, std::string>& appRules() const noexcept { return m_appRules; }
+  // The rule `appId` runs under: the user's, else the compositor's built-in one (terminals), else normal.
+  [[nodiscard]] std::string appRule(const std::string& appId) const;
   void setAppRule(const std::string& appId, const std::string& rule);
   void undo(const std::string& entryId);
 
@@ -82,6 +85,7 @@ private:
   std::unique_ptr<sdbus::IProxy> m_knobs;
   std::unique_ptr<sdbus::IProxy> m_apps;
   std::map<std::string, std::string> m_appRules;
+  std::vector<std::pair<std::regex, std::string>> m_builtInAppRules;
   std::map<std::string, double> m_knobValues;
   std::function<void()> m_knobCallback;
   std::vector<SystemRule> m_rules;
