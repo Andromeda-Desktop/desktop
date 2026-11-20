@@ -286,10 +286,6 @@ namespace andromeda {
     }
   }
 
-  bool Server::refreshSystemKeymap() {
-    return adoptSystemKeymap(usesSystemXkbNames(config().input) ? querySystemKeymap() : XkbNames{});
-  }
-
   void Server::refreshSystemKeymapAsync() {
     if (!usesSystemXkbNames(config().input)) {
       if (adoptSystemKeymap({})) {

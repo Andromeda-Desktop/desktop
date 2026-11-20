@@ -794,9 +794,7 @@ namespace andromeda {
     void applyConfig(const ConfigEffects& effects);
     // Recompile every keyboard's keymap from the current config and system keymap.
     void applyKeyboardConfig();
-    // Re-read the system keymap when the config uses it; true when it changed. Blocks on D-Bus: startup only.
-    bool refreshSystemKeymap();
-    // The same read on a worker; applies the keyboard config when the keymap changed.
+    // Re-read the system keymap on a worker when the config uses it; applies the keyboard config when it changed.
     void refreshSystemKeymapAsync();
     bool adoptSystemKeymap(XkbNames names);
     void showConfigDiagnostics();

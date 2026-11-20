@@ -1785,7 +1785,9 @@ namespace andromeda {
       }
     }
 
-    refreshSystemKeymap();
+    // The localed read can bus-activate localed (~75 ms at login): keyboards start on the default keymap and the
+    // worker result reapplies them.
+    refreshSystemKeymapAsync();
     if (!m_backendManager->activateHandoffSession()) {
       wlr_log(WLR_ERROR, "the session did not become active");
       return false;
