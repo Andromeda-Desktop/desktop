@@ -61,7 +61,7 @@ class Player(dbus.service.Object):
     @dbus.service.method(PROPS, in_signature="s", out_signature="a{sv}")
     def GetAll(self, interface):
         if interface == ROOT:
-            return {"Identity": "E2E Player", "CanQuit": False, "CanRaise": True, "HasTrackList": False}
+            return {"Identity": "E2E Player", "CanQuit": False, "CanRaise": os.environ.get("MPRIS_TEST_CAN_RAISE", "1") == "1", "HasTrackList": False}
         return self.player_props()
 
     @dbus.service.method(PROPS, in_signature="ssv")
