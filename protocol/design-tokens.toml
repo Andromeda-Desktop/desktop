@@ -243,6 +243,8 @@ saturation = 1.25
 ior = 1.5
 # Glass edge hairline width, logical px (scaled by the output and ui scale).
 rim_width = 1.5
+# The specular rim fades from the edge to nothing over this many logical px (smoothstep): a glow, not a drawn line.
+rim_falloff = 3.0
 # Pointer light added to the rim right at the pointer (the key glint peaks at 1), a Gaussian to 2 % at kPointerLightReach.
 rim_pointer_boost = 0.9
 # Colour fringe: red bends this fraction of the lens shift less, blue more (Apple's lens shows yellow/magenta edges).

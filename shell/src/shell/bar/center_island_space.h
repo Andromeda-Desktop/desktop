@@ -1,16 +1,21 @@
 #pragma once
 
 #include "ui/palette.h"
+#include "ui/style.h"
 
 #include <cstdint>
 
 // Hairline stroke of the glass material (--stroke) in logical pixels.
 inline constexpr float kIslandStrokeWidth = 0.5F;
 
-// Island outline width: a configured width wins; else the hairline in light only, since the dark stroke
-// (white 8 %) reads as a highlight on a dark pill (user, 2026-11-02).
+// Island outline width: a configured width wins; else none while edge reflection draws the rim, and with it off the
+// hairline in light only, since the dark stroke (white 8 %) reads as a highlight on a dark pill (user, 2026-11-02).
 [[nodiscard]] inline float islandStrokeWidth(float configured) noexcept {
-  return configured > 0.0F ? configured : (isResolvedLightTheme() ? kIslandStrokeWidth : 0.0F);
+  if (configured > 0.0F) {
+    return configured;
+  }
+  const bool rim = Style::glassMaterial(glass::Kind::Shape).rim > 0.0F;
+  return !rim && isResolvedLightTheme() ? kIslandStrokeWidth : 0.0F;
 }
 
 // Row: the island sits in a top or bottom bar row; Left and Right: in a vertical bar's lane, centred on the output.

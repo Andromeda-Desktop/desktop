@@ -57,6 +57,8 @@ namespace glass {
   // Glass shapes of one surface with the same material join by a smooth union within this many logical px, so shapes
   // that move together merge and split like one liquid (gaps under about half of it bridge).
   inline constexpr float kMergeReach = 24.0F;
+  // Specular rim strength of frosted glass with edge reflection on: a soft glow that marks the edge without a line.
+  inline constexpr float kFrostedRim = 0.6F;
   // Glass rims within this many logical px of the pointer turn their key light toward it.
   inline constexpr float kPointerLightReach = 128.0F;
   [[nodiscard]] constexpr float blurStrength(float clarity) noexcept { return 1.0F - clarity; }
@@ -178,7 +180,7 @@ namespace glass {
     const float frost = settings.activeFrost();
     const float clarity = 0.7F * (shape ? at(frost, 1.0F, 0.5F, 0.0F) : at(frost, 1.0F, 0.25F, 0.0F));
     return {
-        .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? 1.0F : 0.0F, .lens = 0.0F, .clarity = clarity,
+        .tint = tint, .level = 0.0F, .rim = settings.edgeReflection ? kFrostedRim : 0.0F, .lens = 0.0F, .clarity = clarity,
         .blurStrength = blurStrength(clarity), .dense = denseLift(kind, settings.style, light && settings.style != Style::Clear)
     };
   }

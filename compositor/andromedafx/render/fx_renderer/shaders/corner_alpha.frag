@@ -107,10 +107,9 @@ float pointer_near(vec2 p, vec3 light) {
   return exp(-x * x);
 }
 
-// The edge hairline: 1 at the clip edge, 0 TOKEN_LENS_RIM_WIDTH logical px inside it; d = signed distance, px.
+// The specular rim: 1 at the clip edge, easing to 0 TOKEN_LENS_RIM_FALLOFF logical px inside it; d = signed distance, px.
 float rim_edge(float d, float scale) {
-  float inner = clamp(1.0 + (d + 0.5) / (TOKEN_LENS_RIM_WIDTH * scale), 0.0, 1.0);
-  return inner * inner;
+  return smoothstep(0.0, 1.0, 1.0 + (d + 0.5) / (TOKEN_LENS_RIM_FALLOFF * scale));
 }
 
 // How much a rim pixel at p (outward normal) faces the fixed top-left key light, y-down, plus the pointer light
