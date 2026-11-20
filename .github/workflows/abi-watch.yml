@@ -1,0 +1,69 @@
+# Daily: resolve every published Arch package against today's Arch repositories. A package whose soname depends
+# (libjxl.so=0.12-64) no longer resolve was built against a library that Arch has bumped; its unit gets the next
+# release tag and a rebuild, so `pacman -Syu` stops refusing the library upgrade within a day.
+name: abi-watch
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: abi-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed git github-cli
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Resolve the published packages
+        id: resolve
+        run: |
+          # Resolution only: nothing is installed, so the repository signature is not needed here.
+          printf '\n[andromeda]\nSigLevel = Never\nServer = https://github.com/%s/releases/latest/download\n' \
+            "$GITHUB_REPOSITORY" >> /etc/pacman.conf
+          pacman -Sy
+          units=()
+          for pkg in $(pacman -Slq andromeda); do
+            pacman -Sp --noconfirm "andromeda/$pkg" > /dev/null 2> err.log && continue
+            echo "::warning::$pkg: $(grep -m1 -i 'unable to satisfy\|error' err.log)"
+            case $pkg in
+              andromeda-files-git) units+=(files) ;;
+              andromeda-player-git) units+=(player) ;;
+              andromeda-viewer-git) units+=(viewer) ;;
+              andromeda-terminal-git) units+=(terminal) ;;
+              andromeda-link*) ;; # built in the link repo
+              *) units+=(core) ;;
+            esac
+          done
+          echo "units=$(printf '%s\n' "${units[@]}" | sort -u | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+      - name: Tag and rebuild
+        if: steps.resolve.outputs.units != ''
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          for unit in ${{ steps.resolve.outputs.units }}; do
+            if [[ $unit == core ]]; then workflow=release-arch.yml prefix=v; else workflow=release-apps.yml prefix=$unit-v; fi
+            # A rebuild that is still running already covers the bump.
+            if [[ -n $(gh run list -R "$GITHUB_REPOSITORY" -w "$workflow" -s in_progress --json databaseId -q '.[]') ]]; then
+              echo "$unit: $workflow is running; skipped"
+              continue
+            fi
+            tag=$prefix$(tools/unit-version.sh "$unit" next)
+            git tag "$tag" origin/main
+            git push origin "$tag"
+            # A tag that GITHUB_TOKEN pushes starts no workflow; a dispatch does.
+            gh workflow run "$workflow" -R "$GITHUB_REPOSITORY" --ref main -f tag="$tag"
+            echo "$unit: rebuild $tag"
+          done
