@@ -251,6 +251,8 @@ public:
   void setLayoutCallback(std::function<void()> callback) { m_onLayout = std::move(callback); }
 
   [[nodiscard]] wl_surface* wlSurface() const noexcept;
+  // A token another window or app activates with; "" while the window has no surface.
+  [[nodiscard]] std::string activationToken();
   // ready gets the handle another client parents a window to (portal form); "" when closed or not supported.
   void exportHandle(std::function<void(const std::string& handle)> ready);
   [[nodiscard]] Material material() const noexcept { return m_config.material; }

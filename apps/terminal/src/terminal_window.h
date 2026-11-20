@@ -44,7 +44,6 @@ class SelectionList;
 class Surface;
 class ThumbnailService;
 
-struct wl_surface;
 
 namespace term {
 
@@ -289,7 +288,7 @@ namespace term {
     // Session ids are unique in the app: notice keys use them, and a moved session keeps its id.
     static inline std::uint64_t s_nextId = 1;
     void registerDropTarget();
-    wl_surface* m_dropSurface = nullptr; // the surface the drop target is on
+    Toplevel* m_dropSurface = nullptr; // the surface the drop target is on
     // Agent session keys are unique in the app: all windows share one host.
     static inline std::uint64_t s_nextAgentKey = 0;
     // The panes whose views are in the slot, in layout order: the shown session alone, or its split.

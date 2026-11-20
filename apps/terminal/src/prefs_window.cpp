@@ -1,5 +1,6 @@
 #include "prefs_window.h"
 
+#include "platform/input_events.h"
 #include "app/app_window.h"
 #include "core/input/cursor_shape.h"
 #include "core/deferred_call.h"
@@ -15,7 +16,6 @@
 #include "render/animation/motion_service.h"
 #include "render/scene/shader_scene_node.h"
 #include "ui/style.h"
-#include "wayland/wayland_seat.h"
 
 #include <fontconfig/fontconfig.h>
 
@@ -476,6 +476,8 @@ namespace term {
                             [](Settings& x, bool on) { x.scrollback = on ? Scrollback::Unlimited : Scrollback::Limited; })},
                     {"Copy on select", "Selected text goes to the clipboard",
                      toggle(now.copyOnSelect, [](Settings& x, bool on) { x.copyOnSelect = on; })},
+                    {"Focus follows mouse", "A split pane takes focus when the pointer enters it",
+                     toggle(now.focusFollowsMouse, [](Settings& x, bool on) { x.focusFollowsMouse = on; })},
                     {"Scroll speed", "Rows per wheel step",
                      stepper(now.scrollRows, SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax, " rows",
                              [](Settings& x, int v) { x.scrollRows = v; })},

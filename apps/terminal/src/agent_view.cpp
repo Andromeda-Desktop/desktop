@@ -4,6 +4,8 @@
 #include "agent_markup.h"
 #include "core/input/cursor_shape.h"
 #include "link_finder.h"
+#include "core/input/key_modifiers.h"
+#include "platform/input_events.h"
 #include "design_tokens.h"
 #include "render/animation/animation_manager.h"
 #include "render/core/render_styles.h"
@@ -21,7 +23,6 @@
 #include "ui/palette.h"
 #include "ui/style.h"
 #include "util/string_utils.h"
-#include "wayland/wayland_seat.h"
 
 #include <algorithm>
 #include <chrono>

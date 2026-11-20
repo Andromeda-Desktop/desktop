@@ -113,7 +113,7 @@ namespace term {
         },
         [this, &window](std::uint64_t id) {
           for (const auto& [app, terminal] : m_windows) {
-            if (terminal->windowId() == id && app != &window) app->activate(loop().wayland().requestActivationToken(window.wlSurface()));
+            if (terminal->windowId() == id && app != &window) app->activate(window.activationToken());
           }
         },
         [this, &window] { addWorkspace(window); });
@@ -142,7 +142,7 @@ namespace term {
     if (m_control != nullptr) m_control->emitSignal("WorkspacesChanged").onInterface(control::kInterface);
   }
 
-  void TerminalApp::addWorkspace(AppWindow& from) { openWindow(loop().wayland().requestActivationToken(from.wlSurface())); }
+  void TerminalApp::addWorkspace(AppWindow& from) { openWindow(from.activationToken()); }
 
   void TerminalApp::shutdown() { m_layoutWrites = LayoutWrites::Kept; }
 
@@ -177,7 +177,7 @@ namespace term {
   void TerminalApp::openPath(const std::filesystem::path& path) {
     std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
     if (m_prefsWindow != nullptr) {
-      if (const std::string token = loop().wayland().requestActivationToken(m_prefsWindow->wlSurface()); !token.empty()) {
+      if (const std::string token = m_prefsWindow->activationToken(); !token.empty()) {
         g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
       }
     }
@@ -218,7 +218,7 @@ namespace term {
                     // message: what theme to make.
                     std::ofstream(themesDir() / "CLAUDE.md") << themeAgentPrompt();
                     m_nextOrigins = {NewAgent{.kind = agent::Kind::Claude, .cwd = themesDir().string()}};
-                    openWindow(loop().wayland().requestActivationToken(m_prefsWindow->wlSurface()));
+                    openWindow(m_prefsWindow->activationToken());
                   },
               .openFolder =
                   [this] {

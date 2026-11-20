@@ -16,7 +16,6 @@
 #include "render/core/texture_manager.h"
 #include "render/render_context.h"
 #include "render/render_target.h"
-#include "wayland/toplevel_surface.h"
 #include "render/text/glyph_registry.h"
 #include "ui/builders.h"
 #include "ui/controls/selection_list.h"
@@ -31,8 +30,6 @@
 #include "ui/contrast.h"
 #include "ui/palette.h"
 #include "ui/style.h"
-#include "wayland/drag_and_drop.h"
-#include "wayland/wayland_connection.h"
 
 #include "core/input/cursor_shape.h"
 
@@ -249,7 +246,7 @@ namespace term {
       bottom->addChild(ui::button({.out = &m_prefsButton, .glyph = std::string("settings"), .glyphSize = Tokens::sizeSymbol * s,
                                    .variant = ButtonVariant::Ghost, .tooltip = std::string("Preferences"),
                                    .radius = button / 2.0F, .width = button, .height = button,
-                                   .onClick = [this] { m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); }}));
+                                   .onClick = [this] { m_preferences(m_window.activationToken()); }}));
       fillFootBar(renderer);
       side->addChild(std::move(bottom));
       refreshRows();
@@ -429,7 +426,12 @@ namespace term {
     auto alive = std::weak_ptr<bool>(m_alive);
     return TerminalView::Host{
         .requestFrame = [this] { requestFrame(); },
-        .playBell = [this] { m_loop.wayland().ringBell(m_window.wlSurface()); },
+        .playBell =
+            [this] {
+              if (const Toplevel* top = m_window.surface(); top != nullptr) {
+                m_loop.display().ringBell(*top);
+              }
+            },
         .bellRang =
             [this, id, alive] {
               if (std::ranges::contains(m_sessions.visible(), id)) {
@@ -437,9 +439,9 @@ namespace term {
               }
               // In the background, the bell marks the window as needing attention; it never takes focus.
               if (const Toplevel* top = m_window.surface(); top != nullptr && !top->state().activated) {
-                m_loop.wayland().requestAttentionTokenAsync(m_window.wlSurface(), [this, alive](std::string token) {
-                  if (!alive.expired()) {
-                    m_loop.wayland().activateSurface(m_window.wlSurface(), token);
+                m_loop.display().requestAttentionTokenAsync(*top, [this, alive](std::string token) {
+                  if (const Toplevel* now = m_window.surface(); !alive.expired() && now != nullptr) {
+                    m_loop.display().activateSurface(*now, token);
                   }
                 });
               }
@@ -470,7 +472,7 @@ namespace term {
                 }
               });
             },
-        .modifiers = [this] { return m_loop.wayland().keyboardModifiers(); },
+        .modifiers = [this] { return m_loop.display().keyboardModifiers(); },
         .notify =
             [this, id](const Notice& notice, std::function<void(const std::string&, int)> clicked,
                        std::function<void()> closed) {
@@ -582,7 +584,7 @@ namespace term {
     // Its nodes stay in this scene until the next build; the new window's build gives it new ones.
     moved->view->sceneDestroyed();
     apply(session_event::Close{id});
-    m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {Adopt{std::move(moved)}});
+    m_newWindow(m_window.activationToken(), {Adopt{std::move(moved)}});
   }
 
   std::uint64_t TerminalWindow::openSession(const WindowOrigin& origin) {
@@ -996,8 +998,8 @@ namespace term {
       case Action::NewAgent: openAgentHere(defaultAgentKind()); return true;
       // Closes the shown session, shell or agent; asks first while a command runs.
       case Action::CloseSession: askClose({*m_sessions.shown()}); return true;
-      case Action::Preferences: m_preferences(m_loop.wayland().requestActivationToken(m_window.wlSurface())); return true;
-      case Action::NewWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); return true;
+      case Action::Preferences: m_preferences(m_window.activationToken()); return true;
+      case Action::NewWindow: m_newWindow(m_window.activationToken(), {NewShell{}}); return true;
       case Action::Find: openFind(); return true;
       case Action::CommandPalette: openPalette(); return true;
       case Action::ToggleSidebar: m_window.setSidebarVisible(!m_window.sidebarVisible()); return true;
@@ -1060,7 +1062,7 @@ namespace term {
     auto row = std::make_unique<StatusRow>(m_window.uiScale());
     row->setRail(m_rail);
     row->setOnClick([this, id] {
-      if ((m_loop.wayland().keyboardModifiers() & KeyMod::Ctrl) != 0U) {
+      if ((m_loop.display().keyboardModifiers() & KeyMod::Ctrl) != 0U) {
         ctrlClickRow(id);
         return;
       }
@@ -1203,7 +1205,7 @@ namespace term {
 
   void TerminalWindow::focusSession(std::uint64_t id) {
     apply(session_event::Show{id});
-    m_window.activate(m_loop.wayland().requestActivationToken(m_window.wlSurface()));
+    m_window.activate(m_window.activationToken());
   }
 
   void TerminalWindow::closeSession(std::uint64_t id) { apply(session_event::Close{id}); }
@@ -1407,7 +1409,7 @@ namespace term {
                                }
                                switch (id) {
                                  case kShell: openSession(NewShell{}); break;
-                                 case kWindow: m_newWindow(m_loop.wayland().requestActivationToken(m_window.wlSurface()), {NewShell{}}); break;
+                                 case kWindow: m_newWindow(m_window.activationToken(), {NewShell{}}); break;
                                  default:
                                    if (id >= kAgent && id < kAgent + static_cast<std::int32_t>(agent::kKindCount)) {
                                      openAgentHere(static_cast<agent::Kind>(id - kAgent));
@@ -1969,20 +1971,17 @@ namespace term {
   }
 
   void TerminalWindow::registerDropTarget() {
-    wl_surface* surface = m_window.wlSurface();
-    DragAndDrop* dnd = m_loop.wayland().dragAndDrop();
-    if (surface == nullptr || dnd == nullptr || surface == m_dropSurface) {
+    Toplevel* surface = m_window.surface();
+    if (surface == nullptr || surface == m_dropSurface) {
       return;
     }
-    m_dropSurface = surface;
-    dnd->setAcceptedTypes({"text/uri-list", "text/plain;charset=utf-8", "text/plain"});
     const auto over = [this](float x, float y) {
       TerminalView* view = shownTerminal();
       return view != nullptr && view->focusArea() != nullptr && view->focusArea()->containsScenePoint(x, y) ? view : nullptr;
     };
-    dnd->setTarget(surface, {
+    const bool registered = m_loop.display().setDropTarget(*surface, {"text/uri-list", "text/plain;charset=utf-8", "text/plain"}, {
         .enter = [](const std::vector<std::string>& /*mimes*/) { return true; },
-        .motion = [over](float x, float y) -> std::uint32_t { return over(x, y) != nullptr ? DragAndDrop::Copy : DragAndDrop::None; },
+        .motion = [over](float x, float y) -> std::uint32_t { return over(x, y) != nullptr ? DropCopy : DropNone; },
         .leave = [] {},
         .drop =
             [over](float x, float y, std::uint32_t /*action*/, const std::string& mime, std::string data) {
@@ -1995,8 +1994,11 @@ namespace term {
 
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
-    if (DragAndDrop* dnd = m_loop.wayland().dragAndDrop(); dnd != nullptr && m_dropSurface != nullptr) {
-      dnd->clearTarget(m_dropSurface);
+    if (m_dropSurface != nullptr) {
+      m_loop.display().clearDropTarget(*m_dropSurface);
+    }
+    if (registered) {
+      m_dropSurface = surface;
     }
     if (m_tickSurface != nullptr && m_tickSurface == m_window.surface()) {
       m_tickSurface->setFrameTickCallback(nullptr);
@@ -2016,7 +2018,7 @@ namespace term {
   void TerminalWindow::openUri(const std::string& uri) {
     // The opened app activates its window with this token; without one the compositor only marks it urgent.
     std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
-    if (const std::string token = m_loop.wayland().requestActivationToken(m_window.wlSurface()); !token.empty()) {
+    if (const std::string token = m_window.activationToken(); !token.empty()) {
       g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
     }
     GError* error = nullptr;

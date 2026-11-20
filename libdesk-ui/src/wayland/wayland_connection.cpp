@@ -948,7 +948,11 @@ void WaylandConnection::setKeyboardLayoutChangeCallback(WaylandSeat::KeyboardLay
   m_seatHandler.setKeyboardLayoutChangeCallback(std::move(callback));
 }
 
-void WaylandConnection::setTextInputService(TextInputService* textInputService) {
+TextInputService* WaylandConnection::textInputService() const noexcept { return m_textInputService; }
+
+void WaylandConnection::setTextInputService(TextInputService* service) {
+  // A Wayland display only ever gets the Wayland service.
+  auto* textInputService = static_cast<WaylandTextInputService*>(service);
   m_textInputService = textInputService;
   if (textInputService != nullptr) {
     m_seatHandler.setKeyboardFocusCallback([textInputService](wl_surface* surface, bool entered) {
@@ -1428,6 +1432,22 @@ OutputId WaylandConnection::outputForSurface(const Surface& surface) const noexc
 }
 
 void WaylandConnection::ringBell(const Surface& surface) const { ringBell(wlSurfaceOf(surface)); }
+
+bool WaylandConnection::setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) {
+  DragAndDrop* dnd = dragAndDrop();
+  if (dnd == nullptr) {
+    return false;
+  }
+  dnd->setAcceptedTypes(std::move(acceptedTypes));
+  dnd->setTarget(wlSurfaceOf(surface), std::move(target));
+  return true;
+}
+
+void WaylandConnection::clearDropTarget(const Surface& surface) {
+  if (DragAndDrop* dnd = dragAndDrop(); dnd != nullptr) {
+    dnd->clearTarget(wlSurfaceOf(surface));
+  }
+}
 
 std::string WaylandConnection::requestActivationToken(const Surface& surface, const std::string& appId) const {
   return requestActivationToken(wlSurfaceOf(surface), appId);

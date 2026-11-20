@@ -57,6 +57,7 @@ struct zwlr_output_mode_v1;
 class LayerSurface;
 class FocusGrabService;
 class TextInputService;
+class WaylandTextInputService;
 class DragAndDrop;
 class PrimarySelection;
 struct zwp_primary_selection_device_manager_v1;
@@ -201,12 +202,14 @@ public:
   [[nodiscard]] wp_fractional_scale_manager_v1* fractionalScaleManager() const noexcept;
   [[nodiscard]] hyprland_focus_grab_manager_v1* hyprlandFocusGrabManager() const noexcept;
   [[nodiscard]] FocusGrabService* focusGrabService() const noexcept;
-  [[nodiscard]] TextInputService* textInputService() const noexcept override { return m_textInputService; }
+  [[nodiscard]] TextInputService* textInputService() const noexcept override;
   [[nodiscard]] wp_viewporter* viewporter() const noexcept;
   [[nodiscard]] wp_presentation* presentation() const noexcept { return m_presentation; }
   [[nodiscard]] wl_data_device_manager* dataDeviceManager() const noexcept { return m_dataDeviceManager; }
   // Created on first use; nullptr without a data device manager or seat.
   [[nodiscard]] DragAndDrop* dragAndDrop();
+  bool setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) override;
+  void clearDropTarget(const Surface& surface) override;
   // Created on first use; nullptr when the compositor has no primary selection.
   [[nodiscard]] PrimarySelection* primarySelection();
   void setClipboardChangedCallback(std::function<void()> changed) override;
@@ -398,7 +401,7 @@ private:
   wl_data_device_manager* m_dataDeviceManager = nullptr;
   bool m_backgroundEffectBlurSupported = false;
   zwp_text_input_manager_v3* m_textInputManager = nullptr;
-  TextInputService* m_textInputService = nullptr;
+  WaylandTextInputService* m_textInputService = nullptr;
   bool m_hasLayerShellGlobal = false;
   std::vector<WaylandOutput> m_outputs;
   ChangeCallback m_outputChangeCallback;

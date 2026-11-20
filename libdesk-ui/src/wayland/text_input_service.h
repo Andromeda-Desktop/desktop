@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ui/text_input_client.h"
+#include "platform/text_input_service.h"
 
 #include <cstdint>
 #include <optional>
@@ -8,29 +8,28 @@
 
 struct wl_seat;
 struct wl_surface;
-class Surface;
 struct zwp_text_input_manager_v3;
 struct zwp_text_input_v3;
 
-class TextInputService {
+class WaylandTextInputService final : public TextInputService {
 public:
-  TextInputService();
-  ~TextInputService();
+  WaylandTextInputService();
+  ~WaylandTextInputService() override;
 
-  TextInputService(const TextInputService&) = delete;
-  TextInputService& operator=(const TextInputService&) = delete;
+  WaylandTextInputService(const WaylandTextInputService&) = delete;
+  WaylandTextInputService& operator=(const WaylandTextInputService&) = delete;
 
   bool bind(zwp_text_input_manager_v3* manager, wl_seat* seat);
   void cleanup();
 
-  [[nodiscard]] bool isAvailable() const noexcept;
+  [[nodiscard]] bool isAvailable() const noexcept override;
 
   void setFocusedClient(
       Surface* surface, TextInputClient* client, bool acceptKeyboardFocusActivation = false,
       Surface* keyboardFocusParentSurface = nullptr
-  );
-  void clearFocusedClient(TextInputClient* client);
-  void notifyClientStateChanged(TextInputClient* client, TextInputChangeCause cause);
+  ) override;
+  void clearFocusedClient(TextInputClient* client) override;
+  void notifyClientStateChanged(TextInputClient* client, TextInputChangeCause cause) override;
   void onKeyboardFocusSurface(wl_surface* surface, bool entered);
 
   void handleEnter(wl_surface* surface);

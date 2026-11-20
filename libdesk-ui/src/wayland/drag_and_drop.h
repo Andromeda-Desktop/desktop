@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/drop_target.h"
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -18,7 +20,7 @@ struct wl_surface;
 // drop targets. One instance per connection (WaylandConnection::dragAndDrop).
 class DragAndDrop {
 public:
-  enum Action : std::uint32_t { None = 0, Copy = 1, Move = 2, Ask = 4 };
+  enum Action : std::uint32_t { None = DropNone, Copy = DropCopy, Move = DropMove, Ask = DropAsk };
   // wl_data_device has no link action: a link drop is Ask, and the target resolves it from the modifiers it sees.
 
   struct Drag {
@@ -30,15 +32,7 @@ public:
     std::function<void(std::uint32_t action, bool dropped)> finished;
   };
 
-  struct Target {
-    // Pointer entered with these types; return false to refuse every drop on this surface.
-    std::function<bool(const std::vector<std::string>& mimes)> enter;
-    // Surface-local position; returns the action a drop here would take (None = not here).
-    std::function<std::uint32_t(float x, float y)> motion;
-    std::function<void()> leave;
-    // The dropped data of the first accepted type, read off the main thread and delivered on it.
-    std::function<void(float x, float y, std::uint32_t action, const std::string& mime, std::string data)> drop;
-  };
+  using Target = DropTarget;
 
   [[nodiscard]] static std::unique_ptr<DragAndDrop> create(WaylandConnection& connection,
                                                            wl_data_device_manager* manager);

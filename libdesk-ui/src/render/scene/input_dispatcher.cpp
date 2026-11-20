@@ -4,7 +4,7 @@
 #include "core/input/pointer_axis.h"
 #include "render/scene/input_area.h"
 #include "render/scene/node.h"
-#include "wayland/text_input_service.h"
+#include "platform/text_input_service.h"
 
 #include <algorithm>
 #include <cmath>

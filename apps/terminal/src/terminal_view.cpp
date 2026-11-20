@@ -1,4 +1,5 @@
 #include "terminal_view.h"
+#include "platform/input_events.h"
 #include "core/input/pointer_axis.h"
 
 #include "a11y/atspi_bridge.h"
@@ -7,7 +8,6 @@
 #include "key_map.h"
 #include "kitty_images.h"
 #include "link_finder.h"
-#include "wayland/wayland_seat.h"
 #include "render/animation/motion_service.h"
 #include "render/core/renderer.h"
 #include "render/scene/input_area.h"
@@ -24,7 +24,7 @@
 #include "time/time_format.h"
 #include "ui/style.h"
 #include "util/string_utils.h"
-#include "wayland/text_input_service.h"
+#include "platform/text_input_service.h"
 
 #include "core/input/cursor_shape.h"
 
@@ -32,7 +32,6 @@
 #include <unistd.h>
 #include "core/input/input_codes.h"
 
-#include <wayland-client-protocol.h>
 
 #include <algorithm>
 #include <cctype>

@@ -13,37 +13,37 @@ namespace {
   constexpr std::size_t kMaxSurroundingTextBytes = 4000;
 
   void textInputEnter(void* data, zwp_text_input_v3* /*textInput*/, wl_surface* surface) {
-    static_cast<TextInputService*>(data)->handleEnter(surface);
+    static_cast<WaylandTextInputService*>(data)->handleEnter(surface);
   }
 
   void textInputLeave(void* data, zwp_text_input_v3* /*textInput*/, wl_surface* surface) {
-    static_cast<TextInputService*>(data)->handleLeave(surface);
+    static_cast<WaylandTextInputService*>(data)->handleLeave(surface);
   }
 
   void textInputPreeditString(
       void* data, zwp_text_input_v3* /*textInput*/, const char* text, std::int32_t cursorBegin, std::int32_t cursorEnd
   ) {
-    static_cast<TextInputService*>(data)->handlePreeditString(text, cursorBegin, cursorEnd);
+    static_cast<WaylandTextInputService*>(data)->handlePreeditString(text, cursorBegin, cursorEnd);
   }
 
   void textInputCommitString(void* data, zwp_text_input_v3* /*textInput*/, const char* text) {
-    static_cast<TextInputService*>(data)->handleCommitString(text);
+    static_cast<WaylandTextInputService*>(data)->handleCommitString(text);
   }
 
   void textInputDeleteSurroundingText(
       void* data, zwp_text_input_v3* /*textInput*/, std::uint32_t beforeLength, std::uint32_t afterLength
   ) {
-    static_cast<TextInputService*>(data)->handleDeleteSurroundingText(beforeLength, afterLength);
+    static_cast<WaylandTextInputService*>(data)->handleDeleteSurroundingText(beforeLength, afterLength);
   }
 
   void textInputDone(void* data, zwp_text_input_v3* /*textInput*/, std::uint32_t serial) {
-    static_cast<TextInputService*>(data)->handleDone(serial);
+    static_cast<WaylandTextInputService*>(data)->handleDone(serial);
   }
 
   void textInputAction(
       void* data, zwp_text_input_v3* /*textInput*/, std::uint32_t action, std::uint32_t /*serial*/
   ) {
-    static_cast<TextInputService*>(data)->handleAction(action);
+    static_cast<WaylandTextInputService*>(data)->handleAction(action);
   }
 
   void textInputLanguage(void* /*data*/, zwp_text_input_v3* /*textInput*/, const char* /*language*/) {}
@@ -99,11 +99,11 @@ namespace {
 
 } // namespace
 
-TextInputService::TextInputService() = default;
+WaylandTextInputService::WaylandTextInputService() = default;
 
-TextInputService::~TextInputService() { cleanup(); }
+WaylandTextInputService::~WaylandTextInputService() { cleanup(); }
 
-bool TextInputService::bind(zwp_text_input_manager_v3* manager, wl_seat* seat) {
+bool WaylandTextInputService::bind(zwp_text_input_manager_v3* manager, wl_seat* seat) {
   if (manager == nullptr || seat == nullptr) {
     return false;
   }
@@ -127,7 +127,7 @@ bool TextInputService::bind(zwp_text_input_manager_v3* manager, wl_seat* seat) {
   return true;
 }
 
-void TextInputService::cleanup() {
+void WaylandTextInputService::cleanup() {
   if (m_activeClient != nullptr) {
     deactivateClient(m_activeClient);
   }
@@ -149,9 +149,9 @@ void TextInputService::cleanup() {
   m_enabled = false;
 }
 
-bool TextInputService::isAvailable() const noexcept { return m_textInput != nullptr; }
+bool WaylandTextInputService::isAvailable() const noexcept { return m_textInput != nullptr; }
 
-void TextInputService::setFocusedClient(
+void WaylandTextInputService::setFocusedClient(
     Surface* focusSurface, TextInputClient* client, bool acceptKeyboardFocusActivation,
     Surface* keyboardFocusParent
 ) {
@@ -188,7 +188,7 @@ void TextInputService::setFocusedClient(
   enableActive(TextInputChangeCause::Other);
 }
 
-void TextInputService::clearFocusedClient(TextInputClient* client) {
+void WaylandTextInputService::clearFocusedClient(TextInputClient* client) {
   if (client == nullptr || client != m_activeClient) {
     return;
   }
@@ -201,14 +201,14 @@ void TextInputService::clearFocusedClient(TextInputClient* client) {
   m_pendingEdit = {};
 }
 
-void TextInputService::notifyClientStateChanged(TextInputClient* client, TextInputChangeCause cause) {
+void WaylandTextInputService::notifyClientStateChanged(TextInputClient* client, TextInputChangeCause cause) {
   if (client == nullptr || client != m_activeClient) {
     return;
   }
   commitActiveState(cause);
 }
 
-void TextInputService::onKeyboardFocusSurface(wl_surface* surface, bool entered) {
+void WaylandTextInputService::onKeyboardFocusSurface(wl_surface* surface, bool entered) {
   if (entered) {
     m_keyboardFocusSurface = surface;
   } else if (m_keyboardFocusSurface == surface) {
@@ -220,7 +220,7 @@ void TextInputService::onKeyboardFocusSurface(wl_surface* surface, bool entered)
   }
 }
 
-bool TextInputService::activeSurfaceAcceptsTextInput() const noexcept {
+bool WaylandTextInputService::activeSurfaceAcceptsTextInput() const noexcept {
   if (m_activeSurface == nullptr) {
     return false;
   }
@@ -236,7 +236,7 @@ bool TextInputService::activeSurfaceAcceptsTextInput() const noexcept {
   return m_keyboardFocusParentSurface != nullptr && m_keyboardFocusSurface == m_keyboardFocusParentSurface;
 }
 
-void TextInputService::handleEnter(wl_surface* surface) {
+void WaylandTextInputService::handleEnter(wl_surface* surface) {
   m_enteredSurface = surface;
   m_pendingEdit = {};
   m_lastCommittedState.reset();
@@ -245,7 +245,7 @@ void TextInputService::handleEnter(wl_surface* surface) {
   }
 }
 
-void TextInputService::handleLeave(wl_surface* surface) {
+void WaylandTextInputService::handleLeave(wl_surface* surface) {
   if (m_enteredSurface != surface) {
     return;
   }
@@ -257,25 +257,25 @@ void TextInputService::handleLeave(wl_surface* surface) {
   }
 }
 
-void TextInputService::handlePreeditString(const char* text, std::int32_t cursorBegin, std::int32_t cursorEnd) {
+void WaylandTextInputService::handlePreeditString(const char* text, std::int32_t cursorBegin, std::int32_t cursorEnd) {
   m_pendingEdit.hasPreedit = true;
   m_pendingEdit.preeditText = text != nullptr ? text : "";
   m_pendingEdit.preeditCursorBegin = cursorBegin;
   m_pendingEdit.preeditCursorEnd = cursorEnd;
 }
 
-void TextInputService::handleCommitString(const char* text) {
+void WaylandTextInputService::handleCommitString(const char* text) {
   m_pendingEdit.hasCommitText = true;
   m_pendingEdit.commitText = text != nullptr ? text : "";
 }
 
-void TextInputService::handleDeleteSurroundingText(std::uint32_t beforeLength, std::uint32_t afterLength) {
+void WaylandTextInputService::handleDeleteSurroundingText(std::uint32_t beforeLength, std::uint32_t afterLength) {
   m_pendingEdit.hasDelete = true;
   m_pendingEdit.deleteBeforeLength = beforeLength;
   m_pendingEdit.deleteAfterLength = afterLength;
 }
 
-void TextInputService::handleDone(std::uint32_t serial) {
+void WaylandTextInputService::handleDone(std::uint32_t serial) {
   TextInputEdit edit = std::move(m_pendingEdit);
   m_pendingEdit = {};
 
@@ -287,13 +287,13 @@ void TextInputService::handleDone(std::uint32_t serial) {
   }
 }
 
-void TextInputService::handleAction(std::uint32_t action) {
+void WaylandTextInputService::handleAction(std::uint32_t action) {
   if (action == ZWP_TEXT_INPUT_V3_ACTION_SUBMIT) {
     m_pendingEdit.submit = true;
   }
 }
 
-void TextInputService::enableActive(TextInputChangeCause cause) {
+void WaylandTextInputService::enableActive(TextInputChangeCause cause) {
   if (m_textInput == nullptr || m_activeClient == nullptr || m_activeSurface == nullptr) {
     return;
   }
@@ -309,7 +309,7 @@ void TextInputService::enableActive(TextInputChangeCause cause) {
   commitActiveState(cause);
 }
 
-void TextInputService::disableActive() {
+void WaylandTextInputService::disableActive() {
   if (m_textInput == nullptr || !m_enabled) {
     m_enabled = false;
     return;
@@ -322,7 +322,7 @@ void TextInputService::disableActive() {
   m_enabled = false;
 }
 
-void TextInputService::commitActiveState(TextInputChangeCause cause) {
+void WaylandTextInputService::commitActiveState(TextInputChangeCause cause) {
   if (m_textInput == nullptr || m_activeClient == nullptr || m_activeSurface == nullptr || !m_enabled) {
     return;
   }
@@ -370,12 +370,12 @@ void TextInputService::commitActiveState(TextInputChangeCause cause) {
   wl_surface_commit(m_activeSurface);
 }
 
-void TextInputService::commitProtocolState() {
+void WaylandTextInputService::commitProtocolState() {
   zwp_text_input_v3_commit(m_textInput);
   ++m_commitSerial;
 }
 
-void TextInputService::deactivateClient(TextInputClient* client) {
+void WaylandTextInputService::deactivateClient(TextInputClient* client) {
   client->textInputResetPreedit();
   client->textInputDeactivated(*this);
 }

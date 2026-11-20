@@ -22,7 +22,7 @@
 #include "ui/style.h"
 #include "util/secure_wipe.h"
 #include "util/string_utils.h"
-#include "wayland/text_input_service.h"
+#include "platform/text_input_service.h"
 #include "render/scene/accessible.h"
 
 #include "core/input/input_codes.h"

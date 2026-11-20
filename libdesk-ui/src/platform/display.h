@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/drop_target.h"
 #include "platform/input_events.h"
 #include "platform/output_id.h"
 
@@ -115,4 +116,9 @@ public:
   virtual void activateSurface(const Surface& surface, const std::string& token) const = 0;
   // A token that marks the window as needing attention instead of focusing it. done runs from the event loop.
   virtual void requestAttentionTokenAsync(const Surface& surface, std::function<void(std::string token)> done) const = 0;
+
+  // acceptedTypes: best first, shared by every drop target of this display. False when the window system has no
+  // drag and drop. A second call for the same surface replaces its target.
+  virtual bool setDropTarget(const Surface& surface, std::vector<std::string> acceptedTypes, DropTarget target) = 0;
+  virtual void clearDropTarget(const Surface& surface) = 0;
 };

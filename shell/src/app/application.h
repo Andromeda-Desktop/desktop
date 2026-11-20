@@ -327,7 +327,7 @@ private:
   security::SecretStore m_secretStore;
   security::StorageKeyProvider m_storageKeyProvider{m_secretStore};
   ClipboardService m_clipboardService{m_storageKeyProvider};
-  TextInputService m_textInputService;
+  WaylandTextInputService m_textInputService;
   VirtualKeyboardService m_virtualKeyboardService;
   ConfigService m_configService;
   HttpClient m_httpClient;

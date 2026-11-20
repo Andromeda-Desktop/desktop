@@ -259,6 +259,10 @@ wl_surface* AppWindow::wlSurface() const noexcept {
   return m_surface != nullptr ? dynamic_cast<const WaylandSurface&>(*m_surface).wlSurface() : nullptr;
 }
 
+std::string AppWindow::activationToken() {
+  return m_surface != nullptr ? m_loop.display().requestActivationToken(*m_surface, "") : std::string();
+}
+
 void AppWindow::exportHandle(std::function<void(const std::string& handle)> ready) {
   if (m_surface == nullptr) {
     ready({});
