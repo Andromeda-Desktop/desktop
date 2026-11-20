@@ -349,6 +349,18 @@ namespace settings {
       return unit;
     }
 
+    // The sentence for a per-process alert episode: what the process did, or that it stopped.
+    const char* processEventKey(const SystemExplainEntry& entry) {
+      const bool on = entry.event == "started";
+      if (entry.rule == "power.wakeups") {
+        return on ? "settings.power.event-wakeups-on" : "settings.power.event-wakeups-off";
+      }
+      if (entry.rule == "memory.leak") {
+        return on ? "settings.power.event-memory-leak-on" : "settings.power.event-memory-leak-off";
+      }
+      return nullptr;
+    }
+
     void addWhatHappened(Flex& content, SystemHealthService& health, const ActivityMonitor* activity, float scale) {
       if (health.entries().empty()) {
         return;
@@ -366,12 +378,23 @@ namespace settings {
         if (const std::string cause = entryCause(entry); !cause.empty()) {
           sub += " · " + cause;
         }
-        std::string rule = ruleLabel(entry.rule);
-        if (!entry.instance.empty()) {
-          rule = i18n::tr("settings.power.rule-for-app", "rule", rule, "app", appForUnit(activity, entry.instance));
+        std::string title;
+        if (const char* process = processEventKey(entry); process != nullptr) {
+          // A process episode names its process "<comm> <pid>".
+          const std::size_t space = entry.instance.rfind(' ');
+          title = i18n::tr(process, "app", entry.instance.substr(0, space));
+          if (space != std::string::npos) {
+            sub += " · " + i18n::tr("settings.power.process-pid", "pid", entry.instance.substr(space + 1));
+          }
+        } else {
+          std::string rule = ruleLabel(entry.rule);
+          if (!entry.instance.empty()) {
+            rule = i18n::tr("settings.power.rule-for-app", "rule", rule, "app", appForUnit(activity, entry.instance));
+          }
+          title = i18n::tr(key, "rule", rule);
         }
         auto r = row(scale);
-        r->addChild(twoLines(i18n::tr(key, "rule", rule), std::move(sub), scale));
+        r->addChild(twoLines(std::move(title), std::move(sub), scale));
         if (health.running(entry)) {
           r->addChild(plainButton(i18n::tr("settings.power.undo"), ButtonVariant::Default, scale,
                                   [&health, id = entry.id] { health.undo(id); }));
