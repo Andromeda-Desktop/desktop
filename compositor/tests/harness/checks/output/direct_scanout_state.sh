@@ -101,6 +101,19 @@ if ! "$ANDROMEDA" outputs | grep -q '^  Direct scanout: active (.* "direct-scano
   exit 1
 fi
 
+# An overlay above the game composites the frame, and the reply says why the overlay planes were not used.
+"$ANDROMEDA_LAYER_CLIENT" HEADLESS-1 0 overlay-layer > "$ANDROMEDA_RUNTIME_DIR/scanout-overlay.log" 2>&1 &
+overlay_pid=$!
+await_query '.active == false and .reason == "composited" and (.overlay_refusal | type == "string")' \
+  "a composited frame did not report why it kept its overlay off the planes"
+if ! "$ANDROMEDA" outputs | grep -q '^  Direct scanout: inactive (composited; overlay plane: .\+)$'; then
+  echo "the outputs listing does not show the overlay plane refusal: $("$ANDROMEDA" outputs)"
+  exit 1
+fi
+kill "$overlay_pid"
+wait "$overlay_pid" || true
+await_query ".active and .overlay_refusal == null" "removing the overlay did not restore scanout"
+
 before_disabled=$(scanout)
 printf '\n[output.HEADLESS-1]\ndirect_scanout = false\n' >> "$ANDROMEDA_CONFIG"
 "$ANDROMEDA" msg config-reload > /dev/null

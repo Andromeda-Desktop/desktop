@@ -177,6 +177,9 @@ namespace andromeda {
     // The latest scene buffer accepted by the backend, independently of the log's settling interval.
     [[nodiscard]] const DirectScanoutState& directScanout() const { return m_directScanout.current(); }
     [[nodiscard]] const DirectScanoutTracker& directScanoutTracker() const { return m_directScanout; }
+    // Why the latest composited frame kept its nodes off overlay planes, or null. Live, never settled: it can change
+    // every frame.
+    [[nodiscard]] const char* overlayRefusal() const;
     // Capture listeners read the commit event's buffer. For the commits of one state, onFirst runs first in the commit
     // signal and points the event at a copy with every secure surface (dsk_surface_v1.set_secure) painted black;
     // onLast, connected at construction, points it back before any listener connected later.

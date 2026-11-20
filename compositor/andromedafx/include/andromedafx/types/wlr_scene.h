@@ -527,6 +527,8 @@ struct wlr_scene_output {
     uint8_t overlay_untested_frames;
     // Frames left before the next overlay attempt after a rejected one.
     uint8_t overlay_backoff;
+    // Why the latest composited frame did not use overlay planes; NULL when no frame composited a candidate.
+    const char* overlay_refusal;
     // Identity only, never dereferenced: the last bottom candidate, its content_seq, and frames built without new content.
     const void* overlay_candidate;
     uint32_t overlay_candidate_seq;
@@ -1347,6 +1349,12 @@ void wlr_scene_output_set_overlay_planes_enabled(struct wlr_scene_output* scene_
  */
 enum wlr_scene_direct_scanout_status
 wlr_scene_output_direct_scanout_status(const struct wlr_scene_output* scene_output);
+
+/**
+ * Why the latest frame with status WLR_SCENE_DIRECT_SCANOUT_COMPOSITED kept the nodes off overlay planes, as a short
+ * phrase; NULL for any other status.
+ */
+const char* wlr_scene_output_overlay_refusal(const struct wlr_scene_output* scene_output);
 
 /**
  * The buffer the latest frame scanned out, or NULL. Valid only until the scene changes, so read it right after

@@ -2624,6 +2624,10 @@ namespace andromeda {
     return lockedBlackBuffer(frame->width, frame->height);
   }
 
+  const char* Output::overlayRefusal() const {
+    return m_sceneOutput != nullptr ? wlr_scene_output_overlay_refusal(m_sceneOutput) : nullptr;
+  }
+
   std::shared_ptr<const DirectScanoutState> Output::builtDirectScanout() {
     const wlr_scene_direct_scanout_status status = wlr_scene_output_direct_scanout_status(m_sceneOutput);
     // On an overlay plane the window still reaches the display uncopied; only the surfaces above it composite.
@@ -2674,7 +2678,11 @@ namespace andromeda {
             state.appId.empty() ? "unknown" : state.appId, state.title, state.reason.empty() ? "" : ", overlay plane"
         );
       } else {
-        kLog.info("output '{}': direct scanout off ({})", self->m_output->name, state.reason);
+        const char* refusal = self->overlayRefusal();
+        kLog.info(
+            "output '{}': direct scanout off ({}{}{})", self->m_output->name, state.reason,
+            refusal != nullptr ? "; overlay plane: " : "", refusal != nullptr ? refusal : ""
+        );
       }
     }
     self->m_server->scheduleIpcOutputsEvent();

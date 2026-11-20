@@ -6117,6 +6117,12 @@ wlr_scene_output_direct_scanout_status(const struct wlr_scene_output* scene_outp
   return scene_output->direct_scanout_status;
 }
 
+const char* wlr_scene_output_overlay_refusal(const struct wlr_scene_output* scene_output) {
+  return scene_output->direct_scanout_status == WLR_SCENE_DIRECT_SCANOUT_COMPOSITED
+      ? scene_output->overlay_refusal
+      : NULL;
+}
+
 struct wlr_scene_buffer* wlr_scene_output_direct_scanout_buffer(const struct wlr_scene_output* scene_output) {
   return scene_output->direct_scanout_buffer;
 }
@@ -6433,11 +6439,10 @@ static int scanout_list_len(const struct render_list_entry* list, int len) {
   return len;
 }
 
-// Why the last overlay attempt failed, for ANDROMEDA_SCANOUT_DEBUG.
-static const char* overlay_refusal = "not tried";
-
 // ANDROMEDA_SCANOUT_DEBUG=1: once per second, log the nodes that keep an output composited.
-static void log_composited_entries(struct wlr_scene* scene, const struct render_list_entry* list, int len) {
+static void log_composited_entries(
+    struct wlr_scene* scene, const struct render_list_entry* list, int len, const char* overlay_refusal
+) {
   static bool enabled = false;
   static bool checked = false;
   static int64_t last_ns = 0;
@@ -6846,7 +6851,7 @@ static bool scene_output_try_overlay(
       || output->swapchain == NULL
       || (output->swapchain->format.format != DRM_FORMAT_XRGB8888
           && output->swapchain->format.format != DRM_FORMAT_ARGB8888)) {
-    overlay_refusal = "backend or format";
+    scene_output->overlay_refusal = "backend or format";
     return false;
   }
   // The plane buffer is the topmost opaque covering buffer: entries below it are hidden and only feed blur caches.
@@ -6896,7 +6901,7 @@ static bool scene_output_try_overlay(
   *index = video >= 0 ? video : *primary;
   struct render_list_entry* entry = &list[*index];
   if (!overlay_entry_covers_output(entry, data, opaque_whole)) {
-    overlay_refusal = "no covering buffer";
+    scene_output->overlay_refusal = "no covering buffer";
     return false;
   }
   if (video >= 0) {
@@ -6918,7 +6923,7 @@ static bool scene_output_try_overlay(
   }
   scene_output->overlay_candidate_seq = seq;
   if (scene_output->overlay_candidate_still > 30) {
-    overlay_refusal = "bottom buffer still";
+    scene_output->overlay_refusal = "bottom buffer still";
     return false;
   }
 
@@ -6955,7 +6960,7 @@ static bool scene_output_try_overlay(
   const bool cropped = !pixman_region32_empty(&hidden);
   pixman_region32_fini(&hidden);
   if (cropped) {
-    overlay_refusal = "cropped by a clip";
+    scene_output->overlay_refusal = "cropped by a clip";
     return false;
   }
   pixman_region32_translate(clip, -data->logical.x, -data->logical.y);
@@ -6963,14 +6968,14 @@ static bool scene_output_try_overlay(
   pixman_region32_intersect_rect(clip, clip, 0, 0, output->width, output->height);
   // Past 3/4 of the output, the full composite costs less than the overlay draw plus a second full-size plane.
   if ((uint64_t)region_area(clip) * 4 > (uint64_t)output->width * output->height * 3) {
-    overlay_refusal = "clip area over 3/4";
+    scene_output->overlay_refusal = "clip area over 3/4";
     return false;
   }
 
   if (scene_output->overlay_layer == NULL) {
     scene_output->overlay_layer = wlr_output_layer_create(output);
     if (scene_output->overlay_layer == NULL) {
-      overlay_refusal = "layer create";
+      scene_output->overlay_refusal = "layer create";
       return false;
     }
   }
@@ -6985,7 +6990,7 @@ static bool scene_output_try_overlay(
     swapchain = scene_output->overlay_swapchain =
         wlr_swapchain_create(output->allocator, output->width, output->height, &format);
     if (swapchain == NULL) {
-      overlay_refusal = "swapchain create";
+      scene_output->overlay_refusal = "swapchain create";
       return false;
     }
   }
@@ -7028,7 +7033,7 @@ static bool scene_output_try_overlay(
   pixman_region32_fini(&under_damage);
   struct wlr_buffer* buffer = reuse ? wlr_buffer_lock(shown) : wlr_swapchain_acquire(swapchain);
   if (buffer == NULL) {
-    overlay_refusal = "swapchain acquire";
+    scene_output->overlay_refusal = "swapchain acquire";
     return false;
   }
   scene_output->overlay_reused = reuse;
@@ -7040,7 +7045,7 @@ static bool scene_output_try_overlay(
   if (video >= 0 && !overlay_video_layer_state(scene_output, state, data, entry, &scene_output->overlay_layer_states[0])) {
     wlr_buffer_unlock(buffer);
     scene_output->overlay_layer_states[1].buffer = NULL;
-    overlay_refusal = "video layer";
+    scene_output->overlay_refusal = "video layer";
     return false;
   }
   struct wlr_output_layer_state* layers = &scene_output->overlay_layer_states[1];
@@ -7097,7 +7102,7 @@ static bool scene_output_try_overlay(
         [WLR_SCENE_DIRECT_SCANOUT_SOFTWARE_CURSOR] = "software cursor",
         [WLR_SCENE_DIRECT_SCANOUT_REJECTED] = "test failed",
     };
-    overlay_refusal = (size_t)status < sizeof(reasons) / sizeof(reasons[0]) && reasons[status] != NULL
+    scene_output->overlay_refusal = (size_t)status < sizeof(reasons) / sizeof(reasons[0]) && reasons[status] != NULL
         ? reasons[status]
         : "primary plane ineligible";
     return false;
@@ -7111,7 +7116,7 @@ static bool scene_output_try_overlay(
     };
     wl_signal_emit_mutable(&wlr_scene_buffer_from_node(entry->node)->events.output_sample, &sample_event);
   }
-  overlay_refusal = video >= 0 ? "active, video layer" : "active";
+  scene_output->overlay_refusal = video >= 0 ? "active, video layer" : "active";
   return true;
 }
 
@@ -7917,15 +7922,23 @@ static bool scene_output_build_state(
   } else if (scanout_list_len(list_data, list_len) > 1) {
     scanout_status = WLR_SCENE_DIRECT_SCANOUT_COMPOSITED;
     if (scene_output->overlay_backoff > 0) {
+      // Keeps the refusal that started the wait: it is still the reason.
       scene_output->overlay_backoff--;
-    } else if (scene_output->overlay_planes_enabled
-               && layers_allowed
-               && debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT
-               && options->swapchain == NULL
-               && options->workspace_from == NULL
-               && !capture_pending
-               && !unfiltered_pass
-               && !output_effects_active(output_effects)) {
+    } else if (!scene_output->overlay_planes_enabled) {
+      scene_output->overlay_refusal = "overlay planes off";
+    } else if (!layers_allowed) {
+      scene_output->overlay_refusal = "output enabling or changing mode";
+    } else if (debug_damage == WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
+      scene_output->overlay_refusal = "debug damage";
+    } else if (options->swapchain != NULL || options->workspace_from != NULL) {
+      scene_output->overlay_refusal = "offscreen pass";
+    } else if (capture_pending) {
+      scene_output->overlay_refusal = "capture";
+    } else if (unfiltered_pass) {
+      scene_output->overlay_refusal = "unfiltered pass";
+    } else if (output_effects_active(output_effects)) {
+      scene_output->overlay_refusal = "output effects";
+    } else {
       const int len = scanout_list_len(list_data, list_len);
       render_data.animation_render_locks = options->animation_render_locks;
       int index = 0;
@@ -7943,7 +7956,7 @@ static bool scene_output_build_state(
     }
     if (!overlay) {
       pixman_region32_clear(&overlay_clip);
-      log_composited_entries(scene_output->scene, list_data, list_len);
+      log_composited_entries(scene_output->scene, list_data, list_len, scene_output->overlay_refusal);
     }
   } else if (debug_damage == WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
     scanout_status = WLR_SCENE_DIRECT_SCANOUT_DEBUG_DAMAGE;

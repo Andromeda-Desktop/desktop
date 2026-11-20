@@ -504,7 +504,12 @@ namespace andromeda {
           } else {
             std::string reason = scanout->value("reason", "");
             std::ranges::replace(reason, '_', ' ');
-            std::println("  Direct scanout: inactive ({})", reason);
+            const auto refusal = scanout->find("overlay_refusal");
+            if (refusal != scanout->end() && refusal->is_string()) {
+              std::println("  Direct scanout: inactive ({}; overlay plane: {})", reason, refusal->get<std::string>());
+            } else {
+              std::println("  Direct scanout: inactive ({})", reason);
+            }
           }
         }
         const auto& modes = output.at("modes");
@@ -1175,6 +1180,7 @@ namespace andromeda {
             {"active", scanout.active},
             {"reason", scanout.reason.empty() ? nlohmann::json(nullptr) : nlohmann::json(scanout.reason)},
             {"window", std::move(window)},
+            {"overlay_refusal", output->overlayRefusal() != nullptr ? nlohmann::json(output->overlayRefusal()) : nullptr},
             {"commits", tracker.commits()},
             {"scanout_commits", tracker.scanoutCommits()},
             {"grouped_events", tracker.groupedEvents()},
