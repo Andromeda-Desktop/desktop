@@ -2114,6 +2114,11 @@ render_texture_glass_split(struct fx_gles_render_pass* pass, const struct fx_ren
         fminf(corner_radius * (1.0f + 0.88f * (float)TOKEN_RADIUS_SMOOTHING),
               fminf(clip_box->width, clip_box->height) * 0.5f) + 1.0f
     );
+    // intersect_rect does not validate its rect: a degenerate one leaves a zero-area region that pixman calls non-empty.
+    if (clip_box->width <= 2 * k || clip_box->height <= 2 * k) {
+      pixman_region32_fini(&plain);
+      return false;
+    }
     pixman_region32_intersect_rect(
         &plain, &plain, clip_box->x + k, clip_box->y + k, clip_box->width - 2 * k, clip_box->height - 2 * k
     );
