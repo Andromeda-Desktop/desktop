@@ -1,4 +1,4 @@
-//! The holder loop: one thread, one poll over the listener, the clients, the pty masters and the child pidfds.
+//! The holder loop: one thread, one poll over the listener, the clients, the pty masters and the child exit watches.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ffi::OsString;
@@ -14,7 +14,9 @@ use std::time::{Duration, Instant};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fs::{Mode, OFlags};
 use rustix::net::{SendAncillaryBuffer, SendAncillaryMessage, SendFlags, sendmsg};
-use rustix::process::{Pid, PidfdFlags, Signal};
+use rustix::process::{Pid, Signal};
+
+use crate::os;
 
 use crate::proto::{
     ClientMsg, HolderMsg, LastCommand, SessionInfo, WinSize, WorkspaceInfo, split_frame,
@@ -104,7 +106,7 @@ enum Life {
 
 struct Session {
     child: Child,
-    /// None once the child is reaped.
+    /// Polls readable when the child exits (os::exit_watch); None once the child is reaped.
     pidfd: Option<OwnedFd>,
     life: Life,
     owner: Owner,
@@ -259,13 +261,8 @@ impl Session {
         let program = self
             .master()
             .and_then(|m| rustix::termios::tcgetpgrp(m).ok())
-            .and_then(|pg| {
-                std::fs::read_to_string(format!("/proc/{}/comm", pg.as_raw_nonzero())).ok()
-            })
-            .map(|c| c.trim_end().to_owned());
-        let cwd = std::fs::read_link(format!("/proc/{}/cwd", self.child.id()))
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned());
+            .and_then(|pg| os::process_name(pg.as_raw_nonzero().get()));
+        let cwd = os::process_cwd(self.child.id());
         let mut changed = false;
         // A gone process keeps the last known values.
         for (new, old) in [(program, &mut self.program), (cwd, &mut self.cwd)] {
@@ -335,7 +332,7 @@ impl Client {
                 &self.stream,
                 &iov,
                 &mut control,
-                SendFlags::NOSIGNAL | SendFlags::DONTWAIT,
+                os::SEND_FLAGS | SendFlags::DONTWAIT,
             ) {
                 Ok(n) => {
                     head.fd = None;
@@ -587,9 +584,8 @@ impl Holder {
 
     fn accept(&mut self) {
         while let Ok((stream, _)) = self.listener.accept() {
-            let same_user = rustix::net::sockopt::socket_peercred(&stream)
-                .is_ok_and(|cred| cred.uid == rustix::process::getuid());
-            if !same_user || stream.set_nonblocking(true).is_err() {
+            let same_user = os::peer_uid(&stream) == Some(rustix::process::getuid().as_raw());
+            if !same_user || os::prepare_stream(&stream).is_err() || stream.set_nonblocking(true).is_err() {
                 continue;
             }
             let id = self.next_client;
@@ -914,7 +910,7 @@ impl Holder {
         unsafe {
             cmd.pre_exec(|| {
                 // A holder started from a script inherits ignored SIGINT/SIGQUIT; the shell must start with defaults.
-                for sig in 1..=libc::SIGRTMAX() {
+                for sig in 1..=os::max_signal() {
                     libc::signal(sig, libc::SIG_DFL);
                 }
                 rustix::process::setsid()?;
@@ -923,7 +919,7 @@ impl Holder {
             });
         }
         let child = cmd.spawn()?;
-        let pidfd = rustix::process::pidfd_open(Pid::from_child(&child), PidfdFlags::empty())?;
+        let pidfd = os::exit_watch(&child)?;
         let client_fd = rustix::io::fcntl_dupfd_cloexec(&master, 0)?;
         Ok((
             Session {
@@ -1180,33 +1176,8 @@ impl Holder {
 /// Bash forwards its SIGHUP to its jobs only when the signal wins a race with the hangup, so a closed session hangs
 /// up what is left in it; nohup'd jobs ignore it, setsid'd ones are in another session.
 fn hang_up_session(sid: u32) {
-    let Ok(dir) = std::fs::read_dir("/proc") else {
-        return;
-    };
-    for entry in dir.flatten() {
-        let Some(pid) = entry
-            .file_name()
-            .to_str()
-            .and_then(|n| n.parse::<u32>().ok())
-        else {
-            continue;
-        };
-        if pid == sid {
-            continue;
-        }
-        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
-            continue;
-        };
-        // The name may hold spaces and parentheses: fields restart after the last ')'.
-        let session = stat
-            .rsplit_once(')')
-            .and_then(|(_, rest)| rest.split_whitespace().nth(3))
-            .and_then(|f| f.parse::<u32>().ok());
-        if session == Some(sid)
-            && let Some(pid) = i32::try_from(pid).ok().and_then(Pid::from_raw)
-        {
-            let _ = rustix::process::kill_process(pid, Signal::HUP);
-            let _ = rustix::process::kill_process(pid, Signal::CONT);
-        }
+    for pid in os::session_processes(sid).into_iter().filter_map(Pid::from_raw) {
+        let _ = rustix::process::kill_process(pid, Signal::HUP);
+        let _ = rustix::process::kill_process(pid, Signal::CONT);
     }
 }

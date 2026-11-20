@@ -12,6 +12,19 @@ use andromeda_ptyd::proto::{
 };
 use rustix::net::{RecvAncillaryBuffer, RecvAncillaryMessage, RecvFlags, recvmsg};
 
+#[cfg(target_os = "linux")]
+const RECV_FLAGS: RecvFlags = RecvFlags::CMSG_CLOEXEC;
+#[cfg(not(target_os = "linux"))]
+const RECV_FLAGS: RecvFlags = RecvFlags::empty();
+
+/// The process exists, a zombie included.
+fn exists(pid: &str) -> bool {
+    pid.parse::<i32>()
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .is_some_and(|pid| rustix::process::test_kill_process(pid).is_ok())
+}
+
 const TIMEOUT: Duration = Duration::from_secs(5);
 
 fn start(config: Config) -> (tempfile::TempDir, PathBuf) {
@@ -73,7 +86,7 @@ impl TestClient {
                 &self.stream,
                 &mut [std::io::IoSliceMut::new(&mut chunk)],
                 &mut control,
-                RecvFlags::CMSG_CLOEXEC,
+                RECV_FLAGS,
             ) {
                 Ok(r) => r.bytes,
                 Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => continue,
@@ -434,7 +447,7 @@ fn close_hangs_up_the_child() {
     c.send(ClientMsg::Close { id });
     drop(_fd);
     assert!(
-        wait_for(|| !Path::new(&format!("/proc/{pid}")).exists(), TIMEOUT),
+        wait_for(|| !exists(&pid), TIMEOUT),
         "child {pid} still exists"
     );
 }
@@ -461,7 +474,7 @@ fn close_holds_when_the_client_hangs_up_with_unread_output() {
     c.send(ClientMsg::Close { id });
     drop(c);
     assert!(
-        wait_for(|| !Path::new(&format!("/proc/{pid}")).exists(), TIMEOUT),
+        wait_for(|| !exists(&pid), TIMEOUT),
         "child {pid} still exists"
     );
 }
@@ -488,7 +501,7 @@ fn close_holds_when_the_client_hangs_up_during_a_flood() {
     }
     for pid in pids {
         assert!(
-            wait_for(|| !Path::new(&format!("/proc/{pid}")).exists(), TIMEOUT),
+            wait_for(|| !exists(&pid), TIMEOUT),
             "child {pid} still exists"
         );
     }
@@ -507,7 +520,7 @@ fn close_kills_a_child_that_ignores_sighup() {
     let pid = text.trim().strip_prefix("pid=").unwrap().to_string();
     c.send(ClientMsg::Close { id });
     assert!(
-        wait_for(|| !Path::new(&format!("/proc/{pid}")).exists(), TIMEOUT),
+        wait_for(|| !exists(&pid), TIMEOUT),
         "child {pid} ignored SIGHUP and still exists"
     );
 }
@@ -844,9 +857,9 @@ impl Model {
                 self.clients[slot].as_mut().unwrap().1.remove(&id);
                 let s = self.sessions.remove(&id).unwrap();
                 self.gone.insert(id);
-                let proc = format!("/proc/{}", s.pid);
+                let pid = s.pid.to_string();
                 assert!(
-                    wait_for(|| !Path::new(&proc).exists(), TIMEOUT),
+                    wait_for(|| !exists(&pid), TIMEOUT),
                     "Close left child {} running",
                     s.pid
                 );

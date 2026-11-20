@@ -50,6 +50,11 @@ fn main() {
     }
     let listener = match socket {
         Some(path) => {
+            // As the systemd socket unit: a private folder (DirectoryMode=0700).
+            if let Some(dir) = std::path::Path::new(&path).parent() {
+                use std::os::unix::fs::DirBuilderExt;
+                let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+            }
             let _ = std::fs::remove_file(&path);
             UnixListener::bind(&path)
         }

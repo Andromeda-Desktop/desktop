@@ -132,6 +132,7 @@ macos-check:
     # Objects and archives only: the executables link once libghostty-vt and ANGLE exist for macOS (step 9).
     tools/build.sh ninja -C apps/terminal/build-macos $(ninja -C apps/terminal/build-macos -t targets all | sed -n 's/^\([^:]*\.\(o\|a\)\): .*/\1/p')
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal
+    for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
 
 check: modules test link system
     cd compositor && just check

@@ -245,9 +245,9 @@ std::optional<std::size_t> decode(std::span<const std::uint8_t> buf, std::option
 
 std::string socketPath() {
   if (const char* p = std::getenv("ANDROMEDA_PTYD_SOCKET"); p != nullptr && *p != '\0') return p;
-  const char* run = std::getenv("XDG_RUNTIME_DIR");
-  if (run == nullptr || *run == '\0') return {};
-  return std::string(run) + "/andromeda/ptyd-1.sock";
+  const std::string run = sys::userRuntimeDir();
+  if (run.empty()) return {};
+  return run + "/andromeda/ptyd-1.sock";
 }
 
 int connectSocket() {
