@@ -186,6 +186,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
 
     self->m_sceneRoot = std::make_unique<Node>();
     self->m_sceneRoot->setPaletteTone(self->m_tone);
+    self->m_sceneRoot->setAnimationManager(&self->m_animations);
     self->m_sceneRoot->setSize(fw, fh);
     self->m_sceneRoot->setTransformOrigin(self->m_originX, self->m_originY);
     self->m_sceneRoot->setScale(self->m_scale);
@@ -203,6 +204,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
     }
 
     auto scrollView = std::make_unique<ScrollView>();
+    scrollView->setAnimationManager(&self->m_animations);
     scrollView->setPosition(chrome.contentX(), chrome.contentY());
     scrollView->setSize(chrome.contentWidth, chrome.contentHeight);
     scrollView->setContentScale(contentScale);
