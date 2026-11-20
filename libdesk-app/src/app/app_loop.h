@@ -3,7 +3,7 @@
 #include "core/poll_source.h"
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
-#include "wayland/key_repeat_poll_source.h"
+#include "platform/key_repeat_poll_source.h"
 #include "wayland/wayland_connection.h"
 
 #include <chrono>

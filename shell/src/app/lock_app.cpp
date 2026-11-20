@@ -51,7 +51,7 @@
 #include "ui/auth/auth_column.h"
 #include "ui/controls/input.h"
 #include "ui/style.h"
-#include "wayland/key_repeat_poll_source.h"
+#include "platform/key_repeat_poll_source.h"
 
 #include <cmath>
 #include <csignal>

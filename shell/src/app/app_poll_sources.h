@@ -19,7 +19,7 @@
 #include "system/lock_keys_poll_source.h"
 #include "system/weather_poll_source.h"
 #include "time/time_poll_source.h"
-#include "wayland/key_repeat_poll_source.h"
+#include "platform/key_repeat_poll_source.h"
 
 #include <memory>
 

@@ -14,7 +14,6 @@
 #include <optional>
 #include <thread>
 #include <poll.h>
-#include <wayland-client-core.h>
 
 namespace {
   constexpr Logger kLog("app-loop");
@@ -64,20 +63,6 @@ namespace {
     const char* runtime = std::getenv("XDG_RUNTIME_DIR");
     return runtime != nullptr && std::filesystem::exists(std::filesystem::path(runtime) / socket);
   }
-
-  bool isDisconnect(int err) { return err == EPIPE || err == ECONNRESET || err == ENOTCONN || err == EBADF; }
-
-  // A C++ exception must not unwind through libwayland's C dispatch.
-  int dispatchGuarded(wl_display* display) {
-    try {
-      return wl_display_dispatch_pending(display);
-    } catch (const std::exception& e) {
-      kLog.error("exception in Wayland event handler ({}); continuing", e.what());
-    } catch (...) {
-      kLog.error("unknown exception in Wayland event handler; continuing");
-    }
-    return 0;
-  }
 } // namespace
 
 AppLoop::AppLoop() : m_keyRepeat(m_wayland) {}
@@ -86,13 +71,13 @@ AppLoop::~AppLoop() = default;
 
 bool AppLoop::initialize(bool sharedGl) {
   m_sharedGl = sharedGl;
-  if (!m_wayland.connect()) {
+  if (!display().connect(std::nullopt)) {
     kLog.error("failed to connect to the Wayland compositor");
     return false;
   }
   // EGL init loads Mesa (~50 ms) on a worker while this thread sets up text and the app opens and builds its first
   // window. Mesa uses its own Wayland event queue, and no context is made current on the worker.
-  m_egl = std::async(std::launch::async, [this, sharedGl] { m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGl); });
+  m_egl = std::async(std::launch::async, [this, sharedGl] { m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(display().nativeDisplay()), sharedGl); });
   try {
     m_render.initializeText();
   } catch (const std::exception& e) {
@@ -141,7 +126,7 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   }
   m_render.cleanup();
   m_gl.cleanup();
-  m_wayland.disconnect();
+  display().disconnect();
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   // A socket-activated compositor accepts at once; a stale socket refuses until the new compositor binds it.
   // Past the deadline the app exits as before the reconnect; a terminal's shells stay in andromeda-ptyd.
@@ -151,13 +136,13 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
       return false;
     }
     try {
-      if (m_wayland.connect(deadline)) {
+      if (display().connect(deadline)) {
         break;
       }
     } catch (const std::exception& e) {
       kLog.info("reconnect: {}", e.what());
     }
-    m_wayland.disconnect();
+    display().disconnect();
     if (std::chrono::steady_clock::now() + wait > deadline) {
       kLog.error("no compositor took over within {} ms", timeout.count());
       return false;
@@ -170,7 +155,7 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
   std::future<void> eglDone = egl->get_future();
   std::thread([this, egl] {
     try {
-      m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), m_sharedGl);
+      m_gl.initialize(reinterpret_cast<EGLNativeDisplayType>(display().nativeDisplay()), m_sharedGl);
       egl->set_value();
     } catch (...) {
       egl->set_exception(std::current_exception());
@@ -193,23 +178,16 @@ bool AppLoop::reconnect(std::chrono::milliseconds timeout) {
 }
 
 int AppLoop::run() {
-  wl_display* display = m_wayland.display();
-  // nullopt: the disconnect handler reconnected, and the loop goes on with the new display.
-  auto lost = [&]() -> std::optional<int> {
+  Display& display = this->display();
+  // nullopt: go on with the next pass (the disconnect handler reconnected).
+  auto handle = [&](PumpResult result) -> std::optional<int> {
+    if (result == PumpResult::Error) {
+      return 1;
+    }
     if (!m_onDisconnect || !m_onDisconnect()) {
       return 0;
     }
-    display = m_wayland.display();
     return std::nullopt;
-  };
-  auto fail = [&](const char* what) -> std::optional<int> {
-    const int err = errno;
-    if (isDisconnect(err)) {
-      kLog.info("compositor closed the connection during {}", what);
-      return lost();
-    }
-    kLog.error("{} failed: {}", what, m_wayland.describeDisplayError(err));
-    return 1;
   };
 
   while (!m_quit) {
@@ -222,32 +200,16 @@ int AppLoop::run() {
       break;
     }
 
-    while (wl_display_prepare_read(display) != 0) {
-      if (dispatchGuarded(display) < 0) {
-        if (const auto code = fail("Wayland dispatch")) {
-          return *code;
-        }
-        continue;
+    const PollPrep prep = display.preparePoll();
+    if (prep.result != PumpResult::Ok) {
+      if (const auto code = handle(prep.result)) {
+        return *code;
       }
-    }
-    short waylandEvents = POLLIN;
-    int flushed = 0;
-    do {
-      flushed = wl_display_flush(display);
-    } while (flushed < 0 && errno == EINTR);
-    if (flushed < 0) {
-      if (errno != EAGAIN) {
-        wl_display_cancel_read(display);
-        if (const auto code = fail("Wayland flush")) {
-          return *code;
-        }
-        continue;
-      }
-      waylandEvents |= POLLOUT;
+      continue;
     }
 
     const std::vector<PollSource*> list = sources();
-    std::vector<pollfd> fds{{.fd = wl_display_get_fd(display), .events = waylandEvents, .revents = 0}};
+    std::vector<pollfd> fds{{.fd = display.pollFd(), .events = prep.events, .revents = 0}};
     std::vector<std::pair<std::size_t, std::size_t>> ranges;
     ranges.reserve(list.size());
     int timeoutMs = -1;
@@ -273,49 +235,20 @@ int AppLoop::run() {
       timeoutMs = 0;
     }
     // A full send buffer with a 0 ms source would spin; wait up to one 60 Hz frame for POLLOUT.
-    if ((waylandEvents & POLLOUT) != 0 && timeoutMs >= 0 && timeoutMs < 16) {
+    if ((prep.events & POLLOUT) != 0 && timeoutMs >= 0 && timeoutMs < 16) {
       timeoutMs = 16;
     }
 
     if (::poll(fds.data(), fds.size(), timeoutMs) < 0) {
-      wl_display_cancel_read(display);
+      display.cancelPoll();
       if (errno == EINTR) {
         continue;
       }
       kLog.error("poll failed");
       return 1;
     }
-    if ((fds[0].revents & POLLOUT) != 0) {
-      do {
-        flushed = wl_display_flush(display);
-      } while (flushed < 0 && errno == EINTR);
-      if (flushed < 0 && errno != EAGAIN) {
-        wl_display_cancel_read(display);
-        if (const auto code = fail("Wayland flush")) {
-          return *code;
-        }
-        continue;
-      }
-    }
-    if ((fds[0].revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
-      if (wl_display_read_events(display) < 0) {
-        if (const auto code = fail("Wayland read")) {
-          return *code;
-        }
-        continue;
-      }
-    } else {
-      wl_display_cancel_read(display);
-    }
-    if (dispatchGuarded(display) < 0) {
-      if (const auto code = fail("Wayland dispatch")) {
-        return *code;
-      }
-      continue;
-    }
-    if ((fds[0].revents & (POLLHUP | POLLERR)) != 0) {
-      kLog.info("compositor closed the connection");
-      if (const auto code = lost()) {
+    if (const PumpResult result = display.finishPoll(fds[0].revents); result != PumpResult::Ok) {
+      if (const auto code = handle(result)) {
         return *code;
       }
       continue;

@@ -1086,6 +1086,81 @@ void WaylandConnection::activateSurface(wl_surface* surface) {
 
 wl_display* WaylandConnection::display() const noexcept { return m_display; }
 
+namespace {
+  // A C++ exception must not unwind through libwayland's C dispatch.
+  int dispatchGuarded(wl_display* display) {
+    try {
+      return wl_display_dispatch_pending(display);
+    } catch (const std::exception& e) {
+      kLog.error("exception in Wayland event handler ({}); continuing", e.what());
+    } catch (...) {
+      kLog.error("unknown exception in Wayland event handler; continuing");
+    }
+    return 0;
+  }
+
+  int flushRetrying(wl_display* display) {
+    int flushed = 0;
+    do {
+      flushed = wl_display_flush(display);
+    } while (flushed < 0 && errno == EINTR);
+    return flushed;
+  }
+} // namespace
+
+PumpResult WaylandConnection::pumpFailure(const char* what, int err) const {
+  if (err == EPIPE || err == ECONNRESET || err == ENOTCONN || err == EBADF) {
+    kLog.info("compositor closed the connection during {}", what);
+    return PumpResult::Lost;
+  }
+  kLog.error("{} failed: {}", what, describeDisplayError(err));
+  return PumpResult::Error;
+}
+
+int WaylandConnection::pollFd() const noexcept { return wl_display_get_fd(m_display); }
+
+PollPrep WaylandConnection::preparePoll() {
+  while (wl_display_prepare_read(m_display) != 0) {
+    if (dispatchGuarded(m_display) < 0) {
+      return {.result = pumpFailure("Wayland dispatch", errno)};
+    }
+  }
+  if (flushRetrying(m_display) < 0) {
+    const int err = errno;
+    if (err != EAGAIN) {
+      wl_display_cancel_read(m_display);
+      return {.result = pumpFailure("Wayland flush", err)};
+    }
+    return {.events = static_cast<short>(POLLIN | POLLOUT)};
+  }
+  return {.events = POLLIN};
+}
+
+PumpResult WaylandConnection::finishPoll(short revents) {
+  if ((revents & POLLOUT) != 0 && flushRetrying(m_display) < 0 && errno != EAGAIN) {
+    const int err = errno;
+    wl_display_cancel_read(m_display);
+    return pumpFailure("Wayland flush", err);
+  }
+  if ((revents & (POLLIN | POLLERR | POLLHUP)) != 0) {
+    if (wl_display_read_events(m_display) < 0) {
+      return pumpFailure("Wayland read", errno);
+    }
+  } else {
+    wl_display_cancel_read(m_display);
+  }
+  if (dispatchGuarded(m_display) < 0) {
+    return pumpFailure("Wayland dispatch", errno);
+  }
+  if ((revents & (POLLHUP | POLLERR)) != 0) {
+    kLog.info("compositor closed the connection");
+    return PumpResult::Lost;
+  }
+  return PumpResult::Ok;
+}
+
+void WaylandConnection::cancelPoll() { wl_display_cancel_read(m_display); }
+
 std::string WaylandConnection::describeDisplayError(int operationErrno) const {
   if (m_display == nullptr) {
     if (operationErrno != 0) {

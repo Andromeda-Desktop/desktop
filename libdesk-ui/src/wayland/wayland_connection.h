@@ -150,9 +150,14 @@ public:
   using ChangeCallback = std::function<void()>;
 
   // With a deadline, a compositor that accepts but never answers makes it throw at the deadline.
-  bool connect(std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt);
+  bool connect(std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) override;
   // Destroys every Wayland object and the display; connect() starts over. Safe on a dead connection.
-  void disconnect() { cleanup(); }
+  void disconnect() override { cleanup(); }
+  [[nodiscard]] void* nativeDisplay() const noexcept override { return m_display; }
+  [[nodiscard]] int pollFd() const noexcept override;
+  [[nodiscard]] PollPrep preparePoll() override;
+  [[nodiscard]] PumpResult finishPoll(short revents) override;
+  void cancelPoll() override;
   bool
   connectUntil(std::chrono::steady_clock::time_point deadline, WaylandConnection* eventConnection, std::string& error);
 
@@ -171,8 +176,8 @@ public:
   void setTextInputService(TextInputService* textInputService) override;
   void setCursorShape(std::uint32_t serial, std::uint32_t shape) override;
 
-  [[nodiscard]] int repeatPollTimeoutMs() const;
-  void repeatTick();
+  [[nodiscard]] int repeatPollTimeoutMs() const override;
+  void repeatTick() override;
   void stopKeyRepeat();
 
   // Queries
@@ -345,6 +350,8 @@ protected:
   [[nodiscard]] Purpose purpose() const noexcept { return m_purpose; }
 
 private:
+  // Lost on a closed connection; logs and returns Error otherwise.
+  [[nodiscard]] PumpResult pumpFailure(const char* what, int err) const;
   void requestTokenAsync(wl_surface* surface, const std::string& appId, bool inputBacked,
                          std::function<void(std::string token)> done) const;
   void bindGlobal(wl_registry* registry, std::uint32_t name, const char* interface, std::uint32_t version);

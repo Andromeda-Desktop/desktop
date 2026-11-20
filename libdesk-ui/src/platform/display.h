@@ -3,6 +3,7 @@
 #include "platform/input_events.h"
 #include "platform/output_id.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -23,11 +24,36 @@ struct OutputInfo {
   float scale = 1.0F; // the scale the window system renders this output at
 };
 
+// Lost: the window system closed the connection; Error: the connection failed (logged) and is unusable.
+enum class PumpResult : std::uint8_t { Ok, Lost, Error };
+
+struct PollPrep {
+  PumpResult result = PumpResult::Ok;
+  short events = 0; // what to poll pollFd() for
+};
+
 // The connection to the window system: creates windows and popups and answers seat and output queries.
 // Wayland: WaylandConnection.
 class Display {
 public:
   virtual ~Display() = default;
+
+  // With a deadline, a window system that accepts but never answers makes it throw at the deadline.
+  virtual bool connect(std::optional<std::chrono::steady_clock::time_point> deadline) = 0;
+  // Safe on a dead connection; connect() starts over.
+  virtual void disconnect() = 0;
+  // Cast to EGLNativeDisplayType for EGL.
+  [[nodiscard]] virtual void* nativeDisplay() const noexcept = 0;
+
+  // One pass of a poll loop: preparePoll(); if Ok, poll pollFd() for its events with the app's fds; then
+  // finishPoll(revents), or cancelPoll() when poll() fails. Every Ok preparePoll() needs exactly one of the two.
+  [[nodiscard]] virtual int pollFd() const noexcept = 0;
+  [[nodiscard]] virtual PollPrep preparePoll() = 0;
+  [[nodiscard]] virtual PumpResult finishPoll(short revents) = 0;
+  virtual void cancelPoll() = 0;
+  // -1: no key repeat pending.
+  [[nodiscard]] virtual int repeatPollTimeoutMs() const = 0;
+  virtual void repeatTick() = 0;
 
   [[nodiscard]] virtual std::unique_ptr<Toplevel> createToplevel() = 0;
   [[nodiscard]] virtual std::unique_ptr<Popup> createPopup() = 0;
