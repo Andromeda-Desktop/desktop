@@ -2,112 +2,131 @@
 
 #include "check.h"
 
+#include <array>
+#include <optional>
+
 using andromeda::qos::AppInputs;
+using andromeda::qos::Decision;
+using andromeda::qos::kBalancedHiddenDelayMs;
 using andromeda::qos::kHiddenDelayMs;
 using andromeda::qos::kHiddenLongDelayMs;
+using andromeda::qos::Power;
+using andromeda::qos::Profile;
 using andromeda::qos::Rule;
 using andromeda::qos::ScopePolicy;
 using andromeda::qos::Tier;
 
 namespace {
   constexpr std::uint64_t kStart = 1'000'000;
-  constexpr std::uint64_t kLongAt = kStart + kHiddenDelayMs + kHiddenLongDelayMs;
-  const AppInputs kHidden{};
+
+  // The docs/qos.md §3 table, written as a lookup: the tier an app has `elapsed` ms after it was hidden.
+  Decision expected(const AppInputs& in, Power power, std::uint64_t elapsed) {
+    if (in.focused) {
+      return {.tier = Tier::Focus};
+    }
+    if (in.visible || in.audio || in.call || in.idleInhibitor || in.screenCast || in.userWork
+        || in.rule == Rule::NeverThrottle) {
+      return {.tier = Tier::Visible};
+    }
+    const bool ruled = in.rule == Rule::FreezeWhenHidden;
+    std::optional<std::uint64_t> delay;
+    if (power.profile == Profile::PowerSaver || ruled) {
+      delay = kHiddenDelayMs;
+    } else if (power.profile == Profile::Balanced && power.onBattery) {
+      delay = kBalancedHiddenDelayMs;
+    }
+    if (!delay || elapsed < *delay) {
+      return {.tier = Tier::Visible};
+    }
+    const bool longComes = power.profile == Profile::PowerSaver || power.onBattery;
+    if (!longComes || elapsed < *delay + kHiddenLongDelayMs) {
+      return {.tier = Tier::Hidden};
+    }
+    const bool freezes = ruled || in.freezeHidden || (in.background && !in.trayItem);
+    return {.tier = Tier::HiddenLong, .frozen = freezes && !in.thawIntent};
+  }
+
+  constexpr std::array kElapsed{
+      std::uint64_t{0},
+      kHiddenDelayMs - 1,
+      kHiddenDelayMs,
+      kBalancedHiddenDelayMs - 1,
+      kBalancedHiddenDelayMs,
+      kHiddenDelayMs + kHiddenLongDelayMs - 1,
+      kHiddenDelayMs + kHiddenLongDelayMs,
+      kBalancedHiddenDelayMs + kHiddenLongDelayMs - 1,
+      kBalancedHiddenDelayMs + kHiddenLongDelayMs,
+      std::uint64_t{24} * 60 * 60 * 1000,
+  };
+
+  // Every combination of the inputs: 15 flags/choices, about 100k states over 6 power states.
+  template <typename F> void forEachInputs(F&& f) {
+    for (unsigned bits = 0; bits < (1U << 11); ++bits) {
+      for (const Rule rule : {Rule::Normal, Rule::NeverThrottle, Rule::FreezeWhenHidden}) {
+        const auto bit = [bits](unsigned i) { return (bits >> i & 1U) != 0; };
+        f(AppInputs{
+            .focused = bit(0), .visible = bit(1), .audio = bit(2), .call = bit(3), .idleInhibitor = bit(4),
+            .screenCast = bit(5), .userWork = bit(6), .background = bit(7), .trayItem = bit(8), .thawIntent = bit(9),
+            .freezeHidden = bit(10), .rule = rule,
+        });
+      }
+    }
+  }
+
+  template <typename F> void forEachPower(F&& f) {
+    for (const Profile profile : {Profile::PowerSaver, Profile::Balanced, Profile::Performance}) {
+      for (const bool battery : {false, true}) {
+        f(Power{.profile = profile, .onBattery = battery});
+      }
+    }
+  }
 } // namespace
 
-ANDROMEDA_TEST(focusedAndVisibleScopesKeepTheirTiers) {
-  ScopePolicy policy;
-  CHECK(policy.update({.focused = true}, true, kStart).tier == Tier::Focus);
-  CHECK(policy.update({.visible = true}, true, kStart).tier == Tier::Visible);
-  CHECK(!policy.update({.visible = true}, true, kStart).recheckAtMs.has_value());
+ANDROMEDA_TEST(everyReachableStateMatchesTheTierTableAndKeepsTheInvariants) {
+  forEachPower([](Power power) {
+    forEachInputs([power](const AppInputs& in) {
+      ScopePolicy policy;
+      Tier last = Tier::Focus;
+      for (const std::uint64_t elapsed : kElapsed) {
+        const Decision got = policy.update(in, power, kStart + elapsed);
+        const Decision want = expected(in, power, elapsed);
+        CHECK(got.tier == want.tier);
+        CHECK(got.frozen == want.frozen);
+        // I2: an exempt app never drops below Visible and never freezes.
+        CHECK(!andromeda::qos::exempt(in) || (got.tier <= Tier::Visible && !got.frozen));
+        // I3, I4: Performance, and Balanced on mains, throttle only a freeze_when_hidden app.
+        const bool calm = power.profile == Profile::Performance || (power.profile == Profile::Balanced && !power.onBattery);
+        CHECK(!calm || in.rule == Rule::FreezeWhenHidden || (got.tier <= Tier::Visible && !got.frozen));
+        // I5: only T3 freezes, and intent always thaws.
+        CHECK(!got.frozen || (got.tier == Tier::HiddenLong && !in.thawIntent));
+        // I6: for fixed inputs the tier never rises back while time passes.
+        CHECK(got.tier >= last || elapsed == 0);
+        last = got.tier;
+        // A recheck is due exactly when the tier can still drop with no input change.
+        CHECK(got.recheckAtMs.has_value() == (expected(in, power, std::uint64_t{24} * 60 * 60 * 1000).tier != got.tier));
+      }
+    });
+  });
 }
 
-ANDROMEDA_TEST(aHiddenScopeDemotesToHiddenAfterFiveSeconds) {
-  ScopePolicy policy;
-  const auto first = policy.update(kHidden, false, kStart);
-  CHECK(first.tier == Tier::Visible);
-  CHECK(first.recheckAtMs == kStart + kHiddenDelayMs);
-  CHECK(policy.update(kHidden, false, kStart + kHiddenDelayMs - 1).tier == Tier::Visible);
-  CHECK(policy.update(kHidden, false, kStart + kHiddenDelayMs).tier == Tier::Hidden);
-}
-
-ANDROMEDA_TEST(hiddenLongNeedsTenMinutesOnBattery) {
-  ScopePolicy onAc;
-  onAc.update(kHidden, false, kStart);
-  const auto ac = onAc.update(kHidden, false, kLongAt + 1);
-  CHECK(ac.tier == Tier::Hidden);
-  CHECK(!ac.recheckAtMs.has_value());
-
-  ScopePolicy onBattery;
-  onBattery.update(kHidden, true, kStart);
-  const auto hidden = onBattery.update(kHidden, true, kStart + kHiddenDelayMs);
-  CHECK(hidden.tier == Tier::Hidden);
-  CHECK(hidden.recheckAtMs == kLongAt);
-  CHECK(onBattery.update(kHidden, true, kLongAt - 1).tier == Tier::Hidden);
-  CHECK(onBattery.update(kHidden, true, kLongAt).tier == Tier::HiddenLong);
-  // Unplugging the charger after a long hide moves to T3 at once.
-  CHECK(onAc.update(kHidden, true, kLongAt + 1).tier == Tier::HiddenLong);
-}
-
-ANDROMEDA_TEST(exemptScopesNeverDropBelowVisible) {
-  for (const AppInputs inputs :
-       {AppInputs{.audio = true}, AppInputs{.call = true}, AppInputs{.idleInhibitor = true},
-        AppInputs{.screenCast = true}, AppInputs{.rule = Rule::NeverThrottle}}) {
+ANDROMEDA_TEST(anInputChangePromotesAtOnceAndTheHiddenClockKeepsRunning) {
+  forEachPower([](Power power) {
     ScopePolicy policy;
-    policy.update(inputs, true, kStart);
-    const auto decision = policy.update(inputs, true, kLongAt + 1);
-    CHECK(decision.tier == Tier::Visible);
-    CHECK(!decision.frozen);
-  }
-}
-
-ANDROMEDA_TEST(hiddenLongFreezesOnlyWithRuleOrPowerSaverAndIntentThaws) {
-  ScopePolicy normal;
-  normal.update(kHidden, true, kStart);
-  CHECK(!normal.update(kHidden, true, kLongAt).frozen);
-
-  for (const AppInputs inputs : {AppInputs{.rule = Rule::FreezeWhenHidden}, AppInputs{.freezeHidden = true}}) {
-    ScopePolicy plugged;
-    plugged.update(inputs, false, kStart);
-    CHECK(!plugged.update(inputs, false, kLongAt).frozen);
-
-    ScopePolicy freezing;
-    freezing.update(inputs, true, kStart);
-    CHECK(!freezing.update(inputs, true, kStart + kHiddenDelayMs).frozen);
-    CHECK(freezing.update(inputs, true, kLongAt).frozen);
-    AppInputs reached = inputs;
-    reached.thawIntent = true;
-    CHECK(!freezing.update(reached, true, kLongAt + 1).frozen);
-  }
-}
-
-ANDROMEDA_TEST(aSlideThawsOnlyScopesWithAWindowItCanShow) {
-  struct Scope {
-    bool windowShown;
-    bool thawsDuringSlide;
-  };
-  // A window on the slide's target workspace, a window on a far workspace, a windowless scope.
-  for (const Scope scope : {Scope{true, true}, Scope{false, false}, Scope{false, false}}) {
-    ScopePolicy policy;
-    AppInputs inputs{.freezeHidden = true};
-    policy.update(inputs, true, kStart);
-    CHECK(policy.update(inputs, true, kLongAt).frozen);
-    inputs.thawIntent = andromeda::qos::thawIntent(true, scope.windowShown);
-    CHECK(policy.update(inputs, true, kLongAt + 1).frozen == !scope.thawsDuringSlide);
-    inputs.thawIntent = andromeda::qos::thawIntent(false, scope.windowShown);
-    CHECK(policy.update(inputs, true, kLongAt + 2).frozen);
-  }
-}
-
-ANDROMEDA_TEST(promotionIsImmediateAndRestartsTheHiddenClock) {
+    const AppInputs hidden{};
+    const std::uint64_t late = kStart + kBalancedHiddenDelayMs + kHiddenLongDelayMs;
+    policy.update(hidden, power, kStart);
+    policy.update(hidden, power, late);
+    CHECK(policy.update({.visible = true}, power, late + 1).tier == Tier::Visible);
+    CHECK(policy.update({.audio = true}, power, late + 2).tier == Tier::Visible);
+    // Hidden again: the clock starts over.
+    policy.update({.visible = true}, power, late + 3);
+    CHECK(policy.update(hidden, power, late + 4).tier == Tier::Visible);
+  });
+  // A profile change acts on the time already hidden: Balanced on mains to Power Saver after 10 min is T3 at once.
   ScopePolicy policy;
-  policy.update(kHidden, true, kStart);
-  CHECK(policy.update(kHidden, true, kLongAt).tier == Tier::HiddenLong);
-  CHECK(policy.update({.focused = true}, true, kLongAt + 1).tier == Tier::Focus);
-  // Hidden again: the 5 s delay starts over.
-  const auto again = policy.update(kHidden, true, kLongAt + 2);
-  CHECK(again.tier == Tier::Visible);
-  CHECK(again.recheckAtMs == kLongAt + 2 + kHiddenDelayMs);
+  policy.update({}, Power{}, kStart);
+  CHECK(policy.update({}, Power{}, kStart + 600'000).tier == Tier::Visible);
+  CHECK(policy.update({}, Power{.profile = Profile::PowerSaver}, kStart + 600'001).tier == Tier::HiddenLong);
 }
 
 int main() { return RUN_TESTS(); }

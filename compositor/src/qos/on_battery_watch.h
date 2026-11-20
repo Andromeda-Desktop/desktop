@@ -1,5 +1,7 @@
 #pragma once
 
+#include "qos/policy.h"
+
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -13,7 +15,7 @@ struct wl_event_source;
 
 namespace andromeda::qos {
 
-  // Follows org.andromeda.System1.Power.OnBattery over the system bus without blocking the event loop. Reading
+  // Follows org.andromeda.System1.Power OnBattery and Profile over the system bus without blocking the event loop. Reading
   // /sys/class/power_supply/BAT*/status runs ACPI _BST through the EC and can take 40 ms on the main thread.
   class OnBatteryWatch {
   public:
@@ -26,6 +28,8 @@ namespace andromeda::qos {
 
     // Empty until andromeda-system answered, and while it is not on the bus.
     [[nodiscard]] std::optional<bool> onBattery() const { return m_onBattery; }
+    // Balanced until andromeda-system answered, and while it is not on the bus or runs no profile backend.
+    [[nodiscard]] Profile profile() const { return m_profile; }
 
   private:
     static int onEvent(int fd, std::uint32_t mask, void* data);
@@ -37,7 +41,8 @@ namespace andromeda::qos {
     bool open();
     void retryLater();
     void requestValue();
-    void set(std::optional<bool> value);
+    void set(std::optional<bool> onBattery, Profile profile);
+    void readProperties(sd_bus_message* message);
     void close();
     void dispatch();
     void updateEvents();
@@ -51,6 +56,7 @@ namespace andromeda::qos {
     wl_event_source* m_retry = nullptr; // outlives close(): it opens the bus again
     int m_retryMs = 2000;
     std::optional<bool> m_onBattery;
+    Profile m_profile = Profile::Balanced;
   };
 
 } // namespace andromeda::qos

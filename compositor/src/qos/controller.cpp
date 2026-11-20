@@ -371,7 +371,6 @@ namespace andromeda::qos {
     m_children = std::move(children);
 
     const std::uint64_t now = nowMs();
-    std::optional<bool> battery;
     std::optional<std::uint64_t> next;
     bool batteryCanMatter = false;
     for (auto it = m_scopes.begin(); it != m_scopes.end();) {
@@ -401,25 +400,12 @@ namespace andromeda::qos {
       inputs.thawIntent = thawIntent(m_thawHolds > 0, app.thawShown);
       inputs.freezeHidden = snapshot.freezeHiddenApps && registry().freezeHidden;
       inputs.rule = scope.rule;
-      // A background service: an app unit with no mapped window.
-      if (app.windows == 0 && inputs.rule == Rule::Normal && snapshot.freezeBackgroundApps) {
-        inputs.rule = Rule::FreezeWhenHidden;
-      }
-      const bool exempt = inputs.audio
-          || inputs.call
-          || inputs.idleInhibitor
-          || inputs.screenCast
-          || inputs.rule == Rule::NeverThrottle;
-      bool discharging = false;
-      if (!inputs.focused && !inputs.visible && !exempt) {
-        if (!battery) {
-          battery = onBattery();
-        }
-        discharging = *battery;
-      }
+      inputs.background = app.windows == 0 && snapshot.freezeBackgroundApps;
+      const bool exempt = qos::exempt(inputs);
+      const Power power{.profile = m_battery ? m_battery->profile() : Profile::Balanced, .onBattery = onBattery()};
       // Optimize off: a Normal app keeps the visible tier; its own rule and system-health holds still apply.
-      const Decision policy = snapshot.optimizeBackgroundApps || inputs.rule != Rule::Normal
-          ? scope.policy.update(inputs, discharging, now)
+      const Decision policy = snapshot.optimizeBackgroundApps || inputs.rule != Rule::Normal || inputs.background
+          ? scope.policy.update(inputs, power, now)
           : Decision{};
       const Decision decision = registry().holds.apply(unit, policy, exempt || inputs.focused);
       registry().apps[unit] = AppState{
@@ -437,7 +423,7 @@ namespace andromeda::qos {
       }
       // Unplugging can move a T2 scope to T3; plugging in moves a T3 scope back.
       batteryCanMatter = batteryCanMatter
-          || (decision.tier == Tier::Hidden && !discharging)
+          || (decision.tier == Tier::Hidden && !power.onBattery)
           || decision.tier == Tier::HiddenLong;
       ++it;
     }

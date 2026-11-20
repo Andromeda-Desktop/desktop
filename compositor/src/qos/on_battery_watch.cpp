@@ -40,6 +40,14 @@ namespace andromeda::qos {
       return true;
     }
 
+    // "power-saver", "balanced" or "performance"; anything else (empty: no profile backend) counts as Balanced.
+    Profile parseProfile(const char* name) {
+      if (std::strcmp(name, "power-saver") == 0) {
+        return Profile::PowerSaver;
+      }
+      return std::strcmp(name, "performance") == 0 ? Profile::Performance : Profile::Balanced;
+    }
+
   } // namespace
 
   OnBatteryWatch::OnBatteryWatch(wl_event_loop* loop, std::function<void()> changed)
@@ -118,8 +126,8 @@ namespace andromeda::qos {
   void OnBatteryWatch::requestValue() {
     m_getSlot = sd_bus_slot_unref(m_getSlot);
     if (sd_bus_call_method_async(
-            m_bus, &m_getSlot, kName, kPath, "org.freedesktop.DBus.Properties", "Get", onGetReply, this, "ss",
-            kInterface, "OnBattery"
+            m_bus, &m_getSlot, kName, kPath, "org.freedesktop.DBus.Properties", "GetAll", onGetReply, this, "s",
+            kInterface
         )
         < 0) {
       m_getSlot = nullptr;
@@ -127,23 +135,60 @@ namespace andromeda::qos {
     updateEvents();
   }
 
-  void OnBatteryWatch::set(std::optional<bool> value) {
-    if (value == m_onBattery) {
+  void OnBatteryWatch::set(std::optional<bool> onBattery, Profile profile) {
+    if (onBattery == m_onBattery && profile == m_profile) {
       return;
     }
-    m_onBattery = value;
-    kLog.info("power source: {}", !value ? "unknown (andromeda-system not on the bus)" : *value ? "battery" : "mains");
+    if (onBattery != m_onBattery) {
+      kLog.info(
+          "power source: {}", !onBattery ? "unknown (andromeda-system not on the bus)" : *onBattery ? "battery" : "mains"
+      );
+    }
+    if (profile != m_profile) {
+      kLog.info(
+          "power profile: {}", profile == Profile::PowerSaver ? "power-saver"
+                               : profile == Profile::Performance ? "performance"
+                                                                 : "balanced"
+      );
+    }
+    m_onBattery = onBattery;
+    m_profile = profile;
     if (m_changed) {
       m_changed();
     }
   }
 
+  // Reads an a{sv} of Power properties; keeps the current value of each property the dict lacks.
+  void OnBatteryWatch::readProperties(sd_bus_message* message) {
+    if (sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "{sv}") <= 0) {
+      return;
+    }
+    std::optional<bool> onBattery = m_onBattery;
+    Profile profile = m_profile;
+    while (sd_bus_message_enter_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") > 0) {
+      const char* name = nullptr;
+      bool value = false;
+      const char* text = nullptr;
+      if (sd_bus_message_read(message, "s", &name) < 0) {
+        return;
+      }
+      if (std::strcmp(name, "OnBattery") == 0 && readBoolVariant(message, value)) {
+        onBattery = value;
+      } else if (std::strcmp(name, "Profile") == 0 && sd_bus_message_read(message, "v", "s", &text) >= 0) {
+        profile = parseProfile(text);
+      } else if (sd_bus_message_skip(message, "v") < 0) {
+        return;
+      }
+      sd_bus_message_exit_container(message);
+    }
+    set(onBattery, profile);
+  }
+
   int OnBatteryWatch::onGetReply(sd_bus_message* reply, void* data, sd_bus_error* /*error*/) {
     auto* self = static_cast<OnBatteryWatch*>(data);
     self->m_getSlot = sd_bus_slot_unref(self->m_getSlot);
-    bool value = false;
-    if (sd_bus_message_is_method_error(reply, nullptr) == 0 && readBoolVariant(reply, value)) {
-      self->set(value);
+    if (sd_bus_message_is_method_error(reply, nullptr) == 0) {
+      self->readProperties(reply);
     }
     return 0;
   }
@@ -152,22 +197,8 @@ namespace andromeda::qos {
   int OnBatteryWatch::onPropertiesChanged(sd_bus_message* message, void* data, sd_bus_error* /*error*/) {
     auto* self = static_cast<OnBatteryWatch*>(data);
     const char* interface = nullptr;
-    if (sd_bus_message_read(message, "s", &interface) < 0 || std::strcmp(interface, kInterface) != 0
-        || sd_bus_message_enter_container(message, SD_BUS_TYPE_ARRAY, "{sv}") <= 0) {
-      return 0;
-    }
-    while (sd_bus_message_enter_container(message, SD_BUS_TYPE_DICT_ENTRY, "sv") > 0) {
-      const char* name = nullptr;
-      bool value = false;
-      if (sd_bus_message_read(message, "s", &name) < 0) {
-        return 0;
-      }
-      if (std::strcmp(name, "OnBattery") == 0 && readBoolVariant(message, value)) {
-        self->set(value);
-      } else if (sd_bus_message_skip(message, "v") < 0) {
-        return 0;
-      }
-      sd_bus_message_exit_container(message);
+    if (sd_bus_message_read(message, "s", &interface) >= 0 && std::strcmp(interface, kInterface) == 0) {
+      self->readProperties(message);
     }
     return 0;
   }
@@ -182,7 +213,7 @@ namespace andromeda::qos {
       return 0;
     }
     if (*newOwner == '\0') {
-      self->set(std::nullopt);
+      self->set(std::nullopt, Profile::Balanced);
     } else {
       self->requestValue();
     }
@@ -208,7 +239,7 @@ namespace andromeda::qos {
     }
     if (result < 0) {
       close();
-      set(std::nullopt);
+      set(std::nullopt, Profile::Balanced);
       retryLater();
       return;
     }
