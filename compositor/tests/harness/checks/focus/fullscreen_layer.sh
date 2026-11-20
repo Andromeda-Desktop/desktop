@@ -73,8 +73,19 @@ for mode in on-demand exclusive; do
   overlay_log="$ANDROMEDA_RUNTIME_DIR/fullscreen-overlay-$mode.log"
   "$ANDROMEDA_LAYER_CLIENT" HEADLESS-1 0 overlay-layer "keyboard=$mode" release-on-escape > "$overlay_log" 2>&1 &
   overlay_pid=$!
-  await_events "$overlay_log" keyboard-enter 1
+  wait_layers 2
   assert_pixel 20 "255 0 0"
+  if [[ $mode == on-demand ]]; then
+    "$ANDROMEDA_POINTER_CLIENT" 2560 720 tap 57
+    key_count=$((key_count + 1))
+    await_events "$WINDOW_LOG" 'keyboard-key code=57 state=pressed' "$key_count"
+    if [[ $(events "$overlay_log" keyboard-enter) != 0 ]]; then
+      echo "on-demand overlay took the fullscreen window's keyboard on map: $(cat "$overlay_log")"
+      exit 1
+    fi
+    "$ANDROMEDA_POINTER_CLIENT" 2560 720 move "$((home_x + 100))" 20 click 272
+  fi
+  await_events "$overlay_log" keyboard-enter 1
   "$ANDROMEDA_POINTER_CLIENT" 2560 720 tap 57 tap 1
   await_events "$overlay_log" 'keyboard-key code=57 state=1' 1
   await_events "$overlay_log" keyboard-leave 1

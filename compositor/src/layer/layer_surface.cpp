@@ -1398,7 +1398,9 @@ namespace andromeda {
     // Protocol requires focus for exclusive. On-demand layers also take it as they map: launchers,
     // quick terminals and panels expect the keyboard right away.
     // A click or a focus action moves focus off them again, unlike an exclusive layer.
-    if (acceptsKeyboard()) {
+    // Over a fullscreen window an on-demand layer waits for a click, so a game overlay never takes the game's keys.
+    const Output* out = output();
+    if (exclusiveKeyboard() || (acceptsKeyboard() && (out == nullptr || !out->hasFullscreenView()))) {
       focus();
     }
     updateBlur();
