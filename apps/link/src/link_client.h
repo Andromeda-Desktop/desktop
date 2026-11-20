@@ -33,6 +33,9 @@ namespace linkapp {
     [[nodiscard]] const Feed& feed() const { return m_feed; }
     // The texts of the phone presence() shows.
     [[nodiscard]] const Messages& messages() const { return m_messages; }
+    // The call log of the phone presence() shows, newest first, and whether the phone gives it.
+    [[nodiscard]] const std::vector<CallEntry>& calls() const { return m_calls; }
+    [[nodiscard]] CallLog callLog() const { return m_callLog; }
     void viewThread(std::optional<std::uint64_t> thread);
     // Sends `body` to `thread`'s address; it shows as sending until Texts holds it, failed on an error.
     void sendText(std::uint64_t thread, const std::string& body);
@@ -65,6 +68,8 @@ namespace linkapp {
     std::vector<Phone> m_phones;
     Feed m_feed;
     Messages m_messages;
+    std::vector<CallEntry> m_calls;
+    CallLog m_callLog = CallLog::Ready;
     std::set<std::string> m_dismissed; // missed calls the user cleared; Calls keeps reporting them
   };
 

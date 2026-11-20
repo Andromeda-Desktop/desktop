@@ -78,6 +78,24 @@ namespace linkapp {
     std::vector<ConversationRow> m_rows;
   };
 
+  // Calls: the phone's call log, newest first, grouped Today / Earlier.
+  class CallAdapter final : public VirtualListAdapter {
+  public:
+    CallAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
+    [[nodiscard]] std::size_t itemCount() const override { return m_client.calls().size(); }
+    [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
+    [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
+    [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
+    [[nodiscard]] std::unique_ptr<Node> createItem() override;
+    void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
+
+  private:
+    [[nodiscard]] std::unique_ptr<Node> build(std::size_t index) const;
+
+    LinkClient& m_client;
+    const float& m_scale;
+  };
+
   class LinkApp final : public DeskApp {
   public:
     static constexpr const char* kAppId = "dev.andromeda.Link";
@@ -95,6 +113,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> sidebar(float width);
     [[nodiscard]] std::unique_ptr<Node> content(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> messages(float width, float height);
+    [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
     // Cards mode and the viewed thread follow the page and presence.
@@ -109,6 +128,9 @@ namespace linkapp {
     ScrollViewState m_conversationScroll;
     std::optional<std::uint64_t> m_thread; // the selected thread
     std::map<std::uint64_t, std::string> m_threadDrafts;
+    std::unique_ptr<CallAdapter> m_calls;
+    ScrollViewState m_callScroll;
+    std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;
     Page m_page = Page::Waiting;
     float m_scale = 1.0F;

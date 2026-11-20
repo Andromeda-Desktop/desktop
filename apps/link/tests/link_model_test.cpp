@@ -220,6 +220,17 @@ namespace {
     }
   }
 
+  void dialing() {
+    Messages m;
+    m.setContacts({{.name = "Maya Okafor", .numbers = {"+49 151 1234-0001"}}, {.name = "Mum", .numbers = {}},
+                   {.name = "Mumbai Office", .numbers = {"(022) 555 0100"}}});
+    expect(m.numberFor("+49 (151) 2345 6789") == "+4915123456789", "a typed number keeps digits and +", 0, 0);
+    expect(m.numberFor("maya") == "+4915112340001", "a name prefix dials the contact's number", 0, 0);
+    expect(m.numberFor("Mum") == "0225550100", "a contact without numbers is skipped", 0, 0);
+    expect(m.numberFor("Zed").empty(), "an unknown name dials nothing", 0, 0);
+    expect(duration(41) == "0:41" && duration(768) == "12:48" && duration(3723) == "1:02:03", "durations", 0, 0);
+  }
+
   void days() {
     const std::int64_t now = 1'763'640'000'000; // Thu 2025-11-20 12:00 UTC
     const std::int64_t day = 86'400'000;
@@ -239,6 +250,7 @@ int main() {
   for (unsigned seed = 1; seed <= 20; ++seed) runMessages(seed);
   presence();
   days();
+  dialing();
   if (failures == 0) std::puts("link_model: ok");
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

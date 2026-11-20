@@ -55,8 +55,12 @@ props = {
     "Pairing": GLib.Variant("b", False),
     "Texts": GLib.Variant("a{sa(ttsstb)}", {"p1": texts} if connected else {}),
     "Contacts": GLib.Variant("a{sa(sas)}", {"p1": contacts}),
-    "Calls": GLib.Variant("a{sa(sstus)}", {"p1": [("+14155550199", "Mum", min(at(18, 20), now_ms - 60_000), 0, "missed")]}
-                          if connected else {}),
+    "Calls": GLib.Variant("a{sa(sstus)}", {"p1": [
+        ("+14155550199", "Mum", ago(0, 18, 20), 0, "missed"),
+        (MAYA, "", ago(0, 12, 4), 192, "outgoing"),
+        (DAD, "Dad", ago(1, 19, 40), 768, "incoming"),
+        (PARCEL, "", ago(2, 10, 2), 41, "incoming"),
+    ]} if connected else {}),
 }
 
 node = Gio.DBusNodeInfo.new_for_xml(open(XML).read())

@@ -111,9 +111,9 @@ namespace linkapp {
       return avatar(std::move(label), s);
     }
 
-    std::unique_ptr<Flex> glyphAvatar(const char* glyph, float s) {
+    std::unique_ptr<Flex> glyphAvatar(const char* glyph, float s, ColorRole ink = ColorRole::Label2) {
       return avatar(ui::glyph({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s,
-                               .color = colorSpecFromRole(ColorRole::Label2)}),
+                               .color = colorSpecFromRole(ink)}),
                     s);
     }
 
@@ -354,6 +354,70 @@ namespace linkapp {
     return block;
   }
 
+  std::uint64_t CallAdapter::itemKey(std::size_t index) const {
+    const CallEntry& c = m_client.calls()[index];
+    return std::hash<std::string>{}(std::format("{}|{}", c.number, c.atMs));
+  }
+
+  float CallAdapter::measureItem(Renderer& renderer, std::size_t index, float width) {
+    return build(index)->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height;
+  }
+
+  std::unique_ptr<Node> CallAdapter::createItem() { return ui::column({.align = FlexAlign::Stretch}); }
+
+  void CallAdapter::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float /*width*/, bool /*hovered*/) {
+    auto& holder = static_cast<Flex&>(item);
+    while (!holder.children().empty()) holder.removeChild(holder.children().back().get());
+    holder.addChild(build(index));
+  }
+
+  // Call row (handoff.yaml): direction symbol | name + kind · duration | time | Call; missed in danger_text.
+  std::unique_ptr<Node> CallAdapter::build(std::size_t index) const {
+    using K = CallEntry::Kind;
+    const float s = m_scale;
+    const auto& calls = m_client.calls();
+    const CallEntry& c = calls[index];
+    const std::int64_t now = nowMs();
+    const auto today = [&](std::size_t i) { return dayLabel(calls[i].atMs, now) == "Today"; };
+    const float indent = Tokens::sizeControlM * s + Tokens::spaceP12 * s;
+    auto block = ui::column({.align = FlexAlign::Stretch});
+    if (index == 0 || today(index - 1) != today(index)) {
+      auto head = text(today(index) ? "Today" : "Earlier", Tokens::typeFootnote, ColorRole::Label2, s);
+      head->setFontWeight(FontWeight::SemiBold);
+      auto line = ui::row({.paddingV = Tokens::spaceP8 * s}, std::move(head));
+      line->setPadding(Tokens::spaceP16 * s, 0.0F, Tokens::spaceP8 * s, indent);
+      block->addChild(std::move(line));
+    } else {
+      auto rule = ui::column({.align = FlexAlign::Stretch});
+      rule->setPadding(0.0F, 0.0F, 0.0F, indent);
+      rule->addChild(ui::separator({}));
+      block->addChild(std::move(rule));
+    }
+    const bool missed = c.kind == K::Missed;
+    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingV = Tokens::spaceP8 * s,
+                        .minHeight = Tokens::componentLinkThreadRow * s});
+    row->addChild(missed ? glyphAvatar("phone-x", s, ColorRole::DangerText)
+                         : glyphAvatar(c.kind == K::Outgoing ? "arrow-up" : "arrow-down", s));
+    auto body = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+    auto name = text(c.name.empty() ? m_client.messages().nameFor(c.number) : c.name, Tokens::typeBody,
+                     missed ? ColorRole::DangerText : ColorRole::Label1, s);
+    name->setFontWeight(FontWeight::Medium);
+    body->addChild(std::move(name));
+    const char* kind = missed ? "Missed" : c.kind == K::Outgoing ? "Outgoing" : "Incoming";
+    body->addChild(text(missed || c.seconds == 0 ? std::string(kind) : std::format("{} · {}", kind, duration(c.seconds)),
+                        Tokens::typeFootnote, ColorRole::Label2, s));
+    row->addChild(std::move(body));
+    row->addChild(text(today(index) ? clock(c.atMs) : when(c.atMs) + " " + clock(c.atMs), Tokens::typeFootnote,
+                       ColorRole::Label2, s));
+    const std::string device = m_client.presence().phone.id;
+    const std::string number = c.number;
+    row->addChild(ui::button({.glyph = std::string("phone"), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
+                              .tooltip = std::string("Call"),
+                              .onClick = [this, device, number] { m_client.dial(device, number); }}));
+    block->addChild(std::move(row));
+    return block;
+  }
+
   LinkApp::LinkApp() : DeskApp({.id = kAppId, .name = "Link"}) {}
 
   LinkApp::~LinkApp() = default;
@@ -374,6 +438,7 @@ namespace linkapp {
         m_window->requestRebuild();
       });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
+      m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
       m_client->setOnChanged([this] {
         if (m_window == nullptr) return;
         sync();
@@ -587,6 +652,7 @@ namespace linkapp {
     case Presence::Kind::Locked: break;
     }
     if (m_page == Page::Messages) return messages(width, height);
+    if (m_page == Page::Calls) return calls();
     if (m_page != Page::Waiting) {
       const PageInfo& info = kPages[static_cast<std::size_t>(m_page)];
       return emptyState(info.glyph, info.name, "This page comes in a later build step.", s);
@@ -698,6 +764,49 @@ namespace linkapp {
     body->setFlexGrow(1.0F);
     cards->addChild(card(std::move(head), std::move(body), convWidth, true));
     return cards;
+  }
+
+  // Calls (handoff.yaml): dial row (capsule "Name or number" + Primary Call), then the log grouped Today / Earlier.
+  std::unique_ptr<Node> LinkApp::calls() {
+    const float s = m_scale;
+    switch (m_client->callLog()) {
+    case CallLog::Off:
+      return emptyState("phone-off", "Calls are off", "Turn on Calls in Link on your phone to see them here.", s);
+    case CallLog::Denied:
+      return emptyState("phone-off", "Link cannot read calls", "Allow Phone access for Link in the phone's settings.", s);
+    case CallLog::Failed:
+      return emptyState("alert-circle", "Calls did not load", "The phone could not read its call log.", s);
+    case CallLog::Ready: break;
+    }
+    auto page = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+    page->setPadding(0.0F, Tokens::spaceP24 * s, Tokens::spaceP24 * s, Tokens::spaceP24 * s);
+    const std::string device = m_client->presence().phone.id;
+    const auto dial = [this, device] {
+      const std::string number = m_client->messages().numberFor(m_dial);
+      if (number.empty()) return;
+      m_dial.clear();
+      m_client->dial(device, number);
+      m_window->requestRebuild();
+    };
+    const float h = Tokens::sizeControlM * s;
+    auto field = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP8 * s,
+                          .fill = colorSpecFromRole(ColorRole::Fill1), .radius = h / 2.0F, .height = h, .flexGrow = 1.0F});
+    field->addChild(ui::glyph({.glyph = std::string("phone"), .glyphSize = Tokens::sizeSymbol * s,
+                               .color = colorSpecFromRole(ColorRole::Label2)}));
+    field->addChild(ui::input({.value = m_dial, .placeholder = std::string("Name or number"), .fontSize = Tokens::typeBody.size * s,
+                               .frameVisible = false, .flexGrow = 1.0F,
+                               .onChange = [this](const std::string& value) { m_dial = value; },
+                               .onSubmit = [dial](const std::string&) { dial(); }}));
+    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s});
+    row->addChild(std::move(field));
+    row->addChild(ui::button({.text = std::string("Call"), .variant = ButtonVariant::Primary, .onClick = dial}));
+    page->addChild(std::move(row));
+    if (m_client->calls().empty()) {
+      page->addChild(emptyState("phone", "No calls", "Calls on your phone show here.", s));
+    } else {
+      page->addChild(ui::virtualListView({.state = &m_callScroll, .contentScale = s, .adapter = m_calls.get(), .flexGrow = 1.0F}));
+    }
+    return page;
   }
 
 } // namespace linkapp

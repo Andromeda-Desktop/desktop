@@ -129,6 +129,22 @@ namespace linkapp {
     std::uint64_t serial = 0; // Sending and Failed: the outgoing serial
   };
 
+  struct CallEntry {
+    enum class Kind : std::uint8_t { Incoming, Outgoing, Missed };
+    std::string number;
+    std::string name; // the phone's contact name, or empty
+    std::int64_t atMs = 0;
+    std::uint32_t seconds = 0;
+    Kind kind = Kind::Incoming;
+  };
+
+  // Whether the phone gives its call log (Link1 CallsRefused): "" Ready, not-allowed Off, denied Denied, else Failed.
+  enum class CallLog : std::uint8_t { Ready, Off, Denied, Failed };
+  [[nodiscard]] CallLog callLogFrom(const std::string& refused);
+
+  // "0:41", "12:48", "1:02:03".
+  [[nodiscard]] std::string duration(std::uint32_t seconds);
+
   // "Today", "Yesterday", a weekday within the last week, else "12 Mar" (and the year when it is not this year).
   [[nodiscard]] std::string dayLabel(std::int64_t atMs, std::int64_t nowMs);
 
@@ -164,6 +180,9 @@ namespace linkapp {
     [[nodiscard]] int unread() const;
     // The contact name for a number, else the number.
     [[nodiscard]] std::string nameFor(const std::string& address) const;
+    // What to dial for "Name or number": the digits, + * # of a number, else the first number of the first contact
+    // whose name starts with the query (any case); empty when neither.
+    [[nodiscard]] std::string numberFor(const std::string& query) const;
     [[nodiscard]] std::vector<ConversationRow> conversation(std::uint64_t thread, std::int64_t nowMs) const;
 
   private:
@@ -173,6 +192,7 @@ namespace linkapp {
     Load m_load = Load::Loading;
     std::vector<Text> m_texts;
     std::map<std::string, std::string> m_names; // numberKey -> contact name
+    std::vector<Contact> m_contacts;
     std::set<std::uint64_t> m_unread;           // text ids
     std::optional<std::uint64_t> m_viewing;
     std::vector<Outgoing> m_outgoing;

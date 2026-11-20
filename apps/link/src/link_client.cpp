@@ -178,6 +178,22 @@ namespace linkapp {
             people.reserve(it->second.size());
             for (const Person& c : it->second) people.push_back({.name = c.get<0>(), .numbers = c.get<1>()});
           }
+          m_calls.clear();
+          const auto log = property<std::map<std::string, std::vector<Call>>>(props, "Calls");
+          if (const auto it = log.find(phone); it != log.end()) {
+            m_calls.reserve(it->second.size());
+            for (const Call& c : it->second) {
+              const std::string& kind = c.get<4>();
+              m_calls.push_back({.number = c.get<0>(), .name = c.get<1>(), .atMs = static_cast<std::int64_t>(c.get<2>()),
+                                 .seconds = c.get<3>(),
+                                 .kind = kind == "missed"     ? CallEntry::Kind::Missed
+                                         : kind == "outgoing" ? CallEntry::Kind::Outgoing
+                                                              : CallEntry::Kind::Incoming});
+            }
+          }
+          const auto refused = property<std::map<std::string, std::string>>(props, "CallsRefused");
+          const auto why = refused.find(phone);
+          m_callLog = callLogFrom(why == refused.end() ? std::string() : why->second);
           m_messages.setContacts(people);
           m_messages.setTexts(std::move(list));
           changed();

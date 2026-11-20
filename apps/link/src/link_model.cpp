@@ -91,6 +91,18 @@ namespace linkapp {
     return std::format("{} {} {}", at.tm_mday, kMonths[static_cast<std::size_t>(at.tm_mon)], at.tm_year + 1900);
   }
 
+  CallLog callLogFrom(const std::string& refused) {
+    if (refused.empty()) return CallLog::Ready;
+    if (refused == "not-allowed") return CallLog::Off;
+    if (refused == "denied") return CallLog::Denied;
+    return CallLog::Failed;
+  }
+
+  std::string duration(std::uint32_t seconds) {
+    if (seconds >= 3600) return std::format("{}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60);
+    return std::format("{}:{:02}", seconds / 60, seconds % 60);
+  }
+
   std::string numberKey(const std::string& address) {
     std::string digits;
     for (const char c : address) {
@@ -119,6 +131,7 @@ namespace linkapp {
   }
 
   void Messages::setContacts(const std::vector<Contact>& contacts) {
+    m_contacts = contacts;
     m_names.clear();
     for (const Contact& contact : contacts) {
       for (const std::string& number : contact.numbers) m_names.try_emplace(numberKey(number), contact.name);
@@ -171,6 +184,29 @@ namespace linkapp {
   std::string Messages::nameFor(const std::string& address) const {
     const auto it = m_names.find(numberKey(address));
     return it == m_names.end() ? address : it->second;
+  }
+
+  std::string Messages::numberFor(const std::string& query) const {
+    std::string dial;
+    bool number = true;
+    for (const char c : query) {
+      if ((c >= '0' && c <= '9') || c == '+' || c == '*' || c == '#') {
+        dial += c;
+      } else if (c != ' ' && c != '-' && c != '(' && c != ')' && c != '/' && c != '.') {
+        number = false;
+      }
+    }
+    if (number) return dial;
+    const auto lower = [](std::string text) {
+      for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      return text;
+    };
+    std::string want = lower(query);
+    while (!want.empty() && want.back() == ' ') want.pop_back();
+    for (const Contact& contact : m_contacts) {
+      if (!contact.numbers.empty() && lower(contact.name).starts_with(want)) return numberFor(contact.numbers.front());
+    }
+    return {};
   }
 
   int Messages::unread() const {
