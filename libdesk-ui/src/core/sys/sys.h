@@ -64,6 +64,12 @@ namespace sys {
   [[nodiscard]] int forkPty(int* master, const struct winsize* size);
   // Empty when the OS does not tell.
   [[nodiscard]] std::string executablePath();
+  // The user's private directory for sockets: XDG_RUNTIME_DIR on Linux (empty when unset), the per-user temp dir
+  // on macOS. No trailing slash.
+  [[nodiscard]] std::string userRuntimeDir();
+  // The PATH of the user's shell. A macOS app started from Finder or the Dock gets only launchd's minimal PATH, so
+  // macOS asks `$SHELL -ilc` once (up to 2 s, cached) and falls back to PATH. Linux returns PATH.
+  [[nodiscard]] std::string userPath();
   // Calls fn for every process of session sid except its leader.
   void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn);
 

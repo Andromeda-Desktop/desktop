@@ -4,6 +4,13 @@
 #include "core/sys/sys.h"
 
 #include <cerrno>
+#include <chrono>
+#include <crt_externs.h>
+#include <csignal>
+#include <poll.h>
+#include <pwd.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <climits>
 #include <cstdlib>
 #include <dirent.h>
@@ -205,6 +212,68 @@ namespace sys {
     if (_NSGetExecutablePath(path.data(), &size) != 0) return {};
     char resolved[PATH_MAX];
     return ::realpath(path.c_str(), resolved) != nullptr ? std::string(resolved) : std::string(path.c_str());
+  }
+
+  std::string userRuntimeDir() {
+    char dir[PATH_MAX];
+    const std::size_t n = ::confstr(_CS_DARWIN_USER_TEMP_DIR, dir, sizeof dir);
+    std::string out = n > 0 && n <= sizeof dir ? std::string(dir) : std::string("/tmp");
+    while (out.size() > 1 && out.back() == '/') out.pop_back();
+    return out;
+  }
+
+  std::string userPath() {
+    static const std::string path = [] {
+      const char* inherited = std::getenv("PATH");
+      const std::string fallback = inherited != nullptr ? inherited : "/usr/bin:/bin:/usr/sbin:/sbin";
+      const char* shell = std::getenv("SHELL");
+      if (shell == nullptr || *shell == '\0') {
+        const passwd* pw = ::getpwuid(::getuid());
+        shell = pw != nullptr && pw->pw_shell != nullptr ? pw->pw_shell : "/bin/zsh";
+      }
+      int fds[2];
+      if (!pipeCloexec(fds)) return fallback;
+      posix_spawn_file_actions_t actions;
+      posix_spawn_file_actions_init(&actions);
+      posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+      posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
+      posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+      // rc files may print: the marker finds the PATH after their output.
+      constexpr std::string_view kMarker = "_ANDROMEDA_PATH_";
+      char* argv[] = {const_cast<char*>(shell), const_cast<char*>("-ilc"),
+                      const_cast<char*>("printf '_ANDROMEDA_PATH_%s' \"$PATH\""), nullptr};
+      pid_t pid = -1;
+      const int rc = ::posix_spawn(&pid, shell, &actions, nullptr, argv, *_NSGetEnviron());
+      posix_spawn_file_actions_destroy(&actions);
+      ::close(fds[1]);
+      if (rc != 0) {
+        ::close(fds[0]);
+        return fallback;
+      }
+      std::string out;
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+      for (;;) {
+        const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+        pollfd pfd{fds[0], POLLIN, 0};
+        if (left.count() <= 0 || ::poll(&pfd, 1, static_cast<int>(left.count())) == 0) {
+          ::kill(pid, SIGKILL);
+          break;
+        }
+        char buffer[4096];
+        const ssize_t n = ::read(fds[0], buffer, sizeof buffer);
+        if (n > 0) {
+          out.append(buffer, static_cast<std::size_t>(n));
+        } else if (n == 0 || errno != EINTR) {
+          break;
+        }
+      }
+      ::close(fds[0]);
+      ::waitpid(pid, nullptr, 0);
+      const std::size_t at = out.rfind(kMarker);
+      const std::string found = at == std::string::npos ? std::string() : out.substr(at + kMarker.size());
+      return found.empty() || found.find('\n') != std::string::npos ? fallback : found;
+    }();
+    return path;
   }
 
   void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn) {

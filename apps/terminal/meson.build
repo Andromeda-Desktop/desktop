@@ -142,10 +142,10 @@ test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp',
 # Session services per platform: D-Bus on Linux; Cocoa frameworks on macOS (.agent/TASK-terminal-macos.md step 7).
 if is_macos
   add_languages('objcpp', native: false)
-  _platform_src = files('src/notifier_macos.mm')
+  _platform_src = files('src/notifier_macos.mm', 'src/control_socket.cpp')
   _platform_deps = [dependency('appleframeworks', modules: ['Foundation', 'UserNotifications'])]
 else
-  _platform_src = files('src/notifier_dbus.cpp')
+  _platform_src = files('src/notifier_dbus.cpp', 'src/control_dbus.cpp')
   _platform_deps = []
 endif
 

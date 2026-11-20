@@ -185,6 +185,16 @@ namespace sys {
     return ec ? std::string() : path;
   }
 
+  std::string userRuntimeDir() {
+    const char* dir = std::getenv("XDG_RUNTIME_DIR");
+    return dir != nullptr ? std::string(dir) : std::string();
+  }
+
+  std::string userPath() {
+    const char* path = std::getenv("PATH");
+    return path != nullptr ? std::string(path) : std::string();
+  }
+
   void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn) {
     DIR* proc = ::opendir("/proc");
     if (proc == nullptr) return;

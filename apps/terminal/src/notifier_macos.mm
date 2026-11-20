@@ -41,7 +41,10 @@ namespace term {
   namespace {
     constexpr Logger kLog("terminal-notify");
 
-    NSString* toNs(const std::string& s) { return [NSString stringWithUTF8String:s.c_str()] ?: @""; }
+    NSString* toNs(const std::string& s) {
+      NSString* out = [NSString stringWithUTF8String:s.c_str()];
+      return out != nil ? out : @"";
+    }
     std::string fromNs(NSString* s) { return s.UTF8String != nullptr ? std::string(s.UTF8String) : std::string(); }
   } // namespace
 

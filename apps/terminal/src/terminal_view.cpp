@@ -2,7 +2,8 @@
 #include "platform/input_events.h"
 #include "core/input/pointer_axis.h"
 
-#include "a11y/atspi_bridge.h"
+#include "a11y/a11y_roots.h"
+#include "render/scene/accessible.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "key_map.h"
@@ -1034,7 +1035,7 @@ namespace term {
       };
     }
     m_grid->setCursor(m_blink == Blink::Hidden ? std::nullopt : m_cursor);
-    if (AtspiBridge::instance().active()) {
+    if (a11y::active()) {
       m_grid->syncAccessibleText(viewRows(), m_cursor);
     }
     updateTextBlink();

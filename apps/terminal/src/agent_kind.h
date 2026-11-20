@@ -23,7 +23,8 @@ namespace term::agent {
   [[nodiscard]] const KindInfo& info(Kind kind);
   // The ACP server command line. argv[0] is an absolute path or a name looked up on PATH.
   [[nodiscard]] std::vector<std::string> command(Kind kind);
-  // argv[0] of command(kind) resolves to an executable file.
+  // argv[0] of command(kind) as an executable file on sys::userPath(); empty when there is none.
+  [[nodiscard]] std::string resolve(Kind kind);
   [[nodiscard]] bool installed(Kind kind);
 
 } // namespace term::agent

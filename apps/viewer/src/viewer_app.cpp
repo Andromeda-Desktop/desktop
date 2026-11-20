@@ -139,7 +139,7 @@ namespace viewer {
       return;
     }
     if (m_chooser == nullptr) {
-      m_chooser = std::make_unique<desk::FileChooser>(*bus());
+      m_chooser = std::make_unique<desk::FileChooser>(bus());
     }
     window->exportHandle([this, window](const std::string& parent) {
       m_chooser->openFile(parent, "Open", [this, window](std::optional<std::filesystem::path> path) {

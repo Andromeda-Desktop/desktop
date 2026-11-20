@@ -154,8 +154,20 @@ namespace term::agent {
       argv.push_back(arg.data());
     }
     argv.push_back(nullptr);
+    // The agent and the tools it runs search the user's PATH, which a macOS app started from Finder lacks.
+    const std::string program = resolve(m_kind);
+    std::vector<std::string> env{"PATH=" + sys::userPath()};
+    for (char** e = environ; *e != nullptr; ++e) {
+      if (std::string_view(*e).starts_with("PATH=")) continue;
+      env.emplace_back(*e);
+    }
+    std::vector<char*> envp;
+    for (std::string& entry : env) {
+      envp.push_back(entry.data());
+    }
+    envp.push_back(nullptr);
     pid_t pid = -1;
-    const int rc = posix_spawnp(&pid, argv.front(), &actions, nullptr, argv.data(), environ);
+    const int rc = program.empty() ? ENOENT : posix_spawn(&pid, program.c_str(), &actions, nullptr, argv.data(), envp.data());
     posix_spawn_file_actions_destroy(&actions);
     ::close(in[0]);
     ::close(out[1]);

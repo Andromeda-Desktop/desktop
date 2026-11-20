@@ -3,9 +3,7 @@
 #include <cstdio>
 #include <iostream>
 #include <iterator>
-#include <map>
 #include <nlohmann/json.hpp>
-#include <sdbus-c++/sdbus-c++.h>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,23 +25,6 @@ namespace term::control {
     int usage() {
       std::fputs(kUsage.data(), stderr);
       return 2;
-    }
-
-    nlohmann::json toJson(const sdbus::Variant& value) {
-      const std::string type = value.peekValueType();
-      if (type == "t") {
-        return value.get<std::uint64_t>();
-      }
-      if (type == "u") {
-        return value.get<std::uint32_t>();
-      }
-      if (type == "b") {
-        return value.get<bool>();
-      }
-      if (type == "at") {
-        return value.get<std::vector<std::uint64_t>>();
-      }
-      return value.get<std::string>();
     }
 
     std::optional<std::uint64_t> parseId(const std::string& text) {
@@ -69,48 +50,34 @@ namespace term::control {
     const std::string verb = args.front();
     args.erase(args.begin());
     try {
-      auto bus = sdbus::createSessionBusConnection();
-      auto proxy = sdbus::createProxy(*bus, sdbus::ServiceName{kService}, sdbus::ObjectPath{kPath});
       // The trailing ID of a command; nullopt when it is missing or no number.
       const auto idAt = [&](std::size_t i) { return i < args.size() ? parseId(args[i]) : std::nullopt; };
 
       if ((verb == "ls" || verb == "workspaces") && args.empty()) {
-        std::vector<std::map<std::string, sdbus::Variant>> entries;
-        proxy->callMethod(verb == "ls" ? "ListSessions" : "ListWorkspaces").onInterface(kInterface).storeResultsTo(entries);
-        nlohmann::json out = nlohmann::json::array();
-        for (const auto& entry : entries) {
-          nlohmann::json item = nlohmann::json::object();
-          for (const auto& [key, value] : entry) {
-            item[key] = toJson(value);
-          }
-          out.push_back(std::move(item));
-        }
-        std::cout << out.dump(2) << '\n';
+        std::cout << call(verb == "ls" ? "ListSessions" : "ListWorkspaces", nlohmann::json::array()).dump(2) << '\n';
         return 0;
       }
       if (verb == "open") {
-        std::map<std::string, sdbus::Variant> options;
+        nlohmann::json options = nlohmann::json::object();
         for (std::size_t i = 0; i < args.size(); ++i) {
           const std::string& arg = args[i];
           const bool hasValue = i + 1 < args.size();
           if (arg == "--") {
-            options["argv"] = sdbus::Variant{std::vector<std::string>(args.begin() + static_cast<std::ptrdiff_t>(i) + 1, args.end())};
+            options["argv"] = std::vector<std::string>(args.begin() + static_cast<std::ptrdiff_t>(i) + 1, args.end());
             break;
           }
           if (arg == "--new-window") {
-            options["window"] = sdbus::Variant{std::uint32_t{0}};
+            options["window"] = 0;
           } else if ((arg == "--cwd" || arg == "--name") && hasValue) {
-            options[arg.substr(2)] = sdbus::Variant{args[++i]};
+            options[arg.substr(2)] = args[++i];
           } else if (const auto window = arg == "--window" && hasValue ? parseId(args[++i]) : std::nullopt;
                      window && *window > 0 && *window <= UINT32_MAX) {
-            options["window"] = sdbus::Variant{static_cast<std::uint32_t>(*window)};
+            options["window"] = static_cast<std::uint32_t>(*window);
           } else {
             return usage();
           }
         }
-        std::uint64_t id = 0;
-        proxy->callMethod("Open").onInterface(kInterface).withArguments(options).storeResultsTo(id);
-        std::cout << id << '\n';
+        std::cout << call("Open", nlohmann::json::array({options})).get<std::uint64_t>() << '\n';
         return 0;
       }
       if (verb == "send-text") {
@@ -124,7 +91,7 @@ namespace term::control {
         if (text == "-") {
           text.assign(std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>());
         }
-        proxy->callMethod("SendText").onInterface(kInterface).withArguments(*id, text, paste);
+        call("SendText", {*id, text, paste});
         return 0;
       }
       if (verb == "get-text") {
@@ -138,25 +105,24 @@ namespace term::control {
         if (!id || args.size() != at + 1) {
           return usage();
         }
-        std::string text;
-        proxy->callMethod("GetText").onInterface(kInterface).withArguments(*id, extent).storeResultsTo(text);
+        const std::string text = call("GetText", {*id, extent}).get<std::string>();
         std::cout << text << (text.ends_with('\n') ? "" : "\n");
         return 0;
       }
       if ((verb == "focus" || verb == "close") && args.size() == 1 && idAt(0)) {
-        proxy->callMethod(verb == "focus" ? "Focus" : "Close").onInterface(kInterface).withArguments(*idAt(0));
+        call(verb == "focus" ? "Focus" : "Close", {*idAt(0)});
         return 0;
       }
       if (verb == "rename" && args.size() == 2 && idAt(0)) {
-        proxy->callMethod("Rename").onInterface(kInterface).withArguments(*idAt(0), args[1]);
+        call("Rename", {*idAt(0), args[1]});
         return 0;
       }
       return usage();
-    } catch (const sdbus::Error& e) {
-      if (e.getName() == "org.freedesktop.DBus.Error.ServiceUnknown") {
+    } catch (const Error& e) {
+      if (e.name == kNotRunning) {
         std::fputs("andromeda-terminal ctl: no terminal is running\n", stderr);
       } else {
-        std::fprintf(stderr, "andromeda-terminal ctl: %s\n", e.getMessage().c_str());
+        std::fprintf(stderr, "andromeda-terminal ctl: %s\n", e.what());
       }
       return 1;
     }

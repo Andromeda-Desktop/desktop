@@ -1,6 +1,7 @@
 #include "agent_kind.h"
 
 #include "agent_host.h"
+#include "core/sys/sys.h"
 
 #include <array>
 #include <cstdlib>
@@ -33,21 +34,23 @@ namespace term::agent {
     return {};
   }
 
-  bool installed(Kind kind) {
+  std::string resolve(Kind kind) {
     const std::string program = command(kind).front();
     if (program.find('/') != std::string::npos) {
-      return ::access(program.c_str(), X_OK) == 0;
+      return ::access(program.c_str(), X_OK) == 0 ? program : std::string();
     }
-    const char* path = std::getenv("PATH");
-    for (std::string_view rest = path != nullptr ? path : ""; !rest.empty();) {
+    const std::string path = sys::userPath();
+    for (std::string_view rest = path; !rest.empty();) {
       const std::size_t colon = rest.find(':');
       const std::string dir(rest.substr(0, colon));
       rest = colon == std::string_view::npos ? std::string_view{} : rest.substr(colon + 1);
       if (!dir.empty() && ::access((dir + "/" + program).c_str(), X_OK) == 0) {
-        return true;
+        return dir + "/" + program;
       }
     }
-    return false;
+    return {};
   }
+
+  bool installed(Kind kind) { return !resolve(kind).empty(); }
 
 } // namespace term::agent

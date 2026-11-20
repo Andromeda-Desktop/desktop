@@ -54,7 +54,9 @@ if is_wayland
     'src/files/file_ops_client.cpp',
   )
 else
-  _platform_sources = files('src/app/app_services_none.cpp')
+  add_languages('objcpp', native: false)
+  _platform_sources = files('src/app/app_services_none.cpp', 'src/app/file_chooser_macos.mm')
+  _deps += dependency('appleframeworks', modules: ['AppKit'])
 endif
 
 _inc = include_directories('src')
@@ -75,6 +77,7 @@ desk_app_lib = static_library('desk_app',
   dependencies: _deps,
   include_directories: _inc,
   cpp_args: _warnings,
+  objcpp_args: _warnings + ['-fobjc-arc'],
 )
 
 desk_app_dep = declare_dependency(

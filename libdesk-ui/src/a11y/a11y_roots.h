@@ -10,4 +10,6 @@ namespace a11y {
   void addRoot(const Node* root, std::function<std::string()> title);
   void removeRoot(const Node* root);
   void markDirty() noexcept;
+  // True while an assistive technology listens.
+  [[nodiscard]] bool active() noexcept;
 } // namespace a11y

@@ -1038,4 +1038,5 @@ namespace a11y {
   }
   void removeRoot(const Node* root) { AtspiBridge::instance().removeRoot(root); }
   void markDirty() noexcept { AtspiBridge::instance().markDirty(); }
+  bool active() noexcept { return AtspiBridge::instance().active(); }
 } // namespace a11y

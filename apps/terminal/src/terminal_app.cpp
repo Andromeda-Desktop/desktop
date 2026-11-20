@@ -139,7 +139,7 @@ namespace term {
 
   void TerminalApp::workspacesChanged() {
     for (const auto& [window, terminal] : m_windows) terminal->workspacesChanged();
-    if (m_control != nullptr) m_control->emitSignal("WorkspacesChanged").onInterface(control::kInterface);
+    if (m_control != nullptr) m_control->emitSignal("WorkspacesChanged");
   }
 
   void TerminalApp::addWorkspace(AppWindow& from) { openWindow(from.activationToken()); }
@@ -151,7 +151,7 @@ namespace term {
       saveLayouts();
     }
     if (m_control != nullptr) {
-      m_control->emitSignal("SessionsChanged").onInterface(control::kInterface);
+      m_control->emitSignal("SessionsChanged");
     }
   }
 
@@ -196,7 +196,7 @@ namespace term {
       return;
     }
     if (m_chooser == nullptr) {
-      m_chooser = std::make_unique<desk::FileChooser>(*bus());
+      m_chooser = std::make_unique<desk::FileChooser>(bus());
     }
     window.exportHandle([this, suggested, picked = std::move(picked)](const std::string& parent) {
       m_chooser->saveFile(parent, "Save Scrollback", suggested, picked);
@@ -232,7 +232,7 @@ namespace term {
                       return;
                     }
                     if (m_chooser == nullptr) {
-                      m_chooser = std::make_unique<desk::FileChooser>(*bus());
+                      m_chooser = std::make_unique<desk::FileChooser>(bus());
                     }
                     m_prefsWindow->exportHandle([this](const std::string& parent) {
                       if (m_prefs == nullptr) {

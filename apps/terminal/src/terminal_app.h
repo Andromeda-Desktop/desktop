@@ -4,11 +4,12 @@
 #include "app/file_chooser.h"
 #include "render/core/thumbnail_service.h"
 #include "prefs_window.h"
+#include "terminal_control.h"
 #include "terminal_window.h"
 #include "window_workspaces.h"
 #include "workspace_watcher.h"
 
-#include <sdbus-c++/sdbus-c++.h>
+#include <nlohmann/json_fwd.hpp>
 
 #include <array>
 #include <map>
@@ -71,11 +72,14 @@ namespace term {
     void saveLayouts();
     void sessionsChanged(LayoutSave save);
 
-    // org.andromeda.Terminal1 at kControlPath (terminal_control.cpp): `andromeda-terminal ctl` and other clients.
-    std::unique_ptr<sdbus::IObject> m_control;
+    // org.andromeda.Terminal1 (control_dbus.cpp, Linux) or the control socket (control_socket.cpp, macOS):
+    // `andromeda-terminal ctl` and other clients. Both run controlCall() (terminal_control.cpp).
+    std::unique_ptr<control::Server> m_control;
     void exportControl();
-    std::uint64_t controlOpen(const std::map<std::string, sdbus::Variant>& options);
-    // The session's window; throws the D-Bus error NoSession.
+    // A method of org.andromeda.Terminal1 with its arguments as a JSON array; throws control::Error.
+    nlohmann::json controlCall(const std::string& method, const nlohmann::json& args);
+    std::uint64_t controlOpen(const nlohmann::json& options);
+    // The session's window; throws control::Error NoSession.
     TerminalWindow& controlWindow(std::uint64_t id);
     TerminalView& controlTerminal(std::uint64_t id); // throws NotTerminal for an agent session
   };

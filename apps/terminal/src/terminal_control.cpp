@@ -1,7 +1,7 @@
 #include "terminal_control.h"
 #include "terminal_app.h"
 
-#include "dbus/session_bus.h"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <filesystem>
@@ -23,7 +23,7 @@ namespace term {
     }
 
     [[noreturn]] void fail(const char* name, const std::string& message) {
-      throw sdbus::Error(sdbus::Error::Name{name}, message);
+      throw control::Error(name, message);
     }
 
     TerminalView::TextExtent extentOf(const std::string& name) {
@@ -61,11 +61,11 @@ namespace term {
     return *view;
   }
 
-  std::uint64_t TerminalApp::controlOpen(const std::map<std::string, sdbus::Variant>& options) {
+  std::uint64_t TerminalApp::controlOpen(const nlohmann::json& options) {
     NewShell shell;
     std::string name;
     std::optional<std::uint32_t> windowId;
-    for (const auto& [key, value] : options) {
+    for (const auto& [key, value] : options.items()) {
       if (key == "cwd") {
         shell.cwd = value.get<std::string>();
       } else if (key == "argv") {
@@ -109,103 +109,91 @@ namespace term {
     return id;
   }
 
-  void TerminalApp::exportControl() {
-    if (bus() == nullptr) {
-      return;
+  nlohmann::json TerminalApp::controlCall(const std::string& method, const nlohmann::json& args) {
+    using Json = nlohmann::json;
+    try {
+      if (method == "ListSessions") {
+        Json out = Json::array();
+        for (const auto& [window, terminal] : m_windows) {
+          const SessionList& list = terminal->sessions();
+          for (const SessionInfo& info : list.sessions()) {
+            const TerminalView* view = terminal->terminalOf(info.id);
+            std::string command;
+            if (const auto* running = std::get_if<CommandRunning>(&info.command)) {
+              command = running->command;
+            } else if (const auto* done = std::get_if<CommandFinished>(&info.command)) {
+              command = done->command;
+            }
+            const auto* split = list.splitOf(info.id);
+            out.push_back(Json{
+                {"id", info.id},
+                {"window", terminal->windowId()},
+                {"name", info.name},
+                {"title", info.title},
+                {"cwd", view != nullptr ? view->cwd() : info.cwd},
+                {"kind", std::string(kindName(info.kind))},
+                {"host", info.host},
+                {"command", command},
+                {"running", std::holds_alternative<CommandRunning>(info.command)},
+                {"shown", list.shown() == info.id},
+                {"split", split != nullptr ? *split : std::vector<std::uint64_t>{}},
+            });
+          }
+        }
+        return out;
+      }
+      if (method == "ListWorkspaces") {
+        std::map<std::uint64_t, std::uint32_t> shownIn;
+        for (const auto& [window, terminal] : m_windows) {
+          if (const auto id = m_windowWorkspaces.workspaceOf(window)) shownIn[*id] = terminal->windowId();
+        }
+        const holder::Workspaces& table = m_workspaces.workspaces();
+        Json out = Json::array();
+        for (const holder::WorkspaceInfo& w : table.workspaces) {
+          std::uint32_t sessions = 0, running = 0, failed = 0;
+          for (const holder::SessionInfo& s : table.sessions) {
+            if (s.workspace != w.id) continue;
+            ++sessions;
+            if (s.command == holder::CommandState::Running) ++running;
+            if (s.command == holder::CommandState::Done && s.exitCode != 0) ++failed;
+          }
+          const auto shown = shownIn.find(w.id);
+          const char* location = shown != shownIn.end() ? "window" : "none"; // none: start-up or a closing window
+          out.push_back(Json{
+              {"id", w.id},
+              {"name", w.name},
+              {"root", w.root},
+              {"symbol", w.symbol},
+              {"location", std::string(location)},
+              {"window", shown != shownIn.end() ? shown->second : 0U},
+              {"sessions", sessions},
+              {"running", running},
+              {"failed", failed},
+          });
+        }
+        return out;
+      }
+      if (method == "Open") {
+        return controlOpen(args.at(0));
+      }
+      const auto id = args.at(0).get<std::uint64_t>();
+      if (method == "SendText") {
+        controlTerminal(id).sendText(args.at(1).get<std::string>(), args.at(2).get<bool>());
+      } else if (method == "GetText") {
+        return controlTerminal(id).text(extentOf(args.at(1).get<std::string>()));
+      } else if (method == "Focus") {
+        controlWindow(id).focusSession(id);
+      } else if (method == "Close") {
+        controlWindow(id).closeSession(id);
+      } else if (method == "Rename") {
+        controlWindow(id).renameSession(id, args.at(1).get<std::string>());
+      } else {
+        fail(control::kUnknownMethod, std::format("no method '{}'", method));
+      }
+      return nullptr;
+    } catch (const nlohmann::json::exception& e) {
+      fail(control::kInvalidArgs, e.what());
     }
-    using Entry = std::map<std::string, sdbus::Variant>;
-    m_control = sdbus::createObject(bus()->connection(), sdbus::ObjectPath{control::kPath});
-    m_control
-        ->addVTable(
-            sdbus::registerMethod("ListSessions").withOutputParamNames("sessions").implementedAs([this] {
-              std::vector<Entry> out;
-              for (const auto& [window, terminal] : m_windows) {
-                const SessionList& list = terminal->sessions();
-                for (const SessionInfo& info : list.sessions()) {
-                  const TerminalView* view = terminal->terminalOf(info.id);
-                  std::string command;
-                  if (const auto* running = std::get_if<CommandRunning>(&info.command)) {
-                    command = running->command;
-                  } else if (const auto* done = std::get_if<CommandFinished>(&info.command)) {
-                    command = done->command;
-                  }
-                  const auto* split = list.splitOf(info.id);
-                  out.push_back(Entry{
-                      {"id", sdbus::Variant{info.id}},
-                      {"window", sdbus::Variant{terminal->windowId()}},
-                      {"name", sdbus::Variant{info.name}},
-                      {"title", sdbus::Variant{info.title}},
-                      {"cwd", sdbus::Variant{view != nullptr ? view->cwd() : info.cwd}},
-                      {"kind", sdbus::Variant{std::string(kindName(info.kind))}},
-                      {"host", sdbus::Variant{info.host}},
-                      {"command", sdbus::Variant{command}},
-                      {"running", sdbus::Variant{std::holds_alternative<CommandRunning>(info.command)}},
-                      {"shown", sdbus::Variant{list.shown() == info.id}},
-                      {"split", sdbus::Variant{split != nullptr ? *split : std::vector<std::uint64_t>{}}},
-                  });
-                }
-              }
-              return out;
-            }),
-            sdbus::registerMethod("ListWorkspaces").withOutputParamNames("workspaces").implementedAs([this] {
-              std::map<std::uint64_t, std::uint32_t> shownIn;
-              for (const auto& [window, terminal] : m_windows) {
-                if (const auto id = m_windowWorkspaces.workspaceOf(window)) shownIn[*id] = terminal->windowId();
-              }
-              const holder::Workspaces& table = m_workspaces.workspaces();
-              std::vector<Entry> out;
-              for (const holder::WorkspaceInfo& w : table.workspaces) {
-                std::uint32_t sessions = 0, running = 0, failed = 0;
-                for (const holder::SessionInfo& s : table.sessions) {
-                  if (s.workspace != w.id) continue;
-                  ++sessions;
-                  if (s.command == holder::CommandState::Running) ++running;
-                  if (s.command == holder::CommandState::Done && s.exitCode != 0) ++failed;
-                }
-                const auto shown = shownIn.find(w.id);
-                const char* location = shown != shownIn.end() ? "window" : "none"; // none: start-up or a closing window
-                out.push_back(Entry{
-                    {"id", sdbus::Variant{w.id}},
-                    {"name", sdbus::Variant{w.name}},
-                    {"root", sdbus::Variant{w.root}},
-                    {"symbol", sdbus::Variant{w.symbol}},
-                    {"location", sdbus::Variant{std::string(location)}},
-                    {"window", sdbus::Variant{shown != shownIn.end() ? shown->second : 0U}},
-                    {"sessions", sdbus::Variant{sessions}},
-                    {"running", sdbus::Variant{running}},
-                    {"failed", sdbus::Variant{failed}},
-                });
-              }
-              return out;
-            }),
-            sdbus::registerMethod("Open")
-                .withInputParamNames("options")
-                .withOutputParamNames("id")
-                .implementedAs([this](const Entry& options) { return controlOpen(options); }),
-            sdbus::registerMethod("SendText")
-                .withInputParamNames("id", "text", "paste")
-                .implementedAs([this](std::uint64_t id, const std::string& text, bool paste) {
-                  controlTerminal(id).sendText(text, paste);
-                }),
-            sdbus::registerMethod("GetText")
-                .withInputParamNames("id", "extent")
-                .withOutputParamNames("text")
-                .implementedAs([this](std::uint64_t id, const std::string& extent) {
-                  return controlTerminal(id).text(extentOf(extent));
-                }),
-            sdbus::registerMethod("Focus").withInputParamNames("id").implementedAs([this](std::uint64_t id) {
-              controlWindow(id).focusSession(id);
-            }),
-            sdbus::registerMethod("Close").withInputParamNames("id").implementedAs([this](std::uint64_t id) {
-              controlWindow(id).closeSession(id);
-            }),
-            sdbus::registerMethod("Rename")
-                .withInputParamNames("id", "name")
-                .implementedAs([this](std::uint64_t id, const std::string& name) {
-                  controlWindow(id).renameSession(id, name);
-                }),
-            sdbus::registerSignal("SessionsChanged"), sdbus::registerSignal("WorkspacesChanged"))
-        .forInterface(control::kInterface);
   }
 
 } // namespace term
