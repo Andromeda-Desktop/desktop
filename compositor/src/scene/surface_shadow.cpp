@@ -4,6 +4,7 @@
 #include "design_tokens.h"
 
 #include <algorithm>
+#include <cmath>
 extern "C" {
 #include <andromedafx/render/effect.h>
 }
@@ -129,6 +130,11 @@ namespace andromeda {
     }
   }
 
+  void SurfaceShadow::setBackdropLuminance(float luminance) {
+    m_backdrop = std::clamp(luminance, 0.0F, 1.0F);
+    setAlpha(m_alpha);
+  }
+
   std::array<float, 4> SurfaceShadow::baseColor(ShadowOpacity opacity) const {
     if (!m_style.has_value()) {
       return config().colors.shadow;
@@ -136,7 +142,8 @@ namespace andromeda {
     const bool light = config().appearance.scheme == ColorScheme::Light;
     const std::uint32_t rgba = light ? Tokens::schemeLight.shadow : Tokens::schemeDark.shadow;
     const auto channel = [rgba](int shift) { return static_cast<float>((rgba >> shift) & 0xFFU) / 255.0F; };
-    return {channel(24), channel(16), channel(8), channel(0) * (light ? opacity.light : opacity.dark)};
+    const float scaled = m_backdrop ? std::lerp(opacity.dark, opacity.light, *m_backdrop) : (light ? opacity.light : opacity.dark);
+    return {channel(24), channel(16), channel(8), channel(0) * scaled};
   }
 
   void SurfaceShadow::reset() {

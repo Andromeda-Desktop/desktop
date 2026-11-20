@@ -25,7 +25,8 @@ namespace andromeda {
     int softness = 0;
     int offsetX = 0;
     int offsetY = 0;
-    // Scale the scheme's shadow color alpha; the active scheme picks one, so a scheme switch needs no new style.
+    // Scale the scheme's shadow color alpha; the backdrop luminance picks between them when the owner sets one, else
+    // the active scheme does, so a scheme switch needs no new style.
     ShadowOpacity opacity;
     int contactSoftness = 0;
     int contactOffsetY = 0;
@@ -54,6 +55,9 @@ namespace andromeda {
     void reset();
     // Set an opacity multiplier applied to the shadow color (for fade animations).
     void setAlpha(float alpha);
+    // Mean luminance (0..1) under the shape: a style's opacity runs from its dark value over black to its light value
+    // over white, so the shadow suits what it falls on, not the glass scheme.
+    void setBackdropLuminance(float luminance);
     void setAnimationSource(wlr_scene_node* source);
     // `inPool` puts the copy under every sibling in `parent`; otherwise it sits directly below `source`, a sibling.
     [[nodiscard]] ShadowSnapshot snapshot(wlr_scene_tree* parent, wlr_scene_node* source, bool inPool) const;
@@ -73,6 +77,7 @@ namespace andromeda {
     wlr_scene_shadow* m_node = nullptr;
     wlr_scene_shadow* m_contact = nullptr; // only with a style that has a contact shadow
     float m_alpha = 1.0F;
+    std::optional<float> m_backdrop;
     // Follows appearance.shadow.enabled until an owner overrides it either way.
     std::optional<bool> m_enabled;
     std::optional<ShadowStyle> m_style;

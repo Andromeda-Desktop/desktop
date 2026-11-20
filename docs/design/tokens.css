@@ -97,7 +97,7 @@
   --blur-saturation: 1.25;
   --lens-ior: 1.5;
   --lens-rim-width: 1.5;
-  --lens-rim-pointer-boost: 0.4;
+  --lens-rim-pointer-boost: 0.9;
   --lens-dispersion: 0.12;
   --lens-magnify: 0.06;
   --blur-light-brightness: 1.05;
@@ -111,14 +111,14 @@
   --elevation-e1-contact-blur: 0.0px;
   --elevation-e1-contact-light: 0.0;
   --elevation-e1-contact-dark: 0.0;
-  --elevation-e2-key-y: 6.0px;
-  --elevation-e2-key-blur: 16.0px;
-  --elevation-e2-key-light: 0.12;
-  --elevation-e2-key-dark: 0.3;
+  --elevation-e2-key-y: 9.0px;
+  --elevation-e2-key-blur: 24.0px;
+  --elevation-e2-key-light: 0.1;
+  --elevation-e2-key-dark: 0.15;
   --elevation-e2-contact-y: 1.0px;
-  --elevation-e2-contact-blur: 4.0px;
-  --elevation-e2-contact-light: 0.08;
-  --elevation-e2-contact-dark: 0.2;
+  --elevation-e2-contact-blur: 6.0px;
+  --elevation-e2-contact-light: 0.05;
+  --elevation-e2-contact-dark: 0.1;
   --elevation-e3-key-y: 12.0px;
   --elevation-e3-key-blur: 32.0px;
   --elevation-e3-key-light: 0.16;
@@ -141,9 +141,9 @@
   --spring-trail-damping: 0.8;
   --spring-move-stiffness: 322.3;
   --spring-move-damping: 0.9;
-  --spring-open-stiffness: 438.6;
+  --spring-open-stiffness: 584.0;
   --spring-open-damping: 0.9;
-  --spring-close-stiffness: 503.6;
+  --spring-close-stiffness: 685.4;
   --spring-close-damping: 1.0;
   --spring-morph-stiffness: 186.6;
   --spring-morph-damping: 0.82;
@@ -168,9 +168,12 @@
   --motion-overview-spread-start: 0.45;
   --motion-overview-piece-scale: 0.86;
   --motion-overview-chrome-gate: 0.6;
-  --motion-stagger-ms: 16ms;
+  --motion-stagger-ms: 8ms;
   --motion-stagger-max: 6;
   --motion-face-scale: 0.92;
+  --motion-pour-x-share: 0.15;
+  --motion-pour-y-share: 0.2;
+  --motion-grow-min-scale: 0.05;
   --motion-face-blur: 8.0px;
   --motion-press-scale-small: 0.96;
   --motion-press-scale-medium: 0.98;
@@ -223,6 +226,8 @@
   --component-tray-icon: 24.0px;
   --component-tray-gap: 8.0px;
   --component-tray-columns: 5;
+  --component-tray-pour-scale: 0.6px;
+  --component-tray-pour-x-share: 0.3px;
   --component-round-icon-size: 40.0px;
   --component-round-icon-glyph: 16.0px;
   --component-round-icon-action: 32.0px;
@@ -247,6 +252,8 @@
   --component-dock-padding: 8.0px;
   --component-dock-gap: 8.0px;
   --component-dock-icon: 48.0px;
+  --component-dock-icon-min: 32.0px;
+  --component-dock-glyph: 38.0px;
   --component-dock-lens: 56.0px;
   --component-dock-lens-radius: 20.0px;
   --component-dock-lens-inset: 4.0px;
@@ -272,6 +279,7 @@
   --component-field-symbol-inset: 8.0px;
   --component-segmented-height: 32.0px;
   --component-segmented-inset: 2.0px;
+  --component-stepper-divider: 12.0px;
   --component-tabs-height: 40.0px;
   --component-tabs-radius: 12.0px;
   --component-tabs-padding: 4.0px;
@@ -303,6 +311,7 @@
   --component-sidebar-row-inset: 8.0px;
   --component-sidebar-group-top: 16.0px;
   --component-sidebar-group-bottom: 4.0px;
+  --component-sidebar-more-index-width: 184.0px;
   --component-grid-cell-width: 96.0px;
   --component-grid-cell-height: 112.0px;
   --component-grid-icon: 64.0px;
@@ -410,6 +419,19 @@
   --component-menu-max-width: 320.0px;
   --component-menu-fixed-width: 240.0px;
   --component-menu-submenu-delay-ms: 200ms;
+  --component-switcher-card-selected: 500.0px;
+  --component-switcher-card-near: 380.0px;
+  --component-switcher-card-far: 280.0px;
+  --component-switcher-card-compact: 220.0px;
+  --component-switcher-preview-aspect: 1.6px;
+  --component-switcher-narrow-threshold: 0.72px;
+  --component-switcher-preview-icon-scale: 0.12px;
+  --component-switcher-fallback-icon-scale: 0.28px;
+  --component-switcher-dim-opacity: 0.3px;
+  --component-switcher-incoming-scale: 0.9px;
+  --component-switcher-incoming-slide: 0.25px;
+  --component-switcher-outgoing-slide: 0.3px;
+  --component-switcher-reveal-scale: 0.95px;
   --component-popover-radius: 12.0px;
   --component-popover-padding: 12.0px;
   --component-popover-offset: 8.0px;
@@ -435,6 +457,12 @@
   --component-notification-stack-visible: 3;
   --component-notification-stack-offset: 8.0px;
   --component-notification-stack-scale: 0.96;
+  --component-notification-center-width: 360.0px;
+  --component-notification-center-top: 48.0px;
+  --component-notification-center-reserve: 140.0px;
+  --component-notification-center-pour-y-share: 0.15px;
+  --component-calendar-width: 320.0px;
+  --component-calendar-pour-y-share: 0.15px;
   --component-window-radius: 12.0px;
   --component-window-card-gap: 8.0px;
   --component-window-card-radius: 16.0px;
@@ -471,6 +499,7 @@
   --component-launcher-top-hit-icon: 56.0px;
   --component-launcher-top-hit-icon-radius: 14.0px;
   --component-launcher-emoji: 32.0px;
+  --component-launcher-emoji-cell: 56.0px;
   --component-launcher-emoji-preview: 88.0px;
   --component-launcher-gif-cell: 96.0px;
   --component-launcher-sticker-cell: 80.0px;
@@ -489,7 +518,6 @@
   --component-page-padding: 24.0px;
   --component-page-padding-compact: 16.0px;
   --component-page-column: 640.0px;
-  --component-page-column-wide: 960.0px;
   --type-caption: 500 11.0px/16.0px var(--font-family);
   --type-footnote: 400 12.0px/16.0px var(--font-family);
   --type-body: 400 13.0px/16.0px var(--font-family);
@@ -528,7 +556,7 @@
   --danger-text: rgba(197, 34, 31, 1.0);
   --warning: rgba(180, 83, 9, 1.0);
   --success: rgba(26, 127, 55, 1.0);
-  --slider-fill: rgba(255, 255, 255, 0.922);
+  --slider-fill: rgba(20, 20, 24, 0.102);
   --on-slider-fill: rgba(20, 20, 24, 0.922);
   --slider-track: rgba(0, 0, 0, 0.059);
   --slider-edge: rgba(0, 0, 0, 0.0);
@@ -555,7 +583,7 @@
   --diff-add: rgba(20, 103, 32, 0.102);
   --diff-del: rgba(169, 35, 33, 0.09);
   --shadow-e1: 0 1.0px 2.0px rgba(20, 20, 40, 0.1);
-  --shadow-e2: 0 6.0px 16.0px rgba(20, 20, 40, 0.12), 0 1.0px 4.0px rgba(20, 20, 40, 0.08);
+  --shadow-e2: 0 9.0px 24.0px rgba(20, 20, 40, 0.1), 0 1.0px 6.0px rgba(20, 20, 40, 0.05);
   --shadow-e3: 0 12.0px 32.0px rgba(20, 20, 40, 0.16), 0 2.0px 8.0px rgba(20, 20, 40, 0.08);
   --shadow-e4: 0 24.0px 64.0px rgba(20, 20, 40, 0.22), 0 2.0px 8.0px rgba(20, 20, 40, 0.1);
 }
@@ -573,7 +601,7 @@
   --lens-edge: rgba(255, 255, 255, 0.18);
   --tint-thin: rgba(56, 56, 63, 0.549);
   --tint-regular: rgba(56, 56, 63, 0.702);
-  --tint-thick: rgba(56, 56, 63, 0.922);
+  --tint-thick: rgba(32, 32, 36, 0.922);
   --solid-thin: rgba(28, 28, 32, 1.0);
   --solid-regular: rgba(34, 34, 38, 1.0);
   --solid-thick: rgba(40, 40, 44, 1.0);
@@ -611,7 +639,7 @@
   --diff-add: rgba(127, 216, 143, 0.122);
   --diff-del: rgba(255, 143, 135, 0.122);
   --shadow-e1: 0 1.0px 2.0px rgba(0, 0, 0, 0.3);
-  --shadow-e2: 0 6.0px 16.0px rgba(0, 0, 0, 0.3), 0 1.0px 4.0px rgba(0, 0, 0, 0.2);
+  --shadow-e2: 0 9.0px 24.0px rgba(0, 0, 0, 0.15), 0 1.0px 6.0px rgba(0, 0, 0, 0.1);
   --shadow-e3: 0 12.0px 32.0px rgba(0, 0, 0, 0.4), 0 2.0px 8.0px rgba(0, 0, 0, 0.24);
   --shadow-e4: 0 24.0px 64.0px rgba(0, 0, 0, 0.5), 0 2.0px 8.0px rgba(0, 0, 0, 0.3);
 }

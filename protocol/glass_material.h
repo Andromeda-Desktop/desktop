@@ -215,11 +215,6 @@ namespace glass {
     const float x = std::clamp((kAdaptLuminance[1] - own) / (kAdaptLuminance[1] - kAdaptLuminance[0]), 0.0F, 1.0F);
     return x * x * (3.0F - 2.0F * x);
   }
-  // Elevation shadow opacity multiplier over a backdrop of `luminance`: lighter over dark, full over light.
-  inline constexpr float kShadowOverDark = 0.55F;
-  [[nodiscard]] inline float shadowOverBackdrop(float luminance) noexcept {
-    return std::lerp(kShadowOverDark, 1.0F, std::clamp(luminance, 0.0F, 1.0F));
-  }
 
   // The tint for a backdrop of the tint's own tone, `density` (0 to 1) of the way to full density; `dense` is
   // Material::dense (denseLift).

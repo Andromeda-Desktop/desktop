@@ -257,7 +257,8 @@ contrast = 1.0
 saturation = 1.8
 
 # Drawn by the compositor (rulebook 5.4). Two shadows per level: key (y = 3/8 of blur) and contact. blur and y in px;
-# opacity scales the scheme's shadow colour, per scheme. e0 (stroke only) has no entry.
+# opacity scales the scheme's shadow colour: over a measured backdrop it runs from _dark (black) to _light (white),
+# else the scheme picks. e0 (stroke only) has no entry.
 [elevation.e1]  # the lens, toggle and slider knobs
 key_y = 1.0
 key_blur = 2.0
@@ -268,14 +269,14 @@ contact_blur = 0.0
 contact_light = 0.0
 contact_dark = 0.0
 [elevation.e2]  # float plane: bar islands, dock, center island at rest
-key_y = 6.0
-key_blur = 16.0
-key_light = 0.12
-key_dark = 0.30
+key_y = 9.0
+key_blur = 24.0
+key_light = 0.10
+key_dark = 0.15
 contact_y = 1.0
-contact_blur = 4.0
-contact_light = 0.08
-contact_dark = 0.20
+contact_blur = 6.0
+contact_light = 0.05
+contact_dark = 0.10
 [elevation.e3]  # over plane: sheets, menus, banners, tooltips, inactive windows
 key_y = 12.0
 key_blur = 32.0

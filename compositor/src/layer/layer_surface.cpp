@@ -636,6 +636,7 @@ namespace andromeda {
       }
       SurfaceShadow& shadow = *m_shapeShadows[shadowCount++];
       shadow.setStyle(elevationStyle(shapeLevel));
+      shadow.setBackdropLuminance(m_backdropLuminance);
       shadow.setAlpha(static_cast<float>(shapeOpacity(*state, *shapeMotion)));
       const auto px = [scale](double v) { return static_cast<int>(std::lround(v * scale)); };
       shadow.update(
@@ -688,7 +689,8 @@ namespace andromeda {
     m_shadow.setStyle(elevationStyle(level));
     // The shadow fades with the surface: a sheet that fades out on close takes its shadow with it.
     m_shadowOpacity = static_cast<float>(shapeOpacity(*state, motion));
-    m_shadow.setAlpha(glass::shadowOverBackdrop(m_backdropLuminance) * m_shadowOpacity);
+    m_shadow.setBackdropLuminance(m_backdropLuminance);
+    m_shadow.setAlpha(m_shadowOpacity);
     // The shadow follows the visible rect: the clip when set, else the whole surface, after translate and scale.
     const wlr_box shape = clipped ? clipBox
                                   : wlr_box{0, 0, static_cast<int>(std::lround(width * scale)),
@@ -973,7 +975,10 @@ namespace andromeda {
       m_backdropLuminance = static_cast<float>(weighted / area);
       m_backdropDarkest = darkest;
       m_backdropBrightest = brightest;
-      m_shadow.setAlpha(glass::shadowOverBackdrop(m_backdropLuminance) * m_shadowOpacity);
+      m_shadow.setBackdropLuminance(m_backdropLuminance);
+      for (const auto& shape : m_shapeShadows) {
+        shape->setBackdropLuminance(m_backdropLuminance);
+      }
       updateDensity();
     }
     constexpr int kBackdropRecheckMs = 16;
