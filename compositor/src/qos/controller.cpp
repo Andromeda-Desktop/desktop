@@ -91,6 +91,19 @@ namespace andromeda::qos {
       return fields ? field : std::string{};
     }
 
+    // A shell scope of the terminal's pty daemon: `<prefix>-<ptyd pid>s<session>.scope` (apps/terminal/ptyd holder.rs).
+    bool isTerminalShellScope(std::string_view unit) {
+      constexpr std::string_view kSuffix = ".scope";
+      if (!unit.starts_with("app-") || !unit.ends_with(kSuffix)) {
+        return false;
+      }
+      unit.remove_suffix(kSuffix.size());
+      const std::string_view tail = unit.substr(unit.rfind('-') + 1);
+      const std::size_t s = tail.find('s');
+      const auto digits = [](std::string_view text) { return !text.empty() && std::ranges::all_of(text, [](char c) { return c >= '0' && c <= '9'; }); };
+      return s != std::string_view::npos && digits(tail.substr(0, s)) && digits(tail.substr(s + 1));
+    }
+
     // The direct children of `pid`, from every thread (a child belongs to the thread that forked it).
     std::vector<pid_t> childrenOf(pid_t pid) {
       std::vector<pid_t> children;
@@ -219,6 +232,9 @@ namespace andromeda::qos {
     if (path == m_ownCgroup) {
       // A child the compositor spawned without a scope. Xwayland stays with the compositor.
       cgroup.adoptable = pid != getpid() && readFile(std::format("/proc/{}/comm", pid)) != "Xwayland\n";
+    } else if (isTerminalShellScope(unit)) {
+      // An app started from a terminal shell: the shell scope holds the user's other jobs, so the app gets its own.
+      cgroup.adoptable = true;
     } else if (unit.starts_with("app-") && unit != m_ownUnit) {
       // The compositor's own unit (a nested run from a terminal) is never throttled or frozen.
       if (const std::size_t at = path.find("/" + unit); at != std::string::npos) {
