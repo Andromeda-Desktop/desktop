@@ -552,11 +552,10 @@ namespace andromeda {
     // Reduced motion (rulebook 7.8) moves nothing: workspace cards change place halfway, while the windows are faded out.
     const double travel = config().appearance.reduceMotion ? (p < 0.5 ? 0.0 : 1.0) : p;
     const ov::Rect output{0.0, 0.0, in.width, in.height};
-    const ov::Rect frame = ov::zoomFrame(placement, row).value_or(output);
-    // Zoom (set below): the desktop shrinks into the current workspace's frame, then the windows spread to their slots.
-    double zoom = 0.0;
-    double spread = 0.0;
-    const auto zoomed = [&](const ov::Rect& rect) { return ov::zoomRect(rect, output, frame, zoom); };
+    // Every piece goes straight from its desktop rect to its slot on the whole spring, overshoot included. Below 0
+    // windows would grow past their desktop size.
+    const double zoom = config().appearance.reduceMotion ? travel : std::max(p, 0.0);
+    const auto travelRect = [zoom](const ov::Rect& start, const ov::Rect& slot) { return ov::lerpRect(start, slot, zoom); };
     const auto thumbAlpha = static_cast<float>(std::clamp(m_appearOpacity.current(), 0.0, 1.0));
     const auto toLayout = [&outputBox](ov::Rect rect) {
       rect.x += outputBox.x;
@@ -568,42 +567,6 @@ namespace andromeda {
       rect.y -= outputBox.y;
       return rect;
     };
-    // A window spreads when its slot is not where the zoom leaves it (exposé); tiled Spaces and Strip only zoom.
-    const auto near = [](const ov::Rect& a, const ov::Rect& b) {
-      return std::max({std::abs(a.x - b.x), std::abs(a.y - b.y), std::abs(a.w - b.w), std::abs(a.h - b.h)}) <= 1.0;
-    };
-    // A piece whose slot is where the zoom leaves it only zooms; a spread on top would bend its path.
-    const auto travelRect = [&](const ov::Rect& start, const ov::Rect& slot) {
-      return near(ov::zoomRect(start, output, frame, 1.0), slot) ? zoomed(start) : ov::lerpRect(zoomed(start), slot, spread);
-    };
-    bool spreads = false;
-    for (size_t k = 0; k < state.cards.size() && !spreads; ++k) {
-      const ov::WindowPlace* place = k < state.placeOf.size() ? state.placeOf[k] : nullptr;
-      if (place == nullptr || !growsFromDesk(state, *state.cards[k])) {
-        continue;
-      }
-      const View* view = state.cards[k]->view;
-      const ov::Rect desk = ov::deskRect(in, localRect(view->presentedBox(), outputBox), place->workspace, row);
-      spreads = !near(ov::zoomRect(desk, output, frame, 1.0), toLocal(reflowRect(view, toLayout(place->rect), reflowed)));
-    }
-    if (config().appearance.reduceMotion) {
-      zoom = spread = travel;
-    } else if (!spreads) {
-      // The zoom is the whole motion, so it takes the whole spring, overshoot included: a phase of it would stop dead
-      // within ~5 frames. Below 0 windows would grow past their desktop size.
-      zoom = std::max(p, 0.0);
-      spread = zoom;
-    } else {
-      // The phases ease where they meet, so no element changes speed in one frame there. The spread ends at the
-      // spring's own speed (slope k = 1 - spreadFrom in t is 1 in p) and goes on linearly, so the windows take the
-      // spring's arrival and overshoot unscaled: a cubic with f(0) = f'(0) = 0, f(1) = 1, f'(1) = k.
-      const double z = std::clamp(p / Tokens::motionOverviewZoomEnd, 0.0, 1.0);
-      const double spreadFrom = Tokens::motionOverviewSpreadStart;
-      const double k = 1.0 - spreadFrom;
-      const double t = std::max((p - spreadFrom) / k, 0.0);
-      zoom = z * (2.0 - z);
-      spread = t < 1.0 ? t * t * ((3.0 - k) + (k - 2.0) * t) : 1.0 + k * (t - 1.0);
-    }
     const WorkspaceGroup* group = state.output->workspaceGroup();
 
     state.cardsHorizontal = style != ov::Style::Strip || in.horizontal;

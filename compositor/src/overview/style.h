@@ -112,10 +112,6 @@ namespace andromeda::ov {
   // scrolls its column; Spaces and Task View morph between the two neighbouring workspaces' placements.
   // `input.current` and `input.stripRow` are ignored.
   [[nodiscard]] Placement placeAt(Style style, Input input, double row);
-  // The frame the current workspace (`row` rounded) zooms into: the main area, or its Strip row.
-  [[nodiscard]] std::optional<Rect> zoomFrame(const Placement& placement, double row);
-  // `rect` seen by a camera that maps `output` onto lerp(output, frame, t).
-  [[nodiscard]] Rect zoomRect(const Rect& rect, const Rect& output, const Rect& frame, double t);
 
   // Where a window of workspace `workspace` sits on the desktop while the workspaces are scrolled to `row`: its own
   // rect, one output away per workspace along the workspace axis. Open progress 0 starts here.

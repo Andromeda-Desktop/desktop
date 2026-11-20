@@ -347,8 +347,6 @@ damping = 1.00
 content_gate = 0.35      # content fades in after this fraction of the shape's travel
 face_gate = 0.5          # Morph: the incoming face fades in after this fraction
 return_face_gate = 0.7   # Return: the source face fades back in after this fraction of the close travel
-overview_zoom_end = 0.55     # overview Zoom: the desktop reaches the current workspace frame at this progress
-overview_spread_start = 0.45 # overview Zoom: windows leave the frame for their slots from this progress
 overview_piece_scale = 0.86  # overview Zoom: workspace pieces grow from this scale as they fade in
 stagger_ms = 8
 stagger_max = 6
@@ -792,6 +790,10 @@ thread_row = 56.0    # a thread row: avatar, name, time, last line, badge
 bubble_max = 0.72    # a message bubble's widest share of the conversation
 bubble_radius = 16.0
 settings_width = 640.0  # Settings: the grouped cards stop growing here
+qr = 216.0           # Pair: the QR view, padding included
+pair_text = 280.0    # Pair: the widest the steps beside the QR grow
+code_digit_w = 32.0  # Pair: one tile of the 6-digit code
+code_digit_h = 40.0
 
 [component.phone]  # Link Android (design-link/phone handoff.yaml); sizes in dp
 hit = 48.0           # phone touch target (Material / iOS 44-48)

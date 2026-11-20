@@ -288,26 +288,6 @@ namespace andromeda::ov {
     return it == placement.windows.end() ? nullptr : &*it;
   }
 
-  std::optional<Rect> zoomFrame(const Placement& placement, double row) {
-    if (placement.main.has_value()) {
-      return placement.main;
-    }
-    const auto current = static_cast<size_t>(std::max(0L, std::lround(row)));
-    for (const Card& card : placement.cards) {
-      if (card.kind == CardKind::Frame && card.workspace == current) {
-        return card.rect;
-      }
-    }
-    return std::nullopt;
-  }
-
-  Rect zoomRect(const Rect& rect, const Rect& output, const Rect& frame, double t) {
-    const Rect to = lerpRect(output, frame, t);
-    const double sx = output.w > 0 ? to.w / output.w : 1.0;
-    const double sy = output.h > 0 ? to.h / output.h : 1.0;
-    return {to.x + (rect.x - output.x) * sx, to.y + (rect.y - output.y) * sy, rect.w * sx, rect.h * sy};
-  }
-
   Placement placeAt(Style style, Input input, double row) {
     const size_t n = input.workspaces.size();
     if (n == 0) {

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# While the overview opens, a window card moves smoothly: within each phase of the open (zoom, then spread) each of its
-# four edges moves one way only, frame by frame, never stepping back by a pixel (DESIGN.md "Overview v3": card edges are rounded once from one float rect).
+# While the overview opens, a window card moves smoothly: each of its four edges moves one way only, frame by frame, never stepping back by a pixel. The largest red patch is the card; its copy in a thumb is smaller (DESIGN.md "Overview v3": card edges are rounded once from one float rect).
 set -euo pipefail
 
 readonly OUTPUT_W=1280
@@ -33,7 +32,7 @@ done
 
 edges() {
   grim -o HEADLESS-1 "$IMAGE"
-  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" bbox 'r > 0.9 && g < 0.1 && b < 0.1')
+  read -r x y w h < <("$ANDROMEDA_PIXEL_PROBE" "$IMAGE" blob 'r > 0.9 && g < 0.1 && b < 0.1')
   echo "$x $y $((x + w)) $((y + h))"
 }
 
@@ -46,15 +45,14 @@ for _ in $(seq 30); do
 done
 "$ANDROMEDA" clock-resume > /dev/null
 
-# 33 ms frames of the 1000 ms linear open: zoom alone runs to p .45 (frame 13), spread alone from p .55 (frame 17)
-# (motion.overview_spread_start, overview_zoom_end). Each phase sets an edge's direction from its first and last frame;
-# any frame-to-frame step against it is jitter.
+# 33 ms frames of the 1000 ms linear open: each edge's direction comes from its first and last frame; any frame-to-frame
+# step against it is jitter.
 printf '%s\n' "${frames[@]}" | awk '
   { for (i = 1; i <= 4; i++) v[NR, i] = $i }
   END {
     split("left top right bottom", name, " ")
-    split("1 13 17 30", seg, " ")
-    for (s = 1; s <= 3; s += 2) for (i = 1; i <= 4; i++) {
+    split("1 30", seg, " ")
+    for (s = 1; s <= 1; s++) for (i = 1; i <= 4; i++) {
       dir = v[seg[s + 1], i] - v[seg[s], i]
       for (n = seg[s] + 1; n <= seg[s + 1]; n++) {
         step = v[n, i] - v[n - 1, i]
@@ -63,4 +61,4 @@ printf '%s\n' "${frames[@]}" | awk '
     }
     exit bad
   }' || exit 1
-echo "every card edge moves one way within each phase of the open"
+echo "every card edge moves one way through the open"
