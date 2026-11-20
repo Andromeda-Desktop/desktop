@@ -114,7 +114,7 @@ int main() {
         }
         break;
       case 4: { // import a folder from elsewhere, good or bad, under any name
-        const char* names[] = {"My Theme", "nord", "dark", "--x--", "\xc3\x9cber"};
+        const char* names[] = {"My Theme", "nord", "dark", "--x--", "\xc3\x9c" "ber"};
         const std::filesystem::path source = dir.parent_path() / std::format("theme-src-{}-{}", getpid(), s) / names[pick(0, 4)];
         std::filesystem::remove_all(source.parent_path());
         std::filesystem::create_directories(source);

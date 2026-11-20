@@ -10,14 +10,11 @@
 
 class SessionBus;
 
-namespace sdbus {
-  class IProxy;
-}
-
 namespace term {
 
-  // Desktop notifications (org.freedesktop.Notifications). A click runs onAction with the xdg-activation token the
-  // server sent and the button (0: the body, n: Notice::buttons[n - 1]). A non-empty key replaces or closes an
+  // Desktop notifications: org.freedesktop.Notifications on Linux (notifier_dbus.cpp), UNUserNotificationCenter on
+  // macOS (notifier_macos.mm; bus is unused). A click runs onAction with the xdg-activation token the server sent
+  // (empty on macOS) and the button (0: the body, n: Notice::buttons[n - 1]). A non-empty key replaces or closes an
   // earlier notification with the same key.
   class Notifier {
   public:
@@ -30,20 +27,10 @@ namespace term {
     void notify(const Notice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed = {});
     void close(const std::string& key);
 
-  private:
-    struct Entry {
-      std::string key;
-      ActionFn onAction;
-      std::function<void()> onClosed;
-    };
-    void sendClose(std::uint32_t id);
+    struct Impl;
 
-    std::unique_ptr<sdbus::IProxy> m_proxy;
-    std::map<std::uint32_t, Entry> m_entries;      // by notification id
-    std::map<std::string, std::uint32_t> m_byKey;  // shown notifications with a key
-    std::map<std::string, bool> m_inFlight;        // keys whose Notify has no reply yet: true when closed meanwhile
-    std::map<std::uint32_t, std::string> m_tokens; // ActivationToken before ActionInvoked
-    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+  private:
+    std::unique_ptr<Impl> m_impl;
   };
 
 } // namespace term

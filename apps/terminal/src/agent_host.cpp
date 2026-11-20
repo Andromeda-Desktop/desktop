@@ -1,4 +1,5 @@
 #include "agent_host.h"
+#include "core/sys/sys.h"
 
 #include <array>
 #include <cerrno>
@@ -133,7 +134,7 @@ namespace term::agent {
     std::array<int, 2> in{-1, -1};
     std::array<int, 2> out{-1, -1};
     std::array<int, 2> err{-1, -1};
-    if (::pipe2(in.data(), O_CLOEXEC) != 0 || ::pipe2(out.data(), O_CLOEXEC) != 0 || ::pipe2(err.data(), O_CLOEXEC) != 0) {
+    if (!sys::pipeCloexec(in.data()) || !sys::pipeCloexec(out.data()) || !sys::pipeCloexec(err.data())) {
       for (const int fd : {in[0], in[1], out[0], out[1], err[0], err[1]}) {
         if (fd >= 0) {
           ::close(fd);

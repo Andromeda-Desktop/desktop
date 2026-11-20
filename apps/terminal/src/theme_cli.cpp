@@ -1,4 +1,5 @@
 #include "theme_cli.h"
+#include "core/sys/sys.h"
 
 #include "settings_store.h"
 #include "theme_store.h"
@@ -131,9 +132,8 @@ namespace term {
   } // namespace
 
   std::string themeAgentPrompt() {
-    std::error_code ec;
-    const std::string self = std::filesystem::read_symlink("/proc/self/exe", ec).string();
-    const std::string cli = ec ? std::string("andromeda-terminal") : self;
+    const std::string self = sys::executablePath();
+    const std::string cli = self.empty() ? std::string("andromeda-terminal") : self;
     return std::format(R"(Make an Andromeda Terminal theme with me. Ask me in one short question what mood or colours I want, unless I already said it.
 
 Use the terminal's theme CLI ({0} theme ...):

@@ -1,4 +1,5 @@
 #include "holder_client.h"
+#include "core/sys/sys.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -255,7 +256,7 @@ int connectSocket() {
   if (path.empty() || path.size() >= sizeof addr.sun_path) return -1;
   addr.sun_family = AF_UNIX;
   std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-  const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+  const int fd = sys::socketCloexec(AF_UNIX, SOCK_STREAM);
   if (fd < 0) return -1;
   if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0) {
     ::close(fd);
@@ -269,7 +270,7 @@ int connectSocket() {
 bool sendAll(int fd, std::span<const std::uint8_t> bytes) {
   std::size_t done = 0;
   while (done < bytes.size()) {
-    const ssize_t n = ::send(fd, bytes.data() + done, bytes.size() - done, MSG_NOSIGNAL);
+    const ssize_t n = sys::sendNoSignal(fd, bytes.data() + done, bytes.size() - done, 0);
     if (n > 0) {
       done += static_cast<std::size_t>(n);
     } else if (n < 0 && errno == EINTR) {
@@ -292,7 +293,7 @@ long receive(int fd, std::vector<std::uint8_t>& buf, std::vector<int>& fds, bool
   msg.msg_controllen = sizeof control;
   ssize_t n;
   do {
-    n = ::recvmsg(fd, &msg, MSG_CMSG_CLOEXEC | (nonblocking ? MSG_DONTWAIT : 0));
+    n = sys::recvmsgCloexec(fd, &msg, nonblocking ? MSG_DONTWAIT : 0);
   } while (n < 0 && errno == EINTR);
   if (n < 0) return -1;
   for (cmsghdr* c = CMSG_FIRSTHDR(&msg); c != nullptr; c = CMSG_NXTHDR(&msg, c)) {

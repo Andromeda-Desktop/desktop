@@ -40,7 +40,7 @@ void checkInvariants(const SessionList& list, const SplitTrees& trees, const Dwi
   if (own != nullptr) {
     auto keys = own->keys();
     std::ranges::sort(keys);
-    auto want = split;
+    decltype(keys) want(split.begin(), split.end());
     std::ranges::sort(want);
     CHECK(keys == want);
   }

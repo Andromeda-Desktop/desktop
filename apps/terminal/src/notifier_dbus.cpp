@@ -15,7 +15,36 @@ namespace term {
     constexpr auto kInterface = "org.freedesktop.Notifications";
   } // namespace
 
-  Notifier::Notifier(SessionBus* bus) {
+  struct Notifier::Impl {
+    explicit Impl(SessionBus* bus);
+    ~Impl();
+    void notify(const Notice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed);
+    void close(const std::string& key);
+    void sendClose(std::uint32_t id);
+
+    struct Entry {
+      std::string key;
+      ActionFn onAction;
+      std::function<void()> onClosed;
+    };
+    std::unique_ptr<sdbus::IProxy> m_proxy;
+    std::map<std::uint32_t, Entry> m_entries;      // by notification id
+    std::map<std::string, std::uint32_t> m_byKey;  // shown notifications with a key
+    std::map<std::string, bool> m_inFlight;        // keys whose Notify has no reply yet: true when closed meanwhile
+    std::map<std::uint32_t, std::string> m_tokens; // ActivationToken before ActionInvoked
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+  };
+
+  Notifier::Notifier(SessionBus* bus) : m_impl(std::make_unique<Impl>(bus)) {}
+  Notifier::~Notifier() = default;
+
+  void Notifier::notify(const Notice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed) {
+    m_impl->notify(notice, key, std::move(onAction), std::move(onClosed));
+  }
+
+  void Notifier::close(const std::string& key) { m_impl->close(key); }
+
+  Notifier::Impl::Impl(SessionBus* bus) {
     if (bus == nullptr || !bus->connected()) {
       return;
     }
@@ -58,9 +87,9 @@ namespace term {
     }
   }
 
-  Notifier::~Notifier() { m_alive.reset(); }
+  Notifier::Impl::~Impl() { m_alive.reset(); }
 
-  void Notifier::notify(const Notice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed) {
+  void Notifier::Impl::notify(const Notice& notice, const std::string& key, ActionFn onAction, std::function<void()> onClosed) {
     if (m_proxy == nullptr) {
       return;
     }
@@ -105,7 +134,7 @@ namespace term {
     }
   }
 
-  void Notifier::close(const std::string& key) {
+  void Notifier::Impl::close(const std::string& key) {
     if (const auto shown = m_byKey.find(key); shown != m_byKey.end()) {
       sendClose(shown->second);
     } else if (const auto flight = m_inFlight.find(key); flight != m_inFlight.end()) {
@@ -113,7 +142,7 @@ namespace term {
     }
   }
 
-  void Notifier::sendClose(std::uint32_t id) {
+  void Notifier::Impl::sendClose(std::uint32_t id) {
     try {
       m_proxy->callMethodAsync("CloseNotification").onInterface(kInterface).withArguments(id).uponReplyInvoke(
           [](std::optional<sdbus::Error> error) {

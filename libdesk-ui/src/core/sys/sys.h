@@ -7,7 +7,9 @@
 #include <string>
 #include <string_view>
 
+struct msghdr;
 struct stat;
+struct winsize;
 
 // The OS layer: portable code reaches Linux- or macOS-only calls only through these (sys_linux.cpp, sys_macos.cpp).
 namespace sys {
@@ -49,6 +51,21 @@ namespace sys {
 
   // Calls entry(name, d_type) for each entry of the open directory fd except "." and ".."; false and errno on error.
   [[nodiscard]] bool readDirectory(int fd, const std::function<void(std::string_view name, unsigned char type)>& entry);
+
+  // Close-on-exec is atomic on Linux; macOS sets it right after the call, so a concurrent fork can inherit the fd.
+  [[nodiscard]] int socketCloexec(int domain, int type);
+  [[nodiscard]] bool pipeCloexec(int fds[2]);
+  // recvmsg() whose received SCM_RIGHTS fds are close-on-exec.
+  [[nodiscard]] long recvmsgCloexec(int fd, struct msghdr* msg, int flags);
+  // send() that returns EPIPE instead of raising SIGPIPE.
+  [[nodiscard]] long sendNoSignal(int fd, const void* data, std::size_t size, int flags);
+
+  // forkpty(): the child leads a new session with the pty as its controlling terminal.
+  [[nodiscard]] int forkPty(int* master, const struct winsize* size);
+  // Empty when the OS does not tell.
+  [[nodiscard]] std::string executablePath();
+  // Calls fn for every process of session sid except its leader.
+  void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn);
 
   // Wakes a poll loop from any thread: an eventfd on Linux, a pipe elsewhere. Both ends are nonblocking.
   class WakeFd {

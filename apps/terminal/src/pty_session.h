@@ -5,6 +5,7 @@
 #include "osc66.h"
 #include "sixel.h"
 #include "osc99.h"
+#include "core/sys/sys.h"
 
 #include <ghostty/vt.h>
 
@@ -169,7 +170,7 @@ private:
   End m_end = End::Close;
   // Local: the pty master. Held: a dup of the holder's master, for writes and TIOCSWINSZ only.
   int m_master = -1;
-  int m_eventFd = -1;
+  sys::WakeFd m_ioWake;
   // Holder socket bytes not yet decoded; the reader thread's after start().
   std::vector<std::uint8_t> m_sockBuf;
   // Output offsets: received by the reader thread, parsed by the parser thread.

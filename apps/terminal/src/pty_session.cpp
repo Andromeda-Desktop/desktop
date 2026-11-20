@@ -1,6 +1,7 @@
 #include "pty_session.h"
 
 #include "holder_client.h"
+#include "core/sys/sys.h"
 #include <termios.h>
 #include <algorithm>
 #include <chrono>
@@ -14,14 +15,13 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
-#include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <pty.h>
-#include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+extern char** environ; // POSIX: no header declares it on macOS
 
 namespace term {
 
@@ -67,29 +67,10 @@ winsize makeWinsize(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, st
 // Bash forwards its SIGHUP to its jobs only when the signal wins a race with the hangup, so a closed session hangs up
 // what is left in it itself; nohup'd jobs ignore it, setsid'd ones are in another session.
 void hangUpSession(pid_t sid) {
-  DIR* proc = ::opendir("/proc");
-  if (proc == nullptr) return;
-  while (const dirent* entry = ::readdir(proc)) {
-    char* end = nullptr;
-    const long pid = std::strtol(entry->d_name, &end, 10);
-    if (*end != '\0' || pid <= 0 || pid == sid) continue;
-    char path[32];
-    std::snprintf(path, sizeof path, "/proc/%ld/stat", pid);
-    const int fd = ::open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0) continue;
-    char stat[512];
-    const ssize_t n = ::read(fd, stat, sizeof stat - 1);
-    ::close(fd);
-    if (n <= 0) continue;
-    stat[n] = '\0';
-    const char* afterName = std::strrchr(stat, ')'); // the name may hold spaces and parentheses
-    int session = 0;
-    if (afterName != nullptr && std::sscanf(afterName + 1, " %*c %*d %*d %d", &session) == 1 && session == sid) {
-      ::kill(static_cast<pid_t>(pid), SIGHUP);
-      ::kill(static_cast<pid_t>(pid), SIGCONT); // a stopped job takes the SIGHUP once it runs
-    }
-  }
-  ::closedir(proc);
+  sys::forEachSessionProcess(sid, [](int pid) {
+    ::kill(pid, SIGHUP);
+    ::kill(pid, SIGCONT); // a stopped job takes the SIGHUP once it runs
+  });
 }
 
 bool plainChunk(std::span<const std::uint8_t> bytes) {
@@ -109,10 +90,7 @@ PtySession::PtySession(WakeFn wake, MarkFn onMark, BellFn onBell, SecretFn onSec
 
 PtySession::~PtySession() {
   m_stopping = true;
-  if (m_eventFd >= 0) {
-    std::uint64_t one = 1;
-    (void)::write(m_eventFd, &one, sizeof one);
-  }
+  m_ioWake.signal();
   {
     // Under the queue lock, so the parser cannot test m_stopping and then miss this notify.
     std::lock_guard lock(m_inMutex);
@@ -141,7 +119,6 @@ PtySession::~PtySession() {
     ::close(held->socket);
   }
   if (m_master >= 0) ::close(m_master);
-  if (m_eventFd >= 0) ::close(m_eventFd);
   if (m_terminal != nullptr) ghostty_terminal_free(m_terminal);
 }
 
@@ -223,7 +200,7 @@ bool PtySession::spawnLocal(const SpawnOptions& o) {
 
   winsize ws = makeWinsize(o.cols, o.rows, o.cellWidthPx, o.cellHeightPx);
   int master = -1;
-  pid_t pid = ::forkpty(&master, nullptr, nullptr, &ws);
+  pid_t pid = sys::forkPty(&master, &ws);
   if (pid < 0) return false;
   if (pid == 0) {
     if (!o.cwd.empty() && ::chdir(o.cwd.c_str()) != 0) _exit(127);
@@ -303,7 +280,6 @@ void PtySession::start() {
     ::fcntl(m_master, F_SETFL, ::fcntl(m_master, F_GETFL) | O_NONBLOCK);
     ::fcntl(m_master, F_SETFD, FD_CLOEXEC);
   }
-  m_eventFd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
   apply(SessionEvent::Spawned);
   m_io = std::thread([this] { ioLoop(); });
   m_parser = std::thread([this] { parseLoop(); });
@@ -312,8 +288,7 @@ void PtySession::start() {
 void PtySession::write(std::span<const std::uint8_t> bytes) {
   if (bytes.empty() || m_state.load() != SessionState::Running) return;
   queueOutbound(bytes);
-  std::uint64_t one = 1;
-  (void)::write(m_eventFd, &one, sizeof one);
+  m_ioWake.signal();
 }
 
 void PtySession::queueOutbound(std::span<const std::uint8_t> bytes) {
@@ -380,14 +355,13 @@ void PtySession::ioLoopHeld(const HeldSession& held) {
       full = m_inbound.size() >= kInboundMax;
     }
     // A full queue leaves the socket unread; the holder then stops reading the pty, so the program blocks.
-    pollfd pfds[3] = {{full ? -1 : held.socket, POLLIN, 0}, {wantOut ? m_master : -1, POLLOUT, 0}, {m_eventFd, POLLIN, 0}};
+    pollfd pfds[3] = {{full ? -1 : held.socket, POLLIN, 0}, {wantOut ? m_master : -1, POLLOUT, 0}, {m_ioWake.pollFd(), POLLIN, 0}};
     if (::poll(pfds, 3, -1) < 0) {
       if (errno == EINTR) continue;
       return endInput(kHolderLostStatus << 8);
     }
     if (pfds[2].revents & POLLIN) {
-      std::uint64_t v;
-      (void)::read(m_eventFd, &v, sizeof v);
+      m_ioWake.drain();
       if (m_stopping) return;
     }
     if (pfds[1].revents & POLLOUT || pfds[2].revents & POLLIN) flushOutbound();
@@ -447,17 +421,16 @@ void PtySession::ioLoop() {
       std::lock_guard lock(m_inMutex);
       full = m_inbound.size() >= kInboundMax;
     }
-    // A full queue leaves the master out of the poll (it would report POLLHUP at once); the parser's eventfd write
+    // A full queue leaves the master out of the poll (it would report POLLHUP at once); the parser's wake
     // resumes reading.
     const short events = static_cast<short>((full ? 0 : POLLIN) | (wantOut ? POLLOUT : 0));
-    pollfd fds[2] = {{events != 0 ? m_master : -1, events, 0}, {m_eventFd, POLLIN, 0}};
+    pollfd fds[2] = {{events != 0 ? m_master : -1, events, 0}, {m_ioWake.pollFd(), POLLIN, 0}};
     if (::poll(fds, 2, -1) < 0) {
       if (errno == EINTR) continue;
       break;
     }
     if (fds[1].revents & POLLIN) {
-      std::uint64_t v;
-      (void)::read(m_eventFd, &v, sizeof v);
+      m_ioWake.drain();
       if (m_stopping) return;
     }
     if (fds[0].revents & POLLOUT || fds[1].revents & POLLIN) flushOutbound();
@@ -512,8 +485,7 @@ void PtySession::parseLoop() {
       work.swap(m_inbound);
     }
     if (wasFull) {
-      std::uint64_t one = 1;
-      (void)::write(m_eventFd, &one, sizeof one);
+      m_ioWake.signal();
     }
     for (std::size_t at = 0, len = 0; at < work.size(); at += len) {
       len = std::min(kReadChunk, work.size() - at);

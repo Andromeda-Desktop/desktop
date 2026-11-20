@@ -1,4 +1,5 @@
 #include "shell_integration.h"
+#include "core/sys/sys.h"
 
 #include <filesystem>
 #include <system_error>
@@ -32,8 +33,8 @@ namespace term {
 
   std::string shellIntegrationDir() {
     std::error_code ec;
-    const std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
-    if (!ec) {
+    const std::filesystem::path exe = sys::executablePath();
+    if (!exe.empty()) {
       const auto installed = exe.parent_path().parent_path() / "share/andromeda/terminal/shell-integration";
       if (std::filesystem::is_directory(installed, ec)) {
         return installed.string();

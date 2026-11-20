@@ -15,8 +15,20 @@ _unit_version = run_command(meson.project_source_root() / '..' / '..' / 'tools' 
 # from tools/build-libghostty.sh, linked statically so the binary needs no private library path.
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
+cpp = meson.get_compiler('cpp')
+if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
+  add_project_arguments('-fexperimental-library', language: 'cpp')
+  add_project_link_arguments('-lc++experimental', language: 'cpp')
+endif
+
+is_macos = get_option('platform') == 'macos'
+_platform_opt = ['platform=' + get_option('platform')]
+# macOS libghostty-vt comes in step 9 of .agent/TASK-terminal-macos.md; until then only its headers.
 _ghostty = dependency('libghostty-vt', version: '>=1.0.1', required: false)
-if not _ghostty.found()
+if is_macos
+  _ghostty = declare_dependency(include_directories: include_directories('subprojects/libghostty-vt/prefix/include'),
+    compile_args: '-DGHOSTTY_STATIC')
+elif not _ghostty.found()
   _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix'
   _ghostty = declare_dependency(
     include_directories: include_directories('subprojects/libghostty-vt/prefix/include'),
@@ -25,14 +37,16 @@ if not _ghostty.found()
   )
 endif
 
-_desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
+_desk_ui_dep = subproject('libdesk-ui', default_options: _platform_opt).get_variable('desk_ui_dep')
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
-  dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')], link_args: ['-lutil'],
+  dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')],
   cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
-_core_dep = declare_dependency(link_with: _core, link_args: ['-lutil'],
+_core_dep = declare_dependency(link_with: _core,
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
 
+# ptyd and agentd cross-build for macOS in step 8.
+if not is_macos
 # The pty holder (Rust) builds with cargo into this build dir, as andromeda-preview's helper.
 cargo = find_program('cargo')
 _cargo_profile = get_option('buildtype') == 'debug' ? 'debug' : 'release'
@@ -65,6 +79,7 @@ _agentd = custom_target('andromeda-agentd',
 )
 test('pty_session', executable('pty_session_test', 'tests/pty_session_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings), args: [_ptyd.full_path()], depends: _ptyd, timeout: 30)
+endif
 
 # Agent sessions (step 9): the ACP session model; no IO, so the model test drives it directly.
 _agent = static_library('terminal_agent', 'src/agent_session.cpp', 'src/agent_markup.cpp',
@@ -110,17 +125,13 @@ test('palette_model', executable('palette_model_test', 'tests/palette_model_test
 test('terminal_bidi', executable('terminal_bidi_test', 'tests/terminal_bidi_test.cpp',
   dependencies: _desk_ui_dep, cpp_args: _warnings))
 
-cpp = meson.get_compiler('cpp')
-if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
-  add_project_arguments('-fexperimental-library', language: 'cpp')
-  add_project_link_arguments('-lc++experimental', language: 'cpp')
-endif
-
-_desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+_desk_app_dep = subproject('libdesk-app', default_options: _platform_opt).get_variable('desk_app_dep')
 _agentd_path = ['-DANDROMEDA_AGENTD_PATH="' + get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'andromeda-agentd' + '"']
+if not is_macos
 test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp', 'src/agent_kind.cpp',
   dependencies: [_agent_dep, _desk_app_dep], cpp_args: _warnings + _agentd_path),
   args: [_agentd.full_path()], depends: _agentd, timeout: 60)
+endif
 test('split_trees', executable('split_trees_test', 'tests/split_trees_test.cpp',
   dependencies: [_core_dep, _desk_app_dep], cpp_args: _warnings))
 test('theme_palette', executable('theme_palette_test', 'tests/theme_palette_test.cpp',
@@ -128,13 +139,22 @@ test('theme_palette', executable('theme_palette_test', 'tests/theme_palette_test
 test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp', 'src/theme_store.cpp',
   dependencies: [_settings_dep, _desk_app_dep], cpp_args: _warnings))
 
+# Session services per platform: D-Bus on Linux; Cocoa frameworks on macOS (.agent/TASK-terminal-macos.md step 7).
+if is_macos
+  add_languages('objcpp', native: false)
+  _platform_src = files('src/notifier_macos.mm')
+  _platform_deps = [dependency('appleframeworks', modules: ['Foundation', 'UserNotifications'])]
+else
+  _platform_src = files('src/notifier_dbus.cpp')
+  _platform_deps = []
+endif
+
 _terminfo_dir = get_option('prefix') / get_option('datadir') / 'terminfo'
 executable('andromeda-terminal',
   'src/key_map.cpp',
   'src/kitty_images.cpp',
   'src/context_row.cpp',
   'src/main.cpp',
-  'src/notifier.cpp',
   'src/terminal_app.cpp',
   'src/terminal_view.cpp',
   'src/terminal_window.cpp', 'src/command_palette.cpp',
@@ -144,8 +164,10 @@ executable('andromeda-terminal',
   'src/prefs_window.cpp',
   'src/agent_host.cpp', 'src/agent_kind.cpp',
   'src/agent_view.cpp',
-  dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')],
+  _platform_src,
+  dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
   cpp_args: _warnings + _agentd_path + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"'],
+  objcpp_args: ['-fobjc-arc'],
   install: true,
 )
 find_program('tic')

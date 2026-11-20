@@ -1,4 +1,5 @@
 #include "workspace_watcher.h"
+#include "core/sys/sys.h"
 
 #include <algorithm>
 #include <chrono>
@@ -74,7 +75,7 @@ namespace term {
 
   void WorkspaceWatcher::flush() {
     while (!m_out.empty()) {
-      const ssize_t n = ::send(m_fd, m_out.data(), m_out.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+      const ssize_t n = sys::sendNoSignal(m_fd, m_out.data(), m_out.size(), MSG_DONTWAIT);
       if (n > 0) {
         m_out.erase(m_out.begin(), m_out.begin() + n);
       } else if (n < 0 && errno == EINTR) {

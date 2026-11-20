@@ -4,17 +4,23 @@
 #include "core/sys/sys.h"
 
 #include <cerrno>
+#include <climits>
+#include <cstdlib>
 #include <dirent.h>
 #include <fcntl.h>
 #include <glib.h>
+#include <mach-o/dyld.h>
 #include <malloc/malloc.h>
 #include <pthread.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <util.h>
+#include <vector>
 
 namespace sys {
 
@@ -25,6 +31,8 @@ namespace sys {
       const int flags = ::fcntl(fd, F_GETFL);
       return flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 && ::fcntl(fd, F_SETFD, FD_CLOEXEC) == 0;
     }
+
+    bool setCloexec(int fd) { return ::fcntl(fd, F_SETFD, FD_CLOEXEC) == 0; }
   } // namespace
 
   void setCurrentThreadName(const char* name) { pthread_setname_np(name); }
@@ -146,6 +154,69 @@ namespace sys {
   void WakeFd::drain() const {
     char buffer[64];
     while (::read(m_read, buffer, sizeof(buffer)) > 0) {
+    }
+  }
+
+  int socketCloexec(int domain, int type) {
+    const int fd = ::socket(domain, type, 0);
+    const int on = 1;
+    if (fd >= 0 && (!setCloexec(fd) || ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on) != 0)) {
+      ::close(fd);
+      return -1;
+    }
+    return fd;
+  }
+
+  bool pipeCloexec(int fds[2]) {
+    if (::pipe(fds) != 0) return false;
+    if (setCloexec(fds[0]) && setCloexec(fds[1])) return true;
+    ::close(fds[0]);
+    ::close(fds[1]);
+    return false;
+  }
+
+  long recvmsgCloexec(int fd, struct msghdr* msg, int flags) {
+    const ssize_t n = ::recvmsg(fd, msg, flags);
+    if (n < 0) return n;
+    for (cmsghdr* c = CMSG_FIRSTHDR(msg); c != nullptr; c = CMSG_NXTHDR(msg, c)) {
+      if (c->cmsg_level != SOL_SOCKET || c->cmsg_type != SCM_RIGHTS) continue;
+      const auto* fds = reinterpret_cast<const int*>(CMSG_DATA(c));
+      const std::size_t count = (c->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+      for (std::size_t i = 0; i < count; ++i) setCloexec(fds[i]);
+    }
+    return n;
+  }
+
+  // Sockets from socketCloexec() carry SO_NOSIGPIPE; this covers sockets made elsewhere.
+  long sendNoSignal(int fd, const void* data, std::size_t size, int flags) {
+    const int on = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
+    return ::send(fd, data, size, flags);
+  }
+
+  int forkPty(int* master, const struct winsize* size) {
+    return ::forkpty(master, nullptr, nullptr, const_cast<struct winsize*>(size));
+  }
+
+  std::string executablePath() {
+    std::uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string path(size, '\0');
+    if (_NSGetExecutablePath(path.data(), &size) != 0) return {};
+    char resolved[PATH_MAX];
+    return ::realpath(path.c_str(), resolved) != nullptr ? std::string(resolved) : std::string(path.c_str());
+  }
+
+  void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn) {
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_SESSION, sid};
+    std::size_t size = 0;
+    if (::sysctl(mib, 4, nullptr, &size, nullptr, 0) != 0) return;
+    std::vector<kinfo_proc> procs(size / sizeof(kinfo_proc) + 8);
+    size = procs.size() * sizeof(kinfo_proc);
+    if (::sysctl(mib, 4, procs.data(), &size, nullptr, 0) != 0) return;
+    for (std::size_t i = 0; i < size / sizeof(kinfo_proc); ++i) {
+      const pid_t pid = procs[i].kp_proc.p_pid;
+      if (pid > 0 && pid != sid) fn(pid);
     }
   }
 

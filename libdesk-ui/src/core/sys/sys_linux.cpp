@@ -5,7 +5,10 @@
 #include <cerrno>
 #include <chrono>
 #include <stdexcept>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <dirent.h>
 #include <ctime>
 #include <fcntl.h>
 #include <filesystem>
@@ -16,7 +19,9 @@
 #include <sstream>
 #include <string>
 #include <string.h>
+#include <pty.h>
 #include <sys/eventfd.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -162,6 +167,47 @@ namespace sys {
     std::uint64_t ignored = 0;
     while (::read(m_read, &ignored, sizeof(ignored)) > 0) {
     }
+  }
+
+  int socketCloexec(int domain, int type) { return ::socket(domain, type | SOCK_CLOEXEC, 0); }
+
+  bool pipeCloexec(int fds[2]) { return ::pipe2(fds, O_CLOEXEC) == 0; }
+
+  long recvmsgCloexec(int fd, struct msghdr* msg, int flags) { return ::recvmsg(fd, msg, flags | MSG_CMSG_CLOEXEC); }
+
+  long sendNoSignal(int fd, const void* data, std::size_t size, int flags) { return ::send(fd, data, size, flags | MSG_NOSIGNAL); }
+
+  int forkPty(int* master, const struct winsize* size) { return ::forkpty(master, nullptr, nullptr, size); }
+
+  std::string executablePath() {
+    std::error_code ec;
+    std::string path = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+    return ec ? std::string() : path;
+  }
+
+  void forEachSessionProcess(int sid, const std::function<void(int pid)>& fn) {
+    DIR* proc = ::opendir("/proc");
+    if (proc == nullptr) return;
+    while (const dirent* entry = ::readdir(proc)) {
+      char* end = nullptr;
+      const long pid = std::strtol(entry->d_name, &end, 10);
+      if (*end != '\0' || pid <= 0 || pid == sid) continue;
+      char path[32];
+      std::snprintf(path, sizeof path, "/proc/%ld/stat", pid);
+      const int fd = ::open(path, O_RDONLY | O_CLOEXEC);
+      if (fd < 0) continue;
+      char stat[512];
+      const ssize_t n = ::read(fd, stat, sizeof stat - 1);
+      ::close(fd);
+      if (n <= 0) continue;
+      stat[n] = '\0';
+      const char* afterName = std::strrchr(stat, ')'); // the name may hold spaces and parentheses
+      int session = 0;
+      if (afterName != nullptr && std::sscanf(afterName + 1, " %*c %*d %*d %d", &session) == 1 && session == sid) {
+        fn(static_cast<int>(pid));
+      }
+    }
+    ::closedir(proc);
   }
 
 } // namespace sys
