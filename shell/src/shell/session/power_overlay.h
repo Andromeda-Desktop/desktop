@@ -135,7 +135,7 @@ private:
   Node* m_content = nullptr;
   Label* m_hint = nullptr;
   CountdownRingNode* m_ring = nullptr;
-  std::array<Choice, 4> m_choices{};
+  std::array<Choice, 5> m_choices{};
   std::size_t m_focused = 0;
   bool m_pointerInside = false;
   bool m_holding = false;

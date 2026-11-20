@@ -410,6 +410,10 @@ void Application::initInputDispatch() {
       m_lockScreen.onPointerEvent(event);
       return;
     }
+    // A screenshot taken over the power menu stacks above it and owns input.
+    if (m_powerOverlay.isActive() && m_screenshotService.onPointerEvent(event)) {
+      return;
+    }
     if (m_powerOverlay.isActive()) {
       (void)m_powerOverlay.onPointerEvent(event);
       return;
@@ -546,6 +550,9 @@ void Application::initInputDispatch() {
   m_wayland.setKeyboardEventCallback([this](const KeyboardEvent& event) {
     if (m_lockScreen.isActive()) {
       m_lockScreen.onKeyboardEvent(event);
+      return;
+    }
+    if (m_powerOverlay.isActive() && m_screenshotService.onKeyboardEvent(event)) {
       return;
     }
     if (m_powerOverlay.onKeyboardEvent(event)) {

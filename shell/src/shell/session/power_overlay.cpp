@@ -55,13 +55,14 @@ namespace {
     const char* glyph;
     const char* label;
   };
-  constexpr std::array<ChoiceSpec, 4> kChoices{{
+  constexpr std::array<ChoiceSpec, 5> kChoices{{
       {"lock", nullptr, "control-center.power-menu.lock"},
       {"suspend", "moon", "control-center.power-menu.sleep"},
+      {"logout", nullptr, "control-center.power-menu.log-out"},
       {"reboot", nullptr, "control-center.power-menu.restart"},
       {"shutdown", nullptr, "control-center.power-menu.shut-down"},
   }};
-  constexpr std::size_t kShutDown = 3;
+  constexpr std::size_t kShutDown = 4;
   constexpr int kCountdownSeconds = 60;
   constexpr auto kCloseWait = std::chrono::seconds(5);
   constexpr float kIcon = 40.0F;
@@ -534,7 +535,7 @@ void PowerOverlay::pick(std::size_t index) {
     return;
   }
   const std::string action = kChoices[index].action;
-  if (action == "reboot" || action == "shutdown") {
+  if (action == "reboot" || action == "shutdown" || action == "logout") {
     DeferredCall::callLater([this, action] {
       // A block inhibitor (pacman, firmware) would refuse the action after every window closed: wait for it instead.
       if (m_guard != nullptr && !m_guard->blockers().empty()) {
