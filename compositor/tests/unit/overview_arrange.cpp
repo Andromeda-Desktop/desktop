@@ -184,7 +184,8 @@ ANDROMEDA_TEST(windowOpacityFadesHiddenMinimizedAndDimmedWindows) {
   CHECK_EQ(windowOpacity(place, true, 0.5), 0.5);
   place.opacity = 0;
   CHECK_EQ(windowOpacity(place, false, 0.0), 1.0);
-  CHECK_EQ(windowOpacity(place, false, 0.4), 0.0);
+  CHECK_EQ(windowOpacity(place, false, 0.25), 0.5);
+  CHECK_EQ(windowOpacity(place, false, 0.5), 0.0);
   CHECK_EQ(windowOpacity(place, true, 1.0), 0.0);
   place.opacity = 1;
   place.dimmed = true;

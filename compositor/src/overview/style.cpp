@@ -44,7 +44,7 @@ namespace andromeda::ov {
     constexpr double kPeekOpacity = 0.6;     // Strip: a neighbouring workspace row one step away (mockup B)
     constexpr double kStripPlusShare = 0.45; // the Strip's New row is this share of a row's extent along the axis
     constexpr double kDimmed = 0.5;
-    constexpr double kHiddenFade = 3; // a window the placement hides is gone a third of the way into the open
+    constexpr double kHiddenFade = 2; // a window the placement hides is gone halfway into the open
 
 
     WindowPlace win(uint32_t id, size_t workspace, const Rect& rect, double opacity, bool dimmed = false) {
@@ -193,7 +193,9 @@ namespace andromeda::ov {
         const Rect frame = frameAt(static_cast<double>(i));
         out.cards.push_back({i, frame, CardKind::Frame});
         const Fit fit{s, frame.x, frame.y};
-        const double peek = 1.0 - (1.0 - kPeekOpacity) * std::min(1.0, std::abs(static_cast<double>(i) - row));
+        // Full on the chosen row, kPeekOpacity one row away, 0 two rows away: a row fades in and out as it scrolls.
+        const double away = std::abs(static_cast<double>(i) - row);
+        const double peek = away <= 1.0 ? 1.0 - (1.0 - kPeekOpacity) * away : kPeekOpacity * std::max(0.0, 2.0 - away);
         for (const Member& m : in.workspaces[i].members) {
           const bool away = in.workspaces[i].arrangement == Arrangement::Scrolling && offscreen(m.desk, in.width);
           const Rect r = mapRect(m.desk, fit);
@@ -206,7 +208,7 @@ namespace andromeda::ov {
               m.desk.x < 0 ? std::max(0.0, frame.x - r.x) / s : 0.0
           };
           const bool inside = cut.left + cut.right < m.desk.w && cut.top + cut.bottom < m.desk.h;
-          const bool drawn = inside && std::abs(static_cast<double>(i) - row) <= 1.0; // ±1 rows (FRAME.md cost)
+          const bool drawn = inside && away < 2.0; // ±1 rows at rest (FRAME.md cost)
           WindowPlace w = win(m.id, i, r, m.minimized || !drawn ? 0.0 : peek, away);
           if (cut != Insets{}) {
             w.clip = cut;
@@ -227,8 +229,8 @@ namespace andromeda::ov {
       return {lerp(a.top, b.top, t), lerp(a.right, b.right, t), lerp(a.bottom, b.bottom, t), lerp(a.left, b.left, t)};
     }
 
-    // Spaces and Task View between two chosen workspaces: every window and card moves from its place in `a` to its
-    // place in `b`; the chrome jumps at the halfway point.
+    // Spaces and Task View between two chosen workspaces: every window, card, area and chrome anchor moves from its
+    // place in `a` to its place in `b`.
     Placement blend(const Placement& a, const Placement& b, double t) {
       Placement out = t < 0.5 ? a : b;
       out.windows.clear();
@@ -251,6 +253,19 @@ namespace andromeda::ov {
       }
       if (a.viewport && b.viewport) {
         out.viewport = lerpRect(*a.viewport, *b.viewport, t);
+      }
+      if (a.main && b.main) {
+        out.main = lerpRect(*a.main, *b.main, t);
+      }
+      if (a.mainFit && b.mainFit) {
+        out.mainFit = Fit{lerp(a.mainFit->s, b.mainFit->s, t), lerp(a.mainFit->ox, b.mainFit->ox, t),
+                          lerp(a.mainFit->oy, b.mainFit->oy, t)};
+      }
+      if (a.plus && b.plus) {
+        out.plus = lerpRect(*a.plus, *b.plus, t);
+      }
+      if (a.filter && b.filter) {
+        out.filter = Point{lerp(a.filter->x, b.filter->x, t), lerp(a.filter->y, b.filter->y, t)};
       }
       return out;
     }
