@@ -245,7 +245,8 @@ namespace andromeda {
 
   void View::handleMap() {
     if (!m_hasEverMapped) {
-      m_launchIconBox = m_server->endLaunchBusy(m_launchToken);
+      m_launchIconBox = m_server->endLaunchBusy(m_launchBusyToken, appId() != nullptr ? appId() : "?");
+      m_launchBusyToken.reset();
     }
     m_hasEverMapped = true;
     // The XDG map signal is emitted before the root surface commit signal.

@@ -375,6 +375,9 @@ namespace andromeda {
       self->endLaunchBusy(std::string(tokenName)); // the launch raised a running app
     }
     bool launchStartup = false;
+    if (target != nullptr && !target->mapped() && tokenName != nullptr) {
+      target->noteLaunchToken(tokenName);
+    }
     if (target != nullptr && token != nullptr) {
       const bool assigned = self->claimLaunchOrigin(*target, token);
       const bool associated = tokenName != nullptr && target->consumeLaunchActivation(tokenName);
@@ -465,8 +468,9 @@ namespace andromeda {
 
   void Server::beginLaunchBusy(std::string token, std::string appId) {
     constexpr auto kBusyLimit = std::chrono::seconds(5);
+    const auto now = std::chrono::steady_clock::now();
     m_launchBusy.push_back(
-        {.token = std::move(token), .appId = std::move(appId), .deadline = std::chrono::steady_clock::now() + kBusyLimit}
+        {.token = std::move(token), .appId = std::move(appId), .requestedAt = now, .deadline = now + kBusyLimit}
     );
     syncLaunchBusy();
   }
@@ -534,14 +538,22 @@ namespace andromeda {
     return std::nullopt;
   }
 
-  // token: the launch token of the window; a window without one ends the oldest pending launch.
-  std::optional<wlr_box> Server::endLaunchBusy(const std::optional<std::string>& token) {
+  // token: the launch token of the window; a window without one ends the oldest launch that has an app id hint.
+  std::optional<wlr_box> Server::endLaunchBusy(const std::optional<std::string>& token, std::string_view windowAppId) {
     const std::optional<wlr_box> icon = finishLaunchFeedback(token);
     if (token && m_cpuBoost != nullptr) {
       m_cpuBoost->launchMapped(*token);
     }
-    const auto match = token ? std::ranges::find(m_launchBusy, *token, &LaunchBusy::token) : m_launchBusy.begin();
+    const auto match = token ? std::ranges::find(m_launchBusy, *token, &LaunchBusy::token)
+                             : std::ranges::find_if(m_launchBusy, [](const LaunchBusy& b) { return !b.appId.empty(); });
     if (match != m_launchBusy.end()) {
+      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - match->requestedAt
+      );
+      kLog.info(
+          "launch {} {} in {} ms ({})", match->appId.empty() ? windowAppId : std::string_view(match->appId),
+          windowAppId.empty() ? "raised" : "mapped", ms.count(), token ? "token" : "unmatched"
+      );
       m_launchBusy.erase(match);
       syncLaunchBusy();
     }
@@ -555,7 +567,7 @@ namespace andromeda {
       if (busy.deadline > now) {
         return false;
       }
-      if (m_cpuBoost != nullptr) {
+      if (m_cpuBoost != nullptr && !busy.appId.empty()) {
         m_cpuBoost->expireLaunch(busy.appId);
       }
       finishLaunchFeedback(busy.token);
@@ -570,7 +582,7 @@ namespace andromeda {
       wl_event_source_timer_update(m_launchBusyTimer, delayMs);
     }
     if (m_cursor != nullptr) {
-      m_cursor->setLaunchBusy(!m_launchBusy.empty());
+      m_cursor->setLaunchBusy(std::ranges::any_of(m_launchBusy, [](const LaunchBusy& b) { return !b.appId.empty(); }));
     }
   }
 
@@ -628,9 +640,11 @@ namespace andromeda {
     }
     // A launch shows the busy cursor: the shell's dock and launcher set the app id hint. Compositor spawns do not:
     // most spawn keybinds run commands without a window (volume, brightness).
-    if (!watch->tokenName.empty() && token->app_id != nullptr) {
-      beginLaunchBusy(watch->tokenName, token->app_id);
-      beginLaunchFeedback(watch->tokenName, token->app_id);
+    if (!watch->tokenName.empty()) {
+      beginLaunchBusy(watch->tokenName, token->app_id != nullptr ? token->app_id : "");
+      if (token->app_id != nullptr) {
+        beginLaunchFeedback(watch->tokenName, token->app_id);
+      }
     }
     watch->destroy.notify = onActivationTokenDestroy;
     wl_signal_add(&token->events.destroy, &watch->destroy);
@@ -718,6 +732,7 @@ namespace andromeda {
     if (watch == nullptr || !watch->compositorIssued) {
       return;
     }
+    view.noteLaunchToken(*tokenName);
     claimLaunchOrigin(view, token);
   }
 

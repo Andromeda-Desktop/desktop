@@ -56,6 +56,9 @@ await_xcursor progress 5
 await_not_busy 50
 "$ANDROMEDA" windows --json | jq -e 'any(.[]; .title == "busy-launch")' > /dev/null \
   || { echo "the busy cursor ended before the window mapped"; exit 1; }
+# The window activates with its token before it maps; the launch still ends by that token, and logs its time.
+grep -qE "launch busy-launch mapped in [0-9]+ ms \(token\)" "$ANDROMEDA_LOG" \
+  || { echo "no token-matched launch time in the log: $(grep -o 'launch busy-launch.*' "$ANDROMEDA_LOG")"; exit 1; }
 
 # A launch that never maps a window: busy, then the arrow after the 5 s limit.
 for _ in $(seq 100); do

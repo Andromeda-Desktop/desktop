@@ -640,7 +640,8 @@ namespace andromeda {
 
     // Busy cursor of a pending launch (rulebook §10): ends when the window maps, or after 5 s.
     // Returns the launch icon's box when the launch had icon feedback (rulebook P15: the window grows from it).
-    std::optional<wlr_box> endLaunchBusy(const std::optional<std::string>& token);
+    // windowAppId names the window in the launch-time log when the launch had no app id hint.
+    std::optional<wlr_box> endLaunchBusy(const std::optional<std::string>& token, std::string_view windowAppId = {});
 
   private:
     friend class EisInput;
@@ -1115,7 +1116,8 @@ namespace andromeda {
     wl_event_source* m_backgroundFrameTimer = nullptr;
     struct LaunchBusy {
       std::string token;
-      std::string appId;
+      std::string appId; // empty for compositor spawns: no busy cursor, no feedback, only the launch-time log
+      std::chrono::steady_clock::time_point requestedAt;
       std::chrono::steady_clock::time_point deadline;
     };
     std::vector<LaunchBusy> m_launchBusy;

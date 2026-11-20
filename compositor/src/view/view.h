@@ -913,6 +913,12 @@ namespace andromeda {
         std::string_view scratchpad
     );
     bool consumeLaunchActivation(std::string_view token);
+    // The first launch token a never-mapped view names (activation or environment) is the launch it ends on map.
+    void noteLaunchToken(std::string_view token) {
+      if (!m_hasEverMapped && !m_launchBusyToken) {
+        m_launchBusyToken = std::string(token);
+      }
+    }
     bool cancelLaunchOrigin(std::string_view token);
     void clearLaunchPlacement(bool reconcile, bool clearToken);
     void applyWindowRules();
@@ -1104,6 +1110,8 @@ namespace andromeda {
     std::shared_ptr<WorkspaceLaunchAnchor> m_launchWorkspace;
     std::string m_launchScratchpad;
     std::optional<std::string> m_launchToken;
+    // The launch this view ends on its first map; activation and token destroy clear m_launchToken before map.
+    std::optional<std::string> m_launchBusyToken;
     std::string m_launchWorkspaceId;
     wl_event_source* m_launchPlacementTimer = nullptr;
     // The raw pre-map set_parent request. wlroots discards an unmapped target,
