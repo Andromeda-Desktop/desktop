@@ -286,6 +286,8 @@ package_andromeda-files-git() {
   install -d "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants"
   ln -s ../andromeda-files-reconnect.service \
     "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-files-reconnect.service"
+  ln -s ../andromeda-files-zygote.service \
+    "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-files-zygote.service"
   _pin_depends
 }
 

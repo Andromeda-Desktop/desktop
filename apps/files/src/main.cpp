@@ -4,9 +4,22 @@
 
 #include <glib.h>
 
+#include <string>
 #include <string_view>
+#include <vector>
 
 int main(int argc, char* argv[]) {
+  std::vector<std::string> childArgs;
+  std::vector<char*> childArgv;
+  if (argc == 2 && std::string_view(argv[1]) == "--zygote") {
+    childArgs = DeskApp::serveZygote(FilesApp::kAppId);
+    for (auto& arg : childArgs) {
+      childArgv.push_back(arg.data());
+    }
+    childArgv.push_back(nullptr);
+    argc = static_cast<int>(childArgs.size());
+    argv = childArgv.data();
+  }
   bool picker = false;
   bool service = false; // D-Bus activation for org.freedesktop.FileManager1: no window until a request
   for (int i = 1; i < argc; ++i) {

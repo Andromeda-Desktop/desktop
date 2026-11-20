@@ -9,10 +9,12 @@
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "core/process/app_zygote.h"
 #include "core/process/process_phase.h"
 #include "dbus/session_bus.h"
 #include "dbus/session_bus_poll_source.h"
 #include "platform/surface.h"
+#include "render/text/cairo_text_renderer.h"
 #include "ui/controls/input.h"
 #include "ui/tooltip/tooltip_manager.h"
 #include "wayland/text_input_service.h"
@@ -21,6 +23,7 @@
 #include <optional>
 #include <string_view>
 #include <csignal>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstdlib>
@@ -177,6 +180,27 @@ int DeskApp::run(int argc, char* argv[]) {
   return *exit;
 }
 
+namespace {
+  std::filesystem::path fontWarmupPath(const std::string& appId) {
+    const char* xdg = std::getenv("XDG_CACHE_HOME");
+    const char* home = std::getenv("HOME");
+    const std::filesystem::path cache = xdg != nullptr && xdg[0] == '/' ? std::filesystem::path(xdg)
+        : home != nullptr                                              ? std::filesystem::path(home) / ".cache"
+                                                                       : std::filesystem::path();
+    return cache.empty() ? cache : cache / "andromeda" / "font-warmup" / appId;
+  }
+} // namespace
+
+std::vector<std::string> DeskApp::serveZygote(const std::string& appId) {
+  const auto fonts = fontWarmupPath(appId);
+  return process::zygote::serve(appId, [&fonts] {
+    CairoTextRenderer::preloadFonts(fonts);
+    // Mesa's EGL vendor and its gallium driver: loading and relocating them is ~30 ms of each child's EGL init. Mesa
+    // starts no thread on load; serve() checks that. Other vendors are not loaded here.
+    dlopen("libEGL_mesa.so.0", RTLD_NOW | RTLD_LOCAL);
+  }).argv;
+}
+
 std::optional<int> DeskApp::start(int argc, char* argv[]) {
   initLogLevelFromEnvironment();
   auto [uris, serviceStart, startAction] = parseLaunchArgs(argc, argv);
@@ -205,6 +229,9 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     return 0;
   }
 
+  if (const auto fonts = fontWarmupPath(m_info.id); !fonts.empty()) {
+    CairoTextRenderer::recordFontsTo(fonts);
+  }
   if (!m_loop.initialize(m_info.sharedGl)) {
     return 1;
   }

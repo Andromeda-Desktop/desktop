@@ -1,0 +1,13 @@
+[Unit]
+Description=Preloaded Files that forks each Files launch
+PartOf=andromeda-session.target
+After=andromeda-session.target
+
+[Service]
+Slice=app.slice
+ExecStart=@bindir@/andromeda-files --zygote
+# The shell moves each child into its own app scope; a restart of the zygote must not stop a child.
+KillMode=process
+# Exit 0 after an upgrade replaced the binary: start the new one.
+Restart=always
+RestartSec=1

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <list>
 #include <string>
 #include <string_view>
@@ -64,6 +65,12 @@ public:
     m_textureManager = textures;
   }
   void cleanup();
+
+  // App zygote, before fork on its only thread: loads the fonts listed in `file` (one Pango font description per
+  // line) into a font map that the next initialize() in this process adopts.
+  static void preloadFonts(const std::filesystem::path& file);
+  // Records the first fonts this process loads; cleanup() writes them to `file` for preloadFonts().
+  static void recordFontsTo(std::filesystem::path file);
 
   void setFontFamily(std::string family);
   // Multiplies every text size (accessibility text_scale); symbols drawn by the glyph renderer keep their size.
@@ -252,6 +259,7 @@ private:
   void maybeSyncFontConfig();
 
   bool m_fontConfigInitialized = false;
+  mutable std::vector<std::string> m_recordedFonts;
   std::uint64_t m_syncedFontGeneration = 0;
   std::string m_fontFamily = "sans-serif";
   bool m_baseDirRtl = false;

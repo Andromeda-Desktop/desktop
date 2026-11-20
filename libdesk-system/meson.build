@@ -59,6 +59,8 @@ _sources = files(
   'src/system/rfkill_helper.cpp',
   'src/dbus/service_notice.cpp',
   'src/core/process/process.cpp',
+  'src/core/process/app_zygote.cpp',
+  'src/core/process/app_zygote_server.cpp',
   'src/dbus/logind/logind_service.cpp',
   'src/dbus/logind/power_config_service.cpp',
   'src/dbus/power/power_profiles_service.cpp',

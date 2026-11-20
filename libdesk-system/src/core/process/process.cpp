@@ -1,6 +1,7 @@
 #include "core/process/process.h"
 
 #include "core/log.h"
+#include "core/process/app_zygote.h"
 #include "core/process/async_process_manager.h"
 #include "util/string_utils.h"
 
@@ -794,6 +795,47 @@ namespace {
     return true;
   }
 
+  // A zygote child is already running: StartTransientUnit with its pid moves it into its own app scope, so per-app
+  // attribution matches an exec launch. Scope names cannot be templates: app-andromeda-<app id>-<random>.scope.
+  bool launchThroughZygote(
+      const std::vector<std::string>& args, const std::string& activationToken, const std::string& workingDir,
+      const std::string& appName
+  ) {
+    sdbus::IProxy* manager = systemdManager();
+    if (manager == nullptr) {
+      return false;
+    }
+    const auto pid = process::zygote::launch(appName, {.argv = args, .workingDir = workingDir, .activationToken = activationToken});
+    if (!pid) {
+      return false;
+    }
+    std::string uuid = StringUtils::generateUuid();
+    std::erase(uuid, '-');
+    const std::string unit = std::format("app-andromeda-{}-{}.scope", escapeSystemdUnitName(appName), uuid);
+    using Property = sdbus::Struct<std::string, sdbus::Variant>;
+    const std::vector<std::uint32_t> pids(1, static_cast<std::uint32_t>(*pid));
+    const std::vector<Property> properties{
+        {"Description", sdbus::Variant{args.front()}},
+        {"PIDs", sdbus::Variant{pids}},
+        {"Slice", sdbus::Variant{std::string("app.slice")}},
+        {"CollectMode", sdbus::Variant{std::string("inactive-or-failed")}},
+        {"CPUWeight", sdbus::Variant{std::uint64_t{1000}}},
+    };
+    try {
+      manager->callMethodAsync("StartTransientUnit")
+          .onInterface("org.freedesktop.systemd1.Manager")
+          .withArguments(unit, std::string("fail"), properties, std::vector<sdbus::Struct<std::string, std::vector<Property>>>{})
+          .uponReplyInvoke([unit](std::optional<sdbus::Error> error, const sdbus::ObjectPath& /*job*/) {
+            if (error.has_value()) {
+              kLog.error("launch: StartTransientUnit {} failed: {}", unit, error->getMessage());
+            }
+          });
+    } catch (const sdbus::Error& e) {
+      kLog.warn("launch: scope {} for zygote child {} not sent ({})", unit, *pid, e.getMessage());
+    }
+    return true;
+  }
+
   bool startSystemdService(
       const std::vector<std::string>& args, const std::string& activationToken, const std::string& workingDir,
       const std::string& appName
@@ -1426,7 +1468,8 @@ namespace process {
           || systemdManager() != nullptr;
     }();
     if (runningUnderSystemdUserManager() && reachable) {
-      return startSystemdService(args, activationToken, workingDir, appName);
+      return (!appName.empty() && launchThroughZygote(args, activationToken, workingDir, appName))
+          || startSystemdService(args, activationToken, workingDir, appName);
     }
 #endif
     return runAsync(args, activationToken, workingDir);

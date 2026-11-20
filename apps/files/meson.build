@@ -84,6 +84,8 @@ executable('andromeda-files',
   link_with: _files_lib,
   dependencies: [_desk_app_dep, _gio_unix_dep, dependency('vterm'), _preview_media_dep],
   cpp_args: _warnings,
+  # The --zygote fork server interposes g_thread_new to restart Pango's worker in each child.
+  link_args: '-Wl,--export-dynamic-symbol=g_thread_new',
   install: true,
 )
 
@@ -144,6 +146,12 @@ configure_file(
   output: 'dev.andromeda.Files.FileManager1.service',
   configuration: {'bindir': get_option('prefix') / get_option('bindir')},
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
+)
+configure_file(
+  input: 'data/andromeda-files-zygote.service.in',
+  output: 'andromeda-files-zygote.service',
+  configuration: {'bindir': get_option('prefix') / get_option('bindir')},
+  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'user',
 )
 configure_file(
   input: 'data/andromeda-files-reconnect.service.in',

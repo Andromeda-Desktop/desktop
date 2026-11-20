@@ -85,6 +85,9 @@ _dbus_run_session = find_program('dbus-run-session')
 foreach _t : ['command_table', 'state_store', 'file_model', 'type_ahead', 'thumbnail_pipeline', 'batch_rename', 'file_model_bench', 'thumbnail_service']
   test(_t, executable(_t + '_test', 'tests/' + _t + '_test.cpp', dependencies: desk_app_dep, cpp_args: _warnings))
 endforeach
+# The zygote's g_thread_new interposer restarts Pango's worker in each child; the executable must export it.
+test('app_zygote', executable('app_zygote_test', 'tests/app_zygote_test.cpp', dependencies: desk_app_dep,
+  cpp_args: _warnings, link_args: '-Wl,--export-dynamic-symbol=g_thread_new'), timeout: 30)
 test('single_instance', _dbus_run_session,
   args: ['--', executable('single_instance_test', 'tests/single_instance_test.cpp', dependencies: desk_app_dep,
     cpp_args: _warnings)],

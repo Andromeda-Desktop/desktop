@@ -14,15 +14,35 @@
 #include <cstring>
 #include <fontconfig/fontconfig.h>
 #include <format>
+#include <fstream>
 #include <functional>
 #include <hb-ot.h>
 #include <limits>
 #include <pango/pango-attributes.h>
 #include <pango/pangocairo.h>
 #include <pango/pangofc-fontmap.h>
+#include <utility>
 #include <vector>
 
 namespace {
+
+PangoFontMap* g_preloadedFontMap = nullptr; // adopted by the next initialize()
+std::filesystem::path g_recordFontsFile;
+constexpr std::size_t kMaxRecordedFonts = 48;
+
+// Force grayscale AA only. The tinted fast path rasterizes to A8 coverage and
+// tints in the shader (u_tint), which cannot carry per-channel subpixel/LCD
+// coverage — so subpixel AA can't be honored regardless of Fontconfig.
+// hint_style and hint_metrics are left at DEFAULT so the user's Fontconfig
+// hinting settings apply. measure() and draw() stay consistent because both
+// load fonts from this same shared PangoContext, not because of any specific
+// option value. The font map caches fonts per option set, so preloadFonts() uses the same options.
+void setGrayscaleFontOptions(PangoContext* context) {
+  cairo_font_options_t* fontOptions = cairo_font_options_create();
+  cairo_font_options_set_antialias(fontOptions, CAIRO_ANTIALIAS_GRAY);
+  pango_cairo_context_set_font_options(context, fontOptions);
+  cairo_font_options_destroy(fontOptions);
+}
 
   constexpr Logger kLog("text");
 
@@ -268,21 +288,14 @@ void CairoTextRenderer::initialize(RenderBackend* backend, TextureManager* textu
     kLog.warn("cairo version {} (<1.18): COLR v1 color emoji will not render", cairo_version_string());
   }
 
-  m_fontMap = pango_cairo_font_map_new();
+  m_fontMap = std::exchange(g_preloadedFontMap, nullptr);
+  if (m_fontMap == nullptr) {
+    m_fontMap = pango_cairo_font_map_new();
+  }
   m_pangoContext = pango_font_map_create_context(m_fontMap);
   pango_context_set_base_dir(m_pangoContext, m_baseDirRtl ? PANGO_DIRECTION_RTL : PANGO_DIRECTION_LTR);
 
-  // Force grayscale AA only. The tinted fast path rasterizes to A8 coverage and
-  // tints in the shader (u_tint), which cannot carry per-channel subpixel/LCD
-  // coverage — so subpixel AA can't be honored regardless of Fontconfig.
-  // hint_style and hint_metrics are left at DEFAULT so the user's Fontconfig
-  // hinting settings apply. measure() and draw() stay consistent because both
-  // load fonts from this same shared PangoContext, not because of any specific
-  // option value.
-  cairo_font_options_t* fontOptions = cairo_font_options_create();
-  cairo_font_options_set_antialias(fontOptions, CAIRO_ANTIALIAS_GRAY);
-  pango_cairo_context_set_font_options(m_pangoContext, fontOptions);
-  cairo_font_options_destroy(fontOptions);
+  setGrayscaleFontOptions(m_pangoContext);
 
   // Reserve bucket count up front so CacheMap iterators remain stable for the
   // lifetime of every entry — we rely on that stability to keep LRU list
@@ -297,7 +310,36 @@ void CairoTextRenderer::initialize(RenderBackend* backend, TextureManager* textu
   m_fontMetricsCache.reserve(kMaxFontMetricsEntries + 16);
 }
 
+void CairoTextRenderer::preloadFonts(const std::filesystem::path& file) {
+  FcInit();
+  g_preloadedFontMap = pango_cairo_font_map_new();
+  PangoContext* context = pango_font_map_create_context(g_preloadedFontMap);
+  setGrayscaleFontOptions(context);
+  std::ifstream in(file);
+  for (std::string line; std::getline(in, line);) {
+    PangoFontDescription* desc = pango_font_description_from_string(line.c_str());
+    PangoLayout* layout = pango_layout_new(context);
+    pango_layout_set_font_description(layout, desc);
+    pango_layout_set_text(layout, "Aa 0123", -1);
+    pango_layout_get_pixel_extents(layout, nullptr, nullptr);
+    g_object_unref(layout);
+    pango_font_description_free(desc);
+  }
+  g_object_unref(context);
+}
+
+void CairoTextRenderer::recordFontsTo(std::filesystem::path file) { g_recordFontsFile = std::move(file); }
+
 void CairoTextRenderer::cleanup() {
+  if (!m_recordedFonts.empty()) {
+    std::error_code ec;
+    std::filesystem::create_directories(g_recordFontsFile.parent_path(), ec);
+    std::ofstream out(g_recordFontsFile, std::ios::trunc);
+    for (const auto& font : m_recordedFonts) {
+      out << font << '\n';
+    }
+    m_recordedFonts.clear();
+  }
   clearCaches();
 
   if (m_pangoContext != nullptr) {
@@ -469,6 +511,13 @@ PangoFontDescription* CairoTextRenderer::newFontDescription(const TextFont& font
     axes += "," + font.variations;
   }
   pango_font_description_set_variations(desc, axes.c_str());
+  if (!g_recordFontsFile.empty() && m_recordedFonts.size() < kMaxRecordedFonts) {
+    char* name = pango_font_description_to_string(desc);
+    if (!std::ranges::contains(m_recordedFonts, std::string_view(name))) {
+      m_recordedFonts.emplace_back(name);
+    }
+    g_free(name);
+  }
   return desc;
 }
 
