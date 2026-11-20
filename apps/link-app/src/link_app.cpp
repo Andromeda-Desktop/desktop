@@ -1,6 +1,8 @@
 #include "link_app.h"
 
 #include "app/app_window.h"
+#include "core/text_clipboard.h"
+#include "ui/controls/input.h"
 #include "ui/controls/image.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
@@ -613,6 +615,16 @@ namespace linkapp {
     DeskApp::action(name, parameter, activationToken);
   }
 
+  void LinkApp::chooseAndSend(const std::string& deviceId) {
+    if (m_window == nullptr || bus() == nullptr) return;
+    if (m_chooser == nullptr) m_chooser = std::make_unique<desk::FileChooser>(*bus());
+    m_window->exportHandle([this, deviceId](const std::string& parent) {
+      m_chooser->openFiles(parent, "Send Files", [this, deviceId](std::vector<std::filesystem::path> paths) {
+        if (!paths.empty()) m_client->sendFiles(deviceId, paths);
+      });
+    });
+  }
+
   void LinkApp::show(Page page) {
     if (m_page == page) return;
     if (m_client && m_page == Page::Mirror) m_client->stopMirror();
@@ -782,7 +794,7 @@ namespace linkapp {
       const float key = Tokens::sizeControlM * s;
       const bool live = presence.kind != Presence::Kind::Away;
       const auto round = [&](const char* glyph, const char* tip, bool on, std::function<void()> click) {
-        return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbolInline * s, .enabled = live,
+        return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .enabled = live,
                            .variant = on && live ? ButtonVariant::Primary : ButtonVariant::Tonal, .tooltip = std::string(tip),
                            .radius = key / 2.0F, .width = key, .height = key, .onClick = std::move(click)});
       };
@@ -791,7 +803,15 @@ namespace linkapp {
       auto keys = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::SpaceBetween, .paddingV = Tokens::spaceP4 * s});
       keys->addChild(round("bell", "Ring phone", false, [this, id] { m_client->ring(id); }));
       keys->addChild(round("device-mobile", "Mirror", false, [this] { show(Page::Mirror); }));
+      keys->addChild(round("clipboard", "Send clipboard", false, [this, id] {
+        if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+          clipboard->requestClipboardText([this, id](std::optional<std::string> text) {
+            if (text.has_value() && !text->empty()) m_client->shareText(id, *text);
+          });
+        }
+      }));
       keys->addChild(round("circle-minus", "Do not disturb", dnd, [this, id, dnd] { m_client->setDnd(id, !dnd); }));
+      keys->addChild(round("arrow-up", "Send files", false, [this, id] { chooseAndSend(id); }));
       card->addChild(std::move(keys));
     }
     side->addChild(std::move(card));
@@ -1101,6 +1121,9 @@ namespace linkapp {
       }
     }
     caption.push_back(std::move(crumbs));
+    caption.push_back(ui::button({.text = std::string("Send files"), .glyph = std::string("arrow-up"),
+                                  .variant = ButtonVariant::Tonal,
+                                  .onClick = [this] { chooseAndSend(m_client->presence().phone.id); }}));
 
     std::unique_ptr<Node> body;
     if (files.load() == Files::Load::Failed) {

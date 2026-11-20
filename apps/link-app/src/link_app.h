@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app/desk_app.h"
+#include "app/file_chooser.h"
 #include "render/core/texture_manager.h"
 #include "link_client.h"
 #include "ui/controls/scroll_view.h"
@@ -192,6 +193,7 @@ namespace linkapp {
                                              float width, bool windowButtons);
     // Cards mode and the viewed thread follow the page and presence.
     void sync();
+    void chooseAndSend(const std::string& deviceId);
 
     std::unique_ptr<LinkClient> m_client;
     std::unique_ptr<FeedAdapter> m_feed;
@@ -215,6 +217,7 @@ namespace linkapp {
     bool m_confirmForget = false; // Settings: the Forget row asks in place
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;
+    std::unique_ptr<desk::FileChooser> m_chooser;
     Page m_page = Page::Waiting;
     float m_scale = 1.0F;
     Renderer* m_renderer = nullptr;   // the window's, from the last content build

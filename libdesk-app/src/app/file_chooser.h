@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 class SessionBus;
 namespace sdbus {
@@ -31,6 +32,9 @@ namespace desk {
     // Asks for one file to open; same contract as chooseFolder.
     void openFile(const std::string& parentWindow, const std::string& title,
                   std::function<void(std::optional<std::filesystem::path>)> picked);
+    // Asks for one or more files to open; `picked` gets an empty list on cancel or error, else as chooseFolder.
+    void openFiles(const std::string& parentWindow, const std::string& title,
+                   std::function<void(std::vector<std::filesystem::path>)> picked);
     // Asks where to save a new file, suggesting currentName; same contract as chooseFolder.
     void saveFile(const std::string& parentWindow, const std::string& title, const std::string& currentName,
                   std::function<void(std::optional<std::filesystem::path>)> picked);
@@ -38,7 +42,7 @@ namespace desk {
   private:
     void request(const char* method, const std::string& parentWindow, const std::string& title,
                  std::map<std::string, sdbus::Variant> options,
-                 std::function<void(std::optional<std::filesystem::path>)> picked);
+                 std::function<void(std::vector<std::filesystem::path>)> picked);
 
     SessionBus& m_bus;
     std::unique_ptr<sdbus::IProxy> m_portal;

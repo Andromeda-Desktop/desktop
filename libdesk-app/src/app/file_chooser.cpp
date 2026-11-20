@@ -22,22 +22,27 @@ namespace desk {
     constexpr auto kRequest = "org.freedesktop.portal.Request";
     using Options = std::map<std::string, sdbus::Variant>;
 
-    std::optional<std::filesystem::path> firstPath(std::uint32_t response, const Options& results) {
+    std::vector<std::filesystem::path> pickedPaths(std::uint32_t response, const Options& results) {
+      std::vector<std::filesystem::path> paths;
       const auto it = results.find("uris");
       if (response != 0 || it == results.end() || !it->second.containsValueOfType<std::vector<std::string>>()) {
-        return std::nullopt;
+        return paths;
       }
-      const auto uris = it->second.get<std::vector<std::string>>();
-      if (uris.empty()) {
-        return std::nullopt;
+      for (const auto& uri : it->second.get<std::vector<std::string>>()) {
+        gchar* file = g_filename_from_uri(uri.c_str(), nullptr, nullptr);
+        if (file != nullptr) {
+          paths.emplace_back(file);
+          g_free(file);
+        }
       }
-      gchar* file = g_filename_from_uri(uris.front().c_str(), nullptr, nullptr);
-      if (file == nullptr) {
-        return std::nullopt;
-      }
-      std::filesystem::path path(file);
-      g_free(file);
-      return path;
+      return paths;
+    }
+
+    std::function<void(std::vector<std::filesystem::path>)>
+    takeFront(std::function<void(std::optional<std::filesystem::path>)> picked) {
+      return [picked = std::move(picked)](std::vector<std::filesystem::path> paths) {
+        picked(paths.empty() ? std::nullopt : std::optional(std::move(paths.front())));
+      };
     }
   } // namespace
 
@@ -47,21 +52,26 @@ namespace desk {
 
   void FileChooser::chooseFolder(const std::string& parentWindow, const std::string& title,
                                  std::function<void(std::optional<std::filesystem::path>)> picked) {
-    request("OpenFile", parentWindow, title, {{"directory", sdbus::Variant{true}}}, std::move(picked));
+    request("OpenFile", parentWindow, title, {{"directory", sdbus::Variant{true}}}, takeFront(std::move(picked)));
   }
 
   void FileChooser::openFile(const std::string& parentWindow, const std::string& title,
                              std::function<void(std::optional<std::filesystem::path>)> picked) {
-    request("OpenFile", parentWindow, title, {}, std::move(picked));
+    request("OpenFile", parentWindow, title, {}, takeFront(std::move(picked)));
+  }
+
+  void FileChooser::openFiles(const std::string& parentWindow, const std::string& title,
+                              std::function<void(std::vector<std::filesystem::path>)> picked) {
+    request("OpenFile", parentWindow, title, {{"multiple", sdbus::Variant{true}}}, std::move(picked));
   }
 
   void FileChooser::saveFile(const std::string& parentWindow, const std::string& title, const std::string& currentName,
                              std::function<void(std::optional<std::filesystem::path>)> picked) {
-    request("SaveFile", parentWindow, title, {{"current_name", sdbus::Variant{currentName}}}, std::move(picked));
+    request("SaveFile", parentWindow, title, {{"current_name", sdbus::Variant{currentName}}}, takeFront(std::move(picked)));
   }
 
   void FileChooser::request(const char* method, const std::string& parentWindow, const std::string& title,
-                            Options options, std::function<void(std::optional<std::filesystem::path>)> picked) {
+                            Options options, std::function<void(std::vector<std::filesystem::path>)> picked) {
     const std::uint64_t seq = ++m_seq;
     const std::string token = std::format("desk_choose{}", seq);
     try {
@@ -77,9 +87,9 @@ namespace desk {
       m_request->uponSignal("Response").onInterface(kRequest).call(
           [this, seq, picked, alive = std::weak_ptr<bool>(m_alive)](std::uint32_t response, const Options& results) {
             // The request proxy runs this handler; the next request replaces it only after the handler returns.
-            DeferredCall::callLater([this, seq, picked, alive, path = firstPath(response, results)] {
+            DeferredCall::callLater([this, seq, picked, alive, paths = pickedPaths(response, results)] {
               if (!alive.expired() && seq == m_seq) {
-                picked(path);
+                picked(paths);
               }
             });
           });
@@ -92,12 +102,12 @@ namespace desk {
                                std::optional<sdbus::Error> error, sdbus::ObjectPath /*request*/) {
             if (error.has_value() && !alive.expired() && seq == m_seq) {
               kLog.warn("{}: {}", method, error->getMessage());
-              picked(std::nullopt);
+              picked({});
             }
           });
     } catch (const sdbus::Error& e) {
       kLog.warn("file chooser portal: {}", e.getMessage());
-      picked(std::nullopt);
+      picked({});
     }
   }
 

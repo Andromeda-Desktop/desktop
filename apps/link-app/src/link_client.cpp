@@ -6,6 +6,9 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdio>
+#include <cstring>
+#include <algorithm>
+#include <fcntl.h>
 #include <filesystem>
 #include <glib.h>
 #include <chrono>
@@ -722,6 +725,33 @@ namespace linkapp {
     m_proxy->callMethodAsync("Ring").onInterface(kInterface).withArguments(deviceId, true)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("Ring: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::shareText(const std::string& deviceId, const std::string& text) {
+    const bool link = (text.starts_with("http://") || text.starts_with("https://")) &&
+                      std::ranges::none_of(text, [](unsigned char c) { return std::isspace(c) != 0; });
+    m_proxy->callMethodAsync("Share").onInterface(kInterface)
+        .withArguments(deviceId, std::string(link ? "link" : "text"), text)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("Share: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::sendFiles(const std::string& deviceId, const std::vector<std::filesystem::path>& paths) {
+    std::vector<sdbus::Struct<sdbus::UnixFd, std::string>> files;
+    for (const auto& path : paths) {
+      const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOCTTY);
+      if (fd < 0) {
+        kLog.warn("SendFiles: open {}: {}", path.string(), std::strerror(errno));
+        continue;
+      }
+      files.emplace_back(sdbus::UnixFd{fd, sdbus::adopt_fd}, path.filename().string());
+    }
+    if (files.empty()) return;
+    m_proxy->callMethodAsync("SendFiles").onInterface(kInterface).withArguments(deviceId, files)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error, std::string /*transfer*/) {
+          if (error) kLog.warn("SendFiles: {}", error->getMessage());
         });
   }
 

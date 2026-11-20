@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -101,6 +102,9 @@ namespace linkapp {
     void ring(const std::string& deviceId);
     void dial(const std::string& deviceId, const std::string& number);
     void setDnd(const std::string& deviceId, bool on);
+    // Sends text to the phone's clipboard; a lone http(s) URL goes as a link.
+    void shareText(const std::string& deviceId, const std::string& text);
+    void sendFiles(const std::string& deviceId, const std::vector<std::filesystem::path>& paths);
 
   private:
     struct Download;
