@@ -3,7 +3,9 @@
 #include "core/log.h"
 #include "dbus/session_bus.h"
 
+#include <cctype>
 #include <chrono>
+#include <format>
 #include <map>
 #include <optional>
 #include <sdbus-c++/sdbus-c++.h>
@@ -78,22 +80,25 @@ namespace linkapp {
             item.files.emplace_back(f.get<0>(), f.get<1>());
             item.total += f.get<1>();
           }
+          m_activity.offered(transfer, device, item.files, item.atMs);
           m_feed.upsert(std::move(item));
           changed();
         });
     m_proxy->uponSignal("TransferProgress")
         .onInterface(kInterface)
         .call([this](const std::string& transfer, std::uint64_t bytes, std::uint64_t total) {
-          if (m_feed.moveTransfer("o:" + transfer, Transfer::Running, bytes, total)) changed();
+          const bool feed = m_feed.moveTransfer("o:" + transfer, Transfer::Running, bytes, total);
+          if (m_activity.progress(transfer, bytes, total, nowMs()) || feed) changed();
         });
     m_proxy->uponSignal("TransferFinished")
         .onInterface(kInterface)
-        .call([this](const std::string& transfer, const std::string& status, const std::vector<std::string>&) {
+        .call([this](const std::string& transfer, const std::string& status, const std::vector<std::string>& paths) {
+          const bool listed = m_activity.finished(transfer, status, paths, nowMs());
           const std::string key = "o:" + transfer;
           const bool moved = status == "done"       ? m_feed.moveTransfer(key, Transfer::Done)
                              : status == "declined" ? m_feed.remove(key)
                                                     : m_feed.moveTransfer(key, Transfer::Failed);
-          if (moved) changed();
+          if (moved || listed) changed();
         });
     refresh();
   }
@@ -268,19 +273,59 @@ namespace linkapp {
     if (m_feed.remove(item.key)) changed();
   }
 
-  void LinkClient::accept(const FeedItem& offer) {
-    m_proxy->callMethodAsync("AcceptTransfer").onInterface(kInterface).withArguments(offer.key.substr(2))
+  void LinkClient::accept(const FeedItem& offer) { acceptTransfer(offer.key.substr(2)); }
+
+  void LinkClient::decline(const FeedItem& offer) { declineTransfer(offer.key.substr(2)); }
+
+  void LinkClient::acceptTransfer(const std::string& id) {
+    m_proxy->callMethodAsync("AcceptTransfer").onInterface(kInterface).withArguments(id)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("AcceptTransfer: {}", error->getMessage());
         });
   }
 
-  void LinkClient::decline(const FeedItem& offer) {
-    m_proxy->callMethodAsync("DeclineTransfer").onInterface(kInterface).withArguments(offer.key.substr(2))
+  // TransferFinished "declined" removes the Activity entry; the Waiting item leaves now.
+  void LinkClient::declineTransfer(const std::string& id) {
+    m_proxy->callMethodAsync("DeclineTransfer").onInterface(kInterface).withArguments(id)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("DeclineTransfer: {}", error->getMessage());
         });
-    if (m_feed.remove(offer.key)) changed();
+    if (m_feed.remove("o:" + id)) changed();
+  }
+
+  void LinkClient::cancelTransfer(const std::string& id) {
+    m_proxy->callMethodAsync("CancelTransfer").onInterface(kInterface).withArguments(id)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("CancelTransfer: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::clearFinished() {
+    m_activity.clearFinished();
+    changed();
+  }
+
+  void LinkClient::showInFolder(const std::vector<std::string>& paths) {
+    std::vector<std::string> uris;
+    for (const std::string& path : paths) {
+      std::string uri = "file://";
+      for (const unsigned char c : path) {
+        if (std::isalnum(c) != 0 || c == '/' || c == '-' || c == '_' || c == '.' || c == '~') {
+          uri += static_cast<char>(c);
+        } else {
+          uri += std::format("%{:02X}", c);
+        }
+      }
+      uris.push_back(std::move(uri));
+    }
+    if (!m_fileManager) {
+      m_fileManager = sdbus::createProxy(m_bus.connection(), sdbus::ServiceName{"org.freedesktop.FileManager1"},
+                                         sdbus::ObjectPath{"/org/freedesktop/FileManager1"});
+    }
+    m_fileManager->callMethodAsync("ShowItems").onInterface("org.freedesktop.FileManager1").withArguments(uris, std::string())
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("ShowItems: {}", error->getMessage());
+        });
   }
 
   void LinkClient::connect(const std::string& deviceId) {

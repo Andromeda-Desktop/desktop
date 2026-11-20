@@ -78,13 +78,30 @@ def emit_sample():
     for (id_, _thread, address, body, _at, _sent) in texts:
         if id_ in (5, 7, 8):
             emit("TextReceived", "(stss)", "p1", id_, address, body)
-    if os.environ.get("PAGE", "waiting") != "waiting":
+    page = os.environ.get("PAGE", "waiting")
+    if page == "activity":
+        emit_activity()
+    if page != "waiting":
         return False  # no shell popups over another page's caption
     emit("TransferOffered", "(ssa(st))", "t1", "p1", [("Quarterly report Q3 final (2).pdf", 2_400_000)])
     emit("NotificationPosted", "(sssssaya(ssb)b)", "p1", "n1", "Slack", "#release", "v2026.11.6 is out", b"",
          [("reply", "Reply", True)], False)
     emit("NotificationPosted", "(sssssaya(ssb)b)", "p1", "n2", "Calendar", "Dentist", "Tomorrow 09:30", b"", [], False)
     return False
+
+
+def emit_activity():
+    home = os.path.expanduser("~")
+    emit("TransferOffered", "(ssa(st))", "t3", "p1", [("IMG_20261120_181203.jpg", 3_400_000)])
+    emit("TransferProgress", "(stt)", "t3", 3_400_000, 3_400_000)
+    emit("TransferFinished", "(ssas)", "t3", "done", [home + "/Pictures/IMG_20261120_181203.jpg"])
+    emit("TransferProgress", "(stt)", "t2", 14_000_000, 14_000_000)
+    emit("TransferFinished", "(ssas)", "t2", "done", [])
+    emit("TransferProgress", "(stt)", "t5", 0, 2_000_000)
+    emit("TransferFinished", "(ssas)", "t5", "failed", [])
+    emit("TransferProgress", "(stt)", "t4", 10_000_000, 160_000_000)
+    GLib.timeout_add(500, lambda: emit("TransferProgress", "(stt)", "t4", 11_050_000, 160_000_000) or False)
+    emit("TransferOffered", "(ssa(st))", "t1", "p1", [("Quarterly report Q3 final (2).pdf", 2_400_000)])
 
 
 def call(_conn, _sender, _path, _iface, method, params, invocation):

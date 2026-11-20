@@ -2,6 +2,8 @@
 // after every event.
 #include "link_model.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <ctime>
 #include <format>
@@ -220,6 +222,63 @@ namespace {
     }
   }
 
+  // Random Transfer* signals: one entry per id, newest first, only allowed moves, declined offers gone.
+  void runActivity(unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<int> op(0, 5), idOf(0, 11), statusOf(0, 6);
+    const std::array<const char*, 7> statuses{"done", "failed", "declined", "no-space", "too-large", "busy", "cancelled"};
+    Activity a;
+    std::int64_t now = 1'000'000;
+    for (int step = 1; step <= 300; ++step) {
+      now += 250;
+      const std::string id = std::format("t{}", idOf(rng));
+      const auto before = std::ranges::find(a.items(), id, &TransferEntry::id);
+      const std::optional<Transfer> was = before == a.items().end() ? std::nullopt : std::optional(before->state);
+      const auto after = [&] {
+        const auto it = std::ranges::find(a.items(), id, &TransferEntry::id);
+        return it == a.items().end() ? std::nullopt : std::optional(it->state);
+      };
+      switch (op(rng)) {
+      case 0:
+        a.offered(id, "p1", {{"a.pdf", 1000}, {"b.jpg", 500}}, now);
+        expect(after().has_value(), "an offer shows", seed, step);
+        if (was) expect(after() == was, "a repeated offer changes nothing", seed, step);
+        break;
+      case 1:
+      case 2: {
+        const bool moved = a.progress(id, 300, 1500, now);
+        expect(moved == (!was || transferMayMove(*was, Transfer::Running)), "progress only where Running is allowed", seed, step);
+        if (moved) expect(after() == Transfer::Running, "progress means Running", seed, step);
+        break;
+      }
+      case 3:
+      case 4: {
+        const std::string status = statuses[static_cast<std::size_t>(statusOf(rng))];
+        const bool moved = a.finished(id, status, {}, now);
+        if (status == "declined") {
+          expect(moved == was.has_value() && !after(), "a declined transfer leaves", seed, step);
+        } else {
+          const Transfer to = status == "done" ? Transfer::Done : Transfer::Failed;
+          expect(moved == (was && transferMayMove(*was, to)), "finish only by an allowed move", seed, step);
+          if (moved) expect(after() == to, "finish sets the end state", seed, step);
+        }
+        break;
+      }
+      default:
+        a.clearFinished();
+        expect(a.finishedCount() == 0, "Clear finished keeps only open transfers", seed, step);
+        break;
+      }
+      std::set<std::string> ids;
+      for (std::size_t i = 0; i < a.items().size(); ++i) {
+        const TransferEntry& e = a.items()[i];
+        expect(ids.insert(e.id).second, "one entry per transfer", seed, step);
+        if (i > 0) expect(a.items()[i - 1].atMs >= e.atMs, "newest first", seed, step);
+        if (e.state == Transfer::Done) expect(e.bytes == e.total, "a done transfer is complete", seed, step);
+      }
+    }
+  }
+
   void dialing() {
     Messages m;
     m.setContacts({{.name = "Maya Okafor", .numbers = {"+49 151 1234-0001"}}, {.name = "Mum", .numbers = {}},
@@ -251,6 +310,7 @@ int main() {
   presence();
   days();
   dialing();
+  for (unsigned seed = 1; seed <= 20; ++seed) runActivity(seed);
   if (failures == 0) std::puts("link_model: ok");
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

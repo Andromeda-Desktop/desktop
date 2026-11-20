@@ -36,7 +36,8 @@ namespace linkapp {
 
   enum class Transfer : std::uint8_t { Offered, Running, Done, Failed };
 
-  // Offered -> Running -> Done | Failed; Offered -> Failed; Failed -> Running (Try Again). Anything else is rejected.
+  // Offered -> Running -> Done | Failed; Offered -> Done (a small file may finish before any progress) | Failed;
+  // Failed -> Running (Try Again). Anything else is rejected.
   [[nodiscard]] bool transferMayMove(Transfer from, Transfer to);
 
   struct FeedAction {
@@ -83,6 +84,47 @@ namespace linkapp {
   private:
     std::vector<FeedItem> m_items;
   };
+
+  // One transfer on the Activity page, from the Transfer* signals (Link1 keeps no list).
+  struct TransferEntry {
+    std::string id;
+    std::string deviceId;
+    bool incoming = true;
+    std::vector<std::pair<std::string, std::uint64_t>> files;
+    Transfer state = Transfer::Offered;
+    std::string status; // TransferFinished status: done, failed, no-space, too-large, busy, cancelled
+    std::vector<std::string> paths; // where an incoming transfer saved its files
+    std::uint64_t bytes = 0;
+    std::uint64_t total = 0;
+    std::int64_t atMs = 0;     // offered or first seen
+    std::int64_t endMs = 0;    // finished
+    std::int64_t rateFromMs = 0; // the first progress: the rate counts from here
+    std::uint64_t rateFromBytes = 0;
+  };
+
+  // The Activity list, newest first. A progress for an unknown id is a transfer this desktop sends (SendFiles from
+  // any app); a declined offer leaves the list.
+  class Activity {
+  public:
+    void offered(const std::string& id, const std::string& deviceId,
+                 std::vector<std::pair<std::string, std::uint64_t>> files, std::int64_t nowMs);
+    // False when the move is rejected (a finished transfer) and nothing changed.
+    bool progress(const std::string& id, std::uint64_t bytes, std::uint64_t total, std::int64_t nowMs);
+    bool finished(const std::string& id, const std::string& status, std::vector<std::string> paths, std::int64_t nowMs);
+    void clearFinished();
+
+    [[nodiscard]] const std::vector<TransferEntry>& items() const { return m_items; }
+    [[nodiscard]] std::size_t finishedCount() const;
+    [[nodiscard]] std::size_t offeredCount() const;
+
+  private:
+    std::vector<TransferEntry> m_items;
+  };
+
+  // Bytes per second since the first progress; 0 until a second sample.
+  [[nodiscard]] double transferRate(const TransferEntry& entry, std::int64_t nowMs);
+  // "2.4 MB", "512 KB", "1.2 GB".
+  [[nodiscard]] std::string byteSize(std::uint64_t bytes);
 
   // One SMS as Link1 Texts reports it.
   struct Text {

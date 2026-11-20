@@ -36,6 +36,7 @@ namespace linkapp {
     // The call log of the phone presence() shows, newest first, and whether the phone gives it.
     [[nodiscard]] const std::vector<CallEntry>& calls() const { return m_calls; }
     [[nodiscard]] CallLog callLog() const { return m_callLog; }
+    [[nodiscard]] const Activity& activity() const { return m_activity; }
     void viewThread(std::optional<std::uint64_t> thread);
     // Sends `body` to `thread`'s address; it shows as sending until Texts holds it, failed on an error.
     void sendText(std::uint64_t thread, const std::string& body);
@@ -47,6 +48,12 @@ namespace linkapp {
     void accept(const FeedItem& offer);
     void decline(const FeedItem& offer);
     void clearAll();
+    void acceptTransfer(const std::string& id);
+    void declineTransfer(const std::string& id);
+    void cancelTransfer(const std::string& id);
+    void clearFinished();
+    // Opens the file manager on these files (org.freedesktop.FileManager1.ShowItems).
+    void showInFolder(const std::vector<std::string>& paths);
     void connect(const std::string& deviceId);
     void ring(const std::string& deviceId);
     void dial(const std::string& deviceId, const std::string& number);
@@ -59,6 +66,7 @@ namespace linkapp {
 
     SessionBus& m_bus;
     std::unique_ptr<sdbus::IProxy> m_proxy;
+    std::unique_ptr<sdbus::IProxy> m_fileManager;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
@@ -68,6 +76,7 @@ namespace linkapp {
     std::vector<Phone> m_phones;
     Feed m_feed;
     Messages m_messages;
+    Activity m_activity;
     std::vector<CallEntry> m_calls;
     CallLog m_callLog = CallLog::Ready;
     std::set<std::string> m_dismissed; // missed calls the user cleared; Calls keeps reporting them

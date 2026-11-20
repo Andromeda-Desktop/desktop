@@ -21,7 +21,7 @@ namespace linkapp {
 
   bool transferMayMove(Transfer from, Transfer to) {
     switch (from) {
-    case Transfer::Offered: return to == Transfer::Running || to == Transfer::Failed;
+    case Transfer::Offered: return to == Transfer::Running || to == Transfer::Done || to == Transfer::Failed;
     case Transfer::Running: return to == Transfer::Running || to == Transfer::Done || to == Transfer::Failed;
     case Transfer::Failed: return to == Transfer::Running;
     case Transfer::Done: return false;
@@ -89,6 +89,74 @@ namespace linkapp {
     if (days > 1 && days < 7) return kDays[static_cast<std::size_t>(at.tm_wday)];
     if (at.tm_year == now.tm_year) return std::format("{} {}", at.tm_mday, kMonths[static_cast<std::size_t>(at.tm_mon)]);
     return std::format("{} {} {}", at.tm_mday, kMonths[static_cast<std::size_t>(at.tm_mon)], at.tm_year + 1900);
+  }
+
+  void Activity::offered(const std::string& id, const std::string& deviceId,
+                         std::vector<std::pair<std::string, std::uint64_t>> files, std::int64_t nowMs) {
+    if (std::ranges::contains(m_items, id, &TransferEntry::id)) return;
+    TransferEntry entry{.id = id, .deviceId = deviceId, .files = std::move(files), .atMs = nowMs};
+    for (const auto& file : entry.files) entry.total += file.second;
+    m_items.insert(m_items.begin(), std::move(entry));
+  }
+
+  bool Activity::progress(const std::string& id, std::uint64_t bytes, std::uint64_t total, std::int64_t nowMs) {
+    auto it = std::ranges::find(m_items, id, &TransferEntry::id);
+    if (it == m_items.end()) {
+      m_items.insert(m_items.begin(), {.id = id, .incoming = false, .state = Transfer::Running, .atMs = nowMs});
+      it = m_items.begin();
+    } else if (!transferMayMove(it->state, Transfer::Running)) {
+      return false;
+    }
+    if (it->state != Transfer::Running || it->rateFromMs == 0) {
+      it->rateFromMs = nowMs;
+      it->rateFromBytes = bytes;
+    }
+    it->state = Transfer::Running;
+    it->bytes = bytes;
+    it->total = total;
+    return true;
+  }
+
+  bool Activity::finished(const std::string& id, const std::string& status, std::vector<std::string> paths, std::int64_t nowMs) {
+    const auto it = std::ranges::find(m_items, id, &TransferEntry::id);
+    if (it == m_items.end()) return false;
+    if (status == "declined") {
+      m_items.erase(it);
+      return true;
+    }
+    const Transfer to = status == "done" ? Transfer::Done : Transfer::Failed;
+    if (!transferMayMove(it->state, to)) return false;
+    it->state = to;
+    it->status = status;
+    it->paths = std::move(paths);
+    it->endMs = nowMs;
+    if (to == Transfer::Done) it->bytes = it->total;
+    return true;
+  }
+
+  void Activity::clearFinished() {
+    std::erase_if(m_items, [](const TransferEntry& e) { return e.state == Transfer::Done || e.state == Transfer::Failed; });
+  }
+
+  std::size_t Activity::finishedCount() const {
+    return static_cast<std::size_t>(std::ranges::count_if(
+        m_items, [](const TransferEntry& e) { return e.state == Transfer::Done || e.state == Transfer::Failed; }));
+  }
+
+  std::size_t Activity::offeredCount() const {
+    return static_cast<std::size_t>(std::ranges::count(m_items, Transfer::Offered, &TransferEntry::state));
+  }
+
+  double transferRate(const TransferEntry& entry, std::int64_t nowMs) {
+    const std::int64_t ms = nowMs - entry.rateFromMs;
+    if (entry.rateFromMs == 0 || ms <= 0 || entry.bytes <= entry.rateFromBytes) return 0.0;
+    return static_cast<double>(entry.bytes - entry.rateFromBytes) * 1000.0 / static_cast<double>(ms);
+  }
+
+  std::string byteSize(std::uint64_t bytes) {
+    if (bytes >= 1'000'000'000) return std::format("{:.1f} GB", static_cast<double>(bytes) / 1e9);
+    if (bytes >= 1'000'000) return std::format("{:.1f} MB", static_cast<double>(bytes) / 1e6);
+    return std::format("{} KB", (bytes + 999) / 1000);
   }
 
   CallLog callLogFrom(const std::string& refused) {
