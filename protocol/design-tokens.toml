@@ -801,6 +801,30 @@ fade_dock = 132.0    # bottom fade under the home dock
 off_alpha = 0.38     # controls and dock while the desktop is away, paused or connecting
 grab = 36.0          # sheet grab bar width (height space.p4)
 desk_glyph = 40.0    # desktop glyph in the Desktops sheet (r12)
+round_key_l = 60.0   # Remote and Viewer dock keys (the home dock keys are size.row_two)
+pad_dot = 1.4        # touchpad dot grid: dot radius; the grid step is space.p20
+rail = 28.0          # Remote scroll rail width (r = width / 2)
+key_s = 44.0         # Keys sheet modifier keys
+composer = 52.0      # Keys sheet composer height (r = height / 2)
+prev_zone = 120.0    # presenter Previous zone height (width size.row_two)
+timer_scale = 2.6    # presenter timer = type.large x this
+plane_key = 0.18     # keys on the accent plane: on_accent at this alpha
+picture = 0.54       # Viewer picture height, share of the screen (portrait)
+pointer = 26.0       # Viewer pointer arrow, drawn by the phone
+minimap = 104.0      # Viewer minimap width
+hold_ring = 64.0     # Viewer hold ring diameter (stroke space.p2 + 1)
+follow_zoom = 2.5    # Viewer camera: this x the width fit, portrait
+follow_zoom_wide = 1.6  # the same, landscape
+follow_band = 0.6    # the camera pans only when the pointer leaves this middle share
+max_zoom = 5.0       # pinch zoom limit over the fit
+hero_glyph = 80.0    # pairing and setup hero glyph (r24)
+hero_symbol = 40.0   # symbol inside the hero glyph and the pairing orb
+orb = 120.0          # pairing progress orb
+orb_ring = 0.08      # orb outer disc: accent at this alpha
+orb_tint = 0.22      # orb inner disc (hero_glyph wide): accent at this alpha
+code_cell = 64.0     # pairing code cell height (r12)
+finder_corner = 44.0 # viewfinder corner mark arm, stroke space.p4, radius r12
+finder_inset = 0.22  # viewfinder corner marks sit this share in from each edge
 
 [component.page]  # window content, 8
 padding = 24.0

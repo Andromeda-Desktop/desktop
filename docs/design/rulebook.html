@@ -135,7 +135,7 @@ body { font-optical-sizing: none; font-variation-settings: "opsz" 14; }
 .sheet { width: 360px; border-radius: 28px; padding: 12px; display: grid; grid-template-columns: 164px 164px; gap: 8px; }
 .tile { height: 56px; border-radius: 16px; padding: 12px; display: flex; align-items: center; gap: 12px; background: var(--f1); min-width: 0; }
 .tile:hover { background: var(--f2); }
-.ri { width: 40px; height: 40px; border-radius: 20px; display: grid; place-items: center; background: var(--f2); color: var(--l1); flex: none; }
+.ri { width: 32px; height: 32px; border-radius: 16px; display: grid; place-items: center; background: var(--f2); color: var(--l1); flex: none; }
 .on > .ri, .ri.on { background: var(--acc); color: #fff; }
 .tt { min-width: 0; } .tt > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .span2 { grid-column: span 2; }
@@ -399,12 +399,15 @@ canvas.plot { width: 100%; height: 120px; display: block; }
 <a class="sub" href="#ch-D-4-migration-order-proposal" data-ch="D">4. Migration order (proposal)</a>
 <a class="sub" href="#ch-D-files-v2-2026-11-07" data-ch="D">Files v2 (2026-11-07)</a>
 <a class="sub" href="#ch-D-bar-islands-2026-11-10" data-ch="D">Bar islands (2026-11-10)</a>
-<a class="sub" href="#ch-D-shape-glass-tone-2026-11-11" data-ch="D">Shape glass tone (2026-11-11)</a>
+<a class="sub" href="#ch-D-clear-glass-tone-2026-11-18" data-ch="D">Clear glass tone (2026-11-18)</a>
 <a class="sub" href="#ch-D-lock-screen-own-image-blur-2026-11-11" data-ch="D">Lock screen own image blur (2026-11-11)</a>
 <a class="sub" href="#ch-D-theme-transition-clock-2026-11-12" data-ch="D">Theme transition clock (2026-11-12)</a>
 <a class="sub" href="#ch-D-share-picker-2026-11-15" data-ch="D">Share picker (2026-11-15)</a>
 <a class="sub" href="#ch-D-terminal-split-cards-2026-11-17" data-ch="D">Terminal split cards (2026-11-17)</a>
-<a class="sub" href="#ch-D-user-styled-boxes-outside-the-glass-material-2026-11-17" data-ch="D">User-styled boxes outside the glass material (2026-11-17)</a></div>
+<a class="sub" href="#ch-D-user-styled-boxes-outside-the-glass-material-2026-11-17" data-ch="D">User-styled boxes outside the glass material (2026-11-17)</a>
+<a class="sub" href="#ch-D-terminal-workspace-foot-bar-lens-name-2026-11-18" data-ch="D">Terminal workspace foot bar: lens name (2026-11-18)</a>
+<a class="sub" href="#ch-D-control-center-without-a-sheet-dialog-size-2026-11-18" data-ch="D">Control Center without a sheet; dialog size (2026-11-18)</a>
+<a class="sub" href="#ch-D-bar-cell-lens-colour-2026-11-19" data-ch="D">Bar cell lens colour (2026-11-19)</a></div>
 </nav>
 <main>
 <section class="doc cover" id="ch-cover"><h1>Andromeda design rulebook</h1>
@@ -916,7 +919,7 @@ label_2 at 4.5:1 or more.</p>
 <td>over</td>
 <td>thick glass</td>
 <td>E3</td>
-<td>sheets (control center, launcher, notification center), menus, popovers, banners, tooltips, OSD</td>
+<td>sheets (launcher, notification center, dialogs), menus, popovers, banners, tooltips, OSD; the control center has no sheet: each tile is its own glass piece (user, 2026-11-18)</td>
 </tr>
 <tr>
 <td>window</td>
@@ -947,7 +950,7 @@ label_2 at 4.5:1 or more.</p>
 <tr>
 <td>regular</td>
 <td>white 34 % (Tinted; slider Clear 20 % to Frosted 84 %, protocol/glass_material.h)</td>
-<td>#1c1c20 70 %</td>
+<td>#38383f 70 %</td>
 <td>dual Kawase 3 passes, radius 6, noise 0.02</td>
 </tr>
 <tr>
@@ -965,7 +968,7 @@ label_2 at 4.5:1 or more.</p>
 <tr>
 <td>dark recipe</td>
 <td>-</td>
-<td>saturation 1.6, brightness 0.95, contrast 0.95</td>
+<td>saturation 1.25, brightness 1.04 (concept C), contrast 0.95</td>
 <td></td>
 </tr>
 </tbody>
@@ -973,14 +976,17 @@ label_2 at 4.5:1 or more.</p>
 <p>Every glass shape draws: tint, 0.5 px <code>stroke</code> outline (no top edge highlight), then its
 shadow. The compositor draws blur and shadow; the client draws tint and content.</p>
 <h3 id="ch-5-5-3-readable-glass">5.3 Readable glass</h3>
-<p>Each tint rises toward the next material until label_2 over the sampled backdrop reaches 4.5:1: regular toward
-thick, thick toward its solid fallback. Over a calm wallpaper nothing changes; over a busy or black window the
-float plane reaches thick and the over plane nears solid (thick light glass over pure black gives label_2 only 4.1:1
-without this rule). Reduce transparency replaces every
+<p>As the backdrop nears the glass's own tone, the surface's density rises (0..1). It follows the sample that most
+threatens the ink, not the mean: light glass answers its darkest spot, dark glass its brightest. Density raises the tint
+until label_1 reaches 4.5:1 over a white (dark glass) or black (light glass) backdrop (glass::kLegibleAlpha), and
+raises label_2 to 4.5:1 and label_3 to 3:1 ink (glass::kLegibleInk2/3) on that surface. Glass alone cannot carry the
+secondary labels: dark label_2 needs tint .94 over white, and dark label_3 never reaches 3:1. Over a calm wallpaper
+nothing changes. Reduce transparency replaces every
 material with its solid fallback (light #f2f2f6 / #f8f8fa, dark #222226 / #28282c).</p>
 <h3 id="ch-5-5-4-elevation">5.4 Elevation</h3>
 <p>Two shadows per level: a key shadow (y offset = 3/8 of blur) and a contact shadow. Shadow colour: light
-rgb(20,20,40), dark black.</p>
+rgb(20,20,40), dark black. On layer shapes (islands, dock, sheets) opacity follows the backdrop, not the glass scheme: the dark value over
+black, the light value over white, interpolated by the measured mean luminance.</p>
 <table>
 <thead>
 <tr>
@@ -1005,8 +1011,8 @@ rgb(20,20,40), dark black.</p>
 </tr>
 <tr>
 <td>E2</td>
-<td>6 / 16 / 12 %, 30 %</td>
-<td>1 / 4 / 8 %, 20 %</td>
+<td>9 / 24 / 10 %, 15 %</td>
+<td>1 / 6 / 5 %, 10 %</td>
 <td>float plane</td>
 </tr>
 <tr>
@@ -1070,8 +1076,8 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
 </tr>
 <tr>
 <td>menu (current item)</td>
-<td>rect r 8</td>
-<td>4 (concentric in the menu, r 12)</td>
+<td>rect r 14</td>
+<td>4 (concentric in the menu, r 18)</td>
 </tr>
 <tr>
 <td>grouped list in a window</td>
@@ -1139,7 +1145,7 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
    Opacity, colour and blur use effect springs (bounce 0).</li>
 <li><strong>Bounce where momentum arrives.</strong> Opening, morphing, a release after a press and a lens arrival bounce.
    Closing, fading and page changes do not.</li>
-<li><strong>Exits are faster than entries</strong> (close 0.28 s against open 0.30 s) and never stagger.</li>
+<li><strong>Exits are faster than entries</strong> (close 0.24 s against open 0.26 s) and never stagger.</li>
 <li><strong>Retarget, never restart.</strong> A new target keeps the current value and velocity. No animation queues behind
    another. Reversing mid-flight turns the same spring around.</li>
 <li><strong>Gate on progress, not on time.</strong> "Content fades in after 35 %" means 35 % of the shape's travel, so the
@@ -1205,6 +1211,16 @@ white 18 %. Inside the lens, text goes to label_1 and weight 600; the symbol tak
 <td>340 ms</td>
 <td>0.2 %</td>
 <td>a surface grows from its source (user, 2026-11-07: 0.42 / 0.22 felt slow and late)</td>
+</tr>
+<tr>
+<td>zoom</td>
+<td>0.34</td>
+<td>0.20</td>
+<td>342</td>
+<td>0.80</td>
+<td>390 ms</td>
+<td>1.5 %</td>
+<td>the overview opens: the desktop zooms into its frame, overshoots, relaxes (user, 2026-11-20: open's 0.2 % felt stiff)</td>
 </tr>
 <tr>
 <td>close</td>
@@ -1467,7 +1483,7 @@ focused control as the source; global shortcuts use the island that owns the sur
 <td>P15</td>
 <td>Window open</td>
 <td>launch from dock / launcher</td>
-<td>Grow from the launching icon rect (snapshot scaled until the first client commit), open; from a shortcut: scale 0.94 -&gt; 1 from the window centre</td>
+<td>Grow from the launching icon rect (the app's theme icon, drawn at device pixels, until the first client commit), open; from a shortcut: scale 0.94 -&gt; 1 from the window centre</td>
 </tr>
 <tr>
 <td>P16</td>
@@ -1728,7 +1744,7 @@ row says so.</p>
 <li><strong>Dock:</strong> 8 from the bottom edge, centred. Windows end 8 above it when it is not set to hide.</li>
 <li><strong>Tiling:</strong> 8 between windows and between a window and the screen, bar or dock. Maximize keeps the 8 gaps and the
   radius; fullscreen removes both.</li>
-<li><strong>Window content:</strong> page padding 24; content column max 640 for forms and Settings pages, centred; group gap 24.</li>
+<li><strong>Window content:</strong> page padding 24; content column max 640 for forms and Settings pages; beside a sidebar it starts one page padding right of the sidebar and spare width stays at the far end (user, 2026-11-19: a centred column left an empty band at the sidebar); without a sidebar it is centred; group gap 24.</li>
 </ul>
 </section>
 <section class="doc" id="ch-9"><h2>9. Components</h2>
@@ -1818,7 +1834,7 @@ row says so.</p>
 </tr>
 <tr>
 <td>slider pill</td>
-<td>full width x 48, r 16 (R7); track <code>slider_track</code> (black 6 % light, white 10 % dark), no edge; level <code>slider_fill</code> (white 92 % light, user 2026-11-08; white 24 % dark) from the start edge, no knob; symbol 16 at inset 16 (R5 in a 48 rect: (48 - 16) / 2) in <code>on_slider_fill</code> (label_1 light, white 92 % dark); value footnote at inset 16 from the end: label_2 on the track, <code>on_slider_fill</code> where the fill passes under it</td>
+<td>full width x 48, r 16 (R7); track <code>slider_track</code> (black 6 % light, white 10 % dark), no edge; level <code>slider_fill</code> (smoked glass #141418 10 % light, user 2026-11-19: a white level vanishes over white glass; white 24 % dark) from the start edge, no knob; symbol 16 at inset 16 (R5 in a 48 rect: (48 - 16) / 2) in <code>on_slider_fill</code> (label_1 light, white 92 % dark); value footnote at inset 16 from the end: label_2 on the track, <code>on_slider_fill</code> where the fill passes under it</td>
 </tr>
 <tr>
 <td>media card</td>
@@ -1854,6 +1870,10 @@ row says so.</p>
 <tr>
 <td>app icon</td>
 <td>48, g 8</td>
+</tr>
+<tr>
+<td>launcher, trash</td>
+<td>glyph 38 (launcher grain), ink, its cell is 38 long on the main axis (gaps equal the gaps between app icons) and centred across the 48 row, no tile; a custom launcher image keeps the 48 cell</td>
 </tr>
 <tr>
 <td>focused app</td>
@@ -2127,11 +2147,11 @@ matches the primary action. Values (fields, pop-ups) are rounded rectangles r 8.
 <tbody>
 <tr>
 <td>menu</td>
-<td>r 12, p 4, thick glass, E3; width 160 to 320, from the longest item</td>
+<td>r 18, p 4, thick glass, E3; width 160 to 320, from the longest item</td>
 </tr>
 <tr>
 <td>item</td>
-<td>h 28, r 8 (R7: 12 - 4), p 0 / 8, so text sits 12 from the menu edge; body label_1</td>
+<td>h 28, r 14 (R7: 18 - 4), p 0 / 8, so text sits 12 from the menu edge; body label_1</td>
 </tr>
 <tr>
 <td>check column</td>
@@ -2186,7 +2206,7 @@ matches the primary action. Values (fields, pop-ups) are rounded rectangles r 8.
 </tr>
 <tr>
 <td>dialog</td>
-<td>w 480, r 24; header h 56 with title-3 at inset 24; body p 0 / 24; footer p 24, buttons trailing, g 8</td>
+<td>width per dialog (file 880 x 560, colour 340, glyph 540 x 540, search picker 420 x 380, other 480); r 28 (sheet radius), p 12, g 12; header h 40 with title-3 at inset 12 and a close button 32; footer buttons h 40 trailing, g 8; a dialog may split into glass pieces g 8 (file: places + browser) (user, 2026-11-18)</td>
 </tr>
 <tr>
 <td>scrim</td>
@@ -2320,7 +2340,7 @@ only; typing Grows it down into results.</p>
 </tr>
 <tr>
 <td>footer</td>
-<td>h 36, hairline above; result count footnote label_3; key hints footnote label_2 with key caps fill_1 r 4: "Open ↩", "Actions ⌘K", "Close esc"</td>
+<td>h 36, hairline above; result count footnote label_3; key hints footnote label_2 with key caps fill_1 r 4: "Open ↩", "Actions Ctrl K", "Close Esc"</td>
 </tr>
 <tr>
 <td>apps</td>
@@ -2631,7 +2651,7 @@ detail pages, editing and every state. Mockup: <code>.agent/mockups/cc-v2-final.
 </tr>
 <tr>
 <td>detail page</td>
-<td>Slides in inside the sheet (P12); header h 48: back icon button 32, title-3, the module's toggle at the end; content = grouped rows (§9.7) on glass_card cards r 12 with a glass_card_edge hairline (rows r 8 at p 4); footer: plain small buttons, the last opens the Settings page; Escape or back returns</td>
+<td>Slides in inside the sheet (P12); page inset 8; header h 48 (padding 0 4 4, gap 12): back icon button 40 r 20 on the island glass tint with the rim, title-3 (15/20 600), the module's toggle at the end; content = grouped rows (§9.7) on glass_card cards r 12 with a glass_card_edge hairline (rows r 8 at p 4); footer: plain small buttons, the last opens the Settings page; Escape or back returns</td>
 </tr>
 <tr>
 <td>current item</td>
@@ -3279,7 +3299,7 @@ rulebook yet, full restyle.</p>
 <tr>
 <td>Window switcher</td>
 <td>O</td>
-<td>own size set (500 / 380 / 280 / 220 cards, scales 0.9 / 0.95): no rulebook anatomy yet</td>
+<td>own size set (500 / 380 / 280 / 220 cards, scales 0.9 / 0.95), now tokens in component.switcher: no rulebook anatomy yet</td>
 </tr>
 <tr>
 <td>Overview</td>
@@ -3340,9 +3360,9 @@ rulebook yet, full restyle.</p>
 <li>Track to app icon: flex gap 8, not §9.1 "g 12". The icon's 16 box carries about 2 of clear margin, so the ink gap is 10, equal to icon -&gt; title (11). A 12 box gap read as a hole (user, 2026-11-10).</li>
 <li>Vertical left island ends at the app icon with box inset 10, not the symbol end 8 (R5): the icon's clear margin puts its ink 12 in, equal to the track's lead. Rule: equal optical (ink) end padding.</li>
 </ul>
-<h3 id="ch-D-shape-glass-tone-2026-11-11">Shape glass tone (2026-11-11)</h3>
+<h3 id="ch-D-clear-glass-tone-2026-11-18">Clear glass tone (2026-11-18)</h3>
 <ul>
-<li>All shell glass (bar islands, dock, center island, launcher pill, sheets, menus, tooltips, OSD, notifications) at Clear and Tinted uses dark glass with white content in both schemes (user, 2026-11-11); rulebook "Light is not inverted dark" implies light glass in light mode. Frosted (slider &gt;= 0.75) keeps the scheme glass. Over a bright backdrop the shape tint rises to the dense tint 0.84 so white symbols keep &gt;= 3:1. Apps and their windows keep the scheme.</li>
+<li>Shell glass follows the scheme (concept C, user 2026-11-18; replaces the 2026-11-11 dark-glass rule). Clear glass is dark with white content in both schemes: it is almost transparent, so its ink follows the wallpaper, not the scheme (Apple's Clear does the same). Over a bright backdrop the density path dims it so white text keeps &gt;= 4.5:1.</li>
 </ul>
 <h3 id="ch-D-lock-screen-own-image-blur-2026-11-11">Lock screen own image blur (2026-11-11)</h3>
 <ul>
@@ -3372,6 +3392,76 @@ rulebook yet, full restyle.</p>
 <li>Desktop widget backgrounds (<code>background_color</code> × <code>background_opacity</code>, default 0.8) and the lock login box
   (default 0.88) are per-widget user styles from the widget editor, not glass: the compositor blurs nothing under
   them, so the Tint slider does not scale them. They follow the slider only if they become glass surfaces.</li>
+</ul>
+<h3 id="ch-D-terminal-workspace-foot-bar-lens-name-2026-11-18">Terminal workspace foot bar: lens name (2026-11-18)</h3>
+<ul>
+<li>Mockup concept-c2 shows the current workspace's full name in the foot-bar lens, but at 1x its 4 items + "+" need
+  247 px of the 224 px track (its "+" sits outside the track). Built: the lens is capped to the space the other items
+  leave and its name ellipsizes; under 32 px of name it shows the symbol only. The search placeholder carries the full
+  name, as the design states.</li>
+</ul>
+<h3 id="ch-D-control-center-without-a-sheet-dialog-size-2026-11-18">Control Center without a sheet; dialog size (2026-11-18)</h3>
+<ul>
+<li>CC: concept C has no thick glass sheet; each tile is its own glass piece over the backdrop (macOS style, no dim layer).
+  Rulebook §5.1 "over" row updated (user approved).</li>
+<li>Dialogs: rulebook 9.10 had one size (w 480, r 24). Dialogs keep their own widths and use the sheet radius 28; 9.10
+  updated (user approved). The code still has no parent scrim (9.10 requires one) and a 10 px menu separator (token 8).</li>
+</ul>
+<h3 id="ch-D-bar-cell-lens-colour-2026-11-19">Bar cell lens colour (2026-11-19)</h3>
+<ul>
+<li>Concept C paints the open-panel lens on a bar cell white .26 (dark) / black .10 (light). No token has these values;
+  the Control Center button uses fill_3 (white .16 / black .12) until a token for the island lens exists.</li>
+<li>Overview Spaces frame shadow: the mockup's 0 8 24 .28 has no elevation token; the frame uses e2 (0 6 16 .30).</li>
+<li>
+<p>Overview arrangement chip: the mockup has no chip. Spaces and Task View drop it (the window menu's Arrangement row
+  stays); a Strip row name keeps its "· Free ▾" chip so a pointer can still change a workspace's arrangement.</p>
+</li>
+<li>
+<p>2026-11-19 notification center (proto overlays.css .o-group:not(.open) .o-stack padding-bottom 16): a collapsed stack reserves 8 px per back card it shows (8 for a group of 2, 16 for 3+), not a fixed 16, so a group of two has no empty 8 px under its peek.</p>
+</li>
+<li>2026-11-19 percent text (proto flow.html volumeText "38 %", battery "82 %"): the shell writes "38%" as rulebook writing rules say (percent without a space); the mockup space is not copied.
+| Notification center card | N | the app's first named action (Reply, Open) shows as a pill under the body (head-capsule pill style, p 4 above and below); the proto cards carry no actions, but without it a dismissed banner's action could not run from the history |</li>
+<li>2026-11-19 notification center (user): it hangs under the bell, its trailing edge on the status island's end (as the tray drawer), not centred under the clock island as in proto flow.html #surface=nc.</li>
+<li>2026-11-19 bar (concept-c.html:147-150): the default lanes now follow the mockup: date and time in the centre island, status island tray, Wi-Fi, Bluetooth, battery, bell | Control Center; no volume, clock or app name in the side islands.</li>
+<li>2026-11-19 window switcher (proto surfaces.js setSurf('switcher'), .s-switch): the product carousel switcher stays (TASK-shell-build "Keep: product carousel window switcher (no change)", user plan 11-18); the proto strip of window shots is not built.</li>
+<li>2026-11-19 launcher footer (rulebook 9.14 said "Actions ⌘K", "Close esc"; proto surfaces.js "Ctrl K", "Esc"): Linux keyboards have no ⌘ key, so the hints follow the proto and Ctrl+K opens the actions menu (Shift+Enter still does); rulebook updated.</li>
+<li>2026-11-19 glass density (proto styles.css --dense: Frosted light 0, Liquid light 0): over a low-contrast backdrop every style closes at least the gap that lifts its lowest tint to kLegibleAlpha (.54 light, .67 dark glass), so text keeps 4.5:1; light Frosted and Liquid therefore densify (.43) where the mockup adds nothing. Other styles take the mockup --dense (protocol/glass_material.h kDenseOverlay).</li>
+<li>2026-11-19 launcher tab row (user): Emoji and Clipboard modes keep the Clipboard | Emoji | GIFs | Stickers | Symbols tab row under the search field; the proto has none. The user keeps it.</li>
+<li>2026-11-19 stepper (rulebook 9.6 "two icon buttons small (24) in one capsule track, divider 1 x 12"): Settings steppers keep an editable value field between the two buttons, because their values (ms, px, %) need typed input; both dividers are 1 x 12 (component.stepper.divider).</li>
+<li>2026-11-19 overview current-workspace ring (handoff.yaml:13 says 3 px accent; overview.css .ov-ws.cur renders 2 px ink, .hot 3 px accent): the render wins; the shown workspace's card has a 2 px text-primary ring, the accent ring is for a drag target.</li>
+<li>2026-11-19 overview current thumb (overview.js:140 draws each window as a solid app-colour block with a shadow, a stand-in for content): the shown workspace's windows live in the main area, so its thumb draws see-through ink blocks (fill .14, rim .30); a solid block per window would hide the wallpaper under a maximized window and duplicate content the main area already shows.</li>
+<li>2026-11-19 overview Spaces with a Scrolling workspace (the mockup has no scrolling case): the frame keeps the output's shape and its wallpaper fills it; the strip of windows fits inside the frame at its own smaller scale. Before, the wallpaper took the strip's scale and ended short of the frame.</li>
+<li>2026-11-19 overview empty workspace (overview.css .ov-ws .empty: bare ink-2 text on the wallpaper): "No windows" sits on an island-glass capsule (Kind::Shape, whole-scene blur so it shows the thumb under it), so label_2 keeps 4.5:1 over a bright wallpaper (rulebook 4.2).</li>
+<li>2026-11-19 launcher grid current cell (proto surfaces.css:92-96 draws a grey well rgba(0,0,0,.06) r20): rulebook §6 wins: the lens (white 92 % light, E1 shadow) at r16, hover one fill step (fill_1).</li>
+<li>2026-11-19 launcher web row (proto surfaces.js:107-109 adds a right hint "Search the web" and an accent glyph tile): the hint repeats the title, so the row shows the title only.</li>
+<li>2026-11-19 launcher and control center key focus ring (rulebook 11: 2 px ring 2 px outside the item): the launcher grid and list and the CC tile pager clip their items at the viewport, so an outside ring loses its edge on the first and last rows; the 2 px accent ring sits on the lens edge instead. Shown after arrow keys, gone after a pointer press.</li>
+<li>
+<p>2026-11-19 island and CC media play button (proto overlays.css:7 white .88 with a dark glyph): rulebook 9.12 (rulebook.md:676) wins: fill_2 with label_1 glyph, the same control family as the other round buttons.</p>
+</li>
+<li>
+<p>Dock launcher and trash glyph 38, 0.8 of the icon (concept C: 24). At 24 and 32 the bare glyphs read small next to the app tiles (user 2026-11-19). Token component.dock.glyph.</p>
+</li>
+<li>Dock launcher glyph grain (concept C: layout-grid); the user prefers it (user 2026-11-19). Config dock.launcher_icon.</li>
+<li>Dock launcher and trash glyph cells are the glyph's size (38) on the main axis, not the 48 icon cell, so every gap in the row is equal (user 2026-11-19).</li>
+<li>2026-11-19 panel pour (proto openCC pour_y_share 0.5, openNC 0.4): pieces start at face_scale 0.92 with their spacing cut by the share, so rows and cards overlap in the first frames (laptop recording, CC rows ~60 apart and ~48 tall). Shares are 0.2 (CC, motion.pour_y_share) and 0.15 (NC, calendar): the rows keep their gaps the whole way. The pour moves pieces by Node::setTranslation, so a layout pass during the pour no longer snaps rows to rest for a frame.</li>
+<li>2026-11-19 launcher clipboard preview (proto surfaces.js: Paste, Paste as Text, Pin, Delete): no Paste as Text. The history stores text only as text/plain (clipboard_service.cpp kTextMimeTypes), so Paste already pastes plain text; a second button would do the same.</li>
+<li>2026-11-19 launcher clipboard list card (proto .s-clip 360): the card is at least list_pane wide and grows to fit the mode tab row (kept by the user), so longer languages fit.</li>
+<li>2026-11-19 notification center (proto overlays.css .o-nc: header capsule and cards as separate glass pieces): one glass sheet (rulebook 9.11, user: separate pills looked worse). Cards are fill_2 with a 1 px separator edge, not fill_1: on the sheet glass fill_1 cards and their stack blended into one area (user). A back card shows only its strip under the card in front (clipped), so translucent fills never stack. The group toggle carries a chevron (down: "N More", up: "Show Less"; user asked for a "v" expand control).</li>
+<li>2026-11-19 island media hover: with no album art the tile stays the neutral Label3 tile with a music glyph; the mockup gradient (overlays.css .o-art) stands in for real art and is not built as a fallback.</li>
+<li>2026-11-19 island incoming call: Silence (bell-off) and Decline, not Accept and Decline: link cannot answer a call on the desktop (call audio stays on the phone).</li>
+<li>2026-11-19 glass style Frosted: panels show the island Frosted glass (Shape, tint 0.70 dark), not the proto near-opaque frosted sheet (styles.css --sheet-tint .97): every shell surface uses the one island glass (user, CLAUDE.md). Clear and Tinted match.</li>
+<li>2026-11-19 settings Bar page More clusters (concept A data.js): Circular avatar, Avatar border and Show file names sit in Panel look, not Where panels open: they change how a panel looks, not where it opens. Where panels open keeps one Placement, Position and Open near clicked widget row per panel, each named after its panel ("Launcher Placement"), not one combined row per panel: the three keys are separate settings with their own visibility rules.</li>
+<li>2026-11-19 settings More options, wide placement (concept-a-wide.html: crumb, title and search fixed above index and content): the index runs the full window height beside the sidebar and the header scrolls with the options, as the header does on every settings page (settings_window_scene.cpp rebuildSettingsContent builds it inside the content scroll). One header pattern for all pages; the index stays fully visible.</li>
+<li>2026-11-19 CC detail header (proto flow.css .dh .back class glass, .sw 44 x 26): the back button is the island glass tint and rim drawn by the shell over the sheet glass (a glass piece cannot sit on a sheet that is not pieces), without its own shadow; the switch is the one toggle, 40 x 24 (component.toggle).</li>
+<li>2026-11-19 settings More index width 184, not 176 (concept-a-wide.html .body 176px): shell text renders about 4 % wider than the browser mockup (Clicks on empty bar: 126 px against 121 px), so at 176 the current row "Position and spacing" (Medium) ellipsized. Longer labels in other languages still ellipsize, as the mockup does.</li>
+<li>2026-11-19 light Tinted glass over a mid-luminance wallpaper (proto styles.css scheme-light.style-tinted --dense .3 always): the compositor adds the dense lift only as the backdrop nears the glass's own tone (adaptDensity), so on wall-colour the light pieces and sheets stay near tint .34 (mockup ~.54). Dark text there still measures ~6.5:1, so the adaptive density stays.</li>
+<li>2026-11-19 readable glass (rulebook 5.3, was: the tint rises until label_2 reaches 4.5:1): the tint rises only until label_1 reaches 4.5:1 (dark .80, light .60), and label_2 / label_3 ink rises with the surface's density (dark .86 / .60, light .80 / .62 at full density). Measured: dark glass at the old .67 floor over white gave label_1 3.6:1, label_2 2.5:1; label_2 at 4.5:1 by tint alone needs dark tint .94 (a solid sheet). Density follows the darkest (light glass) or brightest (dark glass) of the probe's 8 samples over all of a surface's nodes, not the area-weighted mean: over a half-white, half-black wall the mean left light glass thin and text over the black half under 3:1. The shadow keeps the mean.</li>
+<li>2026-11-20 bar islands (rulebook P2 press, §9 pressed lens, bar hover pill): an island does not scale on press, and its items show no hover pill and no open-state lens (user: remove the island shrink and the circle inside the island). The opening sheet is the tap feedback.</li>
+<li>2026-11-20 glass pointer light (glass_material.h kPointerLightReach, was 64): reach 128 logical px; the light adds to the rim by distance only (Gaussian, rim_pointer_boost 0.9) and bleeds softly into the band; the hairline keeps its width and the lit side never flips at the edge (user: a thicker line near the pointer read as an unrefined dash).</li>
+<li>2026-11-20 spring.open 0.30 -&gt; 0.26 s, spring.close 0.28 -&gt; 0.24 s (user: open and close 10-15 % faster); every panel shares them.</li>
+<li>2026-11-20 CC glass tile hover: fill_1, not fill_2 (rulebook P3 one step; a glass tile rests clear, and fill_2 read as a milky wash, user).</li>
+<li>Link Android home (2026-11-20): a third Controls switch row "Ring" (on while the desktop rings). The approved concept-c.html has no Ring, but Ring is a shipped feature and the desktop reports it as a state, so it is a switch row like Do not disturb.</li>
+<li>Link Android Remote (2026-11-20): the Keys sheet's arrow, Esc, Tab and Enter keys are r16, not the mockup's 14 (R7 nested radius: sheet r28 - padding 12). The presenter has no Start key: the mockup has none; the user starts the show on the desktop. The how-to line is on_accent at full alpha, not 85 %.</li>
 </ul>
 </section>
 </main>
