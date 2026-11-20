@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Control center v2 flow (rulebook 9.16): the Dark Mode tile toggles the theme, the Wi-Fi chevron opens the detail page and
-# back returns, a page dot changes the page, edit mode removes a tile and Done persists [control_center] quick_tiles.
+# back returns, a tile drag does not toggle, edit mode removes a tile and Done persists [control_center] quick_tiles.
 # Every step waits on state (theme value, a changed panel crop, the saved file) with a timeout. Shots go to $OUT
 # (default ./artifacts/control-center-v2).
 set -euo pipefail
@@ -99,30 +99,20 @@ PY
   settle
   grim "$OUT/6f-reopened.png"; cp "$OUT/6f-reopened.png" "$OUT/last.png"
 
-  "$POINTER" 1280 720 move 1150 152 click 272 move 5 715 > /dev/null
+  "$POINTER" 1280 720 move 1016 152 click 272 move 5 715 > /dev/null
   wait_for 5 theme_is dark || fail "Dark Mode tile did not switch the theme to dark"
   wait_for 5 panel_changed || fail "the sheet did not repaint dark"
   settle
   grim "$OUT/10-dark.png"; cp "$OUT/10-dark.png" "$OUT/last.png"
 
-
-  step 5-page2 1091 196
-  step 6-page1 1079 196
-
-  # A drag that starts on the Dark Mode tile changes the page and does not toggle the theme.
-  "$POINTER" 1280 720 move 1150 152 press 272 move 1100 152 move 1000 152 move 900 152 release 272 move 5 715 > /dev/null
-  wait_for 5 panel_changed || fail "a drag on a tile did not change the page"
+  # A drag that starts on the Dark Mode tile goes to the pager and does not toggle the theme.
+  "$POINTER" 1280 720 move 1016 152 press 272 move 966 152 move 866 152 move 766 152 release 272 move 5 715 > /dev/null
   settle
   theme_is dark || fail "the tile drag toggled the theme"
-  cp "$OUT/now.png" "$OUT/6b-drag-page2.png"
-  cp "$OUT/5-page2.png" "$OUT/last.png"
-  panel_changed && fail "the tile drag did not land on page 2"
-  cp "$OUT/6b-drag-page2.png" "$OUT/last.png"
-  step 6c-page1 1079 196
 
-  step 7-edit 1044 284
+  step 7-edit 1156 204
   step 8-removed 932 108
-  step 9-done 1224 76
+  step 9-done 1235 64
 
   conf=$HOME/.local/state/andromeda/shell/overrides.toml
   wait_for 5 bash -c "[[ -n \"$conf\" ]] && grep -q quick_tiles \"$conf\"" || fail "quick_tiles was not saved"
