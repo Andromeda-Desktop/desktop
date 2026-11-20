@@ -2631,6 +2631,7 @@ struct wlr_scene_blur* wlr_scene_blur_create(struct wlr_scene_tree* parent, int 
   blur->alpha = 1.0f;
   blur->ignore_alpha = 0.0f;
   blur->strength = 1.0f;
+  blur->content_scale = 1.0f;
   blur->clipped_region = (struct clipped_region){0};
   blur->corners = corner_radii_all(0);
   blur->should_only_blur_bottom_layer = false;
@@ -2810,6 +2811,14 @@ void wlr_scene_blur_set_tint_mix(struct wlr_scene_blur* blur, const float rgb[3]
   blur->tint_mix[1] = rgb[1];
   blur->tint_mix[2] = rgb[2];
   blur->tint_mix[3] = amount;
+  scene_node_update(&blur->node, NULL);
+}
+
+void wlr_scene_blur_set_content_scale(struct wlr_scene_blur* blur, float scale) {
+  if (blur->content_scale == scale) {
+    return;
+  }
+  blur->content_scale = scale;
   scene_node_update(&blur->node, NULL);
 }
 
@@ -4547,7 +4556,7 @@ static void scene_entry_render(struct render_list_entry* entry, const struct ren
                       .height = (int)lround(blur->liquid_box.height * data->scale),
                   },
         .liquid_radius = blur->liquid_radius * data->scale,
-        .liquid_scale = data->scale,
+        .liquid_scale = data->scale * blur->content_scale,
     };
     if (blur->liquid_exact.width > 0.0 && !wlr_box_empty(&blur_options.liquid_box)) {
       const struct wlr_box* box = &blur_options.liquid_box;

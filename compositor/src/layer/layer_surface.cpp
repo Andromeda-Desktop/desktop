@@ -1131,8 +1131,11 @@ namespace andromeda {
         std::optional<wlr_fbox> exact{};
         if (shape.exact.has_value()) {
           // The whole pixels that hold the exact shape: its edge moves by fractions inside them.
-          exact = wlr_fbox{nodeBox.x + shape.exact->x * motionScale, nodeBox.y + shape.exact->y * motionScale,
-                           shape.exact->width * motionScale, shape.exact->height * motionScale};
+          // The scene draws the buffer into the whole-pixel nodeBox, so the shape scales by that size, not motionScale.
+          const double sx = box.width > 0 ? static_cast<double>(nodeBox.width) / box.width : motionScale;
+          const double sy = box.height > 0 ? static_cast<double>(nodeBox.height) / box.height : motionScale;
+          exact = wlr_fbox{nodeBox.x + shape.exact->x * sx, nodeBox.y + shape.exact->y * sy, shape.exact->width * sx,
+                           shape.exact->height * sy};
           const int x1 = static_cast<int>(std::floor(exact->x));
           const int y1 = static_cast<int>(std::floor(exact->y));
           shapeClip = wlr_box{x1, y1, static_cast<int>(std::ceil(exact->x + exact->width)) - x1,
@@ -1262,6 +1265,7 @@ namespace andromeda {
     m_blurOpacity = firstShapeBlur == 1 && !m_shapeMaterials.empty() ? m_shapeMaterials.front().opacity : 1.0F;
     m_blur.setAlpha(m_glassAlpha * m_blurOpacity);
     m_blur.setMerge(merges.empty() ? std::vector<SurfaceBlur::MergedShape>{} : merges.front(), mergeReach);
+    m_blur.setContentScale(static_cast<float>(motionScale));
     m_blur.setExactShape(
         firstShapeBlur == 1 && !shapes.empty() && clip ? shapes.front().exact : std::nullopt,
         static_cast<float>(!shapes.empty() ? shapes.front().exactRadius * motionScale : 0.0)
@@ -1309,6 +1313,7 @@ namespace andromeda {
       blur.setFade(m_blurFade);
       m_shapeBlurOpacity[i] = own ? m_shapeMaterials[shape].opacity : 1.0F;
       blur.setAlpha(m_glassAlpha * m_shapeBlurOpacity[i]);
+      blur.setContentScale(static_cast<float>(motionScale));
       blur.setExactShape(shapes[shape].exact, static_cast<float>(shapes[shape].exactRadius * motionScale));
       blur.update(
           m_scene->tree, m_layerSurface->surface, nodeBox, box,

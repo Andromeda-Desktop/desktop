@@ -76,6 +76,8 @@ namespace andromeda {
     // The shape at sub-pixel precision (layout coords) when its clip box is that shape rounded outward; nullopt =
     // the clip box and corners.
     void setExactShape(const std::optional<wlr_fbox>& box, float radius);
+    // Shown px per surface px (a surface scale motion): the rim and band shrink with the surface's own border.
+    void setContentScale(float scale);
     // Mixes the backdrop toward rgb by amount, 0 to 1 (glass density).
     void setTintMix(const std::array<float, 3>& rgb, float amount);
     // Shapes (parent tree coords, radius in the same px) drawn as one glass whose shapes join within `reach` px; the
@@ -123,6 +125,7 @@ namespace andromeda {
     int m_mergeReach = 0;
     std::optional<wlr_fbox> m_exact;
     float m_exactRadius = 0.0F;
+    float m_contentScale = 1.0F;
   };
 
 } // namespace andromeda

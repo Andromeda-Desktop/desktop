@@ -309,17 +309,19 @@ namespace shell::dock {
     const float insetT = concave.logicalInset.top;
     const float insetR = concave.logicalInset.right;
     const float insetB = concave.logicalInset.bottom;
-    const int px = static_cast<int>(std::lround(absX + insetL));
-    const int py = static_cast<int>(std::lround(absY + insetT));
-    const int pw = static_cast<int>(std::lround(instance.panel->width() - insetL - insetR));
-    const int ph = static_cast<int>(std::lround(instance.panel->height() - insetT - insetB));
+    const double x = absX + insetL;
+    const double y = absY + insetT;
+    const double w = instance.panel->width() - insetL - insetR;
+    const double h = instance.panel->height() - insetT - insetB;
     if (instance.shape != nullptr) {
-      setDockShapeClip(
-          instance, cfg,
-          {static_cast<double>(px), static_cast<double>(py), static_cast<double>(pw), static_cast<double>(ph)}
-      );
+      // Unrounded: the compositor draws the shape's edge and rim at the sub-pixel place of the panel's own border.
+      setDockShapeClip(instance, cfg, {x, y, w, h});
       return;
     }
+    const int px = static_cast<int>(std::lround(x));
+    const int py = static_cast<int>(std::lround(y));
+    const int pw = static_cast<int>(std::lround(w));
+    const int ph = static_cast<int>(std::lround(h));
     sendDockBlur(instance, Surface::tessellateShape(px, py, pw, ph, concave.corners, concave.logicalInset, concave.radii));
   }
 

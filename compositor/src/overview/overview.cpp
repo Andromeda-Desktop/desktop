@@ -1464,7 +1464,7 @@ namespace andromeda {
     const Tokens::Spring& spring = release.has_value()
         ? (reduced ? Tokens::springClose : Tokens::springPage)
         : (closing ? (reduced ? Tokens::springFadeOut : Tokens::springClose)
-                   : (reduced ? Tokens::springFade : Tokens::springOpen));
+                   : (reduced ? Tokens::springFade : Tokens::springZoom));
     const double releaseVelocity = release.has_value() && !reduced ? *release : 0.0;
     if (m_traceFrames) {
       kLog.debug(
@@ -1502,7 +1502,7 @@ namespace andromeda {
     // Content follows the shape in, and leaves on the same frame as the close (rulebook 7.4).
     drive(m_appearOpacity, opacity, shown ? Tokens::springFade : Tokens::springFadeOut);
     if (!config().appearance.reduceMotion) {
-      drive(m_appearScale, shown ? 1.0 : kAppearScaleOut, shown ? Tokens::springOpen : Tokens::springClose);
+      drive(m_appearScale, shown ? 1.0 : kAppearScaleOut, shown ? Tokens::springZoom : Tokens::springClose);
     }
     if (startMsec > 0.0) {
       for (AnimatedValue* value : {&m_appearOpacity, &m_appearScale}) {

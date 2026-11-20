@@ -160,6 +160,7 @@ namespace andromeda {
     }
     wlr_scene_blur_set_liquid(m_node, m_liquid);
     wlr_scene_blur_set_rim(m_node, m_rim);
+    wlr_scene_blur_set_content_scale(m_node, m_contentScale);
     wlr_scene_blur_set_lens(m_node, m_lens);
     wlr_scene_blur_set_tint_mix(m_node, m_tintRgb.data(), m_tintAmount);
     wlr_scene_blur_set_backdrop_sampling(m_node, m_backdropSampling);
@@ -262,6 +263,13 @@ namespace andromeda {
     if (m_node != nullptr) {
       wlr_scene_blur_set_strength(m_node, glass::blurStrength(clarity) * m_fade);
       wlr_scene_blur_set_full_strength(m_node, glass::blurStrength(clarity));
+    }
+  }
+
+  void SurfaceBlur::setContentScale(float scale) {
+    m_contentScale = scale;
+    if (m_node != nullptr) {
+      wlr_scene_blur_set_content_scale(m_node, scale);
     }
   }
 
