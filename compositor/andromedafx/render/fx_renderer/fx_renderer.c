@@ -870,3 +870,26 @@ error:
   free(renderer);
   return NULL;
 }
+
+bool fx_renderer_warm_glass(struct wlr_renderer* wlr_renderer) {
+  if (!wlr_renderer_is_fx(wlr_renderer) || !fx_renderer_context_home(wlr_renderer)) {
+    return false;
+  }
+  struct fx_renderer* renderer = fx_get_renderer(wlr_renderer);
+  struct wlr_egl_context previous;
+  if (!wlr_egl_make_current(renderer->egl, &previous)) {
+    return false;
+  }
+  bool ok = true;
+  struct blur2_composite_shader* glass[] = {
+      &renderer->shaders.blur2_glass_composite,
+      &renderer->shaders.blur2_glass_composite_flares,
+      &renderer->shaders.blur2_with_effects_glass_composite,
+      &renderer->shaders.blur2_with_effects_glass_composite_flares,
+  };
+  for (size_t i = 0; i < sizeof(glass) / sizeof(glass[0]); ++i) {
+    ok = ensure_blur2_composite_program(glass[i]) && ok;
+  }
+  wlr_egl_restore_context(&previous);
+  return ok;
+}
