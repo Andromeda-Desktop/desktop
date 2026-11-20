@@ -4,7 +4,8 @@ TOKENS.toml), .css custom properties for the design reference (docs/design/refer
 radius tokens for compositor shaders, *-gtk3-light.css / *-gtk3-dark.css / *-gtk4-light.css / *-gtk4-dark.css GTK
 colors for one scheme (the shell's runtime file imports one and overrides the accent), *-qt-light.conf /
 *-qt-dark.conf qtct palettes (.colors also accepted), */fcitx5-light/theme.conf and */fcitx5-dark/theme.conf fcitx5 classic-ui themes (with
-panel.svg and highlight.svg beside them), *-kde-light.colors / *-kde-dark.colors KDE color schemes."""
+panel.svg and highlight.svg beside them), *-kde-light.colors / *-kde-dark.colors KDE color schemes, .kt
+object Tok for the Link Android app (package from the path after kotlin/)."""
 import math
 import re
 import sys
@@ -202,6 +203,65 @@ def emit_glsl(tokens, out_path):
         f.write("\n".join(out) + "\n")
 
 
+# Groups the Link Android app reads; the compositor-only groups (blur, lens, component) stay out.
+KOTLIN_GROUPS = ("font", "type", "type_rules", "scheme", "elevation", "spring", "motion", "radius", "space", "size")
+
+
+def kotlin_value(path, value):
+    if isinstance(value, bool):
+        return "Boolean", "true" if value else "false"
+    if isinstance(value, int):
+        return "Int", str(value)
+    if isinstance(value, float):
+        return "Float", f"{value!r}f"
+    if isinstance(value, str) and COLOR.fullmatch(value):
+        return "Color", f"Color(0x{argb(value)[1:].upper()})"
+    if isinstance(value, str):
+        return "String", '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$") + '"'
+    sys.exit(f"{'.'.join(path)}: unsupported value {value!r}")
+
+
+def emit_kotlin(tokens, out_path):
+    """object Tok: a struct group (same keys in every child) becomes an immutable class <Name>Token plus one val per
+    child; any other table becomes a nested object of vals."""
+    out = ["// Generated from protocol/design-tokens.toml by protocol/gen-design-tokens.py. Do not edit.",
+           f"package {re.search(r'kotlin/(.+)/[^/]+$', out_path).group(1).replace('/', '.')}", "",
+           "import androidx.compose.runtime.Immutable", "import androidx.compose.ui.graphics.Color", "", "object Tok {"]
+
+    def block(table, path, ind):
+        nonlocal out
+        first = True
+        for key, value in table.items():
+            sub = path + (key,)
+            if not isinstance(value, dict):
+                out.append(f"{ind}val {camel((key,))} = {kotlin_value(sub, value)[1]}")
+                first = False
+                continue
+            if not first:
+                out.append("")
+            first = False
+            if is_struct_group(value):
+                name = pascal((key,)) + "Token"
+                fields = next(iter(value.values()))
+                out += [f"{ind}@Immutable", f"{ind}class {name}("]
+                out += [f"{ind}    val {camel((k,))}: {kotlin_value(sub + (k,), v)[0]}," for k, v in fields.items()]
+                out += [f"{ind})", "", f"{ind}object {pascal((key,))} {{"]
+                for child, values in value.items():
+                    out += [f"{ind}    val {camel((child,))} =", f"{ind}        {name}("]
+                    out += [f"{ind}            {camel((k,))} = {kotlin_value(sub + (child, k), v)[1]}," for k, v in values.items()]
+                    out.append(f"{ind}        )")
+                out.append(f"{ind}}}")
+            else:
+                out.append(f"{ind}object {pascal((key,))} {{")
+                block(value, sub, ind + "    ")
+                out.append(f"{ind}}}")
+
+    block({k: tokens[k] for k in KOTLIN_GROUPS if k in tokens}, (), "    ")
+    out += ["}", ""]
+    with open(out_path, "w") as f:
+        f.write("\n".join(out))
+
+
 # GTK color name -> (scheme role, fallback role for its foreground). Each bg gets a matching fg.
 GTK_SURFACES = {
     "window": "window", "view": "view", "headerbar": "header", "popover": "popover", "card": "card",
@@ -375,6 +435,8 @@ def main(src, *out_paths):
             emit_css(tokens, path)
         elif path.endswith(".glsl"):
             emit_glsl(tokens, path)
+        elif path.endswith(".kt"):
+            emit_kotlin(tokens, path)
         else:
             emit_header(tokens, path)
 

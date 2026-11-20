@@ -148,6 +148,10 @@ design-rulebook:
 design-check file='docs/design/rulebook.html':
     python3 docs/design/check_layout.py {{file}}
 
+# Write the Link Android tokens (object Tok, committed in the link repo) from protocol/design-tokens.toml.
+tokens-android:
+    python3 protocol/gen-design-tokens.py protocol/design-tokens.toml link/apps/android/app/src/main/kotlin/org/andromeda/link/ui/theme/Tokens.kt
+
 design-reference:
     python3 protocol/gen-design-tokens.py protocol/design-tokens.toml /tmp/design_tokens.h docs/design/tokens.css
     google-chrome-stable --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1600,1010 --screenshot="$PWD/docs/design/reference.png" "file://$PWD/docs/design/reference.html"
