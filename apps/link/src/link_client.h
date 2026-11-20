@@ -56,6 +56,10 @@ namespace linkapp {
     void setMirrorTarget(int width, int height);
     [[nodiscard]] int mirrorFps() const { return m_decoder ? m_decoder->fps() : 0; }
     void setOnMirrorFrame(std::function<void(MirrorDecoder::Frame)> frame) { m_mirrorFrame = std::move(frame); }
+    // The UI could not import a dmabuf frame: the decoder sends RGBA instead.
+    void refuseMirrorDmabuf() {
+      if (m_decoder) m_decoder->refuseDmabuf();
+    }
     // Lists `path` on the phone presence() shows ("/" for its roots).
     void openFolder(const std::string& path);
     // Copies the file `name` of the open folder into the downloads folder with ReadFile, 1 MiB at a time.

@@ -6,11 +6,17 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <format>
+#include <optional>
 #include <sys/socket.h>
 #include <unistd.h>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+#include <libavfilter/buffersrc.h>
+#include <libavutil/hwcontext_drm.h>
 #include <libavutil/hwcontext.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
@@ -47,6 +53,82 @@ namespace linkapp {
       }
       return AV_PIX_FMT_NONE;
     }
+
+    // scale_vaapi from a decoder's VA surfaces to BGRA at one output size, on the GPU.
+    struct Vpp {
+      AVFilterGraph* graph = nullptr;
+      AVFilterContext* source = nullptr;
+      AVFilterContext* sink = nullptr;
+      int inW = 0, inH = 0, outW = 0, outH = 0;
+
+      Vpp() = default;
+      Vpp(const Vpp&) = delete;
+      Vpp& operator=(const Vpp&) = delete;
+      ~Vpp() { avfilter_graph_free(&graph); }
+
+      bool build(const AVFrame* in, int w, int h) {
+        avfilter_graph_free(&graph);
+        inW = in->width, inH = in->height, outW = w, outH = h;
+        graph = avfilter_graph_alloc();
+        if (graph == nullptr) return false;
+        source = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffer"), "in");
+        AVFilterContext* scale = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("scale_vaapi"), "scale");
+        sink = avfilter_graph_alloc_filter(graph, avfilter_get_by_name("buffersink"), "out");
+        AVBufferSrcParameters* params = av_buffersrc_parameters_alloc();
+        if (source == nullptr || scale == nullptr || sink == nullptr || params == nullptr) {
+          av_free(params);
+          return false;
+        }
+        params->format = AV_PIX_FMT_VAAPI;
+        params->width = in->width;
+        params->height = in->height;
+        params->time_base = {1, 1'000'000};
+        params->color_space = in->colorspace;
+        params->color_range = in->color_range;
+        params->hw_frames_ctx = in->hw_frames_ctx;
+        const int set = av_buffersrc_parameters_set(source, params);
+        av_free(params);
+        // The UI holds up to 3 output surfaces (shown, retiring, posted) beyond the filter's own.
+        scale->extra_hw_frames = 4;
+        const std::string args = std::format("w={}:h={}:format=bgra", w, h);
+        return set >= 0 && avfilter_init_str(source, nullptr) >= 0 && avfilter_init_str(scale, args.c_str()) >= 0 &&
+               avfilter_init_str(sink, nullptr) >= 0 && avfilter_link(source, 0, scale, 0) >= 0 &&
+               avfilter_link(scale, 0, sink, 0) >= 0 && avfilter_graph_config(graph, nullptr) >= 0;
+      }
+
+      // `decoded` scaled to w x h as one ARGB8888 dmabuf plane; nullopt when VA-API cannot.
+      std::optional<MirrorDecoder::Frame> frame(AVFrame* decoded, int w, int h) {
+        if ((graph == nullptr || inW != decoded->width || inH != decoded->height || outW != w || outH != h) &&
+            !build(decoded, w, h)) {
+          return std::nullopt;
+        }
+        if (av_buffersrc_add_frame_flags(source, decoded, AV_BUFFERSRC_FLAG_KEEP_REF) < 0) return std::nullopt;
+        AVFrame* scaled = av_frame_alloc();
+        AVFrame* drm = av_frame_alloc();
+        const auto drop = [&] {
+          av_frame_free(&scaled);
+          av_frame_free(&drm);
+          return std::nullopt;
+        };
+        if (scaled == nullptr || drm == nullptr || av_buffersink_get_frame(sink, scaled) < 0) return drop();
+        drm->format = AV_PIX_FMT_DRM_PRIME;
+        if (av_hwframe_map(drm, scaled, AV_HWFRAME_MAP_READ) < 0) return drop();
+        const auto* desc = reinterpret_cast<const AVDRMFrameDescriptor*>(drm->data[0]);
+        if (desc->nb_layers != 1 || desc->layers[0].nb_planes != 1) return drop();
+        const AVDRMPlaneDescriptor& plane = desc->layers[0].planes[0];
+        const AVDRMObjectDescriptor& object = desc->objects[plane.object_index];
+        MirrorDecoder::Frame out{
+            .width = scaled->width,
+            .height = scaled->height,
+            .dmabuf = {.fd = object.fd, .width = scaled->width, .height = scaled->height, .fourcc = desc->layers[0].format,
+                       .modifier = object.format_modifier, .stride = static_cast<std::uint32_t>(plane.pitch),
+                       .offset = static_cast<std::uint32_t>(plane.offset)},
+        };
+        av_frame_free(&scaled); // the mapping keeps its own reference to the surface
+        out.hold = std::shared_ptr<AVFrame>(drm, [](AVFrame* f) { av_frame_free(&f); });
+        return out;
+      }
+    };
 
   } // namespace
 
@@ -85,6 +167,7 @@ namespace linkapp {
     AVFrame* decoded = av_frame_alloc();
     AVFrame* mapped = av_frame_alloc();
     SwsContext* scale = nullptr;
+    Vpp vpp;
     std::string why;
     if (avcodec_open2(ctx, codec, nullptr) < 0) why = "The H.264 decoder did not start.";
     std::vector<std::uint8_t> unit;
@@ -116,6 +199,24 @@ namespace linkapp {
           second = now;
         }
         if (m_posted.load()) continue; // the UI has not taken the last frame: drop this one
+        const auto post = [this](Frame frame) {
+          m_posted = true;
+          DeferredCall::callLater([this, frame = std::move(frame), alive = std::weak_ptr<bool>(m_alive)]() mutable {
+            if (alive.expired()) return;
+            m_posted = false;
+            m_frame(std::move(frame));
+          });
+        };
+        if (decoded->format == AV_PIX_FMT_VAAPI && !m_rgbaOnly.load()) {
+          const int tw = m_targetW.load();
+          const int th = m_targetH.load();
+          if (auto frame = vpp.frame(decoded, tw > 0 && th > 0 ? tw : decoded->width, tw > 0 && th > 0 ? th : decoded->height)) {
+            post(std::move(*frame));
+            continue;
+          }
+          kLog.info("mirror: VA-API scaling or export failed, copying frames to the CPU");
+          m_rgbaOnly = true;
+        }
         AVFrame* source = decoded;
         if (decoded->format == AV_PIX_FMT_VAAPI) {
           av_frame_unref(mapped);
@@ -136,12 +237,7 @@ namespace linkapp {
         std::array<std::uint8_t*, 4> planes{frame.rgba.data(), nullptr, nullptr, nullptr};
         std::array<int, 4> strides{w * 4, 0, 0, 0};
         sws_scale(scale, source->data, source->linesize, 0, source->height, planes.data(), strides.data());
-        m_posted = true;
-        DeferredCall::callLater([this, frame = std::move(frame), alive = std::weak_ptr<bool>(m_alive)]() mutable {
-          if (alive.expired()) return;
-          m_posted = false;
-          m_frame(std::move(frame));
-        });
+        post(std::move(frame));
       }
     }
     sws_freeContext(scale);

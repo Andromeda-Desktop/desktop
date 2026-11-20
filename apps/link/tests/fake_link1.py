@@ -4,6 +4,7 @@
 It serves the real interface XML with the mockup's sample data (one connected phone, a missed call), then emits a
 text, a file offer and notifications once a client calls GetAll. Usage: fake_link1.py <Link1.xml> [sample|away|unpaired]
 """
+import itertools
 import os
 import sys
 import socket
@@ -130,15 +131,17 @@ def png(index, size=64):
 
 
 def stream_mirror(sock):
-    """MIRROR env: an Annex B H.264 clip with an AUD per access unit; one unit per access unit at 30 fps, looped."""
+    """MIRROR env: an Annex B H.264 clip with an AUD per access unit; one unit per access unit at MIRROR_FPS (30), looped."""
+    fps = int(os.environ.get("MIRROR_FPS", "30"))
     data = open(os.environ["MIRROR"], "rb").read()
     starts = [i for i in range(len(data) - 4) if data[i:i + 5] == b"\0\0\0\x01\x09"] + [len(data)]
     units = [data[a:b] for a, b in zip(starts, starts[1:])]
     try:
-        while True:
-            for n, unit in enumerate(units):
-                sock.sendall(struct.pack(">IQB", len(unit), n * 33_333, 1 if n == 0 else 0) + unit)
-                time.sleep(1 / 30)
+        start = time.monotonic()
+        for k in itertools.count():
+            n = k % len(units)
+            sock.sendall(struct.pack(">IQB", len(units[n]), k * 1_000_000 // fps, 1 if n == 0 else 0) + units[n])
+            time.sleep(max(0.0, start + (k + 1) / fps - time.monotonic()))
     except OSError:
         sock.close()
 

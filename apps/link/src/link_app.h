@@ -12,6 +12,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace linkapp {
 
@@ -180,8 +181,11 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer);
     [[nodiscard]] std::unique_ptr<Node> files(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> mirror(float width, float height);
-    // Uploads a decoded frame into the one mirror texture (same size: in place) and repaints the video.
+    // Shows a decoded frame: a dmabuf frame is imported without a copy, an RGBA frame is uploaded into the one
+    // mirror texture (same size: in place); then repaints the video.
     void showMirrorFrame(MirrorDecoder::Frame frame);
+    // Frees the shown mirror frame (all = also the texture) once the GPU no longer samples it.
+    void retireMirrorFrame(bool all);
     [[nodiscard]] std::string mirrorStat() const;
     [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
@@ -215,6 +219,12 @@ namespace linkapp {
     float m_scale = 1.0F;
     Renderer* m_renderer = nullptr;   // the window's, from the last content build
     TextureHandle m_mirrorTexture;    // owned here; the video Image shows it without owning it
+    std::shared_ptr<void> m_mirrorHold; // non-null when m_mirrorTexture wraps a decoder dmabuf
+    struct RetiredFrame {
+      std::shared_ptr<void> hold;
+      int fence = -1; // signals once no submitted paint samples the frame; -1: already done
+    };
+    std::vector<RetiredFrame> m_mirrorRetired;
     Image* m_mirrorImage = nullptr;   // of the last build, null off the Mirror page
     Label* m_mirrorStat = nullptr;
     bool m_touching = false;          // a primary press on the video is down

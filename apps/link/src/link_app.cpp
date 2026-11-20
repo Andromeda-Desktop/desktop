@@ -15,6 +15,8 @@
 #include <linux/input-event-codes.h>
 #include <ctime>
 #include <format>
+#include <poll.h>
+#include <unistd.h>
 #include <qrencode.h>
 
 namespace linkapp {
@@ -563,6 +565,7 @@ namespace linkapp {
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
       m_client->setOnChanged([this] {
         if (m_window == nullptr) return;
+        if (m_client->mirror().kind != Mirror::Kind::Showing && m_mirrorTexture.valid()) retireMirrorFrame(true);
         sync();
         updateCaption();
         m_window->requestRebuild();
@@ -1141,13 +1144,46 @@ namespace linkapp {
     return std::format("{} × {} · {} fps · {}", mirror.width, mirror.height, m_client->mirrorFps(), transport);
   }
 
+  void LinkApp::retireMirrorFrame(bool all) {
+    if (m_renderer == nullptr) return;
+    TextureManager& textures = m_renderer->textureManager();
+    if (m_mirrorHold != nullptr || all) {
+      m_mirrorRetired.push_back({.hold = std::move(m_mirrorHold), .fence = textures.submittedWorkFence()});
+      textures.unload(m_mirrorTexture);
+    }
+    // At most 2 frames wait; an older fence is from paints frames ago, so the wait is short.
+    while (!m_mirrorRetired.empty()) {
+      RetiredFrame& oldest = m_mirrorRetired.front();
+      pollfd fd{.fd = oldest.fence, .events = POLLIN, .revents = 0};
+      const bool waitOldest = all || m_mirrorRetired.size() > 2;
+      if (oldest.fence >= 0 && ::poll(&fd, 1, waitOldest ? -1 : 0) == 0) break;
+      if (oldest.fence >= 0) ::close(oldest.fence);
+      m_mirrorRetired.erase(m_mirrorRetired.begin());
+    }
+  }
+
   void LinkApp::showMirrorFrame(MirrorDecoder::Frame frame) {
     if (m_renderer == nullptr) return;
     TextureManager& textures = m_renderer->textureManager();
-    const bool same = m_mirrorTexture.valid() && m_mirrorTexture.width == frame.width && m_mirrorTexture.height == frame.height;
-    const bool uploaded =
-        (same && textures.updateSubImage(m_mirrorTexture, frame.rgba.data(), 0, 0, frame.width, frame.height, TextureDataFormat::Rgba)) ||
-        textures.replace(m_mirrorTexture, frame.rgba.data(), frame.width, frame.height, TextureDataFormat::Rgba);
+    bool uploaded = false;
+    if (frame.dmabuf.fd >= 0) {
+      TextureHandle imported = textures.importDmabuf(frame.dmabuf);
+      if (!imported.valid()) {
+        m_client->refuseMirrorDmabuf();
+        return;
+      }
+      retireMirrorFrame(false);
+      textures.unload(m_mirrorTexture);
+      m_mirrorTexture = imported;
+      m_mirrorHold = std::move(frame.hold);
+      uploaded = true;
+    } else {
+      retireMirrorFrame(false); // an imported texture must not take updateSubImage: it writes into the VA surface
+      const bool same = m_mirrorTexture.valid() && m_mirrorTexture.width == frame.width && m_mirrorTexture.height == frame.height;
+      uploaded =
+          (same && textures.updateSubImage(m_mirrorTexture, frame.rgba.data(), 0, 0, frame.width, frame.height, TextureDataFormat::Rgba)) ||
+          textures.replace(m_mirrorTexture, frame.rgba.data(), frame.width, frame.height, TextureDataFormat::Rgba);
+    }
     if (!uploaded || m_mirrorImage == nullptr) return;
     m_mirrorImage->setExternalTexture(*m_renderer, m_mirrorTexture);
     m_mirrorImage->markPaintDirty();
