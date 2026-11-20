@@ -4,6 +4,7 @@
 # (over SSH on the test laptop) it runs headless at MODE on this machine's GPU.
 # Usage: tests/glass-style-matrix.sh. Env: OUT, SECONDS_PER (default 4), MODE (headless, default 1920x1080@60), WALLS,
 # CONFIGS, SURFACES (space lists), SCHEME (dark|light), FOOT (0: no scrolling text window, the wallpaper shows).
+# Surfaces: desktop launcher cc settings toast menu (the desktop context menu). $OUT/index.html shows every shot.
 # Report: $OUT/report.txt, one row per cell: frames, GPU p50/p99 ms (frame log col 4), CPU record p50/p99 ms (col 12),
 # GPU execution p50/p99 ms (col 13), mean blur kpx (col 6), compositor and shell CPU %. Shots: $OUT/<wall>/<config>-<surface>.png.
 set -euo pipefail
@@ -46,7 +47,8 @@ magick -size 1280x720 xc:'#fafafa' -stroke '#3060c0' -strokewidth 1 \
 boot_headless 1
 [[ -n $NESTED_PARENT ]] || printf '\n[output.HEADLESS-1]\nmode = "%s"\n' "$MODE" >> "$RUNTIME/andromeda.toml"
 cp "$RUNTIME/andromeda.toml" "$RUNTIME/base.toml"
-printf '\n[theme]\nmode = "%s"\n' "$SCHEME" >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
+printf '\n[theme]\nmode = "%s"\n\n[desktop_icons]\nenabled = true\nstart_corner = "top_right"\n' "$SCHEME" >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
+POINTER=${POINTER:-$ROOT/compositor/build-debug/tests/pointer-client}
 # No idle power-off: a headless run gets no input for its whole length.
 printf '\n[idle]\nbehaviors = []\n' >> "$RUNTIME/home/.config/andromeda/shell/config.toml"
 # The [appearance] keys of each glass setting.
@@ -60,8 +62,9 @@ liquid-clear glass_style = "liquid"|liquid_tint = 0.0|liquid_blur = 0.0|liquid =
 liquid-tinted glass_style = "liquid"|liquid_tint = 0.5|liquid_blur = 1.0|liquid = 0.5
 liquid-light glass_style = "liquid"|liquid_tint = 0.8|liquid_blur = 0.1|liquid = 0.5
 clear glass_style = "clear"|liquid = 0.5
+tinted glass_style = "tinted"|edge_reflection = true
 CFG
-export RUNTIME WALLDIR WALLS CONFIGS SURFACES SECONDS_PER SCHEME FOOT
+export RUNTIME WALLDIR WALLS CONFIGS SURFACES SECONDS_PER SCHEME FOOT POINTER MODE
 with_noctalia '
   mono_ns() { python3 -c "import time; print(time.monotonic_ns())"; }
   ticks() { awk "{print \$14 + \$15}" "/proc/$1/stat" 2> /dev/null || echo 0; }
@@ -77,13 +80,19 @@ with_noctalia '
     foot --maximized -o main.font=monospace:size=11 sh -c "while :; do seq 1 400000; done" > /dev/null 2>&1 &
     sleep 2
   fi
+  out_w=${MODE%%x*}
+  out_h=${MODE#*x}
+  out_h=${out_h%%@*}
   for wall in $WALLS; do
     mkdir -p "$OUT/$wall"
-    "$NOCTALIA" msg wallpaper-set "$WALLDIR/$wall.png" > /dev/null
     for config in $CONFIGS; do
       keys=$(awk -v c="$config" "\$1 == c {sub(/^[^ ]+ /, \"\"); gsub(/\\|/, \"\\n\"); print}" "$RUNTIME/configs")
       { cat "$RUNTIME/base.toml"; printf "\n[appearance]\nscheme = \"%s\"\n%s\n" "$SCHEME" "$keys"; } > "$RUNTIME/andromeda.toml"
       "$ANDROMEDA" msg config-reload > /dev/null
+      settle
+      # A config reload puts the configured wallpaper back, so the wall and the scheme follow it.
+      "$NOCTALIA" msg wallpaper-set "$WALLDIR/$wall.png" > /dev/null
+      "$NOCTALIA" msg theme-mode-set "$SCHEME" > /dev/null
       settle
       for surface in $SURFACES; do
         case $surface in
@@ -92,6 +101,7 @@ with_noctalia '
           cc) "$NOCTALIA" msg panel-open control-center > /dev/null ;;
           settings) "$NOCTALIA" msg settings-open appearance > /dev/null ;;
           toast) "$NOCTALIA" msg notification-show "Glass $wall $config" "Body text over the backdrop to read" > /dev/null ;;
+          menu) "$POINTER" "$out_w" "$out_h" move $((out_w / 3)) $((out_h / 6)) click 273 > /dev/null ;;
         esac
         settle
         t0=$(mono_ns); c0=$(ticks "$comp"); s0=$(ticks "$shellpid")
@@ -99,6 +109,7 @@ with_noctalia '
         t1=$(mono_ns); c1=$(ticks "$comp"); s1=$(ticks "$shellpid")
         grim "$OUT/$wall/$config-$surface.png"
         echo "$wall/$config/$surface $t0 $t1 $c0 $c1 $s0 $s1" >> "$OUT/cells.txt"
+        [[ $surface == menu ]] && "$POINTER" "$out_w" "$out_h" tap 1 > /dev/null
         close_all
       done
     done
@@ -123,3 +134,21 @@ for wall in $WALLS; do
     magick montage "${shots[@]}" -tile 1x -geometry 960x540+4+4 -pointsize 22 -background '#808080' "$OUT/board-$wall-$surface.png"
   done
 done
+
+# One page: a table per wallpaper, rows = glass settings, columns = surfaces.
+{
+  printf '<!doctype html><meta charset="utf-8"><title>Glass matrix %s</title>\n' "$SCHEME"
+  printf '<style>body{font:14px sans-serif;background:#888;margin:16px}td,th{padding:4px;vertical-align:top}img{width:420px;display:block}</style>\n'
+  printf '<h1>Glass matrix, %s scheme</h1>\n' "$SCHEME"
+  for wall in $WALLS; do
+    printf '<h2>%s wall</h2><table><tr><th></th>' "$wall"
+    for surface in $SURFACES; do printf '<th>%s</th>' "$surface"; done
+    printf '</tr>\n'
+    for config in $CONFIGS; do
+      printf '<tr><th>%s</th>' "$config"
+      for surface in $SURFACES; do printf '<td><a href="%s/%s-%s.png"><img src="%s/%s-%s.png"></a></td>' "$wall" "$config" "$surface" "$wall" "$config" "$surface"; done
+      printf '</tr>\n'
+    done
+    printf '</table>\n'
+  done
+} > "$OUT/index.html"
