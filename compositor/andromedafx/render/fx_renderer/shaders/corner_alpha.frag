@@ -107,16 +107,20 @@ float pointer_near(vec2 p, vec3 light) {
   return exp(-x * x);
 }
 
-// The specular rim: 1 at the clip edge, easing to 0 TOKEN_LENS_RIM_FALLOFF logical px inside it; d = signed distance, px.
+// The specular rim: a TOKEN_LENS_RIM_WIDTH logical px line at the clip edge (1) over a soft glow that eases to 0
+// TOKEN_LENS_RIM_FALLOFF px inside it (0.35 at the edge); d = signed distance, px.
 float rim_edge(float d, float scale) {
-  return smoothstep(0.0, 1.0, 1.0 + (d + 0.5) / (TOKEN_LENS_RIM_FALLOFF * scale));
+  float line = clamp(1.0 + (d + 0.5) / (TOKEN_LENS_RIM_WIDTH * scale), 0.0, 1.0);
+  float glow = smoothstep(0.0, 1.0, 1.0 + (d + 0.5) / (TOKEN_LENS_RIM_FALLOFF * scale));
+  return max(line, 0.35 * glow);
 }
 
 // How much a rim pixel at p (outward normal) faces the fixed top-left key light, y-down, plus the pointer light
-// (near = pointer_near): a key glint, a back glint opposite, a faint even rim between.
+// (near = pointer_near): the whole top and left edges lit (0.5 there, 1 at the corner), the far edges at a third.
 float rim_facing(vec2 normal, float near) {
   float l = dot(normal, vec2(-0.70710678));
-  return 0.1 + pow(max(l, 0.0), 8.0) + 0.4 * pow(max(-l, 0.0), 8.0) + TOKEN_LENS_RIM_POINTER_BOOST * near;
+  // Capped so the pointer glint brightens the line without burning a straight edge to white.
+  return min(0.15 + pow(max(l, 0.0), 2.0) + 0.35 * pow(max(-l, 0.0), 2.0) + TOKEN_LENS_RIM_POINTER_BOOST * near, 1.2);
 }
 
 #ifdef CORNER_FLARES

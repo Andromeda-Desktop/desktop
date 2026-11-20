@@ -291,9 +291,8 @@ void main() {
       }
       lens_uv = uv - lens_bend;
       lens_weight = lens * 0.85 * (whole ? mix(0.6, 1.0, sag) : sag);
-      // Specular: a reflection, not an outline. Brightest on the outermost pixel (d = -0.5), fading over 2.5 px
-      // inward; the coverage mask cuts it outside. pow 8 keeps the key glint on the curves that face the top-left
-      // light (a straight top edge gets 6 %), a back glint opposite, a faint even rim between (rim_facing).
+      // Specular: a reflection, not an outline: a bright line on the outermost pixels over a soft inner glow
+      // (rim_edge), lit from the top-left key light and the pointer (rim_facing); the coverage mask cuts it outside.
       // The pointer light also bleeds softly into the band, so it reads as light on glass, not a thicker line.
       float near = pointer_near(p, light);
       float edge = rim_edge(d, liquid_scale);
