@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=dev.andromeda.Files
+Exec=@bindir@/andromeda-files --gapplication-service

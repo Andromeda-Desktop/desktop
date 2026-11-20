@@ -3,6 +3,7 @@ Type=Application
 Name=Player
 Comment=Play music and videos
 Exec=andromeda-player %U
+DBusActivatable=true
 Icon=dev.andromeda.Player
 Terminal=false
 Categories=AudioVideo;Audio;Video;Player;

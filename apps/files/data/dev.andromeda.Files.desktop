@@ -3,6 +3,7 @@ Type=Application
 Name=Files
 Comment=Browse and manage your files
 Exec=andromeda-files %U
+DBusActivatable=true
 Icon=dev.andromeda.Files
 Terminal=false
 Categories=System;FileManager;Utility;Core;

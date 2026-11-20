@@ -54,4 +54,11 @@ executable('andromeda-player',
 )
 
 install_data('data/dev.andromeda.Player.desktop', install_dir: get_option('datadir') / 'applications')
+# DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.
+configure_file(
+  input: 'data/dev.andromeda.Player.service.in',
+  output: 'dev.andromeda.Player.service',
+  configuration: {'bindir': get_option('prefix') / get_option('bindir')},
+  install_dir: get_option('datadir') / 'dbus-1' / 'services',
+)
 install_data('data/icons/dev.andromeda.Player.svg', install_dir: get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps')

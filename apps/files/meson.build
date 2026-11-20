@@ -124,6 +124,13 @@ test('service_menus', executable('service_menus_test', 'tests/service_menus_test
 
 install_data('data/dev.andromeda.Files.desktop', 'data/dev.andromeda.Photos.desktop',
   install_dir: get_option('datadir') / 'applications')
+# DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.
+configure_file(
+  input: 'data/dev.andromeda.Files.service.in',
+  output: 'dev.andromeda.Files.service',
+  configuration: {'bindir': get_option('prefix') / get_option('bindir')},
+  install_dir: get_option('datadir') / 'dbus-1' / 'services',
+)
 install_data('data/andromeda-files.portal', install_dir: get_option('datadir') / 'xdg-desktop-portal' / 'portals')
 configure_file(
   input: 'data/org.freedesktop.impl.portal.desktop.andromeda.Files.service.in',

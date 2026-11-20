@@ -3,6 +3,7 @@ Type=Application
 Name=Terminal
 Comment=Use the command line
 Exec=andromeda-terminal
+DBusActivatable=true
 Icon=dev.andromeda.Terminal
 Terminal=false
 Categories=System;TerminalEmulator;

@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=dev.andromeda.Terminal
+Exec=@bindir@/andromeda-terminal --gapplication-service
