@@ -1,5 +1,6 @@
 #include "system/desktop_entry_launch.h"
 
+#include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/shared_worker.h"
 #include "core/process/process.h"
@@ -13,8 +14,10 @@
 #include <gio/gio.h>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <sdbus-c++/sdbus-c++.h>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -184,7 +187,8 @@ namespace {
   // but the shell is not itself a systemd user unit: apps would then be moved out of the login
   // session the shell lives in.
   bool effectiveRunAsSystemdService(const desktop_entry_launch::LaunchOptions& options) {
-    if (!options.runAsSystemdService) {
+    // A custom command is the user's own launch wrapper; the systemd launch is only the default.
+    if (!options.runAsSystemdService || !options.customCommand.empty()) {
       return false;
     }
     if (process::runningUnderSystemdUserManager()) {
@@ -223,74 +227,142 @@ namespace {
     return options.dbusActivatable && !options.dbusAppId.empty() && options.customCommand.empty();
   }
 
-  // Prefer D-Bus only when the app is already on the bus (focus / hand off). Blocks up to 700 ms: worker thread only.
-  bool tryDbusActivation(const desktop_entry_launch::LaunchOptions& options) {
-    if (!dbusCandidate(options)) {
-      return false;
-    }
-
-    try {
-      auto connection = sdbus::createSessionBusConnection();
-      constexpr auto kProbeTimeout = std::chrono::milliseconds(200);
-      constexpr auto kActivateTimeout = std::chrono::milliseconds(500);
-      constexpr auto kIface = "org.freedesktop.Application";
-
-      auto dbus = sdbus::createProxy(
-          *connection, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
-      );
-      bool hasOwner = false;
-      dbus->callMethod("NameHasOwner")
-          .onInterface("org.freedesktop.DBus")
-          .withTimeout(kProbeTimeout)
-          .withArguments(options.dbusAppId)
-          .storeResultsTo(hasOwner);
-      if (!hasOwner) {
-        return false;
-      }
-
-      auto proxy = sdbus::createProxy(
-          *connection, sdbus::ServiceName{options.dbusAppId},
-          sdbus::ObjectPath{dbusObjectPathForAppId(options.dbusAppId)}
-      );
-      auto platformData = dbusPlatformData(options.activationToken);
-
-      if (options.desktopActionId.empty()) {
-        proxy->callMethod("Activate").onInterface(kIface).withTimeout(kActivateTimeout).withArguments(platformData);
-      } else {
-        proxy->callMethod("ActivateAction")
-            .onInterface(kIface)
-            .withTimeout(kActivateTimeout)
-            .withArguments(options.desktopActionId, std::vector<sdbus::Variant>{}, platformData);
-      }
-      return true;
-    } catch (const sdbus::Error& error) {
-      kLog.debug(
-          "dbus activation failed for '{}' (action='{}'): {}; falling back to Exec", options.dbusAppId,
-          options.desktopActionId, error.what()
-      );
-      return false;
-    } catch (const std::exception& error) {
-      kLog.debug("dbus activation failed for '{}': {}; falling back to Exec", options.dbusAppId, error.what());
-      return false;
-    }
+  // The app is not there to take the call: the launch falls back to Exec. A timeout is not one of them: the app runs
+  // but is slow, and a second Exec would open a second instance.
+  bool targetMissing(const sdbus::Error& error) {
+    const std::string name = error.getName();
+    return name == "org.freedesktop.DBus.Error.ServiceUnknown" || name == "org.freedesktop.DBus.Error.NameHasNoOwner"
+        || name == "org.freedesktop.DBus.Error.UnknownObject" || name == "org.freedesktop.DBus.Error.UnknownInterface"
+        || name == "org.freedesktop.DBus.Error.UnknownMethod";
   }
 
-  // The D-Bus probe and activation run on the SharedWorker; `exec` runs on the main loop when the app is not on the
-  // bus. True means the launch started.
+  // One session-bus connection for warm launches, made on the SharedWorker at the first launch. Its event loop
+  // thread keeps the set of owned well-known names (ListNames once, then NameOwnerChanged), so a launch needs no
+  // connect and no NameHasOwner round trip.
+  class LaunchBus {
+  public:
+    // Null when the session bus is unreachable. SharedWorker thread only.
+    static LaunchBus* instance() {
+      static const std::unique_ptr<LaunchBus> bus = create();
+      return bus.get();
+    }
+
+    bool owned(const std::string& name) {
+      const std::lock_guard lock(m_mutex);
+      return m_owned.contains(name);
+    }
+
+    // SharedWorker thread only. `missing` runs on the bus thread when the app did not take the launch.
+    void activate(const desktop_entry_launch::LaunchOptions& options, std::function<void()> missing) {
+      constexpr auto kIface = "org.freedesktop.Application";
+      // As the forward in libdesk-app: under load a running app can take seconds to open its window.
+      constexpr auto kActivateTimeout = std::chrono::seconds(5);
+      auto& proxy = m_apps[options.dbusAppId];
+      if (proxy == nullptr) {
+        proxy = sdbus::createProxy(
+            *m_connection, sdbus::ServiceName{options.dbusAppId},
+            sdbus::ObjectPath{dbusObjectPathForAppId(options.dbusAppId)}
+        );
+      }
+      auto onReply = [appId = options.dbusAppId, missing = std::move(missing)](std::optional<sdbus::Error> error) {
+        if (!error) {
+          return;
+        }
+        if (targetMissing(*error)) {
+          kLog.debug("dbus activation of '{}' found no app ({}); falling back to Exec", appId, error->getName());
+          missing();
+        } else {
+          kLog.warn("dbus activation of '{}' did not finish: {}", appId, error->what());
+        }
+      };
+      const auto platformData = dbusPlatformData(options.activationToken);
+      if (options.desktopActionId.empty()) {
+        proxy->callMethodAsync("Activate")
+            .onInterface(kIface)
+            .withTimeout(kActivateTimeout)
+            .withArguments(platformData)
+            .uponReplyInvoke(std::move(onReply));
+      } else {
+        proxy->callMethodAsync("ActivateAction")
+            .onInterface(kIface)
+            .withTimeout(kActivateTimeout)
+            .withArguments(options.desktopActionId, std::vector<sdbus::Variant>{}, platformData)
+            .uponReplyInvoke(std::move(onReply));
+      }
+    }
+
+  private:
+    static std::unique_ptr<LaunchBus> create() {
+      try {
+        auto bus = std::unique_ptr<LaunchBus>(new LaunchBus());
+        bus->start();
+        return bus;
+      } catch (const sdbus::Error& error) {
+        kLog.warn("no session bus for D-Bus launches: {}", error.what());
+        return nullptr;
+      }
+    }
+
+    LaunchBus() = default;
+
+    void start() {
+      m_connection = sdbus::createSessionBusConnection();
+      m_dbus = sdbus::createProxy(
+          *m_connection, sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+      );
+      m_dbus->uponSignal("NameOwnerChanged")
+          .onInterface("org.freedesktop.DBus")
+          .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+            if (name.starts_with(':')) {
+              return;
+            }
+            const std::lock_guard lock(m_mutex);
+            if (newOwner.empty()) {
+              m_owned.erase(name);
+            } else {
+              m_owned.insert(name);
+            }
+          });
+      m_connection->enterEventLoopAsync();
+      std::vector<std::string> names;
+      m_dbus->callMethod("ListNames").onInterface("org.freedesktop.DBus").storeResultsTo(names);
+      const std::lock_guard lock(m_mutex);
+      for (auto& name : names) {
+        if (!name.starts_with(':')) {
+          m_owned.insert(std::move(name));
+        }
+      }
+    }
+
+    std::unique_ptr<sdbus::IConnection> m_connection;
+    std::unique_ptr<sdbus::IProxy> m_dbus;
+    std::map<std::string, std::unique_ptr<sdbus::IProxy>> m_apps;
+    std::mutex m_mutex;
+    std::set<std::string> m_owned;
+  };
+
+  // A running D-Bus-activatable app takes the launch over the bus, with no new process; otherwise `exec` runs on the
+  // main loop. True means the launch started.
   bool activateOrExec(const desktop_entry_launch::LaunchOptions& options, std::function<bool()> exec) {
     if (!dbusCandidate(options)) {
       return exec();
     }
-    static const auto alive = std::make_shared<int>(0);
-    SharedWorker::instance().post<bool>(
-        alive, [options] { return tryDbusActivation(options); },
-        [exec = std::move(exec), appId = options.dbusAppId](bool activated) {
-          // The caller already saw "started"; a failed fallback can only be logged.
-          if (!activated && !exec()) {
-            kLog.warn("launch of '{}' failed after D-Bus activation was not possible", appId);
-          }
+    auto execLater = [exec, appId = options.dbusAppId] {
+      DeferredCall::callLater([exec, appId] {
+        // The caller already saw "started"; a failed fallback can only be logged.
+        if (!exec()) {
+          kLog.warn("launch of '{}' failed after D-Bus activation was not possible", appId);
         }
-    );
+      });
+    };
+    SharedWorker::instance().post([options, execLater = std::move(execLater)] {
+      LaunchBus* bus = LaunchBus::instance();
+      if (bus == nullptr || !bus->owned(options.dbusAppId)) {
+        execLater();
+        return;
+      }
+      bus->activate(options, execLater);
+    });
     return true;
   }
 
@@ -386,14 +458,7 @@ namespace desktop_entry_launch {
 
     return activateOrExec(resolved, [entry, resolved] {
       const bool runAsSystemdService = effectiveRunAsSystemdService(resolved);
-      if (runAsSystemdService && !resolved.customCommand.empty()) {
-        kLog.warn(
-            "launch_apps_as_systemd_services and launch_apps_custom_command are mutually exclusive; ignoring custom "
-            "command"
-        );
-      }
-      const std::string customCommand = runAsSystemdService ? "" : resolved.customCommand;
-      const std::string command = parseCustomCommand(entry.exec, customCommand);
+      const std::string command = parseCustomCommand(entry.exec, resolved.customCommand);
       auto prepared = prepareCommand(command, entry.terminal);
 
       if (!prepared.has_value()) {
@@ -419,14 +484,7 @@ namespace desktop_entry_launch {
     return activateOrExec(
         resolved, [action, appName = std::string(appName), workingDir = std::string(workingDir), terminal, resolved] {
           const bool runAsSystemdService = effectiveRunAsSystemdService(resolved);
-          if (runAsSystemdService && !resolved.customCommand.empty()) {
-            kLog.warn(
-                "launch_apps_as_systemd_services and launch_apps_custom_command are mutually exclusive; ignoring "
-                "custom command"
-            );
-          }
-          const std::string customCommand = runAsSystemdService ? "" : resolved.customCommand;
-          const std::string command = parseCustomCommand(action.exec, customCommand);
+          const std::string command = parseCustomCommand(action.exec, resolved.customCommand);
           auto prepared = prepareCommand(command, terminal);
           if (!prepared.has_value()) {
             kLog.warn(

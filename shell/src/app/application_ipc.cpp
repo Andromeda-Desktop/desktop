@@ -835,7 +835,47 @@ void Application::initIpc() {
       IpcService::HandlerOptions{.actionEditorVisibility = IpcService::ActionEditorVisibility::Hidden}
   );
 
-  m_ipcService.bind(noctalia::cli::msg::defaultAppOpen, [](const std::string& args) -> std::string {
+  // As the launcher and dock launch: the settings' launch options, and a token with the app id, so the compositor
+  // shows launch feedback, boosts the launch and logs its time.
+  auto launchApp = [this](const DesktopEntry& entry, const DesktopAction* action) {
+    desktop_entry_launch::LaunchOptions options{
+        .runAsSystemdService = m_configService.config().shell.launchAppsAsSystemdServices,
+        .customCommand = m_configService.config().shell.launchAppsCustomCommand,
+        .dbusActivatable = entry.dbusActivatable,
+        .dbusAppId = entry.id,
+    };
+    auto launch = [entry, action = action != nullptr ? std::optional<DesktopAction>(*action) : std::nullopt,
+                   options](std::string token) mutable {
+      options.activationToken = std::move(token);
+      const bool launched = action.has_value()
+          ? desktop_entry_launch::launchAction(*action, entry.id, entry.workingDir, entry.terminal, options)
+          : desktop_entry_launch::launchEntry(entry, options);
+      if (!launched) {
+        kLog.warn("ipc launch: failed to launch '{}'", entry.id);
+      }
+    };
+    if (m_compositorPlatform.hasXdgActivation()) {
+      m_compositorPlatform.requestActivationTokenAsync(nullptr, desktopEntryAppId(entry.id), std::move(launch));
+    } else {
+      launch({});
+    }
+  };
+
+  m_ipcService.bind(noctalia::cli::msg::appLaunch, [launchApp](const std::string& args) -> std::string {
+    std::string id = StringUtils::trim(args);
+    if (id.ends_with(".desktop")) {
+      id.resize(id.size() - std::string_view(".desktop").size());
+    }
+    const auto& entries = desktopEntries();
+    const auto entry = std::ranges::find(entries, id, &DesktopEntry::id);
+    if (entry == entries.end()) {
+      return "error: no desktop entry '" + id + "'\n";
+    }
+    launchApp(*entry, nullptr);
+    return "ok\n";
+  });
+
+  m_ipcService.bind(noctalia::cli::msg::defaultAppOpen, [launchApp](const std::string& args) -> std::string {
     using default_apps::Category;
     static constexpr std::array<std::pair<std::string_view, Category>, 5> kCategories{{
         {"terminal", Category::Terminal},
@@ -860,10 +900,8 @@ void Application::initIpc() {
     }
     // A new window each time, as Win+E does, when the app offers one; otherwise the app decides (most focus).
     const auto newWindow = std::ranges::find(entry->actions, std::string_view("new-window"), &DesktopAction::id);
-    const bool launched = newWindow != entry->actions.end()
-        ? desktop_entry_launch::launchAction(*newWindow, entry->id, entry->workingDir, entry->terminal)
-        : desktop_entry_launch::launchEntry(*entry);
-    return launched ? "ok\n" : "error: failed to launch " + entry->id + "\n";
+    launchApp(*entry, newWindow != entry->actions.end() ? &*newWindow : nullptr);
+    return "ok\n";
   });
 
   m_ipcService.bind(

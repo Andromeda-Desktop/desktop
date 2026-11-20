@@ -157,24 +157,6 @@ namespace settings {
       return basename(program);
     }
 
-    // The command without desktop-entry field codes (%U, %f, ...).
-    std::string execCommand(std::string_view exec) {
-      std::string out;
-      std::size_t pos = 0;
-      while (pos < exec.size()) {
-        const std::size_t end = std::min(exec.find(' ', pos), exec.size());
-        const std::string_view word = exec.substr(pos, end - pos);
-        if (!word.empty() && !(word.size() == 2 && word[0] == '%')) {
-          if (!out.empty()) {
-            out += ' ';
-          }
-          out += word;
-        }
-        pos = end + 1;
-      }
-      return out;
-    }
-
     const DesktopEntry* entryForCommand(std::span<const DesktopEntry> entries, std::string_view command) {
       const std::string program = basename(firstWord(command));
       // A shell script is not the app whose launcher also starts with a shell.
@@ -222,6 +204,17 @@ namespace settings {
     Row describe(const SettingsShortcutsContext& ctx, const CompositorKeybind& bind) {
       Row row{.action = bind.action};
       if (const auto command = shellCommand(bind.action); command.has_value()) {
+        if (firstWord(*command) == "app-launch") {
+          std::string_view id = command->substr(std::string_view("app-launch").size());
+          id.remove_prefix(std::min(id.size(), id.find_first_not_of(' ')));
+          const auto entry = std::ranges::find(ctx.entries, id, &DesktopEntry::id);
+          if (entry != ctx.entries.end()) {
+            row.category = "apps";
+            row.title = entry->name;
+            row.entry = &*entry;
+            return row;
+          }
+        }
         row.category = std::string(shellCategory(*command, bind.chord));
         row.title = shellTitle(*command);
         return row;
@@ -397,7 +390,8 @@ namespace settings {
         if (entry.hidden || entry.noDisplay || entry.exec.empty()) {
           continue;
         }
-        out.push_back({.title = entry.name, .action = "spawn:" + execCommand(entry.exec), .entry = &entry});
+        // The shell launches it as the launcher does: a running app opens a window over D-Bus, no process starts.
+        out.push_back({.title = entry.name, .action = "shell:app-launch " + entry.id, .entry = &entry});
       }
       std::ranges::sort(out, {}, [](const Choice& c) { return lower(c.title); });
       return out;

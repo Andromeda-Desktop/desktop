@@ -250,6 +250,9 @@ namespace noctalia::cli {
   inline constexpr std::array kMsgDefaultAppOpenPositionals{
       Positional{"category", {}, kMsgDefaultAppChoices, true, false, false},
   };
+  inline constexpr std::array kMsgAppLaunchPositionals{
+      Positional{"desktop-id", {}, {}, true, false, false},
+  };
   inline constexpr std::array kMsgActivityOpenPositionals{
       Positional{"row", {}, {}, false, false, false},
   };
@@ -384,6 +387,10 @@ namespace noctalia::cli {
     inline constexpr Command activityOpen{
         "activity-open", "Open the Activity window, optionally with a row (app ID or unit name) selected", {}, {}, {},
         kMsgActivityOpenPositionals, {}, false
+    };
+    inline constexpr Command appLaunch{
+        "app-launch", "Launch an app by desktop ID, as the launcher does (a running app opens a window)", {}, {}, {},
+        kMsgAppLaunchPositionals, {}, false
     };
     inline constexpr Command defaultAppOpen{
         "default-app-open", "Open the default app for a category, as set in Settings > Default Apps", {}, {}, {},
@@ -1141,6 +1148,7 @@ namespace noctalia::cli {
       msg::airplaneStatus,
       msg::airplaneToggle,
       msg::annotate,
+      msg::appLaunch,
       msg::defaultAppOpen,
       msg::barAutoHideSet,
       msg::barHide,
