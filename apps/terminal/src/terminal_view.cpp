@@ -297,8 +297,17 @@ namespace term {
   void TerminalView::setGridFont() {
     const std::string family = gridFont(m_settings, m_theme);
     const auto size = static_cast<float>(m_settings.fontSize);
+    const float oldCellH = m_grid->cellHeight();
+    const float within = oldCellH > 0.0F ? (m_scrollPx - static_cast<float>(m_viewRow) * oldCellH) / oldCellH : 0.0F;
     m_grid->setFont(family, size * m_uiScale, std::round(size * Tokens::typeMono.line / Tokens::typeMono.size) * m_uiScale,
                     m_deviceScale);
+    // m_scrollPx is in pixels of the old cell height: keep the same row and part of a row in the new one.
+    m_scrollPx = (static_cast<float>(m_viewRow) + within) * m_grid->cellHeight();
+  }
+
+  void TerminalView::placeGrid() {
+    const float within = m_scrollPx - static_cast<float>(m_viewRow) * m_grid->cellHeight();
+    setGridOrigin((kInset + padding()) * m_uiScale, (kTopInset + padding()) * m_uiScale - within);
   }
 
   void TerminalView::applyTerminalSettings() {
@@ -349,12 +358,12 @@ namespace term {
     }
     if (font && m_grid != nullptr) {
       setGridFont();
+      placeGrid();
       setSize(m_width, m_height);
       scheduleRedraw(Redraw::All);
     }
     if (pad && m_grid != nullptr) {
-      setGridOrigin((kInset + padding()) * m_uiScale,
-                    (kTopInset + padding()) * m_uiScale - (m_scrollPx - static_cast<float>(m_viewRow) * m_grid->cellHeight()));
+      placeGrid();
       setSize(m_width, m_height);
       scheduleRedraw(Redraw::All);
     }
@@ -486,7 +495,7 @@ namespace term {
         }
       }));
     }
-    setGridOrigin((kInset + padding()) * uiScale, (kTopInset + padding()) * uiScale);
+    placeGrid();
     auto area = ui::inputArea({.out = &m_area,
                                .focusable = true,
                                .width = width,
@@ -630,6 +639,7 @@ namespace term {
     if (m_grid != nullptr && m_pendingDeviceScale != m_deviceScale) {
       m_deviceScale = m_pendingDeviceScale;
       setGridFont();
+      placeGrid();
       setSize(m_width, m_height);
     }
     const Redraw redraw = std::exchange(m_redraw, Redraw::None);
@@ -742,7 +752,7 @@ namespace term {
       m_scrollSamples.clear();
       m_viewRow = scroll.offset;
       m_scrollPx = static_cast<float>(scroll.offset) * m_grid->cellHeight();
-      setGridOrigin((kInset + padding()) * m_uiScale, (kTopInset + padding()) * m_uiScale);
+      placeGrid();
     }
     if (m_scrollbar != nullptr
         && (scroll.total != m_scrollState.total || scroll.offset != m_scrollState.offset
@@ -2282,7 +2292,7 @@ namespace term {
       });
       scheduleRedraw(Redraw::All);
     }
-    setGridOrigin((kInset + padding()) * m_uiScale, (kTopInset + padding()) * m_uiScale - (m_scrollPx - static_cast<float>(row) * cellH));
+    placeGrid();
     if (m_scrollbar != nullptr) {
       m_scrollbar->update(static_cast<float>(m_scrollState.len) * cellH, static_cast<float>(m_scrollState.total) * cellH,
                           m_scrollPx);

@@ -357,6 +357,8 @@ namespace term {
     void applyTerminalSettings();
     [[nodiscard]] Color themed(ColorRole role) const;
     void setGridFont();
+    // Moves the grid up by the part of a row the scroll offset sits in, as cellAt assumes.
+    void placeGrid();
     // Hover preview of m_link: Armed waits the tooltip delay; Shown holds the content and, for an image, the
     // thumbnail it acquired (thumbPath; released when the preview leaves Shown).
     struct PreviewOff {};
