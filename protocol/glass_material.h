@@ -33,8 +33,8 @@ namespace glass {
     bool operator==(const Material&) const = default;
   };
 
-  // The least alpha at full density that keeps label_1 at 4.5:1 over a white (dark glass) or black (light glass)
-  // backdrop, blended in sRGB like the compositor: {light glass, dark glass}.
+  // The least alpha at full density that keeps label_1, and label_2 at kLegibleInk2, at 4.5:1 over a white (dark
+  // glass, tint #0b0b0f) or black (light glass) backdrop, blended in sRGB like the compositor: {light glass, dark glass}.
   extern const float kLegibleAlpha[2];
   // Ink alpha label_2 (4.5:1) and label_3 (3:1, dim by design) reach at full density over kLegibleAlpha glass:
   // {light glass (dark ink), dark glass (light ink)}. Secondary ink rises to these with the surface's density.

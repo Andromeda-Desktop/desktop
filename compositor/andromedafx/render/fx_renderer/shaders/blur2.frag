@@ -277,7 +277,8 @@ void main() {
     color = mix(color, lens_sample(tex, lens_uv / 2.0, lens_bend / 2.0), lens_weight);
   }
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
-  color.rgb += specular * color.a;
+  // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
+  color.rgb += specular * (color.a - color.rgb);
 #endif
 #if CORNERS
   float quad_corner_alpha = corner_alpha(

@@ -3,9 +3,9 @@
 namespace glass {
 
   namespace {
-  // Over a low-contrast backdrop each style's glass moves this fraction of its gap to opaque, in its own colour
-  // (concept C styles.css --dense; Liquid light goes milky, not a grey veil), by Style: {light glass, dark glass}.
-  constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.8F, 0.66F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
+  // Over a low-contrast backdrop each style's glass moves at least this fraction of its gap to opaque, in its own
+  // colour, by Style: {light glass, dark glass}. Liquid takes only what legibility needs, so it stays see-through.
+  constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.0F, 0.0F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
   // Clarity 0 blurs at full size, 1 not at all: Frosted stops at 0.7 (a 30 % blur); Liquid spans 0.85 (Soft) to 0.45
   // (Strong): every Liquid surface keeps a real blur, like Apple's Regular glass.
   constexpr float kLiquidClarity[2] = {0.85F, 0.45F};
@@ -20,7 +20,7 @@ namespace glass {
   constexpr float kAdaptLuminance[2] = {0.2F, 0.75F};
   } // namespace
 
-  const float kLegibleAlpha[2] = {0.60F, 0.80F};
+  const float kLegibleAlpha[2] = {0.60F, 0.64F};
   const float kLegibleInk2[2] = {0.80F, 0.86F};
   const float kLegibleInk3[2] = {0.62F, 0.60F};
   const float kLiquidLift = 1.05F;

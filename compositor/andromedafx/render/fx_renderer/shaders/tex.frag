@@ -311,7 +311,8 @@ void main() {
   }
   vec4 color = convert_color(base);
   color.rgb = mix(color.rgb, tint_mix.rgb * color.a, tint_mix.a);
-  color.rgb += specular * color.a;
+  // Screen, not add: the rim lifts what is below white, so over a bright backdrop it stays a highlight, not a white band.
+  color.rgb += specular * (color.a - color.rgb);
 #else
   vec4 base = sample_texture(uv);
   if (source_mix > 0.0) {
