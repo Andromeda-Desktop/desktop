@@ -1,3 +1,4 @@
+#include "core/files/resource_paths.h"
 #include "shell/dock/dock_items.h"
 #include "config/app_icon_settings.h"
 
@@ -558,16 +559,11 @@ namespace shell::dock {
       areaNode->setSize(cellMain, cellCross);
     }
 
-    // The theme's full-colour trash, decoded at its magnified size like app icons; the glyph only without one.
+    // Andromeda's own glass bin, decoded at its magnified size like app icons.
     const int decode = std::max(
         1, static_cast<int>(std::round(static_cast<float>(dockIconDecodeTargetSize(cfg)) * g / static_cast<float>(cfg.iconSize)))
     );
-    // Copied one at a time: resolve() returns a cache reference that a theme change on the next call clears.
-    instance.trash.themeIcons[0] = deps.iconResolver.resolve("user-trash", decode);
-    instance.trash.themeIcons[1] = deps.iconResolver.resolve("user-trash-full", decode);
-    if (instance.trash.themeIcons[0].empty() || instance.trash.themeIcons[1].empty()) {
-      instance.trash.themeIcons = {};
-    }
+    instance.trash.themeIcons = {paths::assetPath("dock/trash.svg").string(), paths::assetPath("dock/trash-full.svg").string()};
     instance.trash.decodeSize = decode;
     std::unique_ptr<Node> icon;
     if (!instance.trash.themeIcons[0].empty()) {
