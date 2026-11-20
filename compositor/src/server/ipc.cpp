@@ -7,6 +7,7 @@
 #include "scene/color.h"
 #include "server/ipc_commands.h"
 #include "server/server.h"
+#include "server/socket_recovery.h"
 #include "workspace/workspace.h"
 
 #include <algorithm>
@@ -187,44 +188,9 @@ namespace andromeda {
     }
     m_socketPath = std::string(runtimeDir) + "/andromeda-" + waylandSocketName + ".sock";
 
-    m_listenFd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-    if (m_listenFd < 0) {
-      kLog.error("failed to create IPC socket: {}", strerror(errno));
-      return;
-    }
-
     unlink(m_socketPath.c_str());
-
-    sockaddr_un addr{};
-    addr.sun_family = AF_UNIX;
-    if (m_socketPath.size() >= sizeof(addr.sun_path)) {
-      kLog.error("IPC socket path too long");
-      close(m_listenFd);
-      m_listenFd = -1;
-      return;
-    }
-    m_socketPath.copy(addr.sun_path, m_socketPath.size());
-
-    if (bind(m_listenFd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-      kLog.error("failed to bind IPC socket: {}", strerror(errno));
-      close(m_listenFd);
-      m_listenFd = -1;
-      return;
-    }
-
-    if (chmod(m_socketPath.c_str(), S_IRUSR | S_IWUSR) < 0) {
-      kLog.error("failed to restrict IPC socket: {}", strerror(errno));
-      close(m_listenFd);
-      m_listenFd = -1;
-      unlink(m_socketPath.c_str());
-      return;
-    }
-
-    if (listen(m_listenFd, 4) < 0) {
-      kLog.error("failed to listen on IPC socket: {}", strerror(errno));
-      close(m_listenFd);
-      m_listenFd = -1;
-      unlink(m_socketPath.c_str());
+    m_listenFd = bindUnixListener(m_socketPath, 4, S_IRUSR | S_IWUSR);
+    if (m_listenFd < 0) {
       return;
     }
 
@@ -240,6 +206,32 @@ namespace andromeda {
     }
 
     kLog.info("IPC listening on {}", m_socketPath);
+  }
+
+  bool Ipc::rebind() {
+    if (m_socketPath.empty()) {
+      return false;
+    }
+    const int fd = bindUnixListener(m_socketPath, 4, S_IRUSR | S_IWUSR);
+    if (fd < 0) {
+      return false;
+    }
+    wl_event_source* source =
+        wl_event_loop_add_fd(wl_display_get_event_loop(m_server->display()), fd, WL_EVENT_READABLE, onListenReadable, this);
+    if (source == nullptr) {
+      close(fd);
+      unlink(m_socketPath.c_str());
+      return false;
+    }
+    if (m_eventSource != nullptr) {
+      wl_event_source_remove(m_eventSource);
+    }
+    if (m_listenFd >= 0) {
+      close(m_listenFd);
+    }
+    m_listenFd = fd;
+    m_eventSource = source;
+    return true;
   }
 
   Ipc::~Ipc() {

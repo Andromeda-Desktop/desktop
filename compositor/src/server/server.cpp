@@ -60,6 +60,7 @@
 #include "server/fifo.h"
 #include "server/xdg_session.h"
 #include "server/ipc.h"
+#include "server/socket_recovery.h"
 #include "provider/provider.h"
 #include "server/shm_residency_barrier.h"
 #include "server/syncobj_acquire_barrier.h"
@@ -86,6 +87,8 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <filesystem>
 #include <memory>
 #include <fstream>
@@ -1377,6 +1380,7 @@ namespace andromeda {
 
   // Last step: wl_display_destroy frees every global, so every member above must already be gone.
   void Server::destroyDisplay() {
+    m_socketRecovery.reset();
     m_ipcWindowsPacer.reset();
     m_ipcWorkspacesPacer.reset();
     m_ipcLayersPacer.reset();
@@ -1386,6 +1390,45 @@ namespace andromeda {
     if (m_display != nullptr) {
       wl_display_destroy(m_display);
     }
+    if (m_waylandLockFd >= 0) {
+      close(m_waylandLockFd);
+    }
+  }
+
+  std::string Server::waylandSocketPath(std::string_view suffix) const {
+    return std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/" + m_socketName + std::string(suffix);
+  }
+
+  bool Server::recoverWaylandSocket() {
+    const std::string lockPath = waylandSocketPath(".lock");
+    struct stat lock {};
+    if (stat(lockPath.c_str(), &lock) != 0 || lock.st_ino != m_waylandLockIno) {
+      // The lock is gone or new: take it, or leave the name to the process that holds it.
+      const int fd = open(lockPath.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+      if (fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0 || fstat(fd, &lock) != 0) {
+        kLog.error("{} is held by another process: not recreating {}", lockPath, m_socketName);
+        if (fd >= 0) {
+          close(fd);
+        }
+        return false;
+      }
+      if (m_waylandLockFd >= 0) {
+        close(m_waylandLockFd);
+      }
+      m_waylandLockFd = fd;
+      m_waylandLockIno = lock.st_ino;
+    }
+    const std::string path = waylandSocketPath("");
+    const int fd = bindUnixListener(path, 128, 0);
+    if (fd < 0) {
+      return false;
+    }
+    if (wl_display_add_socket_fd(m_display, fd) != 0) {
+      close(fd);
+      unlink(path.c_str());
+      return false;
+    }
+    return true;
   }
 
   const wlr_image_description_v1_data* Server::surfaceImageDescription(wlr_surface* surface) const {
@@ -1632,6 +1675,11 @@ namespace andromeda {
         return false;
       }
       m_socketName = socket;
+      struct stat lock {};
+      // The lock libwayland holds for this name: a recovery may reuse it (an adopted systemd socket has none).
+      if (stat(waylandSocketPath(".lock").c_str(), &lock) == 0) {
+        m_waylandLockIno = lock.st_ino;
+      }
     }
 
     refreshSystemKeymap();
@@ -1784,6 +1832,13 @@ namespace andromeda {
     if (!greeterMode()) {
       m_ipc = std::make_unique<Ipc>(*this, m_socketName);
       m_provider = std::make_unique<Provider>(*this, m_socketName);
+      if (const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR"); runtimeDir != nullptr && runtimeDir[0] != '\0') {
+        m_socketRecovery = std::make_unique<SocketRecovery>(wl_display_get_event_loop(m_display), runtimeDir);
+        if (m_waylandLockIno != 0) {
+          m_socketRecovery->watch(m_socketName, [this] { return recoverWaylandSocket(); });
+        }
+        m_socketRecovery->watch("andromeda-" + m_socketName + ".sock", [this] { return m_ipc->rebind(); });
+      }
       // A pointer or animation can change a snapshot every frame; subscribers hear about it at most once per 16 ms.
       constexpr int kIpcSnapshotIntervalMs = 16;
       wl_event_loop* loop = wl_display_get_event_loop(m_display);

@@ -1123,6 +1123,7 @@ core_sources = files(
   'src/cli/debug.cpp',
   'src/server/event_pacer.cpp',
   'src/server/ipc.cpp',
+  'src/server/socket_recovery.cpp',
   'src/server/ipc_commands.cpp',
   'src/provider/provider.cpp',
   'src/provider/handlers.cpp',

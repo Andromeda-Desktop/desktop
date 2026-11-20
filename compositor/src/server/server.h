@@ -200,6 +200,7 @@ namespace andromeda {
   class SnapAssist;
   class Ipc;
   class Provider;
+  class SocketRecovery;
 
   class Server {
   public:
@@ -1097,6 +1098,10 @@ namespace andromeda {
     // Logout hand-off: waits for greetd's greeter to take the VT before the shutdown target runs.
     wl_event_source* m_logoutHandoffTimer = nullptr;
     wl_event_source* m_sessionExitResultSource = nullptr;
+    // $XDG_RUNTIME_DIR/<socket name><suffix>.
+    [[nodiscard]] std::string waylandSocketPath(std::string_view suffix) const;
+    // Listens again on the Wayland socket name after its file was deleted; false when another process owns the name.
+    bool recoverWaylandSocket();
     std::string m_socketName;
     std::string m_systemdRunExecutable;
     std::string m_systemctlExecutable;
@@ -1362,6 +1367,12 @@ namespace andromeda {
     TeardownStep m_stepCloseSnapshots{this, &Server::clearCloseSnapshots};
     std::unique_ptr<HintRect> m_insertHint;
     std::unique_ptr<Ipc> m_ipc;
+    // Recreates the Wayland and IPC socket files when something deletes them (socket_recovery.h).
+    std::unique_ptr<SocketRecovery> m_socketRecovery;
+    // Inode of the Wayland socket's lock file this process holds; 0 for an adopted systemd socket (not recreated).
+    ino_t m_waylandLockIno = 0;
+    // A lock this process took during a recovery, when the original lock file was deleted too.
+    int m_waylandLockFd = -1;
     std::unique_ptr<Provider> m_provider;
     std::unique_ptr<ConfigWatcher> m_configWatcher;
     // Destroyed first: ~Overview runs teardown(), which notifies m_ipc.

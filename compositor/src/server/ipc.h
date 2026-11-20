@@ -46,6 +46,9 @@ namespace andromeda {
     Ipc(Server& server, const std::string& waylandSocketName);
     ~Ipc();
 
+    // Listens again at the socket path after its file was deleted; false when the path is taken or binding fails.
+    bool rebind();
+
     Ipc(const Ipc&) = delete;
     Ipc& operator=(const Ipc&) = delete;
 
