@@ -1,6 +1,7 @@
 #include "core/main_loop_worker.h"
 #include "protocols/crash_capture.h"
 
+#include <pthread.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <wayland-server-core.h>
@@ -47,6 +48,7 @@ namespace andromeda {
   }
 
   void MainLoopWorker::run(const std::stop_token& stop) {
+    pthread_setname_np(pthread_self(), "andro-worker");
     andromeda::crash::installThreadStack();
     std::unique_lock lock(m_mutex);
     while (m_wake.wait(lock, stop, [this] { return !m_jobs.empty(); })) {

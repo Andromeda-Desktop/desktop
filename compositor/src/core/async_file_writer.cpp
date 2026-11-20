@@ -7,6 +7,7 @@
 #include <deque>
 #include <fstream>
 #include <mutex>
+#include <pthread.h>
 #include <stop_token>
 #include <thread>
 #include <utility>
@@ -44,6 +45,7 @@ namespace andromeda {
 
     private:
       void run(const std::stop_token& stop) {
+      pthread_setname_np(pthread_self(), "andro-filewrite");
         andromeda::crash::installThreadStack();
         std::unique_lock lock(m_mutex);
         while (true) {

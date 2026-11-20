@@ -4,6 +4,7 @@
 #include "wlr.h"
 
 #include <cstring>
+#include <pthread.h>
 #include <string>
 #include <thread>
 
@@ -81,6 +82,7 @@ namespace andromeda::scanout_keeper {
     }
 
     void releaseOverBus() {
+      pthread_setname_np(pthread_self(), "andro-scanout");
       sd_bus* bus = nullptr;
       if (sd_bus_open_system(&bus) < 0) {
         return;

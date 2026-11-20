@@ -372,6 +372,7 @@ namespace {
   }
 
   void writerMain() {
+    pthread_setname_np(pthread_self(), "andro-log");
     andromeda::crash::installThreadStack();
     std::unique_lock lock(gQueueMutex);
     while (true) {

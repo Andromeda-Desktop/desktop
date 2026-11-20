@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <filesystem>
 #include <fstream>
+#include <pthread.h>
 #include <utility>
 
 #include <fcntl.h>
@@ -140,6 +141,7 @@ namespace andromeda::qos {
   }
 
   void Actuator::slackLoop(const std::stop_token& stop) {
+    pthread_setname_np(pthread_self(), "andro-slack");
     andromeda::crash::installThreadStack();
     std::unique_lock lock(m_slackMutex);
     for (;;) {

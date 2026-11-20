@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <pthread.h>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <thread>
@@ -100,6 +101,7 @@ namespace andromeda {
     std::thread worker;
 
     void run() {
+      pthread_setname_np(pthread_self(), "andro-residency");
       std::unique_lock lock(mutex);
       while (true) {
         wake.wait(lock, [this] { return stopping || !queued.empty(); });
