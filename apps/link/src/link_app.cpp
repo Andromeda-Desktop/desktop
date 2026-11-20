@@ -555,6 +555,7 @@ namespace linkapp {
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
       m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale);
+      m_files = std::make_unique<FileAdapter>(*m_client, m_scale);
       m_client->setOnThumbnail([this] {
         if (m_photoGrid != nullptr) m_photoGrid->notifyDataChanged();
       });
@@ -612,6 +613,7 @@ namespace linkapp {
     m_page = page;
     m_confirmForget = false;
     if (page == Page::Photos && m_client) m_client->loadPhotos();
+    if (page == Page::Files && m_client) m_client->openFolder(m_client->files().path());
     sync();
     updateCaption();
     m_window->requestRebuild();
@@ -623,7 +625,9 @@ namespace linkapp {
     const bool pairing = kind == Presence::Kind::NotPaired;
     if (pairing && m_client->pair().kind == Pair::Kind::Idle) m_client->startPairing();
     m_window->setTitle(pairing ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
-    const bool cards = m_page == Page::Messages && (kind == Presence::Kind::Connected || kind == Presence::Kind::Locked);
+    const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
+    if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
+    const bool cards = (m_page == Page::Messages || m_page == Page::Files) && live;
     const Messages& messages = m_client->messages();
     if (cards && (!m_thread || messages.thread(*m_thread) == nullptr)) {
       m_thread = messages.threads().empty() ? std::nullopt : std::optional(messages.threads().front().id);
@@ -875,6 +879,7 @@ namespace linkapp {
     if (m_page == Page::Messages) return messages(width, height);
     if (m_page == Page::Calls) return calls();
     if (m_page == Page::Photos) return photos(renderer);
+    if (m_page == Page::Files) return files(width, height);
     if (m_page == Page::Activity) return activity();
     if (m_page == Page::Settings) return settings(presence);
     if (m_page != Page::Waiting) {
@@ -987,6 +992,139 @@ namespace linkapp {
     }
     body->setFlexGrow(1.0F);
     cards->addChild(card(std::move(head), std::move(body), convWidth, true));
+    return cards;
+  }
+
+  std::uint64_t FileAdapter::itemKey(std::size_t index) const {
+    return std::hash<std::string>{}(m_client.files().entries()[index].name);
+  }
+
+  float FileAdapter::measureItem(Renderer& /*renderer*/, std::size_t /*index*/, float /*width*/) {
+    return Tokens::sizeControlL * m_scale;
+  }
+
+  std::unique_ptr<Node> FileAdapter::createItem() { return ui::column({.align = FlexAlign::Stretch}); }
+
+  // File row (flow.html .tr2): symbol 32 | name | size 112 | modified 112, h 40, r 8, fill_1 on hover.
+  void FileAdapter::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float /*width*/, bool hovered) {
+    const float s = m_scale;
+    const Files& files = m_client.files();
+    const FileEntry& entry = files.entries()[index];
+    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s,
+                        .fill = hovered ? colorSpecFromRole(ColorRole::Fill1) : clearColorSpec(),
+                        .radius = Style::scaledRadius(Tokens::radiusR8, s), .height = Tokens::sizeControlL * s});
+    auto symbol = ui::row({.align = FlexAlign::Center, .width = Tokens::componentLinkFileSymbol * s});
+    symbol->setPadding(0.0F, 0.0F, 0.0F, Tokens::spaceP8 * s);
+    symbol->addChild(ui::glyph({.glyph = std::string(entry.folder ? "folder" : "file"), .glyphSize = Tokens::sizeSymbol * s,
+                                .color = colorSpecFromRole(ColorRole::Label2)}));
+    row->addChild(std::move(symbol));
+    auto name = text(entry.name, Tokens::typeBody, ColorRole::Label1, s);
+    name->setFlexGrow(1.0F);
+    row->addChild(std::move(name));
+    std::string size = entry.folder ? std::string() : byteSize(entry.size);
+    ColorRole sizeRole = ColorRole::Label2;
+    if (const FileSave* save = entry.folder ? nullptr : files.save(files.childPath(entry.name))) {
+      switch (save->state) {
+      case FileSave::State::Running:
+        size = save->total > 0 ? std::format("Saving {} %", save->got * 100 / save->total) : std::string("Saving…");
+        break;
+      case FileSave::State::Done: size = "In Downloads"; break;
+      case FileSave::State::Failed:
+        size = "Not saved";
+        sizeRole = ColorRole::DangerText;
+        break;
+      }
+    }
+    for (auto [value, role] : {std::pair{size, sizeRole}, std::pair{entry.mtimeS > 0 ? when(entry.mtimeS * 1000) : std::string(),
+                                                                       ColorRole::Label2}}) {
+      auto cell = text(value, Tokens::typeFootnote, role, s);
+      cell->setTextAlign(TextAlign::End);
+      auto box = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .width = Tokens::componentLinkFileColumn * s});
+      box->setPadding(0.0F, Tokens::spaceP12 * s, 0.0F, 0.0F);
+      box->addChild(std::move(cell));
+      row->addChild(std::move(box));
+    }
+    auto& holder = static_cast<Flex&>(item);
+    while (!holder.children().empty()) holder.removeChild(holder.children().back().get());
+    holder.addChild(std::move(row));
+  }
+
+  void FileAdapter::onActivate(std::size_t index) {
+    const Files& files = m_client.files();
+    if (index >= files.entries().size()) return;
+    const FileEntry& entry = files.entries()[index];
+    if (entry.folder) {
+      m_client.openFolder(files.childPath(entry.name));
+      return;
+    }
+    const FileSave* save = files.save(files.childPath(entry.name));
+    if (save != nullptr && save->state == FileSave::State::Done) {
+      m_client.showInFolder({save->saved});
+    } else {
+      m_client.saveFile(entry.name);
+    }
+  }
+
+  // Files (flow.html#page=files): caption Back + breadcrumb; header Name | Size | Modified; the folder's rows.
+  std::unique_ptr<Node> LinkApp::files(float width, float height) {
+    const float s = m_scale;
+    const Files& files = m_client->files();
+    std::vector<std::unique_ptr<Node>> caption;
+    caption.push_back(ui::button({.glyph = std::string("chevron-left"), .enabled = files.path() != "/", .variant = ButtonVariant::Ghost,
+                                  .tooltip = std::string("Back"), .onClick = [this] { m_client->openFolder(m_client->files().parent()); }}));
+    auto crumbs = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .clipChildren = true, .flexGrow = 1.0F});
+    const std::vector<std::string> names = files.crumbs();
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      if (i > 0) {
+        crumbs->addChild(ui::glyph({.glyph = std::string("chevron-right"), .glyphSize = Tokens::sizeSymbol * s * 0.75F,
+                                    .color = colorSpecFromRole(ColorRole::Label3)}));
+      }
+      if (i + 1 == names.size()) {
+        crumbs->addChild(text(names[i], Tokens::typeHeadline, ColorRole::Label1, s));
+      } else {
+        auto crumb = ui::button({.text = names[i], .fontSize = Tokens::typeHeadline.size * s, .variant = ButtonVariant::Ghost,
+                                 .onClick = [this, i] { m_client->openFolder(m_client->files().crumbPath(i)); }});
+        crumbs->addChild(std::move(crumb));
+      }
+    }
+    caption.push_back(std::move(crumbs));
+
+    std::unique_ptr<Node> body;
+    if (files.load() == Files::Load::Failed) {
+      body = emptyState("folder-off", "This folder did not open", files.error(), s,
+                        ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
+                                    .onClick = [this] { m_client->openFolder(m_client->files().path()); }}));
+    } else if (files.load() == Files::Load::Ready && files.entries().empty()) {
+      body = emptyState("folder", "Empty folder", "This folder on the phone has nothing in it.", s);
+    } else {
+      auto page = ui::column({.align = FlexAlign::Stretch});
+      page->setPadding(Tokens::spaceP8 * s, Tokens::spaceP24 * s, 0.0F, Tokens::spaceP24 * s);
+      auto head = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .height = Tokens::sizeControlM * s});
+      head->addChild(ui::row({.width = Tokens::componentLinkFileSymbol * s}));
+      for (const char* label : {"Name", "Size", "Modified"}) {
+        auto cell = ui::label({.text = std::string(label), .fontSize = Tokens::typeFootnote.size * s,
+                               .fontWeight = static_cast<FontWeight>(500), .color = colorSpecFromRole(ColorRole::Label2)});
+        if (std::string_view(label) == "Name") {
+          cell->setFlexGrow(1.0F);
+          head->addChild(std::move(cell));
+          continue;
+        }
+        cell->setTextAlign(TextAlign::End);
+        auto box = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .width = Tokens::componentLinkFileColumn * s});
+        box->setPadding(0.0F, Tokens::spaceP12 * s, 0.0F, 0.0F);
+        box->addChild(std::move(cell));
+        head->addChild(std::move(box));
+      }
+      page->addChild(std::move(head));
+      page->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = s}));
+      if (!files.entries().empty()) {
+        page->addChild(ui::virtualListView({.state = &m_fileScroll, .contentScale = s, .adapter = m_files.get(), .flexGrow = 1.0F}));
+      }
+      body = std::move(page);
+    }
+    body->setFlexGrow(1.0F);
+    auto cards = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
+    cards->addChild(card(std::move(caption), std::move(body), width, true));
     return cards;
   }
 

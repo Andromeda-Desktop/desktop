@@ -120,6 +120,23 @@ namespace linkapp {
     std::map<const Node*, std::string> m_shown; // tile -> path of the thumbnail it shows
   };
 
+  // Files: one phone folder, folders first; a click opens a folder, saves a file, or shows a saved one.
+  class FileAdapter final : public VirtualListAdapter {
+  public:
+    FileAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
+    [[nodiscard]] std::size_t itemCount() const override { return m_client.files().entries().size(); }
+    [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
+    [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
+    [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
+    [[nodiscard]] std::unique_ptr<Node> createItem() override;
+    void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
+    void onActivate(std::size_t index) override;
+
+  private:
+    LinkClient& m_client;
+    const float& m_scale;
+  };
+
   // Activity: transfers since the app started, newest first, with actions per state.
   class TransferAdapter final : public VirtualListAdapter {
   public:
@@ -160,6 +177,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();
     [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer);
+    [[nodiscard]] std::unique_ptr<Node> files(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
@@ -177,6 +195,8 @@ namespace linkapp {
     std::map<std::uint64_t, std::string> m_threadDrafts;
     std::unique_ptr<CallAdapter> m_calls;
     ScrollViewState m_callScroll;
+    std::unique_ptr<FileAdapter> m_files;
+    ScrollViewState m_fileScroll;
     std::unique_ptr<PhotoAdapter> m_photos;
     ScrollViewState m_photoScroll;
     VirtualGridView* m_photoGrid = nullptr; // the grid of the last build, null off the Photos page

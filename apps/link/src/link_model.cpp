@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <ctime>
 #include <format>
@@ -435,6 +436,98 @@ namespace linkapp {
       if (out.empty() || out.back().second != label) out.emplace_back(i, std::move(label));
     }
     return out;
+  }
+
+  std::vector<std::string> Files::crumbs() const {
+    std::vector<std::string> out{"Phone"};
+    for (std::size_t at = 1; at < m_path.size();) {
+      const std::size_t end = std::min(m_path.find('/', at), m_path.size());
+      out.push_back(m_path.substr(at, end - at));
+      at = end + 1;
+    }
+    return out;
+  }
+
+  std::string Files::childPath(const std::string& name) const {
+    return m_path == "/" ? "/" + name : m_path + "/" + name;
+  }
+
+  std::uint64_t Files::go(const std::string& path) {
+    if (path != m_path) m_entries.clear();
+    m_path = path;
+    m_load = Load::Loading;
+    m_error.clear();
+    return ++m_serial;
+  }
+
+  std::string Files::parent() const {
+    const std::size_t slash = m_path.rfind('/');
+    return slash == 0 || slash == std::string::npos ? std::string("/") : m_path.substr(0, slash);
+  }
+
+  std::string Files::crumbPath(std::size_t index) const {
+    std::size_t at = 0;
+    for (std::size_t i = 0; i < index; ++i) {
+      at = m_path.find('/', at + 1);
+      if (at == std::string::npos) return m_path;
+    }
+    return index == 0 ? std::string("/") : m_path.substr(0, at);
+  }
+
+  bool Files::listed(std::uint64_t serial, std::vector<FileEntry> entries) {
+    if (serial != m_serial || m_load != Load::Loading) return false;
+    const auto lower = [](const std::string& text) {
+      std::string out = text;
+      std::ranges::transform(out, out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      return out;
+    };
+    std::ranges::stable_sort(entries, [&](const FileEntry& a, const FileEntry& b) {
+      return std::tuple(!a.folder, lower(a.name)) < std::tuple(!b.folder, lower(b.name));
+    });
+    m_entries = std::move(entries);
+    m_load = Load::Ready;
+    return true;
+  }
+
+  bool Files::failed(std::uint64_t serial, std::string error) {
+    if (serial != m_serial || m_load != Load::Loading) return false;
+    m_entries.clear();
+    m_error = std::move(error);
+    m_load = Load::Failed;
+    return true;
+  }
+
+  const FileSave* Files::save(const std::string& path) const {
+    const auto it = m_saves.find(path);
+    return it == m_saves.end() ? nullptr : &it->second;
+  }
+
+  bool Files::saveStarted(const std::string& path, std::uint64_t total) {
+    const auto it = m_saves.find(path);
+    if (it != m_saves.end() && it->second.state == FileSave::State::Running) return false;
+    m_saves[path] = {.state = FileSave::State::Running, .total = total};
+    return true;
+  }
+
+  bool Files::saveProgress(const std::string& path, std::uint64_t got) {
+    const auto it = m_saves.find(path);
+    if (it == m_saves.end() || it->second.state != FileSave::State::Running || got < it->second.got) return false;
+    it->second.got = got;
+    return true;
+  }
+
+  bool Files::saveDone(const std::string& path, std::string saved) {
+    const auto it = m_saves.find(path);
+    if (it == m_saves.end() || it->second.state != FileSave::State::Running) return false;
+    it->second = {.state = FileSave::State::Done, .got = it->second.got, .total = it->second.total, .saved = std::move(saved)};
+    return true;
+  }
+
+  bool Files::saveFailed(const std::string& path) {
+    const auto it = m_saves.find(path);
+    if (it == m_saves.end() || it->second.state != FileSave::State::Running) return false;
+    it->second.state = FileSave::State::Failed;
+    return true;
   }
 
 } // namespace linkapp

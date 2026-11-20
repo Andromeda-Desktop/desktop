@@ -327,4 +327,61 @@ namespace linkapp {
     std::size_t m_saveFailed = 0;
   };
 
+  // One ListFiles entry.
+  struct FileEntry {
+    std::string name;
+    bool folder = false;
+    std::uint64_t size = 0;
+    std::int64_t mtimeS = 0;
+  };
+
+  // A phone file this app saves into the downloads folder with ReadFile.
+  struct FileSave {
+    enum class State : std::uint8_t { Running, Done, Failed };
+    State state = State::Running;
+    std::uint64_t got = 0;
+    std::uint64_t total = 0;
+    std::string saved; // Done: the local path
+  };
+
+  // The Files page: one phone folder ("/" lists the roots). Every navigation starts a load with a new serial; a
+  // reply for an older serial is dropped, so a slow folder never replaces the one on screen.
+  // Load: Loading -> Ready | Failed{error}. Saves: none -> Running -> Done | Failed; Failed | Done -> Running.
+  class Files {
+  public:
+    enum class Load : std::uint8_t { Idle, Loading, Ready, Failed };
+
+    [[nodiscard]] const std::string& path() const { return m_path; }
+    [[nodiscard]] Load load() const { return m_load; }
+    [[nodiscard]] const std::string& error() const { return m_error; }
+    // Folders first, then by name without case.
+    [[nodiscard]] const std::vector<FileEntry>& entries() const { return m_entries; }
+    // "Phone", then each folder of the path.
+    [[nodiscard]] std::vector<std::string> crumbs() const;
+    [[nodiscard]] std::string childPath(const std::string& name) const;
+
+    // Starts a load of `path` (the same one reloads); returns its serial.
+    std::uint64_t go(const std::string& path);
+    // The parent of the path; "/" stays.
+    [[nodiscard]] std::string parent() const;
+    // The path of crumb `index` (0 = "/").
+    [[nodiscard]] std::string crumbPath(std::size_t index) const;
+    bool listed(std::uint64_t serial, std::vector<FileEntry> entries);
+    bool failed(std::uint64_t serial, std::string error);
+
+    [[nodiscard]] const FileSave* save(const std::string& path) const;
+    bool saveStarted(const std::string& path, std::uint64_t total);
+    bool saveProgress(const std::string& path, std::uint64_t got);
+    bool saveDone(const std::string& path, std::string saved);
+    bool saveFailed(const std::string& path);
+
+  private:
+    std::string m_path = "/";
+    Load m_load = Load::Idle;
+    std::string m_error;
+    std::uint64_t m_serial = 0;
+    std::vector<FileEntry> m_entries;
+    std::map<std::string, FileSave> m_saves; // phone path -> its save
+  };
+
 } // namespace linkapp

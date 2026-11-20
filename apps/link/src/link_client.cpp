@@ -4,6 +4,10 @@
 #include "dbus/session_bus.h"
 
 #include <cctype>
+#include <cerrno>
+#include <cstdio>
+#include <filesystem>
+#include <glib.h>
 #include <chrono>
 #include <format>
 #include <map>
@@ -481,6 +485,118 @@ namespace linkapp {
           if (m_thumbnailReady) m_thumbnailReady();
         });
     return nullptr;
+  }
+
+  void LinkClient::openFolder(const std::string& path) {
+    const std::string device = presence().phone.id;
+    if (device.empty()) return;
+    const std::uint64_t serial = m_files.go(path);
+    changed();
+    m_proxy->callMethodAsync("ListFiles")
+        .onInterface(kInterface)
+        .withArguments(device, path)
+        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](
+                             std::optional<sdbus::Error> error, std::vector<sdbus::Struct<std::string, bool, std::uint64_t, std::uint64_t>> list) {
+          if (alive.expired()) return;
+          if (error) {
+            const std::string why = error->getName().ends_with(".Refused") ? error->getMessage() : std::string();
+            kLog.warn("ListFiles: {}", error->getMessage());
+            const std::string text = why == "not-allowed" || why == "denied"
+                                         ? "Turn on Files for this desktop in Link on the phone."
+                                     : why == "not-found" ? "This folder is no longer on the phone."
+                                     : why == "busy"      ? "The phone is busy. Try again in a moment."
+                                                          : "The phone did not answer.";
+            if (m_files.failed(serial, text)) changed();
+            return;
+          }
+          std::vector<FileEntry> entries;
+          entries.reserve(list.size());
+          for (const auto& e : list) {
+            entries.push_back({.name = e.get<0>(), .folder = e.get<1>(), .size = e.get<2>(),
+                               .mtimeS = static_cast<std::int64_t>(e.get<3>())});
+          }
+          if (m_files.listed(serial, std::move(entries))) changed();
+        });
+  }
+
+  struct LinkClient::Download {
+    std::string device;
+    std::string phonePath;
+    std::string local;
+    std::unique_ptr<std::FILE, decltype(&std::fclose)> file{nullptr, &std::fclose};
+    std::uint64_t got = 0;
+    std::chrono::steady_clock::time_point shown;
+  };
+
+  void LinkClient::saveFile(const std::string& name) {
+    const auto entry = std::ranges::find(m_files.entries(), name, &FileEntry::name);
+    const std::string device = presence().phone.id;
+    if (entry == m_files.entries().end() || entry->folder || device.empty()) return;
+    const std::string phonePath = m_files.childPath(name);
+    if (!m_files.saveStarted(phonePath, entry->size)) return;
+    auto download = std::make_shared<Download>();
+    download->device = device;
+    download->phonePath = phonePath;
+    // A free name in the downloads folder: "name", then "name (1).ext", ...
+    const std::filesystem::path dir = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD) != nullptr
+                                          ? g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD)
+                                          : std::filesystem::path(g_get_home_dir()) / "Downloads";
+    const std::filesystem::path base(name);
+    for (int n = 0; n < 1000 && !download->file; ++n) {
+      const std::string candidate =
+          n == 0 ? name : std::format("{} ({}){}", base.stem().string(), n, base.extension().string());
+      download->local = (dir / candidate).string();
+      download->file.reset(std::fopen(download->local.c_str(), "wbx"));
+      if (!download->file && errno != EEXIST) break;
+    }
+    if (!download->file) {
+      kLog.warn("save {}: cannot create a file in {}", name, dir.string());
+      (void)m_files.saveFailed(phonePath);
+      changed();
+      return;
+    }
+    changed();
+    readChunk(download);
+  }
+
+  void LinkClient::readChunk(const std::shared_ptr<Download>& download) {
+    constexpr std::uint32_t kChunk = 1024 * 1024; // Link1 ReadFile's largest read
+    m_proxy->callMethodAsync("ReadFile")
+        .onInterface(kInterface)
+        .withArguments(download->device, download->phonePath, download->got, kChunk)
+        .uponReplyInvoke([this, download, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+                                                                                 std::vector<std::uint8_t> data) {
+          if (alive.expired()) return;
+          const bool wrote = !error && std::fwrite(data.data(), 1, data.size(), download->file.get()) == data.size();
+          if (!wrote) {
+            if (error) kLog.warn("ReadFile: {}", error->getMessage());
+            download->file.reset();
+            std::remove(download->local.c_str());
+            (void)m_files.saveFailed(download->phonePath);
+            changed();
+            return;
+          }
+          download->got += data.size();
+          if (data.size() < kChunk) {
+            const bool closed = std::fclose(download->file.release()) == 0;
+            if (closed) {
+              (void)m_files.saveDone(download->phonePath, download->local);
+            } else {
+              std::remove(download->local.c_str());
+              (void)m_files.saveFailed(download->phonePath);
+            }
+            changed();
+            return;
+          }
+          (void)m_files.saveProgress(download->phonePath, download->got);
+          // Progress repaints at most 4 times a second (rulebook §16).
+          const auto now = std::chrono::steady_clock::now();
+          if (now - download->shown >= std::chrono::milliseconds(250)) {
+            download->shown = now;
+            changed();
+          }
+          readChunk(download);
+        });
   }
 
   void LinkClient::startPairing() {

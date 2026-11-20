@@ -41,6 +41,11 @@ namespace linkapp {
     [[nodiscard]] CallLog callLog() const { return m_callLog; }
     [[nodiscard]] const Activity& activity() const { return m_activity; }
     [[nodiscard]] const Photos& photos() const { return m_photos; }
+    [[nodiscard]] const Files& files() const { return m_files; }
+    // Lists `path` on the phone presence() shows ("/" for its roots).
+    void openFolder(const std::string& path);
+    // Copies the file `name` of the open folder into the downloads folder with ReadFile, 1 MiB at a time.
+    void saveFile(const std::string& name);
     // RecentPhotos of the phone presence() shows; ignored while a load runs.
     void loadPhotos();
     void togglePhoto(std::size_t index);
@@ -80,6 +85,8 @@ namespace linkapp {
     void setDnd(const std::string& deviceId, bool on);
 
   private:
+    struct Download;
+    void readChunk(const std::shared_ptr<Download>& download);
     void refresh();
     void refreshNearby();
     void send(std::uint64_t serial);
@@ -100,6 +107,7 @@ namespace linkapp {
     Messages m_messages;
     Activity m_activity;
     Photos m_photos;
+    Files m_files;
     std::string m_photosDevice;
     std::map<std::string, std::vector<std::uint8_t>> m_thumbs; // path -> PNG; empty while in flight
     std::function<void()> m_thumbnailReady;

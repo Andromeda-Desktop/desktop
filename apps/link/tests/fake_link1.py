@@ -129,6 +129,15 @@ def png(index, size=64):
 
 def call(_conn, _sender, _path, _iface, method, params, invocation):
     print("call", method, params, flush=True)
+    if method == "ListFiles":
+        folders = {"/": [
+                       ("DCIM", True, 0, ago(0, 17, 0) // 1000), ("Documents", True, 0, ago(4, 10, 0) // 1000),
+                       ("Download", True, 0, ago(0, 16, 0) // 1000),
+                       ("Quarterly report Q3 final (2).pdf", False, 2_400_000, ago(0, 18, 31) // 1000),
+                       ("boarding-pass-LH2034.pdf", False, 182_000, ago(3, 9, 0) // 1000),
+                       ("IMG_20261120_181203.jpg", False, 3_100_000, ago(0, 18, 12) // 1000)]}
+        invocation.return_value(GLib.Variant("(a(sbtt))", (folders.get(params[1], []),)))
+        return
     if method == "RecentPhotos":
         invocation.return_value(GLib.Variant("(a(sst))", (photos if connected else [],)))
         return

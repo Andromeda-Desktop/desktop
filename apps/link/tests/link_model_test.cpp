@@ -10,6 +10,8 @@
 #include <ranges>
 #include <tuple>
 #include <cstdlib>
+#include <map>
+#include <optional>
 #include <random>
 #include <set>
 
@@ -382,6 +384,72 @@ namespace {
     }
   }
 
+  // Random navigation with replies in any order, and save events, against the Files rules.
+  void runFiles(unsigned seed) {
+    using L = Files::Load;
+    using S = FileSave::State;
+    std::mt19937 rng(seed);
+    Files files;
+    std::vector<std::pair<std::uint64_t, std::string>> pending; // serial, path asked
+    std::uint64_t newest = 0;
+    std::string newestPath = "/";
+    const std::array<std::string, 4> names{"DCIM", "b.pdf", "Alpha", "a.txt"};
+    std::map<std::string, S> saves;
+    for (int step = 0; step < 3000; ++step) {
+      switch (rng() % 7) {
+      case 0: newestPath = files.childPath(names[rng() % 4]); newest = files.go(newestPath); pending.emplace_back(newest, newestPath); break;
+      case 1: newestPath = files.parent(); newest = files.go(newestPath); pending.emplace_back(newest, newestPath); break;
+      case 2: {
+        newestPath = files.crumbPath(rng() % 4);
+        newest = files.go(newestPath);
+        pending.emplace_back(newest, newestPath);
+        break;
+      }
+      case 3:
+      case 4: {
+        if (pending.empty()) break;
+        const std::size_t i = rng() % pending.size();
+        const auto [serial, path] = pending[i];
+        pending.erase(pending.begin() + static_cast<std::ptrdiff_t>(i));
+        std::vector<FileEntry> list;
+        for (const auto& n : names) {
+          if (rng() % 2) list.push_back({.name = n, .folder = !n.contains('.')});
+        }
+        const bool ok = rng() % 4 ? files.listed(serial, list) : files.failed(serial, "busy");
+        expect(ok == (serial == newest && path == files.path()), "only the newest reply lands", seed, step);
+        break;
+      }
+      case 5: {
+        const std::string path = "/x/" + names[rng() % 4];
+        const auto before = saves.contains(path) ? std::optional(saves[path]) : std::nullopt;
+        const bool started = files.saveStarted(path, 10);
+        expect(started == (!before || *before != S::Running), "one save per file at a time", seed, step);
+        if (started) saves[path] = S::Running;
+        break;
+      }
+      case 6: {
+        const std::string path = "/x/" + names[rng() % 4];
+        const bool running = saves.contains(path) && saves[path] == S::Running;
+        const bool done = rng() % 2;
+        const bool moved = done ? files.saveDone(path, "/d/" + path) : files.saveFailed(path);
+        expect(moved == running, "a save ends only while it runs", seed, step);
+        if (moved) saves[path] = done ? S::Done : S::Failed;
+        break;
+      }
+      }
+      expect(files.path() == newestPath, "the path is the newest asked", seed, step);
+      expect(files.crumbs().size() == static_cast<std::size_t>(std::ranges::count(files.path(), '/')) + (files.path() == "/" ? 0 : 1),
+             "one crumb per folder", seed, step);
+      expect(files.crumbPath(files.crumbs().size() - 1) == files.path(), "the last crumb is the path", seed, step);
+      const auto& entries = files.entries();
+      for (std::size_t i = 1; i < entries.size(); ++i) {
+        expect(entries[i - 1].folder >= entries[i].folder, "folders first", seed, step);
+      }
+      if (files.load() == L::Failed) expect(entries.empty() && !files.error().empty(), "a failed folder lists nothing", seed, step);
+      for (const auto& [path, state] : saves) expect(files.save(path) && files.save(path)->state == state, "save states", seed, step);
+    }
+  }
+
   void lastSeen() {
     const std::int64_t now = 1'763'640'000; // 2025-11-20 12:00 UTC
     expect(lastSeenText(0, now) == "Not connected", "never seen", 0, 0);
@@ -398,6 +466,7 @@ int main() {
   for (unsigned seed = 1; seed <= 20; ++seed) runPair(seed);
   lastSeen();
   for (unsigned seed = 1; seed <= 20; ++seed) runPhotos(seed);
+  for (unsigned seed = 1; seed <= 20; ++seed) runFiles(seed);
   setenv("TZ", "UTC", 1);
   tzset();
   for (unsigned seed = 1; seed <= 20; ++seed) runFeed(seed);
