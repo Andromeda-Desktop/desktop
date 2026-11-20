@@ -16,6 +16,9 @@ GLuint compile_shader(GLuint type, const GLchar* src);
 
 GLuint link_program(const GLchar* frag_src);
 
+// Needs the renderer's context current.
+void program_cache_init(const char* exts);
+
 bool check_gl_ext(const char* exts, const char* ext);
 
 void load_gl_proc(void* proc_ptr, const char* name);

@@ -4,8 +4,15 @@
 #include "render/fx_renderer/fx_renderer.h"
 
 #include <EGL/egl.h>
+#include <GLES2/gl2ext.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <andromedafx/types/fx/clipped_region.h>
 #include <wlr/util/log.h>
 
@@ -43,7 +50,146 @@ GLuint compile_shader(GLuint type, const GLchar* src) {
   return shader;
 }
 
+// Linked program binaries in $XDG_CACHE_HOME/andromeda/fx-programs, keyed by both sources and the driver; the driver
+// rejects a stale binary, which falls back to compile and link. Set once at renderer creation, read-only afterwards.
+static struct {
+  PFNGLPROGRAMBINARYOESPROC load;
+  PFNGLGETPROGRAMBINARYOESPROC get;
+  char dir[PATH_MAX];
+} program_cache;
+
+void program_cache_init(const char* exts) {
+  if (program_cache.load || !check_gl_ext(exts, "GL_OES_get_program_binary")) {
+    return;
+  }
+  GLint formats = 0;
+  glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS_OES, &formats);
+  const char* xdg = getenv("XDG_CACHE_HOME");
+  const char* home = getenv("HOME");
+  int n;
+  if (xdg && xdg[0] == '/') {
+    n = snprintf(program_cache.dir, sizeof(program_cache.dir), "%s/andromeda/fx-programs", xdg);
+  } else if (home && home[0] == '/') {
+    n = snprintf(program_cache.dir, sizeof(program_cache.dir), "%s/.cache/andromeda/fx-programs", home);
+  } else {
+    return;
+  }
+  if (formats <= 0 || n <= 0 || (size_t)n >= sizeof(program_cache.dir)) {
+    return;
+  }
+  load_gl_proc(&program_cache.load, "glProgramBinaryOES");
+  load_gl_proc(&program_cache.get, "glGetProgramBinaryOES");
+}
+
+static uint64_t fnv1a(uint64_t h, const char* s) {
+  for (; s && *s; s++) {
+    h = (h ^ (unsigned char)*s) * 0x100000001b3ULL;
+  }
+  return (h ^ 0xff) * 0x100000001b3ULL;
+}
+
+static bool program_cache_path(const GLchar* frag_src, char* path, size_t size) {
+  if (!program_cache.load) {
+    return false;
+  }
+  uint64_t h = 0xcbf29ce484222325ULL;
+  h = fnv1a(h, common_vert_src);
+  h = fnv1a(h, frag_src);
+  h = fnv1a(h, (const char*)glGetString(GL_RENDERER));
+  h = fnv1a(h, (const char*)glGetString(GL_VERSION));
+  int n = snprintf(path, size, "%s/%016llx.bin", program_cache.dir, (unsigned long long)h);
+  return n > 0 && (size_t)n < size;
+}
+
+static GLuint program_cache_load(const char* path) {
+  FILE* f = fopen(path, "rb");
+  if (!f) {
+    return 0;
+  }
+  GLenum format;
+  void* blob = NULL;
+  long size = 0;
+  if (fread(&format, sizeof(format), 1, f) == 1 && fseek(f, 0, SEEK_END) == 0) {
+    size = ftell(f) - (long)sizeof(format);
+  }
+  if (size > 0 && fseek(f, sizeof(format), SEEK_SET) == 0) {
+    blob = malloc(size);
+    if (blob && fread(blob, size, 1, f) != 1) {
+      free(blob);
+      blob = NULL;
+    }
+  }
+  fclose(f);
+  if (!blob) {
+    return 0;
+  }
+  GLuint prog = glCreateProgram();
+  program_cache.load(prog, format, blob, size);
+  free(blob);
+  GLint ok = GL_FALSE;
+  glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+  if (ok == GL_FALSE) {
+    glDeleteProgram(prog);
+    while (glGetError() != GL_NO_ERROR) {
+    }
+    return 0;
+  }
+  return prog;
+}
+
+static void program_cache_save(GLuint prog, const char* path) {
+  GLint size = 0;
+  glGetProgramiv(prog, GL_PROGRAM_BINARY_LENGTH_OES, &size);
+  if (size <= 0) {
+    return;
+  }
+  void* blob = malloc(size);
+  GLenum format = 0;
+  GLsizei written = 0;
+  if (!blob) {
+    return;
+  }
+  program_cache.get(prog, size, &written, &format, blob);
+  char dir[PATH_MAX];
+  snprintf(dir, sizeof(dir), "%s", program_cache.dir);
+  for (char* p = dir + 1; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+      mkdir(dir, 0700);
+      *p = '/';
+    }
+  }
+  mkdir(dir, 0700);
+  char tmp[PATH_MAX + 32];
+  snprintf(tmp, sizeof(tmp), "%s.XXXXXX", path);
+  int fd = written > 0 ? mkstemp(tmp) : -1;
+  FILE* f = fd >= 0 ? fdopen(fd, "wb") : NULL;
+  if (fd >= 0 && !f) {
+    close(fd);
+    unlink(tmp);
+  }
+  if (f) {
+    bool ok = fwrite(&format, sizeof(format), 1, f) == 1 && fwrite(blob, written, 1, f) == 1;
+    ok = fclose(f) == 0 && ok;
+    if (!ok || rename(tmp, path) != 0) {
+      unlink(tmp);
+    }
+  }
+  free(blob);
+  while (glGetError() != GL_NO_ERROR) {
+  }
+}
+
 GLuint link_program(const GLchar* frag_src) {
+  char cache_path[PATH_MAX];
+  bool cached = program_cache_path(frag_src, cache_path, sizeof(cache_path));
+  if (cached) {
+    GLuint prog = program_cache_load(cache_path);
+    if (prog) {
+      return prog;
+    }
+  }
+
   GLuint vert = compile_shader(GL_VERTEX_SHADER, common_vert_src);
   if (!vert) {
     goto error;
@@ -75,6 +221,9 @@ GLuint link_program(const GLchar* frag_src) {
     goto error;
   }
 
+  if (cached) {
+    program_cache_save(prog, cache_path);
+  }
   return prog;
 
 error:

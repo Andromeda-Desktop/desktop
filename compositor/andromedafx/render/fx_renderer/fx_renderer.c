@@ -772,6 +772,8 @@ struct wlr_renderer* fx_renderer_create_egl(struct wlr_egl* egl) {
     load_gl_proc(&renderer->procs.glDebugMessageControlKHR, "glDebugMessageControlKHR");
   }
 
+  program_cache_init(exts_str);
+
   // TODO: the rest of the gl checks
   if (check_gl_ext(exts_str, "GL_OES_EGL_image_external")) {
     renderer->exts.OES_egl_image_external = true;
