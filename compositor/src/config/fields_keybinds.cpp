@@ -98,6 +98,8 @@ namespace andromeda {
           {"Mod+T", "window-toggle-floating"},
           {"Mod+WheelDown", "window-focus-right"},
           {"Mod+WheelUp", "window-focus-left"},
+          {"XF86Explorer", "spawn:andromeda-shell msg default-app-open files"},
+          {"XF86MyComputer", "spawn:andromeda-shell msg default-app-open files"},
         };
         std::vector<std::pair<Keybind, std::string_view>> parsed;
         for (const auto& [chord, retiredAction] : kLines) {
