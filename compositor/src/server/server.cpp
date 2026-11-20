@@ -147,8 +147,10 @@ namespace andromeda {
     // Security-context clients only receive reviewed, ordinary application
     // protocols. New globals stay unavailable until they are classified here.
     // [[security_context_rule]] widens the set for matching clients.
-    constexpr std::array<std::string_view, 40> kAllowedSecurityContextGlobals{
+    // zwlr_layer_shell_v1 is listed because each app asks the user before its first layer surface maps.
+    constexpr std::array<std::string_view, 41> kAllowedSecurityContextGlobals{
         "wl_shm",
+        "zwlr_layer_shell_v1",
         "wl_drm",
         "zwp_linux_dmabuf_v1",
         "wp_linux_drm_syncobj_manager_v1",
@@ -470,9 +472,75 @@ namespace andromeda {
         && m_quitConfirm->kind() == QuitConfirm::Kind::ScreenCastDynamic) {
       m_pendingScreenCastCommand.reset();
     }
+    resolveLayerShellAccess(false);
     if (m_quitConfirm != nullptr) {
       m_quitConfirm->hide();
     }
+  }
+
+  void Server::promptLayerShellAccess() {
+    if (m_stopping
+        || m_pendingLayerShellApp
+        || sessionLocked()
+        || m_quitConfirm == nullptr
+        || m_quitConfirm->visible()) {
+      return;
+    }
+    const auto waiting = std::ranges::find_if(m_layerSurfaces, [](const auto& layer) { return layer->awaitingAccess(); });
+    if (waiting == m_layerSurfaces.end()) {
+      return;
+    }
+    m_pendingLayerShellApp = (*waiting)->sandboxApp();
+    const std::string_view app = *m_pendingLayerShellApp;
+    std::string displayName;
+    for (const unsigned char character : app.substr(app.find('/') + 1)) {
+      displayName += character >= 32 && character < 127 ? static_cast<char>(character) : '?';
+    }
+    kLog.info("layer-shell access requested app='{}'", app);
+    m_quitConfirm->showLayerShell(displayName);
+  }
+
+  void Server::resolveLayerShellAccess(bool allow) {
+    if (!m_pendingLayerShellApp) {
+      return;
+    }
+    const std::string app = *std::exchange(m_pendingLayerShellApp, std::nullopt);
+    (allow ? m_allowedLayerShellApps : m_deniedLayerShellApps).insert(app);
+    kLog.info("layer-shell access {} app='{}'", allow ? "granted" : "denied", app);
+    std::vector<LayerSurface*> waiting;
+    for (const auto& layer : m_layerSurfaces) {
+      if (layer->awaitingAccess() && layer->sandboxApp() == app) {
+        waiting.push_back(layer.get());
+      }
+    }
+    for (LayerSurface* layer : waiting) {
+      if (allow) {
+        layer->grantAccess();
+      } else {
+        // Sends closed; the client stays connected.
+        wlr_layer_surface_v1_destroy(layer->layerSurface());
+      }
+    }
+  }
+
+  void Server::confirmLayerShellAccess() {
+    if (sessionLocked()) {
+      dismissConfirmation();
+      return;
+    }
+    resolveLayerShellAccess(true);
+    m_quitConfirm->hide();
+  }
+
+  void Server::layerShellRequestGone(const std::string& app) {
+    if (m_pendingLayerShellApp != app
+        || std::ranges::any_of(m_layerSurfaces, [&](const auto& layer) {
+             return layer->awaitingAccess() && layer->sandboxApp() == app;
+           })) {
+      return;
+    }
+    m_pendingLayerShellApp.reset();
+    m_quitConfirm->hide();
   }
 
   void Server::requestInputEmulation(uint64_t id, std::string_view name) {
@@ -527,14 +595,17 @@ namespace andromeda {
   bool Server::sessionActive() const { return m_session == nullptr || m_session->active; }
 
   void Server::confirmationHidden(bool globalShortcuts) {
-    if (m_stopping || m_globalShortcutService == nullptr) {
+    if (m_stopping) {
       return;
     }
-    if (globalShortcuts) {
-      m_globalShortcutService->denyApproval();
+    if (m_globalShortcutService != nullptr) {
+      if (globalShortcuts) {
+        m_globalShortcutService->denyApproval();
+      }
+      // Deferred: a lock hides the panel before it sets the lock state.
+      m_globalShortcutService->scheduleRefresh();
     }
-    // Deferred: a lock hides the panel before it sets the lock state.
-    m_globalShortcutService->scheduleRefresh();
+    promptLayerShellAccess();
   }
 
   void Server::requestInputCapture(uint64_t id, std::string_view name, uint32_t persistMode) {

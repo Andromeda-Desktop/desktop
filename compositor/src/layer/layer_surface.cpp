@@ -1558,8 +1558,22 @@ namespace andromeda {
     pixman_region32_fini(&empty);
   }
 
+  void LayerSurface::awaitAccess(std::string app) {
+    m_access = Access::Awaiting;
+    m_sandboxApp = std::move(app);
+  }
+
+  void LayerSurface::grantAccess() {
+    m_access = Access::Granted;
+    if (Output* out = output()) {
+      out->arrangeLayers();
+    }
+  }
+
   void LayerSurface::handleDestroy() {
     Server* server = m_server;
+    const bool awaiting = awaitingAccess();
+    const std::string app = std::move(m_sandboxApp);
     wlr_output* wlrOutput = m_layerSurface != nullptr ? m_layerSurface->output : nullptr;
     kLog.debug("destroy layer surface output={}", wlrOutput != nullptr ? wlrOutput->name : "(none)");
 
@@ -1582,6 +1596,9 @@ namespace andromeda {
     }
     // removeLayerSurface deletes this. Arrange after erase, never via this->m_server.
     server->removeLayerSurface(this, wlrOutput);
+    if (awaiting) {
+      server->layerShellRequestGone(app);
+    }
   }
 
   void LayerSurface::handleNewPopup(void* data) {

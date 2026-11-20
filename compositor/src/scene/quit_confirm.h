@@ -22,6 +22,7 @@ namespace andromeda {
       InputEmulation,
       InputCapture,
       GlobalShortcuts,
+      LayerShell,
     };
 
     QuitConfirm(Server& server, wlr_scene_tree* parent);
@@ -33,6 +34,7 @@ namespace andromeda {
     void show(Kind kind);
     void showInputEmulation(std::string_view application);
     void showInputCapture(std::string_view application, uint32_t persistMode);
+    void showLayerShell(std::string_view application);
     // One page of "name  key" rows; page is 0-based.
     void showGlobalShortcuts(std::string_view application, std::vector<std::string> rows, size_t page, size_t pages);
     void hide();

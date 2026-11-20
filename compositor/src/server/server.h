@@ -348,6 +348,9 @@ namespace andromeda {
     void confirmScreenCastDynamic();
     void confirmInputEmulation();
     void confirmInputCapture(bool remember = false);
+    void confirmLayerShellAccess();
+    // A sandboxed app's last surface awaiting layer-shell access is gone.
+    void layerShellRequestGone(const std::string& app);
     void dismissConfirmation();
     // Owners register themselves for the frame tick. The registry is kept in phase order, so the three traversals above
     // never re-state which owners exist or in what order they run.
@@ -1118,6 +1121,12 @@ namespace andromeda {
     std::string m_pendingInputName;
     std::unordered_set<std::string> m_allowedInputNames;
     std::unordered_set<std::string> m_deniedInputNames;
+    // Layer-shell answers for sandboxed apps in this session, keyed "sandbox_engine/app_id".
+    std::unordered_set<std::string> m_allowedLayerShellApps;
+    std::unordered_set<std::string> m_deniedLayerShellApps;
+    std::optional<std::string> m_pendingLayerShellApp;
+    void promptLayerShellAccess();
+    void resolveLayerShellAccess(bool allow);
     wl_event_source* m_backgroundFrameTimer = nullptr;
     struct LaunchBusy {
       std::string token;

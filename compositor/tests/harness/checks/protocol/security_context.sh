@@ -17,6 +17,7 @@ readonly -a NORMAL_GLOBALS=(
   wl_compositor
   wl_subcompositor
   wl_shm
+  zwlr_layer_shell_v1
   wl_data_device_manager
   wp_viewporter
   wp_fractional_scale_manager_v1
@@ -51,7 +52,6 @@ readonly -a RESTRICTED_GLOBALS=(
   ext_idle_notifier_v1
   ext_data_control_manager_v1
   zwlr_data_control_manager_v1
-  zwlr_layer_shell_v1
   ext_session_lock_manager_v1
   zwp_input_method_manager_v2
   zwp_virtual_keyboard_manager_v1

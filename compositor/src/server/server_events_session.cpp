@@ -1,6 +1,7 @@
 #include "config/change.h"
 #include "config/config.h"
 #include "config/config_watcher.h"
+#include "config/resolve.h"
 #include "config/store.h"
 #include "core/log.h"
 #include "desktop-unstable-v1-protocol.h"
@@ -73,6 +74,26 @@ namespace andromeda {
       return;
     }
     auto* wlrLayer = static_cast<wlr_layer_surface_v1*>(data);
+    if (const wlr_security_context_v1_state* context =
+            self->clientSecurityContext(wl_resource_get_client(wlrLayer->resource))) {
+      std::string app = std::format(
+          "{}/{}", context->sandbox_engine != nullptr ? context->sandbox_engine : "",
+          context->app_id != nullptr ? context->app_id : ""
+      );
+      const std::vector<std::string> ruleGlobals =
+          securityContextRuleGlobals(config(), context->sandbox_engine, context->app_id);
+      if (self->m_deniedLayerShellApps.contains(app)) {
+        LayerSurface* denied = surface.get();
+        self->m_layerSurfaces.push_back(std::move(surface));
+        // Sends closed; destroy removes the surface again.
+        wlr_layer_surface_v1_destroy(denied->layerSurface());
+        return;
+      }
+      if (!self->m_allowedLayerShellApps.contains(app)
+          && std::ranges::find(ruleGlobals, std::string_view("zwlr_layer_shell_v1")) == ruleGlobals.end()) {
+        surface->awaitAccess(std::move(app));
+      }
+    }
     if (wlrLayer->namespace_ != nullptr && std::string_view(wlrLayer->namespace_) == kWindowSwitcherNamespace) {
       // The shell's app switcher lives exactly as long as this surface: frozen apps thaw while it is open.
       struct ThawWatch {
@@ -92,9 +113,13 @@ namespace andromeda {
       ++self->m_windowSwitchers;
       self->holdQosThawIntent(true);
     }
+    const bool awaiting = surface->awaitingAccess();
     self->m_layerSurfaces.push_back(std::move(surface));
     self->raiseStatusSurfaces();
     self->scheduleIpcLayersEvent();
+    if (awaiting) {
+      self->promptLayerShellAccess();
+    }
   }
 
   void Server::onNewSessionLock(wl_listener* listener, void* data) {
@@ -174,6 +199,8 @@ namespace andromeda {
         }
       }
 
+      // A lock is no answer: the app asks again after unlock.
+      m_pendingLayerShellApp.reset();
       dismissConfirmation();
       if (m_inputCapture != nullptr) {
         m_inputCapture->suspend();
@@ -202,6 +229,7 @@ namespace andromeda {
       m_lockState = next;
       if (next == LockState::Unlocked) {
         leaveLock();
+        promptLayerShellAccess();
       }
     }
     if (next == LockState::RestartLocked) {

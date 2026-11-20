@@ -2016,7 +2016,7 @@ namespace andromeda {
       }
       wlr_layer_surface_v1* surface = layerSurface->layerSurface();
       // wlroots clears `initialized` in the unmapping commit, so an unmapped surface gets no configure.
-      if (surface == nullptr || !surface->initialized) {
+      if (surface == nullptr || !surface->initialized || layerSurface->awaitingAccess()) {
         continue;
       }
       // Only exclusive_zone > 0 participates in the exclusive pass.

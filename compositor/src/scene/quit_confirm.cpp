@@ -57,6 +57,11 @@ namespace andromeda {
     show(Kind::InputCapture);
   }
 
+  void QuitConfirm::showLayerShell(std::string_view application) {
+    m_application = application;
+    show(Kind::LayerShell);
+  }
+
   void QuitConfirm::showGlobalShortcuts(
       std::string_view application, std::vector<std::string> rows, size_t page, size_t pages
   ) {
@@ -119,6 +124,7 @@ namespace andromeda {
     const std::string_view heading = m_kind == Kind::GlobalShortcuts ? "Allow global shortcuts?"
         : m_kind == Kind::InputCapture                            ? "Allow input capture?"
         : m_kind == Kind::InputEmulation                          ? "Allow desktop control?"
+        : m_kind == Kind::LayerShell                              ? "Allow screen overlay?"
         : m_kind == Kind::SessionQuit                             ? "Quit Andromeda?"
                                                                   : "Allow screencast target changes?";
     std::string_view captureChoices = "Enter allows this capture session.\n"
@@ -158,6 +164,12 @@ namespace andromeda {
         : m_kind == Kind::InputEmulation
         ? std::format(
               "An X11 application claiming to be '{}' wants to control your pointer and keyboard.\n"
+              "Enter allows it for this Andromeda session; any other key or click denies it.",
+              m_application
+          )
+        : m_kind == Kind::LayerShell
+        ? std::format(
+              "The sandboxed app '{}' wants to draw above other windows, including fullscreen games.\n"
               "Enter allows it for this Andromeda session; any other key or click denies it.",
               m_application
           )

@@ -580,6 +580,8 @@ namespace andromeda {
               m_server->confirmInputCapture(rememberCapture);
             } else if (confirm->kind() == QuitConfirm::Kind::GlobalShortcuts) {
               m_server->globalShortcuts()->approvalEnter();
+            } else if (confirm->kind() == QuitConfirm::Kind::LayerShell) {
+              m_server->confirmLayerShellAccess();
             } else {
               m_server->confirmScreenCastDynamic();
             }

@@ -3,6 +3,7 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "config/config.h"
@@ -43,6 +44,11 @@ namespace andromeda {
     [[nodiscard]] wlr_layer_surface_v1* layerSurface() const { return m_layerSurface; }
     [[nodiscard]] wlr_scene_layer_surface_v1* scene() const { return m_scene; }
     [[nodiscard]] bool mapped() const { return m_mapped; }
+    // A sandboxed app's surface gets no configure, so it cannot map, until the user allows layer-shell for the app.
+    [[nodiscard]] bool awaitingAccess() const { return m_access == Access::Awaiting; }
+    [[nodiscard]] const std::string& sandboxApp() const { return m_sandboxApp; }
+    void awaitAccess(std::string app);
+    void grantAccess();
     [[nodiscard]] bool exclusiveKeyboard() const;
     [[nodiscard]] bool acceptsKeyboard() const;
     [[nodiscard]] bool hasKeyboardFocus() const;
@@ -154,6 +160,9 @@ namespace andromeda {
     ResolvedLayerRule m_rule;
     AnimatedValue m_fade{1.0};
     bool m_mapped = false;
+    enum class Access { Granted, Awaiting };
+    Access m_access = Access::Granted;
+    std::string m_sandboxApp;
 
     wl_listener m_map{};
     wl_listener m_unmap{};

@@ -15,13 +15,13 @@ if [[ ! -x $GLOBAL_CLIENT || ! -x $SECURITY_CONTEXT_CLIENT ]]; then
 fi
 
 # Baseline: without rules the globals granted below are hidden.
-"$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" zwlr_layer_shell_v1 absent
+"$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_idle_notifier_v1 absent
 "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_data_control_manager_v1 absent
 
 # A client connected before the reload keeps the registry it was given, even when it reads the registry again.
 mkfifo "$CONTROL_FIFO"
 exec {control_fd}<>"$CONTROL_FIFO"
-"$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" recheck zwlr_layer_shell_v1 absent <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
+"$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" recheck ext_idle_notifier_v1 absent <&"$control_fd" > "$CLIENT_LOG" 2>&1 &
 client_pid=$!
 
 for _ in $(seq 100); do
@@ -43,7 +43,7 @@ cat >> "$ANDROMEDA_CONFIG" << 'EOF'
 [[security_context_rule]]
 match.sandbox_engine = '^org\.andromeda\.harness$'
 match.app_id = '^org\.andromeda\.SecurityContextTest$'
-allow_globals = ["zwlr_layer_shell_v1", "wp_security_context_manager_v1"]
+allow_globals = ["ext_idle_notifier_v1", "wp_security_context_manager_v1"]
 
 [[security_context_rule]]
 match.app_id = '^org\.andromeda\.OtherApp$'
@@ -67,19 +67,19 @@ if ! wait "$client_pid"; then
   exit 1
 fi
 
-# The matching rule grants layer-shell to connections made after the reload.
-"$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" zwlr_layer_shell_v1 present
+# The matching rule grants the idle notifier to connections made after the reload.
+"$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_idle_notifier_v1 present
 # The other rule's grant does not leak across app ids.
 "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_data_control_manager_v1 absent
 SECURITY_CONTEXT_APP_ID=org.andromeda.OtherApp "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" \
   ext_data_control_manager_v1 present
 SECURITY_CONTEXT_APP_ID=org.andromeda.OtherApp "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" \
-  zwlr_layer_shell_v1 absent
+  ext_idle_notifier_v1 absent
 # A pattern must match the entire app ID; a substring grants nothing.
 "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" ext_workspace_manager_v1 absent
 # Listing the manager in allow_globals never enables nested contexts.
 "$SECURITY_CONTEXT_CLIENT" "$GLOBAL_CLIENT" wp_security_context_manager_v1 absent
 # Clients on the ordinary socket are unaffected by the rules.
-"$GLOBAL_CLIENT" zwlr_layer_shell_v1 present
+"$GLOBAL_CLIENT" ext_idle_notifier_v1 present
 
 echo "security context rules grant extra globals per matching app"
