@@ -140,6 +140,7 @@ namespace andromeda {
     // The refresh period of the output that ticks next, ms; 0 when unknown. A value that starts from rest starts one
     // period before its first tick, so the first frame drawn already moves instead of repeating the resting one.
     static void setFirstStep(double msec) { s_firstStepMsec = msec; }
+    [[nodiscard]] static double firstStep() { return s_firstStepMsec; }
 
   private:
     static inline bool s_stallClamp = false;

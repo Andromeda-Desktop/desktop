@@ -287,6 +287,15 @@ ANDROMEDA_TEST(animatedValueFirstFrameMovesWithKnownRefresh) {
   CHECK(std::abs(value.current() - 10.0) < 1e-9);
 }
 
+ANDROMEDA_TEST(animatedColorFirstFrameMovesWithKnownRefresh) {
+  andromeda::AnimatedValue::setFirstStep(10.0);
+  andromeda::AnimatedColor color(0.0F, 0.0F, 0.0F, 0.0F);
+  color.retarget({0.0F, 0.0F, 0.0F, 1.0F}, 100, andromeda::Easing::Linear);
+  CHECK(color.tick(1000.0));
+  andromeda::AnimatedValue::setFirstStep(0.0);
+  CHECK(std::abs(color.a() - 0.1F) < 1e-6F);
+}
+
 ANDROMEDA_TEST(animatedValueKeepsSubMillisecondTime) {
   // Frames tick at vblank instants that fall between milliseconds; the timeline must not round them away.
   andromeda::AnimatedValue value;

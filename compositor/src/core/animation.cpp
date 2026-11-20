@@ -522,7 +522,7 @@ namespace andromeda {
       return false;
     }
     if (m_startMsec == 0) {
-      m_startMsec = nowMsec;
+      m_startMsec = nowMsec - AnimatedValue::firstStep();
     }
 
     const double elapsed = std::max(0.0, nowMsec - m_startMsec);
