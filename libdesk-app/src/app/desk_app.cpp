@@ -1,18 +1,11 @@
 #include "app/desk_app.h"
 
-#include "a11y/atspi_bridge.h"
-#include "a11y/atspi_poll_source.h"
-
-#include "app/appearance.h"
 #include "app/glib_source.h"
 
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
-#include "core/process/app_zygote.h"
 #include "core/process/process_phase.h"
-#include "dbus/session_bus.h"
-#include "dbus/session_bus_poll_source.h"
 #include "platform/surface.h"
 #include "render/text/cairo_text_renderer.h"
 #include "ui/controls/input.h"
@@ -23,7 +16,6 @@
 #include <optional>
 #include <string_view>
 #include <csignal>
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstdlib>
@@ -46,8 +38,14 @@ namespace {
   class SignalSource final : public PollSource {
   public:
     explicit SignalSource(AppLoop& loop) : m_loop(loop) {
-      if (g_signalPipe[0] < 0 && ::pipe2(g_signalPipe, O_NONBLOCK | O_CLOEXEC) != 0) {
-        return;
+      if (g_signalPipe[0] < 0) {
+        if (::pipe(g_signalPipe) != 0) {
+          return;
+        }
+        for (const int fd : g_signalPipe) {
+          ::fcntl(fd, F_SETFL, O_NONBLOCK);
+          ::fcntl(fd, F_SETFD, FD_CLOEXEC);
+        }
       }
       struct sigaction action{};
       action.sa_handler = onSignal;
@@ -121,14 +119,8 @@ std::optional<int> DeskApp::forwardToRunning(const std::string& appId, int argc,
   if (args.serviceStart) {
     return std::nullopt;
   }
-  try {
-    SessionBus bus;
-    SingleInstance instance(&bus, appId);
-    if (instance.forwardIfRunning(args.uris, args.action)) {
-      return 0;
-    }
-  } catch (const std::exception& e) {
-    kLog.debug("no forward before start ({})", e.what());
+  if (forwardLaunch(appId, args.uris, args.action)) {
+    return 0;
   }
   return std::nullopt;
 }
@@ -145,15 +137,13 @@ DeskApp::~DeskApp() {
     m_loop.display().setTextInputService(nullptr);
   }
   m_state.flush();
-  m_loop.removeSource(m_busSource.get());
+  if (m_services != nullptr) {
+    m_services->detach(m_loop);
+  }
   if (m_glib != nullptr) {
     m_loop.removeSource(m_glib.get());
   }
   m_loop.removeSource(m_signals.get());
-  if (m_atspi != nullptr) {
-    m_loop.removeSource(m_atspi.get());
-    AtspiBridge::instance().stop();
-  }
 }
 
 int DeskApp::run(int argc, char* argv[]) {
@@ -193,39 +183,33 @@ namespace {
 
 std::vector<std::string> DeskApp::serveZygote(const std::string& appId) {
   const auto fonts = fontWarmupPath(appId);
-  return process::zygote::serve(appId, [&fonts] {
-    CairoTextRenderer::preloadFonts(fonts);
-    // Mesa's EGL vendor and its gallium driver: loading and relocating them is ~30 ms of each child's EGL init. Mesa
-    // starts no thread on load; serve() checks that. Other vendors are not loaded here.
-    dlopen("libEGL_mesa.so.0", RTLD_NOW | RTLD_LOCAL);
-  }).argv;
+  return serveAppZygote(appId, [&fonts] { CairoTextRenderer::preloadFonts(fonts); });
 }
 
 std::optional<int> DeskApp::start(int argc, char* argv[]) {
   initLogLevelFromEnvironment();
   auto [uris, serviceStart, startAction] = parseLaunchArgs(argc, argv);
 
-  try {
-    m_bus = std::make_unique<SessionBus>();
-    // The bus ends with the session: quit through the loop so the state is flushed.
-    m_bus->setDisconnectedCallback([this] {
-      kLog.warn("session bus lost; quitting");
-      m_loop.quit(0);
-    });
-  } catch (const std::exception& e) {
-    kLog.warn("no session bus ({}); single instance is off", e.what());
-  }
-  m_instance = std::make_unique<SingleInstance>(m_info.singleInstance ? m_bus.get() : nullptr, m_info.id);
-  const SingleInstance::Role role = m_instance->claim(
-      uris, {
-                .activate = [this](const std::string& token) { activate(token); },
-                .open = [this](const std::vector<std::string>& u, const std::string& token) { open(u, token); },
-                .action = [this](const std::string& name, const std::vector<std::string>& parameter,
-                                 const std::string& token) { action(name, parameter, token); },
-            },
-      startAction
+  m_services = createAppServices(
+      m_info.id, m_info.name, m_info.singleInstance,
+      {
+          .activate = [this](const std::string& token) { activate(token); },
+          .open = [this](const std::vector<std::string>& u, const std::string& token) { open(u, token); },
+          .action = [this](const std::string& name, const std::vector<std::string>& parameter,
+                           const std::string& token) { action(name, parameter, token); },
+          .appearanceChanged =
+              [this] {
+                m_loop.renderContext().setTextScale(m_services->textScale());
+                for (const auto& w : m_windows) {
+                  w->setUiScale(m_services->uiScale());
+                  w->requestRebuild(); // colours and sizes resolve at build time in places, so every node gets the new values
+                  w->setSceneHeld(m_services->holdMotion());
+                }
+              },
+          .sessionLost = [this] { m_loop.quit(0); },
+      }
   );
-  if (role == SingleInstance::Role::Forwarded) {
+  if (!m_services->claim(uris, startAction)) {
     return 0;
   }
 
@@ -237,28 +221,11 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   }
   m_loop.setDisconnectHandler([this] { return reconnect(); });
   m_loop.gl().setGraphicsResetCallback([this](RenderGraphicsResetStatus /*status*/) { m_graphicsRecovery.onReset(); });
-  if (m_bus != nullptr) {
-    m_busSource = std::make_unique<SessionBusPollSource>(*m_bus);
-    m_loop.addSource(m_busSource.get());
-    m_appearance = std::make_unique<Appearance>(*m_bus, [this] {
-      m_loop.renderContext().setTextScale(m_appearance->textScale());
-      for (const auto& w : m_windows) {
-        w->setUiScale(m_appearance->uiScale());
-        w->requestRebuild(); // colours and sizes resolve at build time in places, so every node gets the new values
-        w->setSceneHeld(m_appearance->holdMotion());
-      }
-    });
-  }
+  m_services->attach(m_loop);
   m_signals = std::make_unique<SignalSource>(m_loop);
   m_loop.addSource(m_signals.get());
   m_glib = std::make_unique<GlibSource>();
   m_loop.addSource(m_glib.get());
-  if (m_bus != nullptr) {
-    // Screen readers (Orca) see the app's windows: AppWindow surfaces add their scene roots.
-    AtspiBridge::instance().start(m_bus->connection(), m_info.name);
-    m_atspi = std::make_unique<AtspiPollSource>();
-    m_loop.addSource(m_atspi.get());
-  }
 
   m_state.load();
   m_textInput = m_loop.display().createTextInputService();
@@ -311,9 +278,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     return 1;
   }
   // Appearance replies that already arrived apply before the first build, so it is not built twice.
-  if (m_bus != nullptr) {
-    m_bus->processPendingEvents();
-  }
+  m_services->processPendingEvents();
   // The first windows build and lay out while EGL still loads; GL attaches after them.
   for (const auto& w : m_windows) {
     w->prepareFirstFrame();
@@ -331,9 +296,9 @@ AppWindow& DeskApp::addWindow(AppWindow::Config config) {
   }
   auto& window = *m_windows.emplace_back(std::make_unique<AppWindow>(m_loop, m_commands, m_state, std::move(config)));
   window.setClosedCallback([this] { reapClosed(); });
-  if (m_appearance != nullptr) {
-    window.setUiScale(m_appearance->uiScale());
-    window.setSceneHeld(m_appearance->holdMotion());
+  if (m_services != nullptr && m_services->hasAppearance()) {
+    window.setUiScale(m_services->uiScale());
+    window.setSceneHeld(m_services->holdMotion());
   }
   return window;
 }

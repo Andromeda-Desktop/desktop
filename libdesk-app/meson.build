@@ -28,29 +28,41 @@ if get_option('buildtype') == 'release'
   add_project_arguments('-ffunction-sections', '-fdata-sections', language: 'cpp')
 endif
 
-_desk_ui_dep = subproject('libdesk-ui').get_variable('desk_ui_dep')
-_desk_system_dep = subproject('libdesk-system').get_variable('desk_system_dep')
+is_wayland = get_option('platform') == 'wayland'
+_desk_ui_dep = subproject('libdesk-ui', default_options: ['platform=' + get_option('platform')]).get_variable('desk_ui_dep')
 
 _deps = [
   _desk_ui_dep,
-  _desk_system_dep,
-  dependency('sdbus-c++'),
   dependency('nlohmann_json'),
   dependency('xkbcommon'),
-  dependency('wayland-client'),
   dependency('gio-2.0'),
   dependency('threads'),
 ]
+# The Linux session services (D-Bus, portals, AT-SPI, zygote) and the accessors for apps that still call Wayland.
+if is_wayland
+  _deps += [
+    subproject('libdesk-system').get_variable('desk_system_dep'),
+    dependency('sdbus-c++'),
+    dependency('wayland-client'),
+  ]
+  _platform_sources = files(
+    'src/app/app_services_linux.cpp',
+    'src/app/appearance.cpp',
+    'src/app/file_chooser.cpp',
+    'src/app/single_instance.cpp',
+    'src/app/wayland_accessors.cpp',
+    'src/files/file_ops_client.cpp',
+  )
+else
+  _platform_sources = files('src/app/app_services_none.cpp')
+endif
 
 _inc = include_directories('src')
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
 desk_app_lib = static_library('desk_app',
-  sources: files(
+  sources: _platform_sources + files(
     'src/app/app_loop.cpp',
-    'src/app/wayland_accessors.cpp',
-    'src/app/appearance.cpp',
-    'src/app/file_chooser.cpp',
     'src/app/glib_source.cpp',
     'src/app/app_popover.cpp',
     'src/app/app_window.cpp',
@@ -58,9 +70,7 @@ desk_app_lib = static_library('desk_app',
     'src/app/command_table.cpp',
     'src/app/app_clipboard.cpp',
     'src/app/desk_app.cpp',
-    'src/app/single_instance.cpp',
     'src/app/state_store.cpp',
-    'src/files/file_ops_client.cpp',
   ),
   dependencies: _deps,
   include_directories: _inc,
@@ -73,7 +83,7 @@ desk_app_dep = declare_dependency(
   include_directories: _inc,
 )
 
-if meson.is_subproject()
+if meson.is_subproject() or not is_wayland
   subdir_done()
 endif
 

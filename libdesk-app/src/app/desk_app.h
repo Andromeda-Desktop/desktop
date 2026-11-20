@@ -2,9 +2,9 @@
 
 #include "app/app_clipboard.h"
 #include "app/app_loop.h"
+#include "app/app_services.h"
 #include "app/app_window.h"
 #include "app/command_table.h"
-#include "app/single_instance.h"
 #include "app/state_store.h"
 #include "core/graphics_recovery.h"
 #include "core/timer_manager.h"
@@ -14,10 +14,8 @@
 #include <string>
 #include <vector>
 
-class Appearance;
 class GlibSource;
 class SessionBus;
-class SessionBusPollSource;
 
 // A first-party app process: run loop, session bus, single instance, state and the command table, with the
 // standard window commands (window.close Ctrl+W, window.maximize, window.minimize, app.quit Ctrl+Q).
@@ -53,7 +51,7 @@ public:
   [[nodiscard]] CommandTable& commands() noexcept { return m_commands; }
   [[nodiscard]] StateStore& state() noexcept { return m_state; }
   // Null when the session bus is not reachable.
-  [[nodiscard]] SessionBus* bus() noexcept { return m_bus.get(); }
+  [[nodiscard]] SessionBus* bus() noexcept { return m_services != nullptr ? m_services->bus() : nullptr; }
 
   // A new window that the app owns; it is destroyed after its close, and the app quits after the last one.
   AppWindow& addWindow(AppWindow::Config config);
@@ -102,13 +100,9 @@ private:
   Info m_info;
   AppLoop m_loop;
   GraphicsRecovery m_graphicsRecovery{[this] { recoverGraphics(); }};
-  std::unique_ptr<SessionBus> m_bus;
-  std::unique_ptr<SessionBusPollSource> m_busSource;
-  std::unique_ptr<Appearance> m_appearance; // after the bus: it uses it
+  std::unique_ptr<AppServices> m_services;
   std::unique_ptr<PollSource> m_signals;
   std::unique_ptr<GlibSource> m_glib; // GIO async calls complete in the app loop
-  std::unique_ptr<class AtspiPollSource> m_atspi;
-  std::unique_ptr<SingleInstance> m_instance;
   std::unique_ptr<AppClipboard> m_clipboard;
   std::unique_ptr<class TextInputService> m_textInput;
   StateStore m_state;

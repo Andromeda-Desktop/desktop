@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "core/sys/sys.h"
+#include "platform/display.h"
 #include "render/backend/render_backend.h"
 #include "render/core/startup_metrics.h"
 
@@ -15,6 +16,7 @@
 #include <string>
 #include <utility>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #ifndef EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_EXT
@@ -178,6 +180,21 @@ namespace {
 } // namespace
 
 GlSharedContext::~GlSharedContext() { cleanup(); }
+
+namespace {
+  // EGLNativeDisplayType is a pointer under Mesa and an int under ANGLE on macOS, where only the default display exists.
+  template <typename Native> Native toNativeDisplay(void* display) {
+    if constexpr (std::is_pointer_v<Native>) {
+      return reinterpret_cast<Native>(display);
+    } else {
+      return EGL_DEFAULT_DISPLAY;
+    }
+  }
+} // namespace
+
+void GlSharedContext::initialize(const Display& display, bool createSharedContext) {
+  initialize(toNativeDisplay<EGLNativeDisplayType>(display.nativeDisplay()), createSharedContext);
+}
 
 void GlSharedContext::initialize(EGLNativeDisplayType display, bool createSharedContext) {
   const auto initStart = std::chrono::steady_clock::now();

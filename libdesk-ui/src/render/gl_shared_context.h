@@ -17,6 +17,8 @@ enum class RenderGraphicsResetStatus;
 // through this share group, GL textures uploaded in any of them are usable
 // from every other context in the group — which lets LockSurface reuse
 // wallpaper textures resident in VRAM without re-decoding.
+class Display;
+
 class GlSharedContext {
 public:
   GlSharedContext() = default;
@@ -26,6 +28,7 @@ public:
   GlSharedContext& operator=(const GlSharedContext&) = delete;
 
   void initialize(EGLNativeDisplayType display, bool createSharedContext = true);
+  void initialize(const Display& display, bool createSharedContext = true);
   // For processes without a compositor connection; render with offscreen targets only.
   void initializeSurfaceless();
   void cleanup();

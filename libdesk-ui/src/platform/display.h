@@ -43,7 +43,7 @@ public:
   virtual bool connect(std::optional<std::chrono::steady_clock::time_point> deadline) = 0;
   // Safe on a dead connection; connect() starts over.
   virtual void disconnect() = 0;
-  // Cast to EGLNativeDisplayType for EGL.
+  // The EGL native display (GlSharedContext::initialize converts it).
   [[nodiscard]] virtual void* nativeDisplay() const noexcept = 0;
 
   // One pass of a poll loop: preparePoll(); if Ok, poll pollFd() for its events with the app's fds; then
