@@ -277,6 +277,16 @@ ANDROMEDA_TEST(aStallMovesTheSpringByOneLongFrame) {
   CHECK_EQ(stalled.current(), 1000.0);
 }
 
+ANDROMEDA_TEST(animatedValueFirstFrameMovesWithKnownRefresh) {
+  // On a fixed-refresh output the first frame of a motion from rest shows one period of it, not the resting value.
+  andromeda::AnimatedValue::setFirstStep(10.0);
+  andromeda::AnimatedValue value;
+  value.retarget(100.0, 100, andromeda::Easing::Linear);
+  CHECK(value.tick(1000.0));
+  andromeda::AnimatedValue::setFirstStep(0.0);
+  CHECK(std::abs(value.current() - 10.0) < 1e-9);
+}
+
 ANDROMEDA_TEST(animatedValueKeepsSubMillisecondTime) {
   // Frames tick at vblank instants that fall between milliseconds; the timeline must not round them away.
   andromeda::AnimatedValue value;

@@ -137,9 +137,13 @@ namespace andromeda {
     // output frame clock turns it on; off by default and on the frozen test clock, whose steps must land whole.
     static void setStallClamp(bool clamp) { s_stallClamp = clamp; }
     static constexpr double kMaxFrameGapMsec = 50.0;
+    // The refresh period of the output that ticks next, ms; 0 when unknown. A value that starts from rest starts one
+    // period before its first tick, so the first frame drawn already moves instead of repeating the resting one.
+    static void setFirstStep(double msec) { s_firstStepMsec = msec; }
 
   private:
     static inline bool s_stallClamp = false;
+    static inline double s_firstStepMsec = 0.0;
     double m_from = 0.0;
     double m_target = 0.0;
     double m_current = 0.0;

@@ -2878,6 +2878,8 @@ namespace andromeda {
     clockFrozen = m_server->animationClockFrozen();
 #endif
     AnimatedValue::setStallClamp(!clockFrozen);
+    // The frozen test clock steps whole; without a fixed refresh no period is known.
+    AnimatedValue::setFirstStep(clockFrozen || vblankNs == 0 ? 0.0 : static_cast<double>(m_refreshNs) / 1e6);
     m_server->tickAnimations(m_server->animationFrameClockMsec(static_cast<double>(sampleNs) / 1e6));
     if (stampEffectTime && m_outputEffectsTimed) {
       applyOutputEffects();

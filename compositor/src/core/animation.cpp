@@ -409,7 +409,7 @@ namespace andromeda {
       return false;
     }
     if (m_startMsec == 0) {
-      m_startMsec = nowMsec;
+      m_startMsec = nowMsec - s_firstStepMsec;
     } else if (s_stallClamp && m_tickMsec > 0.0 && nowMsec - m_tickMsec > kMaxFrameGapMsec) {
       // Rulebook 7.9: after a stall the motion goes on by one long frame instead of jumping ahead.
       m_startMsec += nowMsec - m_tickMsec - kMaxFrameGapMsec;
