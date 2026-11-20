@@ -8,7 +8,8 @@ namespace andromeda {
   // Whether an output scans a client buffer out directly, which window owns it, or why the output composites instead.
   struct DirectScanoutState {
     bool active = false;
-    // Why the output composites, as a snake_case name; empty while active.
+    // Why the output composites, as a snake_case name; empty while active on the primary plane, "overlay" while
+    // active on an overlay plane.
     std::string reason = "no_candidate";
     // The scanned-out window; empty while inactive, or for a surface no window owns.
     std::string windowId;

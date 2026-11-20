@@ -2626,7 +2626,8 @@ namespace andromeda {
 
   std::shared_ptr<const DirectScanoutState> Output::builtDirectScanout() {
     const wlr_scene_direct_scanout_status status = wlr_scene_output_direct_scanout_status(m_sceneOutput);
-    const bool active = status == WLR_SCENE_DIRECT_SCANOUT_ACTIVE;
+    // On an overlay plane the window still reaches the display uncopied; only the surfaces above it composite.
+    const bool active = status == WLR_SCENE_DIRECT_SCANOUT_ACTIVE || status == WLR_SCENE_DIRECT_SCANOUT_OVERLAY;
     const std::string_view reason = directScanoutReason(status);
     const View* view = nullptr;
     if (wlr_scene_buffer* buffer = wlr_scene_output_direct_scanout_buffer(m_sceneOutput)) {
@@ -2669,8 +2670,8 @@ namespace andromeda {
     if (self->m_directScanout.settledChangeIsNotable()) {
       if (state.active) {
         kLog.info(
-            "output '{}': direct scanout on ({} \"{}\")", self->m_output->name,
-            state.appId.empty() ? "unknown" : state.appId, state.title
+            "output '{}': direct scanout on ({} \"{}\"{})", self->m_output->name,
+            state.appId.empty() ? "unknown" : state.appId, state.title, state.reason.empty() ? "" : ", overlay plane"
         );
       } else {
         kLog.info("output '{}': direct scanout off ({})", self->m_output->name, state.reason);

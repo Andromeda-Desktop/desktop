@@ -478,13 +478,14 @@ namespace andromeda {
         std::println("  HDR: {}", output.value("hdr_active", false) ? "on" : "off");
         if (const auto scanout = output.find("direct_scanout"); scanout != output.end() && scanout->is_object()) {
           if (scanout->value("active", false)) {
+            const std::string_view plane = scanout->at("reason") == "overlay" ? ", overlay plane" : "";
             const auto& window = scanout->at("window");
             if (window.is_object()) {
               std::println(
-                  "  Direct scanout: active ({} \"{}\")", window.value("app_id", ""), window.value("title", "")
+                  "  Direct scanout: active ({} \"{}\"{})", window.value("app_id", ""), window.value("title", ""), plane
               );
             } else {
-              std::println("  Direct scanout: active");
+              std::println("  Direct scanout: active{}", plane);
             }
           } else {
             std::string reason = scanout->value("reason", "");
@@ -1158,7 +1159,7 @@ namespace andromeda {
         }
         directScanout = {
             {"active", scanout.active},
-            {"reason", scanout.active ? nlohmann::json(nullptr) : nlohmann::json(scanout.reason)},
+            {"reason", scanout.reason.empty() ? nlohmann::json(nullptr) : nlohmann::json(scanout.reason)},
             {"window", std::move(window)},
             {"commits", tracker.commits()},
             {"scanout_commits", tracker.scanoutCommits()},
