@@ -23,11 +23,15 @@ endif
 
 is_macos = get_option('platform') == 'macos'
 _platform_opt = ['platform=' + get_option('platform')]
-# macOS libghostty-vt comes in step 9 of .agent/TASK-terminal-macos.md; until then only its headers.
+# macOS: the aarch64 build from `tools/build-libghostty.sh macos`.
 _ghostty = dependency('libghostty-vt', version: '>=1.0.1', required: false)
 if is_macos
-  _ghostty = declare_dependency(include_directories: include_directories('subprojects/libghostty-vt/prefix/include'),
-    compile_args: '-DGHOSTTY_STATIC')
+  _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix-macos'
+  _ghostty = declare_dependency(
+    include_directories: include_directories('subprojects/libghostty-vt/prefix-macos/include'),
+    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib', static: true),
+    compile_args: '-DGHOSTTY_STATIC',
+  )
 elif not _ghostty.found()
   _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix'
   _ghostty = declare_dependency(

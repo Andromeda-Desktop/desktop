@@ -128,10 +128,11 @@ macos-check:
     [ -d libdesk-app/build-macos ] || meson setup libdesk-app/build-macos libdesk-app --cross-file "$cross" -Dplatform=macos
     tools/build.sh ninja -C libdesk-app/build-macos
     tools/macos/link-check.sh libdesk-app/build-macos
+    tools/build-libghostty.sh macos
     [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos
     # Objects and archives only: the executables link once libghostty-vt and ANGLE exist for macOS (step 9).
     tools/build.sh ninja -C apps/terminal/build-macos $(ninja -C apps/terminal/build-macos -t targets all | sed -n 's/^\([^:]*\.\(o\|a\)\): .*/\1/p')
-    tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal
+    tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal apps/terminal/subprojects/libghostty-vt/prefix-macos/lib/libghostty-vt.a
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
 
 check: modules test link system
