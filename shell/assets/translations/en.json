@@ -7090,6 +7090,8 @@
       "search-placeholder": "Search settings…",
       "search-results": "Search results",
       "search-truncated": "Showing the first {count} matches. Refine your search to narrow results.",
+      "sidebar-collapse": "Collapse sidebar",
+      "sidebar-expand": "Expand sidebar",
       "support-report": "Support Report",
       "support-report-saved": "Support report saved.",
       "support-report-title": "Save Support Report",

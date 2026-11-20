@@ -822,7 +822,8 @@ void SettingsWindow::prepareFrame(bool needsUpdate, bool needsLayout) {
 
   const float scale = uiScale();
   // The sidebar's shape changes only when the width crosses a break, so this rebuilds rarely.
-  if (const auto mode = settings::metrics::sidebarModeFor(static_cast<float>(width) / scale); mode != m_sidebarMode) {
+  if (const auto mode = settings::metrics::sidebarModeAfterResize(m_sidebarMode, static_cast<float>(width) / scale);
+      mode != m_sidebarMode) {
     m_sidebarMode = mode;
     if (!firstBuild) {
       requestSceneRebuild();
@@ -837,7 +838,7 @@ void SettingsWindow::prepareFrame(bool needsUpdate, bool needsLayout) {
   }
   // Grow then clamp: the column follows the window at once (layout only); pages with art sized to the column
   // (charts) rebuild once the size rests, so a window animation causes no rebuild storm.
-  if (const float column = settings::metrics::contentWidthFor(static_cast<float>(width) / scale);
+  if (const float column = settings::metrics::contentWidthFor(static_cast<float>(width) / scale, m_sidebarMode);
       column != settings::metrics::liveContentWidth()) {
     settings::metrics::liveContentWidth() = column;
     if (m_contentScrollView != nullptr) {

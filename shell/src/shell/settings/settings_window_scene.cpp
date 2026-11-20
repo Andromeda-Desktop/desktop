@@ -1401,6 +1401,24 @@ std::unique_ptr<Flex> SettingsWindow::buildHeaderRow(
     row->addChild(navButton("chevron-left", m_navIndex > 0, -1));
     row->addChild(navButton("chevron-right", m_navIndex + 1 < m_navHistory.size(), 1));
   }
+  if (m_sidebarMode == SidebarMode::Rail || m_sidebarMode == SidebarMode::RailExpanded) {
+    const bool expanded = m_sidebarMode == SidebarMode::RailExpanded;
+    row->addChild(ui::button({
+        .glyph = expanded ? "layout-sidebar-left-collapse" : "layout-sidebar-left-expand",
+        .glyphSize = Style::fontSizeTitle * scale,
+        .variant = ButtonVariant::Ghost,
+        .tooltip = i18n::tr(expanded ? "settings.window.sidebar-collapse" : "settings.window.sidebar-expand"),
+        .minWidth = Style::controlHeight * scale,
+        .minHeight = Style::controlHeight * scale,
+        .padding = Style::spaceXs * scale,
+        .radius = Style::scaledRadiusMd(scale),
+        .onClick = [this, expanded] {
+          m_sidebarMode = expanded ? SidebarMode::Rail : SidebarMode::RailExpanded;
+          requestSceneRebuild();
+        },
+        .configure = [](Button& button) { button.setTabStop(false); },
+    }));
+  }
   // Below 600 px the title and a centred layout do not fit beside the search field, which takes the free width.
   if (stack) {
     row->addChild(ui::row({.flexGrow = 1.0F}, buildSearchField(scale)));

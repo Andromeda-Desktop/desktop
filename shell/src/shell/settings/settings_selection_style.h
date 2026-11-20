@@ -42,8 +42,8 @@ namespace settings {
       return width;
     }
     // Responsive sidebar (CLAUDE.md "grow then clamp"): full list, an icon rail under kRailBreak, a back-button stack
-    // under kStackBreak (logical px of window width).
-    enum class SidebarMode : std::uint8_t { Full, Rail, Stack };
+    // under kStackBreak (logical px of window width). RailExpanded: the user opened the full list in a rail-wide window.
+    enum class SidebarMode : std::uint8_t { Full, RailExpanded, Rail, Stack };
     inline constexpr float kRailBreak = 900.0F;
     inline constexpr float kStackBreak = 600.0F;
     inline constexpr float kRailWidth = kSidebarTile + 2.0F * kSidebarRowPaddingH + 2.0F * kSidebarPaddingH;
@@ -51,6 +51,14 @@ namespace settings {
       return windowWidth >= kRailBreak ? SidebarMode::Full
           : windowWidth >= kStackBreak ? SidebarMode::Rail
                                        : SidebarMode::Stack;
+    }
+    // The mode after a resize: the user's RailExpanded holds while the width still gives a rail.
+    [[nodiscard]] inline SidebarMode sidebarModeAfterResize(SidebarMode current, float windowWidth) {
+      const SidebarMode widthMode = sidebarModeFor(windowWidth);
+      return current == SidebarMode::RailExpanded && widthMode == SidebarMode::Rail ? current : widthMode;
+    }
+    [[nodiscard]] inline bool sidebarShowsLabels(SidebarMode mode) {
+      return mode == SidebarMode::Full || mode == SidebarMode::RailExpanded;
     }
     // More options: its cluster index sits beside the sidebar on wide windows and takes the sidebar's place below
     // kMoreBesideBreak (logical px of window width).
@@ -61,9 +69,8 @@ namespace settings {
       return windowWidth >= kMoreBesideBreak ? MorePlacement::BesideSidebar : MorePlacement::InSidebar;
     }
     // The column width for a window `windowWidth` logical px wide, on the 8 grid; narrow windows go below the cap.
-    [[nodiscard]] inline float contentWidthFor(float windowWidth) {
-      const SidebarMode mode = sidebarModeFor(windowWidth);
-      const float sidebar = mode == SidebarMode::Full ? kSidebarWidth : mode == SidebarMode::Rail ? kRailWidth : 0.0F;
+    [[nodiscard]] inline float contentWidthFor(float windowWidth, SidebarMode mode) {
+      const float sidebar = sidebarShowsLabels(mode) ? kSidebarWidth : mode == SidebarMode::Rail ? kRailWidth : 0.0F;
       const float pane = std::max(0.0F, windowWidth - sidebar - 2.0F * kPagePadding);
       return std::floor(std::min(pane, kContentMaxWidth) / 8.0F) * 8.0F;
     }
