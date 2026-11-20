@@ -1992,9 +1992,13 @@ namespace term {
     }
     if (pressed) {
       const GhosttyPointCoordinate cell = cellAt(localX, localY);
-      const bool repeat = m_lastClick.count > 0 && time - m_lastClick.time <= 400 && cell.x == m_lastClick.cell.x
-                          && cell.y == m_lastClick.cell.y;
-      m_lastClick = {.time = time, .cell = cell, .count = repeat ? m_lastClick.count % 3 + 1 : 1};
+      // A hand moves a mouse a few pixels between clicks: a same-cell test drops a triple click to a new drag.
+      constexpr float kRepeatDistance = 6.0F;
+      const bool repeat = m_lastClick.count > 0 && time - m_lastClick.time <= 400
+                          && std::abs(localX - m_lastClick.x) <= kRepeatDistance
+                          && std::abs(localY - m_lastClick.y) <= kRepeatDistance;
+      m_lastClick = {
+          .time = time, .cell = cell, .x = localX, .y = localY, .count = repeat ? m_lastClick.count % 3 + 1 : 1};
       if (m_lastClick.count == 1) {
         // Looked up here, not from hover: a tap has no motion before its press.
         auto link = mouseTracking() ? std::nullopt : linkAt(cell);

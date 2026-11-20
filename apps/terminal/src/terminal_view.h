@@ -220,6 +220,8 @@ namespace term {
     struct Click {
       std::uint32_t time = 0; // ms, Wayland event time
       GhosttyPointCoordinate cell{};
+      float x = 0.0F; // logical px in the terminal area
+      float y = 0.0F;
       int count = 0; // 1 cell, 2 word, 3 line
     };
 
