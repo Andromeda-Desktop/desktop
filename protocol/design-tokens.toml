@@ -791,6 +791,7 @@ thread_list = 320.0  # Messages: the thread list card; the conversation card tak
 thread_row = 56.0    # a thread row: avatar, name, time, last line, badge
 bubble_max = 0.72    # a message bubble's widest share of the conversation
 bubble_radius = 16.0
+settings_width = 640.0  # Settings: the grouped cards stop growing here
 
 [component.phone]  # Link Android (design-link/phone handoff.yaml); sizes in dp
 hit = 48.0           # phone touch target (Material / iOS 44-48)

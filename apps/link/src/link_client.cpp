@@ -18,6 +18,7 @@ namespace linkapp {
     const sdbus::ServiceName kBusName{"org.andromeda.Link1"};
     const sdbus::ObjectPath kObjectPath{"/org/andromeda/Link1"};
     constexpr auto kInterface = "org.andromeda.Link1";
+    constexpr auto kQuickShare = "org.andromeda.Link1.QuickShare";
 
     std::int64_t nowMs() {
       return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -46,6 +47,7 @@ namespace linkapp {
         .call([this](const std::string& interfaceName, const std::map<std::string, sdbus::Variant>&,
                      const std::vector<std::string>&) {
           if (interfaceName == kInterface) refresh();
+          if (interfaceName == kQuickShare) refreshNearby();
         });
     m_proxy->uponSignal("NotificationPosted")
         .onInterface(kInterface)
@@ -101,6 +103,7 @@ namespace linkapp {
           if (moved || listed) changed();
         });
     refresh();
+    refreshNearby();
   }
 
   LinkClient::~LinkClient() = default;
@@ -199,9 +202,71 @@ namespace linkapp {
           const auto refused = property<std::map<std::string, std::string>>(props, "CallsRefused");
           const auto why = refused.find(phone);
           m_callLog = callLogFrom(why == refused.end() ? std::string() : why->second);
+          const auto grants = property<std::map<std::string, std::vector<std::string>>>(props, "Grants");
+          const auto granted = [&](const char* feature) {
+            const auto it = grants.find(phone);
+            return it != grants.end() && std::ranges::contains(it->second, std::string(feature));
+          };
+          m_phoneSettings = {.notifications = granted("notifications"), .clipboard = granted("clipboard"),
+                             .screen = granted("screen"),
+                             .autoAccept = std::ranges::contains(property<std::vector<std::string>>(props, "AutoAccept"), phone)};
+          m_desktopSettings.notificationsWhileLocked = property<bool>(props, "NotificationsWhileLocked");
+          m_desktopSettings.commands =
+              property<std::vector<sdbus::Struct<std::string, std::string>>>(props, "Commands").size();
           m_messages.setContacts(people);
           m_messages.setTexts(std::move(list));
           changed();
+        });
+  }
+
+  void LinkClient::refreshNearby() {
+    const std::uint64_t serial = ++m_nearbySent;
+    m_proxy->callMethodAsync("GetAll")
+        .onInterface("org.freedesktop.DBus.Properties")
+        .withArguments(std::string{kQuickShare})
+        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](
+                             std::optional<sdbus::Error> error, std::map<std::string, sdbus::Variant> props) {
+          if (alive.expired() || serial <= m_nearbyApplied || error) return;
+          m_nearbyApplied = serial;
+          m_desktopSettings.nearbyVisible = property<bool>(props, "Visible");
+          m_desktopSettings.nearbyName = property<std::string>(props, "Name");
+          changed();
+        });
+  }
+
+  void LinkClient::setGrant(const std::string& deviceId, const std::string& feature, bool granted) {
+    m_proxy->callMethodAsync("SetGrant").onInterface(kInterface).withArguments(deviceId, feature, granted)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SetGrant: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::setAutoAccept(const std::string& deviceId, bool on) {
+    m_proxy->callMethodAsync("SetAutoAccept").onInterface(kInterface).withArguments(deviceId, on)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SetAutoAccept: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::setNotificationsWhileLocked(bool on) {
+    m_proxy->callMethodAsync("SetNotificationsWhileLocked").onInterface(kInterface).withArguments(on)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SetNotificationsWhileLocked: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::setNearbyVisible(bool on) {
+    m_proxy->callMethodAsync("Set").onInterface("org.freedesktop.DBus.Properties")
+        .withArguments(std::string{kQuickShare}, std::string("Visible"), sdbus::Variant(on))
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("QuickShare Visible: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::unpair(const std::string& deviceId) {
+    m_proxy->callMethodAsync("Unpair").onInterface(kInterface).withArguments(deviceId)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("Unpair: {}", error->getMessage());
         });
   }
 

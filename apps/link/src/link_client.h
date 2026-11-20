@@ -37,6 +37,13 @@ namespace linkapp {
     [[nodiscard]] const std::vector<CallEntry>& calls() const { return m_calls; }
     [[nodiscard]] CallLog callLog() const { return m_callLog; }
     [[nodiscard]] const Activity& activity() const { return m_activity; }
+    [[nodiscard]] const PhoneSettings& phoneSettings() const { return m_phoneSettings; }
+    [[nodiscard]] const DesktopSettings& desktopSettings() const { return m_desktopSettings; }
+    void setGrant(const std::string& deviceId, const std::string& feature, bool granted);
+    void setAutoAccept(const std::string& deviceId, bool on);
+    void setNotificationsWhileLocked(bool on);
+    void setNearbyVisible(bool on);
+    void unpair(const std::string& deviceId);
     void viewThread(std::optional<std::uint64_t> thread);
     // Sends `body` to `thread`'s address; it shows as sending until Texts holds it, failed on an error.
     void sendText(std::uint64_t thread, const std::string& body);
@@ -61,6 +68,7 @@ namespace linkapp {
 
   private:
     void refresh();
+    void refreshNearby();
     void send(std::uint64_t serial);
     void changed();
 
@@ -77,6 +85,10 @@ namespace linkapp {
     Feed m_feed;
     Messages m_messages;
     Activity m_activity;
+    PhoneSettings m_phoneSettings;
+    DesktopSettings m_desktopSettings;
+    std::uint64_t m_nearbySent = 0;    // serials of the Quick Share GetAll, as m_sent / m_applied
+    std::uint64_t m_nearbyApplied = 0;
     std::vector<CallEntry> m_calls;
     CallLog m_callLog = CallLog::Ready;
     std::set<std::string> m_dismissed; // missed calls the user cleared; Calls keeps reporting them

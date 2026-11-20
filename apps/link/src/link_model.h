@@ -85,6 +85,20 @@ namespace linkapp {
     std::vector<FeedItem> m_items;
   };
 
+  // The Settings page: one phone's switches (Link1 Grants and AutoAccept) and this desktop's.
+  struct PhoneSettings {
+    bool notifications = false; // grant "notifications"
+    bool clipboard = false;     // grant "clipboard"
+    bool screen = false;        // grant "screen"
+    bool autoAccept = false;
+  };
+  struct DesktopSettings {
+    bool notificationsWhileLocked = false;
+    bool nearbyVisible = false; // Quick Share Visible
+    std::string nearbyName;
+    std::size_t commands = 0;
+  };
+
   // One transfer on the Activity page, from the Transfer* signals (Link1 keeps no list).
   struct TransferEntry {
     std::string id;

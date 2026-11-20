@@ -133,6 +133,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> messages(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();
+    [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
     // Cards mode and the viewed thread follow the page and presence.
@@ -151,6 +152,8 @@ namespace linkapp {
     ScrollViewState m_callScroll;
     std::unique_ptr<TransferAdapter> m_transfers;
     ScrollViewState m_transferScroll;
+    ScrollViewState m_settingsScroll;
+    bool m_confirmForget = false; // Settings: the Forget row asks in place
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;
     Page m_page = Page::Waiting;

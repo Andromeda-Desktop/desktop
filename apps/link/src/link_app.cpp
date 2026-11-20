@@ -604,6 +604,7 @@ namespace linkapp {
   void LinkApp::show(Page page) {
     if (m_page == page) return;
     m_page = page;
+    m_confirmForget = false;
     m_window->setTitle(kPages[static_cast<std::size_t>(page)].name);
     sync();
     updateCaption();
@@ -774,6 +775,7 @@ namespace linkapp {
     case Presence::Kind::Pairing:
       return emptyState("device-mobile", "No phone yet", "Open Link on your phone and pair it with this desktop.", s);
     case Presence::Kind::Away: {
+      if (m_page == Page::Settings) return settings(presence);
       const std::string id = presence.phone.id;
       return emptyState("device-mobile-off", presence.phone.name + " is not connected",
                         "Link connects when the phone is on the same Wi-Fi or in Bluetooth range.", s,
@@ -786,6 +788,7 @@ namespace linkapp {
     if (m_page == Page::Messages) return messages(width, height);
     if (m_page == Page::Calls) return calls();
     if (m_page == Page::Activity) return activity();
+    if (m_page == Page::Settings) return settings(presence);
     if (m_page != Page::Waiting) {
       const PageInfo& info = kPages[static_cast<std::size_t>(m_page)];
       return emptyState(info.glyph, info.name, "This page comes in a later build step.", s);
@@ -953,6 +956,108 @@ namespace linkapp {
     page->addChild(ui::virtualListView({.state = &m_transferScroll, .contentScale = s, .adapter = m_transfers.get(),
                                         .flexGrow = 1.0F}));
     return page;
+  }
+
+  // Settings (handoff.yaml): max width 640; grouped cards (fill_1 r 12 p 4) of rows with a Toggle; Ghost destructive
+  // "Forget <phone>…" that asks in place.
+  std::unique_ptr<Node> LinkApp::settings(const Presence& presence) {
+    const float s = m_scale;
+    const PhoneSettings& phone = m_client->phoneSettings();
+    const DesktopSettings& desk = m_client->desktopSettings();
+    const std::string id = presence.phone.id;
+    const auto header = [&](const std::string& title) {
+      auto label = text(title, Tokens::typeFootnote, ColorRole::Label2, s);
+      label->setFontWeight(FontWeight::SemiBold);
+      auto line = ui::row({}, std::move(label));
+      line->setPadding(Tokens::spaceP16 * s, 0.0F, Tokens::spaceP8 * s, Tokens::componentListRowInset * s);
+      return line;
+    };
+    const auto group = [&] {
+      return ui::column({.align = FlexAlign::Stretch, .padding = Tokens::componentListCardPadding * s,
+                         .fill = colorSpecFromRole(ColorRole::Fill1),
+                         .radius = Style::scaledRadius(Tokens::componentListCardRadius, s)});
+    };
+    const float inset = Tokens::componentListRowInset * s;
+    const auto row = [&](Flex& card, const char* glyph, const std::string& title, const std::string& hint,
+                         std::unique_ptr<Node> trail) {
+      if (!card.children().empty()) {
+        auto rule = ui::column({.align = FlexAlign::Stretch});
+        rule->setPadding(0.0F, inset, 0.0F, inset + Tokens::sizeSymbol * s + Tokens::spaceP12 * s);
+        rule->addChild(ui::separator({}));
+        card.addChild(std::move(rule));
+      }
+      auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingV = Tokens::spaceP8 * s,
+                        .paddingH = inset, .minHeight = Tokens::sizeControlL * s});
+      r->addChild(ui::glyph({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s,
+                             .color = colorSpecFromRole(ColorRole::Label1)}));
+      auto words = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+      words->addChild(text(title, Tokens::typeBody, ColorRole::Label1, s, 2));
+      if (!hint.empty()) words->addChild(text(hint, Tokens::typeFootnote, ColorRole::Label2, s, 2));
+      r->addChild(std::move(words));
+      if (trail) r->addChild(std::move(trail));
+      card.addChild(std::move(r));
+    };
+    const auto toggle = [&](bool on, std::function<void(bool)> change) {
+      return ui::toggle({.checked = on, .scale = s, .onChange = std::move(change)});
+    };
+
+    auto page = ui::column({.align = FlexAlign::Stretch, .fillWidth = true});
+    page->setPadding(0.0F, 0.0F, Tokens::spaceP24 * s, 0.0F);
+    page->addChild(header(presence.phone.name));
+    auto phoneCard = group();
+    row(*phoneCard, "bell", "Show phone notifications", "Banners and the Waiting page",
+        toggle(phone.notifications, [this, id](bool on) { m_client->setGrant(id, "notifications", on); }));
+    row(*phoneCard, "clipboard", "Share clipboard", "Both ways, text and images",
+        toggle(phone.clipboard, [this, id](bool on) { m_client->setGrant(id, "clipboard", on); }));
+    row(*phoneCard, "arrow-down", "Save offered files without asking", "To Downloads",
+        toggle(phone.autoAccept, [this, id](bool on) { m_client->setAutoAccept(id, on); }));
+    row(*phoneCard, "device-mobile", "Allow screen mirroring", "",
+        toggle(phone.screen, [this, id](bool on) { m_client->setGrant(id, "screen", on); }));
+    page->addChild(std::move(phoneCard));
+
+    page->addChild(header("This computer"));
+    auto deskCard = group();
+    row(*deskCard, "lock", "Show phone notifications while locked", "Off: the lock screen shows only how many",
+        toggle(desk.notificationsWhileLocked, [this](bool on) { m_client->setNotificationsWhileLocked(on); }));
+    row(*deskCard, "device-laptop", "Visible to nearby phones",
+        desk.nearbyName.empty() ? std::string("Quick Share") : std::format("As “{}”", desk.nearbyName),
+        toggle(desk.nearbyVisible, [this](bool on) { m_client->setNearbyVisible(on); }));
+    row(*deskCard, "terminal-2", "Commands the phone can run",
+        desk.commands == 1 ? std::string("1 command") : std::format("{} commands", desk.commands), nullptr);
+    page->addChild(std::move(deskCard));
+
+    auto forget = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+    forget->setPadding(Tokens::spaceP24 * s, 0.0F, 0.0F, 0.0F);
+    if (m_confirmForget) {
+      auto ask = text(std::format("Forget {}? It must pair again to connect.", presence.phone.name), Tokens::typeBody,
+                      ColorRole::Label1, s, 2);
+      ask->setFlexGrow(1.0F);
+      forget->addChild(std::move(ask));
+      forget->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal, .onClick = [this] {
+                                     m_confirmForget = false;
+                                     m_window->requestRebuild();
+                                   }}));
+      forget->addChild(ui::button({.text = std::string("Forget"), .variant = ButtonVariant::Destructive, .onClick = [this, id] {
+                                     m_confirmForget = false;
+                                     m_client->unpair(id);
+                                   }}));
+    } else {
+      Button* button = nullptr;
+      forget->addChild(ui::button({.out = &button, .text = std::format("Forget {}…", presence.phone.name),
+                                   .variant = ButtonVariant::Ghost, .onClick = [this] {
+                                     m_confirmForget = true;
+                                     m_window->requestRebuild();
+                                   }}));
+      auto palette = Button::defaultPalette(ButtonVariant::Ghost);
+      for (auto* state : {&palette.normal, &palette.hover, &palette.pressed}) state->label = colorSpecFromRole(ColorRole::DangerText);
+      button->setCustomPalette(palette);
+    }
+    page->addChild(std::move(forget));
+    auto scroll = ui::scrollView({.state = &m_settingsScroll, .contentScale = s, .viewportPaddingH = Tokens::spaceP24 * s,
+                                  .maxContentWidth = Tokens::componentLinkSettingsWidth * s,
+                                  .contentAlign = ScrollView::ContentAlign::Start, .flexGrow = 1.0F});
+    scroll->content()->addChild(std::move(page));
+    return scroll;
   }
 
 } // namespace linkapp

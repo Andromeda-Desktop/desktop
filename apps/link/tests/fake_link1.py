@@ -53,6 +53,11 @@ props = {
     "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
     "Paused": GLib.Variant("as", []),
     "Pairing": GLib.Variant("b", False),
+    "Grants": GLib.Variant("a{sas}", {"p1": ["notifications", "clipboard", "screen", "files", "messages", "calls"]}),
+    "AutoAccept": GLib.Variant("as", []),
+    "NotificationsWhileLocked": GLib.Variant("b", False),
+    "Commands": GLib.Variant("a(ss)", [("Lock", "loginctl lock-session"), ("Suspend", "systemctl suspend"),
+                                       ("Backup", "rsync -a ~/Documents /mnt/backup")]),
     "Texts": GLib.Variant("a{sa(ttsstb)}", {"p1": texts} if connected else {}),
     "Contacts": GLib.Variant("a{sa(sas)}", {"p1": contacts}),
     "Calls": GLib.Variant("a{sa(sstus)}", {"p1": [
@@ -118,6 +123,8 @@ def get(_conn, _sender, _path, _iface, name):
 
 
 conn.register_object(PATH, iface, call, get, None)
+quick = {"Visible": GLib.Variant("b", True), "Name": GLib.Variant("s", "sitish-laptop")}
+conn.register_object(PATH, node.lookup_interface(IFACE + ".QuickShare"), call, lambda *a: quick[a[4]], None)
 # The app's own bus name: its proxy listens from then on.
 Gio.bus_watch_name_on_connection(conn, "dev.andromeda.Link", Gio.BusNameWatcherFlags.NONE,
                                  lambda *_: GLib.timeout_add(800, emit_sample), None)
