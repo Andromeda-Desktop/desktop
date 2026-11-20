@@ -878,6 +878,9 @@ impl Holder {
                     "--collect",
                     "--expand-environment=no",
                     "--slice=app.slice",
+                    // Jobs typed in a terminal yield to visible apps (QoS T1 = 100) and to launches.
+                    "--property=CPUWeight=50",
+                    "--property=IOWeight=50",
                 ])
                 .arg(format!(
                     "--unit={prefix}-{}s{}.scope",
