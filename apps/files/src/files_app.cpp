@@ -64,7 +64,7 @@ namespace {
 } // namespace
 
 FilesApp::FilesApp(bool picker, bool service)
-    : DeskApp({.id = picker ? "dev.andromeda.Files.Picker" : "dev.andromeda.Files", .name = "Files"}), m_picker(picker),
+    : DeskApp({.id = picker ? kPickerAppId : kAppId, .name = "Files"}), m_picker(picker),
       m_service(service) {}
 
 void FilesApp::showFromFileManager(FileManager1::Show show, const std::vector<std::string>& uris,

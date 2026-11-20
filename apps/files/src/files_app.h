@@ -37,6 +37,8 @@ class FilesWindow;
 // watcher and the FileOps1 client. A launch with folders opens one window per folder.
 class FilesApp final : public DeskApp {
 public:
+  static constexpr const char* kAppId = "dev.andromeda.Files";
+  static constexpr const char* kPickerAppId = "dev.andromeda.Files.Picker";
   struct Clipboard {
     std::vector<std::filesystem::path> paths;
     bool cut = false;

@@ -27,7 +27,7 @@ namespace viewer {
     }
   } // namespace
 
-  ViewerApp::ViewerApp() : DeskApp({.id = "dev.andromeda.Viewer", .name = "Viewer"}) {}
+  ViewerApp::ViewerApp() : DeskApp({.id = kAppId, .name = "Viewer"}) {}
 
   ViewerApp::~ViewerApp() = default;
 

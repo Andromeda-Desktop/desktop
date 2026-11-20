@@ -53,6 +53,10 @@ int main(int argc, char* argv[]) {
     raw.push_back(arg.data());
   }
   raw.push_back(nullptr);
+  if (const auto exit =
+          DeskApp::forwardToRunning(term::TerminalApp::kAppId, static_cast<int>(args.size()), raw.data())) {
+    return *exit;
+  }
   term::TerminalApp app;
   return app.run(static_cast<int>(args.size()), raw.data());
 }

@@ -27,7 +27,7 @@ namespace term {
   } // namespace
 
   TerminalApp::TerminalApp()
-      : DeskApp({.id = "dev.andromeda.Terminal", .name = "Terminal", .sharedGl = false}),
+      : DeskApp({.id = kAppId, .name = "Terminal", .sharedGl = false}),
         m_workspaces([this] { workspacesChanged(); }),
         m_windowWorkspaces({.put = [this](const std::string& name, const std::string& root) {
                               return m_workspaces.put({.name = name, .root = root}, [this](std::uint32_t req, std::uint64_t id) {

@@ -58,7 +58,7 @@ namespace {
   }
 } // namespace
 
-PlayerApp::PlayerApp() : DeskApp({.id = "dev.andromeda.Player", .name = "Player"}) {}
+PlayerApp::PlayerApp() : DeskApp({.id = kAppId, .name = "Player"}) {}
 
 PlayerApp::~PlayerApp() {
   if (m_inhibitor != nullptr) {

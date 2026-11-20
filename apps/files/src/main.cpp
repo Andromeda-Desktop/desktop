@@ -33,6 +33,11 @@ int main(int argc, char* argv[]) {
       return failed == 0 ? 0 : 1;
     }
   }
+  if (!service) {
+    if (const auto exit = DeskApp::forwardToRunning(picker ? FilesApp::kPickerAppId : FilesApp::kAppId, argc, argv)) {
+      return *exit;
+    }
+  }
   FilesApp app(picker, service);
   return app.run(argc, argv);
 }

@@ -23,6 +23,7 @@ namespace term {
   // andromeda-terminal: one process; each window runs one shell.
   class TerminalApp final : public DeskApp {
   public:
+    static constexpr const char* kAppId = "dev.andromeda.Terminal";
     TerminalApp();
     ~TerminalApp() override;
 

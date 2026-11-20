@@ -23,6 +23,7 @@ struct zwp_idle_inhibitor_v1;
 // andromeda-player: one window, one libmpv core (loaded on the first play), MPRIS, resume position per file.
 class PlayerApp final : public DeskApp {
 public:
+  static constexpr const char* kAppId = "dev.andromeda.Player";
   PlayerApp();
   ~PlayerApp() override;
 

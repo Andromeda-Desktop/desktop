@@ -72,6 +72,15 @@ SingleInstance::Role SingleInstance::claim(const std::vector<std::string>& uris,
   return Role::Primary;
 }
 
+bool SingleInstance::forwardIfRunning(const std::vector<std::string>& uris, const std::string& action) {
+  bool owned = false;
+  auto dbus = sdbus::createProxy(
+      m_bus->connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+  );
+  dbus->callMethod("NameHasOwner").onInterface("org.freedesktop.DBus").withArguments(m_appId).storeResultsTo(owned);
+  return owned && forward(uris, action);
+}
+
 bool SingleInstance::forward(const std::vector<std::string>& uris, const std::string& action) {
   try {
     auto proxy = sdbus::createProxy(

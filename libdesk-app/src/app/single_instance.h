@@ -39,6 +39,8 @@ public:
   // uris empty = Activate; a non-empty `action` forwards ActivateAction(action, uris) instead. The launch's
   // XDG_ACTIVATION_TOKEN goes along as platform data.
   Role claim(const std::vector<std::string>& uris, Handlers handlers, const std::string& action = {});
+  // Before the app is built: true when the name has an owner and it took the request. Claims nothing.
+  bool forwardIfRunning(const std::vector<std::string>& uris, const std::string& action);
 
   // "/dev/andromeda/Files" for "dev.andromeda.Files", as the freedesktop spec maps an app id to a path.
   [[nodiscard]] static std::string objectPathFor(std::string_view appId);

@@ -18,6 +18,7 @@ namespace viewer {
   // andromeda-viewer: one process (DeskApp single instance); an opened file becomes a tab of the active window.
   class ViewerApp final : public DeskApp {
   public:
+    static constexpr const char* kAppId = "dev.andromeda.Viewer";
     ViewerApp();
     ~ViewerApp() override;
 

@@ -86,7 +86,49 @@ namespace {
     const auto abs = std::filesystem::absolute(arg, ec);
     return "file://" + (ec ? arg : abs.lexically_normal().string());
   }
+  struct LaunchArgs {
+    std::vector<std::string> uris;
+    bool serviceStart = false; // D-Bus activation: the Activate or Open call that started us makes the window
+    std::string action;        // --action=<name>: the files go to action(name, uris) instead of open()
+  };
+
+  LaunchArgs parseLaunchArgs(int argc, char* argv[]) {
+    LaunchArgs args;
+    for (int i = 1; i < argc; ++i) {
+      // After "--" every argument is a verbatim action parameter: a command line, not a file.
+      if (std::string_view(argv[i]) == "--") {
+        args.uris.insert(args.uris.end(), argv + i + 1, argv + argc);
+        break;
+      }
+      args.serviceStart = args.serviceStart || std::string_view(argv[i]) == "--gapplication-service";
+      if (const std::string_view arg = argv[i]; arg.starts_with("--action=")) {
+        args.action = arg.substr(std::string_view("--action=").size());
+      }
+      if (argv[i][0] != '-') {
+        args.uris.push_back(toUri(argv[i]));
+      }
+    }
+    return args;
+  }
 } // namespace
+
+std::optional<int> DeskApp::forwardToRunning(const std::string& appId, int argc, char* argv[]) {
+  initLogLevelFromEnvironment();
+  const LaunchArgs args = parseLaunchArgs(argc, argv);
+  if (args.serviceStart) {
+    return std::nullopt;
+  }
+  try {
+    SessionBus bus;
+    SingleInstance instance(&bus, appId);
+    if (instance.forwardIfRunning(args.uris, args.action)) {
+      return 0;
+    }
+  } catch (const std::exception& e) {
+    kLog.debug("no forward before start ({})", e.what());
+  }
+  return std::nullopt;
+}
 
 DeskApp::DeskApp(Info info) : m_info(std::move(info)), m_state(StateStore::pathFor(m_info.id)) {}
 
@@ -137,23 +179,7 @@ int DeskApp::run(int argc, char* argv[]) {
 
 std::optional<int> DeskApp::start(int argc, char* argv[]) {
   initLogLevelFromEnvironment();
-  std::vector<std::string> uris;
-  bool serviceStart = false; // D-Bus activation: the Activate or Open call that started us makes the window
-  std::string startAction;   // --action=<name>: the files go to action(name, uris) instead of open()
-  for (int i = 1; i < argc; ++i) {
-    // After "--" every argument is a verbatim action parameter: a command line, not a file.
-    if (std::string_view(argv[i]) == "--") {
-      uris.insert(uris.end(), argv + i + 1, argv + argc);
-      break;
-    }
-    serviceStart = serviceStart || std::string_view(argv[i]) == "--gapplication-service";
-    if (const std::string_view arg = argv[i]; arg.starts_with("--action=")) {
-      startAction = arg.substr(std::string_view("--action=").size());
-    }
-    if (argv[i][0] != '-') {
-      uris.push_back(toUri(argv[i]));
-    }
-  }
+  auto [uris, serviceStart, startAction] = parseLaunchArgs(argc, argv);
 
   try {
     m_bus = std::make_unique<SessionBus>();

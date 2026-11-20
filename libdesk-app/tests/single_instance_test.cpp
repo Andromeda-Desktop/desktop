@@ -80,6 +80,20 @@ int main() {
     expect(third.claim({}, {}) == SingleInstance::Role::Forwarded, "a second claim without files is forwarded");
   }
   expect(waitFor([&] { return activations.load() == 1; }), "the primary receives Activate");
+  {
+    SessionBus earlyBus;
+    SingleInstance early(&earlyBus, kId);
+    expect(early.forwardIfRunning({}, {}), "a launch before the app is built forwards to the running app");
+  }
+  expect(waitFor([&] { return activations.load() == 2; }), "the primary receives the early Activate");
+  {
+    constexpr const char* kOther = "dev.andromeda.SingleInstanceTest.NotRunning";
+    SessionBus probeBus;
+    expect(!SingleInstance(&probeBus, kOther).forwardIfRunning({}, {}), "no running app: nothing is forwarded");
+    SessionBus ownerBus;
+    expect(SingleInstance(&ownerBus, kOther).claim({}, {}) == SingleInstance::Role::Primary,
+           "the early check leaves the name free for the app's own claim");
+  }
 
   expect(SingleInstance(nullptr, kId).claim({}, {}) == SingleInstance::Role::Alone, "no bus runs alone");
 

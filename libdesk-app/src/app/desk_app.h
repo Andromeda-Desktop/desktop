@@ -40,6 +40,9 @@ public:
 
   // Arguments after argv[0] that are not options are files or URIs to open. Returns the process exit code.
   int run(int argc, char* argv[]);
+  // Call first in main(), before the app object exists: when the app already runs, it gets this launch and the
+  // exit code returns, so a second launch builds no app members. Empty when this process must start the app.
+  static std::optional<int> forwardToRunning(const std::string& appId, int argc, char* argv[]);
   void quit(int code = 0) { m_loop.quit(code); }
 
   [[nodiscard]] const Info& info() const noexcept { return m_info; }
