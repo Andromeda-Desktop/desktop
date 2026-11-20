@@ -1,4 +1,4 @@
-//! LADSPA 1.1 ABI. Plugins (labels): `limiter`, `regulator`, `leveler`, `bass`, `ieq`; each has ports
+//! LADSPA 1.1 ABI. Plugins (labels): `limiter`, `regulator`, `leveler`, `bass`, `ieq`, `mbc`, `widen`; each has ports
 //! `In L`, `In R`, `Out L`, `Out R`, then its controls.
 #![allow(unsafe_code)]
 
@@ -10,7 +10,9 @@ use crate::bass::VirtualBass;
 use crate::ieq::Ieq;
 use crate::leveler::Leveler;
 use crate::limiter::Limiter;
+use crate::mbc::{self, Mbc};
 use crate::regulator::{BANDS, Regulator};
+use crate::widen::Widen;
 
 const PORT_INPUT: c_int = 1;
 const PORT_OUTPUT: c_int = 2;
@@ -72,9 +74,11 @@ enum Kind {
     Leveler,
     Bass,
     Ieq,
+    Mbc,
+    Widen,
 }
 
-const KINDS: [Kind; 5] = [Kind::Limiter, Kind::Regulator, Kind::Leveler, Kind::Bass, Kind::Ieq];
+const KINDS: [Kind; 7] = [Kind::Limiter, Kind::Regulator, Kind::Leveler, Kind::Bass, Kind::Ieq, Kind::Mbc, Kind::Widen];
 
 impl Kind {
     fn label(self) -> &'static str {
@@ -84,6 +88,8 @@ impl Kind {
             Kind::Leveler => "leveler",
             Kind::Bass => "bass",
             Kind::Ieq => "ieq",
+            Kind::Mbc => "mbc",
+            Kind::Widen => "widen",
         }
     }
 
@@ -114,6 +120,20 @@ impl Kind {
                 .into_iter()
                 .chain((0..BANDS).map(|i| control(&format!("Target {i}"), -96.0, 96.0, 0.0)))
                 .collect(),
+            Kind::Widen => vec![control("Width", 0.0, 1.0, 0.0), control("Cutoff", 20.0, 2000.0, 300.0)],
+            Kind::Mbc => [("Crossover 1", 500.0), ("Crossover 2", 2000.0), ("Crossover 3", 8000.0)]
+                .into_iter()
+                .map(|(n, d)| control(n, 20.0, 20_000.0, d))
+                .chain((0..mbc::BANDS).flat_map(|i| {
+                    [
+                        control(&format!("Threshold {i}"), -96.0, 0.0, 0.0),
+                        control(&format!("Slope {i}"), 0.0, 1.0, 0.0),
+                        control(&format!("Boost {i}"), 0.0, 24.0, 0.0),
+                        control(&format!("Attack {i}"), 0.1, 500.0, 10.0),
+                        control(&format!("Release {i}"), 1.0, 5000.0, 200.0),
+                    ]
+                }))
+                .collect(),
         }
     }
 }
@@ -124,6 +144,8 @@ enum Dsp {
     Leveler(Leveler),
     Bass(Box<VirtualBass>),
     Ieq(Box<Ieq>),
+    Mbc(Box<Mbc>),
+    Widen(Widen),
 }
 
 impl Dsp {
@@ -134,6 +156,8 @@ impl Dsp {
             Kind::Leveler => Dsp::Leveler(Leveler::new(fs)),
             Kind::Bass => Dsp::Bass(Box::new(VirtualBass::new(fs))),
             Kind::Ieq => Dsp::Ieq(Box::new(Ieq::new(fs))),
+            Kind::Mbc => Dsp::Mbc(Box::new(Mbc::new(fs))),
+            Kind::Widen => Dsp::Widen(Widen::new(fs)),
         }
     }
 
@@ -160,6 +184,23 @@ impl Dsp {
             Dsp::Ieq(d) => {
                 (d.amount, d.max_db) = (c[0], c[1]);
                 d.target_db.copy_from_slice(&c[2..2 + BANDS]);
+                d.process(l, r);
+            }
+            Dsp::Widen(d) => {
+                (d.width, d.cutoff_hz) = (c[0], c[1]);
+                d.process(l, r);
+            }
+            Dsp::Mbc(d) => {
+                d.set_crossovers([c[0], c[1], c[2]]);
+                for (b, v) in d.bands.iter_mut().zip(c[3..].chunks(5)) {
+                    *b = mbc::BandSettings {
+                        threshold_db: v[0],
+                        slope: v[1],
+                        boost_db: v[2],
+                        attack_ms: v[3],
+                        release_ms: v[4],
+                    };
+                }
                 d.process(l, r);
             }
         }

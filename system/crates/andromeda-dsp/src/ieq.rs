@@ -75,7 +75,7 @@ impl Ieq {
         }
     }
 
-    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_precision_loss, clippy::many_single_char_names)]
     pub fn process(&mut self, l: &mut [f32], r: &mut [f32]) {
         let det = coef(self.detect_ms, self.fs);
         let glide = coef(self.glide_ms, self.fs / STEP as f32);

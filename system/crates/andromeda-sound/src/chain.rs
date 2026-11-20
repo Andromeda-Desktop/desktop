@@ -1,6 +1,6 @@
 //! Turns one imported profile into a `PipeWire` filter-chain config:
-//! leveler → adaptive IEQ (when the tuning enables it) → speaker EQ (`param_eq`) → bass → limiter
-//! (andromeda-dsp). Without an imported profile our basic EQ → bass → limiter.
+//! leveler → adaptive IEQ → speaker EQ (`param_eq`) → bass → four-band compressor → widener →
+//! limiter (andromeda-dsp); IEQ and compressor only when the tuning enables them. Without an imported profile our basic EQ → bass → limiter.
 
 use std::f64::consts::PI;
 use std::fmt::Write as _;
@@ -19,6 +19,11 @@ const IEQ_AMOUNT_MAX: f64 = 16.0;
 /// IEQ target preset used when the tuning carries it: fuller vocals than the music profile's own
 /// `detailed` on the UX3405CA (user A/B, 2026-11-20).
 const IEQ_PRESET: &str = "warm";
+/// Lowest compressor band (threshold dB, slope): Dolby's own -16.6 dB at 2:1 thins the bass on the
+/// UX3405CA (user A/B, 2026-11-20).
+const MBC_LOW_BAND: (f64, f64) = (-10.0, 0.25);
+/// Widener side gain above 300 Hz: depth without a hollow centre (user A/B, 2026-11-20).
+const WIDTH: f64 = 0.5;
 
 pub struct Settings<'a> {
     pub profile: &'a str,
@@ -115,7 +120,10 @@ pub fn filter_chain_conf(t: Option<&Tuning>, s: &Settings) -> Result<String> {
             );
             let mut nodes = vec![lev];
             nodes.extend(ieq_controls(t, p).map(|c| ladspa("ieq", "ieq", c)));
-            nodes.extend([eq, bass, limiter]);
+            nodes.extend([eq, bass]);
+            nodes.extend(mbc_controls(t, p).map(|c| ladspa("mbc", "mbc", c)));
+            nodes.push(ladspa("wid", "widen", format!(" \"Width\" = {WIDTH:.2} \"Cutoff\" = 300.0")));
+            nodes.push(limiter);
             (format!("{} profile \"{}\" (tuned {})", t.subsystem, s.profile, t.tuning_date), nodes)
         }
     };
@@ -183,6 +191,37 @@ fn ieq_controls(t: &Tuning, p: &Profile) -> Option<String> {
         }
         c
     })
+}
+
+/// Compressor plugin controls from Dolby's four `mb-compressor` band groups. Each group is
+/// (last band + 1, threshold 1/16 dB, slope where 16384 = 1, attack ms, release ms, boost 1/16 dB);
+/// the field meanings are read from the UX3405CA values, not from Dolby documentation.
+fn mbc_controls(t: &Tuning, p: &Profile) -> Option<String> {
+    let on = p.vlldp.get("mb-compressor-enable").and_then(|v| v.first()).is_some_and(|&e| e > 0.0);
+    let groups: Vec<&Vec<f64>> = (0..4)
+        .map(|i| p.vlldp.get(&format!("mb-compressor-tuning.band_group_{i}")).filter(|g| g.len() == 6))
+        .collect::<Option<_>>()?;
+    let f = &t.band_freqs_hz;
+    let mut c = String::new();
+    for (k, g) in groups.iter().take(3).enumerate() {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let end = g[0] as usize;
+        let hz = (f.get(end.checked_sub(1)?)? * f.get(end)?).sqrt();
+        let _ = write!(c, " \"Crossover {}\" = {hz:.1}", k + 1);
+    }
+    for (i, g) in groups.iter().enumerate() {
+        let (threshold, slope) = if i == 0 { MBC_LOW_BAND } else { (g[1] / DAX, (g[2] / 16384.0).clamp(0.0, 1.0)) };
+        let _ = write!(
+            c,
+            " \"Threshold {i}\" = {:.3} \"Slope {i}\" = {:.4} \"Boost {i}\" = {:.3} \"Attack {i}\" = {:.1} \"Release {i}\" = {:.1}",
+            threshold,
+            slope,
+            g[5] / DAX,
+            g[3],
+            g[4],
+        );
+    }
+    on.then_some(c)
 }
 
 /// Target curve in dB at the `bands` band centres for one channel.
@@ -397,16 +436,21 @@ mod tests {
     }
 
     #[test]
-    fn dolby_ieq_reaches_the_chain() {
+    fn dolby_ieq_and_compressor_reach_the_chain() {
         let mut p = Profile::default();
         p.cp.insert("ieq-enable".into(), vec![1.0]);
         p.cp.insert("ieq-amount".into(), vec![8.0]);
         p.cp.insert("ieq-bands-set".into(), (0..20).map(|i| f64::from(i) * 16.0).collect());
+        p.vlldp.insert("mb-compressor-enable".into(), vec![1.0]);
+        for (i, end) in [1.0, 2.0, 3.0, 20.0].into_iter().enumerate() {
+            p.vlldp
+                .insert(format!("mb-compressor-tuning.band_group_{i}"), vec![end, -160.0, 8192.0, 10.0, 200.0, 64.0]);
+        }
         let t = Tuning {
             source: String::new(),
             subsystem: String::new(),
             tuning_date: String::new(),
-            band_freqs_hz: Vec::new(),
+            band_freqs_hz: vec![100.0, 400.0, 1600.0, 6400.0],
             ieq_presets: [("warm".into(), (0..20).map(|i| f64::from(i) * 32.0).collect())].into(),
             endpoints: vec![Endpoint {
                 kind: "internal_speaker".into(),
@@ -419,5 +463,9 @@ mod tests {
         assert!(conf.contains("label = ieq"), "{conf}");
         assert!(conf.contains("\"Amount\" = 0.500") && conf.contains("\"Target 19\" = 38.000"), "{conf}");
         assert!(conf.contains("{ output = \"lev:Out L\" input = \"ieq:In L\" }"), "{conf}");
+        assert!(conf.contains("label = mbc"), "{conf}");
+        assert!(conf.contains("\"Crossover 1\" = 200.0") && conf.contains("\"Slope 1\" = 0.5000"), "{conf}");
+        assert!(conf.contains("{ output = \"mbc:Out L\" input = \"wid:In L\" }"), "{conf}");
+        assert!(conf.contains("{ output = \"wid:Out L\" input = \"lim:In L\" }"), "{conf}");
     }
 }
