@@ -320,6 +320,16 @@ namespace andromeda {
     self->m_server.globalShortcuts()->createSession(client, id, appId);
   }
 
+  std::vector<pid_t> DesktopShell::clientPids() const {
+    std::vector<pid_t> pids;
+    for (wl_resource* resource : m_resources) {
+      pid_t pid = 0;
+      wl_client_get_credentials(wl_resource_get_client(resource), &pid, nullptr, nullptr);
+      pids.push_back(pid);
+    }
+    return pids;
+  }
+
   bool DesktopShell::boundBy(const wl_client* client) const {
     return std::ranges::any_of(m_resources, [client](wl_resource* resource) {
       return wl_resource_get_client(resource) == client;

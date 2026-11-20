@@ -189,7 +189,7 @@ namespace andromeda::qos {
       return;
     }
     const Cgroup& cgroup = cgroupOf(pid, m_pids);
-    if (!cgroup.unit.empty() && cgroup.unit != m_focused) {
+    if (!cgroup.unit.empty() && cgroup.unit != m_focused && !m_shellUnits.contains(cgroup.unit)) {
       m_focused = cgroup.unit;
       schedule();
     }
@@ -319,8 +319,18 @@ namespace andromeda::qos {
     std::erase_if(m_adopting, [&snapshot](pid_t pid) {
       return std::ranges::none_of(snapshot.windows, [pid](const Snapshot::Window& window) { return window.pid == pid; });
     });
+    // A shell started inside an app unit (from a terminal, by autostart) takes that unit out of QoS.
+    m_shellUnits.clear();
+    for (const pid_t pid : snapshot.shellPids) {
+      if (const Cgroup& cgroup = cgroupOf(pid, seen); !cgroup.unit.empty()) {
+        m_shellUnits.insert(cgroup.unit);
+      }
+    }
     for (const Snapshot::Window& window : snapshot.windows) {
       const Cgroup& cgroup = cgroupOf(window.pid, seen);
+      if (m_shellUnits.contains(cgroup.unit)) {
+        continue;
+      }
       if (cgroup.unit.empty()) {
         if (cgroup.adoptable && window.adoptable) {
           adopt(window.pid);
@@ -351,7 +361,8 @@ namespace andromeda::qos {
         walked->second = cached != m_children.end() ? std::move(cached->second) : childrenOf(m_root, window.pid);
       }
       for (const pid_t child : walked->second) {
-        if (const Cgroup& scope = cgroupOf(child, seen); !scope.unit.empty() && scope.unit != cgroup.unit) {
+        if (const Cgroup& scope = cgroupOf(child, seen);
+            !scope.unit.empty() && scope.unit != cgroup.unit && !m_shellUnits.contains(scope.unit)) {
           addWindow(scope).follows.push_back(cgroup.unit);
         }
       }
@@ -381,6 +392,18 @@ namespace andromeda::qos {
     for (auto it = m_scopes.begin(); it != m_scopes.end();) {
       const std::string& unit = it->first;
       Scope& scope = it->second;
+      if (m_shellUnits.contains(unit)) {
+        kLog.info("{} holds the shell: QoS releases it", unit);
+        m_actuator.apply(unit, scope.dir, settingsFor(Tier::Visible, m_efficiencyCpus, m_focusMemoryLow), false);
+        m_actuator.forget(unit);
+        registry().holds.forget(unit);
+        registry().apps.erase(unit);
+        if (m_focused == unit) {
+          m_focused.clear();
+        }
+        it = m_scopes.erase(it);
+        continue;
+      }
       Gathered& app = gathered[unit];
       if (app.windows == 0) {
         std::error_code error;

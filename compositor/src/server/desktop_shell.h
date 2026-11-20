@@ -7,6 +7,8 @@
 #include <utility>
 #include <vector>
 
+#include <sys/types.h>
+
 struct dsk_shell_v1_interface;
 struct wl_client;
 struct wl_global;
@@ -49,6 +51,8 @@ namespace andromeda {
     // Every pid with flags, as (pid, app_activity_flag bits).
     [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> appActivities() const;
     [[nodiscard]] bool boundBy(const wl_client* client) const;
+    // The pid of every client bound to dsk_shell_v1 (the shell, the lock screen).
+    [[nodiscard]] std::vector<pid_t> clientPids() const;
 
   private:
     // The scanner also declares a wl_interface variable of this name, so the struct needs its elaborated form.

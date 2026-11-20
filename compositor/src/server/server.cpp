@@ -1727,6 +1727,7 @@ namespace andromeda {
           }
         }
         if (m_desktopShell != nullptr) {
+          snapshot.shellPids = m_desktopShell->clientPids();
           for (const auto& [pid, flags] : m_desktopShell->appActivities()) {
             snapshot.activity.push_back(
                 {.pid = static_cast<pid_t>(pid),

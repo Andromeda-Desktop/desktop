@@ -54,7 +54,8 @@ namespace {
   }
 
   // A /proc and /sys tree: the terminal window (pid 100) runs a shell (pid 200) in a ptyd shell scope; that shell
-  // started a windowed app (pid 400) and a build (pid 201). The editor (pid 300) has its own scope.
+  // started a windowed app (pid 400) and a build (pid 201). The editor (pid 300) has its own scope; a shell started
+  // from it (pid 500) runs there too.
   struct Fixture {
     Fixture() {
       root = std::filesystem::temp_directory_path() / std::format("qos-controller-{}", getpid());
@@ -72,6 +73,7 @@ namespace {
       process(201, kShellScope);
       process(400, kShellScope);
       process(300, kEditor);
+      process(500, kEditor);
       write(root / "power/BAT0/type", "Battery\n");
       write(root / "power/BAT0/status", "Discharging\n");
       setenv("ANDROMEDA_QOS_TEST_POWER_SUPPLY", (root / "power").c_str(), 1);
@@ -143,6 +145,28 @@ ANDROMEDA_TEST(focusRaisesAThrottledAppAtOnce) {
   controller.focus(300);
   wl_event_loop_dispatch_idle(fixture.loop);
   CHECK(registry().apps.at(kEditor).tier == Tier::Focus);
+}
+
+ANDROMEDA_TEST(aShellInsideAnAppUnitTakesThatUnitOutOfQos) {
+  Fixture fixture;
+  FakeUnits units;
+  Snapshot snapshot;
+  snapshot.windows = {window(300, true)};
+  Controller controller(fixture.loop, units, false, [&snapshot] { return snapshot; }, fixture.root.string());
+  controller.schedule();
+  fixture.run(150);
+  CHECK(registry().apps.at(kEditor).tier == Tier::HiddenLong);
+  // The shell starts inside the editor's unit: the unit goes back to the defaults and stays out while the shell runs.
+  snapshot.shellPids = {500};
+  units.touched.clear();
+  controller.schedule();
+  fixture.run(150);
+  CHECK(!registry().apps.contains(kEditor));
+  CHECK(units.touched.size() == 1);
+  controller.focus(500);
+  controller.focus(300);
+  fixture.run(10);
+  CHECK(!registry().apps.contains(kEditor));
 }
 
 int main() { return RUN_TESTS(); }

@@ -46,6 +46,7 @@ namespace andromeda::qos {
     };
     std::vector<Window> windows; // mapped toplevels
     std::vector<pid_t> idleInhibitorPids;
+    std::vector<pid_t> shellPids; // dsk_shell_v1 clients: their units are never tracked, wherever they run
     std::vector<Activity> activity; // dsk_shell_v1 app_activity
     bool freezeBackgroundApps = false;
     bool freezeHiddenApps = true;
@@ -119,6 +120,7 @@ namespace andromeda::qos {
     bool m_pinsBackground = false;
     std::unordered_map<std::string, Scope> m_scopes;
     std::string m_focused;
+    std::unordered_set<std::string> m_shellUnits; // app units that hold a shell process; never tracked
     int m_thawHolds = 0;
     std::vector<int> m_efficiencyCpus;
     std::uint64_t m_focusMemoryLow; // 25 % of RAM (docs/qos.md §3)
