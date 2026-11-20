@@ -53,6 +53,7 @@ namespace andromeda::ov {
     // workspace axis is horizontal) instead of y.
     double stripScale = 0.5;
     bool horizontal = false;
+    double ui = 1; // the shell's ui_scale: chrome sizes (the filter field, the gaps around it) scale by it
 
     bool operator==(const Input&) const = default;
   };

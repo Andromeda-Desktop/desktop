@@ -16,7 +16,9 @@ namespace andromeda::ov {
 
   namespace {
     // A Pango font string for a type token, in px so it does not depend on the DPI.
-    std::string tokenFont(const Tokens::Type& type) { return std::format("{} {}px", Tokens::fontFamily, type.size); }
+    std::string tokenFont(const Tokens::Type& type, double ui) {
+      return std::format("{} {}px", Tokens::fontFamily, type.size * ui);
+    }
 
 
     constexpr int kNameHeight = 22;
@@ -133,7 +135,7 @@ namespace andromeda::ov {
     if (m_closeKey == nullptr) {
       return nullptr;
     }
-    const double r = kCloseSize / 2.0;
+    const double r = u(kCloseSize) / 2.0;
     const double dx = lx - (m_closeBox.x + r);
     const double dy = ly - (m_closeBox.y + r);
     return dx * dx + dy * dy <= r * r ? m_closeKey : nullptr;
@@ -203,7 +205,7 @@ namespace andromeda::ov {
       wlr_scene_node_destroy(&label.text->node);
       label.text = nullptr;
     }
-    const int lead = style.icon != nullptr ? style.iconSize + kIconGap : 0;
+    const int lead = style.icon != nullptr ? style.iconSize + u(kIconGap) : 0;
     const int textMax = std::max(1, style.maxWidth - 2 * style.padX - lead);
     TextBufferResult rendered = renderTextBuffer({
         .markup = markup,
@@ -349,6 +351,7 @@ namespace andromeda::ov {
   }
 
   void Chrome::update(const ChromeFrame& frame) {
+    m_ui = frame.ui;
     if (m_tree == nullptr || frame.placement == nullptr) {
       return;
     }
@@ -423,17 +426,17 @@ namespace andromeda::ov {
       const bool capsule = chip || renaming;
       setLabel(
           label, markup,
-          {.font = tokenFont(Tokens::typeBody),
+          {.font = tokenFont(Tokens::typeBody, m_ui),
            .padX = capsule ? 8 : 0,
-           .height = capsule ? kNameHeight : 0,
-           .maxWidth = 280,
+           .height = capsule ? u(kNameHeight) : 0,
+           .maxWidth = u(280),
            .fill = renaming ? thick : thin},
           scale
       );
       const wlr_box& card = workspace.card;
       const bool above = workspace.kind == CardKind::Frame || frame.style == Style::TaskView;
       const int x = workspace.kind == CardKind::Thumb ? card.x + (card.width - label.width) / 2 : card.x;
-      const int y = above ? card.y - label.height - kNameGap : card.y + card.height + kNameGap;
+      const int y = above ? card.y - label.height - u(kNameGap) : card.y + card.height + u(kNameGap);
       placeLabel(label, x, y, shown);
       const wlr_box box{x, y, label.width, label.height};
       if (chip && shown > 0.5F) {
@@ -460,7 +463,7 @@ namespace andromeda::ov {
     if (placement.filter.has_value() && filterAlpha > 0.004F) {
       // Fading out after the filter clears, the field keeps the last text instead of flashing a placeholder.
       const std::string markup = span(l1, "normal", m_shownFilter);
-      const int iconPx = std::max(1, static_cast<int>(std::lround(kSearchIcon * scale)));
+      const int iconPx = std::max(1, static_cast<int>(std::lround(u(kSearchIcon) * scale)));
       if (m_searchIcon == nullptr || m_searchIconPx != iconPx || m_searchIconColor != l2) {
         if (m_searchIcon != nullptr) {
           wlr_buffer_drop(m_searchIcon);
@@ -471,14 +474,14 @@ namespace andromeda::ov {
       }
       setLabel(
           m_filter, markup,
-          {.font = tokenFont(Tokens::typeBody),
-           .padX = 14,
-           .height = kFieldHeight,
-           .maxWidth = static_cast<int>(kFilterWidth),
-           .width = static_cast<int>(kFilterWidth),
+          {.font = tokenFont(Tokens::typeBody, m_ui),
+           .padX = u(14),
+           .height = u(kFieldHeight),
+           .maxWidth = u(kFilterWidth),
+           .width = u(kFilterWidth),
            .fill = {},
            .icon = m_searchIcon,
-           .iconSize = kSearchIcon},
+           .iconSize = u(kSearchIcon)},
           scale
       );
       // A fixed place: the field only fades, it never rides the strip's travel.
@@ -487,7 +490,7 @@ namespace andromeda::ov {
       placeLabel(m_filter, fx, fy, filterAlpha);
       if (m_filterGlass != nullptr) {
         m_filterGlass->setEnabled(true);
-        m_filterGlass->place({fx, fy, static_cast<int>(kFilterWidth), kFieldHeight}, kFieldHeight / 2, filterAlpha);
+        m_filterGlass->place({fx, fy, u(kFilterWidth), u(kFieldHeight)}, u(kFieldHeight) / 2, filterAlpha);
       }
     } else {
       placeLabel(m_filter, 0, 0, 0.0F);
@@ -514,7 +517,7 @@ namespace andromeda::ov {
       }
       setLabel(
           label, span(l2, "normal", "No windows"),
-          {.font = tokenFont(Tokens::typeFootnote), .padX = 10, .height = kNameHeight, .maxWidth = workspace->card.width},
+          {.font = tokenFont(Tokens::typeFootnote, m_ui), .padX = u(10), .height = u(kNameHeight), .maxWidth = workspace->card.width},
           scale
       );
       const wlr_box& card = workspace->card;
@@ -533,7 +536,7 @@ namespace andromeda::ov {
       setLabel(
           m_noMatch,
           span(l2, "normal", std::format("No windows match “{}”. Enter searches apps and files.", frame.filter)),
-          {.font = tokenFont(Tokens::typeBody), .maxWidth = std::max(1, area.width - 48)}, scale
+          {.font = tokenFont(Tokens::typeBody, m_ui), .maxWidth = std::max(1, area.width - u(48))}, scale
       );
       placeLabel(m_noMatch, area.x + (area.width - m_noMatch.width) / 2, area.y + (area.height - m_noMatch.height) / 2, late);
     } else {
@@ -550,28 +553,28 @@ namespace andromeda::ov {
       const int width = 2;
       const wlr_box& card = current->card;
       const wlr_box box{card.x - width, card.y - width, card.width + 2 * width, card.height + 2 * width};
-      placeFrame(m_current, box, kPlusRadius + width, width, {}, l1, shown);
+      placeFrame(m_current, box, u(kPlusRadius) + width, width, {}, l1, shown);
     } else {
-      placeFrame(m_current, {}, kPlusRadius, 2, {}, {}, 0.0F);
+      placeFrame(m_current, {}, u(kPlusRadius), 2, {}, {}, 0.0F);
     }
 
     if (placement.plus.has_value()) {
       const Rect& plus = *placement.plus;
       const wlr_box box = rideStrip(plus);
-      placeFrame(m_plus, box, kPlusRadius, 2, {0.5F, 0.5F, 0.5F, 0.08F}, l3, frame.thumbAlpha);
-      setLabel(m_plusMark, span(l2, "normal", "+"), {.font = tokenFont(Tokens::typeLarge)}, scale);
+      placeFrame(m_plus, box, u(kPlusRadius), 2, {0.5F, 0.5F, 0.5F, 0.08F}, l3, frame.thumbAlpha);
+      setLabel(m_plusMark, span(l2, "normal", "+"), {.font = tokenFont(Tokens::typeLarge, m_ui)}, scale);
       placeLabel(
           m_plusMark, box.x + (box.width - m_plusMark.width) / 2, box.y + (box.height - m_plusMark.height) / 2,
           frame.thumbAlpha
       );
     } else {
-      placeFrame(m_plus, {}, kPlusRadius, 2, {}, {}, 0.0F);
+      placeFrame(m_plus, {}, u(kPlusRadius), 2, {}, {}, 0.0F);
       placeLabel(m_plusMark, 0, 0, 0.0F);
     }
 
 
     // Window title capsules, centred under their cards, in card stacking order.
-    const int capsuleFloor = usableBottom - kCapsuleGap;
+    const int capsuleFloor = usableBottom - u(kCapsuleGap);
     for (auto& [key, label] : m_titles) {
       label.used = false;
     }
@@ -582,13 +585,13 @@ namespace andromeda::ov {
       Label& label = m_titles[window.key];
       setLabel(
           label, span(l1, "600", window.title.empty() ? std::string_view("Untitled") : window.title),
-          {.font = tokenFont(Tokens::typeFootnote),
-           .padX = 10,
-           .height = kCapsuleHeight,
-           .maxWidth = kCapsuleMaxWidth,
+          {.font = tokenFont(Tokens::typeFootnote, m_ui),
+           .padX = u(10),
+           .height = u(kCapsuleHeight),
+           .maxWidth = u(kCapsuleMaxWidth),
            .fill = thick,
            .icon = window.icon,
-           .iconSize = kCapsuleIcon},
+           .iconSize = u(kCapsuleIcon)},
           scale
       );
       const int centre = window.box.x + window.box.width / 2;
@@ -598,7 +601,7 @@ namespace andromeda::ov {
       const bool wanted = (frame.titlesAlways || window.selected || window.key == frame.hovered)
           && inCard
           && !window.dragged
-          && window.box.width > kCapsuleMinCard
+          && window.box.width > u(kCapsuleMinCard)
           && window.opacity > 0.45F;
       int x = window.box.x + (window.box.width - label.width) / 2;
       if (window.within.has_value()) {
@@ -608,8 +611,8 @@ namespace andromeda::ov {
       // A card reaching down to the usable bottom, or to the bottom of its workspace card, carries its capsule over its own
       // bottom edge instead.
       const int floor =
-          window.within.has_value() ? window.within->y + window.within->height - kCapsuleGap : capsuleFloor;
-      const int y = std::min(window.box.y + window.box.height + kCapsuleGap, floor - label.height);
+          window.within.has_value() ? window.within->y + window.within->height - u(kCapsuleGap) : capsuleFloor;
+      const int y = std::min(window.box.y + window.box.height + u(kCapsuleGap), floor - label.height);
       placeLabel(label, x, y, wanted ? late : 0.0F);
       if (label.tree != nullptr) {
         wlr_scene_node_raise_to_top(&label.tree->node);
@@ -625,20 +628,20 @@ namespace andromeda::ov {
     m_closeKey = nullptr;
     if (closeFor != nullptr
         && !closeFor->dragged
-        && closeFor->box.width > kCloseMinCard
+        && closeFor->box.width > u(kCloseMinCard)
         && closeFor->opacity > 0.45F
         && late > 0.5F) {
-      const std::string closeFont = tokenFont(Tokens::typeBody);
-      const LabelStyle style{.font = closeFont, .height = kCloseSize, .maxWidth = kCloseSize, .fill = thick};
+      const std::string closeFont = tokenFont(Tokens::typeBody, m_ui);
+      const LabelStyle style{.font = closeFont, .height = u(kCloseSize), .maxWidth = u(kCloseSize), .fill = thick};
       setLabel(m_close, span(l1, "bold", "✕"), style, scale);
       LabelStyle hot = style;
       hot.fill = kCloseRed;
       setLabel(m_closeHot, span({1.0F, 1.0F, 1.0F, 1.0F}, "bold", "✕"), hot, scale);
       m_closeBox = {
-          closeFor->box.x + closeFor->box.width - kCloseInset - kCloseSize / 2,
-          closeFor->box.y + kCloseInset - kCloseSize / 2,
-          kCloseSize,
-          kCloseSize,
+          closeFor->box.x + closeFor->box.width - u(kCloseInset) - u(kCloseSize) / 2,
+          closeFor->box.y + u(kCloseInset) - u(kCloseSize) / 2,
+          u(kCloseSize),
+          u(kCloseSize),
       };
       m_closeKey = closeFor->key;
       Label& on = frame.closeHovered ? m_closeHot : m_close;
@@ -669,35 +672,35 @@ namespace andromeda::ov {
     };
     m_menuBox.reset();
     if (anchor.has_value() && frame.workspaces.size() > frame.menu->workspace) {
-      const int height = 2 * kMenuPad + kMenuHeadHeight + kMenuRows * kMenuRowHeight;
-      const int right = frame.output.x + frame.output.width - kMenuPad - kMenuWidth;
-      const int x = std::max(frame.output.x + kMenuPad, std::min(anchor->x, right));
-      int y = anchor->y + anchor->height + kMenuGap;
-      if (y + height > frame.output.y + frame.output.height - kMenuPad) {
-        y = anchor->y - kMenuGap - height;
+      const int height = 2 * u(kMenuPad) + u(kMenuHeadHeight) + kMenuRows * u(kMenuRowHeight);
+      const int right = frame.output.x + frame.output.width - u(kMenuPad) - u(kMenuWidth);
+      const int x = std::max(frame.output.x + u(kMenuPad), std::min(anchor->x, right));
+      int y = anchor->y + anchor->height + u(kMenuGap);
+      if (y + height > frame.output.y + frame.output.height - u(kMenuPad)) {
+        y = anchor->y - u(kMenuGap) - height;
       }
-      m_menuBox = wlr_box{x, y, kMenuWidth, height};
+      m_menuBox = wlr_box{x, y, u(kMenuWidth), height};
       // No backdrop blur under this panel, so it is near solid: the cards' edges must not show through.
-      placeFrame(m_menu, *m_menuBox, kMenuRadius, 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F);
+      placeFrame(m_menu, *m_menuBox, u(kMenuRadius), 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F);
       raise(m_menu.tree);
       const std::string_view name = frame.workspaces[frame.menu->workspace].name;
-      setLabel(m_menuHead, span(l2, "600", std::format("Arrange “{}”", name)), {.font = tokenFont(Tokens::typeCaption), .maxWidth = 240}, scale);
-      placeLabel(m_menuHead, x + kMenuPad + 10, y + kMenuPad + (kMenuHeadHeight - m_menuHead.height) / 2, 1.0F);
+      setLabel(m_menuHead, span(l2, "600", std::format("Arrange “{}”", name)), {.font = tokenFont(Tokens::typeCaption, m_ui), .maxWidth = u(240)}, scale);
+      placeLabel(m_menuHead, x + u(kMenuPad) + u(10), y + u(kMenuPad) + (u(kMenuHeadHeight) - m_menuHead.height) / 2, 1.0F);
       raise(m_menuHead.tree);
-      const int textX = kMenuPad + 10 + kMenuArtWidth + 10;
+      const int textX = u(kMenuPad) + u(10) + u(kMenuArtWidth) + u(10);
       for (size_t row = 0; row < kMenu.size(); ++row) {
         const MenuRow& item = kMenu[row];
         const wlr_box box{
-            x + kMenuPad, y + kMenuPad + kMenuHeadHeight + static_cast<int>(row) * kMenuRowHeight,
-            kMenuWidth - 2 * kMenuPad, kMenuRowHeight
+            x + u(kMenuPad), y + u(kMenuPad) + u(kMenuHeadHeight) + static_cast<int>(row) * u(kMenuRowHeight),
+            u(kMenuWidth) - 2 * u(kMenuPad), u(kMenuRowHeight)
         };
         m_menuRowBoxes[row] = box;
         if (static_cast<int>(row) == frame.menu->hovered) {
-          placeFrame(m_menuHover, box, 8, 1, withAlpha(l1, 0.08F), {}, 1.0F);
+          placeFrame(m_menuHover, box, u(8), 1, withAlpha(l1, 0.08F), {}, 1.0F);
           raise(m_menuHover.tree);
         }
-        const int artX = box.x + 10;
-        const int artY = box.y + (kMenuRowHeight - kMenuArtHeight) / 2;
+        const int artX = box.x + u(10);
+        const int artY = box.y + (u(kMenuRowHeight) - u(kMenuArtHeight)) / 2;
         for (size_t block = 0; block < m_menuArt[row].size(); ++block) {
           Frame& art = m_menuArt[row][block];
           if (block >= item.blocks) {
@@ -705,7 +708,7 @@ namespace andromeda::ov {
             continue;
           }
           const ArtBlock& b = item.art[block];
-          placeFrame(art, {artX + b.x, artY + b.y, b.w, b.h}, 2, 1, colors.accentPrimary, {}, b.alpha);
+          placeFrame(art, {artX + u(b.x), artY + u(b.y), u(b.w), u(b.h)}, u(2), 1, colors.accentPrimary, {}, b.alpha);
           raise(art.tree);
         }
         std::string markup = span(l1, "600", item.name);
@@ -716,8 +719,8 @@ namespace andromeda::ov {
             "\n<span size='small' foreground='{}'>{}</span>", rgbaHex(l2), escapeMarkup(item.description)
         );
         Label& label = m_menuLabels[row];
-        setLabel(label, markup, {.font = tokenFont(Tokens::typeFootnote), .maxWidth = kMenuWidth - textX - kMenuPad - 10, .wrap = true}, scale);
-        placeLabel(label, x + textX, box.y + (kMenuRowHeight - label.height) / 2, 1.0F);
+        setLabel(label, markup, {.font = tokenFont(Tokens::typeFootnote, m_ui), .maxWidth = u(kMenuWidth) - textX - u(kMenuPad) - u(10), .wrap = true}, scale);
+        placeLabel(label, x + textX, box.y + (u(kMenuRowHeight) - label.height) / 2, 1.0F);
         raise(label.tree);
       }
     }
@@ -744,21 +747,21 @@ namespace andromeda::ov {
     }
     if (windowRows > 0) {
       const ChromeWindowMenu& wm = *frame.windowMenu;
-      const int height = 2 * kMenuPad + static_cast<int>(windowRows) * kWindowMenuRowHeight;
+      const int height = 2 * u(kMenuPad) + static_cast<int>(windowRows) * u(kWindowMenuRowHeight);
       const int x = std::clamp(
-          wm.x, frame.output.x + kMenuPad, frame.output.x + frame.output.width - kMenuPad - kWindowMenuWidth
+          wm.x, frame.output.x + u(kMenuPad), frame.output.x + frame.output.width - u(kMenuPad) - u(kWindowMenuWidth)
       );
       const int y =
-          std::clamp(wm.y, frame.output.y + kMenuPad, frame.output.y + frame.output.height - kMenuPad - height);
-      m_windowMenuBox = wlr_box{x, y, kWindowMenuWidth, height};
+          std::clamp(wm.y, frame.output.y + u(kMenuPad), frame.output.y + frame.output.height - u(kMenuPad) - height);
+      m_windowMenuBox = wlr_box{x, y, u(kWindowMenuWidth), height};
       placeFrame(
-          m_windowMenu, *m_windowMenuBox, kMenuRadius, 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F
+          m_windowMenu, *m_windowMenuBox, u(kMenuRadius), 1, withAlpha(solid, 0.97F), withAlpha(l1, 0.1F), 1.0F
       );
       raise(m_windowMenu.tree);
       for (size_t row = 0; row < windowRows; ++row) {
         const wlr_box box{
-            x + kMenuPad, y + kMenuPad + static_cast<int>(row) * kWindowMenuRowHeight, kWindowMenuWidth - 2 * kMenuPad,
-            kWindowMenuRowHeight
+            x + u(kMenuPad), y + u(kMenuPad) + static_cast<int>(row) * u(kWindowMenuRowHeight), u(kWindowMenuWidth) - 2 * u(kMenuPad),
+            u(kWindowMenuRowHeight)
         };
         m_windowMenuRows[row] = box;
         if (static_cast<int>(row) == wm.hovered) {
@@ -769,9 +772,9 @@ namespace andromeda::ov {
         Label& label = m_windowMenuLabels[row];
         setLabel(
             label, span(danger ? colors.error : l1, "normal", wm.rows[row]),
-            {.font = tokenFont(Tokens::typeBody), .maxWidth = kWindowMenuWidth - 2 * kMenuPad - 24}, scale
+            {.font = tokenFont(Tokens::typeBody, m_ui), .maxWidth = u(kWindowMenuWidth) - 2 * u(kMenuPad) - u(24)}, scale
         );
-        placeLabel(label, box.x + 12, box.y + (kWindowMenuRowHeight - label.height) / 2, 1.0F);
+        placeLabel(label, box.x + u(12), box.y + (u(kWindowMenuRowHeight) - label.height) / 2, 1.0F);
         raise(label.tree);
       }
     }

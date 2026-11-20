@@ -56,6 +56,7 @@ public:
   void setFocusScheme(std::string scheme);
   // The shell's corner scale in the compositor's runtime layer "style" (never saved there): window corners follow it.
   void setCornerScale(float scale);
+  void setUiScale(float scale);
   // Runs when another client (Settings, `andromeda msg settings-set`) changes appearance.scheme; the shell adopts it.
   void setOnExternalScheme(std::function<void(std::string_view)> callback) { m_onExternalScheme = std::move(callback); }
   // Runs on every batch of settings and on every refused set, once the first batch has arrived.
@@ -77,6 +78,8 @@ private:
   std::string m_layerScheme; // the scheme in the compositor's "focus" layer now
   std::string m_cornerScale;
   std::string m_layerCornerScale; // the corner scale in the compositor's "style" layer now
+  std::string m_uiScale;
+  std::string m_layerUiScale; // the ui scale in the compositor's "style" layer now
   std::string m_accent;
   std::string m_chosenAccent; // a setAccent() value until the compositor holds it
   std::unordered_map<std::string, std::string> m_sent; // last value set per key, until the compositor has it

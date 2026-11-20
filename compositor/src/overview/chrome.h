@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include "overview/style.h"
 #include "scene/glass_panel.h"
 
@@ -74,6 +76,7 @@ namespace andromeda::ov {
     wlr_box output{}; // layout coordinates
     wlr_box usable{}; // layout coordinates
     double scale = 1; // device-pixel scale text renders at
+    double ui = 1;    // the shell's ui_scale: every chrome size and font is in logical px times this
     const Placement* placement = nullptr;
     size_t current = 0; // the chosen workspace
     std::span<const ChromeWorkspace> workspaces;
@@ -166,6 +169,9 @@ namespace andromeda::ov {
     Label m_filter;
     std::string m_shownFilter; // the last non-empty filter: the field shows it while it fades out
     std::unique_ptr<GlassPanel> m_filterGlass; // under every label: created first in the chrome tree
+    double m_ui = 1; // ChromeFrame::ui of the last update
+    // A design size in logical px at the current ui_scale.
+    [[nodiscard]] int u(double px) const { return static_cast<int>(std::lround(px * m_ui)); }
     wlr_buffer* m_searchIcon = nullptr; // filter field glyph, drawn at m_searchIconPx in m_searchIconColor
     int m_searchIconPx = 0;
     std::array<float, 4> m_searchIconColor{};

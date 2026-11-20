@@ -793,6 +793,8 @@ namespace andromeda {
       int cornerRadius = static_cast<int>(Tokens::componentWindowRadius);
       // The shell's Interface Corners scale, set in its runtime layer; window corners are cornerRadius times this.
       double cornerScale = 1.0;
+      // The shell's ui_scale (accessibility), set in its runtime layer; compositor chrome sizes and fonts scale by it.
+      double uiScale = 1.0;
       double dragOpacity = 0.75;
       // Fullscreen windows ignore window rule opacity and draw over the backdrop. When false, a fullscreen window with
       // rule or client transparency shows the desktop instead.

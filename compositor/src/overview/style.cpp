@@ -29,9 +29,10 @@ namespace andromeda::ov {
     constexpr double kMainBottom = 48;   // Task View: frame to the piece row (names sit above the pieces)
     constexpr double kTopFilterY = 52;   // Task View and Strip: filter field top, at least
     constexpr double kBarFilterGap = 20; // Task View and Strip: work-area top (the bar) to the filter field
+    constexpr double kBarThumbGap = 8;   // Spaces: work-area top (the bar) to the piece row (prototype: 44 -> 52)
 
     // Task View and Strip: the field sits under the bar however tall ui_scale makes it.
-    double topFilterY(const Input& in) { return std::max(kTopFilterY, in.usable.y + kBarFilterGap); }
+    double topFilterY(const Input& in) { return std::max(kTopFilterY * in.ui, in.usable.y + kBarFilterGap * in.ui); }
     constexpr double kExposeInsetX = 24; // Spaces: exposé inside the frame
     constexpr double kExposeInsetTop = 20;
     constexpr double kExposeInsetBottom = 12;
@@ -99,7 +100,7 @@ namespace andromeda::ov {
         tw = std::max(1.0, (avail - static_cast<double>(n) * kThumbGap) / (static_cast<double>(n) + kPlusShare));
         th = tw / ar;
       }
-      const double y = top ? kThumbTop : in.height - kThumbBottom - th;
+      const double y = top ? std::max(kThumbTop * in.ui, in.usable.y + kBarThumbGap * in.ui) : in.height - kThumbBottom * in.ui - th;
       double x = (in.width - need()) / 2;
       for (size_t i = 0; i < n; ++i) {
         out.cards.push_back({i, {x, y, tw, th}, CardKind::Thumb});
@@ -107,8 +108,8 @@ namespace andromeda::ov {
       }
       out.plus = Rect{x, y, tw * kPlusShare, th};
 
-      const double frameTop = top ? y + th + kSpacesFrameGap : topFilterY(in) + (kTaskViewTop - kTopFilterY);
-      const double frameBottom = top ? in.height - kSpacesBottom : y - kMainBottom;
+      const double frameTop = top ? y + th + kSpacesFrameGap * in.ui : topFilterY(in) + (kTaskViewTop - kTopFilterY) * in.ui;
+      const double frameBottom = top ? in.height - kSpacesBottom : y - kMainBottom * in.ui;
       const Fit frameFit = fitIn(
           {0, 0, in.width, in.height},
           {kFrameMargin, frameTop, in.width - 2 * kFrameMargin, std::max(1.0, frameBottom - frameTop)}
@@ -116,8 +117,8 @@ namespace andromeda::ov {
       const Rect main = mapRect({0, 0, in.width, in.height}, frameFit);
       out.main = main;
       out.mainFit = frameFit;
-      const double filterY = top ? y + th + kSpacesFilterGap : topFilterY(in);
-      out.filter = Point{(in.width - kFilterWidth) / 2, filterY};
+      const double filterY = top ? y + th + kSpacesFilterGap * in.ui : topFilterY(in);
+      out.filter = Point{(in.width - kFilterWidth * in.ui) / 2, filterY};
 
       if (in.current < n) {
         const Workspace& ws = in.workspaces[in.current];
@@ -216,7 +217,7 @@ namespace andromeda::ov {
       Rect plus = frameAt(static_cast<double>(n));
       (in.horizontal ? plus.w : plus.h) *= kStripPlusShare;
       out.plus = plus;
-      out.filter = Point{(in.width - kFilterWidth) / 2, topFilterY(in)};
+      out.filter = Point{(in.width - kFilterWidth * in.ui) / 2, topFilterY(in)};
       return out;
     }
 

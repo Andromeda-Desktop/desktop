@@ -82,6 +82,7 @@ namespace andromeda {
     input.width = state.outputBox.width;
     input.height = state.outputBox.height;
     input.usable = localRect(state.usableBox, state.outputBox);
+    input.ui = config().appearance.uiScale;
     // Strip rows leave 220 px for names, the filter and the neighbour peeks; `overview.zoom` caps the share.
     const double fill = input.height > 0 ? (input.height - 220.0) / input.height : 0.0;
     input.stripScale = std::clamp(fill, 0.1, std::clamp(config().overview.zoom, 0.1, 0.75));
@@ -980,6 +981,7 @@ namespace andromeda {
         .output = state.outputBox,
         .usable = state.usableBox,
         .scale = std::max(1.0, std::ceil(static_cast<double>(state.output->wlr()->scale))),
+        .ui = config().appearance.uiScale,
         .placement = &state.placement,
         .current = current,
         .workspaces = m_chromeWorkspaces,
