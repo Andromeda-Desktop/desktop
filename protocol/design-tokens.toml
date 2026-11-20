@@ -828,6 +828,10 @@ orb_tint = 0.22      # orb inner disc (hero_glyph wide): accent at this alpha
 code_cell = 64.0     # pairing code cell height (r12)
 finder_corner = 44.0 # viewfinder corner mark arm, stroke space.p4, radius r12
 finder_inset = 0.22  # viewfinder corner marks sit this share in from each edge
+pick_ring = 3.0      # picker: inset accent ring of a picked tile
+pick_badge = 24.0    # picker: pick-order badge (= size.control_s), r = half, 8 in from the tile corner
+pick_badge_ring = 1.5  # picker: outline of an unpicked badge
+pick_max_top = 64.0  # picker: least room the sheet leaves above it under the status bar
 
 [component.page]  # window content, 8
 padding = 24.0

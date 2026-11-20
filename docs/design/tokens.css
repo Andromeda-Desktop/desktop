@@ -560,6 +560,10 @@
   --component-phone-code-cell: 64.0px;
   --component-phone-finder-corner: 44.0px;
   --component-phone-finder-inset: 0.22px;
+  --component-phone-pick-ring: 3.0px;
+  --component-phone-pick-badge: 24.0px;
+  --component-phone-pick-badge-ring: 1.5px;
+  --component-phone-pick-max-top: 64.0px;
   --component-page-padding: 24.0px;
   --component-page-padding-compact: 16.0px;
   --component-page-column: 640.0px;
