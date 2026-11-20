@@ -195,17 +195,20 @@ namespace andromeda {
         return result.get();
       }
 
-    private:
-      TextThread() : m_thread([this] { loop(); }) {}
-
-      ~TextThread() {
+      void stop() {
         {
           const std::lock_guard lock(m_mutex);
           m_stop = true;
         }
         m_wake.notify_one();
-        m_thread.join();
+        if (m_thread.joinable()) {
+          m_thread.join();
+        }
       }
+
+    private:
+      TextThread() : m_thread([this] { loop(); }) {}
+      ~TextThread() { stop(); }
 
       void loop() {
         pthread_setname_np(pthread_self(), "andromeda-text");
@@ -233,6 +236,8 @@ namespace andromeda {
   } // namespace
 
   TextBufferResult renderTextBuffer(const TextBufferParams& params) { return TextThread::instance().render(params); }
+
+  void stopTextRendering() { TextThread::instance().stop(); }
 
   void warmTextRendering() {
     TextThread::instance().post([] {

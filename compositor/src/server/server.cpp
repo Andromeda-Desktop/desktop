@@ -1342,6 +1342,7 @@ namespace andromeda {
     wl_list_remove(&m_toplevelCaptureRequest.link);
     wl_list_remove(&m_padKeyboardFocusChange.link);
     wl_list_remove(&m_layerKeyboardFocusChange.link);
+    stopTextRendering();
     // The remaining teardown is the member order in the block at the end of server.h.
   }
 

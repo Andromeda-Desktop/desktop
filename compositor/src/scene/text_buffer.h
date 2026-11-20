@@ -42,6 +42,10 @@ namespace andromeda {
   // first text the compositor draws (the first overview's workspace labels) waits 25-55 ms for them.
   void warmTextRendering();
 
+  // Finishes the queued text jobs and joins the text thread. Call before exit: harfbuzz frees its data in an exit
+  // handler that runs before the thread's static destructor, while a job may still use it. No text renders after.
+  void stopTextRendering();
+
   // Wraps a Cairo ARGB32 image surface in a wlr_buffer, taking a reference to it. The caller drops the buffer.
   [[nodiscard]] wlr_buffer* imageBuffer(cairo_surface_t* surface);
 

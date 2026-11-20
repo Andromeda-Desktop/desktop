@@ -23,7 +23,11 @@ configure m=mode install_prefix=prefix:
         ;;
       asan)
         # jemalloc replaces malloc underneath ASan's allocator and crashes at startup.
-        args+=(--buildtype=debug -Db_sanitize=address -Djemalloc=disabled -Dwerror=true)
+        args+=(--buildtype=debug -Db_sanitize=address -Djemalloc=disabled -Dwerror=true -Dtests=enabled)
+        # The compositor builds only against the patched wraps, as in debug.
+        args+=(--wrap-mode=default --force-fallback-for=wlroots-0.20,libliftoff)
+        args+=(-Dwlroots:libliftoff=enabled -Dlibliftoff:default_library=shared -Dlibliftoff:werror=false)
+        args+=(-Dwlroots:renderers=gles2)
         ;;
       tracy)
         # Packaged Tracy clients are the no-op stub; build one under ~/.local.
@@ -170,6 +174,9 @@ check *filters: (_ensure-configured mode) (_enable-tests mode "yes")
 check-stress name n="32": (_ensure-configured mode) (_enable-tests mode "yes")
     #!/usr/bin/env bash
     set -euo pipefail
+    if [[ "{{mode}}" == "asan" ]]; then
+        export ASAN_OPTIONS="{{asan-options}}${ASAN_OPTIONS:+:${ASAN_OPTIONS}}"
+    fi
     if ! build_log=$(meson compile -C build-{{mode}} andromeda harness-clients 2>&1); then
         printf '%s\n' "$build_log" >&2
         exit 1
