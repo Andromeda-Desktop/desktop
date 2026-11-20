@@ -1408,7 +1408,11 @@ namespace andromeda {
     for (const auto& state : m_outputs) {
       const WorkspaceGroup* group = state->output->workspaceGroup();
       if (group != nullptr && group->active() != nullptr) {
-        animateRow(*state, static_cast<double>(group->active()->index()));
+        // The zoom closes on `close`, or on `page` after a gesture release (startAnimation).
+        animateRow(
+            *state, static_cast<double>(group->active()->index()), std::nullopt,
+            release.has_value() ? Tokens::springPage : Tokens::springClose
+        );
       }
     }
     // Close mirrors the open: what the desktop will show returns to its rect, the rest fades in place. A close before
@@ -1535,7 +1539,7 @@ namespace andromeda {
     }
   }
 
-  void Overview::animateRow(OutputState& state, double target, std::optional<double> release) {
+  void Overview::animateRow(OutputState& state, double target, std::optional<double> release, const Tokens::Spring& spring) {
     const double releaseVelocity = release.value_or(0.0);
     const auto& animation = config().animation;
     const auto& overview = animation.overview;
@@ -1564,7 +1568,7 @@ namespace andromeda {
       state.rowScroll.settleSpring(target, motionSpring(Tokens::springPage), releaseVelocity);
     } else {
       // A row already sliding keeps its speed toward the new row.
-      state.rowScroll.steerSpring(target, motionSpring(Tokens::springPage));
+      state.rowScroll.steerSpring(target, motionSpring(spring));
     }
     // Animations only tick from an output frame; kick one so an idle desktop
     // starts both timelines from the same frame.

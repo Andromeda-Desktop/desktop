@@ -505,8 +505,12 @@ namespace andromeda {
     // which the zoom settles with on `page`. Every other start runs `open` or `close` from the zoom's current speed.
     void startAnimation(double target, bool closing, std::optional<double> release = std::nullopt);
     // Move one output's filmstrip onto row `target`. `release` is set only for a touchpad gesture's release or cancel:
-    // the speed the fingers left behind, in rows per second (0 for a cancel or a resting hand).
-    void animateRow(OutputState& state, double target, std::optional<double> release = std::nullopt);
+    // the speed the fingers left behind, in rows per second (0 for a cancel or a resting hand). `spring` moves a row
+    // without a release: a close passes the zoom's, so the row and the zoom arrive as one motion.
+    void animateRow(
+        OutputState& state, double target, std::optional<double> release = std::nullopt,
+        const Tokens::Spring& spring = Tokens::springPage
+    );
     void finishAnimation();
     void beginClose(View* focus, std::optional<double> release = std::nullopt);
     void teardown();
