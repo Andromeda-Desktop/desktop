@@ -122,7 +122,7 @@ namespace {
   constexpr float kArtRadius = kArt * 0.5F;
   constexpr float kRestPadding = 8.0F;
   constexpr float kRestMaxWidth = 280.0F;
-  constexpr std::int32_t kShadowPad = ui::surface_shadow::kBlurRadius + 2;
+  const std::int32_t kShadowPad = ui::surface_shadow::blurRadius() + 2;
   TOKENS_LIVE(kBannerHeight, Tokens::componentIslandCenterBannerHeight);
   TOKENS_LIVE(kBannerRadius, Tokens::componentIslandCenterBannerRadius);
   TOKENS_LIVE(kBannerPad, Tokens::componentIslandCenterBannerPadding);

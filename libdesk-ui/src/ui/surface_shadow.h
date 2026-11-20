@@ -7,7 +7,8 @@
 
 namespace ui::surface_shadow {
 
-  constexpr std::int32_t kBlurRadius = 12;
+  // The shadow blur in logical px: elevation.e3 contact_blur, a tight shadow under the glass.
+  [[nodiscard]] std::int32_t blurRadius() noexcept;
 
   struct Bleed {
     std::int32_t left = 0;
