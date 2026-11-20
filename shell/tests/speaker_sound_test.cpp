@@ -15,10 +15,12 @@ namespace {
 int main() {
   int failures = 0;
   const auto s = settings::parseSpeakerStatus(
-      "enabled=1\nsource=Dolby\nprofile=movie\nloudness=6.5\nbass=3\nprofiles=music,movie\nwindows=1\nspeakers=1\n"
+      "enabled=1\nsource=Dolby\nprofile=movie\nloudness=6.5\nbass=3\nieq=balanced\nwidth=0.3\nprofiles=music,movie\n"
+      "ieqs=warm,balanced\nwindows=1\nspeakers=1\n"
   );
   if (!s || !s->enabled || s->basic() || s->profile != "movie" || s->loudnessDb != 6.5 || s->bass != 3.0 ||
-      s->profiles.size() != 2 || !s->windows || !s->speakers) {
+      s->ieq != "balanced" || s->width != 0.3 || s->profiles.size() != 2 || s->ieqs.size() != 2 || !s->windows ||
+      !s->speakers) {
     std::println(stderr, "speaker_sound_test: status line parse");
     ++failures;
   }

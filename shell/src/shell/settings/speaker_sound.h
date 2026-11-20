@@ -15,7 +15,12 @@ namespace settings {
     std::string profile = "music";
     double loudnessDb = 4.0;
     double bass = 5.0;
+    // IEQ target preset; `ieqs` lists the presets the tuning carries.
+    std::string ieq = "warm";
+    // Stereo widener, 0..1.
+    double width = 0.5;
     std::vector<std::string> profiles;
+    std::vector<std::string> ieqs;
     bool windows = false;
     bool speakers = false;
 

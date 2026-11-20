@@ -10,6 +10,7 @@
 #include "ui/style.h"
 
 #include <format>
+#include <functional>
 #include <memory>
 
 namespace settings {
@@ -139,14 +140,39 @@ namespace settings {
     }
 
 
-    std::vector<std::string> applyArgs(std::string_view profile, double loudness, double bass) {
-      return {"apply", "--profile", std::string(profile), "--loudness", std::format("{}", loudness), "--bass",
-              std::format("{}", bass)};
+    std::vector<std::string> applyArgs(const SpeakerStatus& s) {
+      return {"apply", "--profile", s.basic() ? "generic" : s.profile, "--loudness", std::format("{}", s.loudnessDb),
+              "--bass", std::format("{}", s.bass), "--ieq", s.ieq, "--width", std::format("{}", s.width)};
     }
 
-    std::string styleLabel(std::string_view profile) {
-      const std::string key = std::format("settings.sound.style-{}", profile);
-      return i18n::tr(key);
+    // A select row that applies `s` with `field` set to the picked value.
+    void addPickRow(Flex& card, const std::string& label, const std::vector<std::string>& values,
+                    std::string SpeakerStatus::* field, std::string_view labelPrefix, bool enabled, float scale,
+                    const std::function<void(std::vector<std::string>)>& run, const SpeakerStatus& s) {
+      std::vector<std::string> names;
+      std::size_t index = 0;
+      for (std::size_t i = 0; i < values.size(); ++i) {
+        names.push_back(i18n::tr(std::format("{}{}", labelPrefix, values[i])));
+        if (values[i] == s.*field) {
+          index = i;
+        }
+      }
+      auto r = row(scale);
+      r->addChild(title(label, scale));
+      r->addChild(ui::select({
+          .options = std::move(names),
+          .selectedIndex = index,
+          .fontSize = Style::fontSizeBody * scale,
+          .enabled = enabled,
+          .onSelectionChanged = [run, s, values, field](std::size_t i, std::string_view) {
+            if (i < values.size() && values[i] != s.*field) {
+              SpeakerStatus n = s;
+              n.*field = values[i];
+              run(applyArgs(n));
+            }
+          },
+      }));
+      card.addChild(std::move(r));
     }
 
     // Speaker Sound card (.agent/DESIGN.md, approved A): switch with the tuning source, style, folded fine tune,
@@ -175,33 +201,17 @@ namespace settings {
           .enabled = !busy,
           .scale = scale,
           .onChange = [run, s](bool on) {
-            run(on ? applyArgs(s.basic() ? "generic" : s.profile, s.loudnessDb, s.bass) : std::vector<std::string>{"off"});
+            run(on ? applyArgs(s) : std::vector<std::string>{"off"});
           },
       }));
 
       if (!s.basic() && s.profiles.size() > 1) {
-        std::vector<std::string> names;
-        std::size_t current = 0;
-        for (std::size_t i = 0; i < s.profiles.size(); ++i) {
-          names.push_back(styleLabel(s.profiles[i]));
-          if (s.profiles[i] == s.profile) {
-            current = i;
-          }
-        }
-        auto r = row(scale);
-        r->addChild(title(i18n::tr("settings.sound.style"), scale));
-        r->addChild(ui::select({
-            .options = std::move(names),
-            .selectedIndex = current,
-            .fontSize = Style::fontSizeBody * scale,
-            .enabled = !busy && s.enabled,
-            .onSelectionChanged = [run, s](std::size_t i, std::string_view) {
-              if (i < s.profiles.size() && s.profiles[i] != s.profile) {
-                run(applyArgs(s.profiles[i], s.loudnessDb, s.bass));
-              }
-            },
-        }));
-        card->addChild(std::move(r));
+        addPickRow(*card, i18n::tr("settings.sound.style"), s.profiles, &SpeakerStatus::profile,
+                   "settings.sound.style-", !busy && s.enabled, scale, run, s);
+      }
+      if (!s.basic() && s.ieqs.size() > 1) {
+        addPickRow(*card, i18n::tr("settings.sound.tone"), s.ieqs, &SpeakerStatus::ieq, "settings.sound.tone-",
+                   !busy && s.enabled, scale, run, s);
       }
 
       auto fine = makeSettingsLinkRow(
@@ -213,7 +223,8 @@ namespace settings {
       card->addChild(std::move(fine));
       if (ctx.speakerFineTuneOpen) {
         // Apply on release, wheel tick or key: each apply restarts the filter chain.
-        auto slide = [&](const std::string& label, double value, double max, bool isBass) {
+        auto slide = [&](const std::string& label, double value, double max, double step,
+                         double SpeakerStatus::* field) {
           auto r = row(scale);
           r->addChild(ui::row({.width = Style::spaceLg * scale}));
           r->addChild(title(label, scale));
@@ -221,23 +232,27 @@ namespace settings {
           r->addChild(ui::slider({
               .minValue = 0.0,
               .maxValue = max,
-              .step = 1.0,
+              .step = step,
               .value = value,
               .enabled = !busy && s.enabled,
               .width = kDeviceSliderWidth * scale,
               .onValueChanged = [latest](double v) { *latest = v; },
-              .onDragEnd = [run, s, latest, isBass, value] {
+              .onDragEnd = [run, s, latest, field, value] {
                 if (*latest == value) {
                   return;
                 }
-                run(applyArgs(s.basic() ? "generic" : s.profile, isBass ? s.loudnessDb : *latest,
-                              isBass ? *latest : s.bass));
+                SpeakerStatus n = s;
+                n.*field = *latest;
+                run(applyArgs(n));
               },
           }));
           card->addChild(std::move(r));
         };
-        slide(i18n::tr("settings.sound.bass"), s.bass, 10.0, true);
-        slide(i18n::tr("settings.sound.loudness"), s.loudnessDb, 12.0, false);
+        slide(i18n::tr("settings.sound.bass"), s.bass, 10.0, 1.0, &SpeakerStatus::bass);
+        slide(i18n::tr("settings.sound.loudness"), s.loudnessDb, 12.0, 1.0, &SpeakerStatus::loudnessDb);
+        if (!s.basic()) {
+          slide(i18n::tr("settings.sound.width"), s.width, 1.0, 0.1, &SpeakerStatus::width);
+        }
       }
 
       if (s.basic() && s.windows) {

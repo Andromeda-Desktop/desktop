@@ -36,15 +36,20 @@ namespace settings {
         s.loudnessDb = number(value, s.loudnessDb);
       } else if (key == "bass") {
         s.bass = number(value, s.bass);
+      } else if (key == "ieq") {
+        s.ieq = value;
+      } else if (key == "width") {
+        s.width = number(value, s.width);
       } else if (key == "windows") {
         s.windows = value == "1";
       } else if (key == "speakers") {
         s.speakers = value == "1";
-      } else if (key == "profiles") {
+      } else if (key == "profiles" || key == "ieqs") {
+        auto& list = key == "profiles" ? s.profiles : s.ieqs;
         for (std::string_view rest = value; !rest.empty();) {
           const auto comma = rest.find(',');
           if (const std::string_view p = rest.substr(0, comma); !p.empty()) {
-            s.profiles.emplace_back(p);
+            list.emplace_back(p);
           }
           rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
         }
