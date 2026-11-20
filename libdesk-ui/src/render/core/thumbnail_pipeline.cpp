@@ -260,9 +260,17 @@ namespace thumbnail_pipeline {
       fs::file_time_type used;
       std::uintmax_t bytes;
     };
+    // Every app start calls this; the walk stats each cached file, so it runs at most once a day.
+    const fs::path stamp = thumbnailCacheDir() / ".pruned";
+    std::error_code ec;
+    if (const auto last = fs::last_write_time(stamp, ec); !ec && fs::file_time_type::clock::now() - last < std::chrono::days(1)) {
+      return;
+    }
+    if (!fs::exists(thumbnailCacheDir(), ec) || !writeFile(stamp, nullptr, 0)) {
+      return;
+    }
     std::vector<Entry> kept;
     std::uintmax_t total = 0;
-    std::error_code ec;
     for (fs::directory_iterator it(thumbnailCacheDir(), ec), end; !ec && it != end; it.increment(ec)) {
       std::error_code e2;
       const auto used = it->last_write_time(e2);
