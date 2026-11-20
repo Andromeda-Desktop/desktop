@@ -37,6 +37,10 @@ executable('andromeda-link-app',
 )
 
 install_data('data/dev.andromeda.Link.desktop', install_dir: get_option('datadir') / 'applications')
+foreach size : ['16', '24', '32', '48', '64', '128', '256', '512']
+  install_data('data/icons/hicolor' / size + 'x' + size / 'apps/dev.andromeda.Link.png',
+               install_dir: get_option('datadir') / 'icons/hicolor' / size + 'x' + size / 'apps')
+endforeach
 # DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.
 configure_file(
   input: 'data/dev.andromeda.Link.service.in',

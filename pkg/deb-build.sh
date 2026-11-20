@@ -22,10 +22,10 @@ arch-meson() {
 source "$root/pkg/PKGBUILD"
 cd "$srcdir"
 
-# ANDROMEDA_APP=files|player|viewer|terminal (app release CI): build and stage only that app and, for Files and Viewer, the
+# ANDROMEDA_APP=files|player|viewer|terminal|link-app (app release CI): build and stage only that app and, for Files and Viewer, the
 # preview. dpkg-buildpackage still writes every package of debian/control; the other debs stay empty and unpublished.
 # ANDROMEDA_CORE=1 (core release CI): no apps; they release on their own tags. Their debs stay empty and unpublished.
-apps=(files viewer player terminal)
+apps=(files viewer player terminal link-app)
 [[ -z ${ANDROMEDA_CORE:-} ]] || apps=()
 app_dirs=()
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
@@ -92,12 +92,13 @@ case ${1:-} in
       [andromeda-player-git]=andromeda-player
       [andromeda-viewer-git]=andromeda-viewer
       [andromeda-terminal-git]=andromeda-terminal
+      [andromeda-link-app-git]=andromeda-link-app
     )
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
       declare -A debs=([andromeda-$ANDROMEDA_APP-git]=andromeda-$ANDROMEDA_APP)
       [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || debs[andromeda-preview-git]=andromeda-preview
     fi
-    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]'
+    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]' 'debs[andromeda-link-app-git]'
     if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
       declare -A wanted=()
       for fn in "${pkgname[@]}"; do wanted[$fn]=${debs[$fn]}; done

@@ -232,10 +232,9 @@ void LinkShare::refreshInfo() {
       });
 }
 
-void LinkShare::mirror(const std::string& deviceId) const {
-  const Device* d = device(deviceId);
-  if (!process::runAsync(std::vector<std::string>{"andromeda-link-mirror", deviceId, "--name", d ? d->name : deviceId})) {
-    kLog.warn("could not start andromeda-link-mirror");
+void LinkShare::mirror() const {
+  if (!process::runAsync(std::vector<std::string>{"andromeda-link-app", "--action=page", "--", "Mirror"})) {
+    kLog.warn("could not start andromeda-link-app");
   }
 }
 

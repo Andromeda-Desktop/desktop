@@ -1,4 +1,4 @@
-# A tag files-v*, player-v*, viewer-v* or terminal-v* builds only that app (Files and Viewer also the preview) and adds
+# A tag files-v*, player-v*, viewer-v*, terminal-v* or link-app-v* builds only that app (Files and Viewer also the preview) and adds
 # its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the rolling
 # release `repo` (Latest, so releases/latest/download) and the Debian apt repository (releases/download/debian). The app's
 # own release holds its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
@@ -8,7 +8,7 @@ name: release-apps
 
 on:
   push:
-    tags: ["files-v*", "player-v*", "viewer-v*", "terminal-v*"]
+    tags: ["files-v*", "player-v*", "viewer-v*", "terminal-v*", "link-app-v*"]
   workflow_dispatch:
     inputs:
       tag: { description: "App tag (files-v0.1.0); it must exist unless ref is set", required: true }

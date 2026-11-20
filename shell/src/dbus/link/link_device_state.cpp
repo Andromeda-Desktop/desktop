@@ -67,7 +67,7 @@ void LinkService::sendSystemCommand(const std::string& deviceId, const std::stri
 }
 
 void LinkService::openApp() {
-  if (!process::runAsync(std::vector<std::string>{"andromeda-link"})) {
-    kLog.warn("could not start andromeda-link");
+  if (!process::runAsync(std::vector<std::string>{"andromeda-link-app"})) {
+    kLog.warn("could not start andromeda-link-app");
   }
 }

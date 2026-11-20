@@ -750,7 +750,7 @@ std::unique_ptr<Flex> QuickPage::create() {
   }, Tokens::componentRoundIconAction));
   actions->addChild(makeGlyphButton(m_phoneKeys[1], "screen-share", s, [this] {
     if (m_services.link != nullptr && !m_phoneId.empty()) {
-      m_services.link->mirror(m_phoneId);
+      m_services.link->mirror();
     }
   }, Tokens::componentRoundIconAction));
   phone->addChild(std::move(actions));

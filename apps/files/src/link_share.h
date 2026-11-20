@@ -59,8 +59,8 @@ public:
   void savePhoto(const std::string& deviceId, const std::string& path, const std::filesystem::path& folder,
                  std::function<void(const std::filesystem::path& saved, const std::string& error)> done);
   void cancel(const std::string& transferId);
-  // Starts the phone's screen mirror window (andromeda-link-mirror).
-  void mirror(const std::string& deviceId) const;
+  // Opens the Link app on its Mirror page, which shows the current phone's screen.
+  void mirror() const;
   // Watches a transfer id returned by send.
   void watch(const std::string& transferId, Transfer transfer);
   // The sentence for a TransferFinished status; empty for "done".

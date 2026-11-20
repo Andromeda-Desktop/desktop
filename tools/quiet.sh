@@ -127,7 +127,7 @@ meson_dir() {
     compositor | portal) echo "$1/build-debug" ;;
     greeter) echo greeter/build-release ;;
     files | player | viewer | terminal) echo "apps/$1/build" ;;
-    link-app) echo apps/link/build ;;
+    link-app) echo apps/link-app/build ;;
     libdesk-app | indexer) echo "$1/build" ;;
     andromeda-preview) echo andromeda-preview/build-debug ;;
     *) return 1 ;;
@@ -237,7 +237,7 @@ module_dirs() {
     portal) echo portal protocol ;;
     files | player | viewer) echo "apps/$1" andromeda-preview libdesk-app libdesk-system libdesk-ui protocol ;;
     terminal) echo apps/terminal libdesk-app libdesk-system libdesk-ui protocol ;;
-    link-app) echo apps/link libdesk-app libdesk-system libdesk-ui protocol ;;
+    link-app) echo apps/link-app libdesk-app libdesk-system libdesk-ui protocol ;;
     libdesk-app) echo libdesk-app libdesk-system libdesk-ui protocol motion ;;
     andromeda-preview) echo andromeda-preview libdesk-app libdesk-system libdesk-ui protocol motion ;;
     indexer) echo indexer ;;

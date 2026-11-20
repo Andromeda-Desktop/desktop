@@ -2,7 +2,7 @@ Source: andromeda
 Section: x11
 Priority: optional
 Maintainer: sitish <sitish@akintechnologies.com>
-Build-Depends: debhelper-compat (= 13), git, ca-certificates, curl, xz-utils, glslang-tools, libvulkan-dev, liblcms2-dev, g++, meson, ninja-build, pkgconf, cmake, python3, cargo, rustc, libwayland-dev, wayland-protocols, libxkbcommon-dev, libinput-dev, libeis-dev, libpixman-1-dev, libdrm-dev, libdisplay-info-dev, libgbm-dev, libegl-dev, libgles-dev, libepoxy-dev, libudev-dev, libsystemd-dev, libseat-dev, hwdata, libliftoff-dev, xwayland, libxcb1-dev, libxcb-ewmh-dev, libxcb-icccm4-dev, libxcb-render0-dev, libxcb-shape0-dev, libxcb-composite0-dev, libxcb-res0-dev, libxcb-xfixes0-dev, libxcb-dri3-dev, libxcb-present-dev, libxcb-shm0-dev, libxcb-xinput-dev, libxcb-errors-dev, libxcb-render-util0-dev, libjemalloc-dev, libcairo2-dev, libpango1.0-dev, libfreetype-dev, libfontconfig-dev, libharfbuzz-dev, librsvg2-dev, libglib2.0-dev, libsdbus-c++-dev, libpipewire-0.3-dev, libwireplumber-0.5-dev, libgstreamer1.0-dev, libgstreamer-plugins-base1.0-dev, libavformat-dev, libavutil-dev, libcurl4-gnutls-dev, libstb-dev, libical-dev, libjxl-dev, libqalculate-dev, libqrencode-dev, libsodium-dev, libwebp-dev, libxml2-dev, libzip-dev, libvterm-dev, libcups2-dev, libmd4c-dev, libmpv-dev, nlohmann-json3-dev, libpolkit-agent-1-dev, libpolkit-gobject-1-dev, libpoppler-glib-dev, libsndfile1-dev, libsqlite3-dev, libtag-dev, libtomlplusplus-dev, libexiv2-dev, libcrypt-dev, libglycin-2-dev, libpam0g-dev, libdbus-1-dev, libssl-dev
+Build-Depends: debhelper-compat (= 13), git, ca-certificates, curl, xz-utils, glslang-tools, libvulkan-dev, liblcms2-dev, g++, meson, ninja-build, pkgconf, cmake, python3, cargo, rustc, libwayland-dev, wayland-protocols, libxkbcommon-dev, libinput-dev, libeis-dev, libpixman-1-dev, libdrm-dev, libdisplay-info-dev, libgbm-dev, libegl-dev, libgles-dev, libepoxy-dev, libudev-dev, libsystemd-dev, libseat-dev, hwdata, libliftoff-dev, xwayland, libxcb1-dev, libxcb-ewmh-dev, libxcb-icccm4-dev, libxcb-render0-dev, libxcb-shape0-dev, libxcb-composite0-dev, libxcb-res0-dev, libxcb-xfixes0-dev, libxcb-dri3-dev, libxcb-present-dev, libxcb-shm0-dev, libxcb-xinput-dev, libxcb-errors-dev, libxcb-render-util0-dev, libjemalloc-dev, libcairo2-dev, libpango1.0-dev, libfreetype-dev, libfontconfig-dev, libharfbuzz-dev, librsvg2-dev, libglib2.0-dev, libsdbus-c++-dev, libpipewire-0.3-dev, libwireplumber-0.5-dev, libgstreamer1.0-dev, libgstreamer-plugins-base1.0-dev, libavformat-dev, libavutil-dev, libavcodec-dev, libavfilter-dev, libswscale-dev, libfribidi-dev, libcurl4-gnutls-dev, libstb-dev, libical-dev, libjxl-dev, libqalculate-dev, libqrencode-dev, libsodium-dev, libwebp-dev, libxml2-dev, libzip-dev, libvterm-dev, libcups2-dev, libmd4c-dev, libmpv-dev, nlohmann-json3-dev, libpolkit-agent-1-dev, libpolkit-gobject-1-dev, libpoppler-glib-dev, libsndfile1-dev, libsqlite3-dev, libtag-dev, libtomlplusplus-dev, libexiv2-dev, libcrypt-dev, libglycin-2-dev, libpam0g-dev, libdbus-1-dev, libssl-dev
 Standards-Version: 4.7.0
 Homepage: https://github.com/Andromeda-Desktop/desktop
 Rules-Requires-Root: no
@@ -11,7 +11,7 @@ Package: andromeda
 Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-compositor (>= ${binary:Version}),
  andromeda-shell (>= ${binary:Version}), xdg-desktop-portal-andromeda (>= ${binary:Version}),
- andromeda-greeter (>= ${binary:Version}), andromeda-system (>= ${binary:Version}), andromeda-link,
+ andromeda-greeter (>= ${binary:Version}), andromeda-system (>= ${binary:Version}), andromeda-link, andromeda-link-app,
  andromeda-preview (>= ${binary:Version}), andromeda-files (>= ${binary:Version}),
  andromeda-player (>= ${binary:Version}), andromeda-viewer (>= ${binary:Version}),
  andromeda-terminal (>= ${binary:Version}),
@@ -97,6 +97,12 @@ Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Player
  Media player and library.
+
+Package: andromeda-link-app
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-link
+Description: Andromeda Link
+ The paired phone on the desktop: notifications, messages, calls, photos, files and its screen.
 
 Package: andromeda-viewer
 Architecture: amd64

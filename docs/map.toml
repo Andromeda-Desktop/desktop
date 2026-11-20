@@ -1155,6 +1155,15 @@ build = "shell"
 notes = "Entry is a directory. Own meson tree (apps/viewer/meson.build)."
 
 [[feature]]
+name = "apps: Link"
+keywords = ["link app", "phone app", "phone card", "mirror", "pairing", "messages", "calls", "photos"]
+module = "link-app"
+entry = ["apps/link-app/src", "apps/link-app/meson.build"]
+test = "apps/link-app/build/link_model_test"
+build = "link-app"
+notes = "Link1 D-Bus client on libdesk-app (binary andromeda-link-app); fake daemon apps/link-app/tests/fake_link1.py."
+
+[[feature]]
 name = "apps: Terminal"
 keywords = ["terminal", "shell", "pty", "libghostty", "cell grid", "console"]
 module = "terminal"
