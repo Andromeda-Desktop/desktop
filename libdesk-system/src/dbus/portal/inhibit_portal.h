@@ -29,8 +29,10 @@ public:
     std::string reason;
   };
   [[nodiscard]] std::vector<LogoutInhibitor> logoutInhibitors() const;
+  // App ids of open requests that block sleep; logind sees these locks as the shell's own.
+  [[nodiscard]] std::vector<std::string> sleepInhibitorAppIds() const;
   void setSessionState(SessionState state);
-  // Runs when a logout inhibitor comes or goes.
+  // Runs when a logout or sleep inhibitor comes or goes.
   void setChangeCallback(std::function<void()> callback) { m_changeCallback = std::move(callback); }
 
 private:

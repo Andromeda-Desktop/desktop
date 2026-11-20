@@ -32,6 +32,7 @@
 #include "dbus/polkit/polkit_agent.h"
 #include "dbus/polkit/polkit_poll_source.h"
 #include "dbus/polkit/polkit_session_support.h"
+#include "dbus/portal/inhibit_portal.h"
 #include "dbus/portal/settings_portal.h"
 #include "dbus/appmenu/app_menu_registrar.h"
 #include "dbus/power/power_profiles_service.h"
@@ -1567,6 +1568,15 @@ void Application::syncAppActivity() {
   }
   for (const std::uint32_t pid : m_sleepInhibitorPids) {
     activity[pid] |= DSK_SHELL_V1_APP_ACTIVITY_FLAG_USER_WORK;
+  }
+  // A portal request names only its app id: its windows' pids lead the compositor to the app's scope.
+  if (m_inhibitPortal != nullptr) {
+    const std::vector<std::string> appIds = m_inhibitPortal->sleepInhibitorAppIds();
+    for (const WindowProcess& window : appIds.empty() ? std::vector<WindowProcess>{} : m_compositorPlatform.windowPids()) {
+      if (std::ranges::find(appIds, window.appId) != appIds.end()) {
+        activity[static_cast<std::uint32_t>(window.pid)] |= DSK_SHELL_V1_APP_ACTIVITY_FLAG_USER_WORK;
+      }
+    }
   }
   if (m_trayService != nullptr) {
     for (const int pid : m_trayService->itemPids()) {

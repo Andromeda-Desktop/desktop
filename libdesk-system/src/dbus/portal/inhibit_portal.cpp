@@ -101,7 +101,7 @@ void InhibitPortal::inhibit(
   }
   kLog.info("{} inhibits flags {} ({} logind locks)", who, flags, entry.inhibitors.size());
   m_handles.insert_or_assign(handle, std::move(entry));
-  if ((flags & kFlagLogout) != 0 && m_changeCallback) {
+  if ((flags & (kFlagLogout | kFlagSuspend)) != 0 && m_changeCallback) {
     m_changeCallback();
   }
 }
@@ -111,6 +111,16 @@ std::vector<InhibitPortal::LogoutInhibitor> InhibitPortal::logoutInhibitors() co
   for (const auto& [handle, entry] : m_handles) {
     if (!entry.monitor && (entry.flags & kFlagLogout) != 0) {
       out.push_back({.appId = entry.appId, .reason = entry.reason});
+    }
+  }
+  return out;
+}
+
+std::vector<std::string> InhibitPortal::sleepInhibitorAppIds() const {
+  std::vector<std::string> out;
+  for (const auto& [handle, entry] : m_handles) {
+    if (!entry.monitor && (entry.flags & kFlagSuspend) != 0 && !entry.appId.empty()) {
+      out.push_back(entry.appId);
     }
   }
   return out;
@@ -162,11 +172,11 @@ void InhibitPortal::close(const std::string& handle) {
     return;
   }
   it->second.inhibitors.clear();
-  const bool logout = !it->second.monitor && (it->second.flags & kFlagLogout) != 0;
+  const bool notify = !it->second.monitor && (it->second.flags & (kFlagLogout | kFlagSuspend)) != 0;
   // The object is running this Close call; destroy it once the call has returned.
-  DeferredCall::callLater([this, handle, logout]() {
+  DeferredCall::callLater([this, handle, notify]() {
     m_handles.erase(handle);
-    if (logout && m_changeCallback) {
+    if (notify && m_changeCallback) {
       m_changeCallback();
     }
   });

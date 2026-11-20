@@ -1264,6 +1264,9 @@ void Application::initWaylandCallbacks() {
     }
     m_liveActivity.setFullscreenOutputs(std::move(fullscreen));
     applyFocusTriggers();
+    if (m_inhibitPortal != nullptr && !m_inhibitPortal->sleepInhibitorAppIds().empty()) {
+      syncAppActivity();
+    }
     if (m_backgroundPortal != nullptr) {
       m_backgroundPortal->onToplevelsChanged();
     }
@@ -2258,7 +2261,10 @@ void Application::initSessionBusServices() {
 
     try {
       m_inhibitPortal = std::make_unique<InhibitPortal>(*m_bus, m_systemBus.get());
-      m_inhibitPortal->setChangeCallback([this] { m_powerOverlay.onToplevelChange(); });
+      m_inhibitPortal->setChangeCallback([this] {
+        m_powerOverlay.onToplevelChange();
+        syncAppActivity();
+      });
       m_powerOverlay.setInhibitPortal(m_inhibitPortal.get());
       m_backgroundPortal = std::make_unique<BackgroundPortal>(
           *m_bus,
