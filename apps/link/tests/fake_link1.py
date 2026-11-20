@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""A stand-in org.andromeda.Link1 on the session bus for headless shots of the Link app.
+
+It serves the real interface XML with the mockup's sample data (one connected phone, a missed call), then emits a
+text, a file offer and notifications once a client calls GetAll. Usage: fake_link1.py <Link1.xml> [sample|away|unpaired]
+"""
+import sys
+import time
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib  # noqa: E402
+
+XML, MODE = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "sample")
+PATH, IFACE = "/org/andromeda/Link1", "org.andromeda.Link1"
+now_ms = int(time.time() * 1000)
+today = time.localtime()
+
+
+def at(hour, minute):
+    return int(time.mktime((today.tm_year, today.tm_mon, today.tm_mday, hour, minute, 0, 0, 0, -1)) * 1000)
+
+
+connected = MODE == "sample"
+props = {
+    "Devices": GLib.Variant("a(ssb)", [] if MODE == "unpaired" else [("p1", "Pixel 8", connected)]),
+    "DeviceInfo": GLib.Variant("a{sa{sv}}", {} if MODE == "unpaired" else {"p1": {
+        "transport": GLib.Variant("s", "wifi" if connected else ""),
+        "connected": GLib.Variant("b", connected),
+        "last_seen": GLib.Variant("x", now_ms // 1000 - 3600),
+        "battery": GLib.Variant("i", 74)}}),
+    "DeviceStatus": GLib.Variant("a{s(ubsi)}", {"p1": (74, False, "wifi", -1)} if connected else {}),
+    "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
+    "Paused": GLib.Variant("as", []),
+    "Pairing": GLib.Variant("b", False),
+    "Calls": GLib.Variant("a{sa(sstus)}", {"p1": [("+14155550199", "Mum", min(at(18, 20), now_ms - 60_000), 0, "missed")]}
+                          if connected else {}),
+}
+
+node = Gio.DBusNodeInfo.new_for_xml(open(XML).read())
+iface = node.lookup_interface(IFACE)
+conn = Gio.bus_get_sync(Gio.BusType.SESSION)
+
+
+def emit(name, signature, *args):
+    conn.emit_signal(None, PATH, IFACE, name, GLib.Variant(signature, args))
+
+
+def emit_sample():
+    if not connected:
+        return False
+    emit("TextReceived", "(stss)", "p1", 1, "Maya Okafor", "Running 10 min late, order me the pasta?")
+    emit("TransferOffered", "(ssa(st))", "t1", "p1", [("Quarterly report Q3 final (2).pdf", 2_400_000)])
+    emit("NotificationPosted", "(sssssaya(ssb)b)", "p1", "n1", "Slack", "#release", "v2026.11.6 is out", b"",
+         [("reply", "Reply", True)], False)
+    emit("NotificationPosted", "(sssssaya(ssb)b)", "p1", "n2", "Calendar", "Dentist", "Tomorrow 09:30", b"", [], False)
+    return False
+
+
+def call(_conn, _sender, _path, _iface, method, _params, invocation):
+    print("call", method, flush=True)
+    invocation.return_value(None)
+
+
+def get(_conn, _sender, _path, _iface, name):
+    if name in props:
+        return props[name]
+    sig = iface.lookup_property(name).signature
+    empty = {"b": False, "s": ""}
+    return GLib.Variant(sig, {} if sig.startswith("a{") else [] if sig[0] == "a" else empty.get(sig, 0))
+
+
+conn.register_object(PATH, iface, call, get, None)
+# The app's own bus name: its proxy listens from then on.
+Gio.bus_watch_name_on_connection(conn, "dev.andromeda.Link", Gio.BusNameWatcherFlags.NONE,
+                                 lambda *_: GLib.timeout_add(800, emit_sample), None)
+Gio.bus_own_name_on_connection(conn, IFACE, Gio.BusNameOwnerFlags.NONE, None, None)
+print("fake link1 ready", flush=True)
+GLib.MainLoop().run()
