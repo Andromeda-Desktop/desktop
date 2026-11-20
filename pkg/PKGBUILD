@@ -25,7 +25,7 @@ _apps=(files viewer player terminal)
 [[ -z ${ANDROMEDA_CORE:-} ]] || _apps=()
 # Epoch keeps the monorepo revision newer than the per-fork versions it replaces.
 epoch=1
-pkgver=r15702.g1bc0efe54
+pkgver=2026.11.7.r16760
 pkgrel=1
 arch=(x86_64)
 license=(GPL-3.0-or-later MIT)
