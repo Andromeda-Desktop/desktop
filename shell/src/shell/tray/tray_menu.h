@@ -44,6 +44,7 @@ public:
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   // Consumes keys while the menu is open (modal grab); Cancel closes it.
   [[nodiscard]] bool onKeyboardEvent(const KeyboardEvent& event);
+  [[nodiscard]] bool ownsSurface(wl_surface* surface) const;
 
 private:
   struct MenuInstance {
@@ -63,7 +64,6 @@ private:
   void scheduleEntryRetry(int attempt);
   [[nodiscard]] uint32_t surfaceHeightPx() const;
   [[nodiscard]] uint32_t submenuHeightPx(const std::vector<TrayMenuEntry>& submenuEntries) const;
-  [[nodiscard]] bool ownsSurface(wl_surface* surface) const;
   [[nodiscard]] float contentScale() const noexcept;
   [[nodiscard]] float menuWidth() const noexcept;
   void ensureSurface();

@@ -1599,6 +1599,10 @@ bool WindowSwitcher::onKeyboardEvent(const KeyboardEvent& event) {
   return true;
 }
 
+bool WindowSwitcher::ownsSurface(const wl_surface* surface) const noexcept {
+  return surface != nullptr && m_instance != nullptr && m_instance->surface != nullptr && m_instance->surface->wlSurface() == surface;
+}
+
 bool WindowSwitcher::onPointerEvent(const PointerEvent& event) {
   if (!isActive() || m_instance == nullptr || m_instance->surface == nullptr) {
     return false;

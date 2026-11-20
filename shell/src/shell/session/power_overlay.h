@@ -74,6 +74,7 @@ public:
   [[nodiscard]] bool isActive() const noexcept { return m_surface != nullptr; }
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   [[nodiscard]] bool onKeyboardEvent(const KeyboardEvent& event);
+  [[nodiscard]] bool ownsSurface(const wl_surface* surface) const noexcept;
 
 private:
   struct Choice {

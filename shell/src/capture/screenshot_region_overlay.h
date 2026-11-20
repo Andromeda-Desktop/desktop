@@ -9,6 +9,7 @@
 #include <vector>
 
 class RenderContext;
+struct wl_surface;
 class WaylandConnection;
 struct KeyboardEvent;
 struct PointerEvent;
@@ -62,6 +63,7 @@ namespace capture {
     [[nodiscard]] std::optional<LogicalRect> takeAbandonedRegion();
 
     [[nodiscard]] bool isActive() const noexcept { return m_active; }
+    [[nodiscard]] bool ownsSurface(const wl_surface* surface) const noexcept;
     [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
     [[nodiscard]] bool onKeyboardEvent(const KeyboardEvent& event);
     // Seat modifier change; refreshes the gesture cursor without pointer motion.

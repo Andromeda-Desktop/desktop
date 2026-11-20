@@ -2423,6 +2423,12 @@ namespace capture {
     }
   }
 
+  bool AnnotationOverlay::ownsSurface(const wl_surface* surface) const noexcept {
+    return surface != nullptr && std::ranges::any_of(m_instances, [surface](const auto& inst) {
+      return inst != nullptr && inst->surface != nullptr && inst->surface->wlSurface() == surface;
+    });
+  }
+
   bool AnnotationOverlay::onKeyboardEvent(const KeyboardEvent& event) {
     if (!m_active || m_wayland == nullptr) {
       return false;

@@ -175,6 +175,49 @@ namespace {
   }
 } // namespace
 
+bool Application::routeKeyToFocusOwner(const KeyboardEvent& event) {
+  wl_surface* const focus = m_wayland.lastKeyboardSurface();
+  if (focus == nullptr) {
+    return false;
+  }
+  // A grab-less dialog popup leaves keyboard focus on its parent surface.
+  const auto dialogOwns = [focus](const DialogPopupHost& dialog) {
+    return dialog.isOpen()
+        && (WaylandSurface::wlOf(dialog.surface()) == focus || WaylandSurface::wlOf(dialog.parentSurface()) == focus);
+  };
+  if (m_powerOverlay.ownsSurface(focus)) {
+    (void)m_powerOverlay.onKeyboardEvent(event);
+  } else if (m_screenshotService.ownsSurface(focus)) {
+    (void)m_screenshotService.onKeyboardEvent(event);
+  } else if (m_trayMenu.ownsSurface(focus)) {
+    (void)m_trayMenu.onKeyboardEvent(event);
+  } else if (dialogOwns(m_colorPickerDialogPopup)) {
+    m_colorPickerDialogPopup.onKeyboardEvent(event);
+  } else if (dialogOwns(m_glyphPickerDialogPopup)) {
+    m_glyphPickerDialogPopup.onKeyboardEvent(event);
+  } else if (dialogOwns(m_fileDialogPopup)) {
+    m_fileDialogPopup.onKeyboardEvent(event);
+  } else if (dialogOwns(m_searchPickerDialogPopup)) {
+    m_searchPickerDialogPopup.onKeyboardEvent(event);
+  } else if (m_pluginLayerHost.onKeyboardEvent(event)) {
+  } else if (m_desktopIcons.ownsSurface(focus)) {
+    m_desktopIcons.onKeyboardEvent(event);
+  } else if (m_settingsWindow.ownsKeyboardSurface(focus)) {
+    m_settingsWindow.onKeyboardEvent(event);
+  } else if (m_activityWindow.ownsKeyboardSurface(focus)) {
+    m_activityWindow.onKeyboardEvent(event);
+  } else if (m_wallpaperWindow.ownsKeyboardSurface(focus)) {
+    m_wallpaperWindow.onKeyboardEvent(event);
+  } else if (focus == m_panelManager.wlSurface()) {
+    (void)m_panelManager.onKeyboardEvent(event);
+  } else if (m_windowSwitcher.ownsSurface(focus)) {
+    (void)m_windowSwitcher.onKeyboardEvent(event);
+  } else {
+    return false;
+  }
+  return true;
+}
+
 void Application::initUi() {
   initUiRenderSurfacesAndSettings();
   initLockScreenAndSession();
@@ -410,22 +453,15 @@ void Application::initInputDispatch() {
       m_lockScreen.onPointerEvent(event);
       return;
     }
-    // A screenshot taken over the power menu stacks above it and owns input.
-    if (m_powerOverlay.isActive() && m_screenshotService.onPointerEvent(event)) {
+    // The screenshot overlays are the top layer (Overlay + exclusive keyboard), above the power menu and switcher.
+    if (m_screenshotService.onPointerEvent(event)) {
       return;
     }
-    if (m_powerOverlay.isActive()) {
-      (void)m_powerOverlay.onPointerEvent(event);
+    if (m_powerOverlay.onPointerEvent(event)) {
       return;
     }
-    if (m_windowSwitcher.isActive()) {
-      if (m_windowSwitcher.onPointerEvent(event)) {
-        return;
-      }
-      if (event.type == PointerEvent::Type::Button || event.type == PointerEvent::Type::Axis) {
-        return;
-      }
-      // Enter/Leave/Motion fall through so other surfaces' hover state stays in sync.
+    if (m_windowSwitcher.onPointerEvent(event)) {
+      return;
     }
     if (m_colorPickerDialogPopup.onPointerEvent(event)) {
       return;
@@ -437,11 +473,6 @@ void Application::initInputDispatch() {
       return;
     }
     if (m_searchPickerDialogPopup.onPointerEvent(event)) {
-      return;
-    }
-    // Region overlay is layer Overlay + exclusive keyboard; prefer it over the
-    // widgets editors (Bottom / OnDemand) so confirm/cancel still work mid-edit.
-    if (m_screenshotService.onPointerEvent(event)) {
       return;
     }
     if (m_pluginLayerHost.onPointerEvent(event)) {
@@ -552,15 +583,19 @@ void Application::initInputDispatch() {
       m_lockScreen.onKeyboardEvent(event);
       return;
     }
+    // Grab popups are modal: while one is open it owns the keyboard and ESC
+    // dismisses it before anything behind can react.
+    if (ContextMenuPopup::dispatchKeyboardEvent(event)) {
+      return;
+    }
+    if (routeKeyToFocusOwner(event)) {
+      return;
+    }
+    // No consumer owns the focused surface (none, or the bar that a tray menu grab keys through): fixed order.
     if (m_powerOverlay.isActive() && m_screenshotService.onKeyboardEvent(event)) {
       return;
     }
     if (m_powerOverlay.onKeyboardEvent(event)) {
-      return;
-    }
-    // Grab popups are modal: while one is open it owns the keyboard and ESC
-    // dismisses it before anything behind can react.
-    if (ContextMenuPopup::dispatchKeyboardEvent(event)) {
       return;
     }
     if (m_trayMenu.onKeyboardEvent(event)) {
@@ -591,25 +626,6 @@ void Application::initInputDispatch() {
     }
     if (m_desktopWidgetsController.isEditing()) {
       m_desktopWidgetsController.onKeyboardEvent(event);
-      return;
-    }
-    if (m_pluginLayerHost.onKeyboardEvent(event)) {
-      return;
-    }
-    if (m_desktopIcons.ownsSurface(m_wayland.lastKeyboardSurface())) {
-      m_desktopIcons.onKeyboardEvent(event);
-      return;
-    }
-    if (m_settingsWindow.ownsKeyboardSurface(m_wayland.lastKeyboardSurface())) {
-      m_settingsWindow.onKeyboardEvent(event);
-      return;
-    }
-    if (m_activityWindow.ownsKeyboardSurface(m_wayland.lastKeyboardSurface())) {
-      m_activityWindow.onKeyboardEvent(event);
-      return;
-    }
-    if (m_wallpaperWindow.ownsKeyboardSurface(m_wayland.lastKeyboardSurface())) {
-      m_wallpaperWindow.onKeyboardEvent(event);
       return;
     }
     if (m_panelManager.onKeyboardEvent(event)) {

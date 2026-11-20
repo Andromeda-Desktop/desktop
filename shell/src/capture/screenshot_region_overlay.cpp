@@ -974,20 +974,18 @@ namespace capture {
     return false;
   }
 
+  bool ScreenshotRegionOverlay::ownsSurface(const wl_surface* surface) const noexcept {
+    return surface != nullptr && std::ranges::any_of(m_instances, [surface](const auto& inst) {
+      return inst != nullptr && inst->surface != nullptr && inst->surface->wlSurface() == surface;
+    });
+  }
+
   bool ScreenshotRegionOverlay::onKeyboardEvent(const KeyboardEvent& event) {
     if (!m_active || !event.pressed || m_wayland == nullptr) {
       return false;
     }
 
-    wl_surface* const kbSurface = m_wayland->lastKeyboardSurface();
-    bool onOverlay = false;
-    for (const auto& inst : m_instances) {
-      if (inst != nullptr && inst->surface != nullptr && inst->surface->wlSurface() == kbSurface) {
-        onOverlay = true;
-        break;
-      }
-    }
-    if (!onOverlay) {
+    if (!ownsSurface(m_wayland->lastKeyboardSurface())) {
       return false;
     }
 

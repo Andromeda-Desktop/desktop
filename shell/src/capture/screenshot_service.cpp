@@ -762,6 +762,11 @@ bool ScreenshotService::onPointerEvent(const PointerEvent& event) {
   return m_regionOverlay->onPointerEvent(event);
 }
 
+bool ScreenshotService::ownsSurface(const wl_surface* surface) const noexcept {
+  return (m_annotationOverlay != nullptr && m_annotationOverlay->isActive() && m_annotationOverlay->ownsSurface(surface))
+      || (m_regionOverlay != nullptr && m_regionOverlay->isActive() && m_regionOverlay->ownsSurface(surface));
+}
+
 bool ScreenshotService::onKeyboardEvent(const KeyboardEvent& event) {
   if (m_annotationOverlay != nullptr
       && m_annotationOverlay->isActive()

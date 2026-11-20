@@ -52,6 +52,7 @@ public:
   [[nodiscard]] bool isActive() const noexcept { return m_mode == Mode::Pointer || m_mode == Mode::Shortcut; }
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   [[nodiscard]] bool onKeyboardEvent(const KeyboardEvent& event);
+  [[nodiscard]] bool ownsSurface(const wl_surface* surface) const noexcept;
   void onKeyboardModifiers(std::uint32_t modifiers);
 
 private:

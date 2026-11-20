@@ -86,6 +86,7 @@ public:
 
   [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
   [[nodiscard]] bool onKeyboardEvent(const KeyboardEvent& event);
+  [[nodiscard]] bool ownsSurface(const wl_surface* surface) const noexcept;
   // Seat modifier change; refreshes the gesture cursor without pointer motion.
   void onModifiersChanged();
 

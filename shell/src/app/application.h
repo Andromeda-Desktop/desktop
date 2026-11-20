@@ -193,6 +193,8 @@ public:
   [[nodiscard]] LayerShellLayer hotCornerLayerForOutput(wl_output* output) const noexcept;
 
 private:
+  // Sends a key to the consumer that owns the keyboard-focused surface; false when none owns it.
+  bool routeKeyToFocusOwner(const KeyboardEvent& event);
   // Reports processes that start or stop audio to the compositor's QoS.
   void syncAppActivity();
   void refreshSleepInhibitors();

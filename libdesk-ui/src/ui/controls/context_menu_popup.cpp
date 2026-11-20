@@ -680,7 +680,7 @@ void ContextMenuPopup::closeSubmenu() {
 }
 
 bool ContextMenuPopup::dispatchKeyboardEvent(const KeyboardEvent& event) {
-  if (s_openMenu == nullptr || !s_openMenu->isOpen()) {
+  if (s_openMenu == nullptr || !s_openMenu->isOpen() || s_openMenu->m_closing) {
     return false;
   }
   s_openMenu->onKeyboardEvent(event);

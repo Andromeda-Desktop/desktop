@@ -61,6 +61,7 @@ public:
   [[nodiscard]] bool isOpen() const noexcept { return m_surface != nullptr; }
   [[nodiscard]] bool isInitializing() const noexcept { return m_openInProgress; }
   [[nodiscard]] Surface* surface() const noexcept { return m_surface.get(); }
+  [[nodiscard]] Surface* parentSurface() const noexcept { return m_parentSurface; }
   [[nodiscard]] std::uint32_t width() const noexcept;
   [[nodiscard]] std::uint32_t height() const noexcept;
 

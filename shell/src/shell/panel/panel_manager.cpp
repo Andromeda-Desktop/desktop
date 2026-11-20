@@ -2301,11 +2301,6 @@ bool PanelManager::onKeyboardEvent(const KeyboardEvent& event) {
   if (!isOpen()) {
     return false;
   }
-  // An initializing panel drops keys but still owns them.
-  if (m_lifecycle.initializing()) {
-    return true;
-  }
-
   // Gate on compositor focus: route keys only when the surface owning this panel
   // input is the one the compositor reports as keyboard-focused.
   if (m_platform != nullptr) {
@@ -2316,6 +2311,10 @@ bool PanelManager::onKeyboardEvent(const KeyboardEvent& event) {
     if (!onPanel && !onSelectPopup) {
       return false;
     }
+  }
+  // An initializing panel drops its own keys but still owns them.
+  if (m_lifecycle.initializing()) {
+    return true;
   }
 
   if (m_selectPopup != nullptr && m_selectPopup->isSelectDropdownOpen()) {

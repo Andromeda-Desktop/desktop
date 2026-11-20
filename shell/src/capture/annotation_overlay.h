@@ -15,6 +15,7 @@
 #include <vector>
 
 class Flex;
+struct wl_surface;
 class Renderer;
 class RenderContext;
 class WaylandConnection;
@@ -110,6 +111,7 @@ namespace capture {
     void onOutputChange();
 
     [[nodiscard]] bool isActive() const noexcept { return m_active; }
+    [[nodiscard]] bool ownsSurface(const wl_surface* surface) const noexcept;
     [[nodiscard]] AnnotationMode mode() const noexcept { return m_mode; }
     [[nodiscard]] bool onPointerEvent(const PointerEvent& event);
     [[nodiscard]] bool onKeyboardEvent(const KeyboardEvent& event);

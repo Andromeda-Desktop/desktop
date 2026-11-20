@@ -605,6 +605,10 @@ void PowerOverlay::cancelHold() {
   m_surface->requestUpdate();
 }
 
+bool PowerOverlay::ownsSurface(const wl_surface* surface) const noexcept {
+  return surface != nullptr && m_surface != nullptr && m_surface->wlSurface() == surface;
+}
+
 bool PowerOverlay::onKeyboardEvent(const KeyboardEvent& event) {
   if (!isActive()) {
     return false;
