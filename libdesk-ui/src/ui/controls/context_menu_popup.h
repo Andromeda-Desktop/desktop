@@ -9,6 +9,7 @@
 #include "platform/popup.h"
 #include "ui/popup_parent.h"
 #include "ui/popup_positioner.h"
+#include "ui/signal.h"
 
 #include <cstdint>
 #include <functional>
@@ -93,6 +94,7 @@ private:
   RenderContext& m_renderContext;
   std::unique_ptr<Popup> m_surface;
   std::unique_ptr<Node> m_sceneRoot;
+  Signal<>::ScopedConnection m_glassConn;
   InputDispatcher m_inputDispatcher;
   ScrollViewState m_scrollState{};
   ScrollView* m_scrollView = nullptr;

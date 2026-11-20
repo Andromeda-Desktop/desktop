@@ -147,6 +147,12 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
   m_surface->setConfigureCallback([self](std::uint32_t /*w*/, std::uint32_t /*h*/) {
     self->m_surface->requestLayout();
   });
+  // A glass style change rebuilds the card, so its material follows the new style.
+  m_glassConn = Style::glassChanged().connect([self] {
+    if (self->m_surface != nullptr) {
+      self->m_surface->requestLayout();
+    }
+  });
 
   m_entries = std::move(request.entries);
   m_surface->setPrepareFrameCallback([self, chrome, contentScale](bool /*needsUpdate*/, bool needsLayout) {
@@ -315,6 +321,7 @@ void ContextMenuPopup::close() {
   restoreParentKeyboardInteractivity();
   m_menu = nullptr;
   m_scrollView = nullptr;
+  m_glassConn.disconnect();
   m_sceneRoot.reset();
   m_surface.reset();
   m_pointerParentSurface = nullptr;
