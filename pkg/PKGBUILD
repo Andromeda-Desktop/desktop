@@ -132,6 +132,14 @@ _pin_depends() {
     version=${version%%+r*}
     pinned+=("$dep${version:+>=$version}")
   done
+  # The soname of each linked system library (libjxl.so=0.12-64): pacman then holds an ABI-breaking library
+  # upgrade until a rebuilt Andromeda is available, instead of leaving binaries with a missing library.
+  local so soname
+  while read -r so; do
+    soname="${so%%.so.*}.so=${so#*.so.}-64"
+    [[ $so == *.so.* && -z $(pacman -T "$soname") ]] && pinned+=("$soname")
+  done < <(find "$pkgdir" -type f -print0 | xargs -0r readelf -d 2> /dev/null |
+    sed -nr 's/.*Shared library: \[(.*)\].*/\1/p' | sort -u)
   depends=("${pinned[@]}")
 }
 
