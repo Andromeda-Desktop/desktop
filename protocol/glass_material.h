@@ -33,8 +33,8 @@ namespace glass {
   };
 
   // Over a low-contrast backdrop each style's glass moves this fraction of its gap to opaque, in its own colour
-  // (concept C styles.css --dense), indexed by Style: {light glass, dark glass}.
-  inline constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.0F, 0.66F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
+  // (concept C styles.css --dense; Liquid light goes milky, not a grey veil), by Style: {light glass, dark glass}.
+  inline constexpr float kDenseOverlay[4][2] = {{0.0F, 0.2F}, {0.8F, 0.66F}, {0.66F, 0.66F}, {0.3F, 0.45F}};
   // The least alpha at full density that keeps label_1 at 4.5:1 over a white (dark glass) or black (light glass)
   // backdrop, blended in sRGB like the compositor: {light glass, dark glass}.
   inline constexpr float kLegibleAlpha[2] = {0.60F, 0.80F};
