@@ -150,7 +150,7 @@ design-check file='docs/design/rulebook.html':
 
 # Write the Link Android tokens (object Tok, committed in the link repo) from protocol/design-tokens.toml.
 tokens-android:
-    python3 protocol/gen-design-tokens.py protocol/design-tokens.toml link/apps/android/app/src/main/kotlin/org/andromeda/link/ui/theme/Tokens.kt
+    python3 protocol/gen-design-tokens.py protocol/design-tokens.toml link/apps/android/app/src/main/kotlin/org/andromeda/link/ui/theme/Tok.kt
 
 design-reference:
     python3 protocol/gen-design-tokens.py protocol/design-tokens.toml /tmp/design_tokens.h docs/design/tokens.css
