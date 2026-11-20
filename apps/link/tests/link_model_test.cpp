@@ -78,18 +78,16 @@ namespace {
     const Phone live{.id = "b", .name = "B", .connected = true, .locked = 0};
     Phone locked = live;
     locked.locked = 1;
-    // Every combination: the result names a phone exactly when one is paired and no pairing runs.
+    // Every combination: the result names a phone exactly when one is paired.
     for (int daemon = 0; daemon < 2; ++daemon) {
-      for (int pairing = 0; pairing < 2; ++pairing) {
-        for (const auto& phones : {std::vector<Phone>{}, {away}, {away, live}, {away, locked}}) {
-          const Presence p = presenceFrom(daemon, pairing, phones);
-          const bool named = !p.phone.id.empty();
-          expect(named == (daemon && !pairing && !phones.empty()), "phone named only when shown", 0, 0);
-          if (!daemon) expect(p.kind == K::NoDaemon, "no daemon wins", 0, 0);
-          if (named) {
-            expect(p.phone.connected == (p.kind == K::Connected || p.kind == K::Locked), "connected kinds", 0, 0);
-            expect((p.kind == K::Locked) == (p.phone.locked == 1), "locked only when the phone says so", 0, 0);
-          }
+      for (const auto& phones : {std::vector<Phone>{}, {away}, {away, live}, {away, locked}}) {
+        const Presence p = presenceFrom(daemon, phones);
+        const bool named = !p.phone.id.empty();
+        expect(named == (daemon && !phones.empty()), "phone named only when shown", 0, 0);
+        if (!daemon) expect(p.kind == K::NoDaemon, "no daemon wins", 0, 0);
+        if (named) {
+          expect(p.phone.connected == (p.kind == K::Connected || p.kind == K::Locked), "connected kinds", 0, 0);
+          expect((p.kind == K::Locked) == (p.phone.locked == 1), "locked only when the phone says so", 0, 0);
         }
       }
     }
@@ -300,9 +298,46 @@ namespace {
     expect(dayLabel(now - 365 * day, now) == "20 Nov 2024", "date with year", 0, 0);
   }
 
+  void runPair(unsigned seed) {
+    using K = Pair::Kind;
+    using E = PairEvent::Kind;
+    const std::set<std::pair<K, K>> edges{{K::Idle, K::Starting},  {K::Failed, K::Starting}, {K::Starting, K::Showing},
+                                          {K::Starting, K::Failed}, {K::Showing, K::Failed},  {K::Showing, K::Idle}};
+    std::mt19937 rng(seed);
+    Pair pair;
+    for (int step = 0; step < 2000; ++step) {
+      PairEvent event{.kind = static_cast<E>(rng() % 5)};
+      if (event.kind == E::Started) event = {.kind = E::Started, .code = rng() % 4 ? std::to_string(rng() % 1000000) : "", .uri = "andromeda-link://pair"};
+      if (event.kind == E::Failed) event = {.kind = E::Failed, .error = "No network"};
+      const Pair before = pair;
+      const bool moved = pairStep(pair, event);
+      if (moved) {
+        expect(edges.contains({before.kind, pair.kind}), "only allowed moves", seed, step);
+      } else {
+        expect(pair.kind == before.kind && pair.code == before.code && pair.error == before.error,
+               "a rejected event changes nothing", seed, step);
+      }
+      expect((pair.kind == K::Showing) == !pair.code.empty(), "a code shows exactly while Showing", seed, step);
+      expect(pair.kind == K::Failed || pair.error.empty(), "an error only while Failed", seed, step);
+      expect(pair.kind == K::Showing || pair.uri.empty(), "a URI only while Showing", seed, step);
+    }
+  }
+
+  void lastSeen() {
+    const std::int64_t now = 1'763'640'000; // 2025-11-20 12:00 UTC
+    expect(lastSeenText(0, now) == "Not connected", "never seen", 0, 0);
+    expect(lastSeenText(now - 20, now) == "Last seen just now", "just now", 0, 0);
+    expect(lastSeenText(now - 12 * 60, now) == "Last seen 12 min ago", "minutes", 0, 0);
+    expect(lastSeenText(now - 3 * 3600, now) == "Last seen 3 h ago", "hours", 0, 0);
+    expect(lastSeenText(now - 86400, now) == "Last seen yesterday", "yesterday", 0, 0);
+    expect(lastSeenText(now - 9 * 86400, now) == "Last seen 11 Nov", "date", 0, 0);
+  }
+
 } // namespace
 
 int main() {
+  for (unsigned seed = 1; seed <= 20; ++seed) runPair(seed);
+  lastSeen();
   setenv("TZ", "UTC", 1);
   tzset();
   for (unsigned seed = 1; seed <= 20; ++seed) runFeed(seed);

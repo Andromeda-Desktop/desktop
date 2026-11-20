@@ -1,6 +1,7 @@
 #include "link_app.h"
 
 #include "app/app_window.h"
+#include "ui/controls/image.h"
 #include "ui/builders.h"
 #include "ui/controls/flex.h"
 #include "ui/controls/selection_list.h"
@@ -14,6 +15,7 @@
 #include <linux/input-event-codes.h>
 #include <ctime>
 #include <format>
+#include <qrencode.h>
 
 namespace linkapp {
 
@@ -561,7 +563,7 @@ namespace linkapp {
       });
     }
     window.setSidebarBuilder([this](Renderer&, float width, float) { return sidebar(width); });
-    window.setContentBuilder([this](Renderer&, float width, float height) { return content(width, height); });
+    window.setContentBuilder([this](Renderer& renderer, float width, float height) { return content(renderer, width, height); });
     // The header's one Ghost action: "Clear all" on Waiting, "Clear finished" on Activity.
     const auto clear = [this](bool finished) {
       return ui::button({.text = std::string(finished ? "Clear finished" : "Clear all"), .variant = ButtonVariant::Ghost,
@@ -605,7 +607,6 @@ namespace linkapp {
     if (m_page == page) return;
     m_page = page;
     m_confirmForget = false;
-    m_window->setTitle(kPages[static_cast<std::size_t>(page)].name);
     sync();
     updateCaption();
     m_window->requestRebuild();
@@ -614,6 +615,9 @@ namespace linkapp {
   void LinkApp::sync() {
     if (m_client == nullptr) return;
     const Presence::Kind kind = m_client->presence().kind;
+    const bool pairing = kind == Presence::Kind::NotPaired;
+    if (pairing && m_client->pair().kind == Pair::Kind::Idle) m_client->startPairing();
+    m_window->setTitle(pairing ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
     const bool cards = m_page == Page::Messages && (kind == Presence::Kind::Connected || kind == Presence::Kind::Locked);
     const Messages& messages = m_client->messages();
     if (cards && (!m_thread || messages.thread(*m_thread) == nullptr)) {
@@ -656,6 +660,7 @@ namespace linkapp {
       switch (info.page) {
       case Page::Waiting:
         if (!items.empty()) line.first = items.size() == 1 ? "1 item" : std::format("{} items", items.size());
+        else if (m_client && m_client->presence().kind == Presence::Kind::Away) line.first = "Phone not connected";
         break;
       case Page::Messages: {
         static const Messages kNone;
@@ -699,7 +704,8 @@ namespace linkapp {
     if (m_page == Page::Settings) selected = settings.get();
     list->addChild(std::move(settings));
     if (selected != nullptr) list->setSelected(selected, false);
-    side->addChild(std::move(list));
+    // Pair (flow.html#page=pair): only search and the PhoneCard until a phone is paired.
+    if (!m_client || m_client->presence().kind != Presence::Kind::NotPaired) side->addChild(std::move(list));
     side->addChild(ui::spacer());
 
     // PhoneCard (handoff.yaml): phone symbol, name 600, dot + transport + battery.
@@ -717,12 +723,10 @@ namespace linkapp {
       break;
     case Presence::Kind::NotPaired:
       name = "No phone yet";
-      break;
-    case Presence::Kind::Pairing:
-      name = "Pairing…";
+      line = "Pair one to start";
       break;
     case Presence::Kind::Away:
-      line = "Not connected";
+      line = lastSeenText(presence.phone.lastSeen, nowMs() / 1000);
       break;
     case Presence::Kind::Connected:
     case Presence::Kind::Locked: {
@@ -738,9 +742,11 @@ namespace linkapp {
     if (!line.empty()) {
       const bool live = presence.kind == Presence::Kind::Connected || presence.kind == Presence::Kind::Locked;
       auto status = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
-      status->addChild(ui::box({.fill = colorSpecFromRole(live ? ColorRole::Success : ColorRole::Label3),
-                                .radius = Tokens::spaceP8 * s / 2.0F, .width = Tokens::spaceP8 * s,
-                                .height = Tokens::spaceP8 * s}));
+      if (presence.kind != Presence::Kind::NotPaired) {
+        status->addChild(ui::box({.fill = colorSpecFromRole(live ? ColorRole::Success : ColorRole::Label3),
+                                  .radius = Tokens::spaceP8 * s / 2.0F, .width = Tokens::spaceP8 * s,
+                                  .height = Tokens::spaceP8 * s}));
+      }
       status->addChild(text(line, Tokens::typeFootnote, ColorRole::Label2, s));
       card->addChild(std::move(status));
     }
@@ -764,7 +770,67 @@ namespace linkapp {
     return side;
   }
 
-  std::unique_ptr<Node> LinkApp::content(float width, float height) {
+  std::unique_ptr<Node> LinkApp::pair(Renderer& renderer, float s) {
+    const Pair& pair = m_client->pair();
+    if (pair.kind == Pair::Kind::Failed) {
+      return emptyState("device-mobile-off", "Pairing did not start", pair.error, s,
+                        ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Primary,
+                                    .onClick = [this] { m_client->startPairing(); }}));
+    }
+    auto page = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP32 * s,
+                         .flexGrow = 1.0F});
+    // A scanner needs dark modules on a light ground in either scheme, so the QR view keeps the light tone.
+    auto view = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center, .padding = Tokens::spaceP16 * s,
+                            .fill = ColorSpec{.fixed = colorForRole(ColorRole::View, PaletteTone::Light)},
+                            .radius = Style::scaledRadius(Tokens::radiusR16, s),
+                            .border = colorSpecFromRole(ColorRole::Stroke), .borderWidth = 0.5F * s,
+                            .width = Tokens::componentLinkQr * s, .height = Tokens::componentLinkQr * s});
+    const float drawn = (Tokens::componentLinkQr - 2.0F * Tokens::spaceP16) * s;
+    Image* image = nullptr;
+    view->addChild(ui::image({.out = &image, .fit = ImageFit::Contain, .width = drawn, .height = drawn}));
+    const std::unique_ptr<QRcode, decltype(&QRcode_free)> qr(
+        pair.kind == Pair::Kind::Showing ? QRcode_encodeString(pair.uri.c_str(), 0, QR_ECLEVEL_M, QR_MODE_8, 1) : nullptr,
+        &QRcode_free);
+    if (qr != nullptr) {
+      // Whole texels per module at twice the drawn size keep the module edges sharp when scaled.
+      const int texels = std::max(1, static_cast<int>(std::ceil(2.0F * drawn / static_cast<float>(qr->width))));
+      const int side = qr->width * texels;
+      const Color ink = colorForRole(ColorRole::Label1, PaletteTone::Light);
+      const std::array<std::uint8_t, 4> dark{static_cast<std::uint8_t>(ink.r * 255.0F), static_cast<std::uint8_t>(ink.g * 255.0F),
+                                             static_cast<std::uint8_t>(ink.b * 255.0F), 0xFF};
+      std::vector<std::uint8_t> rgba(static_cast<std::size_t>(side) * static_cast<std::size_t>(side) * 4, 0);
+      for (int y = 0; y < side; ++y) {
+        for (int x = 0; x < side; ++x) {
+          if ((qr->data[((y / texels) * qr->width) + (x / texels)] & 1) == 0) continue;
+          std::ranges::copy(dark, rgba.begin() + static_cast<std::ptrdiff_t>((static_cast<std::size_t>(y) * side + x) * 4));
+        }
+      }
+      (void)image->setSourceRaw(renderer, rgba.data(), rgba.size(), side, side, side * 4, PixmapFormat::RGBA);
+    }
+    page->addChild(std::move(view));
+
+    auto steps = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s,
+                             .maxWidth = Tokens::componentLinkPairText * s});
+    steps->addChild(text("Scan with Andromeda Link", Tokens::typeTitle2, ColorRole::Label1, s));
+    auto how = text("Open Link on your Android phone, tap Pair, and point the camera at this code. Both devices must be on "
+                    "the same network.", Tokens::typeParagraph, ColorRole::Label2, s, 4);
+    how->setMaxWidth(Tokens::componentLinkPairText * s);
+    steps->addChild(std::move(how));
+    steps->addChild(text("Or enter this code on the phone:", Tokens::typeParagraph, ColorRole::Label1, s));
+    auto code = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+    for (const char digit : pair.code) {
+      auto tile = ui::column({.align = FlexAlign::Center, .justify = FlexJustify::Center,
+                              .fill = colorSpecFromRole(ColorRole::Fill1), .radius = Style::scaledRadius(Tokens::radiusR8, s),
+                              .width = Tokens::componentLinkCodeDigitW * s, .height = Tokens::componentLinkCodeDigitH * s});
+      tile->addChild(text(std::string(1, digit), Tokens::typeTitle2, ColorRole::Label1, s));
+      code->addChild(std::move(tile));
+    }
+    steps->addChild(std::move(code));
+    page->addChild(std::move(steps));
+    return page;
+  }
+
+  std::unique_ptr<Node> LinkApp::content(Renderer& renderer, float width, float height) {
     const float s = m_scale = m_window->uiScale();
     if (m_client == nullptr) return emptyState("plug-connected-x", "No session bus", "Link needs a D-Bus session.", s);
     const Presence presence = m_client->presence();
@@ -772,13 +838,18 @@ namespace linkapp {
     case Presence::Kind::NoDaemon:
       return emptyState("plug-connected-x", "Link is not running", "Start the Link service to reach your phone.", s);
     case Presence::Kind::NotPaired:
-    case Presence::Kind::Pairing:
-      return emptyState("device-mobile", "No phone yet", "Open Link on your phone and pair it with this desktop.", s);
+      return pair(renderer, s);
     case Presence::Kind::Away: {
       if (m_page == Page::Settings) return settings(presence);
       const std::string id = presence.phone.id;
-      return emptyState("device-mobile-off", presence.phone.name + " is not connected",
-                        "Link connects when the phone is on the same Wi-Fi or in Bluetooth range.", s,
+      std::string seen;
+      if (presence.phone.lastSeen > 0) {
+        seen = lastSeenText(presence.phone.lastSeen, nowMs() / 1000);
+        if (!presence.phone.transport.empty()) seen += presence.phone.transport == "bluetooth" ? " over Bluetooth" : " on Wi-Fi";
+        seen += ". ";
+      }
+      return emptyState("device-mobile", presence.phone.name + " is not connected",
+                        seen + "Open Link on the phone, or connect over Bluetooth.", s,
                         ui::button({.text = std::string("Connect"), .variant = ButtonVariant::Primary,
                                     .onClick = [this, id] { m_client->connect(id); }}));
     }

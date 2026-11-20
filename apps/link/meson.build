@@ -29,7 +29,7 @@ executable('andromeda-link-app',
   'src/link_client.cpp',
   'src/main.cpp',
   link_with: _model,
-  dependencies: [_desk_app_dep],
+  dependencies: [_desk_app_dep, dependency('libqrencode')],
   cpp_args: _warnings,
   install: true,
 )

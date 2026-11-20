@@ -29,7 +29,10 @@ namespace linkapp {
 
     void setOnChanged(std::function<void()> changed) { m_changed = std::move(changed); }
 
-    [[nodiscard]] Presence presence() const { return presenceFrom(m_daemon, m_pairing, m_phones); }
+    [[nodiscard]] Presence presence() const { return presenceFrom(m_daemon, m_phones); }
+    [[nodiscard]] const Pair& pair() const { return m_pair; }
+    // Opens a pairing window (StartPairing) when this app has none open; the daemon closes it after 120 s.
+    void startPairing();
     [[nodiscard]] const Feed& feed() const { return m_feed; }
     // The texts of the phone presence() shows.
     [[nodiscard]] const Messages& messages() const { return m_messages; }
@@ -80,7 +83,8 @@ namespace linkapp {
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
     std::uint64_t m_applied = 0; // serial of the newest refresh applied
     bool m_daemon = false;
-    bool m_pairing = false;
+    bool m_pairing = false; // Link1 Pairing: a window is open, ours or another client's
+    Pair m_pair;
     std::vector<Phone> m_phones;
     Feed m_feed;
     Messages m_messages;

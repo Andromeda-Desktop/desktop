@@ -129,7 +129,9 @@ namespace linkapp {
     void show(Page page);
     void updateCaption();
     [[nodiscard]] std::unique_ptr<Node> sidebar(float width);
-    [[nodiscard]] std::unique_ptr<Node> content(float width, float height);
+    [[nodiscard]] std::unique_ptr<Node> content(Renderer& renderer, float width, float height);
+    // Pair a Phone: the QR and code of this app's pairing window.
+    [[nodiscard]] std::unique_ptr<Node> pair(Renderer& renderer, float s);
     [[nodiscard]] std::unique_ptr<Node> messages(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();

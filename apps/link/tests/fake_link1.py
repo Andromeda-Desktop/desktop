@@ -47,7 +47,7 @@ props = {
     "DeviceInfo": GLib.Variant("a{sa{sv}}", {} if MODE == "unpaired" else {"p1": {
         "transport": GLib.Variant("s", "wifi" if connected else ""),
         "connected": GLib.Variant("b", connected),
-        "last_seen": GLib.Variant("x", now_ms // 1000 - 3600),
+        "last_seen": GLib.Variant("x", now_ms // 1000 - 12 * 60),
         "battery": GLib.Variant("i", 74)}}),
     "DeviceStatus": GLib.Variant("a{s(ubsi)}", {"p1": (74, False, "wifi", -1)} if connected else {}),
     "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
@@ -111,6 +111,13 @@ def emit_activity():
 
 def call(_conn, _sender, _path, _iface, method, params, invocation):
     print("call", method, params, flush=True)
+    if method in ("StartPairing", "CancelPairing"):
+        props["Pairing"] = GLib.Variant("b", method == "StartPairing")
+        conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                         GLib.Variant("(sa{sv}as)", (IFACE, {"Pairing": props["Pairing"]}, [])))
+    if method == "StartPairing":
+        invocation.return_value(GLib.Variant("(ss)", ("482913", "andromeda-link://pair?code=482913&host=sitish-laptop")))
+        return
     invocation.return_value(None)
 
 

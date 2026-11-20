@@ -49,6 +49,12 @@ namespace linkapp {
           if (interfaceName == kInterface) refresh();
           if (interfaceName == kQuickShare) refreshNearby();
         });
+    m_proxy->uponSignal("PairingFinished").onInterface(kInterface).call([this](const std::string&, const std::string&) {
+      if (pairStep(m_pair, {.kind = PairEvent::Kind::Finished})) changed();
+    });
+    m_proxy->uponSignal("PairingFailed").onInterface(kInterface).call([this](const std::string& reason) {
+      if (pairStep(m_pair, {.kind = PairEvent::Kind::Failed, .error = reason})) changed();
+    });
     m_proxy->uponSignal("NotificationPosted")
         .onInterface(kInterface)
         .call([this](const std::string& device, const std::string& id, const std::string& app, const std::string& title,
@@ -128,7 +134,10 @@ namespace linkapp {
             changed();
             return;
           }
-          m_pairing = property<bool>(props, "Pairing");
+          // The daemon closes a window on expiry or CancelPairing by clearing Pairing, with no signal.
+          const bool pairing = property<bool>(props, "Pairing");
+          if (m_pairing && !pairing) (void)pairStep(m_pair, {.kind = PairEvent::Kind::Closed});
+          m_pairing = pairing;
           const auto info = property<std::map<std::string, std::map<std::string, sdbus::Variant>>>(props, "DeviceInfo");
           const auto status =
               property<std::map<std::string, sdbus::Struct<std::uint32_t, bool, std::string, std::int32_t>>>(props, "DeviceStatus");
@@ -390,6 +399,23 @@ namespace linkapp {
     m_fileManager->callMethodAsync("ShowItems").onInterface("org.freedesktop.FileManager1").withArguments(uris, std::string())
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("ShowItems: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::startPairing() {
+    if (!pairStep(m_pair, {.kind = PairEvent::Kind::Start})) return;
+    m_proxy->callMethodAsync("StartPairing")
+        .onInterface(kInterface)
+        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, std::string code,
+                                                                       std::string uri) {
+          if (alive.expired()) return;
+          if (error) {
+            kLog.warn("StartPairing: {}", error->getMessage());
+            (void)pairStep(m_pair, {.kind = PairEvent::Kind::Failed, .error = error->getMessage()});
+          } else {
+            (void)pairStep(m_pair, {.kind = PairEvent::Kind::Started, .code = std::move(code), .uri = std::move(uri)});
+          }
+          changed();
         });
   }
 

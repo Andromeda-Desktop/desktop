@@ -9,14 +9,38 @@
 
 namespace linkapp {
 
-  Presence presenceFrom(bool daemon, bool pairing, const std::vector<Phone>& phones) {
+  Presence presenceFrom(bool daemon, const std::vector<Phone>& phones) {
     using K = Presence::Kind;
     if (!daemon) return {K::NoDaemon, {}};
-    if (pairing) return {K::Pairing, {}};
     if (phones.empty()) return {K::NotPaired, {}};
     const auto live = std::ranges::find_if(phones, [](const Phone& p) { return p.connected; });
     if (live == phones.end()) return {K::Away, phones.front()};
     return {live->locked == 1 ? K::Locked : K::Connected, *live};
+  }
+
+  bool pairStep(Pair& pair, const PairEvent& event) {
+    using K = Pair::Kind;
+    using E = PairEvent::Kind;
+    switch (event.kind) {
+    case E::Start:
+      if (pair.kind != K::Idle && pair.kind != K::Failed) return false;
+      pair = {.kind = K::Starting};
+      return true;
+    case E::Started:
+      if (pair.kind != K::Starting || event.code.empty()) return false;
+      pair = {.kind = K::Showing, .code = event.code, .uri = event.uri};
+      return true;
+    case E::Failed:
+      if (pair.kind != K::Starting && pair.kind != K::Showing) return false;
+      pair = {.kind = K::Failed, .error = event.error};
+      return true;
+    case E::Finished:
+    case E::Closed:
+      if (pair.kind != K::Showing) return false;
+      pair = {};
+      return true;
+    }
+    return false;
   }
 
   bool transferMayMove(Transfer from, Transfer to) {
@@ -65,6 +89,16 @@ namespace linkapp {
   std::size_t Feed::earlierStart(std::int64_t nowMs) const {
     const auto it = std::ranges::find_if(m_items, [&](const FeedItem& item) { return nowMs - item.atMs >= kNowMs; });
     return static_cast<std::size_t>(it - m_items.begin());
+  }
+
+  std::string lastSeenText(std::int64_t lastSeenS, std::int64_t nowS) {
+    if (lastSeenS <= 0) return "Not connected";
+    const std::int64_t ago = std::max<std::int64_t>(0, nowS - lastSeenS);
+    if (ago < 60) return "Last seen just now";
+    if (ago < 3600) return std::format("Last seen {} min ago", ago / 60);
+    const std::string day = dayLabel(lastSeenS * 1000, nowS * 1000);
+    if (day == "Today") return std::format("Last seen {} h ago", ago / 3600);
+    return "Last seen " + (day == "Yesterday" ? std::string("yesterday") : day);
   }
 
   std::string dayLabel(std::int64_t atMs, std::int64_t nowMs) {

@@ -26,13 +26,33 @@ namespace linkapp {
   };
 
   struct Presence {
-    enum class Kind : std::uint8_t { NoDaemon, NotPaired, Pairing, Connected, Locked, Away };
+    enum class Kind : std::uint8_t { NoDaemon, NotPaired, Connected, Locked, Away };
     Kind kind = Kind::NoDaemon;
-    Phone phone; // empty for NoDaemon, NotPaired and Pairing
+    Phone phone; // empty for NoDaemon and NotPaired
   };
 
-  // The one place presence comes from: a pairing in progress wins, then the first connected phone, then the first paired.
-  [[nodiscard]] Presence presenceFrom(bool daemon, bool pairing, const std::vector<Phone>& phones);
+  // The one place presence comes from: the first connected phone, else the first paired one.
+  [[nodiscard]] Presence presenceFrom(bool daemon, const std::vector<Phone>& phones);
+
+  // This app's pairing window: Idle -> Starting -> Showing -> Idle (finished, or closed by expiry or another client);
+  // Starting | Showing -> Failed -> Starting (Try Again). pairStep rejects every other move and leaves the state as is.
+  struct Pair {
+    enum class Kind : std::uint8_t { Idle, Starting, Showing, Failed };
+    Kind kind = Kind::Idle;
+    std::string code;  // Showing only
+    std::string uri;   // Showing only
+    std::string error; // Failed only
+  };
+
+  struct PairEvent {
+    enum class Kind : std::uint8_t { Start, Started, Failed, Finished, Closed };
+    Kind kind = Kind::Start;
+    std::string code;  // Started
+    std::string uri;   // Started
+    std::string error; // Failed
+  };
+
+  [[nodiscard]] bool pairStep(Pair& pair, const PairEvent& event);
 
   enum class Transfer : std::uint8_t { Offered, Running, Done, Failed };
 
@@ -203,6 +223,9 @@ namespace linkapp {
 
   // "Today", "Yesterday", a weekday within the last week, else "12 Mar" (and the year when it is not this year).
   [[nodiscard]] std::string dayLabel(std::int64_t atMs, std::int64_t nowMs);
+
+  // "Last seen 12 min ago" from unix seconds; "Not connected" when the phone was never seen.
+  [[nodiscard]] std::string lastSeenText(std::int64_t lastSeenS, std::int64_t nowS);
 
   // Match key of a phone number: its last 9 digits, so "+49 151 2345 6789" and "0151 23456789" meet; a name-like
   // sender (no digits) keys as itself.
