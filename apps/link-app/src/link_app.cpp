@@ -776,12 +776,14 @@ namespace linkapp {
       status->addChild(text(line, Tokens::typeFootnote, ColorRole::Label2, s));
       card->addChild(std::move(status));
     }
-    if (presence.kind == Presence::Kind::Connected || presence.kind == Presence::Kind::Locked) {
-      // RoundKey (handoff.yaml): 32 circle fill_1, on = accent.
+    if (presence.kind == Presence::Kind::Connected || presence.kind == Presence::Kind::Locked ||
+        presence.kind == Presence::Kind::Away) {
+      // RoundKey (handoff.yaml): 32 circle fill_1, on = accent; an away phone keeps the row, dimmed.
       const float key = Tokens::sizeControlM * s;
+      const bool live = presence.kind != Presence::Kind::Away;
       const auto round = [&](const char* glyph, const char* tip, bool on, std::function<void()> click) {
-        return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbolInline * s,
-                           .variant = on ? ButtonVariant::Primary : ButtonVariant::Tonal, .tooltip = std::string(tip),
+        return ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbolInline * s, .enabled = live,
+                           .variant = on && live ? ButtonVariant::Primary : ButtonVariant::Tonal, .tooltip = std::string(tip),
                            .radius = key / 2.0F, .width = key, .height = key, .onClick = std::move(click)});
       };
       const std::string id = presence.phone.id;
