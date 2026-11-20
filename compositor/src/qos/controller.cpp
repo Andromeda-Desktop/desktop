@@ -364,6 +364,8 @@ namespace andromeda::qos {
         AppInputs& inputs = gathered[cgroup.unit].inputs;
         inputs.audio = inputs.audio || activity.audio;
         inputs.call = inputs.call || activity.call;
+        inputs.userWork = inputs.userWork || activity.userWork;
+        inputs.trayItem = inputs.trayItem || activity.trayItem;
       }
     }
     // Only the pids this snapshot names stay cached, so a reused pid is read again.

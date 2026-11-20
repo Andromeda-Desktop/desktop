@@ -266,14 +266,17 @@
     <enum name="app_activity_flag" bitfield="true" since="3">
       <entry name="audio" value="1" summary="plays or records audio"/>
       <entry name="call" value="2" summary="is in a call"/>
+      <entry name="user_work" value="4" summary="holds a sleep inhibitor (a copy, an export, a download)"/>
+      <entry name="tray_item" value="8" summary="owns a tray item"/>
     </enum>
 
     <request name="app_activity" since="3">
       <description summary="report what an app process is doing">
         The shell reports the activity of the app process pid. flags is a bit
         set of app_activity_flag the compositor stores per pid; a pid with
-        flags 0 is forgotten. An app unit with audio or call activity is not
-        throttled while hidden.
+        flags 0 is forgotten. An app unit with audio, call or user_work
+        activity is not throttled while hidden; one with tray_item is not
+        frozen. A compositor ignores the flag bits it does not know.
         The compositor stores only pids that exist, at most 256 at once, and
         forgets the pids a shell reported when that shell's object goes away.
       </description>

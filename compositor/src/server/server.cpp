@@ -1731,7 +1731,9 @@ namespace andromeda {
             snapshot.activity.push_back(
                 {.pid = static_cast<pid_t>(pid),
                  .audio = (flags & DesktopShell::kActivityAudio) != 0,
-                 .call = (flags & DesktopShell::kActivityCall) != 0}
+                 .call = (flags & DesktopShell::kActivityCall) != 0,
+                 .userWork = (flags & DesktopShell::kActivityUserWork) != 0,
+                 .trayItem = (flags & DesktopShell::kActivityTrayItem) != 0}
             );
           }
         }

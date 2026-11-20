@@ -1502,6 +1502,19 @@ void Application::initSystemBusServices() {
       try {
         m_logindService = std::make_unique<LogindService>(*m_systemBus);
         m_powerConfigService = std::make_unique<PowerConfigService>(*m_systemBus);
+        // logind changes BlockInhibited on every inhibitor start and stop; System1 relays the change.
+        m_system1Login = sdbus::createProxy(
+            m_systemBus->connection(), sdbus::ServiceName{"org.andromeda.System1"},
+            sdbus::ObjectPath{"/org/andromeda/System1/Login"}
+        );
+        m_system1Login->uponSignal("ManagerPropertiesChanged")
+            .onInterface("org.andromeda.System1.Login")
+            .call([this](const std::vector<std::string>& names) {
+              if (std::ranges::contains(names, "BlockInhibited")) {
+                refreshSleepInhibitors();
+              }
+            });
+        refreshSleepInhibitors();
         m_powerConfigService->setChangeCallback([this] {
           m_settingsWindow.onPowerChanged();
           syncScheduledShutdown();
@@ -1980,6 +1993,7 @@ void Application::initEarlySessionBusAndTray() {
 
   m_trayService = std::make_unique<TrayService>(*m_bus);
   m_trayService->setChangeCallback([this] {
+    syncAppActivity();
     m_bar.refresh();
     m_trayMenu.onTrayChanged();
     m_keyboardLayoutOsd.onTrayChanged(

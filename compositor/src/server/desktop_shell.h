@@ -44,6 +44,8 @@ namespace andromeda {
     // dsk_shell_v1 app_activity_flag bits.
     static constexpr uint32_t kActivityAudio = 1;
     static constexpr uint32_t kActivityCall = 2;
+    static constexpr uint32_t kActivityUserWork = 4;
+    static constexpr uint32_t kActivityTrayItem = 8;
     // Every pid with flags, as (pid, app_activity_flag bits).
     [[nodiscard]] std::vector<std::pair<uint32_t, uint32_t>> appActivities() const;
     [[nodiscard]] bool boundBy(const wl_client* client) const;

@@ -194,6 +194,7 @@ public:
 private:
   // Reports processes that start or stop audio to the compositor's QoS.
   void syncAppActivity();
+  void refreshSleepInhibitors();
   void initServices();
   // Sub-phases of initServices(), called in order.
   void initStyleThemeAndWayland();
@@ -313,8 +314,11 @@ private:
   [[nodiscard]] std::vector<PollSource*> buildPollSources();
 
   ShellWaylandConnection m_wayland;
-  // Pids last reported to the compositor with dsk_shell_v1 app_activity audio (docs/qos.md §2).
-  std::vector<std::uint32_t> m_sentAudioPids;
+  // dsk_shell_v1 app_activity flags last reported to the compositor, by pid (docs/qos.md §2).
+  std::map<std::uint32_t, std::uint32_t> m_sentActivity;
+  // Pids that hold a logind sleep block inhibitor, from org.andromeda.System1.Login ListInhibitors.
+  std::vector<std::uint32_t> m_sleepInhibitorPids;
+  std::unique_ptr<sdbus::IProxy> m_system1Login;
   WorkspaceAlertService m_workspaceAlertService;
   CompositorPlatform m_compositorPlatform{m_wayland};
   security::SecretStore m_secretStore;

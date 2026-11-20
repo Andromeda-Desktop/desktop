@@ -166,6 +166,8 @@ namespace andromeda {
 
   static_assert(DesktopShell::kActivityAudio == DSK_SHELL_V1_APP_ACTIVITY_FLAG_AUDIO);
   static_assert(DesktopShell::kActivityCall == DSK_SHELL_V1_APP_ACTIVITY_FLAG_CALL);
+  static_assert(DesktopShell::kActivityUserWork == DSK_SHELL_V1_APP_ACTIVITY_FLAG_USER_WORK);
+  static_assert(DesktopShell::kActivityTrayItem == DSK_SHELL_V1_APP_ACTIVITY_FLAG_TRAY_ITEM);
 
   std::vector<std::pair<uint32_t, uint32_t>> DesktopShell::appActivities() const {
     std::vector<std::pair<uint32_t, uint32_t>> out;

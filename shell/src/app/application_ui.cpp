@@ -40,6 +40,7 @@
 #include "dbus/system_bus.h"
 #include "dbus/system_bus_poll_source.h"
 #include "dbus/tray/tray_service.h"
+#include "shell/session/power_inhibitors.h"
 #include "dbus/udisks/udisks_service.h"
 #include "dbus/upower/upower_service.h"
 #include "debug/debug_service.h"
@@ -137,6 +138,7 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+#include <sdbus-c++/sdbus-c++.h>
 
 namespace {
 
@@ -1557,18 +1559,54 @@ void Application::syncLockStreamPause() {
 }
 
 void Application::syncAppActivity() {
-  const std::vector<std::uint32_t> audio = pipewire() != nullptr ? pipewire()->state().audioPids : std::vector<std::uint32_t>{};
-  std::vector<std::uint32_t> stopped;
-  std::ranges::set_difference(m_sentAudioPids, audio, std::back_inserter(stopped));
-  std::vector<std::uint32_t> started;
-  std::ranges::set_difference(audio, m_sentAudioPids, std::back_inserter(started));
-  for (const std::uint32_t pid : stopped) {
-    m_wayland.sendAppActivity(pid, 0);
+  std::map<std::uint32_t, std::uint32_t> activity;
+  if (pipewire() != nullptr) {
+    for (const std::uint32_t pid : pipewire()->state().audioPids) {
+      activity[pid] |= DSK_SHELL_V1_APP_ACTIVITY_FLAG_AUDIO;
+    }
   }
-  for (const std::uint32_t pid : started) {
-    m_wayland.sendAppActivity(pid, DSK_SHELL_V1_APP_ACTIVITY_FLAG_AUDIO);
+  for (const std::uint32_t pid : m_sleepInhibitorPids) {
+    activity[pid] |= DSK_SHELL_V1_APP_ACTIVITY_FLAG_USER_WORK;
   }
-  m_sentAudioPids = audio;
+  if (m_trayService != nullptr) {
+    for (const int pid : m_trayService->itemPids()) {
+      activity[static_cast<std::uint32_t>(pid)] |= DSK_SHELL_V1_APP_ACTIVITY_FLAG_TRAY_ITEM;
+    }
+  }
+  for (const auto& [pid, flags] : m_sentActivity) {
+    if (!activity.contains(pid)) {
+      m_wayland.sendAppActivity(pid, 0);
+    }
+  }
+  for (const auto& [pid, flags] : activity) {
+    if (const auto sent = m_sentActivity.find(pid); sent == m_sentActivity.end() || sent->second != flags) {
+      m_wayland.sendAppActivity(pid, flags);
+    }
+  }
+  m_sentActivity = std::move(activity);
+}
+
+void Application::refreshSleepInhibitors() {
+  using Row = sdbus::Struct<std::string, std::string, std::string, std::string, std::uint32_t, std::uint32_t>;
+  m_system1Login->callMethodAsync("ListInhibitors")
+      .onInterface("org.andromeda.System1.Login")
+      .uponReplyInvoke([this](std::optional<sdbus::Error> error, const std::vector<Row>& rows) {
+        if (error.has_value()) {
+          kLog.warn("ListInhibitors failed: {}", error->getMessage());
+          return;
+        }
+        std::vector<std::uint32_t> pids;
+        for (const Row& row : rows) {
+          const LogindInhibitor inhibitor{.what = std::get<0>(row), .mode = std::get<3>(row), .pid = std::get<5>(row)};
+          if (powerActionBlocked({inhibitor}, "sleep", 0)) {
+            pids.push_back(inhibitor.pid);
+          }
+        }
+        if (pids != m_sleepInhibitorPids) {
+          m_sleepInhibitorPids = std::move(pids);
+          syncAppActivity();
+        }
+      });
 }
 
 SoftwareUpdateService* Application::softwareUpdateService() {

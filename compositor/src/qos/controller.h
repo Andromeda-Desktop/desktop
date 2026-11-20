@@ -41,6 +41,8 @@ namespace andromeda::qos {
       pid_t pid = 0;
       bool audio = false;
       bool call = false;
+      bool userWork = false;
+      bool trayItem = false;
     };
     std::vector<Window> windows; // mapped toplevels
     std::vector<pid_t> idleInhibitorPids;
