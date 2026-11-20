@@ -1301,6 +1301,14 @@ namespace andromeda {
     // values would move them out from under it on reallocation.
     std::vector<std::unique_ptr<CloseSnapshot>> m_closeSnapshots;
 
+    // Above the teardown block: destroyDisplay releases them before wl_display_destroy, so they must outlive its step.
+    // Recreates the Wayland and IPC socket files when something deletes them (socket_recovery.h).
+    std::unique_ptr<SocketRecovery> m_socketRecovery;
+    // Inode of the Wayland socket's lock file this process holds; 0 for an adopted systemd socket (not recreated).
+    ino_t m_waylandLockIno = 0;
+    // A lock this process took during a recovery, when the original lock file was deleted too.
+    int m_waylandLockFd = -1;
+
     // Teardown block. Members die in reverse declaration order, so each line must sit below everything it needs alive.
     // A TeardownStep runs a non-destruction step at its exact slot. Steps stay inert until the constructor finishes,
     // so a failed start leaves wlroots objects as the old leaking path did.
@@ -1381,12 +1389,6 @@ namespace andromeda {
     TeardownStep m_stepCloseSnapshots{this, &Server::clearCloseSnapshots};
     std::unique_ptr<HintRect> m_insertHint;
     std::unique_ptr<Ipc> m_ipc;
-    // Recreates the Wayland and IPC socket files when something deletes them (socket_recovery.h).
-    std::unique_ptr<SocketRecovery> m_socketRecovery;
-    // Inode of the Wayland socket's lock file this process holds; 0 for an adopted systemd socket (not recreated).
-    ino_t m_waylandLockIno = 0;
-    // A lock this process took during a recovery, when the original lock file was deleted too.
-    int m_waylandLockFd = -1;
     std::unique_ptr<Provider> m_provider;
     std::unique_ptr<ConfigWatcher> m_configWatcher;
     // Destroyed first: ~Overview runs teardown(), which notifies m_ipc.
