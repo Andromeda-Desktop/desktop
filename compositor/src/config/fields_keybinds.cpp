@@ -60,10 +60,12 @@ namespace andromeda {
     bool retiredDefault(const Keybind& binding, std::string_view action) {
       static const std::vector<std::pair<Keybind, std::string_view>> retired = [] {
         static constexpr std::pair<std::string_view, std::string_view> kLines[] = {
+          {"Ctrl+Alt+T", "spawn:andromeda-shell msg default-app-open terminal"},
           {"Ctrl+Alt+T", "spawn:sh -c 'for t in foot kitty ghostty alacritty konsole gnome-terminal xterm; do command -v $t >/dev/null && exec $t; done'"},
           {"Mod+Ctrl+F", "window-toggle-maximize"},
           {"Mod+Ctrl+Space", "window-restore-from-scratchpad"},
           {"Mod+E", "spawn:andromeda-files"},
+          {"Mod+E", "spawn:andromeda-shell msg default-app-open files"},
           {"Mod+Escape", "session-quit"},
           {"Mod+F", "window-toggle-fullscreen"},
           {"Mod+H", "window-focus-left"},
@@ -75,6 +77,7 @@ namespace andromeda {
           {"Mod+Period", "window-consume-right"},
           {"Mod+P", "window-toggle-pinned"},
           {"Mod+Q", "window-close"},
+          {"Mod+Return", "spawn:andromeda-shell msg default-app-open terminal"},
           {"Mod+Return", "spawn:kitty"},
           {"Mod+Return", "spawn:sh -c 'for t in foot kitty ghostty alacritty konsole gnome-terminal xterm; do command -v $t >/dev/null && exec $t; done'"},
           {"Mod+Return", "terminal-spawn"},

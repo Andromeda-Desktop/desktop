@@ -159,9 +159,9 @@ numlock_toggle = true
 
 # Applications and session
 # Terminal and Files open the apps set in Settings > Default Apps.
-"Mod+Return" = { action = "spawn:andromeda-shell msg default-app-open terminal", repeat = false }
-"Ctrl+Alt+T" = { action = "spawn:andromeda-shell msg default-app-open terminal", repeat = false }
-"Mod+E" = { action = "spawn:andromeda-shell msg default-app-open files", repeat = false }
+"Mod+Return" = { action = "shell:default-app-open terminal", repeat = false }
+"Ctrl+Alt+T" = { action = "shell:default-app-open terminal", repeat = false }
+"Mod+E" = { action = "shell:default-app-open files", repeat = false }
 "Mod" = "shell:panel-toggle launcher"
 "Mod+Space" = { action = "shell:panel-toggle launcher", repeat = false }
 "Mod+Period" = { action = "shell:panel-toggle launcher /emo", repeat = false }
@@ -203,8 +203,8 @@ numlock_toggle = true
 "XF86WWW" = { action = "spawn:andromeda-shell msg default-app-open browser", repeat = false }
 "XF86HomePage" = { action = "spawn:andromeda-shell msg default-app-open browser", repeat = false }
 "XF86Mail" = { action = "spawn:andromeda-shell msg default-app-open mail", repeat = false }
-"XF86Explorer" = { action = "spawn:andromeda-shell msg default-app-open files", repeat = false }
-"XF86MyComputer" = { action = "spawn:andromeda-shell msg default-app-open files", repeat = false }
+"XF86Explorer" = { action = "shell:default-app-open files", repeat = false }
+"XF86MyComputer" = { action = "shell:default-app-open files", repeat = false }
 
 # Screenshots and screen recording
 "Print" = { action = "shell:screenshot-region", repeat = false }
