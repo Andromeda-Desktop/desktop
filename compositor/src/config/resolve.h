@@ -20,6 +20,9 @@ namespace andromeda {
 
   inline constexpr uint64_t kStartupRuleDurationMs = 60'000;
 
+  // The qos rule an app gets before any user rule: terminals never throttle. nullopt = none.
+  [[nodiscard]] std::optional<qos::Rule> builtInQos(std::string_view appId);
+
   [[nodiscard]] ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
       std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs

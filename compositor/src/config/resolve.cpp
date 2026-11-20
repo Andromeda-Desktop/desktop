@@ -240,6 +240,17 @@ namespace andromeda {
     return false;
   }
 
+  std::optional<qos::Rule> builtInQos(std::string_view appId) {
+    // A terminal runs work the user started (builds, agents), so hiding it never throttles that work.
+    static const std::regex kTerminal(
+        R"(^(dev\.andromeda\.Terminal|foot|footclient|kitty|Alacritty|org\.wezfurlong\.wezterm|com\.mitchellh\.ghostty|org\.gnome\.Console|org\.gnome\.Ptyxis|org\.gnome\.Terminal|org\.kde\.konsole|xterm)$)"
+    );
+    if (std::regex_match(appId.begin(), appId.end(), kTerminal)) {
+      return qos::Rule::NeverThrottle;
+    }
+    return std::nullopt;
+  }
+
   ResolvedWindowRule resolveWindowRules(
       const Config& config, std::optional<std::string_view> appId, std::optional<std::string_view> title,
       std::optional<std::string_view> xdgTag, ContentType contentType, const WindowRuleState& state, uint64_t uptimeMs
@@ -256,6 +267,9 @@ namespace andromeda {
       resolved.defaultPinned = true;
       resolved.defaultPosition = WindowPosition{.x = 16, .y = 16, .anchor = WindowPositionAnchor::BottomRight};
       resolved.titleBar = TitleBarMode::Off;
+    }
+    if (appId) {
+      resolved.qos = builtInQos(*appId);
     }
 
     for (const auto& rule : config.windowRules) {

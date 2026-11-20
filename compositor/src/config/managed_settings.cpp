@@ -4,6 +4,7 @@
 #include "config/config_registry.h"
 #include "config/generated_file.h"
 #include "config/keybind_parse.h"
+#include "config/resolve.h"
 #include "config/store.h"
 #include "config/value_parse.h"
 
@@ -842,7 +843,8 @@ namespace andromeda {
         const toml::table* rule = it->as_table();
         it = rule != nullptr && appQosRuleId(*rule) == appId ? rules.erase(it) : it + 1;
       }
-      if (qos != "normal") {
+      // Normal over a built-in rule needs its own entry; otherwise removing the entry is Normal.
+      if (qos != "normal" || builtInQos(appId)) {
         rules.push_back(
             toml::table{{"match", toml::table{{"app_id", appIdPattern(appId)}}}, {"qos", std::string(qos)}}
         );

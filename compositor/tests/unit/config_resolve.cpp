@@ -600,6 +600,21 @@ ANDROMEDA_TEST(fixedWorkspaceTargetSelectsItsUniqueOutput) {
   CHECK(andromeda::uniqueFixedWorkspaceOwner(config, "missing") == nullptr);
 }
 
+ANDROMEDA_TEST(terminalsNeverThrottleUnlessAUserRuleSaysOtherwise) {
+  Config config;
+  const auto resolve = [&config](const char* appId) {
+    return andromeda::resolveWindowRules(config, appId, std::nullopt, std::nullopt, ContentType::None, {}, 0).qos;
+  };
+  CHECK(resolve("dev.andromeda.Terminal") == andromeda::qos::Rule::NeverThrottle);
+  CHECK(resolve("foot") == andromeda::qos::Rule::NeverThrottle);
+  CHECK(!resolve("org.mozilla.firefox"));
+  WindowRule normal;
+  normal.appIdPatterns.add("^foot$");
+  normal.qos = andromeda::qos::Rule::Normal;
+  config.windowRules.push_back(std::move(normal));
+  CHECK(resolve("foot") == andromeda::qos::Rule::Normal);
+}
+
 ANDROMEDA_TEST(windowRulesMergeMatchingFieldsInOrder) {
   Config config;
 
