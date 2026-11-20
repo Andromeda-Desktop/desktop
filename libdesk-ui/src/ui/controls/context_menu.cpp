@@ -106,7 +106,7 @@ ContextMenuControl::ContextMenuControl() : Node(NodeType::Base) { setAccessible(
 
 void ContextMenuControl::setEntries(std::vector<ContextMenuControlEntry> entries) {
   m_entries = std::move(entries);
-  m_highlightedIndex = firstInteractiveIndex();
+  m_highlightedIndex = kNoHighlight;
   m_needsRebuild = true;
   markLayoutDirty();
 }
@@ -162,15 +162,6 @@ void ContextMenuControl::setRedrawCallback(std::function<void()> redrawCallback)
   m_redrawCallback = std::move(redrawCallback);
 }
 
-std::size_t ContextMenuControl::firstInteractiveIndex() const noexcept {
-  for (std::size_t i = 0; i < m_entries.size(); ++i) {
-    if (isInteractive(m_entries[i])) {
-      return i;
-    }
-  }
-  return 0;
-}
-
 void ContextMenuControl::applyHighlightVisuals() {
   for (std::size_t i = 0; i < m_rows.size(); ++i) {
     if (m_rows[i].apply) {
@@ -186,12 +177,12 @@ void ContextMenuControl::applyHighlightVisuals() {
 }
 
 void ContextMenuControl::setHighlightedIndex(std::size_t index) {
-  if (m_entries.empty()) {
-    m_highlightedIndex = 0;
+  if (index >= m_entries.size()) {
+    m_highlightedIndex = kNoHighlight;
     applyHighlightVisuals();
     return;
   }
-  m_highlightedIndex = std::min(index, m_entries.size() - 1);
+  m_highlightedIndex = index;
   if (m_highlightedIndex < m_rows.size() && !m_rows[m_highlightedIndex].interactive) {
     if (!moveHighlight(1) && !moveHighlight(-1)) {
       applyHighlightVisuals();
@@ -209,7 +200,7 @@ bool ContextMenuControl::moveHighlight(int delta) {
     return false;
   }
   const std::size_t count = m_rows.size();
-  std::size_t idx = m_highlightedIndex < count ? m_highlightedIndex : 0;
+  std::size_t idx = m_highlightedIndex < count ? m_highlightedIndex : (delta > 0 ? count - 1 : 0);
   for (std::size_t step = 0; step < count; ++step) {
     if (delta > 0) {
       idx = (idx + 1) % count;
@@ -625,7 +616,7 @@ void ContextMenuControl::rebuildRows(Renderer& renderer) {
   }
 
   if (m_highlightedIndex >= m_rows.size()) {
-    m_highlightedIndex = firstInteractiveIndex();
+    m_highlightedIndex = kNoHighlight;
   }
   applyHighlightVisuals();
 }

@@ -67,6 +67,8 @@ public:
   void setOnSubmenuOpen(std::function<void(const ContextMenuControlEntry&, float rowCenterY)> onSubmenuOpen);
   void setRedrawCallback(std::function<void()> redrawCallback);
 
+  static constexpr std::size_t kNoHighlight = static_cast<std::size_t>(-1);
+
   void setHighlightedIndex(std::size_t index);
   [[nodiscard]] bool moveHighlight(int delta);
   [[nodiscard]] bool activateHighlighted();
@@ -96,12 +98,11 @@ private:
   void rebuild(Renderer& renderer);
   void rebuildRows(Renderer& renderer);
   void applyHighlightVisuals();
-  [[nodiscard]] std::size_t firstInteractiveIndex() const noexcept;
 
   std::vector<ContextMenuControlEntry> m_entries;
   std::vector<RowVisual> m_rows;
   std::size_t m_maxVisible = 14;
-  std::size_t m_highlightedIndex = 0;
+  std::size_t m_highlightedIndex = kNoHighlight;
   // The hover pane: one lens that slides between rows (rulebook 6, P1); x, width and radius of the row box.
   LensTrack m_lens;
   float m_lensX = 0.0F;

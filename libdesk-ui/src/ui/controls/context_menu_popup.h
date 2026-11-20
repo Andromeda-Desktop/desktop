@@ -99,7 +99,7 @@ private:
   ScrollViewState m_scrollState{};
   ScrollView* m_scrollView = nullptr;
   ContextMenuControl* m_menu = nullptr;
-  std::size_t m_highlightedIndex = 0;
+  std::size_t m_highlightedIndex = ContextMenuControl::kNoHighlight;
   Surface* m_pointerParentSurface = nullptr;
   bool m_pointerInside = false;
   bool m_closing = false; // fading out after an activation: input is ignored
