@@ -100,7 +100,7 @@ namespace popup_chrome {
     surface.setBlurRegion(Surface::tessellateRoundedRect(
         static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
         static_cast<int>(std::lround(geometry.contentWidth)), static_cast<int>(std::lround(geometry.contentHeight)),
-        Style::scaledRadiusLg(contentScale)
+        Style::scaledMenuRadius(contentScale)
     ));
   }
 
@@ -133,7 +133,7 @@ namespace popup_chrome {
     auto box = ui::box({});
     box->setGlassFill(shellLayer ? glass::Kind::Shape : glass::Kind::Menu);
     box->setBorder(colorSpecFromRole(ColorRole::Stroke), Style::borderWidth);
-    box->setRadius(Style::scaledRadiusLg(contentScale));
+    box->setRadius(Style::scaledMenuRadius(contentScale));
     box->setPosition(geometry.contentX(), geometry.contentY());
     box->setFrameSize(geometry.contentWidth, geometry.contentHeight);
     return static_cast<Box*>(parent.addChild(std::move(box)));

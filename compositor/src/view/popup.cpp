@@ -21,7 +21,7 @@ namespace andromeda {
 
   void Popup::applyGlassToAll() {
     for (Popup* popup : livePopups()) {
-      popup->m_blur.setMaterial(configGlass(popup->glassKind()));
+      popup->m_blur.setMaterial(popup->glassMaterial());
     }
   }
 
@@ -106,9 +106,18 @@ namespace andromeda {
     self->handleDestroy();
   }
 
-  glass::Kind Popup::glassKind() const {
-    // Shell popups (menus, tooltips) are parented to a layer surface and take the one island glass.
-    return LayerSurface::fromSurface(m_popup->parent) != nullptr ? glass::Kind::Shape : glass::Kind::Menu;
+  glass::Material Popup::glassMaterial() const {
+    const glass::Material menu = configGlass(glass::Kind::Menu);
+    if (LayerSurface::fromSurface(m_popup->parent) == nullptr) {
+      return menu;
+    }
+    // Shell popups (menus, tooltips) take the one island glass with the menu blur, so the backdrop does not show
+    // through their text, and no sharp lens band, so backdrop detail does not show sharp at their edge.
+    glass::Material material = configGlass(glass::Kind::Shape);
+    material.clarity = menu.clarity;
+    material.blurStrength = menu.blurStrength;
+    material.lens = 0.0F;
+    return material;
   }
 
   void Popup::handleCommit() {
@@ -132,7 +141,7 @@ namespace andromeda {
     } else {
       region = nullptr;
     }
-    m_blur.setMaterial(configGlass(glassKind()));
+    m_blur.setMaterial(glassMaterial());
     m_blur.update(
         static_cast<wlr_scene_tree*>(m_popup->base->data), surface, wlr_box{0, 0, geometry.width, geometry.height},
         geometry, corner_radii_none(), nullptr, blurOptions, 1.0F, nullptr, region

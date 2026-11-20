@@ -118,4 +118,6 @@ namespace Style {
 
   float scaledRadiusXl(float localScale) noexcept { return scaledRadius(Tokens::radiusR20, localScale); }
 
+  float scaledMenuRadius(float localScale) noexcept { return scaledRadius(Tokens::componentMenuRadius, localScale); }
+
 } // namespace Style

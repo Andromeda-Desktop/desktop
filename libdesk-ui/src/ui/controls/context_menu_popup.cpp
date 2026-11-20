@@ -186,7 +186,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
     self->m_sceneRoot->setOpacity(self->m_opacity);
     if (Style::popupShadowsEnabled()) {
       (void)popup_chrome::addShadow(
-          *self->m_sceneRoot, chrome, self->m_shadowConfig, Style::scaledRadiusLg(contentScale)
+          *self->m_sceneRoot, chrome, self->m_shadowConfig, Style::scaledMenuRadius(contentScale)
       );
     }
     (void)popup_chrome::addCardBackground(*self->m_sceneRoot, chrome, contentScale, self->m_shellLayer);
@@ -205,7 +205,7 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
     scrollView->setRadius(0.0F);
     scrollView->bindState(&self->m_scrollState);
     scrollView->setScrollbarVisible(true);
-    scrollView->setScrollbarInsetV(Style::scaledRadiusLg(contentScale));
+    scrollView->setScrollbarInsetV(Style::scaledMenuRadius(contentScale));
 
     auto ctrl = std::make_unique<ContextMenuControl>();
     ContextMenuControl* menuPtr = ctrl.get();

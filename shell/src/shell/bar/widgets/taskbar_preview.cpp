@@ -448,7 +448,7 @@ void TaskbarPreview::build() {
   m_sceneRoot->setScale(m_scale);
   m_sceneRoot->setOpacity(m_opacity);
   if (Style::popupShadowsEnabled()) {
-    (void)popup_chrome::addShadow(*m_sceneRoot, m_chrome, m_config.config().shell.shadow, Style::scaledRadiusLg(s));
+    (void)popup_chrome::addShadow(*m_sceneRoot, m_chrome, m_config.config().shell.shadow, Style::scaledMenuRadius(s));
   }
   (void)popup_chrome::addCardBackground(*m_sceneRoot, m_chrome, s, true);
   m_blurShown = false;

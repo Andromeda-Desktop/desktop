@@ -154,6 +154,8 @@ namespace Style {
   [[nodiscard]] float scaledRadiusSm(float localScale = 1.0F) noexcept;
   [[nodiscard]] float scaledRadiusMd(float localScale = 1.0F) noexcept;
   [[nodiscard]] float scaledRadiusLg(float localScale = 1.0F) noexcept;
+  // Menu and popover cards (component.menu.radius).
+  [[nodiscard]] float scaledMenuRadius(float localScale = 1.0F) noexcept;
   [[nodiscard]] float scaledRadiusXl(float localScale = 1.0F) noexcept;
 
 } // namespace Style

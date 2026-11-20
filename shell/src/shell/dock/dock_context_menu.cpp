@@ -264,7 +264,7 @@ namespace shell::dock {
         menuPtr->sceneRoot->setSize(fw, fh);
         if (Style::popupShadowsEnabled()) {
           (void)popup_chrome::addShadow(
-              *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledRadiusLg()
+              *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledMenuRadius()
           );
         }
         (void)popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F, true);

@@ -1528,6 +1528,12 @@ void Dock::openItemMenu(shell::dock::DockInstance& instance, const shell::dock::
   assertDockInitialized(m_platform, m_config, m_renderContext);
 
   closeItemMenu();
+  // The menu replaces the window popover; onItemHover keeps it shut while the menu is open.
+  m_previewOpenTimer.stop();
+  m_previewCloseTimer.stop();
+  if (m_preview != nullptr) {
+    m_preview->close();
+  }
 
   if (!m_platform->hasXdgShell()) {
     return;
@@ -1737,6 +1743,9 @@ void Dock::registerIpc(IpcService& ipc) {
 void Dock::onItemHover(shell::dock::DockInstance& instance, InputArea* area) {
   const auto item = std::ranges::find_if(instance.items, [&](const auto& view) { return area != nullptr && view.area == area; });
   const auto index = static_cast<std::size_t>(item - instance.items.begin());
+  if (m_itemMenu != nullptr) {
+    return;
+  }
   if (item != instance.items.end() && index < instance.snapshot.items.size() && instance.snapshot.items[index].running) {
     m_previewCloseTimer.stop();
     const std::string idLower = instance.snapshot.items[index].idLower;

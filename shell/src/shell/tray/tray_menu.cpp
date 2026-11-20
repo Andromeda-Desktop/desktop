@@ -894,7 +894,7 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
   inst.sceneRoot->setSize(w, h);
   if (Style::popupShadowsEnabled()) {
     (void)popup_chrome::addShadow(
-        *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledRadiusLg(contentScale())
+        *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledMenuRadius(contentScale())
     );
   }
   (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
@@ -934,7 +934,7 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
         view.setPosition(inst.chrome.contentX(), inst.chrome.contentY());
         view.clearFill();
         view.clearBorder();
-        view.setScrollbarInsetV(Style::scaledRadiusLg(contentScale()));
+        view.setScrollbarInsetV(Style::scaledMenuRadius(contentScale()));
       },
   });
   auto menu = std::make_unique<ContextMenuControl>();
@@ -1258,7 +1258,7 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
   inst.sceneRoot->setSize(w, h);
   if (Style::popupShadowsEnabled()) {
     (void)popup_chrome::addShadow(
-        *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledRadiusLg(contentScale())
+        *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledMenuRadius(contentScale())
     );
   }
   (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
@@ -1302,7 +1302,7 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
         view.setPosition(inst.chrome.contentX(), inst.chrome.contentY());
         view.clearFill();
         view.clearBorder();
-        view.setScrollbarInsetV(Style::scaledRadiusLg(contentScale()));
+        view.setScrollbarInsetV(Style::scaledMenuRadius(contentScale()));
       },
   });
 

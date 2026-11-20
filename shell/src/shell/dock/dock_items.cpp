@@ -1655,11 +1655,11 @@ namespace shell::dock {
         const float inset = Tokens::componentDockLensInset * k * grow;
         const float mainStart =
             vertical ? area->y() + area->translationY() + in.top : area->x() + area->translationX() + in.left;
-        const float crossStart = vertical ? area->x() + in.left : area->y() + in.top;
-        const float cross = vertical ? area->width() - in.left - in.right : area->height() - in.top - in.bottom;
+        // Only the main axis grows: the dock does not thicken, so the magnified icon rises past a lens kept inside it.
+        const float restInset = Tokens::componentDockLensInset * k;
         instance.lens.moveTo(
-            mainStart - inset, mainStart + drawn + inset, crossStart - inset, cross + 2.0F * inset,
-            Tokens::componentDockLensRadius * k * grow, false
+            mainStart - inset, mainStart + drawn + inset, lensItem.restCrossPos - restInset, iSize + 2.0F * restInset,
+            Tokens::componentDockLensRadius * k, false
         );
       }
     }
