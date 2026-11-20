@@ -1007,7 +1007,9 @@ namespace andromeda {
               GesturePhysics::kOverscrollLimit
           )
       );
-      applyProgress();
+      // Lay out once per frame, not per event: a touchpad sends events faster than the output refreshes.
+      m_cardPresentationDirty = true;
+      scheduleFrames();
       return;
     }
     Workspace* workspace = navigationWorkspace();
@@ -1054,6 +1056,10 @@ namespace andromeda {
     m_navigationStarted = false;
     if (!started || output == nullptr || !interactive()) {
       return;
+    }
+    // The release selects and settles from the layout on screen: apply the last events' row first.
+    if (m_cardPresentationDirty) {
+      applyProgress();
     }
     if (!cancelled) {
       m_navigation.update(0, 0, timeMsec);
