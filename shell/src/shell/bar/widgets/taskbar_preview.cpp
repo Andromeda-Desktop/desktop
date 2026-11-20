@@ -291,9 +291,10 @@ void TaskbarPreview::syncBlur() {
   }
   m_blurShown = want;
   if (want) {
-    popup_chrome::setCardBlurRegion(*m_surface, m_chrome, m_request.contentScale);
+    popup_chrome::setCardGlass(*m_surface, m_chrome, m_request.contentScale, *m_card, *m_sceneRoot);
   } else {
-    m_surface->clearBlurRegion();
+    m_surface->clearGlassCard();
+    m_card->setGlassFill(glass::Kind::Shape);
   }
 }
 
@@ -450,7 +451,7 @@ void TaskbarPreview::build() {
   if (Style::popupShadowsEnabled()) {
     (void)popup_chrome::addShadow(*m_sceneRoot, m_chrome, m_config.config().shell.shadow, Style::scaledMenuRadius(s));
   }
-  (void)popup_chrome::addCardBackground(*m_sceneRoot, m_chrome, s, true);
+  m_card = popup_chrome::addCardBackground(*m_sceneRoot, m_chrome, s, true);
   m_blurShown = false;
   syncBlur();
 

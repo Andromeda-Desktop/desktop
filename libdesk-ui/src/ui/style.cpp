@@ -91,9 +91,18 @@ namespace Style {
 
   glass::Material glassMaterial(glass::Kind kind) noexcept { return glassMaterial(kind, glassTone(kind)); }
 
+  namespace {
+    bool lightTone(PaletteTone tone) noexcept {
+      return tone == PaletteTone::Light || (isLightPalette() && tone == PaletteTone::Scheme);
+    }
+  } // namespace
+
   glass::Material glassMaterial(glass::Kind kind, PaletteTone tone) noexcept {
-    const bool light = tone == PaletteTone::Light || (isLightPalette() && tone == PaletteTone::Scheme);
-    return glass::material(kind, g_glass, light);
+    return glass::material(kind, g_glass, lightTone(tone));
+  }
+
+  glass::Material popoverMaterial() noexcept {
+    return glass::popover(g_glass, lightTone(glassTone(glass::Kind::Shape)));
   }
 
   float windowGlassTint() noexcept {

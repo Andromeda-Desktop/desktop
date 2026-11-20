@@ -189,8 +189,10 @@ void ContextMenuPopup::open(ContextMenuPopupRequest request) {
           *self->m_sceneRoot, chrome, self->m_shadowConfig, Style::scaledMenuRadius(contentScale)
       );
     }
-    (void)popup_chrome::addCardBackground(*self->m_sceneRoot, chrome, contentScale, self->m_shellLayer);
-    if (self->m_surface != nullptr) {
+    Box* card = popup_chrome::addCardBackground(*self->m_sceneRoot, chrome, contentScale, self->m_shellLayer);
+    if (self->m_surface != nullptr && self->m_shellLayer) {
+      popup_chrome::setCardGlass(*self->m_surface, chrome, contentScale, *card, *self->m_sceneRoot);
+    } else if (self->m_surface != nullptr) {
       popup_chrome::setCardBlurRegion(*self->m_surface, chrome, contentScale);
     }
 

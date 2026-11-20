@@ -1,5 +1,6 @@
 #pragma once
 
+#include "protocols/glass_material.h"
 #include "render/core/render_styles.h"
 #include "render/core/wallpaper_types.h"
 #include "render/render_target.h"
@@ -26,6 +27,16 @@ struct InputRect {
   int height = 0;
 
   bool operator==(const InputRect&) const = default;
+};
+
+// A rounded glass card in surface-local logical px. `node` picks the palette tone of the tint; `onDensity` gets the
+// backdrop density (0..1) the compositor measures under the card.
+struct GlassCard {
+  InputRect rect;
+  float radius = 0.0F;
+  glass::Material material;
+  const Node* node = nullptr;
+  std::function<void(float)> onDensity;
 };
 
 struct SurfaceIdleProfileEntry {
@@ -93,6 +104,10 @@ public:
   // Declares the whole surface opaque, or not, from its next commit, so the compositor can skip what lies beneath it.
   virtual void setOpaque(bool opaque) = 0;
   virtual void clearBlurRegion() = 0;
+  // The compositor draws `card` as one glass shape (blur, rim, tint, density) where it can; otherwise it blurs the
+  // rounded rect. Returns true when the compositor draws the material tint, so the client paints no fill.
+  virtual bool setGlassCard(const GlassCard& card);
+  virtual void clearGlassCard() { clearBlurRegion(); }
   // Renders at this fraction of the output resolution, for a backdrop that is soft anyway. Needs viewport scaling;
   // without it the surface renders at full resolution.
   void setResolutionScale(float scale);

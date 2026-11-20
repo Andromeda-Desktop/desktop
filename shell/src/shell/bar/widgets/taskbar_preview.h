@@ -139,6 +139,7 @@ private:
   float m_lensRight = 0.0F;
   float m_lensOpacity = 1.0F;
   bool m_closing = false;
+  Box* m_card = nullptr;
   Box* m_lens = nullptr;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
 };

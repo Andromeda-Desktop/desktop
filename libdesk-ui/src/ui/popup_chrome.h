@@ -4,6 +4,7 @@
 #include "ui/surface_shadow.h"
 
 #include <cstdint>
+#include <functional>
 
 class Box;
 class Node;
@@ -57,6 +58,11 @@ namespace popup_chrome {
   void setContentInputRegion(Surface& surface, const Geometry& geometry);
   // The compositor blurs behind the card only (its rounded shape), so the glass tint lets the window text read through.
   void setCardBlurRegion(Surface& surface, const Geometry& geometry, float contentScale);
+  // A shell popup's card as one compositor glass shape (popover glass, density lifts the ink of `root`). When the
+  // compositor draws the tint, `card` drops its own fill. `root` must outlive the surface or be passed again.
+  void setCardGlass(Surface& surface, const Geometry& geometry, float contentScale, Box& card, Node& root);
+  // GlassCard::onDensity that lifts the ink of `root`.
+  [[nodiscard]] std::function<void(float)> inkLiftOnDensity(Node& root);
   [[nodiscard]] RectNode* addShadow(
       Node& parent, const Geometry& geometry, const ShadowStyle& shadow, float radius,
       float backgroundOpacity = 1.0F

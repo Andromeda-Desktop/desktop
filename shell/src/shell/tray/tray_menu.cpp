@@ -897,9 +897,9 @@ void TrayMenu::buildScene(MenuInstance& inst, uint32_t width, uint32_t height) {
         *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledMenuRadius(contentScale())
     );
   }
-  (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
+  Box* card = popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
   if (inst.surface != nullptr) {
-    popup_chrome::setCardBlurRegion(*inst.surface, inst.chrome, contentScale());
+    popup_chrome::setCardGlass(*inst.surface, inst.chrome, contentScale(), *card, *inst.sceneRoot);
   }
 
   std::vector<ContextMenuControlEntry> entries;
@@ -1261,9 +1261,9 @@ void TrayMenu::buildSubmenuScene(std::size_t levelIndex, MenuInstance& inst, uin
         *inst.sceneRoot, inst.chrome, popupShadowConfig(m_config), Style::scaledMenuRadius(contentScale())
     );
   }
-  (void)popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
+  Box* card = popup_chrome::addCardBackground(*inst.sceneRoot, inst.chrome, contentScale(), true);
   if (inst.surface != nullptr) {
-    popup_chrome::setCardBlurRegion(*inst.surface, inst.chrome, contentScale());
+    popup_chrome::setCardGlass(*inst.surface, inst.chrome, contentScale(), *card, *inst.sceneRoot);
   }
 
   if (levelIndex >= m_submenuLevels.size()) {

@@ -8,6 +8,8 @@
 #include <string_view>
 #include <vector>
 
+class DskShapeClient;
+class DskSurfaceClient;
 class FrameStats;
 class WaylandConnection;
 struct ext_background_effect_surface_v1;
@@ -33,6 +35,8 @@ public:
   void setBlurRegion(const std::vector<InputRect>& rects) override;
   void setOpaque(bool opaque) override;
   void clearBlurRegion() override;
+  bool setGlassCard(const GlassCard& card) override;
+  void clearGlassCard() override;
 
   [[nodiscard]] wl_surface* wlSurface() const noexcept { return m_surface; }
   // The role object a popup attaches to; null for roles that cannot parent a popup.
@@ -76,6 +80,8 @@ private:
   OutputChangedCallback m_outputChangedCallback;
   wl_callback* m_frameCallback = nullptr;
   std::unique_ptr<FrameStats> m_frameStats;
+  std::unique_ptr<DskSurfaceClient> m_cardSurface;
+  std::unique_ptr<DskShapeClient> m_cardShape;
   ext_background_effect_surface_v1* m_backgroundEffect = nullptr;
   wp_viewport* m_viewport = nullptr;
   wp_fractional_scale_v1* m_fractionalScale = nullptr;

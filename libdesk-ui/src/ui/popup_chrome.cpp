@@ -104,6 +104,25 @@ namespace popup_chrome {
     ));
   }
 
+  std::function<void(float)> inkLiftOnDensity(Node& root) {
+    return [node = &root](float density) { node->setInkLift(std::round(density * 32.0F) / 32.0F); };
+  }
+
+  void setCardGlass(Surface& surface, const Geometry& geometry, float contentScale, Box& card, Node& root) {
+    const bool compositorTint = surface.setGlassCard(GlassCard{
+        .rect = {static_cast<int>(std::lround(geometry.contentX())), static_cast<int>(std::lround(geometry.contentY())),
+                 static_cast<int>(std::lround(geometry.contentWidth)),
+                 static_cast<int>(std::lround(geometry.contentHeight))},
+        .radius = Style::scaledMenuRadius(contentScale),
+        .material = Style::popoverMaterial(),
+        .node = &root,
+        .onDensity = inkLiftOnDensity(root),
+    });
+    if (compositorTint) {
+      card.setFill(clearColorSpec());
+    }
+  }
+
   RectNode* addShadow(
       Node& parent, const Geometry& geometry, const ShadowStyle& shadow, float radius,
       float backgroundOpacity

@@ -9,6 +9,7 @@
 #include "render/scene/node.h"
 #include "ui/builders.h"
 #include "ui/palette.h"
+#include "ui/popup_chrome.h"
 #include "ui/style.h"
 #include "platform/display.h"
 #include "platform/popup.h"
@@ -732,8 +733,10 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
 
   const float scale = m_uiScale ? std::max(0.1F, m_uiScale()) : 1.0F;
   const float radius = Style::scaledRadius(Tokens::componentTooltipRadius, scale);
+  Box* card = nullptr;
   m_sceneRoot->addChild(
       ui::box({
+          .out = &card,
           .radius = radius,
           .width = w,
           .height = h,
@@ -744,9 +747,20 @@ void TooltipManager::buildScene(const TooltipContent& content, float w, float h,
               },
       })
   );
-  m_surface->setBlurRegion(Surface::tessellateRoundedRect(
-      0, 0, static_cast<int>(std::lround(w)), static_cast<int>(std::lround(h)), radius
-  ));
+  const InputRect rect{0, 0, static_cast<int>(std::lround(w)), static_cast<int>(std::lround(h))};
+  if (shellLayer) {
+    if (m_surface->setGlassCard(GlassCard{
+            .rect = rect,
+            .radius = radius,
+            .material = Style::popoverMaterial(),
+            .node = m_sceneRoot.get(),
+            .onDensity = popup_chrome::inkLiftOnDensity(*m_sceneRoot),
+        })) {
+      card->setFill(clearColorSpec());
+    }
+  } else {
+    m_surface->setBlurRegion(Surface::tessellateRoundedRect(rect.x, rect.y, rect.width, rect.height, radius));
+  }
 
   const float maxContentWidth = kMaxContentWidth * scale;
   const float fontSize = Style::fontSizeCaption * scale;

@@ -267,9 +267,9 @@ namespace shell::dock {
               *menuPtr->sceneRoot, menuPtr->chrome, config.config().shell.shadow, Style::scaledMenuRadius()
           );
         }
-        (void)popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F, true);
+        Box* card = popup_chrome::addCardBackground(*menuPtr->sceneRoot, menuPtr->chrome, 1.0F, true);
         if (menuPtr->surface != nullptr) {
-          popup_chrome::setCardBlurRegion(*menuPtr->surface, menuPtr->chrome, 1.0F);
+          popup_chrome::setCardGlass(*menuPtr->surface, menuPtr->chrome, 1.0F, *card, *menuPtr->sceneRoot);
         }
 
         auto ctrl = std::make_unique<ContextMenuControl>();

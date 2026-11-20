@@ -4,8 +4,11 @@
 #include "core/ui_phase.h"
 #include "ext-background-effect-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
+#include "ui/style.h"
 #include "viewporter-client-protocol.h"
+#include "wayland/dsk_surface_client.h"
 #include "wayland/frame_stats.h"
+#include "wayland/glass_surface.h"
 #include "wayland/wayland_connection.h"
 #include "wayland/wayland_egl_window.h"
 
@@ -402,6 +405,41 @@ void WaylandSurface::clearBlurRegion() {
   m_backgroundEffect = nullptr;
 }
 
+bool WaylandSurface::setGlassCard(const GlassCard& card) {
+  if (m_cardSurface == nullptr && m_surface != nullptr && m_connection.dskSurfaceManager() != nullptr) {
+    m_cardSurface = std::make_unique<DskSurfaceClient>(m_connection.dskSurfaceManager(), m_surface);
+    if (m_cardSurface->hasShapes()) {
+      m_cardShape = std::make_unique<DskShapeClient>(*m_cardSurface);
+    }
+  }
+  if (m_cardShape == nullptr) {
+    return Surface::setGlassCard(card);
+  }
+  clearBlurRegion();
+  const auto w = static_cast<double>(card.rect.width);
+  const auto h = static_cast<double>(card.rect.height);
+  m_cardShape->set(DskSurfaceClient::Property::Clip, {static_cast<double>(card.rect.x), static_cast<double>(card.rect.y), w, h});
+  m_cardShape->set(DskSurfaceClient::Property::Radius, {std::min({static_cast<double>(card.radius), w * 0.5, h * 0.5}), 0.0, 0.0, 0.0});
+  setGlassMaterial(*m_cardShape, *m_cardSurface, &card.material);
+  const bool compositorTint = m_cardSurface->hasTintProperty() && Style::compositorDrawsTint();
+  if (m_cardSurface->hasTintProperty()) {
+    m_cardShape->set(
+        DskSurfaceClient::Property::Tint,
+        glassTintValue(materialRole(), compositorTint ? card.material.tint : 0.0F, card.node)
+    );
+  }
+  m_cardSurface->setOnDensity(card.onDensity);
+  return compositorTint;
+}
+
+void WaylandSurface::clearGlassCard() {
+  if (m_cardShape == nullptr) {
+    clearBlurRegion();
+    return;
+  }
+  m_cardShape->set(DskSurfaceClient::Property::Clip, {});
+}
+
 FrameStatsSink* WaylandSurface::frameStats(bool create) {
   if (create
       && m_frameStats == nullptr
@@ -419,6 +457,8 @@ void WaylandSurface::destroySurface() {
   m_frameStats.reset();
   cancelFrameCallback();
   releaseRenderState();
+  m_cardShape.reset();
+  m_cardSurface.reset();
 
   if (m_backgroundEffect != nullptr) {
     ext_background_effect_surface_v1_destroy(m_backgroundEffect);

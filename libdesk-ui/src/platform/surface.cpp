@@ -496,6 +496,11 @@ bool Surface::regionIntersectsBounds(const std::vector<InputRect>& rects, std::u
   });
 }
 
+bool Surface::setGlassCard(const GlassCard& card) {
+  setBlurRegion(tessellateRoundedRect(card.rect.x, card.rect.y, card.rect.width, card.rect.height, card.radius));
+  return false;
+}
+
 std::vector<InputRect> Surface::tessellateRoundedRect(
     int x, int y, int w, int h, float tlRadius, float trRadius, float brRadius, float blRadius, int stripPx
 ) {
