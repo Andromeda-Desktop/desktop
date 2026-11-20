@@ -480,10 +480,9 @@ void LinkService::onHotspotRequested(const std::string& deviceId, const std::str
   request.icon = std::string("noctalia-glyph:device-mobile");
   request.replacesId = m_hotspotAsk;
   request.timeout = 0;
-  request.actions = {
-      "hotspot:allow", i18n::tr("notifications.internal.link-hotspot-allow"), "hotspot:decline",
-      i18n::tr("notifications.internal.link-hotspot-decline")
-  };
+  request.actions = {"hotspot:allow",   i18n::tr("notifications.internal.link-hotspot-allow"),
+                     "hotspot:always",  i18n::tr("notifications.internal.link-hotspot-always"),
+                     "hotspot:decline", i18n::tr("notifications.internal.link-hotspot-decline")};
   m_hotspotAsk = m_notifications.addOrReplace(std::move(request));
   m_hotspotAskDevice = deviceId;
 }
@@ -1149,9 +1148,12 @@ void LinkService::onNotificationClosed(std::uint32_t id, CloseReason /*reason*/)
 void LinkService::onAction(std::uint32_t id, const std::string& action, const std::string& activationToken) {
   if (id != 0 && id == m_hotspotAsk && action.starts_with("hotspot:")) {
     m_hotspotAsk = 0;
+    if (action == "hotspot:always") {
+      setGrant(m_hotspotAskDevice, "nearby", true);
+    }
     m_link->callMethodAsync("AnswerHotspot")
         .onInterface(kLinkInterface)
-        .withArguments(m_hotspotAskDevice, action == "hotspot:allow")
+        .withArguments(m_hotspotAskDevice, action != "hotspot:decline")
         .uponReplyInvoke([](std::optional<sdbus::Error> error) { logFailure("AnswerHotspot", error); });
     return;
   }

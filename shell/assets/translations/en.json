@@ -1767,6 +1767,7 @@
       "link-accept": "Accept",
       "link-unverified": "{alias} (unverified, {address})",
       "link-hotspot-allow": "Use hotspot",
+      "link-hotspot-always": "Always",
       "link-hotspot-ask": "Use {device}'s hotspot?",
       "link-hotspot-ask-body": "This is too slow over Bluetooth. Your laptop leaves its Wi-Fi and has no internet until it's done, then joins your Wi-Fi again.",
       "link-hotspot-decline": "Not now",
