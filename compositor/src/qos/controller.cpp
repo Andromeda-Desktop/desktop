@@ -42,7 +42,7 @@ namespace andromeda::qos {
         unsigned long long hidden = 0;
         unsigned long long hiddenLong = 0;
         if (std::sscanf(value, "%llu,%llu", &hidden, &hiddenLong) == 2) {
-          delays = {.hiddenMs = hidden, .hiddenLongMs = hiddenLong};
+          delays = {.hiddenMs = hidden, .balancedHiddenMs = hidden, .hiddenLongMs = hiddenLong};
         }
       }
       return delays;
@@ -77,8 +77,8 @@ namespace andromeda::qos {
     }
 
     // Field 22 of /proc/<pid>/stat (clock ticks since boot): with the pid it names one process, even after pid reuse.
-    std::string processStartTime(pid_t pid) {
-      const std::string stat = readFile(std::format("/proc/{}/stat", pid));
+    std::string processStartTime(const std::string& root, pid_t pid) {
+      const std::string stat = readFile(std::format("{}/proc/{}/stat", root, pid));
       const std::size_t comm = stat.rfind(')');
       if (comm == std::string::npos) {
         return {};
@@ -105,10 +105,10 @@ namespace andromeda::qos {
     }
 
     // The direct children of `pid`, from every thread (a child belongs to the thread that forked it).
-    std::vector<pid_t> childrenOf(pid_t pid) {
+    std::vector<pid_t> childrenOf(const std::string& root, pid_t pid) {
       std::vector<pid_t> children;
       std::error_code error;
-      for (const auto& task : std::filesystem::directory_iterator(std::format("/proc/{}/task", pid), error)) {
+      for (const auto& task : std::filesystem::directory_iterator(std::format("{}/proc/{}/task", root, pid), error)) {
         std::istringstream list(readFile((task.path() / "children").string()));
         for (pid_t child = 0; list >> child;) {
           children.push_back(child);
@@ -124,12 +124,15 @@ namespace andromeda::qos {
     }
   } // namespace
 
-  Controller::Controller(wl_event_loop* loop, SystemdUnits& units, bool ownsSession, std::function<Snapshot()> snapshot)
-      : m_loop(loop),
+  Controller::Controller(
+      wl_event_loop* loop, SystemdUnits& units, bool ownsSession, std::function<Snapshot()> snapshot, std::string root
+  )
+      : m_root(std::move(root)),
+        m_loop(loop),
         m_units(units),
         m_actuator(units),
         m_snapshot(std::move(snapshot)),
-        m_efficiencyCpus(efficiencyCpus("/sys/devices/system/cpu")),
+        m_efficiencyCpus(efficiencyCpus(m_root + "/sys/devices/system/cpu")),
         m_focusMemoryLow(static_cast<std::uint64_t>(sysconf(_SC_PHYS_PAGES)) * static_cast<std::uint64_t>(sysconf(_SC_PAGESIZE)) / 4),
         m_delays(delaysFromEnvironment()) {
     if (const char* powerSupply = std::getenv("ANDROMEDA_QOS_TEST_POWER_SUPPLY")) {
@@ -138,7 +141,7 @@ namespace andromeda::qos {
       m_battery = std::make_unique<OnBatteryWatch>(loop, [this] { schedule(); });
     }
     m_timer = wl_event_loop_add_timer(loop, onTimer, this);
-    const std::string own = readFile("/proc/self/cgroup");
+    const std::string own = readFile(m_root + "/proc/self/cgroup");
     m_ownCgroup = cgroupPath(own);
     m_ownUnit = systemdUnitFromCgroup(own);
     kLog.info("efficiency CPUs for hidden apps: {}", cpuList(m_efficiencyCpus));
@@ -226,19 +229,19 @@ namespace andromeda::qos {
       return seen.emplace(pid, it->second).first->second;
     }
     Cgroup cgroup;
-    const std::string text = readFile(std::format("/proc/{}/cgroup", pid));
+    const std::string text = readFile(std::format("{}/proc/{}/cgroup", m_root, pid));
     std::string unit = systemdUnitFromCgroup(text);
     const std::string path = cgroupPath(text);
     if (path == m_ownCgroup) {
       // A child the compositor spawned without a scope. Xwayland stays with the compositor.
-      cgroup.adoptable = pid != getpid() && readFile(std::format("/proc/{}/comm", pid)) != "Xwayland\n";
+      cgroup.adoptable = pid != getpid() && readFile(std::format("{}/proc/{}/comm", m_root, pid)) != "Xwayland\n";
     } else if (isTerminalShellScope(unit)) {
       // An app started from a terminal shell: the shell scope holds the user's other jobs, so the app gets its own.
       cgroup.adoptable = true;
     } else if (unit.starts_with("app-") && unit != m_ownUnit) {
       // The compositor's own unit (a nested run from a terminal) is never throttled or frozen.
       if (const std::size_t at = path.find("/" + unit); at != std::string::npos) {
-        cgroup.dir = "/sys/fs/cgroup" + path.substr(0, at + 1 + unit.size());
+        cgroup.dir = m_root + "/sys/fs/cgroup" + path.substr(0, at + 1 + unit.size());
         cgroup.unit = std::move(unit);
       }
     }
@@ -249,7 +252,7 @@ namespace andromeda::qos {
     if (m_adopting.contains(pid)) {
       return;
     }
-    const std::string started = processStartTime(pid);
+    const std::string started = processStartTime(m_root, pid);
     if (started.empty()) {
       return;
     }
@@ -345,7 +348,7 @@ namespace andromeda::qos {
       auto [walked, fresh] = children.try_emplace(window.pid);
       if (fresh) {
         const auto cached = m_children.find(window.pid);
-        walked->second = cached != m_children.end() ? std::move(cached->second) : childrenOf(window.pid);
+        walked->second = cached != m_children.end() ? std::move(cached->second) : childrenOf(m_root, window.pid);
       }
       for (const pid_t child : walked->second) {
         if (const Cgroup& scope = cgroupOf(child, seen); !scope.unit.empty() && scope.unit != cgroup.unit) {

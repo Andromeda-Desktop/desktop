@@ -34,18 +34,18 @@ namespace andromeda {
     };
 
     explicit SystemdUnits(wl_event_loop* loop);
-    ~SystemdUnits();
+    virtual ~SystemdUnits();
     SystemdUnits(const SystemdUnits&) = delete;
     SystemdUnits& operator=(const SystemdUnits&) = delete;
 
     [[nodiscard]] bool active() const { return m_bus != nullptr; }
-    void setProperties(const std::string& unit, const Properties& properties);
+    virtual void setProperties(const std::string& unit, const Properties& properties);
     // `done` gets true once systemd reports the unit frozen or thawed; it never runs after the bus is gone.
     // Returns false when the call was not sent; `done` then never runs.
-    bool setFrozen(const std::string& unit, bool frozen, std::function<void(bool ok)> done = {});
+    virtual bool setFrozen(const std::string& unit, bool frozen, std::function<void(bool ok)> done = {});
     // Moves `pid` into a new transient scope `unit` under app.slice. `done` gets true once systemd started it.
     // Returns false when the call was not sent; `done` then never runs.
-    bool startScope(
+    virtual bool startScope(
         const std::string& unit, int pid, std::function<void(bool ok)> done, const ScopeOptions& options = {}
     );
     // Calls `found` once for each loaded unit whose name matches one of the patterns.

@@ -57,7 +57,11 @@ namespace andromeda::qos {
   class Controller {
   public:
     // ownsSession: the session's compositor, not a nested or test run; only it changes background.slice.
-    Controller(wl_event_loop* loop, SystemdUnits& units, bool ownsSession, std::function<Snapshot()> snapshot);
+    // root: prefix of /proc and /sys; tests pass a fixture tree.
+    Controller(
+        wl_event_loop* loop, SystemdUnits& units, bool ownsSession, std::function<Snapshot()> snapshot,
+        std::string root = {}
+    );
     ~Controller();
     Controller(const Controller&) = delete;
     Controller& operator=(const Controller&) = delete;
@@ -99,6 +103,7 @@ namespace andromeda::qos {
     [[nodiscard]] bool onBattery() const;
     void arm(std::optional<std::uint64_t> atMs, std::uint64_t nowMs);
 
+    std::string m_root;
     wl_event_loop* m_loop;
     SystemdUnits& m_units;
     Actuator m_actuator;
