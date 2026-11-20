@@ -222,7 +222,7 @@ namespace andromeda::qos {
     if (auto it = seen.find(pid); it != seen.end()) {
       return it->second;
     }
-    if (auto it = m_pids.find(pid); it != m_pids.end()) {
+    if (auto it = m_pids.find(pid); it != m_pids.end() && !m_adopting.contains(pid)) {
       return seen.emplace(pid, it->second).first->second;
     }
     Cgroup cgroup;
@@ -257,10 +257,9 @@ namespace andromeda::qos {
     const std::string unit = std::format("app-andromeda-{}-{}.scope", pid, started);
     m_adopting.insert(pid);
     kLog.debug("pid {} has no app scope: moving it to {}", pid, unit);
-    m_units.startScope(unit, pid, [this, pid](bool ok) {
+    m_units.startScope(unit, pid, [this](bool ok) {
+      // The reply comes before systemd moves the pid: it stays in m_adopting, so cgroupOf re-reads it until it moves.
       if (ok) {
-        m_adopting.erase(pid);
-        m_pids.erase(pid);
         schedule();
       }
     });
