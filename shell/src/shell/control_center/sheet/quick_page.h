@@ -115,7 +115,10 @@ private:
   [[nodiscard]] int editSlotAt(float x, float y) const;
   [[nodiscard]] static float offsetIn(const Node* node, const Node* ancestor, bool y);
   void refreshDots(float offset);
-  std::unique_ptr<Flex> makePill(std::string_view glyph, Slider*& slider, Label*& name, Label*& value);
+  // onMore set: a trailing chevron opens the pill's detail page.
+  std::unique_ptr<Flex> makePill(
+      std::string_view glyph, Slider*& slider, Label*& name, Label*& value, std::function<void()> onMore = nullptr
+  );
   void syncToggleRow(ToggleRow& row, const std::string& subtitle);
   void syncSliders();
   void syncExtras();

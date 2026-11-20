@@ -495,7 +495,9 @@ std::unique_ptr<Flex> QuickPage::makeDropTile(std::string_view type) {
   return card;
 }
 
-std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slider, Label*& name, Label*& value) {
+std::unique_ptr<Flex> QuickPage::makePill(
+    std::string_view glyph, Slider*& slider, Label*& name, Label*& value, std::function<void()> onMore
+) {
   const float s = contentScale();
   auto pill = std::make_unique<SliderPill>();
   pill->setDirection(FlexDirection::Horizontal);
@@ -537,6 +539,21 @@ std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slide
   pill->icon = iconPtr;
   pill->value = label.get();
   pill->addChild(std::move(label));
+  if (onMore) {
+    Button* more = nullptr;
+    auto moreButton = makeGlyphButton(more, "chevron-right", s, std::move(onMore), kChevronHit, ButtonVariant::Ghost);
+    moreButton->setGlyphSize(kChevronGlyph * s);
+    if (moreButton->inputArea() != nullptr) {
+      constexpr float kOutset = 6.0F;
+      moreButton->inputArea()->setHitTestOutset(
+          {.left = kOutset * s, .top = kOutset * s, .right = kOutset * s, .bottom = kOutset * s}
+      );
+    }
+    if (moreButton->glyph() != nullptr) {
+      moreButton->glyph()->setColor(colorSpecFromRole(ColorRole::Label3));
+    }
+    pill->addChild(std::move(moreButton));
+  }
 
   auto ink = std::make_unique<Flex>();
   ink->setParticipatesInLayout(false);
@@ -561,6 +578,19 @@ std::unique_ptr<Flex> QuickPage::makePill(std::string_view glyph, Slider*& slide
   auto inkLabel = makeLabel(inkValue, Tokens::typeFootnote, s, ColorRole::OnSliderFill);
   pill->inkValue = inkValue;
   inkRow->addChild(std::move(inkLabel));
+  if (onMore) {
+    // The chevron under the fill: same box as the button above, so the ink row stays aligned.
+    auto inkChevron = std::make_unique<Glyph>();
+    inkChevron->setGlyph("chevron-right");
+    inkChevron->setGlyphSize(kChevronGlyph * s);
+    inkChevron->setColor(colorSpecFromRole(ColorRole::OnSliderFill));
+    auto inkChevronBox = std::make_unique<Flex>();
+    inkChevronBox->setAlign(FlexAlign::Center);
+    inkChevronBox->setJustify(FlexJustify::Center);
+    inkChevronBox->setMinWidth(kChevronHit * s);
+    inkChevronBox->addChild(std::move(inkChevron));
+    inkRow->addChild(std::move(inkChevronBox));
+  }
   pill->inkRow = inkRow.get();
   ink->addChild(std::move(inkRow));
   pill->ink = ink.get();
@@ -643,7 +673,7 @@ std::unique_ptr<Flex> QuickPage::create() {
   });
   root->addChild(std::move(brightness));
 
-  auto volume = makePill("volume", m_volumeSlider, m_volumeName, m_volumeValue);
+  auto volume = makePill("volume", m_volumeSlider, m_volumeName, m_volumeValue, [this] { m_openTab("detail-sound"); });
   m_volumePill = volume.get();
   m_volumeSlider->setOnValueChanged([this](double value) {
     if (m_syncingSliders) {
@@ -750,7 +780,7 @@ std::unique_ptr<Flex> QuickPage::create() {
   }, Tokens::componentRoundIconAction));
   actions->addChild(makeGlyphButton(m_phoneKeys[1], "screen-share", s, [this] {
     if (m_services.link != nullptr && !m_phoneId.empty()) {
-      m_services.link->mirror();
+      m_services.link->mirror(m_phoneId);
     }
   }, Tokens::componentRoundIconAction));
   phone->addChild(std::move(actions));
