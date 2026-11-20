@@ -526,6 +526,13 @@ namespace term {
             },
         .openUri = [this](const std::string& uri) { openUri(uri); },
         .contextMenu = [this, id](float sceneX, float sceneY) { openTerminalMenu(id, sceneX, sceneY); },
+        .pointerEntered =
+            [this, id] {
+              if (m_settings.settings().focusFollowsMouse && m_split.split() && m_split.focusedPane() != id) {
+                apply(session_event::Show{id});
+                focusGrid();
+              }
+            },
         .findChanged =
             [this, id](std::size_t total, std::optional<std::size_t> current, FindError error) {
               if (m_sessions.shown() == id) {

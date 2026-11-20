@@ -38,6 +38,7 @@ namespace term {
     Scrollback scrollback = Scrollback::Limited;
     int scrollbackMb = 10; // the limit while Limited
     bool copyOnSelect = false;
+    bool focusFollowsMouse = false; // a split pane takes focus when the pointer enters it
     std::string wordSeparators = " \t'\"│`|:;,()[]{}<>$"; // end a double-click word; UTF-8
     int scrollRows = 3; // per wheel notch
     Bell bell = Bell::Flash;

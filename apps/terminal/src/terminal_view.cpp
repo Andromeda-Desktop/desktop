@@ -528,8 +528,12 @@ namespace term {
                                      a.setOnPress([this](const InputArea::PointerData& d) {
                                        pointerButton(d.button, d.localX, d.localY, d.pressed, d.time);
                                      });
-                                     a.setOnEnter(
-                                         [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
+                                     a.setOnEnter([this](const InputArea::PointerData& d) {
+                                       if (m_host.pointerEntered) {
+                                         m_host.pointerEntered();
+                                       }
+                                       pointerMotion(d.localX, d.localY);
+                                     });
                                      a.setOnMotion(
                                          [this](const InputArea::PointerData& d) { pointerMotion(d.localX, d.localY); });
                                      a.setOnCancel([this] {

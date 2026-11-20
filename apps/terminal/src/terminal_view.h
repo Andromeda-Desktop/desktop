@@ -119,6 +119,8 @@ namespace term {
       std::function<void(const std::string& uri)> openUri;
       // Right click not taken by mouse reporting, in scene coordinates.
       std::function<void(float sceneX, float sceneY)> contextMenu;
+      // The pointer entered this view.
+      std::function<void()> pointerEntered;
       // Find results changed: match count and the current match (1 = newest), while find is open.
       std::function<void(std::size_t total, std::optional<std::size_t> current, FindError error)> findChanged;
       // The alpha of the backing behind text over a theme scene (AppWindow::sceneTextBacking); null = none.

@@ -306,6 +306,7 @@ namespace term {
     r.integer("terminal", "scrollback_mb", SettingsLimits::kScrollbackMin, SettingsLimits::kScrollbackMax,
               s.scrollbackMb);
     r.boolean("terminal", "copy_on_select", s.copyOnSelect);
+    r.boolean("terminal", "focus_follows_mouse", s.focusFollowsMouse);
     r.string("terminal", "word_separators", s.wordSeparators);
     r.integer("terminal", "scroll_rows", SettingsLimits::kScrollRowsMin, SettingsLimits::kScrollRowsMax,
               s.scrollRows);
@@ -345,6 +346,7 @@ namespace term {
     terminal.insert_or_assign("scrollback", std::string(nameOf(kScrollbacks, s.scrollback)));
     terminal.insert_or_assign("scrollback_mb", s.scrollbackMb);
     terminal.insert_or_assign("copy_on_select", s.copyOnSelect);
+    terminal.insert_or_assign("focus_follows_mouse", s.focusFollowsMouse);
     terminal.insert_or_assign("word_separators", s.wordSeparators);
     terminal.insert_or_assign("scroll_rows", s.scrollRows);
     terminal.insert_or_assign("bell", std::string(nameOf(kBells, s.bell)));
