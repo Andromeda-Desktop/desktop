@@ -3,11 +3,13 @@
 #include "layer/layer_surface.h"
 #include "output/output.h"
 #include "scene/node.h"
+#include "server/server.h"
 #include "view/view.h"
 #include "wlr.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <vector>
 
 namespace andromeda {
@@ -21,11 +23,96 @@ namespace andromeda {
 
   void Popup::applyGlassToAll() {
     for (Popup* popup : livePopups()) {
-      popup->m_blur.setMaterial(popup->glassMaterial());
+      if (popup->glassState() == nullptr) {
+        popup->m_blur.setMaterial(popup->glassMaterial());
+      }
     }
   }
 
-  Popup::Popup(wlr_xdg_popup* popup, wlr_scene_tree* parentTree, wlr_scene_tree* captureTree) : m_popup(popup) {
+  int Popup::pollBackdrops(const Output* output) {
+    int recheckMs = 0;
+    for (Popup* popup : livePopups()) {
+      if (popup->glassState() != nullptr && popup->parentOutput() == output) {
+        const int ms = popup->pollBackdrop();
+        recheckMs = ms > 0 && (recheckMs == 0 || ms < recheckMs) ? ms : recheckMs;
+      }
+    }
+    return recheckMs;
+  }
+
+  Output* Popup::parentOutput() const {
+    const LayerSurface* layer = LayerSurface::fromSurface(m_popup->parent);
+    return layer != nullptr ? layer->output() : nullptr;
+  }
+
+  const DskSurfaceManager::State* Popup::glassState() const {
+    const DskSurfaceManager* dsk = m_server != nullptr ? m_server->dskSurfaces() : nullptr;
+    const DskSurfaceManager::State* state = dsk != nullptr ? dsk->state(m_popup->base->surface) : nullptr;
+    return state != nullptr && !state->shapes.empty() ? state : nullptr;
+  }
+
+  bool Popup::updateShapeGlass(const SurfaceBlurOptions& options) {
+    const DskSurfaceManager::State* state = glassState();
+    if (state == nullptr) {
+      return false;
+    }
+    const SurfaceMotion& shape = *state->shapes.front();
+    m_glass = readDskGlass(*state, shape);
+    const auto& clip = shape.value(SurfaceMotion::Property::Clip);
+    const wlr_box box{
+        static_cast<int>(std::lround(clip[0])), static_cast<int>(std::lround(clip[1])),
+        static_cast<int>(std::lround(clip[2])), static_cast<int>(std::lround(clip[3]))
+    };
+    // One px of slack so the blur's antialiased corner sits under the client's.
+    const int radius = static_cast<int>(std::ceil(shape.value(SurfaceMotion::Property::Radius)[0])) + 1;
+    m_blur.setLiquid(m_glass.liquid);
+    m_blur.setClarity(m_glass.clarity);
+    m_blur.setRim(m_glass.rim);
+    m_blur.setLens(m_glass.lens);
+    m_blur.setBackdropSampling(m_glass.seeThrough() || (m_glass.tint[3] > 0.0F && m_glass.tint[3] < 1.0F));
+    SurfaceBlurOptions shapeOptions = options;
+    shapeOptions.enabled = true;
+    shapeOptions.ignoreAlpha = 0.0F;
+    const wlr_box& geometry = m_popup->base->geometry;
+    m_blur.update(
+        static_cast<wlr_scene_tree*>(m_popup->base->data), m_popup->base->surface,
+        wlr_box{0, 0, geometry.width, geometry.height}, geometry, corner_radii_all(radius), &box, shapeOptions
+    );
+    densityChanged(m_density.retint(m_glass));
+    return true;
+  }
+
+  int Popup::pollBackdrop() {
+    fx_backdrop_luminance sample{};
+    if (m_blur.pollBackdrop(&sample)) {
+      densityChanged(m_density.sample(m_glass, sample.darkest, sample.brightest));
+    }
+    constexpr int kBackdropRecheckMs = 16;
+    return m_blur.backdropPending() ? kBackdropRecheckMs : 0;
+  }
+
+  void Popup::densityChanged(bool glides) {
+    const DskSurfaceManager* dsk = m_server != nullptr ? m_server->dskSurfaces() : nullptr;
+    if (dsk != nullptr && m_density.measured()) {
+      dsk->sendDensity(m_popup->base->surface, m_density.target());
+    }
+    if (Output* out = parentOutput(); glides && out != nullptr) {
+      wlr_output_schedule_frame(out->wlr());
+    }
+    const auto& tint = m_glass.tint;
+    m_blur.setTintMix({tint[0], tint[1], tint[2]}, m_density.amount(tint[3], m_glass.dense));
+  }
+
+  bool Popup::tickAnimations(double nowMsec) {
+    if (!m_density.tick(nowMsec)) {
+      return false;
+    }
+    densityChanged(false);
+    return m_density.animating();
+  }
+
+  Popup::Popup(wlr_xdg_popup* popup, wlr_scene_tree* parentTree, wlr_scene_tree* captureTree, Server* server)
+      : m_popup(popup), m_server(server) {
     if (parentTree == nullptr) {
       wlr_xdg_surface* parent = wlr_xdg_surface_try_from_wlr_surface(m_popup->parent);
       assert(parent != nullptr);
@@ -49,9 +136,15 @@ namespace andromeda {
     m_destroy.notify = onDestroy;
     wl_signal_add(&m_popup->events.destroy, &m_destroy);
     livePopups().push_back(this);
+    if (m_server != nullptr) {
+      m_server->registerAnimatable(this);
+    }
   }
 
   Popup::~Popup() {
+    if (m_server != nullptr) {
+      m_server->unregisterAnimatable(this);
+    }
     std::erase(livePopups(), this);
     if (m_commit.link.next != nullptr) {
       wl_list_remove(&m_commit.link);
@@ -90,6 +183,7 @@ namespace andromeda {
   void Popup::onUnmap(wl_listener* listener, void* /*data*/) {
     Popup* self = wl_container_of(listener, self, m_unmap); // NOLINT(modernize-use-auto)
     self->m_blur.hide();
+    self->m_density.reset();
     self->m_repositions.clear();
     self->refreshWindowCapture();
   }
@@ -107,17 +201,8 @@ namespace andromeda {
   }
 
   glass::Material Popup::glassMaterial() const {
-    const glass::Material menu = configGlass(glass::Kind::Menu);
-    if (LayerSurface::fromSurface(m_popup->parent) == nullptr) {
-      return menu;
-    }
-    // Shell popups (menus, tooltips) take the one island glass with the menu blur, so the backdrop does not show
-    // through their text, and no sharp lens band, so backdrop detail does not show sharp at their edge.
-    glass::Material material = configGlass(glass::Kind::Shape);
-    material.clarity = menu.clarity;
-    material.blurStrength = menu.blurStrength;
-    material.lens = 0.0F;
-    return material;
+    return LayerSurface::fromSurface(m_popup->parent) != nullptr ? configPopoverGlass()
+                                                                 : configGlass(glass::Kind::Menu);
   }
 
   void Popup::handleCommit() {
@@ -141,11 +226,13 @@ namespace andromeda {
     } else {
       region = nullptr;
     }
-    m_blur.setMaterial(glassMaterial());
-    m_blur.update(
+    if (!updateShapeGlass(blurOptions)) {
+      m_blur.setMaterial(glassMaterial());
+      m_blur.update(
         static_cast<wlr_scene_tree*>(m_popup->base->data), surface, wlr_box{0, 0, geometry.width, geometry.height},
-        geometry, corner_radii_none(), nullptr, blurOptions, 1.0F, nullptr, region
-    );
+          geometry, corner_radii_none(), nullptr, blurOptions, 1.0F, nullptr, region
+      );
+    }
     if (!m_popup->base->initial_commit) {
       return;
     }

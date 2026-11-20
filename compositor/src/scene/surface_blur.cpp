@@ -53,6 +53,8 @@ namespace andromeda {
 
   glass::Material configGlass(glass::Kind kind, bool light) { return glass::material(kind, configGlassSettings(), light); }
 
+  glass::Material configPopoverGlass() { return glass::popover(configGlassSettings(), false); }
+
   bool configGlassLight(glass::Kind kind) {
     return glass::tone(kind, configGlassSettings().style) == glass::Tone::Scheme
         && config().appearance.scheme == ColorScheme::Light;

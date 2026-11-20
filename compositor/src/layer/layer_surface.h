@@ -8,6 +8,7 @@
 #include "config/config.h"
 #include "core/animation.h"
 #include "scene/node.h"
+#include "scene/dsk_glass.h"
 #include "scene/glass_mask.h"
 #include "scene/surface_blur.h"
 #include "scene/surface_shadow.h"
@@ -56,7 +57,8 @@ namespace andromeda {
     // a new poll (a GPU sample pending), or 0.
     int pollBackdrop();
     // Moves the density toward the tone of the last backdrop sample.
-    void updateDensity();
+    // Sends the density target to the client and draws the tint at the current density; `glides` asks for a frame.
+    void densityChanged(bool glides);
     // Sends the density to the blur nodes as a backdrop pre-mix toward the tint.
     void applyDensity();
     [[nodiscard]] SurfaceBlurOptions popupBlurOptions() const;
@@ -119,31 +121,16 @@ namespace andromeda {
     GlassMask m_glassMask;
     // Blur nodes for the 2nd and later shapes of a client blur region (bar islands in one surface).
     std::vector<SurfaceBlur> m_shapeBlurs;
-    float m_liquid = 0.0F;
-    // glass::Material::clarity: how much lighter the blur is.
-    float m_clarity = 0.0F;
-    float m_rim = 0.0F;
-    float m_lens = 0.0F;
-    // Liquid value [3]: glass::Material::dense.
-    float m_dense = 0.0F;
+    // The surface's dsk_surface_v1 glass; shapes without their own material take it.
+    DskGlass m_glass;
     float m_backdropLuminance = 0.5F; // the last probe sample, 0 to 1
-    // The darkest and brightest sample under any node: the density follows the one that most threatens the ink.
-    float m_backdropDarkest = 0.5F;
-    float m_backdropBrightest = 0.5F;
     // Per blur node (m_blur, then m_shapeBlurs): the last backdrop sample and the node's area in px; m_backdropLuminance
     // is their area-weighted mean (the shadow), so every glass shape of a surface takes one tone.
     std::vector<std::optional<fx_backdrop_luminance>> m_nodeLuminance;
     std::vector<int> m_nodeArea;
-    // dsk_surface_v1 tint (v9): the client's tint over the blur, rgba; the compositor adds the density to it.
-    std::array<float, 4> m_tint{};
     // Per blur node (m_blur, then m_shapeBlurs) material from dsk_shape_v1 (v10); empty = the surface material.
     struct ShapeMaterial {
-      float liquid = 0.0F;
-      float rim = 0.0F;
-      float lens = 0.0F;
-      float dense = 0.0F;
-      float clarity = 0.0F;
-      std::array<float, 4> tint{};
+      DskGlass glass;
       float opacity = 1.0F;
       bool solo = false;
     };
@@ -152,11 +139,8 @@ namespace andromeda {
     std::vector<float> m_shapeBlurOpacity;
     // m_blur's shape opacity when it draws shapes[0], else 1.
     float m_blurOpacity = 1.0F;
-    bool m_tintLight = false;
-    // Glass density, 0 to 1: how far the tint is raised over a same-tone backdrop. Rises only while mapped.
-    AnimatedValue m_density{0.0};
-    float m_densityTarget = 0.0F;
-    bool m_densityMeasured = false;
+    // Raises the tint over a same-tone backdrop; rises only while mapped.
+    GlassDensity m_density;
     // Surface opacity (layer fade x dsk opacity): the whole glass (tint, rim, lens) fades with its surface.
     float m_glassAlpha = 1.0F;
     float m_blurFade = 1.0F;

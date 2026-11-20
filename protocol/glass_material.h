@@ -185,6 +185,17 @@ namespace glass {
     };
   }
 
+  // Shell popovers (menus, tooltips, window previews): the island glass with the menu blur, so the backdrop does not
+  // show through their text, and no sharp lens band, so backdrop detail does not show sharp at their edge.
+  [[nodiscard]] inline Material popover(const Settings& settings, bool light) noexcept {
+    Material m = material(Kind::Shape, settings, light);
+    const Material menu = material(Kind::Menu, settings, light);
+    m.clarity = menu.clarity;
+    m.blurStrength = menu.blurStrength;
+    m.lens = 0.0F;
+    return m;
+  }
+
   // `t` of the way from a to b (a sheet that morphs from a shape).
   [[nodiscard]] inline Material mix(const Material& a, const Material& b, float t) noexcept {
     t = std::clamp(t, 0.0F, 1.0F);

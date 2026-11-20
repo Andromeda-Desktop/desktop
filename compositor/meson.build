@@ -1092,6 +1092,7 @@ core_sources = files(
   'src/layer/layer_surface.cpp',
   'src/scene/glass_mask.cpp',
   'src/scene/surface_blur.cpp',
+  'src/scene/dsk_glass.cpp',
   'src/scene/surface_shape.cpp',
   'src/scene/hint_rect.cpp',
   'src/scene/launch_feedback.cpp',

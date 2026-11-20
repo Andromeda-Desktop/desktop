@@ -1,4 +1,5 @@
 #include "output/output.h"
+#include "view/popup.h"
 
 #include "config/config.h"
 #include "config/resolve.h"
@@ -2308,6 +2309,7 @@ namespace andromeda {
     if (SnapFlyout* flyout = m_server->snapFlyout()) {
       soonest(flyout->pollBackdrop());
     }
+    soonest(Popup::pollBackdrops(this));
     if (recheckMs > 0 && m_backdropTimer != nullptr) {
       wl_event_source_timer_update(m_backdropTimer, recheckMs);
     }

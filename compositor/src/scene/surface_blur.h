@@ -34,6 +34,8 @@ namespace andromeda {
   [[nodiscard]] glass::Material configGlass(glass::Kind kind);
   // `light`: the light curve, for a surface whose glass takes the light scheme (configGlassLight).
   [[nodiscard]] glass::Material configGlass(glass::Kind kind, bool light);
+  // The material of shell popovers (glass::popover).
+  [[nodiscard]] glass::Material configPopoverGlass();
   // The glass of `kind` takes the light scheme: its tone follows the scheme (Clear glass is always dark, glass::tone).
   [[nodiscard]] bool configGlassLight(glass::Kind kind);
   // The material of app windows and their overview cards (glass::windowSettings).

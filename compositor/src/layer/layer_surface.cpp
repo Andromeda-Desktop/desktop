@@ -286,12 +286,6 @@ namespace andromeda {
       }
     }
 
-    // dsk_surface_v1 blur [0] (v15); an older client's blur gets lighter with its refraction, liquid [0].
-    float blurClarity(const DskSurfaceManager::State& state, const SurfaceMotion& motion) {
-      const auto& value = motion.value(state.version >= 15 ? SurfaceMotion::Property::Blur : SurfaceMotion::Property::Liquid);
-      return static_cast<float>(std::clamp(value[0], 0.0, 1.0));
-    }
-
     // dsk_shape_v1 opacity (v18) scales the shape's glass, fill and shadow; an older client's shape opacity is ignored.
     double shapeOpacity(const DskSurfaceManager::State& state, const SurfaceMotion& shape) {
       return state.version >= 18 ? std::clamp(shape.value(SurfaceMotion::Property::Opacity)[0], 0.0, 1.0) : 1.0;
@@ -973,39 +967,22 @@ namespace andromeda {
     }
     if (sampled && area > 0.0) {
       m_backdropLuminance = static_cast<float>(weighted / area);
-      m_backdropDarkest = darkest;
-      m_backdropBrightest = brightest;
       m_shadow.setBackdropLuminance(m_backdropLuminance);
       for (const auto& shape : m_shapeShadows) {
         shape->setBackdropLuminance(m_backdropLuminance);
       }
-      updateDensity();
+      densityChanged(m_density.sample(m_glass, darkest, brightest));
     }
     constexpr int kBackdropRecheckMs = 16;
     return pending ? kBackdropRecheckMs : 0;
   }
 
-  void LayerSurface::updateDensity() {
-    const bool light = 0.2126F * m_tint[0] + 0.7152F * m_tint[1] + 0.0722F * m_tint[2] > 0.5F;
-    const bool glassOn = m_liquid > 0.0F || m_rim > 0.0F;
-    // Text must read over the whole surface: light glass (dark ink) answers its darkest spot, dark glass its brightest.
-    const float threat = light ? m_backdropDarkest : m_backdropBrightest;
-    const float target = glassOn && m_tint[3] > 0.0F ? glass::adaptDensity(light, threat) : 0.0F;
-    // A light/dark switch takes the new target at once; within a tone, jitter inside the deadband is ignored.
-    if (light != m_tintLight || std::abs(target - m_densityTarget) > glass::kAdaptDeadband || target == 0.0F
-        || target == 1.0F) {
-      m_tintLight = light;
-      m_densityTarget = target;
+  void LayerSurface::densityChanged(bool glides) {
+    const DskSurfaceManager* dsk = m_server->dskSurfaces();
+    if (dsk != nullptr && m_density.measured()) {
+      dsk->sendDensity(m_layerSurface->surface, m_density.target());
     }
-    if (const DskSurfaceManager* dsk = m_server->dskSurfaces()) {
-      dsk->sendDensity(m_layerSurface->surface, m_densityTarget);
-    }
-    if (!m_densityMeasured) {
-      // The first sample lands 1-3 frames after map, inside the open fade: apply it at once.
-      m_densityMeasured = true;
-      m_density.snap(m_densityTarget);
-    } else if (m_density.target() != m_densityTarget) {
-      m_density.retarget(m_densityTarget, glass::kAdaptFadeMs);
+    if (glides) {
       if (Output* out = output()) {
         wlr_output_schedule_frame(out->wlr());
       }
@@ -1015,19 +992,16 @@ namespace andromeda {
 
   void LayerSurface::applyDensity() {
     // The compositor draws the client's tint over the blur, raised by the density.
-    const float t = m_tint[3];
-    const float amount =
-        t <= 0.0F ? 0.0F : glass::denser(t, static_cast<float>(m_density.current()), m_dense);
-    const std::array<float, 3> rgb{m_tint[0], m_tint[1], m_tint[2]};
+    const auto& tint = m_glass.tint;
+    const float amount = m_density.amount(tint[3], m_glass.dense);
+    const std::array<float, 3> rgb{tint[0], tint[1], tint[2]};
     m_blur.setTintMix(rgb, amount);
     for (std::size_t i = 0; i < m_shapeBlurs.size(); ++i) {
       if (i + 1 < m_shapeMaterials.size()) {
         // A shape's own tint, raised by the density the first shape measured.
-        const auto& own = m_shapeMaterials[i + 1].tint;
-        const float ownDense = m_shapeMaterials[i + 1].dense;
-        const float ownAmount = own[3] <= 0.0F
-            ? 0.0F
-            : glass::denser(own[3], static_cast<float>(m_density.current()), ownDense);
+        const auto& own = m_shapeMaterials[i + 1].glass.tint;
+        const float ownDense = m_shapeMaterials[i + 1].glass.dense;
+        const float ownAmount = m_density.amount(own[3], ownDense);
         m_shapeBlurs[i].setTintMix({own[0], own[1], own[2]}, ownAmount);
       } else {
         m_shapeBlurs[i].setTintMix(rgb, amount);
@@ -1052,33 +1026,18 @@ namespace andromeda {
     double motionScale = 1.0;
     const DskSurfaceManager* dsk = m_server->dskSurfaces();
     const DskSurfaceManager::State* state = dsk != nullptr ? dsk->state(m_layerSurface->surface) : nullptr;
-    m_liquid = state != nullptr
-        ? static_cast<float>(std::clamp(state->motion.value(SurfaceMotion::Property::Liquid)[0], 0.0, 1.0))
-        : 0.0F;
-    // Liquid value [1]: the specular rim alone, for frosted sheets of the same glass family.
-    m_rim = state != nullptr
-        ? static_cast<float>(std::clamp(state->motion.value(SurfaceMotion::Property::Liquid)[1], 0.0, 1.0))
-        : 0.0F;
-    // Liquid value [2] (v9): the lens; an older client gets it at the refraction strength.
-    m_lens = state == nullptr ? 0.0F
-        : state->version >= 9
-        ? static_cast<float>(std::clamp(state->motion.value(SurfaceMotion::Property::Liquid)[2], 0.0, 1.0))
-        : m_liquid;
-    m_dense = state != nullptr
-        ? static_cast<float>(std::clamp(state->motion.value(SurfaceMotion::Property::Liquid)[3], 0.0, 1.0))
-        : 0.0F;
-    m_clarity = state != nullptr ? blurClarity(*state, state->motion) : 0.0F;
     if (state != nullptr) {
-      const auto& tint = state->motion.value(SurfaceMotion::Property::Tint);
-      m_tint = {static_cast<float>(tint[0]), static_cast<float>(tint[1]), static_cast<float>(tint[2]),
-                static_cast<float>(std::clamp(tint[3], 0.0, 1.0))};
+      m_glass = readDskGlass(*state, state->motion);
+    } else {
+      // No dsk state: the client's last tint stays, as before its first dsk commit.
+      m_glass = DskGlass{.tint = m_glass.tint};
     }
-    m_blur.setLiquid(m_liquid);
-    m_blur.setClarity(m_clarity);
-    m_blur.setRim(m_rim);
-    m_blur.setLens(m_lens);
+    m_blur.setLiquid(m_glass.liquid);
+    m_blur.setClarity(m_glass.clarity);
+    m_blur.setRim(m_glass.rim);
+    m_blur.setLens(m_glass.lens);
     // Density follows the backdrop of any see-through glass, Frosted without an edge reflection too.
-    m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F || (m_tint[3] > 0.0F && m_tint[3] < 1.0F));
+    m_blur.setBackdropSampling(m_glass.liquid > 0.0F || m_glass.rim > 0.0F || (m_glass.tint[3] > 0.0F && m_glass.tint[3] < 1.0F));
     if (state != nullptr) {
       const auto& c = state->motion.value(SurfaceMotion::Property::Clip);
       const double scale = shownScale(state->motion, m_layerSurface->surface);
@@ -1155,16 +1114,8 @@ namespace andromeda {
           rounded.exactRadius = shape->value(SurfaceMotion::Property::Radius)[0];
         }
         shapes.push_back(rounded);
-        const auto& liquid = shape->value(SurfaceMotion::Property::Liquid);
-        const auto& tint = shape->value(SurfaceMotion::Property::Tint);
         m_shapeMaterials.push_back(ShapeMaterial{
-            .liquid = static_cast<float>(std::clamp(liquid[0], 0.0, 1.0)),
-            .rim = static_cast<float>(std::clamp(liquid[1], 0.0, 1.0)),
-            .lens = static_cast<float>(std::clamp(liquid[2], 0.0, 1.0)),
-            .dense = static_cast<float>(std::clamp(liquid[3], 0.0, 1.0)),
-            .clarity = blurClarity(*state, *shape),
-            .tint = {static_cast<float>(tint[0]), static_cast<float>(tint[1]), static_cast<float>(tint[2]),
-                     static_cast<float>(std::clamp(tint[3], 0.0, 1.0))},
+            .glass = readDskGlass(*state, *shape),
             .opacity = static_cast<float>(shapeOpacity(*state, *shape)),
             .solo = shape->value(SurfaceMotion::Property::Solo)[0] >= 0.5,
         });
@@ -1199,8 +1150,7 @@ namespace andromeda {
       const auto same = [this](std::size_t a, std::size_t b) {
         const ShapeMaterial& x = m_shapeMaterials[a];
         const ShapeMaterial& y = m_shapeMaterials[b];
-        return x.liquid > 0.0F && !x.solo && !y.solo && x.liquid == y.liquid && x.rim == y.rim && x.lens == y.lens
-            && x.dense == y.dense && x.clarity == y.clarity && x.tint == y.tint;
+        return x.glass.liquid > 0.0F && !x.solo && !y.solo && x.glass == y.glass;
       };
       groupMergedShapes(shapes, shapeClips, motionScale, mergeReach, same, merges, mergedAway);
       for (std::size_t i = 0; i < shapes.size(); ++i) {
@@ -1224,17 +1174,12 @@ namespace andromeda {
       options.enabled = true;
       options.ignoreAlpha = 0.0F;
       const ShapeMaterial& first = m_shapeMaterials.front();
-      m_liquid = first.liquid;
-      m_rim = first.rim;
-      m_lens = first.lens;
-      m_dense = first.dense;
-      m_clarity = first.clarity;
-      m_tint = first.tint;
-      m_blur.setLiquid(m_liquid);
-      m_blur.setClarity(m_clarity);
-      m_blur.setRim(m_rim);
-      m_blur.setLens(m_lens);
-      m_blur.setBackdropSampling(m_liquid > 0.0F || m_rim > 0.0F || (m_tint[3] > 0.0F && m_tint[3] < 1.0F));
+      m_glass = first.glass;
+      m_blur.setLiquid(m_glass.liquid);
+      m_blur.setClarity(m_glass.clarity);
+      m_blur.setRim(m_glass.rim);
+      m_blur.setLens(m_glass.lens);
+      m_blur.setBackdropSampling(m_glass.liquid > 0.0F || m_glass.rim > 0.0F || (m_glass.tint[3] > 0.0F && m_glass.tint[3] < 1.0F));
     } else if (region != nullptr && m_rule.blur.value_or(true) && dskClip && dskClipRounded && pixman_region32_not_empty(region)) {
       // The clip and its corner radius are the exact shape; a client region is a pixel staircase that shows past the
       // anti-aliased corner.
@@ -1345,9 +1290,9 @@ namespace andromeda {
         continue;
       }
       const ShapeMaterial* material = shape < m_shapeMaterials.size() ? &m_shapeMaterials[shape] : nullptr;
-      const float liquid = material != nullptr ? material->liquid : m_liquid;
-      const float rim = material != nullptr ? material->rim : m_rim;
-      const float tintAlpha = material != nullptr ? material->tint[3] : m_tint[3];
+      const float liquid = material != nullptr ? material->glass.liquid : m_glass.liquid;
+      const float rim = material != nullptr ? material->glass.rim : m_glass.rim;
+      const float tintAlpha = material != nullptr ? material->glass.tint[3] : m_glass.tint[3];
       const bool sampling = liquid > 0.0F || rim > 0.0F || (tintAlpha > 0.0F && tintAlpha < 1.0F);
       blur.setBackdropSampling(sampling);
       m_nodeArea[i + 1] = sampling ? shapeClips[shape].width * shapeClips[shape].height : 0;
@@ -1357,10 +1302,10 @@ namespace andromeda {
       const bool merged = shape < merges.size() && merges[shape].size() >= 2;
       blur.setMerge(merged ? merges[shape] : std::vector<SurfaceBlur::MergedShape>{}, mergeReach);
       const bool own = shape < m_shapeMaterials.size();
-      blur.setLiquid(own ? m_shapeMaterials[shape].liquid : m_liquid);
-      blur.setClarity(own ? m_shapeMaterials[shape].clarity : m_clarity);
-      blur.setRim(own ? m_shapeMaterials[shape].rim : m_rim);
-      blur.setLens(own ? m_shapeMaterials[shape].lens : m_lens);
+      blur.setLiquid(own ? m_shapeMaterials[shape].glass.liquid : m_glass.liquid);
+      blur.setClarity(own ? m_shapeMaterials[shape].glass.clarity : m_glass.clarity);
+      blur.setRim(own ? m_shapeMaterials[shape].glass.rim : m_glass.rim);
+      blur.setLens(own ? m_shapeMaterials[shape].glass.lens : m_glass.lens);
       blur.setFade(m_blurFade);
       m_shapeBlurOpacity[i] = own ? m_shapeMaterials[shape].opacity : 1.0F;
       blur.setAlpha(m_glassAlpha * m_shapeBlurOpacity[i]);
@@ -1384,11 +1329,7 @@ namespace andromeda {
       below = node;
     }
     // A tint change can switch the tint's tone, which changes the density target; before the first sample there is none.
-    if (m_densityMeasured) {
-      updateDensity();
-    } else {
-      applyDensity();
-    }
+    densityChanged(m_density.retint(m_glass));
   }
 
   void LayerSurface::applyConfig() {
@@ -1489,9 +1430,7 @@ namespace andromeda {
     for (SurfaceBlur& blur : m_shapeBlurs) {
       blur.hide();
     }
-    m_densityMeasured = false;
-    m_densityTarget = 0.0F;
-    m_density.snap(0.0);
+    m_density.reset();
     m_fade.snap(1.0);
     if (Output* out = output()) {
       out->markDirty(Dirty::LayerArrange);
@@ -1642,7 +1581,7 @@ namespace andromeda {
     auto* popup = static_cast<wlr_xdg_popup*>(data);
     // The popup tree shares the surface origin and stacks above its shell layer's regular surfaces.
     wlr_scene_node_raise_to_top(&m_popupTree->node);
-    new Popup(popup, m_popupTree);
+    new Popup(popup, m_popupTree, nullptr, m_server);
   }
 
 } // namespace andromeda
