@@ -244,7 +244,7 @@ def emit_kotlin(tokens, out_path):
             if is_struct_group(value):
                 name = pascal((key,)) + "Token"
                 fields = next(iter(value.values()))
-                out += [f"{ind}@Immutable", f"{ind}class {name}("]
+                out += [f"{ind}@Immutable", f"{ind}data class {name}("]
                 out += [f"{ind}    val {camel((k,))}: {kotlin_value(sub + (k,), v)[0]}," for k, v in fields.items()]
                 out += [f"{ind})", "", f"{ind}object {pascal((key,))} {{"]
                 for child, values in value.items():
