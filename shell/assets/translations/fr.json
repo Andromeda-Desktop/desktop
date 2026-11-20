@@ -1471,11 +1471,6 @@
           "attached": "Attaché",
           "floating": "Flottant"
         },
-        "panel-transparency": {
-          "glass": "Verre",
-          "soft": "Doux",
-          "solid": "Opaque"
-        },
         "password-style": {
           "filled-circles": "Cercles pleins",
           "random-icons": "Icônes aléatoires"
@@ -2475,10 +2470,6 @@
         },
         "shadow": {
           "description": "Projette l’ombre globale des surfaces depuis les panneaux"
-        },
-        "transparency-mode": {
-          "description": "Style d'effet de verre du panel, incluant l'opacité du panel flottant et des cards",
-          "label": "Transparence"
         },
         "wallpaper-show-names": {
           "description": "Légende chaque vignette de fond d'écran avec son nom de fichier dans le sélecteur de fond d'écran",

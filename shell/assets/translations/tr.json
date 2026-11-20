@@ -1411,11 +1411,6 @@
           "attached": "Bitişik",
           "floating": "Yüzen"
         },
-        "panel-transparency": {
-          "glass": "Cam",
-          "soft": "Yumuşak",
-          "solid": "Mat"
-        },
         "password-style": {
           "filled-circles": "Dolu Daireler",
           "random-icons": "Rastgele Simgeler"
@@ -2494,10 +2489,6 @@
         },
         "shadow": {
           "description": "Genel yüzey gölgesini panel yüzeylerinden düşür"
-        },
-        "transparency-mode": {
-          "description": "Yüzen panel şeffaflığı ve kart saydamlığı da dahil olmak üzere panel camı stili",
-          "label": "Şeffaflık"
         }
       },
       "power": {

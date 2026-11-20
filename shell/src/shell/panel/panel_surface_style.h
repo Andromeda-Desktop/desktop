@@ -43,11 +43,8 @@ namespace shell::panel_surface {
     return std::max(0.1F, configService->config().accessibility.uiScale);
   }
 
-  [[nodiscard]] inline float backgroundOpacity(const ConfigService* configService) noexcept {
-    const auto mode =
-        configService != nullptr ? configService->config().shell.panel.transparencyMode : PanelTransparencyMode::Solid;
-    return Style::glassTint(glass::Kind::Shape, detachedPanelBackgroundOpacityForTransparencyMode(mode));
-  }
+  // The one island glass tint (rulebook: every shell surface uses the island glass).
+  [[nodiscard]] inline float backgroundOpacity() noexcept { return Style::glassMaterial(glass::Kind::Shape).tint; }
 
   [[nodiscard]] inline ColorSpec
   borderColor(const ConfigService* configService, float panelBackgroundOpacity) noexcept {

@@ -1625,11 +1625,6 @@
           "attached": "Прымацавана",
           "floating": "Нефіксаваная"
         },
-        "panel-transparency": {
-          "glass": "Шкляная",
-          "soft": "Мяккая",
-          "solid": "Цвёрдая"
-        },
         "password-style": {
           "filled-circles": "Запоўненыя кругі",
           "random-icons": "Выпадковыя значкі"
@@ -2626,9 +2621,6 @@
         },
         "position-wallpaper": {
           "label": "Пазіцыя"
-        },
-        "transparency-mode": {
-          "label": "Празрыстасць"
         }
       },
       "power": {

@@ -1168,11 +1168,6 @@
           "attached": "Vastgemaakt",
           "floating": "Zwevend"
         },
-        "panel-transparency": {
-          "glass": "Glas",
-          "soft": "Zacht",
-          "solid": "Effen"
-        },
         "password-style": {
           "filled-circles": "Ingevulde cirkels",
           "random-icons": "Willekeurige iconen"
@@ -1899,10 +1894,6 @@
         },
         "shadow": {
           "description": "Werp de wereldwijde oppervlakteschaduw vanaf paneeloppervlakken"
-        },
-        "transparency-mode": {
-          "description": "Glansstijl van het paneel, inclusief transparantie van zwevende/gecentreerde panelen en kaarttransparantie",
-          "label": "Transparantie"
         }
       },
       "power": {

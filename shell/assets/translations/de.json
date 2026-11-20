@@ -1422,11 +1422,6 @@
           "attached": "Angedockt",
           "floating": "Schwebend"
         },
-        "panel-transparency": {
-          "glass": "Glas",
-          "soft": "Matt",
-          "solid": "Opak"
-        },
         "password-style": {
           "filled-circles": "Gefüllte Kreise",
           "random-icons": "Zufällige Symbole"
@@ -2505,10 +2500,6 @@
         },
         "shadow": {
           "description": "Aktiviere den globalen Oberflächenschatten für Panel-Oberflächen"
-        },
-        "transparency-mode": {
-          "description": "Panel-Glasstil, einschließlich Deckkraft schwebender Panels und Kartentransluzenz",
-          "label": "Transparenz"
         }
       },
       "power": {

@@ -2492,10 +2492,15 @@
       "style-voice": "Voice",
       "style-game": "Game",
       "style-dynamic": "Dynamic",
+      "tone": "Tone",
+      "tone-warm": "Warm",
+      "tone-balanced": "Balanced",
+      "tone-detailed": "Detailed",
       "fine-tune": "Fine Tune",
       "fine-tune-value": "Bass {bass} · Loudness {loudness} dB",
       "bass": "Bass",
       "loudness": "Loudness",
+      "width": "Width",
       "windows-tuning": "Windows Speaker Tuning",
       "windows-found": "Windows may have a tuning made for these speakers",
       "windows-reading": "Reading the Windows partition…",
@@ -3116,11 +3121,6 @@
         "panel-placement": {
           "attached": "Attached",
           "floating": "Floating"
-        },
-        "panel-transparency": {
-          "glass": "Glass",
-          "soft": "Soft",
-          "solid": "Solid"
         },
         "password-style": {
           "filled-circles": "Filled Circles",
@@ -4495,10 +4495,6 @@
         },
         "shadow": {
           "description": "Cast the global surface shadow from panel surfaces"
-        },
-        "transparency-mode": {
-          "description": "Panel glass style, including floating panel opacity and card translucency",
-          "label": "Panel Transparency"
         },
         "wallpaper-show-names": {
           "description": "Caption each thumbnail with its file name in the wallpaper picker.",

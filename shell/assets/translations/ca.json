@@ -1386,11 +1386,6 @@
           "attached": "Adjunt",
           "floating": "Flotant"
         },
-        "panel-transparency": {
-          "glass": "Vidre",
-          "soft": "Suau",
-          "solid": "Sòlid"
-        },
         "password-style": {
           "filled-circles": "Cercles plens",
           "random-icons": "Icones aleatòries"
@@ -2465,10 +2460,6 @@
         },
         "shadow": {
           "description": "Projecta l'ombra global de la superfície des de les superfícies dels panells"
-        },
-        "transparency-mode": {
-          "description": "Estil de vidre del panell, incloent l'opacitat del panell flotant i la translucidesa de les targetes",
-          "label": "Transparència"
         }
       },
       "power": {

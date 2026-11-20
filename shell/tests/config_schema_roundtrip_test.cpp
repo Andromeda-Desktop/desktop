@@ -527,7 +527,6 @@ location = "https://example.invalid/bad"
     c.shell.avatarPath = "/home/u/face.png";
     c.shell.settingsWindowTranslucent = true;
     c.shell.shadow.direction = ShadowDirection::UpLeft;
-    c.shell.panel.transparencyMode = PanelTransparencyMode::Glass;
     c.shell.panel.floatingLayer = "top";
     c.shell.panel.launcherPlacement = PanelPlacement::Floating;
     c.shell.launcher.layout = ShellConfig::LauncherLayout::Simple;

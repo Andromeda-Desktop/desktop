@@ -1542,11 +1542,6 @@
           "attached": "Anclado",
           "floating": "Flotante"
         },
-        "panel-transparency": {
-          "glass": "Cristal",
-          "soft": "Suave",
-          "solid": "Sólido"
-        },
         "password-style": {
           "filled-circles": "Círculos rellenos",
           "random-icons": "Iconos aleatorios"
@@ -2699,10 +2694,6 @@
         },
         "shadow": {
           "description": "Proyectar la sombra global de superficie desde las superficies de los paneles"
-        },
-        "transparency-mode": {
-          "description": "Estilo de cristal del panel, incluida la opacidad del panel flotante y la translucidez de las tarjetas",
-          "label": "Transparencia"
         },
         "wallpaper-show-names": {
           "description": "En el selector de fondos de pantalla, añade el nombre del archivo a cada miniatura.",

@@ -1643,11 +1643,6 @@
           "attached": "Atașat",
           "floating": "Flotant"
         },
-        "panel-transparency": {
-          "glass": "Sticlă",
-          "soft": "Fin",
-          "solid": "Solid"
-        },
         "password-style": {
           "filled-circles": "Cercuri pline",
           "random-icons": "Pictograme aleatorii"
@@ -2914,10 +2909,6 @@
         },
         "shadow": {
           "description": "Aruncă umbra globală a suprafețelor din suprafețele panourilor"
-        },
-        "transparency-mode": {
-          "description": "Stilul de sticlă al panourilor, inclusiv opacitatea panourilor flotante și transparența cardurilor",
-          "label": "Transparență"
         },
         "wallpaper-show-names": {
           "description": "Adaugă numele fișierului ca legendă sub fiecare miniatură în selectorul de fundal.",

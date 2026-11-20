@@ -2171,17 +2171,7 @@ namespace noctalia::config::schema {
       static const Schema<ShellConfig::PanelConfig> s = {
           retiredField<ShellConfig::PanelConfig>("session_placement"),
           retiredField<ShellConfig::PanelConfig>("session_position"),
-          enumField(
-              &ShellConfig::PanelConfig::transparencyMode, "transparency_mode", kPanelTransparencyModes,
-              RowSpec{
-                  .kind = RowSpec::Kind::Select,
-                  .section = "appearance",
-                  .group = "glass",
-                  .label = "panels.transparency-mode",
-                  .tags = "glass alpha transparency translucent opacity cards blur",
-                  .segmented = true,
-              }
-          ),
+          retiredField<ShellConfig::PanelConfig>("transparency_mode"),
           field(
               &ShellConfig::PanelConfig::borders, "borders",
               RowSpec{.section = "panels", .group = "panel-look", .tags = "outline border shell edge"}

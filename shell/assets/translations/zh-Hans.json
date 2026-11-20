@@ -1639,11 +1639,6 @@
           "attached": "吸附",
           "floating": "悬浮"
         },
-        "panel-transparency": {
-          "glass": "毛玻璃",
-          "soft": "柔和",
-          "solid": "纯色"
-        },
         "password-style": {
           "filled-circles": "实心圆点",
           "random-icons": "随机图案"
@@ -2906,10 +2901,6 @@
         },
         "shadow": {
           "description": "为面板表面投射全局表面阴影"
-        },
-        "transparency-mode": {
-          "description": "面板透明效果，包括悬浮面板的不透明度和卡片的半透明效果",
-          "label": "透明效果"
         },
         "wallpaper-show-names": {
           "description": "在壁纸选择器中为每个缩略图标注文件名",

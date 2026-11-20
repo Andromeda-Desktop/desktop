@@ -315,7 +315,6 @@ shell.panel.open_near_click_wallpaper
 shell.panel.polkit_placement
 shell.panel.polkit_position
 shell.panel.shadow
-shell.panel.transparency_mode
 shell.panel.wallpaper_placement
 shell.panel.wallpaper_position
 shell.panel.wallpaper_show_names

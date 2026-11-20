@@ -1609,11 +1609,6 @@
           "attached": "Gắn vào",
           "floating": "Nổi"
         },
-        "panel-transparency": {
-          "glass": "Kính",
-          "soft": "Dịu",
-          "solid": "Đặc"
-        },
         "password-style": {
           "filled-circles": "Hình tròn đặc",
           "random-icons": "Biểu tượng ngẫu nhiên"
@@ -2648,10 +2643,6 @@
         },
         "shadow": {
           "description": "Đổ bóng bề mặt toàn cục từ các bề mặt bảng điều khiển"
-        },
-        "transparency-mode": {
-          "description": "Kiểu kính của Bảng, bao gồm độ mờ của bảng nổi/ở giữa và độ trong mờ của thẻ",
-          "label": "Trong suốt"
         }
       },
       "power": {

@@ -1619,11 +1619,6 @@
           "attached": "Attaccato",
           "floating": "Flottante"
         },
-        "panel-transparency": {
-          "glass": "Vetro",
-          "soft": "Morbida",
-          "solid": "Solida"
-        },
         "password-style": {
           "filled-circles": "Cerchi pieni",
           "random-icons": "Icone casuali"
@@ -2870,10 +2865,6 @@
         },
         "shadow": {
           "description": "Proietta l'ombra globale della superficie dalle superfici pannello"
-        },
-        "transparency-mode": {
-          "description": "Stile vetro del pannello, incluse opacità dei pannelli flottanti e traslucenza delle schede",
-          "label": "Trasparenza"
         },
         "wallpaper-show-names": {
           "description": "Aggiungi a ciascuna miniatura la didascalia con il nome del file nello strumento di selezione dello sfondo.",

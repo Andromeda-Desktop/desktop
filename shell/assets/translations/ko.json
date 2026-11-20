@@ -1456,11 +1456,6 @@
           "attached": "연결됨",
           "floating": "플로팅"
         },
-        "panel-transparency": {
-          "glass": "유리",
-          "soft": "부드럽게",
-          "solid": "불투명"
-        },
         "password-style": {
           "filled-circles": "채워진 원",
           "random-icons": "무작위 아이콘"
@@ -2534,10 +2529,6 @@
         },
         "shadow": {
           "description": "패널 표면에서 전역 표면 그림자를 드리웁니다"
-        },
-        "transparency-mode": {
-          "description": "플로팅 패널 불투명도 및 카드 반투명도를 포함한 패널 유리 스타일",
-          "label": "투명도"
         }
       },
       "power": {

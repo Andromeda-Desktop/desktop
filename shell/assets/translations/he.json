@@ -1410,11 +1410,6 @@
           "attached": "צמוד",
           "floating": "צף"
         },
-        "panel-transparency": {
-          "glass": "זכוכית",
-          "soft": "רך",
-          "solid": "אחיד"
-        },
         "password-style": {
           "filled-circles": "עיגולים מלאים",
           "random-icons": "סמלים אקראיים"
@@ -2493,10 +2488,6 @@
         },
         "shadow": {
           "description": "הטל צל משטח גלובלי ממשטחי לוח"
-        },
-        "transparency-mode": {
-          "description": "סגנון זכוכית של חלונית, כולל אטימות חלונית צפה ושקיפות כרטיס",
-          "label": "שקיפות"
         }
       },
       "power": {

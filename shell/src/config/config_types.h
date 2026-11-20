@@ -995,20 +995,6 @@ constexpr EnumOption<ShadowDirection> kShadowDirections[] = {
     {ShadowDirection::UpRight, "up_right", "settings.options.shell.shadow-direction.up-right"},
 };
 
-enum class PanelTransparencyMode : std::uint8_t {
-  Solid = 0,
-  Soft = 1,
-  Glass = 2,
-};
-
-constexpr EnumOption<PanelTransparencyMode> kPanelTransparencyModes[] = {
-    {PanelTransparencyMode::Solid, "solid", "settings.options.shell.panel-transparency.solid"},
-    {PanelTransparencyMode::Soft, "soft", "settings.options.shell.panel-transparency.soft"},
-    {PanelTransparencyMode::Glass, "glass", "settings.options.shell.panel-transparency.glass"},
-};
-
-[[nodiscard]] float detachedPanelBackgroundOpacityForTransparencyMode(PanelTransparencyMode mode) noexcept;
-
 enum class PanelPlacement : std::uint8_t {
   Attached = 0,
   Floating = 1,
@@ -1138,7 +1124,6 @@ struct ShellConfig {
   using ShadowConfig = ShadowStyle;
 
   struct PanelConfig {
-    PanelTransparencyMode transparencyMode = PanelTransparencyMode::Glass;
     bool borders = true; // outline on floating panel surfaces
     ColorSpec borderColor = colorSpecFromRole(ColorRole::Stroke);
     float borderWidth = Style::borderWidth;

@@ -1643,11 +1643,6 @@
           "attached": "Acoplado",
           "floating": "Flutuante"
         },
-        "panel-transparency": {
-          "glass": "Vidro",
-          "soft": "Leve",
-          "solid": "Sólido"
-        },
         "password-style": {
           "filled-circles": "Círculos Preenchidos",
           "random-icons": "Ícones Aleatórios"
@@ -2914,10 +2909,6 @@
         },
         "shadow": {
           "description": "Faz as superfícies dos painéis projetarem a sombra global da superfície"
-        },
-        "transparency-mode": {
-          "description": "Estilo vidro dos painéis, incluindo a opacidade dos painéis flutuantes e a translucência dos cards",
-          "label": "Transparência"
         },
         "wallpaper-show-names": {
           "description": "Legende cada miniatura com o nome do arquivo no seletor de papéis de parede.",

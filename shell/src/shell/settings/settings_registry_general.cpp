@@ -470,7 +470,6 @@ namespace settings {
     panelRows =
         generateSchemaEntries(noctalia::config::schema::panelSchema(), cfg.shell.panel, {"shell", "panel"});
     appendRow(entries, panelRows, "floating_layer");
-    appendRow(entries, panelRows, "transparency_mode");
     appendRow(entries, panelRows, "borders");
     appendRow(entries, panelRows, "border_color");
     appendRow(entries, panelRows, "border_width");

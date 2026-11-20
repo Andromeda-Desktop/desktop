@@ -1430,11 +1430,6 @@
           "attached": "ملتصق",
           "floating": "عائم"
         },
-        "panel-transparency": {
-          "glass": "زجاجي",
-          "soft": "ناعم",
-          "solid": "صلب"
-        },
         "password-style": {
           "filled-circles": "دوائر ممتلئة",
           "random-icons": "رموز عشوائية"
@@ -2525,10 +2520,6 @@
         },
         "shadow": {
           "description": "إسقاط ظل السطح العام من أسطح اللوحة"
-        },
-        "transparency-mode": {
-          "description": "نمط الزجاج للوحات، شاملاً الشفافية والوضوح",
-          "label": "الشفافية"
         }
       },
       "power": {

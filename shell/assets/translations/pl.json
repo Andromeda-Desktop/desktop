@@ -1147,11 +1147,6 @@
           "attached": "Przyłączone",
           "floating": "Pływające"
         },
-        "panel-transparency": {
-          "glass": "Szklane",
-          "soft": "Miękkie",
-          "solid": "Lite"
-        },
         "password-style": {
           "filled-circles": "Wypełnione kółka",
           "random-icons": "Losowe ikony"
@@ -1849,10 +1844,6 @@
         },
         "shadow": {
           "description": "Rzuć globalny cień powierzchni z powierzchni paneli"
-        },
-        "transparency-mode": {
-          "description": "Styl szkła panelu, uwzględniający krycie panelu pływającego i przezroczystość karty",
-          "label": "Przezroczystość"
         }
       },
       "power": {

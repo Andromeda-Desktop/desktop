@@ -340,7 +340,7 @@ void PersistentPanelHost::buildScene(Instance& instance, std::uint32_t width, st
     instance.shadowNode->setVisible(m_config->config().shell.panel.shadow);
   }
 
-  const float backgroundOpacity = shell::panel_surface::backgroundOpacity(m_config);
+  const float backgroundOpacity = shell::panel_surface::backgroundOpacity();
   if (hasDecoration) {
     auto bg = ui::box({});
     bg->setPanelStyle(m_config->config().shell.panel.borders);
@@ -431,7 +431,7 @@ void PersistentPanelHost::layoutScene(Instance& instance, std::uint32_t width, s
       const float radius = Style::scaledRadiusXl(instance.panel->contentScale());
       instance.shadowNode->setStyle(
           ui::surface_shadow::style(
-              shadowConfig, shell::panel_surface::backgroundOpacity(m_config),
+              shadowConfig, shell::panel_surface::backgroundOpacity(),
               ui::surface_shadow::Shape{.radius = Radii{radius, radius, radius, radius}}
           )
       );
@@ -622,7 +622,7 @@ void PersistentPanelHost::onConfigReloaded() {
     if (instance->panel == nullptr) {
       continue;
     }
-    const float backgroundOpacity = shell::panel_surface::backgroundOpacity(m_config);
+    const float backgroundOpacity = shell::panel_surface::backgroundOpacity();
     instance->panel->setContentScale(shell::panel_surface::contentScale(m_config));
     instance->panel->setPanelCardOpacity(shell::panel_surface::cardOpacity(m_config, backgroundOpacity));
     if (instance->bgNode != nullptr) {

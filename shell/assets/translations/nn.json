@@ -1406,11 +1406,6 @@
           "attached": "Bunden",
           "floating": "Svivande"
         },
-        "panel-transparency": {
-          "glass": "Glas",
-          "soft": "Mjuk",
-          "solid": "Hard"
-        },
         "password-style": {
           "filled-circles": "Fylte ringar",
           "random-icons": "Vilkårlege merke"
@@ -2477,10 +2472,6 @@
         },
         "shadow": {
           "description": "Kasta den ålmenne flateskuggen frå fjøleflater"
-        },
-        "transparency-mode": {
-          "description": "Glasstil på fjøler, medrekna uklårleik for flytande fjøler og kortklårleik",
-          "label": "Klårleik"
         }
       },
       "power": {

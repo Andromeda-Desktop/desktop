@@ -2576,7 +2576,7 @@ float PanelManager::panelRadius() const {
 }
 
 float PanelManager::detachedBackgroundOpacity() const {
-  return m_islandBackgroundOpacity.value_or(shell::panel_surface::backgroundOpacity(m_config));
+  return m_islandBackgroundOpacity.value_or(shell::panel_surface::backgroundOpacity());
 }
 
 void PanelManager::sendSheetStroke() {

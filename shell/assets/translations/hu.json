@@ -1370,11 +1370,6 @@
           "attached": "Rögzített",
           "floating": "Lebegő"
         },
-        "panel-transparency": {
-          "glass": "Üveg",
-          "soft": "Lágy",
-          "solid": "Egyszínű"
-        },
         "password-style": {
           "filled-circles": "Kitöltött körök",
           "random-icons": "Véletlenszerű ikonok"
@@ -2388,10 +2383,6 @@
         },
         "shadow": {
           "description": "Vetítsd a globális felületi árnyékot a Panel felületeiről"
-        },
-        "transparency-mode": {
-          "description": "A panel üvegstílusa, beleértve a lebegő panel átlátszatlanságát és a kártya áttetszőségét",
-          "label": "Átlátszóság"
         }
       },
       "power": {

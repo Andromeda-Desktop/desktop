@@ -1281,11 +1281,6 @@
           "attached": "Anexado",
           "floating": "Flotante"
         },
-        "panel-transparency": {
-          "glass": "Vidro",
-          "soft": "Suave",
-          "solid": "Sólida"
-        },
         "password-style": {
           "filled-circles": "Círculos recheos",
           "random-icons": "Iconas aleatorias"
@@ -2192,10 +2187,6 @@
         },
         "shadow": {
           "description": "Proxecta a sombra global da superficie desde as superficies dos paneis"
-        },
-        "transparency-mode": {
-          "description": "Estilo de vidro do panel, incluída a opacidade dos paneis flotantes e a translucidez das tarxetas",
-          "label": "Transparencia"
         }
       },
       "power": {

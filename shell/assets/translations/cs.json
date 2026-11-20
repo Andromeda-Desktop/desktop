@@ -1226,11 +1226,6 @@
           "attached": "Připojeno",
           "floating": "Plovoucí"
         },
-        "panel-transparency": {
-          "glass": "Sklo",
-          "soft": "Jemné",
-          "solid": "Plné"
-        },
         "password-style": {
           "filled-circles": "Vyplněné kruhy",
           "random-icons": "Náhodné ikony"
@@ -2098,10 +2093,6 @@
         },
         "shadow": {
           "description": "Vrhat globální stín povrchu z povrchů panelů"
-        },
-        "transparency-mode": {
-          "description": "Styl skla panelu, včetně průhlednosti plovoucího panelu a průsvitnosti karet",
-          "label": "Průhlednost"
         }
       },
       "power": {

@@ -2383,9 +2383,6 @@
         },
         "shadow": {
           "description": "パネルから全体のサーフェスシャドウを表示"
-        },
-        "transparency-mode": {
-          "description": "浮動パネルの不透明度やカードの半透明を含む、パネルのガラス風表示"
         }
       },
       "power": {
