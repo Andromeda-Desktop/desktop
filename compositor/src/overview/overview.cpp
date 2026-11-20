@@ -587,16 +587,20 @@ namespace andromeda {
     if (config().appearance.reduceMotion) {
       zoom = spread = travel;
     } else if (!spreads) {
-      // The zoom is the whole motion, so it takes the whole spring: a phase of it would stop dead within ~5 frames.
-      zoom = std::clamp(p, 0.0, 1.0);
+      // The zoom is the whole motion, so it takes the whole spring, overshoot included: a phase of it would stop dead
+      // within ~5 frames. Below 0 windows would grow past their desktop size.
+      zoom = std::max(p, 0.0);
       spread = zoom;
     } else {
-      // Each phase eases at its ends, so no element changes speed in one frame where the phases meet.
+      // The phases ease where they meet, so no element changes speed in one frame there. The spread ends at the
+      // spring's own speed (slope k = 1 - spreadFrom in t is 1 in p) and goes on linearly, so the windows take the
+      // spring's arrival and overshoot unscaled: a cubic with f(0) = f'(0) = 0, f(1) = 1, f'(1) = k.
       const double z = std::clamp(p / Tokens::motionOverviewZoomEnd, 0.0, 1.0);
       const double spreadFrom = Tokens::motionOverviewSpreadStart;
-      const double t = std::clamp((p - spreadFrom) / (1.0 - spreadFrom), 0.0, 1.0);
+      const double k = 1.0 - spreadFrom;
+      const double t = std::max((p - spreadFrom) / k, 0.0);
       zoom = z * (2.0 - z);
-      spread = t * t * (3.0 - 2.0 * t);
+      spread = t < 1.0 ? t * t * ((3.0 - k) + (k - 2.0) * t) : 1.0 + k * (t - 1.0);
     }
     const WorkspaceGroup* group = state.output->workspaceGroup();
 
@@ -743,7 +747,7 @@ namespace andromeda {
         const auto channel = [value](int shift) { return static_cast<float>((value >> shift) & 0xFFU) / 255.0F; };
         return std::array<float, 4>{channel(24), channel(16), channel(8), channel(0)};
       };
-      const float fade = static_cast<float>(m_progress);
+      const float fade = static_cast<float>(std::clamp(m_progress, 0.0, 1.0));
       if (state.frameShadow != nullptr) {
         // E2 (0 6 16): the nearest elevation to the mockup's 0 8 24 .28; the hole keeps it out of the translucent frame.
         const auto& e2 = Tokens::elevationE2;
