@@ -1584,8 +1584,8 @@ namespace andromeda {
 
   bool Server::start(const char* startupCmd) {
     warmTextRendering();
-    if (!fx_renderer_warm_glass(m_renderer)) {
-      kLog.warn("could not link the glass shaders at startup; they link on first draw");
+    if (!fx_renderer_warm_programs(m_renderer)) {
+      kLog.warn("could not link the glass and texture shaders at startup; they link on first draw");
     }
     m_lockFileManaged = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     if (m_lockFileManaged) {

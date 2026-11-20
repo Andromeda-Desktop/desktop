@@ -871,7 +871,7 @@ error:
   return NULL;
 }
 
-bool fx_renderer_warm_glass(struct wlr_renderer* wlr_renderer) {
+bool fx_renderer_warm_programs(struct wlr_renderer* wlr_renderer) {
   if (!wlr_renderer_is_fx(wlr_renderer) || !fx_renderer_context_home(wlr_renderer)) {
     return false;
   }
@@ -889,6 +889,19 @@ bool fx_renderer_warm_glass(struct wlr_renderer* wlr_renderer) {
   };
   for (size_t i = 0; i < sizeof(glass) / sizeof(glass[0]); ++i) {
     ok = ensure_blur2_composite_program(glass[i]) && ok;
+  }
+  struct tex_shader* tex[] = {
+      &renderer->shaders.tex_rgba,
+      &renderer->shaders.tex_rgbx,
+      &renderer->shaders.tex_effects_rgba,
+      &renderer->shaders.tex_effects_rgbx,
+      &renderer->shaders.tex_clamp_rgba,
+      &renderer->shaders.tex_clamp_rgbx,
+      &renderer->shaders.tex_clamp_effects_rgba,
+      &renderer->shaders.tex_clamp_effects_rgbx,
+  };
+  for (size_t i = 0; i < sizeof(tex) / sizeof(tex[0]); ++i) {
+    ok = ensure_tex_program(tex[i]) && ok;
   }
   wlr_egl_restore_context(&previous);
   return ok;
