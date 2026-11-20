@@ -783,6 +783,7 @@ avatar = 64.0
 row_avatar = 56.0
 row_selected = 0.12
 row_dim = 0.6
+idle_warning_dim = 0.6  # idle warning: the black overlay alpha the screen dims to before the idle action
 
 [component.link]  # Link desktop app (design-link handoff.yaml)
 thread_list = 320.0  # Messages: the thread list card; the conversation card takes the rest

@@ -3,6 +3,7 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/ui_phase.h"
+#include "design_tokens.h"
 #include "render/render_context.h"
 #include "render/scene/node.h"
 #include "ui/builders.h"
@@ -247,9 +248,9 @@ void IdleGraceOverlay::startFadeIn(Instance& inst, std::chrono::milliseconds fad
   const auto durationMs = static_cast<float>(fadeIn.count());
   Instance* instPtr = &inst;
   Box* dimPtr = inst.dim;
-  // Timer: the fade spans the configured idle grace period.
+  // Timer: the dim spans the idle grace period and stops short of black, so the screen stays readable as a warning.
   inst.fadeAnimId = inst.animations.animateTimer(
-      start, 1.0F, durationMs, Easing::EaseInOutCubic, [dimPtr](float v) { dimPtr->setOpacity(v); },
+      start, Tokens::componentLockIdleWarningDim, durationMs, Easing::EaseInOutCubic, [dimPtr](float v) { dimPtr->setOpacity(v); },
       [this, instPtr] {
         instPtr->fadeAnimId = 0;
         onFadeInstanceComplete();

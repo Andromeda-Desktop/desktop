@@ -335,10 +335,10 @@ address          = ""                # e.g. "Toronto, ON"; geocoded when auto_lo
 # ── Idle ──────────────────────────────────────────────────────────────────────
 
 # Optional `[idle]` keys:
-#   pre_action_fade_seconds: fade a fullscreen surface-color overlay in over this many seconds, then run `command`.
+#   pre_action_fade_seconds: dim the screen with a black overlay over this many seconds, then run `command`.
 #                             Use 0 for immediate commands with no overlay. Input during the fade cancels.
 # [idle]
-# pre_action_fade_seconds = 2.0
+# pre_action_fade_seconds = 10.0
 
 [idle.behavior.lock]
 timeout = 600
