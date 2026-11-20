@@ -20,6 +20,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -48,7 +51,7 @@ jobs:
               *) units+=(core) ;;
             esac
           done
-          echo "units=$(printf '%s\n' "${units[@]}" | sort -u | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "units=$(printf '%s\n' "${units[@]}" | sort -u | xargs)" >> "$GITHUB_OUTPUT"
       - name: Tag and rebuild
         if: steps.resolve.outputs.units != ''
         run: |
