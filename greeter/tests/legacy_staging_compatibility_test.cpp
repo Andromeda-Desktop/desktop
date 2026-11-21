@@ -250,6 +250,32 @@ refresh_rate = 120
 
     {
       Fixture fixture(0700, 0600);
+      std::ofstream(fixture.runtimeDirectory / "greeter.toml") << R"toml(
+[pointer]
+accel_profile = "flat"
+accel_speed = 0.5
+)toml";
+
+      const toml::table config = toml::parse(greeter::config::andromedaGreeterConfig(fixture.runtimeDirectory));
+      const auto mouse = config["input"]["mouse"];
+      expect("pointer profile maps to input.mouse", mouse["accel_profile"].value_or(std::string{}) == "flat", true, {}, passed);
+      expect("pointer speed maps to input.mouse.sensitivity", mouse["sensitivity"].value_or(0.0) == 0.5, true, {}, passed);
+    }
+
+    {
+      Fixture fixture(0700, 0600);
+      std::ofstream(fixture.runtimeDirectory / "greeter.toml") << R"toml(
+[pointer]
+accel_profile = "fast"
+accel_speed = 4.0
+)toml";
+
+      const toml::table config = toml::parse(greeter::config::andromedaGreeterConfig(fixture.runtimeDirectory));
+      expect("out-of-range pointer values leave the libinput default", config["input"]["mouse"].is_table(), false, {}, passed);
+    }
+
+    {
+      Fixture fixture(0700, 0600);
       const ScopedStateDirectory stateDirectory(fixture.runtimeDirectory);
       const std::string layout = "Dell Inc. DELL U2723QE ABC123:0,0; LG Electronics LG HDR 4K XYZ789:2560,0";
       const bool applied = greeter::applyAppearanceSyncGreeterConf(

@@ -54,6 +54,7 @@ namespace {
         || key == "output"
         || key == "cursor"
         || key == "keyboard"
+        || key == "pointer"
         || key == "auth"
         || key == "idle"
         || key == "lockscreen";
@@ -99,6 +100,8 @@ namespace {
   [[nodiscard]] bool isKnownKeyboardKey(std::string_view key) {
     return key == "layout" || key == "variant" || key == "options" || key == "numlock";
   }
+
+  [[nodiscard]] bool isKnownPointerKey(std::string_view key) { return key == "accel_profile" || key == "accel_speed"; }
 
   [[nodiscard]] bool isKnownAuthKey(std::string_view key) {
     return key == "allow_empty_password" || key == "request_timeout";
@@ -368,6 +371,23 @@ namespace {
               config.keyboardNumlock = *value;
             }
           }
+        } else if (keyView == "pointer") {
+          if (!isKnownPointerKey(entryView)) {
+            warnUnknownSectionKey(path, keyView, entryView);
+            continue;
+          }
+          if (entryView == "accel_profile") {
+            if (const auto profile = entryNode.value<std::string>(); profile == "flat" || profile == "adaptive") {
+              config.pointerAccelProfile = *profile;
+            } else {
+              kLog.warn("{}: pointer.accel_profile must be \"flat\" or \"adaptive\"", path.string());
+            }
+          } else if (const auto speed = entryNode.value<double>();
+                     speed.has_value() && std::isfinite(*speed) && *speed >= -1.0 && *speed <= 1.0) {
+            config.pointerAccelSpeed = *speed;
+          } else {
+            kLog.warn("{}: pointer.accel_speed must be a number from -1.0 to 1.0", path.string());
+          }
         } else if (keyView == "auth") {
           if (!isKnownAuthKey(entryView)) {
             warnUnknownSectionKey(path, keyView, entryView);
@@ -616,6 +636,17 @@ namespace {
     }
     if (!keyboard.empty()) {
       root.insert("keyboard", std::move(keyboard));
+    }
+
+    toml::table pointer;
+    if (config.pointerAccelProfile.has_value()) {
+      pointer.insert_or_assign("accel_profile", *config.pointerAccelProfile);
+    }
+    if (config.pointerAccelSpeed.has_value()) {
+      pointer.insert_or_assign("accel_speed", *config.pointerAccelSpeed);
+    }
+    if (!pointer.empty()) {
+      root.insert("pointer", std::move(pointer));
     }
 
     if (config.authAllowEmptyPassword.has_value() || config.authRequestTimeoutSec.has_value()) {
@@ -1333,6 +1364,16 @@ std::string greeter::config::andromedaGreeterConfig(const std::filesystem::path&
   }
   if (!keyboard.empty()) {
     input.insert("keyboard", std::move(keyboard));
+  }
+  toml::table mouse;
+  if (config.pointerAccelProfile.has_value()) {
+    mouse.insert("accel_profile", *config.pointerAccelProfile);
+  }
+  if (config.pointerAccelSpeed.has_value()) {
+    mouse.insert("sensitivity", *config.pointerAccelSpeed);
+  }
+  if (!mouse.empty()) {
+    input.insert("mouse", std::move(mouse));
   }
   if (!input.empty()) {
     root.insert("input", std::move(input));

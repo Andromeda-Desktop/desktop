@@ -75,6 +75,10 @@ namespace greeter::config {
     std::optional<std::string> keyboardOptions;
     std::optional<bool> keyboardNumlock;
 
+    // [pointer]: libinput acceleration for mice and touchpads; unset keeps the libinput default.
+    std::optional<std::string> pointerAccelProfile; // flat | adaptive
+    std::optional<double> pointerAccelSpeed;        // -1.0 .. 1.0
+
     std::optional<bool> authAllowEmptyPassword;
     std::optional<int> authRequestTimeoutSec;
   };
