@@ -36,6 +36,9 @@ namespace andromeda {
     static nlohmann::json msg(Server& server, std::string_view arg);
     static nlohmann::json outputCreate(Server& server, std::string_view arg);
     static nlohmann::json outputDestroy(Server& server, std::string_view arg);
+    static nlohmann::json agentSessionStart(Server& server, std::string_view arg);
+    static nlohmann::json agentSessionStop(Server& server, std::string_view arg);
+    static nlohmann::json agentSessions(Server& server, std::string_view arg);
     static nlohmann::json configReplace(Server& server, std::string_view arg);
     static nlohmann::json configSet(Server& server, std::string_view arg);
     static nlohmann::json configGet(Server& server, std::string_view arg);

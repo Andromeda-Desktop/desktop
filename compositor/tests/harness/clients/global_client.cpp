@@ -63,16 +63,47 @@ namespace {
     }
     return 0;
   }
+
+  // Prints the name of each advertised wl_seat, one per line.
+  int printSeats() {
+    wl_display* display = wl_display_connect(nullptr);
+    if (display == nullptr) {
+      std::println(stderr, "global-client: cannot connect to WAYLAND_DISPLAY");
+      return 2;
+    }
+    static constexpr wl_seat_listener kSeatListener{
+        .capabilities = [](void*, wl_seat*, uint32_t) {},
+        .name = [](void*, wl_seat*, const char* name) { std::println("{}", name); },
+    };
+    static constexpr wl_registry_listener kSeatRegistryListener{
+        .global =
+            [](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t) {
+              if (std::string_view(interface) == wl_seat_interface.name) {
+                auto* seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 2));
+                wl_seat_add_listener(seat, &kSeatListener, data);
+              }
+            },
+        .global_remove = [](void*, wl_registry*, uint32_t) {},
+    };
+    wl_registry* registry = wl_display_get_registry(display);
+    wl_registry_add_listener(registry, &kSeatRegistryListener, nullptr);
+    const bool ok = wl_display_roundtrip(display) >= 0 && wl_display_roundtrip(display) >= 0;
+    wl_display_disconnect(display);
+    return ok ? 0 : 2;
+  }
 } // namespace
 
 int main(int argc, char** argv) {
+  if (argc == 2 && std::strcmp(argv[1], "seats") == 0) {
+    return printSeats();
+  }
   const bool recheck = argc >= 2 && std::strcmp(argv[1], "recheck") == 0;
   const bool bind = argc >= 2 && std::strcmp(argv[1], "bind") == 0;
   const bool waitForSignal = recheck || bind;
   const int offset = waitForSignal ? 1 : 0;
   if ((argc != 3 + offset && argc != 4 + offset)
       || (std::strcmp(argv[2 + offset], "present") != 0 && std::strcmp(argv[2 + offset], "absent") != 0)) {
-    std::println(stderr, "usage: global-client [recheck|bind] INTERFACE present|absent [VERSION]");
+    std::println(stderr, "usage: global-client seats | [recheck|bind] INTERFACE present|absent [VERSION]");
     return 2;
   }
   char* versionEnd = nullptr;

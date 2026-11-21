@@ -62,6 +62,7 @@
 #include "server/ipc.h"
 #include "server/socket_recovery.h"
 #include "provider/provider.h"
+#include "agent/agent_sessions.h"
 #include "server/shm_residency_barrier.h"
 #include "server/syncobj_acquire_barrier.h"
 #include "server/syncobj_superseded_release.h"
@@ -201,6 +202,7 @@ namespace andromeda {
       wl_listener destroy{};
       bool advertiseDecorationManagers = true;
       bool advertisePrimarySelection = true;
+      Domain domain;
       // Resolved on first use: security-context metadata is attached after the client-created signal.
       std::optional<std::vector<std::string>> securityContextGlobals;
     };
@@ -250,6 +252,14 @@ namespace andromeda {
       // it is bound, so each client's decisions must remain stable for its
       // entire connection.
       ClientGlobalPolicy* policy = clientGlobalPolicy(client);
+      if (interfaceName == "wl_seat") {
+        return server->agentSessions().seatVisible(global, policy->domain);
+      }
+      // Agent clients get the reviewed sandbox set without layer-shell: they own no part of the user's screen.
+      if (policy->domain.kind == Domain::Kind::Agent
+          && (!isAllowedSecurityContextGlobal(interfaceName) || interfaceName == "zwlr_layer_shell_v1")) {
+        return false;
+      }
       if (const wlr_security_context_v1_state* context = server->clientSecurityContext(client);
           context != nullptr && !isAllowedSecurityContextGlobal(interfaceName)) {
         // Nested contexts stay blocked unconditionally: per-app grants are only
@@ -772,6 +782,10 @@ namespace andromeda {
     }
   }
 
+  Domain Server::clientDomain(const wl_client* client) const { return clientGlobalPolicy(client)->domain; }
+
+  void Server::setClientDomain(wl_client* client, Domain domain) { clientGlobalPolicy(client)->domain = domain; }
+
   const wlr_security_context_v1_state* Server::clientSecurityContext(const wl_client* client) const {
     if (m_securityContextManager == nullptr) {
       return nullptr;
@@ -1167,6 +1181,7 @@ namespace andromeda {
     m_outputLayoutChange.notify = onOutputLayoutChange;
     wl_signal_add(&m_outputLayout->events.change, &m_outputLayoutChange);
     m_seat = std::make_unique<Seat>(*this);
+    m_agentSessions = std::make_unique<AgentSessions>(*this);
     m_padKeyboardFocusChange.notify = onPadKeyboardFocusChange;
     wl_signal_add(&m_seat->wlr()->keyboard_state.events.focus_change, &m_padKeyboardFocusChange);
     m_layerKeyboardFocusChange.notify = onLayerKeyboardFocusChange;
@@ -1265,6 +1280,7 @@ namespace andromeda {
       unlink((std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda/running").c_str());
     }
     m_inputCapture.reset();
+    m_agentSessions.reset();
     m_globalShortcutService.reset();
     if (m_sessionActive.link.next != nullptr) {
       wl_list_remove(&m_sessionActive.link);

@@ -155,6 +155,8 @@ namespace andromeda {
   class Cursor;
   class EisInput;
   class InputCapture;
+  class AgentSessions;
+  struct Domain;
   class BackendManager;
   class FocusManager;
   class Xwayland;
@@ -240,6 +242,10 @@ namespace andromeda {
     // The security-context metadata for a restricted client, or null for a
     // client on the ordinary socket.
     [[nodiscard]] const wlr_security_context_v1_state* clientSecurityContext(const wl_client* client) const;
+    [[nodiscard]] Domain clientDomain(const wl_client* client) const;
+    void setClientDomain(wl_client* client, Domain domain);
+    [[nodiscard]] AgentSessions& agentSessions() const { return *m_agentSessions; }
+    [[nodiscard]] const std::string& socketName() const { return m_socketName; }
     [[nodiscard]] wlr_export_dmabuf_manager_v1* exportDmabufManager() const { return m_exportDmabufManager; }
     // True while a live cursor session is attached to a capture source of this output.
     [[nodiscard]] bool hasCopyCaptureFor(const wlr_output* output) const;
@@ -1118,6 +1124,7 @@ namespace andromeda {
     uint64_t m_nextApplicationScopeId = 1;
 
     std::unique_ptr<InputCapture> m_inputCapture;
+    std::unique_ptr<AgentSessions> m_agentSessions;
     uint64_t m_pendingCaptureId = 0;
     uint32_t m_inputCaptureCapabilities = 0;
     uint64_t m_pendingInputId = 0;
