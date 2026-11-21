@@ -2167,6 +2167,16 @@ void Application::applyRuleDoNotDisturb() {
   }
 }
 
+void Application::syncLockScreenDoNotDisturb() {
+  const auto& active = m_notificationManager.focus().active();
+  if (m_lockScreen.isActive() && m_configService.config().lockscreen.dnd) {
+    // A Do Not Disturb that is already on stays the user's own, so unlock leaves it on.
+    m_notificationManager.setDoNotDisturb(true, "lockscreen");
+  } else if (active.has_value() && active->startedBy == "lockscreen") {
+    m_notificationManager.endFocus();
+  }
+}
+
 void Application::notifyFailedUnlocks(const std::vector<std::int64_t>& rejectedAtMs) {
   if (rejectedAtMs.empty()) {
     return;

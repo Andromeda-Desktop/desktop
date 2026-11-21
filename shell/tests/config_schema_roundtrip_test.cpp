@@ -377,6 +377,7 @@ location = "https://example.invalid/bad"
     c.osd.kinds.custom = false;
     c.lockscreen = LockscreenConfig{
         .lockBeforeSuspend = false,
+        .dnd = true,
         .gracePeriodSeconds = 3,
         .transitions = {LockscreenTransition::Disc, LockscreenTransition::Zoom},
         .transitionDurationMs = 900.0F,

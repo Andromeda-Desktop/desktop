@@ -362,6 +362,7 @@ namespace noctalia::config::schema {
             &LockscreenConfig::lockBeforeSuspend, "lock_before_suspend",
             lock("lockscreen.lock-before-suspend", "lock screen before suspend sleep lid close prepareforsleep")
         ),
+        field(&LockscreenConfig::dnd, "dnd", lock("lockscreen.dnd", "lock screen do not disturb dnd notifications")),
         field(
             &LockscreenConfig::gracePeriodSeconds, "grace_period_seconds", Range<std::int64_t>{0, 60},
             lock(

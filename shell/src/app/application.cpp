@@ -274,8 +274,9 @@ Application::Application()
   // rule's Focus (Presenting) is not saved: its rule starts it again.
   m_notificationManager.setFocusChangedCallback([this] {
     auto active = m_notificationManager.focus().active();
-    // A rule or trigger Focus comes back from its own source, not from saved state.
-    if (active.has_value() && (active->startedBy == "rule" || active->startedBy.starts_with("trigger:"))) {
+    // A rule, trigger or lock-screen Focus comes back from its own source, not from saved state.
+    if (active.has_value()
+        && (active->startedBy == "rule" || active->startedBy == "lockscreen" || active->startedBy.starts_with("trigger:"))) {
       active.reset();
     }
     (void)m_configService.setStateString("focus", "active", active.has_value() ? active->focusId : "");

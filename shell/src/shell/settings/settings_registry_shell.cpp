@@ -59,7 +59,7 @@ namespace settings {
       appendRow(entries, lockscreenRows, key);
       entries.back().visibleWhen = visibleWhen;
     };
-    for (const auto* key : {"lock_before_suspend", "grace_period_seconds", "fingerprint", "face"}) {
+    for (const auto* key : {"lock_before_suspend", "dnd", "grace_period_seconds", "fingerprint", "face"}) {
       lockRow(key, lockscreenOn);
     }
     lockRow("face_on_request", [](const Config& c) { return c.lockscreen.enabled && c.lockscreen.face; });

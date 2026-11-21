@@ -4071,6 +4071,10 @@
           "split": "Split",
           "minimal": "Minimal"
         },
+        "dnd": {
+          "description": "Turn on Do Not Disturb while the screen is locked; one already on stays on after unlock",
+          "label": "Do Not Disturb While Locked"
+        },
         "lock-before-suspend": {
           "description": "Lock the session before sleep (lid close, systemctl suspend, hibernate); Lock & Suspend actions still lock first",
           "label": "Lock Before Suspend"
@@ -4096,7 +4100,7 @@
           "ryoku": "Ryoku"
         },
         "tint-intensity": {
-          "description": "Surface-color tint over the lock screen background",
+          "description": "How much the lock screen background is dimmed behind the clock and password field",
           "label": "Tint Intensity"
         },
         "transition-duration": {

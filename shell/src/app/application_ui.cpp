@@ -342,6 +342,7 @@ void Application::initLockScreenAndSession() {
     m_lockScreen.onConfigChanged();
     m_lockscreenWidgetsController.onLockStateChanged();
     m_greeterSync.onConfigReload();
+    syncLockScreenDoNotDisturb();
   });
   m_lockScreen.setSessionHooks(
       [this] {
@@ -350,6 +351,7 @@ void Application::initLockScreenAndSession() {
         m_idleManager.setSessionLocked(true);
         m_screenTimeService.setSessionLocked(true);
         m_hookManager.fire(HookKind::SessionLocked);
+        syncLockScreenDoNotDisturb();
         if (m_logindService != nullptr) {
           m_logindService->setSessionLockedHint(true);
         }
@@ -363,6 +365,7 @@ void Application::initLockScreenAndSession() {
         m_idleManager.setSessionLocked(false);
         m_screenTimeService.setSessionLocked(false);
         m_hookManager.fire(HookKind::SessionUnlocked);
+        syncLockScreenDoNotDisturb();
         notifyFailedUnlocks(m_lockScreen.takeRejectedWhileLocked());
         m_lockBeforeSleep.onLockEnded();
         requestAllSurfacesRedraw();

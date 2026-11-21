@@ -401,6 +401,8 @@ private:
   void applyAmbientLight(double lux);
   void applyBrightnessStep();
   void applyRuleDoNotDisturb();
+  // lockscreen.dnd: Do Not Disturb while locked, as a Focus started by "lockscreen" that unlock ends.
+  void syncLockScreenDoNotDisturb();
   // Reads the trigger inputs, starts or ends the trigger Focus, and arms the timer for the next schedule edge.
   void applyFocusTriggers();
   // Applies the [notification.focus.<id>] filters of the Focus on now, or drops them; the user's settings stay.
