@@ -1997,15 +1997,15 @@ namespace term {
               }
             },
     });
+    if (registered) {
+      m_dropSurface = surface;
+    }
   }
 
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
     if (m_dropSurface != nullptr) {
       m_loop.display().clearDropTarget(*m_dropSurface);
-    }
-    if (registered) {
-      m_dropSurface = surface;
     }
     if (m_tickSurface != nullptr && m_tickSurface == m_window.surface()) {
       m_tickSurface->setFrameTickCallback(nullptr);

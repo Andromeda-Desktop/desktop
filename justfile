@@ -134,6 +134,10 @@ macos-check:
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal apps/terminal/subprojects/libghostty-vt/prefix-macos/lib/libghostty-vt.dylib
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
 
+# Cross-builds "Andromeda Terminal.app" for arm64 macOS into /var/tmp/andromeda-macos (OUT overrides).
+macos-terminal:
+    tools/macos/terminal.sh
+
 check: modules test link system
     cd compositor && just check
     just e2e

@@ -75,7 +75,12 @@ namespace term::agent {
     if (const char* path = std::getenv("ANDROMEDA_AGENTD"); path != nullptr && *path != '\0') {
       return path;
     }
+#ifdef ANDROMEDA_HELPERS_BESIDE_EXE
+    const std::string exe = sys::executablePath();
+    return exe.substr(0, exe.rfind('/') + 1) + "andromeda-agentd";
+#else
     return ANDROMEDA_AGENTD_PATH;
+#endif
   }
 
   Session& Host::open(std::uint64_t key, const std::string& cwd) {

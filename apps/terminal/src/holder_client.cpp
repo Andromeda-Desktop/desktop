@@ -250,18 +250,39 @@ std::string socketPath() {
   return run + "/andromeda/ptyd-1.sock";
 }
 
-int connectSocket() {
-  const std::string path = socketPath();
-  sockaddr_un addr{};
-  if (path.empty() || path.size() >= sizeof addr.sun_path) return -1;
-  addr.sun_family = AF_UNIX;
-  std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
+namespace {
+int tryConnect(const sockaddr_un& addr) {
   const int fd = sys::socketCloexec(AF_UNIX, SOCK_STREAM);
   if (fd < 0) return -1;
   if (::connect(fd, reinterpret_cast<const sockaddr*>(&addr), sizeof addr) != 0) {
     ::close(fd);
     return -1;
   }
+  return fd;
+}
+} // namespace
+
+int connectSocket() {
+  const std::string path = socketPath();
+  sockaddr_un addr{};
+  if (path.empty() || path.size() >= sizeof addr.sun_path) return -1;
+  addr.sun_family = AF_UNIX;
+  std::memcpy(addr.sun_path, path.c_str(), path.size() + 1);
+  int fd = tryConnect(addr);
+#ifdef ANDROMEDA_HELPERS_BESIDE_EXE
+  // No socket activation here: start the bundled ptyd, which exits again after 30 s without clients.
+  if (fd < 0) {
+    const std::string exe = sys::executablePath();
+    const std::string ptyd = exe.substr(0, exe.rfind('/') + 1) + "andromeda-ptyd";
+    if (!exe.empty() && sys::spawnDetached(ptyd, {"--socket", path})) {
+      for (int i = 0; i < 50 && fd < 0; ++i) {
+        ::usleep(20'000);
+        fd = tryConnect(addr);
+      }
+    }
+  }
+#endif
+  if (fd < 0) return -1;
   timeval tv{kHandshakeTimeoutMs / 1000, (kHandshakeTimeoutMs % 1000) * 1000};
   ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
   return fd;

@@ -19,6 +19,22 @@ fn systemd_listener() -> Option<UnixListener> {
     Some(UnixListener::from(fd))
 }
 
+/// None when another ptyd holds the lock for this socket.
+fn lock_socket(path: &str) -> std::io::Result<Option<std::fs::File>> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .mode(0o600)
+        .open(format!("{path}.lock"))?;
+    match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(Some(file)),
+        Err(rustix::io::Errno::WOULDBLOCK) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let mut socket = None;
@@ -48,12 +64,22 @@ fn main() {
             }
         }
     }
+    let mut _lock = None;
     let listener = match socket {
         Some(path) => {
             // As the systemd socket unit: a private folder (DirectoryMode=0700).
             if let Some(dir) = std::path::Path::new(&path).parent() {
                 use std::os::unix::fs::DirBuilderExt;
                 let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+            }
+            // Two clients can start a ptyd at once; the second must not unlink the first one's socket.
+            match lock_socket(&path) {
+                Ok(Some(lock)) => _lock = Some(lock),
+                Ok(None) => return,
+                Err(e) => {
+                    eprintln!("andromeda-ptyd: lock {path}.lock: {e}");
+                    std::process::exit(1);
+                }
             }
             let _ = std::fs::remove_file(&path);
             UnixListener::bind(&path)

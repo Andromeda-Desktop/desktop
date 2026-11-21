@@ -35,9 +35,11 @@ namespace term {
     std::error_code ec;
     const std::filesystem::path exe = sys::executablePath();
     if (!exe.empty()) {
-      const auto installed = exe.parent_path().parent_path() / "share/andromeda/terminal/shell-integration";
-      if (std::filesystem::is_directory(installed, ec)) {
-        return installed.string();
+      const auto prefix = exe.parent_path().parent_path();
+      for (const auto& installed : {prefix / "share/andromeda/terminal/shell-integration", prefix / "Resources/shell-integration"}) {
+        if (std::filesystem::is_directory(installed, ec)) {
+          return installed.string();
+        }
       }
     }
 #ifdef ANDROMEDA_TERMINAL_SOURCE_SHELL_DIR

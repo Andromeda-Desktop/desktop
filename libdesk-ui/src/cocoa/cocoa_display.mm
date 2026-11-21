@@ -4,8 +4,10 @@
 #include "core/input/cursor_shape.h"
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "platform/text_input_service.h"
 
+#include <cstdlib>
 #include <sys/event.h>
 #include <unistd.h>
 
@@ -158,7 +160,16 @@ std::optional<std::string> cocoaReadPasteboard(NSPasteboard* pasteboard, NSStrin
 
 std::unique_ptr<Display> createDisplay() { return std::make_unique<CocoaDisplay>(); }
 
-CocoaDisplay::CocoaDisplay() { g_display = this; }
+CocoaDisplay::CocoaDisplay() {
+  g_display = this;
+  // Homebrew's fontconfig has no usable built-in config path; a bundle carries its own (tools/macos/fonts.conf).
+  if (const std::string exe = sys::executablePath(); !exe.empty() && std::getenv("FONTCONFIG_FILE") == nullptr) {
+    const std::string conf = exe.substr(0, exe.rfind('/')) + "/../Resources/fonts/fonts.conf";
+    if (::access(conf.c_str(), R_OK) == 0) {
+      ::setenv("FONTCONFIG_FILE", conf.c_str(), 0);
+    }
+  }
+}
 
 CocoaDisplay::~CocoaDisplay() {
   disconnect();

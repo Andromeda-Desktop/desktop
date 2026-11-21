@@ -42,10 +42,12 @@ elif not _ghostty.found()
 endif
 
 _desk_ui_dep = subproject('libdesk-ui', default_options: _platform_opt).get_variable('desk_ui_dep')
+# The .app bundle has no socket activation or libexec: ptyd and agentd sit beside the executable.
+_helpers_arg = is_macos ? ['-DANDROMEDA_HELPERS_BESIDE_EXE'] : []
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
   dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')],
-  cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
+  cpp_args: _warnings + _helpers_arg + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core,
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
 
@@ -170,7 +172,7 @@ executable('andromeda-terminal',
   'src/agent_view.cpp',
   _platform_src,
   dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
-  cpp_args: _warnings + _agentd_path + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"'],
+  cpp_args: _warnings + _agentd_path + _helpers_arg + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"'],
   objcpp_args: ['-fobjc-arc'],
   link_args: is_macos ? ['-Wl,-rpath,@executable_path/../Frameworks'] : [],
   install: true,

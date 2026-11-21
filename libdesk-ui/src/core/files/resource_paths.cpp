@@ -1,14 +1,12 @@
 #include "core/files/resource_paths.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdlib>
-#include <optional>
 #include <string>
 #include <system_error>
-#include <unistd.h>
 #include <vector>
 
 namespace paths {
@@ -36,17 +34,6 @@ namespace paths {
           && std::filesystem::exists(root / "translations" / "en.json", ec);
     }
 
-    std::optional<std::filesystem::path> executablePath() {
-      std::array<char, 4096> buffer{};
-      const ssize_t count = ::readlink("/proc/self/exe", buffer.data(), buffer.size() - 1);
-      if (count <= 0 || static_cast<std::size_t>(count) >= buffer.size() - 1) {
-        return std::nullopt;
-      }
-
-      buffer[static_cast<std::size_t>(count)] = '\0';
-      return std::filesystem::path(buffer.data());
-    }
-
     void appendUnique(std::vector<std::filesystem::path>& candidates, const std::filesystem::path& candidate) {
       if (candidate.empty()) {
         return;
@@ -68,9 +55,10 @@ namespace paths {
         kLog.warn("ANDROMEDA_ASSETS_DIR is not a valid asset bundle: {}", overridePath.string());
       }
 
-      if (auto exe = executablePath()) {
-        const std::filesystem::path exeDir = exe->parent_path();
+      if (const std::filesystem::path exe = sys::executablePath(); !exe.empty()) {
+        const std::filesystem::path exeDir = exe.parent_path();
         appendUnique(candidates, exeDir / "assets");
+        appendUnique(candidates, exeDir.parent_path() / "Resources" / "assets");
         appendUnique(candidates, exeDir.parent_path() / "assets");
 
         const std::filesystem::path datadir(NOCTALIA_INSTALL_DATADIR);

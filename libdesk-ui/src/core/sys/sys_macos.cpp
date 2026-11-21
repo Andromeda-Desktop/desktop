@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <util.h>
 #include <vector>
+#include <thread>
 
 namespace sys {
 
@@ -212,6 +213,27 @@ namespace sys {
     if (_NSGetExecutablePath(path.data(), &size) != 0) return {};
     char resolved[PATH_MAX];
     return ::realpath(path.c_str(), resolved) != nullptr ? std::string(resolved) : std::string(path.c_str());
+  }
+
+  bool spawnDetached(const std::string& program, const std::vector<std::string>& args) {
+    std::vector<char*> argv{const_cast<char*>(program.c_str())};
+    for (const std::string& arg : args) argv.push_back(const_cast<char*>(arg.c_str()));
+    argv.push_back(nullptr);
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    for (const int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
+      posix_spawn_file_actions_addopen(&actions, fd, "/dev/null", fd == STDIN_FILENO ? O_RDONLY : O_WRONLY, 0);
+    }
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT);
+    pid_t pid = -1;
+    const int rc = ::posix_spawn(&pid, program.c_str(), &actions, &attr, argv.data(), *_NSGetEnviron());
+    posix_spawnattr_destroy(&attr);
+    posix_spawn_file_actions_destroy(&actions);
+    if (rc != 0) return false;
+    std::thread([pid] { ::waitpid(pid, nullptr, 0); }).detach();
+    return true;
   }
 
   std::string userRuntimeDir() {

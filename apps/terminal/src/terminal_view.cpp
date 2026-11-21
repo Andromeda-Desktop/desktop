@@ -1,4 +1,5 @@
 #include "terminal_view.h"
+#include "core/sys/sys.h"
 #include "platform/input_events.h"
 #include "core/input/pointer_axis.h"
 
@@ -246,12 +247,23 @@ namespace term {
 
   bool TerminalView::start(std::vector<std::string> argv, std::string cwd, const std::vector<std::string>& extraEnv) {
     // xterm-andromeda once the install step compiled its terminfo; a build run from the tree keeps xterm-256color.
-    static const bool ownTerminfo = std::filesystem::exists(ANDROMEDA_TERMINFO_DIR "/x/xterm-andromeda");
-    std::vector<std::string> env = {ownTerminfo ? "TERM=xterm-andromeda" : "TERM=xterm-256color", "COLORTERM=truecolor",
+    static const std::string terminfoDir = [] {
+      const std::filesystem::path exe = sys::executablePath();
+      // macOS ncurses names the letter directory in hex (78 for x).
+      for (const std::filesystem::path& dir : {exe.empty() ? std::filesystem::path() : exe.parent_path().parent_path() / "Resources/terminfo",
+                                              std::filesystem::path(ANDROMEDA_TERMINFO_DIR)}) {
+        std::error_code ec;
+        if (!dir.empty() && (std::filesystem::exists(dir / "x/xterm-andromeda", ec) || std::filesystem::exists(dir / "78/xterm-andromeda", ec))) {
+          return dir.string();
+        }
+      }
+      return std::string();
+    }();
+    std::vector<std::string> env = {!terminfoDir.empty() ? "TERM=xterm-andromeda" : "TERM=xterm-256color", "COLORTERM=truecolor",
                                     "TERM_PROGRAM=andromeda-terminal"};
-    if (ownTerminfo && std::string_view(ANDROMEDA_TERMINFO_DIR) != "/usr/share/terminfo") {
+    if (!terminfoDir.empty() && terminfoDir != "/usr/share/terminfo") {
       const char* dirs = std::getenv("TERMINFO_DIRS");
-      env.push_back(std::string("TERMINFO_DIRS=" ANDROMEDA_TERMINFO_DIR ":") + (dirs != nullptr ? dirs : ""));
+      env.push_back("TERMINFO_DIRS=" + terminfoDir + ":" + (dirs != nullptr ? dirs : ""));
     }
     env.insert(env.end(), extraEnv.begin(), extraEnv.end());
     if (!m_session.spawn({.argv = std::move(argv), .cwd = std::move(cwd), .env = std::move(env)})) {

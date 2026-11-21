@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 #include <string_view>
 
 struct msghdr;
@@ -64,6 +65,8 @@ namespace sys {
   [[nodiscard]] int forkPty(int* master, const struct winsize* size);
   // Empty when the OS does not tell.
   [[nodiscard]] std::string executablePath();
+  // Starts program in a new session with stdio on /dev/null so it outlives the caller; a thread reaps it.
+  [[nodiscard]] bool spawnDetached(const std::string& program, const std::vector<std::string>& args);
   // The user's private directory for sockets: XDG_RUNTIME_DIR on Linux (empty when unset), the per-user temp dir
   // on macOS. No trailing slash.
   [[nodiscard]] std::string userRuntimeDir();
