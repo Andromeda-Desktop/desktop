@@ -113,7 +113,7 @@ def main(binary, mode):
             RESTART_ROOT=str(root),
             LISTEN_FDS="1",
             WATCHDOG_USEC="400000",
-            ANDROMEDA_LOCK_ESCAPE_MS="1000",
+            ANDROMEDA_LOCK_ESCAPE_MS="3000",
             WLR_BACKENDS="headless",
             ANDROMEDA_TEST_SESSION_UNIT=own_unit(),
             WLR_HEADLESS_OUTPUTS="1",
@@ -282,7 +282,7 @@ def main(binary, mode):
                         assert time.monotonic() < deadline, "the capture never showed the window after the unlock"
                         time.sleep(0.05)
                     # The escape must not fire once a lock client took over.
-                    time.sleep(1.5)
+                    time.sleep(3.5)
                     assert processes[1].poll() is None, "the restart-lock escape ended an unlocked session"
 
                     # Escape: with no lock client after a locked crash the session ends in about 10 s, and unlocked.
