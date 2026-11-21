@@ -606,6 +606,13 @@ void Input::setFontWeight(FontWeight fontWeight) {
   markTextContentChanged();
 }
 
+void Input::setFontFamily(std::string family) {
+  if (m_label != nullptr) {
+    m_label->setFontFamily(std::move(family));
+  }
+  markTextContentChanged();
+}
+
 void Input::setMinLayoutWidth(float width) {
   const float next = std::max(0.0F, width);
   if (m_minLayoutWidth == next) {

@@ -153,6 +153,7 @@ namespace ui {
     std::optional<float> opacity = std::nullopt;
     std::optional<bool> visible = std::nullopt;
     std::optional<bool> participatesInLayout = std::nullopt;
+    std::function<void()> onClick = nullptr; // the whole flex is one pointer target (Flex::setCover)
     std::function<void(Flex&)> configure = nullptr;
   };
 

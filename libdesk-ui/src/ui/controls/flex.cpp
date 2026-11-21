@@ -129,6 +129,10 @@ void Flex::setSize(float width, float height) {
     m_background->setPosition(0.0F, 0.0F);
     m_background->setFrameSize(width, height);
   }
+  if (m_cover != nullptr) {
+    m_cover->setPosition(0.0F, 0.0F);
+    m_cover->setSize(width, height);
+  }
 }
 
 void Flex::setFrameSize(float width, float height) {
@@ -141,6 +145,18 @@ void Flex::setFrameSize(float width, float height) {
     m_background->setPosition(0.0F, 0.0F);
     m_background->setFrameSize(width, height);
   }
+  if (m_cover != nullptr) {
+    m_cover->setPosition(0.0F, 0.0F);
+    m_cover->setSize(width, height);
+  }
+}
+
+void Flex::setCover(std::unique_ptr<Node> cover) {
+  if (m_cover != nullptr) removeChild(m_cover);
+  cover->setParticipatesInLayout(false);
+  m_cover = addChild(std::move(cover));
+  m_cover->setPosition(0.0F, 0.0F);
+  m_cover->setSize(width(), height());
 }
 
 void Flex::setDirection(FlexDirection direction) {

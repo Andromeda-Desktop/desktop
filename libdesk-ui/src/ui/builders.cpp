@@ -89,6 +89,10 @@ namespace ui {
   std::unique_ptr<Flex> flex(FlexDirection direction, const FlexProps& props) {
     auto flex = std::make_unique<Flex>();
     applyFlexProps(*flex, direction, props);
+    if (props.onClick) {
+      flex->setCover(inputArea({.cursorShape = CursorShape::Pointer,
+                                .onClick = [click = props.onClick](const InputArea::PointerData&) { click(); }}));
+    }
     if (props.configure) {
       props.configure(*flex);
     }

@@ -112,6 +112,8 @@ public:
 
   void setSize(float width, float height) override;
   void setFrameSize(float width, float height);
+  // A node over the whole flex, outside layout and above the children (a click area for a pressable row).
+  void setCover(std::unique_ptr<Node> cover);
 
 protected:
   void doLayout(Renderer& renderer) override;
@@ -135,6 +137,7 @@ private:
   LayoutSize runLayout(Renderer& renderer, const LayoutConstraints& constraints, bool arrangeChildren);
 
   RectNode* m_background = nullptr;
+  Node* m_cover = nullptr;
   ColorSpec m_fill = clearColorSpec();
   std::optional<std::pair<GradientDirection, std::array<GradientStop, 4>>> m_fillGradient;
   ColorSpec m_border = clearColorSpec();
