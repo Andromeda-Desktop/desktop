@@ -47,6 +47,11 @@ void HdmiAudioSwitch::onAudioStateChanged(PipeWireService& pipewire, bool enable
   }
 
   const AudioNode* current = pipewire.defaultSink();
+  // The speaker DSP chain has no card: judge the sink it processes.
+  if (current != nullptr && !current->enhances.empty()) {
+    const auto processed = std::ranges::find(state.sinks, current->enhances, &AudioNode::name);
+    current = processed == state.sinks.end() ? nullptr : &*processed;
+  }
   const auto target = std::ranges::find(state.sinks, plugged, &AudioNode::id);
   if (current == nullptr
       || current->deviceId == 0
