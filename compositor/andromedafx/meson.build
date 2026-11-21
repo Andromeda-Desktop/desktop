@@ -347,6 +347,7 @@ if build_tests
     'blur-fade-source',
     'corner-split',
     'glass-split',
+    'glass-split-full-corners',
   ]
     test('effects-' + case_name, andromedafx_effects_test, args: case_name, suite: 'andromedafx')
   endforeach

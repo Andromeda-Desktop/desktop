@@ -2753,7 +2753,7 @@ static bool test_corner_split(struct fixture* fixture) {
 
 // Liquid glass with lens, rim and tint over a gradient; `shaped` gives the glass its own box inside the quad.
 static bool glass_split_case(
-    struct fixture* fixture, bool whole, bool shaped, float liquid, uint8_t out[GLASS_SIZE * GLASS_SIZE][4]
+    struct fixture* fixture, bool whole, bool shaped, float liquid, float corner, uint8_t out[GLASS_SIZE * GLASS_SIZE][4]
 ) {
   static uint8_t backdrop[GLASS_SIZE * GLASS_SIZE * 4], sharp[GLASS_SIZE * GLASS_SIZE * 4];
   for (int y = 0; y < GLASS_SIZE; y++) {
@@ -2786,7 +2786,7 @@ static bool glass_split_case(
                 .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
             },
         .clip_box = &box,
-        .corners = {.top_left = 6, .top_right = 6, .bottom_left = 6, .bottom_right = 6},
+        .corners = {.top_left = corner, .top_right = corner, .bottom_left = corner, .bottom_right = corner},
         .liquid = liquid,
         .rim = 0.3f,
         .lens = 0.6f,
@@ -2818,8 +2818,9 @@ static bool test_glass_split(struct fixture* fixture) {
   static uint8_t whole[GLASS_SIZE * GLASS_SIZE][4], split[GLASS_SIZE * GLASS_SIZE][4], flat[GLASS_SIZE * GLASS_SIZE][4];
   bool ok = true;
   for (int shaped = 0; ok && shaped <= 1; shaped++) {
-    ok &= glass_split_case(fixture, true, shaped, 0.55f, whole) && glass_split_case(fixture, false, shaped, 0.55f, split)
-        && glass_split_case(fixture, true, shaped, 0.0f, flat);
+    ok &= glass_split_case(fixture, true, shaped, 0.55f, 6, whole)
+        && glass_split_case(fixture, false, shaped, 0.55f, 6, split)
+        && glass_split_case(fixture, true, shaped, 0.0f, 6, flat);
     ok &= check(!ok || memcmp(whole, flat, sizeof(whole)) != 0, "the liquid band bends the backdrop");
     for (int i = 0; ok && i < GLASS_SIZE * GLASS_SIZE; i++) {
       if (memcmp(whole[i], split[i], 4) != 0) {
@@ -2830,6 +2831,22 @@ static bool test_glass_split(struct fixture* fixture) {
         );
         ok = false;
       }
+    }
+  }
+  return ok;
+}
+
+// Shaped glass at every corner radius up to the one that fills its quad, where the quad's plain part shrinks to
+// nothing: each draws once, as it does whole.
+static bool test_glass_split_full_corners(struct fixture* fixture) {
+  static uint8_t whole[GLASS_SIZE * GLASS_SIZE][4], split[GLASS_SIZE * GLASS_SIZE][4];
+  bool ok = true;
+  for (float corner = 6.0f; ok && corner <= GLASS_SIZE / 2; corner += 0.125f) {
+    ok = glass_split_case(fixture, true, true, 0.55f, corner, whole)
+        && glass_split_case(fixture, false, true, 0.55f, corner, split);
+    if (ok && memcmp(whole, split, sizeof(whole)) != 0) {
+      fprintf(stderr, "  corner %.3f: split glass differs from whole\n", corner);
+      ok = false;
     }
   }
   return ok;
@@ -3331,6 +3348,8 @@ int main(int argc, char* argv[]) {
     ok = test_corner_split(&fixture);
   } else if (strcmp(argv[1], "glass-split") == 0) {
     ok = test_glass_split(&fixture);
+  } else if (strcmp(argv[1], "glass-split-full-corners") == 0) {
+    ok = test_glass_split_full_corners(&fixture);
   } else if (strcmp(argv[1], "audio-spectrum") == 0) {
     ok = test_audio_spectrum(&fixture);
   } else if (strcmp(argv[1], "output-effects") == 0) {
