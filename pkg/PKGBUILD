@@ -69,8 +69,10 @@ prepare() {
 }
 
 build() {
-  # The host makepkg.conf (CachyOS) sets -march=native; packages must run on any x86-64 CPU.
+  # The host makepkg.conf (CachyOS) sets -march=native and -O3; packages must run on any x86-64 CPU and match the
+  # release builds (Arch makepkg.conf: -O2; -O3 adds 11 % shell code and no measured speed).
   CFLAGS="${CFLAGS//-march=native/-march=x86-64 -mtune=generic}" CXXFLAGS="${CXXFLAGS//-march=native/-march=x86-64 -mtune=generic}"
+  CFLAGS="${CFLAGS//-O3/-O2}" CXXFLAGS="${CXXFLAGS//-O3/-O2}"
   RUSTFLAGS="${RUSTFLAGS//-C target-cpu=native/}"
   # Incremental: build dirs stay in srcdir between runs. default_options apply only on the first configure, so a
   # change to any meson file or wrap starts the build dirs over.

@@ -371,7 +371,7 @@ foreach _p : [
 endforeach
 
 # ── Main sources ──────────────────────────────────────────────────────────────
-_noctalia_sources = files(
+_noctalia_source_paths = [
   'src/app/application.cpp',
   'src/app/application_events.cpp',
   'src/app/application_activity.cpp',
@@ -912,7 +912,25 @@ _noctalia_sources = files(
   'src/cli/parse.cpp',
   'src/cli/help.cpp',
   'src/ipc/cli.cpp',
-)
+]
+
+# Code that runs on a user action or a rare event compiles for size: -Os halves its code at no measured cost. Frame,
+# layout, start-up and search paths stay at the build's level; debug builds stay unoptimised.
+_noctalia_cold_args = get_option('optimization') in ['0', 'g'] ? [] : ['-Os']
+_noctalia_cold_dirs = ['src/shell/settings/', 'src/calendar/', 'src/compositors/', 'src/dbus/']
+_noctalia_sources = []
+_noctalia_cold_sources = []
+foreach path : _noctalia_source_paths
+  cold = false
+  foreach dir : _noctalia_cold_dirs
+    cold = cold or path.startswith(dir)
+  endforeach
+  if cold
+    _noctalia_cold_sources += files(path)
+  else
+    _noctalia_sources += files(path)
+  endif
+endforeach
 
 
 git_program = find_program('git', required: false)
@@ -1025,8 +1043,16 @@ noctalia_core_lib = static_library('noctalia_core',
   cpp_args: _noctalia_cpp_args,
 )
 
+# Target arguments follow the build's -O level in the compile line, so -Os wins.
+noctalia_cold_lib = static_library('noctalia_cold',
+  sources: _noctalia_cold_sources + _protocol_headers + [_git_revision_h],
+  dependencies: _noctalia_dependencies,
+  include_directories: _noctalia_inc,
+  cpp_args: _noctalia_cpp_args + _noctalia_cold_args,
+)
+
 noctalia_core_dep = declare_dependency(
-  link_with: noctalia_core_lib,
+  link_with: [noctalia_core_lib, noctalia_cold_lib],
   dependencies: _noctalia_test_dependencies,
   include_directories: _noctalia_inc,
   compile_args: _noctalia_compile_definitions,
@@ -1041,7 +1067,7 @@ noctalia_shell_module = shared_module('andromeda-shell',
   dependencies: _noctalia_dependencies,
   include_directories: _noctalia_inc,
   cpp_args: _noctalia_cpp_args,
-  objects: noctalia_core_lib.extract_all_objects(recursive: false),
+  objects: [noctalia_core_lib.extract_all_objects(recursive: false), noctalia_cold_lib.extract_all_objects(recursive: false)],
   link_args: ['-Wl,-Bsymbolic', '-Wl,-z,defs', '-Wl,--version-script=' + meson.current_source_dir() / 'src/app/shell_module.map'],
   link_depends: files('src/app/shell_module.map'),
   name_prefix: '',

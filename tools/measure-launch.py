@@ -22,6 +22,7 @@ RUNS = int(os.environ.get("RUNS", "5"))
 APPS = os.environ.get("APPS", "foot gnome-calculator dolphin").split()
 MODES = os.environ.get("MODES", "Clipboard Emoji Gifs Stickers Symbols").split()
 REOPEN_IDLE_S = int(os.environ.get("REOPEN_IDLE_S", "0"))
+SETTINGS = os.environ.get("SETTINGS", "0") == "1"
 SOCK = os.path.join(os.environ["XDG_RUNTIME_DIR"], "noctalia-" + os.environ["WAYLAND_DISPLAY"] + ".sock")
 TIMEOUT_S = 20.0
 
@@ -199,6 +200,20 @@ def main():
             wait_idle()
             msg("panel-close")
         lines.append(summary(f"launcher {mode} mode open to first frame", times))
+
+    # The settings window maps as a toplevel; the window-list poll adds up to one poll cost.
+    if SETTINGS:
+        times = []
+        for _ in range(RUNS):
+            wait_idle()
+            base = window_count()
+            start = time.monotonic()
+            msg("settings-open")
+            wait_for(lambda: window_count() > base, "settings window")
+            times.append(ms_since(start))
+            msg("settings-close")
+            wait_for(lambda: window_count() <= base, "settings close")
+        lines.append(summary("settings open to window", times))
 
     # A reopen after the shell's idle cache expiry (15 s after the last draw).
     if REOPEN_IDLE_S > 0:
