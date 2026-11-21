@@ -85,6 +85,9 @@ _system_deps = [
 ]
 if is_wayland
   _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), dependency('sdbus-c++')]
+else
+  add_languages('objcpp', native: false)
+  _system_deps += dependency('appleframeworks', modules: ['AppKit', 'QuartzCore'])
 endif
 _system_deps += [egl_dep, gles2_dep]
 
@@ -193,6 +196,7 @@ _desk_ui_sources = files(
   'src/i18n/i18n_service.cpp',
   'src/i18n/language_tag.cpp',
   'src/motion/desk_motion.cpp',
+  'src/platform/popup_place.cpp',
   'src/platform/surface.cpp',
   'src/render/animation/animation.cpp',
   'src/render/animation/animation_manager.cpp',
@@ -377,6 +381,12 @@ _wayland_sources = files(
   'src/wayland/wayland_seat.cpp',
 )
 
+_cocoa_sources = files(
+  'src/cocoa/cocoa_display.mm',
+  'src/cocoa/cocoa_keys.cpp',
+  'src/cocoa/cocoa_surface.mm',
+)
+
 # '.' adds the source root and the build root, where the generated headers land.
 _desk_ui_inc = [
   include_directories('src'),
@@ -385,7 +395,8 @@ _desk_ui_inc = [
 ]
 
 desk_ui_lib = static_library('desk_ui',
-  sources: _desk_ui_sources + _sys_sources + (is_wayland ? _wayland_sources : []) + _protocol_sources + _protocol_headers,
+  sources: _desk_ui_sources + _sys_sources + (is_wayland ? _wayland_sources : _cocoa_sources) + _protocol_sources
+    + _protocol_headers,
   dependencies: _system_deps,
   include_directories: _desk_ui_inc + [_fzy_inc],
   link_with: _fzy_lib,
@@ -396,6 +407,8 @@ desk_ui_lib = static_library('desk_ui',
     '-DNOCTALIA_INSTALL_DATADIR="' + get_option('datadir') + '"',
     '-DNOCTALIA_SOURCE_ASSETS_DIR="' + (meson.project_source_root() / '..' / 'shell' / 'assets') + '"',
   ],
+  objcpp_args: ['-std=c++23', '-fobjc-arc', '-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wconversion',
+    '-Wshadow'],
 )
 
 desk_ui_dep = declare_dependency(
@@ -409,4 +422,5 @@ desk_ui_dep = declare_dependency(
 if is_wayland and not meson.is_subproject()
   test('freedesktop_thumbnails', executable('freedesktop_thumbnails_test', 'tests/freedesktop_thumbnails_test.cpp',
     dependencies: desk_ui_dep))
+  test('popup_place', executable('popup_place_test', 'tests/popup_place_test.cpp', dependencies: desk_ui_dep))
 endif

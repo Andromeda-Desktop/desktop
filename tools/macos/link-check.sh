@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Links every object of every archive in a macOS build dir into one arm64 executable. Fails on an undefined symbol,
-# except createDisplay(), which the Cocoa backend (step 10 of .agent/TASK-terminal-macos.md) provides.
+# Links every object of every archive in a macOS build dir into one arm64 executable. Fails on an undefined symbol.
 # EXE (optional): an executable target of that build dir; its objects and main() join the link.
 # Further arguments: prebuilt archives outside the build dir (libghostty-vt).
 set -euo pipefail
@@ -27,18 +26,13 @@ fi
 # shellcheck disable=SC2086
 if clang++ -target arm64-apple-macos26 -isysroot "$sdk" -fuse-ld=lld "${mains[@]}" \
     -Wl,-all_load -Wl,--error-limit=0 "${archives[@]}" ${extra[@]+"${extra[@]}"} \
-    -L"$deps/lib" $(pkg-config --libs $mac_deps) -framework AppKit -framework UserNotifications -lc++experimental -o "$work/link-check" > "$work/link.log" 2>&1; then
+    -L"$deps/lib" $(pkg-config --libs $mac_deps) -framework AppKit -framework QuartzCore -framework UserNotifications -lc++experimental -o "$work/link-check" > "$work/link.log" 2>&1; then
   echo "macos link: ok"
   exit 0
 fi
 if grep -q 'undefined symbol' "$work/link.log"; then
-  missing=$(sed -n 's/.*undefined symbol: //p' "$work/link.log" | grep -vxF 'createDisplay()' | sort -u || true)
-  if [ -z "$missing" ]; then
-    echo "macos link: ok (createDisplay left for step 10)"
-    exit 0
-  fi
-  echo "macos link: undefined symbols besides createDisplay:"
-  echo "$missing" | head -n 40
+  echo "macos link: undefined symbols:"
+  sed -n 's/.*undefined symbol: //p' "$work/link.log" | sort -u | head -n 40
 else
   tail -n 20 "$work/link.log"
 fi

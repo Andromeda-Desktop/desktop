@@ -66,9 +66,12 @@
 #define KEY_F7 65
 #define KEY_F8 66
 #define KEY_F9 67
+#define KEY_FN 0x1d0
 #define KEY_G 34
 #define KEY_GRAVE 41
 #define KEY_H 35
+#define KEY_HELP 138
+#define KEY_HENKAN 92
 #define KEY_HOME 102
 #define KEY_I 23
 #define KEY_INSERT 110
@@ -101,6 +104,8 @@
 #define KEY_LEFTSHIFT 42
 #define KEY_M 50
 #define KEY_MINUS 12
+#define KEY_MUHENKAN 94
+#define KEY_MUTE 113
 #define KEY_N 49
 #define KEY_NUMLOCK 69
 #define KEY_O 24
@@ -128,6 +133,8 @@
 #define KEY_U 22
 #define KEY_UP 103
 #define KEY_V 47
+#define KEY_VOLUMEDOWN 114
+#define KEY_VOLUMEUP 115
 #define KEY_W 17
 #define KEY_X 45
 #define KEY_Y 21

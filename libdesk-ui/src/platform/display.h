@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <poll.h>
 #include <string>
 #include <vector>
 
@@ -46,12 +47,14 @@ public:
   // The EGL native display (GlSharedContext::initialize converts it).
   [[nodiscard]] virtual void* nativeDisplay() const noexcept = 0;
 
-  // One pass of a poll loop: preparePoll(); if Ok, poll pollFd() for its events with the app's fds; then
-  // finishPoll(revents), or cancelPoll() when poll() fails. Every Ok preparePoll() needs exactly one of the two.
+  // One pass of a poll loop: preparePoll(); if Ok, wait() on pollFd() for its events with the app's fds; then
+  // finishPoll(revents), or cancelPoll() when wait() fails. Every Ok preparePoll() needs exactly one of the two.
   [[nodiscard]] virtual int pollFd() const noexcept = 0;
   [[nodiscard]] virtual PollPrep preparePoll() = 0;
   [[nodiscard]] virtual PumpResult finishPoll(short revents) = 0;
   virtual void cancelPoll() = 0;
+  // poll(2) semantics. A window system whose events do not arrive on a fd (Cocoa) dispatches them while it waits.
+  virtual int wait(pollfd* fds, nfds_t count, int timeoutMs) { return ::poll(fds, count, timeoutMs); }
   // -1: no key repeat pending.
   [[nodiscard]] virtual int repeatPollTimeoutMs() const = 0;
   virtual void repeatTick() = 0;

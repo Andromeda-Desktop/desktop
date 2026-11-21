@@ -29,8 +29,8 @@ if is_macos
   _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix-macos'
   _ghostty = declare_dependency(
     include_directories: include_directories('subprojects/libghostty-vt/prefix-macos/include'),
-    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib', static: true),
-    compile_args: '-DGHOSTTY_STATIC',
+    # The dylib, not the archive: both libghostty-vt.a and libdesk-ui define wuffs, and ld64 keeps both copies.
+    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib', static: false),
   )
 elif not _ghostty.found()
   _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix'
@@ -172,6 +172,7 @@ executable('andromeda-terminal',
   dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
   cpp_args: _warnings + _agentd_path + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"'],
   objcpp_args: ['-fobjc-arc'],
+  link_args: is_macos ? ['-Wl,-rpath,@executable_path/../Frameworks'] : [],
   install: true,
 )
 find_program('tic')

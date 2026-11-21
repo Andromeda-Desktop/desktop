@@ -226,7 +226,7 @@ int AppLoop::run() {
       timeoutMs = 16;
     }
 
-    if (::poll(fds.data(), fds.size(), timeoutMs) < 0) {
+    if (display.wait(fds.data(), static_cast<nfds_t>(fds.size()), timeoutMs) < 0) {
       display.cancelPoll();
       if (errno == EINTR) {
         continue;
