@@ -1646,13 +1646,12 @@ namespace settings {
       items.erase(items.begin() + static_cast<std::ptrdiff_t>(index));
       setOverride(path, items);
     });
+    listEditor->setReorderTooltip(i18n::tr("settings.controls.list.drag"));
     listEditor->setOnMoveRequested([setOverride = ctx.setOverride, items = list.items,
-                                    path = entry.path](std::size_t from, std::size_t to) mutable {
-      if (from >= items.size() || to >= items.size() || from == to) {
-        return;
+                                    path = entry.path](ReorderDrag::Move move) mutable {
+      if (applyReorder(items, move)) {
+        setOverride(path, items);
       }
-      std::swap(items[from], items[to]);
-      setOverride(path, items);
     });
     block->addChild(std::move(listEditor));
 

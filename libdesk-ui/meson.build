@@ -298,6 +298,7 @@ _desk_ui_sources = files(
   'src/ui/controls/input.cpp',
   'src/ui/controls/label.cpp',
   'src/ui/controls/list_editor.cpp',
+  'src/ui/controls/reorder_controller.cpp',
   'src/ui/controls/reorder_drag.cpp',
   'src/ui/controls/lockscreen_transition_cover.cpp',
   'src/ui/controls/markdown_view.cpp',

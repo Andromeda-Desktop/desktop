@@ -417,12 +417,11 @@ namespace {
       items.erase(items.begin() + static_cast<std::ptrdiff_t>(index));
       editor->applySettingChange(key, items);
     });
-    listEditor->setOnMoveRequested([editor, key, items](std::size_t from, std::size_t to) mutable {
-      if (from >= items.size() || to >= items.size() || from == to) {
-        return;
+    listEditor->setReorderTooltip(i18n::tr("settings.controls.list.drag"));
+    listEditor->setOnMoveRequested([editor, key, items](ReorderDrag::Move move) mutable {
+      if (applyReorder(items, move)) {
+        editor->applySettingChange(key, items);
       }
-      std::swap(items[from], items[to]);
-      editor->applySettingChange(key, items);
     });
     row->addChild(std::move(listEditor));
     return row;

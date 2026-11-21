@@ -49,6 +49,7 @@ void ListEditor::setAddPlaceholder(std::string_view placeholder) {
 
 void ListEditor::setScale(float scale) {
   m_scale = std::max(0.1F, scale);
+  m_reorder.setScale(m_scale);
   setGap(kVerticalGap * m_scale);
   rebuildRows();
 }
@@ -66,8 +67,13 @@ void ListEditor::setOnRemoveRequested(std::function<void(std::size_t)> callback)
   m_onRemoveRequested = std::move(callback);
 }
 
-void ListEditor::setOnMoveRequested(std::function<void(std::size_t, std::size_t)> callback) {
+void ListEditor::setOnMoveRequested(std::function<void(ReorderDrag::Move)> callback) {
   m_onMoveRequested = std::move(callback);
+}
+
+void ListEditor::setReorderTooltip(std::string tooltip) {
+  m_reorderTooltip = std::move(tooltip);
+  rebuildRows();
 }
 
 std::string ListEditor::labelForValue(std::string_view value) const {
@@ -203,11 +209,12 @@ void ListEditor::rebuildRows() {
     }
   }
 
-  // Rows: label, then fixed up / down / remove slots at the trailing edge so the buttons line up in a column.
-  const float slot = Tokens::sizeControlS * m_scale;
+  // Rows: a grab handle (when there is an order to change), the label, then the remove slot at the trailing edge.
+  std::vector<Node*> rows;
+  std::vector<Node*> separators;
   for (std::size_t i = 0; i < m_items.size(); ++i) {
     if (i > 0) {
-      addChild(ui::separator({.gradientEdges = false}));
+      separators.push_back(addChild(ui::separator({.gradientEdges = false})));
     }
     auto itemRow = ui::row({
         .align = FlexAlign::Center,
@@ -215,31 +222,22 @@ void ListEditor::rebuildRows() {
         .minHeight = itemRowHeight,
         .fillWidth = true,
     });
+    if (m_items.size() > 1) {
+      itemRow->addChild(m_reorder.makeHandle(i, m_reorderTooltip));
+    }
     auto label = makeListLabel(labelForValue(m_items[i]), m_scale);
     label->setFlexGrow(1.0F);
     itemRow->addChild(std::move(label));
 
-    const auto moveSlot = [&](bool shown, std::string_view glyph, std::size_t to) {
-      if (!shown) {
-        itemRow->addChild(ui::box({.fill = clearColorSpec(), .width = slot, .height = slot}));
-        return;
-      }
-      addGhostIconButton(*itemRow, glyph, Tokens::sizeSymbolInline * m_scale, [this, i, to] {
-        if (m_onMoveRequested) {
-          m_onMoveRequested(i, to);
-        }
-      });
-    };
-    moveSlot(i > 0, "chevron-up", i - 1);
-    moveSlot(i + 1 < m_items.size(), "chevron-down", i + 1);
     addGhostIconButton(*itemRow, "close", Tokens::sizeSymbolInline * m_scale, [this, i] {
       if (m_onRemoveRequested) {
         m_onRemoveRequested(i);
       }
     });
 
-    addChild(std::move(itemRow));
+    rows.push_back(addChild(std::move(itemRow)));
   }
+  m_reorder.attach(*this, std::move(rows), std::move(separators));
 
   if (addRow) {
     if (!m_items.empty()) {

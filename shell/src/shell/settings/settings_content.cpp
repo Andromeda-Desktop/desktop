@@ -540,13 +540,12 @@ namespace settings {
         items.erase(items.begin() + static_cast<std::ptrdiff_t>(index));
         setOverride(path, items);
       });
+      listEditor->setReorderTooltip(i18n::tr("settings.controls.list.drag"));
       listEditor->setOnMoveRequested([setOverride = ctx.setOverride, items = shortcuts.items,
-                                      path = entry.path](std::size_t from, std::size_t to) mutable {
-        if (from >= items.size() || to >= items.size() || from == to) {
-          return;
+                                      path = entry.path](ReorderDrag::Move move) mutable {
+        if (applyReorder(items, move)) {
+          setOverride(path, items);
         }
-        std::swap(items[from], items[to]);
-        setOverride(path, items);
       });
       block->addChild(std::move(listEditor));
 
@@ -571,6 +570,14 @@ namespace settings {
       };
 
       const float iconBtnH = Tokens::sizeControlS * scale;
+      auto list = std::make_unique<ReorderList>(scale, [state, commit](ReorderDrag::Move move) {
+        if (applyReorder(*state, move)) {
+          commit();
+        }
+      });
+      list->setAlign(FlexAlign::Stretch);
+      list->setGap(Style::spaceXs * scale);
+      std::vector<Node*> rows;
 
       for (std::size_t idx = 0; idx < state->size(); ++idx) {
         auto row = ui::row({
@@ -579,6 +586,10 @@ namespace settings {
             .gap = Style::spaceSm * scale,
             .minHeight = metrics::kRowHeight * scale,
         });
+
+        if (state->size() > 1) {
+          row->addChild(list->reorder().makeHandle(idx, i18n::tr("settings.controls.list.drag")));
+        }
 
         Label* summaryLabel = nullptr;
         auto summary = ui::label({
@@ -593,46 +604,6 @@ namespace settings {
         }
         row->addChild(std::move(summary));
 
-        auto reorder = ui::row({.align = FlexAlign::Center, .gap = Style::spaceXs * scale});
-
-        auto upBtn = ui::button({
-            .glyph = "chevron-up",
-            .glyphSize = Tokens::sizeSymbolInline * scale,
-            .enabled = idx > 0,
-            .variant = ButtonVariant::Ghost,
-            .minWidth = iconBtnH,
-            .minHeight = iconBtnH,
-            .padding = 0.0F,
-            .radius = Style::scaledRadiusMd(scale),
-            .onClick = [state, rowIndex = idx, commit] {
-              if (rowIndex == 0 || rowIndex >= state->size()) {
-                return;
-              }
-              std::swap((*state)[rowIndex - 1], (*state)[rowIndex]);
-              commit();
-            },
-        });
-        reorder->addChild(std::move(upBtn));
-
-        auto downBtn = ui::button({
-            .glyph = "chevron-down",
-            .glyphSize = Tokens::sizeSymbolInline * scale,
-            .enabled = idx + 1 < state->size(),
-            .variant = ButtonVariant::Ghost,
-            .minWidth = iconBtnH,
-            .minHeight = iconBtnH,
-            .padding = 0.0F,
-            .radius = Style::scaledRadiusMd(scale),
-            .onClick = [state, rowIndex = idx, commit] {
-              if (rowIndex + 1 >= state->size()) {
-                return;
-              }
-              std::swap((*state)[rowIndex + 1], (*state)[rowIndex]);
-              commit();
-            },
-        });
-        reorder->addChild(std::move(downBtn));
-        row->addChild(std::move(reorder));
 
         auto entrySettings = ui::button({
             .glyph = "settings",
@@ -664,7 +635,18 @@ namespace settings {
         });
         row->addChild(std::move(enabledToggle));
 
-        block->addChild(std::move(row));
+        rows.push_back(list->addChild(std::move(row)));
+      }
+      if (!rows.empty()) {
+        addSettingsRowSeparators(*list, scale);
+        std::vector<Node*> separators;
+        for (const auto& child : list->children()) {
+          if (std::ranges::find(rows, child.get()) == rows.end()) {
+            separators.push_back(child.get());
+          }
+        }
+        list->reorder().attach(*list, std::move(rows), std::move(separators));
+        block->addChild(std::move(list));
       }
 
       auto addBtn = ui::button({
@@ -708,6 +690,14 @@ namespace settings {
       };
 
       const float iconBtnH = Tokens::sizeControlS * scale;
+      auto list = std::make_unique<ReorderList>(scale, [state, commit](ReorderDrag::Move move) {
+        if (applyReorder(*state, move)) {
+          commit();
+        }
+      });
+      list->setAlign(FlexAlign::Stretch);
+      list->setGap(Style::spaceXs * scale);
+      std::vector<Node*> rows;
       for (std::size_t idx = 0; idx < state->size(); ++idx) {
         auto row = ui::row({
             .align = FlexAlign::Center,
@@ -715,6 +705,10 @@ namespace settings {
             .gap = Style::spaceSm * scale,
             .minHeight = metrics::kRowHeight * scale,
         });
+
+        if (state->size() > 1) {
+          row->addChild(list->reorder().makeHandle(idx, i18n::tr("settings.controls.list.drag")));
+        }
 
         auto summary = ui::label({
             .text = idleBehaviorRowSummary((*state)[idx]),
@@ -724,46 +718,6 @@ namespace settings {
         });
         row->addChild(std::move(summary));
 
-        auto reorder = ui::row({.align = FlexAlign::Center, .gap = Style::spaceXs * scale});
-
-        auto upBtn = ui::button({
-            .glyph = "chevron-up",
-            .glyphSize = Tokens::sizeSymbolInline * scale,
-            .enabled = idx > 0,
-            .variant = ButtonVariant::Ghost,
-            .minWidth = iconBtnH,
-            .minHeight = iconBtnH,
-            .padding = 0.0F,
-            .radius = Style::scaledRadiusMd(scale),
-            .onClick = [state, rowIndex = idx, commit] {
-              if (rowIndex == 0 || rowIndex >= state->size()) {
-                return;
-              }
-              std::swap((*state)[rowIndex - 1], (*state)[rowIndex]);
-              commit();
-            },
-        });
-        reorder->addChild(std::move(upBtn));
-
-        auto downBtn = ui::button({
-            .glyph = "chevron-down",
-            .glyphSize = Tokens::sizeSymbolInline * scale,
-            .enabled = idx + 1 < state->size(),
-            .variant = ButtonVariant::Ghost,
-            .minWidth = iconBtnH,
-            .minHeight = iconBtnH,
-            .padding = 0.0F,
-            .radius = Style::scaledRadiusMd(scale),
-            .onClick = [state, rowIndex = idx, commit] {
-              if (rowIndex + 1 >= state->size()) {
-                return;
-              }
-              std::swap((*state)[rowIndex + 1], (*state)[rowIndex]);
-              commit();
-            },
-        });
-        reorder->addChild(std::move(downBtn));
-        row->addChild(std::move(reorder));
 
         auto entrySettings = ui::button({
             .glyph = "settings",
@@ -795,7 +749,18 @@ namespace settings {
         });
         row->addChild(std::move(enabledToggle));
 
-        block->addChild(std::move(row));
+        rows.push_back(list->addChild(std::move(row)));
+      }
+      if (!rows.empty()) {
+        addSettingsRowSeparators(*list, scale);
+        std::vector<Node*> separators;
+        for (const auto& child : list->children()) {
+          if (std::ranges::find(rows, child.get()) == rows.end()) {
+            separators.push_back(child.get());
+          }
+        }
+        list->reorder().attach(*list, std::move(rows), std::move(separators));
+        block->addChild(std::move(list));
       }
 
       auto addBtn = ui::button({
