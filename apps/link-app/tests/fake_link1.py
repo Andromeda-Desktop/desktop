@@ -33,17 +33,20 @@ def ago(days, hour, minute):
 
 
 MAYA, DAD, PARCEL, JONAS, LENA = "+4915112340001", "+491701234567", "+49 151 2345 6789", "+4915790001111", "+4917622223333"
-# (id, thread, address, body, date ms, sent): the mockup's threads; ids 7, 8 and 5 arrive as TextReceived (unread).
+MMS = 1 << 62
+# (id, thread, address, body, date ms, status, image parts): the mockup's threads; ids 7, 8 and 5 arrive as
+# TextReceived (unread). Status 0 received, 3 delivered; MMS ids have bit 62.
 texts = [
-    (1, 1, MAYA, "Dinner Friday? The new place on Oranienstraße", ago(1, 19, 2), False),
-    (2, 1, MAYA, "Yes! 19:00 works", ago(1, 19, 5), True),
-    (7, 1, MAYA, "Leaving the office now", ago(0, 18, 30), False),
-    (8, 1, MAYA, "Running 10 min late, order me the pasta?", ago(0, 18, 42), False),
-    (5, 2, DAD, "Call me when you're free", ago(0, 17, 5), False),
+    (1, 1, MAYA, "Dinner Friday? The new place on Oranienstraße", ago(1, 19, 2), 0, []),
+    (2, 1, MAYA, "Yes! 19:00 works", ago(1, 19, 5), 3, []),
+    (MMS + 1, 1, MAYA, "", ago(0, 8, 0), 0, [(901, "image/jpeg")]),
+    (7, 1, MAYA, "Leaving the office now", ago(0, 18, 30), 0, []),
+    (8, 1, MAYA, "Running 10 min late, order me the pasta?", ago(0, 18, 42), 0, []),
+    (5, 2, DAD, "Call me when you're free", ago(0, 17, 5), 0, []),
     (6, 3, PARCEL, "Ihr Paket wird heute zwischen 14:00 und 16:00 Uhr zugestellt. Sendungsverfolgung: "
-                   "https://example.com/a/very/long/path/that/never/breaks/0123456789abcdef", ago(0, 12, 10), False),
-    (4, 4, JONAS, "Sounds good, see you Friday", ago(2, 16, 0), False),
-    (3, 5, LENA, "Photo", ago(3, 9, 30), False),
+                   "https://example.com/a/very/long/path/that/never/breaks/0123456789abcdef", ago(0, 12, 10), 0, []),
+    (4, 4, JONAS, "Sounds good, see you Friday", ago(2, 16, 0), 0, []),
+    (MMS + 2, 5, LENA, "", ago(3, 9, 30), 0, [(902, "image/png")]),
 ]
 contacts = [("Maya Okafor", [MAYA]), ("Dad", ["0170 1234567"]), ("Jonas Weber", [JONAS]), ("Lena", [LENA])]
 connected = MODE in ("sample", "two")
@@ -74,7 +77,7 @@ props = {
     "AutoAccept": GLib.Variant("as", []),
     "NotificationsWhileLocked": GLib.Variant("b", False),
     "Commands": GLib.Variant("a(ss)", COMMANDS),
-    "Texts": GLib.Variant("a{sa(ttsstb)}", {"p1": texts} if connected else {}),
+    "Texts": GLib.Variant("a{sa(ttsstya(ts))}", {"p1": texts} if connected else {}),
     "Contacts": GLib.Variant("a{sa(sas)}", {"p1": contacts}),
     "Calls": GLib.Variant("a{sa(sstus)}", {"p1": [
         ("+14155550199", "Mum", ago(0, 18, 20), 0, "missed"),
@@ -96,7 +99,7 @@ def emit(name, signature, *args):
 def emit_sample():
     if not connected:
         return False
-    for (id_, _thread, address, body, _at, _sent) in texts:
+    for (id_, _thread, address, body, _at, _status, _parts) in texts:
         if id_ in (5, 7, 8):
             emit("TextReceived", "(stss)", "p1", id_, address, body)
     if os.environ.get("HOTSPOT"):
@@ -192,6 +195,10 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
         offset, count, media = params[1], params[2], params[3]
         kind = [p for p in photos if media == "all" or (media == "videos") == p[3]] if connected else []
         invocation.return_value(GLib.Variant("(ua(sstbu))", (len(kind), kind[offset:offset + count])))
+        return
+    if method == "TextImage":  # MMS_IMAGE: a picture file to serve; else a gradient
+        path = os.environ.get("MMS_IMAGE")
+        invocation.return_value(GLib.Variant("(ay)", (open(path, "rb").read() if path else png(params[1], 240),)))
         return
     if method == "Thumbnail":
         index = next(i for i, p in enumerate(photos) if p[0] == params[1])

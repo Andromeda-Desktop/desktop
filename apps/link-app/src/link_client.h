@@ -85,6 +85,8 @@ namespace linkapp {
     void savePhotoTo(const std::string& path, const std::string& folder, std::function<void(const std::string&)> done);
     // The PNG thumbnail of a listed photo, or null; the first ask fetches it and calls the thumbnail callback.
     [[nodiscard]] const std::vector<std::uint8_t>* thumbnail(const std::string& path);
+    // The PNG of an MMS image part of the shown phone, or null; fetched and cached as thumbnail() does.
+    [[nodiscard]] const std::vector<std::uint8_t>* textImage(std::uint64_t part);
     void setOnThumbnail(std::function<void()> ready) { m_thumbnailReady = std::move(ready); }
     // Marks every loaded photo as seen, so Waiting drops "N new photos" until a newer one loads.
     void markPhotosSeen();
@@ -166,6 +168,8 @@ namespace linkapp {
       std::list<std::string>::iterator use;
     };
     static constexpr std::size_t kThumbBytes = std::size_t{48} << 20;
+    // Fetches path's PNG with ask() once and caches it; null until it comes.
+    template <typename Ask> const std::vector<std::uint8_t>* cachedImage(const std::string& path, Ask ask);
     std::map<std::string, Thumb> m_thumbs; // path -> PNG, at most kThumbBytes; the least recently drawn go first
     std::list<std::string> m_thumbUse;     // paths, most recently drawn first
     std::size_t m_thumbBytes = 0;

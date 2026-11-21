@@ -293,7 +293,9 @@ void LinkService::apply(const std::map<std::string, sdbus::Variant>& properties)
   }
   if (const auto it = properties.find("Texts"); it != properties.end()) {
     try {
-      using Text = sdbus::Struct<std::uint64_t, std::uint64_t, std::string, std::string, std::uint64_t, bool>;
+      // (id, thread, address, body, date, status, image parts); status 0 is a received text.
+      using Text = sdbus::Struct<std::uint64_t, std::uint64_t, std::string, std::string, std::uint64_t, std::uint8_t,
+                                 std::vector<sdbus::Struct<std::uint64_t, std::string>>>;
       m_texts.clear();
       for (const auto& [id, texts] : it->second.get<std::map<std::string, std::vector<Text>>>()) {
         auto& list = m_texts[id];
@@ -304,7 +306,7 @@ void LinkService::apply(const std::map<std::string, sdbus::Variant>& properties)
               .address = text.get<2>(),
               .body = text.get<3>(),
               .date = text.get<4>(),
-              .sent = text.get<5>(),
+              .sent = text.get<5>() != 0,
           });
         }
       }

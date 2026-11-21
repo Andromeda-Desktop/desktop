@@ -191,14 +191,17 @@ namespace linkapp {
   // "2.4 MB", "512 KB", "1.2 GB".
   [[nodiscard]] std::string byteSize(std::uint64_t bytes);
 
-  // One SMS as Link1 Texts reports it.
+  // One SMS or MMS as Link1 Texts reports it; Delivered means the SMS delivery report came.
   struct Text {
+    enum class Status : std::uint8_t { Received, Sent, Sending, Delivered, Failed };
     std::uint64_t id = 0;
     std::uint64_t thread = 0;
     std::string address;
     std::string body;
     std::int64_t atMs = 0;
-    bool sent = false;
+    Status status = Status::Received;
+    std::vector<std::uint64_t> images; // MMS image part ids, for Link1 TextImage
+    [[nodiscard]] bool mine() const { return status != Status::Received; }
   };
 
   struct Contact {
@@ -225,15 +228,19 @@ namespace linkapp {
     State state = State::Sending;
   };
 
-  // One row of a conversation, oldest first.
+  // One row of a conversation, oldest first. An MMS gives one row per image, then one for its words.
   struct ConversationRow {
     enum class Kind : std::uint8_t { Day, In, Out, Sending, Failed };
+    // Below an Out bubble from Texts: Delivered only on the newest Out row; Sending/NotSent as the phone reports.
+    enum class Note : std::uint8_t { None, Delivered, Sending, NotSent };
     Kind kind = Kind::Day;
     std::string text; // the day label or the body
     std::int64_t atMs = 0;
     std::uint64_t key = 0;   // stable per row: text id, outgoing serial, or day
     bool runEnd = false; // the last bubble before the other side, a day line or the end: its time shows below
     std::uint64_t serial = 0; // Sending and Failed: the outgoing serial
+    std::uint64_t image = 0;  // an MMS image part: the row is an image bubble
+    Note note = Note::None;
   };
 
   struct CallEntry {

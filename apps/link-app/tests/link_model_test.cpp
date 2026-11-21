@@ -132,9 +132,12 @@ namespace {
     std::vector<Text> universe;
     for (std::uint64_t id = 1; id <= 40; ++id) {
       const auto thread = static_cast<std::uint64_t>(threadOf(rng));
+      std::vector<std::uint64_t> images;
+      for (int k = pick(rng) % 4 == 0 ? 1 + pick(rng) % 2 : 0; k > 0; --k) images.push_back(id * 10 + static_cast<std::uint64_t>(k));
       universe.push_back({.id = id, .thread = thread, .address = std::format("+49 151 000{}", thread),
-                          .body = std::format("t{}", id), .atMs = now - static_cast<std::int64_t>(pick(rng)) * 7 * 3600 * 1000,
-                          .sent = pick(rng) % 3 == 0});
+                          .body = !images.empty() && pick(rng) % 2 == 0 ? std::string() : std::format("t{}", id),
+                          .atMs = now - static_cast<std::int64_t>(pick(rng)) * 7 * 3600 * 1000,
+                          .status = static_cast<Text::Status>(pick(rng) % 5), .images = std::move(images)});
     }
     Messages m;
     std::vector<Text> shown;
@@ -153,7 +156,7 @@ namespace {
         for (const Thread& t : m.threads()) {
           for (const ConversationRow& row : m.conversation(t.id, now)) {
             if (row.kind == K::Sending && pick(rng) % 2 == 0) {
-              shown.push_back({.id = ++textId, .thread = t.id, .address = t.address, .body = row.text, .atMs = now, .sent = true});
+              shown.push_back({.id = ++textId, .thread = t.id, .address = t.address, .body = row.text, .atMs = now, .status = Text::Status::Sent});
             }
           }
         }
@@ -161,7 +164,7 @@ namespace {
         for (const Text& t : shown) {
           for (const Thread& th : m.threads()) {
             for (const ConversationRow& row : m.conversation(th.id, now)) {
-              if (t.sent && th.id == t.thread && row.kind == K::Sending) {
+              if (t.mine() && th.id == t.thread && row.kind == K::Sending) {
                 expect(row.text != t.body, "a sent text Texts holds leaves the outgoing list", seed, step);
               }
             }
@@ -215,11 +218,12 @@ namespace {
         const Text* newest = nullptr;
         for (const Text& t : shown) {
           if (t.thread != th.id) continue;
-          if (!t.sent && unread.contains(t.id)) ++want;
+          if (!t.mine() && unread.contains(t.id)) ++want;
           if (newest == nullptr || std::tie(t.atMs, t.id) > std::tie(newest->atMs, newest->id)) newest = &t;
         }
         expect(th.unread == want, "unread = received texts not yet seen in a viewed thread", seed, step);
-        expect(newest != nullptr && th.last == newest->body, "the row shows the newest text", seed, step);
+        expect(newest != nullptr && th.last == (newest->body.empty() && !newest->images.empty() ? "Photo" : newest->body),
+               "the row shows the newest text, Photo for an MMS of images only", seed, step);
         const std::string expectName = numberKey(th.address) == numberKey("0151 0001") ? "Maya" : "";
         if (!expectName.empty() && th.name != th.address) expect(th.name == expectName, "contact name by number", seed, step);
         if (viewing && th.id == *viewing) expect(th.unread == 0, "the viewed thread has no unread", seed, step);
@@ -236,11 +240,30 @@ namespace {
           if (r > 0) expect(rows[r - 1].atMs <= rows[r].atMs, "oldest first", seed, step);
         }
         std::size_t want2 = 0;
-        for (const Text& t : shown) want2 += t.thread == th.id ? 1 : 0;
+        for (const Text& t : shown) {
+          if (t.thread == th.id) want2 += t.images.size() + (t.body.empty() && !t.images.empty() ? 0 : 1);
+        }
         for (std::uint64_t serial = 1; serial <= 400; ++serial) {
           if (const Outgoing* out = m.outgoing(serial); out && out->thread == th.id) ++want2;
         }
-        expect(bubbles == want2, "one bubble per text and per outgoing text", seed, step);
+        expect(bubbles == want2, "one bubble per image, per text's words and per outgoing text", seed, step);
+        using N = ConversationRow::Note;
+        const auto lastMine = std::ranges::find_if(rows.rbegin(), rows.rend(), [](const ConversationRow& row) {
+          return row.kind == K::Out || row.kind == K::Sending || row.kind == K::Failed;
+        });
+        for (const ConversationRow& row : rows) {
+          if (row.kind != K::In && row.kind != K::Out) continue;
+          const auto text = std::ranges::find_if(shown, [&](const Text& t) {
+            return t.thread == th.id && (t.id == row.key || std::ranges::contains(t.images, row.image) && row.image != 0);
+          });
+          expect(text != shown.end(), "a bubble comes from a text of its thread", seed, step);
+          const bool newest = lastMine != rows.rend() && &*lastMine == &row;
+          const N want3 = text->status == Text::Status::Failed    ? N::NotSent
+                          : text->status == Text::Status::Sending ? N::Sending
+                          : newest && row.image == 0 && text->status == Text::Status::Delivered ? N::Delivered
+                                                                                                  : N::None;
+          expect(row.note == want3, "Delivered only on the newest of mine; Sending and Not sent as the phone says", seed, step);
+        }
         expect(rows.empty() || rows.back().runEnd, "the last bubble ends its run", seed, step);
       }
       if (!shown.empty() || m.load() == Messages::Load::Ready) {

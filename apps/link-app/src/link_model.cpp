@@ -278,7 +278,7 @@ namespace linkapp {
     m_load = Load::Ready;
     std::erase_if(m_outgoing, [&](const Outgoing& out) {
       return std::ranges::any_of(m_texts, [&](const Text& t) {
-        return t.sent && t.thread == out.thread && t.body == out.body && t.atMs >= out.atMs - kClockSkewMs;
+        return t.mine() && t.thread == out.thread && t.body == out.body && t.atMs >= out.atMs - kClockSkewMs;
       });
     });
     readViewed();
@@ -405,9 +405,9 @@ namespace linkapp {
       Thread& thread = byId[t.thread];
       thread.id = t.thread;
       thread.address = t.address;
-      thread.last = t.body;
+      thread.last = t.body.empty() && !t.images.empty() ? "Photo" : t.body;
       thread.atMs = t.atMs;
-      if (m_unread.contains(t.id) && !t.sent) ++thread.unread;
+      if (m_unread.contains(t.id) && !t.mine()) ++thread.unread;
     }
     m_threads.clear();
     m_threads.reserve(byId.size());
@@ -433,8 +433,18 @@ namespace linkapp {
       }
       rows.push_back(std::move(row));
     };
+    using S = Text::Status;
+    using N = ConversationRow::Note;
     for (const Text& t : m_texts) {
-      if (t.thread == thread) add({.kind = t.sent ? K::Out : K::In, .text = t.body, .atMs = t.atMs, .key = t.id});
+      if (t.thread != thread) continue;
+      const K kind = t.mine() ? K::Out : K::In;
+      const N note = t.status == S::Sending ? N::Sending : t.status == S::Failed ? N::NotSent : N::None;
+      for (const std::uint64_t part : t.images) {
+        add({.kind = kind, .atMs = t.atMs, .key = (1ULL << 63) | part, .image = part, .note = note});
+      }
+      if (!t.body.empty() || t.images.empty()) {
+        add({.kind = kind, .text = t.body.empty() ? "Attachment" : t.body, .atMs = t.atMs, .key = t.id, .note = note});
+      }
     }
     for (const Outgoing& out : m_outgoing) {
       if (out.thread != thread) continue;
@@ -442,6 +452,13 @@ namespace linkapp {
            .key = ~out.serial, .serial = out.serial});
     }
     if (!rows.empty()) rows.back().runEnd = true;
+    const auto newestOut = std::ranges::find_if(rows.rbegin(), rows.rend(), [](const ConversationRow& row) {
+      return row.kind == K::Out || row.kind == K::Sending || row.kind == K::Failed;
+    });
+    if (newestOut != rows.rend() && newestOut->kind == K::Out) {
+      const auto text = std::ranges::find(m_texts, newestOut->key, &Text::id);
+      if (text != m_texts.end() && text->status == S::Delivered) newestOut->note = N::Delivered;
+    }
     return rows;
   }
 

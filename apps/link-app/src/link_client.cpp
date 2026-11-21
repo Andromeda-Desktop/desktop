@@ -251,14 +251,23 @@ namespace linkapp {
           }
           // Texts and Contacts of the phone presence() shows; Link1 keeps its newest 256 texts.
           const std::string phone = presence().phone.id;
-          using Sms = sdbus::Struct<std::uint64_t, std::uint64_t, std::string, std::string, std::uint64_t, bool>;
+          using Part = sdbus::Struct<std::uint64_t, std::string>;
+          using Sms = sdbus::Struct<std::uint64_t, std::uint64_t, std::string, std::string, std::uint64_t, std::uint8_t,
+                                    std::vector<Part>>;
           const auto texts = property<std::map<std::string, std::vector<Sms>>>(props, "Texts");
           std::vector<Text> list;
           if (const auto it = texts.find(phone); it != texts.end()) {
             list.reserve(it->second.size());
             for (const Sms& t : it->second) {
-              list.push_back({.id = t.get<0>(), .thread = t.get<1>(), .address = t.get<2>(), .body = t.get<3>(),
-                              .atMs = static_cast<std::int64_t>(t.get<4>()), .sent = t.get<5>()});
+              const auto status = t.get<5>() <= static_cast<std::uint8_t>(Text::Status::Failed)
+                                      ? static_cast<Text::Status>(t.get<5>())
+                                      : Text::Status::Sent;
+              Text text{.id = t.get<0>(), .thread = t.get<1>(), .address = t.get<2>(), .body = t.get<3>(),
+                        .atMs = static_cast<std::int64_t>(t.get<4>()), .status = status};
+              for (const Part& part : t.get<6>()) {
+                if (part.get<1>().starts_with("image/")) text.images.push_back(part.get<0>());
+              }
+              list.push_back(std::move(text));
             }
           }
           using Person = sdbus::Struct<std::string, std::vector<std::string>>;
@@ -624,22 +633,34 @@ namespace linkapp {
   }
 
   const std::vector<std::uint8_t>* LinkClient::thumbnail(const std::string& path) {
+    return cachedImage(path, [&] {
+      return m_proxy->callMethodAsync("Thumbnail").onInterface(kInterface).withArguments(m_photosDevice, path, std::uint16_t{256});
+    });
+  }
+
+  const std::vector<std::uint8_t>* LinkClient::textImage(std::uint64_t part) {
+    const std::string device = presence().phone.id;
+    if (device.empty()) return nullptr;
+    // Twice the bubble's 240 x 160, for 2x scales.
+    return cachedImage(std::format("mms:{}:{}", device, part), [&] {
+      return m_proxy->callMethodAsync("TextImage").onInterface(kInterface).withArguments(device, part, std::uint16_t{480});
+    });
+  }
+
+  template <typename Ask> const std::vector<std::uint8_t>* LinkClient::cachedImage(const std::string& path, Ask ask) {
     if (const auto it = m_thumbs.find(path); it != m_thumbs.end()) {
       m_thumbUse.splice(m_thumbUse.begin(), m_thumbUse, it->second.use);
       return it->second.png.empty() ? nullptr : &it->second.png;
     }
     m_thumbUse.push_front(path);
     m_thumbs.emplace(path, Thumb{.png = {}, .use = m_thumbUse.begin()});
-    m_proxy->callMethodAsync("Thumbnail")
-        .onInterface(kInterface)
-        .withArguments(m_photosDevice, path, std::uint16_t{256})
-        .uponReplyInvoke([this, path, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+    ask().uponReplyInvoke([this, path, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
                                                                              std::vector<std::uint8_t> png) {
           if (alive.expired()) return;
           const auto entry = m_thumbs.find(path);
           if (entry == m_thumbs.end()) return;
           if (error) {
-            kLog.debug("Thumbnail: {}", error->getMessage());
+            kLog.debug("image {}: {}", path, error->getMessage());
             m_thumbUse.erase(entry->second.use);
             m_thumbs.erase(entry); // the next bind of its tile asks again
             return;

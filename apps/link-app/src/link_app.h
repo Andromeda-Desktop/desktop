@@ -88,7 +88,8 @@ namespace linkapp {
     void onActivate(std::size_t index) override;
 
   private:
-    [[nodiscard]] std::unique_ptr<Node> build(std::size_t index, float width) const;
+    // renderer null while measuring: an image bubble has a fixed size.
+    [[nodiscard]] std::unique_ptr<Node> build(std::size_t index, float width, Renderer* renderer) const;
 
     LinkClient& m_client;
     const float& m_scale;
@@ -245,6 +246,7 @@ namespace linkapp {
     std::unique_ptr<PhotoAdapter> m_photos;
     ScrollViewState m_photoScroll;
     VirtualListView* m_feedList = nullptr;  // the Waiting list of the last build, null off Waiting
+    VirtualListView* m_conversationList = nullptr; // the open conversation of the last build, null off Messages
     VirtualGridView* m_photoGrid = nullptr; // the grid of the last build, null off the Photos page
     std::unique_ptr<TransferAdapter> m_transfers;
     ScrollViewState m_transferScroll;

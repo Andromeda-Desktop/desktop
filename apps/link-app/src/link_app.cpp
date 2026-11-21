@@ -357,15 +357,15 @@ namespace linkapp {
   }
 
   float ConversationAdapter::measureItem(Renderer& renderer, std::size_t index, float width) {
-    return build(index, width)->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height;
+    return build(index, width, nullptr)->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height;
   }
 
   std::unique_ptr<Node> ConversationAdapter::createItem() { return ui::column({.align = FlexAlign::Stretch}); }
 
-  void ConversationAdapter::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float width, bool /*hovered*/) {
+  void ConversationAdapter::bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool /*hovered*/) {
     auto& holder = static_cast<Flex&>(item);
     while (!holder.children().empty()) holder.removeChild(holder.children().back().get());
-    holder.addChild(build(index, width));
+    holder.addChild(build(index, width, &renderer));
   }
 
   void ConversationAdapter::onActivate(std::size_t index) {
@@ -373,9 +373,10 @@ namespace linkapp {
   }
 
   // Bubbles (handoff.yaml): in fill_1 left, out fill_2 right, r 16, paragraph, at most 72 % wide; the run's time
-  // below its last bubble; day lines as centred footnotes.
-  std::unique_ptr<Node> ConversationAdapter::build(std::size_t index, float width) const {
+  // below its last bubble; day lines as centred footnotes. An MMS image is a 240 x 160 cover inside a p4 bubble.
+  std::unique_ptr<Node> ConversationAdapter::build(std::size_t index, float width, Renderer* renderer) const {
     using K = ConversationRow::Kind;
+    using N = ConversationRow::Note;
     const float s = m_scale;
     const ConversationRow& row = m_rows[index];
     const float inset = Tokens::spaceP24 * s;
@@ -387,21 +388,35 @@ namespace linkapp {
     const bool hidden = in && m_client.presence().kind == Presence::Kind::Locked;
     auto block = ui::column({.align = in ? FlexAlign::Start : FlexAlign::End, .gap = Tokens::spaceP4 * s, .paddingH = inset});
     const float padH = Tokens::spaceP12 * s;
-    auto bubble = ui::column({.paddingV = Tokens::spaceP8 * s, .paddingH = padH,
-                              .fill = colorSpecFromRole(in ? ColorRole::Fill1 : ColorRole::Fill2),
-                              .radius = Style::scaledRadius(Tokens::componentLinkBubbleRadius, s)});
-    auto body = ui::label({.text = hidden ? std::string(kLockedText) : row.text, .fontSize = Tokens::typeParagraph.size * s,
-                           .fontWeight = static_cast<FontWeight>(Tokens::typeParagraph.weight),
-                           .color = colorSpecFromRole(hidden ? ColorRole::Label2 : ColorRole::Label1),
-                           .maxWidth = std::max(0.0F, (width - 2.0F * inset) * Tokens::componentLinkBubbleMax - 2.0F * padH)});
-    bubble->addChild(std::move(body));
-    block->addChild(std::move(bubble));
-    if (row.runEnd || row.kind == K::Failed) {
-      const std::string meta = row.kind == K::Sending  ? std::string("Sending…")
-                               : row.kind == K::Failed ? std::string("Not sent · Click to try again")
-                                                       : clock(row.atMs);
+    const ColorSpec fill = colorSpecFromRole(in ? ColorRole::Fill1 : ColorRole::Fill2);
+    const float radius = Style::scaledRadius(Tokens::componentLinkBubbleRadius, s);
+    if (row.image != 0 && !hidden) {
+      const float pad = Tokens::spaceP4 * s;
+      const float inner = Style::scaledRadius(Tokens::componentLinkBubbleRadius - Tokens::spaceP4, s);
+      auto bubble = ui::column({.padding = pad, .fill = fill, .radius = radius});
+      Image* image = nullptr;
+      bubble->addChild(ui::image({.out = &image, .fit = ImageFit::Cover, .radius = inner,
+                                  .width = Tokens::componentLinkMmsImageW * s, .height = Tokens::componentLinkMmsImageH * s}));
+      const std::vector<std::uint8_t>* png = renderer != nullptr ? m_client.textImage(row.image) : nullptr;
+      if (png != nullptr) (void)image->setSourceBytes(*renderer, png->data(), png->size());
+      block->addChild(std::move(bubble));
+    } else {
+      auto bubble = ui::column({.paddingV = Tokens::spaceP8 * s, .paddingH = padH, .fill = fill, .radius = radius});
+      bubble->addChild(ui::label({.text = hidden ? std::string(kLockedText) : row.text, .fontSize = Tokens::typeParagraph.size * s,
+                                  .fontWeight = static_cast<FontWeight>(Tokens::typeParagraph.weight),
+                                  .color = colorSpecFromRole(hidden ? ColorRole::Label2 : ColorRole::Label1),
+                                  .maxWidth = std::max(0.0F, (width - 2.0F * inset) * Tokens::componentLinkBubbleMax - 2.0F * padH)}));
+      block->addChild(std::move(bubble));
+    }
+    const bool failed = row.kind == K::Failed || row.note == N::NotSent;
+    if (row.runEnd || failed) {
+      const std::string meta = row.kind == K::Sending || row.note == N::Sending ? std::string("Sending…")
+                               : row.kind == K::Failed                         ? std::string("Not sent · Click to try again")
+                               : row.note == N::NotSent                        ? std::string("Not sent")
+                               : row.note == N::Delivered                      ? std::string("Delivered")
+                                                                               : clock(row.atMs);
       block->addChild(ui::row({.paddingV = Tokens::spaceP2 * s, .paddingH = padH},
-                              text(meta, Tokens::typeFootnote, row.kind == K::Failed ? ColorRole::DangerText : ColorRole::Label2, s)));
+                              text(meta, Tokens::typeFootnote, failed ? ColorRole::DangerText : ColorRole::Label2, s)));
     }
     return block;
   }
@@ -617,6 +632,7 @@ namespace linkapp {
       m_client->setOnThumbnail([this] {
         if (m_photoGrid != nullptr) m_photoGrid->notifyDataChanged();
         if (m_feedList != nullptr) m_feedList->notifyDataChanged();
+        if (m_conversationList != nullptr) m_conversationList->notifyDataChanged();
       });
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
       m_client->setOnChanged([this] {
@@ -1095,6 +1111,7 @@ namespace linkapp {
   std::unique_ptr<Node> LinkApp::content(Renderer& renderer, float width, float height) {
     m_photoGrid = nullptr;
     m_feedList = nullptr;
+    m_conversationList = nullptr;
     m_mirrorImage = nullptr;
     m_mirrorStat = nullptr;
     m_renderer = &renderer;
@@ -1229,6 +1246,7 @@ namespace linkapp {
       VirtualListView* log = nullptr;
       column->addChild(ui::virtualListView({.out = &log, .state = &m_conversationScroll, .contentScale = s,
                                             .itemGap = Tokens::spaceP4 * s, .adapter = m_conversation.get(), .flexGrow = 1.0F}));
+      m_conversationList = log;
       log->scrollView().setStickToBottom(true);
       log->setAnchorBottom(true);
       const std::uint64_t id = thread->id;
