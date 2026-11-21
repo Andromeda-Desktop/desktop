@@ -1,0 +1,61 @@
+name: check-macos
+
+# Builds "Andromeda Terminal.app" on a Mac with the same scripts as the Linux cross-build, then runs it:
+# shell input and output through `ctl`, and an app restart with the session kept by ptyd.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, "ci/**"]
+    paths:
+      - apps/terminal/**
+      - libdesk-ui/**
+      - libdesk-app/**
+      - tools/macos/**
+      - tools/build-libghostty.sh
+      - .github/workflows/check-macos.yml
+
+jobs:
+  terminal:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CI: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tools/unit-version.sh counts from the last tag
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with: { version: 0.17.1 }
+      - name: Tools
+        run: |
+          brew install meson ninja llvm lld pkgconf librsvg jq ncurses coreutils gnu-sed
+          # The scripts call GNU sed and sha256sum, and the LLVM Mach-O tools by their Linux names. Compiling stays
+          # with Apple clang: brew clang brings its own libc++ headers.
+          mkdir -p /tmp/llvm-tools
+          for tool in llvm-otool llvm-install-name-tool llvm-strip llvm-ar llvm-nm; do
+            ln -s "$(brew --prefix)/opt/llvm/bin/$tool" /tmp/llvm-tools/
+          done
+          echo /tmp/llvm-tools >> "$GITHUB_PATH"
+          for dir in lld/bin ncurses/bin coreutils/libexec/gnubin gnu-sed/libexec/gnubin; do
+            echo "$(brew --prefix)/opt/$dir" >> "$GITHUB_PATH"
+          done
+          git clone -q https://github.com/nothings/stb /tmp/stb-src
+          git -C /tmp/stb-src checkout -q 6b5799bae8a1fe3792691ef4b72ae26434c3e799
+          mkdir -p /tmp/stb && cp /tmp/stb-src/*.h /tmp/stb/
+      - name: Dependencies
+        run: DARWIN_SDK=$(xcrun --show-sdk-path) STB_INCLUDE=/tmp/stb tools/macos/deps.py
+      - name: Bundle
+        run: tools/macos/terminal.sh
+      - name: Smoke
+        run: tools/macos/smoke.sh
+      - name: Pack
+        if: always()
+        run: |
+          app="/var/tmp/andromeda-macos/Andromeda Terminal.app"
+          [ -d "$app" ] && ditto -c -k --keepParent "$app" /var/tmp/andromeda-macos/smoke/Andromeda-Terminal.zip || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: terminal-macos
+          path: /var/tmp/andromeda-macos/smoke
+          if-no-files-found: ignore

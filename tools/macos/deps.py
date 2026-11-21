@@ -142,7 +142,7 @@ def main():
         with open(os.path.join(pc_dir, name + ".pc"), "w") as f:
             f.write(f"Name: {name}\nDescription: from the macOS SDK\nVersion: 99\nLibs: {lib}\n"
                     f"Cflags: {sdk_include.get(name, '')}\n")
-    shutil.copytree("/usr/include/stb", os.path.join(PREFIX, "include", "stb"), dirs_exist_ok=True)
+    shutil.copytree(os.environ.get("STB_INCLUDE", "/usr/include/stb"), os.path.join(PREFIX, "include", "stb"), dirs_exist_ok=True)
     angle(pc_dir)
 
     flags = f"['-target', '{TARGET}', '-isysroot', '{SDK}']"

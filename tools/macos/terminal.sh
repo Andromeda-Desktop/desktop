@@ -79,7 +79,10 @@ rsync -a --exclude '*-wallpaper.png' shell/assets/ "$res/assets/"
 cp -r apps/terminal/data/shell-integration "$res/"
 tic -x -o "$res/terminfo" apps/terminal/data/andromeda.terminfo
 # macOS ncurses looks entries up under the hex name of their first letter.
+# tic on a Mac writes them so already.
+shopt -s nullglob
 for dir in "$res/terminfo"/?; do mv "$dir" "$res/terminfo/$(printf '%x' "'${dir##*/}")"; done
+shopt -u nullglob
 cp tools/macos/fonts.conf "$res/fonts/"
 tools/macos/icns.py apps/terminal/data/icons/dev.andromeda.Terminal.svg "$res/AppIcon.icns"
 for conf in 05-macos 10-hinting-slight 10-scale-bitmap-fonts 30-metric-aliases 40-nonlatin 45-generic 45-latin 48-spacing \
@@ -122,6 +125,10 @@ done
 [ $bad -eq 0 ] || exit 1
 
 llvm-strip -S "$macos/andromeda-terminal"
-# Signs every Mach-O in the bundle; install-name changes broke their old signatures.
-rcodesign sign "$app" 2>&1 | grep -c 'signing Mach-O' | sed 's/^/terminal.sh: signed Mach-O files: /' 
+# Signs every Mach-O in the bundle; install-name changes broke their old signatures. A Mac has codesign.
+if command -v rcodesign > /dev/null; then
+  rcodesign sign "$app" 2>&1 | grep -c 'signing Mach-O' | sed 's/^/terminal.sh: signed Mach-O files: /'
+else
+  codesign --force --deep --sign - "$app"
+fi
 echo "terminal.sh: $app ($(du -sh "$app" | cut -f1))"
