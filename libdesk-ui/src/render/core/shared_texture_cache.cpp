@@ -11,6 +11,13 @@
 #include <array>
 #include <cerrno>
 #include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <optional>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
 
@@ -36,6 +43,104 @@ namespace {
   }
 
   constexpr int kBlurredMaxSide = 1024;
+
+  // A large image reduced for its coverage is kept on disk, so the next start (the login wallpaper of the shell and
+  // the lock) reads the reduced pixels instead of decoding the source again (~500 ms for 16 MP on an HD 520 laptop).
+  // Pixels are RGBA before any blur. The key holds the source's size and mtime, so an edited file misses.
+  namespace pixel_cache {
+    constexpr std::uint32_t kMagic = 0x31435444U;
+    constexpr std::size_t kMaxFiles = 4;
+
+    struct Header {
+      std::uint32_t magic = kMagic;
+      std::int32_t width = 0;
+      std::int32_t height = 0;
+      std::int32_t sourceWidth = 0;
+      std::int32_t sourceHeight = 0;
+      std::uint32_t opaque = 0;
+    };
+
+    std::filesystem::path directory() {
+      if (const char* xdg = std::getenv("XDG_CACHE_HOME"); xdg != nullptr && xdg[0] != '\0') {
+        return std::filesystem::path(xdg) / "andromeda" / "textures";
+      }
+      if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
+        return std::filesystem::path(home) / ".cache" / "andromeda" / "textures";
+      }
+      return {};
+    }
+
+    std::optional<std::filesystem::path> fileFor(const std::string& path, TextureCoverage coverage) {
+      struct stat info {};
+      if (path.empty() || path.front() != '/' || coverage.empty() || ::stat(path.c_str(), &info) != 0) {
+        return std::nullopt;
+      }
+      const std::filesystem::path dir = directory();
+      if (dir.empty()) {
+        return std::nullopt;
+      }
+      std::uint64_t hash = 14695981039346656037ULL;
+      const auto mix = [&hash](const void* data, std::size_t size) {
+        for (std::size_t i = 0; i < size; ++i) {
+          hash = (hash ^ static_cast<const std::uint8_t*>(data)[i]) * 1099511628211ULL;
+        }
+      };
+      mix(path.data(), path.size());
+      const std::int64_t fields[] = {
+          info.st_size, info.st_mtim.tv_sec, info.st_mtim.tv_nsec, coverage.width, coverage.height,
+      };
+      mix(fields, sizeof(fields));
+      return dir / std::format("{:016x}.rgba", hash);
+    }
+
+    bool read(const std::filesystem::path& file, Header& header, std::vector<std::uint8_t>& pixels) {
+      std::ifstream in(file, std::ios::binary);
+      if (!in.read(reinterpret_cast<char*>(&header), sizeof(header)) || header.magic != kMagic || header.width <= 0
+          || header.height <= 0 || header.width > header.sourceWidth || header.height > header.sourceHeight) {
+        return false;
+      }
+      pixels.resize(static_cast<std::size_t>(header.width) * static_cast<std::size_t>(header.height) * 4U);
+      if (!in.read(reinterpret_cast<char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()))) {
+        return false;
+      }
+      std::error_code ec;
+      std::filesystem::last_write_time(file, std::filesystem::file_time_type::clock::now(), ec);
+      return true;
+    }
+
+    // Written to a per-process temporary name and renamed, since the shell and the lock may write the same key.
+    void write(const std::filesystem::path& file, const Header& header, const std::vector<std::uint8_t>& pixels) {
+      std::error_code ec;
+      std::filesystem::create_directories(file.parent_path(), ec);
+      const std::filesystem::path temporary = std::format("{}.{}.tmp", file.string(), ::getpid());
+      {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(&header), sizeof(header));
+        out.write(reinterpret_cast<const char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()));
+        if (!out.flush()) {
+          std::filesystem::remove(temporary, ec);
+          return;
+        }
+      }
+      std::filesystem::rename(temporary, file, ec);
+      if (ec) {
+        std::filesystem::remove(temporary, ec);
+        return;
+      }
+      std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> files;
+      for (const auto& entry : std::filesystem::directory_iterator(file.parent_path(), ec)) {
+        if (entry.path().extension() == ".rgba") {
+          files.emplace_back(entry.last_write_time(ec), entry.path());
+        }
+      }
+      if (files.size() > kMaxFiles) {
+        std::ranges::sort(files, std::greater{}, &decltype(files)::value_type::first);
+        for (std::size_t i = kMaxFiles; i < files.size(); ++i) {
+          std::filesystem::remove(files[i].second, ec);
+        }
+      }
+    }
+  } // namespace pixel_cache
 
   // Number of 2x halvings that keep the image at least `coverage` on both axes.
   [[nodiscard]] int reductionLevel(int width, int height, TextureCoverage coverage) {
@@ -504,7 +609,52 @@ void SharedTextureCache::workerLoop(std::size_t slot) {
       }
     }
 
-    const std::string& path = batch.front().path;
+    // A copy: reduce() moves each request out of the batch before store() needs the path.
+    const std::string path = batch.front().path;
+    const bool alphaMask = batch.front().kind == SharedTextureKind::AlphaMask;
+    const auto blur = [alphaMask](DecodedImage& image) {
+      if (image.request.blur <= 0.0F) {
+        if (!alphaMask) {
+          image.brightLuminance = rgbaBrightLuminance(image.pixels);
+        }
+        return;
+      }
+      // A blurred image keeps no fine detail, so a small copy looks the same and blurs many times faster.
+      while (std::max(image.width, image.height) > kBlurredMaxSide) {
+        halveInPlace(image.pixels, image.width, image.height, 4);
+      }
+      const float radius = image.request.blur * static_cast<float>(std::max(image.width, image.height));
+      blurRgba(image.pixels, image.width, image.height, static_cast<int>(std::lround(radius)));
+      if (!alphaMask) {
+        image.brightLuminance = rgbaBrightLuminance(image.pixels);
+      }
+    };
+
+    if (!alphaMask) {
+      std::vector<DecodedImage> cached;
+      for (const SharedTextureRequest& request : batch) {
+        const auto file = pixel_cache::fileFor(path, request.coverage);
+        DecodedImage image{.request = request};
+        pixel_cache::Header header;
+        if (!file || !pixel_cache::read(*file, header, image.pixels)) {
+          break;
+        }
+        image.width = header.width;
+        image.height = header.height;
+        image.sourceWidth = header.sourceWidth;
+        image.sourceHeight = header.sourceHeight;
+        image.opaque = header.opaque != 0;
+        cached.push_back(std::move(image));
+      }
+      if (cached.size() == batch.size()) {
+        for (DecodedImage& image : cached) {
+          blur(image);
+          pushResult(std::move(image));
+        }
+        continue;
+      }
+    }
+
     auto loaded = loadImageFile(path);
     if (!loaded) {
       kLog.warn("failed to decode {} ({})", ImageSourceLog::describe(path), loaded.error());
@@ -516,7 +666,6 @@ void SharedTextureCache::workerLoop(std::size_t slot) {
 
     const int sourceWidth = loaded->width;
     const int sourceHeight = loaded->height;
-    const bool alphaMask = batch.front().kind == SharedTextureKind::AlphaMask;
     if (alphaMask) {
       packFirstChannel(loaded->rgba, sourceWidth, sourceHeight);
     }
@@ -545,30 +694,31 @@ void SharedTextureCache::workerLoop(std::size_t slot) {
           .opaque = opaque,
       };
     };
-    const auto blur = [alphaMask](DecodedImage& image) {
-      if (image.request.blur <= 0.0F) {
-        if (!alphaMask) {
-          image.brightLuminance = rgbaBrightLuminance(image.pixels);
+    // Only a reduced image: a full-size copy would cost as much disk as it saves decode time.
+    const auto store = [&](const DecodedImage& image, const std::vector<std::uint8_t>& reduced) {
+      if (!alphaMask && level > 0) {
+        if (const auto file = pixel_cache::fileFor(path, image.request.coverage)) {
+          pixel_cache::write(
+              *file,
+              {.width = image.width,
+               .height = image.height,
+               .sourceWidth = image.sourceWidth,
+               .sourceHeight = image.sourceHeight,
+               .opaque = image.opaque ? 1U : 0U},
+              reduced
+          );
         }
-        return;
-      }
-      // A blurred image keeps no fine detail, so a small copy looks the same and blurs many times faster.
-      while (std::max(image.width, image.height) > kBlurredMaxSide) {
-        halveInPlace(image.pixels, image.width, image.height, 4);
-      }
-      const float radius = image.request.blur * static_cast<float>(std::max(image.width, image.height));
-      blurRgba(image.pixels, image.width, image.height, static_cast<int>(std::lround(radius)));
-      if (!alphaMask) {
-        image.brightLuminance = rgbaBrightLuminance(image.pixels);
       }
     };
     for (std::size_t i = 0; i + 1 < batch.size(); ++i) {
       DecodedImage image = reduce(batch[i]);
+      store(image, pixels);
       image.pixels = pixels;
       blur(image);
       pushResult(std::move(image));
     }
     DecodedImage last = reduce(batch.back());
+    store(last, pixels);
     last.pixels = std::move(pixels);
     blur(last);
     pushResult(std::move(last));
