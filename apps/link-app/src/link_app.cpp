@@ -215,6 +215,8 @@ namespace linkapp {
         pick->addChild(ui::image({.out = &image, .fit = ImageFit::Cover, .radius = radius, .width = side, .height = side}));
         const std::vector<std::uint8_t>* png = renderer != nullptr ? m_client.thumbnail(path) : nullptr;
         if (png != nullptr) (void)image->setSourceBytes(*renderer, png->data(), png->size());
+        pick->addChild(ui::box({.fill = clearColorSpec(), .border = colorSpecFromRole(ColorRole::Stroke),
+                                .borderWidth = Tokens::componentSplitStroke * s, .radius = radius, .width = side, .height = side}));
         strip->addChild(std::move(pick));
       }
       body->addChild(std::move(strip));
