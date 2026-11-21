@@ -1780,9 +1780,6 @@ namespace andromeda {
 
   bool Server::start(const char* startupCmd) {
     // Glass programs hold ~10 MB of driver memory; with reduce_transparency nothing draws them, so they link on first use.
-    if (!fx_renderer_warm_programs(m_renderer, !config().appearance.reduceTransparency)) {
-      kLog.warn("could not link the glass and texture shaders at startup; they link on first draw");
-    }
     m_lockFileManaged = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
     if (m_lockFileManaged) {
       // Present from start to clean exit: finding it means the previous compositor crashed.
@@ -1906,6 +1903,10 @@ namespace andromeda {
     // starts after the backend and IPC are up.
     if (!notifySocket.empty() && !startEnvironmentImport()) {
       return false;
+    }
+    // After the import fork, so the shell starts while the shaders link (80-160 ms), still before the first frame.
+    if (!fx_renderer_warm_programs(m_renderer, !config().appearance.reduceTransparency)) {
+      kLog.warn("could not link the glass and texture shaders at startup; they link on first draw");
     }
 
     // These are delivered through the event loop, not a signal handler, so the shutdown path is ordinary code. Note the
