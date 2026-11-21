@@ -1386,6 +1386,7 @@ namespace andromeda {
   void LayerSurface::handleMap() {
     m_mapped = true;
     syncPopupTree();
+    m_server->layerSurfaceMapped();
     m_server->scheduleIpcLayersEvent();
     m_server->updateIdleInhibit();
     if (Output* out = output()) {

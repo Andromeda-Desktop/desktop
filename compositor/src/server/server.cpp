@@ -1439,6 +1439,10 @@ namespace andromeda {
       wl_event_source_remove(m_startupRulesTimer);
       m_startupRulesTimer = nullptr;
     }
+    if (m_inputStartTimer != nullptr) {
+      wl_event_source_remove(m_inputStartTimer);
+      m_inputStartTimer = nullptr;
+    }
     m_sleepWatch.reset();
     if (m_watchdogTimer != nullptr) {
       wl_event_source_remove(m_watchdogTimer);
@@ -1728,8 +1732,49 @@ namespace andromeda {
     m_desktopShell->sendRelock();
   }
 
-  bool Server::start(const char* startupCmd) {
+  namespace {
+    // Lets the output present the frame with the shell's first surfaces before libinput blocks the loop.
+    constexpr int kInputStartAfterFrameMs = 50;
+    constexpr int kInputStartFallbackMs = 1500;
+  } // namespace
+
+  void Server::scheduleInputStart(int delayMs) {
+    if (m_inputStartTimer == nullptr) {
+      m_inputStartTimer = wl_event_loop_add_timer(wl_display_get_event_loop(m_display), onInputStartTimer, this);
+    }
+    wl_event_source_timer_update(m_inputStartTimer, delayMs);
+  }
+
+  void Server::layerSurfaceMapped() {
+    if (m_inputStart == InputStart::Deferred) {
+      m_inputStart = InputStart::Scheduled;
+      scheduleInputStart(kInputStartAfterFrameMs);
+    }
+  }
+
+  int Server::onInputStartTimer(void* data) {
+    auto* self = static_cast<Server*>(data);
+    if (!self->startInput()) {
+      wlr_log(WLR_ERROR, "failed to start the libinput backend; input devices are unavailable");
+    }
+    return 0;
+  }
+
+  bool Server::startInput() {
+    if (m_inputStart == InputStart::Started) {
+      return true;
+    }
+    m_inputStart = InputStart::Started;
+    const bool ok = wlr_backend_start(m_libinputBackend);
+    // Initial libinput switch events are dispatched synchronously inside wlr_backend_start(); publish their settled
+    // aggregate now.
+    m_lidState.setReady();
+    reconcileLidState();
     warmTextRendering();
+    return ok;
+  }
+
+  bool Server::start(const char* startupCmd) {
     if (!fx_renderer_warm_programs(m_renderer)) {
       kLog.warn("could not link the glass and texture shaders at startup; they link on first draw");
     }
@@ -1990,11 +2035,38 @@ namespace andromeda {
       wlr_log(WLR_ERROR, "the session did not become active");
       return false;
     }
-    if (!wlr_backend_start(m_backend)) {
+    struct StartChildren {
+      wlr_backend* libinput = nullptr;
+      bool ok = true;
+    } children;
+    if (wlr_backend_is_multi(m_backend)) {
+      wlr_multi_for_each_backend(
+          m_backend,
+          [](wlr_backend* child, void* data) {
+            auto* state = static_cast<StartChildren*>(data);
+            if (wlr_backend_is_libinput(child)) {
+              state->libinput = child;
+            } else if (state->ok) {
+              state->ok = wlr_backend_start(child);
+            }
+          },
+          &children
+      );
+    } else {
+      children.ok = wlr_backend_start(m_backend);
+    }
+    m_libinputBackend = children.libinput;
+    if (!children.ok) {
       wlr_log(WLR_ERROR, "failed to start backend");
       return false;
     }
     m_backendManager->markStarted();
+    if (m_libinputBackend != nullptr) {
+      m_inputStart = InputStart::Deferred;
+      scheduleInputStart(kInputStartFallbackMs);
+    } else {
+      warmTextRendering();
+    }
 
     // Move the mouse cursor to the first output with "focus_at_startup" enabled, if any.
     for (const auto& output : m_outputs) {
@@ -2033,11 +2105,10 @@ namespace andromeda {
     }
     applyConfiguredEnvironment();
 
-    // Initial libinput switch events are dispatched synchronously inside
-    // wlr_backend_start(). Publish their settled aggregate only after IPC and
-    // the configured child environment are ready.
-    m_lidState.setReady();
-    reconcileLidState();
+    if (m_inputStart == InputStart::Started) {
+      m_lidState.setReady();
+      reconcileLidState();
+    }
 
     m_startTime = std::chrono::steady_clock::now();
     m_startupRulesTimer = wl_event_loop_add_timer(loop, onStartupRulesTimer, this);

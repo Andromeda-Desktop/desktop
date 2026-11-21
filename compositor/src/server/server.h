@@ -428,6 +428,8 @@ namespace andromeda {
     // Re-evaluate application idle inhibitors after a surface's presentation
     // visibility changes.
     void updateIdleInhibit();
+    // A layer surface mapped: the shell drew its first frame, so libinput may start.
+    void layerSurfaceMapped();
     // Re-derive every toplevel's suspended state once the current dispatch settles, so a transition that hides and
     // shows a window within one dispatch never reaches the client.
     void scheduleSuspensionSync();
@@ -1166,6 +1168,15 @@ namespace andromeda {
     wl_event_source* m_backgroundRenderTimer = nullptr;
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
+    // libinput opens and sets up every input device on the main thread (~430 ms at login on the HD 520 laptop). It
+    // starts after the shell's first frame, or after a fallback delay, so it never delays a client's round trips.
+    enum class InputStart { Deferred, Scheduled, Started };
+    InputStart m_inputStart = InputStart::Started;
+    wlr_backend* m_libinputBackend = nullptr;
+    wl_event_source* m_inputStartTimer = nullptr;
+    static int onInputStartTimer(void* data);
+    void scheduleInputStart(int delayMs);
+    bool startInput();
     void startWatchdog(const std::string& notifySocket);
     // The session environment import runs while start() continues; readiness and autostart wait for it. Under
     // systemd readiness reportReady() reads m_environmentImportFd; otherwise m_environmentImport watches it.
