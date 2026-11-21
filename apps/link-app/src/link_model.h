@@ -497,6 +497,8 @@ namespace linkapp {
     bool close();
     bool remove();
     bool undo();
+    // Drag reorder: the command at `from` lands at `to`; an open row commits first.
+    bool move(std::size_t from, std::size_t to);
     // The list to send with its serial, once per commit.
     [[nodiscard]] std::optional<std::pair<std::uint64_t, std::vector<Command>>> takeSend();
     bool sent(std::uint64_t serial, std::optional<std::string> error);

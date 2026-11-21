@@ -606,7 +606,8 @@ namespace {
       const CommandsEditor before = ed;
       switch (pick(12)) {
       case 0: {
-        std::vector<Command> server(static_cast<std::size_t>(pick(3) == 0 ? 64 : pick(6)), Command{"S", "true"});
+        std::vector<Command> server;
+        for (int k = pick(3) == 0 ? 64 : pick(6); k > 0; --k) server.push_back({std::format("S{}", k), "true"});
         ed.listed(server);
         if (before.sync() != CommandsEditor::Sync::Synced) expect(ed.list() == before.list(), "local list wins while unsynced", seed, step);
         if (before.mode() == CommandsEditor::Mode::Editing) expect(ed.draft() == before.draft(), "server update keeps the draft", seed, step);
@@ -635,7 +636,22 @@ namespace {
         if (removed && ed.undo()) expect(ed.list() == before.list(), "undo restores the list", seed, step);
         break;
       }
-      case 7: ed.undo(); break;
+      case 7:
+        if (pick(2) == 0) {
+          ed.undo();
+          break;
+        }
+        {
+          const std::size_t from = static_cast<std::size_t>(pick(8)), to = static_cast<std::size_t>(pick(8));
+          if (ed.move(from, to) && before.mode() != CommandsEditor::Mode::Editing) {
+            std::vector<Command> expected = before.list();
+            const Command moved = expected[from];
+            expected.erase(expected.begin() + static_cast<std::ptrdiff_t>(from));
+            expected.insert(expected.begin() + static_cast<std::ptrdiff_t>(to), moved);
+            expect(ed.list() == expected, "a move lands the row at its target, the others keep their order", seed, step);
+          }
+        }
+        break;
       case 8:
         if (auto send = ed.takeSend()) {
           expect(valid(send->second) && send->second == ed.list(), "only a valid list is sent", seed, step);

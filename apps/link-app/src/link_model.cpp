@@ -819,6 +819,20 @@ namespace linkapp {
     return true;
   }
 
+  bool CommandsEditor::move(std::size_t from, std::size_t to) {
+    if (from >= m_list.size() || to >= m_list.size() || from == to) return false;
+    if (m_mode == Mode::Editing && !commit()) return true;
+    if (from >= m_list.size() || to >= m_list.size()) return true;
+    m_mode = Mode::Idle;
+    const auto first = m_list.begin();
+    if (from < to) std::rotate(first + static_cast<std::ptrdiff_t>(from), first + static_cast<std::ptrdiff_t>(from) + 1,
+                               first + static_cast<std::ptrdiff_t>(to) + 1);
+    else std::rotate(first + static_cast<std::ptrdiff_t>(to), first + static_cast<std::ptrdiff_t>(from),
+                     first + static_cast<std::ptrdiff_t>(from) + 1);
+    queue();
+    return true;
+  }
+
   std::optional<std::pair<std::uint64_t, std::vector<Command>>> CommandsEditor::takeSend() {
     if (!m_queued) return std::nullopt;
     m_queued = false;

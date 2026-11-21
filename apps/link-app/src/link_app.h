@@ -206,6 +206,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
     [[nodiscard]] std::unique_ptr<Node> commands(const Presence& presence, float width, float height);
     void commandsChanged(bool changed);
+    void commandGrip(std::size_t row, const InputArea::PointerData& data, bool motion);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
     // Cards mode and the viewed thread follow the page and presence.
@@ -253,6 +254,21 @@ namespace linkapp {
     SettingsView m_settingsView = SettingsView::Main;
     CommandsEditor m_commands;
     ScrollViewState m_commandsScroll;
+    // Commands row drag: Pressed on a grip, Dragging past spaceP4; the release moves the row to `target`.
+    // rows holds this build's row nodes; a rebuild waits while the button is down, so they live through a drag.
+    struct CommandDrag {
+      enum class Kind : std::uint8_t { Idle, Pressed, Dragging };
+      Kind kind = Kind::Idle;
+      std::size_t from = 0;
+      std::size_t target = 0;
+      float startY = 0.0F;
+      std::vector<Flex*> rows;
+      std::vector<float> tops;           // scene top of each row at the press
+      std::vector<float> shift;          // each other row's translation target
+      std::vector<std::uint32_t> springs; // AnimationManager ids per row
+      ColorSpec restFill;                 // the dragged row's fill before the drag
+    };
+    CommandDrag m_commandDrag;
     std::string m_hotspotSheet;   // device id + ssid of the ask the sheet shows; empty while none shows
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;

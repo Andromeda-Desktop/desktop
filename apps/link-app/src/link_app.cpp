@@ -1840,12 +1840,78 @@ namespace linkapp {
     if (changed) m_window->requestRebuild();
   }
 
+  void LinkApp::commandGrip(std::size_t row, const InputArea::PointerData& data, bool motion) {
+    CommandDrag& d = m_commandDrag;
+    if (row >= d.rows.size()) return;
+    if (!motion && data.pressed) {
+      d.kind = CommandDrag::Kind::Pressed;
+      d.from = d.target = row;
+      d.startY = data.sceneY;
+      d.tops.assign(d.rows.size(), 0.0F);
+      d.shift.assign(d.rows.size(), 0.0F);
+      d.springs.assign(d.rows.size(), 0);
+      for (std::size_t j = 0; j < d.rows.size(); ++j) {
+        float x = 0.0F;
+        Node::absolutePosition(d.rows[j], x, d.tops[j]);
+      }
+      return;
+    }
+    if (!motion) {
+      const bool dragged = d.kind == CommandDrag::Kind::Dragging;
+      for (std::size_t j = 0; j < d.rows.size(); ++j) {
+        if (j < d.springs.size() && d.springs[j] != 0) m_window->animations().cancel(d.springs[j]);
+        d.rows[j]->setTranslation(0.0F, 0.0F);
+        d.rows[j]->setZIndex(0);
+        if (j == d.from) d.rows[j]->setFill(m_commandDrag.restFill);
+      }
+      d.kind = CommandDrag::Kind::Idle;
+      if (dragged) commandsChanged(m_commands.move(d.from, d.target));
+      return;
+    }
+    if (d.kind == CommandDrag::Kind::Idle) return;
+    const float dy = data.sceneY - d.startY;
+    if (d.kind == CommandDrag::Kind::Pressed && std::abs(dy) < Tokens::spaceP4 * m_scale) return;
+    Flex* moving = d.rows[d.from];
+    if (d.kind == CommandDrag::Kind::Pressed) {
+      d.restFill = moving->fill();
+      moving->setFill(colorSpecFromRole(ColorRole::View));
+      moving->setRadius(Style::scaledRadius(Tokens::componentListCardRadius - Tokens::componentListCardPadding, m_scale));
+    }
+    d.kind = CommandDrag::Kind::Dragging;
+    const std::size_t n = d.rows.size();
+    const float y = std::clamp(dy, d.tops.front() - d.tops[d.from], d.tops.back() - d.tops[d.from]);
+    moving->setZIndex(1);
+    moving->setTranslation(0.0F, y);
+    const auto bottom = [&](std::size_t j) { return j + 1 < n ? d.tops[j + 1] : d.tops[j] + d.rows[j]->height(); };
+    const auto middle = [&](std::size_t j) { return (d.tops[j] + bottom(j)) / 2.0F; };
+    const float center = d.tops[d.from] + y + moving->height() / 2.0F;
+    std::size_t target = d.from;
+    while (target + 1 < n && center > middle(target + 1)) ++target;
+    while (target > 0 && center < middle(target - 1)) --target;
+    if (target == d.target) return;
+    d.target = target;
+    const float pitch = bottom(d.from) - d.tops[d.from];
+    for (std::size_t j = 0; j < n; ++j) {
+      if (j == d.from) continue;
+      const float want = d.from < j && j <= target ? -pitch : target <= j && j < d.from ? pitch : 0.0F;
+      if (want == d.shift[j]) continue;
+      d.shift[j] = want;
+      Node* node = d.rows[j];
+      d.springs[j] = m_window->animations().drive(d.springs[j], node->translationY(), want, Style::spring(Tokens::springMove),
+                                                  [node](float v) { node->setTranslation(0.0F, v); }, {}, node, 0.0F, Unit::Px, true);
+    }
+  }
+
   // Settings › Commands (design-link-commands concept A): the grant row, then one row per command in the phone's order;
   // a row opens in place into Name and Command. Only a commit sends SetCommands (CommandsEditor).
   std::unique_ptr<Node> LinkApp::commands(const Presence& presence, float width, float height) {
     const float s = m_scale;
     const CommandsEditor& ed = m_commands;
     const std::vector<Command>& list = ed.list();
+    for (std::uint32_t id : m_commandDrag.springs)
+      if (id != 0) m_window->animations().cancel(id);
+    m_commandDrag = {};
+    m_commandDrag.rows.assign(list.size(), nullptr);
     const std::string id = presence.phone.id;
     const std::string& phone = presence.phone.name;
     const bool away = presence.kind == Presence::Kind::Away;
@@ -2010,19 +2076,31 @@ namespace linkapp {
         rows->addChild(std::move(r));
       }
       if (editing && ed.index() == i) {
-        rows->addChild(editor());
+        auto open = editor();
+        if (i < list.size()) m_commandDrag.rows[i] = open.get();
+        rows->addChild(std::move(open));
         continue;
       }
       if (i == list.size()) break;
       rule(*rows);
-      auto words = ui::column({.align = FlexAlign::Stretch, .paddingV = Tokens::spaceP8 * s, .paddingH = inset,
-                               .minHeight = Tokens::sizeControlL * s,
-                               .onClick = [this, i] { commandsChanged(m_commands.open(i)); }});
+      auto line = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s, .paddingV = Tokens::spaceP8 * s,
+                           .paddingH = Tokens::spaceP4 * s, .minHeight = Tokens::sizeControlL * s,
+                           .onClick = [this, i] { commandsChanged(m_commands.open(i)); }});
+      auto grip = ui::inputArea({.cursorShape = CursorShape::Grab,
+                                 .width = Tokens::sizeControlS * s, .height = Tokens::sizeControlS * s, .zIndex = 2,
+                                 .onMotion = [this, i](const InputArea::PointerData& p) { commandGrip(i, p, true); },
+                                 .onPress = [this, i](const InputArea::PointerData& p) { commandGrip(i, p, false); }});
+      grip->addChild(ui::glyph({.glyph = std::string("grip-vertical"), .glyphSize = Tokens::sizeSymbolInline * s,
+                                .color = colorSpecFromRole(ColorRole::Label3)}));
+      line->addChild(std::move(grip));
+      auto words = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
       auto name = text(list[i].name, Tokens::typeBody, ColorRole::Label1, s);
       name->setFontWeight(FontWeight::Medium);
       words->addChild(std::move(name));
       words->addChild(mono(list[i].line, ColorRole::Label2));
-      rows->addChild(std::move(words));
+      line->addChild(std::move(words));
+      m_commandDrag.rows[i] = line.get();
+      rows->addChild(std::move(line));
     }
     if (list.empty() && !editing) {
       rows->addChild(ui::button({.text = std::string("Add command"), .glyph = std::string("plus"), .variant = ButtonVariant::Ghost,
