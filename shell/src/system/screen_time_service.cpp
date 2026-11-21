@@ -312,7 +312,7 @@ void ScreenTimeService::setEnabled(bool enabled) {
     m_activeAppKey.clear();
     m_activeSince = {};
     if (m_dirty) {
-      save();
+      save(true);
     }
     m_tickTimer.stop();
   } else {
@@ -351,7 +351,7 @@ void ScreenTimeService::pauseTracking() {
   if (m_enabled) {
     flushActiveSession(std::chrono::steady_clock::now());
     if (m_dirty) {
-      save();
+      save(true);
     }
   }
   m_activeAppKey.clear();
@@ -676,7 +676,7 @@ void ScreenTimeService::clearAll() {
   m_currentDayKey.clear();
   ensureCurrentDayLocked(localNow());
   m_dirty = true;
-  save();
+  save(true);
   if (m_enabled) {
     onFocusChange();
   }

@@ -1053,21 +1053,25 @@ void NotificationManager::schedulePersistHistory() {
   m_persistScheduled = true;
   m_persistTimer.start(std::chrono::milliseconds(500), [this] {
     m_persistScheduled = false;
-    const auto path = historyPath();
-    if (path.empty() || !m_historyWritable || !m_historyKey) {
-      return;
-    }
-    SharedWorker::instance().post<bool>(
-        m_alive,
-        [path, entries = m_history, nextId = m_nextId, serial = m_changeSerial, key = m_historyKey,
-         generation = nextHistoryGeneration()] { return writeHistory(path, entries, nextId, serial, *key, generation); },
-        [this](bool written) {
-          if (written && m_historyKeyProvider != nullptr) {
-            m_historyKeyProvider->noteEncryptedDataExists();
-          }
-        }
-    );
+    persistHistoryAsync();
   });
+}
+
+void NotificationManager::persistHistoryAsync() {
+  const auto path = historyPath();
+  if (path.empty() || !m_historyWritable || !m_historyKey) {
+    return;
+  }
+  SharedWorker::instance().post<bool>(
+      m_alive,
+      [path, entries = m_history, nextId = m_nextId, serial = m_changeSerial, key = m_historyKey,
+       generation = nextHistoryGeneration()] { return writeHistory(path, entries, nextId, serial, *key, generation); },
+      [this](bool written) {
+        if (written && m_historyKeyProvider != nullptr) {
+          m_historyKeyProvider->noteEncryptedDataExists();
+        }
+      }
+  );
 }
 
 namespace {
@@ -1139,7 +1143,7 @@ void NotificationManager::syncHistoryPersistence(security::StorageKeyProvider& p
     provider.noteEncryptedDataExists();
   }
   if (m_historyWritable) {
-    persistHistoryToDisk();
+    persistHistoryAsync();
   }
 }
 

@@ -235,6 +235,7 @@ private:
   void markHistoryClosed(uint32_t id, CloseReason reason);
   void rebuildHistoryIndex();
   void schedulePersistHistory();
+  void persistHistoryAsync();
   void persistHistoryToDisk();
   void emitPendingDBusClose(uint32_t id, CloseReason reason);
   // Live notification, or an expired one still awaiting its deferred NotificationClosed; nullptr otherwise.

@@ -271,7 +271,7 @@ namespace {
     TEST_CHECK(reset);
     TEST_CHECK(manager.historyPersistenceReady());
     TEST_CHECK(contents(keyFile) == std::string(64, '1'));
-    TEST_CHECK(readNotificationHistoryJson(path, *key)["entries"].empty());
+    TEST_CHECK(runDeferredUntil([&] { return fs::exists(path) && readNotificationHistoryJson(path, *key)["entries"].empty(); }));
     TEST_CHECK(!fs::exists(path.parent_path() / "notification_history_assets"));
     drain();
     TEST_CHECK(readNotificationHistoryJson(path, *key)["entries"].empty());
