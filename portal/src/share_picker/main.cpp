@@ -5,6 +5,7 @@
 #include "app/app_window.h"
 #include "app/desk_app.h"
 #include "core/deferred_call.h"
+#include "core/input/key_modifiers.h"
 #include "design_tokens.h"
 #include "render/core/texture_manager.h"
 #include "share_picker/thumbnails.h"
