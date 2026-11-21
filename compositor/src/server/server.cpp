@@ -54,6 +54,7 @@
 #include "server/desktop_shell.h"
 #include "server/background_effect.h"
 #include "server/dsk_surface.h"
+#include "server/agent_session.h"
 #include "server/greeter_mode.h"
 #include "server/app_menu.h"
 #include "server/focus_grab.h"
@@ -1817,6 +1818,12 @@ namespace andromeda {
         return false;
       }
       m_socketName = *name;
+    } else if (const std::optional<uint32_t> session = agentSession()) {
+      m_socketName = std::format("wayland-agent-{}", *session);
+      if (wl_display_add_socket(m_display, m_socketName.c_str()) != 0) {
+        wlr_log(WLR_ERROR, "failed to add Wayland socket %s", m_socketName.c_str());
+        return false;
+      }
     } else {
       const char* socket = wl_display_add_socket_auto(m_display);
       if (socket == nullptr) {

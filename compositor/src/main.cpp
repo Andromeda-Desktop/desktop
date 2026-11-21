@@ -12,6 +12,10 @@
 #include "config/action_groups.h"
 #include "server/ipc.h"
 #include "server/ipc_commands.h"
+#include "config/change.h"
+#include "config/store.h"
+#include "core/toml.h"
+#include "server/agent_session.h"
 #include "server/greeter_mode.h"
 #include "server/server.h"
 #include "protocols/crash_capture.h"
@@ -24,6 +28,7 @@
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <charconv>
 #include <format>
 #include <optional>
 #include <sched.h>
@@ -478,10 +483,40 @@ int main(int argc, char** argv) {
       configPath = argv[++i];
     } else if (std::strcmp(argv[i], "--greeter") == 0) {
       andromeda::setGreeterMode(true);
+    } else if (std::strcmp(argv[i], "--agent-session") == 0 && i + 1 < argc) {
+      const std::string_view text = argv[++i];
+      uint32_t id = 0;
+      const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), id);
+      if (ec != std::errc{} || end != text.data() + text.size() || id == 0) {
+        std::println(stderr, "error: --agent-session needs a positive id");
+        return EXIT_FAILURE;
+      }
+      andromeda::setAgentSession(id);
     } else {
       printHelp(stderr);
       return EXIT_FAILURE;
     }
+  }
+
+  if (const std::optional<uint32_t> session = andromeda::agentSession()) {
+    const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR");
+    if (andromeda::greeterMode() || startupCmd != nullptr || runtimeDir == nullptr || *runtimeDir == '\0') {
+      std::println(stderr, "error: --agent-session takes no --greeter or -s and needs XDG_RUNTIME_DIR");
+      return EXIT_FAILURE;
+    }
+    // Headless, never nested in the user's session, and with its own state directory, so nothing it saves
+    // (session.json, grants) replaces the user's.
+    setenv("WLR_BACKENDS", "headless", 1);
+    setenv("WLR_LIBINPUT_NO_DEVICES", "1", 1);
+    setenv("WLR_HEADLESS_OUTPUTS", "1", 1);
+    for (const char* name : {"WAYLAND_DISPLAY", "WAYLAND_SOCKET", "DISPLAY", "NOTIFY_SOCKET"}) {
+      unsetenv(name);
+    }
+    const std::filesystem::path state = std::filesystem::path(runtimeDir) / std::format("andromeda-agent-{}", *session);
+    std::filesystem::create_directories(state);
+    setenv("XDG_STATE_HOME", state.c_str(), 1);
+    // The `andromeda` CLI in the agent's apps talks to this instance, not to the user's compositor.
+    setenv("ANDROMEDA_SOCKET", std::format("{}/andromeda-wayland-agent-{}.sock", runtimeDir, *session).c_str(), 1);
   }
 
   if (andromeda::greeterMode()) {
@@ -505,6 +540,19 @@ int main(int argc, char** argv) {
     sigaddset(&terminate, SIGTERM);
     pthread_sigmask(SIG_BLOCK, &terminate, nullptr);
     andromeda::loadConfig(configPath);
+    if (andromeda::agentSession()) {
+      // Every reload keeps these: the agent's screen draws no glass or motion and starts no autostart apps.
+      std::string errors;
+      if (!andromeda::configStore()
+               .applyOverrides(
+                   toml::parse("[appearance]\nreduce_transparency = true\nreduce_motion = true\n[general]\nautostart = []\n"),
+                   false, errors
+               )
+               .success) {
+        kLog.error("agent session: config overrides failed: {}", errors);
+        return EXIT_FAILURE;
+      }
+    }
     raiseMainThreadPriority();
     andromeda::Server server;
 
@@ -516,6 +564,10 @@ int main(int argc, char** argv) {
     if (!server.start(startupCmd)) {
       kLog.error("failed to start server");
       return EXIT_FAILURE;
+    }
+    if (const std::optional<uint32_t> session = andromeda::agentSession()) {
+      std::println("agent-session ready {}/wayland-agent-{}", std::getenv("XDG_RUNTIME_DIR"), *session);
+      std::fflush(stdout);
     }
 
     // Startup allocates heavily (config, scene tree, xwayland, banners) and none of that peak is needed once the

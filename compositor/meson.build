@@ -1022,6 +1022,7 @@ core_sources = files(
   'src/server/dsk_surface.cpp',
   'src/server/dsk_tracker.cpp',
   'src/server/greeter_mode.cpp',
+  'src/server/agent_session.cpp',
   'src/server/tracker_motion.cpp',
   'src/server/app_menu.cpp',
   'src/server/focus_grab.cpp',
