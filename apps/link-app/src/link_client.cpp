@@ -53,6 +53,10 @@ namespace linkapp {
       return std::filesystem::path(g_get_user_state_dir()) / "andromeda" / "link-app" / "phone";
     }
 
+    std::filesystem::path photosSeenFile(const std::string& deviceId) {
+      return selectedFile().parent_path() / ("photos-seen-" + deviceId);
+    }
+
     std::filesystem::path snapshotFile() {
       return std::filesystem::path(g_get_user_cache_dir()) / "andromeda" / "link-app" / "waiting.json";
     }
@@ -291,6 +295,11 @@ namespace linkapp {
               property<std::vector<sdbus::Struct<std::string, std::string>>>(props, "Commands").size();
           m_messages.setContacts(people);
           m_messages.setTexts(std::move(list));
+          const Presence shown = presence();
+          if (shown.kind == Presence::Kind::Connected &&
+              (m_photos.load() == Photos::Load::Idle || m_photosDevice != shown.phone.id)) {
+            loadPhotos();
+          }
           changed();
         });
   }
@@ -422,7 +431,8 @@ namespace linkapp {
           });
     }
     if (item.kind == FeedItem::Kind::MissedCall) m_dismissed.insert(item.key);
-    if (m_feed.remove(item.key)) changed();
+    if (item.kind == FeedItem::Kind::Photos) markPhotosSeen();
+    if (m_feed.remove(item.key) || item.kind == FeedItem::Kind::Photos) changed();
   }
 
   void LinkClient::accept(const FeedItem& offer) { acceptTransfer(offer.key.substr(2)); }
@@ -483,7 +493,12 @@ namespace linkapp {
   void LinkClient::loadPhotos() {
     const std::string device = presence().phone.id;
     if (device.empty() || !m_photos.startLoad()) return;
-    if (device != m_photosDevice) m_thumbs.clear();
+    if (device != m_photosDevice) {
+      m_thumbs.clear();
+      (void)m_feed.remove("p:new");
+      m_photosSeenS = 0;
+      std::ifstream(photosSeenFile(device)) >> m_photosSeenS;
+    }
     m_photosDevice = device;
     m_proxy->callMethodAsync("RecentPhotos")
         .onInterface(kInterface)
@@ -509,8 +524,24 @@ namespace linkapp {
             return std::ranges::find(photos, entry.first, &Photo::path) == photos.end();
           });
           (void)m_photos.loaded(std::move(photos));
+          if (auto item = newPhotosItem(m_photosDevice, m_photos.items(), m_photosSeenS, nowMs())) {
+            m_feed.upsert(std::move(*item));
+          } else {
+            (void)m_feed.remove("p:new");
+          }
           changed();
         });
+  }
+
+  void LinkClient::markPhotosSeen() {
+    const std::vector<Photo>& photos = m_photos.items();
+    if (!photos.empty() && photos.front().atS > m_photosSeenS) {
+      m_photosSeenS = photos.front().atS;
+      std::error_code error;
+      std::filesystem::create_directories(photosSeenFile(m_photosDevice).parent_path(), error);
+      std::ofstream(photosSeenFile(m_photosDevice)) << m_photosSeenS << '\n';
+    }
+    (void)m_feed.remove("p:new");
   }
 
   void LinkClient::togglePhoto(std::size_t index) {

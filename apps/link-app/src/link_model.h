@@ -69,7 +69,7 @@ namespace linkapp {
 
   // One row of the Waiting page.
   struct FeedItem {
-    enum class Kind : std::uint8_t { Text, Notification, MissedCall, Offer };
+    enum class Kind : std::uint8_t { Text, Notification, MissedCall, Offer, Photos };
     Kind kind = Kind::Notification;
     std::string key; // unique: kind prefix + Link1 id
     std::string deviceId;
@@ -82,6 +82,8 @@ namespace linkapp {
     Transfer transfer = Transfer::Offered;
     std::uint64_t bytes = 0;
     std::uint64_t total = 0;
+    // Photos only: the newest new photos, paths for Thumbnail.
+    std::vector<std::string> photos;
   };
 
   // The Waiting feed: newest first, one item per key, at most kMax items (the oldest leave first).
@@ -107,7 +109,7 @@ namespace linkapp {
   };
 
   // Waiting as last shown, so a cold start draws it before Link1 answers. File offers stay out: a transfer lives only in
-  // the daemon run that offered it.
+  // the daemon run that offered it. New photos stay out: their thumbnails need the daemon.
   struct Snapshot {
     std::vector<Phone> phones;
     std::vector<FeedItem> items;
@@ -349,6 +351,12 @@ namespace linkapp {
     std::size_t m_saved = 0;
     std::size_t m_saveFailed = 0;
   };
+
+  inline constexpr std::size_t kStripPhotos = 6;
+  // Waiting's "N new photos" from photos newest first (as Photos::items): those taken today (local time) after seenS;
+  // nullopt when none.
+  [[nodiscard]] std::optional<FeedItem> newPhotosItem(const std::string& deviceId, const std::vector<Photo>& photos,
+                                                      std::int64_t seenS, std::int64_t nowMs);
 
   // One ListFiles entry.
   struct FileEntry {

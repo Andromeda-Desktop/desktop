@@ -79,6 +79,8 @@ namespace linkapp {
     // The PNG thumbnail of a listed photo, or null; the first ask fetches it and calls the thumbnail callback.
     [[nodiscard]] const std::vector<std::uint8_t>* thumbnail(const std::string& path);
     void setOnThumbnail(std::function<void()> ready) { m_thumbnailReady = std::move(ready); }
+    // Marks every loaded photo as seen, so Waiting drops "N new photos" until a newer one loads.
+    void markPhotosSeen();
     [[nodiscard]] const PhoneSettings& phoneSettings() const { return m_phoneSettings; }
     [[nodiscard]] const DesktopSettings& desktopSettings() const { return m_desktopSettings; }
     void setGrant(const std::string& deviceId, const std::string& feature, bool granted);
@@ -150,6 +152,7 @@ namespace linkapp {
     std::string m_photosDevice;
     std::map<std::string, std::vector<std::uint8_t>> m_thumbs; // path -> PNG; empty while in flight
     std::function<void()> m_thumbnailReady;
+    std::int64_t m_photosSeenS = 0; // the newest photo of m_photosDevice the user saw
     PhoneSettings m_phoneSettings;
     std::optional<HotspotAsk> m_hotspotAsk;
     DesktopSettings m_desktopSettings;

@@ -22,9 +22,10 @@ namespace linkapp {
   // The Waiting feed as a virtual list: one row per item, built the same way to measure and to show.
   class FeedAdapter final : public VirtualListAdapter {
   public:
-    // textTo opens a text to a number (a missed call's "Text").
-    FeedAdapter(LinkClient& client, const float& scale, std::function<void(const std::string&)> textTo)
-        : m_client(client), m_scale(scale), m_textTo(std::move(textTo)) {}
+    // textTo opens a text to a number (a missed call's "Text"); openPhotos shows the Photos page (a strip thumbnail).
+    FeedAdapter(LinkClient& client, const float& scale, std::function<void(const std::string&)> textTo,
+                std::function<void()> openPhotos)
+        : m_client(client), m_scale(scale), m_textTo(std::move(textTo)), m_openPhotos(std::move(openPhotos)) {}
     [[nodiscard]] std::size_t itemCount() const override;
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
@@ -33,12 +34,14 @@ namespace linkapp {
     void bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool hovered) override;
 
   private:
-    [[nodiscard]] std::unique_ptr<Node> build(std::size_t index, float width);
+    // renderer is null while measuring: the strip then loads no thumbnails.
+    [[nodiscard]] std::unique_ptr<Node> build(Renderer* renderer, std::size_t index, float width);
 
     LinkClient& m_client;
     const float& m_scale;
     std::map<std::string, std::string> m_drafts; // reply text per item key, kept across row recycling
     std::function<void(const std::string&)> m_textTo;
+    std::function<void()> m_openPhotos;
   };
 
   // Messages: the thread list, newest first; a click opens the thread.
@@ -228,6 +231,7 @@ namespace linkapp {
     ScrollViewState m_fileScroll;
     std::unique_ptr<PhotoAdapter> m_photos;
     ScrollViewState m_photoScroll;
+    VirtualListView* m_feedList = nullptr;  // the Waiting list of the last build, null off Waiting
     VirtualGridView* m_photoGrid = nullptr; // the grid of the last build, null off the Photos page
     std::unique_ptr<TransferAdapter> m_transfers;
     ScrollViewState m_transferScroll;

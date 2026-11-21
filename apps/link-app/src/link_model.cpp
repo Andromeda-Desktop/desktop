@@ -36,7 +36,7 @@ namespace linkapp {
                                {"locked", p.locked}, {"dnd", p.dnd}, {"paused", p.paused}});
     }
     for (const FeedItem& item : feed.items()) {
-      if (item.kind == FeedItem::Kind::Offer) continue;
+      if (item.kind == FeedItem::Kind::Offer || item.kind == FeedItem::Kind::Photos) continue;
       json actions = json::array();
       for (const FeedAction& a : item.actions) actions.push_back({{"id", a.id}, {"label", a.label}, {"reply", a.reply}});
       out["items"].push_back({{"kind", static_cast<int>(item.kind)}, {"key", item.key}, {"deviceId", item.deviceId},
@@ -508,6 +508,20 @@ namespace linkapp {
       if (out.empty() || out.back().second != label) out.emplace_back(i, std::move(label));
     }
     return out;
+  }
+
+  std::optional<FeedItem> newPhotosItem(const std::string& deviceId, const std::vector<Photo>& photos, std::int64_t seenS,
+                                        std::int64_t nowMs) {
+    FeedItem item{.kind = FeedItem::Kind::Photos, .key = "p:new", .deviceId = deviceId};
+    std::size_t n = 0;
+    for (const Photo& photo : photos) {
+      if (photo.atS <= seenS || dayLabel(photo.atS * 1000, nowMs) != "Today") continue;
+      if (n++ == 0) item.atMs = photo.atS * 1000;
+      if (item.photos.size() < kStripPhotos) item.photos.push_back(photo.path);
+    }
+    if (n == 0) return std::nullopt;
+    item.who = n == 1 ? std::string("1 new photo") : std::format("{} new photos", n);
+    return item;
   }
 
   std::vector<std::string> Files::crumbs() const {

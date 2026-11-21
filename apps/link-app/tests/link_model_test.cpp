@@ -333,6 +333,35 @@ namespace {
     expect(dayLabel(now - 365 * day, now) == "20 Nov 2024", "date with year", 0, 0);
   }
 
+  // Random photo lists and marks: "N new photos" counts exactly the photos of today after the mark, shows the newest.
+  void runNewPhotos(unsigned seed) {
+    std::mt19937 rng(seed);
+    const std::int64_t now = 1'763'640'000'000; // Thu 2025-11-20 12:00 UTC
+    const std::int64_t midnightS = now / 1000 - 12 * 3600;
+    for (int step = 0; step < 300; ++step) {
+      std::vector<Photo> list;
+      for (auto i = static_cast<unsigned>(rng() % 15); i > 0; --i) {
+        list.push_back({.path = std::format("/p/{}", list.size()), .atS = midnightS - 7200 + static_cast<std::int64_t>(rng() % 50'000)});
+      }
+      std::ranges::stable_sort(list, std::greater{}, &Photo::atS);
+      const std::int64_t seen = midnightS - 3600 + static_cast<std::int64_t>(rng() % 50'000);
+      std::vector<std::string> fresh;
+      for (const Photo& photo : list) {
+        if (photo.atS > seen && photo.atS >= midnightS) fresh.push_back(photo.path);
+      }
+      const auto item = newPhotosItem("p1", list, seen, now);
+      expect(item.has_value() == !fresh.empty(), "new photos: an item exactly when a photo of today is after the mark", seed, step);
+      if (!item) continue;
+      const std::string who = fresh.size() == 1 ? "1 new photo" : std::format("{} new photos", fresh.size());
+      fresh.resize(std::min(fresh.size(), kStripPhotos));
+      expect(item->who == who && item->photos == fresh, "new photos: the count and the newest strip photos", seed, step);
+      Feed feed;
+      feed.upsert(*item);
+      const auto back = decodeSnapshot(encodeSnapshot({}, feed, {}));
+      expect(back && back->items.empty(), "new photos stay out of the snapshot", seed, step);
+    }
+  }
+
   void runPair(unsigned seed) {
     using K = Pair::Kind;
     using E = PairEvent::Kind;
@@ -534,6 +563,7 @@ int main() {
   for (unsigned seed = 1; seed <= 20; ++seed) runMessages(seed);
   presence();
   days();
+  for (unsigned seed = 1; seed <= 20; ++seed) runNewPhotos(seed);
   dialing();
   for (unsigned seed = 1; seed <= 20; ++seed) runActivity(seed);
   if (failures == 0) std::puts("link_model: ok");

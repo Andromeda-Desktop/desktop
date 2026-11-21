@@ -144,19 +144,19 @@ namespace linkapp {
   }
 
   float FeedAdapter::measureItem(Renderer& renderer, std::size_t index, float width) {
-    return build(index, width)->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height;
+    return build(nullptr, index, width)->measure(renderer, LayoutConstraints::available(width, 1.0e6F)).height;
   }
 
   std::unique_ptr<Node> FeedAdapter::createItem() { return ui::column({.align = FlexAlign::Stretch}); }
 
-  void FeedAdapter::bindItem(Renderer& /*renderer*/, Node& item, std::size_t index, float width, bool /*hovered*/) {
+  void FeedAdapter::bindItem(Renderer& renderer, Node& item, std::size_t index, float width, bool /*hovered*/) {
     auto& holder = static_cast<Flex&>(item);
     while (!holder.children().empty()) holder.removeChild(holder.children().back().get());
-    holder.addChild(build(index, width));
+    holder.addChild(build(&renderer, index, width));
   }
 
   // FeedItem (handoff.yaml): avatar 32 | who headline + time footnote; body paragraph, 2 lines; actions row g 8.
-  std::unique_ptr<Node> FeedAdapter::build(std::size_t index, float /*width*/) {
+  std::unique_ptr<Node> FeedAdapter::build(Renderer* renderer, std::size_t index, float width) {
     const float s = m_scale;
     const Feed& feed = m_client.feed();
     const FeedItem& item = feed.items()[index];
@@ -177,6 +177,7 @@ namespace linkapp {
     case FeedItem::Kind::Offer: row->addChild(glyphAvatar("file", s)); break;
     case FeedItem::Kind::MissedCall: row->addChild(glyphAvatar("phone-x", s)); break;
     case FeedItem::Kind::Notification: row->addChild(glyphAvatar("bell", s)); break;
+    case FeedItem::Kind::Photos: row->addChild(glyphAvatar("photo", s)); break;
     }
 
     auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
@@ -189,12 +190,35 @@ namespace linkapp {
     auto name = text(who, Tokens::typeHeadline, ColorRole::Label1, s);
     name->setFlexGrow(1.0F);
     head->addChild(std::move(name));
-    head->addChild(text(offer ? byteSize(item.total) : clock(item.atMs), Tokens::typeFootnote, ColorRole::Label2, s));
+    const bool photos = item.kind == FeedItem::Kind::Photos;
+    head->addChild(text(offer ? byteSize(item.total) : photos ? std::string("Today") : clock(item.atMs), Tokens::typeFootnote,
+                        ColorRole::Label2, s));
     body->addChild(std::move(head));
-    const std::string line = offer ? std::string("From your phone")
+    const std::string line = offer    ? std::string("From your phone")
+                             : photos ? std::string("Click one to open Photos")
                              : locked ? std::string(kLockedText)
                                       : item.body;
-    body->addChild(text(line, Tokens::typeParagraph, locked && !offer ? ColorRole::Label2 : ColorRole::Label1, s, 2));
+    body->addChild(text(line, Tokens::typeParagraph, (locked && !offer) || photos ? ColorRole::Label2 : ColorRole::Label1, s, 2));
+    if (photos) {
+      // Mockup .strip: 72 thumbnails at gap 8, as many as fit the body width.
+      const float side = Tokens::componentLinkStripThumb * s;
+      const float gap = Tokens::spaceP8 * s;
+      const float bodyWidth = width - (2.0F * Tokens::spaceP16 + Tokens::sizeControlM + Tokens::spaceP12) * s;
+      const auto fit = static_cast<std::size_t>(std::max(1.0F, std::floor((bodyWidth + gap) / (side + gap))));
+      const float radius = Style::scaledRadius(Tokens::radiusR12, s);
+      auto strip = ui::row({.gap = gap, .paddingV = Tokens::spaceP4 * s});
+      for (const std::string& path : item.photos | std::views::take(fit)) {
+        auto pick = ui::inputArea({.cursorShape = CursorShape::Pointer, .width = side, .height = side,
+                                   .onClick = [this](const InputArea::PointerData&) { m_openPhotos(); }});
+        pick->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .radius = radius, .width = side, .height = side}));
+        Image* image = nullptr;
+        pick->addChild(ui::image({.out = &image, .fit = ImageFit::Cover, .radius = radius, .width = side, .height = side}));
+        const std::vector<std::uint8_t>* png = renderer != nullptr ? m_client.thumbnail(path) : nullptr;
+        if (png != nullptr) (void)image->setSourceBytes(*renderer, png->data(), png->size());
+        strip->addChild(std::move(pick));
+      }
+      body->addChild(std::move(strip));
+    }
 
     auto actions = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP4 * s});
     const FeedItem copy = item;
@@ -553,10 +577,13 @@ namespace linkapp {
     m_window = &window;
     if (m_client == nullptr && bus() != nullptr) {
       m_client = std::make_unique<LinkClient>(*bus());
-      m_feed = std::make_unique<FeedAdapter>(*m_client, m_scale, [this](const std::string& number) {
-        openCompose(number);
-        show(Page::Messages);
-      });
+      m_feed = std::make_unique<FeedAdapter>(
+          *m_client, m_scale,
+          [this](const std::string& number) {
+            openCompose(number);
+            show(Page::Messages);
+          },
+          [this] { show(Page::Photos); });
       m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, [this](std::uint64_t id) { openThread(id); });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
@@ -565,6 +592,7 @@ namespace linkapp {
       m_client->setOnMirrorFrame([this](MirrorDecoder::Frame frame) { showMirrorFrame(std::move(frame)); });
       m_client->setOnThumbnail([this] {
         if (m_photoGrid != nullptr) m_photoGrid->notifyDataChanged();
+        if (m_feedList != nullptr) m_feedList->notifyDataChanged();
       });
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
       m_client->setOnChanged([this] {
@@ -718,6 +746,7 @@ namespace linkapp {
 
   void LinkApp::sync() {
     if (m_client == nullptr) return;
+    if (m_page == Page::Photos) m_client->markPhotosSeen();
     const Presence::Kind kind = m_client->presence().kind;
     const bool pairing = kind == Presence::Kind::NotPaired;
     if (pairing && m_client->pair().kind == Pair::Kind::Idle) m_client->startPairing();
@@ -988,6 +1017,7 @@ namespace linkapp {
 
   std::unique_ptr<Node> LinkApp::content(Renderer& renderer, float width, float height) {
     m_photoGrid = nullptr;
+    m_feedList = nullptr;
     m_mirrorImage = nullptr;
     m_mirrorStat = nullptr;
     m_renderer = &renderer;
@@ -1030,8 +1060,7 @@ namespace linkapp {
     if (m_client->feed().items().empty()) {
       return emptyState("bell", "Nothing waiting", "Texts, missed calls and files from your phone show here.", s);
     }
-    VirtualListView* list = nullptr;
-    auto view = ui::virtualListView({.out = &list, .state = &m_feedScroll, .contentScale = s, .adapter = m_feed.get(),
+    auto view = ui::virtualListView({.out = &m_feedList, .state = &m_feedScroll, .contentScale = s, .adapter = m_feed.get(),
                                      .flexGrow = 1.0F});
     return view;
   }
