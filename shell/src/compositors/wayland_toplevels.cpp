@@ -289,8 +289,10 @@ void WaylandToplevels::onHandleState(zwlr_foreign_toplevel_handle_v1* handle, wl
 }
 
 bool WaylandToplevels::anyFullscreen(wl_output* outputFilter) const {
+  // The compositor announces a window's output even on a hidden workspace; only the focused one is surely on screen.
   return std::ranges::any_of(m_handles, [outputFilter](const auto& entry) {
-    return entry.second.fullscreen && !entry.second.minimized && matchesOutputFilter(entry.second, outputFilter);
+    return entry.second.fullscreen && entry.second.activated && !entry.second.minimized
+        && matchesOutputFilter(entry.second, outputFilter);
   });
 }
 
