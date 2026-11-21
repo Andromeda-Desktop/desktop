@@ -1292,6 +1292,7 @@ if build_tests
     'plugin_source_paths',
     'pixel_stream_client',
     'process',
+    'reorder_drag',
     'rounded_rect_region',
     'shell_palette',
     'screenshot_region_badge',
