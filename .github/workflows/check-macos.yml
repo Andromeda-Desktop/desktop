@@ -39,8 +39,9 @@ jobs:
           for dir in lld/bin ncurses/bin coreutils/libexec/gnubin gnu-sed/libexec/gnubin; do
             echo "$(brew --prefix)/opt/$dir" >> "$GITHUB_PATH"
           done
+          # The stb of the Arch package; later upstream commits move stb_image_resize2.h to deprecated/.
           git clone -q https://github.com/nothings/stb /tmp/stb-src
-          git -C /tmp/stb-src checkout -q 6b5799bae8a1fe3792691ef4b72ae26434c3e799
+          git -C /tmp/stb-src checkout -q 31c1ad37456438565541f4919958214b6e762fb4
           mkdir -p /tmp/stb && cp /tmp/stb-src/*.h /tmp/stb/
       - name: Dependencies
         run: DARWIN_SDK=$(xcrun --show-sdk-path) STB_INCLUDE=/tmp/stb tools/macos/deps.py
