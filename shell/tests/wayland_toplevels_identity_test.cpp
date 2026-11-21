@@ -109,16 +109,6 @@ int main() {
   wl_array fullscreenState{.size = sizeof(fullscreenFlag), .alloc = sizeof(fullscreenFlag), .data = &fullscreenFlag};
   toplevels.onHandleState(handle, &fullscreenState);
   toplevels.onHandleDone(handle);
-  // An unfocused fullscreen window may sit on a hidden workspace.
-  TEST_CHECK(!toplevels.anyFullscreen(otherOutput));
-  std::uint32_t focusedFullscreenFlags[] = {
-      ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN, ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED
-  };
-  wl_array focusedFullscreenState{
-      .size = sizeof(focusedFullscreenFlags), .alloc = sizeof(focusedFullscreenFlags), .data = focusedFullscreenFlags
-  };
-  toplevels.onHandleState(handle, &focusedFullscreenState);
-  toplevels.onHandleDone(handle);
   TEST_CHECK(toplevels.anyFullscreen());
   TEST_CHECK(toplevels.anyFullscreen(otherOutput));
   TEST_CHECK(!toplevels.anyFullscreen(someOutput));

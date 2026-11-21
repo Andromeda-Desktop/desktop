@@ -1268,6 +1268,11 @@ void Application::initWaylandCallbacks() {
       m_lockScreen.onKeyboardLayoutChanged();
     }
   });
+  if (const auto [outputGlobal, outputVersion] = m_wayland.desktopOutputGlobal(); outputGlobal != 0) {
+    m_outputState = std::make_unique<MirrorControl>(m_wayland.registry(), outputGlobal, outputVersion, [this] {
+      syncFullscreenOutputs();
+    });
+  }
   m_compositorPlatform.setToplevelChangeCallback([this] {
     m_screenTimeService.onFocusChange();
     m_bar.scheduleSmartAutoHideReevaluation();
@@ -1276,13 +1281,7 @@ void Application::initWaylandCallbacks() {
     m_dock.refresh();
     m_windowSwitcher.onToplevelChange();
     m_powerOverlay.onToplevelChange();
-    std::vector<wl_output*> fullscreen;
-    for (const auto& output : m_wayland.outputs()) {
-      if (m_wayland.hasFullscreenToplevel(output.output)) {
-        fullscreen.push_back(output.output);
-      }
-    }
-    m_liveActivity.setFullscreenOutputs(std::move(fullscreen));
+    syncFullscreenOutputs();
     applyFocusTriggers();
     if (m_inhibitPortal != nullptr && !m_inhibitPortal->sleepInhibitorAppIds().empty()) {
       syncAppActivity();
@@ -2519,4 +2518,24 @@ void Application::triggerShellAction(const std::string& action, wl_output* outpu
   } else if (action == "window_switcher") {
     m_windowSwitcher.show(output);
   }
+}
+
+bool Application::fullscreenShown(wl_output* output) const {
+  if (m_outputState == nullptr || !m_outputState->ready()) {
+    return m_wayland.hasFullscreenToplevel(output);
+  }
+  return std::ranges::any_of(m_wayland.outputs(), [this, output](const auto& entry) {
+    return (output == nullptr || entry.output == output)
+        && m_outputState->property(entry.connectorName, "fullscreen") == "1";
+  });
+}
+
+void Application::syncFullscreenOutputs() {
+  std::vector<wl_output*> fullscreen;
+  for (const auto& output : m_wayland.outputs()) {
+    if (fullscreenShown(output.output)) {
+      fullscreen.push_back(output.output);
+    }
+  }
+  m_liveActivity.setFullscreenOutputs(std::move(fullscreen));
 }

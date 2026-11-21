@@ -15,6 +15,7 @@
 #include "calendar/calendar_service.h"
 #include "capture/screenshot_service.h"
 #include "compositors/compositor_platform.h"
+#include "compositors/mirror_control.h"
 #include "compositors/workspace_alert_service.h"
 #include "config/config_service.h"
 #include "core/files/file_watcher.h"
@@ -199,6 +200,9 @@ private:
   void syncAppActivity();
   void refreshSleepInhibitors();
   void initServices();
+  // A fullscreen window shows on `output` (any output when null): exact on Andromeda, else from the toplevel list.
+  [[nodiscard]] bool fullscreenShown(wl_output* output = nullptr) const;
+  void syncFullscreenOutputs();
   // Sub-phases of initServices(), called in order.
   void initStyleThemeAndWayland();
   void initWaylandCallbacks();
@@ -325,6 +329,8 @@ private:
   std::unique_ptr<sdbus::IProxy> m_system1Login;
   WorkspaceAlertService m_workspaceAlertService;
   CompositorPlatform m_compositorPlatform{m_wayland};
+  // dsk_output_manager_v1 "fullscreen" per output; null on other compositors.
+  std::unique_ptr<MirrorControl> m_outputState;
   security::SecretStore m_secretStore;
   security::StorageKeyProvider m_storageKeyProvider{m_secretStore};
   ClipboardService m_clipboardService{m_storageKeyProvider};

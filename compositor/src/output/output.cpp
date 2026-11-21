@@ -1400,6 +1400,12 @@ namespace andromeda {
   }
 
   void Output::updateHdr() {
+    if (const bool shown = hasFullscreenView(); shown != m_fullscreenShown) {
+      m_fullscreenShown = shown;
+      if (DesktopOutputManager* manager = m_server->desktopOutputManager()) {
+        manager->outputPropertiesChanged(*this);
+      }
+    }
     const HdrMode mode = hdrMode();
     if (mode == HdrMode::Fullscreen) {
       m_autoHdrOwner = nullptr;

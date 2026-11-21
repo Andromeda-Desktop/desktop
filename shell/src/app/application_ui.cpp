@@ -327,7 +327,7 @@ void Application::initLockScreenAndSession() {
     if (m_lockScreen.isActive()) {
       return false;
     }
-    return !m_configService.config().wallpaper.automation.pauseOnFullscreen || !m_wayland.hasFullscreenToplevel();
+    return !m_configService.config().wallpaper.automation.pauseOnFullscreen || !fullscreenShown();
   });
   m_greeterSync.start();
   m_configService.addReloadCallback([this] {
