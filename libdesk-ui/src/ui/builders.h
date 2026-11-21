@@ -154,6 +154,7 @@ namespace ui {
     std::optional<bool> visible = std::nullopt;
     std::optional<bool> participatesInLayout = std::nullopt;
     std::function<void()> onClick = nullptr; // the whole flex is one pointer target (Flex::setCover)
+    std::optional<ColorSpec> hoverFill = std::nullopt; // with onClick: fill while the pointer is over the flex
     std::function<void(Flex&)> configure = nullptr;
   };
 

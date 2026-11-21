@@ -107,49 +107,6 @@ namespace {
     bool m_loaded = false;
   };
 
-  // A flex with an input area over all of it (the area stays out of layout): hover fill_1 when radius > 0.
-  class Click final : public Flex {
-  public:
-    InputArea* area = nullptr;
-
-  protected:
-    void doLayout(Renderer& renderer) override {
-      Flex::doLayout(renderer);
-      place();
-    }
-    void doArrange(Renderer& renderer, const LayoutRect& rect) override {
-      Flex::doArrange(renderer, rect);
-      place();
-    }
-
-  private:
-    void place() {
-      if (area != nullptr) {
-        area->setPosition(0.0F, 0.0F);
-        area->setSize(width(), height());
-      }
-    }
-  };
-
-  std::unique_ptr<Click> clickable(std::unique_ptr<Node> child, std::function<void()> onClick, float radius = 0.0F) {
-    auto c = std::make_unique<Click>();
-    c->setRadius(radius);
-    c->addChild(std::move(child));
-    auto area = ui::inputArea({.cursorShape = ::CursorShape::Default, .participatesInLayout = false});
-    Click* body = c.get();
-    if (radius > 0.0F) {
-      area->setOnEnter([body](const InputArea::PointerData&) { body->setFill(colorSpecFromRole(ColorRole::Fill1)); });
-      area->setOnLeave([body] { body->setFill(clearColorSpec()); });
-    }
-    area->setOnClick([fn = std::move(onClick)](const InputArea::PointerData& data) {
-      if (data.button == BTN_LEFT) {
-        fn();
-      }
-    });
-    c->area = static_cast<InputArea*>(c->addChild(std::move(area)));
-    return c;
-  }
-
   std::unique_ptr<Node> badge(float s, ColorRole fill, float x, float y) {
     auto b = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .fill = colorSpecFromRole(fill),
                       .radius = 8.0F * s, .border = colorSpecFromRole(ColorRole::OnAccent),
@@ -463,7 +420,9 @@ std::unique_ptr<Node> PhonePage::buildSection(float s, std::string title, std::s
     row->addChild(text(std::move(count), 13.0F * s, ColorRole::Label2));
   }
   for (auto& [label, onClick] : links) {
-    row->addChild(clickable(text(label, 13.0F * s, ColorRole::AccentText), std::move(onClick)));
+    auto link = ui::row({.onClick = std::move(onClick)});
+    link->addChild(text(label, 13.0F * s, ColorRole::AccentText));
+    row->addChild(std::move(link));
   }
   return row;
 }
@@ -590,11 +549,13 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
     auto grid = ui::row({.align = FlexAlign::Start, .wrap = true, .gap = 8.0F * s, .paddingH = 16.0F * s});
     for (const fs::path& dir : m_folders) {
       const std::string name = dir.filename() == "DCIM" ? "Camera" : dir.filename().string();
-      auto col = ui::column({.align = FlexAlign::Center, .gap = 4.0F * s, .padding = 8.0F * s, .width = 120.0F * s});
+      auto col = ui::column({.align = FlexAlign::Center, .gap = 4.0F * s, .padding = 8.0F * s,
+                             .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = 120.0F * s,
+                             .onClick = [this, dir] { later([this, dir] { m_actions.open(dir); }); },
+                             .hoverFill = colorSpecFromRole(ColorRole::Fill1)});
       col->addChild(std::make_unique<PlaceIcon>("folder", 64.0F * s));
       col->addChild(text(name, 12.0F * s, ColorRole::Label1));
-      grid->addChild(clickable(std::move(col), [this, dir] { later([this, dir] { m_actions.open(dir); }); },
-                               Style::scaledRadius(Tokens::radiusR8, s)));
+      grid->addChild(std::move(col));
     }
     folders->addChild(std::move(grid));
   }
@@ -613,14 +574,13 @@ std::unique_ptr<Node> PhonePage::build(float scale) {
     auto list = ui::column({.align = FlexAlign::Stretch, .paddingH = 16.0F * s});
     std::error_code ec;
     for (const fs::path& file : files) {
-      auto r = ui::row({.align = FlexAlign::Center, .gap = 12.0F * s, .paddingH = 8.0F * s, .height = 32.0F * s,
-                        .flexGrow = 1.0F});
+      auto r = ui::row({.align = FlexAlign::Center, .gap = 12.0F * s, .paddingH = 8.0F * s,
+                        .radius = Style::scaledRadius(Tokens::radiusR4, s), .height = 32.0F * s,
+                        .onClick = [this, file] { later([this, file] { m_actions.quickLook(file); }); },
+                        .hoverFill = colorSpecFromRole(ColorRole::Fill1)});
       r->addChild(text(file.filename().string(), 13.0F * s, ColorRole::Label1, FontWeight::Normal, 1.0F));
       r->addChild(text(formatFileSize(fs::file_size(file, ec)), 12.0F * s, ColorRole::Label2));
-      auto row = clickable(std::move(r), [this, file] { later([this, file] { m_actions.quickLook(file); }); },
-                           Style::scaledRadius(Tokens::radiusR4, s));
-      row->setAlign(FlexAlign::Stretch);
-      list->addChild(std::move(row));
+      list->addChild(std::move(r));
     }
     page->addChild(std::move(list));
   }

@@ -90,8 +90,13 @@ namespace ui {
     auto flex = std::make_unique<Flex>();
     applyFlexProps(*flex, direction, props);
     if (props.onClick) {
-      flex->setCover(inputArea({.cursorShape = CursorShape::Pointer,
-                                .onClick = [click = props.onClick](const InputArea::PointerData&) { click(); }}));
+      auto cover = inputArea({.onClick = [click = props.onClick](const InputArea::PointerData&) { click(); }});
+      if (props.hoverFill.has_value()) {
+        Flex* body = flex.get();
+        cover->setOnEnter([body, hover = *props.hoverFill](const InputArea::PointerData&) { body->setFill(hover); });
+        cover->setOnLeave([body, rest = props.fill.value_or(clearColorSpec())] { body->setFill(rest); });
+      }
+      flex->setCover(std::move(cover));
     }
     if (props.configure) {
       props.configure(*flex);

@@ -2181,8 +2181,7 @@ namespace linkapp {
       r->addChild(std::move(words));
       if (trail) r->addChild(std::move(trail));
       if (click) {
-        r->setCover(ui::inputArea({.cursorShape = CursorShape::Pointer,
-                                   .onClick = [click = std::move(click)](const InputArea::PointerData&) { click(); }}));
+        r->setCover(ui::inputArea({.onClick = [click = std::move(click)](const InputArea::PointerData&) { click(); }}));
       }
       card.addChild(std::move(r));
     };

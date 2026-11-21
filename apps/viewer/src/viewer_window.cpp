@@ -1817,7 +1817,14 @@ namespace viewer {
       const std::size_t hits = m_model.hits(page).size();
       for (; index < hits && m_resultRows.size() < kMaxResultRows; ++index) {
         auto row = ui::column({.align = FlexAlign::Stretch, .gap = 0.0F,
-                               .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s), .width = m_resultWidth});
+                               .radius = Style::scaledRadius(Tokens::componentSidebarRowRadius, s), .width = m_resultWidth,
+                               .onClick = [this, page, index] {
+                                 if (page < m_model.pageCount() && index < m_model.hits(page).size()) {
+                                   m_model.setCurrentHit({.page = page, .index = index});
+                                   showCurrentHit();
+                                   refreshMarks();
+                                 }
+                               }});
         row->setPadding(Tokens::spaceP8 * s, Tokens::spaceP8 * s);
         const auto snippet = m_snippets.find(page << 32 | index);
         Label* text = nullptr;
@@ -1831,14 +1838,6 @@ namespace viewer {
         row->addChild(ui::label({.text = std::format("Page {}", page + 1), .fontSize = Tokens::typeFootnote.size * s,
                                  .fontWeight = FontWeight::Medium, .color = colorSpecFromRole(ColorRole::Label2),
                                  .maxLines = 1}));
-        row->addChild(ui::inputArea({.cursorShape = ::CursorShape::Pointer, .participatesInLayout = false,
-                                     .onClick = [this, page, index](const InputArea::PointerData&) {
-                                       if (page < m_model.pageCount() && index < m_model.hits(page).size()) {
-                                         m_model.setCurrentHit({.page = page, .index = index});
-                                         showCurrentHit();
-                                         refreshMarks();
-                                       }
-                                     }}));
         m_resultRows.push_back({.page = page, .index = index, .row = row.get(), .snippet = text});
         m_resultList->addChild(std::move(row));
       }
