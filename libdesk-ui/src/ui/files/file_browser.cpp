@@ -789,7 +789,7 @@ std::unique_ptr<Node> FileBrowser::buildHeaderAccessory() {
     auto shadow = ui::box({.out = &m_ui->viewShadows[i], .radius = itemH / 2.0F, .participatesInLayout = false});
     shadow->setPosition(0.0F, s); // 1 px down
     shadow->setSize(itemW, itemH);
-    shadow->setSoftness(Tokens::spaceP2 * s);
+    shadow->setShadow(Tokens::spaceP2 * s, s);
     slot->addChild(std::move(shadow));
     slot->addChild(ui::button({
         .out = &m_ui->viewButtons[i],

@@ -113,6 +113,15 @@ struct RoundedRectStyle {
   Radii shadowExclusionRadius;
 };
 
+// Makes `style` the drop shadow of a shape drawn `offsetY` above it: the edge fades over `blur`, and the area under
+// the shape stays clear. Without outerShadow, softness only antialiases a hard edge.
+constexpr void setDropShadow(RoundedRectStyle& style, float blur, float offsetY) noexcept {
+  style.outerShadow = true;
+  // The shader fades over 2 x softness centred on the edge.
+  style.softness = blur * 0.5F;
+  style.shadowCutoutOffsetY = offsetY;
+}
+
 constexpr bool operator==(const RoundedRectStyle& lhs, const RoundedRectStyle& rhs) noexcept {
   return lhs.fill == rhs.fill
       && lhs.border == rhs.border

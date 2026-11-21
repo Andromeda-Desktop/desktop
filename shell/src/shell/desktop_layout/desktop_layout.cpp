@@ -281,13 +281,14 @@ namespace desktop_layout {
         shadow->setParticipatesInLayout(false);
         shadow->setPosition(x, y + 2.0F * sy);
         shadow->setFrameSize(w, h);
-        shadow->setStyle(RoundedRectStyle{
+        RoundedRectStyle shadowStyle{
             .fill = Color{0.0F, 0.0F, 0.0F, 0.25F},
             .border = clearColor(),
             .radius = shape.r * sx,
-            .softness = 6.0F * sx,
             .borderWidth = 0.0F,
-        });
+        };
+        setDropShadow(shadowStyle, 6.0F * sx, 2.0F * sy);
+        shadow->setStyle(shadowStyle);
         card->addChild(std::move(shadow));
       }
       auto part = std::make_unique<RectNode>();

@@ -1663,7 +1663,7 @@ void QuickPage::syncLiftShadow() {
   const float s = contentScale();
   if (m_liftShadow == nullptr || m_liftShadow->parent() != m_editGrid) {
     auto shadow = ui::box({.visible = false, .participatesInLayout = false});
-    shadow->setSoftness(Tokens::elevationE3.keyBlur * s);
+    shadow->setShadow(Tokens::elevationE3.keyBlur * s, Tokens::elevationE3.keyY * s);
     shadow->setFill(colorSpecFromRole(
         ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE3.keyLight : Tokens::elevationE3.keyDark
     ));

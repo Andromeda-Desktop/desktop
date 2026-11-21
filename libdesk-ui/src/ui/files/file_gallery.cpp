@@ -170,7 +170,7 @@ FileGallery::FileGallery(float scale, ThumbnailService* thumbnails, AnimationMan
   m_photoShadow = static_cast<Box*>(addChild(ui::box(
       {.fill = role(ColorRole::Shadow), .radius = Style::scaledRadius(Tokens::radiusR8, s), .visible = false})));
   m_photoShadow->setFill(colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? 0.24F : 0.5F));
-  m_photoShadow->setSoftness(Tokens::spaceP64 * s);
+  m_photoShadow->setShadow(Tokens::spaceP64 * s, Tokens::spaceP24 * s);
   m_photo = static_cast<Image*>(addChild(std::make_unique<Image>()));
   m_photo->setFit(ImageFit::Contain);
   m_photo->setRadius(Style::scaledRadius(Tokens::radiusR8, s));

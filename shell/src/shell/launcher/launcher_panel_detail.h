@@ -674,9 +674,11 @@ namespace launcher_detail {
       addChild(ui::box({
           .out = &m_lensShadow,
           .radius = Style::scaledRadius(Tokens::radiusR16, m_style.scale),
-          .softness = Tokens::elevationE1.keyBlur * m_style.scale,
           .visible = false,
           .participatesInLayout = false,
+          .configure = [scale = m_style.scale](Box& box) {
+            box.setShadow(Tokens::elevationE1.keyBlur * scale, Tokens::elevationE1.keyY * scale);
+          },
       }));
       addChild(std::move(col));
       m_focusRing.attach(*this);

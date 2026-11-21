@@ -85,6 +85,11 @@ void Box::setSoftness(float softness) {
   syncStyle();
 }
 
+void Box::setShadow(float blur, float offsetY) {
+  setDropShadow(m_style, blur, offsetY);
+  syncStyle();
+}
+
 void Box::setNoAa(bool noAa) {
   m_style.noAa = noAa;
   syncStyle();

@@ -1504,7 +1504,7 @@ namespace term {
                                     .borderWidth = 0.0F});
     root->fade = root->addChild(std::move(fade));
     auto shadow = ui::box({.out = &m_jumpShadow, .visible = false, .participatesInLayout = false});
-    shadow->setSoftness(Tokens::elevationE2.keyBlur * s);
+    shadow->setShadow(Tokens::elevationE2.keyBlur * s, Tokens::elevationE2.keyY * s);
     root->jumpShadow = root->addChild(std::move(shadow));
     auto jump = ui::row({.out = &m_jump});
     jump->setParticipatesInLayout(false);

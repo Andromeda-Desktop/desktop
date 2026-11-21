@@ -27,7 +27,7 @@ public:
     m_animations = animations;
     m_vertical = vertical;
     auto shadow = ui::box({.visible = false, .participatesInLayout = false});
-    shadow->setSoftness(Tokens::elevationE1.keyBlur * scale);
+    shadow->setShadow(Tokens::elevationE1.keyBlur * scale, Tokens::elevationE1.keyY * scale);
     m_shadow = static_cast<Box*>(parent.addChild(std::move(shadow)));
     auto lens = ui::box({.visible = false, .participatesInLayout = false});
     m_lens = static_cast<Box*>(parent.addChild(std::move(lens)));

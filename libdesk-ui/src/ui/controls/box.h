@@ -35,6 +35,8 @@ public:
   void setLogicalInset(const RectInsets& inset);
   void setSoftness(float softness);
   void setNoAa(bool noAa);
+  // Draws as the drop shadow of a shape `offsetY` above this box (see setDropShadow).
+  void setShadow(float blur, float offsetY);
 
   // Presets
   void setFlatStyle();

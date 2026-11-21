@@ -260,7 +260,7 @@ void Toggle::applyAnimatedState(float t) {
   auto shadowStyle = thumbStyle;
   shadowStyle.fill = colorForRole(ColorRole::Shadow, this);
   shadowStyle.fill.a = isResolvedLightTheme() ? Tokens::elevationE1.keyLight : Tokens::elevationE1.keyDark;
-  shadowStyle.softness = Tokens::elevationE1.keyBlur * m_scale;
+  setDropShadow(shadowStyle, Tokens::elevationE1.keyBlur * m_scale, Tokens::elevationE1.keyY * m_scale);
   m_thumbShadow->setPosition(thumbX, m_inset + Tokens::elevationE1.keyY * m_scale);
   m_thumbShadow->setFrameSize(thumbW, m_thumbSize);
   m_thumbShadow->setStyle(shadowStyle);

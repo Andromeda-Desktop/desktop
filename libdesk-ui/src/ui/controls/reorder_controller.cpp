@@ -257,20 +257,15 @@ void ReorderController::lift(bool lifted) {
   if (lifted && m_shadow == nullptr) {
     const float radius = Tokens::componentListRowRadius * m_scale * Style::cornerRadiusScale();
     m_shadow = static_cast<Box*>(m_list->addChild(ui::box({
+        .fill = colorSpecFromRole(
+            ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE3.keyLight : Tokens::elevationE3.keyDark
+        ),
+        .radius = radius,
         .visible = false,
         .participatesInLayout = false,
         .configure = [](Box& box) { box.setZIndex(kLiftedZ - 2); },
     })));
-    Color color = colorForRole(ColorRole::Shadow);
-    color.a *= isResolvedLightTheme() ? Tokens::elevationE3.keyLight : Tokens::elevationE3.keyDark;
-    m_shadow->setStyle(RoundedRectStyle{
-        .fill = color,
-        .radius = Radii{radius, radius, radius, radius},
-        // Only an outer shadow feathers; it fades over 2 x softness centred on the edge, so softness = blur / 2.
-        .softness = Tokens::elevationE3.keyBlur * 0.5F * m_scale,
-        .outerShadow = true,
-        .shadowCutoutOffsetY = Tokens::elevationE3.keyY * m_scale,
-    });
+    m_shadow->setShadow(Tokens::elevationE3.keyBlur * m_scale, Tokens::elevationE3.keyY * m_scale);
     m_plate = static_cast<Box*>(m_list->addChild(ui::box({
         .fill = colorSpecFromRole(ColorRole::SolidRegular),
         .radius = radius,

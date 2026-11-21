@@ -27,9 +27,9 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
                             .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE1.keyLight
                                                                                                 : Tokens::elevationE1.keyDark),
                             .radius = Style::scaledRadius(Tokens::radiusR8, s),
-                            .softness = Tokens::elevationE1.keyBlur * s,
                             .visible = false,
                             .participatesInLayout = false}));
+  m_shadow->setShadow(Tokens::elevationE1.keyBlur * s, Tokens::elevationE1.keyY * s);
   setMinHeight(Tokens::sizeRowTwoCompact * s);
   addChild(ui::glyph({.out = &m_symbol, .glyphSize = Tokens::sizeSymbol * s}));
   addChild(ui::spinner({.out = &m_spinner, .color = colorSpecFromRole(ColorRole::Label2), .spinnerSize = Tokens::sizeSymbol * s,

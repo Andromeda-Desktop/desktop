@@ -106,8 +106,8 @@ namespace term {
           ui::box({.out = out,
                    .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE3.keyLight
                                                                                        : Tokens::elevationE3.keyDark),
-                   .softness = Tokens::elevationE3.keyBlur * s,
                    .participatesInLayout = false});
+      box->setShadow(Tokens::elevationE3.keyBlur * s, Tokens::elevationE3.keyY * s);
       box->setZIndex(-1);
       return box;
     };
