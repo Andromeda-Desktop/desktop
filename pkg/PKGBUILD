@@ -276,9 +276,18 @@ package_andromeda-preview-git() {
 # The shared libdesk of the apps that load as modules (libandromeda-<app>.so) and andromeda-appd, which forks them.
 # Every such app depends on the ABI it was built against: any libdesk header or token change is a new ABI, and pacman
 # then holds the libdesk upgrade until each installed app is rebuilt.
-_libdesk_abi=$(git -C desktop ls-files -s -- ':(glob)libdesk-*/src/**/*.h' protocol/design-tokens.toml 2> /dev/null |
-  sha256sum | cut -c1-16)
+# makepkg reads provides/depends at global scope, and its fakeroot pass sources this file before it sets $srcdir:
+# hash the clone in $startdir/src (deb-build.sh links $srcdir/desktop first), else the checkout around pkg/.
+_libdesk_abi=unknown
+for _tree in "${srcdir:-/nonexistent}/desktop" "${startdir:-/nonexistent}/src/desktop" "${startdir:-/nonexistent}/.."; do
+  [[ -d $_tree/libdesk-app ]] || continue
+  _libdesk_abi=$(cd "$_tree" && { find libdesk-*/src -name '*.h' -print0 | sort -z | xargs -0 sha256sum;
+    sha256sum protocol/design-tokens.toml; } | sha256sum | cut -c1-16)
+  break
+done
+_check_libdesk_abi() { [[ $_libdesk_abi != unknown ]] || { echo "libdesk ABI unknown: no desktop tree beside the PKGBUILD" >&2; return 1; }; }
 package_andromeda-libdesk-git() {
+  _check_libdesk_abi || return 1
   pkgdesc='Andromeda libdesk: the shared app toolkit and the app zygote (andromeda-appd)'
   depends=("${_app_libs[@]}")
   provides=("andromeda-libdesk-abi=$_libdesk_abi")
@@ -293,6 +302,7 @@ package_andromeda-libdesk-git() {
 
 # --skip-subprojects: libdesk ships in andromeda-libdesk-git and the preview in andromeda-preview-git.
 package_andromeda-files-git() {
+  _check_libdesk_abi || return 1
   pkgdesc='Andromeda Files: file manager, file pickers and FileManager1'
   depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-preview-git libvterm libcups xdg-utils)
   optdepends=('cups: printing (the Print portal)'
@@ -331,6 +341,7 @@ package_andromeda-viewer-git() {
 }
 
 package_andromeda-terminal-git() {
+  _check_libdesk_abi || return 1
   pkgdesc='Andromeda Terminal: terminal emulator on libghostty-vt'
   depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" ttf-fira-code) # the mono token font (design-tokens.toml font.mono)
   meson install --no-rebuild -C build-terminal --destdir "$pkgdir" --skip-subprojects
