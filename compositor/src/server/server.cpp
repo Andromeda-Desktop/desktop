@@ -327,6 +327,9 @@ namespace andromeda {
                  "&& command -v dbus-update-activation-environment >/dev/null 2>&1; then "
                  "dbus-update-activation-environment $variables || { "
                  "echo 'andromeda: failed to update the D-Bus activation environment' >&2; exit 1; }; fi; ";
+      // The shell and lock start here, before READY: they need only this environment, not the session target.
+      command += "if $systemd_ready; then "
+                 "systemctl --user start --no-block andromeda-shell.service andromeda-lock.service; fi; ";
       if (managedReadiness) {
         command += "$systemd_ready";
       } else {

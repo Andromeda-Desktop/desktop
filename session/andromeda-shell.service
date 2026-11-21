@@ -1,7 +1,7 @@
 [Unit]
 Description=Andromeda desktop shell
 PartOf=andromeda-session.target
-After=andromeda-session.target
+After=andromeda.socket
 
 [Service]
 Slice=session.slice

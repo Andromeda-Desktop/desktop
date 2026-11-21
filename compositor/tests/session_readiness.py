@@ -37,6 +37,8 @@ if name == "systemctl":
         record("systemd-imported")
     elif args[1:] == ["set-environment", "ANDROMEDA_READINESS_TEST=configured"]:
         record("configured-imported")
+    elif args[1:] == ["start", "--no-block", "andromeda-shell.service", "andromeda-lock.service"]:
+        record("units")
     elif args[1:] == ["start", "--no-block", "andromeda-session.target"] and os.environ["READINESS_MANAGED"] == "false":
         record("target")
     else:
@@ -155,7 +157,7 @@ def check(binary, abstract=False, fail_import=False, managed=True):
                     if fail_import:
                         assert process.wait(timeout=10) != 0, "failed environment import accepted"
                         expect_no_readiness(notify, "readiness reported after failed environment import")
-                        assert "autostart" not in events(root)
+                        assert "autostart" not in events(root) and "units" not in events(root)
                     elif managed:
                         notify.settimeout(10)
                         packet, credentials, _, _ = notify.recvmsg(128, socket.CMSG_SPACE(12))
@@ -163,14 +165,14 @@ def check(binary, abstract=False, fail_import=False, managed=True):
                         sender = next(struct.unpack("3i", data)[0] for level, kind, data in credentials
                                       if level == socket.SOL_SOCKET and kind == socket.SCM_CREDENTIALS)
                         assert sender == process.pid, "readiness must come from the compositor"
-                        assert events(root)[-1] == "dbus-imported"
+                        assert events(root)[-2:] == ["dbus-imported", "units"]
                     else:
                         deadline = time.monotonic() + 5
                         while not {"startup", "autostart"}.issubset(events(root)):
                             assert process.poll() is None, "compositor exited before autostart"
                             assert time.monotonic() < deadline, "autostart did not run after readiness"
                             time.sleep(0.01)
-                        assert events(root)[-3] == "target"
+                        assert events(root)[-4:-2] == ["units", "target"]
                         assert sorted(events(root)[-2:]) == ["autostart", "startup"]
                         expect_no_readiness(notify, "unmanaged compositor used an inherited notification socket")
                 except BaseException:

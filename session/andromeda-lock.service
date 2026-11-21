@@ -1,7 +1,7 @@
 [Unit]
 Description=Andromeda lock screen
 PartOf=andromeda-session.target
-After=andromeda-session.target
+After=andromeda.socket
 # A crash loop must keep restarting: a locked session shows only the secure blank until a lock process runs.
 StartLimitIntervalSec=0
 

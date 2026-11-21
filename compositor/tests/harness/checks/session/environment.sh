@@ -126,7 +126,11 @@ case "$action" in
     : > "$TRACE_DIR/systemd-graphical"
     ;;
   start)
-    [ "$*" = "--no-block andromeda-session.target" ] || fail
+    case "$*" in
+      "--no-block andromeda-shell.service andromeda-lock.service") unit=units ;;
+      "--no-block andromeda-session.target") unit=target ;;
+      *) fail ;;
+    esac
     [ -e "$TRACE_DIR/systemd-graphical" ] || fail
     [ "$(cat "$MANAGER_DIR/one")" = "alpha beta" ] || fail
     [ "$(cat "$MANAGER_DIR/two")" = "literal;\$HOME's" ] || fail
@@ -134,8 +138,8 @@ case "$action" in
     [ "$(cat "$MANAGER_DIR/runtime")" = "$FIXTURE_ROOT/hostile-runtime" ] || fail
     [ "$(cat "$MANAGER_DIR/dbus")" = "unix:path=$FIXTURE_ROOT/hostile-dbus" ] || fail
     [ "$(cat "$MANAGER_DIR/systemd")" = "unix:path=$FIXTURE_ROOT/hostile-systemd" ] || fail
-    printf '%s\n' target >> "$TRACE_DIR/order"
-    : > "$TRACE_DIR/target-inherited"
+    printf '%s\n' "$unit" >> "$TRACE_DIR/order"
+    : > "$TRACE_DIR/$unit-inherited"
     ;;
   *) fail ;;
 esac
@@ -264,7 +268,7 @@ wait_for_file "$NATIVE" "$NATIVE/trace/target-inherited"
 wait_for_file "$NATIVE" "$NATIVE/trace/dbus-graphical"
 wait_for_file "$NATIVE" "$NATIVE/autostart-environment" true
 assert_autostart_environment "$NATIVE"
-[[ $(< "$NATIVE/trace/order") == $'systemd-graphical\nsystemd-configured\ndbus-graphical\ntarget' ]]
+[[ $(< "$NATIVE/trace/order") == $'systemd-graphical\nsystemd-configured\ndbus-graphical\nunits\ntarget' ]]
 ! grep -Fq 'systemctl --user set-environment' "$NATIVE/compositor.log"
 
 sed -i 's/ANDROMEDA_TEST_ONE = "alpha beta"/ANDROMEDA_TEST_ONE = "reloaded"/' "$NATIVE/config.toml"
@@ -278,7 +282,7 @@ if [[ $reloaded_value != "alpha beta" ]]; then
   exit 1
 fi
 [[ $(< "$NATIVE/manager/one") == "alpha beta" ]]
-[[ $(< "$NATIVE/trace/order") == $'systemd-graphical\nsystemd-configured\ndbus-graphical\ntarget' ]]
+[[ $(< "$NATIVE/trace/order") == $'systemd-graphical\nsystemd-configured\ndbus-graphical\nunits\ntarget' ]]
 stop_private "$NATIVE"
 [[ ! -e $NATIVE/trace/unexpected-systemctl ]]
 [[ ! -e $NATIVE/trace/unexpected-systemd-run ]]
@@ -293,7 +297,7 @@ assert_autostart_environment "$NO_SYSTEMD"
 [[ -e $NO_SYSTEMD/trace/systemctl-probed ]]
 [[ ! -e $NO_SYSTEMD/trace/unexpected-systemctl ]]
 [[ ! -e $NO_SYSTEMD/trace/unexpected-systemd-run ]]
-[[ ! -e $NO_SYSTEMD/trace/target-inherited ]]
+[[ ! -e $NO_SYSTEMD/trace/target-inherited && ! -e $NO_SYSTEMD/trace/units-inherited ]]
 [[ $(< "$NO_SYSTEMD/trace/order") == dbus-graphical ]]
 stop_private "$NO_SYSTEMD"
 
