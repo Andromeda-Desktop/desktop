@@ -154,6 +154,7 @@ void Flex::setFrameSize(float width, float height) {
 void Flex::setCover(std::unique_ptr<Node> cover) {
   if (m_cover != nullptr) removeChild(m_cover);
   cover->setParticipatesInLayout(false);
+  cover->setZIndex(1);
   m_cover = addChild(std::move(cover));
   m_cover->setPosition(0.0F, 0.0F);
   m_cover->setSize(width(), height());

@@ -112,7 +112,8 @@ public:
 
   void setSize(float width, float height) override;
   void setFrameSize(float width, float height);
-  // A node over the whole flex, outside layout and above the children (a click area for a pressable row).
+  // A node over the whole flex, outside layout, at z index 1 above the children (a click area for a pressable row);
+  // a child control that must stay pressable sets a higher z index.
   void setCover(std::unique_ptr<Node> cover);
 
 protected:
