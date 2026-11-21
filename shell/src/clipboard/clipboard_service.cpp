@@ -137,7 +137,7 @@ namespace {
     }
   }
 
-  std::string_view binaryView(const std::vector<std::uint8_t>& data) {
+  std::string_view binaryView(std::span<const std::uint8_t> data) {
     return {reinterpret_cast<const char*>(data.data()), data.size()};
   }
 
@@ -791,7 +791,7 @@ void ClipboardService::imageDataUriAsync(
   }
   std::function<std::optional<std::string>()> work;
   if (entry->payloadLoaded) {
-    work = [data = entry->data] { return imageDataUri(data); };
+    work = [bytes = entry->data.shared()] { return imageDataUri(*bytes); };
   } else if (m_dataKey != nullptr && isValidStorageId(storageId)) {
     work = [path = payloadPathForId(storageId), key = m_dataKey, storageId, byteSize = entry->byteSize,
             limit = maxEntryBytesFor(entry->dataMimeType)]() -> std::optional<std::string> {
@@ -949,7 +949,7 @@ bool ClipboardService::copyEntry(const ClipboardEntry& entry) {
     return false;
   }
 
-  return copyData(mimeTypesForPayload(entry.dataMimeType), entry.data);
+  return copyData(mimeTypesForPayload(entry.dataMimeType), entry.data.shared());
 }
 
 std::size_t ClipboardService::pinnedCount() const noexcept {
@@ -1477,9 +1477,7 @@ void ClipboardService::finishRead(bool discard) {
 
   ClipboardEntry entry;
   if (m_keepFromClosedApps && data.size() <= kMaxSelectionBackupBytes) {
-    // Backed up before the history entry is built, and shared rather than
-    // copied: this is the buffer that can be large, while the history copy
-    // below is bounded by the per-kind entry limit.
+    // One buffer for the backup and the history entry: it can be large.
     const auto payload = std::make_shared<const std::vector<std::uint8_t>>(std::move(data));
     m_selectionBackup = SelectionBackup{
         .mimeTypes = mimeTypesForPayload(mimeType),
@@ -1488,13 +1486,13 @@ void ClipboardService::finishRead(bool discard) {
     };
 
     if (payload->size() > maxEntryBytesFor(mimeType)) {
-      // History would drop it; do not copy bytes that are not going to be kept.
+      // History would drop it: only the backup keeps it.
       notifyChanged();
       return;
     }
-    entry.data = *payload;
+    entry.data = ClipboardBytes(payload);
   } else {
-    entry.data = std::move(data);
+    entry.data = ClipboardBytes(std::move(data));
   }
 
   entry.storageId = generateStorageId();
@@ -1876,7 +1874,7 @@ bool ClipboardService::persistHistory(bool force, bool sync) {
   struct PayloadWrite {
     std::string storageId;
     std::string path;
-    std::vector<std::uint8_t> data;
+    ClipboardBytes data;
   };
   std::vector<PayloadWrite> payloads;
   std::unordered_set<std::string> activeStorageIds;
@@ -2171,7 +2169,7 @@ bool ClipboardService::loadEntryPayload(ClipboardEntry& entry) {
     return false;
   }
 
-  entry.data = std::move(result.plaintext);
+  entry.data = ClipboardBytes(std::move(result.plaintext));
   entry.payloadLoaded = true;
   if (entry.textPreview.empty() && isTextMimeType(entry.dataMimeType)) {
     entry.textPreview = buildTextPreview(entry.data);
@@ -2198,14 +2196,13 @@ bool ClipboardService::loadLegacyEntryPayload(ClipboardEntry& entry) {
     return false;
   }
 
-  entry.data.resize(entry.byteSize);
+  std::vector<std::uint8_t> bytes(entry.byteSize);
   file.seekg(0);
-  file.read(reinterpret_cast<char*>(entry.data.data()), size);
+  file.read(reinterpret_cast<char*>(bytes.data()), size);
   if (!file.good()) {
-    entry.data.clear();
-    entry.data.shrink_to_fit();
     return false;
   }
+  entry.data = ClipboardBytes(std::move(bytes));
   entry.payloadLoaded = true;
   if (entry.textPreview.empty() && isTextMimeType(entry.dataMimeType)) {
     entry.textPreview = buildTextPreview(entry.data);
@@ -2217,8 +2214,7 @@ void ClipboardService::evictPayloadData(ClipboardEntry& entry) {
   if (entry.data.empty() || entry.payloadPath.empty()) {
     return;
   }
-  entry.data.clear();
-  entry.data.shrink_to_fit();
+  entry.data = {};
   entry.payloadLoaded = false;
 }
 
@@ -2278,7 +2274,7 @@ bool ClipboardService::isTextMimeType(std::string_view mimeType) {
   return std::ranges::contains(kTextMimeTypes, mimeType);
 }
 
-bool ClipboardService::isEmptyTextPayload(const std::vector<std::uint8_t>& data) {
+bool ClipboardService::isEmptyTextPayload(std::span<const std::uint8_t> data) {
   bool sawContent = false;
   for (std::uint8_t byte : data) {
     if (byte == 0) {
@@ -2382,7 +2378,7 @@ void ClipboardService::closeActiveWrite(std::size_t index) {
   m_activeWrites.pop_back();
 }
 
-std::string ClipboardService::buildTextPreview(const std::vector<std::uint8_t>& data) {
+std::string ClipboardService::buildTextPreview(std::span<const std::uint8_t> data) {
   const std::size_t limit = std::min<std::size_t>(data.size(), kPreviewBytes);
   // Forward-scan to find the last complete UTF-8 sequence within the byte limit.
   std::size_t safeSize = 0;

@@ -4,6 +4,7 @@
 #include "core/text_clipboard.h"
 #include "security/storage_key_provider.h"
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -35,12 +36,36 @@ enum class ClipboardPersistenceState {
   BackendError,
 };
 
+// Immutable clipboard bytes, shared by the history, the live selection, disk writes and thumbnail jobs.
+class ClipboardBytes {
+public:
+  ClipboardBytes() = default;
+  explicit ClipboardBytes(std::shared_ptr<const std::vector<std::uint8_t>> bytes) : m_bytes(std::move(bytes)) {}
+  explicit ClipboardBytes(std::vector<std::uint8_t> bytes)
+      : m_bytes(std::make_shared<const std::vector<std::uint8_t>>(std::move(bytes))) {}
+
+  [[nodiscard]] bool empty() const { return size() == 0; }
+  [[nodiscard]] std::size_t size() const { return m_bytes != nullptr ? m_bytes->size() : 0; }
+  [[nodiscard]] const std::uint8_t* data() const { return m_bytes != nullptr ? m_bytes->data() : nullptr; }
+  [[nodiscard]] const std::uint8_t* begin() const { return data(); }
+  [[nodiscard]] const std::uint8_t* end() const { return data() + size(); }
+  [[nodiscard]] std::span<const std::uint8_t> span() const { return {data(), size()}; }
+  operator std::span<const std::uint8_t>() const { return span(); }
+  [[nodiscard]] const std::shared_ptr<const std::vector<std::uint8_t>>& shared() const { return m_bytes; }
+  [[nodiscard]] bool operator==(const ClipboardBytes& other) const {
+    return m_bytes == other.m_bytes || std::ranges::equal(span(), other.span());
+  }
+
+private:
+  std::shared_ptr<const std::vector<std::uint8_t>> m_bytes;
+};
+
 struct ClipboardEntry {
   std::string storageId;
   std::string payloadPath;
   std::vector<std::string> mimeTypes;
   std::string dataMimeType;
-  std::vector<std::uint8_t> data;
+  ClipboardBytes data;
   std::size_t byteSize = 0;
   bool payloadLoaded = true;
   // The encrypted payload file holds `data` (written or queued); data never changes after capture.
@@ -258,8 +283,8 @@ private:
   [[nodiscard]] static bool isTextMimeType(std::string_view mimeType);
   [[nodiscard]] static std::vector<std::string> mimeTypesForPayload(const std::string& dataMimeType);
   [[nodiscard]] static std::size_t maxEntryBytesFor(std::string_view mimeType);
-  [[nodiscard]] static bool isEmptyTextPayload(const std::vector<std::uint8_t>& data);
-  [[nodiscard]] static std::string buildTextPreview(const std::vector<std::uint8_t>& data);
+  [[nodiscard]] static bool isEmptyTextPayload(std::span<const std::uint8_t> data);
+  [[nodiscard]] static std::string buildTextPreview(std::span<const std::uint8_t> data);
   bool copyData(std::vector<std::string> mimeTypes, std::vector<std::uint8_t> data);
   bool copyData(std::vector<std::string> mimeTypes, std::shared_ptr<const std::vector<std::uint8_t>> data);
   bool queueOutgoingWrite(void* source, int fd, std::shared_ptr<const std::vector<std::uint8_t>> data);
