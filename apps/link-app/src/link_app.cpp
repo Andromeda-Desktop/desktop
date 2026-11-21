@@ -1058,8 +1058,8 @@ namespace linkapp {
     auto steps = ui::column({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s,
                              .maxWidth = Tokens::componentLinkPairText * s});
     steps->addChild(text("Scan with Andromeda Link", Tokens::typeTitle2, ColorRole::Label1, s));
-    auto how = text("Open Link on your Android phone, tap Pair, and point the camera at this code. Both devices must be on "
-                    "the same network.", Tokens::typeParagraph, ColorRole::Label2, s, 4);
+    auto how = text("Open Link on your Android phone, tap Pair, and point the camera at this code. With no shared network, "
+                    "Bluetooth on both devices is enough.", Tokens::typeParagraph, ColorRole::Label2, s, 4);
     how->setMaxWidth(Tokens::componentLinkPairText * s);
     steps->addChild(std::move(how));
     steps->addChild(text("Or enter this code on the phone:", Tokens::typeParagraph, ColorRole::Label1, s));
