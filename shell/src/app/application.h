@@ -398,6 +398,8 @@ private:
   std::map<std::string, float> m_ambientSet;
   double m_ambientLux = -1.0;
   void syncAmbientLight();
+  void applyBrightnessSchedule();
+  Timer m_brightnessScheduleTimer;
   void applyAmbientLight(double lux);
   void applyBrightnessStep();
   void applyRuleDoNotDisturb();

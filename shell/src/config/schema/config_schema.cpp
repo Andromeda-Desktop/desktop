@@ -1076,12 +1076,20 @@ namespace noctalia::config::schema {
   }
 
   namespace {
+    template <typename Struct>
+    Field<Struct>
+    optionalFloatField(
+        std::optional<float> Struct::* member, std::string_view key, std::optional<Range<float>> range = std::nullopt
+    );
+
     const Schema<BrightnessMonitorOverride>& brightnessMonitorSchema() {
       static const Schema<BrightnessMonitorOverride> s = {
           field(&BrightnessMonitorOverride::match, "match"),
           optionalEnumField(&BrightnessMonitorOverride::backend, "backend", kBrightnessBackendPreferences),
           field(&BrightnessMonitorOverride::backlightDevice, "backlight_device"),
           field(&BrightnessMonitorOverride::ddcBus, "ddc_bus"),
+          optionalFloatField(&BrightnessMonitorOverride::scheduledDay, "scheduled_day", kUnitRange),
+          optionalFloatField(&BrightnessMonitorOverride::scheduledNight, "scheduled_night", kUnitRange),
       };
       return s;
     }
@@ -1134,6 +1142,35 @@ namespace noctalia::config::schema {
                 .group = "brightness",
                 .label = "services.automatic-brightness",
                 .tags = "ambient light sensor auto adaptive",
+            }
+        ),
+        field(
+            &BrightnessConfig::scheduled, "scheduled",
+            RowSpec{
+                .section = "services",
+                .group = "brightness",
+                .label = "services.scheduled-brightness",
+                .tags = "schedule sunrise sunset night day dim",
+            }
+        ),
+        field(
+            &BrightnessConfig::scheduledDay, "scheduled_day", kUnitRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "services",
+                .group = "brightness",
+                .label = "services.scheduled-day-brightness",
+                .tags = "schedule day sunrise",
+            }
+        ),
+        field(
+            &BrightnessConfig::scheduledNight, "scheduled_night", kUnitRange,
+            RowSpec{
+                .kind = RowSpec::Kind::Slider,
+                .section = "services",
+                .group = "brightness",
+                .label = "services.scheduled-night-brightness",
+                .tags = "schedule night sunset dim",
             }
         ),
         // Map key seeds `match`; an explicit `match` key inside overrides it.
@@ -4012,9 +4049,8 @@ namespace noctalia::config::schema {
     }
 
     template <typename Struct>
-    Field<Struct> optionalFloatField(
-        std::optional<float> Struct::* member, std::string_view key, std::optional<Range<float>> range = std::nullopt
-    ) {
+    Field<Struct>
+    optionalFloatField(std::optional<float> Struct::* member, std::string_view key, std::optional<Range<float>> range) {
       return custom<Struct>(
           key,
           [member, key, range](const toml::table& tbl, Struct& out, std::string_view parentPath, Diagnostics& diag) {

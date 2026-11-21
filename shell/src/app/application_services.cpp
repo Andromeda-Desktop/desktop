@@ -106,6 +106,7 @@
 #include "shell/wallpaper/panel/wallpaper_panel.h"
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/brightness_poll_source.h"
+#include "system/brightness_schedule.h"
 #include "system/brightness_service.h"
 #include "system/distro_info.h"
 #include "system/easyeffects_service.h"
@@ -1910,6 +1911,7 @@ void Application::initBrightnessAndPipewire() {
           }
           m_brightnessService->reload(m_configService.config().brightness);
           syncAmbientLight();
+          applyBrightnessSchedule();
           m_bar.refresh();
           if (shouldRefreshControlCenter()) {
             m_panelManager.refresh();
@@ -1922,6 +1924,7 @@ void Application::initBrightnessAndPipewire() {
     m_brightnessService.reset();
   }
   syncAmbientLight();
+  applyBrightnessSchedule();
 
   if (m_wirePlumberMixer != nullptr) try {
     m_easyEffectsService = std::make_unique<EasyEffectsService>();
@@ -2249,6 +2252,41 @@ void Application::applyAmbientLight(double lux) {
   m_ambientLux = lux;
 }
 
+// Built-in panels stay with the ambient light while it runs, and no level changes under the idle dim or low-power step.
+void Application::applyBrightnessSchedule() {
+  const auto& config = m_configService.config();
+  const LocationConfig& location = config.location;
+  const auto resolved = m_locationService.resolvedLocation();
+  const std::optional<double> lat = resolved ? std::optional(resolved->latitude) : std::nullopt;
+  const std::optional<double> lon = resolved ? std::optional(resolved->longitude) : std::nullopt;
+  const auto coords = day_night_schedule::resolveCoordinates(location, lat, lon);
+  const bool usable = day_night_schedule::isManualMode(location) ? day_night_schedule::hasUsableCustomTimes(location)
+                                                                 : coords.latitude && coords.longitude;
+  if (m_brightnessService == nullptr || !config.brightness.scheduled || !usable) {
+    m_brightnessScheduleTimer.stop();
+    return;
+  }
+  const auto at = day_night_schedule::evaluate(location, lat, lon);
+  auto delay = brightness_schedule::nextDelay(at, config.brightness.scheduledDay, config.brightness.scheduledNight);
+  if (m_idleDimmed.empty()) {
+    const std::vector<BrightnessDisplay> displays = m_brightnessService->displays();
+    for (const auto& d : displays) {
+      const bool builtIn = d.id.starts_with("eDP") || d.id.starts_with("LVDS") || d.id.starts_with("DSI");
+      if (!d.controllable || (builtIn && m_ambientLight != nullptr) || m_dimmedFrom.contains(d.id)) {
+        continue;
+      }
+      const auto [day, night] = m_brightnessService->scheduledLevels(d.id);
+      delay = std::min(delay, brightness_schedule::nextDelay(at, day, night));
+      const float target = brightness_schedule::level(at, day, night);
+      if (std::abs(target - d.brightness) > 0.005F) {
+        m_brightnessOsd.suppressFor(std::chrono::seconds(2));
+        m_brightnessService->setBrightness(d.id, target);
+      }
+    }
+  }
+  m_brightnessScheduleTimer.start(delay, [this] { applyBrightnessSchedule(); });
+}
+
 // The idle "dim" behavior halves each display's brightness (not below 0.05) and restores it on input, unless the user
 // moved the brightness meanwhile.
 void Application::applyIdleDim(bool dim) {
@@ -2492,6 +2530,7 @@ void Application::initSessionBusServices() {
   pushLocation();
   m_locationService.addChangeCallback([this, pushLocation, shouldRefreshControlCenter] {
     pushLocation();
+    applyBrightnessSchedule();
     m_bar.refresh();
     m_desktopWidgetsController.requestLayout();
     if (shouldRefreshControlCenter()) {

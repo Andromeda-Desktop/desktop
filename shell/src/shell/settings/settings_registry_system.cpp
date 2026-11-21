@@ -404,6 +404,9 @@ namespace settings {
     appendRow(entries, brightnessRows, "minimum_brightness");
     appendRow(entries, brightnessRows, "sync_all_monitors");
     appendRow(entries, brightnessRows, "automatic");
+    appendRow(entries, brightnessRows, "scheduled");
+    appendRow(entries, brightnessRows, "scheduled_day");
+    appendRow(entries, brightnessRows, "scheduled_night");
     auto bluetoothRows =
         generateSchemaEntries(noctalia::config::schema::bluetoothSchema(), cfg.bluetooth, {"bluetooth"});
     appendGroup(entries, bluetoothRows, "bluetooth");

@@ -4689,6 +4689,18 @@
           "description": "Change the built-in screen's brightness with the light around you. It learns from your own changes",
           "label": "Automatic Brightness"
         },
+        "scheduled-brightness": {
+          "description": "Fade the screens to the day or night level over 30 minutes after sunrise and sunset. The built-in screen keeps following the light while Automatic Brightness is on",
+          "label": "Scheduled Brightness"
+        },
+        "scheduled-day-brightness": {
+          "description": "Brightness after sunrise",
+          "label": "Day Brightness"
+        },
+        "scheduled-night-brightness": {
+          "description": "Brightness after sunset",
+          "label": "Night Brightness"
+        },
         "minimum-brightness": {
           "description": "Prevent the screen from going completely dark",
           "label": "Minimum Brightness"

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 class IpcService;
@@ -43,6 +44,8 @@ public:
   [[nodiscard]] const BrightnessDisplay* findDisplay(const std::string& id) const;
   [[nodiscard]] const BrightnessDisplay* findByOutput(wl_output* output) const;
   [[nodiscard]] bool available() const noexcept;
+  // Day and night levels of the brightness schedule: the display's [brightness.monitor] values, else the global ones.
+  [[nodiscard]] std::pair<float, float> scheduledLevels(const std::string& displayId) const;
 
   void setAllBrightness(float value);
   void setBrightness(const std::string& displayId, float value);

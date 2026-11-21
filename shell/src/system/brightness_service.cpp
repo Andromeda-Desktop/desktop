@@ -1708,6 +1708,24 @@ BrightnessService::~BrightnessService() { delete m_impl; }
 
 const std::vector<BrightnessDisplay>& BrightnessService::displays() const noexcept { return m_impl->publicDisplays; }
 
+std::pair<float, float> BrightnessService::scheduledLevels(const std::string& displayId) const {
+  const BrightnessConfig& config = m_impl->activeConfig;
+  std::pair<float, float> levels{config.scheduledDay, config.scheduledNight};
+  const auto internal = std::ranges::find(m_impl->internals, displayId, [](const auto& d) { return d.pub.id; });
+  const WaylandOutput* output =
+      internal != m_impl->internals.end() ? findOutputByConnector(m_impl->wayland, internal->connectorName) : nullptr;
+  if (output == nullptr) {
+    return levels;
+  }
+  for (const auto& override : config.monitorOverrides) {
+    if (!override.match.empty() && outputMatchesSelector(override.match, *output)) {
+      levels = {override.scheduledDay.value_or(levels.first), override.scheduledNight.value_or(levels.second)};
+      break;
+    }
+  }
+  return levels;
+}
+
 const BrightnessDisplay* BrightnessService::findDisplay(const std::string& id) const {
   for (const auto& display : m_impl->publicDisplays) {
     if (display.id == id) {

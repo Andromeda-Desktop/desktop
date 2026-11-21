@@ -446,9 +446,11 @@ location = "https://example.invalid/bad"
     }};
     c.brightness.enableDdcutil = true;
     c.brightness.ddcutilIgnoreMmids = {"ABC123"};
+    c.brightness.scheduled = true;
+    c.brightness.scheduledNight = 0.25F;
     c.brightness.monitorOverrides = {
         {"DP-1", BrightnessBackendPreference::Ddcutil, std::nullopt, 7},
-        {"eDP-1", std::nullopt, "intel_backlight", std::nullopt},
+        {"eDP-1", std::nullopt, "intel_backlight", std::nullopt, 0.8F, 0.3F},
     };
     c.battery.warningThreshold = 15;
     c.battery.deviceThresholds = {{"BAT0", 10}, {"hidpp:1", 25}};

@@ -1578,6 +1578,8 @@ struct BrightnessMonitorOverride {
   std::optional<BrightnessBackendPreference> backend;
   std::optional<std::string> backlightDevice; // sysfs device name or path, e.g. "intel_backlight"
   std::optional<std::int32_t> ddcBus;         // DDC bus number, e.g. 6 for i2c-6
+  std::optional<float> scheduledDay;          // 0..1, wins over BrightnessConfig::scheduledDay
+  std::optional<float> scheduledNight;        // 0..1, wins over BrightnessConfig::scheduledNight
 
   bool operator==(const BrightnessMonitorOverride&) const = default;
 };
@@ -1589,6 +1591,10 @@ struct BrightnessConfig {
   std::vector<BrightnessMonitorOverride> monitorOverrides;
   float minimumBrightness = 0.0F;
   bool automatic = true; // built-in panels follow the ambient light sensor
+  // Fades each display to its day or night level over 30 min after sunrise and sunset ([location] schedule).
+  bool scheduled = false;
+  float scheduledDay = 1.0F;
+  float scheduledNight = 0.5F;
 
   bool operator==(const BrightnessConfig&) const = default;
 };
