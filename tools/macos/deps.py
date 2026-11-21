@@ -3,10 +3,12 @@
 into a sysroot for cross-builds: headers, dylibs and pkg-config files under PREFIX (default ~/.cache/andromeda-mac/deps).
 Also writes PREFIX/../cross.ini, the meson cross file for arm64-apple-macos26 with the xtool Darwin SDK (DARWIN_SDK).
 Usage: deps.py [PREFIX]"""
+import hashlib
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -19,6 +21,9 @@ TAG = "arm64_tahoe"
 TARGET = "arm64-apple-macos26"
 SDK = os.environ.get("DARWIN_SDK", os.path.expanduser(
     "~/.swiftpm/swift-sdks/darwin.artifactbundle/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"))
+# ANGLE (BSD-3-Clause) with the Metal backend gives macOS its EGL and GLES; kivy/angle-builder pins chromium/7151.
+ANGLE_URL = "https://github.com/kivy/angle-builder/releases/download/chromium-7151_rev1/angle-macos-arm64.tar.gz"
+ANGLE_SHA256 = "fea89ee72ebb3426ef8fd5ec90db463f9b06beb74ea858a1091bcef5a2e99b73"
 API = "https://formulae.brew.sh/api/formula/{}.json"
 PREFIX = os.path.abspath(os.path.expanduser(sys.argv[1] if len(sys.argv) > 1 else "~/.cache/andromeda-mac/deps"))
 CACHE = os.path.join(os.path.dirname(PREFIX), "bottles")
@@ -29,6 +34,30 @@ def fetch(url, path, auth=False):
     with urllib.request.urlopen(req) as r, open(path + ".part", "wb") as f:
         shutil.copyfileobj(r, f)
     os.replace(path + ".part", path)
+
+
+def angle(pc_dir):
+    path = os.path.join(CACHE, f"angle-{ANGLE_SHA256[:16]}.tar.gz")
+    if not os.path.exists(path):
+        fetch(ANGLE_URL, path)
+    with open(path, "rb") as f:
+        if hashlib.sha256(f.read()).hexdigest() != ANGLE_SHA256:
+            sys.exit(f"{path}: sha256 mismatch")
+    with tempfile.TemporaryDirectory() as tmp, tarfile.open(path) as tar:
+        tar.extractall(tmp, filter="data")
+        for h in ("EGL", "GLES2", "GLES3", "KHR"):
+            shutil.copytree(os.path.join(tmp, "include", h), os.path.join(PREFIX, "include", h), dirs_exist_ok=True)
+        os.makedirs(os.path.join(PREFIX, "share", "licenses", "angle"), exist_ok=True)
+        shutil.copy(os.path.join(tmp, "LICENSE"), os.path.join(PREFIX, "share", "licenses", "angle"))
+        for lib, pc in (("EGL", "egl"), ("GLESv2", "glesv2")):
+            dst = os.path.join(PREFIX, "lib", f"lib{lib}.dylib")
+            shutil.copy(os.path.join(tmp, f"lib{lib}.dylib"), dst)
+            # The release names itself ./libX.dylib; the app bundle (step 11) puts it on the rpath and re-signs it.
+            subprocess.run(["llvm-install-name-tool", "-id", f"@rpath/lib{lib}.dylib", dst], check=True)
+            with open(os.path.join(pc_dir, pc + ".pc"), "w") as f:
+                f.write(f"prefix={PREFIX}\nName: {pc}\nDescription: ANGLE {lib} (Metal)\nVersion: 7151\n"
+                        f"Libs: -L${{prefix}}/lib -l{lib}\nCflags: -I${{prefix}}/include\n")
+    print("angle chromium-7151")
 
 
 def formula(name):
@@ -88,9 +117,8 @@ def main():
         with open(os.path.join(pc_dir, name + ".pc"), "w") as f:
             f.write(f"Name: {name}\nDescription: from the macOS SDK\nVersion: 99\nLibs: {lib}\n"
                     f"Cflags: {sdk_include.get(name, '')}\n")
-    # Header-only stb, and the Khronos EGL/GLES headers until the ANGLE build (which ships the same headers) lands in PREFIX.
-    for h in ("EGL", "GLES2", "GLES3", "KHR", "stb"):
-        shutil.copytree(os.path.join("/usr/include", h), os.path.join(PREFIX, "include", h), dirs_exist_ok=True)
+    shutil.copytree("/usr/include/stb", os.path.join(PREFIX, "include", "stb"), dirs_exist_ok=True)
+    angle(pc_dir)
 
     flags = f"['-target', '{TARGET}', '-isysroot', '{SDK}']"
     with open(os.path.join(os.path.dirname(PREFIX), "cross.ini"), "w") as f:

@@ -47,6 +47,9 @@ if is_wayland
   if not gles2_dep.found()
     gles2_dep = dependency('epoxy')
   endif
+else
+  egl_dep = dependency('egl')
+  gles2_dep = dependency('glesv2')
 endif
 
 foreach _h : ['stb/stb_image_resize2.h', 'stb/stb_image_write.h']
@@ -81,8 +84,9 @@ _system_deps = [
   cpp.find_library('dl', required: false),
 ]
 if is_wayland
-  _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), egl_dep, gles2_dep, dependency('sdbus-c++')]
+  _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), dependency('sdbus-c++')]
 endif
+_system_deps += [egl_dep, gles2_dep]
 
 # ── Vendored: fzy matcher ─────────────────────────────────────────────────────
 _fzy_lib = static_library('fzy',

@@ -130,7 +130,7 @@ macos-check:
     tools/macos/link-check.sh libdesk-app/build-macos
     tools/build-libghostty.sh macos
     [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos
-    # Objects and archives only: the executables link once libghostty-vt and ANGLE exist for macOS (step 9).
+    # Objects and archives only: the executable links once the Cocoa backend provides createDisplay() (step 10).
     tools/build.sh ninja -C apps/terminal/build-macos $(ninja -C apps/terminal/build-macos -t targets all | sed -n 's/^\([^:]*\.\(o\|a\)\): .*/\1/p')
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal apps/terminal/subprojects/libghostty-vt/prefix-macos/lib/libghostty-vt.a
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done
