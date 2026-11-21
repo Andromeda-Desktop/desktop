@@ -107,9 +107,13 @@ namespace {
       }
       m_platform.initialize();
       const bool sharedGl = m_config.config().shell.sharedGlContext;
-      m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGl);
       m_textures.initialize(sharedGl ? &m_glShared : nullptr);
-      m_renderContext.initialize(m_glShared);
+      m_renderContext.initializeText();
+      // EGL and Mesa load on the first GL use (a lock or a desktop capture), not at login.
+      m_renderContext.attachGlLater([this, sharedGl] {
+        m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGl);
+        m_renderContext.attachGl(m_glShared);
+      });
       m_renderContext.setTextFontFamily(m_config.config().shell.fontFamily);
       m_renderContext.setTextScale(m_config.config().accessibility.textScale);
       Style::setRtl(i18n::Service::instance().rtl());

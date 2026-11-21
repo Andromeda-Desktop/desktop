@@ -406,6 +406,12 @@ bool RenderContext::makeCurrentNoSurface() {
   return m_backend->makeCurrentNoSurface();
 }
 
+void RenderContext::makeCurrentIfGlReady() {
+  if (m_glState == GlState::Ready) {
+    makeCurrentNoSurface();
+  }
+}
+
 bool RenderContext::makeCurrent(RenderTarget& target) {
   return m_backend != nullptr && !m_graphicsResetPending && m_backend->makeCurrent(target);
 }
@@ -421,14 +427,14 @@ void RenderContext::setTextFontFamily(std::string family) {
   if (m_textFontFamily == family) {
     return;
   }
-  makeCurrentNoSurface();
+  makeCurrentIfGlReady();
   m_textFontFamily = std::move(family);
   m_textRenderer.setFontFamily(m_textFontFamily);
   ++m_textMetricsGeneration;
 }
 
 void RenderContext::setTextScale(float scale) {
-  makeCurrentNoSurface();
+  makeCurrentIfGlReady();
   m_textRenderer.setTextScale(scale);
   m_textScale = scale;
   ++m_textMetricsGeneration;
@@ -438,7 +444,7 @@ void RenderContext::setTextBaseDirection(bool rtl) {
   if (m_textBaseDirRtl == rtl) {
     return;
   }
-  makeCurrentNoSurface();
+  makeCurrentIfGlReady();
   m_textBaseDirRtl = rtl;
   m_textRenderer.setBaseDirection(rtl);
   ++m_textMetricsGeneration;

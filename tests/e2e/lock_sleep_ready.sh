@@ -14,7 +14,7 @@ with_noctalia '
   wait_for() { local what=$1; shift; for _ in $(seq 50); do "$@" && return; sleep 0.1; done; fail "$what"; }
   logged() { grep -q "$1" "$OUT/noctalia.log"; }
   stamp() { grep -m1 "$1" "$OUT/noctalia.log" | grep -oE "^[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}" \
-    | awk -F: "{ print (\$1 * 3600 + \$2 * 60 + \$3) * 1000 }"; }
+    | awk -F: "{ printf \"%d\\n\", (\$1 * 3600 + \$2 * 60 + \$3) * 1000 }"; }
 
   kill %1; wait %1 2> /dev/null || true
   python3 '"$MOCK"' "$OUT/calls.txt" >> "$OUT/mock.log" 2>&1 &

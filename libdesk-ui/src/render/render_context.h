@@ -80,6 +80,8 @@ public:
   void releaseUnusedCaches();
 
 private:
+  // Text setters free glyph textures only once GL is attached; before that none exist, and a pending attach waits.
+  void makeCurrentIfGlReady();
   friend class ScaledRenderer;
 
   // Scale-parameterized measurement/text ops. ScaledRenderer forwards here with
