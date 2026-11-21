@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 class ClipboardService;
@@ -39,13 +40,19 @@ private:
     std::vector<std::string> tones;
     // 0 for emoji entries: only unicode.json entries match a codepoint query.
     std::uint32_t codepoint = 0;
+    // "U+2014" for unicode.json entries; empty for emoji.
+    std::string codepointLabel;
   };
 
   void loadEntries(std::string_view assetName, bool unicode);
 
-  [[nodiscard]] LauncherResult resultFor(const EmojiEntry& entry, double score) const;
+  // Category labels resolved once per query: i18n lookups per entry dominated the full-grid listing.
+  using CategoryLabels = std::vector<std::pair<std::string, std::string>>;
+  [[nodiscard]] CategoryLabels categoryLabels() const;
+  [[nodiscard]] LauncherResult resultFor(const EmojiEntry& entry, double score, const CategoryLabels& labels) const;
 
   std::vector<EmojiEntry> m_entries;
+  std::vector<std::string> m_categoryIds;
   ClipboardService* m_clipboard = nullptr;
   const ConfigService* m_config = nullptr;
 };

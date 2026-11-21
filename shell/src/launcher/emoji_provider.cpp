@@ -80,6 +80,7 @@ void EmojiProvider::loadEntries(std::string_view assetName, bool unicode) {
       entry.category = unicode ? "unicode" : text(item, "category");
       if (const auto it = item.find("codepoint"); unicode && it != item.end() && it->is_number_unsigned()) {
         entry.codepoint = it->get<std::uint32_t>();
+        entry.codepointLabel = std::format("U+{:04X}", entry.codepoint);
       }
 
       if (item.contains("keywords") && item["keywords"].is_array()) {
@@ -99,6 +100,9 @@ void EmojiProvider::loadEntries(std::string_view assetName, bool unicode) {
       }
 
       if (!entry.emoji.empty() && !entry.name.empty()) {
+        if (std::ranges::find(m_categoryIds, entry.category) == m_categoryIds.end()) {
+          m_categoryIds.push_back(entry.category);
+        }
         m_entries.push_back(std::move(entry));
       }
     }
@@ -123,15 +127,25 @@ std::vector<LauncherCategory> EmojiProvider::categories() const {
   };
 }
 
-LauncherResult EmojiProvider::resultFor(const EmojiEntry& entry, double score) const {
+EmojiProvider::CategoryLabels EmojiProvider::categoryLabels() const {
+  CategoryLabels labels;
+  labels.reserve(m_categoryIds.size());
+  for (const std::string& id : m_categoryIds) {
+    labels.emplace_back(id, emojiCategoryLabel(id));
+  }
+  return labels;
+}
+
+LauncherResult EmojiProvider::resultFor(const EmojiEntry& entry, double score, const CategoryLabels& labels) const {
   LauncherResult r;
   const auto tone =
       m_config == nullptr ? 0U : static_cast<std::size_t>(m_config->config().shell.launcher.emojiSkinTone);
   const std::string& emoji = tone > 0 && tone <= entry.tones.size() ? entry.tones[tone - 1] : entry.emoji;
   r.id = "emoji-" + emoji;
   r.title = entry.name;
-  r.category = emojiCategoryLabel(entry.category);
-  r.subtitle = entry.codepoint != 0 ? std::format("U+{:04X}", entry.codepoint) : r.category;
+  const auto label = std::ranges::find(labels, entry.category, &CategoryLabels::value_type::first);
+  r.category = label->second;
+  r.subtitle = entry.codepointLabel.empty() ? r.category : entry.codepointLabel;
   r.badge = emoji;
   r.variants = entry.tones;
   r.score = score;
@@ -139,12 +153,13 @@ LauncherResult EmojiProvider::resultFor(const EmojiEntry& entry, double score) c
 }
 
 std::vector<LauncherResult> EmojiProvider::query(std::string_view text) const {
+  const CategoryLabels labels = categoryLabels();
   std::string query = StringUtils::toLower(text);
   if (query.empty()) {
     std::vector<LauncherResult> results;
     results.reserve(m_entries.size());
     for (const auto& e : m_entries) {
-      results.push_back(resultFor(e, 0));
+      results.push_back(resultFor(e, 0, labels));
     }
     return results;
   }
@@ -201,7 +216,7 @@ std::vector<LauncherResult> EmojiProvider::query(std::string_view text) const {
   std::vector<LauncherResult> results;
   for (std::size_t i = 0; i < scored.size() && i < kMaxResults; ++i) {
     const auto& e = m_entries[scored[i].index];
-    results.push_back(resultFor(e, scored[i].score));
+    results.push_back(resultFor(e, scored[i].score, labels));
   }
 
   return results;
