@@ -2,7 +2,9 @@
 
 #include "launcher/launcher_provider.h"
 
+#include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class ClipboardService;
@@ -35,7 +37,11 @@ private:
     std::vector<std::string> keywords;
     std::string category;
     std::vector<std::string> tones;
+    // 0 for emoji entries: only unicode.json entries match a codepoint query.
+    std::uint32_t codepoint = 0;
   };
+
+  void loadEntries(std::string_view assetName, bool unicode);
 
   [[nodiscard]] LauncherResult resultFor(const EmojiEntry& entry, double score) const;
 

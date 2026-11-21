@@ -8,7 +8,9 @@
 #include "config/config_service.h"
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -22,19 +24,43 @@ namespace {
   std::string emojiCategoryLabel(std::string_view id) {
     return i18n::tr("launcher.categories.emoji." + std::string(id));
   }
+
+  // "u+2014" (1-6 hex digits) or a bare "2014" (4-6 hex digits) in a lowercased query; 0 otherwise.
+  std::uint32_t parseCodepointQuery(std::string_view query) {
+    const bool prefixed = query.starts_with("u+");
+    if (prefixed) {
+      query.remove_prefix(2);
+    }
+    const std::size_t minDigits = prefixed ? 1 : 4;
+    if (query.size() < minDigits || query.size() > 6) {
+      return 0;
+    }
+    std::uint32_t codepoint = 0;
+    const auto [ptr, ec] = std::from_chars(query.data(), query.data() + query.size(), codepoint, 16);
+    if (ec != std::errc{} || ptr != query.data() + query.size()) {
+      return 0;
+    }
+    return codepoint;
+  }
 } // namespace
 
 void EmojiProvider::initialize() {
-  const std::filesystem::path path = paths::assetPath("emoji.json");
+  // Emoji load first: on equal scores the stable sort in query() keeps them above Unicode entries.
+  loadEntries("emoji.json", false);
+  loadEntries("unicode.json", true);
+}
+
+void EmojiProvider::loadEntries(std::string_view assetName, bool unicode) {
+  const std::filesystem::path path = paths::assetPath(assetName);
   std::ifstream file(path);
   if (!file.is_open()) {
     return;
   }
 
-  // The bundled emoji.json: a damaged file is a packaging bug, logged; the provider then lists nothing.
+  // A bundled asset: a damaged file is a packaging bug, logged; the provider then lists nothing.
   const auto json = nlohmann::json::parse(file, nullptr, false);
   if (json.is_discarded() || !json.is_array()) {
-    kLog.warn("emoji: {} is not a JSON array", path.string());
+    kLog.warn("{} is not a JSON array", path.string());
     return;
   }
   const auto text = [](const nlohmann::json& item, const char* key) {
@@ -42,16 +68,19 @@ void EmojiProvider::initialize() {
     return it != item.end() && it->is_string() ? it->get<std::string>() : std::string();
   };
   {
-    m_entries.reserve(json.size());
+    m_entries.reserve(m_entries.size() + json.size());
     for (const auto& item : json) {
       if (!item.is_object()) {
         continue;
       }
       EmojiEntry entry;
-      entry.emoji = text(item, "emoji");
+      entry.emoji = text(item, unicode ? "char" : "emoji");
       entry.name = text(item, "name");
       entry.nameLower = StringUtils::toLower(entry.name);
-      entry.category = text(item, "category");
+      entry.category = unicode ? "unicode" : text(item, "category");
+      if (const auto it = item.find("codepoint"); unicode && it != item.end() && it->is_number_unsigned()) {
+        entry.codepoint = it->get<std::uint32_t>();
+      }
 
       if (item.contains("keywords") && item["keywords"].is_array()) {
         for (const auto& kw : item["keywords"]) {
@@ -90,6 +119,7 @@ std::vector<LauncherCategory> EmojiProvider::categories() const {
       {emojiCategoryLabel("objects"), "bulb"},
       {emojiCategoryLabel("symbols"), "at"},
       {emojiCategoryLabel("flags"), "flag"},
+      {emojiCategoryLabel("unicode"), "omega"},
   };
 }
 
@@ -100,8 +130,8 @@ LauncherResult EmojiProvider::resultFor(const EmojiEntry& entry, double score) c
   const std::string& emoji = tone > 0 && tone <= entry.tones.size() ? entry.tones[tone - 1] : entry.emoji;
   r.id = "emoji-" + emoji;
   r.title = entry.name;
-  r.subtitle = emojiCategoryLabel(entry.category);
-  r.category = r.subtitle;
+  r.category = emojiCategoryLabel(entry.category);
+  r.subtitle = entry.codepoint != 0 ? std::format("U+{:04X}", entry.codepoint) : r.category;
   r.badge = emoji;
   r.variants = entry.tones;
   r.score = score;
@@ -118,6 +148,8 @@ std::vector<LauncherResult> EmojiProvider::query(std::string_view text) const {
     }
     return results;
   }
+
+  const std::uint32_t queryCodepoint = parseCodepointQuery(query);
 
   struct ScoredEntry {
     int score;
@@ -155,12 +187,16 @@ std::vector<LauncherResult> EmojiProvider::query(std::string_view text) const {
       }
     }
 
+    if (queryCodepoint != 0 && e.codepoint == queryCodepoint) {
+      bestScore = 1000;
+    }
+
     if (bestScore > 0) {
       scored.push_back({bestScore, i});
     }
   }
 
-  std::ranges::sort(scored, std::ranges::greater{}, &ScoredEntry::score);
+  std::ranges::stable_sort(scored, std::ranges::greater{}, &ScoredEntry::score);
 
   std::vector<LauncherResult> results;
   for (std::size_t i = 0; i < scored.size() && i < kMaxResults; ++i) {

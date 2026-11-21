@@ -1232,6 +1232,7 @@ if build_tests
     'input_password_mode',
     'input_readline_shortcuts',
     'dmenu_exec',
+    'emoji_provider',
     'ipc_service',
     'askpass_request',
     'auth_dialog_state',
@@ -1355,7 +1356,7 @@ if build_tests
       override_options: ['b_ndebug=false'],
     )
     test_args = []
-    if test_name == 'desktop_entry_localization'
+    if test_name == 'desktop_entry_localization' or test_name == 'emoji_provider'
       test_args = [meson.project_source_root() / 'assets']
     elif test_name == 'i18n_supported_languages'
       test_args = [meson.project_source_root() / 'assets' / 'translations']
