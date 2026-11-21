@@ -177,6 +177,12 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
         index = next(i for i, p in enumerate(photos) if p[0] == params[1])
         invocation.return_value(GLib.Variant("(ay)", (png(index),)))
         return
+    if method == "SavePhotoTo":
+        saved = os.path.join(params[2], params[1].rsplit("/", 1)[1])
+        with open(saved, "wb") as out:
+            out.write(b"photo")
+        invocation.return_value(GLib.Variant("(s)", (saved,)))
+        return
     if method == "SavePhoto":
         invocation.return_value(GLib.Variant("(s)", ("/home/user/Downloads/" + params[1].rsplit("/", 1)[1],)))
         return

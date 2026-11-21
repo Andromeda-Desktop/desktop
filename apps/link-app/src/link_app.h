@@ -22,10 +22,12 @@ namespace linkapp {
   // The Waiting feed as a virtual list: one row per item, built the same way to measure and to show.
   class FeedAdapter final : public VirtualListAdapter {
   public:
-    // textTo opens a text to a number (a missed call's "Text"); openPhotos shows the Photos page (a strip thumbnail).
-    FeedAdapter(LinkClient& client, const float& scale, std::function<void(const std::string&)> textTo,
-                std::function<void()> openPhotos)
-        : m_client(client), m_scale(scale), m_textTo(std::move(textTo)), m_openPhotos(std::move(openPhotos)) {}
+    struct Hooks {
+      std::function<void(const std::string&)> textTo; // a missed call's "Text": opens a text to the number
+      std::function<void()> openPhotos;               // a strip thumbnail clicked
+      std::function<void(const std::string&, std::uint32_t)> dragPhoto; // a strip thumbnail dragged: phone path, press serial
+    };
+    FeedAdapter(LinkClient& client, const float& scale, Hooks hooks) : m_client(client), m_scale(scale), m_hooks(std::move(hooks)) {}
     [[nodiscard]] std::size_t itemCount() const override;
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
@@ -40,8 +42,13 @@ namespace linkapp {
     LinkClient& m_client;
     const float& m_scale;
     std::map<std::string, std::string> m_drafts; // reply text per item key, kept across row recycling
-    std::function<void(const std::string&)> m_textTo;
-    std::function<void()> m_openPhotos;
+    Hooks m_hooks;
+    struct Press {
+      float x = 0.0F; // scene position
+      float y = 0.0F;
+      std::uint32_t serial = 0;
+    };
+    std::optional<Press> m_press; // a press on a strip thumbnail, until it drags
   };
 
   // Messages: the thread list, newest first; a click opens the thread.
@@ -203,6 +210,8 @@ namespace linkapp {
     // Shows the hotspot sheet while the client holds an ask, and closes it when the ask ends.
     void syncHotspotSheet();
     void chooseAndSend(const std::string& deviceId);
+    // Drags a phone photo out: saved into the cache, offered as a file URI once there.
+    void dragPhoto(const std::string& path, std::uint32_t serial);
     // Shows this phone; the open page reloads its data from it.
     void choosePhone(const std::string& deviceId);
     // The conversation card shows a thread or a new message, never both: these two are the only ways to change it.

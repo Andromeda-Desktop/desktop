@@ -570,6 +570,17 @@ namespace linkapp {
     if (!paths.empty()) changed();
   }
 
+  void LinkClient::savePhotoTo(const std::string& path, const std::string& folder,
+                               std::function<void(const std::string&)> done) {
+    m_proxy->callMethodAsync("SavePhotoTo")
+        .onInterface(kInterface)
+        .withArguments(m_photosDevice, path, folder)
+        .uponReplyInvoke([done = std::move(done)](std::optional<sdbus::Error> error, std::string saved) {
+          if (error) kLog.warn("SavePhotoTo: {}", error->getMessage());
+          done(error ? std::string() : saved);
+        });
+  }
+
   const std::vector<std::uint8_t>* LinkClient::thumbnail(const std::string& path) {
     const auto [it, asked] = m_thumbs.try_emplace(path);
     if (!asked) return it->second.empty() ? nullptr : &it->second;

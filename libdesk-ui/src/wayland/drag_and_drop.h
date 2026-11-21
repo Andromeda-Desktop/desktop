@@ -26,6 +26,9 @@ public:
   struct Drag {
     std::vector<std::string> mimeTypes;
     std::function<std::string(const std::string& mime)> data; // bytes for one offered type
+    // Used instead of data when set: answers later through reply, which writes the bytes and closes the target's pipe.
+    // A reply never called closes the pipe empty once dropped.
+    std::function<void(const std::string& mime, std::function<void(const std::string&)> reply)> dataLater;
     std::uint32_t actions = Copy | Move | Ask;
     wl_surface* icon = nullptr; // the drag image, or none
     // The action the target took and whether it dropped; called once.

@@ -1,6 +1,8 @@
 #include "link_app.h"
 
 #include "app/app_window.h"
+#include "wayland/drag_and_drop.h"
+#include "wayland/wayland_connection.h"
 #include "core/text_clipboard.h"
 #include "ui/controls/input.h"
 #include "ui/controls/image.h"
@@ -16,7 +18,9 @@
 #include <cmath>
 #include <linux/input-event-codes.h>
 #include <ctime>
+#include <filesystem>
 #include <format>
+#include <glib.h>
 #include <poll.h>
 #include <unistd.h>
 #include <qrencode.h>
@@ -195,7 +199,7 @@ namespace linkapp {
                         ColorRole::Label2, s));
     body->addChild(std::move(head));
     const std::string line = offer    ? std::string("From your phone")
-                             : photos ? std::string("Click one to open Photos")
+                             : photos ? std::string("Drag one to the desktop, or open Photos")
                              : locked ? std::string(kLockedText)
                                       : item.body;
     body->addChild(text(line, Tokens::typeParagraph, (locked && !offer) || photos ? ColorRole::Label2 : ColorRole::Label1, s, 2));
@@ -208,8 +212,17 @@ namespace linkapp {
       const float radius = Style::scaledRadius(Tokens::radiusR12, s);
       auto strip = ui::row({.gap = gap, .paddingV = Tokens::spaceP4 * s});
       for (const std::string& path : item.photos | std::views::take(fit)) {
-        auto pick = ui::inputArea({.cursorShape = CursorShape::Pointer, .width = side, .height = side,
-                                   .onClick = [this](const InputArea::PointerData&) { m_openPhotos(); }});
+        InputArea* area = nullptr;
+        auto pick = ui::inputArea({.out = &area, .cursorShape = CursorShape::Pointer, .width = side, .height = side,
+                                   .onPress = [this](const InputArea::PointerData& data) {
+                                     m_press = Press{.x = data.sceneX, .y = data.sceneY, .serial = data.serial};
+                                   },
+                                   .onClick = [this](const InputArea::PointerData&) { m_hooks.openPhotos(); }});
+        area->setOnMotion([this, area, path, s](const InputArea::PointerData& data) {
+          if (!area->pressed() || !m_press) return;
+          if (std::hypot(data.sceneX - m_press->x, data.sceneY - m_press->y) < Style::dragStartThreshold * s) return;
+          m_hooks.dragPhoto(path, std::exchange(m_press, std::nullopt)->serial);
+        });
         pick->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Fill1), .radius = radius, .width = side, .height = side}));
         Image* image = nullptr;
         pick->addChild(ui::image({.out = &image, .fit = ImageFit::Cover, .radius = radius, .width = side, .height = side}));
@@ -252,10 +265,10 @@ namespace linkapp {
         actions->addChild(ui::button({.text = action.label, .glyph = call ? std::optional<std::string>("phone") : std::nullopt,
                                       .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Tonal,
                                       .onClick = [this, copy, id = action.id] { m_client.action(copy, id); }}));
-        if (call && m_textTo) {
+        if (call && m_hooks.textTo) {
           actions->addChild(ui::button({.text = std::string("Text"), .glyph = std::string("message"),
                                         .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
-                                        .onClick = [this, number = action.id] { m_textTo(number); }}));
+                                        .onClick = [this, number = action.id] { m_hooks.textTo(number); }}));
         }
       }
     }
@@ -579,13 +592,14 @@ namespace linkapp {
     m_window = &window;
     if (m_client == nullptr && bus() != nullptr) {
       m_client = std::make_unique<LinkClient>(*bus());
-      m_feed = std::make_unique<FeedAdapter>(
-          *m_client, m_scale,
-          [this](const std::string& number) {
-            openCompose(number);
-            show(Page::Messages);
-          },
-          [this] { show(Page::Photos); });
+      m_feed = std::make_unique<FeedAdapter>(*m_client, m_scale,
+                                             FeedAdapter::Hooks{.textTo =
+                                                                    [this](const std::string& number) {
+                                                                      openCompose(number);
+                                                                      show(Page::Messages);
+                                                                    },
+                                                                .openPhotos = [this] { show(Page::Photos); },
+                                                                .dragPhoto = [this](const std::string& path, std::uint32_t serial) { dragPhoto(path, serial); }});
       m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, [this](std::uint64_t id) { openThread(id); });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
@@ -672,6 +686,45 @@ namespace linkapp {
     m_compose = Compose{.to = to};
     sync();
     m_window->requestRebuild();
+  }
+
+  void LinkApp::dragPhoto(const std::string& path, std::uint32_t serial) {
+    DragAndDrop* dnd = loop().wayland().dragAndDrop();
+    if (dnd == nullptr || m_window == nullptr || m_window->wlSurface() == nullptr) return;
+    const std::filesystem::path folder = std::filesystem::path(g_get_user_cache_dir()) / "andromeda" / "link-app" / "drag";
+    std::error_code error;
+    std::filesystem::create_directories(folder, error);
+    // Earlier drags' copies: a drop target has read them long ago.
+    const auto old = std::filesystem::file_time_type::clock::now() - std::chrono::hours(24);
+    for (const auto& entry : std::filesystem::directory_iterator(folder, error)) {
+      if (entry.last_write_time(error) < old) std::filesystem::remove(entry.path(), error);
+    }
+    // The URI list once the save answered (empty when it failed); drop targets that ask before wait in `waiting`.
+    struct Drop {
+      std::optional<std::string> uris;
+      std::vector<std::function<void(const std::string&)>> waiting;
+    };
+    auto drop = std::make_shared<Drop>();
+    m_client->savePhotoTo(path, folder.string(), [drop](const std::string& saved) {
+      std::string uris;
+      if (gchar* uri = saved.empty() ? nullptr : g_filename_to_uri(saved.c_str(), nullptr, nullptr)) {
+        uris = std::string(uri) + "\r\n";
+        g_free(uri);
+      }
+      drop->uris = uris;
+      for (const auto& reply : std::exchange(drop->waiting, {})) reply(uris);
+    });
+    (void)dnd->startDrag(m_window->wlSurface(), serial,
+                         {.mimeTypes = {"text/uri-list"},
+                          .dataLater =
+                              [drop](const std::string&, std::function<void(const std::string&)> reply) {
+                                if (drop->uris) {
+                                  reply(*drop->uris);
+                                } else {
+                                  drop->waiting.push_back(std::move(reply));
+                                }
+                              },
+                          .actions = DragAndDrop::Copy | DragAndDrop::Move});
   }
 
   void LinkApp::chooseAndSend(const std::string& deviceId) {

@@ -11,6 +11,7 @@
 #include <poll.h>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <wayland-client.h>
 
 namespace {
@@ -114,6 +115,21 @@ bool DragAndDrop::startDrag(wl_surface* origin, std::uint32_t serial, Drag drag)
 }
 
 void DragAndDrop::onSourceSend(const char* mime, int fd) {
+  if (m_drag.dataLater) {
+    struct Pipe {
+      int fd;
+      ~Pipe() {
+        if (fd >= 0) ::close(fd);
+      }
+    };
+    auto pipe = std::make_shared<Pipe>(fd);
+    m_drag.dataLater(mime, [pipe](const std::string& bytes) {
+      if (pipe->fd < 0) return;
+      writeAll(pipe->fd, bytes);
+      ::close(std::exchange(pipe->fd, -1));
+    });
+    return;
+  }
   const std::string bytes = m_drag.data ? m_drag.data(mime) : std::string();
   writeAll(fd, bytes);
   ::close(fd);

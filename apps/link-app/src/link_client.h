@@ -76,6 +76,8 @@ namespace linkapp {
     void clearPhotoSelection();
     // SavePhoto for each selected photo into the downloads folder.
     void savePhotos();
+    // Saves one listed photo into folder; done gets the saved path, empty on failure.
+    void savePhotoTo(const std::string& path, const std::string& folder, std::function<void(const std::string&)> done);
     // The PNG thumbnail of a listed photo, or null; the first ask fetches it and calls the thumbnail callback.
     [[nodiscard]] const std::vector<std::uint8_t>* thumbnail(const std::string& path);
     void setOnThumbnail(std::function<void()> ready) { m_thumbnailReady = std::move(ready); }
