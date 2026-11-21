@@ -619,6 +619,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
   });
   m_window.setActiveCallback([this](bool active) { m_browser->setActive(active); });
   if (!m_picker.has_value()) {
+    buildPlaces();
     loadTrash();
   }
   m_browser->jump(location);
@@ -1434,7 +1435,7 @@ void FilesWindow::toggleSplit() {
   if (m_panes[1] == nullptr) {
     makePane(1);
     m_panes[1]->jump(m_browser->location());
-    loadTrash(); // the sidebar places, for when the new pane becomes active
+    buildPlaces(); // for when the new pane becomes active
     kLog.debug("split view on");
     // The new pane fades in: a width spring would reflow its grid on every frame.
     m_splitMix = 0.0F;
@@ -1560,37 +1561,65 @@ const std::vector<fs::path>& FilesWindow::draggedPaths() const {
   return m_browser->draggedPaths();
 }
 
-void FilesWindow::loadTrash() {
-  m_trash.clear();
-  FileBrowser::Listing listing{.id = "trash", .title = "Trash", .rows = {}, .activatable = false};
-  // The Trash bar (Finder): what the Trash holds and Empty…, which asks first.
-  listing.banner = [this](float s) {
-    auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
-                        .height = Tokens::sizeRowCompact * s + Tokens::spaceP8 * s});
-    bar->addChild(ui::label({.text = m_trash.empty() ? std::string("The Trash is empty") : std::format("{} in the Trash", noun(m_trash.size())),
-                             .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label2),
-                             .maxLines = 1, .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
-    bar->addChild(ui::button({.text = std::string("Empty…"), .enabled = !m_trash.empty(),
-                              .variant = ButtonVariant::Default, .onClick = [this] { askEmptyTrash(); }}));
-    return bar;
-  };
-  for (const fs::path& dir : trashDirs()) {
-    for (TrashItem& item : listTrash(dir)) {
-      FileInfo info;
-      info.name = (item.trashDir / "files" / item.name).string();
-      info.setDisplayName(item.originalPath.filename().string());
-      gchar* key = g_utf8_collate_key_for_filename(info.displayName().c_str(), -1);
-      info.collateKey = key != nullptr ? key : "";
-      g_free(key);
-      info.isDir = item.isDir;
-      info.kind = item.isDir ? FileKind::Directory : FileKind::File;
-      info.size = item.size;
-      info.contentType = item.isDir ? "inode/directory" : "application/octet-stream";
-      listing.rows.push_back(std::make_shared<const FileInfo>(std::move(info)));
-      m_trash.push_back(std::move(item));
-    }
+void FilesWindow::loadTrash(std::function<void()> then) {
+  // Every .trashinfo is read on a worker: a large Trash never holds up the window. The newest read wins, and the
+  // callbacks of the reads it replaced run with it.
+  if (then) {
+    m_trashThen.push_back(std::move(then));
   }
-  const std::size_t count = m_trash.size();
+  const std::uint64_t generation = ++m_trashGeneration;
+  std::thread([this, dirs = trashDirs(), generation, alive = std::weak_ptr<bool>(m_alive)] {
+    std::vector<TrashItem> items;
+    std::vector<std::shared_ptr<const FileInfo>> rows;
+    for (const fs::path& dir : dirs) {
+      for (TrashItem& item : listTrash(dir)) {
+        FileInfo info;
+        info.name = (item.trashDir / "files" / item.name).string();
+        info.setDisplayName(item.originalPath.filename().string());
+        gchar* key = g_utf8_collate_key_for_filename(info.displayName().c_str(), -1);
+        info.collateKey = key != nullptr ? key : "";
+        g_free(key);
+        info.isDir = item.isDir;
+        info.kind = item.isDir ? FileKind::Directory : FileKind::File;
+        info.size = item.size;
+        info.contentType = item.isDir ? "inode/directory" : "application/octet-stream";
+        rows.push_back(std::make_shared<const FileInfo>(std::move(info)));
+        items.push_back(std::move(item));
+      }
+    }
+    DeferredCall::callLater([this, generation, alive, items = std::move(items), rows = std::move(rows)]() mutable {
+      if (alive.expired() || generation != m_trashGeneration) {
+        return;
+      }
+      m_trash = std::move(items);
+      if (!m_picker.has_value()) {
+        FileBrowser::Listing listing{.id = "trash", .title = "Trash", .rows = std::move(rows), .activatable = false};
+        // The Trash bar (Finder): what the Trash holds and Empty…, which asks first.
+        listing.banner = [this](float s) {
+          auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s,
+                              .height = Tokens::sizeRowCompact * s + Tokens::spaceP8 * s});
+          bar->addChild(ui::label({.text = m_trash.empty() ? std::string("The Trash is empty") : std::format("{} in the Trash", noun(m_trash.size())),
+                                   .fontSize = Style::fontSizeCaption * s, .color = colorSpecFromRole(ColorRole::Label2),
+                                   .maxLines = 1, .ellipsize = TextEllipsize::End, .flexGrow = 1.0F}));
+          bar->addChild(ui::button({.text = std::string("Empty…"), .enabled = !m_trash.empty(),
+                                    .variant = ButtonVariant::Default, .onClick = [this] { askEmptyTrash(); }}));
+          return bar;
+        };
+        if (inTrash()) {
+          m_browser->showListing(std::move(listing));
+        } else {
+          m_trashListing = std::move(listing);
+        }
+        buildPlaces();
+      }
+      for (auto& call : std::exchange(m_trashThen, {})) {
+        call();
+      }
+    });
+  }).detach();
+}
+
+void FilesWindow::buildPlaces() {
   if (m_picker.has_value()) {
     return;
   }
@@ -1683,18 +1712,13 @@ void FilesWindow::loadTrash() {
                       .id = "tag:" + tag.name, .group = FileBrowser::Place::Group::Tags, .dot = rgbHex(tag.rgb)});
   }
   kLog.debug("sidebar tags [{}]", tagNames);
-  places.push_back({.label = "Trash", .glyph = count > 0 ? "trash-x" : "trash", .path = {},
-                    .caption = count > 0 ? std::to_string(count) : std::string(), .onClick = [this] { goTrash(); },
+  places.push_back({.label = "Trash", .glyph = !m_trash.empty() ? "trash-x" : "trash", .path = {},
+                    .caption = !m_trash.empty() ? std::to_string(m_trash.size()) : std::string(), .onClick = [this] { goTrash(); },
                     .id = "trash", .dropTrash = true, .art = "trash", .group = FileBrowser::Place::Group::Last});
   if (m_panes[1] != nullptr) {
     m_panes[m_activePane == 0 ? 1 : 0]->setExtraPlaces(places);
   }
   m_browser->setExtraPlaces(std::move(places));
-  if (inTrash()) {
-    m_browser->showListing(std::move(listing));
-  } else {
-    m_trashListing = std::move(listing);
-  }
 }
 
 void FilesWindow::rebuild() { m_window.requestRebuild(); }
@@ -1707,7 +1731,7 @@ void FilesWindow::goTag(const std::string& tag) {
 }
 
 void FilesWindow::tagsChanged() {
-  loadTrash();
+  buildPlaces();
   for (const auto& pane : m_panes) {
     if (pane != nullptr && pane->groupBy() == FileGroupBy::Tags) {
       pane->regroup();
@@ -1848,10 +1872,13 @@ void FilesWindow::go(const fs::path& location) { m_browser->go(location); }
 
 void FilesWindow::goTrash() {
   forgetTrashDirs(); // another app may have made a volume trash
-  loadTrash();
   if (!inTrash()) {
-    m_browser->showListing(std::move(m_trashListing));
+    // The last read shows at once; the read below replaces it while the Trash still shows.
+    m_browser->showListing(m_trashListing.id.empty()
+                               ? FileBrowser::Listing{.id = "trash", .title = "Trash", .rows = {}, .activatable = false}
+                               : std::move(m_trashListing));
   }
+  loadTrash();
 }
 
 void FilesWindow::goRecents() {
@@ -2921,7 +2948,11 @@ void FilesWindow::showStorage() {
 
 void FilesWindow::askEmptyTrash() {
   forgetTrashDirs();
-  loadTrash(); // other apps may have trashed or restored items since the last read
+  // Read again: other apps may have trashed or restored items since the last read.
+  loadTrash([this] { presentEmptyTrashSheet(); });
+}
+
+void FilesWindow::presentEmptyTrashSheet() {
   const std::size_t count = m_trash.size();
   if (count == 0) {
     return;
@@ -3205,7 +3236,7 @@ void FilesWindow::presentVaultSheet(VaultSheet::Mode mode, const std::string& na
             m_window.dismissSheet();
             m_vaultSheet.reset();
           }
-          loadTrash(); // the sidebar shows the vault open
+          buildPlaces(); // the sidebar shows the vault open
           if (const Vaults::Vault* vault = m_app.vaults().find(vaultName)) {
             go(vault->mount);
           }
@@ -3503,7 +3534,7 @@ void FilesWindow::lockVault(const std::string& name) {
     if (!error.empty()) {
       showToast(std::format("Can’t lock “{}”: {}", name, error), false);
     }
-    loadTrash();
+    buildPlaces();
   });
 }
 
@@ -3545,16 +3576,17 @@ void FilesWindow::askDeleteSelection() {
 
 void FilesWindow::emptyTrash() {
   // Each item and its .trashinfo go for good (the user confirmed); no undo. Read again: "empty" means what is there now.
-  loadTrash();
-  std::vector<fs::path> paths;
-  for (const TrashItem& item : m_trash) {
-    paths.push_back(item.trashDir / "files" / item.name);
-    paths.push_back(item.trashDir / "info" / (item.name + ".trashinfo"));
-  }
-  if (paths.empty()) {
-    return;
-  }
-  startJob("Emptying Trash", m_trash.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
+  loadTrash([this] {
+    std::vector<fs::path> paths;
+    for (const TrashItem& item : m_trash) {
+      paths.push_back(item.trashDir / "files" / item.name);
+      paths.push_back(item.trashDir / "info" / (item.name + ".trashinfo"));
+    }
+    if (paths.empty()) {
+      return;
+    }
+    startJob("Emptying Trash", m_trash.size(), [&](FileOpsClient& ops, auto done) { ops.remove(paths, done); });
+  });
 }
 
 void FilesWindow::makeLink() {
