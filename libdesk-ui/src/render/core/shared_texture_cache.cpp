@@ -87,7 +87,9 @@ namespace {
       };
       mix(path.data(), path.size());
       const std::int64_t fields[] = {
-          info.st_size, info.st_mtim.tv_sec, info.st_mtim.tv_nsec, coverage.width, coverage.height,
+          // ctime and the inode change on every write or replacement, even when a copy keeps the old mtime.
+          static_cast<std::int64_t>(info.st_dev), static_cast<std::int64_t>(info.st_ino), info.st_size,
+          info.st_ctim.tv_sec, info.st_ctim.tv_nsec, coverage.width, coverage.height,
       };
       mix(fields, sizeof(fields));
       return dir / std::format("{:016x}.rgba", hash);
@@ -99,11 +101,16 @@ namespace {
           || header.height <= 0 || header.width > header.sourceWidth || header.height > header.sourceHeight) {
         return false;
       }
-      pixels.resize(static_cast<std::size_t>(header.width) * static_cast<std::size_t>(header.height) * 4U);
+      const std::size_t size = static_cast<std::size_t>(header.width) * static_cast<std::size_t>(header.height) * 4U;
+      std::error_code ec;
+      // A damaged header must not size the buffer: only a file of exactly this length is used.
+      if (std::filesystem::file_size(file, ec) != sizeof(header) + size || ec) {
+        return false;
+      }
+      pixels.resize(size);
       if (!in.read(reinterpret_cast<char*>(pixels.data()), static_cast<std::streamsize>(pixels.size()))) {
         return false;
       }
-      std::error_code ec;
       std::filesystem::last_write_time(file, std::filesystem::file_time_type::clock::now(), ec);
       return true;
     }
@@ -694,34 +701,43 @@ void SharedTextureCache::workerLoop(std::size_t slot) {
           .opaque = opaque,
       };
     };
-    // Only a reduced image: a full-size copy would cost as much disk as it saves decode time.
-    const auto store = [&](const DecodedImage& image, const std::vector<std::uint8_t>& reduced) {
-      if (!alphaMask && level > 0) {
-        if (const auto file = pixel_cache::fileFor(path, image.request.coverage)) {
-          pixel_cache::write(
-              *file,
-              {.width = image.width,
-               .height = image.height,
-               .sourceWidth = image.sourceWidth,
-               .sourceHeight = image.sourceHeight,
-               .opaque = image.opaque ? 1U : 0U},
-              reduced
-          );
-        }
+    // Only a reduced image: a full-size copy would cost as much disk as it saves decode time. Runs after the result is
+    // pushed, so a cache miss does not wait for the disk write.
+    const auto store = [&](TextureCoverage coverage) {
+      if (alphaMask || level == 0) {
+        return;
+      }
+      if (const auto file = pixel_cache::fileFor(path, coverage)) {
+        pixel_cache::write(
+            *file,
+            {.width = width,
+             .height = height,
+             .sourceWidth = sourceWidth,
+             .sourceHeight = sourceHeight,
+             .opaque = opaque ? 1U : 0U},
+            pixels
+        );
       }
     };
     for (std::size_t i = 0; i + 1 < batch.size(); ++i) {
       DecodedImage image = reduce(batch[i]);
-      store(image, pixels);
+      const TextureCoverage coverage = image.request.coverage;
       image.pixels = pixels;
       blur(image);
       pushResult(std::move(image));
+      store(coverage);
     }
     DecodedImage last = reduce(batch.back());
-    store(last, pixels);
-    last.pixels = std::move(pixels);
+    const TextureCoverage coverage = last.request.coverage;
+    const bool keep = !alphaMask && level > 0;
+    if (keep) {
+      last.pixels = pixels;
+    } else {
+      last.pixels = std::move(pixels);
+    }
     blur(last);
     pushResult(std::move(last));
+    store(coverage);
   }
 }
 
