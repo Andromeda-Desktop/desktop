@@ -667,7 +667,7 @@ std::expected<ScreenshotIpcRequest, std::string> parseScreenshotIpcRequest(
     return std::unexpected(parsed.error() + "\n");
   }
   if (parsed->helpRequested) {
-    return std::unexpected(noctalia::cli::renderHelp(command, "noctalia msg " + std::string(command.name)));
+    return std::unexpected(noctalia::cli::renderHelp(command, "andromeda-shell msg " + std::string(command.name)));
   }
 
   for (const ScreenshotBoolFlag& flag : kScreenshotBoolFlags) {
