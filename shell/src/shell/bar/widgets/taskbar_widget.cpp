@@ -36,6 +36,7 @@
 #include <functional>
 #include <linux/input-event-codes.h>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -213,6 +214,30 @@ namespace {
     const float innerBorder = Style::borderWidth * scale;
     const float nestGap = std::round(std::max(1.0F, Style::spaceXs * 0.25F * scale));
     return std::max(0.0F, shellCross - 2.0F * (outerBorder + innerBorder + nestGap));
+  }
+
+  // Stable order by (workspace order when asked,) order, handle. Sorts indices: a task is large, so each moves once,
+  // and one small instantiation serves both orders.
+  template <typename Task> void sortTasks(std::vector<Task>& tasks, bool byWorkspace) {
+    std::vector<std::uint32_t> indices(tasks.size());
+    std::iota(indices.begin(), indices.end(), 0U);
+    std::ranges::stable_sort(indices, [&tasks, byWorkspace](std::uint32_t lhs, std::uint32_t rhs) {
+      const Task& a = tasks[lhs];
+      const Task& b = tasks[rhs];
+      if (byWorkspace && a.workspaceOrder != b.workspaceOrder) {
+        return a.workspaceOrder < b.workspaceOrder;
+      }
+      if (a.order != b.order) {
+        return a.order < b.order;
+      }
+      return a.handleKey < b.handleKey;
+    });
+    std::vector<Task> sorted;
+    sorted.reserve(tasks.size());
+    for (const std::uint32_t index : indices) {
+      sorted.push_back(std::move(tasks[index]));
+    }
+    tasks = std::move(sorted);
   }
 
 } // namespace
@@ -2276,12 +2301,7 @@ void TaskbarWidget::updateModels() {
     nextTasks.push_back(std::move(task));
   }
 
-  std::ranges::stable_sort(nextTasks, [](const TaskModel& a, const TaskModel& b) {
-    if (a.order != b.order) {
-      return a.order < b.order;
-    }
-    return a.handleKey < b.handleKey;
-  });
+  sortTasks(nextTasks, false);
 
   if (!workspaceAssignments.empty()) {
     if (assignmentMode == TaskbarAssignmentMode::WorkspaceOccurrenceTitle) {
@@ -3026,15 +3046,7 @@ void TaskbarWidget::updateModels() {
   if (!m_groupByWorkspace) {
     nextWorkspaces.clear();
     m_allWorkspaces.clear();
-    std::ranges::stable_sort(nextTasks, [](const TaskModel& a, const TaskModel& b) {
-      if (a.workspaceOrder != b.workspaceOrder) {
-        return a.workspaceOrder < b.workspaceOrder;
-      }
-      if (a.order != b.order) {
-        return a.order < b.order;
-      }
-      return a.handleKey < b.handleKey;
-    });
+    sortTasks(nextTasks, true);
     applyPinnedMerge(nextTasks);
     dropUnpinnedTasks(nextTasks, m_configOptions.showRunning);
   }
