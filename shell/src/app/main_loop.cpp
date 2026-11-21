@@ -490,19 +490,21 @@ void MainLoop::run() {
     );
 
 #ifndef NDEBUG
-    // Spin canary: if a source votes pollTimeoutMs()==0 for >100ms continuously,
-    // the loop is hot-looping. Asymmetric guards between pollTimeoutMs() and
+    // Spin canary: if a source votes pollTimeoutMs()==0 for >100ms and >=100 turns in a row,
+    // the loop is hot-looping (one slow turn is a stall, not a spin). Asymmetric guards between pollTimeoutMs() and
     // dispatch() are the usual cause. Throttled to one warn per 5s.
     {
       using SteadyClock = std::chrono::steady_clock;
       static std::optional<SteadyClock::time_point> s_zeroSince;
       static std::optional<SteadyClock::time_point> s_lastWarn;
+      static int s_zeroTurns = 0;
       const auto now = SteadyClock::now();
       if (pollTimeout == 0) {
+        ++s_zeroTurns;
         if (!s_zeroSince) {
           s_zeroSince = now;
         } else if (
-            now - *s_zeroSince > std::chrono::milliseconds(100)
+            now - *s_zeroSince > std::chrono::milliseconds(100) && s_zeroTurns >= 100
             && (!s_lastWarn || now - *s_lastWarn > std::chrono::seconds(5))
         ) {
           s_lastWarn = now;
@@ -514,6 +516,7 @@ void MainLoop::run() {
         }
       } else {
         s_zeroSince.reset();
+        s_zeroTurns = 0;
       }
     }
 #endif
