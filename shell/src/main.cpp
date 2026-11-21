@@ -22,8 +22,9 @@ namespace {
   // The long-running shell runs on jemalloc (lower fragmentation over days). Greeter mode and CLI calls stay on glibc
   // malloc and save jemalloc's ~8 MB of fixed metadata. jemalloc must replace malloc before the first allocation, so a
   // shell run re-execs once with it preloaded; shell_main.cpp removes the preload so launched apps never inherit it.
+  // thp:never keeps khugepaged from backing the sparse heap with 2 MiB pages when transparent huge pages are `always`.
   constexpr const char* kJemallocConf =
-      "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12";
+      "background_thread:true,narenas:2,dirty_decay_ms:1000,muzzy_decay_ms:5000,lg_tcache_max:12,thp:never";
 
   bool isShellRun(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {

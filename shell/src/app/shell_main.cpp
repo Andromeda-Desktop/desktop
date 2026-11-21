@@ -31,6 +31,7 @@
 #include <sched.h>
 #include <string>
 #include <string_view>
+#include <sys/prctl.h>
 #include <unistd.h>
 
 
@@ -349,8 +350,12 @@ extern "C" __attribute__((visibility("default"))) int noctalia_shell_main_v1(int
       return PamAuthenticator::runHelperMode(argc, argv);
     if (std::strcmp(argv[1], "lock-helper") == 0)
       return runLockHelper(argc, argv);
-    if (std::strcmp(argv[1], "lock") == 0)
+    if (std::strcmp(argv[1], "lock") == 0) {
+      // The lock stays resident for the whole session on glibc malloc: with transparent huge pages `always`,
+      // khugepaged backs its sparse heap with 2 MiB pages (12 of 25 MB anon). Its children are only PAM helpers.
+      prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0);
       return runLockMode(argc, argv);
+    }
     if (std::strcmp(argv[1], "config") == 0)
       return noctalia::config::runCli(argc, argv);
     if (std::strcmp(argv[1], "dmenu") == 0)
