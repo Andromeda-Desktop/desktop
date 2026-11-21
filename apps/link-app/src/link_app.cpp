@@ -258,6 +258,14 @@ namespace linkapp {
                                     m_client.reply(copy, value);
                                   });
       actions->addChild(std::move(capsule));
+      // Mockup .chip: a 24 high fill_1 capsule, footnote text.
+      for (const std::string& reply : item.replies) {
+        actions->addChild(ui::button({.text = reply, .fontSize = Tokens::typeFootnote.size * s, .controlHeight = Tokens::sizeControlS * s,
+                                      .variant = ButtonVariant::Tonal,
+                                      .paddingV = 0.0F, .paddingH = Tokens::spaceP8 * s, .radius = Tokens::sizeControlS * s / 2.0F,
+                                      .height = Tokens::sizeControlS * s,
+                                      .onClick = [this, copy, reply] { m_client.reply(copy, reply); }}));
+      }
     } else {
       for (const FeedAction& action : item.actions) {
         if (action.reply) continue;

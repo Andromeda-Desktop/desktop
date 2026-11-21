@@ -98,9 +98,9 @@ def emit_sample():
     if page != "waiting":
         return False  # no shell popups over another page's caption
     emit("TransferOffered", "(ssa(st))", "t1", "p1", [("Quarterly report Q3 final (2).pdf", 2_400_000)])
-    emit("NotificationPosted", "(sssssaya(ssb)b)", "p1", "n1", "Slack", "#release", "v2026.11.6 is out", b"",
-         [("reply", "Reply", True)], False)
-    emit("NotificationPosted", "(sssssaya(ssb)b)", "p1", "n2", "Calendar", "Dentist", "Tomorrow 09:30", b"", [], False)
+    emit("NotificationPosted", "(sssssaya(ssb)bas)", "p1", "n1", "Slack", "#release", "v2026.11.6 is out", b"",
+         [("reply", "Reply", True)], False, ["Nice!", "On it"])
+    emit("NotificationPosted", "(sssssaya(ssb)bas)", "p1", "n2", "Calendar", "Dentist", "Tomorrow 09:30", b"", [], False, [])
     return False
 
 

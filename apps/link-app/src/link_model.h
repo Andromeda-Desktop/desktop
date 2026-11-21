@@ -82,6 +82,8 @@ namespace linkapp {
     Transfer transfer = Transfer::Offered;
     std::uint64_t bytes = 0;
     std::uint64_t total = 0;
+    // Notification only: suggested replies, sent as the reply action's text.
+    std::vector<std::string> replies;
     // Photos only: the newest new photos, paths for Thumbnail.
     std::vector<std::string> photos;
   };

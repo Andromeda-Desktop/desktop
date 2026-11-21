@@ -105,9 +105,11 @@ namespace linkapp {
         .onInterface(kInterface)
         .call([this](const std::string& device, const std::string& id, const std::string& app, const std::string& title,
                      const std::string& text, const std::vector<std::uint8_t>&,
-                     const std::vector<sdbus::Struct<std::string, std::string, bool>>& actions, bool) {
+                     const std::vector<sdbus::Struct<std::string, std::string, bool>>& actions, bool,
+                     const std::vector<std::string>& replies) {
           FeedItem item{.kind = FeedItem::Kind::Notification, .key = "n:" + id, .deviceId = device,
-                        .who = app.empty() ? title : app + " · " + title, .body = text, .atMs = nowMs()};
+                        .who = app.empty() ? title : app + " · " + title, .body = text, .atMs = nowMs(),
+                        .replies = replies};
           for (const auto& a : actions) item.actions.push_back({a.get<0>(), a.get<1>(), a.get<2>()});
           m_feed.upsert(std::move(item));
           changed();
