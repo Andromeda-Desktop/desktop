@@ -165,7 +165,6 @@ namespace andromeda {
     };
   }
 
-
   namespace {
     // Pango keeps a font map per thread and builds each font set (size, weight, scale) on first use; on the main
     // thread that first use stalled the first overview open by 25-55 ms. All text renders on this one thread, which
@@ -181,6 +180,15 @@ namespace andromeda {
         {
           const std::lock_guard lock(m_mutex);
           m_jobs.push_back(std::move(job));
+        }
+        m_wake.notify_one();
+      }
+
+      // Runs job only when no posted job waits, so a render waits at most for the idle job already running.
+      void postIdle(std::function<void()> job) {
+        {
+          const std::lock_guard lock(m_mutex);
+          m_idleJobs.push_back(std::move(job));
         }
         m_wake.notify_one();
       }
@@ -216,12 +224,13 @@ namespace andromeda {
           std::function<void()> job;
           {
             std::unique_lock lock(m_mutex);
-            m_wake.wait(lock, [this] { return m_stop || !m_jobs.empty(); });
-            if (m_jobs.empty()) {
+            m_wake.wait(lock, [this] { return m_stop || !m_jobs.empty() || !m_idleJobs.empty(); });
+            if (m_stop && m_jobs.empty()) {
               return;
             }
-            job = std::move(m_jobs.front());
-            m_jobs.pop_front();
+            auto& queue = m_jobs.empty() ? m_idleJobs : m_jobs;
+            job = std::move(queue.front());
+            queue.pop_front();
           }
           job();
         }
@@ -230,6 +239,7 @@ namespace andromeda {
       std::mutex m_mutex;
       std::condition_variable m_wake;
       std::deque<std::function<void()>> m_jobs;
+      std::deque<std::function<void()>> m_idleJobs;
       bool m_stop = false;
       std::thread m_thread;
     };
@@ -240,30 +250,36 @@ namespace andromeda {
   void stopTextRendering() { TextThread::instance().stop(); }
 
   void warmTextRendering() {
-    TextThread::instance().post([] {
-      // Warms the text thread's font sets with the overview chrome's sizes and weights (overview/chrome.cpp), at the
-      // two device scales outputs round to (ceil of the output scale). The symbols (·, ▾, ▏) load the fallback font.
-      const auto start = std::chrono::steady_clock::now();
-      std::string markup;
-      for (const char* weight : {"normal", "500", "600", "bold"}) {
-        markup += std::string("<span weight='") + weight + "'>Desktop 1 · ▾ ▏ +</span>";
-      }
-      for (const double scale : {1.0, 2.0}) {
-        for (const Tokens::Type* type :
-             {&Tokens::typeCaption, &Tokens::typeFootnote, &Tokens::typeBody, &Tokens::typeLarge}) {
-          // The chrome's font strings (overview/chrome.cpp tokenFont): another family would leave its fonts cold.
-          const std::string font = std::format("{} {}px", Tokens::fontFamily, type->size);
+    // Warms the text thread's font sets with the overview chrome's sizes and weights (overview/chrome.cpp), at the two
+    // device scales outputs round to (ceil of the output scale), one idle job per font set. The symbols (·, ▾, ▏) load
+    // the fallback font.
+    std::string markup;
+    for (const char* weight : {"normal", "500", "600", "bold"}) {
+      markup += std::string("<span weight='") + weight + "'>Desktop 1 · ▾ ▏ +</span>";
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const Tokens::Type* const types[] = {
+        &Tokens::typeCaption, &Tokens::typeFootnote, &Tokens::typeBody, &Tokens::typeLarge
+    };
+    for (const double scale : {1.0, 2.0}) {
+      for (const Tokens::Type* type : types) {
+        const bool last = scale == 2.0 && type == types[std::size(types) - 1];
+        // The chrome's font strings (overview/chrome.cpp tokenFont): another family would leave its fonts cold.
+        TextThread::instance().postIdle([markup, scale, last, start,
+                                         font = std::format("{} {}px", Tokens::fontFamily, type->size)] {
           if (wlr_buffer* buffer = renderTextBufferHere({.markup = markup, .font = font, .scale = scale}).buffer) {
             wlr_buffer_drop(buffer);
           }
-        }
+          if (last) {
+            constexpr Logger kLog("text");
+            kLog.debug(
+                "text rendering warmed {:.1f} ms after the request",
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count()
+            );
+          }
+        });
       }
-      constexpr Logger kLog("text");
-      kLog.debug(
-          "text rendering warmed in {:.1f} ms",
-          std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count()
-      );
-    });
+    }
   }
 
 } // namespace andromeda
