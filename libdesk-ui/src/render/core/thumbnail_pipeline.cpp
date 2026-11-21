@@ -1,9 +1,10 @@
 #include "render/core/thumbnail_pipeline.h"
-#include "core/sys/sys.h"
 
 #include "core/files/directory_scanner.h"
 #include "core/freedesktop_thumbnails.h"
 #include "core/log.h"
+#include "core/sys/sys.h"
+#include "render/core/codec_libraries.h"
 #include "render/core/image_decoder.h"
 #include "util/file_utils.h"
 
@@ -19,7 +20,6 @@
 #include <system_error>
 #include <unistd.h>
 #include <utility>
-#include <webp/encode.h>
 
 namespace thumbnail_pipeline {
 
@@ -240,10 +240,10 @@ namespace thumbnail_pipeline {
     if (const auto cachePath = targetPx <= kMaxCachedPx ? cachePathForSource(path, targetPx) : std::nullopt) {
       std::uint8_t* encoded = nullptr;
       const std::size_t encodedSize =
-          WebPEncodeRGB(rgb->data(), out.width, out.height, out.width * 3, kThumbnailWebPQuality, &encoded);
+          webp().WebPEncodeRGB(rgb->data(), out.width, out.height, out.width * 3, kThumbnailWebPQuality, &encoded);
       if (encoded != nullptr && encodedSize > 0) {
         (void)writeFile(*cachePath, encoded, encodedSize);
-        WebPFree(encoded);
+        webp().WebPFree(encoded);
       }
     }
     out.rgba = rgbToRgba(*rgb);

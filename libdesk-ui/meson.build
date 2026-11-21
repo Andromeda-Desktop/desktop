@@ -74,15 +74,21 @@ _system_deps = [
   dependency('gobject-2.0'),
   dependency('gio-2.0'),
   dependency('gio-unix-2.0'), # GDesktopAppInfo: app icons by desktop id (ui/app_icon.cpp)
-  dependency('md4c'),
   dependency('nlohmann_json'),
+  dependency('zlib'),
+  cpp.find_library('dl', required: false),
+]
+# Load on first use on Linux (core/lazy_library.h); other platforms link them.
+_lazy_deps = [
+  dependency('md4c'),
   dependency('libwebp'),
   dependency('libwebpdemux'),
   dependency('libjxl'),
   dependency('libjxl_threads'),
-  dependency('zlib'),
-  cpp.find_library('dl', required: false),
 ]
+foreach _d : _lazy_deps
+  _system_deps += host_machine.system() == 'linux' ? _d.partial_dependency(compile_args: true, includes: true) : _d
+endforeach
 if is_wayland
   _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), dependency('sdbus-c++')]
 else

@@ -1,5 +1,6 @@
 #include "render/core/image_decoder.h"
 
+#include "render/core/codec_libraries.h"
 #include "render/core/heif_library.h"
 #include "render/core/image_orientation.h"
 
@@ -8,15 +9,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <expected>
-#include <jxl/decode.h>
-#include <jxl/decode_cxx.h>
-#include <jxl/resizable_parallel_runner.h>
-#include <jxl/resizable_parallel_runner_cxx.h>
 #include <jxl/types.h>
 #include <utility>
 #include <vector>
-#include <webp/decode.h>
-#include <webp/demux.h>
 
 #define WUFFS_IMPLEMENTATION
 #include "wuffs-v0.4.c"
@@ -244,13 +239,13 @@ namespace {
   // shown as its first frame.
   std::expected<DecodedRasterImage, std::string> decodeWebPFirstFrame(const std::uint8_t* data, std::size_t size) {
     WebPAnimDecoderOptions options;
-    if (!WebPAnimDecoderOptionsInit(&options)) {
+    if (!webpDemux().WebPAnimDecoderOptionsInitInternal(&options, WEBP_DEMUX_ABI_VERSION)) {
       return std::unexpected("libwebp: failed to init animation decoder");
     }
     options.color_mode = MODE_RGBA;
 
     const WebPData webpData{.bytes = data, .size = size};
-    WebPAnimDecoder* decoder = WebPAnimDecoderNew(&webpData, &options);
+    WebPAnimDecoder* decoder = webpDemux().WebPAnimDecoderNewInternal(&webpData, &options, WEBP_DEMUX_ABI_VERSION);
     if (decoder == nullptr) {
       return std::unexpected("libwebp: failed to open WebP animation");
     }
@@ -258,8 +253,9 @@ namespace {
     WebPAnimInfo info;
     std::uint8_t* frame = nullptr;
     int timestamp = 0;
-    if (!WebPAnimDecoderGetInfo(decoder, &info) || !WebPAnimDecoderGetNext(decoder, &frame, &timestamp)) {
-      WebPAnimDecoderDelete(decoder);
+    if (!webpDemux().WebPAnimDecoderGetInfo(decoder, &info)
+        || !webpDemux().WebPAnimDecoderGetNext(decoder, &frame, &timestamp)) {
+      webpDemux().WebPAnimDecoderDelete(decoder);
       return std::unexpected("libwebp: failed to decode first WebP animation frame");
     }
 
@@ -269,13 +265,13 @@ namespace {
     decoded.height = static_cast<int>(info.canvas_height);
     const std::size_t bytes = static_cast<std::size_t>(info.canvas_width) * info.canvas_height * 4;
     decoded.pixels.assign(frame, frame + bytes);
-    WebPAnimDecoderDelete(decoder);
+    webpDemux().WebPAnimDecoderDelete(decoder);
     return decoded;
   }
 
   std::expected<DecodedRasterImage, std::string> decodeWebP(const std::uint8_t* data, std::size_t size) {
     WebPBitstreamFeatures features;
-    if (WebPGetFeatures(data, size, &features) != VP8_STATUS_OK) {
+    if (webp().WebPGetFeaturesInternal(data, size, &features, WEBP_DECODER_ABI_VERSION) != VP8_STATUS_OK) {
       return std::unexpected("libwebp: failed to read WebP header");
     }
     if (static_cast<std::uint64_t>(features.width) * static_cast<std::uint64_t>(features.height) > kMaxDecodePixels) {
@@ -286,7 +282,7 @@ namespace {
     }
 
     int width = 0, height = 0;
-    std::uint8_t* rgba = WebPDecodeRGBA(data, size, &width, &height);
+    std::uint8_t* rgba = webp().WebPDecodeRGBA(data, size, &width, &height);
     if (rgba == nullptr) {
       return std::unexpected("libwebp: failed to decode WebP image");
     }
@@ -297,41 +293,45 @@ namespace {
     const std::size_t bytes = static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4;
     decoded.pixels.resize(bytes);
     std::memcpy(decoded.pixels.data(), rgba, bytes);
-    WebPFree(rgba);
+    webp().WebPFree(rgba);
     return decoded;
   }
 
+  // The two JPEG XL signatures: a bare codestream and the ISO BMFF container box.
   bool isJxl(const std::uint8_t* data, std::size_t size) {
-    const JxlSignature signature = JxlSignatureCheck(data, size);
-    return signature == JXL_SIG_CODESTREAM || signature == JXL_SIG_CONTAINER;
+    static constexpr std::uint8_t kCodestream[] = {0xFF, 0x0A};
+    static constexpr std::uint8_t kContainer[] = {0, 0, 0, 0x0C, 'J', 'X', 'L', ' ', 0x0D, 0x0A, 0x87, 0x0A};
+    return (size >= sizeof(kCodestream) && std::memcmp(data, kCodestream, sizeof(kCodestream)) == 0)
+        || (size >= sizeof(kContainer) && std::memcmp(data, kContainer, sizeof(kContainer)) == 0);
   }
 
   // Decoder and runner are call-local: worker threads (thumbnails, async textures)
   // decode concurrently, and libjxl forbids sharing either across threads.
   std::expected<DecodedRasterImage, std::string> decodeJxl(const std::uint8_t* data, std::size_t size) {
-    auto runner = JxlResizableParallelRunnerMake(nullptr);
-    auto decoder = JxlDecoderMake(nullptr);
+    auto runner = codec_libraries::JxlRunnerHandle(jxlThreads().JxlResizableParallelRunnerCreate(nullptr));
+    auto decoder = codec_libraries::JxlDecoderHandle(jxl().JxlDecoderCreate(nullptr));
     if (runner == nullptr || decoder == nullptr) {
       return std::unexpected("libjxl: failed to create decoder");
     }
 
-    if (JxlDecoderSubscribeEvents(decoder.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS
-        || JxlDecoderSetParallelRunner(decoder.get(), JxlResizableParallelRunner, runner.get()) != JXL_DEC_SUCCESS
+    if (jxl().JxlDecoderSubscribeEvents(decoder.get(), JXL_DEC_BASIC_INFO | JXL_DEC_FULL_IMAGE) != JXL_DEC_SUCCESS
+        || jxl().JxlDecoderSetParallelRunner(decoder.get(), jxlThreads().JxlResizableParallelRunner, runner.get())
+            != JXL_DEC_SUCCESS
         // Codestreams flagged alpha_premultiplied decode premultiplied; the pipeline wants straight alpha.
         // No-op for straight-alpha and alpha-less images.
-        || JxlDecoderSetUnpremultiplyAlpha(decoder.get(), JXL_TRUE) != JXL_DEC_SUCCESS
-        || JxlDecoderSetInput(decoder.get(), data, size) != JXL_DEC_SUCCESS) {
+        || jxl().JxlDecoderSetUnpremultiplyAlpha(decoder.get(), JXL_TRUE) != JXL_DEC_SUCCESS
+        || jxl().JxlDecoderSetInput(decoder.get(), data, size) != JXL_DEC_SUCCESS) {
       return std::unexpected("libjxl: failed to configure decoder");
     }
-    JxlDecoderCloseInput(decoder.get());
+    jxl().JxlDecoderCloseInput(decoder.get());
 
     constexpr JxlPixelFormat kFormat{4, JXL_TYPE_UINT8, JXL_NATIVE_ENDIAN, 0};
     DecodedRasterImage decoded;
     for (;;) {
-      switch (JxlDecoderProcessInput(decoder.get())) {
+      switch (jxl().JxlDecoderProcessInput(decoder.get())) {
       case JXL_DEC_BASIC_INFO: {
         JxlBasicInfo info;
-        if (JxlDecoderGetBasicInfo(decoder.get(), &info) != JXL_DEC_SUCCESS) {
+        if (jxl().JxlDecoderGetBasicInfo(decoder.get(), &info) != JXL_DEC_SUCCESS) {
           return std::unexpected("libjxl: failed to read image header");
         }
         if (static_cast<std::uint64_t>(info.xsize) * info.ysize > kMaxDecodePixels) {
@@ -340,18 +340,18 @@ namespace {
         // Orientation is already applied; xsize/ysize are the display dimensions.
         decoded.width = static_cast<int>(info.xsize);
         decoded.height = static_cast<int>(info.ysize);
-        JxlResizableParallelRunnerSetThreads(
-            runner.get(), JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize)
+        jxlThreads().JxlResizableParallelRunnerSetThreads(
+            runner.get(), jxlThreads().JxlResizableParallelRunnerSuggestThreads(info.xsize, info.ysize)
         );
         break;
       }
       case JXL_DEC_NEED_IMAGE_OUT_BUFFER: {
         std::size_t needed = 0;
-        if (JxlDecoderImageOutBufferSize(decoder.get(), &kFormat, &needed) != JXL_DEC_SUCCESS) {
+        if (jxl().JxlDecoderImageOutBufferSize(decoder.get(), &kFormat, &needed) != JXL_DEC_SUCCESS) {
           return std::unexpected("libjxl: failed to size output buffer");
         }
         decoded.pixels.resize(needed);
-        if (JxlDecoderSetImageOutBuffer(decoder.get(), &kFormat, decoded.pixels.data(), decoded.pixels.size())
+        if (jxl().JxlDecoderSetImageOutBuffer(decoder.get(), &kFormat, decoded.pixels.data(), decoded.pixels.size())
             != JXL_DEC_SUCCESS) {
           return std::unexpected("libjxl: failed to bind output buffer");
         }

@@ -1,5 +1,6 @@
 #include "ui/controls/markdown_view.h"
 
+#include "core/lazy_library.h"
 #include "ui/builders.h"
 #include "ui/controls/label.h"
 #include "ui/controls/scroll_view.h"
@@ -14,6 +15,12 @@
 #include <optional>
 #include <string>
 #include <vector>
+
+// clang-format off
+#define MD4C_FUNCTIONS(X) \
+  X(md_parse)
+// clang-format on
+LAZY_LIBRARY(Md4cApi, md4c, "libmd4c.so.0", MD4C_FUNCTIONS)
 
 namespace {
 
@@ -522,7 +529,7 @@ void MarkdownView::setMarkdown(const std::string& markdown, float scale, float f
   parser.leave_span = onLeaveSpan;
   parser.text = onText;
 
-  md_parse(markdown.c_str(), static_cast<MD_SIZE>(markdown.size()), &parser, &ctx);
+  md4c().md_parse(markdown.c_str(), static_cast<MD_SIZE>(markdown.size()), &parser, &ctx);
 }
 
 void MarkdownView::clear() {

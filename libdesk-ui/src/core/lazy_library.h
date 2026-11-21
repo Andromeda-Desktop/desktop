@@ -12,6 +12,7 @@
 //   cups().cupsFreeDests(n, dests);
 // The getter is thread-safe and keeps the library loaded. A missing library or symbol is a broken install, as a
 // missing DT_NEEDED entry was: the getter prints the loader error and aborts.
+#if defined(__linux__)
 #define LAZY_LIBRARY(Type, getter, soname, FUNCTIONS)                                                                  \
   struct Type {                                                                                                        \
     FUNCTIONS(LAZY_LIBRARY_MEMBER_)                                                                                    \
@@ -25,9 +26,21 @@
     }();                                                                                                               \
     return table;                                                                                                      \
   }
+#else
+// Other platforms link the library as usual (sonames differ there); the table holds the linked addresses.
+#define LAZY_LIBRARY(Type, getter, soname, FUNCTIONS)                                                                  \
+  struct Type {                                                                                                        \
+    FUNCTIONS(LAZY_LIBRARY_MEMBER_)                                                                                    \
+  };                                                                                                                   \
+  [[maybe_unused]] inline const Type& getter() {                                                                       \
+    static const Type table{FUNCTIONS(LAZY_LIBRARY_LINKED_)};                                                          \
+    return table;                                                                                                      \
+  }
+#endif
 
 #define LAZY_LIBRARY_MEMBER_(name) decltype(&::name) name = nullptr;
 #define LAZY_LIBRARY_RESOLVE_(name) lazy_library::resolve(handle, #name, t.name);
+#define LAZY_LIBRARY_LINKED_(name) &::name,
 
 namespace lazy_library {
 

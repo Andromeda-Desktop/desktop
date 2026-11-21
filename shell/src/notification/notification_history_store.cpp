@@ -2,6 +2,7 @@
 
 #include "core/log.h"
 #include "notification/notification_manager.h"
+#include "render/core/codec_libraries.h"
 #include "render/core/image_decoder.h"
 #include "security/encrypted_file_store.h"
 #include "util/base64.h"
@@ -21,7 +22,6 @@
 #include <string_view>
 #include <unordered_set>
 #include <vector>
-#include <webp/encode.h>
 
 namespace {
 
@@ -190,43 +190,43 @@ namespace {
   // Encode each preview with the WebP icon preset.
   std::optional<std::vector<std::uint8_t>> encodeWebpForHistory(const std::uint8_t* rgba, int w, int h, int stride) {
     WebPConfig config;
-    if (!WebPConfigPreset(&config, WEBP_PRESET_ICON, kPersistWebPQuality)) {
+    if (!webp().WebPConfigInitInternal(&config, WEBP_PRESET_ICON, kPersistWebPQuality, WEBP_ENCODER_ABI_VERSION)) {
       return std::nullopt;
     }
     config.method = 6;
     config.alpha_quality = 70;
-    if (!WebPValidateConfig(&config)) {
+    if (!webp().WebPValidateConfig(&config)) {
       return std::nullopt;
     }
 
     WebPPicture picture;
-    if (!WebPPictureInit(&picture)) {
+    if (!webp().WebPPictureInitInternal(&picture, WEBP_ENCODER_ABI_VERSION)) {
       return std::nullopt;
     }
     picture.width = w;
     picture.height = h;
-    if (!WebPPictureImportRGBA(&picture, rgba, stride)) {
-      WebPPictureFree(&picture);
+    if (!webp().WebPPictureImportRGBA(&picture, rgba, stride)) {
+      webp().WebPPictureFree(&picture);
       return std::nullopt;
     }
 
     WebPMemoryWriter writer;
-    WebPMemoryWriterInit(&writer);
-    picture.writer = WebPMemoryWrite;
+    webp().WebPMemoryWriterInit(&writer);
+    picture.writer = webp().WebPMemoryWrite;
     picture.custom_ptr = &writer;
 
-    if (!WebPEncode(&config, &picture)) {
-      WebPPictureFree(&picture);
-      WebPMemoryWriterClear(&writer);
+    if (!webp().WebPEncode(&config, &picture)) {
+      webp().WebPPictureFree(&picture);
+      webp().WebPMemoryWriterClear(&writer);
       return std::nullopt;
     }
-    WebPPictureFree(&picture);
+    webp().WebPPictureFree(&picture);
 
     std::vector<std::uint8_t> out;
     if (writer.size > 0 && writer.mem != nullptr) {
       out.assign(writer.mem, writer.mem + writer.size);
     }
-    WebPMemoryWriterClear(&writer);
+    webp().WebPMemoryWriterClear(&writer);
     if (out.empty()) {
       return std::nullopt;
     }
@@ -420,10 +420,10 @@ namespace {
       encodedBuf = std::move(*advanced);
     } else {
       std::uint8_t* encoded = nullptr;
-      const std::size_t encodedSize = WebPEncodeRGBA(rgba.data(), w, h, w * 4, kPersistWebPQuality, &encoded);
+      const std::size_t encodedSize = webp().WebPEncodeRGBA(rgba.data(), w, h, w * 4, kPersistWebPQuality, &encoded);
       if (encoded != nullptr && encodedSize > 0) {
         encodedBuf.assign(encoded, encoded + encodedSize);
-        WebPFree(encoded);
+        webp().WebPFree(encoded);
       }
     }
 
