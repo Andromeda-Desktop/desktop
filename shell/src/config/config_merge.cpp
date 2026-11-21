@@ -5,7 +5,9 @@
 #include "util/file_utils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <format>
+#include <ranges>
 #include <set>
 #include <system_error>
 #include <utility>
@@ -144,51 +146,76 @@ namespace noctalia::config {
       return expandFile(path, parsed, visited, out);
     }
 
+    // Parses every root file in `dir`, noting any [include].autoload = false, then merges the load set.
+    void mergeDir(const std::filesystem::path& dir, std::set<std::filesystem::path>& visited, MergeResult& out) {
+      // Phase A — parse every root file, noting any [include].autoload = false.
+      struct Root {
+        std::filesystem::path path;
+        toml::table table;
+        bool optOut = false;
+      };
+      std::vector<Root> roots;
+      bool anyOptOut = false;
+      for (const auto& path : sortedTomlInDir(dir)) {
+        toml::table tbl;
+        try {
+          tbl = toml::parse_file(path.string());
+        } catch (const toml::parse_error& e) {
+          if (out.firstError.empty()) {
+            out.firstError = std::string(e.description());
+            out.firstErrorOrigin = parseErrorOrigin(e, path);
+          }
+          kLog.warn("parse error in {}: {}", path.string(), e.description());
+          continue;
+        }
+        const IncludeDirective directive = readInclude(path, tbl);
+        const bool optOut = directive.hasAutoload && !directive.autoload;
+        anyOptOut = anyOptOut || optOut;
+        roots.push_back(Root{.path = path, .table = std::move(tbl), .optOut = optOut});
+      }
+
+      // Phase B — merge the load set. When any root opts out, only the opting-out
+      // roots (and their recursive includes) are loaded; other roots are skipped.
+      for (const auto& root : roots) {
+        if (anyOptOut && !root.optOut) {
+          continue;
+        }
+        ConfigService::deepMerge(out.merged, expandFile(root.path, root.table, visited, out));
+      }
+    }
+
   } // namespace
 
-  MergeResult mergeConfigWithIncludes(std::string_view configDir) {
+  MergeResult mergeConfigWithIncludes(std::string_view configDir, std::span<const std::filesystem::path> systemDirs) {
     MergeResult out;
     if (configDir.empty()) {
       return out;
     }
-
-    // Phase A — parse every root file, noting any [include].autoload = false.
-    struct Root {
-      std::filesystem::path path;
-      toml::table table;
-      bool optOut = false;
-    };
-    std::vector<Root> roots;
-    bool anyOptOut = false;
-    for (const auto& path : sortedTomlInDir(std::filesystem::path(configDir))) {
-      toml::table tbl;
-      try {
-        tbl = toml::parse_file(path.string());
-      } catch (const toml::parse_error& e) {
-        if (out.firstError.empty()) {
-          out.firstError = std::string(e.description());
-          out.firstErrorOrigin = parseErrorOrigin(e, path);
-        }
-        kLog.warn("parse error in {}: {}", path.string(), e.description());
-        continue;
-      }
-      const IncludeDirective directive = readInclude(path, tbl);
-      const bool optOut = directive.hasAutoload && !directive.autoload;
-      anyOptOut = anyOptOut || optOut;
-      roots.push_back(Root{.path = path, .table = std::move(tbl), .optOut = optOut});
-    }
-
-    // Phase B — merge the load set. When any root opts out, only the opting-out
-    // roots (and their recursive includes) are loaded; other roots are skipped.
     std::set<std::filesystem::path> visited;
-    for (const auto& root : roots) {
-      if (anyOptOut && !root.optOut) {
+    for (const auto& dir : systemDirs) {
+      mergeDir(dir, visited, out);
+    }
+    mergeDir(std::filesystem::path(configDir), visited, out);
+    return out;
+  }
+
+  std::vector<std::filesystem::path> systemConfigDirs(std::string_view configDir) {
+    const char* env = std::getenv("XDG_CONFIG_DIRS");
+    const std::string_view list = env != nullptr && env[0] != '\0' ? env : "/etc/xdg";
+    std::error_code ec;
+    const auto user = std::filesystem::weakly_canonical(std::filesystem::path(configDir), ec);
+    std::vector<std::filesystem::path> dirs;
+    for (const auto part : std::views::split(list, ':')) {
+      const std::filesystem::path base(std::string_view(part.begin(), part.end()));
+      if (!base.is_absolute()) {
         continue;
       }
-      ConfigService::deepMerge(out.merged, expandFile(root.path, root.table, visited, out));
+      auto dir = base / "andromeda" / "shell";
+      if (std::filesystem::weakly_canonical(dir, ec) != user) {
+        dirs.insert(dirs.begin(), std::move(dir));
+      }
     }
-
-    return out;
+    return dirs;
   }
 
 } // namespace noctalia::config

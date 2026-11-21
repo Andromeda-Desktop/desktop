@@ -1189,7 +1189,8 @@ std::optional<Config> ConfigService::configForOverrides(const toml::table& overr
   Config parsed;
   noctalia::config::seedBuiltinWidgets(parsed);
 
-  auto mergeResult = noctalia::config::mergeConfigWithIncludes(m_configDir);
+  auto mergeResult =
+      noctalia::config::mergeConfigWithIncludes(m_configDir, noctalia::config::systemConfigDirs(m_configDir));
   toml::table merged = std::move(mergeResult.merged);
   if (!mergeResult.firstError.empty()) {
     kLog.warn(
@@ -1232,7 +1233,8 @@ std::optional<Config> ConfigService::configForOverrides(const toml::table& overr
 }
 
 noctalia::config::schema::Diagnostics ConfigService::diagnosticsForOverrides(const toml::table& overrides) const {
-  auto mergeResult = noctalia::config::mergeConfigWithIncludes(m_configDir);
+  auto mergeResult =
+      noctalia::config::mergeConfigWithIncludes(m_configDir, noctalia::config::systemConfigDirs(m_configDir));
   toml::table merged = std::move(mergeResult.merged);
   noctalia::config::ConfigOriginIndex origins = std::move(mergeResult.origins);
   noctalia::config::schema::Diagnostics diagnostics;

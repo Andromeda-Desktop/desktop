@@ -52,7 +52,7 @@ namespace noctalia::config {
         std::string_view configDir, std::string_view settingsTomlPath, schema::Diagnostics& diag,
         std::vector<std::filesystem::path>& loadedFilesOut, ConfigOriginIndex& originsOut
     ) {
-      auto mergeResult = mergeConfigWithIncludes(configDir);
+      auto mergeResult = mergeConfigWithIncludes(configDir, systemConfigDirs(configDir));
       toml::table merged = std::move(mergeResult.merged);
       loadedFilesOut = std::move(mergeResult.loadedFiles);
       originsOut = std::move(mergeResult.origins);

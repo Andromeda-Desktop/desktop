@@ -5,6 +5,7 @@
 #include "core/toml.h"
 
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -39,6 +40,11 @@ namespace noctalia::config {
   //     the root file(s) that set it (plus their recursive includes).
   // Each file is loaded at most once; cycles are warned and skipped. The caller is
   // responsible for overlaying overrides.toml afterwards (it is never include-expanded).
-  [[nodiscard]] MergeResult mergeConfigWithIncludes(std::string_view configDir);
+  // `systemDirs` (lowest precedence first) are merged the same way, under `configDir`.
+  [[nodiscard]] MergeResult
+  mergeConfigWithIncludes(std::string_view configDir, std::span<const std::filesystem::path> systemDirs);
+
+  // The andromeda/shell dirs in $XDG_CONFIG_DIRS (default /etc/xdg), lowest precedence first, without `configDir`.
+  [[nodiscard]] std::vector<std::filesystem::path> systemConfigDirs(std::string_view configDir);
 
 } // namespace noctalia::config

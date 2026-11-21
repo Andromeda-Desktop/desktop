@@ -525,9 +525,13 @@ namespace {
     return compositor;
   }
 
-  std::optional<toml::table>
-  mergeUserConfigSources(std::string_view configDir, std::string_view settingsPath, std::string* error) {
-    auto mergeResult = noctalia::config::mergeConfigWithIncludes(configDir);
+  // `withSystem` adds the $XDG_CONFIG_DIRS layer under the user files.
+  std::optional<toml::table> mergeUserConfigSources(
+      std::string_view configDir, std::string_view settingsPath, bool withSystem, std::string* error
+  ) {
+    const auto systemDirs =
+        withSystem ? noctalia::config::systemConfigDirs(configDir) : std::vector<std::filesystem::path>{};
+    auto mergeResult = noctalia::config::mergeConfigWithIncludes(configDir, systemDirs);
     toml::table merged = std::move(mergeResult.merged);
     if (!mergeResult.firstError.empty()) {
       const std::string located = mergeResult.firstErrorOrigin.prefixed(mergeResult.firstError);
@@ -870,7 +874,7 @@ std::string ConfigService::buildEffectiveConfig() const { return formatToml(*m_c
 std::string ConfigService::buildMergedUserConfigFromSources(
     std::string_view configDir, std::string_view settingsPath, std::string* error
 ) {
-  const auto merged = mergeUserConfigSources(configDir, settingsPath, error);
+  const auto merged = mergeUserConfigSources(configDir, settingsPath, false, error);
   if (!merged.has_value()) {
     return {};
   }
@@ -884,7 +888,7 @@ std::string ConfigService::buildMergedUserConfigFromSources(
 std::string ConfigService::buildEffectiveConfigFromSources(
     std::string_view configDir, std::string_view settingsPath, std::string* error
 ) {
-  const auto merged = mergeUserConfigSources(configDir, settingsPath, error);
+  const auto merged = mergeUserConfigSources(configDir, settingsPath, true, error);
   if (!merged.has_value()) {
     return {};
   }
@@ -1539,7 +1543,8 @@ void ConfigService::loadAll() {
   Config nextConfig;
   noctalia::config::seedBuiltinWidgets(nextConfig);
 
-  auto mergeResult = noctalia::config::mergeConfigWithIncludes(m_configDir);
+  auto mergeResult =
+      noctalia::config::mergeConfigWithIncludes(m_configDir, noctalia::config::systemConfigDirs(m_configDir));
   toml::table merged = std::move(mergeResult.merged);
   std::string firstError = std::move(mergeResult.firstError);
   const noctalia::config::schema::SourceOrigin firstErrorOrigin = std::move(mergeResult.firstErrorOrigin);
