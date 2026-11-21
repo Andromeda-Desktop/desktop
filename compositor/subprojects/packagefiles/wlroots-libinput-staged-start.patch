@@ -1,0 +1,333 @@
+diff --git a/backend/libinput/backend.c b/backend/libinput/backend.c
+index 121731b..635d280 100644
+--- a/backend/libinput/backend.c
++++ b/backend/libinput/backend.c
+@@ -1,5 +1,7 @@
+ #include <assert.h>
+ #include <libinput.h>
++#include <libudev.h>
++#include <string.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <wlr/backend/interface.h>
+@@ -82,43 +84,217 @@ static void log_libinput(struct libinput *libinput_context,
+ 	_wlr_vlog(importance, wlr_fmt, args);
+ }
+ 
++struct wlr_libinput_pending_device {
++	char *syspath;
++	char *devnode;
++	int rank;
++	struct wl_list link;
++};
++
++// Keyboards and switches first (typing and the lid state), touch and tablets last (their setup is the slowest).
++static int device_rank(struct udev_device *dev) {
++	if (udev_device_get_property_value(dev, "ID_INPUT_KEYBOARD") ||
++			udev_device_get_property_value(dev, "ID_INPUT_SWITCH")) {
++		return 0;
++	}
++	if (udev_device_get_property_value(dev, "ID_INPUT_TABLET") ||
++			udev_device_get_property_value(dev, "ID_INPUT_TABLET_PAD") ||
++			udev_device_get_property_value(dev, "ID_INPUT_TOUCHSCREEN")) {
++		return 2;
++	}
++	return 1;
++}
++
++// The same devices the libinput udev backend takes: evdev nodes on our seat.
++static bool device_on_seat(struct wlr_libinput_backend *backend, struct udev_device *dev) {
++	const char *sysname = udev_device_get_sysname(dev);
++	if (sysname == NULL || strncmp(sysname, "event", 5) != 0 || udev_device_get_devnode(dev) == NULL) {
++		return false;
++	}
++	const char *seat = udev_device_get_property_value(dev, "ID_SEAT");
++	return strcmp(seat != NULL ? seat : "seat0", backend->session->seat) == 0;
++}
++
++static struct wlr_libinput_input_device *find_added_device(
++		struct wlr_libinput_backend *backend, const char *syspath) {
++	struct wlr_libinput_input_device *dev;
++	wl_list_for_each(dev, &backend->devices, link) {
++		struct udev_device *udev_dev = libinput_device_get_udev_device(dev->handle);
++		bool same = udev_dev != NULL && strcmp(udev_device_get_syspath(udev_dev), syspath) == 0;
++		udev_device_unref(udev_dev);
++		if (same) {
++			return dev;
++		}
++	}
++	return NULL;
++}
++
++static void free_pending_device(struct wlr_libinput_pending_device *pending) {
++	wl_list_remove(&pending->link);
++	free(pending->syspath);
++	free(pending->devnode);
++	free(pending);
++}
++
++static struct wlr_libinput_pending_device *find_pending_device(
++		struct wlr_libinput_backend *backend, const char *syspath) {
++	struct wlr_libinput_pending_device *pending;
++	wl_list_for_each(pending, &backend->pending, link) {
++		if (strcmp(pending->syspath, syspath) == 0) {
++			return pending;
++		}
++	}
++	return NULL;
++}
++
++static void queue_device(struct wlr_libinput_backend *backend, struct udev_device *dev) {
++	const char *syspath = udev_device_get_syspath(dev);
++	if (find_pending_device(backend, syspath) != NULL) {
++		return;
++	}
++	struct wlr_libinput_pending_device *pending = calloc(1, sizeof(*pending));
++	if (pending == NULL) {
++		wlr_log(WLR_ERROR, "Allocation failed");
++		return;
++	}
++	pending->syspath = strdup(syspath);
++	pending->devnode = strdup(udev_device_get_devnode(dev));
++	pending->rank = device_rank(dev);
++	struct wl_list *before = &backend->pending;
++	struct wlr_libinput_pending_device *other;
++	wl_list_for_each(other, &backend->pending, link) {
++		if (other->rank > pending->rank) {
++			before = &other->link;
++			break;
++		}
++	}
++	wl_list_insert(before->prev, &pending->link);
++	wl_event_source_timer_update(backend->add_timer, 1);
++}
++
++static int handle_add_timer(void *data) {
++	struct wlr_libinput_backend *backend = data;
++	// An inactive session cannot open devices; session_signal re-arms the timer on resume.
++	if (!backend->session->active) {
++		return 0;
++	}
++	if (!wl_list_empty(&backend->pending)) {
++		struct wlr_libinput_pending_device *pending =
++			wl_container_of(backend->pending.next, pending, link);
++		if (find_added_device(backend, pending->syspath) == NULL &&
++				libinput_path_add_device(backend->libinput_context, pending->devnode) == NULL) {
++			wlr_log(WLR_DEBUG, "libinput did not take %s", pending->devnode);
++		}
++		free_pending_device(pending);
++		handle_libinput_readable(libinput_get_fd(backend->libinput_context), WL_EVENT_READABLE, backend);
++	}
++	if (!wl_list_empty(&backend->pending)) {
++		wl_event_source_timer_update(backend->add_timer, 1);
++	} else if (!backend->settled) {
++		backend->settled = true;
++		wlr_log(WLR_DEBUG, "libinput start-up devices added");
++		wl_signal_emit_mutable(&backend->settled_signal, backend);
++	}
++	return 0;
++}
++
++static void remove_device(struct wlr_libinput_backend *backend, const char *syspath) {
++	struct wlr_libinput_pending_device *pending = find_pending_device(backend, syspath);
++	if (pending != NULL) {
++		free_pending_device(pending);
++		return;
++	}
++	// Events libinput already queued (an ENODEV removal) go first, so the device found below is still live.
++	handle_libinput_readable(libinput_get_fd(backend->libinput_context), WL_EVENT_READABLE, backend);
++	struct wlr_libinput_input_device *dev = find_added_device(backend, syspath);
++	if (dev != NULL) {
++		libinput_path_remove_device(dev->handle);
++		handle_libinput_readable(libinput_get_fd(backend->libinput_context), WL_EVENT_READABLE, backend);
++	}
++}
++
++static int handle_udev_event(int fd, uint32_t mask, void *data) {
++	struct wlr_libinput_backend *backend = data;
++	struct udev_device *dev = udev_monitor_receive_device(backend->monitor);
++	if (dev == NULL) {
++		return 1;
++	}
++	const char *action = udev_device_get_action(dev);
++	if (action != NULL && device_on_seat(backend, dev)) {
++		if (strcmp(action, "add") == 0) {
++			queue_device(backend, dev);
++		} else if (strcmp(action, "remove") == 0) {
++			remove_device(backend, udev_device_get_syspath(dev));
++		}
++	}
++	udev_device_unref(dev);
++	return 1;
++}
++
++// A path context with our own enumeration instead of libinput_udev_assign_seat(), which opens and sets up every
++// device in one call (~430 ms with a touchscreen and pen). The devices are added one per event loop turn.
+ static bool backend_start(struct wlr_backend *wlr_backend) {
+ 	struct wlr_libinput_backend *backend =
+ 		get_libinput_backend_from_backend(wlr_backend);
+ 	wlr_log(WLR_DEBUG, "Starting libinput backend");
+ 
+-	backend->libinput_context = libinput_udev_create_context(&libinput_impl,
+-		backend, backend->session->udev);
++	backend->libinput_context = libinput_path_create_context(&libinput_impl, backend);
+ 	if (!backend->libinput_context) {
+ 		wlr_log(WLR_ERROR, "Failed to create libinput context");
+ 		return false;
+ 	}
+ 
+-	if (libinput_udev_assign_seat(backend->libinput_context,
+-			backend->session->seat) != 0) {
+-		wlr_log(WLR_ERROR, "Failed to assign libinput seat");
+-		return false;
+-	}
+-
+ 	// TODO: More sophisticated logging
+ 	libinput_log_set_handler(backend->libinput_context, log_libinput);
+ 	libinput_log_set_priority(backend->libinput_context, LIBINPUT_LOG_PRIORITY_ERROR);
+ 
+-	int libinput_fd = libinput_get_fd(backend->libinput_context);
++	struct wl_event_loop *loop = backend->session->event_loop;
++	backend->add_timer = wl_event_loop_add_timer(loop, handle_add_timer, backend);
++	backend->monitor = udev_monitor_new_from_netlink(backend->session->udev, "udev");
++	if (!backend->add_timer || !backend->monitor ||
++			udev_monitor_filter_add_match_subsystem_devtype(backend->monitor, "input", NULL) < 0 ||
++			udev_monitor_enable_receiving(backend->monitor) < 0) {
++		wlr_log(WLR_ERROR, "Failed to watch input devices");
++		return false;
++	}
++	backend->monitor_event = wl_event_loop_add_fd(loop, udev_monitor_get_fd(backend->monitor),
++		WL_EVENT_READABLE, handle_udev_event, backend);
+ 
+-	handle_libinput_readable(libinput_fd, WL_EVENT_READABLE, backend);
+-	if (!env_parse_bool("WLR_LIBINPUT_NO_DEVICES") && wl_list_empty(&backend->devices)) {
++	struct udev_enumerate *enumerate = udev_enumerate_new(backend->session->udev);
++	if (!enumerate) {
++		wlr_log(WLR_ERROR, "Failed to enumerate input devices");
++		return false;
++	}
++	udev_enumerate_add_match_subsystem(enumerate, "input");
++	udev_enumerate_add_match_sysname(enumerate, "event*");
++	udev_enumerate_scan_devices(enumerate);
++	struct udev_list_entry *entry;
++	udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(enumerate)) {
++		struct udev_device *dev = udev_device_new_from_syspath(backend->session->udev,
++			udev_list_entry_get_name(entry));
++		if (dev != NULL && device_on_seat(backend, dev)) {
++			queue_device(backend, dev);
++		}
++		udev_device_unref(dev);
++	}
++	udev_enumerate_unref(enumerate);
++
++	if (!env_parse_bool("WLR_LIBINPUT_NO_DEVICES") && wl_list_empty(&backend->pending)) {
+ 		wlr_log(WLR_ERROR, "libinput initialization failed, no input devices");
+ 		wlr_log(WLR_ERROR, "Set WLR_LIBINPUT_NO_DEVICES=1 to suppress this check");
+ 		return false;
+ 	}
++	if (wl_list_empty(&backend->pending)) {
++		backend->settled = true;
++	}
+ 
++	int libinput_fd = libinput_get_fd(backend->libinput_context);
+ 	if (backend->input_event) {
+ 		wl_event_source_remove(backend->input_event);
+ 	}
+-	backend->input_event = wl_event_loop_add_fd(backend->session->event_loop, libinput_fd,
++	backend->input_event = wl_event_loop_add_fd(loop, libinput_fd,
+ 			WL_EVENT_READABLE, handle_libinput_readable, backend);
+-	if (!backend->input_event) {
++	if (!backend->input_event || !backend->monitor_event) {
+ 		wlr_log(WLR_ERROR, "Failed to create input event on event loop");
+ 		return false;
+ 	}
+@@ -126,6 +302,16 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
+ 	return true;
+ }
+ 
++bool wlr_libinput_backend_add_settled_listener(struct wlr_backend *wlr_backend,
++		struct wl_listener *listener) {
++	struct wlr_libinput_backend *backend = get_libinput_backend_from_backend(wlr_backend);
++	if (backend->settled) {
++		return true;
++	}
++	wl_signal_add(&backend->settled_signal, listener);
++	return false;
++}
++
+ static void backend_destroy(struct wlr_backend *wlr_backend) {
+ 	if (!wlr_backend) {
+ 		return;
+@@ -146,6 +332,17 @@ static void backend_destroy(struct wlr_backend *wlr_backend) {
+ 	if (backend->input_event) {
+ 		wl_event_source_remove(backend->input_event);
+ 	}
++	if (backend->monitor_event) {
++		wl_event_source_remove(backend->monitor_event);
++	}
++	if (backend->add_timer) {
++		wl_event_source_remove(backend->add_timer);
++	}
++	udev_monitor_unref(backend->monitor);
++	struct wlr_libinput_pending_device *pending, *tmp_pending;
++	wl_list_for_each_safe(pending, tmp_pending, &backend->pending, link) {
++		free_pending_device(pending);
++	}
+ 	libinput_unref(backend->libinput_context);
+ 	free(backend);
+ }
+@@ -170,6 +367,9 @@ static void session_signal(struct wl_listener *listener, void *data) {
+ 
+ 	if (session->active) {
+ 		libinput_resume(backend->libinput_context);
++		if (!wl_list_empty(&backend->pending)) {
++			wl_event_source_timer_update(backend->add_timer, 1);
++		}
+ 	} else {
+ 		libinput_suspend(backend->libinput_context);
+ 	}
+@@ -190,6 +390,8 @@ struct wlr_backend *wlr_libinput_backend_create(struct wlr_session *session) {
+ 	wlr_backend_init(&backend->backend, &backend_impl);
+ 
+ 	wl_list_init(&backend->devices);
++	wl_list_init(&backend->pending);
++	wl_signal_init(&backend->settled_signal);
+ 
+ 	backend->session = session;
+ 
+diff --git a/include/backend/libinput.h b/include/backend/libinput.h
+index e712388..20fe818 100644
+--- a/include/backend/libinput.h
++++ b/include/backend/libinput.h
+@@ -24,6 +24,14 @@ struct wlr_libinput_backend {
+ 	struct wl_listener session_signal;
+ 
+ 	struct wl_list devices; // wlr_libinput_device.link
++
++	// Devices waiting to be added, one per event loop turn (struct wlr_libinput_pending_device.link).
++	struct wl_list pending;
++	struct wl_event_source *add_timer;
++	struct udev_monitor *monitor;
++	struct wl_event_source *monitor_event;
++	bool settled;
++	struct wl_signal settled_signal;
+ };
+ 
+ struct wlr_libinput_input_device {
+diff --git a/include/wlr/backend/libinput.h b/include/wlr/backend/libinput.h
+index 2a4e199..bcdac74 100644
+--- a/include/wlr/backend/libinput.h
++++ b/include/wlr/backend/libinput.h
+@@ -30,6 +30,12 @@ struct libinput_tablet_tool *wlr_libinput_get_tablet_tool_handle(
+ 		struct wlr_tablet_tool *wlr_tablet_tool);
+ 
+ bool wlr_backend_is_libinput(struct wlr_backend *backend);
++/**
++ * The backend adds the devices present at start one per event loop turn. Returns true when all of them have been
++ * added and their initial events delivered; otherwise adds listener, which fires once when that happens.
++ */
++bool wlr_libinput_backend_add_settled_listener(struct wlr_backend *backend,
++		struct wl_listener *listener);
+ bool wlr_input_device_is_libinput(struct wlr_input_device *device);
+ 
+ #endif

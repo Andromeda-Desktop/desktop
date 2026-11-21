@@ -1770,12 +1770,24 @@ namespace andromeda {
     }
     m_inputStart = InputStart::Started;
     const bool ok = wlr_backend_start(m_libinputBackend);
-    // Initial libinput switch events are dispatched synchronously inside wlr_backend_start(); publish their settled
-    // aggregate now.
+    m_inputSettled.notify = onInputSettled;
+    if (!ok || wlr_libinput_backend_add_settled_listener(m_libinputBackend, &m_inputSettled)) {
+      inputSettled();
+    }
+    return ok;
+  }
+
+  void Server::onInputSettled(wl_listener* listener, void* /*data*/) {
+    Server* self = wl_container_of(listener, self, m_inputSettled);
+    wl_list_remove(&listener->link);
+    self->inputSettled();
+  }
+
+  // The lid switch reported its initial position while its device was added: publish the settled aggregate now.
+  void Server::inputSettled() {
     m_lidState.setReady();
     reconcileLidState();
     warmTextRendering();
-    return ok;
   }
 
   bool Server::start(const char* startupCmd) {

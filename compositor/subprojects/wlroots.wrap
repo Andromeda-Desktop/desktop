@@ -16,7 +16,9 @@ depth = 1
 # the scene sent a copy of the default at each new window's first output commit.
 # Records capture copies (screencopy, ext-image-copy, window capture) under deferred submits and reports them from a
 # renderer kick, so the main loop never waits for the GPU (wlr_renderer_kick, wlr_texture_readback).
-diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch, wlroots-merge-queued-commits.patch, wlroots-nonblocking-modeset.patch, wlroots-deferred-capture.patch
+# Adds the libinput devices one per event loop turn from a path context and our own udev scan and monitor (keyboards
+# and switches first), with a settled signal; libinput_udev_assign_seat() set up every device in one ~430 ms call.
+diff_files = wlroots-cursor-plane-unchanged.patch, wlroots-feedback-unregistered-plane.patch, wlroots-register-planes-without-modeset.patch, wlroots-libliftoff-clear-in-fence.patch, wlroots-libliftoff-test-unshown-layer.patch, wlroots-session-close-removed-device.patch, wlroots-keep-previous-master-mode-blob.patch, wlroots-mode-change-without-modeset.patch, wlroots-dmabuf-feedback-unchanged.patch, wlroots-merge-queued-commits.patch, wlroots-nonblocking-modeset.patch, wlroots-deferred-capture.patch, wlroots-libinput-staged-start.patch
 
 [provide]
 dependency_names = wlroots-0.20
