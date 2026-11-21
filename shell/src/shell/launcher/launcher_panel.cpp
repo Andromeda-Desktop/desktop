@@ -5,7 +5,9 @@
 #include "shell/launcher/launcher_adapters.h"
 #include "shell/launcher/launcher_panel_detail.h"
 
+#include "core/scoped_timer.h"
 #include "core/shared_worker.h"
+#include "platform/surface.h"
 #include "render/render_context.h"
 #include "render/render_target.h"
 #include "shell/panel/panel_surface_style.h"
@@ -185,21 +187,35 @@ void LauncherPanel::warmModeText() {
     m_textWarmup.emplace_back(symbols[i].title, Style::fontSizeCaption * scale);
     m_textWarmup.emplace_back(symbols[i].title, Style::fontSizeBody * scale);
   }
-  const auto step = [this](const auto& self) -> void {
+  struct Progress {
+    std::size_t items = 0;
+    std::size_t waited = 0;
+    noctalia::profiling::StopWatch watch;
+  };
+  const auto step = [this, progress = std::make_shared<Progress>(Progress{.items = m_textWarmup.size()})](
+                        const auto& self
+                    ) -> void {
     RenderContext* context = PanelManager::instance().renderContext();
     if (m_textWarmup.empty() || context == nullptr) {
+      if (noctalia::profiling::enabled()) {
+        kLog.info(
+            "text warm-up: {} layouts in {:.0f} ms, {} ticks waited for a frame", progress->items,
+            progress->watch.elapsedMs(), progress->waited
+        );
+      }
       m_textWarmup.clear();
       return;
     }
-    // Up to ~4 ms of layouts per tick, so a frame in flight keeps its budget.
-    ScaledRenderer renderer(*context, 1.0F);
-    const auto start = std::chrono::steady_clock::now();
-    while (!m_textWarmup.empty() && std::chrono::steady_clock::now() - start < std::chrono::milliseconds(4)) {
+    // One layout per tick, and none while a frame waits: a fallback-font layout takes 5-11 ms and cannot be split.
+    if (!Surface::hasPendingFrameWork() && !Surface::hasPendingRenders()) {
+      ScaledRenderer renderer(*context, 1.0F);
       const auto [text, size] = std::move(m_textWarmup.back());
       m_textWarmup.pop_back();
       (void)renderer.measureText(text, size);
+    } else {
+      ++progress->waited;
     }
-    m_textWarmupTimer.start(std::chrono::milliseconds(16), [this, self] { self(self); });
+    m_textWarmupTimer.start(std::chrono::milliseconds(16), [self] { self(self); });
   };
   step(step);
 }
