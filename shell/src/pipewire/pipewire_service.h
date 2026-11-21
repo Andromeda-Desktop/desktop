@@ -228,6 +228,12 @@ public:
     struct pw_device* proxy = nullptr;
     spa_hook* listener = nullptr;
     std::vector<DeviceRouteData> routes;
+    // A Route re-read in flight: its params collect here until the core sync with this sequence, then replace routes.
+    struct RouteRefresh {
+      int sequence = 0;
+      std::vector<DeviceRouteData> routes;
+    };
+    std::optional<RouteRefresh> refresh;
   };
   struct LinkData {
     std::uint32_t id = 0;
@@ -244,6 +250,7 @@ public:
   void onDeviceParam(
       std::uint32_t id, std::uint32_t paramId, std::uint32_t index, std::uint32_t next, const struct spa_pod* param
   );
+  void commitDeviceRoutes(std::uint32_t id, DeviceData& device, std::vector<DeviceRouteData> routes);
   void onNodeInfo(std::uint32_t id, const struct pw_node_info* info);
   void onNodeParam(
       std::uint32_t id, std::uint32_t paramId, std::uint32_t index, std::uint32_t next, const struct spa_pod* param

@@ -999,6 +999,17 @@ void PipeWireService::onCoreDone(std::uint32_t id, int sequence) {
     enumDefaultAudioDeviceParams();
     announceConnection();
   }
+  if (id != PW_ID_CORE) {
+    return;
+  }
+  for (auto& [deviceId, device] : m_devices) {
+    if (device.refresh.has_value() && device.refresh->sequence == sequence) {
+      std::vector<DeviceRouteData> routes = std::move(device.refresh->routes);
+      device.refresh.reset();
+      commitDeviceRoutes(deviceId, device, std::move(routes));
+      return;
+    }
+  }
 }
 
 void PipeWireService::announceConnection() {
@@ -1696,20 +1707,29 @@ void PipeWireService::onDeviceInfo(std::uint32_t id, const pw_device_info* info)
 
   if ((info->change_mask & PW_DEVICE_CHANGE_MASK_PARAMS) != 0) {
     // A Route refresh replaces the active assignments; physical port indices can change.
-    if (!it->second.routes.empty()) {
-      it->second.routes.clear();
-      for (auto& [nid, node] : m_nodes) {
-        if (node != nullptr && node->deviceId == id) {
-          recomputeEffectiveMute(*node);
-        }
-      }
-      rebuildState();
-    }
     for (std::uint32_t i = 0; i < info->n_params; ++i) {
       if (info->params[i].id == SPA_PARAM_Route && (info->params[i].flags & SPA_PARAM_INFO_READ) != 0) {
         pw_device_enum_params(it->second.proxy, 0, SPA_PARAM_Route, 0, UINT32_MAX, nullptr);
+        it->second.refresh = DeviceData::RouteRefresh{.sequence = pw_core_sync(m_core, PW_ID_CORE, 0)};
       }
     }
+  }
+}
+
+void PipeWireService::commitDeviceRoutes(std::uint32_t id, DeviceData& device, std::vector<DeviceRouteData> routes) {
+  const bool unplugged = std::ranges::any_of(routes, [&device](const DeviceRouteData& route) {
+    return headphonesUnplugged(device.routes, route);
+  });
+  device.routes = std::move(routes);
+  // Device volume is authoritative through mixer-api; only route mute feeds effective mute here.
+  for (auto& [nid, node] : m_nodes) {
+    if (node != nullptr && node->deviceId == id) {
+      recomputeEffectiveMute(*node);
+    }
+  }
+  rebuildState();
+  if (unplugged && m_headphonesUnplugged) {
+    m_headphonesUnplugged();
   }
 }
 
@@ -1767,19 +1787,13 @@ void PipeWireService::onDeviceParam(
   route.available = routeAvailable;
   route.muted = muted;
   route.portType = routePortType(param);
-  const bool unplugged = headphonesUnplugged(it->second.routes, route);
-  upsertRoute(it->second.routes, std::move(route));
-  if (unplugged && m_headphonesUnplugged) {
-    m_headphonesUnplugged();
+  if (it->second.refresh.has_value()) {
+    upsertRoute(it->second.refresh->routes, std::move(route));
+    return;
   }
-
-  // Device volume is authoritative through mixer-api; only route mute feeds effective mute here.
-  for (auto& [nid, node] : m_nodes) {
-    if (node != nullptr && node->deviceId == id) {
-      recomputeEffectiveMute(*node);
-    }
-  }
-  rebuildState();
+  std::vector<DeviceRouteData> routes = it->second.routes;
+  upsertRoute(routes, std::move(route));
+  commitDeviceRoutes(id, it->second, std::move(routes));
 }
 
 void PipeWireService::parseDefaultNodes(const spa_dict* props) {
