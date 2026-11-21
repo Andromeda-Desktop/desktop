@@ -16,7 +16,7 @@ IDLE_WAKE_S = 20.0
 
 repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 start = sys.argv[1]
-host = sys.argv[2] if len(sys.argv) > 2 else "192.168.101.8"
+host = sys.argv[2] if len(sys.argv) > 2 else "192.168.101.11"
 local = os.path.join(repo, ".agent", "soak", start)
 os.makedirs(local, exist_ok=True)
 for f in ("samples.tsv", "workload.log"):
