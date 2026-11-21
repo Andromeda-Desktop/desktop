@@ -31,8 +31,9 @@ pkgver=2026.11.7.r16760
 pkgrel=1
 arch=(x86_64)
 license=(GPL-3.0-or-later MIT)
-# Arch's default makepkg.conf adds a debug package of every binary's symbols, several times the desktop's size.
-options=(!debug)
+# The debug packages hold every binary's symbols, several times the desktop's size: only a release build
+# (ANDROMEDA_SYMBOLS=1) makes them, for crash reports; they stay out of the package repository.
+if [[ -n ${ANDROMEDA_SYMBOLS:-} ]]; then options=(debug); else options=(!debug); fi
 makedepends=(git meson ninja wayland-protocols xorg-xwayland poppler-glib libzip libvterm libcups exiv2 taglib nlohmann-json stb
   wlroots0.20 wayland libinput libei libxkbcommon libdrm pixman mesa cairo pango lcms2 jemalloc tomlplusplus
   curl fontconfig freetype2 glib2 harfbuzz libglvnd libical libjxl libpipewire libqalculate librsvg
