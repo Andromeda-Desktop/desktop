@@ -1844,8 +1844,10 @@ namespace linkapp {
     CommandDrag& d = m_commandDrag;
     if (row >= d.rows.size()) return;
     if (!motion && data.pressed) {
+      if (data.button != BTN_LEFT || row >= m_commands.list().size()) return;
       d.kind = CommandDrag::Kind::Pressed;
       d.from = d.target = row;
+      d.moving = m_commands.list()[row];
       d.startY = data.sceneY;
       d.tops.assign(d.rows.size(), 0.0F);
       d.shift.assign(d.rows.size(), 0.0F);
@@ -1857,6 +1859,7 @@ namespace linkapp {
       return;
     }
     if (!motion) {
+      if (d.kind == CommandDrag::Kind::Idle) return;
       const bool dragged = d.kind == CommandDrag::Kind::Dragging;
       for (std::size_t j = 0; j < d.rows.size(); ++j) {
         if (j < d.springs.size() && d.springs[j] != 0) m_window->animations().cancel(d.springs[j]);
@@ -1865,7 +1868,7 @@ namespace linkapp {
         if (j == d.from) d.rows[j]->setFill(m_commandDrag.restFill);
       }
       d.kind = CommandDrag::Kind::Idle;
-      if (dragged) commandsChanged(m_commands.move(d.from, d.target));
+      if (dragged) commandsChanged(m_commands.moveIf(d.from, d.target, d.moving));
       return;
     }
     if (d.kind == CommandDrag::Kind::Idle) return;
@@ -1875,22 +1878,26 @@ namespace linkapp {
     if (d.kind == CommandDrag::Kind::Pressed) {
       d.restFill = moving->fill();
       moving->setFill(colorSpecFromRole(ColorRole::View));
-      moving->setRadius(Style::scaledRadius(Tokens::componentListCardRadius - Tokens::componentListCardPadding, m_scale));
+      moving->setRadius(Style::scaledRadius(Tokens::componentListRowRadius, m_scale));
     }
     d.kind = CommandDrag::Kind::Dragging;
     const std::size_t n = d.rows.size();
     const float y = std::clamp(dy, d.tops.front() - d.tops[d.from], d.tops.back() - d.tops[d.from]);
     moving->setZIndex(1);
     moving->setTranslation(0.0F, y);
-    const auto bottom = [&](std::size_t j) { return j + 1 < n ? d.tops[j + 1] : d.tops[j] + d.rows[j]->height(); };
-    const auto middle = [&](std::size_t j) { return (d.tops[j] + bottom(j)) / 2.0F; };
+    const auto middle = [&](std::size_t j) { return d.tops[j] + d.rows[j]->height() / 2.0F; };
     const float center = d.tops[d.from] + y + moving->height() / 2.0F;
     std::size_t target = d.from;
     while (target + 1 < n && center > middle(target + 1)) ++target;
     while (target > 0 && center < middle(target - 1)) --target;
     if (target == d.target) return;
     d.target = target;
-    const float pitch = bottom(d.from) - d.tops[d.from];
+    float gap = 0.0F; // the rule between two neighbouring rows
+    for (std::size_t j = 0; j + 1 < n; ++j) {
+      const float between = d.tops[j + 1] - d.tops[j] - d.rows[j]->height();
+      if (between > 0.0F && (gap == 0.0F || between < gap)) gap = between;
+    }
+    const float pitch = moving->height() + gap;
     for (std::size_t j = 0; j < n; ++j) {
       if (j == d.from) continue;
       const float want = d.from < j && j <= target ? -pitch : target <= j && j < d.from ? pitch : 0.0F;
@@ -1992,7 +1999,7 @@ namespace linkapp {
     const auto editor = [&] {
       auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP12 * s,
                              .fill = colorSpecFromRole(ColorRole::Fill2),
-                             .radius = Style::scaledRadius(Tokens::componentListCardRadius - Tokens::componentListCardPadding, s)});
+                             .radius = Style::scaledRadius(Tokens::componentListRowRadius, s)});
       const auto field = [&](const char* label, std::unique_ptr<Node> input, const char* error) {
         auto line = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s});
         auto name = text(label, Tokens::typeFootnote, ColorRole::Label2, s);
@@ -2018,12 +2025,14 @@ namespace linkapp {
                                        if (m_commands.invalid() != before) m_window->requestRebuild();
                                      },
                                      .onSubmit = [this](const std::string&) { commandsChanged(m_commands.close()); }}),
-                          invalid == CommandsEditor::Invalid::Name ? "The phone shows the name on the button." : nullptr));
+                          invalid == CommandsEditor::Invalid::Name
+                              ? (ed.draft().name.size() > CommandsEditor::kMaxName ? "At most 512 bytes." : "The phone shows the name on the button.")
+                              : nullptr));
       box->addChild(field("Command",
                           ui::input({.value = ed.draft().line,
                                      .fontSize = Tokens::typeMono.size * s, .invalid = invalid == CommandsEditor::Invalid::Line,
                                      .surfaceRole = ColorRole::View,
-                                     .height = (3.0F * Tokens::typeMono.line + 2.0F * Tokens::spaceP8) * s, .flexGrow = 1.0F,
+                                     .height = Tokens::componentLinkCommandField * s, .flexGrow = 1.0F,
                                      .onChange = [this](const std::string& v) {
                                        const auto before = m_commands.invalid();
                                        m_commands.editLine(v);

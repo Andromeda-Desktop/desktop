@@ -593,10 +593,10 @@ namespace {
   void runCommands(unsigned seed) {
     std::mt19937 rng(seed);
     const auto pick = [&](int n) { return static_cast<int>(rng() % static_cast<unsigned>(n)); };
-    const std::array<std::string, 4> words{"", " ", "Lock", "loginctl lock-session"};
+    const std::array<std::string, 5> words{"", " ", "Lock", "loginctl lock-session", std::string(600, 'n')};
     const auto valid = [](const std::vector<Command>& list) {
       return list.size() <= CommandsEditor::kMax && std::ranges::all_of(list, [](const Command& c) {
-               return c.name.find_first_not_of(" \t\r\n") != std::string::npos &&
+               return c.name.find_first_not_of(" \t\r\n") != std::string::npos && c.name.size() <= CommandsEditor::kMaxName &&
                       c.line.find_first_not_of(" \t\r\n") != std::string::npos;
              });
     };
@@ -609,6 +609,12 @@ namespace {
         std::vector<Command> server;
         for (int k = pick(3) == 0 ? 64 : pick(6); k > 0; --k) server.push_back({std::format("S{}", k), "true"});
         ed.listed(server);
+        if (before.mode() == CommandsEditor::Mode::Editing && before.index() < before.list().size() &&
+            before.sync() == CommandsEditor::Sync::Synced) {
+          const Command& was = before.list()[before.index()];
+          if (std::ranges::count(server, was) == 1 && std::ranges::count(before.list(), was) == 1)
+            expect(ed.index() < ed.list().size() && ed.list()[ed.index()] == was, "the open row follows its command", seed, step);
+        }
         if (before.sync() != CommandsEditor::Sync::Synced) expect(ed.list() == before.list(), "local list wins while unsynced", seed, step);
         if (before.mode() == CommandsEditor::Mode::Editing) expect(ed.draft() == before.draft(), "server update keeps the draft", seed, step);
         break;
@@ -622,7 +628,7 @@ namespace {
         break;
       }
       case 3:
-        if (ed.editName(words[static_cast<std::size_t>(pick(4))]))
+        if (ed.editName(words[static_cast<std::size_t>(pick(5))]))
           expect(ed.draft().line == before.draft().line && ed.list() == before.list(), "typing changes only the draft", seed, step);
         break;
       case 4: ed.editLine(words[static_cast<std::size_t>(pick(4))]); break;

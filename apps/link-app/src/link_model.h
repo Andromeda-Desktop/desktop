@@ -484,7 +484,8 @@ namespace linkapp {
   // line never reaches the list. Replies carry the send's serial; an older reply changes nothing.
   class CommandsEditor {
   public:
-    static constexpr std::size_t kMax = 64; // Link1 SetCommands rejects more
+    static constexpr std::size_t kMax = 64;        // Link1 SetCommands rejects more
+    static constexpr std::size_t kMaxName = 512;   // bytes; Link1 MAX_TITLE_LEN
     enum class Mode : std::uint8_t { Idle, Editing, Removed };
     enum class Sync : std::uint8_t { Synced, Sending, Failed };
     enum class Invalid : std::uint8_t { None, Name, Line, Full }; // Full: a new command while the list holds kMax
@@ -499,6 +500,8 @@ namespace linkapp {
     bool undo();
     // Drag reorder: the command at `from` lands at `to`; an open row commits first.
     bool move(std::size_t from, std::size_t to);
+    // move() only when `from` still holds `expected` (a drag started on an older list).
+    bool moveIf(std::size_t from, std::size_t to, const Command& expected);
     // The list to send with its serial, once per commit.
     [[nodiscard]] std::optional<std::pair<std::uint64_t, std::vector<Command>>> takeSend();
     bool sent(std::uint64_t serial, std::optional<std::string> error);
@@ -520,6 +523,7 @@ namespace linkapp {
     Mode m_mode = Mode::Idle;
     std::size_t m_index = 0;
     Command m_draft;
+    Command m_opened; // Editing an existing row: its command when opened, to find it again after listed()
     Invalid m_invalid = Invalid::None;
     Sync m_sync = Sync::Synced;
     std::string m_error;

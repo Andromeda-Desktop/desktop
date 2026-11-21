@@ -721,8 +721,8 @@ namespace linkapp {
       m_invalid = Invalid::None;
       return true;
     }
-    if (blank(m_draft.name) || blank(m_draft.line)) {
-      m_invalid = blank(m_draft.name) ? Invalid::Name : Invalid::Line;
+    if (blank(m_draft.name) || m_draft.name.size() > kMaxName || blank(m_draft.line)) {
+      m_invalid = blank(m_draft.line) && !blank(m_draft.name) && m_draft.name.size() <= kMaxName ? Invalid::Line : Invalid::Name;
       return false;
     }
     if (fresh && !canAdd()) {
@@ -745,7 +745,12 @@ namespace linkapp {
     if (m_sync != Sync::Synced || commands == m_list) return false;
     const bool fresh = m_mode == Mode::Editing && m_index == m_list.size();
     m_list = std::move(commands);
-    if (fresh || m_index > m_list.size()) m_index = m_list.size();
+    if (m_mode == Mode::Editing && !fresh) {
+      const auto it = std::ranges::find(m_list, m_opened);
+      m_index = it == m_list.end() ? m_list.size() : static_cast<std::size_t>(it - m_list.begin());
+    } else if (fresh || m_index > m_list.size()) {
+      m_index = m_list.size();
+    }
     return true;
   }
 
@@ -757,7 +762,7 @@ namespace linkapp {
     }
     m_mode = Mode::Editing;
     m_index = index;
-    m_draft = m_list[index];
+    m_draft = m_opened = m_list[index];
     m_invalid = Invalid::None;
     return true;
   }
@@ -817,6 +822,10 @@ namespace linkapp {
     m_mode = Mode::Idle;
     queue();
     return true;
+  }
+
+  bool CommandsEditor::moveIf(std::size_t from, std::size_t to, const Command& expected) {
+    return from < m_list.size() && m_list[from] == expected && move(from, to);
   }
 
   bool CommandsEditor::move(std::size_t from, std::size_t to) {

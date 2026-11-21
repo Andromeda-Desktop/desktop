@@ -260,6 +260,7 @@ namespace linkapp {
       enum class Kind : std::uint8_t { Idle, Pressed, Dragging };
       Kind kind = Kind::Idle;
       std::size_t from = 0;
+      Command moving; // the dragged row's command at the press
       std::size_t target = 0;
       float startY = 0.0F;
       std::vector<Flex*> rows;
