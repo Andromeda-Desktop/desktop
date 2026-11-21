@@ -2,7 +2,13 @@ name: check-macos
 
 # Builds "Andromeda Terminal.app" on a Mac with the same scripts as the Linux cross-build, then runs it:
 # shell input and output through `ctl`, and an app restart with the session kept by ptyd.
+# release-apps.yml calls it for a terminal-v* tag: then the zipped app goes into that tag's release.
 on:
+  workflow_call:
+    inputs:
+      ref: { type: string, required: true }
+      version: { description: "Release version YYYY.M.N", type: string, required: true }
+      tag: { description: "Release to upload the app to; empty: no upload", type: string, required: false, default: "" }
   workflow_dispatch:
   push:
     branches: [main, "ci/**"]
@@ -24,6 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # tools/unit-version.sh counts from the last tag
+          ref: ${{ inputs.ref || github.sha }}
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with: { version: 0.17.1 }
       - name: Tools
@@ -46,6 +53,8 @@ jobs:
       - name: Dependencies
         run: DARWIN_SDK=$(xcrun --show-sdk-path) STB_INCLUDE=/tmp/stb tools/macos/deps.py
       - name: Bundle
+        env:
+          ANDROMEDA_VERSION: ${{ inputs.version }}
         run: tools/macos/terminal.sh
       - name: Smoke
         run: tools/macos/smoke.sh
@@ -60,3 +69,14 @@ jobs:
           name: terminal-macos
           path: /var/tmp/andromeda-macos/smoke
           if-no-files-found: ignore
+      - name: Release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          zip="/var/tmp/Andromeda-Terminal-${{ inputs.version }}-macos-arm64.zip"
+          cp /var/tmp/andromeda-macos/smoke/Andromeda-Terminal.zip "$zip"
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false \
+            || gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber "$zip"

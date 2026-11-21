@@ -48,6 +48,19 @@ jobs:
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  # The terminal also ships as a macOS app, built and smoke-tested on a Mac.
+  macos:
+    needs: version
+    if: needs.version.outputs.app == 'terminal'
+    uses: ./.github/workflows/check-macos.yml
+    permissions:
+      contents: write
+    with:
+      ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
+      version: ${{ needs.version.outputs.version }}
+      # Empty in a dry run: the app stays a workflow artifact.
+      tag: ${{ (github.event_name == 'push' || inputs.publish) && (inputs.tag || github.ref_name) || '' }}
+
   arch:
     needs: [version]
     runs-on: ubuntu-latest
