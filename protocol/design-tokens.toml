@@ -791,6 +791,7 @@ thread_row = 56.0    # a thread row: avatar, name, time, last line, badge
 bubble_max = 0.72    # a message bubble's widest share of the conversation
 bubble_radius = 16.0
 settings_width = 640.0  # Settings: the grouped cards stop growing here
+field_label = 96.0     # Settings › Commands: the Name and Command label column
 qr = 216.0           # Pair: the QR view, padding included
 pair_text = 280.0    # Pair: the widest the steps beside the QR grow
 code_digit_w = 32.0  # Pair: one tile of the 6-digit code

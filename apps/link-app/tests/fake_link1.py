@@ -47,6 +47,15 @@ texts = [
 ]
 contacts = [("Maya Okafor", [MAYA]), ("Dad", ["0170 1234567"]), ("Jonas Weber", [JONAS]), ("Lena", [LENA])]
 connected = MODE in ("sample", "two")
+# CMDS=empty | worst (64, with long, one-letter and non-Latin names); otherwise three.
+COMMANDS = {"empty": [], "worst": [
+    ("Sync the photo library to the NAS and then shut the computer down",
+     "rsync -aH --delete --info=progress2 /home/user/Pictures/ nas.local:/volume1/backup/user-laptop/Pictures/&&systemctl poweroff"),
+    ("X", "xset dpms force off"), ("Bildschirm sperren und Musik anhalten", "playerctl pause; loginctl lock-session"),
+    ("画面をロック", "loginctl lock-session"), ("Play focus playlist", "mpv --no-video --shuffle ~/Music/Focus/")]
+    + [(f"Scene {i}: lights {'on' if i % 2 else 'off'}", f"curl -s -X POST http://hue.local/api/scene/{i}") for i in range(1, 60)],
+}.get(os.environ.get("CMDS", ""), [("Lock", "loginctl lock-session"), ("Suspend", "systemctl suspend"),
+                                     ("Backup", "rsync -a ~/Documents /mnt/backup")])
 props = {
     "Devices": GLib.Variant("a(ssb)", [] if MODE == "unpaired" else [("p1", "Pixel 8", connected)] + ([("p2", "Galaxy A54", False)] if MODE == "two" else [])),
     "DeviceInfo": GLib.Variant("a{sa{sv}}", {} if MODE == "unpaired" else {"p1": {
@@ -60,11 +69,11 @@ props = {
     "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
     "Paused": GLib.Variant("as", []),
     "Pairing": GLib.Variant("b", False),
-    "Grants": GLib.Variant("a{sas}", {"p1": ["notifications", "clipboard", "screen", "files", "messages", "calls"]}),
+    "Grants": GLib.Variant("a{sas}", {"p1": ["notifications", "clipboard", "screen", "files", "messages", "calls"]
+                                         + ([] if os.environ.get("NOGRANT") else ["commands"])}),
     "AutoAccept": GLib.Variant("as", []),
     "NotificationsWhileLocked": GLib.Variant("b", False),
-    "Commands": GLib.Variant("a(ss)", [("Lock", "loginctl lock-session"), ("Suspend", "systemctl suspend"),
-                                       ("Backup", "rsync -a ~/Documents /mnt/backup")]),
+    "Commands": GLib.Variant("a(ss)", COMMANDS),
     "Texts": GLib.Variant("a{sa(ttsstb)}", {"p1": texts} if connected else {}),
     "Contacts": GLib.Variant("a{sa(sas)}", {"p1": contacts}),
     "Calls": GLib.Variant("a{sa(sstus)}", {"p1": [
@@ -197,6 +206,14 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
     if method == "SavePhoto":
         invocation.return_value(GLib.Variant("(s)", ("/home/user/Downloads/" + params[1].rsplit("/", 1)[1],)))
         return
+    if method == "SetCommands":
+        commands = params[0]
+        if len(commands) > 64 or any(not n.strip() or not c.strip() for n, c in commands):
+            invocation.return_dbus_error("org.freedesktop.DBus.Error.InvalidArgs", "at most 64 commands, each with a name and a line")
+            return
+        props["Commands"] = GLib.Variant("a(ss)", commands)
+        conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                         GLib.Variant("(sa{sv}as)", (IFACE, {"Commands": props["Commands"]}, [])))
     if method in ("StartPairing", "CancelPairing"):
         props["Pairing"] = GLib.Variant("b", method == "StartPairing")
         conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",

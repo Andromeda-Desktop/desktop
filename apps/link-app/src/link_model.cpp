@@ -699,4 +699,143 @@ namespace linkapp {
     return false;
   }
 
+  namespace {
+    bool blank(const std::string& text) {
+      return text.find_first_not_of(" \t\r\n") == std::string::npos;
+    }
+  } // namespace
+
+  void CommandsEditor::queue() {
+    ++m_serial;
+    m_queued = true;
+    m_sync = Sync::Sending;
+    m_error.clear();
+  }
+
+  // Ends Editing. False when the draft is invalid: the row stays open and invalid() says which field.
+  bool CommandsEditor::commit() {
+    if (m_mode != Mode::Editing) return true;
+    const bool fresh = m_index == m_list.size();
+    if (fresh && blank(m_draft.name) && blank(m_draft.line)) {
+      m_mode = Mode::Idle;
+      m_invalid = Invalid::None;
+      return true;
+    }
+    if (blank(m_draft.name) || blank(m_draft.line)) {
+      m_invalid = blank(m_draft.name) ? Invalid::Name : Invalid::Line;
+      return false;
+    }
+    if (fresh && !canAdd()) {
+      m_invalid = Invalid::Full;
+      return false;
+    }
+    if (fresh) {
+      m_list.push_back(m_draft);
+      queue();
+    } else if (m_list[m_index] != m_draft) {
+      m_list[m_index] = m_draft;
+      queue();
+    }
+    m_mode = Mode::Idle;
+    m_invalid = Invalid::None;
+    return true;
+  }
+
+  bool CommandsEditor::listed(std::vector<Command> commands) {
+    if (m_sync != Sync::Synced || commands == m_list) return false;
+    const bool fresh = m_mode == Mode::Editing && m_index == m_list.size();
+    m_list = std::move(commands);
+    if (fresh || m_index > m_list.size()) m_index = m_list.size();
+    return true;
+  }
+
+  bool CommandsEditor::open(std::size_t index) {
+    if (index >= m_list.size()) return false;
+    if (m_mode == Mode::Editing) {
+      if (m_index == index) return false;
+      if (!commit()) return true;
+    }
+    m_mode = Mode::Editing;
+    m_index = index;
+    m_draft = m_list[index];
+    m_invalid = Invalid::None;
+    return true;
+  }
+
+  bool CommandsEditor::add() {
+    bool changed = false;
+    if (m_mode == Mode::Editing) {
+      if (m_index == m_list.size()) return false;
+      if (!commit()) return true;
+      changed = true;
+    }
+    if (!canAdd()) return changed;
+    m_mode = Mode::Editing;
+    m_index = m_list.size();
+    m_draft = {};
+    m_invalid = Invalid::None;
+    return true;
+  }
+
+  bool CommandsEditor::editName(std::string name) {
+    if (m_mode != Mode::Editing || m_draft.name == name) return false;
+    m_draft.name = std::move(name);
+    if (m_invalid == Invalid::Name && !blank(m_draft.name)) m_invalid = Invalid::None;
+    return true;
+  }
+
+  bool CommandsEditor::editLine(std::string line) {
+    if (m_mode != Mode::Editing || m_draft.line == line) return false;
+    m_draft.line = std::move(line);
+    if (m_invalid == Invalid::Line && !blank(m_draft.line)) m_invalid = Invalid::None;
+    return true;
+  }
+
+  bool CommandsEditor::close() {
+    if (m_mode != Mode::Editing) return false;
+    commit();
+    return true;
+  }
+
+  bool CommandsEditor::remove() {
+    if (m_mode != Mode::Editing) return false;
+    m_invalid = Invalid::None;
+    if (m_index == m_list.size()) {
+      m_mode = Mode::Idle;
+      return true;
+    }
+    m_draft = m_list[m_index];
+    m_list.erase(m_list.begin() + static_cast<std::ptrdiff_t>(m_index));
+    m_mode = Mode::Removed;
+    queue();
+    return true;
+  }
+
+  bool CommandsEditor::undo() {
+    if (m_mode != Mode::Removed || !canAdd()) return false;
+    m_list.insert(m_list.begin() + static_cast<std::ptrdiff_t>(std::min(m_index, m_list.size())), m_draft);
+    m_mode = Mode::Idle;
+    queue();
+    return true;
+  }
+
+  std::optional<std::pair<std::uint64_t, std::vector<Command>>> CommandsEditor::takeSend() {
+    if (!m_queued) return std::nullopt;
+    m_queued = false;
+    return std::pair{m_serial, m_list};
+  }
+
+  bool CommandsEditor::sent(std::uint64_t serial, std::optional<std::string> error) {
+    if (serial != m_serial || m_queued || m_sync != Sync::Sending) return false;
+    m_sync = error ? Sync::Failed : Sync::Synced;
+    m_error = error ? std::move(*error) : std::string();
+    return true;
+  }
+
+  bool CommandsEditor::retry() {
+    if (m_sync != Sync::Failed) return false;
+    queue();
+    return true;
+  }
+
 } // namespace linkapp

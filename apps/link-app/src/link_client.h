@@ -91,6 +91,8 @@ namespace linkapp {
     [[nodiscard]] const PhoneSettings& phoneSettings() const { return m_phoneSettings; }
     [[nodiscard]] const DesktopSettings& desktopSettings() const { return m_desktopSettings; }
     void setGrant(const std::string& deviceId, const std::string& feature, bool granted);
+    // Replaces Link1 Commands; `done` gets the error text, or nothing on success.
+    void setCommands(const std::vector<Command>& commands, std::function<void(std::optional<std::string>)> done);
     void setAutoAccept(const std::string& deviceId, bool on);
     [[nodiscard]] const std::optional<HotspotAsk>& hotspotAsk() const { return m_hotspotAsk; }
     // Answers the open ask; `always` also grants "nearby", so the next ask joins without one.

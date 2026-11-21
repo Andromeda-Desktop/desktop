@@ -621,6 +621,7 @@ namespace linkapp {
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
       m_client->setOnChanged([this] {
         if (m_window == nullptr) return;
+        m_commands.listed(m_client->desktopSettings().commands);
         if (m_client->mirror().kind != Mirror::Kind::Showing && m_mirrorTexture.valid()) retireMirrorFrame(true);
         sync();
         syncHotspotSheet();
@@ -659,7 +660,17 @@ namespace linkapp {
   }
 
   void LinkApp::action(const std::string& name, const std::vector<std::string>& parameter, const std::string& activationToken) {
-    // "page" takes the page name, then optionally the id of the phone to show.
+    // "page" takes the page name ("commands": Settings › Commands), then optionally the id of the phone to show.
+    if (name == "page" && (parameter.size() == 1 || parameter.size() == 2) && parameter.front() == "commands") {
+      activate(activationToken);
+      if (parameter.size() == 2) choosePhone(parameter[1]);
+      if (m_window == nullptr) return;
+      show(Page::Settings);
+      m_settingsView = SettingsView::Commands;
+      sync();
+      m_window->requestRebuild();
+      return;
+    }
     if (name == "page" && (parameter.size() == 1 || parameter.size() == 2)) {
       const auto it = std::ranges::find_if(kPages, [&](const PageInfo& info) {
         return std::ranges::equal(std::string_view(info.name), parameter.front(),
@@ -763,6 +774,8 @@ namespace linkapp {
     if (m_client && m_page == Page::Mirror) m_client->stopMirror();
     m_page = page;
     m_confirmForget = false;
+    m_settingsView = SettingsView::Main;
+    commandsChanged(m_commands.close());
     if (page == Page::Photos && m_client) m_client->loadPhotos();
     if (page == Page::Files && m_client) m_client->openFolder(m_client->files().path());
     if (page == Page::Mirror && m_client) m_client->startMirror();
@@ -816,8 +829,11 @@ namespace linkapp {
     m_window->setTitle(pairing ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
     const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
     if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
+    const bool commands = m_page == Page::Settings && m_settingsView == SettingsView::Commands && !pairing &&
+                          kind != Presence::Kind::NoDaemon;
     const bool cards =
-        (m_page == Page::Messages || m_page == Page::Photos || m_page == Page::Files || m_page == Page::Mirror) && live;
+        ((m_page == Page::Messages || m_page == Page::Photos || m_page == Page::Files || m_page == Page::Mirror) && live) ||
+        commands;
     const Messages& messages = m_client->messages();
     if (m_compose && !m_compose->sent.empty()) {
       if (const auto thread = messages.threadFor(m_compose->sent)) {
@@ -1091,6 +1107,7 @@ namespace linkapp {
     case Presence::Kind::NotPaired:
       return pair(renderer, s);
     case Presence::Kind::Away: {
+      if (m_page == Page::Settings && m_settingsView == SettingsView::Commands) return commands(presence, width, height);
       if (m_page == Page::Settings) return settings(presence);
       const std::string id = presence.phone.id;
       std::string seen;
@@ -1113,6 +1130,7 @@ namespace linkapp {
     if (m_page == Page::Files) return files(width, height);
     if (m_page == Page::Mirror) return mirror(width, height);
     if (m_page == Page::Activity) return activity();
+    if (m_page == Page::Settings && m_settingsView == SettingsView::Commands) return commands(presence, width, height);
     if (m_page == Page::Settings) return settings(presence);
     if (m_page != Page::Waiting) {
       const PageInfo& info = kPages[static_cast<std::size_t>(m_page)];
@@ -1812,6 +1830,233 @@ namespace linkapp {
 
   // Settings (handoff.yaml): max width 640; grouped cards (fill_1 r 12 p 4) of rows with a Toggle; Ghost destructive
   // "Forget <phone>…" that asks in place.
+  void LinkApp::commandsChanged(bool changed) {
+    if (auto send = m_commands.takeSend()) {
+      m_client->setCommands(send->second, [this, serial = send->first](std::optional<std::string> error) {
+        if (m_commands.sent(serial, std::move(error))) m_window->requestRebuild();
+      });
+      changed = true;
+    }
+    if (changed) m_window->requestRebuild();
+  }
+
+  // Settings › Commands (design-link-commands concept A): the grant row, then one row per command in the phone's order;
+  // a row opens in place into Name and Command. Only a commit sends SetCommands (CommandsEditor).
+  std::unique_ptr<Node> LinkApp::commands(const Presence& presence, float width, float height) {
+    const float s = m_scale;
+    const CommandsEditor& ed = m_commands;
+    const std::vector<Command>& list = ed.list();
+    const std::string id = presence.phone.id;
+    const std::string& phone = presence.phone.name;
+    const bool away = presence.kind == Presence::Kind::Away;
+    const float inset = Tokens::componentListRowInset * s;
+    const auto group = [&] {
+      return ui::column({.align = FlexAlign::Stretch, .padding = Tokens::componentListCardPadding * s,
+                         .fill = colorSpecFromRole(ColorRole::Fill1),
+                         .radius = Style::scaledRadius(Tokens::componentListCardRadius, s)});
+    };
+    bool firstRow = true;
+    const auto rule = [&](Flex& card) {
+      if (std::exchange(firstRow, false)) return;
+      auto line = ui::column({.align = FlexAlign::Stretch});
+      line->setPadding(0.0F, inset, 0.0F, inset);
+      line->addChild(ui::separator({}));
+      card.addChild(std::move(line));
+    };
+    const auto mono = [&](std::string value, ColorRole role) {
+      auto label = text(std::move(value), Tokens::typeMono, role, s);
+      label->setFontFamily(std::string(Tokens::fontMono));
+      return label;
+    };
+    const auto note = [&](std::string value, ColorRole role) { return text(std::move(value), Tokens::typeFootnote, role, s, 3); };
+
+    std::vector<std::unique_ptr<Node>> caption;
+    caption.push_back(ui::button({.glyph = std::string("chevron-left"), .variant = ButtonVariant::Ghost,
+                                  .tooltip = std::string("Back to Settings"), .onClick = [this] {
+                                    commandsChanged(m_commands.close());
+                                    m_settingsView = SettingsView::Main;
+                                    sync();
+                                    m_window->requestRebuild();
+                                  }}));
+    caption.push_back(text("Commands", Tokens::typeHeadline, ColorRole::Label1, s));
+    caption.back()->setFlexGrow(1.0F);
+    if (!list.empty()) {
+      caption.push_back(ui::button({.text = std::string("Add command"), .glyph = std::string("plus"),
+                                    .enabled = ed.canAdd(), .variant = ButtonVariant::Tonal,
+                                    .onClick = [this] { commandsChanged(m_commands.add()); }}));
+    }
+
+    auto page = ui::column({.align = FlexAlign::Stretch, .fillWidth = true});
+    page->setPadding(Tokens::spaceP16 * s, 0.0F, Tokens::spaceP24 * s, 0.0F);
+
+    auto grant = group();
+    {
+      auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingV = Tokens::spaceP8 * s,
+                        .paddingH = inset, .minHeight = Tokens::sizeControlL * s});
+      r->addChild(ui::glyph({.glyph = std::string("device-mobile"), .glyphSize = Tokens::sizeSymbol * s,
+                             .color = colorSpecFromRole(ColorRole::Label1)}));
+      auto words = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+      words->addChild(text(std::format("{} may run these", phone), Tokens::typeBody, ColorRole::Label1, s, 2));
+      const bool granted = m_client->phoneSettings().commands;
+      words->addChild(note(!granted ? "Off: its buttons do nothing on this computer"
+                           : away   ? "Changes reach it when it connects"
+                                    : "Each runs with sh -c as you on this computer",
+                           ColorRole::Label2));
+      r->addChild(std::move(words));
+      r->addChild(ui::toggle({.checked = granted, .scale = s,
+                              .onChange = [this, id](bool on) { m_client->setGrant(id, "commands", on); }}));
+      grant->addChild(std::move(r));
+    }
+    page->addChild(std::move(grant));
+
+    auto head = ui::row({.align = FlexAlign::Center});
+    head->setPadding(Tokens::spaceP16 * s, inset, Tokens::spaceP8 * s, inset);
+    auto headTitle = text(std::format("Buttons on {}, in order", phone), Tokens::typeFootnote, ColorRole::Label2, s);
+    headTitle->setFontWeight(FontWeight::SemiBold);
+    headTitle->setFlexGrow(1.0F);
+    head->addChild(std::move(headTitle));
+    if (list.size() >= CommandsEditor::kMax - 8) {
+      auto count = text(std::format("{} of {}", list.size(), CommandsEditor::kMax), Tokens::typeFootnote, ColorRole::Label2, s);
+      count->setFontWeight(FontWeight::SemiBold);
+      head->addChild(std::move(count));
+    }
+    page->addChild(std::move(head));
+
+    const bool editing = ed.mode() == CommandsEditor::Mode::Editing;
+    const auto editor = [&] {
+      auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP12 * s,
+                             .fill = colorSpecFromRole(ColorRole::Fill2),
+                             .radius = Style::scaledRadius(Tokens::componentListCardRadius - Tokens::componentListCardPadding, s)});
+      const auto field = [&](const char* label, std::unique_ptr<Node> input, const char* error) {
+        auto line = ui::row({.align = FlexAlign::Start, .gap = Tokens::spaceP12 * s});
+        auto name = text(label, Tokens::typeFootnote, ColorRole::Label2, s);
+        name->setFontWeight(FontWeight::SemiBold);
+        auto cell = ui::column({.align = FlexAlign::Start, .width = Tokens::componentLinkFieldLabel * s});
+        cell->setPadding(Tokens::spaceP8 * s, 0.0F, 0.0F, 0.0F);
+        cell->addChild(std::move(name));
+        line->addChild(std::move(cell));
+        auto right = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP4 * s, .flexGrow = 1.0F});
+        right->addChild(std::move(input));
+        if (error != nullptr) right->addChild(note(error, ColorRole::DangerText));
+        line->addChild(std::move(right));
+        return line;
+      };
+      const auto invalid = ed.invalid();
+      box->addChild(field("Name",
+                          ui::input({.value = ed.draft().name,
+                                     .fontSize = Tokens::typeBody.size * s, .invalid = invalid == CommandsEditor::Invalid::Name,
+                                     .surfaceRole = ColorRole::View, .flexGrow = 1.0F,
+                                     .onChange = [this](const std::string& v) {
+                                       const auto before = m_commands.invalid();
+                                       m_commands.editName(v);
+                                       if (m_commands.invalid() != before) m_window->requestRebuild();
+                                     },
+                                     .onSubmit = [this](const std::string&) { commandsChanged(m_commands.close()); }}),
+                          invalid == CommandsEditor::Invalid::Name ? "The phone shows the name on the button." : nullptr));
+      box->addChild(field("Command",
+                          ui::input({.value = ed.draft().line,
+                                     .fontSize = Tokens::typeMono.size * s, .invalid = invalid == CommandsEditor::Invalid::Line,
+                                     .surfaceRole = ColorRole::View,
+                                     .height = (3.0F * Tokens::typeMono.line + 2.0F * Tokens::spaceP8) * s, .flexGrow = 1.0F,
+                                     .onChange = [this](const std::string& v) {
+                                       const auto before = m_commands.invalid();
+                                       m_commands.editLine(v);
+                                       if (m_commands.invalid() != before) m_window->requestRebuild();
+                                     },
+                                     .onSubmit = [this](const std::string&) { commandsChanged(m_commands.close()); },
+                                     .configure = [](Input& input) {
+                                       input.setMultiline(true);
+                                       input.setSubmitOnEnter(true);
+                                       input.setFontFamily(std::string(Tokens::fontMono));
+                                     }}),
+                          invalid == CommandsEditor::Invalid::Line ? "Give it a line to run." : nullptr));
+      auto bar = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+      Button* remove = nullptr;
+      bar->addChild(ui::button({.out = &remove, .text = std::string("Remove"), .variant = ButtonVariant::Ghost,
+                                .onClick = [this] { commandsChanged(m_commands.remove()); }}));
+      auto palette = Button::defaultPalette(ButtonVariant::Ghost);
+      for (auto* state : {&palette.normal, &palette.hover, &palette.pressed}) state->label = colorSpecFromRole(ColorRole::DangerText);
+      remove->setCustomPalette(palette);
+      const bool full = invalid == CommandsEditor::Invalid::Full;
+      const bool failed = ed.sync() == CommandsEditor::Sync::Failed;
+      auto status = note(full     ? std::string("64 is the limit. Remove one to add another.")
+                         : failed ? std::format("Not saved: {}. Your text stays here.", ed.error())
+                         : away   ? std::format("Waiting for {}", phone)
+                                  : std::string("Enter or Done saves it"),
+                         full || failed ? ColorRole::DangerText : ColorRole::Label2);
+      status->setFlexGrow(1.0F);
+      bar->addChild(std::move(status));
+      if (failed) {
+        bar->addChild(ui::button({.text = std::string("Try again"), .variant = ButtonVariant::Tonal,
+                                  .onClick = [this] { commandsChanged(m_commands.retry()); }}));
+      }
+      bar->addChild(ui::button({.text = std::string("Done"), .variant = ButtonVariant::Tonal,
+                                .onClick = [this] { commandsChanged(m_commands.close()); }}));
+      box->addChild(std::move(bar));
+      return box;
+    };
+
+    auto rows = group();
+    for (std::size_t i = 0; i <= list.size(); ++i) {
+      if (ed.mode() == CommandsEditor::Mode::Removed && ed.index() == i) {
+        rule(*rows);
+        auto r = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s,
+                          .paddingH = inset, .minHeight = Tokens::sizeControlL * s});
+        auto gone = text(std::format("Removed “{}”", ed.draft().name), Tokens::typeBody, ColorRole::Label2, s);
+        gone->setFlexGrow(1.0F);
+        r->addChild(std::move(gone));
+        r->addChild(ui::button({.text = std::string("Undo"), .enabled = ed.canAdd(), .variant = ButtonVariant::Tonal,
+                                .onClick = [this] { commandsChanged(m_commands.undo()); }}));
+        rows->addChild(std::move(r));
+      }
+      if (editing && ed.index() == i) {
+        rows->addChild(editor());
+        continue;
+      }
+      if (i == list.size()) break;
+      rule(*rows);
+      auto words = ui::column({.align = FlexAlign::Stretch, .paddingV = Tokens::spaceP8 * s, .paddingH = inset,
+                               .minHeight = Tokens::sizeControlL * s,
+                               .onClick = [this, i] { commandsChanged(m_commands.open(i)); }});
+      auto name = text(list[i].name, Tokens::typeBody, ColorRole::Label1, s);
+      name->setFontWeight(FontWeight::Medium);
+      words->addChild(std::move(name));
+      words->addChild(mono(list[i].line, ColorRole::Label2));
+      rows->addChild(std::move(words));
+    }
+    if (list.empty() && !editing) {
+      rows->addChild(ui::button({.text = std::string("Add command"), .glyph = std::string("plus"), .variant = ButtonVariant::Ghost,
+                                 .onClick = [this] { commandsChanged(m_commands.add()); }}));
+    }
+    page->addChild(std::move(rows));
+
+    std::string foot = list.empty() ? std::format("Each command becomes a button on {} that runs one shell line here.", phone)
+                       : !ed.canAdd() ? std::string("64 is the limit. Remove one to add another.")
+                                      : std::string("The phone shows the buttons in this order.");
+    auto footer = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+    footer->setPadding(Tokens::spaceP8 * s, inset, 0.0F, inset);
+    const bool failedIdle = ed.sync() == CommandsEditor::Sync::Failed && !editing;
+    auto footText = note(failedIdle ? std::format("Not saved: {}. Your changes stay here.", ed.error()) : foot,
+                         failedIdle ? ColorRole::DangerText : ColorRole::Label2);
+    footText->setFlexGrow(1.0F);
+    footer->addChild(std::move(footText));
+    if (failedIdle) {
+      footer->addChild(ui::button({.text = std::string("Try again"), .variant = ButtonVariant::Tonal,
+                                   .onClick = [this] { commandsChanged(m_commands.retry()); }}));
+    }
+    page->addChild(std::move(footer));
+
+    auto scroll = ui::scrollView({.state = &m_commandsScroll, .contentScale = s, .viewportPaddingH = Tokens::spaceP24 * s,
+                                  .maxContentWidth = Tokens::componentLinkSettingsWidth * s,
+                                  .contentAlign = ScrollView::ContentAlign::Start, .flexGrow = 1.0F});
+    scroll->content()->addChild(std::move(page));
+    std::unique_ptr<Node> body = std::move(scroll);
+    body->setFlexGrow(1.0F);
+    auto cards = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
+    cards->addChild(card(std::move(caption), std::move(body), width, true));
+    return cards;
+  }
+
   std::unique_ptr<Node> LinkApp::settings(const Presence& presence) {
     const float s = m_scale;
     const PhoneSettings& phone = m_client->phoneSettings();
@@ -1830,9 +2075,10 @@ namespace linkapp {
                          .radius = Style::scaledRadius(Tokens::componentListCardRadius, s)});
     };
     const float inset = Tokens::componentListRowInset * s;
+    std::set<const Flex*> started; // cards that hold a row: the next row gets a rule above it
     const auto row = [&](Flex& card, const char* glyph, const std::string& title, const std::string& hint,
-                         std::unique_ptr<Node> trail) {
-      if (!card.children().empty()) {
+                         std::unique_ptr<Node> trail, std::function<void()> click = nullptr) {
+      if (!started.insert(&card).second) {
         auto rule = ui::column({.align = FlexAlign::Stretch});
         rule->setPadding(0.0F, inset, 0.0F, inset + Tokens::sizeSymbol * s + Tokens::spaceP12 * s);
         rule->addChild(ui::separator({}));
@@ -1847,6 +2093,10 @@ namespace linkapp {
       if (!hint.empty()) words->addChild(text(hint, Tokens::typeFootnote, ColorRole::Label2, s, 2));
       r->addChild(std::move(words));
       if (trail) r->addChild(std::move(trail));
+      if (click) {
+        r->setCover(ui::inputArea({.cursorShape = CursorShape::Pointer,
+                                   .onClick = [click = std::move(click)](const InputArea::PointerData&) { click(); }}));
+      }
       card.addChild(std::move(r));
     };
     const auto toggle = [&](bool on, std::function<void(bool)> change) {
@@ -1876,8 +2126,16 @@ namespace linkapp {
     row(*deskCard, "device-laptop", "Visible to nearby phones",
         desk.nearbyName.empty() ? std::string("Quick Share") : std::format("As “{}”", desk.nearbyName),
         toggle(desk.nearbyVisible, [this](bool on) { m_client->setNearbyVisible(on); }));
+    const std::size_t commandCount = desk.commands.size();
     row(*deskCard, "terminal-2", "Commands the phone can run",
-        desk.commands == 1 ? std::string("1 command") : std::format("{} commands", desk.commands), nullptr);
+        commandCount == 1 ? std::string("1 command") : std::format("{} commands", commandCount),
+        ui::glyph({.glyph = std::string("chevron-right"), .glyphSize = Tokens::sizeSymbolInline * s,
+                   .color = colorSpecFromRole(ColorRole::Label2)}),
+        [this] {
+          m_settingsView = SettingsView::Commands;
+          sync();
+          m_window->requestRebuild();
+        });
     page->addChild(std::move(deskCard));
 
     auto forget = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});

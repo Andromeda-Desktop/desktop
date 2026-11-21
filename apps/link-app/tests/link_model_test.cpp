@@ -589,6 +589,78 @@ namespace {
     expect(lastSeenText(now - 9 * 86400, now) == "Last seen 11 Nov", "date", 0, 0);
   }
 
+  // Random edit sessions against a server that may answer late, out of order or with an error.
+  void runCommands(unsigned seed) {
+    std::mt19937 rng(seed);
+    const auto pick = [&](int n) { return static_cast<int>(rng() % static_cast<unsigned>(n)); };
+    const std::array<std::string, 4> words{"", " ", "Lock", "loginctl lock-session"};
+    const auto valid = [](const std::vector<Command>& list) {
+      return list.size() <= CommandsEditor::kMax && std::ranges::all_of(list, [](const Command& c) {
+               return c.name.find_first_not_of(" \t\r\n") != std::string::npos &&
+                      c.line.find_first_not_of(" \t\r\n") != std::string::npos;
+             });
+    };
+    CommandsEditor ed;
+    std::vector<std::uint64_t> inflight;
+    for (int step = 0; step < 4000; ++step) {
+      const CommandsEditor before = ed;
+      switch (pick(12)) {
+      case 0: {
+        std::vector<Command> server(static_cast<std::size_t>(pick(3) == 0 ? 64 : pick(6)), Command{"S", "true"});
+        ed.listed(server);
+        if (before.sync() != CommandsEditor::Sync::Synced) expect(ed.list() == before.list(), "local list wins while unsynced", seed, step);
+        if (before.mode() == CommandsEditor::Mode::Editing) expect(ed.draft() == before.draft(), "server update keeps the draft", seed, step);
+        break;
+      }
+      case 1: ed.open(static_cast<std::size_t>(pick(70))); break;
+      case 2: {
+        const bool ok = ed.add();
+        if (before.mode() != CommandsEditor::Mode::Editing && !before.canAdd())
+          expect(!ok && ed.list() == before.list() && ed.mode() == before.mode(), "no add at the cap", seed, step);
+        for (int i = 0; i < 70 && ed.add(); ++i) ed.editName("N"), ed.editLine("x");
+        break;
+      }
+      case 3:
+        if (ed.editName(words[static_cast<std::size_t>(pick(4))]))
+          expect(ed.draft().line == before.draft().line && ed.list() == before.list(), "typing changes only the draft", seed, step);
+        break;
+      case 4: ed.editLine(words[static_cast<std::size_t>(pick(4))]); break;
+      case 5:
+        ed.close();
+        if (before.mode() == CommandsEditor::Mode::Editing && ed.mode() == CommandsEditor::Mode::Editing)
+          expect(ed.draft() == before.draft() && ed.invalid() != CommandsEditor::Invalid::None, "a refused commit keeps the text and says why", seed, step);
+        break;
+      case 6: {
+        const bool removed = ed.remove() && ed.mode() == CommandsEditor::Mode::Removed;
+        if (removed && ed.undo()) expect(ed.list() == before.list(), "undo restores the list", seed, step);
+        break;
+      }
+      case 7: ed.undo(); break;
+      case 8:
+        if (auto send = ed.takeSend()) {
+          expect(valid(send->second) && send->second == ed.list(), "only a valid list is sent", seed, step);
+          inflight.push_back(send->first);
+        }
+        break;
+      case 9:
+      case 10:
+        if (!inflight.empty()) {
+          const std::size_t i = static_cast<std::size_t>(pick(static_cast<int>(inflight.size())));
+          const std::uint64_t serial = inflight[i];
+          inflight.erase(inflight.begin() + static_cast<std::ptrdiff_t>(i));
+          const bool latest = std::ranges::none_of(inflight, [&](std::uint64_t s) { return s > serial; });
+          const bool changed = ed.sent(serial, pick(3) == 0 ? std::optional<std::string>("Link is not running") : std::nullopt);
+          if (!latest) expect(!changed, "an older reply changes nothing", seed, step);
+          if (changed) expect(ed.list() == before.list(), "a reply keeps the list", seed, step);
+        }
+        break;
+      default: ed.retry(); break;
+      }
+      expect(valid(ed.list()), "the list holds only complete commands, at most 64", seed, step);
+      if (ed.mode() == CommandsEditor::Mode::Editing) expect(ed.index() <= ed.list().size(), "the open row exists", seed, step);
+    }
+  }
+
 } // namespace
 
 int main() {
@@ -606,6 +678,7 @@ int main() {
   for (unsigned seed = 1; seed <= 20; ++seed) runNewPhotos(seed);
   dialing();
   for (unsigned seed = 1; seed <= 20; ++seed) runActivity(seed);
+  for (unsigned seed = 1; seed <= 20; ++seed) runCommands(seed);
   if (failures == 0) std::puts("link_model: ok");
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

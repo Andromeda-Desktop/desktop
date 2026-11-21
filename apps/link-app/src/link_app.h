@@ -204,6 +204,8 @@ namespace linkapp {
     void retireMirrorFrame(bool all);
     [[nodiscard]] std::string mirrorStat() const;
     [[nodiscard]] std::unique_ptr<Node> settings(const Presence& presence);
+    [[nodiscard]] std::unique_ptr<Node> commands(const Presence& presence, float width, float height);
+    void commandsChanged(bool changed);
     [[nodiscard]] std::unique_ptr<Node> card(std::vector<std::unique_ptr<Node>> caption, std::unique_ptr<Node> body,
                                              float width, bool windowButtons);
     // Cards mode and the viewed thread follow the page and presence.
@@ -247,6 +249,10 @@ namespace linkapp {
     ScrollViewState m_transferScroll;
     ScrollViewState m_settingsScroll;
     bool m_confirmForget = false; // Settings: the Forget row asks in place
+    enum class SettingsView : std::uint8_t { Main, Commands };
+    SettingsView m_settingsView = SettingsView::Main;
+    CommandsEditor m_commands;
+    ScrollViewState m_commandsScroll;
     std::string m_hotspotSheet;   // device id + ssid of the ask the sheet shows; empty while none shows
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;

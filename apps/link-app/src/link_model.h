@@ -128,6 +128,7 @@ namespace linkapp {
     bool clipboard = false;     // grant "clipboard"
     bool screen = false;        // grant "screen"
     bool nearby = false;        // grant "nearby": join the phone's hotspot without asking
+    bool commands = false;      // grant "commands": its buttons run Link1 Commands here
     bool autoAccept = false;
   };
   // Link1 HotspotRequested: the phone asks to join its hotspot; the daemon declines after 30 s without an answer.
@@ -135,11 +136,18 @@ namespace linkapp {
     std::string deviceId;
     std::string ssid;
   };
+  // One Link1 Commands entry: the button's name on the phone and the shell line it runs here.
+  struct Command {
+    std::string name;
+    std::string line;
+    bool operator==(const Command&) const = default;
+  };
+
   struct DesktopSettings {
     bool notificationsWhileLocked = false;
     bool nearbyVisible = false; // Quick Share Visible
     std::string nearbyName;
-    std::size_t commands = 0;
+    std::vector<Command> commands;
   };
 
   // One transfer on the Activity page, from the Transfer* signals (Link1 keeps no list).
@@ -468,5 +476,53 @@ namespace linkapp {
   };
 
   [[nodiscard]] bool mirrorStep(Mirror& mirror, const MirrorEvent& event);
+
+  // Settings › Commands: the buttons the phone shows under "Run on <desktop>". The list is local truth while a send
+  // is in flight or failed; otherwise Link1's Commands property replaces it. Mode: Idle | Editing (one row open, its
+  // draft apart from the list; index == list size for a new command) | Removed (the last removed row offers Undo).
+  // Only a commit (close, open another row, add, remove, undo) queues a SetCommands; a draft with an empty name or
+  // line never reaches the list. Replies carry the send's serial; an older reply changes nothing.
+  class CommandsEditor {
+  public:
+    static constexpr std::size_t kMax = 64; // Link1 SetCommands rejects more
+    enum class Mode : std::uint8_t { Idle, Editing, Removed };
+    enum class Sync : std::uint8_t { Synced, Sending, Failed };
+    enum class Invalid : std::uint8_t { None, Name, Line, Full }; // Full: a new command while the list holds kMax
+
+    bool listed(std::vector<Command> commands);
+    bool open(std::size_t index);
+    bool add();
+    bool editName(std::string name);
+    bool editLine(std::string line);
+    bool close();
+    bool remove();
+    bool undo();
+    // The list to send with its serial, once per commit.
+    [[nodiscard]] std::optional<std::pair<std::uint64_t, std::vector<Command>>> takeSend();
+    bool sent(std::uint64_t serial, std::optional<std::string> error);
+    bool retry();
+
+    [[nodiscard]] const std::vector<Command>& list() const { return m_list; }
+    [[nodiscard]] Mode mode() const { return m_mode; }
+    [[nodiscard]] std::size_t index() const { return m_index; } // Editing: the open row; Removed: where it was
+    [[nodiscard]] const Command& draft() const { return m_draft; }   // Editing: the fields; Removed: the removed one
+    [[nodiscard]] Invalid invalid() const { return m_invalid; }      // set when a commit was refused
+    [[nodiscard]] Sync sync() const { return m_sync; }
+    [[nodiscard]] const std::string& error() const { return m_error; } // Failed only
+    [[nodiscard]] bool canAdd() const { return m_list.size() < kMax; }
+
+  private:
+    bool commit();
+    void queue();
+    std::vector<Command> m_list;
+    Mode m_mode = Mode::Idle;
+    std::size_t m_index = 0;
+    Command m_draft;
+    Invalid m_invalid = Invalid::None;
+    Sync m_sync = Sync::Synced;
+    std::string m_error;
+    std::uint64_t m_serial = 0;
+    bool m_queued = false;
+  };
 
 } // namespace linkapp

@@ -291,11 +291,12 @@ namespace linkapp {
           };
           m_phoneSettings = {.notifications = granted("notifications"), .clipboard = granted("clipboard"),
                              .screen = granted("screen"),
-                             .nearby = granted("nearby"),
+                             .nearby = granted("nearby"), .commands = granted("commands"),
                              .autoAccept = std::ranges::contains(property<std::vector<std::string>>(props, "AutoAccept"), phone)};
           m_desktopSettings.notificationsWhileLocked = property<bool>(props, "NotificationsWhileLocked");
-          m_desktopSettings.commands =
-              property<std::vector<sdbus::Struct<std::string, std::string>>>(props, "Commands").size();
+          m_desktopSettings.commands.clear();
+          for (const auto& [name, line] : property<std::vector<sdbus::Struct<std::string, std::string>>>(props, "Commands"))
+            m_desktopSettings.commands.push_back({.name = name, .line = line});
           m_messages.setContacts(people);
           m_messages.setTexts(std::move(list));
           const Presence shown = presence();
@@ -331,6 +332,16 @@ namespace linkapp {
           if (error) kLog.warn("AnswerHotspot: {}", error->getMessage());
         });
     changed();
+  }
+
+  void LinkClient::setCommands(const std::vector<Command>& commands, std::function<void(std::optional<std::string>)> done) {
+    std::vector<sdbus::Struct<std::string, std::string>> list;
+    for (const Command& c : commands) list.emplace_back(c.name, c.line);
+    m_proxy->callMethodAsync("SetCommands").onInterface(kInterface).withArguments(list)
+        .uponReplyInvoke([done = std::move(done)](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SetCommands: {}", error->getMessage());
+          done(error ? std::optional<std::string>(error->getMessage()) : std::nullopt);
+        });
   }
 
   void LinkClient::setGrant(const std::string& deviceId, const std::string& feature, bool granted) {
