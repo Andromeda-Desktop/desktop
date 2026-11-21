@@ -1247,6 +1247,7 @@ if build_tests
     'icon_resolver',
     'icon_resolver_cache',
     'image_file_loader_data_uri',
+    'icon_color_scheme',
     'image_orientation',
     'image_source_log',
     'inotify',

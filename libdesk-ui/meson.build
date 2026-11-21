@@ -220,6 +220,7 @@ _desk_ui_sources = files(
   'src/render/core/heif_library.cpp',
   'src/render/core/image_decoder.cpp',
   'src/render/core/image_encoder.cpp',
+  'src/render/core/icon_color_scheme.cpp',
   'src/render/core/image_file_loader.cpp',
   'src/render/core/image_orientation.cpp',
   'src/render/core/shader_program.cpp',

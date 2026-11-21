@@ -8,7 +8,9 @@
 #include "util/string_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <format>
 #include <mutex>
 #include <string>
 
@@ -412,4 +414,22 @@ Palette tokenPalette(bool light) noexcept {
       .diffDel = tokenColor(s.diffDel),
       .scrim = tokenColor(s.scrim),
   };
+}
+
+std::string iconColorSchemeStylesheet(const Palette& colors) {
+  const std::array<std::pair<std::string_view, const Color*>, 8> classes{{
+      {"Text", &colors.label1},
+      {"Background", &colors.view},
+      {"Highlight", &colors.accent},
+      {"HighlightedText", &colors.onAccent},
+      {"PositiveText", &colors.success},
+      {"NeutralText", &colors.warning},
+      {"NegativeText", &colors.danger},
+      {"Accent", &colors.accent},
+  }};
+  std::string stylesheet;
+  for (const auto& [name, color] : classes) {
+    stylesheet += std::format(".ColorScheme-{} {{ color: {} !important; }}\n", name, formatRgbHex(*color));
+  }
+  return stylesheet;
 }

@@ -8,8 +8,11 @@
 #include "dbus/network/network_display.h"
 #include "dbus/upower/upower_service.h"
 #include "ui/auth/auth_column.h"
+#include "ui/palette.h"
 #include "pipewire/sound_player.h"
 #include "render/backend/render_backend.h"
+#include "render/core/icon_color_scheme.h"
+#include "system/icon_resolver.h"
 
 #include <algorithm>
 #include <chrono>
@@ -31,8 +34,30 @@ namespace {
   }
 } // namespace
 
+void Application::updateIconColorScheme() {
+  std::vector<std::string> roots = IconResolver::colorSchemeThemeRoots();
+  std::string stylesheet = roots.empty() ? std::string() : iconColorSchemeStylesheet(palette);
+  std::string key = stylesheet;
+  for (const auto& root : roots) {
+    key += root;
+    key += '\n';
+  }
+  if (key == m_iconColorScheme) {
+    return;
+  }
+  const bool hadScheme = !m_iconColorScheme.empty();
+  m_iconColorScheme = std::move(key);
+  icon_color_scheme::set(std::move(roots), std::move(stylesheet));
+  if (hadScheme || !m_iconColorScheme.empty()) {
+    m_asyncTextureCache.reloadResidentTextures();
+    m_sharedTextureCache.reloadResidentTextures();
+    requestAllSurfacesRedraw();
+  }
+}
+
 void Application::onIconThemeChanged() {
   kLog.info("system icons changed; refreshing icon consumers");
+  updateIconColorScheme();
   m_bar.reload();
   m_dock.reload();
   m_panelManager.onIconThemeChanged();

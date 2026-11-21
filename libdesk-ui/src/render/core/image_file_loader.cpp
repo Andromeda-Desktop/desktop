@@ -1,6 +1,7 @@
 #include "render/core/image_file_loader.h"
 
 #include "core/log.h"
+#include "render/core/icon_color_scheme.h"
 #include "render/core/image_decoder.h"
 #include "render/core/image_source_log.h"
 #include "render/core/texture_manager.h"
@@ -48,8 +49,9 @@ namespace {
     }
   }
 
-  std::expected<LoadedImageFile, std::string>
-  rasterizeSvg(const std::vector<std::uint8_t>& fileData, int targetSize, bool centerSquareCrop);
+  std::expected<LoadedImageFile, std::string> rasterizeSvg(
+      const std::vector<std::uint8_t>& fileData, int targetSize, bool centerSquareCrop, const std::string* stylesheet
+  );
 
   [[nodiscard]] bool asciiStartsWithDataScheme(std::string_view source) {
     if (source.size() < 5) {
@@ -340,14 +342,17 @@ namespace {
   }
 
   std::expected<LoadedImageFile, std::string>
-  loadImageBytes(const std::vector<std::uint8_t>& fileData, bool preferSvg, int targetSize, bool centerSquareCrop) {
+  loadImageBytes(
+      const std::vector<std::uint8_t>& fileData, bool preferSvg, int targetSize, bool centerSquareCrop,
+      const std::string* stylesheet = nullptr
+  ) {
     if (fileData.empty()) {
       return std::unexpected("empty image data");
     }
 
     const bool svgLike = looksLikeSvg(fileData);
     if (preferSvg || svgLike) {
-      auto loaded = rasterizeSvg(fileData, targetSize, centerSquareCrop);
+      auto loaded = rasterizeSvg(fileData, targetSize, centerSquareCrop, stylesheet);
       if (loaded) {
         return loaded;
       }
@@ -398,8 +403,9 @@ namespace {
     return loaded;
   }
 
-  std::expected<LoadedImageFile, std::string>
-  rasterizeSvg(const std::vector<std::uint8_t>& fileData, int targetSize, bool centerSquareCrop) {
+  std::expected<LoadedImageFile, std::string> rasterizeSvg(
+      const std::vector<std::uint8_t>& fileData, int targetSize, bool centerSquareCrop, const std::string* stylesheet
+  ) {
     GError* gerror = nullptr;
     RsvgHandle* handle = rsvg_handle_new_from_data(fileData.data(), fileData.size(), &gerror);
     if (handle == nullptr) {
@@ -408,6 +414,13 @@ namespace {
         g_error_free(gerror);
       }
       return std::unexpected(std::move(error));
+    }
+    if (stylesheet != nullptr
+        && rsvg_handle_set_stylesheet(
+               handle, reinterpret_cast<const guint8*>(stylesheet->data()), stylesheet->size(), &gerror
+           ) == FALSE) {
+      // The icon still draws, in its own colours.
+      g_clear_error(&gerror);
     }
 
     // Determine intrinsic pixel size. Many real-world SVGs (e.g. viewBox-only)
@@ -519,8 +532,9 @@ loadImageFile(const std::string& path, int targetSize, bool centerSquareCrop) {
     return std::unexpected("failed to read image file");
   }
 
+  const auto stylesheet = icon_color_scheme::stylesheetFor(path, fileData);
   return loadImageBytes(
-      std::move(fileData), path.ends_with(".svg") || path.ends_with(".SVG"), targetSize, centerSquareCrop
+      fileData, path.ends_with(".svg") || path.ends_with(".SVG"), targetSize, centerSquareCrop, stylesheet.get()
   );
 }
 

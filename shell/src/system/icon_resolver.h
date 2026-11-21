@@ -64,6 +64,8 @@ public:
   static IconThemeWatchPaths themeWatchPaths();
   static std::uint64_t themeGeneration();
   static std::string activeThemeName();
+  // Roots of the active theme and its parents when it sets FollowsColorScheme; empty otherwise.
+  static std::vector<std::string> colorSchemeThemeRoots();
 
 private:
   void rebuild();

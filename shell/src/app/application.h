@@ -277,6 +277,8 @@ private:
   // Lock helper slots stop under the power-saver profile and on outputs that are off.
   void syncLockStreamPause();
   void onIconThemeChanged();
+  // Restyles color-scheme icons (FollowsColorScheme themes) with the current palette; reloads them when it changed.
+  void updateIconColorScheme();
   // Finest time boundary the currently visible shell UI needs. Drives the time
   // poll source so it can park between boundaries instead of waking every second.
   [[nodiscard]] TimeService::Precision timePrecisionNeeded() const;
@@ -490,6 +492,8 @@ private:
   // Pending m_glShared.initialize() on a worker thread; destroyed before m_glShared, so it waits for the worker.
   std::future<void> m_glSharedInit;
   SharedTextureCache m_sharedTextureCache;
+  // The roots and stylesheet last handed to icon_color_scheme, so an unchanged palette reloads nothing.
+  std::string m_iconColorScheme;
   RenderContext m_renderContext;
   // Image controls in panels retain cache-backed handles during teardown.
   AsyncTextureCache m_asyncTextureCache;

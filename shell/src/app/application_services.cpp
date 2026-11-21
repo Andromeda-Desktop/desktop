@@ -1442,6 +1442,10 @@ void Application::initAuxServicesAndHooks() {
     m_activityWindow.onThemeChanged();
     m_wallpaperWindow.onThemeChanged();
     m_greeterSync.scheduleAuto();
+    // Re-rasterizing icons on every fade frame would stall the fade: restyle them once it ends.
+    if (!m_themeService.transitioning()) {
+      updateIconColorScheme();
+    }
   });
 
   if (const auto distro = DistroDetector::detect(); distro.has_value()) {

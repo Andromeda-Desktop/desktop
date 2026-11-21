@@ -44,6 +44,8 @@ namespace noctalia::theme {
     [[nodiscard]] ThemeMode configuredMode() const noexcept;
     // Noctalia's own resolved mode ([theme].shell_mode, or [theme].mode when it follows).
     [[nodiscard]] bool isLightMode() const noexcept;
+    // A palette fade runs: the palette changes on every frame until it ends.
+    [[nodiscard]] bool transitioning() const noexcept { return m_transitionAnimId != 0; }
     [[nodiscard]] std::string_view resolvedShellMode() const noexcept;
     // The resolved [theme].mode, which drives apps.
     [[nodiscard]] std::string_view resolvedMode() const noexcept;

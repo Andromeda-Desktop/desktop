@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 class Node;
@@ -229,6 +230,9 @@ void setLightPalette(const Palette& p);
 void setResolvedThemeLight(bool light) noexcept;
 
 void setPalette(const Palette& p);
+
+// CSS for KDE color-scheme icons: each .ColorScheme-* class takes its palette role.
+[[nodiscard]] std::string iconColorSchemeStylesheet(const Palette& colors);
 
 [[nodiscard]] Palette tokenPalette(bool light) noexcept;
 
