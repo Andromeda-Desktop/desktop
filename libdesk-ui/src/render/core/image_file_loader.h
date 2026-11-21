@@ -21,6 +21,10 @@ struct LoadedImageFile {
 [[nodiscard]] std::expected<LoadedImageFile, std::string>
 loadImageFile(const std::string& path, int targetSize = 0, bool centerSquareCrop = false);
 
+// Decodes encoded image bytes (raster or SVG) held in memory, without a path or data URI.
+[[nodiscard]] std::expected<LoadedImageFile, std::string>
+loadImageData(const std::vector<std::uint8_t>& data, int targetSize = 0, bool centerSquareCrop = false);
+
 // Decodes and uploads an image file; an invalid handle when it does not load. A free function, not a TextureManager
 // virtual, so binaries that never load images link no decoders.
 [[nodiscard]] TextureHandle

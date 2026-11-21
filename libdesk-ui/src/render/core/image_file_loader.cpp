@@ -340,7 +340,7 @@ namespace {
   }
 
   std::expected<LoadedImageFile, std::string>
-  loadImageBytes(std::vector<std::uint8_t> fileData, bool preferSvg, int targetSize, bool centerSquareCrop) {
+  loadImageBytes(const std::vector<std::uint8_t>& fileData, bool preferSvg, int targetSize, bool centerSquareCrop) {
     if (fileData.empty()) {
       return std::unexpected("empty image data");
     }
@@ -522,6 +522,11 @@ loadImageFile(const std::string& path, int targetSize, bool centerSquareCrop) {
   return loadImageBytes(
       std::move(fileData), path.ends_with(".svg") || path.ends_with(".SVG"), targetSize, centerSquareCrop
   );
+}
+
+std::expected<LoadedImageFile, std::string>
+loadImageData(const std::vector<std::uint8_t>& data, int targetSize, bool centerSquareCrop) {
+  return loadImageBytes(data, false, targetSize, centerSquareCrop);
 }
 
 namespace {

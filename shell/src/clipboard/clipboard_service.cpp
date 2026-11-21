@@ -764,11 +764,10 @@ namespace {
   constexpr int kImageUriMaxEdge = 1024;
 
   std::optional<std::string> imageDataUri(const std::vector<std::uint8_t>& data) {
-    auto full = toDataUri(data);
-    if (!full.has_value() || full->size() <= kImageUriMaxBytes) {
-      return full;
+    if (sodium_base64_encoded_len(data.size(), sodium_base64_VARIANT_ORIGINAL) <= kImageUriMaxBytes) {
+      return toDataUri(data);
     }
-    const auto image = loadImageFile(*full, kImageUriMaxEdge);
+    const auto image = loadImageData(data, kImageUriMaxEdge);
     if (!image.has_value()) {
       return std::nullopt;
     }
