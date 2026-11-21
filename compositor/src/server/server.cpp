@@ -1847,37 +1847,9 @@ namespace andromeda {
     }
 
     // Under systemd readiness the import starts here. Otherwise its script starts andromeda-session.target, so it
-    // waits until IPC is up.
+    // starts after the backend and IPC are up.
     if (!notifySocket.empty() && !startEnvironmentImport()) {
       return false;
-    }
-
-    // The localed read can bus-activate localed (~75 ms at login): keyboards start on the default keymap and the
-    // worker result reapplies them.
-    refreshSystemKeymapAsync();
-    if (!m_backendManager->activateHandoffSession()) {
-      wlr_log(WLR_ERROR, "the session did not become active");
-      return false;
-    }
-    if (!wlr_backend_start(m_backend)) {
-      wlr_log(WLR_ERROR, "failed to start backend");
-      return false;
-    }
-    m_backendManager->markStarted();
-
-    // Move the mouse cursor to the first output with "focus_at_startup" enabled, if any.
-    for (const auto& output : m_outputs) {
-      const OutputRule* rule = findOutputRule(config(), output->identity());
-      if (rule == nullptr || !rule->focusAtStartup || !output->desktopEnabled()) {
-        continue;
-      }
-      wlr_box box{};
-      wlr_output_layout_get_box(m_outputLayout, output->wlr(), &box);
-      if (box.width <= 0 || box.height <= 0) {
-        continue;
-      }
-      m_cursor->warpToPreservingFocus(box.x + box.width / 2.0, box.y + box.height / 2.0);
-      break;
     }
 
     // These are delivered through the event loop, not a signal handler, so the shutdown path is ordinary code. Note the
@@ -2005,6 +1977,40 @@ namespace andromeda {
       m_ipcLayersPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcLayersEvent(); });
       m_ipcOutputsPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcOutputsEvent(); });
     }
+    // Under systemd readiness READY goes out before the backend starts, once IPC is bound and the import is done:
+    // the shell starts while VT, DRM and EGL come up, and its first Wayland round trip waits for the event loop.
+    if (!notifySocket.empty() && !reportReady()) {
+      return false;
+    }
+
+    // The localed read can bus-activate localed (~75 ms at login): keyboards start on the default keymap and the
+    // worker result reapplies them.
+    refreshSystemKeymapAsync();
+    if (!m_backendManager->activateHandoffSession()) {
+      wlr_log(WLR_ERROR, "the session did not become active");
+      return false;
+    }
+    if (!wlr_backend_start(m_backend)) {
+      wlr_log(WLR_ERROR, "failed to start backend");
+      return false;
+    }
+    m_backendManager->markStarted();
+
+    // Move the mouse cursor to the first output with "focus_at_startup" enabled, if any.
+    for (const auto& output : m_outputs) {
+      const OutputRule* rule = findOutputRule(config(), output->identity());
+      if (rule == nullptr || !rule->focusAtStartup || !output->desktopEnabled()) {
+        continue;
+      }
+      wlr_box box{};
+      wlr_output_layout_get_box(m_outputLayout, output->wlr(), &box);
+      if (box.width <= 0 || box.height <= 0) {
+        continue;
+      }
+      m_cursor->warpToPreservingFocus(box.x + box.width / 2.0, box.y + box.height / 2.0);
+      break;
+    }
+
     m_globalShortcutService = std::make_unique<GlobalShortcutService>(*this);
     m_inputCapture = std::make_unique<InputCapture>(*this);
     m_inputCapture->setAuthorize([this](uint64_t id, std::string_view name, uint32_t persistMode) {
@@ -2069,6 +2075,11 @@ namespace andromeda {
     }
     // The child keeps the inherited PATH and bus addresses: applyConfiguredEnvironment() runs after the fork.
     const int completion = startShellCommand(sessionEnvironmentCommand(!m_notifySocket.empty()));
+    if (completion >= 0 && !m_notifySocket.empty()) {
+      // reportReady() waits for it.
+      m_environmentImportFd = completion;
+      return true;
+    }
     if (completion >= 0) {
       m_environmentImport = wl_event_loop_add_fd(
           wl_display_get_event_loop(m_display), completion, WL_EVENT_READABLE, onEnvironmentImported, this
@@ -2086,6 +2097,19 @@ namespace andromeda {
     return m_notifySocket.empty();
   }
 
+  bool Server::reportReady() {
+    if (m_environmentImportFd >= 0 && !shellCommandSucceeded(std::exchange(m_environmentImportFd, -1))) {
+      kLog.error("session environment synchronization failed: {}", std::strerror(errno));
+      return false;
+    }
+    if (!notifyServiceReady(m_notifySocket)) {
+      kLog.error("failed to report session readiness: {}", std::strerror(errno));
+      return false;
+    }
+    startWatchdog(m_notifySocket);
+    return true;
+  }
+
   int Server::onEnvironmentImported(int fd, uint32_t /*mask*/, void* data) {
     auto* server = static_cast<Server*>(data);
     const bool imported = shellCommandSucceeded(fd);
@@ -2094,7 +2118,7 @@ namespace andromeda {
     if (!imported) {
       kLog.error("session environment synchronization failed: {}", std::strerror(importError));
     }
-    if ((!imported && !server->m_notifySocket.empty()) || !server->finishStart()) {
+    if (!server->finishStart()) {
       server->m_startPhase = StartPhase::Failed;
       wl_display_terminate(server->m_display);
     }
@@ -2104,11 +2128,6 @@ namespace andromeda {
   bool Server::finishStart() {
     m_startPhase = StartPhase::Started;
     const char* startupCmd = m_startupCmd;
-    if (!notifyServiceReady(m_notifySocket)) {
-      kLog.error("failed to report session readiness: {}", std::strerror(errno));
-      return false;
-    }
-    startWatchdog(m_notifySocket);
     if (greeterMode()) {
       // The greeter session runs the greeter alone and ends with it; config autostart does not apply.
       // Under greetd's hand-off the greeter stays up after its client finishes, until greetd ends the greeter session

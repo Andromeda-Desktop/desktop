@@ -1167,13 +1167,16 @@ namespace andromeda {
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
     void startWatchdog(const std::string& notifySocket);
-    // The session environment import runs while start() continues; readiness and autostart wait for it.
+    // The session environment import runs while start() continues; readiness and autostart wait for it. Under
+    // systemd readiness reportReady() reads m_environmentImportFd; otherwise m_environmentImport watches it.
     enum class StartPhase { Starting, ImportingEnvironment, Started, Failed };
     StartPhase m_startPhase = StartPhase::Starting;
     wl_event_source* m_environmentImport = nullptr;
+    int m_environmentImportFd = -1;
     const char* m_startupCmd = nullptr;
     static int onEnvironmentImported(int fd, uint32_t mask, void* data);
     bool startEnvironmentImport();
+    bool reportReady();
     bool finishStart();
     // A window from the pre-crash list: the next window of that app id within 2 min maps where this one was.
     struct RestorePlacement {
