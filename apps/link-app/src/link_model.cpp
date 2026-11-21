@@ -445,30 +445,62 @@ namespace linkapp {
     return rows;
   }
 
-  bool Photos::startLoad() {
-    if (m_load == Load::Loading) return false;
+  std::optional<Photos::Ask> Photos::startLoad() {
+    if (m_load == Load::Loading) return std::nullopt;
     m_load = Load::Loading;
+    return Ask{.serial = ++m_serial, .offset = 0, .media = m_media};
+  }
+
+  std::optional<Photos::Ask> Photos::startMore() {
+    if (m_load != Load::Ready || !hasMore()) return std::nullopt;
+    m_load = Load::More;
+    return Ask{.serial = ++m_serial, .offset = m_next, .media = m_media};
+  }
+
+  bool Photos::setMedia(Media media) {
+    if (media == m_media) return false;
+    m_media = media;
+    ++m_serial;
+    m_load = Load::Idle;
+    m_items.clear();
+    m_listed.clear();
+    m_selected.clear();
+    m_total = m_next = 0;
     return true;
   }
 
-  bool Photos::loaded(std::vector<Photo> photos) {
-    if (m_load != Load::Loading) return false;
-    std::ranges::stable_sort(photos, std::greater{}, &Photo::atS);
-    std::set<std::string> kept;
-    for (const Photo& photo : photos) {
-      if (m_selected.contains(photo.path)) kept.insert(photo.path);
+  bool Photos::loaded(std::uint64_t serial, std::uint32_t total, std::vector<Photo> page) {
+    if (serial != m_serial || (m_load != Load::Loading && m_load != Load::More)) return false;
+    if (m_load == Load::Loading) {
+      m_items.clear();
+      m_listed.clear();
+      m_next = 0;
     }
-    m_items = std::move(photos);
-    m_selected = std::move(kept);
+    std::ranges::stable_sort(page, std::greater{}, &Photo::atS);
+    for (Photo& photo : page) {
+      if (m_listed.insert(photo.path).second) m_items.push_back(std::move(photo));
+    }
+    std::erase_if(m_selected, [&](const std::string& path) { return !m_listed.contains(path); });
+    m_next += kCount;
+    m_total = total;
     m_load = Load::Ready;
     return true;
   }
 
-  bool Photos::failed(Load why) {
-    if (m_load != Load::Loading || why == Load::Idle || why == Load::Loading || why == Load::Ready) return false;
+  bool Photos::failed(std::uint64_t serial, Load why) {
+    if (serial != m_serial || why == Load::Idle || why == Load::Loading || why == Load::More || why == Load::Ready) {
+      return false;
+    }
+    if (m_load == Load::More) {
+      m_load = Load::Ready;
+      return true;
+    }
+    if (m_load != Load::Loading) return false;
     m_load = why;
     m_items.clear();
+    m_listed.clear();
     m_selected.clear();
+    m_total = m_next = 0;
     return true;
   }
 
@@ -503,9 +535,29 @@ namespace linkapp {
 
   std::vector<std::pair<std::size_t, std::string>> Photos::days(std::int64_t nowMs) const {
     std::vector<std::pair<std::size_t, std::string>> out;
+    // Items come newest first: one label per local day, so the cost grows with days, not items.
+    std::int64_t dayStartS = 0;
     for (std::size_t i = 0; i < m_items.size(); ++i) {
-      std::string label = dayLabel(m_items[i].atS * 1000, nowMs);
+      const std::int64_t at = m_items[i].atS;
+      if (!out.empty() && at >= dayStartS) continue;
+      const auto t = static_cast<std::time_t>(at);
+      std::tm tm{};
+      localtime_r(&t, &tm);
+      tm.tm_hour = tm.tm_min = tm.tm_sec = 0;
+      tm.tm_isdst = -1;
+      dayStartS = std::mktime(&tm);
+      std::string label = dayLabel(at * 1000, nowMs);
       if (out.empty() || out.back().second != label) out.emplace_back(i, std::move(label));
+    }
+    return out;
+  }
+
+  std::string groupedCount(std::uint64_t n) {
+    std::string digits = std::to_string(n);
+    std::string out;
+    for (std::size_t i = 0; i < digits.size(); ++i) {
+      if (i > 0 && (digits.size() - i) % 3 == 0) out += "\u202f";
+      out += digits[i];
     }
     return out;
   }

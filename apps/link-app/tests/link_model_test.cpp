@@ -390,29 +390,62 @@ namespace {
   // Random loads, failures, selections and save batches against the Photos rules.
   void runPhotos(unsigned seed) {
     using L = Photos::Load;
+    using M = Photos::Media;
     std::mt19937 rng(seed);
     const std::int64_t now = 1'763'640'000'000;
+    // The phone's media store, newest first; every third item a video.
+    std::vector<Photo> phone;
+    for (int i = 0; i < 150; ++i) {
+      phone.push_back({.path = std::format("/p/{}", i), .name = "x", .atS = now / 1000 - i * 4000,
+                       .videoS = i % 3 == 0 ? std::optional<std::uint32_t>(i) : std::nullopt});
+    }
+    const auto of = [&](M media) {
+      std::vector<Photo> out;
+      for (const Photo& p : phone) {
+        if (media == M::All || (media == M::Videos) == p.videoS.has_value()) out.push_back(p);
+      }
+      return out;
+    };
     Photos photos;
+    std::vector<Photos::Ask> asks; // in flight, answered in any order
     std::size_t batch = 0;
-    for (int step = 0; step < 3000; ++step) {
-      switch (rng() % 8) {
-      case 0: (void)photos.startLoad(); break;
-      case 1: {
-        std::vector<Photo> list;
-        std::set<int> used;
-        for (unsigned i = rng() % 12; i > 0; --i) {
-          const int id = static_cast<int>(rng() % 20);
-          if (!used.insert(id).second) continue;
-          list.push_back({.path = std::format("/p/{}", id), .name = "x", .atS = now / 1000 - static_cast<std::int64_t>(rng() % 900'000)});
-        }
-        (void)photos.loaded(std::move(list));
+    for (int step = 0; step < 4000; ++step) {
+      switch (rng() % 10) {
+      case 0:
+        if (const auto ask = photos.startLoad()) asks.push_back(*ask);
+        break;
+      case 1:
+        if (const auto ask = photos.startMore()) asks.push_back(*ask);
+        break;
+      case 2:
+      case 3: {
+        if (asks.empty()) break;
+        const std::size_t at = rng() % asks.size();
+        const Photos::Ask ask = asks[at];
+        asks.erase(asks.begin() + static_cast<std::ptrdiff_t>(at));
+        const std::vector<Photo> all = of(ask.media);
+        std::vector<Photo> page;
+        for (std::size_t i = ask.offset; i < all.size() && i < ask.offset + Photos::kCount; ++i) page.push_back(all[i]);
+        std::ranges::shuffle(page, rng);
+        const auto before = photos.items().size();
+        const bool stale = rng() % 4 == 0;
+        const bool took = photos.loaded(stale ? ask.serial + 1000 : ask.serial, static_cast<std::uint32_t>(all.size()), std::move(page));
+        if (stale) expect(!took && photos.items().size() == before, "an answer to another ask changes nothing", seed, step);
         break;
       }
-      case 2: (void)photos.failed(static_cast<L>(rng() % 6)); break;
-      case 3:
-      case 4: photos.toggle(rng() % 14); break;
-      case 5: photos.clearSelection(); break;
-      case 6: {
+      case 4: {
+        if (asks.empty()) break;
+        const Photos::Ask ask = asks.front();
+        asks.erase(asks.begin());
+        const L before = photos.load();
+        const bool took = photos.failed(ask.serial, static_cast<L>(4 + rng() % 3));
+        if (took && before == L::More) expect(photos.load() == L::Ready, "a failed next page keeps the photos", seed, step);
+        break;
+      }
+      case 5: (void)photos.setMedia(static_cast<M>(rng() % 3)); break;
+      case 6: photos.toggle(rng() % 160); break;
+      case 7: photos.clearSelection(); break;
+      case 8: {
         const bool saving = photos.save() == Photos::Save::Saving;
         const std::size_t want = photos.selectedCount();
         const auto paths = photos.startSave();
@@ -420,17 +453,24 @@ namespace {
         if (!paths.empty()) batch = paths.size();
         break;
       }
-      case 7: photos.saveAnswered(rng() % 2); break;
+      case 9: photos.saveAnswered(rng() % 2); break;
       }
       const auto& items = photos.items();
+      const std::vector<Photo> want = of(photos.media());
+      bool prefix = items.size() <= want.size();
       std::size_t picked = 0;
       for (std::size_t i = 0; i < items.size(); ++i) {
         picked += photos.selected(i) ? 1 : 0;
         if (i > 0) expect(items[i - 1].atS >= items[i].atS, "newest first", seed, step);
+        prefix = prefix && items[i].path == want[i].path && items[i].videoS == want[i].videoS;
       }
+      expect(prefix, "the photos are the newest items of the shown media, without gaps or repeats", seed, step);
       expect(picked == photos.selectedCount(), "the selection is a subset of the photos", seed, step);
       const L load = photos.load();
-      if (load != L::Ready && load != L::Loading) expect(items.empty() && picked == 0, "no photos unless loaded", seed, step);
+      if (load != L::Ready && load != L::Loading && load != L::More) {
+        expect(items.empty() && picked == 0, "no photos unless loaded", seed, step);
+      }
+      expect(items.size() <= photos.total() || items.empty(), "never more photos than the phone has", seed, step);
       const std::size_t answered = photos.saved() + photos.saveFailed();
       if (photos.save() == Photos::Save::Saving) expect(answered < batch, "saving until every photo answered", seed, step);
       if (photos.save() == Photos::Save::Done) expect(answered == batch, "done when every photo answered", seed, step);

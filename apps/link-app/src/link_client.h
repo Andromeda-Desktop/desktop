@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <memory>
 #include <optional>
 #include <set>
@@ -70,8 +71,12 @@ namespace linkapp {
     void openFolder(const std::string& path);
     // Copies the file `name` of the open folder into the downloads folder with ReadFile, 1 MiB at a time.
     void saveFile(const std::string& name);
-    // RecentPhotos of the phone presence() shows; ignored while a load runs.
+    // The first PhotosPage of the phone presence() shows; ignored while a first page loads.
     void loadPhotos();
+    // The next PhotosPage when the last answer left more on the phone; ignored while a page loads.
+    void loadMorePhotos();
+    // Shows only photos, only videos, or both, from the first page.
+    void setPhotoMedia(Photos::Media media);
     void togglePhoto(std::size_t index);
     void clearPhotoSelection();
     // SavePhoto for each selected photo into the downloads folder.
@@ -152,7 +157,16 @@ namespace linkapp {
     std::unique_ptr<MirrorDecoder> m_decoder;
     std::function<void(MirrorDecoder::Frame)> m_mirrorFrame;
     std::string m_photosDevice;
-    std::map<std::string, std::vector<std::uint8_t>> m_thumbs; // path -> PNG; empty while in flight
+    void askPhotos(const Photos::Ask& ask);
+    void clearThumbs();
+    struct Thumb {
+      std::vector<std::uint8_t> png; // empty while in flight
+      std::list<std::string>::iterator use;
+    };
+    static constexpr std::size_t kThumbBytes = std::size_t{48} << 20;
+    std::map<std::string, Thumb> m_thumbs; // path -> PNG, at most kThumbBytes; the least recently drawn go first
+    std::list<std::string> m_thumbUse;     // paths, most recently drawn first
+    std::size_t m_thumbBytes = 0;
     std::function<void()> m_thumbnailReady;
     std::int64_t m_photosSeenS = 0; // the newest photo of m_photosDevice the user saw
     PhoneSettings m_phoneSettings;

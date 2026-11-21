@@ -120,8 +120,17 @@ def emit_activity():
 
 PALETTE = [((255, 40, 90), (150, 60, 200)), ((10, 25, 60), (60, 150, 210)), ((250, 250, 248), (225, 220, 210)),
            ((120, 40, 200), (40, 60, 255)), ((240, 90, 170), (200, 60, 160))]
-photos = [(f"/DCIM/Camera/IMG_{i:03}.jpg", f"IMG_{i:03}.jpg", (ago(0, 18, 0) if i < 11 else ago(1, 12, 0)) // 1000 - i * 60)
-          for i in range(18)]
+# PHOTOS=n lists n items (default 18: 11 today, 7 yesterday, then older ones a day apart); every 4th item from the
+# fifth on is a video.
+def photo(i):
+    video = i % 4 == 0 and i > 0
+    name = f"VID_{i:05}.mp4" if video else f"IMG_{i:05}.jpg"
+    at = (ago(0, 18, 0) if i < 11 else ago(1, 12, 0) if i < 18 else ago(i - 16, 12, 0)) // 1000 - i * 60
+    return (f"/DCIM/Camera/{name}", name, at, video, 42 + i if video else 0)
+
+
+photos = [photo(i)
+          for i in range(int(os.environ.get("PHOTOS", "18")))]
 
 
 def png(index, size=64):
@@ -170,8 +179,10 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
                        ("IMG_20261120_181203.jpg", False, 3_100_000, ago(0, 18, 12) // 1000)]}
         invocation.return_value(GLib.Variant("(a(sbtt))", (folders.get(params[1], []),)))
         return
-    if method == "RecentPhotos":
-        invocation.return_value(GLib.Variant("(a(sst))", (photos if connected else [],)))
+    if method == "PhotosPage":
+        offset, count, media = params[1], params[2], params[3]
+        kind = [p for p in photos if media == "all" or (media == "videos") == p[3]] if connected else []
+        invocation.return_value(GLib.Variant("(ua(sstbu))", (len(kind), kind[offset:offset + count])))
         return
     if method == "Thumbnail":
         index = next(i for i, p in enumerate(photos) if p[0] == params[1])

@@ -113,7 +113,8 @@ namespace linkapp {
     const float& m_scale;
   };
 
-  // Photos: the phone's newest photos under day headers; a click toggles the selection.
+  // Photos: the phone's photos and videos page by page under day headers; a click toggles the selection, a tile near
+  // the end asks for the next page.
   class PhotoAdapter final : public VirtualGridAdapter {
   public:
     PhotoAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
@@ -193,7 +194,7 @@ namespace linkapp {
     [[nodiscard]] std::unique_ptr<Node> compose(float s);
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();
-    [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer);
+    [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer, float width, float height);
     [[nodiscard]] std::unique_ptr<Node> files(float width, float height);
     [[nodiscard]] std::unique_ptr<Node> mirror(float width, float height);
     // Shows a decoded frame: a dmabuf frame is imported without a copy, an RGBA frame is uploaded into the one

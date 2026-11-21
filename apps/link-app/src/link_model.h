@@ -306,28 +306,49 @@ namespace linkapp {
     std::vector<Thread> m_threads;
   };
 
-  // One photo of RecentPhotos: the newest 64 on the phone, no paging (Link1 has no more).
+  // One photo or video of a Link1 PhotosPage.
   struct Photo {
     std::string path; // for Thumbnail and SavePhoto
     std::string name;
     std::int64_t atS = 0;
+    std::optional<std::uint32_t> videoS; // a video's length in seconds; nullopt for a photo
   };
 
-  // The Photos page. Load: Idle -> Loading -> Ready | Denied | Unsupported | Failed; any settled state -> Loading.
-  // Save: Idle | Done -> Saving -> Done once every photo of the batch answered. The selection is a subset of items.
+  // The Photos page, filled page by page (Link1 PhotosPage) for one media filter.
+  // Load: Idle | settled -> Loading (first page) -> Ready | Denied | Unsupported | Failed;
+  // Ready with more on the phone -> More (next page, items stay) -> Ready. A new media filter drops the items and any
+  // answer in flight (by serial) and goes back to Idle. Save: Idle | Done -> Saving -> Done once every photo of the
+  // batch answered. The selection is a subset of items.
   class Photos {
   public:
-    enum class Load : std::uint8_t { Idle, Loading, Ready, Denied, Unsupported, Failed };
+    enum class Load : std::uint8_t { Idle, Loading, More, Ready, Denied, Unsupported, Failed };
     enum class Save : std::uint8_t { Idle, Saving, Done };
+    enum class Media : std::uint8_t { All, Photos, Videos };
+    // One PhotosPage call; its answer goes back with the serial.
+    struct Ask {
+      std::uint64_t serial = 0;
+      std::uint32_t offset = 0;
+      Media media = Media::All;
+    };
     static constexpr std::uint16_t kCount = 64;
 
     [[nodiscard]] Load load() const { return m_load; }
+    [[nodiscard]] Media media() const { return m_media; }
     [[nodiscard]] const std::vector<Photo>& items() const { return m_items; }
-    [[nodiscard]] bool startLoad();
-    // Loading -> Ready, newest first; the selection keeps the photos still listed.
-    bool loaded(std::vector<Photo> photos);
-    // Loading -> Denied | Unsupported | Failed.
-    bool failed(Load why);
+    // Items of the media filter on the phone, as its last answer gave.
+    [[nodiscard]] std::uint32_t total() const { return m_total; }
+    [[nodiscard]] bool hasMore() const { return m_next < m_total; }
+    // Any state but Loading -> Loading from offset 0.
+    [[nodiscard]] std::optional<Ask> startLoad();
+    // Ready with more on the phone -> More from the next offset.
+    [[nodiscard]] std::optional<Ask> startMore();
+    // Drops the items and the selection and goes Idle when media differs; false when it is the shown filter.
+    bool setMedia(Media media);
+    // Loading | More of the same serial -> Ready: a first page replaces the items, a next page appends the photos
+    // not yet listed. The selection keeps the photos still listed.
+    bool loaded(std::uint64_t serial, std::uint32_t total, std::vector<Photo> page);
+    // Loading -> Denied | Unsupported | Failed; More -> Ready with the items kept, so the next scroll asks again.
+    bool failed(std::uint64_t serial, Load why);
 
     void toggle(std::size_t index);
     void clearSelection() { m_selected.clear(); }
@@ -346,13 +367,21 @@ namespace linkapp {
 
   private:
     Load m_load = Load::Idle;
+    Media m_media = Media::All;
+    std::uint64_t m_serial = 0;
+    std::uint32_t m_total = 0;
+    std::uint32_t m_next = 0; // offset of the next page
     std::vector<Photo> m_items;
+    std::set<std::string> m_listed;   // paths of m_items
     std::set<std::string> m_selected; // paths
     Save m_save = Save::Idle;
     std::size_t m_pending = 0;
     std::size_t m_saved = 0;
     std::size_t m_saveFailed = 0;
   };
+
+  // n with its thousands set apart by a narrow space: "1 284".
+  [[nodiscard]] std::string groupedCount(std::uint64_t n);
 
   inline constexpr std::size_t kStripPhotos = 6;
   // Waiting's "N new photos" from photos newest first (as Photos::items): those taken today (local time) after seenS;

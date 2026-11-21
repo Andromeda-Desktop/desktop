@@ -816,7 +816,8 @@ namespace linkapp {
     m_window->setTitle(pairing ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
     const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
     if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
-    const bool cards = (m_page == Page::Messages || m_page == Page::Files || m_page == Page::Mirror) && live;
+    const bool cards =
+        (m_page == Page::Messages || m_page == Page::Photos || m_page == Page::Files || m_page == Page::Mirror) && live;
     const Messages& messages = m_client->messages();
     if (m_compose && !m_compose->sent.empty()) {
       if (const auto thread = messages.threadFor(m_compose->sent)) {
@@ -837,9 +838,6 @@ namespace linkapp {
     const std::size_t n = m_client ? m_client->feed().items().size() : 0;
     std::string state;
     if (m_page == Page::Waiting && n > 0) state = n == 1 ? "1 item" : std::format("{} items", n);
-    if (m_page == Page::Photos && m_client && !m_client->photos().items().empty()) {
-      state = std::to_string(m_client->photos().items().size());
-    }
     m_window->setCaption({.state = state});
   }
 
@@ -1111,7 +1109,7 @@ namespace linkapp {
     }
     if (m_page == Page::Messages) return messages(width, height);
     if (m_page == Page::Calls) return calls();
-    if (m_page == Page::Photos) return photos(renderer);
+    if (m_page == Page::Photos) return photos(renderer, width, height);
     if (m_page == Page::Files) return files(width, height);
     if (m_page == Page::Mirror) return mirror(width, height);
     if (m_page == Page::Activity) return activity();
@@ -1586,11 +1584,15 @@ namespace linkapp {
   // Calls (handoff.yaml): dial row (capsule "Name or number" + Primary Call), then the log grouped Today / Earlier.
   std::unique_ptr<Node> PhotoAdapter::createTile() {
     auto tile = std::make_unique<Node>();
+    m_shown.erase(tile.get()); // a tile of an earlier grid may have had this address
     tile->addChild(ui::image({.fit = ImageFit::Cover}));
     // Rulebook §9.7 thumbnail grid: a 2 px label_1 ring at a 2 px gap and a 20 px accent check badge at inset 8.
     tile->addChild(ui::box({.fill = clearColorSpec(), .border = colorSpecFromRole(ColorRole::Label1), .borderWidth = 2.0F}));
     tile->addChild(ui::box({.fill = colorSpecFromRole(ColorRole::Accent)}));
     tile->addChild(ui::glyph({.glyph = std::string("check"), .color = colorSpecFromRole(ColorRole::OnAccent)}));
+    // A video's length at inset 8, bottom left (flow.html .pgrid i.vid): caption 600 in white over the picture.
+    tile->addChild(ui::label({.fontSize = Tokens::typeCaption.size * m_scale, .fontWeight = static_cast<FontWeight>(600),
+                              .color = colorSpecFromRole(ColorRole::OnAccent), .maxLines = 1}));
     return tile;
   }
 
@@ -1601,6 +1603,7 @@ namespace linkapp {
     auto* ring = static_cast<Box*>(kids[1].get());
     auto* badge = static_cast<Box*>(kids[2].get());
     auto* check = static_cast<Glyph*>(kids[3].get());
+    auto* length = static_cast<Label*>(kids[4].get());
     const float w = tile.width();
     const float h = tile.height();
     const bool picked = m_client.photos().selected(index);
@@ -1621,7 +1624,15 @@ namespace linkapp {
     check->setVisible(picked);
     check->setGlyphSize(Tokens::sizeSymbol * s * 0.75F);
     check->setPosition(badge->x() + (d - check->width()) / 2.0F, badge->y() + (d - check->height()) / 2.0F);
-    const std::string& path = m_client.photos().items()[index].path;
+    const Photo& photo = m_client.photos().items()[index];
+    length->setVisible(photo.videoS.has_value());
+    if (photo.videoS) {
+      length->setText(std::format("{}:{:02}", *photo.videoS / 60, *photo.videoS % 60));
+      length->setShadow(colorSpecFromRole(ColorRole::Shadow), 0.0F, s);
+      length->setPosition(Tokens::spaceP8 * s + inset, h - Tokens::spaceP8 * s - inset - Tokens::typeCaption.line * s);
+    }
+    if (index + Photos::kCount / 2 >= itemCount()) m_client.loadMorePhotos();
+    const std::string& path = photo.path;
     std::string& shown = m_shown[&tile];
     if (shown == path || m_renderer == nullptr) return;
     const std::vector<std::uint8_t>* png = m_client.thumbnail(path);
@@ -1649,26 +1660,52 @@ namespace linkapp {
     if (section < m_days.size()) static_cast<Label*>(header.children()[0].get())->setText(m_days[section].second);
   }
 
-  std::unique_ptr<Node> LinkApp::photos(Renderer& renderer) {
+  // Photos (flow.html#page=photos): caption title, total and the All / Photos / Videos segment; the grid under day
+  // headers; the FloatingCapsuleBar over the grid, 24 px above the card's foot.
+  std::unique_ptr<Node> LinkApp::photos(Renderer& renderer, float width, float height) {
     const float s = m_scale;
     const Photos& photos = m_client->photos();
+    std::vector<std::unique_ptr<Node>> caption;
+    caption.push_back(text("Photos", Tokens::typeHeadline, ColorRole::Label1, s));
+    if (photos.total() > 0) caption.push_back(text(groupedCount(photos.total()), Tokens::typeFootnote, ColorRole::Label2, s));
+    caption.push_back(ui::row({.flexGrow = 1.0F}));
+    caption.push_back(ui::segmented({.options = std::vector<ui::SegmentedOption>{{.label = "All"}, {.label = "Photos"}, {.label = "Videos"}},
+                                     .selectedIndex = static_cast<std::size_t>(photos.media()), .scale = s, .compact = true,
+                                     .onChange = [this](std::size_t i) {
+                                       m_client->setPhotoMedia(static_cast<Photos::Media>(i));
+                                     }}));
+    const auto cards = [&](std::unique_ptr<Node> body) {
+      body->setFlexGrow(1.0F);
+      auto row = ui::row({.align = FlexAlign::Stretch, .width = width, .height = height});
+      row->addChild(card(std::move(caption), std::move(body), width, true));
+      return row;
+    };
     const auto retry = [this] {
       return ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Secondary,
                          .onClick = [this] { m_client->loadPhotos(); }});
     };
+    const bool videos = photos.media() == Photos::Media::Videos;
     switch (photos.load()) {
     case Photos::Load::Idle:
     case Photos::Load::Loading:
-      if (photos.items().empty()) return emptyState("photo", "Loading photos", "The newest photos on the phone show here.", s);
+      if (photos.items().empty()) {
+        return cards(emptyState("photo", "Loading photos", "The newest photos on the phone show here.", s));
+      }
       break;
     case Photos::Load::Denied:
-      return emptyState("photo-off", "Link cannot see photos", "Allow Photos access for Link in the phone's settings.", s, retry());
+      return cards(emptyState("photo-off", "Link cannot see photos", "Allow Photos access for Link in the phone's settings.", s,
+                              retry()));
     case Photos::Load::Unsupported:
-      return emptyState("photo-off", "This phone does not share photos", "Update Link on the phone to see its new photos here.", s);
+      return cards(emptyState("photo-off", "This phone does not share photos",
+                              "Update Link on the phone to see its new photos here.", s));
     case Photos::Load::Failed:
-      return emptyState("alert-circle", "Photos did not load", "The phone did not answer in time.", s, retry());
+      return cards(emptyState("alert-circle", "Photos did not load", "The phone did not answer in time.", s, retry()));
+    case Photos::Load::More:
     case Photos::Load::Ready:
-      if (photos.items().empty()) return emptyState("photo", "No photos", "New photos on the phone show here.", s);
+      if (photos.items().empty()) {
+        return cards(videos ? emptyState("video", "No videos", "Videos on the phone show here.", s)
+                            : emptyState("photo", "No photos", "New photos on the phone show here.", s));
+      }
       break;
     }
     m_photos->setRenderer(&renderer);
@@ -1678,7 +1715,7 @@ namespace linkapp {
     for (const auto& day : days) starts.push_back(day.first);
     m_photos->setDays(std::move(days));
     auto page = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
-    page->setPadding(0.0F, Tokens::spaceP24 * s, 0.0F, Tokens::spaceP24 * s);
+    page->setPadding(0.0F, Tokens::spaceP24 * s, Tokens::spaceP24 * s, Tokens::spaceP24 * s);
     const float headerH = (Tokens::spaceP16 + Tokens::typeFootnote.line + Tokens::spaceP8) * s;
     page->addChild(ui::virtualGridView({.out = &m_photoGrid, .state = &m_photoScroll, .contentScale = s,
                                         .minCellWidth = Tokens::componentLinkPhotoMin * s, .squareCells = true,
@@ -1708,12 +1745,14 @@ namespace linkapp {
         bar->addChild(ui::button({.text = std::string("Clear"), .glyph = std::string("x"), .variant = ButtonVariant::Ghost,
                                   .onClick = [this] { m_client->clearPhotoSelection(); }}));
       }
-      auto foot = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center});
-      foot->setPadding(Tokens::spaceP8 * s, 0.0F, Tokens::spaceP24 * s, 0.0F);
-      foot->addChild(std::move(bar));
-      page->addChild(std::move(foot));
+      // Over the grid: out of the page's layout, laid out alone to learn its width.
+      bar->setParticipatesInLayout(false);
+      bar->layout(renderer);
+      const float pageH = height - Tokens::componentWindowCaption * s;
+      bar->setPosition((width - bar->width()) / 2.0F, pageH - Tokens::spaceP24 * s - bar->height());
+      page->addChild(std::move(bar));
     }
-    return page;
+    return cards(std::move(page));
   }
 
   std::unique_ptr<Node> LinkApp::calls() {

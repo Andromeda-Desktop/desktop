@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <array>
 #include <fcntl.h>
 #include <filesystem>
 #include <glib.h>
@@ -494,45 +495,73 @@ namespace linkapp {
 
   void LinkClient::loadPhotos() {
     const std::string device = presence().phone.id;
-    if (device.empty() || !m_photos.startLoad()) return;
+    if (device.empty()) return;
     if (device != m_photosDevice) {
-      m_thumbs.clear();
+      clearThumbs();
       (void)m_feed.remove("p:new");
       m_photosSeenS = 0;
       std::ifstream(photosSeenFile(device)) >> m_photosSeenS;
     }
     m_photosDevice = device;
-    m_proxy->callMethodAsync("RecentPhotos")
+    if (const auto ask = m_photos.startLoad()) askPhotos(*ask);
+  }
+
+  void LinkClient::loadMorePhotos() {
+    if (m_photosDevice.empty() || m_photosDevice != presence().phone.id) return;
+    if (const auto ask = m_photos.startMore()) askPhotos(*ask);
+  }
+
+  void LinkClient::setPhotoMedia(Photos::Media media) {
+    if (m_photos.setMedia(media)) loadPhotos();
+    changed();
+  }
+
+  void LinkClient::askPhotos(const Photos::Ask& ask) {
+    static constexpr std::array<const char*, 3> kMedia{"all", "photos", "videos"};
+    using Row = sdbus::Struct<std::string, std::string, std::uint64_t, bool, std::uint32_t>;
+    m_proxy->callMethodAsync("PhotosPage")
         .onInterface(kInterface)
-        .withArguments(device, Photos::kCount)
-        .uponReplyInvoke([this, device, alive = std::weak_ptr<bool>(m_alive)](
-                             std::optional<sdbus::Error> error, std::vector<sdbus::Struct<std::string, std::string, std::uint64_t>> list) {
+        .withArguments(m_photosDevice, ask.offset, Photos::kCount, std::string(kMedia[static_cast<std::size_t>(ask.media)]))
+        .uponReplyInvoke([this, ask, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+                                                                            std::uint32_t total, std::vector<Row> list) {
           if (alive.expired()) return;
           if (error) {
-            kLog.warn("RecentPhotos: {}", error->getMessage());
+            kLog.warn("PhotosPage: {}", error->getMessage());
             const bool refused = error->getName().ends_with(".Refused");
-            (void)m_photos.failed(!refused                             ? Photos::Load::Failed
-                                  : error->getMessage() == "denied" ? Photos::Load::Denied
-                                                                    : Photos::Load::Unsupported);
-            changed();
+            if (m_photos.failed(ask.serial, !refused                             ? Photos::Load::Failed
+                                            : error->getMessage() == "denied" ? Photos::Load::Denied
+                                                                              : Photos::Load::Unsupported)) {
+              changed();
+            }
             return;
           }
-          std::vector<Photo> photos;
-          photos.reserve(list.size());
+          std::vector<Photo> page;
+          page.reserve(list.size());
           for (const auto& p : list) {
-            photos.push_back({.path = p.get<0>(), .name = p.get<1>(), .atS = static_cast<std::int64_t>(p.get<2>())});
+            page.push_back({.path = p.get<0>(),
+                            .name = p.get<1>(),
+                            .atS = static_cast<std::int64_t>(p.get<2>()),
+                            .videoS = p.get<3>() ? std::optional(p.get<4>()) : std::nullopt});
           }
-          std::erase_if(m_thumbs, [&](const auto& entry) {
-            return std::ranges::find(photos, entry.first, &Photo::path) == photos.end();
-          });
-          (void)m_photos.loaded(std::move(photos));
-          if (auto item = newPhotosItem(m_photosDevice, m_photos.items(), m_photosSeenS, nowMs())) {
-            m_feed.upsert(std::move(*item));
-          } else {
-            (void)m_feed.remove("p:new");
+          if (!m_photos.loaded(ask.serial, total, std::move(page))) return;
+          // The Waiting strip counts the newest items of a first page that holds photos.
+          if (ask.offset == 0 && ask.media != Photos::Media::Videos) {
+            if (auto item = newPhotosItem(m_photosDevice, m_photos.items(), m_photosSeenS, nowMs())) {
+              m_feed.upsert(std::move(*item));
+            } else {
+              (void)m_feed.remove("p:new");
+            }
           }
+          // A page whose names were all dropped draws no tile that could ask for the next one.
+          if (m_photos.items().size() < Photos::kCount) loadMorePhotos();
           changed();
         });
+  }
+
+  void LinkClient::clearThumbs() {
+    m_thumbs.clear();
+    m_thumbUse.clear();
+    m_thumbBytes = 0;
   }
 
   void LinkClient::markPhotosSeen() {
@@ -584,8 +613,12 @@ namespace linkapp {
   }
 
   const std::vector<std::uint8_t>* LinkClient::thumbnail(const std::string& path) {
-    const auto [it, asked] = m_thumbs.try_emplace(path);
-    if (!asked) return it->second.empty() ? nullptr : &it->second;
+    if (const auto it = m_thumbs.find(path); it != m_thumbs.end()) {
+      m_thumbUse.splice(m_thumbUse.begin(), m_thumbUse, it->second.use);
+      return it->second.png.empty() ? nullptr : &it->second.png;
+    }
+    m_thumbUse.push_front(path);
+    m_thumbs.emplace(path, Thumb{.png = {}, .use = m_thumbUse.begin()});
     m_proxy->callMethodAsync("Thumbnail")
         .onInterface(kInterface)
         .withArguments(m_photosDevice, path, std::uint16_t{256})
@@ -596,10 +629,18 @@ namespace linkapp {
           if (entry == m_thumbs.end()) return;
           if (error) {
             kLog.debug("Thumbnail: {}", error->getMessage());
+            m_thumbUse.erase(entry->second.use);
             m_thumbs.erase(entry); // the next bind of its tile asks again
             return;
           }
-          entry->second = std::move(png);
+          m_thumbBytes += png.size();
+          entry->second.png = std::move(png);
+          while (m_thumbBytes > kThumbBytes && m_thumbUse.size() > 1) {
+            const auto old = m_thumbs.find(m_thumbUse.back());
+            m_thumbBytes -= old->second.png.size();
+            m_thumbs.erase(old);
+            m_thumbUse.pop_back();
+          }
           if (m_thumbnailReady) m_thumbnailReady();
         });
     return nullptr;
