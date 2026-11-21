@@ -16,7 +16,10 @@
 #include "core/input/keybind_matcher.h"
 #include "core/log.h"
 #include "core/process/process.h"
+#include "dbus/file_manager1.h"
+#include "i18n/i18n.h"
 #include "ipc/ipc_service.h"
+#include "net/url_open.h"
 #include "notification/notification.h"
 #include "notification/notification_manager.h"
 #include "pipewire/sound_player.h"
@@ -715,7 +718,27 @@ ScreenshotService::ScreenshotService(
     NotificationManager& notifications, ClipboardService* clipboard
 )
     : m_wayland(wayland), m_platform(platform), m_notifications(notifications), m_configService(configService),
-      m_clipboard(clipboard), m_capture(wayland), m_toplevelCapture(wayland) {}
+      m_clipboard(clipboard), m_fileManager(std::make_unique<FileManager1>(nullptr)), m_capture(wayland),
+      m_toplevelCapture(wayland) {
+  m_notifications.addInternalActionCallback(
+      [this](uint32_t id, const std::string& action, const std::string& token, const std::string& /*sender*/) {
+        const auto it = m_savedNotifications.find(id);
+        if (it == m_savedNotifications.end()) {
+          return;
+        }
+        if (action == "open") {
+          (void)net::openFile(it->second.string(), token);
+        } else if (action == "reveal") {
+          m_fileManager->showItem(it->second, token);
+        }
+      }
+  );
+  m_notifications.addCloseObserver([this](uint32_t id, CloseReason /*reason*/, const std::string& /*sender*/) {
+    m_savedNotifications.erase(id);
+  });
+}
+
+void ScreenshotService::setSessionBus(SessionBus* bus) { m_fileManager = std::make_unique<FileManager1>(bus); }
 
 ScreenshotService::~ScreenshotService() = default;
 
@@ -2220,7 +2243,17 @@ ScreenshotService::makeScreenshotPath(const OutputOptions& options, const std::s
 }
 
 void ScreenshotService::notifySaved(const std::filesystem::path& path) {
-  m_notifications.addInternal("Noctalia", "Screenshot saved", path.string());
+  const uint32_t id = m_notifications.addOrReplace(
+      NotificationRequest{
+          .appName = "Noctalia",
+          .summary = "Screenshot saved",
+          .body = path.string(),
+          .origin = NotificationOrigin::Internal,
+          .actions = {"open", i18n::tr("notifications.actions.open"), "reveal",
+                      i18n::tr("notifications.actions.show-in-folder")},
+      }
+  );
+  m_savedNotifications.insert_or_assign(id, path);
 }
 
 void ScreenshotService::notifyError(const std::string& message) {

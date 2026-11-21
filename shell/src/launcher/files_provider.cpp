@@ -9,8 +9,6 @@
 #include "util/string_utils.h"
 
 #include <glib.h>
-#include <sdbus-c++/IProxy.h>
-#include <sdbus-c++/Types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -142,7 +140,8 @@ namespace {
 
 } // namespace
 
-FilesProvider::FilesProvider(ClipboardService* clipboard, SessionBus* bus) : m_clipboard(clipboard), m_bus(bus) {}
+FilesProvider::FilesProvider(ClipboardService* clipboard, SessionBus* bus)
+    : m_clipboard(clipboard), m_bus(bus), m_fileManager(bus) {}
 
 FilesProvider::~FilesProvider() { disconnect(); }
 
@@ -391,28 +390,7 @@ bool FilesProvider::activate(const LauncherResult& result) {
   return true;
 }
 
-void FilesProvider::reveal(const LauncherResult& result) const {
-  const std::string folder = std::filesystem::path(result.id).parent_path().string();
-  if (m_bus == nullptr) {
-    (void)net::openInBrowser(fileUri(folder));
-    return;
-  }
-  if (m_fileManager == nullptr) {
-    m_fileManager = sdbus::createProxy(
-        m_bus->connection(), sdbus::ServiceName{"org.freedesktop.FileManager1"},
-        sdbus::ObjectPath{"/org/freedesktop/FileManager1"}
-    );
-  }
-  m_fileManager->callMethodAsync("ShowItems")
-      .onInterface("org.freedesktop.FileManager1")
-      .withArguments(std::vector<std::string>{fileUri(result.id)}, std::string())
-      .uponReplyInvoke([folder](std::optional<sdbus::Error> error) {
-        // No file manager owns FileManager1: open the folder itself.
-        if (error.has_value() && !net::openInBrowser(fileUri(folder))) {
-          kLog.warn("showing {} failed: {}", folder, error->what());
-        }
-      });
-}
+void FilesProvider::reveal(const LauncherResult& result) const { m_fileManager.showItem(result.id); }
 
 void FilesProvider::quickLook(const LauncherResult& result) const {
   if (m_bus == nullptr) {

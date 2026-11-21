@@ -431,6 +431,7 @@ _noctalia_source_paths = [
   'src/core/files/file_watcher.cpp',
   'src/core/shared_worker.cpp',
   'src/core/inotify/inotify.cpp',
+  'src/dbus/file_manager1.cpp',
   'src/dbus/mpris/mpris_art.cpp',
   'src/dbus/notification/notification_poll_source.cpp',
   'src/dbus/notification/notification_portal.cpp',

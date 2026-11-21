@@ -2016,6 +2016,7 @@ void Application::initEarlySessionBusAndTray() {
   try {
     m_bus = std::make_unique<SessionBus>();
     kLog.info("connected to session bus");
+    m_screenshotService.setSessionBus(m_bus.get());
     m_lockClient = std::make_unique<LockClient>(*m_bus);
     m_lockScreen.setRemote(m_lockClient.get());
     AtspiBridge::instance().start(m_bus->connection(), "andromeda-shell");

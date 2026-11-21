@@ -2,6 +2,7 @@
 
 #include "core/poll_source.h"
 #include "core/timer_manager.h"
+#include "dbus/file_manager1.h"
 #include "launcher/launcher_provider.h"
 
 #include <deque>
@@ -17,9 +18,6 @@
 class ClipboardService;
 class QuickLookClient;
 class SessionBus;
-namespace sdbus {
-  class IProxy;
-}
 
 // Files from the andromeda-index daemon ($XDG_RUNTIME_DIR/andromeda-index.sock). Queries go out on one socket that
 // the main loop polls; answers arrive in request order, and only the answer to the newest query is shown.
@@ -97,5 +95,5 @@ private:
   mutable std::vector<std::string> m_recentPaths;
   mutable bool m_loading = false;
   mutable Timer m_debounce;
-  mutable std::unique_ptr<sdbus::IProxy> m_fileManager; // kept alive for pending ShowItems replies
+  mutable FileManager1 m_fileManager;
 };

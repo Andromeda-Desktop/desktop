@@ -15,14 +15,17 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 class ClipboardService;
 class CompositorPlatform;
 class ConfigService;
 class IpcService;
+class FileManager1;
 class NotificationManager;
 class RenderContext;
+class SessionBus;
 class ShellWaylandConnection;
 class SoundPlayer;
 struct KeyboardEvent;
@@ -95,6 +98,8 @@ public:
   void registerIpc(IpcService& ipc, const ConfigService& configService);
 
   void setSoundPlayer(SoundPlayer* soundPlayer);
+  // The saved-screenshot notification shows the file in its folder through FileManager1 on this bus.
+  void setSessionBus(SessionBus* bus);
 
 private:
   struct PendingCapture {
@@ -220,6 +225,9 @@ private:
   NotificationManager& m_notifications;
   ConfigService& m_configService;
   ClipboardService* m_clipboard = nullptr;
+  std::unique_ptr<FileManager1> m_fileManager;
+  // Saved files by the id of their live "Screenshot saved" notification.
+  std::unordered_map<uint32_t, std::filesystem::path> m_savedNotifications;
   ScreenshotCapture m_capture;
   ToplevelThumbnailCapture m_toplevelCapture;
   std::unique_ptr<capture::ScreenshotRegionOverlay> m_regionOverlay;
