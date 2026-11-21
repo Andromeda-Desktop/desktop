@@ -123,7 +123,13 @@ namespace linkapp {
     bool notifications = false; // grant "notifications"
     bool clipboard = false;     // grant "clipboard"
     bool screen = false;        // grant "screen"
+    bool nearby = false;        // grant "nearby": join the phone's hotspot without asking
     bool autoAccept = false;
+  };
+  // Link1 HotspotRequested: the phone asks to join its hotspot; the daemon declines after 30 s without an answer.
+  struct HotspotAsk {
+    std::string deviceId;
+    std::string ssid;
   };
   struct DesktopSettings {
     bool notificationsWhileLocked = false;

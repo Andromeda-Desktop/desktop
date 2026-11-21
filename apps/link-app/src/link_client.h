@@ -83,6 +83,9 @@ namespace linkapp {
     [[nodiscard]] const DesktopSettings& desktopSettings() const { return m_desktopSettings; }
     void setGrant(const std::string& deviceId, const std::string& feature, bool granted);
     void setAutoAccept(const std::string& deviceId, bool on);
+    [[nodiscard]] const std::optional<HotspotAsk>& hotspotAsk() const { return m_hotspotAsk; }
+    // Answers the open ask; `always` also grants "nearby", so the next ask joins without one.
+    void answerHotspot(bool allow, bool always = false);
     void setNotificationsWhileLocked(bool on);
     void setNearbyVisible(bool on);
     void unpair(const std::string& deviceId);
@@ -148,6 +151,7 @@ namespace linkapp {
     std::map<std::string, std::vector<std::uint8_t>> m_thumbs; // path -> PNG; empty while in flight
     std::function<void()> m_thumbnailReady;
     PhoneSettings m_phoneSettings;
+    std::optional<HotspotAsk> m_hotspotAsk;
     DesktopSettings m_desktopSettings;
     std::uint64_t m_nearbySent = 0;    // serials of the Quick Share GetAll, as m_sent / m_applied
     std::uint64_t m_nearbyApplied = 0;

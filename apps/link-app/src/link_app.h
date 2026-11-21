@@ -197,6 +197,8 @@ namespace linkapp {
                                              float width, bool windowButtons);
     // Cards mode and the viewed thread follow the page and presence.
     void sync();
+    // Shows the hotspot sheet while the client holds an ask, and closes it when the ask ends.
+    void syncHotspotSheet();
     void chooseAndSend(const std::string& deviceId);
     // Shows this phone; the open page reloads its data from it.
     void choosePhone(const std::string& deviceId);
@@ -231,6 +233,7 @@ namespace linkapp {
     ScrollViewState m_transferScroll;
     ScrollViewState m_settingsScroll;
     bool m_confirmForget = false; // Settings: the Forget row asks in place
+    std::string m_hotspotSheet;   // device id + ssid of the ask the sheet shows; empty while none shows
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;
     std::unique_ptr<desk::FileChooser> m_chooser;

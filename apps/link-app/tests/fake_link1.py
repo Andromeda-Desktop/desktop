@@ -90,6 +90,8 @@ def emit_sample():
     for (id_, _thread, address, body, _at, _sent) in texts:
         if id_ in (5, 7, 8):
             emit("TextReceived", "(stss)", "p1", id_, address, body)
+    if os.environ.get("HOTSPOT"):
+        emit("HotspotRequested", "(ss)", "p1", "DIRECT-Link-4F2A")
     page = os.environ.get("PAGE", "waiting")
     if page == "activity":
         emit_activity()

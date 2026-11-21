@@ -108,6 +108,18 @@ namespace linkapp {
           m_feed.upsert(std::move(item));
           changed();
         });
+    m_proxy->uponSignal("HotspotRequested")
+        .onInterface(kInterface)
+        .call([this](const std::string& device, const std::string& ssid) {
+          if (!ssid.empty()) {
+            m_hotspotAsk = HotspotAsk{.deviceId = device, .ssid = ssid};
+          } else if (m_hotspotAsk && m_hotspotAsk->deviceId == device) {
+            m_hotspotAsk.reset();
+          } else {
+            return;
+          }
+          changed();
+        });
     m_proxy->uponSignal("ScreenShape")
         .onInterface(kInterface)
         .call([this](const std::string& device, const std::vector<std::uint16_t>& corners,
@@ -272,6 +284,7 @@ namespace linkapp {
           };
           m_phoneSettings = {.notifications = granted("notifications"), .clipboard = granted("clipboard"),
                              .screen = granted("screen"),
+                             .nearby = granted("nearby"),
                              .autoAccept = std::ranges::contains(property<std::vector<std::string>>(props, "AutoAccept"), phone)};
           m_desktopSettings.notificationsWhileLocked = property<bool>(props, "NotificationsWhileLocked");
           m_desktopSettings.commands =
@@ -295,6 +308,17 @@ namespace linkapp {
           m_desktopSettings.nearbyName = property<std::string>(props, "Name");
           changed();
         });
+  }
+
+  void LinkClient::answerHotspot(bool allow, bool always) {
+    if (!m_hotspotAsk) return;
+    const std::string device = std::exchange(m_hotspotAsk, std::nullopt)->deviceId;
+    if (always) setGrant(device, "nearby", true);
+    m_proxy->callMethodAsync("AnswerHotspot").onInterface(kInterface).withArguments(device, allow)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("AnswerHotspot: {}", error->getMessage());
+        });
+    changed();
   }
 
   void LinkClient::setGrant(const std::string& deviceId, const std::string& feature, bool granted) {

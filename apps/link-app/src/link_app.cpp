@@ -571,6 +571,7 @@ namespace linkapp {
         if (m_window == nullptr) return;
         if (m_client->mirror().kind != Mirror::Kind::Showing && m_mirrorTexture.valid()) retireMirrorFrame(true);
         sync();
+        syncHotspotSheet();
         updateCaption();
         m_window->requestRebuild();
       });
@@ -677,6 +678,42 @@ namespace linkapp {
     sync();
     updateCaption();
     m_window->requestRebuild();
+  }
+
+  void LinkApp::syncHotspotSheet() {
+    const auto& ask = m_client->hotspotAsk();
+    if (!ask) {
+      if (!std::exchange(m_hotspotSheet, {}).empty()) m_window->dismissSheet();
+      return;
+    }
+    // A newer ask replaces the shown one, so the text always names the device the answer goes to.
+    std::string shown = ask->deviceId + '\n' + ask->ssid;
+    if (shown == m_hotspotSheet) return;
+    m_hotspotSheet = std::move(shown);
+    const Presence presence = m_client->presence();
+    const std::string phone = presence.phone.id == ask->deviceId ? presence.phone.name : std::string("your phone");
+    const std::string ssid = ask->ssid;
+    // Rulebook §9.10 alert: title-3, body 13 / 20 label_2, 24 above 3 buttons stacked full width.
+    m_window->presentSheet(
+        [this, phone, ssid](float s) -> std::unique_ptr<Node> {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
+                                 .width = Tokens::componentDialogAlertWidth * s});
+          box->addChild(text(std::format("Join {}’s hotspot?", phone), Tokens::typeTitle3, ColorRole::Label1, s, 2));
+          box->addChild(text(std::format("Wi-Fi Direct is not available, so this computer joins “{}” for files and "
+                                         "mirroring, and leaves it when idle.", ssid),
+                             Tokens::typeParagraph, ColorRole::Label2, s, 4));
+          auto buttons = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s});
+          buttons->setPadding(Tokens::spaceP16 * s, 0.0F, 0.0F, 0.0F);
+          buttons->addChild(ui::button({.text = std::string("Use Hotspot"), .variant = ButtonVariant::Primary,
+                                        .onClick = [this] { m_client->answerHotspot(true); }}));
+          buttons->addChild(ui::button({.text = std::string("Always Allow"), .variant = ButtonVariant::Tonal,
+                                        .onClick = [this] { m_client->answerHotspot(true, true); }}));
+          buttons->addChild(ui::button({.text = std::string("Not Now"), .variant = ButtonVariant::Tonal,
+                                        .onClick = [this] { m_client->answerHotspot(false); }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] { m_client->answerHotspot(false); });
   }
 
   void LinkApp::sync() {
@@ -1697,6 +1734,8 @@ namespace linkapp {
         toggle(phone.autoAccept, [this, id](bool on) { m_client->setAutoAccept(id, on); }));
     row(*phoneCard, "device-mobile", "Allow screen mirroring", "",
         toggle(phone.screen, [this, id](bool on) { m_client->setGrant(id, "screen", on); }));
+    row(*phoneCard, "access-point", "Join phone hotspot", "For files and mirroring when Wi-Fi Direct fails",
+        toggle(phone.nearby, [this, id](bool on) { m_client->setGrant(id, "nearby", on); }));
     page->addChild(std::move(phoneCard));
 
     page->addChild(header("This computer"));
