@@ -15,8 +15,13 @@ EOF
 if [[ $app == terminal ]]; then
   cat <<EOF
 
-**macOS** (Apple silicon, macOS 26 or later). Download [Andromeda-Terminal-$version-macos-arm64.zip]($releases/download/terminal-v$version/Andromeda-Terminal-$version-macos-arm64.zip), open it and drag **Andromeda Terminal** to Applications.
-The app is not notarized: on first launch macOS blocks it. Open **System Settings > Privacy & Security** and click **Open Anyway**.
-The newest Mac build is always at $releases/latest/download/Andromeda-Terminal-macos-arm64.zip
+**macOS** (Apple silicon, macOS 26 or later). Install or update from the Terminal app:
+
+\`\`\`
+curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY:-Andromeda-Desktop/desktop}/main/tools/macos/install-terminal.sh | sh
+\`\`\`
+
+Or download [Andromeda-Terminal-$version-macos-arm64.zip]($releases/download/terminal-v$version/Andromeda-Terminal-$version-macos-arm64.zip) and drag **Andromeda Terminal** to Applications.
+The app is not notarized, so macOS blocks a downloaded copy on first launch: open **System Settings > Privacy & Security** and click **Open Anyway**.
 EOF
 fi
