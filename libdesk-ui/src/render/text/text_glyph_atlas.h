@@ -7,11 +7,11 @@
 #include <unordered_map>
 #include <vector>
 
-// Glyph coverage for UI text: each (scaled font, glyph, x subpixel phase) is rasterized once by Cairo into one A8
-// texture page, and labels draw quads from it tinted in the shader. A full page is cleared (generation() changes).
+// Glyphs of UI text: each (scaled font, glyph, x subpixel phase) is rasterized once by Cairo into one texture page,
+// and labels draw quads from it. An Alpha page holds coverage tinted in the shader; an Rgba page holds premultiplied
+// colour glyphs (emoji). A full page is cleared (generation() changes).
 class TextGlyphAtlas {
 public:
-  static constexpr int kSize = 2048;
   static constexpr int kSubpixelSteps = 4; // x phases per pixel, as Cairo's image backend places glyphs
 
   // Device pixels. left/top place the bitmap relative to the pen position on the baseline (y down).
@@ -24,7 +24,7 @@ public:
     std::int16_t top = 0;
   };
 
-  TextGlyphAtlas() = default;
+  explicit TextGlyphAtlas(TextureDataFormat format, int size) : m_format(format), m_size(size) {}
   ~TextGlyphAtlas();
   TextGlyphAtlas(const TextGlyphAtlas&) = delete;
   TextGlyphAtlas& operator=(const TextGlyphAtlas&) = delete;
@@ -33,6 +33,7 @@ public:
   const Glyph* glyph(TextureManager& textures, cairo_scaled_font_t* font, std::uint32_t glyphIndex, int phase);
   [[nodiscard]] TextureId texture() const noexcept { return m_texture.id; }
   [[nodiscard]] std::uint64_t generation() const noexcept { return m_generation; }
+  [[nodiscard]] int size() const noexcept { return m_size; }
   // Frees the page (GPU context current). abandon() forgets it after the context was lost.
   void clear(TextureManager* textures);
   void abandon() noexcept;
@@ -57,10 +58,13 @@ private:
     bool ink = false;
   };
 
+  [[nodiscard]] int bytesPerTexel() const noexcept { return m_format == TextureDataFormat::Rgba ? 4 : 1; }
   // False when the page is full.
   bool place(int width, int height, int& x, int& y);
   void forgetGlyphs();
 
+  TextureDataFormat m_format;
+  int m_size;
   TextureHandle m_texture;
   std::unordered_map<Key, Slot, KeyHash> m_glyphs; // each key holds a reference on its scaled font
   std::vector<Shelf> m_shelves;

@@ -157,6 +157,7 @@ private:
   // the two batches holds vertices, so draw order stays as issued.
   std::vector<float> m_glyphBatch;
   TextureId m_glyphBatchTexture;
+  bool m_glyphBatchColor = false; // RenderGlyphRun::color of m_glyphBatchTexture
   BatchStats m_batchStats;
   // ANDROMEDA_PROFILE only: GPU time per frame split into terminal grid phases and the rest.
   std::unique_ptr<GpuSplitTimer> m_gpuTimer;

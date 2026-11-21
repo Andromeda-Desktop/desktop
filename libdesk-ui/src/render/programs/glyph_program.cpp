@@ -81,11 +81,13 @@ void main() {
 precision highp float;
 
 uniform sampler2D u_texture;
+uniform float u_color_texture; // 0 = alpha coverage times v_color, 1 = premultiplied RGBA times v_color.a
 varying vec2 v_texcoord;
 varying vec4 v_color;
 
 void main() {
-    gl_FragColor = v_color * texture2D(u_texture, v_texcoord).a;
+    vec4 t = texture2D(u_texture, v_texcoord);
+    gl_FragColor = u_color_texture > 0.5 ? t * v_color.a : v_color * t.a;
 }
 )";
 
@@ -208,8 +210,9 @@ void GlyphProgram::ensureBatchInitialized() {
   m_batchTexCoordLocation = glGetAttribLocation(m_batchProgram.id(), "a_texcoord");
   m_batchColorLocation = glGetAttribLocation(m_batchProgram.id(), "a_color");
   m_batchSamplerLocation = glGetUniformLocation(m_batchProgram.id(), "u_texture");
+  m_batchColorTextureLocation = glGetUniformLocation(m_batchProgram.id(), "u_color_texture");
   if (m_batchPositionLocation < 0 || m_batchTexCoordLocation < 0 || m_batchColorLocation < 0
-      || m_batchSamplerLocation < 0) {
+      || m_batchSamplerLocation < 0 || m_batchColorTextureLocation < 0) {
     throw std::runtime_error("failed to query glyph batch shader locations");
   }
 }
@@ -240,7 +243,7 @@ void GlyphProgram::appendTintedRun(
   }
 }
 
-void GlyphProgram::drawTintedBatch(TextureId texture, const std::vector<float>& vertices) const {
+void GlyphProgram::drawTintedBatch(TextureId texture, const std::vector<float>& vertices, bool colorTexture) const {
   if (!m_batchProgram.isValid() || texture == 0 || vertices.empty()) {
     return;
   }
@@ -248,6 +251,7 @@ void GlyphProgram::drawTintedBatch(TextureId texture, const std::vector<float>& 
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture.value()));
   glUniform1i(m_batchSamplerLocation, 0);
+  glUniform1f(m_batchColorTextureLocation, colorTexture ? 1.0F : 0.0F);
   constexpr auto stride = static_cast<GLsizei>(kBatchFloatsPerVertex * sizeof(float));
   const auto posAttr = static_cast<GLuint>(m_batchPositionLocation);
   const auto texAttr = static_cast<GLuint>(m_batchTexCoordLocation);

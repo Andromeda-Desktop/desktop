@@ -56,7 +56,7 @@ void setGrayscaleFontOptions(PangoContext* context) {
   }
 
   constexpr float kAxisAlignedEpsilon = 0.0001F;
-  constexpr float kAtlasMaxPx = 96.0F; // device px font size; glyphs stay far below TextGlyphAtlas::kSize
+  constexpr float kAtlasMaxPx = 96.0F; // device px font size; glyphs stay far below an atlas page
 
   inline std::uint32_t sizeKey(float value) { return std::bit_cast<std::uint32_t>(std::max(0.0F, value)); }
 
@@ -113,27 +113,35 @@ void setGrayscaleFontOptions(PangoContext* context) {
     }
   }
 
-  // Colour glyphs (emoji) or a markup foreground or background span: the text needs the RGBA path, a one-colour tint
-  // would lose them.
-  bool hasOwnColor(PangoLayout* layout) {
+  // Plain: one tint colours every glyph. ColorGlyphs: every glyph is a colour glyph (emoji) and no span sets a colour.
+  // Mixed: colour glyphs with plain ones, or a markup foreground or background span; only an RGBA raster keeps them.
+  enum class LayoutInk : std::uint8_t { Plain, ColorGlyphs, Mixed };
+
+  LayoutInk layoutInk(PangoLayout* layout) {
+    bool color = false;
+    bool plain = false;
     for (GSList* line = pango_layout_get_lines_readonly(layout); line != nullptr; line = line->next) {
       for (GSList* run = static_cast<PangoLayoutLine*>(line->data)->runs; run != nullptr; run = run->next) {
         const auto* item = static_cast<PangoGlyphItem*>(run->data);
         for (GSList* attr = item->item->analysis.extra_attrs; attr != nullptr; attr = attr->next) {
           const PangoAttrType type = static_cast<PangoAttribute*>(attr->data)->klass->type;
           if (type == PANGO_ATTR_FOREGROUND || type == PANGO_ATTR_BACKGROUND) {
-            return true;
+            return LayoutInk::Mixed;
           }
         }
         const auto* glyphs = item->glyphs;
         for (int i = 0; i < glyphs->num_glyphs; ++i) {
-          if (glyphs->glyphs[i].attr.is_color) {
-            return true;
+          if (glyphs->glyphs[i].glyph == PANGO_GLYPH_EMPTY) {
+            continue;
           }
+          (glyphs->glyphs[i].attr.is_color ? color : plain) = true;
         }
       }
     }
-    return false;
+    if (!color) {
+      return LayoutInk::Plain;
+    }
+    return plain ? LayoutInk::Mixed : LayoutInk::ColorGlyphs;
   }
 
   struct VerticalExtents {
@@ -380,6 +388,7 @@ void CairoTextRenderer::clearCaches() {
     m_backend->flushBatches();
   }
   m_atlas.clear(m_textureManager);
+  m_colorAtlas.clear(m_textureManager);
 }
 
 void CairoTextRenderer::invalidateGlyphTextures() {
@@ -397,6 +406,7 @@ void CairoTextRenderer::invalidateGlyphTextures() {
     m_backend->flushBatches();
   }
   m_atlas.clear(m_textureManager);
+  m_colorAtlas.clear(m_textureManager);
 }
 
 bool CairoTextRenderer::holdsText(std::string_view text) const {
@@ -446,6 +456,7 @@ void CairoTextRenderer::abandonGlyphTextures() noexcept {
   m_lru.clear();
   m_cacheBytes = 0;
   m_atlas.abandon();
+  m_colorAtlas.abandon();
 }
 
 void CairoTextRenderer::setFontFamily(std::string family) {
@@ -915,7 +926,7 @@ void CairoTextRenderer::rasterizeLayout(
   // fractional baseline (hint metrics off).
   const int baselinePango = pango_layout_get_baseline(layout);
   entry.baselinePx = static_cast<float>(baselinePango / PANGO_SCALE + extraTopPx);
-  if (atlas && buildAtlasQuads(layout, extraLeftPx - blockLeftPx, extraTopPx, entry)) {
+  if (atlas && buildAtlasQuads(tinted ? m_atlas : m_colorAtlas, layout, extraLeftPx - blockLeftPx, extraTopPx, entry)) {
     entry.pixelWidth = pxWidth;
     entry.pixelHeight = pxHeight;
     entry.metrics = metricsFromLayout(contentScale, layout);
@@ -1148,13 +1159,15 @@ void CairoTextRenderer::touch(CacheMap::iterator it) {
   it->second.lastUsed = std::chrono::steady_clock::now();
 }
 
-bool CairoTextRenderer::buildAtlasQuads(PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry) {
+bool CairoTextRenderer::buildAtlasQuads(
+    TextGlyphAtlas& atlas, PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry
+) {
   // Queued runs read the atlas page, which the walk below can add to or reset.
   m_backend->flushBatches();
-  constexpr float kPage = TextGlyphAtlas::kSize;
+  const auto page = static_cast<float>(atlas.size());
   // A full page clears the atlas mid-walk and voids the quads made before it, so walk again once on the new page.
   for (int attempt = 0; attempt < 2; ++attempt) {
-    const std::uint64_t generation = m_atlas.generation();
+    const std::uint64_t generation = atlas.generation();
     entry.quadPositions.clear();
     entry.quadTexcoords.clear();
     bool ok = true;
@@ -1193,7 +1206,7 @@ bool CairoTextRenderer::buildAtlasQuads(PangoLayout* layout, int originXPx, int 
           const auto whole =
               static_cast<long>(std::floor(static_cast<double>(quarter) / TextGlyphAtlas::kSubpixelSteps));
           const auto phase = static_cast<int>(quarter - whole * TextGlyphAtlas::kSubpixelSteps);
-          const TextGlyphAtlas::Glyph* glyph = m_atlas.glyph(*m_textureManager, scaled, info.glyph, phase);
+          const TextGlyphAtlas::Glyph* glyph = atlas.glyph(*m_textureManager, scaled, info.glyph, phase);
           if (glyph == nullptr) {
             continue;
           }
@@ -1203,21 +1216,21 @@ bool CairoTextRenderer::buildAtlasQuads(PangoLayout* layout, int originXPx, int 
           );
           const float x1 = x0 + glyph->width;
           const float y1 = y0 + glyph->height;
-          const float u0 = glyph->x / kPage;
-          const float v0 = glyph->y / kPage;
-          const float u1 = (glyph->x + glyph->width) / kPage;
-          const float v1 = (glyph->y + glyph->height) / kPage;
+          const float u0 = glyph->x / page;
+          const float v0 = glyph->y / page;
+          const float u1 = (glyph->x + glyph->width) / page;
+          const float v1 = (glyph->y + glyph->height) / page;
           entry.quadPositions.insert(entry.quadPositions.end(), {x0, y0, x1, y0, x0, y1, x0, y1, x1, y0, x1, y1});
           entry.quadTexcoords.insert(entry.quadTexcoords.end(), {u0, v0, u1, v0, u0, v1, u0, v1, u1, v0, u1, v1});
         }
       }
     } while (ok && pango_layout_iter_next_line(iter));
     pango_layout_iter_free(iter);
-    if (!ok || m_atlas.texture() == 0) {
+    if (!ok || atlas.texture() == 0) {
       return false;
     }
-    if (m_atlas.generation() == generation) {
-      entry.ink = CacheEntry::Ink::Atlas;
+    if (atlas.generation() == generation) {
+      entry.ink = &atlas == &m_colorAtlas ? CacheEntry::Ink::ColorAtlas : CacheEntry::Ink::Atlas;
       entry.atlasGeneration = generation;
       entry.bytes = (entry.quadPositions.size() + entry.quadTexcoords.size()) * sizeof(float);
       return true;
@@ -1317,7 +1330,7 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   if (!m_caching) {
     PangoLayout* layout =
         buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
-    const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !hasOwnColor(layout);
+    const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && layoutInk(layout) == LayoutInk::Plain;
     Color rasterColor = color;
     if (!tinted) {
       rasterColor.a = 1.0F;
@@ -1338,8 +1351,9 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   key.ellipsize = ellipsize;
   key.useMarkup = useMarkup;
   auto it = m_cache.find(key);
-  if (it != m_cache.end() && it->second.ink == CacheEntry::Ink::Atlas
-      && it->second.atlasGeneration != m_atlas.generation()) {
+  if (it != m_cache.end()
+      && (it->second.ink == CacheEntry::Ink::Atlas || it->second.ink == CacheEntry::Ink::ColorAtlas)
+      && it->second.atlasGeneration != atlasOf(it->second).generation()) {
     evict(it);
     it = m_cache.end();
   }
@@ -1370,8 +1384,10 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
     layout =
         buildLayout(contentScale, text, fontSize, font, maxWidth * contentScale, maxLines, align, ellipsize, useMarkup);
   }
-  const bool tinted = font.gradientFrom == 0 && font.gradientTo == 0 && !hasOwnColor(layout);
-  if (tinted) {
+  const LayoutInk ink = font.gradientFrom == 0 && font.gradientTo == 0 ? layoutInk(layout) : LayoutInk::Mixed;
+  const bool tinted = ink == LayoutInk::Plain;
+  // Colour glyphs ignore the ink colour, so one entry serves every colour.
+  if (ink != LayoutInk::Mixed) {
     key.colorRgba = 0U;
   }
   Color rasterColor = color;
@@ -1380,7 +1396,7 @@ CairoTextRenderer::CacheEntry* CairoTextRenderer::lookupOrRasterize(
   }
   CacheEntry entry{};
   // Large text gains little from the atlas, and its glyphs would crowd the page.
-  const bool atlas = tinted && font.stroke == 0.0F && !useMarkup && m_textureManager != nullptr
+  const bool atlas = ink != LayoutInk::Mixed && font.stroke == 0.0F && !useMarkup && m_textureManager != nullptr
                      && fontSize * contentScale <= kAtlasMaxPx;
   rasterizeLayout(
       contentScale, layout, rasterColor, tinted, font.stroke * fontSize * contentScale, font, entry, atlas
@@ -1427,7 +1443,8 @@ void CairoTextRenderer::draw(
 
   CacheEntry* entry =
       lookupOrRasterize(contentScale, text, fontSize, font, maxWidth, maxLines, align, color, ellipsize, useMarkup);
-  if (entry == nullptr || (entry->tiles.empty() && entry->ink != CacheEntry::Ink::Atlas)) {
+  const bool atlasInk = entry != nullptr && (entry->ink == CacheEntry::Ink::Atlas || entry->ink == CacheEntry::Ink::ColorAtlas);
+  if (entry == nullptr || (entry->tiles.empty() && !atlasInk)) {
     return;
   }
   if (entry->tiles.size() > 1) {
@@ -1462,7 +1479,7 @@ void CairoTextRenderer::draw(
     baseWorld.m[7] = snapToBufferPixel(baseWorld.m[7], contentScale);
   }
 
-  if (entry->ink == CacheEntry::Ink::Atlas) {
+  if (atlasInk) {
     m_runPositions.resize(entry->quadPositions.size());
     for (std::size_t i = 0; i + 1 < m_runPositions.size(); i += 2) {
       const Vec2 p =
@@ -1472,12 +1489,14 @@ void CairoTextRenderer::draw(
     }
     m_backend->drawGlyphRun(
         RenderGlyphRun{
-            .texture = m_atlas.texture(),
+            .texture = atlasOf(*entry).texture(),
             .surfaceWidth = surfaceWidth,
             .surfaceHeight = surfaceHeight,
             .positions = m_runPositions,
             .texcoords = entry->quadTexcoords,
-            .tint = color,
+            .opacity = entry->ink == CacheEntry::Ink::ColorAtlas ? color.a : 1.0F,
+            .tint = entry->ink == CacheEntry::Ink::ColorAtlas ? rgba(1.0F, 1.0F, 1.0F, 1.0F) : color,
+            .color = entry->ink == CacheEntry::Ink::ColorAtlas,
         }
     );
     return;

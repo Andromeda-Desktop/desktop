@@ -41,19 +41,19 @@ void TextGlyphAtlas::abandon() noexcept {
 }
 
 bool TextGlyphAtlas::place(int width, int height, int& x, int& y) {
-  if (width > kSize || height > kSize) {
+  if (width > m_size || height > m_size) {
     return false;
   }
   // The lowest shelf that fits, wasting at most a quarter of its height.
   Shelf* best = nullptr;
   for (Shelf& shelf : m_shelves) {
-    if (shelf.height >= height && shelf.height <= height + height / 4 + 2 && shelf.x + width <= kSize
+    if (shelf.height >= height && shelf.height <= height + height / 4 + 2 && shelf.x + width <= m_size
         && (best == nullptr || shelf.height < best->height)) {
       best = &shelf;
     }
   }
   if (best == nullptr) {
-    if (m_nextShelfY + height > kSize) {
+    if (m_nextShelfY + height > m_size) {
       return false;
     }
     best = &m_shelves.emplace_back(Shelf{.y = m_nextShelfY, .height = height, .x = 0});
@@ -76,8 +76,8 @@ TextGlyphAtlas::glyph(TextureManager& textures, cairo_scaled_font_t* font, std::
       forgetGlyphs();
     }
     // Zeroed, not createEmpty(): filtering at a glyph edge reads the texels between glyphs.
-    const std::vector<std::uint8_t> zeros(static_cast<std::size_t>(kSize) * kSize, 0);
-    m_texture = textures.loadFromPixels(zeros.data(), kSize, kSize, TextureDataFormat::Alpha, TextureFilter::Linear);
+    const std::vector<std::uint8_t> zeros(static_cast<std::size_t>(m_size) * m_size * bytesPerTexel(), 0);
+    m_texture = textures.loadFromPixels(zeros.data(), m_size, m_size, m_format, TextureFilter::Linear);
     if (m_texture.id == 0) {
       return nullptr;
     }
@@ -100,7 +100,8 @@ TextGlyphAtlas::glyph(TextureManager& textures, cairo_scaled_font_t* font, std::
       clear(&textures);
       return glyph(textures, font, glyphIndex, phase);
     }
-    cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_A8, width, height);
+    const bool rgba = m_format == TextureDataFormat::Rgba;
+    cairo_surface_t* surface = cairo_image_surface_create(rgba ? CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_A8, width, height);
     cairo_t* cr = cairo_create(surface);
     cairo_set_scaled_font(cr, font);
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 1.0);
@@ -111,12 +112,20 @@ TextGlyphAtlas::glyph(TextureManager& textures, cairo_scaled_font_t* font, std::
     cairo_surface_flush(surface);
     const int stride = cairo_image_surface_get_stride(surface);
     const unsigned char* data = cairo_image_surface_get_data(surface);
-    m_scratch.resize(static_cast<std::size_t>(width) * static_cast<std::size_t>(height));
+    const int rowBytes = width * bytesPerTexel();
+    m_scratch.resize(static_cast<std::size_t>(rowBytes) * static_cast<std::size_t>(height));
     for (int row = 0; row < height; ++row) {
-      std::copy_n(data + static_cast<std::ptrdiff_t>(row) * stride, width, m_scratch.data() + row * width);
+      std::uint8_t* out = m_scratch.data() + static_cast<std::ptrdiff_t>(row) * rowBytes;
+      std::copy_n(data + static_cast<std::ptrdiff_t>(row) * stride, rowBytes, out);
+      if (rgba) {
+        // Cairo ARGB32 is premultiplied BGRA in memory on little-endian.
+        for (int i = 0; i < rowBytes; i += 4) {
+          std::swap(out[i], out[i + 2]);
+        }
+      }
     }
     cairo_surface_destroy(surface);
-    textures.updateSubImage(m_texture, m_scratch.data(), x, y, width, height, TextureDataFormat::Alpha);
+    textures.updateSubImage(m_texture, m_scratch.data(), x, y, width, height, m_format);
     slot.ink = true;
     slot.glyph = Glyph{
         .x = static_cast<std::uint16_t>(x),

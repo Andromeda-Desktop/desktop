@@ -965,6 +965,7 @@ void GlesRenderBackend::drawGlyphRun(const RenderGlyphRun& run) {
   if (run.texture != m_glyphBatchTexture) {
     flushGlyphBatch();
     m_glyphBatchTexture = run.texture;
+    m_glyphBatchColor = run.color;
   }
   m_glyphProgram.ensureBatchInitialized();
   GlyphProgram::appendTintedRun(
@@ -977,7 +978,7 @@ void GlesRenderBackend::flushGlyphBatch() {
     return;
   }
   gpuMark(GpuSplitTimer::kGlyph);
-  m_glyphProgram.drawTintedBatch(m_glyphBatchTexture, m_glyphBatch);
+  m_glyphProgram.drawTintedBatch(m_glyphBatchTexture, m_glyphBatch, m_glyphBatchColor);
   m_glyphBatch.clear();
   ++m_batchStats.draws;
 }

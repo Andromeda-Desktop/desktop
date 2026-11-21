@@ -48,8 +48,9 @@ public:
       std::vector<float>& out, float surfaceWidth, float surfaceHeight, std::span<const float> positions,
       std::span<const float> texcoords, float opacity, const Color& tint
   );
-  // Draws appended quads of many labels from one texture in one call, with the current GL state.
-  void drawTintedBatch(TextureId texture, const std::vector<float>& vertices) const;
+  // Draws appended quads of many labels from one texture in one call, with the current GL state. A colour texture
+  // holds premultiplied RGBA glyphs, scaled by each vertex's alpha.
+  void drawTintedBatch(TextureId texture, const std::vector<float>& vertices, bool colorTexture) const;
 
 private:
   void bindCommon(
@@ -72,4 +73,5 @@ private:
   GLint m_batchTexCoordLocation = -1;
   GLint m_batchColorLocation = -1;
   GLint m_batchSamplerLocation = -1;
+  GLint m_batchColorTextureLocation = -1;
 };

@@ -207,11 +207,12 @@ private:
     float inkOffsetX = 0; // raster px from surface left to logical text origin
     TextMetrics metrics;  // logical metrics in logical (unscaled) pixels
     std::size_t bytes = 0;
-    // Rgba: premul RGBA tiles. Coverage: alpha tiles, tint in shader. Atlas: no tiles, quads into m_atlas.
-    enum class Ink : std::uint8_t { Rgba, Coverage, Atlas } ink = Ink::Rgba;
+    // Rgba: premul RGBA tiles. Coverage: alpha tiles, tint in shader. Atlas / ColorAtlas: no tiles, quads into
+    // m_atlas / m_colorAtlas.
+    enum class Ink : std::uint8_t { Rgba, Coverage, Atlas, ColorAtlas } ink = Ink::Rgba;
     std::vector<float> quadPositions; // Atlas: x, y per vertex, raster px from the surface top-left
     std::vector<float> quadTexcoords;
-    std::uint64_t atlasGeneration = 0; // m_atlas.generation() the quads were built against
+    std::uint64_t atlasGeneration = 0; // atlasOf(entry).generation() the quads were built against
     LruList::iterator lruIt;
     std::chrono::steady_clock::time_point lastUsed;
   };
@@ -238,8 +239,11 @@ private:
       float contentScale, PangoLayout* layout, const Color& color, bool tinted, float strokePx, const TextFont& font,
       CacheEntry& entry, bool atlas = false
   );
-  // Fills entry with atlas quads; false when a glyph cannot come from the atlas (no Cairo font, unknown glyph).
-  bool buildAtlasQuads(PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry);
+  // Fills entry with quads into `atlas`; false when a glyph cannot come from it (no Cairo font, unknown glyph).
+  bool buildAtlasQuads(TextGlyphAtlas& atlas, PangoLayout* layout, int originXPx, int extraTopPx, CacheEntry& entry);
+  [[nodiscard]] const TextGlyphAtlas& atlasOf(const CacheEntry& entry) const noexcept {
+    return entry.ink == CacheEntry::Ink::ColorAtlas ? m_colorAtlas : m_atlas;
+  }
   // Extract logical metrics from a laid-out PangoLayout, dividing by PANGO_SCALE and by scale.
   TextMetrics metricsFromLayout(float contentScale, PangoLayout* layout) const;
 
@@ -279,7 +283,9 @@ private:
   float m_textScale = 1.0F;
   bool m_caching = true;
   std::list<CacheEntry> m_transient;
-  TextGlyphAtlas m_atlas;
+  TextGlyphAtlas m_atlas{TextureDataFormat::Alpha, 2048};
+  // Colour-only text (emoji): its glyphs outlive the 15 s idle expiry of cache entries, so a reopen only places quads.
+  TextGlyphAtlas m_colorAtlas{TextureDataFormat::Rgba, 1024};
   std::vector<float> m_runPositions; // draw() scratch: atlas quads in surface pixels
   // Layouts measure() shaped, so a draw miss of the same key takes one instead of shaping again. Owned. Each
   // releaseTransient() (frame start) drops m_shapedOld and moves m_shaped there: a layout lives about one frame.

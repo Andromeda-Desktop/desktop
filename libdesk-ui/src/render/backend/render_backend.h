@@ -102,6 +102,7 @@ struct RenderGlyphRun {
   std::span<const float> texcoords; // u, v per vertex
   float opacity = 1.0F;
   Color tint = rgba(1.0F, 1.0F, 1.0F, 1.0F);
+  bool color = false; // texture holds premultiplied RGBA glyphs, drawn at opacity; else alpha coverage times tint
 };
 
 struct RenderScissor {
