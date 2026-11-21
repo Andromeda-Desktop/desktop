@@ -40,7 +40,7 @@ url=https://github.com/Andromeda-Desktop/desktop
 # `just package` and the release workflow build a local checkout; anyone else builds the published repository.
 # greetd base for andromeda-greetd; our patches are in desktop/session/greetd/patches.
 source=("desktop::git+${ANDROMEDA_SOURCE:-$url.git}"
-  "greetd::git+https://git.sr.ht/~kennylevinsen/greetd#commit=d5f27c3a8b1758da9e45608d2cff20303f21c2ff")
+  "greetd::git+https://github.com/kennylevinsen/greetd#commit=d5f27c3a8b1758da9e45608d2cff20303f21c2ff")
 sha256sums=(SKIP SKIP)
 
 # The unit's computed version (ANDROMEDA_VERSION from a release tag, else its last tag plus the commit count).
