@@ -1,12 +1,14 @@
 #pragma once
 
 #include "app/app_clipboard.h"
+#include "app/app_lifecycle.h"
 #include "app/app_loop.h"
 #include "app/app_services.h"
 #include "app/app_window.h"
 #include "app/command_table.h"
 #include "app/state_store.h"
 #include "core/graphics_recovery.h"
+#include "core/memory_pressure_poll_source.h"
 #include "core/timer_manager.h"
 
 #include <filesystem>
@@ -83,6 +85,9 @@ protected:
   virtual void windowSurfaceLost(AppWindow& /*window*/) {}
   // False for a service process that outlives its windows (the file picker); it then calls quit() itself.
   [[nodiscard]] virtual bool quitWithLastWindow() const { return true; }
+  // True: when the last window closes, the app stays alive and hidden, so a reopen skips the process start. It quits
+  // after an hour hidden or when the system runs short of memory.
+  [[nodiscard]] virtual bool hideWhenClosed() const { return false; }
   // For a subclass destructor whose members the windows' content uses: destroys them first, with no windowClosed.
   void destroyWindows() { m_windows.clear(); }
 
@@ -94,6 +99,7 @@ private:
   void routeKey(const KeyboardEvent& event);
   [[nodiscard]] AppWindow* windowFor(const Surface* surface) const;
   void reapClosed();
+  void onLifecycle(LifecycleEvent event);
   // Reopens every window on the compositor that took over the socket; false when none did.
   bool reconnect();
   // Rebuilds GL after a context reset and every window's scene, so textures upload again.
@@ -111,5 +117,8 @@ private:
   CommandTable m_commands;
   std::vector<std::unique_ptr<AppWindow>> m_windows;
   Timer m_serviceQuit; // a D-Bus activation start whose request never came
+  Lifecycle m_lifecycle = Lifecycle::Active;
+  Timer m_hiddenQuit;
+  std::unique_ptr<MemoryPressurePollSource> m_hiddenPressure; // armed while Hidden; kept until the loop ends after it
   Surface* m_pointerSurface = nullptr;
 };

@@ -808,7 +808,6 @@ _noctalia_sources = files(
   'src/system/media_player_open.cpp',
   'src/system/terminal_launch.cpp',
   'src/system/brightness_service.cpp',
-  'src/system/memory_pressure_poll_source.cpp',
   'src/system/keyboard_backlight_service.cpp',
   'src/system/lock_keys_service.cpp',
   'src/system/distro_info.cpp',

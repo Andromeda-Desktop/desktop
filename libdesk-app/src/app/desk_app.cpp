@@ -6,6 +6,7 @@
 #include "core/input/key_modifiers.h"
 #include "core/log.h"
 #include "core/process/process_phase.h"
+#include "core/sys/sys.h"
 #include "platform/surface.h"
 #include "render/text/cairo_text_renderer.h"
 #include "ui/controls/input.h"
@@ -25,6 +26,7 @@
 
 namespace {
   constexpr Logger kLog("app");
+  constexpr auto kHiddenLifetime = std::chrono::hours(1);
 
   // SIGINT and SIGTERM through a self-pipe, so a quit runs on the loop and the state is flushed. Not a signalfd:
   // its blocked mask would pass to every child the app starts.
@@ -144,6 +146,7 @@ DeskApp::~DeskApp() {
     m_loop.removeSource(m_glib.get());
   }
   m_loop.removeSource(m_signals.get());
+  m_loop.removeSource(m_hiddenPressure.get());
 }
 
 int DeskApp::run(int argc, char* argv[]) {
@@ -289,6 +292,7 @@ AppWindow& DeskApp::addWindow(AppWindow::Config config) {
   }
   auto& window = *m_windows.emplace_back(std::make_unique<AppWindow>(m_loop, m_commands, m_state, std::move(config)));
   window.setClosedCallback([this] { reapClosed(); });
+  onLifecycle(LifecycleEvent::WindowOpened);
   if (m_services != nullptr && m_services->hasAppearance()) {
     window.setUiScale(m_services->uiScale());
     window.setSceneHeld(m_services->holdMotion());
@@ -359,7 +363,37 @@ void DeskApp::reapClosed() {
   }
   std::erase_if(m_windows, [](const auto& w) { return !w->isOpen(); });
   if (m_windows.empty() && quitWithLastWindow()) {
+    onLifecycle(LifecycleEvent::LastWindowClosed);
+  }
+}
+
+void DeskApp::onLifecycle(LifecycleEvent event) {
+  switch (lifecycleStep(m_lifecycle, event, hideWhenClosed())) {
+  case LifecycleStep::Ignore:
+    return;
+  case LifecycleStep::Hide:
+    m_lifecycle = Lifecycle::Hidden;
+    kLog.info("hidden");
+    m_loop.renderContext().releaseUnusedCaches();
+    sys::releaseFreeHeap();
+    m_hiddenQuit.start(kHiddenLifetime, [this] { onLifecycle(LifecycleEvent::Expired); });
+    // Not the app's own cgroup: a hidden app stalls on nothing itself, the session does.
+    m_hiddenPressure = std::make_unique<MemoryPressurePollSource>(
+        MemoryPressurePollSource::kSystemPressureFile, [this] { onLifecycle(LifecycleEvent::Expired); }
+    );
+    m_loop.addSource(m_hiddenPressure.get());
+    return;
+  case LifecycleStep::Show:
+    m_lifecycle = Lifecycle::Active;
+    m_hiddenQuit.stop();
+    m_loop.removeSource(m_hiddenPressure.get());
+    m_hiddenPressure.reset();
+    return;
+  case LifecycleStep::Quit:
+    // The pressure source may be the caller: it lives on until the destructor.
+    m_hiddenQuit.stop();
     m_loop.quit(0);
+    return;
   }
 }
 

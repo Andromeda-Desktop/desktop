@@ -95,6 +95,7 @@ protected:
   void gpuLost() override;
   // A service start quits with its last window once it opened one (idle quit covers a start with no request).
   [[nodiscard]] bool quitWithLastWindow() const override { return !m_picker && (!m_service || m_hadWindow); }
+  [[nodiscard]] bool hideWhenClosed() const override { return true; }
 
 private:
   void addCommands();

@@ -13,7 +13,7 @@
 #include "pipewire/pipewire_spectrum_poll_source.h"
 #include "pipewire/wireplumber_mixer.h"
 #include "system/brightness_poll_source.h"
-#include "system/memory_pressure_poll_source.h"
+#include "core/memory_pressure_poll_source.h"
 #include "ui/dialogs/file_dialog_sheet.h"
 #include "core/files/directory_watcher.h"
 
@@ -140,7 +140,7 @@ std::vector<PollSource*> Application::buildPollSources() {
     m_poll.brightness.reset();
   }
   if (m_poll.memoryPressure == nullptr) {
-    m_poll.memoryPressure = std::make_unique<MemoryPressurePollSource>([this] {
+    m_poll.memoryPressure = std::make_unique<MemoryPressurePollSource>(MemoryPressurePollSource::ownCgroupPressureFile(), [this] {
       m_renderContext.releaseUnusedCaches();
       trimAllocator();
     });

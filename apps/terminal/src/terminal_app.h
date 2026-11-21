@@ -45,6 +45,7 @@ namespace term {
     void openPath(const std::filesystem::path& path); // in its default app, activated from the Preferences window
     void startup() override;
     void shutdown() override;
+    [[nodiscard]] bool hideWhenClosed() const override { return true; }
     void gpuLost() override;
 
   private:

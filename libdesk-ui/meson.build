@@ -196,6 +196,7 @@ _desk_ui_sources = files(
   'src/core/input/keybind_matcher.cpp',
   'src/core/input/key_chord.cpp',
   'src/core/log.cpp',
+  'src/core/memory_pressure_poll_source.cpp',
   'src/core/process/process_fds.cpp',
   'src/core/timer_manager.cpp',
   'src/core/ui_phase.cpp',

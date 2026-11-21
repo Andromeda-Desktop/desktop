@@ -500,6 +500,10 @@ bool AppWindow::open() {
   m_blur.clear(); // a new surface has no blur region yet
   m_surface = display.createToplevel();
   m_surface->setRenderContext(&m_loop.renderContext());
+  m_surface->callOnNextPresent([opened = std::chrono::steady_clock::now()] {
+    kLog.info("window first frame {} ms after open",
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - opened).count());
+  });
   m_surface->setAnimationManager(&m_animations);
   m_surface->setClosedCallback([this] { onClosedByCompositor(); });
   m_surface->setConfigureCallback([this](std::uint32_t, std::uint32_t) {
