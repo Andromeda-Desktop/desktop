@@ -35,9 +35,9 @@ bool fx_renderer_work_pending(struct wlr_renderer* renderer);
 int64_t fx_renderer_busy_since_ns(struct wlr_renderer* renderer);
 // False while the render thread holds the GL context: no GL call may start on the caller's thread until a kick's done.
 bool fx_renderer_context_home(struct wlr_renderer* renderer);
-// Links the glass composite and the RGBA/RGBX texture variants now, at startup, instead of on their first draw: each
-// costs up to a frame to link, and every session draws them. False if the context is away.
-bool fx_renderer_warm_programs(struct wlr_renderer* renderer);
+// Links the RGBA/RGBX texture variants, and the glass composite when `glass`, now instead of on their first draw: each
+// costs up to a frame to link. False if the context is away.
+bool fx_renderer_warm_programs(struct wlr_renderer* renderer, bool glass);
 // Test hook: the next render-thread job sleeps `ms` first. False without a render thread.
 bool fx_renderer_inject_submit_stall(struct wlr_renderer* renderer, int ms);
 // Runs on the render thread around each job, for a stall watch. Process-wide; NULL removes it. `watch` must outlive
