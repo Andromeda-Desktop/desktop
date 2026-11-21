@@ -51,6 +51,8 @@ public:
     bool closeOnCopy = true;
     bool closeOnSave = true;
     bool copyOnClose = false;
+    // Adds the capture mode (region, window, ...) to the filename.
+    bool appendModeSuffix = true;
     std::string pipeCommand;
     std::string directory;
     std::string filenamePattern;

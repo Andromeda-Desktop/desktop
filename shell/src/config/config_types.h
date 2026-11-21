@@ -1277,6 +1277,8 @@ struct ShellConfig {
     bool closeOnSave = true;
     bool copyOnClose = false;
     bool pipeToCommand = false;
+    // Adds the capture mode (region, window, ...) to saved filenames.
+    bool appendModeSuffix = true;
     std::string pipeCommand;
     std::string directory;       // empty = XDG Pictures directory
     std::string filenamePattern; // empty = screenshot_%Y%m%d_%H%M%S

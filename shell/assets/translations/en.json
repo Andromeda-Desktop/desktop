@@ -5132,6 +5132,10 @@
           "label": "Output Directory",
           "placeholder": "XDG Pictures directory"
         },
+        "screenshot-append-mode-suffix": {
+          "description": "Add the capture mode (region, window, ...) to saved filenames",
+          "label": "Mode in Filename"
+        },
         "screenshot-filename-pattern": {
           "description": "strftime pattern without extension (the format's extension is added); use %s for unix epoch",
           "label": "Filename Pattern"

@@ -364,6 +364,8 @@ namespace noctalia::cli {
       Flag{"--no-close-on-save", {}, {}, "Set close_on_save = false for this call", {}, {}, false, false},
       Flag{"--copy-on-close", {}, {}, "Set copy_on_close = true for this call", {}, {}, false, false},
       Flag{"--no-copy-on-close", {}, {}, "Set copy_on_close = false for this call", {}, {}, false, false},
+      Flag{"--append-mode-suffix", {}, {}, "Set append_mode_suffix = true for this call", {}, {}, false, false},
+      Flag{"--no-append-mode-suffix", {}, {}, "Set append_mode_suffix = false for this call", {}, {}, false, false},
       Flag{"--pipe-command", {}, "<command>", "Set pipe_command for this call", {}, {}, false, false},
       Flag{
           "--directory",

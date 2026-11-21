@@ -55,6 +55,12 @@ namespace {
     TEST_CHECK(disabled.has_value());
     expected.copyOnClose = false;
     TEST_CHECK(disabled->options == expected);
+
+    const auto noSuffix =
+        parseScreenshotIpcRequest(msg::screenshotRegion, "--no-append-mode-suffix", expected, std::nullopt);
+    TEST_CHECK(noSuffix.has_value());
+    expected.appendModeSuffix = false;
+    TEST_CHECK(noSuffix->options == expected);
   }
 
   void checkErrors() {

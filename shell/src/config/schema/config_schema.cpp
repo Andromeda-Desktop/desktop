@@ -2889,6 +2889,16 @@ namespace noctalia::config::schema {
                   .placeholder = "screenshot_%Y%m%d_%H%M%S",
               }
           ),
+          field(
+              &ShellConfig::ScreenshotConfig::appendModeSuffix, "append_mode_suffix",
+              RowSpec{
+                  .section = "screenshot",
+                  .group = "screenshot-output",
+                  .label = "shell.screenshot-append-mode-suffix",
+                  .tags = "screenshot filename suffix mode region window",
+                  .advanced = true,
+              }
+          ),
           enumField(
               &ShellConfig::ScreenshotConfig::format, "format", kScreenshotFormats,
               RowSpec{
