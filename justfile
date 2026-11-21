@@ -129,7 +129,7 @@ macos-check:
     tools/build.sh ninja -C libdesk-app/build-macos
     tools/macos/link-check.sh libdesk-app/build-macos
     tools/build-libghostty.sh macos
-    [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos
+    [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
     tools/build.sh ninja -C apps/terminal/build-macos
     tools/macos/link-check.sh apps/terminal/build-macos andromeda-terminal apps/terminal/subprojects/libghostty-vt/prefix-macos/lib/libghostty-vt.dylib
     for crate in ptyd agentd; do cargo check -q --locked --target aarch64-apple-darwin --tests --manifest-path apps/terminal/$crate/Cargo.toml --target-dir /var/tmp/andromeda-macos-cargo; done

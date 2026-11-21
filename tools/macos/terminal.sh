@@ -12,7 +12,7 @@ sdk=$(sed -n "s/^cpp = .*'-isysroot', '\([^']*\)'.*/\1/p" "$cross")
 ghostty_lib=$root/apps/terminal/subprojects/libghostty-vt/prefix-macos/lib
 
 tools/build-libghostty.sh macos
-[ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos
+[ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release
 tools/build.sh ninja -C apps/terminal/build-macos andromeda-terminal
 
 export MACOSX_DEPLOYMENT_TARGET=26.0
@@ -81,6 +81,7 @@ tic -x -o "$res/terminfo" apps/terminal/data/andromeda.terminfo
 # macOS ncurses looks entries up under the hex name of their first letter.
 for dir in "$res/terminfo"/?; do mv "$dir" "$res/terminfo/$(printf '%x' "'${dir##*/}")"; done
 cp tools/macos/fonts.conf "$res/fonts/"
+tools/macos/icns.py apps/terminal/data/icons/dev.andromeda.Terminal.svg "$res/AppIcon.icns"
 for conf in 05-macos 10-hinting-slight 10-scale-bitmap-fonts 30-metric-aliases 40-nonlatin 45-generic 45-latin 48-spacing \
     49-sansserif 60-generic 60-latin 65-nonlatin 80-delicious 90-synthetic; do
   cp "$deps/share/fontconfig/conf.avail/$conf.conf" "$res/fonts/conf.d/"
@@ -98,6 +99,7 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>CFBundleIdentifier</key><string>org.andromeda.Terminal</string>
   <key>CFBundleName</key><string>Andromeda Terminal</string>
   <key>CFBundleExecutable</key><string>andromeda-terminal</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>

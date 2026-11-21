@@ -2,6 +2,7 @@
 """Fetches arm64 macOS Homebrew bottles of the libdesk-ui and terminal dependencies, with their runtime dependencies,
 into a sysroot for cross-builds: headers, dylibs and pkg-config files under PREFIX (default ~/.cache/andromeda-mac/deps).
 Also writes PREFIX/../cross.ini, the meson cross file for arm64-apple-macos26 with the xtool Darwin SDK (DARWIN_SDK).
+Cairo is built from source instead: its bottle links X11 and xcb, which a Mac app never uses.
 Usage: deps.py [PREFIX]"""
 import hashlib
 import json
@@ -60,6 +61,28 @@ def angle(pc_dir):
     print("angle chromium-7151")
 
 
+def cairo(info, cross):
+    """Builds the bottle's cairo version without xlib and xcb; quartz stays, as the pangocairo bottle calls it."""
+    version, src = info["versions"]["stable"], info["urls"]["stable"]
+    tarball = os.path.join(CACHE, os.path.basename(src["url"]))
+    if not os.path.exists(tarball):
+        fetch(src["url"], tarball)
+    with open(tarball, "rb") as f:
+        if hashlib.sha256(f.read()).hexdigest() != src["checksum"]:
+            sys.exit(f"cairo: sha256 mismatch for {tarball}")
+    with tempfile.TemporaryDirectory(dir="/var/tmp") as tmp:
+        with tarfile.open(tarball) as tar:
+            tar.extractall(tmp, filter="data")
+        source, build = os.path.join(tmp, f"cairo-{version}"), os.path.join(tmp, "build")
+        subprocess.run(["meson", "setup", build, source, "--cross-file", cross, "--prefix", PREFIX, "--libdir", "lib",
+                        "--buildtype=release", "-Dxlib=disabled", "-Dxcb=disabled", "-Dquartz=enabled",
+                        "-Dtests=disabled", "-Dspectre=disabled", "-Dsymbol-lookup=disabled", "-Dlzo=disabled",
+                        "-Dglib=enabled", "-Dfontconfig=enabled", "-Dfreetype=enabled", "-Dpng=enabled"],
+                       check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(["meson", "install", "-C", build, "--quiet"], check=True, stdout=subprocess.DEVNULL)
+    print("cairo", version, "(source, no X11)")
+
+
 def formula(name):
     with urllib.request.urlopen(API.format(name)) as r:
         return json.load(r)
@@ -87,6 +110,8 @@ def main():
     os.makedirs(PREFIX)
     infos, order = resolve(ROOTS)
     for name in order:
+        if name == "cairo":
+            continue
         files = infos[name]["bottle"]["stable"]["files"]
         bottle = files.get(TAG) or files.get("all")
         if not bottle:
@@ -152,6 +177,7 @@ cpu_family = 'aarch64'
 cpu = 'arm64'
 endian = 'little'
 """)
+    cairo(infos["cairo"], os.path.join(os.path.dirname(PREFIX), "cross.ini"))
 
 
 if __name__ == "__main__":
