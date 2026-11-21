@@ -122,13 +122,15 @@ public:
   // Anchors a control-center request on the right island of request.output's bar, like a click on it.
   void fillIslandSource(PanelOpenRequest& request, std::string_view panelId) const;
   void fillLauncherSource(PanelOpenRequest& request) const;
-  // Highest layer-shell layer occupied by any enabled bar on the given output (defaults to Top when no bar is present).
-  // Hot corners use this to sit on the highest bar's layer so they are always activable.
+  // Highest resting layer-shell layer of any enabled bar on the given output (Top when no bar is present). Hot corners
+  // use it to sit on the highest bar's layer so they are always activable; an `auto` bar rests on Top.
   [[nodiscard]] LayerShellLayer highestLayerForOutput(wl_output* output) const noexcept;
   // True when an attached panel may start its reveal animation: non-autohide bars, or autohide
   // bars that have finished sliding into their resting position.
   [[nodiscard]] bool isAttachedPanelBarSettled(wl_output* output, std::string_view barName) const noexcept;
   void revealAutoHideForAttachedPanel(wl_output* output, std::string_view barName);
+  // An `auto` bar goes to Overlay while its attached panel is open, and back to Top once its own motion settles.
+  void setAttachedPanelOpen(wl_output* output, std::string_view barName, bool open);
   void beginAttachedPopup(Surface* surface);
   void endAttachedPopup(Surface* surface);
 
@@ -173,6 +175,13 @@ private:
   [[nodiscard]] bool shouldReserveExclusiveZone(const BarInstance& instance) const noexcept;
   [[nodiscard]] bool barContentVisuallyShown(const BarInstance& instance) const noexcept;
   void revealAutoHideBar(BarInstance& instance);
+  // `auto` rests on Top; other values name the layer.
+  [[nodiscard]] static LayerShellLayer restingBarLayer(const BarConfig& config);
+  [[nodiscard]] static LayerShellLayer effectiveBarLayer(const BarInstance& instance);
+  // A hide or reveal starts: a pending drop to Top waits for it.
+  static void autoLayerMotionStarted(BarInstance& instance);
+  // A hide or reveal settled: a demoting bar drops to Top after its next frame.
+  void finishAutoLayerTransition(BarInstance& instance);
   [[nodiscard]] bool isWorkspacePeekActive() const noexcept;
   void applyPendingWorkspaceReveal();
   void reevaluateSmartAutoHide();

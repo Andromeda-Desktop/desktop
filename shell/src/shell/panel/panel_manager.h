@@ -124,6 +124,10 @@ public:
   void setAttachedPanelAvailabilityCallback(std::function<bool(wl_output*, std::string_view)> callback);
   void setBarConfigProvider(std::function<std::optional<BarConfig>(wl_output*, std::string_view)> provider);
   void setAttachedPanelBarSettledCallback(std::function<bool(wl_output*, std::string_view)> callback);
+  // Told when an attached panel opens on a bar (before its first commit) and when it is gone after its close.
+  void setAttachedPanelStateCallback(std::function<void(wl_output*, std::string_view, bool open)> callback);
+  // The host bar's layer setting changed at runtime: the attached panel follows it.
+  void onAttachedBarLayerChanged(wl_output* output, std::string_view barName, std::string_view layerSetting);
   // Fills the island anchor and source of a request that has none (IPC, keyboard), as a click on the island would.
   void setIslandSourceProvider(std::function<void(PanelOpenRequest&, std::string_view)> provider);
   // Called when an auto-hide bar finishes revealing for an attached panel open.
@@ -381,6 +385,7 @@ private:
   std::function<void()> m_panelOpenedCallback;
   std::function<bool(wl_output*, std::string_view)> m_attachedPanelAvailabilityCallback;
   std::function<std::optional<BarConfig>(wl_output*, std::string_view)> m_barConfigProvider;
+  std::function<void(wl_output*, std::string_view, bool)> m_attachedPanelStateCallback;
   std::function<bool(wl_output*, std::string_view)> m_attachedPanelBarSettledCallback;
   std::function<void(PanelOpenRequest&, std::string_view)> m_islandSourceProvider;
   PanelClickShield m_clickShield;

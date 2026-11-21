@@ -51,6 +51,11 @@
 PanelManager* PanelManager::s_instance = nullptr;
 
 namespace {
+  // An attached panel shares its bar's layer; an `auto` bar is on Overlay for as long as the panel is open.
+  LayerShellLayer attachedPanelLayerFromBarSetting(std::string_view layer) {
+    return layer == "auto" ? LayerShellLayer::Overlay : layerShellLayerFromConfig(layer);
+  }
+
   // The sheet takes the light glass curve and light-scheme rules (glass::tone Scheme in the light scheme).
   bool sheetLight() { return isLightPalette() && glassTone(glass::Kind::Shape) == PaletteTone::Scheme; }
 
@@ -1071,8 +1076,12 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
       && outputHeight > 0;
   const LayerShellLayer floatingPanelLayer = resolveFloatingPanelLayer(m_config, m_activePanelId, *m_activePanel);
   const LayerShellLayer panelLayer =
-      useAttachedPlacement ? layerShellLayerFromConfig(barConfig.layer) : floatingPanelLayer;
+      useAttachedPlacement ? attachedPanelLayerFromBarSetting(barConfig.layer) : floatingPanelLayer;
   m_panelLayer = panelLayer;
+  if (useAttachedPlacement && m_attachedPanelStateCallback) {
+    // Before either surface commits, so the bar and its attached panel enter the same layer together.
+    m_attachedPanelStateCallback(request.output, m_sourceBarName, true);
+  }
 
   const bool hasFocusGrab =
       m_platform != nullptr && m_platform->focusGrabService() != nullptr && m_platform->focusGrabService()->available();
@@ -1448,6 +1457,9 @@ void PanelManager::openPanel(const std::string& panelId, PanelOpenRequest reques
     m_contentFit.attachedSlotGeometry.reset();
     m_attachedOpenAnimationPending = false;
     kLog.warn("panel manager: attached layer-shell failed for \"{}\", falling back to standalone", panelId);
+    if (m_attachedPanelStateCallback) {
+      m_attachedPanelStateCallback(request.output, m_sourceBarName, false);
+    }
     if (m_panelLayer != floatingPanelLayer) {
       m_clickShield.setLayer(floatingPanelLayer);
       m_panelLayer = floatingPanelLayer;
@@ -1787,6 +1799,9 @@ void PanelManager::destroyPanel() {
   m_contentGate = 1.0F;
   if (m_attachedToBar && m_attachedPanelGeometryCallback && m_output != nullptr) {
     m_attachedPanelGeometryCallback(m_output, m_sourceBarName, std::nullopt);
+  }
+  if (m_attachedToBar && m_attachedPanelStateCallback && m_output != nullptr) {
+    m_attachedPanelStateCallback(m_output, m_sourceBarName, false);
   }
   // Defensive: closePanel deactivates first, but destroyPanel can also be
   // reached directly when openPanel preempts an open panel.
@@ -3897,10 +3912,40 @@ void PanelManager::applyAttachedDecorationStyle() {
   }
 }
 
+void PanelManager::setAttachedPanelStateCallback(std::function<void(wl_output*, std::string_view, bool)> callback) {
+  m_attachedPanelStateCallback = std::move(callback);
+}
+
+void PanelManager::onAttachedBarLayerChanged(
+    wl_output* output, std::string_view barName, std::string_view layerSetting
+) {
+  if (!m_attachedToBar || m_output != output || m_layerSurface == nullptr || m_sourceBarName != barName) {
+    return;
+  }
+  const LayerShellLayer layer = attachedPanelLayerFromBarSetting(layerSetting);
+  if (layer == m_panelLayer) {
+    return;
+  }
+  m_clickShield.setLayer(layer);
+  m_layerSurface->setLayer(layer);
+  m_panelLayer = layer;
+}
+
 void PanelManager::onConfigReloaded() {
   m_persistentHost.onConfigReloaded();
   if (!isOpen() || m_config == nullptr || m_activePanel == nullptr) {
     return;
+  }
+  if (m_attachedToBar && m_layerSurface != nullptr) {
+    // The reload may have recreated the host bar: it learns again that its panel is open.
+    if (m_attachedPanelStateCallback) {
+      m_attachedPanelStateCallback(m_output, m_sourceBarName, true);
+    }
+    if (m_barConfigProvider) {
+      if (const auto barConfig = m_barConfigProvider(m_output, m_sourceBarName)) {
+        onAttachedBarLayerChanged(m_output, m_sourceBarName, barConfig->layer);
+      }
+    }
   }
   if (!m_attachedToBar && m_layerSurface != nullptr) {
     const LayerShellLayer panelLayer = resolveFloatingPanelLayer(m_config, m_activePanelId, *m_activePanel);

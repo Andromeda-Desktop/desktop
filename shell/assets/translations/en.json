@@ -3044,6 +3044,7 @@
         "window-switcher": "Window Switcher"
       },
       "layer": {
+        "auto": "Auto",
         "overlay": "Overlay",
         "top": "Top"
       },
@@ -3580,7 +3581,7 @@
           "label": "Islands"
         },
         "layer": {
-          "description": "Use Overlay to show the bar above fullscreen apps; attached panels follow the bar",
+          "description": "Overlay shows the bar above fullscreen apps; Auto does so only while a panel attached to the bar is open",
           "label": "Wayland Layer"
         },
         "opposite-edge-margin": {

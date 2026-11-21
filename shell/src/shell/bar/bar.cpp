@@ -868,6 +868,7 @@ void Bar::setInstanceIpcVisible(BarInstance& instance, bool visible) {
   }
   const float current = instance.hideOpacity;
   const float target = visible ? 1.0F : 0.0F;
+  autoLayerMotionStarted(instance);
   const auto settled = [inst = &instance, this] {
     syncBarSlideLayerTransform(*inst);
     syncBarAutoHideInputRegion(*inst);
@@ -875,6 +876,7 @@ void Bar::setInstanceIpcVisible(BarInstance& instance, bool visible) {
     if (inst->surface != nullptr) {
       inst->surface->requestRedraw();
     }
+    finishAutoLayerTransition(*inst);
   };
   if (!slideOnCompositor(instance, visible, settled)) {
     instance.slideAnimId = instance.animations.drive(
@@ -1197,7 +1199,7 @@ LayerShellLayer Bar::highestLayerForOutput(wl_output* output) const noexcept {
     if (instance->output != output || !instance->barConfig.enabled) {
       continue;
     }
-    const LayerShellLayer layer = layerShellLayerFromConfig(instance->barConfig.layer);
+    const LayerShellLayer layer = restingBarLayer(instance->barConfig);
     if (static_cast<std::uint32_t>(layer) > static_cast<std::uint32_t>(highest)) {
       highest = layer;
     }
@@ -1219,6 +1221,70 @@ void Bar::revealAutoHideForAttachedPanel(wl_output* output, std::string_view bar
   if (instance != nullptr) {
     revealAutoHideBar(*instance);
   }
+}
+
+LayerShellLayer Bar::restingBarLayer(const BarConfig& config) {
+  return config.layer == "auto" ? LayerShellLayer::Top : layerShellLayerFromConfig(config.layer);
+}
+
+LayerShellLayer Bar::effectiveBarLayer(const BarInstance& instance) {
+  if (instance.barConfig.layer == "auto" && instance.autoLayer != BarInstance::AutoLayer::Resting) {
+    return LayerShellLayer::Overlay;
+  }
+  return restingBarLayer(instance.barConfig);
+}
+
+void Bar::autoLayerMotionStarted(BarInstance& instance) {
+  if (instance.autoLayer == BarInstance::AutoLayer::Settling) {
+    instance.autoLayer = BarInstance::AutoLayer::Demoting;
+  }
+}
+
+void Bar::setAttachedPanelOpen(wl_output* output, std::string_view barName, bool open) {
+  using AutoLayer = BarInstance::AutoLayer;
+  BarInstance* instance = instanceForBar(output, barName);
+  if (instance == nullptr || instance->surface == nullptr) {
+    return;
+  }
+  if (open) {
+    instance->autoLayer = AutoLayer::Promoted;
+    instance->surface->setLayer(effectiveBarLayer(*instance));
+    return;
+  }
+  if (instance->autoLayer != AutoLayer::Promoted) {
+    return;
+  }
+  instance->autoLayer = AutoLayer::Resting;
+  if (instance->barConfig.layer == "auto" && barSupportsSlideBehavior(instance->barConfig)
+      && instance->hideOpacity > 0.0F) {
+    const bool suppressAutoHide = m_autoHideSuppressionCallback != nullptr && m_autoHideSuppressionCallback(*instance);
+    const bool shouldHide = barPointerHideAllowed(*instance)
+        && !instance->pointerInside
+        && instance->attachedPopupCount == 0
+        && !suppressAutoHide;
+    // An auto-hide bar still hides or finishes its reveal; it stays above fullscreen windows until that settles.
+    if (shouldHide || instance->hideOpacity < 1.0F) {
+      instance->autoLayer = AutoLayer::Demoting;
+      if (shouldHide) {
+        startHideFadeOut(*instance);
+      } else {
+        revealAutoHideBar(*instance);
+      }
+      return;
+    }
+  }
+  instance->surface->setLayer(effectiveBarLayer(*instance));
+}
+
+void Bar::finishAutoLayerTransition(BarInstance& instance) {
+  // A delayed hide still to come means the bar has not reached its final state.
+  if (instance.autoLayer != BarInstance::AutoLayer::Demoting || instance.surface == nullptr
+      || instance.autoHideDelayTimer.active()) {
+    return;
+  }
+  instance.autoLayer = BarInstance::AutoLayer::Settling;
+  instance.surface->requestRedraw();
+  instance.surface->requestFrameTick();
 }
 
 void Bar::setAttachedPanelGeometry(

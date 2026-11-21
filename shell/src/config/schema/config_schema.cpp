@@ -25,6 +25,13 @@ namespace noctalia::config::schema {
       return {{"top", "settings.options.layer.top"}, {"overlay", "settings.options.layer.overlay"}};
     }
 
+    // The bar may also rest on Top and rise to Overlay while its attached panel is open.
+    std::vector<RowSpec::Choice> barLayerChoices() {
+      auto choices = layerChoices();
+      choices.push_back({"auto", "settings.options.layer.auto"});
+      return choices;
+    }
+
     template <typename Struct, typename Enum, std::size_t N>
     Field<Struct> enumArrayField(
         std::vector<Enum> Struct::* member, std::string_view key, const EnumOption<Enum> (&options)[N],
@@ -4075,10 +4082,10 @@ namespace noctalia::config::schema {
           "layer",
           [](const toml::table& tbl, BarConfig& out, std::string_view parentPath, Diagnostics& diag) {
             if (auto v = tbl["layer"].value<std::string>()) {
-              if (*v == "top" || *v == "overlay") {
+              if (*v == "top" || *v == "overlay" || *v == "auto") {
                 out.layer = *v;
               } else {
-                diag.warn(joinPath(parentPath, "layer"), "expected top or overlay, got \"" + *v + "\"");
+                diag.warn(joinPath(parentPath, "layer"), "expected top, overlay or auto, got \"" + *v + "\"");
               }
             } else {
               warnWrongType(tbl, "layer", parentPath, diag, "a string");
@@ -4091,7 +4098,7 @@ namespace noctalia::config::schema {
               .group = "position-spacing",
               .tags = "layer shell z-order",
               .segmented = true,
-              .choices = layerChoices(),
+              .choices = barLayerChoices(),
           }
       );
     }
@@ -4875,15 +4882,15 @@ namespace noctalia::config::schema {
         optionalBoolField(&BarMonitorOverride::smartAutoHide, "smart_auto_hide"),
         optionalBoolField(&BarMonitorOverride::showOnWorkspaceSwitch, "show_on_workspace_switch"),
         optionalBoolField(&BarMonitorOverride::reserveSpace, "reserve_space"),
-        // layer accepts top|overlay; anything else warns and leaves it unset.
+        // layer accepts top|overlay|auto; anything else warns and leaves it unset.
         custom<BarMonitorOverride>(
             "layer",
             [](const toml::table& tbl, BarMonitorOverride& out, std::string_view parentPath, Diagnostics& diag) {
               if (auto v = tbl["layer"].value<std::string>()) {
-                if (*v == "top" || *v == "overlay") {
+                if (*v == "top" || *v == "overlay" || *v == "auto") {
                   out.layer = *v;
                 } else {
-                  diag.warn(joinPath(parentPath, "layer"), "expected top or overlay, got \"" + *v + "\"");
+                  diag.warn(joinPath(parentPath, "layer"), "expected top, overlay or auto, got \"" + *v + "\"");
                 }
               } else {
                 warnWrongType(tbl, "layer", parentPath, diag, "a string");

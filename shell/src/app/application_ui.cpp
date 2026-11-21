@@ -1223,6 +1223,9 @@ void Application::initBarDockAndLayout() {
         m_bar.setAttachedPanelGeometry(output, barName, geometry);
       }
   );
+  m_panelManager.setAttachedPanelStateCallback([this](wl_output* output, std::string_view barName, bool open) {
+    m_bar.setAttachedPanelOpen(output, barName, open);
+  });
   m_panelManager.setClickShieldExcludeRectsProvider([this](wl_output* output) {
     return m_bar.surfaceRectsForOutput(output);
   });

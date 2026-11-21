@@ -252,7 +252,7 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
 
   auto surfaceConfig = LayerSurfaceConfig{
       .nameSpace = "noctalia-bar-" + barConfig.name,
-      .layer = layerShellLayerFromConfig(barConfig.layer),
+      .layer = restingBarLayer(barConfig),
       .anchor = anchor,
       .width = surfaceSpec.surfaceWidth,
       .height = surfaceSpec.surfaceHeight,
@@ -275,10 +275,21 @@ void Bar::createInstance(const WaylandOutput& output, std::size_t barIndex, cons
   instance->surface->setPrepareFrameCallback([this, inst](bool needsUpdate, bool needsLayout) {
     prepareFrame(*inst, needsUpdate, needsLayout);
   });
-  instance->surface->setFrameTickCallback([inst](float deltaMs) {
+  instance->surface->setFrameTickCallback([this, inst](float deltaMs) {
     tickWidgets(inst->startWidgets, deltaMs);
     tickWidgets(inst->centerWidgets, deltaMs);
     tickWidgets(inst->endWidgets, deltaMs);
+    if (inst->autoLayer == BarInstance::AutoLayer::Settling) {
+      // Frame work runs before this frame renders; the deferred call runs after it, so the final state is painted.
+      DeferredCall::callLater([this, output = inst->output, barName = inst->barConfig.name] {
+        BarInstance* instance = instanceForBar(output, barName);
+        if (instance != nullptr && instance->surface != nullptr
+            && instance->autoLayer == BarInstance::AutoLayer::Settling) {
+          instance->autoLayer = BarInstance::AutoLayer::Resting;
+          instance->surface->setLayer(effectiveBarLayer(*instance));
+        }
+      });
+    }
   });
 
   instance->surface->setAnimationManager(&instance->animations);
@@ -487,10 +498,12 @@ void Bar::revealAutoHideBar(BarInstance& instance) {
 
   instance.autoHideDelayTimer.stop();
   instance.ipcLayoutReleased = false;
+  autoLayerMotionStarted(instance);
   const float current = instance.hideOpacity;
   wl_output* output = instance.output;
   const std::string barName = instance.barConfig.name;
-  const auto notifyAttachedPanel = [output, barName] {
+  const auto notifyAttachedPanel = [this, inst = &instance, output, barName] {
+    finishAutoLayerTransition(*inst);
     PanelManager::instance().onAttachedBarRevealSettled(output, barName);
   };
 
@@ -672,12 +685,15 @@ void Bar::startHideFadeOut(BarInstance& instance, bool immediate) {
       instance.autoHideDelayTimer.start(
           std::chrono::milliseconds(instance.barConfig.autoHideDelayMs), [this, inst = &instance] {
             if (inst->pointerInside || inst->attachedPopupCount > 0 || !barPointerHideAllowed(*inst)) {
+              finishAutoLayerTransition(*inst);
               return;
             }
             const bool suppressed =
                 (m_autoHideSuppressionCallback != nullptr) ? m_autoHideSuppressionCallback(*inst) : false;
             if (!suppressed) {
               startHideFadeOut(*inst, true);
+            } else {
+              finishAutoLayerTransition(*inst);
             }
           }
       );
@@ -685,6 +701,7 @@ void Bar::startHideFadeOut(BarInstance& instance, bool immediate) {
     return;
   }
   instance.autoHideDelayTimer.stop();
+  autoLayerMotionStarted(instance);
   const auto settled = [inst = &instance, this] {
     if (inst->surface == nullptr) {
       return;
@@ -692,6 +709,7 @@ void Bar::startHideFadeOut(BarInstance& instance, bool immediate) {
     syncBarAutoHideInputRegion(*inst);
     syncBarSurfaceChrome(*inst);
     inst->surface->requestRedraw();
+    finishAutoLayerTransition(*inst);
   };
   if (slideOnCompositor(instance, false, settled)) {
     return;

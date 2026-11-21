@@ -80,7 +80,7 @@ struct BarMonitorOverride {
   std::optional<bool> smartAutoHide;
   std::optional<bool> showOnWorkspaceSwitch;
   std::optional<bool> reserveSpace;
-  std::optional<std::string> layer; // top | overlay
+  std::optional<std::string> layer; // top | overlay | auto
   std::optional<std::int32_t> thickness;
   std::optional<float> backgroundOpacity;
   std::optional<bool> compositorBlur;
@@ -155,7 +155,7 @@ struct BarConfig {
 
   [[nodiscard]] constexpr bool isAutoHideEnabled() const noexcept { return autoHide || smartAutoHide; }
   bool reserveSpace = true;  // reserve compositor exclusive zone; applies with or without auto_hide
-  std::string layer = "top"; // top | overlay; attached panels use the same layer
+  std::string layer = "top"; // top | overlay | auto (Top, Overlay while an attached panel is open); attached panels use the same layer
   std::int32_t thickness = static_cast<std::int32_t>(Style::barThicknessDefault);
   float backgroundOpacity = 0.70F; // tint_regular token alpha (0xb3)
   // A fixed body alpha that ignores the glass slider (board desktop-layouts.html section 1: the near-opaque Windows

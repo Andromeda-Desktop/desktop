@@ -359,7 +359,9 @@ std::string Bar::setBarAutoHideIpc(std::string_view args) {
         if (inst->surface != nullptr) {
           inst->surface->requestRedraw();
         }
+        finishAutoLayerTransition(*inst);
       };
+      autoLayerMotionStarted(instance);
       if (!slideOnCompositor(instance, true, settled)) {
         instance.slideAnimId = instance.animations.drive(
             instance.slideAnimId, current, 1.0F, Style::spring(Tokens::springMove),
@@ -401,12 +403,12 @@ std::string Bar::setBarAutoHideIpc(std::string_view args) {
 std::string Bar::setBarLayerIpc(std::string_view args) {
   const auto parts = noctalia::ipc::splitWords(args);
   if (parts.empty() || parts.size() > 3) {
-    return "error: usage: bar-layer-set <top|overlay> [bar-name] [monitor-selector]\n";
+    return "error: usage: bar-layer-set <top|overlay|auto> [bar-name] [monitor-selector]\n";
   }
 
   const std::string& layer = parts[0];
-  if (layer != "top" && layer != "overlay") {
-    return "error: invalid layer (use top or overlay)\n";
+  if (layer != "top" && layer != "overlay" && layer != "auto") {
+    return "error: invalid layer (use top, overlay, or auto)\n";
   }
 
   std::optional<std::string> barName;
@@ -423,13 +425,17 @@ std::string Bar::setBarLayerIpc(std::string_view args) {
     return *collectError;
   }
 
-  const LayerShellLayer shellLayer = layerShellLayerFromConfig(layer);
   for (BarInstance* instance : targets) {
     if (instance == nullptr || instance->surface == nullptr) {
       continue;
     }
-    instance->surface->setLayer(shellLayer);
     instance->barConfig.layer = layer;
+    if (instance->autoLayer == BarInstance::AutoLayer::Demoting
+        || instance->autoLayer == BarInstance::AutoLayer::Settling) {
+      instance->autoLayer = BarInstance::AutoLayer::Resting;
+    }
+    instance->surface->setLayer(effectiveBarLayer(*instance));
+    PanelManager::instance().onAttachedBarLayerChanged(instance->output, instance->barConfig.name, layer);
   }
 
   return "ok\n";

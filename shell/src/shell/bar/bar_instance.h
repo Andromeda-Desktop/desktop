@@ -106,6 +106,11 @@ struct BarInstance {
   float lastPointerSx = 0.0F;
   float lastPointerSy = 0.0F;
   std::size_t attachedPopupCount = 0;
+  // Resting: no attached panel. Promoted: an attached panel is open (an `auto` bar sits on Overlay). Demoting: the
+  // panel closed and the bar's hide or reveal still runs, so an `auto` bar stays on Overlay. Settling: that motion
+  // ended; the bar drops to Top after its next frame.
+  enum class AutoLayer : std::uint8_t { Resting, Promoted, Demoting, Settling };
+  AutoLayer autoLayer = AutoLayer::Resting;
   // Last region sent for dead_zone.click_through; skips resending an unchanged region every layout pass.
   std::optional<std::vector<InputRect>> clickThroughInputRegion;
 
