@@ -877,6 +877,9 @@ void WaylandConnection::registerLayerSurface(const LayerSurface& layerSurface) {
 void WaylandConnection::unregisterSurface(wl_surface* surface) {
   if (surface != nullptr) {
     m_seatHandler.forgetSurface(surface);
+    if (m_dragAndDrop != nullptr) {
+      m_dragAndDrop->clearTarget(surface);
+    }
     m_surfaceOutputMap.erase(surface);
     m_surfaceOutputs.erase(surface);
     m_layerSurfaceMap.erase(surface);

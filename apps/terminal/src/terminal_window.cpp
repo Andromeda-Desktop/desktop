@@ -2004,7 +2004,7 @@ namespace term {
 
   TerminalWindow::~TerminalWindow() {
     m_alive.reset();
-    if (m_dropSurface != nullptr) {
+    if (m_dropSurface != nullptr && m_dropSurface == m_window.surface()) {
       m_loop.display().clearDropTarget(*m_dropSurface);
     }
     if (m_tickSurface != nullptr && m_tickSurface == m_window.surface()) {
