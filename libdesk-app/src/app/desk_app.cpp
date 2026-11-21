@@ -212,7 +212,7 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
   if (const auto dir = fontWarmupDir(); !dir.empty()) {
     CairoTextRenderer::recordFontsTo(dir / m_info.id);
   }
-  if (!m_loop.initialize(m_info.sharedGl)) {
+  if (!m_loop.initialize(m_info.sharedGl, m_info.id)) {
     return 1;
   }
   m_loop.setDisconnectHandler([this] { return reconnect(); });

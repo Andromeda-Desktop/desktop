@@ -6,6 +6,7 @@
 #include "platform/key_repeat_poll_source.h"
 #include "platform/display.h"
 
+#include <string>
 #include <memory>
 
 class WaylandConnection;
@@ -27,7 +28,8 @@ public:
   AppLoop& operator=(const AppLoop&) = delete;
 
   // Connects Wayland, starts GL and the render context. False when no compositor answers.
-  bool initialize(bool sharedGl);
+  // appId names the GL program preload list; empty: no preload.
+  bool initialize(bool sharedGl, const std::string& appId = {});
 
   // Wayland builds only; apps that still call Wayland directly (files, viewer, player).
   [[nodiscard]] WaylandConnection& wayland() noexcept;
@@ -60,6 +62,7 @@ private:
   std::unique_ptr<Display> m_display;
   GlSharedContext m_gl;
   RenderContext m_render;
+  std::future<void> m_eglReady; // EGL is initialized; m_egl also covers the program preload after it
   std::future<void> m_egl; // declared after m_gl and m_display: its destructor waits for the worker that uses them
   KeyRepeatPollSource m_keyRepeat;
   std::vector<PollSource*> m_sources;

@@ -3,6 +3,7 @@
 
 #include "core/log.h"
 #include "core/scoped_timer.h"
+#include "render/core/shader_program.h"
 
 #include <ctime>
 #include <fstream>
@@ -16,6 +17,8 @@ namespace startup_metrics {
     constexpr Logger kLog("startup");
 
     double g_eglInitMs = 0.0;
+    double g_eglWaitMs = 0.0;
+    int g_preloadedCount = 0;
     double g_programMs = 0.0;
     int g_programCount = 0;
     bool g_firstFrameLogged = false;
@@ -28,6 +31,10 @@ namespace startup_metrics {
   }
 
   void recordEglInit(double ms) { g_eglInitMs += ms; }
+
+  void recordEglWait(double ms) { g_eglWaitMs += ms; }
+
+  void recordProgramPreloaded() { ++g_preloadedCount; }
 
   void recordProgramBuild(double ms) {
     g_programMs += ms;
@@ -43,9 +50,11 @@ namespace startup_metrics {
     }
     g_firstFrameLogged = true;
     sys::notifyServiceReady();
+    ShaderProgram::saveUsedForPreload();
     kLog.info(
-        "first frame at {:.0f} ms after process start; EGL init {:.1f} ms; {} GL programs built in {:.1f} ms",
-        sinceProcessStart(), g_eglInitMs, g_programCount, g_programMs
+        "first frame at {:.0f} ms after process start; EGL init {:.1f} ms; {} GL programs built in {:.1f} ms; "
+        "{} preloaded; EGL wait {:.1f} ms",
+        sinceProcessStart(), g_eglInitMs, g_programCount, g_programMs, g_preloadedCount, g_eglWaitMs
     );
     return true;
   }

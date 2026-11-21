@@ -11,11 +11,13 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -45,6 +47,16 @@ namespace {
       return std::nullopt;
     }
     return BinaryCache{.dir = base / "andromeda" / "gl-programs", .driver = std::string(renderer) + '\n' + version};
+  }
+
+  // Held by preloadCached() while it loads; create() takes it before it reads the preloaded programs.
+  std::mutex g_preloadMutex;
+  std::string g_preloadAppId;
+  std::unordered_map<std::string, GLuint> g_preloaded; // binary file name -> loaded program
+  std::vector<std::string> g_used; // binary file names created up to the first frame of the preloadCached() app
+
+  std::filesystem::path preloadListPath(const std::filesystem::path& dir, const std::string& appId) {
+    return dir / ("preload-" + appId);
   }
 
   const std::optional<BinaryCache>& binaryCache() {
@@ -174,10 +186,24 @@ ShaderProgram& ShaderProgram::operator=(ShaderProgram&& other) noexcept {
 void ShaderProgram::create(const char* vertexSource, const char* fragmentSource) {
   destroy();
   const auto buildStart = std::chrono::steady_clock::now();
+  const std::lock_guard lock(g_preloadMutex);
   const std::optional<BinaryCache>& cache = binaryCache();
   std::filesystem::path cached;
   if (cache.has_value()) {
     cached = binaryPath(*cache, vertexSource, fragmentSource);
+    std::string name = cached.filename().string();
+    if (const auto it = g_preloaded.find(name); it != g_preloaded.end()) {
+      m_program = it->second;
+      g_preloaded.erase(it);
+      if (!g_preloadAppId.empty()) {
+        g_used.push_back(std::move(name));
+      }
+      startup_metrics::recordProgramPreloaded();
+      return;
+    }
+    if (!g_preloadAppId.empty()) {
+      g_used.push_back(std::move(name));
+    }
     m_program = glCreateProgram();
     if (m_program != 0 && loadBinary(m_program, cached)) {
       startup_metrics::recordProgramBuild(
@@ -234,6 +260,62 @@ void ShaderProgram::create(const char* vertexSource, const char* fragmentSource)
   startup_metrics::recordProgramBuild(
       std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - buildStart).count()
   );
+}
+
+void ShaderProgram::preloadCached(const std::string& appId, const std::function<void()>& started) {
+  const std::lock_guard lock(g_preloadMutex);
+  started();
+  const std::optional<BinaryCache>& cache = binaryCache();
+  if (!cache.has_value()) {
+    return;
+  }
+  g_preloadAppId = appId;
+  std::ifstream list(preloadListPath(cache->dir, appId));
+  for (std::string name; std::getline(list, name);) {
+    if (name.empty() || name.find('/') != std::string::npos || g_preloaded.contains(name)) {
+      continue;
+    }
+    const GLuint program = glCreateProgram();
+    if (program != 0 && loadBinary(program, cache->dir / name)) {
+      g_preloaded.emplace(std::move(name), program);
+    } else if (program != 0) {
+      glDeleteProgram(program);
+    }
+  }
+  // Another context of the share group uses these programs next.
+  glFlush();
+}
+
+void ShaderProgram::saveUsedForPreload() {
+  const std::lock_guard lock(g_preloadMutex);
+  // Checked before binaryCache(): its first call needs a current context, which a process that never preloads may
+  // not have here.
+  if (g_preloadAppId.empty() || !binaryCache().has_value()) {
+    return;
+  }
+  const std::filesystem::path path = preloadListPath(binaryCache()->dir, g_preloadAppId);
+  std::string content;
+  for (const std::string& name : g_used) {
+    content += name + '\n';
+  }
+  g_preloadAppId.clear();
+  g_used.clear();
+  // Programs no window took stay in the root context until it goes; a graphics reset must never hand them out.
+  g_preloaded.clear();
+  std::ifstream current(path);
+  if (std::string(std::istreambuf_iterator<char>(current), std::istreambuf_iterator<char>()) == content) {
+    return;
+  }
+  const std::filesystem::path temp = path.string() + ".tmp";
+  {
+    std::ofstream out(temp, std::ios::trunc);
+    out << content;
+    if (!out) {
+      return;
+    }
+  }
+  std::error_code ec;
+  std::filesystem::rename(temp, path, ec);
 }
 
 void ShaderProgram::destroy() {

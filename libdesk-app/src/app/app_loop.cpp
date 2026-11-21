@@ -3,10 +3,12 @@
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "core/timer_manager.h"
+#include "render/core/startup_metrics.h"
 #include "platform/surface.h"
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <exception>
 #include <limits>
 #include <optional>
@@ -56,7 +58,7 @@ AppLoop::AppLoop() : m_display(createDisplay()), m_keyRepeat(*m_display) {}
 
 AppLoop::~AppLoop() = default;
 
-bool AppLoop::initialize(bool sharedGl) {
+bool AppLoop::initialize(bool sharedGl, const std::string& appId) {
   m_sharedGl = sharedGl;
   if (!display().connect(std::nullopt)) {
     kLog.error("failed to connect to the Wayland compositor");
@@ -64,7 +66,18 @@ bool AppLoop::initialize(bool sharedGl) {
   }
   // EGL init loads Mesa (~50 ms) on a worker while this thread sets up text and the app opens and builds its first
   // window. Mesa uses its own Wayland event queue, and no context is made current on the worker.
-  m_egl = std::async(std::launch::async, [this, sharedGl] { m_gl.initialize(display(), sharedGl); });
+  // GL attach waits only for EGL; the program preload goes on after it, and a program create waits for the preload.
+  auto ready = std::make_shared<std::promise<void>>();
+  m_eglReady = ready->get_future();
+  m_egl = std::async(std::launch::async, [this, sharedGl, appId, ready] {
+    try {
+      m_gl.initialize(display(), sharedGl);
+    } catch (...) {
+      ready->set_exception(std::current_exception());
+      return;
+    }
+    m_gl.preloadPrograms(appId, [&ready] { ready->set_value(); });
+  });
   try {
     m_render.initializeText();
   } catch (const std::exception& e) {
@@ -72,7 +85,11 @@ bool AppLoop::initialize(bool sharedGl) {
     return false;
   }
   m_render.attachGlLater([this] {
-    m_egl.get();
+    const auto waitStart = std::chrono::steady_clock::now();
+    m_eglReady.get();
+    startup_metrics::recordEglWait(
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - waitStart).count()
+    );
     m_render.attachGl(m_gl);
   });
   return true;

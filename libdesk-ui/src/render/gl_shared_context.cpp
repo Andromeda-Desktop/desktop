@@ -4,6 +4,7 @@
 #include "core/sys/sys.h"
 #include "platform/display.h"
 #include "render/backend/render_backend.h"
+#include "render/core/shader_program.h"
 #include "render/core/startup_metrics.h"
 
 #include <EGL/eglext.h>
@@ -353,6 +354,15 @@ void GlSharedContext::usePlainContextAttributes() noexcept {
   m_contextAttributesRobust = false;
   m_resetNotificationEnabled = false;
   m_videoMemoryPurgeNotificationEnabled = false;
+}
+
+void GlSharedContext::preloadPrograms(const std::string& appId, const std::function<void()>& started) const {
+  if (appId.empty() || !hasSharedContext() || !makeCurrentSurfaceless()) {
+    started();
+    return;
+  }
+  ShaderProgram::preloadCached(appId, started);
+  eglMakeCurrent(m_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 }
 
 bool GlSharedContext::makeCurrentSurfaceless() const {

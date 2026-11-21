@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <EGL/egl.h>
 #include <functional>
 #include <string_view>
@@ -33,6 +34,9 @@ public:
   void initializeSurfaceless();
   void cleanup();
   void recreateRootContext();
+  // On the init thread after initialize(): loads the programs appId used at its last start into the root context.
+  // Calls started() once a ShaderProgram::create() would wait for the loads, or at once when nothing loads.
+  void preloadPrograms(const std::string& appId, const std::function<void()>& started) const;
 
   [[nodiscard]] EGLDisplay display() const noexcept { return m_display; }
   [[nodiscard]] EGLConfig config() const noexcept { return m_config; }
