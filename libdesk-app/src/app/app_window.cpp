@@ -1563,6 +1563,8 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   InputDispatcher::TabFocusSnapshot focus = m_input.captureTabFocus();
   focus.index.reset();
   m_input.setSceneRoot(nullptr);
+  // The new root can reuse the old one's address; the surface must see it as new to hook its invalidation.
+  m_surface->setSceneRoot(nullptr);
   m_titleLabel = nullptr;
   m_titleRow = nullptr;
   m_captionSymbol = nullptr;
