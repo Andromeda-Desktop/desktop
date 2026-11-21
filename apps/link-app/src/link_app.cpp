@@ -1342,7 +1342,8 @@ namespace linkapp {
       bar->setPadding(0.0F, Tokens::spaceP8 * s, 0.0F, Tokens::spaceP8 * s);
       const auto key = [&](const char* glyph, const char* tip, std::function<void()> press,
                            std::function<void()> secondary = nullptr) {
-        bar->addChild(ui::button({.glyph = std::string(glyph), .variant = ButtonVariant::Ghost, .tooltip = std::string(tip),
+        bar->addChild(ui::button({.glyph = std::string(glyph), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
+                                  .tooltip = std::string(tip),
                                   .onClick = std::move(press), .onRightClick = std::move(secondary)}));
       };
       key("chevron-left", "Back", [this] { m_client->mirrorAction("back"); });
@@ -1355,6 +1356,7 @@ namespace linkapp {
       key("volume", "Volume up (right-click: down)", [this] { m_client->mirrorKey(kVolumeUp); },
           [this] { m_client->mirrorKey(kVolumeDown); });
       key("lock", "Lock", [this] { m_client->mirrorKey(kPower); });
+      key("photo", "Screenshot", [this] { m_client->mirrorAction("screenshot"); });
       stage->addChild(std::move(bar));
       break;
     }
