@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 // Startup breakdown for the launch-time budgets (docs/performance.md). Main thread only.
 namespace startup_metrics {
 
@@ -10,5 +12,7 @@ namespace startup_metrics {
   // Logs the breakdown once, on the first presented frame.
   // True on the first call only.
   bool recordFirstFrame();
+  // With ANDROMEDA_PROFILE set, logs when one named surface first presents.
+  void recordSurfaceFirstFrame(std::string_view surface);
 
 } // namespace startup_metrics

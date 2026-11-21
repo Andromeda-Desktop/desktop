@@ -48,5 +48,11 @@ namespace startup_metrics {
     );
     return true;
   }
+  void recordSurfaceFirstFrame(std::string_view surface) {
+    if (noctalia::profiling::enabled()) {
+      kLog.info("surface {} first frame at {:.0f} ms after process start", surface, sinceProcessStart());
+    }
+  }
+
 
 } // namespace startup_metrics

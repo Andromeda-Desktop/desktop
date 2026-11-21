@@ -6,6 +6,7 @@
 #include "platform/frame_stats_sink.h"
 #include "render/animation/animation_manager.h"
 #include "render/backend/native_egl_window.h"
+#include "render/core/startup_metrics.h"
 #include "render/render_context.h"
 #include "render/scene/node.h"
 #include "util/sys_utils.h"
@@ -1037,6 +1038,10 @@ void Surface::render() {
   if (stats != nullptr) {
     stats->addCpu(renderMs);
     stats->endFrame();
+  }
+  if (presented && !m_presentedOnce) {
+    m_presentedOnce = true;
+    startup_metrics::recordSurfaceFirstFrame(surfaceTraceName(*this));
   }
   if (presented && m_nextPresentCallback) {
     std::exchange(m_nextPresentCallback, {})();

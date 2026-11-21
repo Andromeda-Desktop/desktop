@@ -247,6 +247,7 @@ private:
   FrameTickCallback m_frameTickCallback;
   ScaleChangedCallback m_scaleChangedCallback;
   std::function<void()> m_nextPresentCallback;
+  bool m_presentedOnce = false;
   std::optional<std::chrono::steady_clock::time_point> m_lastFrameAt;
   bool m_updateRequested = false;
   bool m_layoutRequested = false;
