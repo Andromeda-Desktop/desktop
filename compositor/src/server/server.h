@@ -1332,6 +1332,7 @@ namespace andromeda {
     std::unique_ptr<SocketRecovery> m_socketRecovery;
     // Inode of the Wayland socket's lock file this process holds; 0 for an adopted systemd socket (not recreated).
     ino_t m_waylandLockIno = 0;
+    bool m_waylandSocketAdopted = false;
     // A lock this process took during a recovery, when the original lock file was deleted too.
     int m_waylandLockFd = -1;
 

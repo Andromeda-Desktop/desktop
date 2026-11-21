@@ -1513,7 +1513,8 @@ namespace andromeda {
   bool Server::recoverWaylandSocket() {
     const std::string lockPath = waylandSocketPath(".lock");
     struct stat lock {};
-    if (stat(lockPath.c_str(), &lock) != 0 || lock.st_ino != m_waylandLockIno) {
+    // A systemd socket's name is owned by its unit, not by a libwayland lock.
+    if (!m_waylandSocketAdopted && (stat(lockPath.c_str(), &lock) != 0 || lock.st_ino != m_waylandLockIno)) {
       // The lock is gone or new: take it, or leave the name to the process that holds it.
       const int fd = open(lockPath.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
       if (fd < 0 || flock(fd, LOCK_EX | LOCK_NB) != 0 || fstat(fd, &lock) != 0) {
@@ -1625,6 +1626,23 @@ namespace andromeda {
       }
       const std::string_view path(address.sun_path);
       return std::string(path.substr(path.rfind('/') + 1));
+    }
+
+    // False when no process accepts connections at path: it is missing, or a socket file left by an exited process.
+    bool unixPathListens(const std::string& path) {
+      sockaddr_un address{.sun_family = AF_UNIX, .sun_path = {}};
+      if (path.size() >= sizeof(address.sun_path)) {
+        return true;
+      }
+      path.copy(address.sun_path, path.size());
+      const int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+      if (fd < 0) {
+        return true;
+      }
+      const bool refused = connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0
+                           && (errno == ECONNREFUSED || errno == ENOENT);
+      close(fd);
+      return !refused;
     }
   } // namespace
 
@@ -1830,6 +1848,19 @@ namespace andromeda {
         return false;
       }
       m_socketName = *name;
+      m_waylandSocketAdopted = true;
+      // systemd passes the same listening socket after a restart even when its path was deleted meanwhile.
+      if (const std::string path = waylandSocketPath(""); !unixPathListens(path)) {
+        struct stat st {};
+        if (lstat(path.c_str(), &st) == 0 && S_ISSOCK(st.st_mode)) {
+          unlink(path.c_str());
+        }
+        if (recoverWaylandSocket()) {
+          kLog.warn("{} had no listener: recreated", path);
+        } else {
+          kLog.error("{} has no listener and could not be recreated; new clients cannot connect", path);
+        }
+      }
     } else if (const std::optional<uint32_t> session = agentSession()) {
       m_socketName = std::format("wayland-agent-{}", *session);
       if (wl_display_add_socket(m_display, m_socketName.c_str()) != 0) {
@@ -2032,7 +2063,7 @@ namespace andromeda {
       m_provider = std::make_unique<Provider>(*this, m_socketName);
       if (const char* runtimeDir = std::getenv("XDG_RUNTIME_DIR"); runtimeDir != nullptr && runtimeDir[0] != '\0') {
         m_socketRecovery = std::make_unique<SocketRecovery>(wl_display_get_event_loop(m_display), runtimeDir);
-        if (m_waylandLockIno != 0) {
+        if (m_waylandLockIno != 0 || m_waylandSocketAdopted) {
           m_socketRecovery->watch(m_socketName, [this] { return recoverWaylandSocket(); });
         }
         m_socketRecovery->watch("andromeda-" + m_socketName + ".sock", [this] { return m_ipc->rebind(); });
