@@ -1738,6 +1738,47 @@ void PanelManager::endInitialization(bool ok) {
   }
 }
 
+void PanelManager::prewarmPanels(std::vector<std::string> panelIds) {
+  m_prewarmQueue = std::move(panelIds);
+  std::ranges::reverse(m_prewarmQueue);
+  prewarmNext();
+}
+
+void PanelManager::prewarmNext() {
+  if (m_prewarmQueue.empty() || m_renderContext == nullptr) {
+    m_prewarmQueue.clear();
+    return;
+  }
+  // A real open warms its own panel; the rest wait until it closes.
+  if (m_activePanel != nullptr || m_lifecycle.initializing()) {
+    m_prewarmTimer.start(std::chrono::seconds(1), [this] { prewarmNext(); });
+    return;
+  }
+  const std::string id = std::move(m_prewarmQueue.back());
+  m_prewarmQueue.pop_back();
+  if (auto it = m_panels.find(id); it != m_panels.end()) {
+    Panel& panel = *it->second;
+    float scale = 1.0F;
+    if (m_platform != nullptr) {
+      if (const auto* output = m_platform->wayland().findOutputByWl(m_platform->preferredInteractiveOutput());
+          output != nullptr) {
+        scale = std::max(1.0F, static_cast<float>(output->configuredScaleNumerator) / 120.0F);
+      }
+    }
+    noctalia::profiling::ScopedTimer t(kLog, "panel: prewarm " + id);
+    panel.setContentScale(shell::panel_surface::contentScale(m_config));
+    panel.setAnimationManager(&m_animations);
+    panel.create();
+    const std::unique_ptr<Node> root = panel.releaseRoot();
+    ScaledRenderer renderer(*m_renderContext, scale);
+    panel.update(renderer);
+    panel.layout(renderer, panel.preferredWidth(), panel.preferredHeight());
+    panel.onClose();
+    m_animations.cancelAll();
+  }
+  m_prewarmTimer.start(std::chrono::milliseconds(0), [this] { prewarmNext(); });
+}
+
 void PanelManager::destroyPanel() {
   if (!m_lifecycle.apply(panel_lifecycle::Destroyed{}).accepted) {
     return;

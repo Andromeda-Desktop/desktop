@@ -9,6 +9,6 @@ OUT=${OUT:-/tmp/measure-launch}
 source "$ROOT/tests/e2e/lib.sh"
 mkdir -p "$OUT"
 boot_headless 1
-run env ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" OUT="$OUT" RUNS="${RUNS:-5}" APPS="${APPS:-foot gnome-calculator dolphin}" \
+run env ANDROMEDA="$ANDROMEDA" NOCTALIA="$NOCTALIA" OUT="$OUT" RUNS="${RUNS:-5}" APPS="${APPS-foot gnome-calculator dolphin}" \
   dbus-run-session --config-file="$RUNTIME/bus.conf" -- \
   bash -c 'export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS; exec python3 -I "$0"' "$ROOT/tools/measure-launch.py"

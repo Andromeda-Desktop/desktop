@@ -434,6 +434,8 @@ void Application::run(const std::function<void()>& startupReadyCallback) {
   m_polkitInitTimer.start(std::chrono::milliseconds(1000), [this] { syncPolkitAgent(); });
   // After login settles: the notification island has no surface during startup and drops banners.
   m_speakerOfferTimer.start(std::chrono::seconds(10), [this] { offerWindowsSpeakerTuning(); });
+  // After the first frame and the bar settle, before the launcher's icon prefetch at 3 s.
+  m_panelPrewarmTimer.start(std::chrono::seconds(2), [this] { m_panelManager.prewarmPanels({"launcher", "control-center"}); });
 
   m_mainLoop = std::make_unique<MainLoop>(
       m_wayland, [this] { return currentPollSources(); }, [this] { m_bar.closeAllInstances(); }

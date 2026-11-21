@@ -139,6 +139,8 @@ public:
   [[nodiscard]] std::vector<std::string> availablePanelIds() const;
 
   void openPanel(const std::string& panelId, PanelOpenRequest request = {});
+  // Lays each panel out once offscreen, one per main-loop tick, so its first open finds its fonts loaded.
+  void prewarmPanels(std::vector<std::string> panelIds);
   // The tracker of a gesture open came to rest: settle the sheet open, or drop it when closed.
   void finishTrackerOpen(bool open);
   void closePanel(bool animateClose = true);
@@ -495,6 +497,9 @@ private:
   AttachedRevealDirection m_detachedRevealDirection = AttachedRevealDirection::Down;
   Timer m_keyboardRelaxTimer;
   Timer m_contentGateTimer;
+  void prewarmNext();
+  Timer m_prewarmTimer;
+  std::vector<std::string> m_prewarmQueue;
   // The scale-open motion, held until the first backdrop measurement (light glass) or 50 ms.
   // Content opacity from the 35 % gate (rulebook 7.4 / P5): 0 until the open spring has travelled 35 %, then fades in.
   float m_contentGate = 1.0F;

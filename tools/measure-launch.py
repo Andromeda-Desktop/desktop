@@ -175,12 +175,21 @@ def main():
     lines.append(summary("shell start to first frame", starts[1:]))
 
     shell_log = os.path.join(OUT, f"shell-{RUNS}.log")
+    # A user opens a panel seconds after login, when the shell's idle pre-warm (2 s) has run.
+    time.sleep(3)
     opens = []
     for _ in range(RUNS):
         opens.append(shell_open_ms("panel-open launcher", shell_log))
         wait_idle()
         msg("panel-close")
     lines.append(summary("launcher open to first frame", opens))
+
+    opens = []
+    for _ in range(RUNS):
+        opens.append(shell_open_ms("panel-open control-center", shell_log))
+        wait_idle()
+        msg("panel-close")
+    lines.append(summary("control center open to first frame", opens))
 
     for mode in MODES:
         times = []

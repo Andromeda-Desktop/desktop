@@ -577,6 +577,7 @@ private:
   Timer m_focusTriggerTimer;
   FocusFilterConfig m_appliedFocusFilter;
   Timer m_speakerOfferTimer;
+  Timer m_panelPrewarmTimer;
   Timer m_handoffTimer;
   Timer m_serviceReadyFallbackTimer;
   Timer m_polkitIdleCloseTimer;
