@@ -375,6 +375,28 @@ namespace {
     return static_cast<int>(bounded.count());
   }
 
+  // With a pidfd, exit wakes the poll, so only the deadline and the cancel check bound the wait.
+  [[nodiscard]] int syncWaitMs(
+      std::optional<std::chrono::steady_clock::time_point> deadline, bool exitIsEvent, bool cancellable
+  ) {
+    int waitMs = pollTimeoutMs(deadline);
+    if (exitIsEvent) {
+      waitMs = -1;
+      if (deadline.has_value()) {
+        const auto now = std::chrono::steady_clock::now();
+        const auto remaining = now >= *deadline
+            ? std::chrono::milliseconds(0)
+            : std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - now) + std::chrono::milliseconds(1);
+        waitMs = static_cast<int>(std::min<std::chrono::milliseconds::rep>(remaining.count(), std::numeric_limits<int>::max()));
+      }
+    }
+    // Cap the wait when cancellable so an idle stream still wakes to check the flag.
+    if (cancellable && (waitMs < 0 || waitMs > 250)) {
+      waitMs = 250;
+    }
+    return waitMs;
+  }
+
   process::RunResult runSyncProcess(
       const std::vector<std::string>& args, const process::RunOptions& options,
       const process::RunCallbacks* callbacks = nullptr
@@ -428,6 +450,8 @@ namespace {
     closeFd(errPipe[1]);
     (void)setNonBlocking(outPipe[0]);
     (void)setNonBlocking(errPipe[0]);
+    // A failed pidfd_open (old kernel) keeps the bounded poll interval for exit checks.
+    int pidFd = static_cast<int>(::syscall(SYS_pidfd_open, pid, 0U));
 
     std::string out;
     std::string err;
@@ -477,7 +501,7 @@ namespace {
         break;
       }
 
-      std::array<pollfd, 2> fds{};
+      std::array<pollfd, 3> fds{};
       nfds_t count = 0;
       if (outPipe[0] >= 0) {
         fds[count++] = pollfd{.fd = outPipe[0], .events = POLLIN, .revents = 0};
@@ -485,13 +509,12 @@ namespace {
       if (errPipe[0] >= 0) {
         fds[count++] = pollfd{.fd = errPipe[0], .events = POLLIN, .revents = 0};
       }
+      if (pidFd >= 0) {
+        fds[count++] = pollfd{.fd = pidFd, .events = POLLIN, .revents = 0};
+      }
 
       if (count > 0) {
-        int waitMs = exited ? 0 : pollTimeoutMs(deadline);
-        // Cap the wait when cancellable so an idle stream still wakes to check the flag.
-        if (options.cancel && (waitMs < 0 || waitMs > 250)) {
-          waitMs = 250;
-        }
+        const int waitMs = syncWaitMs(deadline, pidFd >= 0, options.cancel != nullptr);
         if (::poll(fds.data(), count, waitMs) < 0 && errno != EINTR) {
           break;
         }
@@ -507,6 +530,7 @@ namespace {
 
     closeFd(outPipe[0]);
     closeFd(errPipe[0]);
+    closeFd(pidFd);
     trimTrailingLineEndings(out);
     trimTrailingLineEndings(err);
     return {exitCode, std::move(out), std::move(err), timedOut, outTruncated, errTruncated};
