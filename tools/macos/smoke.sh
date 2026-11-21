@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs on a Mac: checks the bundle signature, starts the app, runs a command in its shell through `ctl`,
-# restarts the app and checks that ptyd kept the session. Logs and screenshots go to OUT.
+# kills the app and checks that the restarted app reattaches the session that ptyd kept. Logs and screenshots go to OUT.
 # Usage: tools/macos/smoke.sh [APP] [OUT]
 set -euo pipefail
 app=${1:-/var/tmp/andromeda-macos/Andromeda Terminal.app}
@@ -38,7 +38,8 @@ wait_for 10 has_output "$id" || fail "the shell did not run the typed command"
 screencapture -x "$out/window.png" || echo "smoke: no screenshot (screen recording permission)"
 pgrep -x andromeda-ptyd > /dev/null || fail "no ptyd"
 
-kill "$pid"
+# Sessions outlive a crash, not a quit: SIGTERM closes them (apps/terminal/tests/load/lifecycle.sh).
+kill -KILL "$pid"
 wait "$pid" || true
 pgrep -x andromeda-ptyd > /dev/null || fail "ptyd exited with the app"
 
