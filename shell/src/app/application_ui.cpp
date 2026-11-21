@@ -98,6 +98,7 @@
 #include "shell/wallpaper/panel/wallpaper_panel.h"
 #include "shell/wallpaper/wallpaper_paths.h"
 #include "system/app_identity.h"
+#include "system/system_font.h"
 #include "system/brightness_poll_source.h"
 #include "system/brightness_service.h"
 #include "system/desktop_entry.h"
@@ -238,7 +239,10 @@ void Application::initUiRenderSurfacesAndSettings() {
   if (!m_glShared.hasSharedContext()) {
     m_asyncTextureCache.setMakeCurrentCallback([this] { m_renderContext.backend().makeCurrentNoSurface(); });
   }
-  m_renderContext.setTextFontFamily(m_configService.config().shell.fontFamily);
+  m_systemFontFamily = system_font::readFamily();
+  m_renderContext.setTextFontFamily(
+      system_font::resolveFamily(m_configService.config().shell.fontFamily, m_systemFontFamily)
+  );
   m_renderContext.setTextScale(m_configService.config().accessibility.textScale);
   Style::setRtl(i18n::Service::instance().rtl());
   m_renderContext.setTextBaseDirection(i18n::Service::instance().rtl());
@@ -1394,11 +1398,14 @@ void Application::initWidgetControllersAndCallbacks() {
   m_lockscreenWidgetsController.setOnExitEditCallback(restoreSettingsAfterWidgetEditor);
   m_poll.iconTheme.setChangeCallback([this] { onIconThemeChanged(); });
 
-  std::string lastShellFontFamily = m_configService.config().shell.fontFamily;
-  float lastTextScale = m_configService.config().accessibility.textScale;
-  m_configService.addReloadCallback(
-      [this, lastShellFontFamily, lastTextScale] mutable {
-        const std::string& newShellFontFamily = m_configService.config().shell.fontFamily;
+  const auto shellFontFamily = [this] {
+    return system_font::resolveFamily(m_configService.config().shell.fontFamily, m_systemFontFamily);
+  };
+  // Shared by the config reload and the system font watch, so both compare against the last applied values.
+  auto syncShellFont = std::make_shared<std::function<void()>>(
+      [this, shellFontFamily, lastShellFontFamily = shellFontFamily(),
+       lastTextScale = m_configService.config().accessibility.textScale] mutable {
+        const std::string newShellFontFamily = shellFontFamily();
         const float newTextScale = m_configService.config().accessibility.textScale;
         if (newShellFontFamily == lastShellFontFamily && newTextScale == lastTextScale) {
           return;
@@ -1423,9 +1430,19 @@ void Application::initWidgetControllersAndCallbacks() {
         m_fileDialogPopup.requestLayout();
         m_searchPickerDialogPopup.requestLayout();
         m_greeterSync.scheduleAuto();
-      },
-      "shell-font-family"
+      }
   );
+  m_configService.addReloadCallback([syncShellFont] { (*syncShellFont)(); }, "shell-font-family");
+  for (const auto& file : system_font::watchFiles()) {
+    m_fileWatcher.watch(
+        file,
+        [this, syncShellFont] {
+          m_systemFontFamily = system_font::readFamily();
+          (*syncShellFont)();
+        },
+        FileWatcher::WatchTrigger::WriteCompleted
+    );
+  }
 
   bool lastRtl = i18n::Service::instance().rtl();
   m_configService.addReloadCallback(

@@ -37,6 +37,7 @@ namespace settings {
     // When set, replaces the default "empty clears, otherwise set" commit for settingPath.
     // Needed where the chosen option is not itself the stored value.
     std::function<void(const std::string&)> onSelect;
+    EmptyPick emptyPick = EmptyPick::ClearOverride;
   };
 
   enum class RowScope : std::uint8_t { Main, Expert };

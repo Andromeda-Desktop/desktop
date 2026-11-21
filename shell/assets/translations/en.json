@@ -3386,7 +3386,8 @@
         },
         "font-family": {
           "description": "Font family for the shell interface",
-          "label": "Font"
+          "label": "Font",
+          "system": "System font"
         },
         "global-shadow-alpha": {
           "description": "Global surface shadow opacity"

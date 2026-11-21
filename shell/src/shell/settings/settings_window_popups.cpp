@@ -524,7 +524,7 @@ void SettingsWindow::openSearchPickerPopup(settings::SearchPickerOpenRequest req
   }
 
   m_searchPickerPopup->setOnSelect([this, settingPath = request.settingPath, selectedValue = request.selectedValue,
-                                    onSelect = request.onSelect](const std::string& value) {
+                                    onSelect = request.onSelect, emptyPick = request.emptyPick](const std::string& value) {
     if (value == selectedValue) {
       return;
     }
@@ -532,7 +532,7 @@ void SettingsWindow::openSearchPickerPopup(settings::SearchPickerOpenRequest req
       onSelect(value);
       return;
     }
-    if (value.empty()) {
+    if (value.empty() && emptyPick == settings::EmptyPick::ClearOverride) {
       clearSettingOverride(settingPath);
       return;
     }

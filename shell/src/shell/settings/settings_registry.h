@@ -136,6 +136,9 @@ namespace settings {
     std::function<std::vector<std::vector<std::string>>(std::string_view selectedValue)> groupedClears;
   };
 
+  // ClearOverride returns the setting to its default; StoreEmpty writes "" where empty has its own meaning.
+  enum class EmptyPick : std::uint8_t { ClearOverride, StoreEmpty };
+
   struct SearchPickerSetting {
     std::vector<SelectOption> options;
     std::string selectedValue;
@@ -144,6 +147,8 @@ namespace settings {
     float preferredHeight = 240.0F;
     // When set, replaces the default commit for the setting path.
     std::function<void(const std::string&)> onSelect;
+    // What picking the option whose value is empty stores.
+    EmptyPick emptyPick = EmptyPick::ClearOverride;
   };
 
   struct SliderSetting {

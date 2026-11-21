@@ -45,6 +45,7 @@
 #include "shell/session/session_action_runner.h"
 #include "system/lock_keys_poll_source.h"
 #include "system/lock_keys_service.h"
+#include "system/system_font.h"
 #include "system/weather_service.h"
 #include "theme/live_appearance_sync.h"
 #include "theme/theme_service.h"
@@ -87,7 +88,9 @@ namespace {
         applyStyle();
         i18n::Service::instance().setLanguage(m_config.config().shell.lang);
         m_theme.onConfigReload();
-        m_renderContext.setTextFontFamily(m_config.config().shell.fontFamily);
+        m_renderContext.setTextFontFamily(
+            system_font::resolveFamily(m_config.config().shell.fontFamily, system_font::readFamily())
+        );
         m_renderContext.setTextScale(m_config.config().accessibility.textScale);
         if (m_logind != nullptr) {
           m_logind->setSessionLockIntegrationEnabled(m_config.isLockScreenEnabled());
@@ -114,7 +117,9 @@ namespace {
         m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGl);
         m_renderContext.attachGl(m_glShared);
       });
-      m_renderContext.setTextFontFamily(m_config.config().shell.fontFamily);
+      m_renderContext.setTextFontFamily(
+          system_font::resolveFamily(m_config.config().shell.fontFamily, system_font::readFamily())
+      );
       m_renderContext.setTextScale(m_config.config().accessibility.textScale);
       Style::setRtl(i18n::Service::instance().rtl());
       m_renderContext.setTextBaseDirection(i18n::Service::instance().rtl());

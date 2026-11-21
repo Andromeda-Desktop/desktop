@@ -95,15 +95,19 @@ namespace settings {
     ));
     appendGroup(entries, themeRows, "theme");
     {
+      const std::string systemFontLabel = tr("settings.schema.appearance.font-family.system");
       SettingControl fontFamilyControl =
-          TextSetting{.value = cfg.shell.fontFamily, .placeholder = "Inter", .browseFileExtensions = {}};
+          TextSetting{.value = cfg.shell.fontFamily, .placeholder = systemFontLabel, .browseFileExtensions = {}};
       if (!env.fontFamilies.empty()) {
+        std::vector<SelectOption> fontOptions{SelectOption{.value = "", .label = systemFontLabel}};
+        fontOptions.insert(fontOptions.end(), env.fontFamilies.begin(), env.fontFamilies.end());
         fontFamilyControl = SearchPickerSetting{
-            .options = env.fontFamilies,
+            .options = std::move(fontOptions),
             .selectedValue = cfg.shell.fontFamily,
-            .placeholder = "Inter",
+            .placeholder = systemFontLabel,
             .emptyText = tr("ui.controls.search-picker.empty"),
             .preferredHeight = 280.0F,
+            .emptyPick = EmptyPick::StoreEmpty,
         };
       }
       entries.push_back(makeEntry(

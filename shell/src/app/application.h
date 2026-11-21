@@ -339,6 +339,8 @@ private:
   ConfigService m_configService;
   HttpClient m_httpClient;
   FileWatcher m_fileWatcher;
+  // The desktop interface font family; the shell draws with it while shell.font_family is empty.
+  std::optional<std::string> m_systemFontFamily;
   noctalia::theme::ThemeService m_themeService{m_configService, m_httpClient};
   LiveAppearanceSync m_liveAppearance;
   // The From Wallpaper accent of m_wallpaperAccentPath, picked on the SharedWorker; empty until then.
