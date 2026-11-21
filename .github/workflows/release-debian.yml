@@ -50,7 +50,7 @@ jobs:
           for deb in "$out"/deb-testing/*.deb "$out"/xwayland-satellite-testing/*.deb "$RUNNER_TEMP"/link/*.deb; do
             name=$(basename "$deb")
             # Core release: the apps publish on their own tags (release-apps).
-            [[ ! $name =~ ^andromeda-(files|player|viewer|terminal|link-app)_ ]] || continue
+            [[ ! $name =~ ^andromeda-(files|player|viewer|terminal|link-app|libdesk)_ ]] || continue
             cp "$deb" "apt/${name//:/.}"
           done
           cd apt

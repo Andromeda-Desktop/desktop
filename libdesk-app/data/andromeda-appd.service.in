@@ -1,0 +1,15 @@
+[Unit]
+Description=Andromeda app zygote: preloaded libdesk that forks each app launch
+PartOf=andromeda-session.target
+After=andromeda-session.target
+
+[Service]
+Slice=app.slice
+ExecStart=@appd@
+# Its warm-up must not compete with the session start; each child moves to its own app scope.
+CPUWeight=20
+# The shell moves each child into its own app scope; a restart of the zygote must not stop a child.
+KillMode=process
+# Exit 0 after an upgrade replaced it or libdesk: start the new one.
+Restart=always
+RestartSec=1

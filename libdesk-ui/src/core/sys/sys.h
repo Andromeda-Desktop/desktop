@@ -68,8 +68,10 @@ namespace sys {
 
   // forkpty(): the child leads a new session with the pty as its controlling terminal.
   [[nodiscard]] int forkPty(int* master, const struct winsize* size);
-  // Empty when the OS does not tell.
+  // The app's own executable; empty when the OS does not tell.
   [[nodiscard]] std::string executablePath();
+  // An andromeda-appd child runs the app from a library: executablePath() returns this path, not the zygote's.
+  void setExecutablePath(std::string path);
   // Starts program in a new session with stdio on /dev/null so it outlives the caller; a thread reaps it.
   [[nodiscard]] bool spawnDetached(const std::string& program, const std::vector<std::string>& args);
   // The user's private directory for sockets: XDG_RUNTIME_DIR on Linux (empty when unset), the per-user temp dir

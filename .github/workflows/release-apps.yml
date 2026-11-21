@@ -1,4 +1,4 @@
-# A tag files-v*, player-v*, viewer-v*, terminal-v* or link-app-v* builds only that app (Files and Viewer also the preview) and adds
+# A tag files-v*, player-v*, viewer-v*, terminal-v* or link-app-v* builds only that app (Files and Viewer also the preview, Files and Terminal also libdesk) and adds
 # its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the rolling
 # release `repo` (Latest, so releases/latest/download) and the Debian apt repository (releases/download/debian). The app's
 # own release holds its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
@@ -139,6 +139,7 @@ jobs:
           cp "$out/andromeda-${ANDROMEDA_APP}_"*.deb debs/
           # The preview deb of any other app build is empty.
           [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || cp "$out/andromeda-preview_"*.deb debs/
+          [[ ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || cp "$out/andromeda-libdesk_"*.deb debs/
           tools/repo-publish.sh apt "$target" debs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

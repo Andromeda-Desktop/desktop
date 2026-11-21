@@ -139,10 +139,11 @@ foreach _p : [
     output: _p[0] + '-client-protocol.h',
     command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
   )
+  # public-code: apps that link the shared libdesk bind these interfaces from it.
   _protocol_sources += custom_target(_p[0] + '-client-source',
     input: _p[1],
     output: _p[0] + '-client-protocol.c',
-    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+    command: [wayland_scanner, 'public-code', '@INPUT@', '@OUTPUT@'],
     depends: _h,
   )
   _protocol_headers += _h
@@ -161,7 +162,7 @@ _wlr_ls_h = custom_target('wlr-layer-shell-unstable-v1-client-header',
 _protocol_sources += custom_target('wlr-layer-shell-unstable-v1-client-source',
   input: _wlr_ls_xml,
   output: 'wlr-layer-shell-unstable-v1-client-protocol.c',
-  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  command: [wayland_scanner, 'public-code', '@INPUT@', '@OUTPUT@'],
   depends: _wlr_ls_h,
 )
 _protocol_headers += _wlr_ls_h

@@ -64,7 +64,11 @@ int main() {
 
   const pid_t server = fork();
   if (server == 0) {
-    runChild(process::zygote::serve("test.zygote", [&] { CairoTextRenderer::preloadFonts(dir / "fonts"); }));
+    const auto exe = std::filesystem::read_symlink("/proc/self/exe");
+    runChild(process::zygote::serve(
+        "test.zygote", [&] { CairoTextRenderer::preloadFonts({dir / "fonts"}); },
+        [&](const process::zygote::Request& request) { return request.argv.front() == exe.string(); }
+    ));
   }
 
   const auto self = std::filesystem::read_symlink("/proc/self/exe");

@@ -81,9 +81,17 @@ Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Quick Look
  Previews, thumbnailers and the sandboxed media helper used by Files and Viewer.
 
+# The shared libdesk of the apps that load as modules, and andromeda-appd; same source build, so the same version.
+Package: andromeda-libdesk
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Andromeda libdesk
+ The shared app toolkit and the app zygote (andromeda-appd).
+
 Package: andromeda-files
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-preview (>= ${binary:Version}), xdg-utils
+Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version}),
+ andromeda-preview (>= ${binary:Version}), xdg-utils
 Suggests: gocryptfs, gvfs-backends, exfatprogs, dosfstools, ntfs-3g
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
@@ -114,6 +122,6 @@ Description: Andromeda Viewer
 
 Package: andromeda-terminal
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version})
 Description: Andromeda Terminal
  Terminal emulator on libghostty-vt.

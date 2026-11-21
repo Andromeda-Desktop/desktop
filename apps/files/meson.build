@@ -23,7 +23,8 @@ if get_option('buildtype') != 'release'
   endif
 endif
 
-_desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+_desk_app_sp = subproject('libdesk-app', default_options: ['shared_app_lib=true'])
+_desk_app_dep = _desk_app_sp.get_variable('desk_app_dep')
 # Gallery video in place: the preview's subsurface player and sandboxed media helper (audio loads lazily).
 _preview_media_dep = subproject('andromeda-preview').get_variable('preview_media_dep')
 _gio_unix_dep = dependency('gio-unix-2.0') # GUnixMountMonitor, GDesktopAppInfo
@@ -32,12 +33,15 @@ _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic'
 _files_lib = static_library('files_core',
   sources: files('src/trash.cpp', 'src/archive_listing.cpp', 'src/permission_access.cpp', 'src/server_url.cpp',
     'src/tags.cpp', 'src/exif_date.cpp', 'src/state_file.cpp', 'src/admin_session.cpp'),
-  dependencies: _desk_app_dep,
+  dependencies: _desk_app_dep.partial_dependency(compile_args: true, includes: true, sources: true),
   cpp_args: _warnings,
 )
 
-executable('andromeda-files',
+_app_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
+# The app is a library (desk_app_main) so andromeda-appd can load it in a forked child; the executable only calls it.
+_files_app = shared_library('andromeda-files',
   sources: files(
+    'src/app_main.cpp',
     'src/files_app.cpp', 'src/offline_map.cpp', 'src/gallery_video.cpp',
     'src/batch_rename_sheet.cpp',
     'src/tag_manager_sheet.cpp',
@@ -79,14 +83,20 @@ executable('andromeda-files',
     'src/picker_portal.cpp',
     'src/portal_sheets.cpp',
     'src/system_portals.cpp',
-    'src/main.cpp',
   ),
   link_with: _files_lib,
-  dependencies: [_desk_app_dep, _gio_unix_dep, dependency('vterm'), _preview_media_dep],
+  dependencies: [_desk_app_sp.get_variable('desk_app_shared_dep'), _gio_unix_dep, dependency('vterm'),
+    _preview_media_dep],
   cpp_args: _warnings,
-  # The --zygote fork server interposes g_thread_new to restart Pango's worker in each child.
-  link_args: '-Wl,--export-dynamic-symbol=g_thread_new',
   install: true,
+  install_dir: _app_dir,
+  install_rpath: _app_dir,
+)
+executable('andromeda-files', 'src/main.cpp',
+  link_with: _files_app,
+  dependencies: _desk_app_sp.get_variable('desk_app_shared_dep').partial_dependency(includes: true),
+  install: true,
+  install_rpath: _app_dir,
 )
 
 test('permission_access', executable('permission_access_test', 'tests/permission_access_test.cpp',
@@ -146,12 +156,6 @@ configure_file(
   output: 'dev.andromeda.Files.FileManager1.service',
   configuration: {'bindir': get_option('prefix') / get_option('bindir')},
   install_dir: get_option('datadir') / 'dbus-1' / 'services',
-)
-configure_file(
-  input: 'data/andromeda-files-zygote.service.in',
-  output: 'andromeda-files-zygote.service',
-  configuration: {'bindir': get_option('prefix') / get_option('bindir')},
-  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'user',
 )
 configure_file(
   input: 'data/andromeda-files-reconnect.service.in',

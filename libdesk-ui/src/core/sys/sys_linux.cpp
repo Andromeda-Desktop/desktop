@@ -224,7 +224,16 @@ namespace sys {
 
   int forkPty(int* master, const struct winsize* size) { return ::forkpty(master, nullptr, nullptr, size); }
 
+  namespace {
+    std::string g_executablePath;
+  } // namespace
+
+  void setExecutablePath(std::string path) { g_executablePath = std::move(path); }
+
   std::string executablePath() {
+    if (!g_executablePath.empty()) {
+      return g_executablePath;
+    }
     std::error_code ec;
     std::string path = std::filesystem::read_symlink("/proc/self/exe", ec).string();
     return ec ? std::string() : path;

@@ -44,5 +44,9 @@ public:
 );
 // Before the app object exists: true when a running instance took this launch.
 [[nodiscard]] bool forwardLaunch(const std::string& appId, const std::vector<std::string>& uris, const std::string& action);
-// --zygote: forks one child per launch request after warmup; returns the child's argv. Empty where there is no zygote.
-[[nodiscard]] std::vector<std::string> serveAppZygote(const std::string& appId, const std::function<void()>& warmup);
+// andromeda-appd: forks one child per launch request that accept() takes, after warmup; returns the child's argv.
+// Empty where there is no zygote.
+[[nodiscard]] std::vector<std::string> serveAppZygote(
+    const std::string& name, const std::function<void()>& warmup,
+    const std::function<bool(const std::vector<std::string>& argv)>& accept
+);

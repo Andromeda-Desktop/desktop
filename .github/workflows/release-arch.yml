@@ -92,7 +92,7 @@ jobs:
           # The apps release on their own tags: a core build would put its version on their packages.
           mkdir core
           for package in pkg/*.pkg.tar.zst; do
-            [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal|link-app)-git- ]] || cp "$package" core/
+            [[ $(basename "$package") =~ ^andromeda-(files|player|viewer|terminal|link-app|libdesk)-git- ]] || cp "$package" core/
           done
           # Link releases on its own tags; the repository carries its latest release.
           gh release download -R Andromeda-Desktop/link -p 'andromeda-link-[0-9]*-x86_64.pkg.tar.zst' -D core \

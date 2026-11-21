@@ -310,20 +310,22 @@ void CairoTextRenderer::initialize(RenderBackend* backend, TextureManager* textu
   m_fontMetricsCache.reserve(kMaxFontMetricsEntries + 16);
 }
 
-void CairoTextRenderer::preloadFonts(const std::filesystem::path& file) {
+void CairoTextRenderer::preloadFonts(const std::vector<std::filesystem::path>& files) {
   FcInit();
   g_preloadedFontMap = pango_cairo_font_map_new();
   PangoContext* context = pango_font_map_create_context(g_preloadedFontMap);
   setGrayscaleFontOptions(context);
-  std::ifstream in(file);
-  for (std::string line; std::getline(in, line);) {
-    PangoFontDescription* desc = pango_font_description_from_string(line.c_str());
-    PangoLayout* layout = pango_layout_new(context);
-    pango_layout_set_font_description(layout, desc);
-    pango_layout_set_text(layout, "Aa 0123", -1);
-    pango_layout_get_pixel_extents(layout, nullptr, nullptr);
-    g_object_unref(layout);
-    pango_font_description_free(desc);
+  for (const auto& file : files) {
+    std::ifstream in(file);
+    for (std::string line; std::getline(in, line);) {
+      PangoFontDescription* desc = pango_font_description_from_string(line.c_str());
+      PangoLayout* layout = pango_layout_new(context);
+      pango_layout_set_font_description(layout, desc);
+      pango_layout_set_text(layout, "Aa 0123", -1);
+      pango_layout_get_pixel_extents(layout, nullptr, nullptr);
+      g_object_unref(layout);
+      pango_font_description_free(desc);
+    }
   }
   g_object_unref(context);
 }

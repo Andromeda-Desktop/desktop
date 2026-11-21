@@ -1,2 +1,4 @@
 option('platform', type: 'combo', choices: ['wayland', 'macos'], value: 'wayland',
   description: 'Window system backend, passed to libdesk-ui; macos leaves out the Linux session services (D-Bus)')
+option('shared_app_lib', type: 'boolean', value: false,
+  description: 'Build and install libandromeda-desk.so and andromeda-appd, for apps that load as modules')

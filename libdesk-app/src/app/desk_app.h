@@ -9,6 +9,7 @@
 #include "core/graphics_recovery.h"
 #include "core/timer_manager.h"
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -43,7 +44,8 @@ public:
   static std::optional<int> forwardToRunning(const std::string& appId, int argc, char* argv[]);
   // --zygote: preloads the fonts of this app's last run, then forks one child per launch request. Returns only in the
   // child, with the argv of its request; the caller continues its normal main path with it.
-  static std::vector<std::string> serveZygote(const std::string& appId);
+  // The font pairs each app recorded at its last exit, one file per app id; andromeda-appd preloads them all.
+  static std::filesystem::path fontWarmupDir();
   void quit(int code = 0) { m_loop.quit(code); }
 
   [[nodiscard]] const Info& info() const noexcept { return m_info; }

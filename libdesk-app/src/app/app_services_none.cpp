@@ -27,6 +27,9 @@ bool forwardLaunch(const std::string& /*appId*/, const std::vector<std::string>&
   return false;
 }
 
-std::vector<std::string> serveAppZygote(const std::string& /*appId*/, const std::function<void()>& /*warmup*/) {
+std::vector<std::string> serveAppZygote(
+    const std::string& /*name*/, const std::function<void()>& /*warmup*/,
+    const std::function<bool(const std::vector<std::string>& argv)>& /*accept*/
+) {
   return {};
 }

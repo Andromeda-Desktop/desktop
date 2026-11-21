@@ -92,13 +92,15 @@ case ${1:-} in
       [andromeda-player-git]=andromeda-player
       [andromeda-viewer-git]=andromeda-viewer
       [andromeda-terminal-git]=andromeda-terminal
+      [andromeda-libdesk-git]=andromeda-libdesk
       [andromeda-link-app-git]=andromeda-link-app
     )
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
       declare -A debs=([andromeda-$ANDROMEDA_APP-git]=andromeda-$ANDROMEDA_APP)
       [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || debs[andromeda-preview-git]=andromeda-preview
+      [[ ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || debs[andromeda-libdesk-git]=andromeda-libdesk
     fi
-    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]' 'debs[andromeda-link-app-git]'
+    [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]' 'debs[andromeda-link-app-git]' 'debs[andromeda-libdesk-git]'
     if [[ -n ${ANDROMEDA_ONLY:-} ]]; then
       declare -A wanted=()
       for fn in "${pkgname[@]}"; do wanted[$fn]=${debs[$fn]}; done

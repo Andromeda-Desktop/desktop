@@ -46,7 +46,7 @@ _desk_ui_dep = subproject('libdesk-ui', default_options: _platform_opt).get_vari
 _helpers_arg = is_macos ? ['-DANDROMEDA_HELPERS_BESIDE_EXE'] : []
 _core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
   'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
-  dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')],
+  dependencies: [_ghostty, dependency('threads'), _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
   cpp_args: _warnings + _helpers_arg + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core,
   include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
@@ -131,7 +131,7 @@ test('palette_model', executable('palette_model_test', 'tests/palette_model_test
 test('terminal_bidi', executable('terminal_bidi_test', 'tests/terminal_bidi_test.cpp',
   dependencies: _desk_ui_dep, cpp_args: _warnings))
 
-_desk_app_dep = subproject('libdesk-app', default_options: _platform_opt).get_variable('desk_app_dep')
+_desk_app_dep = subproject('libdesk-app', default_options: _platform_opt + ['shared_app_lib=true']).get_variable('desk_app_dep')
 _agentd_path = ['-DANDROMEDA_AGENTD_PATH="' + get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'andromeda-agentd' + '"']
 if not is_macos
 test('agent_host', executable('agent_host_test', 'tests/agent_host_test.cpp', 'src/agent_host.cpp', 'src/agent_kind.cpp',
@@ -156,11 +156,10 @@ else
 endif
 
 _terminfo_dir = get_option('prefix') / get_option('datadir') / 'terminfo'
-executable('andromeda-terminal',
-  'src/key_map.cpp',
+_app_src = files('src/key_map.cpp',
   'src/kitty_images.cpp',
   'src/context_row.cpp',
-  'src/main.cpp',
+  'src/app_main.cpp',
   'src/terminal_app.cpp',
   'src/terminal_view.cpp',
   'src/terminal_window.cpp', 'src/command_palette.cpp',
@@ -170,13 +169,37 @@ executable('andromeda-terminal',
   'src/prefs_window.cpp',
   'src/agent_host.cpp', 'src/agent_kind.cpp',
   'src/agent_view.cpp',
-  _platform_src,
+) + _platform_src
+_app_args = _warnings + _agentd_path + _helpers_arg + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"']
+if is_macos
+executable('andromeda-terminal', _app_src, 'src/main.cpp',
   dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
-  cpp_args: _warnings + _agentd_path + _helpers_arg + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"'],
+  cpp_args: _app_args,
   objcpp_args: ['-fobjc-arc'],
-  link_args: is_macos ? ['-Wl,-rpath,@executable_path/../Frameworks'] : [],
+  link_args: ['-Wl,-rpath,@executable_path/../Frameworks'],
   install: true,
 )
+else
+# The app is a library (desk_app_main) so andromeda-appd can load it in a forked child; the executable only calls it.
+_desk_app_sp = subproject('libdesk-app')
+_desk_shared_dep = _desk_app_sp.get_variable('desk_app_shared_dep')
+_app_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
+_terminal_app = shared_library('andromeda-terminal', _app_src,
+  link_with: _core,
+  dependencies: [_ghostty, _agent_dep, _settings_dep, _desk_shared_dep, dependency('fontconfig')],
+  include_directories: include_directories('src'),
+  cpp_args: _app_args,
+  install: true,
+  install_dir: _app_dir,
+  install_rpath: _app_dir,
+)
+executable('andromeda-terminal', 'src/main.cpp',
+  link_with: _terminal_app,
+  dependencies: _desk_shared_dep.partial_dependency(includes: true),
+  install: true,
+  install_rpath: _app_dir,
+)
+endif
 find_program('tic')
 meson.add_install_script('sh', '-c', 'mkdir -p "$DESTDIR$1" && tic -x -o "$DESTDIR$1" "$2"', 'tic',
   _terminfo_dir, meson.current_source_dir() / 'data' / 'andromeda.terminfo')

@@ -1,16 +1,18 @@
 pkgbase=desktop-git
 pkgname=(andromeda andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
   andromeda-power-git andromeda-greeter-git andromeda-system-git andromeda-greetd andromeda-preview-git
-  andromeda-files-git andromeda-player-git andromeda-viewer-git andromeda-terminal-git andromeda-link-app-git)
+  andromeda-files-git andromeda-player-git andromeda-viewer-git andromeda-terminal-git andromeda-link-app-git
+  andromeda-libdesk-git)
 # ANDROMEDA_APP=files|player|viewer|terminal|link-app (app release CI) builds only that app and, for Files and Viewer,
-# the preview.
+# the preview; for apps on the shared libdesk, libdesk.
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
   pkgname=(andromeda-$ANDROMEDA_APP-git)
   [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || pkgname+=(andromeda-preview-git)
+  [[ ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || pkgname+=(andromeda-libdesk-git)
 fi
 # ANDROMEDA_CORE=1 (core release CI): no app packages; the apps release on their own tags (release-apps).
 if [[ -n ${ANDROMEDA_CORE:-} ]]; then
-  for _app in files player viewer terminal link-app; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
+  for _app in files player viewer terminal link-app libdesk; do pkgname=(${pkgname[@]/andromeda-$_app-git}); done
 fi
 # ANDROMEDA_ONLY="compositor shell" (a unit release, or a test install of changed parts): builds and packages only
 # those units.
@@ -271,10 +273,28 @@ package_andromeda-preview-git() {
   _pin_depends
 }
 
-# --skip-subprojects: libdesk-* install nothing and the preview ships in andromeda-preview-git.
+# The shared libdesk of the apps that load as modules (libandromeda-<app>.so) and andromeda-appd, which forks them.
+# Every such app depends on the ABI it was built against: any libdesk header or token change is a new ABI, and pacman
+# then holds the libdesk upgrade until each installed app is rebuilt.
+_libdesk_abi=$(git -C desktop ls-files -s -- ':(glob)libdesk-*/src/**/*.h' protocol/design-tokens.toml 2> /dev/null |
+  sha256sum | cut -c1-16)
+package_andromeda-libdesk-git() {
+  pkgdesc='Andromeda libdesk: the shared app toolkit and the app zygote (andromeda-appd)'
+  depends=("${_app_libs[@]}")
+  provides=("andromeda-libdesk-abi=$_libdesk_abi")
+  local dir
+  for dir in build-files build-terminal; do [[ -f $dir/build.ninja ]] && break; done
+  meson install --no-rebuild -C "$dir" --destdir "$pkgdir" --tags libdesk
+  install -d "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants"
+  ln -s ../andromeda-appd.service \
+    "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-appd.service"
+  _pin_depends
+}
+
+# --skip-subprojects: libdesk ships in andromeda-libdesk-git and the preview in andromeda-preview-git.
 package_andromeda-files-git() {
   pkgdesc='Andromeda Files: file manager, file pickers and FileManager1'
-  depends=("${_app_libs[@]}" andromeda-preview-git libvterm libcups xdg-utils)
+  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-preview-git libvterm libcups xdg-utils)
   optdepends=('cups: printing (the Print portal)'
     'gocryptfs: Files vaults'
               'gvfs-mtp: Files phones over MTP'
@@ -286,8 +306,6 @@ package_andromeda-files-git() {
   install -d "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants"
   ln -s ../andromeda-files-reconnect.service \
     "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-files-reconnect.service"
-  ln -s ../andromeda-files-zygote.service \
-    "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-files-zygote.service"
   _pin_depends
 }
 
@@ -314,7 +332,7 @@ package_andromeda-viewer-git() {
 
 package_andromeda-terminal-git() {
   pkgdesc='Andromeda Terminal: terminal emulator on libghostty-vt'
-  depends=("${_app_libs[@]}" ttf-fira-code) # the mono token font (design-tokens.toml font.mono)
+  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" ttf-fira-code) # the mono token font (design-tokens.toml font.mono)
   meson install --no-rebuild -C build-terminal --destdir "$pkgdir" --skip-subprojects
   install -Dm644 desktop/apps/terminal/subprojects/libghostty-vt/prefix/LICENSE \
     "$pkgdir/usr/share/licenses/$pkgname/libghostty-vt-LICENSE"

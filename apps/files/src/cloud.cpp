@@ -2,6 +2,7 @@
 
 #include "core/deferred_call.h"
 #include "core/log.h"
+#include "core/sys/sys.h"
 
 #include <algorithm>
 #include <csignal>
@@ -111,8 +112,7 @@ namespace {
   }
 
   void startGuard(const fs::path& mount) {
-    std::error_code ec;
-    const std::string self = fs::read_symlink("/proc/self/exe", ec).string();
+    const std::string self = sys::executablePath();
     const char* argv[] = {self.c_str(), "--vault-guard", mount.c_str(), nullptr};
     GError* error = nullptr;
     if (!g_spawn_async(nullptr, const_cast<gchar**>(argv), nullptr, static_cast<GSpawnFlags>(G_SPAWN_STDOUT_TO_DEV_NULL),

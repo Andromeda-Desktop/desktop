@@ -170,20 +170,13 @@ int DeskApp::run(int argc, char* argv[]) {
   return *exit;
 }
 
-namespace {
-  std::filesystem::path fontWarmupPath(const std::string& appId) {
-    const char* xdg = std::getenv("XDG_CACHE_HOME");
-    const char* home = std::getenv("HOME");
-    const std::filesystem::path cache = xdg != nullptr && xdg[0] == '/' ? std::filesystem::path(xdg)
-        : home != nullptr                                              ? std::filesystem::path(home) / ".cache"
-                                                                       : std::filesystem::path();
-    return cache.empty() ? cache : cache / "andromeda" / "font-warmup" / appId;
-  }
-} // namespace
-
-std::vector<std::string> DeskApp::serveZygote(const std::string& appId) {
-  const auto fonts = fontWarmupPath(appId);
-  return serveAppZygote(appId, [&fonts] { CairoTextRenderer::preloadFonts(fonts); });
+std::filesystem::path DeskApp::fontWarmupDir() {
+  const char* xdg = std::getenv("XDG_CACHE_HOME");
+  const char* home = std::getenv("HOME");
+  const std::filesystem::path cache = xdg != nullptr && xdg[0] == '/' ? std::filesystem::path(xdg)
+      : home != nullptr                                              ? std::filesystem::path(home) / ".cache"
+                                                                     : std::filesystem::path();
+  return cache.empty() ? cache : cache / "andromeda" / "font-warmup";
 }
 
 std::optional<int> DeskApp::start(int argc, char* argv[]) {
@@ -213,8 +206,8 @@ std::optional<int> DeskApp::start(int argc, char* argv[]) {
     return 0;
   }
 
-  if (const auto fonts = fontWarmupPath(m_info.id); !fonts.empty()) {
-    CairoTextRenderer::recordFontsTo(fonts);
+  if (const auto dir = fontWarmupDir(); !dir.empty()) {
+    CairoTextRenderer::recordFontsTo(dir / m_info.id);
   }
   if (!m_loop.initialize(m_info.sharedGl)) {
     return 1;

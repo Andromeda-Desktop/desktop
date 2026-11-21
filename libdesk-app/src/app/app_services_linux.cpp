@@ -100,11 +100,14 @@ bool forwardLaunch(const std::string& appId, const std::vector<std::string>& uri
   return false;
 }
 
-std::vector<std::string> serveAppZygote(const std::string& appId, const std::function<void()>& warmup) {
-  return process::zygote::serve(appId, [&warmup] {
+std::vector<std::string> serveAppZygote(
+    const std::string& name, const std::function<void()>& warmup,
+    const std::function<bool(const std::vector<std::string>& argv)>& accept
+) {
+  return process::zygote::serve(name, [&warmup] {
     warmup();
     // Mesa's EGL vendor and its gallium driver: loading and relocating them is ~30 ms of each child's EGL init. Mesa
     // starts no thread on load; serve() checks that. Other vendors are not loaded here.
     dlopen("libEGL_mesa.so.0", RTLD_NOW | RTLD_LOCAL);
-  }).argv;
+  }, [&accept](const process::zygote::Request& request) { return accept(request.argv); }).argv;
 }

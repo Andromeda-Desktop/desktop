@@ -805,7 +805,7 @@ namespace {
     if (manager == nullptr) {
       return false;
     }
-    const auto pid = process::zygote::launch(appName, {.argv = args, .workingDir = workingDir, .activationToken = activationToken});
+    const auto pid = process::zygote::launch("appd", {.argv = args, .workingDir = workingDir, .activationToken = activationToken});
     if (!pid) {
       return false;
     }

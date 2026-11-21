@@ -86,7 +86,52 @@ desk_app_dep = declare_dependency(
   include_directories: _inc,
 )
 
-if meson.is_subproject() or not is_wayland
+if not is_wayland or (meson.is_subproject() and not get_option('shared_app_lib'))
+  subdir_done()
+endif
+
+# Apps link libdesk as one shared library, so every app and andromeda-appd map the same code pages; shell, greeter,
+# preview and portal keep the static libraries. Consumers get headers and external libraries, not the archives.
+_ui_sp = subproject('libdesk-ui')
+_system_sp = subproject('libdesk-system')
+desk_shared_lib = shared_library('andromeda-desk',
+  link_whole: [desk_app_lib, _system_sp.get_variable('desk_system_lib'), _ui_sp.get_variable('desk_ui_lib'),
+    _ui_sp.get_variable('_fzy_lib')],
+  dependencies: _deps,
+  link_args: '-Wl,-Bsymbolic-functions',
+  install: true,
+  install_dir: get_option('libdir') / 'andromeda',
+  install_tag: 'libdesk',
+)
+desk_app_shared_dep = declare_dependency(
+  link_with: desk_shared_lib,
+  dependencies: [
+    _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true),
+    _system_sp.get_variable('desk_system_dep').partial_dependency(compile_args: true, includes: true),
+    dependency('nlohmann_json'), dependency('xkbcommon'), dependency('gio-2.0'), dependency('threads'),
+    dependency('sdbus-c++'), dependency('libsystemd'), dependency('wayland-client'),
+  ] + _ui_sp.get_variable('_system_deps'),
+  include_directories: _inc,
+)
+
+_apps_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
+executable('andromeda-appd', 'src/appd/appd_main.cpp',
+  dependencies: desk_app_shared_dep,
+  cpp_args: _warnings + ['-DANDROMEDA_APPS_DIR="' + _apps_dir + '"'],
+  install: true,
+  install_dir: get_option('libexecdir'),
+  install_rpath: _apps_dir,
+  install_tag: 'libdesk',
+)
+configure_file(
+  input: 'data/andromeda-appd.service.in',
+  output: 'andromeda-appd.service',
+  configuration: {'appd': get_option('prefix') / get_option('libexecdir') / 'andromeda-appd'},
+  install_dir: get_option('prefix') / 'lib' / 'systemd' / 'user',
+  install_tag: 'libdesk',
+)
+
+if meson.is_subproject()
   subdir_done()
 endif
 

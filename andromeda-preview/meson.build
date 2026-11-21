@@ -18,6 +18,8 @@ if cpp.get_define('_LIBCPP_VERSION', prefix: '#include <version>') != ''
 endif
 
 desk_app_dep = subproject('libdesk-app').get_variable('desk_app_dep')
+# The static libraries other apps link take libdesk headers only: each app brings its own libdesk (shared or static).
+_desk_headers = desk_app_dep.partial_dependency(compile_args: true, includes: true, sources: true)
 glycin_dep = dependency('glycin-2')
 gio_dep = dependency('gio-2.0')
 wayland_client_dep = dependency('wayland-client')
@@ -40,11 +42,11 @@ helper_path = get_option('prefix') / get_option('libexecdir') / 'andromeda' / 'a
 _core = static_library('preview_core',
   'src/file_kind.cpp',
   'src/helper_client.cpp',
-  dependencies: [desk_app_dep, gio_dep],
+  dependencies: [_desk_headers, gio_dep],
   cpp_args: ['-DANDROMEDA_PREVIEW_HELPER_PATH="' + helper_path + '"'],
 )
 
-_images = static_library('preview_images', 'src/image_loader.cpp', dependencies: [desk_app_dep, glycin_dep])
+_images = static_library('preview_images', 'src/image_loader.cpp', dependencies: [_desk_headers, glycin_dep])
 
 # The Viewer (apps/viewer) links the helper client and the glycin loader as a subproject.
 preview_client_dep = declare_dependency(
@@ -66,7 +68,7 @@ shared_module('andromeda-preview-audio',
 )
 _media = static_library('preview_media',
   'src/video_view.cpp', 'src/audio_player.cpp', _dmabuf_c, _dmabuf_h,
-  dependencies: [desk_app_dep, wayland_client_dep],
+  dependencies: [_desk_headers, wayland_client_dep],
   cpp_args: ['-DANDROMEDA_PREVIEW_AUDIO_PATH="' + _audio_module_path + '"'],
 )
 preview_media_dep = declare_dependency(

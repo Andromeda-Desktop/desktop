@@ -14,6 +14,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <string>
 
 namespace {
 
@@ -31,10 +33,19 @@ namespace {
     return count;
   }
 
-  // A package upgrade replaces the binary; the zygote must not fork the old version.
-  bool executableReplaced() {
+  // A package upgrade replaces the zygote or libdesk; a child of the old version would load a newer app library.
+  bool selfReplaced() {
     std::error_code ec;
-    return std::filesystem::read_symlink("/proc/self/exe", ec).native().ends_with(" (deleted)");
+    if (std::filesystem::read_symlink("/proc/self/exe", ec).native().ends_with(" (deleted)")) {
+      return true;
+    }
+    std::ifstream maps("/proc/self/maps");
+    for (std::string line; std::getline(maps, line);) {
+      if (line.find("/libandromeda-") != std::string::npos && line.ends_with(" (deleted)")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   [[noreturn]] void fail(const char* what) {
@@ -44,7 +55,7 @@ namespace {
 
 } // namespace
 
-// The executable exports this symbol (-Wl,--export-dynamic-symbol=g_thread_new), so Pango's call resolves here.
+// libandromeda-desk.so exports this symbol ahead of GLib in the load order, so Pango's call resolves here.
 extern "C" __attribute__((visibility("default"))) GThread* g_thread_new(const gchar* name, GThreadFunc func, gpointer data) {
   using Fn = GThread* (*)(const gchar*, GThreadFunc, gpointer);
   static const auto real = reinterpret_cast<Fn>(dlsym(RTLD_NEXT, "g_thread_new"));
@@ -57,7 +68,9 @@ extern "C" __attribute__((visibility("default"))) GThread* g_thread_new(const gc
 
 namespace process::zygote {
 
-  Request serve(std::string_view appId, const std::function<void()>& preload) {
+  Request serve(
+      std::string_view appId, const std::function<void()>& preload, const std::function<bool(const Request&)>& accept
+  ) {
     const auto path = socketPath(appId);
     sockaddr_un addr{};
     if (path.empty() || path.native().size() >= sizeof(addr.sun_path)) {
@@ -87,7 +100,6 @@ namespace process::zygote {
     sigaction(SIGCHLD, &reap, nullptr);
     std::fprintf(stderr, "zygote: %.*s ready\n", static_cast<int>(appId.size()), appId.data());
 
-    const std::filesystem::path executable = std::filesystem::read_symlink("/proc/self/exe", ec);
     std::array<char, 64 * 1024> buffer{};
     for (;;) {
       const int conn = accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
@@ -100,13 +112,14 @@ namespace process::zygote {
           ? recv(conn, buffer.data(), buffer.size(), 0)
           : -1;
       auto request = size > 0 ? decode(std::span(buffer.data(), static_cast<std::size_t>(size))) : std::nullopt;
-      // A child can only run this binary: another command (an env prefix, a custom Exec) starts by exec instead.
-      if (!request || std::filesystem::path(request->argv.front()).filename() != executable.filename()) {
+      if (!request || !accept(*request)) {
+        const std::int32_t refused = -1;
+        send(conn, &refused, sizeof(refused), MSG_NOSIGNAL);
         close(conn);
         continue;
       }
-      if (executableReplaced()) {
-        std::fprintf(stderr, "zygote: executable replaced; exiting\n");
+      if (selfReplaced()) {
+        std::fprintf(stderr, "zygote: replaced by an upgrade; exiting\n");
         std::exit(0);
       }
       const pid_t pid = fork();

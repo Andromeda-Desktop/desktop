@@ -68,7 +68,7 @@ public:
 
   // App zygote, before fork on its only thread: loads the fonts listed in `file` (one Pango font description per
   // line) into a font map that the next initialize() in this process adopts.
-  static void preloadFonts(const std::filesystem::path& file);
+  static void preloadFonts(const std::vector<std::filesystem::path>& files);
   // Records the first fonts this process loads; cleanup() writes them to `file` for preloadFonts().
   static void recordFontsTo(std::filesystem::path file);
 
