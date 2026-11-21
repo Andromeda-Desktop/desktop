@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <vector>
 
 namespace {
 
@@ -45,14 +47,34 @@ namespace search_ranker {
     const auto demoted = [&](const LauncherResult& result) {
       return std::ranges::find(demotedProviders, result.providerId) != demotedProviders.end();
     };
-    std::ranges::stable_sort(results, [&](const LauncherResult& a, const LauncherResult& b) {
-      const bool demotedA = demoted(a);
-      const bool demotedB = demoted(b);
-      if (demotedA != demotedB) {
-        return demotedB;
+    // Sort small keys, then move each result at most once: a result is large, and a stable sort of
+    // thousands (the full emoji grid) moved each one log2(n) times.
+    struct Key {
+      bool demoted;
+      double score;
+      std::size_t index;
+    };
+    std::vector<Key> keys;
+    keys.reserve(results.size());
+    for (std::size_t i = 0; i < results.size(); ++i) {
+      keys.push_back({demoted(results[i]), results[i].score, i});
+    }
+    std::ranges::stable_sort(keys, [](const Key& a, const Key& b) {
+      if (a.demoted != b.demoted) {
+        return b.demoted;
       }
       return a.score > b.score;
     });
+    const auto moved = [&](const Key& k) { return k.index != static_cast<std::size_t>(&k - keys.data()); };
+    if (std::ranges::none_of(keys, moved)) {
+      return;
+    }
+    std::vector<LauncherResult> sorted;
+    sorted.reserve(results.size());
+    for (const Key& key : keys) {
+      sorted.push_back(std::move(results[key.index]));
+    }
+    results = std::move(sorted);
   }
 
 } // namespace search_ranker
