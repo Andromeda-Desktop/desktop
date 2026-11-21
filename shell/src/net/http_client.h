@@ -175,6 +175,8 @@ private:
   // Applies the client certificate and key of cert; no-op when cert is null.
   static void applyTlsClientCert(CURL* easy, const std::shared_ptr<const HttpTlsClientCert>& cert);
   [[nodiscard]] bool hasActiveTransfers() const;
+  // Loads libcurl and creates m_multi on the first transfer, so a session that never fetches never maps libcurl.
+  CURL* newEasy();
 
   CURLM* m_multi = nullptr;
   std::filesystem::path m_caBundlePath;

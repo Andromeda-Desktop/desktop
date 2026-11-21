@@ -101,7 +101,6 @@ nlohmann_dep        = dependency('nlohmann_json')
 tomlplusplus_dep    = dependency('tomlplusplus')
 libical_dep         = dependency('libical')
 qrencode_dep        = dependency('libqrencode')
-pam_dep             = cc.find_library('pam')
 dl_dep              = cpp.find_library('dl', required: false)
 
 jemalloc_option = get_option('jemalloc')
@@ -951,6 +950,7 @@ _noctalia_inc = [
 ]
 
 # ── Application library and executable ────────────────────────────────────────
+# Rarely used libraries take only their compile flags: they load on first use (core/lazy_library.h).
 _noctalia_system_dependencies = [
   desk_ui_dep,
   desk_system_dep,
@@ -972,28 +972,27 @@ _noctalia_system_dependencies = [
   glib_dep,
   gobject_dep,
   gio_dep,
-  gstreamer_dep,
-  gstreamer_app_dep,
-  gstreamer_video_dep,
-  gstreamer_allocators_dep,
+  gstreamer_dep.partial_dependency(compile_args: true, includes: true),
+  gstreamer_app_dep.partial_dependency(compile_args: true, includes: true),
+  gstreamer_video_dep.partial_dependency(compile_args: true, includes: true),
+  gstreamer_allocators_dep.partial_dependency(compile_args: true, includes: true),
   libcrypto_dep,
   libsodium_dep,
-  libxcrypt_dep,
+  libxcrypt_dep.partial_dependency(compile_args: true, includes: true),
   pipewire_dep,
   wireplumber_dep,
-  curl_dep,
-  pam_dep,
+  curl_dep.partial_dependency(compile_args: true, includes: true),
   nlohmann_dep,
   libxml2_dep,
-  libical_dep,
+  libical_dep.partial_dependency(compile_args: true, includes: true),
   tomlplusplus_dep,
   md4c_dep,
   libwebp_dep,
   libwebpdemux_dep,
   libjxl_dep,
   libjxl_threads_dep,
-  sndfile_dep,
-  qrencode_dep,
+  sndfile_dep.partial_dependency(compile_args: true, includes: true),
+  qrencode_dep.partial_dependency(compile_args: true, includes: true),
 ] + (dl_dep.found() ? [dl_dep] : [])
 
 _noctalia_dependencies = _noctalia_system_dependencies + [

@@ -1,5 +1,6 @@
 #include "auth/pam_authenticator.h"
 
+#include "core/lazy_library.h"
 #include "core/log.h"
 #include "i18n/i18n.h"
 
@@ -18,6 +19,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <vector>
+
+// clang-format off
+#define PAM_FUNCTIONS(X) \
+  X(pam_acct_mgmt) X(pam_authenticate) X(pam_end) X(pam_setcred) X(pam_start) X(pam_strerror)
+// clang-format on
+LAZY_LIBRARY(PamApi, pam, "libpam.so.0", PAM_FUNCTIONS)
 
 namespace {
 
@@ -49,7 +56,7 @@ namespace {
 
     ~PamHandle() {
       if (h != nullptr) {
-        pam_end(h, lastRc);
+        pam().pam_end(h, lastRc);
       }
     }
   };
@@ -288,37 +295,39 @@ namespace {
 
     PamHandle pamh;
     const std::string serviceName(service);
-    const int startRc = pam_start(serviceName.c_str(), user.c_str(), &conv, &pamh.h);
+    const int startRc = pam().pam_start(serviceName.c_str(), user.c_str(), &conv, &pamh.h);
     if (startRc != PAM_SUCCESS || pamh.h == nullptr) {
       kLog.error(
-          "pam_start failed rc={} ({})", startRc, pamh.h != nullptr ? pam_strerror(pamh.h, startRc) : "no handle"
+          "pam_start failed rc={} ({})", startRc, pamh.h != nullptr ? pam().pam_strerror(pamh.h, startRc) : "no handle"
       );
       secureClear(passwordCopy);
       return PamAuthenticator::Result{.success = false, .message = i18n::tr("auth.pam.start-failed")};
     }
 
-    int rc = pam_authenticate(pamh.h, 0);
-    kLog.debug("pam_authenticate rc={} ({})", rc, pam_strerror(pamh.h, rc));
+    int rc = pam().pam_authenticate(pamh.h, 0);
+    kLog.debug("pam_authenticate rc={} ({})", rc, pam().pam_strerror(pamh.h, rc));
     if (rc == PAM_SUCCESS) {
       // An unprivileged locker can't read /etc/shadow for the account stack, so
       // ignore PAM_AUTHINFO_UNAVAIL; pam_authenticate already proved identity.
-      const int acctRc = pam_acct_mgmt(pamh.h, 0);
-      kLog.debug("pam_acct_mgmt rc={} ({})", acctRc, pam_strerror(pamh.h, acctRc));
+      const int acctRc = pam().pam_acct_mgmt(pamh.h, 0);
+      kLog.debug("pam_acct_mgmt rc={} ({})", acctRc, pam().pam_strerror(pamh.h, acctRc));
       if (acctRc != PAM_SUCCESS && acctRc != PAM_AUTHINFO_UNAVAIL) {
         rc = acctRc;
       }
     }
-    const char* err = pam_strerror(pamh.h, rc);
+    const char* err = pam().pam_strerror(pamh.h, rc);
     const std::string errStr = err != nullptr ? err : i18n::tr("auth.pam.authentication-failed");
     pamh.lastRc = rc;
 
     if (rc == PAM_SUCCESS) {
       // A credential-provider failure must not reject an otherwise valid unlock.
-      const int credRc = pam_setcred(pamh.h, PAM_REFRESH_CRED);
-      kLog.debug("pam_setcred PAM_REFRESH_CRED rc={} ({})", credRc, pam_strerror(pamh.h, credRc));
+      const int credRc = pam().pam_setcred(pamh.h, PAM_REFRESH_CRED);
+      kLog.debug("pam_setcred PAM_REFRESH_CRED rc={} ({})", credRc, pam().pam_strerror(pamh.h, credRc));
       pamh.lastRc = credRc;
       if (credRc != PAM_SUCCESS) {
-        kLog.warn("credential refresh failed for user='{}' rc={} ({})", user, credRc, pam_strerror(pamh.h, credRc));
+        kLog.warn(
+            "credential refresh failed for user='{}' rc={} ({})", user, credRc, pam().pam_strerror(pamh.h, credRc)
+        );
       }
     }
 

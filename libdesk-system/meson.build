@@ -35,7 +35,6 @@ _deps = [
   _desk_ui_dep,
   dependency('sdbus-c++'),
   dependency('libsystemd'),
-  cpp.find_library('cups'), # libcups ships no cups.pc
 ]
 
 _sources = files(

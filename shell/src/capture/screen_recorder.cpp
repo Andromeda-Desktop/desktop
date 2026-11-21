@@ -1,5 +1,6 @@
 #include "capture/screen_recorder.h"
 
+#include "capture/gstreamer_api.h"
 #include "core/deferred_call.h"
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -13,7 +14,6 @@
 #include <filesystem>
 #include <format>
 #include <glib.h>
-#include <gst/gst.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -50,12 +50,12 @@ namespace {
     }
     const auto& geometry = *static_cast<const CropGeometry*>(data);
     GstCaps* caps = nullptr;
-    gst_event_parse_caps(event, &caps);
+    gstreamer().gst_event_parse_caps(event, &caps);
     int width = 0;
     int height = 0;
-    const GstStructure* structure = gst_caps_get_structure(caps, 0);
-    if (!gst_structure_get_int(structure, "width", &width)
-        || !gst_structure_get_int(structure, "height", &height)
+    const GstStructure* structure = gstreamer().gst_caps_get_structure(caps, 0);
+    if (!gstreamer().gst_structure_get_int(structure, "width", &width)
+        || !gstreamer().gst_structure_get_int(structure, "height", &height)
         || geometry.stream.width <= 0
         || geometry.stream.height <= 0) {
       return GST_PAD_PROBE_OK;
@@ -69,9 +69,9 @@ namespace {
     const int top = std::clamp(even(r.y * sy), 0, height - 2);
     const int right = std::clamp(width - even((r.x + r.width) * sx), 0, width - left - 2);
     const int bottom = std::clamp(height - even((r.y + r.height) * sy), 0, height - top - 2);
-    GstElement* crop = gst_pad_get_parent_element(pad);
+    GstElement* crop = gstreamer().gst_pad_get_parent_element(pad);
     g_object_set(crop, "left", left, "top", top, "right", right, "bottom", bottom, nullptr);
-    gst_object_unref(crop);
+    gstreamer().gst_object_unref(crop);
     return GST_PAD_PROBE_OK;
   }
 
@@ -99,9 +99,9 @@ ScreenRecorder::ScreenRecorder(SessionBus& bus, NotificationManager& notificatio
 
 ScreenRecorder::~ScreenRecorder() {
   if (m_pipeline != nullptr) {
-    gst_element_set_state(m_pipeline, GST_STATE_NULL);
-    gst_object_unref(m_gstBus);
-    gst_object_unref(m_pipeline);
+    gstreamer().gst_element_set_state(m_pipeline, GST_STATE_NULL);
+    gstreamer().gst_object_unref(m_gstBus);
+    gstreamer().gst_object_unref(m_pipeline);
   }
   closePortalSession();
 }
@@ -115,14 +115,14 @@ std::string ScreenRecorder::toggle(std::optional<LogicalRect> region) {
   case State::Recording:
     setState(State::Stopping);
     m_deadline = std::chrono::steady_clock::now() + kStopTimeout;
-    gst_element_send_event(m_pipeline, gst_event_new_eos());
+    gstreamer().gst_element_send_event(m_pipeline, gstreamer().gst_event_new_eos());
     return {};
   case State::Idle:
     break;
   }
 
-  if (!gst_is_initialized()) {
-    gst_init(nullptr, nullptr);
+  if (!gstreamer().gst_is_initialized()) {
+    gstreamer().gst_init(nullptr, nullptr);
   }
   setState(State::Starting);
   m_region = region;
@@ -132,14 +132,14 @@ std::string ScreenRecorder::toggle(std::optional<LogicalRect> region) {
       GstElement* src = make("videotestsrc");
       GstElement* caps = make("capsfilter");
       if (src != nullptr && caps != nullptr) {
-        gst_util_set_object_arg(G_OBJECT(src), "pattern", "smpte");
+        gstreamer().gst_util_set_object_arg(G_OBJECT(src), "pattern", "smpte");
         g_object_set(src, "is-live", TRUE, nullptr);
-        GstCaps* raw = gst_caps_new_simple(
+        GstCaps* raw = gstreamer().gst_caps_new_simple(
             "video/x-raw", "width", G_TYPE_INT, kTestSourceWidth, "height", G_TYPE_INT, kTestSourceHeight, "framerate",
-            GST_TYPE_FRACTION, 30, 1, nullptr
+            gstreamer().gst_fraction_get_type(), 30, 1, nullptr
         );
         g_object_set(caps, "caps", raw, nullptr);
-        gst_caps_unref(raw);
+        gstreamer().gst_caps_unref(raw);
       }
       return std::vector<GstElement*>{src, caps};
     });
@@ -340,17 +340,17 @@ void ScreenRecorder::startPipeline(const Source& source) {
 }
 
 std::string ScreenRecorder::launch(const Source& source, bool withAudio) {
-  GstElement* pipeline = gst_pipeline_new("recorder");
+  GstElement* pipeline = gstreamer().gst_pipeline_new("recorder");
   std::string missing;
   const Make make = [&](const char* factory) -> GstElement* {
-    GstElement* element = gst_element_factory_make(factory, nullptr);
+    GstElement* element = gstreamer().gst_element_factory_make(factory, nullptr);
     if (element == nullptr) {
       if (missing.empty()) {
         missing = factory;
       }
       return nullptr;
     }
-    gst_bin_add(GST_BIN(pipeline), element);
+    gstreamer().gst_bin_add(GST_BIN_CAST(pipeline), element);
     return element;
   };
   const auto capsFilter = [&](GstCaps* caps) {
@@ -358,19 +358,19 @@ std::string ScreenRecorder::launch(const Source& source, bool withAudio) {
     if (filter != nullptr) {
       g_object_set(filter, "caps", caps, nullptr);
     }
-    gst_caps_unref(caps);
+    gstreamer().gst_caps_unref(caps);
     return filter;
   };
   const auto nv12 = [](const char* feature) {
-    GstCaps* caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
+    GstCaps* caps = gstreamer().gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "NV12", nullptr);
     if (feature != nullptr) {
-      gst_caps_set_features(caps, 0, gst_caps_features_new_single_static_str(feature));
+      gstreamer().gst_caps_set_features(caps, 0, gstreamer().gst_caps_features_new_single_static_str(feature));
     }
     return caps;
   };
   const auto link = [](const std::vector<GstElement*>& chain) {
     for (std::size_t i = 1; i < chain.size(); ++i) {
-      if (chain[i - 1] == nullptr || chain[i] == nullptr || !gst_element_link(chain[i - 1], chain[i])) {
+      if (chain[i - 1] == nullptr || chain[i] == nullptr || !gstreamer().gst_element_link(chain[i - 1], chain[i])) {
         return false;
       }
     }
@@ -381,9 +381,9 @@ std::string ScreenRecorder::launch(const Source& source, bool withAudio) {
   if (m_region.has_value()) {
     // A region is cut out of a system-memory copy: vapostproc ignores crop metadata on VA surfaces.
     // Named at creation: a bin refuses to rename a child, and the caps probe finds the crop by this name.
-    GstElement* crop = gst_element_factory_make("videocrop", "crop");
+    GstElement* crop = gstreamer().gst_element_factory_make("videocrop", "crop");
     if (crop != nullptr) {
-      gst_bin_add(GST_BIN(pipeline), crop);
+      gstreamer().gst_bin_add(GST_BIN_CAST(pipeline), crop);
     } else if (missing.empty()) {
       missing = "videocrop";
     }
@@ -404,48 +404,48 @@ std::string ScreenRecorder::launch(const Source& source, bool withAudio) {
     // The default output's monitor: what the user hears.
     GstElement* src = make("pipewiresrc");
     if (src != nullptr) {
-      GstStructure* props = gst_structure_new(
+      GstStructure* props = gstreamer().gst_structure_new(
           "props", "stream.capture.sink", G_TYPE_STRING, "true", "node.name", G_TYPE_STRING, "noctalia-recorder",
           nullptr
       );
       g_object_set(src, "stream-properties", props, "do-timestamp", TRUE, nullptr);
-      gst_structure_free(props);
+      gstreamer().gst_structure_free(props);
     }
     GstCaps* audioCaps =
-        gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, 48000, "channels", G_TYPE_INT, 2, nullptr);
+        gstreamer().gst_caps_new_simple("audio/x-raw", "rate", G_TYPE_INT, 48000, "channels", G_TYPE_INT, 2, nullptr);
     linked = link(
         {src, make("queue"), make("audioconvert"), make("audioresample"), capsFilter(audioCaps), make("fdkaacenc"),
          make("queue"), mux}
     );
   }
   if (!linked) {
-    gst_object_unref(pipeline);
+    gstreamer().gst_object_unref(pipeline);
     return missing.empty() ? std::string("the recording pipeline cannot link") : "missing GStreamer element " + missing;
   }
-  if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-    gst_element_set_state(pipeline, GST_STATE_NULL);
-    gst_object_unref(pipeline);
+  if (gstreamer().gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+    gstreamer().gst_element_set_state(pipeline, GST_STATE_NULL);
+    gstreamer().gst_object_unref(pipeline);
     return "the encoder did not start";
   }
   m_pipeline = pipeline;
-  if (GstElement* crop = gst_bin_get_by_name(GST_BIN(m_pipeline), "crop"); crop != nullptr) {
-    GstPad* pad = gst_element_get_static_pad(crop, "sink");
-    gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, onCropCaps, &m_crop, nullptr);
-    gst_object_unref(pad);
-    gst_object_unref(crop);
+  if (GstElement* crop = gstreamer().gst_bin_get_by_name(GST_BIN_CAST(m_pipeline), "crop"); crop != nullptr) {
+    GstPad* pad = gstreamer().gst_element_get_static_pad(crop, "sink");
+    gstreamer().gst_pad_add_probe(pad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, onCropCaps, &m_crop, nullptr);
+    gstreamer().gst_object_unref(pad);
+    gstreamer().gst_object_unref(crop);
   }
-  m_gstBus = gst_element_get_bus(m_pipeline);
+  m_gstBus = gstreamer().gst_element_get_bus(m_pipeline);
   GPollFD pollFd{};
-  gst_bus_get_pollfd(m_gstBus, &pollFd);
+  gstreamer().gst_bus_get_pollfd(m_gstBus, &pollFd);
   m_busFd = pollFd.fd;
   return {};
 }
 
 void ScreenRecorder::finish(const std::string& error) {
   if (m_pipeline != nullptr) {
-    gst_element_set_state(m_pipeline, GST_STATE_NULL);
-    gst_object_unref(m_gstBus);
-    gst_object_unref(m_pipeline);
+    gstreamer().gst_element_set_state(m_pipeline, GST_STATE_NULL);
+    gstreamer().gst_object_unref(m_gstBus);
+    gstreamer().gst_object_unref(m_pipeline);
     m_pipeline = nullptr;
     m_gstBus = nullptr;
     m_busFd = -1;
@@ -524,25 +524,25 @@ void ScreenRecorder::dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*
     return;
   }
   while (m_gstBus != nullptr) {
-    GstMessage* message = gst_bus_pop(m_gstBus);
+    GstMessage* message = gstreamer().gst_bus_pop(m_gstBus);
     if (message == nullptr) {
       return;
     }
     if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_EOS) {
-      gst_message_unref(message);
+      gstreamer().gst_message_unref(message);
       finish({});
       return;
     }
     if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
       GError* error = nullptr;
-      gst_message_parse_error(message, &error, nullptr);
+      gstreamer().gst_message_parse_error(message, &error, nullptr);
       const std::string text = error != nullptr ? error->message : "pipeline error";
       g_clear_error(&error);
-      gst_message_unref(message);
+      gstreamer().gst_message_unref(message);
       finish(text);
       return;
     }
-    gst_message_unref(message);
+    gstreamer().gst_message_unref(message);
   }
 }
 

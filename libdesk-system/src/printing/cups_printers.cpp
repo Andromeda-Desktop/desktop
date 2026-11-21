@@ -1,25 +1,40 @@
 #include "printing/cups_printers.h"
 
-#include <cups/cups.h>
-
-#include <cstdlib>
+#include "core/lazy_library.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
+#include <cups/cups.h>
 #include <memory>
 #include <string_view>
 #include <unistd.h>
+
+// clang-format off
+#define CUPS_FUNCTIONS(X) \
+  X(cupsAddOption) X(cupsCancelDestJob) X(cupsCancelJob2) X(cupsCheckDestSupported) X(cupsCopyDestInfo) \
+  X(cupsCreateDestJob) X(cupsDoRequest) X(cupsEncryption) X(cupsEnumDests) X(cupsFindDestDefault) \
+  X(cupsFindDestSupported) X(cupsFinishDestDocument) X(cupsFreeDestInfo) X(cupsFreeDests) X(cupsFreeJobs) \
+  X(cupsFreeOptions) X(cupsGetDest) X(cupsGetDestMediaByIndex) X(cupsGetDestMediaCount) \
+  X(cupsGetDestMediaDefault) X(cupsGetDests2) X(cupsGetJobs2) X(cupsGetOption) X(cupsLastError) \
+  X(cupsLastErrorString) X(cupsLocalizeDestValue) X(cupsPrintFile2) X(cupsServer) X(cupsSetDests2) \
+  X(cupsStartDestDocument) X(cupsUser) X(cupsWriteRequestData) X(httpAssembleURIf) X(httpClose) X(httpConnect2) \
+  X(httpSeparateURI) X(ippAddBoolean) X(ippAddInteger) X(ippAddString) X(ippAddStrings) X(ippContainsString) \
+  X(ippDelete) X(ippFindAttribute) X(ippGetCount) X(ippGetInteger) X(ippGetStatusCode) X(ippGetString) \
+  X(ippGetValueTag) X(ippNewRequest) X(ippPort)
+// clang-format on
+LAZY_LIBRARY(CupsApi, cups, "libcups.so.2", CUPS_FUNCTIONS)
 
 namespace {
 
 struct DestsDeleter {
   int count;
-  void operator()(cups_dest_t* d) const { cupsFreeDests(count, d); }
+  void operator()(cups_dest_t* d) const { cups().cupsFreeDests(count, d); }
 };
 
 std::string option(const cups_dest_t& d, const char* name) {
-  const char* v = cupsGetOption(name, d.num_options, d.options);
+  const char* v = cups().cupsGetOption(name, d.num_options, d.options);
   return v ? v : "";
 }
 
@@ -53,12 +68,12 @@ std::string valueText(const char* key, const std::string& value) {
 }
 
 std::string attrValue(ipp_attribute_t* a, int i) {
-  switch (ippGetValueTag(a)) {
+  switch (cups().ippGetValueTag(a)) {
   case IPP_TAG_ENUM:
   case IPP_TAG_INTEGER:
-    return std::to_string(ippGetInteger(a, i));
+    return std::to_string(cups().ippGetInteger(a, i));
   default:
-    return ippGetString(a, i, nullptr) ? ippGetString(a, i, nullptr) : "";
+    return cups().ippGetString(a, i, nullptr) ? cups().ippGetString(a, i, nullptr) : "";
   }
 }
 
@@ -67,17 +82,17 @@ void fillOptions(cups_dest_t* dest, cups_dinfo_t* info, PrinterInfo& p) {
       {"print-quality", "Quality"}, {"media-source", "Paper tray"}, {"media-type", "Paper type"},
       {"output-bin", "Output tray"}};
   for (const auto& [key, label] : kOptions) {
-    ipp_attribute_t* supported = cupsFindDestSupported(CUPS_HTTP_DEFAULT, dest, info, key);
-    if (!supported || ippGetCount(supported) < 2)
+    ipp_attribute_t* supported = cups().cupsFindDestSupported(CUPS_HTTP_DEFAULT, dest, info, key);
+    if (!supported || cups().ippGetCount(supported) < 2)
       continue;
     PrinterOption o{.key = key, .label = label};
-    for (int i = 0; i < ippGetCount(supported); ++i) {
+    for (int i = 0; i < cups().ippGetCount(supported); ++i) {
       std::string v = attrValue(supported, i);
-      const char* localized = cupsLocalizeDestValue(CUPS_HTTP_DEFAULT, dest, info, key, v.c_str());
+      const char* localized = cups().cupsLocalizeDestValue(CUPS_HTTP_DEFAULT, dest, info, key, v.c_str());
       o.valueLabels.push_back(localized && v != localized ? std::string(localized) : valueText(key, v));
       o.values.push_back(std::move(v));
     }
-    if (ipp_attribute_t* def = cupsFindDestDefault(CUPS_HTTP_DEFAULT, dest, info, key)) {
+    if (ipp_attribute_t* def = cups().cupsFindDestDefault(CUPS_HTTP_DEFAULT, dest, info, key)) {
       const auto it = std::ranges::find(o.values, attrValue(def, 0));
       if (it != o.values.end())
         o.defaultIndex = static_cast<std::size_t>(it - o.values.begin());
@@ -99,47 +114,49 @@ std::string firstStateReason(std::string_view rest) {
 }
 
 void fillCapabilities(cups_dest_t* dest, PrinterInfo& p) {
-  cups_dinfo_t* info = cupsCopyDestInfo(CUPS_HTTP_DEFAULT, dest);
+  cups_dinfo_t* info = cups().cupsCopyDestInfo(CUPS_HTTP_DEFAULT, dest);
   if (!info)
     return;
-  p.duplex = cupsCheckDestSupported(CUPS_HTTP_DEFAULT, dest, info, CUPS_SIDES, CUPS_SIDES_TWO_SIDED_PORTRAIT);
-  p.colour = cupsCheckDestSupported(CUPS_HTTP_DEFAULT, dest, info, "print-color-mode", "color");
-  const int count = cupsGetDestMediaCount(CUPS_HTTP_DEFAULT, dest, info, CUPS_MEDIA_FLAGS_DEFAULT);
+  p.duplex = cups().cupsCheckDestSupported(CUPS_HTTP_DEFAULT, dest, info, CUPS_SIDES, CUPS_SIDES_TWO_SIDED_PORTRAIT);
+  p.colour = cups().cupsCheckDestSupported(CUPS_HTTP_DEFAULT, dest, info, "print-color-mode", "color");
+  const int count = cups().cupsGetDestMediaCount(CUPS_HTTP_DEFAULT, dest, info, CUPS_MEDIA_FLAGS_DEFAULT);
   for (int i = 0; i < count; ++i) {
     cups_size_t size{};
-    if (cupsGetDestMediaByIndex(CUPS_HTTP_DEFAULT, dest, info, i, CUPS_MEDIA_FLAGS_DEFAULT, &size) &&
-        std::find(p.media.begin(), p.media.end(), size.media) == p.media.end())
+    if (cups().cupsGetDestMediaByIndex(CUPS_HTTP_DEFAULT, dest, info, i, CUPS_MEDIA_FLAGS_DEFAULT, &size)
+        && std::find(p.media.begin(), p.media.end(), size.media) == p.media.end())
       p.media.emplace_back(size.media);
   }
   cups_size_t def{};
-  if (cupsGetDestMediaDefault(CUPS_HTTP_DEFAULT, dest, info, CUPS_MEDIA_FLAGS_DEFAULT, &def))
+  if (cups().cupsGetDestMediaDefault(CUPS_HTTP_DEFAULT, dest, info, CUPS_MEDIA_FLAGS_DEFAULT, &def))
     p.defaultMedia = def.media;
-  if (ipp_attribute_t* sides = cupsFindDestDefault(CUPS_HTTP_DEFAULT, dest, info, CUPS_SIDES))
+  if (ipp_attribute_t* sides = cups().cupsFindDestDefault(CUPS_HTTP_DEFAULT, dest, info, CUPS_SIDES))
     p.defaultSides = attrValue(sides, 0);
   fillOptions(dest, info, p);
-  cupsFreeDestInfo(info);
+  cups().cupsFreeDestInfo(info);
 }
 
 int queuedJobs(const char* name) {
   cups_job_t* jobs = nullptr;
-  const int n = cupsGetJobs2(CUPS_HTTP_DEFAULT, &jobs, name, 0, CUPS_WHICHJOBS_ACTIVE);
-  cupsFreeJobs(n, jobs);
+  const int n = cups().cupsGetJobs2(CUPS_HTTP_DEFAULT, &jobs, name, 0, CUPS_WHICHJOBS_ACTIVE);
+  cups().cupsFreeJobs(n, jobs);
   return std::max(n, 0);
 }
 
 } // namespace
 
 bool printServiceRunning() {
-  http_t* http = httpConnect2(cupsServer(), ippPort(), nullptr, AF_UNSPEC, cupsEncryption(), 1, 1000, nullptr);
+  http_t* http = cups().httpConnect2(
+      cups().cupsServer(), cups().ippPort(), nullptr, AF_UNSPEC, cups().cupsEncryption(), 1, 1000, nullptr
+  );
   if (!http)
     return false;
-  httpClose(http);
+  cups().httpClose(http);
   return true;
 }
 
 std::vector<PrinterInfo> listPrinters(const std::function<bool(const std::string&)>& withCapabilities) {
   cups_dest_t* raw = nullptr;
-  const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
+  const int count = cups().cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
   std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
   std::vector<PrinterInfo> out;
   for (int i = 0; i < count; ++i) {
@@ -190,30 +207,31 @@ std::vector<PrinterInfo> listPrinters(const std::function<bool(const std::string
 
 std::variant<int, JobError> submitJob(const std::string& title, int fd, const PrintOptions& o) {
   cups_dest_t* raw = nullptr;
-  const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
+  const int count = cups().cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
   std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
-  cups_dest_t* dest = cupsGetDest(o.printer.c_str(), nullptr, count, raw);
+  cups_dest_t* dest = cups().cupsGetDest(o.printer.c_str(), nullptr, count, raw);
   if (!dest)
     return JobError{"The printer is no longer available."};
-  cups_dinfo_t* info = cupsCopyDestInfo(CUPS_HTTP_DEFAULT, dest);
+  cups_dinfo_t* info = cups().cupsCopyDestInfo(CUPS_HTTP_DEFAULT, dest);
   if (!info)
-    return JobError{cupsLastErrorString()};
+    return JobError{cups().cupsLastErrorString()};
   int numOptions = 0;
   cups_option_t* options = nullptr;
   for (const auto& [k, v] : cupsJobOptions(o))
-    numOptions = cupsAddOption(k.c_str(), v.c_str(), numOptions, &options);
+    numOptions = cups().cupsAddOption(k.c_str(), v.c_str(), numOptions, &options);
   int jobId = 0;
   const auto finish = [&](std::variant<int, JobError> r) {
-    cupsFreeOptions(numOptions, options);
-    cupsFreeDestInfo(info);
+    cups().cupsFreeOptions(numOptions, options);
+    cups().cupsFreeDestInfo(info);
     return r;
   };
-  if (cupsCreateDestJob(CUPS_HTTP_DEFAULT, dest, info, &jobId, title.c_str(), numOptions, options) != IPP_STATUS_OK)
-    return finish(JobError{cupsLastErrorString()});
-  if (cupsStartDestDocument(CUPS_HTTP_DEFAULT, dest, info, jobId, title.c_str(), CUPS_FORMAT_AUTO, 0, nullptr, 1) !=
-      HTTP_STATUS_CONTINUE) {
-    JobError error{cupsLastErrorString()};
-    cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+  if (cups().cupsCreateDestJob(CUPS_HTTP_DEFAULT, dest, info, &jobId, title.c_str(), numOptions, options)
+      != IPP_STATUS_OK)
+    return finish(JobError{cups().cupsLastErrorString()});
+  if (cups().cupsStartDestDocument(CUPS_HTTP_DEFAULT, dest, info, jobId, title.c_str(), CUPS_FORMAT_AUTO, 0, nullptr, 1)
+      != HTTP_STATUS_CONTINUE) {
+    JobError error{cups().cupsLastErrorString()};
+    cups().cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
     return finish(std::move(error));
   }
   char buf[65536];
@@ -221,21 +239,21 @@ std::variant<int, JobError> submitJob(const std::string& title, int fd, const Pr
   while (true) {
     const ssize_t n = ::pread(fd, buf, sizeof buf, offset);
     if (n < 0) {
-      cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+      cups().cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
       return finish(JobError{"The document could not be read."});
     }
     if (n == 0)
       break;
-    if (cupsWriteRequestData(CUPS_HTTP_DEFAULT, buf, static_cast<size_t>(n)) != HTTP_STATUS_CONTINUE) {
-      JobError error{cupsLastErrorString()};
-      cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+    if (cups().cupsWriteRequestData(CUPS_HTTP_DEFAULT, buf, static_cast<size_t>(n)) != HTTP_STATUS_CONTINUE) {
+      JobError error{cups().cupsLastErrorString()};
+      cups().cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
       return finish(std::move(error));
     }
     offset += n;
   }
-  if (cupsFinishDestDocument(CUPS_HTTP_DEFAULT, dest, info) != IPP_STATUS_OK) {
-    JobError error{cupsLastErrorString()};
-    cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
+  if (cups().cupsFinishDestDocument(CUPS_HTTP_DEFAULT, dest, info) != IPP_STATUS_OK) {
+    JobError error{cups().cupsLastErrorString()};
+    cups().cupsCancelDestJob(CUPS_HTTP_DEFAULT, dest, jobId);
     return finish(std::move(error));
   }
   return finish(jobId);
@@ -244,54 +262,57 @@ std::variant<int, JobError> submitJob(const std::string& title, int fd, const Pr
 namespace {
 // Why a stopped printer does not print (a waiting job carries no printer reasons), or "" when it is not stopped.
 std::string stoppedPrinterReason(const std::string& printer) {
-  ipp_t* request = ippNewRequest(IPP_OP_GET_PRINTER_ATTRIBUTES);
+  ipp_t* request = cups().ippNewRequest(IPP_OP_GET_PRINTER_ATTRIBUTES);
   char uri[1024];
-  httpAssembleURIf(HTTP_URI_CODING_ALL, uri, sizeof uri, "ipp", nullptr, "localhost", 0, "/printers/%s", printer.c_str());
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, uri);
+  cups().httpAssembleURIf(
+      HTTP_URI_CODING_ALL, uri, sizeof uri, "ipp", nullptr, "localhost", 0, "/printers/%s", printer.c_str()
+  );
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, uri);
   static const char* const kAttrs[] = {"printer-state", "printer-state-reasons", "printer-state-message"};
-  ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 3, nullptr, kAttrs);
-  ipp_t* response = cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/");
+  cups().ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 3, nullptr, kAttrs);
+  ipp_t* response = cups().cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/");
   if (!response)
     return {};
   std::string out;
-  if (ippGetInteger(ippFindAttribute(response, "printer-state", IPP_TAG_ENUM), 0) == IPP_PSTATE_STOPPED) {
+  if (cups().ippGetInteger(cups().ippFindAttribute(response, "printer-state", IPP_TAG_ENUM), 0) == IPP_PSTATE_STOPPED) {
     std::string reasons;
-    if (ipp_attribute_t* a = ippFindAttribute(response, "printer-state-reasons", IPP_TAG_KEYWORD))
-      for (int i = 0; i < ippGetCount(a); ++i)
-        reasons += std::string(ippGetString(a, i, nullptr)) + ',';
+    if (ipp_attribute_t* a = cups().ippFindAttribute(response, "printer-state-reasons", IPP_TAG_KEYWORD))
+      for (int i = 0; i < cups().ippGetCount(a); ++i)
+        reasons += std::string(cups().ippGetString(a, i, nullptr)) + ',';
     const std::string reason = firstStateReason(reasons);
     out = reason.empty() ? std::string("Stopped") : reasonText(reason);
   }
-  ippDelete(response);
+  cups().ippDelete(response);
   return out;
 }
 } // namespace
 
 JobStatus jobStatus(const std::string& printer, int jobId) {
-  ipp_t* request = ippNewRequest(IPP_OP_GET_JOB_ATTRIBUTES);
+  ipp_t* request = cups().ippNewRequest(IPP_OP_GET_JOB_ATTRIBUTES);
   const std::string uri = "ipp://localhost/jobs/" + std::to_string(jobId);
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "job-uri", nullptr, uri.c_str());
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cupsUser());
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "job-uri", nullptr, uri.c_str());
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cups().cupsUser());
   static const char* const kAttrs[] = {"job-state", "job-impressions-completed", "job-printer-state-reasons",
                                        "job-printer-state-message"};
-  ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 4, nullptr, kAttrs);
-  ipp_t* response = cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/jobs/");
+  cups().ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 4, nullptr, kAttrs);
+  ipp_t* response = cups().cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/jobs/");
   JobStatus st;
   if (!response)
     return st;
-  if (const ipp_status_t status = ippGetStatusCode(response); status > IPP_STATUS_OK_EVENTS_COMPLETE) {
+  if (const ipp_status_t status = cups().ippGetStatusCode(response); status > IPP_STATUS_OK_EVENTS_COMPLETE) {
     // A job CUPS no longer knows (history purged) has ended; other errors leave the state Unknown.
     if (status == IPP_STATUS_ERROR_NOT_FOUND)
       st.state = JobState::Cancelled;
-    ippDelete(response);
+    cups().ippDelete(response);
     return st;
   }
-  const int state = ippGetInteger(ippFindAttribute(response, "job-state", IPP_TAG_ENUM), 0);
-  st.pagesDone = ippGetInteger(ippFindAttribute(response, "job-impressions-completed", IPP_TAG_INTEGER), 0);
+  const int state = cups().ippGetInteger(cups().ippFindAttribute(response, "job-state", IPP_TAG_ENUM), 0);
+  st.pagesDone =
+      cups().ippGetInteger(cups().ippFindAttribute(response, "job-impressions-completed", IPP_TAG_INTEGER), 0);
   std::string reasons;
-  if (ipp_attribute_t* a = ippFindAttribute(response, "job-printer-state-reasons", IPP_TAG_KEYWORD))
-    for (int i = 0; i < ippGetCount(a); ++i)
-      reasons += std::string(ippGetString(a, i, nullptr)) + ',';
+  if (ipp_attribute_t* a = cups().ippFindAttribute(response, "job-printer-state-reasons", IPP_TAG_KEYWORD))
+    for (int i = 0; i < cups().ippGetCount(a); ++i)
+      reasons += std::string(cups().ippGetString(a, i, nullptr)) + ',';
   const std::string reason = firstStateReason(reasons);
   switch (state) {
   case IPP_JSTATE_PENDING:
@@ -323,19 +344,19 @@ JobStatus jobStatus(const std::string& printer, int jobId) {
   }
   if (!reason.empty())
     st.reason = reasonText(reason);
-  ippDelete(response);
+  cups().ippDelete(response);
   return st;
 }
 
 std::optional<JobError> cancelJob(const std::string& printer, int jobId) {
-  if (cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), jobId, 0) != IPP_STATUS_OK)
-    return JobError{cupsLastErrorString()};
+  if (cups().cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), jobId, 0) != IPP_STATUS_OK)
+    return JobError{cups().cupsLastErrorString()};
   return std::nullopt;
 }
 
 std::vector<JobInfo> listJobs() {
   cups_job_t* jobs = nullptr;
-  const int n = cupsGetJobs2(CUPS_HTTP_DEFAULT, &jobs, nullptr, 0, CUPS_WHICHJOBS_ACTIVE);
+  const int n = cups().cupsGetJobs2(CUPS_HTTP_DEFAULT, &jobs, nullptr, 0, CUPS_WHICHJOBS_ACTIVE);
   std::vector<JobInfo> out;
   for (int i = 0; i < n; ++i) {
     const cups_job_t& j = jobs[i];
@@ -349,7 +370,7 @@ std::vector<JobInfo> listJobs() {
     }
     out.push_back(std::move(info));
   }
-  cupsFreeJobs(n, jobs);
+  cups().cupsFreeJobs(n, jobs);
   std::ranges::sort(out, {}, &JobInfo::id);
   return out;
 }
@@ -358,32 +379,34 @@ namespace {
 
 std::string printerUri(const std::string& printer) {
   char uri[1024];
-  httpAssembleURIf(HTTP_URI_CODING_ALL, uri, sizeof uri, "ipp", nullptr, "localhost", 0, "/printers/%s", printer.c_str());
+  cups().httpAssembleURIf(
+      HTTP_URI_CODING_ALL, uri, sizeof uri, "ipp", nullptr, "localhost", 0, "/printers/%s", printer.c_str()
+  );
   return uri;
 }
 
 std::optional<JobError> lastError() {
-  if (cupsLastError() <= IPP_STATUS_OK_EVENTS_COMPLETE)
+  if (cups().cupsLastError() <= IPP_STATUS_OK_EVENTS_COMPLETE)
     return std::nullopt;
-  return JobError{cupsLastErrorString()};
+  return JobError{cups().cupsLastErrorString()};
 }
 
 std::optional<JobError> printerOperation(ipp_op_t op, const std::string& printer) {
-  ipp_t* request = ippNewRequest(op);
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(printer).c_str());
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cupsUser());
-  ippDelete(cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/admin/"));
+  ipp_t* request = cups().ippNewRequest(op);
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(printer).c_str());
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cups().cupsUser());
+  cups().ippDelete(cups().cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/admin/"));
   return lastError();
 }
 
 // Rewrites the user's lpoptions after edit(dests) changed them.
 template <typename Edit> std::optional<JobError> editUserDests(Edit edit) {
   cups_dest_t* raw = nullptr;
-  const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
+  const int count = cups().cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
   std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
   if (!edit(raw, count))
     return JobError{"The printer is no longer available."};
-  if (cupsSetDests2(CUPS_HTTP_DEFAULT, count, raw) != 0)
+  if (cups().cupsSetDests2(CUPS_HTTP_DEFAULT, count, raw) != 0)
     return JobError{"Your printer settings could not be saved."};
   return std::nullopt;
 }
@@ -404,8 +427,8 @@ std::string queueName(const std::string& label) {
 }
 
 std::string attrString(ipp_t* response, const char* name) {
-  ipp_attribute_t* a = ippFindAttribute(response, name, IPP_TAG_ZERO);
-  const char* v = a ? ippGetString(a, 0, nullptr) : nullptr;
+  ipp_attribute_t* a = cups().ippFindAttribute(response, name, IPP_TAG_ZERO);
+  const char* v = a ? cups().ippGetString(a, 0, nullptr) : nullptr;
   return v ? v : "";
 }
 
@@ -422,15 +445,15 @@ std::optional<JobError> removePrinter(const std::string& printer) {
 }
 
 std::optional<JobError> cancelAllJobs(const std::string& printer) {
-  cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), CUPS_JOBID_ALL, 0);
+  cups().cupsCancelJob2(CUPS_HTTP_DEFAULT, printer.c_str(), CUPS_JOBID_ALL, 0);
   return lastError();
 }
 
 std::optional<JobError> printTestPage(const std::string& printer) {
   const char* dataDir = std::getenv("CUPS_DATADIR");
   const std::string file = std::string(dataDir ? dataDir : "/usr/share/cups") + "/data/default-testpage.pdf";
-  if (cupsPrintFile2(CUPS_HTTP_DEFAULT, printer.c_str(), file.c_str(), "Test Page", 0, nullptr) == 0)
-    return JobError{cupsLastErrorString()};
+  if (cups().cupsPrintFile2(CUPS_HTTP_DEFAULT, printer.c_str(), file.c_str(), "Test Page", 0, nullptr) == 0)
+    return JobError{cups().cupsLastErrorString()};
   return std::nullopt;
 }
 
@@ -447,10 +470,10 @@ std::optional<JobError> setDefaultPrinter(const std::string& printer) {
 
 std::optional<JobError> setPrinterDefault(const std::string& printer, const std::string& key, const std::string& value) {
   return editUserDests([&](cups_dest_t* dests, int count) {
-    cups_dest_t* d = cupsGetDest(printer.c_str(), nullptr, count, dests);
+    cups_dest_t* d = cups().cupsGetDest(printer.c_str(), nullptr, count, dests);
     if (!d)
       return false;
-    d->num_options = cupsAddOption(key.c_str(), value.c_str(), d->num_options, &d->options);
+    d->num_options = cups().cupsAddOption(key.c_str(), value.c_str(), d->num_options, &d->options);
     return true;
   });
 }
@@ -460,7 +483,7 @@ void discoverPrinters(int timeoutMs, const std::function<void(FoundPrinter)>& on
     const std::function<void(FoundPrinter)>& onFound;
     std::vector<std::string> seen;
   } browse{onFound, {}};
-  cupsEnumDests(
+  cups().cupsEnumDests(
       CUPS_DEST_FLAGS_NONE, timeoutMs, nullptr, CUPS_PRINTER_DISCOVERED, CUPS_PRINTER_DISCOVERED,
       [](void* data, unsigned flags, cups_dest_t* dest) -> int {
         auto& b = *static_cast<Browse*>(data);
@@ -474,39 +497,43 @@ void discoverPrinters(int timeoutMs, const std::function<void(FoundPrinter)>& on
         b.onFound({.label = label.empty() ? uri : std::move(label), .uri = std::move(uri)});
         return 1;
       },
-      &browse);
+      &browse
+  );
 }
 
 std::variant<FoundPrinter, JobError> probePrinter(const std::string& address) {
   const std::string uri = address.find("://") != std::string::npos ? address : "ipp://" + address + "/ipp/print";
   char scheme[32], user[256], host[256], resource[1024];
   int port = 0;
-  if (httpSeparateURI(HTTP_URI_CODING_ALL, uri.c_str(), scheme, sizeof scheme, user, sizeof user, host, sizeof host,
-                      &port, resource, sizeof resource) < HTTP_URI_STATUS_OK)
+  if (cups().httpSeparateURI(
+          HTTP_URI_CODING_ALL, uri.c_str(), scheme, sizeof scheme, user, sizeof user, host, sizeof host, &port,
+          resource, sizeof resource
+      )
+      < HTTP_URI_STATUS_OK)
     return JobError{"This is not a printer address."};
   const http_encryption_t encryption =
       std::string_view(scheme) == "ipps" ? HTTP_ENCRYPTION_ALWAYS : HTTP_ENCRYPTION_IF_REQUESTED;
-  http_t* http = httpConnect2(host, port, nullptr, AF_UNSPEC, encryption, 1, 5000, nullptr);
+  http_t* http = cups().httpConnect2(host, port, nullptr, AF_UNSPEC, encryption, 1, 5000, nullptr);
   if (!http)
     return JobError{"No printer answers at this address."};
-  ipp_t* request = ippNewRequest(IPP_OP_GET_PRINTER_ATTRIBUTES);
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, uri.c_str());
+  ipp_t* request = cups().ippNewRequest(IPP_OP_GET_PRINTER_ATTRIBUTES);
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, uri.c_str());
   static const char* const kAttrs[] = {"printer-make-and-model", "printer-info", "document-format-supported"};
-  ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 3, nullptr, kAttrs);
-  ipp_t* response = cupsDoRequest(http, request, resource);
-  httpClose(http);
-  if (!response || ippGetStatusCode(response) > IPP_STATUS_OK_EVENTS_COMPLETE) {
-    ippDelete(response);
+  cups().ippAddStrings(request, IPP_TAG_OPERATION, IPP_TAG_KEYWORD, "requested-attributes", 3, nullptr, kAttrs);
+  ipp_t* response = cups().cupsDoRequest(http, request, resource);
+  cups().httpClose(http);
+  if (!response || cups().ippGetStatusCode(response) > IPP_STATUS_OK_EVENTS_COMPLETE) {
+    cups().ippDelete(response);
     return JobError{"No printer answers at this address."};
   }
   bool driverless = false;
-  if (ipp_attribute_t* formats = ippFindAttribute(response, "document-format-supported", IPP_TAG_MIMETYPE))
+  if (ipp_attribute_t* formats = cups().ippFindAttribute(response, "document-format-supported", IPP_TAG_MIMETYPE))
     for (const char* f : {"image/pwg-raster", "image/urf", "application/pdf"})
-      driverless = driverless || ippContainsString(formats, f);
+      driverless = driverless || cups().ippContainsString(formats, f);
   std::string label = attrString(response, "printer-make-and-model");
   if (label.empty())
     label = attrString(response, "printer-info");
-  ippDelete(response);
+  cups().ippDelete(response);
   if (!driverless)
     return JobError{"This printer needs a driver. Andromeda adds only driverless printers."};
   return FoundPrinter{.label = label.empty() ? uri : label, .uri = uri};
@@ -516,20 +543,20 @@ std::optional<JobError> addPrinter(const FoundPrinter& printer) {
   std::string name = queueName(printer.label);
   {
     cups_dest_t* raw = nullptr;
-    const int count = cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
+    const int count = cups().cupsGetDests2(CUPS_HTTP_DEFAULT, &raw);
     std::unique_ptr<cups_dest_t, DestsDeleter> dests(raw, DestsDeleter{count});
     const std::string base = name;
-    for (int n = 2; cupsGetDest(name.c_str(), nullptr, count, raw) != nullptr; ++n)
+    for (int n = 2; cups().cupsGetDest(name.c_str(), nullptr, count, raw) != nullptr; ++n)
       name = base + "_" + std::to_string(n);
   }
-  ipp_t* request = ippNewRequest(IPP_OP_CUPS_ADD_MODIFY_PRINTER);
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(name).c_str());
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cupsUser());
-  ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "ppd-name", nullptr, "everywhere");
-  ippAddString(request, IPP_TAG_PRINTER, IPP_TAG_URI, "device-uri", nullptr, printer.uri.c_str());
-  ippAddString(request, IPP_TAG_PRINTER, IPP_TAG_TEXT, "printer-info", nullptr, printer.label.c_str());
-  ippAddBoolean(request, IPP_TAG_PRINTER, "printer-is-accepting-jobs", 1);
-  ippAddInteger(request, IPP_TAG_PRINTER, IPP_TAG_ENUM, "printer-state", IPP_PSTATE_IDLE);
-  ippDelete(cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/admin/"));
+  ipp_t* request = cups().ippNewRequest(IPP_OP_CUPS_ADD_MODIFY_PRINTER);
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_URI, "printer-uri", nullptr, printerUri(name).c_str());
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "requesting-user-name", nullptr, cups().cupsUser());
+  cups().ippAddString(request, IPP_TAG_OPERATION, IPP_TAG_NAME, "ppd-name", nullptr, "everywhere");
+  cups().ippAddString(request, IPP_TAG_PRINTER, IPP_TAG_URI, "device-uri", nullptr, printer.uri.c_str());
+  cups().ippAddString(request, IPP_TAG_PRINTER, IPP_TAG_TEXT, "printer-info", nullptr, printer.label.c_str());
+  cups().ippAddBoolean(request, IPP_TAG_PRINTER, "printer-is-accepting-jobs", 1);
+  cups().ippAddInteger(request, IPP_TAG_PRINTER, IPP_TAG_ENUM, "printer-state", IPP_PSTATE_IDLE);
+  cups().ippDelete(cups().cupsDoRequest(CUPS_HTTP_DEFAULT, request, "/admin/"));
   return lastError();
 }

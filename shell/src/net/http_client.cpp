@@ -1,6 +1,7 @@
 #include "net/http_client.h"
 
 #include "core/deferred_call.h"
+#include "core/lazy_library.h"
 #include "core/log.h"
 
 #include <algorithm>
@@ -11,6 +12,15 @@
 #include <filesystem>
 #include <string>
 #include <utility>
+
+// clang-format off
+#define LIBCURL_FUNCTIONS(X) \
+  X(curl_easy_cleanup) X(curl_easy_getinfo) X(curl_easy_init) X(curl_easy_setopt) X(curl_easy_strerror) \
+  X(curl_global_cleanup) X(curl_global_init) X(curl_multi_add_handle) X(curl_multi_cleanup) X(curl_multi_fdset) \
+  X(curl_multi_info_read) X(curl_multi_init) X(curl_multi_perform) X(curl_multi_remove_handle) \
+  X(curl_multi_strerror) X(curl_multi_timeout) X(curl_slist_append) X(curl_slist_free_all)
+// clang-format on
+LAZY_LIBRARY(LibcurlApi, libcurl, "libcurl.so.4", LIBCURL_FUNCTIONS)
 
 namespace {
   constexpr Logger kLog("http");
@@ -120,16 +130,16 @@ namespace {
 } // namespace
 
 void HttpClient::applyCommonOptions(CURL* easy) const {
-  curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(easy, CURLOPT_USERAGENT, kUserAgent);
+  libcurl().curl_easy_setopt(easy, CURLOPT_NOSIGNAL, 1L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_USERAGENT, kUserAgent);
   if (!m_caBundlePath.empty()) {
-    curl_easy_setopt(easy, CURLOPT_CAINFO, m_caBundlePath.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_CAINFO, m_caBundlePath.c_str());
   }
   // With the threaded resolver, curl reports a DNS timeout while its getaddrinfo() thread is
   // still blocked. Without this, curl_easy_cleanup() joins that thread and stalls the main loop
   // for as long as the resolver takes. CURLOPT_QUICK_EXIT detaches it instead: the abandoned
   // thread frees itself once the lookup returns.
-  curl_easy_setopt(easy, CURLOPT_QUICK_EXIT, 1L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_QUICK_EXIT, 1L);
 }
 
 void HttpClient::applyTlsClientCert(CURL* easy, const std::shared_ptr<const HttpTlsClientCert>& cert) {
@@ -137,50 +147,58 @@ void HttpClient::applyTlsClientCert(CURL* easy, const std::shared_ptr<const Http
     return;
   }
   // curl copies both strings, so the request does not have to outlive the transfer.
-  curl_easy_setopt(easy, CURLOPT_SSLCERT, cert->clientCertPath.c_str());
-  curl_easy_setopt(easy, CURLOPT_SSLKEY, cert->clientKeyPath.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_SSLCERT, cert->clientCertPath.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_SSLKEY, cert->clientKeyPath.c_str());
 }
 
-HttpClient::HttpClient(std::filesystem::path caBundlePath) : m_caBundlePath(std::move(caBundlePath)) {
-  curl_global_init(CURL_GLOBAL_DEFAULT);
-  m_multi = curl_multi_init();
-}
+HttpClient::HttpClient(std::filesystem::path caBundlePath) : m_caBundlePath(std::move(caBundlePath)) {}
 
 HttpClient::~HttpClient() {
+  if (m_multi == nullptr) {
+    return;
+  }
   for (auto& [easy, transfer] : m_transfers) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     if (transfer.file != nullptr) {
       std::fclose(transfer.file);
     }
     std::filesystem::remove(transfer.tempPath);
   }
   for (auto& [easy, post] : m_postTransfers) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     if (post.headers != nullptr) {
-      curl_slist_free_all(post.headers);
+      libcurl().curl_slist_free_all(post.headers);
     }
   }
   for (auto& [easy, req] : m_requestTransfers) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     if (req.headers != nullptr) {
-      curl_slist_free_all(req.headers);
+      libcurl().curl_slist_free_all(req.headers);
     }
   }
   for (auto& [easy, stream] : m_streamTransfers) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     if (stream.headers != nullptr) {
-      curl_slist_free_all(stream.headers);
+      libcurl().curl_slist_free_all(stream.headers);
     }
   }
   // In-flight handles are closed without waiting for their resolver threads (CURLOPT_QUICK_EXIT).
   // curl_global_cleanup() does not wait for them either; an abandoned thread only frees its own
   // resolver state, so it has nothing left to race here.
-  curl_multi_cleanup(m_multi);
-  curl_global_cleanup();
+  libcurl().curl_multi_cleanup(m_multi);
+  libcurl().curl_global_cleanup();
+}
+
+CURL* HttpClient::newEasy() {
+  if (m_multi == nullptr) {
+    libcurl().curl_global_init(CURL_GLOBAL_DEFAULT);
+    m_multi = libcurl().curl_multi_init();
+  }
+  return libcurl().curl_easy_init();
 }
 
 bool HttpClient::hasActiveTransfers() const {
@@ -212,7 +230,7 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
     return;
   }
 
-  CURL* easy = curl_easy_init();
+  CURL* easy = newEasy();
   if (easy == nullptr) {
     std::fclose(f);
     std::filesystem::remove(tempPath);
@@ -223,12 +241,12 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
 
   const std::string urlStr(url);
   applyCommonOptions(easy);
-  curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
-  curl_easy_setopt(easy, CURLOPT_WRITEDATA, f);
-  curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
-  curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
-  curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
-  curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, f);
+  libcurl().curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
 
   Transfer transfer{};
   transfer.destPath = destPath;
@@ -238,17 +256,20 @@ void HttpClient::download(std::string_view url, const std::filesystem::path& des
   transfer.destKey = destKey;
   transfer.url = urlStr;
   m_transfers[easy] = std::move(transfer);
-  curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, m_transfers[easy].errorBuffer.data());
-  const CURLMcode addResult = curl_multi_add_handle(m_multi, easy);
+  libcurl().curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, m_transfers[easy].errorBuffer.data());
+  const CURLMcode addResult = libcurl().curl_multi_add_handle(m_multi, easy);
   if (addResult != CURLM_OK) {
     Transfer failedTransfer = std::move(m_transfers[easy]);
     m_transfers.erase(easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_easy_cleanup(easy);
     if (failedTransfer.file != nullptr) {
       std::fclose(failedTransfer.file);
     }
     std::filesystem::remove(failedTransfer.tempPath);
-    kLog.warn("download failed to add curl handle url={} error={}", urlForLog(urlStr), curl_multi_strerror(addResult));
+    kLog.warn(
+        "download failed to add curl handle url={} error={}", urlForLog(urlStr),
+        libcurl().curl_multi_strerror(addResult)
+    );
     deferFailures(std::move(failedTransfer.callbacks));
     return;
   }
@@ -289,7 +310,7 @@ void HttpClient::post(std::string_view url, std::string body, std::string_view c
     return;
   }
 
-  CURL* easy = curl_easy_init();
+  CURL* easy = newEasy();
   if (easy == nullptr) {
     kLog.warn("post failed to create curl handle url={}", urlForLog(url));
     deferFailure(std::move(cb));
@@ -301,33 +322,35 @@ void HttpClient::post(std::string_view url, std::string body, std::string_view c
   post.callback = std::move(cb);
 
   const std::string header = "Content-Type: " + std::string(contentType);
-  post.headers = curl_slist_append(nullptr, header.c_str());
+  post.headers = libcurl().curl_slist_append(nullptr, header.c_str());
 
   const std::string urlStr(url);
   post.url = urlStr;
   applyCommonOptions(easy);
-  curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
-  curl_easy_setopt(easy, CURLOPT_POST, 1L);
-  curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, static_cast<long>(post.body.size()));
-  curl_easy_setopt(easy, CURLOPT_POSTFIELDS, post.body.c_str());
-  curl_easy_setopt(easy, CURLOPT_HTTPHEADER, post.headers);
-  curl_easy_setopt(easy, CURLOPT_TIMEOUT, 10L);
-  curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 5L);
-  curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_URL, urlStr.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_POST, 1L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, static_cast<long>(post.body.size()));
+  libcurl().curl_easy_setopt(easy, CURLOPT_POSTFIELDS, post.body.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_HTTPHEADER, post.headers);
+  libcurl().curl_easy_setopt(easy, CURLOPT_TIMEOUT, 10L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 5L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_FAILONERROR, 1L);
 
   m_postTransfers[easy] = std::move(post);
-  curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, m_postTransfers[easy].errorBuffer.data());
-  curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureResponse);
-  curl_easy_setopt(easy, CURLOPT_WRITEDATA, &m_postTransfers[easy].response);
-  const CURLMcode addResult = curl_multi_add_handle(m_multi, easy);
+  libcurl().curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, m_postTransfers[easy].errorBuffer.data());
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureResponse);
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, &m_postTransfers[easy].response);
+  const CURLMcode addResult = libcurl().curl_multi_add_handle(m_multi, easy);
   if (addResult != CURLM_OK) {
     PostTransfer failedPost = std::move(m_postTransfers[easy]);
     m_postTransfers.erase(easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_easy_cleanup(easy);
     if (failedPost.headers != nullptr) {
-      curl_slist_free_all(failedPost.headers);
+      libcurl().curl_slist_free_all(failedPost.headers);
     }
-    kLog.warn("post failed to add curl handle url={} error={}", urlForLog(urlStr), curl_multi_strerror(addResult));
+    kLog.warn(
+        "post failed to add curl handle url={} error={}", urlForLog(urlStr), libcurl().curl_multi_strerror(addResult)
+    );
     deferFailure(std::move(failedPost.callback));
     return;
   }
@@ -341,7 +364,7 @@ void HttpClient::request(HttpRequest req, ResponseCallback cb) {
     return;
   }
 
-  CURL* easy = curl_easy_init();
+  CURL* easy = newEasy();
   if (easy == nullptr) {
     kLog.warn("request failed to create curl handle url={}", urlForLog(req.url));
     deferResponse(std::move(cb));
@@ -355,65 +378,66 @@ void HttpClient::request(HttpRequest req, ResponseCallback cb) {
   transfer.basicUsername = std::move(req.basicUsername);
   transfer.basicPassword = std::move(req.basicPassword);
   for (const auto& header : req.headers) {
-    transfer.headers = curl_slist_append(transfer.headers, header.c_str());
+    transfer.headers = libcurl().curl_slist_append(transfer.headers, header.c_str());
   }
 
   m_requestTransfers[easy] = std::move(transfer);
   RequestTransfer& stored = m_requestTransfers[easy];
 
   applyCommonOptions(easy);
-  curl_easy_setopt(easy, CURLOPT_URL, stored.url.c_str());
-  curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
-  curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_URL, stored.url.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_TIMEOUT, 30L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
   if (req.allowInsecureTls) {
-    curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
   }
   applyTlsClientCert(easy, req.tlsClientCert);
   if (req.followRedirects) {
-    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     if (req.allowRedirectAuth) {
-      curl_easy_setopt(easy, CURLOPT_UNRESTRICTED_AUTH, 1L);
+      libcurl().curl_easy_setopt(easy, CURLOPT_UNRESTRICTED_AUTH, 1L);
     }
   }
   if (req.freshConnection) {
-    curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
-    curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
   }
   if (!stored.basicUsername.empty() || !stored.basicPassword.empty()) {
-    curl_easy_setopt(easy, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-    curl_easy_setopt(easy, CURLOPT_USERNAME, stored.basicUsername.c_str());
-    curl_easy_setopt(easy, CURLOPT_PASSWORD, stored.basicPassword.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    libcurl().curl_easy_setopt(easy, CURLOPT_USERNAME, stored.basicUsername.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_PASSWORD, stored.basicPassword.c_str());
   }
   // No CURLOPT_FAILONERROR: callers need the status and body for non-2xx responses.
   if (req.method == "POST") {
-    curl_easy_setopt(easy, CURLOPT_POST, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_POST, 1L);
   } else if (req.method != "GET") {
-    curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, req.method.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, req.method.c_str());
   }
   if (stored.headers != nullptr) {
-    curl_easy_setopt(easy, CURLOPT_HTTPHEADER, stored.headers);
+    libcurl().curl_easy_setopt(easy, CURLOPT_HTTPHEADER, stored.headers);
   }
   if (!stored.body.empty()) {
-    curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, static_cast<long>(stored.body.size()));
-    curl_easy_setopt(easy, CURLOPT_POSTFIELDS, stored.body.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, static_cast<long>(stored.body.size()));
+    libcurl().curl_easy_setopt(easy, CURLOPT_POSTFIELDS, stored.body.c_str());
   }
-  curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, stored.errorBuffer.data());
-  curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureResponse);
-  curl_easy_setopt(easy, CURLOPT_WRITEDATA, &stored.response);
-  curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, captureHeaders);
-  curl_easy_setopt(easy, CURLOPT_HEADERDATA, &stored.responseHeaders);
+  libcurl().curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, stored.errorBuffer.data());
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, captureResponse);
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, &stored.response);
+  libcurl().curl_easy_setopt(easy, CURLOPT_HEADERFUNCTION, captureHeaders);
+  libcurl().curl_easy_setopt(easy, CURLOPT_HEADERDATA, &stored.responseHeaders);
 
-  const CURLMcode addResult = curl_multi_add_handle(m_multi, easy);
+  const CURLMcode addResult = libcurl().curl_multi_add_handle(m_multi, easy);
   if (addResult != CURLM_OK) {
     RequestTransfer failed = std::move(m_requestTransfers[easy]);
     m_requestTransfers.erase(easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_easy_cleanup(easy);
     if (failed.headers != nullptr) {
-      curl_slist_free_all(failed.headers);
+      libcurl().curl_slist_free_all(failed.headers);
     }
     kLog.warn(
-        "request failed to add curl handle url={} error={}", urlForLog(failed.url), curl_multi_strerror(addResult)
+        "request failed to add curl handle url={} error={}", urlForLog(failed.url),
+        libcurl().curl_multi_strerror(addResult)
     );
     deferResponse(std::move(failed.callback));
     return;
@@ -428,7 +452,7 @@ HttpClient::StreamId HttpClient::startStream(HttpRequest req, StreamDataCallback
     return 0;
   }
 
-  CURL* easy = curl_easy_init();
+  CURL* easy = newEasy();
   if (easy == nullptr) {
     kLog.warn("stream failed to create curl handle url={}", urlForLog(req.url));
     deferStreamClose(std::move(onClose));
@@ -444,7 +468,7 @@ HttpClient::StreamId HttpClient::startStream(HttpRequest req, StreamDataCallback
   transfer.basicUsername = std::move(req.basicUsername);
   transfer.basicPassword = std::move(req.basicPassword);
   for (const auto& header : req.headers) {
-    transfer.headers = curl_slist_append(transfer.headers, header.c_str());
+    transfer.headers = libcurl().curl_slist_append(transfer.headers, header.c_str());
   }
 
   m_streamTransfers[easy] = std::move(transfer);
@@ -452,57 +476,58 @@ HttpClient::StreamId HttpClient::startStream(HttpRequest req, StreamDataCallback
   m_streamsById[stored.id] = easy;
 
   applyCommonOptions(easy);
-  curl_easy_setopt(easy, CURLOPT_URL, stored.url.c_str());
+  libcurl().curl_easy_setopt(easy, CURLOPT_URL, stored.url.c_str());
   // No CURLOPT_TIMEOUT: the transfer is expected to stay open indefinitely.
-  curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
+  libcurl().curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 10L);
   if (req.allowInsecureTls) {
-    curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
   }
   applyTlsClientCert(easy, req.tlsClientCert);
   if (req.followRedirects) {
-    curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_FOLLOWLOCATION, 1L);
     if (req.allowRedirectAuth) {
-      curl_easy_setopt(easy, CURLOPT_UNRESTRICTED_AUTH, 1L);
+      libcurl().curl_easy_setopt(easy, CURLOPT_UNRESTRICTED_AUTH, 1L);
     }
   }
   if (req.freshConnection) {
-    curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
-    curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_FRESH_CONNECT, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_FORBID_REUSE, 1L);
   }
   if (!stored.basicUsername.empty() || !stored.basicPassword.empty()) {
-    curl_easy_setopt(easy, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-    curl_easy_setopt(easy, CURLOPT_USERNAME, stored.basicUsername.c_str());
-    curl_easy_setopt(easy, CURLOPT_PASSWORD, stored.basicPassword.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    libcurl().curl_easy_setopt(easy, CURLOPT_USERNAME, stored.basicUsername.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_PASSWORD, stored.basicPassword.c_str());
   }
   // No CURLOPT_FAILONERROR: error responses stream their body and report status on close.
   if (req.method == "POST") {
-    curl_easy_setopt(easy, CURLOPT_POST, 1L);
+    libcurl().curl_easy_setopt(easy, CURLOPT_POST, 1L);
   } else if (req.method != "GET") {
-    curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, req.method.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_CUSTOMREQUEST, req.method.c_str());
   }
   if (stored.headers != nullptr) {
-    curl_easy_setopt(easy, CURLOPT_HTTPHEADER, stored.headers);
+    libcurl().curl_easy_setopt(easy, CURLOPT_HTTPHEADER, stored.headers);
   }
   if (!stored.body.empty()) {
-    curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, static_cast<long>(stored.body.size()));
-    curl_easy_setopt(easy, CURLOPT_POSTFIELDS, stored.body.c_str());
+    libcurl().curl_easy_setopt(easy, CURLOPT_POSTFIELDSIZE, static_cast<long>(stored.body.size()));
+    libcurl().curl_easy_setopt(easy, CURLOPT_POSTFIELDS, stored.body.c_str());
   }
-  curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, stored.errorBuffer.data());
-  curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, forwardStreamChunk);
-  curl_easy_setopt(easy, CURLOPT_WRITEDATA, &stored.onData);
+  libcurl().curl_easy_setopt(easy, CURLOPT_ERRORBUFFER, stored.errorBuffer.data());
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, forwardStreamChunk);
+  libcurl().curl_easy_setopt(easy, CURLOPT_WRITEDATA, &stored.onData);
 
-  const CURLMcode addResult = curl_multi_add_handle(m_multi, easy);
+  const CURLMcode addResult = libcurl().curl_multi_add_handle(m_multi, easy);
   if (addResult != CURLM_OK) {
     StreamTransfer failed = std::move(m_streamTransfers[easy]);
     m_streamsById.erase(failed.id);
     m_streamTransfers.erase(easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_easy_cleanup(easy);
     if (failed.headers != nullptr) {
-      curl_slist_free_all(failed.headers);
+      libcurl().curl_slist_free_all(failed.headers);
     }
     kLog.warn(
-        "stream failed to add curl handle url={} error={}", urlForLog(failed.url), curl_multi_strerror(addResult)
+        "stream failed to add curl handle url={} error={}", urlForLog(failed.url),
+        libcurl().curl_multi_strerror(addResult)
     );
     deferStreamClose(std::move(failed.onClose));
     return 0;
@@ -523,12 +548,12 @@ void HttpClient::cancelStream(StreamId id) {
   const auto it = m_streamTransfers.find(easy);
   if (it != m_streamTransfers.end()) {
     if (it->second.headers != nullptr) {
-      curl_slist_free_all(it->second.headers);
+      libcurl().curl_slist_free_all(it->second.headers);
     }
     m_streamTransfers.erase(it);
   }
-  curl_multi_remove_handle(m_multi, easy);
-  curl_easy_cleanup(easy);
+  libcurl().curl_multi_remove_handle(m_multi, easy);
+  libcurl().curl_easy_cleanup(easy);
 }
 
 void HttpClient::addPollFds(std::vector<pollfd>& fds) {
@@ -541,7 +566,7 @@ void HttpClient::addPollFds(std::vector<pollfd>& fds) {
   FD_ZERO(&writefds);
   FD_ZERO(&errfds);
   int maxfd = -1;
-  curl_multi_fdset(m_multi, &readfds, &writefds, &errfds, &maxfd);
+  libcurl().curl_multi_fdset(m_multi, &readfds, &writefds, &errfds, &maxfd);
 
   for (int fd = 0; fd <= maxfd; ++fd) {
     short events = 0;
@@ -566,7 +591,7 @@ int HttpClient::timeoutMs() const {
     return static_cast<int>(std::max<std::int64_t>(0, std::chrono::ceil<std::chrono::milliseconds>(left).count()));
   }
   long timeout = -1;
-  curl_multi_timeout(m_multi, &timeout);
+  libcurl().curl_multi_timeout(m_multi, &timeout);
   // curl_multi_timeout can report a deadline up to the per-transfer timeout, but
   // curl needs servicing at least once per second to advance its timeout
   // handling, so cap the wait while transfers are active.
@@ -583,8 +608,8 @@ void HttpClient::dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*star
     if (m_idleSince != std::chrono::steady_clock::time_point{}
         && std::chrono::steady_clock::now() - m_idleSince >= kIdleConnectionLinger) {
       m_idleSince = {};
-      curl_multi_cleanup(m_multi);
-      m_multi = curl_multi_init();
+      libcurl().curl_multi_cleanup(m_multi);
+      m_multi = libcurl().curl_multi_init();
     }
     return;
   }
@@ -593,7 +618,7 @@ void HttpClient::dispatch(const std::vector<pollfd>& /*fds*/, std::size_t /*star
 
   CURLMsg* msg = nullptr;
   int msgsLeft = 0;
-  while ((msg = curl_multi_info_read(m_multi, &msgsLeft)) != nullptr) {
+  while ((msg = libcurl().curl_multi_info_read(m_multi, &msgsLeft)) != nullptr) {
     if (msg->msg == CURLMSG_DONE) {
       CURL* easy = msg->easy_handle;
       if (m_postTransfers.contains(easy)) {
@@ -627,7 +652,7 @@ void HttpClient::performMulti(const char* reason) {
   }
 
   const auto opStart = std::chrono::steady_clock::now();
-  curl_multi_perform(m_multi, &m_running);
+  libcurl().curl_multi_perform(m_multi, &m_running);
   const float ms = elapsedSince(opStart);
   if (ms >= kSlowCurlOperationWarnMs) {
     kLog.warn("curl_multi_perform took {:.1F}ms during {}", ms, reason);
@@ -640,17 +665,17 @@ void HttpClient::performMulti(const char* reason) {
 void HttpClient::finishTransfer(CURL* easy, CURLcode result) {
   auto it = m_transfers.find(easy);
   if (it == m_transfers.end()) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     return;
   }
 
   long responseCode = 0;
-  curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
+  libcurl().curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
 
   // Destroy the handle before the state it still points at (error buffer, write target).
-  curl_multi_remove_handle(m_multi, easy);
-  curl_easy_cleanup(easy);
+  libcurl().curl_multi_remove_handle(m_multi, easy);
+  libcurl().curl_easy_cleanup(easy);
 
   Transfer transfer = std::move(it->second);
   m_transfers.erase(it);
@@ -678,7 +703,8 @@ void HttpClient::finishTransfer(CURL* easy, CURLcode result) {
       }
     }
   } else {
-    const char* detail = transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : curl_easy_strerror(result);
+    const char* detail =
+        transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : libcurl().curl_easy_strerror(result);
     kLog.warn(
         "download failed url={} curl={} http={} error={}", urlForLog(transfer.url), static_cast<int>(result),
         responseCode, detail
@@ -694,27 +720,27 @@ void HttpClient::finishTransfer(CURL* easy, CURLcode result) {
 void HttpClient::finishPostTransfer(CURL* easy, CURLcode result) {
   auto it = m_postTransfers.find(easy);
   if (it == m_postTransfers.end()) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     return;
   }
 
   long responseCode = 0;
-  curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
+  libcurl().curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
 
-  curl_multi_remove_handle(m_multi, easy);
-  curl_easy_cleanup(easy);
+  libcurl().curl_multi_remove_handle(m_multi, easy);
+  libcurl().curl_easy_cleanup(easy);
 
   PostTransfer post = std::move(it->second);
   m_postTransfers.erase(it);
 
   if (post.headers != nullptr) {
-    curl_slist_free_all(post.headers);
+    libcurl().curl_slist_free_all(post.headers);
   }
 
   const bool success = result == CURLE_OK;
   if (!success) {
-    const char* detail = post.errorBuffer[0] != '\0' ? post.errorBuffer.data() : curl_easy_strerror(result);
+    const char* detail = post.errorBuffer[0] != '\0' ? post.errorBuffer.data() : libcurl().curl_easy_strerror(result);
     kLog.warn(
         "post failed url={} curl={} http={} error={}", urlForLog(post.url), static_cast<int>(result), responseCode,
         detail
@@ -729,27 +755,28 @@ void HttpClient::finishPostTransfer(CURL* easy, CURLcode result) {
 void HttpClient::finishRequestTransfer(CURL* easy, CURLcode result) {
   auto it = m_requestTransfers.find(easy);
   if (it == m_requestTransfers.end()) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     return;
   }
 
   long responseCode = 0;
-  curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
+  libcurl().curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
   std::string effectiveUrl;
-  if (char* value = nullptr;
-      curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &value) == CURLE_OK && value != nullptr && value[0] != '\0') {
+  if (char* value = nullptr; libcurl().curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &value) == CURLE_OK
+      && value != nullptr
+      && value[0] != '\0') {
     effectiveUrl = value;
   }
 
-  curl_multi_remove_handle(m_multi, easy);
-  curl_easy_cleanup(easy);
+  libcurl().curl_multi_remove_handle(m_multi, easy);
+  libcurl().curl_easy_cleanup(easy);
 
   RequestTransfer transfer = std::move(it->second);
   m_requestTransfers.erase(it);
 
   if (transfer.headers != nullptr) {
-    curl_slist_free_all(transfer.headers);
+    libcurl().curl_slist_free_all(transfer.headers);
   }
 
   HttpResponse response;
@@ -760,7 +787,8 @@ void HttpClient::finishRequestTransfer(CURL* easy, CURLcode result) {
   response.headers = std::move(transfer.responseHeaders);
   response.effectiveUrl = std::move(effectiveUrl);
   if (!response.transportOk) {
-    const char* detail = transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : curl_easy_strerror(result);
+    const char* detail =
+        transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : libcurl().curl_easy_strerror(result);
     kLog.warn(
         "request failed url={} curl={} http={} error={}", urlForLog(transfer.url), static_cast<int>(result),
         responseCode, detail
@@ -775,30 +803,31 @@ void HttpClient::finishRequestTransfer(CURL* easy, CURLcode result) {
 void HttpClient::finishStreamTransfer(CURL* easy, CURLcode result) {
   auto it = m_streamTransfers.find(easy);
   if (it == m_streamTransfers.end()) {
-    curl_multi_remove_handle(m_multi, easy);
-    curl_easy_cleanup(easy);
+    libcurl().curl_multi_remove_handle(m_multi, easy);
+    libcurl().curl_easy_cleanup(easy);
     return;
   }
 
   long responseCode = 0;
-  curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
+  libcurl().curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &responseCode);
 
-  curl_multi_remove_handle(m_multi, easy);
-  curl_easy_cleanup(easy);
+  libcurl().curl_multi_remove_handle(m_multi, easy);
+  libcurl().curl_easy_cleanup(easy);
 
   StreamTransfer transfer = std::move(it->second);
   m_streamTransfers.erase(it);
   m_streamsById.erase(transfer.id);
 
   if (transfer.headers != nullptr) {
-    curl_slist_free_all(transfer.headers);
+    libcurl().curl_slist_free_all(transfer.headers);
   }
 
   HttpStreamResult streamResult;
   streamResult.transportOk = result == CURLE_OK;
   streamResult.status = responseCode;
   if (!streamResult.transportOk) {
-    const char* detail = transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : curl_easy_strerror(result);
+    const char* detail =
+        transfer.errorBuffer[0] != '\0' ? transfer.errorBuffer.data() : libcurl().curl_easy_strerror(result);
     kLog.warn(
         "stream ended url={} curl={} http={} error={}", urlForLog(transfer.url), static_cast<int>(result), responseCode,
         detail

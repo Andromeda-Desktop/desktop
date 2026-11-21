@@ -2,10 +2,10 @@
 
 #include "calendar/calendar_reminders.h"
 #include "calendar/event_link.h"
+#include "core/lazy_library.h"
 #include "core/log.h"
 #include "render/core/color.h"
 
-#include <stdexcept>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -14,9 +14,29 @@
 #include <libical/ical.h>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// clang-format off
+#define LIBICAL_FUNCTIONS(X) \
+  X(icalcomponent_count_errors) X(icalcomponent_free) X(icalcomponent_get_description) \
+  X(icalcomponent_get_dtend) X(icalcomponent_get_dtstart) X(icalcomponent_get_first_component) \
+  X(icalcomponent_get_first_property) X(icalcomponent_get_location) X(icalcomponent_get_next_component) \
+  X(icalcomponent_get_next_property) X(icalcomponent_get_recurrenceid) X(icalcomponent_get_status) \
+  X(icalcomponent_get_summary) X(icalcomponent_get_uid) X(icalcomponent_isa) X(icalcomponent_new_from_string) \
+  X(icaldurationtype_as_utc_seconds) X(icalparameter_get_related) X(icalproperty_get_action) \
+  X(icalproperty_get_color) X(icalproperty_get_first_parameter) X(icalproperty_get_rdate) \
+  X(icalproperty_get_rrule) X(icalproperty_get_trigger) X(icalproperty_get_url) X(icalproperty_get_x) \
+  X(icalproperty_get_x_name) X(icalproperty_recurrence_is_excluded) X(icalrecur_iterator_free) \
+  X(icalrecur_iterator_new) X(icalrecur_iterator_next) X(icalrecur_iterator_set_start) X(icaltime_as_timet) \
+  X(icaltime_as_timet_with_zone) X(icaltime_compare) X(icaltime_convert_to_zone) \
+  X(icaltime_from_timet_with_zone) X(icaltime_get_timezone) X(icaltime_is_date) X(icaltime_is_null_time) \
+  X(icaltime_is_utc) X(icaltime_is_valid_time) X(icaltime_null_date) X(icaltime_null_time) X(icaltime_span_new) \
+  X(icaltimezone_get_utc_timezone) X(icaltriggertype_is_bad_trigger)
+// clang-format on
+LAZY_LIBRARY(LibicalApi, libical, "libical.so.4.0", LIBICAL_FUNCTIONS)
 
 namespace calendar {
 
@@ -26,7 +46,7 @@ namespace calendar {
     struct ICalComponentDeleter {
       void operator()(icalcomponent* component) const {
         if (component != nullptr) {
-          icalcomponent_free(component);
+          libical().icalcomponent_free(component);
         }
       }
     };
@@ -36,7 +56,7 @@ namespace calendar {
     struct ICalRecurDeleter {
       void operator()(icalrecur_iterator* iterator) const {
         if (iterator != nullptr) {
-          icalrecur_iterator_free(iterator);
+          libical().icalrecur_iterator_free(iterator);
         }
       }
     };
@@ -47,7 +67,7 @@ namespace calendar {
     // for any duration with days or weeks.
     int durationSeconds(const icaldurationtype& duration) {
 #if ICAL_CHECK_VERSION(4, 0, 0)
-      return icaldurationtype_as_utc_seconds(duration);
+      return libical().icaldurationtype_as_utc_seconds(duration);
 #else
       return icaldurationtype_as_int(duration);
 #endif
@@ -118,14 +138,16 @@ namespace calendar {
     }
 
     bool isFloatingDateTime(const icaltimetype& t) {
-      return !icaltime_is_date(t) && icaltime_is_utc(t) == 0 && icaltime_get_timezone(t) == nullptr;
+      return !libical().icaltime_is_date(t)
+          && libical().icaltime_is_utc(t) == 0
+          && libical().icaltime_get_timezone(t) == nullptr;
     }
 
     std::chrono::system_clock::time_point localMidnightFromUnixDate(time_t unixSeconds) {
       using namespace std::chrono;
       const sys_days day = floor<days>(sys_seconds{std::chrono::seconds{unixSeconds}});
       const year_month_day ymd{day};
-      icaltimetype t = icaltime_null_date();
+      icaltimetype t = libical().icaltime_null_date();
       t.year = static_cast<int>(ymd.year());
       t.month = static_cast<int>(static_cast<unsigned>(ymd.month()));
       t.day = static_cast<int>(static_cast<unsigned>(ymd.day()));
@@ -134,21 +156,21 @@ namespace calendar {
     }
 
     std::chrono::system_clock::time_point timePointFromICal(icaltimetype t) {
-      if (icaltime_is_null_time(t) || !icaltime_is_valid_time(t)) {
+      if (libical().icaltime_is_null_time(t) || !libical().icaltime_is_valid_time(t)) {
         return {};
       }
-      if (icaltime_is_date(t)) {
+      if (libical().icaltime_is_date(t)) {
         return localMidnight(t);
       }
       if (isFloatingDateTime(t)) {
         return localDateTime(t);
       }
-      const icaltimetype utc = icaltime_convert_to_zone(t, icaltimezone_get_utc_timezone());
-      return fromUnix(icaltime_as_timet(utc));
+      const icaltimetype utc = libical().icaltime_convert_to_zone(t, libical().icaltimezone_get_utc_timezone());
+      return fromUnix(libical().icaltime_as_timet(utc));
     }
 
     icaltimetype utcICalTime(std::chrono::system_clock::time_point t) {
-      return icaltime_from_timet_with_zone(toUnix(t), false, icaltimezone_get_utc_timezone());
+      return libical().icaltime_from_timet_with_zone(toUnix(t), false, libical().icaltimezone_get_utc_timezone());
     }
 
     icaltimetype localICalTime(std::chrono::system_clock::time_point t) {
@@ -164,7 +186,7 @@ namespace calendar {
       const sys_days day = floor<days>(wallTime);
       const year_month_day ymd{day};
       const hh_mm_ss time{wallTime - day};
-      icaltimetype result = icaltime_null_time();
+      icaltimetype result = libical().icaltime_null_time();
       result.year = static_cast<int>(ymd.year());
       result.month = static_cast<int>(static_cast<unsigned>(ymd.month()));
       result.day = static_cast<int>(static_cast<unsigned>(ymd.day()));
@@ -175,24 +197,26 @@ namespace calendar {
     }
 
     icaltimetype recurrenceBound(std::chrono::system_clock::time_point t, const icaltimetype& recurrenceStart) {
-      if (icaltime_is_date(recurrenceStart) || isFloatingDateTime(recurrenceStart)) {
+      if (libical().icaltime_is_date(recurrenceStart) || isFloatingDateTime(recurrenceStart)) {
         return localICalTime(t);
       }
       return utcICalTime(t);
     }
 
     bool hasProperty(icalcomponent* component, icalproperty_kind kind) {
-      return icalcomponent_get_first_property(component, kind) != nullptr;
+      return libical().icalcomponent_get_first_property(component, kind) != nullptr;
     }
 
-    bool isCancelled(icalcomponent* component) { return icalcomponent_get_status(component) == ICAL_STATUS_CANCELLED; }
+    bool isCancelled(icalcomponent* component) {
+      return libical().icalcomponent_get_status(component) == ICAL_STATUS_CANCELLED;
+    }
 
     bool hasValidStart(icalcomponent* component) {
       if (!hasProperty(component, ICAL_DTSTART_PROPERTY)) {
         return false;
       }
-      const icaltimetype start = icalcomponent_get_dtstart(component);
-      return !icaltime_is_null_time(start) && icaltime_is_valid_time(start);
+      const icaltimetype start = libical().icalcomponent_get_dtstart(component);
+      return !libical().icaltime_is_null_time(start) && libical().icaltime_is_valid_time(start);
     }
 
     bool isExcluded(
@@ -207,11 +231,11 @@ namespace calendar {
     // run a script, and NONE/X are not actionable. ACTION is mandatory per RFC 5545, but a feed that
     // omits it still means "alert me".
     bool alarmActionIsNotifiable(icalcomponent* alarm) {
-      icalproperty* action = icalcomponent_get_first_property(alarm, ICAL_ACTION_PROPERTY);
+      icalproperty* action = libical().icalcomponent_get_first_property(alarm, ICAL_ACTION_PROPERTY);
       if (action == nullptr) {
         return true;
       }
-      switch (icalproperty_get_action(action)) {
+      switch (libical().icalproperty_get_action(action)) {
       case ICAL_ACTION_DISPLAY:
       case ICAL_ACTION_AUDIO:
         return true;
@@ -229,28 +253,28 @@ namespace calendar {
           ? std::chrono::duration_cast<std::chrono::seconds>(event.end - event.start).count()
           : 0;
 
-      for (icalcomponent* alarm = icalcomponent_get_first_component(component, ICAL_VALARM_COMPONENT); alarm != nullptr;
-           alarm = icalcomponent_get_next_component(component, ICAL_VALARM_COMPONENT)) {
+      for (icalcomponent* alarm = libical().icalcomponent_get_first_component(component, ICAL_VALARM_COMPONENT);
+           alarm != nullptr; alarm = libical().icalcomponent_get_next_component(component, ICAL_VALARM_COMPONENT)) {
         if (!alarmActionIsNotifiable(alarm)) {
           continue;
         }
-        icalproperty* trigger = icalcomponent_get_first_property(alarm, ICAL_TRIGGER_PROPERTY);
+        icalproperty* trigger = libical().icalcomponent_get_first_property(alarm, ICAL_TRIGGER_PROPERTY);
         if (trigger == nullptr) {
           continue;
         }
-        const struct icaltriggertype value = icalproperty_get_trigger(trigger);
+        const struct icaltriggertype value = libical().icalproperty_get_trigger(trigger);
         // Gate on is_bad_trigger only: is_null_trigger is also true for the valid TRIGGER:PT0S
         // ("alert at start"), which must survive as lead 0.
-        if (icaltriggertype_is_bad_trigger(value)) {
+        if (libical().icaltriggertype_is_bad_trigger(value)) {
           continue;
         }
 
         std::int64_t lead = 0;
-        if (icaltime_is_null_time(value.time)) {
+        if (libical().icaltime_is_null_time(value.time)) {
           // RFC 5545: a negative duration means "before" the anchor.
           lead = -static_cast<std::int64_t>(durationSeconds(value.duration));
-          const icalparameter* related = icalproperty_get_first_parameter(trigger, ICAL_RELATED_PARAMETER);
-          if (related != nullptr && icalparameter_get_related(related) == ICAL_RELATED_END) {
+          const icalparameter* related = libical().icalproperty_get_first_parameter(trigger, ICAL_RELATED_PARAMETER);
+          if (related != nullptr && libical().icalparameter_get_related(related) == ICAL_RELATED_END) {
             // Anchored to DTEND: fire at end + duration, so the lead before DTSTART shrinks by the
             // event's own length. Short triggers on long events land after the start and are dropped.
             lead -= eventDuration;
@@ -295,8 +319,9 @@ namespace calendar {
       };
 
       // 1. RFC 7986 COLOR property
-      if (icalproperty* prop = icalcomponent_get_first_property(component, ICAL_COLOR_PROPERTY); prop != nullptr) {
-        if (auto hex = parseColor(icalproperty_get_color(prop)); !hex.empty()) {
+      if (icalproperty* prop = libical().icalcomponent_get_first_property(component, ICAL_COLOR_PROPERTY);
+          prop != nullptr) {
+        if (auto hex = parseColor(libical().icalproperty_get_color(prop)); !hex.empty()) {
           return hex;
         }
       }
@@ -307,9 +332,9 @@ namespace calendar {
                      == std::tolower(static_cast<unsigned char>(right));
                });
       };
-      for (icalproperty* prop = icalcomponent_get_first_property(component, ICAL_X_PROPERTY); prop != nullptr;
-           prop = icalcomponent_get_next_property(component, ICAL_X_PROPERTY)) {
-        const char* xname = icalproperty_get_x_name(prop);
+      for (icalproperty* prop = libical().icalcomponent_get_first_property(component, ICAL_X_PROPERTY); prop != nullptr;
+           prop = libical().icalcomponent_get_next_property(component, ICAL_X_PROPERTY)) {
+        const char* xname = libical().icalproperty_get_x_name(prop);
         if (xname == nullptr) {
           continue;
         }
@@ -317,7 +342,7 @@ namespace calendar {
         if (equalsIgnoreCase(name, "X-APPLE-CALENDAR-COLOR")
             || equalsIgnoreCase(name, "X-COLOR")
             || equalsIgnoreCase(name, "X-OUTLOOK-COLOR")) {
-          if (auto hex = parseColor(icalproperty_get_x(prop)); !hex.empty()) {
+          if (auto hex = parseColor(libical().icalproperty_get_x(prop)); !hex.empty()) {
             return hex;
           }
         }
@@ -328,32 +353,33 @@ namespace calendar {
 
     CalendarEvent baseEventFromComponent(icalcomponent* component) {
       CalendarEvent event;
-      if (const char* uid = icalcomponent_get_uid(component); uid != nullptr) {
+      if (const char* uid = libical().icalcomponent_get_uid(component); uid != nullptr) {
         event.id = uid;
       }
-      if (const char* summary = icalcomponent_get_summary(component); summary != nullptr) {
+      if (const char* summary = libical().icalcomponent_get_summary(component); summary != nullptr) {
         event.title = summary;
       }
-      if (const char* location = icalcomponent_get_location(component); location != nullptr) {
+      if (const char* location = libical().icalcomponent_get_location(component); location != nullptr) {
         event.location = location;
       }
       std::string description;
-      if (const char* value = icalcomponent_get_description(component); value != nullptr) {
+      if (const char* value = libical().icalcomponent_get_description(component); value != nullptr) {
         description = value;
       }
       std::string urlProperty;
-      if (icalproperty* url = icalcomponent_get_first_property(component, ICAL_URL_PROPERTY); url != nullptr) {
-        if (const char* value = icalproperty_get_url(url); value != nullptr) {
+      if (icalproperty* url = libical().icalcomponent_get_first_property(component, ICAL_URL_PROPERTY);
+          url != nullptr) {
+        if (const char* value = libical().icalproperty_get_url(url); value != nullptr) {
           urlProperty = value;
         }
       }
       event.url = resolveEventLink(event.location, description, urlProperty);
 
-      const icaltimetype start = icalcomponent_get_dtstart(component);
-      const icaltimetype end = icalcomponent_get_dtend(component);
+      const icaltimetype start = libical().icalcomponent_get_dtstart(component);
+      const icaltimetype end = libical().icalcomponent_get_dtend(component);
       event.start = timePointFromICal(start);
       event.end = timePointFromICal(end);
-      event.allDay = icaltime_is_date(start) != 0;
+      event.allDay = libical().icaltime_is_date(start) != 0;
       const bool recurring = hasProperty(component, ICAL_RRULE_PROPERTY) || hasProperty(component, ICAL_RDATE_PROPERTY);
       // A feed without usable alarms says nothing about reminders, so the default lead applies.
       if (auto leads = alarmLeadSeconds(component, event, recurring); !leads.empty()) {
@@ -367,8 +393,8 @@ namespace calendar {
       if (!hasProperty(component, ICAL_RECURRENCEID_PROPERTY)) {
         return std::nullopt;
       }
-      const icaltimetype id = icalcomponent_get_recurrenceid(component);
-      if (icaltime_is_null_time(id) || !icaltime_is_valid_time(id)) {
+      const icaltimetype id = libical().icalcomponent_get_recurrenceid(component);
+      if (libical().icaltime_is_null_time(id) || !libical().icaltime_is_valid_time(id)) {
         return std::nullopt;
       }
       return timePointFromICal(id);
@@ -378,12 +404,12 @@ namespace calendar {
       if (component == nullptr) {
         return;
       }
-      if (icalcomponent_isa(component) == ICAL_VEVENT_COMPONENT) {
+      if (libical().icalcomponent_isa(component) == ICAL_VEVENT_COMPONENT) {
         out.push_back(component);
         return;
       }
-      for (icalcomponent* child = icalcomponent_get_first_component(component, ICAL_ANY_COMPONENT); child != nullptr;
-           child = icalcomponent_get_next_component(component, ICAL_ANY_COMPONENT)) {
+      for (icalcomponent* child = libical().icalcomponent_get_first_component(component, ICAL_ANY_COMPONENT);
+           child != nullptr; child = libical().icalcomponent_get_next_component(component, ICAL_ANY_COMPONENT)) {
         collectVEvents(child, out);
       }
     }
@@ -407,8 +433,10 @@ namespace calendar {
     }
 
     time_t recurrenceUnixTime(const icaltimetype& time) {
-      const icaltimezone* zone = icaltime_get_timezone(time);
-      return icaltime_as_timet_with_zone(time, zone != nullptr ? zone : icaltimezone_get_utc_timezone());
+      const icaltimezone* zone = libical().icaltime_get_timezone(time);
+      return libical().icaltime_as_timet_with_zone(
+          time, zone != nullptr ? zone : libical().icaltimezone_get_utc_timezone()
+      );
     }
 
     void addRecurrence(const icaltime_span& span, RecurrenceData& data, bool preferExplicitDuration) {
@@ -444,54 +472,57 @@ namespace calendar {
     ICalParseStatus expandRecurrences(
         icalcomponent* component, const icaltimetype& componentStart, ICalParseControl& control, RecurrenceData& data
     ) {
-      const icaltimetype componentEnd = icalcomponent_get_dtend(component);
-      const icaltime_span baseSpan = icaltime_span_new(componentStart, componentEnd, true);
+      const icaltimetype componentEnd = libical().icalcomponent_get_dtend(component);
+      const icaltime_span baseSpan = libical().icaltime_span_new(componentStart, componentEnd, true);
       const time_t duration = baseSpan.end - baseSpan.start;
       const icaltimetype endBound = recurrenceBound(data.windowEnd, componentStart);
 
-      icalproperty* ruleProperty = icalcomponent_get_first_property(component, ICAL_RRULE_PROPERTY);
+      icalproperty* ruleProperty = libical().icalcomponent_get_first_property(component, ICAL_RRULE_PROPERTY);
       if (ruleProperty == nullptr) {
         icaltimetype start = componentStart;
-        if (icalproperty_recurrence_is_excluded(component, &start, &start) == 0) {
+        if (libical().icalproperty_recurrence_is_excluded(component, &start, &start) == 0) {
           addRecurrence(baseSpan, data, false);
         }
       }
 
-      for (; ruleProperty != nullptr; ruleProperty = icalcomponent_get_next_property(component, ICAL_RRULE_PROPERTY)) {
+      for (; ruleProperty != nullptr;
+           ruleProperty = libical().icalcomponent_get_next_property(component, ICAL_RRULE_PROPERTY)) {
 #if ICAL_CHECK_VERSION(4, 0, 0)
-        icalrecurrencetype* rule = icalproperty_get_rrule(ruleProperty);
+        icalrecurrencetype* rule = libical().icalproperty_get_rrule(ruleProperty);
         if (rule == nullptr) {
           continue;
         }
-        ICalRecurPtr iterator{icalrecur_iterator_new(rule, componentStart)};
+        ICalRecurPtr iterator{libical().icalrecur_iterator_new(rule, componentStart)};
         const bool unbounded = rule->count == 0;
 #else
-        const icalrecurrencetype rule = icalproperty_get_rrule(ruleProperty);
-        ICalRecurPtr iterator{icalrecur_iterator_new(rule, componentStart)};
+        const icalrecurrencetype rule = libical().icalproperty_get_rrule(ruleProperty);
+        ICalRecurPtr iterator{libical().icalrecur_iterator_new(rule, componentStart)};
         const bool unbounded = rule.count == 0;
 #endif
         if (!iterator) {
           continue;
         }
         if (unbounded) {
-          (void)icalrecur_iterator_set_start(iterator.get(), recurrenceBound(data.windowStart, componentStart));
+          (void)libical().icalrecur_iterator_set_start(
+              iterator.get(), recurrenceBound(data.windowStart, componentStart)
+          );
         }
 
         while (!control.stopToken.stop_requested()) {
-          icaltimetype occurrence = icalrecur_iterator_next(iterator.get());
-          if (icaltime_is_null_time(occurrence)) {
+          icaltimetype occurrence = libical().icalrecur_iterator_next(iterator.get());
+          if (libical().icaltime_is_null_time(occurrence)) {
             break;
           }
           if (!consumeRecurrenceWork(control)) {
             return control.stopToken.stop_requested() ? ICalParseStatus::Cancelled
                                                       : ICalParseStatus::WorkBudgetExceeded;
           }
-          if (icaltime_compare(occurrence, endBound) > 0) {
+          if (libical().icaltime_compare(occurrence, endBound) > 0) {
             break;
           }
 
           icaltimetype start = componentStart;
-          if (icalproperty_recurrence_is_excluded(component, &start, &occurrence) != 0) {
+          if (libical().icalproperty_recurrence_is_excluded(component, &start, &occurrence) != 0) {
             continue;
           }
           const time_t occurrenceStart = recurrenceUnixTime(occurrence);
@@ -504,29 +535,29 @@ namespace calendar {
         }
       }
 
-      for (icalproperty* property = icalcomponent_get_first_property(component, ICAL_RDATE_PROPERTY);
-           property != nullptr; property = icalcomponent_get_next_property(component, ICAL_RDATE_PROPERTY)) {
+      for (icalproperty* property = libical().icalcomponent_get_first_property(component, ICAL_RDATE_PROPERTY);
+           property != nullptr; property = libical().icalcomponent_get_next_property(component, ICAL_RDATE_PROPERTY)) {
         if (!consumeRecurrenceWork(control)) {
           return control.stopToken.stop_requested() ? ICalParseStatus::Cancelled : ICalParseStatus::WorkBudgetExceeded;
         }
 
-        const icaldatetimeperiodtype rdate = icalproperty_get_rdate(property);
-        const bool explicitPeriod = icaltime_is_null_time(rdate.time);
+        const icaldatetimeperiodtype rdate = libical().icalproperty_get_rdate(property);
+        const bool explicitPeriod = libical().icaltime_is_null_time(rdate.time);
         const icaltimetype occurrence = explicitPeriod ? rdate.period.start : rdate.time;
-        if (icaltime_is_null_time(occurrence)) {
+        if (libical().icaltime_is_null_time(occurrence)) {
           continue;
         }
 
         icaltimetype start = componentStart;
         icaltimetype recurrence = occurrence;
-        if (icalproperty_recurrence_is_excluded(component, &start, &recurrence) != 0) {
+        if (libical().icalproperty_recurrence_is_excluded(component, &start, &recurrence) != 0) {
           continue;
         }
 
         const time_t occurrenceStart = recurrenceUnixTime(occurrence);
         time_t occurrenceEnd = occurrenceStart + duration;
         if (explicitPeriod) {
-          if (!icaltime_is_null_time(rdate.period.end)) {
+          if (!libical().icaltime_is_null_time(rdate.period.end)) {
             occurrenceEnd = recurrenceUnixTime(rdate.period.end);
           } else {
             occurrenceEnd = occurrenceStart + static_cast<time_t>(durationSeconds(rdate.period.duration));
@@ -547,7 +578,7 @@ namespace calendar {
       std::chrono::system_clock::time_point windowEnd, ICalParseControl& control
   ) {
     std::string text{ics};
-    ICalComponentPtr root{icalcomponent_new_from_string(text.c_str())};
+    ICalComponentPtr root{libical().icalcomponent_new_from_string(text.c_str())};
     if (root == nullptr) {
       // Not iCalendar text at all: HTML sign-in pages, proxy errors, and truncated feeds all land
       // here. Reported as invalid so callers keep their last known events instead of persisting an
@@ -558,7 +589,7 @@ namespace calendar {
     // libical recovers from content lines it cannot parse by replacing each one with an X-LIC-ERROR
     // property instead of failing the whole document. That keeps one quirky line in an otherwise
     // good feed from hiding every event in it, so a non-zero count alone is not a rejection.
-    const int unparseableLines = icalcomponent_count_errors(root.get());
+    const int unparseableLines = libical().icalcomponent_count_errors(root.get());
     if (unparseableLines > 0) {
       kLog.debug("iCalendar input has {} unparseable line(s); skipping them", unparseableLines);
     }
@@ -571,7 +602,7 @@ namespace calendar {
       if (control.stopToken.stop_requested()) {
         return {.status = ICalParseStatus::Cancelled};
       }
-      const char* uid = icalcomponent_get_uid(component);
+      const char* uid = libical().icalcomponent_get_uid(component);
       const bool cancelledWithoutStart = isCancelled(component) && !hasProperty(component, ICAL_DTSTART_PROPERTY);
       if (auto id = recurrenceId(component); id && (hasValidStart(component) || cancelledWithoutStart)) {
         overrides[uid != nullptr ? std::string(uid) : std::string{}].push_back(*id);
@@ -586,7 +617,7 @@ namespace calendar {
       if (isCancelled(component) || !hasValidStart(component)) {
         continue;
       }
-      const icaltimetype componentStart = icalcomponent_get_dtstart(component);
+      const icaltimetype componentStart = libical().icalcomponent_get_dtstart(component);
       CalendarEvent event = baseEventFromComponent(component);
 
       if (recurrenceId(component).has_value()

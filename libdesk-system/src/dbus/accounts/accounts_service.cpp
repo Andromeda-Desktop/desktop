@@ -1,22 +1,29 @@
 #include "dbus/accounts/accounts_service.h"
 
+#include "core/lazy_library.h"
 #include "core/log.h"
 #include "dbus/system_bus.h"
 #include "dbus/system_interactive_call.h"
 
-#include <systemd/sd-bus.h>
-#include <pwd.h>
 #include <crypt.h>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
+#include <pwd.h>
 #include <sdbus-c++/Error.h>
 #include <sdbus-c++/IProxy.h>
 #include <sdbus-c++/Types.h>
 #include <string>
+#include <systemd/sd-bus.h>
 #include <unistd.h>
-#include <cstdlib>
-#include <cstring>
 #include <utility>
+
+// clang-format off
+#define LIBCRYPT_FUNCTIONS(X) \
+  X(crypt_gensalt_ra) X(crypt_r)
+// clang-format on
+LAZY_LIBRARY(LibcryptApi, libcrypt, "libcrypt.so.2", LIBCRYPT_FUNCTIONS)
 
 namespace {
 
@@ -173,9 +180,9 @@ void AccountsService::createUser(
     const std::string& login, const std::string& realName, bool admin, const std::string& password,
     std::function<void(std::string)> done
 ) {
-  const char* salt = crypt_gensalt_ra(nullptr, 0, nullptr, 0);
+  const char* salt = libcrypt().crypt_gensalt_ra(nullptr, 0, nullptr, 0);
   crypt_data data{};
-  const char* hashed = salt != nullptr ? crypt_r(password.c_str(), salt, &data) : nullptr;
+  const char* hashed = salt != nullptr ? libcrypt().crypt_r(password.c_str(), salt, &data) : nullptr;
   std::free(const_cast<char*>(salt));
   const std::string hash = hashed != nullptr && hashed[0] != '*' ? std::string(hashed) : std::string{};
   explicit_bzero(&data, sizeof(data));

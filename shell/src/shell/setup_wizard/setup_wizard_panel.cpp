@@ -1,18 +1,17 @@
 #include "shell/setup_wizard/setup_wizard_panel.h"
 
-#include "shell/desktop_layout/desktop_layout.h"
-
 #include "auth/biometric_enrollment.h"
 #include "compositors/settings_control.h"
 #include "compositors/shell_wayland_connection.h"
 #include "config/config_service.h"
 #include "core/files/directory_scanner.h"
 #include "core/files/resource_paths.h"
-#include "core/input/keybind_matcher.h"
-#include "core/log.h"
 #include "core/input/cursor_shape.h"
-#include "dbus/link/link_service.h"
+#include "core/input/keybind_matcher.h"
+#include "core/lazy_library.h"
+#include "core/log.h"
 #include "dbus/andromeda/software_update_service.h"
+#include "dbus/link/link_service.h"
 #include "dbus/system_bus.h"
 #include "dbus/system_interactive_call.h"
 #include "dbus/timedate/timedate_service.h"
@@ -20,10 +19,11 @@
 #include "render/core/renderer.h"
 #include "render/core/texture_manager.h"
 #include "render/scene/countdown_ring_node.h"
+#include "shell/desktop_layout/desktop_layout.h"
 #include "shell/panel/panel_manager.h"
 #include "system/default_apps.h"
-#include "system/display_manager.h"
 #include "system/desktop_entry.h"
+#include "system/display_manager.h"
 #include "system/xkb_layout_catalog.h"
 #include "ui/builders.h"
 #include "ui/dialogs/file_dialog.h"
@@ -53,6 +53,12 @@
 #include <utility>
 #include <vector>
 #include <xkbcommon/xkbcommon-keysyms.h>
+
+// clang-format off
+#define QRENCODE_FUNCTIONS(X) \
+  X(QRcode_encodeString) X(QRcode_free)
+// clang-format on
+LAZY_LIBRARY(QrencodeApi, qrencode, "libqrencode.so.4", QRENCODE_FUNCTIONS)
 
 namespace {
 
@@ -1390,7 +1396,7 @@ void SetupWizardPanel::renderQr(Renderer& renderer) {
     return;
   }
   const std::unique_ptr<QRcode, decltype(&QRcode_free)> qr(
-      QRcode_encodeString(m_qrUri.c_str(), 0, QR_ECLEVEL_M, QR_MODE_8, 1), &QRcode_free
+      qrencode().QRcode_encodeString(m_qrUri.c_str(), 0, QR_ECLEVEL_M, QR_MODE_8, 1), qrencode().QRcode_free
   );
   if (qr == nullptr) {
     kLog.warn("pairing QR: cannot encode the URI");

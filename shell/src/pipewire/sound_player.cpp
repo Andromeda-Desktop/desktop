@@ -1,5 +1,6 @@
 #include "pipewire/sound_player.h"
 
+#include "core/lazy_library.h"
 #include "core/log.h"
 #include "pipewire/pipewire_context.h"
 #include "system/freedesktop_key_file.h"
@@ -18,6 +19,12 @@
 #include <spa/pod/builder.h>
 #include <spa/utils/result.h>
 #include <string_view>
+
+// clang-format off
+#define SNDFILE_FUNCTIONS(X) \
+  X(sf_close) X(sf_open) X(sf_readf_float) X(sf_strerror)
+// clang-format on
+LAZY_LIBRARY(SndfileApi, sndfile, "libsndfile.so.1", SNDFILE_FUNCTIONS)
 
 namespace {
 
@@ -286,13 +293,13 @@ SoundPlayer::~SoundPlayer() {
 
 std::optional<std::string> SoundPlayer::decode(const fs::path& path, SoundBuffer& out) {
   SF_INFO info{};
-  SNDFILE* file = sf_open(path.string().c_str(), SFM_READ, &info);
+  SNDFILE* file = sndfile().sf_open(path.string().c_str(), SFM_READ, &info);
   if (file == nullptr) {
-    return "failed to open audio file: " + std::string(sf_strerror(nullptr));
+    return "failed to open audio file: " + std::string(sndfile().sf_strerror(nullptr));
   }
 
   if (info.frames <= 0 || info.channels <= 0 || info.samplerate <= 0) {
-    sf_close(file);
+    sndfile().sf_close(file);
     return "audio file has no samples";
   }
 
@@ -300,8 +307,8 @@ std::optional<std::string> SoundPlayer::decode(const fs::path& path, SoundBuffer
   out.channels = static_cast<std::uint32_t>(info.channels);
   out.samples.resize(static_cast<std::size_t>(info.frames) * out.channels);
 
-  const sf_count_t readFrames = sf_readf_float(file, out.samples.data(), info.frames);
-  sf_close(file);
+  const sf_count_t readFrames = sndfile().sf_readf_float(file, out.samples.data(), info.frames);
+  sndfile().sf_close(file);
   if (readFrames <= 0) {
     return "audio file has no samples";
   }
