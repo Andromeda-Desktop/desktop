@@ -540,7 +540,10 @@ int main(int argc, char** argv) {
     malloc_trim(0);
 #endif
 
-    server.run();
+    if (!server.run()) {
+      kLog.error("failed to start server");
+      return EXIT_FAILURE;
+    }
     // An inactive session lost the display to the next compositor (logout hand-off): nothing to hold.
     if (server.session() == nullptr || server.session()->active) {
       andromeda::scanout_keeper::holdForNextCompositor(server.backend());

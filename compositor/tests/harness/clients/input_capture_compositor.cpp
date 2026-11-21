@@ -209,7 +209,8 @@ int main(int argc, char** argv) {
     if (source == nullptr)
       return 1;
     std::println("ready display={} socket={}", std::getenv("WAYLAND_DISPLAY"), std::getenv("ANDROMEDA_SOCKET"));
-    server.run();
+    if (!server.run())
+      return 1;
     wl_event_source_remove(source);
     return input.failed() ? 1 : 0;
   } catch (const std::exception& error) {

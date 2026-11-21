@@ -47,10 +47,10 @@ namespace andromeda {
     sigprocmask(SIG_SETMASK, &empty, nullptr);
   }
 
-  bool runShellCommand(const std::string& command) {
+  int startShellCommand(const std::string& command) {
     int completion[2];
     if (pipe2(completion, O_CLOEXEC) != 0) {
-      return false;
+      return -1;
     }
     // Only the success marker reaches the pipe. A SIGCHLD handler may reap
     // the shell before we read it, so waitpid cannot reliably report success.
@@ -72,21 +72,26 @@ namespace andromeda {
     if (pid < 0) {
       close(completion[0]);
       errno = forkError;
-      return false;
+      return -1;
     }
+    return completion[0];
+  }
+
+  bool shellCommandSucceeded(int completionFd) {
     char result = 0;
     ssize_t size;
     do {
-      size = read(completion[0], &result, sizeof(result));
+      size = read(completionFd, &result, sizeof(result));
     } while (size < 0 && errno == EINTR);
     const int readError = errno;
-    close(completion[0]);
+    close(completionFd);
     if (size != 1 || result != 'x') {
       errno = size < 0 ? readError : EIO;
       return false;
     }
     return true;
   }
+
 
   bool notifyServiceReady(std::string_view socketPath) { return notifyService(socketPath, "READY=1"); }
 

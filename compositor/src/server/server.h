@@ -214,7 +214,8 @@ namespace andromeda {
     Server& operator=(const Server&) = delete;
 
     bool start(const char* startupCmd = nullptr);
-    void run();
+    // False when the session failed to start after start() returned (the environment import failed).
+    [[nodiscard]] bool run();
     void stop();
     void requestSessionExit();
     [[nodiscard]] bool stopping() const { return m_stopping; }
@@ -1166,6 +1167,14 @@ namespace andromeda {
     // One-shot refresh when dynamic startup rules expire.
     wl_event_source* m_startupRulesTimer = nullptr;
     void startWatchdog(const std::string& notifySocket);
+    // The session environment import runs while start() continues; readiness and autostart wait for it.
+    enum class StartPhase { Starting, ImportingEnvironment, Started, Failed };
+    StartPhase m_startPhase = StartPhase::Starting;
+    wl_event_source* m_environmentImport = nullptr;
+    const char* m_startupCmd = nullptr;
+    static int onEnvironmentImported(int fd, uint32_t mask, void* data);
+    bool startEnvironmentImport();
+    bool finishStart();
     // A window from the pre-crash list: the next window of that app id within 2 min maps where this one was.
     struct RestorePlacement {
       std::string appId;

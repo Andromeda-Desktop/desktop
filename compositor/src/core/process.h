@@ -15,9 +15,11 @@ namespace andromeda {
   // cannot start when SIGCHLD is ignored. wlroots tolerates its Xwayland launcher being reaped here.
   void installChildReaper();
 
-  // Run a shell command to completion without racing the global child reaper.
-  // The command's output goes to stderr; false means it did not complete successfully.
-  [[nodiscard]] bool runShellCommand(const std::string& command);
+  // Start a shell command without racing the global child reaper; its output goes to stderr. Returns the read end of a
+  // completion pipe (-1 when the fork failed): it yields 'x' when the command succeeded, else EOF without a byte.
+  [[nodiscard]] int startShellCommand(const std::string& command);
+  // Reads the completion pipe of startShellCommand once it is readable and closes it.
+  [[nodiscard]] bool shellCommandSucceeded(int completionFd);
 
   // Send READY=1 from the compositor process. An empty socket path is a no-op.
   [[nodiscard]] bool notifyServiceReady(std::string_view socketPath);

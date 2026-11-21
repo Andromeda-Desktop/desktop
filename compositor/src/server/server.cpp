@@ -317,8 +317,8 @@ namespace andromeda {
       command += publishConfigured;
       command += "; then systemd_ready=true; else "
                  "echo 'andromeda: failed to publish the session environment' >&2; exit 1; fi; fi; "
-                 // The compositor waits on this script with its event loop stopped. Without a bus address, libdbus
-                 // autolaunches over X11, and DISPLAY names an Xwayland that only that loop can start. Use the
+                 // This script runs before the event loop does. Without a bus address, libdbus autolaunches over
+                 // X11, and DISPLAY names an Xwayland that only that loop can start. Use the
                  // user bus socket when the address is unset, and skip the update when there is no bus at all.
                  "if [ -z \"${DBUS_SESSION_BUS_ADDRESS:-}\" ] && [ -S \"${XDG_RUNTIME_DIR:-}/bus\" ]; then "
                  "export DBUS_SESSION_BUS_ADDRESS=\"unix:path=$XDG_RUNTIME_DIR/bus\"; fi; "
@@ -1785,6 +1785,73 @@ namespace andromeda {
       }
     }
 
+    // Under systemd readiness the environment import (~85 ms at login) forks before the backend starts: it overlaps VT
+    // activation, DRM and EGL setup. It needs every exported variable, DISPLAY included.
+    m_applicationScopesRequired = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
+    const char* inheritedNotifySocket = std::getenv("NOTIFY_SOCKET");
+    const std::string notifySocket =
+        m_applicationScopesRequired && inheritedNotifySocket != nullptr ? inheritedNotifySocket : "";
+    unsetenv("NOTIFY_SOCKET");
+    m_notifySocket = notifySocket;
+    // Point new clients at us. Drop WAYLAND_SOCKET so children do not keep the
+    // parent compositor connection (libwayland prefers it over WAYLAND_DISPLAY).
+    setenv("WAYLAND_DISPLAY", m_socketName.c_str(), true);
+    unsetenv("WAYLAND_SOCKET");
+    kLog.info("running on WAYLAND_DISPLAY={}", m_socketName);
+
+    setenv(
+        "ANDROMEDA_SOCKET",
+        (std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda-" + m_socketName + ".sock").c_str(), true
+    );
+    setenv("XDG_CURRENT_DESKTOP", "andromeda", 1);
+    setenv("XDG_SESSION_DESKTOP", "andromeda", 1);
+    setenv("XDG_SESSION_TYPE", "wayland", 1);
+    // Qt 6.6+ apps reconnect to a restarted compositor and keep their windows (docs/resilience.md §2).
+    setenv("QT_WAYLAND_RECONNECT", "1", 0);
+    // Every toolkit uses the portal, so file pickers are ours (mockup files-v2-live §13): GTK 3, Firefox and Electron
+    // read GTK_USE_PORTAL, GTK 4 GDK_DEBUG=portals, Qt 5/6 the xdgdesktopportal platform theme; Chromium uses the
+    // FileChooser portal on its own when the portal is there. A value the user set wins.
+    setenv("GTK_USE_PORTAL", "1", 0);
+    setenv("GDK_DEBUG", "portals", 0);
+    setenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal", 0);
+
+    // Export cursor settings so X11 clients and toolkit clients pick up the
+    // compositor's configured cursor.
+    const auto& cursorCfg = config().input.cursor;
+    const std::string cursorSize = std::to_string(cursorCfg.size);
+    setenv("XCURSOR_SIZE", cursorSize.c_str(), 1);
+    if (!cursorCfg.theme.empty()) {
+      setenv("XCURSOR_THEME", cursorCfg.theme.c_str(), 1);
+    }
+
+    // Create the Xwayland server before session services and autostart so X11
+    // applications can connect. It starts lazily: the X display socket exists
+    // now, and Xwayland itself spawns when the first X client connects.
+    if (config().general.xwayland) {
+      m_eisInput = std::make_unique<EisInput>(*this);
+      if (sessionLocked()) {
+        m_eisInput->setSessionLocked(true);
+      }
+      m_eisInput->setAuthenticate([this](pid_t peer) {
+        return m_xwayland != nullptr && m_xwayland->authenticateInputPeer(peer);
+      });
+      m_eisInput->setAuthorize([this](uint64_t id, std::string_view name) { requestInputEmulation(id, name); });
+      m_eisInput->setAuthorizationCancelled([this](uint64_t id) { cancelInputEmulation(id); });
+      m_xwayland = std::make_unique<Xwayland>(*this);
+      if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
+        setenv("DISPLAY", m_xwayland->displayName(), 1);
+      } else {
+        m_xwayland.reset();
+        m_eisInput.reset();
+      }
+    }
+
+    // Under systemd readiness the import starts here. Otherwise its script starts andromeda-session.target, so it
+    // waits until IPC is up.
+    if (!notifySocket.empty() && !startEnvironmentImport()) {
+      return false;
+    }
+
     // The localed read can bus-activate localed (~75 ms at login): keyboards start on the default keymap and the
     // worker result reapplies them.
     refreshSystemKeymapAsync();
@@ -1819,11 +1886,6 @@ namespace andromeda {
     wl_event_loop* loop = wl_display_get_event_loop(m_display);
     m_signalSources[0] = wl_event_loop_add_signal(loop, SIGINT, onTerminateSignal, this);
     m_signalSources[1] = wl_event_loop_add_signal(loop, SIGTERM, onTerminateSignal, this);
-    m_applicationScopesRequired = !m_nested && isDirectSystemdService(getpid(), std::getenv("SYSTEMD_EXEC_PID"));
-    const char* inheritedNotifySocket = std::getenv("NOTIFY_SOCKET");
-    const std::string notifySocket =
-        m_applicationScopesRequired && inheritedNotifySocket != nullptr ? inheritedNotifySocket : "";
-    unsetenv("NOTIFY_SOCKET");
     if (m_applicationScopesRequired) {
       m_systemdRunExecutable = resolveExecutable("systemd-run");
       m_systemctlExecutable = resolveExecutable("systemctl");
@@ -1841,12 +1903,6 @@ namespace andromeda {
         kLog.info("application processes will use transient scopes under app.slice");
       }
     }
-
-    // Point new clients at us. Drop WAYLAND_SOCKET so children do not keep the
-    // parent compositor connection (libwayland prefers it over WAYLAND_DISPLAY).
-    setenv("WAYLAND_DISPLAY", m_socketName.c_str(), true);
-    unsetenv("WAYLAND_SOCKET");
-    kLog.info("running on WAYLAND_DISPLAY={}", m_socketName);
 
     // See kBackgroundFrameIntervalMs and Server::onBackgroundFrameTimer.
     m_backgroundFrameTimer =
@@ -1929,10 +1985,6 @@ namespace andromeda {
     // Armed only while a hidden window has a background_render rule (see Server::armBackgroundRenderTimer).
     m_backgroundRenderTimer =
         wl_event_loop_add_timer(wl_display_get_event_loop(m_display), onBackgroundRenderTimer, this);
-    setenv(
-        "ANDROMEDA_SOCKET",
-        (std::string(std::getenv("XDG_RUNTIME_DIR") ?: "") + "/andromeda-" + m_socketName + ".sock").c_str(), true
-    );
     // The login screen exposes no control socket.
     if (!greeterMode()) {
       m_ipc = std::make_unique<Ipc>(*this, m_socketName);
@@ -1953,27 +2005,6 @@ namespace andromeda {
       m_ipcLayersPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcLayersEvent(); });
       m_ipcOutputsPacer = std::make_unique<EventPacer>(loop, kIpcSnapshotIntervalMs, [this] { emitIpcOutputsEvent(); });
     }
-    setenv("XDG_CURRENT_DESKTOP", "andromeda", 1);
-    setenv("XDG_SESSION_DESKTOP", "andromeda", 1);
-    setenv("XDG_SESSION_TYPE", "wayland", 1);
-    // Qt 6.6+ apps reconnect to a restarted compositor and keep their windows (docs/resilience.md §2).
-    setenv("QT_WAYLAND_RECONNECT", "1", 0);
-    // Every toolkit uses the portal, so file pickers are ours (mockup files-v2-live §13): GTK 3, Firefox and Electron
-    // read GTK_USE_PORTAL, GTK 4 GDK_DEBUG=portals, Qt 5/6 the xdgdesktopportal platform theme; Chromium uses the
-    // FileChooser portal on its own when the portal is there. A value the user set wins.
-    setenv("GTK_USE_PORTAL", "1", 0);
-    setenv("GDK_DEBUG", "portals", 0);
-    setenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal", 0);
-
-    // Export cursor settings so X11 clients and toolkit clients pick up the
-    // compositor's configured cursor.
-    const auto& cursorCfg = config().input.cursor;
-    const std::string cursorSize = std::to_string(cursorCfg.size);
-    setenv("XCURSOR_SIZE", cursorSize.c_str(), 1);
-    if (!cursorCfg.theme.empty()) {
-      setenv("XCURSOR_THEME", cursorCfg.theme.c_str(), 1);
-    }
-
     m_globalShortcutService = std::make_unique<GlobalShortcutService>(*this);
     m_inputCapture = std::make_unique<InputCapture>(*this);
     m_inputCapture->setAuthorize([this](uint64_t id, std::string_view name, uint32_t persistMode) {
@@ -1991,46 +2022,8 @@ namespace andromeda {
       wl_signal_add(&m_session->events.active, &m_sessionActive);
     }
 
-    // Create the Xwayland server before session services and autostart so X11
-    // applications can connect. It starts lazily: the X display socket exists
-    // now, and Xwayland itself spawns when the first X client connects.
-    if (config().general.xwayland) {
-      m_eisInput = std::make_unique<EisInput>(*this);
-      if (sessionLocked()) {
-        m_eisInput->setSessionLocked(true);
-      }
-      m_eisInput->setAuthenticate([this](pid_t peer) {
-        return m_xwayland != nullptr && m_xwayland->authenticateInputPeer(peer);
-      });
-      m_eisInput->setAuthorize([this](uint64_t id, std::string_view name) { requestInputEmulation(id, name); });
-      m_eisInput->setAuthorizationCancelled([this](uint64_t id) { cancelInputEmulation(id); });
-      m_xwayland = std::make_unique<Xwayland>(*this);
-      if (m_xwayland->available() && m_xwayland->setInputSocket(m_eisInput->socketFd())) {
-        setenv("DISPLAY", m_xwayland->displayName(), 1);
-      } else {
-        m_xwayland.reset();
-        m_eisInput.reset();
-      }
-    }
-
-    // Wait before applying configured values locally, so the importer keeps
-    // the inherited PATH and bus addresses. Readiness and autostart must not
-    // release session services until these imports have completed.
-    // A compositor in another user unit (a headless test or bench) must not overwrite the session's environment.
-    std::string sessionUnit = "andromeda.service";
-#ifdef ANDROMEDA_TEST_IPC
-    if (const char* testUnit = std::getenv("ANDROMEDA_TEST_SESSION_UNIT"); testUnit != nullptr) {
-      sessionUnit = testUnit;
-    }
-#endif
-    if (!m_nested && (!m_applicationScopesRequired || currentSystemdUnit() == sessionUnit)) {
-      const std::string command = sessionEnvironmentCommand(!notifySocket.empty());
-      if (!runShellCommand(command)) {
-        kLog.error("session environment synchronization failed: {}", std::strerror(errno));
-        if (!notifySocket.empty()) {
-          return false;
-        }
-      }
+    if (notifySocket.empty() && !startEnvironmentImport()) {
+      return false;
     }
     applyConfiguredEnvironment();
 
@@ -2059,11 +2052,63 @@ namespace andromeda {
     m_titleBarMotion = std::make_unique<TitleBarMotion>(*this);
     m_snapAssist = std::make_unique<SnapAssist>(*this, m_snapAssistTree);
     m_snapFlyout->setOnSnapped([this](View& view, SnapZone zone) { m_snapAssist->start(view, zone); });
-    if (!notifyServiceReady(notifySocket)) {
+    m_startupCmd = startupCmd;
+    return m_startPhase == StartPhase::ImportingEnvironment || finishStart();
+  }
+
+  bool Server::startEnvironmentImport() {
+    // A compositor in another user unit (a headless test or bench) must not overwrite the session's environment.
+    std::string sessionUnit = "andromeda.service";
+#ifdef ANDROMEDA_TEST_IPC
+    if (const char* testUnit = std::getenv("ANDROMEDA_TEST_SESSION_UNIT"); testUnit != nullptr) {
+      sessionUnit = testUnit;
+    }
+#endif
+    if (m_nested || (m_applicationScopesRequired && currentSystemdUnit() != sessionUnit)) {
+      return true;
+    }
+    // The child keeps the inherited PATH and bus addresses: applyConfiguredEnvironment() runs after the fork.
+    const int completion = startShellCommand(sessionEnvironmentCommand(!m_notifySocket.empty()));
+    if (completion >= 0) {
+      m_environmentImport = wl_event_loop_add_fd(
+          wl_display_get_event_loop(m_display), completion, WL_EVENT_READABLE, onEnvironmentImported, this
+      );
+      if (m_environmentImport == nullptr) {
+        close(completion);
+        errno = ENOMEM;
+      }
+    }
+    if (m_environmentImport != nullptr) {
+      m_startPhase = StartPhase::ImportingEnvironment;
+      return true;
+    }
+    kLog.error("session environment synchronization failed: {}", std::strerror(errno));
+    return m_notifySocket.empty();
+  }
+
+  int Server::onEnvironmentImported(int fd, uint32_t /*mask*/, void* data) {
+    auto* server = static_cast<Server*>(data);
+    const bool imported = shellCommandSucceeded(fd);
+    const int importError = errno;
+    wl_event_source_remove(std::exchange(server->m_environmentImport, nullptr));
+    if (!imported) {
+      kLog.error("session environment synchronization failed: {}", std::strerror(importError));
+    }
+    if ((!imported && !server->m_notifySocket.empty()) || !server->finishStart()) {
+      server->m_startPhase = StartPhase::Failed;
+      wl_display_terminate(server->m_display);
+    }
+    return 0;
+  }
+
+  bool Server::finishStart() {
+    m_startPhase = StartPhase::Started;
+    const char* startupCmd = m_startupCmd;
+    if (!notifyServiceReady(m_notifySocket)) {
       kLog.error("failed to report session readiness: {}", std::strerror(errno));
       return false;
     }
-    startWatchdog(notifySocket);
+    startWatchdog(m_notifySocket);
     if (greeterMode()) {
       // The greeter session runs the greeter alone and ends with it; config autostart does not apply.
       // Under greetd's hand-off the greeter stays up after its client finishes, until greetd ends the greeter session
@@ -2130,9 +2175,10 @@ namespace andromeda {
     return 0;
   }
 
-  void Server::run() {
+  bool Server::run() {
     StallProbe::setDeveloper(config().general.developerDiagnostics);
     wl_display_run(m_display);
+    return m_startPhase != StartPhase::Failed;
   }
 
   void Server::stop() {
