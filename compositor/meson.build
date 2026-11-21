@@ -1128,7 +1128,6 @@ core_sources = files(
   'src/server/socket_recovery.cpp',
   'src/server/ipc_commands.cpp',
   'src/provider/provider.cpp',
-  'src/agent/agent_sessions.cpp',
   'src/provider/handlers.cpp',
 )
 

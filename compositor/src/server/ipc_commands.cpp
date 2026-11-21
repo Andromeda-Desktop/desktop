@@ -1,7 +1,5 @@
 #include "server/ipc_commands.h"
 
-#include "agent/agent_sessions.h"
-
 #include "config/change.h"
 #include "config/config.h"
 #include "config/overrides.h"
@@ -1439,30 +1437,6 @@ namespace andromeda {
     return nlohmann::json{{"ok", nullptr}};
   }
 
-  nlohmann::json IpcCommands::agentSessionStart(Server& server, std::string_view /*arg*/) {
-    const auto started = server.agentSessions().start();
-    if (!started) {
-      return nlohmann::json{{"err", started.error()}};
-    }
-    return nlohmann::json{{"ok", {{"id", started->id}, {"socket", started->socketPath}}}};
-  }
-
-  nlohmann::json IpcCommands::agentSessionStop(Server& server, std::string_view arg) {
-    uint32_t id = 0;
-    const auto [end, ec] = std::from_chars(arg.data(), arg.data() + arg.size(), id);
-    if (ec != std::errc{} || end != arg.data() + arg.size()) {
-      return nlohmann::json{{"err", "usage: agent-session-stop <id>"}};
-    }
-    if (const auto stopped = server.agentSessions().stop(id); !stopped) {
-      return nlohmann::json{{"err", stopped.error()}};
-    }
-    return nlohmann::json{{"ok", nullptr}};
-  }
-
-  nlohmann::json IpcCommands::agentSessions(Server& server, std::string_view /*arg*/) {
-    return nlohmann::json{{"ok", server.agentSessions().list()}};
-  }
-
   nlohmann::json IpcCommands::configSet(Server& server, std::string_view arg) {
     const size_t split = arg.find(' ');
     const std::string_view value = split == std::string_view::npos ? std::string_view{} : arg.substr(split + 1);
@@ -1926,12 +1900,6 @@ namespace andromeda {
        IpcCommandGroup::Control, true, &IpcCommands::outputCreate, &printOutputName, kConfiguredReplyTimeoutSec},
       {"output-destroy", "<name>", "destroy a virtual output", IpcCommandGroup::Control, true,
        &IpcCommands::outputDestroy, nullptr, kConfiguredReplyTimeoutSec},
-      {"agent-session-start", "", "start an agent session: its own Wayland socket and seat", IpcCommandGroup::Control,
-       false, &IpcCommands::agentSessionStart, nullptr},
-      {"agent-session-stop", "<id>", "end an agent session: close its socket", IpcCommandGroup::Control, true,
-       &IpcCommands::agentSessionStop, nullptr},
-      {"agent-sessions", "", "list agent sessions", IpcCommandGroup::Inspect, false, &IpcCommands::agentSessions,
-       nullptr},
       {"config-replace", "<path>", "load and watch a different config file", IpcCommandGroup::Control, true,
        &IpcCommands::configReplace, nullptr, kConfiguredReplyTimeoutSec},
       {"config-set", "<key> <value>", "override a config value until the compositor exits", IpcCommandGroup::Config,
