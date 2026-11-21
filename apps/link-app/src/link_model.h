@@ -275,6 +275,10 @@ namespace linkapp {
     // What to dial for "Name or number": the digits, + * # of a number, else the first number of the first contact
     // whose name starts with the query (any case); empty when neither.
     [[nodiscard]] std::string numberFor(const std::string& query) const;
+    // Contacts with a number whose name starts with the query (any case), in phone order, at most `limit`.
+    [[nodiscard]] std::vector<Contact> matches(const std::string& query, std::size_t limit) const;
+    // The thread with this number, if one exists.
+    [[nodiscard]] std::optional<std::uint64_t> threadFor(const std::string& address) const;
     [[nodiscard]] std::vector<ConversationRow> conversation(std::uint64_t thread, std::int64_t nowMs) const;
 
   private:

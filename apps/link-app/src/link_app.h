@@ -22,7 +22,9 @@ namespace linkapp {
   // The Waiting feed as a virtual list: one row per item, built the same way to measure and to show.
   class FeedAdapter final : public VirtualListAdapter {
   public:
-    FeedAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
+    // textTo opens a text to a number (a missed call's "Text").
+    FeedAdapter(LinkClient& client, const float& scale, std::function<void(const std::string&)> textTo)
+        : m_client(client), m_scale(scale), m_textTo(std::move(textTo)) {}
     [[nodiscard]] std::size_t itemCount() const override;
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
@@ -36,6 +38,7 @@ namespace linkapp {
     LinkClient& m_client;
     const float& m_scale;
     std::map<std::string, std::string> m_drafts; // reply text per item key, kept across row recycling
+    std::function<void(const std::string&)> m_textTo;
   };
 
   // Messages: the thread list, newest first; a click opens the thread.
@@ -177,6 +180,7 @@ namespace linkapp {
     // Pair a Phone: the QR and code of this app's pairing window.
     [[nodiscard]] std::unique_ptr<Node> pair(Renderer& renderer, float s);
     [[nodiscard]] std::unique_ptr<Node> messages(float width, float height);
+    [[nodiscard]] std::unique_ptr<Node> compose(float s);
     [[nodiscard]] std::unique_ptr<Node> calls();
     [[nodiscard]] std::unique_ptr<Node> activity();
     [[nodiscard]] std::unique_ptr<Node> photos(Renderer& renderer);
@@ -194,10 +198,14 @@ namespace linkapp {
     // Cards mode and the viewed thread follow the page and presence.
     void sync();
     void chooseAndSend(const std::string& deviceId);
-
-    std::unique_ptr<LinkClient> m_client;
     // Shows this phone; the open page reloads its data from it.
     void choosePhone(const std::string& deviceId);
+    // The conversation card shows a thread or a new message, never both: these two are the only ways to change it.
+    void openThread(std::optional<std::uint64_t> id);
+    // A new message to `to` (name or number); an existing thread with that number opens instead.
+    void openCompose(const std::string& to);
+
+    std::unique_ptr<LinkClient> m_client;
     std::unique_ptr<FeedAdapter> m_feed;
     ScrollViewState m_feedScroll;
     std::unique_ptr<ThreadAdapter> m_threads;
@@ -205,6 +213,12 @@ namespace linkapp {
     ScrollViewState m_threadScroll;
     ScrollViewState m_conversationScroll;
     std::optional<std::uint64_t> m_thread; // the selected thread
+    struct Compose {
+      std::string to;   // name or number as typed
+      std::string body;
+      std::string sent; // the number last texted, until the phone lists its thread
+    };
+    std::optional<Compose> m_compose; // set only while m_thread is empty
     std::map<std::uint64_t, std::string> m_threadDrafts;
     std::unique_ptr<CallAdapter> m_calls;
     ScrollViewState m_callScroll;

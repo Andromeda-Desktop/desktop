@@ -315,6 +315,11 @@ namespace {
     expect(m.numberFor("maya") == "+4915112340001", "a name prefix dials the contact's number", 0, 0);
     expect(m.numberFor("Mum") == "0225550100", "a contact without numbers is skipped", 0, 0);
     expect(m.numberFor("Zed").empty(), "an unknown name dials nothing", 0, 0);
+    const auto mu = m.matches("mU", 5);
+    expect(mu.size() == 1 && mu[0].name == "Mumbai Office", "matches: name prefix, any case, with a number", 0, 0);
+    expect(m.matches("", 5).empty() && m.matches("m", 1).size() == 1, "matches: none for no query, at most limit", 0, 0);
+    m.setTexts({{.id = 1, .thread = 7, .address = "+4915112340001", .body = "x", .atMs = 1}});
+    expect(m.threadFor("0151 1234 0001") == 7 && !m.threadFor("0170 1"), "threadFor matches the number, not its format", 0, 0);
     expect(duration(41) == "0:41" && duration(768) == "12:48" && duration(3723) == "1:02:03", "durations", 0, 0);
   }
 

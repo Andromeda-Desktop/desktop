@@ -776,6 +776,23 @@ namespace linkapp {
         });
   }
 
+  void LinkClient::select(const std::string& deviceId) {
+    if (deviceId == m_selected) return;
+    m_selected = deviceId;
+    std::error_code error;
+    std::filesystem::create_directories(selectedFile().parent_path(), error);
+    std::ofstream(selectedFile()) << deviceId << '\n';
+    refresh();
+    changed();
+  }
+
+  void LinkClient::sendTo(const std::string& number, const std::string& body) {
+    m_proxy->callMethodAsync("SendText").onInterface(kInterface).withArguments(presence().phone.id, number, body)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SendText: {}", error->getMessage());
+        });
+  }
+
   void LinkClient::shareText(const std::string& deviceId, const std::string& text) {
     const bool link = (text.starts_with("http://") || text.starts_with("https://")) &&
                       std::ranges::none_of(text, [](unsigned char c) { return std::isspace(c) != 0; });
@@ -800,16 +817,6 @@ namespace linkapp {
     m_proxy->callMethodAsync("SendFiles").onInterface(kInterface).withArguments(deviceId, files)
         .uponReplyInvoke([](std::optional<sdbus::Error> error, std::string /*transfer*/) {
           if (error) kLog.warn("SendFiles: {}", error->getMessage());
-  void LinkClient::select(const std::string& deviceId) {
-    if (deviceId == m_selected) return;
-    m_selected = deviceId;
-    std::error_code error;
-    std::filesystem::create_directories(selectedFile().parent_path(), error);
-    std::ofstream(selectedFile()) << deviceId << '\n';
-    refresh();
-    changed();
-  }
-
         });
   }
 

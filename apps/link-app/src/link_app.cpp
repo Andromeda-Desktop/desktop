@@ -226,6 +226,11 @@ namespace linkapp {
         actions->addChild(ui::button({.text = action.label, .glyph = call ? std::optional<std::string>("phone") : std::nullopt,
                                       .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Tonal,
                                       .onClick = [this, copy, id = action.id] { m_client.action(copy, id); }}));
+        if (call && m_textTo) {
+          actions->addChild(ui::button({.text = std::string("Text"), .glyph = std::string("message"),
+                                        .glyphSize = Tokens::sizeSymbolInline * s, .variant = ButtonVariant::Ghost,
+                                        .onClick = [this, number = action.id] { m_textTo(number); }}));
+        }
       }
     }
     if (!actions->children().empty()) body->addChild(std::move(actions));
@@ -548,14 +553,11 @@ namespace linkapp {
     m_window = &window;
     if (m_client == nullptr && bus() != nullptr) {
       m_client = std::make_unique<LinkClient>(*bus());
-      m_feed = std::make_unique<FeedAdapter>(*m_client, m_scale);
-      m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, [this](std::uint64_t id) {
-        if (m_thread == id) return;
-        m_thread = id;
-        m_conversationScroll = {};
-        sync();
-        m_window->requestRebuild();
+      m_feed = std::make_unique<FeedAdapter>(*m_client, m_scale, [this](const std::string& number) {
+        openCompose(number);
+        show(Page::Messages);
       });
+      m_threads = std::make_unique<ThreadAdapter>(*m_client, m_scale, m_thread, [this](std::uint64_t id) { openThread(id); });
       m_conversation = std::make_unique<ConversationAdapter>(*m_client, m_scale);
       m_calls = std::make_unique<CallAdapter>(*m_client, m_scale);
       m_photos = std::make_unique<PhotoAdapter>(*m_client, m_scale);
@@ -572,10 +574,10 @@ namespace linkapp {
         updateCaption();
         m_window->requestRebuild();
       });
-    }
       // The snapshot feed is there before Link1 answers.
       sync();
       updateCaption();
+    }
     window.setSidebarBuilder([this](Renderer&, float width, float) { return sidebar(width); });
     window.setContentBuilder([this](Renderer& renderer, float width, float height) { return content(renderer, width, height); });
     // The header's one Ghost action: "Clear all" on Waiting, "Clear finished" on Activity.
@@ -612,12 +614,33 @@ namespace linkapp {
       });
       if (it != kPages.end()) {
         activate(activationToken);
-        if (m_window != nullptr) show(it->page);
         if (parameter.size() == 2) choosePhone(parameter[1]);
+        if (m_window != nullptr) show(it->page);
         return;
       }
     }
     DeskApp::action(name, parameter, activationToken);
+  }
+
+  void LinkApp::openThread(std::optional<std::uint64_t> id) {
+    if (m_thread == id && !m_compose) return;
+    m_compose.reset();
+    m_thread = id;
+    m_conversationScroll = {};
+    sync();
+    m_window->requestRebuild();
+  }
+
+  void LinkApp::openCompose(const std::string& to) {
+    const std::string number = to.empty() ? std::string() : m_client->messages().numberFor(to);
+    if (const auto thread = number.empty() ? std::nullopt : m_client->messages().threadFor(number)) {
+      openThread(thread);
+      return;
+    }
+    m_thread.reset();
+    m_compose = Compose{.to = to};
+    sync();
+    m_window->requestRebuild();
   }
 
   void LinkApp::chooseAndSend(const std::string& deviceId) {
@@ -630,7 +653,6 @@ namespace linkapp {
     });
   }
 
-  void LinkApp::show(Page page) {
   void LinkApp::choosePhone(const std::string& deviceId) {
     if (!m_client || m_client->presence().phone.id == deviceId) return;
     if (m_page == Page::Mirror) m_client->stopMirror();
@@ -644,6 +666,7 @@ namespace linkapp {
     m_window->requestRebuild();
   }
 
+  void LinkApp::show(Page page) {
     if (m_page == page) return;
     if (m_client && m_page == Page::Mirror) m_client->stopMirror();
     m_page = page;
@@ -666,7 +689,14 @@ namespace linkapp {
     if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
     const bool cards = (m_page == Page::Messages || m_page == Page::Files || m_page == Page::Mirror) && live;
     const Messages& messages = m_client->messages();
-    if (cards && (!m_thread || messages.thread(*m_thread) == nullptr)) {
+    if (m_compose && !m_compose->sent.empty()) {
+      if (const auto thread = messages.threadFor(m_compose->sent)) {
+        m_compose.reset();
+        m_thread = thread;
+        m_conversationScroll = {};
+      }
+    }
+    if (cards && !m_compose && (!m_thread || messages.thread(*m_thread) == nullptr)) {
       m_thread = messages.threads().empty() ? std::nullopt : std::optional(messages.threads().front().id);
       m_conversationScroll = {};
     }
@@ -794,6 +824,29 @@ namespace linkapp {
     auto label = text(name, Tokens::typeHeadline, ColorRole::Label1, s);
     label->setFlexGrow(1.0F);
     head->addChild(std::move(label));
+    if (m_client && m_client->phones().size() > 1) {
+      Button* choose = nullptr;
+      head->addChild(ui::button({.out = &choose, .glyph = std::string("selector"), .glyphSize = Tokens::sizeSymbol * s,
+                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Choose phone"),
+                                 .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
+                                 .height = Tokens::sizeControlS * s}));
+      choose->setOnClick([this, choose] {
+        std::vector<ContextMenuControlEntry> entries;
+        const std::vector<Phone>& phones = m_client->phones();
+        const std::string shown = m_client->presence().phone.id;
+        for (std::size_t i = 0; i < phones.size(); ++i) {
+          entries.push_back({.id = static_cast<std::int32_t>(i), .label = phones[i].name, .radio = true,
+                             .toggleState = phones[i].id == shown ? 1 : 0});
+        }
+        float x = 0.0F;
+        float y = 0.0F;
+        Node::absolutePosition(choose, x, y);
+        m_window->openContextMenu(std::move(entries), x, y + choose->height(), [this](std::int32_t i) {
+          const std::vector<Phone>& now = m_client->phones();
+          if (i >= 0 && static_cast<std::size_t>(i) < now.size()) choosePhone(now[static_cast<std::size_t>(i)].id);
+        });
+      });
+    }
     card->addChild(std::move(head));
     if (!line.empty()) {
       const bool live = presence.kind == Presence::Kind::Connected || presence.kind == Presence::Kind::Locked;
@@ -831,29 +884,6 @@ namespace linkapp {
       keys->addChild(round("circle-minus", "Do not disturb", dnd, [this, id, dnd] { m_client->setDnd(id, !dnd); }));
       keys->addChild(round("arrow-up", "Send files", false, [this, id] { chooseAndSend(id); }));
       card->addChild(std::move(keys));
-    if (m_client && m_client->phones().size() > 1) {
-      Button* choose = nullptr;
-      head->addChild(ui::button({.out = &choose, .glyph = std::string("selector"), .glyphSize = Tokens::sizeSymbol * s,
-                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Choose phone"),
-                                 .radius = Tokens::sizeControlS * s / 2.0F, .width = Tokens::sizeControlS * s,
-                                 .height = Tokens::sizeControlS * s}));
-      choose->setOnClick([this, choose] {
-        std::vector<ContextMenuControlEntry> entries;
-        const std::vector<Phone>& phones = m_client->phones();
-        const std::string shown = m_client->presence().phone.id;
-        for (std::size_t i = 0; i < phones.size(); ++i) {
-          entries.push_back({.id = static_cast<std::int32_t>(i), .label = phones[i].name, .radio = true,
-                             .toggleState = phones[i].id == shown ? 1 : 0});
-        }
-        float x = 0.0F;
-        float y = 0.0F;
-        Node::absolutePosition(choose, x, y);
-        m_window->openContextMenu(std::move(entries), x, y + choose->height(), [this](std::int32_t i) {
-          const std::vector<Phone>& now = m_client->phones();
-          if (i >= 0 && static_cast<std::size_t>(i) < now.size()) choosePhone(now[static_cast<std::size_t>(i)].id);
-        });
-      });
-    }
     }
     side->addChild(std::move(card));
     return side;
@@ -1017,6 +1047,8 @@ namespace linkapp {
     std::vector<std::unique_ptr<Node>> listCaption;
     listCaption.push_back(text("Messages", Tokens::typeHeadline, ColorRole::Label1, s));
     listCaption.back()->setFlexGrow(1.0F);
+    listCaption.push_back(ui::button({.glyph = std::string("plus"), .glyphSize = Tokens::sizeSymbol * s, .variant = ButtonVariant::Ghost,
+                                      .tooltip = std::string("New message"), .onClick = [this] { openCompose({}); }}));
     std::unique_ptr<Node> list;
     if (messages.load() == Messages::Load::Loading) {
       list = ui::spacer();
@@ -1034,10 +1066,13 @@ namespace linkapp {
     const float convWidth = std::max(0.0F, width - listWidth - Tokens::componentWindowCardGap * s);
     const Thread* thread = m_thread ? messages.thread(*m_thread) : nullptr;
     std::vector<std::unique_ptr<Node>> head;
-    head.push_back(text(thread ? thread->name : std::string(), Tokens::typeHeadline, ColorRole::Label1, s));
+    head.push_back(text(thread ? thread->name : m_compose ? std::string("New Message") : std::string(), Tokens::typeHeadline,
+                        ColorRole::Label1, s));
     head.back()->setFlexGrow(1.0F);
     std::unique_ptr<Node> body;
-    if (thread == nullptr) {
+    if (m_compose) {
+      body = compose(s);
+    } else if (thread == nullptr) {
       body = emptyState("message", "No conversation", "Pick a thread to read it.", s);
     } else {
       const std::string number = thread->address;
@@ -1067,6 +1102,59 @@ namespace linkapp {
     body->setFlexGrow(1.0F);
     cards->addChild(card(std::move(head), std::move(body), convWidth, true));
     return cards;
+  }
+
+  // New message: a "To" field with contact matches under it, the text capsule at the bottom.
+  std::unique_ptr<Node> LinkApp::compose(float s) {
+    const Messages& messages = m_client->messages();
+    auto column = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
+    auto to = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingV = Tokens::spaceP8 * s,
+                       .paddingH = Tokens::spaceP16 * s});
+    to->addChild(text("To", Tokens::typeBody, ColorRole::Label2, s));
+    to->addChild(ui::input({.value = m_compose->to, .placeholder = std::string("Name or number"), .fontSize = Tokens::typeBody.size * s,
+                            .frameVisible = false, .flexGrow = 1.0F,
+                            .onChange = [this](const std::string& value) {
+                              m_compose->to = value;
+                              m_compose->sent.clear();
+                              m_window->requestRebuild();
+                            },
+                            .configure = [](Input& input) {
+                              if (input.inputArea() != nullptr) input.inputArea()->setTabFocusKey("link-compose-to");
+                            }}));
+    column->addChild(std::move(to));
+    column->addChild(ui::separator({}));
+    auto list = ui::column({.align = FlexAlign::Stretch, .padding = Tokens::spaceP4 * s, .flexGrow = 1.0F});
+    constexpr std::size_t kMatches = 6;
+    for (const Contact& contact : messages.matches(m_compose->to, kMatches)) {
+      const std::string number = contact.numbers.front();
+      auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingH = Tokens::spaceP12 * s,
+                          .height = Tokens::sizeControlL * s});
+      row->addChild(initialsAvatar(contact.name, s));
+      auto name = text(contact.name, Tokens::typeBody, ColorRole::Label1, s);
+      name->setFlexGrow(1.0F);
+      row->addChild(std::move(name));
+      row->addChild(text(number, Tokens::typeFootnote, ColorRole::Label2, s));
+      auto pick = ui::inputArea({.onClick = [this, number](const InputArea::PointerData&) { openCompose(number); }});
+      pick->addChild(std::move(row));
+      list->addChild(std::move(pick));
+    }
+    if (!m_compose->sent.empty()) {
+      list->addChild(ui::row({.paddingV = Tokens::spaceP8 * s, .paddingH = Tokens::spaceP12 * s},
+                             text(std::format("Sent to {}", m_compose->sent), Tokens::typeFootnote, ColorRole::Label2, s)));
+    }
+    column->addChild(std::move(list));
+    const auto send = [this] {
+      const std::string number = m_client->messages().numberFor(m_compose->to);
+      if (number.empty() || m_compose->body.empty()) return;
+      m_client->sendTo(number, std::exchange(m_compose->body, {}));
+      m_compose->sent = number;
+      m_window->requestRebuild();
+    };
+    auto reply = ui::row({.align = FlexAlign::Center, .padding = Tokens::spaceP8 * s});
+    reply->addChild(replyCapsule(m_compose->body, "Text message", Tokens::sizeControlL * s, s,
+                                 [this](const std::string& value) { m_compose->body = value; }, send));
+    column->addChild(std::move(reply));
+    return column;
   }
 
   std::uint64_t FileAdapter::itemKey(std::size_t index) const {
@@ -1156,7 +1244,11 @@ namespace linkapp {
       if (i + 1 == names.size()) {
         crumbs->addChild(text(names[i], Tokens::typeHeadline, ColorRole::Label1, s));
       } else {
+        const Button::ButtonStateColors rest{.bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label2)};
+        const Button::ButtonStateColors hot{.bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label1)};
         auto crumb = ui::button({.text = names[i], .fontSize = Tokens::typeHeadline.size * s, .variant = ButtonVariant::Ghost,
+                                 .customPalette = Button::ButtonPalette{.normal = rest, .hover = hot, .pressed = hot, .disabled = rest},
+                                 .paddingV = 0.0F, .paddingH = 0.0F,
                                  .onClick = [this, i] { m_client->openFolder(m_client->files().crumbPath(i)); }});
         crumbs->addChild(std::move(crumb));
       }
@@ -1193,11 +1285,7 @@ namespace linkapp {
         head->addChild(std::move(box));
       }
       page->addChild(std::move(head));
-        const Button::ButtonStateColors rest{.bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label2)};
-        const Button::ButtonStateColors hot{.bg = clearColorSpec(), .border = clearColorSpec(), .label = colorSpecFromRole(ColorRole::Label1)};
       page->addChild(ui::separator({.color = colorSpecFromRole(ColorRole::Separator), .thickness = s}));
-                                 .customPalette = Button::ButtonPalette{.normal = rest, .hover = hot, .pressed = hot, .disabled = rest},
-                                 .paddingV = 0.0F, .paddingH = 0.0F,
       if (!files.entries().empty()) {
         page->addChild(ui::virtualListView({.state = &m_fileScroll, .contentScale = s, .adapter = m_files.get(), .flexGrow = 1.0F}));
       }

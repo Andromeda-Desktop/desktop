@@ -364,6 +364,27 @@ namespace linkapp {
     return {};
   }
 
+  std::vector<Contact> Messages::matches(const std::string& query, std::size_t limit) const {
+    const auto lower = [](std::string text) {
+      for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      return text;
+    };
+    const std::string want = lower(query);
+    std::vector<Contact> found;
+    if (want.empty()) return found;
+    for (const Contact& contact : m_contacts) {
+      if (found.size() == limit) break;
+      if (!contact.numbers.empty() && lower(contact.name).starts_with(want)) found.push_back(contact);
+    }
+    return found;
+  }
+
+  std::optional<std::uint64_t> Messages::threadFor(const std::string& address) const {
+    const std::string key = numberKey(address);
+    const auto it = std::ranges::find_if(m_threads, [&](const Thread& t) { return numberKey(t.address) == key; });
+    return it == m_threads.end() ? std::nullopt : std::optional(it->id);
+  }
+
   int Messages::unread() const {
     int n = 0;
     for (const Thread& t : m_threads) n += t.unread;

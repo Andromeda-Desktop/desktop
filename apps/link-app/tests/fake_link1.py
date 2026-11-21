@@ -188,15 +188,15 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
     invocation.return_value(None)
 
 
-def get(_conn, _sender, _path, _iface, name):
-    if name in props:
 slow = [float(os.environ.get("SLOW", "0"))]  # seconds the first property read waits: a slow daemon start
 
 
-        return props[name]
+def get(_conn, _sender, _path, _iface, name):
     if slow[0] > 0:
         time.sleep(slow[0])
         slow[0] = 0
+    if name in props:
+        return props[name]
     sig = iface.lookup_property(name).signature
     empty = {"b": False, "s": ""}
     return GLib.Variant(sig, {} if sig.startswith("a{") else [] if sig[0] == "a" else empty.get(sig, 0))

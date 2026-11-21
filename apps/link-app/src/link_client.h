@@ -109,6 +109,8 @@ namespace linkapp {
     void setDnd(const std::string& deviceId, bool on);
     // Sends text to the phone's clipboard; a lone http(s) URL goes as a link.
     void shareText(const std::string& deviceId, const std::string& text);
+    // Texts any number from the phone presence() shows; its thread shows once the phone lists the text.
+    void sendTo(const std::string& number, const std::string& body);
     void sendFiles(const std::string& deviceId, const std::vector<std::filesystem::path>& paths);
 
   private:
@@ -122,19 +124,19 @@ namespace linkapp {
     SessionBus& m_bus;
     std::unique_ptr<sdbus::IProxy> m_proxy;
     std::unique_ptr<sdbus::IProxy> m_fileManager;
+    std::unique_ptr<sdbus::IProxy> m_busWatch;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
-    std::unique_ptr<sdbus::IProxy> m_busWatch;
     std::uint64_t m_applied = 0; // serial of the newest refresh applied
     bool m_daemon = false;
     bool m_pairing = false; // Link1 Pairing: a window is open, ours or another client's
     Pair m_pair;
     std::vector<Phone> m_phones;
+    std::string m_selected;
     Feed m_feed;
     Messages m_messages;
     Activity m_activity;
-    std::string m_selected;
     Photos m_photos;
     Files m_files;
     Mirror m_mirror;
