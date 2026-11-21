@@ -397,6 +397,7 @@ Node* Flex::insertChildAt(std::size_t index, std::unique_ptr<Node> child) {
 }
 
 std::unique_ptr<Node> Flex::removeChild(Node* child) {
+  if (child == m_cover) m_cover = nullptr;
   m_gapExcludedChildren.erase(child);
   if (child == m_background) {
     m_background = nullptr;
