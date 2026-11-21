@@ -145,6 +145,7 @@ def main():
     shutil.copytree(os.environ.get("STB_INCLUDE", "/usr/include/stb"), os.path.join(PREFIX, "include", "stb"), dirs_exist_ok=True)
     angle(pc_dir)
 
+    # The SDK may be newer than the target (xtool ships 27): a call into a newer API must fail the build.
     flags = f"['-target', '{TARGET}', '-isysroot', '{SDK}']"
     with open(os.path.join(os.path.dirname(PREFIX), "cross.ini"), "w") as f:
         f.write(f"""[binaries]
@@ -157,10 +158,10 @@ strip = 'llvm-strip'
 pkg-config = 'pkg-config'
 
 [built-in options]
-c_args = ['-isystem', '{PREFIX}/include']
-cpp_args = ['-isystem', '{PREFIX}/include']
-objc_args = ['-isystem', '{PREFIX}/include']
-objcpp_args = ['-isystem', '{PREFIX}/include']
+c_args = ['-isystem', '{PREFIX}/include', '-Werror=unguarded-availability-new']
+cpp_args = ['-isystem', '{PREFIX}/include', '-Werror=unguarded-availability-new']
+objc_args = ['-isystem', '{PREFIX}/include', '-Werror=unguarded-availability-new']
+objcpp_args = ['-isystem', '{PREFIX}/include', '-Werror=unguarded-availability-new']
 c_link_args = ['-fuse-ld=lld', '-L{PREFIX}/lib']
 cpp_link_args = ['-fuse-ld=lld', '-L{PREFIX}/lib']
 objc_link_args = ['-fuse-ld=lld', '-L{PREFIX}/lib']

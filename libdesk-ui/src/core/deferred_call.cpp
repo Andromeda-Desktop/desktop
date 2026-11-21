@@ -1,4 +1,5 @@
 #include "core/deferred_call.h"
+#include "core/sys/sys.h"
 
 #include <array>
 #include <cerrno>
@@ -27,8 +28,11 @@ namespace {
     }
 
     int pipeFds[2] = {-1, -1};
-    if (::pipe2(pipeFds, O_CLOEXEC | O_NONBLOCK) != 0) {
+    if (!sys::pipeCloexec(pipeFds)) {
       return false;
+    }
+    for (const int fd : pipeFds) {
+      ::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL) | O_NONBLOCK);
     }
     fds = {pipeFds[0], pipeFds[1]};
     return true;
