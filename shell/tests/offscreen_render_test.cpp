@@ -2,6 +2,7 @@
 #include "render/gl_shared_context.h"
 #include "render/render_context.h"
 #include "render/render_target.h"
+#include "render/scene/image_node.h"
 #include "render/scene/node.h"
 #include "render/scene/rect_node.h"
 #include "tests/test_check.h"
@@ -39,8 +40,36 @@ int main() {
   // The rect fills the top half: rows come top-down.
   TEST_CHECK(at(4, 2)[0] == 255 && at(4, 2)[1] == 0 && at(4, 2)[3] == 255);
   TEST_CHECK(at(4, 12)[3] == 0);
-
   target.destroy();
+
+  // An image at a fractional origin draws on whole buffer pixels: no edge pixel is partly covered.
+  constexpr std::uint32_t kScaledSize = 20;
+  constexpr int kImageSide = 10;
+  RenderTarget scaled;
+  scaled.createOffscreen(context);
+  scaled.setContentScale(1.25F);
+  scaled.setLogicalSize(16, 16);
+  scaled.resize(kScaledSize, kScaledSize);
+  const std::vector<std::uint8_t> white(static_cast<std::size_t>(kImageSide * kImageSide * 4), 255);
+  const TextureHandle texture = context.textureManager().loadFromRgba(white.data(), kImageSide, kImageSide);
+  TEST_CHECK(texture.id != 0);
+  Node scaledRoot;
+  scaledRoot.setSize(16, 16);
+  auto image = std::make_unique<ImageNode>();
+  image->setPosition(3.3F, 3.3F);
+  image->setFrameSize(8.0F, 8.0F);
+  image->setTextureSize(kImageSide, kImageSide);
+  image->setTextureId(texture.id);
+  scaledRoot.addChild(std::move(image));
+  std::vector<std::uint8_t> scaledPixels(kScaledSize * kScaledSize * 4);
+  TEST_CHECK(context.renderScene(scaled, &scaledRoot));
+  TEST_CHECK(context.readPixels(scaled, scaledPixels));
+  int partial = 0;
+  for (std::size_t i = 3; i < scaledPixels.size(); i += 4) {
+    partial += scaledPixels[i] != 0 && scaledPixels[i] != 255 ? 1 : 0;
+  }
+  TEST_CHECK(partial == 0);
+  scaled.destroy();
   context.cleanup();
   shared.cleanup();
   return 0;

@@ -105,6 +105,11 @@ private:
   void rebakeColorizedTexture();
   void reloadColorizedSource();
   void reloadUncolorizedSource();
+  // Images draw on whole buffer pixels. Decodes target the frame's buffer-pixel size, fitted to the source aspect
+  // once known, so texels map 1:1; a request well above that is kept as oversampling.
+  [[nodiscard]] int textureTargetSize(
+      const Renderer& renderer, int requestedTargetSize, const std::string& path, bool centerSquareCrop
+  ) const;
   bool setSourceFileImpl(
       Renderer& renderer, const std::string& path, int targetSize, bool mipmap, bool centerSquareCrop, int blurRadius
   );
@@ -137,6 +142,8 @@ private:
   std::string m_asyncSourcePath;
   int m_asyncRequestedTargetSize = 0;
   int m_asyncTargetSize = 0;
+  // A cache entry still on screen while a resized decode is pending; released once the new texture shows.
+  int m_asyncRetiringTargetSize = 0;
   bool m_asyncMipmap = false;
   AsyncTextureCache::DecodeOptions m_asyncOptions;
   AsyncReadyCallback m_asyncReadyCallback;

@@ -48,6 +48,16 @@ namespace {
   constexpr float kSlowRenderOperationDebugMs = 50.0F;
   constexpr float kSlowRenderOperationWarnMs = 1000.0F;
   constexpr float kPaintCullSlack = 16.0F;
+  constexpr float kAxisAlignedEpsilon = 0.0001F;
+
+  bool isAxisAligned(const Mat3& transform) {
+    return std::abs(transform.m[1]) <= kAxisAlignedEpsilon && std::abs(transform.m[3]) <= kAxisAlignedEpsilon;
+  }
+
+  float snapToBufferPixel(float value, float scale) {
+    const float safeScale = std::max(1.0F, scale);
+    return std::round(value * safeScale) / safeScale;
+  }
   // A node's sub-rect damage already holds its content overhang; one pixel covers edge antialiasing.
   constexpr float kPartialDamageSlack = 1.0F;
   constexpr auto kGpuCacheIdleExpiry = std::chrono::seconds(15);
@@ -1024,6 +1034,12 @@ void RenderContext::drawNodeSelf(
   case NodeType::Image: {
     const auto* img = static_cast<const ImageNode*>(node);
     if (img->textureId() != 0) {
+      // Rotated or skewed transforms keep their fractional origin; snapping them jumps whole pixels per frame.
+      Mat3 imageTransform = worldTransform;
+      if (isAxisAligned(imageTransform)) {
+        imageTransform.m[6] = snapToBufferPixel(imageTransform.m[6], renderScale);
+        imageTransform.m[7] = snapToBufferPixel(imageTransform.m[7], renderScale);
+      }
       m_backend->drawImage(
           RenderImageDraw{
               .texture = img->textureId(),
@@ -1041,7 +1057,7 @@ void RenderContext::drawNodeSelf(
               .fitMode = static_cast<RenderImageFitMode>(img->fitMode()),
               .textureWidth = static_cast<float>(img->textureWidth()),
               .textureHeight = static_cast<float>(img->textureHeight()),
-              .transform = worldTransform,
+              .transform = imageTransform,
               .scrim = img->scrim(),
               .uvRect = img->uvRect(),
           }

@@ -322,7 +322,8 @@ void PowerMenuPage::syncWho(Renderer& renderer) {
     if (path != m_avatarPath && !path.empty()) {
       m_avatarPath = path;
       (void)m_avatar->setSourceFileAsync(renderer, *m_services.asyncTextures, path,
-                                         static_cast<int>(std::round(m_avatar->width())), false);
+                                         static_cast<int>(std::round(m_avatar->width())), false,
+                                         {.centerSquareCrop = true});
     }
   }
 }
