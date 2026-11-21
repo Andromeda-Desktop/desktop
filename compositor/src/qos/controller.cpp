@@ -429,6 +429,7 @@ namespace andromeda::qos {
       inputs.freezeHidden = snapshot.freezeHiddenApps && registry().freezeHidden;
       inputs.rule = scope.rule;
       inputs.background = app.windows == 0 && snapshot.freezeBackgroundApps;
+      inputs.busService = registry().busNames.contains(scope.appId);
       const bool exempt = qos::exempt(inputs);
       const Power power{.profile = m_battery ? m_battery->profile() : Profile::Balanced, .onBattery = onBattery()};
       // Optimize off: a Normal app keeps the visible tier; its own rule and system-health holds still apply.

@@ -31,6 +31,7 @@ namespace andromeda::qos {
     bool userWork = false; // holds a sleep inhibitor: a copy, an export or a download the user started
     bool background = false; // an app unit with no mapped window, with general.freeze_background_apps on
     bool trayItem = false; // owns a tray item: the user reaches it there, so it never freezes
+    bool busService = false; // owns its app id on the session bus: a frozen owner would hang every caller, launch too
     bool thawIntent = false; // the user starts to reach the app (switcher, dock hover, workspace swipe)
     bool freezeHidden = false; // power saver on battery with general.freeze_hidden_apps: T3 freezes every app
     Rule rule = Rule::Normal;

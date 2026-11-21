@@ -51,6 +51,7 @@ namespace andromeda {
     static int onSetFreezeHidden(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onRelease(sd_bus_message* message, void* data, sd_bus_error* error);
     static int onList(sd_bus_message* message, void* data, sd_bus_error* error);
+    static int onNames(sd_bus_message* reply, void* data, sd_bus_error* error);
     static int onOwnerChanged(sd_bus_message* message, void* data, sd_bus_error* error);
     static int getPresenting(sd_bus* bus, const char* path, const char* interface, const char* property,
                              sd_bus_message* reply, void* data, sd_bus_error* error);

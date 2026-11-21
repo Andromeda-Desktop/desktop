@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -79,6 +80,7 @@ namespace andromeda::qos {
     // general.freeze_hidden_apps setting is on. Ends when `freezeHiddenOwner` leaves the bus.
     bool freezeHidden = false;
     std::string freezeHiddenOwner;
+    std::set<std::string, std::less<>> busNames; // well-known session bus names that have an owner
     std::function<void()> changed;
   };
   Registry& registry();

@@ -42,7 +42,7 @@ namespace {
     if (!longComes || elapsed < *delay + kHiddenLongDelayMs) {
       return {.tier = Tier::Hidden};
     }
-    const bool freezes = ruled || in.freezeHidden || (in.background && !in.trayItem);
+    const bool freezes = ruled || in.freezeHidden || (in.background && !in.trayItem && !in.busService);
     return {.tier = Tier::HiddenLong, .frozen = freezes && !in.thawIntent};
   }
 
@@ -59,14 +59,14 @@ namespace {
       std::uint64_t{24} * 60 * 60 * 1000,
   };
 
-  // Every combination of the inputs: 15 flags/choices, about 100k states over 6 power states.
+  // Every combination of the inputs: 16 flags/choices, about 200k states over 6 power states.
   template <typename F> void forEachInputs(F&& f) {
-    for (unsigned bits = 0; bits < (1U << 11); ++bits) {
+    for (unsigned bits = 0; bits < (1U << 12); ++bits) {
       for (const Rule rule : {Rule::Normal, Rule::NeverThrottle, Rule::FreezeWhenHidden}) {
         const auto bit = [bits](unsigned i) { return (bits >> i & 1U) != 0; };
         f(AppInputs{
             .focused = bit(0), .visible = bit(1), .audio = bit(2), .call = bit(3), .idleInhibitor = bit(4),
-            .screenCast = bit(5), .userWork = bit(6), .background = bit(7), .trayItem = bit(8), .thawIntent = bit(9),
+            .screenCast = bit(5), .userWork = bit(6), .background = bit(7), .trayItem = bit(8), .busService = bit(11), .thawIntent = bit(9),
             .freezeHidden = bit(10), .rule = rule,
         });
       }

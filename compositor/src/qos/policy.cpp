@@ -29,7 +29,7 @@ namespace andromeda::qos {
     if (!longComes || nowMs < longAt) {
       return {.tier = Tier::Hidden, .recheckAtMs = longComes ? std::optional(longAt) : std::nullopt};
     }
-    const bool freezes = ruled || inputs.freezeHidden || (inputs.background && !inputs.trayItem);
+    const bool freezes = ruled || inputs.freezeHidden || (inputs.background && !inputs.trayItem && !inputs.busService);
     return {.tier = Tier::HiddenLong, .frozen = freezes && !inputs.thawIntent};
   }
 

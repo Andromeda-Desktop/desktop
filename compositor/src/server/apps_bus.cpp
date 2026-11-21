@@ -150,6 +150,8 @@ namespace andromeda {
         || sd_bus_match_signal_async(m_bus, &m_ownerMatch, "org.freedesktop.DBus", "/org/freedesktop/DBus",
                                      "org.freedesktop.DBus", "NameOwnerChanged", onOwnerChanged, nullptr, this)
             < 0
+        || sd_bus_call_method_async(m_bus, nullptr, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                    "org.freedesktop.DBus", "ListNames", onNames, this, "") < 0
         || sd_bus_request_name_async(m_bus, nullptr, busName(), 0, named, nullptr) < 0) {
       kLog.warn("Compositor1.Apps: could not set up the bus object");
       disconnect();
@@ -496,6 +498,20 @@ namespace andromeda {
     return r;
   }
 
+  int AppsBus::onNames(sd_bus_message* reply, void* data, sd_bus_error* /*error*/) {
+    if (sd_bus_message_is_method_error(reply, nullptr) != 0 || sd_bus_message_enter_container(reply, 'a', "s") < 0) {
+      return 0;
+    }
+    const char* name = nullptr;
+    while (sd_bus_message_read(reply, "s", &name) > 0) {
+      if (name[0] != ':') {
+        qos::registry().busNames.emplace(name);
+      }
+    }
+    static_cast<AppsBus*>(data)->changed();
+    return 0;
+  }
+
   int AppsBus::onOwnerChanged(sd_bus_message* message, void* data, sd_bus_error* /*error*/) {
     auto* self = static_cast<AppsBus*>(data);
     const char* name = nullptr;
@@ -503,6 +519,14 @@ namespace andromeda {
     const char* newOwner = nullptr;
     if (sd_bus_message_read(message, "sss", &name, &oldOwner, &newOwner) < 0) {
       return 0;
+    }
+    if (name[0] != ':') {
+      if (newOwner[0] == '\0') {
+        qos::registry().busNames.erase(name);
+      } else {
+        qos::registry().busNames.emplace(name);
+      }
+      self->changed();
     }
     if (name[0] == ':' && newOwner[0] == '\0' && qos::registry().holds.releaseOwner(name)) {
       self->changed();
