@@ -56,6 +56,9 @@ namespace sys {
   // CLOCK_MONOTONIC on macOS keeps counting during sleep, like CLOCK_BOOTTIME.
   double bootTimeMs() { return static_cast<double>(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1.0e6; }
 
+  void takeServiceNotifySocket() {}
+  void notifyServiceReady() {}
+
   double processStartBootMs() {
     kinfo_proc info{};
     std::size_t size = sizeof(info);

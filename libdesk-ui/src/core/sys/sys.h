@@ -27,6 +27,11 @@ namespace sys {
   // When this process started, on the bootTimeMs() clock.
   [[nodiscard]] double processStartBootMs();
 
+  // Takes NOTIFY_SOCKET out of the environment, so started children do not inherit it. Call before any fork.
+  void takeServiceNotifySocket();
+  // Sends READY=1 to the socket takeServiceNotifySocket() took, once; later calls and no socket do nothing.
+  void notifyServiceReady();
+
   // The crash reporter: Linux writes its own report (protocols/crash_capture.h); macOS leaves it to ReportCrash.
   void installCrashThreadStack();
   void recordCrashBreadcrumb(char level, const char* section, std::string_view message) noexcept;

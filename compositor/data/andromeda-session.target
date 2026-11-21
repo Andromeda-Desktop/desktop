@@ -4,4 +4,6 @@ Documentation=man:systemd.special(7)
 BindsTo=graphical-session.target
 Wants=graphical-session.target xdg-desktop-autostart.target
 After=graphical-session-pre.target
-Before=xdg-desktop-autostart.target
+# The session services and autostart compete for CPU with the shell's first frame, so they start after it.
+After=andromeda-shell.service
+Before=xdg-desktop-autostart.target graphical-session.target

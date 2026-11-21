@@ -1,3 +1,4 @@
+#include "core/sys/sys.h"
 #include "application.h"
 #include "protocols/crash_capture.h"
 #include "shell/lockscreen/lock_client.h"
@@ -441,6 +442,8 @@ void Application::run(const std::function<void()>& startupReadyCallback) {
     startupReadyCallback();
   }
   m_handoffTimer.start(std::chrono::milliseconds(0), [this] { restoreShellHandoff(); });
+  // The first frame reports READY (startup_metrics); this covers a shell with no output to draw on.
+  m_serviceReadyFallbackTimer.start(std::chrono::seconds(3), [] { sys::notifyServiceReady(); });
   m_mainLoop->run();
   if (s_displayLost) {
     writeShellHandoff();

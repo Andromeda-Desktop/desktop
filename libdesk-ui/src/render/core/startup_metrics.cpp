@@ -42,6 +42,7 @@ namespace startup_metrics {
       return false;
     }
     g_firstFrameLogged = true;
+    sys::notifyServiceReady();
     kLog.info(
         "first frame at {:.0f} ms after process start; EGL init {:.1f} ms; {} GL programs built in {:.1f} ms",
         sinceProcessStart(), g_eglInitMs, g_programCount, g_programMs

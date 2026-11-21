@@ -1,3 +1,4 @@
+#include "core/sys/sys.h"
 #include "app/application.h"
 #include "app/single_instance_lock.h"
 #include "auth/pam_authenticator.h"
@@ -295,6 +296,7 @@ namespace {
 
 // The shell behind the `noctalia` launcher (src/main.cpp), which has already set the allocator and the locale.
 extern "C" __attribute__((visibility("default"))) int noctalia_shell_main_v1(int argc, char* argv[]) {
+  sys::takeServiceNotifySocket();
   // Undo the launcher's jemalloc preload in the environment: apps the shell starts must not inherit it. The check on
   // LD_PRELOAD itself keeps a stale inherited ANDROMEDA_JEMALLOC from deleting the user's own preload.
 #ifdef NOCTALIA_JEMALLOC_PATH

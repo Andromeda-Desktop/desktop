@@ -572,6 +572,7 @@ private:
   FocusFilterConfig m_appliedFocusFilter;
   Timer m_speakerOfferTimer;
   Timer m_handoffTimer;
+  Timer m_serviceReadyFallbackTimer;
   Timer m_polkitIdleCloseTimer;
   GreeterSync m_greeterSync{
       m_configService, m_themeService, m_compositorPlatform,

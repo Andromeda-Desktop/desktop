@@ -4,6 +4,9 @@ PartOf=andromeda-session.target
 After=andromeda.socket
 
 [Service]
+# READY=1 at the first frame (3 s fallback): andromeda-session.target and its services wait for it.
+Type=notify
+NotifyAccess=main
 Slice=session.slice
 ExecStart=/usr/bin/andromeda-shell
 # The shell's working set (RSS about 220 MB) stays in RAM under build load; see session/memory.

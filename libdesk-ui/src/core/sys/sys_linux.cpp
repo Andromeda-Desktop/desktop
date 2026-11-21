@@ -23,6 +23,10 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
+#include <cstddef>
+#include <string_view>
+#include <utility>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <vector>
@@ -47,6 +51,42 @@ namespace sys {
   }
 
   // Field 22 of /proc/self/stat: start time in clock ticks after boot.
+  namespace {
+    std::string g_notifySocket;
+  } // namespace
+
+  void takeServiceNotifySocket() {
+    if (const char* socket = std::getenv("NOTIFY_SOCKET"); socket != nullptr) {
+      g_notifySocket = socket;
+      ::unsetenv("NOTIFY_SOCKET");
+    }
+  }
+
+  void notifyServiceReady() {
+    const std::string socketPath = std::exchange(g_notifySocket, {});
+    sockaddr_un address{};
+    address.sun_family = AF_UNIX;
+    if (socketPath.empty() || socketPath.size() >= sizeof(address.sun_path)
+        || (socketPath.front() != '/' && socketPath.front() != '@')) {
+      return;
+    }
+    std::memcpy(address.sun_path, socketPath.data(), socketPath.size());
+    const bool abstract = socketPath.front() == '@';
+    if (abstract) {
+      address.sun_path[0] = '\0';
+    }
+    const auto length = static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + socketPath.size() + !abstract);
+    const int fd = ::socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+      return;
+    }
+    constexpr std::string_view kReady = "READY=1";
+    while (::sendto(fd, kReady.data(), kReady.size(), MSG_NOSIGNAL, reinterpret_cast<sockaddr*>(&address), length) < 0
+           && errno == EINTR) {
+    }
+    ::close(fd);
+  }
+
   double processStartBootMs() {
     std::ifstream stat("/proc/self/stat");
     std::string line;
