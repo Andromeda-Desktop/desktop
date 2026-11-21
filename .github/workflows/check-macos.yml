@@ -77,6 +77,10 @@ jobs:
         run: |
           zip="/var/tmp/Andromeda-Terminal-${{ inputs.version }}-macos-arm64.zip"
           cp /var/tmp/andromeda-macos/smoke/Andromeda-Terminal.zip "$zip"
-          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false \
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --latest=false --generate-notes \
+            --notes "$(tools/release-notes.sh terminal "${{ inputs.version }}")" \
             || gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null
           gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber "$zip"
+          # The Latest release (repo) serves a fixed link to the newest Mac build: releases/latest/download/<name>.
+          cp "$zip" /var/tmp/Andromeda-Terminal-macos-arm64.zip
+          gh release upload repo -R "$GITHUB_REPOSITORY" --clobber /var/tmp/Andromeda-Terminal-macos-arm64.zip

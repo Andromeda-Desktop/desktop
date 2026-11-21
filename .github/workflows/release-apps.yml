@@ -91,7 +91,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes --latest=false \
+          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --latest=false --generate-notes \
+            --notes "$(tools/release-notes.sh "$ANDROMEDA_APP" "$ANDROMEDA_VERSION")" \
             || gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null
           mkdir out
           for package in pkg/*.pkg.tar.zst; do name=$(basename "$package"); cp "$package" "out/${name//:/.}"; done
