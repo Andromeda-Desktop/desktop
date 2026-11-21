@@ -699,6 +699,8 @@ bool Image::asyncFailed() const {
       && m_asyncTextureCache->failed(m_asyncSourcePath, m_asyncTargetSize, m_asyncMipmap, m_asyncOptions);
 }
 
+bool Image::hasPendingContent() const { return !m_asyncSourcePath.empty() && !hasImage() && !asyncFailed(); }
+
 void Image::handleAsyncTextureReady(TextureHandle handle) {
   if (handle.id == 0) {
     // A failed decode: the owner swaps in its fallback.

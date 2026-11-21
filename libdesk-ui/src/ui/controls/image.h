@@ -72,6 +72,7 @@ public:
   [[nodiscard]] bool hasImage() const noexcept { return m_texture.valid(); }
   // The async decode of the current source failed: the owner shows its fallback.
   [[nodiscard]] bool asyncFailed() const;
+  [[nodiscard]] bool hasPendingContent() const override;
   [[nodiscard]] TextureId textureId() const noexcept { return m_texture.id; }
   [[nodiscard]] int sourceWidth() const noexcept { return m_texture.sourceWidth; }
   [[nodiscard]] int sourceHeight() const noexcept { return m_texture.sourceHeight; }

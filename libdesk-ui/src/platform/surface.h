@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/timer_manager.h"
 #include "protocols/glass_material.h"
 #include "render/core/render_styles.h"
 #include "render/core/wallpaper_types.h"
@@ -113,6 +114,9 @@ public:
   void setResolutionScale(float scale);
   // While held, the surface commits no buffer, so it stays unmapped; releasing it draws the next frame.
   void holdRender(bool held);
+  // By default the first frame waits up to 50 ms for pending content (image decodes), so the surface maps
+  // complete. A surface that must show at once (the lock screen) skips the wait.
+  void skipFirstFrameHold();
   void setDebugName(std::string name);
   // Window name for assistive technology; empty = derived from the debug name (layer namespace).
   void setAccessibleTitle(std::string title) { m_accessibleTitle = std::move(title); }
@@ -193,6 +197,7 @@ protected:
 
   virtual void onConfigure(std::uint32_t width, std::uint32_t height);
   virtual void render();
+  [[nodiscard]] bool holdFirstFrame();
   virtual void onFrameCallbackDone();
   virtual void onScaleChanged();
 
@@ -248,6 +253,12 @@ private:
   ScaleChangedCallback m_scaleChangedCallback;
   std::function<void()> m_nextPresentCallback;
   bool m_presentedOnce = false;
+  // Waiting: no frame yet; Holding: the first frame waits for pending content until m_firstFrameDeadline;
+  // Done: a frame presented, or the hold is off.
+  enum class FirstFrameHold : std::uint8_t { Waiting, Holding, Done };
+  FirstFrameHold m_firstFrameHold = FirstFrameHold::Waiting;
+  std::chrono::steady_clock::time_point m_firstFrameDeadline;
+  Timer m_firstFrameTimer;
   std::optional<std::chrono::steady_clock::time_point> m_lastFrameAt;
   bool m_updateRequested = false;
   bool m_layoutRequested = false;

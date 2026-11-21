@@ -135,6 +135,8 @@ public:
   [[nodiscard]] std::int32_t zIndex() const noexcept { return m_zIndex; }
   [[nodiscard]] Node* parent() const noexcept { return m_parent; }
   [[nodiscard]] const std::vector<std::unique_ptr<Node>>& children() const noexcept { return m_children; }
+  // True while this node waits for content it will draw soon (an image decode); the first frame of its surface waits.
+  [[nodiscard]] virtual bool hasPendingContent() const { return false; }
   // What assistive technology sees for this node; null = not exposed (children join the nearest exposed ancestor).
   void setAccessible(const Accessible& accessible);
   [[nodiscard]] const Accessible* accessible() const noexcept { return m_accessible.get(); }

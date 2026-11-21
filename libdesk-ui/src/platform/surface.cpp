@@ -1003,8 +1003,43 @@ void Surface::holdRender(bool held) {
   }
 }
 
+void Surface::skipFirstFrameHold() {
+  m_firstFrameHold = FirstFrameHold::Done;
+  m_firstFrameTimer.stop();
+}
+
+namespace {
+  bool subtreeHasPendingContent(const Node& node) {
+    if (!node.visible()) {
+      return false;
+    }
+    if (node.hasPendingContent()) {
+      return true;
+    }
+    return std::ranges::any_of(node.children(), [](const auto& child) { return subtreeHasPendingContent(*child); });
+  }
+} // namespace
+
+bool Surface::holdFirstFrame() {
+  constexpr auto kPendingContentHold = std::chrono::milliseconds(50);
+  if (m_firstFrameHold == FirstFrameHold::Done || m_sceneRoot == nullptr || !subtreeHasPendingContent(*m_sceneRoot)) {
+    return false;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  if (m_firstFrameHold == FirstFrameHold::Waiting) {
+    m_firstFrameHold = FirstFrameHold::Holding;
+    m_firstFrameDeadline = now + kPendingContentHold;
+    // A finished decode redraws on its own; the timer only ends the wait.
+    m_firstFrameTimer.start(kPendingContentHold, [this] { requestRedraw(); });
+  }
+  return now < m_firstFrameDeadline;
+}
+
 void Surface::render() {
   if (m_renderHeld || !hasNativeSurface() || m_renderContext == nullptr || !m_renderTarget.isReady()) {
+    return;
+  }
+  if (holdFirstFrame()) {
     return;
   }
 
@@ -1041,6 +1076,8 @@ void Surface::render() {
   }
   if (presented && !m_presentedOnce) {
     m_presentedOnce = true;
+    m_firstFrameHold = FirstFrameHold::Done;
+    m_firstFrameTimer.stop();
     startup_metrics::recordSurfaceFirstFrame(surfaceTraceName(*this));
   }
   if (presented && m_nextPresentCallback) {

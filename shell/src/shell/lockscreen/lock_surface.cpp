@@ -170,6 +170,8 @@ namespace {
 } // namespace
 
 LockSurface::LockSurface(WaylandConnection& connection, ConfigService* config) : WaylandSurface(connection), m_config(config) {
+  // The lock must cover the screen at once, even before its wallpaper or avatar decodes.
+  skipFirstFrameHold();
   {
     auto backgroundLayer = ui::node({});
     backgroundLayer->setZIndex(0);
