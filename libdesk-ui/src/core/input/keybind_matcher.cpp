@@ -7,7 +7,7 @@
 
 namespace {
 
-  std::array<std::optional<KeybindMatcher::Matcher>, 11> g_matchers{};
+  std::array<std::optional<KeybindMatcher::Matcher>, 14> g_matchers{};
 
   // The standard keys, for processes that install no matchers from a config (apps; the shell sets its own).
   bool standard(KeybindAction action, std::uint32_t sym, std::uint32_t modifiers) {
@@ -35,6 +35,12 @@ namespace {
       return modifiers == KeyMod::Ctrl && (sym == XKB_KEY_c || sym == XKB_KEY_C);
     case KeybindAction::Save:
       return modifiers == KeyMod::Ctrl && (sym == XKB_KEY_s || sym == XKB_KEY_S);
+    case KeybindAction::SelectAll:
+      return modifiers == KeyMod::Ctrl && (sym == XKB_KEY_a || sym == XKB_KEY_A);
+    case KeybindAction::CategoryNext:
+      return modifiers == KeyMod::Ctrl && sym == XKB_KEY_Tab;
+    case KeybindAction::CategoryPrevious:
+      return modifiers == (KeyMod::Ctrl | KeyMod::Shift) && (sym == XKB_KEY_ISO_Left_Tab || sym == XKB_KEY_Tab);
     }
     return false;
   }

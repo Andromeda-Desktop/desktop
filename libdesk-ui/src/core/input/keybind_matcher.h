@@ -17,6 +17,9 @@ enum class KeybindAction : std::uint8_t {
   Delete = 8,
   Copy = 9,
   Save = 10,
+  SelectAll = 11,
+  CategoryNext = 12,
+  CategoryPrevious = 13,
 };
 
 /// Global keybind matchers for UI controls. Set once at application startup from ConfigService.

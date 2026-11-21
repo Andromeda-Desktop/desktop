@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+enum class ScreenshotRegionModifier : std::uint8_t;
+
 class RenderContext;
 struct wl_surface;
 class WaylandConnection;
@@ -44,8 +46,7 @@ namespace capture {
     void setFailureCallback(FailureCallback callback);
     void setConfirmKeybindLabels(std::string copyLabel, std::string saveLabel, std::string cancelLabel);
     void setFrozenScreenshots(std::vector<FrozenScreenshot> screenshots);
-    // KeyMod bitmask to hold to move/resize a selection; 0 = no modifier needed.
-    void setRegionModifier(std::uint32_t mask);
+    void setRegionModifier(ScreenshotRegionModifier modifier);
     void setSelectionBorderWidth(float width);
     void setDimOpacity(float opacity);
     void setShowRegionHint(bool show);
@@ -90,6 +91,8 @@ namespace capture {
     // Stores the shape on every instance and pushes it to the compositor right away.
     void applyCursorShape(CursorShape shape);
     [[nodiscard]] bool modifierHeld() const;
+    [[nodiscard]] bool confirmsSelection(std::uint32_t sym) const;
+    void selectEntireDesktop();
     void completeSelection();
     void confirmPendingSelection(ConfirmAction action = ConfirmAction::None);
     void completeFullscreenPick(wl_output* output);
@@ -105,7 +108,8 @@ namespace capture {
     std::string m_copyKeybindLabel;
     std::string m_saveKeybindLabel;
     std::string m_cancelKeybindLabel;
-    std::uint32_t m_regionModifierMask = 0;
+    ScreenshotRegionModifier m_regionModifier{};
+    bool m_spaceHeld = false;
     float m_selectionBorderWidth = 2.0F;
     float m_dimOpacity = 0.65F;
     bool m_showRegionHint = true;

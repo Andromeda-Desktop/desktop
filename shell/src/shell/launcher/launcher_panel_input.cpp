@@ -24,6 +24,14 @@ bool LauncherPanel::handleGlobalKey(std::uint32_t sym, std::uint32_t modifiers, 
     return false;
   }
 
+  const bool nextCategory = KeybindMatcher::matches(KeybindAction::CategoryNext, sym, modifiers);
+  if ((nextCategory || KeybindMatcher::matches(KeybindAction::CategoryPrevious, sym, modifiers))
+      && !m_categoryFilterSlots.empty()) {
+    const std::size_t count = m_categoryFilterSlots.size();
+    setActiveCategorySlot((m_activeCategorySlotIndex + (nextCategory ? 1 : count - 1)) % count);
+    return true;
+  }
+
   auto& dispatcher = PanelManager::instance().inputDispatcher();
   InputArea* const focused = dispatcher.focusedArea();
   if (focused != nullptr) {

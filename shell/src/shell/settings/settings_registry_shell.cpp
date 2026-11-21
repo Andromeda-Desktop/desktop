@@ -223,7 +223,7 @@ namespace settings {
     // Keybinds
     auto keybindRows = generateSchemaEntries(noctalia::config::schema::keybindsSchema(), cfg.keybinds, {"keybinds"});
     for (const auto* key : {"validate", "cancel", "left", "right", "up", "down", "tab_previous", "tab_next", "copy", "save",
-                            "delete"}) {
+                            "delete", "select_all", "category_previous", "category_next"}) {
       appendRow(entries, keybindRows, key);
     }
 

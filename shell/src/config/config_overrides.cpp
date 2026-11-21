@@ -222,7 +222,10 @@ namespace {
         && keybindSetEqual(a.tabPrevious, b.tabPrevious, KeybindAction::TabPrevious)
         && keybindSetEqual(a.deleteEntry, b.deleteEntry, KeybindAction::Delete)
         && keybindSetEqual(a.copy, b.copy, KeybindAction::Copy)
-        && keybindSetEqual(a.save, b.save, KeybindAction::Save);
+        && keybindSetEqual(a.save, b.save, KeybindAction::Save)
+        && keybindSetEqual(a.selectAll, b.selectAll, KeybindAction::SelectAll)
+        && keybindSetEqual(a.categoryNext, b.categoryNext, KeybindAction::CategoryNext)
+        && keybindSetEqual(a.categoryPrevious, b.categoryPrevious, KeybindAction::CategoryPrevious);
   }
 
   // Override-effectiveness equality. Every config section uses its compiler-generated operator== (exact

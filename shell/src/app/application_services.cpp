@@ -1186,6 +1186,9 @@ void Application::initStyleThemeAndWayland() {
   KeybindMatcher::setMatcher(KeybindAction::Copy, bindKeybind(KeybindAction::Copy));
   KeybindMatcher::setMatcher(KeybindAction::Save, bindKeybind(KeybindAction::Save));
   KeybindMatcher::setMatcher(KeybindAction::Delete, bindKeybind(KeybindAction::Delete));
+  KeybindMatcher::setMatcher(KeybindAction::SelectAll, bindKeybind(KeybindAction::SelectAll));
+  KeybindMatcher::setMatcher(KeybindAction::CategoryNext, bindKeybind(KeybindAction::CategoryNext));
+  KeybindMatcher::setMatcher(KeybindAction::CategoryPrevious, bindKeybind(KeybindAction::CategoryPrevious));
 
   Input::setValidateKeyMatcher([this](std::uint32_t sym, std::uint32_t modifiers) {
     return m_configService.matchesKeybind(KeybindAction::Validate, sym, modifiers);

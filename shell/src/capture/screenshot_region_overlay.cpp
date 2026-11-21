@@ -30,6 +30,8 @@
 #include "wayland/wayland_seat.h"
 
 #include <algorithm>
+#include <array>
+#include <optional>
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -297,7 +299,7 @@ namespace capture {
     m_cancelKeybindLabel = std::move(cancelLabel);
   }
 
-  void ScreenshotRegionOverlay::setRegionModifier(std::uint32_t mask) { m_regionModifierMask = mask; }
+  void ScreenshotRegionOverlay::setRegionModifier(ScreenshotRegionModifier modifier) { m_regionModifier = modifier; }
 
   void ScreenshotRegionOverlay::setSelectionBorderWidth(float width) { m_selectionBorderWidth = width; }
 
@@ -320,7 +322,7 @@ namespace capture {
   }
 
   void ScreenshotRegionOverlay::onModifiersChanged() {
-    if (m_regionModifierMask == 0 || m_dragging || !m_confirming) {
+    if (m_regionModifier == ScreenshotRegionModifier::None || m_dragging || !m_confirming) {
       return;
     }
     applyCursorShape(
@@ -329,7 +331,26 @@ namespace capture {
   }
 
   bool ScreenshotRegionOverlay::modifierHeld() const {
-    return m_regionModifierMask != 0 && (m_wayland->keyboardModifiers() & m_regionModifierMask) != 0;
+    std::uint32_t mask = 0;
+    switch (m_regionModifier) {
+    case ScreenshotRegionModifier::None:
+      return false;
+    case ScreenshotRegionModifier::Space:
+      return m_spaceHeld;
+    case ScreenshotRegionModifier::Super:
+      mask = KeyMod::Super;
+      break;
+    case ScreenshotRegionModifier::Ctrl:
+      mask = KeyMod::Ctrl;
+      break;
+    case ScreenshotRegionModifier::Alt:
+      mask = KeyMod::Alt;
+      break;
+    case ScreenshotRegionModifier::Shift:
+      mask = KeyMod::Shift;
+      break;
+    }
+    return (m_wayland->keyboardModifiers() & mask) != 0;
   }
 
   void ScreenshotRegionOverlay::setFrozenScreenshots(std::vector<FrozenScreenshot> screenshots) {
@@ -356,6 +377,7 @@ namespace capture {
     m_confirming = false;
     m_active = true;
     m_dragging = false;
+    m_spaceHeld = false;
     if (!fullscreenPick && initialRegion.has_value() && initialRegion->width >= 2 && initialRegion->height >= 2) {
       m_startGlobalX = static_cast<double>(initialRegion->x);
       m_startGlobalY = static_cast<double>(initialRegion->y);
@@ -552,7 +574,7 @@ namespace capture {
 
     auto input = ui::inputArea({
         .acceptedButtons =
-            m_regionModifierMask == 0 ? InputArea::buttonMask(BTN_LEFT) : InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}),
+            m_regionModifier == ScreenshotRegionModifier::None ? InputArea::buttonMask(BTN_LEFT) : InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}),
         .cursorShape = CursorShape::Crosshair,
         .focusable = true,
     });
@@ -602,13 +624,13 @@ namespace capture {
         m_dragging = true;
         m_dragButton = data.button;
 
-        if (m_confirming && (m_regionModifierMask == 0 || modifierHeld())) {
+        if (m_confirming && (m_regionModifier == ScreenshotRegionModifier::None || modifierHeld())) {
           const double x0 = std::min(m_startGlobalX, m_currentGlobalX);
           const double y0 = std::min(m_startGlobalY, m_currentGlobalY);
           const double x1 = std::max(m_startGlobalX, m_currentGlobalX);
           const double y1 = std::max(m_startGlobalY, m_currentGlobalY);
 
-          if (m_regionModifierMask == 0) {
+          if (m_regionModifier == ScreenshotRegionModifier::None) {
             // Default: a plain drag hits edges/corners, outside starts a new selection.
             const double margin = std::max<double>(kHandleMargin, m_selectionBorderWidth);
             m_dragMode = hitTestSelection(globalX, globalY, x0, y0, x1, y1, margin);
@@ -667,7 +689,7 @@ namespace capture {
             m_startGlobalX = x1;
             m_resizeBaseX = x0 - globalX;
             // Modifier resize keeps the edge relative to the grab point; plain drag snaps to it.
-            m_currentGlobalX = m_regionModifierMask != 0 ? x0 : globalX;
+            m_currentGlobalX = m_regionModifier != ScreenshotRegionModifier::None ? x0 : globalX;
           } else if (
               m_dragMode == DragMode::RightEdge
               || m_dragMode == DragMode::TopRightCorner
@@ -675,7 +697,7 @@ namespace capture {
           ) {
             m_startGlobalX = x0;
             m_resizeBaseX = x1 - globalX;
-            m_currentGlobalX = m_regionModifierMask != 0 ? x1 : globalX;
+            m_currentGlobalX = m_regionModifier != ScreenshotRegionModifier::None ? x1 : globalX;
           }
 
           if (m_dragMode == DragMode::TopEdge
@@ -683,7 +705,7 @@ namespace capture {
               || m_dragMode == DragMode::TopRightCorner) {
             m_startGlobalY = y1;
             m_resizeBaseY = y0 - globalY;
-            m_currentGlobalY = m_regionModifierMask != 0 ? y0 : globalY;
+            m_currentGlobalY = m_regionModifier != ScreenshotRegionModifier::None ? y0 : globalY;
           } else if (
               m_dragMode == DragMode::BottomEdge
               || m_dragMode == DragMode::BottomLeftCorner
@@ -691,7 +713,7 @@ namespace capture {
           ) {
             m_startGlobalY = y0;
             m_resizeBaseY = y1 - globalY;
-            m_currentGlobalY = m_regionModifierMask != 0 ? y1 : globalY;
+            m_currentGlobalY = m_regionModifier != ScreenshotRegionModifier::None ? y1 : globalY;
           }
 
           m_cursorGlobalX = globalX;
@@ -717,7 +739,7 @@ namespace capture {
 
         if (!m_dragging) {
           if (m_confirming) {
-            if (m_regionModifierMask != 0) {
+            if (m_regionModifier != ScreenshotRegionModifier::None) {
               // Modifier drives the gesture: move cursor while held, crosshair otherwise.
               inputPtr->setCursorShape(
                   modifierHeld() ? CursorShape::AllScroll
@@ -757,10 +779,10 @@ namespace capture {
           const bool resizeY = m_dragMode != DragMode::LeftEdge && m_dragMode != DragMode::RightEdge;
           if (resizeX) {
             // Relative resize keeps the grabbed edge; other modes track the pointer.
-            m_currentGlobalX = globalX + (m_regionModifierMask != 0 ? m_resizeBaseX : 0.0);
+            m_currentGlobalX = globalX + (m_regionModifier != ScreenshotRegionModifier::None ? m_resizeBaseX : 0.0);
           }
           if (resizeY) {
-            m_currentGlobalY = globalY + (m_regionModifierMask != 0 ? m_resizeBaseY : 0.0);
+            m_currentGlobalY = globalY + (m_regionModifier != ScreenshotRegionModifier::None ? m_resizeBaseY : 0.0);
           }
 
           m_cursorGlobalX = globalX;
@@ -788,10 +810,14 @@ namespace capture {
           DeferredCall::callLater([this] { confirmPendingSelection(ConfirmAction::ForceSave); });
           return;
         }
-        if (KeySymbol::isEnterOrSpace(key.sym)) {
+        if (confirmsSelection(key.sym)) {
           DeferredCall::callLater([this] { confirmPendingSelection(ConfirmAction::None); });
           return;
         }
+      }
+      if (KeybindMatcher::matches(KeybindAction::SelectAll, key.sym, key.modifiers)) {
+        DeferredCall::callLater([this] { selectEntireDesktop(); });
+        return;
       }
       if (KeybindMatcher::matches(KeybindAction::Cancel, key.sym, key.modifiers)) {
         cancelSelection();
@@ -981,11 +1007,16 @@ namespace capture {
   }
 
   bool ScreenshotRegionOverlay::onKeyboardEvent(const KeyboardEvent& event) {
-    if (!m_active || !event.pressed || m_wayland == nullptr) {
+    if (!m_active || m_wayland == nullptr || !ownsSurface(m_wayland->lastKeyboardSurface())) {
       return false;
     }
 
-    if (!ownsSurface(m_wayland->lastKeyboardSurface())) {
+    if (m_regionModifier == ScreenshotRegionModifier::Space && KeySymbol::isSpace(event.sym)) {
+      m_spaceHeld = event.pressed;
+      onModifiersChanged();
+      return true;
+    }
+    if (!event.pressed) {
       return false;
     }
 
@@ -999,10 +1030,14 @@ namespace capture {
           confirmPendingSelection(ConfirmAction::ForceSave);
           return true;
         }
-        if (KeySymbol::isEnterOrSpace(event.sym)) {
+        if (confirmsSelection(event.sym)) {
           confirmPendingSelection(ConfirmAction::None);
           return true;
         }
+      }
+      if (KeybindMatcher::matches(KeybindAction::SelectAll, event.sym, event.modifiers)) {
+        selectEntireDesktop();
+        return true;
       }
       return false;
     }
@@ -1190,6 +1225,36 @@ namespace capture {
         inst->confirmHint->setPosition((surfaceW - inst->confirmHint->width()) * 0.5F, y);
       }
     }
+  }
+
+  bool ScreenshotRegionOverlay::confirmsSelection(std::uint32_t sym) const {
+    return KeySymbol::isEnter(sym) || (KeySymbol::isSpace(sym) && m_regionModifier != ScreenshotRegionModifier::Space);
+  }
+
+  void ScreenshotRegionOverlay::selectEntireDesktop() {
+    if (!m_active || m_fullscreenPick || m_dragging) {
+      return;
+    }
+    std::optional<std::array<int, 4>> bounds;
+    for (const auto& out : m_wayland->outputs()) {
+      if (out.output == nullptr || out.logicalWidth <= 0 || out.logicalHeight <= 0) {
+        continue;
+      }
+      const std::array<int, 4> rect{
+          out.logicalX, out.logicalY, out.logicalX + out.logicalWidth, out.logicalY + out.logicalHeight
+      };
+      bounds = bounds ? std::array<int, 4>{std::min((*bounds)[0], rect[0]), std::min((*bounds)[1], rect[1]),
+                                           std::max((*bounds)[2], rect[2]), std::max((*bounds)[3], rect[3])}
+                      : rect;
+    }
+    if (!bounds) {
+      return;
+    }
+    m_startGlobalX = static_cast<double>((*bounds)[0]);
+    m_startGlobalY = static_cast<double>((*bounds)[1]);
+    m_currentGlobalX = static_cast<double>((*bounds)[2]);
+    m_currentGlobalY = static_cast<double>((*bounds)[3]);
+    completeSelection();
   }
 
   void ScreenshotRegionOverlay::completeSelection() {

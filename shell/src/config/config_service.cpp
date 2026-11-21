@@ -415,6 +415,12 @@ namespace {
       return keybinds.copy;
     case KeybindAction::Save:
       return keybinds.save;
+    case KeybindAction::SelectAll:
+      return keybinds.selectAll;
+    case KeybindAction::CategoryNext:
+      return keybinds.categoryNext;
+    case KeybindAction::CategoryPrevious:
+      return keybinds.categoryPrevious;
     }
     return keybinds.validate;
   }

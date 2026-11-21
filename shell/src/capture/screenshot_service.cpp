@@ -74,22 +74,6 @@ namespace {
     return value;
   }
 
-  [[nodiscard]] std::uint32_t regionModifierMask(ScreenshotRegionModifier modifier) {
-    switch (modifier) {
-    case ScreenshotRegionModifier::Super:
-      return KeyMod::Super;
-    case ScreenshotRegionModifier::Ctrl:
-      return KeyMod::Ctrl;
-    case ScreenshotRegionModifier::Alt:
-      return KeyMod::Alt;
-    case ScreenshotRegionModifier::Shift:
-      return KeyMod::Shift;
-    case ScreenshotRegionModifier::None:
-      return 0;
-    }
-    return 0;
-  }
-
   [[nodiscard]] std::string_view screenshotExtension(ScreenshotFormat format) {
     switch (format) {
     case ScreenshotFormat::Png:
@@ -1216,7 +1200,7 @@ void ScreenshotService::ensureRegionOverlay() {
       primaryKeybindLabel(keybinds.cancel, KeybindAction::Cancel)
   );
   const auto& screenshotCfg = m_configService.config().shell.screenshot;
-  m_regionOverlay->setRegionModifier(regionModifierMask(screenshotCfg.regionModifier));
+  m_regionOverlay->setRegionModifier(screenshotCfg.regionModifier);
   m_regionOverlay->setSelectionBorderWidth(screenshotCfg.regionBorderWidth);
   m_regionOverlay->setDimOpacity(screenshotCfg.regionDimOpacity);
   m_regionOverlay->setShowRegionHint(screenshotCfg.showRegionHint);

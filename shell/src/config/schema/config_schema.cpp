@@ -1847,6 +1847,18 @@ namespace noctalia::config::schema {
         ),
         keybindActionField(&KeybindsConfig::copy, "copy", KeybindAction::Copy, "keybind shortcut hotkey copy clipboard"),
         keybindActionField(&KeybindsConfig::save, "save", KeybindAction::Save, "keybind shortcut hotkey save file"),
+        keybindActionField(
+            &KeybindsConfig::selectAll, "select_all", KeybindAction::SelectAll,
+            "keybind shortcut hotkey select all screenshot region desktop"
+        ),
+        keybindActionField(
+            &KeybindsConfig::categoryNext, "category_next", KeybindAction::CategoryNext,
+            "keybind shortcut hotkey category next launcher"
+        ),
+        keybindActionField(
+            &KeybindsConfig::categoryPrevious, "category_previous", KeybindAction::CategoryPrevious,
+            "keybind shortcut hotkey category previous launcher"
+        ),
     };
     return s;
   }

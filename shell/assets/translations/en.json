@@ -3105,6 +3105,7 @@
           "ctrl": "Ctrl",
           "none": "None",
           "shift": "Shift",
+          "space": "Space",
           "super": "Super"
         }
       },
@@ -3940,6 +3941,14 @@
           "description": "Close popups, dismiss panels, or abort the current operation",
           "label": "Cancel"
         },
+        "category-next": {
+          "description": "Show the next launcher category",
+          "label": "Next Category"
+        },
+        "category-previous": {
+          "description": "Show the previous launcher category",
+          "label": "Previous Category"
+        },
         "copy": {
           "description": "Copy the current selection or item",
           "label": "Copy"
@@ -3963,6 +3972,10 @@
         "save": {
           "description": "Save the current selection or item",
           "label": "Save"
+        },
+        "select-all": {
+          "description": "Select the whole desktop as the screenshot region",
+          "label": "Select All"
         },
         "tab-next": {
           "description": "Move focus to the next control",
@@ -5173,7 +5186,7 @@
           "label": "Region Dim Opacity"
         },
         "screenshot-region-modifier": {
-          "description": "Modifier to move or resize a selected region: left-drag to move, right-drag to resize from the outer thirds (corners resize both axes). None (default) keeps the plain drag-to-adjust behavior",
+          "description": "Modifier to move or resize a selected region: left-drag to move, right-drag to resize from the outer thirds (corners resize both axes). None (default) keeps the plain drag-to-adjust behavior. With Space, only Enter confirms the region",
           "label": "Move/Resize Modifier"
         },
         "screenshot-remember-last-region": {
