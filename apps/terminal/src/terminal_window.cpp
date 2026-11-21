@@ -1343,11 +1343,15 @@ namespace term {
           auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
           buttons->addChild(ui::button({.text = std::string("Cancel"), .fontSize = Tokens::typeBody.size * s,
                                         .variant = ButtonVariant::Default, .onClick = [this] { m_window.dismissSheet(); }}));
+          // Paste starts with the focus, so Enter pastes; Tab reaches Cancel and Escape cancels.
           buttons->addChild(ui::button({.text = std::string("Paste"), .fontSize = Tokens::typeBody.size * s,
-                                        .variant = ButtonVariant::Destructive, .onClick = [this, paste] {
-                                          m_window.dismissSheet();
-                                          paste();
-                                        }}));
+                                        .variant = ButtonVariant::Destructive,
+                                        .onClick =
+                                            [this, paste] {
+                                              m_window.dismissSheet();
+                                              paste();
+                                            },
+                                        .configure = [this](Button& b) { m_window.input().setFocus(b.inputArea()); }}));
           box->addChild(std::move(buttons));
           return box;
         },
