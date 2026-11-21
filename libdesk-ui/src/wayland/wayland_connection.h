@@ -152,6 +152,13 @@ public:
 
   // With a deadline, a compositor that accepts but never answers makes it throw at the deadline.
   bool connect(std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt) override;
+  // connect() calls opened before its first round trip, so other threads can use the display while the compositor
+  // answers; cleanup() calls closing before it frees the display.
+  struct DisplayHooks {
+    std::function<void(wl_display*)> opened;
+    std::function<void()> closing;
+  };
+  void setDisplayHooks(DisplayHooks hooks) { m_displayHooks = std::move(hooks); }
   // Destroys every Wayland object and the display; connect() starts over. Safe on a dead connection.
   void disconnect() override { cleanup(); }
   [[nodiscard]] void* nativeDisplay() const noexcept override { return m_display; }
@@ -367,6 +374,7 @@ private:
 
   Purpose m_purpose = Purpose::Shell;
   wl_display* m_display = nullptr;
+  DisplayHooks m_displayHooks;
   wl_registry* m_registry = nullptr;
   wl_compositor* m_compositor = nullptr;
   wl_seat* m_seat = nullptr;

@@ -204,6 +204,7 @@ private:
   void initWaylandCallbacks();
   void initAuxServicesAndHooks();
   void initSystemBusServices();
+  void startAudioServices();
   void initBrightnessAndPipewire();
   void initEarlySessionBusAndTray();
   void initSessionBusServices();

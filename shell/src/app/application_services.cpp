@@ -1128,9 +1128,29 @@ void Application::initStyleThemeAndWayland() {
     );
   }
 
+  startAudioServices();
+  // EGL init loads Mesa (30 ms idle, 110 ms at login); it starts before the first round trip, which waits until the
+  // compositor's loop runs, and joins in initUi. Mesa uses its own Wayland event queue, and no context is made current
+  // on the worker.
+  m_wayland.setDisplayHooks({
+      .opened =
+          [this, sharedGlContext = m_configService.config().shell.sharedGlContext](wl_display* display) {
+            m_glSharedInit = std::async(std::launch::async, [this, display, sharedGlContext] {
+              m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(display), sharedGlContext);
+            });
+          },
+      .closing =
+          [this] {
+            if (m_glSharedInit.valid()) {
+              m_glSharedInit.wait();
+            }
+          },
+  });
   if (!m_wayland.connect()) {
     throw std::runtime_error("failed to connect to Wayland display");
   }
+  // The hooks capture members that are destroyed before m_wayland.
+  m_wayland.setDisplayHooks({});
   m_compositorPlatform.initialize();
   m_screenTimeService.initialize(&m_compositorPlatform);
   syncScreenTimeService();
@@ -1142,12 +1162,7 @@ void Application::initStyleThemeAndWayland() {
   if (m_configService.config().shell.disableMipmaps) {
     TextureManager::setGlobalMipmapsEnabled(false);
   }
-  // EGL init loads Mesa (~20 ms); it runs while the services start and joins in initUi. Mesa uses its own
-  // Wayland event queue, and no context is made current on the worker.
   const bool sharedGlContext = m_configService.config().shell.sharedGlContext;
-  m_glSharedInit = std::async(std::launch::async, [this, sharedGlContext] {
-    m_glShared.initialize(reinterpret_cast<EGLNativeDisplayType>(m_wayland.display()), sharedGlContext);
-  });
   // initialize() creates the root context or throws, so the config decides the share group up front.
   auto* sharedGlPtr = sharedGlContext ? &m_glShared : nullptr;
   m_sharedTextureCache.initialize(sharedGlPtr);
@@ -1843,6 +1858,31 @@ void Application::initSystemBusServices() {
   );
 }
 
+// PipeWire and WirePlumber need no compositor: they connect before the first Wayland round trip, which waits until the
+// compositor's event loop runs.
+void Application::startAudioServices() {
+  m_pipewireModule = m_services.add<PipeWireModule>();
+  if (!m_services.start(m_configService.config())) {
+    kLog.error("service modules: {}", m_services.error());
+  }
+  if (pipewire() == nullptr) {
+    kLog.warn("pipewire disabled: {}", m_pipewireModule->startError());
+    return;
+  }
+  try {
+    m_wirePlumberMixer = std::make_unique<WirePlumberMixer>();
+    pipewire()->setWirePlumberMixer(m_wirePlumberMixer.get());
+    m_wirePlumberMixer->setChangeCallback([svc = pipewire()](std::uint32_t id, float volume, bool muted) {
+      svc->onMixerVolumeChanged(id, volume, muted);
+    });
+  } catch (const std::exception& e) {
+    kLog.warn("pipewire disabled: {}", e.what());
+    // The service keeps a raw pointer to the mixer, so it goes first.
+    m_pipewireModule->stop();
+    m_wirePlumberMixer.reset();
+  }
+}
+
 void Application::initBrightnessAndPipewire() {
   auto shouldRefreshControlCenter = [this] { return m_panelManager.isOpenPanel("control-center"); };
 
@@ -1877,18 +1917,7 @@ void Application::initBrightnessAndPipewire() {
   }
   syncAmbientLight();
 
-  m_pipewireModule = m_services.add<PipeWireModule>();
-  if (!m_services.start(m_configService.config())) {
-    kLog.error("service modules: {}", m_services.error());
-  }
-  if (pipewire() == nullptr) {
-    kLog.warn("pipewire disabled: {}", m_pipewireModule->startError());
-  } else try {
-    m_wirePlumberMixer = std::make_unique<WirePlumberMixer>();
-    pipewire()->setWirePlumberMixer(m_wirePlumberMixer.get());
-    m_wirePlumberMixer->setChangeCallback([svc = pipewire()](std::uint32_t id, float volume, bool muted) {
-      svc->onMixerVolumeChanged(id, volume, muted);
-    });
+  if (m_wirePlumberMixer != nullptr) try {
     m_easyEffectsService = std::make_unique<EasyEffectsService>();
     m_easyEffectsService->refreshAsync();
     m_pipewireSpectrum = std::make_unique<PipeWireSpectrum>(*pipewire());

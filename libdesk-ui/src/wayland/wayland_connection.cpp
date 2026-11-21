@@ -716,6 +716,9 @@ bool WaylandConnection::connect(std::optional<std::chrono::steady_clock::time_po
   if (!setupDisplay(wl_display_connect(nullptr), setupError)) {
     throw std::runtime_error(setupError);
   }
+  if (m_displayHooks.opened) {
+    m_displayHooks.opened(m_display);
+  }
 
   if (deadline) {
     std::string error;
@@ -1805,6 +1808,9 @@ void WaylandConnection::bindTextInputService() {
 }
 
 void WaylandConnection::cleanup() {
+  if (m_display != nullptr && m_displayHooks.closing) {
+    m_displayHooks.closing();
+  }
   cleanupExtensions();
   if (m_textInputService != nullptr) {
     m_textInputService->cleanup();
