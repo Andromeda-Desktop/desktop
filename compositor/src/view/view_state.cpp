@@ -19,6 +19,7 @@ extern "C" {
 #include "view/view_internal.h"
 // clang-format off
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include <cassert>
 #include <string_view>
@@ -1163,4 +1164,27 @@ namespace andromeda {
     }
     refreshStateRuleEffects();
   }
+  void View::remapRestoreBoxes(const wlr_box& previousArea, const wlr_box& targetArea) {
+    if (previousArea.width <= 0
+        || previousArea.height <= 0
+        || targetArea.width <= 0
+        || targetArea.height <= 0) {
+      return;
+    }
+    const auto remap = [&](wlr_box& box) {
+      const double xFraction = static_cast<double>(box.x - previousArea.x) / previousArea.width;
+      const double yFraction = static_cast<double>(box.y - previousArea.y) / previousArea.height;
+      const int newX = targetArea.x + static_cast<int>(std::lround(xFraction * targetArea.width));
+      const int newY = targetArea.y + static_cast<int>(std::lround(yFraction * targetArea.height));
+      box.x = std::clamp(newX, targetArea.x, targetArea.x + std::max(0, targetArea.width - box.width));
+      box.y = std::clamp(newY, targetArea.y, targetArea.y + std::max(0, targetArea.height - box.height));
+    };
+    if (m_hasMaximizeRestoreBox) {
+      remap(m_maximizeRestoreBox);
+    }
+    if (m_fullscreenRestoreBox) {
+      remap(*m_fullscreenRestoreBox);
+    }
+  }
+
 } // namespace andromeda

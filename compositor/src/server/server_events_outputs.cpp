@@ -236,6 +236,7 @@ namespace andromeda {
         sourceGroup->workspaceAt(index)->invalidateLaunchReservations();
       }
     }
+    const wlr_box sourceBox = source->layoutBox();
     const char* sourceName = source->wlr()->name;
     if (sourceGroup != nullptr
         && sourceGroup->active() != nullptr
@@ -396,6 +397,9 @@ namespace andromeda {
           }
           const bool floating = view->floating();
           Workspace* target = view->pinned() ? targetWorkspace : refuge;
+          if (target != nullptr && target->group() != nullptr && target->group()->output() != nullptr) {
+            view->remapRestoreBoxes(sourceBox, target->group()->output()->layoutBox());
+          }
           view->setWorkspace(target, !capturedLayout || target != refuge);
           if (floating && target != nullptr) {
             view->restoreFloatingPosition(false);
@@ -857,6 +861,12 @@ namespace andromeda {
         }
         const bool moved = view->workspace() != workspace;
         if (moved) {
+          if (const Output* from = view->workspace() != nullptr && view->workspace()->group() != nullptr
+                  ? view->workspace()->group()->output()
+                  : nullptr;
+              from != nullptr && target != nullptr) {
+            view->remapRestoreBoxes(from->layoutBox(), target->layoutBox());
+          }
           view->setWorkspace(workspace);
         }
         applyPendingNamedScrollingColumnExtent(view, home);

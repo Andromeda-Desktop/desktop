@@ -559,7 +559,7 @@ namespace andromeda {
           && previousArea.height > 0
           && targetArea.width > 0
           && targetArea.height > 0) {
-        remapViewRestoreGeometry(view, previousArea, targetArea);
+        view->remapRestoreBoxes(previousArea, targetArea);
         if (view != alreadyPositioned) {
           const double xFraction = static_cast<double>(view->layoutX() - previousArea.x) / previousArea.width;
           const double yFraction = static_cast<double>(view->layoutY() - previousArea.y) / previousArea.height;
@@ -618,30 +618,6 @@ namespace andromeda {
     m_server->scheduleIpcWindowsEvent();
   }
 
-  void ScratchpadManager::remapViewRestoreGeometry(View* view, const wlr_box& previousArea, const wlr_box& targetArea) {
-    if (view == nullptr
-        || previousArea.width <= 0
-        || previousArea.height <= 0
-        || targetArea.width <= 0
-        || targetArea.height <= 0) {
-      return;
-    }
-    const auto remap = [&](wlr_box& box) {
-      const double xFraction = static_cast<double>(box.x - previousArea.x) / previousArea.width;
-      const double yFraction = static_cast<double>(box.y - previousArea.y) / previousArea.height;
-      const int newX = targetArea.x + static_cast<int>(std::lround(xFraction * targetArea.width));
-      const int newY = targetArea.y + static_cast<int>(std::lround(yFraction * targetArea.height));
-      box.x = std::clamp(newX, targetArea.x, targetArea.x + std::max(0, targetArea.width - box.width));
-      box.y = std::clamp(newY, targetArea.y, targetArea.y + std::max(0, targetArea.height - box.height));
-    };
-    if (view->m_hasMaximizeRestoreBox) {
-      remap(view->m_maximizeRestoreBox);
-    }
-    if (view->m_fullscreenRestoreBox) {
-      remap(*view->m_fullscreenRestoreBox);
-    }
-  }
-
   void ScratchpadManager::refreshOutputGeometry(Output* output) {
     if (output == nullptr || m_server == nullptr) {
       return;
@@ -676,7 +652,7 @@ namespace andromeda {
           continue;
         }
         View* view = entry.view;
-        remapViewRestoreGeometry(view, previousArea, targetArea);
+        view->remapRestoreBoxes(previousArea, targetArea);
         const double xFraction = static_cast<double>(view->layoutX() - previousArea.x) / previousArea.width;
         const double yFraction = static_cast<double>(view->layoutY() - previousArea.y) / previousArea.height;
         const int newX = targetArea.x + static_cast<int>(std::lround(xFraction * targetArea.width));

@@ -471,6 +471,8 @@ namespace andromeda {
     // Re-anchor into the (new) workspace output's usable area. Temporary fallback placement can preserve the saved
     // fraction so a displaced view still remembers its real home geometry. No-op when tiled.
     void restoreFloatingPosition(bool rememberRestored = true);
+    // Moves the maximize and fullscreen restore boxes from one area to the same fraction of another, kept inside it.
+    void remapRestoreBoxes(const wlr_box& from, const wlr_box& to);
     // Center the floating window on its output's usable area. False when not floating.
     bool centerFloating();
     // Place the floating window at an anchored position in its output's usable area. False when not floating.
