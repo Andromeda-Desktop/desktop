@@ -997,10 +997,10 @@ namespace linkapp {
             changed();
             return;
           }
-          if (download->progress) download->progress(download->got);
-          // Progress repaints at most 4 times a second (rulebook §16).
+          // Progress repaints at most 4 times a second (rulebook §16); a read with no progress to show repaints only at its end.
           const auto now = std::chrono::steady_clock::now();
-          if (now - download->shown >= std::chrono::milliseconds(250)) {
+          if (download->progress) download->progress(download->got);
+          if (download->progress && now - download->shown >= std::chrono::milliseconds(250)) {
             download->shown = now;
             changed();
           }

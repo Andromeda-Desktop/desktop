@@ -1065,6 +1065,10 @@ namespace linkapp {
     if (m_client) m_client->cancelPairing();
     if (m_page == page) return;
     if (m_client && m_page == Page::Mirror) m_client->stopMirror();
+    if (m_client && m_viewing) {
+      m_viewing.reset();
+      m_client->closePhoto();
+    }
     m_page = page;
     m_confirmForget = false;
     m_settingsView = SettingsView::Main;
@@ -1086,12 +1090,14 @@ namespace linkapp {
     // A newer ask replaces the shown one, so the text always names the device the answer goes to.
     std::string shown = ask->deviceId + '\n' + ask->ssid;
     if (shown == m_hotspotSheet) return;
+    // The shown ask's sheet gives way without its onCancel: that would decline the new ask.
+    const bool replacing = !m_hotspotSheet.empty();
     m_hotspotSheet = std::move(shown);
     const Presence presence = m_client->presence();
     const std::string phone = presence.phone.id == ask->deviceId ? presence.phone.name : std::string("your phone");
     const std::string ssid = ask->ssid;
     // Rulebook §9.10 alert: title-3, body 13 / 20 label_2, 24 above 3 buttons stacked full width.
-    m_window->presentSheet(
+    (m_window->*(replacing ? &AppWindow::replaceSheet : &AppWindow::presentSheet))(
         [this, phone, ssid](float s) -> std::unique_ptr<Node> {
           auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP8 * s, .padding = Tokens::spaceP24 * s,
                                  .width = Tokens::componentDialogAlertWidth * s});
@@ -1156,7 +1162,10 @@ namespace linkapp {
                             .flexGrow = 1.0F});
     side->addChild(ui::searchCapsule({.out = &m_searchInput, .placeholder = "Search", .height = Tokens::sizeControlL, .scale = s,
                                       .value = m_query, .clearButton = true,
-                                      .onChange = [this](const std::string& query) { setQuery(query); },
+                                      .onChange = [this](const std::string& query) {
+                                        m_searchCaret = m_searchInput != nullptr ? m_searchInput->caret() : query.size();
+                                        setQuery(query);
+                                      },
                                       .onKeyEvent = [this](std::uint32_t sym, std::uint32_t) {
                                         if (sym != XKB_KEY_Escape || m_query.empty()) return false;
                                         setQuery({});
@@ -1164,6 +1173,7 @@ namespace linkapp {
                                       }}));
     // A rebuild hands the keyboard focus to the new field by this key.
     m_searchInput->inputArea()->setTabFocusKey("link-search");
+    m_searchInput->selectRange(m_searchCaret, m_searchCaret); // the new field keeps the caret where the edit left it
     auto list = std::make_unique<SelectionList>(s);
     list->setGap(Tokens::spaceP4 * s);
     Node* selected = nullptr;
@@ -1454,7 +1464,7 @@ namespace linkapp {
     };
     keys->addChild(step("player-skip-back", "Previous", "previous"));
     keys->addChild(ui::button({.out = &m_playerView.play, .glyph = std::string(p->playing ? "player-pause" : "player-play"),
-                               .glyphSize = Tokens::sizeSymbol * s * 1.25F, .enabled = p->takes("play-pause"),
+                               .glyphSize = Tokens::sizeSymbolL * s, .enabled = p->takes("play-pause"),
                                .customPalette = playPalette(), .tooltip = std::string(p->playing ? "Pause" : "Play"),
                                .radius = play / 2.0F, .width = play, .height = play,
                                .onClick = [this, id] { m_client->playerCommand(id, "play-pause"); }}));
@@ -1479,11 +1489,13 @@ namespace linkapp {
     vol->addChild(ui::label({.out = &m_playerView.level, .text = volume < 0 ? std::string() : volume == 0 ? std::string("Muted") : std::format("{} %", volume),
                              .fontSize = Tokens::typeCaption.size * s, .color = colorSpecFromRole(ColorRole::Label2)}));
     pop->addChild(std::move(vol));
+    if (p->playing && !m_playerTick.active()) m_playerTick.startRepeating(std::chrono::seconds(1), [this] { syncPlayer(); });
     return pop;
   }
 
   void LinkApp::openPlayer() {
     if (m_window == nullptr || m_phoneCard == nullptr || player() == nullptr) return;
+    m_playerView = {}; // the content builds on the popup's configure; until then nothing of an old popover is used
     const float height = 2.0F * Tokens::spaceP16 + Tokens::componentLinkPlayerArt + 3.0F * Tokens::spaceP12 + Tokens::sizeControlM +
                          Tokens::componentLinkPlayerPlay + Tokens::sizeControlM;
     m_window->openPopover(m_phoneCard, Tokens::componentLinkPlayerWidth, height, [this](float s) { return playerPopover(s); },
@@ -2239,7 +2251,9 @@ namespace linkapp {
     const auto item = static_cast<std::size_t>(it - items.begin());
     if (m_search) {
       const auto& order = m_search->photos;
-      const auto pos = static_cast<std::ptrdiff_t>(std::ranges::find(order, item) - order.begin()) + delta;
+      const auto hit = std::ranges::find(order, item);
+      if (hit == order.end()) return std::nullopt; // the shown photo is not a hit of the new query
+      const auto pos = static_cast<std::ptrdiff_t>(hit - order.begin()) + delta;
       if (pos < 0 || pos >= static_cast<std::ptrdiff_t>(order.size())) return std::nullopt;
       return items[order[static_cast<std::size_t>(pos)]].path;
     }
@@ -2261,11 +2275,14 @@ namespace linkapp {
     } else {
       m_client->closePhoto();
     }
-    if (m_viewing && m_photoGrid != nullptr && it != items.end()) {
-      // Back in the grid, the shown photo is in view.
-      std::size_t row = static_cast<std::size_t>(it - items.begin());
-      if (m_search) row = static_cast<std::size_t>(std::ranges::find(m_search->photos, row) - m_search->photos.begin());
-      m_photoGrid->scrollToIndex(row);
+    if (it != items.end()) {
+      // Back in the grid, the last shown photo is in view.
+      const auto item = static_cast<std::size_t>(it - items.begin());
+      if (!m_search) {
+        m_photoScrollTo = item;
+      } else if (const auto hit = std::ranges::find(m_search->photos, item); hit != m_search->photos.end()) {
+        m_photoScrollTo = static_cast<std::size_t>(hit - m_search->photos.begin());
+      }
     }
     if (m_window != nullptr) m_window->requestRebuild();
   }
@@ -2388,7 +2405,7 @@ namespace linkapp {
   namespace {
     // The corner check of a tile (rulebook §9.7: 20 px at inset 8), with an inset-8 margin around it as its hit area.
     bool inCheck(float x, float y, float width, float height, float s) {
-      const float reach = (20.0F + 2.0F * Tokens::spaceP8) * s;
+      const float reach = (Tokens::componentLinkTileCheck + 2.0F * Tokens::spaceP8) * s;
       return x >= width - reach && y >= height - reach;
     }
   } // namespace
@@ -2427,11 +2444,11 @@ namespace linkapp {
     ring->setPosition(0.0F, 0.0F);
     ring->setSize(w, h);
     ring->setRadius(radius);
-    const float d = 20.0F * s;
+    const float d = Tokens::componentLinkTileCheck * s;
     // A hovered tile shows its empty check: a press there selects without opening the viewer.
     badge->setVisible(picked || hovered);
-    badge->setFill(picked ? colorSpecFromRole(ColorRole::Accent) : colorSpecFromRole(ColorRole::Shadow, 0.3F));
-    badge->setBorder(picked ? clearColorSpec() : colorSpecFromRole(ColorRole::OnAccent), 1.5F * s);
+    badge->setFill(picked ? colorSpecFromRole(ColorRole::Accent) : colorSpecFromRole(ColorRole::Shadow, Tokens::componentLinkTileCheckShade));
+    badge->setBorder(picked ? clearColorSpec() : colorSpecFromRole(ColorRole::OnAccent), Tokens::componentLinkTileCheckEdge * s);
     badge->setPosition(w - Tokens::spaceP8 * s - d, h - Tokens::spaceP8 * s - d);
     badge->setSize(d, d);
     badge->setRadius(d / 2.0F);
@@ -2494,6 +2511,7 @@ namespace linkapp {
       const auto& items = photos.items();
       const auto at = std::ranges::find(items, *m_viewing, &Photo::path);
       const auto index = static_cast<std::size_t>(at - items.begin());
+      if (order != nullptr && std::ranges::find(*order, index) == order->end()) order = nullptr; // not a hit: place among all
       const std::size_t shown = order ? static_cast<std::size_t>(std::ranges::find(*order, index) - order->begin()) : index;
       auto place = text(std::format("{} of {}", groupedCount(shown + 1), groupedCount(order ? order->size() : photos.total())),
                         Tokens::typeFootnote, ColorRole::Label2, s);
@@ -2565,6 +2583,7 @@ namespace linkapp {
                                         .columnGap = Tokens::spaceP8 * s, .rowGap = Tokens::spaceP8 * s, .overscanRows = 2,
                                         .itemCursorShape = CursorShape::Pointer, .adapter = m_photos.get(), .flexGrow = 1.0F}));
     m_photoGrid->setSections(std::move(starts), headerH);
+    if (m_photoScrollTo) m_photoGrid->scrollToIndex(*std::exchange(m_photoScrollTo, std::nullopt));
 
     // FloatingCapsuleBar (handoff.yaml): "n selected · Save · Clear", or how the last save went.
     std::string what;

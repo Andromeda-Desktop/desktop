@@ -358,6 +358,8 @@ namespace linkapp {
     };
     PlayerView m_playerView;          // of the player popover's last build; used only while it is open
     std::optional<std::string> m_viewing; // phone path of the photo the viewer shows
+    std::optional<std::size_t> m_photoScrollTo; // grid row the next Photos build brings into view
+    std::size_t m_searchCaret = 0;    // the search field's caret, for the field the next build makes
     std::map<std::string, std::string> m_viewSaved; // phone path to its saved copy, from the viewer's Save
     std::pair<int, int> m_viewImage;  // the shown photo's decoded size, 0 until it decodes
     AsyncTextureCache m_viewCache;    // the viewer's full-size decode, off the UI thread
