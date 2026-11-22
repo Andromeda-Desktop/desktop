@@ -10,6 +10,7 @@
 #include <memory>
 #include <random>
 #include <set>
+#include <utility>
 
 using namespace term;
 
@@ -89,6 +90,14 @@ struct Sim {
     model->answered(req, ws);
   }
 
+  // The holder connection drops with answers in flight; the reconnect's first table closes the empty workspaces.
+  void dropConnection() {
+    for (const auto& [req, ws] : std::exchange(holder.answers, {})) model->lost(req);
+    for (std::uint64_t ws : std::set(holder.workspaces)) {
+      if (std::ranges::none_of(holder.sessions, [&](const auto& s) { return s.second == ws; })) holder.close(ws);
+    }
+  }
+
   // The app dies: windows go, shells and workspaces stay. The next start does what TerminalApp::activate does.
   void crashAndRestart() {
     windows.clear();
@@ -113,12 +122,13 @@ struct Sim {
     std::vector<int> open;
     for (const auto& [w, s] : windows) open.push_back(w);
     const int pick = open.empty() ? 0 : open[std::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng)];
-    switch (std::uniform_int_distribution<int>(0, 9)(rng)) {
+    switch (std::uniform_int_distribution<int>(0, 10)(rng)) {
     case 0: case 1: openWindow(); break; // launch or "+"
     case 2: if (pick != 0) startSession(pick); break;
     case 3: if (pick != 0) closeWindow(pick); break;
     case 4: crashAndRestart(); break;
     case 5: holder.reachable = !holder.reachable; break;
+    case 6: dropConnection(); break;
     default: answerOne(); break;
     }
   }

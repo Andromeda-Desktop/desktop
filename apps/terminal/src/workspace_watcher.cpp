@@ -8,12 +8,16 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <utility>
 
 namespace term {
 
   WorkspaceWatcher::WorkspaceWatcher(std::function<void()> changed) : m_changed(std::move(changed)) {}
 
-  WorkspaceWatcher::~WorkspaceWatcher() { disconnect(); }
+  WorkspaceWatcher::~WorkspaceWatcher() {
+    m_puts.clear();
+    disconnect();
+  }
 
   bool WorkspaceWatcher::connect() {
     if (m_fd >= 0) return true;
@@ -26,7 +30,7 @@ namespace term {
   }
 
   std::optional<std::uint32_t> WorkspaceWatcher::put(const holder::WorkspaceInfo& def,
-                                                     std::function<void(std::uint32_t, std::uint64_t)> done) {
+                                                     PutDone done) {
     if (!connect()) return std::nullopt;
     const std::uint32_t req = m_nextReq++;
     m_puts.emplace(req, std::move(done));
@@ -136,7 +140,7 @@ namespace term {
     m_in.clear();
     m_out.clear();
     m_seq.reset();
-    m_puts.clear();
+    for (auto& [req, done] : std::exchange(m_puts, {})) done(req, std::nullopt);
   }
 
   void WorkspaceWatcher::closeEmpty() {

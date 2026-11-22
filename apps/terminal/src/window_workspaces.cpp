@@ -39,6 +39,15 @@ namespace term {
     m_port.close(id); // its window closed while it was being made
   }
 
+  void WindowWorkspaces::lost(std::uint32_t req) {
+    for (auto& [window, state] : m_windows) {
+      if (auto* joining = std::get_if<Joining>(&state); joining != nullptr && joining->req == req) {
+        state = Unjoined{std::move(joining->held)};
+        return;
+      }
+    }
+  }
+
   void WindowWorkspaces::closed(Window window) {
     const auto it = m_windows.find(window);
     if (it == m_windows.end()) return;

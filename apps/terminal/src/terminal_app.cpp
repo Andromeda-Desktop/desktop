@@ -30,8 +30,12 @@ namespace term {
       : DeskApp({.id = kAppId, .name = "Terminal", .sharedGl = false}),
         m_workspaces([this] { workspacesChanged(); }),
         m_windowWorkspaces({.put = [this](const std::string& name, const std::string& root) {
-                              return m_workspaces.put({.name = name, .root = root}, [this](std::uint32_t req, std::uint64_t id) {
-                                m_windowWorkspaces.answered(req, id);
+                              return m_workspaces.put({.name = name, .root = root}, [this](std::uint32_t req, std::optional<std::uint64_t> id) {
+                                if (!id) {
+                                  m_windowWorkspaces.lost(req);
+                                  return;
+                                }
+                                m_windowWorkspaces.answered(req, *id);
                                 workspacesChanged();
                               });
                             },

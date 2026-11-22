@@ -29,10 +29,10 @@ namespace term {
     [[nodiscard]] const holder::Workspaces& workspaces() const { return m_table; }
     // Blocks up to a short timeout for this connection's first table; the start-up needs it before any window.
     const holder::Workspaces& awaitTable();
-    // Sends PutWorkspace (def.id 0 makes a new one); `done` gets the request id and the workspace id. Returns the
-    // request id, or nullopt when the holder is unreachable. A lost connection drops the answer.
-    std::optional<std::uint32_t> put(const holder::WorkspaceInfo& def,
-                                     std::function<void(std::uint32_t req, std::uint64_t id)> done);
+    // Sends PutWorkspace (def.id 0 makes a new one); `done` gets the request id and the workspace id, or nullopt when
+    // the connection is lost first. Returns the request id, or nullopt when the holder is unreachable.
+    using PutDone = std::function<void(std::uint32_t req, std::optional<std::uint64_t> id)>;
+    std::optional<std::uint32_t> put(const holder::WorkspaceInfo& def, PutDone done);
     void setSession(std::uint64_t heldId, std::uint64_t workspace);
     // Ends the workspace's shells and removes it from the holder.
     void close(std::uint64_t workspace);
@@ -56,7 +56,7 @@ namespace term {
     std::optional<std::uint64_t> m_seq; // last applied on this connection
     holder::Workspaces m_table;
     std::uint32_t m_nextReq = 1;
-    std::map<std::uint32_t, std::function<void(std::uint32_t, std::uint64_t)>> m_puts; // by request id
+    std::map<std::uint32_t, PutDone> m_puts; // by request id
   };
 
 } // namespace term

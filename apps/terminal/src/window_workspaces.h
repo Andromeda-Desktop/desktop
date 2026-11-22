@@ -41,6 +41,8 @@ namespace term {
     // A session with a held id now shows in the window; dir names a new workspace.
     void sessionStarted(Window window, std::uint64_t held, const std::string& dir);
     void answered(std::uint32_t req, std::uint64_t id);
+    // The answer to req will not come: the window waits as Unjoined and puts again on its next session.
+    void lost(std::uint32_t req);
     void closed(Window window);
 
     [[nodiscard]] std::optional<std::uint64_t> workspaceOf(Window window) const;

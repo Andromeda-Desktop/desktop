@@ -343,7 +343,7 @@ void watcherFollowsWorkspaceTable() {
   ::close(editor);
 
   std::optional<std::uint64_t> made;
-  const auto req = watcher.put({.name = "api", .root = "/srv/api"}, [&](std::uint32_t, std::uint64_t id) { made = id; });
+  const auto req = watcher.put({.name = "api", .root = "/srv/api"}, [&](std::uint32_t, std::optional<std::uint64_t> id) { made = id.value_or(0); });
   CHECK(req.has_value() && pump([&] { return made.has_value(); }));
   Waker w;
   PtySession s([&] { w.wake(); });
