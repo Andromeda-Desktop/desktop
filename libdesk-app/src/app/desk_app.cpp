@@ -413,12 +413,14 @@ AppWindow* DeskApp::activeWindow() const {
   if (AppWindow* focused = windowFor(m_loop.display().keyboardSurface())) {
     return focused;
   }
-  for (auto it = m_windows.rbegin(); it != m_windows.rend(); ++it) {
-    if ((*it)->isOpen()) {
-      return it->get();
+  // No window has keyboard focus (the desktop's menu bar or a dock menu holds it): the one focused last.
+  AppWindow* last = nullptr;
+  for (const auto& window : m_windows) {
+    if (window->isOpen() && (last == nullptr || window->focusOrder() >= last->focusOrder())) {
+      last = window.get();
     }
   }
-  return nullptr;
+  return last;
 }
 
 void DeskApp::activate(const std::string& activationToken) {

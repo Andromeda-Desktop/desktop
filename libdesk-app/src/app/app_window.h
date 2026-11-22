@@ -79,6 +79,8 @@ public:
   // Sends the commands by group to the desktop's global menu bar when they or their enabled states changed. Runs on
   // open, on focus and after each key or click the window handled.
   void syncMenuBar();
+  // Grows each time a window of this process gains focus; 0 for a window never focused.
+  [[nodiscard]] std::uint64_t focusOrder() const noexcept { return m_focusOrder; }
   ~AppWindow();
 
   AppWindow(const AppWindow&) = delete;
@@ -405,4 +407,5 @@ private:
   bool m_inResizeBand = false;
   std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // deferred lambdas skip a destroyed window
   std::vector<MenuBarItem> m_menuBar; // as last sent
+  std::uint64_t m_focusOrder = 0;
 };

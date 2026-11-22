@@ -590,6 +590,8 @@ bool AppWindow::open() {
       wasActive = st.activated;
       m_activated = st.activated;
       if (m_activated) {
+        static std::uint64_t focusCount = 0;
+        m_focusOrder = ++focusCount;
         noteSceneActivity();
         syncMenuBar();
       }
