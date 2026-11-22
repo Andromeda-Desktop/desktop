@@ -152,3 +152,8 @@ test('single_instance', _dbus_run_session,
     cpp_args: _warnings)],
   timeout: 30,
 )
+test('file_ops_client', _dbus_run_session,
+  args: ['--', executable('file_ops_client_test', 'tests/file_ops_client_test.cpp', dependencies: desk_app_dep,
+    cpp_args: _warnings)],
+  timeout: 30,
+)
