@@ -185,7 +185,11 @@ pub fn restore(entry: &Trashed) -> io::Result<PathBuf> {
         entry.original.clone()
     };
     renameat_with(CWD, entry.file(), CWD, &target, RenameFlags::NOREPLACE)?;
-    fs::remove_file(entry.info())?;
+    if let Err(e) = fs::remove_file(entry.info()) {
+        // An info file without its item lists an entry that can never restore: put the item back.
+        renameat_with(CWD, &target, CWD, entry.file(), RenameFlags::NOREPLACE)?;
+        return Err(e);
+    }
     Ok(target)
 }
 
@@ -226,6 +230,7 @@ fn absolute(path: &Path) -> io::Result<PathBuf> {
 #[allow(clippy::expect_used)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn path_comes_only_from_the_trash_info_group() {
@@ -239,6 +244,27 @@ mod tests {
         assert_eq!(read_info(dir.path(), "a").expect("info").original, PathBuf::from("/home/u/a b"));
         fs::write(dir.path().join("info/b.trashinfo"), "[Other]\nPath=/etc/passwd\n").expect("write");
         assert!(read_info(dir.path(), "b").is_err());
+    }
+
+    #[test]
+    fn a_restore_that_cannot_drop_the_info_file_leaves_the_item_in_the_trash() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let trash_dir = dir.path().join("Trash");
+        fs::create_dir_all(trash_dir.join("files")).expect("mkdir");
+        fs::create_dir_all(trash_dir.join("info")).expect("mkdir");
+        let entry = Trashed { trash_dir: trash_dir.clone(), name: "a".into(), original: dir.path().join("a") };
+        fs::write(entry.file(), "x").expect("write");
+        fs::write(entry.info(), "[Trash Info]\nPath=a\n").expect("write");
+        let info_dir = trash_dir.join("info");
+        fs::set_permissions(&info_dir, fs::Permissions::from_mode(0o555)).expect("chmod");
+        if fs::write(info_dir.join("probe"), "").is_ok() {
+            return;
+        }
+        assert!(restore(&entry).is_err());
+        assert!(entry.file().exists() && !entry.original.exists(), "the item stays in the trash");
+        fs::set_permissions(&info_dir, fs::Permissions::from_mode(0o755)).expect("chmod");
+        assert_eq!(restore(&entry).expect("restore"), entry.original);
+        assert!(!entry.info().exists());
     }
 
     #[test]
