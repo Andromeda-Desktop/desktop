@@ -1,4 +1,5 @@
 #include "notifier.h"
+#include "notice_keys.h"
 
 #include "core/log.h"
 #include "dbus/session_bus.h"
@@ -29,8 +30,7 @@ namespace term {
     };
     std::unique_ptr<sdbus::IProxy> m_proxy;
     std::map<std::uint32_t, Entry> m_entries;      // by notification id
-    std::map<std::string, std::uint32_t> m_byKey;  // shown notifications with a key
-    std::map<std::string, bool> m_inFlight;        // keys whose Notify has no reply yet: true when closed meanwhile
+    NoticeKeys m_keys;
     std::map<std::uint32_t, std::string> m_tokens; // ActivationToken before ActionInvoked
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
   };
@@ -74,8 +74,8 @@ namespace term {
         if (entry.empty()) {
           return;
         }
-        if (const auto key = m_byKey.find(entry.mapped().key); key != m_byKey.end() && key->second == id) {
-          m_byKey.erase(key);
+        if (!entry.mapped().key.empty()) {
+          m_keys.closedByServer(entry.mapped().key, id);
         }
         if (entry.mapped().onClosed) {
           entry.mapped().onClosed();
@@ -100,45 +100,43 @@ namespace term {
     const std::map<std::string, sdbus::Variant> hints{
         {"desktop-entry", sdbus::Variant{std::string{"dev.andromeda.Terminal"}}},
         {"urgency", sdbus::Variant{notice.urgency}}};
-    const auto shown = key.empty() ? m_byKey.end() : m_byKey.find(key);
-    const std::uint32_t replaces = shown != m_byKey.end() ? shown->second : 0;
-    if (!key.empty()) {
-      m_inFlight[key] = false;
-    }
+    const NoticeKeys::Request request = key.empty() ? NoticeKeys::Request{.gen = 0, .replaces = 0} : m_keys.notify(key);
     try {
       m_proxy->callMethodAsync("Notify")
           .onInterface(kInterface)
-          .withArguments(std::string{"Terminal"}, replaces, std::string{"dev.andromeda.Terminal"},
+          .withArguments(std::string{"Terminal"}, request.replaces, std::string{"dev.andromeda.Terminal"},
                          notice.title.empty() ? std::string{"Terminal"} : notice.title, notice.body, actions, hints,
                          std::int32_t{notice.urgency == 2 ? 0 : -1})
-          .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), key, onAction = std::move(onAction),
+          .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive), key, gen = request.gen, onAction = std::move(onAction),
                             onClosed = std::move(onClosed)](std::optional<sdbus::Error> error, std::uint32_t id) {
             if (alive.expired()) {
               return;
             }
-            const auto flight = m_inFlight.extract(key);
             if (error) {
               kLog.warn("notify: {}", error->what());
+              if (!key.empty()) {
+                m_keys.failed(key, gen);
+              }
+              return;
+            }
+            if (!key.empty() && m_keys.replied(key, gen, id) == NoticeKeys::Reply::Close) {
+              m_entries.erase(id);
+              sendClose(id);
               return;
             }
             m_entries[id] = Entry{.key = key, .onAction = onAction, .onClosed = onClosed};
-            if (!key.empty()) {
-              m_byKey[key] = id;
-              if (!flight.empty() && flight.mapped()) {
-                sendClose(id);
-              }
-            }
           });
     } catch (const sdbus::Error& e) {
       kLog.warn("notify: {}", e.what());
+      if (!key.empty()) {
+        m_keys.failed(key, request.gen);
+      }
     }
   }
 
   void Notifier::Impl::close(const std::string& key) {
-    if (const auto shown = m_byKey.find(key); shown != m_byKey.end()) {
-      sendClose(shown->second);
-    } else if (const auto flight = m_inFlight.find(key); flight != m_inFlight.end()) {
-      flight->second = true;
+    if (const auto shown = m_keys.close(key)) {
+      sendClose(*shown);
     }
   }
 

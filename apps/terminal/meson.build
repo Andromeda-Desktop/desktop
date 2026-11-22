@@ -101,6 +101,9 @@ test('session_list', executable('session_list_test', 'tests/session_list_test.cp
 test('workspace_model', executable('workspace_model_test', 'tests/workspace_model_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 
+test('notice_keys', executable('notice_keys_test', 'tests/notice_keys_test.cpp',
+  include_directories: include_directories('src'), cpp_args: _warnings))
+
 test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
 test('palette_model', executable('palette_model_test', 'tests/palette_model_test.cpp',
