@@ -30,6 +30,8 @@ public:
   bool setBool(std::string_view owner, std::string_view key, bool value);
   bool setString(std::string_view owner, std::string_view key, std::string_view value);
   bool clearOwner(std::string_view owner);
+  [[nodiscard]] const toml::table* ownerTable(std::string_view owner) const;
+  bool setOwnerTable(std::string_view owner, toml::table table);
 
 private:
   [[nodiscard]] bool write();

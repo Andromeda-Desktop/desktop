@@ -76,6 +76,7 @@ namespace settings {
         return desktop_layout::writes(value, *now);
       };
       select.groupedClears = [now](std::string_view value) { return desktop_layout::clears(value, *now); };
+      select.groupedStash = [now](std::string_view value) { return desktop_layout::stash(value, *now); };
       entries.push_back(makeEntry(
           SettingsSection::Dock, "desktop-layout", tr("settings.desktop-layout.label"),
           std::string(),

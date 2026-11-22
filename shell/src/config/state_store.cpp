@@ -265,6 +265,25 @@ bool StateStore::clearOwner(std::string_view owner) {
   return true;
 }
 
+const toml::table* StateStore::ownerTable(std::string_view owner) const {
+  return validStateIdentifier(owner) ? m_state[owner].as_table() : nullptr;
+}
+
+bool StateStore::setOwnerTable(std::string_view owner, toml::table table) {
+  if (m_path.empty() || !validStateIdentifier(owner)) {
+    return false;
+  }
+  auto previous = m_state;
+  m_state.insert_or_assign(owner, std::move(table));
+  if (!write()) {
+    m_state = std::move(previous);
+    kLog.warn("failed to write {}", m_path.string());
+    return false;
+  }
+  m_parseError.clear();
+  return true;
+}
+
 bool StateStore::write() {
   if (m_path.empty()) {
     return false;

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <iterator>
 #include <optional>
 #include <span>
 
@@ -26,15 +27,14 @@ namespace desktop_layout {
       std::string_view titleBarMode; // compositor appearance.title_bar.mode
       std::string_view titleBar;    // compositor appearance.title_bar.style
       std::string_view buttons;     // compositor appearance.title_bar.button_position
-      std::string_view radius;      // compositor appearance.corner_radius; empty = the default
     };
 
     // macOS and Windows use a full-width bar until their own top bar (DL5) and taskbar (DL2) exist.
     const Preset* find(std::string_view name) {
-      static const Preset andromeda{true, "top", true, "scrolling", "spaces", "auto", "andromeda", "right", ""};
-      static const Preset macos{false, "top", true, "floating", "spaces", "on", "macos", "left", ""};
-      static const Preset windows{false, "bottom", false, "floating", "taskview", "on", "windows", "right", "8"};
-      static const Preset tiling{true, "top", false, "scrolling", "strip", "auto", "andromeda", "right", ""};
+      static const Preset andromeda{true, "top", true, "scrolling", "spaces", "auto", "andromeda", "right"};
+      static const Preset macos{false, "top", true, "floating", "spaces", "on", "macos", "left"};
+      static const Preset windows{false, "bottom", false, "floating", "taskview", "on", "windows", "right"};
+      static const Preset tiling{true, "top", false, "scrolling", "strip", "auto", "andromeda", "right"};
       if (name == "andromeda") {
         return &andromeda;
       }
@@ -98,6 +98,23 @@ namespace desktop_layout {
     std::span<const std::string_view> capsuledWidgets(std::string_view preset) {
       static constexpr std::array<std::string_view, 2> kWindows{"windows_clock", "notifications"};
       return preset == "windows" ? std::span<const std::string_view>(kWindows) : std::span<const std::string_view>{};
+    }
+
+    // Every override a preset row writes on the first bar `first`, for both rows.
+    std::vector<Path> rowPaths(const std::string& first) {
+      std::vector<Path> out;
+      for (const std::string_view key : {"start", "center", "end", "capsule_group", "solid_opacity"}) {
+        out.push_back(Path{"bar", first, std::string(key)});
+      }
+      for (const RowInt& field : kRowGeometry) {
+        out.push_back(Path{"bar", first, std::string(field.key)});
+      }
+      out.push_back(Path{"shell", "panel", "control_center_placement"});
+      for (const std::string_view widget : capsuledWidgets("windows")) {
+        out.push_back(Path{"widget", std::string(widget), "capsule"});
+        out.push_back(Path{"widget", std::string(widget), "capsule_fill"});
+      }
+      return out;
     }
 
     BarCapsuleGroupStyle statusGroup() {
@@ -367,9 +384,6 @@ namespace desktop_layout {
     for (const auto& [key, value] : compositorParts(*p)) {
       out.emplace_back(compositorPath(key), std::string(value));
     }
-    if (!p->radius.empty()) {
-      out.emplace_back(compositorPath("appearance.corner_radius"), std::string(p->radius));
-    }
     return out;
   }
 
@@ -385,26 +399,32 @@ namespace desktop_layout {
     // Leaving a preset row (to another preset or to none) takes its lanes, group and geometry away.
     const BarRow* row = now.bars.empty() ? nullptr : currentRow(now.bars.front());
     if (row != nullptr && row != rowFor(preset)) {
-      const std::string& first = now.bars.front().name;
-      for (const std::string_view key : {"start", "center", "end", "capsule_group", "solid_opacity"}) {
-        out.push_back(Path{"bar", first, std::string(key)});
-      }
-      for (const RowInt& field : kRowGeometry) {
-        out.push_back(Path{"bar", first, std::string(field.key)});
-      }
-      out.push_back(Path{"shell", "panel", "control_center_placement"});
-      for (const std::string_view widget : capsuledWidgets(row == rowFor("windows") ? "windows" : "")) {
-        out.push_back(Path{"widget", std::string(widget), "capsule"});
-        out.push_back(Path{"widget", std::string(widget), "capsule_fill"});
-      }
+      std::ranges::move(rowPaths(now.bars.front().name), std::back_inserter(out));
     }
     if (!hasDesktopIcons(preset)) {
       out.push_back(Path{"desktop_icons", "start_corner"});
     }
-    if (preset != "windows" && now.cornerRadius == find("windows")->radius) {
+    // Earlier builds wrote radius 8 for Windows; window corners follow radius set B in every preset.
+    if (now.cornerRadius == "8") {
       out.push_back(compositorPath("appearance.corner_radius"));
     }
     return out;
+  }
+
+  std::optional<OverrideStash> stash(std::string_view preset, const Snapshot& now) {
+    if (find(preset) == nullptr || now.bars.empty()) {
+      return std::nullopt;
+    }
+    const bool inRow = currentRow(now.bars.front()) != nullptr;
+    const bool toRow = rowFor(preset) != nullptr;
+    if (inRow == toRow) {
+      return std::nullopt;
+    }
+    return OverrideStash{
+        .op = toRow ? OverrideStash::Op::Save : OverrideStash::Op::Restore,
+        .owner = "desktop_layout",
+        .paths = rowPaths(now.bars.front().name),
+    };
   }
 
   std::string current(const Config& cfg, const SettingsControl* compositor) {

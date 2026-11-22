@@ -841,6 +841,10 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
   const auto clearOverrides = [this](std::vector<std::vector<std::string>> paths) {
     clearSettingOverrides(std::move(paths));
   };
+  const auto mutateOverrides = [this](
+                                   std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> overrides,
+                                   std::vector<std::vector<std::string>> clears, std::optional<OverrideStash> stash
+                               ) { mutateSettingOverrides(std::move(overrides), std::move(clears), std::move(stash)); };
   const auto resetLane = [this](std::vector<std::string> lanePath) { resetBarLane(std::move(lanePath)); };
   const auto renameWidget = [this](
                                 std::string oldName, std::string newName,
@@ -902,6 +906,7 @@ settings::SettingsContentContext SettingsWindow::makeContentContext(
       .setOverrides = setOverrides,
       .clearOverride = clearOverride,
       .clearOverrides = clearOverrides,
+      .mutateOverrides = mutateOverrides,
       .resetBarLane = resetLane,
       .isResetConfirmationPending =
           [this](const std::vector<std::vector<std::string>>& paths) { return m_pendingResetSettingPaths == paths; },

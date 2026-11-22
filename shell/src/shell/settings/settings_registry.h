@@ -134,6 +134,8 @@ namespace settings {
         groupedCommit;
     // Paths a grouped commit also takes back to their defaults (tile pickers only).
     std::function<std::vector<std::vector<std::string>>(std::string_view selectedValue)> groupedClears;
+    // The user's values a grouped commit keeps across it (tile pickers only).
+    std::function<std::optional<OverrideStash>(std::string_view selectedValue)> groupedStash;
   };
 
   // ClearOverride returns the setting to its default; StoreEmpty writes "" where empty has its own meaning.

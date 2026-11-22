@@ -552,6 +552,23 @@ namespace {
     return nullptr;
   }
 
+  // Copies the node at `path` from `from` into `to`, making the tables on the way; false when `from` has none.
+  bool copyOverrideNode(const toml::table& from, toml::table& to, const std::vector<std::string>& path) {
+    const toml::node* node = findOverrideNode(from, path);
+    if (node == nullptr) {
+      return false;
+    }
+    toml::table* table = &to;
+    for (std::size_t i = 0; i + 1 < path.size(); ++i) {
+      table = ensureTable(*table, path[i]);
+      if (table == nullptr) {
+        return false;
+      }
+    }
+    node->visit([&](const auto& value) { table->insert_or_assign(path.back(), value); });
+    return true;
+  }
+
   void pruneEmptyOverrideTables(
       toml::table& root, const std::vector<std::string>& changedPath, std::size_t preserveDepth = 0
   ) {
@@ -1739,7 +1756,7 @@ bool ConfigService::setOverrides(
 
 bool ConfigService::mutateOverrides(
     const std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>& overrides,
-    const std::vector<std::vector<std::string>>& clearPaths, bool* changed
+    const std::vector<std::vector<std::string>>& clearPaths, bool* changed, const OverrideStash* stash
 ) {
   if (changed != nullptr) {
     *changed = false;
@@ -1790,7 +1807,24 @@ bool ConfigService::mutateOverrides(
     }
   }
 
-  if (overrides.empty() && !anyCleared) {
+  // Save copies the values the commit replaces; Restore puts saved values back over the commit's own.
+  toml::table saved;
+  bool restored = false;
+  if (stash != nullptr) {
+    const toml::table* kept = stash->op == OverrideStash::Op::Restore ? m_stateStore.ownerTable(stash->owner) : nullptr;
+    for (const auto& path : stash->paths) {
+      if (path.empty()) {
+        return false;
+      }
+      if (stash->op == OverrideStash::Op::Save) {
+        copyOverrideNode(m_overridesTable, saved, path);
+      } else if (kept != nullptr) {
+        restored = copyOverrideNode(*kept, next, path) || restored;
+      }
+    }
+  }
+
+  if (overrides.empty() && !anyCleared && !restored) {
     m_lastMutationError.clear();
     return true;
   }
@@ -1799,7 +1833,17 @@ bool ConfigService::mutateOverrides(
     reconcileCapsuleGroupOverrides(next);
   }
 
-  return commitOverrideTable(std::move(next), changed);
+  if (!commitOverrideTable(std::move(next), changed)) {
+    return false;
+  }
+  if (stash != nullptr) {
+    if (stash->op == OverrideStash::Op::Save) {
+      m_stateStore.setOwnerTable(stash->owner, std::move(saved));
+    } else {
+      m_stateStore.clearOwner(stash->owner);
+    }
+  }
+  return true;
 }
 
 bool ConfigService::commitOverrideTable(toml::table next, bool* changed, const OverrideDiagnostics& known) {

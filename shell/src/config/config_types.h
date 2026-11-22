@@ -405,6 +405,15 @@ using ConfigOverrideValue = std::variant<
     std::vector<SessionPanelActionConfig>, std::vector<IdleBehaviorConfig>, std::vector<NotificationFilterConfig>,
     std::vector<KeyChord>, std::vector<BarCapsuleGroupStyle>>;
 
+// Keeps the user's own override values at `paths` across grouped commits (a Desktop Layout row): Save copies them
+// to the state file once the commit lands, Restore puts the copy back inside the commit and drops it.
+struct OverrideStash {
+  enum class Op : std::uint8_t { Save, Restore };
+  Op op = Op::Save;
+  std::string owner;
+  std::vector<std::vector<std::string>> paths;
+};
+
 // Optional rounded “capsule” behind a bar widget (see `[widget.*] capsule_*` in CONFIG.md).
 // Corner shape and edge softness are fixed in the shell code; padding, radius, and border width are configurable.
 struct WidgetBarCapsuleSpec {

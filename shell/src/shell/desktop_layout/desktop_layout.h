@@ -4,6 +4,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,9 +44,12 @@ namespace desktop_layout {
   // The values that apply `preset`; empty for an unknown name. The first bar moves edge and, for Windows, becomes
   // the taskbar row.
   [[nodiscard]] std::vector<Write> writes(std::string_view preset, const Snapshot& now);
-  // The overrides a pick takes away so the defaults return: the taskbar row and its radius 8 when leaving Windows,
-  // and per-workspace arrangements. The user's own values stay.
+  // The overrides a pick takes away so the defaults return: the taskbar row when leaving Windows or macOS, the
+  // radius 8 earlier builds wrote for Windows, and per-workspace arrangements. The user's own values stay.
   [[nodiscard]] std::vector<Path> clears(std::string_view preset, const Snapshot& now);
+  // The user's own bar across a row: saved when a pick enters the Windows or macOS row from another bar, put back
+  // when a pick leaves the row for one; nullopt otherwise.
+  [[nodiscard]] std::optional<OverrideStash> stash(std::string_view preset, const Snapshot& now);
   // The preset whose parts all match, kCustom when none does, or empty while the compositor's settings are not known.
   [[nodiscard]] std::string current(const Config& cfg, const SettingsControl* compositor);
 

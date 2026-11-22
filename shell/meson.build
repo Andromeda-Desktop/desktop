@@ -1216,6 +1216,7 @@ if build_tests
     'cpu_stat',
     'cpu_temp_sensor',
     'desktop_entry_launch',
+    'desktop_layout_switch',
     'desktop_entry_localization',
     'desktop_entry_symlink',
     'desktop_entry_watch',

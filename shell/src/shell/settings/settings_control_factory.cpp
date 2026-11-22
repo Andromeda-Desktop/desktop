@@ -540,15 +540,16 @@ namespace settings {
     if (setting.tiles) {
       const bool swatches = !path.empty() && path.back() == "builtin";
       const auto commit = [setOverride = ctx.setOverride, setOverrides = ctx.setOverrides,
-                           clearOverrides = ctx.clearOverrides, requestRebuild = ctx.requestRebuild,
+                           mutateOverrides = ctx.mutateOverrides, requestRebuild = ctx.requestRebuild,
                            groupedCommit = setting.groupedCommit, groupedClears = setting.groupedClears,
-                           path](std::string value) {
-        if (groupedCommit) {
+                           groupedStash = setting.groupedStash, path](std::string value) {
+        if (groupedCommit && groupedClears) {
+          mutateOverrides(
+              groupedCommit(value, path), groupedClears(value),
+              groupedStash ? groupedStash(value) : std::optional<OverrideStash>{}
+          );
+        } else if (groupedCommit) {
           setOverrides(groupedCommit(value, path));
-          // One write for every clear: a write each reloaded the shell and rebuilt the bar and dock per path.
-          if (groupedClears) {
-            clearOverrides(groupedClears(value));
-          }
         } else {
           setOverride(path, std::move(value));
         }

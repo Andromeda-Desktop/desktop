@@ -279,6 +279,49 @@ void SettingsWindow::clearSettingOverrides(std::vector<std::vector<std::string>>
   });
 }
 
+void SettingsWindow::mutateSettingOverrides(
+    std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>> overrides,
+    std::vector<std::vector<std::string>> clears, std::optional<OverrideStash> stash
+) {
+  // The compositor is written only after the config commit succeeds; its clears go first, so a set wins.
+  std::vector<std::pair<std::string, std::string>> compositorWrites;
+  for (const auto& path : clears) {
+    if (const auto key = settings::compositorSettingKey(path)) {
+      compositorWrites.emplace_back(*key, std::string{});
+    }
+  }
+  std::erase_if(clears, [](const auto& path) { return settings::compositorSettingKey(path).has_value(); });
+  std::erase_if(overrides, [&compositorWrites](const auto& overrideEntry) {
+    const auto key = settings::compositorSettingKey(overrideEntry.first);
+    if (key.has_value()) {
+      compositorWrites.emplace_back(*key, compositorSettingText(overrideEntry.second));
+    }
+    return key.has_value();
+  });
+  if (m_config == nullptr) {
+    return;
+  }
+  bool changed = false;
+  const bool needsSceneRebuild = settingPathsNeedSceneRebuild(clears)
+      || std::ranges::any_of(overrides, [](const auto& overrideEntry) {
+           return settingPathNeedsSceneRebuild(overrideEntry.first);
+         });
+  const auto previousResetPaths = currentPageResetPaths();
+  if ((!overrides.empty() || !clears.empty() || stash.has_value())
+      && !m_config->mutateOverrides(overrides, clears, &changed, stash ? &*stash : nullptr)) {
+    kLog.warn("settings: grouped write failed; {} compositor setting(s) not written", compositorWrites.size());
+    markSettingsWriteError(settingsMutationError(*m_config, i18n::tr("settings.errors.batch-write")));
+    return;
+  }
+  for (const auto& [key, value] : compositorWrites) {
+    setCompositorSetting(key, value);
+  }
+  const bool resetPathsChanged = previousResetPaths != currentPageResetPaths();
+  DeferredCall::callLater([this, changed, needsSceneRebuild, resetPathsChanged] {
+    finishSettingsWrite(changed, needsSceneRebuild, resetPathsChanged, false);
+  });
+}
+
 void SettingsWindow::resetBarLane(std::vector<std::string> lanePath) {
   DeferredCall::callLater([this, lanePath = std::move(lanePath)] mutable {
     if (m_config == nullptr) {

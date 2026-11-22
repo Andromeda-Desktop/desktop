@@ -192,7 +192,7 @@ public:
   // validation and raises a config-error notification.
   bool mutateOverrides(
       const std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>& overrides,
-      const std::vector<std::vector<std::string>>& clearPaths, bool* changed
+      const std::vector<std::vector<std::string>>& clearPaths, bool* changed, const OverrideStash* stash = nullptr
   );
   bool clearOverride(const std::vector<std::string>& path);
   // Moves [shell.animation] out of the overrides file to the compositor; call it on every compositor settings batch.

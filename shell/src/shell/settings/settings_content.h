@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -104,6 +105,12 @@ namespace settings {
     std::function<void(std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>)> setOverrides;
     std::function<void(std::vector<std::string>)> clearOverride;
     std::function<void(std::vector<std::vector<std::string>>)> clearOverrides;
+    // Sets and clears in one commit; a set wins over a clear of the same path, a restored stash over both.
+    std::function<void(
+        std::vector<std::pair<std::vector<std::string>, ConfigOverrideValue>>, std::vector<std::vector<std::string>>,
+        std::optional<OverrideStash>
+    )>
+        mutateOverrides;
     std::function<void(std::vector<std::string>)> resetBarLane;
     std::function<bool(const std::vector<std::vector<std::string>>&)> isResetConfirmationPending;
     std::function<void(std::vector<std::vector<std::string>>)> requestResetConfirmation;
