@@ -111,6 +111,28 @@ printf '%s\n' '{"type":"result","subtype":"success","session_id":"79ed6f89-b693-
       }
     }
   }
+  if (result == EXIT_SUCCESS) {
+    // An agent that answers initialize and then stops reading: the next request must fail the session, not
+    // raise SIGPIPE in the terminal.
+    const auto deaf = root / "bin" / "deaf-agentd";
+    {
+      std::ofstream script(deaf);
+      script << R"(#!/bin/sh
+IFS= read -r line
+id=$(printf '%s' "$line" | sed 's/.*"id":\([0-9]*\).*/\1/')
+exec 0<&-
+printf '{"jsonrpc":"2.0","id":%s,"result":{}}\n' "$id"
+sleep 1
+)";
+    }
+    fs::permissions(deaf, fs::perms::owner_all);
+    ::setenv("ANDROMEDA_AGENTD", deaf.c_str(), 1);
+    Host host(Kind::Claude, [](std::uint64_t) {});
+    Session& s = host.open(8, (root / "project").string());
+    if (!pumpUntil([&] { return s.phase() == Phase::Failed; })) {
+      result = fail("the session did not fail when the agent stopped reading");
+    }
+  }
   fs::remove_all(root);
   if (result == EXIT_SUCCESS) {
     std::printf("ok (%d changes)\n", changes);

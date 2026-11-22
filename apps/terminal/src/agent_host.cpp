@@ -190,6 +190,11 @@ namespace term::agent {
     m_shared->stdinFd = in[1];
 
     m_writer = std::thread([shared = m_shared] {
+      // A write to an agent that stopped reading returns EPIPE here instead of ending the app with SIGPIPE.
+      sigset_t pipe;
+      sigemptyset(&pipe);
+      sigaddset(&pipe, SIGPIPE);
+      pthread_sigmask(SIG_BLOCK, &pipe, nullptr);
       for (;;) {
         std::unique_lock lock(shared->mutex);
         shared->wake.wait(lock, [&] { return shared->closing || !shared->lines.empty(); });
