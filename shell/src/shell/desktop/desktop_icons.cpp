@@ -179,6 +179,9 @@ bool DesktopIcons::ownsSurface(wl_surface* surface) const {
 
 void DesktopIcons::open() {
   if (m_view == nullptr) {
+    // A missing folder cannot be watched, and drops create it later; files put there would never show.
+    std::error_code error;
+    std::filesystem::create_directories(m_dir, error);
     m_view = std::make_unique<FileModelView>(FileModel::open(m_dir, m_watcher));
     m_view->setSort({.key = FileSortKey::Name, .foldersFirst = true});
     m_allStats = m_view->model().needAllStats(); // stacks pick the newest file; .desktop labels are cached by mtime
@@ -1509,7 +1512,8 @@ void DesktopIcons::syncBand() {
   m_band->setVisible(m_banding);
   m_band->setPosition(std::min(m_bandX0, m_bandX1), std::min(m_bandY0, m_bandY1));
   m_band->setSize(std::abs(m_bandX1 - m_bandX0), std::abs(m_bandY1 - m_bandY0));
-  m_surface->requestRedraw();
+  // Runs the prepare-frame callback, which sends the grown band to the compositor's content region.
+  m_surface->requestUpdateOnly();
 }
 
 void DesktopIcons::selectOnly(std::size_t index) {
