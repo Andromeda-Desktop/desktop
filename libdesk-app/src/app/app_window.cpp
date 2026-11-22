@@ -682,6 +682,7 @@ void AppWindow::close() {
   m_navButtons = {};
   m_moreButton = nullptr;
   m_sidebarNode = nullptr;
+  m_sidebarList = nullptr;
   m_bodyNode = nullptr;
   m_mainNode = nullptr;
   m_headerNode = nullptr;
@@ -1310,7 +1311,7 @@ void AppWindow::rebuildSidebar() {
 }
 
 void AppWindow::swapSidebar(Renderer& renderer, float height) {
-  if (m_sidebarNode == nullptr || !m_sidebarBuilder || m_sidebarNode->children().empty()) {
+  if (m_sidebarNode == nullptr || m_sidebarList == nullptr || !m_sidebarBuilder) {
     return;
   }
   const float edgeW = 0.5F * m_uiScale;
@@ -1318,10 +1319,11 @@ void AppWindow::swapSidebar(Renderer& renderer, float height) {
   const float shown = full * m_sidebarMix;
   m_sidebarNode->setMinWidth(shown);
   m_sidebarNode->setMaxWidth(shown);
-  auto list = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .width = full - edgeW});
+  Flex* old = m_sidebarList;
+  auto list = ui::column({.out = &m_sidebarList, .align = FlexAlign::Stretch, .clipChildren = true, .width = full - edgeW});
   list->addChild(m_sidebarBuilder(renderer, full - edgeW, height));
-  m_sidebarNode->removeChild(m_sidebarNode->children().front().get());
-  m_sidebarNode->insertChildAt(0, std::move(list));
+  m_sidebarNode->removeChild(old);
+  m_sidebarNode->addChild(std::move(list));
   m_sidebarNode->markLayoutDirty();
   m_contentRect.x = contentLeft(static_cast<float>(m_surface->margin()), shown, m_cardGap);
 }
@@ -1652,6 +1654,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
   m_maximizeButton = nullptr;
   m_navButtons = {};
   m_sidebarNode = nullptr;
+  m_sidebarList = nullptr;
   m_bodyNode = nullptr;
   m_mainNode = nullptr;
   m_headerNode = nullptr;
@@ -1740,7 +1743,7 @@ void AppWindow::buildScene(Renderer& renderer, float width, float height) {
     auto sidebar = ui::row({.out = &m_sidebarNode, .align = FlexAlign::Stretch, .minWidth = sidebarShown,
                             .maxWidth = sidebarShown, .clipChildren = true, .width = sidebarShown});
     sidebar->setFill(sidebarFill);
-    auto list = ui::column({.align = FlexAlign::Stretch, .clipChildren = true, .width = sidebarWidth});
+    auto list = ui::column({.out = &m_sidebarList, .align = FlexAlign::Stretch, .clipChildren = true, .width = sidebarWidth});
     partStart = std::chrono::steady_clock::now();
     list->addChild(m_sidebarBuilder(renderer, sidebarWidth, height));
     sidebarMs = since(partStart);

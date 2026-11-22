@@ -348,6 +348,7 @@ private:
   std::array<Button*, 2> m_navButtons{};
   Button* m_moreButton = nullptr;
   Flex* m_sidebarNode = nullptr;
+  Flex* m_sidebarList = nullptr;
   Flex* m_bodyNode = nullptr;
   [[nodiscard]] std::optional<PaletteTone> chromeTone() const;
   [[nodiscard]] ColorSpec sidebarGlass(const ColorSpec& glassFill) const;
