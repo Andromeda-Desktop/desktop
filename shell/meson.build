@@ -1546,6 +1546,16 @@ if build_tests
       ],
       depends: fingerprint_integration_exe,
     )
+    gtk_menu_reload_integration_exe = executable('gtk_menu_reload_integration_test',
+      sources: files('tests/gtk_menu_reload_integration_test.cpp'),
+      dependencies: noctalia_core_dep,
+      override_options: ['b_ndebug=false'],
+    )
+    test('gtk_menu_reload_integration',
+      dbus_run_session,
+      args: ['--', gtk_menu_reload_integration_exe.full_path()],
+      depends: gtk_menu_reload_integration_exe,
+    )
     test('logind_sleep_delay_integration',
       dbus_run_session,
       args: [

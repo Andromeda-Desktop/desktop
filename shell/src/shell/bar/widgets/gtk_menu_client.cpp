@@ -123,7 +123,8 @@ void GtkMenuClient::load() {
   if (m_menus == nullptr) {
     return;
   }
-  m_menusById.clear();
+  // The tree is built from the last complete load until this one completes: an actions Changed meanwhile rebuilds it.
+  auto staged = std::make_shared<decltype(m_menusById)>();
   // The old groups end only after the new Start answers: GTK frees a group, and may reuse its id, at zero subscribers.
   auto previous = std::make_shared<std::vector<std::uint32_t>>(std::move(m_subscribed));
   m_subscribed.clear();
@@ -131,7 +132,7 @@ void GtkMenuClient::load() {
   auto pending = std::make_shared<std::set<std::uint32_t>>();
   const auto start = std::make_shared<std::function<void(std::vector<std::uint32_t>)>>();
   // The function holds itself weakly; each pending reply holds it strongly until it runs.
-  *start = [this, alive = std::weak_ptr<bool>(m_alive), pending, previous, generation,
+  *start = [this, alive = std::weak_ptr<bool>(m_alive), pending, previous, generation, staged,
             weakStart = std::weak_ptr<std::function<void(std::vector<std::uint32_t>)>>(start)](
                std::vector<std::uint32_t> groups
            ) {
@@ -145,7 +146,7 @@ void GtkMenuClient::load() {
           .onInterface(kMenus)
           .withTimeout(kTimeout)
           .withArguments(groups)
-          .uponReplyInvoke([this, alive, pending, previous, generation, self](
+          .uponReplyInvoke([this, alive, pending, previous, generation, staged, self](
                                std::optional<sdbus::Error> error, std::vector<MenuGroup> menus
                            ) {
             if (alive.expired() || generation != m_loadGeneration) {
@@ -166,7 +167,7 @@ void GtkMenuClient::load() {
             }
             std::vector<std::uint32_t> next;
             for (const MenuGroup& menu : menus) {
-              std::vector<Item>& items = m_menusById[{std::get<0>(menu), std::get<1>(menu)}];
+              std::vector<Item>& items = (*staged)[{std::get<0>(menu), std::get<1>(menu)}];
               items.clear();
               for (const ItemProps& props : std::get<2>(menu)) {
                 Item item;
@@ -194,6 +195,7 @@ void GtkMenuClient::load() {
               (*self)(std::move(next));
               return;
             }
+            m_menusById = std::move(*staged);
             build();
           });
     } catch (const sdbus::Error& e) {
