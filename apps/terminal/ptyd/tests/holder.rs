@@ -508,6 +508,29 @@ fn close_holds_when_the_client_hangs_up_during_a_flood() {
 }
 
 #[test]
+fn close_after_the_shell_exited_hangs_up_its_background_jobs() {
+    let (_dir, path) = start(Config::default());
+    let mut c = TestClient::connect(&path);
+    let (id, _fd) = c.spawn(&[
+        "bash",
+        "-c",
+        "set -m; sleep 100 & echo sh=$$ job=$!; exit 0",
+    ]);
+    let seen = c.read_until(id, 0, Vec::new(), |s| contains(s, "\n"));
+    let text = String::from_utf8(seen).unwrap();
+    let mut words = text.split_whitespace();
+    let sh = words.next().unwrap().strip_prefix("sh=").unwrap().to_string();
+    let job = words.next().unwrap().strip_prefix("job=").unwrap().to_string();
+    assert!(wait_for(|| !exists(&sh), TIMEOUT), "shell {sh} not reaped");
+    assert!(exists(&job));
+    c.send(ClientMsg::Close { id });
+    assert!(
+        wait_for(|| !exists(&job), TIMEOUT),
+        "background job {job} outlived the closed session"
+    );
+}
+
+#[test]
 fn close_kills_a_child_that_ignores_sighup() {
     let (_dir, path) = start(Config {
         close_grace: Duration::from_millis(100),

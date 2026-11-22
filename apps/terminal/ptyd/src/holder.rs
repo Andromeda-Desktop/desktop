@@ -826,6 +826,8 @@ impl Holder {
             s.owner = Owner::Closing {
                 kill_at: Instant::now() + self.config.close_grace,
             };
+        } else {
+            hang_up_session(s.child.id());
         }
         s.on_hangup();
         s.tail = Vec::new();
