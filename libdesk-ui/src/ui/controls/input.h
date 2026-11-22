@@ -45,10 +45,17 @@ public:
   /// clipboard export, no undo history, sensitive text-input hints). Ignored outside password mode;
   /// entering or leaving password mode conceals the value again.
   void setPasswordRevealed(bool revealed);
-  /// Multi-line editing: Enter inserts '\n' (Ctrl+Enter submits), the text wraps
-  /// at the viewport width and scrolls vertically. The control keeps whatever
-  /// height layout assigns (explicit height or flex-grown) instead of forcing
-  /// the single-line control height. Mutually exclusive with password mode.
+  enum class Lines : std::uint8_t {
+    Single = 0,
+    Wrap = 1,   // multi-line, wraps at the viewport width
+    NoWrap = 2, // multi-line, one row per '\n' line, scrolls horizontally
+  };
+  /// Multi-line editing: Enter inserts '\n' (Ctrl+Enter submits) and the text
+  /// scrolls vertically. The control keeps whatever height layout assigns
+  /// (explicit height or flex-grown) instead of forcing the single-line control
+  /// height. Mutually exclusive with password mode.
+  void setLines(Lines lines);
+  /// setLines(Wrap) or setLines(Single).
   void setMultiline(bool enabled);
   void setInvalid(bool invalid);
   void setFrameVisible(bool visible);
@@ -156,6 +163,9 @@ private:
   [[nodiscard]] std::size_t nextWordStartForByteOffset(std::size_t offset) const;
   [[nodiscard]] std::size_t nextWordEndForByteOffset(std::size_t offset) const;
   [[nodiscard]] float textViewportWidth() const noexcept;
+  // 0 (unbounded) for NoWrap.
+  [[nodiscard]] float wrapWidth() const noexcept;
+  [[nodiscard]] bool multiline() const noexcept { return m_lines != Lines::Single; }
   [[nodiscard]] bool clearButtonVisible() const noexcept;
   [[nodiscard]] float clearButtonHitWidth() const noexcept;
   [[nodiscard]] float clearButtonTextReserveWidth() const noexcept;
@@ -274,7 +284,7 @@ private:
   bool m_clearButtonEnabled = false;
   bool m_passwordMode = false;
   bool m_passwordRevealed = false;
-  bool m_multiline = false;
+  Lines m_lines = Lines::Single;
   bool m_invalid = false;
   bool m_frameVisible = true;
   bool m_capsule = false;

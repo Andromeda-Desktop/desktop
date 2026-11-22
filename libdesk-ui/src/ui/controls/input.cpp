@@ -225,9 +225,7 @@ Input::Input() {
     const bool removedPreedit = removePreeditText();
     stopCursorBlink();
     updateCursorVisibility();
-    if (!m_multiline) {
-      m_scrollOffset = 0.0F;
-    }
+    m_scrollOffset = 0.0F;
     applyVisualState();
     markLayoutDirty();
     if (removedPreedit) {
@@ -259,8 +257,8 @@ Input::Input() {
       resetUndoCoalescing();
       m_goalCaretX = -1.0F;
       const float textStartX = m_horizontalPadding + kTextInnerInset;
-      const std::size_t offset = m_multiline
-          ? pointToByteOffset(data.localX - textStartX, data.localY - kMultilinePadV + m_scrollOffsetY)
+      const std::size_t offset = multiline()
+          ? pointToByteOffset(data.localX - textStartX + m_scrollOffset, data.localY - kMultilinePadV + m_scrollOffsetY)
           : xToByteOffset(data.localX - textStartX + m_scrollOffset - m_contentLeadSlack);
       if (data.button == BTN_MIDDLE) {
         pastePrimaryAt(offset);
@@ -311,7 +309,7 @@ Input::Input() {
       resetUndoCoalescing();
       m_goalCaretX = -1.0F;
       const float textStartX = m_horizontalPadding + kTextInnerInset;
-      if (m_multiline) {
+      if (multiline()) {
         // Drag near the top/bottom edge pans the viewport a line per motion event.
         const float heightPx = height() > 0.0F ? height() : m_controlHeight;
         const float edgePx = 12.0F;
@@ -322,7 +320,7 @@ Input::Input() {
         }
         clampScrollOffsetY();
         const std::size_t offset =
-            pointToByteOffset(data.localX - textStartX, data.localY - kMultilinePadV + m_scrollOffsetY);
+            pointToByteOffset(data.localX - textStartX + m_scrollOffset, data.localY - kMultilinePadV + m_scrollOffsetY);
         extendPointerSelectionToByteOffset(offset);
         updateInteractiveGeometry();
         updateCursorVisibility();
@@ -363,7 +361,7 @@ Input::Input() {
     if (delta == 0.0F) {
       return false;
     }
-    if (m_multiline) {
+    if (multiline()) {
       // Pan the viewport without moving the caret.
       const float step = currentLineHeight() * static_cast<float>(kWheelScrollLines);
       const float previous = m_scrollOffsetY;
@@ -493,7 +491,7 @@ void Input::setClearButtonEnabled(bool enabled) {
 
 void Input::setPasswordMode(bool enabled) {
   // Mutually exclusive with multiline; multiline wins.
-  if (enabled && m_multiline) {
+  if (enabled && multiline()) {
     return;
   }
   if (m_passwordMode == enabled) {
@@ -532,11 +530,14 @@ void Input::setPasswordRevealed(bool revealed) {
   markTextContentChanged();
 }
 
-void Input::setMultiline(bool enabled) {
-  if (m_multiline == enabled) {
+void Input::setMultiline(bool enabled) { setLines(enabled ? Lines::Wrap : Lines::Single); }
+
+void Input::setLines(Lines lines) {
+  if (m_lines == lines) {
     return;
   }
-  m_multiline = enabled;
+  m_lines = lines;
+  const bool enabled = lines != Lines::Single;
   if (enabled && m_passwordMode) {
     rewrapValue();
     m_passwordMode = false;
@@ -980,11 +981,11 @@ void Input::rebuildCursorStopsFull(Renderer& renderer) {
   m_stopByte.push_back(0);
   m_stopX.push_back(0.0F);
   m_stopsInLogicalOrder = true;
-  m_stopsBuiltForWidth = textViewportWidth();
+  m_stopsBuiltForWidth = wrapWidth();
   m_multilineLabelX = 0.0F;
 
   if (m_value.empty()) {
-    if (m_multiline) {
+    if (multiline()) {
       m_stopRect.push_back(TextCursorStop{0.0F, 0.0F, renderer.fontRowExtent(m_fontSize, m_label->font())});
     }
     return;
@@ -1001,7 +1002,7 @@ void Input::rebuildCursorStopsFull(Renderer& renderer) {
       m_stopX.push_back(maskX);
     }
   }
-  if (m_multiline) {
+  if (multiline()) {
     renderer.measureTextCursorStopsWrapped(
         m_value, m_fontSize, m_stopByte, m_stopsBuiltForWidth, m_stopRect, m_label->font()
     );
@@ -1037,7 +1038,7 @@ void Input::rebuildCursorStops(Renderer& renderer) {
 
 void Input::recomputeContentLeadSlack(Renderer& renderer, float width, bool showClearButton) {
   m_contentLeadSlack = 0.0F;
-  if (m_multiline || (m_textAlign != TextAlign::Center && !Style::rtl() && !valueLaidOutRtl())) {
+  if (multiline() || (m_textAlign != TextAlign::Center && !Style::rtl() && !valueLaidOutRtl())) {
     return;
   }
 
@@ -1135,8 +1136,8 @@ void Input::syncLabelScrollPosition() {
   if (m_label == nullptr || (passwordMasked() && !m_value.empty())) {
     return;
   }
-  if (m_multiline) {
-    m_label->setPosition(m_multilineLabelX, m_cachedLabelY - m_scrollOffsetY);
+  if (multiline()) {
+    m_label->setPosition(m_multilineLabelX - m_scrollOffset, m_cachedLabelY - m_scrollOffsetY);
     return;
   }
   if (m_value.empty()) {
@@ -1152,7 +1153,7 @@ void Input::doLayout(Renderer& renderer) {
   const float w = std::max(wBase, minFromHint);
   // Multiline keeps whatever height layout assigned (explicit or flex-grown)
   // instead of forcing the single-line control height.
-  const float h = m_multiline && height() > 0.0F ? height() : m_controlHeight;
+  const float h = multiline() && height() > 0.0F ? height() : m_controlHeight;
   setSize(w, h);
   const bool showClearButton = clearButtonVisible();
 
@@ -1160,26 +1161,29 @@ void Input::doLayout(Renderer& renderer) {
   m_label->setVisible(!showPasswordGlyphs);
 
   // Wrapped stops depend on the viewport width, not just the text.
-  if (m_multiline && m_stopsBuiltForWidth != textViewportWidth()) {
+  if (multiline() && m_stopsBuiltForWidth != wrapWidth()) {
     m_textMetricsDirty = true;
   }
   rebuildCursorStops(renderer);
   recomputeContentLeadSlack(renderer, w, showClearButton);
 
   if (m_inputArea != nullptr && m_inputArea->focused()) {
-    if (m_multiline) {
+    if (multiline()) {
       ensureCursorVisibleY();
+      if (m_lines == Lines::NoWrap) {
+        ensureCursorVisible();
+      }
     } else {
       ensureCursorVisible();
     }
-  } else if (m_multiline) {
+  } else if (multiline()) {
     clampScrollOffsetY();
   } else {
     m_scrollOffset = restingScrollOffset();
   }
 
-  if (m_multiline) {
-    m_label->setMaxWidth(textViewportWidth());
+  if (multiline()) {
+    m_label->setMaxWidth(wrapWidth());
     m_label->measure(renderer);
     m_cachedLabelY = kMultilinePadV;
   } else if (!showPasswordGlyphs) {
@@ -1296,7 +1300,7 @@ void Input::handleKey(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modi
       || lineEditDeleteToEnd
       || lineEditDeleteWordForward;
 
-  const bool verticalNav = m_multiline
+  const bool verticalNav = multiline()
       && (KeySymbol::isUp(sym) || KeySymbol::isDown(sym) || KeySymbol::isPageUp(sym) || KeySymbol::isPageDown(sym));
 
   // Any non-vertical key breaks an Up/Down run's sticky column.
@@ -1543,7 +1547,7 @@ void Input::handleKey(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modi
         m_selectionAnchor = m_cursorPos;
       }
     }
-  } else if (m_multiline && KeySymbol::isEnter(sym) && !preedit) {
+  } else if (multiline() && KeySymbol::isEnter(sym) && !preedit) {
     if (ctrl || (m_submitOnEnter && !shift)) {
       if (m_onSubmit) {
         m_onSubmit(m_value);
@@ -1564,13 +1568,13 @@ void Input::handleKey(std::uint32_t sym, std::uint32_t utf32, std::uint32_t modi
     }
   } else if (KeySymbol::isHome(sym)) {
     resetUndoCoalescing();
-    m_cursorPos = m_multiline && !ctrl ? lineStartForByte(m_cursorPos) : 0;
+    m_cursorPos = multiline() && !ctrl ? lineStartForByte(m_cursorPos) : 0;
     if (!shift) {
       m_selectionAnchor = m_cursorPos;
     }
   } else if (KeySymbol::isEnd(sym)) {
     resetUndoCoalescing();
-    m_cursorPos = m_multiline && !ctrl ? lineEndForByte(m_cursorPos) : m_value.size();
+    m_cursorPos = multiline() && !ctrl ? lineEndForByte(m_cursorPos) : m_value.size();
     if (!shift) {
       m_selectionAnchor = m_cursorPos;
     }
@@ -1819,7 +1823,7 @@ void Input::updateDisplayText() {
 }
 
 void Input::requestCaretUpdate() {
-  if (m_multiline) {
+  if (multiline()) {
     ensureCursorVisibleY();
   }
   updateInteractiveGeometry();
@@ -1888,16 +1892,19 @@ void Input::updateInteractiveGeometry() {
     return;
   }
 
-  if (m_multiline) {
+  if (multiline()) {
     // Vertical scroll is maintained by the callers (ensureCursorVisibleY /
     // wheel / drag); this only places the nodes for the current offset.
+    if (m_lines == Lines::NoWrap && m_inputArea != nullptr && (m_inputArea->focused() || m_inputArea->pressed())) {
+      ensureCursorVisible();
+    }
     syncLabelScrollPosition();
 
     TextCursorStop stop{0.0F, 0.0F, currentLineHeight()};
     if (multilineStopsValid()) {
       stop = m_stopRect[stopIndexForByte(m_cursorPos)];
     }
-    m_cursor->setPosition(stop.x, stop.y + kMultilinePadV - m_scrollOffsetY);
+    m_cursor->setPosition(stop.x - m_scrollOffset, stop.y + kMultilinePadV - m_scrollOffsetY);
     m_cursor->setFrameSize(kCursorWidth, std::max(1.0F, stop.height));
 
     m_selectionRect->setVisible(false);
@@ -2102,8 +2109,8 @@ LayoutSize Input::doMeasure(Renderer& renderer, const LayoutConstraints& constra
   if (constraints.hasExactWidth()) {
     assignW = std::max(constraints.maxWidth, minFromHint);
   }
-  float assignH = m_multiline && height() > 0.0F ? height() : m_controlHeight;
-  if (m_multiline && constraints.hasExactHeight()) {
+  float assignH = multiline() && height() > 0.0F ? height() : m_controlHeight;
+  if (multiline() && constraints.hasExactHeight()) {
     assignH = constraints.maxHeight;
   }
   setSize(assignW, assignH);
@@ -2157,7 +2164,7 @@ void Input::selectWordAtByteOffset(std::size_t offset) {
 }
 
 void Input::selectLineAtByteOffset(std::size_t offset) {
-  if (m_passwordMode || !m_multiline) {
+  if (m_passwordMode || !multiline()) {
     m_selectionAnchor = 0;
     m_cursorPos = m_value.size();
     return;
@@ -2192,7 +2199,7 @@ void Input::extendPointerSelectionToByteOffset(std::size_t offset) {
     unitStart = wordStartForByteOffset(offset);
     unitEnd = wordEndForByteOffset(offset);
   } else {
-    if (m_passwordMode || !m_multiline) {
+    if (m_passwordMode || !multiline()) {
       unitStart = 0;
       unitEnd = m_value.size();
     } else if (multilineStopsValid()) {
@@ -2391,6 +2398,8 @@ void Input::animatePasswordGlyphIn(GlyphNode& glyph) {
   );
 }
 
+float Input::wrapWidth() const noexcept { return m_lines == Lines::NoWrap ? 0.0F : textViewportWidth(); }
+
 float Input::textViewportWidth() const noexcept {
   const float w = width() > 0.0F ? width() : kMinWidth;
   const float textInset = m_horizontalPadding + kTextInnerInset;
@@ -2398,7 +2407,7 @@ float Input::textViewportWidth() const noexcept {
   return std::max(0.0F, w - textInset - rightInset);
 }
 
-bool Input::clearButtonVisible() const noexcept { return m_clearButtonEnabled && !m_value.empty() && !m_multiline; }
+bool Input::clearButtonVisible() const noexcept { return m_clearButtonEnabled && !m_value.empty() && !multiline(); }
 
 float Input::clearButtonHitWidth() const noexcept {
   if (!clearButtonVisible()) {
@@ -2739,7 +2748,7 @@ void Input::updateMultilineSelection() {
   for (std::size_t i = 0; i < lines.size(); ++i) {
     const LineSpan& span = lines[i];
     RectNode* rect = m_selectionLineRects[i];
-    rect->setPosition(span.x0, span.y + kMultilinePadV - m_scrollOffsetY);
+    rect->setPosition(span.x0 - m_scrollOffset, span.y + kMultilinePadV - m_scrollOffsetY);
     rect->setFrameSize(std::max(1.0F, span.x1 - span.x0), std::max(1.0F, span.h));
     rect->setVisible(true);
   }
@@ -2812,7 +2821,7 @@ std::size_t Input::visuallyAdjacentByte(std::size_t bytePos, bool left, bool wor
 bool Input::valueLaidOutRtl() const noexcept {
   // Pango resolves the paragraph direction from the text itself, independent of the UI direction. An RTL
   // paragraph places the logical start on its right edge and the logical end on its left.
-  return !m_multiline && !passwordMasked() && m_stopX.size() > 1 && m_stopX.front() > m_stopX.back();
+  return !multiline() && !passwordMasked() && m_stopX.size() > 1 && m_stopX.front() > m_stopX.back();
 }
 
 bool Input::labelSlicingEnabled() const noexcept {

@@ -155,7 +155,9 @@ namespace term {
     shade->setPosition(pane.x, pane.y);
     root->addChild(std::move(shade));
 
-    const float cardWidth = pane.width - 2.0F * inset;
+    const bool refused = !m_refusal.empty();
+    const float cardWidth = refused ? std::min(pane.width - 2.0F * inset, Tokens::componentDialogWidth * s)
+                                    : pane.width - 2.0F * inset;
     const float cardHeight = pane.height - 2.0F * inset;
     auto card = ui::column({.align = FlexAlign::Stretch,
                             .gap = gap,
@@ -165,8 +167,8 @@ namespace term {
                             .border = colorSpecFromRole(ColorRole::Stroke),
                             .borderWidth = 0.5F * s,
                             .width = cardWidth,
-                            .height = cardHeight});
-    card->setPosition(pane.x + inset, pane.y + inset);
+                            .height = refused ? std::nullopt : std::optional<float>(cardHeight)});
+    card->setPosition(refused ? pane.x + std::floor((pane.width - cardWidth) * 0.5F) : pane.x + inset, pane.y + inset);
 
     auto header = ui::row({.align = FlexAlign::Center, .gap = gap, .minHeight = m_rowHeight, .maxHeight = m_rowHeight});
     header->addChild(ui::glyph({.glyph = std::string("folder"),
@@ -182,7 +184,7 @@ namespace term {
     header->addChild(ui::keycap({.text = "esc", .scale = s}));
     card->addChild(std::move(header));
 
-    if (!m_refusal.empty()) {
+    if (refused) {
       card->addChild(ui::label({.text = m_refusal,
                                 .fontSize = Tokens::typeBody.size * s,
                                 .color = colorSpecFromRole(ColorRole::Label2),
@@ -487,7 +489,7 @@ namespace term {
                                               refresh();
                                               return true;
                                             }}));
-    m_editor->setMultiline(true);
+    m_editor->setLines(Input::Lines::NoWrap);
     if (m_host.focus) {
       m_host.focus(m_editor->inputArea());
     }
