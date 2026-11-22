@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/signal.h"
+
 #include <functional>
 #include <optional>
 #include <string>
@@ -26,4 +28,10 @@ public:
   virtual void setPrimaryText(std::string /*text*/) {}
   // The primary text once known: a middle click can arrive in the same dispatch as the selection it pastes.
   virtual void requestPrimaryText(std::function<void(std::optional<std::string>)> done) { done(primaryText()); }
+
+  // Emitted when clipboardText() or primaryText() may return new text; hosts that cannot tell never emit it.
+  [[nodiscard]] Signal<>& changed() noexcept { return m_changed; }
+
+protected:
+  Signal<> m_changed;
 };

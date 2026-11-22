@@ -27,6 +27,7 @@ void AppClipboard::refresh() {
         }
         m_text = mime.empty() ? std::nullopt : std::optional(std::move(bytes));
         kLog.debug("clipboard text {}", m_text.has_value() ? std::to_string(m_text->size()) + " bytes" : "none");
+        m_changed.emit();
       },
       kMaxTextBytes
   );
@@ -38,6 +39,7 @@ void AppClipboard::setClipboardText(std::string text) {
   }
   m_text = std::move(text);
   ++m_generation;
+  m_changed.emit();
 }
 
 void AppClipboard::requestClipboardText(std::function<void(std::optional<std::string>)> done) {
@@ -57,7 +59,10 @@ void AppClipboard::requestClipboardText(std::function<void(std::optional<std::st
 
 std::optional<std::string> AppClipboard::primaryText() { return m_display.primaryText(); }
 
-void AppClipboard::setPrimaryText(std::string text) { m_display.setPrimaryText(m_display.lastInputSerial(), std::move(text)); }
+void AppClipboard::setPrimaryText(std::string text) {
+  m_display.setPrimaryText(m_display.lastInputSerial(), std::move(text));
+  m_changed.emit();
+}
 
 void AppClipboard::requestPrimaryText(std::function<void(std::optional<std::string>)> done) {
   m_display.whenPrimaryText(std::move(done));

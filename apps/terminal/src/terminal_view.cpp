@@ -6,6 +6,7 @@
 #include "a11y/a11y_roots.h"
 #include "render/scene/accessible.h"
 #include "core/deferred_call.h"
+#include "core/log.h"
 #include "core/input/key_modifiers.h"
 #include "key_map.h"
 #include "kitty_images.h"
@@ -51,6 +52,8 @@
 namespace term {
 
   namespace {
+
+    constexpr Logger kLog("terminal");
 
     // The grid inside its card, below the caption (split mockup .card2 .grid).
     const float& kInset = Tokens::spaceP16;
@@ -185,7 +188,15 @@ namespace term {
                 }
               });
             },
-            .clipboard = [alive = std::weak_ptr<bool>(m_alive)](std::string text, bool primary) {
+            .clipboard = [alive = std::weak_ptr<bool>(m_alive), grant = m_clipboardGrant](std::string text, bool primary) {
+              {
+                // A read right after the program's own write, in the same output, must see it: the UI-thread refresh
+                // comes too late.
+                const std::scoped_lock lock(grant->mutex);
+                if (grant->state == ClipboardGrant::State::Allowed) {
+                  (primary ? grant->primary : grant->clipboard) = text;
+                }
+              }
               DeferredCall::callLater([alive, text = std::move(text), primary]() mutable {
                 TextClipboard* clipboard = Input::textClipboard();
                 if (alive.expired() || clipboard == nullptr) {
@@ -203,15 +214,11 @@ namespace term {
               using State = ClipboardGrant::State;
               const std::scoped_lock lock(grant->mutex);
               if (grant->state == State::Allowed) {
-                DeferredCall::callLater([this, alive] {
-                  if (!alive.expired()) {
-                    refreshClipboardCache();
-                  }
-                });
                 return primary ? grant->primary : grant->clipboard;
               }
               if (grant->state == State::Undecided) {
                 grant->state = State::Asking;
+                kLog.debug("osc 52 read: asking");
                 DeferredCall::callLater([this, alive, grant] {
                   if (alive.expired() || !m_host.confirmClipboardRead) {
                     return;
@@ -220,6 +227,7 @@ namespace term {
                     {
                       const std::scoped_lock decided(grant->mutex);
                       grant->state = allow ? State::Allowed : State::Denied;
+                      kLog.debug("osc 52 read: {}", allow ? "allowed" : "denied");
                     }
                     if (allow && !alive.expired()) {
                       refreshClipboardCache();
@@ -243,6 +251,9 @@ namespace term {
                 }
               });
             }}) {
+    if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+      m_clipboardChanged = clipboard->changed().connect([this] { refreshClipboardCache(); });
+    }
     ghostty_render_state_new(nullptr, &m_state);
     ghostty_render_state_row_iterator_new(nullptr, &m_rows);
     ghostty_render_state_row_cells_new(nullptr, &m_cells);

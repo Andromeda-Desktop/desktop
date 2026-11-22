@@ -327,7 +327,8 @@ namespace term {
     void commitAtlas();
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     // OSC 52 read permission for this session, shared with the IO thread. The IO thread cannot read the clipboard: it
-    // answers from the cache, which the UI thread fills on Allow, on window activation and after each read.
+    // answers from the cache, which the UI thread fills on Allow, on each clipboard change and on window activation (a
+    // primary selection from another app sends no change).
     struct ClipboardGrant {
       enum class State : std::uint8_t { Undecided, Asking, Allowed, Denied };
       std::mutex mutex;
@@ -337,6 +338,7 @@ namespace term {
     };
     std::shared_ptr<ClipboardGrant> m_clipboardGrant = std::make_shared<ClipboardGrant>();
     void refreshClipboardCache();
+    Signal<>::ScopedConnection m_clipboardChanged;
     PtySession m_session;
     GhosttyRenderState m_state = nullptr;
     GhosttyRenderStateRowIterator m_rows = nullptr;
