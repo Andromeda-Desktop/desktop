@@ -841,6 +841,7 @@ _noctalia_source_paths = [
   'src/shell/bar/widgets/screenshot_widget.cpp',
   'src/shell/bar/widgets/window_menu_widget.cpp',
   'src/shell/bar/widgets/dbus_menu_client.cpp',
+  'src/shell/bar/widgets/dsk_menu_client.cpp',
   'src/shell/bar/widgets/gtk_menu_client.cpp',
   'src/shell/desktop/desktop_file_ops.cpp',
   'src/shell/desktop/desktop_icons.cpp',

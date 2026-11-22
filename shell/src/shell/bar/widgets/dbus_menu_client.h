@@ -25,23 +25,35 @@ struct DbusMenuNode {
   std::vector<DbusMenuNode> children;
 };
 
+// One window's menubar for the top bar, whatever channel it comes over.
+class AppMenuSource {
+public:
+  virtual ~AppMenuSource() = default;
+  [[nodiscard]] virtual const DbusMenuNode& root() const noexcept = 0;
+  [[nodiscard]] virtual bool loaded() const noexcept = 0;
+  // A menu opens or closes: an app may fill it in first (dbusmenu AboutToShow).
+  virtual void opened(std::int32_t /*id*/) {}
+  virtual void closed(std::int32_t /*id*/) {}
+  virtual void activate(std::int32_t id) = 0;
+};
+
 // One app's com.canonical.dbusmenu tree (the macOS-layout top bar, board desktop-menus.html A5). Loads the whole tree
 // async and again on LayoutUpdated or ItemsPropertiesUpdated; calls onChanged after each load.
-class DbusMenuClient {
+class DbusMenuClient : public AppMenuSource {
 public:
   DbusMenuClient(sdbus::IConnection& bus, std::string service, std::string path, std::function<void()> onChanged);
-  ~DbusMenuClient();
+  ~DbusMenuClient() override;
   DbusMenuClient(const DbusMenuClient&) = delete;
   DbusMenuClient& operator=(const DbusMenuClient&) = delete;
 
-  [[nodiscard]] const DbusMenuNode& root() const noexcept { return m_root; }
-  [[nodiscard]] bool loaded() const noexcept { return m_loaded; }
+  [[nodiscard]] const DbusMenuNode& root() const noexcept override { return m_root; }
+  [[nodiscard]] bool loaded() const noexcept override { return m_loaded; }
   [[nodiscard]] const std::string& service() const noexcept { return m_service; }
   [[nodiscard]] const std::string& path() const noexcept { return m_path; }
   // A menu opens: the app may fill it in first (AboutToShow), then the tree reloads.
-  void opened(std::int32_t id);
-  void closed(std::int32_t id);
-  void activate(std::int32_t id);
+  void opened(std::int32_t id) override;
+  void closed(std::int32_t id) override;
+  void activate(std::int32_t id) override;
 
 private:
   void load();

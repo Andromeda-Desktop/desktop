@@ -3,6 +3,7 @@
 #include "dbus/appmenu/app_menu_registrar.h"
 
 #include "shell/bar/widgets/dbus_menu_client.h"
+#include "shell/bar/widgets/dsk_menu_client.h"
 #include "shell/bar/widgets/gtk_menu_client.h"
 
 #include "compositors/andromeda/andromeda_runtime.h"
@@ -111,13 +112,7 @@ WindowMenuWidget::~WindowMenuWidget() {
 void WindowMenuWidget::create() { setRoot(ui::inputArea({})); }
 
 const DbusMenuNode* WindowMenuWidget::appMenuRoot() const {
-  if (m_appMenu != nullptr && m_appMenu->loaded()) {
-    return &m_appMenu->root();
-  }
-  if (m_gtkMenu != nullptr && m_gtkMenu->loaded()) {
-    return &m_gtkMenu->root();
-  }
-  return nullptr;
+  return m_appMenu != nullptr && m_appMenu->loaded() ? &m_appMenu->root() : nullptr;
 }
 
 // Items: the bold app name, then the app's own menus, or the Window menu when it exports none (board A1, A3).
@@ -208,12 +203,17 @@ void WindowMenuWidget::doUpdate(Renderer& renderer) {
       }
     }
   }
-  const bool hasMenu = address.has_value() && m_bus != nullptr && !address->service.empty() && !address->path.empty();
-  const bool gtk = hasMenu && address->gtk;
-  std::string menuKey = hasMenu
-      ? std::string(gtk ? "gtk\n" : "dbusmenu\n") + address->service + "\n" + address->path + "\n"
-            + address->applicationPath + "\n" + address->windowPath
-      : std::string{};
+  using Kind = WindowAppMenu::Kind;
+  const bool dsk = address.has_value() && address->kind == Kind::Dsk && !address->windowId.empty();
+  const bool busMenu = address.has_value() && address->kind != Kind::Dsk && m_bus != nullptr
+      && !address->service.empty() && !address->path.empty();
+  std::string menuKey;
+  if (dsk) {
+    menuKey = "dsk\n" + address->windowId + "\n" + std::to_string(address->serial);
+  } else if (busMenu) {
+    menuKey = std::string(address->kind == Kind::Gtk ? "gtk\n" : "dbusmenu\n") + address->service + "\n"
+        + address->path + "\n" + address->applicationPath + "\n" + address->windowPath;
+  }
   const bool appChanged = appId != m_appId || m_appName.empty();
   const bool menuChanged = menuKey != m_menuKey;
   // An open menu belongs to the app it was opened for: it never acts on the next one.
@@ -234,13 +234,14 @@ void WindowMenuWidget::doUpdate(Renderer& renderer) {
       requestUpdate();
     };
     m_appMenu.reset();
-    m_gtkMenu.reset();
-    if (gtk) {
-      m_gtkMenu = std::make_shared<GtkMenuClient>(
+    if (dsk) {
+      m_appMenu = std::make_shared<DskMenuClient>(m_platform.andromedaRuntime(), address->windowId, address->serial);
+    } else if (busMenu && address->kind == Kind::Gtk) {
+      m_appMenu = std::make_shared<GtkMenuClient>(
           m_bus->connection(), address->service, address->path, address->applicationPath, address->windowPath,
           onChanged
       );
-    } else if (hasMenu) {
+    } else if (busMenu) {
       m_appMenu = std::make_shared<DbusMenuClient>(m_bus->connection(), address->service, address->path, onChanged);
     }
     m_itemsDirty = true;
@@ -486,10 +487,9 @@ void WindowMenuWidget::openAppMenu(std::size_t item) {
     m_menu = std::make_unique<ContextMenuPopup>(m_platform.wayland(), m_renderContext);
   }
   m_menu->setShadowConfig(m_config.config().shell.shadow);
-  const std::weak_ptr<DbusMenuClient> dbusClient = m_appMenu;
-  const std::weak_ptr<GtkMenuClient> gtkClient = m_gtkMenu;
-  m_menu->setOnDismissed([this, topIds, dbusClient] {
-    if (const auto client = dbusClient.lock(); client != nullptr) {
+  const std::weak_ptr<AppMenuSource> source = m_appMenu;
+  m_menu->setOnDismissed([this, topIds, source] {
+    if (const auto client = source.lock(); client != nullptr) {
       for (const std::int32_t topId : topIds) {
         client->closed(topId);
       }
@@ -498,11 +498,9 @@ void WindowMenuWidget::openAppMenu(std::size_t item) {
     syncFills();
     requestUpdate();
   });
-  m_menu->setOnActivate([dbusClient, gtkClient](const ContextMenuControlEntry& entry) {
-    if (const auto client = dbusClient.lock(); client != nullptr) {
+  m_menu->setOnActivate([source](const ContextMenuControlEntry& entry) {
+    if (const auto client = source.lock(); client != nullptr) {
       client->activate(entry.id);
-    } else if (const auto gtk = gtkClient.lock(); gtk != nullptr) {
-      gtk->activate(entry.id);
     }
   });
   openPopup(item, std::move(entries));

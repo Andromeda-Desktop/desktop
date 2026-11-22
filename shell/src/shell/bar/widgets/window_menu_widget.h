@@ -9,8 +9,7 @@
 
 struct ContextMenuControlEntry;
 class Box;
-class DbusMenuClient;
-class GtkMenuClient;
+class AppMenuSource;
 struct DbusMenuNode;
 class AppMenuRegistrar;
 class SessionBus;
@@ -23,7 +22,7 @@ class RenderContext;
 struct wl_output;
 
 // macOS layout top bar (board desktop-menus.html A1-A3): the focused app's name in bold, then the app's own menus
-// (com.canonical.dbusmenu or org.gtk.Menus) or, when it exports none, a Window menu the compositor owns (Minimize, Zoom, Fullscreen,
+// (com.canonical.dbusmenu, org.gtk.Menus or dsk_app_menu_v1) or, when it exports none, a Window menu the compositor owns (Minimize, Zoom, Fullscreen,
 // Move to, Close, Quit). The name opens the Window menu. Items are 24 high, r 8: hover fill_1, open fill_2.
 class WindowMenuWidget : public Widget {
 public:
@@ -71,8 +70,7 @@ private:
   const AppMenuRegistrar* m_registrar = nullptr;
   std::vector<Item> m_items;
   // Shared so popup callbacks hold them weakly: a deferred activation never reaches a newer app's client.
-  std::shared_ptr<DbusMenuClient> m_appMenu;
-  std::shared_ptr<GtkMenuClient> m_gtkMenu;
+  std::shared_ptr<AppMenuSource> m_appMenu;
   bool m_itemsDirty = true;
   std::unique_ptr<ContextMenuPopup> m_menu;
   std::size_t m_openItem = static_cast<std::size_t>(-1);
@@ -82,5 +80,5 @@ private:
   std::string m_appId;
   std::string m_appName;
   std::string m_windowId;
-  std::string m_menuKey; // kind, service, menu path, application path, window path
+  std::string m_menuKey; // kind, then service and paths, or window id and serial
 };

@@ -25,9 +25,14 @@ struct Workspace {
   bool occupied = false;
 };
 
-// Where a window's menus live on the session bus (Andromeda IPC "app_menu").
+// Where a window's menus live (Andromeda IPC "app_menu").
 struct WindowAppMenu {
-  bool gtk = false; // org.gtk.Menus + org.gtk.Actions; else com.canonical.dbusmenu
+  // DbusMenu: com.canonical.dbusmenu; Gtk: org.gtk.Menus + org.gtk.Actions; Dsk: dsk_app_menu_v1, read over IPC.
+  enum class Kind : std::uint8_t { DbusMenu, Gtk, Dsk };
+  Kind kind = Kind::DbusMenu;
+  // Dsk: the window and its tree's serial.
+  std::string windowId;
+  std::uint64_t serial = 0;
   std::string service;
   std::string path;
   std::string applicationPath;

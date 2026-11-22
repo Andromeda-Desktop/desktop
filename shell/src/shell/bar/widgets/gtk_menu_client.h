@@ -19,17 +19,17 @@ namespace sdbus {
 // A GTK app's menu bar (org.gtk.Menus at the menubar path, actions on org.gtk.Actions at the app and window paths;
 // board desktop-menus.html A5). Builds the same tree as DbusMenuClient: sections become separators, an item's ids are
 // local to this client, and accelerators come from the item's "accel".
-class GtkMenuClient {
+class GtkMenuClient : public AppMenuSource {
 public:
   GtkMenuClient(sdbus::IConnection& bus, std::string service, std::string menuPath, std::string appPath,
                 std::string windowPath, std::function<void()> onChanged);
-  ~GtkMenuClient();
+  ~GtkMenuClient() override;
   GtkMenuClient(const GtkMenuClient&) = delete;
   GtkMenuClient& operator=(const GtkMenuClient&) = delete;
 
-  [[nodiscard]] const DbusMenuNode& root() const noexcept { return m_root; }
-  [[nodiscard]] bool loaded() const noexcept { return m_loaded; }
-  void activate(std::int32_t id);
+  [[nodiscard]] const DbusMenuNode& root() const noexcept override { return m_root; }
+  [[nodiscard]] bool loaded() const noexcept override { return m_loaded; }
+  void activate(std::int32_t id) override;
 
   struct Item {
     std::map<std::string, std::string> strings; // label, action, target (string targets only), accel

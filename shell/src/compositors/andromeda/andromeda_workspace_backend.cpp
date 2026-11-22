@@ -306,8 +306,13 @@ void AndromedaWorkspaceBackend::handleEvent(std::string_view event, const nlohma
       window.notResponding = entry.value("not_responding", false);
       window.minimizeState = parseMinimizeState(entry);
       if (const auto menu = entry.find("app_menu"); menu != entry.end() && menu->is_object()) {
+        const std::string kind = jsonString(*menu, "kind");
         window.appMenu = WindowAppMenu{
-            .gtk = jsonString(*menu, "kind") == "gtk",
+            .kind = kind == "gtk"   ? WindowAppMenu::Kind::Gtk
+                : kind == "dsk" ? WindowAppMenu::Kind::Dsk
+                                : WindowAppMenu::Kind::DbusMenu,
+            .windowId = kind == "dsk" ? jsonString(entry, "id") : std::string{},
+            .serial = menu->value("serial", std::uint64_t{0}),
             .service = jsonString(*menu, "service"),
             .path = jsonString(*menu, "path"),
             .applicationPath = jsonString(*menu, "application_path"),
