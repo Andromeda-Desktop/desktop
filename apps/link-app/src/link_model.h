@@ -36,7 +36,8 @@ namespace linkapp {
   [[nodiscard]] Presence presenceFrom(bool daemon, const std::vector<Phone>& phones, const std::string& selected = {});
 
   // This app's pairing window: Idle -> Starting -> Showing -> Idle (finished, or closed by expiry or another client);
-  // Starting | Showing -> Failed -> Starting (Try Again). pairStep rejects every other move and leaves the state as is.
+  // Starting | Showing -> Failed -> Starting (Try Again); Starting | Showing | Failed -> Idle on Cancel. pairStep rejects
+  // every other move and leaves the state as is.
   struct Pair {
     enum class Kind : std::uint8_t { Idle, Starting, Showing, Failed };
     Kind kind = Kind::Idle;
@@ -46,7 +47,7 @@ namespace linkapp {
   };
 
   struct PairEvent {
-    enum class Kind : std::uint8_t { Start, Started, Failed, Finished, Closed };
+    enum class Kind : std::uint8_t { Start, Started, Failed, Finished, Closed, Cancel };
     Kind kind = Kind::Start;
     std::string code;  // Started
     std::string uri;   // Started

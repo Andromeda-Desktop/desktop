@@ -389,11 +389,12 @@ namespace {
     using K = Pair::Kind;
     using E = PairEvent::Kind;
     const std::set<std::pair<K, K>> edges{{K::Idle, K::Starting},  {K::Failed, K::Starting}, {K::Starting, K::Showing},
-                                          {K::Starting, K::Failed}, {K::Showing, K::Failed},  {K::Showing, K::Idle}};
+                                          {K::Starting, K::Failed}, {K::Showing, K::Failed},  {K::Showing, K::Idle},
+                                          {K::Starting, K::Idle}, {K::Failed, K::Idle}};
     std::mt19937 rng(seed);
     Pair pair;
     for (int step = 0; step < 2000; ++step) {
-      PairEvent event{.kind = static_cast<E>(rng() % 5)};
+      PairEvent event{.kind = static_cast<E>(rng() % 6)};
       if (event.kind == E::Started) event = {.kind = E::Started, .code = rng() % 4 ? std::to_string(rng() % 1000000) : "", .uri = "andromeda-link://pair"};
       if (event.kind == E::Failed) event = {.kind = E::Failed, .error = "No network"};
       const Pair before = pair;

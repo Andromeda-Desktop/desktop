@@ -219,6 +219,11 @@ namespace linkapp {
     void dragPhoto(const std::string& path, std::uint32_t serial);
     // Shows this phone; the open page reloads its data from it.
     void choosePhone(const std::string& deviceId);
+    // The pair view covers the page while this app pairs another phone (Pair Another Phone…).
+    [[nodiscard]] bool pairShown() const;
+    // Esc: cancels that pairing, else closes the Forget question.
+    [[nodiscard]] bool dismissable() const;
+    void dismiss();
     // The conversation card shows a thread or a new message, never both: these two are the only ways to change it.
     void openThread(std::optional<std::uint64_t> id);
     // A new message to `to` (name or number); an existing thread with that number opens instead.

@@ -24,6 +24,7 @@
 #include <poll.h>
 #include <unistd.h>
 #include <qrencode.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 namespace linkapp {
 
@@ -35,6 +36,7 @@ namespace linkapp {
       const char* glyph;
     };
 
+    constexpr std::int32_t kPairEntry = 1'000'000; // the phone menu's Pair entry; phone entries are their index
     constexpr std::array kPages{
         PageInfo{Page::Waiting, "Waiting", "bell"},        PageInfo{Page::Messages, "Messages", "message"},
         PageInfo{Page::Calls, "Calls", "phone"},           PageInfo{Page::Photos, "Photos", "photo"},
@@ -635,6 +637,10 @@ namespace linkapp {
         if (m_conversationList != nullptr) m_conversationList->notifyDataChanged();
       });
       m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
+      m_client->setOnPaired([this](const std::string& id) { choosePhone(id); });
+      DeskApp::commands().add({.id = "view.close", .label = "Close", .group = "View",
+                      .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
+                      .enabled = [this] { return dismissable(); }, .run = [this] { dismiss(); }});
       m_client->setOnChanged([this] {
         if (m_window == nullptr) return;
         m_commands.listed(m_client->desktopSettings().commands);
@@ -656,7 +662,7 @@ namespace linkapp {
                          .onClick = [this, finished] { finished ? m_client->clearFinished() : m_client->clearAll(); }});
     };
     window.setHeaderAccessoryBuilder([this, clear]() -> std::unique_ptr<Node> {
-      if (m_client == nullptr) return ui::node();
+      if (m_client == nullptr || pairShown()) return ui::node();
       if (m_page == Page::Waiting && !m_client->feed().items().empty()) {
         return ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End}, clear(false));
       }
@@ -676,7 +682,13 @@ namespace linkapp {
   }
 
   void LinkApp::action(const std::string& name, const std::vector<std::string>& parameter, const std::string& activationToken) {
-    // "page" takes the page name ("commands": Settings › Commands), then optionally the id of the phone to show.
+    // "page" takes the page name ("commands": Settings › Commands; "pair": pairs another phone), then optionally the
+    // id of the phone to show.
+    if (name == "page" && parameter.size() == 1 && parameter.front() == "pair") {
+      activate(activationToken);
+      if (m_client) m_client->startPairing();
+      return;
+    }
     if (name == "page" && (parameter.size() == 1 || parameter.size() == 2) && parameter.front() == "commands") {
       activate(activationToken);
       if (parameter.size() == 2) choosePhone(parameter[1]);
@@ -785,7 +797,24 @@ namespace linkapp {
     m_window->requestRebuild();
   }
 
+  bool LinkApp::pairShown() const {
+    return m_client && m_client->pair().kind != Pair::Kind::Idle &&
+           m_client->presence().kind != Presence::Kind::NotPaired;
+  }
+
+  bool LinkApp::dismissable() const { return pairShown() || m_confirmForget; }
+
+  void LinkApp::dismiss() {
+    if (pairShown()) {
+      m_client->cancelPairing();
+    } else {
+      m_confirmForget = false;
+    }
+    m_window->requestRebuild();
+  }
+
   void LinkApp::show(Page page) {
+    if (m_client) m_client->cancelPairing();
     if (m_page == page) return;
     if (m_client && m_page == Page::Mirror) m_client->stopMirror();
     m_page = page;
@@ -842,10 +871,10 @@ namespace linkapp {
     const Presence::Kind kind = m_client->presence().kind;
     const bool pairing = kind == Presence::Kind::NotPaired;
     if (pairing && m_client->pair().kind == Pair::Kind::Idle) m_client->startPairing();
-    m_window->setTitle(pairing ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
+    m_window->setTitle(pairing || pairShown() ? "Pair a Phone" : kPages[static_cast<std::size_t>(m_page)].name);
     const bool live = kind == Presence::Kind::Connected || kind == Presence::Kind::Locked;
     if (m_page == Page::Files && live && m_client->files().load() == Files::Load::Idle) m_client->openFolder("/");
-    const bool commands = m_page == Page::Settings && m_settingsView == SettingsView::Commands && !pairing &&
+    const bool commands = m_page == Page::Settings && m_settingsView == SettingsView::Commands && !pairing && !pairShown() &&
                           kind != Presence::Kind::NoDaemon;
     const bool cards =
         ((m_page == Page::Messages || m_page == Page::Photos || m_page == Page::Files || m_page == Page::Mirror) && live) ||
@@ -869,7 +898,7 @@ namespace linkapp {
   void LinkApp::updateCaption() {
     const std::size_t n = m_client ? m_client->feed().items().size() : 0;
     std::string state;
-    if (m_page == Page::Waiting && n > 0) state = n == 1 ? "1 item" : std::format("{} items", n);
+    if (m_page == Page::Waiting && n > 0 && !pairShown()) state = n == 1 ? "1 item" : std::format("{} items", n);
     m_window->setCaption({.state = state});
   }
 
@@ -938,15 +967,15 @@ namespace linkapp {
       }
       const bool hot = !line.second.empty() || (info.page == Page::Waiting && !items.empty());
       row->setData({.symbol = info.glyph, .name = info.name, .status = line.first, .time = line.second, .unseen = hot,
-                    .selected = info.page == m_page});
+                    .selected = info.page == m_page && !pairShown()});
       row->setOnClick([this, page = info.page] { show(page); });
-      if (info.page == m_page) selected = row.get();
+      if (info.page == m_page && !pairShown()) selected = row.get();
       list->addChild(std::move(row));
     }
     auto settings = std::make_unique<StatusRow>(s);
-    settings->setData({.symbol = "settings", .name = "Settings", .selected = m_page == Page::Settings});
+    settings->setData({.symbol = "settings", .name = "Settings", .selected = m_page == Page::Settings && !pairShown()});
     settings->setOnClick([this] { show(Page::Settings); });
-    if (m_page == Page::Settings) selected = settings.get();
+    if (m_page == Page::Settings && !pairShown()) selected = settings.get();
     list->addChild(std::move(settings));
     if (selected != nullptr) list->setSelected(selected, false);
     // Pair (flow.html#page=pair): only search and the PhoneCard until a phone is paired.
@@ -983,7 +1012,7 @@ namespace linkapp {
     auto label = text(name, Tokens::typeHeadline, ColorRole::Label1, s);
     label->setFlexGrow(1.0F);
     head->addChild(std::move(label));
-    if (m_client && m_client->phones().size() > 1) {
+    if (m_client && !m_client->phones().empty()) {
       Button* choose = nullptr;
       head->addChild(ui::button({.out = &choose, .glyph = std::string("selector"), .glyphSize = Tokens::sizeSymbol * s,
                                  .variant = ButtonVariant::Ghost, .tooltip = std::string("Choose phone"),
@@ -999,8 +1028,14 @@ namespace linkapp {
         }
         float x = 0.0F;
         float y = 0.0F;
+        entries.push_back({.separator = true});
+        entries.push_back({.id = kPairEntry, .label = "Pair Another Phone…"});
         Node::absolutePosition(choose, x, y);
         m_window->openContextMenu(std::move(entries), x, y + choose->height(), [this](std::int32_t i) {
+          if (i == kPairEntry) {
+            m_client->startPairing();
+            return;
+          }
           const std::vector<Phone>& now = m_client->phones();
           if (i >= 0 && static_cast<std::size_t>(i) < now.size()) choosePhone(now[static_cast<std::size_t>(i)].id);
         });
@@ -1051,9 +1086,14 @@ namespace linkapp {
   std::unique_ptr<Node> LinkApp::pair(Renderer& renderer, float s) {
     const Pair& pair = m_client->pair();
     if (pair.kind == Pair::Kind::Failed) {
-      return emptyState("device-mobile-off", "Pairing did not start", pair.error, s,
-                        ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Primary,
+      auto actions = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s});
+      if (!m_client->phones().empty()) {
+        actions->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+                                      .onClick = [this] { m_client->cancelPairing(); }}));
+      }
+      actions->addChild(ui::button({.text = std::string("Try Again"), .variant = ButtonVariant::Primary,
                                     .onClick = [this] { m_client->startPairing(); }}));
+      return emptyState("device-mobile-off", "Pairing did not start", pair.error, s, std::move(actions));
     }
     auto page = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .gap = Tokens::spaceP32 * s,
                          .flexGrow = 1.0F});
@@ -1104,6 +1144,13 @@ namespace linkapp {
       code->addChild(std::move(tile));
     }
     steps->addChild(std::move(code));
+    if (!m_client->phones().empty()) {
+      auto cancel = ui::row({});
+      cancel->setPadding(Tokens::spaceP12 * s, 0.0F, 0.0F, 0.0F);
+      cancel->addChild(ui::button({.text = std::string("Cancel"), .variant = ButtonVariant::Tonal,
+                                   .onClick = [this] { m_client->cancelPairing(); }}));
+      steps->addChild(std::move(cancel));
+    }
     page->addChild(std::move(steps));
     return page;
   }
@@ -1118,6 +1165,7 @@ namespace linkapp {
     const float s = m_scale = m_window->uiScale();
     if (m_client == nullptr) return emptyState("plug-connected-x", "No session bus", "Link needs a D-Bus session.", s);
     const Presence presence = m_client->presence();
+    if (presence.kind != Presence::Kind::NoDaemon && pairShown()) return pair(renderer, s);
     switch (presence.kind) {
     case Presence::Kind::NoDaemon:
       return emptyState("plug-connected-x", "Link is not running", "Start the Link service to reach your phone.", s);

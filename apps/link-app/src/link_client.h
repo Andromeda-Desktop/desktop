@@ -31,6 +31,8 @@ namespace linkapp {
     LinkClient& operator=(const LinkClient&) = delete;
 
     void setOnChanged(std::function<void()> changed) { m_changed = std::move(changed); }
+    // A pairing this app started finished; gets the new phone's id.
+    void setOnPaired(std::function<void(const std::string&)> paired) { m_paired = std::move(paired); }
 
     [[nodiscard]] Presence presence() const { return presenceFrom(m_daemon, m_phones, m_selected); }
     [[nodiscard]] const std::vector<Phone>& phones() const { return m_phones; }
@@ -39,6 +41,8 @@ namespace linkapp {
     [[nodiscard]] const Pair& pair() const { return m_pair; }
     // Opens a pairing window (StartPairing) when this app has none open; the daemon closes it after 120 s.
     void startPairing();
+    // Closes this app's pairing window; a late StartPairing reply is then dropped.
+    void cancelPairing();
     [[nodiscard]] const Feed& feed() const { return m_feed; }
     // The texts of the phone presence() shows.
     [[nodiscard]] const Messages& messages() const { return m_messages; }
@@ -144,6 +148,8 @@ namespace linkapp {
     std::unique_ptr<sdbus::IProxy> m_busWatch;
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
     std::function<void()> m_changed;
+    std::function<void(const std::string&)> m_paired;
+    std::uint64_t m_pairSerial = 0; // StartPairing calls; a reply applies only to the latest
     std::uint64_t m_sent = 0;    // serial of the newest refresh asked
     std::uint64_t m_applied = 0; // serial of the newest refresh applied
     bool m_daemon = false;

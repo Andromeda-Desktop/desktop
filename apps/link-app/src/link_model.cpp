@@ -92,6 +92,10 @@ namespace linkapp {
       if (pair.kind != K::Showing) return false;
       pair = {};
       return true;
+    case E::Cancel:
+      if (pair.kind == K::Idle) return false;
+      pair = {};
+      return true;
     }
     return false;
   }

@@ -96,8 +96,10 @@ namespace linkapp {
           if (interfaceName == kInterface) refresh();
           if (interfaceName == kQuickShare) refreshNearby();
         });
-    m_proxy->uponSignal("PairingFinished").onInterface(kInterface).call([this](const std::string&, const std::string&) {
-      if (pairStep(m_pair, {.kind = PairEvent::Kind::Finished})) changed();
+    m_proxy->uponSignal("PairingFinished").onInterface(kInterface).call([this](const std::string& id, const std::string&) {
+      if (!pairStep(m_pair, {.kind = PairEvent::Kind::Finished})) return;
+      if (m_paired) m_paired(id);
+      changed();
     });
     m_proxy->uponSignal("PairingFailed").onInterface(kInterface).call([this](const std::string& reason) {
       if (pairStep(m_pair, {.kind = PairEvent::Kind::Failed, .error = reason})) changed();
@@ -894,11 +896,12 @@ namespace linkapp {
 
   void LinkClient::startPairing() {
     if (!pairStep(m_pair, {.kind = PairEvent::Kind::Start})) return;
+    const std::uint64_t serial = ++m_pairSerial;
     m_proxy->callMethodAsync("StartPairing")
         .onInterface(kInterface)
-        .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, std::string code,
-                                                                       std::string uri) {
-          if (alive.expired()) return;
+        .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
+                                                                               std::string code, std::string uri) {
+          if (alive.expired() || serial != m_pairSerial) return;
           if (error) {
             kLog.warn("StartPairing: {}", error->getMessage());
             (void)pairStep(m_pair, {.kind = PairEvent::Kind::Failed, .error = error->getMessage()});
@@ -907,6 +910,18 @@ namespace linkapp {
           }
           changed();
         });
+  }
+
+  void LinkClient::cancelPairing() {
+    const bool open = m_pair.kind == Pair::Kind::Starting || m_pair.kind == Pair::Kind::Showing;
+    if (!pairStep(m_pair, {.kind = PairEvent::Kind::Cancel})) return;
+    ++m_pairSerial;
+    if (open) {
+      m_proxy->callMethodAsync("CancelPairing").onInterface(kInterface).uponReplyInvoke([](std::optional<sdbus::Error> error) {
+        if (error) kLog.warn("CancelPairing: {}", error->getMessage());
+      });
+    }
+    changed();
   }
 
   void LinkClient::connect(const std::string& deviceId) {
