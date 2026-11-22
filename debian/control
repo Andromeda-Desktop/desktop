@@ -108,7 +108,9 @@ Description: Andromeda Player
 
 Package: andromeda-link-app
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-link
+Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-link (>= 0.2.13)
+Breaks: andromeda-link (<< 0.2.13)
+Replaces: andromeda-link (<< 0.2.13)
 Description: Andromeda Link
  The paired phone on the desktop: notifications, messages, calls, photos, files and its screen.
 
