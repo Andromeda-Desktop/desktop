@@ -1092,23 +1092,27 @@ namespace andromeda {
 
   } // namespace
 
-  bool Server::commitOutputEnabled(Output& target, bool enabled) {
-    wlr_output_configuration_v1* config = wlr_output_configuration_v1_create();
+  wlr_output_configuration_v1* Server::outputConfigFrom(QueuedOutputConfig config) const {
+    if (auto* const* ready = std::get_if<wlr_output_configuration_v1*>(&config)) {
+      return *ready;
+    }
+    const auto [target, enabled] = std::get<QueuedOutputEnable>(config);
+    wlr_output_configuration_v1* built = wlr_output_configuration_v1_create();
     for (const auto& output : m_outputs) {
-      wlr_output_configuration_head_v1* head = wlr_output_configuration_head_v1_create(config, output->wlr());
-      head->state.enabled = output.get() == &target ? enabled : output->desktopEnabled();
+      wlr_output_configuration_head_v1* head = wlr_output_configuration_head_v1_create(built, output->wlr());
+      head->state.enabled = output.get() == target ? enabled : output->desktopEnabled();
       const wlr_box box = output->layoutBox();
       head->state.x = box.x;
       head->state.y = box.y;
     }
-    return applyOutputManagerConfig(config, false);
+    return built;
   }
 
   bool Server::setOutputEnabled(Output& output, bool enabled) {
-    return output.desktopEnabled() == enabled || commitOutputEnabled(output, enabled);
+    return output.desktopEnabled() == enabled || applyOutputManagerConfig(QueuedOutputEnable{&output, enabled}, false);
   }
 
-  bool Server::applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
+  bool Server::applyOutputManagerConfig(QueuedOutputConfig config, bool testOnly) {
     noteConfiguredRequest();
     if (!testOnly && (m_outputApplyInFlight != nullptr || !m_queuedOutputConfigs.empty())) {
       // One apply at a time: the next one starts from the state this one commits.
@@ -1121,7 +1125,7 @@ namespace andromeda {
       fx_renderer_kick(m_renderer, onOutputManagerContextHome, this);
       return true;
     }
-    return runOutputManagerConfig(config, testOnly);
+    return runOutputManagerConfig(outputConfigFrom(config), testOnly);
   }
 
   bool Server::runOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
@@ -1433,9 +1437,9 @@ namespace andromeda {
         fx_renderer_kick(m_renderer, onOutputManagerContextHome, this);
         return;
       }
-      wlr_output_configuration_v1* next = m_queuedOutputConfigs.front();
+      const QueuedOutputConfig next = m_queuedOutputConfigs.front();
       m_queuedOutputConfigs.pop_front();
-      (void)runOutputManagerConfig(next, false);
+      (void)runOutputManagerConfig(outputConfigFrom(next), false);
     }
     if (Ipc* ipc = this->ipc()) {
       ipc->notifyConfiguredWork();
@@ -1452,9 +1456,11 @@ namespace andromeda {
       completeOutputManagerApply(*apply);
     }
     // Queued configurations name heads of the configuration that changed: their clients retry.
-    for (wlr_output_configuration_v1* queued : m_queuedOutputConfigs) {
-      wlr_output_configuration_v1_send_failed(queued);
-      wlr_output_configuration_v1_destroy(queued);
+    for (const QueuedOutputConfig& entry : m_queuedOutputConfigs) {
+      if (auto* const* queued = std::get_if<wlr_output_configuration_v1*>(&entry)) {
+        wlr_output_configuration_v1_send_failed(*queued);
+        wlr_output_configuration_v1_destroy(*queued);
+      }
     }
     m_queuedOutputConfigs.clear();
   }

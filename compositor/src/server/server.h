@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 #include <wayland-server-core.h>
 
@@ -808,8 +809,14 @@ namespace andromeda {
     void setLockBlankEnabled(bool enabled);
     void handleWorkspaceCommit(void* data);
     [[nodiscard]] Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
+    // An enable request builds its heads from live state when it starts, so it keeps what the applies before it set.
+    struct QueuedOutputEnable {
+      Output* output;
+      bool enabled;
+    };
+    using QueuedOutputConfig = std::variant<wlr_output_configuration_v1*, QueuedOutputEnable>;
     // False when the configuration fails before its draw; the commit and the client's reply follow the draw's kick.
-    bool applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
+    bool applyOutputManagerConfig(QueuedOutputConfig config, bool testOnly);
     bool runOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
     // The apply in flight: draws its current step once the GL context is home; false when the states fail to build.
     bool drawOutputApplyStep();
@@ -831,7 +838,7 @@ namespace andromeda {
         size_t pendingLen
     );
     bool commitOutputManagerSceneStates(wlr_backend_output_state* pending, size_t pendingLen);
-    bool commitOutputEnabled(Output& output, bool enabled);
+    [[nodiscard]] wlr_output_configuration_v1* outputConfigFrom(QueuedOutputConfig config) const;
     [[nodiscard]] bool initialOutputEnabled(const Output& output);
     void rememberOutputEnableOverride(const Output& output, bool enabled);
     void restoreDisplacedViews();
@@ -940,7 +947,7 @@ namespace andromeda {
     bool m_deferOutputManagerConfig = false;
     uint64_t m_configuredRequests = 0;
     std::unique_ptr<OutputManagerApply> m_outputApplyInFlight;
-    std::deque<wlr_output_configuration_v1*> m_queuedOutputConfigs;
+    std::deque<QueuedOutputConfig> m_queuedOutputConfigs;
     // Test IPC: the next output-management commit fails, and the next GPU submit after it stalls this long (ms).
     int m_failNextOutputCommitStallMs = 0;
 
