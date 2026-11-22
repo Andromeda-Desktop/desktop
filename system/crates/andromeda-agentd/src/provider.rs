@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rustix::fs::inotify;
 use serde::Deserialize;
@@ -75,7 +75,14 @@ enum End {
     Resync,
 }
 
+/// A provider that keeps sending out-of-order events must not drive a reconnect loop: the first resync runs at once,
+/// repeats wait from 50 ms doubling to 5 s, and a session that stayed in order for 10 s starts the count again.
+const RESYNC_DELAY_MIN: Duration = Duration::from_millis(50);
+const RESYNC_DELAY_MAX: Duration = Duration::from_secs(5);
+const RESYNC_RESET_AFTER: Duration = Duration::from_secs(10);
+
 async fn link(shared: Arc<Shared>, path: PathBuf) {
+    let mut delay = Duration::ZERO;
     loop {
         let stream = match connect(&path).await {
             Ok(stream) => stream,
@@ -84,10 +91,16 @@ async fn link(shared: Arc<Shared>, path: PathBuf) {
                 return;
             }
         };
+        let started = Instant::now();
         match session(&shared, stream, &path).await {
             End::Closed => return,
             End::Resync => log::info!("{}: event out of order, reading a new snapshot", path.display()),
         }
+        if started.elapsed() >= RESYNC_RESET_AFTER {
+            delay = Duration::ZERO;
+        }
+        tokio::time::sleep(delay).await;
+        delay = (delay * 2).clamp(RESYNC_DELAY_MIN, RESYNC_DELAY_MAX);
     }
 }
 

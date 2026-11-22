@@ -264,3 +264,23 @@ async fn oversize_and_malformed_lines_are_rejected() {
     assert_eq!(client.recv().await["error"]["code"], "invalid_argument");
     assert!(ok(&client.request(&json!({ "op": "help" })).await));
 }
+
+#[tokio::test]
+async fn repeated_seq_gaps_back_off() {
+    let env = Env::start();
+    let listener = UnixListener::bind(env.provider_path()).unwrap();
+    let mut reconnects = 0;
+    let end = tokio::time::Instant::now() + Duration::from_secs(1);
+    while let Ok(Ok((stream, _))) = tokio::time::timeout_at(end, listener.accept()).await {
+        let mut provider = Lines::new(stream);
+        provider.send(&hello("h1")).await;
+        provider.send(&snapshot(2)).await;
+        provider
+            .send(&json!({ "op": "event", "seq": 5, "name": "workspace.changed", "delta": {}, "cause": null }))
+            .await;
+        reconnects += 1;
+    }
+    // Every session gaps at once: the broker must not reconnect in a tight loop.
+    assert!(reconnects >= 2, "the broker did not resync after a gap ({reconnects})");
+    assert!(reconnects <= 10, "{reconnects} reconnects in 1 s");
+}
