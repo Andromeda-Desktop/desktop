@@ -246,7 +246,10 @@ Color stacked(const Color& top, const Color& bottom) {
 } // namespace
 
 AppWindow::AppWindow(AppLoop& loop, CommandTable& commands, StateStore& state, Config config)
-    : m_loop(loop), m_commands(commands), m_state(state), m_config(std::move(config)) {}
+    : m_loop(loop), m_commands(commands), m_state(state), m_config(std::move(config)) {
+  m_sidebarVisible = m_state.get<bool>(key("sidebar"), true);
+  m_sidebarMix = m_sidebarVisible ? 1.0F : 0.0F;
+}
 
 AppWindow::~AppWindow() { close(); }
 
@@ -1920,6 +1923,11 @@ bool AppWindow::requestSize(std::uint32_t width, std::uint32_t height) {
 void AppWindow::setStateKey(std::string stateKey) {
   saveGeometry();
   m_config.stateKey = std::move(stateKey);
+}
+
+void AppWindow::toggleSidebar() {
+  setSidebarVisible(!m_sidebarVisible);
+  m_state.set(key("sidebar"), m_sidebarVisible);
 }
 
 void AppWindow::setSidebarVisible(bool visible) {

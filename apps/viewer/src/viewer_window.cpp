@@ -1313,7 +1313,7 @@ namespace viewer {
     return true;
   }
 
-  void ViewerWindow::toggleSidebar() { m_window.setSidebarVisible(!m_window.sidebarVisible()); }
+  void ViewerWindow::toggleSidebar() { m_window.toggleSidebar(); }
 
   bool ViewerWindow::onKey(const KeyboardEvent& event) {
     if (!event.pressed) {

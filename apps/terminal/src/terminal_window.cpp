@@ -1009,7 +1009,7 @@ namespace term {
       case Action::NewWindow: m_newWindow(m_window.activationToken(), {NewShell{}}); return true;
       case Action::Find: openFind(); return true;
       case Action::CommandPalette: openPalette(); return true;
-      case Action::ToggleSidebar: m_window.setSidebarVisible(!m_window.sidebarVisible()); return true;
+      case Action::ToggleSidebar: m_window.toggleSidebar(); return true;
       case Action::PreviousWorkspace:
       case Action::NextWorkspace: {
         // The neighbour window in the bar, wrapping.

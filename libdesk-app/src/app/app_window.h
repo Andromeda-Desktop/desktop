@@ -162,6 +162,8 @@ public:
   void dismissSheet();
   // Collapses or restores the sidebar on spring.page (the Files Gallery is full-bleed); the header stays in place.
   void setSidebarVisible(bool visible);
+  // The user's show/hide: this one is saved and restored at the next start.
+  void toggleSidebar();
   // The sidebar builds again in place; the content keeps its nodes.
   void rebuildSidebar();
   [[nodiscard]] bool sidebarVisible() const noexcept { return m_sidebarVisible; }

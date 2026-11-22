@@ -43,7 +43,7 @@ namespace term {
                     .enabled = [this] { return activeWindow() != nullptr; },
                     .run = [this] {
                       if (AppWindow* window = activeWindow(); window != nullptr) {
-                        window->setSidebarVisible(!window->sidebarVisible());
+                        window->toggleSidebar();
                       }
                     }});
   }
