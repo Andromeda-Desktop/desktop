@@ -577,7 +577,9 @@ impl Holder {
                     self.disconnect(id);
                 }
             }
-            Event::Master(id) => self.read_master(id),
+            Event::Master(id) => {
+                self.read_master(id);
+            }
             Event::Pidfd(id) => self.reap(id),
         }
     }
@@ -995,12 +997,13 @@ impl Holder {
         }
     }
 
-    fn read_master(&mut self, id: SessionId) {
+    /// Returns the bytes read.
+    fn read_master(&mut self, id: SessionId) -> usize {
         let cap = self.config.tail_cap;
         let Some(s) = self.sessions.get_mut(&id) else {
-            return;
+            return 0;
         };
-        let Some(master) = s.master() else { return };
+        let Some(master) = s.master() else { return 0 };
         let room = match s.owner {
             Owner::Attached(_) => READ_CHUNK,
             _ => READ_CHUNK.min(cap.saturating_sub(s.tail.len())).max(1),
@@ -1011,6 +1014,7 @@ impl Holder {
                 self.workspaces_dirty = true;
                 s.on_hangup();
                 self.finish_if_exited(id);
+                0
             }
             Ok(n) => {
                 let now = Instant::now();
@@ -1071,8 +1075,9 @@ impl Holder {
                     }
                 }
                 self.maybe_want_snapshot(id);
+                n
             }
-            Err(_) => {}
+            Err(_) => 0,
         }
     }
 
@@ -1087,6 +1092,24 @@ impl Holder {
             }
             s.on_reaped(status.into_raw());
             self.workspaces_dirty = true;
+            if matches!(s.owner, Owner::Attached(_)) && matches!(s.life, Life::ChildGone { .. }) {
+                // A job the shell left in the background can hold the pty for good: send what the shell wrote, then
+                // report the exit. Only the bytes queued now, so a job that floods the pty cannot stall the holder.
+                let queued = s.master().and_then(|m| rustix::io::ioctl_fionread(m).ok()).unwrap_or(0);
+                let mut sent = 0u64;
+                while sent < queued {
+                    match self.read_master(id) {
+                        0 => break,
+                        n => sent += n as u64,
+                    }
+                }
+                match self.sessions.get_mut(&id) {
+                    Some(s) if matches!(s.owner, Owner::Attached(_)) && matches!(s.life, Life::ChildGone { .. }) => {
+                        s.on_hangup();
+                    }
+                    _ => return,
+                }
+            }
             self.finish_if_exited(id);
         }
     }

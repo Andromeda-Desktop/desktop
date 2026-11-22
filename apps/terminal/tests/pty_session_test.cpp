@@ -287,7 +287,28 @@ printf '\e]1337;SetUserVar=other=eA==\a'; exit 0)"}}));
   CHECK(branch == "feat/\xc3\xa9-x");
 }
 
+// The shell exits while a job it started in the background still holds the pty: the session reports the exit,
+// and closing it hangs up the job.
+void reportsShellExitWhileAJobHoldsThePty() {
+  pid_t job = 0;
+  {
+    Waker w;
+    PtySession s([&] { w.wake(); });
+    CHECK(s.spawn({.argv = {"/bin/bash", "-c", "set -m; sleep 30 & printf 'job=%s.' $!; exit 4"}}));
+    CHECK(w.waitFor(s, [&] { return s.state() == SessionState::Exited; }));
+    CHECK(s.exitStatus() == 4);
+    const std::string text = screenText(s);
+    if (const auto at = text.find("job="); at != std::string::npos) job = std::atoi(text.c_str() + at + 4);
+    CHECK(job > 0 && ::kill(job, 0) == 0);
+  }
+  bool gone = false;
+  for (int i = 0; i < 500 && !(gone = ::kill(job, 0) != 0); ++i) ::usleep(10'000);
+  CHECK(gone);
+  if (!gone) ::kill(job, SIGKILL);
+}
+
 void runSessionTests() {
+  reportsShellExitWhileAJobHoldsThePty();
   shellBranchReachesThePrompt();
   kittyNotificationsReachTheApp();
   runsCommandAndReportsExit();

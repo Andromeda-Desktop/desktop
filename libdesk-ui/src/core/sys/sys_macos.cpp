@@ -20,6 +20,7 @@
 #include <malloc/malloc.h>
 #include <pthread.h>
 #include <string.h>
+#include <sys/event.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
@@ -209,6 +210,22 @@ namespace sys {
 
   int forkPty(int* master, const struct winsize* size) {
     return ::forkpty(master, nullptr, nullptr, const_cast<struct winsize*>(size));
+  }
+
+  int childExitFd(int pid) {
+    const int kq = ::kqueue();
+    if (kq < 0) return -1;
+    ::fcntl(kq, F_SETFD, FD_CLOEXEC);
+    struct kevent ev{};
+    EV_SET(&ev, pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, nullptr);
+    if (::kevent(kq, &ev, 1, nullptr, 0, nullptr) == 0) return kq;
+    const int err = errno;
+    ::close(kq);
+    // ESRCH: the child already exited; a pipe with no writer polls hung up at once.
+    int fds[2];
+    if (err != ESRCH || !pipeCloexec(fds)) return -1;
+    ::close(fds[1]);
+    return fds[0];
   }
 
   std::string executablePath() {

@@ -228,6 +228,8 @@ namespace sys {
 
   int forkPty(int* master, const struct winsize* size) { return ::forkpty(master, nullptr, nullptr, size); }
 
+  int childExitFd(int pid) { return static_cast<int>(::syscall(SYS_pidfd_open, pid, 0)); }
+
   namespace {
     std::string g_executablePath;
   } // namespace

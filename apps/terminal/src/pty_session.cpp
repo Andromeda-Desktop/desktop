@@ -98,20 +98,23 @@ PtySession::~PtySession() {
   m_inReady.notify_all();
   if (m_io.joinable()) m_io.join();
   if (m_parser.joinable()) m_parser.join();
-  if (auto* local = std::get_if<LocalChild>(&m_link); local && m_state.load() == SessionState::Running) {
-    // Closing the master hangs up the whole foreground job: a shell that traps SIGHUP still waits for it.
-    ::close(std::exchange(m_master, -1));
-    ::kill(local->pid, SIGHUP);
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-    while (::waitpid(local->pid, nullptr, WNOHANG) == 0) {
-      if (std::chrono::steady_clock::now() >= deadline) {
-        ::kill(local->pid, SIGKILL);
-        ::waitpid(local->pid, nullptr, 0);
-        break;
+  if (auto* local = std::get_if<LocalChild>(&m_link)) {
+    if (m_state.load() == SessionState::Running) {
+      // Closing the master hangs up the whole foreground job: a shell that traps SIGHUP still waits for it.
+      ::close(std::exchange(m_master, -1));
+      ::kill(local->pid, SIGHUP);
+      const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+      while (::waitpid(local->pid, nullptr, WNOHANG) == 0) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+          ::kill(local->pid, SIGKILL);
+          ::waitpid(local->pid, nullptr, 0);
+          break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
     hangUpSession(local->pid);
+    if (local->exitFd >= 0) ::close(local->exitFd);
   }
   if (auto* held = std::get_if<HeldSession>(&m_link)) {
     (void)holder::sendAll(held->socket, m_end == End::Detach && held->detachable ? holder::encodeDetach(held->id)
@@ -218,7 +221,7 @@ bool PtySession::spawnLocal(const SpawnOptions& o) {
     _exit(127);
   }
   m_master = master;
-  m_link = LocalChild{pid};
+  m_link = LocalChild{pid, sys::childExitFd(pid)};
   return true;
 }
 
@@ -410,6 +413,7 @@ void PtySession::ioLoopHeld(const HeldSession& held) {
 
 void PtySession::ioLoop() {
   if (const auto* held = std::get_if<HeldSession>(&m_link)) return ioLoopHeld(*held);
+  const int exitFd = std::get<LocalChild>(m_link).exitFd;
   std::vector<std::uint8_t> buf(kReadChunk);
   for (;;) {
     bool wantOut;
@@ -425,8 +429,8 @@ void PtySession::ioLoop() {
     // A full queue leaves the master out of the poll (it would report POLLHUP at once); the parser's wake
     // resumes reading.
     const short events = static_cast<short>((full ? 0 : POLLIN) | (wantOut ? POLLOUT : 0));
-    pollfd fds[2] = {{events != 0 ? m_master : -1, events, 0}, {m_ioWake.pollFd(), POLLIN, 0}};
-    if (::poll(fds, 2, -1) < 0) {
+    pollfd fds[3] = {{events != 0 ? m_master : -1, events, 0}, {m_ioWake.pollFd(), POLLIN, 0}, {exitFd, POLLIN, 0}};
+    if (::poll(fds, 3, -1) < 0) {
       if (errno == EINTR) continue;
       break;
     }
@@ -435,6 +439,20 @@ void PtySession::ioLoop() {
       if (m_stopping) return;
     }
     if (fds[0].revents & POLLOUT || fds[1].revents & POLLIN) flushOutbound();
+    if (fds[2].revents & (POLLIN | POLLHUP)) {
+      // The shell's last output is queued in the pty now; read only that much, so a job it left behind that
+      // floods the pty cannot keep the session open.
+      int queued = 0;
+      ::ioctl(m_master, FIONREAD, &queued);
+      ssize_t n = 0;
+      while (queued > 0 && (n = ::read(m_master, buf.data(), buf.size())) > 0) {
+        queued -= static_cast<int>(n);
+        std::lock_guard lock(m_inMutex);
+        m_inbound.insert(m_inbound.end(), buf.begin(), buf.begin() + n);
+      }
+      m_inReady.notify_one();
+      return endInput(std::nullopt);
+    }
     if (full || !(fds[0].revents & (POLLIN | POLLHUP | POLLERR))) continue;
     // A PTY read returns at most 4 KiB: drain up to a chunk, so a flood takes one queue lock per chunk.
     std::size_t got = 0;

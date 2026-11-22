@@ -108,6 +108,8 @@ public:
 private:
   struct LocalChild {
     pid_t pid;
+    // Polls readable when the shell exits; a background job can hold the pty open long after that.
+    int exitFd;
   };
   struct HeldSession {
     int socket;
