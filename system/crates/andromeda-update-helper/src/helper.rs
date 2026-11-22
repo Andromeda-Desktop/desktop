@@ -167,7 +167,7 @@ impl Helper {
                 guard::begin(&state_dir, targets)
             });
             if !dry_run {
-                guard::end(&state_dir);
+                guard::settle(&state_dir, &outcome);
             }
             if let Some(pre) = pre {
                 runtime.block_on(snapshot::post(&snapper_conn, pre));

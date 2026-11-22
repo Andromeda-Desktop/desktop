@@ -61,9 +61,16 @@ pub fn begin(state_dir: &Path, targets: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// The helper saw the commit return (success or error): nothing to repair.
+/// The helper saw the commit succeed: nothing to repair.
 pub fn end(state_dir: &Path) {
     let _ = fs::remove_file(state_dir.join(JOURNAL));
+}
+
+/// A failed commit may have left packages unpacked or half configured, so its journal stays for `recover`.
+pub fn settle<T>(state_dir: &Path, outcome: &Result<T>) {
+    if outcome.is_ok() {
+        end(state_dir);
+    }
 }
 
 /// Repairs a commit the helper did not see end; a failed repair keeps the journal for the next run.
@@ -92,5 +99,15 @@ mod tests {
         assert_eq!(points, ["/boot", "/boot/efi"]);
         let mountinfo = "22 1 259:7 / / rw - ext4 /dev/nvme0n1p7 rw\n30 22 259:1 / /boot/efi rw - vfat /dev/x rw\n";
         assert_eq!(unmounted(&points, mountinfo), ["/boot"]);
+    }
+
+    #[test]
+    fn only_a_successful_commit_clears_the_journal() {
+        let dir = tempfile::tempdir().unwrap();
+        begin(dir.path(), &["apt 3.2.1".to_owned()]).unwrap();
+        settle(dir.path(), &Err::<(), _>(anyhow::anyhow!("apt-get dist-upgrade failed (100)")));
+        assert!(dir.path().join(JOURNAL).exists());
+        settle(dir.path(), &Ok(()));
+        assert!(!dir.path().join(JOURNAL).exists());
     }
 }
