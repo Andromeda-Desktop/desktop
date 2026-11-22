@@ -1,6 +1,7 @@
 #include "hooks/hook_manager.h"
 
 #include "core/log.h"
+#include "core/process/process.h"
 
 #include <algorithm>
 #include <chrono>
@@ -29,6 +30,24 @@ void HookManager::setCommandRunner(CommandRunner runner) { m_runner = std::move(
 void HookManager::setBlockingCommandRunner(CommandRunner runner) { m_blockingRunner = std::move(runner); }
 
 void HookManager::setAsyncCommandRunner(AsyncCommandRunner runner) { m_asyncRunner = std::move(runner); }
+
+HookManager::AsyncCommandRunner HookManager::shellCommandRunner(std::chrono::milliseconds timeout) {
+  return [timeout](const std::string& command, std::function<void(bool)> done) {
+    process::RunOptions options;
+    options.maxOutputBytes = 8 * 1024;
+    options.timeout = timeout;
+    process::RunCallbacks callbacks{.onExit = [command, done](process::RunResult result) {
+      if (!result) {
+        kLog.warn("command failed: {} exit_code={} stderr={}", command, result.exitCode, result.err);
+      }
+      done(static_cast<bool>(result));
+    }};
+    if (!process::runAsync(std::vector<std::string>{"/bin/sh", "-lc", command}, std::move(callbacks), std::move(options))) {
+      kLog.warn("command failed to launch: {}", command);
+      done(false);
+    }
+  };
+}
 
 void HookManager::setUnitRunner(UnitRunner runner, std::filesystem::path dir) {
   m_unitRunner = std::move(runner);
@@ -104,7 +123,7 @@ void HookManager::runDirHooks(HookKind kind, std::span<const EnvVar> env, std::f
     const std::string name = chain->scripts[chain->next].filename().string();
     std::vector<std::string> argv{
         "systemd-run", "--user", "--quiet", "--collect", "--wait", "--service-type=exec",
-        "--property=RuntimeMaxSec=10", "--description=Andromeda hook " + chain->event + "/" + name,
+        "--property=RuntimeMaxSec=" + std::to_string(kTimeout.count()), "--description=Andromeda hook " + chain->event + "/" + name,
     };
     argv.insert(argv.end(), chain->envArgs.begin(), chain->envArgs.end());
     argv.emplace_back("--");

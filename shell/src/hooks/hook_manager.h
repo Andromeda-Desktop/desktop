@@ -2,6 +2,7 @@
 
 #include "config/config_types.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -26,6 +27,11 @@ public:
     std::string script;
     std::int64_t unixTime = 0;
   };
+
+  // A hook still running after this is stopped and counts as failed: logout and power-off wait on hooks.
+  static constexpr std::chrono::seconds kTimeout{10};
+  // Runs a [hooks] command with `sh -lc`, stopped after `timeout`.
+  [[nodiscard]] static AsyncCommandRunner shellCommandRunner(std::chrono::milliseconds timeout = kTimeout);
 
   void setCommandRunner(CommandRunner runner);
   void setBlockingCommandRunner(CommandRunner runner);

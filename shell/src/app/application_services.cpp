@@ -1355,6 +1355,8 @@ void Application::initAuxServicesAndHooks() {
       [](std::vector<std::string> argv, std::function<void(bool)> done) {
         process::RunOptions options;
         options.maxOutputBytes = 4 * 1024;
+        // RuntimeMaxSec stops the unit; this stops a systemd-run that never returns.
+        options.timeout = HookManager::kTimeout + std::chrono::seconds(5);
         process::RunCallbacks callbacks{.onExit = [done](process::RunResult result) { done(static_cast<bool>(result)); }};
         if (!process::runAsync(std::move(argv), std::move(callbacks), std::move(options))) {
           done(false);
@@ -1362,20 +1364,7 @@ void Application::initAuxServicesAndHooks() {
       },
       FileUtils::expandXdgBaseDir("$XDG_CONFIG_HOME/andromeda/hooks")
   );
-  m_hookManager.setAsyncCommandRunner([](const std::string& command, std::function<void(bool)> done) {
-    process::RunOptions options;
-    options.maxOutputBytes = 8 * 1024;
-    process::RunCallbacks callbacks{.onExit = [command, done](process::RunResult result) {
-      if (!result) {
-        kLog.warn("command failed: {} exit_code={} stderr={}", command, result.exitCode, result.err);
-      }
-      done(static_cast<bool>(result));
-    }};
-    if (!process::runAsync(std::vector<std::string>{"/bin/sh", "-lc", command}, std::move(callbacks), std::move(options))) {
-      kLog.warn("command failed to launch: {}", command);
-      done(false);
-    }
-  });
+  m_hookManager.setAsyncCommandRunner(HookManager::shellCommandRunner());
   m_hookManager.reload(m_configService.config().hooks);
   m_configService.addReloadCallback(
       [this] {

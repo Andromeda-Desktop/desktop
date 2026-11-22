@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <unistd.h>
 #include <string>
 #include <string_view>
@@ -112,9 +113,26 @@ namespace {
     return ok;
   }
 
+  // A hung [hooks] command must not hold logout or power-off: the action goes on after the timeout.
+  bool hungHookEndsAtTimeout() {
+    HookManager hooks;
+    HooksConfig config;
+    config.commands[static_cast<std::size_t>(HookKind::WallpaperChanged)] = {"sleep 30"};
+    hooks.reload(config);
+    hooks.setAsyncCommandRunner(HookManager::shellCommandRunner(std::chrono::milliseconds(200)));
+    std::optional<bool> result;
+    hooks.fireAsync(HookKind::WallpaperChanged, [&](bool ok) { result = ok; });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!result.has_value() && std::chrono::steady_clock::now() < deadline) {
+      process::AsyncProcessManager::instance().pumpOnce(std::chrono::milliseconds(20));
+    }
+    return result == false;
+  }
+
 } // namespace
 
 int main() {
+  TEST_CHECK(hungHookEndsAtTimeout());
   TEST_CHECK(asyncHookFinishesBeforeAction());
   TEST_CHECK(dirHooksRunAsUnits());
 
