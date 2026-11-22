@@ -527,6 +527,9 @@ void LiveActivityIsland::ensureSurfaces() {
       }
       inst->dskTarget.reset();
     }
+    if (space->restless != inst->space.restless) {
+      inst->dskTarget.reset();
+    }
     if (space->height > 0.0F) {
       inst->space = *space;
     }
@@ -1178,20 +1181,40 @@ void LiveActivityIsland::syncRowCard(Instance& inst, Face face, bool jump, bool 
   const bool tinted = inst.dsk->hasTintProperty();
   DskShapeClient& card = *inst.cardShape;
   inst.dskLevel = level;
+  // A restless bar has no rest pill: at rest the card has no clip, so it draws no glass.
+  const bool glass = expanded || !inst.space.restless;
   if (jump) {
-    card.set(DskSurfaceClient::Property::Clip, clip);
+    card.set(DskSurfaceClient::Property::Clip, glass ? clip : DskSurfaceClient::Value{});
     card.set(DskSurfaceClient::Property::Radius, radius);
     card.set(DskSurfaceClient::Property::Elevation, {level, 0.0, 0.0, 0.0});
     if (tinted) {
       card.set(DskSurfaceClient::Property::Tint, islandTint(inst, face));
     }
+    inst.cardOpen = glass;
     return;
+  }
+  if (!inst.cardOpen) {
+    const Rect pill = faceRect(inst, Face::Rest);
+    card.set(DskSurfaceClient::Property::Clip, {pill.x * k, pill.y * k, pill.w * k, pill.h * k});
+    card.set(DskSurfaceClient::Property::Radius, {pill.radius * k, 0.0, 0.0, 0.0});
+    if (tinted) {
+      card.set(DskSurfaceClient::Property::Tint, islandTint(inst, Face::Rest));
+    }
+    inst.cardOpen = true;
   }
   const auto curve = expanded ? DskSurfaceClient::Curve::SpringIslandExpand : DskSurfaceClient::Curve::SpringIslandCollapse;
   startMirror(inst, r, expanded, continueMirror);
   MorphHost host{*this, inst};
   const std::uint32_t generation = inst.morph.retarget(host, clipSpring(*inst.dsk, expanded));
-  card.animate(DskSurfaceClient::Property::Clip, curve, clip);
+  auto* instPtr = &inst;
+  card.animate(DskSurfaceClient::Property::Clip, curve, clip, [instPtr](DskSurfaceClient::EndReason reason) {
+    if (reason == DskSurfaceClient::EndReason::Finished && instPtr->morph.shown() == Face::Rest && instPtr->space.restless
+        && instPtr->cardOpen) {
+      instPtr->cardShape->set(DskSurfaceClient::Property::Clip, {});
+      instPtr->cardOpen = false;
+      instPtr->surface->requestRedraw();
+    }
+  });
   card.animate(DskSurfaceClient::Property::Radius, curve, radius);
   card.animate(DskSurfaceClient::Property::Elevation, curve, {level, 0.0, 0.0, 0.0});
   if (tinted) {
