@@ -443,6 +443,7 @@ struct PolkitAgent::Impl {
   ReadyCallback readyCallback;
   std::unique_ptr<sdbus::IObject> object;
   std::unique_ptr<sdbus::IProxy> authority;
+  std::uint64_t registerCall = 0; // the Register reply that counts; an owner change makes earlier ones stale
   std::unique_ptr<sdbus::IProxy> busWatch;
   Subject subject;
   Registration registration = Registration::Idle;
@@ -536,6 +537,7 @@ struct PolkitAgent::Impl {
               }
               clearPending(kErrorCancelled, "polkitd restarted");
               registration = Registration::Idle;
+              ++registerCall;
               if (!newOwner.empty()) {
                 kLog.info("polkitd restarted; registering the agent again");
                 registerWithAuthority();
@@ -555,7 +557,10 @@ struct PolkitAgent::Impl {
       authority->callMethodAsync("RegisterAuthenticationAgent")
           .onInterface(kAuthorityInterface)
           .withArguments(subject, agentLocale(), std::string{kAgentObjectPath})
-          .uponReplyInvoke([this](std::optional<sdbus::Error> e) {
+          .uponReplyInvoke([this, call = ++registerCall](std::optional<sdbus::Error> e) {
+            if (call != registerCall) {
+              return; // a reply from the polkitd that the last owner change replaced
+            }
             if (e.has_value()) {
               registration = Registration::Idle;
               ready(false, e->getMessage());
