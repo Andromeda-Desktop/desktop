@@ -399,8 +399,11 @@ namespace xdpu {
     }
 
     void deferEraseSession(const std::string& path) {
+      // Erase only the closed session: a CreateSession on the same path may have replaced it meanwhile.
       loop.addTimer(0, [this, path]() {
-        sessions.erase(path);
+        if (const auto it = sessions.find(path); it != sessions.end() && it->second->closed()) {
+          sessions.erase(it);
+        }
         reportActive();
       });
     }
@@ -416,6 +419,12 @@ namespace xdpu {
       }
 
       sessions.emplace(sessionPath, std::make_shared<Session>(connection, sessionPath, appId, [this, sessionPath]() {
+                         // A Start still choosing or starting captures ends with the session.
+                         for (const auto& operation : std::set(inflight)) {
+                           if (operation->session && operation->session->closed()) {
+                             operation->cancel();
+                           }
+                         }
                          deferEraseSession(sessionPath);
                        }));
       result.returnResults(uint32_t{0}, PortalResults{});
@@ -999,7 +1008,7 @@ namespace xdpu {
         const std::string& parentWindow
     ) {
       const auto sessionIt = sessions.find(sessionPath);
-      if (sessionIt == sessions.end() || sessionIt->second->closed()) {
+      if (sessionIt == sessions.end() || !sessionIt->second->beginStart()) {
         auto request = std::make_shared<Request>(connection, handle, []() {});
         result.returnResults(uint32_t{2}, PortalResults{});
         loop.addTimer(0, [request = std::move(request)]() mutable { request.reset(); });

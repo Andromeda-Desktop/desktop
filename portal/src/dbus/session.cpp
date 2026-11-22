@@ -15,6 +15,7 @@
 namespace xdpu {
 
   namespace {
+    enum class Phase { Open, Started, Closed };
 
     constexpr char kSessionInterface[] = "org.freedesktop.impl.portal.Session";
     constexpr uint64_t kNsecPerSec = 1000000000ull;
@@ -389,7 +390,7 @@ namespace xdpu {
     std::string path;
     std::string appId;
     ClosedHandler closedHandler;
-    bool isClosed = false;
+    Phase phase = Phase::Open;
     uint32_t selectedSourceTypes = 1;
     bool allowMultiple = false;
     uint32_t selectedCursorMode = 1;
@@ -411,10 +412,10 @@ namespace xdpu {
     }
 
     void close(bool backend) {
-      if (isClosed) {
+      if (phase == Phase::Closed) {
         return;
       }
-      isClosed = true;
+      phase = Phase::Closed;
       clearStreams();
 
       if (backend) {
@@ -450,7 +451,15 @@ namespace xdpu {
 
   const std::string& Session::appId() const { return m_impl->appId; }
 
-  bool Session::closed() const { return m_impl->isClosed; }
+  bool Session::closed() const { return m_impl->phase == Phase::Closed; }
+
+  bool Session::beginStart() {
+    if (m_impl->phase != Phase::Open) {
+      return false;
+    }
+    m_impl->phase = Phase::Started;
+    return true;
+  }
 
   void Session::setSelectionOptions(
       uint32_t sourceTypes, bool multiple, uint32_t cursorMode, uint32_t persistMode,

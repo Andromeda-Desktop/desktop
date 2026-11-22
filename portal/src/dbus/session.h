@@ -82,6 +82,8 @@ namespace xdpu {
     const std::string& path() const;
     const std::string& appId() const;
     bool closed() const;
+    /// Open -> Started; false when the session already started or closed (Start is allowed once).
+    bool beginStart();
 
     void setSelectionOptions(
         uint32_t sourceTypes, bool multiple, uint32_t cursorMode, uint32_t persistMode,
