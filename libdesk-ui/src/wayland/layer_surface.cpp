@@ -112,7 +112,7 @@ bool LayerSurface::initialize(wl_output* output) {
   zwlr_layer_surface_v1_set_margin(
       m_layerSurface, m_config.marginTop, m_config.marginRight, m_config.marginBottom, m_config.marginLeft
   );
-  zwlr_layer_surface_v1_set_keyboard_interactivity(m_layerSurface, static_cast<std::uint32_t>(m_config.keyboard));
+  zwlr_layer_surface_v1_set_keyboard_interactivity(m_layerSurface, static_cast<std::uint32_t>(keyboardInteractivity()));
   applyInputRegion();
 
   if (m_config.prewarmBlur) {
@@ -264,27 +264,31 @@ void LayerSurface::setExclusiveZone(std::int32_t exclusiveZone) {
 
 void LayerSurface::setClosedCallback(std::function<void()> callback) { m_closedCallback = std::move(callback); }
 
+LayerShellKeyboard LayerSurface::keyboardInteractivity() const noexcept {
+  return m_keyboardLent && m_config.keyboard == LayerShellKeyboard::None ? LayerShellKeyboard::OnDemand
+                                                                          : m_config.keyboard;
+}
+
 void LayerSurface::setKeyboardInteractivity(LayerShellKeyboard mode) {
-  if (m_config.keyboard == mode) {
-    return;
-  }
+  const LayerShellKeyboard before = keyboardInteractivity();
   m_config.keyboard = mode;
-  if (m_layerSurface == nullptr || m_surface == nullptr) {
+  sendKeyboardInteractivity(before);
+}
+
+void LayerSurface::setPopupKeyboardFocus(bool lend) {
+  const LayerShellKeyboard before = keyboardInteractivity();
+  m_keyboardLent = lend;
+  sendKeyboardInteractivity(before);
+}
+
+void LayerSurface::sendKeyboardInteractivity(LayerShellKeyboard before) {
+  const LayerShellKeyboard mode = keyboardInteractivity();
+  if (mode == before || m_layerSurface == nullptr || m_surface == nullptr) {
     return;
   }
   zwlr_layer_surface_v1_set_keyboard_interactivity(m_layerSurface, static_cast<std::uint32_t>(mode));
   traceLayerCommit(*this, m_config, "set-keyboard");
   wl_surface_commit(m_surface);
-}
-
-void LayerSurface::setPopupKeyboardFocus(bool lend) {
-  if (lend && m_config.keyboard == LayerShellKeyboard::None) {
-    m_keyboardLent = true;
-    setKeyboardInteractivity(LayerShellKeyboard::OnDemand);
-  } else if (!lend && m_keyboardLent) {
-    m_keyboardLent = false;
-    setKeyboardInteractivity(LayerShellKeyboard::None);
-  }
 }
 
 void LayerSurface::setClickThrough(bool clickThrough) {

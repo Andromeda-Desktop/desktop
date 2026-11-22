@@ -74,7 +74,8 @@ public:
   void setClickThrough(bool clickThrough);
   void setKeyboardInteractivity(LayerShellKeyboard mode);
   void setClosedCallback(std::function<void()> callback);
-  [[nodiscard]] LayerShellKeyboard keyboardInteractivity() const noexcept { return m_config.keyboard; }
+  // The mode on the wire: the owner's mode, raised from None to OnDemand while a popup holds the keyboard lend.
+  [[nodiscard]] LayerShellKeyboard keyboardInteractivity() const noexcept;
   // A popup inherits its layer parent's keyboard interactivity: a None layer (bar) is OnDemand while lent.
   void setPopupKeyboardFocus(bool lend) override;
   [[nodiscard]] bool isShellLayer() const noexcept override { return true; }
@@ -91,9 +92,10 @@ public:
 
 private:
   void applyInputRegion();
+  void sendKeyboardInteractivity(LayerShellKeyboard before);
 
   LayerSurfaceConfig m_config;
-  bool m_keyboardLent = false; // setPopupKeyboardFocus raised None to OnDemand
+  bool m_keyboardLent = false;
   zwlr_layer_surface_v1* m_layerSurface = nullptr;
   std::function<void()> m_closedCallback;
   bool m_clickThrough = false;
