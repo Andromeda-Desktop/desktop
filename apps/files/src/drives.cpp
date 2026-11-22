@@ -180,15 +180,32 @@ void Drives::mount(const std::string& id, AskPassword ask, Mounted done) {
                        g_mount_operation_reply(o, G_MOUNT_OPERATION_ABORTED);
                        return;
                      }
-                     static_cast<void>(g_object_ref(o));
-                     c->ask(c->name, message != nullptr ? message : "", [o](const std::string* password) {
-                       if (password == nullptr) {
-                         g_mount_operation_reply(o, G_MOUNT_OPERATION_ABORTED);
-                       } else {
-                         g_mount_operation_set_password(o, password->c_str());
-                         g_mount_operation_reply(o, G_MOUNT_OPERATION_HANDLED);
+                     // Answers once; dropped unanswered (the window closed with the sheet open), it aborts, so the
+                     // mount ends and frees its call.
+                     struct Reply {
+                       GMountOperation* op;
+                       bool answered = false;
+                       explicit Reply(GMountOperation* o) : op(G_MOUNT_OPERATION(g_object_ref(o))) {}
+                       Reply(const Reply&) = delete;
+                       Reply& operator=(const Reply&) = delete;
+                       ~Reply() {
+                         if (!answered) {
+                           g_mount_operation_reply(op, G_MOUNT_OPERATION_ABORTED);
+                         }
+                         g_object_unref(op);
                        }
-                       g_object_unref(o);
+                     };
+                     auto reply = std::make_shared<Reply>(o);
+                     c->ask(c->name, message != nullptr ? message : "", [reply](const std::string* password) {
+                       if (std::exchange(reply->answered, true)) {
+                         return;
+                       }
+                       if (password == nullptr) {
+                         g_mount_operation_reply(reply->op, G_MOUNT_OPERATION_ABORTED);
+                       } else {
+                         g_mount_operation_set_password(reply->op, password->c_str());
+                         g_mount_operation_reply(reply->op, G_MOUNT_OPERATION_HANDLED);
+                       }
                      });
                    }),
                    call);
