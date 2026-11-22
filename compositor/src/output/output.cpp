@@ -776,16 +776,15 @@ namespace andromeda {
       m_awaitingFirstFrame = false;
       scanout_keeper::firstFrameShown();
     }
-    const ConfiguredFinish finished = m_configuredCommit.finish(run, outcome);
+    const ConfiguredFinish finished = m_configuredCommit.finish(run, outcome, powerState());
     if (finished.result == CommitResult::Pending) {
       armFrameRetry(kFrameRetryDelayMs);
     } else if (finished.restore.has_value()) {
+      if (run.deferred) {
+        kLog.error("output '{}': deferred configured state failed ({}); the panel keeps its power", m_output->name, failure);
+      }
       m_desktopEnabled = finished.restore->desktopEnabled;
       m_dpmsOff = finished.restore->dpmsOff;
-    } else if (finished.result == CommitResult::Failed) {
-      kLog.error(
-          "output '{}': deferred configured state failed ({}); keeping the requested state", m_output->name, failure
-      );
     }
     if (Ipc* ipc = m_server->ipc()) {
       ipc->notifyConfiguredWork();

@@ -33,7 +33,8 @@ namespace andromeda {
     bool operator==(const ConfiguredRun&) const = default;
   };
 
-  // `restore` is set only for a synchronous failure: a deferred one keeps the requested state.
+  // `restore` is set for a failure. A synchronous one restores the state before the request. A deferred one keeps the
+  // requested desktop state (the layout already follows it) but restores the panel power, which the connector kept.
   struct ConfiguredFinish {
     CommitResult result = CommitResult::Applied;
     std::optional<PowerState> restore{};
@@ -89,13 +90,15 @@ namespace andromeda {
     }
 
     // Reports the outcome of a run that request() or takeDue() returned. EBUSY is transient: it queues the run again.
-    [[nodiscard]] ConfiguredFinish finish(const ConfiguredRun& run, CommitOutcome outcome) {
+    [[nodiscard]] ConfiguredFinish finish(const ConfiguredRun& run, CommitOutcome outcome, PowerState requested) {
       switch (outcome) {
       case CommitOutcome::Ok:
         return {.result = CommitResult::Applied};
       case CommitOutcome::Failed:
         return {.result = CommitResult::Failed,
-                .restore = run.deferred ? std::nullopt : std::optional{run.restore}};
+                .restore = run.deferred
+                    ? PowerState{.desktopEnabled = requested.desktopEnabled, .dpmsOff = run.restore.dpmsOff}
+                    : run.restore};
       case CommitOutcome::Busy:
         break;
       }

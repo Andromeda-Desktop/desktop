@@ -39,18 +39,19 @@ namespace {
     void run(const ConfiguredRun& run, CommitOutcome outcome) {
       CHECK(oldest.has_value() && run.restore == *oldest);
       const PowerState requested = logical;
-      const andromeda::ConfiguredFinish finished = commit.finish(run, outcome);
+      const andromeda::ConfiguredFinish finished = commit.finish(run, outcome, logical);
       CHECK_EQ(finished.result == CommitResult::Pending, outcome == CommitOutcome::Busy);
       CHECK_EQ(finished.result == CommitResult::Failed, outcome == CommitOutcome::Failed);
-      CHECK_EQ(finished.restore.has_value(), outcome == CommitOutcome::Failed && !run.deferred);
+      CHECK_EQ(finished.restore.has_value(), outcome == CommitOutcome::Failed);
       if (finished.result == CommitResult::Applied) {
         live = logical;
         deferredFailed = false;
       } else if (finished.restore.has_value()) {
+        if (run.deferred) {
+          CHECK(finished.restore->desktopEnabled == requested.desktopEnabled);
+          deferredFailed = true;
+        }
         logical = *finished.restore;
-      } else if (finished.result == CommitResult::Failed) {
-        CHECK(logical == requested);
-        deferredFailed = true;
       }
       if (finished.result != CommitResult::Pending) {
         oldest.reset();
@@ -81,6 +82,19 @@ ANDROMEDA_TEST(deferredApplyIsPendingNotApplied) {
   CHECK(due.has_value() && due->stageGeometry);
   CHECK(!commit.endFrame().has_value());
   CHECK(std::holds_alternative<ConfiguredCommit::Idle>(commit.state()));
+}
+
+ANDROMEDA_TEST(deferredPowerOffFailureKeepsThePanelLit) {
+  OutputModel output;
+  CHECK(!output.request({.desktopEnabled = true, .dpmsOff = true}, false, ConfiguredWait::Flip).has_value());
+  CHECK(output.commit.beginFrame());
+  const std::optional<ConfiguredRun> due = output.commit.takeDue();
+  CHECK(due.has_value() && due->deferred);
+  if (due.has_value()) {
+    output.run(*due, CommitOutcome::Failed);
+  }
+  (void)output.commit.endFrame();
+  CHECK(!output.logical.dpmsOff);
 }
 
 ANDROMEDA_TEST(deferredFailureKeepsTheRequestedState) {
@@ -228,8 +242,10 @@ ANDROMEDA_TEST(randomCommitSequencesKeepLogicalStateOnTheLiveState) {
       // render thread.
       CHECK_EQ(output.commit.pending(), output.oldest.has_value());
       CHECK(!output.commit.waitsForRender() || std::holds_alternative<ConfiguredCommit::Queued>(output.commit.state()));
-      if (std::holds_alternative<ConfiguredCommit::Idle>(output.commit.state()) && !output.deferredFailed) {
-        CHECK(output.logical == output.live);
+      // The panel power Output believes in is the connector's whenever no run waits: a repeated request then commits.
+      if (std::holds_alternative<ConfiguredCommit::Idle>(output.commit.state())) {
+        CHECK(output.logical.dpmsOff == output.live.dpmsOff);
+        CHECK(output.deferredFailed || output.logical == output.live);
       }
     }
   }
