@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <string>
 #include <string_view>
 
@@ -12,9 +13,10 @@ public:
     std::string message;
   };
 
+  // A PAM stack that has not answered after `timeout` (a hung module) is killed and counts as a failure.
   [[nodiscard]] Result authenticateCurrentUser(
       std::string_view password, std::string_view service, std::string_view language,
-      std::string_view startFailureMessage
+      std::string_view startFailureMessage, std::chrono::milliseconds timeout = std::chrono::seconds(60)
   ) const;
   [[nodiscard]] static std::string currentUsername();
   [[nodiscard]] static int runHelperMode(int argc, char* argv[]);

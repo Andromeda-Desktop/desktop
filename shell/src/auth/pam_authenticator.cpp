@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
@@ -13,6 +14,7 @@
 #include <ctime>
 #include <fcntl.h>
 #include <pthread.h>
+#include <poll.h>
 #include <pwd.h>
 #include <security/pam_appl.h>
 #include <sys/types.h>
@@ -254,6 +256,24 @@ namespace {
     return true;
   }
 
+  // Waits until fd is readable or the deadline passes.
+  [[nodiscard]] bool readableBefore(int fd, std::chrono::steady_clock::time_point deadline) {
+    for (;;) {
+      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+      if (left.count() <= 0) {
+        return false;
+      }
+      pollfd pfd{.fd = fd, .events = POLLIN, .revents = 0};
+      const int n = ::poll(&pfd, 1, static_cast<int>(left.count()));
+      if (n > 0) {
+        return true;
+      }
+      if (n < 0 && errno != EINTR) {
+        return false;
+      }
+    }
+  }
+
   [[nodiscard]] bool readResult(int fd, PamAuthenticator::Result& result) {
     std::uint8_t success = 0;
     if (!readAll(fd, &success, sizeof(success)) || success > 2) {
@@ -347,7 +367,8 @@ namespace {
 } // namespace
 
 PamAuthenticator::Result PamAuthenticator::authenticateCurrentUser(
-    std::string_view password, std::string_view service, std::string_view language, std::string_view startFailureMessage
+    std::string_view password, std::string_view service, std::string_view language, std::string_view startFailureMessage,
+    std::chrono::milliseconds timeout
 ) const {
   // Re-exec before invoking PAM so the helper cannot inherit locked library
   // state from the shell's other threads.
@@ -403,7 +424,13 @@ PamAuthenticator::Result PamAuthenticator::authenticateCurrentUser(
   closeFd(inPipe[1]);
 
   Result result;
-  const bool readOk = sentOk && readResult(outPipe[0], result);
+  // The helper writes its whole result at the end, so the first byte is the answer.
+  const bool answered = sentOk && readableBefore(outPipe[0], std::chrono::steady_clock::now() + timeout);
+  if (sentOk && !answered) {
+    kLog.warn("pam helper gave no answer within {} ms; stopping it", timeout.count());
+    (void)::kill(pid, SIGKILL);
+  }
+  const bool readOk = answered && readResult(outPipe[0], result);
   closeFd(outPipe[0]);
 
   int status = 0;

@@ -1280,6 +1280,7 @@ if build_tests
     'location_service',
     'live_motion',
     'lock_fail_delay',
+    'pam_authenticator',
     'lock_lifecycle',
     'lock_before_sleep',
     'session_action_runner',
