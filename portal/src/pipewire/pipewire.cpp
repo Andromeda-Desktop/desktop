@@ -703,6 +703,9 @@ namespace xdpu {
       if (state == PW_STREAM_STATE_ERROR) {
         fprintf(stderr, "pipewire: stream error: %s\n", error == nullptr ? "unknown" : error);
       }
+      if ((state == PW_STREAM_STATE_ERROR || state == PW_STREAM_STATE_UNCONNECTED) && stream->onLost) {
+        stream->onLost();
+      }
       // A driver stream must submit its first buffer itself. Triggering the graph
       // here is not sufficient because there is no queued buffer to schedule yet.
       if (state == PW_STREAM_STATE_STREAMING && stream->onProcessRequest) {

@@ -68,6 +68,9 @@ namespace xdpu {
     std::function<void()> onProcessRequest;
     std::function<void(struct pw_buffer*)> onAddBuffer;
     std::function<void(struct pw_buffer*)> onRemoveBuffer;
+    // The stream failed or PipeWire ended it (node destroyed, daemon gone); clear it before disconnect().
+    // Runs inside the stream's own state callback: the stream must not be destroyed before it returns.
+    std::function<void()> onLost;
 
   private:
     friend class PipeWireContext;

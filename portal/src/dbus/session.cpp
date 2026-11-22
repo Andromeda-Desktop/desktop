@@ -98,6 +98,7 @@ namespace xdpu {
           stream->onProcessRequest = nullptr;
           stream->onAddBuffer = nullptr;
           stream->onRemoveBuffer = nullptr;
+          stream->onLost = nullptr;
           stream->disconnect();
         }
         frameInFlight = false;
@@ -114,6 +115,13 @@ namespace xdpu {
           if (stream) {
             stream->setActive(false);
           }
+          return;
+        }
+        endByBackend();
+      }
+
+      void endByBackend() {
+        if (stopped) {
           return;
         }
         stop();
@@ -527,6 +535,13 @@ namespace xdpu {
       if (auto streamState = weak.lock()) {
         streamState->bufferRemoved(buffer);
       }
+    };
+    state->stream->onLost = [weak, &loop]() {
+      loop.addTimer(0, [weak]() {
+        if (auto streamState = weak.lock()) {
+          streamState->endByBackend();
+        }
+      });
     };
     // createStream() may reach STREAMING before these callbacks are installed.
     // Start capture directly so the first buffer exists before graph scheduling.
