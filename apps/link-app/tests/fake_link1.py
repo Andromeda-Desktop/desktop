@@ -183,7 +183,12 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
             GLib.timeout_add(300, lambda: emit("ScreenShape", "(saqa(qqqq))", params[0], [radius] * 4, []) and False)
         return
     if method == "WriteFile":
-        invocation.return_value(GLib.Variant("(t)", (len(params[3]),)))
+        reply = GLib.Variant("(t)", (params[2] + len(params[3]),))
+        delay = int(os.environ.get("WRITE_DELAY", "0"))  # ms per write: lets a test cancel a copy
+        GLib.timeout_add(delay, lambda: invocation.return_value(reply) and False) if delay else invocation.return_value(reply)
+        return
+    if method == "SendFiles":
+        invocation.return_value(GLib.Variant("(s)", ("t-drop",)))
         return
     if method == "DeleteFile":
         invocation.return_value(None)

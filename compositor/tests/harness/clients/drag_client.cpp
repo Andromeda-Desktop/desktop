@@ -91,6 +91,7 @@ namespace {
     const char* title = "drag-target";
     bool targetMode = false;
     bool tearOffMode = false;
+    std::string uriList;
     bool ready = false;
     bool detachedMapped = false;
     bool dragStarted = false;
@@ -153,8 +154,9 @@ namespace {
 
   void sourceTarget(void*, wl_data_source*, const char*) {}
 
-  void sourceSend(void*, wl_data_source*, const char*, int32_t fd) {
-    constexpr std::string_view payload = "andromeda drag regression";
+  void sourceSend(void* data, wl_data_source*, const char*, int32_t fd) {
+    const auto& uriList = static_cast<State*>(data)->uriList;
+    const std::string_view payload = uriList.empty() ? "andromeda drag regression" : std::string_view(uriList);
     size_t offset = 0;
     while (offset < payload.size()) {
       const ssize_t size = write(fd, payload.data() + offset, payload.size() - offset);
@@ -326,7 +328,7 @@ namespace {
 
     state.source = wl_data_device_manager_create_data_source(state.dataDeviceManager);
     wl_data_source_add_listener(state.source, &kDataSourceListener, &state);
-    wl_data_source_offer(state.source, "text/plain");
+    wl_data_source_offer(state.source, state.uriList.empty() ? "text/plain" : "text/uri-list");
     wl_data_source_set_actions(state.source, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
     if (state.toplevelMode) {
       state.toplevelDrag = xdg_toplevel_drag_manager_v1_get_xdg_toplevel_drag(state.dragManager, state.source);
@@ -561,8 +563,10 @@ int main(int argc, char* argv[]) {
   const bool cursorRefresh = argc == 2 && std::string_view(argv[1]) == "cursor-refresh";
   const bool tearOffMode = argc == 2 && std::string_view(argv[1]) == "tear-off";
   const bool toplevelMode = argc >= 2 && std::string_view(argv[1]) == "toplevel";
-  if ((!targetMode && argc > 1 && !cursorRefresh && !tearOffMode && !toplevelMode) || (targetMode && argc > 3)) {
-    std::println(stderr, "usage: drag-client [cursor-refresh | tear-off | target [title] | toplevel [variant]]");
+  const bool uriListMode = argc >= 3 && std::string_view(argv[1]) == "uri-list";
+  if ((!targetMode && argc > 1 && !cursorRefresh && !tearOffMode && !toplevelMode && !uriListMode)
+      || (targetMode && argc > 3)) {
+    std::println(stderr, "usage: drag-client [cursor-refresh | tear-off | target [title] | toplevel [variant] | uri-list uri...]");
     return EXIT_FAILURE;
   }
 
@@ -573,6 +577,9 @@ int main(int argc, char* argv[]) {
   state.attachBeforeStart = toplevelMode && argc == 3 && std::string_view(argv[2]) == "before-start";
   state.targetMode = targetMode;
   state.tearOffMode = tearOffMode;
+  for (int i = 2; uriListMode && i < argc; ++i) {
+    state.uriList += std::string(argv[i]) + "\r\n";
+  }
   state.title = targetMode && argc == 3 ? argv[2] : (tearOffMode ? "tear-off-source" : "drag-target");
   if (toplevelMode) {
     state.title = "toplevel-drag-source";

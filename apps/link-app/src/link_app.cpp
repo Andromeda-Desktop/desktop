@@ -621,8 +621,9 @@ namespace linkapp {
     const Presence::Kind kind = m_client->presence().kind;
     if (kind != Presence::Kind::Connected && kind != Presence::Kind::Locked) return DropCue::None;
     if (pairShown()) return DropCue::None;
+    // "/" lists the phone's roots; Link1 writes only inside a root.
     const bool folder = m_page == Page::Files && m_client->files().load() == Files::Load::Ready &&
-                        m_client->fileOp().kind != FileOp::Kind::Copying;
+                        m_client->files().path() != "/" && m_client->fileOp().kind != FileOp::Kind::Copying;
     return folder ? DropCue::CopyIn : DropCue::Send;
   }
 
