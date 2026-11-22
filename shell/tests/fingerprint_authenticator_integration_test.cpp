@@ -285,6 +285,24 @@ namespace {
     TEST_CHECK(std::chrono::steady_clock::now() - begin < std::chrono::seconds(2));
   }
 
+  // fprintd restarts while the lock screen verifies: its claim died with it, so the new daemon gets a fresh claim and
+  // verify without a password submit.
+  void verifyResumesAfterServiceRestart() {
+    FakeFprintd first;
+    SystemBus bus;
+    FingerprintAuthenticator auth(bus);
+    const std::string self = bus.connection().getUniqueName();
+
+    armAndWaitForVerify(auth, bus, first, self);
+    first.dropBusName();
+    FakeFprintd second;
+    drainUntil(bus, [&]() { return second.accepted("VerifyStart", self) == 1 && auth.available(); });
+    TEST_CHECK(second.owner() == self);
+
+    auth.stop();
+    drainUntil(bus, [&]() { return second.owner().empty(); });
+  }
+
 } // namespace
 
 int main() {
@@ -293,5 +311,6 @@ int main() {
   foreignClaimIsLeftAlone();
   stopAfterDeviceRemovalIsBounded();
   stopAfterServiceExitIsBounded();
+  verifyResumesAfterServiceRestart();
   return 0;
 }

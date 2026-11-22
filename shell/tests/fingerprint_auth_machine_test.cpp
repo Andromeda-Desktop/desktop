@@ -118,6 +118,41 @@ namespace {
       TEST_CHECK(machine.retries() <= fingerprint_auth::kMaxRetries);
     }
 
+    // fprintd exits and the bus activates a new one. Replies it sent arrive first; calls it never served fail; then
+    // NameOwnerChanged reports the lost owner. A running attempt must end up verifying on the new daemon.
+    void restartService() {
+      while (!replies.empty()) {
+        deliverReply();
+      }
+      claimed = false;
+      verifying = false;
+      std::deque<std::pair<Command, std::uint64_t>> unserved;
+      unserved.swap(calls);
+      for (const auto& [command, attempt] : unserved) {
+        if (command == fingerprint_auth::RequestDevice) {
+          send(machine.deviceReply(attempt, false));
+        } else if (command == fingerprint_auth::Claim) {
+          send(machine.claimReply(false));
+        } else if (command == fingerprint_auth::VerifyStart) {
+          send(machine.verifyStartReply(attempt, false, false));
+        }
+      }
+      const Phase before = machine.phase();
+      const bool running = before != Phase::Off && before != Phase::Aborted && before != Phase::Sleeping;
+      send(machine.serviceLost());
+      while (!calls.empty() || !replies.empty()) {
+        if (!calls.empty()) {
+          serveCall();
+        } else {
+          deliverReply();
+        }
+      }
+      checkSettled();
+      if (running) {
+        TEST_CHECK(machine.phase() == Phase::Verifying);
+      }
+    }
+
     // Once every call and reply is through, fprintd and the machine agree.
     void checkSettled() const {
       TEST_CHECK(claimed == machine.claimed());
@@ -132,7 +167,7 @@ namespace {
     std::mt19937 random(seed);
     World world;
     for (int step = 0; step < 400; ++step) {
-      switch (random() % 12U) {
+      switch (random() % 13U) {
       case 0:
         world.send(world.machine.start());
         break;
@@ -155,6 +190,9 @@ namespace {
           const auto status = static_cast<Status>(random() % 6U);
           world.replies.push_back({Kind::VerifyStatus, 0, true, status, status != Status::InPlace});
         }
+        break;
+      case 6:
+        world.restartService();
         break;
       default:
         if (!world.calls.empty() && (world.replies.empty() || random() % 2U == 0U)) {

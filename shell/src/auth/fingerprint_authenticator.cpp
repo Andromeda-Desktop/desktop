@@ -75,6 +75,25 @@ FingerprintAuthenticator::FingerprintAuthenticator(SystemBus& bus) : m_bus(bus) 
     kLog.debug("could not monitor PrepareForSleep: {}", e.what());
     m_loginManager.reset();
   }
+  try {
+    m_busDaemon = sdbus::createProxy(
+        m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+    );
+    m_busDaemon->uponSignal("NameOwnerChanged")
+        .onInterface("org.freedesktop.DBus")
+        .call([this](const std::string& name, const std::string& oldOwner, const std::string& /*newOwner*/) {
+          if (name != kFprintBusName || oldOwner.empty()) {
+            return;
+          }
+          kLog.info("fprintd left the bus; claiming the fingerprint device again");
+          m_device.reset();
+          setAvailable(false);
+          run(m_machine.serviceLost());
+        });
+  } catch (const sdbus::Error& e) {
+    kLog.debug("could not monitor fprintd restarts: {}", e.what());
+    m_busDaemon.reset();
+  }
 }
 
 FingerprintAuthenticator::~FingerprintAuthenticator() { stop(); }

@@ -143,6 +143,19 @@ namespace fingerprint_auth {
       }
     }
 
+    // fprintd left the bus: its claim and device died with it. An attempt that is not asleep, aborted or off starts
+    // again (RequestDevice activates fprintd); the retry count stays, so a restart grants no extra misses.
+    Commands serviceLost() {
+      m_claimed = false;
+      m_claimInFlight = false;
+      m_deviceKnown = false;
+      m_reclaimed = false;
+      if (m_phase == Phase::Off || m_phase == Phase::Aborted || m_phase == Phase::Sleeping) {
+        return None;
+      }
+      return begin(false);
+    }
+
     Commands retryDue() {
       if (m_phase == Phase::RetryWait) {
         return begin(true);
