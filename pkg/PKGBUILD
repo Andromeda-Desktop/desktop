@@ -75,6 +75,9 @@ build() {
   CFLAGS="${CFLAGS//-march=native/-march=x86-64 -mtune=generic}" CXXFLAGS="${CXXFLAGS//-march=native/-march=x86-64 -mtune=generic}"
   CFLAGS="${CFLAGS//-O3/-O2}" CXXFLAGS="${CXXFLAGS//-O3/-O2}"
   RUSTFLAGS="${RUSTFLAGS//-C target-cpu=native/}"
+  # Rust debug info changes the generated code: every build compiles it, so the symbols build's binaries match the
+  # release; strip drops it from the packages.
+  [[ -n ${ANDROMEDA_SYMBOLS:-} ]] || RUSTFLAGS+=" ${DEBUG_RUSTFLAGS:--C debuginfo=2}"
   # Incremental: build dirs stay in srcdir between runs. default_options apply only on the first configure, so a
   # change to any meson file or wrap starts the build dirs over.
   local stamp

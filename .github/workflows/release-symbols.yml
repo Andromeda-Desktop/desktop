@@ -1,7 +1,7 @@
 # Native symbols for crash reports, beside a release and never in its way: on the same tag it rebuilds the same
-# packages with debug info (ANDROMEDA_SYMBOLS=1; -g does not change the generated code), waits for the release's own
-# packages, uploads andromeda-symbols-<tag>-x86_64.tar to that release only when every binary's .text matches, and
-# fails alone otherwise. Map a crash offset with: addr2line -f -C -e <unpacked debug file> 0x<offset>.
+# packages with debug info (ANDROMEDA_SYMBOLS=1; C -g does not change the generated code, and the release builds
+# Rust with debug info too), waits for the release's own packages, uploads andromeda-symbols-<tag>-x86_64.tar to that
+# release only when every binary's .text matches, and fails alone otherwise. Map a crash offset with: addr2line -f -C -e <unpacked debug file> 0x<offset>.
 name: release-symbols
 on:
   push:
@@ -67,11 +67,21 @@ jobs:
             while IFS= read -r -d '' f; do
               [[ $(head -c4 "a/$f" | od -An -c | tr -d ' ') == 177ELF ]] || continue
               compared=$((compared + 1))
-              [[ -f b/$f && $(text "a/$f") == $(text "b/$f") ]] || { echo "::error::$f differs from the release"; mismatch=1; }
+              [[ -f b/$f && $(text "a/$f") == $(text "b/$f") ]] && continue
+              echo "::error::$f differs from the release"; mismatch=1
+              mkdir -p differ && cp "a/$f" "differ/$(basename "$f").symbols" && cp "b/$f" "differ/$(basename "$f").release"
             done < <(cd a && find usr -type f -print0)
           done
           echo "$compared binaries compared"
           (( compared > 0 && mismatch == 0 ))
+      # Each differing binary from both builds, to diff with objdump -d.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: differ
+          path: differ/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
