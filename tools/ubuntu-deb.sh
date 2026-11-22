@@ -67,11 +67,13 @@ cp "$(dirname "$OUT")/xwayland-satellite-$VERSION"/*.deb "$OUT/extra/" 2> /dev/n
 ONLY_DEBS=
 [[ -z ${ANDROMEDA_ONLY:-} ]] ||
   ONLY_DEBS=$(cd "$ROOT/pkg" && ANDROMEDA_ONLY="$ANDROMEDA_ONLY" bash -c 'source PKGBUILD > /dev/null; echo "${pkgname[@]%-git}"')
+LINK_REPO=https://github.com/Andromeda-Desktop/desktop/releases/latest/download
+[[ $VERSION == [0-9]* ]] || LINK_REPO=https://github.com/Andromeda-Desktop/desktop/releases/download/debian
 status=0
 # -nc: no pre-clean, so debian/build (meson dirs) and system/target (cargo) survive; dh_prep still clears each
 # package's staging dir before the install step.
 # Host network: on the default bridge, DNS inside the container failed mid-build in three runs.
-docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" -e CCACHE_DIR=/ccache -e CARGO_HOME=/cargo -e CARGO_NET_RETRY=10 -e ANDROMEDA_APP="${ANDROMEDA_APP:-}" -e ANDROMEDA_CORE="${ANDROMEDA_CORE:-}" -e ANDROMEDA_ONLY="${ANDROMEDA_ONLY:-}" -e ONLY_DEBS="$ONLY_DEBS" -e ANDROMEDA_VERSION="${DEB_VERSION:-}" -w /o/src "$IMAGE" bash -c '
+docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v "$CCACHE:/ccache" -v "$CARGO_CACHE:/cargo" -e CCACHE_DIR=/ccache -e CARGO_HOME=/cargo -e CARGO_NET_RETRY=10 -e ANDROMEDA_APP="${ANDROMEDA_APP:-}" -e ANDROMEDA_CORE="${ANDROMEDA_CORE:-}" -e ANDROMEDA_ONLY="${ANDROMEDA_ONLY:-}" -e ONLY_DEBS="$ONLY_DEBS" -e ANDROMEDA_VERSION="${DEB_VERSION:-}" -e LINK_REPO="$LINK_REPO" -w /o/src "$IMAGE" bash -c '
   # A kept build stamp would make dh skip the build step, and cargo with it.
   rm -f debian/debhelper-build-stamp
   set -o pipefail
@@ -86,7 +88,9 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
     for deb in /o/*.deb; do name=$(basename "$deb"); case " $ONLY_DEBS " in *" ${name%%_*} "*) ;; *) rm "$deb" ;; esac; done
   fi
   # andromeda-link comes from the Link release, not this source; install every other package. An app build installs
-  # only its app and, for Files and Viewer, the preview: the other debs are empty.
+  # only its app and, for Files and Viewer, the preview: the other debs are empty. Link-app installs andromeda-link from
+  # the published apt repo of this base.
+  [ "$ANDROMEDA_APP" != link-app ] || echo "deb [signed-by=/o/src/andromeda-release.asc] $LINK_REPO ./" > /etc/apt/sources.list.d/andromeda.list
   apt-get -o Acquire::Retries=5 update
   if [ -n "$ANDROMEDA_APP" ]; then
     debs=$(ls /o/andromeda-"$ANDROMEDA_APP"_*.deb 2> /dev/null)
