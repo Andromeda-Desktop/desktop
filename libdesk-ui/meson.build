@@ -78,17 +78,30 @@ _system_deps = [
   dependency('zlib'),
   cpp.find_library('dl', required: false),
 ]
-# Load on first use on Linux (core/lazy_library.h); other platforms link them.
+# Load on first use on Linux (core/lazy_library.h); other platforms link them. Each entry: dependency, library name,
+# LAZY_SONAME_<macro> that carries the soname of the library this build links against.
 _lazy_deps = [
-  dependency('md4c'),
-  dependency('libwebp'),
-  dependency('libwebpdemux'),
-  dependency('libjxl'),
-  dependency('libjxl_threads'),
+  [dependency('md4c'), 'md4c', 'MD4C'],
+  [dependency('libwebp'), 'webp', 'WEBP'],
+  [dependency('libwebpdemux'), 'webpdemux', 'WEBPDEMUX'],
+  [dependency('libjxl'), 'jxl', 'JXL'],
+  [dependency('libjxl_threads'), 'jxl_threads', 'JXL_THREADS'],
 ]
-foreach _d : _lazy_deps
-  _system_deps += host_machine.system() == 'linux' ? _d.partial_dependency(compile_args: true, includes: true) : _d
+_lazy_sonames = []
+foreach _l : _lazy_deps
+  if host_machine.system() == 'linux'
+    _system_deps += _l[0].partial_dependency(compile_args: true, includes: true)
+    _lazy_path = _l[0].get_variable(pkgconfig: 'libdir') / 'lib' + _l[1] + '.so'
+    _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
+    _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
+    _system_deps += declare_dependency(compile_args: '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname))
+    _lazy_sonames += _lazy_soname
+  else
+    _system_deps += _l[0]
+  endif
 endforeach
+# debian/lazy-depends.sh turns this list into package dependencies: dpkg-shlibdeps sees only linked libraries.
+configure_file(output: 'lazy-sonames.txt', command: ['printf', '%s\\n'] + _lazy_sonames, capture: true)
 if is_wayland
   _system_deps += [dependency('wayland-client'), dependency('wayland-egl'), dependency('sdbus-c++')]
 else

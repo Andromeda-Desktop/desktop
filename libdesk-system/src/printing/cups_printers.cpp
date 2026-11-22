@@ -24,7 +24,7 @@
   X(ippDelete) X(ippFindAttribute) X(ippGetCount) X(ippGetInteger) X(ippGetStatusCode) X(ippGetString) \
   X(ippGetValueTag) X(ippNewRequest) X(ippPort)
 // clang-format on
-LAZY_LIBRARY(CupsApi, cups, "libcups.so.2", CUPS_FUNCTIONS)
+LAZY_LIBRARY(CupsApi, cups, LAZY_SONAME_CUPS, CUPS_FUNCTIONS)
 
 namespace {
 

@@ -20,7 +20,7 @@
 #define MD4C_FUNCTIONS(X) \
   X(md_parse)
 // clang-format on
-LAZY_LIBRARY(Md4cApi, md4c, "libmd4c.so.0", MD4C_FUNCTIONS)
+LAZY_LIBRARY(Md4cApi, md4c, LAZY_SONAME_MD4C, MD4C_FUNCTIONS)
 
 namespace {
 

@@ -9,7 +9,7 @@ Rules-Requires-Root: no
 
 Package: andromeda
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-compositor (>= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-compositor (>= ${binary:Version}),
  andromeda-shell (>= ${binary:Version}), xdg-desktop-portal-andromeda (>= ${binary:Version}),
  andromeda-greeter (>= ${binary:Version}), andromeda-system (>= ${binary:Version}), andromeda-link, andromeda-link-app,
  andromeda-preview (>= ${binary:Version}), andromeda-files, andromeda-player, andromeda-viewer, andromeda-terminal,
@@ -20,7 +20,7 @@ Description: Andromeda desktop
 
 Package: andromeda-compositor
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, libcap2-bin, xwayland-satellite
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, libcap2-bin, xwayland-satellite
 Description: Andromeda Wayland compositor
 
 Package: andromeda-shell
@@ -28,19 +28,19 @@ Architecture: amd64
 Replaces: noctalia-desktop
 Breaks: noctalia-desktop
 Conflicts: noctalia-desktop
-Depends: ${shlibs:Depends}, ${misc:Depends}, hicolor-icon-theme, git, curl, gstreamer1.0-plugins-base,
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, hicolor-icon-theme, git, curl, gstreamer1.0-plugins-base,
  gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-pipewire, andromeda-system
 Suggests: ddcutil, fprintd, libpam-fprintd
 Description: Noctalia desktop shell for Andromeda
 
 Package: xdg-desktop-portal-andromeda
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, xdg-desktop-portal
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, xdg-desktop-portal
 Description: xdg-desktop-portal backend for Andromeda
 
 Package: andromeda-system
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, dbus, polkitd, upower, power-profiles-daemon
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, dbus, polkitd, upower, power-profiles-daemon
 Suggests: network-manager, flatpak, fwupd, snapper
 Description: Andromeda system services
  org.andromeda.System1, Software Update (apt, snaps, Flatpak, firmware) and file operations.
@@ -53,7 +53,7 @@ Description: Andromeda static kernel power policy
 
 Package: andromeda-greeter
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-greetd
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-greetd
 Replaces: noctalia-greeter-desktop
 Breaks: noctalia-greeter-desktop
 Conflicts: noctalia-greeter-desktop
@@ -61,7 +61,7 @@ Description: Andromeda login greeter for greetd
 
 Package: andromeda-greetd
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}
 Provides: greetd
 Conflicts: greetd
 Replaces: greetd
@@ -71,7 +71,7 @@ Description: greetd with a GDM-style hand-off
 # The apps and the preview release on their own (app tags); andromeda 0.2.8 and older shipped their files.
 Package: andromeda-preview
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, gstreamer1.0-plugins-bad, gstreamer1.0-libav, mpv, ffmpeg,
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, gstreamer1.0-plugins-bad, gstreamer1.0-libav, mpv, ffmpeg,
  glycin-loaders
 Conflicts: gnome-sushi
 Replaces: andromeda (<= 0.2.8)
@@ -82,13 +82,13 @@ Description: Andromeda Quick Look
 # The shared libdesk of the apps that load as modules, and andromeda-appd; same source build, so the same version.
 Package: andromeda-libdesk
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}
 Description: Andromeda libdesk
  The shared app toolkit and the app zygote (andromeda-appd).
 
 Package: andromeda-files
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version}),
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version}),
  andromeda-preview, xdg-utils
 Suggests: gocryptfs, gvfs-backends, exfatprogs, dosfstools, ntfs-3g
 Replaces: andromeda (<= 0.2.8)
@@ -98,7 +98,7 @@ Description: Andromeda Files
 
 Package: andromeda-player
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, mpv, ffmpeg
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, mpv, ffmpeg
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Player
@@ -106,7 +106,7 @@ Description: Andromeda Player
 
 Package: andromeda-link-app
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-link (>= 0.2.13)
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-link (>= 0.2.13)
 Breaks: andromeda-link (<< 0.2.13)
 Replaces: andromeda-link (<< 0.2.13)
 Description: Andromeda Link
@@ -114,7 +114,7 @@ Description: Andromeda Link
 
 Package: andromeda-viewer
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-preview, glycin-loaders
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-preview, glycin-loaders
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Viewer
@@ -122,6 +122,6 @@ Description: Andromeda Viewer
 
 Package: andromeda-terminal
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version})
+Depends: ${shlibs:Depends}, ${lazy:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version})
 Description: Andromeda Terminal
  Terminal emulator on libghostty-vt.

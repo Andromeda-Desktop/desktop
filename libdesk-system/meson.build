@@ -37,6 +37,21 @@ _deps = [
   dependency('libsystemd'),
 ]
 
+# Loaded on first use (core/lazy_library.h): compile flags only, plus LAZY_SONAME_<macro> with the soname of the
+# library this build links against (the list as in libdesk-ui/meson.build).
+_lazy_deps = []
+_lazy_args = []
+_lazy_sonames = []
+foreach _l : [[dependency('cups'), 'cups', 'CUPS'], [dependency('libxcrypt'), 'crypt', 'LIBCRYPT']]
+  _lazy_deps += _l[0].partial_dependency(compile_args: true, includes: true)
+  _lazy_path = _l[0].get_variable(pkgconfig: 'libdir') / 'lib' + _l[1] + '.so'
+  _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
+  _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
+  _lazy_args += '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname)
+  _lazy_sonames += _lazy_soname
+endforeach
+configure_file(output: 'lazy-sonames.txt', command: ['printf', '%s\\n'] + _lazy_sonames, capture: true)
+
 _sources = files(
   'src/dbus/andromeda/system_health_service.cpp',
   'src/dbus/andromeda/software_update_service.cpp',
@@ -96,12 +111,12 @@ _inc = include_directories('src')
 
 desk_system_lib = static_library('desk_system',
   sources: _sources,
-  dependencies: _deps,
+  dependencies: _deps + _lazy_deps,
   include_directories: _inc,
   # Event-driven service clients: -Os halves their code at no measured cost. Target arguments follow the build's -O
   # level, so it wins; debug builds stay unoptimised.
   cpp_args: ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
-    + (get_option('optimization') in ['0', 'g'] ? [] : ['-Os']),
+    + _lazy_args + (get_option('optimization') in ['0', 'g'] ? [] : ['-Os']),
 )
 
 desk_system_dep = declare_dependency(

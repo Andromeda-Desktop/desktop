@@ -20,7 +20,7 @@
   X(curl_multi_info_read) X(curl_multi_init) X(curl_multi_perform) X(curl_multi_remove_handle) \
   X(curl_multi_strerror) X(curl_multi_timeout) X(curl_slist_append) X(curl_slist_free_all)
 // clang-format on
-LAZY_LIBRARY(LibcurlApi, libcurl, "libcurl.so.4", LIBCURL_FUNCTIONS)
+LAZY_LIBRARY(LibcurlApi, libcurl, LAZY_SONAME_CURL, LIBCURL_FUNCTIONS)
 
 namespace {
   constexpr Logger kLog("http");

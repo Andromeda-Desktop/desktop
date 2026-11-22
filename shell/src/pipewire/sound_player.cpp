@@ -24,7 +24,7 @@
 #define SNDFILE_FUNCTIONS(X) \
   X(sf_close) X(sf_open) X(sf_readf_float) X(sf_strerror)
 // clang-format on
-LAZY_LIBRARY(SndfileApi, sndfile, "libsndfile.so.1", SNDFILE_FUNCTIONS)
+LAZY_LIBRARY(SndfileApi, sndfile, LAZY_SONAME_SNDFILE, SNDFILE_FUNCTIONS)
 
 namespace {
 

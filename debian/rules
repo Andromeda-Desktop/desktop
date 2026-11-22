@@ -16,3 +16,4 @@ override_dh_auto_install:
 # libandromeda-desk.so and the app modules sit in the private dir /usr/lib/andromeda.
 override_dh_shlibdeps:
 	dh_shlibdeps -l$(CURDIR)/debian/andromeda-libdesk/usr/lib/andromeda:$(CURDIR)/debian/andromeda-files/usr/lib/andromeda:$(CURDIR)/debian/andromeda-terminal/usr/lib/andromeda
+	debian/lazy-depends.sh

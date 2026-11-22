@@ -23,7 +23,7 @@
 #define LIBCRYPT_FUNCTIONS(X) \
   X(crypt_gensalt_ra) X(crypt_r)
 // clang-format on
-LAZY_LIBRARY(LibcryptApi, libcrypt, "libcrypt.so.2", LIBCRYPT_FUNCTIONS)
+LAZY_LIBRARY(LibcryptApi, libcrypt, LAZY_SONAME_LIBCRYPT, LIBCRYPT_FUNCTIONS)
 
 namespace {
 

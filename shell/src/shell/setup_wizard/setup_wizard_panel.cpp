@@ -58,7 +58,7 @@
 #define QRENCODE_FUNCTIONS(X) \
   X(QRcode_encodeString) X(QRcode_free)
 // clang-format on
-LAZY_LIBRARY(QrencodeApi, qrencode, "libqrencode.so.4", QRENCODE_FUNCTIONS)
+LAZY_LIBRARY(QrencodeApi, qrencode, LAZY_SONAME_QRENCODE, QRENCODE_FUNCTIONS)
 
 namespace {
 

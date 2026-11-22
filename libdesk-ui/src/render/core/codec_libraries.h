@@ -19,14 +19,14 @@
   X(WebPMemoryWriterInit) X(WebPPictureFree) X(WebPPictureImportRGBA) X(WebPPictureInitInternal) \
   X(WebPValidateConfig)
 // clang-format on
-LAZY_LIBRARY(WebpApi, webp, "libwebp.so.7", WEBP_FUNCTIONS)
+LAZY_LIBRARY(WebpApi, webp, LAZY_SONAME_WEBP, WEBP_FUNCTIONS)
 
 // clang-format off
 #define WEBPDEMUX_FUNCTIONS(X) \
   X(WebPAnimDecoderDelete) X(WebPAnimDecoderGetInfo) X(WebPAnimDecoderGetNext) X(WebPAnimDecoderNewInternal) \
   X(WebPAnimDecoderOptionsInitInternal)
 // clang-format on
-LAZY_LIBRARY(WebpDemuxApi, webpDemux, "libwebpdemux.so.2", WEBPDEMUX_FUNCTIONS)
+LAZY_LIBRARY(WebpDemuxApi, webpDemux, LAZY_SONAME_WEBPDEMUX, WEBPDEMUX_FUNCTIONS)
 
 // clang-format off
 #define JXL_FUNCTIONS(X) \
@@ -38,14 +38,14 @@ LAZY_LIBRARY(WebpDemuxApi, webpDemux, "libwebpdemux.so.2", WEBPDEMUX_FUNCTIONS)
   X(JxlEncoderInitBasicInfo) X(JxlEncoderProcessOutput) X(JxlEncoderSetBasicInfo) X(JxlEncoderSetColorEncoding) \
   X(JxlEncoderSetFrameDistance) X(JxlEncoderSetFrameLossless) X(JxlEncoderSetParallelRunner)
 // clang-format on
-LAZY_LIBRARY(JxlApi, jxl, "libjxl.so.0.13", JXL_FUNCTIONS)
+LAZY_LIBRARY(JxlApi, jxl, LAZY_SONAME_JXL, JXL_FUNCTIONS)
 
 // clang-format off
 #define JXLTHREADS_FUNCTIONS(X) \
   X(JxlResizableParallelRunner) X(JxlResizableParallelRunnerCreate) X(JxlResizableParallelRunnerDestroy) \
   X(JxlResizableParallelRunnerSetThreads) X(JxlResizableParallelRunnerSuggestThreads)
 // clang-format on
-LAZY_LIBRARY(JxlThreadsApi, jxlThreads, "libjxl_threads.so.0.13", JXLTHREADS_FUNCTIONS)
+LAZY_LIBRARY(JxlThreadsApi, jxlThreads, LAZY_SONAME_JXL_THREADS, JXLTHREADS_FUNCTIONS)
 
 namespace codec_libraries {
 

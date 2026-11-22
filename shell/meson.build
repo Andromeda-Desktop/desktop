@@ -970,8 +970,30 @@ _noctalia_inc = [
 ]
 
 # ── Application library and executable ────────────────────────────────────────
-# Rarely used libraries take only their compile flags: they load on first use (core/lazy_library.h).
+# Rarely used libraries take only their compile flags: they load on first use (core/lazy_library.h). Each gets
+# LAZY_SONAME_<macro>, the soname of the library this build links against (the list as in libdesk-ui/meson.build).
+_lazy_args = []
+_lazy_sonames = []
+foreach _l : [
+  [curl_dep, 'curl', 'CURL'],
+  [libical_dep, 'ical', 'ICAL'],
+  [sndfile_dep, 'sndfile', 'SNDFILE'],
+  [qrencode_dep, 'qrencode', 'QRENCODE'],
+  [gstreamer_dep, 'gstreamer-1.0', 'GSTREAMER'],
+  [gstreamer_app_dep, 'gstapp-1.0', 'GSTAPP'],
+  [gstreamer_video_dep, 'gstvideo-1.0', 'GSTVIDEO'],
+  [gstreamer_allocators_dep, 'gstallocators-1.0', 'GSTALLOCATORS'],
+  [dependency('pam'), 'pam', 'PAM'],
+]
+  _lazy_path = _l[0].get_variable(pkgconfig: 'libdir') / 'lib' + _l[1] + '.so'
+  _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
+  _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
+  _lazy_args += '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname)
+  _lazy_sonames += _lazy_soname
+endforeach
+configure_file(output: 'lazy-sonames.txt', command: ['printf', '%s\\n'] + _lazy_sonames, capture: true)
 _noctalia_system_dependencies = [
+  declare_dependency(compile_args: _lazy_args),
   desk_ui_dep,
   desk_system_dep,
   sdbus_cpp_dep,

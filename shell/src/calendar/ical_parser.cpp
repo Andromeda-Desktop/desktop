@@ -19,13 +19,11 @@
 #include <unordered_map>
 #include <vector>
 
-// libical 4 renamed the duration call and bumped the soname; Debian and Ubuntu ship libical 3.
+// libical 4 renamed the duration call; Debian and Ubuntu ship libical 3.
 #if ICAL_CHECK_VERSION(4, 0, 0)
 #define LIBICAL_DURATION_SECONDS icaldurationtype_as_utc_seconds
-#define LIBICAL_SONAME "libical.so.4.0"
 #else
 #define LIBICAL_DURATION_SECONDS icaldurationtype_as_int
-#define LIBICAL_SONAME "libical.so.3"
 #endif
 // Expands the name before X stringifies it.
 #define LIBICAL_X_(X, name) X(name)
@@ -46,7 +44,7 @@
   X(icaltime_is_utc) X(icaltime_is_valid_time) X(icaltime_null_date) X(icaltime_null_time) X(icaltime_span_new) \
   X(icaltimezone_get_utc_timezone) X(icaltriggertype_is_bad_trigger)
 // clang-format on
-LAZY_LIBRARY(LibicalApi, libical, LIBICAL_SONAME, LIBICAL_FUNCTIONS)
+LAZY_LIBRARY(LibicalApi, libical, LAZY_SONAME_ICAL, LIBICAL_FUNCTIONS)
 
 namespace calendar {
 

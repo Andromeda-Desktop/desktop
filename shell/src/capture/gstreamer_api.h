@@ -28,13 +28,13 @@
   X(gst_structure_get_name) X(gst_structure_get_value) X(gst_structure_new) X(gst_util_set_object_arg) \
   X(gst_value_list_get_size) X(gst_value_list_get_type) X(gst_value_list_get_value)
 // clang-format on
-LAZY_LIBRARY(GstreamerApi, gstreamer, "libgstreamer-1.0.so.0", GSTREAMER_FUNCTIONS)
+LAZY_LIBRARY(GstreamerApi, gstreamer, LAZY_SONAME_GSTREAMER, GSTREAMER_FUNCTIONS)
 
 // clang-format off
 #define GSTAPP_FUNCTIONS(X) \
   X(gst_app_sink_set_callbacks) X(gst_app_sink_try_pull_sample)
 // clang-format on
-LAZY_LIBRARY(GstAppApi, gstApp, "libgstapp-1.0.so.0", GSTAPP_FUNCTIONS)
+LAZY_LIBRARY(GstAppApi, gstApp, LAZY_SONAME_GSTAPP, GSTAPP_FUNCTIONS)
 
 // clang-format off
 #define GSTVIDEO_FUNCTIONS(X) \
@@ -42,10 +42,10 @@ LAZY_LIBRARY(GstAppApi, gstApp, "libgstapp-1.0.so.0", GSTAPP_FUNCTIONS)
   X(gst_video_frame_unmap) X(gst_video_info_dma_drm_from_caps) X(gst_video_info_from_caps) \
   X(gst_video_meta_api_get_type)
 // clang-format on
-LAZY_LIBRARY(GstVideoApi, gstVideo, "libgstvideo-1.0.so.0", GSTVIDEO_FUNCTIONS)
+LAZY_LIBRARY(GstVideoApi, gstVideo, LAZY_SONAME_GSTVIDEO, GSTVIDEO_FUNCTIONS)
 
 // clang-format off
 #define GSTALLOCATORS_FUNCTIONS(X) \
   X(gst_dmabuf_memory_get_fd) X(gst_is_dmabuf_memory)
 // clang-format on
-LAZY_LIBRARY(GstAllocatorsApi, gstAllocators, "libgstallocators-1.0.so.0", GSTALLOCATORS_FUNCTIONS)
+LAZY_LIBRARY(GstAllocatorsApi, gstAllocators, LAZY_SONAME_GSTALLOCATORS, GSTALLOCATORS_FUNCTIONS)

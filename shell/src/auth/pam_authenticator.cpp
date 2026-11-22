@@ -26,7 +26,7 @@
 #define PAM_FUNCTIONS(X) \
   X(pam_acct_mgmt) X(pam_authenticate) X(pam_end) X(pam_setcred) X(pam_start) X(pam_strerror)
 // clang-format on
-LAZY_LIBRARY(PamApi, pam, "libpam.so.0", PAM_FUNCTIONS)
+LAZY_LIBRARY(PamApi, pam, LAZY_SONAME_PAM, PAM_FUNCTIONS)
 
 namespace {
 

@@ -8,8 +8,9 @@
 // A package dependency that loads on first use instead of at process start. Include the library's own headers, so
 // each member keeps the declared signature, and take only its compile flags (meson partial_dependency):
 //   #define CUPS_FUNCTIONS(X) X(cupsGetDests2) X(cupsFreeDests)
-//   LAZY_LIBRARY(CupsApi, cups, "libcups.so.2", CUPS_FUNCTIONS)
+//   LAZY_LIBRARY(CupsApi, cups, LAZY_SONAME_CUPS, CUPS_FUNCTIONS)
 //   cups().cupsFreeDests(n, dests);
+// meson defines LAZY_SONAME_<name> from the library the build links against; sonames differ between distros.
 // The getter is thread-safe and keeps the library loaded. A missing library or symbol is a broken install, as a
 // missing DT_NEEDED entry was: the getter prints the loader error and aborts.
 #if defined(__linux__)
