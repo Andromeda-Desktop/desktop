@@ -241,6 +241,16 @@ impl Helper {
         std::fs::read_to_string(self.token_file()).ok().and_then(|t| t.trim().parse().ok()).unwrap_or(0)
     }
 
+    /// Replaced whole: a crash mid-write would leave an empty token, which reads as 0 and refuses upgrades.
+    fn write_token(&self, token: i64) -> std::io::Result<()> {
+        let tmp = self.state_dir.join("news-read.new");
+        let mut file = std::fs::File::create(&tmp)?;
+        std::io::Write::write_all(&mut file, token.to_string().as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, self.token_file())?;
+        std::fs::File::open(&self.state_dir)?.sync_all()
+    }
+
     /// Unread news blocks an upgrade; so does a feed that cannot be read.
     async fn news_gate(&self) -> zbus::fdo::Result<()> {
         if !news::GATES {
@@ -403,8 +413,7 @@ impl Helper {
         let newest = items.iter().map(|i| i.published).max().unwrap_or(0);
         let token = until.min(newest).max(self.read_token());
         std::fs::create_dir_all(&self.state_dir).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
-        std::fs::write(self.token_file(), token.to_string()).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))?;
-        Ok(())
+        self.write_token(token).map_err(|e| zbus::fdo::Error::IOError(e.to_string()))
     }
 
     #[zbus(signal)]
