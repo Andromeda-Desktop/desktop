@@ -143,6 +143,9 @@ namespace linkapp {
     void ring(const std::string& deviceId);
     void dial(const std::string& deviceId, const std::string& number);
     void setDnd(const std::string& deviceId, bool on);
+    // PhonePlayerCommand: play-pause, next, previous, seek (value ms).
+    void playerCommand(const std::string& deviceId, const std::string& command, std::uint64_t value = 0);
+    void setMediaVolume(const std::string& deviceId, int percent);
     // Sends text to the phone's clipboard; a lone http(s) URL goes as a link.
     void shareText(const std::string& deviceId, const std::string& text);
     // Texts any number from the phone presence() shows; its thread shows once the phone lists the text.

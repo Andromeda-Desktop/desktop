@@ -805,6 +805,9 @@ file_symbol = 32.0   # Files: the symbol column of a row
 file_column = 112.0  # Files: the Size and Modified columns
 mirror_radius = 32.0 # Mirror: the corners of the phone's screen until Link1 ScreenShape is read
 mirror_chrome = 112.0 # Mirror: stage height the stat line, the key bar and their gaps take from the video
+player_width = 304.0  # PlayerPopover beside the phone card
+player_art = 56.0     # PlayerPopover: the cover; the mini row's cover is size.control_m
+player_play = 44.0    # PlayerPopover: the round play/pause key
 
 [component.phone]  # Link Android (design-link/phone handoff.yaml); sizes in dp
 hit = 48.0           # phone touch target (Material / iOS 44-48)

@@ -71,6 +71,10 @@ props = {
     "DeviceStatus": GLib.Variant("a{s(ubsi)}", {"p1": (74, False, "wifi", -1)} if connected else {}),
     "DeviceControls": GLib.Variant("a{s(isii)}", {"p1": (50, "normal", 0, 0)} if connected else {}),
     "Paused": GLib.Variant("as", []),
+    # ART=path gives the player a cover.
+    "PhonePlayers": GLib.Variant("a{s(sssssbttixas)}", {"p1": (
+        "spotify", "Spotify", "Holocene", "Bon Iver", "file://" + os.environ["ART"] if os.environ.get("ART") else "", True,
+        161_000, 336_000, -1, now_ms, ["play-pause", "next", "previous", "seek"])} if MODE == "sample" else {}),
     "Pairing": GLib.Variant("b", False),
     "Grants": GLib.Variant("a{sas}", {"p1": ["notifications", "clipboard", "screen", "files", "messages", "calls"]
                                          + ([] if os.environ.get("NOGRANT") else ["commands"])}),
@@ -251,6 +255,19 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
         props["Commands"] = GLib.Variant("a(ss)", commands)
         conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",
                          GLib.Variant("(sa{sv}as)", (IFACE, {"Commands": props["Commands"]}, [])))
+    if method == "PhonePlayerCommand" and params[1] == "play-pause":
+        name, app, title, artist, art, playing, pos, length, vol, at, cmds = props["PhonePlayers"].unpack()[params[0]]
+        clock = int(time.time() * 1000)
+        pos = min(length, pos + (clock - at if playing else 0))
+        props["PhonePlayers"] = GLib.Variant("a{s(sssssbttixas)}", {params[0]: (name, app, title, artist, art, not playing, pos, length, vol, clock, cmds)})
+        conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                         GLib.Variant("(sa{sv}as)", (IFACE, {"PhonePlayers": props["PhonePlayers"]}, [])))
+    if method == "SendSystemCommand" and params[1] == "set-media-volume":
+        controls = props["DeviceControls"].unpack()
+        _, ringer, dnd, locked = controls[params[0]]
+        props["DeviceControls"] = GLib.Variant("a{s(isii)}", {params[0]: (params[2], ringer, dnd, locked)})
+        conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                         GLib.Variant("(sa{sv}as)", (IFACE, {"DeviceControls": props["DeviceControls"]}, [])))
     if method in ("StartPairing", "CancelPairing"):
         props["Pairing"] = GLib.Variant("b", method == "StartPairing")
         conn.emit_signal(None, PATH, "org.freedesktop.DBus.Properties", "PropertiesChanged",

@@ -781,9 +781,29 @@ namespace {
     }
   }
 
+  // Random snapshots and clock steps: the position stays in [0, length], holds while paused, never goes back while playing.
+  void runPlayer(unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_int_distribution<std::int64_t> ms(0, 400000);
+    for (int step = 1; step <= 50; ++step) {
+      const PhonePlayer p{.playing = ms(rng) % 2 == 0, .positionMs = ms(rng), .lengthMs = ms(rng) % 3 == 0 ? 0 : ms(rng) + 1,
+                          .atMs = ms(rng)};
+      std::int64_t now = ms(rng), last = -1;
+      for (int tick = 0; tick < 8; ++tick, now += ms(rng) / 50) {
+        const std::int64_t at = p.position(now);
+        expect(at >= 0 && (p.lengthMs == 0 || at <= p.lengthMs), "position within the length", seed, step);
+        if (!p.playing) expect(at == std::min(p.positionMs, p.lengthMs > 0 ? p.lengthMs : p.positionMs), "paused holds", seed, step);
+        expect(at >= last, "playing never goes back", seed, step);
+        if (p.playing && p.lengthMs == 0 && now > p.atMs) expect(at == p.positionMs + now - p.atMs, "playing advances with the clock", seed, step);
+        last = at;
+      }
+    }
+  }
+
 } // namespace
 
 int main() {
+  for (unsigned seed = 1; seed <= 20; ++seed) runPlayer(seed);
   runMirrorKeys();
   for (unsigned seed = 1; seed <= 20; ++seed) runPair(seed);
   lastSeen();

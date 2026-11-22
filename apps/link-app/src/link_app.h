@@ -2,6 +2,7 @@
 
 #include "app/desk_app.h"
 #include "app/file_chooser.h"
+#include "core/timer_manager.h"
 #include "render/core/texture_manager.h"
 #include "link_client.h"
 #include "ui/controls/scroll_view.h"
@@ -218,6 +219,13 @@ namespace linkapp {
     void show(Page page);
     void updateCaption();
     [[nodiscard]] std::unique_ptr<Node> sidebar(float width);
+    // The lead player of the shown phone while it is connected; null otherwise.
+    [[nodiscard]] const PhonePlayer* player() const;
+    [[nodiscard]] std::unique_ptr<Node> playerMini(const PhonePlayer& p, const std::string& id, float s);
+    [[nodiscard]] std::unique_ptr<Node> playerPopover(float s);
+    void openPlayer();
+    // Moves the open player popover to the model in place; closes it once the player is gone.
+    void syncPlayer();
     [[nodiscard]] std::unique_ptr<Node> content(Renderer& renderer, float width, float height);
     // Pair a Phone: the QR and code of this app's pairing window.
     [[nodiscard]] std::unique_ptr<Node> pair(Renderer& renderer, float s);
@@ -328,6 +336,18 @@ namespace linkapp {
     std::string m_hotspotSheet;   // device id + ssid of the ask the sheet shows; empty while none shows
     std::string m_dial; // the "Name or number" field
     AppWindow* m_window = nullptr;
+    Node* m_phoneCard = nullptr;      // of the last sidebar build
+    struct PlayerView {
+      Slider* seek = nullptr;
+      Label* position = nullptr;
+      Button* play = nullptr;
+      Button* mute = nullptr;
+      Slider* volume = nullptr;
+      Label* level = nullptr;
+    };
+    PlayerView m_playerView;          // of the player popover's last build; used only while it is open
+    Timer m_playerTick;               // 1 s, only while the popover shows a playing player
+    int m_unmutedVolume = 50;         // the media volume Unmute gives back
     std::unique_ptr<desk::FileChooser> m_chooser;
     Page m_page = Page::Waiting;
     float m_scale = 1.0F;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app/app_popover.h"
 #include "ui/controls/context_menu.h"
 #include "ui/palette.h"
 
@@ -236,8 +237,9 @@ public:
   // A context menu at a point in window (scene) coordinates; `activated` gets the entry id, after the menu closed.
   void openContextMenu(std::vector<ContextMenuControlEntry> entries, float sceneX, float sceneY,
                        std::function<void(std::int32_t id)> activated);
-  // A popover under `anchor` (a node of this window), `width` x `height` logical px before ui scale.
-  void openPopover(const Node* anchor, float width, float height, std::function<std::unique_ptr<Node>(float scale)> content);
+  // A popover at `side` of `anchor` (a node of this window), `width` x `height` logical px before ui scale.
+  void openPopover(const Node* anchor, float width, float height, std::function<std::unique_ptr<Node>(float scale)> content,
+                   AppPopover::Side side = AppPopover::Side::Below);
   void refreshPopover();
   // The open popover takes a new anchor and size in place (same grab), then builds its content again.
   void resizePopover(const Node* anchor, float width, float height);
@@ -398,7 +400,7 @@ private:
   std::uint32_t m_sidebarAnim = 0;
   std::unique_ptr<ContextMenuPopup> m_menu;
   std::unique_ptr<class SelectDropdownPopup> m_select;
-  std::unique_ptr<class AppPopover> m_popover;
+  std::unique_ptr<AppPopover> m_popover;
   AnimationManager m_animations;
   InputDispatcher m_input;
   bool m_rebuild = true;

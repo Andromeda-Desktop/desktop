@@ -13,6 +13,22 @@
 // Link desktop app state with no UI or D-Bus in it, so tests drive it directly.
 namespace linkapp {
 
+  // The phone's lead media player as Link1 PhonePlayers reports it.
+  struct PhonePlayer {
+    std::string app;
+    std::string title;
+    std::string artist;
+    std::string art;              // local path or empty
+    bool playing = false;
+    std::int64_t positionMs = 0;  // true at atMs
+    std::int64_t lengthMs = 0;    // 0 unknown
+    std::int64_t atMs = 0;        // ms since the Unix epoch
+    std::vector<std::string> commands;
+    [[nodiscard]] bool takes(std::string_view command) const;
+    // Position at nowMs: advances only while playing, clamped to the length.
+    [[nodiscard]] std::int64_t position(std::int64_t nowMs) const;
+  };
+
   // One paired phone as Link1 Devices, DeviceInfo, DeviceStatus, DeviceControls and Paused report it.
   struct Phone {
     std::string id;
@@ -24,6 +40,8 @@ namespace linkapp {
     std::int64_t lastSeen = 0; // unix seconds of its last session
     int locked = -1;           // 1, 0, or -1 when the phone does not say
     int dnd = -1;              // same values as locked
+    int mediaVolume = -1;      // percent, -1 when the phone does not say
+    std::optional<PhonePlayer> player;
     bool paused = false;
   };
 

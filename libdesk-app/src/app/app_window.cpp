@@ -470,7 +470,7 @@ void AppWindow::openContextMenu(std::vector<ContextMenuControlEntry> entries, fl
 }
 
 void AppWindow::openPopover(const Node* anchor, float width, float height,
-                            std::function<std::unique_ptr<Node>(float scale)> content) {
+                            std::function<std::unique_ptr<Node>(float scale)> content, AppPopover::Side side) {
   if (m_surface == nullptr || anchor == nullptr) {
     return;
   }
@@ -486,7 +486,7 @@ void AppWindow::openPopover(const Node* anchor, float width, float height,
                    .anchorX = static_cast<std::int32_t>(x - margin), .anchorY = static_cast<std::int32_t>(y - margin),
                    .anchorWidth = static_cast<std::int32_t>(anchor->width()),
                    .anchorHeight = static_cast<std::int32_t>(anchor->height()), .width = width * m_uiScale,
-                   .height = height * m_uiScale, .scale = m_uiScale, .content = std::move(content)});
+                   .height = height * m_uiScale, .scale = m_uiScale, .content = std::move(content), .side = side});
 }
 
 void AppWindow::resizePopover(const Node* anchor, float width, float height) {

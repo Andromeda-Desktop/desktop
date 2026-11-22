@@ -251,6 +251,9 @@ namespace linkapp {
           const auto controls =
               property<std::map<std::string, sdbus::Struct<std::int32_t, std::string, std::int32_t, std::int32_t>>>(props, "DeviceControls");
           const auto paused = property<std::vector<std::string>>(props, "Paused");
+          using Player = sdbus::Struct<std::string, std::string, std::string, std::string, std::string, bool, std::uint64_t,
+                                       std::uint64_t, std::int32_t, std::int64_t, std::vector<std::string>>;
+          const auto players = property<std::map<std::string, Player>>(props, "PhonePlayers");
           for (const auto& d : property<std::vector<sdbus::Struct<std::string, std::string, bool>>>(props, "Devices")) {
             Phone phone{.id = d.get<0>(), .name = d.get<1>(), .connected = d.get<2>()};
             if (const auto it = info.find(phone.id); it != info.end()) {
@@ -263,8 +266,18 @@ namespace linkapp {
               phone.charging = it->second.get<1>();
             }
             if (const auto it = controls.find(phone.id); it != controls.end()) {
+              phone.mediaVolume = it->second.get<0>();
               phone.dnd = it->second.get<2>();
               phone.locked = it->second.get<3>();
+            }
+            if (const auto it = players.find(phone.id); it != players.end()) {
+              const Player& p = it->second;
+              const std::string& art = p.get<4>();
+              phone.player = PhonePlayer{.app = p.get<1>(), .title = p.get<2>(), .artist = p.get<3>(),
+                                         .art = art.starts_with("file://") ? art.substr(7) : std::string(),
+                                         .playing = p.get<5>(), .positionMs = static_cast<std::int64_t>(p.get<6>()),
+                                         .lengthMs = static_cast<std::int64_t>(p.get<7>()), .atMs = p.get<9>(),
+                                         .commands = p.get<10>()};
             }
             phone.paused = std::ranges::find(paused, phone.id) != paused.end();
             m_phones.push_back(std::move(phone));
@@ -1203,6 +1216,21 @@ namespace linkapp {
         .withArguments(deviceId, std::string("set-dnd"), static_cast<std::uint32_t>(on ? 1 : 0))
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("SendSystemCommand set-dnd: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::playerCommand(const std::string& deviceId, const std::string& command, std::uint64_t value) {
+    m_proxy->callMethodAsync("PhonePlayerCommand").onInterface(kInterface).withArguments(deviceId, command, value)
+        .uponReplyInvoke([command](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("PhonePlayerCommand {}: {}", command, error->getMessage());
+        });
+  }
+
+  void LinkClient::setMediaVolume(const std::string& deviceId, int percent) {
+    m_proxy->callMethodAsync("SendSystemCommand").onInterface(kInterface)
+        .withArguments(deviceId, std::string("set-media-volume"), static_cast<std::uint32_t>(std::clamp(percent, 0, 100)))
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SendSystemCommand set-media-volume: {}", error->getMessage());
         });
   }
 

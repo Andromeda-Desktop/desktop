@@ -13,6 +13,13 @@
 
 namespace linkapp {
 
+  bool PhonePlayer::takes(std::string_view command) const { return std::ranges::find(commands, command) != commands.end(); }
+
+  std::int64_t PhonePlayer::position(std::int64_t nowMs) const {
+    const std::int64_t at = playing ? positionMs + std::max<std::int64_t>(0, nowMs - atMs) : positionMs;
+    return lengthMs > 0 ? std::min(at, lengthMs) : at;
+  }
+
   Presence presenceFrom(bool daemon, const std::vector<Phone>& phones, const std::string& selected) {
     using K = Presence::Kind;
     if (!daemon) return {K::NoDaemon, {}};

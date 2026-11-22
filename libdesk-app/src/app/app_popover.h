@@ -8,10 +8,13 @@
 
 class Node;
 
-// A popover under a header control (FILES-UI-SPEC §14 jobs popover): an xdg_popup in the menu material with any
-// content. Outside clicks and Escape close it.
+// A popover under a header control (FILES-UI-SPEC §14 jobs popover), or beside a sidebar card: an xdg_popup in the
+// menu material with any content. Outside clicks and Escape close it.
 class AppPopover final : public DialogPopupHost {
 public:
+  // Below: under the anchor, right edges lined up. Beside: right of the anchor, bottom edges lined up.
+  enum class Side : std::uint8_t { Below, Beside };
+
   struct Request {
     Surface* parent = nullptr;
     std::uint32_t serial = 0;
@@ -24,6 +27,7 @@ public:
     float height = 0.0F;
     float scale = 1.0F;
     std::function<std::unique_ptr<Node>(float scale)> content;
+    Side side = Side::Below;
   };
 
   AppPopover(Display& display, RenderContext& renderContext);

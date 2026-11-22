@@ -1,6 +1,7 @@
 #include "app/app_popover.h"
 
 #include "render/scene/node.h"
+#include "ui/style.h"
 
 AppPopover::AppPopover(Display& display, RenderContext& renderContext) {
   initializeBase(display, m_settings, renderContext);
@@ -35,6 +36,23 @@ void AppPopover::layoutSheet(float contentWidth, float contentHeight) {
 PopupSurfaceConfig AppPopover::popupConfig() const {
   const auto width = static_cast<std::uint32_t>(std::max(1.0F, m_request.width));
   const auto height = static_cast<std::uint32_t>(std::max(1.0F, m_request.height));
+  if (m_request.side == Side::Beside) {
+    return PopupSurfaceConfig{
+        .anchorX = m_request.anchorX,
+        .anchorY = m_request.anchorY,
+        .anchorWidth = std::max(1, m_request.anchorWidth),
+        .anchorHeight = std::max(1, m_request.anchorHeight),
+        .width = width,
+        .height = height,
+        .anchor = PopupAnchor::BottomRight,
+        .gravity = PopupGravity::TopRight,
+        .constraintAdjustment = PopupConstraint::SlideY | PopupConstraint::FlipX,
+        .offsetX = static_cast<std::int32_t>(Tokens::spaceP8 * m_request.scale),
+        .offsetY = 0,
+        .serial = m_request.serial,
+        .grab = true,
+    };
+  }
   // Under the control, its right edges lined up; slides back on screen near the edges.
   return PopupSurfaceConfig{
       .anchorX = m_request.anchorX,
