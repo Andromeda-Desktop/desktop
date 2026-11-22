@@ -641,4 +641,14 @@ void PtySession::onSemanticPrompt(GhosttyTerminal terminal, void* self, const Gh
   if (s->m_onMark) s->m_onMark(mark);
 }
 
+bool PtySession::foregroundJob() const {
+  if (m_master < 0) {
+    return false;
+  }
+  // On a pty master both calls describe the slave side: its foreground group and its session (the shell).
+  const pid_t group = ::tcgetpgrp(m_master);
+  const pid_t session = ::tcgetsid(m_master);
+  return group > 0 && session > 0 && group != session;
+}
+
 } // namespace term

@@ -203,6 +203,8 @@ namespace term {
     [[nodiscard]] InputArea* focusArea() const noexcept override { return m_area; }
     [[nodiscard]] TerminalView* terminal() noexcept override { return this; }
     [[nodiscard]] PtySession& session() noexcept { return m_session; }
+    // A job other than the shell holds the terminal and the shell never sent an OSC 133 mark (sh, nu).
+    [[nodiscard]] bool runsUnmarkedJob() const { return !m_marksSeen && m_session.foregroundJob(); }
 
   private:
     // Redraw owed to the next frame tick: Dirty rows only, or All rows (the selection changed).
@@ -350,6 +352,7 @@ namespace term {
     std::vector<ScrollSample> m_scrollSamples; // finger positions of the last 100 ms (rulebook 7.7)
     Click m_lastClick;
     std::variant<CommandIdle, CommandRunning> m_command;
+    bool m_marksSeen = false; // once the shell sends OSC 133, its marks alone say what runs
     std::string m_cwd;
     std::optional<Remote> m_remote; // none = this machine
     std::optional<HoverLink> m_link;

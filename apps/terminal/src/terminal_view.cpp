@@ -1417,6 +1417,7 @@ namespace term {
   }
 
   void TerminalView::onMark(const CommandMark& mark) {
+    m_marksSeen = true;
     switch (mark.kind) {
     case CommandMark::Kind::OutputStart:
       m_command = CommandRunning{

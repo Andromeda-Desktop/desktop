@@ -49,6 +49,8 @@ class PtySession {
 public:
   // Called on the IO thread when new state is ready, at most once until takeWake().
   using WakeFn = std::function<void()>;
+  // A process group other than the shell's session holds the terminal: a job runs in the foreground.
+  [[nodiscard]] bool foregroundJob() const;
   using MarkFn = std::function<void(const CommandMark&)>;
   // IO thread, under the terminal lock; once until bellHandled(), so a burst of BEL rings once.
   using BellFn = std::function<void()>;

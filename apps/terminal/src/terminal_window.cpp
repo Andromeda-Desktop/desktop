@@ -402,7 +402,7 @@ namespace term {
       bool running = false;
       for (const SessionInfo& session : m_sessions.sessions()) {
         ids.push_back(session.id);
-        running = running || std::holds_alternative<CommandRunning>(session.command);
+        running = running || runsCommand(session);
       }
       if (!running) return true;
       askClose(std::move(ids), true);
@@ -1354,6 +1354,15 @@ namespace term {
     }
   }
 
+  bool TerminalWindow::runsCommand(const SessionInfo& session) const {
+    if (std::holds_alternative<CommandRunning>(session.command)) {
+      return true;
+    }
+    const auto it = std::ranges::find(m_views, session.id, &Session::id);
+    TerminalView* terminal = it != m_views.end() ? it->view->terminal() : nullptr;
+    return terminal != nullptr && terminal->runsUnmarkedJob();
+  }
+
   void TerminalWindow::askClose(std::vector<std::uint64_t> ids, bool window) {
     const auto close = [this](const std::vector<std::uint64_t>& targets) {
       for (const std::uint64_t target : targets) {
@@ -1362,7 +1371,7 @@ namespace term {
     };
     const auto running = std::ranges::count_if(ids, [this](std::uint64_t target) {
       const SessionInfo* session = m_sessions.find(target);
-      return session != nullptr && std::holds_alternative<CommandRunning>(session->command);
+      return session != nullptr && runsCommand(*session);
     });
     if (running == 0) {
       close(ids);
