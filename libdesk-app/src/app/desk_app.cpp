@@ -292,6 +292,8 @@ AppWindow& DeskApp::addWindow(AppWindow::Config config) {
   }
   auto& window = *m_windows.emplace_back(std::make_unique<AppWindow>(m_loop, m_commands, m_state, std::move(config)));
   window.setClosedCallback([this] { reapClosed(); });
+  // The request came: from here the lifecycle decides when the app ends (Hidden keeps it for kHiddenLifetime).
+  m_serviceQuit.stop();
   onLifecycle(LifecycleEvent::WindowOpened);
   if (m_services != nullptr && m_services->hasAppearance()) {
     window.setUiScale(m_services->uiScale());
