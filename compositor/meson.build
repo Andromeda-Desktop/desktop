@@ -581,6 +581,31 @@ focus_grab_server_c = custom_target(
   command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
 )
 
+dsk_app_menu_server_h = custom_target(
+  'dsk-app-menu-v1-protocol.h',
+  input: 'protocols/dsk-app-menu-v1.xml',
+  output: 'dsk-app-menu-v1-protocol.h',
+  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+)
+dsk_app_menu_server_c = custom_target(
+  'dsk-app-menu-v1-protocol.c',
+  input: 'protocols/dsk-app-menu-v1.xml',
+  output: 'dsk-app-menu-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+dsk_app_menu_client_h = custom_target(
+  'dsk-app-menu-v1-client-protocol.h',
+  input: 'protocols/dsk-app-menu-v1.xml',
+  output: 'dsk-app-menu-v1-client-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+dsk_app_menu_client_c = custom_target(
+  'dsk-app-menu-v1-client-protocol.c',
+  input: 'protocols/dsk-app-menu-v1.xml',
+  output: 'dsk-app-menu-v1-client-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
 kde_appmenu_server_h = custom_target(
   'kde-appmenu-protocol.h',
   input: 'protocols/kde-appmenu.xml',
@@ -1176,6 +1201,8 @@ andromeda_core = static_library(
     dsk_surface_server_c,
     kde_appmenu_server_h,
     kde_appmenu_server_c,
+    dsk_app_menu_server_h,
+    dsk_app_menu_server_c,
     focus_grab_server_h,
     focus_grab_server_c,
     gtk_shell_server_h,

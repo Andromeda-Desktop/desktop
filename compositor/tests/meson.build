@@ -459,6 +459,8 @@ surface_protocols_client = executable(
     xdg_shell_client_c,
     viewporter_client_h,
     viewporter_client_c,
+    dsk_app_menu_client_h,
+    dsk_app_menu_client_c,
   ] + staging_client_sources,
   dependencies: [wayland_client_dep],
 )

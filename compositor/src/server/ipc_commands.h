@@ -26,6 +26,8 @@ namespace andromeda {
     static nlohmann::json effects(Server& server, std::string_view arg);
     static nlohmann::json windows(Server& server, std::string_view arg);
     static nlohmann::json focusedWindow(Server& server, std::string_view arg);
+    static nlohmann::json appMenu(Server& server, std::string_view arg);
+    static nlohmann::json appMenuActivate(Server& server, std::string_view arg);
     static nlohmann::json workspaces(Server& server, std::string_view arg);
     static nlohmann::json submap(Server& server, std::string_view arg);
     static nlohmann::json layers(Server& server, std::string_view arg);

@@ -19,6 +19,7 @@
 //                  "enter <title>" for each drop-target surface the drag enters, and "drag-ended"
 
 #include "alpha-modifier-v1-client-protocol.h"
+#include "dsk-app-menu-v1-client-protocol.h"
 #include "commit-timing-v1-client-protocol.h"
 #include "fifo-v1-client-protocol.h"
 #include "single-pixel-buffer-v1-client-protocol.h"
@@ -77,6 +78,8 @@ namespace {
     wp_fifo_manager_v1* fifoManager = nullptr;
     wp_commit_timing_manager_v1* timingManager = nullptr;
     wp_alpha_modifier_surface_v1* alpha = nullptr;
+    dsk_app_menu_manager_v1* appMenus = nullptr;
+    dsk_app_menu_v1* appMenu = nullptr;
     Window main;
     Window child;
     wl_seat* seat = nullptr;
@@ -412,6 +415,8 @@ namespace {
     } else if (id == xdg_toplevel_drag_manager_v1_interface.name) {
       state.toplevelDrags =
           bind<xdg_toplevel_drag_manager_v1>(registry, name, &xdg_toplevel_drag_manager_v1_interface, 1);
+    } else if (id == dsk_app_menu_manager_v1_interface.name) {
+      state.appMenus = bind<dsk_app_menu_manager_v1>(registry, name, &dsk_app_menu_manager_v1_interface, 1);
     } else if (id == wp_commit_timing_manager_v1_interface.name) {
       state.timingManager =
           bind<wp_commit_timing_manager_v1>(registry, name, &wp_commit_timing_manager_v1_interface, 1);
@@ -437,6 +442,9 @@ namespace {
     if (state.mode == "icon") {
       return state.icons;
     }
+    if (state.mode == "app-menu") {
+      return state.appMenus;
+    }
     if (state.mode == "bell") {
       return state.bell;
     }
@@ -453,7 +461,34 @@ namespace {
     return nullptr;
   }
 
+  // tree "a": File > Open, separator, Print (disabled); Edit > Copy. Tree "b": Edit > Paste. "off": no menu.
+  void sendAppMenu(State& state, std::string_view tree) {
+    if (tree == "a") {
+      dsk_app_menu_v1_item(state.appMenu, 1, 0, 0, "File", "");
+      dsk_app_menu_v1_item(state.appMenu, 2, 1, 0, "Open", "Ctrl+O");
+      dsk_app_menu_v1_item(state.appMenu, 3, 1, DSK_APP_MENU_V1_FLAGS_SEPARATOR, "", "");
+      dsk_app_menu_v1_item(state.appMenu, 4, 1, DSK_APP_MENU_V1_FLAGS_DISABLED, "Print", "Ctrl+P");
+      dsk_app_menu_v1_item(state.appMenu, 5, 0, 0, "Edit", "");
+      dsk_app_menu_v1_item(state.appMenu, 6, 5, 0, "Copy", "Ctrl+C");
+    } else if (tree == "b") {
+      dsk_app_menu_v1_item(state.appMenu, 5, 0, 0, "Edit", "");
+      dsk_app_menu_v1_item(state.appMenu, 7, 5, 0, "Paste", "Ctrl+V");
+    }
+    dsk_app_menu_v1_commit(state.appMenu);
+    wl_display_roundtrip(state.display);
+    say(std::format("menu {}", tree));
+  }
+
+  void handleAppMenuActivated(void* /*data*/, dsk_app_menu_v1* /*menu*/, uint32_t id) {
+    say(std::format("activated {}", id));
+  }
+  constexpr dsk_app_menu_v1_listener kAppMenuListener = {.activated = handleAppMenuActivated};
+
   void handleStdinLine(State& state, std::string_view line) {
+    if (state.mode == "app-menu" && line.starts_with("menu ")) {
+      sendAppMenu(state, line.substr(5));
+      return;
+    }
     if (state.mode == "adopt" && (line == "parent" || line == "orphan")) {
       const bool adopt = line == "parent";
       xdg_toplevel_set_parent(state.child.toplevel, adopt ? state.main.toplevel : nullptr);
@@ -509,6 +544,9 @@ int main(int argc, char** argv) {
     wl_pointer_add_listener(state.pointer, &kPointerListener, &state);
     state.dataDevice = wl_data_device_manager_get_data_device(state.dataDevices, state.seat);
     wl_data_device_add_listener(state.dataDevice, &kDeviceListener, &state);
+  } else if (state.mode == "app-menu") {
+    state.appMenu = dsk_app_menu_manager_v1_get_menu(state.appMenus, state.main.toplevel);
+    dsk_app_menu_v1_add_listener(state.appMenu, &kAppMenuListener, &state);
   } else if (state.mode == "icon") {
     xdg_toplevel_icon_v1* icon = xdg_toplevel_icon_manager_v1_create_icon(state.icons);
     xdg_toplevel_icon_v1_set_name(icon, "utilities-terminal");

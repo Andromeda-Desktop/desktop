@@ -869,20 +869,22 @@ namespace andromeda {
       } else {
         entry["snap_zone_rect"] = nullptr;
       }
-      // Menu address for the macOS-layout top bar (board desktop-menus.html A5); null when the app exports none.
-      const std::optional<AppMenuAddress> menu = server.appMenus() != nullptr && view.rootSurface() != nullptr
-          ? server.appMenus()->addressFor(view.rootSurface())
-          : std::nullopt;
-      if (menu.has_value()) {
+      // The menu of the macOS-layout top bar (board desktop-menus.html A5); null when the app exports none.
+      const AppMenu* menu = server.appMenus() != nullptr && view.rootSurface() != nullptr
+          ? server.appMenus()->menuFor(view.rootSurface())
+          : nullptr;
+      entry["app_menu"] = nullptr;
+      if (const auto* address = menu != nullptr ? std::get_if<AppMenuAddress>(menu) : nullptr) {
         entry["app_menu"] = {
-            {"kind", menu->kind == AppMenuAddress::Kind::Gtk ? "gtk" : "dbusmenu"},
-            {"service", menu->service},
-            {"path", menu->path},
-            {"application_path", menu->applicationPath},
-            {"window_path", menu->windowPath},
+            {"kind", address->kind == AppMenuAddress::Kind::Gtk ? "gtk" : "dbusmenu"},
+            {"service", address->service},
+            {"path", address->path},
+            {"application_path", address->applicationPath},
+            {"window_path", address->windowPath},
         };
-      } else {
-        entry["app_menu"] = nullptr;
+      } else if (const auto* dsk = menu != nullptr ? std::get_if<DskMenu>(menu) : nullptr) {
+        // The tree itself comes from `app-menu <id>`: windows events stay small.
+        entry["app_menu"] = {{"kind", "dsk"}, {"serial", dsk->serial}};
       }
       entry["border_effect"] = effectSlotJson(view.effectSlot(EffectKind::Border), true);
       entry["window_effect"] = effectSlotJson(view.effectSlot(EffectKind::Window));
@@ -960,6 +962,50 @@ namespace andromeda {
     }
     PendingLayouts pendingLayouts;
     return nlohmann::json{{"ok", windowEntry(server, *view, pendingLayouts)}};
+  }
+
+  namespace {
+    View* mappedViewById(Server& server, std::string_view id) {
+      for (const auto& view : server.views()) {
+        if (view->mapped() && view->extForeignIdentifier() != nullptr && id == view->extForeignIdentifier()) {
+          return view.get();
+        }
+      }
+      return nullptr;
+    }
+  } // namespace
+
+  nlohmann::json IpcCommands::appMenu(Server& server, std::string_view arg) {
+    View* view = mappedViewById(server, arg);
+    const AppMenu* menu = view != nullptr && server.appMenus() != nullptr && view->rootSurface() != nullptr
+        ? server.appMenus()->menuFor(view->rootSurface())
+        : nullptr;
+    const auto* dsk = menu != nullptr ? std::get_if<DskMenu>(menu) : nullptr;
+    if (dsk == nullptr) {
+      return nlohmann::json{{"err", "no dsk menu for window " + std::string(arg)}};
+    }
+    nlohmann::json items = nlohmann::json::array();
+    for (const DskMenuItem& item : dsk->items) {
+      items.push_back({{"id", item.id}, {"parent", item.parent}, {"flags", item.flags}, {"label", item.label},
+                       {"shortcut", item.shortcut}});
+    }
+    return nlohmann::json{{"ok", {{"serial", dsk->serial}, {"items", std::move(items)}}}};
+  }
+
+  nlohmann::json IpcCommands::appMenuActivate(Server& server, std::string_view arg) {
+    std::istringstream words{std::string(arg)};
+    std::string id;
+    uint64_t serial = 0;
+    uint32_t item = 0;
+    if (!(words >> id >> serial >> item)) {
+      return nlohmann::json{{"err", "usage: app-menu-activate <window-id> <serial> <item>"}};
+    }
+    View* view = mappedViewById(server, id);
+    if (view == nullptr || server.appMenus() == nullptr || view->rootSurface() == nullptr
+        || !server.appMenus()->activate(view->rootSurface(), serial, item)) {
+      return nlohmann::json{{"err", "stale or unknown menu item"}};
+    }
+    return nlohmann::json{{"ok", nullptr}};
   }
 
   nlohmann::json IpcCommands::effects(Server& server, std::string_view /*arg*/) {
@@ -1912,6 +1958,10 @@ namespace andromeda {
        &IpcCommands::logLevel, &printLogLevel},
       {"effects", "", "inspect effect presets, pools, and owner selections", IpcCommandGroup::Inspect, false,
        &IpcCommands::effects, &printEffects},
+      {"app-menu", "<window-id>", "print a window's dsk_app_menu_v1 tree", IpcCommandGroup::Inspect, true,
+       &IpcCommands::appMenu, nullptr},
+      {"app-menu-activate", "<window-id> <serial> <item>", "pick an item of a window's dsk_app_menu_v1 tree",
+       IpcCommandGroup::Control, true, &IpcCommands::appMenuActivate, nullptr},
       {"windows", "", "list windows (app id and title)", IpcCommandGroup::Inspect, false, &IpcCommands::windows,
        &printWindows},
       {"focused-window", "", "print the focused window (app id and title)", IpcCommandGroup::Inspect, false,

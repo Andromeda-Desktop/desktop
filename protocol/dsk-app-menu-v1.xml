@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="dsk_app_menu_v1">
+  <copyright>
+    Copyright © 2026 the desktop project authors
+    SPDX-License-Identifier: MIT
+  </copyright>
+
+  <description summary="a window's menubar, shown by the desktop shell">
+    A client sends the menu tree of one toplevel. The compositor keeps it
+    and the shell shows it in its global menu bar while that toplevel has
+    focus. When the user picks an item, the client gets an activated event
+    on the same object.
+
+    Only unsandboxed clients see this global.
+  </description>
+
+  <interface name="dsk_app_menu_manager_v1" version="1">
+    <request name="destroy" type="destructor"/>
+
+    <enum name="error">
+      <entry name="already_exists" value="0" summary="the toplevel already has a dsk_app_menu_v1"/>
+    </enum>
+
+    <request name="get_menu">
+      <description summary="the menubar of a toplevel">
+        One dsk_app_menu_v1 per xdg_toplevel; a second one is an
+        already_exists error.
+      </description>
+      <arg name="id" type="new_id" interface="dsk_app_menu_v1"/>
+      <arg name="toplevel" type="object" interface="xdg_toplevel"/>
+    </request>
+  </interface>
+
+  <interface name="dsk_app_menu_v1" version="1">
+    <description summary="the menu tree of one toplevel">
+      The tree is double-buffered: item requests build a pending tree and
+      commit makes it current. A commit with no items removes the menu.
+      Items appear in request order under their parent.
+    </description>
+
+    <enum name="error">
+      <entry name="invalid_item" value="0"
+             summary="id is 0 or repeated, or the parent was not sent before in this tree"/>
+      <entry name="too_large" value="1" summary="more than 1024 items in one tree"/>
+    </enum>
+
+    <enum name="flags" bitfield="true">
+      <entry name="separator" value="1" summary="a separator line; label is ignored"/>
+      <entry name="disabled" value="2" summary="shown greyed out; cannot be activated"/>
+      <entry name="checkable" value="4" summary="shows a check mark when checked"/>
+      <entry name="radio" value="8" summary="shows a radio mark when checked"/>
+      <entry name="checked" value="16" summary="the check or radio mark is on"/>
+    </enum>
+
+    <request name="destroy" type="destructor">
+      <description summary="remove the menu">
+        The shell stops showing the menu.
+      </description>
+    </request>
+
+    <request name="item">
+      <description summary="add an item to the pending tree">
+        parent 0 puts the item in the bar. An item that is a parent of
+        others opens a submenu. The shortcut is display text, for example
+        "Ctrl+Q", or empty.
+      </description>
+      <arg name="id" type="uint" summary="unique in this tree, not 0"/>
+      <arg name="parent" type="uint" summary="id of an item sent before, or 0"/>
+      <arg name="flags" type="uint" enum="flags"/>
+      <arg name="label" type="string"/>
+      <arg name="shortcut" type="string"/>
+    </request>
+
+    <request name="commit">
+      <description summary="make the pending tree current">
+        The pending tree is emptied.
+      </description>
+    </request>
+
+    <event name="activated">
+      <description summary="the user picked an item">
+        id is an item of the current tree that is not disabled and has no
+        children.
+      </description>
+      <arg name="id" type="uint"/>
+    </event>
+  </interface>
+</protocol>
