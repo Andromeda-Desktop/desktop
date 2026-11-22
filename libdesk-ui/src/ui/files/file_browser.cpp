@@ -1513,8 +1513,15 @@ void FileBrowser::refreshSidebar() {
     }
     // The navigation rebuilds the sidebar, which destroys this row: run it
     // after the click returns.
-    area->setOnClick([this, place, drag](const InputArea::PointerData &) {
+    area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+    area->setOnClick([this, place, drag](const InputArea::PointerData &d) {
       if (std::exchange(drag->phase, Drag::Idle) == Drag::Dropped) {
+        return;
+      }
+      if (d.button == BTN_RIGHT) {
+        if (m_host.placeMenu) {
+          m_host.placeMenu(place, d.sceneX, d.sceneY);
+        }
         return;
       }
       DeferredCall::callLater([this, place, alive = std::weak_ptr<bool>(m_alive)] {
@@ -1736,7 +1743,15 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
     root->addChild(std::move(skeleton));
 
     auto empty = ui::column({.out = &page.empty, .align = FlexAlign::Center, .justify = FlexJustify::Center,
-                             .gap = Style::spaceSm * s, .visible = false});
+                             .gap = Style::spaceSm * s, .flexGrow = 1.0F, .visible = false});
+    auto emptyArea = ui::inputArea({.cursorShape = CursorShape::Default, .participatesInLayout = false});
+    emptyArea->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+    emptyArea->setOnPress([this](const InputArea::PointerData& d) {
+      if (d.pressed && d.button == BTN_RIGHT) {
+        backgroundMenu(d.sceneX, d.sceneY);
+      }
+    });
+    empty->setCover(std::move(emptyArea));
     empty->addChild(ui::glyph({.out = &page.emptyGlyph, .glyph = std::string("folder"), .glyphSize = Tokens::spaceP48 * s,
                                .color = colorSpecFromRole(ColorRole::Label3)}));
     empty->addChild(ui::label({.out = &page.emptyTitle, .fontSize = Tokens::typeTitle3.size * s,
@@ -1747,6 +1762,7 @@ std::unique_ptr<Node> FileBrowser::buildContent(bool pathBar, bool crumbs) {
     empty->addChild(ui::button({.out = &page.emptyAction, .text = std::string("Search This PC"),
                                 .variant = ButtonVariant::Default, .visible = false,
                                 .onClick = [this] { setSearchScope(SearchScope::Everywhere); }}));
+    page.emptyAction->setZIndex(2);
     root->addChild(std::move(empty));
     stage->addChild(std::move(root));
   }

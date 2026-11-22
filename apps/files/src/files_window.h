@@ -132,6 +132,8 @@ public:
   [[nodiscard]] struct ContextMenuControlEntry openWithEntry(const std::vector<std::filesystem::path>& paths,
                                                              std::vector<std::string>& ids);
   void showBackgroundMenu(float sceneX, float sceneY);              // right click on empty view space
+  void showPlaceMenu(const FileBrowser::Place& place, float sceneX, float sceneY); // right click on a sidebar row
+  void copyPaths(const std::vector<std::filesystem::path>& paths);
   [[nodiscard]] bool detailsOpen() const noexcept { return m_detailsOpen; }
   [[nodiscard]] bool canOpenWith() const;
   [[nodiscard]] AppChooserSheet* openWithSheet() const noexcept { return m_openWith.get(); }

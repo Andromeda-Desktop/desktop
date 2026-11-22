@@ -889,7 +889,7 @@ void FilesApp::addCommands() {
       {"file.star", "Add to Starred", "File", chord(XKB_KEY_d, KeyMod::Ctrl),
        [](const FilesWindow& w) { return !w.isPicker() && !w.inTrash() && w.hasSelection(); },
        [](FilesWindow& w) { w.toggleStar(); }},
-      {"edit.copy-location", "Copy Location", "Edit", chord(XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt),
+      {"edit.copy-location", "Copy Path", "Edit", chord(XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt),
        always, [](FilesWindow& w) { w.copyLocation(); }},
       {"edit.select-pattern", "Select by Pattern…", "Edit", chord(XKB_KEY_s, KeyMod::Ctrl),
        [](const FilesWindow& w) { return !w.inTrash() || w.trashHasItems(); }, [](FilesWindow& w) { w.selectByPattern(); }},

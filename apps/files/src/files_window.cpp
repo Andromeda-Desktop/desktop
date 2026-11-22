@@ -398,6 +398,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
       .modifiers = [this] { return m_app.loop().wayland().keyboardModifiers(); },
       .menu = [this](std::size_t index, float x, float y) { showItemMenu(index, x, y); },
       .backgroundMenu = [this](float x, float y) { showBackgroundMenu(x, y); },
+      .placeMenu = [this](const FileBrowser::Place& place, float x, float y) { showPlaceMenu(place, x, y); },
       .pathTyped = [this](const std::string& path) { openPathField(path); },
       .startDrag =
           [this](const std::vector<fs::path>& dragged) {
@@ -2023,7 +2024,7 @@ void FilesWindow::showItemMenu(std::size_t index, float sceneX, float sceneY) {
   }
   if (m_picker.has_value()) {
     // A picker only chooses: its menu copies the path or opens a terminal, and changes no file.
-    std::vector<ContextMenuControlEntry> entries{{.id = 1, .label = "Copy Location", .glyph = "copy"}};
+    std::vector<ContextMenuControlEntry> entries{{.id = 1, .label = "Copy Path", .glyph = "copy"}};
     if (paths.size() == 1 && isDir(paths.front())) {
       entries.push_back({.id = 2, .label = "Open Terminal Here", .glyph = "terminal-2"});
     }
@@ -2169,7 +2170,7 @@ void FilesWindow::runMenuCommand(const std::string& command, const std::vector<f
 }
 
 ContextMenuControlEntry FilesWindow::shareEntry(std::vector<std::string>& ids) {
-  // Share ›: paired phones (Link), then Email and Copy Location; ids are command-like strings for the menu log.
+  // Share ›: paired phones (Link), then Email and Copy Path; ids are command-like strings for the menu log.
   // The row names the phones (mockup §4 "Share › Pixel 9, Link…").
   ContextMenuControlEntry share{.label = "Share", .hasSubmenu = true, .glyph = "share"};
   const auto child = [&](std::string id, std::string label, std::string glyph, bool enabled, std::string caption) {
@@ -2248,6 +2249,61 @@ void FilesWindow::showShareMenu(float sceneX, float sceneY) {
                            });
 }
 
+void FilesWindow::showPlaceMenu(const FileBrowser::Place& place, float sceneX, float sceneY) {
+  enum Id : std::int32_t { Open = 1, NewWindow, Terminal, CopyPath, Unpin, Eject, EmptyTrash, Info };
+  const bool folder = !place.path.empty();
+  const bool trash = place.id == "trash";
+  std::vector<ContextMenuControlEntry> entries{{.id = Open, .label = "Open", .glyph = "folder-open"}};
+  if (folder) {
+    entries.push_back({.id = NewWindow, .label = "Open in New Window", .glyph = "app-window"});
+    entries.push_back({.id = Terminal, .label = "Open in Terminal", .glyph = "terminal-2"});
+    entries.push_back({.separator = true});
+    entries.push_back({.id = CopyPath, .label = "Copy Path", .glyph = "copy"});
+    if (place.id.starts_with("pin:")) {
+      entries.push_back({.id = Unpin, .label = "Remove from Sidebar", .glyph = "pinned-off"});
+    }
+    if (place.eject) {
+      entries.push_back({.id = Eject, .label = "Eject", .glyph = "player-eject"});
+    }
+    entries.push_back({.separator = true});
+    entries.push_back({.id = Info, .label = "Get Info", .glyph = "info-circle"});
+  } else if (trash) {
+    entries.push_back({.separator = true});
+    entries.push_back({.id = EmptyTrash, .label = "Empty Trash", .enabled = !m_trash.empty(), .glyph = "trash-x"});
+  }
+  kLog.debug("menu place {}", place.id.empty() ? place.path.string() : place.id);
+  m_window.openContextMenu(std::move(entries), sceneX, sceneY,
+                           [this, place, alive = std::weak_ptr<bool>(m_alive)](std::int32_t id) {
+                             if (alive.expired()) {
+                               return;
+                             }
+                             switch (id) {
+                             case Open:
+                               if (place.onClick) {
+                                 place.onClick();
+                               } else {
+                                 go(place.path);
+                               }
+                               break;
+                             case NewWindow: m_app.openWindow(place.path); break;
+                             case Terminal:
+                               if (openTerminalIn(place.path).empty()) {
+                                 showToast("No terminal app is installed", false);
+                               }
+                               break;
+                             case CopyPath: copyPaths({place.path}); break;
+                             case Unpin:
+                               m_app.pins().toggle({place.path});
+                               m_app.refreshPlaces();
+                               break;
+                             case Eject: eject(place.path); break;
+                             case EmptyTrash: emptyTrash(); break;
+                             case Info: getInfo({place.path}); break;
+                             default: break;
+                             }
+                           });
+}
+
 void FilesWindow::showBackgroundMenu(float sceneX, float sceneY) {
   const bool picker = m_picker.has_value();
   kLog.debug("menu background");
@@ -2318,9 +2374,7 @@ void FilesWindow::showBackgroundMenu(float sceneX, float sceneY) {
   add("view.options");
   if (folder) {
     entries.push_back({.separator = true});
-    if (picker) {
-      add("edit.copy-location", "copy");
-    }
+    add("edit.copy-location", "copy");
     add("file.open-terminal", "terminal-2");
     if (!picker) {
       entries.push_back({.id = kFolderInfo, .label = "Get Info", .glyph = "info-circle"});
@@ -4031,8 +4085,12 @@ void FilesWindow::copySelection(bool cut) {
 
 void FilesWindow::copyLocation() {
   const auto paths = selectedPaths();
+  copyPaths(paths.empty() ? std::vector<fs::path>{location()} : paths);
+}
+
+void FilesWindow::copyPaths(const std::vector<fs::path>& paths) {
   std::string text;
-  for (const fs::path& p : paths.empty() ? std::vector<fs::path>{location()} : paths) {
+  for (const fs::path& p : paths) {
     text += (text.empty() ? "" : "\n") + p.string();
   }
   if (DragAndDrop* dnd = m_app.loop().wayland().dragAndDrop()) {

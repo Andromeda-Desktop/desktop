@@ -1184,6 +1184,13 @@ namespace viewer {
     }
   }
 
+  void ViewerWindow::copyPath() {
+    TextClipboard* clipboard = Input::textClipboard();
+    if (!m_path.empty() && clipboard != nullptr) {
+      clipboard->setClipboardText(m_path.string());
+    }
+  }
+
   void ViewerWindow::searchFor(const std::string& query) {
     if (m_searchInput != nullptr) {
       m_searchInput->setValue(query);

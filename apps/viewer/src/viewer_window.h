@@ -59,6 +59,7 @@ namespace viewer {
     void focusSearch();
     void searchFor(const std::string& query);
     void copySelection();
+    void copyPath();
     void selectAll();
     void zoomIn();
     void zoomOut();
