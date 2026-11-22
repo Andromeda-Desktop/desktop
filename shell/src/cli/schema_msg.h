@@ -888,6 +888,9 @@ namespace noctalia::cli {
         {},
         false
     };
+    inline constexpr Command overviewToggle{
+        "overview-toggle", "Open or close the overview on the focused output", {}, {}, {}, {}, {}, false
+    };
     inline constexpr Command showDesktop{
         "show-desktop", "Minimize or restore every window on the focused workspace", {}, {}, {}, {}, {}, false
     };
@@ -1272,6 +1275,7 @@ namespace noctalia::cli {
       msg::settingsOpenPlugin,
       msg::settingsOpenWidget,
       msg::settingsToggle,
+      msg::overviewToggle,
       msg::showDesktop,
       msg::status,
       msg::subscribe,

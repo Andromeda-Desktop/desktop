@@ -84,6 +84,15 @@ namespace noctalia::config {
     start.tables["actions"]["left"] = "panel-toggle launcher apps";
     seed("start", std::move(start));
 
+    // Desktop Layouts, Windows: Task View next to Start opens the overview; the Start cell's size.
+    WidgetConfig taskView;
+    taskView.type = "launcher";
+    taskView.settings["glyph"] = std::string("layout-dashboard");
+    taskView.settings["icon_size"] = std::int64_t{24};
+    taskView.settings["cell_size"] = std::int64_t{44};
+    taskView.tables["actions"]["left"] = "overview-toggle";
+    seed("task_view", std::move(taskView));
+
     // Desktop Layouts, Windows: 28 px icons in 44 px cells over a running bar, window previews on hover.
     WidgetConfig windowsTaskbar;
     windowsTaskbar.type = "taskbar";

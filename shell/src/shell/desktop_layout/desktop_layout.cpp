@@ -86,7 +86,7 @@ namespace desktop_layout {
     // macOS 12 from the leading edge, 16 from the trailing edge and between items.
     const BarRow* rowFor(std::string_view preset) {
       static const BarRow windows{
-          {}, {"start", "windows_taskbar"}, {"tray", "group:status", "windows_clock", "notifications", "show_desktop"}, 48,
+          {}, {"start", "task_view", "windows_taskbar"}, {"tray", "group:status", "windows_clock", "notifications", "show_desktop"}, 48,
           std::nullopt, 0, 0, 4
       };
       static const BarRow macos{

@@ -672,6 +672,10 @@ void Application::initIpc() {
     return "ok\n";
   });
 
+  m_ipcService.bind(noctalia::cli::msg::overviewToggle, [this](const std::string&) -> std::string {
+    return m_compositorPlatform.toggleOverview() ? "ok\n" : "error: the compositor has no overview\n";
+  });
+
   m_ipcService.bind(noctalia::cli::msg::showDesktop, [this](const std::string&) -> std::string {
     return m_compositorPlatform.toggleShowDesktop() ? "ok\n" : "error: the compositor has no show desktop\n";
   });
