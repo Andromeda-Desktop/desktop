@@ -10,7 +10,10 @@ Slice=session.slice
 ExecStart=/usr/bin/andromeda-shell lock
 # Always: a lock process that exits for any reason must come back, or lock requests have no taker.
 Restart=always
-RestartSec=0
+# The first restart is fast; a process that fails at start backs off to one start per 2 s instead of a busy loop.
+RestartSec=100ms
+RestartSteps=4
+RestartMaxDelaySec=2s
 # 75: the compositor closed the display; the restart brings the lock back after a compositor restart.
 SuccessExitStatus=75
 # Locked: ~36 MB private, ~90 MB Pss (lock_process_memory.sh); a lock under memory pressure must not wait on swap.
