@@ -986,7 +986,7 @@ foreach _l : [
   [gstreamer_allocators_dep, 'gstallocators-1.0', 'GSTALLOCATORS'],
   [dependency('pam'), 'pam', 'PAM'],
 ]
-  _lazy_path = _l[0].get_variable(pkgconfig: 'libdir') / 'lib' + _l[1] + '.so'
+  _lazy_path = run_command(cpp.cmd_array(), '-print-file-name=lib' + _l[1] + '.so', check: true).stdout().strip()
   _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
   _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
   _lazy_args += '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname)

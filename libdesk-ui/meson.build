@@ -91,7 +91,7 @@ _lazy_sonames = []
 foreach _l : _lazy_deps
   if host_machine.system() == 'linux'
     _system_deps += _l[0].partial_dependency(compile_args: true, includes: true)
-    _lazy_path = _l[0].get_variable(pkgconfig: 'libdir') / 'lib' + _l[1] + '.so'
+    _lazy_path = run_command(cpp.cmd_array(), '-print-file-name=lib' + _l[1] + '.so', check: true).stdout().strip()
     _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
     _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
     _system_deps += declare_dependency(compile_args: '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname))

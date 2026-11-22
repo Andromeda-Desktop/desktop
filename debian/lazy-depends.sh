@@ -2,7 +2,7 @@
 # Sets lazy:Depends for each package: the packages of the libraries its files open with dlopen on first use
 # (core/lazy_library.h). dpkg-shlibdeps sees only linked libraries; the meson builds list the sonames in lazy-sonames.txt.
 set -eu
-sonames=$(find . -path ./debian -prune -o -name lazy-sonames.txt -print | xargs -r cat | sort -u)
+sonames=$(find . -name lazy-sonames.txt -exec cat {} + | sort -u)
 for pkg in $(dh_listpackages); do
   deps=
   for soname in $sonames; do

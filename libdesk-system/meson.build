@@ -44,7 +44,7 @@ _lazy_args = []
 _lazy_sonames = []
 foreach _l : [[dependency('cups'), 'cups', 'CUPS'], [dependency('libxcrypt'), 'crypt', 'LIBCRYPT']]
   _lazy_deps += _l[0].partial_dependency(compile_args: true, includes: true)
-  _lazy_path = _l[0].get_variable(pkgconfig: 'libdir') / 'lib' + _l[1] + '.so'
+  _lazy_path = run_command(cpp.cmd_array(), '-print-file-name=lib' + _l[1] + '.so', check: true).stdout().strip()
   _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
   _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
   _lazy_args += '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname)
