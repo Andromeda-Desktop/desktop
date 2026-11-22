@@ -5,6 +5,8 @@
 #include "app/app_window.h"
 #include "app/command_table.h"
 #include "app/state_store.h"
+#include "share/link_share.h"
+#include "share/share_menu.h"
 #include "core/text_clipboard.h"
 #include "core/input/cursor_shape.h"
 #include "ui/controls/input.h"
@@ -1191,6 +1193,40 @@ namespace viewer {
     }
   }
 
+  void ViewerWindow::showShareMenu(LinkShare* link) {
+    if (m_path.empty()) {
+      return;
+    }
+    std::vector<std::string> ids;
+    ContextMenuControlEntry share = share::menuEntry(link, ids);
+    ids.push_back("file.copy-path");
+    share.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = "Copy Path"});
+    float x = 0.0F;
+    float y = 0.0F;
+    if (m_shareButton != nullptr) {
+      Node::mapToScene(m_shareButton, 0.0F, m_shareButton->height(), x, y);
+    }
+    m_window.openContextMenu(std::move(share.children), x, y, [window = &m_window, ids, link, path = m_path](std::int32_t id) {
+      if (id <= 0 || static_cast<std::size_t>(id) > ids.size()) {
+        return;
+      }
+      const std::string& command = ids[static_cast<std::size_t>(id) - 1];
+      kLog.info("share {}", command);
+      if (command.starts_with("share.device:") && link != nullptr) {
+        link->send(command.substr(std::string_view("share.device:").size()), {path},
+                   [](const std::string&, const std::string& error) {
+                     kLog.info("share result {}", error.empty() ? "sent" : error);
+                   });
+      } else if (command == "share.email") {
+        if (const std::string error = share::sendByEmail({path}); !error.empty()) {
+          kLog.warn("{}", error);
+        }
+      } else {
+        window->commands().run(command);
+      }
+    });
+  }
+
   void ViewerWindow::searchFor(const std::string& query) {
     if (m_searchInput != nullptr) {
       m_searchInput->setValue(query);
@@ -1397,6 +1433,7 @@ namespace viewer {
   void ViewerWindow::forgetCaption() {
     m_pageInput = nullptr;
     m_zoomLabel = nullptr;
+    m_shareButton = nullptr;
   }
 
   void ViewerWindow::forgetSidebar() {
@@ -1470,7 +1507,17 @@ namespace viewer {
     if (m_mode == Mode::Image && m_folder.size() > 1) {
       bar->addChild(footnote(std::format("{} of {}", m_folderIndex + 1, m_folder.size())));
     }
+    const auto addShare = [&] {
+      bar->addChild(ui::button({.out = &m_shareButton, .glyph = std::string("share"), .glyphSize = Tokens::sizeSymbol * s,
+                                .variant = ButtonVariant::Ghost, .tooltip = std::string("Share"),
+                                .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = Tokens::sizeControlM * s,
+                                .height = Tokens::sizeControlM * s,
+                                .onClick = [this] { m_window.commands().run("file.share"); }}));
+    };
     if (m_mode != Mode::Pdf) {
+      if (m_mode == Mode::Image) {
+        addShare();
+      }
       return bar;
     }
     auto page = ui::input({
@@ -1541,6 +1588,7 @@ namespace viewer {
                                    .compact = true,
                                    .onChange = [this](std::size_t i) { setTool(static_cast<Tool>(i)); }}));
     }
+    addShare();
     if (!m_window.sidebarVisible()) {
       bar->addChild(ui::button({.glyph = std::string("search"), .glyphSize = Tokens::sizeSymbol * s,
                                 .variant = ButtonVariant::Ghost, .tooltip = std::string("Find"),

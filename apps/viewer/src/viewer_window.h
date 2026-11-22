@@ -28,6 +28,7 @@ class Button;
 class Input;
 class Node;
 class Renderer;
+class LinkShare;
 class ScrollView;
 class StateStore;
 struct KeyboardEvent;
@@ -60,6 +61,8 @@ namespace viewer {
     void searchFor(const std::string& query);
     void copySelection();
     void copyPath();
+    // Share › phones (Link), Email, Copy Path for the open file, under the toolbar Share button.
+    void showShareMenu(LinkShare* link);
     void selectAll();
     void zoomIn();
     void zoomOut();
@@ -242,6 +245,7 @@ namespace viewer {
 
     AppLoop& m_loop;
     AppWindow& m_window;
+    Button* m_shareButton = nullptr;
     StateStore& m_state;
     std::optional<std::size_t> m_restorePage; // applied at the first layout that keeps the scene
     std::optional<ViewState> m_savedView;

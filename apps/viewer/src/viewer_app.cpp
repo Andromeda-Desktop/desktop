@@ -6,6 +6,7 @@
 #include "viewer_tabs.h"
 #include "viewer_window.h"
 #include "app/file_chooser.h"
+#include "share/link_share.h"
 #include "wayland/wayland_connection.h"
 
 #include <gio/gio.h>
@@ -32,6 +33,9 @@ namespace viewer {
   ViewerApp::~ViewerApp() = default;
 
   void ViewerApp::startup() {
+    if (bus() != nullptr) {
+      m_linkShare = std::make_unique<LinkShare>(*bus());
+    }
     addCommands();
   }
 
@@ -51,6 +55,13 @@ namespace viewer {
     add("edit.find", "Find", "Edit", XKB_KEY_f, KeyMod::Ctrl, &ViewerWindow::focusSearch);
     add("edit.copy", "Copy", "Edit", XKB_KEY_c, KeyMod::Ctrl, &ViewerWindow::copySelection);
     add("file.copy-path", "Copy Path", "File", XKB_KEY_c, KeyMod::Ctrl | KeyMod::Alt, &ViewerWindow::copyPath);
+    commands().add({.id = "file.share", .label = "Share…", .group = "File",
+                    .enabled = [this] { return active() != nullptr && !active()->path().empty(); },
+                    .run = [this] {
+                      if (ViewerWindow* w = active(); w != nullptr) {
+                        w->showShareMenu(m_linkShare.get());
+                      }
+                    }});
     add("edit.select-all", "Select All", "Edit", XKB_KEY_a, KeyMod::Ctrl, &ViewerWindow::selectAll);
     add("view.zoom-in", "Zoom In", "View", XKB_KEY_plus, KeyMod::Ctrl, &ViewerWindow::zoomIn, XKB_KEY_equal);
     add("view.zoom-out", "Zoom Out", "View", XKB_KEY_minus, KeyMod::Ctrl, &ViewerWindow::zoomOut);

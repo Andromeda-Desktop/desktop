@@ -1,4 +1,4 @@
-#include "link_share.h"
+#include "share/link_share.h"
 
 #include "core/log.h"
 #include "core/process/process.h"

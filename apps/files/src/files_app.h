@@ -9,7 +9,7 @@
 #include "app_chooser_sheet.h"
 #include "file_manager1.h"
 #include "index_search.h"
-#include "link_share.h"
+#include "share/link_share.h"
 #include "picker_portal.h"
 #include "portal_sheets.h"
 #include "starred.h"

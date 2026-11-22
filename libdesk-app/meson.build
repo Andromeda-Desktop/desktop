@@ -52,6 +52,8 @@ if is_wayland
     'src/app/single_instance.cpp',
     'src/app/wayland_accessors.cpp',
     'src/files/file_ops_client.cpp',
+    'src/share/link_share.cpp',
+    'src/share/share_menu.cpp',
   )
 else
   add_languages('objcpp', native: false)

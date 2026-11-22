@@ -6,6 +6,8 @@
 #include <map>
 #include <memory>
 
+class LinkShare;
+
 namespace desk {
   class FileChooser;
 }
@@ -37,6 +39,7 @@ namespace viewer {
     void chooseFile();
 
     std::unique_ptr<desk::FileChooser> m_chooser;
+    std::unique_ptr<LinkShare> m_linkShare; // null without a session bus
 
     std::map<AppWindow*, std::unique_ptr<ViewerTabs>> m_windows;
   };

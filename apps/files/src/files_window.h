@@ -14,7 +14,7 @@
 #include "admin_view.h"
 #include "get_info_sheet.h"
 #include "job_pill.h"
-#include "link_share.h"
+#include "share/link_share.h"
 #include "service_menus.h"
 #include "phone_page.h"
 #include "storage_page.h"

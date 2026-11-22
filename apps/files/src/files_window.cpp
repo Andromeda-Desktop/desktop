@@ -28,6 +28,7 @@
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
+#include "share/share_menu.h"
 #include "dbus/session_bus.h"
 #include "core/deferred_call.h"
 #include "core/files/file_info.h"
@@ -2170,27 +2171,10 @@ void FilesWindow::runMenuCommand(const std::string& command, const std::vector<f
 }
 
 ContextMenuControlEntry FilesWindow::shareEntry(std::vector<std::string>& ids) {
-  // Share ›: paired phones (Link), then Email and Copy Path; ids are command-like strings for the menu log.
-  // The row names the phones (mockup §4 "Share › Pixel 9, Link…").
-  ContextMenuControlEntry share{.label = "Share", .hasSubmenu = true, .glyph = "share"};
-  const auto child = [&](std::string id, std::string label, std::string glyph, bool enabled, std::string caption) {
-    ids.push_back(std::move(id));
-    share.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = std::move(label),
-                              .shortcut = std::move(caption), .enabled = enabled, .glyph = std::move(glyph)});
-  };
-  std::string names;
-  for (const LinkShare::Device& device : shareDevices()) {
-    child("share.device:" + device.id, device.name, "device-mobile", device.connected,
-          device.connected ? std::string() : std::string("Not connected"));
-    names += (names.empty() ? "" : ", ") + device.name;
-  }
-  if (!share.children.empty()) {
-    share.children.push_back({.separator = true});
-    share.shortcut = names + ", Link…";
-  }
-  child("share.email", "Email…", "mail", true, {});
+  ContextMenuControlEntry share = share::menuEntry(m_app.linkShare(), ids);
   if (const AppCommand* c = m_app.commands().find("edit.copy-location"); c != nullptr && (!c->enabled || c->enabled())) {
-    child("edit.copy-location", c->label, {}, true, {});
+    ids.push_back("edit.copy-location");
+    share.children.push_back({.id = static_cast<std::int32_t>(ids.size()), .label = c->label});
   }
   return share;
 }
@@ -3228,30 +3212,9 @@ void FilesWindow::phoneImport(bool all) {
 }
 
 void FilesWindow::shareByEmail() {
-  // xdg-email opens the user's mail app with the files attached.
-  std::vector<std::string> args{"xdg-email"};
-  for (const auto& path : m_browser->selectedPaths()) {
-    std::error_code ec;
-    if (fs::is_regular_file(path, ec)) {
-      args.push_back("--attach");
-      args.push_back(path.string());
-    }
+  if (const std::string error = share::sendByEmail(m_browser->selectedPaths()); !error.empty()) {
+    showToast(error, false);
   }
-  if (args.size() == 1) {
-    return;
-  }
-  std::vector<char*> argv;
-  for (auto& a : args) {
-    argv.push_back(a.data());
-  }
-  argv.push_back(nullptr);
-  GError* error = nullptr;
-  if (!g_spawn_async(nullptr, argv.data(), nullptr, G_SPAWN_SEARCH_PATH, nullptr, nullptr, nullptr, &error)) {
-    showToast(std::format("Could not open the mail app: {}", error->message), false);
-    g_error_free(error);
-    return;
-  }
-  kLog.debug("share by email {} files", (args.size() - 1) / 2);
 }
 
 void FilesWindow::askNewVault(const std::string& name) { presentVaultSheet(VaultSheet::Mode::Create, name); }
