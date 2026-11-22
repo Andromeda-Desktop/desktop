@@ -809,6 +809,7 @@ namespace andromeda {
     [[nodiscard]] Workspace* workspaceFromHandle(wlr_ext_workspace_handle_v1* handle) const;
     // False when the configuration fails before its draw; the commit and the client's reply follow the draw's kick.
     bool applyOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
+    bool runOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly);
     // The apply in flight: draws its current step once the GL context is home; false when the states fail to build.
     bool drawOutputApplyStep();
     static void onOutputApplyKick(void* data, bool drawn);

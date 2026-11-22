@@ -1121,6 +1121,10 @@ namespace andromeda {
       fx_renderer_kick(m_renderer, onOutputManagerContextHome, this);
       return true;
     }
+    return runOutputManagerConfig(config, testOnly);
+  }
+
+  bool Server::runOutputManagerConfig(wlr_output_configuration_v1* config, bool testOnly) {
     size_t statesLen = 0;
     wlr_backend_output_state* states = wlr_output_configuration_v1_build_state(config, &statesLen);
     if (states == nullptr) {
@@ -1422,15 +1426,16 @@ namespace andromeda {
     static_cast<Server*>(data)->startQueuedOutputConfig();
   }
 
+  // Runs the queue head directly: applyOutputManagerConfig would queue it again behind the others.
   void Server::startQueuedOutputConfig() {
-    if (!m_queuedOutputConfigs.empty()) {
+    if (!m_queuedOutputConfigs.empty() && m_outputApplyInFlight == nullptr) {
       if (!fx_renderer_context_home(m_renderer)) {
         fx_renderer_kick(m_renderer, onOutputManagerContextHome, this);
         return;
       }
       wlr_output_configuration_v1* next = m_queuedOutputConfigs.front();
       m_queuedOutputConfigs.pop_front();
-      (void)applyOutputManagerConfig(next, false);
+      (void)runOutputManagerConfig(next, false);
     }
     if (Ipc* ipc = this->ipc()) {
       ipc->notifyConfiguredWork();
