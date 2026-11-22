@@ -219,6 +219,8 @@ namespace andromeda {
       m_effects.setSuspended(true);
       m_effects.applyOutputEffects();
       cancelModifierTap();
+      // A running swipe ends now: the gesture handlers only settle it at its next event.
+      m_gestures->cancelForLayoutChange();
       m_overview->forceClose();
       if (m_quitConfirm != nullptr) {
         m_quitConfirm->hide();

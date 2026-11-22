@@ -426,6 +426,7 @@ namespace andromeda {
       }
       destroyCard(it->get());
       state->cards.erase(it);
+      m_reflows.erase(view);
       return;
     }
   }

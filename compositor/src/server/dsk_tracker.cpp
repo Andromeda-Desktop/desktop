@@ -204,6 +204,8 @@ namespace andromeda {
   }
 
   bool DskSurfaceManager::beginSwipe(wlr_surface* surface, double sx, double sy, uint32_t fingers, uint32_t timeMs) {
+    // A swipe whose end never came (lost release, cancel) ends here, so its tracker does not stay Interacting.
+    endSwipe(timeMs);
     m_swipe = findTracker(surface, sx, sy, fingers);
     if (m_swipe == nullptr) {
       return false;
@@ -214,6 +216,7 @@ namespace andromeda {
   }
 
   bool DskSurfaceManager::beginPinch(wlr_surface* surface, double sx, double sy, uint32_t fingers, uint32_t timeMs) {
+    endSwipe(timeMs);
     const auto found = std::ranges::find_if(m_trackers, [&](const Tracker* tracker) {
       return tracker->surface == surface
           && tracker->current.axis == DSK_TRACKER_V1_AXIS_PINCH

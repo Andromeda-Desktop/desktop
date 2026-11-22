@@ -744,6 +744,8 @@ namespace andromeda {
 
   void Keyboard::forgetConsumedKeycodes() {
     m_consumedKeycodes.clear();
+    // A repeating bind would run on in an inactive session: its release goes elsewhere.
+    cancelRepeat();
     // A power-key hold must not shut down after its release went to another VT.
     endReleaseBinds();
   }

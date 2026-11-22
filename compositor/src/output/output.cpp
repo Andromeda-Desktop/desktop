@@ -1584,6 +1584,8 @@ namespace andromeda {
       wlr_scene_output_set_position(m_sceneOutput, kOffLayoutOrigin, kOffLayoutOrigin);
       // A held frame lives in layout space: off the layout it would cover another output.
       dropHeldFrame();
+      // As for a mirror: a hidden exclusive layer would keep keyboard focus from every window.
+      m_server->closeLayerSurfaces(m_output);
     }
     applyOutputEffects();
     markDirty(Dirty::LayerArrange | Dirty::Banner);
@@ -1616,6 +1618,8 @@ namespace andromeda {
       wlr_scene_output_set_position(m_sceneOutput, kOffLayoutOrigin, kOffLayoutOrigin);
       // A held frame lives in layout space: off the layout it would cover another output.
       dropHeldFrame();
+      // As for a mirror: a hidden exclusive layer would keep keyboard focus from every window.
+      m_server->closeLayerSurfaces(m_output);
     }
     applyOutputEffects();
     handleExternalConfigChange();
@@ -2998,6 +3002,7 @@ namespace andromeda {
       if (const std::optional<ConfiguredRun> dueApply = m_configuredCommit.takeDue()) {
         const CommitResult result = runConfiguredState(*dueApply, ConfiguredOrigin::MirrorFrame);
         if (result == CommitResult::Submitted) {
+          m_handlingFrame = false;
           return;
         }
         if (result == CommitResult::Applied) {
@@ -3024,6 +3029,7 @@ namespace andromeda {
         }
         return;
       }
+      m_handlingFrame = false;
       if (Ipc* ipc = m_server->ipc()) {
         ipc->notifyOutputFrame(*this);
       }

@@ -793,6 +793,7 @@ namespace andromeda {
     }
     m_layoutMotion = false;
     m_layoutPresentationHeld = false;
+    m_tiledSizeRequest.reset();
     if (tiledOpeningActive() && m_workspace != nullptr) {
       presentTiledBox(m_workspace->presentedTiledBox(this));
     } else {

@@ -1097,7 +1097,7 @@ namespace andromeda {
         raiseToTop();
       }
       if (restoreFloating) {
-        const wlr_box restore = *m_fullscreenRestoreBox;
+        const wlr_box restore = *std::exchange(m_fullscreenRestoreBox, std::nullopt);
         requestFloatingSize(restore.width, restore.height);
         beginResizeAnimation(restore.width, restore.height, true);
         animateTo(restore.x, restore.y);
