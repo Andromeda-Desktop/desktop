@@ -357,6 +357,11 @@ void TooltipManager::scheduleRetargetPopup() {
     if (m_pendingArea == nullptr) {
       return;
     }
+    // The fade ended and its destroy is queued behind this call: reviving now would leave the destroy to remove it.
+    if (m_destroyScheduled) {
+      m_showAfterDestroy = true;
+      return;
+    }
     if (m_surface == nullptr) {
       showPopup();
       return;
