@@ -1,6 +1,7 @@
 #include "app/lock_before_sleep.h"
 #include "tests/test_check.h"
 
+#include <chrono>
 #include <cstdint>
 #include <random>
 
@@ -19,6 +20,8 @@ namespace {
     bool enabled = true;
     bool refuseLock = false;
     bool noOutputs = false;
+    std::chrono::steady_clock::time_point clock;
+    std::chrono::steady_clock::time_point skipSetAt = std::chrono::steady_clock::time_point::min();
     LockBeforeSleep machine{{
         .enabled = [this] { return enabled; },
         .lockReadyForSleep = [this] { return lock == Lock::Ready; },
@@ -39,6 +42,7 @@ namespace {
         .prepareLockForSleep = [] {},
         .acquireDelay = [this] { delayHeld = true; },
         .releaseDelay = [this] { delayHeld = false; },
+        .now = [this] { return clock; },
     }};
 
     // LockScreen::endLock: the unlocked hook first, then the queued relock.
@@ -69,20 +73,33 @@ namespace {
     TEST_CHECK(w.machine.phase() == Phase::LockingForSleep && w.delayHeld);
   }
 
+  // A suspend override launches, then fails: no sleep follows. A lid sleep a minute later must still lock.
+  void testSkipWithoutSleepExpires() {
+    World w;
+    w.machine.onPrepareForSleep(false);
+    w.machine.setSkipNextLock(true);
+    w.clock += std::chrono::minutes(1);
+    w.machine.onPrepareForSleep(true);
+    TEST_CHECK(w.lock == Lock::Locking);
+    TEST_CHECK(w.machine.phase() == Phase::LockingForSleep && w.delayHeld);
+  }
+
 } // namespace
 
 int main() {
   testSkipDuringUnlockStillLocksBeforeSleep();
+  testSkipWithoutSleepExpires();
   std::mt19937 rng(0x5eed);
   for (int run = 0; run < 4000; ++run) {
     World w;
     for (int step = 0; step < 40; ++step) {
-      const int event = static_cast<int>(rng() % 11);
+      const int event = static_cast<int>(rng() % 12);
       const Phase before = w.machine.phase();
       bool lockExpected = false;
       switch (event) {
       case 0: {
-        const bool skip = w.machine.phase() == Phase::AwakeSkipNextLock;
+        const bool skip = w.machine.phase() == Phase::AwakeSkipNextLock &&
+                          w.clock - w.skipSetAt < LockBeforeSleep::kSkipLifetime;
         lockExpected = !skip && w.enabled && !w.refuseLock && !w.noOutputs;
         w.machine.onPrepareForSleep(true);
         TEST_CHECK(w.machine.phase() != Phase::Awake && w.machine.phase() != Phase::AwakeSkipNextLock);
@@ -112,6 +129,8 @@ int main() {
         w.machine.setSkipNextLock(skip);
         if (skip && w.lock == Lock::Unlocking) {
           TEST_CHECK(w.machine.phase() == before);
+        } else if (skip && w.machine.phase() == Phase::AwakeSkipNextLock) {
+          w.skipSetAt = w.clock;
         }
         break;
       }
@@ -133,6 +152,9 @@ int main() {
         if (w.lock == Lock::Unlocking) {
           w.finishUnlock();
         }
+        break;
+      case 10:
+        w.clock += std::chrono::seconds(rng() % 8);
         break;
       default:
         w.lock = w.lock == Lock::Unlocked ? Lock::Locking : w.lock;

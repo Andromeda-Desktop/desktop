@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <utility>
@@ -22,7 +23,11 @@ public:
     std::function<void()> prepareLockForSleep;
     std::function<void()> acquireDelay;
     std::function<void()> releaseDelay;
+    std::function<std::chrono::steady_clock::time_point()> now = [] { return std::chrono::steady_clock::now(); };
   };
+
+  // A detached suspend reports only its launch; a skip whose sleep never comes must not skip a later lid sleep.
+  static constexpr std::chrono::seconds kSkipLifetime{10};
 
   explicit LockBeforeSleep(Hooks hooks) : m_hooks(std::move(hooks)) {}
 
@@ -36,6 +41,7 @@ public:
     }
     if (m_phase == Phase::Awake || m_phase == Phase::AwakeSkipNextLock) {
       m_phase = skip ? Phase::AwakeSkipNextLock : Phase::Awake;
+      m_skipUntil = m_hooks.now() + kSkipLifetime;
     }
   }
 
@@ -47,7 +53,8 @@ public:
       }
       return;
     }
-    if (m_phase == Phase::AwakeSkipNextLock || !m_hooks.enabled() || m_hooks.lockReadyForSleep()) {
+    const bool skip = m_phase == Phase::AwakeSkipNextLock && m_hooks.now() < m_skipUntil;
+    if (skip || !m_hooks.enabled() || m_hooks.lockReadyForSleep()) {
       ready();
       return;
     }
@@ -86,4 +93,5 @@ private:
 
   Hooks m_hooks;
   Phase m_phase = Phase::Awake;
+  std::chrono::steady_clock::time_point m_skipUntil;
 };
