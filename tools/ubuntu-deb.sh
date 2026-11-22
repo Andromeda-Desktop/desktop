@@ -32,9 +32,12 @@ else
 fi
 mkdir -p "$OUT/src/pkg"
 # Tracked and new files without the Link submodule (Link ships its own deb) or pkg/ build output. rsync skips
-# unchanged files, so their timestamps stay and ninja does not rebuild them.
-git -C "$ROOT" ls-files -co --exclude-standard -z | grep -zv -e '^link/' -e '^pkg/' |
-  rsync -a --from0 --files-from=- "$ROOT/" "$OUT/src/"
+# unchanged files, so their timestamps stay and ninja does not rebuild them. A file the last copy had and the tree
+# no longer has is deleted, or it shadows the file that replaced it; build output is in neither list and stays.
+git -C "$ROOT" ls-files -co --exclude-standard -z | grep -zv -e '^link/' -e '^pkg/' | sort -z > "$OUT/files.new"
+[[ ! -f $OUT/files ]] || comm -z -23 "$OUT/files" "$OUT/files.new" | (cd "$OUT/src" && xargs -0r rm -f --)
+rsync -a --from0 --files-from="$OUT/files.new" "$ROOT/" "$OUT/src/"
+mv "$OUT/files.new" "$OUT/files"
 rsync -a "$ROOT/pkg/PKGBUILD" "$ROOT/pkg/deb-build.sh" "$OUT/src/pkg/"
 # A release sets DEB_VERSION from its tag, so apt upgrades between releases; other builds keep 0~git0, which sorts
 # below every release.
