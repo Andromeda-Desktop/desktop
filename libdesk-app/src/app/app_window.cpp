@@ -1862,6 +1862,15 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
     return;
   }
   noteSceneActivity();
+  if (event.type == PointerEvent::Type::Button) {
+    // Counted before any popup takes the event, as a release often lands on a popover opened by the press. Counted,
+    // not the last event: left held + right pressed and released is still a held button.
+    m_buttonsHeld = std::max(0, m_buttonsHeld + (event.pressed ? 1 : -1));
+    m_buttonDown = m_buttonsHeld > 0;
+    if (!event.pressed && (m_rebuild || m_sheetAttach || m_sheetDetach)) {
+      m_surface->requestLayout();
+    }
+  }
   if (m_popover != nullptr && m_popover->isOpen() && m_popover->onPointerEvent(event)) {
     return;
   }
@@ -1898,6 +1907,8 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
     return;
   }
   if (edges != 0 && event.type == PointerEvent::Type::Button && event.pressed && event.button == BTN_LEFT) {
+    m_buttonDown = false;
+    m_buttonsHeld = 0;
     m_surface->beginResize(event.serial, edges);
     return;
   }
@@ -1933,12 +1944,6 @@ void AppWindow::onPointerEvent(const PointerEvent& event) {
         m_commands.run(command);
       }
       break;
-    }
-    // Counted, not the last event: left held + right pressed and released is still a held button.
-    m_buttonsHeld = std::max(0, m_buttonsHeld + (event.pressed ? 1 : -1));
-    m_buttonDown = m_buttonsHeld > 0;
-    if (!event.pressed && (m_rebuild || m_sheetAttach || m_sheetDetach)) {
-      m_surface->requestLayout();
     }
     m_input.pointerMotion(x, y, event.serial);
     const float windowY = y - static_cast<float>(m_surface->margin());
