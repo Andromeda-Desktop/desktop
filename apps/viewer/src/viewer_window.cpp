@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utility>
 
 #include <glib.h>
 #include <charconv>
@@ -360,7 +361,8 @@ namespace viewer {
   }
 
   void ViewerWindow::step(int direction) {
-    if (m_mode == Mode::Image || (m_mode == Mode::Loading && !m_folder.empty() && !m_helper)) {
+    // An image that failed to decode is still a place in its folder: Left and Right move on from it.
+    if (m_mode == Mode::Image || ((m_mode == Mode::Loading || m_mode == Mode::Error) && !m_folder.empty() && !m_helper)) {
       if (m_folder.size() < 2) {
         return;
       }
@@ -371,6 +373,7 @@ namespace viewer {
       m_decoder.cancel();
       m_path = path;
       m_folderIndex = static_cast<std::size_t>(next);
+      m_error.clear();
       updateTitle();
       openImage();
       rebuild();
@@ -2353,6 +2356,27 @@ namespace viewer {
     sendAnnotation(std::move(edit));
   }
 
+  namespace {
+    // A save's temp file and fd copy: released by the save reply, or here when the reply never comes (the window
+    // closed and dropped its helper with the save out).
+    struct SaveTemp {
+      int keep;
+      std::string path; // empty once renamed or removed
+      SaveTemp(int fd, std::string tmp) : keep(fd), path(std::move(tmp)) {}
+      SaveTemp(const SaveTemp&) = delete;
+      SaveTemp& operator=(const SaveTemp&) = delete;
+      ~SaveTemp() {
+        if (keep >= 0) {
+          close(keep);
+        }
+        if (!path.empty()) {
+          std::error_code ec;
+          std::filesystem::remove(path, ec);
+        }
+      }
+    };
+  } // namespace
+
   void ViewerWindow::saveThen(std::function<void()> then) {
     if (!unsaved() || m_saving || !m_helper) {
       return;
@@ -2376,16 +2400,17 @@ namespace viewer {
     (void)fchmod(fd, st.st_mode & 07777);
     (void)fchown(fd, st.st_uid, st.st_gid);
     // poppler closes the fd it gets; this copy is for the fsync once it reports done.
-    const int keep = fcntl(fd, F_DUPFD_CLOEXEC, 0);
+    auto temp = std::make_shared<SaveTemp>(fcntl(fd, F_DUPFD_CLOEXEC, 0), tmp);
     m_saving = true;
     m_helper->request(
         {.op = preview::op::Save}, fd,
-        [this, tmp, target, keep, depth = m_edits.size(), then = std::move(then), generation = m_generation](const preview::HelperReply& reply) {
+        [this, temp, target, depth = m_edits.size(), then = std::move(then), generation = m_generation](const preview::HelperReply& reply) {
           std::error_code err;
-          const bool written = reply.msg.op == preview::op::Saved && keep >= 0 && fsync(keep) == 0;
-          if (keep >= 0) {
-            close(keep);
+          const bool written = reply.msg.op == preview::op::Saved && temp->keep >= 0 && fsync(temp->keep) == 0;
+          if (temp->keep >= 0) {
+            close(std::exchange(temp->keep, -1));
           }
+          const std::string tmp = std::exchange(temp->path, {});
           if (!written) {
             std::filesystem::remove(tmp, err);
           } else {
