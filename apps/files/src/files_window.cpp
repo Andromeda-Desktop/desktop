@@ -459,8 +459,7 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
       .rename =
           [this](const fs::path& path, const std::string& name, std::function<void(const std::string&)> done) {
             if (AdminView* admin = adminHere()) {
-              admin->rename(path, name);
-              done({});
+              admin->rename(path, name, std::move(done));
               return;
             }
             FileOpsClient* ops = m_app.fileOps();
@@ -749,7 +748,7 @@ std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>&
   // Ark's drag-out: the items extract into a cache folder at drag start and the drag offers those files. A drop in
   // this window waits for the job; another app gets the paths at once (small items are there before the drop).
   std::error_code ec;
-  if (m_dragExtract.has_value() && m_dragExtract->done) {
+  if (m_dragExtract.has_value()) {
     fs::remove_all(m_dragExtract->dir, ec);
   }
   const char* cache = std::getenv("XDG_CACHE_HOME");
@@ -758,22 +757,16 @@ std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>&
   const fs::path dir = base / "andromeda" / "files" / "drag-out" /
                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
   fs::create_directories(dir, ec);
-  m_dragExtract = DragExtract{.dir = dir, .done = false, .waiting = {}};
+  m_dragExtract = DragExtract{.dir = dir, .phase = DragExtract::Phase::Extracting, .waiting = {}};
   const fs::path archive = m_archive->archive();
   kLog.debug("drag out {} items from {} via {}", inner.size(), archive.filename().string(), dir.string());
   startJob(
       "Extracting", inner.size(),
       [&](FileOpsClient& ops, auto done) { ops.extract(archive, inner, dir, m_archivePassword, done); },
       [this, dir](const std::string& job) {
-        m_renameDone[job] = [this, dir](const std::string&) {
-          if (m_dragExtract.has_value() && m_dragExtract->dir == dir) {
-            m_dragExtract->done = true;
-            for (auto& then : std::exchange(m_dragExtract->waiting, {})) {
-              then();
-            }
-          }
-        };
-      });
+        m_renameDone[job] = [this, dir](const std::string& error) { finishDragExtract(dir, error.empty()); };
+      },
+      [this, dir] { finishDragExtract(dir, false); });
   std::vector<fs::path> out;
   for (const fs::path& in : inner) {
     out.push_back(dir / in.filename());
@@ -781,17 +774,40 @@ std::vector<fs::path> FilesWindow::dragOutOfArchive(const std::vector<fs::path>&
   return out;
 }
 
+void FilesWindow::finishDragExtract(const fs::path& dir, bool ok) {
+  if (!m_dragExtract.has_value() || m_dragExtract->dir != dir ||
+      m_dragExtract->phase != DragExtract::Phase::Extracting) {
+    return;
+  }
+  m_dragExtract->phase = ok ? DragExtract::Phase::Extracted : DragExtract::Phase::Failed;
+  auto waiting = std::exchange(m_dragExtract->waiting, {});
+  if (!ok) {
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    return;
+  }
+  for (auto& then : waiting) {
+    then();
+  }
+}
+
 void FilesWindow::drop(const FileBrowser::DropTarget& target, const std::string& uriList, std::uint32_t action) {
   const std::vector<fs::path> sources = parseUriList(uriList);
   if (sources.empty()) {
     return;
   }
-  if (m_dragExtract.has_value() && !m_dragExtract->done && std::ranges::any_of(sources, [&](const fs::path& s) {
+  if (m_dragExtract.has_value() && std::ranges::any_of(sources, [&](const fs::path& s) {
         return s.parent_path() == m_dragExtract->dir;
       })) {
-    kLog.debug("drop waits for the drag-out extract");
-    m_dragExtract->waiting.push_back([this, target, uriList, action] { drop(target, uriList, action); });
-    return;
+    if (m_dragExtract->phase == DragExtract::Phase::Extracting) {
+      kLog.debug("drop waits for the drag-out extract");
+      m_dragExtract->waiting.push_back([this, target, uriList, action] { drop(target, uriList, action); });
+      return;
+    }
+    if (m_dragExtract->phase == DragExtract::Phase::Failed) {
+      kLog.debug("drop dropped: the drag-out extract failed");
+      return;
+    }
   }
   if (target.kind == FileBrowser::DropTarget::Kind::Place && target.place.starts_with("phone:")) {
     kLog.debug("drop {} items onto {}", sources.size(), target.place);
@@ -4077,21 +4093,24 @@ void FilesWindow::copyPaths(const std::vector<fs::path>& paths) {
 }
 
 void FilesWindow::startJob(const char* verb, std::size_t count, std::function<void(FileOpsClient&, FileOpsClient::Started)> start,
-                           std::function<void(const std::string& job)> started) {
+                           std::function<void(const std::string& job)> started, std::function<void()> refused) {
   FileOpsClient* ops = m_app.fileOps();
   if (ops == nullptr) {
     showToast("File operations are not available", false);
     return;
   }
   showToast(std::format("{} {}…", verb, noun(count)), false);
-  start(*ops, [this, alive = std::weak_ptr<bool>(m_alive), verb = std::string(verb),
-               started = std::move(started)](const std::string& job,
+  start(*ops, [this, alive = std::weak_ptr<bool>(m_alive), verb = std::string(verb), started = std::move(started),
+               refused = std::move(refused)](const std::string& job,
                                                                                        const std::string& error) {
     if (alive.expired()) {
       return;
     }
     if (job.empty()) {
       showToast(std::format("{} failed: {}", verb, error), false);
+      if (refused) {
+        refused();
+      }
       return;
     }
     m_jobs.insert(job);

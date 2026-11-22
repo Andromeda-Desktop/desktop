@@ -34,7 +34,7 @@ public:
   [[nodiscard]] bool serving() const noexcept { return m_process != nullptr && !m_unused; }
   // A free "New Folder" name in the whole listing; made() gets its path once the helper made it.
   void newFolder(std::function<void(const std::filesystem::path&)> made);
-  void rename(const std::filesystem::path& path, const std::string& name);
+  void rename(const std::filesystem::path& path, const std::string& name, std::function<void(const std::string& error)> done);
   void remove(const std::vector<std::filesystem::path>& paths);
   void transfer(const std::vector<std::filesystem::path>& sources, const std::filesystem::path& dest, bool move);
   // done gets the helper's error, empty on success.

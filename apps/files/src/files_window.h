@@ -265,9 +265,9 @@ private:
   void buildPlaces();
   void presentEmptyTrashSheet();
   void rebuild();
-  // `started` gets the job path once the daemon accepted it.
+  // `started` gets the job path once the daemon accepted it; `refused` runs when it did not.
   void startJob(const char* verb, std::size_t count, std::function<void(FileOpsClient&, FileOpsClient::Started)> start,
-                std::function<void(const std::string& job)> started = {});
+                std::function<void(const std::string& job)> started = {}, std::function<void()> refused = {});
   void showToast(std::string text, bool undo);
   void onBrowserChanged();
   void syncAdmin(); // the helper serves the admin folder shown; it ends when no tab shows one
@@ -358,10 +358,12 @@ private:
   std::unique_ptr<ExtractSheet> m_extract;
   std::string m_archivePassword; // the last password an extract was started with: a drag-out from it uses it
   struct DragExtract {
+    enum class Phase : std::uint8_t { Extracting, Extracted, Failed };
     std::filesystem::path dir;
-    bool done = false;
-    std::vector<std::function<void()>> waiting; // drops in this window wait for the extract
+    Phase phase = Phase::Extracting;
+    std::vector<std::function<void()>> waiting; // drops in this window wait while Extracting
   };
+  void finishDragExtract(const std::filesystem::path& dir, bool ok);
   std::optional<DragExtract> m_dragExtract;
   [[nodiscard]] std::vector<std::filesystem::path> dragOutOfArchive(const std::vector<std::filesystem::path>& dragged);
   std::unique_ptr<GetInfoSheet> m_info;

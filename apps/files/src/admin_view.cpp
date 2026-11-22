@@ -145,8 +145,9 @@ void AdminView::newFolder(std::function<void(const fs::path&)> made) {
          });
 }
 
-void AdminView::rename(const fs::path& path, const std::string& name) {
-  change({{"op", "rename"}, {"path", path.string()}, {"name", name}}, std::format("Renamed to {}", name));
+void AdminView::rename(const fs::path& path, const std::string& name, std::function<void(const std::string&)> done) {
+  change({{"op", "rename"}, {"path", path.string()}, {"name", name}}, std::format("Renamed to {}", name),
+         std::move(done));
 }
 
 void AdminView::remove(const std::vector<fs::path>& paths) {
