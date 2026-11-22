@@ -381,8 +381,12 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   const bool file = result.providerId == "Files" && result.id != FilesProvider::kShowAllId;
   const bool hasAction = clip || file || (entry != nullptr && !entry->actions.empty());
   const bool clipImage = result.presentation == "clipboard-image";
-  m_previewOpenImage->setVisible(clipImage);
-  m_previewOpenImage->setParticipatesInLayout(clipImage);
+  const bool clipFiles = result.presentation == "clipboard-files";
+  m_previewOpenImage->setText(i18n::tr(clipFiles ? "launcher.files.reveal" : "launcher.clipboard.open"));
+  m_previewOpenImage->setVisible(clipImage || clipFiles);
+  m_previewOpenImage->setParticipatesInLayout(clipImage || clipFiles);
+  m_previewCopyPath->setVisible(clipFiles);
+  m_previewCopyPath->setParticipatesInLayout(clipFiles);
   m_previewAction->setVisible(hasAction);
   m_previewAction->setParticipatesInLayout(hasAction);
   if (clip) {
@@ -395,7 +399,7 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   m_previewDelete->setText(i18n::tr(file ? "launcher.files.copy-path" : "launcher.clipboard.delete"));
   m_previewDelete->setVisible(clip || file);
   m_previewDelete->setParticipatesInLayout(clip || file);
-  const bool body = result.presentation == "clipboard-text";
+  const bool body = result.presentation == "clipboard-text" || clipFiles;
   m_previewBodyBox->setVisible(body);
   m_previewBodyBox->setParticipatesInLayout(body);
   m_previewTitle->setVisible(!body);
@@ -472,7 +476,9 @@ void LauncherPanel::bindPreview(Renderer& renderer) {
   } else if (clip) {
     // One meta line over the content (proto surfaces.js): "Text, 21 characters, Terminal, 20:03".
     std::string line;
-    if (result.presentation == "clipboard-text") {
+    if (result.presentation == "clipboard-files") {
+      line = i18n::tr("clipboard.preview.files-title");
+    } else if (result.presentation == "clipboard-text") {
       const std::string text = clipboard == nullptr ? result.title : clipboard->text(result);
       line = i18n::trp("launcher.clipboard.meta-text", std::ranges::count_if(text, [](char c) { return (c & 0xC0) != 0x80; }));
     } else {
@@ -569,8 +575,24 @@ void LauncherPanel::openSelectedClipboardImage() {
   if (provider == m_providers.end()) {
     return;
   }
+  auto* clipboard = dynamic_cast<ClipboardProvider*>(provider->get());
+  const LauncherResult& result = m_results[m_selectedIndex];
+  if (clipboard != nullptr
+      && (result.presentation == "clipboard-files" ? clipboard->reveal(result) : clipboard->openImage(result))) {
+    finishActivation(*clipboard, result.id, false);
+  }
+}
+
+void LauncherPanel::copySelectedClipboardPaths() {
+  if (m_selectedIndex >= m_results.size()) {
+    return;
+  }
+  const auto provider = std::ranges::find(m_providers, "Clipboard", [](const auto& p) { return p->id(); });
+  if (provider == m_providers.end()) {
+    return;
+  }
   if (auto* clipboard = dynamic_cast<ClipboardProvider*>(provider->get()); clipboard != nullptr
-      && clipboard->openImage(m_results[m_selectedIndex])) {
+      && clipboard->copyPaths(m_results[m_selectedIndex])) {
     finishActivation(*clipboard, m_results[m_selectedIndex].id, false);
   }
 }

@@ -16,11 +16,13 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <charconv>
 #include <chrono>
 #include <condition_variable>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <glib.h>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -61,6 +63,51 @@ namespace {
       std::string_view{"text/plain"},
       std::string_view{"UTF8_STRING"},
   };
+
+  // Copied files (file managers): the entry keeps the URI list and serves the other forms from it.
+  constexpr std::string_view kUriListMimeType = "text/uri-list";
+  constexpr std::string_view kCopiedFilesMimeType = "x-special/gnome-copied-files";
+
+  std::string joinLines(const std::vector<std::string>& lines) {
+    std::string out;
+    for (const std::string& line : lines) {
+      out += (out.empty() ? "" : "\n") + line;
+    }
+    return out;
+  }
+
+  std::vector<std::string> urisOf(std::span<const std::uint8_t> data) {
+    std::vector<std::string> uris;
+    std::string_view rest(reinterpret_cast<const char*>(data.data()), data.size());
+    while (!rest.empty()) {
+      const std::size_t end = rest.find('\n');
+      std::string_view line = rest.substr(0, end);
+      rest = end == std::string_view::npos ? std::string_view{} : rest.substr(end + 1);
+      while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) {
+        line.remove_suffix(1);
+      }
+      if (!line.empty() && line.front() != '#') {
+        uris.emplace_back(line);
+      }
+    }
+    return uris;
+  }
+
+  // The served bytes for one requested type of a copied-files payload.
+  std::shared_ptr<const std::vector<std::uint8_t>> copiedFilesAs(std::string_view mimeType,
+                                                                 std::span<const std::uint8_t> uriList) {
+    std::string text;
+    if (mimeType == kCopiedFilesMimeType) {
+      text = "copy\n" + joinLines(urisOf(uriList));
+    } else {
+      std::vector<std::string> paths;
+      for (const auto& path : ClipboardService::filePaths(uriList)) {
+        paths.push_back(path.string());
+      }
+      text = joinLines(paths);
+    }
+    return std::make_shared<const std::vector<std::uint8_t>>(text.begin(), text.end());
+  }
 
   constexpr std::array kImageMimeTypes = {
       std::string_view{"image/png"},  std::string_view{"image/jpeg"}, std::string_view{"image/jxl"},
@@ -524,8 +571,54 @@ const DataControlOps* extDataControlOps() { return &kExtDataControlOps; }
 
 const DataControlOps* wlrDataControlOps() { return &kWlrDataControlOps; }
 
+bool ClipboardEntry::isFiles() const { return dataMimeType == kUriListMimeType; }
+
+std::vector<std::filesystem::path> ClipboardService::filePaths(std::span<const std::uint8_t> uriList) {
+  std::vector<std::filesystem::path> paths;
+  for (const std::string& uri : urisOf(uriList)) {
+    if (char* path = g_filename_from_uri(uri.c_str(), nullptr, nullptr); path != nullptr) {
+      paths.emplace_back(path);
+      g_free(path);
+    } else {
+      paths.emplace_back(uri);
+    }
+  }
+  return paths;
+}
+
+ClipboardService::FilesPreview ClipboardService::parseFilesPreview(std::string_view preview) {
+  FilesPreview result;
+  const std::size_t end = preview.find('\n');
+  std::from_chars(preview.data(), preview.data() + std::min(end, preview.size()), result.count);
+  for (std::size_t start = end; start != std::string_view::npos && start + 1 < preview.size();) {
+    const std::size_t next = preview.find('\n', start + 1);
+    result.paths.push_back(preview.substr(start + 1, next == std::string_view::npos ? next : next - start - 1));
+    start = next;
+  }
+  return result;
+}
+
+std::string ClipboardService::previewText(std::string_view mimeType, std::span<const std::uint8_t> data) {
+  if (isTextMimeType(mimeType)) {
+    return buildTextPreview(data);
+  }
+  if (mimeType == kUriListMimeType) {
+    // The file count, then one path per line up to the preview size (always the first path).
+    const auto paths = filePaths(data);
+    std::string preview = std::to_string(paths.size());
+    for (const auto& path : paths) {
+      if (paths.size() > 1 && preview.size() + path.native().size() >= kPreviewBytes && &path != &paths.front()) {
+        break;
+      }
+      preview += "\n" + path.string();
+    }
+    return preview;
+  }
+  return {};
+}
+
 bool ClipboardEntry::isImage() const {
-  return std::ranges::any_of(mimeTypes, [](const std::string& mimeType) { return mimeType.starts_with("image/"); });
+  return !isFiles() && std::ranges::any_of(mimeTypes, [](const std::string& mimeType) { return mimeType.starts_with("image/"); });
 }
 
 bool ClipboardService::bind(void* manager, const DataControlOps* ops, wl_seat* seat) {
@@ -924,7 +1017,7 @@ bool ClipboardService::copyImagePng(std::vector<std::uint8_t> png) {
 }
 
 std::size_t ClipboardService::maxEntryBytesFor(std::string_view mimeType) {
-  return isTextMimeType(mimeType) ? kMaxTextEntryBytes : kMaxImageEntryBytes;
+  return isTextMimeType(mimeType) || mimeType == kUriListMimeType ? kMaxTextEntryBytes : kMaxImageEntryBytes;
 }
 
 // Only one flavour of the selection is ever read, and every advertised type is
@@ -933,6 +1026,11 @@ std::size_t ClipboardService::maxEntryBytesFor(std::string_view mimeType) {
 std::vector<std::string> ClipboardService::mimeTypesForPayload(const std::string& dataMimeType) {
   std::vector<std::string> mimeTypes;
   mimeTypes.push_back(dataMimeType);
+  if (dataMimeType == kUriListMimeType) {
+    mimeTypes.emplace_back(kCopiedFilesMimeType);
+    mimeTypes.emplace_back("text/plain;charset=utf-8");
+    mimeTypes.emplace_back("text/plain");
+  }
   if (isTextMimeType(dataMimeType)) {
     if (!std::ranges::contains(mimeTypes, "text/plain;charset=utf-8")) {
       mimeTypes.emplace_back("text/plain;charset=utf-8");
@@ -1311,7 +1409,8 @@ void ClipboardService::handleSourceSend(void* source, const char* mimeType, int 
   if (it != m_outgoingSources.end() && mimeType != nullptr) {
     const auto mimeIt = std::ranges::find(it->mimeTypes, std::string_view(mimeType));
     if (mimeIt != it->mimeTypes.end() && it->data != nullptr) {
-      if (queueOutgoingWrite(source, fd, it->data)) {
+      const bool derived = it->mimeTypes.front() == kUriListMimeType && *mimeIt != kUriListMimeType;
+      if (queueOutgoingWrite(source, fd, derived ? copiedFilesAs(*mimeIt, *it->data) : it->data)) {
         return;
       }
     }
@@ -1506,9 +1605,7 @@ void ClipboardService::finishRead(bool discard) {
   entry.payloadPath = payloadPathForId(entry.storageId);
   entry.capturedAt = std::chrono::system_clock::now();
   entry.timestamp = std::chrono::steady_clock::now();
-  if (isTextMimeType(mimeType)) {
-    entry.textPreview = buildTextPreview(entry.data);
-  }
+  entry.textPreview = previewText(mimeType, entry.data.span());
 
   addToHistory(std::move(entry));
   if (m_changeSerial == serialBefore) {
@@ -1525,7 +1622,7 @@ void ClipboardService::addToHistory(ClipboardEntry entry) {
     return;
   }
 
-  if (!entry.data.empty() && isTextMimeType(entry.dataMimeType) && isEmptyTextPayload(entry.data)) {
+  if (!entry.data.empty() && (isTextMimeType(entry.dataMimeType) || entry.isFiles()) && isEmptyTextPayload(entry.data.span())) {
     return;
   }
 
@@ -1536,8 +1633,8 @@ void ClipboardService::addToHistory(ClipboardEntry entry) {
     entry.payloadPath = payloadPathForId(entry.storageId);
   }
 
-  if (entry.textPreview.empty() && !entry.data.empty() && isTextMimeType(entry.dataMimeType)) {
-    entry.textPreview = buildTextPreview(entry.data);
+  if (entry.textPreview.empty() && !entry.data.empty()) {
+    entry.textPreview = previewText(entry.dataMimeType, entry.data.span());
   }
 
   if (!m_historyRetention) {
@@ -2171,8 +2268,8 @@ bool ClipboardService::loadEntryPayload(ClipboardEntry& entry) {
 
   entry.data = ClipboardBytes(std::move(result.plaintext));
   entry.payloadLoaded = true;
-  if (entry.textPreview.empty() && isTextMimeType(entry.dataMimeType)) {
-    entry.textPreview = buildTextPreview(entry.data);
+  if (entry.textPreview.empty()) {
+    entry.textPreview = previewText(entry.dataMimeType, entry.data.span());
   }
   return true;
 }
@@ -2204,8 +2301,8 @@ bool ClipboardService::loadLegacyEntryPayload(ClipboardEntry& entry) {
   }
   entry.data = ClipboardBytes(std::move(bytes));
   entry.payloadLoaded = true;
-  if (entry.textPreview.empty() && isTextMimeType(entry.dataMimeType)) {
-    entry.textPreview = buildTextPreview(entry.data);
+  if (entry.textPreview.empty()) {
+    entry.textPreview = previewText(entry.dataMimeType, entry.data.span());
   }
   return true;
 }
@@ -2264,6 +2361,12 @@ std::string ClipboardService::chooseMimeType(const OfferState& offer) const {
     return {};
   };
 
+  // A file manager offers the paths as text too; a URI list without text is also files.
+  const bool files = std::ranges::contains(offer.mimeTypes, kUriListMimeType)
+      && (std::ranges::contains(offer.mimeTypes, kCopiedFilesMimeType) || choose(kTextMimeTypes).empty());
+  if (files) {
+    return std::string(kUriListMimeType);
+  }
   if (std::string mimeType = choose(kTextMimeTypes); !mimeType.empty()) {
     return mimeType;
   }

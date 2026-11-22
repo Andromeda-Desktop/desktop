@@ -482,7 +482,8 @@
     },
     "entry": {
       "image": "Image",
-      "title": "Clipboard Entry"
+      "title": "Clipboard Entry",
+      "files": "{name} and {count} more"
     },
     "filter-placeholder": "Filter clipboard…",
     "preview": {
@@ -490,7 +491,8 @@
       "image-title": "Image Clipboard Entry",
       "loading": "Loading preview…",
       "text-title": "Text Clipboard Entry",
-      "truncated": "… truncated"
+      "truncated": "… truncated",
+      "files-title": "Copied Files"
     },
     "title": "Clipboard"
   },

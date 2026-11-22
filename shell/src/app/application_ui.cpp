@@ -16,6 +16,7 @@
 #include "system/crash_report.h"
 #include "core/input/cursor_shape.h"
 #include "dbus/accounts/accounts_service.h"
+#include "dbus/file_manager1.h"
 #include "dbus/bluetooth/bluetooth_agent.h"
 #include "dbus/bluetooth/bluetooth_service.h"
 #include "dbus/idle/screensaver_poll_source.h"
@@ -693,6 +694,11 @@ void Application::initPanelManagerAndPanels() {
     });
   });
   auto clipboardPanel = std::make_unique<ClipboardPanel>(&m_clipboardService, &m_configService, &m_asyncTextureCache);
+  clipboardPanel->setShowInFilesCallback(
+      [fileManager = std::make_shared<FileManager1>(m_bus.get())](const std::filesystem::path& path) {
+        fileManager->showItem(path);
+      }
+  );
   clipboardPanel->setActivateCallback([this](const ClipboardEntry& entry) {
     const ClipboardAutoPasteMode mode = m_configService.config().shell.clipboardAutoPaste;
     if (mode == ClipboardAutoPasteMode::Off) {
@@ -779,7 +785,7 @@ void Application::initPanelManagerAndPanels() {
     launcherPanel->addProvider(std::make_unique<FocusProvider>(&m_notificationManager));
     launcherPanel->addProvider(std::make_unique<MathProvider>(&m_clipboardService, &m_configService, &m_httpClient));
     launcherPanel->addProvider(std::make_unique<EmojiProvider>(&m_clipboardService, &m_configService));
-    auto clipboard = std::make_unique<ClipboardProvider>(&m_clipboardService);
+    auto clipboard = std::make_unique<ClipboardProvider>(&m_clipboardService, m_bus.get());
     m_clipboardProvider = clipboard.get();
     m_clipboardProvider->warmThumbnails();
     launcherPanel->addProvider(std::move(clipboard));

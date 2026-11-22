@@ -718,6 +718,15 @@ void LauncherPanel::create() {
         .onClick = [this] { openSelectedClipboardImage(); },
     }));
     actions->addChild(ui::button({
+        .out = &m_previewCopyPath,
+        .text = i18n::tr("launcher.files.copy-path"),
+        .controlHeight = Tokens::sizeControlM * scale,
+        .variant = ButtonVariant::Default,
+        .visible = false,
+        .participatesInLayout = false,
+        .onClick = [this] { copySelectedClipboardPaths(); },
+    }));
+    actions->addChild(ui::button({
         .out = &m_previewAction,
         .controlHeight = Tokens::sizeControlM * scale,
         .variant = ButtonVariant::Default,

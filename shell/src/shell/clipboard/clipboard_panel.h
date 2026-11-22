@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -31,6 +32,8 @@ public:
   ClipboardPanel(ClipboardService* clipboard, ConfigService* config, AsyncTextureCache* asyncTextures);
   ~ClipboardPanel() override;
   void setActivateCallback(std::function<void(const ClipboardEntry&)> callback);
+  // Show in Files for a copied-files entry: the first path, selected in its folder.
+  void setShowInFilesCallback(std::function<void(const std::filesystem::path&)> callback);
 
   void create() override;
   void onOpen(std::string_view context) override;
@@ -57,6 +60,8 @@ private:
   void togglePinSelected();
   void runImageAction();
   void openSelectedImage();
+  void copySelectedPaths();
+  void showSelectedInFiles();
   void requestClearUnpinnedHistory();
   void clearUnpinnedHistory();
   void clearAllHistory();
@@ -75,6 +80,7 @@ private:
 
   ClipboardService* m_clipboard = nullptr;
   std::function<void(const ClipboardEntry&)> m_activateCallback;
+  std::function<void(const std::filesystem::path&)> m_showInFilesCallback;
   ConfigService* m_config = nullptr;
   AsyncTextureCache* m_asyncTextures = nullptr;
 
@@ -101,6 +107,8 @@ private:
   Label* m_previewMeta = nullptr;
   Button* m_imageActionButton = nullptr;
   Button* m_openImageButton = nullptr;
+  Button* m_copyPathButton = nullptr;
+  Button* m_showInFilesButton = nullptr;
   Button* m_pinButton = nullptr;
   Button* m_copyButton = nullptr;
   Button* m_deleteEntryButton = nullptr;

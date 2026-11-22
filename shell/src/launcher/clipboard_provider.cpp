@@ -38,6 +38,9 @@ namespace {
     if (entry.isImage()) {
       return "photo";
     }
+    if (entry.isFiles()) {
+      return "files";
+    }
     if (text.starts_with("http://") || text.starts_with("https://")) {
       return "link";
     }
@@ -71,7 +74,16 @@ std::vector<LauncherResult> ClipboardProvider::query(std::string_view text) cons
       if (entry.pinned != pinnedPass) {
         continue;
       }
-      const std::string line = entry.isImage() ? i18n::tr("launcher.clipboard.image") : firstLine(entry.textPreview);
+      std::string line;
+      if (entry.isImage()) {
+        line = i18n::tr("launcher.clipboard.image");
+      } else if (entry.isFiles()) {
+        const auto files = ClipboardService::parseFilesPreview(entry.textPreview);
+        const std::string name = files.paths.empty() ? std::string() : std::filesystem::path(files.paths.front()).filename().string();
+        line = files.count > 1 ? i18n::tr("clipboard.entry.files", "name", name, "count", files.count - 1) : name;
+      } else {
+        line = firstLine(entry.textPreview);
+      }
       if (!needle.empty() && !StringUtils::toLower(entry.textPreview).contains(needle)) {
         continue;
       }
@@ -81,7 +93,7 @@ std::vector<LauncherResult> ClipboardProvider::query(std::string_view text) cons
       r.subtitle = formatTimeAgo(entry.capturedAt);
       r.glyphName = kindGlyph(entry, entry.textPreview);
       r.category = dayGroup(entry);
-      r.presentation = entry.isImage() ? "clipboard-image" : "clipboard-text";
+      r.presentation = entry.isImage() ? "clipboard-image" : entry.isFiles() ? "clipboard-files" : "clipboard-text";
       r.pinned = entry.pinned;
       if (const auto thumb = m_thumbs.find(entry.storageId); entry.isImage() && thumb != m_thumbs.end()) {
         r.iconPath = thumb->second;
@@ -187,7 +199,44 @@ bool ClipboardProvider::openImage(const LauncherResult& result) {
 
 std::string ClipboardProvider::text(const LauncherResult& result) const {
   const std::size_t index = indexOf(result);
-  return index == static_cast<std::size_t>(-1) ? std::string() : m_clipboard->history()[index].textPreview;
+  if (index == static_cast<std::size_t>(-1)) {
+    return {};
+  }
+  const ClipboardEntry& entry = m_clipboard->history()[index];
+  if (!entry.isFiles()) {
+    return entry.textPreview;
+  }
+  std::string paths;
+  for (const std::string_view path : ClipboardService::parseFilesPreview(entry.textPreview).paths) {
+    paths += (paths.empty() ? "" : "\n") + std::string(path);
+  }
+  return paths;
+}
+
+std::vector<std::filesystem::path> ClipboardProvider::filePaths(const LauncherResult& result) const {
+  const std::size_t index = indexOf(result);
+  if (index == static_cast<std::size_t>(-1) || !m_clipboard->history()[index].isFiles()
+      || !m_clipboard->ensureEntryLoaded(index)) {
+    return {};
+  }
+  return ClipboardService::filePaths(m_clipboard->history()[index].data.span());
+}
+
+bool ClipboardProvider::copyPaths(const LauncherResult& result) {
+  std::string text;
+  for (const auto& path : filePaths(result)) {
+    text += (text.empty() ? "" : "\n") + path.string();
+  }
+  return !text.empty() && m_clipboard->copyText(std::move(text));
+}
+
+bool ClipboardProvider::reveal(const LauncherResult& result) {
+  const auto paths = filePaths(result);
+  if (paths.empty()) {
+    return false;
+  }
+  m_fileManager.showItem(paths.front());
+  return true;
 }
 
 void ClipboardProvider::requestThumbnail(const LauncherResult& result) {

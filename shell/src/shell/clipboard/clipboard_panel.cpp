@@ -167,6 +167,11 @@ namespace {
   }
 
   std::string entryTitle(const ClipboardEntry& entry) {
+    if (entry.isFiles() && !entry.textPreview.empty()) {
+      const auto files = ClipboardService::parseFilesPreview(entry.textPreview);
+      const std::string name = files.paths.empty() ? std::string() : std::filesystem::path(files.paths.front()).filename().string();
+      return files.count > 1 ? i18n::tr("clipboard.entry.files", "name", name, "count", files.count - 1) : name;
+    }
     if (!entry.textPreview.empty()) {
       return entry.textPreview;
     }
@@ -179,6 +184,9 @@ namespace {
   std::string previewTitle(const ClipboardEntry& entry) {
     if (entry.isImage()) {
       return i18n::tr("clipboard.preview.image-title");
+    }
+    if (entry.isFiles()) {
+      return i18n::tr("clipboard.preview.files-title");
     }
     return i18n::tr("clipboard.preview.text-title");
   }
@@ -360,7 +368,7 @@ namespace {
       m_meta->setText(formatTimeAgo(entry.capturedAt) + "  •  " + formatBytes(entry.byteSize));
 
       if (m_glyph != nullptr) {
-        m_glyph->setGlyph(m_isImage ? "photo" : "file-text");
+        m_glyph->setGlyph(m_isImage ? "photo" : entry.isFiles() ? "files" : "file-text");
       }
 
       Color parsedColor;
@@ -594,6 +602,10 @@ PanelPlacement ClipboardPanel::panelPlacement() const noexcept {
   return m_config != nullptr ? m_config->config().shell.panel.clipboardPlacement : PanelPlacement::Floating;
 }
 
+void ClipboardPanel::setShowInFilesCallback(std::function<void(const std::filesystem::path&)> callback) {
+  m_showInFilesCallback = std::move(callback);
+}
+
 void ClipboardPanel::setActivateCallback(std::function<void(const ClipboardEntry&)> callback) {
   m_activateCallback = std::move(callback);
 }
@@ -775,6 +787,13 @@ void ClipboardPanel::create() {
       makeCompactIconButton(&m_copyButton, "copy", ButtonVariant::Default, scale, [this] { activateSelected(); }),
       makeCompactIconButton(
           &m_openImageButton, "external-link", ButtonVariant::Default, scale, [this] { openSelectedImage(); }, false,
+          false
+      ),
+      makeCompactIconButton(
+          &m_copyPathButton, "route", ButtonVariant::Default, scale, [this] { copySelectedPaths(); }, false, false
+      ),
+      makeCompactIconButton(
+          &m_showInFilesButton, "folder-open", ButtonVariant::Default, scale, [this] { showSelectedInFiles(); }, false,
           false
       ),
       makeCompactIconButton(
@@ -1161,6 +1180,7 @@ void ClipboardPanel::updatePreviewActions() {
   bool hasSelection = false;
   bool showImageAction = false;
   bool isImage = false;
+  bool isFiles = false;
   bool pinned = false;
   bool deleteConfirmActive = false;
 
@@ -1173,6 +1193,7 @@ void ClipboardPanel::updatePreviewActions() {
       deleteConfirmActive =
           !m_deleteConfirmStorageId.empty() && m_deleteConfirmStorageId == history[historyIndex].storageId;
       isImage = history[historyIndex].isImage();
+      isFiles = history[historyIndex].isFiles();
       showImageAction = m_config != nullptr
           && !StringUtils::trim(m_config->config().shell.clipboardImageActionCommand).empty()
           && isImage;
@@ -1197,6 +1218,13 @@ void ClipboardPanel::updatePreviewActions() {
   if (m_openImageButton != nullptr) {
     m_openImageButton->setVisible(isImage);
     m_openImageButton->setParticipatesInLayout(isImage);
+  }
+
+  for (Button* button : {m_copyPathButton, m_showInFilesButton}) {
+    if (button != nullptr) {
+      button->setVisible(isFiles);
+      button->setParticipatesInLayout(isFiles);
+    }
   }
 
   if (m_imageActionButton != nullptr) {
@@ -1786,6 +1814,39 @@ void ClipboardPanel::openSelectedImage() {
   }
 
   if (net::openFile(*exportedPath)) {
+    PanelManager::instance().close();
+  }
+}
+
+void ClipboardPanel::copySelectedPaths() {
+  const std::size_t historyIndex = selectedHistoryIndex();
+  if (m_clipboard == nullptr || historyIndex >= m_clipboard->history().size()) {
+    return;
+  }
+  const ClipboardEntry& entry = m_clipboard->history()[historyIndex];
+  if (!entry.isFiles() || !m_clipboard->ensureEntryLoaded(historyIndex)) {
+    return;
+  }
+  std::string text;
+  for (const auto& path : ClipboardService::filePaths(m_clipboard->history()[historyIndex].data.span())) {
+    text += (text.empty() ? "" : "\n") + path.string();
+  }
+  if (m_clipboard->copyText(std::move(text))) {
+    PanelManager::instance().close();
+  }
+}
+
+void ClipboardPanel::showSelectedInFiles() {
+  const std::size_t historyIndex = selectedHistoryIndex();
+  if (m_clipboard == nullptr || historyIndex >= m_clipboard->history().size() || !m_showInFilesCallback) {
+    return;
+  }
+  if (!m_clipboard->history()[historyIndex].isFiles() || !m_clipboard->ensureEntryLoaded(historyIndex)) {
+    return;
+  }
+  const auto paths = ClipboardService::filePaths(m_clipboard->history()[historyIndex].data.span());
+  if (!paths.empty()) {
+    m_showInFilesCallback(paths.front());
     PanelManager::instance().close();
   }
 }

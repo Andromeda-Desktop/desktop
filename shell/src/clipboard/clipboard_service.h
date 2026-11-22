@@ -15,6 +15,7 @@
 #include <mutex>
 #include <optional>
 #include <poll.h>
+#include <filesystem>
 #include <span>
 #include <string>
 #include <string_view>
@@ -76,6 +77,7 @@ struct ClipboardEntry {
   bool pinned = false;
 
   [[nodiscard]] bool isImage() const;
+  [[nodiscard]] bool isFiles() const; // copied files: data is a text/uri-list
 };
 
 struct DataControlOps {
@@ -165,6 +167,14 @@ public:
   void setMaxHistoryBytesForTesting(std::size_t maxBytes);
 
   bool copyText(std::string text);
+  // The local paths of a copied-files payload; a non-file URI stays as written.
+  [[nodiscard]] static std::vector<std::filesystem::path> filePaths(std::span<const std::uint8_t> uriList);
+  // A copied-files entry's textPreview: the file count, then the first paths (at least one).
+  struct FilesPreview {
+    std::size_t count = 0;
+    std::vector<std::string_view> paths;
+  };
+  [[nodiscard]] static FilesPreview parseFilesPreview(std::string_view preview);
   bool copyText(std::string text, const std::string& mimeType);
   bool copyImagePng(std::vector<std::uint8_t> png);
   bool copyEntry(const ClipboardEntry& entry);
@@ -285,6 +295,8 @@ private:
   [[nodiscard]] static std::size_t maxEntryBytesFor(std::string_view mimeType);
   [[nodiscard]] static bool isEmptyTextPayload(std::span<const std::uint8_t> data);
   [[nodiscard]] static std::string buildTextPreview(std::span<const std::uint8_t> data);
+  // Text: the start of the text. Copied files: the file count, then the paths one per line.
+  [[nodiscard]] static std::string previewText(std::string_view mimeType, std::span<const std::uint8_t> data);
   bool copyData(std::vector<std::string> mimeTypes, std::vector<std::uint8_t> data);
   bool copyData(std::vector<std::string> mimeTypes, std::shared_ptr<const std::vector<std::uint8_t>> data);
   bool queueOutgoingWrite(void* source, int fd, std::shared_ptr<const std::vector<std::uint8_t>> data);

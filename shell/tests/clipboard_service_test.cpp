@@ -496,6 +496,32 @@ int main() {
     );
   }
 
+  {
+    // A file manager copy (URI list plus the same paths as text) stays files: pasting the entry again pastes files.
+    Harness harness;
+    fake.claims = 0;
+    gFake->payload = bytesOf("file:///tmp/a%20b.txt\r\nfile:///tmp/c\r\n");
+    gFake->written = 0;
+    harness.clipboard.handleDataOffer(&offerIds[3]);
+    for (const char* mime : {"x-special/gnome-copied-files", "text/uri-list", "text/plain"}) {
+      harness.clipboard.handleOfferMimeType(&offerIds[3], mime);
+    }
+    harness.clipboard.handleSelection(&offerIds[3]);
+    drainReads(harness.clipboard);
+    expect(!harness.clipboard.history().empty() && harness.clipboard.history().front().isFiles(),
+           "a file manager copy was not kept as files");
+    expect(!harness.clipboard.history().empty() && harness.clipboard.history().front().textPreview == "2\n/tmp/a b.txt\n/tmp/c",
+           "copied files did not preview as their paths");
+    harness.clipboard.handleSelection(nullptr);
+    flushDeferredAdopt(harness.clipboard);
+    expect(
+        fake.offeredMimeTypes
+            == std::vector<std::string>{"text/uri-list", "x-special/gnome-copied-files", "text/plain;charset=utf-8",
+                                        "text/plain"},
+        "adopted copied files did not offer files and their paths"
+    );
+  }
+
   gFake = nullptr;
   if (gFailures != 0) {
     std::println(stderr, "clipboard_service_test: {} failure(s)", gFailures);
