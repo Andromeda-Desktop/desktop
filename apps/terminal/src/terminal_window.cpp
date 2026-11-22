@@ -1851,6 +1851,10 @@ namespace term {
   }
 
   void TerminalWindow::focusGrid() {
+    // A sheet is modal: a rebuild under it (a sheet handing over to the next) leaves its keys with it.
+    if (m_window.hasSheet()) {
+      return;
+    }
     if (ContentView* view = shownView(); view != nullptr && view->focusArea() != nullptr) {
       m_window.input().setFocus(view->focusArea());
     }
