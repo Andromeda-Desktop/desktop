@@ -100,8 +100,9 @@ namespace {
       }
     }
 
-    void daemonGone() {
-      for (const auto& [command, attempt] : calls) {
+    // dropReplies: sdbus drops the replies of a destroyed proxy (FaceAuthenticator resets it); errors model the rest.
+    void daemonGone(bool dropReplies) {
+      for (const auto& [command, attempt] : dropReplies ? decltype(calls){} : calls) {
         if (command == face_auth::QueryEnrolled) {
           replies.push_back({Kind::Enrolled, attempt, false});
         } else if (command == face_auth::Claim) {
@@ -109,6 +110,9 @@ namespace {
         } else if (command == face_auth::VerifyStart) {
           replies.push_back({Kind::VerifyStart, attempt, false});
         }
+      }
+      if (dropReplies) {
+        std::erase_if(replies, [](const auto& reply) { return reply.kind != Kind::VerifyEnded; });
       }
       calls.clear();
       claimed = false;
@@ -174,7 +178,7 @@ namespace {
         break;
       case 7:
         if (random() % 8U == 0U) {
-          world.daemonGone();
+          world.daemonGone(random() % 2U == 0U);
         }
         break;
       case 8:

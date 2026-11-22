@@ -109,7 +109,9 @@ namespace face_auth {
     // gazed claims per connection and answers Ok to a repeated Claim, so any attempt's success is the claim of the
     // running attempt too. A reply from before gazed left the bus tells nothing.
     Commands claimReply(std::uint64_t attempt, bool ok) {
-      --m_claimsInFlight;
+      if (attempt >= m_daemonAttempt) {
+        --m_claimsInFlight;
+      }
       if (ok && attempt >= m_daemonAttempt) {
         m_claimed = true;
       }
@@ -173,6 +175,8 @@ namespace face_auth {
       ++m_attempt;
       m_daemonAttempt = m_attempt;
       m_claimed = false;
+      // Its replies may never come (the proxy is dropped): only Claims sent from now on count.
+      m_claimsInFlight = 0;
       if (pending() || m_phase == Phase::Verifying || (onRequest && active())) {
         m_phase = onRequest ? Phase::Off : Phase::Idle;
       }
