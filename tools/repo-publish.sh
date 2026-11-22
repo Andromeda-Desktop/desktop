@@ -39,10 +39,15 @@ merge_apt() {
   (
     cd "$out"
     gh release download "$release" -R "$repo" -p Packages -O Packages.old --clobber
-    # A republished file replaces its old entry: apt reads the first entry of a version and rejects the new file's size.
-    names > ours
-    awk -v RS= -v FS='\n' -v ORS='\n\n' 'NR == FNR { for (i = 1; i <= NF; i++) own[$i]; next }
-      { for (i = 1; i <= NF; i++) if ($i ~ /^Filename: / && substr($i, 11) in own) next; print }' ours Packages.old > Packages.kept
+    # Old entries stay only when they still describe their file: apt reads the first entry of a version and rejects
+    # a file of another size. This run's files and a republished file (another size) lose their old entry.
+    id=$(gh api "repos/$repo/releases/tags/$release" -q .id)
+    gh api --paginate "repos/$repo/releases/$id/assets?per_page=100" -q '.[] | "./\(.name) \(.size)"' > ours
+    names | sed 's/$/ -1/' >> ours
+    awk -v RS= -v FS='\n' -v ORS='\n\n' 'NR == FNR { for (i = 1; i <= NF; i++) { split($i, a, " "); size[a[1]] = a[2] }; next }
+      { file = ""; bytes = ""
+        for (i = 1; i <= NF; i++) { if ($i ~ /^Filename: /) file = substr($i, 11); if ($i ~ /^Size: /) bytes = substr($i, 7) }
+        if (file in size && size[file] == bytes && !(file in seen)) { seen[file]; print } }' ours Packages.old > Packages.kept
     # --multiversion keeps the older entries; apt installs the highest version.
     { cat Packages.kept; echo; dpkg-scanpackages --multiversion . /dev/null; } | cat -s > Packages
     rm Packages.old Packages.kept ours
