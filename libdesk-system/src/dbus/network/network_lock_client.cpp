@@ -66,6 +66,9 @@ NetworkLockClient::NetworkLockClient(SystemBus& bus) : m_bus(bus) {
         std::string oldOwner;
         std::string newOwner;
         message >> name >> oldOwner >> newOwner;
+        // Dropping the proxies cancels their calls: no reply from the old owner lands in the reset state.
+        m_active.reset();
+        m_accessPoint.reset();
         m_state = {};
         m_hasState = false;
         notify();
