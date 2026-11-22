@@ -36,6 +36,7 @@ public:
   void onWorkspaceRemoved(ext_workspace_handle_v1* workspace);
   void onManagerDone();
   void onManagerFinished();
+  void destroyHandles();
 
 private:
   struct WorkspaceGroup {

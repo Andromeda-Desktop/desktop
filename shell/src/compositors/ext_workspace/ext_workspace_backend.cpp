@@ -220,6 +220,13 @@ void ExtWorkspaceBackend::activateForOutput(wl_output* output, const Workspace& 
 }
 
 void ExtWorkspaceBackend::cleanup() {
+  if (m_manager != nullptr) {
+    ext_workspace_manager_v1_stop(m_manager);
+  }
+  destroyHandles();
+}
+
+void ExtWorkspaceBackend::destroyHandles() {
   for (auto& [workspace, _] : m_workspaces) {
     if (workspace != nullptr) {
       ext_workspace_handle_v1_destroy(workspace);
@@ -235,7 +242,6 @@ void ExtWorkspaceBackend::cleanup() {
   m_groups.clear();
 
   if (m_manager != nullptr) {
-    ext_workspace_manager_v1_stop(m_manager);
     ext_workspace_manager_v1_destroy(m_manager);
     m_manager = nullptr;
   }
@@ -393,14 +399,9 @@ void ExtWorkspaceBackend::onWorkspaceStateChanged(ext_workspace_handle_v1* works
     return;
   }
 
+  // The manager's done event reports the whole batch: a state alone may belong to a half-applied change.
   it->second.active = isActive;
   it->second.urgent = isUrgent;
-  // if (isActive) {
-  //   kLog.debug("active: {}", it->second.name.empty() ? "(unnamed)" : it->second.name);
-  // }
-  if (m_changeCallback) {
-    m_changeCallback();
-  }
 }
 
 void ExtWorkspaceBackend::onWorkspaceRemoved(ext_workspace_handle_v1* workspace) {
@@ -416,8 +417,10 @@ void ExtWorkspaceBackend::onManagerDone() {
   }
 }
 
+// The compositor dropped the global: its objects are inert, and the client still owns and destroys them.
 void ExtWorkspaceBackend::onManagerFinished() {
-  m_manager = nullptr;
-  m_workspaces.clear();
-  m_groups.clear();
+  destroyHandles();
+  if (m_changeCallback) {
+    m_changeCallback();
+  }
 }
