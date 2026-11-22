@@ -4,6 +4,7 @@
 #include "agent_host.h"
 
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -131,6 +132,43 @@ sleep 1
     Session& s = host.open(8, (root / "project").string());
     if (!pumpUntil([&] { return s.phase() == Phase::Failed; })) {
       result = fail("the session did not fail when the agent stopped reading");
+    }
+  }
+  if (result == EXIT_SUCCESS) {
+    // An agent whose tool process (an MCP server, say) inherited its stdout and stderr and outlives it: closing the
+    // host must not wait for that process.
+    const auto leaky = root / "bin" / "leaky-agentd";
+    const auto toolPid = root / "tool.pid";
+    {
+      std::ofstream script(leaky);
+      // One tool stays in the agent's process group, one leaves it (setsid): neither may hold the close up.
+      script << "#!/bin/sh\nsleep 20 &\necho $! > '" << toolPid.string() << ".group'\nsetsid sleep 20 &\necho $! > '"
+             << toolPid.string() << "'\nexec cat > /dev/null\n";
+    }
+    fs::permissions(leaky, fs::perms::owner_all);
+    ::setenv("ANDROMEDA_AGENTD", leaky.c_str(), 1);
+    std::chrono::steady_clock::time_point closing;
+    {
+      Host host(Kind::Claude, [](std::uint64_t) {});
+      host.open(9, (root / "project").string());
+      pumpUntil([&] { return fs::exists(toolPid) && fs::file_size(toolPid) > 0; });
+      closing = std::chrono::steady_clock::now();
+    }
+    const auto took = std::chrono::steady_clock::now() - closing;
+    const auto pidIn = [](const fs::path& file) {
+      pid_t pid = 0;
+      std::ifstream(file) >> pid;
+      return pid;
+    };
+    const pid_t inGroup = pidIn(toolPid.string() + ".group");
+    const bool groupGone = pumpUntil([&] { return inGroup > 0 && ::kill(inGroup, 0) != 0; }, std::chrono::seconds(3));
+    for (const pid_t pid : {inGroup, pidIn(toolPid)}) {
+      if (pid > 0) ::kill(pid, SIGKILL);
+    }
+    if (took > std::chrono::seconds(3)) {
+      result = fail("closing the host waited for a process the agent left behind");
+    } else if (!groupGone) {
+      result = fail("a tool in the agent's process group outlived the closed host");
     }
   }
   fs::remove_all(root);

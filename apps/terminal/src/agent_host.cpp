@@ -5,8 +5,13 @@
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
+#include <algorithm>
 #include <fcntl.h>
+#include <poll.h>
 #include <spawn.h>
+#include <span>
+#include <string_view>
+#include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -26,6 +31,14 @@ namespace term::agent {
     std::deque<std::string> lines;
     bool closing = false;
     int stdinFd = -1;
+    // A process the agent started can hold its pipes open after it exits: the I/O threads end on these instead.
+    sys::WakeFd stop;
+    int exitFd = -1;
+    ~Shared() {
+      if (exitFd >= 0) {
+        ::close(exitFd);
+      }
+    }
   };
 
   namespace {
@@ -33,11 +46,33 @@ namespace term::agent {
     constexpr std::size_t kStderrTail = 4096;
     constexpr std::int64_t kSessionIdSpan = std::int64_t{1} << 32;
 
-    bool writeAll(int fd, const std::string& data) {
+    enum class Wait : std::uint8_t { Ready, Exited, Stopped };
+
+    Wait waitFor(int fd, short events, int exitFd, int stopFd) {
+      pollfd fds[3] = {{fd, events, 0}, {exitFd, POLLIN, 0}, {stopFd, POLLIN, 0}};
+      while (::poll(fds, 3, -1) < 0) {
+        if (errno != EINTR) {
+          return Wait::Stopped;
+        }
+      }
+      if (fds[2].revents != 0) {
+        return Wait::Stopped;
+      }
+      return fds[1].revents != 0 ? Wait::Exited : Wait::Ready;
+    }
+
+    // fd is nonblocking.
+    bool writeAll(int fd, const std::string& data, int exitFd, int stopFd) {
       std::size_t done = 0;
       while (done < data.size()) {
         const auto n = ::write(fd, data.data() + done, data.size() - done);
         if (n < 0 && errno == EINTR) {
+          continue;
+        }
+        if (n < 0 && errno == EAGAIN) {
+          if (waitFor(fd, POLLOUT, exitFd, stopFd) != Wait::Ready) {
+            return false;
+          }
           continue;
         }
         if (n <= 0) {
@@ -46,6 +81,39 @@ namespace term::agent {
         done += static_cast<std::size_t>(n);
       }
       return true;
+    }
+
+    // Reads what fd holds until EOF; once the agent exited, only what was queued then. False when the host stopped.
+    bool readUntilEnd(int fd, int exitFd, int stopFd, std::span<char> buffer, const std::function<void(std::string_view)>& got) {
+      bool exited = false;
+      int left = 0;
+      for (;;) {
+        if (!exited) {
+          switch (waitFor(fd, POLLIN, exitFd, stopFd)) {
+          case Wait::Stopped:
+            return false;
+          case Wait::Exited:
+            exited = true;
+            ::ioctl(fd, FIONREAD, &left);
+            break;
+          case Wait::Ready:
+            break;
+          }
+        }
+        if (exited && left <= 0) {
+          return true;
+        }
+        const std::size_t want = exited ? std::min(buffer.size(), static_cast<std::size_t>(left)) : buffer.size();
+        const auto n = ::read(fd, buffer.data(), want);
+        if (n < 0 && errno == EINTR) {
+          continue;
+        }
+        if (n <= 0) {
+          return true;
+        }
+        left -= static_cast<int>(n);
+        got({buffer.data(), static_cast<std::size_t>(n)});
+      }
     }
 
   } // namespace
@@ -60,14 +128,22 @@ namespace term::agent {
         m_shared->closing = true;
       }
       m_shared->wake.notify_all();
+      (void)m_shared->stop.signal();
     }
     if (m_pid > 0) {
-      ::kill(m_pid, SIGTERM);
+      ::kill(-m_pid, SIGTERM); // the agent leads its own group: the tools it started go too
     }
     for (auto* thread : {&m_writer, &m_reader, &m_errors}) {
       if (thread->joinable()) {
         thread->join();
       }
+    }
+    // The reader stopped without reaping: an agent that takes its time over SIGTERM is reaped off this thread.
+    if (m_pid > 0 && ::waitpid(m_pid, nullptr, WNOHANG) == 0) {
+      std::thread([pid = m_pid] {
+        while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
+        }
+      }).detach();
     }
   }
 
@@ -171,8 +247,13 @@ namespace term::agent {
       envp.push_back(entry.data());
     }
     envp.push_back(nullptr);
+    posix_spawnattr_t attr;
+    posix_spawnattr_init(&attr);
+    posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
+    posix_spawnattr_setpgroup(&attr, 0);
     pid_t pid = -1;
-    const int rc = program.empty() ? ENOENT : posix_spawn(&pid, program.c_str(), &actions, nullptr, argv.data(), envp.data());
+    const int rc = program.empty() ? ENOENT : posix_spawn(&pid, program.c_str(), &actions, &attr, argv.data(), envp.data());
+    posix_spawnattr_destroy(&attr);
     posix_spawn_file_actions_destroy(&actions);
     ::close(in[0]);
     ::close(out[1]);
@@ -188,6 +269,8 @@ namespace term::agent {
     m_initialized = false;
     m_shared = std::make_shared<Shared>();
     m_shared->stdinFd = in[1];
+    m_shared->exitFd = sys::childExitFd(pid);
+    ::fcntl(in[1], F_SETFL, ::fcntl(in[1], F_GETFL) | O_NONBLOCK);
 
     m_writer = std::thread([shared = m_shared] {
       // A write to an agent that stopped reading returns EPIPE here instead of ending the app with SIGPIPE.
@@ -204,7 +287,7 @@ namespace term::agent {
         auto line = std::move(shared->lines.front());
         shared->lines.pop_front();
         lock.unlock();
-        if (!writeAll(shared->stdinFd, line)) {
+        if (!writeAll(shared->stdinFd, line, shared->exitFd, shared->stop.pollFd())) {
           break;
         }
       }
@@ -213,37 +296,23 @@ namespace term::agent {
 
     auto tail = std::make_shared<std::string>();
     auto tailMutex = std::make_shared<std::mutex>();
-    m_errors = std::thread([fd = err[0], tail, tailMutex] {
+    m_errors = std::thread([shared = m_shared, fd = err[0], tail, tailMutex] {
       std::array<char, 1024> buffer{};
-      for (;;) {
-        const auto n = ::read(fd, buffer.data(), buffer.size());
-        if (n < 0 && errno == EINTR) {
-          continue;
-        }
-        if (n <= 0) {
-          break;
-        }
+      (void)readUntilEnd(fd, shared->exitFd, shared->stop.pollFd(), buffer, [&](std::string_view bytes) {
         const std::lock_guard lock(*tailMutex);
-        tail->append(buffer.data(), static_cast<std::size_t>(n));
+        tail->append(bytes);
         if (tail->size() > kStderrTail) {
           tail->erase(0, tail->size() - kStderrTail);
         }
-      }
+      });
       ::close(fd);
     });
 
-    m_reader = std::thread([this, fd = out[0], pid, alive = std::weak_ptr<int>(m_alive), tail, tailMutex] {
+    m_reader = std::thread([this, shared = m_shared, fd = out[0], pid, alive = std::weak_ptr<int>(m_alive), tail, tailMutex] {
       std::string pending;
       std::array<char, 16384> buffer{};
-      for (;;) {
-        const auto n = ::read(fd, buffer.data(), buffer.size());
-        if (n < 0 && errno == EINTR) {
-          continue;
-        }
-        if (n <= 0) {
-          break;
-        }
-        pending.append(buffer.data(), static_cast<std::size_t>(n));
+      const bool ended = readUntilEnd(fd, shared->exitFd, shared->stop.pollFd(), buffer, [&](std::string_view bytes) {
+        pending.append(bytes);
         std::size_t start = 0;
         for (auto end = pending.find('\n'); end != std::string::npos; end = pending.find('\n', start)) {
           auto message = Json::parse(pending.begin() + static_cast<std::ptrdiff_t>(start),
@@ -259,8 +328,11 @@ namespace term::agent {
           });
         }
         pending.erase(0, start);
-      }
+      });
       ::close(fd);
+      if (!ended) {
+        return; // the host closes and reaps the agent itself
+      }
       int status = 0;
       while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
       }
