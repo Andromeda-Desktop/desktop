@@ -617,6 +617,18 @@ PangoLayout* CairoTextRenderer::buildLayout(
   }
   pango_layout_set_alignment(layout, pangoAlign);
 
+  // A negative height caps the lines of each paragraph, not of the text: past the budget, the text stops after the
+  // last line that fits and ends with an ellipsis, so a multi-line string keeps a one-line label one line.
+  if (maxLines > 0 && !useMarkup && pango_layout_get_line_count(layout) > maxLines) {
+    const PangoLayoutLine* next = pango_layout_get_line_readonly(layout, std::min(maxLines, kHardMaxLines));
+    std::string cut(text.substr(0, static_cast<std::size_t>(next->start_index)));
+    while (!cut.empty() && (cut.back() == '\n' || cut.back() == '\r')) {
+      cut.pop_back();
+    }
+    cut += "\u2026";
+    pango_layout_set_text(layout, cut.data(), static_cast<int>(cut.size()));
+  }
+
   return layout;
 }
 

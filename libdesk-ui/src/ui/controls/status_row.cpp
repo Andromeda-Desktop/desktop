@@ -21,12 +21,12 @@ StatusRow::StatusRow(float scale) : m_scale(scale) {
   setAlign(FlexAlign::Center);
   setGap(Tokens::spaceP8 * s);
   setPadding(Tokens::spaceP8 * s);
-  setRadius(Style::scaledRadius(Tokens::radiusR8, s));
+  setRadius(Style::scaledRadius(Tokens::radiusR12, s));
   // Under the fill: the raised chip's E1 shadow.
   insertChildAt(0, ui::box({.out = &m_shadow,
                             .fill = colorSpecFromRole(ColorRole::Shadow, isResolvedLightTheme() ? Tokens::elevationE1.keyLight
                                                                                                 : Tokens::elevationE1.keyDark),
-                            .radius = Style::scaledRadius(Tokens::radiusR8, s),
+                            .radius = Style::scaledRadius(Tokens::radiusR12, s),
                             .visible = false,
                             .participatesInLayout = false}));
   m_shadow->setShadow(Tokens::elevationE1.keyBlur * s, Tokens::elevationE1.keyY * s);
