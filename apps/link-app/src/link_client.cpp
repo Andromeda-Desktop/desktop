@@ -360,10 +360,10 @@ namespace linkapp {
           for (const auto& [name, line] : property<std::vector<sdbus::Struct<std::string, std::string>>>(props, "Commands"))
             m_desktopSettings.commands.push_back({.name = name, .line = line});
           m_messages.setContacts(people);
-          m_messages.setTexts(std::move(list));
+          m_messages.setTexts(phone, std::move(list));
           const Presence shown = presence();
           if (shown.kind == Presence::Kind::Connected &&
-              (m_photos.load() == Photos::Load::Idle || m_photosDevice != shown.phone.id)) {
+              (m_photos.load() == Photos::Load::Idle || m_photos.device() != shown.phone.id)) {
             loadPhotos();
           }
           changed();
@@ -468,7 +468,7 @@ namespace linkapp {
     const Outgoing* out = m_messages.outgoing(serial);
     const Thread* thread = out ? m_messages.thread(out->thread) : nullptr;
     if (thread == nullptr) return;
-    m_proxy->callMethodAsync("SendText").onInterface(kInterface).withArguments(presence().phone.id, thread->address, out->body)
+    m_proxy->callMethodAsync("SendText").onInterface(kInterface).withArguments(out->phone, thread->address, out->body)
         .uponReplyInvoke([this, serial, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error) {
           if (alive.expired() || !error) return;
           kLog.warn("SendText: {}", error->getMessage());
@@ -576,18 +576,17 @@ namespace linkapp {
   void LinkClient::loadPhotos() {
     const std::string device = presence().phone.id;
     if (device.empty()) return;
-    if (device != m_photosDevice) {
+    if (device != m_photos.device()) {
       clearThumbs();
       (void)m_feed.remove("p:new");
       m_photosSeenS = 0;
       std::ifstream(photosSeenFile(device)) >> m_photosSeenS;
     }
-    m_photosDevice = device;
-    if (const auto ask = m_photos.startLoad()) askPhotos(*ask);
+    if (const auto ask = m_photos.startLoad(device)) askPhotos(*ask);
   }
 
   void LinkClient::loadMorePhotos() {
-    if (m_photosDevice.empty() || m_photosDevice != presence().phone.id) return;
+    if (m_photos.device().empty() || m_photos.device() != presence().phone.id) return;
     if (const auto ask = m_photos.startMore()) askPhotos(*ask);
   }
 
@@ -601,7 +600,7 @@ namespace linkapp {
     using Row = sdbus::Struct<std::string, std::string, std::uint64_t, bool, std::uint32_t>;
     m_proxy->callMethodAsync("PhotosPage")
         .onInterface(kInterface)
-        .withArguments(m_photosDevice, ask.offset, Photos::kCount, std::string(kMedia[static_cast<std::size_t>(ask.media)]))
+        .withArguments(m_photos.device(), ask.offset, Photos::kCount, std::string(kMedia[static_cast<std::size_t>(ask.media)]))
         .uponReplyInvoke([this, ask, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error,
                                                                             std::uint32_t total, std::vector<Row> list) {
           if (alive.expired()) return;
@@ -626,7 +625,7 @@ namespace linkapp {
           if (!m_photos.loaded(ask.serial, total, std::move(page))) return;
           // The Waiting strip counts the newest items of a first page that holds photos.
           if (ask.offset == 0 && ask.media != Photos::Media::Videos) {
-            if (auto item = newPhotosItem(m_photosDevice, m_photos.items(), m_photosSeenS, nowMs())) {
+            if (auto item = newPhotosItem(m_photos.device(), m_photos.items(), m_photosSeenS, nowMs())) {
               m_feed.upsert(std::move(*item));
             } else {
               (void)m_feed.remove("p:new");
@@ -649,8 +648,8 @@ namespace linkapp {
     if (!photos.empty() && photos.front().atS > m_photosSeenS) {
       m_photosSeenS = photos.front().atS;
       std::error_code error;
-      std::filesystem::create_directories(photosSeenFile(m_photosDevice).parent_path(), error);
-      std::ofstream(photosSeenFile(m_photosDevice)) << m_photosSeenS << '\n';
+      std::filesystem::create_directories(photosSeenFile(m_photos.device()).parent_path(), error);
+      std::ofstream(photosSeenFile(m_photos.device())) << m_photosSeenS << '\n';
     }
     (void)m_feed.remove("p:new");
   }
@@ -670,7 +669,7 @@ namespace linkapp {
     for (const std::string& path : paths) {
       m_proxy->callMethodAsync("SavePhoto")
           .onInterface(kInterface)
-          .withArguments(m_photosDevice, path)
+          .withArguments(m_photos.device(), path)
           .uponReplyInvoke([this, alive = std::weak_ptr<bool>(m_alive)](std::optional<sdbus::Error> error, std::string) {
             if (alive.expired()) return;
             if (error) kLog.warn("SavePhoto: {}", error->getMessage());
@@ -685,7 +684,7 @@ namespace linkapp {
                                std::function<void(const std::string&)> done) {
     m_proxy->callMethodAsync("SavePhotoTo")
         .onInterface(kInterface)
-        .withArguments(m_photosDevice, path, folder)
+        .withArguments(m_photos.device(), path, folder)
         .uponReplyInvoke([done = std::move(done)](std::optional<sdbus::Error> error, std::string saved) {
           if (error) kLog.warn("SavePhotoTo: {}", error->getMessage());
           done(error ? std::string() : saved);
@@ -694,7 +693,7 @@ namespace linkapp {
 
   const std::vector<std::uint8_t>* LinkClient::thumbnail(const std::string& path) {
     return cachedImage(path, [&] {
-      return m_proxy->callMethodAsync("Thumbnail").onInterface(kInterface).withArguments(m_photosDevice, path, std::uint16_t{256});
+      return m_proxy->callMethodAsync("Thumbnail").onInterface(kInterface).withArguments(m_photos.device(), path, std::uint16_t{256});
     });
   }
 
@@ -1250,7 +1249,7 @@ namespace linkapp {
     if (m_photoSerial == 1) std::filesystem::remove_all(dir, ec); // files a crash left behind
     std::filesystem::create_directories(dir, ec);
     auto download = std::make_shared<Download>();
-    download->device = m_photosDevice;
+    download->device = m_photos.device();
     download->phonePath = phonePath;
     download->local = (dir / std::format("{}{}", m_photoSerial, std::filesystem::path(phonePath).extension().string())).string();
     download->file.reset(std::fopen(download->local.c_str(), "wb"));
@@ -1281,7 +1280,7 @@ namespace linkapp {
   void LinkClient::savePhoto(const std::string& phonePath, std::function<void(const std::string&)> done) {
     m_proxy->callMethodAsync("SavePhoto")
         .onInterface(kInterface)
-        .withArguments(m_photosDevice, phonePath)
+        .withArguments(m_photos.device(), phonePath)
         .uponReplyInvoke([done = std::move(done)](std::optional<sdbus::Error> error, std::string saved) {
           if (error) kLog.warn("SavePhoto: {}", error->getMessage());
           done(error ? std::string() : saved);

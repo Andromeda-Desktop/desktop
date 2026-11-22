@@ -287,6 +287,7 @@ namespace linkapp {
   struct Outgoing {
     enum class State : std::uint8_t { Sending, Failed };
     std::uint64_t serial = 0;
+    std::string phone; // thread is this phone's thread id
     std::uint64_t thread = 0;
     std::string body;
     std::int64_t atMs = 0;
@@ -341,7 +342,8 @@ namespace linkapp {
     enum class Load : std::uint8_t { Loading, Ready };
 
     // The phone's texts, any order. Loading -> Ready; drops each outgoing text the new list holds.
-    void setTexts(std::vector<Text> texts);
+    // A text id, a thread id and a pending send mean something only on the phone they came from.
+    void setTexts(const std::string& phone, std::vector<Text> texts);
     void setContacts(const std::vector<Contact>& contacts);
     // A new text arrived: unread until its thread is on screen.
     void received(std::uint64_t textId);
@@ -383,6 +385,7 @@ namespace linkapp {
     std::optional<std::uint64_t> m_viewing;
     std::vector<Outgoing> m_outgoing;
     std::uint64_t m_serial = 0;
+    std::string m_phone;
     std::vector<Thread> m_threads;
   };
 
@@ -428,7 +431,9 @@ namespace linkapp {
     [[nodiscard]] std::uint32_t total() const { return m_total; }
     [[nodiscard]] bool hasMore() const { return m_next < m_total; }
     // Any state but Loading -> Loading from offset 0.
-    [[nodiscard]] std::optional<Ask> startLoad();
+    // A new phone drops what the old one listed and its page in flight.
+    [[nodiscard]] std::optional<Ask> startLoad(const std::string& device);
+    [[nodiscard]] const std::string& device() const { return m_device; }
     // Ready with more on the phone -> More from the next offset.
     [[nodiscard]] std::optional<Ask> startMore();
     // Drops the items and the selection and goes Idle when media differs; false when it is the shown filter.
@@ -455,8 +460,12 @@ namespace linkapp {
     [[nodiscard]] std::vector<std::pair<std::size_t, std::string>> days(std::int64_t nowMs) const;
 
   private:
+    // Drops the listing and any page in flight.
+    void forget();
+
     Load m_load = Load::Idle;
     Media m_media = Media::All;
+    std::string m_device;
     std::uint64_t m_serial = 0;
     std::uint32_t m_total = 0;
     std::uint32_t m_next = 0; // offset of the next page

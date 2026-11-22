@@ -207,7 +207,6 @@ namespace linkapp {
     std::string m_mirrorDevice;
     std::unique_ptr<MirrorDecoder> m_decoder;
     std::function<void(MirrorDecoder::Frame)> m_mirrorFrame;
-    std::string m_photosDevice;
     void askPhotos(const Photos::Ask& ask);
     void clearThumbs();
     struct Thumb {
@@ -221,7 +220,7 @@ namespace linkapp {
     std::list<std::string> m_thumbUse;     // paths, most recently drawn first
     std::size_t m_thumbBytes = 0;
     std::function<void()> m_thumbnailReady;
-    std::int64_t m_photosSeenS = 0; // the newest photo of m_photosDevice the user saw
+    std::int64_t m_photosSeenS = 0; // the newest photo of m_photos.device() the user saw
     PhoneSettings m_phoneSettings;
     std::optional<HotspotAsk> m_hotspotAsk;
     DesktopSettings m_desktopSettings;

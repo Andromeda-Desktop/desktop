@@ -369,13 +369,16 @@ namespace linkapp {
     constexpr std::int64_t kClockSkewMs = 5LL * 60 * 1000;
   } // namespace
 
-  void Messages::setTexts(std::vector<Text> texts) {
+  void Messages::setTexts(const std::string& phone, std::vector<Text> texts) {
+    if (phone != m_phone) m_unread.clear();
+    m_phone = phone;
     m_texts = std::move(texts);
     std::ranges::sort(m_texts, [](const Text& a, const Text& b) { return std::tie(a.atMs, a.id) < std::tie(b.atMs, b.id); });
     m_load = Load::Ready;
     std::erase_if(m_outgoing, [&](const Outgoing& out) {
       return std::ranges::any_of(m_texts, [&](const Text& t) {
-        return t.mine() && t.thread == out.thread && t.body == out.body && t.atMs >= out.atMs - kClockSkewMs;
+        return out.phone == m_phone && t.mine() && t.thread == out.thread && t.body == out.body &&
+               t.atMs >= out.atMs - kClockSkewMs;
       });
     });
     readViewed();
@@ -405,7 +408,7 @@ namespace linkapp {
 
   std::uint64_t Messages::send(std::uint64_t thread, std::string body, std::int64_t atMs) {
     if (body.empty() || this->thread(thread) == nullptr) return 0;
-    m_outgoing.push_back({.serial = ++m_serial, .thread = thread, .body = std::move(body), .atMs = atMs});
+    m_outgoing.push_back({.serial = ++m_serial, .phone = m_phone, .thread = thread, .body = std::move(body), .atMs = atMs});
     return m_serial;
   }
 
@@ -418,7 +421,7 @@ namespace linkapp {
 
   bool Messages::retry(std::uint64_t serial) {
     const auto it = std::ranges::find(m_outgoing, serial, &Outgoing::serial);
-    if (it == m_outgoing.end() || it->state != Outgoing::State::Failed) return false;
+    if (it == m_outgoing.end() || it->phone != m_phone || it->state != Outgoing::State::Failed) return false;
     it->state = Outgoing::State::Sending;
     return true;
   }
@@ -430,7 +433,7 @@ namespace linkapp {
 
   const Outgoing* Messages::outgoing(std::uint64_t serial) const {
     const auto it = std::ranges::find(m_outgoing, serial, &Outgoing::serial);
-    return it == m_outgoing.end() ? nullptr : &*it;
+    return it == m_outgoing.end() || it->phone != m_phone ? nullptr : &*it;
   }
 
   std::string Messages::nameFor(const std::string& address) const {
@@ -544,7 +547,7 @@ namespace linkapp {
       }
     }
     for (const Outgoing& out : m_outgoing) {
-      if (out.thread != thread) continue;
+      if (out.phone != m_phone || out.thread != thread) continue;
       add({.kind = out.state == Outgoing::State::Failed ? K::Failed : K::Sending, .text = out.body, .atMs = out.atMs,
            .key = ~out.serial, .serial = out.serial});
     }
@@ -559,8 +562,13 @@ namespace linkapp {
     return rows;
   }
 
-  std::optional<Photos::Ask> Photos::startLoad() {
-    if (m_load == Load::Loading) return std::nullopt;
+  std::optional<Photos::Ask> Photos::startLoad(const std::string& device) {
+    if (device != m_device) {
+      m_device = device;
+      forget();
+    } else if (m_load == Load::Loading) {
+      return std::nullopt;
+    }
     m_load = Load::Loading;
     return Ask{.serial = ++m_serial, .offset = 0, .media = m_media};
   }
@@ -574,13 +582,17 @@ namespace linkapp {
   bool Photos::setMedia(Media media) {
     if (media == m_media) return false;
     m_media = media;
+    forget();
+    return true;
+  }
+
+  void Photos::forget() {
     ++m_serial;
     m_load = Load::Idle;
     m_items.clear();
     m_listed.clear();
     m_selected.clear();
     m_total = m_next = 0;
-    return true;
   }
 
   bool Photos::loaded(std::uint64_t serial, std::uint32_t total, std::vector<Photo> page) {

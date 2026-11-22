@@ -160,7 +160,7 @@ namespace {
             }
           }
         }
-        m.setTexts(shown);
+        m.setTexts("phone", shown);
         for (const Text& t : shown) {
           for (const Thread& th : m.threads()) {
             for (const ConversationRow& row : m.conversation(th.id, now)) {
@@ -350,6 +350,31 @@ namespace {
     }
   }
 
+  // Phone A and phone B both have a thread 7: a text that failed on A must not show or be retried in B's thread 7.
+  void phoneSwitch() {
+    using K = ConversationRow::Kind;
+    Messages m;
+    m.setTexts("A", {{.id = 1, .thread = 7, .address = "+4915112340001", .body = "hi", .atMs = 1}});
+    const std::uint64_t serial = m.send(7, "for Maya", 2);
+    expect(serial != 0 && m.sendFailed(serial), "a text to A's thread 7 fails", 0, 0);
+    m.setTexts("B", {{.id = 1, .thread = 7, .address = "+4917099990000", .body = "yo", .atMs = 1}});
+    expect(!m.retry(serial), "a text that failed on phone A cannot be retried through phone B", 0, 0);
+    expect(std::ranges::none_of(m.conversation(7, 3), [](const ConversationRow& r) { return r.kind == K::Failed || r.kind == K::Sending; }),
+           "phone B's thread 7 shows no text sent on phone A", 0, 0);
+  }
+
+  // The user switches phones while phone A's first page is in flight: B gets its own load, A's late page is dropped.
+  void photosFollowThePhone() {
+    Photos p;
+    const auto a = p.startLoad("A");
+    const auto b = p.startLoad("B");
+    expect(a && b, "a new phone starts its own load while the old one's is in flight", 0, 0);
+    expect(!p.loaded(a->serial, 1, {{.path = "/a/1", .name = "a", .atS = 1}}), "phone A's late page is dropped", 0, 0);
+    expect(b && p.loaded(b->serial, 1, {{.path = "/b/1", .name = "b", .atS = 1}}) && p.items().size() == 1 &&
+               p.items()[0].path == "/b/1",
+           "phone B's page fills the grid", 0, 0);
+  }
+
   void dialing() {
     Messages m;
     m.setContacts({{.name = "Maya Okafor", .numbers = {"+49 151 1234-0001"}}, {.name = "Mum", .numbers = {}},
@@ -361,7 +386,7 @@ namespace {
     const auto mu = m.matches("mU", 5);
     expect(mu.size() == 1 && mu[0].name == "Mumbai Office", "matches: name prefix, any case, with a number", 0, 0);
     expect(m.matches("", 5).empty() && m.matches("m", 1).size() == 1, "matches: none for no query, at most limit", 0, 0);
-    m.setTexts({{.id = 1, .thread = 7, .address = "+4915112340001", .body = "x", .atMs = 1}});
+    m.setTexts("phone", {{.id = 1, .thread = 7, .address = "+4915112340001", .body = "x", .atMs = 1}});
     expect(m.threadFor("0151 1234 0001") == 7 && !m.threadFor("0170 1"), "threadFor matches the number, not its format", 0, 0);
     expect(duration(41) == "0:41" && duration(768) == "12:48" && duration(3723) == "1:02:03", "durations", 0, 0);
   }
@@ -475,7 +500,7 @@ namespace {
     for (int step = 0; step < 4000; ++step) {
       switch (rng() % 10) {
       case 0:
-        if (const auto ask = photos.startLoad()) asks.push_back(*ask);
+        if (const auto ask = photos.startLoad("phone")) asks.push_back(*ask);
         break;
       case 1:
         if (const auto ask = photos.startMore()) asks.push_back(*ask);
@@ -819,6 +844,8 @@ int main() {
   days();
   for (unsigned seed = 1; seed <= 20; ++seed) runNewPhotos(seed);
   dialing();
+  phoneSwitch();
+  photosFollowThePhone();
   for (unsigned seed = 1; seed <= 20; ++seed) runActivity(seed);
   for (unsigned seed = 1; seed <= 20; ++seed) runCommands(seed);
   if (failures == 0) std::puts("link_model: ok");
