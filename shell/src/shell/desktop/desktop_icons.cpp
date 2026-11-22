@@ -1325,6 +1325,7 @@ void DesktopIcons::build() {
     const float nameW = name->width() + 2 * kNamePad;
     const float nameX = std::round((m_cellW - nameW) * 0.5F);
     const float nameY = m_plate + kNameGap;
+    m_cells[i].drawnBottom = nameY + name->height();
     if (on) {
       area->addChild(ui::box({
           .fill = colorSpecFromRole(ColorRole::Accent, 0.24F),
@@ -1346,6 +1347,7 @@ void DesktopIcons::build() {
       count->setShadow(Color{0.0F, 0.0F, 0.0F, 0.6F}, 0.0F, 1.0F);
       count->measure(renderer);
       count->setPosition(std::round((static_cast<float>(m_cellW) - count->width()) * 0.5F), nameY + name->height());
+      m_cells[i].drawnBottom += count->height();
       area->addChild(std::move(count));
     }
     if (m_renaming == cell.info->name && !cell.stack) {
@@ -1481,7 +1483,7 @@ void DesktopIcons::syncContentRegion() {
     };
     for (const Cell& cell : m_cells) {
       if (cell.area != nullptr) {
-        add(cell.area->x(), cell.area->y(), cell.area->width(), cell.area->height());
+        add(cell.area->x(), cell.area->y(), cell.area->width(), std::max(cell.area->height(), cell.drawnBottom));
       }
     }
     if (m_banding) {

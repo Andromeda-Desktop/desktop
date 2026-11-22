@@ -96,6 +96,8 @@ private:
     float y = 0.0F;
     InputArea* area = nullptr;
     Box* plate = nullptr;
+    // Bottom of the drawn name (and stack count) in cell coordinates; it can pass the cell's input area.
+    float drawnBottom = 0.0F;
   };
   void open();
   void close();
