@@ -69,8 +69,16 @@ QuickShareService::QuickShareService(SessionBus& bus, NotificationManager& notif
         if (name != kLinkBusName) {
           return;
         }
+        // Offer and send ids belong to the old daemon: a stale Accept could name a new daemon's offer.
+        for (const auto& [notification, id] : std::exchange(m_offerNotifications, {})) {
+          m_notifications.close(notification);
+        }
+        m_offers.clear();
+        m_sends.clear();
+        m_nearby.clear();
         m_available = false;
         m_visible = false;
+        m_discovering = false;
         notify();
         if (!newOwner.empty()) {
           refresh();
