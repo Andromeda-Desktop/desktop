@@ -44,8 +44,7 @@ struct ContextMenuPopupRequest {
   // Scales row heights, fonts, and insets (select-style dropdowns derive this from their font size).
   float contentScale = 1.0F;
   std::size_t maxVisible = 0;
-  // Entry highlighted (and scrolled into view) when the menu opens; out-of-range falls back to the
-  // first interactive entry.
+  // Entry highlighted (and scrolled into view) when the menu opens; out of range = none.
   std::size_t initialHighlight = static_cast<std::size_t>(-1);
   PopupAnchorRect anchor;
   PopupParent parent;
@@ -107,7 +106,8 @@ private:
 
   void restoreParentKeyboardInteractivity();
   // Opens the children of row `index` in a nested grab popup beside the row; closes any other submenu first.
-  void openSubmenu(std::size_t index);
+  // A submenu opened from the keyboard highlights its first enabled row, so Enter can pick it.
+  void openSubmenu(std::size_t index, bool fromKeyboard = false);
   void closeSubmenu();
   void ensureHighlightedVisible();
   void requestVisualUpdate();

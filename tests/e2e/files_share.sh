@@ -49,8 +49,8 @@ read -r x y <<< "$(grep -E "geometry item note.txt( |$)" "$OUT/files.log" | tail
 run "$POINTER" 1280 720 move $((WX + x)) $((WY + y)) click 273 > /dev/null
 wait_file "$OUT/files.log" "selected 1 of " || fail "the right click did not select note.txt"
 run "$ANDROMEDA" settle > /dev/null
-# The highlight starts on Open and wraps: Up x4 = Move to Trash, Open Terminal Here, Add to Starred, Share.
-run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 tap 103 tap 103 tap 103 tap 103 tap 106 pause 300 tap 28 > /dev/null
+# The highlight starts on Open and wraps: Up x5 ends on Share, the row above Add to Starred.
+run "$POINTER" 1280 720 keyboard-only tap 119 pause 100 tap 103 tap 103 tap 103 tap 103 tap 103 tap 106 pause 300 tap 28 > /dev/null
 wait_file "$OUT/files.log" "menu share.device:e2e-phone" || fail "the Share › Pixel E2E row did not run"
 wait_file "$OUT/link.log" "^SEND e2e-phone note.txt:$SIZE\$" || fail "the Link daemon did not get note.txt ($SIZE bytes)"
 wait_file "$OUT/files.log" "share result sent" || fail "Files did not log the sent result"

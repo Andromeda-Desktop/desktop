@@ -552,7 +552,7 @@ void ContextMenuPopup::onKeyboardEvent(const KeyboardEvent& event) {
   }
   if (KeybindMatcher::matches(KeybindAction::Right, sym, modifiers) && m_menu->highlightedIndex() < m_entries.size()
       && !m_entries[m_menu->highlightedIndex()].children.empty()) {
-    openSubmenu(m_menu->highlightedIndex());
+    openSubmenu(m_menu->highlightedIndex(), true);
     return;
   }
   if (m_onNavigate && (left || KeybindMatcher::matches(KeybindAction::Right, sym, modifiers))) {
@@ -630,7 +630,7 @@ void ContextMenuPopup::restoreParentKeyboardInteractivity() {
   parent->setPopupKeyboardFocus(false);
 }
 
-void ContextMenuPopup::openSubmenu(std::size_t index) {
+void ContextMenuPopup::openSubmenu(std::size_t index, bool fromKeyboard) {
   if (m_menu == nullptr || m_surface == nullptr || index >= m_entries.size() || m_entries[index].children.empty()) {
     return;
   }
@@ -659,9 +659,13 @@ void ContextMenuPopup::openSubmenu(std::size_t index) {
     }
   });
   m_childIndex = index;
+  const auto& children = m_entries[index].children;
+  const auto first = std::ranges::find_if(children, [](const ContextMenuControlEntry& e) { return !e.separator && e.enabled; });
   m_child->open({
-      .entries = m_entries[index].children,
+      .entries = children,
       .contentScale = m_contentScale,
+      .initialHighlight = fromKeyboard && first != children.end() ? static_cast<std::size_t>(first - children.begin())
+                                                                   : static_cast<std::size_t>(-1),
       .anchor = {
           .x = static_cast<std::int32_t>(m_contentX),
           .y = static_cast<std::int32_t>(top),
