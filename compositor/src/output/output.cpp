@@ -2024,26 +2024,36 @@ namespace andromeda {
   }
 
   void Output::arrangeLayer(wlr_scene_tree* tree, const wlr_box* fullArea, wlr_box* usableArea, bool exclusive) {
-    wlr_scene_node* node = nullptr;
-    wl_list_for_each(node, &tree->children, link) {
-      SceneNode* sceneNode = sceneNodeFrom(node->data);
-      if (sceneNode == nullptr || sceneNode->kind != SceneNodeKind::LayerSurface) {
-        continue;
+    // The shell bar owns the screen edge: in the exclusive pass it claims its zone before other surfaces of its
+    // layer, whatever their stacking order (raiseStatusSurfaces moves it to the top of the tree).
+    for (const bool status : {true, false}) {
+      if (!exclusive && !status) {
+        break;
       }
-      auto* layerSurface = static_cast<LayerSurface*>(sceneNode);
-      if (layerSurface->scene() == nullptr) {
-        continue;
+      wlr_scene_node* node = nullptr;
+      wl_list_for_each(node, &tree->children, link) {
+        SceneNode* sceneNode = sceneNodeFrom(node->data);
+        if (sceneNode == nullptr || sceneNode->kind != SceneNodeKind::LayerSurface) {
+          continue;
+        }
+        auto* layerSurface = static_cast<LayerSurface*>(sceneNode);
+        if (layerSurface->scene() == nullptr) {
+          continue;
+        }
+        wlr_layer_surface_v1* surface = layerSurface->layerSurface();
+        // wlroots clears `initialized` in the unmapping commit, so an unmapped surface gets no configure.
+        if (surface == nullptr || !surface->initialized || layerSurface->awaitingAccess()) {
+          continue;
+        }
+        // Only exclusive_zone > 0 participates in the exclusive pass.
+        if ((surface->current.exclusive_zone > 0) != exclusive) {
+          continue;
+        }
+        if (exclusive && layerSurface->statusSurface() != status) {
+          continue;
+        }
+        wlr_scene_layer_surface_v1_configure(layerSurface->scene(), fullArea, usableArea);
       }
-      wlr_layer_surface_v1* surface = layerSurface->layerSurface();
-      // wlroots clears `initialized` in the unmapping commit, so an unmapped surface gets no configure.
-      if (surface == nullptr || !surface->initialized || layerSurface->awaitingAccess()) {
-        continue;
-      }
-      // Only exclusive_zone > 0 participates in the exclusive pass.
-      if ((surface->current.exclusive_zone > 0) != exclusive) {
-        continue;
-      }
-      wlr_scene_layer_surface_v1_configure(layerSurface->scene(), fullArea, usableArea);
     }
   }
 
