@@ -993,6 +993,29 @@ namespace andromeda {
     });
     // Cards rebuilt after the chrome was made land above it.
     state.chrome->raise();
+    // Windows travelling to or from the desktop, or into the desktop being switched to, pass in front of the strip,
+    // its thumbs and labels, and the windows leaving.
+    const bool opening = !openSettled();
+    const bool switching = !opening && state.rowScroll.animating();
+    if (opening || switching) {
+      const auto travels = [&](const Card& card) {
+        return opening ? growsFromDesk(state, card)
+                       : static_cast<long>(card.workspaceIndex) == std::lround(state.rowScroll.target());
+      };
+      std::vector<wlr_scene_node*> travelling;
+      wlr_scene_node* child = nullptr;
+      wl_list_for_each(child, &state.tree->children, link) {
+        for (const auto& card : state.cards) {
+          if (card->tree != nullptr && &card->tree->node == child && travels(*card) && card.get() != dragCard()) {
+            travelling.push_back(child);
+            break;
+          }
+        }
+      }
+      for (wlr_scene_node* node : travelling) {
+        wlr_scene_node_raise_to_top(node);
+      }
+    }
   }
 
   bool Overview::tickedRecently() const {
