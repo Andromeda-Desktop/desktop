@@ -106,6 +106,10 @@ namespace process::zygote {
       if (conn < 0) {
         continue;
       }
+      // One thread serves every launch: a client that connects and stays silent must not block the next one.
+      const timeval timeout{.tv_sec = 1, .tv_usec = 0};
+      setsockopt(conn, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+      setsockopt(conn, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
       ucred peer{};
       socklen_t peerSize = sizeof(peer);
       const ssize_t size = getsockopt(conn, SOL_SOCKET, SO_PEERCRED, &peer, &peerSize) == 0 && peer.uid == getuid()

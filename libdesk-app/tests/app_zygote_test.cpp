@@ -3,11 +3,14 @@
 #include "core/process/app_zygote.h"
 #include "render/text/cairo_text_renderer.h"
 
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <print>
@@ -72,6 +75,13 @@ int main() {
   }
 
   const auto self = std::filesystem::read_symlink("/proc/self/exe");
+  // A same-user client that connects and never sends must not stop the launches below.
+  const int silent = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+  sockaddr_un addr{.sun_family = AF_UNIX, .sun_path = {}};
+  const std::string socket = process::zygote::socketPath("test.zygote").string();
+  std::memcpy(addr.sun_path, socket.c_str(), socket.size());
+  expect(waitFor([&] { return connect(silent, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == 0; }),
+         "zygote socket never appeared");
   for (int i = 0; i < 3; ++i) {
     const auto result = dir / std::format("result-{}", i);
     const process::zygote::Request request{
@@ -86,6 +96,7 @@ int main() {
   expect(!process::zygote::launch("test.zygote", {.argv = {"env", "A=1", self.string()}}).has_value(),
          "zygote forked a child for another program");
 
+  close(silent);
   kill(server, SIGTERM);
   waitpid(server, nullptr, 0);
   std::filesystem::remove_all(dir);
