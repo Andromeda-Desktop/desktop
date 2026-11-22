@@ -101,6 +101,7 @@ namespace linkapp {
     void answerHotspot(bool allow, bool always = false);
     void setNotificationsWhileLocked(bool on);
     void setNearbyVisible(bool on);
+    void setLocalSendVisible(bool on);
     void unpair(const std::string& deviceId);
     void viewThread(std::optional<std::uint64_t> thread);
     // Sends `body` to `thread`'s address; it shows as sending until Texts holds it, failed on an error.

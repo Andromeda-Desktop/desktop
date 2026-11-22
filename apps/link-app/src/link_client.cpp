@@ -301,8 +301,14 @@ namespace linkapp {
           m_phoneSettings = {.notifications = granted("notifications"), .clipboard = granted("clipboard"),
                              .screen = granted("screen"),
                              .nearby = granted("nearby"), .commands = granted("commands"),
-                             .autoAccept = std::ranges::contains(property<std::vector<std::string>>(props, "AutoAccept"), phone)};
+                             .files = granted("files"), .media = granted("media"), .input = granted("input"),
+                             .system = granted("system"), .ring = granted("ring"), .calls = granted("calls"),
+                             .autoAccept = std::ranges::contains(property<std::vector<std::string>>(props, "AutoAccept"), phone),
+                             .notificationsOff = std::ranges::contains(property<std::vector<std::string>>(props, "NotificationsOff"), phone),
+                             .inputBlocked = granted("input") && !std::ranges::contains(
+                                 property<std::vector<std::string>>(props, "SessionCapabilities"), std::string("input"))};
           m_desktopSettings.notificationsWhileLocked = property<bool>(props, "NotificationsWhileLocked");
+          m_desktopSettings.localSendVisible = property<bool>(props, "LocalSendVisible");
           m_desktopSettings.commands.clear();
           for (const auto& [name, line] : property<std::vector<sdbus::Struct<std::string, std::string>>>(props, "Commands"))
             m_desktopSettings.commands.push_back({.name = name, .line = line});
@@ -371,6 +377,13 @@ namespace linkapp {
     m_proxy->callMethodAsync("SetNotificationsWhileLocked").onInterface(kInterface).withArguments(on)
         .uponReplyInvoke([](std::optional<sdbus::Error> error) {
           if (error) kLog.warn("SetNotificationsWhileLocked: {}", error->getMessage());
+        });
+  }
+
+  void LinkClient::setLocalSendVisible(bool on) {
+    m_proxy->callMethodAsync("SetLocalSendVisible").onInterface(kInterface).withArguments(on)
+        .uponReplyInvoke([](std::optional<sdbus::Error> error) {
+          if (error) kLog.warn("SetLocalSendVisible: {}", error->getMessage());
         });
   }
 

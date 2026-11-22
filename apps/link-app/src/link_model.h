@@ -129,7 +129,15 @@ namespace linkapp {
     bool screen = false;        // grant "screen"
     bool nearby = false;        // grant "nearby": join the phone's hotspot without asking
     bool commands = false;      // grant "commands": its buttons run Link1 Commands here
+    bool files = false;
+    bool media = false;
+    bool input = false;
+    bool system = false;
+    bool ring = false;
+    bool calls = false;
     bool autoAccept = false;
+    bool notificationsOff = false; // Link1 NotificationsOff: the phone's notification access is off
+    bool inputBlocked = false;     // grant "input" held, but SessionCapabilities lacks "input"
   };
   // Link1 HotspotRequested: the phone asks to join its hotspot; the daemon declines after 30 s without an answer.
   struct HotspotAsk {
@@ -146,6 +154,7 @@ namespace linkapp {
   struct DesktopSettings {
     bool notificationsWhileLocked = false;
     bool nearbyVisible = false; // Quick Share Visible
+    bool localSendVisible = false;
     std::string nearbyName;
     std::vector<Command> commands;
   };

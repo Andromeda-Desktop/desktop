@@ -2210,18 +2210,41 @@ namespace linkapp {
     auto page = ui::column({.align = FlexAlign::Stretch, .fillWidth = true});
     page->setPadding(0.0F, 0.0F, Tokens::spaceP24 * s, 0.0F);
     page->addChild(header(presence.phone.name));
+    const auto grant = [&](Flex& card, const char* glyph, const char* title, const char* hint, bool held,
+                           const char* feature) {
+      row(card, glyph, title, hint,
+          toggle(held, [this, id, feature](bool on) { m_client->setGrant(id, feature, on); }));
+    };
     auto phoneCard = group();
-    row(*phoneCard, "bell", "Show phone notifications", "Banners and the Waiting page",
-        toggle(phone.notifications, [this, id](bool on) { m_client->setGrant(id, "notifications", on); }));
-    row(*phoneCard, "clipboard", "Share clipboard", "Both ways, text and images",
-        toggle(phone.clipboard, [this, id](bool on) { m_client->setGrant(id, "clipboard", on); }));
+    if (phone.notificationsOff) {
+      row(*phoneCard, "alert-triangle", "Notification access is off on the phone",
+          "Turn it on in the phone's settings to see its notifications here", nullptr);
+    }
+    grant(*phoneCard, "bell", "Show phone notifications", "Banners and the Waiting page", phone.notifications,
+          "notifications");
+    grant(*phoneCard, "phone", "Show calls", "Incoming calls and the call log", phone.calls, "calls");
+    grant(*phoneCard, "clipboard", "Share clipboard", "Both ways, text and images", phone.clipboard, "clipboard");
+    grant(*phoneCard, "file", "Share files", "Both ways", phone.files, "files");
     row(*phoneCard, "arrow-down", "Save offered files without asking", "To Downloads",
         toggle(phone.autoAccept, [this, id](bool on) { m_client->setAutoAccept(id, on); }));
-    row(*phoneCard, "device-mobile", "Allow screen mirroring", "",
-        toggle(phone.screen, [this, id](bool on) { m_client->setGrant(id, "screen", on); }));
-    row(*phoneCard, "access-point", "Join phone hotspot", "For files and mirroring when Wi-Fi Direct fails",
-        toggle(phone.nearby, [this, id](bool on) { m_client->setGrant(id, "nearby", on); }));
+    grant(*phoneCard, "device-mobile", "Allow screen mirroring", "", phone.screen, "screen");
+    grant(*phoneCard, "access-point", "Join phone hotspot", "For files and mirroring when Wi-Fi Direct fails",
+          phone.nearby, "nearby");
     page->addChild(std::move(phoneCard));
+
+    page->addChild(header("Control from the phone"));
+    auto controlCard = group();
+    if (phone.inputBlocked) {
+      row(*controlCard, "alert-triangle", "Touchpad and keyboard do not work in this session",
+          "The desktop session cannot take input from the phone", nullptr);
+    }
+    grant(*controlCard, "player-play", "Media", "The phone's player here, and play and pause on this computer",
+          phone.media, "media");
+    grant(*controlCard, "keyboard", "Touchpad and keyboard", "", phone.input, "input");
+    grant(*controlCard, "adjustments", "System", "Volume, brightness, lock and sleep, both ways", phone.system,
+          "system");
+    grant(*controlCard, "bell-ringing", "Ring this computer", "To find it", phone.ring, "ring");
+    page->addChild(std::move(controlCard));
 
     page->addChild(header("This computer"));
     auto deskCard = group();
@@ -2230,6 +2253,8 @@ namespace linkapp {
     row(*deskCard, "device-laptop", "Visible to nearby phones",
         desk.nearbyName.empty() ? std::string("Quick Share") : std::format("As “{}”", desk.nearbyName),
         toggle(desk.nearbyVisible, [this](bool on) { m_client->setNearbyVisible(on); }));
+    row(*deskCard, "share", "Visible to LocalSend", "Receive files from LocalSend apps on this network",
+        toggle(desk.localSendVisible, [this](bool on) { m_client->setLocalSendVisible(on); }));
     const std::size_t commandCount = desk.commands.size();
     row(*deskCard, "terminal-2", "Commands the phone can run",
         commandCount == 1 ? std::string("1 command") : std::format("{} commands", commandCount),
