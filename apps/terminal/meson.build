@@ -8,11 +8,7 @@ project('andromeda-terminal', ['c', 'cpp'],
   ],
 )
 
-# The release version comes from the unit's tags (tools/unit-version.sh), never from this file.
-_unit_version = run_command(meson.project_source_root() / '..' / '..' / 'tools' / 'unit-version.sh', 'terminal', check: true).stdout().strip()
-
-# Terminal (.agent/TASK-terminal.md): libghostty-vt core; the system package first, else the pinned build
-# from tools/build-libghostty.sh, linked statically so the binary needs no private library path.
+# Terminal (.agent/TASK-terminal.md): the app around libdesk-term (PTY, libghostty-vt, TerminalView).
 _warnings = ['-Wall', '-Wextra', '-Wno-missing-field-initializers', '-Wpedantic', '-Wconversion', '-Wshadow']
 
 cpp = meson.get_compiler('cpp')
@@ -23,33 +19,17 @@ endif
 
 is_macos = get_option('platform') == 'macos'
 _platform_opt = ['platform=' + get_option('platform')]
-# macOS: the aarch64 build from `tools/build-libghostty.sh macos`.
-_ghostty = dependency('libghostty-vt', version: '>=1.0.1', required: false)
-if is_macos
-  _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix-macos'
-  _ghostty = declare_dependency(
-    include_directories: include_directories('subprojects/libghostty-vt/prefix-macos/include'),
-    # The dylib, not the archive: both libghostty-vt.a and libdesk-ui define wuffs, and ld64 keeps both copies.
-    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib', static: false),
-  )
-elif not _ghostty.found()
-  _prefix = meson.current_source_dir() / 'subprojects' / 'libghostty-vt' / 'prefix'
-  _ghostty = declare_dependency(
-    include_directories: include_directories('subprojects/libghostty-vt/prefix/include'),
-    dependencies: meson.get_compiler('cpp').find_library('ghostty-vt', dirs: _prefix / 'lib', static: true),
-    compile_args: '-DGHOSTTY_STATIC',
-  )
-endif
-
 _desk_ui_dep = subproject('libdesk-ui', default_options: _platform_opt).get_variable('desk_ui_dep')
+# PTY session, VT engine and the TerminalView grid; the Files pane hosts the same view.
+_desk_term_dep = subproject('libdesk-term', default_options: _platform_opt).get_variable('desk_term_dep')
 # The .app bundle has no socket activation or libexec: ptyd and agentd sit beside the executable.
 _helpers_arg = is_macos ? ['-DANDROMEDA_HELPERS_BESIDE_EXE'] : []
-_core = static_library('terminal_core', 'src/pty_session.cpp', 'src/osc66.cpp', 'src/osc1337.cpp', 'src/sixel.cpp', 'src/osc99.cpp', 'src/osc_frame.cpp', 'src/holder_client.cpp', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/link_finder.cpp', 'src/session_list.cpp', 'src/session_layout.cpp',
-  'src/shell_integration.cpp', 'src/command_index.cpp', 'src/terminal_find.cpp', 'src/palette_model.cpp',
-  dependencies: [_ghostty, dependency('threads'), _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
-  cpp_args: _warnings + _helpers_arg + ['-DANDROMEDA_TERMINAL_VERSION="' + _unit_version + '"', '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
+_core = static_library('terminal_core', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/session_layout.cpp',
+  'src/shell_integration.cpp', 'src/palette_model.cpp',
+  dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
+  cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
 _core_dep = declare_dependency(link_with: _core,
-  include_directories: include_directories('src'), dependencies: [_ghostty, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
+  include_directories: include_directories('src'), dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
 
 # ptyd and agentd cross-build for macOS in step 8.
 if not is_macos
@@ -95,13 +75,9 @@ _agent_dep = declare_dependency(link_with: _agent, include_directories: include_
 test('agent_session', executable('agent_session_test', 'tests/agent_session_test.cpp',
   dependencies: _agent_dep, cpp_args: _warnings))
 
-# Preferences file model: TOML parse and write, no IO.
-_settings = static_library('terminal_settings', 'src/settings.cpp', 'src/keybindings.cpp',
-  dependencies: [dependency('tomlplusplus').partial_dependency(includes: true), dependency('xkbcommon')], cpp_args: _warnings)
-_settings_dep = declare_dependency(link_with: _settings, include_directories: include_directories('src'),
-  dependencies: dependency('xkbcommon'))
+# Preferences file model (libdesk-term): TOML parse and write, no IO.
 test('settings', executable('settings_test', 'tests/settings_test.cpp',
-  dependencies: _settings_dep, cpp_args: _warnings))
+  dependencies: _desk_term_dep, cpp_args: _warnings))
 
 test('osc66', executable('osc66_test', 'tests/osc66_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
@@ -142,8 +118,8 @@ test('split_trees', executable('split_trees_test', 'tests/split_trees_test.cpp',
   dependencies: [_core_dep, _desk_app_dep], cpp_args: _warnings))
 test('theme_palette', executable('theme_palette_test', 'tests/theme_palette_test.cpp',
   dependencies: _desk_app_dep, cpp_args: _warnings))
-test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp', 'src/theme_store.cpp',
-  dependencies: [_settings_dep, _desk_app_dep], cpp_args: _warnings))
+test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp',
+  dependencies: [_desk_term_dep, _desk_app_dep], cpp_args: _warnings))
 
 # Session services per platform: D-Bus on Linux; Cocoa frameworks on macOS (.agent/TASK-terminal-macos.md step 7).
 if is_macos
@@ -156,24 +132,19 @@ else
 endif
 
 _terminfo_dir = get_option('prefix') / get_option('datadir') / 'terminfo'
-_app_src = files('src/key_map.cpp',
-  'src/kitty_images.cpp',
-  'src/context_row.cpp',
-  'src/app_main.cpp',
+_app_src = files('src/app_main.cpp',
   'src/terminal_app.cpp',
-  'src/terminal_view.cpp',
   'src/terminal_window.cpp', 'src/command_palette.cpp',
   'src/settings_store.cpp',
-  'src/theme_store.cpp',
   'src/theme_cli.cpp', 'src/terminal_control.cpp', 'src/control_cli.cpp',
   'src/prefs_window.cpp',
   'src/agent_host.cpp', 'src/agent_kind.cpp',
   'src/agent_view.cpp',
 ) + _platform_src
-_app_args = _warnings + _agentd_path + _helpers_arg + ['-DANDROMEDA_TERMINFO_DIR="' + _terminfo_dir + '"']
+_app_args = _warnings + _agentd_path + _helpers_arg
 if is_macos
 executable('andromeda-terminal', _app_src, 'src/main.cpp',
-  dependencies: [_core_dep, _agent_dep, _settings_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
+  dependencies: [_core_dep, _agent_dep, _desk_app_dep, dependency('fontconfig')] + _platform_deps,
   cpp_args: _app_args,
   objcpp_args: ['-fobjc-arc'],
   link_args: ['-Wl,-rpath,@executable_path/../Frameworks'],
@@ -186,7 +157,7 @@ _desk_shared_dep = _desk_app_sp.get_variable('desk_app_shared_dep')
 _app_dir = get_option('prefix') / get_option('libdir') / 'andromeda'
 _terminal_app = shared_library('andromeda-terminal', _app_src,
   link_with: _core,
-  dependencies: [_ghostty, _agent_dep, _settings_dep, _desk_shared_dep, dependency('fontconfig')],
+  dependencies: [_desk_term_dep, _agent_dep, _desk_shared_dep, dependency('fontconfig')],
   include_directories: include_directories('src'),
   cpp_args: _app_args,
   install: true,

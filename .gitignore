@@ -4,4 +4,4 @@ artifacts/
 !CLA.md
 __pycache__/
 .wraplock
-apps/terminal/subprojects/libghostty-vt/
+libdesk-term/libghostty-vt/

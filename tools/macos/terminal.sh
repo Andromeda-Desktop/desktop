@@ -9,7 +9,7 @@ cross=$HOME/.cache/andromeda-mac/cross.ini
 [ -f "$cross" ] || tools/macos/deps.py
 deps=$HOME/.cache/andromeda-mac/deps
 sdk=$(sed -n "s/^cpp = .*'-isysroot', '\([^']*\)'.*/\1/p" "$cross")
-ghostty_lib=$root/apps/terminal/subprojects/libghostty-vt/prefix-macos/lib
+ghostty_lib=$root/libdesk-term/libghostty-vt/prefix-macos/lib
 
 tools/build-libghostty.sh macos
 [ -d apps/terminal/build-macos ] || meson setup apps/terminal/build-macos apps/terminal --cross-file "$cross" -Dplatform=macos --buildtype=release

@@ -16,6 +16,7 @@ on:
       - apps/terminal/**
       - libdesk-ui/**
       - libdesk-app/**
+      - libdesk-term/**
       - tools/macos/**
       - tools/build-libghostty.sh
       - .github/workflows/check-macos.yml

@@ -1,0 +1,2 @@
+option('platform', type: 'combo', choices: ['wayland', 'macos'], value: 'wayland',
+  description: 'Window system backend, passed to libdesk-ui; macos starts the bundled ptyd beside the executable')

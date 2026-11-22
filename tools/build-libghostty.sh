@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the pinned libghostty-vt into apps/terminal/subprojects/libghostty-vt/prefix. It needs zig 0.17: without it
+# Build the pinned libghostty-vt into libdesk-term/libghostty-vt/prefix. It needs zig 0.17: without it
 # on PATH (Ubuntu ships none), the pinned zig tarball is fetched. `macos` cross-builds aarch64-macos into prefix-macos.
 set -euo pipefail
 VER=1.0.1
@@ -11,7 +11,7 @@ DEPS_SHA=91a4e10960a52bf5bf4b15aa2a2cddaff8a89d6cd903d3055bda4fd17de3356d
 ZIG_VER=0.17.1
 ZIG_SHA=3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUT=$ROOT/apps/terminal/subprojects/libghostty-vt
+OUT=$ROOT/libdesk-term/libghostty-vt
 PREFIX=$OUT/prefix
 STAMP=$OUT/.version
 TARGET=()
