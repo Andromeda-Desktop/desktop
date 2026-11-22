@@ -61,6 +61,7 @@ public:
   struct Effects {
     std::function<void(std::string title)> title;                 // OSC 0 / 2
     std::function<void(std::string text, bool primary)> clipboard; // OSC 52 write, text/plain only
+    std::function<std::optional<std::string>(bool primary)> clipboardRead; // OSC 52 read; nullopt denies it
     std::function<void(Notice notice)> notify;       // OSC 9 / 777 / 99
     std::function<void(std::string key)> closeNotice; // OSC 99 p=close
   };
@@ -139,6 +140,7 @@ private:
   static bool onDeviceAttributes(GhosttyTerminal, void* self, GhosttyDeviceAttributes* out);
   static void onTitleChanged(GhosttyTerminal, void* self);
   static void onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClipboardWrite* write);
+  static void onClipboardRead(GhosttyTerminal, void* self, const GhosttyClipboardRead* read);
   static void onNotification(GhosttyTerminal, void* self, const GhosttyTerminalDesktopNotification* note);
   bool replaying() const { return m_parsed < m_replayEnd; }
   void resizeTerminal(std::uint16_t cols, std::uint16_t rows, std::uint16_t cw, std::uint16_t ch);

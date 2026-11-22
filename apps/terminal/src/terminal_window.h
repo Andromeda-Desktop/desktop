@@ -213,6 +213,7 @@ namespace term {
     void renameInSheet(std::uint64_t id, const std::string& name);
     void duplicateSession(std::uint64_t id);
     // Closes `ids`; asks once first when a command runs in any of them.
+    void askClipboardRead(std::function<void(bool)> decide);
     void askClose(std::vector<std::uint64_t> ids, bool window = false); // window: ids are all the window's sessions
     // A command runs: OSC 133 says so, or a shell without its marks has a job in the foreground.
     [[nodiscard]] bool runsCommand(const SessionInfo& session) const;

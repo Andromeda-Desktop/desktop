@@ -20,6 +20,7 @@
 #include "ui/tooltip_content.h"
 
 #include <array>
+#include <mutex>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -104,6 +105,8 @@ namespace term {
       std::function<void(const std::string& key)> closeNotice; // OSC 99 p=close for a Notice::key
       // A paste with a newline into a program without bracketed paste: run paste after the user agrees.
       std::function<void(const std::string& text, std::function<void()> paste)> confirmPaste;
+      // A program asks to read the clipboard (OSC 52) for the first time in this session: decide(true) allows it.
+      std::function<void(std::function<void(bool allow)> decide)> confirmClipboardRead;
       // The program set its title (OSC 0 / 2).
       std::function<void(std::string title)> titleChanged;
       // OSC 133: a command started running / ended (exit code when the shell reports one).
@@ -323,6 +326,17 @@ namespace term {
     Host m_host;
     void commitAtlas();
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
+    // OSC 52 read permission for this session, shared with the IO thread. The IO thread cannot read the clipboard: it
+    // answers from the cache, which the UI thread fills on Allow, on window activation and after each read.
+    struct ClipboardGrant {
+      enum class State : std::uint8_t { Undecided, Asking, Allowed, Denied };
+      std::mutex mutex;
+      State state = State::Undecided;
+      std::string clipboard;
+      std::string primary;
+    };
+    std::shared_ptr<ClipboardGrant> m_clipboardGrant = std::make_shared<ClipboardGrant>();
+    void refreshClipboardCache();
     PtySession m_session;
     GhosttyRenderState m_state = nullptr;
     GhosttyRenderStateRowIterator m_rows = nullptr;

@@ -155,6 +155,7 @@ void PtySession::configureTerminal() {
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_TITLE_CHANGED, reinterpret_cast<const void*>(&onTitleChanged));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_WRITE,
                        reinterpret_cast<const void*>(&onClipboardWrite));
+  ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_CLIPBOARD_READ, reinterpret_cast<const void*>(&onClipboardRead));
   ghostty_terminal_set(m_terminal, GHOSTTY_TERMINAL_OPT_DESKTOP_NOTIFICATION,
                        reinterpret_cast<const void*>(&onNotification));
 }
@@ -598,6 +599,25 @@ void PtySession::onTitleChanged(GhosttyTerminal terminal, void* self) {
   GhosttyString title{};
   if (!s->m_effects.title || ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_TITLE, &title) != GHOSTTY_SUCCESS) return;
   s->m_effects.title(std::string(reinterpret_cast<const char*>(title.ptr), title.len));
+}
+
+void PtySession::onClipboardRead(GhosttyTerminal, void* self, const GhosttyClipboardRead* read) {
+  auto* s = static_cast<PtySession*>(self);
+  const std::optional<std::string> text = s->m_effects.clipboardRead && !s->replaying()
+                                              ? s->m_effects.clipboardRead(read->location != GHOSTTY_CLIPBOARD_LOCATION_STANDARD)
+                                              : std::nullopt;
+  static constexpr std::string_view kMime = "text/plain";
+  GhosttyClipboardContent content{};
+  GhosttyClipboardReadReply reply = GHOSTTY_INIT_SIZED(GhosttyClipboardReadReply);
+  reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_DENIED;
+  if (text) {
+    content.mime = {.ptr = reinterpret_cast<const std::uint8_t*>(kMime.data()), .len = kMime.size()};
+    content.data = {.ptr = reinterpret_cast<const std::uint8_t*>(text->data()), .len = text->size()};
+    reply.result = GHOSTTY_CLIPBOARD_READ_RESULT_SUCCESS;
+    reply.contents = &content;
+    reply.contents_len = 1;
+  }
+  read->reply(read, &reply);
 }
 
 void PtySession::onClipboardWrite(GhosttyTerminal, void* self, const GhosttyClipboardWrite* write) {

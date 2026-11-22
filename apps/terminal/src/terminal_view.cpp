@@ -198,6 +198,37 @@ namespace term {
                 }
               });
             },
+            .clipboardRead = [this, alive = std::weak_ptr<bool>(m_alive),
+                              grant = m_clipboardGrant](bool primary) -> std::optional<std::string> {
+              using State = ClipboardGrant::State;
+              const std::scoped_lock lock(grant->mutex);
+              if (grant->state == State::Allowed) {
+                DeferredCall::callLater([this, alive] {
+                  if (!alive.expired()) {
+                    refreshClipboardCache();
+                  }
+                });
+                return primary ? grant->primary : grant->clipboard;
+              }
+              if (grant->state == State::Undecided) {
+                grant->state = State::Asking;
+                DeferredCall::callLater([this, alive, grant] {
+                  if (alive.expired() || !m_host.confirmClipboardRead) {
+                    return;
+                  }
+                  m_host.confirmClipboardRead([this, alive, grant](bool allow) {
+                    {
+                      const std::scoped_lock decided(grant->mutex);
+                      grant->state = allow ? State::Allowed : State::Denied;
+                    }
+                    if (allow && !alive.expired()) {
+                      refreshClipboardCache();
+                    }
+                  });
+                });
+              }
+              return std::nullopt;
+            },
             .notify = [this, alive = std::weak_ptr<bool>(m_alive)](Notice notice) {
               DeferredCall::callLater([this, alive, notice = std::move(notice)] {
                 if (!alive.expired()) {
@@ -1156,7 +1187,20 @@ namespace term {
     return true;
   }
 
+  void TerminalView::refreshClipboardCache() {
+    TextClipboard* clipboard = Input::textClipboard();
+    const std::scoped_lock lock(m_clipboardGrant->mutex);
+    if (clipboard == nullptr || m_clipboardGrant->state != ClipboardGrant::State::Allowed) {
+      return;
+    }
+    m_clipboardGrant->clipboard = clipboard->clipboardText().value_or("");
+    m_clipboardGrant->primary = clipboard->primaryText().value_or("");
+  }
+
   void TerminalView::setWindowActive(bool active) {
+    if (active && !m_windowActive) {
+      refreshClipboardCache();
+    }
     m_windowActive = active;
     updateFocus();
   }

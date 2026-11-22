@@ -516,6 +516,7 @@ namespace term {
         .focus = [this](const std::string& token) { m_window.activate(token); },
         .closeNotice = [this, id](const std::string& key) { m_notifier.close(std::format("{}/{}", id, key)); },
         .confirmPaste = [this](const std::string& text, std::function<void()> paste) { askPaste(text, std::move(paste)); },
+        .confirmClipboardRead = [this](std::function<void(bool)> decide) { askClipboardRead(std::move(decide)); },
         .titleChanged = [this, id](std::string title) { apply(session_event::Title{id, std::move(title)}); },
         .commandStarted =
             [this, id](const std::string& command) {
@@ -1410,6 +1411,45 @@ namespace term {
           m_window.dismissSheet();
           focusGrid();
         });
+  }
+
+  void TerminalWindow::askClipboardRead(std::function<void(bool)> decide) {
+    // Dismissing the sheet denies: the session asks only once.
+    auto answer = std::make_shared<std::function<void(bool)>>(std::move(decide));
+    const auto choose = [this, answer](bool allow) {
+      m_window.dismissSheet();
+      if (*answer) {
+        std::exchange(*answer, nullptr)(allow);
+      }
+    };
+    m_window.presentSheet(
+        [this, choose](float s) {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
+                                 .width = Tokens::componentTerminalFindWidth * s});
+          box->addChild(ui::label({.text = std::string("Allow clipboard access?"),
+                                   .fontSize = Tokens::typeTitle3.size * s,
+                                   .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1)}));
+          box->addChild(ui::label({.text = std::string("A program in this session wants to read the clipboard. Your choice "
+                                                       "lasts until the session closes."),
+                                   .fontSize = Tokens::typeBody.size * s,
+                                   .color = colorSpecFromRole(ColorRole::Label2),
+                                   .maxWidth = (Tokens::componentTerminalFindWidth - Tokens::spaceP20 * 2.0F) * s,
+                                   .maxLines = 3}));
+          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
+          buttons->addChild(ui::button({.text = std::string("Deny"),
+                                        .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Default,
+                                        .onClick = [choose] { choose(false); },
+                                        .configure = [this](Button& b) { m_window.input().setFocus(b.inputArea()); }}));
+          buttons->addChild(ui::button({.text = std::string("Allow"),
+                                        .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Primary,
+                                        .onClick = [choose] { choose(true); }}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [choose] { choose(false); });
   }
 
   void TerminalWindow::askClose(std::vector<std::uint64_t> ids, bool window) {
