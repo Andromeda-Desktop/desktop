@@ -50,6 +50,13 @@
 #include <wayland-client.h>
 
 namespace {
+
+  // Zeroes the whole buffer, also the bytes past size() that backspace leaves.
+  void wipeSecret(std::string& secret) {
+    secret.resize(secret.capacity());
+    explicit_bzero(secret.data(), secret.size());
+    secret.clear();
+  }
   // pam_gaze's marker texts for hosts on gazed's PamInternal list; an unknown marker maps to no text.
   std::string gazeMarkerText(std::string_view marker) {
     if (marker == "GAZE_MSG_LOOK_CAMERA" || marker == "GAZE_MSG_LOOK_OR_PASSWORD") {
@@ -723,7 +730,7 @@ void GreeterSurface::applyInitialUserSelection() {
         m_selectedUser = i;
         setUsername(m_users[i]);
         m_passwordVisible = true;
-        m_password.clear();
+        wipeSecret(m_password);
         if (m_passwordField != nullptr) {
           m_passwordField->setValue("");
         }
@@ -739,7 +746,7 @@ void GreeterSurface::applyInitialUserSelection() {
     m_selectedUser = m_users.size() - 1;
     setUsername(*initialUser);
     m_passwordVisible = true;
-    m_password.clear();
+    wipeSecret(m_password);
     if (m_passwordField != nullptr) {
       m_passwordField->setValue("");
     }
@@ -751,7 +758,7 @@ void GreeterSurface::applyInitialUserSelection() {
     m_selectedUser = 0;
     setUsername(m_users.front());
     m_passwordVisible = true;
-    m_password.clear();
+    wipeSecret(m_password);
     if (m_passwordField != nullptr) {
       m_passwordField->setValue("");
     }
@@ -1187,7 +1194,7 @@ void GreeterSurface::enterPasswordStep(std::size_t userIndex) {
   m_userMenuSearchQuery.clear();
   m_passwordVisible = true;
   m_passwordField->setValue("");
-  m_password.clear();
+  wipeSecret(m_password);
   if (m_passwordField->inputArea() != nullptr) {
     m_inputDispatcher.setFocus(m_passwordField->inputArea());
   }
@@ -1662,7 +1669,7 @@ void GreeterSurface::handleGreetdResponse(const GreetdResponse& response) {
   if (m_reopenAfterCancel && response.type != GreetdResponseType::Success) {
     m_earlySession = false;
     m_hasPendingResponse = false;
-    m_pendingResponse.clear();
+    wipeSecret(m_pendingResponse);
     m_secretPromptWaiting = false;
     (void)resetAuthSession();
     return;
@@ -1734,10 +1741,11 @@ void GreeterSurface::handleAuthMessage(const GreetdAuthMessage& message) {
     return;
   }
   if (m_hasPendingResponse) {
-    const std::string response = m_pendingResponse;
+    std::string response = m_pendingResponse;
     m_hasPendingResponse = false;
-    m_pendingResponse.clear();
+    wipeSecret(m_pendingResponse);
     postAuthResponse(response);
+    wipeSecret(response);
     return;
   }
 
@@ -1797,7 +1805,7 @@ void GreeterSurface::setGreetdUnavailable(const std::string_view reason) {
   m_reopenAfterCancel = false;
   m_secretPromptWaiting = false;
   m_hasPendingResponse = false;
-  m_pendingResponse.clear();
+  wipeSecret(m_pendingResponse);
   m_pendingReplies.clear();
   clearPasswordInput();
   syncAuthInteractivity();
@@ -1896,7 +1904,7 @@ bool GreeterSurface::resetAuthSession() {
 }
 
 void GreeterSurface::clearPasswordInput() {
-  m_password.clear();
+  wipeSecret(m_password);
   if (m_passwordField != nullptr) {
     m_passwordField->setValue("");
   }
@@ -1911,7 +1919,7 @@ void GreeterSurface::onAuthError(const GreetdError& error) {
   m_authenticating = false;
   m_secretPromptWaiting = false;
   m_hasPendingResponse = false;
-  m_pendingResponse.clear();
+  wipeSecret(m_pendingResponse);
   m_pendingReplies.clear();
   clearPasswordInput();
   updateStatus(error.description, true);
@@ -2486,7 +2494,7 @@ void GreeterSurface::runBackAction() {
   }
   m_passwordVisible = false;
   m_passwordField->setValue("");
-  m_password.clear();
+  wipeSecret(m_password);
   updateStatus("", false);
   if (m_userSelectArea != nullptr) {
     m_inputDispatcher.setFocus(m_userSelectArea);
