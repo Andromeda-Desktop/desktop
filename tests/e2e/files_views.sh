@@ -199,7 +199,7 @@ wait_log "$m" "terminal .*/andromeda-terminal in $SRC/Alpha\$" || fail "Shift+F4
 for _ in $(seq 40); do [[ -s $OUT/terminal-cwd ]] && break; sleep 0.05; done
 [[ $(cat "$OUT/terminal-cwd" 2> /dev/null) == "$SRC/Alpha" ]] || fail "the terminal did not start in Alpha"
 
-# FB4 context menu (mockup §4): a right click on Beta selects it and opens the menu; Down, Enter runs Get Info.
+# FB4 context menu (mockup §4): a right click on Beta selects it and opens the menu with no highlight; Down, Down, Enter runs Get Info (the row after Open).
 m=$(mark); keys mod control tap 2 mod none       # Ctrl+1: icons
 wait_log "$m" "view icons" || fail "Ctrl+1 did not switch to icons"
 run "$ANDROMEDA" settle > /dev/null
@@ -207,8 +207,8 @@ m=$(mark); run "$POINTER" 1280 720 move $(at "item Beta") click 273 > /dev/null
 wait_log "$m" "selected 1 of " || fail "the right click did not select Beta"
 run "$ANDROMEDA" settle > /dev/null
 shot 3e-menu
-m=$(mark); keys tap 108 tap 28                   # Down, Enter
-wait_log "$m" "menu file.info" || fail "Down + Enter in the menu did not run Get Info"
+m=$(mark); keys tap 108 tap 108 tap 28          # Down, Down, Enter
+wait_log "$m" "menu file.info" || fail "Down, Down, Enter in the menu did not run Get Info"
 run "$ANDROMEDA" settle > /dev/null
 shot 3f-info
 keys tap 1                                       # Esc closes Get Info
@@ -233,6 +233,6 @@ wait_log "$m" "geometry view " || fail "no geometry for the view after going to 
 m=$(mark); run "$POINTER" 1280 720 move $(at view) click 273 > /dev/null
 run "$ANDROMEDA" settle > /dev/null
 shot 5-background-menu
-m=$(mark); keys tap 108 tap 108 tap 28           # Down past New Document ›, Down, Enter
-wait_log "$m" "menu edit.paste" || fail "Down + Enter in the background menu did not run Paste"
+m=$(mark); keys tap 108 tap 108 tap 108 tap 28   # no highlight: Down to New Folder, New Document ›, Paste; Enter
+wait_log "$m" "menu edit.paste" || fail "Down x3 + Enter in the background menu did not run Paste"
 echo "pass files_views"

@@ -52,7 +52,7 @@ seen() { [[ $(grep -c -- "$1" "$OUT/files.log") -ge $2 ]]; } # the log holds $1 
 wait_for() { # description, test command...
   local what=$1; shift
   for _ in $(seq 100); do "$@" && return 0; sleep 0.05; done
-  fail "$what"
+  action terminal.dump || true; fail "$what"
 }
 logged() { grep -q -- "$1" "$OUT/files.log"; }
 type_text() { action terminal.type "[<'$1'>]"; }
@@ -68,6 +68,10 @@ run "$ANDROMEDA" settle > /dev/null
 sleep 0.3
 run grim "$OUT/terminal.png"
 echo "PASS F4 shows the shell"
+
+type_text 'echo dump-$((6*7))\r'
+wait_for "the pane screen does not show the echo output" screen_has dump-42
+echo "PASS the pane screen text holds shell output"
 
 type_text 'cd sub\r'
 wait_for "the view did not follow cd sub" logged "location $WORK/sub"
