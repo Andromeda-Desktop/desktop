@@ -607,10 +607,10 @@ namespace xdpu {
               }
               if (child.commandNotFound()) {
                 std::fprintf(
-                    stderr, "screenshot: chooser command not found (%s); falling back to first output\n",
+                    stderr, "screenshot: chooser command not found (%s); cancelling\n",
                     self->portal.config.screencast.chooserCmd.c_str()
                 );
-                self->captureFirstOutput();
+                self->finish(1, {});
                 return;
               }
               if (!child.success()) {

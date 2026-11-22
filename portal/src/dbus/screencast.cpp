@@ -589,11 +589,12 @@ namespace xdpu {
                 return;
               }
               if (child.commandNotFound()) {
+                // No chooser means no consent: never share a screen the user did not pick.
                 std::fprintf(
-                    stderr, "screencast: chooser command not found (%s); falling back to first output\n",
+                    stderr, "screencast: chooser command not found (%s); cancelling\n",
                     self->portal.config.screencast.chooserCmd.c_str()
                 );
-                self->fallbackFirstOutput();
+                self->finish(1, {});
                 return;
               }
               if (!child.success()) {
@@ -617,15 +618,6 @@ namespace xdpu {
               self->startCaptures(std::move(selections));
             }
         );
-      }
-
-      void fallbackFirstOutput() {
-        const auto& outputs = portal.wayland.outputs();
-        if (outputs.empty()) {
-          finish(2, {});
-          return;
-        }
-        startCaptures({selectionForOutput(outputs.front())});
       }
 
       void startCaptures(std::vector<Session::Selection> selections) {
