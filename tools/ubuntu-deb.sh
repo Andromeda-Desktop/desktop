@@ -62,6 +62,8 @@ DOCKER
 # Packages from our apt repo that the distro lacks (tools/deb-xwayland-satellite.sh).
 mkdir -p "$OUT/extra"
 cp "$(dirname "$OUT")/xwayland-satellite-$VERSION"/*.deb "$OUT/extra/" 2> /dev/null || true
+# Link's latest debs (release-apps puts them beside OUT for link-app, which needs that andromeda-link).
+[[ ${ANDROMEDA_APP:-} != link-app ]] || cp "$(dirname "$OUT")/link-$VERSION"/andromeda-link_*.deb "$OUT/extra/" 2> /dev/null || true
 # ANDROMEDA_ONLY="shell" (a unit release): only those units' debs stay, are installed and get published; the PKGBUILD
 # names them, a deb being its package name without -git.
 ONLY_DEBS=
@@ -95,6 +97,7 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
   if [ -n "$ANDROMEDA_APP" ]; then
     debs=$(ls /o/andromeda-"$ANDROMEDA_APP"_*.deb 2> /dev/null)
     [ "$ANDROMEDA_APP" != libdesk ] || debs="$debs $(ls /o/andromeda-files_*.deb /o/andromeda-terminal_*.deb)"
+    [ "$ANDROMEDA_APP" != link-app ] || debs="$debs $(ls /o/extra/andromeda-link_*.deb 2> /dev/null)"
   else
     debs=$(ls /o/*.deb /o/extra/*.deb 2> /dev/null | grep -v "/andromeda_\|/andromeda-dbgsym_")
     [ -z "$ANDROMEDA_CORE" ] || debs=$(echo "$debs" | grep -v "/andromeda-\(files\|player\|viewer\|terminal\|link-app\|libdesk\)_")

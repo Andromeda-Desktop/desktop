@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Checks that the newest version of every package in an Andromeda repository index installs with the newest of all
 the others: each dependency on a package or virtual name that the index provides must be met by the newest versions.
-Dependencies on names the index does not provide (distro packages) are left to the distro.
+Dependencies on names the index does not provide are left to the distro, except our own (andromeda*).
   tools/repo-check.py arch andromeda.db.tar.gz
   tools/repo-check.py apt Packages
 Exit 1 lists every unmet dependency."""
@@ -125,7 +125,8 @@ def main():
     problems = []
     for name, version, depends, _, conflicts in sorted(newest.values()):
         for dep, op, want in depends:
-            if dep not in provided:
+            # A name the index does not provide is the distro's, unless it is one of ours (andromeda*).
+            if dep not in provided and "andromeda" not in dep:
                 continue
             if not any(v is not None and satisfies(kind, v, op, want) or (v is None and not op)
                        for v in provided.get(dep, [])):
