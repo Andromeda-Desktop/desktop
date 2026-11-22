@@ -1221,7 +1221,7 @@ namespace term {
     if (member) {
       entries.push_back({.id = kLeave, .label = "Leave split"});
     }
-    entries.push_back({.id = kRename, .label = "Rename", .enabled = !m_rail});
+    entries.push_back({.id = kRename, .label = "Rename"});
     entries.push_back({.id = kDuplicate, .label = "Duplicate"});
     entries.push_back({.id = kMoveToWindow, .label = "Move to new window", .enabled = others});
     entries.push_back({.separator = true});
@@ -1264,6 +1264,10 @@ namespace term {
     const auto it = std::ranges::find(m_rows, id, &std::pair<std::uint64_t, StatusRow*>::first);
     const SessionInfo* session = m_sessions.find(id);
     if (it == m_rows.end() || session == nullptr) {
+      return;
+    }
+    if (m_rail) {
+      renameInSheet(id, rowData(*session).name);
       return;
     }
     // An empty name gives the row its automatic name (cwd or agent title) back.
@@ -1361,6 +1365,51 @@ namespace term {
     const auto it = std::ranges::find(m_views, session.id, &Session::id);
     TerminalView* terminal = it != m_views.end() ? it->view->terminal() : nullptr;
     return terminal != nullptr && terminal->runsUnmarkedJob();
+  }
+
+  // The rail's icon rows have no room for a name field: rename in a sheet.
+  void TerminalWindow::renameInSheet(std::uint64_t id, const std::string& name) {
+    auto text = std::make_shared<std::string>(name);
+    const auto commit = [this, id, text] {
+      m_window.dismissSheet();
+      apply(session_event::Rename{id, *text});
+      focusGrid();
+    };
+    m_window.presentSheet(
+        [this, text, commit](float s) {
+          auto box = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP12 * s, .padding = Tokens::spaceP20 * s,
+                                 .width = Tokens::componentTerminalFindWidth * s});
+          box->addChild(ui::label({.text = std::string("Rename session"),
+                                   .fontSize = Tokens::typeTitle3.size * s,
+                                   .fontWeight = FontWeight::SemiBold,
+                                   .color = colorSpecFromRole(ColorRole::Label1)}));
+          box->addChild(ui::input({.value = *text,
+                                   .placeholder = std::string("Automatic name"),
+                                   .onChange = [text](const std::string& value) { *text = value; },
+                                   .onSubmit = [commit](const std::string&) { commit(); },
+                                   .configure = [this](Input& field) {
+                                     field.selectAll();
+                                     m_window.input().setFocus(field.inputArea());
+                                   }}));
+          auto buttons = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::End, .gap = Tokens::spaceP8 * s});
+          buttons->addChild(ui::button({.text = std::string("Cancel"),
+                                        .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Default,
+                                        .onClick = [this] {
+                                          m_window.dismissSheet();
+                                          focusGrid();
+                                        }}));
+          buttons->addChild(ui::button({.text = std::string("Rename"),
+                                        .fontSize = Tokens::typeBody.size * s,
+                                        .variant = ButtonVariant::Primary,
+                                        .onClick = commit}));
+          box->addChild(std::move(buttons));
+          return box;
+        },
+        [this] {
+          m_window.dismissSheet();
+          focusGrid();
+        });
   }
 
   void TerminalWindow::askClose(std::vector<std::uint64_t> ids, bool window) {
@@ -1878,7 +1927,7 @@ namespace term {
               [this] { openPalette(PaletteTarget::SplitWith); });
     addAction("menu:leave", "Leave split", {}, m_sessions.splitOf(shown) != nullptr ? "" : "Not in a split",
               [this, shown] { apply(session_event::Leave{shown}); });
-    addAction("menu:rename", "Rename…", {}, m_rail ? "Sidebar is a rail" : "", [this, shown] { renameSession(shown); });
+    addAction("menu:rename", "Rename…", {}, "", [this, shown] { renameSession(shown); });
     addAction("menu:duplicate", "Duplicate session", {}, "", [this, shown] { duplicateSession(shown); });
     addAction("menu:move", "Move to new window", {}, others ? "" : "Only one session",
               [this, shown] { moveToNewWindow(shown); });
@@ -2243,7 +2292,7 @@ namespace term {
   }
 
   std::optional<std::uint64_t> TerminalWindow::dropBefore(std::uint64_t dragged, float sceneX, float sceneY) const {
-    if (m_rowList == nullptr || m_rail) {
+    if (m_rowList == nullptr) {
       return std::nullopt;
     }
     float x = 0.0F;

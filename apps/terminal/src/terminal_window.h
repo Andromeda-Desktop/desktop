@@ -210,6 +210,7 @@ namespace term {
     void openTerminalMenu(std::uint64_t id, float sceneX, float sceneY);
     void openRowMenu(std::uint64_t id, float sceneX, float sceneY);
     void renameSession(std::uint64_t id);
+    void renameInSheet(std::uint64_t id, const std::string& name);
     void duplicateSession(std::uint64_t id);
     // Closes `ids`; asks once first when a command runs in any of them.
     void askClose(std::vector<std::uint64_t> ids, bool window = false); // window: ids are all the window's sessions
