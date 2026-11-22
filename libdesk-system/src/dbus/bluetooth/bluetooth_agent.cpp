@@ -42,6 +42,8 @@ struct BluetoothAgent::Impl {
   explicit Impl(SystemBus& b) : bus(b) {}
 
   [[nodiscard]] bool hasPending() const noexcept { return pending.kind != BluetoothPairingKind::None; }
+  // A request that holds a reply blocks the next one; a passkey display holds none, so a new request replaces it.
+  [[nodiscard]] bool blocking() const noexcept { return pendingString || pendingUint || pendingVoid; }
 
   void rejectIfBusy(auto& result, const char* what) {
     kLog.debug("{} while another request pending -> rejected", what);
@@ -78,10 +80,11 @@ struct BluetoothAgent::Impl {
   }
 
   void onRequestPinCode(sdbus::Result<std::string>&& result, sdbus::ObjectPath device) {
-    if (hasPending()) {
+    if (blocking()) {
       rejectIfBusy(result, "RequestPinCode");
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::PinCode;
     pending.devicePath = std::move(device);
     pendingString = std::move(result);
@@ -89,10 +92,11 @@ struct BluetoothAgent::Impl {
   }
 
   void onDisplayPinCode(sdbus::Result<>&& result, sdbus::ObjectPath device, std::string pincode) {
-    if (hasPending()) {
+    if (blocking()) {
       rejectIfBusy(result, "DisplayPinCode");
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::DisplayPinCode;
     pending.devicePath = std::move(device);
     pending.pin = std::move(pincode);
@@ -101,10 +105,11 @@ struct BluetoothAgent::Impl {
   }
 
   void onRequestPasskey(sdbus::Result<std::uint32_t>&& result, sdbus::ObjectPath device) {
-    if (hasPending()) {
+    if (blocking()) {
       rejectIfBusy(result, "RequestPasskey");
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::Passkey;
     pending.devicePath = std::move(device);
     pendingUint = std::move(result);
@@ -122,9 +127,10 @@ struct BluetoothAgent::Impl {
       }
       return;
     }
-    if (hasPending()) {
+    if (blocking()) {
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::DisplayPasskey;
     pending.devicePath = device;
     pending.passkey = passkey;
@@ -135,10 +141,11 @@ struct BluetoothAgent::Impl {
   }
 
   void onRequestConfirmation(sdbus::Result<>&& result, sdbus::ObjectPath device, std::uint32_t passkey) {
-    if (hasPending()) {
+    if (blocking()) {
       rejectIfBusy(result, "RequestConfirmation");
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::Confirm;
     pending.devicePath = std::move(device);
     pending.passkey = passkey;
@@ -147,10 +154,11 @@ struct BluetoothAgent::Impl {
   }
 
   void onRequestAuthorization(sdbus::Result<>&& result, sdbus::ObjectPath device) {
-    if (hasPending()) {
+    if (blocking()) {
       rejectIfBusy(result, "RequestAuthorization");
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::Authorize;
     pending.devicePath = std::move(device);
     pendingVoid = std::move(result);
@@ -158,10 +166,11 @@ struct BluetoothAgent::Impl {
   }
 
   void onAuthorizeService(sdbus::Result<>&& result, sdbus::ObjectPath device, std::string uuid) {
-    if (hasPending()) {
+    if (blocking()) {
       rejectIfBusy(result, "AuthorizeService");
       return;
     }
+    clearPending();
     pending.kind = BluetoothPairingKind::AuthorizeService;
     pending.devicePath = std::move(device);
     pending.uuid = std::move(uuid);
