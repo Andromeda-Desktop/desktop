@@ -844,8 +844,9 @@ namespace {
 
     // greetd is strictly one request, one reply: Creating -> (Waiting) -> Posting -> Starting, or Cancelling -> Creating
     // after a wrong password. Superseded: the user changed while create_session is unanswered; its reply is dropped and
-    // the session it opened is cancelled.
-    enum class Phase : std::uint8_t { Idle, Creating, Waiting, Posting, Starting, Cancelling, Superseded };
+    // the session it opened is cancelled. Dropping: cancelling a session that cannot start (no session installed); the
+    // next one waits for the retry timer and counts as a refusal.
+    enum class Phase : std::uint8_t { Idle, Creating, Waiting, Posting, Starting, Cancelling, Superseded, Dropping };
 
     void createSession() {
       if (m_user.empty()) {
@@ -1130,6 +1131,8 @@ namespace {
       case GreetdResponseType::Success:
         if (m_phase == Phase::Cancelling) {
           createSession();
+        } else if (m_phase == Phase::Dropping) {
+          m_phase = Phase::Idle;
         } else if (m_phase == Phase::Starting) {
           beginExit();
         } else if (m_sessionIndex < m_sessions.size()) {
@@ -1143,8 +1146,9 @@ namespace {
         } else {
           kLog.error("no wayland session is installed");
           setHint("No session is installed", true);
-          (void)m_greetd.requestCancelSession();
-          m_phase = Phase::Cancelling;
+          ++m_failedSessions;
+          m_sessionRetryAt = std::chrono::steady_clock::now() + kSessionRetryDelay;
+          m_phase = m_greetd.requestCancelSession() ? Phase::Dropping : Phase::Idle;
         }
         break;
       case GreetdResponseType::Error:
@@ -1162,7 +1166,7 @@ namespace {
         }
         // A failed create_session or cancel leaves no session, so no password could ever be posted: open a new one
         // after a pause (greetd's worker can die with the user session, "unable to send msg: os error").
-        if (m_phase == Phase::Creating || m_phase == Phase::Cancelling) {
+        if (m_phase == Phase::Creating || m_phase == Phase::Cancelling || m_phase == Phase::Dropping) {
           kLog.error("greetd refused a session for '{}': {}", m_user, response.error.description);
           m_phase = Phase::Idle;
           ++m_failedSessions;
