@@ -303,6 +303,8 @@ private:
   std::unordered_map<std::uint32_t, std::string> m_callDevices;
   ChangeCallback m_changeCallback;
   std::optional<LinkPairing> m_pairing;
+  // Bumped by each start and cancel: a StartPairing reply for an older one is dropped.
+  std::uint64_t m_pairingRequest = 0;
   std::optional<LinkPairingOutcome> m_outcome;
   bool m_available = false;
 };

@@ -1568,6 +1568,19 @@ if build_tests
     )
   endif
 
+  link_pairing_cancel_integration_exe = executable('link_pairing_cancel_integration_test',
+    sources: files('tests/link_pairing_cancel_integration_test.cpp'),
+    dependencies: noctalia_core_dep,
+    override_options: ['b_ndebug=false'],
+  )
+  if dbus_run_session.found()
+    test('link_pairing_cancel_integration',
+      dbus_run_session,
+      args: ['--', link_pairing_cancel_integration_exe.full_path()],
+      depends: link_pairing_cancel_integration_exe,
+    )
+  endif
+
   config_validate_env = environment()
   config_validate_env.set('ANDROMEDA_CONFIG_HOME', meson.current_source_dir() / 'tests/config_validate/config-home')
   config_validate_env.set('NOCTALIA_STATE_HOME', meson.current_source_dir() / 'tests/config_validate/state-home')

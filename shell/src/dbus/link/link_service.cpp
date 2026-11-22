@@ -383,9 +383,13 @@ void LinkService::notify() {
 
 void LinkService::startPairing() {
   m_outcome.reset();
+  const std::uint64_t request = ++m_pairingRequest;
   m_link->callMethodAsync("StartPairing")
       .onInterface(kLinkInterface)
-      .uponReplyInvoke([this](std::optional<sdbus::Error> error, std::string code, std::string uri) {
+      .uponReplyInvoke([this, request](std::optional<sdbus::Error> error, std::string code, std::string uri) {
+        if (request != m_pairingRequest) {
+          return;
+        }
         if (error.has_value()) {
           logFailure("StartPairing", error);
           m_outcome = LinkPairingOutcome{.paired = false, .detail = error->getMessage()};
@@ -414,6 +418,7 @@ void LinkService::confirmBluetoothPairing(std::uint32_t passkey, std::function<v
 }
 
 void LinkService::cancelPairing() {
+  ++m_pairingRequest;
   m_pairing.reset();
   m_outcome.reset();
   m_link->callMethodAsync("CancelPairing")
