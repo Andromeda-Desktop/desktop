@@ -2605,7 +2605,15 @@ void FilesWindow::runSyncQueue() {
           done(job, error);
         });
       },
-      [this, next](const std::string& job) { m_renameDone[job] = [next](const std::string&) { next(); }; });
+      [this, next](const std::string& job) {
+        // A cancelled or failed folder ends the sync; the compare that follows shows what is left.
+        m_renameDone[job] = [this, next](const std::string& error) {
+          if (!error.empty()) {
+            m_syncQueue.clear();
+          }
+          next();
+        };
+      });
 }
 
 CompressSheet* FilesWindow::compressSheet() const { return m_window.hasSheet() ? m_compress.get() : nullptr; }
