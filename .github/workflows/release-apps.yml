@@ -1,14 +1,15 @@
-# A tag files-v*, player-v*, viewer-v*, terminal-v* or link-app-v* builds only that app (Files and Viewer also the preview, Files and Terminal also libdesk) and adds
+# A tag libdesk-v*, player-v*, viewer-v* or link-app-v* builds only that release unit and adds
 # its packages to the repositories the desktop releases serve: the pacman and Ubuntu apt repository of the rolling
 # release `repo` (Latest, so releases/latest/download) and the Debian apt repository (releases/download/debian). The app's
 # own release holds its Arch packages and is never marked latest. The tag is <app>-vYYYY.M.N from tools/unit-version.sh <app> next.
+# libdesk-v* releases libdesk, Files and Terminal together (they link libdesk shared); the preview releases with the core.
 # A v* release with the app package split must exist first: andromeda 0.2.8 and older own the app files.
 # Dry run: run by hand with publish off; the packages stay as workflow artifacts.
 name: release-apps
 
 on:
   push:
-    tags: ["files-v*", "player-v*", "viewer-v*", "terminal-v*", "link-app-v*"]
+    tags: ["libdesk-v*", "player-v*", "viewer-v*", "link-app-v*"]
   workflow_dispatch:
     inputs:
       tag: { description: "App tag (files-v0.1.0); it must exist unless ref is set", required: true }
@@ -35,6 +36,7 @@ jobs:
     outputs:
       app: ${{ steps.version.outputs.app }}
       version: ${{ steps.version.outputs.version }}
+      units: ${{ steps.version.outputs.units }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,13 +47,33 @@ jobs:
           # The tag holds the computed version (tools/unit-version.sh next); packages and binaries take it from here.
           app=${TAG%%-v*} version=${TAG#*-v}
           [[ $version =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] || { echo "::error::$TAG is not <app>-vYYYY.M.N"; exit 1; }
+          # Files and Terminal link libdesk shared and pin its exact version: the three release together, from one
+          # commit, with one version (tools/unit-version.sh libdesk next), in one repository upload.
+          case $app in
+            files|terminal) echo "::error::$app releases with libdesk: push libdesk-v$(tools/unit-version.sh libdesk next)"; exit 1 ;;
+            libdesk) units="libdesk files terminal" ;;
+            *) units=$app ;;
+          esac
+          # The release pages of Files and Terminal carry their own tags at the same commit; a tag pushed with the
+          # workflow token starts no other run.
+          if [[ $app == libdesk && $PUBLISH == true ]]; then
+            for unit in files terminal; do
+              tag=$unit-v$version
+              if ! git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+                git tag "$tag" HEAD
+                git push origin "refs/tags/$tag"
+              fi
+              [[ $(git rev-parse "$tag^{commit}") == $(git rev-parse HEAD) ]] || { echo "::error::$tag is not at $TAG"; exit 1; }
+            done
+          fi
           echo "app=$app" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "units=$units" >> "$GITHUB_OUTPUT"
 
   # The terminal also ships as a macOS app, built and smoke-tested on a Mac.
   macos:
     needs: version
-    if: needs.version.outputs.app == 'terminal'
+    if: needs.version.outputs.app == 'libdesk'
     uses: ./.github/workflows/check-macos.yml
     permissions:
       contents: write
@@ -59,7 +81,7 @@ jobs:
       ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
       version: ${{ needs.version.outputs.version }}
       # Empty in a dry run: the app stays a workflow artifact.
-      tag: ${{ (github.event_name == 'push' || inputs.publish) && (inputs.tag || github.ref_name) || '' }}
+      tag: ${{ (github.event_name == 'push' || inputs.publish) && format('terminal-v{0}', needs.version.outputs.version) || '' }}
 
   arch:
     needs: [version]
@@ -90,13 +112,17 @@ jobs:
         if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          UNITS: ${{ needs.version.outputs.units }}
         run: |
-          gh release create "$TAG" -R "$GITHUB_REPOSITORY" --verify-tag --latest=false --generate-notes \
-            --notes "$(tools/release-notes.sh "$ANDROMEDA_APP" "$ANDROMEDA_VERSION")" \
-            || gh release view "$TAG" -R "$GITHUB_REPOSITORY" > /dev/null
-          mkdir out
-          for package in pkg/*.pkg.tar.zst; do name=$(basename "$package"); cp "$package" "out/${name//:/.}"; done
-          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" --clobber out/*
+          for unit in $UNITS; do
+            tag=$unit-v$ANDROMEDA_VERSION
+            gh release create "$tag" -R "$GITHUB_REPOSITORY" --verify-tag --latest=false --generate-notes \
+              --notes "$(tools/release-notes.sh "$unit" "$ANDROMEDA_VERSION")" \
+              || gh release view "$tag" -R "$GITHUB_REPOSITORY" > /dev/null
+            rm -rf out && mkdir out
+            for package in pkg/andromeda-"$unit"-git-*.pkg.tar.zst; do name=$(basename "$package"); cp "$package" "out/${name//:/.}"; done
+            gh release upload "$tag" -R "$GITHUB_REPOSITORY" --clobber out/*
+          done
       - name: Repository
         env:
           GH_TOKEN: ${{ github.token }}
@@ -130,16 +156,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_GPG_KEY: ${{ secrets.RELEASE_GPG_KEY }}
           BASE: ${{ matrix.base }}
+          UNITS: ${{ needs.version.outputs.units }}
         run: |
           sudo apt-get install -y -qq dpkg-dev apt-utils > /dev/null
           if [[ $BASE == testing ]]; then target=debian; else target=repo; fi
           mkdir debs
           shopt -s nullglob
           out=$HOME/.cache/andromeda-ubuntu/deb-$BASE
-          cp "$out/andromeda-${ANDROMEDA_APP}_"*.deb debs/
-          # The preview deb of any other app build is empty.
-          [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || cp "$out/andromeda-preview_"*.deb debs/
-          [[ ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || cp "$out/andromeda-libdesk_"*.deb debs/
+          # The debs of the other packages are empty in an app build.
+          for unit in $UNITS; do cp "$out/andromeda-${unit}_"*.deb debs/; done
           tools/repo-publish.sh apt "$target" debs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -12,9 +12,7 @@ Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-compositor (>= ${binary:Version}),
  andromeda-shell (>= ${binary:Version}), xdg-desktop-portal-andromeda (>= ${binary:Version}),
  andromeda-greeter (>= ${binary:Version}), andromeda-system (>= ${binary:Version}), andromeda-link, andromeda-link-app,
- andromeda-preview (>= ${binary:Version}), andromeda-files (>= ${binary:Version}),
- andromeda-player (>= ${binary:Version}), andromeda-viewer (>= ${binary:Version}),
- andromeda-terminal (>= ${binary:Version}),
+ andromeda-preview (>= ${binary:Version}), andromeda-files, andromeda-player, andromeda-viewer, andromeda-terminal,
  gnome-keyring, libpam-gnome-keyring, scrcpy, adb, pipewire-pulse
 Suggests: andromeda-power
 Description: Andromeda desktop
@@ -91,7 +89,7 @@ Description: Andromeda libdesk
 Package: andromeda-files
 Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-libdesk (= ${binary:Version}),
- andromeda-preview (>= ${binary:Version}), xdg-utils
+ andromeda-preview, xdg-utils
 Suggests: gocryptfs, gvfs-backends, exfatprogs, dosfstools, ntfs-3g
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
@@ -116,7 +114,7 @@ Description: Andromeda Link
 
 Package: andromeda-viewer
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-preview (>= ${binary:Version}), glycin-loaders
+Depends: ${shlibs:Depends}, ${misc:Depends}, andromeda-preview, glycin-loaders
 Replaces: andromeda (<= 0.2.8)
 Breaks: andromeda (<= 0.2.8)
 Description: Andromeda Viewer

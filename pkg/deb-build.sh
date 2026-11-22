@@ -22,26 +22,24 @@ arch-meson() {
 source "$root/pkg/PKGBUILD"
 cd "$srcdir"
 
-# ANDROMEDA_APP=files|player|viewer|terminal|link-app (app release CI): build and stage only that app and, for Files and Viewer, the
-# preview. dpkg-buildpackage still writes every package of debian/control; the other debs stay empty and unpublished.
+# ANDROMEDA_APP=libdesk|player|viewer|link-app (app release CI): build and stage only that release unit (PKGBUILD's
+# _app_units; libdesk is libdesk with Files and Terminal). dpkg-buildpackage still writes every package of
+# debian/control; the other debs stay empty and unpublished.
 # ANDROMEDA_CORE=1 (core release CI): no apps; they release on their own tags. Their debs stay empty and unpublished.
 apps=(files viewer player terminal link-app)
 [[ -z ${ANDROMEDA_CORE:-} ]] || apps=()
 app_dirs=()
-if [[ -n ${ANDROMEDA_APP:-} ]]; then
-  [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || app_dirs=(preview)
-  app_dirs+=("$ANDROMEDA_APP")
-fi
+[[ -z ${ANDROMEDA_APP:-} ]] || app_dirs=("${_app_units[@]}")
 
 case ${1:-} in
   build)
     # Ubuntu has no zig 0.17: the script fetches the pinned one.
-    [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != terminal || -n ${ANDROMEDA_CORE:-} ]] || desktop/tools/build-libghostty.sh
+    [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != libdesk || -n ${ANDROMEDA_CORE:-} ]] || desktop/tools/build-libghostty.sh
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
-      [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] ||
-        arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-      arch-meson "desktop/apps/$ANDROMEDA_APP" "build-$ANDROMEDA_APP" -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-      for dir in "${app_dirs[@]}"; do meson compile -C "build-$dir"; done
+      for dir in "${app_dirs[@]}"; do
+        arch-meson "desktop/apps/$dir" "build-$dir" -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+        meson compile -C "build-$dir"
+      done
       exit 0
     fi
     # ANDROMEDA_ONLY="shell" (a unit release): build only those units, as the PKGBUILD's _want.
@@ -96,9 +94,8 @@ case ${1:-} in
       [andromeda-link-app-git]=andromeda-link-app
     )
     if [[ -n ${ANDROMEDA_APP:-} ]]; then
-      declare -A debs=([andromeda-$ANDROMEDA_APP-git]=andromeda-$ANDROMEDA_APP)
-      [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || debs[andromeda-preview-git]=andromeda-preview
-      [[ ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || debs[andromeda-libdesk-git]=andromeda-libdesk
+      declare -A debs=()
+      for fn in "${pkgname[@]}"; do debs[$fn]=${fn%-git}; done
     fi
     [[ -z ${ANDROMEDA_CORE:-} ]] || unset 'debs[andromeda-files-git]' 'debs[andromeda-player-git]' 'debs[andromeda-viewer-git]' 'debs[andromeda-terminal-git]' 'debs[andromeda-link-app-git]' 'debs[andromeda-libdesk-git]'
     if [[ -n ${ANDROMEDA_ONLY:-} ]]; then

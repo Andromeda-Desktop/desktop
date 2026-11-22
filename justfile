@@ -145,7 +145,12 @@ check: modules test link system
 # Incremental: pkg/src and its build dirs stay; the PKGBUILD wipes them when a meson file changes. `just package -C` builds clean.
 package *flags:
     # flock: runs share pkg/src, so a second session's run waits.
-    cd pkg && ANDROMEDA_SOURCE="file://$(dirname "$(pwd -P)")#branch=$(git branch --show-current)" flock /tmp/andromeda-package.lock systemd-run --user --scope --quiet --collect -p CPUWeight=idle -p IOWeight=1 taskset -c 0-11 nice -n 19 makepkg -f {{flags}}
+    # One makepkg per release unit, as CI: each package takes its own unit's version, so a local build sorts above that
+    # unit's last release and below its next one (one run would give every app the core version).
+    cd pkg && for unit in core libdesk viewer player link-app; do \
+      if [ "$unit" = core ]; then sel=ANDROMEDA_CORE=1; else sel=ANDROMEDA_APP=$unit; fi; \
+      env "$sel" ANDROMEDA_SOURCE="file://$(dirname "$(pwd -P)")#branch=$(git branch --show-current)" flock /tmp/andromeda-package.lock systemd-run --user --scope --quiet --collect -p CPUWeight=idle -p IOWeight=1 taskset -c 0-11 nice -n 19 makepkg -f {{flags}} || exit; \
+    done
     # makepkg writes the resolved pkgver back into the PKGBUILD.
     git checkout pkg/PKGBUILD
 

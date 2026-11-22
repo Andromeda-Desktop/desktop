@@ -117,6 +117,12 @@ for attempt in 1 2 3; do
   rm -rf "$out"
   mkdir -p "$out"
   "merge_$kind"
+  # The merged index must install as a whole: a run that would leave an app without its libdesk fails here.
+  if [[ $kind == arch ]]; then
+    "$(dirname "$0")/repo-check.py" arch "$out/andromeda.db.tar.gz"
+  else
+    "$(dirname "$0")/repo-check.py" apt "$out/Packages"
+  fi
   if [[ ${PUBLISH:-true} != true ]]; then
     echo "repo-publish: dry run, merged index in $out"
     exit 0

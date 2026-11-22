@@ -3,12 +3,15 @@ pkgname=(andromeda andromeda-compositor-git andromeda-shell-git xdg-desktop-port
   andromeda-power-git andromeda-greeter-git andromeda-system-git andromeda-greetd andromeda-preview-git
   andromeda-files-git andromeda-player-git andromeda-viewer-git andromeda-terminal-git andromeda-link-app-git
   andromeda-libdesk-git)
-# ANDROMEDA_APP=files|player|viewer|terminal|link-app (app release CI) builds only that app and, for Files and Viewer,
-# the preview; for apps on the shared libdesk, libdesk.
+# ANDROMEDA_APP=libdesk|player|viewer|link-app (app release CI) builds only that release unit. libdesk is libdesk with
+# Files and Terminal, which link it shared and release with it; the preview releases with the core.
+_app_units=()
 if [[ -n ${ANDROMEDA_APP:-} ]]; then
-  pkgname=(andromeda-$ANDROMEDA_APP-git)
-  [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || pkgname+=(andromeda-preview-git)
-  [[ ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || pkgname+=(andromeda-libdesk-git)
+  case $ANDROMEDA_APP in
+    libdesk) _app_units=(files terminal) pkgname=(andromeda-libdesk-git andromeda-files-git andromeda-terminal-git) ;;
+    files|terminal) echo "$ANDROMEDA_APP releases with libdesk: ANDROMEDA_APP=libdesk" >&2; exit 1 ;;
+    *) _app_units=("$ANDROMEDA_APP") pkgname=(andromeda-$ANDROMEDA_APP-git) ;;
+  esac
 fi
 # ANDROMEDA_CORE=1 (core release CI): no app packages; the apps release on their own tags (release-apps).
 if [[ -n ${ANDROMEDA_CORE:-} ]]; then
@@ -53,11 +56,8 @@ pkgver() {
 
 prepare() {
   # libghostty-vt has no Arch package: libdesk-term (Terminal, the Files pane) links the pinned build statically.
-  [[ -n ${ANDROMEDA_APP:-} && ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || desktop/tools/build-libghostty.sh
-  if [[ -n ${ANDROMEDA_APP:-} ]]; then
-    [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || cargo fetch --locked --manifest-path desktop/andromeda-preview/helper/Cargo.toml
-    return
-  fi
+  [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != libdesk ]] || desktop/tools/build-libghostty.sh
+  [[ -z ${ANDROMEDA_APP:-} ]] || return 0
   cargo fetch --locked --manifest-path desktop/system/Cargo.toml
   cargo fetch --locked --manifest-path desktop/andromeda-preview/helper/Cargo.toml
   # An incremental build reuses src/greetd: makepkg's checkout resets tracked files, clean drops files a patch added.
@@ -84,12 +84,11 @@ build() {
   [[ ! -f meson.stamp || $(<meson.stamp) == "$stamp" ]] || rm -rf build-* desktop/compositor/subprojects/{wlroots,libliftoff}
   arch-meson() { if [[ -f $2/build.ninja ]]; then command arch-meson "$@" --reconfigure; else command arch-meson "$@"; fi; }
   if [[ -n ${ANDROMEDA_APP:-} ]]; then
-    if [[ $ANDROMEDA_APP =~ ^(files|viewer)$ ]]; then
-      arch-meson desktop/andromeda-preview build-preview -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-      meson compile -C build-preview
-    fi
-    arch-meson "desktop/apps/$ANDROMEDA_APP" "build-$ANDROMEDA_APP" -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
-    meson compile -C "build-$ANDROMEDA_APP"
+    local app
+    for app in "${_app_units[@]}"; do
+      arch-meson "desktop/apps/$app" "build-$app" -Dcpp_std=c++23 -Db_lto=true -Dlibdesk-ui:dev_tokens=false
+      meson compile -C "build-$app"
+    done
     return
   fi
   # The wlroots and libliftoff wraps carry our patches (compositor/subprojects/packagefiles). libliftoff is shared so

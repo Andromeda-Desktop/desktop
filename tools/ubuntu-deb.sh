@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: [DEB_VERSION=x.y.z] [ANDROMEDA_APP=files|player|viewer|terminal] tools/ubuntu-deb.sh [--clean] [ubuntu-version | debian-suite]
+# Usage: [DEB_VERSION=x.y.z] [ANDROMEDA_APP=libdesk|player|viewer|link-app] tools/ubuntu-deb.sh [--clean] [ubuntu-version | debian-suite]
 # Builds the Ubuntu or Debian (a suite name, e.g. testing) .deb packages (debian/) from the working tree in a container, then installs them with apt to
 # prove their dependencies resolve. Incremental: the copied tree, the meson build dirs and the cargo target dir stay
 # in the output dir, so a rerun compiles only what changed. --clean builds from nothing (CI, releases).
@@ -88,14 +88,13 @@ docker run --rm --network host --cpus "${UBUNTU_BUILD_CPUS:-6}" -v "$OUT:/o" -v 
     for deb in /o/*.deb; do name=$(basename "$deb"); case " $ONLY_DEBS " in *" ${name%%_*} "*) ;; *) rm "$deb" ;; esac; done
   fi
   # andromeda-link comes from the Link release, not this source; install every other package. An app build installs
-  # only its app and, for Files and Viewer, the preview: the other debs are empty. Link-app installs andromeda-link from
-  # the published apt repo of this base.
-  [ "$ANDROMEDA_APP" != link-app ] || echo "deb [signed-by=/o/src/andromeda-release.asc] $LINK_REPO ./" > /etc/apt/sources.list.d/andromeda.list
+  # only its release unit: the other debs are empty. What the unit needs from the core or Link (andromeda-preview,
+  # andromeda-link) comes from the published apt repo of this base.
+  [ -z "$ANDROMEDA_APP" ] || echo "deb [signed-by=/o/src/andromeda-release.asc] $LINK_REPO ./" > /etc/apt/sources.list.d/andromeda.list
   apt-get -o Acquire::Retries=5 update
   if [ -n "$ANDROMEDA_APP" ]; then
     debs=$(ls /o/andromeda-"$ANDROMEDA_APP"_*.deb 2> /dev/null)
-    case $ANDROMEDA_APP in files|viewer) debs="$debs $(ls /o/andromeda-preview_*.deb)" ;; esac
-    case $ANDROMEDA_APP in files|terminal) debs="$debs $(ls /o/andromeda-libdesk_*.deb)" ;; esac
+    [ "$ANDROMEDA_APP" != libdesk ] || debs="$debs $(ls /o/andromeda-files_*.deb /o/andromeda-terminal_*.deb)"
   else
     debs=$(ls /o/*.deb /o/extra/*.deb 2> /dev/null | grep -v "/andromeda_\|/andromeda-dbgsym_")
     [ -z "$ANDROMEDA_CORE" ] || debs=$(echo "$debs" | grep -v "/andromeda-\(files\|player\|viewer\|terminal\|link-app\|libdesk\)_")
