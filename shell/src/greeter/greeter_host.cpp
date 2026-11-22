@@ -20,6 +20,7 @@
 #include "ui/auth/ryoku_auth_scene.h"
 #include "ui/builders.h"
 #include "ui/controls/image.h"
+#include "util/secure_wipe.h"
 #include "core/input/cursor_shape.h"
 #include "wayland/layer_surface.h"
 #include "wayland/surface.h"
@@ -48,7 +49,6 @@
 #include <optional>
 #include <poll.h>
 #include <unistd.h>
-#include <sodium.h>
 #include <sstream>
 #include <string>
 #include <toml++/toml.hpp>
@@ -451,10 +451,8 @@ namespace {
   // Startup leaves freed pages in the allocator; give them back once the first frames are on screen.
   void trimAllocator() { malloc_trim(0); }
 
-  void wipe(std::string& secret) {
-    sodium_memzero(secret.data(), secret.size());
-    secret.clear();
-  }
+  // Backspace leaves typed bytes past size(): wipe the whole reserved buffer.
+  void wipe(std::string& secret) { util::secureWipe(secret); }
 
   struct OutputView {
     wl_output* output = nullptr;
