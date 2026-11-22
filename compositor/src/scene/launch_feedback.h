@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/animation.h"
+#include "util/tracked.h"
 
 #include <string>
 
@@ -50,7 +51,7 @@ namespace andromeda {
     [[nodiscard]] wlr_box boxAt(double scale) const;
 
     Server* m_server = nullptr;
-    Output* m_output = nullptr;
+    Ref<Output> m_output;
     wlr_scene_tree* m_tree = nullptr;
     wlr_scene_buffer* m_node = nullptr;
     ov::AppIcons* m_icons = nullptr;

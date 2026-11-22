@@ -20,6 +20,7 @@
 #include "server/output_manager_apply.h"
 #include "server/sleep_watch.h"
 #include "server/xdg_session_state.h"
+#include "util/tracked.h"
 #include "view/registry.h"
 
 #include <array>
@@ -1149,7 +1150,7 @@ namespace andromeda {
     // dsk_surface_v1.launch_from: the icon the next app launch token takes (the shell sends it just before).
     struct LaunchFrom {
       wlr_box from{}; // layout
-      Output* output = nullptr;
+      Ref<Output> output;
       std::chrono::steady_clock::time_point at;
     };
     std::optional<LaunchFrom> m_launchFrom;

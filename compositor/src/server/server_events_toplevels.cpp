@@ -519,7 +519,7 @@ namespace andromeda {
     }
     m_launchFeedback.emplace_back(
         token, std::make_unique<LaunchFeedback>(
-                   *this, m_launchFrom->output, shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY), *m_launchIcons, appId,
+                   *this, m_launchFrom->output.get(), shellLayerTree(ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY), *m_launchIcons, appId,
                    m_launchFrom->from, m_launchFrom->output->usableArea()
                )
     );
