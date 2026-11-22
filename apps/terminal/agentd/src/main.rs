@@ -95,10 +95,14 @@ async fn main() -> Result<()> {
                 async move |request: acp::PromptRequest,
                             responder: Responder<acp::PromptResponse>,
                             connection: ConnectionTo<Client>| {
+                    let turn = match bridge.begin(&request) {
+                        Ok(turn) => turn,
+                        Err(error) => return responder.respond_with_error(error),
+                    };
                     let prompt_connection = connection.clone();
                     let bridge = bridge.clone();
                     connection.spawn(async move {
-                        respond(responder, bridge.prompt(request, prompt_connection).await)
+                        respond(responder, bridge.prompt(turn, prompt_connection).await)
                     })
                 }
             },

@@ -285,9 +285,45 @@ printf '%s\n' '{"type":"result","session_id":"79ed6f89-b693-4192-8169-4554404b43
     let (prompt, after) = response(&mut reader, 3).await;
     assert_eq!(prompt["result"]["stopReason"], "end_turn", "{prompt}");
     assert!(
-        before.iter().chain(&after).any(|update| update["params"]["update"]["content"]["text"] == "now auto"),
+        before
+            .iter()
+            .chain(&after)
+            .any(|update| update["params"]["update"]["content"]["text"] == "now auto"),
         "claude never got the new mode: {after:?}"
     );
+    child.kill().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_cancel_sent_right_after_the_prompt_stops_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let bin = temp.path().join("bin");
+    let project = temp.path().join("project");
+    fs::create_dir_all(&bin).unwrap();
+    fs::create_dir_all(&project).unwrap();
+    fake_claude(&bin, "\nsleep 20\n");
+    let (mut child, mut reader) = start(&bin, &temp.path().join("store"));
+    initialize(&mut child, &mut reader).await;
+    send(&mut child, json!({"jsonrpc":"2.0","id":2,"method":"session/new","params":{"cwd":project,"mcpServers":[]}})).await;
+    let (new, _) = response(&mut reader, 2).await;
+    let id = new["result"]["sessionId"].as_str().unwrap().to_owned();
+    send(
+        &mut child,
+        json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+            "sessionId":id,"prompt":[{"type":"text","text":"wait"}]
+        }}),
+    )
+    .await;
+    send(
+        &mut child,
+        json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":id}}),
+    )
+    .await;
+    let (prompt, _) =
+        tokio::time::timeout(std::time::Duration::from_secs(10), response(&mut reader, 3))
+            .await
+            .expect("the prompt ends within 10 s of its cancel");
+    assert_eq!(prompt["result"]["stopReason"], "cancelled");
     child.kill().await.unwrap();
 }
 
@@ -742,7 +778,12 @@ exit 3
     let first = prompt(3).await;
     assert_eq!(first["result"]["stopReason"], "end_turn");
     let second = prompt(4).await;
-    assert!(second["error"]["message"].as_str().unwrap().contains("boom"));
+    assert!(
+        second["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("boom")
+    );
     assert_eq!(second["error"]["data"]["exitCode"], 3);
     assert_eq!(second["error"]["data"]["stderr"], "boom");
     assert_eq!(fs::read_to_string(&runs).unwrap().lines().count(), 2);

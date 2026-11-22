@@ -36,6 +36,15 @@ pub struct Bridge {
 }
 
 // A prompt in flight: its cancel flag and the permission mode its claude process runs in.
+/// A prompt that `begin` registered; `prompt` runs it.
+pub struct Turn {
+    id: String,
+    session: Session,
+    prompt: String,
+    cancel_rx: watch::Receiver<bool>,
+    mode_rx: watch::Receiver<String>,
+}
+
 struct Running {
     cancel: watch::Sender<bool>,
     mode: watch::Sender<String>,
@@ -244,11 +253,8 @@ impl Bridge {
         }
     }
 
-    pub async fn prompt(
-        &self,
-        request: acp::PromptRequest,
-        connection: ConnectionTo<Client>,
-    ) -> std::result::Result<acp::PromptResponse, Error> {
+    /// Registers the turn before the request handler returns, so a cancel that follows the prompt finds it.
+    pub fn begin(&self, request: &acp::PromptRequest) -> std::result::Result<Turn, Error> {
         let id = request.session_id.to_string();
         let session = self.require(&id)?;
         let prompt = request
@@ -278,6 +284,27 @@ impl Bridge {
                 },
             );
         }
+        Ok(Turn {
+            id,
+            session,
+            prompt,
+            cancel_rx,
+            mode_rx,
+        })
+    }
+
+    pub async fn prompt(
+        &self,
+        turn: Turn,
+        connection: ConnectionTo<Client>,
+    ) -> std::result::Result<acp::PromptResponse, Error> {
+        let Turn {
+            id,
+            session,
+            prompt,
+            cancel_rx,
+            mode_rx,
+        } = turn;
 
         if session.title.is_none() {
             let title = history::title_of(&prompt);
@@ -384,7 +411,13 @@ impl Bridge {
                     );
                     // Claude reports its permission mode; its "default" is the mode listed as "manual".
                     let mode = mode
-                        .map(|mode| if mode == "default" { "manual".to_owned() } else { mode })
+                        .map(|mode| {
+                            if mode == "default" {
+                                "manual".to_owned()
+                            } else {
+                                mode
+                            }
+                        })
                         .filter(|mode| is_mode(mode));
                     if let Some(mode) = mode {
                         notify(
@@ -464,8 +497,11 @@ impl Bridge {
                     } else {
                         always_label(&permission.suggestions)
                     };
-                    let mut option =
-                        PermissionOption::new("allow_always", label, PermissionOptionKind::AllowAlways);
+                    let mut option = PermissionOption::new(
+                        "allow_always",
+                        label,
+                        PermissionOptionKind::AllowAlways,
+                    );
                     if let Some(rule) = rule {
                         // The client sets the rule apart (mono) inside the label.
                         let mut meta = serde_json::Map::new();
@@ -569,7 +605,9 @@ impl Bridge {
                 )
                 .await
                 {
-                    Err(RunError::Failed(_) | RunError::Exited { .. }) if !session.native && !emitted.load(Ordering::Relaxed) => {
+                    Err(RunError::Failed(_) | RunError::Exited { .. })
+                        if !session.native && !emitted.load(Ordering::Relaxed) =>
+                    {
                         self.store.clear_persisted(Path::new(&session.cwd));
                         runner::run(
                             &self.config,
@@ -780,10 +818,8 @@ fn tool_view(name: &str, input: &Value) -> ToolView {
         .or_else(|| input.get("path"))
         .and_then(Value::as_str);
     let location = |line: Option<u64>| -> Vec<ToolCallLocation> {
-        path.map(|p| {
-            vec![ToolCallLocation::new(p).line(line.and_then(|l| u32::try_from(l).ok()))]
-        })
-        .unwrap_or_default()
+        path.map(|p| vec![ToolCallLocation::new(p).line(line.and_then(|l| u32::try_from(l).ok()))])
+            .unwrap_or_default()
     };
     let diff = |old: Option<&str>, new: &str| -> ToolCallContent {
         let mut diff = acp::Diff::new(path.unwrap_or(""), new);
@@ -954,7 +990,9 @@ fn notify(connection: &ConnectionTo<Client>, id: &str, update: SessionUpdate) {
 /// prefix marker, and where the grant is kept (session, this project, or the user's settings).
 fn always_label(suggestions: &[Value]) -> (String, Option<String>) {
     let rule = suggestions.iter().find(|s| s["type"] == "addRules");
-    let Some((rule, content)) = rule.and_then(|r| Some((r, r["rules"][0]["ruleContent"].as_str()?))) else {
+    let Some((rule, content)) =
+        rule.and_then(|r| Some((r, r["rules"][0]["ruleContent"].as_str()?)))
+    else {
         return ("Allow always".to_string(), None);
     };
     let scope = match rule["destination"].as_str() {
