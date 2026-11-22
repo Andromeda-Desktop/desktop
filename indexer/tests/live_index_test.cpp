@@ -83,6 +83,14 @@ int main() {
   check(!found(db, "new-report", "new-report.txt"), "a renamed file loses its old name");
   check(found(db, "renamed", "renamed-report.txt"), "a renamed file is found by its new name");
 
+  write(root / "Documents/topic/first-topic.txt");
+  settle(live, fd);
+  fs::rename(root / "Documents/topic", root / "Documents/topic-moved");
+  settle(live, fd);
+  write(root / "Documents/topic-moved/after-move.txt");
+  settle(live, fd);
+  check(found(db, "after-move", "after-move.txt"), "a renamed folder stays watched");
+
   write(root / "Documents/project/sub/deep-note.md");
   settle(live, fd);
   check(found(db, "deep-note", "deep-note.md"), "a file in a new folder tree is found");

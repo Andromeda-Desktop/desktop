@@ -55,6 +55,10 @@ namespace andromeda::index {
   void LiveIndex::watch(std::int64_t id, const std::string& path) {
     const int wd = inotify_add_watch(m_fd, path.c_str(), kWatchMask);
     if (wd >= 0) {
+      // inotify gives a renamed folder its old wd: the new row takes the watch, so unwatching the old row keeps it.
+      if (const auto old = m_byWatch.find(wd); old != m_byWatch.end() && old->second.id != id) {
+        m_watchOf.erase(old->second.id);
+      }
       m_byWatch[wd] = {id, path};
       m_watchOf[id] = wd;
     }
