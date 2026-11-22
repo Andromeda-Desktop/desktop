@@ -282,22 +282,62 @@ fn apt_upgrade(action: &[String], remove: bool, events: &tokio::sync::mpsc::Unbo
         .args(["-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        // stderr goes to the journal: a second pipe nobody drains could fill and stall apt.
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()
         .context("apt-get upgrade")?;
+    // Both pipes are drained at once: an undrained one could fill and stall apt. Every line also goes to the journal.
+    let stderr = child.stderr.take().map(|pipe| {
+        std::thread::spawn(move || {
+            let lines: Vec<String> = BufReader::new(pipe).lines().map_while(Result::ok).collect();
+            lines.iter().for_each(|line| eprintln!("{line}"));
+            lines
+        })
+    });
+    let mut output = Vec::new();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if let Some(event) = status(&line) {
-                let _ = events.send(event);
+            match status(&line) {
+                Some(event) => {
+                    let _ = events.send(event);
+                }
+                None => {
+                    eprintln!("{line}");
+                    // `pmerror:pkg:percent:text`: dpkg's error for one package.
+                    output.push(match line.strip_prefix("pmerror:") {
+                        Some(rest) => format!("E: {}", rest.splitn(3, ':').skip(2).collect::<String>()),
+                        None => line,
+                    });
+                }
             }
         }
     }
     let code = child.wait().context("apt-get upgrade")?;
+    output.extend(stderr.and_then(|thread| thread.join().ok()).unwrap_or_default());
     if !code.success() {
-        bail!("apt-get {} failed ({code}); see the journal of andromeda-update-helper", action[0]);
+        bail!("apt-get {} failed ({code})\n{}", action[0], failure_lines(&output).join("\n"));
     }
     Ok(())
+}
+
+/// The lines of an apt run that say why it failed: apt's `E:` lines and dpkg's errors with the packages they name.
+/// Without any, the last lines of the run.
+fn failure_lines(output: &[String]) -> Vec<String> {
+    const MAX: usize = 10;
+    let mut lines = Vec::new();
+    let mut packages = false;
+    for line in output {
+        let error = line.starts_with("E: ") || line.starts_with("dpkg: error") || line.contains("returned error exit");
+        packages = line.starts_with("Errors were encountered") || (packages && line.starts_with(' '));
+        if error || packages {
+            lines.push(line.trim().to_owned());
+        }
+    }
+    if lines.is_empty() {
+        lines = output.iter().rev().take(5).rev().map(|line| line.trim().to_owned()).collect();
+    }
+    lines.dedup();
+    lines.truncate(MAX);
+    lines
 }
 
 #[cfg(test)]
@@ -320,6 +360,33 @@ mod tests {
         let accepted = vec!["remove oldpkg".to_owned()];
         assert_eq!(unaccepted_removals(text, &accepted), ["libgone"]);
         assert!(unaccepted_removals("Remv oldpkg [1.0]\n", &accepted).is_empty());
+    }
+
+    #[test]
+    fn a_failed_run_names_the_apt_and_dpkg_errors() {
+        let output: Vec<String> = [
+            "Setting up linux-image-6.17.0-9-generic (6.17.0-9.9) ...",
+            "dpkg: error processing package linux-image-6.17.0-9-generic (--configure):",
+            " installed linux-image-6.17.0-9-generic package post-installation script subprocess returned error exit status 1",
+            "Processing triggers for man-db (2.13.1-1) ...",
+            "Errors were encountered while processing:",
+            " linux-image-6.17.0-9-generic",
+            "E: Sub-process /usr/bin/dpkg returned an error code (1)",
+        ]
+        .map(String::from)
+        .into();
+        assert_eq!(
+            failure_lines(&output),
+            [
+                "dpkg: error processing package linux-image-6.17.0-9-generic (--configure):",
+                "installed linux-image-6.17.0-9-generic package post-installation script subprocess returned error exit status 1",
+                "Errors were encountered while processing:",
+                "linux-image-6.17.0-9-generic",
+                "E: Sub-process /usr/bin/dpkg returned an error code (1)",
+            ]
+        );
+        let quiet: Vec<String> = ["a", "b", "c", "d", "e", "f"].map(String::from).into();
+        assert_eq!(failure_lines(&quiet), ["b", "c", "d", "e", "f"]);
     }
 
     #[test]

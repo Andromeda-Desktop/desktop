@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <ctime>
 #include <format>
+#include <ranges>
 
 namespace settings {
 
@@ -188,7 +189,7 @@ namespace settings {
         // A refused Andromeda-only update leaves the system update as the way forward: show it as available.
         if (!service.needsSystemFirst()) {
           hero.title = i18n::tr("settings.update.failed");
-          hero.status = service.resultMessage();
+          hero.status = service.resultMessage().substr(0, service.resultMessage().find('\n'));
           hero.action = rows::plainButton(i18n::tr("settings.update.try-again"), ButtonVariant::Primary, scale,
                                           actions.retry);
           break;
@@ -247,6 +248,14 @@ namespace settings {
       Flex* heroCard = rows::addHero(content, std::move(hero), scale);
       if (progress != nullptr) {
         heroCard->addChild(std::move(progress));
+      }
+      // A failed run's message: one summary line, then the apt and dpkg lines that say why.
+      if (const auto& message = service.resultMessage();
+          service.runState() == RunState::Failed && !service.needsSystemFirst() && message.find('\n') != std::string::npos) {
+        Flex* card = rows::addCard(content, scale);
+        for (const auto line : std::views::split(std::string_view(message).substr(message.find('\n') + 1), '\n')) {
+          card->addChild(caption(std::string_view(line.begin(), line.end()), scale));
+        }
       }
       if (service.runState() == RunState::NeedsChoice) {
         Flex* card = rows::addCard(content, scale);
