@@ -3,7 +3,8 @@
 #   - a second `spawn andromeda-files` (dock, launcher) leaves Viewer focused,
 #   - a second `spawn andromeda-viewer FILE` (Files "Open") leaves Files focused,
 #   - with focus_on_activate off, a dock click (layer surface, token with the click serial and no surface) followed by
-#     a second Files launch leaves Viewer focused.
+#     a second Files launch leaves Viewer focused,
+#   - opening a folder that a Files window already shows opens a second window or leaves Viewer focused.
 set -euo pipefail
 OUT=${OUT:-$(pwd)/artifacts/app-raise}
 source "$(dirname "$0")/lib.sh"
@@ -43,4 +44,16 @@ TOKEN=$(sed -n 's/^token //p' "$OUT/dock.log" | tail -n 1)
 [[ -n $TOKEN ]] || fail "the dock click gave no token"
 run env DBUS_SESSION_BUS_ADDRESS="$BUS_ADDRESS" XDG_ACTIVATION_TOKEN="$TOKEN" "$FILES" > "$OUT/files-dock.log" 2>&1
 wait_focus dev.andromeda.Files || { focused; fail "a dock launch of the running Files did not raise it"; }
+
+files_windows() { run "$ANDROMEDA" windows --json | jq '[.. | objects | select(.app_id? == "dev.andromeda.Files")] | length'; }
+mkdir -p "$RUNTIME/home/Work"
+spawn "$FILES" "$RUNTIME/home/Work"
+for _ in $(seq 100); do [[ $(files_windows) -eq 2 ]] && break; sleep 0.05; done
+[[ $(files_windows) -eq 2 ]] || fail "opening a new folder did not open a window"
+spawn "$VIEWER" "$PDF"
+wait_focus dev.andromeda.Viewer || fail "Viewer did not take focus back"
+spawn "$FILES" "$RUNTIME/home/Work"
+wait_focus dev.andromeda.Files || { focused; fail "opening the folder Files shows did not raise it"; }
+run "$ANDROMEDA" settle > /dev/null
+[[ $(files_windows) -eq 2 ]] || fail "opening the folder Files shows opened a window: $(files_windows)"
 echo PASS

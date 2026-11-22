@@ -625,16 +625,21 @@ void FilesApp::open(const std::vector<std::string>& uris, const std::string& act
       continue;
     }
     std::error_code ec;
-    if (!fs::is_directory(path, ec)) {
-      // A file opens its folder; selecting it there is the reveal behaviour.
-      const std::string name = path.filename().string();
-      FilesWindow& w = openWindow(path.parent_path());
-      w.selectNames({name});
-    } else {
-      openWindow(path);
+    const bool folder = fs::is_directory(path, ec);
+    const fs::path dir = folder ? path : path.parent_path();
+    // A window that already shows the folder comes to the front instead of a second one.
+    const auto shown = std::ranges::find_if(m_windows, [&dir](const auto& entry) { return entry.second->location() == dir; });
+    AppWindow* window = shown != m_windows.end() ? shown->first : nullptr;
+    FilesWindow& w = window != nullptr ? *shown->second : openWindow(dir);
+    if (window == nullptr) {
+      window = windows().back().get();
     }
-    if (windows().back()->isOpen()) {
-      windows().back()->activate(activationToken);
+    if (!folder) {
+      // A file opens its folder; selecting it there is the reveal behaviour.
+      w.selectNames({path.filename().string()});
+    }
+    if (window->isOpen()) {
+      window->activate(activationToken);
     }
   }
   if (windows().empty()) {
