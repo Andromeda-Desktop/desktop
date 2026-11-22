@@ -116,11 +116,18 @@ def emit_sample():
     return False
 
 
+CLIPS = {1: "Meet at gate B12 at 18:40, boarding closes 18:55\nSeat 14C", 2: "hunter2"}
+
+
 def emit_activity():
     home = os.path.expanduser("~")
+    emit("ClipboardOffered", "(stast)", "p1", 1, ["text/plain;charset=utf-8", "text/plain"], len(CLIPS[1].encode()))
+    emit("ClipboardOffered", "(stast)", "p1", 2, ["text/plain", "x-kde-passwordManagerHint"], len(CLIPS[2]))
+    emit("ClipboardOffered", "(stast)", "p1", 3, ["image/png"], 48_000)
     emit("TransferOffered", "(ssa(st))", "t3", "p1", [("IMG_20261120_181203.jpg", 3_400_000)])
     emit("TransferProgress", "(stt)", "t3", 3_400_000, 3_400_000)
-    emit("TransferFinished", "(ssas)", "t3", "done", [home + "/Pictures/IMG_20261120_181203.jpg"])
+    saved = os.environ.get("RECEIVED_DIR", home + "/Pictures")  # a test points it at a real file
+    emit("TransferFinished", "(ssas)", "t3", "done", [saved + "/IMG_20261120_181203.jpg"])
     emit("TransferProgress", "(stt)", "t2", 14_000_000, 14_000_000)
     emit("TransferFinished", "(ssas)", "t2", "done", [])
     emit("TransferProgress", "(stt)", "t5", 0, 2_000_000)
@@ -186,6 +193,13 @@ def call(_conn, _sender, _path, _iface, method, params, invocation):
         reply = GLib.Variant("(t)", (params[2] + len(params[3]),))
         delay = int(os.environ.get("WRITE_DELAY", "0"))  # ms per write: lets a test cancel a copy
         GLib.timeout_add(delay, lambda: invocation.return_value(reply) and False) if delay else invocation.return_value(reply)
+        return
+    if method == "PullClipboard":
+        data = CLIPS[params[1]].encode()
+        fd = invocation.get_message().get_unix_fd_list().get(params[3])
+        os.write(fd, data)
+        os.close(fd)
+        invocation.return_value(GLib.Variant("(t)", (len(data),)))
         return
     if method == "SendFiles":
         invocation.return_value(GLib.Variant("(s)", ("t-drop",)))

@@ -3,6 +3,7 @@
 #include "app/app_window.h"
 #include "wayland/drag_and_drop.h"
 #include "wayland/wayland_connection.h"
+#include "core/log.h"
 #include "core/text_clipboard.h"
 #include "core/input/key_modifiers.h"
 #include "ui/controls/input.h"
@@ -22,6 +23,7 @@
 #include <filesystem>
 #include <sstream>
 #include <format>
+#include <gio/gio.h>
 #include <glib.h>
 #include <poll.h>
 #include <unistd.h>
@@ -491,7 +493,9 @@ namespace linkapp {
   }
 
   std::uint64_t TransferAdapter::itemKey(std::size_t index) const {
-    return std::hash<std::string>{}(m_client.activity().items()[index].id);
+    const Activity::Row row = m_client.activity().row(index);
+    if (const auto* const* clip = std::get_if<const ClipEntry*>(&row)) return std::hash<std::string>{}(std::format("c:{}", (*clip)->id));
+    return std::hash<std::string>{}(std::get<const TransferEntry*>(row)->id);
   }
 
   float TransferAdapter::measureItem(Renderer& renderer, std::size_t index, float width) {
@@ -506,17 +510,16 @@ namespace linkapp {
     holder.addChild(build(index));
   }
 
-  // Transfer row (handoff.yaml): direction symbol | name, status line, ProgressBar | actions: offered Decline + Save,
-  // running Cancel, done "Show in Folder"; a failed one says why in danger_text.
   std::unique_ptr<Node> TransferAdapter::build(std::size_t index) const {
     const float s = m_scale;
-    const auto& items = m_client.activity().items();
-    const TransferEntry& e = items[index];
+    const Activity& activity = m_client.activity();
+    const auto atMs = [](const Activity::Row& row) { return std::visit([](const auto* e) { return e->atMs; }, row); };
+    const Activity::Row current = activity.row(index);
     const std::int64_t now = nowMs();
     const float indent = Tokens::sizeControlM * s + Tokens::spaceP12 * s;
     auto block = ui::column({.align = FlexAlign::Stretch});
-    const std::string day = dayLabel(e.atMs, now);
-    if (index == 0 || dayLabel(items[index - 1].atMs, now) != day) {
+    const std::string day = dayLabel(atMs(current), now);
+    if (index == 0 || dayLabel(atMs(activity.row(index - 1)), now) != day) {
       auto head = text(day, Tokens::typeFootnote, ColorRole::Label2, s);
       head->setFontWeight(FontWeight::SemiBold);
       auto line = ui::row({}, std::move(head));
@@ -528,6 +531,50 @@ namespace linkapp {
       rule->addChild(ui::separator({}));
       block->addChild(std::move(rule));
     }
+    if (const auto* const* clip = std::get_if<const ClipEntry*>(&current)) {
+      block->addChild(buildClip(**clip));
+    } else {
+      block->addChild(buildTransfer(*std::get<const TransferEntry*>(current)));
+    }
+    return block;
+  }
+
+  // Clip row: clipboard symbol | the text's first line, "Copied on <phone> · time" | Copy puts the text back on
+  // this desktop's clipboard.
+  std::unique_ptr<Node> TransferAdapter::buildClip(const ClipEntry& e) const {
+    const float s = m_scale;
+    const float key = Tokens::sizeControlM * s;
+    auto symbol = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .fill = colorSpecFromRole(ColorRole::Fill2),
+                           .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = key, .height = key});
+    symbol->addChild(ui::glyph({.glyph = std::string("clipboard"), .glyphSize = Tokens::sizeSymbol * s,
+                                .color = colorSpecFromRole(ColorRole::Label2)}));
+    auto row = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP12 * s, .paddingV = Tokens::spaceP8 * s,
+                        .minHeight = Tokens::componentLinkThreadRow * s});
+    row->addChild(std::move(symbol));
+    std::size_t cut = std::min(e.text.find('\n'), std::size_t{200});
+    while (cut < e.text.size() && (static_cast<unsigned char>(e.text[cut]) & 0xC0U) == 0x80U) --cut; // a UTF-8 boundary
+    const std::string first = e.text.substr(0, cut);
+    const Presence& presence = m_client.presence();
+    const std::string phone = presence.phone.id == e.deviceId ? presence.phone.name : std::string("the phone");
+    auto body = ui::column({.align = FlexAlign::Stretch, .gap = Tokens::spaceP2 * s, .flexGrow = 1.0F});
+    auto title = text(first, Tokens::typeBody, ColorRole::Label1, s);
+    title->setFontWeight(FontWeight::Medium);
+    body->addChild(std::move(title));
+    body->addChild(text(std::format("Copied on {} · {}", phone, clock(e.atMs)), Tokens::typeFootnote, ColorRole::Label2, s));
+    row->addChild(std::move(body));
+    row->addChild(ui::button({.text = std::string("Copy"), .variant = ButtonVariant::Ghost, .onClick = [clip = e.text] {
+                                if (TextClipboard* clipboard = Input::textClipboard(); clipboard != nullptr) {
+                                  clipboard->setClipboardText(clip);
+                                }
+                              }}));
+    return row;
+  }
+
+  // Transfer row (handoff.yaml): direction symbol | name, status line, ProgressBar | actions: offered Decline + Save,
+  // running Cancel, done Open (one received file) and "Show in Folder"; a failed one says why in danger_text.
+  std::unique_ptr<Node> TransferAdapter::buildTransfer(const TransferEntry& e) const {
+    const float s = m_scale;
+    const std::int64_t now = nowMs();
     const float key = Tokens::sizeControlM * s;
     auto symbol = ui::row({.align = FlexAlign::Center, .justify = FlexJustify::Center, .fill = colorSpecFromRole(ColorRole::Fill2),
                            .radius = Style::scaledRadius(Tokens::radiusR8, s), .width = key, .height = key});
@@ -597,6 +644,10 @@ namespace linkapp {
                                     .onClick = [this, id] { m_client.cancelTransfer(id); }}));
       break;
     case Transfer::Done:
+      if (e.incoming && e.paths.size() == 1) {
+        actions->addChild(ui::button({.text = std::string("Open"), .variant = ButtonVariant::Ghost,
+                                      .onClick = [this, path = e.paths.front()] { m_open(path); }}));
+      }
       if (!e.paths.empty()) {
         actions->addChild(ui::button({.text = std::string("Show in Folder"), .variant = ButtonVariant::Ghost,
                                       .onClick = [this, paths = e.paths] { m_client.showInFolder(paths); }}));
@@ -605,8 +656,7 @@ namespace linkapp {
     case Transfer::Failed: break;
     }
     if (!actions->children().empty()) row->addChild(std::move(actions));
-    block->addChild(std::move(row));
-    return block;
+    return row;
   }
 
   LinkApp::LinkApp() : DeskApp({.id = kAppId, .name = "Link"}) {}
@@ -670,6 +720,20 @@ namespace linkapp {
     case DropCue::Send: m_client->sendFiles(m_client->presence().phone.id, paths); break;
     case DropCue::CopyIn: m_client->copyIntoFolder(paths); break;
     }
+  }
+
+  void LinkApp::openLocalFile(const std::string& path) {
+    GError* error = nullptr;
+    char* uri = g_filename_to_uri(path.c_str(), nullptr, &error);
+    std::unique_ptr<GAppLaunchContext, void (*)(gpointer)> context(g_app_launch_context_new(), g_object_unref);
+    if (const std::string token = loop().wayland().requestActivationToken(m_window->wlSurface()); !token.empty()) {
+      g_app_launch_context_setenv(context.get(), "XDG_ACTIVATION_TOKEN", token.c_str());
+    }
+    if (uri == nullptr || !g_app_info_launch_default_for_uri(uri, context.get(), &error)) {
+      Logger("link").warn("open {}: {}", path, error != nullptr ? error->message : "?");
+    }
+    g_clear_error(&error);
+    g_free(uri);
   }
 
   void LinkApp::fileMenu(std::size_t index, float sceneX, float sceneY) {
@@ -743,7 +807,7 @@ namespace linkapp {
         if (m_feedList != nullptr) m_feedList->notifyDataChanged();
         if (m_conversationList != nullptr) m_conversationList->notifyDataChanged();
       });
-      m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale);
+      m_transfers = std::make_unique<TransferAdapter>(*m_client, m_scale, [this](const std::string& path) { openLocalFile(path); });
       m_client->setOnPaired([this](const std::string& id) { choosePhone(id); });
       DeskApp::commands().add({.id = "view.close", .label = "Close", .group = "View",
                       .shortcut = KeyChord{.sym = XKB_KEY_Escape, .modifiers = 0},
@@ -2135,8 +2199,8 @@ namespace linkapp {
   // Activity (handoff.yaml): transfers since the app started; Link1 keeps no list.
   std::unique_ptr<Node> LinkApp::activity() {
     const float s = m_scale;
-    if (m_client->activity().items().empty()) {
-      return emptyState("arrows-down-up", "No transfers", "Files you send or receive show here.", s);
+    if (m_client->activity().rowCount() == 0) {
+      return emptyState("arrows-down-up", "No transfers", "Files you send or receive and text copied on the phone show here.", s);
     }
     auto page = ui::column({.align = FlexAlign::Stretch, .flexGrow = 1.0F});
     page->setPadding(0.0F, Tokens::spaceP24 * s, Tokens::spaceP24 * s, Tokens::spaceP24 * s);

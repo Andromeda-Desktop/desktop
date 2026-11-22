@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // Link desktop app state with no UI or D-Bus in it, so tests drive it directly.
@@ -196,23 +197,40 @@ namespace linkapp {
     std::uint64_t rateFromBytes = 0;
   };
 
-  // The Activity list, newest first. A progress for an unknown id is a transfer this desktop sends (SendFiles from
-  // any app); a declined offer leaves the list.
+  // A phone's clipboard text (ClipboardOffered). Link1 pulls only the latest offer, so the text is kept here.
+  struct ClipEntry {
+    std::uint64_t id = 0;
+    std::string deviceId;
+    std::string text;
+    std::int64_t atMs = 0;
+  };
+
+  // The Activity list, newest first: transfers and clips. A progress for an unknown id is a transfer this desktop
+  // sends (SendFiles from any app); a declined offer leaves the list. At most kClips clips stay, in memory only.
   class Activity {
   public:
+    static constexpr std::size_t kClips = 20;
+    using Row = std::variant<const TransferEntry*, const ClipEntry*>;
+
     void offered(const std::string& id, const std::string& deviceId,
                  std::vector<std::pair<std::string, std::uint64_t>> files, std::int64_t nowMs);
     // False when the move is rejected (a finished transfer) and nothing changed.
     bool progress(const std::string& id, std::uint64_t bytes, std::uint64_t total, std::int64_t nowMs);
     bool finished(const std::string& id, const std::string& status, std::vector<std::string> paths, std::int64_t nowMs);
+    void clipped(ClipEntry clip);
+    // Removes finished transfers and every clip.
     void clearFinished();
 
     [[nodiscard]] const std::vector<TransferEntry>& items() const { return m_items; }
+    [[nodiscard]] std::size_t rowCount() const { return m_items.size() + m_clips.size(); }
+    // Row index of the merged list, newest first; index < rowCount().
+    [[nodiscard]] Row row(std::size_t index) const;
     [[nodiscard]] std::size_t finishedCount() const;
     [[nodiscard]] std::size_t offeredCount() const;
 
   private:
     std::vector<TransferEntry> m_items;
+    std::vector<ClipEntry> m_clips; // newest first
   };
 
   // Bytes per second since the first progress; 0 until a second sample.

@@ -18,6 +18,7 @@
 #include <map>
 #include <optional>
 #include <sdbus-c++/sdbus-c++.h>
+#include <unistd.h>
 
 namespace linkapp {
 
@@ -178,6 +179,37 @@ namespace linkapp {
                              : status == "declined" ? m_feed.remove(key)
                                                     : m_feed.moveTransfer(key, Transfer::Failed);
           if (moved || listed) changed();
+        });
+    // Text clips only: Link1 pulls only the latest offer, so an older image could not be copied again.
+    m_proxy->uponSignal("ClipboardOffered")
+        .onInterface(kInterface)
+        .call([this](const std::string& device, std::uint64_t id, const std::vector<std::string>& mimes, std::uint64_t size) {
+          constexpr std::uint64_t kMaxClip = 60 * 1024; // below a pipe's 64 KiB buffer: the daemon's write never blocks
+          if (mimes.empty() || size == 0 || size > kMaxClip || std::ranges::contains(mimes, "x-kde-passwordManagerHint") ||
+              (mimes.front() != "text/plain;charset=utf-8" && mimes.front() != "text/plain")) {
+            return;
+          }
+          std::array<int, 2> fds{};
+          if (::pipe2(fds.data(), O_CLOEXEC | O_NONBLOCK) != 0) return;
+          auto source = std::make_shared<sdbus::UnixFd>(fds[0], sdbus::adopt_fd);
+          m_proxy->callMethodAsync("PullClipboard").onInterface(kInterface)
+              .withArguments(device, id, mimes.front(), sdbus::UnixFd{fds[1], sdbus::adopt_fd})
+              .uponReplyInvoke([this, source, device, id](std::optional<sdbus::Error> error, std::uint64_t bytes) {
+                if (error) {
+                  kLog.warn("PullClipboard: {}", error->getMessage());
+                  return;
+                }
+                std::string text(bytes, '\0');
+                std::size_t got = 0;
+                while (got < text.size()) {
+                  const ssize_t n = ::read(source->get(), text.data() + got, text.size() - got);
+                  if (n <= 0 && !(n < 0 && errno == EINTR)) break;
+                  if (n > 0) got += static_cast<std::size_t>(n);
+                }
+                if (got != bytes || text.empty()) return;
+                m_activity.clipped({.id = id, .deviceId = device, .text = std::move(text), .atMs = nowMs()});
+                changed();
+              });
         });
     refresh();
     refreshNearby();

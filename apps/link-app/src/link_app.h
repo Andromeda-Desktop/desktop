@@ -161,11 +161,12 @@ namespace linkapp {
     Menu m_menu;
   };
 
-  // Activity: transfers since the app started, newest first, with actions per state.
+  // Activity: transfers and phone clips since the app started, newest first, with actions per state.
   class TransferAdapter final : public VirtualListAdapter {
   public:
-    TransferAdapter(LinkClient& client, const float& scale) : m_client(client), m_scale(scale) {}
-    [[nodiscard]] std::size_t itemCount() const override { return m_client.activity().items().size(); }
+    TransferAdapter(LinkClient& client, const float& scale, std::function<void(const std::string&)> open)
+        : m_client(client), m_scale(scale), m_open(std::move(open)) {}
+    [[nodiscard]] std::size_t itemCount() const override { return m_client.activity().rowCount(); }
     [[nodiscard]] std::uint64_t itemKey(std::size_t index) const override;
     [[nodiscard]] bool itemInteractive(std::size_t /*index*/) const override { return true; }
     [[nodiscard]] float measureItem(Renderer& renderer, std::size_t index, float width) override;
@@ -174,9 +175,12 @@ namespace linkapp {
 
   private:
     [[nodiscard]] std::unique_ptr<Node> build(std::size_t index) const;
+    [[nodiscard]] std::unique_ptr<Node> buildTransfer(const TransferEntry& e) const;
+    [[nodiscard]] std::unique_ptr<Node> buildClip(const ClipEntry& e) const;
 
     LinkClient& m_client;
     const float& m_scale;
+    std::function<void(const std::string&)> m_open; // opens a local file with its default app
   };
 
   class LinkApp final : public DeskApp {
@@ -221,6 +225,7 @@ namespace linkapp {
     // Shows the hotspot sheet while the client holds an ask, and closes it when the ask ends.
     void syncHotspotSheet();
     void chooseAndSend(const std::string& deviceId);
+    void openLocalFile(const std::string& path);
     // Drags a phone photo out: saved into the cache, offered as a file URI once there.
     void dragPhoto(const std::string& path, std::uint32_t serial);
     // Shows this phone; the open page reloads its data from it.

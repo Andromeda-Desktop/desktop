@@ -295,12 +295,28 @@ namespace linkapp {
     return true;
   }
 
+  void Activity::clipped(ClipEntry clip) {
+    m_clips.insert(m_clips.begin(), std::move(clip));
+    if (m_clips.size() > kClips) m_clips.pop_back();
+  }
+
+  Activity::Row Activity::row(std::size_t index) const {
+    std::size_t t = 0;
+    std::size_t c = 0;
+    for (;;) {
+      const bool clip = t == m_items.size() || (c < m_clips.size() && m_clips[c].atMs > m_items[t].atMs);
+      if (index-- == 0) return clip ? Row(&m_clips[c]) : Row(&m_items[t]);
+      ++(clip ? c : t);
+    }
+  }
+
   void Activity::clearFinished() {
     std::erase_if(m_items, [](const TransferEntry& e) { return e.state == Transfer::Done || e.state == Transfer::Failed; });
+    m_clips.clear();
   }
 
   std::size_t Activity::finishedCount() const {
-    return static_cast<std::size_t>(std::ranges::count_if(
+    return m_clips.size() + static_cast<std::size_t>(std::ranges::count_if(
         m_items, [](const TransferEntry& e) { return e.state == Transfer::Done || e.state == Transfer::Failed; }));
   }
 

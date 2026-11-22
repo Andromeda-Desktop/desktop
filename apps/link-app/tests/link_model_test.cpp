@@ -276,9 +276,10 @@ namespace {
   // Random Transfer* signals: one entry per id, newest first, only allowed moves, declined offers gone.
   void runActivity(unsigned seed) {
     std::mt19937 rng(seed);
-    std::uniform_int_distribution<int> op(0, 5), idOf(0, 11), statusOf(0, 6);
+    std::uniform_int_distribution<int> op(0, 6), idOf(0, 11), statusOf(0, 6);
     const std::array<const char*, 7> statuses{"done", "failed", "declined", "no-space", "too-large", "busy", "cancelled"};
     Activity a;
+    std::uint64_t clipId = 0;
     std::int64_t now = 1'000'000;
     for (int step = 1; step <= 300; ++step) {
       now += 250;
@@ -315,11 +316,30 @@ namespace {
         }
         break;
       }
-      default:
+      case 5:
         a.clearFinished();
         expect(a.finishedCount() == 0, "Clear finished keeps only open transfers", seed, step);
         break;
+      default: {
+        const std::size_t rows = a.rowCount();
+        a.clipped({.id = ++clipId, .deviceId = "p1", .text = "clip", .atMs = now});
+        const Activity::Row top = a.row(0);
+        expect(std::holds_alternative<const ClipEntry*>(top) && std::get<const ClipEntry*>(top)->id == clipId,
+               "a new clip is the newest row", seed, step);
+        expect(a.rowCount() == rows + 1 || a.rowCount() == rows, "a clip adds one row or replaces the oldest", seed, step);
+        break;
       }
+      }
+      std::set<const void*> seen;
+      std::size_t clips = 0;
+      for (std::size_t i = 0; i < a.rowCount(); ++i) {
+        const auto at = [&](std::size_t k) { return std::visit([](const auto* e) { return e->atMs; }, a.row(k)); };
+        std::visit([&](const auto* e) { expect(seen.insert(e).second, "each entry is one row", seed, step); }, a.row(i));
+        clips += std::holds_alternative<const ClipEntry*>(a.row(i)) ? 1 : 0;
+        if (i > 0) expect(at(i - 1) >= at(i), "rows newest first", seed, step);
+      }
+      expect(a.rowCount() - clips == a.items().size(), "every transfer is a row", seed, step);
+      expect(clips <= Activity::kClips, "at most kClips clips", seed, step);
       std::set<std::string> ids;
       for (std::size_t i = 0; i < a.items().size(); ++i) {
         const TransferEntry& e = a.items()[i];
