@@ -612,7 +612,7 @@ namespace andromeda {
       }
       // A settings app recording a chord takes the press before any bind can fire on it.
       bool captured = false;
-      if (!confirmationConsumed && !modifierOnly && nsyms > 0) {
+      if (!confirmationConsumed && !modifierOnly && nsyms > 0 && !m_server->sessionLocked()) {
         if (DesktopSettingsManager* settings = m_server->desktopSettingsManager();
             settings != nullptr && settings->capturingChord()) {
           m_consumedKeycodes.insert(event->keycode);

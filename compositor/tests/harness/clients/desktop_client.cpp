@@ -89,7 +89,10 @@ namespace {
     }
   }
   void onActionSpec(void*, dsk_settings_manager_v1*, const char*, const char*, const char*) {}
-  void onChordCaptured(void*, dsk_settings_manager_v1*, const char*) {}
+  void onChordCaptured(void*, dsk_settings_manager_v1*, const char* chord) {
+    std::println("chord {}", chord[0] != '\0' ? chord : "-");
+    std::fflush(stdout);
+  }
   void onInputDone(void* data, dsk_settings_manager_v1*) { static_cast<State*>(data)->inputDone = true; }
   void onInputFailed(void* data, dsk_settings_manager_v1*, const char*, const char* reason) {
     static_cast<State*>(data)->failure = reason;
@@ -208,7 +211,8 @@ int main(int argc, char** argv) {
       || command == "layer-hold"
       || command == "settings-watch"
       || command == "keybinds-state"
-      || command == "keybind-set";
+      || command == "keybind-set"
+      || command == "chord-capture";
   if (!(command == "state" && argc == 2)
       && !(command == "mirror" && argc == 4)
       && !(command == "clear" && argc == 3)
@@ -220,11 +224,12 @@ int main(int argc, char** argv) {
       && !(command == "settings-watch" && argc == 2)
       && !(command == "keybinds-state" && argc == 2)
       && !(command == "keybind-set" && argc == 4)
+      && !(command == "chord-capture" && argc == 2)
       && !(command == "shell-events" && argc == 2)) {
     std::println(
         stderr,
         "usage: desktop-client state | mirror TARGET SOURCE | clear TARGET | properties-state | property-set TARGET KEY "
-        "VALUE | settings-state | settings-set KEY VALUE | keybinds-state | keybind-set CHORD ACTION | shell-events"
+        "VALUE | settings-state | settings-set KEY VALUE | keybinds-state | keybind-set CHORD ACTION | chord-capture | shell-events"
     );
     return 2;
   }
@@ -354,6 +359,13 @@ int main(int argc, char** argv) {
     } else if (command == "keybind-set") {
       dsk_settings_manager_v1_bind(state.input, argv[2], argv[3]);
       wl_display_roundtrip(display);
+    } else if (command == "chord-capture") {
+      dsk_settings_manager_v1_capture_chord(state.input);
+      wl_display_roundtrip(display);
+      std::println("capturing");
+      std::fflush(stdout);
+      while (wl_display_dispatch(display) >= 0) {
+      }
     }
     if (!state.failure.empty()) {
       std::println(stderr, "{}", state.failure);
