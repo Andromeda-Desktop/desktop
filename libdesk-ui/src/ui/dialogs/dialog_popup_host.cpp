@@ -105,7 +105,7 @@ bool DialogPopupHost::openPopup(std::uint32_t width, std::uint32_t height) {
   });
   // Defer: the compositor can send popup_done synchronously inside the init roundtrip below (e.g. a
   // grab serial it rejects). Running cancel() there would destroy this popup mid-initialization.
-  surface->setDismissedCallback([this] { DeferredCall::callLater([this] { cancel(); }); });
+  surface->setDismissedCallback([this] { deferWhileAlive([this] { cancel(); }); });
 
   m_chrome = popup_chrome::computeGeometry(
       static_cast<float>(width), static_cast<float>(height), shadowStyle(), Style::popupShadowsEnabled()
@@ -158,7 +158,7 @@ bool DialogPopupHost::openPopupAsChild(PopupSurfaceConfig config, const PopupPar
   });
   // Defer: the compositor can send popup_done synchronously inside the init roundtrip below (e.g. a
   // grab serial it rejects). Running cancel() there would destroy this popup mid-initialization.
-  surface->setDismissedCallback([this] { DeferredCall::callLater([this] { cancel(); }); });
+  surface->setDismissedCallback([this] { deferWhileAlive([this] { cancel(); }); });
 
   m_chrome = popup_chrome::computeGeometry(
       static_cast<float>(config.width), static_cast<float>(config.height), shadowStyle(),
@@ -496,12 +496,20 @@ void DialogPopupHost::buildScene(std::uint32_t width, std::uint32_t height) {
   layoutScene(static_cast<float>(width), static_cast<float>(height));
   syncPointerStateFromCurrentPosition();
 
-  DeferredCall::callLater([this] {
+  deferWhileAlive([this] {
     if (m_surface == nullptr) {
       return;
     }
     if (auto* focusArea = initialFocusArea(); focusArea != nullptr) {
       m_inputDispatcher.setFocus(focusArea);
+    }
+  });
+}
+
+void DialogPopupHost::deferWhileAlive(std::function<void()> fn) {
+  DeferredCall::callLater([alive = std::weak_ptr<bool>(m_alive), fn = std::move(fn)] {
+    if (!alive.expired()) {
+      fn();
     }
   });
 }

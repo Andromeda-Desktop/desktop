@@ -68,6 +68,9 @@ public:
 protected:
   DialogPopupHost();
 
+  // Runs `fn` on the next loop turn, unless this dialog is destroyed first.
+  void deferWhileAlive(std::function<void()> fn);
+
   // Called once during subclass `initialize` to capture the shared deps.
   void initializeBase(Display& display, const UiSettings& settings, RenderContext& renderContext);
   void initializeBase(
