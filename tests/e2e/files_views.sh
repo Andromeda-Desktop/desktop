@@ -38,8 +38,9 @@ png(sys.argv[1] + "/photo-1.png", (81, 71, 229))
 png(sys.argv[1] + "/photo-2.png", (229, 120, 40))
 PY
 
-printf '#!/bin/sh\npwd > "%s/terminal-cwd"\n' "$OUT" > "$RUNTIME/fake-terminal"
-chmod +x "$RUNTIME/fake-terminal"
+mkdir -p "$RUNTIME/bin"
+printf '#!/bin/sh\npwd > "%s/terminal-cwd"\n' "$OUT" > "$RUNTIME/bin/andromeda-terminal"
+chmod +x "$RUNTIME/bin/andromeda-terminal"
 rm -f "$OUT/terminal-cwd"
 
 bus_info=$(dbus-daemon --config-file="$ROOT/tests/e2e/private-bus.conf" --fork --print-address=1 --print-pid=1)
@@ -48,7 +49,7 @@ BUS_PID=$(sed -n 2p <<< "$bus_info")
 trap 'kill "$BUS_PID" 2> /dev/null || true; kill $(jobs -p) 2> /dev/null || true; wait 2> /dev/null; rm_runtime' EXIT
 run env DBUS_SESSION_BUS_ADDRESS="$BUS" HOME="$HOME_DIR" XDG_STATE_HOME="$HOME_DIR/.local/state" \
   XDG_CONFIG_HOME="$HOME_DIR/.config" LC_ALL=C.UTF-8 ANDROMEDA_LOG_LEVEL=debug DESK_MOTION_TRACE=1 DESK_FRAME_STATS=1 \
-  DESK_FILES_GEOMETRY=1 TERMINAL="$RUNTIME/fake-terminal" "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
+  DESK_FILES_GEOMETRY=1 PATH="$RUNTIME/bin:$PATH" "$FILES" "$SRC" > "$OUT/files.log" 2>&1 &
 
 win() { run "$ANDROMEDA" windows --json | jq -c "[.. | objects | select(.app_id? == \"$APP\")][0] // empty"; }
 for _ in $(seq 100); do
@@ -194,7 +195,7 @@ shot 3d-starred
 m=$(mark); files_action go "[<'file://$SRC/Alpha'>]"
 wait_log "$m" "location $SRC/Alpha\$" || fail "go did not open Alpha"
 m=$(mark); keys mod shift tap 62 mod none        # Shift+F4 (KEY_F4)
-wait_log "$m" "terminal .*fake-terminal in $SRC/Alpha\$" || fail "Shift+F4 did not open the terminal in Alpha"
+wait_log "$m" "terminal .*/andromeda-terminal in $SRC/Alpha\$" || fail "Shift+F4 did not open the terminal in Alpha"
 for _ in $(seq 40); do [[ -s $OUT/terminal-cwd ]] && break; sleep 0.05; done
 [[ $(cat "$OUT/terminal-cwd" 2> /dev/null) == "$SRC/Alpha" ]] || fail "the terminal did not start in Alpha"
 
