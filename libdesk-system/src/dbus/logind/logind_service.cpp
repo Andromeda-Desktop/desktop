@@ -43,6 +43,26 @@ LogindService::LogindService(SystemBus& bus) : m_bus(bus) {
       m_prepareForSleepCallback(sleeping);
     }
   });
+  m_busDaemon = sdbus::createProxy(
+      m_bus.connection(), sdbus::ServiceName{"org.freedesktop.DBus"}, sdbus::ObjectPath{"/org/freedesktop/DBus"}
+  );
+  m_busDaemon->uponSignal("NameOwnerChanged")
+      .onInterface("org.freedesktop.DBus")
+      .call([this](const std::string& name, const std::string& /*oldOwner*/, const std::string& newOwner) {
+        if (name == kLogindBusName && !newOwner.empty()) {
+          onLogindStarted();
+        }
+      });
+}
+
+// A new logind knows no inhibitor of the old one, and an Inhibit that failed while logind was away can succeed now.
+void LogindService::onLogindStarted() {
+  if (!m_sleepDelayWanted) {
+    return;
+  }
+  kLog.info("logind started; taking the sleep delay inhibit again");
+  releaseSleepDelayInhibit();
+  acquireSleepDelayInhibit();
 }
 
 LogindService::~LogindService() {
@@ -252,6 +272,7 @@ void LogindService::releaseIdleInhibit() {
 // The lock is async: a suspend that starts while Pending runs without the delay. logind ignores lid
 // events for HoldoffTimeoutSec (30 s) after resume, so only a scripted suspend can land in that window.
 void LogindService::acquireSleepDelayInhibit() {
+  m_sleepDelayWanted = true;
   switch (m_sleepDelay) {
   case SleepDelay::Held:
   case SleepDelay::Pending:
@@ -306,6 +327,7 @@ void LogindService::acquireSleepDelayInhibit() {
 }
 
 void LogindService::releaseSleepDelayInhibit() {
+  m_sleepDelayWanted = false;
   switch (m_sleepDelay) {
   case SleepDelay::Pending:
     m_sleepDelay = SleepDelay::PendingCancelled;

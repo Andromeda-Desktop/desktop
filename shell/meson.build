@@ -1482,6 +1482,11 @@ if build_tests
     dependencies: noctalia_core_dep,
     override_options: ['b_ndebug=false'],
   )
+  logind_sleep_delay_integration_exe = executable('logind_sleep_delay_integration_test',
+    sources: files('tests/logind_sleep_delay_integration_test.cpp'),
+    dependencies: noctalia_core_dep,
+    override_options: ['b_ndebug=false'],
+  )
   fingerprint_integration_exe = executable('fingerprint_authenticator_integration_test',
     sources: files('tests/fingerprint_authenticator_integration_test.cpp'),
     dependencies: noctalia_core_dep,
@@ -1539,6 +1544,15 @@ if build_tests
         'sh', fingerprint_integration_exe.full_path(),
       ],
       depends: fingerprint_integration_exe,
+    )
+    test('logind_sleep_delay_integration',
+      dbus_run_session,
+      args: [
+        '--', 'sh', '-c',
+        'export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"; exec "$1"',
+        'sh', logind_sleep_delay_integration_exe.full_path(),
+      ],
+      depends: logind_sleep_delay_integration_exe,
     )
   endif
 

@@ -48,11 +48,13 @@ public:
 
 private:
   void ensureSessionLockMonitor();
+  void onLogindStarted();
   void attachSessionProxy(const sdbus::ObjectPath& sessionPath);
 
   SystemBus& m_bus;
   std::unique_ptr<sdbus::IProxy> m_managerProxy;
   std::unique_ptr<sdbus::IProxy> m_sessionProxy;
+  std::unique_ptr<sdbus::IProxy> m_busDaemon;
   bool m_sessionLockIntegrationEnabled = false;
   bool m_sessionResolving = false;
   std::optional<bool> m_pendingLockedHint;
@@ -67,4 +69,6 @@ private:
   // Valid only in SleepDelay::Held.
   int m_sleepDelayInhibitFd = -1;
   SleepDelay m_sleepDelay = SleepDelay::None;
+  // The owner asked for the delay and has not released it: a logind restart takes it again.
+  bool m_sleepDelayWanted = false;
 };
