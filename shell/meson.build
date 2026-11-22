@@ -976,20 +976,20 @@ _noctalia_inc = [
 _lazy_args = []
 _lazy_sonames = []
 foreach _l : [
-  [curl_dep, 'curl', 'CURL'],
-  [libical_dep, 'ical', 'ICAL'],
-  [sndfile_dep, 'sndfile', 'SNDFILE'],
-  [qrencode_dep, 'qrencode', 'QRENCODE'],
-  [gstreamer_dep, 'gstreamer-1.0', 'GSTREAMER'],
-  [gstreamer_app_dep, 'gstapp-1.0', 'GSTAPP'],
-  [gstreamer_video_dep, 'gstvideo-1.0', 'GSTVIDEO'],
-  [gstreamer_allocators_dep, 'gstallocators-1.0', 'GSTALLOCATORS'],
-  [dependency('pam'), 'pam', 'PAM'],
+  ['curl', 'CURL'],
+  ['ical', 'ICAL'],
+  ['sndfile', 'SNDFILE'],
+  ['qrencode', 'QRENCODE'],
+  ['gstreamer-1.0', 'GSTREAMER'],
+  ['gstapp-1.0', 'GSTAPP'],
+  ['gstvideo-1.0', 'GSTVIDEO'],
+  ['gstallocators-1.0', 'GSTALLOCATORS'],
+  ['pam', 'PAM'],
 ]
-  _lazy_path = run_command(cpp.cmd_array(), '-print-file-name=lib' + _l[1] + '.so', check: true).stdout().strip()
+  _lazy_path = run_command(cpp.cmd_array(), '-print-file-name=lib' + _l[0] + '.so', check: true).stdout().strip()
   _lazy_soname = run_command(find_program('readelf'), '-d', _lazy_path, check: true, env: {'LC_ALL': 'C'}).stdout()
   _lazy_soname = _lazy_soname.split('Library soname: [')[1].split(']')[0]
-  _lazy_args += '-DLAZY_SONAME_@0@="@1@"'.format(_l[2], _lazy_soname)
+  _lazy_args += '-DLAZY_SONAME_@0@="@1@"'.format(_l[1], _lazy_soname)
   _lazy_sonames += _lazy_soname
 endforeach
 configure_file(output: 'lazy-sonames.txt', command: ['printf', '%s\\n'] + _lazy_sonames, capture: true)
