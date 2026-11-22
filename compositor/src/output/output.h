@@ -523,6 +523,8 @@ namespace andromeda {
     void advanceHeldFrame(HeldFrameEvent event);
     [[nodiscard]] bool greeterShowsNothing() const;
     void dropHeldFrame() { advanceHeldFrame(HeldFrameEvent::Dropped); }
+    // The CRTC frame is in panel pixels: it maps 1:1 only onto an unrotated output of the same mode.
+    [[nodiscard]] bool heldFrameFits(const wlr_output_state* staged) const;
     void placeHeldFrame(const wlr_output_state* staged);
     void stepHeldFrame();
     static int onHeldFrameTimer(void* data);

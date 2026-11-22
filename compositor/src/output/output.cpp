@@ -262,9 +262,7 @@ namespace andromeda {
     if (m_heldFrame != nullptr) {
       wlr_box box{};
       wlr_output_layout_get_box(m_server->outputLayout(), m_output, &box);
-      // The CRTC frame is in panel pixels: it maps 1:1 only onto an enabled, unrotated output of the same mode.
-      if (!desktopEnabled() || wlr_box_empty(&box) || m_output->transform != WL_OUTPUT_TRANSFORM_NORMAL
-          || m_heldFrame->bufferWidth() != m_output->width || m_heldFrame->bufferHeight() != m_output->height) {
+      if (!desktopEnabled() || wlr_box_empty(&box) || !heldFrameFits(nullptr)) {
         dropHeldFrame();
       } else {
         // The layout box has the committed scale; the first configured commit may still be in flight.
@@ -1225,7 +1223,11 @@ namespace andromeda {
     markBlurBackgroundDirty();
 
     if (m_heldFrame != nullptr) {
-      placeHeldFrame(&state);
+      if (heldFrameFits(&state)) {
+        placeHeldFrame(&state);
+      } else {
+        dropHeldFrame();
+      }
     }
 
     const bool unbound = wlr_output_layout_get(m_server->outputLayout(), m_output) == nullptr;
@@ -1270,6 +1272,21 @@ namespace andromeda {
     m_frameState = FrameState::Submitting;
     fx_renderer_kick(m_server->renderer(), onConfiguredSubmitted, this);
     return true;
+  }
+
+  bool Output::heldFrameFits(const wlr_output_state* staged) const {
+    int width = m_output->width;
+    int height = m_output->height;
+    wl_output_transform transform = m_output->transform;
+    if (staged != nullptr && (staged->committed & WLR_OUTPUT_STATE_MODE) != 0) {
+      width = staged->mode != nullptr ? staged->mode->width : staged->custom_mode.width;
+      height = staged->mode != nullptr ? staged->mode->height : staged->custom_mode.height;
+    }
+    if (staged != nullptr && (staged->committed & WLR_OUTPUT_STATE_TRANSFORM) != 0) {
+      transform = staged->transform;
+    }
+    return transform == WL_OUTPUT_TRANSFORM_NORMAL && m_heldFrame->bufferWidth() == width
+        && m_heldFrame->bufferHeight() == height;
   }
 
   void Output::placeHeldFrame(const wlr_output_state* staged) {
