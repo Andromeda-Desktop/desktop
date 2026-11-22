@@ -34,6 +34,9 @@ namespace {
       const bool wasActive = requested || active;
       active = nowActive;
       locked = nowLocked;
+      if (!nowLocked) {
+        reason.clear();
+      }
       if (nowLocked || !nowActive) {
         requested = false;
       }
@@ -70,9 +73,11 @@ namespace {
         } else {
           active = propActive;
         }
-        if (requested && !propActive) {
-          out.sendLock = lock(reason).sendLock;
-        }
+      }
+      if (requested && !(ok && propActive)) {
+        out.sendLock = reason;
+      } else if (locked && reason == "phone") {
+        out.sendLock = reason;
       }
       if (!resolved) {
         resolved = out.resolvedNow = true;
@@ -93,7 +98,7 @@ namespace {
     }
 
     Out lock(const std::string& asked) {
-      if (!requested || asked == "phone") {
+      if (!(requested || locked) || asked == "phone") {
         reason = asked;
       }
       requested = true;
@@ -119,6 +124,28 @@ namespace {
     const auto read = state.apply(State::StateRead{.ok = true, .active = false, .locked = false});
     TEST_CHECK(read.notice == Notice::None && state.locked() && state.active());
     TEST_CHECK(state.apply(State::StateChanged{.state = "unlocked"}).notice == Notice::Unlocked && !state.active());
+  }
+
+  // SM-001: a restarted lock process relocks plain; the held phone lock is sent again. SM-002: a lock asked while the
+  // process was away is sent even when its first state read fails.
+  void restartKeepsPhoneLockAndQueuedLock() {
+    State state;
+    state.apply(State::OwnerChanged{.owned = true});
+    state.apply(State::LockAsked{.reason = "phone"});
+    state.apply(State::StateChanged{.state = "locked"});
+    state.apply(State::OwnerChanged{.owned = false});
+    state.apply(State::OwnerChanged{.owned = true});
+    TEST_CHECK(state.apply(State::StateRead{.ok = true, .active = true, .locked = true}).sendLock == "phone");
+    state.apply(State::StateChanged{.state = "unlocked"});
+    state.apply(State::OwnerChanged{.owned = false});
+    state.apply(State::OwnerChanged{.owned = true});
+    TEST_CHECK(!state.apply(State::StateRead{.ok = true, .active = false, .locked = false}).sendLock.has_value());
+
+    State away;
+    away.apply(State::OwnerChanged{.owned = false});
+    away.apply(State::LockAsked{.reason = "user"});
+    away.apply(State::OwnerChanged{.owned = true});
+    TEST_CHECK(away.apply(State::StateRead{.ok = false}).sendLock == "user");
   }
 
   void randomSequencesMatchTheFlags() {
@@ -192,6 +219,7 @@ namespace {
 
 int main() {
   readUnlockedKeepsAHeldLock();
+  restartKeepsPhoneLockAndQueuedLock();
   randomSequencesMatchTheFlags();
   return 0;
 }

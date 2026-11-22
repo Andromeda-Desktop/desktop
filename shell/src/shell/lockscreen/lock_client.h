@@ -97,17 +97,18 @@ private:
     }
     Result result = accept(Notice::None);
     result.resolved = !wasResolved;
-    if (!event.ok) {
-      return result;
-    }
     // Only StateChanged reports an unlock: a restarted process reads unlocked until its relock lands.
-    if (event.locked) {
+    if (event.ok && event.locked) {
       result.notice = settle(Phase::Locked);
-    } else if (m_phase == Phase::Unlocked || m_phase == Phase::Active) {
+    } else if (event.ok && (m_phase == Phase::Unlocked || m_phase == Phase::Active)) {
       m_phase = event.active ? Phase::Active : Phase::Unlocked;
     }
-    // A lock asked for while the process was away is sent now.
-    if (requested() && !event.active) {
+    // A lock asked for while the process was away is sent now, also when its state could not be read. Each read
+    // follows a new owner: a restarted process relocks plain, so a held phone lock is sent again (no face, no
+    // fingerprint).
+    if (requested() && !(event.ok && event.active)) {
+      result.sendLock = m_requestReason;
+    } else if (locked() && m_requestReason == "phone") {
       result.sendLock = m_requestReason;
     }
     return result;
@@ -126,8 +127,8 @@ private:
   }
 
   Result on(LockAsked event) {
-    // A queued phone lock keeps its reason: it offers no passwordless grace.
-    if (!requested() || event.reason == "phone") {
+    // A queued or held phone lock keeps its reason until the unlock: it offers no grace, face or fingerprint.
+    if (!(requested() || locked()) || event.reason == "phone") {
       m_requestReason = event.reason;
     }
     m_phase = locked() ? Phase::LockedRequested : Phase::Requested;
@@ -153,6 +154,9 @@ private:
   // The process reported locked or unlocked/aborted; either ends a pending request.
   Notice settle(Phase to) {
     const Phase from = std::exchange(m_phase, to);
+    if (to != Phase::Locked) {
+      m_requestReason.clear();
+    }
     const bool wasLocked = from == Phase::Locked || from == Phase::LockedRequested;
     if (to == Phase::Locked) {
       return wasLocked ? Notice::None : Notice::Locked;
