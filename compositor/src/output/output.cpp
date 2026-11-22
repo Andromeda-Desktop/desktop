@@ -1909,6 +1909,10 @@ namespace andromeda {
     }
   };
 
+  void Output::dropFrameTimers() {
+    m_frameTimers.reset();
+  }
+
   Output::~Output() {
     fx_renderer_cancel_kick(m_server->renderer(), onConfiguredRenderReady, this);
     if (m_frameState == FrameState::WaitingContext) {

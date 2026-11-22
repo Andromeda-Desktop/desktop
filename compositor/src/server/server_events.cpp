@@ -638,6 +638,7 @@ namespace andromeda {
     // Re-init every output's render pipeline with the new renderer/allocator, and force
     // a fresh frame so damage tracking rebuilds from scratch.
     for (const auto& output : m_outputs) {
+      output->dropFrameTimers();
       wlr_output* wlrOutput = output->wlr();
       wlr_output_init_render(wlrOutput, newAllocator, newRenderer);
       wlr_output_schedule_frame(wlrOutput);

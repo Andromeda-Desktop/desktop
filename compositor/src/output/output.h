@@ -70,6 +70,8 @@ namespace andromeda {
     Output& operator=(const Output&) = delete;
 
     [[nodiscard]] wlr_output* wlr() const { return m_output; }
+    // Frees the frame-log GPU timers; call before their renderer is destroyed.
+    void dropFrameTimers();
     [[nodiscard]] OutputIdentity identity() const;
     [[nodiscard]] wlr_scene_output* sceneOutput() const { return m_sceneOutput; }
     // Create an opaque scene mask matching a pending configured state. The
