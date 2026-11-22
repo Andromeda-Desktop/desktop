@@ -44,7 +44,10 @@ _version = run_command(meson.current_source_dir() / '..' / 'tools' / 'unit-versi
 _args = _warnings + [
   '-DANDROMEDA_TERMINAL_VERSION="' + _version + '"',
   '-DANDROMEDA_TERMINFO_DIR="' + get_option('prefix') / get_option('datadir') / 'terminfo' + '"',
+  '-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"',
 ]
+# The scripts shellLaunch() loads; Andromeda Terminal installs them (packages skip subproject installs).
+shell_integration_dir = meson.current_source_dir() / 'data' / 'shell-integration'
 # The .app bundle has no socket activation or libexec: ptyd sits beside the executable.
 if is_macos
   _args += '-DANDROMEDA_HELPERS_BESIDE_EXE'
@@ -62,7 +65,7 @@ _deps = [
 desk_term_lib = static_library('desk_term',
   'src/command_index.cpp', 'src/context_row.cpp', 'src/holder_client.cpp', 'src/key_map.cpp', 'src/keybindings.cpp',
   'src/kitty_images.cpp', 'src/link_finder.cpp', 'src/osc1337.cpp', 'src/osc66.cpp', 'src/osc99.cpp',
-  'src/osc_frame.cpp', 'src/pty_session.cpp', 'src/session_list.cpp', 'src/settings.cpp', 'src/sixel.cpp',
+  'src/osc_frame.cpp', 'src/pty_session.cpp', 'src/session_list.cpp', 'src/settings.cpp', 'src/shell_integration.cpp', 'src/sixel.cpp',
   'src/terminal_find.cpp', 'src/terminal_view.cpp', 'src/theme_store.cpp',
   dependencies: _deps + [_desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true)],
   cpp_args: _args,

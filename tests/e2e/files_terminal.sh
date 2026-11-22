@@ -63,7 +63,7 @@ screen_has() { # the newest screen dump holds $1
 
 action view.terminal
 wait_for "F4 did not start the shell in work" logged "terminal started /bin/bash in $WORK"
-wait_for "the prompt did not show" screen_has "~/work \$"
+wait_for "the shell did not report its folder (OSC 7)" logged "terminal cwd $WORK"
 run "$ANDROMEDA" settle > /dev/null
 sleep 0.3
 run grim "$OUT/terminal.png"

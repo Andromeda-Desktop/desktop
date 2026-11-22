@@ -24,6 +24,8 @@ if get_option('buildtype') != 'release'
 endif
 
 _desk_app_sp = subproject('libdesk-app', default_options: ['shared_app_lib=true'])
+# The terminal pane hosts the same TerminalView as Andromeda Terminal.
+_desk_term_dep = subproject('libdesk-term').get_variable('desk_term_dep')
 _desk_app_dep = _desk_app_sp.get_variable('desk_app_dep')
 # Gallery video in place: the preview's subsurface player and sandboxed media helper (audio loads lazily).
 _preview_media_dep = subproject('andromeda-preview').get_variable('preview_media_dep')
@@ -84,7 +86,7 @@ _files_app = shared_library('andromeda-files',
     'src/system_portals.cpp',
   ),
   link_with: _files_lib,
-  dependencies: [_desk_app_sp.get_variable('desk_app_shared_dep'), _gio_unix_dep, dependency('vterm'),
+  dependencies: [_desk_app_sp.get_variable('desk_app_shared_dep'), _gio_unix_dep, _desk_term_dep,
     _preview_media_dep],
   cpp_args: _warnings,
   install: true,

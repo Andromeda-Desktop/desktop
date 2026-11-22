@@ -34,7 +34,7 @@ license=(GPL-3.0-or-later MIT)
 # The debug packages hold every binary's symbols, several times the desktop's size: only a release build
 # (ANDROMEDA_SYMBOLS=1) makes them, for crash reports; they stay out of the package repository.
 if [[ -n ${ANDROMEDA_SYMBOLS:-} ]]; then options=(debug); else options=(!debug); fi
-makedepends=(git meson ninja wayland-protocols xorg-xwayland poppler-glib libzip libvterm libcups exiv2 taglib nlohmann-json stb
+makedepends=(git meson ninja wayland-protocols xorg-xwayland poppler-glib libzip libcups exiv2 taglib nlohmann-json stb
   wlroots0.20 wayland libinput libei libxkbcommon libdrm pixman mesa cairo pango lcms2 jemalloc tomlplusplus
   curl fontconfig freetype2 glib2 harfbuzz libglvnd libical libjxl libpipewire libqalculate librsvg
   libsndfile libsodium libwebp libwireplumber libxml2 md4c pam polkit qrencode sdbus-cpp xdg-desktop-portal gtk4 cargo protobuf
@@ -52,8 +52,8 @@ pkgver() {
 }
 
 prepare() {
-  # libghostty-vt has no Arch package: the terminal links the pinned build statically.
-  [[ -n ${ANDROMEDA_APP:-} && $ANDROMEDA_APP != terminal ]] || desktop/tools/build-libghostty.sh
+  # libghostty-vt has no Arch package: libdesk-term (Terminal, the Files pane) links the pinned build statically.
+  [[ -n ${ANDROMEDA_APP:-} && ! $ANDROMEDA_APP =~ ^(files|terminal)$ ]] || desktop/tools/build-libghostty.sh
   if [[ -n ${ANDROMEDA_APP:-} ]]; then
     [[ ! $ANDROMEDA_APP =~ ^(files|viewer)$ ]] || cargo fetch --locked --manifest-path desktop/andromeda-preview/helper/Cargo.toml
     return
@@ -244,7 +244,7 @@ package_andromeda() {
   depends=(andromeda-compositor-git andromeda-shell-git xdg-desktop-portal-andromeda-git
     andromeda-greeter-git andromeda-preview-git andromeda-files-git andromeda-player-git andromeda-viewer-git
     andromeda-terminal-git andromeda-link andromeda-link-app-git gnome-keyring scrcpy android-tools gst-plugin-va gst-libav libpulse pipewire-pulse sqlite
-    poppler-glib libzip libvterm exiv2 taglib glycin sdbus-cpp mpv ffmpeg)
+    poppler-glib libzip exiv2 taglib glycin sdbus-cpp mpv ffmpeg)
   optdepends=('andromeda-power-git: laptop power saving (PCIe ASPM, runtime PM, USB autosuspend); can upset some devices')
   backup=(etc/mpv/mpv.conf)
   install -Dm644 desktop/session/mpv/mpv.conf "$pkgdir/etc/mpv/mpv.conf"
@@ -307,7 +307,7 @@ package_andromeda-libdesk-git() {
 package_andromeda-files-git() {
   _check_libdesk_abi || return 1
   pkgdesc='Andromeda Files: file manager, file pickers and FileManager1'
-  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-preview-git libvterm libcups xdg-utils)
+  depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" andromeda-preview-git andromeda-terminal-git libcups xdg-utils ttf-fira-code)
   optdepends=('cups: printing (the Print portal)'
     'gocryptfs: Files vaults'
               'gvfs-mtp: Files phones over MTP'
@@ -316,6 +316,8 @@ package_andromeda-files-git() {
               'dosfstools: Files Erase Drive as FAT32'
               'ntfs-3g: Files Erase Drive as NTFS')
   meson install --no-rebuild -C build-files --destdir "$pkgdir" --skip-subprojects
+  install -Dm644 desktop/libdesk-term/libghostty-vt/prefix/LICENSE \
+    "$pkgdir/usr/share/licenses/$pkgname/libghostty-vt-LICENSE"
   install -d "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants"
   ln -s ../andromeda-files-reconnect.service \
     "$pkgdir/usr/lib/systemd/user/andromeda-session.target.wants/andromeda-files-reconnect.service"
@@ -348,7 +350,7 @@ package_andromeda-terminal-git() {
   pkgdesc='Andromeda Terminal: terminal emulator on libghostty-vt'
   depends=("${_app_libs[@]}" "andromeda-libdesk-abi=$_libdesk_abi" ttf-fira-code) # the mono token font (design-tokens.toml font.mono)
   meson install --no-rebuild -C build-terminal --destdir "$pkgdir" --skip-subprojects
-  install -Dm644 desktop/apps/terminal/subprojects/libghostty-vt/prefix/LICENSE \
+  install -Dm644 desktop/libdesk-term/libghostty-vt/prefix/LICENSE \
     "$pkgdir/usr/share/licenses/$pkgname/libghostty-vt-LICENSE"
   _pin_depends
 }

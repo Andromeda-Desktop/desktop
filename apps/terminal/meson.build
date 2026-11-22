@@ -21,13 +21,14 @@ is_macos = get_option('platform') == 'macos'
 _platform_opt = ['platform=' + get_option('platform')]
 _desk_ui_dep = subproject('libdesk-ui', default_options: _platform_opt).get_variable('desk_ui_dep')
 # PTY session, VT engine and the TerminalView grid; the Files pane hosts the same view.
-_desk_term_dep = subproject('libdesk-term', default_options: _platform_opt).get_variable('desk_term_dep')
+_desk_term_sp = subproject('libdesk-term', default_options: _platform_opt)
+_desk_term_dep = _desk_term_sp.get_variable('desk_term_dep')
 # The .app bundle has no socket activation or libexec: ptyd and agentd sit beside the executable.
 _helpers_arg = is_macos ? ['-DANDROMEDA_HELPERS_BESIDE_EXE'] : []
 _core = static_library('terminal_core', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/session_layout.cpp',
-  'src/shell_integration.cpp', 'src/palette_model.cpp',
+  'src/palette_model.cpp',
   dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
-  cpp_args: _warnings + ['-DANDROMEDA_TERMINAL_SOURCE_SHELL_DIR="' + meson.current_source_dir() / 'data' / 'shell-integration' + '"'])
+  cpp_args: _warnings)
 _core_dep = declare_dependency(link_with: _core,
   include_directories: include_directories('src'), dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep, dependency('nlohmann_json')])
 
@@ -186,7 +187,7 @@ install_data('data/andromeda-ptyd.socket', install_dir: _user_unit_dir)
 install_symlink('andromeda-ptyd.socket', pointing_to: '../andromeda-ptyd.socket',
   install_dir: _user_unit_dir / 'sockets.target.wants')
 
-install_subdir('data/shell-integration', install_dir: get_option('datadir') / 'andromeda' / 'terminal')
+install_subdir(_desk_term_sp.get_variable('shell_integration_dir'), install_dir: get_option('datadir') / 'andromeda' / 'terminal')
 install_subdir('themes', install_dir: get_option('datadir') / 'andromeda' / 'terminal')
 install_data('data/dev.andromeda.Terminal.desktop', install_dir: get_option('datadir') / 'applications')
 # DBusActivatable=true in the .desktop file: the bus starts the app by its id, then calls Activate or Open.

@@ -601,6 +601,10 @@ FilesWindow::FilesWindow(FilesApp& app, AppWindow& window, fs::path location, bo
     }
   });
   m_window.setTitleClick([this] { openPathField(""); });
+  // The terminal pane takes every key while it has focus, before the window's shortcuts (as Andromeda Terminal).
+  m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+    return m_terminalOpen && m_terminal != nullptr && m_terminal->key(event);
+  });
   m_window.setKeyHandler([this](const KeyboardEvent& event) {
     // "/" or "~" typed in the list starts a path (Finder, GTK); search and rename fields take the key before this.
     if (event.pressed && (event.utf32 == '/' || event.utf32 == '~') && (event.modifiers & (KeyMod::Ctrl | KeyMod::Alt)) == 0 &&
@@ -2428,8 +2432,7 @@ void FilesWindow::toggleTerminal() {
   if (m_terminal == nullptr || !m_terminal->running()) {
     const fs::path dir = m_browser->listingId().empty() ? location() : fs::path(g_get_home_dir());
     m_terminal = std::make_unique<TerminalPane>(
-        dir, TerminalPane::Host{
-                 .invalidate = [this] { m_window.invalidate(); },
+        m_app.loop(), m_window, dir, TerminalPane::Host{
                  .cwdChanged =
                      [this](const fs::path& cwd) {
                        if (cwd != location()) {

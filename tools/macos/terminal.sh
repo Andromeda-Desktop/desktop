@@ -76,7 +76,7 @@ for lib in "$fw"/*; do keep_rpath "$lib" @loader_path; done
 
 mkdir -p "$res/assets" "$res/terminfo" "$res/fonts/conf.d" "$res/licenses/angle"
 rsync -a --exclude '*-wallpaper.png' shell/assets/ "$res/assets/"
-cp -r apps/terminal/data/shell-integration "$res/"
+cp -r libdesk-term/data/shell-integration "$res/"
 tic -x -o "$res/terminfo" apps/terminal/data/andromeda.terminfo
 # macOS ncurses looks entries up under the hex name of their first letter.
 # tic on a Mac writes them so already.
