@@ -2437,6 +2437,7 @@ namespace linkapp {
     badge->setRadius(d / 2.0F);
     check->setVisible(picked);
     check->setGlyphSize(Tokens::sizeSymbol * s * 0.75F);
+    if (m_renderer != nullptr) check->layout(*m_renderer); // its size is known only once measured
     check->setPosition(badge->x() + (d - check->width()) / 2.0F, badge->y() + (d - check->height()) / 2.0F);
     const Photo& photo = m_client.photos().items()[at(index)];
     length->setVisible(photo.videoS.has_value());
