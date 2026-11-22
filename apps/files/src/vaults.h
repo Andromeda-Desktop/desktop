@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@ public:
 
   // Makes the cipher folder, saves the vault and unlocks it.
   void create(const std::string& name, const std::string& password, Done done);
+  // A second unlock of a vault whose gocryptfs run is still going joins that run and gets its result.
   void unlock(const Vault& vault, const std::string& password, Done done);
   void lock(const Vault& vault, Done done);
 
@@ -42,4 +44,6 @@ private:
 
   std::string m_file;
   std::vector<Vault> m_vaults;
+  // Mount point -> callers waiting on its running gocryptfs.
+  std::map<std::string, std::vector<Done>> m_unlocking;
 };

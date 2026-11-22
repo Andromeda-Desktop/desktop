@@ -130,6 +130,8 @@ test('admin_session', executable('admin_session_test', 'tests/admin_session_test
   dependencies: _desk_app_dep, include_directories: include_directories('src'), cpp_args: _warnings))
 test('trash', executable('trash_test', 'tests/trash_test.cpp', link_with: _files_lib, dependencies: _desk_app_dep,
   include_directories: include_directories('src'), cpp_args: _warnings))
+test('vaults', executable('vaults_test', 'tests/vaults_test.cpp', 'src/vaults.cpp', link_with: _files_lib,
+  dependencies: [_desk_app_dep, _gio_unix_dep], include_directories: include_directories('src'), cpp_args: _warnings))
 test('service_menus', executable('service_menus_test', 'tests/service_menus_test.cpp', 'src/service_menus.cpp',
   link_with: _files_lib, dependencies: [_desk_app_dep, _gio_unix_dep], include_directories: include_directories('src'),
   cpp_args: _warnings))

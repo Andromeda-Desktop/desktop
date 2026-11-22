@@ -207,21 +207,30 @@ void Vaults::unlock(const Vault& vault, const std::string& password, Done done) 
     done({});
     return;
   }
+  auto [waiting, first] = m_unlocking.try_emplace(vault.mount.string());
+  waiting->second.push_back(std::move(done));
+  if (!first) {
+    return;
+  }
   std::error_code ec;
   fs::create_directories(vault.mount, ec);
   // gocryptfs forks into the background once the mount is up, so the exit status is the unlock result.
   run({"gocryptfs", "-q", "-idle", kIdle, vault.cipher.string(), vault.mount.string()}, password + "\n",
-      [vault, done = std::move(done)](int status, const std::string& err) {
+      [this, vault](int status, const std::string& err) {
+        std::string error;
         if (status == 0) {
           kLog.debug("vault unlocked {}", vault.name);
           startGuard(vault.mount);
-          done({});
         } else if (status == kWrongPassword) {
           kLog.debug("vault wrong password {}", vault.name);
-          done("The password is not correct.");
+          error = "The password is not correct.";
         } else {
           kLog.warn("vault unlock {} failed ({}): {}", vault.name, status, err);
-          done(err.empty() ? std::string("The vault could not be opened.") : firstLine(err));
+          error = err.empty() ? std::string("The vault could not be opened.") : firstLine(err);
+        }
+        auto waiters = m_unlocking.extract(vault.mount.string());
+        for (const Done& d : waiters.mapped()) {
+          d(error);
         }
       });
 }
