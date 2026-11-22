@@ -1,6 +1,7 @@
 #pragma once
 
 #include "workspace_bar.h"
+#include "browse_view.h"
 #include "command_palette.h"
 #include "settings_store.h"
 #include "core/timer_manager.h"
@@ -46,6 +47,8 @@ class ThumbnailService;
 
 
 namespace term {
+
+  class FileActions;
 
   [[nodiscard]] inline AppWindow::Material appMaterial(WindowMaterial m) {
     switch (m) {
@@ -155,6 +158,8 @@ namespace term {
       applyZoom(steps);
     }
     void applyZoom(int steps);
+    // The app's file operations for browse mode; null: copy, move, trash, rename and Show in Files are off.
+    void setFileActions(FileActions* actions) { m_fileActions = actions; }
     void setPaletteRecent(std::function<std::vector<std::string>()> load, std::function<void(std::vector<std::string>)> save) {
       m_loadRecent = std::move(load);
       m_saveRecent = std::move(save);
@@ -200,6 +205,18 @@ namespace term {
     std::function<void(std::uint64_t, const std::string&)> m_joinWorkspace;
     void openPalette(PaletteTarget target = PaletteTarget::Any);
     void closePalette(bool rootGone = false); // rootGone: the slot it was in was rebuilt
+    // Browse mode (Ctrl+Shift+O) over the focused pane; it takes every key while open.
+    struct BrowseClosed {};
+    struct BrowseOpen {
+      std::shared_ptr<BrowseView> ui; // shared: a key handler keeps it alive while the mode closes inside it
+      Node* root = nullptr;
+      std::uint64_t session = 0; // the session whose shell gets cd and inserted paths
+    };
+    std::variant<BrowseClosed, BrowseOpen> m_browse;
+    FileActions* m_fileActions = nullptr;
+    void openBrowse();
+    void closeBrowse(bool rootGone = false);
+    void runBrowse(const browse::Effect& effect);
     [[nodiscard]] std::vector<palette::Item> paletteItems(PaletteTarget target,
                                                           std::unordered_map<std::string, std::function<void()>>& runs);
     void openAgentHere(agent::Kind kind);

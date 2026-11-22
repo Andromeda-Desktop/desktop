@@ -73,6 +73,7 @@ namespace term {
         {Action::ResizeSplitRight, "resize_split_right", "Move the split divider right", "alt+shift+right"},
         {Action::ResizeSplitUp, "resize_split_up", "Move the split divider up", "alt+shift+up"},
         {Action::ResizeSplitDown, "resize_split_down", "Move the split divider down", "alt+shift+down"},
+        {Action::BrowseFiles, "browse_files", "Browse files", "ctrl+shift+o"},
     }};
     static_assert(
         [] {

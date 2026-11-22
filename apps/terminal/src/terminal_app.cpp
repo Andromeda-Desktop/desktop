@@ -80,6 +80,9 @@ namespace term {
     if (m_notifier == nullptr) {
       m_notifier = std::make_unique<Notifier>(bus());
     }
+    if (m_fileActions == nullptr) {
+      m_fileActions = std::make_unique<FileActions>(bus());
+    }
     // Before the window's sessions open: each one joins the window's workspace.
     m_windowWorkspaces.opened(&window, std::exchange(m_nextWorkspace, std::nullopt));
     m_windows[&window] = std::make_unique<TerminalWindow>(loop(), window, *m_notifier, [this](agent::Kind kind) -> agent::Host& { return agentHost(kind); }, m_thumbnails, m_settings, std::exchange(m_nextOrigins, std::vector<WindowOrigin>{NewShell{}}),
@@ -124,6 +127,7 @@ namespace term {
     workspacesChanged(); // the other windows' bars gain this one
     m_windows[&window]->setZoomStore(state().get("/terminal/zoom", 0),
                                      [this](int steps) { state().set("/terminal/zoom", steps); });
+    m_windows[&window]->setFileActions(m_fileActions.get());
     m_windows[&window]->setPaletteRecent(
         [this] { return state().get("/terminal/palette_recent", std::vector<std::string>{}); },
         [this](std::vector<std::string> recent) { state().set("/terminal/palette_recent", std::move(recent)); });

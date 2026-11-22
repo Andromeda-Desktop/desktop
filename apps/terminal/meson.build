@@ -26,7 +26,7 @@ _desk_term_dep = _desk_term_sp.get_variable('desk_term_dep')
 # The .app bundle has no socket activation or libexec: ptyd and agentd sit beside the executable.
 _helpers_arg = is_macos ? ['-DANDROMEDA_HELPERS_BESIDE_EXE'] : []
 _core = static_library('terminal_core', 'src/workspace_watcher.cpp', 'src/workspace_bar.cpp', 'src/window_workspaces.cpp', 'src/session_layout.cpp',
-  'src/palette_model.cpp',
+  'src/palette_model.cpp', 'src/browse_model.cpp',
   dependencies: [_desk_term_dep, dependency('threads'), _desk_ui_dep.partial_dependency(compile_args: true, includes: true, sources: true), dependency('nlohmann_json')],
   cpp_args: _warnings)
 _core_dep = declare_dependency(link_with: _core,
@@ -108,6 +108,8 @@ test('terminal_find', executable('terminal_find_test', 'tests/terminal_find_test
   dependencies: _core_dep, cpp_args: _warnings))
 test('palette_model', executable('palette_model_test', 'tests/palette_model_test.cpp',
   dependencies: _core_dep, cpp_args: _warnings))
+test('browse_model', executable('browse_model_test', 'tests/browse_model_test.cpp',
+  dependencies: _core_dep, cpp_args: _warnings))
 test('terminal_bidi', executable('terminal_bidi_test', 'tests/terminal_bidi_test.cpp',
   dependencies: _desk_ui_dep, cpp_args: _warnings))
 
@@ -128,17 +130,17 @@ test('theme_store', executable('theme_store_test', 'tests/theme_store_test.cpp',
 # Session services per platform: D-Bus on Linux; Cocoa frameworks on macOS (.agent/TASK-terminal-macos.md step 7).
 if is_macos
   add_languages('objcpp', native: false)
-  _platform_src = files('src/notifier_macos.mm', 'src/control_socket.cpp')
-  _platform_deps = [dependency('appleframeworks', modules: ['Foundation', 'UserNotifications'])]
+  _platform_src = files('src/notifier_macos.mm', 'src/control_socket.cpp', 'src/file_actions_macos.mm')
+  _platform_deps = [dependency('appleframeworks', modules: ['Foundation', 'UserNotifications', 'AppKit'])]
 else
-  _platform_src = files('src/notifier_dbus.cpp', 'src/control_dbus.cpp')
+  _platform_src = files('src/notifier_dbus.cpp', 'src/control_dbus.cpp', 'src/file_actions_dbus.cpp')
   _platform_deps = []
 endif
 
 _terminfo_dir = get_option('prefix') / get_option('datadir') / 'terminfo'
 _app_src = files('src/app_main.cpp',
   'src/terminal_app.cpp',
-  'src/terminal_window.cpp', 'src/command_palette.cpp',
+  'src/terminal_window.cpp', 'src/command_palette.cpp', 'src/browse_view.cpp',
   'src/settings_store.cpp',
   'src/theme_cli.cpp', 'src/terminal_control.cpp', 'src/control_cli.cpp',
   'src/prefs_window.cpp',

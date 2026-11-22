@@ -4,6 +4,7 @@
 
 #include "app/app_loop.h"
 #include "app/app_window.h"
+#include "file_actions.h"
 #include "notifier.h"
 #include "link_finder.h"
 #include "shell_integration.h"
@@ -32,6 +33,7 @@
 #include "ui/contrast.h"
 #include "ui/palette.h"
 #include "ui/style.h"
+#include "util/string_utils.h"
 
 #include "core/input/cursor_shape.h"
 
@@ -141,6 +143,7 @@ namespace term {
     m_window.setContentBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       m_bandStatus = nullptr; // the header rebuilds after the content and sets it again
       closePalette(true);
+      closeBrowse(true);
       for (Session& session : m_views) {
         session.view->sceneDestroyed();
       }
@@ -384,6 +387,18 @@ namespace term {
           .keep = m_agentBar->children().empty() ? floor : AgentView::bandKeep(*m_agentBar->children().front(), renderer)};
     });
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+      // Browse mode takes every key, so none reaches the shell; its own binding closes it.
+      if (auto* browse = std::get_if<BrowseOpen>(&m_browse); browse != nullptr) {
+        const auto action = event.pressed ? m_settings.settings().keys.match(event.sym, event.unshifted, event.modifiers)
+                                          : std::nullopt;
+        if (action == Action::BrowseFiles) {
+          closeBrowse();
+          return true;
+        }
+        const std::shared_ptr<BrowseView> keep = browse->ui;
+        keep->key(event);
+        return true;
+      }
       ContentView* view = shownView();
       // A click on a button leaves focus nowhere: keys go back to the shown session.
       if (view != nullptr && view->focusArea() != nullptr && m_window.input().focusedArea() == nullptr) {
@@ -907,6 +922,9 @@ namespace term {
     if (std::holds_alternative<PaletteOpen>(m_palette) && (rebuild || (m_split.split() && m_split.focusedPane() != id))) {
       closePalette();
     }
+    if (const auto* browse = std::get_if<BrowseOpen>(&m_browse); browse != nullptr && (rebuild || browse->session != id)) {
+      closeBrowse();
+    }
     syncAgentBar();
     for (Session& session : m_views) {
       session.view->setWindowActive(std::ranges::contains(panes, session.id) && m_active);
@@ -1052,6 +1070,7 @@ namespace term {
       case Action::NewWindow: m_newWindow(m_window.activationToken(), {NewShell{}}); return true;
       case Action::Find: openFind(); return true;
       case Action::CommandPalette: openPalette(); return true;
+      case Action::BrowseFiles: openBrowse(); return true;
       case Action::ToggleSidebar: m_window.toggleSidebar(); return true;
       case Action::PreviousWorkspace:
       case Action::NextWorkspace: {
@@ -2139,6 +2158,166 @@ namespace term {
     });
     if (focused) {
       focusGrid();
+    }
+  }
+
+  void TerminalWindow::openBrowse() {
+    if (std::holds_alternative<BrowseOpen>(m_browse)) {
+      closeBrowse();
+      return;
+    }
+    TerminalView* view = shownTerminal();
+    if (m_contentSlot == nullptr || view == nullptr) {
+      return;
+    }
+    if (view->remote()) {
+      kLog.info("browse mode is off: the shell runs on another host");
+      return;
+    }
+    std::filesystem::path dir = view->cwd();
+    if (dir.empty() || !dir.is_absolute()) {
+      const char* home = std::getenv("HOME");
+      dir = home != nullptr ? home : "/";
+    }
+    if (m_findOpen) {
+      closeFind();
+    }
+    closePalette();
+    const float s = m_window.uiScale();
+    const BrowseView::Rect slot{0.0F, 0.0F, m_contentWidth, m_contentHeight};
+    BrowseView::Rect area = slot;
+    const std::uint64_t pane = m_split.focusedPane() != 0 ? m_split.focusedPane() : m_sessions.shown().value_or(0);
+    if (const auto card = m_split.rect(pane)) {
+      const PaneRect& r = *card;
+      const float caption = Tokens::componentWindowCaption * s;
+      area = {r.x, r.y + caption, r.width, r.height - caption};
+    }
+    BrowseOpen open;
+    open.session = pane;
+    open.ui = std::make_shared<BrowseView>(
+        dir.lexically_normal(), m_thumbnails,
+        BrowseView::Host{
+            .run = [this](const browse::Effect& effect) { runBrowse(effect); },
+            .promptIdle =
+                [this, pane] {
+                  for (Session& session : m_views) {
+                    if (session.id == pane && session.view->terminal() != nullptr) {
+                      return session.view->terminal()->atPrompt();
+                    }
+                  }
+                  return false;
+                },
+            .relayout =
+                [this] {
+                  m_window.updateInPlace([this](Renderer& renderer) {
+                    if (auto* now = std::get_if<BrowseOpen>(&m_browse); now != nullptr) {
+                      now->root->layout(renderer);
+                      now->ui->bind(renderer);
+                    }
+                  });
+                  m_window.invalidate();
+                },
+        });
+    m_browse = std::move(open);
+    m_window.updateInPlace([&](Renderer& renderer) {
+      auto& now = std::get<BrowseOpen>(m_browse);
+      now.root = m_contentSlot->addChild(now.ui->build(s, slot, area));
+      now.root->layout(renderer);
+      now.ui->bind(renderer);
+    });
+    m_window.input().setFocus(std::get<BrowseOpen>(m_browse).ui->focusArea());
+    m_window.invalidate();
+  }
+
+  void TerminalWindow::closeBrowse(bool rootGone) {
+    auto* open = std::get_if<BrowseOpen>(&m_browse);
+    if (open == nullptr) {
+      return;
+    }
+    BrowseOpen closing = std::move(*open);
+    m_browse = BrowseClosed{};
+    closing.ui->detach();
+    if (rootGone) {
+      // Its nodes leave with the old slot later: they must not reach a freed view.
+      DeferredCall::callLater([ui = closing.ui] {});
+      return;
+    }
+    const bool focused = m_window.input().focusedArea() == closing.ui->focusArea();
+    closing.root->setVisible(false);
+    // Later: a key handler of this view may still be on the stack.
+    DeferredCall::callLater([this, ui = closing.ui, root = closing.root, alive = std::weak_ptr<bool>(m_alive)] {
+      if (alive.expired() || m_contentSlot == nullptr) {
+        return;
+      }
+      for (const auto& child : m_contentSlot->children()) {
+        if (child.get() == root) {
+          auto removed = m_contentSlot->removeChild(root);
+          m_window.input().forgetDetached();
+          break;
+        }
+      }
+      m_window.invalidate();
+    });
+    if (focused) {
+      focusGrid();
+    }
+    m_window.invalidate();
+  }
+
+  void TerminalWindow::runBrowse(const browse::Effect& effect) {
+    const auto* open = std::get_if<BrowseOpen>(&m_browse);
+    if (open == nullptr) {
+      return;
+    }
+    TerminalView* shell = nullptr;
+    for (Session& session : m_views) {
+      if (session.id == open->session) {
+        shell = session.view->terminal();
+      }
+    }
+    // An operation's error shows in the mode while it is still open.
+    const auto done = [this, alive = std::weak_ptr<bool>(m_alive)](const std::string& error) {
+      if (alive.expired() || error.empty()) {
+        return;
+      }
+      if (auto* now = std::get_if<BrowseOpen>(&m_browse); now != nullptr) {
+        now->ui->hint(error);
+      }
+    };
+    const auto noActions = [&] {
+      open->ui->hint("File operations need the session bus");
+    };
+    if (const auto* cd = std::get_if<browse::effect::Cd>(&effect)) {
+      if (shell != nullptr) {
+        // Ctrl+E Ctrl+U clears a half-typed line; the leading space keeps the cd out of the history (ignorespace).
+        shell->sendText("\x05\x15 cd -- " + StringUtils::shellQuote(cd->dir.string()) + "\r", false);
+      }
+    } else if (const auto* insert = std::get_if<browse::effect::Insert>(&effect)) {
+      if (shell != nullptr) {
+        std::string text;
+        for (const auto& path : insert->paths) {
+          text += StringUtils::shellQuote(path.string()) + " ";
+        }
+        shell->sendText(text, true);
+      }
+    } else if (const auto* file = std::get_if<browse::effect::Open>(&effect)) {
+      openUri(fileUri(file->path.string()));
+    } else if (const auto* show = std::get_if<browse::effect::ShowInFiles>(&effect)) {
+      if (m_fileActions != nullptr) {
+        m_fileActions->showInFiles(show->paths);
+      } else {
+        noActions();
+      }
+    } else if (const auto* copy = std::get_if<browse::effect::Copy>(&effect)) {
+      m_fileActions != nullptr ? m_fileActions->copy(copy->paths, copy->dest, done) : noActions();
+    } else if (const auto* move = std::get_if<browse::effect::Move>(&effect)) {
+      m_fileActions != nullptr ? m_fileActions->move(move->paths, move->dest, done) : noActions();
+    } else if (const auto* trash = std::get_if<browse::effect::Trash>(&effect)) {
+      m_fileActions != nullptr ? m_fileActions->trash(trash->paths, done) : noActions();
+    } else if (const auto* rename = std::get_if<browse::effect::Rename>(&effect)) {
+      m_fileActions != nullptr ? m_fileActions->rename(rename->path, rename->name, done) : noActions();
+    } else if (std::holds_alternative<browse::effect::Close>(effect)) {
+      closeBrowse();
     }
   }
 

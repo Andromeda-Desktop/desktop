@@ -4,6 +4,7 @@
 #include "app/file_chooser.h"
 #include "render/core/thumbnail_service.h"
 #include "prefs_window.h"
+#include "file_actions.h"
 #include "terminal_control.h"
 #include "terminal_window.h"
 #include "window_workspaces.h"
@@ -65,6 +66,7 @@ namespace term {
     void workspacesChanged(); // updates every window's foot bar
     void addWorkspace(AppWindow& from); // a new window, which is a new workspace
     std::unique_ptr<Notifier> m_notifier;
+    std::unique_ptr<FileActions> m_fileActions; // browse mode's copy, move, trash, rename, Show in Files
     std::vector<WindowOrigin> m_nextOrigins{NewShell{}}; // the sessions of the window createWindow() makes next
     std::optional<std::uint64_t> m_nextWorkspace;        // the workspace those sessions already belong to
     // Live: each change saves the open windows. Kept: the app quits; its closing windows stay saved for the restore.

@@ -65,6 +65,7 @@ namespace term {
     ResizeSplitRight,
     ResizeSplitUp,
     ResizeSplitDown,
+    BrowseFiles,
     Count,
   };
   inline constexpr std::size_t kActionCount = static_cast<std::size_t>(Action::Count);

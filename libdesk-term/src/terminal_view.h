@@ -208,6 +208,12 @@ namespace term {
     [[nodiscard]] PtySession& session() noexcept { return m_session; }
     // A job other than the shell holds the terminal and the shell never sent an OSC 133 mark (sh, nu).
     [[nodiscard]] bool runsUnmarkedJob() const { return !m_marksSeen && m_session.foregroundJob(); }
+    // The shell waits at its prompt: no command runs per OSC 133, or with no marks, no job holds the terminal.
+    [[nodiscard]] bool atPrompt() const {
+      return m_marksSeen ? std::holds_alternative<CommandIdle>(m_command) : !m_session.foregroundJob();
+    }
+    // The shell runs on another host (ssh, a container): its folders are not this machine's.
+    [[nodiscard]] bool remote() const noexcept { return m_remote.has_value(); }
 
   private:
     // Redraw owed to the next frame tick: Dirty rows only, or All rows (the selection changed).
