@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 class AppWindow;
@@ -17,6 +18,7 @@ class Flex;
 class Input;
 class Node;
 class Renderer;
+struct KeyboardEvent;
 
 namespace term {
 
@@ -49,6 +51,7 @@ namespace term {
       std::string detail; // a second line under the label; empty for none
       std::function<std::unique_ptr<Node>(float scale, float width)> control; // width: the card's inner width
       bool wide = false; // the control fills the card; no label column
+      std::function<void()> onClick; // the whole row is the hit area, one control row high
     };
     struct Group {
       Pane pane;
@@ -70,6 +73,20 @@ namespace term {
                                                     float tileW, float tileH, bool ownRing,
                                                     std::function<void(const InputArea::PointerData&)> pick);
     [[nodiscard]] std::unique_ptr<Flex> card(const Group& group, float scale, float width) const;
+    // Shortcut capture on the Keyboard pane: Recording waits for a chord for the action; Replacing holds a chord
+    // another action uses until the same chord comes again.
+    struct Idle {};
+    struct Recording {
+      Action action;
+    };
+    struct Replacing {
+      Action action;
+      Chord chord;
+      Action other;
+    };
+    using Capture = std::variant<Idle, Recording, Replacing>;
+    void setCapture(Capture next);
+    bool captureKey(const KeyboardEvent& event);
     void change(const std::function<void(Settings&)>& edit);
     void showPane(Pane pane);
     void setQuery(std::string query);
@@ -84,6 +101,7 @@ namespace term {
     };
     std::optional<ImportError> m_importError; // the last import, when it failed
     Pane m_pane = Pane::Main;
+    Capture m_capture;
     std::string m_query;
     Input* m_search = nullptr;
     ScrollViewState m_scroll;

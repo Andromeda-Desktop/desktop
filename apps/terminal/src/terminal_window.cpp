@@ -5,6 +5,7 @@
 #include "app/app_loop.h"
 #include "app/app_window.h"
 #include "notifier.h"
+#include "link_finder.h"
 #include "shell_integration.h"
 #include "core/deferred_call.h"
 #include "core/input/key_modifiers.h"
@@ -143,13 +144,41 @@ namespace term {
       for (Session& session : m_views) {
         session.view->sceneDestroyed();
       }
-      auto slot = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height});
+      const auto* invalid = std::get_if<SettingsStore::Invalid>(&m_settings.fileState());
+      const float s = m_window.uiScale();
+      const float bannerH = invalid != nullptr ? Tokens::sizeRow * s : 0.0F;
+      auto slot = ui::column({.align = FlexAlign::Stretch, .width = width, .height = height - bannerH});
       m_contentSlot = slot.get();
       m_contentWidth = width;
-      m_contentHeight = height;
+      m_contentHeight = height - bannerH;
       fillSlot(renderer);
       registerDropTarget();
-      return slot;
+      if (invalid == nullptr) {
+        return slot;
+      }
+      // A broken terminal.toml: one line above the sessions until the file parses again.
+      const float pad = Tokens::spaceP12 * s;
+      const std::string name = m_settings.path().filename().string();
+      auto banner = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP8 * s, .paddingH = pad, .width = width, .height = bannerH});
+      banner->setFill(colorSpecFromRole(ColorRole::SolidRegular));
+      banner->addChild(ui::glyph({.glyph = "alert-triangle",
+                                  .glyphSize = Tokens::sizeSymbolInline * s,
+                                  .color = colorSpecFromRole(ColorRole::DangerText)}));
+      banner->addChild(ui::label({.text = name + (invalid->error.line > 0 ? ", line " + std::to_string(invalid->error.line) : "") + ": "
+                                          + invalid->error.message + ". The last good settings stay in use.",
+                                  .fontSize = Tokens::typeFootnote.size * s,
+                                  .color = colorSpecFromRole(ColorRole::Label1),
+                                  .maxWidth = width - pad * 2.0F - (Tokens::sizeSymbolInline + Tokens::spaceP64 + Tokens::spaceP8 * 3.0F) * s,
+                                  .maxLines = 1,
+                                  .ellipsize = TextEllipsize::End,
+                                  .flexGrow = 1.0F}));
+      banner->addChild(ui::button({.text = "Show file",
+                                   .fontSize = Tokens::typeFootnote.size * s,
+                                   .variant = ButtonVariant::Ghost,
+                                   .radius = Style::scaledRadiusSm(s),
+                                   .height = Tokens::sizeControlS * s,
+                                   .onClick = [this] { openUri(fileUri(m_settings.path().string())); }}));
+      return ui::column({.align = FlexAlign::Stretch, .width = width, .height = height}, std::move(banner), std::move(slot));
     });
     m_window.setSidebarBuilder([this](Renderer& renderer, float width, float height) -> std::unique_ptr<Node> {
       const float s = m_window.uiScale();

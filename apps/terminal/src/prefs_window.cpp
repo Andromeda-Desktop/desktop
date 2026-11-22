@@ -18,6 +18,7 @@
 #include "ui/style.h"
 
 #include <fontconfig/fontconfig.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
 
 #include <algorithm>
 #include <cctype>
@@ -166,6 +167,9 @@ namespace term {
   PrefsWindow::PrefsWindow(AppWindow& window, SettingsStore& store, ThemeActions actions)
       : m_window(window), m_store(store), m_actions(std::move(actions)), m_monoFonts(monoFamilies()), m_shells(installedShells()) {
     m_window.setFirstKeyHandler([this](const KeyboardEvent& event) {
+      if (captureKey(event)) {
+        return true;
+      }
       const bool ctrlOnly = (event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt)) == KeyMod::Ctrl;
       if (!event.pressed || !ctrlOnly || (event.unshifted != 'f' && event.unshifted != 'F') || m_search == nullptr) {
         return false;
@@ -231,6 +235,56 @@ namespace term {
     }
   }
 
+  void PrefsWindow::setCapture(Capture next) {
+    m_capture = std::move(next);
+    // Called from a row's click: rebuild after its callback returns, not under it.
+    DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
+      if (!alive.expired()) {
+        refill();
+      }
+    });
+  }
+
+  bool PrefsWindow::captureKey(const KeyboardEvent& event) {
+    if (std::holds_alternative<Idle>(m_capture)) {
+      return false;
+    }
+    if (!event.pressed || event.repeat) {
+      return true;
+    }
+    const auto* replacing = std::get_if<Replacing>(&m_capture);
+    const Action action = replacing != nullptr ? replacing->action : std::get<Recording>(m_capture).action;
+    const std::uint32_t mods = event.modifiers & (KeyMod::Ctrl | KeyMod::Shift | KeyMod::Alt | KeyMod::Super);
+    if (mods == 0 && event.sym == XKB_KEY_Escape) {
+      setCapture(Idle{});
+      return true;
+    }
+    if (mods == 0 && event.sym == XKB_KEY_BackSpace) {
+      setCapture(Idle{});
+      change([action](Settings& x) { x.keys.bind(action, {}); });
+      return true;
+    }
+    const bool modifierKey = (event.sym >= XKB_KEY_Shift_L && event.sym <= XKB_KEY_Hyper_R) || event.sym == XKB_KEY_ISO_Level3_Shift
+                             || event.sym == XKB_KEY_ISO_Level5_Shift;
+    const bool functionKey = event.sym >= XKB_KEY_F1 && event.sym <= XKB_KEY_F24;
+    const bool pageKey = mods == KeyMod::Shift
+                         && (event.sym == XKB_KEY_Page_Up || event.sym == XKB_KEY_Page_Down || event.sym == XKB_KEY_Home
+                             || event.sym == XKB_KEY_End);
+    // A plain or Shift-only key belongs to the program in the terminal.
+    if (modifierKey || ((mods & (KeyMod::Ctrl | KeyMod::Alt)) == 0 && !functionKey && !pageKey)) {
+      return true;
+    }
+    const Chord chord = chordOf(event.sym, event.unshifted, event.modifiers);
+    const std::optional<Action> owner = m_store.settings().keys.actionOf(chord);
+    if (owner && *owner != action && (replacing == nullptr || replacing->chord != chord)) {
+      setCapture(Replacing{action, chord, *owner});
+      return true;
+    }
+    setCapture(Idle{});
+    change([action, chord](Settings& x) { x.keys.bind(action, {chord}); });
+    return true;
+  }
+
   void PrefsWindow::importTheme(const std::filesystem::path& folder) {
     auto result = importThemeFolder(folder, m_store.themes().dir());
     if (auto* error = std::get_if<SettingsError>(&result)) {
@@ -251,6 +305,7 @@ namespace term {
       }
     }
     m_pane = pane;
+    m_capture = Idle{};
     m_scroll = {};
     // Called from a control in the column: rebuild after its callback returns, not under it.
     DeferredCall::callLater([this, alive = std::weak_ptr<bool>(m_alive)] {
@@ -524,15 +579,10 @@ namespace term {
 
     // Keyboard
     {
-      std::vector<std::pair<std::string, std::string>> keys;
-      for (const ActionInfo& info : actionTable()) {
-        if (std::string combo = now.keys.label(info.action, " "); !combo.empty()) {
-          keys.emplace_back(info.label, std::move(combo));
-        }
-      }
+      const std::size_t bound = std::ranges::count_if(actionTable(), [&](const ActionInfo& info) { return !now.keys.chords(info.action).empty(); });
       out.push_back({Pane::Main,
                      "Keyboard",
-                     {{"Shortcuts", "", [self, n = keys.size()](float s, float) -> std::unique_ptr<Node> {
+                     {{"Shortcuts", "", [self, n = bound](float s, float) -> std::unique_ptr<Node> {
                          const float w = Tokens::sizeControlL * s;
                          const float h = Tokens::sizeControlS * s;
                          auto link = ui::row({.align = FlexAlign::Center,
@@ -550,19 +600,74 @@ namespace term {
                                                .onClick = [self](const InputArea::PointerData&) { self->showPane(Pane::Keyboard); }},
                                               std::move(link));
                        }}}});
+      const auto labelOf = [](Action action) {
+        const auto table = actionTable();
+        const auto it = std::ranges::find(table, action, &ActionInfo::action);
+        return it == table.end() ? std::string() : std::string(it->label);
+      };
       Group group{Pane::Keyboard, "", {}};
-      for (const auto& [label, combo] : keys) {
-        group.rows.push_back({label, "", [combo](float s, float) -> std::unique_ptr<Node> {
-                                auto caps = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
-                                for (std::string_view rest = combo; !rest.empty();) {
-                                  const auto space = rest.find(' ');
-                                  caps->addChild(ui::keycap({.text = std::string(rest.substr(0, space)), .scale = s}));
-                                  rest = space == std::string_view::npos ? std::string_view() : rest.substr(space + 1);
-                                }
-                                return caps;
-                              }});
+      for (const ActionInfo& info : actionTable()) {
+        const Action action = info.action;
+        std::string combo = now.keys.label(action, " ");
+        std::string prompt;
+        if (const auto* r = std::get_if<Recording>(&m_capture); r != nullptr && r->action == action) {
+          prompt = "Type a shortcut";
+        } else if (const auto* q = std::get_if<Replacing>(&m_capture); q != nullptr && q->action == action) {
+          prompt = "Used by " + labelOf(q->other);
+        }
+        const bool active = !prompt.empty();
+        if (!active && combo.empty()) {
+          prompt = "None";
+        }
+        group.rows.push_back(
+            {.label = std::string(info.label),
+             .control = [combo = std::move(combo), prompt = std::move(prompt), active](float s, float w) -> std::unique_ptr<Node> {
+               if (!prompt.empty()) {
+                 return ui::label({.text = prompt,
+                                   .fontSize = Tokens::typeBody.size * s,
+                                   .color = colorSpecFromRole(active ? ColorRole::AccentText : ColorRole::Label2),
+                                   .maxWidth = w * 0.6F,
+                                   .maxLines = 1,
+                                   .ellipsize = TextEllipsize::End});
+               }
+               auto caps = ui::row({.align = FlexAlign::Center, .gap = Tokens::spaceP4 * s});
+               for (std::string_view rest = combo; !rest.empty();) {
+                 const auto space = rest.find(' ');
+                 caps->addChild(ui::keycap({.text = std::string(rest.substr(0, space)), .scale = s}));
+                 rest = space == std::string_view::npos ? std::string_view() : rest.substr(space + 1);
+               }
+               return caps;
+             },
+             .onClick = [self, action] { self->setCapture(Recording{action}); }});
       }
       out.push_back(std::move(group));
+      if (now.keys != Keybindings{}) {
+        out.push_back({Pane::Keyboard,
+                       "",
+                       {{"Restore default shortcuts", "", [self](float s, float) -> std::unique_ptr<Node> {
+                           return ui::button({.text = "Restore",
+                                              .fontSize = Tokens::typeFootnote.size * s,
+                                              .variant = ButtonVariant::Ghost,
+                                              .radius = Style::scaledRadiusSm(s),
+                                              .height = Tokens::sizeControlS * s,
+                                              .onClick = [self] {
+                                                self->m_capture = Idle{};
+                                                self->change([](Settings& x) { x.keys = Keybindings{}; });
+                                              }});
+                         }}}});
+      }
+    }
+    if (m_actions.openPath) {
+      out.push_back({Pane::Main,
+                     "Settings file",
+                     {{m_store.path().filename().string(), tildePath(m_store.path()), [self](float s, float) -> std::unique_ptr<Node> {
+                         return ui::button({.text = "Open",
+                                            .fontSize = Tokens::typeFootnote.size * s,
+                                            .variant = ButtonVariant::Ghost,
+                                            .radius = Style::scaledRadiusSm(s),
+                                            .height = Tokens::sizeControlS * s,
+                                            .onClick = [self] { self->m_actions.openPath(self->m_store.path()); }});
+                       }}}});
     }
     return out;
   }
@@ -590,12 +695,24 @@ namespace term {
                                   .fontSize = Tokens::typeFootnote.size * s,
                                   .color = colorSpecFromRole(ColorRole::Label2)}));
       }
-      box->addChild(ui::row({.align = FlexAlign::Center,
-                             .gap = Tokens::spaceP12 * s,
-                             .paddingV = Tokens::spaceP8 * s,
-                             .paddingH = padH,
-                             .minHeight = Tokens::sizeRow * s},
-                            std::move(text), row.control(s, inner)));
+      // An InputArea does not stretch its child: a clickable row gets the card's inner width itself.
+      const float rowW = width - Style::cardPadding * s * 2.0F;
+      auto line = ui::row({.align = FlexAlign::Center,
+                           .gap = Tokens::spaceP12 * s,
+                           .paddingV = Tokens::spaceP8 * s,
+                           .paddingH = padH,
+                           .minHeight = Tokens::sizeRow * s,
+                           .width = row.onClick ? std::optional(rowW) : std::nullopt},
+                          std::move(text), row.control(s, inner));
+      if (!row.onClick) {
+        box->addChild(std::move(line));
+        continue;
+      }
+      box->addChild(ui::inputArea({.cursorShape = ::CursorShape::Pointer,
+                                   .width = rowW,
+                                   .height = Tokens::sizeRow * s,
+                                   .onClick = [click = row.onClick](const InputArea::PointerData&) { click(); }},
+                                  std::move(line)));
     }
     return box;
   }
@@ -747,6 +864,12 @@ namespace term {
                                  .fontWeight = FontWeight::SemiBold,
                                  .color = colorSpecFromRole(ColorRole::Label1)}));
       content->addChild(std::move(title));
+      auto hint = ui::column({.align = FlexAlign::Start, .paddingH = Tokens::spaceP12 * s});
+      hint->addChild(ui::label({.text = "Click a shortcut to change it. Esc cancels, Backspace removes it. A shortcut in use moves when you press it again.",
+                                .fontSize = Tokens::typeFootnote.size * s,
+                                .color = colorSpecFromRole(ColorRole::Label2),
+                                .maxWidth = cardWidth - Tokens::spaceP12 * s * 2.0F}));
+      content->addChild(std::move(hint));
       for (const Group& group : all) {
         if (group.pane == Pane::Keyboard) {
           content->addChild(card(group, s, cardWidth));
