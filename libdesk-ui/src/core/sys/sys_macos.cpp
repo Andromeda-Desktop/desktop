@@ -103,6 +103,8 @@ namespace sys {
 
   std::int64_t mtimeNs(const struct stat& st) { return toNs(st.st_mtimespec); }
 
+  std::int64_t ctimeNs(const struct stat& st) { return toNs(st.st_ctimespec); }
+
   bool statWithBirth(int dirFd, const char* name, struct stat& out, std::int64_t& birthNs) {
     if (::fstatat(dirFd, name, &out, AT_SYMLINK_NOFOLLOW) != 0) {
       return false;

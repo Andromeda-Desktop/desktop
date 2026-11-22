@@ -1,6 +1,7 @@
 #include "render/core/shared_texture_cache.h"
 
 #include "core/log.h"
+#include "core/sys/sys.h"
 #include "render/backend/render_backend.h"
 #include "render/core/image_file_loader.h"
 #include "render/core/image_source_log.h"
@@ -89,7 +90,7 @@ namespace {
       const std::int64_t fields[] = {
           // ctime and the inode change on every write or replacement, even when a copy keeps the old mtime.
           static_cast<std::int64_t>(info.st_dev), static_cast<std::int64_t>(info.st_ino), info.st_size,
-          info.st_ctim.tv_sec, info.st_ctim.tv_nsec, coverage.width, coverage.height,
+          sys::ctimeNs(info), coverage.width, coverage.height,
       };
       mix(fields, sizeof(fields));
       return dir / std::format("{:016x}.rgba", hash);

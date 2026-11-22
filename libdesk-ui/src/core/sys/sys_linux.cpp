@@ -151,6 +151,10 @@ namespace sys {
     return static_cast<std::int64_t>(st.st_mtim.tv_sec) * 1'000'000'000 + st.st_mtim.tv_nsec;
   }
 
+  std::int64_t ctimeNs(const struct stat& st) {
+    return static_cast<std::int64_t>(st.st_ctim.tv_sec) * 1'000'000'000 + st.st_ctim.tv_nsec;
+  }
+
   // statx for the birth time; the same cost as fstatat.
   bool statWithBirth(int dirFd, const char* name, struct stat& out, std::int64_t& birthNs) {
     struct statx sx{};

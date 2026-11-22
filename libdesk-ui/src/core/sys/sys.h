@@ -51,6 +51,7 @@ namespace sys {
   void shareSchedulingWithThreads(std::string_view namePart);
 
   [[nodiscard]] std::int64_t mtimeNs(const struct stat& st);
+  [[nodiscard]] std::int64_t ctimeNs(const struct stat& st);
 
   // lstat of dirFd/name, plus the birth time in ns (the change time when the file system has none).
   [[nodiscard]] bool statWithBirth(int dirFd, const char* name, struct stat& out, std::int64_t& birthNs);
