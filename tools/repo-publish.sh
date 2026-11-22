@@ -39,9 +39,13 @@ merge_apt() {
   (
     cd "$out"
     gh release download "$release" -R "$repo" -p Packages -O Packages.old --clobber
+    # A republished file replaces its old entry: apt reads the first entry of a version and rejects the new file's size.
+    names > ours
+    awk -v RS= -v FS='\n' -v ORS='\n\n' 'NR == FNR { for (i = 1; i <= NF; i++) own[$i]; next }
+      { for (i = 1; i <= NF; i++) if ($i ~ /^Filename: / && substr($i, 11) in own) next; print }' ours Packages.old > Packages.kept
     # --multiversion keeps the older entries; apt installs the highest version.
-    { cat Packages.old; echo; dpkg-scanpackages --multiversion . /dev/null; } | cat -s > Packages
-    rm Packages.old
+    { cat Packages.kept; echo; dpkg-scanpackages --multiversion . /dev/null; } | cat -s > Packages
+    rm Packages.old Packages.kept ours
     gzip -kf9 Packages
     apt-ftparchive release . > Release
     gpg --batch --yes --clearsign -u "$key" -o InRelease Release
